@@ -33,7 +33,8 @@ def list_batches(user, status=None, page=1, page_size=20):
     size = _bounded_page_size(page_size, default=20)
 
     with archive_service._core.session() as db:
-        archive_service._core._ctx(user, db)
+        ctx = archive_service._core._ctx(user, db)
+        archive_service._require_read_scope(ctx)
         conditions = [
             AaArchiveBatch.tenant_id == archive_service._core._tid(),
             AaArchiveBatch.is_deleted.is_(False),
@@ -51,7 +52,7 @@ def list_batches(user, status=None, page=1, page_size=20):
             .offset((page_no - 1) * size)
             .limit(size)
         ).all()
-        return [archive_service._core._batch_dto(batch) for batch in rows], total
+        return [archive_service._scoped_batch_dto(batch, ctx) for batch in rows], total
 
 
 list_batches._archive_sql_paging_guard = True

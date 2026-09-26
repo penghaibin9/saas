@@ -139,6 +139,7 @@ def _ensure_account(db, login_name):
             tenant_id=TID,
             role_code=role_code,
             role_name=role_code,
+            role_type="CUSTOM",
             status="ACTIVE",
         )
         db.add(role)
@@ -170,6 +171,20 @@ def _ensure_account(db, login_name):
                 status="ACTIVE",
             ))
     db.flush()
+    if login_name == "school_admin01":
+        from app.models import RoleAssignmentScope
+        binding = db.query(UserRole).filter(
+            UserRole.tenant_id == TID, UserRole.user_id == user.id, UserRole.role_id == role.id,
+        ).one()
+        if not db.query(RoleAssignmentScope).filter(
+            RoleAssignmentScope.tenant_id == TID, RoleAssignmentScope.user_role_id == binding.id,
+            RoleAssignmentScope.scope_type == "SCHOOL",
+        ).first():
+            db.add(RoleAssignmentScope(
+                tenant_id=TID, user_id=user.id, user_role_id=binding.id, role_code=role_code,
+                scope_type="SCHOOL", scope_id=TID, effective_at=datetime(2020, 1, 1), status="ACTIVE",
+            ))
+            db.flush()
     return user
 
 
@@ -240,14 +255,14 @@ def _ensure_college_assignment(db, user_id: int, college_id: int):
     return row
 
 
-def _ensure_college_scope(db, college):
+def _ensure_college_scope(db, college, role_code="COLLEGE_ADMIN"):
     """build_affairs_context 的权威学院范围事实来自 TeacherStudentScope，而不是姓名或隐式任职猜测。"""
     from app.models import TeacherStudentScope
 
     row = db.query(TeacherStudentScope).filter(
         TeacherStudentScope.tenant_id == TID,
         TeacherStudentScope.teacher_key == "college_admin01",
-        TeacherStudentScope.role_code == "COLLEGE_ADMIN",
+        TeacherStudentScope.role_code == role_code,
         TeacherStudentScope.scope_type == "COLLEGE",
         TeacherStudentScope.ref_value == college.college_name,
         TeacherStudentScope.is_deleted.is_(False),
@@ -256,7 +271,7 @@ def _ensure_college_scope(db, college):
         row = TeacherStudentScope(
             tenant_id=TID,
             teacher_key="college_admin01",
-            role_code="COLLEGE_ADMIN",
+            role_code=role_code,
             scope_type="COLLEGE",
             ref_value=college.college_name,
             status="ACTIVE",
@@ -283,5 +298,6 @@ def seed_grade_review_identity(db, *, college_ids=()):
             college.secretary_id = int(college_user.id)
             _ensure_college_assignment(db, int(college_user.id), int(college.id))
             _ensure_college_scope(db, college)
+            _ensure_college_scope(db, college, "TEST_GRADE_COLLEGE_ADMIN01")
     db.flush()
     return {name: int(user.id) for name, user in users.items()}

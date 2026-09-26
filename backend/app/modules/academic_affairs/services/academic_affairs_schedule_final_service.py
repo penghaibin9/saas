@@ -11,6 +11,7 @@ from app.core.exceptions import AppException, not_found
 from . import academic_affairs_schedule_gate_service as gate_service
 from . import academic_affairs_schedule_policy as policy
 from . import academic_affairs_schedule_import_preload as import_preload
+from .academic_affairs_schedule_write_scope_r3 import assert_schedule_write_scope
 
 _base = importlib.import_module(
     ".academic_affairs_schedule_service",
@@ -67,7 +68,6 @@ def _load_batch(db, batch_id, *, writable=True, lock=True):
 def get_batch(batch_id, user) -> dict:
     from app.models import AaScheduleBatch
     from . import academic_affairs_schedule_truth_service as truth_service
-    from .academic_affairs_schedule_write_scope_r3 import assert_schedule_write_scope
 
     with _base.session() as db:
         batch = db.query(AaScheduleBatch).filter(
@@ -76,8 +76,7 @@ def get_batch(batch_id, user) -> dict:
         ).first()
         if not batch:
             raise not_found("课表批次不存在")
-        if str((user or {}).get("currentRoleCode") or "").upper() == "COLLEGE_ADMIN":
-            assert_schedule_write_scope(db, user, batch)
+        assert_schedule_write_scope(db, user, batch)
         return {
             "batchId": str(batch.id), "batchName": batch.batch_name,
             "termId": str(batch.term_id), "collegeId": str(batch.college_id) if batch.college_id else None,
@@ -96,8 +95,6 @@ def _task_batch_ids(db, batch) -> list[int]:
         AaTeachingTaskBatch.status == "APPROVED",
         AaTeachingTaskBatch.is_deleted.is_(False),
     )
-    if getattr(batch, "college_id", None):
-        query = query.filter(AaTeachingTaskBatch.college_id == int(batch.college_id))
     return [int(row.id) for row in query.all()]
 
 
@@ -120,6 +117,7 @@ def _resolve_task(db, batch, source, *, preload=None):
                 AaTeachingTask.status == "READY",
                 AaTeachingTask.is_deleted.is_(False),
                 AaTeachingTask.id == int(task_id),
+                policy.task_scope_condition(db, batch),
             ).first()
         )
         if not task:
@@ -149,6 +147,7 @@ def _resolve_task(db, batch, source, *, preload=None):
             AaTeachingTask.status == "READY",
             AaTeachingTask.is_deleted.is_(False),
             AaTeachingTask.course_name == course_name,
+            policy.task_scope_condition(db, batch),
         )
         if teacher_key:
             query = query.filter(AaTeachingTask.teacher_key == teacher_key)
@@ -543,6 +542,7 @@ def preflight_item(batch_id, user, body) -> dict:
     """Preflight one add candidate without locking or writing schedule facts."""
     with _base.session() as db:
         batch = _load_batch(db, batch_id, writable=False, lock=False)
+        assert_schedule_write_scope(db, user, batch)
         if batch.status not in {"DRAFT", "PRE_PUBLISHED"}:
             return {
                 "allowed": False,
@@ -571,6 +571,7 @@ def preflight_move(item_id, user, body) -> dict:
         if not item:
             raise not_found("排课条目不存在")
         batch = _load_batch(db, item.batch_id, writable=False, lock=False)
+        assert_schedule_write_scope(db, user, batch)
         if batch.status not in {"DRAFT", "PRE_PUBLISHED"}:
             return {
                 "allowed": False,
@@ -653,6 +654,7 @@ def import_dry_run(batch_id, user, items) -> dict:
     教室/班级撞时间）依然能在预检阶段发现，因为保存点内先写入的行对同一事务内后续查询可见。"""
     with _base.session() as db:
         batch = _load_batch(db, batch_id, writable=False, lock=False)
+        assert_schedule_write_scope(db, user, batch)
         db.flush()
         nested = db.begin_nested()
         try:
@@ -1010,6 +1012,16 @@ def publish(batch_id, user) -> dict:
     from . import academic_affairs_schedule_resource_guard as resource_guard
 
     with _base.session() as db:
+        from app.core.affairs_security import build_affairs_context, no_data_scope
+        from app.core.permissions import _match
+        from .academic_affairs_grade_correction_command import _current_user_id
+        from . import academic_affairs_responsibility_service as responsibility
+        ctx = build_affairs_context(user, db)
+        if ctx.scope_type != "TENANT_ALL":
+            raise no_data_scope("正式课表须由校教务统筹发布，学院负责本单位编排与预发布核对")
+        actor = responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit")
+        if not _match("academicAffairs.schedule.edit", ctx.permission_codes) or not actor["resolved"] or str(_current_user_id(db, user)) not in actor["assigneeUserIds"]:
+            raise no_data_scope("当前账号不是有效的学校课表发布责任人，请核对校级任职与排课权限")
         resource_guard.lock_formal_authority(db)
         batch = _load_batch(db, batch_id)
         # 先锁范围头再校验：两个事务若各自只查不锁，会双双查到"无冲突"再双双发布，
@@ -1052,6 +1064,7 @@ def publish(batch_id, user) -> dict:
             )
         term = resource_guard.lock_term(db, batch.term_id)
         policy.resolve_scope(db, batch_id=batch.id, writable=True)
+        school_gate = gate_service.require_school_publishable(db, batch)
         gate = gate_service.require_publishable(db, batch)
         effective_items = db.scalars(select(AaScheduleItem).where(
             AaScheduleItem.tenant_id == _base._tid(), AaScheduleItem.batch_id == batch.id,
@@ -1131,5 +1144,6 @@ def publish(batch_id, user) -> dict:
         "status": "PUBLISHED",
         "notified": notified,
         "gate": gate,
+        "schoolGate": school_gate,
         "activeTruth": truth,
     }

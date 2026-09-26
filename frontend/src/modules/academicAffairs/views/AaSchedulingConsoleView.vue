@@ -21,9 +21,13 @@
         :identity="contextObject.identity"
         :source="contextObject.source"
         :status="contextObject.status"
-        :owner="ctx.currentRole.roleName || '教务排课岗'"
-        next-owner="冲突核对岗 → 课表预发布 / 发布岗"
+        :owner="workbench?.batchId === workbenchBatchId ? academicFlowOwner(workbench.responsibility) : '选择具体批次后核对责任'"
+        :next-owner="workbench?.batchId === workbenchBatchId ? academicFlowNextOwner(workbench.nextStep) : '选择具体批次后核对下一责任'"
       />
+      <dl v-if="workbench?.batchId === workbenchBatchId" class="aasg-course-responsibility" aria-label="课程分类排课责任">
+        <div><dt>公共/通识课程 · {{ academicFlowCount(workbench.courseScopeCounts?.public) }} 门</dt><dd>{{ publicScheduleResponsibility }}</dd></div>
+        <div><dt>专业课程 · {{ academicFlowCount(workbench.courseScopeCounts?.professional) }} 门</dt><dd>按正式教学任务的开课学院归属办理；当前批次责任见上方。正式课表由校教务处统一发布。</dd></div>
+      </dl>
       <AaScheduleStageRail mode="scheduling" :active-index="pageMeta.stage" />
     </div>
 
@@ -429,6 +433,8 @@
 </template>
 
 <script>
+import { academicFlowOwner, academicFlowNextOwner, academicFlowCount } from '../config/academicFlowRegistry.js'
+
 import { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard } from '@/components/common'
@@ -502,6 +508,9 @@ export default {
         adjust: { title: '排课调整', subtitle: '已发布结果不原地编辑；纠错草稿保留当前正式课表在线。', sectionTitle: '课表调整与纠错', stage: 3 }
       }
       return pages[this.tab] || pages.workbench
+    },
+    publicScheduleResponsibility() {
+      return { SCHOOL_CENTRALIZED: '校教务统排：由校教务处组织公共与通识课程编排。', OFFERING_UNIT: '开课单位编排：由课程正式开课单位完成编排并交校教务处统一发布。', HYBRID: '校院协同：校教务处与开课单位按当前任务责任协同编排。' }[this.workbench?.publicScheduleMode] || '公共与通识课程编排模式待核对，请由校教务处核对学期配置。'
     },
     contextObject() {
       if (this.workbench) return {
@@ -586,6 +595,7 @@ export default {
   },
   beforeUnmount() { this.disposed = true; this.routeGate.invalidate(); this.workbenchGate.invalidate(); this.ruleGate.invalidate(); this.pendingAction = null },
   methods: {
+    academicFlowOwner, academicFlowNextOwner, academicFlowCount,
     switchTab(tab) { return this.$router.push({ path: this.$route.path, query: { ...this.$route.query, tab } }) },
     routeContextKey() { return JSON.stringify([this.academicFlow?.identity() || academicIdentity(currentUserFromToken(), this.ctx), this.$route?.fullPath]) },
     commandContextKey() { return JSON.stringify([this.disposed, this.routeContextKey(), this.termId, this.workbenchBatchId, this.autoBatchId, this.conflictBatchId]) },
@@ -936,6 +946,8 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.aasg-course-responsibility { display:flex; flex-wrap:wrap; gap:12px; margin:0; font-size:12px; line-height:1.7; }.aasg-course-responsibility > div { flex:1 1 230px; padding:12px 14px; background:var(--bg-soft,#f8fafc); border-radius:8px; }.aasg-course-responsibility dt { font-weight:600; }.aasg-course-responsibility dd { margin:5px 0 0; overflow-wrap:anywhere; }
+
 .aasg-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); margin-bottom: 16px; }
 .aasg-tab { padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-secondary, #64748b); border-bottom: 2px solid transparent; }
 .aasg-tab.is-active { color: var(--primary-color, #2563eb); border-bottom-color: var(--primary-color, #2563eb); font-weight: 600; }

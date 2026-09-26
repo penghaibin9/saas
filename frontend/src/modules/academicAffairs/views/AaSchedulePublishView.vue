@@ -45,10 +45,10 @@
           <div class="aa-gate-head">
             <div>
               <strong>{{ gate.batch?.batchName }}</strong>
-              <p>请先处理漏排、超排和课程冲突。全部检查通过后可继续发布。</p>
+              <p>请先处理本批次漏排、超排和课程冲突。正式发布还须通过全校核验。</p>
             </div>
-            <AppStatusTag :type="gate.summary.complete ? 'success' : 'danger'" dot>
-              {{ gate.summary.complete ? '全部通过' : '存在阻断项' }}
+            <AppStatusTag :type="gate.summary.complete === true ? 'success' : 'danger'" dot>
+              {{ gate.summary.complete === true ? '本批次通过' : '本批次待处理' }}
             </AppStatusTag>
           </div>
           <div class="aa-gate-grid">
@@ -60,6 +60,15 @@
           <p v-if="gate.summary.pendingTeacherObjections" class="aa-gate-warning">
             教师异议待处理 {{ gate.summary.pendingTeacherObjections }} 条，建议正式发布前处理完毕。
           </p>
+          <div v-if="gate.intent !== 'pre'" class="aa-school-gate" aria-label="全校正式发布核验">
+            <div class="aa-gate-head">
+              <strong>全校正式发布核验</strong>
+              <AppStatusTag :type="schoolGateReady ? 'success' : 'warning'" dot>{{ schoolGateReady ? '全校核验通过' : '暂不可正式发布' }}</AppStatusTag>
+            </div>
+            <p v-if="schoolGateReady" class="mp-note">服务端已确认全校必需批次就绪，正式发布前仍会再次核验。</p>
+            <ul v-else class="aa-school-gate__reasons"><li v-for="(message, index) in schoolGateBlockers" :key="index">{{ message }}</li></ul>
+            <AppButton :disabled="writeBusy" @click="openGate(gate.batch, gate.intent)">重新检查发布条件</AppButton>
+          </div>
           <div class="aa-gate-actions">
             <AppButton @click="gate.visible = false">收起检查</AppButton>
             <AppButton v-if="!gate.summary.complete" @click="openWorkbench(gate.batch)">返回排课工作台处理</AppButton>
@@ -67,7 +76,7 @@
               v-else-if="gate.intent !== 'view'"
               variant="primary"
               :loading="gate.submitting"
-              :disabled="writeBusy"
+              :disabled="writeBusy || !gateActionReady"
               @click="confirmGateAction"
             >{{ gate.intent === 'pub' ? '确认正式发布并通知师生' : '确认进入预发布' }}</AppButton>
           </div>
@@ -144,6 +153,7 @@ import { isConflictResult, isDeniedResult } from '../components/parallel-a/resul
 import { readAllPages } from '../components/parallel-a/pagedRead'
 import { academicRouteState, createAcademicRequestGate } from '../academicFlowContext'
 import AaScheduleStageRail from '../components/AaScheduleStageRail.vue'
+import { academicFlowText } from '../config/academicFlowRegistry'
 
 export default {
   name: 'AaSchedulePublishView',
@@ -176,6 +186,11 @@ export default {
     identityKey() { return JSON.stringify([this.academicFlow?.identity?.(), this.ctx?.currentRole, this.ctx?.dataScope, this.ctx?.ctxKey, this.ctx?.permissionVersion]) },
     writeBusy() { return !!this.pendingWrite || this.gate.submitting || this.voidDlg.submitting },
     formalHead() { return scheduleTruthPresentation(this.focusBatch) },
+    schoolGateReady() { return this.gate.summary?.schoolGate?.ready === true },
+    schoolGateBlockers() { return this.schoolGateReasons(this.gate.summary) },
+    gateActionReady() {
+      return this.gate.summary?.complete === true && (this.gate.intent === 'pre' || (this.gate.intent === 'pub' && this.schoolGateReady))
+    },
     gateChecklist() {
       const row = this.gate.summary || {}
       return [
@@ -357,10 +372,28 @@ export default {
     },
     async confirmGateAction() {
       if (this.writeBusy || !this.gate.summary?.complete || !this.gate.batch || this.gate.intent === 'view') return
+      if (!this.gateActionReady) {
+        this.commandError = this.gateFailureReason(this.gate.summary, this.gate.intent)
+        return
+      }
       const gate = this.gate
       gate.submitting = true
       try { await this.act(gate.batch, gate.intent) }
       finally { if (this.gate === gate) gate.submitting = false }
+    },
+    schoolGateReasons(summary) {
+      const schoolGate = summary?.schoolGate
+      if (schoolGate?.ready === true) return []
+      const messages = Array.isArray(schoolGate?.blockers)
+        ? schoolGate.blockers.map(blocker => academicFlowText(blocker?.message, '有一项全校发布条件未满足，请重新检查。'))
+        : []
+      return messages.length ? messages : [schoolGate?.ready === false
+        ? '全校发布条件尚未满足，请由校教务处核对各责任学院及必需批次。'
+        : '尚未取得全校发布核验结果，请重新检查；仅批次检查通过不能正式发布。']
+    },
+    gateFailureReason(summary, kind) {
+      if (summary?.complete !== true) return '本批次发布条件尚未全部通过，请重新核对漏排、超排和课程冲突。'
+      return kind === 'pub' ? this.schoolGateReasons(summary).join('；') : ''
     },
     async act(row, kind) {
       if (this.pendingWrite) return
@@ -373,8 +406,8 @@ export default {
       const before = await this.readFormalBatch(row.batchId)
       if (this.disposed || operationContext !== this.focusContextKey()) return
       if (isDeniedResult(before)) return this.clearSensitive(before.message)
-      if (gate.code !== 0 || !gate.data?.complete || before.code !== 0 || before.data.status !== expectedBefore) {
-        this.commandError = gate.message || '发布门禁或批次状态已变化，请重新核对'
+      if (gate.code !== 0 || gate.data?.complete !== true || (kind === 'pub' && gate.data?.schoolGate?.ready !== true) || before.code !== 0 || before.data.status !== expectedBefore) {
+        this.commandError = gate.message || (gate.code === 0 && this.gateFailureReason(gate.data, kind)) || '发布门禁或批次状态已变化，请重新核对'
         this.gate.summary = gate.code === 0 ? gate.data : null
         await this.load()
         return
@@ -510,6 +543,8 @@ export default {
 .aa-gate-item.is-blocked { border-color: var(--danger-200, #fecaca); background: var(--danger-50, #fef2f2); }
 .aa-gate-item.is-blocked > span { color: var(--danger-700, #b91c1c); background: var(--danger-100, #fee2e2); }
 .aa-gate-warning { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; color: var(--warning-700, #b45309); background: var(--warning-50, #fffbeb); font-size: 13px; }
+.aa-school-gate { margin-top: 14px; padding: 14px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 8px; }
+.aa-school-gate__reasons { margin: 12px 0; padding-left: 20px; color: var(--warning-700, #b45309); line-height: 1.7; overflow-wrap: anywhere; }
 .aa-gate-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 @media (max-width: 980px) { .aa-truth-card__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .aa-gate-grid, .aa-truth-card__grid { grid-template-columns: 1fr; } .aa-gate-head, .aa-truth-card__head { flex-direction: column; } }

@@ -139,6 +139,7 @@ def build_preload(
 ) -> ScheduleImportPreload:
     """只预载本批输入会触达的数据，避免把全租户任务/教室 materialize 到 Python。"""
     from app.models import AaClassroom, AaScheduleItem, AaTeachingTask
+    from . import academic_affairs_schedule_policy as policy
 
     direct_task_ids: set[int] = set()
     match_keys: set[tuple[str, str, int | None]] = set()
@@ -197,6 +198,7 @@ def build_preload(
                 AaTeachingTask.status == "READY",
                 AaTeachingTask.is_deleted.is_(False),
                 or_(*task_conditions),
+                policy.task_scope_condition(db, batch),
             )
         ).all()
 

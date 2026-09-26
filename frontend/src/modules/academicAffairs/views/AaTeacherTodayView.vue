@@ -8,15 +8,24 @@
   >
     <template #actions>
       <AppButton @click="go('/admin/academic-affairs/schedule/teacher')">查看完整课表</AppButton>
-      <AppButton variant="primary" :loading="loading" @click="load">刷新</AppButton>
+      <AppButton variant="primary" :loading="loading" @click="refresh">刷新</AppButton>
     </template>
 
     <AppInlineAlert
       v-if="workbenchSource && workbenchSource !== 'CURRENT_TERM_FORMAL_TEACHER_FACTS'"
       type="warning"
       title="工作台事实来源待核对"
-      :description="`当前来源：${workbenchSource}`"
+      description="正式教学事实来源暂未确认，请刷新后核对；不要据此重复办理。"
     />
+
+    <section v-if="isAcademicTeacher" class="aat-responsibility" aria-label="我的学期责任">
+      <template v-if="flowTermError">
+        <AppInlineAlert type="warning" :description="flowTermError" />
+        <AppButton @click="selectFlowTerm('')">恢复当前学期</AppButton>
+      </template>
+      <AcademicFlowOverview v-else ref="responsibilityFlow" :ctx="ctx" :term-id="flowTermId" :can-open="canOpenFlow" @navigate="openFlow" @term-change="selectFlowTerm" />
+      <p v-if="flowTermId" class="aat-footnote">责任进度按所选学期查看；下方今日课程与待办仍按当前学期查询。</p>
+    </section>
 
     <section class="aat-metrics" aria-label="我的今日教学摘要">
       <button v-for="metric in metrics" :key="metric.key" type="button" class="aat-metric" @click="go(metric.path)">
@@ -90,6 +99,10 @@ import { AppButton } from '@/components/ui'
 import { AppInlineAlert, AppSectionCard } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import { canEnterRoute } from '@/security/permissionGate'
+import { currentUserFromToken } from '@/services/http/client'
+import { academicIdentity } from '../academicFlowContext.js'
+import AcademicFlowOverview from '../components/AcademicFlowOverview.vue'
 
 const EMPTY_WORKBENCH = () => ({
   actionItems: [], waitingItems: [],
@@ -99,17 +112,21 @@ const EMPTY_WORKBENCH = () => ({
 
 export default {
   name: 'AaTeacherTodayView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppInlineAlert, AppSectionCard },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppInlineAlert, AppSectionCard, AcademicFlowOverview },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: false, loadedOnce: false, generation: 0, attendanceOpeningId: '',
+      loading: false, loadedOnce: false, generation: 0, attendanceOpeningId: '', disposed: false,
       workTab: this.$route?.query?.work === 'waiting' ? 'waiting' : 'actions',
       todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', todayError: '',
       workbench: EMPTY_WORKBENCH()
     }
   },
   computed: {
+    isAcademicTeacher() { return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER' },
+    identityKey() { return JSON.stringify([academicIdentity(currentUserFromToken(), this.ctx), this.ctx.currentRole]) },
+    flowTermId() { return typeof this.$route.query.termId === 'string' ? this.$route.query.termId : '' },
+    flowTermError() { const value = this.$route.query.termId; return value != null && (typeof value !== 'string' || !/^[1-9]\d*$/.test(value)) ? '学期参数无效，请恢复当前学期后重新选择。' : '' },
     workbenchSource() { return this.workbench?.source || '' },
     actionItems() { return this.workbench?.actionItems || [] },
     waitingItems() { return this.workbench?.waitingItems || [] },
@@ -133,12 +150,21 @@ export default {
   },
   created() { this.load() },
   watch: {
+    identityKey() { this.generation++; this.attendanceOpeningId = ''; this.loadedOnce = false; this.load() },
     '$route.query.work'(value) {
       this.workTab = value === 'waiting' ? 'waiting' : 'actions'
     }
   },
-  beforeUnmount() { this.generation++ },
+  beforeUnmount() { this.generation++; this.disposed = true },
   methods: {
+    refresh() { this.$refs.responsibilityFlow?.load(); return this.load() },
+    canOpenFlow(path) { try { const route = this.$router.resolve(path); return Boolean(route.matched?.length) && route.matched.every(row => canEnterRoute(row.meta)) } catch { return false } },
+    openFlow(path) { if (this.canOpenFlow(path)) this.go(path) },
+    selectFlowTerm(value) {
+      const termId = value == null ? '' : String(value)
+      if (termId && !/^[1-9]\d*$/.test(termId)) return
+      return this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, termId: termId || undefined } })
+    },
     go(path) { if (path) this.$router.push(path).catch(() => {}) },
     applyChange(item) {
       const originItemId = item.scheduleItemId || item.itemId
@@ -152,29 +178,33 @@ export default {
       const scheduleItemId = String(item.scheduleItemId || '')
       if (!scheduleItemId || this.attendanceOpeningId) return
       this.attendanceOpeningId = scheduleItemId
+      const identity = this.identityKey
       try {
         const res = await academicAffairsApi.openAttendanceSession({
-          teachingTaskId: Number(item.teachingTaskId),
-          classId: item.classId ? Number(item.classId) : undefined,
+          teachingTaskId: String(item.teachingTaskId),
+          classId: item.classId ? String(item.classId) : undefined,
           sessionDate: item.sessionDate || this.todayDate,
           slotNo: Number(item.slotNo),
-          scheduleItemId: Number(scheduleItemId)
+          scheduleItemId
         })
+        if (this.disposed || identity !== this.identityKey) return
         if (res.code !== 0 || !res.data?.sessionId) {
           toast.error(res.message || '课堂考勤场次未确认，请刷新后重试')
           return
         }
         this.go(`/admin/academic-affairs/attendance-stats?panel=sessions&sessionId=${encodeURIComponent(res.data.sessionId)}`)
       } catch (error) {
-        toast.error(error?.message || '课堂考勤场次未确认，请刷新后重试')
-      } finally { this.attendanceOpeningId = '' }
+        if (!this.disposed && identity === this.identityKey) toast.error(error?.message || '课堂考勤场次未确认，请刷新后重试')
+      } finally { if (!this.disposed && identity === this.identityKey) this.attendanceOpeningId = '' }
     },
     async load() {
-      const ticket = ++this.generation
+      const ticket = ++this.generation, identity = this.identityKey
+      const current = () => !this.disposed && ticket === this.generation && identity === this.identityKey
       this.loading = true
+      this.todayItems = []; this.workbench = EMPTY_WORKBENCH(); this.todayDate = ''; this.todayWeek = null; this.calendarSource = ''; this.todayError = ''
       try {
         const res = await academicAffairsApi.getMyTeacherToday()
-        if (ticket !== this.generation) return
+        if (!current()) return
         if (res.code !== 0) {
           this.todayItems = []; this.workbench = EMPTY_WORKBENCH(); this.todayError = res.message || '今日教学读取失败'
           return
@@ -187,13 +217,14 @@ export default {
         this.todayError = ''
         this.workbench = { ...EMPTY_WORKBENCH(), ...(data.workbench || {}), counts: { ...EMPTY_WORKBENCH().counts, ...(data.workbench?.counts || {}) } }
       } catch (error) {
-        if (ticket !== this.generation) return; this.todayItems = []; this.workbench = EMPTY_WORKBENCH(); this.todayError = error?.message || '今日教学读取失败'
-      } finally { if (ticket === this.generation) { this.loadedOnce = true; this.loading = false } }
+        if (!current()) return; this.todayItems = []; this.workbench = EMPTY_WORKBENCH(); this.todayError = error?.message || '今日教学读取失败'
+      } finally { if (current()) { this.loadedOnce = true; this.loading = false } }
     }
   }
 }
 </script>
 <style scoped>
+.aat-responsibility { display:grid; gap:12px; margin-bottom:16px; }
 .aat-metrics { display:grid; grid-template-columns:repeat(5,minmax(120px,1fr)); gap:10px; }
 .aat-metric { min-height:78px; padding:13px 14px; border:1px solid var(--border-base); border-radius:10px; background:var(--bg-card); text-align:left; color:inherit; }
 .aat-metric:hover { border-color:var(--pri); background:var(--pri-bg); }

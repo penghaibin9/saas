@@ -39,10 +39,12 @@ def _seed(db_mode, status="REGISTERED"):
     from app.db.session import get_sessionmaker
     from app.models import SchoolClass, StudentProfile
     db = get_sessionmaker()()
+    from tests.support_graduation_review_identity import seed_graduation_review_identity
+    college = seed_graduation_review_identity(db)
     a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2301", grade="2023", status="ACTIVE")
     db.add(a); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="GR001", real_name="毕业甲", class_id=a.id, grade="2023",
-                       major_id=1, current_stage="ON_CAMPUS", student_status=status, status="ACTIVE")
+                       major_id=1, college_id=college.id, current_stage="ON_CAMPUS", student_status=status, status="ACTIVE")
     db.add(s); db.flush()
     ids = {"s": s.id}
     db.commit()
@@ -68,7 +70,7 @@ def _result_id(client, hdr, bid):
 def _approve_for_final(client, hdr, rid):
     resp = client.post(
         f"{BASE}/graduation-results/{rid}/college-review",
-        headers=hdr,
+        headers=_hdr(client, "college_admin01"),
         json={"action": "APPROVE", "note": _REVIEW_NOTE},
     )
     assert resp.status_code == 200, resp.text
@@ -244,10 +246,11 @@ def test_gr8_college_reject_reason_roundtrip(client, db_mode):
     bid = _batch(client, hdr)
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
-    bad = client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=hdr,
+    college_hdr = _hdr(client, "college_admin01")
+    bad = client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=college_hdr,
                       json={"action": "REJECT", "note": "太短"})
     assert bad.status_code == 400
-    ok = client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=hdr,
+    ok = client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=college_hdr,
                      json={"action": "REJECT", "note": "材料不全，缺实习鉴定表"})
     assert ok.status_code == 200
     assert ok.json()["data"]["status"] == "REJECTED"

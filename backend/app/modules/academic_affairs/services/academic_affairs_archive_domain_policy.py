@@ -8,7 +8,7 @@ from __future__ import annotations
 from collections import defaultdict
 from datetime import datetime, time
 
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 
 from app.services.db_service import _tid
 
@@ -105,7 +105,24 @@ def _safe(code, fn):
         )
 
 
-def evaluate_status_change(db, term_id, term_code):
+def college_student_ids(college_ids):
+    from app.models import StudentProfile
+    return select(StudentProfile.id).where(StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False), StudentProfile.college_id.in_(sorted(college_ids)))
+
+
+def college_school_result(code, count, blockers, local_message, school_message):
+    """本院补齐与学校统筹分别说明；未查全校门禁永远不能据此判为通过。"""
+    result = _state_result(code, "BLOCKED" if blockers else "UNKNOWN",
+        (f"{local_message}（{blockers}项）；" if blockers else "本次未发现本院在途明细；") + school_message,
+        count=count, blocking_count=blockers or 1,
+        rule_code=f"{code}_COLLEGE_PENDING" if blockers else "ARCHIVE_SCHOOL_COORDINATION_REQUIRED",
+        evidence=[{"type": "COLLEGE_ARCHIVE_SCOPE", "localBlockingCount": blockers,
+                   "schoolCheckPerformed": False, "responsibleOrgType": "SCHOOL"}])
+    return result
+
+
+def evaluate_status_change(db, term_id, term_code, college_ids=None):
     """Only close a term when every status-change record can be scoped or proven terminal."""
     from app.models import AaStatusChange, AaTerm
 
@@ -119,10 +136,13 @@ def evaluate_status_change(db, term_id, term_code):
     start_at = _day_start(getattr(term, "start_date", None)) if term else None
     end_at = _day_end(getattr(term, "end_date", None)) if term else None
 
-    rows = db.query(AaStatusChange).filter(
+    query = db.query(AaStatusChange).filter(
         AaStatusChange.tenant_id == _tid(),
         AaStatusChange.is_deleted.is_(False),
-    ).all()
+    )
+    if college_ids is not None:
+        query = query.filter(AaStatusChange.student_id.in_(college_student_ids(college_ids)))
+    rows = query.all()
     scoped = []
     unresolved = []
     for row in rows:
@@ -177,7 +197,7 @@ def evaluate_status_change(db, term_id, term_code):
         rule_code="STATUS_CHANGE_CLOSED",
     )
 
-def evaluate_graduation(db, term_id):
+def evaluate_graduation(db, term_id, college_ids=None):
     """Graduation archive gate is four-state and never promotes missing scope evidence to PASS."""
     from app.models import AaGraduationAuditBatch, AaTerm
 
@@ -210,6 +230,20 @@ def evaluate_graduation(db, term_id):
             rule_code="GRADUATION_TERM_DATES_UNKNOWN",
         )
 
+    if college_ids is not None:
+        from app.models import AaGraduationAuditResult
+        own = db.query(AaGraduationAuditResult).join(AaGraduationAuditBatch,
+            AaGraduationAuditBatch.id == AaGraduationAuditResult.batch_id).filter(
+            AaGraduationAuditResult.tenant_id == _tid(), AaGraduationAuditResult.is_deleted.is_(False),
+            AaGraduationAuditResult.student_id.in_(college_student_ids(college_ids)),
+            AaGraduationAuditBatch.tenant_id == _tid(), AaGraduationAuditBatch.is_deleted.is_(False),
+            or_(AaGraduationAuditBatch.generate_at.between(start_at, end_at),
+                AaGraduationAuditBatch.generate_at.is_(None) & AaGraduationAuditBatch.created_at.between(start_at, end_at)))
+        count = own.count()
+        pending = own.filter(AaGraduationAuditResult.status.notin_(
+            ("GRADUATED", "COMPLETED", "DELAYED", "ARCHIVED"))).count()
+        return college_school_result("GRADUATION", count, pending,
+            "本院毕业审核结果尚未终结", "毕业批次归档及无法确定学期的历史记录由学校核验")
     rows = []
     for row in db.query(AaGraduationAuditBatch).filter(
         AaGraduationAuditBatch.tenant_id == _tid(),
@@ -374,7 +408,7 @@ def evaluate_makeup(db, term_id, term_code):
     )
 
 
-def evaluate_evaluation(db, term_id):
+def evaluate_evaluation(db, term_id, college_ids=None):
     from app.models import AaEvaluationAppeal, AaEvaluationBatch, AaEvaluationResult, AaEvaluationTask
 
     if not term_id:
@@ -382,12 +416,22 @@ def evaluate_evaluation(db, term_id):
             "EVALUATION", "UNKNOWN", "未指定学期，无法核验学生评教",
             rule_code="EVALUATION_TERM_SCOPE_UNKNOWN",
         )
-    batches = db.query(AaEvaluationBatch).filter(
+    batch_query = db.query(AaEvaluationBatch).filter(
         AaEvaluationBatch.tenant_id == _tid(),
         AaEvaluationBatch.term_id == int(term_id),
         AaEvaluationBatch.is_deleted.is_(False),
-    ).all()
+    )
+    if college_ids is not None:
+        from .academic_affairs_archive_operational_policy import college_task_ids
+        own_tasks = college_task_ids(db, college_ids, term_id)
+        own_batches = select(AaEvaluationTask.batch_id).where(
+            AaEvaluationTask.tenant_id == _tid(), AaEvaluationTask.is_deleted.is_(False),
+            AaEvaluationTask.teaching_task_id.in_(own_tasks))
+        batch_query = batch_query.filter(AaEvaluationBatch.id.in_(own_batches))
+    batches = batch_query.all()
     if not batches:
+        if college_ids is not None:
+            return college_school_result("EVALUATION", 0, 0, "", "评教批次启用、窗口和全校结果由学校统筹核验")
         return _state_result(
             "EVALUATION", "NOT_APPLICABLE", "本学期未启用学生评教，不作为归档阻断",
             rule_code="EVALUATION_NOT_APPLICABLE",
@@ -397,16 +441,20 @@ def evaluate_evaluation(db, term_id):
         row for row in batches
         if str(row.status or "").upper() not in {"RESULT_READY", "ARCHIVED"}
     ]
-    tasks = db.query(AaEvaluationTask).filter(
+    task_query = db.query(AaEvaluationTask).filter(
         AaEvaluationTask.tenant_id == _tid(),
         AaEvaluationTask.batch_id.in_(batch_ids),
         AaEvaluationTask.is_deleted.is_(False),
-    ).all()
-    results = db.query(AaEvaluationResult).filter(
+    )
+    result_query = db.query(AaEvaluationResult).filter(
         AaEvaluationResult.tenant_id == _tid(),
         AaEvaluationResult.batch_id.in_(batch_ids),
         AaEvaluationResult.is_deleted.is_(False),
-    ).all()
+    )
+    if college_ids is not None:
+        task_query = task_query.filter(AaEvaluationTask.teaching_task_id.in_(own_tasks))
+        result_query = result_query.filter(AaEvaluationResult.teaching_task_id.in_(own_tasks))
+    tasks, results = task_query.all(), result_query.all()
     result_keys = {
         (int(row.batch_id), int(row.teaching_task_id))
         for row in results if row.batch_id and row.teaching_task_id
@@ -430,6 +478,9 @@ def evaluate_evaluation(db, term_id):
         blockers.append(f"有提交但未生成结果的评教任务 {missing_results} 个")
     if active_appeals:
         blockers.append(f"仍有在途评教申诉 {int(active_appeals)} 条")
+    if college_ids is not None:
+        return college_school_result("EVALUATION", len(tasks), missing_results + int(active_appeals or 0),
+            "本院评教结果或申诉未闭环", "评教窗口关闭和全校结果发布由学校统筹")
     return _legacy_result(
         len(batches), not blockers,
         "评教窗口、结果和申诉均已收口" if not blockers else "；".join(blockers),
@@ -522,6 +573,112 @@ def evaluate_textbook(db, term_id):
         "教材征订、发放和费用均已收口" if not blockers else "；".join(blockers),
     )
 
+def evaluate_college_registration(db, term_id, college_ids):
+    from app.models import AaRegistration, AaRegistrationBatch, AaRegistrationException, AaRegistrationDeferral
+    students = college_student_ids(college_ids)
+    batches = select(AaRegistrationBatch.id).where(AaRegistrationBatch.tenant_id == _tid(),
+        AaRegistrationBatch.is_deleted.is_(False), AaRegistrationBatch.term_id == term_id)
+    records = db.query(AaRegistration).filter(AaRegistration.tenant_id == _tid(),
+        AaRegistration.is_deleted.is_(False), AaRegistration.batch_id.in_(batches),
+        AaRegistration.student_id.in_(students))
+    pending = records.filter(AaRegistration.status != "REGISTERED").count()
+    exceptions = db.query(AaRegistrationException).filter(AaRegistrationException.tenant_id == _tid(),
+        AaRegistrationException.is_deleted.is_(False), AaRegistrationException.batch_id.in_(batches),
+        AaRegistrationException.student_id.in_(students), AaRegistrationException.status == "OPEN").count()
+    deferrals = db.query(AaRegistrationDeferral).filter(AaRegistrationDeferral.tenant_id == _tid(),
+        AaRegistrationDeferral.is_deleted.is_(False), AaRegistrationDeferral.batch_id.in_(batches),
+        AaRegistrationDeferral.student_id.in_(students), AaRegistrationDeferral.status == "PENDING").count()
+    return college_school_result("REGISTRATION", records.count(), pending + exceptions + deferrals,
+        "本院注册、异常或暂缓申请尚未办结", "注册批次关闭由学校统筹")
+
+
+def evaluate_college_selection(db, term_id, college_ids):
+    from app.models import AaSelectionRecord, AaSelectionBatch
+    records = db.query(AaSelectionRecord).join(AaSelectionBatch, AaSelectionBatch.id == AaSelectionRecord.batch_id).filter(
+        AaSelectionRecord.tenant_id == _tid(), AaSelectionRecord.is_deleted.is_(False),
+        AaSelectionRecord.student_id.in_(college_student_ids(college_ids)),
+        AaSelectionBatch.tenant_id == _tid(), AaSelectionBatch.is_deleted.is_(False), AaSelectionBatch.term_id == term_id)
+    pending = records.filter(AaSelectionRecord.status.in_(("SELECTED", "PENDING_LOTTERY"))).count()
+    return college_school_result("SELECTION", records.count(), pending,
+        "本院学生选课记录尚未转为正式名单", "选课轮次、容量计数与全校名单锁定由学校核验")
+
+
+def evaluate_college_makeup(db, term_code, college_ids):
+    from app.models import AaRetakeApply, AaExemption, AcademicMakeup, AcademicStudent
+    students = college_student_ids(college_ids)
+    makeup = db.query(AcademicMakeup).join(AcademicStudent, AcademicStudent.id == AcademicMakeup.acad_student_id).filter(
+        AcademicMakeup.tenant_id == _tid(), AcademicMakeup.is_deleted.is_(False), AcademicMakeup.record_status == "ACTIVE",
+        AcademicMakeup.term == term_code, AcademicStudent.tenant_id == _tid(), AcademicStudent.is_deleted.is_(False),
+        AcademicStudent.student_id.in_(students))
+    retakes = db.query(AaRetakeApply).filter(AaRetakeApply.tenant_id == _tid(), AaRetakeApply.is_deleted.is_(False),
+        AaRetakeApply.student_id.in_(students), AaRetakeApply.term_code == term_code)
+    exemptions = db.query(AaExemption).filter(AaExemption.tenant_id == _tid(), AaExemption.is_deleted.is_(False),
+        AaExemption.student_id.in_(students), AaExemption.term_code == term_code)
+    pending = (makeup.filter(AcademicMakeup.status != "SCORED").count()
+        + retakes.filter(AaRetakeApply.status.in_(("SUBMITTED", "ACADEMIC_REVIEW", "APPROVED"))).count()
+        + exemptions.filter(AaExemption.status.notin_(("APPROVED", "REJECTED", "CANCELLED"))).count())
+    return college_school_result("MAKEUP", makeup.count() + retakes.count() + exemptions.count(), pending,
+        "本院补考、重修或免修仍有在途明细", "全校补考批次结束及无稳定学生绑定的历史记录由学校核验")
+
+
+def evaluate_college_textbook(db, term_id, college_ids):
+    from app.models import AaTextbookDistributionRecord, AaTextbookDistributionBatch, AaTextbookOrderBatch, AaTextbookFeeLedger
+    records = db.query(AaTextbookDistributionRecord).join(AaTextbookDistributionBatch,
+        AaTextbookDistributionBatch.id == AaTextbookDistributionRecord.batch_id).join(AaTextbookOrderBatch,
+        AaTextbookOrderBatch.id == AaTextbookDistributionBatch.order_batch_id).filter(
+        AaTextbookDistributionRecord.tenant_id == _tid(), AaTextbookDistributionRecord.is_deleted.is_(False),
+        AaTextbookDistributionRecord.student_id.in_(college_student_ids(college_ids)),
+        AaTextbookDistributionBatch.tenant_id == _tid(), AaTextbookDistributionBatch.is_deleted.is_(False),
+        AaTextbookOrderBatch.tenant_id == _tid(), AaTextbookOrderBatch.is_deleted.is_(False), AaTextbookOrderBatch.term_id == term_id)
+    pending = records.filter(AaTextbookDistributionRecord.status == "PENDING").count()
+    chargeable = records.filter(AaTextbookDistributionRecord.status.in_(("RECEIVED", "RETURNED", "EXCHANGED")))
+    fee_exists = select(AaTextbookFeeLedger.id).where(AaTextbookFeeLedger.tenant_id == _tid(),
+        AaTextbookFeeLedger.is_deleted.is_(False), AaTextbookFeeLedger.distribution_record_id == AaTextbookDistributionRecord.id,
+        AaTextbookFeeLedger.student_id == AaTextbookDistributionRecord.student_id).exists()
+    missing = chargeable.filter(~fee_exists).count()
+    local_records = chargeable.with_entities(AaTextbookDistributionRecord.id).subquery()
+    unsettled = db.query(AaTextbookFeeLedger).filter(AaTextbookFeeLedger.tenant_id == _tid(),
+        AaTextbookFeeLedger.is_deleted.is_(False), AaTextbookFeeLedger.student_id.in_(college_student_ids(college_ids)),
+        AaTextbookFeeLedger.distribution_record_id.in_(select(local_records.c.id)),
+        AaTextbookFeeLedger.status.notin_(tuple(_FEE_TERMINAL))).count()
+    return college_school_result("TEXTBOOK", records.count(), pending + missing + unsettled,
+        "本院教材发放或费用明细尚未闭环", "供应商征订、到货及整批发放由学校统筹核验")
+
+
+def _evaluate_college_domains(db, term_id, term_code, college_ids):
+    from app.core.affairs_security import no_data_scope
+    from app.models import AaTerm
+    from . import academic_affairs_archive_operational_policy as operational
+    if not college_ids:
+        raise no_data_scope("学院归档核查缺少有效学院范围")
+    term = db.query(AaTerm).filter(AaTerm.tenant_id == _tid(), AaTerm.id == term_id, AaTerm.is_deleted.is_(False)).first()
+    checks = {
+        "STUDENT_STATUS": lambda: _core._evaluate_student_status(db, college_ids),
+        "REGISTRATION": lambda: evaluate_college_registration(db, term_id, college_ids),
+        "STATUS_CHANGE": lambda: evaluate_status_change(db, term_id, term_code, college_ids),
+        "PROGRAM": lambda: _semantic.evaluate_program(db, term, college_ids=college_ids),
+        "TEACHING_TASK": lambda: _semantic.evaluate_teaching_task(db, term_id, college_ids=college_ids),
+        "SCHEDULE": lambda: _semantic.evaluate_schedule(db, term_id,
+            operational.evaluate_schedule(db, term_id, college_ids), college_ids=college_ids),
+        "SELECTION": lambda: evaluate_college_selection(db, term_id, college_ids),
+        "EXAM": lambda: operational.evaluate_exam(db, term_id, college_ids),
+        "GRADE": lambda: _semantic.evaluate_grade(db, term_code, {}, college_ids=college_ids),
+        "MAKEUP": lambda: evaluate_college_makeup(db, term_code, college_ids),
+        "EVALUATION": lambda: evaluate_evaluation(db, term_id, college_ids),
+        "TEXTBOOK": lambda: evaluate_college_textbook(db, term_id, college_ids),
+        "GRADUATION": lambda: evaluate_graduation(db, term_id, college_ids),
+    }
+    results = {code: _semantic.normalize_legacy_result(code, _safe(code, fn)) for code, fn in checks.items()}
+    for code, row in results.items():
+        row["route"] = ROUTES.get(code, row["route"])
+    grade = results["GRADE"]
+    local_evidence = list(grade["evidence"])
+    grade.update(college_school_result("GRADE", grade["recordCount"], grade["blockingCount"],
+        grade["summary"], "无法归属开课单位的历史成绩策略欠账由学校核验，本次未执行全校欠账检查"))
+    grade["evidence"] += local_evidence
+    return results
+
+
 def apply_effective_grade_policy_debt(db, term_code, result):
     debt = policy_snapshot_debt(db, term=term_code)
     blockers = int(debt.get("missingPolicySnapshot") or 0) + int(debt.get("legacyNameKey") or 0)
@@ -553,6 +710,8 @@ def apply_effective_grade_policy_debt(db, term_code, result):
 
 def evaluate_domains(db, term_id, term_code, college_ids=None) -> dict[str, dict]:
     """十三域唯一编排；任一规则异常都明确阻断，不伪装为无数据或成功。"""
+    if college_ids is not None:
+        return _evaluate_college_domains(db, term_id, term_code, college_ids)
     base = _core._evaluate_domains(db, term_id, term_code, college_ids)
     base["STATUS_CHANGE"] = _safe("STATUS_CHANGE", lambda: evaluate_status_change(db, term_id, term_code))
     base["GRADUATION"] = _safe("GRADUATION", lambda: evaluate_graduation(db, term_id))

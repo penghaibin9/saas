@@ -69,7 +69,7 @@ def confirm_course(user, cid, action):
     with _legacy.session() as db:
         context = _legacy._ctx(user, db)
         course = _legacy._get_course(db, int(cid))
-        _legacy._check_college_scope(context, course.college_id)
+        _legacy._check_course_scope(db, context, course)
         if course.status != "PENDING_CONFIRM":
             raise _legacy._invalid("仅待确认课程可操作")
         if action not in {"CONFIRM", "REMOVE", "REJECT"}:
@@ -98,7 +98,7 @@ def confirm_course(user, cid, action):
             f"{action} {course.course_name};rosterVersion={roster_identity['rosterVersionId'] if roster_identity else '-'}",
         )
         db.commit()
-        result = _legacy._course_dto(course)
+        result = _legacy._course_dto(course, offering_college_id=_legacy._course_college_id(db, course))
         result["expectedStudents"] = course.expected_students
         result["rosterIdentity"] = roster_identity
         return result
@@ -110,7 +110,7 @@ def set_course_schedule(user, cid, body):
     with _legacy.session() as db:
         ctx = _legacy._ctx(user, db)
         course = _legacy._get_course(db, int(cid))
-        _legacy._check_college_scope(ctx, course.college_id)
+        _legacy._check_course_scope(db, ctx, course)
         batch = _legacy._get_batch(db, course.batch_id)
         _legacy._ensure_not_archived(batch)
         if batch.status not in (_legacy._B_DRAFT, _legacy._B_CONFIRMED):
@@ -129,7 +129,7 @@ def set_course_schedule(user, cid, body):
         after = f"{course.exam_date} {course.start_time}-{course.end_time}"
         _legacy._audit(db, "EXAM_COURSE", course.id, "EXAM_COURSE_SCHEDULE", f"设时间 {after}", before, after)
         db.commit()
-        return _legacy._course_dto(course)
+        return _legacy._course_dto(course, offering_college_id=_legacy._course_college_id(db, course))
 
 
 def list_courses(user, bid, page=1, page_size=100):
@@ -179,7 +179,7 @@ def assign_seats(user, room_id, student_ids):
         if not room:
             raise not_found("考场不存在")
         course = _legacy._get_course(db, room.exam_course_id)
-        _legacy._check_college_scope(context, course.college_id)
+        _legacy._check_course_scope(db, context, course)
         batch = _legacy._get_batch(db, course.batch_id)
         _legacy._ensure_not_archived(batch)
         if batch.status not in (_legacy._B_CONFIRMED, _legacy._B_ARRANGED):
@@ -292,8 +292,11 @@ def _check_arrangement_complete(db, batch_id):
         AaExamCourse.is_deleted.is_(False),
     ).all()
     problems = []
+    offering = _legacy._course_college_ids(db, {int(course.id) for course in courses})
     for course in courses:
         label = course.course_name or f"课程{course.id}"
+        if not offering.get(int(course.id)):
+            problems.append(f"{label}：缺少有效课程或开课责任单位")
         if not course.exam_date or not course.start_time or not course.end_time:
             problems.append(f"{label}：考试日期/时间不完整")
         if not course.teaching_task_id:
@@ -540,7 +543,7 @@ def resolve_incident(user, incident_id: int, action: str, reason: str = "", disc
         batch = _legacy._get_batch(db, int(course.batch_id))
         _legacy._ensure_not_archived(batch)
         if not _legacy._is_school(context):
-            _legacy._check_college_scope(context, course.college_id)
+            _legacy._check_course_scope(db, context, course)
 
         if action == "VOID":
             if len(reason) < 5:
@@ -591,7 +594,7 @@ def record_incident(user, body):
         if not _legacy._is_school(context):
             allowed = getattr(context, "college_ids", None) or set()
             teacher_keys = _derive_keys(user)
-            is_college = context.scope_type == "COLLEGE" and course.college_id and int(course.college_id) in allowed
+            is_college = context.scope_type == "COLLEGE" and _legacy._course_college_id(db, course) in allowed
             is_invig = _legacy._is_invigilator_of_course(db, course.id, teacher_keys)
             if not (is_college or is_invig):
                 raise no_data_scope("非本人监考场次/本学院，无权登记")
@@ -793,7 +796,7 @@ def add_room(user, cid, body):
     with _legacy.session() as db:
         ctx = _legacy._ctx(user, db)
         course = _legacy._get_course(db, int(cid))
-        _legacy._check_college_scope(ctx, course.college_id)
+        _legacy._check_course_scope(db, ctx, course)
         batch = _legacy._get_batch(db, course.batch_id)
         _legacy._ensure_not_archived(batch)
         if batch.status != _legacy._B_CONFIRMED:
@@ -868,7 +871,7 @@ def assign_invigilator(user, room_id, teacher_key, teacher_name, role="ASSISTANT
         if not room:
             raise not_found("考场不存在")
         course = _legacy._get_course(db, room.exam_course_id)
-        _legacy._check_college_scope(ctx, course.college_id)
+        _legacy._check_course_scope(db, ctx, course)
         batch = _legacy._get_batch(db, course.batch_id)
         _legacy._ensure_not_archived(batch)
         if batch.status in (_legacy._B_PUBLISHED, _legacy._B_FINISHED):
@@ -937,7 +940,7 @@ def change_invigilator(user, room_id, old_teacher_key, new_teacher_key, new_teac
         if not room:
             raise not_found("考场不存在")
         course = _legacy._get_course(db, room.exam_course_id)
-        _legacy._check_college_scope(ctx, course.college_id)
+        _legacy._check_course_scope(db, ctx, course)
         batch = _legacy._get_batch(db, course.batch_id)
         _legacy._ensure_not_archived(batch)
 

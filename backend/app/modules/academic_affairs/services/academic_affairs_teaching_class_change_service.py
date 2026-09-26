@@ -70,7 +70,7 @@ def _get_class(db, user, teaching_class_id: int, *, lock=False):
         AaTeachingClass.is_deleted.is_(False),
     )
     if lock:
-        query = query.with_for_update()
+        query = query.with_for_update().populate_existing()
     row = query.first()
     if not row:
         raise not_found("教学班不存在")

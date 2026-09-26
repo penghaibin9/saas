@@ -180,10 +180,10 @@ export default {
       this.$router.push(route)
     },
     canCollegeApprove(r) {
-      return Boolean(this.canCollege && !this.pendingWrite && r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
+      return Boolean(this.canCollege && !this.pendingWrite && r?.canCollegeReview === true && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
     },
-    canCollegeReject(r) { return Boolean(this.canCollege && !this.pendingWrite && r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
-    canNormalFinal(r) { return Boolean(this.canFinal && !this.pendingWrite && r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
+    canCollegeReject(r) { return Boolean(this.canCollege && !this.pendingWrite && r?.canCollegeReview === true && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
+    canNormalFinal(r) { return Boolean(this.canFinal && !this.pendingWrite && r?.canAcademicFinal === true && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     search() { this.pagination.page = 1; this.load() },
     onPaginationChange({ page }) {
       if (!page || page === this.pagination.page || this.loading) return

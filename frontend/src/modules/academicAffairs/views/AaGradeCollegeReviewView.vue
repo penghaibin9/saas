@@ -14,9 +14,13 @@
         <button v-if="!receipt.verified" class="mp-btn" :disabled="checking" @click="verifyReceipt">核对正式状态</button>
       </section>
       <template v-if="current">
-        <section class="aa-review-context" aria-label="当前学院审核任务">
+        <section class="aa-review-context" aria-label="当前学院审核任务" :data-object-id="current.gradeTaskId">
           <div><span>当前正式成绩任务</span><h2>{{ current.courseName }}</h2><p>{{ current.termCode || '学期待核对' }} · 任务 {{ current.gradeTaskId }} · 教学班 {{ current.teachingClassId || '待核对' }}</p></div>
-          <div class="aa-review-context__roles"><div><small>当前责任</small><strong>{{ reviewResponsibility }}</strong></div><div><small>当前责任人</small><strong>{{ evidence?.workflow?.assigneeId ? `办理人 ${evidence.workflow.assigneeId}` : '按正式审核分派' }}</strong></div></div>
+          <div class="aa-review-context__roles">
+            <div><small>当前责任</small><strong>{{ reviewResponsibility }}</strong><p v-if="reviewOwner.reason">{{ reviewOwner.reason }}</p></div>
+            <div><small>当前责任人</small><strong>{{ reviewOwner.assigneeLabel }}</strong><details v-if="evidence?.workflow?.assigneeId" class="aa-review-assignee-id"><summary>实施人员使用：办理人编号</summary>{{ evidence.workflow.assigneeId }}</details></div>
+            <div v-if="current.nextStep" class="aa-review-next"><small>下一责任岗位</small><strong>{{ reviewNextResponsibility }}</strong></div>
+          </div>
           <AppStatusTag type="primary">{{ statusLabel(current.status) }}</AppStatusTag>
         </section>
         <ol class="aa-review-steps" aria-label="成绩审核阶段">
@@ -81,6 +85,7 @@ import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affai
 import { currentUserFromToken } from '@/services/http/client'
 import GradeReviewEvidence from './parallel-c/GradeReviewEvidence.vue'
 import { gradeStatusLabel, gradeError } from './parallel-c/grade-review.js'
+import { academicFlowResponsibility, academicFlowNextOwner } from '../config/academicFlowRegistry.js'
 
 export default {
   name: 'AaGradeCollegeReviewView',
@@ -107,9 +112,9 @@ export default {
       if (['PUBLISHED', 'ARCHIVED'].includes(status)) return 3
       return -1
     },
-    reviewResponsibility() {
-      return ({ NOT_STARTED: '任课教师', INPUTTING: '任课教师', RETURNED: '任课教师修改重提', SUBMITTED: '学院成绩审核岗', COLLEGE_REVIEW: '学院成绩审核岗', ACADEMIC_REVIEW: '教务成绩发布岗', PUBLISHED: '已发布，后置结果待核对', ARCHIVED: '已归档，只读核对' })[this.current?.status] || '责任节点待核对'
-    },
+    reviewOwner() { return academicFlowResponsibility(this.current?.responsibility) },
+    reviewResponsibility() { return [...new Set([this.reviewOwner.orgName, this.reviewOwner.positionLabel])].join(' · ') },
+    reviewNextResponsibility() { return academicFlowNextOwner(this.current?.nextStep) },
     exceptionTotal() {
       const values = this.evidence?.exceptions
       if (!values || Array.isArray(values) || typeof values !== 'object') return '待核对'
@@ -336,7 +341,8 @@ export default {
 .aa-review-context { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 24px; padding: 15px 16px; border: 1px solid #dbe5f2; border-left: 3px solid var(--pri); border-radius: 11px; background: var(--bg-card); }
 .aa-review-context > div:first-child > span, .aa-review-context p, .aa-review-context__roles small { color: var(--text-secondary); font-size: 12px; }
 .aa-review-context h2 { margin: 4px 0; color: var(--text-primary); font-size: 17px; }.aa-review-context p { margin: 0; }
-.aa-review-context__roles { display: grid; grid-template-columns: repeat(2, minmax(130px, 1fr)); gap: 22px; }.aa-review-context__roles small, .aa-review-context__roles strong { display: block; }.aa-review-context__roles strong { margin-top: 4px; font-size: 12px; }
+.aa-review-context__roles { display: grid; grid-template-columns: repeat(2, minmax(130px, 1fr)); gap: 12px 22px; max-width: 520px; min-width: 0; }.aa-review-context__roles small, .aa-review-context__roles strong { display: block; }.aa-review-context__roles strong { margin-top: 4px; font-size: 12px; overflow-wrap: anywhere; }
+.aa-review-next { grid-column: 1 / -1; }.aa-review-assignee-id { margin-top: 5px; color: var(--text-secondary); font-size: 11px; }
 .aa-review-steps { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; margin: 0; padding: 15px 16px; list-style: none; border: 1px solid #e4eaf2; border-radius: 11px; background: var(--bg-card); }
 .aa-review-steps li { display: flex; gap: 9px; align-items: flex-start; min-width: 0; color: var(--text-tertiary); }.aa-review-steps li > span { display: grid; place-items: center; flex: 0 0 24px; height: 24px; border: 1px solid #dce3ec; border-radius: 50%; font-size: 11px; }.aa-review-steps strong, .aa-review-steps small { display: block; white-space: nowrap; }.aa-review-steps strong { color: var(--text-secondary); font-size: 12px; }.aa-review-steps small { margin-top: 3px; font-size: 10px; }.aa-review-steps .is-done > span { color: #267a4b; border-color: #b9dfc8; background: #f0faf4; }.aa-review-steps .is-current > span { color: #fff; border-color: var(--pri); background: var(--pri); }.aa-review-steps .is-current strong { color: var(--pri); }
 .aa-review-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }.aa-review-metrics article { padding: 14px 16px; border: 1px solid #e2e8f0; border-radius: 11px; background: var(--bg-card); }.aa-review-metrics small, .aa-review-metrics strong, .aa-review-metrics span { display: block; }.aa-review-metrics small, .aa-review-metrics span { color: var(--text-secondary); font-size: 11px; }.aa-review-metrics strong { margin: 6px 0 4px; color: #24364f; font-size: 20px; }

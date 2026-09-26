@@ -2,6 +2,7 @@
   <AaOverviewPageFrame class="academic-overview" :title="mode === 'todos' ? '教务待办' : '运行总览'" :subtitle="mode === 'todos' ? '继续办理正式待办，查询本人已办记录' : '先办理岗位待办，再核对学期运行条件'">
     <template #actions><AppButton v-if="mode === 'overview'" @click="openWall">查看运行大屏</AppButton><AppButton v-else @click="$router.push('/admin/academic-affairs')">返回运行总览</AppButton><AppButton variant="primary" :loading="loading" @click="loadQueue">更新责任队列</AppButton></template>
     <p v-if="message" class="overview-message" role="status">{{ message }}</p>
+    <AcademicFlowOverview v-if="mode === 'overview'" :ctx="ctx" :term-id="termId" :can-open="canOpen" @navigate="go" @term-change="selectFlowTerm" />
     <div class="overview-metrics">
       <article v-for="metric in metrics" :key="metric.key" :class="{ 'is-due': metric.key === 'nearDeadline' }"><span>{{ metric.label }}</span><strong>{{ countLabel(queue.summary?.[metric.key]) }}</strong><small>{{ metric.note }}</small></article>
     </div>
@@ -59,12 +60,13 @@ import { sourceTimeLabel } from './leadershipWall/aa-wall-presentation.mjs'
 import { safeBusinessMessage } from '@/utils/presentationSafety'
 
 import AaOverviewPageFrame from './AaOverviewPageFrame.vue'
+import AcademicFlowOverview from './AcademicFlowOverview.vue'
 
 const TABS = [{ key: 'pending', label: '待我办理' }, { key: 'done', label: '我的已办' }]
 const METRICS = [{ key: 'pending', label: '待我办理', note: '本人指派及授权责任池' }, { key: 'done', label: '我的已办', note: '本人完成的正式待办' }, { key: 'nearDeadline', label: '即将到期', note: '未来24小时内到期的待办' }]
 export default {
   name: 'AaOverviewWorkspace',
-  components: { AaOverviewPageFrame, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppTermEntityPicker },
+  components: { AaOverviewPageFrame, AcademicFlowOverview, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppTermEntityPicker },
   props: { ctx: { type: Object, required: true }, mode: { type: String, default: 'overview' } },
   data() { return {
     loading: false, error: '', queue: {}, keyword: '', message: '', requestId: 0, disposed: false,
@@ -112,6 +114,7 @@ export default {
     },
     clearSearch() { this.keyword = ''; this.search() },
     changeTerm() { this.$router.replace({ path: this.$route.path, query: this.routeQuery({ termId: this.termId ? String(this.termId) : undefined }) }) },
+    selectFlowTerm(value) { this.termId = value == null ? '' : String(value); this.changeTerm() },
     async loadQueue() {
       const id = ++this.requestId, identity = this.identity()
       this.loading = true; this.error = ''; this.queue = {}
@@ -160,7 +163,7 @@ export default {
         if (!routeAllowed(resolved, context, can)) { this.message = '当前身份无法进入该责任页面。'; return }
         let returnToken = ''
         try { returnToken = createAcademicReturnStore(window.sessionStorage).remember(this.$route, identity, this.$el.closest('.tw-main')?.scrollTop || 0) } catch { /* Native browser Back retains the queue URL when storage is unavailable. */ }
-        await this.$router.push({ path: resolved.path, query: { ...resolved.query, ...(returnToken ? { returnToken } : {}) }, hash: resolved.hash })
+        await this.$router.push({ path: resolved.path, query: { ...(this.termId ? { termId: this.termId } : {}), ...resolved.query, ...(returnToken ? { returnToken } : {}) }, hash: resolved.hash })
       } catch (error) { if (!this.disposed && identity === this.identity()) this.message = safeBusinessMessage(error?.message, '无法进入责任工作区，请重试') }
     },
     openWall() { this.$router.push({ path: this.$route.path, query: this.routeQuery({ wall: '1' }) }) },

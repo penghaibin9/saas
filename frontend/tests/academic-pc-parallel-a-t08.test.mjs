@@ -4,13 +4,15 @@ import fs from 'node:fs'
 import * as results from '../src/modules/academicAffairs/components/parallel-a/resultState.js'
 import * as tasks from '../src/modules/academicAffairs/components/parallel-a/taskFacts.js'
 import * as status from '../src/modules/academicAffairs/constants/teaching.js'
+import * as flow from '../src/modules/academicAffairs/config/academicFlowRegistry.js'
+import { academicIdentity } from '../src/modules/academicAffairs/academicFlowContext.js'
 
 function instance(file, deps = {}, options = {}) {
   const source = fs.readFileSync(new URL('../src/modules/academicAffairs/views/' + file + '.vue', import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
   const imports = [...script.matchAll(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm)]
   const names = imports.flatMap(([,binding]) => binding.trim().startsWith('{') ? binding.replace(/[{}]/g,'').split(',').map(x=>x.trim()).filter(Boolean) : [binding.trim()])
-  const defaults = { ...status, ...results, ...tasks, getPermissionPatterns:()=>['*'], matchPermission:(patterns,key)=>patterns.includes('*')||patterns.includes(key), toast:{success(){},error(){}}, ...deps, academicAffairsApi: { getCurrentTerm: async()=>({ code:0, data:{ termId:'a', termName:'当前学期' } }), ...(deps.academicAffairsApi || {}) } }
+  const defaults = { academicIdentity, currentUserFromToken:()=>({userId:"test-teacher",tenantId:"test-tenant"}), ...status, ...results, ...tasks, ...flow, getPermissionPatterns:()=>['*'], matchPermission:(patterns,key)=>patterns.includes('*')||patterns.includes(key), toast:{success(){},error(){}}, ...deps, academicAffairsApi: { getCurrentTerm: async()=>({ code:0, data:{ termId:'a', termName:'当前学期' } }), ...(deps.academicAffairsApi || {}) } }
   const clean = script.replace(/^import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*$/gm,'').replace('export default','return')
   const component = new Function(...names, clean)(...names.map(name=>defaults[name] ?? {}))
   const vm = { ...component.data(), selectedBatchId:'', ctx:{permissionPatterns:['*']}, $route:{params:{batchId:'a'},query:{teachingClassId:'a'},fullPath:'/admin/academic-affairs/teaching-tasks/a'}, $router:{push(){},replace:async()=>{}}, ...options }
@@ -276,12 +278,14 @@ test('T08 differently versioned same-name courses cannot merge',()=>{
 })
 test('T08 selected tasks no longer eligible on fresh read never issue merge POST',async()=>{
   let writes=0
-  const vm=instance('AaTaskMergeSplitView',{academicAffairsApi:{listAllTasks:async()=>page([{taskId:'1',batchId:'b',courseId:'v',status:'TEACHER_CONFIRMED'}]),mergeTasks:async()=>{writes++}}})
+  const vm=instance('AaTaskMergeSplitView',{teachingTaskWorkbenchApi:{getBatch:async()=>ok({batchId:'b',actions:{canAdjust:true,canEditComposition:true}})},academicAffairsApi:{listAllTasks:async()=>page([{taskId:'1',batchId:'b',courseId:'v',status:'TEACHER_CONFIRMED'}]),mergeTasks:async()=>{writes++}}})
+  vm.ctx={permissionPatterns:['*'],dataScope:{scope:'COLLEGE'}};vm.batchWorkbench={batchId:'b',actions:{canAdjust:true,canEditComposition:true}}
   vm.loading=false;vm.all=[{taskId:'1',batchId:'b',courseId:'v',status:'ASSIGNED'},{taskId:'2',batchId:'b',courseId:'v',status:'ASSIGNED'}];vm.selected=['1','2'];vm.mergeDialog.note='保留合班备注'
   await vm.doMerge();assert.equal(writes,0);assert.equal(vm.mergeDialog.note,'保留合班备注');assert.equal(vm.receipt.pending,true)
 })
 test('T08 adjustment readback must match submitted field values',async()=>{
-  const vm=instance('AaTaskAdjustView',{academicAffairsApi:{adjustTask:async()=>ok({}),getBatchTasks:async()=>page([{taskId:'x',teacherKey:'old',status:'READY'}]),listAllTasks:async()=>page([])}})
+  const vm=instance('AaTaskAdjustView',{teachingTaskWorkbenchApi:{getBatch:async()=>ok({batchId:'b',actions:{canAdjust:true,canEditComposition:true}})},academicAffairsApi:{adjustTask:async()=>ok({}),getBatchTasks:async()=>page([{taskId:'x',teacherKey:'old',status:'READY'}]),listAllTasks:async()=>page([])}})
+  vm.ctx={permissionPatterns:['*'],dataScope:{scope:'COLLEGE'}};vm.batchWorkbench={batchId:'b',actions:{canAdjust:true,canEditComposition:true}}
   vm.adjust={taskId:'x',batchId:'b',teacherName:'新教师',teacherKey:'new',reason:'调整教师原因不少于五字'}
   await vm.doAdjust();assert.equal(vm.receipt.pending,true)
 })

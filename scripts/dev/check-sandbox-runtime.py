@@ -80,7 +80,10 @@ if __name__ == "__main__":
             os.chdir(ROOT / "backend")
             sys.path.insert(0, str(ROOT / "backend"))
             import uvicorn
-            uvicorn.run("app.main:app", host="127.0.0.1", port=8000)
+            port = int(sys.argv[2]) if len(sys.argv) > 2 else 8000
+            if not 1024 <= port <= 65535:
+                raise RuntimeError("Sandbox backend port must be between 1024 and 65535")
+            uvicorn.run("app.main:app", host="127.0.0.1", port=port)
     except Exception as error:
         # Connection errors can contain credentials; only controlled messages leave this process.
         if isinstance(error, pymysql.err.OperationalError) and error.args[0] in {2003, 2006, 2013}:

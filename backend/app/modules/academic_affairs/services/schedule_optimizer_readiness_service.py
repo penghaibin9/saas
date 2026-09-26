@@ -17,7 +17,8 @@ def readiness(user, batch_id):
         tasks = db.scalars(select(AaTeachingTask).where(
             AaTeachingTask.tenant_id == _tid(), AaTeachingTask.batch_id.in_(ids or [-1]),
             AaTeachingTask.status == 'READY', AaTeachingTask.no_auto_schedule.is_(False),
-            AaTeachingTask.is_deleted.is_(False)).order_by(AaTeachingTask.id).limit(1001)).all()
+            AaTeachingTask.is_deleted.is_(False), schedule.policy.task_scope_condition(db, batch)
+        ).order_by(AaTeachingTask.id).limit(1001)).all()
         blockers = []
         if len(tasks) > 1000: blockers.append({'code': 'SOURCE_READ_LIMIT'})
         roster_checks = [classes.resolve_teaching_task_roster(db, t.id) for t in tasks[:1000]]

@@ -430,15 +430,14 @@ def precheck(batch_id, user) -> dict:
 # ═══════════ 审核（学院初审→教务终审，终审写主档）═══════════
 
 def college_review(result_id, user, action, note="") -> dict:
-    role = (user.get("currentRoleCode") or "").upper()
-    if role not in ({"COLLEGE_ADMIN"} | _REVIEW_ROLES) and user.get("userType") != "PLATFORM_SUPER_ADMIN":
-        raise no_permission("仅学院教务员/教务处可执行学院初审")
     with session() as db:
         from app.models import AaGraduationAuditResult
         r = db.get(AaGraduationAuditResult, int(result_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("预审结果不存在")
         _assert_result_in_scope(db, user, r)
+        from .academic_affairs_graduation_scope_guard import assert_college_review_authority
+        assert_college_review_authority(db, user, r)
         if r.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
         if (action or "").upper() == "APPROVE":
@@ -456,7 +455,6 @@ def college_review(result_id, user, action, note="") -> dict:
 
 def academic_final(result_id, user, conclusion, confirm=False) -> dict:
     """毕业资格终审：仅学院初审通过结果；写学生终态并强制二次确认。"""
-    _require_review_role(user)
     conclusion = (conclusion or "").upper()
     if conclusion not in _CONCLUSION:
         raise AppException("BAD_REQUEST", "结论非法（GRADUATED/COMPLETED/DELAYED）")
@@ -464,6 +462,8 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
         raise AppException("DATA_CONFLICT", "毕业结论涉及学籍终态，需二次确认(confirm=true)")
     _n, _r, uid = _op()
     with session() as db:
+        from .academic_affairs_graduation_scope_guard import assert_school_review_authority
+        assert_school_review_authority(db, user)
         from app.models import AaGraduationAuditResult
         r = db.get(AaGraduationAuditResult, int(result_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
@@ -565,7 +565,10 @@ def get_result(result_id, user) -> dict:
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("预审结果不存在")
         _assert_result_in_scope(db, user, r)
-        return _row(r)
+        from .academic_affairs_graduation_scope_guard import result_responsibilities
+        row = _row(r)
+        row.update(result_responsibilities(db, user, [r])[r.id])
+        return row
 
 
 def list_results(batch_id, user, status=None, overall=None, item=None, item_result=None,
@@ -603,7 +606,13 @@ def list_results(batch_id, user, status=None, overall=None, item=None, item_resu
                 out_all.append(d)
             total = len(out_all)
             offset = (max(1, page) - 1) * page_size
-            return out_all[offset:offset + page_size], total
+            selected = out_all[offset:offset + page_size]
+            selected_ids = {int(row["resultId"]) for row in selected}
+            from .academic_affairs_graduation_scope_guard import result_responsibilities
+            projected = result_responsibilities(db, user, [r for r, _s in rows_all if r.id in selected_ids])
+            for row in selected:
+                row.update(projected[int(row["resultId"])] )
+            return selected, total
         total = db.scalar(select(func.count()).select_from(AaGraduationAuditResult)
                           .outerjoin(StudentProfile, join).where(*conds)) or 0
         offset = (max(1, page) - 1) * page_size
@@ -611,8 +620,11 @@ def list_results(batch_id, user, status=None, overall=None, item=None, item_resu
                           .outerjoin(StudentProfile, join).where(*conds)
                           .order_by(AaGraduationAuditResult.id.desc()).offset(offset).limit(page_size)).all()
         out = []
+        from .academic_affairs_graduation_scope_guard import result_responsibilities
+        responsibilities = result_responsibilities(db, user, [r for r, _s in rows])
         for r, s in rows:
             d = _row(r)
+            d.update(responsibilities[r.id])
             d["realName"] = s.real_name if s else ""
             d["studentNo"] = s.student_no if s else ""
             out.append(d)

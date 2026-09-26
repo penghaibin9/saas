@@ -123,6 +123,7 @@ def _assert_program_review_scope(db, user, program) -> None:
     if program.status == "ACADEMIC_REVIEW":
         if scope_type != "TENANT_ALL":
             raise no_data_scope("仅校级教务可执行培养方案终审")
+        _assert_current_review_assignee(db, user, program, ctx)
         return
     if program.status != "COLLEGE_REVIEW":
         raise AppException("APPROVAL_VERSION_CONFLICT", "该方案当前状态不可审核")
@@ -148,6 +149,28 @@ def _assert_program_review_scope(db, user, program) -> None:
         )).all() if value)
     if int(program.major_id) not in {int(value) for value in allowed_major_ids}:
         raise no_data_scope("该培养方案不在您的学院审核范围内")
+    _assert_current_review_assignee(db, user, program, ctx)
+
+
+def _assert_current_review_assignee(db, user, program, ctx) -> None:
+    """详情按钮与锁定后的命令实时核验同一岗位、账号、当前角色权限。"""
+    from app.core.permissions import _match
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_responsibility_service import resolve_program
+
+    if not _match("academicAffairs.program.review", ctx.permission_codes):
+        raise no_data_scope("当前身份没有培养方案审核权限")
+    owner = resolve_program(db, program)
+    if not owner["resolved"]:
+        raise no_data_scope(owner.get("reason") or "培养方案当前审核责任岗位尚未配置或已失效")
+    try:
+        uid = _current_user_id(db, user)
+    except AppException as error:
+        if error.code != "NO_PERMISSION":
+            raise
+        raise no_data_scope("当前登录身份未绑定有效系统账号，不能审核培养方案") from error
+    if str(uid) not in owner["assigneeUserIds"]:
+        raise no_data_scope("您不是该培养方案当前有效的审核办理人，请切换到对应责任岗位")
 
 
 def review_program(program_id, user, action, reason="") -> dict:

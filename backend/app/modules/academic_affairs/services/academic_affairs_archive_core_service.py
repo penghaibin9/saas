@@ -604,7 +604,7 @@ def export_batch_item(user, batch_id, category, purpose) -> tuple[bytes, str]:
     if category not in _DOMAIN_COLS:
         raise not_found(f"未知归档物料域：{category}")
     with session() as db:
-        _ctx(user, db)
+        _require_school(_ctx(user, db))
         batch = _get_batch(db, batch_id)
         if batch.status != "ARCHIVED":
             raise _invalid("批次未归档，暂不可下载归档物料")
@@ -621,7 +621,7 @@ def export_batch_all(user, batch_id, purpose) -> tuple[bytes, str]:
     from app.services.xlsx_util import build_ledger_xlsx
     purpose = _check_export_purpose(purpose)
     with session() as db:
-        _ctx(user, db)
+        _require_school(_ctx(user, db))
         batch = _get_batch(db, batch_id)
         if batch.status != "ARCHIVED":
             raise _invalid("批次未归档，暂不可下载归档物料")
@@ -646,7 +646,7 @@ def export_batch_all(user, batch_id, purpose) -> tuple[bytes, str]:
 def list_download_log(user, batch_id):
     from app.models import AffairsAuditTrail
     with session() as db:
-        _ctx(user, db)
+        _require_school(_ctx(user, db))
         _get_batch(db, batch_id)
         rows = db.query(AffairsAuditTrail).filter(
             AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "AA_ARCHIVE",

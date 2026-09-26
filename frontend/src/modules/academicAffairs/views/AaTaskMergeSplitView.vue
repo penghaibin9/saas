@@ -8,6 +8,8 @@
   >
     <div class="mp-stack">
       <AaOperationReceipt :receipt="receipt" />
+      <AppInlineAlert v-if="scopeReadOnlyReason" type="info" :description="scopeReadOnlyReason" />
+      <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
       <AaTeachingTaskObjectBar
         v-if="primaryRow"
         :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班'}`"
@@ -25,7 +27,7 @@
                    description="任务须在待分配/已分配（教师尚未确认）阶段才可合班" />
         <DataTable
           v-else :columns="candidateColumns" :rows="candidates" row-key="taskId"
-          selectable :selected="selected" @update:selected="selected = $event"
+          :selectable="canManageMerge && !merging && !actionLoading" :selected="selected" @update:selected="selected = $event"
         >
           <template #cell-course="{ row }">
             <div class="mp-cell-main">{{ row.courseName }}</div>
@@ -38,8 +40,8 @@
         </DataTable>
         <AppBatchActionBar
           :count="selected.length" :total="candidates.length"
-          :actions="[{ key: 'merge', label: '合班', disabled: !canMerge, disabledReason: mergeDisabledReason }]"
-          :loading-key="merging ? 'merge' : ''"
+          :actions="[{ key: 'merge', label: '核对合班条件', disabled: !eligibleSelection || !canManageMerge || actionLoading, disabledReason: mergeDisabledReason }]"
+          :loading-key="merging || actionLoading ? 'merge' : ''"
           @action="openMerge" @clear="selected = []"
         />
       </AppSectionCard>
@@ -55,8 +57,8 @@
           <template #cell-students="{ row }">{{ row.expectedStudents ?? '—' }} 人</template>
           <template #cell-status="{ row }"><AppStatusTag :type="taskColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag></template>
           <template #cell-actions="{ row }">
-            <button v-if="canSplit(row)" class="mp-link" :disabled="merging" @click="splitRow = row">核对拆班</button>
-            <span v-else class="mp-cell-sub">教师已确认，需先退回</span>
+            <button v-if="canInspectSplit(row)" class="mp-link" :disabled="merging || actionLoading" @click="openSplit(row)">核对拆班条件</button>
+            <span v-else class="mp-cell-sub">{{ canManageMerge ? '教师已确认，需先退回' : '当前只读' }}</span>
           </template>
         </DataTable>
       </AppSectionCard>
@@ -64,8 +66,9 @@
 
     <AppConfirmDialog
       v-model:visible="mergeDialog.visible" title="确认合班" type="primary"
-      confirm-text="确认合班" :submitting="merging" @confirm="doMerge"
+      confirm-text="确认合班" :submitting="merging" :confirm-disabled="!canMerge || actionLoading" @confirm="doMerge"
     >
+      <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
       <p class="mp-note">将把选中的 {{ selected.length }} 条教学任务合并为一个教学班（人数相加），
         以最早一条为主任务；如需还原请在合班后使用「拆班」。</p>
       <ul><li v-for="row in selectedRows" :key="row.taskId">{{ row.courseName }} · {{ row.teachingClassName }} · 任务 #{{ row.taskId }} · 课程版本身份 #{{ row.courseId }}</li></ul>
@@ -75,7 +78,8 @@
       </label>
       <AppQuickPhrases scene-key="aa.remark" @pick="onPickNote" />
     </AppConfirmDialog>
-    <AppConfirmDialog :visible="Boolean(splitRow)" title="确认拆回原任务" confirm-text="确认拆班" :submitting="merging" @update:visible="value => { if (!value) splitRow = null }" @confirm="doSplit(splitRow)">
+    <AppConfirmDialog :visible="Boolean(splitRow)" title="确认拆回原任务" confirm-text="确认拆班" :submitting="merging" :confirm-disabled="!canSplit(splitRow) || actionLoading" @update:visible="value => { if (!value) splitRow = null }" @confirm="doSplit(splitRow)">
+      <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
       <p>{{ splitRow?.courseName }} · {{ splitRow?.teachingClassName }} · 任务 #{{ splitRow?.taskId }}</p>
       <p>按服务端保留的合班快照恢复；已确认任务和下游引用限制以服务端核对结果为准。</p>
     </AppConfirmDialog>
@@ -89,9 +93,10 @@
  * POST /teaching-tasks/merge + POST /teaching-tasks/{taskId}/split。
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar, AppQuickPhrases } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar, AppQuickPhrases, AppInlineAlert } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { teachingTaskWorkbenchApi } from '@/modules/academicAffairs/api/teaching-task-workbench.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { matchPermission } from '@/config/navPlan'
 import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
@@ -104,12 +109,12 @@ const PRE_CONFIRM = ['PENDING_ASSIGN', 'ASSIGNED']
 
 export default {
   name: 'AaTaskMergeSplitView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar, AppQuickPhrases, AaOperationReceipt, AaTeachingTaskStageRail, AaTeachingTaskObjectBar },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar, AppQuickPhrases, AppInlineAlert, AaOperationReceipt, AaTeachingTaskStageRail, AaTeachingTaskObjectBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', all: [], selected: [], merging: false,
-      revision: 0, receipt: null, splitRow: null,
+      revision: 0, receipt: null, splitRow: null, actionSeq: 0, operationSeq: 0, actionLoading: false, actionError: '', batchWorkbench: {},
       mergeDialog: { visible: false, note: '' },
       candidateColumns: [
         { key: 'course', title: '课程 / 教学班' }, { key: 'batch', title: '批次' },
@@ -123,7 +128,9 @@ export default {
   },
   computed: {
     primaryRow() { return this.selectedRows[0] || this.candidates[0] || this.merged[0] || null },
-    canManageMerge() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.merge') },
+    mutationContext() { return JSON.stringify([this.ctx.currentRole, this.ctx.dataScope, this.ctx.permissionPatterns, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
+    scopeReadOnlyReason() { return (this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) === 'COLLEGE' ? '' : '当前为只读范围。合班和拆班由开课责任学院的当前有效办理人处理，学校负责统筹与终审。' },
+    canManageMerge() { return !this.scopeReadOnlyReason && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.merge') },
     candidates() {
       return this.all.filter((r) => PRE_CONFIRM.includes(r.status) && !r.isMerged && !Number(r.mergedIntoId))
     },
@@ -134,20 +141,27 @@ export default {
       const set = new Set(this.selected)
       return this.candidates.filter((r) => set.has(r.taskId))
     },
-    canMerge() {
-      if (!this.canManageMerge || this.loading || this.selectedRows.length < 2 || this.selectedRows.length !== this.selected.length) return false
+    selectionKey() { return JSON.stringify(this.selected.map(String)) },
+    eligibleSelection() {
+      if (this.loading || this.selectedRows.length < 2 || this.selectedRows.length !== this.selected.length) return false
       const first = this.selectedRows[0]
       return Boolean(first.batchId && first.courseId) && this.selectedRows.every((r) => String(r.batchId) === String(first.batchId) && String(r.courseId) === String(first.courseId))
     },
+    canMerge() { return this.canManageMerge && this.eligibleSelection && this.batchWorkbench.actions?.canEditComposition === true && String(this.batchWorkbench.batchId || '') === String(this.selectedRows[0]?.batchId || '') },
     mergeDisabledReason() {
-      if (!this.canManageMerge) return '当前没有合拆班办理权限'
+      if (!this.canManageMerge) return this.scopeReadOnlyReason || '当前没有合拆班办理权限'
+      if (this.actionLoading) return '正在核对批次办理条件'
       if (this.selectedRows.length < 2) return '至少选择 2 条教学任务'
-      if (!this.canMerge) return '仅可合并同批次、同课程的教学任务'
+      if (!this.eligibleSelection) return '仅可合并同批次、同课程的教学任务'
       return ''
     }
   },
   created() { this.load() },
-  beforeUnmount() { this.revision++; this.disposed = true },
+  watch: {
+    ctx: { deep: true, handler() { this.revision++; this.actionSeq++; this.operationSeq++; this.all = []; this.selected = []; this.receipt = null; this.batchWorkbench = {}; this.actionError = ''; this.actionLoading = false; this.merging = false; this.mergeDialog = { visible: false, note: '' }; this.splitRow = null; this.load() } },
+    selectionKey() { this.actionSeq++; this.batchWorkbench = {}; this.actionLoading = false; this.mergeDialog.visible = false }
+  },
+  beforeUnmount() { this.revision++; this.actionSeq++; this.disposed = true },
   methods: {
     onPickNote(text) {
       const el = this.$refs.noteInput
@@ -157,61 +171,88 @@ export default {
     },
     taskColor,
     statusLabel(s) { return TASK_STATUS[s] || (s ? '状态待确认' : '') },
-    canSplit(row) { return this.canManageMerge && Boolean(row?.isMerged) && PRE_CONFIRM.includes(row.status) },
+    canInspectSplit(row) { return this.canManageMerge && Boolean(row?.isMerged) && PRE_CONFIRM.includes(row.status) },
+    canSplit(row) { return this.canInspectSplit(row) && this.batchWorkbench.actions?.canEditComposition === true && String(this.batchWorkbench.batchId || '') === String(row?.batchId || '') },
+    async readCompositionActions(batchId) {
+      const seq = ++this.actionSeq, context = this.mutationContext, ctx = this.ctx, selected = this.selectionKey
+      const valid = () => !this.disposed && seq === this.actionSeq && context === this.mutationContext && ctx === this.ctx && selected === this.selectionKey
+      this.batchWorkbench = {}; this.actionLoading = true; this.actionError = ''
+      try {
+        const res = await teachingTaskWorkbenchApi.getBatch(String(batchId))
+        if (!valid()) return false
+        if (res.code !== 0) throw res
+        if (String(res.data?.batchId || '') !== String(batchId)) throw { message: '批次读取返回了不同对象，请重新核对。' }
+        this.batchWorkbench = res.data
+        if (!this.canManageMerge || res.data.actions?.canEditComposition !== true) { this.actionError = '本批次当前不允许合拆班，请由开课责任学院的有效办理人核对任职、权限及批次状态。'; return false }
+        return true
+      } catch (error) {
+        if (valid()) { this.actionError = error?.message || '批次办理条件读取失败，请重试。'; if (isDeniedResult(error)) { this.all = []; this.selected = []; this.receipt = null; this.mergeDialog.visible = false; this.splitRow = null; this.actionLoading = false } }
+        return false
+      } finally { if (valid()) this.actionLoading = false }
+    },
     async load() {
-      const revision = ++this.revision
+      const revision = ++this.revision, context = this.mutationContext, ctx = this.ctx
+      const valid = () => !this.disposed && revision === this.revision && context === this.mutationContext && ctx === this.ctx
       this.loading = true
       this.error = ''
       this.all = []
       try {
-        const res = await readTaskPages(page => academicAffairsApi.listAllTasks(page), () => revision === this.revision)
-        if (revision !== this.revision) return false
+        const res = await readTaskPages(page => academicAffairsApi.listAllTasks(page), valid)
+        if (!valid()) return false
         if (res?.code !== 0) { this.handleFailure(res, '任务读取失败'); return false }
         this.all = res.data.list; return true
-      } catch (error) { if (revision === this.revision) this.handleFailure(error, '网络连接失败，请重试。'); return false }
-      finally { if (revision === this.revision) this.loading = false }
+      } catch (error) { if (valid()) this.handleFailure(error, '网络连接失败，请重试。'); return false }
+      finally { if (valid()) this.loading = false }
     },
-    openMerge(action) {
-      if (action.key !== 'merge' || !this.canMerge) return
-      this.mergeDialog = { visible: true, note: '' }
+    async openMerge(action) {
+      if (action.key !== 'merge' || !this.canManageMerge || !this.eligibleSelection || this.actionLoading || this.merging) return
+      if (await this.readCompositionActions(this.selectedRows[0].batchId) && this.canMerge) this.mergeDialog = { visible: true, note: '' }
+    },
+    async openSplit(row) {
+      if (!this.canInspectSplit(row) || this.actionLoading || this.merging) return
+      if (await this.readCompositionActions(row.batchId) && this.canSplit(row)) this.splitRow = row
     },
     async doMerge() {
       if (!this.canMerge || this.merging) return
       this.merging = true
-      const ids = [...this.selected], note = this.mergeDialog.note
+      const ids = this.selected.map(String), note = this.mergeDialog.note, batchId = String(this.selectedRows[0].batchId), context = this.mutationContext, ctx = this.ctx, selected = this.selectionKey, operation = ++this.operationSeq
+      const valid = () => !this.disposed && operation === this.operationSeq && context === this.mutationContext && ctx === this.ctx && selected === this.selectionKey
       try {
-        if (!await this.load() || this.disposed) return
-        if (!this.canMerge || JSON.stringify(ids) !== JSON.stringify(this.selected)) { this.handleFailure({ code: 409001, message: '候选任务已变化，请核对后重新选择。' }); return }
+        if (!await this.load() || !valid()) return
+        if (!this.eligibleSelection) { this.handleFailure({ code: 409001, message: '候选任务已变化，请核对后重新选择。' }); return }
+        if (!await this.readCompositionActions(batchId) || !valid() || !this.canMerge) return
         const res = await academicAffairsApi.mergeTasks(ids, note || undefined)
-        if (this.disposed) return
+        if (!valid()) return
         if (res.code !== 0) { this.handleFailure(res, '合班失败'); return }
-        if (!await this.load() || this.disposed) return
+        if (!await this.load() || !valid()) return
         const rows = ids.map(id => this.all.find(row => String(row.taskId) === String(id)))
         const survivor = rows.find(row => row?.isMerged)
         const confirmed = survivor && rows.every(row => row && (row === survivor || (row.status === 'MERGED' && String(row.mergedIntoId) === String(survivor.taskId))))
         this.receipt = { object: `任务 ${ids.join('、')}`, status: confirmed ? '已合班，正式任务已回读' : '结果待确认', pending: !confirmed, next: confirmed ? '核对合班教学班的正式名单及教师，再交教师本人确认。' : '请重新读取正式任务；不要重复合班。' }
         this.mergeDialog.visible = false
         if (confirmed) this.selected = []
-      } catch (error) { if (!this.disposed) this.handleFailure(error, '连接中断，请查询正式任务，勿重复合班。') }
-      finally { this.merging = false }
+      } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请查询正式任务，勿重复合班。') }
+      finally { if (!this.disposed && operation === this.operationSeq && context === this.mutationContext && ctx === this.ctx) this.merging = false }
     },
     async doSplit(row) {
       if (!this.canSplit(row) || this.merging) return
       this.merging = true
-      const id = row.taskId
+      const id = String(row.taskId), batchId = String(row.batchId), context = this.mutationContext, ctx = this.ctx, operation = ++this.operationSeq
+      const valid = () => !this.disposed && operation === this.operationSeq && context === this.mutationContext && ctx === this.ctx && this.splitRow === row
       try {
-        if (!await this.load() || this.disposed) return
+        if (!await this.load() || !valid()) return
+        if (!await this.readCompositionActions(batchId) || !valid()) return
         if (!this.canSplit(this.all.find(item => String(item.taskId) === String(id)))) { this.handleFailure({ code: 409001, message: '当前任务已不允许拆班。' }); return }
         const res = await academicAffairsApi.splitTask(id)
-        if (this.disposed) return
+        if (!valid()) return
         if (res.code !== 0) { this.handleFailure(res, '拆班失败'); return }
-        if (!await this.load() || this.disposed) return
+        if (!await this.load() || !valid()) return
         const current = this.all.find(item => String(item.taskId) === String(id))
         const confirmed = current && !current.isMerged && !this.all.some(item => String(item.mergedIntoId) === String(id))
         this.receipt = { object: `任务 #${id}`, status: confirmed ? '已拆班，正式任务已回读' : '结果待确认', pending: !confirmed, next: '核对恢复的教学班及正式名单，再继续派师和确认。' }
         this.splitRow = null
-      } catch (error) { if (!this.disposed) this.handleFailure(error, '连接中断，请查询正式任务，勿重复拆班。') }
-      finally { this.merging = false }
+      } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请查询正式任务，勿重复拆班。') }
+      finally { if (!this.disposed && operation === this.operationSeq && context === this.mutationContext && ctx === this.ctx) this.merging = false }
     },
     handleFailure(result, fallback) {
       this.error = result?.message || fallback

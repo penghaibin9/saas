@@ -8,8 +8,8 @@ from . import academic_affairs_schedule_policy as policy
 from . import academic_affairs_scheduling_final_service as scheduling_service
 
 
-def evaluate(db, batch) -> dict:
-    from app.models import AaClassroom, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
+def evaluate(db, batch, *, lock=False) -> dict:
+    from app.models import AaClassroom, AaCourse, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch, College
 
     _term, teaching_weeks = policy.term_bounds(db, int(batch.term_id))
     task_batch_query = db.query(AaTeachingTaskBatch).filter(
@@ -18,10 +18,6 @@ def evaluate(db, batch) -> dict:
         AaTeachingTaskBatch.status == "APPROVED",
         AaTeachingTaskBatch.is_deleted.is_(False),
     )
-    if getattr(batch, "college_id", None):
-        task_batch_query = task_batch_query.filter(
-            AaTeachingTaskBatch.college_id == int(batch.college_id)
-        )
     task_batch_ids = [int(row.id) for row in task_batch_query.all()]
     tasks = db.query(AaTeachingTask).filter(
         AaTeachingTask.tenant_id == _tid(),
@@ -29,6 +25,7 @@ def evaluate(db, batch) -> dict:
         AaTeachingTask.status == "READY",
         AaTeachingTask.no_auto_schedule.is_(False),
         AaTeachingTask.is_deleted.is_(False),
+        policy.task_scope_condition(db, batch),
     ).all()
     items = db.query(AaScheduleItem).filter(
         AaScheduleItem.tenant_id == _tid(),
@@ -38,11 +35,22 @@ def evaluate(db, batch) -> dict:
     ).all()
 
     task_map = {int(task.id): task for task in tasks}
+    owned_courses = {int(row.id) for row in db.query(AaCourse).join(
+        College, College.id == AaCourse.owner_college_id,
+    ).filter(
+        AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
+        AaCourse.id.in_([task.course_id for task in tasks] or [-1]),
+        College.tenant_id == _tid(), College.is_deleted.is_(False), College.status == "ACTIVE",
+    ).all()}
+    missing_owner = [str(task.id) for task in tasks if task.course_id not in owned_courses]
     classroom_ids = sorted({int(item.classroom_id) for item in items if item.classroom_id})
-    classrooms = {int(room.id): room for room in db.query(AaClassroom).filter(
+    classroom_query = db.query(AaClassroom).filter(
         AaClassroom.tenant_id == _tid(), AaClassroom.id.in_(classroom_ids or [-1]),
         AaClassroom.is_deleted.is_(False),
-    ).order_by(AaClassroom.id).populate_existing().with_for_update().all()}
+    ).order_by(AaClassroom.id).populate_existing()
+    if lock:
+        classroom_query = classroom_query.with_for_update()
+    classrooms = {int(room.id): room for room in classroom_query.all()}
     invalid_classroom_items = [item for item in items if item.classroom_id and (
         int(item.classroom_id) not in classrooms
         or classrooms[int(item.classroom_id)].status != "AVAILABLE"
@@ -101,6 +109,7 @@ def evaluate(db, batch) -> dict:
     expected_sessions = sum(max(0, int(task.weekly_hours or 0)) for task in tasks)
     scheduled_sessions = sum(counts.values())
     complete = bool(tasks) and not any((
+        missing_owner,
         invalid_tasks,
         missing,
         over,
@@ -116,6 +125,8 @@ def evaluate(db, batch) -> dict:
         "teachingWeeks": teaching_weeks,
         "taskBatchCount": len(task_batch_ids),
         "totalTasks": len(tasks),
+        "missingOwnerTaskIds": missing_owner,
+        "missingOwnerCount": len(missing_owner),
         "scheduledTasks": len(counts),
         "expectedSessions": expected_sessions,
         "scheduledSessions": scheduled_sessions,
@@ -143,7 +154,7 @@ def evaluate(db, batch) -> dict:
 
 
 def require_publishable(db, batch) -> dict:
-    result = evaluate(db, batch)
+    result = evaluate(db, batch, lock=True)
     if result["complete"]:
         return result
     reasons = []
@@ -151,6 +162,8 @@ def require_publishable(db, batch) -> dict:
         reasons.append("本学期没有可排的 READY 教学任务")
     if result["invalidTaskCount"]:
         reasons.append(f"教学任务周次/周学时异常 {result['invalidTaskCount']} 条")
+    if result["missingOwnerCount"]:
+        reasons.append(f"课程尚未配置有效开课单位 {result['missingOwnerCount']} 条")
     if result["missingTaskCount"]:
         reasons.append(f"漏排教学任务 {result['missingTaskCount']} 条")
     if result["overScheduledTaskCount"]:
@@ -169,3 +182,96 @@ def require_publishable(db, batch) -> dict:
         details=result,
         http_status=409,
     )
+
+
+def evaluate_school_publish(db, batch, *, lock=False) -> dict:
+    """正式发布前核验全学期候选；预发布仍只办理本责任范围。"""
+    from collections import Counter
+    from app.models import AaClassroom, AaScheduleBatch, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
+    from .academic_affairs_archive_rule_evaluator import evaluate_teaching_task
+    from .academic_affairs_schedule_conflict_index import iter_same_slot_pairs
+    from . import academic_affairs_schedule_truth_service as truth
+
+    def rows(query, model):
+        query = query.order_by(model.id)
+        return query.with_for_update().populate_existing().all() if lock else query.all()
+
+    task_batches = rows(db.query(AaTeachingTaskBatch).filter(
+        AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == batch.term_id,
+        AaTeachingTaskBatch.is_deleted.is_(False)), AaTeachingTaskBatch)
+    tasks = rows(db.query(AaTeachingTask).filter(
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+        AaTeachingTask.batch_id.in_([row.id for row in task_batches])), AaTeachingTask)
+    required = {row.id for row in tasks if row.status != "MERGED" and not row.no_auto_schedule}
+    blockers = []
+
+    def block(code, message):
+        blockers.append({"code": code, "message": message})
+
+    reconciliation = evaluate_teaching_task(db, batch.term_id)
+    if reconciliation.get("result") != "PASS":
+        block("TEACHING_TASK_NOT_READY", reconciliation.get("summary") or "学期应开课程与教学任务尚未全部核对完成")
+    if not required:
+        block("SCHOOL_SCHEDULE_EMPTY", "本学期没有可正式发布的教学任务")
+    candidates = rows(db.query(AaScheduleBatch).filter(
+        AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.term_id == batch.term_id,
+        AaScheduleBatch.is_deleted.is_(False),
+        AaScheduleBatch.status.in_(("DRAFT", "PRE_PUBLISHED", "PUBLISHED"))), AaScheduleBatch)
+    by_scope = {}
+    for candidate in candidates:
+        by_scope[truth.scope_of(candidate)] = candidate
+    # 请求发布的精确版本必须参与核验，不能用同范围另一个版本的结果替代。
+    by_scope[truth.scope_of(batch)] = batch
+    selected, covered = [], Counter()
+    for candidate in by_scope.values():
+        ids = {value for (value,) in db.query(AaTeachingTask.id).filter(
+            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.id.in_(required),
+            policy.task_scope_condition(db, candidate)).all()}
+        if not ids:
+            continue
+        selected.append(candidate)
+        covered.update(ids)
+        if candidate.status not in {"PRE_PUBLISHED", "PUBLISHED"}:
+            block("SCHOOL_UNIT_NOT_PREPARED", f"{candidate.batch_name or '排课批次'}尚未完成预发布核对")
+        elif candidate.status == "PUBLISHED" and truth.batch_truth(db, candidate).get("isCurrent") is not True:
+            block("SCHOOL_FORMAL_HEAD_UNRESOLVED", "已发布课表缺少当前有效版本依据")
+    missing = len(required.difference(covered))
+    duplicates = sum(count > 1 for count in covered.values())
+    if missing:
+        block("SCHOOL_SCHEDULE_BATCH_MISSING", f"公共课或学院课程仍有{missing}个教学任务缺少排课责任批次")
+    if duplicates:
+        block("SCHOOL_SCHEDULE_SCOPE_OVERLAP", f"{duplicates}个教学任务同时落入多个发布范围，请先核对责任批次")
+    items = rows(db.query(AaScheduleItem).filter(
+        AaScheduleItem.tenant_id == _tid(), AaScheduleItem.is_deleted.is_(False),
+        AaScheduleItem.batch_id.in_([row.id for row in selected]),
+        AaScheduleItem.status == "EFFECTIVE"), AaScheduleItem)
+    if lock:
+        rows(db.query(AaClassroom).filter(AaClassroom.tenant_id == _tid(),
+            AaClassroom.id.in_({row.classroom_id for row in items if row.classroom_id})), AaClassroom)
+    for candidate in selected:
+        check = evaluate(db, candidate, lock=lock)
+        if not check["complete"]:
+            block("SCHOOL_UNIT_NOT_READY", f"{candidate.batch_name or '排课批次'}仍有漏排、资源或硬冲突问题")
+    objections = sum(row.objection_status == "PENDING" for row in items)
+    if objections:
+        block("SCHOOL_OBJECTIONS_PENDING", f"全校候选课表仍有{objections}条教师异议待处理")
+    conflicts = 0
+    for left, right in iter_same_slot_pairs(items):
+        if left.batch_id == right.batch_id or not truth._weeks_overlap(left, right):
+            continue
+        if {(kind, value) for kind, value, _label in truth._resources(left)} & {
+                (kind, value) for kind, value, _label in truth._resources(right)}:
+            conflicts += 1
+    if conflicts:
+        block("SCHOOL_CANDIDATE_CONFLICT", f"公共课与学院候选课表之间存在{conflicts}项共享资源硬冲突")
+    return {"ready": not blockers, "termId": str(batch.term_id), "blockers": blockers,
+            "requiredBatchIds": [str(row.id) for row in selected], "missingTaskCount": missing,
+            "hardConflicts": conflicts, "teachingTaskReconciliation": reconciliation}
+
+
+def require_school_publishable(db, batch) -> dict:
+    result = evaluate_school_publish(db, batch, lock=True)
+    if not result["ready"]:
+        raise AppException("DATA_CONFLICT", "学校正式发布条件未通过：" + "；".join(
+            row["message"] for row in result["blockers"]), details=result, http_status=409)
+    return result

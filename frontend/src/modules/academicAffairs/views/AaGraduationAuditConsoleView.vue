@@ -262,6 +262,7 @@
           </div>
         </div>
         <AppInlineAlert v-if="detail.row.reviewNote" type="info" :description="`最近处理意见：${detail.row.reviewNote}`" />
+        <AppInlineAlert v-if="!canCollegeReview(detail.row) && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(detail.row.status)" type="info" description="当前由学生所属学院的有效责任账号办理初审；学院通过后，交由校教务处终审。" />
 
         <div v-if="canCollegeReview(detail.row)" class="agc-actions">
           <div class="agc-actions__title">学院初审</div>
@@ -578,11 +579,11 @@ export default {
       return LINK_ITEM[cfg.item](it.refId)
     },
     canCollegeApprove(r) {
-      return Boolean(this.canCollegePermission&&!this.pendingWrite&&r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
+      return Boolean(this.canCollegePermission&&!this.pendingWrite&&r?.canCollegeReview === true && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
     },
-    canCollegeReject(r) { return Boolean(this.canCollegePermission&&!this.pendingWrite&&r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
+    canCollegeReject(r) { return Boolean(this.canCollegePermission&&!this.pendingWrite&&r?.canCollegeReview === true && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
     canCollegeReview(r) { return this.canCollegeApprove(r) || this.canCollegeReject(r) },
-    canNormalFinal(r) { return Boolean(this.canFinalPermission&&!this.pendingWrite&&r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
+    canNormalFinal(r) { return Boolean(this.canFinalPermission&&!this.pendingWrite&&r?.canAcademicFinal === true && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     resetSpecialPagination() {
       this.courseRequiredPagination = freshPagination()
       this.courseElectivePagination = freshPagination()

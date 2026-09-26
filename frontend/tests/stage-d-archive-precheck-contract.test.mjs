@@ -27,7 +27,7 @@ test('Stage D 归档预检必须把阻断域放在通过域之前并按阻断项
 
   assert.match(source, /blockedDomainRows\(\)/)
   assert.match(source, /\['BLOCKED', 'UNKNOWN'\]\.includes\(domain\.result\)/)
-  assert.match(source, /\.sort\(\(a, b\) => Number\(b\.blockingCount \|\| 0\) - Number\(a\.blockingCount \|\| 0\)\)/)
+  assert.match(source, /\.sort\(\(a, b\) => Number\(this\.schoolCheckPending\(a\)\) - Number\(this\.schoolCheckPending\(b\)\) \|\| Number\(b\.blockingCount \|\| 0\) - Number\(a\.blockingCount \|\| 0\)\)/)
   assert.match(source, /passedDomainRows\(\)/)
   assert.match(source, /\['PASS', 'NOT_APPLICABLE'\]\.includes\(domain\.result\)/)
 

@@ -91,7 +91,8 @@ def capture_source(db,user,batch_id,*,lock=False):
     task_batch_ids=schedule._task_batch_ids(db,batch)
     task_fields='id batch_id course_id course_name class_id teaching_class_name teacher_key teacher_name expected_students weekly_hours total_hours start_week end_week required_room_type formation_mode status no_auto_schedule'
     target=_read(db,AaTeachingTask,[AaTeachingTask.batch_id.in_(task_batch_ids or [-1]),
-        AaTeachingTask.status=='READY',AaTeachingTask.no_auto_schedule.is_(False)],task_fields,MAX_TASKS)
+        AaTeachingTask.status=='READY',AaTeachingTask.no_auto_schedule.is_(False),
+        policy.task_scope_condition(db,batch)],task_fields,MAX_TASKS)
     active_ids=truth._live_batch_ids(db,batch.term_id,batch.id,replacing_batch_id=batch.supersedes_batch_id)
     existing=_read(db,AaScheduleItem,[AaScheduleItem.batch_id.in_([batch.id,*active_ids]),AaScheduleItem.status=='EFFECTIVE'],
         'id batch_id task_id teacher_key class_id classroom_id weekday slot_no start_week end_week week_parity source')

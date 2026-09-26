@@ -37,10 +37,6 @@ def _pending_tasks_for_batch(db, schedule_batch, teaching_weeks: int) -> tuple[l
         AaTeachingTaskBatch.status == "APPROVED",
         AaTeachingTaskBatch.is_deleted.is_(False),
     )
-    if getattr(schedule_batch, "college_id", None):
-        task_batch_query = task_batch_query.filter(
-            AaTeachingTaskBatch.college_id == int(schedule_batch.college_id)
-        )
     task_batch_ids = [int(row.id) for row in task_batch_query.all()]
     tasks = db.query(AaTeachingTask).filter(
         AaTeachingTask.tenant_id == _base._tid(),
@@ -48,6 +44,7 @@ def _pending_tasks_for_batch(db, schedule_batch, teaching_weeks: int) -> tuple[l
         AaTeachingTask.status == "READY",
         AaTeachingTask.no_auto_schedule.is_(False),
         AaTeachingTask.is_deleted.is_(False),
+        policy.task_scope_condition(db, schedule_batch),
     ).all()
     done: dict[int, int] = {}
     for item in db.query(AaScheduleItem).filter(

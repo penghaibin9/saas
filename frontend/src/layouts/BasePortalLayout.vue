@@ -334,6 +334,7 @@ import {
   isAcademicTeacherContext,
   projectAcademicTeacherModules
 } from '@/modules/academicAffairs/config/academicTeacherNavigation'
+import { projectAcademicCollegeModules } from '@/modules/academicAffairs/config/academicCollegeNavigation'
 import { toast } from '@/utils/toast'
 import router from '@/router'
 
@@ -482,7 +483,7 @@ export default {
       const permissions = this.ctx?.permissionPatterns || []
       const sourceModules = getVisibleNavPlan({ includePlanned: false, permissionPatterns: permissions, ctxKey: this.ctx?.ctxKey || '' }).find(group => group.key === this.railActiveKey)?.children || []
       const modules = this.railActiveKey === 'academic-affairs'
-        ? projectAcademicTeacherModules(sourceModules, this.ctx)
+        ? projectAcademicCollegeModules(projectAcademicTeacherModules(sourceModules, this.ctx), this.ctx)
         : sourceModules
       return modules.map(mod => mod.key !== 'sa-workbench' ? mod : { ...mod, children: [...mod.children, ...WORKBENCH_PAGE_TABS.filter(page => matchPermission(permissions, page.permissionKey) && !mod.children.some(child => child.path === page.path)).map(page => ({ ...page, workspaceHidden: true }))] })
     },

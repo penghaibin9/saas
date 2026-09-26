@@ -57,6 +57,8 @@ def _seed(db_mode):
 
 def _enabled_course(client, hdr, code):
     owner_college_id = ensure_course_review_college()
+    from tests.support_task_review_identity import ensure_task_review_identity
+    ensure_task_review_identity(owner_college_id)
     created = client.post(f"{BASE}/courses", headers=hdr, json={
         "courseCode": code, "courseName": "程序设计", "category": "MAJOR_CORE", "nature": "REQUIRED",
         "credit": 4, "hoursTotal": 64, "hoursTheory": 48, "hoursPractice": 16,
@@ -135,7 +137,7 @@ def _assigned_task(client, hdr, code, class_id, major_id,
     _published_bound_program(client, hdr, cid, class_id, major_id)
     tid = _term(client, hdr)
     generated = client.post(f"{BASE}/teaching-task-batches/generate", headers=hdr,
-                            json={"termId": str(tid)})
+                            json={"termId": str(tid), "collegeId": str(ensure_course_review_college())})
     assert generated.status_code == 200, generated.text
     bid = generated.json()["data"]["batchId"]
     listed = client.get(f"{BASE}/teaching-task-batches/{bid}/tasks", headers=hdr)
@@ -143,7 +145,7 @@ def _assigned_task(client, hdr, code, class_id, major_id,
     items = listed.json()["data"]["items"]
     assert items, listed.text
     task_id = items[0]["taskId"]
-    assigned = client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=hdr,
+    assigned = client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=_hdr(client, "college_admin01", client_type="PC"),
                            json={"teacherName": teacher_name, "teacherKey": teacher_key})
     assert assigned.status_code == 200, assigned.text
     return task_id
@@ -275,6 +277,39 @@ def test_cross_teacher_act_403_via_mobile(client, db_mode):
     r = client.post(f"{MOB}/teacher/academic/tasks/{task_id}/act", headers=other_hdr,
                     json={"action": "CONFIRM"})
     assert r.status_code == 403
+
+    admin = _hdr(client, "school_admin01", client_type="PC")
+    assert client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=admin,
+                       json={"action": "CONFIRM"}).status_code == 403
+
+    # 隔离夹具模拟正式任课调整；保留旧任务快照，确认读写不会复活原教师权限。
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingClass, AaTeachingClassTeacher, AaTeachingTask
+    with get_sessionmaker()() as db:
+        teaching_class = db.query(AaTeachingClass).filter(
+            AaTeachingClass.tenant_id == TID, AaTeachingClass.teaching_task_id == int(task_id),
+        ).one()
+        relation = db.query(AaTeachingClassTeacher).filter(
+            AaTeachingClassTeacher.tenant_id == TID,
+            AaTeachingClassTeacher.teaching_class_id == teaching_class.id,
+            AaTeachingClassTeacher.status == "ACTIVE",
+        ).one()
+        assert relation.teacher_key == "academic01"
+        relation.teacher_key = "teacher01"
+        assert db.get(AaTeachingTask, int(task_id)).teacher_key == "academic01"
+        db.commit()
+    old_hdr = _hdr(client, "academic01")
+    old_list = client.get(f"{MOB}/teacher/academic/tasks", headers=old_hdr, params={"taskId": task_id})
+    assert old_list.status_code == 200 and old_list.json()["data"]["total"] == 0
+    new_list = client.get(f"{MOB}/teacher/academic/tasks", headers=other_hdr, params={"taskId": task_id})
+    assert new_list.status_code == 200 and new_list.json()["data"]["total"] == 1
+    assert client.post(f"{MOB}/teacher/academic/tasks/{task_id}/act", headers=old_hdr,
+                       json={"action": "CONFIRM"}).status_code == 403
+    confirmed = client.post(f"{MOB}/teacher/academic/tasks/{task_id}/act", headers=other_hdr,
+                            json={"action": "CONFIRM"})
+    assert confirmed.status_code == 200 and confirmed.json()["data"]["status"] == "TEACHER_CONFIRMED"
+    assert client.post(f"{MOB}/teacher/academic/tasks/{task_id}/act", headers=other_hdr,
+                       json={"action": "CONFIRM"}).status_code == 409
 
 
 def test_teacher_academic_mobile_routes_reject_pc_session(client, db_mode):

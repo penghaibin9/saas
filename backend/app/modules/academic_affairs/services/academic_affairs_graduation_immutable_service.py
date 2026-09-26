@@ -16,7 +16,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
-from app.core.exceptions import AppException, no_permission, not_found
+from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid
 
 from . import academic_affairs_graduation_service as graduation_service
@@ -283,10 +283,6 @@ def precheck(batch_id, user) -> dict:
 
 def college_review(result_id, user, action, note="") -> dict:
     """Only a complete latest formal PASS may advance into academic final review."""
-    role = (user.get("currentRoleCode") or "").upper()
-    if role not in ({"COLLEGE_ADMIN"} | graduation_service._REVIEW_ROLES) and user.get("userType") != "PLATFORM_SUPER_ADMIN":
-        raise no_permission("仅学院教务员/教务处可执行学院初审")
-
     action_code = str(action or "").strip().upper()
     if action_code not in {"APPROVE", "REJECT"}:
         raise AppException("BAD_REQUEST", "初审动作非法（APPROVE/REJECT）")
@@ -302,6 +298,8 @@ def college_review(result_id, user, action, note="") -> dict:
         if not result:
             raise not_found("预审结果不存在")
         graduation_service._assert_result_in_scope(db, user, result)
+        from .academic_affairs_graduation_scope_guard import assert_college_review_authority
+        assert_college_review_authority(db, user, result)
         if result.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
 
@@ -345,7 +343,6 @@ def college_review(result_id, user, action, note="") -> dict:
 
 def academic_final(result_id, user, conclusion, confirm=False) -> dict:
     """Final decision must reference the exact immutable SYSTEM_PASSED run it used."""
-    graduation_service._require_review_role(user)
     conclusion = (conclusion or "").upper()
     if conclusion not in graduation_service._CONCLUSION:
         raise AppException("BAD_REQUEST", "结论非法（GRADUATED/COMPLETED/DELAYED）")
@@ -354,6 +351,8 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
 
     _name, _role, operator_raw = graduation_service._op()
     with graduation_service.session() as db:
+        from .academic_affairs_graduation_scope_guard import assert_school_review_authority
+        assert_school_review_authority(db, user)
         from app.models import AaGraduationAuditResult, GraduationDecisionFact, GraduationEvaluationRun
 
         result = db.query(AaGraduationAuditResult).filter(

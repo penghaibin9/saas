@@ -196,10 +196,12 @@ def test_grade_deadline_action_freezes_after_submit():
     admin = {"currentRoleCode": "ACADEMIC_ADMIN", "userType": "TEACHER"}
     assert deadline._DEADLINE_MUTABLE_STATES == {"NOT_STARTED", "INPUTTING", "RETURNED"}
     for status in ("NOT_STARTED", "INPUTTING", "RETURNED"):
-        actions = task_read._allowed_actions(SimpleNamespace(status=status), admin, True)
+        actions = task_read._allowed_actions(SimpleNamespace(status=status), admin, True,
+            context=SimpleNamespace(scope_type="TENANT_ALL", permission_codes={"academicAffairs.grade.publish"}))
         assert "EXTEND_DEADLINE" in actions
     for status in ("SUBMITTED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW", "PUBLISHED", "ARCHIVED"):
-        actions = task_read._allowed_actions(SimpleNamespace(status=status), admin, True)
+        actions = task_read._allowed_actions(SimpleNamespace(status=status), admin, True,
+            context=SimpleNamespace(scope_type="TENANT_ALL", permission_codes={"academicAffairs.grade.publish"}))
         assert "EXTEND_DEADLINE" not in actions
 
 

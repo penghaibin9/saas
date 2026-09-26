@@ -68,7 +68,8 @@ def _college_scope(batch) -> list[int] | None:
 
 
 def _eligible_query(db, batch, *, only_uncircled: bool, task_ids=None, keyword=None):
-    query = db.query(AaTeachingTask, AaTeachingTaskBatch).join(
+    from .academic_affairs_exam_service import _task_offering_college_expression
+    query = db.query(AaTeachingTask, AaTeachingTaskBatch, _task_offering_college_expression()).join(
         AaTeachingTaskBatch,
         and_(
             AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
@@ -97,7 +98,7 @@ def _eligible_query(db, batch, *, only_uncircled: bool, task_ids=None, keyword=N
         query = query.filter(AaExamCourse.id.is_(None))
     scope = _college_scope(batch)
     if scope is not None:
-        query = query.filter(AaTeachingTaskBatch.college_id.in_(scope or [-1]))
+        query = query.filter(_task_offering_college_expression().in_(scope or [-1]))
     if task_ids is not None:
         query = query.filter(AaTeachingTask.id.in_([int(v) for v in task_ids] or [0]))
     word = str(keyword or "").strip()
@@ -112,12 +113,12 @@ def _eligible_query(db, batch, *, only_uncircled: bool, task_ids=None, keyword=N
     return query
 
 
-def _candidate_dto(task, task_batch) -> dict:
+def _candidate_dto(task, task_batch, offering_college_id) -> dict:
     return {
         "teachingTaskId": str(task.id),
         "taskBatchId": str(task_batch.id),
         "taskBatchName": task_batch.batch_name or "",
-        "collegeId": str(task_batch.college_id) if task_batch.college_id else None,
+        "collegeId": str(offering_college_id) if offering_college_id else None,
         "courseId": str(task.course_id) if task.course_id else None,
         "courseName": task.course_name or "",
         "classId": str(task.class_id) if task.class_id else None,
@@ -138,7 +139,7 @@ def list_course_candidates(batch_id, user, *, keyword=None, page=1, page_size=20
         rows = query.order_by(AaTeachingTask.course_name, AaTeachingTask.id).offset(
             (max(1, int(page)) - 1) * int(page_size)
         ).limit(int(page_size)).all()
-        return [_candidate_dto(task, task_batch) for task, task_batch in rows], total
+        return [_candidate_dto(task, task_batch, offering) for task, task_batch, offering in rows], total
 
 
 def _validate_ids(task_ids) -> list[int]:
@@ -230,7 +231,7 @@ def bulk_course_preview(batch_id, user, task_ids):
     with session() as db:
         batch = _school_batch(db, batch_id, user)
         rows = _eligible_query(db, batch, only_uncircled=True, task_ids=ids).all()
-        by_id = {int(task.id): (task, task_batch) for task, task_batch in rows}
+        by_id = {int(task.id): (task, task_batch, offering) for task, task_batch, offering in rows}
         items, ready = [], 0
         for task_id in ids:
             pair = by_id.get(task_id)
@@ -240,10 +241,12 @@ def bulk_course_preview(batch_id, user, task_ids):
                     "code": "NOT_AVAILABLE", "message": "该教学任务不可圈定或已被圈定",
                 })
                 continue
-            task, task_batch = pair
-            row = _candidate_dto(task, task_batch)
+            task, task_batch, offering = pair
+            row = _candidate_dto(task, task_batch, offering)
             if str(batch.status or "").upper() != "DRAFT":
                 status, code, message = "BLOCKED", "DATA_CONFLICT", "考试批次已离开草稿阶段"
+            elif not offering:
+                status, code, message = "BLOCKED", "OFFERING_UNIT_UNRESOLVED", "课程或开课责任单位缺失，不能圈定考试课程"
             else:
                 status, code, message = "READY", "", "可圈定；确认时仍会进入正式考务写入口再次校验"
                 ready += 1

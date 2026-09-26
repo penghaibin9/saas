@@ -38,14 +38,15 @@
 
     <div class="task-workbench mp-stack">
       <AaOperationReceipt :receipt="receipt && { title: '任务办理回执', ...receipt }" />
+      <p v-if="schoolReadOnly" class="mp-note">当前为学校统筹范围。教师分配、任务调整和合拆班由开课责任学院的当前有效办理人负责；学校在学院确认后终审。</p>
       <AaTeachingTaskObjectBar
         v-if="workbench.batchId"
         :name="workbench.batchName || '教学任务批次'"
         :identity="`${workbench.termLabel || '学期待提供'} · 批次 #${workbench.batchId}`"
         source="来源：已发布培养方案、适用年级与当前学期；所有任务可返回来源批次回查。"
         :status="batchStatusLabel"
-        :owner="workbench.nextAction?.owner || '当前批次责任岗'"
-        :next-owner="workbench.nextAction?.label || '按正式批次状态流转'"
+        :owner="academicFlowOwner(workbench.responsibility)"
+        :next-owner="academicFlowNextOwner(workbench.nextStep)"
       />
       <AaTeachingTaskStageRail v-if="!selectedBatchId" :current="currentStage" current-note="当前批次办理节点" />
       <AppButton v-if="pendingResult" :disabled="acting || loading" @click="queryPendingResult">查询原办理结果（不会重提）</AppButton>
@@ -192,6 +193,8 @@
 </template>
 
 <script>
+import { academicFlowOwner, academicFlowNextOwner } from '../config/academicFlowRegistry.js'
+
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppTeacherPicker } from '@/components/common'
@@ -237,6 +240,7 @@ export default {
   computed: {
     batchId() { return this.selectedBatchId || this.$route.params.batchId },
     batchStatusLabel() { return TASK_BATCH_STATUS[this.workbench.status] || '状态待核对' },
+    schoolReadOnly() { return ['TENANT_ALL', 'SCHOOL'].includes(this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) },
     currentStage() {
       if (['DRAFT', 'GENERATED', 'RETURNED'].includes(this.workbench.status) && this.workbench.taskTotal > 0) {
         if (this.workbench.unassignedCount > 0 || this.workbench.teacherRejectedCount > 0) return 2
@@ -273,6 +277,7 @@ export default {
   },
   beforeUnmount() { this.revision++; this.lifecycle++; this.disposed = true },
   methods: {
+    academicFlowOwner, academicFlowNextOwner,
     taskColor,
     openSchedule() {
       if (!this.canViewSchedule || this.workbench.nextAction?.code !== 'READY' || !this.workbench.termId) return

@@ -168,12 +168,11 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_start_
     batch_by_id = {int(row.id): row for row in batches}
 
     # Teaching-task confirmation and its post-confirm waiting state live in one projection.
-    # Assignment ownership is teacher_key based because confirmation happens before the
-    # occurrence-week authority becomes executable.
+    # 与教师确认命令共用正式任课关系；未建立教学班投影时才回退任务工号。
     teacher_tasks = db.scalars(select(AaTeachingTask).where(
         AaTeachingTask.tenant_id == _tid(),
         AaTeachingTask.batch_id.in_(batch_ids or [-1]),
-        AaTeachingTask.teacher_key.in_(keys or ["__none__"]),
+        AaTeachingTask.id.in_(formal_task_ids or [-1]),
         AaTeachingTask.status.in_(["ASSIGNED", "TEACHER_CONFIRMED", "REJECTED_BY_TEACHER", "READY"]),
         AaTeachingTask.is_deleted.is_(False),
     ).order_by(AaTeachingTask.id)).all()

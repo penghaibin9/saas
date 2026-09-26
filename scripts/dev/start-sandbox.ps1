@@ -1,7 +1,8 @@
 param(
     [ValidateSet('all','backend','pc','student','miniapp','enterprise')][string]$Service = 'all',
     [switch]$NoBrowser,
-    [switch]$Restart
+    [switch]$Restart,
+    [ValidateRange(1024,65535)][int]$BackendPort = 8000
 )
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path (Split-Path $PSScriptRoot -Parent) -Parent
@@ -16,8 +17,9 @@ $Node = (Get-Command node -ErrorAction Stop).Source
 if (-not (Test-Path -LiteralPath $Python)) { throw 'The existing backend virtual environment is required.' }
 
 # One explicit backend target for every local client, regardless of inherited task variables.
-$env:VITE_PROXY_TARGET = 'http://127.0.0.1:8000'
-$env:VITE_DEV_API_PROXY_TARGET = 'http://127.0.0.1:8000'
+$BackendOrigin = "http://127.0.0.1:$BackendPort"
+$env:VITE_PROXY_TARGET = $BackendOrigin
+$env:VITE_DEV_API_PROXY_TARGET = $BackendOrigin
 $env:VITE_API_BASE_URL = ''
 $env:VITE_USE_MOCK = 'false'
 $env:VITE_ALLOW_MOCK_FALLBACK = 'false'
@@ -115,7 +117,7 @@ if (-not $SchedulerOwned) {
 Write-Host '[OK] scheduler -> sandbox-school' -ForegroundColor Green
 
 $Services = @(
-    @{ Name='backend'; Port=8000; Dir='backend'; Exe=$Python; Entry=(Join-Path $PSScriptRoot 'check-sandbox-runtime.py'); Args='serve'; Url='http://127.0.0.1:8000/health' },
+    @{ Name='backend'; Port=$BackendPort; Dir='backend'; Exe=$Python; Entry=(Join-Path $PSScriptRoot 'check-sandbox-runtime.py'); Args="serve $BackendPort"; Url="$BackendOrigin/health" },
     @{ Name='pc'; Port=5173; Dir='frontend'; Exe=$Node; Entry=(Join-Path $Root 'frontend/node_modules/vite/bin/vite.js'); Args='--host 127.0.0.1 --port 5173 --strictPort'; Url='http://127.0.0.1:5173/login' },
     @{ Name='student'; Port=5199; Dir='student-portal'; Exe=$Node; Entry=(Join-Path $Root 'student-portal/node_modules/vite/bin/vite.js'); Args='--host 127.0.0.1 --port 5199 --strictPort'; Url='http://127.0.0.1:5199/portal/login' },
     @{ Name='miniapp'; Port=5188; Dir='miniapp'; Exe=$Node; Entry=(Join-Path $Root 'miniapp/node_modules/@dcloudio/vite-plugin-uni/bin/uni.js'); Args='--host 127.0.0.1 --port 5188 --strictPort'; Url='http://127.0.0.1:5188/' },
@@ -144,7 +146,7 @@ foreach ($Item in $Services) {
             $Inputs += Get-Item -LiteralPath $Item.Entry
             $Inputs += Get-ChildItem -LiteralPath (Join-Path $Root 'backend/app') -Recurse -File -Filter '*.py'
         }
-        $Changed = @($Inputs | Where-Object { $_.LastWriteTimeUtc -gt $SavedProcess.CreationDate.ToUniversalTime() }).Count -gt 0
+        $Changed = $Saved.backendOrigin -ne $BackendOrigin -or @($Inputs | Where-Object { $_.LastWriteTimeUtc -gt $SavedProcess.CreationDate.ToUniversalTime() }).Count -gt 0
     }
     if ($Owned -and ($Restart -or $Changed)) {
         # Stop only this launcher's verified process and descendants, never arbitrary port owners.
@@ -165,13 +167,13 @@ foreach ($Item in $Services) {
         $Listener = Get-NetTCPConnection -State Listen -LocalPort $Item.Port -ErrorAction SilentlyContinue
         if ($Listener) { throw "Port $($Item.Port) belongs to an unverified process. Refusing to reuse it or silently change ports." }
         if (-not (Test-Path -LiteralPath $Item.Entry)) { throw "Missing installed dependency for $($Item.Name)." }
-        $env:VITE_API_BASE_URL = if ($Item.Name -eq 'miniapp') { 'http://127.0.0.1:8000' } else { '' }
+        $env:VITE_API_BASE_URL = if ($Item.Name -eq 'miniapp') { $BackendOrigin } else { '' }
         $Process = Start-Process -FilePath $Item.Exe -WorkingDirectory (Join-Path $Root $Item.Dir) -WindowStyle Hidden -PassThru `
             -ArgumentList ('"' + $Item.Entry + '" ' + $Item.Args) `
             -RedirectStandardOutput (Join-Path $RuntimeDir ($Item.Name + '.out.log')) `
             -RedirectStandardError (Join-Path $RuntimeDir ($Item.Name + '.err.log'))
         $Started = Get-CimInstance Win32_Process -Filter "ProcessId=$($Process.Id)"
-        @{ pid=$Process.Id; created=$Started.CreationDate.ToUniversalTime().ToString('o'); root=$Root; entry=$Item.Entry; port=$Item.Port } |
+        @{ pid=$Process.Id; created=$Started.CreationDate.ToUniversalTime().ToString('o'); root=$Root; entry=$Item.Entry; port=$Item.Port; backendOrigin=$BackendOrigin } |
             ConvertTo-Json | Set-Content -LiteralPath $StatePath -Encoding UTF8
     }
     $Ready = $false

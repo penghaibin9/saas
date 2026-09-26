@@ -72,7 +72,7 @@ def _grant(db, login_name, real_name):
     role_code = f"TEST_{login_name.upper()}"
     role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == role_code).first()
     if role is None:
-        role = Role(tenant_id=TID, role_code=role_code, role_name=role_code, status="ACTIVE")
+        role = Role(tenant_id=TID, role_code=role_code, role_name=role_code, role_type="CUSTOM", status="ACTIVE")
         db.add(role)
         db.flush()
     if db.query(UserRole).filter(UserRole.tenant_id == TID, UserRole.user_id == user.id,
@@ -131,6 +131,18 @@ def _seed_initial_grade(*, usual=60, final=60):
         db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01",
                                    teacher_name="张晓明", role_code="COLLEGE_ADMIN",
                                    scope_type="COLLEGE", ref_value=COLLEGE_NAME, status="ACTIVE"))
+        # 候选账号以真实自定义角色持权，范围必须属于同一角色，不能借另一个身份的学院范围。
+        db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01",
+                                   teacher_name="张晓明", role_code="TEST_COLLEGE_ADMIN01",
+                                   scope_type="COLLEGE", ref_value=COLLEGE_NAME, status="ACTIVE"))
+        from app.models import Role, RoleAssignmentScope, UserRole
+        from datetime import datetime
+        db.add(RoleAssignmentScope(tenant_id=TID, user_id=office_user.id,
+            user_role_id=db.query(UserRole.id).join(Role, Role.id == UserRole.role_id).filter(
+                UserRole.tenant_id == TID, UserRole.user_id == office_user.id,
+                Role.role_code == "TEST_SCHOOL_ADMIN01").scalar(),
+            role_code="TEST_SCHOOL_ADMIN01", scope_type="SCHOOL", scope_id=TID,
+            effective_at=datetime(2020, 1, 1), status="ACTIVE"))
 
         task = AaGradeTask(tenant_id=TID, term_id=term.id, term_code="2026-2027-1",
                            course_name="数据结构", class_id=klass.id, teacher_key="teacher01",
@@ -160,7 +172,7 @@ def _seed_initial_grade(*, usual=60, final=60):
         return {
             "taskId": int(task.id), "recordId": int(record.id), "gradeId": int(grade.id),
             "studentId": int(student.id), "acadStudentId": int(academic.id),
-            "collegeUserId": int(college_user.id), "officeUserId": int(office_user.id),
+            "collegeUserId": int(college_user.id), "officeUserId": int(office_user.id), "collegeId": int(college.id),
         }
     finally:
         db.close()
@@ -215,9 +227,9 @@ def _seed_published_grade(*, usual=60, final=60, dynamic=False):
     ids = _seed_initial_grade(usual=usual, final=final)
     with get_sessionmaker()() as db:
         task=db.get(AaGradeTask,ids['taskId'])
-        course=AaCourse(tenant_id=TID,course_code='CS101',course_name='数据结构',credit=4,version=1,status='ENABLED')
+        course=AaCourse(tenant_id=TID,course_code='CS101',course_name='数据结构',credit=4,version=1,status='ENABLED',owner_college_id=ids['collegeId'])
         db.add(course);db.flush()
-        batch=AaTeachingTaskBatch(tenant_id=TID,term_id=task.term_id,batch_name='正式成绩测试任务',status='APPROVED')
+        batch=AaTeachingTaskBatch(tenant_id=TID,term_id=task.term_id,batch_name='正式成绩测试任务',status='APPROVED',college_id=ids['collegeId'])
         db.add(batch);db.flush()
         teaching=AaTeachingTask(tenant_id=TID,batch_id=batch.id,course_id=course.id,course_code=course.course_code,course_name=course.course_name,class_id=task.class_id,teacher_key='teacher01',status='READY')
         db.add(teaching);db.flush()

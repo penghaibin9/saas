@@ -11,7 +11,7 @@ S6 发布通知；S7 三视图；S8 作废重发。
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
@@ -51,7 +51,7 @@ def _seed(db_mode, term_id: str):
     s = StudentProfile(tenant_id=TID, student_no="SC001", real_name="课表甲", class_id=a.id,
                        current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
     db.add(s); db.flush()
-    course = AaCourse(tenant_id=TID, course_code="GS_SCHED_TEST", course_name="高数", credit=4)
+    course = AaCourse(tenant_id=TID, course_code="GS_SCHED_TEST", course_name="高数", credit=4, owner_college_id=col.id)
     db.add(course); db.flush()
 
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=int(term_id), batch_name="课表回归测试教学任务批次",
@@ -103,8 +103,9 @@ def _seed_single_publishable_task(term_id: str) -> int:
     且只有这一条任务的最小化数据，才能让批次真正达到可发布状态；同时挂一个真实行政班
     +学生，"发布通知"才有真实接收对象（notified>=1），不是排到一个查无此人的假班级号。"""
     from app.db.session import get_sessionmaker
-    from app.models import (AaClassroom, AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTimeSlot,
-                            College, SchoolClass, StudentProfile, User)
+    from app.models import (AaClassroom, AaCourse, AaProgram, AaProgramBinding, AaProgramCourse,
+                            AaTeachingTask, AaTeachingTaskBatch, AaTerm, AaTimeSlot,
+                            College, Major, SchoolClass, StudentProfile, User)
     db = get_sessionmaker()()
     db.add(AaTimeSlot(tenant_id=TID, slot_no=1, slot_name="第1节",
                       start_time="00:00", end_time="23:59", enabled=True, status="ENABLED"))
@@ -120,23 +121,59 @@ def _seed_single_publishable_task(term_id: str) -> int:
                password_hash="x"))
     col = College(tenant_id=TID, college_name="课表发布测试学院", status="ACTIVE")
     db.add(col); db.flush()
-    cls = SchoolClass(tenant_id=TID, major_id=1, class_name="发布测试班", grade="2026", status="ACTIVE")
+    term = db.get(AaTerm, int(term_id))
+    cohort = str(term.year_code).split("-")[0]
+    major = Major(tenant_id=TID, college_id=col.id, major_name="课表发布测试专业", status="ACTIVE")
+    db.add(major); db.flush()
+    cls = SchoolClass(tenant_id=TID, major_id=major.id, class_name="发布测试班", grade=cohort, status="ACTIVE")
     db.add(cls); db.flush()
     db.add(StudentProfile(tenant_id=TID, student_no="PUB001", real_name="发布测试生", class_id=cls.id,
+                          college_id=col.id, major_id=major.id, grade=cohort,
                           current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE"))
-    course = AaCourse(tenant_id=TID, course_code="GS_PUBLISH_TEST", course_name="高数", credit=4)
+    course = AaCourse(tenant_id=TID, course_code="GS_PUBLISH_TEST", course_name="高数", credit=4, owner_college_id=col.id)
     db.add(course); db.flush()
+    program = AaProgram(tenant_id=TID, major_id=major.id, grade_year=cohort,
+                        program_name="课表发布真实开课计划", total_credits=4, status="PUBLISHED")
+    db.add(program); db.flush()
+    planned = AaProgramCourse(tenant_id=TID, program_id=program.id, course_id=course.id,
+                              course_name=course.course_name, open_term_no=int(term.term_no), credit_snapshot=4)
+    db.add(planned); db.flush()
+    db.add(AaProgramBinding(tenant_id=TID, program_id=program.id, major_id=major.id,
+        class_id=cls.id, grade_year=cohort, bound_at=datetime(2020, 1, 1), status="ACTIVE"))
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=int(term_id), batch_name="课表发布测试教学任务批次",
                              college_id=col.id, status="APPROVED")
     db.add(tb); db.flush()
     db.add(AaTeachingTask(
         tenant_id=TID, batch_id=tb.id, course_id=course.id, course_name="高数", class_id=cls.id,
+        source_program_course_id=planned.id, formation_mode="ADMIN_FIXED",
         teaching_class_name="发布测试班", teacher_key="T1", teacher_name="王老师",
         status="READY", weekly_hours=1, total_hours=18, start_week=1, end_week=18,
     ))
+    _seed_school_publish_identity(db)
     db.commit()
     db.close()
     return cls.id
+
+
+def _seed_school_publish_identity(db):
+    """复用现有账号夹具，只追加排课具体权限、学校范围与正式发布任职。"""
+    from app.models import Role, RoleAssignmentScope, RolePermission, StaffAssignment, UserRole
+    from tests.support_grade_review_identity import _ensure_account, _ensure_permission
+
+    user = _ensure_account(db, "school_admin01")
+    role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == "TEST_GRADE_SCHOOL_ADMIN01").one()
+    for code in ("academicAffairs.schedule.view", "academicAffairs.schedule.edit"):
+        permission = _ensure_permission(db, code)
+        if not db.query(RolePermission).filter(RolePermission.tenant_id == TID,
+                RolePermission.role_id == role.id, RolePermission.permission_id == permission.id).first():
+            db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=permission.id, status="ACTIVE"))
+    link = db.query(UserRole).filter(UserRole.tenant_id == TID, UserRole.user_id == user.id, UserRole.role_id == role.id).one()
+    if not db.query(RoleAssignmentScope).filter(RoleAssignmentScope.tenant_id == TID,
+            RoleAssignmentScope.user_role_id == link.id, RoleAssignmentScope.scope_type == "SCHOOL").first():
+        db.add(RoleAssignmentScope(tenant_id=TID, user_role_id=link.id, user_id=user.id, role_code=role.role_code,
+            scope_type="SCHOOL", scope_id=0, effective_at=datetime(2020, 1, 1), status="ACTIVE"))
+    db.add(StaffAssignment(tenant_id=TID, user_id=user.id, org_type="SCHOOL", org_node_id=TID,
+        assignment_type="ACADEMIC_REVIEWER", effective_at=datetime(2020, 1, 1), status="ACTIVE"))
 
 
 def _setup_publishable(client, db_mode):
@@ -144,6 +181,7 @@ def _setup_publishable(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     term_id = _term(client, hdr)
     class_id = _seed_single_publishable_task(term_id)
+    hdr = _hdr(client, "school_admin01")
     bid = _batch(client, hdr, term_id)
     return hdr, bid, class_id
 

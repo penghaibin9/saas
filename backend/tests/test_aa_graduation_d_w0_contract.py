@@ -12,10 +12,10 @@ TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
 
-def _hdr(client):
+def _hdr(client, login_name="school_admin01"):
     data = client.post(
         "/api/v1/auth/mock-login",
-        json={"loginName": "school_admin01", "password": "any"},
+        json={"loginName": login_name, "password": "any"},
     ).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
@@ -59,6 +59,7 @@ def _seed_formal_result(
     review_note: str,
     complete_evidence: bool = True,
     result_status: str = "ACADEMIC_REVIEW",
+    college_id: int | None = None,
 ):
     from app.db.session import get_sessionmaker
     from app.models import (
@@ -70,10 +71,13 @@ def _seed_formal_result(
 
     db = get_sessionmaker()()
     try:
+        from tests.support_graduation_review_identity import seed_graduation_review_identity
+        college = seed_graduation_review_identity(db)
         student = StudentProfile(
             tenant_id=TID,
             student_no=f"DW0{suffix}",
             real_name=f"D-W0学生{suffix}",
+            college_id=college_id if college_id is not None else college.id,
             current_stage="ON_CAMPUS",
             student_status="REGISTERED",
             status="ACTIVE",
@@ -236,7 +240,7 @@ def test_d_w0_abnormal_cannot_advance_to_academic_review(client, db_mode):
     )
     resp = client.post(
         f"{BASE}/graduation-results/{result_id}/college-review",
-        headers=_hdr(client),
+        headers=_hdr(client, "college_admin01"),
         json={"action": "APPROVE", "note": "学院已核验但系统阻断尚未治理"},
     )
     assert resp.status_code == 409, resp.text
@@ -260,7 +264,7 @@ def test_d_w0_complete_pass_can_advance_to_academic_review(client, db_mode):
     )
     resp = client.post(
         f"{BASE}/graduation-results/{result_id}/college-review",
-        headers=_hdr(client),
+        headers=_hdr(client, "college_admin01"),
         json={"action": "APPROVE", "note": "学院初审确认通过"},
     )
     assert resp.status_code == 200, resp.text
@@ -278,7 +282,7 @@ def test_d_w0_incomplete_pass_cannot_advance_to_academic_review(client, db_mode)
     )
     resp = client.post(
         f"{BASE}/graduation-results/{result_id}/college-review",
-        headers=_hdr(client),
+        headers=_hdr(client, "college_admin01"),
         json={"action": "APPROVE", "note": "学院初审确认通过"},
     )
     assert resp.status_code == 409, resp.text

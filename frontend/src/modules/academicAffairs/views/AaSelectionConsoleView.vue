@@ -73,8 +73,8 @@
             </div>
 
             <aside class="aa-selection-owner-card">
-              <span>当前责任</span><strong>选课管理岗</strong>
-              <span>下一责任</span><strong>{{ nextOwner }}</strong>
+              <AcademicObjectResponsibility v-if="!detailLoading && !detailError" :object-id="current.batchId" :responsibility="current.responsibility" :next-step="current.nextStep" />
+              <span v-else>{{ detailLoading ? '正在读取当前批次责任' : '当前批次责任待重新核对' }}</span>
             </aside>
 
             <div v-if="activeTab === 'batch'" class="aa-selection-actions" :inert="detailLoading || !!detailError || saving">
@@ -114,7 +114,7 @@
           />
 
           <LoadingState v-if="detailLoading" />
-          <ErrorState v-else-if="detailError" :description="detailError" @retry="refreshDetail" />
+          <ErrorState v-else-if="detailError" :description="detailError" @retry="select(current)" />
           <template v-else>
           <section class="aa-selection-summary" :class="healthTone">
             <div><span>当前结论</span><strong>{{ healthLabel }}</strong><p>{{ healthDescription }}</p><small>建议下一动作：{{ nextActionFor(current.status) }}</small></div>
@@ -298,6 +298,8 @@
 </template>
 
 <script>
+import AcademicObjectResponsibility from '../components/AcademicObjectResponsibility.vue'
+
 /** 选课管理 · 教务处控制台（/admin/academic-affairs/selection）：批次生命周期 + 课程供给 + 名单 + 统计。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
@@ -324,7 +326,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
   components: {
-    ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
+    AcademicObjectResponsibility, ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AaSelectionSpecialWorkspace, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker, AppPagination, AppClassPicker
   },
   data() {
@@ -372,7 +374,6 @@ export default {
       ]
     },
     currentStep() { return ({ DRAFT: 1, PUBLISHED: 2, OPEN: 2, CLOSED: 3, LOCKED: 4, ARCHIVED: 5 })[this.current?.status] ?? 0 },
-    nextOwner() { return ['LOCKED', 'ARCHIVED'].includes(this.current?.status) ? '师生课表读取岗' : '选课管理岗 → 名单锁定岗' },
     roundSummary() {
       if (this.detailLoading || this.detailError) return '轮次待核对'
       if (!this.rounds.length) return '无独立轮次 · 先到先得'
@@ -605,12 +606,14 @@ export default {
       this.courses = []; this.stats = null; this.rounds = []; this.coursePagination.total = 0
       this.rosterRows = []; this.rosterCourse = null; this.rosterPagination.total = 0
       this.detailLoading = true
-      this.current = b
+      this.current = { ...b, responsibility: null, nextStep: null }
       this.coursePagination.page = 1
       this.detailError = ''
       const selectedVersion = this.selectionVersion
       const selectedPageContext = this.pageContext()
-      const formal = await api.getBatch(b.batchId)
+      let formal
+      try { formal = await api.getBatch(b.batchId) }
+      catch (error) { formal = { code: error?.httpStatus || error?.code || 503, message: error?.message || '当前批次正式信息读取失败，请重试' } }
       if (this.disposed || selectedPageContext !== this.pageContext() || selectedVersion !== this.selectionVersion || String(this.current?.batchId) !== String(b.batchId)) return
       if (formal.code !== 0) {
         this.detailLoading = false
@@ -620,6 +623,7 @@ export default {
         } else this.detailError = formal.message || '当前批次正式信息读取失败，请重试'
         return
       }
+      if (formal.data?.batchId !== b.batchId) { this.detailLoading = false; this.detailError = '返回的选课批次不一致，请重新选择'; return }
       this.current = formal.data
       if (!['batch', 'rule'].includes(this.activeTab)) { this.detailLoading = false; return }
       const context = this.commandContext()
@@ -632,11 +636,17 @@ export default {
       const batchId = this.current.batchId
       const latest = this.detailGate.begin()
       this.courses = []; this.stats = null; this.rounds = []; this.detailError = ''; this.detailLoading = true
-      const [cs, st, rd] = await Promise.all([
-        api.listCourses(batchId, { page: this.coursePagination.page, pageSize: this.coursePagination.pageSize }),
-        api.batchStats(batchId),
-        api.listRounds(batchId)
-      ])
+      let cs, st, rd
+      try {
+        [cs, st, rd] = await Promise.all([
+          api.listCourses(batchId, { page: this.coursePagination.page, pageSize: this.coursePagination.pageSize }),
+          api.batchStats(batchId),
+          api.listRounds(batchId)
+        ])
+      } catch (error) {
+        if (latest()) { this.detailLoading = false; this.detailError = error?.message || '当前批次读取失败，请重试' }
+        return
+      }
       if (!latest()) return
       this.detailLoading = false
       const failed = [cs, st, rd].find(result => result.code !== 0)

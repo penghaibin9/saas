@@ -6,6 +6,42 @@ import json
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid
 
+PUBLIC_SCHEDULE_MODES = {"SCHOOL_CENTRALIZED", "OFFERING_UNIT", "HYBRID"}
+# 保留现有校级统筹、学院批次编排方式；学校可通过现有教务配置指定公共课责任。
+DEFAULT_PUBLIC_SCHEDULE_MODE = "HYBRID"
+
+
+def public_schedule_mode(db):
+    from app.services.platform_service import _get_cfg
+    row = _get_cfg(db, _tid(), "ACAD_RULE", "PUBLIC_SCHEDULE_MODE")
+    mode = (row.config_json or {}).get("mode") if row and row.enabled else DEFAULT_PUBLIC_SCHEDULE_MODE
+    if mode not in PUBLIC_SCHEDULE_MODES:
+        _conflict("公共课排课责任配置无效，请由校教务核对")
+    return mode
+
+
+def task_scope_condition(db, batch, *, include_centralized_public=False):
+    """所有排课入口按开课单位筛任务；批次学期/审批条件仍由原入口负责。"""
+    from sqlalchemy import exists, func, or_, select, true
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    course_conditions = (AaCourse.id == AaTeachingTask.course_id, AaCourse.tenant_id == _tid(),
+                         AaCourse.is_deleted.is_(False))
+    mode = public_schedule_mode(db)
+    public = exists(select(AaCourse.id).where(*course_conditions,
+        or_(AaCourse.category == "PUBLIC_BASIC", AaCourse.nature == "PUBLIC_ELECTIVE")).correlate(AaTeachingTask))
+    if not getattr(batch, "college_id", None):
+        return public if mode == "SCHOOL_CENTRALIZED" else true()
+    owner = select(AaCourse.owner_college_id).where(*course_conditions).correlate(AaTeachingTask).scalar_subquery()
+    fallback = select(AaTeachingTaskBatch.college_id).where(
+        AaTeachingTaskBatch.id == AaTeachingTask.batch_id, AaTeachingTaskBatch.tenant_id == _tid(),
+        AaTeachingTaskBatch.is_deleted.is_(False),
+    ).correlate(AaTeachingTask).scalar_subquery()
+    condition = func.coalesce(owner, fallback) == int(batch.college_id)
+    if mode == "SCHOOL_CENTRALIZED" and not include_centralized_public:
+        condition &= ~public
+    return condition
+
+
 RULE_SCHEMAS = {
     "AUTO_DEFAULT_WEEKS": "WEEK_RANGE",
     "AUTO_WEEKDAYS": "WEEKDAY_LIST",

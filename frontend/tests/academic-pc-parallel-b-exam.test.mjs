@@ -40,7 +40,7 @@ test('teacher assignment failure clears old schedule and is not an empty success
 test('college confirmation reads its courses without requesting school-only readiness', async () => {
   let readinessCalls = 0
   const { state } = page('AaExamConsoleView', {
-    academicAffairsExamApi: { listCourses: async () => ({ code: 0, data: { list: [{ examCourseId: '1' }] } }), batchStats: async () => ({ code: 0, data: {} }) },
+    academicAffairsExamApi: { getBatch: async batchId => ({ code: 0, data: { batchId } }), listCourses: async () => ({ code: 0, data: { list: [{ examCourseId: '1' }] } }), batchStats: async () => ({ code: 0, data: {} }) },
     academicAffairsExamConvenienceApi: { getReadiness: async () => { readinessCalls++; return { code: 403 } } }
   })
   state.ctx.dataScope = { scope: 'COLLEGE' }
@@ -114,7 +114,7 @@ test('incremental arrangement cannot report no gaps when full readiness still ha
 test('selection watcher does not invalidate the new batch detail request', async () => {
   const old = deferred()
   const { state, definition } = page('AaExamConsoleView', {
-    academicAffairsExamApi: { listCourses: () => old.promise, batchStats: async () => ({ code: 0, data: {} }) },
+    academicAffairsExamApi: { getBatch: async batchId => ({ code: 0, data: { batchId } }), listCourses: () => old.promise, batchStats: async () => ({ code: 0, data: {} }) },
     academicAffairsExamConvenienceApi: { getReadiness: async () => ({ code: 0, data: { invigilatorGapCount: 1 } }) }
   })
   const pending = state.select({ batchId: 'b' })

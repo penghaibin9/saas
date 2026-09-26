@@ -1,13 +1,15 @@
 """13B-P3 培养方案发布 + 教学任务全链 · 端到端。
 
 历史用例已对齐当前权威合同：真实 College→Major→Class、正式学期时间轴/教学周、
-稳定课程身份、ENABLED 培养方案和 ACTIVE 班级绑定。业务状态机断言保持原强度。
+稳定课程身份、ENABLED 培养方案和 ACTIVE 班级绑定。课程开课学院与学生学院独立，
+学院分配、正式任课教师确认、学院确认、学校终审使用各自身份，业务断言保持原强度。
 """
 from __future__ import annotations
 
 from datetime import date, timedelta
 
 from tests.support_academic_review_identity import ensure_college_review_scope, ensure_course_review_college
+from tests.support_task_review_identity import ensure_task_review_identity
 
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
@@ -51,6 +53,7 @@ def _seed_two_classes(db_mode, *, grade="2026"):
 
 def _enabled_course(client, hdr, code="TT101", credit=4, name="程序设计"):
     owner_college_id = ensure_course_review_college()
+    ensure_task_review_identity(owner_college_id)
     created = client.post(f"{BASE}/courses", headers=hdr, json={
         "courseCode": code, "courseName": name, "category": "MAJOR_CORE", "nature": "REQUIRED",
         "credit": credit, "hoursTotal": 64, "hoursTheory": 48, "hoursPractice": 16,
@@ -147,8 +150,10 @@ def _term(client, hdr, *, year_code="2026-2027", term_no=1):
 
 
 def _generate(client, hdr, term_id):
+    # 所有 _enabled_course 创建的课程属于该开课学院；学生所在学院保持独立。
+    owner_college_id = ensure_course_review_college()
     response = client.post(f"{BASE}/teaching-task-batches/generate", headers=hdr,
-                           json={"termId": str(term_id)})
+                           json={"termId": str(term_id), "collegeId": str(owner_college_id)})
     assert response.status_code == 200, response.text
     return response.json()["data"]
 
@@ -171,14 +176,16 @@ def test_tt1_full_chain(client, db_mode):
     tasks = _tasks(client, hdr, bid)
     task_id = tasks[0]["taskId"]
     assert tasks[0]["weeklyHours"]
-    assigned = client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=hdr,
-                           json={"teacherName": "王老师", "expectedStudents": 40})
+    assert client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=hdr,
+                       json={"teacherName": "赵敏", "teacherKey": "academic01"}).status_code == 403
+    assigned = client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=_hdr(client, "college_admin01"),
+                           json={"teacherName": "赵敏", "teacherKey": "academic01", "expectedStudents": 40})
     assert assigned.status_code == 200, assigned.text
-    r = client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=hdr,
+    r = client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=_hdr(client, "academic01"),
                     json={"action": "CONFIRM"})
     assert r.status_code == 200, r.text
     assert r.json()["data"]["status"] == "TEACHER_CONFIRMED"
-    b = client.post(f"{BASE}/teaching-task-batches/{bid}/submit", headers=hdr)
+    b = client.post(f"{BASE}/teaching-task-batches/{bid}/submit", headers=_hdr(client, "college_admin01"))
     assert b.status_code == 200, b.text
     assert b.json()["data"]["status"] == "COLLEGE_CONFIRMED"
     reviewed = client.post(f"{BASE}/teaching-task-batches/{bid}/review", headers=hdr,
@@ -228,7 +235,7 @@ def test_tt4_batch_submit_with_unassigned_409(client, db_mode):
     cid = _enabled_course(client, hdr, code="TT401")
     _published_bound_program(client, hdr, cid, ids["class"], ids["major"])
     bid = _generate(client, hdr, _term(client, hdr))["batchId"]
-    assert client.post(f"{BASE}/teaching-task-batches/{bid}/submit", headers=hdr).status_code == 409
+    assert client.post(f"{BASE}/teaching-task-batches/{bid}/submit", headers=_hdr(client, "college_admin01")).status_code == 409
 
 
 def test_tt5_two_level_confirm_approve_ready(client, db_mode):
@@ -238,10 +245,10 @@ def test_tt5_two_level_confirm_approve_ready(client, db_mode):
     _published_bound_program(client, hdr, cid, ids["class"], ids["major"])
     bid = _generate(client, hdr, _term(client, hdr))["batchId"]
     task_id = _tasks(client, hdr, bid)[0]["taskId"]
-    client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=hdr,
-                json={"teacherName": "王老师", "teacherKey": "academic01", "expectedStudents": 40})
-    client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=hdr, json={"action": "CONFIRM"})
-    cc = client.post(f"{BASE}/teaching-task-batches/{bid}/college-confirm", headers=hdr)
+    client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=_hdr(client, "college_admin01"),
+                json={"teacherName": "赵敏", "teacherKey": "academic01", "expectedStudents": 40})
+    client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=_hdr(client, "academic01"), json={"action": "CONFIRM"})
+    cc = client.post(f"{BASE}/teaching-task-batches/{bid}/college-confirm", headers=_hdr(client, "college_admin01"))
     assert cc.status_code == 200 and cc.json()["data"]["status"] == "COLLEGE_CONFIRMED"
     rv = client.post(f"{BASE}/teaching-task-batches/{bid}/review", headers=hdr, json={"action": "APPROVE"})
     assert rv.status_code == 200 and rv.json()["data"]["status"] == "APPROVED"
@@ -258,13 +265,13 @@ def test_tt6_review_return_then_reconfirm(client, db_mode):
     _published_bound_program(client, hdr, cid, ids["class"], ids["major"])
     bid = _generate(client, hdr, _term(client, hdr))["batchId"]
     task_id = _tasks(client, hdr, bid)[0]["taskId"]
-    assigned = client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=hdr,
-                           json={"teacherName": "王老师"})
+    assigned = client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=_hdr(client, "college_admin01"),
+                           json={"teacherName": "赵敏", "teacherKey": "academic01"})
     assert assigned.status_code == 200, assigned.text
-    confirmed = client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=hdr,
+    confirmed = client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=_hdr(client, "academic01"),
                             json={"action": "CONFIRM"})
     assert confirmed.status_code == 200, confirmed.text
-    assert client.post(f"{BASE}/teaching-task-batches/{bid}/college-confirm", headers=hdr).status_code == 200
+    assert client.post(f"{BASE}/teaching-task-batches/{bid}/college-confirm", headers=_hdr(client, "college_admin01")).status_code == 200
     bad = client.post(f"{BASE}/teaching-task-batches/{bid}/review", headers=hdr,
                       json={"action": "RETURN", "reason": "短"})
     assert bad.status_code == 400
@@ -273,7 +280,7 @@ def test_tt6_review_return_then_reconfirm(client, db_mode):
     assert rv.status_code == 200 and rv.json()["data"]["status"] == "RETURNED"
     assert client.post(f"{BASE}/teaching-task-batches/{bid}/review", headers=hdr,
                        json={"action": "APPROVE"}).status_code == 409
-    again = client.post(f"{BASE}/teaching-task-batches/{bid}/college-confirm", headers=hdr)
+    again = client.post(f"{BASE}/teaching-task-batches/{bid}/college-confirm", headers=_hdr(client, "college_admin01"))
     assert again.status_code == 200 and again.json()["data"]["status"] == "COLLEGE_CONFIRMED"
 
 
@@ -289,18 +296,21 @@ def test_tt7_merge_then_split(client, db_mode):
     bid = g["batchId"]
     tasks = _tasks(client, hdr, bid)
     t1, t2 = tasks[0]["taskId"], tasks[1]["taskId"]
-    client.post(f"{BASE}/teaching-tasks/{t1}/assign", headers=hdr,
-                json={"teacherName": "王老师", "expectedStudents": 20})
-    client.post(f"{BASE}/teaching-tasks/{t2}/assign", headers=hdr,
-                json={"teacherName": "王老师", "expectedStudents": 25})
-    m = client.post(f"{BASE}/teaching-tasks/merge", headers=hdr,
+    client.post(f"{BASE}/teaching-tasks/{t1}/assign", headers=_hdr(client, "college_admin01"),
+                json={"teacherName": "赵敏", "teacherKey": "academic01", "expectedStudents": 20})
+    client.post(f"{BASE}/teaching-tasks/{t2}/assign", headers=_hdr(client, "college_admin01"),
+                json={"teacherName": "赵敏", "teacherKey": "academic01", "expectedStudents": 25})
+    assert client.post(f"{BASE}/teaching-tasks/merge", headers=hdr,
+                       json={"taskIds": [t1, t2]}).status_code == 403
+    m = client.post(f"{BASE}/teaching-tasks/merge", headers=_hdr(client, "college_admin01"),
                     json={"taskIds": [t1, t2], "note": "小班合并授课"})
     assert m.status_code == 200
     survivor = m.json()["data"]
     assert survivor["taskId"] == t1 and survivor["isMerged"] is True and survivor["expectedStudents"] == 45
     after_merge = {r["taskId"]: r for r in _tasks(client, hdr, bid)}
     assert after_merge[t2]["status"] == "MERGED" and after_merge[t2]["mergedIntoId"] == t1
-    s = client.post(f"{BASE}/teaching-tasks/{t1}/split", headers=hdr)
+    assert client.post(f"{BASE}/teaching-tasks/{t1}/split", headers=hdr).status_code == 403
+    s = client.post(f"{BASE}/teaching-tasks/{t1}/split", headers=_hdr(client, "college_admin01"))
     assert s.status_code == 200
     split_row = s.json()["data"]
     assert split_row["isMerged"] is False and split_row["expectedStudents"] == 20
@@ -321,9 +331,9 @@ def test_tt8_merge_validation(client, db_mode):
     bid = g["batchId"]
     tasks = _tasks(client, hdr, bid)
     t1, t2 = tasks[0]["taskId"], tasks[1]["taskId"]
-    assert client.post(f"{BASE}/teaching-tasks/merge", headers=hdr,
+    assert client.post(f"{BASE}/teaching-tasks/merge", headers=_hdr(client, "college_admin01"),
                        json={"taskIds": [t1]}).status_code == 400
-    assert client.post(f"{BASE}/teaching-tasks/merge", headers=hdr,
+    assert client.post(f"{BASE}/teaching-tasks/merge", headers=_hdr(client, "college_admin01"),
                        json={"taskIds": [t1, t2]}).status_code == 400
 
     ids2 = _seed_two_classes(db_mode, grade="2027")
@@ -336,9 +346,9 @@ def test_tt8_merge_validation(client, db_mode):
     cid3_tasks = [r["taskId"] for r in _tasks(client, hdr, bid2) if r["courseId"] == str(cid3)]
     assert len(cid3_tasks) == 2
     t3, t4 = cid3_tasks
-    assert client.post(f"{BASE}/teaching-tasks/merge", headers=hdr,
+    assert client.post(f"{BASE}/teaching-tasks/merge", headers=_hdr(client, "college_admin01"),
                        json={"taskIds": [t3, t4]}).status_code == 200
-    dup = client.post(f"{BASE}/teaching-tasks/merge", headers=hdr, json={"taskIds": [t3, t4]})
+    dup = client.post(f"{BASE}/teaching-tasks/merge", headers=_hdr(client, "college_admin01"), json={"taskIds": [t3, t4]})
     assert dup.status_code == 409
 
 
@@ -352,7 +362,7 @@ def test_tt9_cross_batch_list_and_teacher_scope(client, db_mode):
     mergeable = client.get(f"{BASE}/teaching-tasks", headers=hdr,
                            params={"mergeable": True}).json()["data"]["items"]
     assert any(r["taskId"] == task_id for r in mergeable)
-    client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=hdr,
+    client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=_hdr(client, "college_admin01"),
                 json={"teacherName": "赵敏", "teacherKey": "academic01"})
     other_hdr = _hdr(client, "teacher01")
     forbidden = client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=other_hdr,
@@ -367,33 +377,71 @@ def test_tt9_cross_batch_list_and_teacher_scope(client, db_mode):
     assert any(r["taskId"] == task_id for r in mine)
 
 
-def test_tt10_adjust_task_partial_update_and_teacher_reconfirm(client, db_mode):
+def test_tt10_adjust_task_partial_update_and_teacher_reconfirm(client, db_mode, monkeypatch):
+    # This isolated test adds a second explicit mock-login identity; unknown login names otherwise fall back to a different teacher.
+    from app.services import mock_auth_service
+    teacher = mock_auth_service._mk_user("u_academic02", "academic02", "李老师", "TEACHER",
+        "ACADEMIC_TEACHER", "任课教师", "开课学院", "SELF", "本人任课任务")
+    monkeypatch.setitem(mock_auth_service.DEMO_USERS, "u_academic02", teacher)
+    monkeypatch.setitem(mock_auth_service._LOGIN_INDEX, "academic02", "u_academic02")
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
     cid = _enabled_course(client, hdr, code="TT1001")
     _published_bound_program(client, hdr, cid, ids["class"], ids["major"])
     bid = _generate(client, hdr, _term(client, hdr))["batchId"]
+    college_hdr = _hdr(client, "college_admin01")
+    teacher_hdr = _hdr(client, "academic01")
     task_id = _tasks(client, hdr, bid)[0]["taskId"]
-    client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=hdr,
-                json={"teacherName": "王老师", "teacherKey": "academic01", "expectedStudents": 40})
-    client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=hdr,
+    client.post(f"{BASE}/teaching-tasks/{task_id}/assign", headers=college_hdr,
+                json={"teacherName": "赵敏", "teacherKey": "academic01", "expectedStudents": 40})
+    client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=teacher_hdr,
                 json={"action": "CONFIRM"})
-    bad = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=hdr,
+    assert client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=hdr,
+                       json={"weeklyHours": 5, "reason": "学校不可无代理代办"}).status_code == 403
+    bad = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=college_hdr,
                       json={"weeklyHours": 5, "reason": "短"})
     assert bad.status_code == 400
-    r1 = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=hdr,
+    r1 = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=college_hdr,
                      json={"weeklyHours": 6, "totalHours": 108, "reason": "教学计划课时数校正"})
     assert r1.status_code == 200
     d1 = r1.json()["data"]
     assert d1["weeklyHours"] == 6 and d1["totalHours"] == 108 and d1["status"] == "TEACHER_CONFIRMED"
-    noop = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=hdr,
+    noop = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=college_hdr,
                        json={"weeklyHours": 6, "reason": "重复提交校验"})
     assert noop.status_code == 400
-    r2 = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=hdr,
+    for path, headers, payload in [
+        (f"teaching-task-batches/{bid}/college-confirm", college_hdr, None),
+        (f"teaching-task-batches/{bid}/review", hdr, {"action": "APPROVE"}),
+    ]:
+        approved = client.post(f"{BASE}/{path}", headers=headers, json=payload)
+        assert approved.status_code == 200, approved.text
+    assert _tasks(client, hdr, bid)[0]["status"] == "READY"
+    r2 = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=college_hdr,
                      json={"teacherName": "李老师", "teacherKey": "academic02", "reason": "原教师休产假换人代课"})
     assert r2.status_code == 200
     d2 = r2.json()["data"]
     assert d2["teacherName"] == "李老师" and d2["status"] == "ASSIGNED"
+
+    workbench = client.get(f"{BASE}/teaching-task-batches/{bid}/workbench", headers=college_hdr)
+    assert workbench.status_code == 200, workbench.text
+    assert workbench.json()["data"]["status"] == "RETURNED"
+    old = client.post(f"{BASE}/teaching-tasks/{task_id}/teacher-act", headers=teacher_hdr, json={"action": "CONFIRM"})
+    assert old.status_code == 403, old.text
+    for path, headers, payload in [
+        (f"teaching-tasks/{task_id}/teacher-act", _hdr(client, "academic02"), {"action": "CONFIRM"}),
+        (f"teaching-task-batches/{bid}/college-confirm", college_hdr, None),
+        (f"teaching-task-batches/{bid}/review", hdr, {"action": "APPROVE"}),
+    ]:
+        advanced = client.post(f"{BASE}/{path}", headers=headers, json=payload)
+        assert advanced.status_code == 200, advanced.text
+    assert _tasks(client, hdr, bid)[0]["status"] == "READY"
+    renamed = client.post(f"{BASE}/teaching-tasks/{task_id}/adjust", headers=college_hdr,
+                          json={"teacherName": "李老师姓名校正", "reason": "仅校正教师显示姓名"})
+    assert renamed.status_code == 200, renamed.text
+    assert renamed.json()["data"]["status"] == "READY"
+    refreshed = client.get(f"{BASE}/teaching-task-batches/{bid}/workbench", headers=college_hdr)
+    assert refreshed.json()["data"]["status"] == "APPROVED"
+
 
 
 def test_tt11_adjust_task_conflicts_and_permission(client, db_mode):
@@ -406,24 +454,26 @@ def test_tt11_adjust_task_conflicts_and_permission(client, db_mode):
     tid = _term(client, hdr)
     g = _generate(client, hdr, tid)
     bid = g["batchId"]
+    college_hdr = _hdr(client, "college_admin01")
+    teacher_hdr = _hdr(client, "academic01")
     tasks = _tasks(client, hdr, bid)
     t1, t2 = tasks[0]["taskId"], tasks[1]["taskId"]
-    a1 = client.post(f"{BASE}/teaching-tasks/{t1}/assign", headers=hdr,
-                     json={"teacherName": "王老师", "teacherKey": "academic01"})
-    a2 = client.post(f"{BASE}/teaching-tasks/{t2}/assign", headers=hdr,
-                     json={"teacherName": "王老师", "teacherKey": "academic01"})
+    a1 = client.post(f"{BASE}/teaching-tasks/{t1}/assign", headers=college_hdr,
+                     json={"teacherName": "赵敏", "teacherKey": "academic01"})
+    a2 = client.post(f"{BASE}/teaching-tasks/{t2}/assign", headers=college_hdr,
+                     json={"teacherName": "赵敏", "teacherKey": "academic01"})
     assert a1.status_code == 200 and a2.status_code == 200
-    merged = client.post(f"{BASE}/teaching-tasks/merge", headers=hdr, json={"taskIds": [t1, t2]})
+    merged = client.post(f"{BASE}/teaching-tasks/merge", headers=college_hdr, json={"taskIds": [t1, t2]})
     assert merged.status_code == 200, merged.text
-    merged_adjust = client.post(f"{BASE}/teaching-tasks/{t2}/adjust", headers=hdr,
+    merged_adjust = client.post(f"{BASE}/teaching-tasks/{t2}/adjust", headers=college_hdr,
                                 json={"weeklyHours": 4, "reason": "尝试调整已并入成员任务"})
     assert merged_adjust.status_code == 409
 
     # 排课正式门禁只接受同学期、已终审 READY 的教学任务；merge survivor 也必须完成正式确认链。
-    confirmed = client.post(f"{BASE}/teaching-tasks/{t1}/teacher-act", headers=hdr,
+    confirmed = client.post(f"{BASE}/teaching-tasks/{t1}/teacher-act", headers=teacher_hdr,
                             json={"action": "CONFIRM"})
     assert confirmed.status_code == 200, confirmed.text
-    college = client.post(f"{BASE}/teaching-task-batches/{bid}/college-confirm", headers=hdr)
+    college = client.post(f"{BASE}/teaching-task-batches/{bid}/college-confirm", headers=college_hdr)
     assert college.status_code == 200, college.text
     reviewed = client.post(f"{BASE}/teaching-task-batches/{bid}/review", headers=hdr,
                            json={"action": "APPROVE"})
@@ -436,10 +486,10 @@ def test_tt11_adjust_task_conflicts_and_permission(client, db_mode):
     sb = sb_resp.json()["data"]["batchId"]
     item = client.post(f"{BASE}/schedule-batches/{sb}/items", headers=hdr, json={
         "taskId": str(t1), "weekday": 1, "slotNo": 1, "startWeek": 1, "endWeek": 18, "weekParity": "ALL",
-        "teacherKey": "academic01", "teacherName": "王老师", "classId": str(ids["class1"]),
+        "teacherKey": "academic01", "teacherName": "赵敏", "classId": str(ids["class1"]),
         "className": "软件2601", "classroom": "A101", "courseName": "程序设计"})
     assert item.status_code == 200, item.text
-    scheduled_adjust = client.post(f"{BASE}/teaching-tasks/{t1}/adjust", headers=hdr,
+    scheduled_adjust = client.post(f"{BASE}/teaching-tasks/{t1}/adjust", headers=college_hdr,
                                    json={"weeklyHours": 4, "reason": "已排课后尝试调整教学任务"})
     assert scheduled_adjust.status_code == 409
     stu = _hdr(client, "student01")

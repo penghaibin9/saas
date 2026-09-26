@@ -1,11 +1,13 @@
 <template>
   <ModulePageShell
     title="归档导出"
-    subtitle="从正式封存批次申请导出；文件、用途和下载回执全程留痕"
+    :subtitle="isCollegeScope ? '学校封存材料和下载记录由校教务统筹；本院事项请查看实时预检' : '从正式封存批次申请导出；文件、用途和下载回执全程留痕'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
-    <ol class="aaex-stage-rail" aria-label="归档导出所处阶段">
+    <AppInlineAlert v-if="isCollegeScope" type="info" :description="scopeNote" />
+    <AppButton v-if="isCollegeScope" variant="primary" @click="goCollegePrecheck">查看本院实时预检</AppButton>
+    <ol v-else class="aaex-stage-rail" aria-label="归档导出所处阶段">
       <li class="is-done"><b>✓</b><span><strong>建立批次</strong><small>归档对象已建立</small></span></li>
       <li class="is-done"><b>✓</b><span><strong>十三域预检</strong><small>正式检查已完成</small></span></li>
       <li class="is-done"><b>✓</b><span><strong>补齐缺失</strong><small>阻断已处理</small></span></li>
@@ -17,17 +19,17 @@
       <div>
         <small>当前业务对象 · 学期归档批次 #{{ current.batchId }}</small>
         <h2>{{ current.batchName }}</h2>
-        <p>来源：已封存学期归档事实 · 为什么轮到我：当前岗位拥有归档导出权限</p>
+        <p>{{ isCollegeScope ? '来源：学校已封存学期批次进度；本页不提供学校物料和下载记录' : '来源：已封存学期归档事实 · 为什么轮到我：当前岗位拥有归档导出权限' }}</p>
       </div>
       <dl>
         <div><dt>当前状态</dt><dd><StatusTag type="success" label="已归档" dot /></dd></div>
-        <div><dt>当前责任</dt><dd>归档管理岗</dd></div>
-        <div><dt>当前阻断</dt><dd>无；下载用途必须留痕</dd></div>
-        <div><dt>下一责任岗位</dt><dd>授权查阅人</dd></div>
+        <div><dt>当前责任</dt><dd>{{ isCollegeScope ? archiveOwner : '归档管理岗' }}</dd></div>
+        <div><dt>当前阻断</dt><dd>{{ isCollegeScope ? '本院缺项请查看实时预检' : '无；下载用途必须留痕' }}</dd></div>
+        <div><dt>下一责任岗位</dt><dd>{{ isCollegeScope ? nextOwner : '授权查阅人' }}</dd></div>
       </dl>
     </section>
 
-    <section v-if="current" class="aaex-request-grid">
+    <section v-if="current && !isCollegeScope" class="aaex-request-grid">
       <div class="aaex-request-card">
         <header><div><h3>导出范围与用途</h3><p>范围由当前归档批次和服务端授权共同确定</p></div></header>
         <div class="aaex-request-fields">
@@ -54,7 +56,8 @@
       <div class="aaex-list">
         <div class="aaex-list-title">已归档批次</div>
         <LoadingState v-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="暂无已归档批次" description="批次确认归档后可在此下载物料" />
+        <ErrorState v-else-if="listError" :description="listError" @retry="load" />
+        <EmptyState v-else-if="!rows.length" title="暂无已归档批次" :description="isCollegeScope ? '学校正式封存由校教务统筹，本院可继续核对实时预检' : '批次确认归档后可在此下载物料'" />
         <ul v-else class="aaex-items">
           <li v-for="b in rows" :key="b.batchId" :class="['aaex-item', { 'is-active': current && current.batchId === b.batchId }]" @click="select(b)">
             <span>{{ b.batchName }}</span>
@@ -65,13 +68,15 @@
       </div>
 
       <div class="aaex-detail">
-        <EmptyState v-if="!current" title="选择批次" description="从左侧选择已归档批次查看可下载物料" />
+        <ErrorState v-if="detailError" :description="detailError" @retry="retryDetail" />
+        <EmptyState v-else-if="!current" title="选择批次" :description="isCollegeScope ? '从左侧选择批次查看学校封存进度' : '从左侧选择已归档批次查看可下载物料'" />
         <template v-else>
           <div class="aaex-head">
             <div class="aaex-title">{{ current.batchName }}</div>
-            <span class="aaex-server-note">正式记录 {{ items.reduce((sum, item) => sum + Number(item.recordCount || 0), 0) }} 条 · 封存于 {{ fmt(current.archivedAt) || '时间待核' }}</span>
+            <span class="aaex-server-note"><template v-if="!isCollegeScope">正式记录 {{ items.reduce((sum, item) => sum + Number(item.recordCount || 0), 0) }} 条 · </template>封存于 {{ fmt(current.archivedAt) || '时间待核' }}</span>
           </div>
 
+          <template v-if="!isCollegeScope">
           <div class="aaex-section-title">物料清单（{{ items.length }} 域，仅列出有数据域）</div>
           <DataTable :columns="itemColumns" :rows="downloadableItems" row-key="domain">
             <template #cell-domain="{ row }">{{ row.domainLabel }}</template>
@@ -82,10 +87,12 @@
 
           <div class="aaex-section-title">下载记录</div>
           <LoadingState v-if="logLoading" />
+          <ErrorState v-else-if="logError" :description="logError" @retry="loadLog()" />
           <EmptyState v-else-if="!downloadLog.length" title="暂无下载记录" description="尚未有人下载过本批次物料" />
           <DataTable v-else :columns="logColumns" :rows="downloadLog" row-key="downloadAt">
             <template #cell-downloadAt="{ row }">{{ fmt(row.downloadAt) }}</template>
           </DataTable>
+          </template>
         </template>
       </div>
     </div>
@@ -111,13 +118,14 @@
 <script>
 /** AA-263 教务归档 · 归档导出（/admin/academic-affairs/archive/export）：
  * 已归档批次的水印 xlsx 单域下载 + zip 打包全量下载 + 下载记录查询。批次未 ARCHIVED 不出现在列表。 */
-import { ModulePageShell, DataTable, LoadingState, EmptyState, StatusTag } from '@/components/business'
+import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, StatusTag } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppTextInput, AppTextarea, AppFormItem, AppInlineAlert } from '@/components/common'
 import { academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
 import { gradeError } from './parallel-c/grade-review'
+import { academicFlowOwner, academicFlowNextOwner, academicFlowText } from '../config/academicFlowRegistry.js'
 
 function _download(blob, filename) {
   const url = URL.createObjectURL(blob)
@@ -127,15 +135,15 @@ function _download(blob, filename) {
 
 export default {
   name: 'ArchiveExportView',
-  components: { ModulePageShell, DataTable, LoadingState, EmptyState, StatusTag, AppButton, AppDrawer, AppTextInput, AppTextarea, AppFormItem, AppInlineAlert },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, StatusTag, AppButton, AppDrawer, AppTextInput, AppTextarea, AppFormItem, AppInlineAlert },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       alive: true, scope: 0, listSeq: 0, detailSeq: 0, logSeq: 0,
-      loading: true, rows: [], current: null, items: [],
+      loading: true, listError: '', detailError: '', selectedBatchId: '', rows: [], current: null, items: [],
       pagination: { page: 1, pageSize: 20, total: 0 }, loadingMore: false,
       itemColumns: [{ key: 'domain', title: '数据域' }, { key: 'domainLabel', title: '名称' }, { key: 'recordCount', title: '记录数' }, { key: 'action', title: '操作' }],
-      logLoading: false, downloadLog: [],
+      logLoading: false, logError: '', downloadLog: [],
       logColumns: [{ key: 'operator', title: '下载人' }, { key: 'action', title: '类型' }, { key: 'detail', title: '说明' }, { key: 'downloadAt', title: '时间' }],
       exportVisible: false, exportPurpose: '', exportError: '', exportNotice: '', exporting: false, pendingCategory: null, pendingExport: null
     }
@@ -145,6 +153,10 @@ export default {
       const user = currentUserFromToken() || {}
       return JSON.stringify([user.tenantId, user.userId, user.activeContextId, user.currentRoleCode, this.ctx.currentRole, this.ctx.dataScope])
     },
+    isCollegeScope() { return this.current?.scopeType === 'COLLEGE' || (this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) === 'COLLEGE' || this.rows.some(row => row.scopeType === 'COLLEGE') },
+    scopeNote() { return academicFlowText(this.current?.scopeNote, '学校封存材料和下载记录由校教务统筹；请查看本院实时预检。') },
+    archiveOwner() { return academicFlowOwner(this.current?.responsibility) },
+    nextOwner() { return academicFlowNextOwner(this.current?.nextStep) },
     downloadableItems() { return this.items.filter((item) => Number(item.recordCount) > 0) }
   },
   watch: { identity() { this.clearPrivate(); this.load() } },
@@ -156,15 +168,17 @@ export default {
     denied(err) { return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code, err?.bizCode].join(' ')) },
     clearPrivate() {
       this.scope += 1; this.listSeq += 1; this.detailSeq += 1; this.logSeq += 1
-      this.loading = false; this.loadingMore = false; this.rows = []; this.current = null; this.items = []
-      this.pagination = { page: 1, pageSize: 20, total: 0 }; this.logLoading = false; this.downloadLog = []
+      this.loading = false; this.loadingMore = false; this.listError = ''; this.detailError = ''; this.selectedBatchId = ''; this.rows = []; this.current = null; this.items = []
+      this.pagination = { page: 1, pageSize: 20, total: 0 }; this.logLoading = false; this.logError = ''; this.downloadLog = []
       this.exportVisible = false; this.exportPurpose = ''; this.exportError = ''; this.exportNotice = ''; this.exporting = false; this.pendingCategory = null; this.pendingExport = null
     },
     fail(err, fallback) { if (this.denied(err)) this.clearPrivate(); return gradeError(err, fallback) },
     fmt(s) { return s ? s.replace('T', ' ').slice(0, 16) : '' },
+    goCollegePrecheck() { return this.$router.push({ name: 'aa-archive-precheck', query: this.current?.termId ? { termId: String(this.current.termId) } : {} }) },
     async load(page = 1, append = false) {
       const c = this.capture(), seq = ++this.listSeq
       if (append) this.loadingMore = true; else this.loading = true
+      this.listError = ''
       try {
         const res = await api.listBatches({ status: 'ARCHIVED', page, pageSize: this.pagination.pageSize })
         if (!this.tokenValid(c) || seq !== this.listSeq) return
@@ -175,31 +189,36 @@ export default {
         this.pagination.total = Number.isFinite(res.data.total) ? res.data.total : this.rows.length
         if (!append && !this.current && this.rows.length) await this.select(this.rows[0])
       } catch (err) {
-        if (this.tokenValid(c) && seq === this.listSeq) toast.error(this.fail(err, '已归档批次加载失败'))
+        if (this.tokenValid(c) && seq === this.listSeq) this.listError = this.fail(err, '已归档批次加载失败')
       } finally {
         if (this.tokenValid(c) && seq === this.listSeq) { this.loading = false; this.loadingMore = false }
       }
     },
     loadMore() { if (!this.loadingMore && this.rows.length < this.pagination.total) this.load(this.pagination.page + 1, true) },
+    retryDetail() { if (this.selectedBatchId) return this.select({ batchId: this.selectedBatchId }) },
     async select(b) {
       if (this.exporting || this.pendingExport) return
       const batchId = String(b?.batchId || ''), c = this.capture(batchId), seq = ++this.detailSeq
       if (!batchId) return
+      this.selectedBatchId = batchId
+      this.current = null; this.items = []; this.downloadLog = []; this.detailError = ''; this.logError = ''; this.logSeq++; this.logLoading = false
       try {
         const res = await api.getBatch(batchId)
         if (!this.tokenValid(c) || seq !== this.detailSeq) return
         if (res.code !== 0) throw res
         if (String(res.data?.batchId) !== batchId || res.data?.status !== 'ARCHIVED' || !Array.isArray(res.data?.items)) throw { code: 503 }
         this.current = res.data; this.items = res.data.items; this.downloadLog = []
-        await this.loadLog(batchId)
+        if (!this.isCollegeScope) await this.loadLog(batchId)
       } catch (err) {
-        if (this.tokenValid(c) && seq === this.detailSeq) toast.error(this.fail(err, '归档批次加载失败'))
+        if (this.tokenValid(c) && seq === this.detailSeq) this.detailError = this.fail(err, '归档批次加载失败')
       }
     },
     async loadLog(requestedId = this.current?.batchId) {
+      if (this.isCollegeScope) return false
       const batchId = String(requestedId || ''), c = this.capture(batchId), seq = ++this.logSeq
       if (!batchId || String(this.current?.batchId) !== batchId) return false
       this.logLoading = true
+      this.logError = ''; this.downloadLog = []
       try {
         const res = await api.downloadLog(batchId)
         if (!this.tokenValid(c) || seq !== this.logSeq || String(this.current?.batchId) !== batchId) return false
@@ -207,19 +226,22 @@ export default {
         this.downloadLog = res.data
         return true
       } catch (err) {
-        if (this.tokenValid(c) && seq === this.logSeq) toast.error(this.fail(err, '下载记录读取失败'))
+        if (this.tokenValid(c) && seq === this.logSeq) {
+          this.logError = this.fail(err, '下载记录读取失败')
+          if (this.denied(err)) this.listError = this.logError
+        }
         return false
       } finally {
         if (this.tokenValid(c) && seq === this.logSeq) this.logLoading = false
       }
     },
     openExport(category) {
-      if (!this.current || this.current.status !== 'ARCHIVED' || this.exporting || this.pendingExport) return
+      if (this.isCollegeScope || !this.current || this.current.status !== 'ARCHIVED' || this.exporting || this.pendingExport) return
       this.pendingCategory = category
       this.exportPurpose = ''; this.exportError = ''; this.exportVisible = true
     },
     quickExport() {
-      if (!this.current || this.exporting || this.pendingExport) return
+      if (this.isCollegeScope || !this.current || this.exporting || this.pendingExport) return
       this.pendingCategory = null
       this.exportError = ''
       this.exportVisible = false
@@ -227,6 +249,7 @@ export default {
     },
     closeExport() { if (!this.exporting) this.exportVisible = false },
     async doExport() {
+      if (this.isCollegeScope) return
       if (!this.exportPurpose || this.exportPurpose.trim().length < 5) { this.exportError = '用途至少5字'; return }
       if (!this.current || this.current.status !== 'ARCHIVED' || this.exporting || this.pendingExport) return
       const frozen = { batchId: String(this.current.batchId), batchName: String(this.current.batchName || '归档批次'), category: this.pendingCategory ? String(this.pendingCategory) : '', purpose: this.exportPurpose.trim() }
@@ -236,6 +259,7 @@ export default {
         const before = await api.getBatch(frozen.batchId)
         if (!this.tokenValid(c)) return
         if (before?.code !== 0 || String(before.data?.batchId) !== frozen.batchId || before.data?.status !== 'ARCHIVED' || !Array.isArray(before.data?.items)) throw before
+        if (before.data.scopeType === 'COLLEGE') { this.current = before.data; this.items = []; this.downloadLog = []; this.pendingExport = null; this.exportNotice = ''; this.exportVisible = false; return }
         if (frozen.category && !before.data.items.some((item) => item.domain === frozen.category && Number(item.recordCount) > 0)) throw { code: 409 }
         let res
         try { res = frozen.category ? await api.exportItem(frozen.batchId, frozen.category, frozen.purpose) : await api.exportAll(frozen.batchId, frozen.purpose) } catch (err) { res = err }
@@ -274,14 +298,15 @@ export default {
 .aaex-stage-rail small { font-size:11px;line-height:1.35; }
 .aaex-stage-rail .is-done b { color:#26875f;border-color:#b9e4d1;background:#effaf5; }
 .aaex-stage-rail .is-current b { color:#fff;border-color:var(--primary-color,#2563eb);background:var(--primary-color,#2563eb); }
-.aaex-object-card { display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;margin-bottom:16px;padding:16px;border:1px solid var(--border-color,#dbe3ee);border-left:3px solid var(--primary-color,#2563eb);border-radius:10px;background:var(--bg-card,#fff); }
+.aaex-object-card { display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:24px;margin-bottom:16px;padding:16px;border:1px solid var(--border-color,#dbe3ee);border-left:3px solid var(--primary-color,#2563eb);border-radius:10px;background:var(--bg-card,#fff); }
+.aaex-object-card > * { min-width:0; }
 .aaex-object-card small,.aaex-object-card p,.aaex-request-card p,.aaex-server-note { color:var(--text-secondary,#64748b);font-size:12px; }
 .aaex-object-card h2 { margin:5px 0;font-size:18px; }
 .aaex-object-card p { margin:0; }
-.aaex-object-card dl { display:grid;grid-template-columns:repeat(2,minmax(130px,1fr));gap:10px 18px;margin:0; }
+.aaex-object-card dl { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px;margin:0; }
 .aaex-object-card dl div { display:grid;gap:3px; }
 .aaex-object-card dt { color:var(--text-tertiary,#94a3b8);font-size:11px; }
-.aaex-object-card dd { margin:0;font-size:13px; }
+.aaex-object-card dd { margin:0;font-size:13px;overflow-wrap:anywhere; }
 .aaex-request-grid { display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:16px;margin-bottom:16px; }
 .aaex-request-card,.aaex-scope-card { border:1px solid var(--border-color,#dbe3ee);border-radius:10px;background:var(--bg-card,#fff); }
 .aaex-request-card header,.aaex-request-card footer,.aaex-scope-card h3 { padding:14px 16px;border-bottom:1px solid var(--border-color,#dbe3ee); }
@@ -308,4 +333,5 @@ export default {
 .aaex-section-title { font-weight: 500; margin: 16px 0 8px; }
 .aaex-form { display: flex; flex-direction: column; gap: 12px; }
 @media (max-width: 1050px) { .aaex-stage-rail { grid-template-columns:1fr;gap:10px; }.aaex-stage-rail li::after { display:none; }.aaex-object-card,.aaex-request-grid,.aaex-layout { grid-template-columns:1fr; }.aaex-request-fields { grid-template-columns:1fr; }.aaex-request-fields > * { grid-column:auto !important; } }
+@media (max-width: 600px) { .aaex-object-card dl { grid-template-columns:1fr; } }
 </style>

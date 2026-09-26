@@ -33,6 +33,7 @@
           <template #cell-teachingClassName="{ row }">{{ row.teachingClassName || '正式教学班待核对' }}</template>
           <template #cell-teacher="{ row }">{{ row.teacherAuthorityReady && row.teacherNames?.length ? row.teacherNames.join('、') : '正式任课人待核对' }}</template>
           <template #cell-status="{ row }">{{ gradeStatusLabel(row.status) }}</template>
+          <template #cell-responsibility="{ row }"><AcademicObjectResponsibility :object-id="row.gradeTaskId" :responsibility="row.responsibility" :next-step="row.nextStep" /></template>
           <template #cell-deadline="{ row }">{{ row.deadline || '尚未设置' }}</template>
           <template #cell-actions="{ row }"><button class="mp-link" @click="openTask(row)">{{ gradeTaskDestination(row).label }}</button></template>
         </DataTable>
@@ -93,6 +94,8 @@
 </template>
 
 <script>
+import AcademicObjectResponsibility from '../components/AcademicObjectResponsibility.vue'
+
 /** 成绩分析（/admin/academic-affairs/grade-overview）：GET /grade-views/analysis（可按课程/班级分组）+ 导出 xlsx。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
@@ -105,7 +108,7 @@ import { gradeError, gradeStatusLabel, gradeQueueState, gradeTaskDestination } f
 export default {
   name: 'AaGradeOverviewView',
   components: {
-    ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
+    AcademicObjectResponsibility, ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
       AppButton, AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart, AppTermCodePicker
   },
   props: { ctx: { type: Object, required: true } },
@@ -114,7 +117,7 @@ export default {
     return {
       alive: true, readSeq: 0, taskSeq: 0, exportSeq: 0, showAnalysis: false, tasks: [], tasksLoading: false, taskError: '', taskPage: 1, taskTotal: 0, taskStatus: '', taskTerm: '', taskKeyword: '',
       taskStatusOptions: [{ value: '', label: '全部任务' }, ...['NOT_STARTED', 'INPUTTING', 'RETURNED', 'SUBMITTED', 'ACADEMIC_REVIEW', 'PUBLISHED', 'ARCHIVED'].map(value => ({ value, label: gradeStatusLabel(value) }))],
-      taskColumns: [{ key: 'courseName', title: '课程' }, { key: 'termCode', title: '学期' }, { key: 'teachingClassName', title: '正式教学班' }, { key: 'teacher', title: '正式任课教师' }, { key: 'status', title: '录入 / 审核状态' }, { key: 'deadline', title: '提交截止' }, { key: 'actions', title: '下一步' }],
+      taskColumns: [{ key: 'courseName', title: '课程' }, { key: 'termCode', title: '学期' }, { key: 'teachingClassName', title: '正式教学班' }, { key: 'teacher', title: '正式任课教师' }, { key: 'status', title: '录入 / 审核状态' }, { key: 'responsibility', title: '责任接力' }, { key: 'deadline', title: '提交截止' }, { key: 'actions', title: '下一步' }],
       loading: false, error: '', term: '', dimension: '',
       data: { total: null, passRate: null, excellentRate: null, avgScore: null, maxScore: null, minScore: null, distribution: [], rows: [] },
       exportPurpose: '', downloading: false,

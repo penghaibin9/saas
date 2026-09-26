@@ -97,7 +97,7 @@ def _strict_score(value, label: str):
 
 def _task_row(task) -> dict:
     row = _core._task_row(task)
-    row["courseId"] = int(task.course_id) if task.course_id is not None else None
+    row["courseId"] = str(task.course_id) if task.course_id is not None else None
     row["teachingTaskId"] = str(task.teaching_task_id or "")
     row["termId"] = str(task.term_id or "")
     return row
@@ -706,6 +706,7 @@ def publish_grades(task_id, user) -> dict:
             raise AppException("APPROVAL_VERSION_CONFLICT", "成绩已发布")
         if task.status != "ACADEMIC_REVIEW":
             raise AppException("DATA_CONFLICT", "仅学院审核通过（教务终审中）的任务可发布")
+        _core._require_school_review_authority(db, task, user)
         if not task.teaching_task_id:
             raise AppException("DATA_CONFLICT", "管理员特殊补录不能通过普通发布入口生成正式成绩", http_status=409)
 
@@ -835,8 +836,9 @@ def publish_grades(task_id, user) -> dict:
 
         task.publish_at = datetime.utcnow()
         task.academic_reviewed_at = datetime.utcnow()
-        _name, _role, user_id = _core._op()
-        task.academic_reviewer_id = int(user_id) if str(user_id).isdigit() else None
+        from .academic_affairs_grade_correction_command import _current_user_id
+        task.academic_reviewer_id = _current_user_id(db, user)
+        _core._finish_school_review(db, task)
         _core._audit(
             db,
             "AA_GRADE_TASK",

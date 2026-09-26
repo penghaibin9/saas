@@ -18,10 +18,14 @@ def __getattr__(name):
 
 
 def summary(user, batch_id):
-    from app.models import AaScheduleBatch, AaScheduleItem, AaTeacherAvailability, AaTeachingTask
+    from sqlalchemy import func
+    from app.core.affairs_security import no_data_scope
+    from app.models import AaCourse, AaScheduleBatch, AaScheduleItem, AaTeacherAvailability, AaTeachingTask, AaTeachingTaskBatch
+    from . import academic_affairs_responsibility_service as responsibility
+    from . import academic_affairs_schedule_policy as policy
 
     with _base._base.session() as db:
-        _base._base._ctx(user, db)
+        ctx = _base._base._ctx(user, db)
         batch = db.query(AaScheduleBatch).filter(
             AaScheduleBatch.id == int(batch_id),
             AaScheduleBatch.tenant_id == _base._base._tid(),
@@ -29,7 +33,39 @@ def summary(user, batch_id):
         ).first()
         if not batch:
             raise not_found("课表批次不存在")
+        if ctx.scope_type != "TENANT_ALL" and (ctx.scope_type != "COLLEGE" or
+                not batch.college_id or int(batch.college_id) not in ctx.college_ids):
+            raise no_data_scope("当前身份不能查看该排课批次的完整工作台")
         result = gate_service.evaluate(db, batch)
+        result["schoolGate"] = gate_service.evaluate_school_publish(db, batch) if ctx.scope_type == "TENANT_ALL" else None
+        course_counts = db.query(AaCourse.category, AaCourse.nature, func.count(AaTeachingTask.id)).join(
+            AaTeachingTask, AaTeachingTask.course_id == AaCourse.id).join(
+            AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).filter(
+            AaCourse.tenant_id == _base._base._tid(), AaCourse.is_deleted.is_(False),
+            AaTeachingTask.tenant_id == _base._base._tid(), AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTask.status == "READY", AaTeachingTask.no_auto_schedule.is_(False),
+            AaTeachingTaskBatch.tenant_id == _base._base._tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+            AaTeachingTaskBatch.term_id == int(batch.term_id), AaTeachingTaskBatch.status == "APPROVED",
+            policy.task_scope_condition(db, batch),
+        ).group_by(AaCourse.category, AaCourse.nature).all()
+        result["publicScheduleMode"] = policy.public_schedule_mode(db)
+        result["courseScopeCounts"] = {"public": 0, "professional": 0}
+        for category, nature, count in course_counts:
+            result["courseScopeCounts"]["public" if category == "PUBLIC_BASIC" or nature == "PUBLIC_ELECTIVE" else "professional"] += int(count)
+        result["responsibility"] = None if batch.status in {"SUPERSEDED", "ARCHIVED"} else (
+            responsibility.resolve_organization(db, "COLLEGE", batch.college_id, permission_code="academicAffairs.schedule.edit")
+            if batch.college_id and batch.status == "DRAFT" else
+            responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit"))
+        if result["schoolGate"] is not None:
+            from app.core.permissions import _match
+            from .academic_affairs_grade_correction_command import _current_user_id
+            actor = responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit")
+            if (not _match("academicAffairs.schedule.edit", ctx.permission_codes) or not actor["resolved"]
+                    or str(_current_user_id(db, user)) not in actor["assigneeUserIds"]):
+                result["schoolGate"]["ready"] = False
+                result["schoolGate"]["blockers"].append({"code": "SCHOOL_PUBLISHER_UNRESOLVED",
+                    "message": "当前身份不是有效的学校课表发布责任人，请核对校级任职与排课权限"})
+        result["nextStep"] = None
 
         # 只在同一个事务里为闸门结果补充前 100 个可处理任务的展示字段，
         # 避免再次执行整套冲突/漏排计算导致工作台超时。
@@ -127,6 +163,8 @@ def summary(user, batch_id):
                 "label": "处理教师异议" if teacher_objection_count else "正式发布",
                 "description": "异议清零后再正式发布" if teacher_objection_count else "发布后同步教师、学生四端课表",
             }
+            if not teacher_objection_count and not (result["schoolGate"] or {}).get("ready"):
+                next_action.update(label="核对学校发布条件", description="全校应开任务、公共课与学院课表准备完成后，由校教务正式发布")
         elif result["totalTasks"] == 0 or result["invalidTaskCount"]:
             current_stage_key = "PREPARE"
             next_action = {"code": "TEACHING_TASKS", "label": "完善教学任务", "description": "先完成教师、班级、周学时和周次确认"}

@@ -28,10 +28,8 @@
             <p>{{ workflowObjectMeta }}</p>
             <small>来源：当前正式方案与版本记录；本入口只办理当前阶段动作，不重复建立上游对象。</small>
           </div>
-          <dl>
-            <div><dt>当前责任</dt><dd>{{ currentOwner }}</dd></div>
-            <div><dt>下一责任</dt><dd>{{ nextOwner }}</dd></div>
-          </dl>
+          <AcademicObjectResponsibility v-if="workflowProgram && !workflowEvidenceLoading && !workflowEvidenceError" :object-id="workflowProgram.programId" :responsibility="workflowProgram.responsibility" :next-step="workflowProgram.nextStep" />
+          <p v-else>{{ workflowEvidenceLoading ? '正在读取当前方案责任' : '当前方案责任待重新核对' }}</p>
         </section>
 
         <ol class="aapc-stage-rail" aria-label="培养方案办理阶段">
@@ -66,7 +64,9 @@
 
           <section v-else class="aapc-version-panel">
             <header><h2>当前对象的版本链</h2><button class="mp-link" @click="viewChangeLog(activeProgram)">查看全部变更记录</button></header>
-            <ol v-if="workflowChangeLog.length" class="aapc-version-list">
+            <LoadingState v-if="workflowEvidenceLoading" />
+            <ErrorState v-else-if="workflowEvidenceError" :description="workflowEvidenceError" @retry="loadWorkflowEvidence" />
+            <ol v-else-if="workflowChangeLog.length" class="aapc-version-list">
               <li v-for="(item, index) in workflowChangeLog" :key="`${item.occurredAt}-${index}`">
                 <span class="aapc-version-dot"></span>
                 <div><small>{{ item.occurredAt || '时间由服务端记录' }}</small><strong>{{ changeLogActionLabel(item.action) }}{{ item.detail ? ` · ${item.detail}` : '' }}</strong><p>{{ item.operator || '系统记录' }}{{ item.roleName ? `（${item.roleName}）` : '' }}</p></div>
@@ -378,6 +378,9 @@
 </template>
 
 <script>
+import AcademicObjectResponsibility from '../components/AcademicObjectResponsibility.vue'
+import { currentUserFromToken } from '@/services/http/client'
+
 /** 培养方案 · 控制台（/admin/academic-affairs/programs/console?tab=xxx）：
  * 方案制定 / 方案版本 / 课程模块 / 学分要求 / 实践环节 / 毕业要求 / 方案审核 / 方案发布 / 方案变更 / 方案归档
  * 10 个三级模块共用一个工作台，深链接对齐既有「学院专业班级」「教材管理」控制台模式（navPlan `?tab=` 叶子）。
@@ -412,7 +415,7 @@ const _CHANGE_LOG_ACTION_LABEL = {
 export default {
   name: 'AaProgramConsoleView',
   components: {
-    ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
+    AcademicObjectResponsibility, ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem,
     AppStatusTag, AppConfirmDialog, AppInlineAlert, AppMajorPicker, AppClassPicker, AppProgramPicker
   },
@@ -421,7 +424,7 @@ export default {
     return {
       tab: 'authoring', loading: true, error: '', rows: [],
       activeProgramId: '', workflowProgram: null, workflowEvidence: null, workflowEvidenceLoading: false,
-      workflowEvidenceError: '', workflowChangeLog: [], workflowRequestRevision: 0,
+      workflowEvidenceError: '', workflowChangeLog: [], workflowRequestRevision: 0, workflowDisposed: false,
       pagination: null,
       tabs: [
         { key: 'authoring', label: '方案制定' },
@@ -483,16 +486,7 @@ export default {
       const majorLabel = this.activeProgram.majorName || (this.activeProgram.majorId ? `专业 #${this.activeProgram.majorId}` : '专业待核验')
       return `${majorLabel} · ${this.activeProgram.gradeYear ? `${this.activeProgram.gradeYear}级` : '年级待核验'} · v${this.activeProgram.version} · ${this.statusLabel(this.activeProgram.status)}`
     },
-    currentOwner() {
-      if (this.tab === 'publish') return '教务发布岗'
-      if (this.tab === 'changeStatus') return '专业负责人 / 学院教务'
-      return this.activeProgram?.status === 'ACADEMIC_REVIEW' ? '教务审核岗' : '学院审核岗'
-    },
-    nextOwner() {
-      if (this.tab === 'review') return this.activeProgram?.status === 'ACADEMIC_REVIEW' ? '教务发布岗 → 教学任务生成岗' : '教务审核岗 → 教务发布岗'
-      if (this.tab === 'publish') return '年级绑定岗 → 教学任务生成岗'
-      return '学院审核岗 → 教务发布岗'
-    },
+    workflowIdentity() { return JSON.stringify([currentUserFromToken(), this.ctx.ctxKey, this.ctx.currentRole, this.ctx.permissionPatterns, this.ctx.dataScope, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
     dutyExplanation() {
       if (this.tab === 'review') return '先核对课程身份、课程结构、学分学时、专业年级、实践环节和毕业要求，再执行当前审核节点。'
       if (this.tab === 'publish') return '发布只绑定已审核通过的正式方案版本；发布后内容只读，修改必须建立新版本。'
@@ -506,10 +500,10 @@ export default {
       const card = (title, fields, ok, detail) => {
         const blockers = issues.filter((item) => item.level === 'BLOCKER' && fields.includes(item.fieldPath))
         const warnings = issues.filter((item) => item.level === 'WARNING' && fields.some((field) => String(item.fieldPath || '').includes(field)))
-        if (!validation) return { title, tone: 'default', label: '待核验 · UNKNOWN', detail }
-        if (!ok || blockers.length) return { title, tone: 'danger', label: '阻断 · BLOCKED', detail: blockers[0]?.message || detail }
-        if (warnings.length) return { title, tone: 'warning', label: '提醒 · WARNING', detail: warnings[0]?.message || detail }
-        return { title, tone: 'success', label: '已核对 · PASS', detail }
+        if (!validation) return { title, tone: 'default', label: '待核验', detail }
+        if (!ok || blockers.length) return { title, tone: 'danger', label: '存在阻断', detail: blockers[0]?.message || detail }
+        if (warnings.length) return { title, tone: 'warning', label: '需要关注', detail: warnings[0]?.message || detail }
+        return { title, tone: 'success', label: '已核对', detail }
       }
       return [
         card('课程身份与版本', ['courseId', 'courses'], Number(validation?.courseCount) > 0, `${validation?.courseCount ?? program.courseCount ?? 0} 门课程来自稳定课程版本。`),
@@ -572,6 +566,7 @@ export default {
     }
   },
   watch: {
+    workflowIdentity() { this.workflowRequestRevision++; this.workflowProgram = null; this.workflowEvidence = null; this.workflowChangeLog = []; if (this.isWorkflowView) this.loadWorkflowEvidence() },
     '$route.query.tab': async function (nextTab) {
       if (!nextTab || nextTab === this.tab || !this.tabs.some((item) => item.key === nextTab)) return
       this.tab = nextTab
@@ -610,7 +605,7 @@ export default {
     }
     this.reload()
   },
-  beforeUnmount() { this.workflowRequestRevision++ },
+  beforeUnmount() { this.workflowDisposed = true; this.workflowRequestRevision++ },
   methods: {
     hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
     reviewStatusColor, canNewVersion, availableChangeActions,
@@ -651,7 +646,8 @@ export default {
       this.workflowProgram = null
       const programId = this.activeProgram?.programId
       if (!programId) return
-      const revision = ++this.workflowRequestRevision
+      const revision = ++this.workflowRequestRevision, identity = this.workflowIdentity, tab = this.tab
+      const current = () => !this.workflowDisposed && revision === this.workflowRequestRevision && identity === this.workflowIdentity && tab === this.tab && programId === this.activeProgram?.programId
       this.workflowEvidenceLoading = true
       this.workflowEvidenceError = ''
       this.workflowEvidence = null
@@ -660,18 +656,18 @@ export default {
         const [validationRes, logRes, programRes] = await Promise.all([
           programQualityApi.validate(programId),
           this.tab === 'changeStatus' ? academicAffairsApi.getProgramChangeLog(programId) : Promise.resolve({ code: 0, data: { items: [] } }),
-          this.tab === 'review' ? academicAffairsApi.getProgram(programId) : Promise.resolve({ code: 0, data: null })
+          academicAffairsApi.getProgram(programId)
         ])
-        if (revision !== this.workflowRequestRevision) return
-        if (programRes.code === 0 && String(programRes.data?.programId) === String(programId)) this.workflowProgram = programRes.data
-        else if (this.tab === 'review') this.workflowEvidenceError = programRes.message || '审核节点未能读取，请重试'
+        if (!current()) return
+        if (programRes.code === 0 && programRes.data?.programId === programId) this.workflowProgram = programRes.data
+        else this.workflowEvidenceError = programRes.message || '当前方案详情未能读取，请重试'
         if (validationRes.code === 0) this.workflowEvidence = validationRes.data
         else this.workflowEvidenceError = validationRes.message || '方案校验读取失败，请重试'
         if (logRes.code === 0) this.workflowChangeLog = logRes.data?.items || []
       } catch (error) {
-        if (revision === this.workflowRequestRevision) this.workflowEvidenceError = error?.message || '方案证据读取失败，请重试'
+        if (current()) this.workflowEvidenceError = error?.message || '方案证据读取失败，请重试'
       } finally {
-        if (revision === this.workflowRequestRevision) this.workflowEvidenceLoading = false
+        if (current()) this.workflowEvidenceLoading = false
       }
     },
     switchTab(k) {

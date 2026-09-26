@@ -37,7 +37,6 @@ from . import academic_affairs_grade_message_event_guard as message_event_guard
 from . import academic_affairs_grade_todo_teacher_relation_guard as todo_guard
 
 _REMINDABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
-_ADMIN_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}
 _MILESTONES = (1, 3, 7)
 _MAX_SCAN = 2000
 _MAX_DIGEST_ITEMS = 50
@@ -105,7 +104,6 @@ def _admin_scopes(db) -> dict[int, set[int] | None]:
             UserRole.status == "ACTIVE",
             UserRole.is_deleted.is_(False),
             Role.tenant_id == grade_core._tid(),
-            Role.role_code.in_(sorted(_ADMIN_ROLES)),
             Role.status == "ACTIVE",
             Role.is_deleted.is_(False),
         )
@@ -119,15 +117,19 @@ def _admin_scopes(db) -> dict[int, set[int] | None]:
             continue
         role_code = str(role_row.role_code or "").upper()
         scope = build_affairs_context({
-            "userId": f"u_{uid}",
+            "userId": str(uid),
+            "activeContextId": f"role:{role_row.id}",
             "loginName": user_row.login_name or "",
             "userType": user_row.user_type or "",
             "currentRoleCode": role_code,
         }, db)
+        from app.core.permissions import _match
         if scope.scope_type == "TENANT_ALL":
-            result[uid] = None
+            if _match("academicAffairs.grade.publish", scope.permission_codes):
+                result[uid] = None
             continue
-        if role_code != "COLLEGE_ADMIN" or scope.scope_type != "COLLEGE" or not scope.college_ids:
+        if (scope.scope_type != "COLLEGE" or not scope.college_ids
+                or not _match("academicAffairs.grade.collegeReview", scope.permission_codes)):
             continue
         current = result.setdefault(uid, set())
         if current is not None:
@@ -141,17 +143,13 @@ LEFT JOIN t_aa_teaching_task tt
   ON tt.id=gt.teaching_task_id AND tt.tenant_id=gt.tenant_id AND tt.is_deleted=0
 LEFT JOIN t_aa_teaching_task_batch ttb
   ON ttb.id=tt.batch_id AND ttb.tenant_id=gt.tenant_id AND ttb.is_deleted=0
-LEFT JOIN t_class cls
-  ON cls.id=gt.class_id AND cls.tenant_id=gt.tenant_id AND cls.is_deleted=0
-LEFT JOIN t_major maj
-  ON maj.id=cls.major_id AND maj.tenant_id=gt.tenant_id AND maj.is_deleted=0
 LEFT JOIN t_aa_course course
-  ON course.id=gt.course_id AND course.tenant_id=gt.tenant_id AND course.is_deleted=0
+  ON course.id=COALESCE(gt.course_id, tt.course_id) AND course.tenant_id=gt.tenant_id AND course.is_deleted=0
 WHERE gt.tenant_id=:tenant_id AND gt.is_deleted=0
   AND gt.status IN ('NOT_STARTED','INPUTTING','RETURNED')
   AND gt.deadline_at IS NOT NULL AND gt.deadline_at <= UTC_TIMESTAMP()
 """
-_COLLEGE_EXPR = "COALESCE(ttb.college_id, maj.college_id, course.owner_college_id)"
+_COLLEGE_EXPR = "COALESCE(course.owner_college_id, ttb.college_id)"
 
 
 def _overdue_total(db) -> int:

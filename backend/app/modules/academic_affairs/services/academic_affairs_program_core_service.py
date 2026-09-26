@@ -189,6 +189,15 @@ def get_program(program_id, user, *, review_node_reader=None) -> dict:
                          for binding, document in rows]
         d["nationalStandards"] = standards
         d["nationalStandardBound"] = bool(standards)
+        from .academic_affairs_responsibility_service import resolve_program
+        d["responsibility"] = resolve_program(db, p) if p.status in {
+            "DRAFT", "RETURNED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW"} else None
+        d["nextStep"] = {
+            "DRAFT": {"code": "COLLEGE_REVIEW", "label": "提交本学院审核"},
+            "RETURNED": {"code": "COLLEGE_REVIEW", "label": "修改后重新提交学院审核"},
+            "COLLEGE_REVIEW": {"code": "ACADEMIC_REVIEW", "label": "学院审核通过后交校教务审核"},
+            "ACADEMIC_REVIEW": {"code": "PUBLISHED", "label": "校教务审核通过后发布"},
+        }.get(p.status)
         return d
 
 

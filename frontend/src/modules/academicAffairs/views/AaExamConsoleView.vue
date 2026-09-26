@@ -67,6 +67,8 @@
             </div>
           </div>
 
+          <LoadingState v-if="batchDetailLoading" />
+          <AppButton v-if="readinessError" variant="ghost" @click="refresh">重新读取当前批次</AppButton>
           <AppInlineAlert
             v-if="readinessError"
             type="danger"
@@ -232,7 +234,7 @@
         <div class="aaexam-panel-head">
           <div>
             <h2>已封存考试批次</h2>
-            <p>仅列出正式进入 ARCHIVED 状态的批次，课程与异常摘要来自归档事实。</p>
+            <p>仅列出正式进入已归档状态的批次，课程与异常摘要来自归档事实。</p>
           </div>
           <span>共 {{ modePagination.total }} 个</span>
         </div>
@@ -447,6 +449,7 @@
 </template>
 
 <script>
+import { academicFlowOwner, academicFlowNextOwner } from '../config/academicFlowRegistry.js'
 /** 考务管理 · 教务处控制台：批次生命周期 + 批量圈课 + 两段式自动排考 + 发布就绪。 */
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
@@ -492,7 +495,7 @@ export default {
       patrolVisible: false, patrols: [], patrolForm: { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }, patrolError: '', teacherKeyQuery: { valueField: 'loginName' },
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
       deferConfirmVisible: false, deferDecisionAction: '', deferDecisionRow: null,
-      autoArranging: false, autoResult: null, autoTimeReceipt: null, autoSeq: 0, loadSeq: 0, detailSeq: 0, initialized: false,
+      autoArranging: false, autoResult: null, autoTimeReceipt: null, autoSeq: 0, loadSeq: 0, detailSeq: 0, batchDetailLoading: false, initialized: false,
       courseColumns: [
         { key: 'course', title: '课程/班级' }, { key: 'schedule', title: '考试时间' },
         { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
@@ -537,7 +540,7 @@ export default {
         const row = this.selectedDefer
         return {
           title: row ? `${row.studentName || '学生'} · ${row.courseName || '考试课程'}` : '缓考审核责任队列',
-          objectId: row ? `DEFER-${row.deferId}` : `${this.modePagination.total} 条正式申请`,
+          objectId: row ? `缓考申请 #${row.deferId}` : `${this.modePagination.total} 条正式申请`,
           source: '考务管理 / 缓考审批', status: row ? this.deferStatusLabel(row.status) : '等待选择申请',
           owner: row ? this.deferOwner(row.status) : (this.ctx.currentRole.roleName || '当前受理岗位'),
           blocker: row?.returnReason || (row?.status === 'APPROVED' ? '审核链已完成' : '无已知阻断'),
@@ -547,18 +550,18 @@ export default {
       if (this.viewMode === 'archive') {
         const row = this.selectedArchive
         return {
-          title: row?.batchName || '考务归档清单', objectId: row ? `EXAM-BATCH-${row.batchId}` : `${this.modePagination.total} 个封存批次`,
-          source: '考务管理 / 考务归档', status: row ? '已归档' : '只读核验', owner: '考务档案管理岗',
-          blocker: row && this.archiveHasRisk(row) ? '封存摘要含异常计数' : '无已知阻断', blocked: !!(row && this.archiveHasRisk(row)), nextOwner: '档案查阅与受控审计'
+          title: row?.batchName || '考务归档清单', objectId: row ? `考试批次 #${row.batchId}` : `${this.modePagination.total} 个封存批次`,
+          source: '考务管理 / 考务归档', status: row ? '已归档' : '只读核验', owner: this.batchDetailLoading ? '正在读取当前批次责任' : academicFlowOwner(row?.responsibility),
+          blocker: this.readinessError || (row && this.archiveHasRisk(row) ? '封存摘要含异常计数' : '无已知阻断'), blocked: !!this.readinessError || !!(row && this.archiveHasRisk(row)), nextOwner: academicFlowNextOwner(row?.nextStep)
         }
       }
       const status = this.current?.status
       const publishStage = status === 'COURSE_CONFIRMED'
-      const blocker = publishStage ? (this.readinessError || (this.readiness && !this.readiness.canPublish ? (this.readiness.blockingReasons || []).join('；') : '')) : ''
+      const blocker = this.readinessError || (publishStage && this.readiness && !this.readiness.canPublish ? (this.readiness.blockingReasons || []).join('；') : '')
       return {
-        title: this.current?.batchName || '考试批次责任队列', objectId: this.current ? `EXAM-BATCH-${this.current.batchId}` : `${this.pagination.total} 个批次`,
+        title: this.current?.batchName || '考试批次责任队列', objectId: this.current ? `考试批次 #${this.current.batchId}` : `${this.pagination.total} 个批次`,
         source: '考务管理 / 考务安排', status: this.current ? this.statusLabel(status) : '等待选择批次',
-        owner: this.examOwner(status), blocker: blocker || (publishStage && this.readiness?.canPublish ? '本次就绪检查通过，发布时再次校验' : (this.current ? '按当前阶段核验，尚无本次就绪结论' : '选择批次后核验')), blocked: !!blocker, nextOwner: this.examNextOwner(status)
+        owner: this.batchDetailLoading ? '正在读取当前批次责任' : academicFlowOwner(this.current?.responsibility), blocker: blocker || (publishStage && this.readiness?.canPublish ? '本次就绪检查通过，发布时再次校验' : (this.current ? '按当前阶段核验，尚无本次就绪结论' : '选择批次后核验')), blocked: !!blocker, nextOwner: this.batchDetailLoading ? '正在读取下一责任' : academicFlowNextOwner(this.current?.nextStep)
       }
     },
     deferDecisionTitle() {
@@ -622,22 +625,6 @@ export default {
       if (s === 'ARCHIVED') return 'default'
       return 'primary'
     },
-    examOwner(status) {
-      if (status === 'DRAFT') return '考务批次管理岗'
-      if (['COURSE_CONFIRMED', 'ARRANGED'].includes(status)) return '考务编排岗'
-      if (status === 'PUBLISHED') return '考务运行岗'
-      if (status === 'FINISHED') return '考务归档岗'
-      if (status === 'ARCHIVED') return '考务档案管理岗'
-      return this.ctx.currentRole.roleName || '考务批次管理岗'
-    },
-    examNextOwner(status) {
-      if (status === 'DRAFT') return '学院课程确认岗 → 考务编排岗'
-      if (['COURSE_CONFIRMED', 'ARRANGED'].includes(status)) return '考务发布岗'
-      if (status === 'PUBLISHED') return '监考与异常处置岗'
-      if (status === 'FINISHED') return '考务归档岗'
-      if (status === 'ARCHIVED') return '档案查阅岗'
-      return '学院课程确认岗 → 考务编排岗'
-    },
     deferStatusLabel(status) { return DEFER_LABEL[status] || '状态待确认' },
     deferStatusType(status) {
       if (status === 'APPROVED') return 'success'
@@ -669,7 +656,7 @@ export default {
       this.autoSeq++; this.detailSeq++; this.loadSeq++
       this.current = null; this.courses = []; this.coursePagination.page = 1; this.coursePagination.total = 0; this.stats = null; this.readiness = null; this.readinessError = ''
       this.autoTimeReceipt = null; this.autoArranging = false; this.rows = []; this.deferRows = []; this.archiveRows = []
-      this.selectedDefer = null; this.selectedArchive = null; this.modePagination.page = 1
+      this.selectedDefer = null; this.selectedArchive = null; this.batchDetailLoading = false; this.modePagination.page = 1
       this.deferConfirmVisible = false; this.deferDecisionAction = ''; this.deferDecisionRow = null
       this.load()
     },
@@ -699,7 +686,7 @@ export default {
           this.selectedDefer = list.find(row => row.deferId === this.selectedDefer?.deferId) || list[0] || null
         } else if (this.viewMode === 'archive') {
           this.archiveRows = list; this.modePagination.total = Number(res.data?.total || 0)
-          this.selectedArchive = list.find(row => row.batchId === this.selectedArchive?.batchId) || list[0] || null
+          await this.selectArchive(list.find(row => row.batchId === this.selectedArchive?.batchId) || list[0] || null)
         } else { this.rows = list; this.pagination.total = Number(res.data?.total || 0) }
       } else this.error = res.message
       } catch (error) { if (current()) this.error = error?.message || '考试批次加载失败' }
@@ -707,7 +694,20 @@ export default {
     },
     onModePageChange(page) { this.modePagination.page = Number(page || 1); this.load() },
     selectDefer(row) { this.selectedDefer = row },
-    selectArchive(row) { this.selectedArchive = row },
+    async selectArchive(row) {
+      const seq = ++this.detailSeq, identity = this.identityKey
+      this.selectedArchive = row ? { ...row, responsibility: null, nextStep: null } : null
+      this.readinessError = ''; this.batchDetailLoading = !!row
+      if (!row) return
+      const current = () => seq === this.detailSeq && identity === this.identityKey && row.batchId === this.selectedArchive?.batchId
+      try {
+        const response = await api.getBatch(row.batchId)
+        if (!current()) return
+        if (response.code !== 0 || response.data?.batchId !== row.batchId) { this.readinessError = response.message || '当前归档批次详情未能读取，请重新选择'; return }
+        this.selectedArchive = { ...row, ...response.data }
+      } catch (error) { if (current()) this.readinessError = error?.message || '当前归档批次详情读取失败' }
+      finally { if (current()) this.batchDetailLoading = false }
+    },
     openDeferDecision(row, action) {
       if (!this.canReviewDefer(row) || this.saving) return
       this.selectedDefer = row
@@ -735,19 +735,28 @@ export default {
       const seq = ++this.detailSeq, id = this.current.batchId, identity = this.identityKey
       const current = () => seq === this.detailSeq && id === this.current?.batchId && identity === this.identityKey
       this.courses = []; this.stats = null; this.readiness = null; this.readinessError = ''
+      this.batchDetailLoading = true
+      this.current = { ...this.current, status: null, responsibility: null, nextStep: null }
       try {
-      const [cs, st, ready] = await Promise.all([
+      const [detail, cs, st, ready] = await Promise.all([
+        api.getBatch(id),
         api.listCourses(id, { page: this.coursePagination.page, pageSize: this.coursePagination.pageSize }),
         api.batchStats(id),
         this.schoolExamScope ? convenienceApi.getReadiness(id) : Promise.resolve({ code: 0, data: null })
       ])
       if (!current()) return
+      if (detail.code !== 0 || detail.data?.batchId !== id) {
+        this.readinessError = detail.code !== 0 ? (detail.message || '当前考试批次读取失败') : '返回的考试批次不一致，请重新选择'
+        return
+      }
+      this.current = detail.data
       this.courses = cs.code === 0 ? cs.data.list : []
       this.coursePagination.total = cs.code === 0 ? Number(cs.data?.total || 0) : 0
       this.stats = st.code === 0 ? st.data : null
       this.readiness = ready.code === 0 ? ready.data : null
       this.readinessError = cs.code !== 0 ? cs.message : st.code !== 0 ? st.message : ready.code !== 0 ? ready.message : ''
       } catch (error) { if (current()) this.readinessError = error?.message || '考试详情加载失败' }
+      finally { if (current()) this.batchDetailLoading = false }
     },
     onCoursePageChange(page) { this.coursePagination.page = Number(page || 1); this.refresh() },
     openCreate() { this.form = { batchName: '', termId: '' }; this.formError = ''; this.createVisible = true },
