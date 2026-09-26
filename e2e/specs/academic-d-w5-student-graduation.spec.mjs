@@ -44,10 +44,14 @@ async function seedStudentAbnormalGraduationAudit(page, testInfo) {
   expect(token, 'academic admin access token must remain available for D-W5 seed').toBeTruthy()
 
   const suffix = `${String(Date.now()).slice(-7)}-r${testInfo.retry}`
+  const term = await expectApiOk(await browserApi(page, token, 'GET', '/academic-affairs/terms/current'), 'read D-W5 formal current term')
+  expect(term?.termId, 'D-W5 requires an existing formal current term').toMatch(/^[1-9]\d*$/)
   const batch = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/graduation-audit-batches', {
+    termId: term.termId,
     batchName: `D-W5学生毕业资格-${suffix}`,
     gradeYear: '2024'
   }), 'create D-W5 graduation audit batch')
+  expect(batch.termId).toBe(term.termId)
 
   await expectApiOk(await browserApi(
     page,

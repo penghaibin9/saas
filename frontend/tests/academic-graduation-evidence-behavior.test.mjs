@@ -1,14 +1,19 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { reactive } from 'vue'
 import * as graduation from '../src/modules/academicAffairs/constants/grade-graduation.js'
 import { academicStatusLabel } from '../src/modules/academicAffairs/constants/academic-display.constants.js'
 
-function instance() {
-  const source = fs.readFileSync(new URL('../src/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue',import.meta.url),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1]
+function definition(name, overrides = {}) {
+  const source = fs.readFileSync(new URL(`../src/modules/academicAffairs/views/${name}.vue`,import.meta.url),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1]
   const bindings=[...source.matchAll(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm)].flatMap(([,binding])=>binding.trim().startsWith('{')?binding.replace(/[{}]/g,'').split(',').map(s=>s.trim()).filter(Boolean):[binding.trim()])
-  const deps={...graduation,academicStatusLabel,currentUserFromToken:()=>({})}
-  const component=new Function(...bindings,source.replace(/^import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*$/gm,'').replace('export default','return'))(...bindings.map(key=>deps[key]??{}))
+  const deps={...graduation,academicStatusLabel,currentUserFromToken:()=>({}),...overrides}
+  return new Function(...bindings,source.replace(/^import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*$/gm,'').replace('export default','return'))(...bindings.map(key=>deps[key]??{}))
+}
+
+function instance() {
+  const component=definition('AaGraduationAuditConsoleView')
   const vm={...component.data(),$route:{query:{tab:'results'}},ctx:{}}
   for(const [key,fn] of Object.entries(component.methods))vm[key]=fn.bind(vm)
   for(const [key,fn] of Object.entries(component.computed))Object.defineProperty(vm,key,{get:()=>fn.call(vm)})
@@ -24,6 +29,156 @@ test('浏览结果或归档页不会把未完成的学院审核和终审打勾',
   assert.equal(vm.stageIndex,3)
   vm.batches[0].concluded=2;assert.equal(vm.stageIndex,5)
   vm.batches[0].status='ARCHIVED';assert.equal(vm.stageIndex,6)
+})
+
+function batchInstance(api = {}, query = {}, canManage = true) {
+  const errors=[],successes=[],writes=[]
+  const component=definition('AaGraduationBatchView',{
+    academicAffairsApi:{listGradBatches:async()=>({code:0,data:{list:[],total:0}}),...api},
+    matchPermission:()=>canManage,
+    gradeError:(_err,fallback)=>fallback,
+    toast:{error:value=>errors.push(value),success:value=>successes.push(value)}
+  })
+  const page=reactive({...component.data(),ctx:{currentRole:{roleCode:'SCHOOL_ADMIN'},dataScope:{scope:'TENANT_ALL'},permissionPatterns:[]},$route:{path:'/admin/academic-affairs/graduation',query}})
+  page.$router={replace:async target=>{writes.push(target);page.$route.query=target.query}}
+  for(const [key,fn] of Object.entries(component.methods))page[key]=fn.bind(page)
+  for(const [key,fn] of Object.entries(component.computed))Object.defineProperty(page,key,{get:()=>fn.call(page)})
+  return {page,component,errors,successes,writes}
+}
+
+test('只读毕业账号展示批次正式学期，不额外要求创建页学期查询权限',async()=>{
+  const {page}=batchInstance({getCurrentTerm:()=>assert.fail('只读账号不初始化创建表单')},{},false)
+  await page.loadDraftTerm()
+  assert.equal(page.termError,'');assert.equal(page.termLoading,false)
+  assert.equal(page.batchTermLabel({termId:'51',termName:'正式学期'}),'正式学期')
+})
+
+test('毕业创建读取合法学期深链，保留大整数字符串且不回退当前学期',async()=>{
+  const calls=[],termId='9007199254740993'
+  const {page}=batchInstance({getTermDetail:async id=>{calls.push(id);return {code:0,data:{termId:id,termName:'正式第二学期'}}},getCurrentTerm:()=>assert.fail('深链不能改用当前学期')},{termId})
+  await page.loadDraftTerm()
+  assert.equal(page.draft.termId,termId)
+  assert.deepEqual(calls,[termId])
+  assert.equal(page.termLoading,false)
+  assert.equal(page.termError,'')
+})
+
+test('无效或不可读取的学期深链清空旧选择并阻止创建',async()=>{
+  let reads=0,writes=0
+  const {page}=batchInstance({getTermDetail:async()=>{reads++;throw {code:403}},getCurrentTerm:()=>assert.fail('不可回退'),createGradBatch:async()=>{writes++}},{termId:['51','52']})
+  page.draft={batchName:'审核',gradeYear:'2023',majorId:'',termId:'51'}
+  await page.loadDraftTerm();await page.createBatch()
+  assert.equal(reads,0);assert.equal(writes,0);assert.equal(page.draft.termId,'');assert.ok(page.termError)
+  page.$route.query={termId:'52'}
+  await page.loadDraftTerm();await page.createBatch()
+  assert.equal(reads,1);assert.equal(writes,0);assert.equal(page.termLoading,false);assert.ok(page.termError)
+})
+
+test('没有深链时读取正式当前学期，用户选择后刷新保留所选学期',async()=>{
+  const {page,writes}=batchInstance({getCurrentTerm:async()=>({code:0,data:{termId:'51'}})})
+  await page.loadDraftTerm();assert.equal(page.draft.termId,'51')
+  page.selectTerm('52')
+  assert.equal(writes[0].query.termId,'52')
+  const refreshed=batchInstance({getTermDetail:async id=>({code:0,data:{termId:id}})},writes[0].query)
+  await refreshed.page.loadDraftTerm();assert.equal(refreshed.page.draft.termId,'52')
+  page.resetBatch();assert.equal(page.draft.termId,'52')
+})
+
+test('用户选择、切换身份及卸载均拒收旧学期响应',async()=>{
+  let resolve
+  const {page,component}=batchInstance({getCurrentTerm:()=>new Promise(done=>{resolve=done}),getTermDetail:async id=>({code:0,data:{termId:id}})})
+  const old=page.loadDraftTerm()
+  page.selectTerm('52');resolve({code:0,data:{termId:'51'}});await old
+  assert.equal(page.draft.termId,'52');assert.equal(page.termLoading,false)
+  page.$route.query={};const oldSchool=page.loadDraftTerm();const resolveOld=resolve
+  page.ctx.currentRole={roleCode:'OTHER_SCHOOL'};page.clearPrivate();page.$route.query={termId:'53'}
+  await page.loadDraftTerm();resolveOld({code:0,data:{termId:'51'}});await oldSchool
+  assert.equal(page.draft.termId,'53')
+  page.$route.query={};const disposed=page.loadDraftTerm();component.beforeUnmount.call(page)
+  resolve({code:0,data:{termId:'54'}});await disposed
+  assert.equal(page.draft.termId,'')
+})
+
+test('毕业批次创建必须回读同一正式学期，未知结果不自动重发',async()=>{
+  const sent=[],termId='9007199254740993'
+  const readTerm='52'
+  const {page,errors,successes}=batchInstance({
+    createGradBatch:async body=>{sent.push(body);return {code:0,data:{batchId:'22',termId}}},
+    listGradBatches:async()=>({code:0,data:{list:[{batchId:'22',batchName:'正式审核',gradeYear:'2023',majorId:null,termId:readTerm,termName:'正式第二学期'}],total:1}})
+  })
+  page.draft={batchName:'正式审核',gradeYear:'2023',majorId:'',termId}
+  await page.createBatch();await page.createBatch()
+  assert.equal(sent.length,1);assert.equal(sent[0].termId,termId);assert.equal(page.batch,null)
+  assert.equal(page.pendingCommand.kind,'create');assert.equal(page.creating,false);assert.equal(successes.length,0);assert.match(errors[0],/待核实/)
+})
+
+test('未选择或不精确的学期标识不能创建毕业批次',async()=>{
+  let writes=0
+  const {page}=batchInstance({createGradBatch:async()=>{writes++}})
+  page.draft.batchName='正式审核'
+  for(const invalid of ['',null,['51','52'],Number.MAX_SAFE_INTEGER+1]){
+    page.draft.termId=invalid;await page.createBatch()
+  }
+  assert.equal(writes,0);assert.equal(page.pendingCommand,null)
+})
+
+test('创建成功保留正式学期字段、刷新入口及单次命令',async()=>{
+  let writes=0
+  const fresh={batchId:'22',batchName:'正式审核',gradeYear:'2023',majorId:null,termId:'51',termName:'2025-2026学年第二学期'}
+  const {page,successes}=batchInstance({createGradBatch:async()=>{writes++;return {code:0,data:{batchId:'22',termId:'51'}}},listGradBatches:async()=>({code:0,data:{list:[fresh],total:1}})})
+  page.draft={batchName:fresh.batchName,gradeYear:'2023',majorId:'',termId:'51'}
+  await page.createBatch()
+  assert.equal(writes,1);assert.equal(page.pendingCommand,null);assert.equal(page.batch.termId,'51')
+  assert.equal(page.$route.query.termId,'51');assert.equal(successes.length,1)
+  assert.equal(page.batchTermLabel(page.batch),fresh.termName)
+})
+
+test('学期切换后的迟到创建回读不会把旧学期批次带回来',async()=>{
+  let finish
+  const {page,successes}=batchInstance({createGradBatch:async()=>({code:0,data:{batchId:'22'}}),listGradBatches:()=>new Promise(resolve=>{finish=resolve}),getTermDetail:async id=>({code:0,data:{termId:id}})})
+  page.draft={batchName:'审核',gradeYear:'',majorId:'',termId:'51'}
+  const pending=page.createBatch();await Promise.resolve()
+  page.$route.query={termId:'52'};await page.loadDraftTerm()
+  finish({code:0,data:{list:[{batchId:'22',batchName:'审核',termId:'51'}],total:1}});await pending
+  assert.equal(page.batch,null);assert.equal(page.draft.termId,'52');assert.equal(successes.length,0)
+  assert.equal(page.pendingCommand.kind,'create');assert.equal(page.creating,false)
+})
+
+test('旧学期创建回读的迟到拒绝不会清除新学期事实或错误提示',async()=>{
+  let reject
+  const {page,errors}=batchInstance({createGradBatch:async()=>({code:0,data:{batchId:'22'}}),listGradBatches:()=>new Promise((_resolve,fail)=>{reject=fail}),getTermDetail:async id=>({code:0,data:{termId:id}})})
+  page.draft={batchName:'审核',gradeYear:'',majorId:'',termId:'51'}
+  const pending=page.createBatch();await Promise.resolve()
+  page.$route.query={termId:'52'};await page.loadDraftTerm()
+  reject({code:403});await pending
+  assert.equal(page.draft.termId,'52');assert.equal(page.termError,'');assert.equal(errors.length,0)
+  assert.equal(page.pendingCommand.kind,'create');assert.equal(page.creating,false)
+})
+
+test('毕业两页只展示正式学期；历史空关联不猜测、不补写',()=>{
+  const {page}=batchInstance()
+  const legacy={batchId:'12',termId:null,termName:'不能拿此名称冒充关联'}
+  assert.equal(page.batchTermLabel(legacy),'历史批次，所属学期待核对')
+  const audit=instance();audit.batches=[legacy]
+  assert.equal(audit.currentBatchTermLabel,'历史批次，所属学期待核对')
+  legacy.termId='51';legacy.termName='2025-2026学年第二学期'
+  assert.equal(audit.currentBatchTermLabel,legacy.termName)
+  assert.equal(page.batchTermLabel(legacy),legacy.termName)
+  const batchSource=fs.readFileSync(new URL('../src/modules/academicAffairs/views/AaGraduationBatchView.vue',import.meta.url),'utf8')
+  assert.match(batchSource,/<AppTermEntityPicker[^>]*@update:model-value="selectTerm"/)
+  assert.match(batchSource,/#cell-termName[\s\S]*?batchTermLabel\(row\)/)
+  assert.match(fs.readFileSync(new URL('../src/modules/academicAffairs/views/AaGraduationAuditConsoleView.vue',import.meta.url),'utf8'),/所属学期：\{\{ currentBatchTermLabel \}\}/)
+})
+
+test('进入审核与返回批次页沿正式批次携带学期，历史空关联不借用旧URL学期',()=>{
+  const targets=[],{page}=batchInstance()
+  page.$router.push=target=>targets.push(target)
+  page.enterAudit({batchId:'12',termId:'51'},'results')
+  assert.equal(targets[0].query.termId,'51');assert.equal(targets[0].query.batchId,'12')
+  const audit=instance();audit.$router={push:target=>targets.push(target)}
+  audit.$route.query.termId='99';audit.batches=[{batchId:'12',termId:null}]
+  audit.returnToBatchQueue();assert.deepEqual(targets[1].query,{})
+  audit.batches[0].termId='52';audit.returnToBatchQueue();assert.equal(targets[2].query.termId,'52')
 })
 
 test('毕业名单展示正式学号而不是学生内部编号',()=>{

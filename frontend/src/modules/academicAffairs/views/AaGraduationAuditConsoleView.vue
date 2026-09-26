@@ -20,6 +20,7 @@
           <span class="agc-eyebrow">当前毕业审核批次</span>
           <strong>{{ currentBatch ? currentBatch.batchName : '选择一个审核批次' }}</strong>
           <small>{{ currentBatch ? `来源：毕业审核批次 #${currentBatch.batchId} · 年级 ${currentBatch.gradeYear || '未指定'}` : '请先选择正式审核批次' }}</small>
+          <small v-if="currentBatch">所属学期：{{ currentBatchTermLabel }}</small>
           <AppGraduationBatchPicker
             v-model="batchId"
             :options="batchOptions"
@@ -467,6 +468,7 @@ export default {
     currentBlocker(){if(!this.currentBatch)return'尚未选择批次';const item=this.focusedItems.find(entry=>entry.result!=='PASS');if(item)return`${this.itemLabel(item.item)}：${this.itemResultLabel(item.result)}`;if(this.batchAbnormal)return`${this.batchAbnormal} 名系统异常`;return'当前无已知阻断'},
     nextOwner(){if(this.tab==='final')return'证书管理岗';if(this.tab==='archive')return'受控纠错岗';if(this.batchAbnormal)return'学院审核岗';return'教务终审岗'},
     currentBatch() { return this.batches.find((b) => String(b.batchId) === String(this.batchId)) || null },
+    currentBatchTermLabel(){const row=this.currentBatch;if(!row)return '选择批次后读取正式学期';if(row.termId==null)return '历史批次，所属学期待核对';return exactId(row.termId)?(row.termName||'所属学期名称待核对'):'所属学期标识待核对'},
     batchTotal() { return Number(this.currentBatch?.total || 0) },
     batchPassed() { return Number(this.currentBatch?.passed || 0) },
     batchAbnormal() { return Number(this.currentBatch?.abnormal || 0) },
@@ -551,7 +553,7 @@ export default {
   beforeUnmount(){this.alive=false;this.invalidatePrivate()},
   inject: { academicFlow: { default: null } },
   methods: {
-    returnToBatchQueue() { if(this.$route.query.returnToken && this.academicFlow) return this.academicFlow.back(this.$route.query.returnToken, '/admin/academic-affairs/graduation'); return this.$router.push('/admin/academic-affairs/graduation') },
+    returnToBatchQueue() { if(this.$route.query.returnToken && this.academicFlow) return this.academicFlow.back(this.$route.query.returnToken, '/admin/academic-affairs/graduation'); const termId=exactId(this.currentBatch?.termId);return this.$router.push({path:'/admin/academic-affairs/graduation',query:termId?{termId}:{}}) },
     token(kind){const seq=(this.readSeq[kind]||0)+1;this.readSeq[kind]=seq;return {kind,seq,scope:this.scope,identity:this.identity,route:this.$route.fullPath,batchId:String(this.batchId),tab:this.tab}},
     current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath&&this.readSeq[c.kind]===c.seq},
     denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
