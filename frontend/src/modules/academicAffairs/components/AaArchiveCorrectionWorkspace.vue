@@ -473,12 +473,14 @@ export default {
       this.saving = true; this.actionError = ''; this.actionNotice = ''
       try {
         if (!await this.readCreateAuthority() || !current()) { if (current()) this.formError = this.actionError || this.createReason; return }
-        this.pendingCommand = { kind: 'create', batchId, sent: true }
+        const command = { kind: 'create', batchId, sent: true }
+        this.pendingCommand = command
         const res = await api.create(batchId, body)
         if (!current()) return
         if (res.code !== 0) { this.formError = this.businessText(res.message, '提交结果尚未核对'); this.releaseRejectedCommand(res); return }
         const caseId = res.data?.caseId
         if (!caseId) { this.formError = '申请回执缺少正式纠错单编号，请刷新核对，勿重复提交'; return }
+        if (this.pendingCommand === command) { command.caseId = caseId; command.acknowledged = true }
         this.createVisible = false
         this.activeTab = 'corrections'
         if (await this.authoritativeRefresh(caseId) && current()) { this.pendingCommand = null; toast.success('纠错申请已提交，等待不同操作人二次审批') }
@@ -576,7 +578,8 @@ export default {
       const current = this.contextGuard(), command = this.pendingCommand, caseId = this.selectedCaseId
       const loaded = await this.refreshAll()
       if (!current()) return
-      if (!command || command.sent !== true || !['approve', 'reject'].includes(command.kind) || !command.caseId || command.batchId !== this.batchId) {
+      const knownCommand = command?.sent === true && (['approve', 'reject'].includes(command.kind) || (command.kind === 'create' && command.acknowledged === true))
+      if (!knownCommand || !command.caseId || command.batchId !== this.batchId) {
         if (caseId && this.detailVisible) await this.readDetail(caseId)
         if (current() && command?.kind === 'create' && this.pendingCommand === command) this.actionError = '提交回执未能确认，无法仅凭纠错列表判断本次申请是否创建。请核对原申请记录，勿重复提交。'
         return
@@ -587,12 +590,12 @@ export default {
         const result = res.code === 0 && res.data?.caseId === command.caseId && res.data?.archiveBatchId === command.batchId ? res.data : null
         if (this.selectedCaseId === command.caseId) this.detail = result
         if (!result) { this.actionError = this.businessText(res.message, '原纠错单结果尚未核对，请勿重复提交'); return }
-        const target = command.kind === 'approve' ? 'APPLIED' : 'REJECTED'
-        if (result.status !== target) { this.actionError = '原纠错单尚未确认达到本次命令的目标结果，请继续核对，勿重复提交。'; return }
+        const targetMatches = command.kind === 'create' ? ['PENDING_SECOND_APPROVAL', 'APPLIED', 'REJECTED'].includes(result.status) : result.status === (command.kind === 'approve' ? 'APPLIED' : 'REJECTED')
+        if (!targetMatches) { this.actionError = '原纠错单尚未确认达到本次命令的目标结果，请继续核对，勿重复提交。'; return }
         if (!loaded || this.manifest?.ok !== true) { this.actionError = '部分完成：原纠错单已到达目标结果，但归档清单完整性尚未校验通过。请继续核对，勿重复提交。'; return }
         this.pendingCommand = null; this.actionError = ''; this.formError = ''; this.detailError = ''
         this.approveConfirmVisible = false; this.rejectConfirmVisible = false
-        this.actionNotice = `核对完成：原纠错单${command.kind === 'approve' ? '已应用' : '已驳回'}，归档清单完整性校验通过；未重复发送命令。`
+        this.actionNotice = `核对完成：原纠错单${command.kind === 'create' ? `已创建，当前${this.statusLabel(result.status)}` : command.kind === 'approve' ? '已应用' : '已驳回'}，归档清单完整性校验通过；未重复发送命令。`
       } catch (error) {
         if (current() && this.pendingCommand === command) {
           if (this.selectedCaseId === command.caseId) this.detail = null

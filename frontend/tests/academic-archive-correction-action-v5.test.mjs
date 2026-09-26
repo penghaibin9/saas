@@ -113,6 +113,23 @@ test('批准与驳回的原单目标终态及归档清单通过后，即使已�
   }
 })
 
+test('创建已确认单号但首次回读失败，恢复时精确核对原单并解锁，绝不重发', async () => {
+  for (const failure of ['list', 'detail', 'manifest']) {
+    let writes = 0, recovering = false, preciseReads = 0
+    const { state } = instance({
+      create: async () => { writes++; return ok({ caseId }) },
+      list: async () => failure === 'list' && !recovering ? { code: 503 } : ok({ items: [] }),
+      detail: async id => { preciseReads++; assert.equal(id, caseId); return failure === 'detail' && !recovering ? { code: 503 } : ok(detail()) },
+      verifyManifest: async () => ok({ ok: failure !== 'manifest' || recovering })
+    })
+    state.createForm = form(); await state.submitCreate()
+    assert.equal(writes, 1); assert.equal(state.pendingCommand.caseId, caseId); assert.equal(state.pendingCommand.acknowledged, true)
+    recovering = true; await state.refreshServerState()
+    assert.equal(writes, 1); assert.equal(state.pendingCommand, null); assert.ok(preciseReads >= 2)
+    assert.match(state.actionNotice, /核对完成.*已创建.*待二审/)
+  }
+})
+
 test('恢复时待二审、未知状态、错单、清单异常或未确认值均保持原锁', async () => {
   for (const outcome of ['pending', 'unknown', 'wrong-case', 'wrong-batch', 'bad-manifest', 'unknown-manifest', 'string-manifest', 'read-error']) {
     const { state } = instance({
