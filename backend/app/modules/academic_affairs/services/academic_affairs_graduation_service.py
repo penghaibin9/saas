@@ -320,6 +320,8 @@ def _overall(items) -> str:
 def create_batch(body, user) -> dict:
     _require_review_role(user)
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditBatch
         from .academic_affairs_graduation_term_scope import require_creation_term
         from .academic_affairs_archive_core_service import guard_term_writable
@@ -374,6 +376,8 @@ def generate(batch_id, user, student_ids=None) -> dict:
     """圈定应届生生成预审结果行（幂等）。"""
     _require_review_role(user)
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, StudentProfile
         from .academic_affairs_graduation_term_scope import guard_batch_term_writable
         b = guard_batch_term_writable(db, batch_id)
@@ -407,6 +411,8 @@ def precheck(batch_id, user) -> dict:
     """十一项供数三态判定（幂等，结果覆盖非追加）。"""
     _require_review_role(user)
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, StudentProfile
         from .academic_affairs_graduation_term_scope import guard_batch_term_writable
         b = guard_batch_term_writable(db, batch_id)
@@ -438,15 +444,14 @@ def precheck(batch_id, user) -> dict:
 
 def college_review(result_id, user, action, note="") -> dict:
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditResult
-        r = db.get(AaGraduationAuditResult, int(result_id))
-        if not r or r.is_deleted or r.tenant_id != _tid():
-            raise not_found("预审结果不存在")
+        from .academic_affairs_graduation_term_scope import guard_result_term_writable
+        r = guard_result_term_writable(db, result_id)
         _assert_result_in_scope(db, user, r)
         from .academic_affairs_graduation_scope_guard import assert_college_review_authority
         assert_college_review_authority(db, user, r)
-        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
-        guard_batch_term_writable(db, r.batch_id)
         if r.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
         if (action or "").upper() == "APPROVE":
@@ -471,16 +476,15 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
         raise AppException("DATA_CONFLICT", "毕业结论涉及学籍终态，需二次确认(confirm=true)")
     _n, _r, uid = _op()
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from .academic_affairs_graduation_scope_guard import assert_school_review_authority
         assert_school_review_authority(db, user)
         from app.models import AaGraduationAuditResult
-        r = db.get(AaGraduationAuditResult, int(result_id))
-        if not r or r.is_deleted or r.tenant_id != _tid():
-            raise not_found("预审结果不存在")
+        from .academic_affairs_graduation_term_scope import guard_result_term_writable
+        r = guard_result_term_writable(db, result_id)
         if r.status != "ACADEMIC_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅学院初审通过的结果可终审")
-        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
-        guard_batch_term_writable(db, r.batch_id)
         # 系统异常允许人工审核，但毕业结论必须留下明确审核意见；避免不确定供数被无说明强行通过。
         if r.overall == "SYSTEM_ABNORMAL" and conclusion in ("GRADUATED", "COMPLETED"):
             if not r.review_note or len(r.review_note.strip()) < 5:
@@ -501,6 +505,8 @@ def archive_batch(batch_id, user) -> dict:
     """收敛已终审毕业/结业结果；延毕/退回留待后续批次。"""
     _require_review_role(user)
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditBatch, AaGraduationAuditResult
         from .academic_affairs_graduation_term_scope import guard_batch_term_writable
         b = guard_batch_term_writable(db, batch_id)
@@ -677,6 +683,8 @@ def import_fee_clearance(batch_id, user, rows: list) -> dict:
         raise AppException("BAD_REQUEST", "rows 不能为空")
     updated, skipped = 0, 0
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from .academic_affairs_graduation_term_scope import guard_batch_term_writable
         guard_batch_term_writable(db, batch_id)
         for row in rows:
@@ -696,10 +704,13 @@ def import_fee_clearance(batch_id, user, rows: list) -> dict:
                 AaGraduationAuditResult.tenant_id == _tid(),
                 AaGraduationAuditResult.batch_id == int(batch_id),
                 AaGraduationAuditResult.student_id == s.id,
-                AaGraduationAuditResult.is_deleted.is_(False))).first()
+                AaGraduationAuditResult.is_deleted.is_(False))
+                .with_for_update().execution_options(populate_existing=True)).first()
             if not r:
                 skipped += 1
                 continue
+            if r.conclusion or r.status in ("GRADUATED", "COMPLETED", "DELAYED", "ARCHIVED"):
+                raise AppException("DATA_CONFLICT", "已终审或归档的毕业结果不可普通费用回填，请使用正式纠错流程", http_status=409)
             items = _item_results(r.item_results_json)
             fee_result = "PASS" if st == "CLEARED" else "FAIL"
             found = False

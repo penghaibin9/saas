@@ -196,18 +196,28 @@ def _case_dto(case, *, detail: bool = False) -> dict:
 
 def confirm_archive(user, batch_id, force=False):
     """Create immutable Manifest V1 in the same transaction as ARCHIVED."""
-    from app.models import AaArchiveBatch, AaTerm, ArchiveManifest
+    from app.models import AaArchiveBatch, ArchiveManifest
+    from .academic_affairs_schedule_resource_guard import lock_term
 
     core = archive_service._core
     with core.session() as db:
+        # 权限预读可能先建立 RR 快照；必须在首条 SQL 前设置，确保等待学期锁后
+        # 实时门禁看到前一毕业写事务已提交的事实，而不是锁前旧快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         actor = core._require_archive_operator(db, user)
-        batch = db.query(AaArchiveBatch).filter(
+        query = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.id == int(batch_id),
             AaArchiveBatch.tenant_id == _tid(),
             AaArchiveBatch.is_deleted.is_(False),
-        ).with_for_update().first()
+        )
+        batch = query.first()
         if not batch:
             raise not_found("归档批次不存在")
+        term_id = batch.term_id
+        term = lock_term(db, term_id) if term_id else None
+        batch = query.populate_existing().with_for_update().first()
+        if not batch or batch.term_id != term_id:
+            raise AppException("DATA_CONFLICT", "归档批次学期已变化，请重新读取后办理", http_status=409)
         if batch.status == "ARCHIVED":
             manifest = _latest_manifest(db, batch.id)
             if not manifest:
@@ -261,14 +271,8 @@ def confirm_archive(user, batch_id, force=False):
         db.flush()
         batch.status = "ARCHIVED"
         batch.archived_at = archived_at
-        if batch.term_id:
-            term = db.query(AaTerm).filter(
-                AaTerm.id == batch.term_id,
-                AaTerm.tenant_id == _tid(),
-                AaTerm.is_deleted.is_(False),
-            ).with_for_update().first()
-            if term:
-                term.status = "ARCHIVED"
+        if term:
+            term.status = "ARCHIVED"
         core._audit(
             db,
             batch.id,

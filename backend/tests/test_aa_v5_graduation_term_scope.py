@@ -55,6 +55,9 @@ class _Query:
     def with_for_update(self):
         return self
 
+    def populate_existing(self):
+        return self
+
 
 class _Db:
     def __init__(self, terms=(), batches=()):
@@ -67,6 +70,10 @@ class _Db:
 
     def get(self, model, identity):
         return next((row for row in self.rows[model] if row.id == identity), None)
+
+    def scalar(self, statement):
+        model = statement.column_descriptions[0]["entity"]
+        return self.query(model).filter(*statement._where_criteria).first()
 
 
 @pytest.mark.parametrize(("changes", "expected"), [
@@ -126,8 +133,15 @@ def test_batch_write_guard_uses_archive_authority_and_does_not_infer_history():
     with pytest.raises(AppException) as error:
         scope.guard_batch_term_writable(db, 21)
     assert error.value.code == "TERM_ARCHIVED"
-    legacy = _batch()
+    legacy = _batch(status="PRECHECKED")
     assert scope.guard_batch_term_writable(_Db(terms=[sealed], batches=[legacy]), 21) is legacy
+
+
+def test_historical_archived_batch_is_immutable_without_guessing_a_term():
+    with pytest.raises(AppException) as error:
+        scope.guard_batch_term_writable(_Db(batches=[_batch()]), 21)
+    assert error.value.http_status == 409
+    assert "纠错" in error.value.message
 
 
 @pytest.mark.parametrize(("term_id", "at", "scope_allowed"), [(11, LATER, True), (12, WITHIN, False),

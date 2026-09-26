@@ -41,6 +41,9 @@ class _FakeQuery:
     def with_for_update(self):
         return self
 
+    def populate_existing(self):
+        return self
+
     def all(self):
         return list(self._rows)
 
@@ -187,9 +190,12 @@ def test_public_manifest_confirm_also_rejects_force_on_missing_items(monkeypatch
 
     assert public.confirm_archive is manifest.confirm_archive
 
-    batch = SimpleNamespace(id=1, status="MISSING_ITEMS", missing_count=2)
+    batch = SimpleNamespace(id=1, term_id=None, status="MISSING_ITEMS", missing_count=2)
 
     class _ManifestDb:
+        def connection(self, **_kwargs):
+            return None
+
         def query(self, _model):
             return _FakeQuery(first=batch)
 

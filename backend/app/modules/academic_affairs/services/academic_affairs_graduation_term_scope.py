@@ -44,18 +44,14 @@ def batch_term_condition(term):
 
 
 def require_creation_term(db, raw_term_id):
-    from app.models import AaTerm
+    from .academic_affairs_schedule_resource_guard import lock_term
 
     if (not isinstance(raw_term_id, str)
             or not re.fullmatch(r"[1-9][0-9]{0,18}", raw_term_id)
             or int(raw_term_id) > 9223372036854775807):
         raise AppException("VALIDATION_ERROR", "必须选择有效学期，学期编号须为正整数字符串")
-    term = db.query(AaTerm).filter(
-        AaTerm.id == int(raw_term_id), AaTerm.tenant_id == _tid(), AaTerm.is_deleted.is_(False),
-    ).first()
-    if not term:
-        raise AppException("DATA_NOT_FOUND", "学期不存在或当前学校不可访问", http_status=404)
-    return term
+    # 与封存共用现有学期行锁；当前读刷新 Session 中可能缓存的未封存状态。
+    return lock_term(db, int(raw_term_id))
 
 
 def batch_term_names(db, batches):
@@ -75,13 +71,39 @@ def guard_batch_term_writable(db, batch_id):
     from app.models import AaGraduationAuditBatch
     from .academic_affairs_archive_core_service import guard_term_writable
 
-    batch = db.query(AaGraduationAuditBatch).filter(
+    query = db.query(AaGraduationAuditBatch).filter(
         AaGraduationAuditBatch.id == int(batch_id),
         AaGraduationAuditBatch.tenant_id == _tid(), AaGraduationAuditBatch.is_deleted.is_(False),
-    ).first()
+    )
+    batch = query.first()
     if not batch:
         raise AppException("DATA_NOT_FOUND", "预审批次不存在", http_status=404)
-    if batch.term_id is not None:
-        term = require_creation_term(db, str(batch.term_id))
+    term_id = batch.term_id
+    if term_id is not None:
+        term = require_creation_term(db, str(term_id))
         guard_term_writable(db, term.id)
+    # 预读只定位学期；状态必须在学期→批次的固定锁序下重新核验。
+    batch = query.populate_existing().with_for_update().first()
+    if not batch or batch.term_id != term_id:
+        raise AppException("DATA_CONFLICT", "毕业批次归属已变化，请重新读取后办理", http_status=409)
+    if batch.status == "ARCHIVED":
+        raise AppException("IDEMPOTENCY_CONFLICT", "该毕业批次已归档，请使用归档后纠错流程", http_status=409)
     return batch
+
+
+def guard_result_term_writable(db, result_id):
+    """预读仅取批次位置，锁序始终为学期→批次→结果。"""
+    from app.models import AaGraduationAuditResult
+
+    query = db.query(AaGraduationAuditResult).filter(
+        AaGraduationAuditResult.id == int(result_id),
+        AaGraduationAuditResult.tenant_id == _tid(), AaGraduationAuditResult.is_deleted.is_(False),
+    )
+    result = query.first()
+    if not result:
+        raise AppException("DATA_NOT_FOUND", "预审结果不存在", http_status=404)
+    batch = guard_batch_term_writable(db, result.batch_id)
+    result = query.populate_existing().with_for_update().first()
+    if not result or result.batch_id != batch.id:
+        raise AppException("DATA_CONFLICT", "毕业结果归属已变化，请重新读取后办理", http_status=409)
+    return result

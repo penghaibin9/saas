@@ -190,6 +190,8 @@ def precheck(batch_id, user) -> dict:
     """Append a new formal run when the work-queue row or approved evidence basis changed."""
     graduation_service._require_review_role(user)
     with graduation_service.session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import (
             AaGraduationAuditBatch,
             AaGraduationAuditResult,
@@ -287,20 +289,15 @@ def college_review(result_id, user, action, note="") -> dict:
         raise AppException("BAD_REQUEST", "初审动作非法（APPROVE/REJECT）")
 
     with graduation_service.session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditResult, GraduationEvaluationRun
 
-        result = db.query(AaGraduationAuditResult).filter(
-            AaGraduationAuditResult.id == int(result_id),
-            AaGraduationAuditResult.tenant_id == _tid(),
-            AaGraduationAuditResult.is_deleted.is_(False),
-        ).with_for_update().first()
-        if not result:
-            raise not_found("预审结果不存在")
+        from .academic_affairs_graduation_term_scope import guard_result_term_writable
+        result = guard_result_term_writable(db, result_id)
         graduation_service._assert_result_in_scope(db, user, result)
         from .academic_affairs_graduation_scope_guard import assert_college_review_authority
         assert_college_review_authority(db, user, result)
-        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
-        guard_batch_term_writable(db, result.batch_id)
         if result.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
 
@@ -352,22 +349,16 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
 
     _name, _role, operator_raw = graduation_service._op()
     with graduation_service.session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from .academic_affairs_graduation_scope_guard import assert_school_review_authority
         assert_school_review_authority(db, user)
         from app.models import AaGraduationAuditResult, GraduationDecisionFact, GraduationEvaluationRun
 
-        result = db.query(AaGraduationAuditResult).filter(
-            AaGraduationAuditResult.id == int(result_id),
-            AaGraduationAuditResult.tenant_id == _tid(),
-            AaGraduationAuditResult.is_deleted.is_(False),
-        ).with_for_update().first()
-        if not result:
-            raise not_found("预审结果不存在")
+        from .academic_affairs_graduation_term_scope import guard_result_term_writable
+        result = guard_result_term_writable(db, result_id)
         if result.status != "ACADEMIC_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅学院初审通过的结果可终审")
-        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
-        guard_batch_term_writable(db, result.batch_id)
-
         run = db.scalars(select(GraduationEvaluationRun).where(
             GraduationEvaluationRun.tenant_id == _tid(),
             GraduationEvaluationRun.result_id == result.id,
