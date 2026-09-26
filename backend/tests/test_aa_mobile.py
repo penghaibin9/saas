@@ -525,7 +525,7 @@ def test_mb4_graduation_progress_my(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     created = client.post(f"{AA}/graduation-audit-batches", headers=admin, json={
-        "batchName": "2023届", "gradeYear": "2023"})
+        "batchName": "2023届", "gradeYear": "2023", "termId": str(_ensure_term())})
     assert created.status_code == 200, created.text
     bid = created.json()["data"]["batchId"]
     generated = client.post(f"{AA}/graduation-audit-batches/{bid}/generate", headers=admin,

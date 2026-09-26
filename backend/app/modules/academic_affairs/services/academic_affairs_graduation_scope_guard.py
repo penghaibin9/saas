@@ -203,12 +203,16 @@ def graduation_list_batches(user, status=None, page=1, page_size=50, *, batch_id
             for row in db.execute(aggregate_query).all()
         }
 
+        from .academic_affairs_graduation_term_scope import batch_term_names
+        names = batch_term_names(db, batches)
         out = []
         for batch in batches:
             stats = aggregates.get(int(batch.id))
             out.append({
                 "batchId": str(batch.id),
                 "batchName": batch.batch_name,
+                "termId": str(batch.term_id) if batch.term_id else None,
+                "termName": names.get(batch.term_id),
                 "gradeYear": batch.grade_year,
                 "majorId": str(batch.major_id) if batch.major_id else None,
                 "status": batch.status,

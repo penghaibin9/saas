@@ -22,12 +22,17 @@ def _tenant_context():
 
 
 class _FakeQuery:
-    def __init__(self, *, rows=None, count=0, first=None):
+    def __init__(self, *, rows=None, count=0, first=None, model=None):
         self._rows = list(rows or [])
         self._count = count
         self._first = first
+        self._model = model
 
     def filter(self, *_args, **_kwargs):
+        if self._model is not None:
+            from sqlalchemy.orm.evaluator import _EvaluatorCompiler
+            matches = _EvaluatorCompiler(self._model).process(*_args)
+            self._rows = [row for row in self._rows if matches(row) is True]
         return self
 
     def join(self, *_args, **_kwargs):
@@ -62,7 +67,10 @@ class _ArchiveDb:
         if name == "AaGradeRecheck":
             return _FakeQuery(count=self.active_rechecks)
         if name == "AaGraduationAuditBatch":
-            return _FakeQuery(rows=self.graduation_batches)
+            rows = [model(tenant_id=1, is_deleted=False, term_id=getattr(row, "term_id", None),
+                          status=row.status, generate_at=row.generate_at, created_at=row.created_at)
+                    for row in self.graduation_batches]
+            return _FakeQuery(rows=rows, model=model)
         if name in {"AcademicGrade", "AaGradeRecord", "WorkflowInstance"}:
             return _FakeQuery(count=0, rows=[])
         raise AssertionError(f"unexpected model: {name}")

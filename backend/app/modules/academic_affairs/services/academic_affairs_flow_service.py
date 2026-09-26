@@ -410,10 +410,8 @@ def _student_unit_progress(db, term, college_id, student_ids, task_ids):
     if not term.start_date or not term.end_date:
         result[9] = ("BLOCKED", [_problem("GRADUATION_TERM_SCOPE_UNKNOWN", "学期起止日期不完整，无法核验本院毕业结果")], {})
     else:
-        start = datetime.combine(term.start_date, time.min)
-        end = datetime.combine(term.end_date, time.max)
-        batches = _query(db, AaGraduationAuditBatch,
-            func.coalesce(AaGraduationAuditBatch.generate_at, AaGraduationAuditBatch.created_at).between(start, end))
+        from .academic_affairs_graduation_term_scope import batch_term_condition
+        batches = _query(db, AaGraduationAuditBatch, batch_term_condition(term))
         batch_ids = batches.with_entities(AaGraduationAuditBatch.id).subquery()
         graduation = _query(db, AaGraduationAuditResult,
             AaGraduationAuditResult.batch_id.in_(select(batch_ids.c.id)),

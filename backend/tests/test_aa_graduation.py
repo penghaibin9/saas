@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from datetime import datetime
 
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
@@ -37,7 +38,7 @@ def _hdr(client, login_name):
 
 def _seed(db_mode, status="REGISTERED"):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import AaTerm, SchoolClass, StudentProfile
     db = get_sessionmaker()()
     from tests.support_graduation_review_identity import seed_graduation_review_identity
     college = seed_graduation_review_identity(db)
@@ -46,15 +47,21 @@ def _seed(db_mode, status="REGISTERED"):
     s = StudentProfile(tenant_id=TID, student_no="GR001", real_name="毕业甲", class_id=a.id, grade="2023",
                        major_id=1, college_id=college.id, current_stage="ON_CAMPUS", student_status=status, status="ACTIVE")
     db.add(s); db.flush()
-    ids = {"s": s.id}
+    term = AaTerm(tenant_id=TID, year_code="2025-2026", term_no=2,
+                  term_name="毕业审核测试学期", start_date=datetime(2026, 2, 1),
+                  end_date=datetime(2026, 7, 31), status="PUBLISHED")
+    db.add(term); db.flush()
+    ids = {"s": s.id, "term": term.id}
     db.commit()
     db.close()
     return ids
 
 
-def _batch(client, hdr):
-    return client.post(f"{BASE}/graduation-audit-batches", headers=hdr, json={
-        "batchName": "2023届毕业预审", "gradeYear": "2023"}).json()["data"]["batchId"]
+def _batch(client, hdr, term_id):
+    response = client.post(f"{BASE}/graduation-audit-batches", headers=hdr, json={
+        "batchName": "2023届毕业预审", "gradeYear": "2023", "termId": str(term_id)})
+    assert response.status_code == 200, response.text
+    return response.json()["data"]["batchId"]
 
 
 def _gen_precheck(client, hdr, bid, sid):
@@ -133,7 +140,7 @@ def test_gr1_precheck_passed(client, db_mode):
     """历史名称保留：验证 blocking UNKNOWN 仍进入正式异常队列。"""
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     r = _gen_precheck(client, hdr, bid, ids["s"])
     assert r["passed"] == 0 and r["abnormal"] == 1
     rid = _result_id(client, hdr, bid)
@@ -155,7 +162,7 @@ def test_gr1_precheck_passed(client, db_mode):
 def test_gr2_status_abnormal(client, db_mode):
     ids = _seed(db_mode, "SUSPENDED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     r = _gen_precheck(client, hdr, bid, ids["s"])
     assert r["abnormal"] == 1
     d = client.get(f"{BASE}/graduation-results/{_result_id(client, hdr, bid)}", headers=hdr).json()["data"]
@@ -166,7 +173,7 @@ def test_gr2_status_abnormal(client, db_mode):
 def test_gr3_final_writes_status(client, db_mode):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
     _append_formal_pass_fixture(rid, ids["s"])
@@ -186,7 +193,7 @@ def test_gr3_final_writes_status(client, db_mode):
 def test_gr4_final_needs_confirm(client, db_mode):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
     _append_formal_pass_fixture(rid, ids["s"])
@@ -198,7 +205,7 @@ def test_gr4_final_needs_confirm(client, db_mode):
 def test_gr5_rosters(client, db_mode):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
     _append_formal_pass_fixture(rid, ids["s"])
@@ -213,7 +220,7 @@ def test_gr5_rosters(client, db_mode):
 def test_gr6_precheck_idempotent(client, db_mode):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     client.post(f"{BASE}/graduation-audit-batches/{bid}/precheck", headers=hdr)
     d = client.get(f"{BASE}/graduation-results/{_result_id(client, hdr, bid)}", headers=hdr).json()["data"]
@@ -224,7 +231,7 @@ def test_gr7_roster_org_names(client, db_mode):
     """毕业学生名单补全学号/学院/专业/班级，供 audit-console roster tab 使用。"""
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
     _append_formal_pass_fixture(rid, ids["s"])
@@ -243,7 +250,7 @@ def test_gr8_college_reject_reason_roundtrip(client, db_mode):
     """退回原因<5字→400；正式退回原因经列表与详情一致回传。"""
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
     college_hdr = _hdr(client, "college_admin01")
@@ -267,7 +274,7 @@ def test_gr9_fee_clearance_cannot_upgrade_other_unknowns(client, db_mode):
     """财务回填只解决 FEE；其它 blocking UNKNOWN 未解除时 projection 仍必须 fail-closed。"""
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     precheck = _gen_precheck(client, hdr, bid, ids["s"])
     assert precheck["passed"] == 0 and precheck["abnormal"] == 1
 

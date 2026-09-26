@@ -594,9 +594,15 @@ def _domain_rows(db, code, term_id, term_code):
         rows = query.filter(AaGradeTask.term_code == term_code).all() if term_code else query.all()
         return [[r.course_name, r.class_id, r.status, _iso(r.publish_at)] for r in rows]
     if code == "GRADUATION":
+        from app.models import AaTerm
+        from .academic_affairs_graduation_term_scope import batch_term_condition
+        term = db.query(AaTerm).filter(
+            AaTerm.id == term_id, AaTerm.tenant_id == tenant, AaTerm.is_deleted.is_(False),
+        ).first() if term_id else None
         rows = db.query(AaGraduationAuditBatch).filter(
             AaGraduationAuditBatch.tenant_id == tenant,
-            AaGraduationAuditBatch.is_deleted.is_(False)).all()
+            AaGraduationAuditBatch.is_deleted.is_(False),
+            batch_term_condition(term)).all()
         return [[r.batch_name, r.grade_year, r.status, _iso(r.generate_at)] for r in rows]
     return []
 

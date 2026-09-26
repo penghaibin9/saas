@@ -321,7 +321,11 @@ def create_batch(body, user) -> dict:
     _require_review_role(user)
     with session() as db:
         from app.models import AaGraduationAuditBatch
-        b = AaGraduationAuditBatch(tenant_id=_tid(), batch_name=body.batchName,
+        from .academic_affairs_graduation_term_scope import require_creation_term
+        from .academic_affairs_archive_core_service import guard_term_writable
+        term = require_creation_term(db, getattr(body, "termId", None))
+        guard_term_writable(db, term.id)
+        b = AaGraduationAuditBatch(tenant_id=_tid(), term_id=term.id, batch_name=body.batchName,
                                    grade_year=getattr(body, "gradeYear", None),
                                    major_id=(int(body.majorId) if getattr(body, "majorId", None) else None),
                                    status="DRAFT")
@@ -330,7 +334,8 @@ def create_batch(body, user) -> dict:
         _audit(db, b.id, "CREATE")
         db.commit()
         db.refresh(b)
-        return {"batchId": str(b.id), "batchName": b.batch_name, "status": b.status}
+        return {"batchId": str(b.id), "batchName": b.batch_name, "status": b.status,
+                "termId": str(term.id), "termName": term.term_name}
 
 
 def list_batches(user, status=None, page=1, page_size=50):
@@ -344,6 +349,8 @@ def list_batches(user, status=None, page=1, page_size=50):
         offset = (max(1, page) - 1) * page_size
         rows = db.scalars(select(AaGraduationAuditBatch).where(*conds)
                           .order_by(AaGraduationAuditBatch.id.desc()).offset(offset).limit(page_size)).all()
+        from .academic_affairs_graduation_term_scope import batch_term_names
+        names = batch_term_names(db, rows)
         out = []
         for b in rows:
             results = db.scalars(select(AaGraduationAuditResult).where(
@@ -351,6 +358,8 @@ def list_batches(user, status=None, page=1, page_size=50):
                 AaGraduationAuditResult.is_deleted.is_(False))).all()
             out.append({
                 "batchId": str(b.id), "batchName": b.batch_name, "gradeYear": b.grade_year,
+                "termId": str(b.term_id) if b.term_id else None,
+                "termName": names.get(b.term_id),
                 "majorId": str(b.major_id) if b.major_id else None, "status": b.status,
                 "total": len(results),
                 "passed": sum(1 for r in results if r.overall == "SYSTEM_PASSED"),
@@ -366,9 +375,8 @@ def generate(batch_id, user, student_ids=None) -> dict:
     _require_review_role(user)
     with session() as db:
         from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, StudentProfile
-        b = db.get(AaGraduationAuditBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
-            raise not_found("预审批次不存在")
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        b = guard_batch_term_writable(db, batch_id)
         if student_ids:
             sids = [int(x) for x in student_ids]
         else:
@@ -400,9 +408,8 @@ def precheck(batch_id, user) -> dict:
     _require_review_role(user)
     with session() as db:
         from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, StudentProfile
-        b = db.get(AaGraduationAuditBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
-            raise not_found("预审批次不存在")
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        b = guard_batch_term_writable(db, batch_id)
         rows = db.scalars(select(AaGraduationAuditResult).where(
             AaGraduationAuditResult.tenant_id == _tid(), AaGraduationAuditResult.batch_id == b.id,
             AaGraduationAuditResult.status.in_(["WAIT_PRECHECK", "SYSTEM_PASSED", "SYSTEM_ABNORMAL"]),
@@ -438,6 +445,8 @@ def college_review(result_id, user, action, note="") -> dict:
         _assert_result_in_scope(db, user, r)
         from .academic_affairs_graduation_scope_guard import assert_college_review_authority
         assert_college_review_authority(db, user, r)
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        guard_batch_term_writable(db, r.batch_id)
         if r.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
         if (action or "").upper() == "APPROVE":
@@ -470,6 +479,8 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
             raise not_found("预审结果不存在")
         if r.status != "ACADEMIC_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅学院初审通过的结果可终审")
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        guard_batch_term_writable(db, r.batch_id)
         # 系统异常允许人工审核，但毕业结论必须留下明确审核意见；避免不确定供数被无说明强行通过。
         if r.overall == "SYSTEM_ABNORMAL" and conclusion in ("GRADUATED", "COMPLETED"):
             if not r.review_note or len(r.review_note.strip()) < 5:
@@ -491,9 +502,8 @@ def archive_batch(batch_id, user) -> dict:
     _require_review_role(user)
     with session() as db:
         from app.models import AaGraduationAuditBatch, AaGraduationAuditResult
-        b = db.get(AaGraduationAuditBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
-            raise not_found("预审批次不存在")
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        b = guard_batch_term_writable(db, batch_id)
         if b.status == "ARCHIVED":
             raise AppException("IDEMPOTENCY_CONFLICT", "该批次已归档")
         eligible = db.scalars(select(AaGraduationAuditResult).where(
@@ -667,6 +677,8 @@ def import_fee_clearance(batch_id, user, rows: list) -> dict:
         raise AppException("BAD_REQUEST", "rows 不能为空")
     updated, skipped = 0, 0
     with session() as db:
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        guard_batch_term_writable(db, batch_id)
         for row in rows:
             sno = str((row or {}).get("studentNo") or "").strip()
             st = str((row or {}).get("status") or "").upper().strip()

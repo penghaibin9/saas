@@ -197,9 +197,8 @@ def precheck(batch_id, user) -> dict:
             StudentProfile,
         )
 
-        batch = db.get(AaGraduationAuditBatch, int(batch_id))
-        if not batch or batch.is_deleted or batch.tenant_id != _tid():
-            raise not_found("预审批次不存在")
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        batch = guard_batch_term_writable(db, batch_id)
         rows = db.scalars(
             select(AaGraduationAuditResult).where(
                 AaGraduationAuditResult.tenant_id == _tid(),
@@ -300,6 +299,8 @@ def college_review(result_id, user, action, note="") -> dict:
         graduation_service._assert_result_in_scope(db, user, result)
         from .academic_affairs_graduation_scope_guard import assert_college_review_authority
         assert_college_review_authority(db, user, result)
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        guard_batch_term_writable(db, result.batch_id)
         if result.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
 
@@ -364,6 +365,8 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
             raise not_found("预审结果不存在")
         if result.status != "ACADEMIC_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅学院初审通过的结果可终审")
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        guard_batch_term_writable(db, result.batch_id)
 
         run = db.scalars(select(GraduationEvaluationRun).where(
             GraduationEvaluationRun.tenant_id == _tid(),

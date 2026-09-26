@@ -200,6 +200,7 @@ def evaluate_status_change(db, term_id, term_code, college_ids=None):
 def evaluate_graduation(db, term_id, college_ids=None):
     """Graduation archive gate is four-state and never promotes missing scope evidence to PASS."""
     from app.models import AaGraduationAuditBatch, AaTerm
+    from .academic_affairs_graduation_term_scope import batch_term_condition
 
     if not term_id:
         return _state_result(
@@ -237,26 +238,22 @@ def evaluate_graduation(db, term_id, college_ids=None):
             AaGraduationAuditResult.tenant_id == _tid(), AaGraduationAuditResult.is_deleted.is_(False),
             AaGraduationAuditResult.student_id.in_(college_student_ids(college_ids)),
             AaGraduationAuditBatch.tenant_id == _tid(), AaGraduationAuditBatch.is_deleted.is_(False),
-            or_(AaGraduationAuditBatch.generate_at.between(start_at, end_at),
-                AaGraduationAuditBatch.generate_at.is_(None) & AaGraduationAuditBatch.created_at.between(start_at, end_at)))
+            batch_term_condition(term))
         count = own.count()
         pending = own.filter(AaGraduationAuditResult.status.notin_(
             ("GRADUATED", "COMPLETED", "DELAYED", "ARCHIVED"))).count()
         return college_school_result("GRADUATION", count, pending,
             "本院毕业审核结果尚未终结", "毕业批次归档及无法确定学期的历史记录由学校核验")
-    rows = []
-    for row in db.query(AaGraduationAuditBatch).filter(
+    rows = db.query(AaGraduationAuditBatch).filter(
         AaGraduationAuditBatch.tenant_id == _tid(),
         AaGraduationAuditBatch.is_deleted.is_(False),
-    ).all():
-        occurred_at = getattr(row, "generate_at", None) or getattr(row, "created_at", None)
-        if occurred_at and start_at <= occurred_at <= end_at:
-            rows.append(row)
+        batch_term_condition(term),
+    ).all()
     if not rows:
         return _state_result(
             "GRADUATION",
             "NOT_APPLICABLE",
-            "本学期未发现可按时间归属的毕业审核批次（非毕业学期不阻断）",
+            "本学期未发现显式关联或按历史时间兼容归属的毕业审核批次（非毕业学期不阻断）",
             rule_code="GRADUATION_NOT_APPLICABLE",
         )
     unfinished = [row for row in rows if str(row.status or "").upper() != "ARCHIVED"]
