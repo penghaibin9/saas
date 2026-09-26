@@ -66,6 +66,35 @@ def _require_school(ctx):
         raise no_data_scope("仅教务处可管理教务归档")
 
 
+def _require_archive_operator(db, user):
+    """正式封存和归档后纠错共用当前学校责任人，审计兼容身份不能扩权。"""
+    from app.core.permissions import _match
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_responsibility_service import resolve_school
+
+    ctx = _ctx(user, db)
+    _require_school(ctx)
+    permission = "academicAffairs.archive.manage"
+    if not _match(permission, ctx.permission_codes):
+        raise no_data_scope("当前账号无教务归档办理权限")
+    owner = resolve_school(db, permission_code=permission)
+    try:
+        actor = _current_user_id(db, user)
+    except AppException:
+        raise no_data_scope("当前账号未绑定有效学校归档责任人") from None
+    if not owner["resolved"] or str(actor) not in owner["assigneeUserIds"]:
+        raise no_data_scope("当前账号不是有效的学校归档责任人，请核对校级任职与归档权限")
+    return actor
+
+
+def _require_historical_archive_actor(db, actor_id):
+    """旧兼容签署键不能与新账号编号直接比较来证明双人复核。"""
+    from app.models import User
+    if actor_id is None or not db.scalar(select(User.id).where(
+            User.id == actor_id, User.tenant_id == _tid())):
+        raise _invalid("历史签署账号无法核验，不能证明双人复核，请先核对历史审计身份")
+
+
 # ═══════════ 学期写保护 ═══════════
 
 def guard_term_writable(db, term_id) -> None:
@@ -402,7 +431,7 @@ def confirm_archive(user, batch_id, force=False):
     """仅 READY 批次可归档；兼容参数 force 不再允许整体绕过门禁。"""
     from app.models import AaTerm
     with session() as db:
-        _require_school(_ctx(user, db))
+        _require_archive_operator(db, user)
         batch = _get_batch(db, batch_id)
         if batch.status == "ARCHIVED":
             return _batch_dto(batch)

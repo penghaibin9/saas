@@ -157,14 +157,7 @@ def reject_correction_case(user, case_id, *, reason: str) -> dict:
     core = archive_service._core
     reason = _review_reason(reason)
     with core.session() as db:
-        core._require_school(core._ctx(user, db))
-        actor = immutable_service._actor_id(db)
-        if actor is None:
-            raise AppException(
-                "NO_PERMISSION",
-                "当前操作人无法解析到租户内稳定账号，禁止执行高风险归档纠错复核",
-                http_status=403,
-            )
+        actor = core._require_archive_operator(db, user)
         case = db.query(PostArchiveCorrectionCase).filter(
             PostArchiveCorrectionCase.id == int(case_id),
             PostArchiveCorrectionCase.tenant_id == _tid(),
@@ -185,6 +178,7 @@ def reject_correction_case(user, case_id, *, reason: str) -> dict:
                 "该高风险纠错单缺少发起人审计身份，无法证明双人复核，禁止驳回",
                 http_status=409,
             )
+        core._require_historical_archive_actor(db, case.created_by)
         if int(case.created_by) == int(actor):
             raise AppException("NO_PERMISSION", "归档后纠错必须由不同操作人二次复核", http_status=403)
 

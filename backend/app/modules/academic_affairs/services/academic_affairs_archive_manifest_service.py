@@ -200,10 +200,7 @@ def confirm_archive(user, batch_id, force=False):
 
     core = archive_service._core
     with core.session() as db:
-        core._require_school(core._ctx(user, db))
-        actor = _actor_id(db)
-        if actor is None:
-            raise AppException("NO_PERMISSION", "缺少可审计的操作人身份，禁止执行正式归档", http_status=403)
+        actor = core._require_archive_operator(db, user)
         batch = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.id == int(batch_id),
             AaArchiveBatch.tenant_id == _tid(),
@@ -454,10 +451,7 @@ def append_integrity_checkpoint(user, batch_id, *, note: str) -> dict:
 
     core = archive_service._core
     with core.session() as db:
-        core._require_school(core._ctx(user, db))
-        actor = _actor_id(db)
-        if actor is None:
-            raise AppException("NO_PERMISSION", "缺少可审计操作人，禁止追加完整性检查点", http_status=403)
+        actor = core._require_archive_operator(db, user)
         batch = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.id == int(batch_id),
             AaArchiveBatch.tenant_id == _tid(),
@@ -473,6 +467,7 @@ def append_integrity_checkpoint(user, batch_id, *, note: str) -> dict:
         if not manifests:
             raise AppException("DATA_CONFLICT", "没有可证明的原始 Manifest 链", http_status=409)
         previous = manifests[-1]
+        core._require_historical_archive_actor(db, previous.archived_by)
         if previous.archived_by is not None and int(previous.archived_by) == int(actor):
             raise AppException("NO_PERMISSION", "完整性检查点必须由不同于上一版本签署人的操作人追加", http_status=403)
         if re.search(r"INTEGRITY_CHECKPOINT:[0-9a-f]{64}", str(previous.reason or ""), re.IGNORECASE):
@@ -613,14 +608,7 @@ def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
         raise AppException("VALIDATION_ERROR", "纠错证据清单不能为空")
 
     with core.session() as db:
-        core._require_school(core._ctx(user, db))
-        requester = _actor_id(db)
-        if requester is None:
-            raise AppException(
-                "NO_PERMISSION",
-                "当前操作人无法解析到租户内稳定账号，禁止发起高风险归档后纠错",
-                http_status=403,
-            )
+        requester = core._require_archive_operator(db, user)
         batch = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.id == int(batch_id),
             AaArchiveBatch.tenant_id == _tid(),
@@ -667,10 +655,7 @@ def approve_correction_case(user, case_id) -> dict:
 
     core = archive_service._core
     with core.session() as db:
-        core._require_school(core._ctx(user, db))
-        actor = _actor_id(db)
-        if actor is None:
-            raise AppException("NO_PERMISSION", "当前操作人无法解析到租户内稳定账号，禁止执行高风险归档纠错", http_status=403)
+        actor = core._require_archive_operator(db, user)
         case = db.query(PostArchiveCorrectionCase).filter(
             PostArchiveCorrectionCase.id == int(case_id),
             PostArchiveCorrectionCase.tenant_id == _tid(),
@@ -686,6 +671,7 @@ def approve_correction_case(user, case_id) -> dict:
                 "该高风险纠错单缺少发起人审计身份，无法证明双人复核，禁止应用",
                 http_status=409,
             )
+        core._require_historical_archive_actor(db, case.created_by)
         if int(case.created_by) == int(actor):
             raise AppException("NO_PERMISSION", "归档后纠错必须由不同操作人二次审批", http_status=403)
 

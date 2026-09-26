@@ -162,6 +162,7 @@ def test_force_cannot_bypass_missing_archive_gate(monkeypatch):
     monkeypatch.setattr(core, "_ctx", lambda _user, _db: SimpleNamespace(scope_type="TENANT_ALL"))
     monkeypatch.setattr(core, "_require_school", lambda _ctx: None)
     monkeypatch.setattr(core, "_get_batch", lambda _db, _bid: batch)
+    monkeypatch.setattr(core, "_require_archive_operator", lambda *_: 9001)
 
     with pytest.raises(AppException) as exc:
         core.confirm_archive({"currentRoleCode": "ACADEMIC_ADMIN"}, 1, force=True)
@@ -195,6 +196,7 @@ def test_public_manifest_confirm_also_rejects_force_on_missing_items(monkeypatch
     monkeypatch.setattr(core, "_ctx", lambda _user, _db: SimpleNamespace(scope_type="TENANT_ALL"))
     monkeypatch.setattr(core, "_require_school", lambda _ctx: None)
     monkeypatch.setattr(manifest, "_actor_id", lambda _db: 9001)
+    monkeypatch.setattr(core, "_require_archive_operator", lambda *_: 9001)
 
     with pytest.raises(AppException) as exc:
         public.confirm_archive({"currentRoleCode": "ACADEMIC_ADMIN"}, 1, force=True)

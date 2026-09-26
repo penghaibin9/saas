@@ -29,6 +29,8 @@ def _seed(db_mode, with_data=True):
     from app.db.session import get_sessionmaker
     from app.models import AaProgram, AaTerm, StudentProfile
     db = get_sessionmaker()()
+    from tests.support_archive_review_identity import seed_archive_operator
+    seed_archive_operator(db, TID, "school_admin01")
     term = AaTerm(tenant_id=TID, year_code="2024-2025", term_no=1, status="PUBLISHED", is_current=True)
     db.add(term); db.flush()
     if with_data:

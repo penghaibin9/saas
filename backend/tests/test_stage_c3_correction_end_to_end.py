@@ -20,13 +20,11 @@ TERM_CODE = "2098-2099-2"
 
 
 def _user(user_id: int, login: str) -> dict:
-    return {
-        "userId": str(user_id),
-        "loginName": login,
-        "realName": login,
-        "userType": "SCHOOL_ADMIN",
-        "currentRoleCode": "SCHOOL_ADMIN",
-    }
+    from tests.support_archive_review_identity import seed_archive_operator
+    with get_sessionmaker()() as db:
+        user = seed_archive_operator(db, TID, login, user_id)
+        db.commit()
+        return user
 
 
 def _activate(user: dict):
