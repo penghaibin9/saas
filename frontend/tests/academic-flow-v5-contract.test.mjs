@@ -317,15 +317,38 @@ test('public course scheduling mode is the server mode and missing configuration
   assert.equal(state.academicFlowCount(undefined), '待核对')
 })
 
-test('archived state does not invent a configured archive owner or next role', () => {
+test('归档终态说明已完成事项，不把空责任冒充缺少任职；真实责任各自优先', () => {
   const { state } = page('AaArchiveConsoleView', { ...registry }, { ctx: { currentRole: {}, dataScope: {} } })
-  state.current = { batchId: '1', status: 'ARCHIVED' }
-  assert.match(state.archiveOwner, /责任岗位待明确/)
-  assert.equal(state.nextRole, '下一责任事项待明确')
-  state.current.responsibility = responsibility
-  state.current.nextStep = { label: '核对受控纠错材料', responsibility: { ...responsibility, orgName: '校教务处' } }
-  assert.match(state.archiveOwner, /信息学院/)
-  assert.match(state.nextRole, /校教务处/)
+  for (const [status, owner, nextRole] of [
+    ['ARCHIVED', '学校已完成封存', '后续查阅或纠错由校教务统筹'],
+    ['CANCELLED', '批次已取消', '无需继续办理此批次']
+  ]) {
+    state.current = { batchId: '1', status, responsibility: null, nextStep: null }
+    assert.equal(state.archiveOwner, owner)
+    assert.equal(state.nextRole, nextRole)
+    assert.doesNotMatch(`${state.archiveOwner} ${state.nextRole}`, /李老师|9007199254740995|任职|待明确/)
+    state.current.responsibility = responsibility
+    assert.match(state.archiveOwner, /信息学院.*李老师/)
+    assert.equal(state.nextRole, nextRole)
+    state.current.responsibility = null
+    state.current.nextStep = { label: '核对受控纠错材料', responsibility: { ...responsibility, orgName: '校教务处' } }
+    assert.equal(state.archiveOwner, owner)
+    assert.match(state.nextRole, /校教务处.*李老师/)
+  }
+})
+
+test('非终态或未知归档状态缺少责任时仍明确待核对，不猜测办理人', () => {
+  const { state } = page('AaArchiveConsoleView', { ...registry }, { ctx: { currentRole: {}, dataScope: {} } })
+  for (const status of ['DRAFT', 'CHECKING', 'READY', 'MISSING_ITEMS', undefined]) {
+    state.current = { batchId: '1', status, responsibility: null, nextStep: null }
+    assert.match(state.archiveOwner, /责任岗位待明确/)
+    assert.equal(state.nextRole, '下一责任事项待明确')
+    assert.doesNotMatch(`${state.archiveOwner} ${state.nextRole}`, /已完成封存|李老师|9007199254740995/)
+    state.current.responsibility = responsibility
+    state.current.nextStep = { label: '核对归档材料', responsibility: { ...responsibility, orgName: '校教务处' } }
+    assert.match(state.archiveOwner, /信息学院.*李老师/)
+    assert.match(state.nextRole, /校教务处.*李老师/)
+  }
 })
 
 
