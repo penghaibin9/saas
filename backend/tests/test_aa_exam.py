@@ -24,6 +24,46 @@ def _stu_token(real_name, student_no):
         "currentRoleCode": "STUDENT", "clientType": "MP"})}
 
 
+def _seed_exam_review_identity(db, college_id):
+    """真实账号持有考务具体权限；学院确认与学校发布分别落到有效任职。"""
+    from datetime import datetime
+    from app.models import College, Role, RoleAssignmentScope, RolePermission, StaffAssignment, TeacherStudentScope, UserRole
+    from tests.support_grade_review_identity import _ensure_account, _ensure_permission, _ensure_college_assignment
+
+    college = db.get(College, int(college_id))
+    for login, scope_type, permissions in (
+        ("college_admin01", "COLLEGE", ("view", "manage")),
+        ("school_admin01", "SCHOOL", ("view", "manage", "arrange", "publish")),
+    ):
+        user = _ensure_account(db, login)
+        role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == f"TEST_GRADE_{login.upper()}").one()
+        link = db.query(UserRole).filter(UserRole.tenant_id == TID, UserRole.user_id == user.id, UserRole.role_id == role.id).one()
+        for action in permissions:
+            permission = _ensure_permission(db, "academicAffairs.exam." + action)
+            if not db.query(RolePermission).filter(RolePermission.tenant_id == TID,
+                    RolePermission.role_id == role.id, RolePermission.permission_id == permission.id).first():
+                db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=permission.id, status="ACTIVE"))
+        scope_id = college.id if scope_type == "COLLEGE" else 0
+        if not db.query(RoleAssignmentScope).filter(RoleAssignmentScope.tenant_id == TID,
+                RoleAssignmentScope.user_role_id == link.id, RoleAssignmentScope.scope_type == scope_type).first():
+            db.add(RoleAssignmentScope(tenant_id=TID, user_role_id=link.id, user_id=user.id, role_code=role.role_code,
+                scope_type=scope_type, scope_id=scope_id, effective_at=datetime(2020, 1, 1), status="ACTIVE"))
+        if scope_type == "COLLEGE":
+            college.secretary_id = user.id
+            _ensure_college_assignment(db, user.id, college.id)
+            if not db.query(TeacherStudentScope).filter(TeacherStudentScope.tenant_id == TID,
+                    TeacherStudentScope.teacher_key == login, TeacherStudentScope.role_code == "COLLEGE_ADMIN",
+                    TeacherStudentScope.scope_type == "COLLEGE", TeacherStudentScope.ref_value == college.college_name).first():
+                db.add(TeacherStudentScope(tenant_id=TID, teacher_key=login, role_code="COLLEGE_ADMIN",
+                    scope_type="COLLEGE", ref_value=college.college_name, status="ACTIVE"))
+        elif not db.query(StaffAssignment).filter(StaffAssignment.tenant_id == TID, StaffAssignment.user_id == user.id,
+                StaffAssignment.org_type == "SCHOOL", StaffAssignment.org_node_id == TID,
+                StaffAssignment.assignment_type == "ACADEMIC_REVIEWER").first():
+            db.add(StaffAssignment(tenant_id=TID, user_id=user.id, org_type="SCHOOL", org_node_id=TID,
+                assignment_type="ACADEMIC_REVIEWER", effective_at=datetime(2020, 1, 1), status="ACTIVE"))
+    db.flush()
+
+
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
     from app.models import (AaClassroom, AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm,
@@ -59,6 +99,7 @@ def _seed(db_mode):
     s2 = StudentProfile(tenant_id=TID, student_no="EX2402", real_name="考乙", college_id=col.id,
                         major_id=major.id, class_id=klass.id, grade="2024", student_status="NORMAL", status="ACTIVE")
     db.add_all([s1, s2]); db.flush()
+    _seed_exam_review_identity(db, col.id)
     ids = {"tt1": tt1.id, "tt2": tt2.id, "s1": s1.id, "s2": s2.id, "college": col.id,
            "term": term.id}
     db.commit(); db.close()
@@ -73,7 +114,8 @@ def _batch_with_confirmed_course(client, admin, tt_id, name="2024秋期末", ter
     bid = client.post(f"{BASE}/exam/batches", headers=admin, json=body).json()["data"]["batchId"]
     cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                       json={"teachingTaskId": str(tt_id)}).json()["data"]["examCourseId"]
-    client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
+    assert confirmed.status_code == 200, confirmed.text
     client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                json={"examDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00", "durationMinutes": 120})
     client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
@@ -330,6 +372,22 @@ def test_e16_defer_college_scope_403(client, db_mode):
     assert r1["data"]["status"] == "TEACHER_CONFIRM"
     r2 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=admin, json={"action": "APPROVE"}).json()
     assert r2["data"]["status"] == "COLLEGE_REVIEW"
+    # 课程确认已由真实本院办理人完成；此负向用例将其当前范围调到另一学院，
+    # 保留“学院不能审核外院课程”的原断言，而不是依赖没有任何学院范围的空身份。
+    from app.db.session import get_sessionmaker
+    from app.models import College, RoleAssignmentScope, TeacherStudentScope, User
+    with get_sessionmaker()() as db:
+        other = College(tenant_id=TID, college_name="考务范围对照学院", status="ACTIVE")
+        db.add(other)
+        db.flush()
+        uid = db.query(User.id).filter(User.tenant_id == TID, User.login_name == "college_admin01").scalar()
+        db.query(TeacherStudentScope).filter(TeacherStudentScope.tenant_id == TID,
+            TeacherStudentScope.teacher_key == "college_admin01", TeacherStudentScope.scope_type == "COLLEGE").update(
+                {"ref_value": other.college_name}, synchronize_session=False)
+        db.query(RoleAssignmentScope).filter(RoleAssignmentScope.tenant_id == TID,
+            RoleAssignmentScope.user_id == uid, RoleAssignmentScope.scope_type == "COLLEGE").update(
+                {"scope_id": other.id}, synchronize_session=False)
+        db.commit()
     college_admin = _hdr(client, "college_admin01")
     r3 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=college_admin, json={"action": "APPROVE"})
     assert r3.status_code == 403

@@ -5,6 +5,7 @@ import importlib
 from contextlib import contextmanager
 
 import pytest
+from app.core.exceptions import AppException
 
 service = importlib.import_module("app.modules.academic_affairs.services.academic_affairs_exam_service")
 
@@ -66,6 +67,152 @@ def test_exam_handoffs_use_current_stage_permission_and_cache(monkeypatch):
     assert result[2]["responsibility"]["permission"] == "academicAffairs.exam.publish"
     assert result[4] == {"responsibility": None, "nextStep": None}
     assert school.call_count == 2
+
+
+@pytest.mark.parametrize("scope,permission,resolved,actor", [
+    ("TENANT_ALL", True, True, "17"),
+    ("COLLEGE", False, True, "17"),
+    ("COLLEGE", True, False, "17"),
+    ("COLLEGE", True, True, "99"),
+])
+def test_public_confirmation_requires_current_college_actor_before_writes(monkeypatch, scope, permission, resolved, actor):
+    from app.modules.academic_affairs.services import academic_affairs_responsibility_service as resolver
+    from app.modules.academic_affairs.services import academic_affairs_grade_correction_command as identity
+    facade = importlib.import_module("app.modules.academic_affairs.services.academic_affairs_exam_facade")
+    db = MagicMock()
+    course = Row(id=9, status="PENDING_CONFIRM")
+    @contextmanager
+    def session():
+        yield db
+    monkeypatch.setattr(service, "session", session)
+    monkeypatch.setattr(service, "_ctx", lambda *args: Row(scope_type=scope, college_ids={12},
+        permission_codes={"academicAffairs.exam.manage"} if permission else set()))
+    monkeypatch.setattr(service, "_get_course", lambda *args: course)
+    monkeypatch.setattr(service, "_course_college_id", lambda *args: 12)
+    monkeypatch.setattr(resolver, "resolve_organization", lambda *args, **kw: {
+        "resolved": resolved, "assigneeUserIds": [actor], "reason": "任职已失效"})
+    monkeypatch.setattr(identity, "_current_user_id", lambda db, user: 17)
+    with pytest.raises(AppException) as denied:
+        facade.confirm_course({"userId": "17"}, 9, "CONFIRM")
+    assert denied.value.code == "NO_DATA_SCOPE"
+    assert course.status == "PENDING_CONFIRM"
+    db.add.assert_not_called()
+    db.commit.assert_not_called()
+
+
+def test_course_confirmer_uses_exact_offering_college_and_current_permission(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_responsibility_service as resolver
+    from app.modules.academic_affairs.services import academic_affairs_grade_correction_command as identity
+    owner = {"resolved": True, "assigneeUserIds": ["17"]}
+    resolve = MagicMock(return_value=owner)
+    monkeypatch.setattr(resolver, "resolve_organization", resolve)
+    monkeypatch.setattr(identity, "_current_user_id", lambda db, user: 17)
+    monkeypatch.setattr(service, "_course_college_id", lambda *args: 12)
+    db = MagicMock()
+    ctx = Row(scope_type="COLLEGE", college_ids={12}, permission_codes={"academicAffairs.exam.manage"})
+    assert service._require_course_confirmer(db, {"userId": "17"}, ctx, Row(id=9)) is owner
+    resolve.assert_called_once_with(db, "COLLEGE", 12, permission_code="academicAffairs.exam.manage")
+
+
+@pytest.mark.parametrize("scope,permission,resolved,actor", [
+    ("COLLEGE", True, True, "17"),
+    ("TENANT_ALL", False, True, "17"),
+    ("TENANT_ALL", True, False, "17"),
+    ("TENANT_ALL", True, True, "99"),
+])
+def test_public_publish_denies_invalid_school_actor_before_arrangement(monkeypatch, scope, permission, resolved, actor):
+    from app.modules.academic_affairs.services import academic_affairs_responsibility_service as resolver
+    from app.modules.academic_affairs.services import academic_affairs_grade_correction_command as identity
+    facade = importlib.import_module("app.modules.academic_affairs.services.academic_affairs_exam_facade")
+    db, arrangement = MagicMock(), MagicMock()
+    @contextmanager
+    def session():
+        yield db
+    monkeypatch.setattr(service, "session", session)
+    monkeypatch.setattr(service, "_ctx", lambda *args: Row(scope_type=scope,
+        permission_codes={"academicAffairs.exam.publish"} if permission else set()))
+    monkeypatch.setattr(resolver, "resolve_school", lambda *args, **kw: {
+        "resolved": resolved, "assigneeUserIds": [actor], "reason": "任职已失效"})
+    monkeypatch.setattr(identity, "_current_user_id", lambda db, user: 17)
+    monkeypatch.setattr(facade, "_check_arrangement_complete", arrangement)
+    with pytest.raises(AppException) as denied:
+        facade.publish_batch({"userId": "17"}, 9)
+    assert denied.value.code == "NO_DATA_SCOPE"
+    arrangement.assert_not_called()
+    db.commit.assert_not_called()
+
+
+def test_school_publisher_rechecks_active_stable_account(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_responsibility_service as resolver
+    from app.modules.academic_affairs.services import academic_affairs_grade_correction_command as identity
+    owner = {"resolved": True, "assigneeUserIds": ["17"]}
+    resolve = MagicMock(return_value=owner)
+    monkeypatch.setattr(resolver, "resolve_school", resolve)
+    monkeypatch.setattr(identity, "_current_user_id", lambda db, user: 17)
+    db = MagicMock()
+    ctx = Row(scope_type="TENANT_ALL", permission_codes={"academicAffairs.exam.publish"})
+    assert service._require_school_publisher(db, {"userId": "17"}, ctx) is owner
+    resolve.assert_called_once_with(db, permission_code="academicAffairs.exam.publish")
+    monkeypatch.setattr(identity, "_current_user_id", MagicMock(side_effect=AppException("NO_PERMISSION", "账号已停用")))
+    with pytest.raises(Exception, match="账号已失效"):
+        service._require_school_publisher(db, {"userId": "17"}, ctx)
+
+
+def test_mysql_exam_college_confirmation_and_school_publication_require_live_appointments(client, db_mode):
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import StaffAssignment, User
+    from tests.test_aa_exam import BASE, TID, _seed, _hdr
+
+    ids = _seed(db_mode)
+    school, college = _hdr(client, "school_admin01"), _hdr(client, "college_admin01")
+    created = client.post(f"{BASE}/exam/batches", headers=school,
+        json={"batchName": "责任交接考试", "termId": str(ids["term"])})
+    assert created.status_code == 200, created.text
+    bid = created.json()["data"]["batchId"]
+    added = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=school,
+        json={"teachingTaskId": str(ids["tt1"])})
+    assert added.status_code == 200, added.text
+    cid = added.json()["data"]["examCourseId"]
+
+    def expire(login, org_type, expired):
+        with get_sessionmaker()() as db:
+            uid = db.query(User.id).filter(User.tenant_id == TID, User.login_name == login).scalar()
+            appointment = db.query(StaffAssignment).filter(StaffAssignment.tenant_id == TID,
+                StaffAssignment.user_id == uid, StaffAssignment.org_type == org_type).one()
+            appointment.expires_at = datetime(2020, 1, 2) if expired else None
+            db.commit()
+
+    assert client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=school,
+        json={"action": "CONFIRM"}).status_code == 403
+    expire("college_admin01", "COLLEGE", True)
+    assert client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=college,
+        json={"action": "CONFIRM"}).status_code == 403
+    courses = client.get(f"{BASE}/exam/batches/{bid}/courses", headers=school).json()["data"]["items"]
+    assert courses[0]["status"] == "PENDING_CONFIRM"
+    expire("college_admin01", "COLLEGE", False)
+    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=college, json={"action": "CONFIRM"})
+    assert confirmed.status_code == 200, confirmed.text
+    assert client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=school,
+        json={"examDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00", "durationMinutes": 120}).status_code == 200
+    assert client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=school).status_code == 200
+    room = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=school,
+        json={"classroomText": "A101", "capacity": 50})
+    assert room.status_code == 200, room.text
+    rid = room.json()["data"]["examRoomId"]
+    assert client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=school,
+        json={"studentIds": [str(ids["s1"]), str(ids["s2"])]}).status_code == 200
+    assert client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=school,
+        json={"teacherKey": "teacher_a", "teacherName": "甲老师", "role": "CHIEF"}).status_code == 200
+    before = client.get(f"{BASE}/exam/batches/{bid}", headers=school).json()["data"]["status"]
+    expire("school_admin01", "SCHOOL", True)
+    assert client.post(f"{BASE}/exam/batches/{bid}/publish", headers=school).status_code == 403
+    assert client.get(f"{BASE}/exam/batches/{bid}", headers=school).json()["data"]["status"] == before
+    expire("school_admin01", "SCHOOL", False)
+    published = client.post(f"{BASE}/exam/batches/{bid}/publish", headers=school)
+    assert published.status_code == 200, published.text
+    assert published.json()["data"]["status"] == "PUBLISHED"
+    assert client.get(f"{BASE}/exam/batches/{bid}", headers=school).json()["data"]["status"] == "PUBLISHED"
 
 
 def test_mysql_exam_scope_ignores_stale_student_college_and_rejects_foreign_course(db_mode, monkeypatch):

@@ -101,6 +101,18 @@ def _grade_status(counts, *, teacher=False):
                          ready=review if teacher else (), known=(*_EDITABLE, *review))
 
 
+def _exam_progress(course_counts, batch_counts):
+    """学院确认完成后，按当前考试批次节点移交学校编排、发布及考后收口。"""
+    courses = _counts_state(course_counts, ready=("CONFIRMED",), known=("PENDING_CONFIRM",))
+    if courses not in {"READY", "DONE"}:
+        return courses, "COLLEGE" if course_counts else "SCHOOL", "exam.manage"
+    state = _counts_state(batch_counts, done=("FINISHED", "ARCHIVED"), ready=("PUBLISHED",),
+        known=("DRAFT", "COURSE_CONFIRMED", "ARRANGED"))
+    permission = next((permission for status, permission in (("DRAFT", "exam.manage"),
+        ("COURSE_CONFIRMED", "exam.arrange"), ("ARRANGED", "exam.publish")) if batch_counts.get(status)), "exam.manage")
+    return state, "SCHOOL", permission
+
+
 def _current(stages):
     applicable = [row for row in stages if row["status"] != "NOT_APPLICABLE"]
     return next((row for row in applicable if row["status"] not in _COMPLETE), applicable[-1] if applicable else None)
@@ -667,7 +679,7 @@ def _unit_stages(db, term, ctx, college, school_responsible, resolver_cache):
         AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
         AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == term.id,
         AaTeachingTaskBatch.is_deleted.is_(False), AaCourse.tenant_id == _tid(),
-        AaCourse.owner_college_id == cid, AaCourse.is_deleted.is_(False))
+        func.coalesce(AaCourse.owner_college_id, AaTeachingTaskBatch.college_id) == cid, AaCourse.is_deleted.is_(False))
     # 学院只读本院学生/正式授课关系，批次与最终发布权仍由原业务命令裁决。
     for index, (state, blockers, evidence) in _student_unit_progress(db, term, cid, student_ids, task_ids).items():
         actor = _student_stage_responsibility(index, evidence, org, school_responsible)
@@ -688,10 +700,11 @@ def _unit_stages(db, term, ctx, college, school_responsible, resolver_cache):
         (AaExamBatch.id == AaExamCourse.batch_id) & (AaExamBatch.tenant_id == _tid())
         & AaExamBatch.is_deleted.is_(False)).filter(AaExamBatch.term_id == term.id, AaExamCourse.status != "REMOVED")
     exam_counts = _counts(exams, AaExamCourse)
-    unfinished_exams = exams.filter(AaExamBatch.status.notin_(("FINISHED", "ARCHIVED"))).count()
-    put(7, status=("DONE" if exam_counts and not unfinished_exams else _counts_state(
-        exam_counts, ready=("CONFIRMED",), known=("PENDING_CONFIRM",))),
-        responsible=org("academicAffairs.exam.manage"), evidence={"byStatus": exam_counts})
+    exam_batch_counts = {str(state): int(count) for state, count in exams.with_entities(
+        AaExamBatch.status, func.count(func.distinct(AaExamBatch.id))).group_by(AaExamBatch.status).all()}
+    state, org_type, permission = _exam_progress(exam_counts, exam_batch_counts)
+    put(7, status=state, responsible=school_responsible(permission) if org_type == "SCHOOL" else org("academicAffairs." + permission),
+        evidence={"byStatus": exam_counts, "byBatchStatus": exam_batch_counts})
     grades = _query(db, AaGradeTask, AaGradeTask.term_id == term.id,
         AaGradeTask.teaching_task_id.in_(_college_grade_task_ids(term, cid)))
     grade_counts = _counts(grades, AaGradeTask)
@@ -718,13 +731,22 @@ def _school_stages(db, term, ctx, units, school_responsible, *, complete_scope, 
     from . import academic_affairs_archive_service as archive
     from . import academic_affairs_archive_domain_policy as policy
 
+    # 学校视角沿当前单位批次事实选择最先待办节点，不能将所有考务阶段固定交发布岗。
+    exam_courses, exam_batches = Counter(), Counter()
+    for unit in units:
+        evidence = unit["stages"][7].get("evidence") or {}
+        exam_courses.update(evidence.get("byStatus") or {})
+        exam_batches.update(evidence.get("byBatchStatus") or {})
+    _state, exam_org_type, exam_permission = _exam_progress(exam_courses, exam_batches)
     rows = []
     for index in range(len(STAGES)):
         unit_rows = [unit["stages"][index] for unit in units]
         blockers = [_problem("COLLEGE_NOT_READY", f"{unit['collegeName']}：{unit['stages'][index]['label']}仍有阻断")
                     for unit in units if unit["stages"][index]["status"] == "BLOCKED"]
+        actor = (school_responsible(exam_permission) if exam_org_type == "SCHOOL" else None) if index == 7 else (
+            school_responsible(_SCHOOL_PERMISSIONS[index]) if index in _SCHOOL_PERMISSIONS else None)
         rows.append(_stage(index, term, ctx=ctx, status=_aggregate_status(unit_rows), blockers=blockers,
-                           responsible=school_responsible(_SCHOOL_PERMISSIONS[index]) if index in _SCHOOL_PERMISSIONS else None,
+                           responsible=actor,
                            evidence={"unitCount": len(unit_rows)}))
     setup = readiness._term_setup_items(db, term)
     rows[0] = _stage(0, term, ctx=ctx, status="BLOCKED" if setup else "DONE", responsible=school_responsible("term.manage"),

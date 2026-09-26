@@ -144,6 +144,42 @@ def _check_course_scope(db, ctx, course):
     return college_id
 
 
+def _require_responsible_actor(db, user, ctx, owner, permission):
+    from app.core.permissions import _match
+    from .academic_affairs_grade_correction_command import _current_user_id
+    if not _match(permission, ctx.permission_codes):
+        raise no_data_scope("当前身份没有该考务办理权限")
+    if not owner["resolved"]:
+        raise no_data_scope(owner.get("reason") or "当前考务责任岗位尚未配置或已失效")
+    try:
+        uid = _current_user_id(db, user)
+    except AppException as error:
+        if error.code != "NO_PERMISSION":
+            raise
+        raise no_data_scope("当前账号已失效，不能办理考务") from error
+    if str(uid) not in owner["assigneeUserIds"]:
+        raise no_data_scope("您不是当前有效的考务办理人，请切换到对应责任岗位")
+    return owner
+
+
+def _require_course_confirmer(db, user, ctx, course):
+    from .academic_affairs_responsibility_service import resolve_organization
+    college_id = _check_course_scope(db, ctx, course)
+    if ctx.scope_type != "COLLEGE":
+        raise no_data_scope("考试课程须由开课学院当前办理人确认，学校不能代办学院确认")
+    permission = "academicAffairs.exam.manage"
+    owner = resolve_organization(db, "COLLEGE", college_id, permission_code=permission)
+    return _require_responsible_actor(db, user, ctx, owner, permission)
+
+
+def _require_school_publisher(db, user, ctx):
+    from .academic_affairs_responsibility_service import resolve_school
+    _require_school(ctx)
+    permission = "academicAffairs.exam.publish"
+    owner = resolve_school(db, permission_code=permission)
+    return _require_responsible_actor(db, user, ctx, owner, permission)
+
+
 def _batch_visibility(ctx):
     from sqlalchemy import true
     from app.models import AaExamBatch, AaExamCourse
@@ -382,7 +418,7 @@ def confirm_course(user, cid, action):
     with session() as db:
         ctx = _ctx(user, db)
         c = _get_course(db, cid)
-        _check_course_scope(db, ctx, c)
+        _require_course_confirmer(db, user, ctx, c)
         if c.status != "PENDING_CONFIRM":
             raise _invalid("仅待确认课程可操作")
         c.status = "CONFIRMED" if action == "CONFIRM" else "REMOVED"
@@ -700,7 +736,7 @@ def _notify_publish(db, batch, courses):
 def publish_batch(user, bid):
     """ARRANGED→PUBLISHED：发布前编排完整性校验（每课程有考场+座位+监考，缺则409），发布后通知考生+监考。"""
     with session() as db:
-        _require_school(_ctx(user, db))
+        _require_school_publisher(db, user, _ctx(user, db))
         b = _get_batch(db, bid)
         if b.status not in (_B_CONFIRMED, _B_ARRANGED):
             raise _invalid(f"仅 COURSE_CONFIRMED/ARRANGED 批次可发布，当前 {b.status}")

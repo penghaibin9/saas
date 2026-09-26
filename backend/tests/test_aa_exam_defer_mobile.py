@@ -55,6 +55,8 @@ def _seed(db_mode):
     db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
                                role_code="COUNSELOR", scope_type="CLASS", ref_value="软件3001",
                                status="ACTIVE"))
+    from tests.test_aa_exam import _seed_exam_review_identity
+    _seed_exam_review_identity(db, col.id)
     db.commit()
     ids = {"tt": tt.id, "student": s.id, "studentNo": s.student_no, "term": term.id}
     db.close()
@@ -67,7 +69,8 @@ def _batch_with_confirmed_course(client, admin, tt_id, term_id):
                       json={"batchName": "移动缓考测试批次", "termId": str(term_id)}).json()["data"]["batchId"]
     cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                       json={"teachingTaskId": str(tt_id)}).json()["data"]["examCourseId"]
-    client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
+    assert confirmed.status_code == 200, confirmed.text
     client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                json={"examDate": "2031-06-20", "startTime": "09:00", "endTime": "11:00", "durationMinutes": 120})
     client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)

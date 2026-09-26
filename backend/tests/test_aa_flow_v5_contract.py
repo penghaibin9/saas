@@ -30,6 +30,38 @@ def test_flow_has_twelve_stages_and_exactly_six_states():
     assert service.FLOW_STATUSES == {"NOT_STARTED", "ACTION_REQUIRED", "BLOCKED", "READY", "DONE", "NOT_APPLICABLE"}
 
 
+@pytest.mark.parametrize("courses,batches,expected", [
+    ({}, {}, ("NOT_STARTED", "SCHOOL", "exam.manage")),
+    ({"PENDING_CONFIRM": 1}, {"DRAFT": 1}, ("ACTION_REQUIRED", "COLLEGE", "exam.manage")),
+    ({"CONFIRMED": 1}, {"DRAFT": 1}, ("ACTION_REQUIRED", "SCHOOL", "exam.manage")),
+    ({"CONFIRMED": 1}, {"COURSE_CONFIRMED": 1}, ("ACTION_REQUIRED", "SCHOOL", "exam.arrange")),
+    ({"CONFIRMED": 1}, {"ARRANGED": 1}, ("ACTION_REQUIRED", "SCHOOL", "exam.publish")),
+    ({"CONFIRMED": 1}, {"PUBLISHED": 1}, ("READY", "SCHOOL", "exam.manage")),
+    ({"CONFIRMED": 2}, {"FINISHED": 1, "ARCHIVED": 1}, ("DONE", "SCHOOL", "exam.manage")),
+    ({"CONFIRMED": 2}, {"PUBLISHED": 1, "COURSE_CONFIRMED": 1}, ("ACTION_REQUIRED", "SCHOOL", "exam.arrange")),
+    ({"CONFIRMED": 1}, {"UNRECOGNIZED": 1}, ("BLOCKED", "SCHOOL", "exam.manage")),
+])
+def test_exam_progress_hands_college_confirmation_to_real_school_batch_stage(courses, batches, expected):
+    assert service._exam_progress(courses, batches) == expected
+
+
+@pytest.mark.parametrize("batch_status,permission", [("COURSE_CONFIRMED", "exam.arrange"), ("ARRANGED", "exam.publish")])
+def test_school_exam_projection_uses_current_action_holder(monkeypatch, batch_status, permission):
+    monkeypatch.setattr(service.readiness, "_term_setup_items", lambda *args: [])
+    rows = [dict(row, label=service.STAGES[index][1]) for index, row in enumerate(unit(12, "DONE")["stages"])]
+    rows[7].update(status="ACTION_REQUIRED", evidence={"byStatus": {"CONFIRMED": 1}, "byBatchStatus": {batch_status: 1}})
+    calls = []
+    def resolve(action):
+        calls.append(action)
+        return {"resolved": True, "assigneeUserIds": ["17"], "action": action}
+    stages = service._school_stages(MagicMock(), Row(id=1), Row(permission_codes=set()),
+        [{"collegeName": "甲学院", "stages": rows}], resolve, complete_scope=False)
+    assert stages[7]["status"] == "ACTION_REQUIRED"
+    assert stages[7]["responsibility"]["action"] == permission
+    assert calls.count(permission) == 1
+    assert ("exam.publish" if permission == "exam.arrange" else "exam.arrange") not in calls
+
+
 def test_term_calendar_uses_real_model_datetime_values_and_last_applicable_stage():
     from datetime import date, datetime
     from app.models import AaTerm

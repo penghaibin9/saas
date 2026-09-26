@@ -55,6 +55,8 @@ def _seed(db_mode):
                         major_id=major.id, class_id=klass.id, grade="2024",
                         student_status="NORMAL", status="ACTIVE")
     db.add(s1); db.flush()
+    from tests.test_aa_exam import _seed_exam_review_identity
+    _seed_exam_review_identity(db, col.id)
     ids = {"term": term.id, "task": task.id, "s1": s1.id, "roomA": room_a.id}
     db.commit(); db.close()
     return ids
@@ -65,7 +67,7 @@ def _confirmed_course(client, admin, ids, name="2024秋期末"):
                       json={"batchName": name, "termId": str(ids["term"])}).json()["data"]["batchId"]
     cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                       json={"teachingTaskId": str(ids["task"])}).json()["data"]["examCourseId"]
-    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
     assert confirmed.status_code == 200, confirmed.text
     client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                json={"examDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00",

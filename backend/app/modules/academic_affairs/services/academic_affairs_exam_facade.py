@@ -69,7 +69,7 @@ def confirm_course(user, cid, action):
     with _legacy.session() as db:
         context = _legacy._ctx(user, db)
         course = _legacy._get_course(db, int(cid))
-        _legacy._check_course_scope(db, context, course)
+        _legacy._require_course_confirmer(db, user, context, course)
         if course.status != "PENDING_CONFIRM":
             raise _legacy._invalid("仅待确认课程可操作")
         if action not in {"CONFIRM", "REMOVE", "REJECT"}:
@@ -374,7 +374,7 @@ def publish_batch(user, bid):
     from . import academic_affairs_exam_conflict_service as conflict_service
 
     with _legacy.session() as db:
-        _legacy._require_school(_legacy._ctx(user, db))
+        _legacy._require_school_publisher(db, user, _legacy._ctx(user, db))
         batch = _legacy._get_batch(db, int(bid))
         if batch.status not in (_legacy._B_CONFIRMED, _legacy._B_ARRANGED):
             raise _legacy._invalid(f"仅 COURSE_CONFIRMED/ARRANGED 批次可发布，当前 {batch.status}")
