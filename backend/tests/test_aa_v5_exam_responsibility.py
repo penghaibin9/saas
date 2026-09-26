@@ -230,10 +230,11 @@ def test_mysql_exam_college_confirmation_and_school_publication_require_live_app
     from datetime import datetime
     from app.db.session import get_sessionmaker
     from app.models import StaffAssignment, User
-    from tests.test_aa_exam import BASE, TID, _seed, _hdr
+    from tests.test_aa_exam import BASE, TID, _seed, _hdr, _prepare_task_batch_for_exam
 
     ids = _seed(db_mode)
     school, college = _hdr(client, "school_admin01"), _hdr(client, "college_admin01")
+    _prepare_task_batch_for_exam(client, school, ids["tt1"])
     created = client.post(f"{BASE}/exam/batches", headers=school,
         json={"batchName": "责任交接考试", "termId": str(ids["term"])})
     assert created.status_code == 200, created.text

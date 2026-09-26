@@ -11,8 +11,9 @@ TID = 1000000000000000001
 
 
 def _hdr(client, login_name):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+    response = client.post("/api/v1/auth/mock-login", json={"loginName": login_name, "password": "any"})
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
@@ -27,10 +28,12 @@ def _stu_token(real_name, student_no):
 def _seed_exam_review_identity(db, college_id):
     """真实账号持有考务具体权限；学院确认与学校发布分别落到有效任职。"""
     from datetime import datetime
-    from app.models import College, Role, RoleAssignmentScope, RolePermission, StaffAssignment, TeacherStudentScope, UserRole
+    from app.models import College, Role, RoleAssignmentScope, RolePermission, StaffAssignment, TeacherStudentScope, Tenant, User, UserRole
     from tests.support_grade_review_identity import _ensure_account, _ensure_permission, _ensure_college_assignment
 
     college = db.get(College, int(college_id))
+    if db.get(Tenant, TID) is None:
+        db.add(Tenant(id=TID, tenant_code="demo", school_name="考务责任回归学校", status="ACTIVE"))
     for login, scope_type, permissions in (
         ("college_admin01", "COLLEGE", ("view", "manage")),
         ("school_admin01", "SCHOOL", ("view", "manage", "arrange", "publish")),
@@ -38,8 +41,11 @@ def _seed_exam_review_identity(db, college_id):
         user = _ensure_account(db, login)
         role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == f"TEST_GRADE_{login.upper()}").one()
         link = db.query(UserRole).filter(UserRole.tenant_id == TID, UserRole.user_id == user.id, UserRole.role_id == role.id).one()
-        for action in permissions:
-            permission = _ensure_permission(db, "academicAffairs.exam." + action)
+        task_actions = ("view", "manage", "confirm") if scope_type == "COLLEGE" else ("view", "confirm")
+        codes = ["academicAffairs.exam." + action for action in permissions]
+        codes += ["academicAffairs.teachingTask." + action for action in task_actions]
+        for code in codes:
+            permission = _ensure_permission(db, code)
             if not db.query(RolePermission).filter(RolePermission.tenant_id == TID,
                     RolePermission.role_id == role.id, RolePermission.permission_id == permission.id).first():
                 db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=permission.id, status="ACTIVE"))
@@ -61,7 +67,74 @@ def _seed_exam_review_identity(db, college_id):
                 StaffAssignment.assignment_type == "ACADEMIC_REVIEWER").first():
             db.add(StaffAssignment(tenant_id=TID, user_id=user.id, org_type="SCHOOL", org_node_id=TID,
                 assignment_type="ACADEMIC_REVIEWER", effective_at=datetime(2020, 1, 1), status="ACTIVE"))
+    teacher_role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == "ACADEMIC_TEACHER").first()
+    if teacher_role is None:
+        teacher_role = Role(tenant_id=TID, role_code="ACADEMIC_TEACHER", role_name="任课教师", role_type="CUSTOM", status="ACTIVE")
+        db.add(teacher_role)
+        db.flush()
+    for code in ("academicAffairs.teachingTask.view", "academicAffairs.teachingTask.confirm"):
+        permission = _ensure_permission(db, code)
+        if not db.query(RolePermission).filter(RolePermission.tenant_id == TID, RolePermission.role_id == teacher_role.id,
+                RolePermission.permission_id == permission.id).first():
+            db.add(RolePermission(tenant_id=TID, role_id=teacher_role.id, permission_id=permission.id, status="ACTIVE"))
+    for login, name in (("teacher_a", "甲老师"), ("teacher_b", "乙老师"), ("academic01", "赵敏")):
+        teacher = db.query(User).filter(User.tenant_id == TID, User.login_name == login).first()
+        if teacher is None:
+            teacher = User(tenant_id=TID, login_name=login, real_name=name, user_type="TEACHER", password_hash="x", status="ACTIVE")
+            db.add(teacher)
+            db.flush()
+        if not db.query(UserRole).filter(UserRole.tenant_id == TID, UserRole.user_id == teacher.id,
+                UserRole.role_id == teacher_role.id).first():
+            db.add(UserRole(tenant_id=TID, user_id=teacher.id, role_id=teacher_role.id, status="ACTIVE"))
     db.flush()
+
+
+def _prepare_task_batch_for_exam(client, school, task_id):
+    """考务只种初始任务；学院分配、本人确认、院校确认全部经正式命令推进。"""
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask, AaTeachingTaskBatch, Role, User, UserRole
+    from app.services.auth_service_db import _claims, _role_contexts
+    with get_sessionmaker()() as db:
+        task = db.query(AaTeachingTask).filter(AaTeachingTask.tenant_id == TID, AaTeachingTask.id == int(task_id)).one()
+        batch = db.get(AaTeachingTaskBatch, int(task.batch_id))
+        tasks = db.query(AaTeachingTask).filter(AaTeachingTask.tenant_id == TID, AaTeachingTask.batch_id == batch.id).order_by(AaTeachingTask.id).all()
+        if batch.status == "APPROVED":
+            assert all(row.status == "READY" for row in tasks)
+            return
+        assert batch.status == "DRAFT", batch.status
+        batch_id = str(batch.id)
+        teacher_role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == "ACADEMIC_TEACHER").one()
+        pending = []
+        for row in tasks:
+            assert row.status == "PENDING_ASSIGN", row.status
+            teacher = db.query(User).join(UserRole, UserRole.user_id == User.id).filter(User.tenant_id == TID,
+                User.login_name == row.teacher_key, User.status == "ACTIVE", UserRole.tenant_id == TID,
+                UserRole.role_id == teacher_role.id, UserRole.status == "ACTIVE").one()
+            contexts = _role_contexts(db, teacher)
+            context = next(item for item in contexts if item["contextId"] == f"role:{teacher_role.id}")
+            token = create_access_token(_claims(db, teacher, context, contexts, "PC"))
+            pending.append((str(row.id), teacher.login_name, teacher.real_name, {"Authorization": "Bearer " + token}))
+    college = _hdr(client, "college_admin01")
+    for current_id, teacher_key, teacher_name, teacher_headers in pending:
+        assigned = client.post(f"{BASE}/teaching-tasks/{current_id}/assign", headers=college,
+            json={"teacherKey": teacher_key, "teacherName": teacher_name})
+        assert assigned.status_code == 200, assigned.text
+        assert assigned.json()["data"]["teachingClassProjection"]["ok"] is True
+        confirmed = client.post(f"{BASE}/teaching-tasks/{current_id}/teacher-act", headers=teacher_headers,
+            json={"action": "CONFIRM"})
+        assert confirmed.status_code == 200, confirmed.text
+        assert confirmed.json()["data"]["status"] == "TEACHER_CONFIRMED"
+    submitted = client.post(f"{BASE}/teaching-task-batches/{batch_id}/submit", headers=college)
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["data"]["status"] == "COLLEGE_CONFIRMED"
+    reviewed = client.post(f"{BASE}/teaching-task-batches/{batch_id}/review", headers=school, json={"action": "APPROVE"})
+    assert reviewed.status_code == 200, reviewed.text
+    assert reviewed.json()["data"]["status"] == "APPROVED"
+    readback = client.get(f"{BASE}/teaching-task-batches/{batch_id}/tasks", headers=school)
+    assert readback.status_code == 200, readback.text
+    assert {row["taskId"]: row["status"] for row in readback.json()["data"]["items"]} == {
+        current_id: "READY" for current_id, *_ in pending}
 
 
 def _seed(db_mode):
@@ -85,12 +158,12 @@ def _seed(db_mode):
     co2 = AaCourse(tenant_id=TID, course_code="EX_ENG", course_name="大学英语", credit=3, status="ENABLED")
     db.add_all([co1, co2]); db.flush()
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=term.id, batch_name="2024秋教学任务",
-                             college_id=col.id, status="ACTIVE")
+                             college_id=col.id, status="DRAFT")
     db.add(tb); db.flush()
-    tt1 = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=co1.id, course_name="高等数学",
+    tt1 = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=co1.id, course_code=co1.course_code, course_name="高等数学",
                          class_id=klass.id, teaching_class_name="软件2401",
                          teacher_key="teacher_a", teacher_name="甲老师")
-    tt2 = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=co2.id, course_name="大学英语",
+    tt2 = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=co2.id, course_code=co2.course_code, course_name="大学英语",
                          class_id=klass.id, teaching_class_name="软件2401",
                          teacher_key="teacher_b", teacher_name="乙老师")
     db.add_all([tt1, tt2]); db.flush()
@@ -108,17 +181,23 @@ def _seed(db_mode):
 
 def _batch_with_confirmed_course(client, admin, tt_id, name="2024秋期末", term_id=None):
     """建批次→圈课→确认课程→推进 COURSE_CONFIRMED，返回 (batchId, examCourseId)。"""
+    _prepare_task_batch_for_exam(client, admin, tt_id)
     body = {"batchName": name}
     if term_id:
         body["termId"] = str(term_id)
-    bid = client.post(f"{BASE}/exam/batches", headers=admin, json=body).json()["data"]["batchId"]
-    cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
-                      json={"teachingTaskId": str(tt_id)}).json()["data"]["examCourseId"]
+    created = client.post(f"{BASE}/exam/batches", headers=admin, json=body)
+    assert created.status_code == 200, created.text
+    bid = created.json()["data"]["batchId"]
+    added = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin, json={"teachingTaskId": str(tt_id)})
+    assert added.status_code == 200, added.text
+    cid = added.json()["data"]["examCourseId"]
     confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
     assert confirmed.status_code == 200, confirmed.text
-    client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
+    scheduled = client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                json={"examDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00", "durationMinutes": 120})
-    client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    assert scheduled.status_code == 200, scheduled.text
+    advanced = client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    assert advanced.status_code == 200, advanced.text
     return bid, cid
 
 

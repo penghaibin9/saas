@@ -20,8 +20,9 @@ TID = 1000000000000000001
 
 
 def _hdr(client, login_name):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+    response = client.post("/api/v1/auth/mock-login", json={"loginName": login_name, "password": "any"})
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
@@ -45,9 +46,9 @@ def _seed(db_mode):
                          room_name="A101", capacity=50, status="AVAILABLE")
     db.add(room_a); db.flush()
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=term.id, batch_name="2024秋教学任务",
-                             college_id=col.id, status="ACTIVE")
+                             college_id=col.id, status="DRAFT")
     db.add(tb); db.flush()
-    task = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=course.id, course_name="高等数学",
+    task = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=course.id, course_code=course.course_code, course_name="高等数学",
                           class_id=klass.id, teaching_class_name="软件2401",
                           teacher_key="teacher_a", teacher_name="甲老师")
     db.add(task); db.flush()
@@ -63,16 +64,22 @@ def _seed(db_mode):
 
 
 def _confirmed_course(client, admin, ids, name="2024秋期末"):
-    bid = client.post(f"{BASE}/exam/batches", headers=admin,
-                      json={"batchName": name, "termId": str(ids["term"])}).json()["data"]["batchId"]
-    cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
-                      json={"teachingTaskId": str(ids["task"])}).json()["data"]["examCourseId"]
+    from tests.test_aa_exam import _prepare_task_batch_for_exam
+    _prepare_task_batch_for_exam(client, admin, ids["task"])
+    created = client.post(f"{BASE}/exam/batches", headers=admin, json={"batchName": name, "termId": str(ids["term"])})
+    assert created.status_code == 200, created.text
+    bid = created.json()["data"]["batchId"]
+    added = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin, json={"teachingTaskId": str(ids["task"])})
+    assert added.status_code == 200, added.text
+    cid = added.json()["data"]["examCourseId"]
     confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
     assert confirmed.status_code == 200, confirmed.text
-    client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
+    scheduled = client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                json={"examDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00",
                      "durationMinutes": 120})
-    client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    assert scheduled.status_code == 200, scheduled.text
+    advanced = client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    assert advanced.status_code == 200, advanced.text
     return bid, cid
 
 

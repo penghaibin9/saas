@@ -12,8 +12,10 @@ TID = 1000000000000000001
 
 
 def _hdr(client, login_name, client_type="TEACHER_MINI"):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any", "clientType": client_type}).json()["data"]
+    response = client.post("/api/v1/auth/mock-login",
+        json={"loginName": login_name, "password": "any", "clientType": client_type})
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
@@ -43,9 +45,9 @@ def _seed(db_mode):
     co = AaCourse(tenant_id=TID, course_code="MOB_DEFER", course_name="移动缓考测试课", credit=3, status="ENABLED")
     db.add(co); db.flush()
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=term.id, batch_name="移动缓考测试任务批",
-                             college_id=col.id, status="ACTIVE")
+                             college_id=col.id, status="DRAFT")
     db.add(tb); db.flush()
-    tt = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=co.id, course_name="移动缓考测试课",
+    tt = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=co.id, course_code=co.course_code, course_name="移动缓考测试课",
                         class_id=klass.id, teaching_class_name="软件3001",
                         teacher_key="academic01", teacher_name="赵敏")
     db.add(tt); db.flush()
@@ -64,16 +66,22 @@ def _seed(db_mode):
 
 
 def _batch_with_confirmed_course(client, admin, tt_id, term_id):
+    from tests.test_aa_exam import _prepare_task_batch_for_exam
+    _prepare_task_batch_for_exam(client, admin, tt_id)
     # 建考务批次必须绑定正式学期：termId 是 create_batch 的硬门禁，缺了直接 400。
-    bid = client.post(f"{BASE}/exam/batches", headers=admin,
-                      json={"batchName": "移动缓考测试批次", "termId": str(term_id)}).json()["data"]["batchId"]
-    cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
-                      json={"teachingTaskId": str(tt_id)}).json()["data"]["examCourseId"]
+    created = client.post(f"{BASE}/exam/batches", headers=admin, json={"batchName": "移动缓考测试批次", "termId": str(term_id)})
+    assert created.status_code == 200, created.text
+    bid = created.json()["data"]["batchId"]
+    added = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin, json={"teachingTaskId": str(tt_id)})
+    assert added.status_code == 200, added.text
+    cid = added.json()["data"]["examCourseId"]
     confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
     assert confirmed.status_code == 200, confirmed.text
-    client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
+    scheduled = client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                json={"examDate": "2031-06-20", "startTime": "09:00", "endTime": "11:00", "durationMinutes": 120})
-    client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    assert scheduled.status_code == 200, scheduled.text
+    advanced = client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    assert advanced.status_code == 200, advanced.text
     return bid, cid
 
 
