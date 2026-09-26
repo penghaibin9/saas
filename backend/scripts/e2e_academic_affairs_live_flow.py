@@ -800,14 +800,13 @@ def chain6_graduation_textbook():
     stu_b_mp = tok("E2EAA20260002", "MINI_PROGRAM")
 
     # graduation precheck / batches
+    if not STATE.get("termId"):
+        raise RuntimeError("本轮学期前置未完成，不能创建另一学期的毕业批次")
     gb = _req("POST", f"{AA}/graduation-audit-batches", admin, {
         "batchName": f"E2E教务测试毕业资格审核-{int(time.time())}",
         "gradeYear": "2026",
+        "termId": str(STATE["termId"]),
     })
-    if gb.get("code") != 0:
-        gb = _req("POST", f"{AA}/graduation-batches", admin, {
-            "batchName": f"E2E教务测试毕业资格审核-{int(time.time())}",
-        })
     _step("C6.graduation_batch", gb.get("code") == 0, gb)
     if stu_a_mp:
         ga = _req("GET", f"{MOB}/academic/graduation/my", stu_a_mp)
