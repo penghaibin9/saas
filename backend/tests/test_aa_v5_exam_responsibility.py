@@ -158,6 +158,74 @@ def test_school_publisher_rechecks_active_stable_account(monkeypatch):
         service._require_school_publisher(db, {"userId": "17"}, ctx)
 
 
+def test_course_action_page_reuses_current_actor_and_college_decision(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_responsibility_service as resolver
+    from app.modules.academic_affairs.services import academic_affairs_grade_correction_command as identity
+    monkeypatch.setattr(resolver, "_tid", lambda: 1)
+    owner = MagicMock(return_value={"resolved": True, "assigneeUserIds": ["17"]})
+    account = MagicMock(return_value=17)
+    monkeypatch.setattr(resolver, "resolve_organization", owner)
+    monkeypatch.setattr(identity, "_current_user_id", account)
+    rows = [(Row(id=index, status="PENDING_CONFIRM"), 12) for index in range(1, 101)]
+    rows += [(Row(id=101, status="PENDING_CONFIRM"), 34), (Row(id=102, status="CONFIRMED"), 12),
+             (Row(id=103, status="UNKNOWN"), 12), (Row(id=104, status="PENDING_CONFIRM"), None)]
+    ctx = Row(scope_type="COLLEGE", college_ids={12, 34}, permission_codes={"academicAffairs.exam.manage"})
+    actions = service._course_confirm_actions(MagicMock(), {"userId": "17"}, ctx, rows)
+    assert all(actions[index] == {"allowed": True, "reason": ""} for index in range(1, 102))
+    assert all(not actions[index]["allowed"] and actions[index]["reason"] for index in (102, 103, 104))
+    assert owner.call_count == 2
+    assert account.call_count == 1
+    assert owner.call_args_list[0].kwargs["cache"] is owner.call_args_list[1].kwargs["cache"]
+    # 第二个请求重新查权，上一页的允许结果不能跨请求复用。
+    owner.return_value = {"resolved": False, "reason": "岗位任职已失效"}
+    refreshed = service._course_confirm_actions(MagicMock(), {"userId": "17"}, ctx, rows[:1])
+    assert not refreshed[1]["allowed"] and refreshed[1]["reason"] == "岗位任职已失效"
+    assert owner.call_count == 3
+
+
+@pytest.mark.parametrize("scope,permission,owner", [
+    ("TENANT_ALL", True, {"resolved": True, "assigneeUserIds": ["17"]}),
+    ("COLLEGE", False, {"resolved": True, "assigneeUserIds": ["17"]}),
+    ("COLLEGE", True, {"resolved": False, "reason": "任职已失效"}),
+    ("COLLEGE", True, {"resolved": True, "assigneeUserIds": ["99"]}),
+    ("COLLEGE", True, {"resolved": True}),
+    ("COLLEGE", True, {}),
+])
+def test_confirmation_action_is_false_for_school_revocation_or_unknown_fields(monkeypatch, scope, permission, owner):
+    from app.modules.academic_affairs.services import academic_affairs_responsibility_service as resolver
+    from app.modules.academic_affairs.services import academic_affairs_grade_correction_command as identity
+    monkeypatch.setattr(resolver, "_tid", lambda: 1)
+    monkeypatch.setattr(resolver, "resolve_organization", lambda *args, **kw: owner)
+    monkeypatch.setattr(identity, "_current_user_id", lambda *args: 17)
+    ctx = Row(scope_type=scope, college_ids={12}, permission_codes={"academicAffairs.exam.manage"} if permission else set())
+    action = service._course_confirm_actions(MagicMock(), {"userId": "17"}, ctx,
+        [(Row(id=9, status="PENDING_CONFIRM"), 12)])[9]
+    assert action["allowed"] is False and action["reason"]
+
+
+def test_publish_action_uses_live_command_guard_without_rechecking_each_batch(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_responsibility_service as resolver
+    from app.modules.academic_affairs.services import academic_affairs_grade_correction_command as identity
+    monkeypatch.setattr(resolver, "_tid", lambda: 1)
+    owner = MagicMock(return_value={"resolved": True, "assigneeUserIds": ["17"]})
+    account = MagicMock(return_value=17)
+    monkeypatch.setattr(resolver, "resolve_school", owner)
+    monkeypatch.setattr(identity, "_current_user_id", account)
+    ctx = Row(scope_type="TENANT_ALL", permission_codes={"academicAffairs.exam.publish"})
+    db, cache = MagicMock(), {}
+    for status in ("COURSE_CONFIRMED", "ARRANGED"):
+        assert service._batch_publish_action(db, {"userId": "17"}, ctx, Row(status=status), cache=cache)["allowed"] is True
+    assert owner.call_count == account.call_count == 1
+    for status in ("DRAFT", "PUBLISHED", "FINISHED", "ARCHIVED", "UNKNOWN", None):
+        action = service._batch_publish_action(db, {"userId": "17"}, ctx, Row(status=status), cache=cache)
+        assert action["allowed"] is False and action["reason"]
+    owner.return_value = {"resolved": False, "reason": "学校责任人任职已失效"}
+    action = service._batch_publish_action(db, {"userId": "17"}, ctx, Row(status="ARRANGED"), cache={})
+    assert action == {"allowed": False, "reason": "学校责任人任职已失效"}
+    college = Row(scope_type="COLLEGE", permission_codes={"academicAffairs.exam.publish"})
+    assert not service._batch_publish_action(db, {"userId": "17"}, college, Row(status="ARRANGED"), cache={})["allowed"]
+
+
 def test_mysql_exam_college_confirmation_and_school_publication_require_live_appointments(client, db_mode):
     from datetime import datetime
     from app.db.session import get_sessionmaker
@@ -175,6 +243,16 @@ def test_mysql_exam_college_confirmation_and_school_publication_require_live_app
     assert added.status_code == 200, added.text
     cid = added.json()["data"]["examCourseId"]
 
+    def confirm_action(headers):
+        return client.get(f"{BASE}/exam/batches/{bid}/courses", headers=headers).json()["data"]["items"][0]["confirmAction"]
+
+    def publish_action(headers):
+        return client.get(f"{BASE}/exam/batches/{bid}", headers=headers).json()["data"]["publishAction"]
+
+    assert confirm_action(college)["allowed"] is True
+    assert confirm_action(school)["allowed"] is False
+    assert publish_action(school)["allowed"] is False
+
     def expire(login, org_type, expired):
         with get_sessionmaker()() as db:
             uid = db.query(User.id).filter(User.tenant_id == TID, User.login_name == login).scalar()
@@ -186,13 +264,16 @@ def test_mysql_exam_college_confirmation_and_school_publication_require_live_app
     assert client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=school,
         json={"action": "CONFIRM"}).status_code == 403
     expire("college_admin01", "COLLEGE", True)
+    assert confirm_action(college)["allowed"] is False
     assert client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=college,
         json={"action": "CONFIRM"}).status_code == 403
     courses = client.get(f"{BASE}/exam/batches/{bid}/courses", headers=school).json()["data"]["items"]
     assert courses[0]["status"] == "PENDING_CONFIRM"
     expire("college_admin01", "COLLEGE", False)
+    assert confirm_action(college)["allowed"] is True
     confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=college, json={"action": "CONFIRM"})
     assert confirmed.status_code == 200, confirmed.text
+    assert confirm_action(college)["allowed"] is False
     assert client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=school,
         json={"examDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00", "durationMinutes": 120}).status_code == 200
     assert client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=school).status_code == 200
@@ -205,13 +286,20 @@ def test_mysql_exam_college_confirmation_and_school_publication_require_live_app
     assert client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=school,
         json={"teacherKey": "teacher_a", "teacherName": "甲老师", "role": "CHIEF"}).status_code == 200
     before = client.get(f"{BASE}/exam/batches/{bid}", headers=school).json()["data"]["status"]
+    assert publish_action(school)["allowed"] is True
+    assert publish_action(college)["allowed"] is False
+    listed = client.get(f"{BASE}/exam/batches", headers=school).json()["data"]["items"]
+    assert next(row for row in listed if row["batchId"] == bid)["publishAction"]["allowed"] is True
     expire("school_admin01", "SCHOOL", True)
+    assert publish_action(school)["allowed"] is False
     assert client.post(f"{BASE}/exam/batches/{bid}/publish", headers=school).status_code == 403
     assert client.get(f"{BASE}/exam/batches/{bid}", headers=school).json()["data"]["status"] == before
     expire("school_admin01", "SCHOOL", False)
+    assert publish_action(school)["allowed"] is True
     published = client.post(f"{BASE}/exam/batches/{bid}/publish", headers=school)
     assert published.status_code == 200, published.text
     assert published.json()["data"]["status"] == "PUBLISHED"
+    assert publish_action(school)["allowed"] is False
     assert client.get(f"{BASE}/exam/batches/{bid}", headers=school).json()["data"]["status"] == "PUBLISHED"
 
 

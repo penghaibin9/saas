@@ -144,40 +144,81 @@ def _check_course_scope(db, ctx, course):
     return college_id
 
 
-def _require_responsible_actor(db, user, ctx, owner, permission):
+def _require_responsible_actor(db, user, ctx, owner, permission, *, cache=None):
     from app.core.permissions import _match
     from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_responsibility_service import _cached
     if not _match(permission, ctx.permission_codes):
         raise no_data_scope("当前身份没有该考务办理权限")
-    if not owner["resolved"]:
-        raise no_data_scope(owner.get("reason") or "当前考务责任岗位尚未配置或已失效")
+    if not isinstance(owner, dict) or owner.get("resolved") is not True:
+        raise no_data_scope((owner.get("reason") if isinstance(owner, dict) else None) or "当前考务责任岗位尚未配置或已失效")
     try:
-        uid = _current_user_id(db, user)
+        uid = _cached(cache, ("EXAM_CURRENT_ACTOR", str(user.get("userId") or ""), str(user.get("loginName") or "")),
+            lambda: _current_user_id(db, user))
     except AppException as error:
         if error.code != "NO_PERMISSION":
             raise
         raise no_data_scope("当前账号已失效，不能办理考务") from error
-    if str(uid) not in owner["assigneeUserIds"]:
+    candidates = owner.get("assigneeUserIds")
+    if not isinstance(candidates, list) or str(uid) not in candidates:
         raise no_data_scope("您不是当前有效的考务办理人，请切换到对应责任岗位")
     return owner
 
 
 def _require_course_confirmer(db, user, ctx, course):
+    return _require_offering_confirmer(db, user, ctx, _check_course_scope(db, ctx, course))
+
+
+def _require_offering_confirmer(db, user, ctx, college_id, *, cache=None):
     from .academic_affairs_responsibility_service import resolve_organization
-    college_id = _check_course_scope(db, ctx, course)
+    if not college_id:
+        raise _conflict("考试课程缺少有效课程或开课责任单位，请先核对课程与教学任务")
+    _check_college_scope(ctx, college_id)
     if ctx.scope_type != "COLLEGE":
         raise no_data_scope("考试课程须由开课学院当前办理人确认，学校不能代办学院确认")
     permission = "academicAffairs.exam.manage"
-    owner = resolve_organization(db, "COLLEGE", college_id, permission_code=permission)
-    return _require_responsible_actor(db, user, ctx, owner, permission)
+    owner = resolve_organization(db, "COLLEGE", college_id, permission_code=permission,
+        **({"cache": cache} if cache is not None else {}))
+    return _require_responsible_actor(db, user, ctx, owner, permission, cache=cache)
 
 
-def _require_school_publisher(db, user, ctx):
+def _require_school_publisher(db, user, ctx, *, cache=None):
     from .academic_affairs_responsibility_service import resolve_school
     _require_school(ctx)
     permission = "academicAffairs.exam.publish"
-    owner = resolve_school(db, permission_code=permission)
-    return _require_responsible_actor(db, user, ctx, owner, permission)
+    owner = resolve_school(db, permission_code=permission, **({"cache": cache} if cache is not None else {}))
+    return _require_responsible_actor(db, user, ctx, owner, permission, cache=cache)
+
+
+def _read_action(check):
+    try:
+        check()
+    except AppException as error:
+        if error.code not in {"NO_DATA_SCOPE", "NO_PERMISSION", "DATA_CONFLICT"}:
+            raise
+        return {"allowed": False, "reason": error.message}
+    return {"allowed": True, "reason": ""}
+
+
+def _course_confirm_actions(db, user, ctx, rows):
+    # 页内相同学院共用授权裁决，R1 与稳定账号仅使用本次只读请求缓存。
+    from .academic_affairs_responsibility_service import _cached
+    cache, result = {}, {}
+    for course, college_id in rows:
+        if course.status != "PENDING_CONFIRM":
+            result[int(course.id)] = {"allowed": False, "reason": "仅待学院确认的考试课程可以确认"}
+            continue
+        result[int(course.id)] = _cached(cache, ("EXAM_CONFIRM_ACTION", college_id), lambda: _read_action(
+            lambda: _require_offering_confirmer(db, user, ctx, college_id, cache=cache)))
+    return result
+
+
+def _batch_publish_action(db, user, ctx, batch, *, cache):
+    from .academic_affairs_responsibility_service import _cached
+    if batch.status not in {_B_CONFIRMED, _B_ARRANGED}:
+        return {"allowed": False, "reason": "仅完成课程确认或编排的考试批次可以发布"}
+    return _cached(cache, ("EXAM_PUBLISH_ACTION",), lambda: _read_action(
+        lambda: _require_school_publisher(db, user, ctx, cache=cache)))
 
 
 def _batch_visibility(ctx):
@@ -201,17 +242,19 @@ def _require_batch_visible(db, ctx, batch):
 
 # ══════════ 批次 ══════════
 
-def _batch_dto(b, *, handoff=None):
+def _batch_dto(b, *, handoff=None, publish_action=None):
     result = {"batchId": str(b.id), "batchName": b.batch_name, "termId": str(b.term_id) if b.term_id else None,
             "examType": b.exam_type, "examWeekStart": b.exam_week_start, "examWeekEnd": b.exam_week_end,
             "status": b.status, "publishedAt": _iso(b.published_at),
-            "collegeScope": json.loads(b.college_scope_json) if b.college_scope_json else None}
+            "collegeScope": json.loads(b.college_scope_json) if b.college_scope_json else None,
+            "publishAction": publish_action if publish_action is not None else
+                {"allowed": False, "reason": "请刷新批次以核对当前发布权限"}}
     if handoff is not None:
         result.update(handoff)
     return result
 
 
-def _batch_handoffs(db, batches, ctx):
+def _batch_handoffs(db, batches, ctx, *, resolver_cache=None):
     from collections import defaultdict
     from app.models import AaExamCourse
     from . import academic_affairs_responsibility_service as responsibility
@@ -230,7 +273,8 @@ def _batch_handoffs(db, batches, ctx):
     def school(permission):
         key = ("SCHOOL", permission)
         if key not in cache:
-            cache[key] = responsibility.resolve_school(db, permission_code="academicAffairs." + permission)
+            cache[key] = responsibility.resolve_school(db, permission_code="academicAffairs." + permission,
+                **({"cache": resolver_cache} if resolver_cache is not None else {}))
         return cache[key]
     for batch in batches:
         actor, next_step = None, None
@@ -241,7 +285,8 @@ def _batch_handoffs(db, batches, ctx):
                 key = ("COLLEGE", college_id)
                 if key not in cache:
                     cache[key] = responsibility.resolve_organization(db, "COLLEGE", college_id,
-                        permission_code="academicAffairs.exam.manage")
+                        permission_code="academicAffairs.exam.manage",
+                        **({"cache": resolver_cache} if resolver_cache is not None else {}))
                 actors.append(cache[key])
             actor = dict(actors[0])
             if len(actors) > 1:
@@ -310,8 +355,10 @@ def list_batches(user, status=None, page=1, page_size=20):
         total = q.count()
         safe_page, safe_size = max(1, int(page)), min(200, max(1, int(page_size)))
         rows = q.order_by(AaExamBatch.id.desc()).offset((safe_page - 1) * safe_size).limit(safe_size).all()
-        handoffs = _batch_handoffs(db, rows, ctx)
-        return [_batch_dto(b, handoff=handoffs[int(b.id)]) for b in rows], total
+        cache = {}
+        handoffs = _batch_handoffs(db, rows, ctx, resolver_cache=cache)
+        return [_batch_dto(b, handoff=handoffs[int(b.id)],
+            publish_action=_batch_publish_action(db, user, ctx, b, cache=cache)) for b in rows], total
 
 
 def get_batch(user, bid):
@@ -319,7 +366,9 @@ def get_batch(user, bid):
         ctx = _ctx(user, db)
         batch = _get_batch(db, bid)
         _require_batch_visible(db, ctx, batch)
-        return _batch_dto(batch, handoff=_batch_handoffs(db, [batch], ctx)[int(batch.id)])
+        cache = {}
+        return _batch_dto(batch, handoff=_batch_handoffs(db, [batch], ctx, resolver_cache=cache)[int(batch.id)],
+            publish_action=_batch_publish_action(db, user, ctx, batch, cache=cache))
 
 
 def add_exam_course(user, bid, body):
@@ -363,14 +412,16 @@ def add_exam_course(user, bid, body):
         return _course_dto(c, offering_college_id=_course_college_id(db, c))
 
 
-def _course_dto(c, *, offering_college_id=None):
+def _course_dto(c, *, offering_college_id=None, confirm_action=None):
     return {"examCourseId": str(c.id), "batchId": str(c.batch_id),
             "teachingTaskId": str(c.teaching_task_id) if c.teaching_task_id else None,
             "courseName": c.course_name, "classId": str(c.class_id) if c.class_id else None,
             "className": c.class_name, "collegeId": str(offering_college_id) if offering_college_id else None,
             "teacherKey": c.teacher_key, "teacherName": c.teacher_name,
             "examDate": c.exam_date, "startTime": c.start_time, "endTime": c.end_time,
-            "durationMinutes": c.duration_minutes, "status": c.status}
+            "durationMinutes": c.duration_minutes, "status": c.status,
+            "confirmAction": confirm_action if confirm_action is not None else
+                {"allowed": False, "reason": "请刷新课程以核对当前确认权限"}}
 
 
 def _get_course(db, cid):
@@ -410,7 +461,8 @@ def list_courses(user, bid, page=1, page_size=100):
         rows = db.query(AaExamCourse, _course_offering_college_expression()).filter(*conds).order_by(
             AaExamCourse.id
         ).offset((page - 1) * page_size).limit(page_size).all()
-        return [_course_dto(c, offering_college_id=offering) for c, offering in rows], total
+        actions = _course_confirm_actions(db, user, ctx, rows)
+        return [_course_dto(c, offering_college_id=offering, confirm_action=actions[int(c.id)]) for c, offering in rows], total
 
 
 def confirm_course(user, cid, action):
