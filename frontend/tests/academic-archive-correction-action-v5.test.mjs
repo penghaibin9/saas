@@ -85,7 +85,7 @@ test('已确认写回执后正式列表、清单、同单详情全回读才报�
   }
 })
 
-test('未知写回执锁定命令，只读刷新观察终态不会当作本次成功或重放', async () => {
+test('未知写回执仅在原命令目标结果核对完成后解锁，绝不重放写', async () => {
   for (const kind of ['create', 'approve', 'reject']) {
     let writes = 0
     const fail = async () => { writes++; throw new Error('回执连接中断') }
@@ -94,8 +94,70 @@ test('未知写回执锁定命令，只读刷新观察终态不会当作本次�
     if (kind === 'approve') await state.submitApprove()
     if (kind === 'reject') await state.submitReject({ reason: '证据不足需要重新核对' })
     assert.equal(state.pendingCommand.sent, true); assert.equal(writes, 1)
-    await state.refreshServerState(); await state.submitApprove(); await state.submitCreate(); await state.submitReject({ reason: '证据不足需要重新核对' })
-    assert.equal(writes, 1); assert.ok(state.pendingCommand)
+    await state.refreshServerState(); await state.submitApprove(); await state.submitReject({ reason: '证据不足需要重新核对' })
+    assert.equal(writes, 1)
+    if (kind === 'approve') { assert.equal(state.pendingCommand, null); assert.match(state.actionNotice, /核对完成.*已应用/); assert.equal(state.canCreate, true) }
+    else assert.ok(state.pendingCommand)
+    if (kind === 'create') { await state.submitCreate(); assert.equal(writes, 1); assert.match(state.actionError, /无法仅凭纠错列表/) }
+  }
+})
+
+test('批准与驳回的原单目标终态及归档清单通过后，即使已关详情也可只读恢复', async () => {
+  for (const kind of ['approve', 'reject']) {
+    let writes = 0, reads = 0
+    const { state } = instance({ detail: async id => { reads++; assert.equal(id, caseId); return ok(detail({ status: kind === 'approve' ? 'APPLIED' : 'REJECTED', reviewAction: { allowed: false } })) }, approve: async () => { writes++ }, reject: async () => { writes++ } })
+    state.pendingCommand = { kind, batchId, caseId, sent: true }; state.detailVisible = false; state.selectedCaseId = ''
+    await state.refreshServerState()
+    assert.equal(reads, 1); assert.equal(writes, 0); assert.equal(state.pendingCommand, null)
+    assert.match(state.actionNotice, /核对完成.*归档清单完整性校验通过.*未重复发送命令/)
+  }
+})
+
+test('恢复时待二审、未知状态、错单、清单异常或未确认值均保持原锁', async () => {
+  for (const outcome of ['pending', 'unknown', 'wrong-case', 'wrong-batch', 'bad-manifest', 'unknown-manifest', 'string-manifest', 'read-error']) {
+    const { state } = instance({
+      detail: async () => {
+        if (outcome === 'read-error') throw new Error('原纠错单读取失败')
+        return ok(detail({ status: outcome === 'pending' ? 'PENDING_SECOND_APPROVAL' : outcome === 'unknown' ? null : 'APPLIED', caseId: outcome === 'wrong-case' ? 'other' : caseId, archiveBatchId: outcome === 'wrong-batch' ? 'other' : batchId }))
+      },
+      verifyManifest: async () => ok({ ok: outcome === 'bad-manifest' ? false : outcome === 'unknown-manifest' ? null : outcome === 'string-manifest' ? 'true' : true })
+    })
+    const command = { kind: 'approve', batchId, caseId, sent: true }; state.pendingCommand = command
+    await state.refreshServerState()
+    assert.equal(state.pendingCommand, command); assert.equal(state.actionNotice, ''); assert.ok(state.actionError)
+    if (outcome.includes('manifest')) assert.match(state.actionError, /部分完成/)
+  }
+})
+
+test('恢复期间命令替换或身份失效时，旧终态响应不能解除新锁', async () => {
+  for (const change of ['command', 'identity']) {
+    const pending = deferred(); let reached
+    const reading = new Promise(resolve => { reached = resolve })
+    const { state } = instance({ detail: () => { reached(); return pending.promise } })
+    state.pendingCommand = { kind: 'approve', batchId, caseId, sent: true }
+    const recovering = state.refreshServerState(); await reading
+    const replacement = { kind: 'reject', batchId, caseId: 'another', sent: true }
+    if (change === 'identity') state.clearContext()
+    state.pendingCommand = replacement
+    pending.resolve(ok(detail({ status: 'APPLIED' }))); await recovering
+    assert.equal(state.pendingCommand, replacement); assert.equal(state.actionNotice, '')
+  }
+})
+
+test('正式写回执成功但清单校验失败只能报告部分完成，不能成功提示或丢弃锁', async () => {
+  for (const kind of ['create', 'approve', 'reject']) {
+    const successes = []
+    let writes = 0
+    const { state, emitted } = instance({
+      create: async () => { writes++; return ok({ caseId }) }, approve: async () => { writes++; return ok({}) }, reject: async () => { writes++; return ok({}) },
+      detail: async () => ok(detail(writes && kind !== 'create' ? { status: kind === 'approve' ? 'APPLIED' : 'REJECTED', reviewAction: { allowed: false } } : {})),
+      verifyManifest: async () => ok({ ok: false, reason: '归档清单关联不完整' })
+    }, {}, { toast: { success: message => successes.push(message), error() {} } })
+    if (kind === 'create') { state.createForm = form(); await state.submitCreate() }
+    else if (kind === 'approve') await state.submitApprove()
+    else await state.submitReject({ reason: '证据不足需要重新核对' })
+    assert.equal(writes, 1); assert.equal(successes.length, 0); assert.ok(state.pendingCommand)
+    assert.match(state.actionError, /部分完成.*归档清单完整性/); assert.equal(emitted.length, 0)
   }
 })
 

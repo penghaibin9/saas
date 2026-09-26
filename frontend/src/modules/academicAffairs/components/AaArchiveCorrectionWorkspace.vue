@@ -26,6 +26,7 @@
 
     <LoadingState v-if="loading" />
     <AppInlineAlert v-if="loadError || actionError" type="danger" :description="loadError || actionError" />
+    <AppInlineAlert v-if="actionNotice" type="success" :description="actionNotice" />
     <AppInlineAlert v-if="pendingCommand" type="warning" description="本次命令已发送，办理结果尚未完成核对。请刷新服务端状态，切勿重复提交。" />
 
     <template v-if="!loading && activeTab === 'facts'">
@@ -290,7 +291,7 @@ export default {
       activeTab: 'facts', loading: false, verifyBusy: false, busy: false,
       corrections: [], manifest: null,
       alive: true, contextSeq: 0, loadSeq: 0, detailSeq: 0, permissionSeq: 0, checking: false,
-      batchAuthority: null, selectedCaseId: '', loadError: '', detailError: '', actionError: '', pendingCommand: null,
+      batchAuthority: null, selectedCaseId: '', loadError: '', detailError: '', actionError: '', actionNotice: '', pendingCommand: null,
       createVisible: false, saving: false, formError: '', createForm: this.emptyCreateForm(),
       detailVisible: false, detailLoading: false, detail: null,
       approveConfirmVisible: false, rejectConfirmVisible: false,
@@ -347,7 +348,7 @@ export default {
       this.createVisible = false; this.detailVisible = false; this.detailLoading = false; this.detail = null; this.selectedCaseId = ''
       this.createForm = this.emptyCreateForm()
       this.approveConfirmVisible = false; this.rejectConfirmVisible = false
-      this.loadError = ''; this.detailError = ''; this.actionError = ''; this.formError = ''; this.pendingCommand = null
+      this.loadError = ''; this.detailError = ''; this.actionError = ''; this.actionNotice = ''; this.formError = ''; this.pendingCommand = null
     },
     contextGuard() {
       const identity = this.identityKey, seq = this.contextSeq
@@ -442,7 +443,7 @@ export default {
       if (this.busy || this.saving || this.checking || this.pendingCommand || !this.alive) return
       if (!this.canCreate) { this.actionError = this.createReason; return }
       const current = this.contextGuard()
-      this.checking = true; this.actionError = ''
+      this.checking = true; this.actionError = ''; this.actionNotice = ''
       try {
         if (!await this.readCreateAuthority() || !current()) return
         this.createForm = this.emptyCreateForm(); this.formError = ''; this.createVisible = true
@@ -469,7 +470,7 @@ export default {
       const current = this.contextGuard(), batchId = this.batchId
       const body = { businessType: this.createForm.businessType, targetRef: this.createForm.targetRef,
         reason: this.createForm.reason, correction, evidenceManifest, riskLevel: this.createForm.riskLevel }
-      this.saving = true; this.actionError = ''
+      this.saving = true; this.actionError = ''; this.actionNotice = ''
       try {
         if (!await this.readCreateAuthority() || !current()) { if (current()) this.formError = this.actionError || this.createReason; return }
         this.pendingCommand = { kind: 'create', batchId, sent: true }
@@ -515,7 +516,7 @@ export default {
       if (this.busy || this.checking || this.pendingCommand || !this.alive) return
       if (!this.canReview) { this.actionError = this.reviewReason; return }
       const current = this.contextGuard(), caseId = this.detail.caseId
-      this.checking = true; this.actionError = ''
+      this.checking = true; this.actionError = ''; this.actionNotice = ''
       try {
         if (!await this.readDetail(caseId) || !current() || this.selectedCaseId !== caseId) return
         if (!this.canReview) { this.actionError = this.reviewReason; return }
@@ -541,7 +542,7 @@ export default {
       const guard = this.contextGuard()
       const caseId = this.detail.caseId
       const current = () => guard() && caseId === this.selectedCaseId
-      this.busy = true; this.actionError = ''
+      this.busy = true; this.actionError = ''; this.actionNotice = ''
       try {
         if (!await this.readDetail(caseId) || !current()) return
         if (!this.canReview) { this.actionError = this.reviewReason; return }
@@ -553,7 +554,7 @@ export default {
         if (await this.authoritativeRefresh(caseId) && current() && this.detail?.status === (kind === 'approve' ? 'APPLIED' : 'REJECTED')) {
           this.pendingCommand = null
           toast.success(kind === 'approve' ? '已应用正式纠错事实并生成归档清单后继版本' : '已驳回；未生成正式事实或新的归档清单')
-        } else if (current()) this.actionError = '命令已返回，纠错单及归档清单结果尚未完成核对，请刷新服务端状态。'
+        } else if (current()) this.actionError = this.actionError || '命令已返回，纠错单及归档清单结果尚未完成核对，请刷新服务端状态。'
       } catch (error) { if (current()) this.actionError = this.businessText(error?.message, '办理结果尚未核对，请刷新服务端状态，勿重复提交') }
       finally { if (current()) this.busy = false }
     },
@@ -562,13 +563,42 @@ export default {
       const loaded = await this.refreshAll()
       if (!current()) return false
       if (caseId) { this.selectedCaseId = caseId; if (!await this.readDetail(caseId)) return false }
-      if (current() && loaded) this.$emit('refresh-batch')
-      return current() && loaded
+      if (!current()) return false
+      if (this.manifest?.ok !== true) {
+        this.actionError = '部分完成：命令已返回，但归档清单完整性尚未校验通过。请刷新核对，勿重复提交。'
+        return false
+      }
+      if (loaded) this.$emit('refresh-batch')
+      return loaded
     },
     async refreshServerState() {
-      const current = this.contextGuard(), caseId = this.selectedCaseId
-      await this.refreshAll()
-      if (current() && caseId && this.detailVisible) await this.readDetail(caseId)
+      if (this.busy || this.saving || this.checking || this.loading) return
+      const current = this.contextGuard(), command = this.pendingCommand, caseId = this.selectedCaseId
+      const loaded = await this.refreshAll()
+      if (!current()) return
+      if (!command || command.sent !== true || !['approve', 'reject'].includes(command.kind) || !command.caseId || command.batchId !== this.batchId) {
+        if (caseId && this.detailVisible) await this.readDetail(caseId)
+        if (current() && command?.kind === 'create' && this.pendingCommand === command) this.actionError = '提交回执未能确认，无法仅凭纠错列表判断本次申请是否创建。请核对原申请记录，勿重复提交。'
+        return
+      }
+      try {
+        const res = await api.detail(command.caseId)
+        if (!current() || this.pendingCommand !== command) return
+        const result = res.code === 0 && res.data?.caseId === command.caseId && res.data?.archiveBatchId === command.batchId ? res.data : null
+        if (this.selectedCaseId === command.caseId) this.detail = result
+        if (!result) { this.actionError = this.businessText(res.message, '原纠错单结果尚未核对，请勿重复提交'); return }
+        const target = command.kind === 'approve' ? 'APPLIED' : 'REJECTED'
+        if (result.status !== target) { this.actionError = '原纠错单尚未确认达到本次命令的目标结果，请继续核对，勿重复提交。'; return }
+        if (!loaded || this.manifest?.ok !== true) { this.actionError = '部分完成：原纠错单已到达目标结果，但归档清单完整性尚未校验通过。请继续核对，勿重复提交。'; return }
+        this.pendingCommand = null; this.actionError = ''; this.formError = ''; this.detailError = ''
+        this.approveConfirmVisible = false; this.rejectConfirmVisible = false
+        this.actionNotice = `核对完成：原纠错单${command.kind === 'approve' ? '已应用' : '已驳回'}，归档清单完整性校验通过；未重复发送命令。`
+      } catch (error) {
+        if (current() && this.pendingCommand === command) {
+          if (this.selectedCaseId === command.caseId) this.detail = null
+          this.actionError = this.businessText(error?.message, '原纠错单结果读取失败，请勿重复提交')
+        }
+      }
     }
   }
 }
