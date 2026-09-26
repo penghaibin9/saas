@@ -10,6 +10,7 @@
     </template>
 
     <AppInlineAlert v-if="actionNotice" :type="pendingCommand ? 'warning' : 'success'" :description="actionNotice" />
+    <AppInlineAlert v-if="confirmError" type="danger" :description="confirmError" />
     <AppButton v-if="pendingCommand?.batchId" @click="readPendingOriginal">只读核对原归档批次 {{ pendingCommand.batchId }}</AppButton>
     <div class="aaar-layout">
       <section class="aaar-list">
@@ -67,10 +68,12 @@
             <div><strong>当前主动作</strong><small>先检查完整性；只有十三域无已阻断或待治理事项才可确认归档</small></div>
             <div class="aaar-actions">
               <AppButton v-if="['DRAFT','MISSING_ITEMS','READY'].includes(current.status)" size="small" variant="ghost" :disabled="!!pendingCommand" :loading="actionBusy" @click="doCheck">完整性检查</AppButton>
-              <AppButton v-if="current.status === 'READY'" size="small" variant="primary" :disabled="actionBusy || !!pendingCommand" @click="doConfirm">确认归档</AppButton>
+              <AppButton v-if="current.status === 'READY'" size="small" variant="primary" :disabled="actionBusy || !!pendingCommand || !canConfirmArchive" @click="doConfirm">确认归档</AppButton>
               <AppButton v-if="!['ARCHIVED','CANCELLED'].includes(current.status)" size="small" variant="ghost" :disabled="actionBusy || !!pendingCommand" @click="doCancel">取消</AppButton>
             </div>
           </div>
+          <AppInlineAlert v-if="!isCollegeScope && current.status === 'READY' && !canConfirmArchive" type="warning" :description="confirmReason" />
+          <AppButton v-if="!isCollegeScope && current.status === 'READY' && !canConfirmArchive" size="small" :disabled="actionBusy || !!pendingCommand" @click="refreshCurrentFromServer">重新核对归档权限</AppButton>
           <div v-if="!isCollegeScope || current.archivedAt" class="aaar-summary">
             <span v-if="!isCollegeScope" :class="{ 'is-bad': Number(current.missingCount) > 0 }">{{ batchMissingLabel(current) }}</span>
             <span v-if="current.archivedAt">归档于 {{ fmt(current.archivedAt) }}（历史事实已封存）</span>
@@ -121,8 +124,9 @@
       :title="confirmTitle"
       :message="confirmMessage"
       :submitting="actionBusy"
+      :confirm-disabled="confirmKind === 'confirm' && !canConfirmArchive"
       @confirm="onConfirm"
-    />
+    ><AppInlineAlert v-if="confirmKind === 'confirm' && (confirmError || !canConfirmArchive)" type="warning" :description="confirmError || confirmReason" /></AppConfirmDialog>
   </ModulePageShell>
 </template>
 
@@ -155,17 +159,19 @@ export default {
       listError: '', loading: true, rows: [], current: null, items: [],
       itemColumns: [{ key: 'domain', title: '数据域' }, { key: 'recordCount', title: '记录数' }, { key: 'result', title: '归档状态' }, { key: 'remark', title: '备注' }],
       createVisible: false, form: { termId: '' }, formError: '', saving: false,
-      confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
+      confirmVisible: false, confirmTitle: '', confirmMessage: '', confirmKind: '', confirmError: '', pendingAction: null,
       actionBusy: false
     }
   },
   computed:{
-    identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope])},
+    identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,u.permissionVersion,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionVersion,this.ctx.permissionPatterns])},
     pageTitle(){return this.$route.query?.entry==='batch'?'批量归档':'归档与封存'},
     pageSubtitle(){return this.isCollegeScope?'查看学校归档进度，按本院实时预检处理本院缺项':this.$route.query?.entry==='batch'?'复用正式学期归档批次；不另建旁路归档引擎':'十三个教务数据域先检查、处理缺失，再形成不可普通回退的学期归档事实'},
     isCollegeScope(){return this.current?.scopeType==='COLLEGE'||(this.ctx.dataScope?.scopeType||this.ctx.dataScope?.scope)==='COLLEGE'||this.rows.some(row=>row.scopeType==='COLLEGE')},
     archiveScopeNote(){return academicFlowText(this.current?.scopeNote,'学校封存材料由校教务统筹，本院缺项请查看本院实时预检。')},
     archiveOwner(){return academicFlowOwner(this.current?.responsibility)},
+    canConfirmArchive(){return !this.isCollegeScope&&this.current?.confirmAction?.allowed===true},
+    confirmReason(){return this.confirmActionReason(this.current)},
     blockerText(){if(this.isCollegeScope)return '本院缺项请查看实时预检';const raw=this.current?.missingCount;if(raw==null||raw==='')return '阻断数量待核对';const count=Number(raw);if(!Number.isInteger(count)||count<0)return '阻断数量待核对';if(count>0)return `${count} 个数据域阻断`;if(this.current?.status==='ARCHIVED')return '无当前办理阻断';if(!this.items.length)return '尚未执行十三域检查';return '无阻断，可按状态继续'},
     nextRole(){return academicFlowNextOwner(this.current?.nextStep)}
   },
@@ -175,12 +181,12 @@ export default {
  methods: {
     capture(){return {scope:this.scope,identity:this.identity,route:this.$route.fullPath}},isCurrent(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath},
     denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
-    clearPrivate(){this.scope++;this.seq++;this.detailSeq++;this.rows=[];this.current=null;this.items=[];this.createVisible=false;this.confirmVisible=false;this.pendingAction=null;this.pendingCommand=null;this.actionNotice='';this.form={termId:''};this.formError='';this.loading=false;this.saving=false;this.actionBusy=false},
+    clearPrivate(){this.scope++;this.seq++;this.detailSeq++;this.rows=[];this.current=null;this.items=[];this.createVisible=false;this.confirmVisible=false;this.confirmKind='';this.confirmError='';this.pendingAction=null;this.pendingCommand=null;this.actionNotice='';this.form={termId:''};this.formError='';this.loading=false;this.saving=false;this.actionBusy=false},
     fail(err,fallback){if(this.denied(err))this.clearPrivate();return gradeError(err,fallback)},
     syncRoute(){
       if(!this.alive)return
       this.scope++;this.seq++;this.detailSeq++
-      this.rows=[];this.current=null;this.items=[];this.confirmVisible=false;this.pendingAction=null
+      this.rows=[];this.current=null;this.items=[];this.confirmVisible=false;this.confirmKind='';this.confirmError='';this.pendingAction=null
       this.createVisible=false;this.formError='';this.listError='';this.loading=false;this.saving=false;this.actionBusy=false
       if(this.pendingCommand&&!this.pendingCommand.sent){this.pendingCommand=null;this.actionNotice=''}
       this.load()
@@ -220,7 +226,7 @@ export default {
    },
    async select(b) {
       if(this.actionBusy||this.pendingCommand)return
-      this.confirmVisible=false;this.pendingAction=null
+      this.confirmVisible=false;this.confirmKind='';this.confirmError='';this.pendingAction=null
       const batchId=String(b.batchId),c=this.capture(),seq=++this.detailSeq
       try{const res=await api.getBatch(batchId);if(!this.isCurrent(c)||seq!==this.detailSeq)return;if(res.code!==0)throw res;if(String(res.data?.batchId)!==batchId||!Array.isArray(res.data?.items))throw {code:503};this.current=res.data;this.items=res.data.items}
       catch(err){if(this.isCurrent(c)&&seq===this.detailSeq)toast.error(this.fail(err,'归档批次加载失败'))}
@@ -234,6 +240,7 @@ export default {
       if (res.code === 0&&String(res.data?.batchId)===batchId&&Array.isArray(res.data?.items)) {
         this.current = res.data
         this.items = res.data.items || []
+        this.confirmError = ''
         await this.load()
       } else toast.error(this.fail(res,'归档批次刷新失败'))
       } catch (err) { if(this.isCurrent(c)&&seq===this.detailSeq)toast.error(this.fail(err,'归档批次刷新失败')) }
@@ -247,6 +254,7 @@ export default {
         const before=await api.getBatch(id)
         if(!this.isCurrent(c))return false
         if(before?.code!==0||String(before.data?.batchId)!==id||!Array.isArray(before.data?.items))throw before
+        if(kind==='confirm'&&before.data.confirmAction?.allowed!==true){this.current=before.data;this.items=before.data.items;this.confirmError=this.confirmActionReason(before.data);this.pendingCommand=null;this.actionNotice='';return false}
         if(before.data.scopeType==='COLLEGE'||!validate(before.data)){this.pendingCommand=null;this.actionNotice='';throw {code:409}}
         sent=true;this.pendingCommand.sent=true
         try{res=await send(before.data)}catch(err){res=err}
@@ -257,7 +265,7 @@ export default {
         if(fresh?.code!==0)throw fresh
         if(res?.code===0&&String(res.data?.batchId)===id&&fresh?.code===0&&String(fresh.data?.batchId)===id&&Array.isArray(fresh.data?.items)&&verify(fresh.data,res,before.data)){this.current=fresh.data;this.items=fresh.data.items;this.pendingCommand=null;this.actionNotice=success;return true}
         this.actionNotice='结果待核实：已读取当前归档批次，但不能确认本次操作完成，请勿重复操作。';return false
-      }catch(err){if(this.isCurrent(c)){if(!sent){this.pendingCommand=null;this.actionNotice=''}toast.error(this.fail(err,sent?'操作结果待核实，请勿重复操作。':'操作前核对未完成，请重试。'))}return false}finally{if(this.isCurrent(c))this.actionBusy=false}
+      }catch(err){if(this.isCurrent(c)){if(!sent){this.pendingCommand=null;this.actionNotice='';if(kind==='confirm'&&this.current)this.current={...this.current,confirmAction:null}}const message=this.fail(err,sent?'操作结果待核实，请勿重复操作。':'操作前核对未完成，请重试。');if(kind==='confirm')this.confirmError=message;toast.error(message)}return false}finally{if(this.isCurrent(c))this.actionBusy=false}
     },
    async submitCreate() {
      if(this.isCollegeScope)return
@@ -273,22 +281,35 @@ export default {
       const ok=await this.runBatchWrite('check',batchId,before=>['DRAFT','MISSING_ITEMS','READY'].includes(before.status),()=>api.check(batchId),fresh=>this.validItems(fresh.items)&&['READY','MISSING_ITEMS'].includes(fresh.status),'已核对十三域完整性检查结果。')
       if(ok){toast.success(this.actionNotice);await this.load()}
     },
-    doConfirm() {
-      if (this.isCollegeScope || !this.current || this.actionBusy || this.current.status !== 'READY') return
-      const batchId = this.current.batchId
+    confirmActionReason(batch){return academicFlowText(batch?.confirmAction?.reason,batch?.confirmAction?.allowed===false?'当前账号暂不可确认归档，请核对学校归档责任任职及办理权限。':'尚未取得当前账号的归档确认权限，请重新读取批次后核对。')},
+    async doConfirm() {
+      if (this.isCollegeScope || !this.current || this.actionBusy || this.pendingCommand || this.current.status !== 'READY') return
+      if(!this.canConfirmArchive){this.confirmError=this.confirmReason;return}
+      const batchId = String(this.current.batchId),c=this.capture(),seq=++this.detailSeq
+      this.actionBusy=true;this.confirmError='';this.confirmVisible=false;this.pendingAction=null
+      try {
+      const response=await api.getBatch(batchId)
+      if(!this.isCurrent(c)||seq!==this.detailSeq||String(this.current?.batchId)!==batchId)return
+      if(response?.code!==0||String(response.data?.batchId)!==batchId||!Array.isArray(response.data?.items))throw response
+      this.current=response.data;this.items=response.data.items
+      if(!this.canConfirmArchive){this.confirmError=this.confirmReason;return}
       const batchName = this.current.batchName
+      this.confirmKind = 'confirm'
       this.confirmTitle = '确认归档'
       this.confirmMessage = `确认归档「${batchName}」？归档后该学期将形成不可普通回退的历史事实，教务写操作受限。`
       this.pendingAction = async () => {
-        const ok=await this.runBatchWrite('confirm',batchId,before=>before.status==='READY'&&this.validItems(before.items)&&!before.items.some(item=>['BLOCKED','UNKNOWN'].includes(this.itemState(item))),()=>api.confirm(batchId, false),fresh=>fresh.status==='ARCHIVED'&&this.validItems(fresh.items),'已核对正式十三域归档状态。')
+        const ok=await this.runBatchWrite('confirm',batchId,before=>before.confirmAction?.allowed===true&&before.status==='READY'&&this.validItems(before.items)&&!before.items.some(item=>['BLOCKED','UNKNOWN'].includes(this.itemState(item))),()=>api.confirm(batchId, false),fresh=>fresh.status==='ARCHIVED'&&this.validItems(fresh.items),'已核对正式十三域归档状态。')
         if(ok){toast.success(this.actionNotice);this.confirmVisible=false;await this.load();const b=this.rows.find(row=>String(row.batchId)===String(batchId));if(b)await this.selectAfterAction(b)}
       }
       this.confirmVisible = true
+      }catch(err){if(this.isCurrent(c)&&seq===this.detailSeq){if(this.current)this.current={...this.current,confirmAction:null};this.confirmError=this.fail(err,'归档确认权限读取失败，请重新读取批次后核对。')}}
+      finally{if(this.isCurrent(c)&&seq===this.detailSeq)this.actionBusy=false}
     },
     doCancel() {
       if (this.isCollegeScope || !this.current || this.actionBusy || ['ARCHIVED', 'CANCELLED'].includes(this.current.status)) return
       const batchId = this.current.batchId
       const batchName = this.current.batchName
+      this.confirmKind = 'cancel';this.confirmError=''
       this.confirmTitle = '取消批次'
       this.confirmMessage = `确认取消归档批次「${batchName}」？`
       this.pendingAction = async () => {
@@ -300,6 +321,7 @@ export default {
     async onConfirm() {
       if (this.actionBusy || !this.pendingAction) return
       if (this.pendingCommand) return
+      if(this.confirmKind==='confirm'&&!this.canConfirmArchive){this.confirmError=this.confirmReason;return}
       const action = this.pendingAction
       try {
         await action()
