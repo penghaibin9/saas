@@ -224,10 +224,22 @@ async function runScenarioA() {
         assert.equal(flow.term.termId, report.termId)
         const surface = page.locator('[aria-label="学期责任接力"]')
         await expect(surface).toBeVisible(); await expect(surface).not.toContainText('责任进度读取失败')
-        if (role === 'school') {
+        if (role === 'school' || role === 'leader') {
           assert.ok(['TENANT_ALL', 'SCHOOL'].includes(flow.viewer.scopeType))
           for (const college of Object.values(fixture.colleges)) assert.ok(flow.unitProgress.some(unit => unit.collegeId === college.collegeId))
           await expect(surface.getByRole('heading', { name: '学校教学运行总控', exact: true })).toBeVisible()
+          await expect(surface.getByRole('heading', { name: '各学院并行进度', exact: true })).toBeVisible()
+          if (role === 'leader') {
+            assert.deepEqual(flow.viewer.majorIds, [])
+            assert.deepEqual(flow.viewer.assignments, [])
+            assert.deepEqual(flow.currentResponsibilities, [])
+            const stages = [...flow.stages, ...flow.unitProgress.flatMap(unit => unit.stages)]
+            assert.ok(stages.every(stage => !stage.responsibility?.assigneeUserIds?.includes(account.userId)), '学校只读观察员不能成为当前办理人')
+            assert.ok(stages.every(stage => !stage.primaryAction || /^查看/.test(stage.primaryAction.label)), '学校只读观察员只能获得查看入口')
+            await expect(surface.locator('[aria-label="我的责任事项"]')).toHaveCount(0)
+            await expect(surface.getByRole('button', { name: /^(新建|生成|提交|保存|确认|通过|退回|审批|发布|封存|处理)/ })).toHaveCount(0)
+            assert.equal(receipts.filter(row => row.role === 'leader' && row.method !== 'GET').length, 0, '学校只读观察员不得发出教务写请求')
+          }
         } else if (role.startsWith('college')) {
           const collegeId = fixture.colleges[role.endsWith('A') ? 'A' : 'B'].collegeId
           assert.equal(flow.viewer.scopeType, 'COLLEGE'); assert.deepEqual(flow.viewer.collegeIds, [collegeId])
@@ -237,13 +249,9 @@ async function runScenarioA() {
           assert.equal(flow.viewer.scopeType, 'ASSIGNED'); assert.equal(flow.unitProgress.length, 0); assert.equal(flow.schoolGates.length, 0)
           assert.ok(flow.currentResponsibilities.every(stage => stage.responsibility.assigneeUserIds.includes(account.userId)))
           await expect(surface.getByRole('heading', { name: '我的教学责任', exact: true })).toBeVisible()
-        } else {
-          assert.deepEqual(flow.viewer.majorIds, [fixture.colleges.A.majorId])
-          assert.equal(flow.stages.find(stage => stage.stageCode === 'F40_TEACHING_TASK').primaryAction, null)
-          await expect(surface.getByRole('heading', { name: '本专业教学对账', exact: true })).toBeVisible()
         }
-        if (role !== 'school') await expect(surface.getByRole('heading', { name: '各学院并行进度', exact: true })).toHaveCount(0)
-        evidence.reads.push({ refresh: reload, termId: flow.term.termId, scopeType: flow.viewer.scopeType, collegeIds: flow.viewer.collegeIds, majorIds: flow.viewer.majorIds, stages: flow.stages.map(stage => ({ code: stage.stageCode, status: stage.status })) })
+        if (!['school', 'leader'].includes(role)) await expect(surface.getByRole('heading', { name: '各学院并行进度', exact: true })).toHaveCount(0)
+        evidence.reads.push({ refresh: reload, termId: flow.term.termId, scopeType: flow.viewer.scopeType, collegeIds: flow.viewer.collegeIds, majorIds: flow.viewer.majorIds, currentResponsibilityCount: flow.currentResponsibilities.length, stages: flow.stages.map(stage => ({ code: stage.stageCode, status: stage.status })) })
         await capture(page, `A05-${role}-${reload ? '刷新' : '进入'}`)
       }
       report.roles.push(evidence); await save()
