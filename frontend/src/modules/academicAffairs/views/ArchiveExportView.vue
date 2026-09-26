@@ -23,9 +23,9 @@
       </div>
       <dl>
         <div><dt>当前状态</dt><dd><StatusTag type="success" label="已归档" dot /></dd></div>
-        <div><dt>当前责任</dt><dd>{{ isCollegeScope ? archiveOwner : '归档管理岗' }}</dd></div>
+        <div><dt>当前责任</dt><dd>{{ archiveOwner }}</dd></div>
         <div><dt>当前阻断</dt><dd>{{ isCollegeScope ? '本院缺项请查看实时预检' : '无；下载用途必须留痕' }}</dd></div>
-        <div><dt>下一责任岗位</dt><dd>{{ isCollegeScope ? nextOwner : '授权查阅人' }}</dd></div>
+        <div><dt>下一责任岗位</dt><dd>{{ nextOwner }}</dd></div>
       </dl>
     </section>
 
@@ -155,8 +155,20 @@ export default {
     },
     isCollegeScope() { return this.current?.scopeType === 'COLLEGE' || (this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) === 'COLLEGE' || this.rows.some(row => row.scopeType === 'COLLEGE') },
     scopeNote() { return academicFlowText(this.current?.scopeNote, '学校封存材料和下载记录由校教务统筹；请查看本院实时预检。') },
-    archiveOwner() { return academicFlowOwner(this.current?.responsibility) },
-    nextOwner() { return academicFlowNextOwner(this.current?.nextStep) },
+    archiveOwner() {
+      if (!this.current?.responsibility) {
+        if (this.current?.status === 'ARCHIVED') return '学校已完成封存'
+        if (this.current?.status === 'CANCELLED') return '批次已取消'
+      }
+      return academicFlowOwner(this.current?.responsibility)
+    },
+    nextOwner() {
+      if (!this.current?.nextStep) {
+        if (this.current?.status === 'ARCHIVED') return '后续查阅或纠错由校教务统筹'
+        if (this.current?.status === 'CANCELLED') return '无需继续办理此批次'
+      }
+      return academicFlowNextOwner(this.current?.nextStep)
+    },
     downloadableItems() { return this.items.filter((item) => Number(item.recordCount) > 0) }
   },
   watch: { identity() { this.clearPrivate(); this.load() } },

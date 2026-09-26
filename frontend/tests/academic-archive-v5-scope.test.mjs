@@ -71,6 +71,64 @@ test('学院已封存批次保留真实封存时间，不能渲染学校材料�
   assert.doesNotMatch(html, /另一学院封存明细|学校封存纠错工作区|无当前办理阻断|阻断数据域 0/)
 })
 
+test('终态未返回责任时按正式封存或取消事实展示，不误报需配置任职', async () => {
+  for (const scopeType of ['COLLEGE', 'TENANT_ALL']) {
+    for (const [name, nextKey] of [['AaArchiveConsoleView', 'nextRole'], ['ArchiveExportView', 'nextOwner']]) {
+      const { state } = page(name, deps, { ctx })
+      for (const [status, owner, next] of [
+        ['ARCHIVED', '学校已完成封存', '后续查阅或纠错由校教务统筹'],
+        ['CANCELLED', '批次已取消', '无需继续办理此批次']
+      ]) {
+        state.current = batch({ status, scopeType, responsibility: null, nextStep: null })
+        assert.equal(state.archiveOwner, owner)
+        assert.equal(state[nextKey], next)
+        // 导出页正式列表只接收已归档批次；取消态在归档控制台显示。
+        if (name === 'ArchiveExportView' && status === 'CANCELLED') continue
+        const html = await renderPage(name, { loading: false, rows: [state.current], current: state.current })
+        assert.ok(html.includes(owner)); assert.ok(html.includes(next))
+        assert.doesNotMatch(html, /责任组织待明确|具体责任人待配置|责任尚未配置|下一责任事项待明确/)
+      }
+    }
+  }
+})
+
+test('终态仍优先展示服务端实际责任与下一步，不被状态或学校范围默认文字覆盖', async () => {
+  const responsibility = { orgName: '校教务处', assignmentTypes: ['ACADEMIC_REVIEWER'], assigneeNames: ['测试归档责任人'], resolved: true }
+  const nextStep = { label: '核对查阅申请', responsibility }
+  for (const scopeType of ['COLLEGE', 'TENANT_ALL']) {
+    for (const [name, nextKey] of [['AaArchiveConsoleView', 'nextRole'], ['ArchiveExportView', 'nextOwner']]) {
+      const { state } = page(name, deps, { ctx })
+      for (const status of ['ARCHIVED', 'CANCELLED']) {
+        state.current = batch({ status, scopeType, responsibility, nextStep })
+        assert.equal(state.archiveOwner, registry.academicFlowOwner(responsibility))
+        assert.equal(state[nextKey], registry.academicFlowNextOwner(nextStep))
+      }
+      state.current.status = 'ARCHIVED'
+      const html = await renderPage(name, { loading: false, rows: [state.current], current: state.current })
+      assert.match(html, /测试归档责任人/); assert.match(html, /核对查阅申请/)
+      assert.doesNotMatch(html, /学校已完成封存|后续查阅或纠错由校教务统筹/)
+    }
+  }
+})
+
+test('非终态缺失责任或未知状态仍显示待明确，责任与下一步分别使用真实字段', () => {
+  for (const [name, nextKey] of [['AaArchiveConsoleView', 'nextRole'], ['ArchiveExportView', 'nextOwner']]) {
+    const { state } = page(name, deps, { ctx })
+    for (const status of ['DRAFT', 'CHECKING', 'READY', 'MISSING_ITEMS', undefined]) {
+      state.current = batch({ status })
+      assert.equal(state.archiveOwner, registry.academicFlowOwner())
+      assert.equal(state[nextKey], registry.academicFlowNextOwner())
+    }
+    state.current = batch({ status: 'ARCHIVED', nextStep: { label: '查看学校办理结果' } })
+    assert.equal(state.archiveOwner, '学校已完成封存')
+    assert.equal(state[nextKey], '查看学校办理结果')
+    state.current.responsibility = { orgName: '校教务处', resolved: false, reason: '正式责任仍需核对' }
+    state.current.nextStep = null
+    assert.match(state.archiveOwner, /正式责任仍需核对/)
+    assert.equal(state[nextKey], '后续查阅或纠错由校教务统筹')
+  }
+})
+
 test('学院范围阻止学校归档动作并携带字符串学期进入原预检页', async () => {
   let requests = 0, destination
   const { state } = page('AaArchiveConsoleView', { ...deps, academicAffairsArchiveApi: new Proxy({}, { get: () => async () => { requests++; throw Error('不应请求') } }) }, { ctx })

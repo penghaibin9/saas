@@ -169,11 +169,23 @@ export default {
     pageSubtitle(){return this.isCollegeScope?'查看学校归档进度，按本院实时预检处理本院缺项':this.$route.query?.entry==='batch'?'复用正式学期归档批次；不另建旁路归档引擎':'十三个教务数据域先检查、处理缺失，再形成不可普通回退的学期归档事实'},
     isCollegeScope(){return this.current?.scopeType==='COLLEGE'||(this.ctx.dataScope?.scopeType||this.ctx.dataScope?.scope)==='COLLEGE'||this.rows.some(row=>row.scopeType==='COLLEGE')},
     archiveScopeNote(){return academicFlowText(this.current?.scopeNote,'学校封存材料由校教务统筹，本院缺项请查看本院实时预检。')},
-    archiveOwner(){return academicFlowOwner(this.current?.responsibility)},
+    archiveOwner(){
+      if(!this.current?.responsibility){
+        if(this.current?.status==='ARCHIVED')return '学校已完成封存'
+        if(this.current?.status==='CANCELLED')return '批次已取消'
+      }
+      return academicFlowOwner(this.current?.responsibility)
+    },
     canConfirmArchive(){return !this.isCollegeScope&&this.current?.confirmAction?.allowed===true},
     confirmReason(){return this.confirmActionReason(this.current)},
     blockerText(){if(this.isCollegeScope)return '本院缺项请查看实时预检';const raw=this.current?.missingCount;if(raw==null||raw==='')return '阻断数量待核对';const count=Number(raw);if(!Number.isInteger(count)||count<0)return '阻断数量待核对';if(count>0)return `${count} 个数据域阻断`;if(this.current?.status==='ARCHIVED')return '无当前办理阻断';if(!this.items.length)return '尚未执行十三域检查';return '无阻断，可按状态继续'},
-    nextRole(){return academicFlowNextOwner(this.current?.nextStep)}
+    nextRole(){
+      if(!this.current?.nextStep){
+        if(this.current?.status==='ARCHIVED')return '后续查阅或纠错由校教务统筹'
+        if(this.current?.status==='CANCELLED')return '无需继续办理此批次'
+      }
+      return academicFlowNextOwner(this.current?.nextStep)
+    }
   },
   watch:{identity(){this.clearPrivate();this.syncRoute()},'$route.fullPath'(){this.syncRoute()}},
   created(){this.syncRoute()},
