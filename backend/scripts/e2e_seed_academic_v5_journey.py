@@ -4,7 +4,8 @@
 APP_ENV=test、DEPLOYMENT_MODE=local、E2E_ALLOW_DESTRUCTIVE_TESTS=true。
 预览：python scripts/e2e_seed_academic_v5_journey.py --run-id <6至12位小写字母数字>
 执行：同一命令追加 --execute；--state / --credentials 可指定仓库内已忽略的新文件。
-执行前必须结束所有使用该库的清理型测试。两个输出禁止覆盖；再次执行相同前缀拒绝。
+目标固定为本轮专用本机 3311/student_lifecycle_v5_e2e，不使用现有清理型测试库。
+两个输出禁止覆盖；再次执行相同前缀拒绝。
 后端正常密码登录也必须显式使用该 DATABASE_URL，TEST_DATABASE_URL 不能替代它。
 脚本不登录、不生成令牌；正常页面登录与后续业务办理仍须分别验收。
 """
@@ -24,7 +25,9 @@ BACKEND = Path(__file__).resolve().parents[1]
 REPOSITORY = BACKEND.parent
 TENANT_ID = 1000000000000000001
 TENANT_CODE = "demo"
-DATABASE_NAME = "student_lifecycle_test"
+DATABASE_NAME = "student_lifecycle_v5_e2e"
+ENTRY_YEAR = 2023
+GRADUATE_YEAR = 2026
 IDENTITIES = {
     "school": ("校教务处测试员", "ACADEMIC_ADMIN", None),
     "collegeA": ("甲学院教学秘书", "COLLEGE_ADMIN", "A"),
@@ -57,8 +60,8 @@ def require_target(environment):
         raise PreparationError("必须显式提供合法的隔离数据库地址") from None
     if (url.drivername not in {"mysql", "mysql+pymysql"}
             or url.host not in {"localhost", "127.0.0.1", "::1"}
-            or url.port != 3306 or url.database != DATABASE_NAME):
-        raise PreparationError("仅允许本机 3306 的精确 student_lifecycle_test 库")
+            or url.port != 3311 or url.database != DATABASE_NAME):
+        raise PreparationError("仅允许本机 3311 的精确 student_lifecycle_v5_e2e 库")
     # 不允许连接参数把本机 TCP 目标替换成套接字、配置文件或执行初始化 SQL。
     if set(url.query) - {"charset"}:
         raise PreparationError("数据库地址仅允许 charset 查询参数")
@@ -242,13 +245,13 @@ def prepare(db, prefix, plan, state_path, credentials_path):
             major_name=f"V5 {title}专业", status="ACTIVE", education_years=3, training_level="HIGHER", remark=note)
         db.add(major); db.flush()
         group = SchoolClass(tenant_id=TENANT_ID, major_id=major.id, class_code=prefix + label,
-            class_name=f"V5 {title}学院虚构班", grade=str(now.year), graduate_year=str(now.year + 3),
+            class_name=f"V5 {title}学院虚构班", grade=str(ENTRY_YEAR), graduate_year=str(GRADUATE_YEAR),
             capacity=30, status="ACTIVE", class_status="NORMAL", remark=note)
         db.add(group); db.flush()
         students = [StudentProfile(tenant_id=TENANT_ID, student_no=prefix + label + str(index),
             real_name=f"V5 {title}学院虚构学生{index}", college_id=college.id, major_id=major.id,
             class_id=group.id, grade=group.grade, current_stage=ENROLLED, student_status="NORMAL",
-            status="ACTIVE", remark=note) for index in (1, 2)]
+            enroll_date=datetime(ENTRY_YEAR, 9, 1), status="ACTIVE", remark=note) for index in (1, 2)]
         db.add_all(students); db.flush()
         objects[label] = (college, major, group)
         colleges[label] = {"collegeId": str(college.id), "majorId": str(major.id),
@@ -286,7 +289,9 @@ def prepare(db, prefix, plan, state_path, credentials_path):
         credentials[login] = {"password": password}
     db.flush()
     state = {"tenantCode": TENANT_CODE, "tenantId": str(TENANT_ID), "prefix": prefix,
-        "accounts": accounts, "colleges": colleges, "migrationHeads": plan["heads"],
+        "accounts": accounts, "colleges": colleges,
+        "cohort": {"entryYear": ENTRY_YEAR, "expectedGraduateYear": GRADUATE_YEAR},
+        "migrationHeads": plan["heads"],
         "sourceTemplates": plan["templates"], "createdAt": now.isoformat() + "Z",
         "note": "仅身份与组织前置；无学生登录账号、课程、培养方案或业务终态。正常登录及业务流程尚未验收。"}
     # 先保全新身份的随机口令，再提交；任何提交异常都保留回执，禁止自动重复运行。
