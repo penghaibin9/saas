@@ -116,12 +116,13 @@ test('批准与驳回的原单目标终态及归档清单通过后，即使已�
 test('创建已确认单号但首次回读失败，恢复时精确核对原单并解锁，绝不重发', async () => {
   for (const failure of ['list', 'detail', 'manifest']) {
     let writes = 0, recovering = false, preciseReads = 0
-    const { state } = instance({
+    const { state: rawState } = instance({
       create: async () => { writes++; return ok({ caseId }) },
       list: async () => failure === 'list' && !recovering ? { code: 503 } : ok({ items: [] }),
       detail: async id => { preciseReads++; assert.equal(id, caseId); return failure === 'detail' && !recovering ? { code: 503 } : ok(detail()) },
       verifyManifest: async () => ok({ ok: failure !== 'manifest' || recovering })
     })
+    const state = Vue.reactive(rawState)
     state.createForm = form(); await state.submitCreate()
     assert.equal(writes, 1); assert.equal(state.pendingCommand.caseId, caseId); assert.equal(state.pendingCommand.acknowledged, true)
     recovering = true; await state.refreshServerState()

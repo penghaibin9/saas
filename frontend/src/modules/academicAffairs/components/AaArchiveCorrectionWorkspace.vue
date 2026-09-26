@@ -473,8 +473,8 @@ export default {
       this.saving = true; this.actionError = ''; this.actionNotice = ''
       try {
         if (!await this.readCreateAuthority() || !current()) { if (current()) this.formError = this.actionError || this.createReason; return }
-        const command = { kind: 'create', batchId, sent: true }
-        this.pendingCommand = command
+        this.pendingCommand = { kind: 'create', batchId, sent: true }
+        const command = this.pendingCommand
         const res = await api.create(batchId, body)
         if (!current()) return
         if (res.code !== 0) { this.formError = this.businessText(res.message, '提交结果尚未核对'); this.releaseRejectedCommand(res); return }
