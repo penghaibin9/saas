@@ -443,7 +443,8 @@ def _preflight_result(db, batch, task, source, *, exclude_item_id=None) -> dict:
             "weekParity": _value(source, "weekParity", "ALL"),
             "classroom": _value(source, "classroom"),
         }
-        for weekday, slot_no in coordinates
+        # 手工排课可选自动排课偏好之外的日期和节次，也必须预载其占用。
+        for weekday, slot_no in sorted(set(coordinates) | {(requested_weekday, requested_slot)})
     ]
     preload = import_preload.build_preload(
         db,

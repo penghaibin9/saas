@@ -37,25 +37,32 @@ def test_preflight_service_exposes_canonical_conflict_and_alternative_contract()
 
 @pytest.mark.parametrize("pre_publish", [False, True], ids=["draft", "pre-published"])
 @pytest.mark.parametrize("resource", ["classroom", "teacher"])
-def test_college_preflight_sees_other_college_candidate_without_edit_access(client, db_mode, pre_publish, resource):
+@pytest.mark.parametrize("weekday", [1, 6], ids=["weekday", "weekend"])
+@pytest.mark.parametrize("action", ["add", "move"])
+def test_college_preflight_sees_other_college_candidate_without_edit_access(client, db_mode, pre_publish, resource, weekday, action):
     from tests.test_aa_v5_school_schedule_gate import BASE, _facts, _candidate, _snapshot
     from tests.test_aa_schedule import _item
     from app.db.session import get_sessionmaker
     from app.models import AaScheduleItem
 
     facts = _facts(client, shared_teacher=resource == "teacher")
-    own = _candidate(client, facts, 0, add_item=False, pre_publish=False)
-    other = _candidate(client, facts, 1, weekday=1, room="发布测试教室0", pre_publish=pre_publish)
+    own = _candidate(client, facts, 0, weekday=3, add_item=action == "move", pre_publish=False)
+    other = _candidate(client, facts, 1, weekday=weekday, room="发布测试教室0", pre_publish=pre_publish)
     with get_sessionmaker()() as db:
         item = db.query(AaScheduleItem).filter(AaScheduleItem.batch_id == int(other)).one()
         item.classroom_text = "旧教室名称"
+        own_item = db.query(AaScheduleItem).filter(AaScheduleItem.batch_id == int(own)).first()
+        endpoint = (f"{BASE}/schedule-items/{own_item.id}/move-preflight" if own_item
+                    else f"{BASE}/schedule-batches/{own}/items/preflight")
         db.commit()
-    body = {"taskId": facts["tasks"][0]["taskId"], "weekday": 1, "slotNo": 1,
+    body = {"taskId": facts["tasks"][0]["taskId"], "weekday": weekday, "slotNo": 1,
             "startWeek": 1, "endWeek": 18, "weekParity": "ALL", "classroom": "发布测试教室0"}
+    if action == "move":
+        body = {"weekday": weekday, "slotNo": 1}
     before = _snapshot(facts)
     results = []
     for headers in (facts["college"], facts["school"]):
-        response = client.post(f"{BASE}/schedule-batches/{own}/items/preflight", headers=headers, json=body)
+        response = client.post(endpoint, headers=headers, json=body)
         assert response.status_code == 200, response.text
         results.append(response.json()["data"])
     assert results[0]["allowed"] is False
@@ -65,7 +72,7 @@ def test_college_preflight_sees_other_college_candidate_without_edit_access(clie
     assert results[0]["conflict"] == results[1]["conflict"]
     assert results[0]["candidate"] == results[1]["candidate"]
     assert results[0]["alternatives"]
-    assert all(row["weekday"] != 1 for row in results[0]["alternatives"])
+    assert all(row["weekday"] != weekday for row in results[0]["alternatives"])
     assert _snapshot(facts) == before
     assert client.get(f"{BASE}/schedule-batches/{other}", headers=facts["college"]).status_code == 403
 
@@ -79,6 +86,6 @@ def test_college_preflight_sees_other_college_candidate_without_edit_access(clie
         **{key: value for key, value in facts["tasks"][1].items() if key != "collegeId"},
         weekday=2, classroom="发布测试教室0")
     assert response.status_code == 200, response.text
-    response = client.post(f"{BASE}/schedule-batches/{own}/items/preflight", headers=facts["college"], json=body)
+    response = client.post(endpoint, headers=facts["college"], json=body)
     assert response.status_code == 200, response.text
     assert response.json()["data"]["allowed"] is True
