@@ -144,6 +144,83 @@ def test_archive_batches_list(client, db_mode):
     assert all(item["status"] == "DRAFT" for item in drafts["data"]["items"])
 
 
+def test_college_archive_review_requires_every_package_in_own_college(client, db_mode):
+    """学院节点不能把混批或其他学院整批推进；本院整批仍可正常办理。"""
+    from app.db.session import get_sessionmaker
+    from app.models import (AffairsAuditTrail, College, Major, SchoolClass,
+                            StudentProfile, TeacherStudentScope)
+
+    db = get_sessionmaker()()
+    try:
+        college_a = College(tenant_id=TID, college_name="归档甲学院", status="ACTIVE")
+        college_b = College(tenant_id=TID, college_name="归档乙学院", status="ACTIVE")
+        db.add_all([college_a, college_b]); db.flush()
+        major_a = Major(tenant_id=TID, college_id=college_a.id, major_name="归档甲专业", status="ACTIVE")
+        major_b = Major(tenant_id=TID, college_id=college_b.id, major_name="归档乙专业", status="ACTIVE")
+        db.add_all([major_a, major_b]); db.flush()
+        class_a = SchoolClass(tenant_id=TID, major_id=major_a.id, class_name="归档甲班", grade="2023", status="ACTIVE")
+        class_b = SchoolClass(tenant_id=TID, major_id=major_b.id, class_name="归档乙班", grade="2023", status="ACTIVE")
+        db.add_all([class_a, class_b]); db.flush()
+        student_a = StudentProfile(tenant_id=TID, student_no="ARCH-A01", real_name="归档甲生",
+                                   college_id=college_a.id, major_id=major_a.id, class_id=class_a.id,
+                                   current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
+        student_b = StudentProfile(tenant_id=TID, student_no="ARCH-B01", real_name="归档乙生",
+                                   college_id=college_b.id, major_id=major_b.id, class_id=class_b.id,
+                                   current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
+        db.add_all([student_a, student_b])
+        db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01", teacher_name="学院管理员",
+                                   role_code="COLLEGE_ADMIN", scope_type="COLLEGE", ref_value="归档甲学院", status="ACTIVE"))
+        db.commit()
+        student_ids = {"A": str(student_a.id), "B": str(student_b.id)}
+    finally:
+        db.close()
+
+    school = _hdr(client, "school_admin01")
+    college = _hdr(client, "college_admin01")
+
+    def review_ready(name, ids):
+        batch = _create_batch(client, school, name)
+        bid = batch["batchId"]
+        collected = client.post(f"{BASE}/archive/batches/{bid}/collect", headers=school,
+                                json={"studentIds": ids, "version": batch["version"]}).json()
+        assert collected["code"] == 0, collected
+        advanced = client.post(f"{BASE}/archive/batches/{bid}/advance", headers=school,
+                               json={"action": "APPROVE", "version": collected["data"]["version"]}).json()
+        assert advanced["code"] == 0, advanced
+        assert advanced["data"]["status"] == "COLLEGE_REVIEW"
+        return bid, advanced["data"]["version"]
+
+    def audit_count(bid):
+        db = get_sessionmaker()()
+        try:
+            return db.query(AffairsAuditTrail).filter_by(
+                tenant_id=TID, biz_type="ARCHIVE", biz_id=int(bid), action="ADVANCE",
+            ).count()
+        finally:
+            db.close()
+
+    for name, ids in [
+        ("混合两院批次", [student_ids["A"], student_ids["B"]]),
+        ("其他学院批次", [student_ids["B"]]),
+    ]:
+        bid, version = review_ready(name, ids)
+        before_audit = audit_count(bid)
+        rejected = client.post(f"{BASE}/archive/batches/{bid}/advance", headers=college,
+                               json={"action": "APPROVE", "version": version})
+        assert rejected.status_code == 403 and rejected.json()["bizCode"] == "NO_DATA_SCOPE"
+        after = client.get(f"{BASE}/archive/batches/{bid}", headers=school).json()["data"]
+        assert after["status"] == "COLLEGE_REVIEW" and after["version"] == version
+        assert audit_count(bid) == before_audit
+
+    bid, version = review_ready("本学院批次", [student_ids["A"]])
+    before_audit = audit_count(bid)
+    approved = client.post(f"{BASE}/archive/batches/{bid}/advance", headers=college,
+                           json={"action": "APPROVE", "version": version}).json()
+    assert approved["code"] == 0, approved
+    assert approved["data"]["status"] == "SA_CONFIRM"
+    assert audit_count(bid) == before_audit + 1
+
+
 def test_archive_generation_lease_reclaims_stale_worker_without_late_overwrite(db_mode):
     ids = _seed(db_mode)
     from app.core.context import set_tenant

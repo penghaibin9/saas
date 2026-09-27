@@ -582,6 +582,24 @@ def advance(batch_id, user, action="APPROVE", expected_version=None) -> dict:
         context = build_affairs_context(user, db)
         if batch.status == "COLLEGE_REVIEW" and context.scope_type not in ("COLLEGE", "TENANT_ALL"):
             raise AppException("NO_PERMISSION", "仅学院学工或全域管理员可完成学院审核")
+        if batch.status == "COLLEGE_REVIEW" and context.scope_type == "COLLEGE":
+            # 审核是批次级写入；get_batch() 返回的档案包已按调用人范围过滤，
+            # 不能拿它判断整批是否都属于本学院。此处必须核对原始整批学生。
+            packages = db.scalars(select(ArchivePackage).where(
+                ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == batch.id,
+                ArchivePackage.is_deleted.is_(False),
+            )).all()
+            student_ids = {int(package.student_id) for package in packages if package.student_id}
+            students = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == _tid(), StudentProfile.id.in_(student_ids),
+                StudentProfile.is_deleted.is_(False),
+            )).all() if student_ids else []
+            allowed_classes = context.allowed_class_ids(db) or set()
+            if (not packages or len(student_ids) != len(packages) or len(students) != len(student_ids)
+                    or not context.college_ids or not allowed_classes
+                    or any(student.college_id not in context.college_ids
+                           or student.class_id not in allowed_classes for student in students)):
+                raise no_data_scope("归档批次含有不在本学院有效范围内的学生档案包")
         if batch.status == "SA_CONFIRM" and context.scope_type != "TENANT_ALL":
             raise AppException("NO_PERMISSION", "仅学校/学工处全域管理员可确认归档")
         if batch.status != "SA_CONFIRM":
