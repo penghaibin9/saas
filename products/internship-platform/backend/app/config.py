@@ -9,6 +9,10 @@ class Settings(BaseSettings):
     DATABASE_URL:str=""
     REDIS_URL:str=""
     FILE_STORAGE_DIR:str="./data/files"
+    FILE_ALLOW_ZIP:bool=False
+    FILE_ZIP_MAX_ENTRIES:int=200
+    FILE_ZIP_MAX_UNCOMPRESSED_MB:int=100
+    FILE_ZIP_MAX_RATIO:int=100
     JWT_SECRET:str=""
     JWT_ALG:str="HS256"
     JWT_EXPIRES_IN:int=7200
