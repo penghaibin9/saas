@@ -165,6 +165,18 @@ def _stage(index, term, *, status="NOT_STARTED", responsible=None, blockers=(), 
             "nextStep": next_step, "currentObject": current_object, "evidence": evidence or {}}
 
 
+def _college_archive_stage(rows, term, ctx, college_id, org, school_responsible):
+    pending = [row for row in rows[1:11] if row["status"] not in _COMPLETE]
+    waiting_school = not pending and term.status != "ARCHIVED"
+    return _stage(11, term, ctx=ctx, college_id=college_id,
+        status="BLOCKED" if pending else "READY" if waiting_school else "DONE",
+        responsible=org("academicAffairs.archive.view"),
+        blockers=[_problem("COLLEGE_NOT_READY", "本院仍有待核验或未完成事项，请从对应工作区补齐")] if pending else [],
+        evidence={"scopeNote": ("本院事项已补齐，待校教务核验并正式封存" if waiting_school
+                                else "学院仅负责补齐本院材料，学校正式封存由校教务执行"),
+                  **({"schoolResponsibility": school_responsible("archive.manage")} if waiting_school else {})})
+
+
 def _query(db, model, *conditions):
     return db.query(model).filter(model.tenant_id == _tid(), model.is_deleted.is_(False), *conditions)
 
@@ -717,10 +729,7 @@ def _unit_stages(db, term, ctx, college, school_responsible, resolver_cache):
     put(8, status=_grade_status(grade_counts),
         responsible=grade_actor, evidence={"byStatus": grade_counts})
     rows[8] = _with_missing_college_grade_tasks(db, term, cid, ctx, rows[8], cache=resolver_cache)
-    pending = [row for row in rows[1:11] if row["status"] not in _COMPLETE]
-    put(11, status="BLOCKED" if pending else "DONE" if term.status == "ARCHIVED" else "READY", responsible=org("academicAffairs.archive.manage"),
-        blockers=[_problem("COLLEGE_NOT_READY", "本院仍有待核验或未完成事项，请从对应工作区补齐") ] if pending else [],
-        evidence={"scopeNote": "学院仅负责补齐本院材料，学校正式封存由校教务执行"})
+    rows[11] = _college_archive_stage(rows, term, ctx, cid, org, school_responsible)
     return rows
 
 

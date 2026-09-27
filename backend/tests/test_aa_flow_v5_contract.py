@@ -81,6 +81,36 @@ def test_flow_college_progress_isolated():
     assert a["stages"][3]["status"] == "READY"
 
 
+def test_college_archive_hands_ready_work_to_school_without_school_write_permission():
+    term = Row(id=54, status="PUBLISHED")
+    ctx = Row(permission_codes={"academicAffairs.archive.view"})
+    rows = [dict(row, label=service.STAGES[index][1])
+            for index, row in enumerate(unit(12, "READY")["stages"])]
+    local_permissions, school_permissions = [], []
+
+    def org(permission):
+        local_permissions.append(permission)
+        return {"resolved": True, "permission": permission}
+
+    def school(permission):
+        school_permissions.append(permission)
+        return {"resolved": False, "permission": permission}
+
+    ready = service._college_archive_stage(rows, term, ctx, 12, org, school)
+    assert ready["status"] == "READY" and ready["blockers"] == []
+    assert ready["responsibility"]["permission"] == "academicAffairs.archive.view"
+    assert ready["evidence"]["schoolResponsibility"]["permission"] == "archive.manage"
+    assert "待校教务核验" in ready["evidence"]["scopeNote"]
+    assert local_permissions == ["academicAffairs.archive.view"]
+    assert school_permissions == ["archive.manage"]
+
+    rows[1]["status"] = "ACTION_REQUIRED"
+    blocked = service._college_archive_stage(rows, term, ctx, 12, org, school)
+    assert blocked["status"] == "BLOCKED"
+    assert blocked["blockers"][0]["code"] == "COLLEGE_NOT_READY"
+    assert "schoolResponsibility" not in blocked["evidence"]
+
+
 def test_unowned_opening_anomalies_belong_to_school_gate_only(monkeypatch):
     from datetime import date
     from app.modules.academic_affairs.services import academic_affairs_archive_rule_evaluator as evaluator
