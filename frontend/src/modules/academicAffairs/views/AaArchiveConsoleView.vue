@@ -11,7 +11,7 @@
 
     <AppInlineAlert v-if="actionNotice" :type="pendingCommand ? 'warning' : 'success'" :description="actionNotice" />
     <AppInlineAlert v-if="confirmError" type="danger" :description="confirmError" />
-    <AppButton v-if="pendingCommand?.batchId" @click="readPendingOriginal">只读核对原归档批次 {{ pendingCommand.batchId }}</AppButton>
+    <AppButton v-if="pendingCommand?.termId" @click="readPendingOriginal">只读核对原学期{{ pendingCommand.batchId ? `归档批次 ${pendingCommand.batchId}` : '归档批次列表' }}</AppButton>
     <div class="aaar-layout">
       <section class="aaar-list">
         <header class="aaar-list-head"><div><h2>学期归档批次</h2><p>{{ isCollegeScope ? '查看学校归档进度；本院缺项请进入实时预检' : '选择批次查看十三域正式结论' }}</p></div><span>{{ rows.length }} 个批次</span></header>
@@ -212,10 +212,15 @@ export default {
       this.selectAfterAction({batchId})
     },
     readPendingOriginal(){
-      const batchId=this.pendingCommand?.batchId
-      if(!batchId)return
-      if(String(this.$route.query.batchId)!==String(batchId))return this.$router.push({path:this.$route.path,query:{...this.$route.query,batchId:String(batchId)}})
-      return this.selectAfterAction({batchId})
+      const {termId,batchId}=this.pendingCommand||{}
+      if(!termId)return
+      if(this.routeTermId()!==termId||String(this.$route.query.batchId||'')!==String(batchId||'')){
+        const query={...this.$route.query,termId}
+        if(batchId)query.batchId=batchId
+        else delete query.batchId
+        return this.$router.push({name:'aa-archive',query})
+      }
+      return batchId?this.selectAfterAction({batchId}):this.load()
     },
     sLabel(s) { return _SL[s] || '状态待确认' },
     batchMissingLabel(batch){return batch?.scopeType==='COLLEGE'?'学校材料由校教务统筹':batch?.missingCount==null?'阻断数量待核对':`阻断数据域 ${batch.missingCount}`},
@@ -269,12 +274,13 @@ export default {
    openCreate() { if (!this.isCollegeScope && !this.actionBusy && !this.invalidRouteTerm()) { this.form = { termId: this.routeTermId() }; this.formError = ''; this.createVisible = true } },
     async runBatchWrite(kind,batchId,validate,send,verify,success){
       if(this.isCollegeScope||this.pendingCommand)return false
-      const c=this.capture(),id=String(batchId);this.actionBusy=true;this.pendingCommand={kind,batchId:id,sent:false};this.actionNotice='结果待核实，请勿重复操作。'
+      const c=this.capture(),id=String(batchId);this.actionBusy=true;this.pendingCommand={kind,batchId:id,termId:String(this.current?.termId||this.routeTermId()),sent:false};this.actionNotice='结果待核实，请勿重复操作。'
       let res, sent=false
       try {
         const before=await api.getBatch(id)
         if(!this.isCurrent(c))return false
         if(before?.code!==0||String(before.data?.batchId)!==id||!Array.isArray(before.data?.items))throw before
+        this.pendingCommand.termId=String(before.data.termId)
         if(kind==='confirm'&&before.data.confirmAction?.allowed!==true){this.current=before.data;this.items=before.data.items;this.confirmError=this.confirmActionReason(before.data);this.pendingCommand=null;this.actionNotice='';return false}
         if(before.data.scopeType==='COLLEGE'||!validate(before.data)){this.pendingCommand=null;this.actionNotice='';throw {code:409}}
         sent=true;this.pendingCommand.sent=true

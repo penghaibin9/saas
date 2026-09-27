@@ -221,6 +221,59 @@ test('归档学期切换后迟到列表不能覆盖新学期，也不自动选�
   assert.equal(state.current.batchId, '14')
 })
 
+test('未知批次写入切学期后只读核对返回原学期原批次，保持禁止重发', async () => {
+  let writes = 0, destination
+  const { state } = page('AaArchiveConsoleView', archiveDeps({
+    listBatches: async () => ({ code: 0, data: { list: [], total: 0 } }),
+    getBatch: async () => ({ code: 0, data: batch({ batchId: '12', termId: '51', scopeType: 'TENANT_ALL' }) })
+  }), { ctx })
+  state.$route.query = { termId: '51', batchId: '12' }
+  state.$route.fullPath = '/admin/academic-affairs/archive?termId=51&batchId=12'
+  state.current = batch({ batchId: '12', termId: '51', scopeType: 'TENANT_ALL' })
+  await state.runBatchWrite('check', '12', () => true, async () => { writes++; return { code: 0, data: { batchId: '12' } } }, () => false, '已完成')
+  assert.equal(state.pendingCommand.termId, '51')
+  assert.equal(state.pendingCommand.sent, true)
+  state.$route.query = { termId: '52', batchId: '12' }
+  state.$route.fullPath = '/admin/academic-affairs/archive?termId=52&batchId=12'
+  state.syncRoute()
+  state.$router.push = value => { destination = value }
+  await state.readPendingOriginal()
+  assert.equal(destination.name, 'aa-archive')
+  assert.equal(destination.query.termId, '51')
+  assert.equal(destination.query.batchId, '12')
+  assert.equal(writes, 1)
+  assert.equal(state.pendingCommand.sent, true)
+  state.$route.query = destination.query
+  state.$route.fullPath = '/admin/academic-affairs/archive?termId=51&batchId=12'
+  state.syncRoute()
+  await state.readPendingOriginal()
+  assert.equal(state.current.batchId, '12')
+  assert.equal(writes, 1)
+  assert.equal(state.pendingCommand.sent, true)
+})
+
+test('未知新建回执切学期后只读返回原学期列表，不重发创建', async () => {
+  let creates = 0, destination
+  const { state } = page('AaArchiveConsoleView', archiveDeps({
+    listBatches: async () => ({ code: 0, data: { list: [], total: 0 } }),
+    createBatch: async () => { creates++; return { code: 503 } }
+  }), { ctx })
+  state.$route.query = { termId: '51' }
+  state.$route.fullPath = '/admin/academic-affairs/archive?termId=51'
+  state.form.termId = '51'
+  await state.submitCreate()
+  assert.equal(state.pendingCommand.termId, '51')
+  state.$route.query = { termId: '52', batchId: '14' }
+  state.$route.fullPath = '/admin/academic-affairs/archive?termId=52&batchId=14'
+  state.syncRoute()
+  state.$router.push = value => { destination = value }
+  await state.readPendingOriginal()
+  assert.equal(destination.query.termId, '51')
+  assert.equal(Object.hasOwn(destination.query, 'batchId'), false)
+  assert.equal(creates, 1)
+  assert.equal(state.pendingCommand.sent, true)
+})
+
 test('学校缺失计数为空时显示待核对，正式零计数保持真实含义', () => {
   const { state } = page('AaArchiveConsoleView', deps, { ctx })
   state.current = batch({ scopeType: 'TENANT_ALL', status: 'ARCHIVED', missingCount: null })
