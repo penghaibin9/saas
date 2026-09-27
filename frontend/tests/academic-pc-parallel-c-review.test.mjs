@@ -165,13 +165,35 @@ test('命令 409 保留意见和任务，重新核对只有 GET，再次确认�
   const vm = mount({ getGradeTasks: async p => { reads++; return result(row(p.taskId)) }, collegeReviewGrade: async () => { writes++; return { code: 409, bizCode: 'DATA_CONFLICT' } } })
   await vm.selectTask('A'); vm.openReview('RETURN'); await vm.doReview({ reason })
   assert.equal(vm.reviewReason, reason); assert.equal(vm.dlg.visible, true); assert.equal(vm.dlg.taskId, 'A')
-  assert.equal(vm.reviewConflict, true); assert.match(vm.reviewMessage, /已变化/)
+  assert.equal(vm.reviewConflict, true); assert.equal(vm.reviewMessage, '任务或审核证据已变化，本次未受理。意见已保留，请先重新核对正式事实。')
   assert.equal(vm.pending, null); assert.equal(vm.receipt, null)
   await vm.doReview({ reason }); assert.equal(writes, 1)
   const before = reads; await vm.refreshReview(); assert.equal(reads, before + 1); assert.equal(writes, 1)
   assert.equal(vm.reviewReason, reason); assert.equal(vm.reviewConflict, false)
   vm.dlg.visible = false; vm.openReview('RETURN'); assert.equal(vm.reviewReason, reason)
   await vm.doReview({ reason: '' }); assert.equal(writes, 2)
+})
+
+test('学院通过遇到校级受理人不唯一时显示真实原因并保留意见', async () => {
+  let writes = 0
+  const message = '成绩任务审批节点没有唯一真实受理人，禁止生成无人或人人可抢的待审任务'
+  const evidence = { gradeTaskId: 'A', status: 'SUBMITTED', evidenceHash: 'current-hash', blockers: [], allowedActions: ['APPROVE'] }
+  const vm = mount({
+    getGradeTasks: async p => result(row(p.taskId)),
+    getGradeReviewEvidence: async () => ({ code: 0, data: evidence }),
+    collegeReviewGrade: async () => { writes++; return { code: 409001, bizCode: 'DATA_CONFLICT', message, details: { candidateUserIds: ['90071992547409931'] } } }
+  })
+  await vm.selectTask('A'); vm.openReview('APPROVE')
+  vm.reviewReason = '已核对成绩记录'
+  await vm.doReview({})
+  assert.equal(writes, 1)
+  assert.match(vm.reviewMessage, /没有唯一真实受理人/)
+  assert.doesNotMatch(vm.reviewMessage, /任务或审核证据已变化/)
+  assert.doesNotMatch(vm.reviewMessage, /90071992547409931/)
+  assert.equal(vm.reviewReason, '已核对成绩记录')
+  assert.equal(vm.reviewConflict, true)
+  assert.equal(vm.pending, null)
+  await vm.doReview({}); assert.equal(writes, 1)
 })
 
 test('命令 403 清空任务、队列、意见、确认和回执，旧队列响应也无效', async () => {

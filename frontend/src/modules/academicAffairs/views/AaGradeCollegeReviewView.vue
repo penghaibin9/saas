@@ -283,7 +283,11 @@ export default {
         if (res && res.code !== 0 && this.isDenied(res)) { this.clearDenied(res); return }
         const resultCode = [res?.status, res?.statusCode, res?.bizCode, res?.code].join(' ')
         if (res && res.code !== 0 && /409|CONFLICT|STALE/.test(resultCode)) {
-          this.pending = null; this.receipt = null; this.reviewConflict = true; this.reviewMessage = '任务或审核证据已变化，本次未受理。意见已保留，请先重新核对正式事实。'; return
+          this.pending = null; this.receipt = null; this.reviewConflict = true
+          this.reviewMessage = res.message?.trim()
+            ? `${gradeError(res)}。本次未受理，意见已保留；请按上述原因处理后重新核对。`
+            : '任务或审核证据已变化，本次未受理。意见已保留，请先重新核对正式事实。'
+          return
         }
         this.dlg.visible = false
         if (res && res.code !== 0 && /403|404|409|422|NO_PERMISSION|FORBIDDEN|NOT_FOUND|CONFLICT|VALIDATION/.test(resultCode)) {
