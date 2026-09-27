@@ -634,6 +634,10 @@ export default {
       this.examActionSeq++; this.examActionBusy = false; this.examActionError = ''
       this.confirmVisible = false; this.pendingAction = null; this.pendingMethod = ''
     },
+    examRouteTermId() {
+      const value = this.$route.query?.termId
+      return typeof value === 'string' && /^[1-9][0-9]*$/.test(value) ? value : ''
+    },
     courseConfirmReason(row) { return academicFlowText(row?.confirmAction?.reason, '尚未取得本课程的学院确认许可，请重新读取当前批次。') },
     onExamRoomPicked(value, items) {
       this.roomForm.classroomId = value || ''
@@ -683,15 +687,16 @@ export default {
       this.clearExamAction()
       this.autoSeq++; this.detailSeq++; this.loadSeq++
       this.current = null; this.courses = []; this.coursePagination.page = 1; this.coursePagination.total = 0; this.stats = null; this.readiness = null; this.readinessError = ''
-      this.autoTimeReceipt = null; this.autoArranging = false; this.rows = []; this.deferRows = []; this.archiveRows = []
+      this.autoTimeReceipt = null; this.autoArranging = false; this.rows = []; this.deferRows = []; this.archiveRows = []; this.pagination.page = 1; this.pagination.total = 0
       this.selectedDefer = null; this.selectedArchive = null; this.batchDetailLoading = false; this.modePagination.page = 1
       this.deferConfirmVisible = false; this.deferDecisionAction = ''; this.deferDecisionRow = null
-      this.attendanceRoomId = ''
+      this.createVisible = false; this.courseVisible = false; this.autoPlanVisible = false; this.schedVisible = false; this.arrangeVisible = false; this.patrolVisible = false
+      this.arrangeCourse = null; this.arrangeRooms = []; this.attendanceRoomId = ''
       this.load()
     },
     async load() {
-      const seq = ++this.loadSeq, identity = this.identityKey
-      const current = () => seq === this.loadSeq && identity === this.identityKey
+      const seq = ++this.loadSeq, identity = this.identityKey, routeTerm = this.$route.query?.termId
+      const current = () => seq === this.loadSeq && identity === this.identityKey && routeTerm === this.$route.query?.termId
       this.loading = true; this.error = ''
       this.myInvigilations = []; this.myExamBatch = null; this.attendanceRoomId = ''
       try {
@@ -702,11 +707,20 @@ export default {
         else this.myInvigilations = Array.isArray(res.data?.items) ? res.data.items : []
         return
       }
+      const termId = this.examRouteTermId()
+      if (this.viewMode === 'exam' && routeTerm !== undefined && !termId) {
+        this.clearExamAction()
+        this.rows = []; this.pagination.total = 0; this.current = null; this.courses = []; this.stats = null; this.readiness = null
+        this.createVisible = false; this.courseVisible = false; this.autoPlanVisible = false; this.schedVisible = false; this.arrangeVisible = false; this.patrolVisible = false
+        this.arrangeCourse = null; this.arrangeRooms = []
+        this.error = '学期参数无效，请从正式学期入口重新进入考务安排。'
+        return
+      }
       const res = this.viewMode === 'defer'
         ? await api.deferList({ page: this.modePagination.page, pageSize: this.modePagination.pageSize })
         : this.viewMode === 'archive'
           ? await api.listArchived({ page: this.modePagination.page, pageSize: this.modePagination.pageSize })
-          : await api.listBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize })
+          : await api.listBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize, ...(termId ? { termId } : {}) })
       if (!current()) return
       if (res.code === 0) {
         const list = Array.isArray(res.data?.list) ? res.data.list : []
@@ -789,7 +803,7 @@ export default {
       finally { if (current()) this.batchDetailLoading = false }
     },
     onCoursePageChange(page) { this.coursePagination.page = Number(page || 1); this.refresh() },
-    openCreate() { this.form = { batchName: '', termId: '' }; this.formError = ''; this.createVisible = true },
+    openCreate() { this.form = { batchName: '', termId: this.examRouteTermId() }; this.formError = ''; this.createVisible = true },
     async submitCreate() {
       if (this.saving) return
       const identity = this.identityKey

@@ -48,6 +48,73 @@ test('teacher assignment failure clears old schedule and is not an empty success
   assert.equal(state.loading, false)
 })
 
+test('考务批次列表消费有效网址学期，无学期保持原查询，创建沿用已核学期', async () => {
+  const calls = []
+  const { state } = page('AaExamConsoleView', {
+    academicAffairsExamApi: { listBatches: async params => { calls.push(params); return { code: 0, data: { list: [], total: 0 } } } }
+  })
+  state.$route.query = { termId: '9007199254740993' }
+  await state.load()
+  assert.equal(calls[0].termId, '9007199254740993')
+  state.openCreate()
+  assert.equal(state.form.termId, '9007199254740993')
+  state.$route.query = {}
+  await state.load()
+  assert.equal(Object.hasOwn(calls[1], 'termId'), false)
+  state.openCreate()
+  assert.equal(state.form.termId, '')
+})
+
+test('考务非法或数组学期不查全量并清掉旧批次，教师本人监考范围不受影响', async () => {
+  let listCalls = 0, teacherCalls = 0
+  const { state } = page('AaExamConsoleView', {
+    academicAffairsExamApi: {
+      listBatches: async () => { listCalls++; return { code: 0, data: { list: [], total: 0 } } },
+      getMyInvigilation: async () => { teacherCalls++; return { code: 0, data: { items: [{ examRoomId: '21001' }] } } }
+    }
+  })
+  for (const bad of ['0', 'abc', ['52'], null]) {
+    state.$route.query = { termId: bad }
+    state.rows = [{ batchId: 'old' }]; state.current = { batchId: 'old' }; state.arrangeVisible = true; state.confirmVisible = true; state.attendanceRoomId = '21001'
+    await state.load()
+    assert.equal(state.rows.length, 0)
+    assert.equal(state.current, null)
+    assert.equal(state.arrangeVisible, false)
+    assert.equal(state.confirmVisible, false)
+    assert.equal(state.attendanceRoomId, '')
+    assert.match(state.error, /学期参数无效/)
+  }
+  assert.equal(listCalls, 0)
+  state.ctx.currentRole = { roleCode: 'ACADEMIC_TEACHER' }
+  await state.load()
+  assert.equal(teacherCalls, 1)
+  assert.equal(listCalls, 0)
+  assert.equal(state.myInvigilations[0].examRoomId, '21001')
+})
+
+test('切换网址学期关闭旧抽屉和到考对象，迟到的旧学期列表不覆盖新学期', async () => {
+  const old = deferred(), next = deferred()
+  const { state, definition } = page('AaExamConsoleView', {
+    academicAffairsExamApi: { listBatches: params => params.termId === '51' ? old.promise : next.promise }
+  })
+  state.initialized = true
+  state.$route.query = { termId: '51' }; state.$route.fullPath = '/admin/academic-affairs/exam?termId=51'
+  const oldLoad = state.load()
+  state.current = { batchId: '12' }; state.arrangeVisible = true; state.attendanceRoomId = '21001'; state.pagination.page = 3
+  state.$route.query = { termId: '52' }; state.$route.fullPath = '/admin/academic-affairs/exam?termId=52'
+  definition.watch['$route.fullPath'].call(state)
+  assert.equal(state.current, null)
+  assert.equal(state.arrangeVisible, false)
+  assert.equal(state.attendanceRoomId, '')
+  assert.equal(state.pagination.page, 1)
+  next.resolve({ code: 0, data: { list: [{ batchId: '14', termId: '52' }], total: 1 } })
+  await Promise.resolve()
+  old.resolve({ code: 0, data: { list: [{ batchId: '12', termId: '51' }], total: 1 } })
+  await oldLoad
+  assert.equal(state.rows[0].batchId, '14')
+  assert.equal(state.pagination.total, 1)
+})
+
 test('college confirmation reads its courses without requesting school-only readiness', async () => {
   let readinessCalls = 0
   const { state } = page('AaExamConsoleView', {
