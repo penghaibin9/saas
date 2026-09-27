@@ -126,6 +126,14 @@ export const teacherInternshipCheckinExemptions = (batchId, page = 1, pageSize =
   realRequest(pagedBatchPath('/mobile/teacher/internship/context/checkin-exemptions', batchId, page, pageSize) + '&status=' + enc(status))
 export const teacherInternshipCheckinExemptionReview = (id, batchId, body) =>
   realRequest(batchPath(`/mobile/teacher/internship/context/checkin-exemptions/${enc(id)}/review`, batchId), { method: 'POST', data: body || {} })
+export const teacherInternshipMaterialRequirements = (batchId) =>
+  realRequest(batchPath('/mobile/teacher/internship/context/material-requirements', batchId))
+export const teacherInternshipMaterialCoverage = (requirementId) =>
+  realRequest(`/mobile/teacher/internship/context/material-requirements/${enc(requirementId)}/coverage`)
+export const teacherInternshipMaterialStudents = (requirementId, { state = 'ALL', page = 1, pageSize = 20, keyword = '' } = {}) =>
+  realRequest(`/mobile/teacher/internship/context/material-requirements/${enc(requirementId)}/students?state=${enc(state)}&page=${enc(page)}&pageSize=${enc(pageSize)}&keyword=${enc(keyword)}`)
+export const teacherInternshipMaterialReview = (submissionId, body) =>
+  realRequest(`/mobile/teacher/internship/context/material-submissions/${enc(submissionId)}/review`, { method: 'POST', data: body || {} })
 export const teacherInternshipChanges = (batchId, page = 1, pageSize = 20) => {
   try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/changes', batchId, page, pageSize)) }
   catch (e) { return Promise.reject(e) }
