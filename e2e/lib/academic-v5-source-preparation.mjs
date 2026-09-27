@@ -36,8 +36,9 @@ function validateFixture(fixture, credentials) {
   assert.match(String(fixture.prefix || ''), /^v5j_[a-z0-9]{6,12}_$/, '身份回执前缀无效')
   assert.equal(fixture.tenantCode, 'demo')
   assert.equal(String(fixture.tenantId), '1000000000000000001')
-  assert.equal(fixture.cohort?.entryYear, 2023)
-  assert.equal(fixture.cohort?.expectedGraduateYear, 2026)
+  const entryYear = Number(fixture.cohort?.entryYear)
+  assert.ok(Number.isInteger(entryYear) && entryYear >= 2000 && entryYear <= 9999, '入学年级无效')
+  assert.equal(Number(fixture.cohort?.expectedGraduateYear), entryYear + 3, '预计毕业届别与三年制学制不符')
   for (const key of ['school', 'schoolReviewer', 'collegeA', 'collegeB']) {
     const account = fixture.accounts?.[key]
     assert.match(String(account?.userId || ''), /^\d+$/, `${key} 用户编号无效`)
@@ -54,6 +55,7 @@ function validateFixture(fixture, credentials) {
 }
 
 function planFor(fixture) {
+  const entryYear = String(fixture.cohort.entryYear)
   const seed = Number.parseInt(createHash('sha256').update(fixture.prefix).digest('hex').slice(0, 10), 16) % 1_000_000
   const digits = String(seed).padStart(6, '0')
   const courses = [
@@ -62,10 +64,10 @@ function planFor(fixture) {
     { key: 'bPublic', college: 'B', code: `VJ${digits}3`, name: `${fixture.prefix}乙学院公共基础`, category: 'PUBLIC_BASIC', module: '公共基础' },
   ]
   const programs = [
-    { key: 'A', name: `${fixture.prefix}甲学院2023级培养方案`, courses: courses.slice(0, 1) },
-    { key: 'B', name: `${fixture.prefix}乙学院2023级培养方案`, courses: courses.slice(1) },
+    { key: 'A', name: `${fixture.prefix}甲学院${entryYear}级培养方案`, courses: courses.slice(0, 1) },
+    { key: 'B', name: `${fixture.prefix}乙学院${entryYear}级培养方案`, courses: courses.slice(1) },
   ]
-  return { courses, programs }
+  return { courses, programs, entryYear }
 }
 
 // 直接只读 3311 库，再用正式 API 回读同一批随机学院/专业/班级编号。
@@ -91,7 +93,7 @@ try:
             obj = data['colleges'][key]
             ids = {name: int(obj[name]) for name in ('collegeId', 'majorId', 'classId')}
             params = {**ids, 'tenantId': int(data['tenantId']), 'prefix': data['prefix'] + '%',
-                      'grade': '2023', 'classStatus': 'NORMAL'}
+                      'grade': str(data['cohort']['entryYear']), 'classStatus': 'NORMAL'}
             for query in (
                 'SELECT id FROM t_college WHERE id=:collegeId AND tenant_id=:tenantId AND code LIKE :prefix AND is_deleted=0',
                 'SELECT id FROM t_major WHERE id=:majorId AND college_id=:collegeId AND tenant_id=:tenantId AND code LIKE :prefix AND is_deleted=0',
@@ -181,7 +183,7 @@ async function assertBackendFixture(fixture, token) {
     assert.equal(majors.filter(row => String(row.id) === obj.majorId && String(row.collegeId) === obj.collegeId).length, 1,
       '8002 专业编号与隔离库不一致')
     const classes = list(await request('GET', `${academic}/orgs/classes`, token, undefined,
-      { majorId: obj.majorId, grade: '2023', keyword: fixture.prefix, page: 1, pageSize: 200 }))
+      { majorId: obj.majorId, grade: String(fixture.cohort.entryYear), keyword: fixture.prefix, page: 1, pageSize: 200 }))
     assert.equal(classes.filter(row => String(row.id) === obj.classId && String(row.majorId) === obj.majorId).length, 1,
       '8002 班级编号与隔离库不一致')
   }
@@ -197,13 +199,13 @@ async function assertNoExistingSources(fixture, plan, school) {
     const majorId = fixture.colleges[program.key].majorId
     const rows = list(await request('GET', `${academic}/programs`, school, undefined,
       { majorId, page: 1, pageSize: 200 }))
-    assert.ok(!rows.some(row => row.programName === program.name || String(row.gradeYear) === '2023'),
-      '本专业 2023 级方案已存在；禁止自动替换正式绑定')
+    assert.ok(!rows.some(row => row.programName === program.name || String(row.gradeYear) === plan.entryYear),
+      `本专业 ${plan.entryYear} 级方案已存在；禁止自动替换正式绑定`)
     for (const row of rows) {
       const bindings = (await request('GET', `${academic}/programs/${row.programId}/bindings`, school))?.items
       assert.ok(Array.isArray(bindings), '正式绑定列表结构与预期不符')
-      assert.ok(!bindings.some(binding => binding.status === 'ACTIVE' && String(binding.gradeYear) === '2023'),
-        '2023 级已有正式绑定；禁止覆盖')
+      assert.ok(!bindings.some(binding => binding.status === 'ACTIVE' && String(binding.gradeYear) === plan.entryYear),
+        `${plan.entryYear} 级已有正式绑定；禁止覆盖`)
     }
   }
 }
@@ -281,7 +283,7 @@ async function execute(fixture, credentials, plan, journalFile) {
       const org = fixture.colleges[program.key]
       const created = await writeStep(report, journalFile, `${program.key}:createProgram`, 'school', `${academic}/programs`,
         () => request('POST', `${academic}/programs`, tokens.school, {
-          programName: program.name, majorId: org.majorId, gradeYear: '2023', totalCredits: program.courses.length * 4,
+          programName: program.name, majorId: org.majorId, gradeYear: plan.entryYear, totalCredits: program.courses.length * 4,
         }), async result => {
           assert.match(String(result?.programId || ''), /^\d+$/)
           const row = await getProgram(result.programId)
@@ -337,9 +339,9 @@ async function execute(fixture, credentials, plan, journalFile) {
       }
       await writeStep(report, journalFile, `${program.key}:bind`, 'school', `${academic}/programs/${id}/bind`,
         () => request('POST', `${academic}/programs/${id}/bind`, tokens.school,
-          { gradeYear: '2023', classId: org.classId }), async () => {
+          { gradeYear: plan.entryYear, classId: org.classId }), async () => {
           const data = await request('GET', `${academic}/programs/${id}/bindings`, tokens.school)
-          assert.equal(data.items.filter(row => row.status === 'ACTIVE' && String(row.gradeYear) === '2023'
+          assert.equal(data.items.filter(row => row.status === 'ACTIVE' && String(row.gradeYear) === plan.entryYear
             && String(row.classId) === org.classId).length, 1)
           const row = await getProgram(id); assert.equal(row.status, 'ENABLED')
           return { programId: id, classId: org.classId, status: row.status }
@@ -373,7 +375,7 @@ async function main() {
     console.log(JSON.stringify({ executed: false, api: base, database: databaseName, prefix: fixture.prefix,
       journalFile, courses: plan.courses.map(row => ({ code: row.code, name: row.name, ownerCollegeId: fixture.colleges[row.college].collegeId })),
       programs: plan.programs.map(row => ({ name: row.name, majorId: fixture.colleges[row.key].majorId,
-        classId: fixture.colleges[row.key].classId, gradeYear: '2023', openTermNo: 6,
+        classId: fixture.colleges[row.key].classId, gradeYear: plan.entryYear, openTermNo: 6,
         totalCredits: row.courses.length * 4 })) }, null, 2))
     return
   }

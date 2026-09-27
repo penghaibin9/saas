@@ -26,8 +26,8 @@ REPOSITORY = BACKEND.parent
 TENANT_ID = 1000000000000000001
 TENANT_CODE = "demo"
 DATABASE_NAME = "student_lifecycle_v5_e2e"
-ENTRY_YEAR = 2023
-GRADUATE_YEAR = 2026
+ENTRY_YEAR = 2024
+GRADUATE_YEAR = 2027
 IDENTITIES = {
     "school": ("校教务处测试员", "ACADEMIC_ADMIN", None),
     "schoolReviewer": ("校教务处独立复核员", "ACADEMIC_ADMIN", None),
