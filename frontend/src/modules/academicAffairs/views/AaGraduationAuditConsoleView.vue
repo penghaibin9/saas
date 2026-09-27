@@ -569,7 +569,7 @@ export default {
     overallLabel(o) { return OVERALL_LABEL[o] || o || '—' },
     statusLabel(s) { return GRAD_STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     evidenceText(value, item) {
-      let text = String(value || '当前正式证据未提供').replace(/student_status=([A-Z_]+)/g, (_all, code) => `学籍状态：${({NORMAL:'正常在籍',GRADUATED:'已毕业',COMPLETED:'已结业',SUSPENDED:'休学',DROPPED:'退学'})[code] || '待核对'}`)
+      let text = String(value || '当前正式证据未提供').replace(/student_status=([A-Z_]+)/g, (_all, code) => `学籍状态：${({NORMAL:'正常在籍',REGISTERED:'已注册',RETAINED:'留级',GRADUATED:'已毕业',COMPLETED:'已结业',SUSPENDED:'休学',DROPPED:'退学'})[code] || '待核对'}`)
       if (item === 'GRADUATION_DESIGN') {
         return text
           .replace('FILED 归档清单有效', '已备案的归档清单有效')

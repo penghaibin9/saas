@@ -268,6 +268,21 @@ def test_gr8_college_reject_reason_roundtrip(client, db_mode):
     assert lst[0]["studentNo"] == "GR001"
     detail = client.get(f"{BASE}/graduation-results/{rid}", headers=hdr).json()["data"]
     assert detail["reviewNote"] == "材料不全，缺实习鉴定表"
+    assert detail["studentNo"] == lst[0]["studentNo"] == "GR001"
+    assert detail["realName"] == lst[0]["realName"] == "毕业甲"
+
+    from app.core.context import get_tenant, set_tenant
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services.academic_affairs_graduation_service import get_result
+    import pytest
+    previous_tenant = get_tenant()
+    try:
+        set_tenant(TID + 1)
+        with pytest.raises(AppException) as denied:
+            get_result(rid, {"tenantId": str(TID + 1), "currentRoleCode": "SCHOOL_ADMIN"})
+        assert denied.value.code == "DATA_NOT_FOUND"
+    finally:
+        set_tenant(previous_tenant)
 
 
 def test_gr9_fee_clearance_cannot_upgrade_other_unknowns(client, db_mode):

@@ -39,12 +39,12 @@ test('route restoration overrides queue presets and keeps exact batch and studen
 test('graduation handoff keeps the exact student search and safe return through list filters', () => {
   const { vm, routes } = setup(); vm.load = () => {}
   const returnTo = '/admin/academic-affairs/graduation/audit-console?termId=54&batchId=13&tab=internship&resultId=77'
-  vm.$route.query = { panel: 'roster', keyword: '240412', returnTo }
+  vm.$route.query = { panel: 'roster', keyword: 'V52023001', returnTo }
   vm.applyRouteFilters()
-  assert.equal(vm.appliedFilters.keyword, '240412')
+  assert.equal(vm.appliedFilters.keyword, 'V52023001')
   assert.equal(vm.graduationReturnTo, returnTo)
   vm.search()
-  assert.equal(routes[0].query.keyword, '240412')
+  assert.equal(routes[0].query.keyword, 'V52023001')
   assert.equal(routes[0].query.returnTo, returnTo)
   vm.$route.query.returnTo = 'https://outside.invalid/steal'
   assert.equal(vm.graduationReturnTo, '')

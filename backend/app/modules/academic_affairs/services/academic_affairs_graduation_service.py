@@ -637,7 +637,7 @@ def _row(r) -> dict:
 
 def get_result(result_id, user) -> dict:
     with session() as db:
-        from app.models import AaGraduationAuditResult
+        from app.models import AaGraduationAuditResult, StudentProfile
         r = db.get(AaGraduationAuditResult, int(result_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("预审结果不存在")
@@ -645,6 +645,13 @@ def get_result(result_id, user) -> dict:
         from .academic_affairs_graduation_scope_guard import result_responsibilities
         row = _row(r)
         row.update(result_responsibilities(db, user, [r])[r.id])
+        student = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == r.student_id,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )).first()
+        row["realName"] = student.real_name if student else ""
+        row["studentNo"] = student.student_no if student else ""
         return row
 
 

@@ -25,9 +25,9 @@ function bind(options, extra) {
 test('毕设学生名单保留毕业审核的学号筛选和安全返回，详情只在成功读取后显示返回', async () => {
   const returnTo = '/admin/academic-affairs/graduation/audit-console?termId=54&batchId=13&tab=thesis&resultId=77'
   const listOptions = view('GraduationStudentListView', { useGraduationBatchStore: () => ({ selectedBatchId: '53' }), gdStudentApi: {} })
-  const list = bind(listOptions, { $route: { query: { panel: 'roster', keyword: '240412', returnTo } }, $router: {} })
+  const list = bind(listOptions, { $route: { query: { panel: 'roster', keyword: 'V52023001', returnTo } }, $router: {} })
   list.applyInitialRouteState(list.$route.query)
-  assert.equal(list.filters.keyword, '240412')
+  assert.equal(list.filters.keyword, 'V52023001')
   assert.equal(list.graduationReturnTo, returnTo)
   list.$route.query.returnTo = 'https://outside.invalid/'
   assert.equal(list.graduationReturnTo, '')

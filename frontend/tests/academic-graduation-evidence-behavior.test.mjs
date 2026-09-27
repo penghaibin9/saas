@@ -25,12 +25,12 @@ function instance(overrides = {}) {
 test('缺上游记录时按学号进入责任名单，已有记录仍直达详情并保留审核对象',()=>{
   const vm=instance();vm.ctx.permissionPatterns=['internship.student.view','graduationDesign.student.view']
   vm.batches[0].termId='54';vm.tab='internship'
-  const row={resultId:'88',studentNo:'240412',items:[{item:'INTERNSHIP',result:'UNKNOWN',owner:'INTERN_MENTOR'}]}
+  const row={resultId:'88',studentNo:'V52023001',items:[{item:'INTERNSHIP',result:'UNKNOWN',owner:'INTERN_MENTOR'}]}
   vm.rows=[row]
   assert.match(vm.responsibilityReason,/学生管理人员建档/)
   const missing=vm.linkFor(row)
   assert.equal(missing.path,'/admin/internship/students')
-  assert.equal(missing.query.keyword,'240412')
+  assert.equal(missing.query.keyword,'V52023001')
   assert.match(missing.query.returnTo,/termId=54/)
   assert.match(missing.query.returnTo,/batchId=12/)
   assert.match(missing.query.returnTo,/resultId=88/)
@@ -52,12 +52,12 @@ test('旧结果页的来源入口也按真实学号定位并拒绝无权下钻',
   const pushes=[]
   const vm={...component.data(),ctx:{permissionPatterns:['internship.student.view']},$route:{path:'/admin/academic-affairs/graduation/13/results',query:{termId:'54'}},$router:{resolve:target=>({fullPath:`${target.path}?${new URLSearchParams(target.query).toString()}`}),push:target=>pushes.push(target)}}
   for(const [key,fn] of Object.entries(component.methods))vm[key]=fn.bind(vm)
-  const row={studentNo:'240412',resultId:'77'};const item={item:'INTERNSHIP',drillRoute:'/admin/internship/students'}
+  const row={studentNo:'V52023001',resultId:'77'};const item={item:'INTERNSHIP',drillRoute:'/admin/internship/students'}
   Object.defineProperty(vm,'batchId',{get:()=> '13'})
   assert.equal(vm.canDrillEvidence(item,row),true)
   vm.drillEvidence(item,row)
   assert.equal(pushes[0].path,'/admin/internship/students')
-  assert.equal(pushes[0].query.keyword,'240412')
+  assert.equal(pushes[0].query.keyword,'V52023001')
   assert.match(pushes[0].query.returnTo,/termId=54/)
   assert.match(pushes[0].query.returnTo,/batchId=13/)
   assert.match(pushes[0].query.returnTo,/resultId=77/)
@@ -244,6 +244,8 @@ test('毕业批次和学籍证据使用中文业务说明',()=>{
   const vm=instance()
   assert.equal(vm.batchOptions[0].label,'验收批次（已预审，应审 2）')
   assert.equal(vm.evidenceText('student_status=NORMAL'),'学籍状态：正常在籍')
+  assert.equal(vm.evidenceText('student_status=REGISTERED'),'学籍状态：已注册')
+  assert.equal(vm.evidenceText('student_status=RETAINED'),'学籍状态：留级')
   assert.equal(vm.evidenceText('已得 6.0/2.0 学分'),'已得 6.0/2.0 学分')
 })
 
