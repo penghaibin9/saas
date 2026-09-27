@@ -155,11 +155,13 @@ def checkin(user: dict, body: dict, *, batch_id=None) -> dict:
     timezone_name = str(payload.get("timezoneName") or settings.TENANT_TIMEZONE or "Asia/Shanghai").strip()
     zone, local_now, offset_minutes = _local_clock(timezone_name)
     today = local_now.date().isoformat()
-    address = str(payload.get("address") or "").strip()[:300]
+    address = str(payload.get("address") or payload.get("locationLabel") or "").strip()[:300]
     country_region = str(payload.get("countryRegion") or "").strip()[:100] or None
     photo_file_id = str(payload.get("photoFileId") or payload.get("evidenceFileId") or "").strip() or None
+    if photo_file_id and not address and lat is not None:
+        address = f"坐标 {lat:.6f},{lng:.6f}"
     if photo_file_id and not address:
-        raise AppException("VALIDATION_ERROR", "上传现场照片时必须同时提供定位地址，服务端才能生成完整水印")
+        raise AppException("VALIDATION_ERROR", "上传现场照片时必须同时提供定位位置，服务端才能生成完整水印")
 
     with _session() as db:
         record, student, _batch = _student_record(db, user, batch_id=batch_id, for_write=True)
