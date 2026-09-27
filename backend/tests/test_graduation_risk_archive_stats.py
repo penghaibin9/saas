@@ -185,9 +185,11 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
     submitted_retry = graduation_client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()["data"]
     assert submitted_retry["version"] == submitted["version"]
 
-    filed = graduation_client.post(
+    filed_response = graduation_client.post(
         f"{GD_ARCHIVE}/{gid}/file", headers=h, json={"archiveBatchNo": "GDARCH-TEST-001"},
-    ).json()["data"]
+    )
+    assert filed_response.status_code == 200, filed_response.json()
+    filed = filed_response.json()["data"]
     filed_retry = graduation_client.post(
         f"{GD_ARCHIVE}/{gid}/file", headers=h, json={"archiveBatchNo": "GDARCH-TEST-001"},
     ).json()["data"]
