@@ -133,7 +133,16 @@ class InternshipCheckin(PKMixin, TenantMixin, CommonMixin, Base):
         String(30), comment="not_available/mock/rooted（客户端 normal 不作为可信证明）"
     )
     distance_m: Mapped[float | None] = mapped_column(Float, comment="距岗位围栏中心距离(m)")
-    evidence_file_id: Mapped[str | None] = mapped_column(String(64), comment="打卡凭证文件")
+    evidence_file_id: Mapped[str | None] = mapped_column(String(64), comment="现场原图文件（兼容旧 evidence_file_id）")
+    watermarked_file_id: Mapped[str | None] = mapped_column(String(64), comment="服务端生成的时间+地点水印图")
+    evidence_sha256: Mapped[str | None] = mapped_column(String(64), comment="原图 SHA-256")
+    watermarked_sha256: Mapped[str | None] = mapped_column(String(64), comment="水印图 SHA-256")
+    watermark_text: Mapped[str | None] = mapped_column(String(500), comment="服务端实际写入水印的文本")
+    timezone_name: Mapped[str | None] = mapped_column(String(64), comment="打卡当地 IANA 时区")
+    timezone_offset_minutes: Mapped[int | None] = mapped_column(Integer, comment="打卡当地 UTC 偏移分钟")
+    coordinate_system: Mapped[str | None] = mapped_column(String(20), comment="GCJ02/WGS84")
+    location_provider: Mapped[str | None] = mapped_column(String(50), comment="客户端定位提供方")
+    country_region: Mapped[str | None] = mapped_column(String(100), comment="打卡国家或地区")
     idempotency_key: Mapped[str | None] = mapped_column(String(100), comment="客户端幂等键")
 
 
@@ -166,6 +175,39 @@ class InternshipMakeup(PKMixin, TenantMixin, CommonMixin, Base):
     review_by_name: Mapped[str | None] = mapped_column(String(50), comment="审批人")
     review_at: Mapped[datetime | None] = mapped_column(DateTime)
     review_comment: Mapped[str | None] = mapped_column(String(500))
+
+
+class InternshipCheckinExemption(PKMixin, TenantMixin, CommonMixin, Base):
+    """签到免签申请。学生申请一段日期无需签到，教师审批后进入签到日历 EXEMPT。"""
+    __tablename__ = "t_internship_checkin_exemption"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "active_pending_internship_id",
+            name="uk_ix_checkin_exemption_active_pending",
+        ),
+    )
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    active_pending_internship_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        Computed("CASE WHEN is_deleted = 0 AND status = 'PENDING' "
+                 "THEN internship_id ELSE NULL END", persisted=True),
+        comment="同一实习记录同时只允许一条待审批免签",
+    )
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    start_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    end_date: Mapped[str] = mapped_column(String(10), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    evidence_file_id: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="PENDING",
+        comment="PENDING/APPROVED/REJECTED/WITHDRAWN",
+    )
+    apply_by_name: Mapped[str | None] = mapped_column(String(100))
+    review_by_name: Mapped[str | None] = mapped_column(String(100))
+    review_comment: Mapped[str | None] = mapped_column(String(500))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
 
 
 class InternshipGuidance(PKMixin, TenantMixin, CommonMixin, Base):
