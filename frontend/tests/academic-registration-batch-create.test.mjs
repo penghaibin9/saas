@@ -7,9 +7,9 @@ import { matchPermission } from '../src/config/navPlan.js'
 const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaRegistrationBatchListView.vue', import.meta.url), 'utf8')
 const batchId = '9007199254740993001'
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
-const draft = (extra = {}) => ({ batchName: '本学年正式注册批次', registerType: 'ANNUAL', windowStart: '2026-09-01', windowEnd: '2026-09-20', open: false, ...extra })
+const draft = (extra = {}) => ({ batchName: '本学年正式注册批次', registerType: 'ANNUAL', termId: '54', windowStart: '2026-09-01', windowEnd: '2026-09-20', open: false, ...extra })
 const receipt = (body = draft(), extra = {}) => ({ code: 0, data: { batchId, batchName: body.batchName, registerType: body.registerType, status: body.open ? 'OPEN' : 'DRAFT', ...extra } })
-function page(api = {}) {
+function page(api = {}, query = { type: 'ANNUAL', page: '3', termId: '54' }) {
   const writes = [], reads = [], notices = []
   const sandbox = { dependencies: { matchPermission, toast: { success: value => notices.push(value), error: value => notices.push(value) },
     academicAffairsApi: { createRegistrationBatch: async body => { writes.push(body); return receipt(body) },
@@ -20,7 +20,7 @@ function page(api = {}) {
   const component = sandbox.component
   const state = { ...component.data(), ...component.methods, loading: false,
     ctx: { role: 'SCHOOL_ADMIN', permissionPatterns: ['academicAffairs.registration.manage', 'academicAffairs.registration.view'] },
-    $route: { query: { type: 'ANNUAL', page: '3' } } }
+    $route: { query } }
   for (const [key, value] of Object.entries(component.computed)) {
     const get = typeof value === 'function' ? value : value.get
     Object.defineProperty(state, key, { get: () => get.call(state), ...(value.set ? { set: next => value.set.call(state, next) } : {}) })
@@ -41,6 +41,30 @@ test('creation freezes all formal input fields and accepts the exact canonical D
 test('a leaf route fixes the captured registration type even if a stale draft has a different type', async () => {
   const { state, writes } = page(); open(state, { registerType: 'ENROLL' }); await state.createBatch()
   assert.equal(writes[0].registerType, 'ANNUAL'); assert.equal(state.createWrite.receipt.registerType, 'ANNUAL')
+})
+test('the selected term is required and is captured in the creation request', async () => {
+  const { state, writes } = page({}, { type: 'ANNUAL' }); state.toggleCreate(); state.draft = draft({ termId: '' })
+  await state.createBatch(); assert.equal(writes.length, 0)
+  state.draft.termId = '54'; await state.createBatch()
+  assert.equal(writes.length, 1); assert.equal(writes[0].termId, '54')
+  assert.match(source, /<AppTermEntityPicker v-model="draft\.termId"/)
+  assert.match(source, /所属学期（必选）/)
+})
+test('a term deep link fills the visible picker and a term switch discards the old creation form', async () => {
+  const { state, component, writes } = page()
+  component.created.call(state); assert.equal(state.draft.termId, '54')
+  state.toggleCreate(); state.draft.batchName = '旧学期批次'
+  state.$route.query.termId = '55'; component.watch['$route.query.termId'].call(state)
+  assert.equal(state.showCreate, false); assert.equal(state.draft.termId, '55')
+  await state.createBatch(); assert.equal(writes.length, 0)
+})
+test('a late creation result after switching terms cannot publish its receipt into the new context', async () => {
+  const reply = deferred(); const { state, component, writes } = page({ createRegistrationBatch: body => { writes.push(body); return reply.promise } })
+  open(state); const pending = state.createBatch()
+  state.$route.query.termId = '55'; component.watch['$route.query.termId'].call(state)
+  reply.resolve(receipt()); await pending
+  assert.equal(writes[0].termId, '54'); assert.equal(state.draft.termId, '55')
+  assert.equal(state.createWrite.receipt, null); assert.equal(state.showCreate, false)
 })
 test('view and archive.manage do not permit creation, including after a form was opened', async () => {
   for (const permissions of [['academicAffairs.registration.view'], ['academicAffairs.registration.archive.manage']]) {
