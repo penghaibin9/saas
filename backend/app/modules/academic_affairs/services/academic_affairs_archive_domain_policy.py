@@ -483,59 +483,6 @@ def evaluate_evaluation(db, term_id, college_ids=None):
         "评教窗口、结果和申诉均已收口" if not blockers else "；".join(blockers),
     )
 
-def _textbook_missing_distribution(db, orders, items, distributions, records, *, college_ids=None):
-    """按订单来源与正式名单核对逐书逐生应发集合，校院共用同一口径。"""
-    from app.core.exceptions import AppException
-    from app.models import StudentProfile
-    from . import academic_affairs_textbook_final_facade as textbook
-
-    items_by_order = defaultdict(list)
-    for item in items:
-        items_by_order[int(item.order_batch_id)].append(item)
-    order_by_batch = {int(row.id): int(row.order_batch_id) for row in distributions}
-    actual = {
-        (order_by_batch[int(row.batch_id)], int(row.textbook_id), int(row.student_id))
-        for row in records if int(row.batch_id) in order_by_batch
-    }
-    expected = set()
-    unknown = []
-    for order in orders:
-        if str(order.status or "").upper() not in {"ARRIVED", "RECEIVED", "ARCHIVED"}:
-            continue
-        try:
-            members = textbook._distribution_members(
-                db, order, items_by_order[int(order.id)], None,
-            )
-        except AppException as exc:
-            unknown.append({"orderBatchId": str(order.id), "reason": exc.message})
-            continue
-        expected.update(
-            (int(order.id), int(book_id), int(student_id))
-            for book_id, student_ids in members.items() for student_id in student_ids
-        )
-    if college_ids is not None and expected:
-        student_ids = {student_id for _order_id, _book_id, student_id in expected}
-        own_students = {
-            int(student_id) for (student_id,) in db.query(StudentProfile.id).filter(
-                StudentProfile.tenant_id == _tid(),
-                StudentProfile.is_deleted.is_(False),
-                StudentProfile.college_id.in_(sorted(college_ids)),
-                StudentProfile.id.in_(student_ids),
-            ).all()
-        }
-        expected = {key for key in expected if key[2] in own_students}
-    missing = sorted(expected - actual)
-    return {
-        "missingCount": len(missing),
-        "sample": [
-            {"orderBatchId": str(order_id), "textbookId": str(book_id), "studentId": str(student_id)}
-            for order_id, book_id, student_id in missing[:50]
-        ],
-        "unknownCount": len(unknown),
-        "unknownSample": unknown[:50] if college_ids is None else [],
-    }
-
-
 def evaluate_textbook(db, term_id):
     from app.models import (
         AaTextbookDistributionBatch, AaTextbookDistributionRecord,
@@ -590,7 +537,6 @@ def evaluate_textbook(db, term_id):
         AaTextbookDistributionRecord.batch_id.in_(distribution_ids),
         AaTextbookDistributionRecord.is_deleted.is_(False),
     ).all() if distribution_ids else []
-    coverage = _textbook_missing_distribution(db, orders, items, distributions, records)
     pending_records = sum(1 for row in records if str(row.status or "").upper() == "PENDING")
     chargeable = [
         row for row in records
@@ -618,22 +564,11 @@ def evaluate_textbook(db, term_id):
         blockers.append(f"已签收/退领但缺少费用台账 {missing_fees} 条")
     if unsettled:
         blockers.append(f"未结清教材费用 {unsettled} 条")
-    if coverage["missingCount"]:
-        blockers.append(f"正式名单中未建教材发放记录 {coverage['missingCount']} 条")
-    count = len(orders) + unfinished_distributions + pending_records + missing_fees + unsettled + coverage["missingCount"]
-    if coverage["unknownCount"]:
-        blockers.append(f"征订来源或正式名单无法核验 {coverage['unknownCount']} 个批次")
-        return _state_result("TEXTBOOK", "UNKNOWN", "；".join(blockers), count=count,
-            rule_code="TEXTBOOK_SOURCE_UNKNOWN", evidence=[{
-                "type": "TEXTBOOK_DISTRIBUTION_COVERAGE", "missingCount": coverage["missingCount"],
-                "sampleMissing": coverage["sample"], "unknownCount": coverage["unknownCount"],
-                "sampleUnknown": coverage["unknownSample"],
-            }])
-    result = _legacy_result(count, not blockers,
-        "教材征订、发放和费用均已收口" if not blockers else "；".join(blockers))
-    result["evidence"] = [{"type": "TEXTBOOK_DISTRIBUTION_COVERAGE",
-        "missingCount": coverage["missingCount"], "sampleMissing": coverage["sample"]}]
-    return result
+    return _legacy_result(
+        len(orders) + unfinished_distributions + pending_records + missing_fees + unsettled,
+        not blockers,
+        "教材征订、发放和费用均已收口" if not blockers else "；".join(blockers),
+    )
 
 def evaluate_college_registration(db, term_id, college_ids):
     from app.models import AaRegistration, AaRegistrationBatch, AaRegistrationException, AaRegistrationDeferral
@@ -684,19 +619,7 @@ def evaluate_college_makeup(db, term_code, college_ids):
 
 
 def evaluate_college_textbook(db, term_id, college_ids):
-    from app.models import (AaTextbookDistributionRecord, AaTextbookDistributionBatch,
-        AaTextbookOrderBatch, AaTextbookOrderItem, AaTextbookFeeLedger)
-
-    orders = db.query(AaTextbookOrderBatch).filter(
-        AaTextbookOrderBatch.tenant_id == _tid(), AaTextbookOrderBatch.is_deleted.is_(False),
-        AaTextbookOrderBatch.term_id == term_id).all()
-    order_ids = [int(row.id) for row in orders]
-    items = db.query(AaTextbookOrderItem).filter(
-        AaTextbookOrderItem.tenant_id == _tid(), AaTextbookOrderItem.is_deleted.is_(False),
-        AaTextbookOrderItem.order_batch_id.in_(order_ids)).all() if order_ids else []
-    distributions = db.query(AaTextbookDistributionBatch).filter(
-        AaTextbookDistributionBatch.tenant_id == _tid(), AaTextbookDistributionBatch.is_deleted.is_(False),
-        AaTextbookDistributionBatch.order_batch_id.in_(order_ids)).all() if order_ids else []
+    from app.models import AaTextbookDistributionRecord, AaTextbookDistributionBatch, AaTextbookOrderBatch, AaTextbookFeeLedger
     records = db.query(AaTextbookDistributionRecord).join(AaTextbookDistributionBatch,
         AaTextbookDistributionBatch.id == AaTextbookDistributionRecord.batch_id).join(AaTextbookOrderBatch,
         AaTextbookOrderBatch.id == AaTextbookDistributionBatch.order_batch_id).filter(
@@ -715,17 +638,8 @@ def evaluate_college_textbook(db, term_id, college_ids):
         AaTextbookFeeLedger.is_deleted.is_(False), AaTextbookFeeLedger.student_id.in_(college_student_ids(college_ids)),
         AaTextbookFeeLedger.distribution_record_id.in_(select(local_records.c.id)),
         AaTextbookFeeLedger.status.notin_(tuple(_FEE_TERMINAL))).count()
-    coverage = _textbook_missing_distribution(db, orders, items, distributions,
-        records.all(), college_ids=college_ids)
-    blockers = pending + missing + unsettled + coverage["missingCount"]
-    school_message = "供应商征订、到货及整批发放由学校统筹核验"
-    if coverage["unknownCount"]:
-        school_message += "；征订来源或正式名单存在待核事实，需学校核验"
-    result = college_school_result("TEXTBOOK", records.count() + coverage["missingCount"], blockers,
-        "本院教材应发名单、发放或费用明细尚未闭环", school_message)
-    result["evidence"].append({"type": "TEXTBOOK_DISTRIBUTION_COVERAGE",
-        "localMissingCount": coverage["missingCount"], "sampleLocalMissing": coverage["sample"]})
-    return result
+    return college_school_result("TEXTBOOK", records.count(), pending + missing + unsettled,
+        "本院教材发放或费用明细尚未闭环", "供应商征订、到货及整批发放由学校统筹核验")
 
 
 def _evaluate_college_domains(db, term_id, term_code, college_ids):
