@@ -14,14 +14,14 @@
       <dl><div><dt>当前责任</dt><dd>选课管理岗</dd></div><div><dt>下一责任</dt><dd>归档查阅人</dd></div></dl>
     </section>
 
-    <div class="aasar-notice"><strong>已封存事实只读；UNKNOWN 域会阻断新的封存</strong><span>原始名单不可修改；受控纠错必须建立新版本并保留操作凭证。</span></div>
+    <div class="aasar-notice"><strong>已封存事实只读；待核验业务域会阻断新的封存</strong><span>原始名单不可修改；受控纠错必须建立新版本并保留操作凭证。</span></div>
 
     <div class="aasar-layout">
       <div class="aasar-list">
         <header class="aasar-list-head"><div><strong>选课归档批次 · 原记录与正式凭证</strong></div><div class="aasar-toolbar"><AppTermEntityPicker v-model="termId" placeholder="全部学期" /><AppButton size="small" variant="ghost" @click="applyFilter">查询</AppButton></div></header>
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="暂无已归档批次" description="批次进入 LOCKED 状态后，在选课管理控制台点「归档」即可在此查询" />
+        <EmptyState v-else-if="!rows.length" title="暂无已归档批次" description="批次名单已锁定后，在选课管理控制台点「归档」即可在此查询" />
         <DataTable v-else :columns="columns" :rows="rows" row-key="batchId">
           <template #cell-batchName="{ row }">
             <button class="mp-link" @click="select(row)">{{ row.batchName }}</button>
@@ -50,7 +50,7 @@
           </div>
           <div class="aasar-export">
             <AppTextInput v-model="exportPurpose" placeholder="导出用途（≥5字，导出前必填）" />
-            <AppButton size="small" variant="primary" :loading="exporting" @click="exportArchive">导出台账 Excel</AppButton>
+            <AppButton size="small" variant="primary" :loading="exporting" @click="exportArchive">导出台账（Excel 表格）</AppButton>
           </div>
         </template>
       </div>
