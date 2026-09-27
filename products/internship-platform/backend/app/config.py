@@ -8,6 +8,9 @@ class Settings(BaseSettings):
     SOURCE_BASELINE_SHA:str="adea054e2fd59cc0b83bbdb22f10ec98a8e2fd8c"
     DATABASE_URL:str=""
     REDIS_URL:str=""
+    REDIS_KEY_PREFIX:str="internship-standalone"
+    REDIS_CONNECT_TIMEOUT:float=0.5
+    REDIS_SOCKET_TIMEOUT:float=0.5
     FILE_STORAGE_DIR:str="./data/files"
     FILE_ALLOW_ZIP:bool=False
     FILE_ZIP_MAX_ENTRIES:int=200
