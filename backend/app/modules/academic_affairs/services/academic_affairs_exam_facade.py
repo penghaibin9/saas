@@ -44,6 +44,7 @@ def _teacher_accounts(db, keys):
         return {}
     ids = {int(key[2:]) for key in normalized if key.startswith("u_") and key[2:].isdigit()}
     ids.update(int(key[3:]) for key in normalized if key.startswith("db-") and key[3:].isdigit())
+    ids.update(int(key) for key in normalized if key.isdigit())
     clauses = [User.login_name.in_(normalized)]
     if ids:
         clauses.append(User.id.in_(ids))
@@ -55,6 +56,8 @@ def _teacher_accounts(db, keys):
         candidate = by_id.get(int(key[2:])) if key.startswith("u_") and key[2:].isdigit() else None
         if candidate is None and key.startswith("db-") and key[3:].isdigit():
             candidate = by_id.get(int(key[3:]))
+        if candidate is None and key.isdigit():
+            candidate = by_login.get(key) or by_id.get(int(key))
         resolved[key] = candidate if candidate and not candidate.is_deleted else by_login.get(key)
     return resolved
 
@@ -65,7 +68,18 @@ def _active_teacher(account):
 
 
 def _teacher_aliases(account):
-    return {str(account.login_name).strip(), f"u_{account.id}", f"db-{account.id}"}
+    return {str(account.login_name).strip(), f"u_{account.id}", f"db-{account.id}", str(account.id)}
+
+
+def _patrol_account(db, key):
+    normalized = str(key or "").strip()
+    account = _teacher_accounts(db, [normalized]).get(normalized)
+    if (not account or account.is_deleted or _status(account.status) != "ACTIVE"
+            or not account.user_type or _status(account.user_type) == "STUDENT"):
+        raise AppException("VALIDATION_ERROR", "巡考人员须为本校在职教职工")
+    if not str(account.login_name or "").strip():
+        raise AppException("VALIDATION_ERROR", "巡考人员账号缺少稳定工号")
+    return account
 
 
 def _same_teacher(account, key, owner_account, owner_key):
@@ -1125,7 +1139,7 @@ def add_room(user, cid, body):
 def assign_invigilator(user, room_id, teacher_key, teacher_name, role="ASSISTANT"):
     """指定监考——批次一旦发布，监考安排已通知本人，禁止再走这条普通指定入口；
     冲突检测在教师时间线锁下用加锁读，避免并发把同一老师排进两场同时段考试。"""
-    from app.models import AaExamInvigilator, AaExamRoom
+    from app.models import AaExamInvigilator, AaExamPatrol, AaExamRoom
     from .academic_affairs_teaching_class_teacher_service import _teacher
 
     with _legacy.session() as db:
@@ -1170,6 +1184,14 @@ def assign_invigilator(user, room_id, teacher_key, teacher_name, role="ASSISTANT
             if _legacy._time_overlap(d0, s0, e0, other_course.exam_date,
                                      other_course.start_time, other_course.end_time):
                 raise _legacy._conflict(f"教师 {name} 该时段已有监考安排（冲突）")
+        patrols = _fresh_rows(db.query(AaExamPatrol).filter(
+            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key.in_(aliases),
+            AaExamPatrol.is_deleted.is_(False),
+        ))
+        for patrol in patrols:
+            if _legacy._time_overlap(d0, s0, e0, patrol.patrol_date,
+                                     patrol.start_time, patrol.end_time):
+                raise _legacy._conflict(f"教师 {name} 该时段已有巡考安排（冲突）")
         dup = db.query(AaExamInvigilator).filter(
             AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.exam_room_id == room.id,
             AaExamInvigilator.teacher_key.in_(aliases), AaExamInvigilator.is_deleted.is_(False),
@@ -1194,7 +1216,7 @@ def change_invigilator(user, room_id, old_teacher_key, new_teacher_key, new_teac
     旧老师和新老师的时间线都要锁——旧老师释放这个时段、新老师占用这个时段是同一个
     事务里的两件事，任何一步失败整体回滚，不留半截换人。
     """
-    from app.models import AaExamInvigilator, AaExamRoom
+    from app.models import AaExamInvigilator, AaExamPatrol, AaExamRoom
     from .academic_affairs_teaching_class_teacher_service import _teacher
 
     reason_text = str(reason or "").strip()
@@ -1230,7 +1252,8 @@ def change_invigilator(user, room_id, old_teacher_key, new_teacher_key, new_teac
         new_key = str(teacher.login_name or "").strip()
         if not new_key:
             raise AppException("VALIDATION_ERROR", "教师账号缺少稳定工号")
-        if _same_teacher(teacher, new_key, _teacher_accounts(db, [old_key]).get(old_key), old_key):
+        old_account = _teacher_accounts(db, [old_key]).get(old_key)
+        if _same_teacher(teacher, new_key, old_account, old_key):
             raise _legacy._bad("新监考教师不能与原监考教师相同")
         if _exam_params(db, batch)["avoidOwnCourse"]:
             accounts = _teacher_accounts(db, [course.teacher_key])
@@ -1238,8 +1261,9 @@ def change_invigilator(user, room_id, old_teacher_key, new_teacher_key, new_teac
                 raise AppException("DATA_CONFLICT", "任课教师不能监考本人课程", http_status=409)
         name = str(teacher.real_name or teacher.login_name).strip()
 
-        _lock_teacher_timeline(db, old_key)
-        _lock_teacher_timeline(db, new_key)
+        for lock_key in sorted({old_key, str(old_account.login_name or "").strip() if old_account else "", new_key}):
+            if lock_key:
+                _lock_teacher_timeline(db, lock_key)
         aliases = _teacher_aliases(teacher)
 
         d0, s0, e0 = course.exam_date, course.start_time, course.end_time
@@ -1255,6 +1279,14 @@ def change_invigilator(user, room_id, old_teacher_key, new_teacher_key, new_teac
             if _legacy._time_overlap(d0, s0, e0, other_course.exam_date,
                                      other_course.start_time, other_course.end_time):
                 raise _legacy._conflict(f"教师 {name} 该时段已有监考安排（冲突）")
+        patrols = _fresh_rows(db.query(AaExamPatrol).filter(
+            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key.in_(aliases),
+            AaExamPatrol.is_deleted.is_(False),
+        ))
+        for patrol in patrols:
+            if _legacy._time_overlap(d0, s0, e0, patrol.patrol_date,
+                                     patrol.start_time, patrol.end_time):
+                raise _legacy._conflict(f"教师 {name} 该时段已有巡考安排（冲突）")
         dup = db.query(AaExamInvigilator).filter(
             AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.exam_room_id == room.id,
             AaExamInvigilator.teacher_key.in_(aliases), AaExamInvigilator.is_deleted.is_(False),
@@ -1295,18 +1327,21 @@ def assign_patrol(user, batch_id, teacher_key, teacher_name, patrol_date, start_
                 http_status=409,
             )
 
-        key = str(teacher_key or "").strip()
+        account = _patrol_account(db, teacher_key)
+        key = str(account.login_name).strip()
+        name = str(account.real_name or key).strip()
+        aliases = _teacher_aliases(account)
         _lock_teacher_timeline(db, key)
         existing = _fresh_rows(db.query(AaExamPatrol).filter(
-            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key == key,
+            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key.in_(aliases),
             AaExamPatrol.is_deleted.is_(False),
         ))
         for p in existing:
             if _legacy._time_overlap(patrol_date, start_time, end_time,
                                      p.patrol_date, p.start_time, p.end_time):
-                raise _legacy._conflict(f"教师 {teacher_name or key} 该时段已有巡考安排（冲突）")
+                raise _legacy._conflict(f"教师 {name} 该时段已有巡考安排（冲突）")
         invs = _fresh_rows(db.query(AaExamInvigilator).filter(
-            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key == key,
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key.in_(aliases),
             AaExamInvigilator.is_deleted.is_(False),
         ))
         for inv in invs:
@@ -1316,15 +1351,15 @@ def assign_patrol(user, batch_id, teacher_key, teacher_name, patrol_date, start_
             course = _legacy._get_course(db, room.exam_course_id)
             if _legacy._time_overlap(patrol_date, start_time, end_time,
                                      course.exam_date, course.start_time, course.end_time):
-                raise _legacy._conflict(f"教师 {teacher_name or key} 该时段有监考任务，不能同时巡考（冲突）")
+                raise _legacy._conflict(f"教师 {name} 该时段有监考任务，不能同时巡考（冲突）")
         row = AaExamPatrol(
-            tenant_id=_legacy._tid(), batch_id=batch.id, teacher_key=key, teacher_name=teacher_name,
+            tenant_id=_legacy._tid(), batch_id=batch.id, teacher_key=key, teacher_name=name,
             patrol_date=patrol_date, start_time=start_time, end_time=end_time,
             area_scope_json=area_scope, status="ASSIGNED",
         )
         db.add(row)
         db.flush()
-        _legacy._audit(db, "EXAM_PATROL", row.id, "EXAM_PATROL_ADD", f"巡考 {teacher_name}")
+        _legacy._audit(db, "EXAM_PATROL", row.id, "EXAM_PATROL_ADD", f"巡考 {name}")
         db.commit()
         return {"patrolId": str(row.id), "batchId": str(batch.id), "teacherKey": key}
 
@@ -1353,24 +1388,31 @@ def change_patrol(user, patrol_id, new_teacher_key, new_teacher_name, reason,
         _legacy._ensure_not_archived(batch)
 
         old_key = row.teacher_key
+        account = _patrol_account(db, new_key)
+        new_key = str(account.login_name).strip()
+        name = str(account.real_name or new_key).strip()
+        aliases = _teacher_aliases(account)
         patrol_date = new_patrol_date or row.patrol_date
         start_time = new_start_time or row.start_time
         end_time = new_end_time or row.end_time
 
-        if old_key and old_key != new_key:
-            _lock_teacher_timeline(db, old_key)
-        _lock_teacher_timeline(db, new_key)
+        old_account = _teacher_accounts(db, [old_key]).get(old_key)
+        for lock_key in sorted({str(old_key or "").strip(),
+                                str(old_account.login_name or "").strip() if old_account else "",
+                                new_key}):
+            if lock_key:
+                _lock_teacher_timeline(db, lock_key)
 
         existing = _fresh_rows(db.query(AaExamPatrol).filter(
-            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key == new_key,
+            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key.in_(aliases),
             AaExamPatrol.id != row.id, AaExamPatrol.is_deleted.is_(False),
         ))
         for p in existing:
             if _legacy._time_overlap(patrol_date, start_time, end_time,
                                      p.patrol_date, p.start_time, p.end_time):
-                raise _legacy._conflict(f"教师 {new_teacher_name or new_key} 该时段已有巡考安排（冲突）")
+                raise _legacy._conflict(f"教师 {name} 该时段已有巡考安排（冲突）")
         invs = _fresh_rows(db.query(AaExamInvigilator).filter(
-            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key == new_key,
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key.in_(aliases),
             AaExamInvigilator.is_deleted.is_(False),
         ))
         for inv in invs:
@@ -1380,11 +1422,11 @@ def change_patrol(user, patrol_id, new_teacher_key, new_teacher_name, reason,
             inv_course = _legacy._get_course(db, inv_room.exam_course_id)
             if _legacy._time_overlap(patrol_date, start_time, end_time,
                                      inv_course.exam_date, inv_course.start_time, inv_course.end_time):
-                raise _legacy._conflict(f"教师 {new_teacher_name or new_key} 该时段有监考任务，不能同时巡考（冲突）")
+                raise _legacy._conflict(f"教师 {name} 该时段有监考任务，不能同时巡考（冲突）")
 
         before = f"{row.teacher_key}:{row.teacher_name or ''}:{row.patrol_date} {row.start_time}-{row.end_time}"
         row.teacher_key = new_key
-        row.teacher_name = new_teacher_name
+        row.teacher_name = name
         row.patrol_date = patrol_date
         row.start_time = start_time
         row.end_time = end_time

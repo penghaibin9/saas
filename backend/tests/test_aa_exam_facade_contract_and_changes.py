@@ -58,11 +58,15 @@ def _seed(db_mode):
     db.add(s1); db.flush()
     from tests.test_aa_exam import _seed_exam_review_identity
     _seed_exam_review_identity(db, col.id)
-    for login, name in (("teacher_x", "监考甲"), ("teacher_y", "监考乙"),
-                        ("teacher_z", "监考丙"), ("teacher_race", "抢位老师")):
+    for login, name, user_type in (("teacher_x", "监考甲", "TEACHER"),
+                                   ("teacher_y", "监考乙", "TEACHER"),
+                                   ("teacher_z", "监考丙", "TEACHER"),
+                                   ("teacher_race", "抢位老师", "TEACHER"),
+                                   ("teacher_p", "巡考甲", "STAFF"),
+                                   ("teacher_q", "巡考乙", "STAFF")):
         if not db.query(User).filter(User.tenant_id == TID, User.login_name == login).first():
             db.add(User(tenant_id=TID, login_name=login, real_name=name,
-                        user_type="TEACHER", password_hash="x", status="ACTIVE"))
+                        user_type=user_type, password_hash="x", status="ACTIVE"))
     ids = {"term": term.id, "task": task.id, "s1": s1.id, "roomA": room_a.id}
     db.commit(); db.close()
     return ids
@@ -464,6 +468,34 @@ def test_concurrent_assign_invigilator_only_one_wins_the_teacher_slot(client, db
 
 # ── 巡考：发布后禁止普通指定，只能显式变更 ──
 
+def test_patrol_accepts_real_staff_but_rejects_invalid_accounts(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import User
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, _cid = _confirmed_course(client, admin, ids)
+    with get_sessionmaker()() as db:
+        db.add(User(tenant_id=TID, login_name="inactive_patrol", real_name="停用人员",
+                    user_type="STAFF", password_hash="x", status="DISABLED"))
+        db.add(User(tenant_id=TID, login_name="student_patrol", real_name="学生",
+                    user_type="STUDENT", password_hash="x", status="ACTIVE"))
+        db.commit()
+    for key in ("missing_patrol", "inactive_patrol", "student_patrol"):
+        denied = client.post(f"{BASE}/exam/batches/{bid}/patrols", headers=admin, json={
+            "teacherKey": key, "patrolDate": "2027-06-20",
+            "startTime": "09:00", "endTime": "11:00",
+        })
+        assert denied.status_code == 400, (key, denied.text)
+    allowed = client.post(f"{BASE}/exam/batches/{bid}/patrols", headers=admin, json={
+        "teacherKey": "teacher_p", "teacherName": "客户端伪造姓名",
+        "patrolDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00",
+    })
+    assert allowed.status_code == 200, allowed.text
+    listed = client.get(f"{BASE}/exam/batches/{bid}/patrols", headers=admin).json()["data"]["items"]
+    assert listed[0]["teacherName"] == "巡考甲"
+
+
 def test_assign_patrol_after_publish_rejected_then_change_succeeds(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
@@ -496,3 +528,63 @@ def test_assign_patrol_after_publish_rejected_then_change_succeeds(client, db_mo
         "newTeacherKey": "teacher_q", "newTeacherName": "巡考乙", "reason": "巡考甲临时有事",
     })
     assert changed.status_code == 200, changed.text
+
+
+def test_patrol_then_invigilation_rejects_same_person_alias(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import User
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, cid = _confirmed_course(client, admin, ids)
+    rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin,
+                      json={"classroomId": str(ids["roomA"]), "capacity": 50}).json()["data"]["examRoomId"]
+    with get_sessionmaker()() as db:
+        teacher_id = db.query(User.id).filter(User.tenant_id == TID, User.login_name == "teacher_x").scalar()
+    patrol = client.post(f"{BASE}/exam/batches/{bid}/patrols", headers=admin, json={
+        "teacherKey": f"u_{teacher_id}", "teacherName": "客户端伪造姓名",
+        "patrolDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00",
+    })
+    assert patrol.status_code == 200, patrol.text
+    assert patrol.json()["data"]["teacherKey"] == "teacher_x"
+    blocked = client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin,
+                          json={"teacherKey": "teacher_x"})
+    assert blocked.status_code == 409 and "巡考" in blocked.text
+
+
+def test_invigilation_then_patrol_or_change_rejects_same_person_alias(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import User
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, cid = _confirmed_course(client, admin, ids)
+    rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin,
+                      json={"classroomId": str(ids["roomA"]), "capacity": 50}).json()["data"]["examRoomId"]
+    for key in ("teacher_x", "teacher_y"):
+        assert client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin,
+                           json={"teacherKey": key}).status_code == 200
+    with get_sessionmaker()() as db:
+        teacher_id = db.query(User.id).filter(User.tenant_id == TID, User.login_name == "teacher_x").scalar()
+        replacement_id = db.query(User.id).filter(User.tenant_id == TID, User.login_name == "teacher_z").scalar()
+    blocked = client.post(f"{BASE}/exam/batches/{bid}/patrols", headers=admin, json={
+        "teacherKey": str(teacher_id), "patrolDate": "2027-06-20",
+        "startTime": "09:00", "endTime": "11:00",
+    })
+    assert blocked.status_code == 409 and "监考" in blocked.text
+    patrol = client.post(f"{BASE}/exam/batches/{bid}/patrols", headers=admin, json={
+        "teacherKey": f"u_{replacement_id}", "teacherName": "客户端伪造姓名",
+        "patrolDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00",
+    })
+    assert patrol.status_code == 200, patrol.text
+    pid = patrol.json()["data"]["patrolId"]
+    assert patrol.json()["data"]["teacherKey"] == "teacher_z"
+    changed_patrol = client.post(f"{BASE}/exam/patrols/{pid}/change", headers=admin, json={
+        "newTeacherKey": f"u_{teacher_id}", "reason": "同场监考无法兼做巡考",
+    })
+    assert changed_patrol.status_code == 409 and "监考" in changed_patrol.text
+    changed_invigilator = client.post(f"{BASE}/exam/rooms/{rid}/invigilators/change", headers=admin, json={
+        "oldTeacherKey": "teacher_x", "newTeacherKey": f"u_{replacement_id}",
+        "reason": "同场巡考无法兼做监考",
+    })
+    assert changed_invigilator.status_code == 409 and "巡考" in changed_invigilator.text

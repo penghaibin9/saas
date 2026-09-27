@@ -39,9 +39,12 @@ def _seed_assignment(
 ):
     del db_mode
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom, College
+    from app.models import AaCourse, AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom, College, User
 
     db = get_sessionmaker()()
+    if not db.query(User).filter(User.tenant_id == TID, User.login_name == teacher_key).first():
+        db.add(User(tenant_id=TID, login_name=teacher_key, real_name=f"监考-{teacher_key}",
+                    user_type="TEACHER", password_hash="x", status="ACTIVE"))
     batch = AaExamBatch(
         tenant_id=TID,
         batch_name=f"C-W3监考-{teacher_key}-{batch_status}",
@@ -200,11 +203,15 @@ def test_past_published_room_stays_visible_only_while_own_attendance_is_unfinish
 
 def test_invigilation_workbench_tracks_canonical_reassignment_without_second_assignment(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import AaExamInvigilator
+    from app.models import AaExamInvigilator, User
     from app.modules.academic_affairs.services import academic_affairs_exam_facade as exam
     from app.modules.academic_affairs.services import academic_affairs_invigilation_workbench_service as svc
 
     ids = _seed_assignment(db_mode, "cw3_old_invigilator")
+    with get_sessionmaker()() as db:
+        db.add(User(tenant_id=TID, login_name="cw3_new_invigilator", real_name="C-W3新监考",
+                    user_type="TEACHER", password_hash="x", status="ACTIVE"))
+        db.commit()
     _set_context(_user("school_admin01", role="SCHOOL_ADMIN", user_type="STAFF"))
 
     before = svc.my_invigilation_workbench(_user("cw3_old_invigilator"), from_date="2029-01-01")
