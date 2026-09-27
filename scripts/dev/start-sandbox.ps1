@@ -59,13 +59,11 @@ Write-Host '[3/4] Waiting for MySQL; verifying the original school and database 
 if ($LASTEXITCODE -ne 0) { throw 'Sandbox identity/version verification failed. No application service was started.' }
 
 # The backend is intentionally configured with SCHEDULER_MODE=external.  Starting
-# only the web process leaves durable message/outbox rows without a consumer, which
-# makes a successful approval look like a missing notification in the miniapp.
-# Keep the existing standalone scheduler under the same verified local launcher so
-# every daily-sandbox client observes eventual delivery just as deployment does.
+# only the web process leaves durable message/outbox and student archive packages
+# without consumers. Run only those two safe job groups in the daily sandbox.
 $SchedulerEntry = Join-Path $Root 'backend/scripts/run_scheduled_jobs.py'
 $SchedulerModule = 'scripts.run_scheduled_jobs'
-$SchedulerArgs = '-m scripts.run_scheduled_jobs --only delivery'
+$SchedulerArgs = '-m scripts.run_scheduled_jobs --only delivery --only archive_packages'
 $SchedulerStatePath = Join-Path $RuntimeDir 'scheduler.json'
 $SavedScheduler = if (Test-Path -LiteralPath $SchedulerStatePath) {
     Get-Content -LiteralPath $SchedulerStatePath -Raw -Encoding UTF8 | ConvertFrom-Json
