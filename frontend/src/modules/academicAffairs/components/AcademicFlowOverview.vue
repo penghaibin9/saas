@@ -11,6 +11,11 @@
       <div v-if="currentStage && !majorView" class="flow-current">
         <header><h3>当前阶段 · {{ stageLabel(currentStage) }}</h3><StatusTag :label="status(currentStage.status).label" :type="status(currentStage.status).type" /></header>
         <AcademicResponsibilityBar :responsibility="currentStage.responsibility" />
+        <p v-if="currentStage.evidence?.scopeNote" class="flow-note">{{ text(currentStage.evidence.scopeNote) }}</p>
+        <div v-if="currentStage.evidence?.schoolResponsibility" class="flow-school-next">
+          <strong>下一责任方：学校正式封存</strong>
+          <AcademicResponsibilityBar :responsibility="currentStage.evidence.schoolResponsibility" title="学校封存责任组织" />
+        </div>
         <ul v-if="currentStage.blockers?.length" class="flow-blockers"><li v-for="(blocker, index) in currentStage.blockers" :key="index">{{ blockerMessage(blocker) }}</li></ul>
         <div v-if="currentStage.primaryAction?.route" class="flow-action"><AppButton v-if="canOpen(currentStage.primaryAction.route)" variant="primary" @click="$emit('navigate', currentStage.primaryAction.route)">{{ text(currentStage.primaryAction.label, '进入责任工作区') }}</AppButton><p v-else>请由上述责任方按其授权范围继续办理。</p></div>
         <AcademicHandoffCard v-if="currentStage.nextStep" :next-step="currentStage.nextStep" :can-open="canOpen" @navigate="$emit('navigate', $event)" />
@@ -39,6 +44,11 @@
         <div class="flow-responsibilities"><article v-for="(stage, index) in flow.currentResponsibilities" :key="`${stage.stageCode}:${stage.responsibility?.orgId || index}`">
           <header><strong>{{ stageLabel(stage) }}</strong><StatusTag :label="status(stage.status).label" :type="status(stage.status).type" size="sm" /></header>
           <p>{{ responsibility(stage.responsibility).orgName }} · {{ responsibility(stage.responsibility).assigneeLabel }}</p>
+          <p v-if="stage.evidence?.scopeNote" class="flow-note">{{ text(stage.evidence.scopeNote) }}</p>
+          <div v-if="stage.evidence?.schoolResponsibility" class="flow-school-next">
+            <strong>下一责任方：学校正式封存</strong>
+            <AcademicResponsibilityBar :responsibility="stage.evidence.schoolResponsibility" title="学校封存责任组织" />
+          </div>
           <ul v-if="stage.blockers?.length"><li v-for="(blocker, index) in stage.blockers" :key="index">{{ blockerMessage(blocker) }}</li></ul>
           <AppButton v-if="stage.primaryAction?.route && canOpen(stage.primaryAction.route)" variant="ghost" @click="$emit('navigate', stage.primaryAction.route)">{{ text(stage.primaryAction.label, '查看责任事项') }}</AppButton>
           <p v-else class="flow-note">按责任分工等待前置事项或下一责任方办理。</p>
@@ -107,5 +117,6 @@ export default {
 
 <style scoped>
 .flow-major { display:grid; gap:12px; }.flow-major-counts { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:6px 16px; margin:12px 0; }.flow-major-counts dt { color:var(--text-secondary); }.flow-major-counts dd { margin:0; font-weight:600; }
+.flow-school-next { display:grid; gap:8px; font-size:13px; }
 .academic-flow-overview { display:grid; gap:16px; min-width:0; }.flow-heading { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding-bottom:14px; border-bottom:1px solid var(--border-base); }.flow-heading > div { flex:1; min-width:180px; }.flow-heading h2 { font-size:18px; margin:0; }.flow-heading p,.flow-note { color:var(--text-secondary); font-size:12px; line-height:1.7; margin:6px 0 0; }.flow-current { display:grid; gap:12px; }.flow-current > header,.flow-responsibilities header { display:flex; align-items:center; gap:12px; justify-content:space-between; flex-wrap:wrap; }.academic-flow-overview h3 { font-size:15px; margin:0; }.flow-blockers { margin:0; padding:12px 14px 12px 32px; border-radius:8px; background:var(--warning-bg,#fff6e5); color:var(--warning-text,#97600c); font-size:13px; line-height:1.8; }.flow-action p { color:var(--text-secondary); font-size:13px; margin:0; }.flow-mine,.flow-gates { display:grid; gap:12px; }.flow-responsibilities,.flow-gates > div { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr)); gap:12px; }.flow-responsibilities article { padding:14px; border:1px solid var(--border-base); border-radius:9px; background:var(--bg-card); font-size:12px; line-height:1.7; overflow-wrap:anywhere; }.flow-responsibilities p { margin:8px 0; }.flow-responsibilities ul { padding-left:18px; }
 </style>

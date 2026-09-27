@@ -99,6 +99,25 @@ test('专业培养方案与应开对账只展示正式摘要和计数，不渲�
   assert.doesNotMatch(html, /不可出现的学院分配|各学院并行进度|本学院教学进度|学校统一办理条件/)
 })
 
+test('学院归档就绪时保留本院责任，并在当前阶段和责任事项显示服务端学校封存责任', async () => {
+  const archive = stage('READY', {
+    stageCode: 'F120_ARCHIVE', label: '学期归档',
+    evidence: { scopeNote: '本院事项已补齐，待校教务核验并正式封存', schoolResponsibility: { ...responsibility, orgType: 'SCHOOL', orgName: '校教务处', assigneeNames: ['王老师'] } }
+  })
+  const data = { ...payload(), viewer: { roleCode: 'COLLEGE_ADMIN', scopeType: 'COLLEGE', collegeIds: ['9007199254740993'] }, myStage: archive, currentResponsibilities: [archive], unitProgress: [payload().unitProgress[0]] }
+  const component = loadComponent('AcademicFlowOverview', { AcademicResponsibilityBar: responsibilityComponent, AcademicUnitProgressMatrix: matrixComponent, AcademicSchoolGateCard: gateComponent, AcademicHandoffCard: handoffComponent })
+  component.created = undefined
+  const initial = component.data
+  component.data = () => ({ ...initial(), flow: data })
+  const html = await render(component, { ctx: { currentRole: { roleCode: 'COLLEGE_ADMIN' }, dataScope: { scopeType: 'COLLEGE' } } })
+  assert.equal((html.match(/下一责任方：学校正式封存/g) || []).length, 2)
+  assert.equal((html.match(/本院事项已补齐，待校教务核验并正式封存/g) || []).length, 2)
+  assert.match(html, /当前阶段[\s\S]*信息学院[\s\S]*李老师[\s\S]*下一责任方：学校正式封存[\s\S]*校教务处[\s\S]*王老师/)
+  assert.match(html, /我的责任事项[\s\S]*信息学院 · 李老师[\s\S]*下一责任方：学校正式封存[\s\S]*校教务处[\s\S]*王老师/)
+  assert.match(html, /已就绪/)
+  assert.doesNotMatch(html, /已封存|F120_ARCHIVE|COLLEGE_ADMIN|SECRETARY/)
+})
+
 test('college navigation preserves all 17 workspaces, routes, leaf identities and permissions without mutating the catalog', () => {
   const modules = getVisibleNavPlan({ permissionPatterns: ['*'], ctxKey: 'college-v5' }).find(group => group.key === 'academic-affairs').children
   const before = JSON.stringify(modules), catalog = JSON.stringify(NAV_PLAN)
