@@ -1,7 +1,7 @@
 """学生小程序岗位实习本人权威接口。"""
 from __future__ import annotations
 
-from fastapi import APIRouter, Body, Depends, Query
+from fastapi import APIRouter, Body, Depends, Header, Query
 
 from app.core.permissions import require_module
 from app.core.response import success
@@ -19,6 +19,8 @@ from app.modules.internship.services import internship_student_leave_context_ser
 from app.modules.internship.services import internship_student_makeup_context_service as makeups
 from app.modules.internship.services import internship_student_report_context_service as reports
 from app.modules.internship.services import internship_student_eval_service as student_evals
+from app.modules.internship.services import internship_student_checkin_service as checkins
+from app.modules.internship.services import internship_checkin_exemption_service as checkin_exemptions
 from app.modules.internship.services import internship_score_appeal_service as score_appeals
 from app.modules.internship.services import internship_risk_service as risks
 from app.modules.internship.services.internship_student_context_guard import (
@@ -30,6 +32,13 @@ router = APIRouter(
     tags=["学生移动端-岗位实习权威状态"],
     dependencies=[Depends(require_module("internship"))],
 )
+
+
+def _selected_checkin_batch(
+    header_value: str | None = Header(default=None, alias="X-Internship-Batch-Id"),
+    explicit: int | None = Query(default=None, alias="batchId", ge=1),
+):
+    return str(explicit) if explicit is not None else header_value
 
 
 @router.get("/context/my", summary="本人所选批次岗位实习工作台")
@@ -47,6 +56,74 @@ def my_compliance(
     user=Depends(get_current_user),
 ):
     return success(compliance.evaluate_my(user, operation=operation, batch_id=batchId))
+
+
+@router.post("/checkin/preflight", summary="本人签到预检、当地日期与短时定位凭证")
+def my_checkin_preflight(
+    timezoneName: str | None = Query(default=None),
+    batch_id=Depends(_selected_checkin_batch),
+    user=Depends(get_current_user),
+):
+    return success(checkins.preflight(
+        user, batch_id=batch_id, timezone_name=timezoneName))
+
+
+@router.post("/checkin", summary="本人现场签到（服务端水印照片 + 定位核验）")
+def my_checkin(
+    body: dict = Body(default={}),
+    batch_id=Depends(_selected_checkin_batch),
+    user=Depends(get_current_user),
+):
+    return success(checkins.checkin(user, body or {}, batch_id=batch_id))
+
+
+@router.get("/checkin/week", summary="本人本周签到兼容视图")
+def my_checkin_week(
+    timezoneName: str | None = Query(default=None),
+    batch_id=Depends(_selected_checkin_batch),
+    user=Depends(get_current_user),
+):
+    return success(checkins.week(
+        user, batch_id=batch_id, timezone_name=timezoneName))
+
+
+@router.get("/checkin/calendar", summary="本人完整月度签到日历")
+def my_checkin_calendar(
+    month: str | None = Query(default=None),
+    timezoneName: str | None = Query(default=None),
+    batch_id=Depends(_selected_checkin_batch),
+    user=Depends(get_current_user),
+):
+    return success(checkins.calendar(
+        user, month=month, batch_id=batch_id, timezone_name=timezoneName))
+
+
+@router.get("/context/checkin-exemptions", summary="本人当前批次免签申请")
+def my_checkin_exemptions(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(checkin_exemptions.list_my(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/checkin-exemptions", summary="本人申请一段日期免签")
+def apply_checkin_exemption(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(checkin_exemptions.apply(user, body or {}), message="免签申请已提交")
+
+
+@router.post("/context/checkin-exemptions/{exemption_id}/withdraw", summary="撤回本人待审核免签申请")
+def withdraw_checkin_exemption(
+    exemption_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(checkin_exemptions.withdraw(
+        user, exemption_id, body or {}), message="免签申请已撤回")
 
 
 @router.get("/context/consents", summary="本人所选批次知情确认任务")
