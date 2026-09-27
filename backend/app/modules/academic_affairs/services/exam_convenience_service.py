@@ -395,11 +395,20 @@ def batch_readiness(batch_id, user) -> dict:
         for room in rooms:
             rooms_by_course.setdefault(int(room.exam_course_id), []).append(room)
         room_ids = [int(room.id) for room in rooms]
-        inv_counts = dict(db.query(AaExamInvigilator.exam_room_id, func.count(AaExamInvigilator.id)).filter(
+        invigilators = db.query(AaExamInvigilator).filter(
             AaExamInvigilator.tenant_id == _tid(),
             AaExamInvigilator.exam_room_id.in_(room_ids or [0]),
             AaExamInvigilator.is_deleted.is_(False),
-        ).group_by(AaExamInvigilator.exam_room_id).all())
+        ).all()
+        invigilators_by_room = {}
+        for invigilator in invigilators:
+            invigilators_by_room.setdefault(int(invigilator.exam_room_id), []).append(invigilator)
+        course_by_id = {int(course.id): course for course in confirmed}
+        accounts = exam_svc._teacher_accounts(
+            db, [course.teacher_key for course in confirmed]
+            + [invigilator.teacher_key for invigilator in invigilators],
+        )
+        params = exam_svc._exam_params(db, batch)
         arranged_count = 0
         room_shortage_count = 0
         for course in confirmed:
@@ -410,7 +419,13 @@ def batch_readiness(batch_id, user) -> dict:
             if not course_rooms or capacity < int(course.expected_students or 0):
                 room_shortage_count += 1
         missed_count = max(0, len(confirmed) - arranged_count)
-        invigilator_gap_count = sum(1 for room in rooms if int(inv_counts.get(int(room.id), 0) or 0) <= 0)
+        invigilator_gap_count = sum(
+            1 for room in rooms
+            if exam_svc._valid_invigilator_count(
+                invigilators_by_room.get(int(room.id), []), course_by_id[int(room.exam_course_id)],
+                accounts, avoid_own_course=params["avoidOwnCourse"],
+            ) < params["invigilatorsPerRoom"]
+        )
         blockers = []
         # Unselected term candidates are available supply, not obligations of this
         # batch. Match the publish authority, which validates the circled courses.
@@ -421,13 +436,13 @@ def batch_readiness(batch_id, user) -> dict:
         if room_shortage_count:
             blockers.append(f"仍有 {room_shortage_count} 门课程考场容量不足或无考场")
         if invigilator_gap_count:
-            blockers.append(f"仍有 {invigilator_gap_count} 个考场缺少监考教师")
+            blockers.append(f"仍有 {invigilator_gap_count} 个考场未配足有效监考教师")
         if str(batch.status or "").upper() not in {"COURSE_CONFIRMED", "ARRANGED"}:
             blockers.append("考试批次尚未进入可发布阶段")
         if not confirmed:
             blockers.append("当前没有已确认考试课程")
         if not blockers:
-            _courses, exact_problems = exam_svc._check_arrangement_complete(db, int(batch.id))
+            _courses, exact_problems = exam_svc._check_arrangement_complete(db, int(batch.id), batch=batch)
             blockers.extend(exact_problems)
             if not blockers:
                 conflict_result = conflict_svc.validate_exam_batch_conflicts(db, batch)
