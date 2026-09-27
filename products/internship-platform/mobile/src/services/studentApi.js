@@ -1,5 +1,5 @@
 /** Standalone 岗位实习学生移动端 facade。只暴露岗位实习业务，不回落 mock。 */
-import { realRequest } from './request'
+import { realDownload, realRequest } from './request'
 import * as internship from './internshipApi'
 
 function mapInternshipDashboard(r) {
@@ -88,6 +88,12 @@ export const studentApi = {
   getInternshipIntention: () => realRequest('/mobile/internship/intention'),
   saveInternshipIntention: (body) => realRequest('/mobile/internship/intention', { method: 'PUT', data: body || {} }),
   submitInternshipIntention: () => realRequest('/mobile/internship/intention/submit', { method: 'POST' }),
-  withdrawInternshipIntention: () => realRequest('/mobile/internship/intention/withdraw', { method: 'POST' })
+  withdrawInternshipIntention: () => realRequest('/mobile/internship/intention/withdraw', { method: 'POST' }),
+  getInternshipMaterialRequirements: (batchId, internshipId) =>
+    realRequest(`/mobile/internship/context/material-requirements?batchId=${encodeURIComponent(batchId)}&internshipId=${encodeURIComponent(internshipId)}`),
+  submitInternshipMaterial: (requirementId, body) =>
+    realRequest(`/mobile/internship/context/material-requirements/${encodeURIComponent(requirementId)}/submit`, { method: 'POST', data: body || {} }),
+  downloadInternshipMaterialTemplate: (requirementId, batchId, internshipId) =>
+    realDownload(`/mobile/internship/context/material-requirements/${encodeURIComponent(requirementId)}/template/download?batchId=${encodeURIComponent(batchId)}&internshipId=${encodeURIComponent(internshipId)}`)
 }
 export default studentApi
