@@ -741,7 +741,7 @@ def cancel_order_batch(user, batch_id, reason):
 
 
 def _distribution_members(db, order, items, requested_ids):
-    """沿已征订选用与当前正式教学名单分配，不能用整单教材笛卡尔积代替。"""
+    """沿来源选用与正式名单分配；None 供归档只读核验完整应发集合。"""
     from app.models import AffairsAuditTrail, AaTextbookSelection, AaTeachingTask, AaTeachingTaskBatch
     from . import academic_affairs_teaching_class_service as teaching_classes
 
@@ -792,7 +792,7 @@ def _distribution_members(db, order, items, requested_ids):
 
     members = {book_id: set() for book_id in order_quantities}
     rosters = {}
-    requested = set(requested_ids)
+    requested = set(requested_ids) if requested_ids is not None else None
     for selection in selections:
         task_id = int(selection.task_id)
         if task_id not in rosters:
@@ -800,10 +800,11 @@ def _distribution_members(db, order, items, requested_ids):
         roster = rosters[task_id]
         if not roster.get("ready"):
             conflict(f"教材选用 {selection.id} 的教学任务 {task_id} 正式名单未就绪：{roster.get('note') or '请核对名单'}；未生成发放名单")
+        roster_ids = {int(value) for value in roster.get("studentIds", [])}
         members[int(selection.textbook_id)].update(
-            requested.intersection(int(value) for value in roster.get("studentIds", []))
+            roster_ids if requested is None else requested.intersection(roster_ids)
         )
-    unmatched = sorted(requested - set().union(*members.values()))
+    unmatched = sorted(requested - set().union(*members.values())) if requested is not None else []
     if unmatched:
         conflict(f"所选学生不在本征订单任何教材的正式教学名单中：{unmatched[:10]}；未生成发放名单")
     return members
