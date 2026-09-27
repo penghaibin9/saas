@@ -581,7 +581,7 @@ export default {
       return text
     },
     conclusionLabel(c) { return CONCLUSION_LABEL[c] || c },
-    ownerLabel(owner){return {AA_STAFF:'教务审核岗',COLLEGE_STAFF:'学院审核岗',COUNSELOR:'辅导员/学工责任岗',GD_MENTOR:'毕业设计责任岗',INTERNSHIP_MENTOR:'岗位实习责任岗',FINANCE:'财务供数岗'}[owner]||'证据责任岗'},
+    ownerLabel(owner){return {AA_STAFF:'教务审核岗',COLLEGE_STAFF:'学院审核岗',COUNSELOR:'辅导员/学工责任岗',GD_MENTOR:'毕业设计责任岗',INTERN_MENTOR:'岗位实习责任岗',FINANCE:'财务供数岗'}[owner]||'证据责任岗'},
     focusResult(row){if(!row||this.pendingWrite)return;this.focusedResultId=String(row.resultId||'')},
     itemOf(row, key) {
       const target = key || (TAB_CONFIG[this.tab] && TAB_CONFIG[this.tab].item)

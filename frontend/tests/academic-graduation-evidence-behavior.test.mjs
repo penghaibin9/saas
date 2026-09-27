@@ -21,6 +21,12 @@ function instance() {
   return vm
 }
 
+test('毕业预审按实习和毕设正式岗位分别展示证据责任',()=>{
+  const vm=instance()
+  assert.equal(vm.ownerLabel('INTERN_MENTOR'),'岗位实习责任岗')
+  assert.equal(vm.ownerLabel('GD_MENTOR'),'毕业设计责任岗')
+})
+
 test('浏览结果或归档页不会把未完成的学院审核和终审打勾',()=>{
   const vm=instance()
   assert.equal(vm.stageIndex,2)

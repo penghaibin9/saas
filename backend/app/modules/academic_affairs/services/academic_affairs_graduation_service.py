@@ -310,7 +310,7 @@ def _run_items(db, s) -> list:
     from app.models import EmpStudent, GraduationStudent, InternshipRecord
     items = [_check_status(db, s), _check_credit(db, s), _check_course_required(db, s),
              _check_course_elective(db, s), _check_practice(db, s)]
-    items.append(_check_domain_exists(db, "INTERNSHIP", InternshipRecord, "student_id", s, "GD_MENTOR"))
+    items.append(_check_domain_exists(db, "INTERNSHIP", InternshipRecord, "student_id", s, "INTERN_MENTOR"))
     items.append(_check_domain_exists(db, "GRADUATION_DESIGN", GraduationStudent, "student_id", s, "GD_MENTOR"))
     items.append(_check_discipline(db, s))
     items.append(_check_domain_exists(db, "EMPLOYMENT", EmpStudent, "student_id", s, "AA_STAFF"))
