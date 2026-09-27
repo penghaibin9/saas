@@ -5,6 +5,7 @@
     :watermark="false"
   >
     <template #actions>
+      <AppButton variant="ghost" :disabled="syncing" @click="$router.push({ path: '/admin/internship/material-requirements', query: batchStore.withBatchQuery() })">收件要求</AppButton>
       <AppButton v-if="selectedId" variant="ghost" :disabled="syncing" @click="closeStudent">返回学生列表</AppButton>
       <AppButton variant="ghost" :disabled="syncing || loading || detailLoading" @click="refreshCurrent">刷新</AppButton>
       <AppButton v-if="selected && canSync" variant="secondary" :loading="syncing" :disabled="detailLoading" @click="syncCurrent">同步业务材料</AppButton>
