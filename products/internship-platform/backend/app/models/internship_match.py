@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (BigInteger, Boolean, Computed, DateTime, Integer, String,
+from sqlalchemy import (JSON, BigInteger, Boolean, Computed, DateTime, Integer, Numeric, String,
                         Text, UniqueConstraint, func)
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column
@@ -90,6 +90,42 @@ class InternshipApplication(PKMixin, TenantMixin, CommonMixin, Base):
     contact_name: Mapped[str | None] = mapped_column(String(100))
     contact_phone: Mapped[str | None] = mapped_column(String(64))
     evidence_file_id: Mapped[str | None] = mapped_column(String(64))
+    # Yiyang C01/G02 procurement snapshot. These values belong to the submitted application
+    # rather than the mutable enterprise/position master so historical review remains reproducible.
+    company_credit_code: Mapped[str | None] = mapped_column(String(50), index=True)
+    company_principal: Mapped[str | None] = mapped_column(String(100))
+    company_scale: Mapped[str | None] = mapped_column(String(50))
+    company_phone: Mapped[str | None] = mapped_column(String(64))
+    company_email: Mapped[str | None] = mapped_column(String(200))
+    company_nature: Mapped[str | None] = mapped_column(String(50))
+    company_industry: Mapped[str | None] = mapped_column(String(100))
+    company_registered_address: Mapped[str | None] = mapped_column(String(300))
+    company_postal_code: Mapped[str | None] = mapped_column(String(20))
+    company_province: Mapped[str | None] = mapped_column(String(50))
+    company_city: Mapped[str | None] = mapped_column(String(50))
+    company_district: Mapped[str | None] = mapped_column(String(50))
+    internship_department: Mapped[str | None] = mapped_column(String(100))
+    work_content: Mapped[str | None] = mapped_column(Text)
+    enterprise_mentor_name: Mapped[str | None] = mapped_column(String(100))
+    enterprise_mentor_phone: Mapped[str | None] = mapped_column(String(64))
+    position_category: Mapped[str | None] = mapped_column(String(50))
+    work_country: Mapped[str | None] = mapped_column(String(100))
+    work_province: Mapped[str | None] = mapped_column(String(50))
+    work_city: Mapped[str | None] = mapped_column(String(50))
+    work_district: Mapped[str | None] = mapped_column(String(50))
+    internship_start_date: Mapped[datetime | None] = mapped_column(DateTime)
+    internship_end_date: Mapped[datetime | None] = mapped_column(DateTime)
+    internship_mode: Mapped[str | None] = mapped_column(String(30))
+    major_match: Mapped[bool | None] = mapped_column(Boolean)
+    agreed_salary: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    agreement_file_ids: Mapped[list | None] = mapped_column(JSON)
+    # External registry truth: only an authorized provider may set VERIFIED.
+    # Manual student input and school enterprise approval stay UNVERIFIED.
+    registry_verification_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="UNVERIFIED", index=True)
+    registry_verification_provider: Mapped[str | None] = mapped_column(String(80))
+    registry_reference: Mapped[str | None] = mapped_column(String(120))
+    registry_verified_at: Mapped[datetime | None] = mapped_column(DateTime)
     application_note: Mapped[str | None] = mapped_column(String(500))
     application_statement: Mapped[str | None] = mapped_column(Text, comment="该志愿岗位专属申请说明")
     material_snapshot_id: Mapped[int | None] = mapped_column(
