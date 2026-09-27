@@ -119,10 +119,36 @@ test('partial receipt renders exact success/failure IDs, formal reason and suppl
   const html = await render(mounted)
   assert.equal(mounted.state.unknownReceipt, null)
   assert.match(html, new RegExp(studentA)); assert.match(html, new RegExp(studentB))
+  assert.match(html, /PRIVATE-STUDENT-0 · PRIVATE-NO-0 · 注册成功/)
+  assert.match(html, /PRIVATE-STUDENT-1 · PRIVATE-NO-1 · 未成功/)
+  assert.match(html, /<details><summary>实施人员使用<\/summary>/)
+  assert.doesNotMatch(html, /学生 ID：|注册记录 ID：/)
   assert.match(html, /资格已变更：学籍审核未完成/); assert.doesNotMatch(html, /INELIGIBLE/)
   assert.match(html, /1000000000000033681/); assert.match(html, /本次回执学籍状态：已注册/)
   assert.doesNotMatch(html, /全部学生均已|下一状态|下一责任人/)
   assert.equal(mounted.events.filter(([name]) => name === 'applied').length, 1)
+})
+
+test('receipt without a trustworthy preview name uses a neutral label and keeps IDs folded', async () => {
+  const mounted = mount({ confirmBulkRegistration: async () => receipt() })
+  ready(mounted.state)
+  mounted.state.preview.items[0] = { studentId: studentA, status: 'READY', message: '可注册' }
+  await mounted.state.apply()
+  const html = await render(mounted)
+  assert.match(html, /学生信息待核对 · 注册成功/)
+  assert.match(html, /<details><summary>实施人员使用<\/summary><span>学生编号：/)
+  assert.doesNotMatch(html, /PRIVATE-STUDENT|PRIVATE-NO/)
+})
+
+test('a late successful receipt after identity switch cannot expose preview names', async () => {
+  const reply = deferred(); const mounted = mount({ confirmBulkRegistration: () => reply.promise })
+  ready(mounted.state); const pending = mounted.state.apply()
+  mounted.state.ctx = { ...mounted.state.ctx, userId: 'actor-b' }
+  mounted.state.resetContext()
+  reply.resolve(receipt()); await pending
+  assert.equal(mounted.state.result, null)
+  assert.doesNotMatch(await render(mounted), /PRIVATE-STUDENT|PRIVATE-NO/)
+  assert.equal(mounted.state.unknownReceipt, null)
 })
 
 test('incomplete or adjacent-ID success receipts remain unresolved and cannot claim completion', async () => {
