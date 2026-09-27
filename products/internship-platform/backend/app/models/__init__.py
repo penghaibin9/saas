@@ -13,6 +13,7 @@ from app.models.teacher_scope import TeacherStudentScope
 from app.models.message import UnifiedMessage
 from app.models.approval import UnifiedTodo
 from app.models.audit_outbox import AuditOutbox
+from app.models.excel_import_job import ExcelImportJob
 from app.models.file import (
     ArchiveManifest, ArchiveManifestItem, FileAsset, FileBinding, FileObject, FileVersion,
 )
