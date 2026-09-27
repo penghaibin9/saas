@@ -365,14 +365,13 @@ def generate_batch_tx(db, body, user) -> dict:
                     continue
                 if not scope.all and not scope.college_ids and scope.class_ids and school_class.id not in scope.class_ids:
                     continue
-                if not _resolve_binding_for_class(
-                    db, program, binding, school_class, term_end=term.end_date
-                ):
+                if not _resolve_binding_for_class(db, program, binding, school_class):
                     continue
                 current_semester = resolve_class_semester(term, school_class)
                 if current_semester is None:
                     unresolved_classes += 1
                     continue
+                binding_time_checked = False
                 for program_course in courses:
                     try:
                         open_term_no = int(program_course.open_term_no)
@@ -398,6 +397,12 @@ def generate_batch_tx(db, body, user) -> dict:
                     if not course or course.is_deleted or course.tenant_id != _tid():
                         unresolved_program_courses += 1
                         continue
+                    if not binding_time_checked:
+                        if not _resolve_binding_for_class(
+                            db, program, binding, school_class, term_end=term.end_date
+                        ):
+                            continue
+                        binding_time_checked = True
                     formation_mode = _snapshot_program_course_formation(program_course)
                     total_hours = int(course.hours_total or 0)
                     course_code = course.course_code or ""

@@ -213,7 +213,7 @@ def test_tt2_generate_idempotent(client, db_mode):
 def test_generation_rejects_binding_created_after_historical_term_end(client, db_mode):
     ids = _seed(db_mode, grade="2020")
     hdr = _hdr(client, "school_admin01")
-    cid = _enabled_course(client, hdr, code="TT-HISTORY-LATE")
+    cid = _enabled_course(client, hdr, code="TTH101")
     _program(client, hdr, major_id=ids["major"], grade_year="2020", total_credits=4,
              courses=[(cid, "程序设计", 4, 1)],
              bindings=[("2020", ids["class"])], name="历史晚绑定方案")
@@ -239,7 +239,7 @@ def test_generation_rejects_binding_created_after_historical_term_end(client, db
 def test_generation_accepts_binding_effective_before_term_end(client, db_mode):
     ids = _seed(db_mode, grade="2041")
     hdr = _hdr(client, "school_admin01")
-    cid = _enabled_course(client, hdr, code="TT-HISTORY-VALID")
+    cid = _enabled_course(client, hdr, code="TTH102")
     _program(client, hdr, major_id=ids["major"], grade_year="2041", total_credits=4,
              courses=[(cid, "程序设计", 4, 1)],
              bindings=[("2041", ids["class"])], name="期内绑定方案")
@@ -248,6 +248,28 @@ def test_generation_accepts_binding_effective_before_term_end(client, db_mode):
     generated = _generate(client, hdr, tid)
     assert generated["tasksGenerated"] == 1
     assert len(_tasks(client, hdr, generated["batchId"])) == 1
+
+
+@pytest.mark.parametrize("grade,open_term,skipped,unresolved", [
+    ("2020", 2, 1, 0),
+    ("2021", 1, 0, 1),
+])
+def test_generation_skips_late_binding_with_no_course_in_target_term(
+    client, db_mode, grade, open_term, skipped, unresolved,
+):
+    ids = _seed(db_mode, grade=grade)
+    hdr = _hdr(client, "school_admin01")
+    cid = _enabled_course(client, hdr, code="TTH103")
+    _program(client, hdr, major_id=ids["major"], grade_year=grade, total_credits=4,
+             courses=[(cid, "程序设计", 4, open_term)],
+             bindings=[(grade, ids["class"])], name="非目标学期方案")
+    tid = _term(client, hdr, year_code="2020-2021")
+
+    generated = _generate(client, hdr, tid)
+    assert generated["tasksGenerated"] == 0
+    assert generated["outOfTermCoursesSkipped"] == skipped
+    assert generated["unresolvedClasses"] == unresolved
+    assert _tasks(client, hdr, generated["batchId"]) == []
 
 
 def test_generation_rejects_current_binding_when_another_version_was_effective_at_term_end(monkeypatch):

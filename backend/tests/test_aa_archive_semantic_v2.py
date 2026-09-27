@@ -204,7 +204,7 @@ def test_archive_precheck_page_shows_semantic_status_and_drill_route():
         assert field in source
     assert "当前仍有业务阻断，暂不可归档" in source
     assert "去处理" in source
-    assert "UNKNOWN 与 BLOCKED 都会阻断封存" in source
+    assert "“已阻断”表示存在明确业务阻断，“待治理”表示证据不足；两者都不能放行" in source
 
 
 def test_global_force_button_is_not_reintroduced():
