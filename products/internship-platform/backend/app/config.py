@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     SENSITIVE_SEARCH_HMAC_KEY:str=""
     TIMEZONE_OFFSET_HOURS:int=8
     TENANT_TIMEZONE:str="Asia/Shanghai"
+    CHECKIN_WATERMARK_FONT_PATH:str=""
     model_config=SettingsConfigDict(env_file=".env",env_file_encoding="utf-8",extra="ignore")
     @property
     def is_prod(self): return self.APP_ENV.strip().lower()=="production"
