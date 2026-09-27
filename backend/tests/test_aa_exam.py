@@ -272,8 +272,10 @@ def test_exam_batch_list_filters_term_before_count_and_keeps_college_scope(clien
     all_terms = client.get(f"{BASE}/exam/batches", headers=school)
     assert all_terms.status_code == 200 and all_terms.json()["data"]["total"] == 4
     for invalid in ("0", "-1", "abc"):
-        assert client.get(f"{BASE}/exam/batches", headers=school,
-                          params={"termId": invalid}).status_code == 422
+        rejected = client.get(f"{BASE}/exam/batches", headers=school,
+                              params={"termId": invalid})
+        assert rejected.status_code == 400
+        assert rejected.json()["code"] == "VALIDATION_ERROR"
 
 
 def test_e1_full_lifecycle(client, db_mode):

@@ -76,7 +76,7 @@ def exam_batches(
     status: Optional[str] = None,
     page: int = 1,
     pageSize: int = 20,
-    termId: str | None = Query(None),
+    termId: int | None = Query(None, gt=0),
     user=Depends(require_permission(_EXAM_VIEW)),
 ):
     items, total = exam_svc.list_batches(user, status, page, pageSize, term_id=termId)
