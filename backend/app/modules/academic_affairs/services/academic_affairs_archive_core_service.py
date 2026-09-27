@@ -138,7 +138,7 @@ def _evaluate_student_status(db, college_ids=None):
 
 
 def _evaluate_registration(db, term_id):
-    from app.models import AaRegistrationBatch, AaRegistrationException
+    from app.models import AaRegistration, AaRegistrationBatch, AaRegistrationException
     query = db.query(AaRegistrationBatch).filter(
         AaRegistrationBatch.tenant_id == _tid(), AaRegistrationBatch.is_deleted.is_(False))
     if term_id:
@@ -154,9 +154,16 @@ def _evaluate_registration(db, term_id):
         AaRegistrationException.status == "OPEN",
         AaRegistrationException.is_deleted.is_(False),
     ).count() if batch_ids else 0
-    passed = not unfinished and open_exceptions == 0
-    remark = ("注册批次已关闭且无未处理异常" if passed else
-              f"未关闭批次 {len(unfinished)} 个，未处理注册异常 {open_exceptions} 条")
+    pending_records = db.query(AaRegistration).filter(
+        AaRegistration.tenant_id == _tid(),
+        AaRegistration.batch_id.in_(batch_ids),
+        AaRegistration.is_deleted.is_(False),
+        AaRegistration.status != "REGISTERED",
+    ).count() if batch_ids else 0
+    passed = not unfinished and open_exceptions == 0 and pending_records == 0
+    remark = ("注册批次已关闭、注册明细均已完成且无未处理异常" if passed else
+              f"未关闭批次 {len(unfinished)} 个，未完成注册明细 {pending_records} 条，"
+              f"未处理注册异常 {open_exceptions} 条")
     return _result(len(rows), passed, remark)
 
 
