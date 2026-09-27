@@ -9,14 +9,14 @@ from datetime import datetime
 from sqlalchemy import and_, false, func, or_, select
 
 from app.core.tenant_scoped import tenant_get
-from app.models import (College, EmpStudent, InternshipAgreement, InternshipArchive,
+from app.adapters.employment_gateway import employment_gateway
+from app.models import (College, InternshipAgreement, InternshipArchive,
                         InternshipCheckin, InternshipEnterpriseEval, InternshipFinalScore,
                         InternshipGuidance, InternshipLeave, InternshipRecord,
                         InternshipStudentEval, InternshipVisit, Major, RiskRecord, SchoolClass,
                         StudentProfile, WeeklyReport)
 from app.services.db_service import _iso, _tid, session
 
-EMPLOYED_DEST = frozenset({"SIGNED", "FLEXIBLE", "FURTHER_STUDY", "ENLISTED", "STARTUP", "FREELANCE"})
 METRIC_VERSION = "internship-stats-v1"
 
 # This is deliberately API data rather than a front-end-only legend: the same
@@ -193,26 +193,13 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
         score_base = assessing_arch
 
         # ── 就业转化 / 帮扶 / 归档 ──
-        cohort_ids = [r.student_id for r in kept if r.status in ("ASSESSING", "ARCHIVED")]
+        cohort_ids = [int(r.student_id) for r in kept if r.status in ("ASSESSING", "ARCHIVED")]
         cohort_n = len(cohort_ids)
-        sid_filter = cohort_ids or [0]
-        employed = db.scalar(select(func.count()).select_from(EmpStudent).where(
-            EmpStudent.tenant_id == _tid(), EmpStudent.is_deleted.is_(False),
-            EmpStudent.record_status == "ACTIVE",
-            EmpStudent.student_id.in_(sid_filter),
-            EmpStudent.destination_type.in_(EMPLOYED_DEST))) or 0
-        unemployed = db.scalar(select(func.count()).select_from(EmpStudent).where(
-            EmpStudent.tenant_id == _tid(), EmpStudent.is_deleted.is_(False),
-            EmpStudent.record_status == "ACTIVE",
-            EmpStudent.student_id.in_(sid_filter),
-            EmpStudent.destination_type == "UNEMPLOYED")) or 0
-        help_covered = db.scalar(select(func.count()).select_from(EmpStudent).where(
-            EmpStudent.tenant_id == _tid(), EmpStudent.is_deleted.is_(False),
-            EmpStudent.record_status == "ACTIVE",
-            EmpStudent.student_id.in_(sid_filter),
-            EmpStudent.destination_type == "UNEMPLOYED",
-            EmpStudent.employment_teacher.isnot(None),
-            EmpStudent.employment_teacher != "")) or 0
+        employment = employment_gateway.cohort_metrics(cohort_ids)
+        employment_configured = bool(employment.get("configured"))
+        employed = int(employment.get("employed") or 0)
+        unemployed = int(employment.get("unemployed") or 0)
+        help_covered = int(employment.get("helpCovered") or 0)
         archived_cnt = db.scalar(select(func.count()).select_from(InternshipArchive).where(
             InternshipArchive.tenant_id == _tid(), InternshipArchive.is_deleted.is_(False),
             InternshipArchive.internship_id.in_(rec_ids),
@@ -237,10 +224,18 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
             _metric("studentEvalRate", "学生自评完成率", stu_eval, eval_base, 95),
             _metric("scorePublishRate", "成绩发布率", score_published, score_base, 100,
                     "已发布成绩 / 考核中或已归档学生（空分母返回暂无数据）"),
-            _metric("employmentRate", "就业转化率", employed, cohort_n, 85,
-                    "考核期/已归档学生中就业台账已落实"),
-            _metric("helpCoverRate", "未就业帮扶覆盖率", help_covered, unemployed, 90,
-                    "未就业台账学生中已分配就业老师"),
+            _metric(
+                "employmentRate", "就业转化率", employed,
+                cohort_n if employment_configured else 0, 85,
+                "考核期/已归档学生中就业台账已落实"
+                if employment_configured else "Standalone 就业衔接尚未配置，当前指标不参与判定",
+            ),
+            _metric(
+                "helpCoverRate", "未就业帮扶覆盖率", help_covered,
+                unemployed if employment_configured else 0, 90,
+                "未就业台账学生中已分配就业老师"
+                if employment_configured else "Standalone 就业衔接尚未配置，当前指标不参与判定",
+            ),
             _metric("archiveRate", "归档完成率", archived_cnt, archive_base, 95,
                     "考核期/已归档学生中已执行实习归档"),
         ]
@@ -270,7 +265,11 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
             "counters": counters,
             "metrics": metrics,
             "scoreDistribution": dist,
-            "partial": [],
+            "partial": ([] if employment_configured else [{
+                "key": "employment",
+                "status": employment.get("status") or "NOT_CONFIGURED",
+                "message": "就业衔接未配置；就业转化/帮扶指标不伪造统计值。",
+            }]),
             "generatedAt": datetime.now().isoformat(timespec="seconds"),
             **batch_public_fields(batch),
         }

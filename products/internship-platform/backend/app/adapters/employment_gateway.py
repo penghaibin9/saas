@@ -19,6 +19,10 @@ class EmploymentGateway(Protocol):
 
     def get_student_destination(self, student_id: int) -> dict | None: ...
 
+    def cohort_metrics(self, student_ids: list[int]) -> dict: ...
+
+    def signed_month_counts(self, student_ids: list[int], months: list[str], as_of_date: str) -> dict[str, int]: ...
+
 
 class StandaloneEmploymentGateway:
     """W1 默认实现：未配置就业扩展时明确返回未启用，不伪造就业结果。"""
@@ -33,6 +37,18 @@ class StandaloneEmploymentGateway:
 
     def get_student_destination(self, student_id: int) -> dict | None:
         return None
+
+    def cohort_metrics(self, student_ids: list[int]) -> dict:
+        return {
+            "configured": False,
+            "employed": 0,
+            "unemployed": 0,
+            "helpCovered": 0,
+            "status": "NOT_CONFIGURED",
+        }
+
+    def signed_month_counts(self, student_ids: list[int], months: list[str], as_of_date: str) -> dict[str, int]:
+        return {}
 
 
 employment_gateway: EmploymentGateway = StandaloneEmploymentGateway()

@@ -11,7 +11,8 @@ from sqlalchemy.orm import aliased
 
 from app.core.exceptions import no_permission
 from app.core.timeutil import UTC, local_day_bounds_utc, local_now
-from app.models import (AttendanceException, EmpCompany, EmpStudent, InternshipRecord,
+from app.adapters.employment_gateway import employment_gateway
+from app.models import (AttendanceException, EmpCompany, InternshipRecord,
                         InternshipCheckin, InternshipVisit, Major, RiskRecord,
                         SchoolClass, StudentProfile)
 from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
@@ -147,20 +148,20 @@ def overview(user, batch_id):
         attendance_daily = [{"date": day.isoformat(), "value": attendance_by_day.get(day.isoformat(), (0, 0))[0],
                              "compliant": attendance_by_day.get(day.isoformat(), (0, 0))[1]} for day in days]
 
-        # Signature-month distribution of latest ACTIVE verified SIGNED rows; never a reconstructed historical rate.
+        # 就业趋势由 Gateway 提供。Standalone 未配置就业扩展时返回空映射，
+        # 并在 quality 中明确标识，不读取完整就业域表。
         months = month_keys(now.date())
-        cohort_students = select(scoped.c.student_id).where(scoped.c.status.in_(["ASSESSING", "ARCHIVED"]))
-        latest = select(func.max(EmpStudent.id)).where(*_live(EmpStudent),
-            EmpStudent.student_id.in_(cohort_students), EmpStudent.record_status == "ACTIVE").group_by(EmpStudent.student_id)
-        month = func.substr(EmpStudent.sign_date, 1, 7)
-        employment = db.execute(select(month, func.count(func.distinct(EmpStudent.student_id)))
-            .where(*_live(EmpStudent), EmpStudent.id.in_(latest), EmpStudent.verify_status == "VERIFIED",
-                   EmpStudent.destination_type == "SIGNED", func.length(EmpStudent.sign_date) == 10,
-                   EmpStudent.sign_date.op("REGEXP")(r"^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$"),
-                   EmpStudent.sign_date <= now.date().isoformat(), month.in_(months))
-            .group_by(month).limit(6)).all()
-        employment_values = {key: int(value) for key, value in employment}
+        cohort_students = list(db.scalars(
+            select(scoped.c.student_id).where(scoped.c.status.in_(["ASSESSING", "ARCHIVED"]))
+        ).all())
+        employment_values = employment_gateway.signed_month_counts(
+            [int(value) for value in cohort_students if value is not None],
+            months,
+            now.date().isoformat(),
+        )
         quality = []
+        if not employment_values:
+            quality.append("就业衔接未配置或当前期间无已核验就业事实；趋势不伪造数据")
         if unlocated_students:
             quality.append(f"{unlocated_students}条实习记录没有可识别的企业省域，单独计入未定位，不猜测坐标")
         return {

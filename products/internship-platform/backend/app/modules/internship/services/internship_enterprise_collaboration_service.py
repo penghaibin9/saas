@@ -17,7 +17,7 @@ from app.models import (
     InternshipArchive, InternshipAuditTrail, InternshipEnterpriseEval,
     InternshipFinalScore, InternshipRecord, StudentProfile,
 )
-from app.models.employment import InternshipEnterpriseContact
+from app.models import InternshipEnterpriseContact
 from app.models.internship_enterprise_portal import InternshipEnterpriseMember
 from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
 from app.services.db_service import _iso
