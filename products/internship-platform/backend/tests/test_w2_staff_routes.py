@@ -36,7 +36,7 @@ def test_w2_staff_routes_have_no_duplicate_method_path():
 def test_w2_staff_routes_keep_staff_and_module_gates():
     routes = [
         route for route in _app().routes
-        if isinstance(route, APIRoute) and route.path.startswith("/api/v1/internship")
+        if isinstance(route, APIRoute) and route.path.startswith("/internship")
     ]
     assert routes
     assert all(len(route.dependant.dependencies) >= 2 for route in routes)
