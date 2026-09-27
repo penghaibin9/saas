@@ -62,7 +62,7 @@ jobs:
       - name: Run W1 health contract
         env:
           PYTHONPATH: products/internship-platform/backend
-        run: pytest -q products/internship-platform/backend/tests/test_health.py
+        run: pytest -q products/internship-platform/backend/tests/test_health.py products/internship-platform/backend/tests/test_shared_kernel.py
 
       - name: Upload W1 extraction evidence
         uses: actions/upload-artifact@v4
