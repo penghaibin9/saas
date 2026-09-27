@@ -13,32 +13,33 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from app.config import settings
 from app.core.exceptions import AppException
-from app.services import file_service
+from app.services import file_access_service, file_business_binding_service, file_service
 
-_COMMON_FONTS = (
+_CJK_FONTS = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
     "/usr/share/fonts/opentype/noto/NotoSansCJKSC-Regular.otf",
     "/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
     "C:/Windows/Fonts/msyh.ttc",
     "C:/Windows/Fonts/simhei.ttf",
+)
+_ASCII_FONTS = (
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
 )
 
 
 def _font(size: int, text: str):
-    candidates = [settings.CHECKIN_WATERMARK_FONT_PATH, *_COMMON_FONTS]
+    non_ascii = any(ord(ch) >= 128 for ch in str(text or ""))
+    candidates = [settings.CHECKIN_WATERMARK_FONT_PATH]
+    candidates.extend(_CJK_FONTS if non_ascii else (*_CJK_FONTS, *_ASCII_FONTS))
     for raw in candidates:
         path = str(raw or "").strip()
         if not path or not Path(path).exists():
             continue
         try:
-            font = ImageFont.truetype(path, size=size)
-            # Force glyph layout now so a configured-but-incompatible font fails here.
-            ImageDraw.Draw(Image.new("RGB", (8, 8))).textbbox((0, 0), text, font=font)
-            return font
+            return ImageFont.truetype(path, size=size)
         except Exception:
             continue
-    if all(ord(ch) < 128 for ch in text):
+    if not non_ascii:
         return ImageFont.load_default()
     raise AppException(
         "CHECKIN_WATERMARK_FONT_MISSING",
@@ -63,10 +64,16 @@ def _wrap(draw, text: str, font, max_width: int) -> list[str]:
 
 
 def watermark_photo(*, original_file_id: str, checkin_id: int, watermark_text: str,
-                    actor: dict, db) -> dict:
-    meta = file_service.get_file_meta(original_file_id, actor)
-    if not meta:
-        raise AppException("VALIDATION_ERROR", "现场照片不存在")
+                    actor: dict, student_id: int, batch_id: str | None, db) -> dict:
+    file_obj = file_access_service.require_file_access(
+        original_file_id, user=actor, action="bind"
+    )
+    meta = {
+        "fileId": str(file_obj.id),
+        "fileName": file_obj.file_name or "",
+        "mimeType": file_obj.mime_type or "",
+        "sha256": file_obj.sha256 or "",
+    }
     mime = str(meta.get("mimeType") or "").lower()
     if not mime.startswith("image/"):
         raise AppException("VALIDATION_ERROR", "签到现场凭证必须是图片")
@@ -111,8 +118,19 @@ def watermark_photo(*, original_file_id: str, checkin_id: int, watermark_text: s
         visibility="BIZ_SCOPED",
         db=db,
     )
-    file_service.bind_file_biz(
-        original_file_id, "INTERNSHIP_CHECKIN", checkin_id, user=actor, db=db
+    file_business_binding_service.bind_file_to_business(
+        db,
+        file_id=original_file_id,
+        biz_type="INTERNSHIP_CHECKIN",
+        biz_id=checkin_id,
+        actor=actor,
+        subject_type="STUDENT",
+        subject_id=student_id,
+        relation_type="BUSINESS_EVIDENCE",
+        module_code="INTERNSHIP",
+        student_id=student_id,
+        batch_id=str(batch_id or "") or None,
+        scope={"studentId": str(student_id), "batchId": str(batch_id or "")},
     )
     return {
         "originalFileId": str(original_file_id),
