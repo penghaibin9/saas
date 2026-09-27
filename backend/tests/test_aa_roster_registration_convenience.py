@@ -16,7 +16,7 @@ def _hdr(client, login_name="school_admin01"):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
-def _seed_candidates(db_mode, *, initial_status="PENDING_REGISTER"):
+def _seed_candidates(db_mode, *, initial_status="PENDING_REGISTER", current_stage="ORIENTATION"):
     from app.models import Major, SchoolClass, StudentProfile
 
     suffix = uuid4().hex[:8]
@@ -46,7 +46,7 @@ def _seed_candidates(db_mode, *, initial_status="PENDING_REGISTER"):
         college_id=major.college_id,
         major_id=major.id,
         class_id=cls.id,
-        current_stage="ORIENTATION",
+        current_stage=current_stage,
         student_status=initial_status,
         status="ACTIVE",
     )
@@ -57,7 +57,7 @@ def _seed_candidates(db_mode, *, initial_status="PENDING_REGISTER"):
         college_id=major.college_id,
         major_id=major.id,
         class_id=cls.id,
-        current_stage="ORIENTATION",
+        current_stage=current_stage,
         student_status=initial_status,
         status="ACTIVE",
     )
@@ -274,6 +274,65 @@ def test_d2u_preview_zero_write_cross_tenant_fail_closed_and_confirm_requires_pr
         json={"previewToken": pdata["previewToken"]},
     )
     assert reused.status_code == 409
+
+
+def test_registered_student_flows_into_internship_class_preview_and_freeze(client, db_mode):
+    """正式续注册后，实习默认班级规则仍能预览并冻结在籍学生。"""
+    from sqlalchemy import select
+    from app.core.context import get_current_user_ctx, get_tenant, set_current_user, set_tenant
+    from app.models import InternshipBatch, InternshipBatchParticipant, InternshipRecord, StudentProfile
+    from app.modules.internship.services import internship_participant_service as participants
+
+    ids = _seed_candidates(db_mode, initial_status="NORMAL", current_stage="ENROLLED")
+    headers = _hdr(client)
+    registration_batch_id = _open_batch(client, headers, register_type="SEMESTER")
+    registered = client.post(
+        f"{BASE}/registration-batches/{registration_batch_id}/register",
+        headers=headers, json={"studentId": str(ids["ready"])},
+    )
+    assert registered.status_code == 200, registered.text
+    assert registered.json()["data"]["studentStatus"] == "REGISTERED"
+
+    db = get_sessionmaker()()
+    try:
+        assert db.get(StudentProfile, ids["ready"]).student_status == "REGISTERED"
+        batch = InternshipBatch(
+            tenant_id=TID, batch_name="正式续注册后实习选人", batch_no=f"REG-INT-{uuid4().hex[:8]}",
+            status="DRAFT",
+        )
+        db.add(batch)
+        db.commit()
+        internship_batch_id = int(batch.id)
+    finally:
+        db.close()
+
+    previous_tenant, previous_user = get_tenant(), get_current_user_ctx()
+    set_tenant({"tenantId": str(TID)})
+    user = {"userId": "db-1", "realName": "实习管理员", "currentRoleCode": "SCHOOL_ADMIN"}
+    set_current_user(user)
+    try:
+        rule = {"classIds": [ids["classId"]], "studentStatuses": []}
+        preview = participants.preview(internship_batch_id, rule, user)
+        assert str(ids["ready"]) in {row["studentId"] for row in preview["rows"]}
+        assert preview["rule"]["studentStatuses"] == ["NORMAL", "REGISTERED", "RETAINED"]
+        frozen = participants.freeze(internship_batch_id, {"rule": preview["rule"]}, user)
+        assert frozen["batchStatus"] == "RUNNING"
+    finally:
+        set_current_user(previous_user)
+        set_tenant(previous_tenant)
+
+    db = get_sessionmaker()()
+    try:
+        participant = db.scalars(select(InternshipBatchParticipant).where(
+            InternshipBatchParticipant.tenant_id == TID,
+            InternshipBatchParticipant.batch_id == internship_batch_id,
+            InternshipBatchParticipant.student_id == ids["ready"],
+        )).one()
+        record = db.get(InternshipRecord, int(participant.internship_id))
+        assert record.tenant_id == TID and record.student_id == ids["ready"]
+        assert record.status == "PREPARING"
+    finally:
+        db.close()
 
 
 def test_d2u_legacy_single_register_remains_compatible_and_invalidates_old_preview(client, db_mode):
