@@ -38,6 +38,12 @@ export const teacherInternshipMyStudents = (batchId) => {
 export const teacherInternshipRoster = (batchId, { keyword = '', eligibility = '', page = 1, pageSize = 20 } = {}) =>
   realRequest(pagedBatchPath('/internship/intern-students', batchId, page, pageSize) + '&keyword=' + enc(keyword) + '&eligibility=' + enc(eligibility), { _rawPage: true })
 export const teacherInternshipStudentDetail = (id) => realRequest('/internship/intern-students/' + enc(id))
+export const teacherInternshipStudentAccount = (recordId, batchId) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/students/${enc(recordId)}/account`, batchId))
+export const teacherInternshipStudentResetPassword = (recordId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/students/${enc(recordId)}/reset-password`, batchId), {
+    method: 'POST', data: body || {}
+  })
 export const teacherInternshipPositions = (batchId, { keyword = '', status = '', page = 1, pageSize = 20 } = {}) =>
   realRequest(pagedBatchPath('/mobile/teacher/internship/context/positions', batchId, page, pageSize) + '&keyword=' + enc(keyword) + '&status=' + enc(status))
 export const teacherInternshipPositionDetail = (id, batchId) =>
