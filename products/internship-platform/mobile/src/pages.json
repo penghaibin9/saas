@@ -1,0 +1,278 @@
+{
+  "easycom": {
+    "autoscan": true,
+    "custom": {
+      "^Mobile(.*)": "@/components/Mobile$1.vue",
+      "^App(.*)": "@/components/App$1.vue"
+    }
+  },
+  "pages": [
+    {
+      "path": "pages/student-internship/index",
+      "style": {
+        "navigationBarTitleText": "岗位实习",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/student-internship/agreement/index",
+      "style": {
+        "navigationBarTitleText": "三方协议"
+      }
+    },
+    {
+      "path": "pages/student-internship/application/index",
+      "style": {
+        "navigationBarTitleText": "正式实习申请"
+      }
+    },
+    {
+      "path": "pages/student-internship/change/index",
+      "style": {
+        "navigationBarTitleText": "调岗退岗"
+      }
+    },
+    {
+      "path": "pages/student-internship/checkin/index",
+      "style": {
+        "navigationBarTitleText": "实习打卡",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/student-internship/consent/detail",
+      "style": {
+        "navigationBarTitleText": "知情书正文",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/student-internship/consent/index",
+      "style": {
+        "navigationBarTitleText": "知情确认",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/student-internship/enterprises/index",
+      "style": {
+        "navigationBarTitleText": "企业岗位库",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/student-internship/help/index",
+      "style": {
+        "navigationBarTitleText": "实习求助",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/student-internship/insurance/index",
+      "style": {
+        "navigationBarTitleText": "实习保险"
+      }
+    },
+    {
+      "path": "pages/student-internship/intention/index",
+      "style": {
+        "navigationBarTitleText": "实习意向"
+      }
+    },
+    {
+      "path": "pages/student-internship/leave/index",
+      "style": {
+        "navigationBarTitleText": "实习请假"
+      }
+    },
+    {
+      "path": "pages/student-internship/makeup/index",
+      "style": {
+        "navigationBarTitleText": "补卡申请"
+      }
+    },
+    {
+      "path": "pages/student-internship/plan/index",
+      "style": {
+        "navigationBarTitleText": "实习计划"
+      }
+    },
+    {
+      "path": "pages/student-internship/process-report/index",
+      "style": {
+        "navigationBarTitleText": "过程报告"
+      }
+    },
+    {
+      "path": "pages/student-internship/profile/index",
+      "style": {
+        "navigationBarTitleText": "实习档案",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/student-internship/safety/course",
+      "style": {
+        "navigationBarTitleText": "安全教育课程",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/student-internship/safety/index",
+      "style": {
+        "navigationBarTitleText": "岗前安全教育",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/student-internship/self-eval/index",
+      "style": {
+        "navigationBarTitleText": "实习自评"
+      }
+    },
+    {
+      "path": "pages/student-internship/volunteer-result/index",
+      "style": {
+        "navigationBarTitleText": "志愿办理结果",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/agreement-confirm/index",
+      "style": {
+        "navigationBarTitleText": "三方协议学校确认",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/checkin-exemption/index",
+      "style": {
+        "navigationBarTitleText": "免签审批",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/enterprise-eval/index",
+      "style": {
+        "navigationBarTitleText": "企业评价",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/insurance-verify/index",
+      "style": {
+        "navigationBarTitleText": "实习保险核验",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-application/index",
+      "style": {
+        "navigationBarTitleText": "实习申请审核",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-approval/index",
+      "style": {
+        "navigationBarTitleText": "实习审批",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-change/index",
+      "style": {
+        "navigationBarTitleText": "调岗退岗初审",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-guidance/index",
+      "style": {
+        "navigationBarTitleText": "新增指导记录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-positions/detail",
+      "style": {
+        "navigationBarTitleText": "岗位详情",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-positions/index",
+      "style": {
+        "navigationBarTitleText": "岗位核对",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-review/index",
+      "style": {
+        "navigationBarTitleText": "实习周报批阅",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-risk/index",
+      "style": {
+        "navigationBarTitleText": "实习风险处置",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-score/index",
+      "style": {
+        "navigationBarTitleText": "实习成绩",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-students/detail",
+      "style": {
+        "navigationBarTitleText": "学生实习档案",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-students/index",
+      "style": {
+        "navigationBarTitleText": "实习学生",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/internship-volunteers/index",
+      "style": {
+        "navigationBarTitleText": "岗位确认",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/plan-task-review/index",
+      "style": {
+        "navigationBarTitleText": "实习计划任务确认",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/process-report-review/index",
+      "style": {
+        "navigationBarTitleText": "过程报告批阅",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/student-eval/index",
+      "style": {
+        "navigationBarTitleText": "学生实习鉴定",
+        "navigationStyle": "custom"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationStyle": "custom",
+    "backgroundColor": "#F8FAFC"
+  }
+}
