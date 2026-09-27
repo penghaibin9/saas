@@ -22,7 +22,7 @@ from app.models.enterprise import EmpCompany, InternshipEnterpriseContact
 from app.models.internship import (
     AttendanceException, InternshipAgreement, InternshipArchive, InternshipAuditTrail,
     InternshipBatch, InternshipBatchParticipant, InternshipBatchPlan, InternshipBatchScopeRule,
-    InternshipChangeRequest, InternshipCheckin, InternshipCommunicationLog, InternshipComplaint,
+    InternshipChangeRequest, InternshipCheckin, InternshipCheckinExemption, InternshipCommunicationLog, InternshipComplaint,
     InternshipEnterpriseEval, InternshipFinalScore, InternshipGuidance, InternshipInsurance,
     InternshipLeave, InternshipMakeup, InternshipPlanAck, InternshipPlanTaskProgress,
     InternshipProcessReport, InternshipRecord, InternshipScoreConfig, InternshipStudentEval,
