@@ -5,7 +5,7 @@ import jwt
 from fastapi import Header
 from app.config import settings
 from app.core.context import set_current_user,set_tenant
-from app.core.exceptions import unauthorized
+from app.core.exceptions import no_permission, unauthorized
 
 MOBILE_STAFF_USER_TYPES=frozenset({"SCHOOL_ADMIN","COLLEGE_ADMIN","INTERN_MENTOR","TEACHER","COUNSELOR","SECURITY_AUDITOR","LEADER"})
 
@@ -49,3 +49,9 @@ def verify_password(plain: str, stored: str) -> bool:
         return secrets.compare_digest(calc, digest)
     except Exception:
         return False
+
+
+def require_mobile_student(user=__import__("fastapi").Depends(get_current_user)):
+    if str((user or {}).get("userType") or "").upper() != "STUDENT":
+        raise no_permission("该接口仅学生移动端可用")
+    return user
