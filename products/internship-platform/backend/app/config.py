@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     JWT_SECRET:str=""
     JWT_ALG:str="HS256"
     JWT_EXPIRES_IN:int=7200
+    REFRESH_TOKEN_EXPIRE_DAYS:int=7
     FIELD_ENCRYPTION_KEY:str=""
     FIELD_ENCRYPTION_KEY_ID:str="1"
     FIELD_ENCRYPTION_PREVIOUS_KEYS:str=""

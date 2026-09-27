@@ -1,5 +1,6 @@
 from __future__ import annotations
 from datetime import datetime,timedelta,timezone
+import secrets
 import jwt
 from fastapi import Header
 from app.config import settings
@@ -22,3 +23,29 @@ def get_current_user(authorization:str|None=Header(None,alias="Authorization")):
     set_tenant({"tenantId":str(tenant),"tenantCode":user.get("tenantCode") or ""})
     set_current_user(user)
     return user
+
+def create_access_token(payload: dict, *, expires_in: int | None = None) -> str:
+    import time
+    ttl = settings.JWT_EXPIRES_IN if expires_in is None else max(60, int(expires_in))
+    now = int(time.time())
+    body = {**dict(payload or {}), "jti": secrets.token_hex(16), "iat": now, "exp": now + ttl}
+    if not settings.JWT_SECRET:
+        raise unauthorized("服务端未配置登录密钥")
+    return jwt.encode(body, settings.JWT_SECRET, algorithm=settings.JWT_ALG)
+
+def hash_password(plain: str, iterations: int = 200000) -> str:
+    import hashlib
+    salt = secrets.token_hex(16)
+    digest = hashlib.pbkdf2_hmac("sha256", str(plain or "").encode(), bytes.fromhex(salt), int(iterations)).hex()
+    return "pbkdf2_sha256${}${}${}".format(int(iterations), salt, digest)
+
+def verify_password(plain: str, stored: str) -> bool:
+    import hashlib
+    try:
+        algo, iter_s, salt, digest = str(stored or "").split("$")
+        if algo != "pbkdf2_sha256":
+            return False
+        calc = hashlib.pbkdf2_hmac("sha256", str(plain or "").encode(), bytes.fromhex(salt), int(iter_s)).hex()
+        return secrets.compare_digest(calc, digest)
+    except Exception:
+        return False
