@@ -9,6 +9,8 @@
 """
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from app.core.context import set_tenant
@@ -17,14 +19,12 @@ TID = 1000000000000000001
 
 
 def _seed(db, *, total_credits, elective_credits=None, practice_credits=None,
-          practice_course_names=()):
+          practice_course_names=(), credit_structure=None):
     """建学生（含专业）+ 培养方案 + 方案绑定 + 学业台账，返回 (student, acad, program)。
 
     方案必须经 AaProgramBinding 按「班级」或「专业+入学年级」解析得到，缺任一环
     _check_* 会直接返回 UNKNOWN——那样测的就不是学分去重了。
     """
-    import json
-
     from app.models import (AaProgram, AaProgramBinding, AaProgramCourse, AcademicStudent,
                             College, Major, StudentProfile)
 
@@ -49,6 +49,8 @@ def _seed(db, *, total_credits, elective_credits=None, practice_credits=None,
         requirement["ELECTIVE"] = elective_credits
     if practice_credits is not None:
         requirement["PRACTICE"] = practice_credits
+    if credit_structure is not None:
+        requirement["creditStructure"] = credit_structure
 
     program = AaProgram(
         tenant_id=TID, program_name="软件技术2026", major_id=major.id,
@@ -164,3 +166,58 @@ def test_distinct_courses_still_accumulate(db_mode):
     finally:
         set_tenant(None)
         db.close()
+
+
+def test_current_credit_structure_drives_elective_and_practice_checks(db_mode):
+    """The official program editor writes module targets inside creditStructure."""
+    from app.db.session import get_sessionmaker
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as svc
+
+    db = get_sessionmaker()()
+    set_tenant({"tenantId": str(TID)})
+    try:
+        student, acad, _program = _seed(
+            db, total_credits=4,
+            credit_structure=[{"module": "选修", "creditTarget": 2},
+                              {"module": "实践", "creditTarget": 2}],
+            practice_course_names=("岗位实践",),
+        )
+        db.add(_grade(acad.id, course_id=90005, credit=2, nature="ELECTIVE",
+                      course_name="任选课"))
+        db.add(_grade(acad.id, course_id=90006, credit=2, nature="PRACTICE",
+                      course_name="岗位实践"))
+        db.commit()
+
+        assert svc._check_course_elective(db, student)["result"] == "PASS"
+        assert svc._check_practice(db, student)["result"] == "PASS"
+    finally:
+        set_tenant(None)
+        db.close()
+
+
+@pytest.mark.parametrize("requirement,expected", [
+    ({"creditStructure": [{"module": "选修", "creditTarget": 2}]}, 2),
+    ({"ELECTIVE": 2}, 2),
+    ({"creditStructure": [{"module": "选修", "creditTarget": 2}], "ELECTIVE": 2}, 2),
+    ({"creditStructure": [{"module": "实践", "creditTarget": 0}]}, 0),
+    ({"creditStructure": [{"module": "公共基础", "creditTarget": 2}]}, None),
+    ({"creditStructure": [{"module": "选修", "creditTarget": 2}], "ELECTIVE": 3}, None),
+    ({"creditStructure": [{"module": "选修", "creditTarget": 2},
+                          {"module": "ELECTIVE", "creditTarget": 2}]}, None),
+    ({"选修": 2, "ELECTIVE": 2}, None),
+    ({"creditStructure": [{"module": "选修", "creditTarget": -1}]}, None),
+    ({"creditStructure": [{"module": "选修", "creditTarget": "NaN"}]}, None),
+    ({"creditStructure": [{"module": "选修", "creditTarget": "1e10000"}]}, None),
+    ({"creditStructure": [{"module": "选修", "creditTarget": True}]}, None),
+    ({"creditStructure": [{"module": "公共基础", "creditTarget": 2},
+                          {"module": "公共基础", "creditTarget": 2}], "ELECTIVE": 2}, None),
+    ({"creditStructure": [{"module": "公共基础", "creditTarget": -1}], "ELECTIVE": 2}, None),
+    ({"creditStructure": {}}, None),
+])
+def test_module_credit_target_requires_explicit_unambiguous_value(requirement, expected):
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as svc
+
+    aliases = ("实践", "PRACTICE") if expected == 0 else ("选修", "ELECTIVE")
+    target, error = svc._module_credit_target(json.dumps(requirement), aliases)
+    assert target == expected
+    assert (error is None) == (expected is not None)

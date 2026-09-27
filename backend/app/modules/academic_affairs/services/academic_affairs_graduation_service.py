@@ -8,6 +8,8 @@
 from __future__ import annotations
 
 import json
+import math
+from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
 from sqlalchemy import and_, func, select
@@ -110,6 +112,66 @@ def _earned_credits(db, acad, *extra_conditions) -> float:
                      for r in effective_grade_rows(rows) if r.pass_status == "PASSED"))
 
 
+def _module_credit_target(requirement_json, aliases):
+    """Read an explicit module target from the current structure or legacy keys.
+
+    A missing target is different from an explicitly configured zero. Conflicting
+    or duplicate sources cannot be resolved by choosing an arbitrary winner.
+    """
+    if not requirement_json:
+        return None, "方案未设置模块学分要求"
+    try:
+        req = json.loads(requirement_json)
+    except (TypeError, ValueError):
+        return None, "方案模块学分要求格式无效"
+    if not isinstance(req, dict):
+        return None, "方案模块学分要求格式无效"
+
+    def valid_target(value):
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            return None
+        try:
+            number = Decimal(str(value).strip())
+        except InvalidOperation:
+            return None
+        return number if number.is_finite() and number >= 0 else None
+
+    structured = []
+    if "creditStructure" in req:
+        structure = req["creditStructure"]
+        if not isinstance(structure, list):
+            return None, "方案模块学分结构格式无效"
+        seen_modules = set()
+        for row in structure:
+            if not isinstance(row, dict):
+                return None, "方案模块学分结构格式无效"
+            module = row.get("module")
+            if not isinstance(module, str) or not module.strip():
+                return None, "方案模块名称无效"
+            module = module.strip()
+            if module in seen_modules:
+                return None, "方案模块学分目标重复或冲突"
+            seen_modules.add(module)
+            target = valid_target(row.get("creditTarget"))
+            if target is None:
+                return None, "方案模块学分目标必须为非负有限数字"
+            if module in aliases:
+                structured.append(target)
+    legacy = [valid_target(req[key]) for key in aliases if key in req]
+    if any(target is None for target in legacy):
+        return None, "方案模块学分目标必须为非负有限数字"
+    if len(structured) > 1 or len(legacy) > 1:
+        return None, "方案模块学分目标重复或冲突"
+    if structured and legacy and structured[0] != legacy[0]:
+        return None, "方案模块学分目标重复或冲突"
+    if not structured and not legacy:
+        return None, "方案未设置该模块学分目标"
+    target = float((structured or legacy)[0])
+    if not math.isfinite(target):
+        return None, "方案模块学分目标必须为非负有限数字"
+    return target, None
+
+
 def _check_credit(db, s):
     """学分按学生确定方案总学分审核；方案歧义/缺失返回 UNKNOWN，并阻断系统通过。"""
     from app.models import AcademicGrade
@@ -170,16 +232,10 @@ def _check_course_elective(db, s):
         return {"item": "COURSE_ELECTIVE", "result": "UNKNOWN", "owner": "AA_STAFF",
                 "evidence": "无学业记录", **meta}
     earned = _earned_credits(db, acad, AcademicGrade.nature == "ELECTIVE")
-    target = None
-    if prog.requirement_json:
-        try:
-            req = json.loads(prog.requirement_json)
-            target = req.get("选修") or req.get("ELECTIVE")
-        except Exception:  # noqa: BLE001
-            target = None
-    if target is None:
+    target, target_error = _module_credit_target(prog.requirement_json, ("选修", "ELECTIVE"))
+    if target_error:
         return {"item": "COURSE_ELECTIVE", "result": "UNKNOWN", "owner": "AA_STAFF",
-                "evidence": f"方案未设置选修学分要求（已修选修 {float(earned)} 学分）", **meta}
+                "evidence": f"{target_error}（选修；已修 {float(earned)} 学分）", **meta}
     ok = float(earned) >= float(target)
     return {"item": "COURSE_ELECTIVE", "result": "PASS" if ok else "FAIL",
             "owner": "AA_STAFF", "evidence": f"选修已得 {float(earned)}/{float(target)} 学分", **meta}
@@ -194,17 +250,10 @@ def _check_practice(db, s):
     if not prog:
         return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
                 "evidence": resolution.message, **meta}
-    if not prog.requirement_json:
+    target, target_error = _module_credit_target(prog.requirement_json, ("实践", "PRACTICE"))
+    if target_error:
         return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
-                "evidence": "适用方案未设置模块学分要求", **meta}
-    try:
-        req = json.loads(prog.requirement_json)
-    except Exception:  # noqa: BLE001
-        req = {}
-    target = req.get("实践") or req.get("PRACTICE")
-    if target is None:
-        return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
-                "evidence": "方案未设置实践环节学分要求", **meta}
+                "evidence": f"{target_error}（实践环节）", **meta}
     acad = _acad_of(db, s)
     if not acad:
         return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
