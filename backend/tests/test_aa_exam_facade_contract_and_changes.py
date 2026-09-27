@@ -480,8 +480,15 @@ def test_patrol_accepts_real_staff_but_rejects_invalid_accounts(client, db_mode)
                     user_type="STAFF", password_hash="x", status="DISABLED"))
         db.add(User(tenant_id=TID, login_name="student_patrol", real_name="学生",
                     user_type="STUDENT", password_hash="x", status="ACTIVE"))
+        for user_type in ("GUARDIAN", "ENTERPRISE_MENTOR", "PLATFORM_OP"):
+            db.add(User(tenant_id=TID, login_name=f"{user_type.lower()}_patrol",
+                        real_name="非本校教职工", user_type=user_type,
+                        password_hash="x", status="ACTIVE"))
+        db.add(User(tenant_id=TID, login_name="admin_patrol", real_name="学校管理员",
+                    user_type="ADMIN", password_hash="x", status="ACTIVE"))
         db.commit()
-    for key in ("missing_patrol", "inactive_patrol", "student_patrol"):
+    for key in ("missing_patrol", "inactive_patrol", "student_patrol",
+                "guardian_patrol", "enterprise_mentor_patrol", "platform_op_patrol"):
         denied = client.post(f"{BASE}/exam/batches/{bid}/patrols", headers=admin, json={
             "teacherKey": key, "patrolDate": "2027-06-20",
             "startTime": "09:00", "endTime": "11:00",
@@ -494,6 +501,11 @@ def test_patrol_accepts_real_staff_but_rejects_invalid_accounts(client, db_mode)
     assert allowed.status_code == 200, allowed.text
     listed = client.get(f"{BASE}/exam/batches/{bid}/patrols", headers=admin).json()["data"]["items"]
     assert listed[0]["teacherName"] == "巡考甲"
+    school_admin = client.post(f"{BASE}/exam/batches/{bid}/patrols", headers=admin, json={
+        "teacherKey": "admin_patrol", "patrolDate": "2027-06-20",
+        "startTime": "09:00", "endTime": "11:00",
+    })
+    assert school_admin.status_code == 200, school_admin.text
 
 
 def test_assign_patrol_after_publish_rejected_then_change_succeeds(client, db_mode):

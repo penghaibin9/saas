@@ -75,7 +75,7 @@ def _patrol_account(db, key):
     normalized = str(key or "").strip()
     account = _teacher_accounts(db, [normalized]).get(normalized)
     if (not account or account.is_deleted or _status(account.status) != "ACTIVE"
-            or not account.user_type or _status(account.user_type) == "STUDENT"):
+            or _status(account.user_type) not in {"TEACHER", "STAFF", "ADMIN", "SCHOOL_ADMIN"}):
         raise AppException("VALIDATION_ERROR", "巡考人员须为本校在职教职工")
     if not str(account.login_name or "").strip():
         raise AppException("VALIDATION_ERROR", "巡考人员账号缺少稳定工号")
