@@ -1,0 +1,82 @@
+from __future__ import annotations
+
+from fastapi import APIRouter, Depends
+
+from app.core.permissions import require_module, require_staff
+from app.modules.internship.routers import (
+    internship,
+    internship_agreement_document,
+    internship_agreement_template,
+    internship_application,
+    internship_archive,
+    internship_communication,
+    internship_complaint,
+    internship_compliance,
+    internship_enterprise_eval_versioned,
+    internship_guardian_consent_delivery,
+    internship_insurance,
+    internship_match,
+    internship_material_center,
+    internship_participant,
+    internship_plan,
+    internship_position,
+    internship_process,
+    internship_recruitment_campaign,
+    internship_score_appeal,
+    internship_stats,
+    internship_student,
+    internship_visit_plan,
+)
+
+_STAFF_INTERNSHIP_DEPS = [
+    Depends(require_staff),
+    Depends(require_module("internship")),
+]
+
+
+def build_staff_internship_router() -> APIRouter:
+    """Standalone school-side internship routes.
+
+    Mirrors the canonical SaaS register_internship_routes() school/staff surface.
+    Enterprise, student portal and mobile surfaces are intentionally mounted in
+    later W2 cards so their identity boundaries cannot inherit staff access.
+    """
+    router = APIRouter()
+
+    router.include_router(
+        internship_material_center.router,
+        dependencies=list(_STAFF_INTERNSHIP_DEPS),
+    )
+
+    for module in (
+        internship,
+        internship_position,
+        internship_agreement_document,
+        internship_agreement_template,
+        internship_student,
+        internship_match,
+        internship_participant,
+        internship_application,
+        internship_archive,
+        internship_stats,
+        internship_plan,
+        internship_insurance,
+        internship_process,
+        internship_communication,
+        internship_visit_plan,
+        internship_complaint,
+        internship_compliance,
+        internship_guardian_consent_delivery,
+        internship_enterprise_eval_versioned,
+        internship_recruitment_campaign,
+        internship_score_appeal,
+    ):
+        router.include_router(
+            module.router,
+            dependencies=list(_STAFF_INTERNSHIP_DEPS),
+        )
+    return router
+
+
+api_router = APIRouter()
+api_router.include_router(build_staff_internship_router())

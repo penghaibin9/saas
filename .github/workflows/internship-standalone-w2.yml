@@ -1,0 +1,37 @@
+name: Internship Standalone W2 Routes
+
+on:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/backend/app/api/**"
+      - "products/internship-platform/backend/app/main.py"
+      - "products/internship-platform/backend/app/modules/internship/**"
+      - "products/internship-platform/backend/app/services/**"
+      - "products/internship-platform/backend/tests/test_w2_*.py"
+      - ".github/workflows/internship-standalone-w2.yml"
+  pull_request:
+    paths:
+      - "products/internship-platform/**"
+      - ".github/workflows/internship-standalone-w2.yml"
+
+jobs:
+  staff-routes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Enforce standalone boundary
+        run: python products/internship-platform/scripts/check_forbidden_imports.py
+      - name: Run staff route registry contracts
+        env:
+          PYTHONPATH: products/internship-platform/backend
+        run: pytest -q products/internship-platform/backend/tests/test_w2_staff_routes.py
