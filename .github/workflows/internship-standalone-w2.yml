@@ -39,4 +39,4 @@ jobs:
       - name: Run staff route registry contracts
         env:
           PYTHONPATH: products/internship-platform/backend
-        run: pytest -q products/internship-platform/backend/tests/test_w2_staff_routes.py
+        run: pytest -q products/internship-platform/backend/tests/test_w2_staff_routes.py products/internship-platform/backend/tests/test_w2_score_appeal_standalone.py
