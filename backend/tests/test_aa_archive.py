@@ -192,7 +192,8 @@ def test_archive_batch_list_filters_term_before_count_and_page(client, db_mode):
     for invalid in ("0", "-1", "abc"):
         rejected = client.get(f"{BASE}/archive/batches", headers=admin, params={"termId": invalid})
         assert rejected.status_code == 400
-        assert rejected.json()["code"] == "VALIDATION_ERROR"
+        assert rejected.json()["code"] == 422001
+        assert rejected.json()["bizCode"] == "VALIDATION_ERROR"
 
 
 def test_ar6_precheck_student_forbidden(client, db_mode):

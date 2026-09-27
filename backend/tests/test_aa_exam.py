@@ -275,7 +275,8 @@ def test_exam_batch_list_filters_term_before_count_and_keeps_college_scope(clien
         rejected = client.get(f"{BASE}/exam/batches", headers=school,
                               params={"termId": invalid})
         assert rejected.status_code == 400
-        assert rejected.json()["code"] == "VALIDATION_ERROR"
+        assert rejected.json()["code"] == 422001
+        assert rejected.json()["bizCode"] == "VALIDATION_ERROR"
 
 
 def test_e1_full_lifecycle(client, db_mode):
