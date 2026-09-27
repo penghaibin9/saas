@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
+from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import func, or_, select
 
@@ -25,6 +26,9 @@ STATUS_LABEL = {
 }
 _ACTIVE = ("DRAFT", "PENDING_REVIEW")
 _PHONE = re.compile(r"^[0-9+() -]{7,32}$")
+_EMAIL = re.compile(r"^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+_CREDIT_CODE = re.compile(r"^[0-9A-HJ-NPQRTUWXY]{18}$")
+_POSTAL_CODE = re.compile(r"^[0-9A-Za-z -]{3,20}$")
 
 
 def _op_name(user: dict | None = None) -> str:
@@ -122,24 +126,223 @@ def _validate_file(file_id: str | None, required: bool = False) -> str | None:
     return fid
 
 
-def _clean_self_arranged(body: dict, *, require_complete: bool) -> dict:
-    company = (body.get("companyName") or "").strip()
-    position = (body.get("positionName") or "").strip()
-    address = (body.get("workAddress") or "").strip()
-    contact = (body.get("contactName") or "").strip()
-    phone = (body.get("contactPhone") or "").strip()
-    file_id = _validate_file(body.get("evidenceFileId"), required=require_complete)
-    if require_complete:
-        for value, label, minimum in ((company, "实习单位名称", 2), (position, "实习岗位", 2),
-                                      (address, "工作地点", 5), (contact, "单位联系人", 2)):
-            if len(value) < minimum:
-                raise AppException("VALIDATION_ERROR", f"{label}填写不完整")
-        if not _PHONE.fullmatch(phone):
-            raise AppException("VALIDATION_ERROR", "单位联系电话格式不正确")
-    return {"company_name": company or None, "position_name": position or None,
-            "work_address": address or None, "contact_name": contact or None,
-            "contact_phone": phone or None, "evidence_file_id": file_id}
+def _text(body: dict, key: str, *, max_len: int, label: str,
+          required: bool = False, min_len: int = 1) -> str | None:
+    value = str((body or {}).get(key) or "").strip()
+    if required and len(value) < min_len:
+        raise AppException("VALIDATION_ERROR", f"{label}填写不完整")
+    if len(value) > max_len:
+        raise AppException("VALIDATION_ERROR", f"{label}不能超过{max_len}个字符")
+    return value or None
 
+
+def _date_value(value, label: str, *, required: bool) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        if required:
+            raise AppException("VALIDATION_ERROR", f"请填写{label}")
+        return None
+    try:
+        return datetime.strptime(raw[:10], "%Y-%m-%d")
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", f"{label}格式必须为 YYYY-MM-DD") from None
+
+
+def _salary_value(value, *, required: bool):
+    if value is None or str(value).strip() == "":
+        if required:
+            raise AppException("VALIDATION_ERROR", "请填写实习薪资")
+        return None
+    try:
+        amount = Decimal(str(value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        raise AppException("VALIDATION_ERROR", "实习薪资格式不正确") from None
+    if amount < 0 or amount > Decimal("100000000"):
+        raise AppException("VALIDATION_ERROR", "实习薪资超出允许范围")
+    return amount
+
+
+def _file_ids(value, *, max_items: int = 9) -> list[str] | None:
+    raw = value if isinstance(value, list) else []
+    ids = []
+    for item in raw:
+        fid = _validate_file(str(item or "").strip(), required=False)
+        if fid and fid not in ids:
+            ids.append(fid)
+    if len(ids) > max_items:
+        raise AppException("VALIDATION_ERROR", f"三方协议照片最多上传{max_items}份")
+    return ids or None
+
+
+def _clean_self_arranged(body: dict, *, require_complete: bool) -> dict:
+    """Normalize the Yiyang complete internship-position snapshot.
+
+    Registry verification fields are intentionally absent here: student input can never turn a
+    company into a government-registry verified company. G03 will write those fields only through
+    the authorized provider adapter.
+    """
+    company = _text(body, "companyName", max_len=200, label="实习单位名称",
+                    required=require_complete, min_len=2)
+    position = _text(body, "positionName", max_len=100, label="实习岗位",
+                     required=require_complete, min_len=2)
+    address = _text(body, "workAddress", max_len=300, label="岗位地址",
+                    required=require_complete, min_len=5)
+    contact = _text(body, "contactName", max_len=100, label="单位联系人",
+                    required=require_complete, min_len=2)
+    phone = _text(body, "contactPhone", max_len=64, label="单位联系电话",
+                  required=require_complete, min_len=7)
+    credit_code = _text(body, "companyCreditCode", max_len=50, label="统一社会信用代码",
+                        required=require_complete, min_len=18)
+    company_phone = _text(body, "companyPhone", max_len=64, label="企业联系电话",
+                          required=require_complete, min_len=7)
+    email = _text(body, "companyEmail", max_len=200, label="企业邮箱",
+                  required=require_complete, min_len=3)
+    postal = _text(body, "companyPostalCode", max_len=20, label="企业邮编", required=False)
+    mentor_phone = _text(body, "enterpriseMentorPhone", max_len=64, label="企业老师联系电话",
+                         required=require_complete, min_len=7)
+    start_date = _date_value((body or {}).get("internshipStartDate"), "实习开始日期",
+                             required=require_complete)
+    end_date = _date_value((body or {}).get("internshipEndDate"), "实习结束日期",
+                           required=require_complete)
+    if start_date and end_date and start_date > end_date:
+        raise AppException("VALIDATION_ERROR", "实习结束日期不能早于开始日期")
+    if require_complete and credit_code and not _CREDIT_CODE.fullmatch(credit_code.upper()):
+        raise AppException("VALIDATION_ERROR", "统一社会信用代码应为18位规范代码")
+    if phone and not _PHONE.fullmatch(phone):
+        raise AppException("VALIDATION_ERROR", "单位联系电话格式不正确")
+    if company_phone and not _PHONE.fullmatch(company_phone):
+        raise AppException("VALIDATION_ERROR", "企业联系电话格式不正确")
+    if mentor_phone and not _PHONE.fullmatch(mentor_phone):
+        raise AppException("VALIDATION_ERROR", "企业老师联系电话格式不正确")
+    if email and not _EMAIL.fullmatch(email):
+        raise AppException("VALIDATION_ERROR", "企业邮箱格式不正确")
+    if postal and not _POSTAL_CODE.fullmatch(postal):
+        raise AppException("VALIDATION_ERROR", "企业邮编格式不正确")
+
+    major_match = (body or {}).get("majorMatch")
+    if require_complete and not isinstance(major_match, bool):
+        raise AppException("VALIDATION_ERROR", "请选择岗位是否专业对口")
+    if major_match is not None and not isinstance(major_match, bool):
+        raise AppException("VALIDATION_ERROR", "majorMatch 必须为布尔值")
+
+    return {
+        "company_name": company,
+        "position_name": position,
+        "work_address": address,
+        "contact_name": contact,
+        "contact_phone": phone,
+        "evidence_file_id": _validate_file((body or {}).get("evidenceFileId"),
+                                            required=require_complete),
+        "company_credit_code": credit_code.upper() if credit_code else None,
+        "company_principal": _text(body, "companyPrincipal", max_len=100, label="企业负责人",
+                                   required=require_complete, min_len=2),
+        "company_scale": _text(body, "companyScale", max_len=50, label="企业规模",
+                               required=require_complete),
+        "company_phone": company_phone,
+        "company_email": email,
+        "company_nature": _text(body, "companyNature", max_len=50, label="单位性质",
+                                required=require_complete),
+        "company_industry": _text(body, "companyIndustry", max_len=100, label="所属行业",
+                                  required=require_complete),
+        "company_registered_address": _text(
+            body, "companyRegisteredAddress", max_len=300, label="单位注册地址",
+            required=require_complete, min_len=5),
+        "company_postal_code": postal,
+        "company_province": _text(body, "companyProvince", max_len=50, label="单位所在省",
+                                  required=require_complete),
+        "company_city": _text(body, "companyCity", max_len=50, label="单位所在市",
+                              required=require_complete),
+        "company_district": _text(body, "companyDistrict", max_len=50, label="单位所在区县",
+                                  required=require_complete),
+        "internship_department": _text(body, "internshipDepartment", max_len=100, label="实习部门",
+                                       required=require_complete),
+        "work_content": _text(body, "workContent", max_len=4000, label="工作内容",
+                              required=require_complete, min_len=5),
+        "enterprise_mentor_name": _text(
+            body, "enterpriseMentorName", max_len=100, label="企业老师",
+            required=require_complete, min_len=2),
+        "enterprise_mentor_phone": mentor_phone,
+        "position_category": _text(body, "positionCategory", max_len=50, label="岗位类别",
+                                   required=require_complete),
+        "work_country": _text(body, "workCountry", max_len=100, label="实习国家（地区）",
+                              required=False),
+        "work_province": _text(body, "workProvince", max_len=50, label="岗位所在省",
+                               required=require_complete),
+        "work_city": _text(body, "workCity", max_len=50, label="岗位所在市",
+                           required=require_complete),
+        "work_district": _text(body, "workDistrict", max_len=50, label="岗位所在区县",
+                               required=require_complete),
+        "internship_start_date": start_date,
+        "internship_end_date": end_date,
+        "internship_mode": _text(body, "internshipMode", max_len=30, label="实习方式",
+                                 required=require_complete),
+        "major_match": major_match if isinstance(major_match, bool) else None,
+        "agreed_salary": _salary_value((body or {}).get("agreedSalary"),
+                                       required=require_complete),
+        "agreement_file_ids": _file_ids((body or {}).get("agreementFileIds")),
+    }
+
+
+def _snapshot_body(row: InternshipApplication) -> dict:
+    return {
+        "companyName": row.company_name,
+        "positionName": row.position_name,
+        "workAddress": row.work_address,
+        "contactName": row.contact_name,
+        "contactPhone": row.contact_phone,
+        "evidenceFileId": row.evidence_file_id,
+        "companyCreditCode": row.company_credit_code,
+        "companyPrincipal": row.company_principal,
+        "companyScale": row.company_scale,
+        "companyPhone": row.company_phone,
+        "companyEmail": row.company_email,
+        "companyNature": row.company_nature,
+        "companyIndustry": row.company_industry,
+        "companyRegisteredAddress": row.company_registered_address,
+        "companyPostalCode": row.company_postal_code,
+        "companyProvince": row.company_province,
+        "companyCity": row.company_city,
+        "companyDistrict": row.company_district,
+        "internshipDepartment": row.internship_department,
+        "workContent": row.work_content,
+        "enterpriseMentorName": row.enterprise_mentor_name,
+        "enterpriseMentorPhone": row.enterprise_mentor_phone,
+        "positionCategory": row.position_category,
+        "workCountry": row.work_country,
+        "workProvince": row.work_province,
+        "workCity": row.work_city,
+        "workDistrict": row.work_district,
+        "internshipStartDate": _iso(row.internship_start_date),
+        "internshipEndDate": _iso(row.internship_end_date),
+        "internshipMode": row.internship_mode,
+        "majorMatch": row.major_match,
+        "agreedSalary": row.agreed_salary,
+        "agreementFileIds": list(row.agreement_file_ids or []),
+    }
+
+
+def _apply_position_snapshot(app: InternshipApplication, pos: InternshipPosition,
+                             company: EmpCompany) -> None:
+    """Freeze what the school catalog actually knows; never fabricate registry verification."""
+    app.company_name = company.name
+    app.position_name = pos.title
+    app.work_address = pos.work_address or pos.work_location
+    app.company_credit_code = company.credit_code
+    app.company_scale = company.scale
+    app.company_nature = company.nature
+    app.company_industry = company.industry
+    app.company_registered_address = company.address
+    app.company_city = company.city
+    app.contact_name = company.contact_person
+    app.internship_department = None
+    app.work_content = pos.work_content
+    app.enterprise_mentor_name = pos.mentor_name
+    app.position_category = pos.category
+    app.agreed_salary = pos.remuneration_amount
+    app.registry_verification_status = "UNVERIFIED"
+    app.registry_verification_provider = None
+    app.registry_reference = None
+    app.registry_verified_at = None
 
 def _row(db, app: InternshipApplication, rec=None, stu=None, *,
          pos=None, company=None, preloaded: bool = False) -> dict:
@@ -158,7 +361,40 @@ def _row(db, app: InternshipApplication, rec=None, stu=None, *,
         "positionName": app.position_name or (pos.title if pos else ""),
         "workAddress": app.work_address or (pos.work_location if pos else "") or "",
         "contactName": app.contact_name or "", "contactPhone": app.contact_phone or "",
-        "evidenceFileId": app.evidence_file_id or "", "applicationNote": app.application_note or "",
+        "evidenceFileId": app.evidence_file_id or "",
+        "companyCreditCode": app.company_credit_code or "",
+        "companyPrincipal": app.company_principal or "",
+        "companyScale": app.company_scale or "",
+        "companyPhone": app.company_phone or "",
+        "companyEmail": app.company_email or "",
+        "companyNature": app.company_nature or "",
+        "companyIndustry": app.company_industry or "",
+        "companyRegisteredAddress": app.company_registered_address or "",
+        "companyPostalCode": app.company_postal_code or "",
+        "companyProvince": app.company_province or "",
+        "companyCity": app.company_city or "",
+        "companyDistrict": app.company_district or "",
+        "internshipDepartment": app.internship_department or "",
+        "workContent": app.work_content or "",
+        "enterpriseMentorName": app.enterprise_mentor_name or "",
+        "enterpriseMentorPhone": app.enterprise_mentor_phone or "",
+        "positionCategory": app.position_category or "",
+        "workCountry": app.work_country or "",
+        "workProvince": app.work_province or "",
+        "workCity": app.work_city or "",
+        "workDistrict": app.work_district or "",
+        "internshipStartDate": (_iso(app.internship_start_date) or "")[:10],
+        "internshipEndDate": (_iso(app.internship_end_date) or "")[:10],
+        "internshipMode": app.internship_mode or "",
+        "majorMatch": app.major_match,
+        "agreedSalary": float(app.agreed_salary) if app.agreed_salary is not None else None,
+        "agreementFileIds": list(app.agreement_file_ids or []),
+        "companyRegistryStatus": app.registry_verification_status or "UNVERIFIED",
+        "companyRegistryVerified": app.registry_verification_status == "VERIFIED",
+        "companyRegistryProvider": app.registry_verification_provider or "",
+        "companyRegistryReference": app.registry_reference or "",
+        "companyRegistryVerifiedAt": _iso(app.registry_verified_at) or "",
+        "applicationNote": app.application_note or "",
         "status": app.status, "statusLabel": STATUS_LABEL.get(app.status, app.status),
         "submittedAt": _iso(app.submitted_at) or "", "reviewedBy": app.reviewed_by_name or "",
         "reviewedAt": _iso(app.reviewed_at) or "", "reviewComment": app.review_comment or "",
@@ -230,10 +466,8 @@ def save_my(user: dict, body: dict) -> dict:
             if duplicate:
                 raise AppException("DATA_CONFLICT", "同一岗位无需重复申请")
             app.position_id = pos.id
-            app.company_name = company.name
-            app.position_name = pos.title
-            app.work_address = pos.work_location
-            app.contact_name = app.contact_phone = app.evidence_file_id = None
+            _apply_position_snapshot(app, pos, company)
+            app.contact_phone = app.evidence_file_id = None
         else:
             if rec.position_id:
                 raise AppException("DATA_CONFLICT", "已分配校内岗位，请通过实习变更流程申请自主实习")
@@ -260,7 +494,7 @@ def submit_my(user: dict, app_id) -> dict:
             raise AppException("DATA_CONFLICT", "当前申请不可提交")
         if app.application_type == "POSITION":
             pos, company = _legacy_position(db, app.position_id)
-            app.company_name, app.position_name, app.work_address = company.name, pos.title, pos.work_location
+            _apply_position_snapshot(app, pos, company)
         else:
             payload = _clean_self_arranged({"companyName": app.company_name, "positionName": app.position_name,
                                             "workAddress": app.work_address, "contactName": app.contact_name,
@@ -353,7 +587,11 @@ def list_applications(page: int, page_size: int, status=None, application_type=N
                 StudentProfile.real_name.like(like),
                 StudentProfile.student_no.like(like),
                 InternshipApplication.company_name.like(like),
+                InternshipApplication.company_credit_code.like(like),
                 InternshipApplication.position_name.like(like),
+                InternshipApplication.internship_department.like(like),
+                InternshipApplication.position_category.like(like),
+                InternshipApplication.company_industry.like(like),
             ))
         total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
         size = max(0, int(page_size or 0))
@@ -648,6 +886,9 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
             rec.destination_type = "SELF_ARRANGED"
             rec.enterprise_name = app.company_name
             rec.position_name = app.position_name
+            rec.enterprise_mentor_name = app.enterprise_mentor_name
+            rec.intern_start_date = app.internship_start_date
+            rec.intern_end_date = app.internship_end_date
             rec.version = record_ver + 1
         new_ver = versioned_update(
             db, InternshipApplication, entity_id=app.id, tenant_id=_tid(),
