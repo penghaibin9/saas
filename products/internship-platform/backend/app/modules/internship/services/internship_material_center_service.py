@@ -52,6 +52,7 @@ MATERIAL_RULES = {
     "SAFETY_EVIDENCE": {"label": "安全教育证据", "sensitivity": "SENSITIVE"},
     "SPECIAL_FILING": {"label": "特殊实习备案", "sensitivity": "SENSITIVE"},
     "FORCE_ARCHIVE_EVIDENCE": {"label": "强制归档依据", "sensitivity": "HIGHLY_SENSITIVE"},
+    "CUSTOM_MATERIAL": {"label": "自定义收件材料", "sensitivity": "PERSONAL"},
 }
 
 
@@ -212,6 +213,8 @@ def _legacy_sources(db, record: InternshipRecord, user=None, force_file_ids=None
         values.append(_source("FORCE_ARCHIVE_EVIDENCE", file_id,
             title=f"强制归档依据 · {index}", biz_type="INTERNSHIP_ARCHIVE_FORCE",
             biz_id=f"{record.id}:{index}", review_status="APPROVED"))
+    from app.modules.internship.services import internship_material_requirement_service as custom_materials
+    values.extend(custom_materials.approved_custom_sources(db, record))
     return [item for item in values if item["fileId"]]
 
 
