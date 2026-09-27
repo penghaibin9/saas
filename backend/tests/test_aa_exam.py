@@ -217,6 +217,65 @@ def _mark_remaining_seats_present(exam_course_id):
     db.close()
 
 
+def test_exam_batch_list_filters_term_before_count_and_keeps_college_scope(client, db_mode):
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaExamBatch, AaExamCourse, AaTeachingTask, AaTerm, College
+
+    ids = _seed(db_mode)
+    with get_sessionmaker()() as db:
+        task = db.get(AaTeachingTask, ids["tt1"])
+        home_course = db.get(AaCourse, task.course_id)
+        home_course.owner_college_id = ids["college"]
+        later_term = AaTerm(tenant_id=TID, year_code="2025-2026", term_no=1,
+                            status="PUBLISHED", is_current=False)
+        foreign_college = College(tenant_id=TID, college_name="考务外院", status="ACTIVE")
+        db.add_all([later_term, foreign_college])
+        db.flush()
+        foreign_course = AaCourse(tenant_id=TID, course_code="EX_FOREIGN_TERM",
+                                  course_name="外院考试课程", owner_college_id=foreign_college.id,
+                                  credit=2, status="ENABLED")
+        db.add(foreign_course)
+        db.flush()
+        created = {}
+        for name, term_id, course_id in (
+            ("本院一期甲", ids["term"], home_course.id),
+            ("本院一期乙", ids["term"], home_course.id),
+            ("本院二期", later_term.id, home_course.id),
+            ("外院二期", later_term.id, foreign_course.id),
+        ):
+            batch = AaExamBatch(tenant_id=TID, batch_name=name, term_id=term_id,
+                                status="ARCHIVED", published_at=datetime(2026, 7, 1))
+            db.add(batch)
+            db.flush()
+            db.add(AaExamCourse(tenant_id=TID, batch_id=batch.id, course_id=course_id,
+                                course_name=name, status="CONFIRMED"))
+            created[name] = str(batch.id)
+        db.commit()
+        later_term_id = later_term.id
+
+    school = _hdr(client, "school_admin01")
+    college = _hdr(client, "college_admin01")
+    first = client.get(f"{BASE}/exam/batches", headers=school,
+                       params={"termId": ids["term"], "page": 1, "pageSize": 1})
+    second = client.get(f"{BASE}/exam/batches", headers=school,
+                        params={"termId": ids["term"], "page": 2, "pageSize": 1})
+    assert first.status_code == second.status_code == 200
+    assert first.json()["data"]["total"] == second.json()["data"]["total"] == 2
+    assert {first.json()["data"]["items"][0]["batchId"],
+            second.json()["data"]["items"][0]["batchId"]} == {created["本院一期甲"], created["本院一期乙"]}
+    later = client.get(f"{BASE}/exam/batches", headers=college,
+                       params={"termId": later_term_id, "pageSize": 1})
+    assert later.status_code == 200
+    assert later.json()["data"]["total"] == 1
+    assert [row["batchId"] for row in later.json()["data"]["items"]] == [created["本院二期"]]
+    all_terms = client.get(f"{BASE}/exam/batches", headers=school)
+    assert all_terms.status_code == 200 and all_terms.json()["data"]["total"] == 4
+    for invalid in ("0", "-1", "abc"):
+        assert client.get(f"{BASE}/exam/batches", headers=school,
+                          params={"termId": invalid}).status_code == 422
+
+
 def test_e1_full_lifecycle(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")

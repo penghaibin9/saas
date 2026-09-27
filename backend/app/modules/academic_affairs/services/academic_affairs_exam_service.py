@@ -345,11 +345,20 @@ def create_batch(user, body):
         return _batch_dto(b)
 
 
-def list_batches(user, status=None, page=1, page_size=20):
+def list_batches(user, status=None, page=1, page_size=20, *, term_id=None):
     from app.models import AaExamBatch
+    if term_id is not None:
+        try:
+            term_id = int(term_id)
+        except (TypeError, ValueError) as exc:
+            raise AppException("VALIDATION_ERROR", "termId 必须是正整数", http_status=422) from exc
+        if term_id <= 0:
+            raise AppException("VALIDATION_ERROR", "termId 必须是正整数", http_status=422)
     with session() as db:
         ctx = _ctx(user, db)
         q = db.query(AaExamBatch).filter(AaExamBatch.tenant_id == _tid(), AaExamBatch.is_deleted.is_(False), _batch_visibility(ctx))
+        if term_id is not None:
+            q = q.filter(AaExamBatch.term_id == term_id)
         if status:
             q = q.filter(AaExamBatch.status == status)
         total = q.count()

@@ -39,7 +39,7 @@ def _seed_assignment(
 ):
     del db_mode
     from app.db.session import get_sessionmaker
-    from app.models import AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom
+    from app.models import AaCourse, AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom, College
 
     db = get_sessionmaker()()
     batch = AaExamBatch(
@@ -51,9 +51,19 @@ def _seed_assignment(
     )
     db.add(batch)
     db.flush()
+    college = College(tenant_id=TID, college_name=f"C-W3监考学院-{teacher_key}", status="ACTIVE")
+    db.add(college)
+    db.flush()
+    formal_course = AaCourse(tenant_id=TID, course_code=f"CW3-{batch.id}",
+                             course_name=f"C-W3监考课程-{teacher_key}", owner_college_id=college.id,
+                             credit=2, status="ENABLED")
+    db.add(formal_course)
+    db.flush()
     course = AaExamCourse(
         tenant_id=TID,
         batch_id=batch.id,
+        course_id=formal_course.id,
+        college_id=college.id,
         course_name=f"C-W3监考课程-{teacher_key}",
         class_name="C-W3-2801",
         exam_date=exam_date,
