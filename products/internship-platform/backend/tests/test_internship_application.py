@@ -244,3 +244,116 @@ def test_approve_rolls_back_when_position_full(client, auth_headers, db_mode):
         assert (rec.destination_type or "NONE") in ("NONE", None, "")
     finally:
         db.close()
+
+
+
+def test_yiyang_g10_application_statistics_are_full_scope(client, auth_headers, db_mode):
+    """G10: 65 scoped students / 45 filled / 20 unfilled must not collapse to page length."""
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipApplication, InternshipRecord, StudentProfile
+
+    batch_id = _mk_batch(client, auth_headers)
+    db = get_sessionmaker()()
+    try:
+        for index in range(65):
+            no = f"G10-{index + 1:03d}"
+            student = StudentProfile(
+                tenant_id=TID,
+                student_no=no,
+                real_name=f"G10学生{index + 1:03d}",
+                current_stage="INTERNSHIP",
+                student_status="NORMAL",
+                status="ACTIVE",
+            )
+            db.add(student)
+            db.flush()
+            record = InternshipRecord(
+                tenant_id=TID,
+                student_id=student.id,
+                advisor_name="G10指导老师",
+                status="PREPARING",
+                eligibility_status="QUALIFIED",
+                destination_type="NONE",
+                risk_level="NONE",
+                batch_id=int(batch_id),
+            )
+            db.add(record)
+            db.flush()
+            if index < 45:
+                status = "PENDING_REVIEW" if index < 30 else ("APPROVED" if index < 40 else "REJECTED")
+                db.add(InternshipApplication(
+                    tenant_id=TID,
+                    record_id=record.id,
+                    student_id=student.id,
+                    batch_id=int(batch_id),
+                    campaign_id=None,
+                    application_type="SELF_ARRANGED",
+                    volunteer_no=0,
+                    company_name=f"G10企业{index + 1:03d}",
+                    position_name="测试岗位",
+                    work_address="湖南省益阳市",
+                    contact_name="企业联系人",
+                    contact_phone="13800138000",
+                    status=status,
+                ))
+        db.commit()
+    finally:
+        db.close()
+
+    pending = client.get(
+        APP,
+        headers=auth_headers,
+        params={"batchId": batch_id, "status": "PENDING_REVIEW", "page": 1, "pageSize": 20},
+    ).json()
+    assert pending["code"] == 0, pending
+    assert pending["data"]["total"] == 30
+    assert len(pending["data"]["items"]) == 20
+
+    summary = client.get(
+        f"{APP}/summary", headers=auth_headers, params={"batchId": batch_id}
+    ).json()
+    assert summary["code"] == 0, summary
+    data = summary["data"]
+    assert data["totalStudents"] == 65
+    assert data["filledStudents"] == 45
+    assert data["unfilledStudents"] == 20
+    assert data["filledRate"] == 69.2
+    assert data["pendingReviewApplications"] == 30
+    assert data["reviewedApplications"] == 15
+    assert data["approvedApplications"] == 10
+    assert data["rejectedApplications"] == 5
+
+    reviewed = client.get(
+        APP,
+        headers=auth_headers,
+        params={"batchId": batch_id, "status": "REVIEWED", "page": 1, "pageSize": 20},
+    ).json()
+    assert reviewed["code"] == 0, reviewed
+    assert reviewed["data"]["total"] == 15
+
+    unfilled = client.get(
+        f"{APP}/students",
+        headers=auth_headers,
+        params={"batchId": batch_id, "state": "UNFILLED", "page": 1, "pageSize": 100},
+    ).json()
+    assert unfilled["code"] == 0, unfilled
+    assert unfilled["data"]["total"] == 20
+    assert len(unfilled["data"]["items"]) == 20
+
+    filled = client.get(
+        f"{APP}/students",
+        headers=auth_headers,
+        params={"batchId": batch_id, "state": "FILLED", "page": 1, "pageSize": 20},
+    ).json()
+    assert filled["code"] == 0, filled
+    assert filled["data"]["total"] == 45
+    assert len(filled["data"]["items"]) == 20
+
+    mobile_summary = client.get(
+        f"{MOB}/teacher/internship/context/applications/summary",
+        headers=auth_headers,
+        params={"batchId": batch_id},
+    ).json()
+    assert mobile_summary["code"] == 0, mobile_summary
+    assert mobile_summary["data"]["filledStudents"] == 45
+    assert mobile_summary["data"]["unfilledStudents"] == 20
