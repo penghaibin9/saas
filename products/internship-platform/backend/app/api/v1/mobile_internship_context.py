@@ -434,6 +434,26 @@ def teacher_batch_applications(
     return success(_paged(items, total, page, pageSize, batchId))
 
 
+@router.get("/students/{record_id}/account", summary="教师查看本人数据范围学生账号重置状态")
+def teacher_student_account_state(
+    record_id: str,
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.student.password.reset")),
+):
+    from app.modules.internship.services import internship_student_account_service as accounts
+    return success(accounts.account_state(record_id, user, batch_id=batchId))
+
+
+@router.post("/students/{record_id}/reset-password", summary="教师受控重置本人数据范围学生密码")
+def teacher_student_reset_password(
+    record_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.student.password.reset")),
+):
+    from app.modules.internship.services import internship_student_account_service as accounts
+    return success(accounts.reset_password(record_id, body or {}, user), message="学生密码已重置")
+
+
 @router.get("/material-requirements", summary="教师当前批次材料收件要求")
 def teacher_material_requirements(
     batchId: str = Query(..., min_length=1),
