@@ -271,23 +271,24 @@ def _run_items(db, s) -> list:
 
 
 def _check_archive(db, s) -> dict:
-    """学工归档包：已归档 PASS；退回/待补 FAIL；无包或在途 UNKNOWN（暂不自动卡审）。"""
+    """学工归档包：缺失和在途仍为 UNKNOWN，由正式毕业审核决定其阻断语义。"""
     from app.models import ArchivePackage
     pkg = db.scalars(select(ArchivePackage).where(
         ArchivePackage.tenant_id == _tid(), ArchivePackage.student_id == s.id,
         ArchivePackage.is_deleted.is_(False)).order_by(ArchivePackage.id.desc())).first()
     if not pkg:
         return {"item": "ARCHIVE", "result": "UNKNOWN", "owner": "COUNSELOR",
-                "evidence": "学工归档包未生成（不阻断，人工复核）", "refId": None}
+                "evidence": "学工归档包未生成（正式毕业资格审核暂不能通过，请核对学工归档）", "refId": None}
     st = (pkg.status or "").upper()
     if st == "ARCHIVED":
         return {"item": "ARCHIVE", "result": "PASS", "owner": "COUNSELOR",
-                "evidence": f"学工归档包已归档 status={st}", "refId": str(pkg.id)}
+                "evidence": "学工归档包已归档", "refId": str(pkg.id)}
     if st in ("RETURNED", "PENDING_SUPPLEMENT"):
         return {"item": "ARCHIVE", "result": "FAIL", "owner": "COUNSELOR",
-                "evidence": f"学工归档包待补齐 status={st}", "refId": str(pkg.id)}
+                "evidence": "学工归档包待补齐（已退回）" if st == "RETURNED" else "学工归档包待补齐（待补材料）",
+                "refId": str(pkg.id)}
     return {"item": "ARCHIVE", "result": "UNKNOWN", "owner": "COUNSELOR",
-            "evidence": f"学工归档包处理中 status={st}", "refId": str(pkg.id)}
+            "evidence": "学工归档包处理中（正式毕业资格审核暂不能通过）", "refId": str(pkg.id)}
 
 
 def _check_fee(db, s) -> dict:

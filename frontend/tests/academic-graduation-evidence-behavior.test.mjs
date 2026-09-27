@@ -194,3 +194,20 @@ test('毕业批次和学籍证据使用中文业务说明',()=>{
   assert.equal(vm.evidenceText('student_status=NORMAL'),'学籍状态：正常在籍')
   assert.equal(vm.evidenceText('已得 6.0/2.0 学分'),'已得 6.0/2.0 学分')
 })
+
+test('历史毕设和学工归档证据按业务项展示中文且不改其他提醒',()=>{
+  const vm=instance()
+  assert.equal(vm.evidenceText('毕设学生已归档，正式成绩已发布且通过，FILED 归档清单有效','GRADUATION_DESIGN'),
+    '毕设学生已归档，正式成绩已发布且通过，已备案的归档清单有效')
+  assert.equal(vm.evidenceText('存在毕设记录，但未同时满足学生归档、PUBLISHED 及格成绩和有效 FILED 归档','GRADUATION_DESIGN'),
+    '存在毕设记录，但未同时满足学生归档、正式成绩已发布且及格、归档清单已备案并有效')
+  assert.equal(vm.evidenceText('学工归档包未生成（不阻断，人工复核）','ARCHIVE'),
+    '学工归档包未生成（正式毕业资格审核暂不能通过，请核对学工归档）')
+  assert.equal(vm.evidenceText('学工归档包已归档 status=ARCHIVED','ARCHIVE'),'学工归档包已归档')
+  assert.equal(vm.evidenceText('学工归档包待补齐 status=PENDING_SUPPLEMENT','ARCHIVE'),
+    '学工归档包待补齐（待补材料）')
+  assert.equal(vm.evidenceText('学工归档包未生成（不阻断，人工复核）','EMPLOYMENT'),
+    '学工归档包未生成（不阻断，人工复核）')
+  assert.equal(vm.evidenceText('待财务回填结清状态（本项不阻断）','FEE'),
+    '待财务回填结清状态（本项不阻断）')
+})

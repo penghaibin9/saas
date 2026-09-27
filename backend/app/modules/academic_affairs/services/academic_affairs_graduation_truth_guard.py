@@ -201,7 +201,7 @@ def _check_graduation_design_completion(db, s) -> dict:
                 "GRADUATION_DESIGN",
                 "PASS",
                 "GD_MENTOR",
-                "毕设学生已归档，正式成绩已发布且通过，FILED 归档清单有效",
+                "毕设学生已归档，正式成绩已发布且通过，已备案的归档清单有效",
                 ref_id=student.id,
                 sourceObjectIds={
                     "graduationStudentId": str(student.id),
@@ -221,7 +221,7 @@ def _check_graduation_design_completion(db, s) -> dict:
         "GRADUATION_DESIGN",
         "FAIL",
         "GD_MENTOR",
-        "存在毕设记录，但未同时满足学生归档、PUBLISHED 及格成绩和有效 FILED 归档",
+        "存在毕设记录，但未同时满足学生归档、正式成绩已发布且及格、归档清单已备案并有效",
         ref_id=rows[0].id,
         sourceStatuses=checked,
     )
