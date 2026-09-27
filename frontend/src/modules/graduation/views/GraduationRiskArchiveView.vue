@@ -151,7 +151,7 @@
                   <button v-if="canRiskClose && (selectedRisk.status === 'PROCESSING' || (selectedRisk.status === 'OPEN' && selectedRisk.conditionActive === false))" class="mp-btn" :disabled="contextLocked" @click="askRiskAction('close', selectedRisk)">关闭风险</button>
                   <span v-if="selectedRisk.status === 'CLOSED'" class="mp-note">该风险已关闭</span>
                 </div>
-                <p class="mp-note">受理、处理、关闭均按 permission + status 调用原接口并写入审计；页面不会自动修改风险。</p>
+                <p class="mp-note">请核对风险成因后受理、记录处理或关闭；处理结果和关闭原因将保留在风险台账。</p>
               </div>
             </section>
           </section>
@@ -170,7 +170,7 @@
           <div class="ar-command__copy">
             <span>归档工作结论</span>
             <strong>{{ archiveConclusion }}</strong>
-            <small>固定顺序：预览 → 用户确认 → 一次性 previewToken → execute → 服务器回读 / 精确对账。</small>
+            <small>先预览可办理名单，确认后提交，再核对实际办理结果。取消或切换批次后需重新预览。</small>
           </div>
           <div class="ar-command__actions">
             <button v-if="canArchivePreview && canArchiveFile" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="startArchivePreview('batch-generate')">{{ previewBusy === 'batch-generate-preview' ? '预览中…' : '批量生成提交' }}</button>
@@ -180,7 +180,7 @@
         </section>
 
         <section v-if="archivePreviewEvidence" class="ar-preview-evidence" role="status" data-testid="archive-preview-token-evidence">
-          <div><span>previewToken</span><strong>{{ archivePreviewEvidence.maskedToken }}</strong><small>原始令牌不进入界面文本；取消、切批、离页或执行后失效。</small></div>
+          <div><span>本次预览凭证</span><strong>{{ archivePreviewEvidence.maskedToken }}</strong><small>凭证已脱敏，仅用于本次确认；取消、切换批次、离开页面或办理后失效。</small></div>
           <div><span>档案批次号</span><strong>{{ archivePreviewEvidence.archiveBatchNo || '执行时生成' }}</strong><small>批次 {{ archivePreviewEvidence.batchName || archivePreviewEvidence.batchId }}</small></div>
           <div><span>候选 / 可执行</span><strong>{{ archivePreviewEvidence.candidateCount }} / {{ archivePreviewEvidence.executableCount }}</strong><small>跳过 {{ archivePreviewEvidence.skippedCount }}</small></div>
           <div><span>预览时间</span><strong>{{ formatDateTime(archivePreviewEvidence.previewedAt) }}</strong><small>{{ archivePreviewEvidence.kindLabel }}</small></div>

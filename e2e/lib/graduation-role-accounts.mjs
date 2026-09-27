@@ -13,6 +13,9 @@ export const graduationRoles = Object.freeze({
   reviewer: account('E2E_GRADUATION_REVIEWER', {
     tenant: 'sandbox-school', username: 'e2e_reviewer', password: 'E2eTest@2026'
   }),
+  reviewerB: account('E2E_GRADUATION_REVIEWER_B', {
+    tenant: 'sandbox-school', username: 'e2e_advisor_b', password: 'E2eTest@2026'
+  }),
   defenseExpert: account('E2E_GRADUATION_DEFENSE', {
     tenant: 'sandbox-school', username: 'e2e_defense_a', password: 'E2eTest@2026'
   }),

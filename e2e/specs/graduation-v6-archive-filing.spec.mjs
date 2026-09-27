@@ -101,18 +101,18 @@ async function ensureGuidance(adminApi, fixture) {
   return persisted
 }
 
-async function ensureReviewerMentor(adminApi) {
+async function ensureReviewerMentor(adminApi, reviewer, teacherName) {
   const read = async () => items(await adminApi.get('/graduation/gd-mentors', {
-    keyword: graduationRoles.reviewer.username,
+    keyword: reviewer.username,
     page: 1,
     pageSize: 200
-  })).find(row => String(row.teacherNo || '') === String(graduationRoles.reviewer.username))
+  })).find(row => String(row.teacherNo || '') === String(reviewer.username))
 
   let mentor = await read()
   if (!mentor) {
     mentor = await adminApi.post('/graduation/gd-mentors', {
-      teacherNo: graduationRoles.reviewer.username,
-      teacherName: 'E2E评阅教师',
+      teacherNo: reviewer.username,
+      teacherName,
       mentorType: 'INTERNAL',
       title: '副教授',
       researchDirection: '软件工程成果评阅',
@@ -138,8 +138,8 @@ async function ensureReviewerMentor(adminApi) {
   return mentor
 }
 
-async function ensureFormalReview(adminApi, fixture, final) {
-  const reviewerMentor = await ensureReviewerMentor(adminApi)
+async function ensureFormalReview(adminApi, fixture, final, reviewer, teacherName) {
+  const reviewerMentor = await ensureReviewerMentor(adminApi, reviewer, teacherName)
   const read = async () => items(await adminApi.get('/graduation/gd-reviews', {
     batchId: fixture.batchId,
     gdStudentId: fixture.gdStudentId,
@@ -162,7 +162,7 @@ async function ensureFormalReview(adminApi, fixture, final) {
   expect(String(review.sourceSha256 || '')).toMatch(/^[a-f0-9]{64}$/i)
 
   if (review.status !== 'COMPLETED') {
-    let reviewerApi = await loginApi(graduationRoles.reviewer)
+    let reviewerApi = await loginApi(reviewer)
     reviewerApi = await switchApiRole(reviewerApi, 'GD_REVIEWER')
     review = await reviewerApi.post(`/graduation/gd-reviews/${review.id}/submit`, {
       score: 84,
@@ -185,6 +185,7 @@ async function ensureFormalReview(adminApi, fixture, final) {
       && String(persisted?.gdFinalId || '') === String(final.id)
       && String(persisted?.fileVersionId || '') === String(review.fileVersionId)
   }, { message: 'formal review must persist against the exact approved final', timeout: 30_000 }).toBe(true)
+  expect(String(persisted.reviewerMentorId)).toBe(String(reviewerMentor.id))
   return persisted
 }
 
@@ -271,7 +272,7 @@ async function publishAuthoritativeGrade(adminApi, fixture, final, defense) {
   })
   expect(source.status).toBe('DRAFT')
   expect(source.sourceScores?.reviewerScore).toBe(84)
-  expect(source.sourceScores?.reviewSourceCount).toBe(1)
+  expect(source.sourceScores?.reviewSourceCount).toBe(2)
   expect(source.sourceScores?.defenseScore).toBe(83)
   expect(source.sourceScores?.defenseSourceCount).toBe(2)
   expect(Number(source.sourceScores?.defenseRound)).toBe(defense.roundNo)
@@ -334,7 +335,18 @@ test.describe.serial('V6 · formal archive generation, filing and ARCHIVED readb
       timeoutMs: 30_000
     })
     const guidance = await ensureGuidance(adminApi, fixture)
-    const review = await ensureFormalReview(adminApi, fixture, final)
+    const reviews = []
+    for (const [reviewer, teacherName] of [
+      [graduationRoles.reviewer, 'E2E评阅教师'],
+      [graduationRoles.reviewerB, 'E2E指导教师B']
+    ]) reviews.push(await ensureFormalReview(adminApi, fixture, final, reviewer, teacherName))
+    expect(reviews).toHaveLength(2)
+    expect(String(reviews[0].reviewerMentorId)).not.toBe(String(reviews[1].reviewerMentorId))
+    for (const review of reviews) {
+      expect(String(review.gdFinalId)).toBe(String(final.id))
+      expect(String(review.fileVersionId)).toBe(String(reviews[0].fileVersionId))
+      expect(String(review.sourceSha256)).toBe(String(reviews[0].sourceSha256))
+    }
     const scoringFixture = await ensureDefenseScoringContext(page, adminApi, {
       ...fixture,
       runId: `archive-${fixture.batchId}-${fixture.gdStudentId}`
@@ -347,6 +359,41 @@ test.describe.serial('V6 · formal archive generation, filing and ARCHIVED readb
     expect(beforeArchive.manifestHash || '').toBe('')
 
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+    const riskUrl = new URL(`${config.staffBaseUrl}/admin/graduation/risk-archive`)
+    riskUrl.searchParams.set('panel', 'risk')
+    riskUrl.searchParams.set('batchId', fixture.batchId)
+    await page.goto(riskUrl.toString())
+    await dismissGraduationGuide(page)
+    const scanResponse = page.waitForResponse(response => response.request().method() === 'POST'
+      && new URL(response.url()).pathname.endsWith('/graduation/gd-risks/scan'))
+    await page.getByRole('button', { name: '扫描生成风险项', exact: true }).first().click()
+    await expectGraduationBusinessSuccess(await scanResponse, '归档前刷新风险条件')
+    const riskRows = items(await adminApi.get('/graduation/gd-risks', {
+      batchId: fixture.batchId, gdStudentId: fixture.gdStudentId, page: 1, pageSize: 200
+    }))
+    const openRisks = riskRows.filter(risk => ['OPEN', 'PROCESSING'].includes(String(risk.status || '').toUpperCase()))
+    expect(openRisks.filter(risk => risk.riskCode !== 'GD-R12' && risk.conditionActive !== false)).toEqual([])
+    for (const risk of openRisks.filter(row => row.riskCode !== 'GD-R12' && row.conditionActive === false)) {
+      const row = page.locator('.rk-row').filter({ hasText: fixture.studentNo }).filter({ hasText: risk.riskName })
+      await row.click()
+      const detail = page.locator('.rk-detail')
+      await expect(detail).toContainText('最近扫描条件已消失')
+      await detail.getByRole('button', { name: '关闭风险', exact: true }).click()
+      const dialog = page.locator('.app-confirm-dialog')
+      const reason = `归档前复核：最近扫描确认 ${risk.riskCode} 的触发条件已消失，按风险处置规则关闭。`
+      await dialog.locator('textarea').fill(reason)
+      const closeResponse = page.waitForResponse(response => response.request().method() === 'POST'
+        && new URL(response.url()).pathname.endsWith(`/graduation/gd-risks/${risk.id}/close`))
+      await dialog.getByRole('button', { name: '确认关闭', exact: true }).click()
+      await expectGraduationBusinessSuccess(await closeResponse, '归档前关闭已消退风险')
+      const readback = items(await adminApi.get('/graduation/gd-risks', {
+        batchId: fixture.batchId, gdStudentId: fixture.gdStudentId, page: 1, pageSize: 200
+      })).find(item => String(item.id) === String(risk.id))
+      expect(String(readback?.status || '').toUpperCase()).toBe('CLOSED')
+      expect(readback?.conditionActive).toBe(false)
+      expect(readback?.closeReason).toBe(reason)
+    }
+
     const url = new URL(`${config.staffBaseUrl}/admin/graduation/risk-archive`)
     url.searchParams.set('panel', 'archive')
     url.searchParams.set('batchId', fixture.batchId)
@@ -510,13 +557,15 @@ test.describe.serial('V6 · formal archive generation, filing and ARCHIVED readb
           finalId: String(final.id),
           finalStatus: final.status,
           guidanceId: String(guidance.id),
-          formalReview: {
+          formalReviews: reviews.map(review => ({
             id: String(review.id),
+            reviewerMentorId: String(review.reviewerMentorId),
+            gdFinalId: String(review.gdFinalId),
             status: review.status,
             score: review.score,
             fileVersionId: String(review.fileVersionId),
             sourceSha256: review.sourceSha256
-          },
+          })),
           defense: {
             roundNo: defense.roundNo,
             judgeCount: defense.confirmation.judgeCount,
