@@ -58,12 +58,13 @@ async function runJourney() {
   report.scenario = 'A-H'; report.passed = false; report.phase = '正常学校账号登录'; report.roles = []; report.failure = null
   report.batchIds ||= {}; report.taskIds ||= {}; report.scheduleBatchIds ||= {}; report.scheduleItemIds ||= {}
   report.gradeTaskIds ||= {}; report.gradeTaskOwners ||= {}; report.graduationResultOwners ||= {}; report.examCourseOwners ||= {}
+  report.examCourseIds ||= {}; report.examRoomIds ||= {}; report.examInvigilatorIds ||= {}
   report.evidenceDirectory = evidenceDir
   await fs.mkdir(evidenceDir, { recursive: true })
   const save = () => fs.writeFile(resultFile, JSON.stringify(report, null, 2), 'utf8')
   const phase = async value => { report.phase = value; await save() }
   const observed = async (step, proof) => {
-    let actorRole, bizType, bizId, action
+    let actorRole, bizType, bizId, action, studentId
     if (step.startsWith('assign-B-')) { actorRole = 'collegeB'; bizType = 'AA_TASK'; bizId = step.slice(9); action = 'ASSIGN' }
     else if (step.startsWith('assign-')) { bizId = step.slice(7); actorRole = report.taskIds.A?.includes(bizId) ? 'collegeA' : 'collegeB'; bizType = 'AA_TASK'; action = 'ASSIGN' }
     else if (step.startsWith('teacher-B-')) { actorRole = 'teacherB'; bizType = 'AA_TASK'; bizId = step.slice(10); action = 'TEACHER_CONFIRM' }
@@ -91,9 +92,24 @@ async function runJourney() {
     else if (step.startsWith('H-exam-course-confirm-')) {
       bizType = 'EXAM_COURSE'; bizId = step.slice(22); action = 'EXAM_COURSE_CONFIRM'; actorRole = report.examCourseOwners[bizId]
     }
+    else if (['H-exam-batch-confirm', 'H-exam-batch-publish', 'H-exam-batch-finish', 'H-exam-batch-archive'].includes(step)) {
+      actorRole = 'school'; bizType = 'EXAM_BATCH'; bizId = report.examBatchId
+      action = { 'H-exam-batch-confirm': 'EXAM_BATCH_CONFIRM', 'H-exam-batch-publish': 'EXAM_BATCH_PUBLISH',
+        'H-exam-batch-finish': 'EXAM_BATCH_FINISH', 'H-exam-batch-archive': 'EXAM_BATCH_ARCHIVE' }[step]
+    }
+    else if (/^H-exam-schedule-[AB]$/.test(step)) { actorRole = 'school'; bizType = 'EXAM_COURSE'; bizId = report.examCourseIds[step.at(-1)]; action = 'EXAM_COURSE_SCHEDULE' }
+    else if (/^H-exam-room-[AB]$/.test(step)) { actorRole = 'school'; bizType = 'EXAM_ROOM'; bizId = report.examRoomIds[step.at(-1)]; action = 'EXAM_ROOM_ADD' }
+    else if (/^H-exam-seats-\d+$/.test(step)) { actorRole = 'school'; bizType = 'EXAM_ROOM'; bizId = step.match(/\d+$/)[0]; action = 'EXAM_SEAT_ASSIGN' }
+    else if (/^H-exam-invigilator-[AB]$/.test(step)) { actorRole = 'school'; bizType = 'EXAM_INVIGILATOR'; bizId = report.examInvigilatorIds[step.at(-1)]; action = 'EXAM_INVIGILATOR_ADD' }
+    else if (/^H-exam-attendance-\d+-\d+$/.test(step)) {
+      const match = step.match(/^H-exam-attendance-(\d+)-(\d+)$/)
+      actorRole = Object.entries(report.examRoomIds).find(([, roomId]) => roomId === match[1])?.[0]
+      assert.ok(actorRole, '正式考场未绑定本故事监考教师')
+      actorRole = `teacher${actorRole}`; bizType = 'EXAM_ROOM_STUDENT'; bizId = match[1]; studentId = match[2]; action = 'EXAM_ATTENDANCE_PRESENT'
+    }
     if (actorRole) {
       const account = fixture.accounts[actorRole]
-      const audit = assertActor(auditRows({ tenantId: fixture.tenantId, bizType, bizId, action, account }),
+      const audit = assertActor(auditRows({ tenantId: fixture.tenantId, bizType, bizId, action, account, studentId }),
         { roleCode: account.roleCode, pendingAt: report.pending?.step === step ? report.pending.sentAt : null,
           allowRepeated: step === 'G-precheck' })
       proof = { ...proof, auditId: audit.id, actorUserId: account.userId }
@@ -624,7 +640,7 @@ async function runJourney() {
     rooms = await visit(school, '/admin/academic-affairs/classrooms', roomPath, true)
     room = (rooms.items || []).find(item => item.roomCode === roomCode)
     assert.equal(room?.classroomId, report.classroomId || room?.classroomId)
-    assert.equal(room?.status, 'AVAILABLE'); assert.equal(room?.allowSchedule, true)
+    assert.equal(room?.status, 'AVAILABLE'); assert.equal(room?.allowSchedule, true); assert.equal(room?.allowExam, true)
     report.classroomId = room.classroomId
     await observed('D-classroom', { classroomId: room.classroomId, roomCode, capacity: room.capacity })
 
@@ -1069,6 +1085,25 @@ async function runJourney() {
     await save()
     await observed('G-precheck', { batchId: gradBatchId, passed: gradBatch.passed, abnormal: gradBatch.abnormal,
       blockingDomains: [...new Set(report.graduationBlockers.map(item => item.domain))] })
+    const schoolResultCard = school.locator('.aa-result-list section').filter({ hasText: gradResults.items[0].realName })
+    await expect(schoolResultCard).toHaveCount(1)
+    await expect(schoolResultCard.getByRole('button', { name: '学院初审通过', exact: true })).toHaveCount(0)
+    await expect(schoolResultCard.getByRole('button', { name: '学院驳回', exact: true })).toHaveCount(0)
+    const guardedResultId = gradResults.items[0].resultId
+    const guardedBefore = await readOnly('school', `${apiPath}/graduation-results/${guardedResultId}`)
+    const guardedCollege = fixture.colleges.A.studentIds.includes(guardedBefore.studentId) ? 'collegeA' : 'collegeB'
+    const guardedAudit = () => auditRows({ tenantId: fixture.tenantId, bizType: 'AA_GRAD_AUDIT',
+      bizId: guardedResultId, action: 'COLLEGE_APPROVE', account: fixture.accounts[guardedCollege] }).rows
+    const auditBefore = guardedAudit()
+    const forbiddenReview = await school.context().request.post(`${new URL(api).origin}${apiPath}/graduation-results/${guardedResultId}/college-review`, {
+      headers: { Authorization: `Bearer ${accessTokens.school}` }, data: { action: 'APPROVE', note: '' },
+    })
+    assert.equal(forbiddenReview.status(), 403, '校教务不得代学院做毕业初审')
+    const guardedAfter = await readOnly('school', `${apiPath}/graduation-results/${guardedResultId}`)
+    assert.equal(guardedAfter.status, guardedBefore.status)
+    assert.equal(guardedAfter.reviewNote, guardedBefore.reviewNote)
+    assert.deepEqual(guardedAudit(), auditBefore, '拒绝命令不得产生学院初审审计')
+    await observed('G-school-college-denied', { resultId: guardedResultId, status: guardedAfter.status, httpStatus: forbiddenReview.status() })
     if (gradBatch.abnormal > 0) {
       await capture(school, 'G01-十一项真实阻断')
       assert.fail('毕业正式预审仍有异常；须由实习、毕设、学工及培养责任页面补齐真实证据后重新预审，禁止越过学院初审与校级终审')
@@ -1167,7 +1202,8 @@ async function runJourney() {
       report.examBatchId = examBatchId; await save()
     } else report.examBatchId = examBatchId
     let examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
-    assert.equal(examBatch.termId, report.termId); assert.equal(examBatch.status, 'DRAFT')
+    assert.equal(examBatch.termId, report.termId)
+    assert.ok(['DRAFT', 'COURSE_CONFIRMED', 'ARRANGED', 'PUBLISHED', 'FINISHED', 'ARCHIVED'].includes(examBatch.status))
     await observed('H-exam-batch', { batchId: examBatchId, termId: report.termId })
     const examCoursesPath = `${examPath}/${examBatchId}/courses`
     const examTaskIds = [report.taskIds.A[0], report.taskIds.B[0]]
@@ -1220,6 +1256,7 @@ async function runJourney() {
       const row = examCourses.items.find(item => item.teachingTaskId === report.taskIds[label][0])
       assert.equal(row?.collegeId, fixture.colleges[label].collegeId)
       examCourseIds[label] = row.examCourseId
+      report.examCourseIds[label] = row.examCourseId
       report.examCourseOwners[row.examCourseId] = `college${label}`
     }
     await save()
@@ -1276,6 +1313,251 @@ async function runJourney() {
     assert.equal(collegeArchive.A.domains.find(item => item.domain === 'EXAM')?.evidence?.find(item => item.type === 'COLLEGE_ARCHIVE_SCOPE')?.localBlockingCount, 0,
       '学院 A 确认课程后本院考务缺项须经正式预检归零')
     await observed('H-A-repaired', { aExamCourseId: examCourseIds.A, bExamCourseId: examCourseIds.B })
+
+    // The college-local repair above only clears each college's own pending
+    // course confirmation. School coordination remains UNKNOWN until the same
+    // exam batch is arranged, published, attended, finished and archived.
+    const selectExamBatch = async () => {
+      const list = await visit(school, `/admin/academic-affairs/exam?termId=${report.termId}`, examPath)
+      assert.ok(list.items.some(item => item.batchId === examBatchId && item.termId === report.termId))
+      await school.locator('.aaexam-batch').filter({ hasText: examName }).click()
+      await expect(school.locator('.aaexam-title')).toHaveText(examName)
+    }
+    examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
+    if (examBatch.status === 'DRAFT') {
+      await phase('校教务核对两院课程已由本人确认并推进考试批次')
+      await selectExamBatch()
+      await school.getByRole('button', { name: '推进', exact: true }).click()
+      await beforeWrite('H-exam-batch-confirm')
+      const advanced = responseFor(school, `${examPath}/${examBatchId}/confirm-courses`, 'POST')
+      await school.getByRole('dialog', { name: '推进(课程确认完成)', exact: true }).getByRole('button', { name: '确认', exact: true }).click()
+      assert.equal((await read(await advanced)).batchId, examBatchId)
+    }
+    examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
+    assert.ok(['COURSE_CONFIRMED', 'ARRANGED', 'PUBLISHED', 'FINISHED', 'ARCHIVED'].includes(examBatch.status))
+    await observed('H-exam-batch-confirm', { batchId: examBatchId, status: examBatch.status })
+
+    const examDates = { A: '2026-07-06', B: '2026-07-07' }
+    for (const label of ['A', 'B']) {
+      const courseId = examCourseIds[label]
+      const expectedStudents = fixture.colleges[label].studentIds.map(String)
+      const coursePath = `${apiPath}/exam/courses/${courseId}`
+      const courseRows = () => readOnly('school', `${examCoursesPath}?page=1&pageSize=20`)
+      const exactCourse = async () => {
+        const list = await courseRows()
+        assert.equal(list.total, 2)
+        const course = list.items.find(item => item.examCourseId === courseId)
+        assert.ok(course && course.status === 'CONFIRMED')
+        assert.deepEqual(new Set((course.rosterIdentity?.studentIds || []).map(String)), new Set(expectedStudents),
+          '考试课程必须使用对应教学任务的正式冻结名单')
+        return course
+      }
+      let course = await exactCourse()
+      const examRow = () => school.getByRole('row').filter({ hasText: course.courseName }).filter({ hasText: course.className })
+      if (!course.examDate) {
+        await phase(`校教务为学院 ${label} 正式考试课程设置本学期考试时间`)
+        await selectExamBatch()
+        await expect(examRow()).toHaveCount(1)
+        await examRow().getByRole('button', { name: '设时间', exact: true }).click()
+        const drawer = school.getByRole('dialog', { name: '设置考试时间', exact: true })
+        await drawer.locator('.app-date input').fill(examDates[label])
+        await drawer.locator('.app-date input').press('Enter')
+        await drawer.locator('input[type="time"]').nth(0).fill('09:00')
+        await drawer.locator('input[type="time"]').nth(1).fill('11:00')
+        await beforeWrite(`H-exam-schedule-${label}`)
+        const scheduled = responseFor(school, `${coursePath}/schedule`, 'PUT')
+        await drawer.getByRole('button', { name: '保存', exact: true }).click()
+        const response = await scheduled
+        assert.equal(response.request().postDataJSON().examDate, examDates[label], '考试日期选择器须提交正式学期内的日期')
+        assert.equal((await read(response)).examCourseId, courseId)
+      }
+      course = await exactCourse()
+      assert.equal(course.examDate, examDates[label]); assert.equal(course.startTime, '09:00'); assert.equal(course.endTime, '11:00')
+      await observed(`H-exam-schedule-${label}`, { courseId, examDate: course.examDate, startTime: course.startTime, endTime: course.endTime })
+
+      const roomsPath = `${coursePath}/rooms`
+      let rooms = await readOnly('school', roomsPath)
+      assert.ok(rooms.items.length <= 1, '本故事一门课程只使用一间正式考场，已有多间须人工核对')
+      if (!rooms.items.length) {
+        await phase(`校教务为学院 ${label} 考试课程编排正式考场`)
+        await selectExamBatch()
+        await expect(examRow()).toHaveCount(1)
+        await examRow().getByRole('button', { name: '考场', exact: true }).click()
+        const drawer = school.getByRole('dialog', { name: `考场编排 · ${course.courseName}`, exact: true })
+        const picker = drawer.locator('.app-remote-select').filter({ hasText: '选择教室' })
+        await picker.getByRole('combobox').click()
+        await picker.locator('input').fill(roomCode)
+        await picker.getByRole('option').filter({ hasText: roomName }).click()
+        await beforeWrite(`H-exam-room-${label}`)
+        const added = responseFor(school, roomsPath, 'POST')
+        await drawer.getByRole('button', { name: '添加考场', exact: true }).click()
+        const receipt = await read(await added)
+        assert.equal(receipt.examCourseId, courseId)
+        report.examRoomIds[label] = receipt.examRoomId; await save()
+      }
+      rooms = await readOnly('school', roomsPath)
+      assert.equal(rooms.items.length, 1)
+      const examRoom = rooms.items[0], roomId = examRoom.examRoomId
+      assert.equal(roomId, report.examRoomIds[label] || roomId)
+      assert.equal(examRoom.classroomText, roomName)
+      assert.ok(examRoom.capacity >= expectedStudents.length)
+      report.examRoomIds[label] = roomId; await save()
+      await observed(`H-exam-room-${label}`, { courseId, roomId, classroomId: room.classroomId })
+
+      const seatsPath = `${apiPath}/exam/rooms/${roomId}/seats`
+      let seats = await readOnly('school', seatsPath)
+      if (!seats.items.length) {
+        await phase(`校教务按学院 ${label} 冻结名单经页面铺位`)
+        await selectExamBatch()
+        await examRow().getByRole('button', { name: '考场', exact: true }).click()
+        const drawer = school.getByRole('dialog', { name: `考场编排 · ${course.courseName}`, exact: true })
+        await beforeWrite(`H-exam-seats-${roomId}`)
+        const assigned = responseFor(school, seatsPath, 'POST')
+        await drawer.getByRole('button', { name: '按冻结名单铺位', exact: true }).click()
+        assert.equal((await read(await assigned)).seatCount, expectedStudents.length)
+      }
+      seats = await readOnly('school', seatsPath)
+      assert.deepEqual(new Set(seats.items.map(item => item.studentId)), new Set(expectedStudents))
+      assert.ok(seats.items.every(item => item.attendanceStatus === 'NOT_STARTED' || item.attendanceStatus === 'PRESENT'))
+      await observed(`H-exam-seats-${roomId}`, { roomId, studentIds: expectedStudents })
+
+      const invigilatorsPath = `${apiPath}/exam/rooms/${roomId}/invigilators`
+      let invigilators = await readOnly('school', invigilatorsPath)
+      const teacher = fixture.accounts[`teacher${label}`]
+      assert.ok(invigilators.items.length <= 1, '考场已有额外监考安排，禁止猜测本人责任')
+      if (!invigilators.items.length) {
+        await phase(`校教务指定学院 ${label} 正常教师账号本人监考`)
+        await selectExamBatch()
+        await examRow().getByRole('button', { name: '考场', exact: true }).click()
+        const drawer = school.getByRole('dialog', { name: `考场编排 · ${course.courseName}`, exact: true })
+        const picker = drawer.locator('.app-remote-select').filter({ hasText: '选择监考教师' })
+        await picker.getByRole('combobox').click()
+        const searched = school.waitForResponse(response => {
+          const url = new URL(response.url())
+          return url.pathname === `${apiPath}/courses/teachers/search` && url.searchParams.get('keyword') === teacher.loginName
+        }, { timeout: 120_000 })
+        await picker.locator('input').fill(teacher.loginName)
+        const teacherOptions = await read(await searched)
+        const matchedTeacher = (teacherOptions.items || teacherOptions.list || teacherOptions)
+          .find(item => item.loginName === teacher.loginName || item.teacherKey === teacher.teacherKey)
+        assert.ok(matchedTeacher, '正式教师检索未返回本场已登录监考账号')
+        await picker.getByRole('option').filter({ hasText: matchedTeacher.label || matchedTeacher.teacherName || matchedTeacher.realName }).click()
+        await beforeWrite(`H-exam-invigilator-${label}`)
+        const assigned = responseFor(school, invigilatorsPath, 'POST')
+        await drawer.getByRole('button', { name: '指定监考', exact: true }).click()
+        const receipt = await read(await assigned)
+        assert.equal(receipt.examRoomId, roomId); assert.equal(receipt.teacherKey, teacher.teacherKey)
+        report.examInvigilatorIds[label] = receipt.invigilatorId; await save()
+      }
+      invigilators = await readOnly('school', invigilatorsPath)
+      assert.equal(invigilators.items.length, 1)
+      assert.equal(invigilators.items[0].teacherKey, teacher.teacherKey)
+      const invigilatorId = invigilators.items[0].invigilatorId
+      assert.equal(invigilatorId, report.examInvigilatorIds[label] || invigilatorId)
+      report.examInvigilatorIds[label] = invigilatorId; await save()
+      await observed(`H-exam-invigilator-${label}`, { roomId, invigilatorId, teacherUserId: teacher.userId })
+    }
+
+    examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
+    if (['COURSE_CONFIRMED', 'ARRANGED'].includes(examBatch.status)) {
+      const readiness = await readOnly('school', `${examPath}/${examBatchId}/readiness`)
+      assert.equal(readiness.batchId, examBatchId)
+      assert.equal(readiness.canPublish, true, '两院冻结名单、考场、铺位与监考未通过正式发布就绪检查')
+      for (const key of ['missedCourseCount', 'invigilatorGapCount', 'roomShortageCount']) assert.equal(readiness[key], 0)
+      await phase('校教务核对完整就绪后正式发布同一考试批次')
+      await selectExamBatch()
+      await expect(school.getByRole('button', { name: '发布', exact: true })).toBeEnabled()
+      await school.getByRole('button', { name: '发布', exact: true }).click()
+      await beforeWrite('H-exam-batch-publish')
+      const published = responseFor(school, `${examPath}/${examBatchId}/publish`, 'POST')
+      await school.getByRole('dialog', { name: '发布', exact: true }).getByRole('button', { name: '确认', exact: true }).click()
+      assert.equal((await read(await published)).batchId, examBatchId)
+    }
+    examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
+    assert.ok(['PUBLISHED', 'FINISHED', 'ARCHIVED'].includes(examBatch.status))
+    await observed('H-exam-batch-publish', { batchId: examBatchId, status: examBatch.status })
+
+    for (const label of ['A', 'B']) {
+      const role = `teacher${label}`, teacherPage = pages[role], roomId = report.examRoomIds[label]
+      const attendancePath = `${apiPath}/exam/rooms/${roomId}/attendance`
+      const expectedStudents = fixture.colleges[label].studentIds.map(String)
+      const pendingAttendance = await readOnly(role, attendancePath)
+      assert.deepEqual(new Set(pendingAttendance.items.map(item => item.studentId)), new Set(expectedStudents))
+      const needsUiAttendance = pendingAttendance.items.some(item => item.attendanceStatus === 'NOT_STARTED')
+      if (needsUiAttendance) {
+        assert.equal(examBatch.status, 'PUBLISHED', '未到考座位仍存在时不能将批次当作已结束或归档')
+        const invigilations = await visit(teacherPage, '/admin/academic-affairs/exam', `${apiPath}/exam/my-invigilation`)
+        assert.ok(invigilations.items.some(item => item.batchId === examBatchId && item.examRoomId === roomId &&
+          item.teacherKey === fixture.accounts[role].teacherKey), '正常教师本人监考队列缺少本场正式指派')
+        const courseName = (await readOnly('school', `${examCoursesPath}?page=1&pageSize=20`)).items
+          .find(item => item.examCourseId === examCourseIds[label])?.courseName
+        assert.ok(courseName)
+        const teacherRow = teacherPage.getByRole('row').filter({ hasText: examName }).filter({ hasText: courseName })
+        await expect(teacherRow).toHaveCount(1)
+        const loaded = responseFor(teacherPage, attendancePath)
+        await teacherRow.getByRole('button', { name: '到考登记', exact: true }).click()
+        await read(await loaded)
+      }
+      for (const studentId of expectedStudents) {
+        const before = await readOnly(role, attendancePath)
+        assert.equal(before.examRoomId, roomId); assert.equal(before.batchId, examBatchId)
+        const seat = before.items.find(item => item.studentId === studentId)
+        assert.ok(seat && Number.isInteger(seat.version), '正式考场缺少当前学生及版本')
+        if (seat.attendanceStatus === 'NOT_STARTED') {
+          assert.equal(seat.markPresentAction?.allowed, true, '教师本人未获得正式到考办理许可')
+          await phase(`监考教师 ${label} 在本人考场逐生登记正常到考`)
+          const studentRow = teacherPage.locator('[aria-label="本场到考登记"] table tbody tr').filter({ hasText: seat.studentNo })
+          await expect(studentRow).toHaveCount(1)
+          await beforeWrite(`H-exam-attendance-${roomId}-${studentId}`)
+          const marked = responseFor(teacherPage, `${attendancePath}/${studentId}`, 'PUT')
+          await studentRow.getByRole('button', { name: '登记到考', exact: true }).click()
+          const receipt = await read(await marked)
+          assert.equal(receipt.examRoomId, roomId); assert.equal(receipt.batchId, examBatchId)
+          const after = await readOnly(role, attendancePath)
+          const updated = after.items.find(item => item.studentId === studentId)
+          assert.equal(updated?.attendanceStatus, 'PRESENT')
+          assert.equal(updated.version, seat.version + 1, '本人正常到考必须推进该座位版本')
+        }
+        const confirmed = (await readOnly(role, attendancePath)).items.find(item => item.studentId === studentId)
+        assert.equal(confirmed?.attendanceStatus, 'PRESENT')
+        await observed(`H-exam-attendance-${roomId}-${studentId}`, { roomId, studentId, version: confirmed.version })
+      }
+      const collegeAttendance = await readOnly(`college${label}`, attendancePath)
+      assert.deepEqual(new Set(collegeAttendance.items.map(item => item.studentId)), new Set(expectedStudents))
+      assert.ok(collegeAttendance.items.every(item => item.attendanceStatus === 'PRESENT'))
+      const schoolAttendance = await readOnly('school', attendancePath)
+      assert.equal(schoolAttendance.batchId, examBatchId)
+      assert.deepEqual(schoolAttendance.items.map(item => [item.studentId, item.attendanceStatus, item.version]),
+        collegeAttendance.items.map(item => [item.studentId, item.attendanceStatus, item.version]),
+        '校级与本院应回读同一考场的到考状态和版本')
+      if (needsUiAttendance) await capture(teacherPage, `H-${label}-本人到考登记`)
+    }
+
+    for (const [from, to, button, suffix, step] of [
+      ['PUBLISHED', 'FINISHED', '结束', 'finish', 'H-exam-batch-finish'],
+      ['FINISHED', 'ARCHIVED', '归档', 'archive', 'H-exam-batch-archive'],
+    ]) {
+      examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
+      if (examBatch.status === to || (to === 'FINISHED' && examBatch.status === 'ARCHIVED')) {
+        await observed(step, { batchId: examBatchId, status: examBatch.status })
+        continue
+      }
+      assert.equal(examBatch.status, from)
+      await phase(`校教务按同一考务批次完成${button}并核对正式终态`)
+      await selectExamBatch()
+      await school.getByRole('button', { name: button, exact: true }).click()
+      await beforeWrite(step)
+      const completed = responseFor(school, `${examPath}/${examBatchId}/${suffix}`, 'POST')
+      await school.getByRole('dialog', { name: to === 'FINISHED' ? '结束考试' : '归档', exact: true })
+        .getByRole('button', { name: '确认', exact: true }).click()
+      assert.equal((await read(await completed)).batchId, examBatchId)
+      examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
+      assert.equal(examBatch.status, to)
+      await observed(step, { batchId: examBatchId, status: examBatch.status })
+    }
+    assert.equal(examBatch.status, 'ARCHIVED')
+    await observed('H-exam-closed', { batchId: examBatchId, roomIds: report.examRoomIds })
+
     const schoolPrecheck = await visit(school, `/admin/academic-affairs/archive/precheck?termId=${report.termId}`, precheckPath)
     assert.equal(schoolPrecheck.scopeType, 'TENANT_ALL')
     assert.equal(schoolPrecheck.termId, report.termId)
