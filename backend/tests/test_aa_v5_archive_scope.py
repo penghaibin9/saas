@@ -103,14 +103,14 @@ def test_installed_archive_list_masks_school_counts_and_rejects_missing_scope(mo
     monkeypatch.setattr(public._core, "_tid", lambda: 1)
     monkeypatch.setattr(public._core, "_batch_dto", lambda *args, **kwargs: {"batchId": "1", "missingCount": 99})
     monkeypatch.setattr(public._core, "_ctx", lambda *args: Row(scope_type="COLLEGE", college_ids={12}))
-    result = route.endpoint(user={}, status=None, page=1, pageSize=20)
+    result = route.endpoint(user={}, status=None, page=1, pageSize=20, termId=None)
     item = result["data"]["items"][0]
     assert item["missingCount"] is None and item["items"] == [] and item["scopeType"] == "COLLEGE"
     for ctx in (Row(scope_type="CLASS"), Row(scope_type="NONE"), Row(scope_type="COLLEGE", college_ids=set())):
         monkeypatch.setattr(public._core, "_ctx", lambda *args: ctx)
         db.reset_mock()
         with pytest.raises(Exception, match="已授权"):
-            route.endpoint(user={}, status=None, page=1, pageSize=20)
+            route.endpoint(user={}, status=None, page=1, pageSize=20, termId=None)
         db.scalars.assert_not_called()
 
 

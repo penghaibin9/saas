@@ -21,7 +21,7 @@ _ORIGINAL_LIST_BATCHES = getattr(
 )
 
 
-def list_batches(user, status=None, page=1, page_size=20):
+def list_batches(user, status=None, page=1, page_size=20, *, term_id=None):
     from app.models import AaArchiveBatch
 
     try:
@@ -41,6 +41,8 @@ def list_batches(user, status=None, page=1, page_size=20):
         ]
         if status:
             conditions.append(AaArchiveBatch.status == status)
+        if term_id is not None:
+            conditions.append(AaArchiveBatch.term_id == term_id)
 
         total = int(
             db.scalar(select(func.count(AaArchiveBatch.id)).where(*conditions)) or 0

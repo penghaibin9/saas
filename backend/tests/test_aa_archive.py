@@ -154,6 +154,47 @@ def test_ar5_precheck_realtime_no_batch(client, db_mode):
     assert client.get(f"{BASE}/archive/batches", headers=admin).json()["data"]["total"] == 0
 
 
+def test_archive_batch_list_filters_term_before_count_and_page(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaArchiveBatch, AaTerm
+
+    ids = _seed(db_mode, with_data=False)
+    with get_sessionmaker()() as db:
+        later_term = AaTerm(tenant_id=TID, year_code="2025-2026", term_no=1,
+                            status="PUBLISHED", is_current=False)
+        db.add(later_term)
+        db.flush()
+        original = AaArchiveBatch(tenant_id=TID, batch_name="原学期归档",
+                                  term_id=ids["term"], term_code="2024-2025-1", status="DRAFT")
+        later = AaArchiveBatch(tenant_id=TID, batch_name="后学期归档",
+                               term_id=later_term.id, term_code="2025-2026-1", status="READY")
+        db.add_all([original, later])
+        db.flush()
+        original_id, later_id, later_term_id = str(original.id), str(later.id), later_term.id
+        db.commit()
+
+    admin = _hdr(client, "school_admin01")
+    first = client.get(f"{BASE}/archive/batches", headers=admin,
+                       params={"termId": ids["term"], "page": 1, "pageSize": 1})
+    empty_page = client.get(f"{BASE}/archive/batches", headers=admin,
+                            params={"termId": ids["term"], "page": 2, "pageSize": 1})
+    assert first.status_code == empty_page.status_code == 200
+    assert first.json()["data"]["total"] == empty_page.json()["data"]["total"] == 1
+    assert [item["batchId"] for item in first.json()["data"]["items"]] == [original_id]
+    assert empty_page.json()["data"]["items"] == []
+    later_result = client.get(f"{BASE}/archive/batches", headers=admin,
+                              params={"termId": later_term_id, "status": "READY"})
+    assert later_result.status_code == 200
+    assert later_result.json()["data"]["total"] == 1
+    assert [item["batchId"] for item in later_result.json()["data"]["items"]] == [later_id]
+    unfiltered = client.get(f"{BASE}/archive/batches", headers=admin)
+    assert unfiltered.status_code == 200 and unfiltered.json()["data"]["total"] == 2
+    for invalid in ("0", "-1", "abc"):
+        rejected = client.get(f"{BASE}/archive/batches", headers=admin, params={"termId": invalid})
+        assert rejected.status_code == 400
+        assert rejected.json()["code"] == "VALIDATION_ERROR"
+
+
 def test_ar6_precheck_student_forbidden(client, db_mode):
     _seed(db_mode)
     stu = _stu_token("档甲", "AR2401")
