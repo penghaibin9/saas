@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from fastapi.routing import APIRoute
+import pytest
 
 from app.modules.academic_affairs.routers import schedule_core_router
 from app.modules.academic_affairs.services import academic_affairs_schedule_final_service as service
@@ -32,3 +33,52 @@ def test_preflight_service_exposes_canonical_conflict_and_alternative_contract()
     assert "CANONICAL_SCHEDULE_CONFLICT_V1" in constants
     assert "alternatives" in constants
     assert "HARD" in constants
+
+
+@pytest.mark.parametrize("pre_publish", [False, True], ids=["draft", "pre-published"])
+@pytest.mark.parametrize("resource", ["classroom", "teacher"])
+def test_college_preflight_sees_other_college_candidate_without_edit_access(client, db_mode, pre_publish, resource):
+    from tests.test_aa_v5_school_schedule_gate import BASE, _facts, _candidate, _snapshot
+    from tests.test_aa_schedule import _item
+    from app.db.session import get_sessionmaker
+    from app.models import AaScheduleItem
+
+    facts = _facts(client, shared_teacher=resource == "teacher")
+    own = _candidate(client, facts, 0, add_item=False, pre_publish=False)
+    other = _candidate(client, facts, 1, weekday=1, room="发布测试教室0", pre_publish=pre_publish)
+    with get_sessionmaker()() as db:
+        item = db.query(AaScheduleItem).filter(AaScheduleItem.batch_id == int(other)).one()
+        item.classroom_text = "旧教室名称"
+        db.commit()
+    body = {"taskId": facts["tasks"][0]["taskId"], "weekday": 1, "slotNo": 1,
+            "startWeek": 1, "endWeek": 18, "weekParity": "ALL", "classroom": "发布测试教室0"}
+    before = _snapshot(facts)
+    results = []
+    for headers in (facts["college"], facts["school"]):
+        response = client.post(f"{BASE}/schedule-batches/{own}/items/preflight", headers=headers, json=body)
+        assert response.status_code == 200, response.text
+        results.append(response.json()["data"])
+    assert results[0]["allowed"] is False
+    assert results[0]["conflict"]["type"] == resource.upper()
+    assert facts["tasks"][1]["courseName"] not in str(results[0]["conflict"])
+    assert facts["tasks"][1]["teacherName"] not in str(results[0]["conflict"])
+    assert results[0]["conflict"] == results[1]["conflict"]
+    assert results[0]["candidate"] == results[1]["candidate"]
+    assert results[0]["alternatives"]
+    assert all(row["weekday"] != 1 for row in results[0]["alternatives"])
+    assert _snapshot(facts) == before
+    assert client.get(f"{BASE}/schedule-batches/{other}", headers=facts["college"]).status_code == 403
+
+    # 同范围新候选取代旧候选；旧草稿/预发布的资源不应永久占用。
+    response = client.post(f"{BASE}/schedule-batches", headers=facts["school"], json={
+        "termId": str(facts["termId"]), "collegeId": facts["tasks"][1]["collegeId"], "batchName": "替换候选",
+    })
+    assert response.status_code == 200, response.text
+    replacement_id = response.json()["data"]["batchId"]
+    response = _item(client, facts["school"], replacement_id,
+        **{key: value for key, value in facts["tasks"][1].items() if key != "collegeId"},
+        weekday=2, classroom="发布测试教室0")
+    assert response.status_code == 200, response.text
+    response = client.post(f"{BASE}/schedule-batches/{own}/items/preflight", headers=facts["college"], json=body)
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["allowed"] is True

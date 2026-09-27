@@ -119,6 +119,7 @@ class ScheduleImportPreload:
             class_id,
             classroom,
             exclude_id=exclude_id,
+            classroom_id=self.resolve_classroom_id(classroom),
         )
 
     def record_item(self, item) -> None:
@@ -136,6 +137,7 @@ def build_preload(
     allowed_batch_ids,
     teaching_weeks,
     enabled_slots,
+    conflict_batch_ids=None,
 ) -> ScheduleImportPreload:
     """只预载本批输入会触达的数据，避免把全租户任务/教室 materialize 到 Python。"""
     from app.models import AaClassroom, AaScheduleItem, AaTeachingTask
@@ -243,15 +245,22 @@ def build_preload(
             and_(AaScheduleItem.weekday == weekday, AaScheduleItem.slot_no == slot_no)
             for weekday, slot_no in sorted(coordinates)
         ])
-        conflict_rows = db.scalars(
-            select(AaScheduleItem).where(
+        query = select(AaScheduleItem).where(
                 AaScheduleItem.tenant_id == _base._tid(),
-                AaScheduleItem.batch_id == int(batch.id),
+                AaScheduleItem.batch_id.in_(conflict_batch_ids if conflict_batch_ids is not None else [int(batch.id)]),
                 coordinate_filter,
                 AaScheduleItem.status == "EFFECTIVE",
                 AaScheduleItem.is_deleted.is_(False),
             )
-        ).all()
+        if conflict_batch_ids is not None:
+            # 预检只读当前任务共享的资源，不将全校所有课位载入内存。
+            query = query.where(or_(
+                AaScheduleItem.teacher_key.in_({row.teacher_key for row in tasks if row.teacher_key}),
+                AaScheduleItem.class_id.in_({row.class_id for row in tasks if row.class_id}),
+                AaScheduleItem.classroom_id.in_({row.id for row in classrooms}),
+                AaScheduleItem.classroom_text.in_(classroom_texts),
+            ))
+        conflict_rows = db.scalars(query).all()
 
     return ScheduleImportPreload(
         allowed_batch_ids=allowed_batch_ids,

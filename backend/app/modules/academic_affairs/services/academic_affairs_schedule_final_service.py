@@ -452,6 +452,7 @@ def _preflight_result(db, batch, task, source, *, exclude_item_id=None) -> dict:
         allowed_batch_ids=_task_batch_ids(db, batch),
         teaching_weeks=params["teachingWeeks"],
         enabled_slots=params["enabledSlots"],
+        conflict_batch_ids=[candidate.id for candidate in gate_service.school_candidate_batches(db, batch)],
     )
     task = _resolve_task(db, batch, {"taskId": str(task.id)}, preload=preload)
     weekday, slot_no, start_week, end_week, parity = _coordinate(

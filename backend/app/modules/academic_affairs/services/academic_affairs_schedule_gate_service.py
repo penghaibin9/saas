@@ -184,10 +184,27 @@ def require_publishable(db, batch) -> dict:
     )
 
 
+def school_candidate_batches(db, batch, *, lock=False):
+    """预检与学校发布使用同一学期、每个责任范围的最新候选。"""
+    from app.models import AaScheduleBatch
+    from . import academic_affairs_schedule_truth_service as truth
+
+    query = db.query(AaScheduleBatch).filter(
+        AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.term_id == batch.term_id,
+        AaScheduleBatch.is_deleted.is_(False),
+        AaScheduleBatch.status.in_(("DRAFT", "PRE_PUBLISHED", "PUBLISHED")),
+    ).order_by(AaScheduleBatch.id)
+    candidates = query.with_for_update().populate_existing().all() if lock else query.all()
+    by_scope = {truth.scope_of(candidate): candidate for candidate in candidates}
+    # 始终核对请求的精确版本，不用同范围另一草稿替代它。
+    by_scope[truth.scope_of(batch)] = batch
+    return list(by_scope.values())
+
+
 def evaluate_school_publish(db, batch, *, lock=False) -> dict:
     """正式发布前核验全学期候选；预发布仍只办理本责任范围。"""
     from collections import Counter
-    from app.models import AaClassroom, AaScheduleBatch, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import AaClassroom, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
     from .academic_affairs_archive_rule_evaluator import evaluate_teaching_task
     from .academic_affairs_schedule_conflict_index import iter_same_slot_pairs
     from . import academic_affairs_schedule_truth_service as truth
@@ -213,17 +230,8 @@ def evaluate_school_publish(db, batch, *, lock=False) -> dict:
         block("TEACHING_TASK_NOT_READY", reconciliation.get("summary") or "学期应开课程与教学任务尚未全部核对完成")
     if not required:
         block("SCHOOL_SCHEDULE_EMPTY", "本学期没有可正式发布的教学任务")
-    candidates = rows(db.query(AaScheduleBatch).filter(
-        AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.term_id == batch.term_id,
-        AaScheduleBatch.is_deleted.is_(False),
-        AaScheduleBatch.status.in_(("DRAFT", "PRE_PUBLISHED", "PUBLISHED"))), AaScheduleBatch)
-    by_scope = {}
-    for candidate in candidates:
-        by_scope[truth.scope_of(candidate)] = candidate
-    # 请求发布的精确版本必须参与核验，不能用同范围另一个版本的结果替代。
-    by_scope[truth.scope_of(batch)] = batch
     selected, covered = [], Counter()
-    for candidate in by_scope.values():
+    for candidate in school_candidate_batches(db, batch, lock=lock):
         ids = {value for (value,) in db.query(AaTeachingTask.id).filter(
             AaTeachingTask.tenant_id == _tid(), AaTeachingTask.id.in_(required),
             policy.task_scope_condition(db, candidate)).all()}

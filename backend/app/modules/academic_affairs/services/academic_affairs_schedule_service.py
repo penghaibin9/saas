@@ -143,8 +143,8 @@ def _weeks_overlap(s1, e1, p1, s2, e2, p2) -> bool:
 
 
 def _detect_conflict(db, batch_id, weekday, slot_no, start_week, end_week, parity,
-                     teacher_key, class_id, classroom, exclude_id=None):
-    """返回冲突描述（None=无冲突）。同批次同星期同节次，教师/班级/教室任一相同且周次相容即冲突。"""
+                     teacher_key, class_id, classroom, exclude_id=None, *, classroom_id=None):
+    """同节次且周次相容的资源冲突；默认查本批，预检可传已过滤的跨候选预载行。"""
     from app.models import AaScheduleItem
     rows = db.scalars(select(AaScheduleItem).where(
         AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == int(batch_id),
@@ -155,13 +155,23 @@ def _detect_conflict(db, batch_id, weekday, slot_no, start_week, end_week, parit
             continue
         if not _weeks_overlap(start_week, end_week, parity, r.start_week, r.end_week, r.week_parity):
             continue
+        external = int(getattr(r, "batch_id", batch_id)) != int(batch_id)
         if teacher_key and r.teacher_key and r.teacher_key == teacher_key:
+            if external:
+                return {"type": "TEACHER", "conflictWith": "当前任课教师",
+                        "detail": f"其他排课范围已占用当前教师的周{weekday}第{slot_no}节，请联系校教务协调"}
             return {"type": "TEACHER", "conflictWith": r.teacher_name or teacher_key,
                     "detail": f"教师 {r.teacher_name or teacher_key} 周{weekday}第{slot_no}节已排 {r.course_name}"}
         if class_id and r.class_id and int(r.class_id) == int(class_id):
+            if external:
+                return {"type": "CLASS", "conflictWith": "当前教学班",
+                        "detail": f"其他排课范围已占用当前班级的周{weekday}第{slot_no}节，请联系校教务协调"}
             return {"type": "CLASS", "conflictWith": r.class_name or str(class_id),
                     "detail": f"班级 {r.class_name or class_id} 周{weekday}第{slot_no}节已排 {r.course_name}"}
-        if classroom and r.classroom_text and r.classroom_text == classroom:
+        same_room = (int(r.classroom_id) == int(classroom_id)
+                     if classroom_id and getattr(r, "classroom_id", None)
+                     else classroom and r.classroom_text and r.classroom_text == classroom)
+        if same_room:
             return {"type": "CLASSROOM", "conflictWith": classroom,
                     "detail": f"教室 {classroom} 周{weekday}第{slot_no}节已被占用"}
     return None
