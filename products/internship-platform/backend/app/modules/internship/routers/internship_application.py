@@ -30,6 +30,23 @@ def applications(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/summary")
+def application_summary(batchId: str = Query(..., min_length=1),
+                        user=Depends(require_permission(_P_VIEW))):
+    return success(svc.application_summary(batch_id=batchId, user=user))
+
+
+@router.get("/students")
+def application_students(state: str = Query(..., min_length=1),
+                         page: int = Query(1, ge=1),
+                         pageSize: int = Query(20, ge=1, le=200),
+                         keyword: Optional[str] = None,
+                         batchId: str = Query(..., min_length=1),
+                         user=Depends(require_permission(_P_VIEW))):
+    items, total = svc.list_application_students(
+        page, pageSize, state, batch_id=batchId, keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
 @router.get("/{application_id}")
 def application_detail(application_id: str, user=Depends(require_permission(_P_VIEW))):
     return success(svc.get_application(application_id, user))
