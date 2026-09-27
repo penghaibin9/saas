@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from app.core.permissions import require_module, require_staff
 from app.core.security import require_mobile_student
 from app.core.student_portal_module_gate import enforce_student_portal_module_access
-from app.api.v1 import mobile_internship_selection, mobile_internship_student
+from app.api.v1 import mobile_internship_context, mobile_internship_selection, mobile_internship_student
 from app.student_portal.internship_router import router as student_portal_internship_router
 from app.student_portal.internship_selection_router import router as student_portal_selection_router
 
@@ -107,5 +107,16 @@ def build_student_portal_router() -> APIRouter:
     return router
 
 
+def build_teacher_mobile_router() -> APIRouter:
+    """Teacher mini-program surface; keep staff identity and internship module gates server-side."""
+    router = APIRouter()
+    router.include_router(
+        mobile_internship_context.router,
+        dependencies=[Depends(require_staff)],
+    )
+    return router
+
+
+api_router.include_router(build_teacher_mobile_router())
 api_router.include_router(build_student_mobile_router())
 api_router.include_router(build_student_portal_router())
