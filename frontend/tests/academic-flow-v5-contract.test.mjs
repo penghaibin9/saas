@@ -230,6 +230,21 @@ function programPage(api) {
   return result
 }
 
+test('program editor uses live responsibility and next step, without reviving expired assignees', () => {
+  const { state } = page('AaProgramEditorView', { ...registry, ...programConstants }, { ctx: { currentRole: {}, dataScope: {} } })
+  state.program = { status: 'PUBLISHED', responsibility, nextStep: { label: '由校教务绑定适用年级后启用' } }
+  assert.match(state.programOwner, /信息学院.*李老师/)
+  assert.equal(state.programNextOwner, '由校教务绑定适用年级后启用')
+  state.program.responsibility = { ...responsibility, resolved: false, reason: 'ASSIGNMENT_EXPIRED' }
+  assert.match(state.programOwner, /责任任职已到期/)
+  assert.doesNotMatch(state.programOwner, /李老师/)
+  state.program = { status: 'ENABLED' }
+  assert.equal(state.programOwner, '本轮方案编制已结束')
+  assert.equal(state.programNextOwner, '')
+  state.program = { status: 'DRAFT' }
+  assert.match(state.programOwner, /具体责任人待配置/)
+})
+
 test('program publishing reads responsibility from the exact program detail without requiring a term', async () => {
   const ids = []
   const { state } = programPage({ getProgram: async programId => { ids.push(programId); return { code: 0, data: { programId, responsibility, nextStep: { label: '生成正式教学任务' } } } } })
