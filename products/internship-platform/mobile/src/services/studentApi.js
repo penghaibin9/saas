@@ -57,8 +57,31 @@ export const studentApi = {
   getInternshipHelp: (batchId, internshipId) => internship.studentInternshipHelp(batchId, internshipId),
   reportInternshipHelp: (body) => internship.studentInternshipHelpSubmit(body),
   submitCheckin: (body) => realRequest('/mobile/internship/checkin', { method: 'POST', data: body || {} }),
-  getCheckinPreflight: () => realRequest('/mobile/internship/checkin/preflight', { method: 'POST' }),
-  getCheckinWeek: () => realRequest('/mobile/internship/checkin/week'),
+  getCheckinPreflight: (timezoneName = '', batchId = '') => {
+    const q = []
+    if (timezoneName) q.push('timezoneName=' + encodeURIComponent(timezoneName))
+    if (batchId) q.push('batchId=' + encodeURIComponent(batchId))
+    return realRequest('/mobile/internship/checkin/preflight' + (q.length ? '?' + q.join('&') : ''), { method: 'POST' })
+  },
+  getCheckinWeek: (timezoneName = '', batchId = '') => {
+    const q = []
+    if (timezoneName) q.push('timezoneName=' + encodeURIComponent(timezoneName))
+    if (batchId) q.push('batchId=' + encodeURIComponent(batchId))
+    return realRequest('/mobile/internship/checkin/week' + (q.length ? '?' + q.join('&') : ''))
+  },
+  getCheckinCalendar: (month = '', timezoneName = '', batchId = '') => {
+    const q = []
+    if (month) q.push('month=' + encodeURIComponent(month))
+    if (timezoneName) q.push('timezoneName=' + encodeURIComponent(timezoneName))
+    if (batchId) q.push('batchId=' + encodeURIComponent(batchId))
+    return realRequest('/mobile/internship/checkin/calendar' + (q.length ? '?' + q.join('&') : ''))
+  },
+  getCheckinExemptions: (batchId, internshipId) =>
+    realRequest(`/mobile/internship/context/checkin-exemptions?batchId=${encodeURIComponent(batchId)}&internshipId=${encodeURIComponent(internshipId)}`),
+  applyCheckinExemption: (body) =>
+    realRequest('/mobile/internship/context/checkin-exemptions', { method: 'POST', data: body || {} }),
+  withdrawCheckinExemption: (id, body) =>
+    realRequest(`/mobile/internship/context/checkin-exemptions/${encodeURIComponent(id)}/withdraw`, { method: 'POST', data: body || {} }),
   getInternshipEnterprises: (city = '') => realRequest('/mobile/internship/enterprises' + (city ? `?city=${encodeURIComponent(city)}` : '')),
   getInternshipInsurance: () => realRequest('/mobile/internship/insurance'),
   submitInternshipInsurance: (body) => realRequest('/mobile/internship/insurance', { method: 'POST', data: body || {} }),
