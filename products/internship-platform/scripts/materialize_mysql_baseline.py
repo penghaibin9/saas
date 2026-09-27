@@ -46,7 +46,8 @@ VERSION_PATH.parent.mkdir(parents=True, exist_ok=True)
 SQL_PATH.write_text(sql, encoding="utf-8")
 META_PATH.write_text(json.dumps({
     "schemaVersion": 1,
-    "revision": "0001_internship_standalone_baseline",
+    "revision": "ix0001",
+    "logicalRevision": "0001_internship_standalone_baseline",
     "sourceBaseline": "adea054e2fd59cc0b83bbdb22f10ec98a8e2fd8c",
     "tableCount": len(names),
     "tableNames": names,
@@ -56,7 +57,7 @@ META_PATH.write_text(json.dumps({
 
 version = f'''"""Standalone initial schema frozen from PR #275 W1.
 
-Revision ID: 0001_internship_standalone_baseline
+Revision ID: ix0001
 Revises:
 """
 from __future__ import annotations
@@ -65,7 +66,7 @@ from pathlib import Path
 
 from alembic import op
 
-revision = "0001_internship_standalone_baseline"
+revision = "ix0001"
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -104,7 +105,8 @@ def downgrade() -> None:
 VERSION_PATH.write_text(version, encoding="utf-8")
 
 print(json.dumps({
-    "revision": "0001_internship_standalone_baseline",
+    "revision": "ix0001",
+    "logicalRevision": "0001_internship_standalone_baseline",
     "tableCount": len(names),
     "sha256": digest,
     "sql": str(SQL_PATH),
