@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends
 from app.core.permissions import require_module, require_staff
 from app.core.security import require_mobile_student
 from app.core.student_portal_module_gate import enforce_student_portal_module_access
-from app.api.v1 import mobile_internship_context, mobile_internship_selection, mobile_internship_student
+from app.api.v1 import auth_recovery, mobile_internship_context, mobile_internship_selection, mobile_internship_student
 from app.student_portal.internship_router import router as student_portal_internship_router
 from app.student_portal.internship_selection_router import router as student_portal_selection_router
 
@@ -85,6 +85,7 @@ def build_staff_internship_router() -> APIRouter:
 
 
 api_router = APIRouter()
+api_router.include_router(auth_recovery.router)
 api_router.include_router(build_staff_internship_router())
 
 
