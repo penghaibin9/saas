@@ -192,6 +192,9 @@ export default {
   beforeUnmount(){this.alive=false;this.clearPrivate()},
  methods: {
     capture(){return {scope:this.scope,identity:this.identity,route:this.$route.fullPath}},isCurrent(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath},
+    routeTermId(){const value=this.$route.query?.termId;return typeof value==='string'&&/^[1-9][0-9]*$/.test(value)?value:''},
+    invalidRouteTerm(){return this.$route.query?.termId!==undefined&&!this.routeTermId()},
+    matchesRouteTerm(batch){const termId=this.routeTermId();return !termId||String(batch?.termId)===termId},
     denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
     clearPrivate(){this.scope++;this.seq++;this.detailSeq++;this.rows=[];this.current=null;this.items=[];this.createVisible=false;this.confirmVisible=false;this.confirmKind='';this.confirmError='';this.pendingAction=null;this.pendingCommand=null;this.actionNotice='';this.form={termId:''};this.formError='';this.loading=false;this.saving=false;this.actionBusy=false},
     fail(err,fallback){if(this.denied(err))this.clearPrivate();return gradeError(err,fallback)},
@@ -201,6 +204,7 @@ export default {
       this.rows=[];this.current=null;this.items=[];this.confirmVisible=false;this.confirmKind='';this.confirmError='';this.pendingAction=null
       this.createVisible=false;this.formError='';this.listError='';this.loading=false;this.saving=false;this.actionBusy=false
       if(this.pendingCommand&&!this.pendingCommand.sent){this.pendingCommand=null;this.actionNotice=''}
+      if(this.invalidRouteTerm()){this.listError='学期参数无效，请从正式学期入口重新进入归档批次。';return}
       this.load()
       const batchId=this.$route.params?.batchId??this.$route.query?.batchId
       if(batchId==null||batchId==='')return
@@ -223,11 +227,16 @@ export default {
     itemType(row) { const state = this.itemState(row); return _IT[state] || 'warning' },
     fmt(s) { return s ? s.replace('T', ' ').slice(0, 16) : '' },
    async load() {
-      const c=this.capture(),seq=++this.seq;this.loading = true;this.listError=''
+      const c=this.capture(),seq=++this.seq,termId=this.routeTermId();this.loading = true;this.listError=''
      try {
-        const res=await readAllPages((page,pageSize)=>api.listBatches({page,pageSize}),{identity:row=>row.batchId,pageSize:100})
+        if(this.invalidRouteTerm()){
+          this.rows=[];this.current=null;this.items=[];this.confirmVisible=false;this.createVisible=false
+          this.listError='学期参数无效，请从正式学期入口重新进入归档批次。';return
+        }
+        const res=await readAllPages((page,pageSize)=>api.listBatches({page,pageSize,...(termId?{termId}:{})}),{identity:row=>row.batchId,pageSize:100})
         if(!this.isCurrent(c)||seq!==this.seq)return
         if(res.code!==0)throw res
+        if(termId&&res.data.list.some(row=>!this.matchesRouteTerm(row)))throw {code:'TERM_SCOPE_MISMATCH',message:'返回的归档批次与当前学期不一致，请刷新后核对。'}
         this.rows=res.data.list
         if(!this.current&&!this.$route.query?.batchId&&this.rows.length)await this.select(this.rows[0])
      } catch (e) {
@@ -240,7 +249,7 @@ export default {
       if(this.actionBusy||this.pendingCommand)return
       this.confirmVisible=false;this.confirmKind='';this.confirmError='';this.pendingAction=null
       const batchId=String(b.batchId),c=this.capture(),seq=++this.detailSeq
-      try{const res=await api.getBatch(batchId);if(!this.isCurrent(c)||seq!==this.detailSeq)return;if(res.code!==0)throw res;if(String(res.data?.batchId)!==batchId||!Array.isArray(res.data?.items))throw {code:503};this.current=res.data;this.items=res.data.items}
+      try{const res=await api.getBatch(batchId);if(!this.isCurrent(c)||seq!==this.detailSeq)return;if(res.code!==0)throw res;if(String(res.data?.batchId)!==batchId||!Array.isArray(res.data?.items))throw {code:503};if(!this.matchesRouteTerm(res.data)){this.current=null;this.items=[];this.listError='所选归档批次不属于当前学期，请返回本学期列表。';return}this.current=res.data;this.items=res.data.items}
       catch(err){if(this.isCurrent(c)&&seq===this.detailSeq)toast.error(this.fail(err,'归档批次加载失败'))}
    },
     async refreshCurrentFromServer() {
@@ -257,7 +266,7 @@ export default {
       } else toast.error(this.fail(res,'归档批次刷新失败'))
       } catch (err) { if(this.isCurrent(c)&&seq===this.detailSeq)toast.error(this.fail(err,'归档批次刷新失败')) }
     },
-   openCreate() { if (!this.isCollegeScope && !this.actionBusy) { this.form = { termId: '' }; this.formError = ''; this.createVisible = true } },
+   openCreate() { if (!this.isCollegeScope && !this.actionBusy && !this.invalidRouteTerm()) { this.form = { termId: this.routeTermId() }; this.formError = ''; this.createVisible = true } },
     async runBatchWrite(kind,batchId,validate,send,verify,success){
       if(this.isCollegeScope||this.pendingCommand)return false
       const c=this.capture(),id=String(batchId);this.actionBusy=true;this.pendingCommand={kind,batchId:id,sent:false};this.actionNotice='结果待核实，请勿重复操作。'
@@ -282,6 +291,7 @@ export default {
    async submitCreate() {
      if(this.isCollegeScope)return
      if (!this.form.termId) { this.formError = '请选择学期'; return }
+     if(this.invalidRouteTerm()||(this.routeTermId()&&String(this.form.termId)!==this.routeTermId())){this.formError='当前归档学期与页面学期不一致，请返回本学期重新选择。';return}
       if(this.saving||this.pendingCommand)return
       const termId=String(this.form.termId),c=this.capture();this.saving=true;this.pendingCommand={kind:'create',termId,sent:true};this.actionNotice='创建结果待核实，请勿重复创建。'
       try{let res;try{res=await api.createBatch({termId})}catch(err){res=err}if(!this.isCurrent(c))return;if(res?.code!==0&&/403|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingCommand=null;this.actionNotice='';throw res}const id=String(res?.data?.batchId||'');if(res?.code===0&&id){const fresh=await api.getBatch(id);if(!this.isCurrent(c))return;if(fresh?.code!==0)throw fresh;if(fresh?.code===0&&String(fresh.data?.batchId)===id&&String(fresh.data?.termId)===termId&&Array.isArray(fresh.data?.items)){this.pendingCommand=null;this.actionNotice='已核对正式归档批次。';this.createVisible=false;this.current=fresh.data;this.items=fresh.data.items;await this.load();return}}this.formError='创建结果待核实，请勿重复创建。'
@@ -349,6 +359,7 @@ export default {
         if(!this.isCurrent(c)||seq!==this.detailSeq)return
         if(res?.code!==0)throw res
         if(String(res.data?.batchId)!==batchId||!Array.isArray(res.data?.items))throw {code:503}
+        if(!this.matchesRouteTerm(res.data)){this.current=null;this.items=[];this.listError='所选归档批次不属于当前学期，请返回本学期列表。';return}
         this.current=res.data;this.items=res.data.items
       } catch(err) { if(this.isCurrent(c)&&seq===this.detailSeq)toast.error(this.fail(err,'归档结果复读失败')) }
     }

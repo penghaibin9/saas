@@ -8,6 +8,7 @@ import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 import * as registry from '../src/modules/academicAffairs/config/academicFlowRegistry.js'
 import { gradeError } from '../src/modules/academicAffairs/views/parallel-c/grade-review.js'
 import { safeBusinessMessage, safeEnumLabel } from '../src/utils/presentationSafety.js'
+import { readAllPages } from '../src/modules/academicAffairs/components/parallel-a/pagedRead.js'
 
 const domainNames = ['STUDENT_STATUS', 'REGISTRATION', 'STATUS_CHANGE', 'PROGRAM', 'TEACHING_TASK', 'SCHEDULE', 'SELECTION', 'EXAM', 'GRADE', 'MAKEUP', 'EVALUATION', 'TEXTBOOK', 'GRADUATION']
 const ctx = { currentRole: {}, dataScope: {} }
@@ -24,6 +25,7 @@ const components = {
   DataTable: { props: ['rows'], setup: props => () => Vue.h('p', props.rows.map(row => row.remark).join('；')) }
 }
 const deps = { ...components, ...registry, gradeError, safeBusinessMessage, safeEnumLabel }
+const archiveDeps = api => ({ ...deps, readAllPages, academicAffairsArchiveApi: api })
 const batch = (overrides = {}) => ({ batchId: '9007199254740993', termId: '52', termCode: '2026-2027-1', batchName: '秋季学期归档', status: 'READY', scopeType: 'COLLEGE', scopeNote: '学校封存材料由校教务统筹；请查看本院实时预检', missingCount: null, items: [], ...overrides })
 const precheck = (termId, overrides = {}) => ({ code: 0, data: { termId, termCode: `学期${termId}`, scopeType: 'COLLEGE', scopeNote: '仅核验本院学生及开课业务明细', result: 'PASS', blockingCount: 0, blockedDomains: 0, domains: domainNames.map(domain => ({ domain, domainLabel: '业务域', result: 'PASS', blockingCount: 0, recordCount: 1 })), ...overrides } })
 
@@ -143,6 +145,80 @@ test('学院范围阻止学校归档动作并携带字符串学期进入原预�
   await state.goCollegePrecheck()
   assert.equal(destination.name, 'aa-archive-precheck')
   assert.equal(destination.query.termId, '52')
+})
+
+test('归档批次列表每页带有效网址学期，新建沿用本学期且无学期保持原查询', async () => {
+  const calls = []
+  const { state } = page('AaArchiveConsoleView', archiveDeps({
+    listBatches: async params => {
+      calls.push(params)
+      const list = params.page === 1
+        ? Array.from({ length: 100 }, (_, index) => batch({ batchId: String(index + 1), scopeType: 'TENANT_ALL' }))
+        : [batch({ batchId: '101', scopeType: 'TENANT_ALL' })]
+      return { code: 0, data: { list, total: 101 } }
+    },
+    getBatch: async id => ({ code: 0, data: batch({ batchId: id, scopeType: 'TENANT_ALL' }) })
+  }), { ctx })
+  state.$route.query = { termId: '52' }
+  await state.load()
+  assert.equal(calls[0].termId, '52')
+  assert.equal(calls[1].termId, '52')
+  assert.equal(state.rows.length, 101)
+  assert.equal(state.current.termId, '52')
+  state.openCreate()
+  assert.equal(state.form.termId, '52')
+  state.$route.query = {}
+  await state.load()
+  assert.equal(Object.hasOwn(calls[2], 'termId'), false)
+  assert.equal(Object.hasOwn(calls[3], 'termId'), false)
+  state.openCreate()
+  assert.equal(state.form.termId, '')
+})
+
+test('归档非法学期清旧批次且不请求，显式批次深链与当前学期冲突时拒绝显示', async () => {
+  let lists = 0, details = 0
+  const { state } = page('AaArchiveConsoleView', archiveDeps({
+    listBatches: async () => { lists++; return { code: 0, data: { list: [], total: 0 } } },
+    getBatch: async () => { details++; return { code: 0, data: batch({ batchId: '12', termId: '51' }) } }
+  }), { ctx })
+  for (const invalid of ['0', 'abc', ['52'], null]) {
+    state.$route.query = { termId: invalid, batchId: '12' }
+    state.rows = [batch()]; state.current = batch(); state.items = [{ domain: 'EXAM' }]
+    state.syncRoute()
+    assert.equal(state.rows.length, 0)
+    assert.equal(state.current, null)
+    assert.equal(state.items.length, 0)
+    assert.match(state.listError, /学期参数无效/)
+  }
+  assert.equal(lists, 0)
+  assert.equal(details, 0)
+  state.$route.query = { termId: '52', batchId: '12' }
+  await state.selectAfterAction({ batchId: '12' })
+  assert.equal(details, 1)
+  assert.equal(state.current, null)
+  assert.match(state.listError, /不属于当前学期/)
+})
+
+test('归档学期切换后迟到列表不能覆盖新学期，也不自动选其他学期批次', async () => {
+  const old = deferred(), next = deferred(); const calls = []
+  const { state } = page('AaArchiveConsoleView', archiveDeps({
+    listBatches: params => { calls.push(params.termId); return params.termId === '51' ? old.promise : next.promise },
+    getBatch: async batchId => ({ code: 0, data: batch({ batchId, termId: '52' }) })
+  }), { ctx })
+  state.$route.query = { termId: '51' }; state.$route.fullPath = '/admin/academic-affairs/archive?termId=51'
+  const oldLoad = state.load()
+  state.current = batch({ batchId: '12', termId: '51' }); state.createVisible = true
+  state.$route.query = { termId: '52' }; state.$route.fullPath = '/admin/academic-affairs/archive?termId=52'
+  state.syncRoute()
+  assert.equal(state.current, null)
+  assert.equal(state.createVisible, false)
+  next.resolve({ code: 0, data: { list: [batch({ batchId: '14', termId: '52' })], total: 1 } })
+  for (let i = 0; i < 5; i++) await Promise.resolve()
+  old.resolve({ code: 0, data: { list: [batch({ batchId: '12', termId: '51' })], total: 1 } })
+  await oldLoad
+  assert.equal(calls.join(','), '51,52')
+  assert.equal(state.rows[0].batchId, '14')
+  assert.equal(state.current.batchId, '14')
 })
 
 test('学校缺失计数为空时显示待核对，正式零计数保持真实含义', () => {
