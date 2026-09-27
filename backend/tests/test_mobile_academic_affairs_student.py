@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+import pytest
+
 BASE = "/api/v1/mobile/academic"
 MAIN = 1000000000000000001
 
@@ -448,6 +450,54 @@ def test_registration_mobile_self_service_rechecks_batch_status_pool(client, db_
         assert db.query(AaRegistration).filter_by(
             batch_id=semester_id, student_id=normal_id, status="REGISTERED",
         ).count() == 1
+
+
+def test_registration_self_service_rejects_another_student_id_in_write_transaction(db_mode):
+    """即使调用者给出同租户他人 ID，正式本人写入口也不得产生任何事实。"""
+    import importlib
+
+    from app.core.context import set_tenant
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import AaRegistration, AaRegistrationBatch, StudentProfile
+
+    with get_sessionmaker()() as db:
+        own = StudentProfile(
+            tenant_id=MAIN, student_no="CR0038", real_name="本人注册核验甲",
+            student_status="PENDING_REGISTER", status="ACTIVE",
+        )
+        other = StudentProfile(
+            tenant_id=MAIN, student_no="CR0039", real_name="本人注册核验乙",
+            student_status="PENDING_REGISTER", status="ACTIVE",
+        )
+        batch = AaRegistrationBatch(
+            tenant_id=MAIN, batch_name="本人身份事务核验", register_type="ENROLL", status="OPEN",
+            window_start=datetime.utcnow() - timedelta(days=1),
+            window_end=datetime.utcnow() + timedelta(days=1),
+        )
+        db.add_all([own, other, batch])
+        db.flush()
+        own_id, other_id, batch_id = own.id, other.id, batch.id
+        db.commit()
+
+    svc = importlib.import_module("app.modules.academic_affairs.services.academic_affairs_service")
+    set_tenant({"tenantId": str(MAIN)})
+    try:
+        with pytest.raises(AppException) as exc:
+            svc.register_student(
+                batch_id,
+                {"userType": "STUDENT", "studentNo": "CR0038", "userId": "u-本人注册核验甲"},
+                other_id,
+                self_service=True,
+            )
+        assert exc.value.code == "NO_PERMISSION"
+    finally:
+        set_tenant(None)
+
+    with get_sessionmaker()() as db:
+        assert db.get(StudentProfile, own_id).student_status == "PENDING_REGISTER"
+        assert db.get(StudentProfile, other_id).student_status == "PENDING_REGISTER"
+        assert db.query(AaRegistration).filter_by(batch_id=batch_id).count() == 0
 
 
 def test_registration_mobile_routes_reject_teacher_and_legacy_mobile_client(client, db_mode):
