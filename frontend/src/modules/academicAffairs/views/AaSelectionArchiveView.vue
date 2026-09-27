@@ -85,11 +85,24 @@ export default {
   },
   async created() {
     const c = await academicAffairsApi.getContext()
+    if (this.disposed) return
     if (c.code === 0) this.ctx = c.data
-    this.load()
+    this.syncRoute()
   },
+  watch: { '$route.fullPath'() { this.syncRoute() } },
   beforeUnmount() { this.disposed = true; this.listSeq += 1; this.detailSeq += 1 },
   methods: {
+    routeTermId() { const value = this.$route.query?.termId; return typeof value === 'string' && /^[1-9]\d*$/.test(value) ? value : '' },
+    invalidRouteTerm() { return this.$route.query?.termId !== undefined && !this.routeTermId() },
+    syncRoute() {
+      if (this.disposed) return
+      this.listSeq++; this.detailSeq++
+      this.rows = []; this.current = null; this.selectedBatchId = ''; this.pagination.page = 1; this.pagination.total = 0
+      this.exportPurpose = ''; this.exporting = false; this.detailLoading = false; this.detailError = ''
+      this.termId = this.routeTermId()
+      if (this.invalidRouteTerm()) { this.loading = false; this.error = '学期参数无效，请从正式学期入口重新进入选课归档。'; return }
+      return this.load()
+    },
     clearSensitive(message) {
       this.listSeq += 1; this.detailSeq += 1
       this.rows = []; this.pagination.total = 0; this.current = null; this.selectedBatchId = ''
@@ -97,11 +110,13 @@ export default {
       this.error = message || '无权读取选课归档，已清除先前显示内容'
     },
     async load() {
-      const seq = ++this.listSeq
+      const seq = ++this.listSeq, route = this.$route.fullPath, termId = this.routeTermId()
       this.loading = true; this.error = ''
-      const res = await api.listArchivedBatches({ termId: this.termId || undefined, page: this.pagination.page, pageSize: this.pagination.pageSize })
-      if (this.disposed || seq !== this.listSeq) return
+      if (this.invalidRouteTerm()) { this.rows = []; this.current = null; this.pagination.total = 0; this.loading = false; this.error = '学期参数无效，请从正式学期入口重新进入选课归档。'; return }
+      const res = await api.listArchivedBatches({ ...(termId ? { termId } : {}), page: this.pagination.page, pageSize: this.pagination.pageSize })
+      if (this.disposed || seq !== this.listSeq || route !== this.$route.fullPath) return
       if (res.code === 0) {
+        if (termId && res.data.list.some(row => String(row.termId) !== termId)) { this.rows = []; this.current = null; this.pagination.total = 0; this.error = '返回的归档批次与当前学期不一致，请重新查询。'; this.loading = false; return }
         this.rows = res.data.list; this.pagination.total = res.data.total
         if (this.selectedBatchId && !this.rows.some(row => String(row.batchId) === String(this.selectedBatchId))) {
           this.current = null; this.selectedBatchId = ''; this.exportPurpose = ''
@@ -111,15 +126,27 @@ export default {
       else { this.rows = []; this.pagination.total = 0; this.error = res.message || '选课归档读取失败，请重试' }
       this.loading = false
     },
-    applyFilter() { this.pagination.page = 1; this.current = null; this.selectedBatchId = ''; this.exportPurpose = ''; this.load() },
+    async applyFilter() {
+      const value = this.termId, termId = value == null || value === '' ? '' : String(value)
+      if (termId && (typeof value !== 'string' || !/^[1-9]\d*$/.test(termId))) { this.listSeq++; this.detailSeq++; this.rows = []; this.current = null; this.selectedBatchId = ''; this.pagination.total = 0; this.exportPurpose = ''; this.detailLoading = false; this.loading = false; this.error = '所选学期无效，请重新选择正式学期。'; return }
+      if (termId === this.routeTermId() && !this.invalidRouteTerm()) { this.syncRoute(); return }
+      this.listSeq++; this.detailSeq++; this.rows = []; this.current = null; this.selectedBatchId = ''; this.pagination.total = 0; this.exportPurpose = ''; this.detailLoading = false; this.loading = true
+      const query = { ...this.$route.query }
+      if (termId) query.termId = termId
+      else delete query.termId
+      try { await this.$router.replace({ path: this.$route.path, query }) }
+      catch { this.loading = false; this.error = '学期切换未完成，请重新查询。' }
+    },
     onPage({ page }) { this.pagination.page = page; this.load() },
     async select(row) {
-      const seq = ++this.detailSeq, batchId = row.batchId
+      const seq = ++this.detailSeq, batchId = row.batchId, route = this.$route.fullPath, termId = this.routeTermId()
       this.current = null; this.selectedBatchId = batchId; this.exportPurpose = ''; this.detailError = ''; this.detailLoading = true
+      if (this.invalidRouteTerm() || (termId && String(row.termId) !== termId)) { this.detailLoading = false; this.detailError = '所选归档批次不属于当前学期，请返回本学期列表。'; return }
       const res = await api.archiveDetail(row.batchId)
-      if (this.disposed || seq !== this.detailSeq || String(batchId) !== String(this.selectedBatchId)) return
+      if (this.disposed || seq !== this.detailSeq || route !== this.$route.fullPath || String(batchId) !== String(this.selectedBatchId)) return
       this.detailLoading = false
-      if (res.code === 0) this.current = res.data
+      if (res.code === 0 && (!termId || String(res.data?.termId) === termId)) this.current = res.data
+      else if (res.code === 0) this.detailError = '返回的归档批次不属于当前学期，请重新选择。'
       else if (isDeniedResult(res)) this.clearSensitive(res.message)
       else this.detailError = res.message || '归档详情读取失败，请重试'
     },
@@ -132,8 +159,10 @@ export default {
       if (!this.exportPurpose || this.exportPurpose.trim().length < 5) {
         toast.error('导出用途必填且不少于 5 个字'); return
       }
+      const batchId = this.current.batchId, seq = this.detailSeq, route = this.$route.fullPath
       this.exporting = true
-      const res = await api.exportArchive(this.current.batchId, this.exportPurpose.trim())
+      const res = await api.exportArchive(batchId, this.exportPurpose.trim())
+      if (this.disposed || seq !== this.detailSeq || route !== this.$route.fullPath || String(this.current?.batchId) !== String(batchId)) return
       this.exporting = false
       if (isDeniedResult(res)) { this.clearSensitive(res.message); return }
       if (res.code !== 0) { this.detailError = res.message || '导出失败，请重试'; return }

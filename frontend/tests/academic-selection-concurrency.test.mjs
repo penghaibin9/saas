@@ -177,6 +177,81 @@ test('direct batchId deep link selects the requested batch instead of the defaul
   assert.equal(state.current.batchId, 'B')
 })
 
+test('selection archive deep link and refresh keep the selected term; no term keeps the full list', async () => {
+  const calls = []
+  const { state } = mount('AaSelectionArchiveView', {
+    listArchivedBatches: async params => { calls.push(params); return ok({ list: [{ batchId: '13', termId: '52', batchName: '联通试用班' }], total: 1 }) },
+    archiveDetail: async () => ok({ batchId: '13', termId: '52', batchName: '联通试用班' })
+  })
+  state.$route = { path: '/admin/academic-affairs/selection/archive', fullPath: '/admin/academic-affairs/selection/archive?termId=52', query: { termId: '52' } }
+  await state.syncRoute()
+  assert.equal(state.termId, '52')
+  assert.equal(calls[0].termId, '52')
+  await state.syncRoute()
+  assert.equal(calls[1].termId, '52')
+  state.$route = { ...state.$route, fullPath: '/admin/academic-affairs/selection/archive', query: {} }
+  await state.syncRoute()
+  assert.equal(state.termId, '')
+  assert.equal(Object.hasOwn(calls[2], 'termId'), false)
+})
+
+test('selection archive term picker writes the URL and rejects invalid parameters before reading', async () => {
+  const calls = [], destinations = []
+  const { state } = mount('AaSelectionArchiveView', {
+    listArchivedBatches: async params => { calls.push(params); return ok({ list: [], total: 0 }) }
+  })
+  state.$route = { path: '/admin/academic-affairs/selection/archive', fullPath: '/admin/academic-affairs/selection/archive?termId=52', query: { termId: '52', source: 'precheck' } }
+  state.$router = { replace: async target => { destinations.push(target) } }
+  state.termId = '53'
+  await state.applyFilter()
+  assert.equal(destinations[0].query.termId, '53')
+  assert.equal(destinations[0].query.source, 'precheck')
+  assert.equal(calls.length, 0)
+  state.$route = { ...state.$route, fullPath: '/admin/academic-affairs/selection/archive?termId=53', query: destinations[0].query }
+  await state.syncRoute()
+  assert.equal(calls[0].termId, '53')
+  state.termId = ''
+  await state.applyFilter()
+  assert.equal(Object.hasOwn(destinations[1].query, 'termId'), false)
+  assert.equal(destinations[1].query.source, 'precheck')
+  for (const invalid of ['0', 'abc', ['52'], null]) {
+    state.current = { batchId: '13', termId: '52' }; state.rows = [state.current]
+    state.$route = { ...state.$route, fullPath: `/invalid-${String(invalid)}`, query: { termId: invalid } }
+    await state.syncRoute()
+    assert.equal(state.current, null)
+    assert.equal(state.rows.length, 0)
+    assert.match(state.error, /学期参数无效/)
+  }
+  assert.equal(calls.length, 1)
+})
+
+test('selection archive term switch discards late list and detail responses', async () => {
+  const oldList = deferred(), oldDetail = deferred()
+  const { state } = mount('AaSelectionArchiveView', {
+    listArchivedBatches: params => params.termId === '51' ? oldList.promise : Promise.resolve(ok({ list: [{ batchId: '13', termId: '52' }], total: 1 })),
+    archiveDetail: id => id === '12' ? oldDetail.promise : Promise.resolve(ok({ batchId: '13', termId: '52' }))
+  })
+  state.$route = { path: '/admin/academic-affairs/selection/archive', fullPath: '/archive?termId=51', query: { termId: '51' } }
+  const staleList = state.syncRoute()
+  state.$route = { ...state.$route, fullPath: '/archive?termId=52', query: { termId: '52' } }
+  await state.syncRoute()
+  oldList.resolve(ok({ list: [{ batchId: '12', termId: '51' }], total: 1 }))
+  await staleList
+  assert.equal(state.rows[0].batchId, '13')
+  const staleDetail = state.select({ batchId: '12', termId: '51' })
+  await staleDetail
+  assert.equal(state.current, null)
+  assert.match(state.detailError, /不属于当前学期/)
+  state.$route = { ...state.$route, fullPath: '/archive?termId=51', query: { termId: '51' } }
+  const pending = state.select({ batchId: '12', termId: '51' })
+  state.$route = { ...state.$route, fullPath: '/archive?termId=52', query: { termId: '52' } }
+  await state.syncRoute()
+  oldDetail.resolve(ok({ batchId: '12', termId: '51' }))
+  await pending
+  assert.equal(state.rows[0].batchId, '13')
+  assert.notEqual(state.current?.batchId, '12')
+})
+
 test('scheduling workbench uses latest batch response while previous batch is loading', async () => {
   const slow = deferred(); const { state, component } = mount('AaSchedulingConsoleView', { getScheduleSummary: id => id === 'A' ? slow.promise : Promise.resolve(ok({ batchId: id })) })
   state.$route = { fullPath: '/scheduling?batchId=A', query: { batchId: 'A' } }; state.workbenchBatchId = 'A'
