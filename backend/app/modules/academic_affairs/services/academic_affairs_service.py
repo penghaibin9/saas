@@ -1723,7 +1723,7 @@ def roster_import_confirm(rows: list) -> dict:
 
 # ═══════════ 入学/学年/学期注册 ═══════════
 # 三种 register_type 共用同一批次/记录引擎（t_aa_registration_batch/t_aa_registration），不新建候选人表：
-# ENROLL=新生入学（候选池 PENDING_REGISTER）；ANNUAL/SEMESTER=在籍学生续注册（候选池 REGISTERED/RETAINED，
+# ENROLL=新生入学（候选池 PENDING_REGISTER）；ANNUAL/SEMESTER=在籍学生续注册（候选池 NORMAL/REGISTERED/RETAINED，
 # 语义参照总册 §3.3 E01「学年注册：教务处按学期开批次」——SEMESTER 即按学期粒度开批次的续注册视图，
 # 与 ANNUAL 区别仅在批次归属周期/菜单入口，候选人圈定与状态机完全一致，故 _batch_target_statuses 不需改动）。
 _REG_TYPE_LABEL = {"ENROLL": "入学注册", "ANNUAL": "学年注册", "SEMESTER": "学期注册"}
@@ -2048,13 +2048,13 @@ def _push_todo(db, biz_type, biz_id, todo_type, assignee_id, student_id, title) 
 # ── 批次候选学生（资格核验/未注册/扫描共用）──
 
 def _batch_target_statuses(batch) -> tuple:
-    """批次类型圈定的候选学籍状态池：ENROLL=待注册在籍生；ANNUAL=在籍待续生（含留级编入）。"""
-    return ("PENDING_REGISTER",) if batch.register_type == "ENROLL" else ("REGISTERED", "RETAINED")
+    """批次类型圈定的候选学籍状态池：入学仅待注册；续注册含正常在籍、已注册和留级。"""
+    return ("PENDING_REGISTER",) if batch.register_type == "ENROLL" else ("NORMAL", "REGISTERED", "RETAINED")
 
 
 def _batch_pending_candidates(db, batch, allowed=None) -> list:
     """本批次尚未完成注册的候选学生：命中批次目标学籍状态池，且本批次内无 REGISTERED 记录
-    （ANNUAL 候选池本身即 REGISTERED，必须以本批次注册记录而非主档状态判定是否已完成本轮）。
+    （续注册候选池包含已为 REGISTERED 的主档，必须以本批次注册记录判定是否已完成本轮）。
     allowed=None 不限范围；allowed=空集合 fail-closed 返回 []。返回 [(StudentProfile, AaRegistration|None), ...]。"""
     from app.models import AaRegistration, StudentProfile
     if allowed is not None and not allowed:
