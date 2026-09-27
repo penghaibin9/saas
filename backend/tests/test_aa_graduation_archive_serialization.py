@@ -9,7 +9,7 @@ from threading import Event, Lock
 from time import monotonic, sleep
 
 import pytest
-from sqlalchemy import text
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import visitors
 
@@ -123,28 +123,30 @@ def _pause_first_term_lock(monkeypatch, term_id):
 
 def _assert_term_wait(future, term_id, evidence):
     from app.db.session import get_engine
+    from sqlalchemy.exc import OperationalError
 
     engine = get_engine()
     assert engine.dialect.name == "mysql"
-    waits = []
+    waiting = False
     deadline = monotonic() + 5
     while monotonic() < deadline and not future.done():
         with engine.connect() as observer:
-            waits = [dict(row) for row in observer.execute(text("""
-                SELECT bt.PROCESSLIST_ID AS blocker, rt.PROCESSLIST_ID AS waiter
-                FROM performance_schema.data_lock_waits w
-                JOIN performance_schema.data_locks b
-                  ON b.ENGINE_LOCK_ID=w.BLOCKING_ENGINE_LOCK_ID AND b.ENGINE=w.ENGINE
-                JOIN performance_schema.threads bt ON bt.THREAD_ID=w.BLOCKING_THREAD_ID
-                JOIN performance_schema.threads rt ON rt.THREAD_ID=w.REQUESTING_THREAD_ID
-                WHERE b.OBJECT_SCHEMA=:schema AND b.OBJECT_NAME='t_aa_term'
-                  AND b.INDEX_NAME='PRIMARY' AND b.LOCK_DATA=:term_id
-            """), {"schema": engine.url.database, "term_id": str(term_id)}).mappings()]
-        if waits:
+            # 普通测试账号可查看自己的连接；不额外授予全局监控表权限。
+            waiting = len(evidence) >= 2 and any(
+                row['Id'] == evidence[1] and row['Command'] == 'Query'
+                and 't_aa_term' in (row['Info'] or '') and 'FOR UPDATE' in (row['Info'] or '').upper()
+                for row in observer.execute(text('SHOW FULL PROCESSLIST')).mappings()
+            )
+        if waiting:
             break
         sleep(0.02)
     assert len(evidence) >= 2 and evidence[0] != evidence[1], "必须有两个不同数据库连接竞争同一学期"
-    assert any(row["blocker"] == evidence[0] and row["waiter"] == evidence[1] for row in waits), waits
+    assert waiting and not future.done(), "第二连接必须正在执行学期锁查询且尚未返回"
+    # 再以独立连接当前读验证该确切学期行确实被锁，而非仅线程被测试屏障暂停。
+    with engine.connect() as observer, pytest.raises(OperationalError) as blocked:
+        observer.execute(select(AaTerm.id).where(AaTerm.id == term_id, AaTerm.tenant_id == TID)
+                         .with_for_update(nowait=True))
+    assert blocked.value.orig.args[0] == 3572
 
 
 def test_mysql_archive_waits_for_graduation_commit_and_rechecks_live_gate(client, db_mode, monkeypatch):
