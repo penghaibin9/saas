@@ -251,6 +251,8 @@ def checkin(user: dict, body: dict, *, batch_id=None) -> dict:
                 checkin_id=row.id,
                 watermark_text=watermark_text,
                 actor=user or {},
+                student_id=student.id,
+                batch_id=str(record.batch_id or "") or None,
                 db=db,
             )
             row.evidence_sha256 = evidence["originalSha256"]
@@ -450,17 +452,23 @@ def calendar(user: dict, *, month: str | None = None, batch_id=None,
 
 def week(user: dict, *, batch_id=None, timezone_name: str | None = None) -> dict:
     zone, local_now, _offset = _local_clock(timezone_name)
-    data = calendar(
-        user,
-        month=local_now.strftime("%Y-%m"),
-        batch_id=batch_id,
-        timezone_name=str(zone.key),
-    )
     monday = local_now.date() - timedelta(days=local_now.weekday())
-    sunday = monday + timedelta(days=6)
+    sunday = min(monday + timedelta(days=6), local_now.date())
+    months = {monday.strftime("%Y-%m"), sunday.strftime("%Y-%m")}
+    merged = {}
+    for month_value in sorted(months):
+        monthly = calendar(
+            user,
+            month=month_value,
+            batch_id=batch_id,
+            timezone_name=str(zone.key),
+        )
+        for item in monthly["days"]:
+            merged[item["date"]] = item
     rows = [
-        item for item in data["days"]
-        if monday <= date.fromisoformat(item["date"]) <= min(sunday, local_now.date())
+        merged[ds]
+        for ds in sorted(merged)
+        if monday <= date.fromisoformat(ds) <= sunday
     ]
     legacy = []
     for item in rows:
