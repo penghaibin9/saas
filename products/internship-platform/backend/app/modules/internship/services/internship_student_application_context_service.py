@@ -137,7 +137,10 @@ def save(user: dict, body: dict) -> dict:
             "status": row.status, "version": int(row.version or 0),
             "positionId": str(row.position_id or ""),
             "evidenceFileId": row.evidence_file_id or "",
+            "companyName": row.company_name or "",
+            "companyCreditCode": row.company_credit_code or "",
         }
+        before_company_identity = (row.company_name or "", row.company_credit_code or "")
         row.application_note = str(payload.get("applicationNote") or "").strip() or None
         if application_type == "POSITION":
             position, company = legacy._position(db, payload.get("positionId"))
@@ -154,10 +157,7 @@ def save(user: dict, body: dict) -> dict:
             if duplicate:
                 raise AppException("DATA_CONFLICT", "同一岗位无需重复申请")
             row.position_id = position.id
-            row.company_name = company.name
-            row.position_name = position.title
-            row.work_address = position.work_location
-            row.contact_name = None
+            legacy._apply_position_snapshot(row, position, company)
             row.contact_phone = None
             row.evidence_file_id = None
         else:
@@ -165,6 +165,11 @@ def save(user: dict, body: dict) -> dict:
             for field, value in legacy._clean_self_arranged(
                     payload, require_complete=False).items():
                 setattr(row, field, value)
+            if before_company_identity != (row.company_name or "", row.company_credit_code or ""):
+                row.registry_verification_status = "UNVERIFIED"
+                row.registry_verification_provider = None
+                row.registry_reference = None
+                row.registry_verified_at = None
 
         row.status = "DRAFT"
         row.submitted_at = None
@@ -177,6 +182,8 @@ def save(user: dict, body: dict) -> dict:
             "afterVersion": int(row.version or 0),
             "applicationType": application_type,
             "volunteerNo": int(row.volunteer_no or 0),
+            "companyCreditCode": row.company_credit_code or "",
+            "registryStatus": row.registry_verification_status or "UNVERIFIED",
         }, user)
         db.commit()
         return legacy._row(db, row, record, student)
@@ -205,18 +212,10 @@ def submit(user: dict, app_id, body: dict) -> dict:
         if row.application_type == "POSITION":
             position, company = legacy._position(db, row.position_id)
             _reject_campaign_position(position)
-            row.company_name = company.name
-            row.position_name = position.title
-            row.work_address = position.work_location
+            legacy._apply_position_snapshot(row, position, company)
         else:
-            values = legacy._clean_self_arranged({
-                "companyName": row.company_name,
-                "positionName": row.position_name,
-                "workAddress": row.work_address,
-                "contactName": row.contact_name,
-                "contactPhone": row.contact_phone,
-                "evidenceFileId": row.evidence_file_id,
-            }, require_complete=True)
+            values = legacy._clean_self_arranged(
+                legacy._snapshot_body(row), require_complete=True)
             for field, value in values.items():
                 setattr(row, field, value)
         row.status = "PENDING_REVIEW"
