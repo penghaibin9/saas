@@ -250,7 +250,7 @@ def _check_practice(db, s):
     if not prog:
         return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
                 "evidence": resolution.message, **meta}
-    target, target_error = _module_credit_target(prog.requirement_json, ("实践", "PRACTICE"))
+    target, target_error = _module_credit_target(prog.requirement_json, ("实践", "实践环节", "PRACTICE"))
     if target_error:
         return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
                 "evidence": f"{target_error}（实践环节）", **meta}

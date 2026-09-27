@@ -179,7 +179,7 @@ def test_current_credit_structure_drives_elective_and_practice_checks(db_mode):
         student, acad, _program = _seed(
             db, total_credits=4,
             credit_structure=[{"module": "选修", "creditTarget": 2},
-                              {"module": "实践", "creditTarget": 2}],
+                              {"module": "实践环节", "creditTarget": 2}],
             practice_course_names=("岗位实践",),
         )
         db.add(_grade(acad.id, course_id=90005, credit=2, nature="ELECTIVE",
@@ -199,7 +199,7 @@ def test_current_credit_structure_drives_elective_and_practice_checks(db_mode):
     ({"creditStructure": [{"module": "选修", "creditTarget": 2}]}, 2),
     ({"ELECTIVE": 2}, 2),
     ({"creditStructure": [{"module": "选修", "creditTarget": 2}], "ELECTIVE": 2}, 2),
-    ({"creditStructure": [{"module": "实践", "creditTarget": 0}]}, 0),
+    ({"creditStructure": [{"module": "实践环节", "creditTarget": 0}]}, 0),
     ({"creditStructure": [{"module": "公共基础", "creditTarget": 2}]}, None),
     ({"creditStructure": [{"module": "选修", "creditTarget": 2}], "ELECTIVE": 3}, None),
     ({"creditStructure": [{"module": "选修", "creditTarget": 2},
@@ -217,7 +217,20 @@ def test_current_credit_structure_drives_elective_and_practice_checks(db_mode):
 def test_module_credit_target_requires_explicit_unambiguous_value(requirement, expected):
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as svc
 
-    aliases = ("实践", "PRACTICE") if expected == 0 else ("选修", "ELECTIVE")
+    aliases = ("实践", "实践环节", "PRACTICE") if expected == 0 else ("选修", "ELECTIVE")
     target, error = svc._module_credit_target(json.dumps(requirement), aliases)
     assert target == expected
     assert (error is None) == (expected is not None)
+
+
+def test_practice_aliases_are_one_requirement_not_additive():
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as svc
+
+    requirement = {"creditStructure": [
+        {"module": "实践", "creditTarget": 2},
+        {"module": "实践环节", "creditTarget": 2},
+    ]}
+    target, error = svc._module_credit_target(
+        json.dumps(requirement, ensure_ascii=False), ("实践", "实践环节", "PRACTICE"))
+    assert target is None
+    assert error == "方案模块学分目标重复或冲突"
