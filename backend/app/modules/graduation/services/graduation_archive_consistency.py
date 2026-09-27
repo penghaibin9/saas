@@ -37,6 +37,7 @@ from app.modules.graduation.services.graduation_archive_data_quality import (
     readonly_missing_markers,
 )
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, can_access_student
+from app.modules.graduation.services.graduation_review_quorum import completed_reviews, current_evidence_review_ids
 from app.services.db_service import _iso, _tid, session
 
 _DEFAULT_REQUIRED = ["taskbook", "proposal", "midterm", "final", "review", "defenseScore", "grade"]
@@ -207,10 +208,27 @@ def _manifest_hash(db, student: GraduationStudent, archive_batch_no: str) -> str
 def _rule_check(db, student: GraduationStudent, *, base_check):
     checklist, _ = base_check(db, student)
     required = set(_required_items(db, student))
+    batch = db.scalars(select(GraduationBatch).where(
+        GraduationBatch.id == student.batch_id,
+        GraduationBatch.tenant_id == _tid(),
+        GraduationBatch.is_deleted.is_(False),
+    )).first() if student.batch_id else None
+    final = db.scalars(select(GraduationFinal).where(
+        GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == student.id,
+        GraduationFinal.final_type == "定稿", GraduationFinal.is_deleted.is_(False),
+    ).order_by(GraduationFinal.id.desc())).first()
+    reviews = db.scalars(select(GraduationReview).where(
+        GraduationReview.tenant_id == _tid(), GraduationReview.gd_student_id == student.id,
+        GraduationReview.gd_final_id == (final.id if final else -1),
+        GraduationReview.is_deleted.is_(False),
+    )).all()
+    eligible, minimum = completed_reviews(batch, final, reviews, current_evidence_review_ids(db, reviews))
     normalized = []
     for item in checklist:
         row = dict(item)
         row["required"] = row.get("item") in required
+        if row.get("item") == "review":
+            row["present"] = len(eligible) >= minimum
         normalized.append(row)
     missing = [row["label"] for row in normalized if row["required"] and not row.get("present")]
     payload = manifest_payload(db, student, "PREVIEW")

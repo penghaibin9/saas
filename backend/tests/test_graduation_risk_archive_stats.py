@@ -79,10 +79,13 @@ def test_archive_generate_blocks_submit_until_complete_then_files(graduation_cli
 
 def test_complete_archive_is_idempotent_and_archives_student_atomically(graduation_client, auth_headers, db_mode):
     from datetime import datetime
+    from sqlalchemy import text
     from app.db.session import get_sessionmaker
-    from app.models import (GraduationDefenseScore, GraduationFinal, GraduationGrade,
+    from app.models import (GraduationDefenseScore, GraduationFinal, GraduationGrade, GraduationMentor,
                             GraduationMidterm, GraduationProposal, GraduationReview,
                             GraduationStudent, GraduationTaskBook, PortalSignRecord)
+    from app.models.file import FileAsset, FileVersion
+    from app.models.graduation_material import GraduationStudentMaterial
     h = auth_headers
     gid = _gd_student(graduation_client, h, "AR-COMPLETE-01", "完整归档测试生")
     uploaded = graduation_client.post(
@@ -104,6 +107,37 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
     )
     db.add(final)
     db.flush()
+    stu = db.get(GraduationStudent, int(gid))
+    asset = FileAsset(tenant_id=1000000000000000001, asset_code=f"archive-final-{gid}",
+                      title="归档定稿", category_code="GRADUATION_FINAL")
+    db.add(asset)
+    db.flush()
+    version = FileVersion(tenant_id=1000000000000000001, asset_id=asset.id,
+                          file_object_id=file_id, version_no=1, status="APPROVED", is_current=True)
+    db.add(version)
+    db.flush()
+    material = GraduationStudentMaterial(
+        tenant_id=1000000000000000001, batch_id=stu.batch_id, gd_student_id=int(gid),
+        material_code="THESIS_FINAL", material_name="成果定稿", biz_stage="SUBMISSION",
+        source_record_type="FINAL", source_record_id=str(final.id),
+        asset_id=asset.id, current_version_id=version.id,
+        business_status="APPROVED", review_status="APPROVED",
+    )
+    db.add(material)
+    db.flush()
+    reviewers = [
+        GraduationMentor(tenant_id=1000000000000000001, teacher_no=f"AR-{gid}-{n}",
+                         teacher_name=name, qualification_status="QUALIFIED")
+        for n, name in ((1, "李评阅"), (2, "王评阅"))
+    ]
+    db.add_all(reviewers)
+    db.flush()
+    first_review = GraduationReview(tenant_id=1000000000000000001, gd_student_id=int(gid),
+                                    gd_final_id=final.id, reviewer_name="李评阅",
+                                    reviewer_mentor_id=reviewers[0].id, status="COMPLETED", score=88)
+    second_review = GraduationReview(tenant_id=1000000000000000001, gd_student_id=int(gid),
+                                     gd_final_id=final.id, reviewer_name="王评阅",
+                                     reviewer_mentor_id=reviewers[1].id, status="COMPLETED", score=88)
     db.add_all([
         GraduationTaskBook(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CONFIRMED",
                            taskbook_version=1),
@@ -112,13 +146,33 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
                          content_hash=f"taskbook-{gid}", signer_name="测试学生"),
         GraduationProposal(tenant_id=1000000000000000001, gd_student_id=int(gid), version="v1", status="APPROVED"),
         GraduationMidterm(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CHECKED_PASS"),
-        GraduationReview(tenant_id=1000000000000000001, gd_student_id=int(gid), gd_final_id=final.id,
-                         reviewer_name="李评阅", status="COMPLETED", score=88),
+        first_review,
         GraduationDefenseScore(tenant_id=1000000000000000001, gd_student_id=int(gid),
                                judge_name="王评委", score=90, status="CONFIRMED"),
         GraduationGrade(tenant_id=1000000000000000001, gd_student_id=int(gid),
                         total_score=89, grade_level="良好", status="PUBLISHED"),
     ])
+    db.flush()
+    file_hash = db.execute(text("SELECT sha256 FROM t_file_object WHERE id=:file_id"), {"file_id": file_id}).scalar_one()
+    db.execute(text("UPDATE t_gd_review SET material_id=:material,file_version_id=:version,source_sha256=:sha "
+                    "WHERE tenant_id=:tenant AND id=:first"), {
+        "material": material.id, "version": version.id, "sha": file_hash,
+        "tenant": 1000000000000000001, "first": first_review.id,
+    })
+    db.commit()
+    db.close()
+
+    one_reviewer = graduation_client.post(f"{GD_ARCHIVE}/{gid}/generate", headers=h).json()["data"]
+    assert any(item["item"] == "review" and not item["present"] for item in one_reviewer["checklist"])
+    assert graduation_client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).status_code == 409
+    db = get_sessionmaker()()
+    db.add(second_review)
+    db.flush()
+    db.execute(text("UPDATE t_gd_review SET material_id=:material,file_version_id=:version,source_sha256=:sha "
+                    "WHERE tenant_id=:tenant AND id=:review"), {
+        "material": material.id, "version": version.id, "sha": file_hash,
+        "tenant": 1000000000000000001, "review": second_review.id,
+    })
     db.commit()
     db.close()
 

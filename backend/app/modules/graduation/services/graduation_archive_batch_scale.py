@@ -33,6 +33,7 @@ from app.modules.graduation.services.graduation_archive_data_quality import (
     readonly_missing_markers,
 )
 from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+from app.modules.graduation.services.graduation_review_quorum import completed_reviews, current_evidence_review_ids
 from app.services.db_service import _iso, _tid, session
 
 _DEFAULT_REQUIRED = ["taskbook", "proposal", "midterm", "final", "review", "defenseScore", "grade"]
@@ -185,6 +186,9 @@ def build_snapshot(db, batch, mode: str, *, lock: bool = False) -> dict:
         GraduationReview.gd_student_id.in_(ids),
         GraduationReview.is_deleted.is_(False),
     ).order_by(GraduationReview.gd_student_id, GraduationReview.id), lock=lock))
+    current_review_ids = current_evidence_review_ids(
+        db, [row for student_rows in reviews.values() for row in student_rows],
+    )
     scores = _group(_rows(db, select(GraduationDefenseScore).where(
         GraduationDefenseScore.tenant_id == tid,
         GraduationDefenseScore.gd_student_id.in_(ids),
@@ -212,7 +216,7 @@ def build_snapshot(db, batch, mode: str, *, lock: bool = False) -> dict:
         for sid, rows in proposals.items()
     }
     selected_finals = {
-        sid: _latest([row for row in rows if row.final_type == "定稿" and row.status == "APPROVED"])
+        sid: _latest([row for row in rows if row.final_type == "定稿"])
         for sid, rows in finals.items()
     }
     selected_midterms = {sid: _latest(rows) for sid, rows in midterms.items()}
@@ -262,6 +266,7 @@ def build_snapshot(db, batch, mode: str, *, lock: bool = False) -> dict:
         grade = selected_grades.get(sid)
         student_reviews = reviews.get(sid, [])
         final_reviews = [row for row in student_reviews if final and row.gd_final_id == final.id]
+        eligible_reviews, minimum_reviewers = completed_reviews(batch, final, final_reviews, current_review_ids)
         student_scores = scores.get(sid, [])
         sign_key = f"{sid}:v{int(tb.taskbook_version or 1)}" if tb else ""
         sign = signs.get(sign_key)
@@ -276,8 +281,8 @@ def build_snapshot(db, batch, mode: str, *, lock: bool = False) -> dict:
             "taskbook": bool(tb and tb.status == "CONFIRMED"),
             "proposal": bool(proposal),
             "midterm": bool(midterm and midterm.status in ("CHECKED_PASS", "RECTIFIED_PASS")),
-            "final": bool(final),
-            "review": any(row.status == "COMPLETED" for row in final_reviews),
+            "final": bool(final and final.status == "APPROVED"),
+            "review": len(eligible_reviews) >= minimum_reviewers,
             "defenseScore": any(row.status == "CONFIRMED" for row in student_scores),
             "grade": bool(grade and grade.status == "PUBLISHED"),
         }

@@ -20,6 +20,9 @@ from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefense
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_command_service import _conflict_guard
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
+from app.modules.graduation.services.graduation_review_quorum import (
+    completed_reviews, current_evidence_review_ids, require_review_count,
+)
 from app.modules.graduation.policies import grade_policy
 
 STATUS_LABEL = {
@@ -87,21 +90,25 @@ def _grade_level(total: int | None) -> str | None:
 
 
 def _source_scores(db, stu: GraduationStudent) -> dict:
+    batch = db.scalars(select(GraduationBatch).where(
+        GraduationBatch.id == stu.batch_id, GraduationBatch.tenant_id == _tid(),
+        GraduationBatch.is_deleted.is_(False),
+    )).first() if stu.batch_id else None
     final = db.scalars(select(GraduationFinal).where(
         GraduationFinal.tenant_id == _tid(),
         GraduationFinal.gd_student_id == stu.id,
         GraduationFinal.final_type == "定稿",
-        GraduationFinal.status == "APPROVED",
         GraduationFinal.is_deleted.is_(False),
     ).order_by(GraduationFinal.id.desc())).first()
     review_rows = db.scalars(select(GraduationReview).where(
         GraduationReview.tenant_id == _tid(),
         GraduationReview.gd_student_id == stu.id,
         GraduationReview.gd_final_id == (final.id if final else -1),
-        GraduationReview.status == "COMPLETED",
-        GraduationReview.score.is_not(None),
         GraduationReview.is_deleted.is_(False),
     ).order_by(GraduationReview.id)).all()
+    review_rows, required = completed_reviews(
+        batch, final, review_rows, current_evidence_review_ids(db, review_rows),
+    )
     review_scores = [row.score for row in review_rows]
     defense_round = db.scalar(select(func.max(GraduationDefenseScore.round_no)).where(
         GraduationDefenseScore.tenant_id == _tid(),
@@ -122,6 +129,7 @@ def _source_scores(db, stu: GraduationStudent) -> dict:
     payload = {
         "studentId": int(stu.id),
         "finalId": int(final.id) if final else None,
+        "requiredReviewers": required,
         "reviews": [{"id": int(row.id), "score": int(row.score)} for row in review_rows],
         "defenseRound": int(defense_round) if defense_round else None,
         "defenseScores": [{"id": int(row.id), "score": int(row.score)} for row in defense_rows],
@@ -133,6 +141,7 @@ def _source_scores(db, stu: GraduationStudent) -> dict:
         "reviewerScore": round(sum(review_scores) / len(review_scores)) if review_scores else None,
         "finalId": str(final.id) if final else "",
         "reviewSourceCount": len(review_scores),
+        "requiredReviewers": required,
         "defenseScore": round(sum(defense_scores) / len(defense_scores)) if defense_scores else None,
         "defenseSourceCount": len(defense_scores),
         "defenseRound": defense_round,
@@ -224,6 +233,7 @@ def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defe
         if g.status == "PUBLISHED":
             raise AppException("DATA_CONFLICT", "已发布成绩不可直接核算，请先撤回")
         sources = _source_scores(db, stu)
+        require_review_count(sources["reviewSourceCount"], sources["requiredReviewers"])
         if sources["reviewerScore"] is None or sources["defenseScore"] is None:
             raise AppException("DATA_CONFLICT", "Review and confirmed defense scores must exist before calculation")
         authoritative_reviewer = sources["reviewerScore"]
@@ -266,6 +276,11 @@ def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
         stu = _stu_for_update(db, gd_student_id)
         grade_policy.authorize(db, stu, "review")
         g = _get_or_create(db, stu, for_update=True)
+        if action == "APPROVE":
+            sources = _source_scores(db, stu)
+            require_review_count(sources["reviewSourceCount"], sources["requiredReviewers"])
+            if g.source_snapshot_hash != sources["sourceSnapshotHash"]:
+                raise AppException("APPROVAL_VERSION_CONFLICT", "评阅或答辩来源已变化，请重新核算")
         if action == "APPROVE" and g.status == "REVIEWED":
             return _row(g, stu)
         if g.status != "CALCULATED":
@@ -294,11 +309,12 @@ def publish_grade(gd_student_id) -> dict:
         stu = _stu_for_update(db, gd_student_id)
         grade_policy.authorize(db, stu, "publish")
         g = _get_or_create(db, stu, for_update=True)
+        current_sources = _source_scores(db, stu)
+        require_review_count(current_sources["reviewSourceCount"], current_sources["requiredReviewers"])
         if g.status == "PUBLISHED":
             return _row(g, stu)
         if g.status != "REVIEWED" or not g.reviewed_at:
             raise AppException("DATA_CONFLICT", "仅「复核通过」成绩可发布")
-        current_sources = _source_scores(db, stu)
         if not g.source_snapshot_hash or g.source_snapshot_hash != current_sources["sourceSnapshotHash"]:
             raise AppException("APPROVAL_VERSION_CONFLICT", "Authoritative scores changed; recalculate before publishing")
         n, _ = _op()
