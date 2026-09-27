@@ -37,7 +37,7 @@ def current_evidence_review_ids(db, reviews) -> set[int]:
          AND m.current_version_id=r.file_version_id AND m.is_deleted=0
         JOIN t_file_version v
           ON v.tenant_id=r.tenant_id AND v.id=r.file_version_id
-         AND v.asset_id=m.asset_id AND v.status='APPROVED'
+         AND v.asset_id=m.asset_id
          AND v.is_current=1 AND v.is_deleted=0
         JOIN t_file_object f
           ON f.tenant_id=r.tenant_id AND f.id=v.file_object_id
@@ -48,6 +48,23 @@ def current_evidence_review_ids(db, reviews) -> set[int]:
           AND r.file_version_id IS NOT NULL AND r.source_sha256 IS NOT NULL
           AND r.source_sha256<>''
           AND r.is_deleted=0
+          AND (v.status='APPROVED' OR (v.status='ARCHIVED' AND EXISTS (
+              SELECT 1 FROM t_archive_manifest am
+              JOIN t_archive_manifest_item ami
+                ON ami.tenant_id=am.tenant_id AND ami.manifest_id=am.id
+               AND ami.material_code='THESIS_FINAL'
+               AND ami.asset_id=m.asset_id AND ami.version_id=v.id
+               AND ami.file_object_id=f.id
+               AND BINARY ami.sha256_snapshot=BINARY r.source_sha256
+               AND ami.is_deleted=0
+              WHERE am.tenant_id=r.tenant_id AND am.module_code='GRADUATION'
+                AND am.archive_type='GRADUATION_FILE_VERSION'
+                AND am.target_type='GRADUATION_STUDENT'
+                AND BINARY am.target_id=BINARY CAST(s.id AS CHAR)
+                AND m.archived_revision=am.revision
+                AND am.status IN ('FROZEN','PACKAGED')
+                AND CHAR_LENGTH(am.manifest_sha256)=64 AND am.is_deleted=0
+          )))
     """).bindparams(bindparam("review_ids", expanding=True),
                     bindparam("ready_scan_states", expanding=True))
     return {int(row[0]) for row in db.execute(stmt, {

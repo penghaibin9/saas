@@ -231,6 +231,18 @@ def test_grade_calculate_review_publish_withdraw(graduation_client, auth_headers
     db.commit()
     db.close()
 
+    db = get_sessionmaker()()
+    db.get(FileVersion, int(version.id)).status = "ARCHIVED"
+    db.commit()
+    db.close()
+    unfrozen = graduation_client.get(f"{GD_GRADE}/{gid}", headers=h).json()["data"]
+    assert unfrozen["sourceScores"]["reviewSourceCount"] == 0
+    assert graduation_client.post(f"{GD_GRADE}/{gid}/calculate", headers=h, json={"advisorScore": 95}).status_code == 409
+    db = get_sessionmaker()()
+    db.get(FileVersion, int(version.id)).status = "APPROVED"
+    db.commit()
+    db.close()
+
     calc = graduation_client.post(f"{GD_GRADE}/{gid}/calculate", headers=h, json={
         "advisorScore": 95, "reviewerScore": 90, "defenseScore": 90})
     body = calc.json()["data"]
