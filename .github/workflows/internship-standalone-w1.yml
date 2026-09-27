@@ -69,6 +69,11 @@ jobs:
           PYTHONPATH: products/internship-platform/backend
         run: python products/internship-platform/scripts/build_schema_manifest.py
 
+      - name: Build frozen MySQL baseline DDL
+        env:
+          PYTHONPATH: products/internship-platform/backend
+        run: python products/internship-platform/scripts/build_mysql_baseline_ddl.py
+
       - name: Upload W1 extraction evidence
         uses: actions/upload-artifact@v4
         with:
@@ -77,4 +82,6 @@ jobs:
             products/internship-platform/artifacts/extraction-manifest.json
             products/internship-platform/artifacts/backend-dependencies.json
             products/internship-platform/artifacts/schema-manifest.json
+            products/internship-platform/artifacts/0001_internship_standalone_baseline.mysql.sql
+            products/internship-platform/artifacts/baseline-ddl.json
           if-no-files-found: error
