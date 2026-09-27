@@ -46,3 +46,5 @@ from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
 from app.models.internship_position import InternshipPosition
 from app.models.internship_student_profile import StudentInternshipProfile, StudentInternshipProfileItem
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
+
+from app.models.internship_score_appeal import InternshipScoreAppeal

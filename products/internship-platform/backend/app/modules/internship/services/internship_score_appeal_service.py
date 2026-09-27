@@ -1,8 +1,8 @@
-"""岗位实习 · 成绩申诉领域闭环。
+"""岗位实习 Standalone · 成绩申诉领域闭环。
 
-复用 CsWorkOrder 作为承载，不复刻第二套工单表；但申诉的创建、裁决、成绩撤回、
-归档保护与数据范围全部由 internship 域负责。这样校园服务队列只是可选入口，
-不会再出现“工单办结了、正式成绩完全没变化”的死胡同。
+独立部署不再复用 campus-service 工单表；成绩申诉由
+t_internship_score_appeal 承载，但保留原有冻结成绩快照、乐观锁、
+成绩撤回/重算与归档保护语义。
 """
 from __future__ import annotations
 
@@ -12,8 +12,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (
-    CsServiceStudent,
-    CsWorkOrder,
+    InternshipScoreAppeal,
     InternshipArchive,
     InternshipAuditTrail,
     InternshipFinalScore,
@@ -33,7 +32,7 @@ def _operator(user: dict | None) -> str:
     return str((user or {}).get("realName") or "系统")
 
 
-def _meta(work_order: CsWorkOrder) -> dict:
+def _meta(work_order: InternshipScoreAppeal) -> dict:
     for item in work_order.trail_json or []:
         if isinstance(item, dict) and item.get("kind") == META_KIND:
             return item
@@ -96,7 +95,7 @@ def _archive_locked(db, internship_id: int):
     ).first()
 
 
-def _derived_status(work_order: CsWorkOrder, score: InternshipFinalScore | None, meta: dict) -> tuple[str, str]:
+def _derived_status(work_order: InternshipScoreAppeal, score: InternshipFinalScore | None, meta: dict) -> tuple[str, str]:
     if work_order.status == "CLOSED":
         return "REJECTED", "已驳回"
     if work_order.status in ACTIVE_WORK_ORDER_STATUSES:
@@ -109,7 +108,7 @@ def _derived_status(work_order: CsWorkOrder, score: InternshipFinalScore | None,
     return work_order.status, work_order.status
 
 
-def _row(db, work_order: CsWorkOrder, *, record=None, student=None) -> dict:
+def _row(db, work_order: InternshipScoreAppeal, *, record=None, student=None) -> dict:
     meta = _meta(work_order)
     if record is None or student is None:
         record, student = _record_and_student(db, meta)
@@ -146,32 +145,6 @@ def _row(db, work_order: CsWorkOrder, *, record=None, student=None) -> dict:
         "createdAt": _iso(work_order.created_at) or "",
         "updatedAt": _iso(work_order.updated_at) or "",
     }
-
-
-def _service_student(db, student: StudentProfile) -> CsServiceStudent:
-    row = db.scalars(
-        select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(),
-            CsServiceStudent.student_id == student.id,
-            CsServiceStudent.is_deleted.is_(False),
-        )
-    ).first()
-    if row:
-        return row
-    row = CsServiceStudent(
-        tenant_id=_tid(),
-        student_id=student.id,
-        student_no=student.student_no,
-        name=student.real_name or student.student_no or "学生",
-        college_name=getattr(student, "college_name", None),
-        major_name=getattr(student, "major_name", None),
-        class_id=str(getattr(student, "class_id", "") or "") or None,
-        class_name=getattr(student, "class_name", None),
-        grade=getattr(student, "grade", None),
-    )
-    db.add(row)
-    db.flush()
-    return row
 
 
 def create(user: dict, body: dict | None) -> dict:
@@ -239,28 +212,19 @@ def create(user: dict, body: dict | None) -> dict:
         if not score:
             raise AppException("DATA_CONFLICT", "当前没有已发布成绩，暂不能发起成绩申诉")
 
-        cs_student = _service_student(db, student)
         active = db.scalars(
-            select(CsWorkOrder)
+            select(InternshipScoreAppeal)
             .where(
-                CsWorkOrder.tenant_id == _tid(),
-                CsWorkOrder.cs_student_id == cs_student.id,
-                CsWorkOrder.title == APPEAL_KEY,
-                CsWorkOrder.status.in_(ACTIVE_WORK_ORDER_STATUSES),
-                CsWorkOrder.is_deleted.is_(False),
+                InternshipScoreAppeal.tenant_id == _tid(),
+                InternshipScoreAppeal.student_id == student.id,
+                InternshipScoreAppeal.internship_id == record.id,
+                InternshipScoreAppeal.status.in_(ACTIVE_WORK_ORDER_STATUSES),
+                InternshipScoreAppeal.is_deleted.is_(False),
             )
             .with_for_update()
-        ).all()
-        for item in active:
-            try:
-                item_meta = _meta(item)
-            except AppException as exc:
-                raise AppException(
-                    "DATA_CONFLICT",
-                    "存在未迁移的历史成绩申诉工单，请先由管理员核对后再提交",
-                ) from exc
-            if str(item_meta.get("internshipId")) == str(record.id):
-                raise AppException("DATA_CONFLICT", "该实习已有待处理的成绩申诉，请勿重复提交")
+        ).first()
+        if active:
+            raise AppException("DATA_CONFLICT", "该实习已有待处理的成绩申诉，请勿重复提交")
 
         now = datetime.utcnow()
         meta = {
@@ -273,9 +237,11 @@ def create(user: dict, body: dict | None) -> dict:
             "scoreTotal": score.total_score,
             "scorePublishedAt": _iso(score.published_at) or "",
         }
-        work_order = CsWorkOrder(
+        work_order = InternshipScoreAppeal(
             tenant_id=_tid(),
-            cs_student_id=cs_student.id,
+            student_id=student.id,
+            internship_id=record.id,
+            score_id=score.id,
             title=APPEAL_KEY,
             wo_type="COMPLAINT",
             priority="HIGH",
@@ -347,23 +313,14 @@ def my_latest(user: dict, *, batch_id=None, internship_id=None) -> dict:
         if not record:
             return {"hasAppeal": False, "status": "", "statusLabel": "暂无成绩申诉"}
 
-        cs_student = db.scalars(
-            select(CsServiceStudent).where(
-                CsServiceStudent.tenant_id == _tid(),
-                CsServiceStudent.student_id == student.id,
-                CsServiceStudent.is_deleted.is_(False),
-            )
-        ).first()
-        if not cs_student:
-            return {"hasAppeal": False, "status": "", "statusLabel": "暂无成绩申诉"}
-
         orders = db.scalars(
-            select(CsWorkOrder).where(
-                CsWorkOrder.tenant_id == _tid(),
-                CsWorkOrder.cs_student_id == cs_student.id,
-                CsWorkOrder.title == APPEAL_KEY,
-                CsWorkOrder.is_deleted.is_(False),
-            ).order_by(CsWorkOrder.id.desc())
+            select(InternshipScoreAppeal).where(
+                InternshipScoreAppeal.tenant_id == _tid(),
+                InternshipScoreAppeal.student_id == student.id,
+                InternshipScoreAppeal.internship_id == record.id,
+                InternshipScoreAppeal.title == APPEAL_KEY,
+                InternshipScoreAppeal.is_deleted.is_(False),
+            ).order_by(InternshipScoreAppeal.id.desc())
         ).all()
         for work_order in orders:
             try:
@@ -383,11 +340,11 @@ def list_appeals(user: dict, *, page: int = 1, page_size: int = 20, status: str 
     page = max(1, int(page or 1))
     page_size = min(200, max(1, int(page_size or 20)))
     with session() as db:
-        query = select(CsWorkOrder).where(
-            CsWorkOrder.tenant_id == _tid(),
-            CsWorkOrder.title == APPEAL_KEY,
-            CsWorkOrder.is_deleted.is_(False),
-        ).order_by(CsWorkOrder.id.desc())
+        query = select(InternshipScoreAppeal).where(
+            InternshipScoreAppeal.tenant_id == _tid(),
+            InternshipScoreAppeal.title == APPEAL_KEY,
+            InternshipScoreAppeal.is_deleted.is_(False),
+        ).order_by(InternshipScoreAppeal.id.desc())
         candidates = list(db.scalars(query).all())
         visible = []
         for work_order in candidates:
@@ -412,7 +369,7 @@ def list_appeals(user: dict, *, page: int = 1, page_size: int = 20, status: str 
 
 def get_appeal(user: dict, appeal_id) -> dict:
     with session() as db:
-        work_order = db.get(CsWorkOrder, _as_id(appeal_id))
+        work_order = db.get(InternshipScoreAppeal, _as_id(appeal_id))
         if (
             not work_order
             or work_order.is_deleted
@@ -442,12 +399,12 @@ def decide(user: dict, appeal_id, body: dict | None, *, approve: bool) -> dict:
         )
         assert_high_risk_write_available(db)
         work_order = db.scalars(
-            select(CsWorkOrder)
+            select(InternshipScoreAppeal)
             .where(
-                CsWorkOrder.id == _as_id(appeal_id),
-                CsWorkOrder.tenant_id == _tid(),
-                CsWorkOrder.title == APPEAL_KEY,
-                CsWorkOrder.is_deleted.is_(False),
+                InternshipScoreAppeal.id == _as_id(appeal_id),
+                InternshipScoreAppeal.tenant_id == _tid(),
+                InternshipScoreAppeal.title == APPEAL_KEY,
+                InternshipScoreAppeal.is_deleted.is_(False),
             )
             .with_for_update()
         ).first()
@@ -508,7 +465,7 @@ def decide(user: dict, appeal_id, body: dict | None, *, approve: bool) -> dict:
             })
             new_work_order_version = versioned_update(
                 db,
-                CsWorkOrder,
+                InternshipScoreAppeal,
                 entity_id=work_order.id,
                 tenant_id=_tid(),
                 expected_version=expected_version,
@@ -518,7 +475,7 @@ def decide(user: dict, appeal_id, body: dict | None, *, approve: bool) -> dict:
                     "close_time": now,
                     "trail_json": trail,
                 },
-                extra_where=(CsWorkOrder.status.in_(ACTIVE_WORK_ORDER_STATUSES),),
+                extra_where=(InternshipScoreAppeal.status.in_(ACTIVE_WORK_ORDER_STATUSES),),
             )
             audit_action = "APPROVE_WITHDRAW_SCORE"
             message = "申诉已受理，原已发布成绩已撤回；请重新核算、复核并发布"
@@ -531,7 +488,7 @@ def decide(user: dict, appeal_id, body: dict | None, *, approve: bool) -> dict:
             })
             new_work_order_version = versioned_update(
                 db,
-                CsWorkOrder,
+                InternshipScoreAppeal,
                 entity_id=work_order.id,
                 tenant_id=_tid(),
                 expected_version=expected_version,
@@ -541,7 +498,7 @@ def decide(user: dict, appeal_id, body: dict | None, *, approve: bool) -> dict:
                     "close_time": now,
                     "trail_json": trail,
                 },
-                extra_where=(CsWorkOrder.status.in_(ACTIVE_WORK_ORDER_STATUSES),),
+                extra_where=(InternshipScoreAppeal.status.in_(ACTIVE_WORK_ORDER_STATUSES),),
             )
             audit_action = "REJECT"
             message = "成绩申诉已驳回，原成绩保持不变"
@@ -574,5 +531,5 @@ def decide(user: dict, appeal_id, body: dict | None, *, approve: bool) -> dict:
         }
 
 
-def is_score_appeal(work_order: CsWorkOrder | None) -> bool:
+def is_score_appeal(work_order: InternshipScoreAppeal | None) -> bool:
     return bool(work_order and work_order.title == APPEAL_KEY and not work_order.is_deleted)
