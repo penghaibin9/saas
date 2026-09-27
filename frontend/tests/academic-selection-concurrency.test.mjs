@@ -177,6 +177,83 @@ test('direct batchId deep link selects the requested batch instead of the defaul
   assert.equal(state.current.batchId, 'B')
 })
 
+test('selection term deep link filters batches, preselects creation term and keeps global time tick out', async () => {
+  const reads = [], writes = []; let ticks = 0
+  const { state } = mount(undefined, {
+    listBatches: async params => { reads.push(params); return ok({ list: [batch('52')], total: 1 }) },
+    createBatch: async body => { writes.push(body); return ok(batch('new')) },
+    timeTick: async () => { ticks++; return ok({ opened: 1, closed: 0 }) }
+  })
+  state.$route = { fullPath: '/selection?termId=52', query: { termId: '52' } }
+  await state.load()
+  assert.equal(reads[0].termId, '52')
+  state.openCreate()
+  assert.equal(state.form.termId, '52')
+  state.form.batchName = '本学期选课'; state.form.scopeType = 'SCHOOL'; state.form.termId = '51'
+  await state.submitCreate()
+  assert.equal(writes.length, 0)
+  assert.match(state.formError, /当前学期与链接不一致/)
+  state.form.termId = '52'
+  await state.submitCreate()
+  assert.equal(writes[0].termId, '52')
+  await state.runTimeTick()
+  assert.equal(ticks, 0)
+})
+
+test('selection invalid term fails closed and term change resets page and drops late list', async () => {
+  const old = deferred(), reads = []
+  const { state } = mount(undefined, {
+    listBatches: params => {
+      reads.push(params)
+      return params.termId === '51' ? old.promise : Promise.resolve(ok({ list: [batch('52')], total: 1 }))
+    }
+  })
+  state.$route = { fullPath: '/selection?termId=51', query: { termId: '51' } }
+  state.pagination.page = 3
+  const pending = state.load()
+  state.$route = { fullPath: '/selection?termId=52', query: { termId: '52' } }
+  await state.resetContext()
+  assert.equal(state.pagination.page, 1)
+  assert.equal(reads[1].termId, '52')
+  assert.equal(reads[1].page, 1)
+  old.resolve(ok({ list: [batch('51')], total: 1 }))
+  await pending
+  assert.equal(state.current.batchId, '52')
+  assert.equal(state.rows[0].batchId, '52')
+  state.pagination.page = 2
+  state.$route = { fullPath: '/selection?termId=52&tab=rule', query: { termId: '52', tab: 'rule' } }
+  await state.resetContext()
+  assert.equal(state.pagination.page, 2)
+  for (const invalid of ['0', 'abc', ['52'], null]) {
+    state.$route = { fullPath: `/selection?bad=${String(invalid)}`, query: { termId: invalid } }
+    await state.resetContext()
+    assert.equal(state.current, null)
+    assert.equal(state.rows.length, 0)
+    assert.match(state.error, /学期参数无效/)
+  }
+  assert.equal(reads.length, 3)
+})
+
+test('selection write returned after a term switch cannot replace the new term batch', async () => {
+  const oldWrite = deferred(), writes = []
+  const { state } = mount(undefined, {
+    listBatches: async params => ok({ list: [batch(params.termId)], total: 1 }),
+    publishBatch: id => { writes.push(id); return oldWrite.promise }
+  })
+  state.$route = { fullPath: '/selection?termId=51', query: { termId: '51' } }
+  await state.load()
+  await state.lifecycle('publishBatch', '发布')
+  const pending = state.onConfirm()
+  state.$route = { fullPath: '/selection?termId=52', query: { termId: '52' } }
+  await state.resetContext()
+  oldWrite.resolve(ok({ ...batch('51'), status: 'PUBLISHED' }))
+  await pending
+  assert.deepEqual(writes, ['51'])
+  assert.equal(state.current.batchId, '52')
+  assert.equal(state.current.status, 'DRAFT')
+  assert.equal(state.saving, false)
+})
+
 test('selection archive deep link and refresh keep the selected term; no term keeps the full list', async () => {
   const calls = []
   const { state } = mount('AaSelectionArchiveView', {

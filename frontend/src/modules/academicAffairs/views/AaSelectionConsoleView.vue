@@ -6,8 +6,9 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton v-if="activeTab === 'batch'" variant="ghost" :loading="tickBusy" :disabled="saving || tickBusy" @click="runTimeTick">按时间批量开选/截止</AppButton>
-      <AppButton v-if="activeTab === 'batch'" variant="primary" @click="openCreate">新建批次</AppButton>
+      <AppButton v-if="activeTab === 'batch' && !routeTerm().scoped" variant="ghost" :loading="tickBusy" :disabled="saving || tickBusy" @click="runTimeTick">按时间批量开选/截止</AppButton>
+      <span v-if="activeTab === 'batch' && routeTerm().scoped">全校批量开选与截止由全校统筹办理。</span>
+      <AppButton v-if="activeTab === 'batch'" variant="primary" :disabled="routeTerm().invalid" @click="openCreate">新建批次</AppButton>
     </template>
 
     <div class="aa-selection-layout">
@@ -211,7 +212,7 @@
           <AppTextInput v-model="form.batchName" placeholder="如 2024秋公共选修课选课" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="学期" required>
-          <AppTermEntityPicker v-model="form.termId" placeholder="选择学期" :disabled="saving" />
+          <AppTermEntityPicker v-model="form.termId" placeholder="选择学期" :disabled="saving || routeTerm().scoped" />
         </AppFormItem>
         <AppFormItem label="选课学分上限">
           <AppNumberInput v-model="form.maxCredits" :min="0" :max="50" :disabled="saving" />
@@ -331,7 +332,7 @@ export default {
   },
   data() {
     return {
-      loading: true, error: '', rows: [],
+      loading: true, error: '', rows: [], lastRouteTermKey: null,
       workspaceTabs: [{ key: 'batch', label: '选课批次' }, { key: 'rule', label: '选课规则' }, { key: 'reselect', label: '补选管理' }, { key: 'conflict', label: '冲突检测' }],
       pagination: { page: 1, pageSize: 50, total: 0 },
       coursePagination: { page: 1, pageSize: 20, total: 0 },
@@ -447,6 +448,14 @@ export default {
   },
   beforeUnmount() { this.disposed = true; this.invalidateSelection(); this.listGate.invalidate() },
   methods: {
+    routeTerm() {
+      const query = this.$route?.query || {}
+      if (!Object.prototype.hasOwnProperty.call(query, 'termId')) return { scoped: false, invalid: false, id: '' }
+      const id = query.termId
+      return typeof id === 'string' && /^[1-9]\d*$/.test(id)
+        ? { scoped: true, invalid: false, id }
+        : { scoped: true, invalid: true, id: '' }
+    },
     stepClass(index) { return { 'is-done': index < this.currentStep, 'is-current': index === this.currentStep } },
     pageContext() { return JSON.stringify([this.disposed, this.academicFlow?.identity() || academicIdentity(currentUserFromToken(), this.ctx), this.$route?.fullPath]) },
     commandContext() { return JSON.stringify([this.pageContext(), this.selectionVersion, this.current?.batchId, this.current?.status]) },
@@ -483,11 +492,15 @@ export default {
     },
     resetContext() {
       if (!this.listGate || this.disposed) return
-      this.invalidateSelection(); this.current = null; this.rows = []; this.courses = []; this.rounds = []; this.stats = null
-      this.createVisible = false; this.tickReceipt = null; this.load()
+      const termChanged = this.lastRouteTermKey !== JSON.stringify(this.routeTerm())
+      this.clearSensitiveSelectionData()
+      if (termChanged) this.pagination.page = 1
+      this.detailLoading = false; this.rosterLoading = false
+      this.detailError = ''; this.createVisible = false; this.formError = ''; this.tickReceipt = null
+      return this.load()
     },
     async runTimeTick() {
-      if (this.tickBusy || this.saving) return
+      if (this.routeTerm().scoped || this.tickBusy || this.saving) return
       const context = this.pageContext()
       this.tickBusy = true; this.tickReceipt = null
       try {
@@ -579,7 +592,17 @@ export default {
     async load() {
       const latest = this.listGate.begin()
       this.loading = true; this.error = ''
-      const res = await api.listBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const term = this.routeTerm()
+      this.lastRouteTermKey = JSON.stringify(term)
+      if (term.invalid) {
+        this.clearSensitiveSelectionData()
+        this.error = '链接中的学期参数无效，请返回学期预检重新进入'
+        this.loading = false
+        return
+      }
+      const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
+      if (term.scoped) params.termId = term.id
+      const res = await api.listBatches(params)
       if (!latest()) return
       if (res.code === 0) {
         this.rows = res.data.list
@@ -703,10 +726,19 @@ export default {
       }
       this.confirmContext = context; this.confirmVisible = true
     },
-    openCreate() { this.form = { batchName: '', termId: '', maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [] }; this.formError = ''; this.createVisible = true },
+    openCreate() {
+      const term = this.routeTerm()
+      if (term.invalid) return
+      this.form = { batchName: '', termId: term.id, maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [] }
+      this.formError = ''; this.createVisible = true
+    },
     async submitCreate() {
       if (this.saving) return
       const context = this.pageContext()
+      const term = this.routeTerm()
+      if (term.invalid || (term.scoped && String(this.form.termId) !== term.id)) {
+        this.formError = '当前学期与链接不一致，请重新进入后创建批次'; return
+      }
       if (!this.form.batchName) { this.formError = '批次名称必填'; return }
       if (!this.form.termId) { this.formError = '学期必选'; return }
       if (this.form.scopeType !== 'SCHOOL' && !this.form.classIds?.length) { this.formError = '请选择适用班级'; return }
