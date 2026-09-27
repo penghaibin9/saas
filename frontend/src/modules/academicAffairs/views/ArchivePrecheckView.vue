@@ -383,17 +383,21 @@ export default {
       })
     },
     handoffQuery() {
-      const query = { ...this.$route.query }
-      if (query.termId !== this.termId) delete query.batchId
+      const query = {}
       if (typeof this.termId === 'string' && /^[1-9]\d*$/.test(this.termId)) query.termId = this.termId
-      else delete query.termId
       return query
     },
     jump(domain) {
-      const path = domain.route || FALLBACK_ROUTE[domain.domain]
-      if (path) this.$router.push({ path, query: this.handoffQuery() })
+      const route = domain.route || FALLBACK_ROUTE[domain.domain]
+      if (!route) return
+      const target = this.$router.resolve(route)
+      this.$router.push({ path: target.path, query: { ...this.handoffQuery(), ...target.query } })
     },
-    goBatch() { this.$router.push({ path: '/admin/academic-affairs/archive', query: this.handoffQuery() }) }
+    goBatch() {
+      const query = this.handoffQuery()
+      if (this.$route.query.termId === query.termId && this.$route.query.batchId) query.batchId = this.$route.query.batchId
+      this.$router.push({ path: '/admin/academic-affairs/archive', query })
+    }
   }
 }
 </script>

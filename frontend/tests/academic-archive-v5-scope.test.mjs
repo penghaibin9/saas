@@ -183,20 +183,24 @@ test('归档预检去处理和归档批次入口保留当前正式学期与已�
   const { state } = precheckPage({})
   const destinations = []
   state.$router.push = value => { destinations.push(value) }
+  state.$router.resolve = value => {
+    const [path, search = ''] = value.split('?')
+    return { path, query: Object.fromEntries(new URLSearchParams(search)) }
+  }
   state.$route.query = { termId: '52', source: 'flow', batchId: '9007199254740993' }
   state.termId = '53'
   state.jump({ domain: 'EXAM', route: '/admin/academic-affairs/exam' })
   state.goBatch()
   assert.deepEqual(JSON.parse(JSON.stringify(destinations)), [
-    { path: '/admin/academic-affairs/exam', query: { termId: '53', source: 'flow' } },
-    { path: '/admin/academic-affairs/archive', query: { termId: '53', source: 'flow' } }
+    { path: '/admin/academic-affairs/exam', query: { termId: '53' } },
+    { path: '/admin/academic-affairs/archive', query: { termId: '53' } }
   ])
   state.$route.query = { source: 'workspace' }
   state.termId = '9007199254740995'
   state.jump({ domain: 'GRADUATION' })
   assert.deepEqual(JSON.parse(JSON.stringify(destinations[2])), {
     path: '/admin/academic-affairs/graduation/audit-console',
-    query: { source: 'workspace', termId: '9007199254740995' }
+    query: { termId: '9007199254740995' }
   })
   state.$route.query = { termId: '53', batchId: '9007199254740993' }
   state.termId = '53'
@@ -204,6 +208,11 @@ test('归档预检去处理和归档批次入口保留当前正式学期与已�
   assert.deepEqual(JSON.parse(JSON.stringify(destinations[3])), {
     path: '/admin/academic-affairs/archive',
     query: { termId: '53', batchId: '9007199254740993' }
+  })
+  state.jump({ domain: 'EXAM', route: '/admin/academic-affairs/exam?tab=archive&termId=54' })
+  assert.deepEqual(JSON.parse(JSON.stringify(destinations[4])), {
+    path: '/admin/academic-affairs/exam',
+    query: { termId: '54', tab: 'archive' }
   })
 })
 
