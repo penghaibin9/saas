@@ -615,6 +615,16 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20):
     from app.models import AaScheduleBatch, AaTerm
     with session() as db:
         conds = [AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.is_deleted.is_(False)]
+        # 与精确批次详情共用已配置的数据范围，并在 count/分页前收敛。
+        ctx = build_affairs_context(user or {}, db)
+        scope_type = str(ctx.scope_type or "NONE").upper()
+        if scope_type == "COLLEGE":
+            college_ids = {int(value) for value in ctx.college_ids if value is not None}
+            if not college_ids:
+                raise no_data_scope("当前账号没有课表查看数据范围")
+            conds.append(AaScheduleBatch.college_id.in_(sorted(college_ids)))
+        elif scope_type != "TENANT_ALL":
+            raise no_data_scope("当前账号没有课表查看数据范围")
         if term_id:
             conds.append(AaScheduleBatch.term_id == int(term_id))
         if status:
