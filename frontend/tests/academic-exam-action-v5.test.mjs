@@ -88,6 +88,38 @@ test('正常已编排批次保持原正式发布命令与写后回读', async ()
   assert.equal(writes, 1); assert.equal(reads, 3); assert.equal(state.current.status, 'PUBLISHED'); assert.equal(state.saving, false)
 })
 
+test('考试已结束或已归档只读回批次事实，不再请求发布就绪或提示再次发布', async () => {
+  for (const status of ['FINISHED', 'ARCHIVED']) {
+    let readinessReads = 0
+    const { state } = instance({ getBatch: async () => ok(batch({ status, responsibility: null, nextStep: null, publishAction: null })) }, {
+      getReadiness: async () => { readinessReads++; return ok(readiness({ canPublish: false, blockingReasons: ['考试批次尚未进入可发布阶段'] })) }
+    })
+    await state.refresh()
+    assert.equal(state.current.status, status)
+    assert.equal(state.readiness, null)
+    assert.equal(state.readinessError, '')
+    assert.equal(readinessReads, 0)
+    assert.doesNotMatch(state.objectBar.blocker, /发布|就绪/)
+    if (status === 'ARCHIVED') {
+      assert.equal(state.objectBar.owner, '学校已完成考务归档')
+      assert.equal(state.objectBar.blocker, '已归档，无当前办理阻断')
+      assert.equal(state.objectBar.nextOwner, '已办结，后续按权限查阅')
+    } else {
+      assert.match(state.objectBar.owner, /责任尚未配置/)
+      assert.equal(state.objectBar.blocker, '考试已结束，待完成归档')
+    }
+  }
+})
+
+test('非终态缺责任继续提示配置，已归档若有正式后续责任仍展示服务端事实', () => {
+  const { state } = instance()
+  state.current = batch({ status: 'ARRANGED', responsibility: null, nextStep: null })
+  assert.match(state.objectBar.owner, /责任尚未配置/)
+  state.current = batch({ status: 'ARCHIVED', responsibility: { orgName: '校教务处', resolved: true }, nextStep: { label: '核对查阅申请' } })
+  assert.match(state.objectBar.owner, /校教务处/)
+  assert.equal(state.objectBar.nextOwner, '核对查阅申请')
+})
+
 test('课程或发布回读中换身份、换批次、离页或卸载都不能接收许可和写入', async () => {
   for (const action of ['course', 'publish']) for (const change of ['identity', 'batch', 'route', 'unmount']) {
     const pending = deferred(); let writes = 0

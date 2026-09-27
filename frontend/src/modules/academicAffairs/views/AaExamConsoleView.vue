@@ -75,6 +75,8 @@
           <LoadingState v-if="batchDetailLoading" />
           <AppInlineAlert v-if="examActionError" type="danger" :description="examActionError" />
           <AppInlineAlert v-if="publishReason" type="info" :description="publishReason" />
+          <AppInlineAlert v-if="current.status === 'ARCHIVED'" type="success" description="本考试批次已完成归档，正式办理结束；后续按权限查阅归档记录。" />
+          <AppInlineAlert v-else-if="current.status === 'FINISHED'" type="info" description="考试已结束，下一步由校教务完成归档；无需重新发布。" />
           <AppButton v-if="readinessError || examActionError" variant="ghost" @click="refresh">重新读取当前批次</AppButton>
           <AppInlineAlert
             v-if="readinessError"
@@ -563,17 +565,20 @@ export default {
         const row = this.selectedArchive
         return {
           title: row?.batchName || '考务归档清单', objectId: row ? `考试批次 #${row.batchId}` : `${this.modePagination.total} 个封存批次`,
-          source: '考务管理 / 考务归档', status: row ? '已归档' : '只读核验', owner: this.batchDetailLoading ? '正在读取当前批次责任' : academicFlowOwner(row?.responsibility),
-          blocker: this.readinessError || (row && this.archiveHasRisk(row) ? '封存摘要含异常计数' : '无已知阻断'), blocked: !!this.readinessError || !!(row && this.archiveHasRisk(row)), nextOwner: academicFlowNextOwner(row?.nextStep)
+          source: '考务管理 / 考务归档', status: row ? '已归档' : '只读核验', owner: this.batchDetailLoading ? '正在读取当前批次责任' : row && !row.responsibility ? '学校已完成考务归档' : academicFlowOwner(row?.responsibility),
+          blocker: this.readinessError || (row && this.archiveHasRisk(row) ? '封存摘要含异常计数' : '无已知阻断'), blocked: !!this.readinessError || !!(row && this.archiveHasRisk(row)), nextOwner: row && !row.nextStep ? '已办结，后续按权限查阅' : academicFlowNextOwner(row?.nextStep)
         }
       }
       const status = this.current?.status
       const publishStage = ['COURSE_CONFIRMED', 'ARRANGED'].includes(status)
+      const archived = status === 'ARCHIVED'
       const blocker = this.readinessError || (publishStage && this.readiness && !this.readiness.canPublish ? (this.readiness.blockingReasons || []).join('；') : '')
       return {
         title: this.current?.batchName || '考试批次责任队列', objectId: this.current ? `考试批次 #${this.current.batchId}` : `${this.pagination.total} 个批次`,
         source: '考务管理 / 考务安排', status: this.current ? this.statusLabel(status) : '等待选择批次',
-        owner: this.batchDetailLoading ? '正在读取当前批次责任' : academicFlowOwner(this.current?.responsibility), blocker: blocker || (publishStage && this.readiness?.canPublish ? '本次就绪检查通过，发布时再次校验' : (this.current ? '按当前阶段核验，尚无本次就绪结论' : '选择批次后核验')), blocked: !!blocker, nextOwner: this.batchDetailLoading ? '正在读取下一责任' : academicFlowNextOwner(this.current?.nextStep)
+        owner: this.batchDetailLoading ? '正在读取当前批次责任' : archived && !this.current?.responsibility ? '学校已完成考务归档' : academicFlowOwner(this.current?.responsibility),
+        blocker: blocker || (archived ? '已归档，无当前办理阻断' : status === 'FINISHED' ? '考试已结束，待完成归档' : publishStage && this.readiness?.canPublish ? '本次就绪检查通过，发布时再次校验' : (this.current ? '按当前阶段核验，尚无本次就绪结论' : '选择批次后核验')),
+        blocked: !!blocker, nextOwner: this.batchDetailLoading ? '正在读取下一责任' : archived && !this.current?.nextStep ? '已办结，后续按权限查阅' : academicFlowNextOwner(this.current?.nextStep)
       }
     },
     deferDecisionTitle() {
@@ -781,18 +786,20 @@ export default {
       this.batchDetailLoading = true
       this.current = { ...this.current, status: null, responsibility: null, nextStep: null, publishAction: null }
       try {
-      const [detail, cs, st, ready] = await Promise.all([
-        api.getBatch(id),
-        api.listCourses(id, { page: this.coursePagination.page, pageSize: this.coursePagination.pageSize }),
-        api.batchStats(id),
-        this.schoolExamScope ? convenienceApi.getReadiness(id) : Promise.resolve({ code: 0, data: null })
-      ])
+      const detail = await api.getBatch(id)
       if (!current()) return
       if (detail.code !== 0 || detail.data?.batchId !== id) {
         this.readinessError = detail.code !== 0 ? (detail.message || '当前考试批次读取失败') : '返回的考试批次不一致，请重新选择'
         return
       }
       this.current = detail.data
+      const terminal = ['FINISHED', 'ARCHIVED'].includes(detail.data.status)
+      const [cs, st, ready] = await Promise.all([
+        api.listCourses(id, { page: this.coursePagination.page, pageSize: this.coursePagination.pageSize }),
+        api.batchStats(id),
+        this.schoolExamScope && !terminal ? convenienceApi.getReadiness(id) : Promise.resolve({ code: 0, data: null })
+      ])
+      if (!current()) return
       this.courses = cs.code === 0 ? cs.data.list : []
       this.coursePagination.total = cs.code === 0 ? Number(cs.data?.total || 0) : 0
       this.stats = st.code === 0 ? st.data : null
