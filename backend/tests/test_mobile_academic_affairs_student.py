@@ -404,6 +404,52 @@ def test_registration_mobile_uses_server_pages_and_enforces_self_service_window(
     assert client.post(f"{BASE}/registration/{ids['foreign']}/register", headers=student_headers).status_code == 404
 
 
+def test_registration_mobile_self_service_rechecks_batch_status_pool(client, db_mode):
+    """本人可正常续注册，但不能借自助入口跨越入学或休学状态门禁。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaRegistration, AaRegistrationBatch, StudentProfile
+
+    now = datetime.utcnow()
+    with get_sessionmaker()() as db:
+        normal = StudentProfile(
+            tenant_id=MAIN, student_no="CR0036", real_name="学期续注册学生",
+            student_status="NORMAL", status="ACTIVE",
+        )
+        suspended = StudentProfile(
+            tenant_id=MAIN, student_no="CR0037", real_name="休学不可续注册学生",
+            student_status="SUSPENDED", status="ACTIVE",
+        )
+        enroll = AaRegistrationBatch(
+            tenant_id=MAIN, batch_name="自助入学状态门禁", register_type="ENROLL", status="OPEN",
+            window_start=now - timedelta(days=1), window_end=now + timedelta(days=1),
+        )
+        semester = AaRegistrationBatch(
+            tenant_id=MAIN, batch_name="自助学期状态门禁", register_type="SEMESTER", status="OPEN",
+            window_start=now - timedelta(days=1), window_end=now + timedelta(days=1),
+        )
+        db.add_all([normal, suspended, enroll, semester])
+        db.flush()
+        normal_id, suspended_id = normal.id, suspended.id
+        enroll_id, semester_id = enroll.id, semester.id
+        db.commit()
+
+    normal_headers = _stu_token("学期续注册学生", "CR0036")
+    suspended_headers = _stu_token("休学不可续注册学生", "CR0037")
+    assert client.post(f"{BASE}/registration/{enroll_id}/register", headers=normal_headers).status_code == 409
+    assert client.post(f"{BASE}/registration/{semester_id}/register", headers=suspended_headers).status_code == 409
+    accepted = client.post(f"{BASE}/registration/{semester_id}/register", headers=normal_headers)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["data"]["studentId"] == str(normal_id)
+    with get_sessionmaker()() as db:
+        assert db.get(StudentProfile, normal_id).student_status == "REGISTERED"
+        assert db.get(StudentProfile, suspended_id).student_status == "SUSPENDED"
+        assert db.query(AaRegistration).filter_by(batch_id=enroll_id, student_id=normal_id).count() == 0
+        assert db.query(AaRegistration).filter_by(batch_id=semester_id, student_id=suspended_id).count() == 0
+        assert db.query(AaRegistration).filter_by(
+            batch_id=semester_id, student_id=normal_id, status="REGISTERED",
+        ).count() == 1
+
+
 def test_registration_mobile_routes_reject_teacher_and_legacy_mobile_client(client, db_mode):
     """注册本人读取与两类写入都只能走学生 H5/小程序会话。"""
     from app.core.security import create_access_token

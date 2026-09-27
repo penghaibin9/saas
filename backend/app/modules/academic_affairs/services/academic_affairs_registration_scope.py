@@ -58,6 +58,10 @@ def register_student(batch_id, user, student_id) -> dict:
         )).first()
         if existing and existing.status == "REGISTERED":
             raise legacy.AppException("DATA_CONFLICT", "该生已在本批次完成注册")
+        if student.student_status not in legacy._batch_target_statuses(batch):
+            raise legacy.AppException(
+                "DATA_CONFLICT", "该生当前学籍状态不符合本批次注册条件", http_status=409,
+            )
 
         snap = legacy._precheck(db, student.id)
         change_type = legacy._REG_CHANGE_TYPE.get(batch.register_type, "ANNUAL_REGISTER")

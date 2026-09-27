@@ -1,6 +1,6 @@
 """13B-P1 教务中心：学年学期/校历/节次 + 学籍名册 + 入学/学年注册。
 
-注册结果经 change_student_status() 单一入口写主档（PENDING_REGISTER→REGISTERED）。
+注册结果经 change_student_status() 单一入口写主档（入学待注册或在籍续注册→REGISTERED）。
 学籍名册只读 t_student_profile（脱敏），不建 roster 表。注册预检只读 t_orientation_student，不复制迎新数据。
 """
 from __future__ import annotations
@@ -1832,7 +1832,7 @@ def register_student(batch_id, user, student_id, *, self_service: bool = False) 
     """
     _n, _r, uid = _op()
     with session() as db:
-        from app.models import AaRegistration, AaRegistrationBatch, AaRegistrationException, StudentProfile
+        from app.models import AaRegistration, AaRegistrationException
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = require_writable_registration_batch(db, batch_id)
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期不应受理新注册
@@ -1840,14 +1840,20 @@ def register_student(batch_id, user, student_id, *, self_service: bool = False) 
             raise AppException("DATA_CONFLICT", "注册批次未开放或已关闭")
         if self_service:
             require_registration_self_service_window(b)
-        s = db.get(StudentProfile, int(student_id))
-        if not s or s.is_deleted or s.tenant_id != _tid():
-            raise not_found("学生不存在")
+        if self_service:
+            from app.services.mobile_student_service import _require_student, resolve_student
+            s = resolve_student(db, _require_student(user))
+            if not s or int(s.id) != int(student_id):
+                raise no_permission("学生只能办理本人注册")
+        else:
+            s = build_affairs_context(user, db).require_student(db, student_id)
         dup = db.scalars(select(AaRegistration).where(
             AaRegistration.tenant_id == _tid(), AaRegistration.batch_id == b.id,
             AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False))).first()
         if dup and dup.status == "REGISTERED":
             raise AppException("DATA_CONFLICT", "该生已在本批次完成注册")
+        if s.student_status not in _batch_target_statuses(b):
+            raise AppException("DATA_CONFLICT", "该生当前学籍状态不符合本批次注册条件", http_status=409)
         if self_service:
             if dup and (dup.eligibility_status or "") == "INELIGIBLE":
                 raise AppException("DATA_CONFLICT", "注册资格核验未通过，请联系辅导员或教务处")
