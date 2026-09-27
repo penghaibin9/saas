@@ -207,8 +207,9 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
                 GraduationReview.gd_student_id == int(gid),
             )).all()
             set_tenant(ambient_tenant)
+            assert len(review_rows) == 2
             assert current_evidence_review_ids(db, review_rows, tenant_id=archive.tenant_id) == {
-                int(first_review.id), int(second_review.id),
+                int(row.id) for row in review_rows
             }
             if ambient_tenant is not None:
                 assert current_evidence_review_ids(db, review_rows) == set()
