@@ -8,6 +8,7 @@
   >
     <template #actions>
       <div class="gd-actions">
+        <button v-if="graduationReturnTo" class="mp-btn" @click="$router.push(graduationReturnTo)">返回毕业审核</button>
         <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
         <AppExportButton v-if="exportVisible" :export-fn="exportStudentsFn">导出 Excel</AppExportButton>
       </div>
@@ -172,6 +173,7 @@ const EMPTY_FILTERS = () => ({
   eligibility: '', studentGroup: '', hasDefenseGroup: '', gradQualStatus: '',
   materialComplete: '', archiveView: '', dateStart: '', dateEnd: ''
 })
+const academicReturn = value => typeof value === 'string' && /^\/admin\/academic-affairs\/graduation\/(?:audit-console|\d+\/results)(?:\?[^#]*)?$/.test(value) ? value : ''
 const PANEL_PRESETS = {
   roster: () => EMPTY_FILTERS(),
   progress: () => ({ ...EMPTY_FILTERS(), stage: 'GUIDING' }),
@@ -266,6 +268,7 @@ export default {
     }
   },
   computed: {
+    graduationReturnTo() { return academicReturn(this.$route.query.returnTo) },
     activeGroupKey() { return PRIMARY_GROUPS.find((group) => group.panels.includes(this.activePanel))?.key || 'roster' },
     activeGroupPanels() {
       const group = PRIMARY_GROUPS.find((item) => item.key === this.activeGroupKey) || PRIMARY_GROUPS[0]

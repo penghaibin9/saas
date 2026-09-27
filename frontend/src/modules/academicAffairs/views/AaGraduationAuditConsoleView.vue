@@ -68,6 +68,8 @@
               <AppStatusTag :type="gradItemColor(item.result)" dot>{{ itemResultLabel(item.result) }}</AppStatusTag>
               <p>{{ evidenceText(item.evidence, item.item) }}</p>
               <small>证据责任：{{ ownerLabel(item.owner) }}<template v-if="item.refId"> · 来源对象 #{{ item.refId }}</template></small>
+              <small v-if="!item.refId && ['INTERNSHIP', 'GRADUATION_DESIGN'].includes(item.item)">当前尚无学生台账，须由有本业务学生管理权限的人员先建档。</small>
+              <router-link v-if="linkForItem(focusedRow, item)" class="mp-link" :to="linkForItem(focusedRow, item)">{{ item.refId ? '核对来源对象' : '按学号进入责任名单' }}</router-link>
             </div>
           </div>
           <footer>
@@ -109,7 +111,7 @@
               <button class="mp-link" :disabled="feeBusy || !canManagePermission || !!pendingWrite" @click="markFee(row, 'CLEARED')">勾选已结清</button>
               <button class="mp-link" :disabled="feeBusy || !canManagePermission || !!pendingWrite" @click="markFee(row, 'OWED')">勾选仍欠费</button>
             </template>
-            <router-link v-else-if="linkFor(row)" class="mp-link" :to="linkFor(row)">跳转责任模块</router-link>
+            <router-link v-else-if="linkFor(row)" class="mp-link" :to="linkFor(row)">{{ itemOf(row).refId ? '核对来源对象' : '按学号进入责任名单' }}</router-link>
             <button class="mp-link" @click="openDetail(row)">十一项详情</button>
           </template>
         </DataTable>
@@ -260,6 +262,7 @@
             <span class="agc-item__label">{{ itemLabel(it.item) }}</span>
             <AppStatusTag :type="gradItemColor(it.result)" dot>{{ itemResultLabel(it.result) }}</AppStatusTag>
             <span class="agc-item__ev">{{ evidenceText(it.evidence, it.item) }}</span>
+            <router-link v-if="linkForItem(detail.row, it)" class="mp-link" :to="linkForItem(detail.row, it)">{{ it.refId ? '核对来源对象' : '按学号进入责任名单' }}</router-link>
           </div>
         </div>
         <AppInlineAlert v-if="detail.row.reviewNote" type="info" :description="`最近处理意见：${detail.row.reviewNote}`" />
@@ -464,7 +467,7 @@ export default {
     focusedItems(){if(!this.focusedRow)return[];if(this.tab==='final')return this.focusedRow.items||[];if(this.tab==='course')return (this.focusedRow.items||[]).filter(item=>['COURSE_REQUIRED','COURSE_ELECTIVE'].includes(item.item));const item=this.itemOf(this.focusedRow);return item?.item?[item]:[]},
     showEvidenceBoard(){return ['credit','course','practice','thesis','internship','discipline','fee','final'].includes(this.tab)},
     currentOwner(){if(this.tab==='final')return '教务终审岗';if(this.tab==='archive')return '教务归档岗';if(this.tab==='results')return '教务复核岗';if(this.tab==='roster')return '学院名单核对岗';const item=this.focusedItems.find(entry=>entry.result!=='PASS')||this.focusedItems[0];return this.ownerLabel(item?.owner)},
-    responsibilityReason(){if(!this.currentBatch)return'选择批次后确定';if(this.batchAbnormal)return`有 ${this.batchAbnormal} 名学生存在阻断证据`;if(this.tab==='final')return'仅学院初审和系统预审均已通过的学生可办理终审';return'当前阶段需要核对正式证据与责任来源'},
+    responsibilityReason(){if(!this.currentBatch)return'选择批次后确定';if(this.focusedItems.some(item=>!item.refId&&['INTERNSHIP','GRADUATION_DESIGN'].includes(item.item)))return'尚无学生台账，先由本业务学生管理人员建档，再继续指导与归档';if(this.batchAbnormal)return`有 ${this.batchAbnormal} 名学生存在阻断证据`;if(this.tab==='final')return'仅学院初审和系统预审均已通过的学生可办理终审';return'当前阶段需要核对正式证据与责任来源'},
     currentBlocker(){if(!this.currentBatch)return'尚未选择批次';const item=this.focusedItems.find(entry=>entry.result!=='PASS');if(item)return`${this.itemLabel(item.item)}：${this.itemResultLabel(item.result)}`;if(this.batchAbnormal)return`${this.batchAbnormal} 名系统异常`;return'当前无已知阻断'},
     nextOwner(){if(this.tab==='final')return'证书管理岗';if(this.tab==='archive')return'受控纠错岗';if(this.batchAbnormal)return'学院审核岗';return'教务终审岗'},
     currentBatch() { return this.batches.find((b) => String(b.batchId) === String(this.batchId)) || null },
@@ -589,10 +592,22 @@ export default {
     },
     linkFor(row) {
       const cfg = TAB_CONFIG[this.tab]
-      if (!cfg || !cfg.item || !LINK_ITEM[cfg.item]) return null
-      const it = this.itemOf(row)
-      if (!it.refId) return null
-      return LINK_ITEM[cfg.item](it.refId)
+      return cfg?.item ? this.linkForItem(row, this.itemOf(row)) : null
+    },
+    linkForItem(row, it) {
+      if (!row || !it || !LINK_ITEM[it.item]) return null
+      const permission = it.item === 'INTERNSHIP' ? 'internship.student.view' : 'graduationDesign.student.view'
+      if (!matchPermission(this.ctx.permissionPatterns || [], permission)) return null
+      const returnTo = this.$router.resolve({ path: this.$route.path, query: {
+        ...this.$route.query, batchId: String(this.batchId), tab: this.tab,
+        resultId: exactId(row.resultId) || undefined,
+        termId: exactId(this.currentBatch?.termId) || undefined
+      } }).fullPath
+      const refId = exactId(it.refId)
+      if (/^\d+$/.test(refId)) return { path: LINK_ITEM[it.item](refId), query: { returnTo } }
+      const keyword = String(row.studentNo || '').trim()
+      if (!keyword) return null
+      return { path: it.item === 'INTERNSHIP' ? '/admin/internship/students' : '/admin/graduation/students', query: { panel: 'roster', keyword, returnTo } }
     },
     canCollegeApprove(r) {
       return Boolean(this.canCollegePermission&&!this.pendingWrite&&r?.canCollegeReview === true && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))

@@ -12,14 +12,60 @@ function definition(name, overrides = {}) {
   return new Function(...bindings,source.replace(/^import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*$/gm,'').replace('export default','return'))(...bindings.map(key=>deps[key]??{}))
 }
 
-function instance() {
-  const component=definition('AaGraduationAuditConsoleView')
-  const vm={...component.data(),$route:{query:{tab:'results'}},ctx:{}}
+function instance(overrides = {}) {
+  const component=definition('AaGraduationAuditConsoleView',{matchPermission:(patterns,key)=>patterns.includes(key),...overrides})
+  const vm={...component.data(),$route:{path:'/admin/academic-affairs/graduation/audit-console',fullPath:'/admin/academic-affairs/graduation/audit-console?batchId=12&tab=internship',query:{tab:'results'}},ctx:{permissionPatterns:[]}}
+  vm.$router={resolve:target=>({fullPath:`${target.path}?${new URLSearchParams(Object.entries(target.query).filter(([,value])=>value!=null)).toString()}`})}
   for(const [key,fn] of Object.entries(component.methods))vm[key]=fn.bind(vm)
   for(const [key,fn] of Object.entries(component.computed))Object.defineProperty(vm,key,{get:()=>fn.call(vm)})
   vm.batchId='12';vm.batches=[{batchId:'12',batchName:'验收批次',status:'PRECHECKED',total:2,passed:0,abnormal:2,concluded:0,archived:0}]
   return vm
 }
+
+test('缺上游记录时按学号进入责任名单，已有记录仍直达详情并保留审核对象',()=>{
+  const vm=instance();vm.ctx.permissionPatterns=['internship.student.view','graduationDesign.student.view']
+  vm.batches[0].termId='54';vm.tab='internship'
+  const row={resultId:'88',studentNo:'240412',items:[{item:'INTERNSHIP',result:'UNKNOWN',owner:'INTERN_MENTOR'}]}
+  vm.rows=[row]
+  assert.match(vm.responsibilityReason,/学生管理人员建档/)
+  const missing=vm.linkFor(row)
+  assert.equal(missing.path,'/admin/internship/students')
+  assert.equal(missing.query.keyword,'240412')
+  assert.match(missing.query.returnTo,/termId=54/)
+  assert.match(missing.query.returnTo,/batchId=12/)
+  assert.match(missing.query.returnTo,/resultId=88/)
+  assert.match(missing.query.returnTo,/tab=internship/)
+  row.items[0].refId='9007199254740993'
+  const existing=vm.linkFor(row)
+  assert.equal(existing.path,'/admin/internship/students/9007199254740993')
+  assert.equal(existing.query.returnTo,missing.query.returnTo)
+  vm.tab='thesis';row.items=[{item:'GRADUATION_DESIGN',result:'UNKNOWN',owner:'GD_MENTOR'}]
+  assert.equal(vm.linkFor(row).path,'/admin/graduation/students')
+  vm.tab='final';assert.equal(vm.linkForItem(row,row.items[0]).path,'/admin/graduation/students')
+  assert.match(vm.linkForItem(row,row.items[0]).query.returnTo,/tab=final/)
+  vm.ctx.permissionPatterns=[];assert.equal(vm.linkFor(row),null)
+  vm.ctx.permissionPatterns=['graduationDesign.student.view'];delete row.studentNo;assert.equal(vm.linkFor(row),null)
+})
+
+test('旧结果页的来源入口也按真实学号定位并拒绝无权下钻',()=>{
+  const component=definition('AaGraduationResultView',{matchPermission:(patterns,key)=>patterns.includes(key),toast:{error:()=>{}}})
+  const pushes=[]
+  const vm={...component.data(),ctx:{permissionPatterns:['internship.student.view']},$route:{path:'/admin/academic-affairs/graduation/13/results',query:{termId:'54'}},$router:{resolve:target=>({fullPath:`${target.path}?${new URLSearchParams(target.query).toString()}`}),push:target=>pushes.push(target)}}
+  for(const [key,fn] of Object.entries(component.methods))vm[key]=fn.bind(vm)
+  const row={studentNo:'240412',resultId:'77'};const item={item:'INTERNSHIP',drillRoute:'/admin/internship/students'}
+  Object.defineProperty(vm,'batchId',{get:()=> '13'})
+  assert.equal(vm.canDrillEvidence(item,row),true)
+  vm.drillEvidence(item,row)
+  assert.equal(pushes[0].path,'/admin/internship/students')
+  assert.equal(pushes[0].query.keyword,'240412')
+  assert.match(pushes[0].query.returnTo,/termId=54/)
+  assert.match(pushes[0].query.returnTo,/batchId=13/)
+  assert.match(pushes[0].query.returnTo,/resultId=77/)
+  item.refId='91';vm.drillEvidence(item,row)
+  assert.equal(pushes[1].path,'/admin/internship/students/91')
+  vm.ctx.permissionPatterns=[];assert.equal(vm.canDrillEvidence(item,row),false)
+  vm.returnToBatch();assert.equal(pushes[2].query.termId,'54')
+})
 
 test('毕业预审按实习和毕设正式岗位分别展示证据责任',()=>{
   const vm=instance()
