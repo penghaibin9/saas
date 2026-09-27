@@ -26,7 +26,9 @@ function formItem(page, label) {
 }
 
 async function staffLogin(page) {
-  await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
+  const login = new StaffLoginPage(page, config.staffBaseUrl)
+  await login.login(config.sandboxAdmin)
+  return login
 }
 
 async function pickInternshipStudent(page, fixture) {
@@ -74,6 +76,52 @@ async function openStudentAgreementTab(page, fixture) {
     await exactBatch.click()
   }
   await expect(page.getByText('实习三方协议', { exact: false }).first()).toBeVisible()
+}
+
+async function openStudentInsuranceTab(page, fixture, navigate = true) {
+  if (navigate) await page.goto(`${config.studentBaseUrl}/internship`)
+  await page.getByRole('button', { name: '实习保险', exact: true }).click()
+  const selector = page.getByText('请选择要办理的实习批次', { exact: true })
+  if (await selector.count()) {
+    await expect(selector).toBeVisible()
+    const exactBatch = page.getByRole('button').filter({ hasText: fixture.batchName }).first()
+    await expect(exactBatch).toBeVisible()
+    await exactBatch.click()
+  }
+  await expect(page.getByText('提交保险信息', { exact: true })).toBeVisible()
+}
+
+async function isolatedInsuranceImage(page) {
+  const dataUrl = await page.evaluate(() => {
+    const canvas = document.createElement('canvas')
+    canvas.width = 1000
+    canvas.height = 500
+    const ctx = canvas.getContext('2d')
+    ctx.fillStyle = '#fff8f0'
+    ctx.fillRect(0, 0, canvas.width, canvas.height)
+    ctx.strokeStyle = '#bd2525'
+    ctx.lineWidth = 12
+    ctx.strokeRect(16, 16, canvas.width - 32, canvas.height - 32)
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#a11d1d'
+    ctx.font = 'bold 76px Microsoft YaHei, sans-serif'
+    ctx.fillText('隔离测试', canvas.width / 2, 190)
+    ctx.font = 'bold 46px Microsoft YaHei, sans-serif'
+    ctx.fillText('非真实保险凭证', canvas.width / 2, 275)
+    ctx.fillStyle = '#333'
+    ctx.font = '28px Microsoft YaHei, sans-serif'
+    ctx.fillText('仅用于岗位实习浏览器流程验收，不代表真实保险保障', canvas.width / 2, 360)
+    return canvas.toDataURL('image/png')
+  })
+  return Buffer.from(dataUrl.slice(dataUrl.indexOf(',') + 1), 'base64')
+}
+
+function crossCollegeReviewer() {
+  return {
+    tenant: 'sandbox-school',
+    username: 'e2e_ix_college_b',
+    password: process.env.E2E_IX_COLLEGE_B_PASSWORD || '',
+  }
 }
 
 async function generateAgreement(page, fixture) {
@@ -307,5 +355,139 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
       },
       stdio: 'inherit'
     })
+  })
+
+  test('IX-011：学生提交隔离测试保险图、学校页面核验、学生刷新回读；跨学院详情拒绝', async ({ page }) => {
+    const collegeB = crossCollegeReviewer()
+    expect(collegeB.password, '隔离学院账号必须有可用的测试凭据').toBeTruthy()
+
+    const policyNo = `IX011-隔离测试-非真实保单-${fixture.runId}`
+    const imageName = `IX011-隔离测试-非真实保险凭证-${fixture.runId}.png`
+    const insurerName = '隔离测试材料（非真实承保机构）'
+    const coverageType = '隔离测试材料，不代表真实保障'
+
+    await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+    await openStudentInsuranceTab(page, fixture)
+    const dates = await page.evaluate(() => {
+      const format = (value) => {
+        const year = value.getFullYear()
+        const month = String(value.getMonth() + 1).padStart(2, '0')
+        const day = String(value.getDate()).padStart(2, '0')
+        return `${year}-${month}-${day}`
+      }
+      const start = new Date()
+      start.setDate(start.getDate() - 60)
+      const end = new Date()
+      end.setDate(end.getDate() + 180)
+      return { effectiveDate: format(start), expiryDate: format(end) }
+    })
+    await page.getByLabel('保单号', { exact: true }).fill(policyNo)
+    await page.getByLabel('承保机构', { exact: true }).fill(insurerName)
+    await page.getByLabel('险种', { exact: true }).fill(coverageType)
+    await page.getByLabel('生效日期', { exact: true }).fill(dates.effectiveDate)
+    await page.getByLabel('到期日期', { exact: true }).fill(dates.expiryDate)
+
+    const uploadPromise = page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/files' && response.request().method() === 'POST'
+    )
+    await page.locator('input[type="file"]').setInputFiles({
+      name: imageName,
+      mimeType: 'image/png',
+      buffer: await isolatedInsuranceImage(page),
+    })
+    const uploaded = await uploadPromise
+    const uploadPayload = await payloadOf(uploaded)
+    expect(uploadPayload.body?.code, uploadPayload.text).toBe(0)
+    const fileId = String(uploadPayload.body?.data?.fileId || uploadPayload.body?.data?.id || '')
+    expect(fileId).not.toBe('')
+    await expect(page.locator('#student-workspace-main').getByText('保单文件已上传', { exact: true })).toBeVisible()
+
+    const submitPromise = page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/insurance'
+        && response.request().method() === 'POST'
+    )
+    await page.getByRole('button', { name: '提交保险', exact: true }).click()
+    const submitted = await submitPromise
+    const submitPayload = await payloadOf(submitted)
+    expect(submitPayload.body?.code, submitPayload.text).toBe(0)
+    const submitBody = submitted.request().postDataJSON()
+    expect(String(submitBody?.internshipId || '')).toBe(String(fixture.internshipId))
+    expect(String(submitBody?.fileId || '')).toBe(fileId)
+    expect(submitPayload.body?.data?.status).toBe('PENDING_VERIFY')
+    expect(String(submitPayload.body?.data?.internshipId || '')).toBe(String(fixture.internshipId))
+    const insuranceId = String(submitPayload.body?.data?.id || '')
+    expect(insuranceId).not.toBe('')
+    await expect(page.getByText(/状态：待核验/)).toBeVisible()
+    await page.reload()
+    await page.waitForLoadState('networkidle')
+    await openStudentInsuranceTab(page, fixture, false)
+    await expect(page.getByText(/状态：待核验/)).toBeVisible()
+    await expect(page.getByText(policyNo, { exact: false })).toBeVisible()
+
+    const schoolLogin = await staffLogin(page)
+    const users = await page.request.get(`${config.apiBaseUrl}/system/users?keyword=e2e_ix_college_b&page=1&page_size=20`, {
+      headers: { Authorization: `Bearer ${await schoolLogin.token()}` },
+    })
+    const userList = await payloadOf(users)
+    expect(userList.body?.code, userList.text).toBe(0)
+    const collegeBUser = (userList.body?.data?.list || []).find((item) => item.loginName === collegeB.username)
+    expect(collegeBUser, '必须找到学院乙的独立测试账号').toBeTruthy()
+    const account = await page.request.get(`${config.apiBaseUrl}/system/users/${collegeBUser.id}`, {
+      headers: { Authorization: `Bearer ${await schoolLogin.token()}` },
+    })
+    const accountDetail = await payloadOf(account)
+    expect(accountDetail.body?.code, accountDetail.text).toBe(0)
+    const scopedRole = (accountDetail.body?.data?.roleAssignments || []).find((item) => item.roleCode === 'COLLEGE_ADMIN')
+    expect(scopedRole?.scopeConfigured).toBe(true)
+    expect(scopedRole?.scopeType).toBe('COLLEGE')
+    expect(scopedRole?.scopeItems).toEqual([expect.objectContaining({ type: 'COLLEGE', name: 'E2E岗位实习测试信息工程学院' })])
+    const studentResponse = await page.request.get(`${config.apiBaseUrl}/students/${fixture.studentId}`, {
+      headers: { Authorization: `Bearer ${await schoolLogin.token()}` },
+    })
+    const studentDetail = await payloadOf(studentResponse)
+    expect(studentDetail.body?.code, studentDetail.text).toBe(0)
+    expect(studentDetail.body?.data?.collegeName).toBeTruthy()
+    expect(studentDetail.body?.data?.collegeName).not.toBe('E2E岗位实习测试信息工程学院')
+    await page.goto(`${config.staffBaseUrl}/admin/internship/insurance/${insuranceId}?batchId=${encodeURIComponent(fixture.batchId)}`)
+    await expect(page.getByText(fixture.studentName, { exact: false }).first()).toBeVisible()
+    await expect(page.getByText(policyNo, { exact: false }).first()).toBeVisible()
+    await expect(page.getByText(insurerName, { exact: false }).first()).toBeVisible()
+    await expect(page.getByText(imageName, { exact: false })).toBeVisible()
+    await expect(page.getByRole('button', { name: '核验通过', exact: true })).toBeEnabled()
+    await page.getByRole('button', { name: '预览', exact: true }).click()
+    await expect(page.locator('.file-previewer__viewer img')).toHaveAttribute('alt', imageName)
+
+    const verifyPromise = page.waitForResponse((response) =>
+      apiPath(response) === `/api/v1/internship/insurances/${insuranceId}/verify`
+        && response.request().method() === 'POST'
+    )
+    await page.getByRole('button', { name: '核验通过', exact: true }).click()
+    await page.getByRole('dialog').getByRole('button', { name: '确认通过', exact: true }).click()
+    const verified = await verifyPromise
+    const verifyPayload = await payloadOf(verified)
+    expect(verifyPayload.body?.code, verifyPayload.text).toBe(0)
+    expect(verifyPayload.body?.data?.status).toBe('VERIFIED')
+    await expect(page.getByText('已通过', { exact: true }).first()).toBeVisible()
+
+    await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
+    await openStudentInsuranceTab(page, fixture)
+    await expect(page.getByText(/状态：已核验/)).toBeVisible()
+    await expect(page.getByText(policyNo, { exact: false })).toBeVisible()
+    await page.reload()
+    await page.waitForLoadState('networkidle')
+    await openStudentInsuranceTab(page, fixture, false)
+    await expect(page.getByText(/状态：已核验/)).toBeVisible()
+
+    await new StaffLoginPage(page, config.staffBaseUrl).login(collegeB)
+    const deniedPromise = page.waitForResponse((response) =>
+      apiPath(response) === `/api/v1/internship/insurances/${insuranceId}`
+        && response.request().method() === 'GET'
+    )
+    await page.goto(`${config.staffBaseUrl}/admin/internship/insurance/${insuranceId}?batchId=${encodeURIComponent(fixture.batchId)}`)
+    const denied = await deniedPromise
+    const deniedPayload = await payloadOf(denied)
+    expect([403, 404]).toContain(denied.status())
+    expect(deniedPayload.body?.code).not.toBe(0)
+    await expect(page.getByText(/查看范围|无权|权限|不存在/).first()).toBeVisible()
   })
 })
