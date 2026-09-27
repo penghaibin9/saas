@@ -1,0 +1,64 @@
+"""岗位实习中心 · 实习学生请求 DTO（独立文件，与批次/实习域 schema 隔离）。"""
+from __future__ import annotations
+
+from typing import Optional
+
+from pydantic import BaseModel, Field
+
+
+class StudentRecordCreate(BaseModel):
+    studentId: str = Field(..., description="t_student_profile.id")
+    batchId: str = Field(..., description="实习批次 id（必填，禁止 NULL）")
+    advisorName: Optional[str] = None
+    advisorUserId: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class StudentRecordUpdate(BaseModel):
+    expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
+    advisorName: Optional[str] = None
+    advisorUserId: Optional[str] = None
+    insurance: Optional[str] = None
+    agreement: Optional[str] = None
+    remark: Optional[str] = None
+
+
+class AssignPositionRequest(BaseModel):
+    positionId: str = Field(..., description="岗位库 t_internship_position.id（须已上架、企业非黑名单、未满员）")
+    expectedVersion: int = Field(..., ge=0, description="实习学生记录乐观锁版本")
+
+
+class UnassignRequest(BaseModel):
+    reason: Optional[str] = ""
+    expectedVersion: int = Field(..., ge=0, description="实习学生记录乐观锁版本")
+
+
+class StudentStatusRequest(BaseModel):
+    expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
+    action: str = Field(..., pattern="^(READY|ONBOARD|ASSESS)$",
+                        description="READY / ONBOARD / ASSESS；归档只能走正式归档接口")
+    reason: Optional[str] = ""
+
+
+class EligibilityRequest(BaseModel):
+    expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
+    status: str = Field(..., description="QUALIFIED / UNQUALIFIED / PENDING")
+    reason: Optional[str] = ""
+    publishReason: bool = Field(False, description="本次认定说明是否向该学生本人公开")
+
+
+class DestinationRequest(BaseModel):
+    expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
+    destination: str = Field(..., description="SELF_ARRANGED / EXEMPTED / NONE")
+    reason: Optional[str] = ""
+
+
+class StudentImport(BaseModel):
+    batchId: str = Field(..., description="当前页面批次上下文（必填）")
+    rows: list[dict] = Field(default_factory=list)
+
+
+class AdvisorAssignmentRequest(BaseModel):
+    advisorUserId: str = Field(..., description="Active teacher user id")
+    expectedVersion: int = Field(..., ge=0, description="实习记录乐观锁版本")
+    reason: Optional[str] = ""

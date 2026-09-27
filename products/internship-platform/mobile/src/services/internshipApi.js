@@ -1,0 +1,260 @@
+import { realRequest } from './request'
+
+function requireBatch(batchId) {
+  const value = String(batchId || '').trim()
+  if (!value) throw { code: 'BATCH_REQUIRED', biz: true, message: '请先选择实习批次' }
+  return value
+}
+
+function optionalBatch(path, batchId) {
+  const value = String(batchId || '').trim()
+  return value ? `${path}${path.includes('?') ? '&' : '?'}batchId=${encodeURIComponent(value)}` : path
+}
+
+function batchPath(path, batchId) {
+  const value = requireBatch(batchId)
+  return `${path}${path.includes('?') ? '&' : '?'}batchId=${encodeURIComponent(value)}`
+}
+
+function pagedBatchPath(path, batchId, page = 1, pageSize = 20) {
+  return `${batchPath(path, batchId)}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`
+}
+
+const enc = (value) => encodeURIComponent(String(value ?? ''))
+function studentContextPath(path, batchId, internshipId) {
+  const batch = requireBatch(batchId)
+  const record = String(internshipId || '').trim()
+  if (!record) throw { code: 'INTERNSHIP_REQUIRED', biz: true, message: '请先选择实习记录' }
+  return `${path}?batchId=${enc(batch)}&internshipId=${enc(record)}`
+}
+
+// ── 教师岗位实习：权限与批次上下文 ──
+export const teacherInternshipContext = () => realRequest('/mobile/teacher/internship/context')
+export const teacherInternshipMyStudents = (batchId) => {
+  try { return realRequest(batchPath('/mobile/teacher/internship/my-students', batchId)) }
+  catch (e) { return Promise.reject(e) }
+}
+// 正式分页名单与详情复用 PC 权威接口，权限仍由服务端裁定。
+export const teacherInternshipRoster = (batchId, { keyword = '', eligibility = '', page = 1, pageSize = 20 } = {}) =>
+  realRequest(pagedBatchPath('/internship/intern-students', batchId, page, pageSize) + '&keyword=' + enc(keyword) + '&eligibility=' + enc(eligibility), { _rawPage: true })
+export const teacherInternshipStudentDetail = (id) => realRequest('/internship/intern-students/' + enc(id))
+export const teacherInternshipPositions = (batchId, { keyword = '', status = '', page = 1, pageSize = 20 } = {}) =>
+  realRequest(pagedBatchPath('/mobile/teacher/internship/context/positions', batchId, page, pageSize) + '&keyword=' + enc(keyword) + '&status=' + enc(status))
+export const teacherInternshipPositionDetail = (id, batchId) =>
+  realRequest(batchPath('/mobile/teacher/internship/context/positions/' + enc(id), batchId))
+export const teacherInternshipScores = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/scores', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipAgreements = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/agreements', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipEnterpriseEvals = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/enterprise-evals', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipEnterpriseEvalCreate = (batchId, body) =>
+  realRequest(batchPath('/mobile/teacher/internship/context/enterprise-evals', batchId), { method: 'POST', data: body || {} })
+export const teacherInternshipEnterpriseEvalResubmit = (evalId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/enterprise-evals/${enc(evalId)}/resubmit`, batchId), { method: 'POST', data: body || {} })
+export const teacherInternshipEnterpriseEvalReview = (evalId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/enterprise-evals/${enc(evalId)}/review`, batchId), { method: 'POST', data: body || {} })
+
+export const teacherInternshipStudentEvals = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/student-evals', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipStudentEvalDetail = (evalId) =>
+  realRequest(`/mobile/teacher/internship/context/student-evals/${enc(evalId)}`)
+export const teacherInternshipStudentEvalAdvisorComment = (evalId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/student-evals/${enc(evalId)}/advisor-comment`, batchId), { method: 'POST', data: body || {} })
+export const teacherInternshipStudentEvalReview = (evalId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/student-evals/${enc(evalId)}/review`, batchId), { method: 'POST', data: body || {} })
+
+export const teacherInternshipMakeups = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/makeups', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipMakeupEvidenceViewed = (makeupId) =>
+  realRequest(`/mobile/teacher/internship/context/makeups/${enc(makeupId)}/evidence-viewed`, { method: 'POST' })
+export const teacherInternshipMakeupReview = (makeupId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/makeups/${enc(makeupId)}/review`, batchId), { method: 'POST', data: body || {} })
+
+export const teacherInternshipLeaves = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/leaves', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipLeaveEvidenceViewed = (leaveId) =>
+  realRequest(`/mobile/teacher/internship/context/leaves/${enc(leaveId)}/evidence-viewed`, { method: 'POST' })
+export const teacherInternshipLeaveReview = (leaveId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/leaves/${enc(leaveId)}/review`, batchId), { method: 'POST', data: body || {} })
+
+export const teacherInternshipProcessReports = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/process-reports', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipProcessReportDetail = (reportId) =>
+  realRequest(`/mobile/teacher/internship/context/process-reports/${enc(reportId)}`)
+export const teacherInternshipProcessReportReview = (reportId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/process-reports/${enc(reportId)}/review`, batchId), { method: 'POST', data: body || {} })
+
+export const teacherInternshipPlanTasks = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/plan-tasks', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipPlanTaskReview = (progressId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/plan-tasks/${enc(progressId)}/review`, batchId), { method: 'POST', data: body || {} })
+
+export const teacherInternshipApplications = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/applications', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipApplicationReview = (applicationId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/applications/${enc(applicationId)}/review`, batchId), { method: 'POST', data: body || {} })
+export const teacherInternshipChanges = (batchId, page = 1, pageSize = 20) => {
+  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/changes', batchId, page, pageSize)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipChangeReview = (changeId, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/changes/${enc(changeId)}/review`, batchId), { method: 'POST', data: body || {} })
+
+/** 教师保险核验直接复用学校 PC 正式接口，权限、范围、版本契约完全同源。 */
+export const teacherInternshipInsurancePending = (batchId) => {
+  try {
+    const value = requireBatch(batchId)
+    return realRequest(`/internship/insurances?page=1&pageSize=100&status=PENDING_VERIFY&batchId=${encodeURIComponent(value)}`)
+  } catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipInsuranceVerify = (insuranceId, body) =>
+  realRequest(`/internship/insurances/${enc(insuranceId)}/verify`, { method: 'POST', data: body || {} })
+
+// ── 学生岗位实习：当前批次权威流程 ──
+export const studentInternshipDashboard = (batchId = '') =>
+  realRequest(optionalBatch('/mobile/internship/context/my', batchId))
+export const studentInternshipWeeklyReports = (batchId, internshipId, page = 1, pageSize = 20, focusReportId = '') => {
+  try {
+    let path = studentContextPath('/mobile/internship/context/weekly-reports', batchId, internshipId)
+    path += `&page=${enc(page)}&pageSize=${enc(pageSize)}`
+    if (String(focusReportId || '').trim()) path += `&focusReportId=${enc(focusReportId)}`
+    return realRequest(path)
+  }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipWeeklySubmit = (body) =>
+  realRequest('/mobile/internship/context/weekly-reports', { method: 'POST', data: body || {} })
+export const studentInternshipProcessReports = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/reports', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipProcessReportSubmit = (body) =>
+  realRequest('/mobile/internship/context/reports', { method: 'POST', data: body || {} })
+export const studentInternshipCompliance = (operation = 'ONBOARD', batchId = '') => {
+  const query = [`operation=${encodeURIComponent(operation || 'ONBOARD')}`]
+  if (batchId) query.push(`batchId=${encodeURIComponent(batchId)}`)
+  return realRequest(`/mobile/internship/compliance/my?${query.join('&')}`)
+}
+export const studentInternshipConsents = (batchId = '') =>
+  realRequest(optionalBatch('/mobile/internship/context/consents', batchId))
+export const studentInternshipConsentDetail = (consentId) =>
+  realRequest(`/mobile/internship/consents/${enc(consentId)}`)
+export const studentInternshipConsentView = (consentId) =>
+  realRequest(`/mobile/internship/consents/${enc(consentId)}/view`, { method: 'POST' })
+export const studentInternshipConsentConfirm = (consentId, body) =>
+  realRequest(`/mobile/internship/consents/${enc(consentId)}/confirm`, { method: 'POST', data: body || {} })
+export const studentInternshipConsentReject = (consentId, body) =>
+  realRequest(`/mobile/internship/consents/${enc(consentId)}/reject`, { method: 'POST', data: body || {} })
+
+export const studentInternshipSafetyCourses = (batchId = '') =>
+  realRequest(optionalBatch('/mobile/internship/context/safety/courses', batchId))
+export const studentInternshipSafetyCompletions = (batchId = '') =>
+  realRequest(optionalBatch('/mobile/internship/context/safety/completions', batchId))
+export const studentInternshipSafetyCourseDetail = (courseId) =>
+  realRequest(`/mobile/internship/safety/courses/${enc(courseId)}/detail`)
+export const studentInternshipSafetyStart = (courseId) =>
+  realRequest(`/mobile/internship/safety/courses/${enc(courseId)}/start`, { method: 'POST' })
+export const studentInternshipSafetySubmit = (courseId, body) =>
+  realRequest(`/mobile/internship/safety/courses/${enc(courseId)}/submit`, { method: 'POST', data: body || {} })
+export const studentInternshipSafetyCommit = (completionId, body) =>
+  realRequest(`/mobile/internship/safety/completions/${enc(completionId)}/commit`, { method: 'POST', data: body || {} })
+
+export const studentInternshipApplications = () =>
+  realRequest('/mobile/internship/context/applications')
+export const studentInternshipApplicationSave = (body) =>
+  realRequest('/mobile/internship/context/applications', { method: 'PUT', data: body || {} })
+export const studentInternshipApplicationSubmit = (applicationId, body) =>
+  realRequest(`/mobile/internship/context/applications/${enc(applicationId)}/submit`, {
+    method: 'POST', data: body || {}
+  })
+export const studentInternshipApplicationWithdraw = (applicationId, body) =>
+  realRequest(`/mobile/internship/context/applications/${enc(applicationId)}/withdraw`, {
+    method: 'POST', data: body || {}
+  })
+
+export const studentInternshipLeaves = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/leaves', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipLeaveApply = (body) =>
+  realRequest('/mobile/internship/context/leaves', { method: 'POST', data: body || {} })
+export const studentInternshipLeaveWithdraw = (leaveId, body) =>
+  realRequest(`/mobile/internship/context/leaves/${enc(leaveId)}/withdraw`, {
+    method: 'POST', data: body || {}
+  })
+export const studentInternshipLeaveReturn = (leaveId, body) =>
+  realRequest(`/mobile/internship/context/leaves/${enc(leaveId)}/return`, { method: 'POST', data: body || {} })
+
+export const studentInternshipMakeups = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/makeups', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipMakeupApply = (body) =>
+  realRequest('/mobile/internship/context/makeups', { method: 'POST', data: body || {} })
+export const studentInternshipMakeupWithdraw = (makeupId, body) =>
+  realRequest(`/mobile/internship/context/makeups/${enc(makeupId)}/withdraw`, {
+    method: 'POST', data: body || {}
+  })
+
+export const studentInternshipPlan = () =>
+  realRequest('/mobile/internship/context/plan')
+export const studentInternshipPlanAcknowledge = (body) =>
+  realRequest('/mobile/internship/context/plan/acknowledge', { method: 'POST', data: body || {} })
+export const studentInternshipPlanTasks = () =>
+  realRequest('/mobile/internship/context/plan/tasks')
+export const studentInternshipPlanTaskSubmit = (sortOrder, body) =>
+  realRequest(`/mobile/internship/context/plan/tasks/${enc(sortOrder)}/submit`, { method: 'POST', data: body || {} })
+
+export const studentInternshipAgreements = () =>
+  realRequest('/mobile/internship/context/agreements')
+export const studentInternshipAgreementDetail = (agreementId) =>
+  realRequest(`/mobile/internship/context/agreements/${enc(agreementId)}`)
+export const studentInternshipAgreementConfirm = (agreementId, body) =>
+  realRequest(`/mobile/internship/context/agreements/${enc(agreementId)}/confirm`, { method: 'POST', data: body || {} })
+
+export const studentInternshipChanges = (batchId, internshipId) =>
+  realRequest(`/mobile/internship/context/changes?batchId=${encodeURIComponent(requireBatch(batchId))}&internshipId=${enc(internshipId)}`)
+export const studentInternshipChangeTargets = (batchId, internshipId, changeType, keyword = '', page = 1, pageSize = 20) =>
+  realRequest(`/mobile/internship/context/changes/target-positions?batchId=${encodeURIComponent(requireBatch(batchId))}&internshipId=${enc(internshipId)}&changeType=${enc(changeType)}&keyword=${enc(keyword)}&page=${enc(page)}&pageSize=${enc(pageSize)}`)
+export const studentInternshipChangeApply = (body) =>
+  realRequest('/mobile/internship/context/changes', { method: 'POST', data: body || {} })
+export const studentInternshipChangeWithdraw = (changeId, body) =>
+  realRequest(`/mobile/internship/context/changes/${enc(changeId)}/withdraw`, { method: 'POST', data: body || {} })
+
+export const studentInternshipSelfEval = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/self-eval', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipSelfEvalSubmit = (body) =>
+  realRequest('/mobile/internship/context/self-eval', { method: 'POST', data: body || {} })
+export const studentInternshipScoreAppeal = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/score-appeal', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipScoreAppealSubmit = (body) =>
+  realRequest('/mobile/internship/context/score-appeal', { method: 'POST', data: body || {} })
+export const studentInternshipHelp = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/help', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipHelpSubmit = (body) =>
+  realRequest('/mobile/internship/context/help', { method: 'POST', data: body || {} })

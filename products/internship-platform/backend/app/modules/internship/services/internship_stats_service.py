@@ -1,0 +1,563 @@
+"""岗位实习 · 统计中心（P3-B）。口径对齐《06 页面树》岗位实习业务指标矩阵。
+
+15 项过程 + 结果指标 + 成绩分布 + 就业转化/帮扶/归档率（对接就业台账与归档中心）。
+"""
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import and_, false, func, or_, select
+
+from app.core.tenant_scoped import tenant_get
+from app.models import (College, EmpStudent, InternshipAgreement, InternshipArchive,
+                        InternshipCheckin, InternshipEnterpriseEval, InternshipFinalScore,
+                        InternshipGuidance, InternshipLeave, InternshipRecord,
+                        InternshipStudentEval, InternshipVisit, Major, RiskRecord, SchoolClass,
+                        StudentProfile, WeeklyReport)
+from app.services.db_service import _iso, _tid, session
+
+EMPLOYED_DEST = frozenset({"SIGNED", "FLEXIBLE", "FURTHER_STUDY", "ENLISTED", "STARTUP", "FREELANCE"})
+METRIC_VERSION = "internship-stats-v1"
+
+# This is deliberately API data rather than a front-end-only legend: the same
+# definitions travel with overview and drill-down results.
+METRIC_DEFINITIONS = {
+    "placementRate": {"key": "placementRate", "label": "实习落实率", "numeratorLabel": "已落实去向学生", "denominatorLabel": "本批次实习学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "去向为已分配岗位、自主实习或免实习的学生。"},
+    "matchRate": {"key": "matchRate", "label": "岗位匹配率", "numeratorLabel": "已分配岗位学生", "denominatorLabel": "本批次实习学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "已分配岗位学生。"},
+    "agreementSignRate": {"key": "agreementSignRate", "label": "协议签署率", "numeratorLabel": "已生效协议学生", "denominatorLabel": "本批次实习学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "协议状态为生效或已归档。"},
+    "arrivalRate": {"key": "arrivalRate", "label": "到岗率", "numeratorLabel": "有有效打卡学生", "denominatorLabel": "应在岗学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "应在岗学生为状态 ONBOARD、ASSESSING、ARCHIVED；分子为该队列中至少一条有效打卡的不同实习记录，避免历史打卡与当前在岗状态混算。"},
+    "checkinComplyRate": {"key": "checkinComplyRate", "label": "打卡合规率", "numeratorLabel": "合规打卡", "denominatorLabel": "全部打卡", "threshold": 85, "emptyPolicy": "null", "distinctKey": "checkinId", "note": "正常、补录或请假打卡为合规。"},
+    "leaveComplyRate": {"key": "leaveComplyRate", "label": "请假合规率", "numeratorLabel": "已审批请假", "denominatorLabel": "全部请假", "threshold": 95, "emptyPolicy": "null", "distinctKey": "leaveId", "note": "已审批请假占全部请假。"},
+    "weeklySubmitRate": {"key": "weeklySubmitRate", "label": "周报提交覆盖率", "numeratorLabel": "有周报学生", "denominatorLabel": "在岗或考核中学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "有周报学生覆盖率，不代表按应交周次的提交率；分母为 ONBOARD、ASSESSING 学生。"},
+    "weeklyReviewRate": {"key": "weeklyReviewRate", "label": "周报批阅率", "numeratorLabel": "已批阅周报", "denominatorLabel": "已提交周报", "threshold": 90, "emptyPolicy": "null", "distinctKey": "weeklyReportId", "note": "已通过或退回的周报。"},
+    "guidanceCoverRate": {"key": "guidanceCoverRate", "label": "指导覆盖率", "numeratorLabel": "有指导学生", "denominatorLabel": "在岗学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "正常指导记录覆盖。"},
+    "visitCoverRate": {"key": "visitCoverRate", "label": "巡访覆盖率", "numeratorLabel": "有巡访学生", "denominatorLabel": "在岗学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "巡访记录覆盖。"},
+    "riskCloseRate": {"key": "riskCloseRate", "label": "风险闭环率", "numeratorLabel": "已关闭风险", "denominatorLabel": "全部风险", "threshold": 95, "emptyPolicy": "null", "distinctKey": "riskId", "note": "风险工单闭环率。"},
+    "enterpriseEvalRate": {"key": "enterpriseEvalRate", "label": "企业评价完成率", "numeratorLabel": "完成企业评价学生", "denominatorLabel": "考核或归档学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "仅对进入考核或已归档学生计算。"},
+    "studentEvalRate": {"key": "studentEvalRate", "label": "学生自评完成率", "numeratorLabel": "已提交自评学生", "denominatorLabel": "考核或归档学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "仅对进入考核或已归档学生计算。"},
+    "scorePublishRate": {"key": "scorePublishRate", "label": "成绩发布率", "numeratorLabel": "已发布成绩", "denominatorLabel": "考核或归档学生", "threshold": 100, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "空分母返回暂无数据。"},
+    "employmentRate": {"key": "employmentRate", "label": "就业转化率", "numeratorLabel": "就业落实学生", "denominatorLabel": "考核或归档学生", "threshold": 85, "emptyPolicy": "null", "distinctKey": "studentId", "note": "就业台账已落实。"},
+    "helpCoverRate": {"key": "helpCoverRate", "label": "未就业帮扶覆盖率", "numeratorLabel": "已分配就业老师", "denominatorLabel": "未就业学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "studentId", "note": "未就业台账学生中已分配就业老师。"},
+    "archiveRate": {"key": "archiveRate", "label": "归档完成率", "numeratorLabel": "已实习归档学生", "denominatorLabel": "考核或归档学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "实习归档记录已归档。"},
+}
+
+
+def _scope_ctx(user):
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+    return _current_scope(user), _rec_in_scope
+
+
+def _org_of(db, stu, cache):
+    """学生 → (学院名, 专业名, 班级名)。带缓存避免重复 join。"""
+    if not stu or not stu.class_id:
+        return ("", "", "")
+    if stu.class_id in cache:
+        return cache[stu.class_id]
+    cls = tenant_get(db, SchoolClass, stu.class_id)
+    college = major = cname = ""
+    if cls:
+        cname = cls.class_name or ""
+        mj = tenant_get(db, Major, cls.major_id) if cls.major_id else None
+        if mj:
+            major = mj.major_name or ""
+            col = tenant_get(db, College, mj.college_id) if mj.college_id else None
+            if col:
+                college = col.college_name or ""
+    cache[stu.class_id] = (college, major, cname)
+    return cache[stu.class_id]
+
+
+def _preload_org_cache(db, students):
+    """批量预热学生所属组织，保持 ``_org_of`` 的既有解析口径。"""
+    class_ids = {int(stu.class_id) for stu in students if stu and stu.class_id}
+    if not class_ids:
+        return {}
+    classes = {row.id: row for row in db.scalars(
+        select(SchoolClass).where(SchoolClass.id.in_(class_ids))
+    ).all()}
+    major_ids = {int(row.major_id) for row in classes.values() if row.major_id}
+    majors = {row.id: row for row in db.scalars(
+        select(Major).where(Major.id.in_(major_ids))
+    ).all()} if major_ids else {}
+    college_ids = {int(row.college_id) for row in majors.values() if row.college_id}
+    colleges = {row.id: row for row in db.scalars(
+        select(College).where(College.id.in_(college_ids))
+    ).all()} if college_ids else {}
+    cache = {}
+    for class_id in class_ids:
+        cls = classes.get(class_id)
+        major = majors.get(cls.major_id) if cls and cls.major_id else None
+        college = colleges.get(major.college_id) if major and major.college_id else None
+        cache[class_id] = (
+            (college.college_name or "") if college else "",
+            (major.major_name or "") if major else "",
+            (cls.class_name or "") if cls else "",
+        )
+    return cache
+
+
+def _rate(num, den):
+    return round(num / den * 100, 1) if den else None
+
+
+def _metric(key, label, num, den, threshold, note=""):
+    rate = _rate(num, den)
+    anomaly = num > den
+    if anomaly:
+        rate = None
+    return {"key": key, "label": label, "numerator": num, "denominator": den,
+            "rate": rate, "threshold": threshold,
+            "warn": rate is not None and rate < threshold, "anomaly": anomaly,
+            "definition": METRIC_DEFINITIONS.get(key), "note": note or METRIC_DEFINITIONS.get(key, {}).get("note", "")}
+
+
+def overview(user, college=None, major=None, class_name=None, batch_id=None) -> dict:
+    from app.modules.internship.services.internship_batch_context import (
+        batch_public_fields, resolve_batch)
+    scope, in_scope = _scope_ctx(user)
+    scoped = scope.get("mode") == "SCOPED"
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
+        recs = db.execute(select(InternshipRecord, StudentProfile).outerjoin(StudentProfile,
+            (StudentProfile.id == InternshipRecord.student_id) &
+            (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id,
+        )).all()
+        cache = _preload_org_cache(db, [stu for _rec, stu in recs])
+        col_f = (college or "").strip()
+        maj_f = (major or "").strip()
+        cls_f = (class_name or "").strip()
+        kept = []
+        for r, stu in recs:
+            if scoped and not in_scope(scope, db, r, stu):
+                continue
+            if col_f or maj_f or cls_f:
+                oc, om, ocl = _org_of(db, stu, cache)
+                if col_f and col_f != oc:
+                    continue
+                if maj_f and maj_f != om:
+                    continue
+                if cls_f and cls_f != ocl:
+                    continue
+            kept.append(r)
+        rec_ids = [r.id for r in kept] or [0]
+        total = len(kept)
+        onboard = sum(1 for r in kept if r.status == "ONBOARD")
+        assessing_arch = sum(1 for r in kept if r.status in ("ASSESSING", "ARCHIVED"))
+        eval_base = sum(1 for r in kept if r.status in ("ONBOARD", "ASSESSING", "ARCHIVED"))
+
+        def _cnt(model, *conds):
+            return db.scalar(select(func.count()).select_from(model).where(
+                model.tenant_id == _tid(), model.is_deleted.is_(False),
+                model.internship_id.in_(rec_ids), *conds)) or 0
+
+        def _distinct(model, *conds):
+            return db.scalar(select(func.count(func.distinct(model.internship_id))).where(
+                model.tenant_id == _tid(), model.is_deleted.is_(False),
+                model.internship_id.in_(rec_ids), *conds)) or 0
+
+        # ── 落实 / 匹配 / 协议 ──
+        placed = sum(1 for r in kept if r.destination_type in ("ASSIGNED", "SELF_ARRANGED", "EXEMPTED"))
+        matched = sum(1 for r in kept if r.position_id or r.destination_type == "ASSIGNED")
+        agr_signed = _distinct(InternshipAgreement, InternshipAgreement.status.in_(["EFFECTIVE", "ARCHIVED"]))
+        # ── 打卡 / 请假 ──
+        checkin_total = _cnt(InternshipCheckin)
+        checkin_ok = _cnt(InternshipCheckin, InternshipCheckin.result.in_(["NORMAL", "RECORDED", "LEAVE"]))
+        onsite_ids = [r.id for r in kept if r.status in ("ONBOARD", "ASSESSING", "ARCHIVED")] or [0]
+        arrived = db.scalar(select(func.count(func.distinct(InternshipCheckin.internship_id))).where(
+            InternshipCheckin.tenant_id == _tid(), InternshipCheckin.is_deleted.is_(False),
+            InternshipCheckin.internship_id.in_(onsite_ids),
+            InternshipCheckin.result.in_(["NORMAL", "RECORDED", "LEAVE"]))) or 0
+        leave_total = _cnt(InternshipLeave)
+        leave_ok = _cnt(InternshipLeave, InternshipLeave.status.in_(["APPROVED", "RETURNED"]))
+        # ── 周报 ──
+        weekly_total = _cnt(WeeklyReport)
+        weekly_reviewed = _cnt(WeeklyReport, WeeklyReport.status.in_(["APPROVED", "RETURNED"]))
+        weekly_cohort_ids = [r.id for r in kept if r.status in ("ONBOARD", "ASSESSING")] or [0]
+        weekly_stu = db.scalar(select(func.count(func.distinct(WeeklyReport.internship_id))).where(
+            WeeklyReport.tenant_id == _tid(), WeeklyReport.is_deleted.is_(False),
+            WeeklyReport.internship_id.in_(weekly_cohort_ids))) or 0
+        # ── 指导 / 巡访 / 风险 ──
+        guided = _distinct(InternshipGuidance, InternshipGuidance.status == "NORMAL")
+        visited = _distinct(InternshipVisit)
+        risk_total = _cnt(RiskRecord)
+        risk_closed = _cnt(RiskRecord, RiskRecord.status == "CLOSED")
+        risk_students = _distinct(RiskRecord, RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]))
+        # ── 评价 / 成绩 ──
+        ent_eval = _distinct(InternshipEnterpriseEval)
+        stu_eval = _distinct(InternshipStudentEval, InternshipStudentEval.submit_status == "SUBMITTED")
+        score_published = _cnt(InternshipFinalScore, InternshipFinalScore.status == "PUBLISHED")
+        # 分母：仅考核中/已归档需要成绩；无人时空分母 → rate=None（禁止 or total 假分母）
+        score_base = assessing_arch
+
+        # ── 就业转化 / 帮扶 / 归档 ──
+        cohort_ids = [r.student_id for r in kept if r.status in ("ASSESSING", "ARCHIVED")]
+        cohort_n = len(cohort_ids)
+        sid_filter = cohort_ids or [0]
+        employed = db.scalar(select(func.count()).select_from(EmpStudent).where(
+            EmpStudent.tenant_id == _tid(), EmpStudent.is_deleted.is_(False),
+            EmpStudent.record_status == "ACTIVE",
+            EmpStudent.student_id.in_(sid_filter),
+            EmpStudent.destination_type.in_(EMPLOYED_DEST))) or 0
+        unemployed = db.scalar(select(func.count()).select_from(EmpStudent).where(
+            EmpStudent.tenant_id == _tid(), EmpStudent.is_deleted.is_(False),
+            EmpStudent.record_status == "ACTIVE",
+            EmpStudent.student_id.in_(sid_filter),
+            EmpStudent.destination_type == "UNEMPLOYED")) or 0
+        help_covered = db.scalar(select(func.count()).select_from(EmpStudent).where(
+            EmpStudent.tenant_id == _tid(), EmpStudent.is_deleted.is_(False),
+            EmpStudent.record_status == "ACTIVE",
+            EmpStudent.student_id.in_(sid_filter),
+            EmpStudent.destination_type == "UNEMPLOYED",
+            EmpStudent.employment_teacher.isnot(None),
+            EmpStudent.employment_teacher != "")) or 0
+        archived_cnt = db.scalar(select(func.count()).select_from(InternshipArchive).where(
+            InternshipArchive.tenant_id == _tid(), InternshipArchive.is_deleted.is_(False),
+            InternshipArchive.internship_id.in_(rec_ids),
+            InternshipArchive.status == "ARCHIVED")) or 0
+        archive_base = assessing_arch  # 与成绩同口径，空分母不回退 total
+
+        metrics = [
+            _metric("placementRate", "实习落实率", placed, total, 95,
+                    "去向已落实（分配岗位/自主实习/免实习）学生 / 本批次全部实习学生"),
+            _metric("matchRate", "岗位匹配率", matched, total, 90,
+                    "已分配岗位学生 / 本批次全部实习学生"),
+            _metric("agreementSignRate", "协议签署率", agr_signed, total, 95),
+            _metric("arrivalRate", "到岗率", arrived, eval_base, 90),
+            _metric("checkinComplyRate", "打卡合规率", checkin_ok, checkin_total, 85),
+            _metric("leaveComplyRate", "请假合规率", leave_ok, leave_total, 95),
+            _metric("weeklySubmitRate", "周报提交覆盖率", weekly_stu, len(weekly_cohort_ids) if weekly_cohort_ids != [0] else 0, 90),
+            _metric("weeklyReviewRate", "周报批阅率", weekly_reviewed, weekly_total, 90),
+            _metric("guidanceCoverRate", "指导覆盖率", guided, onboard, 95),
+            _metric("visitCoverRate", "巡访覆盖率", visited, onboard, 90),
+            _metric("riskCloseRate", "风险闭环率", risk_closed, risk_total, 95),
+            _metric("enterpriseEvalRate", "企业评价完成率", ent_eval, eval_base, 95),
+            _metric("studentEvalRate", "学生自评完成率", stu_eval, eval_base, 95),
+            _metric("scorePublishRate", "成绩发布率", score_published, score_base, 100,
+                    "已发布成绩 / 考核中或已归档学生（空分母返回暂无数据）"),
+            _metric("employmentRate", "就业转化率", employed, cohort_n, 85,
+                    "考核期/已归档学生中就业台账已落实"),
+            _metric("helpCoverRate", "未就业帮扶覆盖率", help_covered, unemployed, 90,
+                    "未就业台账学生中已分配就业老师"),
+            _metric("archiveRate", "归档完成率", archived_cnt, archive_base, 95,
+                    "考核期/已归档学生中已执行实习归档"),
+        ]
+        counters = [
+            {"key": "totalStudents", "label": "实习学生数", "value": total},
+            {"key": "onboardStudents", "label": "在岗学生数", "value": onboard},
+            {"key": "riskStudents", "label": "风险学生数", "value": risk_students,
+             "warn": risk_students > 0},
+        ]
+        buckets = [("优(90-100)", 90, 101), ("良(80-89)", 80, 90), ("中(70-79)", 70, 80),
+                   ("及格(60-69)", 60, 70), ("不及格(<60)", -1, 60)]
+        dist = []
+        for label, lo, hi in buckets:
+            c = db.scalar(select(func.count()).select_from(InternshipFinalScore).where(
+                InternshipFinalScore.tenant_id == _tid(), InternshipFinalScore.is_deleted.is_(False),
+                InternshipFinalScore.internship_id.in_(rec_ids),
+                InternshipFinalScore.status == "PUBLISHED",
+                InternshipFinalScore.total_score >= lo, InternshipFinalScore.total_score < hi)) or 0
+            dist.append({"bucket": label, "count": c})
+
+        return {
+            "metricVersion": METRIC_VERSION,
+            "appliedFilters": {"batchId": str(batch.id), "college": col_f, "major": maj_f,
+                               "className": cls_f, "scopeMode": scope.get("mode")},
+            "dimensions": {"college": col_f, "major": maj_f, "className": cls_f,
+                           "scopeMode": scope.get("mode"), **batch_public_fields(batch)},
+            "counters": counters,
+            "metrics": metrics,
+            "scoreDistribution": dist,
+            "partial": [],
+            "generatedAt": datetime.now().isoformat(timespec="seconds"),
+            **batch_public_fields(batch),
+        }
+
+
+def metric_definitions() -> dict:
+    return {"metricVersion": METRIC_VERSION, "definitions": list(METRIC_DEFINITIONS.values()),
+            "appliedFilters": {},
+            "generatedAt": datetime.now().isoformat(timespec="seconds")}
+
+
+def metric_drilldown(user, metric_key, subset, page=1, page_size=20, college=None,
+                     major=None, class_name=None, batch_id=None) -> dict:
+    """Return record rows from the exact visible overview cohort.
+
+    The subset is intentionally record-oriented even when a metric's numerator
+    is an event count; this preserves distinct-student denominator semantics.
+    """
+    if metric_key not in METRIC_DEFINITIONS:
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "未知统计指标")
+    if subset not in ("numerator", "denominator"):
+        from app.core.exceptions import AppException
+        raise AppException("VALIDATION_ERROR", "subset 必须为 numerator 或 denominator")
+    from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
+    scope, in_scope = _scope_ctx(user)
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
+        records = db.execute(select(InternshipRecord, StudentProfile).outerjoin(StudentProfile,
+            (StudentProfile.id == InternshipRecord.student_id) &
+            (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id)).all()
+        cache, kept = _preload_org_cache(db, [stu for _rec, stu in records]), []
+        for rec, stu in records:
+            if scope.get("mode") == "SCOPED" and not in_scope(scope, db, rec, stu):
+                continue
+            org = _org_of(db, stu, cache)
+            if (college and college != org[0]) or (major and major != org[1]) or (class_name and class_name != org[2]):
+                continue
+            kept.append(rec)
+        all_ids = {r.id for r in kept}
+        onsite = {r.id for r in kept if r.status in ("ONBOARD", "ASSESSING", "ARCHIVED")}
+        weekly_base = {r.id for r in kept if r.status in ("ONBOARD", "ASSESSING")}
+        eval_base = {r.id for r in kept if r.status in ("ASSESSING", "ARCHIVED")}
+        def related_ids(model, *conditions):
+            return set(db.scalars(select(model.internship_id).where(
+                model.tenant_id == _tid(), model.is_deleted.is_(False),
+                model.internship_id.in_(list(all_ids) or [0]), *conditions)).all())
+        positive = {
+            "placementRate": {r.id for r in kept if r.destination_type in ("ASSIGNED", "SELF_ARRANGED", "EXEMPTED")},
+            "matchRate": {r.id for r in kept if r.position_id or r.destination_type == "ASSIGNED"},
+            "agreementSignRate": related_ids(InternshipAgreement, InternshipAgreement.status.in_(["EFFECTIVE", "ARCHIVED"])),
+            "arrivalRate": related_ids(InternshipCheckin, InternshipCheckin.result.in_(["NORMAL", "RECORDED", "LEAVE"])) & onsite,
+            "weeklySubmitRate": related_ids(WeeklyReport) & weekly_base,
+            "guidanceCoverRate": related_ids(InternshipGuidance, InternshipGuidance.status == "NORMAL"),
+            "visitCoverRate": related_ids(InternshipVisit),
+            "enterpriseEvalRate": related_ids(InternshipEnterpriseEval),
+            "studentEvalRate": related_ids(InternshipStudentEval, InternshipStudentEval.submit_status == "SUBMITTED"),
+            "scorePublishRate": related_ids(InternshipFinalScore, InternshipFinalScore.status == "PUBLISHED"),
+            "archiveRate": related_ids(InternshipArchive, InternshipArchive.status == "ARCHIVED"),
+        }
+        denominator = {
+            "arrivalRate": onsite, "weeklySubmitRate": weekly_base,
+            "enterpriseEvalRate": eval_base, "studentEvalRate": eval_base,
+            "scorePublishRate": eval_base, "archiveRate": eval_base,
+        }.get(metric_key, all_ids)
+        chosen = (positive.get(metric_key, set()) if subset == "numerator" else denominator)
+        selected = [r for r in kept if r.id in chosen]
+        selected.sort(key=lambda r: (r.updated_at or datetime.min, r.id), reverse=True)
+        start = (max(1, int(page)) - 1) * int(page_size)
+        rows = []
+        for rec in selected[start:start + int(page_size)]:
+            stu = tenant_get(db, StudentProfile, rec.student_id)
+            org = _org_of(db, stu, cache)
+            rows.append({"internshipId": str(rec.id), "studentId": str(rec.student_id),
+                         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
+                         "status": rec.status, "college": org[0], "major": org[1], "className": org[2]})
+        return {"metricVersion": METRIC_VERSION, "definition": METRIC_DEFINITIONS[metric_key],
+                "subset": subset, "total": len(selected), "items": rows, "page": int(page),
+                "pageSize": int(page_size), "appliedFilters": {"batchId": str(batch.id), "college": college or "",
+                "major": major or "", "className": class_name or "", "scopeMode": scope.get("mode")},
+                "generatedAt": datetime.now().isoformat(timespec="seconds"), **batch_public_fields(batch)}
+
+
+def dimension_options(user, batch_id=None) -> dict:
+    """可选学院/专业/班级（限当前批次 + 数据范围内出现过的组织）。"""
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    scope, in_scope = _scope_ctx(user)
+    scoped = scope.get("mode") == "SCOPED"
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
+        recs = db.execute(select(InternshipRecord, StudentProfile).outerjoin(StudentProfile,
+            (StudentProfile.id == InternshipRecord.student_id) &
+            (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id)).all()
+        cache = _preload_org_cache(db, [stu for _rec, stu in recs])
+        colleges, majors, classes = set(), set(), set()
+        for r, stu in recs:
+            if scoped and not in_scope(scope, db, r, stu):
+                continue
+            oc, om, ocl = _org_of(db, stu, cache)
+            if oc:
+                colleges.add(oc)
+            if om:
+                majors.add(om)
+            if ocl:
+                classes.add(ocl)
+        return {"colleges": sorted(colleges), "majors": sorted(majors), "classes": sorted(classes)}
+
+
+def trends(user, college=None, major=None, class_name=None, months=6, batch_id=None) -> dict:
+    """Return auditable monthly activity counts for the visible internship cohort."""
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+
+    months = max(3, min(int(months or 6), 12))
+    now = datetime.now()
+    keys = []
+    year, month = now.year, now.month
+    for _ in range(months):
+        keys.append(f"{year:04d}-{month:02d}")
+        month -= 1
+        if month == 0:
+            year, month = year - 1, 12
+    keys.reverse()
+    start_at = datetime.strptime(f"{keys[0]}-01", "%Y-%m-%d")
+    end_at = (datetime(now.year + 1, 1, 1) if now.month == 12
+              else datetime(now.year, now.month + 1, 1))
+
+    scope, in_scope = _scope_ctx(user)
+    role = str(scope.get("roleCode") or "").upper()
+    advisor_roles = {"INTERN_MENTOR", "INTERNSHIP_MENTOR", "INTERN_ADVISOR", "GD_MENTOR", "MENTOR"}
+    advisor_user_ids = {int(value) for value in scope.get("advisorUserIds", set())
+                        if str(value).isdigit()}
+    # 导师范围只认稳定 user_id；缺少关联 ID 的历史记录需先治理，不能按姓名放宽可见范围。
+    # 其他受限身份继续沿用既有 Python 范围判断，避免把学院/班级等历史范围的细节静默改写。
+    can_aggregate = scope.get("mode") != "SCOPED" or (
+        role in advisor_roles
+    )
+
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
+        if not can_aggregate:
+            recs = db.execute(select(InternshipRecord, StudentProfile).outerjoin(StudentProfile,
+                (StudentProfile.id == InternshipRecord.student_id) &
+                (StudentProfile.tenant_id == InternshipRecord.tenant_id)).where(
+                InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+                InternshipRecord.batch_id == batch.id)).all()
+            cache = _preload_org_cache(db, [stu for _rec, stu in recs])
+            kept = []
+            for rec, stu in recs:
+                if scope.get("mode") == "SCOPED" and not in_scope(scope, db, rec, stu):
+                    continue
+                org = _org_of(db, stu, cache)
+                if college and college != org[0]:
+                    continue
+                if major and major != org[1]:
+                    continue
+                if class_name and class_name != org[2]:
+                    continue
+                kept.append(rec)
+            record_ids = [rec.id for rec in kept] or [0]
+
+            def count_by_month(rows, field):
+                counts = {key: 0 for key in keys}
+                for row in rows:
+                    value = getattr(row, field, None)
+                    key = value.strftime("%Y-%m") if value else ""
+                    if key in counts:
+                        counts[key] += 1
+                return [{"month": key, "value": counts[key]} for key in keys]
+
+            common = lambda model: (
+                model.tenant_id == _tid(), model.is_deleted.is_(False), model.internship_id.in_(record_ids)
+            )
+            reports = db.scalars(select(WeeklyReport).where(*common(WeeklyReport))).all()
+            guidances = db.scalars(select(InternshipGuidance).where(*common(InternshipGuidance))).all()
+            visits = db.scalars(select(InternshipVisit).where(*common(InternshipVisit))).all()
+            return {
+                "months": keys,
+                "series": [
+                    {"key": "records", "label": "新增实习建档", "points": count_by_month(kept, "created_at")},
+                    {"key": "reports", "label": "报告提交", "points": count_by_month(reports, "submitted_at")},
+                    {"key": "guidance", "label": "指导记录", "points": count_by_month(guidances, "created_at")},
+                    {"key": "visits", "label": "巡访记录", "points": count_by_month(visits, "created_at")},
+                ],
+                "generatedAt": datetime.now().isoformat(timespec="seconds"),
+                "batchId": str(batch.id),
+            }
+
+        visible_query = select(
+            InternshipRecord.id.label("internship_id"),
+            InternshipRecord.created_at.label("occurred_at"),
+        ).where(
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False),
+            InternshipRecord.batch_id == batch.id,
+        )
+        if scope.get("mode") == "SCOPED" and role in advisor_roles:
+            visible_query = visible_query.where(
+                InternshipRecord.advisor_user_id.in_(advisor_user_ids) if advisor_user_ids else false()
+            )
+
+        if college or major or class_name:
+            visible_query = visible_query.outerjoin(StudentProfile, and_(
+                StudentProfile.id == InternshipRecord.student_id,
+                StudentProfile.tenant_id == InternshipRecord.tenant_id,
+                StudentProfile.is_deleted.is_(False),
+            )).outerjoin(SchoolClass, and_(
+                SchoolClass.id == StudentProfile.class_id,
+                SchoolClass.tenant_id == InternshipRecord.tenant_id,
+                SchoolClass.is_deleted.is_(False),
+            )).outerjoin(Major, and_(
+                Major.id == SchoolClass.major_id,
+                Major.tenant_id == InternshipRecord.tenant_id,
+                Major.is_deleted.is_(False),
+            )).outerjoin(College, and_(
+                College.id == Major.college_id,
+                College.tenant_id == InternshipRecord.tenant_id,
+                College.is_deleted.is_(False),
+            ))
+            if college:
+                visible_query = visible_query.where(College.college_name == college)
+            if major:
+                visible_query = visible_query.where(Major.major_name == major)
+            if class_name:
+                visible_query = visible_query.where(SchoolClass.class_name == class_name)
+
+        visible = visible_query.subquery()
+        visible_ids = select(visible.c.internship_id)
+
+        def points_for(model, field, *, visible_field=None):
+            counts = {key: 0 for key in keys}
+            if visible_field is not None:
+                statement = select(
+                    func.date_format(visible_field, "%Y-%m"), func.count(),
+                ).where(
+                    visible_field.is_not(None), visible_field >= start_at, visible_field < end_at,
+                )
+            else:
+                statement = select(
+                    func.date_format(field, "%Y-%m"), func.count(),
+                ).where(
+                    model.tenant_id == _tid(), model.is_deleted.is_(False),
+                    model.internship_id.in_(visible_ids), field.is_not(None),
+                    field >= start_at, field < end_at,
+                )
+            statement = statement.group_by(func.date_format(
+                visible_field if visible_field is not None else field, "%Y-%m"))
+            for month_key, value in db.execute(statement).all():
+                if str(month_key) in counts:
+                    counts[str(month_key)] = int(value or 0)
+            return [{"month": key, "value": counts[key]} for key in keys]
+
+        return {
+            "months": keys,
+            "series": [
+                {"key": "records", "label": "新增实习建档",
+                 "points": points_for(InternshipRecord, InternshipRecord.created_at,
+                                       visible_field=visible.c.occurred_at)},
+                {"key": "reports", "label": "报告提交",
+                 "points": points_for(WeeklyReport, WeeklyReport.submitted_at)},
+                {"key": "guidance", "label": "指导记录",
+                 "points": points_for(InternshipGuidance, InternshipGuidance.created_at)},
+                {"key": "visits", "label": "巡访记录",
+                 "points": points_for(InternshipVisit, InternshipVisit.created_at)},
+            ],
+            "generatedAt": datetime.now().isoformat(timespec="seconds"),
+            "batchId": str(batch.id),
+        }
+
+def export_stats(user, college=None, major=None, class_name=None, batch_id=None) -> dict:
+    from app.services import xlsx_util
+    data = overview(user, college=college, major=major, class_name=class_name, batch_id=batch_id)
+    headers = ["指标", "分子", "分母", "达成率(%)", "预警阈值(%)", "是否预警"]
+    rows = [[m["label"], m["numerator"], m["denominator"],
+             "—" if m["rate"] is None else m["rate"], m["threshold"], "是" if m["warn"] else "否"]
+            for m in data["metrics"]]
+    for c in data["counters"]:
+        rows.append([c["label"], "—", "—", c["value"], "—", "是" if c.get("warn") else "否"])
+    for d in data["scoreDistribution"]:
+        rows.append([f"成绩分布·{d['bucket']}", "—", "—", d["count"], "—", "否"])
+    op = (user or {}).get("realName") or "系统"
+    dim = "/".join([x for x in [college, major, class_name] if x]) or "全部范围"
+    bname = data.get("batchName") or ""
+    wm = (f"岗位实习中心·统计报表（{bname}/{dim}）· 导出人：{op} · "
+          f"{datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
+    content = xlsx_util.build_ledger_xlsx("实习统计报表", headers, rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "实习统计报表.xlsx", len(rows))

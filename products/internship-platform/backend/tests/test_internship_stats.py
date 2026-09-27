@@ -1,0 +1,181 @@
+"""P3-B · 实习统计中心（指标口径 / 维度筛选 / 数据范围隔离 / 学生403 / 导出）。
+本轮：统计必须带 batchId，种子数据写入明确批次。
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from uuid import uuid4
+
+TID = 1000000000000000001
+INT = "/api/v1/internship"
+
+
+def _admin(client):
+    d = client.post("/api/v1/auth/mock-login",
+                    json={"loginName": "school_admin01", "password": "any"}).json()["data"]
+    return {"Authorization": f"Bearer {d['accessToken']}"}
+
+
+def _mentor(name, tid=TID):
+    from app.core.security import create_access_token
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{name}", "realName": name, "userType": "TEACHER",
+        "tid": "x", "tenantId": str(tid), "activeContextId": "ctx",
+        "currentRoleCode": "INTERN_MENTOR", "clientType": "PC"})}
+
+
+def _student(sno, tid=TID):
+    from app.core.security import create_access_token
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{sno}", "realName": "学生", "userType": "STUDENT", "tid": "x",
+        "tenantId": str(tid), "studentNo": sno, "currentRoleCode": "STUDENT", "clientType": "MP"})}
+
+
+def _seed(db_mode):
+    """A(刘强,班级 实习2401班) ONBOARD + 打卡NORMAL + 生效协议 + 已发布成绩85；B(王芳) ONBOARD。"""
+    from app.db.session import get_sessionmaker
+    from app.models import (College, InternshipAgreement, InternshipBatch, InternshipCheckin,
+                            InternshipFinalScore, InternshipRecord, Major, SchoolClass,
+                            StudentProfile)
+    db = get_sessionmaker()()
+    ids = {}
+    try:
+        batch = InternshipBatch(
+            tenant_id=TID, batch_name=f"统计批次-{uuid4().hex[:6]}",
+            batch_no=f"ST-{uuid4().hex[:8]}", status="RUNNING",
+            start_date=datetime(2026, 3, 1), end_date=datetime(2026, 8, 31),
+            planned_count=10)
+        db.add(batch); db.flush()
+        ids["batch_id"] = batch.id
+        col = College(tenant_id=TID, college_name="信息工程学院"); db.add(col); db.flush()
+        mj = Major(tenant_id=TID, college_id=col.id, major_name="软件技术"); db.add(mj); db.flush()
+        cls = SchoolClass(tenant_id=TID, major_id=mj.id, class_name="实习2401班"); db.add(cls); db.flush()
+        for no, name, adv, key, cid in [("ST-A", "甲", "刘强", "a", cls.id), ("ST-B", "乙", "王芳", "b", None)]:
+            s = StudentProfile(tenant_id=TID, student_no=no, real_name=name, class_id=cid,
+                               current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
+            db.add(s); db.flush()
+            r = InternshipRecord(tenant_id=TID, student_id=s.id, batch_id=batch.id, advisor_name=adv,
+                                 enterprise_name="测试企业", position_name="实习生", position_id=1,
+                                 status="ONBOARD", risk_level="NONE", destination_type="ASSIGNED")
+            db.add(r); db.flush()
+            ids[f"rec_{key}"] = r.id
+        db.add(InternshipCheckin(tenant_id=TID, internship_id=ids["rec_a"], checkin_date="2026-07-01",
+                                 checkin_at=datetime.utcnow(), result="NORMAL"))
+        db.add(InternshipAgreement(tenant_id=TID, internship_id=ids["rec_a"], student_id=1,
+                                   status="EFFECTIVE"))
+        db.add(InternshipFinalScore(tenant_id=TID, internship_id=ids["rec_a"], student_id=1,
+                                    total_score=85, status="PUBLISHED", incomplete=False, is_pass=True))
+        db.commit()
+        return ids
+    finally:
+        db.close()
+
+
+def _m(data, key):
+    return next(m for m in data["metrics"] if m["key"] == key)
+
+
+def _c(data, key):
+    return next(c for c in data["counters"] if c["key"] == key)
+
+
+def _bid(ids):
+    return str(ids["batch_id"])
+
+
+def test_admin_metrics_correct(client, db_mode):
+    ids = _seed(db_mode)
+    data = client.get(f"{INT}/stats/overview", headers=_admin(client),
+                      params={"batchId": _bid(ids)}).json()["data"]
+    assert data["batchId"] == _bid(ids)
+    assert _c(data, "totalStudents")["value"] == 2
+    assert _c(data, "onboardStudents")["value"] == 2
+    assert _m(data, "placementRate")["rate"] == 100.0
+    assert _m(data, "agreementSignRate")["numerator"] == 1 and _m(data, "agreementSignRate")["rate"] == 50.0
+    assert _m(data, "checkinComplyRate")["rate"] == 100.0
+    good = next(d for d in data["scoreDistribution"] if d["bucket"].startswith("良"))
+    assert good["count"] == 1
+    assert _m(data, "employmentRate")["key"] == "employmentRate"
+    assert _m(data, "archiveRate")["key"] == "archiveRate"
+    assert data["partial"] == []
+
+
+def test_scope_isolation(client, db_mode):
+    ids = _seed(db_mode)
+    params = {"batchId": _bid(ids)}
+    liu = client.get(f"{INT}/stats/overview", headers=_mentor("刘强"), params=params).json()["data"]
+    wang = client.get(f"{INT}/stats/overview", headers=_mentor("王芳"), params=params).json()["data"]
+    assert _c(liu, "totalStudents")["value"] == 1
+    assert _c(wang, "totalStudents")["value"] == 1
+    assert _m(liu, "agreementSignRate")["rate"] == 100.0
+    assert _m(wang, "agreementSignRate")["rate"] == 0.0
+
+
+def test_dimension_filter(client, db_mode):
+    ids = _seed(db_mode)
+    h = _admin(client)
+    bid = _bid(ids)
+    dims = client.get(f"{INT}/stats/dimensions", headers=h, params={"batchId": bid}).json()["data"]
+    assert "实习2401班" in dims["classes"] and "信息工程学院" in dims["colleges"]
+    data = client.get(f"{INT}/stats/overview", headers=h,
+                      params={"batchId": bid, "className": "实习2401班"}).json()["data"]
+    assert _c(data, "totalStudents")["value"] == 1
+    assert data["dimensions"]["className"] == "实习2401班"
+    d2 = client.get(f"{INT}/stats/overview", headers=h,
+                    params={"batchId": bid, "college": "信息工程学院"}).json()["data"]
+    assert _c(d2, "totalStudents")["value"] == 1
+
+
+def test_student_forbidden(client, db_mode):
+    ids = _seed(db_mode)
+    params = {"batchId": _bid(ids)}
+    assert client.get(f"{INT}/stats/overview", headers=_student("ST-A"), params=params).status_code == 403
+    assert client.get(f"{INT}/stats/dimensions", headers=_student("ST-A"), params=params).status_code == 403
+
+
+def test_trends_respect_scope_and_return_complete_months(client, db_mode):
+    ids = _seed(db_mode)
+    bid = _bid(ids)
+    admin = client.get(f"{INT}/stats/trends", headers=_admin(client),
+                       params={"months": 6, "batchId": bid})
+    assert admin.status_code == 200
+    data = admin.json()["data"]
+    assert len(data["months"]) == 6
+    assert {item["key"] for item in data["series"]} == {"records", "reports", "guidance", "visits"}
+    assert all(len(item["points"]) == 6 for item in data["series"])
+    mentor = client.get(f"{INT}/stats/trends", headers=_mentor("刘强"),
+                        params={"months": 6, "batchId": bid})
+    assert mentor.status_code == 200
+    records = next(item for item in mentor.json()["data"]["series"] if item["key"] == "records")
+    assert sum(point["value"] for point in records["points"]) == 1
+
+
+def test_export(client, db_mode):
+    ids = _seed(db_mode)
+    res = client.post(f"{INT}/stats/export", headers=_admin(client),
+                      params={"batchId": _bid(ids)})
+    assert res.status_code == 200
+    d = res.json()["data"]
+    assert d["filename"].endswith(".xlsx") and d["contentBase64"] and d["rowCount"] > 0
+
+
+def test_placement_rate_follows_destination_not_status(client, db_mode):
+    ids = _seed(db_mode)
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord, StudentProfile
+    db = get_sessionmaker()()
+    try:
+        s = StudentProfile(tenant_id=TID, student_no="ST-C", real_name="丙",
+                           current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
+        db.add(s); db.flush()
+        db.add(InternshipRecord(tenant_id=TID, student_id=s.id, batch_id=ids["batch_id"],
+                                advisor_name="刘强", status="ONBOARD", risk_level="NONE",
+                                destination_type="NONE"))
+        db.commit()
+    finally:
+        db.close()
+    data = client.get(f"{INT}/stats/overview", headers=_admin(client),
+                      params={"batchId": _bid(ids)}).json()["data"]
+    placement = _m(data, "placementRate")
+    assert placement["denominator"] == 3
+    assert placement["numerator"] == 2, "去向未落实的记录不得计入落实率分子"
