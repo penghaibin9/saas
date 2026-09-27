@@ -135,12 +135,12 @@ def school_role_template_impact(template_code: str, template_id: int, user=Depen
     if current is None:
         from app.core.exceptions import AppException
         raise AppException("DATA_NOT_FOUND", "角色模板版本不存在", http_status=404)
-    previous = next((row for row in versions if str(row["id"]) == str(current.get("previousTemplateId"))), None)
+    base = template_svc.impact(template_id)
+    previous = next((row for row in versions if str(row["id"]) == str(base.get("baselineTemplateId"))), None)
     current_preview = _template_preview(current)
     previous_preview = _template_preview(previous) if previous else {"menuPreview": []}
     current_keys = {item["surfaceKey"] for item in current_preview["menuPreview"]}
     previous_keys = {item["surfaceKey"] for item in previous_preview["menuPreview"]}
-    base = template_svc.impact(template_id)
     return success({**base, "menuAdded": sorted(current_keys - previous_keys),
                     "menuRemoved": sorted(previous_keys - current_keys),
                     "navigationDigest": current_preview["navigationDigest"],

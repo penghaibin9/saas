@@ -136,6 +136,34 @@ def _load(db, template_id: int, *, lock: bool = False) -> RoleTemplate:
     return item
 
 
+def _current_published(db, template_code: str, *, lock: bool = False) -> RoleTemplate | None:
+    stmt = select(RoleTemplate).where(
+        RoleTemplate.tenant_id == PLATFORM_TENANT,
+        RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+        RoleTemplate.template_category == TEMPLATE_CATEGORY_SYSTEM_ROLE,
+        RoleTemplate.template_code == template_code,
+        RoleTemplate.publish_status == PUBLISHED,
+        RoleTemplate.status == "ACTIVE",
+        RoleTemplate.is_deleted.is_(False),
+    ).order_by(RoleTemplate.template_version.desc(), RoleTemplate.id.desc()).limit(1)
+    return db.scalar(stmt.with_for_update() if lock else stmt)
+
+
+def _draft_baseline_id(db, item: RoleTemplate) -> int | None:
+    snapshot = item.permission_ceiling_json or {}
+    if "basePublishedTemplateId" in snapshot:
+        value = snapshot["basePublishedTemplateId"]
+        return int(value) if value is not None else None
+    # Older drafts did not record a separate baseline. Their predecessor is
+    # usable only when it was already published; a draft predecessor is unsafe.
+    if item.previous_template_id:
+        previous = _load(db, int(item.previous_template_id))
+        if previous.publish_status != PUBLISHED:
+            raise AppException("DATA_CONFLICT", "旧草稿无法证明发布基线，请重新建立草稿", http_status=409)
+        return int(previous.id)
+    return None
+
+
 def list_versions(template_code: str) -> list[dict]:
     code = assert_school_role_template_code(template_code)
     db = get_sessionmaker()()
@@ -178,6 +206,7 @@ def create_draft(
             RoleTemplate.is_deleted.is_(False),
         ).order_by(RoleTemplate.template_version.desc()).limit(1))
         latest_version = int(latest.template_version or 0) if latest else 0
+        baseline = _current_published(db, code)
         previous = None
         if source_template_id is not None:
             previous = _load(db, source_template_id, lock=False)
@@ -200,7 +229,8 @@ def create_draft(
             source_commit_sha=str(source_commit_sha or "").strip() or None,
             delivered=True,
             bundle_codes_json={"items": []},
-            permission_ceiling_json={"items": permissions, "permissionDigest": _digest(permissions)},
+            permission_ceiling_json={"items": permissions, "permissionDigest": _digest(permissions),
+                                     "basePublishedTemplateId": int(baseline.id) if baseline else None},
             wildcard_json=None,
             status="ACTIVE",
             created_by=actor_user_id,
@@ -260,7 +290,16 @@ def impact(template_id: int) -> dict:
     try:
         item = _load(db, template_id)
         current = set(_items(db, item))
-        previous = _load(db, int(item.previous_template_id)) if item.previous_template_id else None
+        snapshot = item.permission_ceiling_json or {}
+        if "basePublishedTemplateId" in snapshot or item.publish_status == DRAFT:
+            baseline_id = _draft_baseline_id(db, item)
+            if item.publish_status == DRAFT:
+                published = _current_published(db, item.template_code)
+                if baseline_id != (int(published.id) if published else None):
+                    raise AppException("DATA_CONFLICT", "已发布模板发生变化，请重新建立草稿", http_status=409)
+            previous = _load(db, baseline_id) if baseline_id is not None else None
+        else:
+            previous = _load(db, int(item.previous_template_id)) if item.previous_template_id else None
         before = set(_items(db, previous)) if previous is not None else set()
         pinned = list(db.scalars(select(CustomRoleSource).where(
             CustomRoleSource.source_template_code == item.template_code,
@@ -270,6 +309,7 @@ def impact(template_id: int) -> dict:
             "templateId": str(item.id),
             "templateCode": item.template_code,
             "templateVersion": int(item.template_version or 0),
+            "baselineTemplateId": str(previous.id) if previous is not None else None,
             "addedPermissions": sorted(current - before),
             "removedPermissions": sorted(before - current),
             "affectedPinnedCustomRoles": [
@@ -307,6 +347,18 @@ def publish_draft(
             raise AppException("IMMUTABLE_TEMPLATE", "只有 DRAFT 模板版本可以发布", http_status=409)
         if int(item.version or 0) != int(expected_version):
             raise AppException("DATA_CONFLICT", "模板草稿已被其他人修改，请刷新后重试", http_status=409)
+        # The oldest version is a stable per-code lock even when newer drafts
+        # are inserted concurrently. Two different draft rows cannot publish
+        # against the same baseline at once.
+        db.scalar(select(RoleTemplate.id).where(
+            RoleTemplate.tenant_id == PLATFORM_TENANT,
+            RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+            RoleTemplate.template_code == item.template_code,
+            RoleTemplate.is_deleted.is_(False),
+        ).order_by(RoleTemplate.template_version, RoleTemplate.id).limit(1).with_for_update())
+        published = _current_published(db, item.template_code, lock=True)
+        if _draft_baseline_id(db, item) != (int(published.id) if published else None):
+            raise AppException("DATA_CONFLICT", "已发布模板发生变化，请重新建立草稿", http_status=409)
         if change_reason is not None:
             reason = str(change_reason or "").strip()
             if len(reason) < 5:
