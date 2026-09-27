@@ -1,18 +1,7 @@
 name: Internship Standalone DB Head
 
 on:
-  push:
-    branches:
-      - feat/internship-standalone-yiyang-v1
-    paths:
-      - "products/internship-platform/backend/alembic/**"
-      - "products/internship-platform/backend/app/models/**"
-      - ".github/workflows/internship-standalone-db-head.yml"
-  pull_request:
-    paths:
-      - "products/internship-platform/backend/alembic/**"
-      - "products/internship-platform/backend/app/models/**"
-      - ".github/workflows/internship-standalone-db-head.yml"
+  workflow_dispatch:
 
 jobs:
   mysql-head:
