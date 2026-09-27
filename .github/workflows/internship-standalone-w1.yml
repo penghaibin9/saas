@@ -64,6 +64,11 @@ jobs:
           PYTHONPATH: products/internship-platform/backend
         run: pytest -q products/internship-platform/backend/tests/test_health.py products/internship-platform/backend/tests/test_shared_kernel.py
 
+      - name: Build standalone schema manifest
+        env:
+          PYTHONPATH: products/internship-platform/backend
+        run: python products/internship-platform/scripts/build_schema_manifest.py
+
       - name: Upload W1 extraction evidence
         uses: actions/upload-artifact@v4
         with:
@@ -71,4 +76,5 @@ jobs:
           path: |
             products/internship-platform/artifacts/extraction-manifest.json
             products/internship-platform/artifacts/backend-dependencies.json
+            products/internship-platform/artifacts/schema-manifest.json
           if-no-files-found: error
