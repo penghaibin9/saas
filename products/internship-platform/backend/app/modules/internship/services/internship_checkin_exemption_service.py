@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission
@@ -197,7 +197,7 @@ def list_for_teacher(page: int, page_size: int, *, batch_id, status=None, user=N
             if status_value not in {"PENDING", "APPROVED", "REJECTED", "WITHDRAWN"}:
                 raise AppException("VALIDATION_ERROR", "免签状态不合法")
             query = query.where(InternshipCheckinExemption.status == status_value)
-        total = len(db.execute(query).all())
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
         rows = db.execute(
             query.order_by(InternshipCheckinExemption.id.desc())
             .offset((max(1, int(page)) - 1) * int(page_size))
