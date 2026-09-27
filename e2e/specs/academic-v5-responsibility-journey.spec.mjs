@@ -230,7 +230,8 @@ async function runJourney() {
       term = await read(await created); assert.equal(typeof term.termId, 'string')
       report.termId = term.termId; await save()
     } else { report.termId = term.termId; await save() }
-    term = await visit(school, `/admin/academic-affairs/terms/${report.termId}`, `${apiPath}/terms/${report.termId}`)
+    term = await visit(school, `/admin/academic-affairs/terms/${report.termId}`, `${apiPath}/terms/${report.termId}/workspace`)
+    assert.equal(term.termId, report.termId, '学期详情必须返回本场景学期')
     for (const [key, value] of Object.entries(termInput)) assert.equal(term[key], value, '已有学期必须与场景正式前置条件一致')
     await observed('term', { termId: term.termId, status: term.status })
     await capture(school, 'A01-学校正式学期')
@@ -281,7 +282,8 @@ async function runJourney() {
     await capture(school, 'A03-正式作息刷新')
 
     await phase('学校核验并发布本学期校历')
-    await visit(school, `/admin/academic-affairs/calendar?termId=${report.termId}&tab=publish`, `${apiPath}/terms/${report.termId}`)
+    const publishTerm = await visit(school, `/admin/academic-affairs/calendar?termId=${report.termId}&tab=publish`, `${apiPath}/terms/${report.termId}/workspace`)
+    assert.equal(publishTerm.termId, report.termId, '校历发布依据必须属于本场景学期')
     if (term.status === 'DRAFT') {
       const publish = school.getByRole('button', { name: '核验并发布校历', exact: true }).first()
       await expect(publish).toBeEnabled(); await publish.click()
@@ -293,9 +295,9 @@ async function runJourney() {
       const result = await read(await published); assert.equal(result.termId, report.termId); assert.equal(result.status, 'PUBLISHED')
     }
     const currentResponse = responseFor(school, `${apiPath}/terms/current`)
-    term = await visit(school, `/admin/academic-affairs/terms/${report.termId}`, `${apiPath}/terms/${report.termId}`)
+    term = await visit(school, `/admin/academic-affairs/terms/${report.termId}`, `${apiPath}/terms/${report.termId}/workspace`)
     const currentTerm = await read(await currentResponse)
-    assert.equal(term.status, 'PUBLISHED'); assert.equal(currentTerm.termId, report.termId)
+    assert.equal(term.termId, report.termId); assert.equal(term.status, 'PUBLISHED'); assert.equal(currentTerm.termId, report.termId)
     await observed('publish', { termId: report.termId, status: term.status, currentTermId: currentTerm.termId })
     await capture(school, 'A04-学期发布与当前学期')
 
