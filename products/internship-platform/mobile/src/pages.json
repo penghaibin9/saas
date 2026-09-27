@@ -1,9 +1,15 @@
 {
   "easycom": {
-    "autoscan": true,
+    "autoscan": false,
     "custom": {
-      "^Mobile(.*)": "@/components/Mobile$1.vue",
-      "^App(.*)": "@/components/App$1.vue"
+      "^MobileGlobalState$": "@/components/MobileGlobalState.vue",
+      "^MobileInlineAlert$": "@/components/MobileInlineAlert.vue",
+      "^MobileNavBar$": "@/components/MobileNavBar.vue",
+      "^MobilePrivacyGate$": "@/components/MobilePrivacyGate.vue",
+      "^MobileSafeAreaBar$": "@/components/MobileSafeAreaBar.vue",
+      "^MobileStatusTag$": "@/components/MobileStatusTag.vue",
+      "^MobileTimeline$": "@/components/MobileTimeline.vue",
+      "^MobileSegmented$": "@/components/MobileSegmented.vue"
     }
   },
   "pages": [
