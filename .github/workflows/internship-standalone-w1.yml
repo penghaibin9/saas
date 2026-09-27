@@ -1,16 +1,7 @@
 name: Internship Standalone W1
 
 on:
-  push:
-    branches:
-      - feat/internship-standalone-yiyang-v1
-    paths:
-      - "products/internship-platform/**"
-      - ".github/workflows/internship-standalone-w1.yml"
-  pull_request:
-    paths:
-      - "products/internship-platform/**"
-      - ".github/workflows/internship-standalone-w1.yml"
+  workflow_dispatch:
 
 jobs:
   standalone-boundary:
