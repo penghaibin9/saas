@@ -42,6 +42,12 @@ from app.models.internship_enterprise_portal import (
     InternshipEnterpriseMember, InternshipRecruitmentCampaign,
 )
 from app.models.internship_match import InternshipApplication, InternshipIntention, InternshipMatch
+from app.models.internship_material_requirement import (
+    InternshipMaterialRequirement,
+    InternshipMaterialSubmission,
+    InternshipMaterialSubmissionFile,
+    InternshipMaterialTemplateVersion,
+)
 from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
 from app.models.internship_position import InternshipPosition
 from app.models.internship_student_profile import StudentInternshipProfile, StudentInternshipProfileItem
