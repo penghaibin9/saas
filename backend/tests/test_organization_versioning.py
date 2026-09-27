@@ -351,3 +351,50 @@ def test_t04_assignments_are_tenant_isolated(db_mode):
     theirs_rows = svc.effective_assignments(7006, tenant_id=OTHER_TENANT)
     assert len(mine_rows) == 1 and mine_rows[0]["orgNodeId"] == str(mine)
     assert len(theirs_rows) == 1 and theirs_rows[0]["orgNodeId"] == str(theirs)
+
+
+def test_school_academic_reviewer_http_boundary(client, auth_headers, db_mode):
+    """正式任职入口只接收本校有效账号的校级教务责任岗位。"""
+    from app.models import StaffAssignment, User, UserRole
+
+    school_id = 1000000000000000001
+    with _session() as db:
+        mine = User(tenant_id=school_id, login_name="school-reviewer-test",
+                    real_name="本校教务", password_hash="unused", user_type="TEACHER", status="ACTIVE")
+        foreign = User(tenant_id=OTHER_TENANT, login_name="foreign-reviewer-test",
+                       real_name="外校教务", password_hash="unused", user_type="TEACHER", status="ACTIVE")
+        disabled = User(tenant_id=school_id, login_name="disabled-reviewer-test",
+                        real_name="停用教务", password_hash="unused", user_type="TEACHER", status="DISABLED")
+        db.add_all((mine, foreign, disabled))
+        db.commit()
+        mine_id, foreign_id, disabled_id = mine.id, foreign.id, disabled.id
+
+    def appoint(user_id, org_type="SCHOOL", org_node_id=school_id,
+                assignment_type="ACADEMIC_REVIEWER"):
+        return client.post("/api/v1/system/staff-assignments", headers=auth_headers, json={
+            "userId": str(user_id), "orgType": org_type,
+            "orgNodeId": str(org_node_id), "assignmentType": assignment_type,
+            "reason": "教务终审责任人",
+        })
+
+    for response in (
+        appoint(mine_id, org_node_id=OTHER_TENANT),
+        appoint(foreign_id),
+        appoint(disabled_id),
+        appoint(mine_id, assignment_type="OTHER"),
+        appoint(mine_id, org_type="COLLEGE"),
+    ):
+        assert response.status_code in (400, 404), response.text
+
+    with _session() as db:
+        assert db.query(StaffAssignment).filter(StaffAssignment.tenant_id == school_id).count() == 0
+
+    response = appoint(mine_id)
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["orgNodeId"] == str(school_id)
+    assert response.json()["data"]["assignmentType"] == "ACADEMIC_REVIEWER"
+    with _session() as db:
+        rows = db.query(StaffAssignment).filter(StaffAssignment.tenant_id == school_id).all()
+        assert len(rows) == 1 and rows[0].user_id == mine_id
+        assert db.query(UserRole).filter(UserRole.tenant_id == school_id,
+                                         UserRole.user_id == mine_id).count() == 0
