@@ -156,6 +156,38 @@ def test_invigilation_workbench_filters_to_self_and_only_formal_chain(db_mode):
     assert finished["items"][0]["workStatus"] == "FINISHED"
 
 
+def test_past_published_room_stays_visible_only_while_own_attendance_is_unfinished(db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaExamBatch, AaExamRoomStudent
+    from app.modules.academic_affairs.services import academic_affairs_invigilation_workbench_service as svc
+
+    ids = _seed_assignment(db_mode, "cw3_overdue_invigilator", exam_date="2029-01-12")
+    user = _set_context(_user("cw3_overdue_invigilator"))
+    with get_sessionmaker()() as db:
+        seat = AaExamRoomStudent(tenant_id=TID, exam_room_id=ids["roomId"],
+                                 exam_course_id=ids["courseId"], student_id=910012,
+                                 seat_no=1, attendance_status="NOT_STARTED")
+        db.add(seat)
+        db.commit()
+        seat_id = seat.id
+
+    pending = svc.my_invigilation_workbench(user, from_date="2029-01-13")
+    assert [row["examRoomId"] for row in pending["items"]] == [str(ids["roomId"])]
+    assert svc.my_invigilation_workbench(_set_context(_user("cw3_other_invigilator")),
+                                         from_date="2029-01-13")["items"] == []
+
+    with get_sessionmaker()() as db:
+        db.get(AaExamRoomStudent, seat_id).attendance_status = "PRESENT"
+        db.commit()
+    assert svc.my_invigilation_workbench(_set_context(user), from_date="2029-01-13")["items"] == []
+
+    with get_sessionmaker()() as db:
+        db.get(AaExamRoomStudent, seat_id).attendance_status = "NOT_STARTED"
+        db.get(AaExamBatch, ids["batchId"]).status = "FINISHED"
+        db.commit()
+    assert svc.my_invigilation_workbench(_set_context(user), from_date="2029-01-13")["items"] == []
+
+
 def test_invigilation_workbench_tracks_canonical_reassignment_without_second_assignment(db_mode):
     from app.db.session import get_sessionmaker
     from app.models import AaExamInvigilator

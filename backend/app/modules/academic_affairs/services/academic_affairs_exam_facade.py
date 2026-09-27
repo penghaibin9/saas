@@ -9,7 +9,7 @@ import hashlib
 import json
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import func, update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.affairs_security import _derive_keys, no_data_scope
@@ -490,10 +490,185 @@ def _closure_error(issues: dict) -> AppException | None:
     )
 
 
+def _attendance_scope(db, user, room_id, *, fresh=False):
+    from app.models import AaExamInvigilator, AaExamRoom
+
+    context = _legacy._ctx(user, db)
+    room_query = db.query(AaExamRoom).filter(
+        AaExamRoom.id == int(room_id), AaExamRoom.tenant_id == _legacy._tid(),
+        AaExamRoom.is_deleted.is_(False),
+    )
+    room = (room_query.populate_existing() if fresh else room_query).first()
+    if room is None:
+        raise not_found("考场不存在")
+    course = _legacy._get_course(db, int(room.exam_course_id))
+    if fresh:
+        db.refresh(course)
+    batch = _legacy._get_batch(db, int(course.batch_id))
+    if _status((user or {}).get("userType")) == "STUDENT" or _status((user or {}).get("currentRoleCode")) == "STUDENT":
+        raise no_data_scope("学生无权查看或登记考场到考")
+    if not _legacy._is_school(context):
+        college_id = _legacy._course_college_id(db, course)
+        is_college = (context.scope_type == "COLLEGE" and college_id in (context.college_ids or set()))
+        keys = _derive_keys(user or {})
+        invigilator_query = db.query(AaExamInvigilator).filter(
+            AaExamInvigilator.tenant_id == _legacy._tid(),
+            AaExamInvigilator.exam_room_id == room.id,
+            AaExamInvigilator.teacher_key.in_(keys),
+            AaExamInvigilator.is_deleted.is_(False),
+        )
+        is_invigilator = bool(keys) and (invigilator_query.with_for_update() if fresh else invigilator_query).first() is not None
+        if not (is_college or is_invigilator):
+            raise no_data_scope("非本学院或本人该考场监考，无权查看或登记到考")
+    return room, course, batch, context
+
+
+def _can_mark_present(context):
+    from app.core.permissions import _match
+
+    return any(_match(code, context.permission_codes) for code in (
+        "academicAffairs.exam.recordAbnormal", "academicAffairs.exam.manage"))
+
+
+def _attendance_block_reason(db, room, course, batch, *, term=None):
+    from app.models import AaTerm
+
+    if room.status != "ACTIVE" or course.status != "CONFIRMED":
+        return "考场或考试课程已失效"
+    if batch.status != _legacy._B_PUBLISHED:
+        return "仅已发布考试批次可登记正常到考"
+    if not batch.term_id:
+        return "考试批次未绑定正式学期"
+    if term is None:
+        term = db.query(AaTerm).filter(
+            AaTerm.id == int(batch.term_id), AaTerm.tenant_id == _legacy._tid(),
+            AaTerm.is_deleted.is_(False),
+        ).first()
+    if term is None or term.status != "PUBLISHED":
+        return "正式学期不存在、未发布或已封存"
+    return ""
+
+
+def _attendance_item(seat, block_reason="") -> dict:
+    status = _status(seat.attendance_status)
+    reason = block_reason or ("仅未登记考生可标记正常到考" if status != "NOT_STARTED" else "")
+    return {
+        "studentId": str(seat.student_id), "studentNo": seat.student_no,
+        "studentName": seat.student_name, "seatNo": seat.seat_no,
+        "attendanceStatus": status, "version": int(seat.version or 0),
+        "markPresentAction": {"allowed": not bool(reason), "reason": reason},
+    }
+
+
+def _lock_exam_batch(db, batch):
+    """Serialize exam attendance, incident, finish and archive on one term/batch order."""
+    from app.models import AaExamBatch, AaTerm
+
+    term_id = int(batch.term_id) if batch.term_id else None
+    term = None
+    if term_id:
+        term = db.query(AaTerm).filter(
+            AaTerm.id == term_id, AaTerm.tenant_id == _legacy._tid(),
+            AaTerm.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
+    locked = db.query(AaExamBatch).filter(
+        AaExamBatch.id == batch.id, AaExamBatch.tenant_id == _legacy._tid(),
+        AaExamBatch.is_deleted.is_(False),
+    ).populate_existing().with_for_update().first()
+    if locked is None:
+        raise AppException("DATA_CONFLICT", "考试批次已变化，请刷新后重试", http_status=409)
+    if (int(locked.term_id) if locked.term_id else None) != term_id:
+        raise AppException("DATA_CONFLICT", "考试批次所属学期已变化，请刷新后重试", http_status=409)
+    return locked, term
+
+
+def _require_locked_exam_term(batch, term):
+    if batch.term_id and (term is None or term.status != "PUBLISHED"):
+        raise AppException("DATA_CONFLICT", "正式学期不存在、未发布或已封存", http_status=409)
+
+
+def room_attendance(user, room_id):
+    from app.models import AaExamRoomStudent
+
+    with _legacy.session() as db:
+        room, course, batch, context = _attendance_scope(db, user, room_id)
+        reason = _attendance_block_reason(db, room, course, batch)
+        if not _can_mark_present(context):
+            reason = reason or "当前身份只有查看权限，不能登记到考"
+        seats = db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.exam_room_id == room.id,
+            AaExamRoomStudent.exam_course_id == course.id,
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).order_by(AaExamRoomStudent.seat_no, AaExamRoomStudent.id).all()
+        return {"examRoomId": str(room.id), "batchId": str(batch.id), "batchStatus": batch.status,
+                "items": [_attendance_item(seat, reason) for seat in seats]}
+
+
+def mark_room_present(user, room_id, student_id, expected_version):
+    from app.models import AaExamRoomStudent
+    from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+
+    with _legacy.session() as db:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        room, course, batch, context = _attendance_scope(db, user, room_id)
+        if not _can_mark_present(context):
+            raise no_data_scope("当前身份没有考场到考登记权限")
+        if not batch.term_id:
+            raise AppException("DATA_CONFLICT", "考试批次未绑定正式学期", http_status=409)
+        batch, term = _lock_exam_batch(db, batch)
+        fresh_room, fresh_course, fresh_batch, fresh_context = _attendance_scope(db, user, room_id, fresh=True)
+        if (fresh_room.id, fresh_course.id, fresh_batch.id) != (room.id, course.id, batch.id):
+            raise AppException("DATA_CONFLICT", "考场归属已变化，请刷新后重试", http_status=409)
+        if not _can_mark_present(fresh_context):
+            raise no_data_scope("当前身份没有考场到考登记权限")
+        room, course = fresh_room, fresh_course
+        if term is not None:
+            guard_term_writable(db, term.id)
+        reason = _attendance_block_reason(db, room, course, batch, term=term)
+        if reason:
+            raise AppException("DATA_CONFLICT", reason, http_status=409)
+        seat = db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.exam_room_id == room.id,
+            AaExamRoomStudent.exam_course_id == course.id,
+            AaExamRoomStudent.student_id == int(student_id),
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
+        if seat is None:
+            raise not_found("考生不在本考场正式座位名单")
+        if _status(seat.attendance_status) != "NOT_STARTED":
+            raise AppException("DATA_CONFLICT", "该考生已有到考或异常记录，请刷新后核对", http_status=409)
+        if int(seat.version or 0) != int(expected_version):
+            raise AppException("DATA_CONFLICT", "座位登记版本已变化，请刷新后核对", http_status=409)
+        changed = db.execute(update(AaExamRoomStudent).where(
+            AaExamRoomStudent.id == seat.id,
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.exam_room_id == room.id,
+            AaExamRoomStudent.exam_course_id == course.id,
+            AaExamRoomStudent.attendance_status == "NOT_STARTED",
+            AaExamRoomStudent.version == int(expected_version),
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).values(attendance_status="PRESENT", version=AaExamRoomStudent.version + 1,
+                 updated_at=datetime.utcnow()))
+        if changed.rowcount != 1:
+            raise AppException("DATA_CONFLICT", "座位登记已被并发修改，请刷新后核对", http_status=409)
+        db.refresh(seat)
+        _legacy._audit(db, "EXAM_ROOM_STUDENT", seat.id, "EXAM_ATTENDANCE_PRESENT",
+                       f"room={room.id};student={student_id}",
+                       f"NOT_STARTED;version={expected_version}", f"PRESENT;version={seat.version}")
+        db.commit()
+        return {"examRoomId": str(room.id), "batchId": str(batch.id), "batchStatus": batch.status,
+                **_attendance_item(seat)}
+
+
 def finish_batch(user, bid):
     with _legacy.session() as db:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         _legacy._require_school(_legacy._ctx(user, db))
         batch = _legacy._get_batch(db, int(bid))
+        batch, term = _lock_exam_batch(db, batch)
+        _require_locked_exam_term(batch, term)
         if batch.status != _legacy._B_PUBLISHED:
             raise _legacy._invalid("仅 PUBLISHED 批次可结束考试")
         issues = _batch_closure_issues(db, batch.id)
@@ -508,8 +683,11 @@ def finish_batch(user, bid):
 
 def archive_batch(user, bid):
     with _legacy.session() as db:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         _legacy._require_school(_legacy._ctx(user, db))
         batch = _legacy._get_batch(db, int(bid))
+        batch, term = _lock_exam_batch(db, batch)
+        _require_locked_exam_term(batch, term)
         if batch.status == _legacy._B_ARCHIVED:
             return _legacy._batch_dto(batch)
         if batch.status != _legacy._B_FINISHED:
@@ -589,6 +767,7 @@ def record_incident(user, body):
     from app.models import AaExamIncident, AaExamRoomStudent, AffairsRiskRecord
 
     with _legacy.session() as db:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         context = _legacy._ctx(user, db)
         course = _legacy._get_course(db, int(body.examCourseId))
         if not _legacy._is_school(context):
@@ -599,6 +778,8 @@ def record_incident(user, body):
             if not (is_college or is_invig):
                 raise no_data_scope("非本人监考场次/本学院，无权登记")
         batch = _legacy._get_batch(db, course.batch_id)
+        batch, term = _lock_exam_batch(db, batch)
+        _require_locked_exam_term(batch, term)
         _legacy._ensure_not_archived(batch)
         if batch.status not in (_legacy._B_PUBLISHED, _legacy._B_FINISHED):
             raise _legacy._invalid("仅发布/结束后可登记考场异常")
@@ -610,7 +791,7 @@ def record_incident(user, body):
             AaExamRoomStudent.student_id == student_id,
             AaExamRoomStudent.tenant_id == _legacy._tid(),
             AaExamRoomStudent.is_deleted.is_(False),
-        ).first()
+        ).populate_existing().with_for_update().first()
         if not seat:
             # 错误码沿用同类判定（merge_deferred「学生不在原考试课程冻结名单」）的 DATA_CONFLICT/409，
             # 不自造 422：本项目冻结契约的业务码表里没有 422 这一档。
@@ -643,6 +824,7 @@ def record_incident(user, body):
             )
             db.add(incident)
         seat.attendance_status = "ABSENT" if incident_type == "ABSENT" else "DISCIPLINE_VIOLATION"
+        seat.version = int(seat.version or 0) + 1
         db.flush()
 
         if incident_type == "ABSENT":
