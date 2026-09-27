@@ -108,3 +108,65 @@ def test_mysql_program_review_expiry_and_revocation_block_both_nodes_then_allow_
         assert _audit_count(program_id, "APPROVE") == 2
     finally:
         set_tenant(previous)
+
+
+def test_published_unbound_program_projects_two_live_school_publishers(db_mode):
+    """Published content still needs a school owner to bind its applicable grade."""
+    from app.core.context import get_tenant, set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import AaProgramBinding, Role, RoleAssignmentScope, RolePermission, StaffAssignment, User, UserRole
+    from tests.support_academic_review_identity import _ensure_permission
+    from tests.test_aa_program_review_authority_r3 import TID, SCHOOL_USER, _seed
+
+    previous = get_tenant()
+    set_tenant(TID)
+    try:
+        program_id = _seed(status="PUBLISHED")["own"]
+        with get_sessionmaker()() as db:
+            role_id = int(SCHOOL_USER["activeContextId"].split(":")[1])
+            role = db.get(Role, role_id)
+            permission = _ensure_permission(db, "academicAffairs.program.publish")
+            grant = RolePermission(tenant_id=TID, role_id=role_id,
+                                   permission_id=permission.id, status="ACTIVE")
+            db.add(grant)
+            second = User(tenant_id=TID, login_name="aa-r3-program-school-second",
+                          real_name="第二位校教务发布人", user_type="TEACHER",
+                          password_hash="unused-in-service-test", status="ACTIVE")
+            db.add(second)
+            db.flush()
+            link = UserRole(tenant_id=TID, user_id=second.id, role_id=role.id, status="ACTIVE")
+            db.add(link)
+            db.flush()
+            db.add(RoleAssignmentScope(
+                tenant_id=TID, user_role_id=link.id, user_id=second.id,
+                role_code=role.role_code, scope_type="SCHOOL", scope_id=0,
+                status="ACTIVE", effective_at=datetime(2020, 1, 1)))
+            db.add(StaffAssignment(
+                tenant_id=TID, user_id=second.id, org_type="SCHOOL", org_node_id=TID,
+                assignment_type="ACADEMIC_REVIEWER", status="ACTIVE",
+                effective_at=datetime(2020, 1, 1)))
+            second_id = str(second.id)
+            db.flush()
+            grant_id = grant.id
+            db.commit()
+
+        detail = service.get_program(program_id, SCHOOL_USER)
+        assert detail["status"] == "PUBLISHED"
+        assert detail["nextStep"] == {"code": "ENABLED", "label": "由校教务绑定适用年级后启用"}
+        assert detail["responsibility"]["resolved"] is True
+        assert set(detail["responsibility"]["assigneeUserIds"]) == {
+            SCHOOL_USER["userId"], second_id}
+        with get_sessionmaker()() as db:
+            assert db.scalar(select(AaProgramBinding.id).where(
+                AaProgramBinding.tenant_id == TID,
+                AaProgramBinding.program_id == program_id,
+                AaProgramBinding.status == "ACTIVE")) is None
+            db.get(RolePermission, grant_id).status = "DISABLED"
+            db.commit()
+
+        unresolved = service.get_program(program_id, SCHOOL_USER)
+        assert unresolved["responsibility"]["resolved"] is False
+        assert unresolved["responsibility"]["assigneeUserIds"] == []
+        assert unresolved["nextStep"]["code"] == "ENABLED"
+    finally:
+        set_tenant(previous)
