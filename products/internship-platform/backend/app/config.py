@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     SOURCE_BASELINE_SHA:str="adea054e2fd59cc0b83bbdb22f10ec98a8e2fd8c"
     DATABASE_URL:str=""
     REDIS_URL:str=""
+    FILE_STORAGE_DIR:str="./data/files"
     JWT_SECRET:str=""
     JWT_ALG:str="HS256"
     JWT_EXPIRES_IN:int=7200
