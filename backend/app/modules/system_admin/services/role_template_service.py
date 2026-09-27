@@ -308,8 +308,12 @@ def update_draft(
 
 
 def impact(template_id: int) -> dict:
+    from app.modules.platform.services import platform_product_iam_service as product_svc
+
     db = get_sessionmaker()()
     try:
+        # One database snapshot supplies both permission and menu differences.
+        db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
         item = _load(db, template_id)
         current = set(_items(db, item))
         snapshot = item.permission_ceiling_json or {}
@@ -322,7 +326,16 @@ def impact(template_id: int) -> dict:
             previous = _load(db, baseline_id) if baseline_id is not None else None
         else:
             previous = _load(db, int(item.previous_template_id)) if item.previous_template_id else None
+        if previous is not None and previous.publish_status != PUBLISHED:
+            raise AppException("DATA_CONFLICT", "历史版本缺少可证明的已发布基线，无法计算影响", http_status=409)
+        if previous is not None and item.publish_status == PUBLISHED and "basePublishedTemplateId" not in snapshot:
+            if not previous.published_at or not item.published_at or previous.published_at > item.published_at:
+                raise AppException("DATA_CONFLICT", "历史版本缺少可证明的发布先后时间，无法计算影响", http_status=409)
         before = set(_items(db, previous)) if previous is not None else set()
+        navigation = product_svc._navigation_contract()
+        surfaces = list(navigation.get("surfaces") or [])
+        current_menus = {row["surfaceKey"] for row in product_svc._menu_preview(current, surfaces)}
+        previous_menus = {row["surfaceKey"] for row in product_svc._menu_preview(before, surfaces)}
         pinned = list(db.scalars(select(CustomRoleSource).where(
             CustomRoleSource.source_template_code == item.template_code,
             CustomRoleSource.is_deleted.is_(False),
@@ -331,9 +344,14 @@ def impact(template_id: int) -> dict:
             "templateId": str(item.id),
             "templateCode": item.template_code,
             "templateVersion": int(item.template_version or 0),
+            "publishStatus": item.publish_status,
             "baselineTemplateId": str(previous.id) if previous is not None else None,
+            "baselineTemplateVersion": int(previous.template_version or 0) if previous is not None else None,
             "addedPermissions": sorted(current - before),
             "removedPermissions": sorted(before - current),
+            "menuAdded": sorted(current_menus - previous_menus),
+            "menuRemoved": sorted(previous_menus - current_menus),
+            "navigationDigest": navigation.get("digest") or product_svc._hash(surfaces),
             "affectedPinnedCustomRoles": [
                 {
                     "tenantId": str(role.tenant_id),

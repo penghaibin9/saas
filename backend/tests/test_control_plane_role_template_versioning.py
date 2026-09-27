@@ -1,5 +1,6 @@
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 from threading import Barrier
 from types import SimpleNamespace
 from unittest.mock import MagicMock
@@ -147,6 +148,89 @@ def test_draft_impact_compares_published_permissions_not_another_draft(monkeypat
     result = svc.impact(3)
     assert result["baselineTemplateId"] == "1"
     assert len(result["removedPermissions"]) == 28
+
+
+def test_historical_published_impact_rejects_draft_predecessor(monkeypatch):
+    draft = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", publish_status=svc.DRAFT)
+    published = SimpleNamespace(id=3, template_code="COLLEGE_ADMIN", template_version=3,
+                                publish_status=svc.PUBLISHED, previous_template_id=2,
+                                permission_ceiling_json={})
+    db = MagicMock()
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {2: draft, 3: published}[template_id])
+    monkeypatch.setattr(svc, "_items", lambda _db, item: [CATALOG_VIEW])
+
+    with pytest.raises(AppException) as exc:
+        svc.impact(3)
+    assert exc.value.code == "DATA_CONFLICT"
+
+
+def test_historical_published_impact_rejects_later_published_predecessor(monkeypatch):
+    predecessor = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", publish_status=svc.PUBLISHED,
+                                  published_at=datetime(2026, 9, 27, 12))
+    item = SimpleNamespace(id=3, template_code="COLLEGE_ADMIN", template_version=3,
+                           publish_status=svc.PUBLISHED, previous_template_id=2,
+                           published_at=datetime(2026, 9, 27, 11), permission_ceiling_json={})
+    db = MagicMock()
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {2: predecessor, 3: item}[template_id])
+    monkeypatch.setattr(svc, "_items", lambda _db, row: [CATALOG_VIEW])
+
+    with pytest.raises(AppException) as exc:
+        svc.impact(3)
+    assert exc.value.code == "DATA_CONFLICT"
+
+
+def test_historical_published_impact_accepts_proven_published_predecessor(monkeypatch):
+    from app.modules.platform.services import platform_product_iam_service as product_svc
+
+    predecessor = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", template_version=2,
+                                  publish_status=svc.PUBLISHED, published_at=datetime(2026, 9, 27, 11))
+    item = SimpleNamespace(id=3, template_code="COLLEGE_ADMIN", template_version=3,
+                           publish_status=svc.PUBLISHED, previous_template_id=2,
+                           published_at=datetime(2026, 9, 27, 12), permission_ceiling_json={})
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {2: predecessor, 3: item}[template_id])
+    monkeypatch.setattr(svc, "_items", lambda _db, row: {
+        2: [CATALOG_VIEW], 3: [CATALOG_VIEW, CATALOG_MANAGE],
+    }[row.id])
+    monkeypatch.setattr(product_svc, "_navigation_contract", lambda: {"digest": "nav", "surfaces": []})
+
+    result = svc.impact(3)
+    assert result["baselineTemplateId"] == "2"
+    assert result["addedPermissions"] == [CATALOG_MANAGE]
+
+
+def test_impact_menu_diff_uses_same_permissions_as_permission_diff(monkeypatch):
+    from app.modules.platform.services import platform_product_iam_service as product_svc
+
+    published = SimpleNamespace(id=1, template_code="COLLEGE_ADMIN", template_version=1,
+                                publish_status=svc.PUBLISHED, previous_template_id=None)
+    draft = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", template_version=2,
+                            publish_status=svc.DRAFT, previous_template_id=1,
+                            permission_ceiling_json={"basePublishedTemplateId": 1},
+                            permission_digest="candidate-digest", version=4)
+    db = MagicMock()
+    db.scalar.return_value = published
+    db.scalars.return_value.all.return_value = []
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {1: published, 2: draft}[template_id])
+    monkeypatch.setattr(svc, "_items", lambda _db, item: {
+        1: [CATALOG_VIEW, CATALOG_MANAGE], 2: [CATALOG_MANAGE],
+    }[item.id])
+    monkeypatch.setattr(product_svc, "_navigation_contract", lambda: {"digest": "nav", "surfaces": [
+        {"surfaceKey": "view", "permissionKey": CATALOG_VIEW, "status": "implemented"},
+        {"surfaceKey": "manage", "permissionKey": CATALOG_MANAGE, "status": "implemented"},
+    ]})
+
+    result = svc.impact(2)
+    assert result["removedPermissions"] == [CATALOG_VIEW]
+    assert result["menuRemoved"] == ["view"]
+    assert result["menuAdded"] == []
+    assert result["navigationDigest"] == "nav"
+    assert result["baselineTemplateVersion"] == 1
 
 
 def test_publish_rejects_candidate_after_published_baseline_changes(monkeypatch):

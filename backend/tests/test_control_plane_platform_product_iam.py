@@ -1,6 +1,9 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from app.core.exceptions import AppException
 from app.services import audit_log
 from app.modules.platform.routers import product_iam_router
 
@@ -27,19 +30,35 @@ def test_product_iam_router_does_not_touch_e_authority():
 
 
 def test_template_menu_impact_uses_published_baseline_not_draft_predecessor(monkeypatch):
-    versions = [
-        {"id": "3", "previousTemplateId": "2"},
-        {"id": "2", "previousTemplateId": "1"},
-        {"id": "1", "previousTemplateId": None},
-    ]
-    menus = {"1": ["a", "b", "c"], "2": ["b", "c"], "3": ["c"]}
     monkeypatch.setattr(product_iam_router, "_view", lambda _user: None)
-    monkeypatch.setattr(product_iam_router.template_svc, "list_versions", lambda _code: versions)
-    monkeypatch.setattr(product_iam_router.template_svc, "impact", lambda _id: {"baselineTemplateId": "1"})
-    monkeypatch.setattr(product_iam_router, "_template_preview", lambda row: {
-        "menuPreview": [{"surfaceKey": key} for key in menus[row["id"]]],
+    monkeypatch.setattr(product_iam_router.template_svc, "list_versions", lambda _code: pytest.fail("second template read"))
+    monkeypatch.setattr(product_iam_router, "_template_preview", lambda _row: pytest.fail("second menu read"))
+    monkeypatch.setattr(product_iam_router.template_svc, "impact", lambda _id: {
+        "templateCode": "COLLEGE_ADMIN", "publishStatus": "DRAFT", "baselineTemplateVersion": 1,
+        "baselineTemplateId": "1", "menuAdded": [], "menuRemoved": ["a", "b"],
+        "navigationDigest": "navigation", "removedPermissions": ["p1", "p2"],
+    })
+    monkeypatch.setattr(product_iam_router.svc, "source_snapshot", lambda: {
         "navigationDigest": "navigation", "sourceDigest": "source",
+        "roleTemplates": [{"templateCode": "COLLEGE_ADMIN", "templateVersion": 1}],
     })
 
     result = product_iam_router.school_role_template_impact("COLLEGE_ADMIN", 3, user={})
     assert result["data"]["menuRemoved"] == ["a", "b"]
+    assert result["data"]["sourceDigest"] == "source"
+
+
+def test_template_impact_rejects_published_change_after_preview_read(monkeypatch):
+    monkeypatch.setattr(product_iam_router, "_view", lambda _user: None)
+    monkeypatch.setattr(product_iam_router.template_svc, "impact", lambda _id: {
+        "templateCode": "COLLEGE_ADMIN", "publishStatus": "DRAFT",
+        "baselineTemplateVersion": 1, "navigationDigest": "navigation",
+    })
+    monkeypatch.setattr(product_iam_router.svc, "source_snapshot", lambda: {
+        "navigationDigest": "navigation", "sourceDigest": "source",
+        "roleTemplates": [{"templateCode": "COLLEGE_ADMIN", "templateVersion": 2}],
+    })
+
+    with pytest.raises(AppException) as exc:
+        product_iam_router.school_role_template_impact("COLLEGE_ADMIN", 3, user={})
+    assert exc.value.code == "DATA_CONFLICT"

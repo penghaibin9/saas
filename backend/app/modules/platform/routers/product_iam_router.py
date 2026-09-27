@@ -130,21 +130,22 @@ def school_role_template_update_draft(template_code: str, template_id: int, body
 @router.get("/school-role-templates/{template_code}/drafts/{template_id}/impact", summary="标准角色模板权限、菜单及租户影响")
 def school_role_template_impact(template_code: str, template_id: int, user=Depends(require_platform_principal)):
     _view(user)
-    versions = template_svc.list_versions(template_code)
-    current = next((row for row in versions if int(row["id"]) == template_id), None)
-    if current is None:
-        from app.core.exceptions import AppException
-        raise AppException("DATA_NOT_FOUND", "角色模板版本不存在", http_status=404)
+    from app.core.exceptions import AppException
+    from app.modules.system_admin.policies.role_template_plane import assert_school_role_template_code
+
+    code = assert_school_role_template_code(template_code)
     base = template_svc.impact(template_id)
-    previous = next((row for row in versions if str(row["id"]) == str(base.get("baselineTemplateId"))), None)
-    current_preview = _template_preview(current)
-    previous_preview = _template_preview(previous) if previous else {"menuPreview": []}
-    current_keys = {item["surfaceKey"] for item in current_preview["menuPreview"]}
-    previous_keys = {item["surfaceKey"] for item in previous_preview["menuPreview"]}
-    return success({**base, "menuAdded": sorted(current_keys - previous_keys),
-                    "menuRemoved": sorted(previous_keys - current_keys),
-                    "navigationDigest": current_preview["navigationDigest"],
-                    "sourceDigest": current_preview["sourceDigest"]})
+    if base["templateCode"] != code:
+        raise AppException("DATA_NOT_FOUND", "角色模板版本不存在", http_status=404)
+    source = svc.source_snapshot()
+    if source["navigationDigest"] != base["navigationDigest"]:
+        raise AppException("PRODUCT_IAM_SOURCE_DRIFT", "导航真值已变化，请刷新影响预览", http_status=409)
+    if base["publishStatus"] == template_svc.DRAFT:
+        published = next((row for row in source.get("roleTemplates") or [] if row["templateCode"] == code), None)
+        current_version = int(published["templateVersion"]) if published else None
+        if current_version != base["baselineTemplateVersion"]:
+            raise AppException("DATA_CONFLICT", "已发布模板发生变化，请刷新影响预览", http_status=409)
+    return success({**base, "sourceDigest": source["sourceDigest"]})
 
 
 @router.post("/school-role-templates/{template_code}/drafts/{template_id}/publish", summary="MFA 发布不可变标准角色模板")
