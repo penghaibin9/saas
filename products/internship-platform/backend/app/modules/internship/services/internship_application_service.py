@@ -452,6 +452,7 @@ def save_my(user: dict, body: dict) -> dict:
                                              volunteer_no=volunteer, status="DRAFT")
                 db.add(app)
         app.application_note = (body.get("applicationNote") or "").strip() or None
+        before_company_identity = (app.company_name or "", app.company_credit_code or "")
         if app_type == "POSITION":
             pos, company = _legacy_position(db, body.get("positionId"))
             duplicate_conditions = [
@@ -474,6 +475,11 @@ def save_my(user: dict, body: dict) -> dict:
             app.position_id = None
             for field, value in _clean_self_arranged(body, require_complete=False).items():
                 setattr(app, field, value)
+            if before_company_identity != (app.company_name or "", app.company_credit_code or ""):
+                app.registry_verification_status = "UNVERIFIED"
+                app.registry_verification_provider = None
+                app.registry_reference = None
+                app.registry_verified_at = None
         app.status = "DRAFT"
         app.submitted_at = None
         app.reviewed_by_name = app.reviewed_at = app.review_comment = None
@@ -496,10 +502,7 @@ def submit_my(user: dict, app_id) -> dict:
             pos, company = _legacy_position(db, app.position_id)
             _apply_position_snapshot(app, pos, company)
         else:
-            payload = _clean_self_arranged({"companyName": app.company_name, "positionName": app.position_name,
-                                            "workAddress": app.work_address, "contactName": app.contact_name,
-                                            "contactPhone": app.contact_phone, "evidenceFileId": app.evidence_file_id},
-                                           require_complete=True)
+            payload = _clean_self_arranged(_snapshot_body(app), require_complete=True)
             for field, value in payload.items():
                 setattr(app, field, value)
         app.status = "PENDING_REVIEW"
