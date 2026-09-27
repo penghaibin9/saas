@@ -75,7 +75,7 @@ def c02_db(tmp_path, monkeypatch):
     ):
         table.create(bind=engine, checkfirst=True)
 
-    fixed = datetime(2026, 9, 27, 10, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
+    fixed = datetime(2026, 9, 27, 23, 30, tzinfo=ZoneInfo("Asia/Shanghai"))
 
     def fixed_clock(name=None):
         zone = ZoneInfo(str(name or "Asia/Shanghai"))
@@ -246,7 +246,7 @@ def test_g06_g07_overseas_coordinate_system_is_human_review_and_local_date(c02_d
         batch_id=str(batch_id),
         timezone_name="Asia/Tokyo",
     )
-    assert preflight["date"] == "2026-09-27"
+    assert preflight["date"] == "2026-09-28"
     assert preflight["timezoneName"] == "Asia/Tokyo"
     assert preflight["timezoneOffsetMinutes"] == 540
 
@@ -266,7 +266,7 @@ def test_g06_g07_overseas_coordinate_system_is_human_review_and_local_date(c02_d
         },
         batch_id=str(batch_id),
     )
-    assert result["date"] == "2026-09-27"
+    assert result["date"] == "2026-09-28"
     assert result["timezoneName"] == "Asia/Tokyo"
     assert result["result"] == "LOCATION_UNCERTAIN"
     assert result["distanceM"] is None
