@@ -279,9 +279,7 @@ def test_d2u_preview_zero_write_cross_tenant_fail_closed_and_confirm_requires_pr
 def test_registered_student_flows_into_internship_class_preview_and_freeze(client, db_mode):
     """正式续注册后，实习默认班级规则仍能预览并冻结在籍学生。"""
     from sqlalchemy import select
-    from app.core.context import get_current_user_ctx, get_tenant, set_current_user, set_tenant
     from app.models import InternshipBatch, InternshipBatchParticipant, InternshipRecord, StudentProfile
-    from app.modules.internship.services import internship_participant_service as participants
 
     ids = _seed_candidates(db_mode, initial_status="NORMAL", current_stage="ENROLLED")
     headers = _hdr(client)
@@ -306,20 +304,16 @@ def test_registered_student_flows_into_internship_class_preview_and_freeze(clien
     finally:
         db.close()
 
-    previous_tenant, previous_user = get_tenant(), get_current_user_ctx()
-    set_tenant({"tenantId": str(TID)})
-    user = {"userId": "db-1", "realName": "实习管理员", "currentRoleCode": "SCHOOL_ADMIN"}
-    set_current_user(user)
-    try:
-        rule = {"classIds": [ids["classId"]], "studentStatuses": []}
-        preview = participants.preview(internship_batch_id, rule, user)
-        assert str(ids["ready"]) in {row["studentId"] for row in preview["rows"]}
-        assert preview["rule"]["studentStatuses"] == ["NORMAL", "REGISTERED", "RETAINED"]
-        frozen = participants.freeze(internship_batch_id, {"rule": preview["rule"]}, user)
-        assert frozen["batchStatus"] == "RUNNING"
-    finally:
-        set_current_user(previous_user)
-        set_tenant(previous_tenant)
+    path = f"/api/v1/internship/batches/{internship_batch_id}/participants"
+    rule = {"classIds": [ids["classId"]], "studentStatuses": []}
+    preview_response = client.post(f"{path}/preview", headers=headers, json=rule)
+    assert preview_response.status_code == 200, preview_response.text
+    preview = preview_response.json()["data"]
+    assert str(ids["ready"]) in {row["studentId"] for row in preview["rows"]}
+    assert preview["rule"]["studentStatuses"] == ["NORMAL", "REGISTERED", "RETAINED"]
+    freeze_response = client.post(f"{path}/freeze", headers=headers, json={"rule": preview["rule"]})
+    assert freeze_response.status_code == 200, freeze_response.text
+    assert freeze_response.json()["data"]["batchStatus"] == "RUNNING"
 
     db = get_sessionmaker()()
     try:
