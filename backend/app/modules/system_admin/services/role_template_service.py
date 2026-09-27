@@ -129,7 +129,7 @@ def _load(db, template_id: int, *, lock: bool = False) -> RoleTemplate:
         RoleTemplate.is_deleted.is_(False),
     )
     if lock:
-        stmt = stmt.with_for_update()
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     item = db.scalar(stmt)
     if item is None:
         raise AppException("DATA_NOT_FOUND", "TENANT 角色模板不存在", http_status=404)
@@ -146,7 +146,29 @@ def _current_published(db, template_code: str, *, lock: bool = False) -> RoleTem
         RoleTemplate.status == "ACTIVE",
         RoleTemplate.is_deleted.is_(False),
     ).order_by(RoleTemplate.template_version.desc(), RoleTemplate.id.desc()).limit(1)
-    return db.scalar(stmt.with_for_update() if lock else stmt)
+    return db.scalar(stmt.with_for_update().execution_options(populate_existing=True) if lock else stmt)
+
+
+def _publish_anchor(db, template_id: int) -> tuple[str, int]:
+    # Read identifiers before taking locks; all publications of one code then
+    # lock the same oldest version by primary key, independent of new drafts.
+    code = db.scalar(select(RoleTemplate.template_code).where(
+        RoleTemplate.id == int(template_id),
+        RoleTemplate.tenant_id == PLATFORM_TENANT,
+        RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+        RoleTemplate.is_deleted.is_(False),
+    ))
+    if code is None:
+        raise AppException("DATA_NOT_FOUND", "TENANT 角色模板不存在", http_status=404)
+    anchor_id = db.scalar(select(RoleTemplate.id).where(
+        RoleTemplate.tenant_id == PLATFORM_TENANT,
+        RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+        RoleTemplate.template_code == code,
+        RoleTemplate.is_deleted.is_(False),
+    ).order_by(RoleTemplate.template_version, RoleTemplate.id).limit(1))
+    if anchor_id is None:
+        raise AppException("DATA_CONFLICT", "角色模板基线已变化，请刷新后重试", http_status=409)
+    return str(code), int(anchor_id)
 
 
 def _draft_baseline_id(db, item: RoleTemplate) -> int | None:
@@ -341,21 +363,19 @@ def publish_draft(
 
     db = get_sessionmaker()()
     try:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        code, anchor_id = _publish_anchor(db, template_id)
+        anchor = _load(db, anchor_id, lock=True)
+        if anchor.template_code != code:
+            raise AppException("DATA_CONFLICT", "角色模板基线已变化，请刷新后重试", http_status=409)
         item = _load(db, template_id, lock=True)
+        if item.template_code != code:
+            raise AppException("DATA_CONFLICT", "角色模板归属已变化，请刷新后重试", http_status=409)
         assert_school_role_template_code(item.template_code)
         if item.publish_status != DRAFT:
             raise AppException("IMMUTABLE_TEMPLATE", "只有 DRAFT 模板版本可以发布", http_status=409)
         if int(item.version or 0) != int(expected_version):
             raise AppException("DATA_CONFLICT", "模板草稿已被其他人修改，请刷新后重试", http_status=409)
-        # The oldest version is a stable per-code lock even when newer drafts
-        # are inserted concurrently. Two different draft rows cannot publish
-        # against the same baseline at once.
-        db.scalar(select(RoleTemplate.id).where(
-            RoleTemplate.tenant_id == PLATFORM_TENANT,
-            RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
-            RoleTemplate.template_code == item.template_code,
-            RoleTemplate.is_deleted.is_(False),
-        ).order_by(RoleTemplate.template_version, RoleTemplate.id).limit(1).with_for_update())
         published = _current_published(db, item.template_code, lock=True)
         if _draft_baseline_id(db, item) != (int(published.id) if published else None):
             raise AppException("DATA_CONFLICT", "已发布模板发生变化，请重新建立草稿", http_status=409)

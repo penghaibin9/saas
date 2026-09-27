@@ -159,6 +159,7 @@ def test_publish_rejects_candidate_after_published_baseline_changes(monkeypatch)
     db = MagicMock()
     db.scalar.return_value = current
     monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_publish_anchor", lambda _db, _id: ("COLLEGE_ADMIN", 1))
     monkeypatch.setattr(svc, "_load", lambda _db, _id, **_kw: candidate)
     monkeypatch.setattr(svc, "_items", lambda _db, _item: [CATALOG_VIEW])
     monkeypatch.setattr(svc, "_row", lambda _db, _item: {})
@@ -192,16 +193,16 @@ def test_two_drafts_publish_serially_and_rollback_keeps_source(db_mode, monkeypa
         db.close()
     assert set(svc.impact(int(third["id"]))["removedPermissions"]) == {CATALOG_MANAGE, CATALOG_INVITE}
 
-    original_load = svc._load
+    original_anchor = svc._publish_anchor
     ready = Barrier(2)
 
-    def load_together(db, template_id, *, lock=False):
-        item = original_load(db, template_id, lock=lock)
-        if lock and template_id in {int(second["id"]), int(third["id"])}:
+    def start_together(db, template_id):
+        anchor = original_anchor(db, template_id)
+        if template_id in {int(second["id"]), int(third["id"])}:
             ready.wait(timeout=15)
-        return item
+        return anchor
 
-    monkeypatch.setattr(svc, "_load", load_together)
+    monkeypatch.setattr(svc, "_publish_anchor", start_together)
 
     def publish(row):
         try:
