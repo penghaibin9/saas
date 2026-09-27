@@ -1,35 +1,7 @@
 name: Internship Standalone W2 Routes
 
 on:
-  push:
-    branches:
-      - feat/internship-standalone-yiyang-v1
-    paths:
-      - "products/internship-platform/backend/app/api/**"
-      - "products/internship-platform/backend/app/core/**"
-      - "products/internship-platform/backend/app/config.py"
-      - "products/internship-platform/backend/requirements.txt"
-      - "products/internship-platform/backend/app/main.py"
-      - "products/internship-platform/backend/app/modules/internship/**"
-      - "products/internship-platform/backend/app/services/**"
-      - "products/internship-platform/backend/tests/test_w2_*.py"
-      - "products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py"
-      - "products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py"
-      - ".github/workflows/internship-standalone-w2.yml"
-  pull_request:
-    paths:
-      - "products/internship-platform/backend/app/api/**"
-      - "products/internship-platform/backend/app/core/**"
-      - "products/internship-platform/backend/app/config.py"
-      - "products/internship-platform/backend/requirements.txt"
-      - "products/internship-platform/backend/app/main.py"
-      - "products/internship-platform/backend/app/modules/internship/**"
-      - "products/internship-platform/backend/app/services/**"
-      - "products/internship-platform/backend/tests/test_w2_*.py"
-      - "products/internship-platform/backend/tests/test_yiyang_*.py"
-      - "products/internship-platform/scripts/check_forbidden_imports.py"
-      - "products/internship-platform/scripts/check_w2_import_closure.py"
-      - ".github/workflows/internship-standalone-w2.yml"
+  workflow_dispatch:
 
 jobs:
   staff-routes:
