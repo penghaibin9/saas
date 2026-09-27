@@ -6,7 +6,10 @@
 """
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from types import SimpleNamespace
+
+import pytest
 
 from tests.support_academic_review_identity import ensure_college_review_scope, ensure_course_review_college
 from tests.support_task_review_identity import ensure_task_review_identity
@@ -205,6 +208,73 @@ def test_tt2_generate_idempotent(client, db_mode):
     assert g1["tasksGenerated"] == 1
     g2 = _generate(client, hdr, tid)
     assert g2["tasksGenerated"] == 0
+
+
+def test_generation_rejects_binding_created_after_historical_term_end(client, db_mode):
+    ids = _seed(db_mode, grade="2020")
+    hdr = _hdr(client, "school_admin01")
+    cid = _enabled_course(client, hdr, code="TT-HISTORY-LATE")
+    _program(client, hdr, major_id=ids["major"], grade_year="2020", total_credits=4,
+             courses=[(cid, "程序设计", 4, 1)],
+             bindings=[("2020", ids["class"])], name="历史晚绑定方案")
+    tid = _term(client, hdr, year_code="2020-2021")
+
+    rejected = client.post(f"{BASE}/teaching-task-batches/generate", headers=hdr,
+                           json={"termId": str(tid), "collegeId": str(ensure_course_review_college())})
+    assert rejected.status_code == 409, rejected.text
+    assert rejected.json()["bizCode"] == "DATA_CONFLICT"
+    assert "学期结束时尚未生效" in rejected.json()["message"]
+
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTaskBatch
+
+    with get_sessionmaker()() as db:
+        assert db.query(AaTeachingTaskBatch).filter(
+            AaTeachingTaskBatch.tenant_id == TID,
+            AaTeachingTaskBatch.term_id == int(tid),
+            AaTeachingTaskBatch.is_deleted.is_(False),
+        ).count() == 0
+
+
+def test_generation_accepts_binding_effective_before_term_end(client, db_mode):
+    ids = _seed(db_mode, grade="2041")
+    hdr = _hdr(client, "school_admin01")
+    cid = _enabled_course(client, hdr, code="TT-HISTORY-VALID")
+    _program(client, hdr, major_id=ids["major"], grade_year="2041", total_credits=4,
+             courses=[(cid, "程序设计", 4, 1)],
+             bindings=[("2041", ids["class"])], name="期内绑定方案")
+    tid = _term(client, hdr, year_code="2041-2042")
+
+    generated = _generate(client, hdr, tid)
+    assert generated["tasksGenerated"] == 1
+    assert len(_tasks(client, hdr, generated["batchId"])) == 1
+
+
+def test_generation_rejects_current_binding_when_another_version_was_effective_at_term_end(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_task_generation_service as generation
+
+    old = SimpleNamespace(program=SimpleNamespace(id=11), binding=SimpleNamespace(id=101),
+                          status="RESOLVED", rule="CLASS_HISTORICAL_EFFECTIVE")
+    current = SimpleNamespace(program=SimpleNamespace(id=12), binding=SimpleNamespace(id=102),
+                              status="RESOLVED", rule="CLASS_BINDING")
+    observed = []
+
+    def resolve(_db, **kwargs):
+        observed.append(kwargs.get("as_of"))
+        return old if "as_of" in kwargs else current
+
+    monkeypatch.setattr(generation, "_tid", lambda: TID)
+    monkeypatch.setattr(generation.program_activation, "resolve_program_for_scope", resolve)
+    with pytest.raises(AppException) as rejected:
+        generation._resolve_binding_for_class(
+            object(), current.program, current.binding,
+            SimpleNamespace(id=4668, major_id=9, grade="2023", class_name="甲班"),
+            term_end=datetime(2026, 7, 12),
+        )
+    assert rejected.value.http_status == 409
+    assert rejected.value.details["blocker"] == "PROGRAM_BINDING_NOT_EFFECTIVE_AT_TERM_END"
+    assert observed == [None, datetime(2026, 7, 12)]
 
 
 def test_tt3_program_credit_shortfall_blocks_submit(client, db_mode):

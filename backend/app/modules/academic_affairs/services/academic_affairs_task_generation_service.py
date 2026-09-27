@@ -93,13 +93,16 @@ def resolve_teaching_weeks(db, term_id):
     )
 
 
-def _resolve_binding_for_class(db, program, binding, school_class):
+def _resolve_binding_for_class(db, program, binding, school_class, *, term_end=None):
+    scope = {
+        "tenant_id": _tid(),
+        "major_id": int(school_class.major_id) if school_class.major_id else binding.major_id,
+        "grade_year": str(school_class.grade or binding.grade_year or program.grade_year or "").strip(),
+        "class_id": int(school_class.id),
+    }
     resolution = program_activation.resolve_program_for_scope(
         db,
-        tenant_id=_tid(),
-        major_id=int(school_class.major_id) if school_class.major_id else binding.major_id,
-        grade_year=str(school_class.grade or binding.grade_year or program.grade_year or "").strip(),
-        class_id=int(school_class.id),
+        **scope,
     )
     if resolution.status != "RESOLVED":
         raise AppException(
@@ -115,10 +118,30 @@ def _resolve_binding_for_class(db, program, binding, school_class):
             },
             http_status=409,
         )
-    return (
+    selected = (
         int(resolution.program.id) == int(program.id)
         and int(resolution.binding.id) == int(binding.id)
     )
+    if not selected or term_end is None:
+        return selected
+    # Only current bindings are generated; they must also match the term-end replay.
+    historical = program_activation.resolve_program_for_scope(db, **scope, as_of=term_end)
+    if (historical.status != "RESOLVED" or not historical.program or not historical.binding
+            or int(historical.program.id) != int(program.id)
+            or int(historical.binding.id) != int(binding.id)):
+        raise AppException(
+            "DATA_CONFLICT",
+            f"班级“{school_class.class_name}”当前绑定在该学期结束时尚未生效，或期末适用的是另一方案版本，不能生成历史学期教学任务",
+            details={
+                "blocker": "PROGRAM_BINDING_NOT_EFFECTIVE_AT_TERM_END",
+                "classId": str(school_class.id),
+                "programId": str(program.id),
+                "bindingId": str(binding.id),
+                "historicalRule": historical.rule,
+            },
+            http_status=409,
+        )
+    return True
 
 
 def _editable_batch_conditions(batch_model, term_id: int, college_id: int | None):
@@ -342,7 +365,9 @@ def generate_batch_tx(db, body, user) -> dict:
                     continue
                 if not scope.all and not scope.college_ids and scope.class_ids and school_class.id not in scope.class_ids:
                     continue
-                if not _resolve_binding_for_class(db, program, binding, school_class):
+                if not _resolve_binding_for_class(
+                    db, program, binding, school_class, term_end=term.end_date
+                ):
                     continue
                 current_semester = resolve_class_semester(term, school_class)
                 if current_semester is None:
