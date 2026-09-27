@@ -106,9 +106,19 @@ export const teacherInternshipPlanTasks = (batchId, page = 1, pageSize = 20) => 
 export const teacherInternshipPlanTaskReview = (progressId, batchId, body) =>
   realRequest(batchPath(`/mobile/teacher/internship/context/plan-tasks/${enc(progressId)}/review`, batchId), { method: 'POST', data: body || {} })
 
-export const teacherInternshipApplications = (batchId, page = 1, pageSize = 20) => {
-  try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/applications', batchId, page, pageSize)) }
+export const teacherInternshipApplications = (batchId, page = 1, pageSize = 20, status = 'PENDING_REVIEW') => {
+  try {
+    return realRequest(pagedBatchPath('/mobile/teacher/internship/context/applications', batchId, page, pageSize) + '&status=' + enc(status || 'PENDING_REVIEW'))
+  } catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipApplicationSummary = (batchId) => {
+  try { return realRequest(batchPath('/mobile/teacher/internship/context/applications/summary', batchId)) }
   catch (e) { return Promise.reject(e) }
+}
+export const teacherInternshipApplicationStudents = (batchId, state = 'UNFILLED', page = 1, pageSize = 20, keyword = '') => {
+  try {
+    return realRequest(pagedBatchPath('/mobile/teacher/internship/context/applications/students', batchId, page, pageSize) + '&state=' + enc(state) + '&keyword=' + enc(keyword))
+  } catch (e) { return Promise.reject(e) }
 }
 export const teacherInternshipApplicationReview = (applicationId, batchId, body) =>
   realRequest(batchPath(`/mobile/teacher/internship/context/applications/${enc(applicationId)}/review`, batchId), { method: 'POST', data: body || {} })
