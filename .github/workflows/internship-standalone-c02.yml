@@ -1,19 +1,7 @@
 name: Internship Standalone C02 Checkin
 
 on:
-  pull_request:
-    paths:
-      - "products/internship-platform/backend/app/models/internship.py"
-      - "products/internship-platform/backend/app/models/__init__.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_checkin_*.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_student_checkin_service.py"
-      - "products/internship-platform/backend/app/api/v1/mobile_internship_student.py"
-      - "products/internship-platform/backend/app/api/v1/mobile_internship_context.py"
-      - "products/internship-platform/backend/alembic/versions/0004_yiyang_checkin_evidence.py"
-      - "products/internship-platform/backend/tests/test_yiyang_c02_checkin.py"
-      - "products/internship-platform/mobile/**"
-      - "products/internship-platform/scripts/check_mobile_import_closure.py"
-      - ".github/workflows/internship-standalone-c02.yml"
+  workflow_dispatch:
 
 jobs:
   c02:
