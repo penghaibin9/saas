@@ -8,3 +8,19 @@ def test_scope_defaults_fail_closed():
     scope=resolve_teacher_scope({"userType":"UNKNOWN"})
     assert scope["mode"]=="SCOPED"
     assert not scope_match_row(scope,student_no="S001")
+
+
+def test_representative_internship_services_import():
+    from app.modules.internship.services import internship_service
+    from app.modules.internship.services import internship_student_service
+    from app.modules.internship.services import internship_enterprise_service
+    from app.modules.internship.services import internship_application_service
+    from app.modules.internship.services import internship_archive_service
+    from app.modules.internship.services import internship_stats_service
+
+    assert internship_service is not None
+    assert internship_student_service is not None
+    assert internship_enterprise_service is not None
+    assert internship_application_service is not None
+    assert internship_archive_service is not None
+    assert internship_stats_service is not None
