@@ -3,6 +3,8 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+import pytest
+
 from conftest import make_org_class
 
 GD_RISK = "/api/v1/graduation/gd-risks"
@@ -77,13 +79,17 @@ def test_archive_generate_blocks_submit_until_complete_then_files(graduation_cli
     assert export.json()["data"]["rowCount"] >= 1
 
 
-def test_complete_archive_is_idempotent_and_archives_student_atomically(graduation_client, auth_headers, db_mode):
+@pytest.mark.parametrize("file_mode", ["single", "batch"])
+def test_complete_archive_is_idempotent_and_archives_student_atomically(graduation_client, auth_headers, db_mode, file_mode):
     from datetime import datetime
-    from sqlalchemy import text
+    from sqlalchemy import select, text
+    from app.core.context import get_tenant, set_tenant
     from app.db.session import get_sessionmaker
-    from app.models import (GraduationDefenseScore, GraduationFinal, GraduationGrade, GraduationMentor,
+    from app.models import (GraduationArchiveRecord, GraduationDefenseScore, GraduationFinal, GraduationGrade, GraduationMentor,
                             GraduationMidterm, GraduationProposal, GraduationReview,
                             GraduationStudent, GraduationTaskBook, PortalSignRecord)
+    from app.modules.graduation.services.graduation_review_quorum import current_evidence_review_ids
+    from app.modules.graduation.services.graduation_package9_guard import GraduationArchiveVersion
     from app.models.file import FileAsset, FileObject, FileVersion
     from app.models.graduation_material import GraduationStudentMaterial
     h = auth_headers
@@ -128,6 +134,7 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
     )
     db.add(material)
     db.flush()
+    batch_id = int(stu.batch_id)
     reviewers = [
         GraduationMentor(tenant_id=1000000000000000001, teacher_no=f"AR-{gid}-{n}",
                          teacher_name=name, qualification_status="QUALIFIED")
@@ -184,6 +191,55 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
     submitted = graduation_client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()["data"]
     submitted_retry = graduation_client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()["data"]
     assert submitted_retry["version"] == submitted["version"]
+
+    # The ORM FILED listener must use the archive's tenant even outside a request
+    # or when an unrelated request context remains on the worker thread.
+    for ambient_tenant in (None, {"tenantId": "1000000000000000002"}):
+        db = get_sessionmaker()()
+        previous_tenant = get_tenant()
+        try:
+            archive = db.scalars(select(GraduationArchiveRecord).where(
+                GraduationArchiveRecord.tenant_id == 1000000000000000001,
+                GraduationArchiveRecord.gd_student_id == int(gid),
+            )).one()
+            review_rows = db.scalars(select(GraduationReview).where(
+                GraduationReview.tenant_id == 1000000000000000001,
+                GraduationReview.gd_student_id == int(gid),
+            )).all()
+            set_tenant(ambient_tenant)
+            assert current_evidence_review_ids(db, review_rows, tenant_id=archive.tenant_id) == {
+                int(first_review.id), int(second_review.id),
+            }
+            if ambient_tenant is not None:
+                assert current_evidence_review_ids(db, review_rows) == set()
+            archive.status = "FILED"
+            archive.archive_batch_no = "GDARCH-CONTEXT-ROLLBACK"
+            archive.filed_at = datetime.utcnow()
+            archive.verified_by = "context-test"
+            db.flush()
+            assert db.scalars(select(GraduationArchiveVersion).where(
+                GraduationArchiveVersion.tenant_id == archive.tenant_id,
+                GraduationArchiveVersion.archive_record_id == archive.id,
+            )).one().archive_version == 1
+        finally:
+            db.rollback()
+            db.close()
+            set_tenant(previous_tenant)
+
+    if file_mode == "batch":
+        preview_response = graduation_client.post(
+            f"{GD_ARCHIVE}/batch-file/preview", headers=h, params={"batchId": batch_id},
+        )
+        assert preview_response.status_code == 200, preview_response.json()
+        preview = preview_response.json()["data"]
+        assert preview["candidateCount"] == preview["executableCount"] == 1
+        batch_response = graduation_client.post(
+            f"{GD_ARCHIVE}/batch-file", headers=h, params={"batchId": batch_id},
+            json={"archiveBatchNo": "GDARCH-TEST-001", "previewToken": preview["previewToken"]},
+        )
+        assert batch_response.status_code == 200, batch_response.json()
+        assert batch_response.json()["data"]["filed"] == 1
+        assert batch_response.json()["data"]["failed"] == 0
 
     filed_response = graduation_client.post(
         f"{GD_ARCHIVE}/{gid}/file", headers=h, json={"archiveBatchNo": "GDARCH-TEST-001"},

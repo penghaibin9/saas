@@ -20,8 +20,8 @@ def required_reviewers(batch) -> int:
     return raw
 
 
-def current_evidence_review_ids(db, reviews) -> set[int]:
-    """Use the W7 frozen version only while it is the canonical final material."""
+def current_evidence_review_ids(db, reviews, *, tenant_id: int | None = None) -> set[int]:
+    """Use the canonical final evidence in the trusted tenant (request tenant by default)."""
     ids = [int(row.id) for row in reviews]
     if not ids:
         return set()
@@ -68,7 +68,7 @@ def current_evidence_review_ids(db, reviews) -> set[int]:
     """).bindparams(bindparam("review_ids", expanding=True),
                     bindparam("ready_scan_states", expanding=True))
     return {int(row[0]) for row in db.execute(stmt, {
-        "tenant_id": _tid(), "review_ids": ids,
+        "tenant_id": int(tenant_id) if tenant_id is not None else _tid(), "review_ids": ids,
         "ready_scan_states": tuple(READY_SCAN_STATES),
     }).all()}
 

@@ -91,7 +91,7 @@ def _strict_check_completeness(db, student: GraduationStudent) -> tuple[list[dic
         GraduationReview.is_deleted.is_(False),
     )).all()
     eligible_reviews, minimum_reviewers = completed_reviews(
-        batch, final, reviews, current_evidence_review_ids(db, reviews),
+        batch, final, reviews, current_evidence_review_ids(db, reviews, tenant_id=tenant_id),
     )
     defense = _latest(db, GraduationDefenseScore, tenant_id, student.id)
     grade = _latest(db, GraduationGrade, tenant_id, student.id)
