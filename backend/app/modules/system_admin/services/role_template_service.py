@@ -317,20 +317,16 @@ def impact(template_id: int) -> dict:
         item = _load(db, template_id)
         current = set(_items(db, item))
         snapshot = item.permission_ceiling_json or {}
-        if "basePublishedTemplateId" in snapshot or item.publish_status == DRAFT:
-            baseline_id = _draft_baseline_id(db, item)
-            if item.publish_status == DRAFT:
-                published = _current_published(db, item.template_code)
-                if baseline_id != (int(published.id) if published else None):
-                    raise AppException("DATA_CONFLICT", "已发布模板发生变化，请重新建立草稿", http_status=409)
-            previous = _load(db, baseline_id) if baseline_id is not None else None
-        else:
-            previous = _load(db, int(item.previous_template_id)) if item.previous_template_id else None
+        if item.publish_status == PUBLISHED and "basePublishedTemplateId" not in snapshot:
+            raise AppException("DATA_CONFLICT", "历史已发布版本缺少明确发布基线，无法计算影响", http_status=409)
+        baseline_id = _draft_baseline_id(db, item)
+        if item.publish_status == DRAFT:
+            published = _current_published(db, item.template_code)
+            if baseline_id != (int(published.id) if published else None):
+                raise AppException("DATA_CONFLICT", "已发布模板发生变化，请重新建立草稿", http_status=409)
+        previous = _load(db, baseline_id) if baseline_id is not None else None
         if previous is not None and previous.publish_status != PUBLISHED:
-            raise AppException("DATA_CONFLICT", "历史版本缺少可证明的已发布基线，无法计算影响", http_status=409)
-        if previous is not None and item.publish_status == PUBLISHED and "basePublishedTemplateId" not in snapshot:
-            if not previous.published_at or not item.published_at or previous.published_at > item.published_at:
-                raise AppException("DATA_CONFLICT", "历史版本缺少可证明的发布先后时间，无法计算影响", http_status=409)
+            raise AppException("DATA_CONFLICT", "版本基线不是已发布模板，无法计算影响", http_status=409)
         before = set(_items(db, previous)) if previous is not None else set()
         navigation = product_svc._navigation_contract()
         surfaces = list(navigation.get("surfaces") or [])

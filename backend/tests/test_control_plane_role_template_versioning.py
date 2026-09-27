@@ -165,42 +165,35 @@ def test_historical_published_impact_rejects_draft_predecessor(monkeypatch):
     assert exc.value.code == "DATA_CONFLICT"
 
 
-def test_historical_published_impact_rejects_later_published_predecessor(monkeypatch):
-    predecessor = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", publish_status=svc.PUBLISHED,
-                                  published_at=datetime(2026, 9, 27, 12))
-    item = SimpleNamespace(id=3, template_code="COLLEGE_ADMIN", template_version=3,
-                           publish_status=svc.PUBLISHED, previous_template_id=2,
-                           published_at=datetime(2026, 9, 27, 11), permission_ceiling_json={})
-    db = MagicMock()
-    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
-    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {2: predecessor, 3: item}[template_id])
-    monkeypatch.setattr(svc, "_items", lambda _db, row: [CATALOG_VIEW])
+@pytest.mark.parametrize("source_time", [datetime(2026, 9, 27, 10), datetime(2026, 9, 27, 12)])
+def test_historical_rollback_source_cannot_prove_published_baseline(monkeypatch, source_time):
+    from app.modules.platform.services import platform_product_iam_service as product_svc
 
+    v1 = SimpleNamespace(id=1, template_code="COLLEGE_ADMIN", template_version=1,
+                         publish_status=svc.PUBLISHED, published_at=source_time)
+    v2 = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", template_version=2,
+                         publish_status=svc.PUBLISHED, published_at=datetime(2026, 9, 27, 11))
+    rollback_v3 = SimpleNamespace(id=3, template_code="COLLEGE_ADMIN", template_version=3,
+                                  publish_status=svc.PUBLISHED, previous_template_id=1,
+                                  published_at=datetime(2026, 9, 27, 12), permission_ceiling_json={})
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {1: v1, 2: v2, 3: rollback_v3}[template_id])
+    monkeypatch.setattr(svc, "_items", lambda _db, row: {
+        1: [CATALOG_VIEW], 2: [CATALOG_MANAGE], 3: [CATALOG_VIEW],
+    }[row.id])
+    monkeypatch.setattr(product_svc, "_navigation_contract", lambda: {"digest": "nav", "surfaces": []})
+
+    # previousTemplateId still denotes the rollback source v1, while v2 was published at creation.
     with pytest.raises(AppException) as exc:
         svc.impact(3)
     assert exc.value.code == "DATA_CONFLICT"
 
-
-def test_historical_published_impact_accepts_proven_published_predecessor(monkeypatch):
-    from app.modules.platform.services import platform_product_iam_service as product_svc
-
-    predecessor = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", template_version=2,
-                                  publish_status=svc.PUBLISHED, published_at=datetime(2026, 9, 27, 11))
-    item = SimpleNamespace(id=3, template_code="COLLEGE_ADMIN", template_version=3,
-                           publish_status=svc.PUBLISHED, previous_template_id=2,
-                           published_at=datetime(2026, 9, 27, 12), permission_ceiling_json={})
-    db = MagicMock()
-    db.scalars.return_value.all.return_value = []
-    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
-    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {2: predecessor, 3: item}[template_id])
-    monkeypatch.setattr(svc, "_items", lambda _db, row: {
-        2: [CATALOG_VIEW], 3: [CATALOG_VIEW, CATALOG_MANAGE],
-    }[row.id])
-    monkeypatch.setattr(product_svc, "_navigation_contract", lambda: {"digest": "nav", "surfaces": []})
-
+    rollback_v3.permission_ceiling_json = {"basePublishedTemplateId": 2}
     result = svc.impact(3)
     assert result["baselineTemplateId"] == "2"
-    assert result["addedPermissions"] == [CATALOG_MANAGE]
+    assert result["addedPermissions"] == [CATALOG_VIEW]
 
 
 def test_impact_menu_diff_uses_same_permissions_as_permission_diff(monkeypatch):
