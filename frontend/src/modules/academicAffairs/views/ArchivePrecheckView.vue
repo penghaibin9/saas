@@ -382,11 +382,18 @@ export default {
         return parts.join(' · ') || '已记录一条待复核证据'
       })
     },
+    handoffQuery() {
+      const query = { ...this.$route.query }
+      if (query.termId !== this.termId) delete query.batchId
+      if (typeof this.termId === 'string' && /^[1-9]\d*$/.test(this.termId)) query.termId = this.termId
+      else delete query.termId
+      return query
+    },
     jump(domain) {
       const path = domain.route || FALLBACK_ROUTE[domain.domain]
-      if (path) this.$router.push(path)
+      if (path) this.$router.push({ path, query: this.handoffQuery() })
     },
-    goBatch() { this.$router.push('/admin/academic-affairs/archive') }
+    goBatch() { this.$router.push({ path: '/admin/academic-affairs/archive', query: this.handoffQuery() }) }
   }
 }
 </script>

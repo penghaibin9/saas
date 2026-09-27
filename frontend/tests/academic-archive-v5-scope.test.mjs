@@ -179,6 +179,34 @@ test('归档预检深链读取指定学期，服务端返回其他学期时拒�
   assert.equal(mismatch.precheckDecision, '尚未取得有效结论')
 })
 
+test('归档预检去处理和归档批次入口保留当前正式学期与已有查询上下文', () => {
+  const { state } = precheckPage({})
+  const destinations = []
+  state.$router.push = value => { destinations.push(value) }
+  state.$route.query = { termId: '52', source: 'flow', batchId: '9007199254740993' }
+  state.termId = '53'
+  state.jump({ domain: 'EXAM', route: '/admin/academic-affairs/exam' })
+  state.goBatch()
+  assert.deepEqual(JSON.parse(JSON.stringify(destinations)), [
+    { path: '/admin/academic-affairs/exam', query: { termId: '53', source: 'flow' } },
+    { path: '/admin/academic-affairs/archive', query: { termId: '53', source: 'flow' } }
+  ])
+  state.$route.query = { source: 'workspace' }
+  state.termId = '9007199254740995'
+  state.jump({ domain: 'GRADUATION' })
+  assert.deepEqual(JSON.parse(JSON.stringify(destinations[2])), {
+    path: '/admin/academic-affairs/graduation/audit-console',
+    query: { source: 'workspace', termId: '9007199254740995' }
+  })
+  state.$route.query = { termId: '53', batchId: '9007199254740993' }
+  state.termId = '53'
+  state.goBatch()
+  assert.deepEqual(JSON.parse(JSON.stringify(destinations[3])), {
+    path: '/admin/academic-affairs/archive',
+    query: { termId: '53', batchId: '9007199254740993' }
+  })
+})
+
 for (const oldOutcome of ['success', 'error']) test(`换学期清除旧结论，旧请求 ${oldOutcome} 最后返回不覆盖新学期`, async () => {
   const old = deferred(), next = deferred()
   const { state } = precheckPage({ precheck: id => id === '52' ? old.promise : next.promise })
