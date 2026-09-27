@@ -425,11 +425,36 @@ def teacher_batch_applications(
     batchId: str = Query(..., min_length=1),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
+    status: str = Query("PENDING_REVIEW", min_length=1),
     user=Depends(require_permission("internship.application.view")),
 ):
     from app.modules.internship.services import internship_application_service as applications
     items, total = applications.list_applications(
-        page, pageSize, status="PENDING_REVIEW", batch_id=batchId, user=user)
+        page, pageSize, status=status, batch_id=batchId, user=user)
+    return success(_paged(items, total, page, pageSize, batchId))
+
+
+@router.get("/applications/summary", summary="教师当前批次实习岗位填报与审核全量统计")
+def teacher_batch_application_summary(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.application.view")),
+):
+    from app.modules.internship.services import internship_application_service as applications
+    return success(applications.application_summary(batch_id=batchId, user=user))
+
+
+@router.get("/applications/students", summary="教师当前批次已填报/未填报学生名单")
+def teacher_batch_application_students(
+    batchId: str = Query(..., min_length=1),
+    state: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    keyword: str | None = Query(None),
+    user=Depends(require_permission("internship.application.view")),
+):
+    from app.modules.internship.services import internship_application_service as applications
+    items, total = applications.list_application_students(
+        page, pageSize, state, batch_id=batchId, keyword=keyword, user=user)
     return success(_paged(items, total, page, pageSize, batchId))
 
 
