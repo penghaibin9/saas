@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Body, Depends, Header, Query
 
+from app.api.v1.file_contract import validated_local_file_response
 from app.core.permissions import require_module
 from app.core.response import success
 from app.core.security import get_current_user
@@ -21,6 +22,7 @@ from app.modules.internship.services import internship_student_report_context_se
 from app.modules.internship.services import internship_student_eval_service as student_evals
 from app.modules.internship.services import internship_student_checkin_service as checkins
 from app.modules.internship.services import internship_checkin_exemption_service as checkin_exemptions
+from app.modules.internship.services import internship_material_requirement_service as material_requirements
 from app.modules.internship.services import internship_score_appeal_service as score_appeals
 from app.modules.internship.services import internship_risk_service as risks
 from app.modules.internship.services.internship_student_context_guard import (
@@ -124,6 +126,49 @@ def withdraw_checkin_exemption(
 ):
     return success(checkin_exemptions.withdraw(
         user, exemption_id, body or {}), message="免签申请已撤回")
+
+
+@router.get("/context/material-requirements", summary="本人当前批次材料收件要求")
+def my_material_requirements(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(material_requirements.list_my_requirements(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/material-requirements/{requirement_id}/submit", summary="提交或退回后重交材料")
+def my_material_requirement_submit(
+    requirement_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(material_requirements.submit_material(
+        user, requirement_id, body or {}), message="材料已提交审核")
+
+
+@router.get("/context/material-requirements/{requirement_id}/template/download", summary="下载适用于本人的材料模板")
+def my_material_template_download(
+    requirement_id: int,
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    path, filename = material_requirements.template_download(
+        requirement_id, user, batch_id=batchId, internship_id=internshipId)
+    return validated_local_file_response(
+        path,
+        filename=filename,
+        audit_action="INTERNSHIP_STUDENT_MATERIAL_TEMPLATE_DOWNLOAD",
+        audit_target=f"internship-material-requirement:{requirement_id}",
+        audit_detail={
+            "requirementId": str(requirement_id),
+            "batchId": str(batchId),
+            "internshipId": str(internshipId),
+            "surface": "STUDENT_MINI",
+        },
+    )
 
 
 @router.get("/context/consents", summary="本人所选批次知情确认任务")
