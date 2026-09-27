@@ -336,8 +336,14 @@ def list_applications(page: int, page_size: int, status=None, application_type=N
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
         )
-        if status:
-            query = query.where(InternshipApplication.status == status)
+        status_value = str(status or "").strip().upper()
+        if status_value and status_value != "ALL":
+            if status_value == "REVIEWED":
+                query = query.where(InternshipApplication.status.in_(("APPROVED", "REJECTED")))
+            elif status_value in STATUS_LABEL:
+                query = query.where(InternshipApplication.status == status_value)
+            else:
+                raise AppException("VALIDATION_ERROR", "不支持的实习申请审核状态")
         if application_type:
             query = query.where(InternshipApplication.application_type == application_type)
         term = str(keyword or "").strip()
@@ -365,6 +371,156 @@ def list_applications(page: int, page_size: int, status=None, application_type=N
             for application, record, student, position, company in rows
         ], total
 
+
+_CURRENT_FILLED_STATUSES = ("DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED")
+
+
+def application_summary(batch_id=None, user: dict | None = None) -> dict:
+    """Yiyang C04/G10: authoritative full-scope application coverage and review counts.
+
+    filledStudents is student/record based, never page based. A current application in
+    DRAFT/PENDING_REVIEW/APPROVED/REJECTED counts as filled; WITHDRAWN/CANCELLED does not.
+    Review counters are application based so approved/rejected history stays auditable.
+    """
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
+    with session() as db:
+        batch = resolve_batch(db, batch_id)
+        scoped = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False),
+            ),
+            user,
+        ).subquery()
+        scoped_ids = select(scoped.c.id)
+        total_students = int(db.scalar(select(func.count()).select_from(scoped)) or 0)
+
+        filled = select(InternshipApplication.record_id).where(
+            InternshipApplication.tenant_id == _tid(),
+            InternshipApplication.campaign_id.is_(None),
+            InternshipApplication.is_deleted.is_(False),
+            InternshipApplication.record_id.in_(scoped_ids),
+            InternshipApplication.status.in_(_CURRENT_FILLED_STATUSES),
+        ).distinct().subquery()
+        filled_students = int(db.scalar(select(func.count()).select_from(filled)) or 0)
+
+        status_rows = db.execute(
+            select(InternshipApplication.status, func.count(InternshipApplication.id))
+            .where(
+                InternshipApplication.tenant_id == _tid(),
+                InternshipApplication.campaign_id.is_(None),
+                InternshipApplication.is_deleted.is_(False),
+                InternshipApplication.record_id.in_(scoped_ids),
+            )
+            .group_by(InternshipApplication.status)
+        ).all()
+        counts = {str(status): int(count or 0) for status, count in status_rows}
+        approved = counts.get("APPROVED", 0)
+        rejected = counts.get("REJECTED", 0)
+        unfilled_students = max(0, total_students - filled_students)
+        filled_rate = round((filled_students * 100.0 / total_students), 1) if total_students else 0.0
+
+        return {
+            "batchId": str(batch.id),
+            "totalStudents": total_students,
+            "filledStudents": filled_students,
+            "unfilledStudents": unfilled_students,
+            "filledRate": filled_rate,
+            "pendingReviewApplications": counts.get("PENDING_REVIEW", 0),
+            "reviewedApplications": approved + rejected,
+            "approvedApplications": approved,
+            "rejectedApplications": rejected,
+            "draftApplications": counts.get("DRAFT", 0),
+            "withdrawnApplications": counts.get("WITHDRAWN", 0),
+            "cancelledApplications": counts.get("CANCELLED", 0),
+            "definition": {
+                "filled": "当前批次数据范围内存在草稿、待审核、已通过或已驳回的正式实习申请",
+                "unfilled": "当前批次数据范围内不存在上述当前填报事实；已撤回/已取消不计当前填报",
+                "reviewed": "已通过 + 已驳回申请数",
+            },
+        }
+
+
+def list_application_students(page: int, page_size: int, state: str, *, batch_id=None,
+                              keyword: str | None = None,
+                              user: dict | None = None) -> tuple[list[dict], int]:
+    """Yiyang C04/G10 drill-down for filled/unfilled student numerators/denominators."""
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
+    state_value = str(state or "").strip().upper()
+    if state_value not in ("FILLED", "UNFILLED"):
+        raise AppException("VALIDATION_ERROR", "state 必须是 FILLED 或 UNFILLED")
+
+    with session() as db:
+        batch = resolve_batch(db, batch_id)
+        scoped = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False),
+            ),
+            user,
+        ).subquery()
+        scoped_ids = select(scoped.c.id)
+        filled_record_ids = select(InternshipApplication.record_id).where(
+            InternshipApplication.tenant_id == _tid(),
+            InternshipApplication.campaign_id.is_(None),
+            InternshipApplication.is_deleted.is_(False),
+            InternshipApplication.record_id.in_(scoped_ids),
+            InternshipApplication.status.in_(_CURRENT_FILLED_STATUSES),
+        ).distinct()
+
+        query = select(InternshipRecord, StudentProfile).join(
+            StudentProfile, StudentProfile.id == InternshipRecord.student_id
+        ).where(
+            InternshipRecord.id.in_(scoped_ids),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )
+        if state_value == "FILLED":
+            query = query.where(InternshipRecord.id.in_(filled_record_ids))
+        else:
+            query = query.where(InternshipRecord.id.not_in(filled_record_ids))
+
+        term = str(keyword or "").strip()
+        if term:
+            like = f"%{term}%"
+            query = query.where(or_(
+                StudentProfile.real_name.like(like),
+                StudentProfile.student_no.like(like),
+                InternshipRecord.enterprise_name.like(like),
+                InternshipRecord.position_name.like(like),
+            ))
+
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        size = max(1, min(200, int(page_size or 20)))
+        rows = db.execute(
+            query.order_by(StudentProfile.student_no, StudentProfile.id)
+            .offset((max(1, int(page or 1)) - 1) * size)
+            .limit(size)
+        ).all()
+        return [
+            {
+                "recordId": str(record.id),
+                "studentId": str(student.id),
+                "studentName": student.real_name or "-",
+                "studentNo": student.student_no or "-",
+                "advisorName": record.advisor_name or "",
+                "internshipStatus": record.status or "",
+                "destinationType": record.destination_type or "",
+                "companyName": record.enterprise_name or "",
+                "positionName": record.position_name or "",
+                "applicationState": state_value,
+            }
+            for record, student in rows
+        ], total
 
 def get_application(app_id, user: dict | None = None) -> dict:
     with session() as db:
