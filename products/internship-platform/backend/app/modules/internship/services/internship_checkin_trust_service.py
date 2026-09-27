@@ -32,8 +32,15 @@ def _unb64(value: str) -> bytes:
 
 
 def _sign(encoded: str) -> str:
+    secret = str(settings.JWT_SECRET or "").strip()
+    if not secret:
+        raise AppException(
+            "SERVER_CONFIG_ERROR",
+            "服务端未配置 JWT_SECRET，无法签发可信签到凭证",
+            http_status=503,
+        )
     message = f"internship-checkin.v1.{encoded}".encode("ascii")
-    return _b64(hmac.new(settings.jwt_secret.encode("utf-8"), message, hashlib.sha256).digest())
+    return _b64(hmac.new(secret.encode("utf-8"), message, hashlib.sha256).digest())
 
 
 def issue_token(*, tenant_id: int, student_id: int, internship_id: int, checkin_date: str) -> dict:
