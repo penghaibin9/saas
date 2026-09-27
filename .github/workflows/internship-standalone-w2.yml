@@ -14,6 +14,7 @@ on:
       - "products/internship-platform/backend/app/services/**"
       - "products/internship-platform/backend/tests/test_w2_*.py"
       - "products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py"
+      - "products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py"
       - ".github/workflows/internship-standalone-w2.yml"
   pull_request:
     paths:
@@ -40,4 +41,4 @@ jobs:
       - name: Run staff route registry contracts
         env:
           PYTHONPATH: products/internship-platform/backend
-        run: pytest -q products/internship-platform/backend/tests/test_w2_staff_routes.py products/internship-platform/backend/tests/test_w2_score_appeal_standalone.py products/internship-platform/backend/tests/test_w2_student_routes.py products/internship-platform/backend/tests/test_w2_teacher_mobile_routes.py products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py
+        run: pytest -q products/internship-platform/backend/tests/test_w2_staff_routes.py products/internship-platform/backend/tests/test_w2_score_appeal_standalone.py products/internship-platform/backend/tests/test_w2_student_routes.py products/internship-platform/backend/tests/test_w2_teacher_mobile_routes.py products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py
