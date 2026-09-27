@@ -34,9 +34,14 @@ def test_w2_staff_routes_have_no_duplicate_method_path():
 
 
 def test_w2_staff_routes_keep_staff_and_module_gates():
-    routes = [
-        route for route in _app().routes
-        if isinstance(route, APIRoute) and route.path.startswith("/internship")
-    ]
+    router = build_staff_internship_router()
+    routes = [route for route in router.routes if getattr(route, "dependant", None) is not None]
     assert routes
-    assert all(len(route.dependant.dependencies) >= 2 for route in routes)
+    for route in routes:
+        dependency_calls = [
+            getattr(dep.call, "__name__", "")
+            for dep in route.dependant.dependencies
+            if getattr(dep, "call", None) is not None
+        ]
+        assert "require_staff" in dependency_calls, (route.path, dependency_calls)
+        assert len(route.dependant.dependencies) >= 2, (route.path, dependency_calls)
