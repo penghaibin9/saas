@@ -21,8 +21,12 @@
         <template #cell-when="{ row }">{{ row.examDate }} {{ row.startTime }}—{{ row.endTime }}</template>
         <template #cell-duty="{ row }">{{ row.role === 'CHIEF' ? '主监考' : row.role === 'ASSISTANT' ? '监考' : '监考职责待核对' }}</template>
         <template #cell-state="{ row }">{{ row.workStatus === 'FINISHED' ? '考试已结束' : '待监考' }}</template>
-        <template #cell-actions="{ row }"><AppButton size="small" variant="ghost" @click="myExamBatch = { batchId: row.batchId, batchName: row.batchName, status: row.batchStatus }">查看考场异常</AppButton></template>
+        <template #cell-actions="{ row }">
+          <AppButton size="small" variant="primary" @click="attendanceRoomId = row.examRoomId">到考登记</AppButton>
+          <AppButton size="small" variant="ghost" @click="myExamBatch = { batchId: row.batchId, batchName: row.batchName, status: row.batchStatus }">查看考场异常</AppButton>
+        </template>
       </DataTable>
+      <AaExamAttendanceWorkbench v-if="attendanceRoomId" :key="identityKey + ':' + attendanceRoomId" :room-id="attendanceRoomId" />
       <AaExamIncidentWorkbench v-if="myExamBatch" :key="myExamBatch.batchId" :batch="myExamBatch" />
     </section>
     <AaExamObjectBar v-else v-bind="objectBar" />
@@ -402,6 +406,8 @@
           <li v-for="r in arrangeRooms" :key="r.examRoomId">
             <span>考场{{ r.roomSeq }} · {{ r.classroomText }}（{{ r.plannedCount }}/{{ r.capacity }}）</span>
             <button class="mp-link" @click="printSeating(r.examRoomId)">座位表/准考证/门贴</button>
+            <AppButton size="small" variant="primary" @click="attendanceRoomId = r.examRoomId">到考登记</AppButton>
+            <AaExamAttendanceWorkbench v-if="attendanceRoomId === r.examRoomId" :key="identityKey + ':' + r.examRoomId" :room-id="r.examRoomId" class="aaexam-attendance" />
             <div v-if="canArrangeRooms" class="aaexam-room-actions">
               <AppButton v-if="arrangeRooms.length === 1 && !r.plannedCount" size="small" :disabled="!arrangeCourse?.rosterIdentity?.studentIds?.length || saving" @click="assignFrozenSeats(r)">按冻结名单铺位</AppButton>
               <p>监考：{{ (r.invigilators || []).map(item => item.teacherName || '教师姓名待核对').join('、') || '尚未指定' }}</p>
@@ -461,6 +467,7 @@ import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineA
 import { academicAffairsApi, academicAffairsExamApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicAffairsExamConvenienceApi as convenienceApi } from '@/modules/academicAffairs/api/exam-convenience.api'
 import AaExamIncidentWorkbench from '@/modules/academicAffairs/components/AaExamIncidentWorkbench.vue'
+import AaExamAttendanceWorkbench from '@/modules/academicAffairs/components/AaExamAttendanceWorkbench.vue'
 import AaExamObjectBar from '@/modules/academicAffairs/components/exam/AaExamObjectBar.vue'
 import AaExamStageRail from '@/modules/academicAffairs/components/exam/AaExamStageRail.vue'
 import { toast } from '@/utils/toast'
@@ -478,7 +485,7 @@ const DEFER_ACTIVE = new Set(['COUNSELOR_REVIEW', 'TEACHER_CONFIRM', 'COLLEGE_RE
 export default {
   name: 'AaExamConsoleView',
   components: {
-    ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AaExamIncidentWorkbench, AaExamObjectBar, AaExamStageRail,
+    ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AaExamIncidentWorkbench, AaExamAttendanceWorkbench, AaExamObjectBar, AaExamStageRail,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert,
     AppCheckboxGroup, AppTermEntityPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker
   },
@@ -486,7 +493,7 @@ export default {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
       loading: true, error: '', rows: [], pagination: { page: 1, pageSize: 50, total: 0 },
-      myInvigilations: [], myExamBatch: null,
+      myInvigilations: [], myExamBatch: null, attendanceRoomId: '',
       invigilationColumns: [{ key: 'course', title: '课程与批次' }, { key: 'when', title: '考试时间' }, { key: 'classroom', title: '考场' }, { key: 'duty', title: '本人职责' }, { key: 'state', title: '当前状态' }, { key: 'actions', title: '办理' }],
       modePagination: { page: 1, pageSize: 20, total: 0 },
       deferRows: [], archiveRows: [], selectedDefer: null, selectedArchive: null,
@@ -679,13 +686,14 @@ export default {
       this.autoTimeReceipt = null; this.autoArranging = false; this.rows = []; this.deferRows = []; this.archiveRows = []
       this.selectedDefer = null; this.selectedArchive = null; this.batchDetailLoading = false; this.modePagination.page = 1
       this.deferConfirmVisible = false; this.deferDecisionAction = ''; this.deferDecisionRow = null
+      this.attendanceRoomId = ''
       this.load()
     },
     async load() {
       const seq = ++this.loadSeq, identity = this.identityKey
       const current = () => seq === this.loadSeq && identity === this.identityKey
       this.loading = true; this.error = ''
-      this.myInvigilations = []; this.myExamBatch = null
+      this.myInvigilations = []; this.myExamBatch = null; this.attendanceRoomId = ''
       try {
       if (this.teacherExamView) {
         const res = await api.getMyInvigilation()
@@ -750,7 +758,7 @@ export default {
       } catch (error) { if (identity === this.identityKey) toast.error(error?.message || '办理结果未确认，请刷新正式记录') }
       finally { if (identity === this.identityKey) this.saving = false }
     },
-    async select(b) { this.coursePagination.page = 1; this.current = b; this.autoResult = null; await this.refresh() },
+    async select(b) { this.coursePagination.page = 1; this.current = b; this.autoResult = null; this.attendanceRoomId = ''; await this.refresh() },
     async refresh() {
       if (!this.current) return
       const seq = ++this.detailSeq, id = this.current.batchId, identity = this.identityKey
@@ -987,7 +995,7 @@ export default {
       if (res.code === 0) { toast.success('已保存'); this.schedVisible = false; await this.refresh() } else toast.error(res.message)
     },
     async openArrange(row) {
-      this.arrangeCourse = row; this.roomForm = { classroomId: '', classroomText: '', capacity: 50 }; this.arrangeVisible = true
+      this.arrangeCourse = row; this.roomForm = { classroomId: '', classroomText: '', capacity: 50 }; this.arrangeVisible = true; this.attendanceRoomId = ''
       this.arrangeError = ''; this.invigilatorForm = { teacherKey: '', teacherName: '' }
       await this.readArrangeRooms()
     },
@@ -1103,6 +1111,7 @@ export default {
 .aaexam-rooms, .aaexam-incidents { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .aaexam-rooms li, .aaexam-incidents li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; background: var(--fill-light, #f8fafc); border-radius: 6px; }
 .aaexam-rooms li { flex-wrap: wrap; }
+.aaexam-attendance { flex: 1 0 100%; }
 .aaexam-room-actions { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 .aaexam-room-actions p { flex-basis: 100%; margin: 0; }
 .aaexam-mode-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }

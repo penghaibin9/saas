@@ -1,6 +1,17 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import vm from 'node:vm'
 import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
+
+function attendance(api, roomId = '21001') {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/components/AaExamAttendanceWorkbench.vue', import.meta.url), 'utf8')
+  const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'component =')
+  const sandbox = { api, DataTable: {}, LoadingState: {}, ErrorState: {}, EmptyState: {}, AppButton: {}, AppInlineAlert: {} }
+  vm.runInNewContext(script, sandbox)
+  const state = { roomId, ...sandbox.component.data(), ...sandbox.component.methods }
+  return state
+}
 
 function exam(api, convenienceApi) {
   const result = page('AaExamConsoleView', { academicAffairsExamApi: api, academicAffairsExamConvenienceApi: convenienceApi })
@@ -130,5 +141,52 @@ test('exam lifecycle confirmation cannot follow a changed batch', async () => {
   state.lc('publishBatch', '发布')
   state.current = { batchId: 'b' }
   await state.onConfirm()
+  assert.equal(writes, 0)
+})
+
+test('到考登记只对正式许可行写一次，带原版本且同考场回读后才显示完成', async () => {
+  const calls = []; let present = false
+  const state = attendance({
+    roomAttendance: async roomId => {
+      calls.push(['read', roomId])
+      return { code: 0, data: { examRoomId: roomId, batchId: '14', batchStatus: 'PUBLISHED', items: [{ studentId: '9007199254740993', studentNo: '240407', studentName: '张同学', attendanceStatus: present ? 'PRESENT' : 'NOT_STARTED', version: present ? 1 : 0, markPresentAction: { allowed: !present } }] } }
+    },
+    markRoomPresent: async (roomId, studentId, version) => { calls.push(['write', roomId, studentId, version]); present = true; return { code: 0 } }
+  })
+  await state.load()
+  await state.markPresent(state.items[0])
+  assert.deepEqual(calls.map(item => Array.from(item)), [['read', '21001'], ['write', '21001', '9007199254740993', 0], ['read', '21001']])
+  assert.match(state.receipt, /已登记到考/)
+  await state.markPresent(state.items[0])
+  assert.equal(calls.length, 3)
+})
+
+test('到考登记遇版本冲突只回读不重发，撤权行也不写', async () => {
+  let writes = 0
+  const state = attendance({
+    roomAttendance: async roomId => ({ code: 0, data: { examRoomId: roomId, batchId: '14', items: [{ studentId: 's1', attendanceStatus: 'NOT_STARTED', version: 1, markPresentAction: { allowed: false, reason: '当前无办理责任' } }] } }),
+    markRoomPresent: async () => { writes++; return { code: 409, message: '版本已变化' } }
+  })
+  await state.load()
+  await state.markPresent(state.items[0])
+  assert.equal(writes, 0)
+  state.items[0].markPresentAction.allowed = true
+  await state.markPresent(state.items[0])
+  assert.equal(writes, 1)
+  assert.match(state.actionError, /版本已变化/)
+  assert.equal(state.pendingStudentId, '')
+})
+
+test('考场切换后迟到名单不能覆盖当前考场，也不能按旧行登记', async () => {
+  const first = deferred(); let writes = 0
+  const state = attendance({ roomAttendance: roomId => roomId === '21001' ? first.promise : Promise.resolve({ code: 0, data: { examRoomId: roomId, batchId: '14', items: [] } }), markRoomPresent: async () => { writes++ } })
+  const old = state.load()
+  state.roomId = '21002'
+  await state.load()
+  first.resolve({ code: 0, data: { examRoomId: '21001', batchId: '14', items: [{ studentId: 's1', attendanceStatus: 'NOT_STARTED', version: 0, markPresentAction: { allowed: true } }] } })
+  await old
+  assert.equal(state.items.length, 0)
+  assert.equal(state.batchId, '14')
+  await state.markPresent({ studentId: 's1', attendanceStatus: 'NOT_STARTED', version: 0, markPresentAction: { allowed: true } })
   assert.equal(writes, 0)
 })
