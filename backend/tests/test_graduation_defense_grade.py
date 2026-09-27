@@ -212,6 +212,25 @@ def test_grade_calculate_review_publish_withdraw(graduation_client, auth_headers
     db.commit()
     db.close()
 
+    db = get_sessionmaker()()
+    db.get(FileObject, int(file_object.id)).status = "QUARANTINED"
+    db.commit()
+    db.close()
+    quarantined = graduation_client.get(f"{GD_GRADE}/{gid}", headers=h).json()["data"]
+    assert quarantined["sourceScores"]["reviewSourceCount"] == 0
+    assert graduation_client.post(f"{GD_GRADE}/{gid}/calculate", headers=h, json={"advisorScore": 95}).status_code == 409
+    db = get_sessionmaker()()
+    db.get(FileObject, int(file_object.id)).status = "AVAILABLE"
+    db.get(FileObject, int(file_object.id)).scan_status = "INFECTED"
+    db.commit()
+    db.close()
+    infected = graduation_client.get(f"{GD_GRADE}/{gid}", headers=h).json()["data"]
+    assert infected["sourceScores"]["reviewSourceCount"] == 0
+    db = get_sessionmaker()()
+    db.get(FileObject, int(file_object.id)).scan_status = "NOT_REQUIRED"
+    db.commit()
+    db.close()
+
     calc = graduation_client.post(f"{GD_GRADE}/{gid}/calculate", headers=h, json={
         "advisorScore": 95, "reviewerScore": 90, "defenseScore": 90})
     body = calc.json()["data"]

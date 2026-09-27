@@ -6,6 +6,7 @@ from sqlalchemy import bindparam, text
 from app.core.exceptions import AppException
 from app.modules.graduation.services.graduation_batch_service import DEFAULT_RULES
 from app.services.db_service import _tid
+from app.services.file_scan_constants import READY_SCAN_STATES
 
 
 def required_reviewers(batch) -> int:
@@ -41,13 +42,17 @@ def current_evidence_review_ids(db, reviews) -> set[int]:
         JOIN t_file_object f
           ON f.tenant_id=r.tenant_id AND f.id=v.file_object_id
          AND f.sha256=r.source_sha256 AND f.is_deleted=0
+         AND UPPER(f.status)='AVAILABLE'
+         AND UPPER(COALESCE(f.scan_status,'')) IN :ready_scan_states
         WHERE r.tenant_id=:tenant_id AND r.id IN :review_ids
           AND r.file_version_id IS NOT NULL AND r.source_sha256 IS NOT NULL
           AND r.source_sha256<>''
           AND r.is_deleted=0
-    """).bindparams(bindparam("review_ids", expanding=True))
+    """).bindparams(bindparam("review_ids", expanding=True),
+                    bindparam("ready_scan_states", expanding=True))
     return {int(row[0]) for row in db.execute(stmt, {
         "tenant_id": _tid(), "review_ids": ids,
+        "ready_scan_states": tuple(READY_SCAN_STATES),
     }).all()}
 
 
