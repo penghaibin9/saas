@@ -28,11 +28,13 @@ def c03_db(tmp_path):
     )
 
     old_url = settings.DATABASE_URL
-    old_storage = settings.FILE_STORAGE_ROOT
+    old_storage = settings.FILE_STORAGE_DIR
     settings.DATABASE_URL = f"sqlite+pysqlite:///{(tmp_path / 'c03.db').as_posix()}"
-    settings.FILE_STORAGE_ROOT = str(tmp_path / "storage")
+    settings.FILE_STORAGE_DIR = str(tmp_path / "storage")
     db_session._engine = None
     db_session._factory = None
+    from app.services import storage as storage_service
+    storage_service._backend = None
     engine = db_session.get_engine()
 
     for table in (
@@ -50,9 +52,11 @@ def c03_db(tmp_path):
     finally:
         engine.dispose()
         settings.DATABASE_URL = old_url
-        settings.FILE_STORAGE_ROOT = old_storage
+        settings.FILE_STORAGE_DIR = old_storage
         db_session._engine = None
         db_session._factory = None
+        from app.services import storage as storage_service
+        storage_service._backend = None
 
 
 def _seed():
