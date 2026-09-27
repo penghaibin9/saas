@@ -50,6 +50,9 @@ jobs:
           print({k: len(v) for k, v in s.items()})
           PY
 
+      - name: Build backend dependency inventory
+        run: python products/internship-platform/scripts/build_backend_dependency_report.py
+
       - name: Enforce standalone domain boundary
         run: python products/internship-platform/scripts/check_forbidden_imports.py
 
@@ -60,3 +63,12 @@ jobs:
         env:
           PYTHONPATH: products/internship-platform/backend
         run: pytest -q products/internship-platform/backend/tests/test_health.py
+
+      - name: Upload W1 extraction evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-standalone-w1-evidence
+          path: |
+            products/internship-platform/artifacts/extraction-manifest.json
+            products/internship-platform/artifacts/backend-dependencies.json
+          if-no-files-found: error
