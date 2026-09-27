@@ -10,7 +10,7 @@ from app.models.student import StudentContact, StudentProfile
 from app.models.student_account_link import StudentAccountLink
 from app.models.student_parent import StudentParentLink
 from app.models.teacher_scope import TeacherStudentScope
-from app.models.message import UnifiedMessage
+from app.models.message import MessageCampaign, MessageEventOutbox, UnifiedMessage
 from app.models.approval import UnifiedTodo
 from app.models.audit_outbox import AuditOutbox
 from app.models.excel_import_job import ExcelImportJob
