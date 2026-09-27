@@ -73,6 +73,7 @@ export default {
         if (!this.alive || this.roomId !== roomId) return
         if (res.code !== 0) {
           await this.load()
+          if (!this.alive || this.roomId !== roomId) return
           this.actionError = res.message || '登记未完成，请核对最新到考状态'
           return
         }
@@ -81,7 +82,11 @@ export default {
         if (loaded && this.items.find(item => item.studentId === studentId)?.attendanceStatus === 'PRESENT') this.receipt = `${row.studentName || row.studentNo || '该考生'}已登记到考，考场名单已重新核对。`
         else this.actionError = '登记命令已返回，但同一考场尚未回读到到考结果，请再次刷新核对。'
       } catch (error) {
-        if (this.alive && this.roomId === roomId) { await this.load(); this.actionError = error?.message || '登记结果待核对，请刷新考场名单' }
+        if (this.alive && this.roomId === roomId) {
+          await this.load()
+          if (!this.alive || this.roomId !== roomId) return
+          this.actionError = error?.message || '登记结果待核对，请刷新考场名单'
+        }
       } finally { if (this.alive && this.roomId === roomId) this.pendingStudentId = '' }
     }
   }

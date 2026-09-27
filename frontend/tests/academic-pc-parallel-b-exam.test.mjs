@@ -190,3 +190,31 @@ test('考场切换后迟到名单不能覆盖当前考场，也不能按旧行�
   await state.markPresent({ studentId: 's1', attendanceStatus: 'NOT_STARTED', version: 0, markPresentAction: { allowed: true } })
   assert.equal(writes, 0)
 })
+
+test('到考写入失败后的延迟回读遇考场切换，不显示旧考场错误', async () => {
+  for (const failure of ['conflict', 'network']) {
+    const reread = deferred(), rereadStarted = deferred(); let reads = 0
+    const state = attendance({
+      roomAttendance: roomId => {
+        if (roomId === '21002') return Promise.resolve({ code: 0, data: { examRoomId: roomId, batchId: '14', items: [] } })
+        if (++reads === 1) return Promise.resolve({ code: 0, data: { examRoomId: roomId, batchId: '14', items: [{ studentId: 's1', attendanceStatus: 'NOT_STARTED', version: 0, markPresentAction: { allowed: true } }] } })
+        rereadStarted.resolve()
+        return reread.promise
+      },
+      markRoomPresent: async () => {
+        if (failure === 'network') throw Error('旧考场请求失败')
+        return { code: 409, message: '旧考场版本冲突' }
+      }
+    })
+    await state.load()
+    const marking = state.markPresent(state.items[0])
+    await rereadStarted.promise
+    state.roomId = '21002'
+    await state.load()
+    reread.resolve({ code: 0, data: { examRoomId: '21001', batchId: '14', items: [] } })
+    await marking
+    assert.equal(state.actionError, '')
+    assert.equal(state.error, '')
+    assert.equal(state.roomId, '21002')
+  }
+})

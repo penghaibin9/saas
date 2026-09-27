@@ -15,12 +15,12 @@
       <p>按本人当前正式监考指派展示。考试时间、教室或监考人调整后，请刷新核对。</p>
       <LoadingState v-if="loading" />
       <ErrorState v-else-if="error" :description="error" @retry="load" />
-      <EmptyState v-else-if="!myInvigilations.length" title="暂无正式监考安排" description="这里只展示本人已发布且尚未过期的安排。" />
+      <EmptyState v-else-if="!myInvigilations.length" title="暂无正式监考安排" description="展示本人正式监考安排及尚未完成到考登记的场次。" />
       <DataTable v-else :columns="invigilationColumns" :rows="myInvigilations" row-key="invigilatorId">
         <template #cell-course="{ row }"><strong>{{ row.courseName }}</strong><p>{{ row.batchName }}</p></template>
         <template #cell-when="{ row }">{{ row.examDate }} {{ row.startTime }}—{{ row.endTime }}</template>
         <template #cell-duty="{ row }">{{ row.role === 'CHIEF' ? '主监考' : row.role === 'ASSISTANT' ? '监考' : '监考职责待核对' }}</template>
-        <template #cell-state="{ row }">{{ row.workStatus === 'FINISHED' ? '考试已结束' : '待监考' }}</template>
+        <template #cell-state="{ row }">{{ row.workStatus === 'FINISHED' ? '考试已结束' : '待完成监考办理' }}</template>
         <template #cell-actions="{ row }">
           <AppButton size="small" variant="primary" @click="attendanceRoomId = row.examRoomId">到考登记</AppButton>
           <AppButton size="small" variant="ghost" @click="myExamBatch = { batchId: row.batchId, batchName: row.batchName, status: row.batchStatus }">查看考场异常</AppButton>
