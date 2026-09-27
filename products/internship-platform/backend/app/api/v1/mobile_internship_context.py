@@ -434,6 +434,52 @@ def teacher_batch_applications(
     return success(_paged(items, total, page, pageSize, batchId))
 
 
+@router.get("/material-requirements", summary="教师当前批次材料收件要求")
+def teacher_material_requirements(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.report.review")),
+):
+    from app.modules.internship.services import internship_material_requirement_service as materials
+    return success(materials.list_requirements(
+        batch_id=batchId, status="PUBLISHED", user=user))
+
+
+@router.get("/material-requirements/{requirement_id}/coverage", summary="教师材料已交/缺交统计")
+def teacher_material_requirement_coverage(
+    requirement_id: int,
+    user=Depends(require_permission("internship.report.review")),
+):
+    from app.modules.internship.services import internship_material_requirement_service as materials
+    return success(materials.coverage(requirement_id, user=user))
+
+
+@router.get("/material-requirements/{requirement_id}/students", summary="教师材料已交/缺交学生名单")
+def teacher_material_requirement_students(
+    requirement_id: int,
+    state: str = Query("ALL"),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    keyword: str = Query(""),
+    user=Depends(require_permission("internship.report.review")),
+):
+    from app.modules.internship.services import internship_material_requirement_service as materials
+    items, total = materials.list_students(
+        requirement_id, state=state, page=page, page_size=pageSize,
+        keyword=keyword, user=user)
+    return success(_paged(items, total, page, pageSize, None))
+
+
+@router.post("/material-submissions/{submission_id}/review", summary="教师审核学生材料")
+def teacher_material_submission_review(
+    submission_id: int,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.report.review")),
+):
+    from app.modules.internship.services import internship_material_requirement_service as materials
+    return success(materials.review_submission(
+        submission_id, body or {}, user=user), message="材料审核完成")
+
+
 @router.get("/checkin-exemptions", summary="教师当前批次免签申请")
 def teacher_checkin_exemptions(
     batchId: str = Query(..., min_length=1),
