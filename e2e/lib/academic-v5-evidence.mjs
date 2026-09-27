@@ -13,7 +13,7 @@ try:
     if (u.scheme != 'mysql+pymysql' or u.hostname != '127.0.0.1' or u.port != 3311 or u.path != '/student_lifecycle_v5_e2e'):
         raise ValueError('isolated database mismatch')
     tenant, kind, object_id, action, user_id, login_name = sys.argv[1:]
-    if kind not in ('AA_TASK', 'AA_TASK_BATCH') or action not in ('ASSIGN', 'TEACHER_CONFIRM', 'COLLEGE_CONFIRM', 'ACADEMIC_APPROVE'):
+    if kind not in ('AA_TASK', 'AA_TASK_BATCH', 'AA_GRADE_TASK') or action not in ('ASSIGN', 'TEACHER_CONFIRM', 'COLLEGE_CONFIRM', 'ACADEMIC_APPROVE', 'SUBMIT', 'COLLEGE_APPROVE', 'PUBLISH'):
         raise ValueError('audit query is outside the journey scope')
     if not tenant.isdecimal() or not object_id.isdecimal() or not user_id.isdecimal():
         raise ValueError('invalid business identity')
