@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     FILE_ZIP_MAX_ENTRIES:int=200
     FILE_ZIP_MAX_UNCOMPRESSED_MB:int=100
     FILE_ZIP_MAX_RATIO:int=100
+    GUARDIAN_PORTAL_BASE_URL:str=""
+    SMS_ENABLED:bool=False
+    SMS_PROVIDER:str=""
+    SMS_TEMPLATE_GUARDIAN_CONSENT:str=""
     JWT_SECRET:str=""
     JWT_ALG:str="HS256"
     JWT_EXPIRES_IN:int=7200
