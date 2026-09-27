@@ -1,20 +1,7 @@
 name: Internship Standalone C03 Materials
 
 on:
-  pull_request:
-    paths:
-      - "products/internship-platform/backend/app/models/internship_material_requirement.py"
-      - "products/internship-platform/backend/app/models/__init__.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_material_requirement_service.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_material_center_service.py"
-      - "products/internship-platform/backend/app/modules/internship/routers/internship_material_center.py"
-      - "products/internship-platform/backend/app/api/v1/mobile_internship_student.py"
-      - "products/internship-platform/backend/app/api/v1/mobile_internship_context.py"
-      - "products/internship-platform/backend/alembic/versions/0005_yiyang_custom_materials.py"
-      - "products/internship-platform/backend/tests/test_yiyang_c03_custom_materials.py"
-      - "products/internship-platform/mobile/**"
-      - "products/internship-platform/scripts/check_mobile_import_closure.py"
-      - ".github/workflows/internship-standalone-c03.yml"
+  workflow_dispatch:
 
 jobs:
   c03:
