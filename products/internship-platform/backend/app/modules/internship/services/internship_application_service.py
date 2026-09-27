@@ -26,7 +26,7 @@ STATUS_LABEL = {
 }
 _ACTIVE = ("DRAFT", "PENDING_REVIEW")
 _PHONE = re.compile(r"^[0-9+() -]{7,32}$")
-_EMAIL = re.compile(r"^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")
+_EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 _CREDIT_CODE = re.compile(r"^[0-9A-HJ-NPQRTUWXY]{18}$")
 _POSTAL_CODE = re.compile(r"^[0-9A-Za-z -]{3,20}$")
 
