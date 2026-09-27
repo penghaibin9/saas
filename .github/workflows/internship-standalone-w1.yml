@@ -1,0 +1,62 @@
+name: Internship Standalone W1
+
+on:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/**"
+      - ".github/workflows/internship-standalone-w1.yml"
+  pull_request:
+    paths:
+      - "products/internship-platform/**"
+      - ".github/workflows/internship-standalone-w1.yml"
+
+jobs:
+  standalone-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+
+      - name: Install W1 backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+
+      - name: Build extraction manifest
+        run: python products/internship-platform/scripts/build_extraction_manifest.py
+
+      - name: Assert extraction surface is non-trivial
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("products/internship-platform/artifacts/extraction-manifest.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          s = data["surfaces"]
+          assert len(s["backendDomain"]) >= 100, len(s["backendDomain"])
+          assert len(s["staffPc"]) >= 80, len(s["staffPc"])
+          assert len(s["studentMiniapp"]) >= 15, len(s["studentMiniapp"])
+          assert len(s["teacherMiniapp"]) >= 15, len(s["teacherMiniapp"])
+          assert len(s["enterprisePortal"]) >= 50, len(s["enterprisePortal"])
+          assert len(s["tests"]) >= 100, len(s["tests"])
+          print({k: len(v) for k, v in s.items()})
+          PY
+
+      - name: Enforce standalone domain boundary
+        run: python products/internship-platform/scripts/check_forbidden_imports.py
+
+      - name: Compile standalone Python sources
+        run: python -m compileall -q products/internship-platform/backend/app
+
+      - name: Run W1 health contract
+        env:
+          PYTHONPATH: products/internship-platform/backend
+        run: pytest -q products/internship-platform/backend/tests/test_health.py
