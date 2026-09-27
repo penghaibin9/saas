@@ -18,7 +18,17 @@ on:
       - ".github/workflows/internship-standalone-w2.yml"
   pull_request:
     paths:
-      - "products/internship-platform/**"
+      - "products/internship-platform/backend/app/api/**"
+      - "products/internship-platform/backend/app/core/**"
+      - "products/internship-platform/backend/app/config.py"
+      - "products/internship-platform/backend/requirements.txt"
+      - "products/internship-platform/backend/app/main.py"
+      - "products/internship-platform/backend/app/modules/internship/**"
+      - "products/internship-platform/backend/app/services/**"
+      - "products/internship-platform/backend/tests/test_w2_*.py"
+      - "products/internship-platform/backend/tests/test_yiyang_*.py"
+      - "products/internship-platform/scripts/check_forbidden_imports.py"
+      - "products/internship-platform/scripts/check_w2_import_closure.py"
       - ".github/workflows/internship-standalone-w2.yml"
 
 jobs:
