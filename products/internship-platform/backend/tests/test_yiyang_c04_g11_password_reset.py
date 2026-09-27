@@ -268,7 +268,7 @@ def test_g11_only_assigned_student_can_be_reset_and_old_session_dies(g11_db):
         headers={"Authorization": "Bearer " + old_token},
     )
     assert old.status_code == 401, old.text
-    assert old.json()["data"]["bizCode"] == "UNAUTHORIZED"
+    assert old.json()["bizCode"] == "UNAUTHORIZED"
 
     current_version = reset["credentialVersion"]
     current_token = _student_token(assigned["account_id"], current_version)
@@ -286,7 +286,7 @@ def test_g11_only_assigned_student_can_be_reset_and_old_session_dies(g11_db):
         headers={"Authorization": "Bearer " + current_token},
     )
     assert blocked.status_code == 403, blocked.text
-    assert blocked.json()["data"]["bizCode"] == "PASSWORD_CHANGE_REQUIRED"
+    assert blocked.json()["bizCode"] == "PASSWORD_CHANGE_REQUIRED"
 
     changed = client.post(
         "/api/v1/auth/change-password",
