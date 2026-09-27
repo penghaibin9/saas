@@ -81,6 +81,32 @@ test('switching template during dynamic-code verification cancels the pending pu
   assert.equal(state.templateDraft, null)
 })
 
+test('a sent publish and its uncertain receipt keep the same draft open for readback', async () => {
+  const started = deferred()
+  const receipt = deferred()
+  const { state } = makeTemplatePage({
+    publishTemplate: () => { started.resolve(); return receipt.promise },
+    templateVersions: async () => ({ code: 0, data: { items: [publishedRow()] } }),
+    templateImpact: async () => ({ code: 0, data: { sourceDigest: 'source', navigationDigest: 'navigation' } })
+  })
+  const original = state.templateDraft
+  const operation = state.publishTemplateDraft()
+  await started.promise
+  assert.equal(state.publishCheckRequired, true)
+  state.selectTemplate({ templateCode: 'teacher' })
+  state.startTemplateDraft({ templateCode: 'teacher' })
+  state.closeSelectedTemplate()
+  state.closeTemplateDraft()
+  assert.equal(state.templateDraft, original)
+  assert.equal(state.templatePublishEpoch, 1)
+  receipt.resolve({ code: 503002, message: '请求超时', httpStatus: 0 })
+  await operation
+  assert.equal(state.publishCheckRequired, true)
+  state.closeTemplateDraft()
+  assert.equal(state.templateDraft, original)
+  assert.equal(state.templateMfaCode, '')
+})
+
 test('uncertain publish receipt requires version and impact readback before a new command', async () => {
   let publishes = 0
   let impacts = 0

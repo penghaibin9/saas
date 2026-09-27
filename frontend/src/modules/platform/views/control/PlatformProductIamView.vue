@@ -79,7 +79,7 @@
               <thead><tr><th>模板</th><th>版本</th><th>权限</th><th>生产菜单</th><th>权限摘要</th><th>操作</th></tr></thead>
               <tbody>
                 <tr v-for="item in templates" :key="`${item.templateCode}-${item.templateVersion}`">
-                  <td class="mono">{{ item.templateCode }}</td><td>第 {{ item.templateVersion }} 版</td><td>{{ item.permissionCount }}</td><td>{{ item.menuCount }}</td><td class="mono muted">{{ item.permissionDigest || '—' }}</td><td><button class="link" @click="selectTemplate(item)">权限 / 菜单预览</button></td>
+                  <td class="mono">{{ item.templateCode }}</td><td>第 {{ item.templateVersion }} 版</td><td>{{ item.permissionCount }}</td><td>{{ item.menuCount }}</td><td class="mono muted">{{ item.permissionDigest || '—' }}</td><td><button class="link" :disabled="publishCheckRequired" @click="selectTemplate(item)">权限 / 菜单预览</button></td>
                 </tr>
                 <tr v-if="!templates.length"><td colspan="6" class="muted">暂无已发布学校角色模板</td></tr>
               </tbody>
@@ -88,7 +88,7 @@
         </section>
 
         <section v-if="selectedTemplate" class="card">
-          <header class="section-head"><div><h3>{{ selectedTemplate.templateCode }} · 第 {{ selectedTemplate.templateVersion }} 版</h3><p class="muted">菜单由权限集合自动投影，不存在第二套菜单访问控制表。</p></div><div><button class="link" @click="startTemplateDraft(selectedTemplate)">创建新版本草稿</button><button class="link" @click="closeSelectedTemplate">关闭</button></div></header>
+          <header class="section-head"><div><h3>{{ selectedTemplate.templateCode }} · 第 {{ selectedTemplate.templateVersion }} 版</h3><p class="muted">菜单由权限集合自动投影，不存在第二套菜单访问控制表。</p></div><div><button class="link" :disabled="publishCheckRequired" @click="startTemplateDraft(selectedTemplate)">创建新版本草稿</button><button class="link" :disabled="publishCheckRequired" @click="closeSelectedTemplate">关闭</button></div></header>
           <div class="preview-grid">
             <div><strong>权限配置</strong><code v-for="code in selectedTemplate.permissionCodes || []" :key="code">{{ code }}</code></div>
             <div><strong>生产菜单预览</strong><span v-for="item in selectedTemplate.menuPreview || []" :key="item.surfaceKey">{{ item.label }}<small>{{ item.path }}</small></span></div>
@@ -96,7 +96,7 @@
         </section>
 
         <section v-if="templateDraft" class="card template-editor">
-          <header class="section-head"><div><h3>学校标准角色模板草稿 · {{ templateDraft.templateCode }}</h3><p class="muted">只能从已启用的学校端权限目录中选择；版本发布后不可修改。</p></div><button class="link" @click="closeTemplateDraft">关闭</button></header>
+          <header class="section-head"><div><h3>学校标准角色模板草稿 · {{ templateDraft.templateCode }}</h3><p class="muted">只能从已启用的学校端权限目录中选择；版本发布后不可修改。</p></div><button class="link" :disabled="publishCheckRequired" @click="closeTemplateDraft">关闭</button></header>
           <div class="toolbar"><input v-model.trim="templateKeyword" placeholder="搜索权限编码、模块或功能" /><span>已选 {{ templateDraft.permissionCodes.length }} 项</span></div>
           <div class="permission-picker">
             <label v-for="item in templatePermissionOptions" :key="item.permissionCode"><input v-model="templateDraft.permissionCodes" type="checkbox" :value="item.permissionCode" :disabled="Boolean(saving) || publishCheckRequired" @change="invalidateTemplateImpact" /><span>{{ item.label || item.permissionCode }}<code>{{ item.permissionCode }}</code></span></label>
@@ -203,29 +203,35 @@ export default {
       if (this.saving === 'template-publish' || this.saving === 'template-check') this.saving = ''
     },
     selectTemplate(item) {
+      if (this.publishCheckRequired) return
       this.resetTemplatePublish()
       this.templateDraft = null
       this.selectedTemplate = item
     },
     closeSelectedTemplate() {
+      if (this.publishCheckRequired) return
       this.resetTemplatePublish()
       this.selectedTemplate = null
       this.templateDraft = null
     },
     closeTemplateDraft() {
+      if (this.publishCheckRequired) return
       this.resetTemplatePublish()
       this.templateDraft = null
     },
     invalidateTemplateImpact() {
+      if (this.publishCheckRequired) return
       this.resetTemplatePublish()
       if (this.templateDraft) this.templateDraft.impact = null
     },
     startTemplateDraft(item) {
+      if (this.publishCheckRequired) return
       this.resetTemplatePublish()
       this.templateDraft = { templateCode: item.templateCode, templateName: item.templateCode, permissionCodes: [...(item.permissionCodes || [])], reason: '', id: '', version: 0, permissionDigest: '', impact: null }
       this.templateKeyword = ''
     },
     async saveTemplateDraft() {
+      if (this.publishCheckRequired) return
       this.templateMfaCode = ''
       if (this.templateDraft.reason.length < 5) return toast.error('模板变更原因至少 5 个字符')
       this.saving = 'template'
@@ -237,6 +243,7 @@ export default {
       toast.success('角色模板草稿已保存')
     },
     async loadTemplateDraftImpact() {
+      if (this.publishCheckRequired) return
       this.templateMfaCode = ''
       this.templateDraft.impact = null
       this.saving = 'template-impact'
@@ -273,7 +280,8 @@ export default {
         if (this.templatePublishEpoch !== epoch || this.templateDraft !== draft) return
         if (res.code === 0) {
           toast.success('标准角色模板已发布，已可读取新版本')
-          this.closeTemplateDraft()
+          this.resetTemplatePublish()
+          this.templateDraft = null
           await this.load()
           return
         }
@@ -300,7 +308,8 @@ export default {
       const row = (versions.data?.items || []).find((item) => String(item.id) === String(draft.id))
       if (row?.publishStatus === 'PUBLISHED') {
         toast.success('回读确认：标准角色模板已发布')
-        this.closeTemplateDraft()
+        this.resetTemplatePublish()
+        this.templateDraft = null
         await this.load()
         return 'published'
       }
