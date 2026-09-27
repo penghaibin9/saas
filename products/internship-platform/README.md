@@ -36,3 +36,12 @@
 4. 就业衔接、学生生命周期回写统一通过 Gateway。
 5. 原 SaaS 的历史 Alembic 链不直接作为 Standalone 安装链；Standalone 从新的 `0001` 基线开始。
 6. 无真实授权/回执时，不宣称已完成工商公示系统或监管平台真实对接。
+
+
+## PR #275 施工总控
+
+后续所有智能体、Codex、Claude Code 或人工施工，都必须先阅读：
+
+`products/internship-platform/docs/01-PR275-Standalone-总体任务与施工总控.md`
+
+该文档是本分支的唯一总体任务基线；不得另起一套产品、不得跳过阶段、不得把未验收功能写成已完成。
