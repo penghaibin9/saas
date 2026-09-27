@@ -13,7 +13,7 @@ try:
     if (u.scheme != 'mysql+pymysql' or u.hostname != '127.0.0.1' or u.port != 3311 or u.path != '/student_lifecycle_v5_e2e'):
         raise ValueError('isolated database mismatch')
     tenant, kind, object_id, action, user_id, login_name = sys.argv[1:]
-    if kind not in ('AA_TASK', 'AA_TASK_BATCH', 'AA_GRADE_TASK') or action not in ('ASSIGN', 'TEACHER_CONFIRM', 'COLLEGE_CONFIRM', 'ACADEMIC_APPROVE', 'SUBMIT', 'COLLEGE_APPROVE', 'PUBLISH'):
+    if kind not in ('AA_TASK', 'AA_TASK_BATCH', 'AA_GRADE_TASK', 'AA_SCHEDULE_BATCH', 'AA_GRAD_AUDIT', 'AA_ARCHIVE', 'EXAM_BATCH', 'EXAM_COURSE') or action not in ('ASSIGN', 'TEACHER_CONFIRM', 'COLLEGE_CONFIRM', 'ACADEMIC_APPROVE', 'SUBMIT', 'COLLEGE_APPROVE', 'CREATE', 'PRE_PUBLISH', 'PUBLISH', 'GENERATE', 'PRECHECK_IMMUTABLE', 'ACADEMIC_FINAL_IMMUTABLE', 'ARCHIVE', 'ARCHIVE_BATCH_CREATE', 'ARCHIVE_CHECK_V2', 'ARCHIVE_CONFIRM', 'EXAM_BATCH_CREATE', 'EXAM_COURSE_ADD', 'EXAM_COURSE_CONFIRM'):
         raise ValueError('audit query is outside the journey scope')
     if not tenant.isdecimal() or not object_id.isdecimal() or not user_id.isdecimal():
         raise ValueError('invalid business identity')
@@ -26,13 +26,15 @@ try:
             identity = cur.fetchone()
             if not identity or identity[1] != login_name:
                 raise ValueError('account identity mismatch')
-            cur.execute('SELECT id, operator, role_name, occurred_at FROM t_affairs_audit_trail '
+            table = 't_aa_exam_audit_trail' if kind in ('EXAM_BATCH', 'EXAM_COURSE') else 't_affairs_audit_trail'
+            cur.execute('SELECT id, operator, role_name, occurred_at FROM ' + table + ' '
                 'WHERE tenant_id=%s AND biz_type=%s AND biz_id=%s AND action=%s ORDER BY id',
                 (tenant, kind, object_id, action))
             rows = [{'id': str(r[0]), 'operator': r[1], 'role': r[2],
                 'occurredAt': r[3].isoformat() if r[3] else None} for r in cur.fetchall()]
             conn.rollback()
-        print(json.dumps({'operator': identity[0], 'rows': rows}, ensure_ascii=False))
+        expected_operator = user_id if kind in ('AA_ARCHIVE', 'EXAM_BATCH', 'EXAM_COURSE') else identity[0]
+        print(json.dumps({'operator': expected_operator, 'rows': rows}, ensure_ascii=False))
     finally:
         conn.close()
 except Exception:
@@ -57,16 +59,18 @@ export function auditRows({ tenantId, bizType, bizId, action, account }) {
   return JSON.parse(result.stdout)
 }
 
-export function assertActor(evidence, { roleCode, pendingAt }) {
+export function assertActor(evidence, { roleCode, pendingAt, allowRepeated = false }) {
   const { rows, operator } = evidence
-  assert.equal(rows.length, 1, '该对象动作须有且仅有一条正式审计，不能用同状态冒充本次办理')
-  assert.equal(rows[0].operator, operator, '正式审计操作者与正常角色账号不符')
-  assert.equal(rows[0].role, roleCode, '正式审计角色与正常角色账号不符')
+  if (allowRepeated) assert.ok(rows.length >= 1, '重复预审仍须留下正式审计')
+  else assert.equal(rows.length, 1, '该对象动作须有且仅有一条正式审计，不能用同状态冒充本次办理')
+  const selected = rows.at(-1)
+  assert.equal(selected.operator, operator, '正式审计操作者与正常角色账号不符')
+  assert.equal(selected.role, roleCode, '正式审计角色与正常角色账号不符')
   if (pendingAt) {
     const pending = Date.parse(pendingAt)
-    const occurred = Date.parse(`${rows[0].occurredAt}Z`)
+    const occurred = Date.parse(`${selected.occurredAt}Z`)
     assert.ok(Number.isFinite(pending) && Number.isFinite(occurred) && occurred >= pending - 2000,
       '待恢复动作的正式审计早于本次命令，不得认作原命令成功')
   }
-  return rows[0]
+  return selected
 }
