@@ -122,6 +122,10 @@ export const teacherInternshipApplicationStudents = (batchId, state = 'UNFILLED'
 }
 export const teacherInternshipApplicationReview = (applicationId, batchId, body) =>
   realRequest(batchPath(`/mobile/teacher/internship/context/applications/${enc(applicationId)}/review`, batchId), { method: 'POST', data: body || {} })
+export const teacherInternshipCheckinExemptions = (batchId, page = 1, pageSize = 20, status = 'PENDING') =>
+  realRequest(pagedBatchPath('/mobile/teacher/internship/context/checkin-exemptions', batchId, page, pageSize) + '&status=' + enc(status))
+export const teacherInternshipCheckinExemptionReview = (id, batchId, body) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/checkin-exemptions/${enc(id)}/review`, batchId), { method: 'POST', data: body || {} })
 export const teacherInternshipChanges = (batchId, page = 1, pageSize = 20) => {
   try { return realRequest(pagedBatchPath('/mobile/teacher/internship/context/changes', batchId, page, pageSize)) }
   catch (e) { return Promise.reject(e) }
