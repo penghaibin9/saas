@@ -1,7 +1,12 @@
 name: Internship Standalone W3 Mobile Closure
 
 on:
-  workflow_dispatch:
+  pull_request:
+    paths:
+      - "products/internship-platform/mobile/**"
+      - "products/internship-platform/shared/**"
+      - "products/internship-platform/scripts/check_mobile_import_closure.py"
+      - ".github/workflows/internship-standalone-w3-mobile.yml"
 
 jobs:
   import-closure:
