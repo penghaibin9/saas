@@ -33,3 +33,6 @@ class StandaloneEmploymentGateway:
 
     def get_student_destination(self, student_id: int) -> dict | None:
         return None
+
+
+employment_gateway: EmploymentGateway = StandaloneEmploymentGateway()

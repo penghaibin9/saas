@@ -23,3 +23,6 @@ class StandaloneLifecycleGateway:
         # Standalone 没有 Student360/平台生命周期时保持 no-op；
         # 调用方仍可在本域审计中记录正式完成事实。
         return None
+
+
+lifecycle_gateway: LifecycleGateway = StandaloneLifecycleGateway()

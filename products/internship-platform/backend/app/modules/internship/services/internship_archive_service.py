@@ -8,10 +8,10 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime
-from urllib.parse import quote
-
 from sqlalchemy import and_, case, func, or_, select
 
+from app.adapters.employment_gateway import employment_gateway
+from app.adapters.lifecycle_gateway import InternshipCompletedEvent, lifecycle_gateway
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.tenant_scoped import tenant_get
 from app.models import (
@@ -411,15 +411,14 @@ def archive_student_in_session(db, user, internship_id, force=False,
         "forceReason": (force_reason or "").strip(),
         "evidenceFileIds": evidence_file_ids or [],
     }, operator=_op_name(user))
-    from app.modules.platform.document_lifecycle.fact_hooks import internship_completed
-
-    internship_completed(
-        db,
-        record=record,
-        archive=archive,
-        source_version=archive_version,
-        actor_id=resolve_message_user_id(user or {}) or None,
-    )
+    # Standalone 不反向依赖学生生命周期平台。归档事实通过稳定 Gateway 发布；
+    # 嵌回全生命周期 SaaS 时由适配器转发，独立部署时为本域 no-op + 审计。
+    lifecycle_gateway.internship_completed(InternshipCompletedEvent(
+        tenant_id=int(_tid()),
+        student_id=int(record.student_id),
+        internship_id=int(record.id),
+        batch_id=int(record.batch_id) if record.batch_id else None,
+    ))
     return {
         "id": str(record.id), "completeness": completeness,
         "missing": missing, "archived": True,
@@ -552,26 +551,13 @@ def employment_transition_context(internship_id, user=None) -> dict:
         ):
             raise AppException("DATA_CONFLICT", "归档成绩冻结证据与当前正式结果不一致")
 
-        from app.models.employment import EmpStudent
-        from app.modules.employment.services import employment_runtime_service as employment_runtime
-
-        employment = db.scalar(select(EmpStudent).where(
-            EmpStudent.tenant_id == _tid(),
-            EmpStudent.student_id == record.student_id,
-            EmpStudent.record_status == "ACTIVE",
-            EmpStudent.is_deleted.is_(False),
-        ).order_by(EmpStudent.id.desc()))
-        employment_id = ""
-        if employment:
-            # 就业域仍使用自己的数据范围；不能因为实习可见就泄露就业详情对象 ID。
-            employment_runtime._assert_emp_id(db, employment.id, user)
-            employment_id = str(employment.id)
-        keyword = getattr(student, "student_no", "") or getattr(student, "real_name", "") or ""
-        path = (
-            f"/admin/employment/students/{employment_id}?source=internship&internshipId={record.id}"
-            if employment_id else
-            f"/admin/employment/students?source=internship&internshipId={record.id}&keyword={quote(keyword)}"
-        )
+        # 就业中心不是 Standalone 核心域。只经 Gateway 读取衔接上下文；
+        # 默认实现明确返回“未配置”，不得因为实习可见就绕过就业侧权限。
+        destination = employment_gateway.get_student_destination(int(record.student_id)) or {}
+        employment_id = str(destination.get("recordId") or "")
+        path = str(destination.get("path") or (
+            f"/admin/internship/employment-handoff?internshipId={record.id}&studentId={record.student_id}"
+        ))
         return {
             "internshipId": str(record.id),
             "studentId": str(record.student_id),
@@ -586,7 +572,8 @@ def employment_transition_context(internship_id, user=None) -> dict:
             "isPass": bool(score.is_pass),
             "finalScoreFreezeHash": current_hash,
             "employmentRecordId": employment_id,
-            "employmentRecordExists": bool(employment_id),
+            "employmentRecordExists": bool(destination.get("exists") or employment_id),
+            "employmentGatewayStatus": destination.get("status") or "NOT_CONFIGURED",
             "employmentPath": path,
             "resultAuthority": "PUBLISHED_FINAL_SCORE_FROZEN_IN_ARCHIVE",
         }
