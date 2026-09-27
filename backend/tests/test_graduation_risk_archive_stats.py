@@ -84,7 +84,7 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
     from app.models import (GraduationDefenseScore, GraduationFinal, GraduationGrade, GraduationMentor,
                             GraduationMidterm, GraduationProposal, GraduationReview,
                             GraduationStudent, GraduationTaskBook, PortalSignRecord)
-    from app.models.file import FileAsset, FileVersion
+    from app.models.file import FileAsset, FileObject, FileVersion
     from app.models.graduation_material import GraduationStudentMaterial
     h = auth_headers
     gid = _gd_student(graduation_client, h, "AR-COMPLETE-01", "完整归档测试生")
@@ -100,6 +100,9 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
     file_id = int(uploaded["data"]["fileId"])
 
     db = get_sessionmaker()()
+    uploaded_file = db.get(FileObject, file_id)
+    uploaded_file.status = "AVAILABLE"
+    uploaded_file.scan_status = "CLEAN"
     final = GraduationFinal(
         tenant_id=1000000000000000001, gd_student_id=int(gid), final_type="定稿",
         version="v1", submit_at=datetime.utcnow(), plagiarism_rate="8.0%",

@@ -131,7 +131,7 @@ def test_grade_calculate_review_publish_withdraw(graduation_client, auth_headers
     stu = db.get(GraduationStudent, int(gid))
     file_object = FileObject(
         tenant_id=1000000000000000001, file_key=f"grade-review-{gid}.pdf",
-        file_name="评阅定稿.pdf", status="AVAILABLE", sha256="a" * 64,
+        file_name="评阅定稿.pdf", status="AVAILABLE", scan_status="NOT_REQUIRED", sha256="a" * 64,
     )
     db.add(file_object)
     db.flush()

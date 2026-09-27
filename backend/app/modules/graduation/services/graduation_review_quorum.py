@@ -33,7 +33,7 @@ def current_evidence_review_ids(db, reviews) -> set[int]:
           ON m.tenant_id=r.tenant_id AND m.gd_student_id=r.gd_student_id
          AND m.id=r.material_id AND m.batch_id=s.batch_id
          AND m.material_code='THESIS_FINAL' AND m.source_record_type='FINAL'
-         AND m.source_record_id=CAST(r.gd_final_id AS CHAR)
+         AND BINARY m.source_record_id=BINARY CAST(r.gd_final_id AS CHAR)
          AND m.current_version_id=r.file_version_id AND m.is_deleted=0
         JOIN t_file_version v
           ON v.tenant_id=r.tenant_id AND v.id=r.file_version_id
@@ -41,7 +41,7 @@ def current_evidence_review_ids(db, reviews) -> set[int]:
          AND v.is_current=1 AND v.is_deleted=0
         JOIN t_file_object f
           ON f.tenant_id=r.tenant_id AND f.id=v.file_object_id
-         AND f.sha256=r.source_sha256 AND f.is_deleted=0
+         AND BINARY f.sha256=BINARY r.source_sha256 AND f.is_deleted=0
          AND UPPER(f.status)='AVAILABLE'
          AND UPPER(COALESCE(f.scan_status,'')) IN :ready_scan_states
         WHERE r.tenant_id=:tenant_id AND r.id IN :review_ids
