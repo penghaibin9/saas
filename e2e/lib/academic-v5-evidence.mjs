@@ -33,7 +33,7 @@ try:
             rows = [{'id': str(r[0]), 'operator': r[1], 'role': r[2],
                 'occurredAt': r[3].isoformat() if r[3] else None} for r in cur.fetchall()]
             conn.rollback()
-        expected_operator = user_id if kind in ('AA_ARCHIVE', 'EXAM_BATCH', 'EXAM_COURSE') else identity[0]
+        expected_operator = 'db-' + user_id if kind in ('AA_ARCHIVE', 'EXAM_BATCH', 'EXAM_COURSE') else identity[0]
         print(json.dumps({'operator': expected_operator, 'rows': rows}, ensure_ascii=False))
     finally:
         conn.close()
