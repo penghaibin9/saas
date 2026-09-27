@@ -28,7 +28,7 @@
       <div v-else-if="drawer.data" class="iar-workspace">
         <div class="iar-main">
           <section class="iar-card"><header><h2>申请信息</h2><AppStatusTag :type="statusTone(drawer.data.status)">{{ drawer.data.statusLabel }}</AppStatusTag></header><div class="iar-body"><AppDescriptionList :items="detailItems" :columns="2" /></div></section>
-          <section class="iar-card"><header><h2>申请说明与证明材料</h2></header><div class="iar-body"><p class="iar-note">{{ drawer.data.applicationNote || '学生未填写补充说明。' }}</p><AppFilePreview v-if="drawer.data.evidenceFileId" :files="evidenceFiles" @preview="previewEvidence" @download="downloadEvidence" /><p v-else class="iar-note">此申请暂无附件。</p></div></section>
+          <section class="iar-card"><header><h2>申请说明与证明材料</h2></header><div class="iar-body"><p class="iar-note">{{ drawer.data.applicationNote || '学生未填写补充说明。' }}</p><AppFilePreview v-if="evidenceFiles.length" :files="evidenceFiles" @preview="previewEvidence" @download="downloadEvidence" /><p v-else class="iar-note">此申请暂无附件。</p></div></section>
           <section class="iar-card"><header><h2>办理记录</h2></header><div class="iar-body"><AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无操作记录" /></div></section>
         </div>
         <aside class="iar-card iar-review"><header><h2>{{ drawer.data.status === 'PENDING_REVIEW' ? '审核申请' : '审核结果' }}</h2></header><div class="iar-body">
@@ -122,15 +122,41 @@ export default {
     isDetail() { return !!this.$route.query.id },
     detailItems() {
       const data = this.drawer.data || {}
+      const companyRegion = [data.companyProvince, data.companyCity, data.companyDistrict].filter(Boolean).join(' / ')
+      const workRegion = [data.workCountry, data.workProvince, data.workCity, data.workDistrict].filter(Boolean).join(' / ')
+      const registry = data.companyRegistryVerified
+        ? `已核验 · ${data.companyRegistryProvider || '授权企业登记数据源'}`
+        : '未通过授权企业登记数据源核验'
       return [
         { label: '学生', value: `${data.studentName || '—'}（${data.studentNo || '—'}）` },
         { label: '校内指导教师', value: data.advisorName || '—' },
         { label: '申请类型', value: data.applicationTypeLabel || '—' },
         { label: '志愿顺序', value: data.applicationType === 'POSITION' ? `第 ${data.volunteerNo} 志愿` : '自主实习' },
         { label: '实习单位', value: data.companyName || '—' },
-        { label: '实习岗位', value: data.positionName || '—' },
-        { label: '工作地点', value: data.workAddress || '—' },
+        { label: '统一社会信用代码', value: data.companyCreditCode || '—' },
+        { label: '企业登记核验', value: registry },
+        { label: '企业负责人', value: data.companyPrincipal || '—' },
+        { label: '企业规模', value: data.companyScale || '—' },
+        { label: '单位性质', value: data.companyNature || '—' },
+        { label: '所属行业', value: data.companyIndustry || '—' },
+        { label: '企业联系电话', value: data.companyPhone || '—' },
+        { label: '企业邮箱', value: data.companyEmail || '—' },
+        { label: '单位所在地区', value: companyRegion || '—' },
+        { label: '单位注册地址', value: data.companyRegisteredAddress || '—' },
+        { label: '企业邮编', value: data.companyPostalCode || '—' },
         { label: '单位联系人', value: data.contactName ? `${data.contactName}${data.contactPhone ? ` · ${data.contactPhone}` : ''}` : '—' },
+        { label: '实习部门', value: data.internshipDepartment || '—' },
+        { label: '实习岗位', value: data.positionName || '—' },
+        { label: '岗位类别', value: data.positionCategory || '—' },
+        { label: '工作内容', value: data.workContent || '—' },
+        { label: '企业老师', value: data.enterpriseMentorName ? `${data.enterpriseMentorName}${data.enterpriseMentorPhone ? ` · ${data.enterpriseMentorPhone}` : ''}` : '—' },
+        { label: '岗位所在地区', value: workRegion || '—' },
+        { label: '岗位详细地址', value: data.workAddress || '—' },
+        { label: '实习时间', value: data.internshipStartDate || data.internshipEndDate ? `${data.internshipStartDate || '—'} 至 ${data.internshipEndDate || '—'}` : '—' },
+        { label: '实习方式', value: data.internshipMode || '—' },
+        { label: '专业是否对口', value: data.majorMatch === true ? '是' : (data.majorMatch === false ? '否' : '—') },
+        { label: '约定实习薪资', value: data.agreedSalary == null ? '—' : `${data.agreedSalary} 元/月` },
+        { label: '三方协议材料', value: `${(data.agreementFileIds || []).length} 份` },
         { label: '提交时间', value: data.submittedAt || '未提交' },
         { label: '当前状态', value: data.statusLabel || '—' }
       ]
@@ -145,7 +171,12 @@ export default {
     },
     evidenceFiles() {
       const data = this.drawer.data || {}
-      return data.evidenceFileId ? [{ id: data.evidenceFileId, name: '自主实习证明材料', sensitive: true }] : []
+      const files = []
+      if (data.evidenceFileId) files.push({ id: data.evidenceFileId, name: '自主实习证明材料', sensitive: true })
+      ;(data.agreementFileIds || []).forEach((id, index) => {
+        if (id) files.push({ id, name: `三方协议材料 ${index + 1}`, sensitive: true })
+      })
+      return files
     },
     auditRecords() {
       return (this.drawer.data?.auditTrail || []).map((item, index) => ({
