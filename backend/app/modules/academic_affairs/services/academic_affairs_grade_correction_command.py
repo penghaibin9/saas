@@ -352,7 +352,11 @@ def change_request(task_id, record_id, user, body, *, command_key=None) -> dict:
 
     from . import academic_affairs_grade_command_receipt as receipts
     actor = get_current_user_ctx() or user
+    from app.core.permissions import enforce_permission
+    from .academic_affairs_schedule_resource_guard import lock_term
+    enforce_permission(actor, "academicAffairs.gradeChange.apply")
     with session() as db:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         receipt, cached = receipts.begin(db, actor, "GRADE_CHANGE_APPLY", command_key, {
             "taskId": task_id, "recordId": record_id, "body": {key: getattr(body, key, None) for key in (
                 "newUsualScore", "newMidtermScore", "newFinalScore", "reason", "attachmentIds",
@@ -361,7 +365,15 @@ def change_request(task_id, record_id, user, body, *, command_key=None) -> dict:
         })
         if cached is not None:
             return cached
+        source_task, _ = _load_record(db, task_id, record_id)
+        _core._check_course_scope(source_task, user)
+        term_id = source_task.term_id
+        if not term_id:
+            raise _conflict("成绩发布任务缺少正式学期，须先完成数据治理")
+        lock_term(db, term_id)
         task, record = _load_record(db, task_id, record_id, lock=True)
+        if task.term_id != term_id:
+            raise _version_conflict("成绩所属学期已变化，请刷新后重试")
         _core._check_course_scope(task, user)
         if task.status == "ARCHIVED":
             raise _conflict("已归档学期，成绩更正需线下特批（本轮暂未开放线上入口）")
