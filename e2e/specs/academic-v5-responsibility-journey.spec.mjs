@@ -1139,6 +1139,32 @@ async function runJourney() {
     for (const studentId of allStudentIds) {
       let result = (await readOnly('school', `${gradResultsPath}?page=1&pageSize=20`)).items.find(item => item.studentId === studentId)
       assert.ok(result && result.overall === 'SYSTEM_PASSED')
+      if (studentId === allStudentIds[0]) {
+        if (result.status === 'ACADEMIC_REVIEW') {
+          const collegeRole = report.graduationResultOwners[result.resultId]
+          const collegePage = pages[collegeRole]
+          await visit(collegePage, `/admin/academic-affairs/graduation/${gradBatchId}/results`, gradResultsPath)
+          const collegeCard = collegePage.locator('.aa-result-list section').filter({ hasText: result.realName })
+          await expect(collegeCard).toHaveCount(1)
+          await expect(collegeCard.getByRole('button', { name: '教务终审', exact: true })).toHaveCount(0)
+          const before = await readOnly(collegeRole, `${apiPath}/graduation-results/${result.resultId}`)
+          const schoolFinalAudit = () => auditRows({ tenantId: fixture.tenantId, bizType: 'AA_GRAD_AUDIT',
+            bizId: result.resultId, action: 'ACADEMIC_FINAL_IMMUTABLE', account: fixture.accounts.school }).rows
+          const auditBefore = schoolFinalAudit()
+          const forbiddenFinal = await collegePage.context().request.post(`${new URL(api).origin}${apiPath}/graduation-results/${result.resultId}/final`, {
+            headers: { Authorization: `Bearer ${accessTokens[collegeRole]}` }, data: { conclusion: 'GRADUATED', confirm: true },
+          })
+          assert.equal(forbiddenFinal.status(), 403, '学院初审账号不得代校教务做毕业终审')
+          const after = await readOnly(collegeRole, `${apiPath}/graduation-results/${result.resultId}`)
+          assert.equal(after.status, before.status)
+          assert.equal(after.conclusion, before.conclusion)
+          assert.equal(after.reviewNote, before.reviewNote)
+          assert.deepEqual(schoolFinalAudit(), auditBefore, '拒绝命令不得产生教务终审审计')
+          await observed('G-college-school-denied', { resultId: result.resultId, collegeRole, status: after.status,
+            httpStatus: forbiddenFinal.status() })
+        } else assert.ok(report.checkpoints.some(item => item.step === 'G-college-school-denied'),
+          '已终审结果缺少学院代校级终审被拒的原始证据')
+      }
       if (result.status === 'ACADEMIC_REVIEW') {
         await phase('校教务对学院已初审通过的学生做正式毕业终审')
         await visit(school, `/admin/academic-affairs/graduation/${gradBatchId}/results`, gradResultsPath)
