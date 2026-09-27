@@ -1,11 +1,7 @@
 name: Internship Standalone Admin Closure
 
 on:
-  pull_request:
-    paths:
-      - "products/internship-platform/admin-web/**"
-      - "products/internship-platform/scripts/check_admin_import_closure.py"
-      - ".github/workflows/internship-standalone-admin-closure.yml"
+  workflow_dispatch:
 
 jobs:
   import-closure:
