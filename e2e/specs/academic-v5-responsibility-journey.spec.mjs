@@ -54,7 +54,7 @@ async function runJourney() {
   report ||= { scenario: 'A-C', prefix: fixture.prefix, tenantId: fixture.tenantId, termId: null, eventId: null, slotIds: [], batchIds: {}, taskIds: {}, pending: null, checkpoints: [], roles: [], uncovered: ['B', 'C', 'D', 'E', 'F', 'G', 'H'] }
   assert.equal(report.prefix, fixture.prefix); assert.equal(report.tenantId, fixture.tenantId)
   report.scenario = 'A-C'; report.passed = false; report.phase = '正常学校账号登录'; report.roles = []; report.failure = null
-  report.batchIds ||= {}; report.taskIds ||= {}
+  report.batchIds ||= {}; report.taskIds ||= {}; report.scheduleBatchIds ||= {}
   report.evidenceDirectory = evidenceDir
   await fs.mkdir(evidenceDir, { recursive: true })
   const save = () => fs.writeFile(resultFile, JSON.stringify(report, null, 2), 'utf8')
@@ -431,6 +431,112 @@ async function runJourney() {
     await observed('C', { aStage: stage(flow, 'A').status, bStage: stage(flow, 'B').status, gate: { readyUnitCount: gate.readyUnitCount, totalUnitCount: gate.totalUnitCount } })
     report.uncovered = ['D', 'E', 'F', 'G', 'H']; await save()
     await capture(school, 'C01-学院A就绪学校一院未就绪')
+
+    await phase('排课前学校门禁核对与学院 A 建立正式排课批次')
+    const scheduleGate = flow.schoolGates.find(item => item.stageCode === 'F50_SCHEDULE')
+    assert.ok(scheduleGate && !scheduleGate.ready, '学院 B 教学任务未就绪时不得开放全校课表发布')
+    const scheduleName = `${fixture.prefix} A学院排课`
+    const scheduleListPath = `${apiPath}/schedule-batches`
+    let schedules = await visit(pages.collegeA, `/admin/academic-affairs/schedule?termId=${report.termId}`, scheduleListPath)
+    assert.equal(Number(schedules.total), schedules.list.length, '课表批次未读全，禁止猜测新建')
+    const owned = schedules.list.filter(item => item.batchName === scheduleName && item.termId === report.termId && item.collegeId === fixture.colleges.A.collegeId)
+    assert.ok(owned.length <= 1, '同一学院排课批次重复，需核对原命令')
+    let scheduleBatchId = report.scheduleBatchIds.A || owned[0]?.batchId
+    if (report.scheduleBatchIds.A) assert.equal(owned[0]?.batchId, scheduleBatchId, '已保存排课批次不在正式列表')
+    if (!scheduleBatchId) {
+      await pages.collegeA.getByRole('button', { name: '＋ 创建排课批次', exact: true }).click()
+      const form = pages.collegeA.locator('section.app-section-card').filter({ hasText: '新建课表批次' })
+      await choose(form, '学期', `${fixture.prefix} 学期责任接力`)
+      await form.getByPlaceholder('选填', { exact: true }).fill(scheduleName)
+      await form.getByRole('combobox', { name: '排课范围', exact: true }).selectOption('COLLEGE')
+      await choose(form, '学院', `V5 甲学院 ${fixture.prefix}`)
+      await beforeWrite('schedule-A-batch')
+      const created = responseFor(pages.collegeA, scheduleListPath, 'POST')
+      await form.getByRole('button', { name: '创建', exact: true }).click()
+      scheduleBatchId = (await read(await created)).batchId
+      assert.equal(typeof scheduleBatchId, 'string')
+      report.scheduleBatchIds.A = scheduleBatchId; await save()
+    }
+    schedules = await visit(pages.collegeA, `/admin/academic-affairs/schedule?termId=${report.termId}`, scheduleListPath, true)
+    const schedule = schedules.list.find(item => item.batchId === scheduleBatchId)
+    assert.equal(schedule?.termId, report.termId)
+    assert.equal(schedule?.collegeId, fixture.colleges.A.collegeId)
+    assert.equal(schedule?.status, 'DRAFT')
+    await observed('schedule-A-batch', { scheduleBatchId, termId: report.termId, collegeId: fixture.colleges.A.collegeId, status: schedule.status })
+    await capture(pages.collegeA, 'D01-学院A正式排课批次')
+
+    // 学校统一发布须等待 B 学院；由 B 本人补齐教学任务，再回读全校门禁。
+    for (const taskId of report.taskIds.B) {
+      let current = await batchFacts(pages.collegeB, report.batchIds.B)
+      let task = current.tasks.find(item => item.taskId === taskId)
+      if (task.status === 'PENDING_ASSIGN') {
+        await phase('学院 B 补齐原两条未派师任务')
+        const row = pages.collegeB.locator('tr').filter({ hasText: task.courseCode }).filter({ hasText: task.teachingClassCode })
+        await row.getByRole('button', { name: '分配教师', exact: true }).click()
+        const dialog = pages.collegeB.getByRole('dialog', { name: '分配任课教师', exact: true })
+        await choose(dialog, '任课教师', fixture.accounts.teacherB.teacherKey)
+        await beforeWrite(`assign-B-${taskId}`)
+        const assignment = responseFor(pages.collegeB, `${apiPath}/teaching-tasks/${taskId}/assign`, 'POST')
+        await dialog.getByRole('button', { name: '确认分配', exact: true }).click()
+        await read(await assignment)
+        current = await batchFacts(pages.collegeB, report.batchIds.B)
+        task = current.tasks.find(item => item.taskId === taskId)
+        assert.equal(task?.status, 'ASSIGNED')
+        await observed(`assign-B-${taskId}`, { taskId, batchId: report.batchIds.B, status: task.status })
+      } else if (report.pending?.step === `assign-B-${taskId}`) {
+        assert.equal(task.teacherKey, fixture.accounts.teacherB.teacherKey)
+        await observed(`assign-B-${taskId}`, { taskId, batchId: report.batchIds.B, status: task.status })
+      }
+      assert.equal(task.teacherKey, fixture.accounts.teacherB.teacherKey)
+      const teacher = pages.teacherB
+      const mine = await visit(teacher, `/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId=${taskId}`, `${apiPath}/teaching-tasks`)
+      assert.equal(mine.total, 1); assert.equal(mine.list[0]?.taskId, taskId)
+      if (mine.list[0].status === 'ASSIGNED') {
+        await phase('教师 B 本人确认补齐的教学任务')
+        const row = teacher.locator('tr').filter({ hasText: mine.list[0].courseCode }).filter({ hasText: mine.list[0].teachingClassCode })
+        await row.getByRole('button', { name: '确认接受', exact: true }).click()
+        await beforeWrite(`teacher-B-${taskId}`)
+        const accepted = responseFor(teacher, `${apiPath}/teaching-tasks/${taskId}/teacher-act`, 'POST')
+        await teacher.getByRole('dialog', { name: '确认接受授课安排', exact: true }).getByRole('button', { name: '确认接受', exact: true }).click()
+        await read(await accepted)
+        const confirmed = await visit(teacher, `/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId=${taskId}`, `${apiPath}/teaching-tasks`, true)
+        assert.equal(confirmed.list[0]?.status, 'TEACHER_CONFIRMED')
+        await observed(`teacher-B-${taskId}`, { taskId, status: confirmed.list[0].status })
+      } else {
+        assert.ok(['TEACHER_CONFIRMED', 'READY'].includes(mine.list[0].status))
+        if (report.pending?.step === `teacher-B-${taskId}`) await observed(`teacher-B-${taskId}`, { taskId, status: mine.list[0].status })
+      }
+    }
+    b = await batchFacts(pages.collegeB, report.batchIds.B)
+    assert.equal(b.workbench.unassignedCount, 0)
+    assert.ok(b.tasks.every(item => ['TEACHER_CONFIRMED', 'READY'].includes(item.status)))
+    if (b.workbench.status === 'DRAFT') {
+      await phase('学院 B 本人核对并确认')
+      assert.equal(b.workbench.actions.canCollegeConfirm, true)
+      await beforeWrite('college-B-confirm')
+      const confirmed = responseFor(pages.collegeB, `${apiPath}/teaching-task-batches/${report.batchIds.B}/college-confirm`, 'POST')
+      await pages.collegeB.getByRole('button', { name: '学院确认', exact: true }).click()
+      assert.equal((await read(await confirmed)).status, 'COLLEGE_CONFIRMED')
+    }
+    b = await batchFacts(school, report.batchIds.B)
+    assert.ok(['COLLEGE_CONFIRMED', 'APPROVED'].includes(b.workbench.status))
+    await observed('college-B-confirm', { batchId: report.batchIds.B, status: b.workbench.status })
+    if (b.workbench.status === 'COLLEGE_CONFIRMED') {
+      await phase('学校终审学院 B 后重新核对全校')
+      assert.equal(b.workbench.actions.canAcademicReview, true)
+      await school.getByRole('button', { name: '教务终审通过', exact: true }).click()
+      await beforeWrite('school-B-review')
+      const approvedB = responseFor(school, `${apiPath}/teaching-task-batches/${report.batchIds.B}/review`, 'POST')
+      await school.getByRole('dialog', { name: '确认教务终审通过', exact: true }).getByRole('button', { name: '确认通过', exact: true }).click()
+      assert.equal((await read(await approvedB)).status, 'APPROVED')
+    }
+    b = await batchFacts(school, report.batchIds.B)
+    assert.equal(b.workbench.status, 'APPROVED')
+    assert.ok(b.tasks.every(item => item.status === 'READY'))
+    await observed('school-B-review', { batchId: report.batchIds.B, status: b.workbench.status })
+    flow = await visit(school, `/admin/academic-affairs?termId=${report.termId}`, `${apiPath}/flow`, true)
+    assert.equal(stage(flow, 'A').status, 'READY'); assert.equal(stage(flow, 'B').status, 'READY')
+    await observed('D-tasks-ready', { aBatchId: report.batchIds.A, bBatchId: report.batchIds.B, termId: report.termId })
     assert.equal(failures.length, 0, '实际页面或接口存在错误')
     assert.equal(report.pending, null); report.passed = true; report.phase = '场景 A 至 C 完成，D 至 H 尚未覆盖'
   } catch (error) {
