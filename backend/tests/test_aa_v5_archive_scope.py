@@ -187,7 +187,7 @@ def test_mysql_archive_keeps_foreign_students_tasks_changes_and_courses_out(db_m
         reg = policy.evaluate_college_registration(db, term.id, {12})
         assert reg["recordCount"] == 1 and reg["result"] == "UNKNOWN"
         assert reg["evidence"][0]["localBlockingCount"] == 0
-        grade = semantic.evaluate_grade(db, "2041-2042-1", {}, college_ids={12})
+        grade = semantic.evaluate_grade(db, "2041-2042-1", {}, college_ids={12}, term_id=term.id)
         assert grade["evidence"][0]["unpublishedTaskIds"] == [str(ga.id)]
         operational_schedule = operational.evaluate_schedule(db, term.id, {12})
         assert operational_schedule["present"]
@@ -198,4 +198,32 @@ def test_mysql_archive_keeps_foreign_students_tasks_changes_and_courses_out(db_m
         exam_result = operational.evaluate_exam(db, term.id, {12})
         assert exam_result["recordCount"] == 1 and exam_result["result"] == "UNKNOWN"
         assert exam_result["evidence"][0]["localBlockingCount"] == 0
+
+        other_term = AaTerm(tenant_id=tid, year_code="2042-2043", term_no=1, status="PUBLISHED")
+        own_course = AaCourse(tenant_id=tid, course_code="V5ARC-MISSING-A",
+            course_name="本院漏建成绩", owner_college_id=12)
+        foreign_course = AaCourse(tenant_id=tid, course_code="V5ARC-MISSING-B",
+            course_name="外院漏建成绩", owner_college_id=34)
+        db.add_all([other_term, own_course, foreign_course]); db.flush()
+        own_missing = AaTeachingTask(tenant_id=tid, batch_id=tb.id, course_id=own_course.id,
+            status="READY", teacher_key="teacher-a")
+        foreign_missing = AaTeachingTask(tenant_id=tid, batch_id=tb.id, course_id=foreign_course.id,
+            status="READY", teacher_key="teacher-b")
+        db.add_all([own_missing, foreign_missing]); db.flush()
+        db.add_all([
+            AaGradeTask(tenant_id=tid, teaching_task_id=own_missing.id, term_id=other_term.id,
+                term_code="2042-2043-1", status="PUBLISHED"),
+            AaGradeTask(tenant_id=tid, teaching_task_id=own_missing.id, term_id=term.id,
+                term_code="2041-2042-1", status="PUBLISHED", is_deleted=True),
+        ])
+        db.flush()
+        college_grade = semantic.evaluate_grade(db, "2041-2042-1", {}, college_ids={12}, term_id=term.id)
+        assert college_grade["ruleCode"] == "GRADE_TASK_NOT_CREATED"
+        assert college_grade["evidence"][0]["missingGradeTaskCount"] == 1
+        assert college_grade["evidence"][0]["missingGradeTaskIds"] == [str(own_missing.id)]
+        school_grade = semantic.evaluate_grade(db, "2041-2042-1", {}, term_id=term.id)
+        assert school_grade["ruleCode"] == "GRADE_TASK_NOT_CREATED"
+        assert school_grade["evidence"][0]["missingGradeTaskCount"] == 2
+        assert set(school_grade["evidence"][0]["missingGradeTaskIds"]) == {
+            str(own_missing.id), str(foreign_missing.id)}
         db.rollback()

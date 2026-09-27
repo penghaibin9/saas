@@ -659,7 +659,7 @@ def _evaluate_college_domains(db, term_id, term_code, college_ids):
             operational.evaluate_schedule(db, term_id, college_ids), college_ids=college_ids),
         "SELECTION": lambda: evaluate_college_selection(db, term_id, college_ids),
         "EXAM": lambda: operational.evaluate_exam(db, term_id, college_ids),
-        "GRADE": lambda: _semantic.evaluate_grade(db, term_code, {}, college_ids=college_ids),
+        "GRADE": lambda: _semantic.evaluate_grade(db, term_code, {}, college_ids=college_ids, term_id=term_id),
         "MAKEUP": lambda: evaluate_college_makeup(db, term_code, college_ids),
         "EVALUATION": lambda: evaluate_evaluation(db, term_id, college_ids),
         "TEXTBOOK": lambda: evaluate_college_textbook(db, term_id, college_ids),

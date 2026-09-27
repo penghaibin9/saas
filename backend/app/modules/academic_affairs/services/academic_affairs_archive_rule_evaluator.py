@@ -596,7 +596,38 @@ def evaluate_schedule(db, term_id, previous_result: dict, *, college_ids=None) -
     )
 
 
-def evaluate_grade(db, term_code, previous_result: dict, *, college_ids=None) -> dict:
+def _missing_grade_task_ids(db, term_id, college_ids=None):
+    """与学期责任流一致：本学期 READY 授课任务都应有同学期成绩任务。"""
+    from sqlalchemy import func, select
+    from app.models import AaCourse, AaGradeTask, AaTeachingTask, AaTeachingTaskBatch
+
+    has_grade = select(AaGradeTask.id).where(
+        AaGradeTask.tenant_id == _tid(), AaGradeTask.is_deleted.is_(False),
+        AaGradeTask.term_id == int(term_id), AaGradeTask.teaching_task_id == AaTeachingTask.id,
+    ).exists()
+    missing = select(AaTeachingTask.id).join(AaTeachingTaskBatch,
+        AaTeachingTaskBatch.id == AaTeachingTask.batch_id).join(AaCourse,
+        AaCourse.id == AaTeachingTask.course_id).where(
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+        AaTeachingTask.status == "READY",
+        AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+        AaTeachingTaskBatch.term_id == int(term_id),
+        AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False), ~has_grade,
+    )
+    if college_ids is not None:
+        allowed = sorted({int(value) for value in college_ids})
+        if not allowed:
+            return 0, []
+        missing = missing.where(func.coalesce(
+            AaCourse.owner_college_id, AaTeachingTaskBatch.college_id).in_(allowed))
+    missing = missing.subquery()
+    count = int(db.scalar(select(func.count()).select_from(missing)) or 0)
+    sample = [str(value) for value in db.scalars(
+        select(missing.c.id).order_by(missing.c.id).limit(50)).all()]
+    return count, sample
+
+
+def evaluate_grade(db, term_code, previous_result: dict, *, college_ids=None, term_id=None) -> dict:
     from app.models import AaGradeRecheck, AaGradeRecord, AaGradeTask, AcademicGrade, WorkflowInstance
 
     task_query = db.query(AaGradeTask).filter(
@@ -614,6 +645,7 @@ def evaluate_grade(db, term_code, previous_result: dict, *, college_ids=None) ->
             AaGradeRecord.task_id.in_(select(own_grade_tasks.c.id)))
     tasks = task_query.all()
     unfinished = [row for row in tasks if str(row.status or "").upper() not in {"PUBLISHED", "ARCHIVED"}]
+    missing_count, missing_ids = _missing_grade_task_ids(db, term_id, college_ids) if term_id else (0, [])
 
     recheck_query = db.query(AaGradeRecheck).join(
         AcademicGrade, AcademicGrade.id == AaGradeRecheck.acad_grade_id,
@@ -649,17 +681,20 @@ def evaluate_grade(db, term_code, previous_result: dict, *, college_ids=None) ->
         change_query = change_query.filter(AaGradeTask.id.in_(select(own_grade_tasks.c.id)))
     active_changes = int(change_query.count() or 0)
 
-    blockers = len(unfinished) + active_rechecks + active_changes + (1 if not tasks else 0)
+    blockers = len(unfinished) + missing_count + active_rechecks + active_changes + (1 if not tasks and not missing_count else 0)
     base = normalize_legacy_result("GRADE", previous_result)
     evidence = [{
         "type": "GRADE_CLOSURE",
         "taskCount": len(tasks),
+        "missingGradeTaskCount": missing_count,
+        "missingGradeTaskIds": missing_ids,
         "unpublishedTaskIds": [str(row.id) for row in unfinished[:50]],
         "activeRechecks": active_rechecks,
         "activeChanges": active_changes,
         "baseSummary": base["summary"],
     }]
     rule_code = (
+        "GRADE_TASK_NOT_CREATED" if missing_count else
         "GRADE_TASK_MISSING" if not tasks else
         "GRADE_TASK_UNPUBLISHED" if unfinished else
         "GRADE_RECHECK_ACTIVE" if active_rechecks else
@@ -675,7 +710,7 @@ def evaluate_grade(db, term_code, previous_result: dict, *, college_ids=None) ->
         summary=(
             "应录成绩任务全部发布，且在途复查/更正为0"
             if blockers == 0
-            else f"成绩阻断{blockers}项：未发布任务{len(unfinished)}、在途复查{active_rechecks}、在途更正{active_changes}"
+            else f"成绩阻断{blockers}项：未建任务{missing_count}、未发布任务{len(unfinished)}、在途复查{active_rechecks}、在途更正{active_changes}"
         ),
         evidence=evidence,
     )
@@ -697,5 +732,5 @@ def evaluate_first_batch(db, term_id, term_code, previous: dict, *, college_ids=
     results["SCHEDULE"] = evaluate_schedule(
         db, term_id, results.get("SCHEDULE") or {}, college_ids=college_ids,
     )
-    results["GRADE"] = evaluate_grade(db, term_code, results.get("GRADE") or {})
+    results["GRADE"] = evaluate_grade(db, term_code, results.get("GRADE") or {}, term_id=term_id)
     return results
