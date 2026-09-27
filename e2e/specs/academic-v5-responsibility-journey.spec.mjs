@@ -34,6 +34,19 @@ function ignoredFile(value) {
   return resolved
 }
 
+function sourceLocation(error) {
+  const stack = typeof error?.stack === 'string' ? error.stack : ''
+  const message = typeof error?.message === 'string' ? error.message : null
+  const messageStart = message === null ? -1 : stack.indexOf(message)
+  if (messageStart < 0) return null
+  const frames = stack.slice(messageStart + message.length).split(/\r?\n/)
+  for (const frame of frames) {
+    const match = frame.match(/^\s*at\s+(?:.*\s+\()?[^()\s]*academic-v5-responsibility-journey\.spec\.mjs:(\d+):(\d+)\)?$/)
+    if (match) return `e2e/specs/academic-v5-responsibility-journey.spec.mjs:${match[1]}:${match[2]}`
+  }
+  return null
+}
+
 async function runJourney() {
   assertSafeEnvironment()
   const staff = isolatedUrl('E2E_STAFF_BASE_URL', 'http://127.0.0.1:5174', '5174', '')
@@ -1646,7 +1659,7 @@ async function runJourney() {
     assert.equal(failures.length, 0, '实际页面或接口存在错误')
     assert.equal(report.pending, null); report.passed = true; report.phase = '场景 A 至 H 完成'
   } catch (error) {
-    report.failure = { phase: report.phase, type: error.name || 'Error', message: '当前阶段未通过；保留正式对象及待核对命令，未自动重放写入。' }
+    report.failure = { phase: report.phase, type: error.name || 'Error', message: '当前阶段未通过；保留正式对象及待核对命令，未自动重放写入。', sourceLocation: sourceLocation(error) }
     if (authenticated && activePage) await capture(activePage, '当前阶段-失败时脱敏页面').catch(() => {})
     throw new Error('V5 接力未完成，详见无密结果文件中的阶段与回执')
   } finally {
