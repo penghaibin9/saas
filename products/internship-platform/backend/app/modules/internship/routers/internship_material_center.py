@@ -16,11 +16,95 @@ from app.modules.internship.services import internship_agreement_service as agre
 from app.modules.internship.services import internship_archive_service as archive_svc
 from app.modules.internship.services import internship_insurance_service as insurance_svc
 from app.modules.internship.services import internship_material_center_compat as material_svc
+from app.modules.internship.services import internship_material_requirement_service as requirement_svc
 from app.modules.internship.services import internship_material_preview_access as material_tickets
 from app.modules.internship.services import internship_process_report_service as report_svc
 from app.services import audit_log
 
 router = APIRouter(prefix="/internship", tags=["岗位实习-材料与证据中心"])
+
+
+@router.get("/material-requirements", summary="自定义材料收件要求")
+def material_requirements(
+    batchId: int = Query(..., ge=1),
+    status: Optional[str] = Query(None),
+    user=Depends(require_permission("internship.archive.view")),
+):
+    return success(requirement_svc.list_requirements(
+        batch_id=batchId, status=status, user=user))
+
+
+@router.post("/material-requirements", summary="新建自定义材料收件要求")
+def material_requirement_create(
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.archive.manage")),
+):
+    return success(requirement_svc.create_requirement(body or {}, user=user), message="收件要求已创建")
+
+
+@router.post("/material-requirements/{requirement_id}/template", summary="上传新的材料模板版本")
+def material_requirement_template(
+    requirement_id: int,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.archive.manage")),
+):
+    return success(requirement_svc.attach_template(
+        requirement_id, (body or {}).get("fileId"), user=user), message="模板版本已更新")
+
+
+@router.post("/material-requirements/{requirement_id}/publish", summary="发布材料收件要求")
+def material_requirement_publish(
+    requirement_id: int,
+    user=Depends(require_permission("internship.archive.manage")),
+):
+    return success(requirement_svc.publish_requirement(requirement_id, user=user), message="收件要求已发布")
+
+
+@router.get("/material-requirements/{requirement_id}/coverage", summary="材料已交/缺交全量统计")
+def material_requirement_coverage(
+    requirement_id: int,
+    user=Depends(require_permission("internship.archive.view")),
+):
+    return success(requirement_svc.coverage(requirement_id, user=user))
+
+
+@router.get("/material-requirements/{requirement_id}/students", summary="材料已交/缺交学生名单")
+def material_requirement_students(
+    requirement_id: int,
+    state: str = Query("ALL"),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
+    keyword: str = Query(""),
+    user=Depends(require_permission("internship.archive.view")),
+):
+    items, total = requirement_svc.list_students(
+        requirement_id, state=state, page=page, page_size=pageSize,
+        keyword=keyword, user=user)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/material-submissions/{submission_id}/review", summary="审核学生自定义材料提交")
+def material_submission_review(
+    submission_id: int,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.report.review")),
+):
+    return success(requirement_svc.review_submission(
+        submission_id, body or {}, user=user), message="材料审核完成")
+
+
+@router.get("/material-requirements/{requirement_id}/template/download", summary="下载当前材料模板")
+def material_requirement_template_download(
+    requirement_id: int,
+    user=Depends(require_permission("internship.archive.view")),
+):
+    path, filename = requirement_svc.template_download(requirement_id, user)
+    return validated_local_file_response(
+        path, filename=filename,
+        audit_action="INTERNSHIP_MATERIAL_TEMPLATE_DOWNLOAD",
+        audit_target=f"internship-material-requirement:{requirement_id}",
+        audit_detail={"requirementId": str(requirement_id), "surface": "STAFF_PC"},
+    )
 
 
 @router.get("/material-center", summary="实习材料与证据中心（按批次和数据范围）")
