@@ -29,6 +29,7 @@ def standalone_db(tmp_path, monkeypatch):
     import app.db.session as db_session
     from app.config import settings
     from app.models import (
+        AuditOutbox,
         InternshipApplication,
         InternshipAuditTrail,
         InternshipBatch,
@@ -49,6 +50,7 @@ def standalone_db(tmp_path, monkeypatch):
         InternshipRecord.__table__,
         InternshipApplication.__table__,
         InternshipAuditTrail.__table__,
+        AuditOutbox.__table__,
     ):
         table.create(bind=engine, checkfirst=True)
 
