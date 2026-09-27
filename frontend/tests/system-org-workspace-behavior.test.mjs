@@ -263,3 +263,37 @@ test('organization root and object deep links retain menu ownership without perm
     assert.ok(activeWorkspacePage(pages, route, 'sys-org'))
   }
 })
+
+test('学校任职限定教务终审岗位，账号和学校大编号按字符串提交', async () => {
+  const source = readFileSync(new URL('../src/modules/system/views/SystemStaffAffiliationView.vue', import.meta.url), 'utf8')
+    .match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'globalThis.component =')
+  const writes = []
+  const sandbox = {
+    ModulePageShell: {}, DataTable: {}, StatusTag: {}, LoadingState: {}, ErrorState: {}, EmptyState: {}, AppButton: {}, AppDrawer: {},
+    currentUserFromToken: () => ({ tenantId: '90071992547409931' }),
+    toast: { success() {} },
+    systemApi: {
+      createStaffAssignment: async payload => { writes.push(payload); return { code: 0 } },
+      listStaffAssignments: async () => ({ code: 0, data: { items: [] } })
+    }
+  }
+  vm.runInNewContext(source, sandbox)
+  const c = sandbox.component, state = c.data()
+  for (const [key, method] of Object.entries(c.methods)) state[key] = method.bind(state)
+  Object.defineProperty(state, 'assignmentTypes', { get: () => c.computed.assignmentTypes.call(state) })
+  state.buildOrgOptions([])
+  assert.equal(state.orgOptions[0].key, 'SCHOOL:90071992547409931')
+  state.form.orgKey = state.orgOptions[0].key
+  c.watch['form.orgKey'].call(state)
+  assert.equal(state.form.assignmentType, 'ACADEMIC_REVIEWER')
+  assert.equal(state.assignmentTypes.length, 1)
+  state.form.userId = '90071992547409933'
+  await state.submitCreate()
+  assert.equal(writes[0].userId, '90071992547409933')
+  assert.equal(writes[0].orgNodeId, '90071992547409931')
+  assert.equal(writes[0].assignmentType, 'ACADEMIC_REVIEWER')
+  state.form.orgKey = 'COLLEGE:123'
+  c.watch['form.orgKey'].call(state)
+  assert.equal(state.assignmentTypes.some(x => x.value === 'ACADEMIC_REVIEWER'), false)
+  assert.equal(state.form.assignmentType, 'COUNSELOR')
+})
