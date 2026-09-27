@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url'
 import { execFileSync, spawn } from 'node:child_process'
 import { StaffLoginPage, decodeJwt } from '../pages/login.page.mjs'
 import { assertSafeEnvironment } from '../lib/config.mjs'
+import { auditRows, assertActor } from '../lib/academic-v5-evidence.mjs'
 
 // A–C use one saved term and real browser writes. D–H remain uncovered.
 const root = fileURLToPath(new URL('../../', import.meta.url))
@@ -60,6 +61,19 @@ async function runJourney() {
   const save = () => fs.writeFile(resultFile, JSON.stringify(report, null, 2), 'utf8')
   const phase = async value => { report.phase = value; await save() }
   const observed = async (step, proof) => {
+    let actorRole, bizType, bizId, action
+    if (step.startsWith('assign-B-')) { actorRole = 'collegeB'; bizType = 'AA_TASK'; bizId = step.slice(9); action = 'ASSIGN' }
+    else if (step.startsWith('assign-')) { bizId = step.slice(7); actorRole = report.taskIds.A?.includes(bizId) ? 'collegeA' : 'collegeB'; bizType = 'AA_TASK'; action = 'ASSIGN' }
+    else if (step.startsWith('teacher-B-')) { actorRole = 'teacherB'; bizType = 'AA_TASK'; bizId = step.slice(10); action = 'TEACHER_CONFIRM' }
+    else if (step.startsWith('teacher-')) { actorRole = 'teacherA'; bizType = 'AA_TASK'; bizId = step.slice(8); action = 'TEACHER_CONFIRM' }
+    else if (/^college-[AB]-confirm$/.test(step)) { actorRole = step.includes('-A-') ? 'collegeA' : 'collegeB'; bizType = 'AA_TASK_BATCH'; bizId = report.batchIds[actorRole === 'collegeA' ? 'A' : 'B']; action = 'COLLEGE_CONFIRM' }
+    else if (/^school-[AB]-review$/.test(step)) { actorRole = 'school'; bizType = 'AA_TASK_BATCH'; bizId = report.batchIds[step.includes('-A-') ? 'A' : 'B']; action = 'ACADEMIC_APPROVE' }
+    if (actorRole) {
+      const account = fixture.accounts[actorRole]
+      const audit = assertActor(auditRows({ tenantId: fixture.tenantId, bizType, bizId, action, account }),
+        { roleCode: account.roleCode, pendingAt: report.pending?.step === step ? report.pending.sentAt : null })
+      proof = { ...proof, auditId: audit.id, actorUserId: account.userId }
+    }
     if (report.pending?.step === step) report.pending = null
     report.checkpoints.push({ step, proof, observedAt: new Date().toISOString() }); await save()
   }
@@ -67,7 +81,7 @@ async function runJourney() {
     assert.equal(report.pending, null, '前一命令结果尚未核对，禁止自动重放或继续写入')
     report.pending = { step, sentAt: new Date().toISOString() }; await save()
   }
-  const failures = [], receipts = []
+  const failures = [], receipts = [], accessTokens = {}
   await phase('启动隔离浏览器')
   const { chromium } = await import('playwright')
   const browser = await chromium.launch({ headless: process.env.PW_HEADED !== 'true', channel: process.env.E2E_BROWSER_CHANNEL || 'msedge' })
@@ -115,6 +129,7 @@ async function runJourney() {
     assert.equal(String(claims.userId).replace(/^db-/, ''), account.userId)
     assert.equal(claims.currentRoleCode, account.roleCode)
     assert.equal(claims.activeContextId, account.contextId)
+    accessTokens[role] = helper.lastAccessToken
     helper.lastAccessToken = ''; authenticated = true
     await page.waitForLoadState('networkidle')
     assert.equal(failures.length, 0, '登录或运行目标核验失败')
@@ -385,7 +400,20 @@ async function runJourney() {
     const forbidden = await visit(pages.teacherB, `/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId=${report.taskIds.A[0]}`, `${apiPath}/teaching-tasks`)
     assert.equal(forbidden.total, 0, '教师 B 不得看到教师 A 的任务')
     await expect(pages.teacherB.getByRole('button', { name: '确认接受', exact: true })).toHaveCount(0)
+    const targetTaskId = report.taskIds.A[0]
+    const beforeForbidden = auditRows({ tenantId: fixture.tenantId, bizType: 'AA_TASK', bizId: targetTaskId,
+      action: 'TEACHER_CONFIRM', account: fixture.accounts.teacherA })
+    const denied = await pages.teacherB.context().request.post(`${new URL(api).origin}${apiPath}/teaching-tasks/${targetTaskId}/teacher-act`, {
+      headers: { Authorization: `Bearer ${accessTokens.teacherB}` }, data: { action: 'CONFIRM' },
+    })
+    assert.ok([403, 404].includes(denied.status()), '教师 B 越权确认必须由正式服务拒绝')
+    const deniedBody = await denied.json()
+    assert.notEqual(deniedBody.code, 0, '教师 B 越权请求不得返回业务成功')
+    const afterForbidden = auditRows({ tenantId: fixture.tenantId, bizType: 'AA_TASK', bizId: targetTaskId,
+      action: 'TEACHER_CONFIRM', account: fixture.accounts.teacherA })
+    assert.deepEqual(afterForbidden.rows, beforeForbidden.rows, '越权请求不得增加目标任务确认审计')
     a = await batchFacts(pages.collegeA, report.batchIds.A)
+    assert.equal(a.tasks.find(item => item.taskId === targetTaskId)?.status, 'TEACHER_CONFIRMED', '越权请求不得改变目标任务')
     assert.ok(a.tasks.every(item => ['TEACHER_CONFIRMED', 'READY'].includes(item.status)))
     flow = await visit(school, `/admin/academic-affairs?termId=${report.termId}`, `${apiPath}/flow`, true)
     assert.equal(stage(flow, 'B').status, 'BLOCKED')
