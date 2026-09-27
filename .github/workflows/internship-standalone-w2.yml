@@ -6,6 +6,9 @@ on:
       - feat/internship-standalone-yiyang-v1
     paths:
       - "products/internship-platform/backend/app/api/**"
+      - "products/internship-platform/backend/app/core/**"
+      - "products/internship-platform/backend/app/config.py"
+      - "products/internship-platform/backend/requirements.txt"
       - "products/internship-platform/backend/app/main.py"
       - "products/internship-platform/backend/app/modules/internship/**"
       - "products/internship-platform/backend/app/services/**"
