@@ -30,6 +30,19 @@ def _mark(client, headers, room_id, student_id, version=0):
                       json={"expectedVersion": version, "status": "PRESENT"})
 
 
+def _real_teacher_headers(login_name):
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import User
+    from app.services.auth_service_db import _claims, _role_contexts
+
+    with get_sessionmaker()() as db:
+        teacher = db.query(User).filter(User.tenant_id == TID, User.login_name == login_name).one()
+        contexts = _role_contexts(db, teacher)
+        context = next(row for row in contexts if row["roleCode"] == "ACADEMIC_TEACHER")
+        return {"Authorization": "Bearer " + create_access_token(_claims(db, teacher, context, contexts, "PC"))}
+
+
 def test_exam_attendance_marks_real_seats_once_and_unblocks_finish(client, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import AaExamAuditTrail, AaExamRoomStudent
@@ -112,8 +125,8 @@ def test_exam_attendance_student_other_teacher_and_foreign_college_denied(client
         permission = _ensure_permission(db, "academicAffairs.exam.recordAbnormal")
         db.add(RolePermission(tenant_id=TID, role_id=teacher_role.id, permission_id=permission.id, status="ACTIVE"))
         db.commit()
-    teacher = _hdr(client, "teacher_a")
-    other_teacher = _hdr(client, "teacher_b")
+    teacher = _real_teacher_headers("teacher_a")
+    other_teacher = _real_teacher_headers("teacher_b")
     assert client.get(f"{BASE}/exam/rooms/{rid}/attendance", headers=teacher).status_code == 200
     assert client.get(f"{BASE}/exam/rooms/{rid}/attendance", headers=other_teacher).status_code == 403
     assert client.get(f"{BASE}/exam/rooms/{rid}/attendance", headers=_stu_token("考甲", "EX2401")).status_code == 403
