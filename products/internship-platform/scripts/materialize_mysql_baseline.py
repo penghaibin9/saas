@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# materialize-trigger: 2
 from __future__ import annotations
 
 import hashlib
