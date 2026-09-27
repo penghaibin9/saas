@@ -28,6 +28,30 @@ function raceAbort(promise, signal) {
 }
 
 export const internshipMaterialCenterApi = {
+  requirements(params = {}) { return request('/internship/material-requirements', { params }) },
+  createRequirement(body) { return request('/internship/material-requirements', { method: 'POST', body }) },
+  attachRequirementTemplate(requirementId, fileId) {
+    return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/template`, {
+      method: 'POST', body: { fileId }
+    })
+  },
+  publishRequirement(requirementId) {
+    return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/publish`, { method: 'POST' })
+  },
+  requirementCoverage(requirementId) {
+    return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/coverage`)
+  },
+  requirementStudents(requirementId, params = {}) {
+    return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/students`, { params })
+  },
+  reviewSubmission(submissionId, body) {
+    return request(`/internship/material-submissions/${encodeURIComponent(submissionId)}/review`, {
+      method: 'POST', body
+    })
+  },
+  uploadRequirementTemplate(file, onProgress) {
+    return fileSdk.upload(file, { bizType: 'TEMP_PRIVATE', bizId: '', onProgress })
+  },
   list(params = {}) { return request(BASE, { params }) },
   detail(internshipId) { return request(`${BASE}/${encodeURIComponent(internshipId)}`) },
   sync(internshipId) {
