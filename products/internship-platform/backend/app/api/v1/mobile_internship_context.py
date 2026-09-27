@@ -434,6 +434,30 @@ def teacher_batch_applications(
     return success(_paged(items, total, page, pageSize, batchId))
 
 
+@router.get("/checkin-exemptions", summary="教师当前批次免签申请")
+def teacher_checkin_exemptions(
+    batchId: str = Query(..., min_length=1),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    status: str = Query("PENDING"),
+    user=Depends(require_permission("internship.attendance.review")),
+):
+    from app.modules.internship.services import internship_checkin_exemption_service as exemptions
+    items, total = exemptions.list_for_teacher(
+        page, pageSize, batch_id=batchId, status=status, user=user)
+    return success(_paged(items, total, page, pageSize, batchId))
+
+
+@router.post("/checkin-exemptions/{exemption_id}/review", summary="教师审批免签申请")
+def teacher_checkin_exemption_review(
+    exemption_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.attendance.review")),
+):
+    from app.modules.internship.services import internship_checkin_exemption_service as exemptions
+    return success(exemptions.review(exemption_id, body or {}, user), message="免签申请已处理")
+
+
 @router.get("/applications/summary", summary="教师当前批次实习岗位填报与审核全量统计")
 def teacher_batch_application_summary(
     batchId: str = Query(..., min_length=1),
