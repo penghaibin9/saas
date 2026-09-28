@@ -19,7 +19,7 @@ from app.models import (EmpCompany, InternshipApplication, InternshipAuditTrail,
 from app.modules.internship.services import internship_student_service as student_svc
 from app.services.db_service import _as_id, _iso, _tid, session
 
-TYPE_LABEL = {"POSITION": "校内岗位志愿", "SELF_ARRANGED": "自主实习"}
+TYPE_LABEL = {"POSITION": "校内岗位志愿", "SELF_ARRANGED": "自主实习", "EXEMPTION": "免实习申请"}
 STATUS_LABEL = {
     "DRAFT": "草稿", "PENDING_REVIEW": "待审核", "APPROVED": "已通过",
     "REJECTED": "已驳回", "WITHDRAWN": "已撤回", "CANCELLED": "已取消",
@@ -174,6 +174,27 @@ def _file_ids(value, *, max_items: int = 9) -> list[str] | None:
     return ids or None
 
 
+def _clean_exemption(body: dict, *, require_complete: bool) -> dict:
+    """Normalize SM16 exemption fields; approval is the only path that writes EXEMPTED."""
+    exemption_type = str((body or {}).get("exemptionType") or "").strip().upper()
+    allowed_types = {"FURTHER_STUDY", "MILITARY", "HEALTH", "OTHER"}
+    if require_complete and exemption_type not in allowed_types:
+        raise AppException("VALIDATION_ERROR", "请选择免实习类型")
+    if exemption_type and exemption_type not in allowed_types:
+        raise AppException("VALIDATION_ERROR", "免实习类型不合法")
+    return {
+        "exemption_type": exemption_type or None,
+        "exemption_reason": _text(
+            body, "exemptionReason", max_len=500, label="免实习原因",
+            required=require_complete, min_len=5),
+        "exemption_destination": _text(
+            body, "exemptionDestination", max_len=200, label="免实习后去向",
+            required=require_complete, min_len=2),
+        "evidence_file_id": _validate_file(
+            (body or {}).get("evidenceFileId"), required=require_complete),
+    }
+
+
 def _clean_self_arranged(body: dict, *, require_complete: bool) -> dict:
     """Normalize the Yiyang complete internship-position snapshot.
 
@@ -291,6 +312,9 @@ def _snapshot_body(row: InternshipApplication) -> dict:
         "contactName": row.contact_name,
         "contactPhone": row.contact_phone,
         "evidenceFileId": row.evidence_file_id,
+        "exemptionType": row.exemption_type,
+        "exemptionReason": row.exemption_reason,
+        "exemptionDestination": row.exemption_destination,
         "companyCreditCode": row.company_credit_code,
         "companyPrincipal": row.company_principal,
         "companyScale": row.company_scale,
@@ -395,6 +419,9 @@ def _row(db, app: InternshipApplication, rec=None, stu=None, *,
         "companyRegistryReference": app.registry_reference or "",
         "companyRegistryVerifiedAt": _iso(app.registry_verified_at) or "",
         "applicationNote": app.application_note or "",
+        "exemptionType": app.exemption_type or "",
+        "exemptionReason": app.exemption_reason or "",
+        "exemptionDestination": app.exemption_destination or "",
         "status": app.status, "statusLabel": STATUS_LABEL.get(app.status, app.status),
         "submittedAt": _iso(app.submitted_at) or "", "reviewedBy": app.reviewed_by_name or "",
         "reviewedAt": _iso(app.reviewed_at) or "", "reviewComment": app.review_comment or "",
@@ -414,13 +441,13 @@ def save_my(user: dict, body: dict) -> dict:
     body = body or {}
     app_type = (body.get("applicationType") or "").upper()
     if app_type not in TYPE_LABEL:
-        raise AppException("VALIDATION_ERROR", "applicationType 必须是 POSITION 或 SELF_ARRANGED")
+        raise AppException("VALIDATION_ERROR", "applicationType 必须是 POSITION、SELF_ARRANGED 或 EXEMPTION")
     app_id = body.get("id")
     with session() as db:
         rec, stu = _record_for_student(db, user.get("studentNo"))
         if rec.status not in ("PREPARING", "READY"):
             raise AppException("DATA_CONFLICT", "当前实习状态不可新增或修改申请")
-        if rec.position_id or rec.destination_type == "SELF_ARRANGED":
+        if rec.position_id or rec.destination_type in ("SELF_ARRANGED", "EXEMPTED"):
             raise AppException("DATA_CONFLICT", "实习去向已落实，不可再新增或修改申请")
         if app_id:
             app = _get_legacy_student_application(db, app_id, lock=True)
@@ -431,10 +458,13 @@ def save_my(user: dict, body: dict) -> dict:
             if app.application_type != app_type:
                 raise AppException("VALIDATION_ERROR", "申请类型不可变更，请新建申请")
         else:
-            volunteer = 0 if app_type == "SELF_ARRANGED" else int(body.get("volunteerNo") or 1)
-            invalid_volunteer = (volunteer != 0 if app_type == "SELF_ARRANGED"
-                                 else volunteer not in (1, 2, 3))
-            if invalid_volunteer:
+            if app_type == "SELF_ARRANGED":
+                volunteer = 0
+            elif app_type == "EXEMPTION":
+                volunteer = -1
+            else:
+                volunteer = int(body.get("volunteerNo") or 1)
+            if app_type == "POSITION" and volunteer not in (1, 2, 3):
                 raise AppException("VALIDATION_ERROR", "校内岗位志愿顺序只能为 1 至 3")
             app = db.scalars(select(InternshipApplication).where(
                 InternshipApplication.tenant_id == _tid(), InternshipApplication.record_id == rec.id,
@@ -501,6 +531,10 @@ def submit_my(user: dict, app_id) -> dict:
         if app.application_type == "POSITION":
             pos, company = _legacy_position(db, app.position_id)
             _apply_position_snapshot(app, pos, company)
+        elif app.application_type == "EXEMPTION":
+            payload = _clean_exemption(_snapshot_body(app), require_complete=True)
+            for field, value in payload.items():
+                setattr(app, field, value)
         else:
             payload = _clean_self_arranged(_snapshot_body(app), require_complete=True)
             for field, value in payload.items():
@@ -886,12 +920,23 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
             record_ver = extract_expected_version({"expectedVersion": record_expected_version})
             if int(rec.version or 0) != record_ver:
                 raise AppException("DATA_CONFLICT", "实习学生记录已被其他用户修改，请刷新后重试")
-            rec.destination_type = "SELF_ARRANGED"
-            rec.enterprise_name = app.company_name
-            rec.position_name = app.position_name
-            rec.enterprise_mentor_name = app.enterprise_mentor_name
-            rec.intern_start_date = app.internship_start_date
-            rec.intern_end_date = app.internship_end_date
+            if app.application_type == "EXEMPTION":
+                if rec.position_id or rec.destination_type not in ("NONE", ""):
+                    raise AppException("DATA_CONFLICT", "学生已有实习去向，不能直接批准免实习")
+                rec.destination_type = "EXEMPTED"
+                rec.enterprise_id = None
+                rec.position_id = None
+                rec.mentor_contact_id = None
+                rec.enterprise_name = None
+                rec.position_name = None
+                rec.enterprise_mentor_name = None
+            else:
+                rec.destination_type = "SELF_ARRANGED"
+                rec.enterprise_name = app.company_name
+                rec.position_name = app.position_name
+                rec.enterprise_mentor_name = app.enterprise_mentor_name
+                rec.intern_start_date = app.internship_start_date
+                rec.intern_end_date = app.internship_end_date
             rec.version = record_ver + 1
         new_ver = versioned_update(
             db, InternshipApplication, entity_id=app.id, tenant_id=_tid(),
