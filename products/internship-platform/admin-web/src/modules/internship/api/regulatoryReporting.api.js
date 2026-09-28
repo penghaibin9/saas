@@ -37,6 +37,29 @@ export const regulatoryReportingApi = {
     }))
   },
 
+  createTemplateVersion(reportCode, body) {
+    return call(() => request(
+      `/internship/regulatory-reporting/templates/${encodeURIComponent(String(reportCode || ''))}/versions`,
+      { method: 'POST', body: body || {} }
+    ))
+  },
+
+  async downloadFieldDictionary(template) {
+    try {
+      const code = encodeURIComponent(String(template?.reportCode || ''))
+      const blob = await requestBlob(
+        `/internship/regulatory-reporting/templates/${code}/field-dictionary.xlsx`
+      )
+      downloadBlob(
+        blob,
+        `${template?.reportCode || 'regulatory'}-V${template?.versionNo || 1}-field-dictionary.xlsx`
+      )
+      return ok(true)
+    } catch (error) {
+      return fail(error)
+    }
+  },
+
   listTasks(params = {}) {
     return call(() => request('/internship/regulatory-reporting/tasks', { params }))
   },
