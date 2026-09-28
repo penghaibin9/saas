@@ -1775,18 +1775,28 @@ def list_registration_batches(user, status=None, page=1, page_size=20, register_
 
 
 def _precheck(db, student_id) -> dict:
-    """注册预检：只读迎新台账（报到/缴费/材料/绿通），不复制。无迎新数据则默认通过。"""
+    """只读同一学生的迎新事实；缺失记录不能冒充已完成报到、缴费或材料核验。"""
     from app.models import OrientationStudent, StudentProfile
     s = db.get(StudentProfile, int(student_id))
     ori = db.scalars(select(OrientationStudent).where(
         OrientationStudent.tenant_id == _tid(),
-        OrientationStudent.name == (s.real_name if s else ""),
+        OrientationStudent.student_id == s.id,
+        OrientationStudent.record_status == "ACTIVE",
         OrientationStudent.is_deleted.is_(False))).first() if s else None
+    if not ori and s and s.student_no:
+        ori = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.student_id.is_(None),
+            OrientationStudent.student_no == s.student_no,
+            OrientationStudent.record_status == "ACTIVE",
+            OrientationStudent.is_deleted.is_(False))).first()
     if not ori:
-        return {"reported": True, "paid": True, "material": True, "greenChannel": False,
-                "note": "无迎新台账，默认通过"}
-    return {"reported": getattr(ori, "report_status", None) in (None, "REPORTED", "DONE"),
-            "paid": True, "material": True, "greenChannel": False}
+        return {"reported": None, "paid": None, "material": None, "greenChannel": None,
+                "note": "未关联本学生的迎新台账，不能据此认定报到、缴费或材料已通过"}
+    return {"reported": ori.report_status in {"CHECKED_IN", "COLLEGE_CONFIRMED"},
+            "paid": ori.payment_status == "PAID", "material": ori.material_status == "APPROVED",
+            "greenChannel": ori.green_channel_status == "APPROVED",
+            "note": "迎新台账状态快照；本学期续注册资格仍需另行核验"}
 
 
 def require_writable_registration_batch(db, batch_id):

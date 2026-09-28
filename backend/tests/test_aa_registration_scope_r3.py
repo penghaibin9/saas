@@ -183,6 +183,40 @@ def test_college_a_can_register_student_in_college_a(db_mode, monkeypatch):
     assert _profile_status(ids["a"]) == "REGISTERED"
 
 
+def test_registration_snapshot_does_not_invent_orientation_evidence(db_mode, monkeypatch):
+    ids = _seed()
+    _patch_tenant(monkeypatch)
+
+    row = facade.register_student(ids["batch"], COLLEGE_USER, ids["a"])
+
+    assert {key: row["precheck"][key] for key in ("reported", "paid", "material", "greenChannel")} == {
+        "reported": None, "paid": None, "material": None, "greenChannel": None,
+    }
+    assert "不能据此认定" in row["precheck"]["note"]
+
+
+def test_registration_snapshot_uses_student_link_and_source_status(db_mode, monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationStudent
+
+    ids = _seed()
+    _patch_tenant(monkeypatch)
+    with get_sessionmaker()() as db:
+        db.add(OrientationStudent(tenant_id=TID, batch_id=1, student_id=ids["b"],
+            name="注册学生A", admission_no="R3REG-OTHER", source_type="MANUAL",
+            source_record_id="R3REG-OTHER", record_status="ACTIVE",
+            report_status="NOT_REPORTED", payment_status="UNPAID",
+            material_status="NOT_UPLOADED", green_channel_status="NOT_APPLIED"))
+        db.commit()
+        unlinked = facade._legacy._precheck(db, ids["a"])
+        linked = facade._legacy._precheck(db, ids["b"])
+
+    assert unlinked["reported"] is None
+    assert {key: linked[key] for key in ("reported", "paid", "material", "greenChannel")} == {
+        "reported": False, "paid": False, "material": False, "greenChannel": False,
+    }
+
+
 def test_college_a_cannot_register_student_in_college_b_and_no_side_effects(db_mode, monkeypatch):
     ids = _seed()
     _patch_tenant(monkeypatch)
