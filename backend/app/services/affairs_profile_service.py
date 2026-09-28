@@ -40,7 +40,7 @@ def _scope_or_403(db, student_id, user):
 
 
 def get_profile(student_id, user) -> dict:
-    from app.models import (AffairsRiskRecord, AidApply, CsLeave, DisciplineCase, DormBed,
+    from app.models import (AffairsRiskRecord, AidApply, CsLeave, CsServiceStudent, DisciplineCase, DormBed,
                             DormBuilding, DormRoom, FamilyContactLog, FundingApplication,
                             SchoolClass, StudentContact, TalkRecord)
     role = (user or {}).get("currentRoleCode")
@@ -61,6 +61,12 @@ def get_profile(student_id, user) -> dict:
 
         # 请假
         leave_total = _count(CsLeave)
+        service_record = db.scalars(select(CsServiceStudent.id).where(
+            CsServiceStudent.tenant_id == _tid(),
+            CsServiceStudent.student_id == sid,
+            CsServiceStudent.is_deleted.is_(False),
+            CsServiceStudent.record_status == "ACTIVE",
+        ).order_by(CsServiceStudent.id).limit(1)).first()
         # 困难认定：当前等级（困难库）
         aid = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.student_id == sid,
@@ -123,6 +129,8 @@ def get_profile(student_id, user) -> dict:
                          "classId": str(s.class_id or ""), "className": class_name,
                          "currentStage": s.current_stage, "studentStatus": s.student_status},
             "leaveSummary": {"total": leave_total},
+            "serviceLedger": {"exists": service_record is not None,
+                              "recordId": str(service_record) if service_record is not None else None},
             "aidSummary": {"difficultLevel": (aid.final_level if aid else None),
                            "inLibrary": bool(aid)},
             "fundingSummary": {"grantedCount": funding_granted},

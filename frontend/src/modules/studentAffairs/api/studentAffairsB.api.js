@@ -103,6 +103,10 @@ export const studentAffairsApi = {
     return pass(core.getStudentProfile(studentId))
   },
 
+  createCampusServiceLedger(studentId) {
+    return pass(core.createCampusServiceLedger(studentId))
+  },
+
   getTimeline(studentId, params = {}) {
     return pass(core.getStudentTimeline(studentId, params))
   },
