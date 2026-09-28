@@ -337,6 +337,24 @@ export const internshipApi = {
     return callList('/internship/risks', params)
   },
 
+  getInternshipNotices(batchId, includeWithdrawn = true) {
+    return call(() => request('/teacher-mobile/internship/emergency-notices', {
+      params: { batchId, includeWithdrawn }
+    }))
+  },
+
+  publishInternshipNotice(body) {
+    return call(() => request('/teacher-mobile/internship/emergency-notices', {
+      method: 'POST', body
+    }))
+  },
+
+  withdrawInternshipNotice(id, reason) {
+    return call(() => request(`/teacher-mobile/internship/emergency-notices/${id}/withdraw`, {
+      method: 'POST', body: { reason }
+    }))
+  },
+
   getStudentFeedback(params = {}) {
     return callList('/internship/complaints', { ...params, category: 'STUDENT_FEEDBACK' })
   },
