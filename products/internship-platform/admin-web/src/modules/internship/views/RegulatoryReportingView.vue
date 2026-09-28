@@ -240,8 +240,8 @@
                 <strong>第 {{ row.rowNo }} 行</strong>
                 <span>学生ID {{ row.studentId || '—' }} · 实习ID {{ row.internshipId || '—' }}</span>
               </div>
-              <AppStatusTag :type="row.errors?.length ? 'danger' : 'success'">
-                {{ row.errors?.length ? (row.errors.length + ' 个错误') : '校验通过' }}
+              <AppStatusTag :type="row.validationState === 'FAILED' ? 'danger' : (row.validationState === 'PASSED' ? 'success' : 'warning')">
+                {{ row.validationState === 'FAILED' ? (row.errors.length + ' 个错误') : (row.validationState === 'PASSED' ? '校验通过' : '待校验') }}
               </AppStatusTag>
             </header>
             <div v-if="row.errors?.length" class="row-errors">
@@ -254,7 +254,7 @@
               <summary>查看冻结业务事实</summary>
               <dl class="payload-grid">
                 <div v-for="(value, key) in row.payload" :key="row.id + '-' + key">
-                  <dt>{{ key }}</dt>
+                  <dt>{{ detailFieldLabel(key) }}</dt>
                   <dd>{{ value === null || value === '' ? '—' : value }}</dd>
                 </div>
               </dl>
@@ -465,6 +465,11 @@ export default {
       this.templateEditor = null
       this.showMessage(`${code} 新模板版本已启用；旧任务继续绑定旧版本，不会被覆盖。`)
       await this.load()
+    },
+    detailFieldLabel(key) {
+      const fields = this.detailTask?.template?.fields || []
+      const field = fields.find(item => item.key === key)
+      return field?.label ? `${field.label}（${key}）` : key
     },
     async openTaskDetail(row) {
       if (!row?.id) return
