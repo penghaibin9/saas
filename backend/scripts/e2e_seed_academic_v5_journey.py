@@ -278,7 +278,7 @@ def prepare(db, prefix, plan, state_path, credentials_path):
             db.add(StaffAssignment(tenant_id=TENANT_ID, user_id=user.id,
                 org_type="SCHOOL" if label is None else "COLLEGE",
                 org_node_id=TENANT_ID if label is None else int(colleges[label]["collegeId"]),
-                assignment_type="ACADEMIC_REVIEWER" if label is None else ("OTHER" if teacher else "SECRETARY"),
+                assignment_type="ACADEMIC_REVIEWER" if key == "school" else ("SECRETARY" if key.startswith("college") else "OTHER"),
                 is_primary=True, source_type="MANUAL", source_id=prefix,
                 effective_at=effective, status="ACTIVE", reason=note))
         if key.startswith("college"):

@@ -45,10 +45,10 @@ function page({ panel = 'roster', writeEnabled = true, batchId = '71' } = {}) {
   return { p, calls, store, api: gdStudentApi, options }
 }
 
-test('only the three approved task labels differ in the complete production script', () => {
+test('the approved task labels and graduation return link are the only production script changes', () => {
   const normalized = script.replace("label: '选题 / 导师 / 资格'", "label: '关系与资格'")
     .replace("label: '材料 / 答辩'", "label: '材料与答辩'").replace("label: '毕业资格 / 归档'", "label: '收口与归档'")
-  assert.equal(createHash('sha256').update(normalized).digest('hex'), '4f11fb4f9ad979f005cdaa957b5b486c93432887b323b087d81738f0c3acf5fb')
+  assert.equal(createHash('sha256').update(normalized).digest('hex'), '9ba439d6032132c28f09f9a029dea30583c3ceaf6dd0e99a7f6ea0911dd1bde1')
 })
 
 test('five task groups retain all eleven panel keys and original default destinations', () => {

@@ -14,7 +14,7 @@ const root = fileURLToPath(new URL('../../', import.meta.url))
 const self = fileURLToPath(import.meta.url)
 const roles = ['school', 'collegeA', 'collegeB', 'teacherA', 'teacherB', 'leader']
 const apiPath = '/api/v1/academic-affairs'
-const termInput = { yearCode: '2025-2026', termNo: 2, startDate: '2026-02-23', endDate: '2026-07-12', teachingWeeks: 20, examWeekStart: 19 }
+const termInput = { yearCode: '2026-2027', termNo: 2, startDate: '2027-02-22', endDate: '2027-07-11', teachingWeeks: 20, examWeekStart: 19 }
 
 function isolatedUrl(name, fallback, port, pathname) {
   const url = new URL(process.env[name] || fallback)
@@ -157,8 +157,12 @@ async function runJourney() {
     return read(response)
   }
   const visit = async (page, target, pathname, reload = false) => {
+    activePage = page
     const response = responseFor(page, pathname)
-    await (reload ? page.reload() : page.goto(staff + target))
+    const destination = new URL(staff + target)
+    const current = new URL(page.url())
+    await (reload && current.pathname + current.search === destination.pathname + destination.search
+      ? page.reload() : page.goto(destination.toString()))
     const value = await read(await response)
     const skip = page.getByRole('button', { name: '跳过引导', exact: true })
     if (await skip.isVisible().catch(() => false)) await skip.click()
@@ -209,18 +213,24 @@ async function runJourney() {
     await page.goto(`${staff}/admin/academic-affairs/teaching-tasks/${batchId}`)
     const [workbench, tasks] = await Promise.all([read(await workbenchResponse), read(await tasksResponse)])
     assert.equal(workbench.batchId, batchId)
-    assert.equal(Number(tasks.total), tasks.list.length, '本批次任务未读全，禁止按不完整列表办理')
-    return { workbench, tasks: tasks.list }
+    assert.equal(Number(tasks.total), tasks.items.length, '本批次任务未读全，禁止按不完整列表办理')
+    return { workbench, tasks: tasks.items }
   }
   const choose = async (scope, label, value) => {
     const picker = scope.locator('label').filter({ hasText: label }).locator('.app-remote-select')
-    if ((await picker.getByRole('combobox').innerText()).includes(value)) return
-    await picker.getByRole('combobox').click()
+    const control = picker.getByRole('combobox')
+    if ((await control.innerText()).includes(value)) return
+    if (await control.getAttribute('aria-expanded') !== 'true') await control.press('Enter')
     await picker.getByRole('option').filter({ hasText: value }).click()
   }
   try {
     await phase('正常学校账号登录')
     const school = await login('school')
+    pages.school = school
+    const schoolColleges = await readOnly('school', `${apiPath}/orgs/colleges?page=1&pageSize=100`)
+    assert.deepEqual(schoolColleges.items?.map(row => row.id).sort(),
+      Object.values(fixture.colleges).map(row => row.collegeId).sort(),
+      '隔离学校必须只有本场景两学院，禁止把其他学院从全校门禁中排除')
     await phase('学校核对并建立正式学期')
     const catalog = await visit(school, '/admin/academic-affairs/terms', `${apiPath}/terms`)
     const terms = catalog.items || []
@@ -245,21 +255,24 @@ async function runJourney() {
     } else { report.termId = term.termId; await save() }
     term = await visit(school, `/admin/academic-affairs/terms/${report.termId}`, `${apiPath}/terms/${report.termId}/workspace`)
     assert.equal(term.termId, report.termId, '学期详情必须返回本场景学期')
-    for (const [key, value] of Object.entries(termInput)) assert.equal(term[key], value, '已有学期必须与场景正式前置条件一致')
+    for (const [key, value] of Object.entries(termInput)) {
+      const actual = ['startDate', 'endDate'].includes(key) ? String(term[key] || '').slice(0, 10) : term[key]
+      assert.equal(actual, value, '已有学期必须与场景正式前置条件一致')
+    }
     await observed('term', { termId: term.termId, status: term.status })
     await capture(school, 'A01-学校正式学期')
 
     await phase('学校核对并维护本学期校历')
     const calendarPath = `/admin/academic-affairs/calendar?termId=${report.termId}&tab=holiday`
     let events = (await visit(school, calendarPath, `${apiPath}/terms/${report.termId}/calendar`)).items || []
-    const holiday = events.find(row => row.eventType === 'HOLIDAY' && row.startDate === '2026-05-01' && row.endDate === '2026-05-01')
+    const holiday = events.find(row => row.eventType === 'HOLIDAY' && String(row.startDate).slice(0, 10) === '2027-05-01' && String(row.endDate).slice(0, 10) === '2027-05-01')
     if (!holiday) {
       assert.equal(term.status, 'DRAFT', '已发布学期缺少目标校历事件，禁止改旧终态或重复创建学期')
       await school.getByRole('button', { name: '新增节假日', exact: true }).click()
       const form = school.locator('.aa-cal-form:visible')
       for (const label of ['开始日期', '结束日期']) {
         const input = form.locator('label').filter({ hasText: label }).locator('input')
-        await input.fill('2026-05-01'); await input.press('Tab')
+        await input.fill('2027-05-01'); await input.press('Tab')
       }
       await form.getByPlaceholder('选填，如 国庆假期 / 国庆调休').fill(`${fixture.prefix} 校历核验`)
       await beforeWrite('calendar')
@@ -364,8 +377,10 @@ async function runJourney() {
       const batchName = `${fixture.prefix} ${label}学院教学任务`
       await phase(`学院 ${label} 从已发布方案生成本学期教学任务`)
       const listed = await visit(page, `/admin/academic-affairs/teaching-tasks?termId=${report.termId}`, `${apiPath}/teaching-task-batches`)
-      assert.equal(Number(listed.total), listed.list.length, '本学期批次未读全，禁止重复生成')
-      const existing = listed.list.filter(item => item.batchName === batchName && item.termId === report.termId && item.collegeId === collegeId)
+      assert.equal(Number(listed.total), listed.items.length, '本学期批次未读全，禁止重复生成')
+      const availableColleges = await readOnly(role, `${apiPath}/orgs/colleges?page=1&pageSize=100`)
+      assert.ok(availableColleges.items?.some(item => item.id === collegeId), '开课责任学院不在当前办理人正式授权范围')
+      const existing = listed.items.filter(item => item.batchName === batchName && item.termId === report.termId && item.collegeId === collegeId)
       assert.ok(existing.length <= 1, '同名学院批次重复，需人工核对')
       let batchId = report.batchIds[label] || existing[0]?.batchId
       if (report.batchIds[label]) assert.equal(existing[0]?.batchId, batchId, '已保存的批次未在正式列表中找到')
@@ -424,11 +439,11 @@ async function runJourney() {
     let b = await batchFacts(pages.collegeB, report.batchIds.B)
     assert.equal(a.workbench.unassignedCount, 0)
     assert.ok(a.tasks.every(item => item.teacherKey === fixture.accounts.teacherA.teacherKey))
-    assert.equal(b.workbench.unassignedCount, 2)
-    assert.ok(b.tasks.filter(item => item.status === 'PENDING_ASSIGN').length === 2)
     let flow = await visit(school, `/admin/academic-affairs?termId=${report.termId}`, `${apiPath}/flow`, true)
-    assert.equal(stage(flow, 'B').status, 'BLOCKED')
     if (!report.checkpoints.some(item => item.step === 'B')) {
+      assert.equal(b.workbench.unassignedCount, 2)
+      assert.ok(b.tasks.filter(item => item.status === 'PENDING_ASSIGN').length === 2)
+      assert.equal(stage(flow, 'B').status, 'BLOCKED')
       assert.ok(a.tasks.every(item => item.status === 'ASSIGNED'), 'B 阶段应由教师 A 接收但尚未确认')
       assert.equal(stage(flow, 'A').status, 'ACTION_REQUIRED')
       await observed('B', { aBatchId: report.batchIds.A, bBatchId: report.batchIds.B, aAssigned: a.tasks.length, bUnassigned: 2, aStage: stage(flow, 'A').status, bStage: stage(flow, 'B').status })
@@ -436,18 +451,19 @@ async function runJourney() {
       await capture(school, 'B02-学校两院任务状态')
     }
 
+    if (b.workbench.status === 'DRAFT' && !report.checkpoints.some(item => item.step === 'D-tasks-ready')) {
     for (const taskId of report.taskIds.A) {
       const teacher = pages.teacherA
       await phase('教师 A 仅确认本人正式教学任务')
       const mine = await visit(teacher, `/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId=${taskId}`, `${apiPath}/teaching-tasks`)
-      assert.equal(mine.total, 1); assert.equal(mine.list[0]?.taskId, taskId)
-      assert.equal(mine.list[0].teacherKey, fixture.accounts.teacherA.teacherKey)
-      if (['TEACHER_CONFIRMED', 'READY'].includes(mine.list[0].status)) {
-        if (report.pending?.step === `teacher-${taskId}`) await observed(`teacher-${taskId}`, { taskId, status: mine.list[0].status })
+      assert.equal(mine.total, 1); assert.equal(mine.items[0]?.taskId, taskId)
+      assert.equal(mine.items[0].teacherKey, fixture.accounts.teacherA.teacherKey)
+      if (['TEACHER_CONFIRMED', 'READY'].includes(mine.items[0].status)) {
+        if (report.pending?.step === `teacher-${taskId}`) await observed(`teacher-${taskId}`, { taskId, status: mine.items[0].status })
         continue
       }
-      assert.equal(mine.list[0].status, 'ASSIGNED')
-      const row = teacher.locator('tr').filter({ hasText: mine.list[0].courseCode }).filter({ hasText: mine.list[0].teachingClassCode })
+      assert.equal(mine.items[0].status, 'ASSIGNED')
+      const row = teacher.locator('tr').filter({ hasText: mine.items[0].courseCode }).filter({ hasText: mine.items[0].teachingClassCode })
       await row.getByRole('button', { name: '确认接受', exact: true }).click()
       const dialog = teacher.getByRole('dialog', { name: '确认接受授课安排', exact: true })
       await beforeWrite(`teacher-${taskId}`)
@@ -455,13 +471,14 @@ async function runJourney() {
       await dialog.getByRole('button', { name: '确认接受', exact: true }).click()
       await read(await accepted)
       const confirmed = await visit(teacher, `/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId=${taskId}`, `${apiPath}/teaching-tasks`, true)
-      assert.equal(confirmed.list[0]?.taskId, taskId); assert.equal(confirmed.list[0]?.status, 'TEACHER_CONFIRMED')
-      await observed(`teacher-${taskId}`, { taskId, status: confirmed.list[0].status })
+      assert.equal(confirmed.items[0]?.taskId, taskId); assert.equal(confirmed.items[0]?.status, 'TEACHER_CONFIRMED')
+      await observed(`teacher-${taskId}`, { taskId, status: confirmed.items[0].status })
     }
     const forbidden = await visit(pages.teacherB, `/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId=${report.taskIds.A[0]}`, `${apiPath}/teaching-tasks`)
     assert.equal(forbidden.total, 0, '教师 B 不得看到教师 A 的任务')
     await expect(pages.teacherB.getByRole('button', { name: '确认接受', exact: true })).toHaveCount(0)
     const targetTaskId = report.taskIds.A[0]
+    const targetStatusBefore = (await batchFacts(pages.collegeA, report.batchIds.A)).tasks.find(item => item.taskId === targetTaskId)?.status
     const beforeForbidden = auditRows({ tenantId: fixture.tenantId, bizType: 'AA_TASK', bizId: targetTaskId,
       action: 'TEACHER_CONFIRM', account: fixture.accounts.teacherA })
     const denied = await pages.teacherB.context().request.post(`${new URL(api).origin}${apiPath}/teaching-tasks/${targetTaskId}/teacher-act`, {
@@ -474,7 +491,7 @@ async function runJourney() {
       action: 'TEACHER_CONFIRM', account: fixture.accounts.teacherA })
     assert.deepEqual(afterForbidden.rows, beforeForbidden.rows, '越权请求不得增加目标任务确认审计')
     a = await batchFacts(pages.collegeA, report.batchIds.A)
-    assert.equal(a.tasks.find(item => item.taskId === targetTaskId)?.status, 'TEACHER_CONFIRMED', '越权请求不得改变目标任务')
+    assert.equal(a.tasks.find(item => item.taskId === targetTaskId)?.status, targetStatusBefore, '越权请求不得改变目标任务')
     assert.ok(a.tasks.every(item => ['TEACHER_CONFIRMED', 'READY'].includes(item.status)))
     flow = await visit(school, `/admin/academic-affairs?termId=${report.termId}`, `${apiPath}/flow`, true)
     assert.equal(stage(flow, 'B').status, 'BLOCKED')
@@ -520,15 +537,18 @@ async function runJourney() {
     await observed('C', { aStage: stage(flow, 'A').status, bStage: stage(flow, 'B').status, gate: { readyUnitCount: gate.readyUnitCount, totalUnitCount: gate.totalUnitCount } })
     report.uncovered = ['D', 'E', 'F', 'G', 'H']; await save()
     await capture(school, 'C01-学院A就绪学校一院未就绪')
+    }
 
+    const roomCode = `${fixture.prefix}ROOM`, roomName = `${fixture.prefix} 教学教室`
+    if (!report.checkpoints.some(item => item.step === 'E')) {
     await phase('排课前学校门禁核对与学院 A 建立正式排课批次')
     const scheduleGate = flow.schoolGates.find(item => item.stageCode === 'F50_SCHEDULE')
     assert.ok(scheduleGate && !scheduleGate.ready, '学院 B 教学任务未就绪时不得开放全校课表发布')
     const scheduleName = `${fixture.prefix} A学院排课`
     const scheduleListPath = `${apiPath}/schedule-batches`
     let schedules = await visit(pages.collegeA, `/admin/academic-affairs/schedule?termId=${report.termId}`, scheduleListPath)
-    assert.equal(Number(schedules.total), schedules.list.length, '课表批次未读全，禁止猜测新建')
-    const owned = schedules.list.filter(item => item.batchName === scheduleName && item.termId === report.termId && item.collegeId === fixture.colleges.A.collegeId)
+    assert.equal(Number(schedules.total), schedules.items.length, '课表批次未读全，禁止猜测新建')
+    const owned = schedules.items.filter(item => item.batchName === scheduleName && item.termId === report.termId && item.collegeId === fixture.colleges.A.collegeId)
     assert.ok(owned.length <= 1, '同一学院排课批次重复，需核对原命令')
     let scheduleBatchId = report.scheduleBatchIds.A || owned[0]?.batchId
     if (report.scheduleBatchIds.A) assert.equal(owned[0]?.batchId, scheduleBatchId, '已保存排课批次不在正式列表')
@@ -547,7 +567,7 @@ async function runJourney() {
       report.scheduleBatchIds.A = scheduleBatchId; await save()
     }
     schedules = await visit(pages.collegeA, `/admin/academic-affairs/schedule?termId=${report.termId}`, scheduleListPath, true)
-    const schedule = schedules.list.find(item => item.batchId === scheduleBatchId)
+    const schedule = schedules.items.find(item => item.batchId === scheduleBatchId)
     assert.equal(schedule?.termId, report.termId)
     assert.equal(schedule?.collegeId, fixture.colleges.A.collegeId)
     assert.equal(schedule?.status, 'DRAFT')
@@ -579,21 +599,21 @@ async function runJourney() {
       assert.equal(task.teacherKey, fixture.accounts.teacherB.teacherKey)
       const teacher = pages.teacherB
       const mine = await visit(teacher, `/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId=${taskId}`, `${apiPath}/teaching-tasks`)
-      assert.equal(mine.total, 1); assert.equal(mine.list[0]?.taskId, taskId)
-      if (mine.list[0].status === 'ASSIGNED') {
+      assert.equal(mine.total, 1); assert.equal(mine.items[0]?.taskId, taskId)
+      if (mine.items[0].status === 'ASSIGNED') {
         await phase('教师 B 本人确认补齐的教学任务')
-        const row = teacher.locator('tr').filter({ hasText: mine.list[0].courseCode }).filter({ hasText: mine.list[0].teachingClassCode })
+        const row = teacher.locator('tr').filter({ hasText: mine.items[0].courseCode }).filter({ hasText: mine.items[0].teachingClassCode })
         await row.getByRole('button', { name: '确认接受', exact: true }).click()
         await beforeWrite(`teacher-B-${taskId}`)
         const accepted = responseFor(teacher, `${apiPath}/teaching-tasks/${taskId}/teacher-act`, 'POST')
         await teacher.getByRole('dialog', { name: '确认接受授课安排', exact: true }).getByRole('button', { name: '确认接受', exact: true }).click()
         await read(await accepted)
         const confirmed = await visit(teacher, `/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId=${taskId}`, `${apiPath}/teaching-tasks`, true)
-        assert.equal(confirmed.list[0]?.status, 'TEACHER_CONFIRMED')
-        await observed(`teacher-B-${taskId}`, { taskId, status: confirmed.list[0].status })
+        assert.equal(confirmed.items[0]?.status, 'TEACHER_CONFIRMED')
+        await observed(`teacher-B-${taskId}`, { taskId, status: confirmed.items[0].status })
       } else {
-        assert.ok(['TEACHER_CONFIRMED', 'READY'].includes(mine.list[0].status))
-        if (report.pending?.step === `teacher-B-${taskId}`) await observed(`teacher-B-${taskId}`, { taskId, status: mine.list[0].status })
+        assert.ok(['TEACHER_CONFIRMED', 'READY'].includes(mine.items[0].status))
+        if (report.pending?.step === `teacher-B-${taskId}`) await observed(`teacher-B-${taskId}`, { taskId, status: mine.items[0].status })
       }
     }
     b = await batchFacts(pages.collegeB, report.batchIds.B)
@@ -632,9 +652,8 @@ async function runJourney() {
     await phase('校级核对公共课开课单位规则及正式教室资源')
     const scheduleStage = flow.stages.find(item => item.stageCode === 'F50_SCHEDULE')
     assert.ok(scheduleStage, '学校缺少排课责任阶段')
-    assert.equal(scheduleStage.evidence?.publicScheduleMode, 'HYBRID',
+    assert.equal(scheduleStage.evidence?.schoolSchedule?.publicScheduleMode, 'HYBRID',
       '本故事按当前正式开课单位编排规则验收，不得猜测公共课归属')
-    const roomCode = `${fixture.prefix}ROOM`, roomName = `${fixture.prefix} 教学教室`
     const roomPath = `${apiPath}/classrooms`
     let rooms = await visit(school, '/admin/academic-affairs/classrooms', roomPath)
     let room = (rooms.items || []).find(item => item.roomCode === roomCode)
@@ -662,8 +681,8 @@ async function runJourney() {
     const ensureScheduleBatch = async (role, label, scope) => {
       const page = pages[role], name = `${fixture.prefix} ${label}排课`
       const batches = await visit(page, `/admin/academic-affairs/schedule?termId=${report.termId}`, scheduleListPath)
-      assert.equal(Number(batches.total), batches.list.length, '排课批次列表未读全')
-      const found = batches.list.filter(item => item.batchName === name && item.termId === report.termId)
+      assert.equal(Number(batches.total), batches.items.length, '排课批次列表未读全')
+      const found = batches.items.filter(item => item.batchName === name && item.termId === report.termId)
       assert.ok(found.length <= 1, '同名排课批次重复，禁止猜测新建')
       let id = report.scheduleBatchIds[label] || found[0]?.batchId
       if (report.scheduleBatchIds[label]) assert.equal(found[0]?.batchId, id, '保存的排课批次未在正式列表')
@@ -720,7 +739,7 @@ async function runJourney() {
       const target = `/admin/academic-affairs/schedule/${batchId}/edit?classId=${task.classId}&taskId=${task.taskId}&termId=${report.termId}`
       const classViewPath = `${scheduleListPath}/${batchId}/class-view`
       const classViewResponse = responseFor(page, classViewPath)
-      await visit(page, target, `${scheduleListPath}/${batchId}`)
+      await visit(page, target, `${scheduleListPath}/${batchId}`, true)
       const before = await read(await classViewResponse)
       assert.ok(Array.isArray(before.items), '班级课表未返回正式课位清单')
       await expect(page.locator('.aa-grid__cell.is-editable').first()).toBeVisible()
@@ -909,6 +928,35 @@ async function runJourney() {
     assert.equal(flow.schoolGates.find(item => item.stageCode === 'F50_SCHEDULE')?.ready, true)
     await observed('E', { termId: report.termId, publishedBatchIds: Object.values(report.scheduleBatchIds) })
     report.uncovered = ['F', 'G', 'H']; await save()
+    } else {
+      for (const label of ['A', 'B']) {
+        const detail = await readOnly('school', `${apiPath}/schedule-batches/${report.scheduleBatchIds[label]}`)
+        assert.equal(detail.status, 'PUBLISHED')
+        assert.equal(detail.activeTruth?.isCurrent, true, '已验收课表缺少当前正式版本')
+      }
+    }
+
+    // 隔离虚构学校的策略前置：正式服务拒绝无策略的成绩审核；此配置不计作页面接力动作。
+    await phase('学校核验本学期有效成绩策略前置')
+    const policyPath = `${apiPath}/grade-policies`
+    const policyCode = `${fixture.prefix}LATEST_ATTEMPT`.toUpperCase()
+    let policies = await readOnly('school', policyPath)
+    let activePolicies = policies.filter(row => row.status === 'ACTIVE' && row.effectiveFromTermId === report.termId)
+    assert.ok(activePolicies.length <= 1, '同一学期有效成绩策略不唯一，禁止覆盖')
+    if (!activePolicies.length) {
+      await beforeWrite('F-policy')
+      const activated = await school.context().request.post(`${new URL(api).origin}${policyPath}/activate`, {
+        headers: { Authorization: `Bearer ${accessTokens.school}` },
+        data: { policyCode, attemptStrategy: 'LATEST_ATTEMPT', effectiveFromTermId: report.termId },
+      })
+      await read(activated)
+      policies = await readOnly('school', policyPath)
+      activePolicies = policies.filter(row => row.status === 'ACTIVE' && row.effectiveFromTermId === report.termId)
+    }
+    assert.equal(activePolicies.length, 1)
+    assert.equal(activePolicies[0].policyCode, policyCode, '隔离学校已存在不同正式策略，不得自动替换')
+    assert.equal(activePolicies[0].attemptStrategy, 'LATEST_ATTEMPT')
+    await observed('F-policy', { policyId: activePolicies[0].policyId, termId: report.termId, source: 'isolated-fixture-prerequisite' })
 
     // F: each formal teaching task has one grade task. Its own teacher enters
     // every roster score, its own college reviews, then school publishes.
@@ -916,16 +964,16 @@ async function runJourney() {
     const exactGrade = async (role, id) => {
       const result = await readOnly(role, `${gradePath}?taskId=${id}&page=1&pageSize=1`)
       assert.equal(result.total, 1, '成绩任务必须按精确编号回读')
-      assert.equal(result.list[0]?.gradeTaskId, id)
-      return result.list[0]
+      assert.equal(result.items[0]?.gradeTaskId, id)
+      return result.items[0]
     }
     for (const label of ['A', 'B']) {
       const teacherRole = `teacher${label}`, collegeRole = `college${label}`
       for (const teachingTaskId of report.taskIds[label]) {
         let gradeTaskId = report.gradeTaskIds[teachingTaskId]
         const existing = await readOnly(teacherRole, `${gradePath}?termId=${report.termId}&page=1&pageSize=100`)
-        assert.equal(existing.total, existing.list.length, '本学期教师成绩任务未读全')
-        const matched = existing.list.filter(item => item.teachingTaskId === teachingTaskId)
+        assert.equal(existing.total, existing.items.length, '本学期教师成绩任务未读全')
+        const matched = existing.items.filter(item => item.teachingTaskId === teachingTaskId)
         assert.ok(matched.length <= 1, '同一教学任务有重复成绩任务')
         if (gradeTaskId) assert.equal(matched[0]?.gradeTaskId, gradeTaskId, '保存的成绩任务不在教师本人正式列表')
         else gradeTaskId = matched[0]?.gradeTaskId
@@ -951,7 +999,7 @@ async function runJourney() {
         if (['NOT_STARTED', 'INPUTTING', 'RETURNED'].includes(grade.status)) {
           await phase(`任课教师 ${label} 经正式教学名单逐生录入`)
           const page = pages[teacherRole]
-          await visit(page, `/admin/academic-affairs/grade-entry?taskId=${gradeTaskId}`, gradePath)
+          await visit(page, `/admin/academic-affairs/grade-entry?taskId=${gradeTaskId}`, gradePath, true)
           const roster = await readOnly(teacherRole, `${gradePath}/${gradeTaskId}/roster`)
           assert.equal(roster.items.length, 2, '本故事每个虚构班须有两名正式学生')
           assert.deepEqual(new Set(roster.items.map(item => item.studentId)), new Set(fixture.colleges[label].studentIds))
@@ -1031,7 +1079,7 @@ async function runJourney() {
     // internship, thesis, student-service or curriculum facts must remain real
     // blockers; reviewer text may not turn UNKNOWN into PASS.
     const gradPath = `${apiPath}/graduation-audit-batches`
-    const gradName = `${fixture.prefix} 2023级毕业资格审核`
+    const gradName = `${fixture.prefix} ${fixture.cohort.entryYear}级毕业资格审核`
     const gradList = await visit(school, `/admin/academic-affairs/graduation?termId=${report.termId}`, gradPath)
     assert.equal(gradList.total, gradList.items.length, '毕业批次列表未读全')
     const matchingGrad = gradList.items.filter(item => item.batchName === gradName && item.termId === report.termId)
@@ -1039,12 +1087,12 @@ async function runJourney() {
     let gradBatchId = report.graduationBatchId || matchingGrad[0]?.batchId
     if (report.graduationBatchId) assert.equal(matchingGrad[0]?.batchId, gradBatchId)
     if (!gradBatchId) {
-      await phase('学校通过毕业批次页面圈定同学期 2023 级学生')
+      await phase(`学校通过毕业批次页面圈定同学期 ${fixture.cohort.entryYear} 级学生`)
       await school.getByRole('button', { name: '新建审核批次', exact: true }).click()
       const form = school.locator('section.app-section-card').filter({ hasText: '新建审核批次' })
       await choose(form, '所属学期', `${fixture.prefix} 学期责任接力`)
       await form.getByPlaceholder('如 2026届毕业资格审核').fill(gradName)
-      await form.getByPlaceholder('如 2023').fill('2023')
+      await form.getByPlaceholder('如 2023').fill(String(fixture.cohort.entryYear))
       await beforeWrite('G-batch')
       const created = responseFor(school, gradPath, 'POST')
       await form.getByRole('button', { name: '创建', exact: true }).click()
@@ -1058,7 +1106,7 @@ async function runJourney() {
       return result.items[0]
     }
     let gradBatch = await exactGradBatch()
-    assert.equal(gradBatch.termId, report.termId); assert.equal(gradBatch.gradeYear, '2023')
+    assert.equal(gradBatch.termId, report.termId); assert.equal(gradBatch.gradeYear, String(fixture.cohort.entryYear))
     await observed('G-batch', { batchId: gradBatchId, termId: report.termId, gradeYear: gradBatch.gradeYear })
     const openGradBatch = async () => {
       await visit(school, `/admin/academic-affairs/graduation?termId=${report.termId}`, gradPath)
@@ -1378,7 +1426,7 @@ async function runJourney() {
     assert.ok(['COURSE_CONFIRMED', 'ARRANGED', 'PUBLISHED', 'FINISHED', 'ARCHIVED'].includes(examBatch.status))
     await observed('H-exam-batch-confirm', { batchId: examBatchId, status: examBatch.status })
 
-    const examDates = { A: '2026-07-06', B: '2026-07-07' }
+    const examDates = { A: '2027-07-05', B: '2027-07-06' }
     for (const label of ['A', 'B']) {
       const courseId = examCourseIds[label]
       const expectedStudents = fixture.colleges[label].studentIds.map(String)

@@ -3,6 +3,7 @@ import test from 'node:test'
 import { readFileSync } from 'node:fs'
 
 const view = readFileSync(new URL('../src/modules/graduation/views/GraduationRiskArchiveView.vue', import.meta.url), 'utf8')
+const template = view.slice(0, view.indexOf('<script>'))
 const riskService = readFileSync(new URL('../../backend/app/modules/graduation/services/graduation_risk_service.py', import.meta.url), 'utf8')
 
 test('U7 archive missing-item links preserve exact student and batch/source context', () => {
@@ -73,7 +74,9 @@ test('G8 freezes one preview token and passes it explicitly into the matching ex
   assert.match(view, /body = \{ previewToken: executing\.previewToken, archiveBatchNo: executing\.archiveBatchNo \|\| undefined \}/)
   assert.match(view, /batchFileArchive\(params, body\)/)
   assert.match(view, /batchGenerateArchive\(params, body\)/)
-  assert.match(view, /原始令牌不进入界面文本/)
+  assert.match(template, /<strong>\{\{ archivePreviewEvidence\.maskedToken \}\}<\/strong>/)
+  assert.match(template, /凭证已脱敏/)
+  assert.doesNotMatch(template, /archiveCommandSnapshot\.previewToken/)
 })
 
 test('G8 invalidates page credentials on cancel route batch and execute, and never blind-retries an unknown write', () => {

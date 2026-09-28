@@ -647,6 +647,7 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20):
             AaTerm.tenant_id == _tid(), AaTerm.id.in_([b.term_id for b in rows] or [-1]), AaTerm.is_deleted.is_(False),
         )).all()}
         out = [{"batchId": str(b.id), "batchName": b.batch_name, "termId": str(b.term_id),
+                "collegeId": str(b.college_id) if b.college_id else None,
                 "termLabel": terms.get(int(b.term_id), "学期待核对"),
                 "status": b.status, "publishAt": _iso(b.publish_at)} for b in rows]
         return out, total

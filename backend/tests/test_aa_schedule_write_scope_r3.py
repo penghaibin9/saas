@@ -285,6 +285,7 @@ def test_batch_list_filters_scope_before_count_and_paging(db_mode, monkeypatch):
     assert {row["batchId"] for row in own_all} == {
         str(ids["own"]), str(own_second_id), str(own_next_id),
     }
+    assert {row["collegeId"] for row in own_all} == {str(ids["college_a"])}
     college_b, college_b_total = svc.list_batches(college_b_user)
     assert college_b_total == 1
     assert [row["batchId"] for row in college_b] == [str(ids["other"])]
@@ -294,6 +295,7 @@ def test_batch_list_filters_scope_before_count_and_paging(db_mode, monkeypatch):
         str(ids["own"]), str(ids["other"]), str(ids["school"]),
         str(own_second_id), str(own_next_id),
     }
+    assert {row["collegeId"] for row in school} == {str(ids["college_a"]), str(ids["college_b"]), None}
     assert str(foreign_batch_id) not in {row["batchId"] for row in school}
     with pytest.raises(AppException) as denied:
         svc.list_batches({

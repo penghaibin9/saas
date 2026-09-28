@@ -7,6 +7,7 @@ import { request } from '@/services/http'
 import { currentUserFromToken, getToken } from '@/services/http/client'
 import { invalidateAdminQueries, runAdminQuery } from '@/services/performance/queryCoordinator'
 import { projectModuleAccess } from '@/security/moduleEntitlement'
+import { matchPermission } from '@/config/navPlan'
 import { adaptTypedTodoPage } from '../config/todoTypedRouteBridge'
 
 /**
@@ -105,11 +106,9 @@ export async function fetchLayoutContext() {
   let readonlyTenant = false
   let readonlyReason = ''
 
-  const [brandResult, contextResult, messageResult] = await Promise.allSettled([
+  const [brandResult, contextResult] = await Promise.allSettled([
     workbenchRead('tenant-brand', '/tenant/brand', {}, 60_000),
-    workbenchRead('rbac-context', '/rbac/current-context', {}, 15_000),
-    // 普通页面壳只需要角标，不能为它重算整份待办/审批快照。
-    workbenchRead('message-count', '/admin/messages/count', {}, 5_000)
+    workbenchRead('rbac-context', '/rbac/current-context', {}, 15_000)
   ])
 
   if (brandResult.status === 'fulfilled' && brandResult.value) {
@@ -140,8 +139,14 @@ export async function fetchLayoutContext() {
     )
   }
 
-  if (messageResult.status === 'fulfilled') {
-    messageUnreadCount = Number(messageResult.value?.unread) || 0
+  if (matchPermission(permissionPatterns, 'workbench.message.view')) {
+    // 只在当前身份确有收件箱权限时读取角标；只读观察员不触发预期的 403。
+    try {
+      const count = await workbenchRead('message-count', '/admin/messages/count', {}, 5_000)
+      messageUnreadCount = Number(count?.unread) || 0
+    } catch {
+      messageUnreadCount = 0
+    }
   }
 
   const ctxKey = [
