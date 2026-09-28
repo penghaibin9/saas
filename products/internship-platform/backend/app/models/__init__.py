@@ -60,3 +60,9 @@ from app.models.internship_student_profile import StudentInternshipProfile, Stud
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
 
 from app.models.internship_score_appeal import InternshipScoreAppeal
+
+from app.models.internship_regulatory_reporting import (
+    InternshipRegulatoryTask,
+    InternshipRegulatoryTaskRow,
+    InternshipRegulatoryTemplateVersion,
+)
