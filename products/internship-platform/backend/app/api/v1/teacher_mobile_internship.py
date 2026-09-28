@@ -53,6 +53,10 @@ class TeacherCheckinBody(_StrictBody):
     accuracyM: float | None = Field(default=None, ge=0)
     address: str | None = Field(default=None, max_length=500)
     note: str | None = Field(default=None, max_length=500)
+    photoFileId: str | None = Field(default=None, max_length=64)
+    coordinateSystem: Literal["GCJ02", "WGS84"] | None = None
+    countryRegion: str | None = Field(default=None, max_length=100)
+    locationProvider: str | None = Field(default=None, max_length=50)
 
 
 class TeacherWorkReportBody(_StrictBody):
