@@ -16,6 +16,9 @@ from app.models import (
 from app.services import file_service
 from app.services.db_service import _tid
 
+REPORT_DOCUMENT_EXTENSIONS = {"rar", "zip", "doc", "docx", "pdf", "xls", "xlsx"}
+MAX_REPORT_DOCUMENTS = 9
+
 DEFAULT_RULES = {
     "weeklyMinWords": 30,
     "planTaskMinWords": 10,
@@ -68,6 +71,7 @@ def validate_attachments(file_ids, rules: dict) -> tuple[list[str], list[dict]]:
     seen = set()
     image_count = 0
     video_count = 0
+    document_count = 0
     for raw in file_ids or []:
         fid = str(raw or "").strip()
         if not fid or fid in seen:
@@ -77,14 +81,21 @@ def validate_attachments(file_ids, rules: dict) -> tuple[list[str], list[dict]]:
         if not meta:
             raise AppException("VALIDATION_ERROR", f"附件 {fid} 不存在或无权访问")
         mime = str(meta.get("mimeType") or "").lower()
+        ext = str(meta.get("ext") or "").lower().lstrip(".")
         if mime.startswith("image/"):
             image_count += 1
             kind = "IMAGE"
         elif mime.startswith("video/"):
             video_count += 1
             kind = "VIDEO"
+        elif ext in REPORT_DOCUMENT_EXTENSIONS:
+            document_count += 1
+            kind = "DOCUMENT"
         else:
-            raise AppException("VALIDATION_ERROR", "过程报告附件仅支持图片或视频")
+            raise AppException(
+                "VALIDATION_ERROR",
+                "过程报告附件仅支持图片、视频、RAR、ZIP、WORD、EXCEL、PDF",
+            )
         ids.append(fid)
         metas.append({
             "fileId": fid,
@@ -98,6 +109,8 @@ def validate_attachments(file_ids, rules: dict) -> tuple[list[str], list[dict]]:
         raise AppException("VALIDATION_ERROR", f"图片最多 {int(rules.get('maxImages') or 9)} 张")
     if video_count > int(rules.get("maxVideos") or 3):
         raise AppException("VALIDATION_ERROR", f"视频最多 {int(rules.get('maxVideos') or 3)} 个")
+    if document_count > MAX_REPORT_DOCUMENTS:
+        raise AppException("VALIDATION_ERROR", f"文档/压缩附件最多 {MAX_REPORT_DOCUMENTS} 个")
     return ids, metas
 
 
