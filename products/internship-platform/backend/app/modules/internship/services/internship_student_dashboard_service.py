@@ -141,6 +141,7 @@ def get_my_dashboard(user, batch_id=None):
             "recordId": str(record.id), "batchId": str(record.batch_id or ""),
             "batchName": getattr(batch, "batch_name", "") or "",
             "recordStatus": record.status,
+            "destinationType": record.destination_type,
             "eligibilityReview": eligibility_result(db, record),
             "enterpriseId": str(record.enterprise_id or ""),
             "enterpriseName": record.enterprise_name or "",
