@@ -9,6 +9,7 @@ on:
       - "products/internship-platform/backend/app/models/internship_teacher_activity.py"
       - "products/internship-platform/backend/app/models/__init__.py"
       - "products/internship-platform/backend/alembic/versions/0011_yiyang_teacher_period_reports.py"
+      - "products/internship-platform/backend/alembic/versions/0019_yiyang_teacher_checkin_evidence.py"
       - "products/internship-platform/backend/app/modules/internship/services/internship_teacher_activity_service.py"
       - "products/internship-platform/backend/app/api/v1/teacher_mobile_internship.py"
       - "products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py"
@@ -56,9 +57,9 @@ jobs:
             products/internship-platform/backend/app/models/internship_teacher_activity.py \
             products/internship-platform/backend/app/modules/internship/services/internship_teacher_activity_service.py \
             products/internship-platform/backend/app/api/v1/teacher_mobile_internship.py
-      - name: Upgrade empty MySQL to ix0011
-        run: alembic -c products/internship-platform/backend/alembic.ini upgrade ix0011
-      - name: Verify teacher period report facts
+      - name: Upgrade empty MySQL to ix0019
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade ix0019
+      - name: Verify teacher activity facts
         run: |
           python - <<'PY'
           import os
@@ -67,13 +68,32 @@ jobs:
           engine = create_engine(os.environ["DATABASE_URL"])
           with engine.connect() as db:
               version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
-              columns = set(db.execute(text(
+              period_columns = set(db.execute(text(
                   "SELECT column_name FROM information_schema.columns "
                   "WHERE table_schema=DATABASE() AND table_name='t_internship_teacher_period_report'"
               )).scalars())
-          assert version == "ix0011", version
-          assert {"report_type", "period_key", "content", "attachment_file_ids_json"} <= columns
-          print({"version": version, "columnCount": len(columns)})
+              checkin_columns = set(db.execute(text(
+                  "SELECT column_name FROM information_schema.columns "
+                  "WHERE table_schema=DATABASE() AND table_name='t_internship_teacher_checkin'"
+              )).scalars())
+              makeup_table = db.execute(text(
+                  "SELECT COUNT(*) FROM information_schema.tables "
+                  "WHERE table_schema=DATABASE() AND table_name='t_internship_teacher_makeup'"
+              )).scalar_one()
+          assert version == "ix0019", version
+          assert {"report_type", "period_key", "content", "attachment_file_ids_json"} <= period_columns
+          assert {
+              "result", "coordinate_system", "country_region", "location_provider",
+              "photo_file_id", "watermarked_file_id", "photo_sha256",
+              "watermarked_sha256", "watermark_text"
+          } <= checkin_columns
+          assert makeup_table == 1
+          print({
+              "version": version,
+              "periodColumnCount": len(period_columns),
+              "checkinColumnCount": len(checkin_columns),
+              "makeupTable": bool(makeup_table),
+          })
           PY
       - name: Run C08/G16 acceptance only
         run: pytest -q products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py
