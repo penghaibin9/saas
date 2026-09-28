@@ -777,7 +777,8 @@ def get_weekly_report_detail(report_id, user=None) -> dict:
         return row
 
 
-def review_weekly_report(report_id, action: str, comment: str, user=None, *, expected_version=None) -> dict:
+def review_weekly_report(report_id, action: str, comment: str, user=None, *, expected_version=None,
+                         rating_level=None) -> dict:
     if action not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
     if action == "RETURN" and (not comment or len(comment.strip()) < 5):
@@ -798,12 +799,25 @@ def review_weekly_report(report_id, action: str, comment: str, user=None, *, exp
         )
         ver = extract_expected_version({"expectedVersion": expected_version})
         status = "APPROVED" if action == "APPROVE" else "RETURNED"
+        from app.modules.internship.services import internship_report_quality_service as quality
+        review_fact = quality.record_weekly_review(
+            db,
+            row=w,
+            action=action,
+            comment=comment,
+            user=user or {},
+            rating_level=rating_level,
+        )
         new_ver = versioned_update(
             db, WeeklyReport, entity_id=w.id, tenant_id=_tid(), expected_version=ver,
             expected_status=w.status, values={"status": status, "review_action": action,
                                                "review_comment": (comment or "").strip(),
                                                "reviewed_by_name": _op_name(), "reviewed_at": datetime.utcnow()})
-        detail = {"comment": (comment or "").strip()}
+        detail = {
+            "comment": (comment or "").strip(),
+            "ratingLevel": review_fact.rating_level,
+            "reportVersionId": str(review_fact.report_version_id),
+        }
         if action == "RETURN":
             # BUG-014：退回即冻结本版正文快照，学生重交后教师仍可逐版对比（版本记录数据源）
             detail["snapshot"] = _report_snapshot(w)
@@ -852,8 +866,13 @@ def review_weekly_report(report_id, action: str, comment: str, user=None, *, exp
         if outbox is not None:
             from app.services.message_event_outbox_service import try_process_pending_outbox
             try_process_pending_outbox(worker_id="internship-weekly-review", outbox_ids=[int(outbox.id)])
-        return {"id": str(w.id), "status": status, "version": new_ver,
-                "statusLabel": REPORT_STATUS_LABEL.get(status, status)}
+        return {
+            "id": str(w.id),
+            "status": status,
+            "version": new_ver,
+            "statusLabel": REPORT_STATUS_LABEL.get(status, status),
+            "ratingLevel": review_fact.rating_level,
+        }
 
 
 def batch_review_weekly_reports(body, user=None) -> dict:
@@ -881,7 +900,11 @@ def batch_review_weekly_reports(body, user=None) -> dict:
         rid = (it or {}).get("id")
         ver = (it or {}).get("expectedVersion", (it or {}).get("version"))
         try:
-            review_weekly_report(rid, action, comment, user=user, expected_version=ver)
+            rating = (it or {}).get("ratingLevel", b.get("ratingLevel"))
+            review_weekly_report(
+                rid, action, comment, user=user, expected_version=ver,
+                rating_level=rating,
+            )
             approved += 1
         except AppException as e:
             if e.code in ("DATA_CONFLICT", "VALIDATION_ERROR", "NOT_FOUND", "NO_PERMISSION", "FORBIDDEN"):
