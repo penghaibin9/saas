@@ -75,6 +75,7 @@ from app.models.internship_report_quality import (
 
 from app.models.internship_teacher_activity import (
     InternshipEmergencyNotice,
+    InternshipEmergencyNoticeTeacherReceipt,
     InternshipTeacherCheckin,
     InternshipTeacherPeriodReport,
     InternshipTeacherWorkReport,
