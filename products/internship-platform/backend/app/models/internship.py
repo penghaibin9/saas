@@ -657,6 +657,36 @@ class InternshipBatchPlan(PKMixin, TenantMixin, CommonMixin, Base):
     published_by_name: Mapped[str | None] = mapped_column(String(50))
 
 
+
+class InternshipEmergencyNoticeReceipt(PKMixin, TenantMixin, CommonMixin, Base):
+    """学生紧急通知强弹确认回执。
+
+    通知本体保留在 t_internship_emergency_notice；本表只记录“哪名学生明确点击
+    我已知悉”。GET 拉取通知不能视为已读，避免离线重登、网络中断时把未真正展示
+    的通知误记为已确认。
+    """
+    __tablename__ = "t_internship_emergency_notice_receipt"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "notice_id", "student_id",
+            name="uk_ix_emergency_notice_receipt",
+        ),
+        Index(
+            "ix_ix_emergency_notice_receipt_lookup",
+            "tenant_id", "batch_id", "student_id", "acknowledged_at",
+        ),
+    )
+
+    notice_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    acknowledged_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    acknowledged_channel: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="MOBILE_FORCE_POPUP",
+        comment="MOBILE_FORCE_POPUP/PC_NOTICE_CENTER",
+    )
+
+
 class InternshipPlanAck(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_plan_ack 计划书学生确认回执（迁移 0038）。一学生一计划一条。"""
     __tablename__ = "t_internship_plan_ack"
