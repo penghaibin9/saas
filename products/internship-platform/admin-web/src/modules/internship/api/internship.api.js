@@ -337,6 +337,18 @@ export const internshipApi = {
     return callList('/internship/risks', params)
   },
 
+  getStudentFeedback(params = {}) {
+    return callList('/internship/complaints', { ...params, category: 'STUDENT_FEEDBACK' })
+  },
+
+  getStudentFeedbackDetail(id) {
+    return call(() => request(`/internship/complaints/${id}`))
+  },
+
+  transitionStudentFeedback(id, body = {}) {
+    return call(() => request(`/internship/complaints/${id}/transition`, { method: 'POST', body }))
+  },
+
   getEnterprises(params = {}) {
     return callList('/internship/enterprises', params)
   },
