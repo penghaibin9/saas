@@ -337,6 +337,24 @@ export const internshipApi = {
     return callList('/internship/risks', params)
   },
 
+  getTeacherManagement(params = {}) {
+    return call(() => request('/internship/teacher-management', { params }))
+  },
+
+  exportTeacherManagement(params = {}) {
+    return call(() => request('/internship/teacher-management/export', { method: 'POST', params }))
+  },
+
+  getTeacherMakeups(params = {}) {
+    return call(() => request('/internship/teacher-management/makeups', { params }))
+  },
+
+  reviewTeacherMakeup(id, { action, comment = '', expectedVersion } = {}) {
+    return call(() => request(`/internship/teacher-management/makeups/${id}/review`, {
+      method: 'POST', body: { action, comment, expectedVersion }
+    }))
+  },
+
   getInternshipNotices(batchId, includeWithdrawn = true) {
     return call(() => request('/teacher-mobile/internship/emergency-notices', {
       params: { batchId, includeWithdrawn }
