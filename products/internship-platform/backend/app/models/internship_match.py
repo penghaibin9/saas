@@ -127,6 +127,10 @@ class InternshipApplication(PKMixin, TenantMixin, CommonMixin, Base):
     registry_reference: Mapped[str | None] = mapped_column(String(120))
     registry_verified_at: Mapped[datetime | None] = mapped_column(DateTime)
     application_note: Mapped[str | None] = mapped_column(String(500))
+    exemption_type: Mapped[str | None] = mapped_column(
+        String(30), comment="免实习类型 FURTHER_STUDY/MILITARY/HEALTH/OTHER")
+    exemption_reason: Mapped[str | None] = mapped_column(String(500), comment="免实习原因")
+    exemption_destination: Mapped[str | None] = mapped_column(String(200), comment="免实习后去向")
     application_statement: Mapped[str | None] = mapped_column(Text, comment="该志愿岗位专属申请说明")
     material_snapshot_id: Mapped[int | None] = mapped_column(
         BigInteger, index=True, comment="→ t_internship_application_material_snapshot.id"
