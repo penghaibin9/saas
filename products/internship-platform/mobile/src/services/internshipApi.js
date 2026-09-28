@@ -54,6 +54,8 @@ export const teacherInternshipEvaluateRotation = (rotationId, batchId, body) =>
   realRequest(`/mobile/teacher/internship/context/rotations/${enc(rotationId)}/evaluate`, {
     method: 'POST', data: { ...(body || {}), batchId: requireBatch(batchId) }
   })
+export const teacherInternshipProcurementStats = (batchId) =>
+  realRequest(batchPath('/mobile/teacher/internship/context/stats/procurement-overview', batchId))
 export const teacherInternshipPayroll = (batchId, page = 1, pageSize = 20, status = 'ALL') =>
   realRequest(pagedBatchPath('/mobile/teacher/internship/context/payroll', batchId, page, pageSize) + '&status=' + enc(status))
 export const teacherInternshipPayrollReview = (versionId, body) =>
