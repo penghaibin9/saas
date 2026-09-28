@@ -32,6 +32,7 @@
             <text class="itd__reset-note">重置后旧访问令牌立即失效；临时密码只在本次操作成功弹窗显示一次，不保存到本机。</text>
           </template>
         </view>
+        <button class="itd__process" @click="openProcess">查看轮岗全过程与分项成绩</button>
         <view class="card"><text class="itd__title">最近资格记录</text><view v-for="(item,index) in reviews" :key="index" class="itd__review"><view class="itd__row"><text>{{ labels[item.detail?.status] || '待认定' }}</text><text class="itd__meta">{{ item.operator }}</text></view><text v-if="item.detail?.reason" class="itd__reason">{{ item.detail.reason }}</text><text class="itd__meta">{{ formatDateTime(item.occurredAt) }}</text></view><text v-if="!reviews.length" class="itd__reason">暂无资格处理记录</text></view>
         <MobileInlineAlert type="info" description="资格认定由具备审核权限的学校经办人在教师 PC 端办理；此处用于核对学生进度和跟进安排。" />
       </view>
@@ -64,6 +65,9 @@ export default {
   methods: {
     formatDateTime,
     maskedNo(value) { const no = String(value || ''); return no.length > 4 ? no.slice(0,2) + '****' + no.slice(-2) : '****' },
+    openProcess() {
+      uni.navigateTo({ url: '/pages/teacher-internship/student-process/index?id=' + encodeURIComponent(this.id) + '&batchId=' + encodeURIComponent(this.batchId) + '&name=' + encodeURIComponent(this.detail?.name || '') })
+    },
     async load() {
       const seq = ++this.sequence; this.state = 'loading'; this.error = ''
       try {
@@ -140,5 +144,5 @@ export default {
 }
 </script>
 <style scoped>
-.itd__batch,.itd__meta{display:block;font-size:12px;color:var(--text-tertiary);line-height:1.7}.itd__account{display:flex;flex-direction:column;gap:8px}.itd__account-state{padding:12px 0;color:var(--text-tertiary);font-size:13px}.itd__reset{width:100%;min-height:44px;margin-top:10px;border:0;border-radius:var(--radius-md);background:var(--teacher-600);color:#fff;font-size:14px;font-weight:600}.itd__reset[disabled]{opacity:.45}.itd__reset::after{border:none}.itd__reset-note{display:block;margin-top:4px;color:var(--text-tertiary);font-size:11px;line-height:1.6}.itd__heading{display:flex;align-items:center;justify-content:space-between;font-size:24px;font-weight:600;margin:12px 0 8px}.itd__row{display:flex;align-items:center;justify-content:space-between;gap:12px}.itd__title{font-size:16px;font-weight:600}.itd__reason{display:block;font-size:14px;line-height:1.8;color:var(--text-secondary);white-space:pre-wrap;word-break:break-word;margin:16px 0}.itd__qualification{border-top:3px solid var(--brand-primary)}.itd__fact{display:flex;align-items:flex-start;justify-content:space-between;gap:22px;margin-top:20px;font-size:13px;line-height:1.7}.itd__fact>text:first-child{color:var(--text-tertiary);flex:none}.itd__fact>text:last-child{text-align:right}.itd__review{border-top:1px solid var(--border-light);padding-top:16px;margin-top:18px;font-size:14px}
+.itd__process{width:100%;min-height:44px;border:1px solid var(--teacher-200,#bfdbfe);border-radius:8px;background:var(--teacher-50,#eff6ff);color:var(--teacher-700,#1d4ed8);font-size:13px}.itd__process::after{border:none}.itd__batch,.itd__meta{display:block;font-size:12px;color:var(--text-tertiary);line-height:1.7}.itd__account{display:flex;flex-direction:column;gap:8px}.itd__account-state{padding:12px 0;color:var(--text-tertiary);font-size:13px}.itd__reset{width:100%;min-height:44px;margin-top:10px;border:0;border-radius:var(--radius-md);background:var(--teacher-600);color:#fff;font-size:14px;font-weight:600}.itd__reset[disabled]{opacity:.45}.itd__reset::after{border:none}.itd__reset-note{display:block;margin-top:4px;color:var(--text-tertiary);font-size:11px;line-height:1.6}.itd__heading{display:flex;align-items:center;justify-content:space-between;font-size:24px;font-weight:600;margin:12px 0 8px}.itd__row{display:flex;align-items:center;justify-content:space-between;gap:12px}.itd__title{font-size:16px;font-weight:600}.itd__reason{display:block;font-size:14px;line-height:1.8;color:var(--text-secondary);white-space:pre-wrap;word-break:break-word;margin:16px 0}.itd__qualification{border-top:3px solid var(--brand-primary)}.itd__fact{display:flex;align-items:flex-start;justify-content:space-between;gap:22px;margin-top:20px;font-size:13px;line-height:1.7}.itd__fact>text:first-child{color:var(--text-tertiary);flex:none}.itd__fact>text:last-child{text-align:right}.itd__review{border-top:1px solid var(--border-light);padding-top:16px;margin-top:18px;font-size:14px}
 </style>
