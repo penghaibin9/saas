@@ -319,46 +319,6 @@ def test_college_admin_cannot_freeze_other_college(world, monkeypatch):
     assert sorted(x["studentNo"] for x in items) == ["BP11", "BP12"]
 
 
-def test_frozen_roster_uses_signed_role_scope_ids_for_list_and_record_guard(world):
-    """账号管理写入的签名稳定范围应覆盖名单读与单记录守卫，空范围仍默认拒绝。"""
-    from app.db.session import get_sessionmaker
-    from app.models import InternshipRecord, StudentProfile
-    from app.modules.internship.services import internship_participant_service as svc
-    from app.modules.internship.services.internship_service import _rec_in_scope
-    from app.modules.internship.services.internship_student_service import _current_scope
-
-    svc.freeze(world["batchId"], {"rule": {"grades": ["2024"]}}, _user())
-    college_a = world["college"]["批次学院A"]
-    college_b = world["college"]["批次学院B"]
-    college_user = {
-        "userId": "db-901", "userType": "STAFF", "currentRoleCode": "COLLEGE_ADMIN",
-        "collegeId": str(college_a), "collegeIds": [str(college_a)],
-    }
-    items, total = svc.list_participants(world["batchId"], 1, 50, user=college_user)
-    assert total == 2
-    assert sorted(row["studentNo"] for row in items) == ["BP11", "BP12"]
-
-    db = get_sessionmaker()()
-    try:
-        scope = _current_scope(college_user)
-        a_record = db.query(InternshipRecord).filter_by(
-            tenant_id=TID, batch_id=world["batchId"], student_id=world["student"]["BP11"]).one()
-        a_student = db.get(StudentProfile, world["student"]["BP11"])
-        b_record = db.query(InternshipRecord).filter_by(
-            tenant_id=TID, batch_id=world["batchId"], student_id=world["student"]["BP21"]).one()
-        b_student = db.get(StudentProfile, world["student"]["BP21"])
-        assert _rec_in_scope(scope, db, a_record, a_student) is True
-        assert _rec_in_scope(scope, db, b_record, b_student) is False
-    finally:
-        db.close()
-
-    empty_scope_user = {"userId": "db-902", "userType": "STAFF", "currentRoleCode": "COLLEGE_ADMIN"}
-    _empty_items, empty_total = svc.list_participants(
-        world["batchId"], 1, 50, user=empty_scope_user,
-    )
-    assert empty_total == 0
-
-
 def test_manual_add_respects_scope(world, monkeypatch):
     """点名补录也不能越权把别院学生塞进来。"""
     from app.services import student_scope_resolver as r

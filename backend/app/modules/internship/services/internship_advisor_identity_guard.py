@@ -62,9 +62,6 @@ def _scope_rec_in_scope(scope, db, record, student) -> bool:
         return True
     if record is None:
         return False
-    if (scope.get("roleCode") or "").upper() not in scope_service.ADVISOR_SCOPE_ROLES:
-        if scope_service._student_matches_stable_scope(db, scope, student):
-            return True
     class_name, college_name = domain_service.resolve_student_class_college_names(
         db, student,
     )
@@ -82,21 +79,11 @@ def _domain_rec_in_scope(scope, db, record, student) -> bool:
 
 
 def _domain_rec_in_scope_pre(scope, record, student, class_name_map,
-                             college_name_map, stu_college_name_map=None,
-                             stable_scope_context=None) -> bool:
+                             college_name_map, stu_college_name_map=None) -> bool:
     if scope.get("mode") != "SCOPED":
         return True
     if record is None:
         return False
-    if (scope.get("roleCode") or "").upper() not in scope_service.ADVISOR_SCOPE_ROLES:
-        context = stable_scope_context or {}
-        if scope_service._student_matches_stable_scope_preloaded(
-            scope, student,
-            class_major_ids=context.get("classMajorIds"),
-            major_college_ids=context.get("majorCollegeIds"),
-            student_college_ids=context.get("studentCollegeIds"),
-        ):
-            return True
     class_name = college_name = None
     if student is not None:
         if getattr(student, "class_id", None):

@@ -6,118 +6,6 @@ from app.models import InternshipRecord, StudentProfile
 from app.services.db_service import _as_id, _tid
 
 
-_ORG_SCOPE_ROLES = {"COLLEGE_ADMIN", "GD_COLLEGE_ADMIN", "GD_MAJOR_ADMIN"}
-_ORG_SCOPE_CLAIMS = ("collegeIds", "majorIds", "classIds", "studentIds")
-ADVISOR_SCOPE_ROLES = {
-    "INTERN_MENTOR", "INTERNSHIP_MENTOR", "INTERN_ADVISOR", "GD_MENTOR", "MENTOR",
-}
-
-
-def resolve_internship_scope(user=None) -> dict:
-    """优先使用认证层签名的稳定角色范围；未配置时兼容旧教师范围并默认拒绝。
-
-    账号管理页写入 RoleAssignmentScope，登录服务只把该已生效范围签入 JWT。
-    这里只消费经认证依赖传入的 claims，不接受请求体提供的范围；导师仍走专属
-    advisor_user_id 边界，不可用学院/班级范围扩大本人指导范围。稳定范围存在时完全替换旧
-    名称范围，避免旧授权与新授权取并集造成范围扩张。
-    """
-    from app.core.context import get_current_user_ctx
-    from app.services.mobile_teacher_service import resolve_teacher_scope
-
-    actor = user or get_current_user_ctx() or {}
-    scope = dict(resolve_teacher_scope(actor))
-    role = str(actor.get("currentRoleCode") or scope.get("roleCode") or "").upper()
-    if role not in _ORG_SCOPE_ROLES or role in ADVISOR_SCOPE_ROLES:
-        return scope
-
-    trusted_ids = {}
-    for claim in _ORG_SCOPE_CLAIMS:
-        values = actor.get(claim) or []
-        if isinstance(values, (str, int)):
-            values = [values]
-        ids = {int(value) for value in values
-               if str(value).isascii() and str(value).isdecimal() and int(value) > 0}
-        singular = {"collegeIds": "collegeId", "majorIds": "majorId",
-                    "classIds": "classId", "studentIds": "studentId"}[claim]
-        value = actor.get(singular)
-        if value is not None and str(value).isascii() and str(value).isdecimal() and int(value) > 0:
-            ids.add(int(value))
-        if ids:
-            trusted_ids[claim] = ids
-
-    if not trusted_ids:
-        return scope
-    # Once signed, stable assignments exist, they are authoritative. Keeping a
-    # legacy name-based scope alongside them would form a union and could retain
-    # access to an old college after an administrator narrowed the assignment.
-    scope.update({
-        "studentNos": set(), "classNames": set(), "collegeNames": set(),
-        "advisorUserIds": set(), "advisorNames": set(),
-    })
-    scope.pop("studentIds", None)
-    scope.pop("classIds", None)
-    scope.pop("majorIds", None)
-    scope.pop("collegeIds", None)
-    for claim, ids in trusted_ids.items():
-        key = claim[0].lower() + claim[1:]
-        scope[key] = ids
-    scope["mode"] = "SCOPED"
-    scope["roleCode"] = role
-    scope["by"] = "ROLE_ASSIGNMENT_SCOPE"
-    return scope
-
-
-def _student_matches_stable_scope(db, scope: dict, student) -> bool:
-    """在 Python 单记录守卫中按稳定组织主键判定（不依赖可变名称）。"""
-    if student is None:
-        return False
-    if int(getattr(student, "id", 0) or 0) in scope.get("studentIds", set()):
-        return True
-    from app.core.tenant_scoped import tenant_get
-    from app.models import College, Major, SchoolClass
-
-    class_id = int(getattr(student, "class_id", 0) or 0)
-    major_id = int(getattr(student, "major_id", 0) or 0)
-    college_id = int(getattr(student, "college_id", 0) or 0)
-    if class_id and class_id in scope.get("classIds", set()):
-        return True
-    cls = tenant_get(db, SchoolClass, class_id) if class_id else None
-    if not major_id and cls:
-        major_id = int(cls.major_id or 0)
-    if major_id and major_id in scope.get("majorIds", set()):
-        return True
-    major = tenant_get(db, Major, major_id) if major_id else None
-    if not college_id and major:
-        college_id = int(major.college_id or 0)
-    if college_id and college_id in scope.get("collegeIds", set()):
-        return True
-    return False
-
-
-def _student_matches_stable_scope_preloaded(scope: dict, student, *,
-                                            class_major_ids=None, major_college_ids=None,
-                                            student_college_ids=None) -> bool:
-    """与单记录守卫同口径，供已批量预载班级/专业关系的列表使用。"""
-    if student is None:
-        return False
-    if int(getattr(student, "id", 0) or 0) in scope.get("studentIds", set()):
-        return True
-    class_id = int(getattr(student, "class_id", 0) or 0)
-    major_id = int(getattr(student, "major_id", 0) or 0)
-    if class_id and class_id in scope.get("classIds", set()):
-        return True
-    if not major_id and class_id:
-        major_id = int((class_major_ids or {}).get(class_id) or 0)
-    if major_id and major_id in scope.get("majorIds", set()):
-        return True
-    college_id = int(getattr(student, "college_id", 0) or 0)
-    if not college_id and major_id:
-        college_id = int((major_college_ids or {}).get(major_id) or 0)
-    if not college_id:
-        college_id = int((student_college_ids or {}).get(int(student.id)) or 0)
-    return bool(college_id and college_id in scope.get("collegeIds", set()))
-
-
 def lock_internship_record(db, internship_id) -> InternshipRecord:
     """Lock an existing tenant-scoped owner before any child first-write.
 
@@ -163,6 +51,7 @@ def apply_internship_record_scope(query, user):
     from sqlalchemy.orm import aliased
     from app.models import College, Major, SchoolClass, StudentProfile
     from app.modules.internship.services.internship_student_service import _current_scope
+
     scope = _current_scope(user)
     if scope.get("mode") != "SCOPED":
         return query
@@ -239,21 +128,6 @@ def apply_internship_record_scope(query, user):
     )
 
     student_clauses = []
-    if scope.get("studentIds"):
-        student_clauses.append(StudentProfile.id.in_(scope["studentIds"]))
-    if scope.get("classIds"):
-        student_clauses.append(StudentProfile.class_id.in_(scope["classIds"]))
-    if scope.get("majorIds"):
-        student_clauses.append(or_(
-            StudentProfile.major_id.in_(scope["majorIds"]),
-            SchoolClass.major_id.in_(scope["majorIds"]),
-        ))
-    if scope.get("collegeIds"):
-        student_clauses.append(or_(
-            StudentProfile.college_id.in_(scope["collegeIds"]),
-            direct_major.college_id.in_(scope["collegeIds"]),
-            class_major.college_id.in_(scope["collegeIds"]),
-        ))
     if scope.get("studentNos"):
         student_clauses.append(StudentProfile.student_no.in_(scope["studentNos"]))
     if scope.get("classNames"):
