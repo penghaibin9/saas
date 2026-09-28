@@ -77,6 +77,7 @@ from app.models.internship_teacher_activity import (
     InternshipEmergencyNotice,
     InternshipEmergencyNoticeTeacherReceipt,
     InternshipTeacherCheckin,
+    InternshipTeacherMakeup,
     InternshipTeacherPeriodReport,
     InternshipTeacherWorkReport,
 )
