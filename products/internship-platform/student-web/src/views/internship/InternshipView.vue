@@ -964,6 +964,10 @@ function resetSourceStates() {
   insuranceEpoch++; insuranceError.value = ''; insuranceConflict.value = false
   Object.keys(insForm).forEach(key => { insForm[key] = '' })
   notices.value = []
+  reportRules.value = {
+    dailyMinWords: 30, weeklyMinWords: 30, monthlyMinWords: 100, summaryMinWords: 300,
+    dailyRequiredCount: 0, weeklyRequiredCount: 0, monthlyRequiredCount: 0, summaryRequiredCount: 1
+  }
   planMeta.value = null
   selfEvalMeta.value = null
   appealMeta.value = null
@@ -1021,6 +1025,11 @@ async function fetchTabSource(key) {
     ])
     my.value.weeklyReports = rowsFrom(weekly)
     my.value.processReports = rowsFrom(reports)
+    reportRules.value = {
+      ...reportRules.value,
+      ...(weekly?.rules || {}),
+      ...(reports?.rules || {})
+    }
     return my.value.weeklyReports.length > 0 || my.value.processReports.length > 0
   }
   if (key === 'agreement') {
@@ -1101,7 +1110,7 @@ async function load() {
     }
     if (data.batchId) persistInternshipBatch(data.batchId)
     if (!data.hasData) return
-    const initialSources = [...new Set(['agreement', 'insurance', 'plan', tab.value])]
+    const initialSources = [...new Set(['agreement', 'insurance', 'plan', 'report', tab.value])]
     await Promise.all(initialSources.map((key) => loadTab(key, true)))
   } catch (e) { error.value = e?.message || '实习信息加载失败' } finally { loading.value = false }
 }
@@ -1542,7 +1551,8 @@ function switchReportTab(value) {
   if (!reportTabs.includes(value) || busy.value) return
   reportTab.value = value
   reportError.value = ''
-  if (value === '月报' && !reportForm.periodKey) reportForm.periodKey = currentMonth()
+  if (value === '日报') reportForm.periodKey = new Date().toISOString().slice(0, 10)
+  if (value === '月报') reportForm.periodKey = currentMonth()
   if (value === '实习总结') reportForm.periodKey = 'FINAL'
 }
 function editWeekly(item) {
@@ -1568,7 +1578,7 @@ function editProcessReport(item) {
 }
 async function submitWeekly() {
   if (busy.value || !weeklyCanSubmit.value) {
-    reportError.value = !weeklyForm.week ? '请填写周次。' : '本周工作内容与收获均至少填写 10 个字。'
+    reportError.value = !weeklyForm.week ? '请填写周次。' : '周报正文合计至少填写 ' + Number(reportRules.value.weeklyMinWords || 30) + ' 字。'
     return
   }
   reportError.value = ''
@@ -1629,7 +1639,15 @@ async function submitReport() {
       nextStep: '等待指导教师批阅；退回意见会保留在当前记录中。'
     }
     ui.notify(reportReceipt.value.actionLabel)
-    Object.assign(reportForm, { periodKey: reportType === 'SUMMARY' ? 'FINAL' : currentMonth(), content: '', attachments: [] })
+    Object.assign(reportForm, {
+      periodKey: reportType === 'SUMMARY'
+        ? 'FINAL'
+        : reportType === 'DAILY'
+          ? new Date().toISOString().slice(0, 10)
+          : currentMonth(),
+      content: '',
+      attachments: []
+    })
     await loadTab('report', true)
   }
   catch (e) {
