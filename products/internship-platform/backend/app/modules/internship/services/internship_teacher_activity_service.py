@@ -1,6 +1,7 @@
 """Yiyang C08/G16 teacher activity and persisted emergency notice authority."""
 from __future__ import annotations
 
+from collections import defaultdict
 from datetime import date, datetime, timezone
 import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -16,10 +17,14 @@ from app.models import (
     InternshipBatch,
     InternshipEmergencyNotice,
     InternshipEmergencyNoticeTeacherReceipt,
+    InternshipGuidance,
     InternshipRecord,
     InternshipTeacherCheckin,
+    InternshipTeacherMakeup,
     InternshipTeacherPeriodReport,
     InternshipTeacherWorkReport,
+    InternshipVisit,
+    User,
 )
 from app.modules.internship.services.internship_audit_service import add_audit
 from app.modules.internship.services.internship_checkin_evidence_service import watermark_photo
@@ -761,6 +766,454 @@ def list_my_period_reports(
             "page": page,
             "pageSize": page_size,
         }
+
+
+
+def _parse_teacher_makeup_date(raw) -> date:
+    try:
+        value = date.fromisoformat(str(raw or "").strip())
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", "补签日期必须为 YYYY-MM-DD") from None
+    local_today = datetime.now(timezone.utc).astimezone(ZoneInfo("Asia/Shanghai")).date()
+    if value > local_today:
+        raise AppException("VALIDATION_ERROR", "不能申请未来日期的教师补签")
+    return value
+
+
+def _makeup_view(row: InternshipTeacherMakeup) -> dict:
+    evidence = None
+    if row.evidence_file_id:
+        try:
+            evidence = file_service.attachment_view(str(row.evidence_file_id))
+        except Exception:  # noqa: BLE001
+            evidence = None
+    return {
+        "id": str(row.id),
+        "batchId": str(row.batch_id),
+        "teacherUserId": str(row.teacher_user_id),
+        "teacherName": row.teacher_name_snapshot,
+        "localDate": row.local_date.isoformat() if row.local_date else "",
+        "reason": row.reason,
+        "evidenceFileId": row.evidence_file_id or "",
+        "evidence": evidence,
+        "status": row.status,
+        "reviewedByName": row.reviewed_by_name or "",
+        "reviewedAt": _iso(row.reviewed_at) or "",
+        "reviewComment": row.review_comment or "",
+        "version": int(row.version or 0),
+    }
+
+
+def apply_teacher_makeup(user: dict, body: dict) -> dict:
+    payload = body or {}
+    teacher_id, teacher_name = _teacher_identity(user)
+    target_date = _parse_teacher_makeup_date(payload.get("localDate"))
+    reason = str(payload.get("reason") or "").strip()
+    if len(reason) < 5 or len(reason) > 500:
+        raise AppException("VALIDATION_ERROR", "教师补签原因需为 5 到 500 个字")
+    evidence_file_id = str(payload.get("evidenceFileId") or "").strip() or None
+    if evidence_file_id and not file_service.get_file_meta(evidence_file_id):
+        raise AppException("VALIDATION_ERROR", "补签佐证文件不存在或无权访问")
+
+    with session() as db:
+        batch = _assert_teacher_batch_scope(db, payload.get("batchId"), user)
+        start = batch.start_date.date() if batch.start_date else None
+        end = batch.end_date.date() if batch.end_date else None
+        if start and target_date < start:
+            raise AppException("VALIDATION_ERROR", "补签日期早于当前实习批次开始日期")
+        if end and target_date > end:
+            raise AppException("VALIDATION_ERROR", "补签日期晚于当前实习批次结束日期")
+
+        existing_checkin = db.scalar(select(InternshipTeacherCheckin).where(
+            InternshipTeacherCheckin.tenant_id == _tid(),
+            InternshipTeacherCheckin.batch_id == batch.id,
+            InternshipTeacherCheckin.teacher_user_id == teacher_id,
+            InternshipTeacherCheckin.local_date == target_date,
+            InternshipTeacherCheckin.is_deleted.is_(False),
+        ))
+        if existing_checkin:
+            raise AppException("DATA_CONFLICT", "该日期已有教师签到记录，无需补签")
+
+        pending = db.scalar(select(InternshipTeacherMakeup).where(
+            InternshipTeacherMakeup.tenant_id == _tid(),
+            InternshipTeacherMakeup.batch_id == batch.id,
+            InternshipTeacherMakeup.teacher_user_id == teacher_id,
+            InternshipTeacherMakeup.local_date == target_date,
+            InternshipTeacherMakeup.status == "PENDING",
+            InternshipTeacherMakeup.is_deleted.is_(False),
+        ))
+        if pending:
+            raise AppException("DATA_CONFLICT", "该日期已有待审核教师补签申请")
+
+        row = InternshipTeacherMakeup(
+            tenant_id=_tid(),
+            batch_id=batch.id,
+            teacher_user_id=teacher_id,
+            teacher_name_snapshot=teacher_name,
+            local_date=target_date,
+            reason=reason,
+            evidence_file_id=evidence_file_id,
+            status="PENDING",
+            active_pending_key="1",
+        )
+        db.add(row)
+        db.flush()
+        if evidence_file_id:
+            file_service.bind_file_biz(
+                evidence_file_id,
+                "INTERNSHIP_TEACHER_MAKEUP",
+                str(row.id),
+                user=user,
+                db=db,
+            )
+        add_audit(
+            db,
+            target_type="TEACHER_MAKEUP",
+            target_id=row.id,
+            action="TEACHER_MAKEUP_APPLY",
+            user=user,
+            batch_id=batch.id,
+            file_ids=[evidence_file_id] if evidence_file_id else [],
+            detail={
+                "teacherUserId": str(teacher_id),
+                "localDate": target_date.isoformat(),
+                "reason": reason,
+            },
+        )
+        db.commit()
+        return _makeup_view(row)
+
+
+def list_my_teacher_makeups(
+    user: dict, *, batch_id, status: str | None = None,
+    page: int = 1, page_size: int = 50,
+) -> dict:
+    teacher_id, _ = _teacher_identity(user)
+    normalized = str(status or "").strip().upper()
+    if normalized and normalized not in {"PENDING", "APPROVED", "REJECTED", "WITHDRAWN"}:
+        raise AppException("VALIDATION_ERROR", "补签状态不合法")
+    page = max(1, int(page or 1))
+    page_size = min(100, max(1, int(page_size or 50)))
+    with session() as db:
+        batch = _assert_teacher_batch_scope(db, batch_id, user)
+        query = select(InternshipTeacherMakeup).where(
+            InternshipTeacherMakeup.tenant_id == _tid(),
+            InternshipTeacherMakeup.batch_id == batch.id,
+            InternshipTeacherMakeup.teacher_user_id == teacher_id,
+            InternshipTeacherMakeup.is_deleted.is_(False),
+        )
+        if normalized:
+            query = query.where(InternshipTeacherMakeup.status == normalized)
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        rows = db.scalars(query.order_by(
+            InternshipTeacherMakeup.local_date.desc(),
+            InternshipTeacherMakeup.id.desc(),
+        ).offset((page - 1) * page_size).limit(page_size)).all()
+        return {
+            "items": [_makeup_view(row) for row in rows],
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+        }
+
+
+def withdraw_teacher_makeup(user: dict, makeup_id) -> dict:
+    teacher_id, _ = _teacher_identity(user)
+    with session() as db:
+        row = db.scalar(select(InternshipTeacherMakeup).where(
+            InternshipTeacherMakeup.id == int(makeup_id),
+            InternshipTeacherMakeup.tenant_id == _tid(),
+            InternshipTeacherMakeup.teacher_user_id == teacher_id,
+            InternshipTeacherMakeup.is_deleted.is_(False),
+        ).with_for_update())
+        if not row:
+            raise not_found("教师补签申请不存在")
+        if row.status != "PENDING":
+            raise AppException("DATA_CONFLICT", "仅待审核教师补签申请可以撤回")
+        _assert_teacher_batch_scope(db, row.batch_id, user)
+        row.status = "WITHDRAWN"
+        row.active_pending_key = None
+        row.version = int(row.version or 0) + 1
+        add_audit(
+            db,
+            target_type="TEACHER_MAKEUP",
+            target_id=row.id,
+            action="TEACHER_MAKEUP_WITHDRAW",
+            user=user,
+            batch_id=row.batch_id,
+            detail={"teacherUserId": str(teacher_id), "localDate": row.local_date.isoformat()},
+        )
+        db.commit()
+        return _makeup_view(row)
+
+
+def list_teacher_makeups_admin(
+    user: dict, *, batch_id, status: str | None = None,
+    page: int = 1, page_size: int = 100,
+) -> dict:
+    _require_school_admin(user)
+    normalized = str(status or "").strip().upper()
+    if normalized and normalized not in {"PENDING", "APPROVED", "REJECTED", "WITHDRAWN"}:
+        raise AppException("VALIDATION_ERROR", "补签状态不合法")
+    page = max(1, int(page or 1))
+    page_size = min(200, max(1, int(page_size or 100)))
+    with session() as db:
+        batch = _batch(db, batch_id)
+        query = select(InternshipTeacherMakeup).where(
+            InternshipTeacherMakeup.tenant_id == _tid(),
+            InternshipTeacherMakeup.batch_id == batch.id,
+            InternshipTeacherMakeup.is_deleted.is_(False),
+        )
+        if normalized:
+            query = query.where(InternshipTeacherMakeup.status == normalized)
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        rows = db.scalars(query.order_by(
+            InternshipTeacherMakeup.status.asc(),
+            InternshipTeacherMakeup.local_date.desc(),
+            InternshipTeacherMakeup.id.desc(),
+        ).offset((page - 1) * page_size).limit(page_size)).all()
+        return {
+            "items": [_makeup_view(row) for row in rows],
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+        }
+
+
+def review_teacher_makeup(user: dict, makeup_id, body: dict) -> dict:
+    _require_school_admin(user)
+    payload = body or {}
+    action = str(payload.get("action") or "").strip().upper()
+    if action not in {"APPROVE", "REJECT"}:
+        raise AppException("VALIDATION_ERROR", "action 仅支持 APPROVE/REJECT")
+    comment = str(payload.get("comment") or "").strip()
+    if action == "REJECT" and len(comment) < 5:
+        raise AppException("VALIDATION_ERROR", "驳回教师补签时必须填写不少于 5 个字的原因")
+
+    with session() as db:
+        row = db.scalar(select(InternshipTeacherMakeup).where(
+            InternshipTeacherMakeup.id == int(makeup_id),
+            InternshipTeacherMakeup.tenant_id == _tid(),
+            InternshipTeacherMakeup.is_deleted.is_(False),
+        ).with_for_update())
+        if not row:
+            raise not_found("教师补签申请不存在")
+        if row.status != "PENDING":
+            raise AppException("DATA_CONFLICT", "该教师补签申请已处理，请刷新")
+        batch = _batch(db, row.batch_id)
+
+        if action == "APPROVE":
+            existing = db.scalar(select(InternshipTeacherCheckin).where(
+                InternshipTeacherCheckin.tenant_id == _tid(),
+                InternshipTeacherCheckin.batch_id == batch.id,
+                InternshipTeacherCheckin.teacher_user_id == row.teacher_user_id,
+                InternshipTeacherCheckin.local_date == row.local_date,
+                InternshipTeacherCheckin.is_deleted.is_(False),
+            ))
+            if existing:
+                raise AppException("DATA_CONFLICT", "该日期已存在教师签到，不能重复审批补签")
+            checkin = InternshipTeacherCheckin(
+                tenant_id=_tid(),
+                batch_id=batch.id,
+                teacher_user_id=row.teacher_user_id,
+                teacher_name_snapshot=row.teacher_name_snapshot,
+                local_date=row.local_date,
+                timezone_name="Asia/Shanghai",
+                checked_in_at=datetime.utcnow(),
+                result="MAKEUP",
+                note=f"教师补签审批通过：{row.reason}"[:500],
+            )
+            db.add(checkin)
+            db.flush()
+            status = "APPROVED"
+            add_audit(
+                db,
+                target_type="TEACHER_CHECKIN",
+                target_id=checkin.id,
+                action="TEACHER_CHECKIN_MAKEUP_MATERIALIZE",
+                user=user,
+                batch_id=batch.id,
+                detail={
+                    "teacherUserId": str(row.teacher_user_id),
+                    "localDate": row.local_date.isoformat(),
+                    "makeupId": str(row.id),
+                },
+            )
+        else:
+            status = "REJECTED"
+
+        row.status = status
+        row.active_pending_key = None
+        row.reviewed_by_name = str((user or {}).get("realName") or "实习管理员")[:100]
+        row.reviewed_at = datetime.utcnow()
+        row.review_comment = comment[:500] or None
+        row.version = int(row.version or 0) + 1
+        add_audit(
+            db,
+            target_type="TEACHER_MAKEUP",
+            target_id=row.id,
+            action=f"TEACHER_MAKEUP_{status}",
+            user=user,
+            batch_id=batch.id,
+            expected_version=payload.get("expectedVersion"),
+            new_version=int(row.version or 0),
+            detail={
+                "teacherUserId": str(row.teacher_user_id),
+                "localDate": row.local_date.isoformat(),
+                "comment": comment,
+            },
+        )
+        db.commit()
+        return _makeup_view(row)
+
+
+def teacher_management_ledger(user: dict, *, batch_id, keyword: str = "") -> dict:
+    _require_school_admin(user)
+    search = str(keyword or "").strip().lower()
+    with session() as db:
+        batch = _batch(db, batch_id)
+        records = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False),
+        )).all()
+        record_ids = [int(row.id) for row in records]
+        assigned = defaultdict(list)
+        teacher_ids = set()
+        for row in records:
+            if row.advisor_user_id:
+                tid = int(row.advisor_user_id)
+                teacher_ids.add(tid)
+                assigned[tid].append(int(row.id))
+
+        checkins = db.scalars(select(InternshipTeacherCheckin).where(
+            InternshipTeacherCheckin.tenant_id == _tid(),
+            InternshipTeacherCheckin.batch_id == batch.id,
+            InternshipTeacherCheckin.is_deleted.is_(False),
+        )).all()
+        work_reports = db.scalars(select(InternshipTeacherWorkReport).where(
+            InternshipTeacherWorkReport.tenant_id == _tid(),
+            InternshipTeacherWorkReport.batch_id == batch.id,
+            InternshipTeacherWorkReport.is_deleted.is_(False),
+        )).all()
+        period_reports = db.scalars(select(InternshipTeacherPeriodReport).where(
+            InternshipTeacherPeriodReport.tenant_id == _tid(),
+            InternshipTeacherPeriodReport.batch_id == batch.id,
+            InternshipTeacherPeriodReport.is_deleted.is_(False),
+        )).all()
+        makeups = db.scalars(select(InternshipTeacherMakeup).where(
+            InternshipTeacherMakeup.tenant_id == _tid(),
+            InternshipTeacherMakeup.batch_id == batch.id,
+            InternshipTeacherMakeup.is_deleted.is_(False),
+        )).all()
+
+        for row in [*checkins, *work_reports, *period_reports, *makeups]:
+            teacher_ids.add(int(row.teacher_user_id))
+
+        users = {
+            int(row.id): row for row in db.scalars(select(User).where(
+                User.tenant_id == _tid(),
+                User.id.in_(teacher_ids or {0}),
+                User.is_deleted.is_(False),
+            )).all()
+        }
+
+        guidance = []
+        visits = []
+        if record_ids:
+            guidance = db.scalars(select(InternshipGuidance).where(
+                InternshipGuidance.tenant_id == _tid(),
+                InternshipGuidance.internship_id.in_(record_ids),
+                InternshipGuidance.status == "NORMAL",
+                InternshipGuidance.is_deleted.is_(False),
+            )).all()
+            visits = db.scalars(select(InternshipVisit).where(
+                InternshipVisit.tenant_id == _tid(),
+                InternshipVisit.internship_id.in_(record_ids),
+                InternshipVisit.is_deleted.is_(False),
+            )).all()
+
+        checkin_map = defaultdict(list)
+        work_map = defaultdict(list)
+        period_map = defaultdict(list)
+        makeup_map = defaultdict(list)
+        for row in checkins: checkin_map[int(row.teacher_user_id)].append(row)
+        for row in work_reports: work_map[int(row.teacher_user_id)].append(row)
+        for row in period_reports: period_map[int(row.teacher_user_id)].append(row)
+        for row in makeups: makeup_map[int(row.teacher_user_id)].append(row)
+
+        guidance_by_record = defaultdict(int)
+        visit_by_record = defaultdict(int)
+        for row in guidance: guidance_by_record[int(row.internship_id)] += 1
+        for row in visits: visit_by_record[int(row.internship_id)] += 1
+
+        rows = []
+        for teacher_id in sorted(teacher_ids):
+            user_row = users.get(teacher_id)
+            snapshots = (
+                checkin_map[teacher_id] + work_map[teacher_id]
+                + period_map[teacher_id] + makeup_map[teacher_id]
+            )
+            snapshot_name = next(
+                (str(getattr(item, "teacher_name_snapshot", "") or "") for item in snapshots
+                 if getattr(item, "teacher_name_snapshot", None)),
+                "",
+            )
+            name = (user_row.real_name if user_row else snapshot_name) or f"教师{teacher_id}"
+            employee_no = user_row.login_name if user_row else ""
+            if search and search not in name.lower() and search not in employee_no.lower():
+                continue
+            own_records = assigned.get(teacher_id, [])
+            periods = period_map[teacher_id]
+            last_checkin = max(
+                (row.checked_in_at for row in checkin_map[teacher_id] if row.checked_in_at),
+                default=None,
+            )
+            rows.append({
+                "teacherUserId": str(teacher_id),
+                "teacherName": name,
+                "employeeNo": employee_no,
+                "studentCount": len(own_records),
+                "checkinCount": len(checkin_map[teacher_id]),
+                "makeupApprovedCount": sum(1 for row in makeup_map[teacher_id] if row.status == "APPROVED"),
+                "makeupPendingCount": sum(1 for row in makeup_map[teacher_id] if row.status == "PENDING"),
+                "workReportCount": len(work_map[teacher_id]),
+                "weeklyReportCount": sum(1 for row in periods if row.report_type == "WEEKLY"),
+                "monthlyReportCount": sum(1 for row in periods if row.report_type == "MONTHLY"),
+                "summaryReportCount": sum(1 for row in periods if row.report_type == "SUMMARY"),
+                "guidanceCount": sum(guidance_by_record[rid] for rid in own_records),
+                "visitCount": sum(visit_by_record[rid] for rid in own_records),
+                "lastCheckinAt": _iso(last_checkin) or "",
+            })
+        return {
+            "batchId": str(batch.id),
+            "batchName": batch.batch_name or "",
+            "items": rows,
+            "total": len(rows),
+        }
+
+
+def export_teacher_management_ledger(user: dict, *, batch_id, keyword: str = "") -> dict:
+    from app.services import xlsx_util
+
+    data = teacher_management_ledger(user, batch_id=batch_id, keyword=keyword)
+    headers = [
+        "教师姓名", "教工号", "所带学生", "本人签到", "已通过补签", "待审补签",
+        "工作日报", "本人周报", "本人月报", "本人总结", "指导记录", "巡访记录", "最近签到",
+    ]
+    rows = [[
+        row["teacherName"], row["employeeNo"], row["studentCount"], row["checkinCount"],
+        row["makeupApprovedCount"], row["makeupPendingCount"], row["workReportCount"],
+        row["weeklyReportCount"], row["monthlyReportCount"], row["summaryReportCount"],
+        row["guidanceCount"], row["visitCount"], row["lastCheckinAt"],
+    ] for row in data["items"]]
+    content = xlsx_util.build_ledger_xlsx(
+        "教师管理台账",
+        headers,
+        rows,
+        watermark=f"跃科岗位实习管理平台 · 教师管理 · {datetime.now():%Y-%m-%d %H:%M}",
+    )
+    return xlsx_util.pack_xlsx_result(content, "岗位实习教师管理台账.xlsx", len(rows))
 
 
 def _notice_view(row: InternshipEmergencyNotice) -> dict:
