@@ -15,6 +15,8 @@ from app.modules.internship.services.internship_student_context_guard import (
 from app.services.db_service import _tid, session
 
 
+TRANSFER_AFTER_UNRESOLVED = 3
+
 FAQS = (
     ("CHECKIN", ("打卡", "签到", "定位", "位置"), "请先进入“实习打卡”查看当日状态。定位只在你主动点击打卡时采集；定位异常会在页面明确提示，可按学校规则申请补卡或免签。"),
     ("REPORT", ("周报", "日报", "月报", "总结", "报告"), "请进入岗位实习首页的“日报/周报/月报/实习总结”。已提交内容会保留审核状态，退回后按教师意见修改再提交。"),
@@ -75,7 +77,7 @@ def _view(row: InternshipSupportSession) -> dict:
         "sessionId": str(row.id),
         "status": row.status,
         "unresolvedCount": int(row.unresolved_count or 0),
-        "remainingBeforeHuman": max(0, 3 - int(row.unresolved_count or 0)),
+        "remainingBeforeHuman": max(0, TRANSFER_AFTER_UNRESOLVED - int(row.unresolved_count or 0)),
         "history": history,
         "lastQuestion": row.last_question or "",
         "lastAnswer": row.last_answer or "",
@@ -186,7 +188,7 @@ def unresolved(user: dict, session_id, body: dict) -> dict:
         if row.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "当前客服会话已结束，请重新提问")
         next_count = int(row.unresolved_count or 0) + 1
-        if next_count < 3:
+        if next_count < TRANSFER_AFTER_UNRESOLVED:
             row.unresolved_count = next_count
             row.version = int(row.version or 0) + 1
             add_audit(
@@ -238,7 +240,7 @@ def unresolved(user: dict, session_id, body: dict) -> dict:
         record, student, batch_id = _context(db, user, payload, for_write=True)
         row = _owned_session(
             db, transfer_payload["_sessionId"], record, student, lock=True)
-        row.unresolved_count = max(3, int(row.unresolved_count or 0))
+        row.unresolved_count = max(TRANSFER_AFTER_UNRESOLVED, int(row.unresolved_count or 0))
         row.status = "TRANSFERRED"
         row.transferred_risk_id = int(ticket["id"])
         row.transferred_at = datetime.utcnow()
