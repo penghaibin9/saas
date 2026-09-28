@@ -61,10 +61,18 @@ function trendOf(current, previous, goodWhen, formatDelta) {
   return { trendType, trendQuality, trendLabel }
 }
 
-/** 计算某学生截至 today 的连续异常打卡天数 */
-import {
-  isContinuousCheckinAbnormal
-} from '@/modules/dashboard/rules/dashboardRiskRules.js'
+/** 计算某学生截至 today 的连续异常打卡天数。Standalone 自包含，不依赖 SaaS dashboard 规则。 */
+function isContinuousCheckinAbnormal(checkins = [], studentId, today) {
+  const byDate = new Map(checkins.filter((row) => String(row.studentId) === String(studentId)).map((row) => [String(row.date), row]))
+  const cursor = new Date(String(today) + 'T00:00:00')
+  for (let i = 0; i < 3; i += 1) {
+    const key = cursor.toISOString().slice(0, 10)
+    const row = byDate.get(key)
+    if (!row || row.status === 'NORMAL') return false
+    cursor.setUTCDate(cursor.getUTCDate() - 1)
+  }
+  return true
+}
 
 /* ==================== 岗位实习指标 ==================== */
 export function aggregateInternshipMetrics({
