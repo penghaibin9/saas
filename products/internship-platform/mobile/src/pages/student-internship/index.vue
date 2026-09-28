@@ -115,6 +115,23 @@
       <button class="btn btn-ghost flex-1" @click="weekly">写周报</button>
       <button class="btn btn-primary flex-1" :disabled="i.checkin.done" @click="openSub('/pages/student-internship/checkin/index')">{{ i.checkin.done ? '已打卡' : '去打卡' }}</button>
     </MobileSafeAreaBar>
+
+    <view v-if="activeEmergencyNotice" class="in__notice-mask">
+      <view class="in__notice-dialog" role="dialog">
+        <view class="in__notice-head">
+          <text class="in__notice-kicker">紧急通知</text>
+          <text class="in__notice-title">{{ activeEmergencyNotice.title }}</text>
+          <text class="in__notice-meta">{{ activeEmergencyNotice.senderName || '学校' }} · {{ formatDateTime(activeEmergencyNotice.publishedAt) }}</text>
+        </view>
+        <scroll-view scroll-y class="in__notice-body">
+          <text class="in__notice-content">{{ activeEmergencyNotice.content }}</text>
+        </scroll-view>
+        <MobileInlineAlert type="warning" description="该通知需要本人明确确认。关闭页面、网络中断或确认失败都不会自动记为已读，下次进入仍会继续提醒。" />
+        <button class="btn btn-primary in__notice-ack" :disabled="noticeAcking" @click="acknowledgeEmergencyNotice">
+          {{ noticeAcking ? '正在记录…' : '我已知悉' }}
+        </button>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -134,6 +151,7 @@ export default {
     return {
       i: null, state: 'loading', loadSequence: 0, selectedBatchId: '', candidates: [],
       compliance: { items: [], blockers: [], warnings: [], timeline: [] }, complianceError: '',
+      pendingEmergencyNotices: [], activeEmergencyNotice: null, noticeAcking: false,
       navItems: [
         { label: '知情确认', path: '/pages/student-internship/consent/index', icon: '✅', stages: ['onboard'] },
         { label: '安全教育', path: '/pages/student-internship/safety/index', icon: '⛑️', stages: ['onboard'] },
@@ -211,7 +229,14 @@ export default {
     persistBatch() { try { if (this.selectedBatchId) uni.setStorageSync(STORAGE_KEY, this.selectedBatchId); else uni.removeStorageSync(STORAGE_KEY) } catch (e) {} },
     withBatch(path) { if (!this.selectedBatchId) return path; return `${path}${path.includes('?') ? '&' : '?'}batchId=${encodeURIComponent(this.selectedBatchId)}` },
     openSub(path) { go(this.withBatch(path)) },
-    selectCandidate(candidate) { this.selectedBatchId = String(candidate?.batchId || ''); this.persistBatch(); this.load() },
+    selectCandidate(candidate) {
+      this.selectedBatchId = String(candidate?.batchId || '')
+      this.pendingEmergencyNotices = []
+      this.activeEmergencyNotice = null
+      this.noticeAcking = false
+      this.persistBatch()
+      this.load()
+    },
     onCandidatePicker(e) { this.selectCandidate(this.candidates[Number(e.detail.value)]) },
     async load() {
       const seq = ++this.loadSequence
@@ -234,6 +259,39 @@ export default {
         this.persistBatch()
       }
       this.state = 'ready'
+      this.loadEmergencyNotices(seq)
+    },
+    async loadEmergencyNotices(seq) {
+      if (this.needSelect || !this.i?.hasBatch || this.activeEmergencyNotice) return
+      const batchId = String(this.selectedBatchId || this.i?.batchId || '')
+      if (!batchId) return
+      try {
+        const rows = await studentApi.getPendingEmergencyNotices(batchId)
+        if (seq !== this.loadSequence || batchId !== String(this.selectedBatchId || this.i?.batchId || '')) return
+        this.pendingEmergencyNotices = Array.isArray(rows) ? rows : []
+        this.activeEmergencyNotice = this.pendingEmergencyNotices[0] || null
+      } catch (e) {
+        // 通知接口故障不能伪造“已读”，也不应把整个岗位实习首页打成不可用。
+        this.pendingEmergencyNotices = []
+        this.activeEmergencyNotice = null
+      }
+    },
+    async acknowledgeEmergencyNotice() {
+      const notice = this.activeEmergencyNotice
+      if (!notice || this.noticeAcking) return
+      const batchId = String(this.selectedBatchId || this.i?.batchId || notice.batchId || '')
+      if (!batchId) return toast('当前实习批次不可用，请刷新后重试')
+      this.noticeAcking = true
+      try {
+        await studentApi.acknowledgeEmergencyNotice(notice.id, batchId)
+        this.pendingEmergencyNotices = this.pendingEmergencyNotices.filter((x) => String(x.id) !== String(notice.id))
+        this.activeEmergencyNotice = this.pendingEmergencyNotices[0] || null
+        if (!this.activeEmergencyNotice) toast('紧急通知已确认')
+      } catch (e) {
+        toast(e?.message || '知悉回执提交失败，通知仍会保留')
+      } finally {
+        this.noticeAcking = false
+      }
     },
     complianceTone(status) { if (['VALID', 'EXEMPTED', 'NOT_APPLICABLE'].includes(status)) return 'success'; if (['REJECTED', 'CONFIG_ERROR'].includes(status)) return 'danger'; return 'warning' },
     weekly() {
@@ -278,4 +336,12 @@ export default {
 .in__qualification-reason{display:block;font-size:14px;line-height:1.8;color:var(--text-secondary);white-space:pre-wrap;word-break:break-word}
 .in__qualification-time{display:block;font-size:11px;color:var(--text-tertiary);margin-top:14px}.in__qualification-footer{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:20px;padding-top:14px;border-top:1px solid var(--border-light);font-size:12px;color:var(--text-secondary)}
 .in__refresh{margin:0;background:transparent;color:var(--brand-primary);font-size:12px}.in__refresh::after{border:0}
+
+.in__notice-mask{position:fixed;z-index:9999;inset:0;background:rgba(15,23,42,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}
+.in__notice-dialog{width:100%;max-width:560px;max-height:82vh;background:var(--bg-card);border-radius:var(--radius-lg);padding:20px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;box-shadow:0 24px 64px rgba(15,23,42,.28)}
+.in__notice-head{display:flex;flex-direction:column;gap:6px}.in__notice-kicker{font-size:12px;font-weight:600;color:var(--danger-600,#dc2626)}
+.in__notice-title{font-size:20px;font-weight:700;line-height:1.45;color:var(--text-primary)}.in__notice-meta{font-size:11px;color:var(--text-tertiary)}
+.in__notice-body{max-height:38vh;padding:12px;background:var(--gray-50,#f8fafc);border:1px solid var(--border-light);border-radius:var(--radius-sm);box-sizing:border-box}
+.in__notice-content{white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.8;color:var(--text-secondary)}
+.in__notice-ack{width:100%;margin:0}
 </style>
