@@ -13,6 +13,7 @@
         <view class="page-pad ir__quick">
           <button class="ir__quick-btn" @click="openExemptions">免签审批</button>
           <button class="ir__quick-btn" @click="openMaterials">材料审核</button>
+          <button class="ir__quick-btn" @click="openPayroll">工资单审核</button>
         </view>
         <view class="ir__tabs page-pad"><MobileSegmented :items="tabs" v-model="tab" /></view>
         <view class="page-pad ir__page" style="padding-top:0;">
@@ -283,6 +284,7 @@ export default {
   methods: {
     openExemptions() { uni.navigateTo({ url: '/pages/teacher-internship/checkin-exemption/index' }) },
     openMaterials() { uni.navigateTo({ url: '/pages/teacher-internship/material-review/index' }) },
+    openPayroll() { uni.navigateTo({ url: '/pages/teacher-internship/payroll-review/index' }) },
     toast,
     invalidateReads() { this.hidden = true; this.readEpoch++; this.visitEpoch++; this.pagingBusy = false },
     readIsCurrent(epoch, generation) { return !this.hidden && epoch === this.readEpoch && generation === currentSessionGeneration() },
