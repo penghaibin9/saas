@@ -128,6 +128,17 @@
         </view>
         <scroll-view scroll-y class="in__notice-body">
           <text class="in__notice-content">{{ activeEmergencyNotice.content }}</text>
+          <view class="in__notice-meta-box">
+            <text>{{ noticeTypeLabel(activeEmergencyNotice.noticeType) }} · {{ noticeUrgencyLabel(activeEmergencyNotice.urgency) }}</text>
+            <text v-if="activeEmergencyNotice.validFrom || activeEmergencyNotice.validUntil">有效期：{{ noticeDate(activeEmergencyNotice.validFrom) }} 至 {{ noticeDate(activeEmergencyNotice.validUntil) }}</text>
+          </view>
+          <view v-if="activeEmergencyNotice.attachments?.length" class="in__notice-files">
+            <text class="in__notice-files-title">附件</text>
+            <view v-for="file in activeEmergencyNotice.attachments" :key="file.fileId" class="in__notice-file" @click="openNoticeAttachment(file)">
+              <text class="in__notice-file-name">{{ file.fileName || '通知附件' }}</text>
+              <text class="in__notice-file-open">查看</text>
+            </view>
+          </view>
         </scroll-view>
         <MobileInlineAlert type="warning" description="该通知需要本人明确确认。关闭页面、网络中断或确认失败都不会自动记为已读，下次进入仍会继续提醒。" />
         <button class="btn btn-primary in__notice-ack" :disabled="noticeAcking" @click="acknowledgeEmergencyNotice">
@@ -141,6 +152,7 @@
 <script>
 import { formatDateTime } from '@/utils/format'
 import { studentApi } from '@/services/studentApi'
+import { openBusinessFile } from '@/services/fileApi'
 import { toast, go } from '@/utils/nav'
 
 const STORAGE_KEY = 'gx_student_internship_batch_v1'
@@ -165,6 +177,7 @@ export default {
         { label: '实习保险', path: '/pages/student-internship/insurance/index', icon: '🛡️', stages: ['onboard'] },
         { label: '实习计划', path: '/pages/student-internship/plan/index', icon: '🗂️', stages: ['onboard', 'process'] },
         { label: '实习材料', path: '/pages/student-internship/materials/index', icon: '📎', stages: ['onboard', 'process', 'result'] },
+        { label: '通知公告', path: '/pages/student-internship/notices/index', icon: '🔔', today: true },
         { label: '轮岗与工资', path: '/pages/student-internship/process-facts/index', icon: '💼', stages: ['process', 'result'] },
         { label: '实习请假', path: '/pages/student-internship/leave/index', icon: '🗓️', today: true },
         { label: '补卡申请', path: '/pages/student-internship/makeup/index', icon: '📍', today: true },
@@ -282,6 +295,17 @@ export default {
         this.activeEmergencyNotice = null
       }
     },
+    noticeTypeLabel(value) {
+      return ({ AGREEMENT: '实习协议', TRAINING: '岗前培训', SAFETY: '安全条例', NOTICE: '通知公告', OTHER: '其他' })[String(value || '').toUpperCase()] || '通知公告'
+    },
+    noticeUrgencyLabel(value) {
+      return ({ NORMAL: '普通', IMPORTANT: '重要', URGENT: '紧急' })[String(value || '').toUpperCase()] || '普通'
+    },
+    noticeDate(value) { return value ? String(value).slice(0, 10) : '不限' },
+    async openNoticeAttachment(file) {
+      try { await openBusinessFile(file.fileId, file.fileName || '通知附件') }
+      catch (e) { toast(e?.message || '通知附件暂时无法打开') }
+    },
     async acknowledgeEmergencyNotice() {
       const notice = this.activeEmergencyNotice
       if (!notice || this.noticeAcking) return
@@ -349,5 +373,8 @@ export default {
 .in__notice-title{font-size:20px;font-weight:700;line-height:1.45;color:var(--text-primary)}.in__notice-meta{font-size:11px;color:var(--text-tertiary)}
 .in__notice-body{max-height:38vh;padding:12px;background:var(--gray-50,#f8fafc);border:1px solid var(--border-light);border-radius:var(--radius-sm);box-sizing:border-box}
 .in__notice-content{white-space:pre-wrap;word-break:break-word;font-size:14px;line-height:1.8;color:var(--text-secondary)}
+.in__notice-meta-box{display:flex;flex-direction:column;gap:4px;margin-top:12px;padding-top:10px;border-top:1px solid var(--border-light);font-size:11px;color:var(--text-tertiary)}
+.in__notice-files{display:flex;flex-direction:column;gap:7px;margin-top:12px}.in__notice-files-title{font-size:12px;font-weight:600;color:var(--text-secondary)}
+.in__notice-file{display:flex;justify-content:space-between;gap:10px;padding:9px 10px;border-radius:8px;background:var(--bg-card);font-size:12px}.in__notice-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-primary)}.in__notice-file-open{flex:0 0 auto;color:var(--brand-primary)}
 .in__notice-ack{width:100%;margin:0}
 </style>
