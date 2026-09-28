@@ -238,6 +238,7 @@ def validate_program(user, program_id: int) -> dict:
     with session() as db:
         role = str((user or {}).get("currentRoleCode") or "").upper()
         if role == "ACADEMIC_TEACHER":
+            _ensure_program_scope(db, user, program_id)
             from app.models import AaProgram
             program = db.query(AaProgram).filter(
                 AaProgram.id == int(program_id),
