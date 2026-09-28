@@ -1,26 +1,6 @@
 name: Internship Standalone C08 G15 Report Quality
 
 on:
-  pull_request:
-    branches: [ main ]
-    paths:
-      - "products/internship-platform/backend/app/models/internship_report_quality.py"
-      - "products/internship-platform/backend/app/models/__init__.py"
-      - "products/internship-platform/backend/alembic/versions/0008_yiyang_report_quality.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_report_quality_service.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_process_report_service.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_student_report_context_service.py"
-      - "products/internship-platform/backend/app/modules/internship/routers/internship_process.py"
-      - "products/internship-platform/backend/app/modules/internship/routers/internship.py"
-      - "products/internship-platform/backend/app/modules/internship/schemas/internship.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_service.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_plan_task_service.py"
-      - "products/internship-platform/mobile/src/services/teacherApi.js"
-      - "products/internship-platform/mobile/src/pages/student-internship/process-report/index.vue"
-      - "products/internship-platform/mobile/src/pages/teacher-internship/process-report-review/index.vue"
-      - "products/internship-platform/mobile/src/pages/teacher-internship/internship-review/index.vue"
-      - "products/internship-platform/backend/tests/test_yiyang_c08_g15_report_quality.py"
-      - ".github/workflows/internship-standalone-c08-g15.yml"
   workflow_dispatch:
 
 jobs:
