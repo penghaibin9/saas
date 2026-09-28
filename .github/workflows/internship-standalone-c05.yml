@@ -1,19 +1,7 @@
 name: Internship Standalone C05 Process Facts
 
 on:
-  pull_request:
-    paths:
-      - "products/internship-platform/backend/app/models/internship_rotation_payroll.py"
-      - "products/internship-platform/backend/app/models/__init__.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_rotation_service.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_payroll_service.py"
-      - "products/internship-platform/backend/app/api/v1/mobile_internship_student.py"
-      - "products/internship-platform/backend/app/api/v1/mobile_internship_context.py"
-      - "products/internship-platform/backend/alembic/versions/0006_yiyang_rotation_payroll.py"
-      - "products/internship-platform/backend/tests/test_yiyang_c05_rotation_payroll.py"
-      - "products/internship-platform/mobile/**"
-      - "products/internship-platform/scripts/check_mobile_import_closure.py"
-      - ".github/workflows/internship-standalone-c05.yml"
+  workflow_dispatch:
 
 jobs:
   c05:
