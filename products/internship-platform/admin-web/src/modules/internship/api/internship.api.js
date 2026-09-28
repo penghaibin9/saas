@@ -301,6 +301,16 @@ export const internshipApi = {
     }))
   },
 
+  getReportReviewPerformance(params = {}) {
+    return call(() => request('/internship/report-review-performance', { params }))
+  },
+
+  exportReportReviewPerformance(params = {}) {
+    return call(() => request('/internship/report-review-performance/export', {
+      method: 'POST', params
+    }))
+  },
+
   getProcessReports(params = {}) {
     return callList('/internship/process-reports', params)
   },
