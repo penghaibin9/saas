@@ -67,6 +67,13 @@
       }
     },
     {
+      "path": "pages/student-internship/exemption/index",
+      "style": {
+        "navigationBarTitleText": "免实习申请",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/student-internship/help/index",
       "style": {
         "navigationBarTitleText": "实习求助",
