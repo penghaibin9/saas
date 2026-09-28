@@ -21,6 +21,7 @@ from app.modules.internship.services import internship_student_makeup_context_se
 from app.modules.internship.services import internship_student_report_context_service as reports
 from app.modules.internship.services import internship_student_notice_service as student_notices
 from app.modules.internship.services import internship_student_support_service as student_support
+from app.modules.internship.services import internship_student_feedback_service as student_feedback
 from app.modules.internship.services import internship_student_eval_service as student_evals
 from app.modules.internship.services import internship_student_checkin_service as checkins
 from app.modules.internship.services import internship_checkin_exemption_service as checkin_exemptions
@@ -608,6 +609,38 @@ def unresolved_support(
 ):
     require_context_fields(body or {})
     return success(student_support.unresolved(user, session_id, body or {}))
+
+
+@router.get("/context/feedback", summary="本人当前实习意见反馈记录")
+def my_feedback(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(student_feedback.list_my(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/feedback", summary="本人提交意见反馈（院/系两级、支持图片）")
+def create_feedback(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    require_context_fields(body or {})
+    return success(student_feedback.create(user, body or {}), message="意见反馈已提交")
+
+
+@router.post("/context/feedback/{feedback_id}/withdraw", summary="本人撤回尚未进入处理阶段的意见反馈")
+def withdraw_feedback(
+    feedback_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    require_context_fields(body or {})
+    return success(
+        student_feedback.withdraw(user, feedback_id, body or {}),
+        message="意见反馈已撤回",
+    )
 
 
 @router.post("/context/help", summary="本人在当前实习记录发起求助")
