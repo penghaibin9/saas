@@ -60,6 +60,21 @@ def task_detail(task_id: int, user=Depends(require_permission(_VIEW))):
     return success(svc.task_detail(task_id))
 
 
+@router.get("/tasks/{task_id}/rows", summary="监管上报冻结行明细")
+def task_rows(
+    task_id: int,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    errorOnly: bool = Query(False),
+    user=Depends(require_permission(_VIEW)),
+):
+    return success(
+        svc.list_task_rows(
+            task_id, page=page, page_size=pageSize, error_only=errorOnly,
+        )
+    )
+
+
 @router.post("/tasks/{task_id}/validate", summary="执行必填/枚举/跨字段校验")
 def task_validate(task_id: int, user=Depends(require_permission(_MANAGE))):
     return success(svc.validate_task(task_id, user=user), message="校验完成")
