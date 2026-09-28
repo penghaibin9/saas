@@ -92,6 +92,10 @@
             </AppChartCard>
           </div>
           <div v-if="partial.length" class="notice" role="status"><span v-for="item in partial" :key="item.key">{{ item.label }}：{{ item.reason }}</span></div>
+          <ProcessAnalyticsPanel
+            :batch-id="batchStore.selectedBatchId"
+            :can-export="canBtn('internship.stats.export')"
+          />
         </template>
       </template>
     </div>
@@ -105,6 +109,7 @@ import { AppButton } from '@/components/ui'
 import { statsApi } from '@/modules/internship/api/stats.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import ProcessAnalyticsPanel from '@/modules/internship/components/ProcessAnalyticsPanel.vue'
 
 const emptyDimensions = () => ({ colleges: [], majors: [], classes: [] })
 const emptyFilters = () => ({ college: '', major: '', className: '' })
@@ -112,7 +117,7 @@ const queryText = value => typeof value === 'string' ? value : ''
 
 export default {
   name: 'StatsView',
-  components: { ModulePageShell, LoadingState, ErrorState, DataTable, AppExportButton, AppChartCard, AppG2Chart, AppStatusTag, AppButton },
+  components: { ModulePageShell, LoadingState, ErrorState, DataTable, AppExportButton, AppChartCard, AppG2Chart, AppStatusTag, AppButton, ProcessAnalyticsPanel },
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return {
