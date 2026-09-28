@@ -155,6 +155,14 @@ export const internshipCoreApi = {
       method: 'POST', body
     })
   },
+  reportPdf(context, reportKind, reportId) {
+    const batchId = String(context?.batchId || '').trim()
+    const internshipId = String(context?.internshipId || '').trim()
+    if (!batchId || !internshipId) return Promise.reject(new Error('实习上下文不完整'))
+    return request(
+      `/portal/internship/context/reports/${encode(reportKind)}/${encode(reportId)}/pdf?batchId=${encode(batchId)}&internshipId=${encode(internshipId)}`
+    )
+  },
   reports(context) {
     return request(`/portal/internship/context/reports${contextQuery(context)}`)
   },
