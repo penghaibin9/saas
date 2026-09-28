@@ -47,8 +47,15 @@ def report_detail(report_id: int, user=Depends(require_permission(_P_REPORT_VIEW
 def report_review(report_id: int, body: dict = Body(...), user=Depends(require_permission(_P_REPORT_REVIEW))):
     b = body or {}
     return success(report_svc.review_report(
-        report_id, b.get("action", ""), b.get("comment", ""), user=user,
-        expected_version=b.get("expectedVersion", b.get("version"))))
+        report_id,
+        b.get("action", ""),
+        b.get("comment", ""),
+        user=user,
+        expected_version=b.get("expectedVersion", b.get("version")),
+        expected_batch_id=b.get("batchId"),
+        rating_level=b.get("ratingLevel"),
+        summary_score=b.get("summaryScore"),
+    ))
 
 
 @router.post("/process-reports/export", summary="导出过程报告台账（xlsx）")
