@@ -11,6 +11,7 @@ from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (
     InternshipBatch,
     InternshipEmergencyNotice,
+    InternshipEmergencyNoticeTeacherReceipt,
     InternshipRecord,
     InternshipTeacherCheckin,
     InternshipTeacherPeriodReport,
@@ -692,6 +693,100 @@ def list_teacher_notices(user: dict, *, batch_id, include_withdrawn: bool = True
             InternshipEmergencyNotice.id.desc(),
         ).limit(100)).all()
         return [_notice_view(row) for row in rows]
+
+
+def pending_teacher_notices(user: dict, *, batch_id) -> list[dict]:
+    teacher_id, _teacher_name = _teacher_identity(user)
+    with session() as db:
+        batch = _assert_teacher_batch_scope(db, batch_id, user)
+        now = datetime.utcnow()
+        notices = db.scalars(select(InternshipEmergencyNotice).where(
+            InternshipEmergencyNotice.tenant_id == _tid(),
+            InternshipEmergencyNotice.batch_id == batch.id,
+            InternshipEmergencyNotice.status == "PUBLISHED",
+            InternshipEmergencyNotice.urgency.in_(("IMPORTANT", "URGENT")),
+            InternshipEmergencyNotice.is_deleted.is_(False),
+            ((InternshipEmergencyNotice.valid_from.is_(None)) | (InternshipEmergencyNotice.valid_from <= now)),
+            ((InternshipEmergencyNotice.valid_until.is_(None)) | (InternshipEmergencyNotice.valid_until >= now)),
+        ).order_by(
+            InternshipEmergencyNotice.published_at.asc(),
+            InternshipEmergencyNotice.id.asc(),
+        ).limit(100)).all()
+        if not notices:
+            return []
+        acknowledged = set(db.scalars(select(
+            InternshipEmergencyNoticeTeacherReceipt.notice_id
+        ).where(
+            InternshipEmergencyNoticeTeacherReceipt.tenant_id == _tid(),
+            InternshipEmergencyNoticeTeacherReceipt.batch_id == batch.id,
+            InternshipEmergencyNoticeTeacherReceipt.teacher_user_id == teacher_id,
+            InternshipEmergencyNoticeTeacherReceipt.notice_id.in_([int(row.id) for row in notices]),
+            InternshipEmergencyNoticeTeacherReceipt.is_deleted.is_(False),
+        )).all())
+        return [
+            {**_notice_view(row), "requiresPopup": True}
+            for row in notices
+            if int(row.id) not in acknowledged
+        ]
+
+
+def acknowledge_teacher_notice(user: dict, notice_id, *, batch_id) -> dict:
+    teacher_id, _teacher_name = _teacher_identity(user)
+    try:
+        nid = int(notice_id)
+    except (TypeError, ValueError):
+        raise not_found("紧急通知不存在") from None
+    with session() as db:
+        batch = _assert_teacher_batch_scope(db, batch_id, user)
+        notice = db.scalar(select(InternshipEmergencyNotice).where(
+            InternshipEmergencyNotice.id == nid,
+            InternshipEmergencyNotice.tenant_id == _tid(),
+            InternshipEmergencyNotice.batch_id == batch.id,
+            InternshipEmergencyNotice.status == "PUBLISHED",
+            InternshipEmergencyNotice.is_deleted.is_(False),
+        ))
+        if not notice:
+            raise not_found("紧急通知不存在、已撤回或不属于当前批次")
+        receipt = db.scalar(select(InternshipEmergencyNoticeTeacherReceipt).where(
+            InternshipEmergencyNoticeTeacherReceipt.tenant_id == _tid(),
+            InternshipEmergencyNoticeTeacherReceipt.notice_id == notice.id,
+            InternshipEmergencyNoticeTeacherReceipt.teacher_user_id == teacher_id,
+            InternshipEmergencyNoticeTeacherReceipt.is_deleted.is_(False),
+        ))
+        if receipt:
+            return {
+                **_notice_view(notice),
+                "receiptId": str(receipt.id),
+                "acknowledgedAt": _iso(receipt.acknowledged_at) or "",
+                "alreadyAcknowledged": True,
+            }
+        now = datetime.utcnow()
+        receipt = InternshipEmergencyNoticeTeacherReceipt(
+            tenant_id=_tid(),
+            notice_id=notice.id,
+            batch_id=batch.id,
+            teacher_user_id=teacher_id,
+            acknowledged_at=now,
+            acknowledged_channel="TEACHER_MOBILE_FORCE_POPUP",
+        )
+        db.add(receipt)
+        db.flush()
+        add_audit(
+            db,
+            target_type="EMERGENCY_NOTICE_TEACHER_RECEIPT",
+            target_id=receipt.id,
+            action="EMERGENCY_NOTICE_TEACHER_ACKNOWLEDGED",
+            user=user,
+            batch_id=batch.id,
+            detail={"noticeId": str(notice.id), "teacherUserId": str(teacher_id)},
+        )
+        db.commit()
+        return {
+            **_notice_view(notice),
+            "receiptId": str(receipt.id),
+            "acknowledgedAt": _iso(now) or "",
+            "alreadyAcknowledged": False,
+        }
 
 
 def withdraw_emergency_notice(user: dict, notice_id, reason: str) -> dict:
