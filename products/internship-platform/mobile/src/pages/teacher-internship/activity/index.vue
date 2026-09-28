@@ -113,6 +113,30 @@
         </view>
       </view>
     </MobileGlobalState>
+
+    <view v-if="activeNotice" class="g16-notice-mask">
+      <view class="g16-notice-dialog">
+        <view class="row-between">
+          <view class="flex-1">
+            <text class="eyebrow">重要通知</text>
+            <text class="title">{{ activeNotice.title }}</text>
+          </view>
+          <MobileStatusTag :type="activeNotice.urgency==='URGENT'?'danger':'warning'">{{ noticeUrgencyLabel(activeNotice.urgency) }}</MobileStatusTag>
+        </view>
+        <text class="muted">{{ noticeTypeLabel(activeNotice.noticeType) }} · {{ activeNotice.senderName || '学校' }} · {{ activeNotice.publishedAt }}</text>
+        <scroll-view scroll-y class="g16-notice-body">
+          <text class="body">{{ activeNotice.content }}</text>
+          <view v-if="activeNotice.attachments?.length" class="notice-attachments">
+            <view v-for="file in activeNotice.attachments" :key="file.fileId" class="notice-file">
+              <text class="notice-file-name" @click="openNoticeAttachment(file)">{{ file.fileName || '通知附件' }}</text>
+              <text class="link" @click="openNoticeAttachment(file)">查看</text>
+            </view>
+          </view>
+        </scroll-view>
+        <MobileInlineAlert type="warning" description="只有点击“我已知悉”并成功写入回执后，这条重要通知才不会再次强弹。" />
+        <button class="btn btn-primary" :loading="acknowledgingNotice" @click="acknowledgeActiveNotice">我已知悉</button>
+      </view>
+    </view>
   </view>
 </template>
 
@@ -162,7 +186,7 @@ const blankNotice = () => ({
 })
 
 export default {
-  data() { return { state:'loading', batches:[], batchId:'', batchIndex:0, checkins:[], reports:[], periodReports:[], notices:[], checking:false, saving:false, periodSaving:false, publishing:false, form:blank(), periodForm:blankPeriod(), notice:blankNotice(), noticeUploading:false, noticeWithdrawingId:'' } },
+  data() { return { state:'loading', batches:[], batchId:'', batchIndex:0, checkins:[], reports:[], periodReports:[], notices:[], pendingNotices:[], activeNotice:null, acknowledgingNotice:false, checking:false, saving:false, periodSaving:false, publishing:false, form:blank(), periodForm:blankPeriod(), notice:blankNotice(), noticeUploading:false, noticeWithdrawingId:'' } },
   computed: {
     context() { return useInternshipContextStore() },
     batchLabels() { return this.batches.map((b) => b.name || ('批次 '+b.id)) },
@@ -187,20 +211,27 @@ export default {
         this.batches=this.context.batches||[]; this.batchId=this.context.selectedBatchId||''
         this.batchIndex=Math.max(0,this.batches.findIndex((b)=>String(b.id)===String(this.batchId)))
         if (!this.batchId) { this.state='ready'; return }
-        const [a,b,p,c]=await Promise.all([
+        const [a,b,p,c,n]=await Promise.all([
           teacherApi.getMyInternshipCheckins(this.batchId),
           teacherApi.getMyInternshipWorkReports(this.batchId,1,20),
           teacherApi.getMyInternshipPeriodReports(this.batchId,1,20),
-          teacherApi.getInternshipEmergencyNotices(this.batchId,true)
+          teacherApi.getInternshipEmergencyNotices(this.batchId,true),
+          teacherApi.getPendingInternshipEmergencyNotices(this.batchId)
         ])
-        this.checkins=a||[]; this.reports=b?.items||[]; this.periodReports=p?.items||[]; this.notices=c||[]; this.state='ready'
+        this.checkins=a||[]
+        this.reports=b?.items||[]
+        this.periodReports=p?.items||[]
+        this.notices=c||[]
+        this.pendingNotices=Array.isArray(n)?n:[]
+        if (!this.activeNotice) this.activeNotice=this.pendingNotices[0]||null
+        this.state='ready'
       } catch(e) { this.state='error'; toast(e?.message||'教师实习工作加载失败') }
       finally { if(done) done() }
     },
     async onBatch(e) {
       this.batchIndex=Number(e.detail.value)||0
       this.context.selectBatch(this.batches[this.batchIndex]?.id)
-      this.batchId=this.context.selectedBatchId; this.resetForm(); this.resetPeriodForm(); this.notice=blankNotice(); await this.load()
+      this.batchId=this.context.selectedBatchId; this.resetForm(); this.resetPeriodForm(); this.notice=blankNotice(); this.pendingNotices=[]; this.activeNotice=null; this.acknowledgingNotice=false; await this.load()
     },
     async checkin() {
       if (!this.batchId || this.checking) return
@@ -259,6 +290,21 @@ export default {
         this.resetPeriodForm(this.periodForm.reportType)
         await this.load()
       } catch(e) { toast(e?.message||'周期报告保存失败') } finally { this.periodSaving=false }
+    },
+    async acknowledgeActiveNotice() {
+      const row=this.activeNotice
+      if (!row?.id || !this.batchId || this.acknowledgingNotice) return
+      this.acknowledgingNotice=true
+      try {
+        await teacherApi.acknowledgeInternshipEmergencyNotice(row.id,this.batchId)
+        this.pendingNotices=this.pendingNotices.filter((item)=>String(item.id)!==String(row.id))
+        this.activeNotice=this.pendingNotices[0]||null
+        if (!this.activeNotice) toast('重要通知已确认')
+      } catch(e) {
+        toast(e?.message || '知悉回执提交失败，通知仍会保留')
+      } finally {
+        this.acknowledgingNotice=false
+      }
     },
     onNoticeType(e) {
       this.notice.noticeType = noticeTypeOptions[Number(e.detail.value)||0]?.code || 'NOTICE'
@@ -338,4 +384,5 @@ export default {
 
 <style scoped>
 .g16-card{padding:14px;display:flex;flex-direction:column;gap:12px}.notice-dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}.notice-attachments{display:flex;flex-direction:column;gap:7px}.notice-file{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;background:var(--gray-50);font-size:12px}.notice-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--teacher-700)}.notice-remove{flex:0 0 auto;color:var(--danger-600)}.g16-batch{flex-direction:row;align-items:center;justify-content:space-between}.eyebrow,.muted{display:block;font-size:11px;color:var(--text-tertiary);line-height:1.6}.eyebrow{color:var(--teacher-700);font-weight:700}.title{display:block;font-size:17px;font-weight:700}.strong{font-weight:600}.link{font-size:12px;color:var(--teacher-700)}.list-row,.field{display:flex;justify-content:space-between;padding:10px;border-top:1px solid var(--border-light);font-size:12px}.field{border:1px solid var(--border-light);border-radius:8px}.input,.textarea{width:100%;box-sizing:border-box;border:1px solid var(--border-light);border-radius:8px;padding:10px;font-size:13px}.textarea{height:120px}.textarea.small{height:80px}.report{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:8px;background:var(--gray-50)}.body{font-size:13px;line-height:1.65;white-space:pre-wrap}.notice-form{display:flex;flex-direction:column;gap:8px}
+.g16-notice-mask{position:fixed;z-index:9999;inset:0;background:rgba(15,23,42,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}.g16-notice-dialog{width:100%;max-width:560px;max-height:82vh;background:var(--bg-card);border-radius:16px;padding:18px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}.g16-notice-body{max-height:42vh;padding:12px;border:1px solid var(--border-light);border-radius:10px;background:var(--gray-50);box-sizing:border-box}
 </style>
