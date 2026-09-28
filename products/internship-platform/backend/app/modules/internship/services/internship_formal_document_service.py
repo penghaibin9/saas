@@ -23,8 +23,10 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, not_found
 from app.models import (
     College,
+    InternshipCheckin,
     InternshipEnterpriseEval,
     InternshipFinalScore,
+    InternshipMakeup,
     InternshipFormalDocument,
     InternshipProcessReport,
     InternshipReportReview,
@@ -162,7 +164,7 @@ def _enterprise_evaluation(db, record) -> dict:
     }
 
 
-def _certificate_fact(record) -> dict:
+def _certificate_fact(db, record) -> dict:
     if record.status not in {"ASSESSING", "ARCHIVED"}:
         raise AppException(
             "DATA_CONFLICT", "学生尚未进入考核或归档阶段，不能生成正式实习证明",
@@ -183,12 +185,25 @@ def _certificate_fact(record) -> dict:
             "DATA_CONFLICT", "实习尚未结束，不能提前生成正式实习证明",
             http_status=409,
         )
+    checkin_days = set(db.scalars(select(InternshipCheckin.checkin_date).where(
+        InternshipCheckin.tenant_id == _tid(),
+        InternshipCheckin.internship_id == record.id,
+        InternshipCheckin.is_deleted.is_(False),
+    )).all())
+    makeup_days = set(db.scalars(select(InternshipMakeup.checkin_date).where(
+        InternshipMakeup.tenant_id == _tid(),
+        InternshipMakeup.internship_id == record.id,
+        InternshipMakeup.status == "APPROVED",
+        InternshipMakeup.is_deleted.is_(False),
+    )).all())
+    attendance_days = len({str(day) for day in checkin_days.union(makeup_days) if day})
     return {
         "status": record.status,
         "enterpriseName": record.enterprise_name,
         "positionName": record.position_name,
         "startDate": _iso(record.intern_start_date),
         "endDate": _iso(record.intern_end_date),
+        "attendanceDays": attendance_days,
     }
 
 
@@ -288,7 +303,7 @@ def build_source_snapshot(db, record, document_type: str) -> dict:
     if document_type == "ENTERPRISE_EVALUATION":
         data["enterpriseEvaluation"] = _enterprise_evaluation(db, record)
     elif document_type == "INTERNSHIP_CERTIFICATE":
-        data["completion"] = _certificate_fact(record)
+        data["completion"] = _certificate_fact(db, record)
     elif document_type == "FINAL_ASSESSMENT":
         data["finalAssessment"] = _final_assessment(db, record)
     else:
@@ -369,15 +384,30 @@ def render_formal_pdf(document_type: str, snapshot: dict, *, document_version: i
                 f"学校审核：{_safe(fact['reviewedByName'])} {_safe(fact['reviewedAt'])}",
                 styles["small"],
             ),
+            Spacer(1, 18),
+            Paragraph("实习单位鉴定意见/签章：____________________________", styles["body"]),
+            Spacer(1, 14),
+            Paragraph("企业导师签字：________________　日期：____年__月__日", styles["body"]),
         ])
     elif document_type == "INTERNSHIP_CERTIFICATE":
         fact = snapshot["completion"]
-        story.append(Paragraph(
-            f"兹证明 {_safe(snapshot['student']['realName'])}（学号 {_safe(snapshot['student']['studentNo'])}）"
-            f"于 {_safe(fact['startDate'])} 至 {_safe(fact['endDate'])} 在 "
-            f"{_safe(fact['enterpriseName'])} 完成岗位实习，实习岗位为 {_safe(fact['positionName'])}。",
-            styles["body"],
-        ))
+        story.extend([
+            Paragraph(
+                f"兹证明 {_safe(snapshot['student']['realName'])}（学号 {_safe(snapshot['student']['studentNo'])}）"
+                f"于 {_safe(fact['startDate'])} 至 {_safe(fact['endDate'])} 在 "
+                f"{_safe(fact['enterpriseName'])} 完成岗位实习，实习岗位为 {_safe(fact['positionName'])}。",
+                styles["body"],
+            ),
+            Paragraph(
+                f"系统按正式签到与已批准补签事实自动计算：实习考勤签到天数为 "
+                f"{_safe(fact.get('attendanceDays', 0))} 天。",
+                styles["body"],
+            ),
+            Spacer(1, 18),
+            Paragraph("实习单位签章：____________________　日期：____年__月__日", styles["body"]),
+            Spacer(1, 14),
+            Paragraph("学校审核/盖章：____________________　日期：____年__月__日", styles["body"]),
+        ])
     elif document_type == "FINAL_ASSESSMENT":
         fact = snapshot["finalAssessment"]
         story.extend([
