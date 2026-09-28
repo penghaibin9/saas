@@ -36,7 +36,7 @@ DEFAULT_STAGES = [
     {"code": "REVIEW", "name": "总结考核", "startDate": "", "endDate": ""},
 ]
 DEFAULT_RULES = {
-    "checkin": {"requireDaily": True, "geofenceRadiusM": 500, "maxAccuracyM": 200,
+    "checkin": {"requireDaily": True, "requiredDays": 0, "geofenceRadiusM": 500, "maxAccuracyM": 200,
                 "allowedExceptionTypes": ["OUT_OF_RANGE", "LOW_ACCURACY", "LOCATION_UNCERTAIN",
                                           "MOCK_LOCATION", "MISSING"]},
     "weeklyReport": {
