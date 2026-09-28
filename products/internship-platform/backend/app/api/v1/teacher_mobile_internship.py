@@ -1,17 +1,18 @@
-"""Teacher Miniapp V3 T6 internship evidence routes.
+"""Teacher Miniapp internship evidence and G16 teacher execution routes.
 
-Mounted under the additive ``/teacher-mobile/internship`` surface. Student V3 shared router files
-remain owner-locked until T8.
+Mounted under the additive /teacher-mobile/internship surface. Teacher-owned activity facts
+remain separate from student check-in/report facts.
 """
 from __future__ import annotations
 
 from typing import Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.permissions import require_module, require_permission
 from app.core.response import success
+from app.modules.internship.services import internship_teacher_activity_service as activity_svc
 from app.services import teacher_mobile_internship_evidence_service as svc
 
 router = APIRouter(
@@ -41,6 +42,37 @@ class VisitEvidenceBody(_StrictBody):
     fileIds: list[str] = Field(default_factory=list, max_length=1)
     location: None = None
     expectedVersion: int = Field(ge=0)
+
+
+class TeacherCheckinBody(_StrictBody):
+    batchId: int = Field(gt=0)
+    timezoneName: str = Field(default="Asia/Shanghai", min_length=1, max_length=64)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    accuracyM: float | None = Field(default=None, ge=0)
+    address: str | None = Field(default=None, max_length=500)
+    note: str | None = Field(default=None, max_length=500)
+
+
+class TeacherWorkReportBody(_StrictBody):
+    batchId: int = Field(gt=0)
+    reportDate: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    workContent: str = Field(min_length=10, max_length=8000)
+    issueContent: str | None = Field(default=None, max_length=4000)
+    nextPlan: str | None = Field(default=None, max_length=4000)
+    studentCount: int | None = Field(default=None, ge=0)
+    attachmentFileIds: list[str] = Field(default_factory=list, max_length=9)
+    expectedVersion: int | None = Field(default=None, ge=0)
+
+
+class EmergencyNoticeBody(_StrictBody):
+    batchId: int = Field(gt=0)
+    title: str = Field(min_length=2, max_length=200)
+    content: str = Field(min_length=5, max_length=5000)
+
+
+class NoticeWithdrawBody(_StrictBody):
+    reason: str = Field(min_length=2, max_length=500)
 
 
 @router.get(
@@ -80,4 +112,85 @@ def create_visit_evidence(
     return success(
         svc.create_visit_evidence(user, internship_id, body.model_dump(exclude_none=True)),
         message="巡访执行证据已保存",
+    )
+
+
+@router.get("/activity/checkins", summary="教师本人签到记录")
+def my_teacher_checkins(
+    batchId: int = Query(..., ge=1),
+    limit: int = Query(31, ge=1, le=366),
+    user=Depends(require_permission("internship.guidance.view")),
+):
+    return success(activity_svc.list_my_checkins(user, batch_id=batchId, limit=limit))
+
+
+@router.post("/activity/checkins", summary="教师本人现场签到")
+def teacher_checkin(
+    body: TeacherCheckinBody,
+    user=Depends(require_permission("internship.guidance.manage")),
+):
+    return success(
+        activity_svc.checkin(user, body.model_dump(exclude_none=True)),
+        message="教师签到已记录",
+    )
+
+
+@router.get("/activity/work-reports", summary="教师本人工作报告")
+def my_teacher_work_reports(
+    batchId: int = Query(..., ge=1),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("internship.guidance.view")),
+):
+    return success(
+        activity_svc.list_my_work_reports(
+            user, batch_id=batchId, page=page, page_size=pageSize
+        )
+    )
+
+
+@router.post("/activity/work-reports", summary="提交或版本更新教师本人工作报告")
+def save_teacher_work_report(
+    body: TeacherWorkReportBody,
+    user=Depends(require_permission("internship.guidance.manage")),
+):
+    return success(
+        activity_svc.save_work_report(user, body.model_dump(exclude_none=True)),
+        message="教师工作报告已保存",
+    )
+
+
+@router.get("/emergency-notices", summary="当前范围批次紧急通知")
+def teacher_emergency_notices(
+    batchId: int = Query(..., ge=1),
+    includeWithdrawn: bool = Query(True),
+    user=Depends(require_permission("internship.communication.view")),
+):
+    return success(
+        activity_svc.list_teacher_notices(
+            user, batch_id=batchId, include_withdrawn=includeWithdrawn
+        )
+    )
+
+
+@router.post("/emergency-notices", summary="校级管理员发布批次紧急通知")
+def publish_emergency_notice(
+    body: EmergencyNoticeBody,
+    user=Depends(require_permission("internship.communication.manage")),
+):
+    return success(
+        activity_svc.publish_emergency_notice(user, body.model_dump()),
+        message="紧急通知已持久发布",
+    )
+
+
+@router.post("/emergency-notices/{notice_id}/withdraw", summary="校级管理员撤回紧急通知")
+def withdraw_emergency_notice(
+    notice_id: int,
+    body: NoticeWithdrawBody,
+    user=Depends(require_permission("internship.communication.manage")),
+):
+    return success(
+        activity_svc.withdraw_emergency_notice(user, notice_id, body.reason),
+        message="紧急通知已撤回",
     )
