@@ -585,6 +585,103 @@ def export_plan_xlsx(batch_id, user=None) -> dict:
     return xlsx_util.pack_xlsx_result(content, f"{plan['title']}.xlsx", len(rows))
 
 
+def _bulk_plan_views(batch_ids, user=None) -> list[dict]:
+    ids = []
+    for raw in batch_ids or []:
+        try:
+            bid = int(raw)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "批量导出的批次 ID 格式非法") from None
+        if bid > 0 and bid not in ids:
+            ids.append(bid)
+    if not ids:
+        raise AppException("VALIDATION_ERROR", "请至少选择一个实习批次")
+    if len(ids) > 100:
+        raise AppException("VALIDATION_ERROR", "单次最多批量导出 100 个实习计划")
+    plans = []
+    missing = []
+    for bid in ids:
+        plan = get_plan_by_batch(bid, user=user)
+        if not plan:
+            missing.append(str(bid))
+        else:
+            plans.append(plan)
+    if missing:
+        raise AppException(
+            "DATA_CONFLICT",
+            "以下批次尚未建立实习计划，不能静默跳过：" + "、".join(missing),
+        )
+    return plans
+
+
+def bulk_export_plans_pdf(batch_ids, user=None) -> dict:
+    from app.services import pdf_util
+    plans = _bulk_plan_views(batch_ids, user=user)
+    sections = []
+    for index, plan in enumerate(plans, 1):
+        sections.extend([
+            f"第 {index} 份计划｜{plan.get('batchName') or plan.get('batchId')}",
+            f"计划标题：{plan.get('title') or '—'}",
+            *_plan_document_lines(plan),
+            "",
+            "----------------------------------------",
+            "",
+        ])
+    content = pdf_util.build_text_pdf(
+        "岗位实习计划批量导出",
+        "\n".join(sections),
+        watermark=f"跃科岗位实习管理平台 · 共 {len(plans)} 份计划 · {datetime.now():%Y-%m-%d %H:%M}",
+    )
+    return pdf_util.pack_pdf_result(content, "岗位实习计划_批量导出.pdf")
+
+
+def bulk_export_plans_xlsx(batch_ids, user=None) -> dict:
+    from app.services import xlsx_util
+    plans = _bulk_plan_views(batch_ids, user=user)
+    rows = []
+    for plan in plans:
+        basic = plan.get("basicSnapshot") or {}
+        rules = plan.get("rulesSnapshot") or {}
+        component_text = "；".join(
+            f"{item.get('name') or '考核项'} {round(float(item.get('weight') or 0) * 100, 1)}%"
+            for item in rules.get("scoreComponents") or []
+        )
+        rows.append([
+            plan.get("batchName") or "",
+            basic.get("batchNo") or "",
+            plan.get("title") or "",
+            plan.get("internshipTypeLabel") or "",
+            plan.get("targetAudience") or "",
+            basic.get("plannedCount", 0),
+            plan.get("responsibleName") or "",
+            basic.get("startDate") or "",
+            basic.get("endDate") or "",
+            basic.get("internshipWeeks") if basic.get("internshipWeeks") is not None else "",
+            plan.get("objectives") or "",
+            plan.get("requirements") or "",
+            plan.get("content") or "",
+            plan.get("assessmentContent") or "",
+            rules.get("requiredCheckinDays") or "未配置",
+            rules.get("weeklyRequiredCount") or "未配置",
+            rules.get("weeklyMinWordCount") or "未配置",
+            component_text or "未配置",
+            plan.get("statusLabel") or "",
+            plan.get("version") or 0,
+        ])
+    content = xlsx_util.build_ledger_xlsx(
+        "实习计划批量导出",
+        [
+            "批次名称", "批次编号", "计划标题", "实习类别", "实习对象", "实习人数",
+            "负责人", "开始时间", "结束时间", "实习周数", "实习目的", "实习要求",
+            "实习内容", "考核内容", "签到天数", "周记篇数", "周记字数",
+            "考核分数比例", "计划状态", "计划版本",
+        ],
+        rows,
+        watermark=f"跃科岗位实习管理平台 · 批量导出 {len(rows)} 份计划 · {datetime.now():%Y-%m-%d %H:%M}",
+    )
+    return xlsx_util.pack_xlsx_result(content, "岗位实习计划_批量导出.xlsx", len(rows))
+
+
 def list_acks(page, page_size, batch_id=None, status=None, keyword=None, user=None):
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
     scope, in_scope = _current_scope(user), _rec_in_scope
