@@ -131,10 +131,70 @@ _BASELINES = {
     },
 }
 
+# Procurement requires every regulatory field to expose its business source and unit.
+# These descriptions document the real authority used by _load_facts; unavailable facts
+# are stated explicitly instead of silently inventing a default value.
+_FIELD_METADATA = {
+    "majorCode": ("Major.code", "—"),
+    "majorName": ("Major.major_name", "—"),
+    "studentNo": ("StudentProfile.student_no", "—"),
+    "studentName": ("StudentProfile.real_name", "—"),
+    "enrollYear": ("StudentProfile.enroll_date.year；无入学日期时回退 StudentProfile.grade", "年"),
+    "educationYears": ("Major.education_years", "年"),
+    "gender": ("StudentProfile.gender", "—"),
+    "organizationForm": ("InternshipApplication.internship_mode / application_type", "—"),
+    "companyName": ("InternshipApplication.company_name；缺失时回退 InternshipRecord.enterprise_name", "—"),
+    "companyCreditCode": ("InternshipApplication.company_credit_code", "—"),
+    "companyNature": ("InternshipApplication.company_nature", "—"),
+    "workCountry": ("InternshipApplication.work_country", "—"),
+    "workProvince": ("InternshipApplication.work_province", "—"),
+    "workCity": ("InternshipApplication.work_city", "—"),
+    "internshipStartDate": ("InternshipApplication.internship_start_date；缺失时回退 InternshipRecord.intern_start_date", "日期"),
+    "internshipEndDate": ("InternshipApplication.internship_end_date；缺失时回退 InternshipRecord.intern_end_date", "日期"),
+    "advisorEmployeeNo": ("当前 Standalone 正式事实尚未接入指导教师工号；必填时保持校验失败", "—"),
+    "insured": ("InternshipInsurance.status=VERIFIED", "—"),
+    "agreementSigned": ("InternshipRecord.agreement_info 状态解析", "—"),
+    "missingDocumentExplanation": ("由保险与三方协议正式事实派生", "—"),
+    "majorMatch": ("InternshipApplication.major_match", "—"),
+    "highRisk": ("InternshipSpecialFiling(HIGH_RISK) / InternshipRecord.risk_level", "—"),
+    "highRiskType": ("InternshipSpecialFiling.filing_type", "—"),
+    "nightOrOvertime": ("当前正式业务事实未接入夜班/加班结论，保持“未知”", "—"),
+    "holidayInternship": ("当前正式业务事实未接入节假日实习结论，保持“未知”", "—"),
+    "filingStatus": ("InternshipSpecialFiling 审核状态派生", "—"),
+    "className": ("SchoolClass.class_name", "—"),
+    "startTerm": ("当前正式业务事实尚未接入实习起始学期；必填时保持校验失败", "—"),
+    "positionName": ("InternshipApplication.position_name；缺失时回退 InternshipRecord.position_name", "—"),
+    "internshipType": ("InternshipRecord.destination_type", "—"),
+    "internshipArrangement": ("InternshipApplication.internship_mode / application_type", "—"),
+    "internshipForm": ("InternshipApplication.internship_mode / application_type", "—"),
+    "durationDays": ("由实习开始/结束日期计算（含首尾日）", "天"),
+    "advisorName": ("InternshipRecord.advisor_name", "—"),
+    "advisorPhone": ("当前正式业务事实尚未接入指导教师联系电话；缺失时保持空值", "—"),
+    "enterpriseMentorName": ("InternshipApplication.enterprise_mentor_name；缺失时回退 InternshipRecord.enterprise_mentor_name", "—"),
+    "enterpriseMentorPhone": ("InternshipApplication.enterprise_mentor_phone", "—"),
+    "remuneration": ("InternshipApplication.agreed_salary", "元/月"),
+    "supervisionPhone": ("当前正式业务事实尚未接入校级督导咨询电话；缺失时保持空值", "—"),
+    "insuranceType": ("InternshipInsurance.coverage_type", "—"),
+    "policyNo": ("InternshipInsurance.policy_no", "—"),
+    "insuranceFunder": ("当前正式业务事实尚未接入保险费出资方；缺失时保持空值", "—"),
+    "insuranceBuyer": ("当前正式业务事实尚未接入保险购买方；缺失时保持空值", "—"),
+    "crossProvince": ("当前缺少学校所在地省份权威事实，不能可靠推导，保持“未知”", "—"),
+    "overseas": ("InternshipSpecialFiling(OVERSEAS) / InternshipApplication.work_country 派生", "—"),
+}
+
 
 def _field_schema(code: str) -> list[dict]:
-    return [{"key": key, "label": label, "required": required}
-            for key, label, required in _BASELINES[code]["fields"]]
+    result = []
+    for key, label, required in _BASELINES[code]["fields"]:
+        source, unit = _FIELD_METADATA.get(key, ("未配置正式业务来源", "—"))
+        result.append({
+            "key": key,
+            "label": label,
+            "required": required,
+            "source": source,
+            "unit": unit,
+        })
+    return result
 
 
 def baseline_definition(code: str) -> dict:
@@ -398,12 +458,35 @@ def create_template_version(report_code: str, body: dict, user=None):
     if not isinstance(fields, list) or not fields:
         raise AppException("VALIDATION_ERROR", "模板字段不能为空")
     keys = []
+    normalized_fields = []
     for field in fields:
         key = str((field or {}).get("key") or "").strip()
         label = str((field or {}).get("label") or "").strip()
         if not key or not label or key in keys:
             raise AppException("VALIDATION_ERROR", "模板字段 key/label 必须完整且不能重复")
+        if key not in _FIELD_METADATA:
+            raise AppException(
+                "VALIDATION_ERROR",
+                f"字段 {key} 尚未建立 Standalone 正式业务映射，不能直接启用为上报模板字段",
+            )
+        source = str((field or {}).get("source") or _FIELD_METADATA[key][0]).strip()
+        unit = str((field or {}).get("unit") or _FIELD_METADATA[key][1]).strip() or "—"
+        if not source:
+            raise AppException("VALIDATION_ERROR", f"字段 {key} 必须填写真实业务来源")
         keys.append(key)
+        normalized_fields.append({
+            "key": key,
+            "label": label[:120],
+            "required": bool((field or {}).get("required")),
+            "source": source[:500],
+            "unit": unit[:80],
+        })
+    source_reference = str(payload.get("sourceReference") or "").strip()
+    change_reason = str(payload.get("changeReason") or "").strip()
+    if len(source_reference) < 5:
+        raise AppException("VALIDATION_ERROR", "新模板版本必须填写可追溯的模板来源/文件版本")
+    if len(change_reason) < 2:
+        raise AppException("VALIDATION_ERROR", "新模板版本必须填写变更原因")
 
     with session() as db:
         current = _ensure_baseline(db, code)
@@ -422,14 +505,14 @@ def create_template_version(report_code: str, body: dict, user=None):
             tenant_id=_tid(), report_code=code, version_no=version,
             template_name=str(payload.get("templateName") or current.template_name)[:200],
             source_label=str(payload.get("sourceLabel") or "SCHOOL_CONFIRMED_TEMPLATE")[:120],
-            source_reference=str(payload.get("sourceReference") or "")[:500] or None,
+            source_reference=source_reference[:500],
             official_verified=False,
-            field_schema_json=fields,
+            field_schema_json=normalized_fields,
             enum_schema_json=dict(payload.get("enums") or {}),
             cross_rule_json=list(payload.get("crossRules") or []),
             mapping_schema_json=dict(payload.get("mapping") or {}),
             status="ACTIVE", effective_at=datetime.utcnow(),
-            change_reason=str(payload.get("changeReason") or "模板版本更新")[:500],
+            change_reason=change_reason[:500],
         )
         db.add(row)
         db.flush()
@@ -439,6 +522,58 @@ def create_template_version(report_code: str, body: dict, user=None):
         }, user)
         db.commit()
         return _template_view(row)
+
+
+def build_field_dictionary_workbook(definition: dict) -> bytes:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "字段来源清单"
+    ws.append(["序号", "字段Key", "上报列名", "必填", "单位", "业务来源", "枚举"])
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+    enums = definition.get("enums") or {}
+    for index, field in enumerate(definition.get("fields") or [], 1):
+        key = str(field.get("key") or "")
+        ws.append([
+            index,
+            key,
+            str(field.get("label") or ""),
+            "是" if field.get("required") else "否",
+            str(field.get("unit") or "—"),
+            str(field.get("source") or ""),
+            " / ".join(str(x) for x in (enums.get(key) or [])),
+        ])
+    widths = [8, 28, 28, 10, 16, 64, 36]
+    for index, width in enumerate(widths, 1):
+        ws.column_dimensions[ws.cell(1, index).column_letter].width = width
+    ws.freeze_panes = "A2"
+    out = BytesIO()
+    wb.save(out)
+    return out.getvalue()
+
+
+def field_dictionary_file(report_code: str, user=None) -> tuple[bytes, str]:
+    code = str(report_code or "").upper()
+    baseline_definition(code)
+    with session() as db:
+        template = _ensure_baseline(db, code)
+        definition = {
+            "fields": list(template.field_schema_json or []),
+            "enums": dict(template.enum_schema_json or {}),
+        }
+        payload = build_field_dictionary_workbook(definition)
+        filename = f"{code}-V{int(template.version_no)}-field-dictionary.xlsx"
+        _audit(db, int(template.id), "REGULATORY_FIELD_DICTIONARY_EXPORT", {
+            "reportCode": code,
+            "templateVersionId": str(template.id),
+            "versionNo": int(template.version_no),
+            "fieldCount": len(definition["fields"]),
+            "filename": filename,
+            "sha256": sha256(payload).hexdigest(),
+        }, user)
+        db.commit()
+        return payload, filename
 
 
 def _approved_application_map(db, record_ids: list[int]) -> dict[int, InternshipApplication]:
