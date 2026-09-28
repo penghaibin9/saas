@@ -26,9 +26,29 @@ _P_TASK_VIEW = "internship.task.view"
 _P_TASK_REVIEW = "internship.task.review"
 
 
+@router.get("/plans/templates", summary="内置专业实习方案模板")
+def plan_templates(user=Depends(require_permission(_P_PLAN_VIEW))):
+    return success(plan_svc.list_plan_templates())
+
+
+@router.get("/plans/batch/{batch_id}/context", summary="实习计划批次基本信息与同源规则")
+def plan_context(batch_id: int, user=Depends(require_permission(_P_PLAN_VIEW))):
+    return success(plan_svc.get_plan_context(batch_id, user=user))
+
+
 @router.get("/plans/batch/{batch_id}", summary="按批次读取实习计划书")
 def plan_get(batch_id: int, user=Depends(require_permission(_P_PLAN_VIEW))):
     return success(plan_svc.get_plan_by_batch(batch_id, user=user))
+
+
+@router.post("/plans/batch/{batch_id}/export.pdf", summary="导出正式实习计划 PDF")
+def plan_export_pdf(batch_id: int, user=Depends(require_permission(_P_PLAN_VIEW))):
+    return success(plan_svc.export_plan_pdf(batch_id, user=user))
+
+
+@router.post("/plans/batch/{batch_id}/export.xlsx", summary="导出正式实习计划 Excel")
+def plan_export_xlsx(batch_id: int, user=Depends(require_permission(_P_PLAN_VIEW))):
+    return success(plan_svc.export_plan_xlsx(batch_id, user=user))
 
 
 @router.put("/plans/batch/{batch_id}", summary="保存/更新实习计划书（草稿；任务清单校验）")
