@@ -1834,6 +1834,11 @@ def require_registration_self_service_window(batch, now=None) -> None:
         raise AppException("DATA_CONFLICT", reason, http_status=409)
 
 
+def require_registration_eligible(registration) -> None:
+    if registration and (registration.eligibility_status or "") == "INELIGIBLE":
+        raise AppException("DATA_CONFLICT", "注册资格核验未通过，请先处理注册异常并重新核验")
+
+
 def register_student(batch_id, user, student_id, *, self_service: bool = False) -> dict:
     """完成一名学生的正式注册。
 
@@ -1864,9 +1869,8 @@ def register_student(batch_id, user, student_id, *, self_service: bool = False) 
             raise AppException("DATA_CONFLICT", "该生已在本批次完成注册")
         if s.student_status not in _batch_target_statuses(b):
             raise AppException("DATA_CONFLICT", "该生当前学籍状态不符合本批次注册条件", http_status=409)
+        require_registration_eligible(dup)
         if self_service:
-            if dup and (dup.eligibility_status or "") == "INELIGIBLE":
-                raise AppException("DATA_CONFLICT", "注册资格核验未通过，请联系辅导员或教务处")
             open_exception = db.scalars(select(AaRegistrationException).where(
                 AaRegistrationException.tenant_id == _tid(),
                 AaRegistrationException.batch_id == b.id,
@@ -2144,7 +2148,8 @@ def verify_registration_eligibility(batch_id, user, student_id, result, note=Non
             raise AppException("VALIDATION_ERROR", "不合格需填写核验意见")
         reg = db.scalars(select(AaRegistration).where(
             AaRegistration.tenant_id == _tid(), AaRegistration.batch_id == b.id,
-            AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False))).first()
+            AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False)
+        ).with_for_update().execution_options(populate_existing=True)).first()
         if reg and reg.status == "REGISTERED":
             raise AppException("DATA_CONFLICT", "该生已完成注册，无需再核验", http_status=409)
         if not reg:
@@ -2204,7 +2209,8 @@ def create_registration_exception(batch_id, user, student_id, exception_type, de
         s = ctx.require_student(db, student_id)
         reg = db.scalars(select(AaRegistration).where(
             AaRegistration.tenant_id == _tid(), AaRegistration.batch_id == b.id,
-            AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False))).first()
+            AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False)
+        ).with_for_update().execution_options(populate_existing=True)).first()
         exc = _create_exception_row(db, b, student_id, exception_type, description,
                                     registration_id=(reg.id if reg else None))
         if reg:

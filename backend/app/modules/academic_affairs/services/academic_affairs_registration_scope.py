@@ -58,6 +58,7 @@ def register_student(batch_id, user, student_id) -> dict:
         )).first()
         if existing and existing.status == "REGISTERED":
             raise legacy.AppException("DATA_CONFLICT", "该生已在本批次完成注册")
+        legacy.require_registration_eligible(existing)
         if student.student_status not in legacy._batch_target_statuses(batch):
             raise legacy.AppException(
                 "DATA_CONFLICT", "该生当前学籍状态不符合本批次注册条件", http_status=409,
