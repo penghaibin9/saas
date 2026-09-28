@@ -61,6 +61,10 @@ export const studentApi = {
   submitInternshipScoreAppeal: (body) => internship.studentInternshipScoreAppealSubmit(body),
   getInternshipHelp: (batchId, internshipId) => internship.studentInternshipHelp(batchId, internshipId),
   reportInternshipHelp: (body) => internship.studentInternshipHelpSubmit(body),
+  getInternshipSupport: (batchId, internshipId) => internship.studentInternshipSupport(batchId, internshipId),
+  askInternshipSupport: (body) => internship.studentInternshipSupportAsk(body),
+  solveInternshipSupport: (sessionId, body) => internship.studentInternshipSupportSolved(sessionId, body),
+  unresolvedInternshipSupport: (sessionId, body) => internship.studentInternshipSupportUnresolved(sessionId, body),
   submitCheckin: (body) => realRequest('/mobile/internship/checkin', { method: 'POST', data: body || {} }),
   getCheckinPreflight: (timezoneName = '', batchId = '') => {
     const q = []
