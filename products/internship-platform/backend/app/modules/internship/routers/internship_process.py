@@ -45,6 +45,33 @@ def report_review_performance_export(
     return success(quality_svc.export_report_review_performance(user, batchId))
 
 
+@router.get("/report-obligations", summary="报告应交/实交/未交台账")
+def report_obligations(
+    batchId: str = Query(..., min_length=1),
+    keyword: Optional[str] = None,
+    missingOnly: bool = Query(False),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=200),
+    user=Depends(require_permission(_P_REPORT_VIEW)),
+):
+    return success(quality_svc.report_obligations(
+        user, batchId, keyword=keyword or "", missing_only=missingOnly,
+        page=page, page_size=pageSize,
+    ))
+
+
+@router.post("/report-obligations/export", summary="导出报告应交/未交 Excel")
+def report_obligations_export(
+    batchId: str = Query(..., min_length=1),
+    keyword: Optional[str] = None,
+    missingOnly: bool = Query(False),
+    user=Depends(require_permission(_P_REPORT_EXPORT)),
+):
+    return success(quality_svc.export_report_obligations(
+        user, batchId, keyword=keyword or "", missing_only=missingOnly,
+    ))
+
+
 # ── 过程报告 ──
 @router.get("/process-reports", summary="过程报告列表（教师/管理端，按数据范围）")
 def report_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
