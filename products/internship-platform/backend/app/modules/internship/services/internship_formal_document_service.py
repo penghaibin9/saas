@@ -592,3 +592,158 @@ def resolve_download(user: dict, document_id):
             raise not_found("正式文书文件不存在")
         path, _stored_name = resolved
         return path, f"internship-{row.internship_id}-{row.document_type.lower()}-v{row.document_version}.pdf"
+
+
+
+def student_list_documents(user: dict, *, batch_id, internship_id) -> list[dict]:
+    """Student may only list formal documents belonging to the explicitly selected own record."""
+    from app.modules.internship.services.internship_student_context_guard import (
+        require_explicit_context,
+    )
+    with session() as db:
+        record, student, _batch_id = require_explicit_context(
+            db, user,
+            {"batchId": batch_id, "internshipId": internship_id},
+            for_write=False,
+        )
+        rows = db.scalars(select(InternshipFormalDocument).where(
+            InternshipFormalDocument.tenant_id == _tid(),
+            InternshipFormalDocument.internship_id == record.id,
+            InternshipFormalDocument.student_id == student.id,
+            InternshipFormalDocument.is_deleted.is_(False),
+        ).order_by(
+            InternshipFormalDocument.document_type,
+            InternshipFormalDocument.document_version.desc(),
+        )).all()
+        return [_view(row) for row in rows]
+
+
+def student_generate(user: dict, body: dict) -> dict:
+    """SP06/SP07 student-triggered generation from already approved authoritative facts."""
+    from app.modules.internship.services.internship_student_context_guard import (
+        require_explicit_context,
+    )
+    payload = body or {}
+    document_type = normalize_document_type(payload.get("documentType"))
+    if document_type not in {"ENTERPRISE_EVALUATION", "INTERNSHIP_CERTIFICATE"}:
+        raise AppException(
+            "VALIDATION_ERROR",
+            "学生端仅支持生成企业实习鉴定表和学生实习证明",
+        )
+    with session() as db:
+        record, student, batch_id = require_explicit_context(
+            db, user, payload, for_write=False)
+        snapshot = build_source_snapshot(db, record, document_type)
+        digest = source_hash(snapshot)
+        latest = db.scalars(select(InternshipFormalDocument).where(
+            InternshipFormalDocument.tenant_id == _tid(),
+            InternshipFormalDocument.internship_id == record.id,
+            InternshipFormalDocument.student_id == student.id,
+            InternshipFormalDocument.document_type == document_type,
+            InternshipFormalDocument.is_deleted.is_(False),
+        ).order_by(
+            InternshipFormalDocument.document_version.desc(),
+            InternshipFormalDocument.id.desc(),
+        ).with_for_update()).first()
+        if latest and latest.source_hash == digest and latest.file_id and latest.status == "GENERATED":
+            return {**_view(latest), "reused": True}
+
+        next_version = int(latest.document_version or 0) + 1 if latest else 1
+        row = InternshipFormalDocument(
+            tenant_id=_tid(),
+            internship_id=record.id,
+            student_id=student.id,
+            batch_id=int(batch_id),
+            document_type=document_type,
+            document_version=next_version,
+            source_hash=digest,
+            source_snapshot_json=snapshot,
+            generated_by_user_id=str((user or {}).get("userId") or "") or None,
+            generated_by_name=(user or {}).get("realName") or student.real_name or "学生本人",
+            generated_at=datetime.utcnow(),
+            status="GENERATED",
+        )
+        db.add(row)
+        db.flush()
+        pdf = render_formal_pdf(
+            document_type, snapshot, document_version=next_version)
+        meta = file_service.store_bytes(
+            pdf,
+            f"internship-{record.id}-{document_type.lower()}-v{next_version}.pdf",
+            PDF_BIZ_TYPE,
+            "application/pdf",
+            biz_id=str(row.id),
+            user=user,
+            visibility="BIZ_SCOPED",
+            security_level="SENSITIVE",
+            db=db,
+        )
+        row.file_id = str(meta.get("fileId") or "")
+        row.file_sha256 = str(meta.get("sha256") or sha256(pdf).hexdigest())
+        if latest and latest.status == "GENERATED":
+            latest.status = "SUPERSEDED"
+        add_audit(
+            db,
+            target_type="FORMAL_DOCUMENT",
+            target_id=row.id,
+            action="FORMAL_DOCUMENT_STUDENT_GENERATE",
+            user=user,
+            batch_id=record.batch_id,
+            internship_id=record.id,
+            new_version=next_version,
+            file_ids=[row.file_id] if row.file_id else [],
+            detail={
+                "documentType": document_type,
+                "sourceHash": digest,
+                "documentVersion": next_version,
+                "studentSelfService": True,
+            },
+        )
+        db.commit()
+        return {**_view(row), "reused": False}
+
+
+def student_document_pdf(user: dict, document_id, *, batch_id, internship_id) -> dict:
+    """Return own generated formal PDF as a download-safe payload for the standalone student PC."""
+    from app.modules.internship.services.internship_student_context_guard import (
+        require_explicit_context,
+    )
+    from app.services import pdf_util
+
+    try:
+        did = int(document_id)
+    except (TypeError, ValueError):
+        raise not_found("正式文书不存在") from None
+    with session() as db:
+        record, student, _batch_id = require_explicit_context(
+            db, user,
+            {"batchId": batch_id, "internshipId": internship_id},
+            for_write=False,
+        )
+        row = db.scalar(select(InternshipFormalDocument).where(
+            InternshipFormalDocument.id == did,
+            InternshipFormalDocument.tenant_id == _tid(),
+            InternshipFormalDocument.internship_id == record.id,
+            InternshipFormalDocument.student_id == student.id,
+            InternshipFormalDocument.is_deleted.is_(False),
+        ))
+        if not row or not row.file_id:
+            raise not_found("正式文书不存在或不属于当前学生")
+        resolved = file_service.resolve_download(row.file_id, user=user)
+        if not resolved:
+            raise not_found("正式文书文件不存在")
+        path, _stored_name = resolved
+        content = path.read_bytes()
+        if not content.startswith(b"%PDF"):
+            raise AppException("DATA_CONFLICT", "正式文书文件格式异常")
+        result = pdf_util.pack_pdf_result(
+            content,
+            f"{SUPPORTED_DOCUMENTS.get(row.document_type, '岗位实习正式文书')}_V{row.document_version}.pdf",
+        )
+        result.update({
+            "documentId": str(row.id),
+            "documentType": row.document_type,
+            "documentVersion": int(row.document_version or 0),
+            "fileSha256": row.file_sha256 or "",
+        })
+        return result
