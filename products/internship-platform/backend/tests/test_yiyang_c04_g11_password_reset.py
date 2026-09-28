@@ -80,10 +80,10 @@ def _seed():
     db = get_sessionmaker()()
     try:
         college_a = College(
-            tenant_id=TID_A, college_code="C-A", college_name="信息工程学院", status="ACTIVE"
+            tenant_id=TID_A, code="C-A", college_name="信息工程学院", status="ACTIVE"
         )
         college_b = College(
-            tenant_id=TID_A, college_code="C-B", college_name="商学院", status="ACTIVE"
+            tenant_id=TID_A, code="C-B", college_name="商学院", status="ACTIVE"
         )
         db.add_all([college_a, college_b])
         db.flush()
