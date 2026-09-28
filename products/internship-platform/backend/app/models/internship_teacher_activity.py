@@ -135,6 +135,10 @@ class InternshipEmergencyNotice(PKMixin, TenantMixin, CommonMixin, Base):
     valid_from: Mapped[datetime | None] = mapped_column(DateTime)
     valid_until: Mapped[datetime | None] = mapped_column(DateTime)
     attachment_file_ids_json: Mapped[list | None] = mapped_column(JSON)
+    audience_scope: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ALL", comment="ALL/COLLEGE")
+    recipient_college_ids_json: Mapped[list | None] = mapped_column(
+        JSON, comment="COLLEGE 时指定接收学院 id 列表")
     sender_user_id: Mapped[int | None] = mapped_column(BigInteger)
     sender_name_snapshot: Mapped[str | None] = mapped_column(String(100))
     recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
