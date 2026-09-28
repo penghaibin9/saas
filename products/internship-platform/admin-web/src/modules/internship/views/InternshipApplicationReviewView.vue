@@ -1,6 +1,14 @@
 <template>
   <ModulePageShell :title="isDetail ? drawerTitle : '实习申请审核'" :subtitle="isDetail ? '核对学生申请与实习去向，查看材料后提交审核结论。' : '按办理状态查看岗位志愿与自主实习申请。'" :watermark="false">
-    <template v-if="isDetail" #actions><AppButton variant="ghost" @click="backToList">返回申请列表</AppButton></template>
+    <template #actions>
+      <AppButton v-if="isDetail" variant="ghost" @click="backToList">返回申请列表</AppButton>
+      <AppButton
+        v-else
+        variant="ghost"
+        :disabled="loading || exporting || !batchStore.selectedBatchId"
+        @click="exportCurrent"
+      >{{ exporting ? '正在导出…' : '导出当前筛选 Excel' }}</AppButton>
+    </template>
     <section v-if="!isDetail" class="iar-card iar-list">
       <nav class="iar-tabs" aria-label="申请审核状态">
         <button v-for="item in statusOptions" :key="item.value" type="button" :class="{ 'is-active': status === item.value }" :aria-current="status === item.value ? 'page' : undefined" @click="setStatus(item.value)">{{ item.label }}</button>
@@ -109,7 +117,7 @@ export default {
   data() {
     return {
       REJECT_APPLICATION,
-      rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
+      rows: [], total: 0, page: 1, pageSize: 20, loading: false, exporting: false, error: '',
       applicationType: '', status: 'PENDING_REVIEW', keyword: '',
       typeOptions: TYPE_OPTIONS, statusOptions: STATUS_OPTIONS, columns: COLUMNS,
       drawer: { visible: false, id: '', loading: false, error: '', data: null },
@@ -238,6 +246,23 @@ export default {
     setStatus(value) { this.status = value; this.reload() },
     reload() { this.page = 1; this.updateLocation() },
     onPageChange(page) { this.page = page; this.updateLocation() },
+    async exportCurrent() {
+      if (!this.batchStore.selectedBatchId || this.exporting) return
+      this.exporting = true
+      const params = {
+        batchId: this.batchStore.selectedBatchId,
+        keyword: this.keyword || undefined,
+        applicationType: this.applicationType || undefined,
+        status: this.status && this.status !== 'ALL' ? this.status : undefined
+      }
+      const result = await internshipApplicationApi.exportApplications(params)
+      this.exporting = false
+      if (result.code !== 0) {
+        toast.error(result.message || '申请审核台账导出失败')
+        return
+      }
+      toast.success(`已导出当前筛选条件下的完整申请台账，共 ${this.total} 条页面口径记录`)
+    },
     async load() {
       const ticket = ++this.listTicket
       if (!this.batchStore.selectedBatchId) {
