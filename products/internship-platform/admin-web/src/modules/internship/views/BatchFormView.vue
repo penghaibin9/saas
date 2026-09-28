@@ -165,6 +165,9 @@
                 <AppFormItem label="截止（周几前）">
                   <AppSelect v-model="rulesForm.weeklyReport.deadlineWeekday" :options="weekdayOptions" :disabled="readonly" />
                 </AppFormItem>
+                <AppFormItem label="准时批阅时限（小时）" hint="用于指导老师/班主任绩效中的准时批阅率">
+                  <AppNumberInput v-model="rulesForm.weeklyReport.reviewSlaHours" :min="1" :max="720" :step="1" :disabled="readonly" />
+                </AppFormItem>
               </div>
 
               <div class="bf-rules__grp">
@@ -184,8 +187,11 @@
                 <AppFormItem label="总结最少字数">
                   <AppNumberInput v-model="rulesForm.processReport.summaryMinWords" :min="1" :max="20000" :step="50" :disabled="readonly" />
                 </AppFormItem>
-                <AppFormItem label="本批次应交总结篇数">
-                  <AppNumberInput v-model="rulesForm.processReport.summaryRequiredCount" :min="0" :max="10" :step="1" :disabled="readonly" />
+                <AppFormItem label="本批次应交总结篇数" hint="当前正式总结模型每名学生最多 1 份">
+                  <AppNumberInput v-model="rulesForm.processReport.summaryRequiredCount" :min="0" :max="1" :step="1" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="过程报告准时批阅时限（小时）">
+                  <AppNumberInput v-model="rulesForm.processReport.reviewSlaHours" :min="1" :max="720" :step="1" :disabled="readonly" />
                 </AppFormItem>
                 <AppFormItem label="单次最多图片">
                   <AppNumberInput v-model="rulesForm.processReport.maxImages" :min="0" :max="30" :step="1" :disabled="readonly" />
@@ -314,7 +320,7 @@ import { withInternshipBatch, internshipBatchListReturn } from '../navigation.js
 const RULE_LABELS = {
   checkin: '打卡', weeklyReport: '周报', processReport: '日报/月报/总结', guidance: '指导', evaluation: '评价', score: '成绩',
   requireDaily: '每日必打卡', geofenceRadiusM: '电子围栏半径（米）', maxAccuracyM: '最大定位误差（米）', frequency: '提交频率',
-  minWordCount: '正文最少字数', requiredCount: '应交周报篇数', deadlineWeekday: '截止（周几前）',
+  minWordCount: '正文最少字数', requiredCount: '应交周报篇数', deadlineWeekday: '截止（周几前）', reviewSlaHours: '准时批阅时限（小时）',
   dailyMinWords: '日报最少字数', dailyRequiredCount: '应交日报篇数',
   monthlyMinWords: '月报最少字数', monthlyRequiredCount: '应交月报篇数',
   summaryMinWords: '总结最少字数', summaryRequiredCount: '应交总结篇数',
@@ -334,12 +340,12 @@ const blankForm = () => ({
 /** 规则表单默认值（与后端 internship_service.DEFAULT_RULES 对齐；权重以百分数呈现）。 */
 const blankRulesForm = () => ({
   checkin: { requireDaily: true, geofenceRadiusM: 500, maxAccuracyM: 200 },
-  weeklyReport: { frequency: 'WEEKLY', minWordCount: 30, requiredCount: 0, deadlineWeekday: 7 },
+  weeklyReport: { frequency: 'WEEKLY', minWordCount: 30, requiredCount: 0, deadlineWeekday: 7, reviewSlaHours: 48 },
   processReport: {
     dailyMinWords: 30, dailyRequiredCount: 0,
     monthlyMinWords: 100, monthlyRequiredCount: 0,
     summaryMinWords: 300, summaryRequiredCount: 1,
-    maxImages: 9, maxVideos: 3
+    maxImages: 9, maxVideos: 3, reviewSlaHours: 48
   },
   guidance: { minVisitsPerTerm: 2, minCommunicationsPerMonth: 2 },
   evaluation: { enterpriseWeight: 40, teacherWeight: 40, selfWeight: 20 },
@@ -610,7 +616,8 @@ export default {
           frequency: f.weeklyReport.frequency,
           minWordCount: Math.max(1, Number(f.weeklyReport.minWordCount || 30)),
           requiredCount: Math.max(0, Number(f.weeklyReport.requiredCount || 0)),
-          deadlineWeekday: Number(f.weeklyReport.deadlineWeekday || 7)
+          deadlineWeekday: Number(f.weeklyReport.deadlineWeekday || 7),
+          reviewSlaHours: Math.min(720, Math.max(1, Number(f.weeklyReport.reviewSlaHours || 48)))
         },
         processReport: {
           dailyMinWords: Math.max(1, Number(f.processReport.dailyMinWords || 30)),
@@ -620,7 +627,8 @@ export default {
           summaryMinWords: Math.max(1, Number(f.processReport.summaryMinWords || 300)),
           summaryRequiredCount: Math.max(0, Number(f.processReport.summaryRequiredCount ?? 1)),
           maxImages: Math.max(0, Number(f.processReport.maxImages ?? 9)),
-          maxVideos: Math.max(0, Number(f.processReport.maxVideos ?? 3))
+          maxVideos: Math.max(0, Number(f.processReport.maxVideos ?? 3)),
+          reviewSlaHours: Math.min(720, Math.max(1, Number(f.processReport.reviewSlaHours || 48)))
         },
         guidance: {
           minVisitsPerTerm: Number(f.guidance.minVisitsPerTerm || 0),
