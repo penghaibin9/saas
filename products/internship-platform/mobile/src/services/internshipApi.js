@@ -44,6 +44,22 @@ export const teacherInternshipStudentResetPassword = (recordId, batchId, body) =
   realRequest(batchPath(`/mobile/teacher/internship/context/students/${enc(recordId)}/reset-password`, batchId), {
     method: 'POST', data: body || {}
   })
+export const teacherInternshipStudentRotations = (recordId, batchId) =>
+  realRequest(batchPath(`/mobile/teacher/internship/context/students/${enc(recordId)}/rotations`, batchId))
+export const teacherInternshipCreateRotation = (recordId, batchId, body) =>
+  realRequest(`/mobile/teacher/internship/context/students/${enc(recordId)}/rotations`, {
+    method: 'POST', data: { ...(body || {}), batchId: requireBatch(batchId) }
+  })
+export const teacherInternshipEvaluateRotation = (rotationId, batchId, body) =>
+  realRequest(`/mobile/teacher/internship/context/rotations/${enc(rotationId)}/evaluate`, {
+    method: 'POST', data: { ...(body || {}), batchId: requireBatch(batchId) }
+  })
+export const teacherInternshipPayroll = (batchId, page = 1, pageSize = 20, status = 'ALL') =>
+  realRequest(pagedBatchPath('/mobile/teacher/internship/context/payroll', batchId, page, pageSize) + '&status=' + enc(status))
+export const teacherInternshipPayrollReview = (versionId, body) =>
+  realRequest(`/mobile/teacher/internship/context/payroll/versions/${enc(versionId)}/review`, {
+    method: 'POST', data: body || {}
+  })
 export const teacherInternshipPositions = (batchId, { keyword = '', status = '', page = 1, pageSize = 20 } = {}) =>
   realRequest(pagedBatchPath('/mobile/teacher/internship/context/positions', batchId, page, pageSize) + '&keyword=' + enc(keyword) + '&status=' + enc(status))
 export const teacherInternshipPositionDetail = (id, batchId) =>
@@ -160,6 +176,16 @@ export const teacherInternshipInsuranceVerify = (insuranceId, body) =>
 // ── 学生岗位实习：当前批次权威流程 ──
 export const studentInternshipDashboard = (batchId = '') =>
   realRequest(optionalBatch('/mobile/internship/context/my', batchId))
+export const studentInternshipRotations = (batchId, internshipId) =>
+  realRequest(studentContextPath('/mobile/internship/context/rotations', batchId, internshipId))
+export const studentInternshipRotationSelfEvaluation = (rotationId, body) =>
+  realRequest(`/mobile/internship/context/rotations/${enc(rotationId)}/self-evaluation`, {
+    method: 'POST', data: body || {}
+  })
+export const studentInternshipPayroll = (batchId, internshipId) =>
+  realRequest(studentContextPath('/mobile/internship/context/payroll', batchId, internshipId))
+export const studentInternshipPayrollSubmit = (body) =>
+  realRequest('/mobile/internship/context/payroll', { method: 'POST', data: body || {} })
 export const studentInternshipWeeklyReports = (batchId, internshipId, page = 1, pageSize = 20, focusReportId = '') => {
   try {
     let path = studentContextPath('/mobile/internship/context/weekly-reports', batchId, internshipId)
