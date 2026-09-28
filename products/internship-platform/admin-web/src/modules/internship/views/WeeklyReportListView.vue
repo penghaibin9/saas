@@ -7,30 +7,71 @@
   >
     <template #actions>
       <button class="mp-link" @click="$router.push({ path: '/admin/internship/plans', query: { batchId: batchStore.selectedBatchId } })">任务与计划</button>
-      <AppExportButton :export-fn="exportFn" :has-permission="canExport">{{ exportLabel }}</AppExportButton>
+      <button class="mp-link" @click="toggleObligations">{{ obligationOpen ? '返回批阅列表' : '应交/未交总览' }}</button>
+      <AppExportButton v-if="!obligationOpen" :export-fn="exportFn" :has-permission="canExport">{{ exportLabel }}</AppExportButton>
+      <AppExportButton v-else :export-fn="exportObligationsFn" :has-permission="canExport">导出应交/未交</AppExportButton>
     </template>
 
     <div class="mp-stack">
       <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
 
-      <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
+      <section v-if="obligationOpen" class="wr-obligation">
+        <div class="wr-obligation__head">
+          <div>
+            <strong>全批次报告应交 / 实交 / 未交</strong>
+            <p>应交数来自当前批次规则；规则为 0 时显示“未配置”，不会伪造完成率。</p>
+          </div>
+          <div class="wr-obligation__filters">
+            <button type="button" class="mp-tab" :class="{ 'is-active': obligationMissingOnly }" @click="setObligationMissing(true)">仅看未交</button>
+            <button type="button" class="mp-tab" :class="{ 'is-active': !obligationMissingOnly }" @click="setObligationMissing(false)">全部学生</button>
+          </div>
+        </div>
+        <ErrorState v-if="obligationError" :description="obligationError" @retry="loadObligations" />
+        <LoadingState v-else-if="obligationLoading" />
+        <EmptyState v-else-if="!obligationRows.length" title="当前条件没有欠交学生" description="可切换为“全部学生”查看完整应交台账。" />
+        <DataTable
+          v-else
+          :columns="obligationColumns"
+          :rows="obligationRows"
+          row-key="recordId"
+          :pagination="obligationPagination"
+          @page-change="onObligationPage"
+        >
+          <template #cell-student="{ row }">
+            <div class="mp-cell-main">{{ row.studentName }}</div>
+            <div class="mp-cell-sub">{{ row.studentNo }} · {{ row.advisorName || '未分配指导教师' }}</div>
+          </template>
+          <template #cell-daily="{ row }"><span>{{ obligationMetric(row.daily) }}</span></template>
+          <template #cell-weekly="{ row }"><span>{{ obligationMetric(row.weekly) }}</span></template>
+          <template #cell-monthly="{ row }"><span>{{ obligationMetric(row.monthly) }}</span></template>
+          <template #cell-summary="{ row }"><span>{{ obligationMetric(row.summary) }}</span></template>
+          <template #cell-status="{ row }">
+            <AppStatusTag :type="row.status === 'MISSING' ? 'warning' : (row.status === 'COMPLETE' ? 'success' : 'info')">
+              {{ row.statusLabel }}
+            </AppStatusTag>
+            <div class="mp-cell-sub">{{ row.completionRate == null ? '完成率未配置' : ('完成率 ' + row.completionRate + '%') }}</div>
+          </template>
+        </DataTable>
+      </section>
+
+      <ModuleSummaryStrip v-if="!obligationOpen" :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
       <!-- 报告类型切换（原「日报批阅 / 月报批阅 / 实习总结」独立菜单收口为页内切换） -->
-      <div class="mp-tabs wr-tabs wr-tabs--type" aria-label="报告类型">
+      <div v-if="!obligationOpen" class="mp-tabs wr-tabs wr-tabs--type" aria-label="报告类型">
         <button v-for="t in typeTabs" :key="t.value" class="mp-tab" :class="{ 'is-active': reportTypeKey === t.value }" @click="switchType(t.value)">
           {{ t.label }}
         </button>
       </div>
-      <div class="mp-tabs wr-tabs wr-tabs--status" aria-label="审核状态">
+      <div v-if="!obligationOpen" class="mp-tabs wr-tabs wr-tabs--status" aria-label="审核状态">
         <button v-for="t in activeTabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
           {{ t.label }}
         </button>
       </div>
 
-      <ErrorState v-if="error" :description="error" @retry="load" />
-      <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" :title="emptyTitle" description="可切换页签或调整筛选条件" />
+      <ErrorState v-if="!obligationOpen && error" :description="error" @retry="load" />
+      <LoadingState v-else-if="!obligationOpen && loading" />
+      <EmptyState v-else-if="!obligationOpen && !rows.length" :title="emptyTitle" description="可切换页签或调整筛选条件" />
       <DataTable
-        v-else
+        v-else-if="!obligationOpen"
         :columns="activeColumns"
         :rows="rows"
         row-key="id"
@@ -130,6 +171,12 @@ export default {
       error: '',
       rows: [],
       selected: [],
+      obligationOpen: false,
+      obligationLoading: false,
+      obligationError: '',
+      obligationRows: [],
+      obligationMissingOnly: true,
+      obligationPagination: { page: 1, pageSize: 20, total: 0 },
       batchSubmitting: false,
       lastReceipt: null,
       workContextReady: false,
@@ -149,6 +196,14 @@ export default {
         { value: '', label: '全部' }
       ],
       reportTypeKey: '',
+      obligationColumns: [
+        { key: 'student', title: '学生', width: '180px' },
+        { key: 'daily', title: '日报', width: '180px' },
+        { key: 'weekly', title: '周报', width: '180px' },
+        { key: 'monthly', title: '月报', width: '180px' },
+        { key: 'summary', title: '实习总结', width: '180px' },
+        { key: 'status', title: '总体', width: '150px' }
+      ],
       columns: [
         { key: 'student', title: '学生' },
         { key: 'week', title: '周次' },
@@ -234,7 +289,14 @@ export default {
     if (restored) this.load()
   },
   watch: {
-    'batchStore.selectedBatchId'() { this.pagination.page = 1; this.selected = []; this.lastReceipt = null; this.load() },
+    'batchStore.selectedBatchId'() {
+      this.pagination.page = 1
+      this.obligationPagination.page = 1
+      this.selected = []
+      this.lastReceipt = null
+      this.load()
+      if (this.obligationOpen) this.loadObligations()
+    },
     '$route.query.type': {
       immediate: true,
       handler(type) {
@@ -252,6 +314,57 @@ export default {
     }
   },
   methods: {
+    toggleObligations() {
+      this.obligationOpen = !this.obligationOpen
+      if (this.obligationOpen) {
+        this.obligationPagination.page = 1
+        this.loadObligations()
+      }
+    },
+    obligationMetric(metric) {
+      if (!metric?.configured) return '未配置'
+      return `应 ${metric.required} / 交 ${metric.submitted} / 通过 ${metric.approved} / 缺 ${metric.missing}`
+    },
+    setObligationMissing(value) {
+      this.obligationMissingOnly = !!value
+      this.obligationPagination.page = 1
+      this.loadObligations()
+    },
+    onObligationPage(page) {
+      this.obligationPagination.page = page
+      this.loadObligations()
+    },
+    async loadObligations() {
+      const batchId = this.batchStore.selectedBatchId
+      if (!batchId) {
+        this.obligationRows = []
+        this.obligationPagination.total = 0
+        return
+      }
+      this.obligationLoading = true
+      this.obligationError = ''
+      const res = await internshipApi.getReportObligations({
+        batchId,
+        missingOnly: this.obligationMissingOnly,
+        page: this.obligationPagination.page,
+        pageSize: this.obligationPagination.pageSize
+      })
+      this.obligationLoading = false
+      if (res.code !== 0) {
+        this.obligationError = res.message || '报告应交/未交台账加载失败'
+        return
+      }
+      this.obligationRows = res.data?.items || []
+      this.obligationPagination.total = Number(res.data?.total || 0)
+      this.obligationPagination.page = Number(res.data?.page || 1)
+      this.obligationPagination.pageSize = Number(res.data?.pageSize || 20)
+    },
+    exportObligationsFn() {
+      return internshipApi.exportReportObligations({
+        batchId: this.batchStore.selectedBatchId,
+        missingOnly: this.obligationMissingOnly
+      })
+    },
     goDetail(row) {
       const query = { ...this.$route.query, batchId: this.batchStore.selectedBatchId, page: String(this.pagination.page) }
       // 进入详情前保存连续批阅队列（仅当前页真实行，不伪造全量）
@@ -373,6 +486,11 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.wr-obligation { display:grid; gap:12px; padding:16px; border:1px solid var(--card-b); border-radius:12px; background:var(--card); }
+.wr-obligation__head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.wr-obligation__head strong { font-size:16px; color:var(--t1); }
+.wr-obligation__head p { margin:5px 0 0; font-size:12px; color:var(--t3); line-height:1.6; }
+.wr-obligation__filters { display:flex; gap:6px; flex-wrap:wrap; }
 .wr-tabs { display: flex; gap: 6px; padding: 7px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); overflow-x: auto; }
 .wr-tabs--type { background: linear-gradient(100deg, var(--pri-bg), var(--card) 52%); }
 .wr-tabs--status { margin-top: -8px; padding-left: 14px; border-top: 0; border-radius: 0 0 12px 12px; box-shadow: none; }
