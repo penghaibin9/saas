@@ -10,7 +10,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { matchPermission } from '../src/config/navPlan.js'
-import { ACTION_PERMISSION_CODES, ACTION_DENY_REASONS, permissionActions, canCreateSchoolBatch } from '../src/modules/internship/constants/context.constants.js'
+import { ACTION_PERMISSION_CODES, ACTION_DENY_REASONS, permissionActions } from '../src/modules/internship/constants/context.constants.js'
 
 // 后端 internship 各 router require_permission / _P_* 真实权限码全集（核验来源：
 // backend/app/modules/internship/routers/*.py，2026-07-13）。用作“禁止装饰性假码”回归闸门。
@@ -75,13 +75,6 @@ test('学院负责人(internship.*)：所有实习操作按钮均可用', () => 
   for (const k of Object.keys(ACTION_PERMISSION_CODES)) {
     assert.equal(deriveAllowed(patterns, k), true, `院管应可 ${k}`)
   }
-})
-
-test('建实习批次还需校级管理身份与学校范围', () => {
-  assert.equal(canCreateSchoolBatch('COLLEGE_ADMIN', 'COLLEGE'), false)
-  assert.equal(canCreateSchoolBatch('COLLEGE_ADMIN', 'SCHOOL'), false)
-  assert.equal(canCreateSchoolBatch('SCHOOL_ADMIN', 'COLLEGE'), false)
-  assert.equal(canCreateSchoolBatch('SCHOOL_ADMIN', 'SCHOOL'), true)
 })
 
 test('领导只读(*.view)：只读动作放开，管理/审核/发布类禁用', () => {

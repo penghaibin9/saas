@@ -12,7 +12,6 @@ import {
   permissionActions,
   ACTION_PERMISSION_CODES,
   ACTION_DENY_REASONS,
-  canCreateSchoolBatch,
   statusOptions
 } from '@/modules/internship/constants/context.constants'
 import { allowByPatterns, isWriteCode } from '@/modules/internship/composables/permission'
@@ -70,7 +69,6 @@ export const internshipApi = {
     // permissionPatterns：当前身份的权限码模式集，来自后端 /rbac/current-context（与 enforce_permission 同一套码）。
     // 角色菜单投影(getVisibleNavPlan/canSeeLeaf)与按钮态(permissionActions)据此收敛；取不到时降级（离线/兼容）。
     let permissionPatterns = null
-    let scopeType = ''
     let roleCtx = { ...currentRole, roleName }
     let ctxKey = ''
     // BUG-001：只读演示租户由后端下发，前端据此禁用全部写按钮（不再「点了才 403」）
@@ -103,7 +101,6 @@ export const internshipApi = {
           }
           if (rc && Array.isArray(rc.permissionPatterns)) {
             permissionPatterns = rc.permissionPatterns
-            scopeType = rc.dataScope?.scope || ''
             readonlyTenant = !!rc.readonlyTenant
             readonlyReason = rc.readonlyReason || ''
             const cr = rc.currentRole || {}
@@ -134,10 +131,6 @@ export const internshipApi = {
       const code = ACTION_PERMISSION_CODES[k]
       let allowed = allowByPatterns(permissionPatterns, code)
       let reason = allowed ? '' : (ACTION_DENY_REASONS[k] || '无操作权限，请联系管理员')
-      if (k === 'createBatch' && allowed && !canCreateSchoolBatch(roleCtx.roleCode, scopeType)) {
-        allowed = false
-        reason = '新建实习批次由校级管理员办理'
-      }
       // BUG-001：只读租户下写按钮直接禁用并说明原因，与后端 403 判定同源
       if (allowed && readonlyTenant && isWriteCode(code)) {
         allowed = false
