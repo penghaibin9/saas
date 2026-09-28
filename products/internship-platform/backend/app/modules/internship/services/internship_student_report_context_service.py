@@ -366,3 +366,108 @@ def submit_weekly(user: dict, body: dict) -> dict:
         result["attachments"] = attachment_meta
         result["minimumWords"] = minimum
         return result
+
+
+
+def export_report_pdf(user: dict, *, report_kind, report_id, batch_id, internship_id) -> dict:
+    """SP02: authenticated student downloads own weekly/monthly/summary report as real PDF."""
+    from app.services import pdf_util
+
+    kind = str(report_kind or "").strip().upper()
+    if kind not in ("WEEKLY", "PROCESS"):
+        raise AppException("VALIDATION_ERROR", "reportKind 仅支持 WEEKLY/PROCESS")
+    try:
+        rid = int(report_id)
+    except (TypeError, ValueError):
+        raise not_found("报告不存在") from None
+
+    with session() as db:
+        record, student, selected_batch_id = require_explicit_context(
+            db,
+            user,
+            {"batchId": batch_id, "internshipId": internship_id},
+            for_write=False,
+        )
+        if kind == "WEEKLY":
+            row = db.scalar(select(WeeklyReport).where(
+                WeeklyReport.id == rid,
+                WeeklyReport.tenant_id == _tid(),
+                WeeklyReport.internship_id == record.id,
+                WeeklyReport.is_deleted.is_(False),
+            ))
+            if not row:
+                raise not_found("周报不存在或不属于当前学生")
+            snap = quality.latest_weekly_snapshot(db, row.id)
+            attachments = list(snap.attachment_meta_json or []) if snap else []
+            title = f"第 {int(row.week_number or 0)} 周实习周报"
+            body_lines = [
+                f"学生：{student.real_name or ''}　学号：{student.student_no or ''}",
+                f"实习单位：{record.enterprise_name or '—'}",
+                f"实习岗位：{record.position_name or '—'}",
+                f"提交时间：{_iso(row.submitted_at) or '—'}",
+                "",
+                "一、本周工作内容",
+                row.work_content or "",
+                "",
+                "二、本周收获与体会",
+                row.harvest_content or "",
+                "",
+                "三、下周计划",
+                row.plan_content or "",
+            ]
+            status = row.status
+            review_comment = row.review_comment or ""
+            filename = f"实习周报_第{int(row.week_number or 0)}周.pdf"
+        else:
+            row = db.scalar(select(InternshipProcessReport).where(
+                InternshipProcessReport.id == rid,
+                InternshipProcessReport.tenant_id == _tid(),
+                InternshipProcessReport.internship_id == record.id,
+                InternshipProcessReport.is_deleted.is_(False),
+            ))
+            if not row:
+                raise not_found("过程报告不存在或不属于当前学生")
+            snap = quality.latest_process_snapshot(db, row.id)
+            attachments = list(snap.attachment_meta_json or []) if snap else []
+            type_label = legacy.TYPE_LABEL.get(row.report_type, row.report_type)
+            title = f"{type_label} · {row.period_key or ''}"
+            body_lines = [
+                f"学生：{student.real_name or ''}　学号：{student.student_no or ''}",
+                f"实习单位：{record.enterprise_name or '—'}",
+                f"实习岗位：{record.position_name or '—'}",
+                f"提交时间：{_iso(row.submitted_at) or '—'}",
+                "",
+                "正文",
+                row.content or "",
+            ]
+            status = row.status
+            review_comment = row.review_comment or ""
+            filename = f"{type_label}_{row.period_key or '报告'}.pdf"
+
+        body_lines.extend([
+            "",
+            f"审核状态：{status or '—'}",
+            f"教师意见：{review_comment or '—'}",
+        ])
+        if attachments:
+            body_lines.extend(["", "附件清单"])
+            for index, item in enumerate(attachments, 1):
+                body_lines.append(
+                    f"{index}. {item.get('fileName') or '附件'}"
+                    f"（{item.get('kind') or 'FILE'}，SHA-256：{item.get('sha256') or '—'}）"
+                )
+
+        watermark = (
+            f"跃科岗位实习管理平台 · 学生本人导出 · "
+            f"批次 {selected_batch_id} · 报告 #{row.id}"
+        )
+        content = pdf_util.build_text_pdf(title, "\n".join(body_lines), watermark=watermark)
+        if not content.startswith(b"%PDF"):
+            raise AppException("DATA_CONFLICT", "报告 PDF 生成失败")
+        result = pdf_util.pack_pdf_result(content, filename)
+        result.update({
+            "reportId": str(row.id),
+            "reportKind": kind,
+            "attachmentCount": len(attachments),
+        })
+        return result
