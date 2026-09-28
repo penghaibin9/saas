@@ -409,6 +409,21 @@ def _ensure_baseline(db, code: str):
         InternshipRegulatoryTemplateVersion.is_deleted.is_(False),
     ).order_by(InternshipRegulatoryTemplateVersion.version_no.desc()))
     if row:
+        fields = []
+        changed = False
+        for raw in list(row.field_schema_json or []):
+            field = dict(raw or {})
+            key = str(field.get("key") or "")
+            source, unit = _FIELD_METADATA.get(key, ("未配置正式业务来源", "—"))
+            if not str(field.get("source") or "").strip():
+                field["source"] = source
+                changed = True
+            if not str(field.get("unit") or "").strip():
+                field["unit"] = unit
+                changed = True
+            fields.append(field)
+        if changed:
+            row.field_schema_json = fields
         return row
 
     definition = baseline_definition(code)
