@@ -187,14 +187,17 @@ def student_submit_task(user, sort_order: int, body: dict) -> dict:
     except (TypeError, ValueError):
         raise AppException("VALIDATION_ERROR", "任务序号无效")
     note = str(payload.get("studentNote") or payload.get("note") or "").strip()
-    if len(note) < 5:
-        raise AppException("VALIDATION_ERROR", "完成说明至少5个字")
     evidence_file_id = _validate_file(
         payload.get("evidenceFileId") or payload.get("fileId"))
     with session() as db:
         record, _student, plan, ack = _student_current_context(db, user, lock=True)
         if not record or not plan:
             raise AppException("DATA_NOT_FOUND", "当前批次没有已发布实习计划")
+        from app.modules.internship.services import internship_report_quality_service as quality
+        rules = quality.rules_for_batch(db, record.batch_id)
+        minimum = int(rules.get("planTaskMinWords") or 10)
+        if len(note) < minimum:
+            raise AppException("VALIDATION_ERROR", f"完成说明至少 {minimum} 字")
         if not ack or ack.status != "ACKNOWLEDGED":
             raise AppException("DATA_CONFLICT", "请先确认当前版本实习计划后再提交任务")
         if payload.get("planId") and str(payload.get("planId")) != str(plan.id):
@@ -223,6 +226,7 @@ def student_submit_task(user, sort_order: int, body: dict) -> dict:
         _trail(db, progress.id, "STUDENT_SUBMIT_VERSIONED", {
             "planId": str(plan.id), "sortOrder": sort_order,
             "hasEvidence": bool(evidence_file_id),
+            "minimumWords": minimum,
             "newVersion": int(progress.version or 0),
         }, _op_name(user))
         db.commit()
