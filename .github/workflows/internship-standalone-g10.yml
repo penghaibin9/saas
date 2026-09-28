@@ -1,11 +1,7 @@
 name: Internship Standalone G10 Statistics
 
 on:
-  pull_request:
-    paths:
-      - "products/internship-platform/backend/app/modules/internship/services/internship_application_service.py"
-      - "products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py"
-      - ".github/workflows/internship-standalone-g10.yml"
+  workflow_dispatch:
 
 jobs:
   g10:
