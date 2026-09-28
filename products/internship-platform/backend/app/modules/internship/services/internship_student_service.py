@@ -16,9 +16,10 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import (EmpCompany, InternshipAgreement, InternshipAuditTrail, InternshipBatch,
-                        InternshipInsurance, InternshipPosition, InternshipRecord,
-                        Role, StudentContact, StudentProfile, User, UserRole)
+from app.models import (EmpCompany, InternshipAgreement, InternshipApplication, InternshipAuditTrail, InternshipBatch,
+                        InternshipInsurance, InternshipPayrollStatement, InternshipPayrollVersion,
+                        InternshipPosition, InternshipRecord, InternshipRotation,
+                        Major, Role, SchoolClass, StudentContact, StudentProfile, User, UserRole)
 from app.core.field_crypto import mask_phone_encrypted
 from app.services.db_service import _as_id, _iso, _tid, session
 
@@ -236,6 +237,117 @@ def _row_of(db, r: InternshipRecord) -> dict:
     return _row(r, stu, batch_name, class_name=class_name)
 
 
+def _procurement_row_facts(db, records: list[InternshipRecord], students: dict[int, StudentProfile]) -> dict[int, dict]:
+    """Batch-load AP07 facts so list and Excel share one authoritative row contract."""
+    record_ids = [int(row.id) for row in records]
+    if not record_ids:
+        return {}
+
+    from app.modules.internship.services.internship_stats_service import _latest_approved_application_facts
+    applications = _latest_approved_application_facts(db, record_ids)
+
+    agreements = db.scalars(select(InternshipAgreement).where(
+        InternshipAgreement.tenant_id == _tid(),
+        InternshipAgreement.internship_id.in_(record_ids),
+        InternshipAgreement.is_deleted.is_(False),
+    ).order_by(InternshipAgreement.internship_id, InternshipAgreement.id.desc())).all()
+    agreement_by_record = {}
+    for row in agreements:
+        agreement_by_record.setdefault(int(row.internship_id), row)
+
+    rotations = db.scalars(select(InternshipRotation).where(
+        InternshipRotation.tenant_id == _tid(),
+        InternshipRotation.internship_id.in_(record_ids),
+        InternshipRotation.is_deleted.is_(False),
+    ).order_by(InternshipRotation.internship_id, InternshipRotation.rotation_seq)).all()
+    rotations_by_record = {}
+    for row in rotations:
+        rotations_by_record.setdefault(int(row.internship_id), []).append(row)
+
+    payroll_rows = db.execute(select(
+        InternshipPayrollStatement,
+        InternshipPayrollVersion,
+    ).join(
+        InternshipPayrollVersion,
+        InternshipPayrollVersion.id == InternshipPayrollStatement.current_version_id,
+    ).where(
+        InternshipPayrollStatement.tenant_id == _tid(),
+        InternshipPayrollStatement.internship_id.in_(record_ids),
+        InternshipPayrollStatement.is_deleted.is_(False),
+        InternshipPayrollVersion.tenant_id == _tid(),
+        InternshipPayrollVersion.is_current.is_(True),
+        InternshipPayrollVersion.status == "APPROVED",
+        InternshipPayrollVersion.is_deleted.is_(False),
+    ).order_by(
+        InternshipPayrollStatement.internship_id,
+        InternshipPayrollStatement.pay_month.desc(),
+    )).all()
+    payroll_by_record = {}
+    for statement, version in payroll_rows:
+        payroll_by_record.setdefault(int(statement.internship_id), (statement, version))
+
+    # Organization labels stay in the student master domain; no orientation dependency.
+    major_ids = {int(stu.major_id) for stu in students.values() if getattr(stu, "major_id", None)}
+    class_ids = {int(stu.class_id) for stu in students.values() if getattr(stu, "class_id", None)}
+    majors = {
+        int(row.id): row for row in db.scalars(select(Major).where(
+            Major.tenant_id == _tid(), Major.id.in_(major_ids or {-1}), Major.is_deleted.is_(False)
+        )).all()
+    }
+    classes = {
+        int(row.id): row for row in db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(class_ids or {-1}), SchoolClass.is_deleted.is_(False)
+        )).all()
+    }
+
+    result = {}
+    for record in records:
+        rid = int(record.id)
+        student = students.get(record.student_id)
+        app = applications.get(rid)
+        agreement = agreement_by_record.get(rid)
+        rotation_rows = rotations_by_record.get(rid, [])
+        payroll = payroll_by_record.get(rid)
+        rotation_parts = []
+        for row in rotation_rows:
+            score = "未评分" if row.total_score is None else f"{float(row.total_score):.1f}分"
+            rotation_parts.append(f"第{int(row.rotation_seq)}轮 {row.department_name} {score}")
+        major = majors.get(int(student.major_id)) if student and student.major_id else None
+        cls = classes.get(int(student.class_id)) if student and student.class_id else None
+        latest_statement, latest_version = payroll if payroll else (None, None)
+        result[rid] = {
+            "grade": student.grade if student else "",
+            "majorName": major.major_name if major else "",
+            "classNameFull": cls.class_name if cls else "",
+            # Standalone deliberately does not read orientation.origin.
+            "sourceRegion": "未采集",
+            "companyCreditCode": str(app.company_credit_code or "") if app else "",
+            "companyNature": app.company_nature or "" if app else "",
+            "companyIndustry": app.company_industry or "" if app else "",
+            "companyRegisteredAddress": app.company_registered_address or "" if app else "",
+            "workCountry": app.work_country or "" if app else "",
+            "workProvince": app.work_province or "" if app else "",
+            "workCity": app.work_city or "" if app else "",
+            "workDistrict": app.work_district or "" if app else "",
+            "internshipDepartment": app.internship_department or "" if app else "",
+            "positionCategory": app.position_category or "" if app else "",
+            "majorMatch": app.major_match if app else None,
+            "majorMatchLabel": ("对口" if app and app.major_match is True else
+                                "不对口" if app and app.major_match is False else "未确认"),
+            "agreedSalary": float(app.agreed_salary) if app and app.agreed_salary is not None else None,
+            "agreedSalaryCurrency": "CNY" if app and app.agreed_salary is not None else "",
+            "registryVerificationStatus": app.registry_verification_status if app else "",
+            "agreementStatus": agreement.status if agreement else "",
+            "agreementFileId": str(agreement.file_id or "") if agreement else "",
+            "rotationCount": len(rotation_rows),
+            "rotationScoreSummary": "；".join(rotation_parts),
+            "latestPayrollMonth": latest_statement.pay_month if latest_statement else "",
+            "latestActualSalary": float(latest_version.actual_amount) if latest_version else None,
+            "latestActualSalaryCurrency": latest_version.currency if latest_version else "",
+        }
+    return result
+
+
 # ═══════════ 列表 / 详情 ═══════════
 
 def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status=None,
@@ -334,11 +446,15 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
         smap = _students_map(db, [r.student_id for r in kept])
         bmap = _batch_names(db, [r.batch_id for r in kept])
         from app.modules.internship.services.internship_service import resolve_student_class_college_names
+        procurement = _procurement_row_facts(db, kept, smap)
         items = []
         for r in kept:
             stu = smap.get(r.student_id)
-            cn, _ = resolve_student_class_college_names(db, stu)
-            items.append(_row(r, stu, bmap.get(r.batch_id, ""), class_name=cn))
+            cn, college_name = resolve_student_class_college_names(db, stu)
+            row = _row(r, stu, bmap.get(r.batch_id, ""), class_name=cn)
+            row["collegeName"] = college_name or ""
+            row.update(procurement.get(int(r.id), {}))
+            items.append(row)
         return items, total
 
 
@@ -932,11 +1048,32 @@ def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
         list_students, keyword=keyword, status=status, eligibility=eligibility,
         batch_id=batch_id, class_id=class_id, risk_level=risk_level,
         destination=destination, has_position=has_position, user=user)
-    headers = ["学号", "姓名", "班级", "批次", "校内指导教师", "企业名称", "岗位名称",
-               "实习状态", "实习资格", "实习去向", "风险"]
-    data_rows = [[it["studentNo"], it["name"], it["className"], batch_meta["batchName"],
-                  it["advisorName"], it["enterpriseName"], it["positionName"], it["statusLabel"],
-                  it["eligibilityLabel"], it["destinationLabel"], it["riskLabel"]] for it in items]
+    headers = [
+        "学号", "姓名", "年级", "学院", "专业", "班级", "生源地", "实习批次",
+        "校内指导教师", "企业名称", "统一社会信用代码", "单位性质", "行业分类",
+        "企业注册地址", "实际工作国家/地区", "实际工作省份", "实际工作城市", "实际工作区县",
+        "实习部门", "岗位名称", "岗位类别", "专业对口", "约定报酬", "约定报酬币种",
+        "工商核验状态", "三方协议状态", "轮岗次数", "轮岗成绩", "最近工资月份",
+        "最近实发工资", "实发工资币种", "实习状态", "实习资格", "实习去向", "风险",
+    ]
+    data_rows = [[
+        it["studentNo"], it["name"], it.get("grade") or "", it.get("collegeName") or "",
+        it.get("majorName") or "", it["className"], it.get("sourceRegion") or "未采集",
+        batch_meta["batchName"], it["advisorName"], it["enterpriseName"],
+        # Keep credit code as a text value; xlsx must never coerce it to scientific notation.
+        str(it.get("companyCreditCode") or ""), it.get("companyNature") or "",
+        it.get("companyIndustry") or "", it.get("companyRegisteredAddress") or "",
+        it.get("workCountry") or "", it.get("workProvince") or "", it.get("workCity") or "",
+        it.get("workDistrict") or "", it.get("internshipDepartment") or "", it["positionName"],
+        it.get("positionCategory") or "", it.get("majorMatchLabel") or "未确认",
+        "" if it.get("agreedSalary") is None else it.get("agreedSalary"),
+        it.get("agreedSalaryCurrency") or "", it.get("registryVerificationStatus") or "",
+        it.get("agreementStatus") or "", int(it.get("rotationCount") or 0),
+        it.get("rotationScoreSummary") or "", it.get("latestPayrollMonth") or "",
+        "" if it.get("latestActualSalary") is None else it.get("latestActualSalary"),
+        it.get("latestActualSalaryCurrency") or "", it["statusLabel"], it["eligibilityLabel"],
+        it["destinationLabel"], it["riskLabel"],
+    ] for it in items]
     user_ctx = get_current_user_ctx() or {}
     bname = batch_meta["batchName"] or "未命名批次"
     wm = (f"岗位实习中心·实习学生台账 · 批次：{bname} · 导出人：{user_ctx.get('realName', '-')} · "
