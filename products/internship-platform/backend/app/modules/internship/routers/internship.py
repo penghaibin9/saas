@@ -318,7 +318,8 @@ def report_remind(report_id: str, body: dict = Body(default={}), user=Depends(re
 def review_report(report_id: str, body: ReportReviewRequest, user=Depends(require_permission("internship.report.review"))):
     result = svc.review_weekly_report(
         report_id, body.action, body.comment, user=user,
-        expected_version=body.expectedVersion if body.expectedVersion is not None else body.version)
+        expected_version=body.expectedVersion if body.expectedVersion is not None else body.version,
+        rating_level=body.ratingLevel)
     audit_log.record("批阅周报", f"internship-report:{report_id}", detail={"action": body.action})
     return success(result, message="批阅完成")
 
