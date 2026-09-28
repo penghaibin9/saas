@@ -7,7 +7,10 @@ from __future__ import annotations
 
 from typing import Optional
 
+from io import BytesIO
+
 from fastapi import APIRouter, Body, Depends, Query
+from fastapi.responses import StreamingResponse
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -46,6 +49,28 @@ def application_students(state: str = Query(..., min_length=1),
     items, total = svc.list_application_students(
         page, pageSize, state, batch_id=batchId, keyword=keyword, user=user)
     return success(paginate(items, total, page, pageSize))
+
+@router.get("/export.xlsx", summary="按当前筛选条件导出完整实习申请审核台账")
+def applications_export(
+    status: Optional[str] = None,
+    applicationType: Optional[str] = None,
+    keyword: Optional[str] = None,
+    batchId: Optional[str] = None,
+    user=Depends(require_permission(_P_VIEW)),
+):
+    payload, filename, _row_count = svc.export_applications(
+        status=status,
+        application_type=applicationType,
+        keyword=keyword,
+        batch_id=batchId,
+        user=user,
+    )
+    return StreamingResponse(
+        BytesIO(payload),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
 
 @router.get("/{application_id}")
 def application_detail(application_id: str, user=Depends(require_permission(_P_VIEW))):
