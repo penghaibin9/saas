@@ -264,9 +264,15 @@ export const internshipApi = {
     return call(() => request(`/internship/reports/${id}`))
   },
 
-  reviewWeeklyReport(id, { action, comment, expectedVersion, version }) {
+  reviewWeeklyReport(id, { action, comment, ratingLevel, expectedVersion, version }) {
     return call(() => request(`/internship/reports/${id}/review`, {
-      method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version }
+      method: 'POST',
+      body: {
+        action,
+        comment,
+        ratingLevel: ratingLevel == null || ratingLevel === '' ? undefined : Number(ratingLevel),
+        expectedVersion: expectedVersion ?? version
+      }
     }))
   },
 
@@ -303,9 +309,17 @@ export const internshipApi = {
     return call(() => request(`/internship/process-reports/${id}`))
   },
 
-  reviewProcessReport(id, { action, comment, expectedVersion, version }) {
+  reviewProcessReport(id, { action, comment, ratingLevel, summaryScore, batchId, expectedVersion, version }) {
     return call(() => request(`/internship/process-reports/${id}/review`, {
-      method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version }
+      method: 'POST',
+      body: {
+        action,
+        comment,
+        ratingLevel: ratingLevel == null || ratingLevel === '' ? undefined : Number(ratingLevel),
+        summaryScore: summaryScore == null || summaryScore === '' ? undefined : Number(summaryScore),
+        batchId: batchId || undefined,
+        expectedVersion: expectedVersion ?? version
+      }
     }))
   },
 
