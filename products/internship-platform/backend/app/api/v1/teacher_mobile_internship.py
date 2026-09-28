@@ -65,6 +65,18 @@ class TeacherWorkReportBody(_StrictBody):
     expectedVersion: int | None = Field(default=None, ge=0)
 
 
+class TeacherPeriodReportBody(_StrictBody):
+    batchId: int = Field(gt=0)
+    reportType: Literal["WEEKLY", "MONTHLY", "SUMMARY"]
+    periodKey: str = Field(min_length=4, max_length=32)
+    content: str = Field(min_length=30, max_length=12000)
+    issueContent: str | None = Field(default=None, max_length=4000)
+    nextPlan: str | None = Field(default=None, max_length=4000)
+    studentCount: int | None = Field(default=None, ge=0)
+    attachmentFileIds: list[str] = Field(default_factory=list, max_length=9)
+    expectedVersion: int | None = Field(default=None, ge=0)
+
+
 class EmergencyNoticeBody(_StrictBody):
     batchId: int = Field(gt=0)
     title: str = Field(min_length=2, max_length=200)
@@ -157,6 +169,36 @@ def save_teacher_work_report(
     return success(
         activity_svc.save_work_report(user, body.model_dump(exclude_none=True)),
         message="教师工作报告已保存",
+    )
+
+
+@router.get("/activity/period-reports", summary="教师本人周报/月报/总结")
+def my_teacher_period_reports(
+    batchId: int = Query(..., ge=1),
+    reportType: Literal["WEEKLY", "MONTHLY", "SUMMARY"] | None = Query(None),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("internship.guidance.view")),
+):
+    return success(
+        activity_svc.list_my_period_reports(
+            user,
+            batch_id=batchId,
+            report_type=reportType,
+            page=page,
+            page_size=pageSize,
+        )
+    )
+
+
+@router.post("/activity/period-reports", summary="提交或版本更新教师本人周报/月报/总结")
+def save_teacher_period_report(
+    body: TeacherPeriodReportBody,
+    user=Depends(require_permission("internship.guidance.manage")),
+):
+    return success(
+        activity_svc.save_period_report(user, body.model_dump(exclude_none=True)),
+        message="教师周期报告已保存",
     )
 
 

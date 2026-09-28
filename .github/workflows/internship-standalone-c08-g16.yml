@@ -1,0 +1,84 @@
+name: Internship Standalone C08 G16 Teacher Activity
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/backend/app/models/internship_teacher_activity.py"
+      - "products/internship-platform/backend/app/models/__init__.py"
+      - "products/internship-platform/backend/alembic/versions/0011_yiyang_teacher_period_reports.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_teacher_activity_service.py"
+      - "products/internship-platform/backend/app/api/v1/teacher_mobile_internship.py"
+      - "products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py"
+      - "products/internship-platform/mobile/src/pages/teacher-internship/activity/index.vue"
+      - "products/internship-platform/mobile/src/services/teacherApi.js"
+      - ".github/workflows/internship-standalone-c08-g16.yml"
+
+jobs:
+  c08-g16:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: c08_g16
+          MYSQL_DATABASE: internship_c08_g16
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pc08_g16"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:c08_g16@127.0.0.1:3306/internship_c08_g16?charset=utf8mb4
+      JWT_SECRET: c08-g16-actions-secret-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install standalone backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Compile G16 authority
+        run: |
+          python -m py_compile \
+            products/internship-platform/backend/app/models/internship_teacher_activity.py \
+            products/internship-platform/backend/app/modules/internship/services/internship_teacher_activity_service.py \
+            products/internship-platform/backend/app/api/v1/teacher_mobile_internship.py
+      - name: Upgrade empty MySQL to ix0011
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade ix0011
+      - name: Verify teacher period report facts
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as db:
+              version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+              columns = set(db.execute(text(
+                  "SELECT column_name FROM information_schema.columns "
+                  "WHERE table_schema=DATABASE() AND table_name='t_internship_teacher_period_report'"
+              )).scalars())
+          assert version == "ix0011", version
+          assert {"report_type", "period_key", "content", "attachment_file_ids_json"} <= columns
+          print({"version": version, "columnCount": len(columns)})
+          PY
+      - name: Run C08/G16 acceptance only
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py
+      - name: Install standalone mobile dependencies
+        working-directory: products/internship-platform/mobile
+        run: npm install --no-audit --no-fund
+      - name: Build standalone mobile H5
+        working-directory: products/internship-platform/mobile
+        run: npm run build:h5

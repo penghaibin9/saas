@@ -3,7 +3,11 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.exceptions import AppException
-from app.models import InternshipCheckin, InternshipTeacherCheckin
+from app.models import (
+    InternshipCheckin,
+    InternshipTeacherCheckin,
+    InternshipTeacherPeriodReport,
+)
 from app.modules.internship.services import internship_teacher_activity_service as svc
 
 
@@ -167,3 +171,52 @@ def test_g16_mobile_routes_are_exposed():
     assert "/internship/activity/work-reports" in teacher_paths
     assert "/internship/emergency-notices" in teacher_paths
     assert "/mobile/internship/emergency-notices" in student_paths
+
+
+
+def test_g16_teacher_period_reports_are_not_daily_work_logs():
+    assert InternshipTeacherPeriodReport.__tablename__ == "t_internship_teacher_period_report"
+    assert svc._normalize_period("WEEKLY", "2026-W01") == ("WEEKLY", "2026-W01")
+    assert svc._normalize_period("MONTHLY", "2026-01") == ("MONTHLY", "2026-01")
+    assert svc._normalize_period("SUMMARY", "FINAL") == ("SUMMARY", "SUMMARY")
+    with pytest.raises(AppException):
+        svc._normalize_period("MONTHLY", "2026-13")
+
+
+def test_g16_teacher_can_save_weekly_period_report(monkeypatch):
+    db = _FakeDb()
+    audits = []
+    monkeypatch.setattr(svc, "session", lambda: db)
+    monkeypatch.setattr(svc, "_tid", lambda: 1)
+    monkeypatch.setattr(
+        svc,
+        "_assert_teacher_batch_scope",
+        lambda _db, batch_id, _user: SimpleNamespace(id=int(batch_id)),
+    )
+    monkeypatch.setattr(
+        svc,
+        "add_audit",
+        lambda _db, **kwargs: audits.append(kwargs) or "evt",
+    )
+    result = svc.save_period_report(
+        _teacher(),
+        {
+            "batchId": 12,
+            "reportType": "WEEKLY",
+            "periodKey": "2026-W01",
+            "content": "本周完成实习巡访、学生沟通、风险核查与企业协调工作。" * 3,
+            "studentCount": 18,
+            "attachmentFileIds": [],
+        },
+    )
+    assert result["reportType"] == "WEEKLY"
+    assert result["periodKey"] == "2026-W01"
+    assert db.committed is True
+    assert audits[0]["target_type"] == "TEACHER_PERIOD_REPORT"
+    assert audits[0]["detail"]["reportType"] == "WEEKLY"
+
+
+def test_g16_period_report_routes_are_exposed():
+    from app.api.v1.teacher_mobile_internship import router as teacher_router
+    paths = {route.path for route in teacher_router.routes}
+    assert "/internship/activity/period-reports" in paths

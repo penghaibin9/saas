@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timezone
+import re
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
@@ -12,6 +13,7 @@ from app.models import (
     InternshipEmergencyNotice,
     InternshipRecord,
     InternshipTeacherCheckin,
+    InternshipTeacherPeriodReport,
     InternshipTeacherWorkReport,
 )
 from app.modules.internship.services.internship_audit_service import add_audit
@@ -341,6 +343,186 @@ def list_my_work_reports(user: dict, *, batch_id, page: int = 1, page_size: int 
         ).offset((page - 1) * page_size).limit(page_size)).all()
         return {
             "items": [_report_view(row) for row in rows],
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+        }
+
+
+def _normalize_period(report_type, period_key) -> tuple[str, str]:
+    kind = str(report_type or "").strip().upper()
+    key = str(period_key or "").strip().upper()
+    if kind == "WEEKLY":
+        match = re.fullmatch(r"(\d{4})-W(\d{2})", key)
+        if not match:
+            raise AppException("VALIDATION_ERROR", "周报 periodKey 必须为 YYYY-Www，例如 2026-W39")
+        try:
+            start = date.fromisocalendar(int(match.group(1)), int(match.group(2)), 1)
+        except ValueError:
+            raise AppException("VALIDATION_ERROR", "周报 periodKey 不是有效 ISO 周") from None
+        if start > date.today():
+            raise AppException("VALIDATION_ERROR", "不能提交未来周的教师周报")
+        return kind, key
+    if kind == "MONTHLY":
+        if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", key):
+            raise AppException("VALIDATION_ERROR", "月报 periodKey 必须为 YYYY-MM")
+        if date.fromisoformat(key + "-01") > date.today().replace(day=1):
+            raise AppException("VALIDATION_ERROR", "不能提交未来月份的教师月报")
+        return kind, key
+    if kind == "SUMMARY":
+        if key not in {"", "SUMMARY", "FINAL"}:
+            raise AppException("VALIDATION_ERROR", "总结 periodKey 只能为 SUMMARY")
+        return kind, "SUMMARY"
+    raise AppException("VALIDATION_ERROR", "reportType 必须是 WEEKLY/MONTHLY/SUMMARY")
+
+
+def _period_report_view(row: InternshipTeacherPeriodReport) -> dict:
+    return {
+        "id": str(row.id),
+        "batchId": str(row.batch_id),
+        "teacherUserId": str(row.teacher_user_id),
+        "teacherName": row.teacher_name_snapshot,
+        "reportType": row.report_type,
+        "periodKey": row.period_key,
+        "content": row.content,
+        "issueContent": row.issue_content or "",
+        "nextPlan": row.next_plan or "",
+        "studentCount": row.student_count,
+        "attachmentFileIds": list(row.attachment_file_ids_json or []),
+        "submittedAt": _iso(row.submitted_at) or "",
+        "version": int(row.version or 0),
+    }
+
+
+def save_period_report(user: dict, body: dict) -> dict:
+    payload = body or {}
+    teacher_id, teacher_name = _teacher_identity(user)
+    report_type, period_key = _normalize_period(
+        payload.get("reportType"), payload.get("periodKey"))
+    content = str(payload.get("content") or "").strip()
+    minimum = 300 if report_type == "SUMMARY" else (100 if report_type == "MONTHLY" else 30)
+    if len(content) < minimum:
+        label = {"WEEKLY": "周报", "MONTHLY": "月报", "SUMMARY": "总结"}[report_type]
+        raise AppException("VALIDATION_ERROR", f"教师{label}至少填写 {minimum} 个字")
+    if len(content) > 12000:
+        raise AppException("VALIDATION_ERROR", "教师周期报告不能超过 12000 字")
+    attachments = _validate_attachments(payload.get("attachmentFileIds"))
+    student_count = payload.get("studentCount")
+    if student_count not in (None, ""):
+        try:
+            student_count = int(student_count)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "涉及学生人数格式非法") from None
+        if student_count < 0:
+            raise AppException("VALIDATION_ERROR", "涉及学生人数不能为负数")
+    else:
+        student_count = None
+
+    with session() as db:
+        batch = _assert_teacher_batch_scope(db, payload.get("batchId"), user)
+        row = db.scalar(select(InternshipTeacherPeriodReport).where(
+            InternshipTeacherPeriodReport.tenant_id == _tid(),
+            InternshipTeacherPeriodReport.batch_id == batch.id,
+            InternshipTeacherPeriodReport.teacher_user_id == teacher_id,
+            InternshipTeacherPeriodReport.report_type == report_type,
+            InternshipTeacherPeriodReport.period_key == period_key,
+            InternshipTeacherPeriodReport.is_deleted.is_(False),
+        ).with_for_update())
+        action = "TEACHER_PERIOD_REPORT_CREATE"
+        if row:
+            expected = payload.get("expectedVersion")
+            if expected is None:
+                raise AppException(
+                    "DATA_CONFLICT", "该周期教师报告已存在，修改时必须提供 expectedVersion")
+            try:
+                expected = int(expected)
+            except (TypeError, ValueError):
+                raise AppException(
+                    "DATA_CONFLICT", "expectedVersion 格式非法，请刷新后重试") from None
+            if expected != int(row.version or 0):
+                raise AppException("DATA_CONFLICT", "教师周期报告已被更新，请刷新后重试")
+            row.version = int(row.version or 0) + 1
+            action = "TEACHER_PERIOD_REPORT_UPDATE"
+        else:
+            row = InternshipTeacherPeriodReport(
+                tenant_id=_tid(),
+                batch_id=batch.id,
+                teacher_user_id=teacher_id,
+                teacher_name_snapshot=teacher_name,
+                report_type=report_type,
+                period_key=period_key,
+            )
+            db.add(row)
+
+        row.teacher_name_snapshot = teacher_name
+        row.content = content
+        row.issue_content = str(payload.get("issueContent") or "").strip()[:4000] or None
+        row.next_plan = str(payload.get("nextPlan") or "").strip()[:4000] or None
+        row.student_count = student_count
+        row.attachment_file_ids_json = attachments
+        row.submitted_at = datetime.utcnow()
+        db.flush()
+        for fid in attachments:
+            file_service.bind_file_biz(
+                fid,
+                "INTERNSHIP_TEACHER_PERIOD_REPORT",
+                str(row.id),
+                user=user,
+                db=db,
+            )
+        add_audit(
+            db,
+            target_type="TEACHER_PERIOD_REPORT",
+            target_id=row.id,
+            action=action,
+            user=user,
+            batch_id=batch.id,
+            expected_version=payload.get("expectedVersion"),
+            new_version=int(row.version or 0),
+            file_ids=attachments,
+            detail={
+                "teacherUserId": str(teacher_id),
+                "reportType": report_type,
+                "periodKey": period_key,
+                "contentLength": len(content),
+                "studentCount": student_count,
+            },
+        )
+        db.commit()
+        return _period_report_view(row)
+
+
+def list_my_period_reports(
+    user: dict, *, batch_id, report_type: str | None = None,
+    page: int = 1, page_size: int = 20,
+) -> dict:
+    teacher_id, _ = _teacher_identity(user)
+    page = max(1, int(page or 1))
+    page_size = min(100, max(1, int(page_size or 20)))
+    normalized_type = None
+    if report_type:
+        normalized_type = str(report_type).strip().upper()
+        if normalized_type not in {"WEEKLY", "MONTHLY", "SUMMARY"}:
+            raise AppException(
+                "VALIDATION_ERROR", "reportType 必须是 WEEKLY/MONTHLY/SUMMARY")
+    with session() as db:
+        batch = _assert_teacher_batch_scope(db, batch_id, user)
+        base = select(InternshipTeacherPeriodReport).where(
+            InternshipTeacherPeriodReport.tenant_id == _tid(),
+            InternshipTeacherPeriodReport.batch_id == batch.id,
+            InternshipTeacherPeriodReport.teacher_user_id == teacher_id,
+            InternshipTeacherPeriodReport.is_deleted.is_(False),
+        )
+        if normalized_type:
+            base = base.where(
+                InternshipTeacherPeriodReport.report_type == normalized_type)
+        total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
+        rows = db.scalars(base.order_by(
+            InternshipTeacherPeriodReport.submitted_at.desc(),
+            InternshipTeacherPeriodReport.id.desc(),
+        ).offset((page - 1) * page_size).limit(page_size)).all()
+        return {
+            "items": [_period_report_view(row) for row in rows],
             "total": total,
             "page": page,
             "pageSize": page_size,

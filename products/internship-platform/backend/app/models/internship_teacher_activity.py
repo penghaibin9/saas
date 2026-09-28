@@ -62,6 +62,35 @@ class InternshipTeacherWorkReport(PKMixin, TenantMixin, CommonMixin, Base):
     submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class InternshipTeacherPeriodReport(PKMixin, TenantMixin, CommonMixin, Base):
+    """Teacher-owned WEEKLY/MONTHLY/SUMMARY report fact; daily work logs stay separate."""
+    __tablename__ = "t_internship_teacher_period_report"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "batch_id", "teacher_user_id", "report_type", "period_key",
+            name="uk_ix_teacher_period_report",
+        ),
+        Index(
+            "ix_ix_teacher_period_report_lookup",
+            "tenant_id", "batch_id", "teacher_user_id", "report_type", "period_key",
+        ),
+    )
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teacher_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teacher_name_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    report_type: Mapped[str] = mapped_column(
+        String(20), nullable=False, comment="WEEKLY/MONTHLY/SUMMARY")
+    period_key: Mapped[str] = mapped_column(
+        String(32), nullable=False, comment="WEEKLY: YYYY-Www; MONTHLY: YYYY-MM; SUMMARY: SUMMARY")
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    issue_content: Mapped[str | None] = mapped_column(Text)
+    next_plan: Mapped[str | None] = mapped_column(Text)
+    student_count: Mapped[int | None] = mapped_column(Integer)
+    attachment_file_ids_json: Mapped[list | None] = mapped_column(JSON)
+    submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
 class InternshipEmergencyNotice(PKMixin, TenantMixin, CommonMixin, Base):
     """School emergency notice fact. Student re-login reads this persisted row."""
     __tablename__ = "t_internship_emergency_notice"

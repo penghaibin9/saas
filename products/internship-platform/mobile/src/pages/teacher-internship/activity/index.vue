@@ -41,7 +41,32 @@
         </view>
 
         <view class="card g16-card">
-          <view><text class="eyebrow">03 · 紧急通知</text><text class="title">批次通知</text></view>
+          <view class="row-between">
+            <view><text class="eyebrow">03 · 周报 / 月报 / 总结</text><text class="title">教师本人周期报告</text></view>
+            <text v-if="periodForm.expectedVersion != null" class="link" @click="resetPeriodForm">取消修改</text>
+          </view>
+          <picker :range="periodLabels" :value="periodTypeIndex" @change="onPeriodType">
+            <view class="field"><text>报告类型</text><text>{{ periodLabels[periodTypeIndex] }} ▾</text></view>
+          </picker>
+          <input v-model="periodForm.periodKey" class="input" :placeholder="periodKeyHint" :disabled="periodForm.reportType==='SUMMARY'" />
+          <textarea v-model="periodForm.content" class="textarea" maxlength="12000" :placeholder="periodContentHint" />
+          <textarea v-model="periodForm.issueContent" class="textarea small" maxlength="4000" placeholder="本周期问题与风险（选填）" />
+          <textarea v-model="periodForm.nextPlan" class="textarea small" maxlength="4000" placeholder="下一周期计划（选填）" />
+          <input v-model="periodForm.studentCount" class="input" type="number" placeholder="涉及学生人数（选填）" />
+          <button class="btn btn-primary" :loading="periodSaving" @click="savePeriodReport">保存周期报告</button>
+          <view v-for="row in periodReports" :key="row.id" class="report">
+            <view class="row-between">
+              <text class="strong">{{ periodTypeLabel(row.reportType) }} · {{ row.periodKey }}</text>
+              <text class="link" @click="editPeriodReport(row)">编辑</text>
+            </view>
+            <text class="body">{{ row.content }}</text>
+            <text class="muted">版本 {{ row.version }} · {{ row.submittedAt }}</text>
+          </view>
+          <text v-if="!periodReports.length" class="muted">当前批次暂无教师周报、月报或总结</text>
+        </view>
+
+        <view class="card g16-card">
+          <view><text class="eyebrow">04 · 紧急通知</text><text class="title">批次通知</text></view>
           <MobileInlineAlert type="info" description="通知来自服务端正式业务库，学生退出或重新登录后仍会重新读取。" />
           <view v-if="canPublish" class="notice-form">
             <input v-model="notice.title" class="input" maxlength="200" placeholder="紧急通知标题" />
@@ -70,12 +95,32 @@ const today = () => {
   return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate())
 }
 const blank = () => ({ reportDate: today(), workContent: '', issueContent: '', nextPlan: '', studentCount: '', expectedVersion: null })
+const periodOptions = [
+  { code:'WEEKLY', label:'周报' },
+  { code:'MONTHLY', label:'月报' },
+  { code:'SUMMARY', label:'总结' }
+]
+const currentMonth = () => today().slice(0,7)
+const currentIsoWeek = () => {
+  const d = new Date(), t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()))
+  const day = t.getUTCDay() || 7
+  t.setUTCDate(t.getUTCDate() + 4 - day)
+  const yearStart = new Date(Date.UTC(t.getUTCFullYear(), 0, 1))
+  const week = Math.ceil((((t - yearStart) / 86400000) + 1) / 7)
+  return t.getUTCFullYear() + '-W' + String(week).padStart(2,'0')
+}
+const defaultPeriodKey = (type) => type === 'WEEKLY' ? currentIsoWeek() : (type === 'MONTHLY' ? currentMonth() : 'SUMMARY')
+const blankPeriod = (type='WEEKLY') => ({ reportType:type, periodKey:defaultPeriodKey(type), content:'', issueContent:'', nextPlan:'', studentCount:'', expectedVersion:null })
 
 export default {
-  data() { return { state:'loading', batches:[], batchId:'', batchIndex:0, checkins:[], reports:[], notices:[], checking:false, saving:false, publishing:false, form:blank(), notice:{title:'',content:''} } },
+  data() { return { state:'loading', batches:[], batchId:'', batchIndex:0, checkins:[], reports:[], periodReports:[], notices:[], checking:false, saving:false, periodSaving:false, publishing:false, form:blank(), periodForm:blankPeriod(), notice:{title:'',content:''} } },
   computed: {
     context() { return useInternshipContextStore() },
     batchLabels() { return this.batches.map((b) => b.name || ('批次 '+b.id)) },
+    periodLabels() { return periodOptions.map((x) => x.label) },
+    periodTypeIndex() { return Math.max(0, periodOptions.findIndex((x) => x.code === this.periodForm.reportType)) },
+    periodKeyHint() { return this.periodForm.reportType === 'WEEKLY' ? '例如 2026-W39' : (this.periodForm.reportType === 'MONTHLY' ? '例如 2026-09' : 'SUMMARY') },
+    periodContentHint() { return this.periodForm.reportType === 'SUMMARY' ? '实习指导总结（至少300字）' : (this.periodForm.reportType === 'MONTHLY' ? '本月指导工作（至少100字）' : '本周指导工作（至少30字）') },
     todayChecked() { return this.checkins.find((x) => x.localDate === today()) || null },
     canPublish() { return this.context.can('internship.communication.manage') && /ADMIN/i.test(this.context.roleCode || '') }
   },
@@ -89,19 +134,20 @@ export default {
         this.batches=this.context.batches||[]; this.batchId=this.context.selectedBatchId||''
         this.batchIndex=Math.max(0,this.batches.findIndex((b)=>String(b.id)===String(this.batchId)))
         if (!this.batchId) { this.state='ready'; return }
-        const [a,b,c]=await Promise.all([
+        const [a,b,p,c]=await Promise.all([
           teacherApi.getMyInternshipCheckins(this.batchId),
           teacherApi.getMyInternshipWorkReports(this.batchId,1,20),
+          teacherApi.getMyInternshipPeriodReports(this.batchId,1,20),
           teacherApi.getInternshipEmergencyNotices(this.batchId,true)
         ])
-        this.checkins=a||[]; this.reports=b?.items||[]; this.notices=c||[]; this.state='ready'
+        this.checkins=a||[]; this.reports=b?.items||[]; this.periodReports=p?.items||[]; this.notices=c||[]; this.state='ready'
       } catch(e) { this.state='error'; toast(e?.message||'教师实习工作加载失败') }
       finally { if(done) done() }
     },
     async onBatch(e) {
       this.batchIndex=Number(e.detail.value)||0
       this.context.selectBatch(this.batches[this.batchIndex]?.id)
-      this.batchId=this.context.selectedBatchId; this.resetForm(); await this.load()
+      this.batchId=this.context.selectedBatchId; this.resetForm(); this.resetPeriodForm(); await this.load()
     },
     async checkin() {
       if (!this.batchId || this.checking) return
@@ -121,6 +167,45 @@ export default {
         if(this.form.expectedVersion!=null) body.expectedVersion=this.form.expectedVersion
         await teacherApi.saveMyInternshipWorkReport(body); toast('工作报告已保存'); this.resetForm(); await this.load()
       } catch(e) { toast(e?.message||'工作报告保存失败') } finally { this.saving=false }
+    },
+    periodTypeLabel(type) { return periodOptions.find((x)=>x.code===type)?.label || type },
+    resetPeriodForm(type='WEEKLY') { this.periodForm=blankPeriod(type) },
+    onPeriodType(e) {
+      const type=periodOptions[Number(e.detail.value)||0]?.code||'WEEKLY'
+      this.resetPeriodForm(type)
+    },
+    editPeriodReport(row) {
+      this.periodForm={
+        reportType:row.reportType,
+        periodKey:row.periodKey,
+        content:row.content||'',
+        issueContent:row.issueContent||'',
+        nextPlan:row.nextPlan||'',
+        studentCount:row.studentCount==null?'':String(row.studentCount),
+        expectedVersion:Number(row.version||0)
+      }
+    },
+    async savePeriodReport() {
+      if (!this.batchId || this.periodSaving) return
+      const min=this.periodForm.reportType==='SUMMARY'?300:(this.periodForm.reportType==='MONTHLY'?100:30)
+      if ((this.periodForm.content||'').trim().length<min) return toast(`当前报告至少填写${min}个字`)
+      this.periodSaving=true
+      try {
+        const body={
+          batchId:Number(this.batchId),
+          reportType:this.periodForm.reportType,
+          periodKey:this.periodForm.periodKey,
+          content:this.periodForm.content,
+          issueContent:this.periodForm.issueContent,
+          nextPlan:this.periodForm.nextPlan
+        }
+        if(String(this.periodForm.studentCount).trim()) body.studentCount=Number(this.periodForm.studentCount)
+        if(this.periodForm.expectedVersion!=null) body.expectedVersion=this.periodForm.expectedVersion
+        await teacherApi.saveMyInternshipPeriodReport(body)
+        toast('教师周期报告已保存')
+        this.resetPeriodForm(this.periodForm.reportType)
+        await this.load()
+      } catch(e) { toast(e?.message||'周期报告保存失败') } finally { this.periodSaving=false }
     },
     async publishNotice() {
       if (!this.batchId || this.publishing) return
