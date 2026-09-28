@@ -17,6 +17,7 @@ from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.internship.services import internship_change_service as change_svc
 from app.modules.internship.services import internship_process_report_service as report_svc
+from app.modules.internship.services import internship_report_quality_service as quality_svc
 
 router = APIRouter(prefix="/internship", tags=["岗位实习-过程报告与变更"])
 
@@ -25,6 +26,23 @@ _P_REPORT_REVIEW = "internship.report.review"
 _P_REPORT_EXPORT = "internship.report.export"
 _P_CHANGE_VIEW = "internship.change.view"
 _P_CHANGE_REVIEW = "internship.change.review"
+
+
+# ── 报告批阅绩效（周报 + 日报/月报/总结，不可变批阅事实） ──
+@router.get("/report-review-performance", summary="报告批阅绩效（按批次与数据范围）")
+def report_review_performance(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission(_P_REPORT_VIEW)),
+):
+    return success(quality_svc.report_review_performance(user, batchId))
+
+
+@router.post("/report-review-performance/export", summary="导出报告批阅绩效 Excel")
+def report_review_performance_export(
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission(_P_REPORT_EXPORT)),
+):
+    return success(quality_svc.export_report_review_performance(user, batchId))
 
 
 # ── 过程报告 ──
