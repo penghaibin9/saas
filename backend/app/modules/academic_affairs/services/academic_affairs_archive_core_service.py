@@ -160,10 +160,17 @@ def _evaluate_registration(db, term_id):
         AaRegistration.is_deleted.is_(False),
         AaRegistration.status != "REGISTERED",
     ).count() if batch_ids else 0
-    passed = not unfinished and open_exceptions == 0 and pending_records == 0
+    registered_records = db.query(AaRegistration).filter(
+        AaRegistration.tenant_id == _tid(),
+        AaRegistration.batch_id.in_(batch_ids),
+        AaRegistration.is_deleted.is_(False),
+        AaRegistration.status == "REGISTERED",
+    ).count() if batch_ids else 0
+    # ponytail: 空批次不能替代真实注册；候选名单具备冻结版本后再核对全员覆盖。
+    passed = not unfinished and open_exceptions == 0 and pending_records == 0 and registered_records > 0
     remark = ("注册批次已关闭、注册明细均已完成且无未处理异常" if passed else
               f"未关闭批次 {len(unfinished)} 个，未完成注册明细 {pending_records} 条，"
-              f"未处理注册异常 {open_exceptions} 条")
+              f"未处理注册异常 {open_exceptions} 条，已注册学生 {registered_records} 人")
     return _result(len(rows), passed, remark)
 
 

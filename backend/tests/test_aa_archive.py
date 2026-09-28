@@ -160,6 +160,7 @@ def test_school_archive_registration_checks_closed_batch_details_before_confirm(
     from app.modules.academic_affairs.services import academic_affairs_archive_core_service as core
 
     ids = _seed(db_mode)
+    monkeypatch.setattr(core, "_tid", lambda: TID)
     with get_sessionmaker()() as db:
         other_term = AaTerm(tenant_id=TID, year_code="2025-2026", term_no=1, status="PUBLISHED")
         db.add(other_term)
@@ -172,6 +173,9 @@ def test_school_archive_registration_checks_closed_batch_details_before_confirm(
                                       batch_name="外校已关闭注册", status="CLOSED")
         db.add_all([current, historical, foreign])
         db.flush()
+        empty = core._evaluate_registration(db, ids["term"])
+        assert empty["present"] is False
+        assert "已注册学生 0 人" in empty["remark"]
         pending = AaRegistration(tenant_id=TID, batch_id=current.id,
                                  student_id=800001, status="PENDING_REGISTER")
         db.add_all([
@@ -189,7 +193,6 @@ def test_school_archive_registration_checks_closed_batch_details_before_confirm(
         pending_id = pending.id
         db.commit()
 
-    monkeypatch.setattr(core, "_tid", lambda: TID)
     with get_sessionmaker()() as db:
         blocked = core._evaluate_registration(db, ids["term"])
         assert blocked["present"] is False
