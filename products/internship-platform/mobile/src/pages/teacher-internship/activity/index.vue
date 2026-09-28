@@ -13,10 +13,21 @@
             <view><text class="eyebrow">01 · 本人签到</text><text class="title">{{ todayChecked ? '今天已签到' : '今天未签到' }}</text></view>
             <MobileStatusTag :type="todayChecked ? 'success' : 'warning'">{{ todayChecked ? '已完成' : '待完成' }}</MobileStatusTag>
           </view>
-          <text v-if="todayChecked" class="muted">{{ todayChecked.checkedInAt }}</text>
-          <button v-else class="btn btn-primary" :loading="checking" @click="checkin">本人签到</button>
+          <text v-if="todayChecked" class="muted">{{ todayChecked.checkedInAt }} · {{ checkinResultLabel(todayChecked.result) }}</text>
+          <text v-if="todayChecked?.accuracyM != null" class="muted">定位精度约 {{ Math.round(todayChecked.accuracyM) }} 米 · {{ todayChecked.coordinateSystem || 'GCJ02' }}</text>
+          <text v-if="todayChecked?.watermarkedFileId" class="link" @click="openCheckinEvidence(todayChecked)">查看服务端水印照片</text>
+          <view v-if="!todayChecked" class="teacher-checkin-evidence">
+            <view>
+              <text class="strong">现场照片（建议）</text>
+              <text class="muted">{{ checkinPhotoName || '仅现场相机；原图保留，服务器写入教师姓名、时间、位置水印并计算双哈希。' }}</text>
+            </view>
+            <button class="btn btn-ghost" :disabled="checkinPhotoUploading || checking" @click="captureCheckinPhoto">
+              {{ checkinPhotoUploading ? '上传中…' : (checkinPhotoFileId ? '重新拍摄' : '现场拍照') }}
+            </button>
+          </view>
+          <button v-if="!todayChecked" class="btn btn-primary" :loading="checking" :disabled="checkinPhotoUploading" @click="checkin">本人签到</button>
           <view v-for="row in checkins.slice(0,5)" :key="row.id" class="list-row">
-            <text>{{ row.localDate }}</text><text class="muted">{{ row.address || '已记录' }}</text>
+            <text>{{ row.localDate }}</text><text class="muted">{{ checkinResultLabel(row.result) }} · {{ row.address || '已记录' }}</text>
           </view>
         </view>
 
@@ -186,7 +197,7 @@ const blankNotice = () => ({
 })
 
 export default {
-  data() { return { state:'loading', batches:[], batchId:'', batchIndex:0, checkins:[], reports:[], periodReports:[], notices:[], pendingNotices:[], activeNotice:null, acknowledgingNotice:false, checking:false, saving:false, periodSaving:false, publishing:false, form:blank(), periodForm:blankPeriod(), notice:blankNotice(), noticeUploading:false, noticeWithdrawingId:'' } },
+  data() { return { state:'loading', batches:[], batchId:'', batchIndex:0, checkins:[], reports:[], periodReports:[], notices:[], pendingNotices:[], activeNotice:null, acknowledgingNotice:false, checking:false, checkinPhotoFileId:'', checkinPhotoName:'', checkinPhotoUploading:false, checkinTimezoneName:this.detectTimezone(), saving:false, periodSaving:false, publishing:false, form:blank(), periodForm:blankPeriod(), notice:blankNotice(), noticeUploading:false, noticeWithdrawingId:'' } },
   computed: {
     context() { return useInternshipContextStore() },
     batchLabels() { return this.batches.map((b) => b.name || ('批次 '+b.id)) },
@@ -231,13 +242,95 @@ export default {
     async onBatch(e) {
       this.batchIndex=Number(e.detail.value)||0
       this.context.selectBatch(this.batches[this.batchIndex]?.id)
-      this.batchId=this.context.selectedBatchId; this.resetForm(); this.resetPeriodForm(); this.notice=blankNotice(); this.pendingNotices=[]; this.activeNotice=null; this.acknowledgingNotice=false; await this.load()
+      this.batchId=this.context.selectedBatchId; this.resetForm(); this.resetPeriodForm(); this.notice=blankNotice(); this.pendingNotices=[]; this.activeNotice=null; this.acknowledgingNotice=false; this.checkinPhotoFileId=''; this.checkinPhotoName=''; await this.load()
     },
-    async checkin() {
-      if (!this.batchId || this.checking) return
+    detectTimezone() {
+      try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' }
+      catch (e) { return 'Asia/Shanghai' }
+    },
+    checkinResultLabel(value) {
+      const map={NORMAL:'正常签到',RECORDED:'已记录',NO_LOCATION:'无定位待核实',LOW_ACCURACY:'定位精度不足',LOCATION_UNCERTAIN:'定位待核实',MAKEUP:'补签'}
+      return map[String(value||'').toUpperCase()] || '已记录'
+    },
+    captureCheckinPhoto() {
+      if (this.checkinPhotoUploading || this.checking) return
+      this.checkinPhotoUploading=true
+      uni.chooseImage({
+        count:1,
+        sourceType:['camera'],
+        sizeType:['original'],
+        success: async (res) => {
+          try {
+            const path=(res.tempFilePaths||[])[0]
+            const source=(res.tempFiles||[])[0]||{}
+            if(!path) return
+            const uploaded=await uploadBusinessFile({
+              path,
+              name:source.name||`teacher-checkin-${Date.now()}.jpg`,
+              size:source.size||0
+            }, { bizType:'INTERNSHIP_TEACHER_CHECKIN_PHOTO' })
+            if(!uploaded?.fileId) throw new Error('现场照片上传结果不完整')
+            this.checkinPhotoFileId=String(uploaded.fileId)
+            this.checkinPhotoName=uploaded.fileName||'现场照片已上传'
+            toast('原图已上传，签到后由服务器生成可信水印')
+          } catch(e) { toast(e?.message||'现场照片上传失败') }
+          finally { this.checkinPhotoUploading=false }
+        },
+        fail:()=>{ this.checkinPhotoUploading=false }
+      })
+    },
+    async openCheckinEvidence(row) {
+      if(!row?.watermarkedFileId) return
+      try { await openBusinessFile(row.watermarkedFileId, `教师签到-${row.localDate || '现场'}-水印.jpg`) }
+      catch(e) { toast(e?.message||'水印照片暂时无法打开') }
+    },
+    checkin() {
+      if (!this.batchId || this.checking || this.checkinPhotoUploading) return
+      uni.showModal({
+        title:'教师本人签到',
+        content:this.checkinPhotoFileId
+          ? '将采集一次当前位置，服务端写入教师姓名、服务器时间和位置水印。确认签到？'
+          : '将采集一次当前位置并登记本人签到。未拍现场照片时可在定位失败后留痕为“无定位待核实”。确认签到？',
+        success:(r)=>{ if(r.confirm) this.beginTeacherCheckin() }
+      })
+    },
+    beginTeacherCheckin() {
+      if(this.checking) return
       this.checking=true
-      try { await teacherApi.createMyInternshipCheckin({batchId:Number(this.batchId),timezoneName:'Asia/Shanghai'}); toast('教师签到已记录'); await this.load() }
-      catch(e) { toast(e?.message||'签到失败') } finally { this.checking=false }
+      const submit=async (loc={})=>{
+        try {
+          const result=await teacherApi.createMyInternshipCheckin({
+            batchId:Number(this.batchId),
+            timezoneName:this.checkinTimezoneName,
+            photoFileId:this.checkinPhotoFileId||undefined,
+            coordinateSystem:loc.latitude!=null?'GCJ02':undefined,
+            locationProvider:loc.latitude!=null?'UNI_GCJ02':undefined,
+            ...loc
+          })
+          this.checkinPhotoFileId=''
+          this.checkinPhotoName=''
+          toast(result?.evidenceAvailable?'教师签到成功，水印证据已留存':'教师签到已记录')
+          await this.load()
+        } catch(e) { toast(e?.message||'签到失败') }
+        finally { this.checking=false }
+      }
+      uni.getLocation({
+        type:'gcj02',
+        success:(p)=>submit({
+          latitude:p.latitude,
+          longitude:p.longitude,
+          accuracyM:p.accuracy,
+          address:p.address||p.name||''
+        }),
+        fail:()=>{
+          if(this.checkinPhotoFileId){
+            this.checking=false
+            toast('已拍现场照片时必须取得位置，才能生成可信位置水印')
+            return
+          }
+          submit({})
+        }
+      })
     },
     resetForm() { this.form=blank() },
     editReport(row) { this.form={reportDate:row.reportDate,workContent:row.workContent||'',issueContent:row.issueContent||'',nextPlan:row.nextPlan||'',studentCount:row.studentCount==null?'':String(row.studentCount),expectedVersion:Number(row.version||0)} },
@@ -383,6 +476,6 @@ export default {
 </script>
 
 <style scoped>
-.g16-card{padding:14px;display:flex;flex-direction:column;gap:12px}.notice-dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}.notice-attachments{display:flex;flex-direction:column;gap:7px}.notice-file{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;background:var(--gray-50);font-size:12px}.notice-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--teacher-700)}.notice-remove{flex:0 0 auto;color:var(--danger-600)}.g16-batch{flex-direction:row;align-items:center;justify-content:space-between}.eyebrow,.muted{display:block;font-size:11px;color:var(--text-tertiary);line-height:1.6}.eyebrow{color:var(--teacher-700);font-weight:700}.title{display:block;font-size:17px;font-weight:700}.strong{font-weight:600}.link{font-size:12px;color:var(--teacher-700)}.list-row,.field{display:flex;justify-content:space-between;padding:10px;border-top:1px solid var(--border-light);font-size:12px}.field{border:1px solid var(--border-light);border-radius:8px}.input,.textarea{width:100%;box-sizing:border-box;border:1px solid var(--border-light);border-radius:8px;padding:10px;font-size:13px}.textarea{height:120px}.textarea.small{height:80px}.report{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:8px;background:var(--gray-50)}.body{font-size:13px;line-height:1.65;white-space:pre-wrap}.notice-form{display:flex;flex-direction:column;gap:8px}
+.g16-card{padding:14px;display:flex;flex-direction:column;gap:12px}.teacher-checkin-evidence{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border-light);border-radius:10px;background:var(--gray-50)}.notice-dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}.notice-attachments{display:flex;flex-direction:column;gap:7px}.notice-file{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;background:var(--gray-50);font-size:12px}.notice-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--teacher-700)}.notice-remove{flex:0 0 auto;color:var(--danger-600)}.g16-batch{flex-direction:row;align-items:center;justify-content:space-between}.eyebrow,.muted{display:block;font-size:11px;color:var(--text-tertiary);line-height:1.6}.eyebrow{color:var(--teacher-700);font-weight:700}.title{display:block;font-size:17px;font-weight:700}.strong{font-weight:600}.link{font-size:12px;color:var(--teacher-700)}.list-row,.field{display:flex;justify-content:space-between;padding:10px;border-top:1px solid var(--border-light);font-size:12px}.field{border:1px solid var(--border-light);border-radius:8px}.input,.textarea{width:100%;box-sizing:border-box;border:1px solid var(--border-light);border-radius:8px;padding:10px;font-size:13px}.textarea{height:120px}.textarea.small{height:80px}.report{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:8px;background:var(--gray-50)}.body{font-size:13px;line-height:1.65;white-space:pre-wrap}.notice-form{display:flex;flex-direction:column;gap:8px}
 .g16-notice-mask{position:fixed;z-index:9999;inset:0;background:rgba(15,23,42,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}.g16-notice-dialog{width:100%;max-width:560px;max-height:82vh;background:var(--bg-card);border-radius:16px;padding:18px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}.g16-notice-body{max-height:42vh;padding:12px;border:1px solid var(--border-light);border-radius:10px;background:var(--gray-50);box-sizing:border-box}
 </style>
