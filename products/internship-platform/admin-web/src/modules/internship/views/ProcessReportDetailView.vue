@@ -63,6 +63,14 @@
             </template>
             <AppInlineAlert v-else-if="detail.status === 'PENDING_REVIEW'" type="info" description="当前账号可查看报告，暂无批阅权限。" />
             <EmptyState v-else :title="'该报告' + (detail.status === 'APPROVED' ? '已通过' : '已退回')" description="批阅结果已同步学生端" />
+            <div v-if="detail.status !== 'PENDING_REVIEW' && latestReview" class="pr-review-result">
+              <strong>本版批阅结果</strong>
+              <span>五级评价：{{ latestReview.ratingLevel ? (latestReview.ratingLevel + ' / 5') : '未评分' }}</span>
+              <span v-if="latestReview.summaryScore != null">总结评分：{{ latestReview.summaryScore }} / 100</span>
+              <span v-if="latestReview.reviewerName">批阅教师：{{ latestReview.reviewerName }}</span>
+              <span v-if="latestReview.reviewedAt">批阅时间：{{ String(latestReview.reviewedAt).replace('T', ' ').slice(0, 19) }}</span>
+              <span v-if="latestReview.comment">批阅意见：{{ latestReview.comment }}</span>
+            </div>
           </div>
         </section>
         <section class="mp-card">
@@ -110,6 +118,11 @@ export default {
       ]
     },
     activeChips() { return this.action === 'RETURN' ? REJECT_PROCESS_REPORT : APPROVE_REPORT_SHORT },
+    latestReview() {
+      const versions = this.detail?.versions || []
+      const version = versions.find(item => item?.review)
+      return version?.review || null
+    },
     trailRecords() {
       return (this.detail?.auditTrail || []).map((t, i) => ({
         id: i, actor: t.operator, at: t.occurredAt, action: t.action,
@@ -228,5 +241,8 @@ export default {
 .pr-rating label b { color:var(--danger-600); }
 .pr-rating select,.pr-rating input { height:38px; box-sizing:border-box; padding:0 10px; border:1px solid var(--border-base); border-radius:7px; background:var(--bg-card); color:var(--text-primary); }
 .pr-rating span { font-size:11px; line-height:1.5; color:var(--text-secondary); }
+.pr-review-result { display:grid; gap:5px; margin-top:12px; padding:12px; border:1px solid var(--border-base); border-radius:8px; background:var(--bg-page); font-size:12px; }
+.pr-review-result strong { color:var(--text-primary); }
+.pr-review-result span { color:var(--text-secondary); }
 .pr-chips { margin-bottom: var(--space-2); }
 </style>
