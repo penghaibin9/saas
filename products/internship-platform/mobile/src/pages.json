@@ -119,6 +119,13 @@
       }
     },
     {
+      "path": "pages/student-internship/notices/index",
+      "style": {
+        "navigationBarTitleText": "通知公告",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/student-internship/plan/index",
       "style": {
         "navigationBarTitleText": "实习计划"
