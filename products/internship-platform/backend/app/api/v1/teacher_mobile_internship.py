@@ -5,6 +5,7 @@ remain separate from student check-in/report facts.
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -81,6 +82,11 @@ class EmergencyNoticeBody(_StrictBody):
     batchId: int = Field(gt=0)
     title: str = Field(min_length=2, max_length=200)
     content: str = Field(min_length=5, max_length=5000)
+    noticeType: Literal["AGREEMENT", "TRAINING", "SAFETY", "NOTICE", "OTHER"] = "NOTICE"
+    urgency: Literal["NORMAL", "IMPORTANT", "URGENT"] = "IMPORTANT"
+    validFrom: datetime | None = None
+    validUntil: datetime | None = None
+    attachmentFileIds: list[str] = Field(default_factory=list, max_length=9)
 
 
 class NoticeWithdrawBody(_StrictBody):
