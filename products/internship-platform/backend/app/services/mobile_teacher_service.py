@@ -1,5 +1,5 @@
 from __future__ import annotations
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from app.core.context import get_current_user_ctx
 from app.models import College,Major,SchoolClass,TeacherStudentScope
 from app.services.db_service import _tid,session
@@ -18,7 +18,17 @@ def resolve_teacher_scope(user=None):
     if not keys:return scope
     try:
         with session() as db:
-            rows=db.scalars(select(TeacherStudentScope).where(TeacherStudentScope.tenant_id==_tid(),TeacherStudentScope.teacher_key.in_(keys),TeacherStudentScope.status=="ACTIVE",TeacherStudentScope.is_deleted.is_(False))).all()
+            rows=db.scalars(select(TeacherStudentScope).where(
+                TeacherStudentScope.tenant_id==_tid(),
+                TeacherStudentScope.teacher_key.in_(keys),
+                TeacherStudentScope.status=="ACTIVE",
+                TeacherStudentScope.is_deleted.is_(False),
+                or_(
+                    TeacherStudentScope.role_code.is_(None),
+                    TeacherStudentScope.role_code=="",
+                    TeacherStudentScope.role_code==role,
+                ),
+            )).all()
         for row in rows:
             typ=str(row.scope_type or "").upper();value=str(row.ref_value or "").strip()
             if typ=="STUDENT":scope["studentNos"].add(value)
