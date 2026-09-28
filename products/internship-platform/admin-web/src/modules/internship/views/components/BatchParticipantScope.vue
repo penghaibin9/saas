@@ -14,8 +14,29 @@
       <template v-else>
         <template v-if="isDraft && !frozen && !readonly">
           <div class="bps-picker-grid">
+            <div class="bps-field">
+              <label>选择学院 <span>选填</span></label>
+              <AppCollegePicker
+                v-model="rule.collegeIds"
+                multiple
+                :disabled="acting"
+                placeholder="选择一个或多个学院"
+                data-scope-hint="仅显示当前身份有权管理的学院"
+              />
+              <small>学院、专业、班级和点名学生之间按“任一命中”合并，最终仍以后端权限范围收敛。</small>
+            </div>
+            <div class="bps-field">
+              <label>选择专业 <span>选填</span></label>
+              <AppMajorPicker
+                v-model="rule.majorIds"
+                multiple
+                :disabled="acting"
+                placeholder="选择一个或多个专业"
+                data-scope-hint="仅显示当前身份有权管理的专业"
+              />
+            </div>
             <div class="bps-field bps-field--wide">
-              <label>选择班级 <em>必选</em></label>
+              <label>选择班级 <span>选填</span></label>
               <AppClassPicker
                 v-model="rule.classIds"
                 multiple
@@ -93,16 +114,43 @@
             <div><strong>{{ summary.removedCount || 0 }}</strong><span>已移出</span></div>
             <div><strong>{{ summary.plannedCount || 0 }}</strong><span>{{ summary.plannedCountScoped ? '当前范围人数' : '批次计划人数' }}</span></div>
           </div>
+          <section v-if="canAdjustRoster" class="bps-manual">
+            <div>
+              <strong>人工补录学生</strong>
+              <small>仅能补录当前身份数据范围内、符合学籍条件的学生；重复学生服务端幂等跳过。</small>
+            </div>
+            <AppInternshipCandidateStudentPicker
+              v-model="manualStudentIds"
+              multiple
+              :disabled="manualActing"
+              placeholder="搜索并选择要补录的学生"
+            />
+            <input
+              v-model.trim="manualAddReason"
+              class="bps-reason-input"
+              maxlength="500"
+              placeholder="补录原因（选填，如：转专业补录）"
+            />
+            <AppButton
+              variant="secondary"
+              :loading="manualActing"
+              :disabled="manualActing || !manualStudentIds.length"
+              @click="addManualParticipants"
+            >补录到正式名单</AppButton>
+          </section>
           <p v-if="!participantRows.length" class="bps-empty">该批次尚无参与学生记录。</p>
           <div v-else class="bps-table-wrap">
             <table class="bps-table">
-              <thead><tr><th>学生</th><th>当前班级</th><th>学院</th><th>加入方式</th></tr></thead>
+              <thead><tr><th>学生</th><th>当前班级</th><th>学院</th><th>加入方式</th><th v-if="canAdjustRoster">操作</th></tr></thead>
               <tbody>
                 <tr v-for="row in participantRows" :key="row.id">
                   <td><strong>{{ row.name }}</strong><small>{{ row.studentNo }}</small></td>
                   <td>{{ row.className || '—' }}<small v-if="row.classChanged">冻结后发生班级变更</small></td>
                   <td>{{ row.collegeName || '—' }}</td>
-                  <td>{{ row.source === 'SCOPE' ? '按班级规则' : '人工补录' }}</td>
+                  <td>{{ row.source === 'SCOPE' ? '范围规则' : '人工补录' }}</td>
+                  <td v-if="canAdjustRoster">
+                    <button type="button" class="bps-remove" :disabled="manualActing" @click="openRemove(row)">移出</button>
+                  </td>
                 </tr>
               </tbody>
             </table>
@@ -133,13 +181,27 @@
       :submitting="acting && actionMode === 'freeze'"
       @confirm="freezeParticipants"
     />
+    <AppConfirmDialog
+      v-model:visible="removeVisible"
+      title="移出正式参与学生"
+      :message="removeRow ? ('将 ' + removeRow.name + ' 从当前批次正式名单移出。仅 PREPARING 且尚未落实实习去向的学生允许直接移出。') : ''"
+      type="danger"
+      confirm-text="确认移出"
+      require-reason
+      reason-label="移出原因"
+      :reason-min-length="2"
+      :submitting="manualActing"
+      @confirm="confirmRemove"
+      @cancel="removeRow = null"
+    />
   </section>
 </template>
 
 <script>
 import { LoadingState, ErrorState } from '@/components/business'
 import {
-  AppInlineAlert, AppConfirmDialog, AppClassPicker, AppInternshipCandidateStudentPicker
+  AppInlineAlert, AppConfirmDialog, AppCollegePicker, AppMajorPicker,
+  AppClassPicker, AppInternshipCandidateStudentPicker
 } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { internshipApi } from '@/modules/internship/api/internship.api'
@@ -154,8 +216,8 @@ const blankRule = () => ({
 export default {
   name: 'BatchParticipantScope',
   components: {
-    LoadingState, ErrorState, AppInlineAlert, AppConfirmDialog, AppClassPicker,
-    AppInternshipCandidateStudentPicker, AppButton
+    LoadingState, ErrorState, AppInlineAlert, AppConfirmDialog, AppCollegePicker, AppMajorPicker,
+    AppClassPicker, AppInternshipCandidateStudentPicker, AppButton
   },
   props: {
     batchId: { type: [String, Number], required: true },
@@ -184,12 +246,23 @@ export default {
       participantTotal: 0,
       participantLoading: false,
       summary: {},
-      confirmVisible: false
+      confirmVisible: false,
+      manualStudentIds: [],
+      manualAddReason: '',
+      manualActing: false,
+      removeRow: null,
+      removeVisible: false
     }
   },
   computed: {
     isDraft() { return this.batchStatus === 'DRAFT' },
-    hasScope() { return !!(this.rule.classIds.length || this.rule.studentIds.length) },
+    canAdjustRoster() { return !this.readonly && this.batchStatus === 'RUNNING' && this.frozen },
+    hasScope() {
+      return !!(
+        this.rule.collegeIds.length || this.rule.majorIds.length
+        || this.rule.classIds.length || this.rule.studentIds.length
+      )
+    },
     shownPreviewRows() { return this.previewRows.slice(0, 50) },
     participantPageCount() {
       return Math.max(1, Math.ceil(this.participantTotal / this.participantPageSize))
@@ -222,6 +295,10 @@ export default {
       this.participantPage = 1
       this.participantLoading = false
       this.confirmVisible = false
+      this.removeVisible = false
+      this.removeRow = null
+      this.manualStudentIds = []
+      this.manualAddReason = ''
       this.acting = false
       this.load()
     },
@@ -310,6 +387,50 @@ export default {
       this.participantPage = Number(res.data?.page || target)
       this.participantPageSize = Number(res.data?.pageSize || this.participantPageSize)
     },
+    async addManualParticipants() {
+      if (!this.canAdjustRoster || this.manualActing || !this.manualStudentIds.length) return
+      this.manualActing = true
+      const batchId = this.batchId
+      const res = await internshipApi.addBatchParticipants(
+        batchId,
+        [...this.manualStudentIds],
+        this.manualAddReason || '人工补录'
+      )
+      if (batchId !== this.batchId) return
+      this.manualActing = false
+      if (res.code !== 0) return toast.error(res.message || '补录学生失败')
+      const data = res.data || {}
+      this.manualStudentIds = []
+      this.manualAddReason = ''
+      toast.success(
+        `已补录 ${data.added || 0} 人`
+        + (data.skippedExisting ? `，重复跳过 ${data.skippedExisting} 人` : '')
+        + ((data.rejectedOutOfScope || []).length ? `，越权/不符合条件 ${data.rejectedOutOfScope.length} 人未加入` : '')
+      )
+      await this.load()
+    },
+    openRemove(row) {
+      if (!this.canAdjustRoster || this.manualActing) return
+      this.removeRow = row
+      this.removeVisible = true
+    },
+    async confirmRemove({ reason }) {
+      const row = this.removeRow
+      if (!row?.id || !this.canAdjustRoster || this.manualActing) return
+      this.manualActing = true
+      const batchId = this.batchId
+      const res = await internshipApi.removeBatchParticipant(batchId, row.id, {
+        reason,
+        version: row.version
+      })
+      if (batchId !== this.batchId) return
+      this.manualActing = false
+      if (res.code !== 0) return toast.error(res.message || '移出学生失败')
+      this.removeVisible = false
+      this.removeRow = null
+      toast.success('学生已从正式名单移出，原参与记录和审计仍保留')
+      await this.load()
+    },
     async freezeParticipants() {
       if (this.readonly) return
       if (this.previewDirty || !this.previewRows.length || this.acting) return
@@ -335,7 +456,8 @@ export default {
 .bps-subtitle { margin: 4px 0 0; color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
 .bps-state { flex: none; padding: 4px 10px; border-radius: 999px; background: var(--warning-50, #fffbeb); color: var(--warning-700, #a16207); font-size: var(--font-size-xs); font-weight: 600; }
 .bps-state.is-frozen { background: var(--success-50, #ecfdf5); color: var(--success-700, #047857); }
-.bps-picker-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); }
+.bps-picker-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); }
+.bps-field--wide { grid-column: 1 / -1; }
 .bps-field label { display: flex; gap: 6px; margin-bottom: var(--space-2); color: var(--text-primary); font-size: var(--font-size-sm); font-weight: 600; }
 .bps-field label em { color: var(--danger-600); font-style: normal; }
 .bps-field label span, .bps-field small { color: var(--text-tertiary); font-size: var(--font-size-xs); font-weight: 400; }
@@ -351,6 +473,12 @@ export default {
 .bps-metrics--compact { display:flex; flex-wrap:wrap; gap:12px 28px; margin-bottom:16px; }
 .bps-metrics--compact > div { display:flex; align-items:baseline; gap:8px; padding:0; border:0; background:transparent; }
 .bps-metrics--compact strong { font-size:18px; }
+.bps-manual { display:grid; grid-template-columns:minmax(240px,1.4fr) minmax(260px,2fr) minmax(220px,1fr) auto; gap:10px; align-items:end; margin-bottom:14px; padding:12px; border:1px solid var(--border-light); border-radius:10px; background:var(--bg-subtle,#f8fafc); }
+.bps-manual > div { display:grid; gap:4px; align-self:center; }
+.bps-manual small { color:var(--text-tertiary); font-size:var(--font-size-xs); line-height:1.5; }
+.bps-reason-input { height:36px; box-sizing:border-box; padding:0 10px; border:1px solid var(--border-base); border-radius:7px; background:var(--bg-card); color:var(--text-primary); }
+.bps-remove { border:0; background:transparent; color:var(--danger-600); cursor:pointer; font-size:12px; }
+.bps-remove:disabled { opacity:.5; cursor:not-allowed; }
 .bps-table-wrap { overflow: auto; border: 1px solid var(--border-light); border-radius: 10px; }
 .bps-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); }
 .bps-table th { background: var(--bg-subtle, #f8fafc); color: var(--text-secondary); text-align: left; font-size: var(--font-size-xs); font-weight: 600; }
@@ -367,5 +495,9 @@ export default {
 @media (max-width: 760px) {
   .bps-metrics, .bps-metrics--compact { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .bps-pagebar { justify-content: center; flex-wrap: wrap; }
+}
+@media (max-width: 980px) {
+  .bps-picker-grid,.bps-manual { grid-template-columns:1fr; }
+  .bps-field--wide { grid-column:auto; }
 }
 </style>
