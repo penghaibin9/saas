@@ -847,10 +847,14 @@ class InternshipComplaint(PKMixin, TenantMixin, CommonMixin, Base):
     internship_id: Mapped[int | None] = mapped_column(
         BigInteger, index=True, comment="投诉明确关联的实习主记录；禁止按最新记录猜测")
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
-    category: Mapped[str | None] = mapped_column(String(50), comment="投诉分类")
+    category: Mapped[str | None] = mapped_column(String(50), comment="投诉/反馈分类")
+    title: Mapped[str | None] = mapped_column(String(200), comment="投诉/意见反馈标题")
+    feedback_level: Mapped[str | None] = mapped_column(
+        String(20), index=True, comment="意见反馈级别 COLLEGE/DEPARTMENT")
     severity: Mapped[str] = mapped_column(String(20), nullable=False, default="MEDIUM", comment="LOW/MEDIUM/HIGH")
-    content: Mapped[str | None] = mapped_column(Text, comment="投诉内容")
+    content: Mapped[str | None] = mapped_column(Text, comment="投诉/意见反馈内容")
     evidence_file_id: Mapped[str | None] = mapped_column(String(64))
+    image_file_ids: Mapped[list | None] = mapped_column(JSON, comment="意见反馈图片 fileId 列表，最多9张")
     complainant_contact_encrypted: Mapped[str | None] = mapped_column(
         String(500), comment="投诉人联系方式(敏感,Fernet密文)")
     complainant_contact_hash: Mapped[str | None] = mapped_column(
