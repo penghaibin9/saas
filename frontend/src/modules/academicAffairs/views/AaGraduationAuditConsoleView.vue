@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="returnToBatchQueue">返回审核批次</AppButton>
+      <AppButton @click="returnToBatchQueue">{{ returnToResult ? '返回预审结果' : '返回审核批次' }}</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -69,7 +69,7 @@
               <p>{{ evidenceText(item.evidence, item.item) }}</p>
               <small>证据责任：{{ ownerLabel(item.owner) }}<template v-if="item.refId"> · 来源对象 #{{ item.refId }}</template></small>
               <small v-if="!item.refId && ['INTERNSHIP', 'GRADUATION_DESIGN'].includes(item.item)">当前尚无学生台账，须由有本业务学生管理权限的人员先建档。</small>
-              <router-link v-if="linkForItem(focusedRow, item)" class="mp-link" :to="linkForItem(focusedRow, item)">{{ item.refId ? '核对来源对象' : '按学号进入责任名单' }}</router-link>
+              <router-link v-if="linkForItem(focusedRow, item)" class="mp-link" :to="linkForItem(focusedRow, item)">{{ sourceLinkLabel(item) }}</router-link>
             </div>
           </div>
           <footer>
@@ -111,7 +111,7 @@
               <button class="mp-link" :disabled="feeBusy || !canManagePermission || !!pendingWrite" @click="markFee(row, 'CLEARED')">勾选已结清</button>
               <button class="mp-link" :disabled="feeBusy || !canManagePermission || !!pendingWrite" @click="markFee(row, 'OWED')">勾选仍欠费</button>
             </template>
-            <router-link v-else-if="linkFor(row)" class="mp-link" :to="linkFor(row)">{{ itemOf(row).refId ? '核对来源对象' : '按学号进入责任名单' }}</router-link>
+            <router-link v-else-if="linkFor(row)" class="mp-link" :to="linkFor(row)">{{ sourceLinkLabel(itemOf(row)) }}</router-link>
             <button class="mp-link" @click="openDetail(row)">十一项详情</button>
           </template>
         </DataTable>
@@ -262,7 +262,7 @@
             <span class="agc-item__label">{{ itemLabel(it.item) }}</span>
             <AppStatusTag :type="gradItemColor(it.result)" dot>{{ itemResultLabel(it.result) }}</AppStatusTag>
             <span class="agc-item__ev">{{ evidenceText(it.evidence, it.item) }}</span>
-            <router-link v-if="linkForItem(detail.row, it)" class="mp-link" :to="linkForItem(detail.row, it)">{{ it.refId ? '核对来源对象' : '按学号进入责任名单' }}</router-link>
+            <router-link v-if="linkForItem(detail.row, it)" class="mp-link" :to="linkForItem(detail.row, it)">{{ sourceLinkLabel(it) }}</router-link>
           </div>
         </div>
         <AppInlineAlert v-if="detail.row.reviewNote" type="info" :description="`最近处理意见：${detail.row.reviewNote}`" />
@@ -362,6 +362,13 @@ const TAB_CONFIG = {
 const LINK_ITEM = {
   GRADUATION_DESIGN: (refId) => `/admin/graduation/students/${refId}`,
   INTERNSHIP: (refId) => `/admin/internship/students/${refId}`
+}
+const RESPONSIBILITY_LINK = {
+  COURSE_REQUIRED: { path: '/admin/academic-affairs/grade-overview', permission: 'academicAffairs.grade.view' },
+  COURSE_ELECTIVE: { path: '/admin/academic-affairs/grade-overview', permission: 'academicAffairs.grade.view' },
+  PRACTICE: { path: '/admin/academic-affairs/programs', permission: 'academicAffairs.program.view' },
+  DISCIPLINE: { path: '/admin/student-affairs/discipline', permission: 'studentAffairs.discipline.view' },
+  ARCHIVE: { path: '/admin/student-affairs/archive', permission: 'studentAffairs.archive.view' }
 }
 
 const freshPagination = () => ({ page: 1, pageSize: 20, total: 0 })
@@ -471,6 +478,7 @@ export default {
     currentBlocker(){if(!this.currentBatch)return'尚未选择批次';const item=this.focusedItems.find(entry=>entry.result!=='PASS');if(item)return`${this.itemLabel(item.item)}：${this.itemResultLabel(item.result)}`;if(this.batchAbnormal)return`${this.batchAbnormal} 名系统异常`;return'当前无已知阻断'},
     nextOwner(){if(this.tab==='final')return'证书管理岗';if(this.tab==='archive')return'受控纠错岗';if(this.batchAbnormal)return'学院审核岗';return'教务终审岗'},
     currentBatch() { return this.batches.find((b) => String(b.batchId) === String(this.batchId)) || null },
+    returnToResult() { const path=String(this.$route.query.returnTo||'');const match=path.match(/^\/admin\/academic-affairs\/graduation\/(\d+)\/results(?:\?termId=\d+)?$/);return match?.[1]===String(this.batchId)?path:'' },
     currentBatchTermLabel(){const row=this.currentBatch;if(!row)return '选择批次后读取正式学期';if(row.termId==null)return '历史批次，所属学期待核对';return exactId(row.termId)?(row.termName||'所属学期名称待核对'):'所属学期标识待核对'},
     batchTotal() { return Number(this.currentBatch?.total || 0) },
     batchPassed() { return Number(this.currentBatch?.passed || 0) },
@@ -556,7 +564,7 @@ export default {
   beforeUnmount(){this.alive=false;this.invalidatePrivate()},
   inject: { academicFlow: { default: null } },
   methods: {
-    returnToBatchQueue() { if(this.$route.query.returnToken && this.academicFlow) return this.academicFlow.back(this.$route.query.returnToken, '/admin/academic-affairs/graduation'); const termId=exactId(this.currentBatch?.termId);return this.$router.push({path:'/admin/academic-affairs/graduation',query:termId?{termId}:{}}) },
+    returnToBatchQueue() { if(this.returnToResult)return this.$router.push(this.returnToResult);if(this.$route.query.returnToken && this.academicFlow) return this.academicFlow.back(this.$route.query.returnToken, '/admin/academic-affairs/graduation'); const termId=exactId(this.currentBatch?.termId);return this.$router.push({path:'/admin/academic-affairs/graduation',query:termId?{termId}:{}}) },
     token(kind){const seq=(this.readSeq[kind]||0)+1;this.readSeq[kind]=seq;return {kind,seq,scope:this.scope,identity:this.identity,route:this.$route.fullPath,batchId:String(this.batchId),tab:this.tab}},
     current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath&&this.readSeq[c.kind]===c.seq},
     denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
@@ -595,19 +603,27 @@ export default {
       return cfg?.item ? this.linkForItem(row, this.itemOf(row)) : null
     },
     linkForItem(row, it) {
-      if (!row || !it || !LINK_ITEM[it.item]) return null
-      const permission = it.item === 'INTERNSHIP' ? 'internship.student.view' : 'graduationDesign.student.view'
+      if (!row || !it || (!LINK_ITEM[it.item] && !RESPONSIBILITY_LINK[it.item])) return null
+      const permission = RESPONSIBILITY_LINK[it.item]?.permission
+        || (it.item === 'INTERNSHIP' ? 'internship.student.view' : 'graduationDesign.student.view')
       if (!matchPermission(this.ctx.permissionPatterns || [], permission)) return null
       const returnTo = this.$router.resolve({ path: this.$route.path, query: {
         ...this.$route.query, batchId: String(this.batchId), tab: this.tab,
         resultId: exactId(row.resultId) || undefined,
         termId: exactId(this.currentBatch?.termId) || undefined
       } }).fullPath
+      if (RESPONSIBILITY_LINK[it.item]) return { path: RESPONSIBILITY_LINK[it.item].path, query: {
+        ...(it.item === 'DISCIPLINE' && /^\d+$/.test(exactId(row.studentId)) ? { studentId: exactId(row.studentId), studentNo: String(row.studentNo || '') } : {}),
+        returnTo
+      } }
       const refId = exactId(it.refId)
       if (/^\d+$/.test(refId)) return { path: LINK_ITEM[it.item](refId), query: { returnTo } }
       const keyword = String(row.studentNo || '').trim()
       if (!keyword) return null
       return { path: it.item === 'INTERNSHIP' ? '/admin/internship/students' : '/admin/graduation/students', query: { panel: 'roster', keyword, returnTo } }
+    },
+    sourceLinkLabel(it) {
+      return RESPONSIBILITY_LINK[it.item] ? '进入责任模块，按学号核对' : (it.refId ? '核对来源对象' : '按学号进入责任名单')
     },
     canCollegeApprove(r) {
       return Boolean(this.canCollegePermission&&!this.pendingWrite&&r?.canCollegeReview === true && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))

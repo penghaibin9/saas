@@ -45,7 +45,7 @@
                 <div class="aa-item__head">
                   <span class="aa-item__label">{{ itemLabel(it.item) }}</span>
                   <AppStatusTag :type="gradItemColor(it.result)">{{ itemResult(it.result) }}</AppStatusTag>
-                  <button v-if="canDrillEvidence(it, r)" class="mp-link aa-item__drill" @click="drillEvidence(it, r)">{{ !it.refId && ['INTERNSHIP', 'GRADUATION_DESIGN'].includes(it.item) ? '按学号进入责任名单 ›' : '核对来源 ›' }}</button>
+                  <button v-if="canDrillEvidence(it, r)" class="mp-link aa-item__drill" @click="drillEvidence(it, r)">{{ ['INTERNSHIP', 'GRADUATION_DESIGN'].includes(it.item) ? (it.refId ? '核对来源 ›' : '按学号进入责任名单 ›') : '进入责任模块 ›' }}</button>
                 </div>
                 <span v-if="it.evidence" class="aa-item__ev">{{ it.evidence }}</span>
                 <div v-if="it.sourceType || it.evidenceHash" class="aa-item__lineage">
@@ -127,6 +127,18 @@ const SOURCE_LABELS = {
   ARCHIVE_PACKAGE: '学生归档包', TEXTBOOK_FEE_LEDGER: '教材费用台账', UNKNOWN: '待治理来源'
 }
 
+const EVIDENCE_TARGET = {
+  STATUS: { path: '/admin/academic-affairs/roster/status', permission: 'academicAffairs.roster.view' },
+  CREDIT: { path: '/admin/academic-affairs/graduation/audit-console', permission: 'academicAffairs.graduation.view' },
+  COURSE_REQUIRED: { path: '/admin/academic-affairs/grade-overview', permission: 'academicAffairs.grade.view' },
+  COURSE_ELECTIVE: { path: '/admin/academic-affairs/grade-overview', permission: 'academicAffairs.grade.view' },
+  PRACTICE: { path: '/admin/academic-affairs/programs', permission: 'academicAffairs.program.view' },
+  DISCIPLINE: { path: '/admin/student-affairs/discipline', permission: 'studentAffairs.discipline.view' },
+  EMPLOYMENT: { path: '/admin/employment/students', permission: 'employment.student.view' },
+  ARCHIVE: { path: '/admin/student-affairs/archive', permission: 'studentAffairs.archive.view' },
+  FEE: { path: '/admin/academic-affairs/textbooks', permission: 'academicAffairs.textbook.fee.manage', query: { tab: 'fee' } }
+}
+
 export default {
   name: 'AaGraduationResultView',
   components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert, AppPagination },
@@ -183,11 +195,12 @@ export default {
         const permission = item.item === 'INTERNSHIP' ? 'internship.student.view' : 'graduationDesign.student.view'
         return matchPermission(this.ctx.permissionPatterns || [], permission) && Boolean(/^\d+$/.test(exactId(item.refId)) || String(row.studentNo || '').trim())
       }
-      return Boolean(item.drillRoute)
+      const target = EVIDENCE_TARGET[item.item]
+      return Boolean(target && matchPermission(this.ctx.permissionPatterns || [], target.permission))
     },
     drillEvidence(item, row) {
+      if (!this.canDrillEvidence(item, row)) return
       if (item.item === 'INTERNSHIP' || item.item === 'GRADUATION_DESIGN') {
-        if (!this.canDrillEvidence(item, row)) return
         const base = item.item === 'INTERNSHIP' ? '/admin/internship/students' : '/admin/graduation/students'
         const refId = /^\d+$/.test(exactId(item.refId)) ? exactId(item.refId) : ''
         const returnTo = this.$router.resolve({ path: '/admin/academic-affairs/graduation/audit-console', query: {
@@ -198,9 +211,13 @@ export default {
           query: refId ? { returnTo } : { panel: 'roster', keyword: String(row.studentNo).trim(), returnTo } })
         return
       }
-      const route = String(item.drillRoute || '')
-      if (!route.startsWith('/admin/')) { toast.error('证据下钻地址无效'); return }
-      this.$router.push(route)
+      const target = EVIDENCE_TARGET[item.item]
+      const query = item.item === 'CREDIT' ? {
+        batchId: this.batchId, resultId: exactId(row.resultId) || undefined,
+        termId: exactId(this.$route.query.termId) || undefined, tab: 'credit',
+        returnTo: this.$router.resolve({ path: this.$route.path, query: exactId(this.$route.query.termId) ? { termId: exactId(this.$route.query.termId) } : {} }).fullPath
+      } : target.query
+      this.$router.push({ path: target.path, query })
     },
     canCollegeApprove(r) {
       return Boolean(this.canCollege && !this.pendingWrite && r?.canCollegeReview === true && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))

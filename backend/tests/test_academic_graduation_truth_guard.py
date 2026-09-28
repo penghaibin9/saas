@@ -57,6 +57,13 @@ def test_guard_is_installed_on_public_graduation_service():
     assert service._check_domain_exists is guard.strict_domain_check
 
 
+def test_evidence_routes_use_current_student_grade_and_fee_pages():
+    assert evidence._ROUTES["STATUS"] == "/admin/academic-affairs/roster/status"
+    assert evidence._ROUTES["COURSE_ELECTIVE"] == "/admin/academic-affairs/grade-overview"
+    assert evidence._ROUTES["COURSE_REQUIRED"] == "/admin/academic-affairs/grade-overview"
+    assert evidence._ROUTES["FEE"] == "/admin/academic-affairs/textbooks?tab=fee"
+
+
 def test_generic_domain_without_authoritative_rule_never_passes():
     db = _FakeDb([_row(id=41)])
     result = guard.strict_domain_check(

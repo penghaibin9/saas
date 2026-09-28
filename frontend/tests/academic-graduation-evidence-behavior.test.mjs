@@ -47,6 +47,27 @@ test('缺上游记录时按学号进入责任名单，已有记录仍直达详�
   vm.ctx.permissionPatterns=['graduationDesign.student.view'];delete row.studentNo;assert.equal(vm.linkFor(row),null)
 })
 
+test('毕业证据缺项只向有目标权限的账号开放真实责任模块',()=>{
+  const vm=instance();vm.tab='final'
+  const row={resultId:'88',studentId:'91',studentNo:'V52023001'}
+  for(const [item,permission,path] of [
+    ['COURSE_REQUIRED','academicAffairs.grade.view','/admin/academic-affairs/grade-overview'],
+    ['COURSE_ELECTIVE','academicAffairs.grade.view','/admin/academic-affairs/grade-overview'],
+    ['PRACTICE','academicAffairs.program.view','/admin/academic-affairs/programs'],
+    ['DISCIPLINE','studentAffairs.discipline.view','/admin/student-affairs/discipline'],
+    ['ARCHIVE','studentAffairs.archive.view','/admin/student-affairs/archive']
+  ]){
+    const evidence={item,result:'UNKNOWN'}
+    vm.ctx.permissionPatterns=[];assert.equal(vm.linkForItem(row,evidence),null)
+    vm.ctx.permissionPatterns=[permission]
+    const target=vm.linkForItem(row,evidence)
+    assert.equal(target.path,path)
+    assert.match(target.query.returnTo,/resultId=88/)
+    assert.equal(vm.sourceLinkLabel(evidence),'进入责任模块，按学号核对')
+    if(item==='DISCIPLINE') assert.equal(target.query.studentId,'91')
+  }
+})
+
 test('旧结果页的来源入口也按真实学号定位并拒绝无权下钻',()=>{
   const component=definition('AaGraduationResultView',{matchPermission:(patterns,key)=>patterns.includes(key),toast:{error:()=>{}}})
   const pushes=[]
@@ -63,8 +84,28 @@ test('旧结果页的来源入口也按真实学号定位并拒绝无权下钻',
   assert.match(pushes[0].query.returnTo,/resultId=77/)
   item.refId='91';vm.drillEvidence(item,row)
   assert.equal(pushes[1].path,'/admin/internship/students/91')
+  const archive={item:'ARCHIVE',drillRoute:'/admin/student-affairs/archive'}
+  assert.equal(vm.canDrillEvidence(archive,row),false)
+  vm.drillEvidence(archive,row);assert.equal(pushes.length,2)
+  vm.ctx.permissionPatterns=['studentAffairs.archive.view']
+  assert.equal(vm.canDrillEvidence(archive,row),true)
+  vm.drillEvidence(archive,row);assert.equal(pushes[2].path,'/admin/student-affairs/archive')
+  archive.drillRoute='/admin/academic-affairs/textbooks?tab=fee'
+  vm.drillEvidence(archive,row);assert.equal(pushes[3].path,'/admin/student-affairs/archive')
+  const fee={item:'FEE',drillRoute:'/admin/academic-affairs/textbooks?tab=fee'}
+  vm.ctx.permissionPatterns=['academicAffairs.textbook.view'];assert.equal(vm.canDrillEvidence(fee,row),false)
+  vm.ctx.permissionPatterns=['academicAffairs.textbook.fee.manage'];assert.equal(vm.canDrillEvidence(fee,row),true)
+  vm.drillEvidence(fee,row);assert.deepEqual(pushes[4],{path:'/admin/academic-affairs/textbooks',query:{tab:'fee'}})
+  vm.ctx.permissionPatterns=['academicAffairs.graduation.view']
+  vm.drillEvidence({item:'CREDIT',drillRoute:'/admin/academic-affairs/graduation/audit-console'},row)
+  assert.equal(pushes[5].path,'/admin/academic-affairs/graduation/audit-console')
+  assert.equal(pushes[5].query.batchId,'13')
+  assert.equal(pushes[5].query.resultId,'77')
+  assert.equal(pushes[5].query.termId,'54')
+  assert.equal(pushes[5].query.tab,'credit')
+  assert.match(pushes[5].query.returnTo,/^\/admin\/academic-affairs\/graduation\/13\/results\?termId=54$/)
   vm.ctx.permissionPatterns=[];assert.equal(vm.canDrillEvidence(item,row),false)
-  vm.returnToBatch();assert.equal(pushes[2].query.termId,'54')
+  vm.returnToBatch();assert.equal(pushes[6].query.termId,'54')
 })
 
 test('毕业预审按实习和毕设正式岗位分别展示证据责任',()=>{
@@ -231,6 +272,11 @@ test('进入审核与返回批次页沿正式批次携带学期，历史空关�
   audit.$route.query.termId='99';audit.batches=[{batchId:'12',termId:null}]
   audit.returnToBatchQueue();assert.deepEqual(targets[1].query,{})
   audit.batches[0].termId='52';audit.returnToBatchQueue();assert.equal(targets[2].query.termId,'52')
+  audit.$route.query={batchId:'12',returnTo:'/admin/academic-affairs/graduation/12/results?termId=52'}
+  assert.equal(audit.returnToResult,audit.$route.query.returnTo)
+  audit.returnToBatchQueue();assert.equal(targets[3],audit.$route.query.returnTo)
+  audit.$route.query.returnTo='/admin/academic-affairs/graduation/13/results?termId=52'
+  assert.equal(audit.returnToResult,'')
 })
 
 test('毕业名单展示正式学号而不是学生内部编号',()=>{

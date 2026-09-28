@@ -14,17 +14,17 @@ from . import academic_affairs_graduation_service as _legacy
 _original_run_items = _legacy._run_items
 
 _ROUTES = {
-    "STATUS": "/admin/academic-affairs/student-status",
+    "STATUS": "/admin/academic-affairs/roster/status",
     "CREDIT": "/admin/academic-affairs/graduation/audit-console",
-    "COURSE_REQUIRED": "/admin/academic-affairs/grade-records",
-    "COURSE_ELECTIVE": "/admin/academic-affairs/grade-records",
+    "COURSE_REQUIRED": "/admin/academic-affairs/grade-overview",
+    "COURSE_ELECTIVE": "/admin/academic-affairs/grade-overview",
     "PRACTICE": "/admin/academic-affairs/programs",
     "INTERNSHIP": "/admin/internship/students",
     "GRADUATION_DESIGN": "/admin/graduation/students",
     "DISCIPLINE": "/admin/student-affairs/discipline",
     "EMPLOYMENT": "/admin/employment/students",
     "ARCHIVE": "/admin/student-affairs/archive",
-    "FEE": "/admin/academic-affairs/textbook-fees",
+    "FEE": "/admin/academic-affairs/textbooks?tab=fee",
 }
 
 _SOURCE_TYPES = {
