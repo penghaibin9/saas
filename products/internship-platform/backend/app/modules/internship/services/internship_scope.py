@@ -135,6 +135,13 @@ def apply_internship_record_scope(query, user):
         variants.update(x.rstrip("班") for x in list(variants))
         variants.update(x + "班" for x in list(variants))
         student_clauses.append(SchoolClass.class_name.in_(variants))
+    if scope.get("majorNames"):
+        student_clauses.append(
+            func.coalesce(
+                direct_major.major_name,
+                class_major.major_name,
+            ).in_(scope["majorNames"])
+        )
     if scope.get("collegeNames"):
         student_clauses.append(
             func.coalesce(
