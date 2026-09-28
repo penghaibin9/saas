@@ -56,6 +56,50 @@ def stats_procurement_overview(
     return success(procurement.overview(user, batch_id=batchId))
 
 
+@router.get("/stats/process-analytics", summary="益阳采购 AP19-AP24 过程统计与绩效汇总")
+def stats_process_analytics(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    groupBy: str = Query("STUDENT", pattern="^(STUDENT|ADVISOR|HOMEROOM|COLLEGE|MAJOR|CLASS)$"),
+    period: str = Query("ALL", pattern="^(WEEK|MONTH|ALL)$"),
+    anchor: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    columns: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=500),
+    user=Depends(require_permission(_P_VIEW)),
+):
+    from app.modules.internship.services import internship_process_statistics_service as process_stats
+    return success(process_stats.query(
+        user,
+        batch_id=batchId,
+        group_by=groupBy,
+        period=period,
+        anchor=anchor,
+        columns=columns,
+        page=page,
+        page_size=pageSize,
+    ))
+
+
+@router.post("/stats/process-analytics/export", summary="导出益阳采购 AP19-AP24 同条件 Excel")
+def stats_process_analytics_export(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    groupBy: str = Query("STUDENT", pattern="^(STUDENT|ADVISOR|HOMEROOM|COLLEGE|MAJOR|CLASS)$"),
+    period: str = Query("ALL", pattern="^(WEEK|MONTH|ALL)$"),
+    anchor: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    columns: Optional[str] = None,
+    user=Depends(require_permission(_P_EXPORT)),
+):
+    from app.modules.internship.services import internship_process_statistics_service as process_stats
+    return success(process_stats.export(
+        user,
+        batch_id=batchId,
+        group_by=groupBy,
+        period=period,
+        anchor=anchor,
+        columns=columns,
+    ))
+
+
 @router.get("/stats/overview", summary="实习总览统计（指标/计数/成绩分布，按数据范围+维度筛选）")
 def stats_overview(college: Optional[str] = None, major: Optional[str] = None,
                    className: Optional[str] = None, batchId: Optional[str] = None,
