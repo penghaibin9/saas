@@ -434,6 +434,60 @@ def teacher_batch_applications(
     return success(_paged(items, total, page, pageSize, batchId))
 
 
+@router.get("/students/{record_id}/rotations", summary="教师查看学生轮岗全过程")
+def teacher_student_rotations(
+    record_id: str,
+    batchId: str = Query(..., min_length=1),
+    user=Depends(require_permission("internship.student.view")),
+):
+    from app.modules.internship.services import internship_rotation_service as rotations
+    return success(rotations.list_for_record(record_id, user, batch_id=batchId))
+
+
+@router.post("/students/{record_id}/rotations", summary="教师新增学生轮岗安排")
+def teacher_student_rotation_create(
+    record_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.rotation.manage")),
+):
+    from app.modules.internship.services import internship_rotation_service as rotations
+    return success(rotations.create_rotation(record_id, body or {}, user), message="轮岗安排已创建")
+
+
+@router.post("/rotations/{rotation_id}/evaluate", summary="教师评定轮岗分项成绩")
+def teacher_rotation_evaluate(
+    rotation_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.rotation.manage")),
+):
+    from app.modules.internship.services import internship_rotation_service as rotations
+    return success(rotations.evaluate_rotation(rotation_id, body or {}, user), message="轮岗成绩已评定")
+
+
+@router.get("/payroll", summary="教师当前批次月度工资单")
+def teacher_payroll_list(
+    batchId: int = Query(..., ge=1),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    status: str = Query("ALL"),
+    user=Depends(require_permission("internship.payroll.view")),
+):
+    from app.modules.internship.services import internship_payroll_service as payrolls
+    items, total = payrolls.list_for_teacher(
+        batch_id=batchId, page=page, page_size=pageSize, status=status, user=user)
+    return success(_paged(items, total, page, pageSize, batchId))
+
+
+@router.post("/payroll/versions/{version_id}/review", summary="教师审核工资单当前版本")
+def teacher_payroll_review(
+    version_id: int,
+    body: dict = Body(...),
+    user=Depends(require_permission("internship.payroll.review")),
+):
+    from app.modules.internship.services import internship_payroll_service as payrolls
+    return success(payrolls.review(version_id, body or {}, user), message="工资单审核完成")
+
+
 @router.get("/students/{record_id}/account", summary="教师查看本人数据范围学生账号重置状态")
 def teacher_student_account_state(
     record_id: str,
