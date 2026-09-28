@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { hasEnterpriseAuth, restoreEnterpriseSession } from '../services/request'
+import { hasEnterpriseAuth, restoreEnterpriseSession, setSelectedCampaignId, setTenantCode } from '../services/request'
 
 const routes = [
   { path: '/login', name: 'enterprise-login', component: () => import('../views/EnterpriseLoginView.vue'), meta: { public: true } },
@@ -28,6 +28,10 @@ const routes = [
 
 const router=createRouter({ history: createWebHistory(import.meta.env.BASE_URL), routes })
 router.beforeEach(async to=>{
+  const campaignId=String(to.query?.campaignId||'').trim()
+  const tenantCode=String(to.query?.tenantCode||to.query?.tenant||'').trim()
+  if(/^[1-9]\d*$/.test(campaignId))setSelectedCampaignId(campaignId)
+  if(tenantCode)setTenantCode(tenantCode)
   if(to.meta.public||hasEnterpriseAuth())return true
   try{
     await restoreEnterpriseSession()
