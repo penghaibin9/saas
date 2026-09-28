@@ -36,6 +36,22 @@ def plan_context(batch_id: int, user=Depends(require_permission(_P_PLAN_VIEW))):
     return success(plan_svc.get_plan_context(batch_id, user=user))
 
 
+@router.post("/plans/bulk-export.pdf", summary="批量导出实习计划 PDF")
+def plans_bulk_export_pdf(
+    body: dict = Body(...),
+    user=Depends(require_permission(_P_PLAN_VIEW)),
+):
+    return success(plan_svc.bulk_export_plans_pdf((body or {}).get("batchIds") or [], user=user))
+
+
+@router.post("/plans/bulk-export.xlsx", summary="批量导出实习计划 Excel")
+def plans_bulk_export_xlsx(
+    body: dict = Body(...),
+    user=Depends(require_permission(_P_PLAN_VIEW)),
+):
+    return success(plan_svc.bulk_export_plans_xlsx((body or {}).get("batchIds") or [], user=user))
+
+
 @router.get("/plans/batch/{batch_id}", summary="按批次读取实习计划书")
 def plan_get(batch_id: int, user=Depends(require_permission(_P_PLAN_VIEW))):
     return success(plan_svc.get_plan_by_batch(batch_id, user=user))
