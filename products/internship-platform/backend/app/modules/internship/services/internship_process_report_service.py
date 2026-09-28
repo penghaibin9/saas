@@ -13,6 +13,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, not_found
 from app.models import InternshipAuditTrail, InternshipProcessReport, InternshipRecord, StudentProfile
 from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
+from app.modules.internship.services import internship_report_quality_service as quality
 from app.services import xlsx_util
 from app.services.db_service import _as_id, _iso, _tid, session
 
@@ -133,10 +134,12 @@ def get_report(rid, user=None):
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "PROCESS_REPORT",
             InternshipAuditTrail.target_id == r.id).order_by(InternshipAuditTrail.id)).all()
+        quality_view = quality.snapshot_view(db, r.id)
         return {
             **_row(r, rec, stu),
             "content": r.content or "",
             "reviewComment": r.review_comment or "",
+            "versions": quality_view.get("versions") or [],
             "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                             "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
                            for t in trail],
@@ -186,7 +189,7 @@ def student_submit(rec, report_type: str, period_key: str, content: str) -> dict
 
 
 def review_report(rid, action: str, comment: str = "", user=None, *, expected_version=None,
-                  expected_batch_id=None) -> dict:
+                  expected_batch_id=None, rating_level=None, summary_score=None) -> dict:
     if action not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
     if action == "RETURN" and len((comment or "").strip()) < 5:
@@ -206,6 +209,15 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
         if r.status != "PENDING_REVIEW":
             raise AppException("DATA_CONFLICT", "仅学生已提交/重交后的待批阅报告可审核")
         status = "APPROVED" if action == "APPROVE" else "RETURNED"
+        review_fact = quality.record_process_review(
+            db,
+            row=r,
+            action=action,
+            comment=comment,
+            user=user or {},
+            rating_level=rating_level,
+            summary_score=summary_score,
+        )
         new_ver = versioned_update(
             db, InternshipProcessReport, entity_id=r.id, tenant_id=_tid(),
             expected_version=extract_expected_version({"expectedVersion": expected_version}),
@@ -217,12 +229,29 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
             db,
             r.id,
             f"REVIEW_{action}",
-            {"comment": (comment or "").strip()},
+            {
+                "comment": (comment or "").strip(),
+                "ratingLevel": review_fact.rating_level,
+                "summaryScore": (
+                    float(review_fact.summary_score)
+                    if review_fact.summary_score is not None else None
+                ),
+                "reportVersionId": str(review_fact.report_version_id),
+            },
             operator=_op_name(user),
         )
         db.commit()
-        return {"id": str(r.id), "status": status, "statusLabel": STATUS_LABEL.get(status),
-                "version": new_ver}
+        return {
+            "id": str(r.id),
+            "status": status,
+            "statusLabel": STATUS_LABEL.get(status),
+            "version": new_ver,
+            "ratingLevel": review_fact.rating_level,
+            "summaryScore": (
+                float(review_fact.summary_score)
+                if review_fact.summary_score is not None else None
+            ),
+        }
 
 
 def export_reports(report_type=None, status=None, keyword=None, batch_id=None, user=None) -> dict:
