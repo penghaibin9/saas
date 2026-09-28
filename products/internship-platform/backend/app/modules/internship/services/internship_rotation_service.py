@@ -198,6 +198,9 @@ def create_rotation(record_id, body: dict, user: dict):
                 raise AppException("VALIDATION_ERROR", f"第{index}个项目结束日期不能早于开始日期")
             if p_start and (p_start < start or p_start > end) or p_end and (p_end < start or p_end > end):
                 raise AppException("VALIDATION_ERROR", f"第{index}个项目日期必须在轮岗周期内")
+            project_status = str((item or {}).get("status") or "PLANNED").strip().upper()
+            if project_status not in {"PLANNED", "IN_PROGRESS", "COMPLETED", "CANCELLED"}:
+                raise AppException("VALIDATION_ERROR", f"第{index}个项目状态不合法")
             db.add(InternshipRotationProject(
                 tenant_id=_tid(),
                 rotation_id=row.id,
@@ -206,7 +209,7 @@ def create_rotation(record_id, body: dict, user: dict):
                 project_content=str((item or {}).get("projectContent") or "").strip() or None,
                 start_date=p_start,
                 end_date=p_end,
-                status=str((item or {}).get("status") or "PLANNED").strip().upper(),
+                status=project_status,
                 mentor_note=str((item or {}).get("mentorNote") or "").strip()[:1000] or None,
             ))
         _trail(db, row, "ROTATION_CREATE", {
@@ -271,8 +274,8 @@ def submit_self_evaluation(rotation_id, body: dict, user: dict):
         expected = payload.get("expectedVersion")
         if expected is None or int(expected) != int(row.version or 0):
             raise AppException("DATA_CONFLICT", "轮岗记录已变化，请刷新后重试")
-        if row.status == "CANCELLED":
-            raise AppException("DATA_CONFLICT", "已取消轮岗不能提交自评")
+        if row.status in {"CANCELLED", "COMPLETED"}:
+            raise AppException("DATA_CONFLICT", "已取消或已完成轮岗不能再修改学生自评")
         row.student_self_evaluation = text
         row.student_self_rating = rating
         row.self_submitted_at = datetime.utcnow()
