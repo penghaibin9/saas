@@ -36,6 +36,8 @@ export const teacherApi = {
   getMyInternshipPeriodReports: (batchId, page = 1, pageSize = 20) => realRequest(`/teacher-mobile/internship/activity/period-reports?batchId=${encodeURIComponent(String(batchId || ''))}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`),
   saveMyInternshipPeriodReport: (body) => realRequest('/teacher-mobile/internship/activity/period-reports', { method: 'POST', data: body || {} }),
   getInternshipEmergencyNotices: (batchId, includeWithdrawn = true) => realRequest(`/teacher-mobile/internship/emergency-notices?batchId=${encodeURIComponent(String(batchId || ''))}&includeWithdrawn=${includeWithdrawn ? 'true' : 'false'}`),
+  getPendingInternshipEmergencyNotices: (batchId) => realRequest(`/teacher-mobile/internship/emergency-notices/pending?batchId=${encodeURIComponent(String(batchId || ''))}`),
+  acknowledgeInternshipEmergencyNotice: (id, batchId) => realRequest(`/teacher-mobile/internship/emergency-notices/${encodeURIComponent(String(id || ''))}/ack?batchId=${encodeURIComponent(String(batchId || ''))}`, { method: 'POST' }),
   publishInternshipEmergencyNotice: (body) => realRequest('/teacher-mobile/internship/emergency-notices', { method: 'POST', data: body || {} }),
   withdrawInternshipEmergencyNotice: (id, reason) => realRequest(`/teacher-mobile/internship/emergency-notices/${encodeURIComponent(String(id || ''))}/withdraw`, { method: 'POST', data: { reason } }),
   computeInternshipScore: (body) => realRequest('/mobile/teacher/internship/scores/compute', { method: 'POST', data: body || {} })
