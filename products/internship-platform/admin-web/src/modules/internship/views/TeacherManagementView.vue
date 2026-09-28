@@ -59,6 +59,40 @@
         <section class="tm-card">
           <header class="tm-head">
             <div>
+              <span class="eyebrow">TP04 / TP05 · 报告批阅绩效</span>
+              <h2>{{ reviewPerformance.length }} 名批阅教师 · {{ reviewFactCount }} 条不可变批阅事实</h2>
+              <p>统计周报、日报、月报和实习总结的真实批阅事实；退回后重交再批阅会形成新的批阅事实，不用当前页面条数冒充绩效。</p>
+            </div>
+            <AppExportButton
+              :export-fn="exportPerformanceFn"
+              :has-permission="canReportExport"
+              :disabled="!batchId || loading"
+            >导出批阅绩效</AppExportButton>
+          </header>
+          <DataTable v-if="reviewPerformance.length" :columns="performanceColumns" :rows="reviewPerformance" row-key="reviewerUserId">
+            <template #cell-reviewer="{ row }">
+              <div><strong>{{ row.reviewerName }}</strong><small>{{ row.reviewerUserId ? ('账号ID ' + row.reviewerUserId) : '系统/历史批阅人' }}</small></div>
+            </template>
+            <template #cell-outcome="{ row }">
+              <span>通过 {{ row.approvedCount }} / 退回 {{ row.returnedCount }}</span>
+              <small>周报 {{ row.weeklyReviewCount }} · 过程报告 {{ row.processReviewCount }}</small>
+            </template>
+            <template #cell-rating="{ row }">
+              <span>{{ row.averageRating == null ? '暂无评分' : ('平均 ' + row.averageRating + ' / 5') }}</span>
+              <small>1～5级：{{ ratingDistributionText(row.ratingDistribution) }}</small>
+            </template>
+            <template #cell-summaryScore="{ row }">
+              <span>{{ row.summaryAverageScore == null ? '暂无总结评分' : (row.summaryAverageScore + ' 分') }}</span>
+              <small>{{ row.summaryScoredCount }} 篇总结已评分</small>
+            </template>
+            <template #cell-lastReviewedAt="{ row }">{{ displayTime(row.lastReviewedAt) || '—' }}</template>
+          </DataTable>
+          <div v-else class="tm-state">当前批次/数据范围尚无报告批阅事实。</div>
+        </section>
+
+        <section class="tm-card">
+          <header class="tm-head">
+            <div>
               <span class="eyebrow">教师本人补签</span>
               <h2>待审核 {{ pendingCount }} 条</h2>
               <p>审批通过后才生成教师 MAKEUP 签到事实；已存在同日签到时服务端会阻断重复补签。</p>
@@ -122,6 +156,7 @@ export default {
   data() {
     return {
       loading: false, error: '', keyword: '', batchName: '', teachers: [], makeups: [],
+      reviewPerformance: [], reviewFactCount: 0,
       makeupStatus: 'PENDING', pendingCount: 0, busyId: '', rejectRow: null,
       rejectComment: '', message: '', messageType: ''
     }
@@ -130,6 +165,7 @@ export default {
     batchStore() { return useInternshipBatchStore() },
     batchId() { return this.batchStore.selectedBatchId || '' },
     canExport() { return canCode(this.ctx, 'internship.stats.export') },
+    canReportExport() { return canCode(this.ctx, 'internship.report.export') },
     teacherColumns() {
       return [
         { key: 'teacher', title: '教师', width: '160px' },
@@ -138,6 +174,16 @@ export default {
         { key: 'reports', title: '教师本人报告', width: '220px' },
         { key: 'guidance', title: '指导 / 巡访', width: '150px' },
         { key: 'lastCheckinAt', title: '最近签到', width: '170px' }
+      ]
+    },
+    performanceColumns() {
+      return [
+        { key: 'reviewer', title: '批阅教师', width: '160px' },
+        { key: 'reviewCount', title: '批阅次数', width: '90px' },
+        { key: 'outcome', title: '通过 / 退回', width: '220px' },
+        { key: 'rating', title: '五级评价', width: '240px' },
+        { key: 'summaryScore', title: '总结百分制', width: '170px' },
+        { key: 'lastReviewedAt', title: '最近批阅', width: '170px' }
       ]
     },
     makeupColumns() {
@@ -157,21 +203,29 @@ export default {
   created() { this.load() },
   methods: {
     displayTime(value) { return value ? String(value).replace('T', ' ').slice(0, 19) : '' },
+    ratingDistributionText(value) {
+      const d=value || {}
+      return [1,2,3,4,5].map(level => level + '级 ' + Number(d[String(level)] || 0)).join(' / ')
+    },
     statusLabel(value) { return {PENDING:'待审核',APPROVED:'已通过',REJECTED:'已驳回',WITHDRAWN:'已撤回'}[value] || value || '—' },
     statusTone(value) { return {APPROVED:'success',REJECTED:'danger',PENDING:'warning'}[value] || 'default' },
     async load() {
-      if (!this.batchId) { this.teachers=[]; this.makeups=[]; this.error=''; return }
+      if (!this.batchId) { this.teachers=[]; this.makeups=[]; this.reviewPerformance=[]; this.reviewFactCount=0; this.error=''; return }
       this.loading=true; this.error=''; this.message=''
-      const [ledger, makeups] = await Promise.all([
+      const [ledger, makeups, performance] = await Promise.all([
         internshipApi.getTeacherManagement({ batchId:this.batchId, keyword:this.keyword || undefined }),
-        internshipApi.getTeacherMakeups({ batchId:this.batchId, status:this.makeupStatus || undefined, pageSize:200 })
+        internshipApi.getTeacherMakeups({ batchId:this.batchId, status:this.makeupStatus || undefined, pageSize:200 }),
+        internshipApi.getReportReviewPerformance({ batchId:this.batchId })
       ])
       this.loading=false
       if (ledger.code !== 0) { this.error=ledger.message || '教师管理台账加载失败'; return }
       if (makeups.code !== 0) { this.error=makeups.message || '教师补签队列加载失败'; return }
-      this.batchName=ledger.data?.batchName || ''
+      if (performance.code !== 0) { this.error=performance.message || '报告批阅绩效加载失败'; return }
+      this.batchName=ledger.data?.batchName || performance.data?.batchName || ''
       this.teachers=ledger.data?.items || []
       this.makeups=makeups.data?.items || []
+      this.reviewPerformance=performance.data?.items || []
+      this.reviewFactCount=Number(performance.data?.reviewFactCount || 0)
       this.pendingCount=this.makeupStatus === 'PENDING'
         ? this.makeups.length
         : this.makeups.filter(item => item.status === 'PENDING').length
@@ -198,6 +252,9 @@ export default {
       this.closeReject()
       this.message=action==='APPROVE'?'补签已通过，并已生成教师 MAKEUP 签到事实。':'补签已驳回。'
       await this.load()
+    },
+    exportPerformanceFn() {
+      return internshipApi.exportReportReviewPerformance({ batchId:this.batchId })
     },
     exportFn() {
       return internshipApi.exportTeacherManagement({
