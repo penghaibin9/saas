@@ -34,6 +34,49 @@ class InternshipTeacherCheckin(PKMixin, TenantMixin, CommonMixin, Base):
     accuracy_m: Mapped[float | None] = mapped_column(Numeric(10, 2))
     address: Mapped[str | None] = mapped_column(String(500))
     note: Mapped[str | None] = mapped_column(String(500))
+    result: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="RECORDED",
+        comment="RECORDED/NORMAL/OUT_OF_RANGE/NO_LOCATION/LOW_ACCURACY/LOCATION_UNCERTAIN/MAKEUP")
+    distance_m: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    coordinate_system: Mapped[str | None] = mapped_column(String(20))
+    country_region: Mapped[str | None] = mapped_column(String(100))
+    location_provider: Mapped[str | None] = mapped_column(String(50))
+    photo_file_id: Mapped[str | None] = mapped_column(String(64))
+    watermarked_file_id: Mapped[str | None] = mapped_column(String(64))
+    photo_sha256: Mapped[str | None] = mapped_column(String(64))
+    watermarked_sha256: Mapped[str | None] = mapped_column(String(64))
+    watermark_text: Mapped[str | None] = mapped_column(String(500))
+
+
+class InternshipTeacherMakeup(PKMixin, TenantMixin, CommonMixin, Base):
+    """Teacher-owned makeup request; school admin approval materializes one teacher check-in fact."""
+    __tablename__ = "t_internship_teacher_makeup"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "batch_id", "teacher_user_id", "local_date", "active_pending_key",
+            name="uk_ix_teacher_makeup_pending_day",
+        ),
+        Index(
+            "ix_ix_teacher_makeup_batch_teacher",
+            "tenant_id", "batch_id", "teacher_user_id", "local_date",
+        ),
+    )
+
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teacher_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teacher_name_snapshot: Mapped[str] = mapped_column(String(100), nullable=False)
+    local_date: Mapped[date] = mapped_column(Date, nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    evidence_file_id: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="PENDING",
+        comment="PENDING/APPROVED/REJECTED/WITHDRAWN")
+    active_pending_key: Mapped[str | None] = mapped_column(
+        String(1), nullable=True, default="1",
+        comment="PENDING 时为 1，其余状态置 NULL，用于同日待审唯一约束")
+    reviewed_by_name: Mapped[str | None] = mapped_column(String(100))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    review_comment: Mapped[str | None] = mapped_column(String(500))
 
 
 class InternshipTeacherWorkReport(PKMixin, TenantMixin, CommonMixin, Base):
