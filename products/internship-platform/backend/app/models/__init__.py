@@ -5,7 +5,7 @@
 
 from app.models.tenant import Tenant
 from app.models.org import College, Major, SchoolClass
-from app.models.rbac import Permission, Role, RolePermission, User, UserRole
+from app.models.rbac import Permission, Role, RolePermission, User, UserRole, WxAccountBinding
 from app.models.student import StudentContact, StudentProfile
 from app.models.student_account_link import StudentAccountLink
 from app.models.student_parent import StudentParentLink
