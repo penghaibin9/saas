@@ -323,6 +323,23 @@ def portal_change_withdraw(
     )
 
 
+@router.get("/context/reports/{report_kind}/{report_id}/pdf", summary="本人导出周报/月报/总结 PDF")
+def portal_report_pdf(
+    report_kind: str,
+    report_id: int,
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(reports.export_report_pdf(
+        user,
+        report_kind=report_kind,
+        report_id=report_id,
+        batch_id=batchId,
+        internship_id=internshipId,
+    ))
+
+
 @router.get("/context/reports", summary="本人当前批次月报与实习总结")
 def portal_report_list(
     batchId: int = Query(..., ge=1),
