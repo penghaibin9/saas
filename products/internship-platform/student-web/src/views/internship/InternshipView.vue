@@ -161,19 +161,34 @@
         </div>
       </template>
 
-      <!-- 每日打卡 -->
+      <!-- 签到考勤统计 SP03 -->
       <template v-else-if="tab === 'checkin'">
-        <div class="two2">
-          <section class="sp-card" style="text-align:center">
-            <div class="sp-muted">今日打卡</div>
-            <div style="font-size:30px;font-weight:700;margin-top:4px;font-variant-numeric:tabular-nums">{{ my.todayCheckin?.done ? (my.todayCheckin.time || '已打卡') : '未打卡' }}</div>
-            <div class="sp-muted" style="margin-top:6px">累计出勤 {{ my.todayCheckin?.totalDays ?? 0 }} 天</div>
-            <div class="notebox">PC 门户可登记打卡；带地理围栏的精确核验仍以学生小程序为准。无定位时记为「已记录」，不会自动认定作弊。</div>
+        <div class="two">
+          <section class="sp-card">
+            <div class="sp-panel__head">签到考勤概览 <button type="button" class="sp-link" :disabled="busy" @click="downloadAttendancePdf">下载 PDF</button></div>
+            <div class="sp-attendance-overview">
+              <div class="sp-attendance-ring" :style="attendanceChartStyle"><div><strong>{{ attendance.totalCountedDays || 0 }}</strong><span>已统计天数</span></div></div>
+              <div class="sp-attendance-legend">
+                <div><span class="dot checkin"></span><b>已签到</b><strong>{{ attendance.summary?.CHECKIN || 0 }}</strong></div>
+                <div><span class="dot absent"></span><b>未签到</b><strong>{{ attendance.summary?.ABSENT || 0 }}</strong></div>
+                <div><span class="dot leave"></span><b>请假</b><strong>{{ attendance.summary?.LEAVE || 0 }}</strong></div>
+                <div><span class="dot makeup"></span><b>补签</b><strong>{{ attendance.summary?.MAKEUP || 0 }}</strong></div>
+                <div><span class="dot exempt"></span><b>免签</b><strong>{{ attendance.summary?.EXEMPT || 0 }}</strong></div>
+              </div>
+            </div>
+            <p class="sp-muted">统计区间 {{ attendance.internshipStartDate || '—' }} 至 {{ attendance.throughDate || '—' }}；未来日期不计入未签到。</p>
+            <div class="notebox">PC 可登记无定位打卡；需要定位、水印照片和围栏核验时请使用学生移动端。两端最终进入同一正式签到事实。</div>
             <button class="sp-btn" style="margin-top:12px" :disabled="busy || my.todayCheckin?.done" @click="doCheckin">{{ my.todayCheckin?.done ? '今日已打卡' : '登记今日打卡' }}</button>
           </section>
           <section class="sp-card">
-            <div class="sp-panel__head">考勤异常</div>
-            <AutoTable :rows="my.attendanceExceptions" empty="暂无考勤异常" :columns="[{key:'type',label:'类型'},{key:'status',label:'状态'},{key:'date',label:'日期'}]" />
+            <div class="sp-panel__head">全部签到考勤记录 <span class="sp-muted">{{ attendance.items?.length || 0 }} 条</span></div>
+            <StateBlock v-if="!(attendance.items||[]).length" type="empty" text="当前统计区间暂无考勤记录" />
+            <div v-else class="sp-attendance-list">
+              <div v-for="row in attendance.items" :key="row.date" class="sp-attendance-row">
+                <div><strong>{{ row.date }}</strong><span>{{ row.time ? fmt(row.time) : (row.address || '—') }}</span></div>
+                <StatusTag :text="attendanceStatusText(row.status)" :tone="row.status==='CHECKIN'||row.status==='MAKEUP'||row.status==='EXEMPT'?'success':row.status==='ABSENT'||row.status==='PENDING'?'danger':'warn'" />
+              </div>
+            </div>
           </section>
         </div>
       </template>
@@ -754,6 +769,7 @@ const insuranceMeta = ref(null)
 const insuranceError = ref(''), insuranceConflict = ref(false)
 const insuranceReadOnly = computed(() => !!my.value.historyMode || (insuranceMeta.value?.status === 'VERIFIED' && insuranceMeta.value.canRenew !== true))
 let insuranceEpoch = 0
+const attendance = ref({ summary: { CHECKIN:0, ABSENT:0, LEAVE:0, MAKEUP:0, EXEMPT:0 }, items: [], totalCountedDays: 0 })
 const notices = ref([])
 const planMeta = ref(null)
 const helpForm = reactive({ title: '', content: '', riskLevel: 'MEDIUM' })
@@ -943,6 +959,27 @@ const flowSteps = computed(() => {
   const cur = { PREPARING: 0, READY: 1, ONBOARD: 2, ASSESSING: 3, ARCHIVED: 4, ENDED: 4 }[my.value.status] ?? -1
   return order.map((name, i) => ({ name, state: i < cur ? 'done' : i === cur ? 'current' : 'todo' }))
 })
+const attendanceChartStyle = computed(() => {
+  const s = attendance.value?.summary || {}
+  const values = [
+    Number(s.CHECKIN || 0),
+    Number(s.ABSENT || 0),
+    Number(s.LEAVE || 0),
+    Number(s.MAKEUP || 0),
+    Number(s.EXEMPT || 0)
+  ]
+  const total = values.reduce((sum, value) => sum + value, 0)
+  if (!total) return { background: 'var(--bg2)' }
+  const colors = ['var(--ok-fg)', 'var(--danger-fg)', 'var(--warn-fg)', 'var(--pri)', 'var(--t4)']
+  let start = 0
+  const parts = values.map((value, index) => {
+    const end = start + value * 100 / total
+    const part = colors[index] + ' ' + start.toFixed(2) + '% ' + end.toFixed(2) + '%'
+    start = end
+    return part
+  })
+  return { background: 'conic-gradient(' + parts.join(',') + ')' }
+})
 const metrics = computed(() => [
   { t: '累计出勤', v: my.value.todayCheckin?.totalDays ?? 0, u: '天', c: 'var(--t1)' },
   { t: '周报数', v: (my.value.weeklyReports || []).length, u: '篇', c: 'var(--t1)' },
@@ -982,6 +1019,7 @@ function resetSourceStates() {
   insuranceMeta.value = null
   insuranceEpoch++; insuranceError.value = ''; insuranceConflict.value = false
   Object.keys(insForm).forEach(key => { insForm[key] = '' })
+  attendance.value = { summary: { CHECKIN:0, ABSENT:0, LEAVE:0, MAKEUP:0, EXEMPT:0 }, items: [], totalCountedDays: 0 }
   notices.value = []
   reportRules.value = {
     dailyMinWords: 30, weeklyMinWords: 30, monthlyMinWords: 100, summaryMinWords: 300,
@@ -998,7 +1036,11 @@ function rowsFrom(data) {
 
 async function fetchTabSource(key) {
   const context = () => currentInternshipContext()
-  if (['overview', 'checkin', 'help'].includes(key)) return true
+  if (['overview', 'help'].includes(key)) return true
+  if (key === 'checkin') {
+    attendance.value = await internshipCoreApi.attendance(context())
+    return true
+  }
   if (key === 'notices') {
     notices.value = rowsFrom(await internshipCoreApi.notices(context()))
     return notices.value.length > 0
@@ -1133,6 +1175,33 @@ async function load() {
     await Promise.all(initialSources.map((key) => loadTab(key, true)))
   } catch (e) { error.value = e?.message || '实习信息加载失败' } finally { loading.value = false }
 }
+function attendanceStatusText(value) {
+  return ({ CHECKIN:'已签到', ABSENT:'未签到', PENDING:'未签到', LEAVE:'请假', MAKEUP:'补签', EXEMPT:'免签' })[value] || value || '—'
+}
+async function downloadAttendancePdf() {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const data = await internshipCoreApi.attendancePdf(currentInternshipContext())
+    const raw = atob(String(data?.contentBase64 || ''))
+    const bytes = new Uint8Array(raw.length)
+    for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i)
+    const blob = new Blob([bytes], { type: data?.mediaType || 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = data?.filename || '岗位实习签到考勤记录.pdf'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    ui.notify('考勤 PDF 已生成')
+  } catch (e) {
+    ui.notify(e?.message || '考勤 PDF 生成失败')
+  } finally {
+    busy.value = false
+  }
+}
 async function doCheckin() {
   if (busy.value) return
   busy.value = true
@@ -1142,7 +1211,12 @@ async function doCheckin() {
       idempotencyKey: `portal-checkin-${new Date().toISOString().slice(0, 10)}`
     })
     ui.notify('打卡已记录')
-    await load()
+    const [freshAttendance] = await Promise.all([
+      internshipCoreApi.attendance(currentInternshipContext()),
+      portalApi.internshipMy()
+    ])
+    attendance.value = freshAttendance || attendance.value
+    my.value = await portalApi.internshipMy() || my.value
   } catch (e) { ui.notify(e?.message || '打卡失败') } finally { busy.value = false }
 }
 async function submitMakeup() {
@@ -1763,4 +1837,5 @@ onMounted(load)
 .sp-preparation{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(270px,1fr);gap:20px;margin-bottom:20px}.sp-preparation__head{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.sp-preparation h2{font-size:20px;line-height:1.5;margin:7px 0 0}.sp-preparation__eyebrow{font-size:12px;color:var(--sp-text-muted,#6b7688)}.sp-preparation__facts{display:grid;grid-template-columns:1fr 1fr;gap:24px;margin:26px 0}.sp-preparation__facts dt{font-size:12px;color:#6b7688;margin-bottom:6px}.sp-preparation__facts dd{font-size:14px;margin:0;line-height:1.7;overflow-wrap:anywhere}.sp-qualification__title{display:flex;justify-content:space-between;align-items:center;gap:12px;margin:8px 0 18px}.sp-qualification__title h2{font-size:18px;margin:0}.sp-qualification p{font-size:14px;line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere;color:#475569}.sp-qualification__next{border-top:1px solid #e9edf3;margin:22px 0 16px;padding-top:18px}.sp-qualification__next strong{font-size:12px;color:#6b7688}.sp-qualification__next p{font-size:13px;margin:6px 0 0}
 .sp-completion{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:20px;border-left:4px solid var(--pri)}.sp-completion h2{margin:6px 0 4px;font-size:18px}.sp-completion p{margin:0;line-height:1.6}.sp-completion__actions{display:flex;flex-shrink:0;gap:10px}@media(max-width:720px){.sp-completion{align-items:flex-start;flex-direction:column}.sp-completion__actions{width:100%;flex-wrap:wrap}}
 @media(max-width:1000px){.sp-preparation{grid-template-columns:1fr}.sp-preparation__facts{gap:20px}}
+.sp-attendance-overview{display:flex;align-items:center;gap:22px;margin:12px 0 16px}.sp-attendance-ring{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;position:relative}.sp-attendance-ring::after{content:'';position:absolute;width:94px;height:94px;border-radius:50%;background:var(--card)}.sp-attendance-ring>div{position:relative;z-index:1;text-align:center;display:flex;flex-direction:column}.sp-attendance-ring strong{font-size:25px}.sp-attendance-ring span{font-size:11px;color:var(--t3)}.sp-attendance-legend{display:grid;gap:8px;flex:1}.sp-attendance-legend>div{display:grid;grid-template-columns:10px 1fr auto;align-items:center;gap:8px;font-size:12px}.sp-attendance-legend .dot{width:9px;height:9px;border-radius:50%}.dot.checkin{background:var(--ok-fg)}.dot.absent{background:var(--danger-fg)}.dot.leave{background:var(--warn-fg)}.dot.makeup{background:var(--pri)}.dot.exempt{background:var(--t4)}.sp-attendance-list{display:flex;flex-direction:column;max-height:520px;overflow:auto}.sp-attendance-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--line)}.sp-attendance-row>div{display:flex;flex-direction:column;gap:3px}.sp-attendance-row span{font-size:11px;color:var(--t3)}@media(max-width:760px){.sp-attendance-overview{align-items:flex-start;flex-direction:column}}
 </style>
