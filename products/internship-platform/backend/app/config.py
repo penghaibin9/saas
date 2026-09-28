@@ -31,6 +31,7 @@ class Settings(BaseSettings):
     TIMEZONE_OFFSET_HOURS:int=8
     TENANT_TIMEZONE:str="Asia/Shanghai"
     CHECKIN_WATERMARK_FONT_PATH:str=""
+    ENTERPRISE_PORTAL_BASE_URL:str=""
     REGULATORY_RECEIPT_ADAPTER_ENABLED:bool=False
     REGULATORY_RECEIPT_ADAPTER_NAME:str=""
     model_config=SettingsConfigDict(env_file=".env",env_file_encoding="utf-8",extra="ignore")
