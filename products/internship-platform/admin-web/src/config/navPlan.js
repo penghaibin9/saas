@@ -55,6 +55,7 @@ export const NAV_PLAN = [{
       leaf('考勤记录', '/admin/internship/attendance?panel=checkins', 'internship.attendance.view'),
       leaf('异常核验', '/admin/internship/attendance?panel=exceptions', 'internship.attendance.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/exceptions'] }),
       leaf('请假与返岗', '/admin/internship/leaves?panel=pending', 'internship.leave.view', 'TASK_QUEUE'),
+      leaf('通知公告', '/admin/internship/notices', 'internship.communication.view'),
       leaf('计划任务', '/admin/internship/plans', 'internship.plan.view', 'CONFIG_VIEW'),
       leaf('报告批阅', '/admin/internship/reports?panel=review', 'internship.report.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/process-reports'] }),
       leaf('指导巡访', '/admin/internship/guidance?panel=guidance', 'internship.guidance.view'),
