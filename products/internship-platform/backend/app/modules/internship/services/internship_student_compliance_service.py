@@ -230,6 +230,43 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
         rules = get_batch_compliance_rules(db, batch)
         items = []
 
+        # SM16: school-approved internship exemption is a destination-level terminal decision.
+        # Do not keep asking an exempted student for enterprise/position/agreement/check-in prerequisites.
+        if rec.destination_type == "EXEMPTED":
+            exempt_item = _item(
+                "internshipExemption", "免实习审批", required=True,
+                status="EXEMPTED", reason="学校已批准免实习申请",
+                route="/pages/student-internship/exemption/index",
+            )
+            return {
+                "hasData": True,
+                "needSelect": False,
+                "historyMode": ctx.mode == "history",
+                "recordId": str(rec.id),
+                "batchId": str(rec.batch_id or ""),
+                "batchName": getattr(batch, "batch_name", "") or "",
+                "recordStatus": rec.status,
+                "destinationType": rec.destination_type,
+                "operation": operation,
+                "passed": True,
+                "items": [exempt_item],
+                "blockers": [],
+                "warnings": [],
+                "currentTask": None,
+                "nextAction": None,
+                "timeline": [{
+                    "id": "internshipExemption",
+                    "title": "免实习审批",
+                    "status": "COMPLETED",
+                    "current": False,
+                    "reason": "学校已批准免实习申请",
+                    "route": "/pages/student-internship/exemption/index",
+                }],
+                "completeness": {"done": 1, "required": 1, "ratio": 1.0},
+                "ruleVersion": rule_version_label(batch),
+                "evaluatedAt": datetime.utcnow().isoformat() + "Z",
+            }
+
         from app.modules.internship.services.internship_eligibility_result import eligibility_result
         eligibility = eligibility_result(db, rec)
         items.append(_item(
