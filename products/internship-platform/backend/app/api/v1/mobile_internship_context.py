@@ -464,6 +464,15 @@ def teacher_rotation_evaluate(
     return success(rotations.evaluate_rotation(rotation_id, body or {}, user), message="轮岗成绩已评定")
 
 
+@router.get("/stats/procurement-overview", summary="教师移动端校级实习四组统计")
+def teacher_procurement_stats(
+    batchId: int = Query(..., ge=1),
+    user=Depends(require_permission("internship.stats.view")),
+):
+    from app.modules.internship.services import internship_procurement_stats_service as procurement
+    return success(procurement.overview(user, batch_id=batchId))
+
+
 @router.get("/payroll", summary="教师当前批次月度工资单")
 def teacher_payroll_list(
     batchId: int = Query(..., ge=1),
