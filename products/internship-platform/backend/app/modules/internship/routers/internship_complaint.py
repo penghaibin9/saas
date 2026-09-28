@@ -24,10 +24,12 @@ _P_INTAKE = "internship.complaint.intake"
 def complaints(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                batchId: Optional[str] = Query(None, description="实习批次（必填）"),
                status: Optional[str] = None, enterpriseId: Optional[str] = None,
-               severity: Optional[str] = None, user=Depends(require_permission(_P_VIEW))):
+               severity: Optional[str] = None, category: Optional[str] = None,
+               feedbackLevel: Optional[str] = None,
+               user=Depends(require_permission(_P_VIEW))):
     items, total = svc.list_complaints(
         page, pageSize, status=status, enterprise_id=enterpriseId, severity=severity,
-        batch_id=batchId, user=user)
+        batch_id=batchId, user=user, category=category, feedback_level=feedbackLevel)
     return success(paginate(items, total, page, pageSize))
 
 
