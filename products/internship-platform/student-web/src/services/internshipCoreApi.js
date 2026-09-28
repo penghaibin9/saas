@@ -74,6 +74,20 @@ async function resolveEditableSelfArrangedApplication(body) {
 }
 
 export const internshipCoreApi = {
+  attendance(context, timezoneName = '') {
+    const batchId = String(context?.batchId || '').trim()
+    if (!batchId) return Promise.reject(new Error('请先选择实习批次'))
+    const params = new URLSearchParams({ batchId })
+    if (timezoneName) params.set('timezoneName', timezoneName)
+    return request(`/portal/internship/context/attendance?${params.toString()}`)
+  },
+  attendancePdf(context, timezoneName = '') {
+    const batchId = String(context?.batchId || '').trim()
+    if (!batchId) return Promise.reject(new Error('请先选择实习批次'))
+    const params = new URLSearchParams({ batchId })
+    if (timezoneName) params.set('timezoneName', timezoneName)
+    return request(`/portal/internship/context/attendance/pdf?${params.toString()}`)
+  },
   notices(context) {
     const batchId = String(context?.batchId || '').trim()
     if (!batchId) return Promise.reject(new Error('请先选择实习批次'))
