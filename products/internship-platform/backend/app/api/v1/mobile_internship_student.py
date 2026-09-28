@@ -23,6 +23,8 @@ from app.modules.internship.services import internship_student_eval_service as s
 from app.modules.internship.services import internship_student_checkin_service as checkins
 from app.modules.internship.services import internship_checkin_exemption_service as checkin_exemptions
 from app.modules.internship.services import internship_material_requirement_service as material_requirements
+from app.modules.internship.services import internship_rotation_service as rotations
+from app.modules.internship.services import internship_payroll_service as payrolls
 from app.modules.internship.services import internship_score_appeal_service as score_appeals
 from app.modules.internship.services import internship_risk_service as risks
 from app.modules.internship.services.internship_student_context_guard import (
@@ -126,6 +128,44 @@ def withdraw_checkin_exemption(
 ):
     return success(checkin_exemptions.withdraw(
         user, exemption_id, body or {}), message="免签申请已撤回")
+
+
+@router.get("/context/rotations", summary="本人当前实习轮岗记录")
+def my_rotations(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(rotations.list_my(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/rotations/{rotation_id}/self-evaluation", summary="本人提交轮岗自评")
+def my_rotation_self_evaluation(
+    rotation_id: int,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(rotations.submit_self_evaluation(
+        rotation_id, body or {}, user), message="轮岗自评已提交")
+
+
+@router.get("/context/payroll", summary="本人月度工资单与历史版本")
+def my_payroll(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(payrolls.list_my(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/payroll", summary="本人提交或更正月度工资单")
+def my_payroll_submit(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    return success(payrolls.submit_my(user, body or {}), message="工资单已提交审核")
 
 
 @router.get("/context/material-requirements", summary="本人当前批次材料收件要求")
