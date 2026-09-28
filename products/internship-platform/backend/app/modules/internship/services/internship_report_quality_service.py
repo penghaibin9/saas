@@ -20,46 +20,95 @@ REPORT_DOCUMENT_EXTENSIONS = {"rar", "zip", "doc", "docx", "pdf", "xls", "xlsx"}
 MAX_REPORT_DOCUMENTS = 9
 
 DEFAULT_RULES = {
+    "dailyMinWords": 30,
     "weeklyMinWords": 30,
     "planTaskMinWords": 10,
     "monthlyMinWords": 100,
     "summaryMinWords": 300,
+    "dailyRequiredCount": 0,
+    "weeklyRequiredCount": 0,
+    "monthlyRequiredCount": 0,
+    "summaryRequiredCount": 1,
     "maxImages": 9,
     "maxVideos": 3,
 }
 
 
+def _non_negative_int(value, fallback: int) -> int:
+    if value in (None, ""):
+        return fallback
+    try:
+        return max(0, int(value))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _positive_int(value, fallback: int) -> int:
+    if value in (None, ""):
+        return fallback
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return fallback
+
+
 def rules_for_batch(db, batch_id) -> dict:
+    """Single report-rule projection.
+
+    ix0008 retains the original quality row for backward compatibility, while the batch's
+    canonical rules_config owns procurement-facing per-plan counts and can override minimums.
+    This avoids a second configuration workflow and keeps PC/mobile progress on the same truth.
+    """
+    bid = int(batch_id)
     row = db.scalar(select(InternshipReportRuleConfig).where(
         InternshipReportRuleConfig.tenant_id == _tid(),
-        InternshipReportRuleConfig.batch_id == int(batch_id),
+        InternshipReportRuleConfig.batch_id == bid,
         InternshipReportRuleConfig.is_deleted.is_(False),
     ))
-    if not row:
-        rules = dict(DEFAULT_RULES)
-        batch = db.get(InternshipBatch, int(batch_id))
-        legacy = (batch.rules_config or {}) if batch else {}
-        weekly = legacy.get("weeklyReport") or {}
-        if weekly.get("minWordCount") not in (None, ""):
-            try:
-                rules["weeklyMinWords"] = max(1, int(weekly.get("minWordCount")))
-            except (TypeError, ValueError):
-                pass
-        return rules
-    return {
-        "weeklyMinWords": int(row.weekly_min_words or 30),
-        "planTaskMinWords": int(row.plan_task_min_words or 10),
-        "monthlyMinWords": int(row.monthly_min_words or 100),
-        "summaryMinWords": int(row.summary_min_words or 300),
-        "maxImages": int(row.max_images or 9),
-        "maxVideos": int(row.max_videos or 3),
-    }
+    rules = dict(DEFAULT_RULES)
+    if row:
+        rules.update({
+            "weeklyMinWords": int(row.weekly_min_words or rules["weeklyMinWords"]),
+            "planTaskMinWords": int(row.plan_task_min_words or rules["planTaskMinWords"]),
+            "monthlyMinWords": int(row.monthly_min_words or rules["monthlyMinWords"]),
+            "summaryMinWords": int(row.summary_min_words or rules["summaryMinWords"]),
+            "maxImages": int(row.max_images or rules["maxImages"]),
+            "maxVideos": int(row.max_videos or rules["maxVideos"]),
+        })
+
+    batch = db.get(InternshipBatch, bid)
+    config = (batch.rules_config or {}) if batch else {}
+    weekly = config.get("weeklyReport") or {}
+    process = config.get("processReport") or {}
+
+    rules["weeklyMinWords"] = _positive_int(
+        weekly.get("minWordCount"), rules["weeklyMinWords"])
+    rules["weeklyRequiredCount"] = _non_negative_int(
+        weekly.get("requiredCount"), rules["weeklyRequiredCount"])
+
+    rules["dailyMinWords"] = _positive_int(
+        process.get("dailyMinWords"), rules["dailyMinWords"])
+    rules["monthlyMinWords"] = _positive_int(
+        process.get("monthlyMinWords"), rules["monthlyMinWords"])
+    rules["summaryMinWords"] = _positive_int(
+        process.get("summaryMinWords"), rules["summaryMinWords"])
+    rules["dailyRequiredCount"] = _non_negative_int(
+        process.get("dailyRequiredCount"), rules["dailyRequiredCount"])
+    rules["monthlyRequiredCount"] = _non_negative_int(
+        process.get("monthlyRequiredCount"), rules["monthlyRequiredCount"])
+    rules["summaryRequiredCount"] = _non_negative_int(
+        process.get("summaryRequiredCount"), rules["summaryRequiredCount"])
+    rules["maxImages"] = _non_negative_int(
+        process.get("maxImages"), rules["maxImages"])
+    rules["maxVideos"] = _non_negative_int(
+        process.get("maxVideos"), rules["maxVideos"])
+    return rules
 
 
 def minimum_words(rules: dict, report_type: str) -> int:
     rt = str(report_type or "").upper()
     return {
-        "DAILY": int(rules.get("weeklyMinWords") or 30),
+        "DAILY": int(rules.get("dailyMinWords") or 30),
         "MONTHLY": int(rules.get("monthlyMinWords") or 100),
         "SUMMARY": int(rules.get("summaryMinWords") or 300),
     }.get(rt, 30)
