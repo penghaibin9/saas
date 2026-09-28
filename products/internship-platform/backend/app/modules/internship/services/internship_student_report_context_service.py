@@ -42,10 +42,18 @@ def list_my(user: dict, *, batch_id, internship_id) -> dict:
             InternshipProcessReport.submitted_at.desc(),
             InternshipProcessReport.id.desc(),
         )).all()
+        items = []
+        for row in rows:
+            item = _context_row(row, record, student)
+            snap = quality.latest_process_snapshot(db, row.id)
+            item["reportVersion"] = int(snap.version_no) if snap else 0
+            item["attachments"] = (snap.attachment_meta_json or []) if snap else []
+            items.append(item)
         return {
-            "items": [_context_row(row, record, student) for row in rows],
+            "items": items,
             "batchId": str(selected_batch_id),
             "internshipId": str(record.id),
+            "rules": quality.rules_for_batch(db, selected_batch_id),
         }
 
 
