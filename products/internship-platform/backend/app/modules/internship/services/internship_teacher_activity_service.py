@@ -1000,6 +1000,15 @@ def review_teacher_makeup(user: dict, makeup_id, body: dict) -> dict:
             raise not_found("教师补签申请不存在")
         if row.status != "PENDING":
             raise AppException("DATA_CONFLICT", "该教师补签申请已处理，请刷新")
+        expected = payload.get("expectedVersion")
+        if expected is None:
+            raise AppException("DATA_CONFLICT", "审核教师补签必须提供 expectedVersion")
+        try:
+            expected = int(expected)
+        except (TypeError, ValueError):
+            raise AppException("DATA_CONFLICT", "expectedVersion 格式非法，请刷新后重试") from None
+        if expected != int(row.version or 0):
+            raise AppException("DATA_CONFLICT", "教师补签申请已被其他管理员处理，请刷新后重试")
         batch = _batch(db, row.batch_id)
 
         if action == "APPROVE":
