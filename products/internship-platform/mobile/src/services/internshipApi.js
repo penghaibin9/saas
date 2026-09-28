@@ -180,6 +180,10 @@ export const studentInternshipDashboard = (batchId = '') =>
   realRequest(optionalBatch('/mobile/internship/context/my', batchId))
 export const studentInternshipEmergencyNotices = (batchId) =>
   realRequest(batchPath('/mobile/internship/emergency-notices', batchId))
+export const studentInternshipPendingEmergencyNotices = (batchId) =>
+  realRequest(batchPath('/mobile/internship/emergency-notices/pending', batchId))
+export const studentInternshipAcknowledgeEmergencyNotice = (noticeId, batchId) =>
+  realRequest(batchPath(`/mobile/internship/emergency-notices/${enc(noticeId)}/ack`, batchId), { method: 'POST' })
 export const studentInternshipRotations = (batchId, internshipId) =>
   realRequest(studentContextPath('/mobile/internship/context/rotations', batchId, internshipId))
 export const studentInternshipRotationSelfEvaluation = (rotationId, body) =>
