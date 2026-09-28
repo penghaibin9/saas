@@ -31,6 +31,19 @@ def template_version(report_code: str, body: dict = Body(...),
     )
 
 
+@router.get("/templates/{report_code}/field-dictionary.xlsx", summary="导出字段来源/单位/枚举清单")
+def template_field_dictionary(
+    report_code: str,
+    user=Depends(require_permission(_EXPORT)),
+):
+    payload, filename = svc.field_dictionary_file(report_code, user=user)
+    return StreamingResponse(
+        BytesIO(payload),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/tasks", summary="监管上报任务")
 def tasks(reportCode: str | None = Query(None), batchId: int | None = Query(None, ge=1),
           user=Depends(require_permission(_VIEW))):
