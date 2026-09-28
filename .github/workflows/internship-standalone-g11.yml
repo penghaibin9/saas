@@ -1,18 +1,7 @@
 name: Internship Standalone G11 IAM
 
 on:
-  pull_request:
-    paths:
-      - "products/internship-platform/backend/app/core/security.py"
-      - "products/internship-platform/backend/app/core/permissions.py"
-      - "products/internship-platform/backend/app/api/router.py"
-      - "products/internship-platform/backend/app/api/v1/auth_recovery.py"
-      - "products/internship-platform/backend/app/api/v1/mobile_internship_context.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_student_account_service.py"
-      - "products/internship-platform/backend/tests/test_yiyang_c04_g11_password_reset.py"
-      - "products/internship-platform/mobile/src/services/internshipApi.js"
-      - "products/internship-platform/mobile/src/pages/teacher-internship/internship-students/detail.vue"
-      - ".github/workflows/internship-standalone-g11.yml"
+  workflow_dispatch:
 
 jobs:
   g11:
