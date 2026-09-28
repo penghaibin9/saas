@@ -104,6 +104,15 @@ class InternshipEmergencyNotice(PKMixin, TenantMixin, CommonMixin, Base):
     batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    notice_type: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="NOTICE",
+        comment="AGREEMENT/TRAINING/SAFETY/NOTICE/OTHER")
+    urgency: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="NORMAL",
+        comment="NORMAL/IMPORTANT/URGENT")
+    valid_from: Mapped[datetime | None] = mapped_column(DateTime)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime)
+    attachment_file_ids_json: Mapped[list | None] = mapped_column(JSON)
     sender_user_id: Mapped[int | None] = mapped_column(BigInteger)
     sender_name_snapshot: Mapped[str | None] = mapped_column(String(100))
     recipient_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
