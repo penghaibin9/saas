@@ -118,7 +118,7 @@ def _validate_file(file_id: str | None, required: bool = False) -> str | None:
     fid = (file_id or "").strip()
     if not fid:
         if required:
-            raise AppException("VALIDATION_ERROR", "请上传自主实习证明材料")
+            raise AppException("VALIDATION_ERROR", "请上传申请证明材料")
         return None
     from app.services import file_service
     if not file_service.get_file_meta(fid):
