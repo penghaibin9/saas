@@ -132,6 +132,75 @@ def test_g16_teacher_checkin_writes_teacher_audit(monkeypatch):
     assert db.committed is True
     assert audits[0]["target_type"] == "TEACHER_CHECKIN"
     assert audits[0]["action"] == "TEACHER_CHECKIN_CREATE"
+    assert result["result"] == "NORMAL"
+    assert result["evidenceAvailable"] is False
+
+
+def test_g16_teacher_checkin_photo_generates_trusted_watermark(monkeypatch):
+    db = _FakeDb()
+    audits = []
+    evidence_calls = []
+    monkeypatch.setattr(svc, "session", lambda: db)
+    monkeypatch.setattr(svc, "_tid", lambda: 1)
+    monkeypatch.setattr(
+        svc,
+        "_assert_teacher_batch_scope",
+        lambda _db, batch_id, _user: SimpleNamespace(id=int(batch_id)),
+    )
+    monkeypatch.setattr(
+        svc,
+        "add_audit",
+        lambda _db, **kwargs: audits.append(kwargs) or "evt",
+    )
+    monkeypatch.setattr(
+        svc,
+        "watermark_photo",
+        lambda **kwargs: evidence_calls.append(kwargs) or {
+            "originalFileId": "teacher-photo-1",
+            "originalSha256": "a" * 64,
+            "watermarkedFileId": "teacher-watermark-1",
+            "watermarkedSha256": "b" * 64,
+        },
+    )
+
+    result = svc.checkin(
+        _teacher(),
+        {
+            "batchId": 12,
+            "timezoneName": "Asia/Shanghai",
+            "latitude": 28.2282,
+            "longitude": 112.9388,
+            "accuracyM": 8,
+            "address": "益阳职业技术学院",
+            "photoFileId": "teacher-photo-1",
+            "coordinateSystem": "GCJ02",
+            "locationProvider": "UNI_GCJ02",
+        },
+    )
+
+    assert result["evidenceAvailable"] is True
+    assert result["photoFileId"] == "teacher-photo-1"
+    assert result["watermarkedFileId"] == "teacher-watermark-1"
+    assert result["photoSha256"] == "a" * 64
+    assert result["watermarkedSha256"] == "b" * 64
+    assert evidence_calls[0]["subject_type"] == "TEACHER"
+    assert evidence_calls[0]["subject_id"] == 7
+    assert evidence_calls[0]["biz_type"] == "INTERNSHIP_TEACHER_CHECKIN"
+    assert "张老师" in evidence_calls[0]["watermark_text"]
+    assert audits[0]["detail"]["hasTrustedPhotoEvidence"] is True
+
+
+def test_g16_teacher_photo_requires_location(monkeypatch):
+    monkeypatch.setattr(svc, "_tid", lambda: 1)
+    with pytest.raises(AppException):
+        svc.checkin(
+            _teacher(),
+            {
+                "batchId": 12,
+                "timezoneName": "Asia/Shanghai",
+                "photoFileId": "teacher-photo-1",
+            },
+        )
 
 
 def test_g16_emergency_notice_is_persisted_and_audited(monkeypatch):
