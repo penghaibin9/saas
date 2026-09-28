@@ -206,6 +206,12 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.ATTENDANCE_LEAVE, title: P.LEAVE_REVIEW, requiresAuth: true, permissionKey: 'internship.leave.view' }
     },
     {
+      path: 'notices',
+      name: 'internship-notices',
+      component: () => import('@/modules/internship/views/InternshipNoticeView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.ATTENDANCE_LEAVE, title: '通知公告', requiresAuth: true, permissionKey: 'internship.communication.view' }
+    },
+    {
       path: 'enterprises',
       name: 'internship-enterprises',
       component: () => import('@/modules/internship/views/InternshipEnterpriseListView.vue'),
