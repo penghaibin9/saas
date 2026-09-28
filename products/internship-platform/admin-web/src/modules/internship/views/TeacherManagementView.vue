@@ -69,7 +69,7 @@
               :disabled="!batchId || loading"
             >导出批阅绩效</AppExportButton>
           </header>
-          <DataTable v-if="reviewPerformance.length" :columns="performanceColumns" :rows="reviewPerformance" row-key="reviewerUserId">
+          <DataTable v-if="reviewPerformance.length" :columns="performanceColumns" :rows="reviewPerformance" row-key="rowKey">
             <template #cell-reviewer="{ row }">
               <div><strong>{{ row.reviewerName }}</strong><small>{{ row.reviewerUserId ? ('账号ID ' + row.reviewerUserId) : '系统/历史批阅人' }}</small></div>
             </template>
