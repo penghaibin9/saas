@@ -166,6 +166,12 @@
           <template #cell-actions="{ row }">
             <div class="actions">
               <AppButton
+                size="sm"
+                variant="ghost"
+                :disabled="detailLoading && detailTask?.id === row.id"
+                @click="openTaskDetail(row)"
+              >详情</AppButton>
+              <AppButton
                 v-if="row.status === 'GENERATED'"
                 size="sm"
                 variant="secondary"
@@ -199,6 +205,83 @@
         <div v-else class="empty">当前批次还没有监管上报任务。</div>
       </section>
 
+      <section v-if="detailTask" class="task-detail-panel" aria-labelledby="reg-detail-title">
+        <header class="task-detail-head">
+          <div>
+            <span class="eyebrow">{{ detailTask.reportCode }} · {{ detailTask.taskNo }}</span>
+            <h2 id="reg-detail-title">监管任务详情</h2>
+            <p>展示生成任务时冻结的业务事实、逐行校验结果和状态历史。修改学生业务数据不会反写历史任务。</p>
+          </div>
+          <AppButton variant="ghost" @click="closeTaskDetail">关闭</AppButton>
+        </header>
+
+        <div class="detail-metrics">
+          <div><span>任务状态</span><strong>{{ statusLabel(detailTask.status) }}</strong></div>
+          <div><span>模板版本</span><strong>V{{ detailTask.template?.versionNo || '—' }}</strong></div>
+          <div><span>总行数</span><strong>{{ detailTask.totalRows || 0 }}</strong></div>
+          <div><span>错误行</span><strong>{{ detailTask.errorRows || 0 }}</strong></div>
+          <div><span>文件 SHA-256</span><code>{{ detailTask.outputSha256 || '尚未生成正式文件' }}</code></div>
+          <div><span>外部提交凭据</span><strong>{{ detailTask.externalSubmissionRef || '尚未登记' }}</strong></div>
+        </div>
+
+        <div class="detail-toolbar">
+          <label class="detail-filter">
+            <input type="checkbox" :checked="detailErrorOnly" @change="toggleDetailErrors($event.target.checked)" />
+            <span>仅看错误行</span>
+          </label>
+          <span>{{ detailRows.total || 0 }} 行</span>
+        </div>
+
+        <div v-if="detailLoading" class="empty">正在加载任务明细…</div>
+        <div v-else-if="detailRows.items?.length" class="detail-row-list">
+          <article v-for="row in detailRows.items" :key="row.id" class="detail-row" :class="{ 'has-error': row.errors?.length }">
+            <header>
+              <div>
+                <strong>第 {{ row.rowNo }} 行</strong>
+                <span>学生ID {{ row.studentId || '—' }} · 实习ID {{ row.internshipId || '—' }}</span>
+              </div>
+              <AppStatusTag :type="row.errors?.length ? 'danger' : 'success'">
+                {{ row.errors?.length ? (row.errors.length + ' 个错误') : '校验通过' }}
+              </AppStatusTag>
+            </header>
+            <div v-if="row.errors?.length" class="row-errors">
+              <div v-for="(err, index) in row.errors" :key="row.id + '-err-' + index">
+                <strong>{{ err.label || err.field || '字段' }}</strong>
+                <span>{{ err.message || err.code || '校验失败' }}</span>
+              </div>
+            </div>
+            <details>
+              <summary>查看冻结业务事实</summary>
+              <dl class="payload-grid">
+                <div v-for="(value, key) in row.payload" :key="row.id + '-' + key">
+                  <dt>{{ key }}</dt>
+                  <dd>{{ value === null || value === '' ? '—' : value }}</dd>
+                </div>
+              </dl>
+            </details>
+          </article>
+        </div>
+        <div v-else class="empty">当前筛选条件下没有数据行。</div>
+
+        <div class="detail-pagination">
+          <AppButton size="sm" variant="ghost" :disabled="detailRows.page <= 1 || detailLoading" @click="changeDetailPage(-1)">上一页</AppButton>
+          <span>第 {{ detailRows.page || 1 }} 页</span>
+          <AppButton size="sm" variant="ghost" :disabled="detailLoading || (detailRows.page || 1) * (detailRows.pageSize || 50) >= (detailRows.total || 0)" @click="changeDetailPage(1)">下一页</AppButton>
+        </div>
+
+        <div class="status-history">
+          <h3>状态历史</h3>
+          <div v-if="detailTask.statusHistory?.length">
+            <div v-for="(item, index) in detailTask.statusHistory" :key="detailTask.id + '-history-' + index" class="history-row">
+              <strong>{{ statusLabel(item.status) }}</strong>
+              <span>{{ item.at || '—' }}</span>
+              <span>{{ item.actor || '系统' }}</span>
+              <span>{{ item.note || '' }}</span>
+            </div>
+          </div>
+          <div v-else class="empty">暂无状态历史。</div>
+        </div>
+      </section>
       <section v-if="submissionTask" class="submission-panel" aria-labelledby="submission-title">
         <div>
           <h2 id="submission-title">登记真实外部提交</h2>
@@ -271,6 +354,10 @@ export default {
       dictionaryCode: '',
       templateEditor: null,
       templateSaving: false,
+      detailTask: null,
+      detailRows: { items: [], total: 0, page: 1, pageSize: 50 },
+      detailErrorOnly: false,
+      detailLoading: false,
       submissionTask: null,
       submissionRef: ''
     }
@@ -378,6 +465,49 @@ export default {
       this.templateEditor = null
       this.showMessage(`${code} 新模板版本已启用；旧任务继续绑定旧版本，不会被覆盖。`)
       await this.load()
+    },
+    async openTaskDetail(row) {
+      if (!row?.id) return
+      this.detailLoading = true
+      this.detailErrorOnly = false
+      this.detailRows = { items: [], total: 0, page: 1, pageSize: 50 }
+      const detail = await regulatoryReportingApi.getTask(row.id)
+      if (detail.code !== 0) {
+        this.detailLoading = false
+        this.showMessage(detail.message || '监管任务详情加载失败', 'error')
+        return
+      }
+      this.detailTask = detail.data
+      await this.loadDetailRows(1)
+    },
+    closeTaskDetail() {
+      if (this.detailLoading) return
+      this.detailTask = null
+      this.detailRows = { items: [], total: 0, page: 1, pageSize: 50 }
+      this.detailErrorOnly = false
+    },
+    async loadDetailRows(page = 1) {
+      if (!this.detailTask?.id) return
+      this.detailLoading = true
+      const res = await regulatoryReportingApi.listTaskRows(this.detailTask.id, {
+        page,
+        pageSize: this.detailRows.pageSize || 50,
+        errorOnly: this.detailErrorOnly
+      })
+      this.detailLoading = false
+      if (res.code !== 0) {
+        this.showMessage(res.message || '监管任务行明细加载失败', 'error')
+        return
+      }
+      this.detailRows = res.data || { items: [], total: 0, page: 1, pageSize: 50 }
+    },
+    toggleDetailErrors(checked) {
+      this.detailErrorOnly = !!checked
+      this.loadDetailRows(1)
+    },
+    changeDetailPage(delta) {
+      const next = Math.max(1, Number(this.detailRows.page || 1) + Number(delta || 0))
+      this.loadDetailRows(next)
     },
     statusLabel(status) {
       return {
@@ -536,6 +666,32 @@ h2 { margin: 4px 0 0; font-size: 17px; color: var(--text-primary); }
 .notice { border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
 .notice.is-warning { color: #8a5b00; }
 .notice.is-error { color: #a61b1b; }
+.task-detail-panel { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--border-base); border-radius: 12px; background: var(--bg-card); }
+.task-detail-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+.task-detail-head p { margin: 6px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
+.detail-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.detail-metrics > div { display: grid; gap: 5px; padding: 12px; border: 1px solid var(--border-base); border-radius: 9px; }
+.detail-metrics span { color: var(--text-secondary); font-size: 12px; }
+.detail-metrics code { overflow-wrap: anywhere; font-size: 11px; }
+.detail-toolbar, .detail-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.detail-filter { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.detail-row-list { display: grid; gap: 10px; }
+.detail-row { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--border-base); border-radius: 10px; }
+.detail-row.has-error { border-color: #e8a0a0; }
+.detail-row > header { display: flex; justify-content: space-between; gap: 12px; }
+.detail-row > header div { display: grid; gap: 4px; }
+.detail-row > header span { color: var(--text-secondary); font-size: 12px; }
+.row-errors { display: grid; gap: 6px; padding: 10px; border-radius: 8px; background: #fff5f5; }
+.row-errors > div { display: flex; gap: 10px; font-size: 12px; }
+.row-errors span { color: var(--text-secondary); }
+.payload-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 10px 0 0; }
+.payload-grid > div { min-width: 0; padding: 8px; background: var(--bg-page); border-radius: 7px; }
+.payload-grid dt { color: var(--text-secondary); font-size: 11px; }
+.payload-grid dd { margin: 4px 0 0; overflow-wrap: anywhere; font-size: 12px; }
+.status-history { display: grid; gap: 8px; }
+.status-history h3 { margin: 0; font-size: 14px; }
+.history-row { display: grid; grid-template-columns: 140px 180px 120px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--border-base); font-size: 12px; }
+.history-row span { color: var(--text-secondary); }
 .submission-panel { display: grid; grid-template-columns: minmax(260px, 1fr) minmax(260px, 1fr) auto; align-items: end; }
 .submission-panel label { display: grid; gap: 7px; font-size: 12px; color: var(--text-secondary); }
 .submission-panel input { height: 38px; padding: 0 10px; border: 1px solid var(--border-base); border-radius: 7px; background: var(--bg-card); color: var(--text-primary); }
@@ -544,6 +700,8 @@ h2 { margin: 4px 0 0; font-size: 17px; color: var(--text-primary); }
   .report-grid { grid-template-columns: 1fr; }
   .template-meta-grid { grid-template-columns: 1fr; }
   .template-editor-actions { align-items: stretch; flex-direction: column; }
+  .detail-metrics, .payload-grid { grid-template-columns: 1fr; }
+  .history-row { grid-template-columns: 1fr; gap: 4px; }
   .submission-panel { grid-template-columns: 1fr; }
 }
 </style>
