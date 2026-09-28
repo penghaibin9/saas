@@ -12,7 +12,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from openpyxl import Workbook
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 
 from app.core.exceptions import AppException, check_version, no_data_scope, not_found
 from app.core.optimistic_lock import atomic_claim_version
@@ -66,6 +66,51 @@ def _batch_row(batch) -> dict:
         "confirmBy": batch.confirm_by or "", "confirmAt": _iso(batch.confirm_at),
         "version": int(batch.version or 0),
     }
+
+
+def _batch_owner_colleges(batch) -> set[int]:
+    # 旧版 scope 由客户端原样写入；仅信任本版同时写入 created_by 的归属快照。
+    if batch.created_by is None:
+        return set()
+    try:
+        values = json.loads(batch.scope_json or "{}").get("_ownerCollegeIds") or []
+        return {int(value) for value in values}
+    except (TypeError, ValueError, AttributeError):
+        return set()
+
+
+def _require_batch_scope(db, batch, user):
+    from app.core.affairs_security import build_affairs_context
+    from app.models import ArchivePackage, StudentProfile
+
+    context = build_affairs_context(user, db)
+    if context.scope_type == "TENANT_ALL":
+        return
+    if context.scope_type != "COLLEGE" or not context.college_ids:
+        raise no_data_scope("归档批次不在本学院范围内")
+    owner_ids = _batch_owner_colleges(batch)
+    if owner_ids and not owner_ids <= context.college_ids:
+        raise no_data_scope("归档批次不在本学院范围内")
+    # 所有已有档案包都要复核；旧批次和学校批次的空批次不猜学院归属。
+    packages = db.scalars(select(ArchivePackage).where(
+        ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == batch.id,
+        ArchivePackage.is_deleted.is_(False),
+    )).all()
+    if not packages and owner_ids:
+        return
+    if not packages:
+        raise no_data_scope("归档批次尚无可核实的学院归属")
+    students = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.id.in_([package.student_id for package in packages]),
+        StudentProfile.is_deleted.is_(False),
+    )).all()
+    allowed_classes = context.allowed_class_ids(db) or set()
+    if len(students) != len(packages) or any(
+        student.college_id not in context.college_ids or student.class_id not in allowed_classes
+        for student in students
+    ):
+        raise no_data_scope("归档批次含有不在本学院范围内的学生")
 
 
 def _excel_text(value):
@@ -382,12 +427,46 @@ def run_pending_packages(*, limit: int = 2, batch_id: int | None = None, user=No
 
 
 def list_batches(user, status=None, page=1, page_size=50):
-    from app.models import ArchiveBatch, ArchivePackage
+    from app.core.affairs_security import build_affairs_context
+    from app.models import ArchiveBatch, ArchivePackage, StudentProfile
 
     page = max(1, int(page or 1))
     page_size = max(1, min(int(page_size or 50), 200))
     with session() as db:
         conds = [ArchiveBatch.tenant_id == _tid(), ArchiveBatch.is_deleted.is_(False)]
+        context = build_affairs_context(user, db)
+        if context.scope_type == "COLLEGE" and context.college_ids:
+            college_ids = sorted(context.college_ids)
+            class_ids = sorted(context.allowed_class_ids(db) or set())
+            owner_json = func.json_extract(ArchiveBatch.scope_json, "$._ownerCollegeIds")
+            package_query = select(ArchivePackage.id).outerjoin(StudentProfile, and_(
+                StudentProfile.tenant_id == _tid(), StudentProfile.id == ArchivePackage.student_id,
+                StudentProfile.is_deleted.is_(False),
+            )).where(
+                ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == ArchiveBatch.id,
+                ArchivePackage.is_deleted.is_(False),
+            )
+            any_package = exists(package_query)
+            foreign_package = exists(package_query.where(or_(
+                StudentProfile.id.is_(None),
+                StudentProfile.college_id.is_(None),
+                StudentProfile.college_id.notin_(college_ids),
+                StudentProfile.class_id.is_(None),
+                StudentProfile.class_id.notin_(class_ids),
+            )))
+            owned = and_(
+                ArchiveBatch.created_by.is_not(None),
+                func.json_length(owner_json) > 0,
+                func.json_contains(json.dumps(college_ids), owner_json) == 1,
+                ~foreign_package,
+            )
+            derived = and_(
+                or_(ArchiveBatch.created_by.is_(None), owner_json.is_(None), func.json_length(owner_json) == 0),
+                any_package, ~foreign_package,
+            )
+            conds.append(or_(owned, derived))
+        elif context.scope_type != "TENANT_ALL":
+            conds.append(ArchiveBatch.id == -1)
         if status:
             conds.append(ArchiveBatch.status == status)
         total = int(db.scalar(select(func.count()).select_from(ArchiveBatch).where(*conds)) or 0)
@@ -420,13 +499,21 @@ def list_batches(user, status=None, page=1, page_size=50):
 
 
 def create_batch(body, user) -> dict:
+    from app.core.affairs_security import build_affairs_context
     from app.models import ArchiveBatch
+    from app.services.message_identity import resolve_message_user_id
 
     with session() as db:
+        context = build_affairs_context(user, db)
+        if context.scope_type not in ("TENANT_ALL", "COLLEGE") or (
+            context.scope_type == "COLLEGE" and not context.college_ids
+        ):
+            raise no_data_scope("没有可创建归档批次的学院范围")
         batch = ArchiveBatch(
             tenant_id=_tid(), batch_name=body.batchName,
             year_code=getattr(body, "yearCode", None),
-            scope_json=json.dumps(getattr(body, "scope", {}) or {}, ensure_ascii=False),
+            scope_json=json.dumps({"_ownerCollegeIds": sorted(context.college_ids)}, ensure_ascii=False),
+            created_by=resolve_message_user_id(user),
             status="DRAFT",
         )
         db.add(batch)
@@ -495,10 +582,14 @@ def preview_collect(batch_id, user, student_ids, expected_version=None) -> dict:
         )).first()
         if not batch:
             raise not_found("归档批次不存在")
+        _require_batch_scope(db, batch, user)
         if batch.status not in ("DRAFT", "COLLECTING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次不可再收集")
         check_version(batch.version, expected_version)
         normalized_ids, student_map, existing_ids = _collect_candidates(db, batch.id, user, student_ids)
+        owner_ids = _batch_owner_colleges(batch)
+        if owner_ids and any(student_map[student_id].college_id not in owner_ids for student_id in normalized_ids):
+            raise no_data_scope("学生不属于该归档批次学院")
         return {
             "batchId": str(batch.id), "batchVersion": int(batch.version or 0),
             "selectedCount": len(normalized_ids),
@@ -526,12 +617,16 @@ def collect(batch_id, user, student_ids, expected_version=None) -> dict:
         ).with_for_update()).first()
         if not batch:
             raise not_found("归档批次不存在")
+        _require_batch_scope(db, batch, user)
         if batch.status not in ("DRAFT", "COLLECTING"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次不可再收集")
         atomic_claim_version(db, batch, expected_version)
-        student_ids, _student_map, _existing_ids = _collect_candidates(
+        student_ids, student_map, _existing_ids = _collect_candidates(
             db, batch.id, user, student_ids, load_existing=False,
         )
+        owner_ids = _batch_owner_colleges(batch)
+        if owner_ids and any(student_map[student_id].college_id not in owner_ids for student_id in student_ids):
+            raise no_data_scope("学生不属于该归档批次学院")
         existing_ids = set(db.scalars(select(ArchivePackage.student_id).where(
             ArchivePackage.tenant_id == _tid(),
             ArchivePackage.batch_id == int(batch.id),
@@ -577,6 +672,7 @@ def advance(batch_id, user, action="APPROVE", expected_version=None) -> dict:
         ).with_for_update()).first()
         if not batch:
             raise not_found("归档批次不存在")
+        _require_batch_scope(db, batch, user)
         if batch.status not in ("COLLECTING", "COLLEGE_REVIEW", "SA_CONFIRM"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次当前状态不可流转")
         context = build_affairs_context(user, db)
@@ -693,6 +789,7 @@ def get_batch(batch_id, user) -> dict:
         batch = db.get(ArchiveBatch, int(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("归档批次不存在")
+        _require_batch_scope(db, batch, user)
         allowed, _ = _allowed_class_ids(db, user)
         packages = db.scalars(select(ArchivePackage).where(
             ArchivePackage.tenant_id == _tid(), ArchivePackage.batch_id == batch.id,

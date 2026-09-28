@@ -178,6 +178,30 @@ def test_college_archive_review_requires_every_package_in_own_college(client, db
     school = _hdr(client, "school_admin01")
     college = _hdr(client, "college_admin01")
 
+    own_empty = _create_batch(client, college, "甲学院空批次")
+    school_empty = _create_batch(client, school, "学校未圈定批次")
+    visible = client.get(f"{BASE}/archive/batches", headers=college).json()["data"]["items"]
+    visible_ids = {item["batchId"] for item in visible}
+    assert own_empty["batchId"] in visible_ids
+    assert school_empty["batchId"] not in visible_ids
+    hidden = client.get(f"{BASE}/archive/batches/{school_empty['batchId']}", headers=college)
+    assert hidden.status_code == 403 and hidden.json()["bizCode"] == "NO_DATA_SCOPE"
+    rejected_preview = client.post(
+        f"{BASE}/archive/batches/{school_empty['batchId']}/collect-preview", headers=college,
+        json={"studentIds": [student_ids["A"]], "version": school_empty["version"]},
+    )
+    assert rejected_preview.status_code == 403 and rejected_preview.json()["bizCode"] == "NO_DATA_SCOPE"
+    rejected_collect = client.post(
+        f"{BASE}/archive/batches/{own_empty['batchId']}/collect", headers=school,
+        json={"studentIds": [student_ids["B"]], "version": own_empty["version"]},
+    )
+    assert rejected_collect.status_code == 403 and rejected_collect.json()["bizCode"] == "NO_DATA_SCOPE"
+    own_collected = client.post(
+        f"{BASE}/archive/batches/{own_empty['batchId']}/collect", headers=college,
+        json={"studentIds": [student_ids["A"]], "version": own_empty["version"]},
+    ).json()
+    assert own_collected["code"] == 0, own_collected
+
     def review_ready(name, ids):
         batch = _create_batch(client, school, name)
         bid = batch["batchId"]
