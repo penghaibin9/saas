@@ -82,6 +82,22 @@ export const archiveApi = {
     return call(() => request(`${B}/export`, { method: 'POST', params }))
   },
 
+  listFormalDocuments(internshipId) {
+    return call(() => request(`/internship/formal-documents/by-internship/${encodeURIComponent(internshipId)}`))
+  },
+
+  generateFormalDocument(internshipId, documentType) {
+    return call(() => request('/internship/formal-documents/generate', {
+      method: 'POST', body: { internshipId, documentType }
+    }))
+  },
+
+  downloadFormalDocument(documentId, fileName = 'internship-formal-document.pdf') {
+    return fileSdk.downloadFrom(
+      `/internship/formal-documents/${encodeURIComponent(documentId)}/download`, fileName
+    )
+  },
+
   buildPackage(id) {
     return call(() => request(`${B}/${id}/package`, { method: 'POST' }))
   },

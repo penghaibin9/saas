@@ -121,6 +121,37 @@
                 <AppButton variant="ghost" size="sm" :loading="employmentBusy" :disabled="busy || !canBtn('internship.employment.view')" @click="goEmployment">衔接就业</AppButton>
               </template>
             </div>
+            <div class="sec-t">正式打印表单</div>
+            <div class="formal-docs" role="region" aria-label="正式打印表单">
+              <div v-if="formalLoading" class="hint">正在读取正式文书版本…</div>
+              <div v-for="item in formalRows" :key="item.code" class="formal-doc-row">
+                <div class="formal-doc-row__main">
+                  <strong>{{ item.label }}</strong>
+                  <span>{{ item.hint }}</span>
+                  <small v-if="item.document">
+                    已生成 V{{ item.document.documentVersion }} · {{ item.document.generatedAt || '时间未知' }}
+                    · SHA-256 {{ (item.document.sourceHash || '').slice(0, 12) }}…
+                  </small>
+                  <small v-else>尚未生成；生成时会重新核对正式业务事实。</small>
+                </div>
+                <AppStatusTag :type="item.document ? 'success' : 'default'" size="sm">
+                  {{ item.document ? `V${item.document.documentVersion}` : '未生成' }}
+                </AppStatusTag>
+                <div class="formal-doc-row__ops">
+                  <AppPermissionButton code="internship.archive.execute" :allowed="canBtn('internship.archive.execute')"
+                    variant="secondary" size="sm" :loading="formalBusy === item.code"
+                    :disabled="busy && formalBusy !== item.code" @click="generateFormal(item)">
+                    {{ item.document ? '核对并更新版本' : '生成 PDF' }}
+                  </AppPermissionButton>
+                  <AppButton variant="ghost" size="sm" :loading="formalBusy === `download:${item.code}`"
+                    :disabled="!item.document || (busy && formalBusy !== `download:${item.code}`) || !canBtn('internship.archive.view')"
+                    @click="downloadFormal(item)">下载</AppButton>
+                </div>
+              </div>
+              <div v-if="formalError" class="state is-err" role="alert">{{ formalError }}</div>
+              <p class="hint">PDF 是业务事实的版本化派生文书；事实未满足时后端会阻断，不会用空值或旧数据强行出证明。</p>
+            </div>
+
             <p v-if="!panel.data.archived" class="hint">归档后可生成档案包，留存冻结的材料清单与扫描件。</p>
             <p v-else class="hint">“恢复校验”只核对包内行数、文件数与 SHA-256，不会覆盖当前业务数据。</p>
 
@@ -191,6 +222,13 @@ const STUDENT_COLUMNS = [
   { key: 'archived', title: '归档' }, { key: 'actions', title: '操作', width: '120px' }
 ]
 
+const FORMAL_DOCUMENT_TYPES = [
+  { code: 'ENTERPRISE_EVALUATION', label: '企业实习鉴定表', hint: '读取已审核企业评价，不替代企业原始盖章/在线评价证据' },
+  { code: 'INTERNSHIP_CERTIFICATE', label: '学生实习证明', hint: '仅实习结束且进入考核/归档阶段后生成' },
+  { code: 'FINAL_ASSESSMENT', label: '实习考核成绩表', hint: '读取已发布且完整的最终成绩' },
+  { code: 'SUMMARY_REPORT', label: '实习总结报告', hint: '读取已通过批阅的不可变总结版本与评分' }
+]
+
 export default {
   name: 'ArchiveView',
   props: { ctx: { type: Object, default: () => ({}) } },
@@ -217,6 +255,11 @@ export default {
       batchRestoreBusy: false,
       batchPackage: null,
       employmentBusy: false,
+      formalDocs: [],
+      formalLoading: false,
+      formalBusy: '',
+      formalError: '',
+      formalTypes: FORMAL_DOCUMENT_TYPES,
       lastReceipt: null,
       scopeHint: '指导教师仅本人指导学生；管理员全校'
     }
@@ -248,6 +291,12 @@ export default {
         { label: '归档时间', value: d.archived ? (d.archivedAt || '—') : '未归档' }
       ]
     },
+    formalRows() {
+      return this.formalTypes.map((item) => ({
+        ...item,
+        document: this.formalDocs.find((doc) => doc.documentType === item.code && doc.status === 'GENERATED') || null
+      }))
+    },
     auditRecords() {
       return (this.panel.data?.auditTrail || []).map((t, i) => ({
         id: i, action: t.action, actionLabel: ({ ARCHIVE_PREFLIGHT: '归档预检', ARCHIVE: '完成归档', ARCHIVE_REVOKE: '撤销归档', REVOKE: '撤销归档', BUILD_PACKAGE: '生成档案包' })[t.action] || t.action, actor: t.operator,
@@ -257,7 +306,7 @@ export default {
     scopeKey() { return JSON.stringify([this.viewEpoch, String(this.batchStore.selectedBatchId || '')]) },
     workspaceKey() { return `${this.scopeKey}:${this.panel.rowId}` },
     listKey() { return JSON.stringify([this.scopeKey, this.tab, this.keyword, this.onlyIncomplete, this.page]) },
-    busy() { return this.cd.submitting || this.preflightBusy || this.pkgBusy || this.restoreBusy || this.batchPkgBusy || this.batchRestoreBusy || this.employmentBusy }
+    busy() { return this.cd.submitting || this.preflightBusy || this.pkgBusy || this.restoreBusy || this.batchPkgBusy || this.batchRestoreBusy || this.employmentBusy || !!this.formalBusy }
   },
   created() { this.restoreQuery(); this.load(); this.syncDetail() },
   mounted() {
@@ -333,6 +382,7 @@ export default {
       this.pkgFile = null; this.pending = null; this.cd.visible = false; this.cd.submitting = false
       this.actionError = ''; this.actionConflict = false; this.keptReason = ''
       this.preflightBusy = false; this.pkgBusy = false; this.restoreBusy = false; this.employmentBusy = false
+      this.formalDocs = []; this.formalLoading = false; this.formalBusy = ''; this.formalError = ''
       this.batchPkgBusy = false; this.batchRestoreBusy = false
     },
     closePanel() { this.navigate({ id: undefined }) },
@@ -359,6 +409,8 @@ export default {
       this.panel.loading = false
       if (!inBatch || String(res.data.id) !== id) { this.panel.error = '无法确认该学生属于当前批次，请返回归档台账重新定位'; return }
       this.panel.data = res.data; this.pkgFile = res.data.latestPackage || null
+      await this.loadFormalDocuments(key)
+      if (seq !== this.detailSeq || key !== this.workspaceKey) return
       this.$nextTick?.(() => { const heading = this.$el?.querySelector('#archive-workspace-title'); heading?.focus({ preventScroll: true }); heading?.scrollIntoView({ block: 'start' }) })
     },
     goFix(item) {
@@ -599,6 +651,55 @@ export default {
       }
       toast.success('批次分片恢复校验通过')
     },
+    async loadFormalDocuments(expectedKey = this.workspaceKey) {
+      const id = this.panel.data?.id
+      if (!id || !this.canBtn('internship.archive.view')) return
+      this.formalLoading = true
+      this.formalError = ''
+      const res = await archiveApi.listFormalDocuments(id)
+      if (expectedKey !== this.workspaceKey) return
+      this.formalLoading = false
+      if (res.code !== 0) {
+        this.formalDocs = []
+        this.formalError = res.message || '正式文书版本读取失败'
+        return
+      }
+      this.formalDocs = Array.isArray(res.data) ? res.data : []
+    },
+    async generateFormal(item) {
+      const id = this.panel.data?.id
+      if (!id || this.busy || !this.canBtn('internship.archive.execute')) return
+      const key = this.workspaceKey
+      this.formalError = ''
+      this.formalBusy = item.code
+      const res = await archiveApi.generateFormalDocument(id, item.code)
+      if (key !== this.workspaceKey) return
+      if (res.code !== 0) {
+        this.formalBusy = ''
+        this.formalError = res.message || `${item.label}生成失败`
+        return toast.error(this.formalError)
+      }
+      await this.loadFormalDocuments(key)
+      if (key !== this.workspaceKey) return
+      this.formalBusy = ''
+      const version = res.data?.documentVersion
+      toast.success(res.data?.reused ? `${item.label}事实未变化，沿用 V${version}` : `${item.label} V${version} 已生成`)
+    },
+    async downloadFormal(item) {
+      const doc = this.formalDocs.find((row) => row.documentType === item.code && row.status === 'GENERATED')
+      if (!doc || this.busy || !this.canBtn('internship.archive.view')) return
+      const key = this.workspaceKey
+      this.formalBusy = `download:${item.code}`
+      try {
+        await archiveApi.downloadFormalDocument(
+          doc.id,
+          `${item.label}-V${doc.documentVersion}.pdf`
+        )
+      } catch (e) {
+        if (key === this.workspaceKey) toast.error(e?.message || `${item.label}下载失败`)
+      }
+      if (key === this.workspaceKey) this.formalBusy = ''
+    },
     async goEmployment() {
       const id = this.panel.data?.id
       if (!id || !this.panel.data.archived || this.busy || !this.canBtn('internship.employment.view')) return
@@ -618,6 +719,13 @@ export default {
 .tabs { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); border-bottom: 1px solid var(--border-light); }
 .material-entry { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); margin-bottom: var(--space-3); padding: var(--space-3) var(--space-4); border: 1px solid var(--warning-200, #fde68a); border-radius: var(--radius-lg, 12px); background: var(--warning-50, #fffbeb); color: var(--warning-800, #92400e); }
 .material-entry > div { display: flex; flex-direction: column; gap: 3px; font-size: var(--font-size-sm); }
+.formal-docs { display: grid; gap: var(--space-2); margin-bottom: var(--space-3); }
+.formal-doc-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: var(--space-3); padding: var(--space-3); border: 1px solid var(--border-light); border-radius: var(--radius-md, 10px); }
+.formal-doc-row__main { display: grid; min-width: 0; gap: 2px; }
+.formal-doc-row__main span, .formal-doc-row__main small { color: var(--text-secondary); font-size: var(--font-size-xs); }
+.formal-doc-row__main small { overflow-wrap: anywhere; }
+.formal-doc-row__ops { display: flex; gap: var(--space-2); flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 900px) { .formal-doc-row { grid-template-columns: 1fr; align-items: start; } .formal-doc-row__ops { justify-content: flex-start; } }
 .material-entry span { color: var(--text-secondary); font-size: var(--font-size-xs); }
 .tabs__btn { border: none; background: none; padding: var(--space-2) var(--space-3); cursor: pointer; color: var(--text-secondary); font-size: var(--font-size-sm); border-bottom: 2px solid transparent; }
 .tabs__btn.is-active { color: var(--primary-700); border-bottom-color: var(--primary-600); font-weight: var(--font-weight-medium); }
