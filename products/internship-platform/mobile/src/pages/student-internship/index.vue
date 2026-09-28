@@ -170,6 +170,7 @@ export default {
         { label: '实习总结', path: '/pages/student-internship/process-report/index?type=summary', icon: '📒', stages: ['result'] },
         { label: '调岗退岗', path: '/pages/student-internship/change/index', icon: '🔄', stages: ['process'] },
         { label: '实习求助', path: '/pages/student-internship/help/index', icon: '🆘', today: true },
+        { label: '免实习申请', path: '/pages/student-internship/exemption/index', icon: '🧾', stages: ['selection', 'onboard'] },
         { label: '鉴定与成绩', path: '/pages/student-internship/self-eval/index', icon: '⭐', stages: ['result'] },
         { label: '就业衔接', path: '/pages/student/employment/index', icon: '🎯', stages: ['result'] }
       ]
