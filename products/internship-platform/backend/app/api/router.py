@@ -28,6 +28,7 @@ from app.modules.internship.routers import (
     internship_position,
     internship_process,
     internship_recruitment_campaign,
+    internship_regulatory_reporting,
     internship_score_appeal,
     internship_stats,
     internship_student,
@@ -75,6 +76,7 @@ def build_staff_internship_router() -> APIRouter:
         internship_guardian_consent_delivery,
         internship_enterprise_eval_versioned,
         internship_recruitment_campaign,
+        internship_regulatory_reporting,
         internship_score_appeal,
     ):
         router.include_router(
