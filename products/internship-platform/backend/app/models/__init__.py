@@ -48,6 +48,12 @@ from app.models.internship_material_requirement import (
     InternshipMaterialSubmissionFile,
     InternshipMaterialTemplateVersion,
 )
+from app.models.internship_rotation_payroll import (
+    InternshipPayrollStatement,
+    InternshipPayrollVersion,
+    InternshipRotation,
+    InternshipRotationProject,
+)
 from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
 from app.models.internship_position import InternshipPosition
 from app.models.internship_student_profile import StudentInternshipProfile, StudentInternshipProfileItem
