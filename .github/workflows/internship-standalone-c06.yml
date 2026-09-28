@@ -1,17 +1,7 @@
 name: Internship Standalone C06 Statistics
 
 on:
-  pull_request:
-    paths:
-      - "products/internship-platform/backend/app/modules/internship/services/internship_stats_service.py"
-      - "products/internship-platform/backend/app/modules/internship/services/internship_procurement_stats_service.py"
-      - "products/internship-platform/backend/app/modules/internship/routers/internship_stats.py"
-      - "products/internship-platform/backend/app/api/v1/mobile_internship_context.py"
-      - "products/internship-platform/backend/tests/test_yiyang_c06_g14_stats.py"
-      - "products/internship-platform/backend/tests/test_yiyang_c06_procurement_stats.py"
-      - "products/internship-platform/mobile/**"
-      - "products/internship-platform/scripts/check_mobile_import_closure.py"
-      - ".github/workflows/internship-standalone-c06.yml"
+  workflow_dispatch:
 
 jobs:
   c06:
