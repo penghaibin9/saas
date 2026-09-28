@@ -310,6 +310,18 @@ def _plan_row(plan, batch=None):
     }
 
 
+def get_plan_context(batch_id, user=None) -> dict:
+    with session() as db:
+        batch = db.get(InternshipBatch, _as_id(batch_id))
+        if not batch or batch.is_deleted or batch.tenant_id != _tid():
+            raise not_found("批次不存在")
+        return {
+            "basicSnapshot": _batch_snapshot(batch),
+            "rulesSnapshot": _rules_snapshot(batch),
+            "planTypes": [{"value": code, "label": label} for code, label in PLAN_TYPES.items()],
+        }
+
+
 def get_plan_by_batch(batch_id, user=None):
     with session() as db:
         batch = db.get(InternshipBatch, _as_id(batch_id))
