@@ -37,15 +37,94 @@
           <dl>
             <div><dt>模板版本</dt><dd>V{{ templateFor(report.code)?.versionNo || '—' }}</dd></div>
             <div><dt>字段数</dt><dd>{{ templateFor(report.code)?.fields?.length || 0 }}</dd></div>
+            <div><dt>历史版本</dt><dd>{{ versionsFor(report.code).length }}</dd></div>
             <div><dt>外部状态</dt><dd>{{ templateFor(report.code)?.externalReadiness || 'BLOCKED_EXTERNAL' }}</dd></div>
           </dl>
-          <AppButton
-            :disabled="!batchId || creatingCode === report.code"
-            @click="createTask(report.code)"
-          >
-            {{ creatingCode === report.code ? '正在生成…' : '按当前批次生成任务' }}
-          </AppButton>
+          <div class="report-card-actions">
+            <AppButton
+              size="sm"
+              variant="ghost"
+              :disabled="dictionaryCode === report.code"
+              @click="downloadFieldDictionary(report.code)"
+            >{{ dictionaryCode === report.code ? '正在生成…' : '字段来源清单' }}</AppButton>
+            <AppButton
+              size="sm"
+              variant="secondary"
+              @click="openTemplateEditor(report.code)"
+            >复制为新版本</AppButton>
+            <AppButton
+              :disabled="!batchId || creatingCode === report.code"
+              @click="createTask(report.code)"
+            >
+              {{ creatingCode === report.code ? '正在生成…' : '按当前批次生成任务' }}
+            </AppButton>
+          </div>
         </article>
+      </section>
+
+      <section v-if="templateEditor" class="template-editor" aria-labelledby="template-editor-title">
+        <header class="template-editor-head">
+          <div>
+            <span class="eyebrow">{{ templateEditor.reportCode }}</span>
+            <h2 id="template-editor-title">创建新的学校确认模板版本</h2>
+            <p>从当前 ACTIVE 版本复制。字段 Key 已绑定 Standalone 正式业务事实，不能在页面里改成未映射字段；可调整列名、必填、单位和业务来源说明。</p>
+          </div>
+          <AppButton variant="ghost" @click="closeTemplateEditor">关闭</AppButton>
+        </header>
+
+        <div class="template-meta-grid">
+          <label>
+            <span>模板名称</span>
+            <input v-model.trim="templateEditor.templateName" maxlength="200" />
+          </label>
+          <label>
+            <span>模板来源 / 文件版本</span>
+            <input
+              v-model.trim="templateEditor.sourceReference"
+              maxlength="500"
+              placeholder="例如：学校提供《XX监管平台导入模板》2026版，2026-09-28确认"
+            />
+          </label>
+          <label>
+            <span>变更原因</span>
+            <input
+              v-model.trim="templateEditor.changeReason"
+              maxlength="500"
+              placeholder="例如：按学校提供的2026正式模板调整列名和必填项"
+            />
+          </label>
+        </div>
+
+        <div class="field-table-wrap">
+          <table class="field-table">
+            <thead>
+              <tr>
+                <th>字段 Key</th>
+                <th>上报列名</th>
+                <th>必填</th>
+                <th>单位</th>
+                <th>真实业务来源</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="field in templateEditor.fields" :key="field.key">
+                <td><code>{{ field.key }}</code></td>
+                <td><input v-model.trim="field.label" maxlength="120" /></td>
+                <td class="field-required"><input v-model="field.required" type="checkbox" /></td>
+                <td><input v-model.trim="field.unit" maxlength="80" /></td>
+                <td><input v-model.trim="field.source" maxlength="500" /></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="template-editor-actions">
+          <span class="template-warning">保存后新版本立即成为 ACTIVE，旧版本转为 RETIRED；历史上报任务仍绑定原模板版本，不会被覆盖。</span>
+          <AppButton
+            :disabled="templateSaving"
+            @click="saveTemplateVersion"
+          >{{ templateSaving ? '正在保存…' : '保存并启用新版本' }}</AppButton>
+        </div>
       </section>
 
       <div v-if="!batchId" class="notice is-warning" role="status">
@@ -189,6 +268,9 @@ export default {
       messageType: '',
       busyId: '',
       creatingCode: '',
+      dictionaryCode: '',
+      templateEditor: null,
+      templateSaving: false,
       submissionTask: null,
       submissionRef: ''
     }
@@ -213,6 +295,89 @@ export default {
     templateFor(code) {
       return this.templates.find(item => item.reportCode === code && item.status === 'ACTIVE')
         || this.templates.find(item => item.reportCode === code)
+    },
+    versionsFor(code) {
+      return this.templates.filter(item => item.reportCode === code)
+    },
+    openTemplateEditor(code) {
+      const current = this.templateFor(code)
+      if (!current) {
+        this.showMessage('当前模板尚未加载完成', 'error')
+        return
+      }
+      this.templateEditor = {
+        reportCode: code,
+        templateName: current.templateName || '',
+        sourceReference: current.sourceReference || '',
+        changeReason: '',
+        fields: (current.fields || []).map(field => ({
+          key: field.key || '',
+          label: field.label || field.key || '',
+          required: !!field.required,
+          unit: field.unit || '—',
+          source: field.source || ''
+        }))
+      }
+      this.showMessage('')
+    },
+    closeTemplateEditor() {
+      if (this.templateSaving) return
+      this.templateEditor = null
+    },
+    async downloadFieldDictionary(code) {
+      const template = this.templateFor(code)
+      if (!template || this.dictionaryCode) return
+      this.dictionaryCode = code
+      const res = await regulatoryReportingApi.downloadFieldDictionary(template)
+      this.dictionaryCode = ''
+      if (res.code !== 0) {
+        this.showMessage(res.message || '字段来源清单下载失败', 'error')
+        return
+      }
+      this.showMessage(`${code} 字段来源/单位/枚举清单已生成。`)
+    },
+    async saveTemplateVersion() {
+      const editor = this.templateEditor
+      if (!editor || this.templateSaving) return
+      if ((editor.sourceReference || '').trim().length < 5) {
+        this.showMessage('请填写可追溯的模板来源或文件版本', 'error')
+        return
+      }
+      if ((editor.changeReason || '').trim().length < 2) {
+        this.showMessage('请填写本次模板变更原因', 'error')
+        return
+      }
+      const incomplete = editor.fields.find(field =>
+        !(field.label || '').trim() || !(field.source || '').trim()
+      )
+      if (incomplete) {
+        this.showMessage(`字段 ${incomplete.key} 缺少列名或真实业务来源`, 'error')
+        return
+      }
+      this.templateSaving = true
+      this.showMessage('')
+      const res = await regulatoryReportingApi.createTemplateVersion(editor.reportCode, {
+        templateName: editor.templateName,
+        sourceLabel: 'SCHOOL_CONFIRMED_TEMPLATE',
+        sourceReference: editor.sourceReference,
+        changeReason: editor.changeReason,
+        fields: editor.fields.map(field => ({
+          key: field.key,
+          label: field.label,
+          required: !!field.required,
+          unit: field.unit || '—',
+          source: field.source
+        }))
+      })
+      this.templateSaving = false
+      if (res.code !== 0) {
+        this.showMessage(res.message || '模板版本保存失败', 'error')
+        return
+      }
+      const code = editor.reportCode
+      this.templateEditor = null
+      this.showMessage(`${code} 新模板版本已启用；旧任务继续绑定旧版本，不会被覆盖。`)
+      await this.load()
     },
     statusLabel(status) {
       return {
@@ -346,6 +511,24 @@ h2 { margin: 4px 0 0; font-size: 17px; color: var(--text-primary); }
 .report-card dl > div { padding: 12px 8px; }
 .report-card dt { color: var(--text-secondary); font-size: 12px; }
 .report-card dd { margin: 5px 0 0; font-size: 13px; word-break: break-word; }
+.report-card-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.template-editor { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--border-base); border-radius: 12px; background: var(--bg-card); }
+.template-editor-head { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+.template-editor-head p { margin: 6px 0 0; color: var(--text-secondary); font-size: 13px; line-height: 1.65; }
+.template-meta-grid { display: grid; grid-template-columns: 1fr 1.4fr 1.4fr; gap: 12px; }
+.template-meta-grid label { display: grid; gap: 7px; color: var(--text-secondary); font-size: 12px; }
+.template-meta-grid input, .field-table input[type='text'], .field-table input:not([type]) { width: 100%; min-width: 120px; box-sizing: border-box; height: 36px; padding: 0 9px; border: 1px solid var(--border-base); border-radius: 7px; background: var(--bg-card); color: var(--text-primary); }
+.field-table-wrap { overflow: auto; max-height: 560px; border: 1px solid var(--border-base); border-radius: 10px; }
+.field-table { width: 100%; min-width: 1080px; border-collapse: collapse; font-size: 12px; }
+.field-table th, .field-table td { padding: 9px; border-bottom: 1px solid var(--border-base); vertical-align: middle; text-align: left; }
+.field-table th { position: sticky; top: 0; z-index: 1; background: var(--bg-card); color: var(--text-secondary); }
+.field-table td:nth-child(1) { width: 180px; }
+.field-table td:nth-child(2) { width: 220px; }
+.field-table td:nth-child(3) { width: 70px; text-align: center; }
+.field-table td:nth-child(4) { width: 120px; }
+.field-required input { width: 18px; height: 18px; }
+.template-editor-actions { display: flex; justify-content: space-between; gap: 18px; align-items: center; }
+.template-warning { color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
 .task-section { overflow: hidden; border: 1px solid var(--border-base); border-radius: 12px; background: var(--bg-card); }
 .section-head { padding: 18px; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -359,6 +542,8 @@ h2 { margin: 4px 0 0; font-size: 17px; color: var(--text-primary); }
 .submission-actions { display: flex; gap: 8px; }
 @media (max-width: 980px) {
   .report-grid { grid-template-columns: 1fr; }
+  .template-meta-grid { grid-template-columns: 1fr; }
+  .template-editor-actions { align-items: stretch; flex-direction: column; }
   .submission-panel { grid-template-columns: 1fr; }
 }
 </style>
