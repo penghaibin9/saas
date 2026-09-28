@@ -17,6 +17,7 @@ class StageItem(BaseModel):
 
 class CheckinRule(BaseModel):
     requireDaily: bool = True
+    requiredDays: int = Field(0, ge=0, le=366, description="计划要求签到天数；0 表示学校未配置")
     geofenceRadiusM: int = Field(500, ge=0, le=5000, description="电子围栏半径（米）")
     maxAccuracyM: int = Field(200, ge=20, le=2000, description="可接受的最大定位误差（米）")
     allowedExceptionTypes: List[str] = Field(
