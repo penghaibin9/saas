@@ -651,6 +651,16 @@ class InternshipBatchPlan(PKMixin, TenantMixin, CommonMixin, Base):
     objectives: Mapped[str | None] = mapped_column(Text, comment="实习目标")
     content: Mapped[str | None] = mapped_column(Text, comment="计划正文")
     tasks_json: Mapped[list | None] = mapped_column(JSON, comment="任务清单")
+    internship_type: Mapped[str | None] = mapped_column(
+        String(30), comment="POST/COGNITIVE/FOLLOW_POST/APPRENTICESHIP/COMPREHENSIVE/OTHER")
+    target_audience: Mapped[str | None] = mapped_column(String(500), comment="实习对象")
+    plan_requirements: Mapped[str | None] = mapped_column(Text, comment="实习要求")
+    assessment_content: Mapped[str | None] = mapped_column(Text, comment="考核内容")
+    responsible_name: Mapped[str | None] = mapped_column(String(100), comment="计划负责人")
+    attachment_file_ids_json: Mapped[list | None] = mapped_column(JSON, comment="计划附件 file_id 列表")
+    template_code: Mapped[str | None] = mapped_column(String(80), comment="套用的内置模板代码")
+    basic_snapshot_json: Mapped[dict | None] = mapped_column(JSON, comment="发布时批次基本信息快照")
+    rules_snapshot_json: Mapped[dict | None] = mapped_column(JSON, comment="发布时执行规则/考核规则快照")
     status: Mapped[str] = mapped_column(String(20), nullable=False, default="DRAFT",
                                         comment="DRAFT/PUBLISHED")
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
