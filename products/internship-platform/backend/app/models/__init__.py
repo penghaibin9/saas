@@ -78,3 +78,5 @@ from app.models.internship_teacher_activity import (
     InternshipTeacherCheckin,
     InternshipTeacherWorkReport,
 )
+
+from app.models.internship_formal_document import InternshipFormalDocument
