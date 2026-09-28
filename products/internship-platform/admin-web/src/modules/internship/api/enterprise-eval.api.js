@@ -26,6 +26,11 @@ const B = '/internship/enterprise-evals'
 export const enterpriseEvalApi = {
   getEvals(params = {}) { return callList(B, params) },
   getDetail(id) { return call(() => request(`${B}/${id}`)) },
+  getQrEntry(internshipId) {
+    return call(() => request(
+      `${B}/by-internship/${encodeURIComponent(String(internshipId || ''))}/qr-entry`
+    ))
+  },
   create(body) { return call(() => request(B, { method: 'POST', body })) },
   review(id, { action, comment, expectedVersion }) {
     return call(() => {
