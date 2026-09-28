@@ -26,6 +26,7 @@ from app.modules.internship.services import internship_material_requirement_serv
 from app.modules.internship.services import internship_rotation_service as rotations
 from app.modules.internship.services import internship_payroll_service as payrolls
 from app.modules.internship.services import internship_score_appeal_service as score_appeals
+from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
 from app.modules.internship.services import internship_risk_service as risks
 from app.modules.internship.services.internship_student_context_guard import (
     require_context_fields,
@@ -51,6 +52,14 @@ def my_selected_dashboard(
     user=Depends(get_current_user),
 ):
     return success(dashboard.get_my_dashboard(user, batch_id=batchId))
+
+
+@router.get("/emergency-notices", summary="本人当前批次持久紧急通知")
+def my_emergency_notices(
+    batchId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(teacher_activity.list_student_notices(user, batch_id=batchId))
 
 
 @router.get("/compliance/my", summary="本人岗位实习权威合规状态与下一步")
