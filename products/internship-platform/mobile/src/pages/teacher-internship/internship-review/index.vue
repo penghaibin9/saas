@@ -74,6 +74,12 @@
                   <view class="ir__section"><text class="ir__label">本周工作</text><text class="ir__text">{{ item.tasks || '—' }}</text></view>
                   <view class="ir__section"><text class="ir__label">主要收获</text><text class="ir__text">{{ item.gain || '—' }}</text></view>
                   <view class="ir__section"><text class="ir__label">问题与计划</text><text class="ir__text">{{ item.problem || '—' }}</text></view>
+                  <view v-if="(item.attachments || []).length" class="ir__section">
+                    <text class="ir__label">图片/视频附件</text>
+                    <view v-for="file in item.attachments" :key="file.fileId" class="ir__attachment" @click.stop="openWeeklyAttachment(file)">
+                      <text class="ir__text flex-1">{{ file.fileName || '附件' }}</text><text class="ir__attachment-open">查看</text>
+                    </view>
+                  </view>
                 </view>
                 <view v-else-if="item._body === 'loading'" class="ir__bodyhint">正在加载周报正文…</view>
                 <view v-else-if="item._body === 'error'" class="ir__bodyhint is-link" @click="loadBody(item)">正文加载失败，点击重试</view>
@@ -129,6 +135,12 @@
                   <view class="ir__section"><text class="ir__label">本周工作</text><text class="ir__text">{{ w.tasks || '—' }}</text></view>
                   <view class="ir__section"><text class="ir__label">主要收获</text><text class="ir__text">{{ w.gain || '—' }}</text></view>
                   <view class="ir__section"><text class="ir__label">问题与计划</text><text class="ir__text">{{ w.problem || '—' }}</text></view>
+                  <view v-if="(w.attachments || []).length" class="ir__section">
+                    <text class="ir__label">图片/视频附件</text>
+                    <view v-for="file in w.attachments" :key="file.fileId" class="ir__attachment" @click.stop="openWeeklyAttachment(file)">
+                      <text class="ir__text flex-1">{{ file.fileName || '附件' }}</text><text class="ir__attachment-open">查看</text>
+                    </view>
+                  </view>
                 </view>
                 <view v-else-if="w._body === 'loading'" class="ir__bodyhint">正在加载周报正文…</view>
                 <view v-else-if="w._body === 'error'" class="ir__bodyhint is-link" @click="loadBody(w)">正文加载失败，点击重试</view>
@@ -209,6 +221,7 @@
 import InternshipVisitEvidenceForm from '@/components/teacher/InternshipVisitEvidenceForm.vue'
 import MobileSequentialQueue from '@/components/teacher/MobileSequentialQueue.vue'
 import { teacherApi } from '@/services/teacherApi'
+import fileSdk from '@/services/fileSdk'
 import { teacherInternshipEvidenceV3Api } from '@/services/teacherInternshipEvidenceV3Api'
 import { handleCheckin as handleCheckinV3 } from '@/services/teacherSequentialV3Api'
 import { useInternshipContextStore } from '@/stores/internshipContext'
@@ -431,10 +444,19 @@ export default {
       w._body = 'loading'
       teacherApi.getWeeklyDetail(w.id).then((d) => {
         w.tasks = d.work; w.gain = d.harvest; w.problem = d.plan
+        w.attachments = d.attachments || []
+        w.immutableVersions = d.immutableVersions || []
         if (d.positionName) w.post = d.positionName
         if (d.reviewComment && !w.feedback) w.feedback = d.reviewComment
         w._body = 'ready'
       }).catch((e) => { w._body = 'error'; toast(normalizeError(e).text) })
+    },
+    async openWeeklyAttachment(file) {
+      try {
+        await fileSdk.open(file.fileId)
+      } catch (e) {
+        toast(normalizeError(e).text || '附件暂时无法打开')
+      }
     },
     remindWeekly(w) {
       const id = String(w && w.id || '')
@@ -489,22 +511,38 @@ export default {
       if (this.acting || this.state !== 'ready' || this.hidden) return
       const epoch = this.readEpoch, generation = currentSessionGeneration()
       const label = type === 'pass' ? '通过' : '退回'
-      uni.showModal({ title: '周报' + label, editable: true, placeholderText: '填写评阅意见', success: (r) => {
-        if (!r.confirm || this.acting || !this.readIsCurrent(epoch, generation)) return
-        if (type !== 'pass' && (!r.content || r.content.trim().length < 5)) { toast('退回需填写至少 5 字意见'); return }
-        if (!/^\d+$/.test(String(w.id))) { toast('当前为离线数据，无法批阅，请恢复网络后重试'); return }
-        if (!Number.isInteger(w.expectedVersion) || w.expectedVersion < 0) { toast('周报版本已失效，正在刷新'); if (this.sequentialMode) this.sequentialConflict = true; this.load(); return }
-        const oldIndex = this.sequentialIndex
-        this.acting = true
-        teacherApi.reviewWeekly(w.id, type === 'pass' ? 'APPROVE' : 'RETURN', r.content || '', w.expectedVersion)
-          .then((res) => {
+      const continueReview = (ratingLevel) => {
+        uni.showModal({ title: '周报' + label, editable: true, placeholderText: type === 'pass' ? '可填写评阅意见' : '填写评阅意见（至少5字）', success: (r) => {
+          if (!r.confirm || this.acting || !this.readIsCurrent(epoch, generation)) return
+          if (type !== 'pass' && (!r.content || r.content.trim().length < 5)) { toast('退回需填写至少 5 字意见'); return }
+          if (!/^\d+$/.test(String(w.id))) { toast('当前为离线数据，无法批阅，请恢复网络后重试'); return }
+          if (!Number.isInteger(w.expectedVersion) || w.expectedVersion < 0) { toast('周报版本已失效，正在刷新'); if (this.sequentialMode) this.sequentialConflict = true; this.load(); return }
+          const oldIndex = this.sequentialIndex
+          this.acting = true
+          teacherApi.reviewWeekly(
+            w.id,
+            type === 'pass' ? 'APPROVE' : 'RETURN',
+            r.content || '',
+            w.expectedVersion,
+            ratingLevel
+          ).then((res) => {
             w.status = res.status || (type === 'pass' ? 'APPROVED' : 'RETURNED')
-            w.feedback = r.content || ''; toast('已' + label)
+            w.feedback = r.content || ''
+            if (res.ratingLevel) w.score = res.ratingLevel
+            toast('已' + label)
             return this.load().then(() => this.afterSequentialSuccess(w.id, oldIndex))
-          })
-          .catch((e) => { const n = this._actErr(e); if (n.kind === 'conflict') return this.load().catch(() => {}) })
-          .finally(() => { this.acting = false })
-      } })
+          }).catch((e) => { const n = this._actErr(e); if (n.kind === 'conflict') return this.load().catch(() => {}) })
+            .finally(() => { this.acting = false })
+        } })
+      }
+      if (type !== 'pass') {
+        continueReview(null)
+        return
+      }
+      uni.showActionSheet({
+        itemList: ['1级（需明显改进）', '2级', '3级（合格）', '4级', '5级（优秀）'],
+        success: ({ tapIndex }) => continueReview(Number(tapIndex) + 1)
+      })
     },
     ck(c, type) {
       if (this.acting || this.state !== 'ready' || this.hidden) return
@@ -535,6 +573,6 @@ export default {
 
 <style scoped>
 .ir__quick{display:flex;gap:8px;padding-bottom:0}.ir__quick-btn{flex:1;margin:0;min-height:38px;border:1px solid var(--teacher-200,#bfdbfe);border-radius:8px;background:var(--teacher-50,#eff6ff);color:var(--teacher-700,#1d4ed8);font-size:13px}.ir__quick-btn::after{border:none}
-.ir__batch{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding-top:var(--space-2);padding-bottom:0}.ir__batch-label{flex-shrink:0;font-size:var(--font-size-xs);color:var(--text-tertiary)}.ir__batch-choice{display:flex;align-items:center;gap:var(--space-2);max-width:260px;padding:7px 10px;border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff);color:var(--teacher-700);font-size:var(--font-size-sm)}.ir__batch-choice text:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ir__batch-choice text:last-child{flex-shrink:0;font-size:var(--font-size-xs)}.ir__tabs{padding-bottom:var(--space-3)}.ir__page{display:flex;flex-direction:column;gap:var(--space-3)}.ir__summary{display:flex;align-items:stretch;gap:var(--space-3);padding:var(--space-3)}.ir__summary-main{flex:1;min-width:0}.ir__summary-label{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary)}.ir__summary-value{display:flex;align-items:baseline;gap:4px;margin-top:4px}.ir__summary-value text:first-child{font-size:34px;line-height:1;font-weight:700;color:var(--teacher-700)}.ir__summary-value text:last-child{font-size:var(--font-size-sm);color:var(--text-secondary)}.ir__summary-note{display:block;margin-top:8px;font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.ir__summary-metrics{width:50%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--gray-50);border-radius:var(--radius-md);overflow:hidden}.ir__metric{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 3px;border-left:1px solid var(--border-light);text-align:center}.ir__metric:first-child{border-left:0}.ir__metric text:first-child{font-size:var(--font-size-lg);font-weight:700;color:var(--text-primary)}.ir__metric.is-danger text:first-child{color:var(--danger-600)}.ir__metric.is-warning text:first-child{color:var(--warning-700)}.ir__metric.is-success text:first-child{color:var(--success-700)}.ir__metric text:last-child{font-size:10px;line-height:1.25;color:var(--text-tertiary)}.ir{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3)}.ir.is-risk{border-left:4px solid var(--warning-500)}.ir__head{align-items:flex-start}.ir__identity{min-width:0}.ir__week{font-size:var(--font-size-xs);color:var(--teacher-700);background:var(--teacher-50);padding:2px 8px;border-radius:var(--radius-full)}.ir__company{display:block;font-size:var(--font-size-sm);color:var(--text-secondary);margin-top:3px;word-break:break-word}.ir__meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:var(--space-2);background:var(--gray-50);border-radius:var(--radius-md)}.ir__meta>view{min-width:0;display:flex;flex-direction:column;gap:3px}.ir__meta text:first-child{font-size:10px;color:var(--text-tertiary)}.ir__meta text:last-child{font-size:var(--font-size-xs);font-weight:600;color:var(--text-primary);word-break:break-word}.ir__meta>view.is-danger text:last-child{color:var(--danger-600)}.ir__body{padding:var(--space-2) var(--space-3);border:1px solid var(--border-light);border-radius:var(--radius-md)}.ir__section+.ir__section{margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px dashed var(--border-light)}.ir__bodybtn{text-align:center;padding:10px;border:1px solid var(--teacher-200,#bfdbfe);border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.ir__bodybtn text{font-size:var(--font-size-sm);color:var(--teacher-700)}.ir__bodyhint{font-size:var(--font-size-sm);color:var(--text-tertiary);text-align:center;padding:var(--space-3) 0}.ir__bodyhint.is-link{color:var(--danger-600)}.ir__label{font-size:var(--font-size-xs);font-weight:600;color:var(--text-tertiary)}.ir__text{display:block;font-size:var(--font-size-base);color:var(--text-primary);margin-top:4px;line-height:1.65;white-space:pre-wrap;word-break:break-word}.ir__text.is-danger{color:var(--danger-600)}.ir__ck{background:var(--gray-50);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)}.ir__ck-row{display:flex;gap:var(--space-3);padding:5px 0}.ir__ck-row .ir__label{width:62px;flex-shrink:0}.ir__feedback{background:var(--success-50);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)}.ir__feedback-label{font-size:var(--font-size-xs);font-weight:600;color:var(--success-700)}.ir__feedback-text{display:block;font-size:var(--font-size-sm);color:var(--text-primary);margin-top:4px;line-height:1.55;word-break:break-word}.ir__score{display:inline-block;margin-top:5px;font-size:var(--font-size-xs);color:var(--success-700)}.ir__next{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.ir__next.is-warning{background:var(--warning-50,#fff7ed)}.ir__next-label{flex-shrink:0;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.ir__next-text{font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.ir__actions{display:flex;gap:var(--space-2)}.ir__actions.is-three button{font-size:var(--font-size-sm);padding-left:4px;padding-right:4px}.ir__pass{min-height:var(--touch-target-min);border-radius:var(--radius-md);border:none;background:var(--teacher-600);color:#fff;font-size:var(--font-size-md)}.ir__pass::after{border:none}.ir__risk{min-height:var(--touch-target-min);border-radius:var(--radius-md);border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600);font-size:var(--font-size-md)}.ir__risk::after{border:none}.ir__done-text{text-align:center;color:var(--text-tertiary);font-size:var(--font-size-sm);line-height:var(--touch-target-min)}.ir__paging{text-align:center;padding:var(--space-3) 0;font-size:var(--font-size-sm);color:var(--teacher-700)}.ir__paging.is-end{color:var(--text-tertiary)}.ir__visit-summary{display:flex;justify-content:space-between;gap:12px;padding:var(--space-2) var(--space-3);border-radius:var(--radius-md);background:var(--gray-50);font-size:var(--font-size-xs);color:var(--text-secondary)}.ir__visit-students{border-top:1px solid var(--border-light);padding-top:var(--space-2)}.ir__visit-row{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) 0;border-bottom:1px solid var(--border-light)}.ir__visit-row:last-child{border-bottom:0}.ir__visit-copy{min-width:0}.ir__visit-copy>text:last-child{display:block;margin-top:2px;font-size:10px;color:var(--text-tertiary)}.ir__visit-done{font-size:var(--font-size-sm);color:var(--success-600)}.ir__visit-btn{font-size:var(--font-size-sm);color:#fff;background:var(--teacher-600);border:none;border-radius:var(--radius-md);padding:7px 14px;flex-shrink:0}.ir__visit-btn[disabled]{background:var(--gray-300);color:var(--text-tertiary)}.ir__queue-bar{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}.ir__queue-note{font-size:var(--font-size-sm);color:var(--text-secondary)}.ir__queue-toggle{font-size:var(--font-size-sm);color:var(--teacher-700);flex-shrink:0}.ir__queue-item{padding:0}@media(max-width:360px){.ir__batch{align-items:flex-start;flex-direction:column;gap:5px}.ir__batch-choice{max-width:100%}.ir__summary{flex-direction:column}.ir__summary-metrics{width:100%}.ir__meta{grid-template-columns:1fr}.ir__ck-row{flex-direction:column;gap:3px}.ir__ck-row .ir__label{width:auto}.ir__actions.is-three{flex-direction:column}}
+.ir__batch{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding-top:var(--space-2);padding-bottom:0}.ir__batch-label{flex-shrink:0;font-size:var(--font-size-xs);color:var(--text-tertiary)}.ir__batch-choice{display:flex;align-items:center;gap:var(--space-2);max-width:260px;padding:7px 10px;border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff);color:var(--teacher-700);font-size:var(--font-size-sm)}.ir__batch-choice text:first-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ir__batch-choice text:last-child{flex-shrink:0;font-size:var(--font-size-xs)}.ir__tabs{padding-bottom:var(--space-3)}.ir__page{display:flex;flex-direction:column;gap:var(--space-3)}.ir__summary{display:flex;align-items:stretch;gap:var(--space-3);padding:var(--space-3)}.ir__summary-main{flex:1;min-width:0}.ir__summary-label{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary)}.ir__summary-value{display:flex;align-items:baseline;gap:4px;margin-top:4px}.ir__summary-value text:first-child{font-size:34px;line-height:1;font-weight:700;color:var(--teacher-700)}.ir__summary-value text:last-child{font-size:var(--font-size-sm);color:var(--text-secondary)}.ir__summary-note{display:block;margin-top:8px;font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.ir__summary-metrics{width:50%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--gray-50);border-radius:var(--radius-md);overflow:hidden}.ir__metric{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 3px;border-left:1px solid var(--border-light);text-align:center}.ir__metric:first-child{border-left:0}.ir__metric text:first-child{font-size:var(--font-size-lg);font-weight:700;color:var(--text-primary)}.ir__metric.is-danger text:first-child{color:var(--danger-600)}.ir__metric.is-warning text:first-child{color:var(--warning-700)}.ir__metric.is-success text:first-child{color:var(--success-700)}.ir__metric text:last-child{font-size:10px;line-height:1.25;color:var(--text-tertiary)}.ir{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3)}.ir.is-risk{border-left:4px solid var(--warning-500)}.ir__head{align-items:flex-start}.ir__identity{min-width:0}.ir__week{font-size:var(--font-size-xs);color:var(--teacher-700);background:var(--teacher-50);padding:2px 8px;border-radius:var(--radius-full)}.ir__company{display:block;font-size:var(--font-size-sm);color:var(--text-secondary);margin-top:3px;word-break:break-word}.ir__meta{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:var(--space-2);background:var(--gray-50);border-radius:var(--radius-md)}.ir__meta>view{min-width:0;display:flex;flex-direction:column;gap:3px}.ir__meta text:first-child{font-size:10px;color:var(--text-tertiary)}.ir__meta text:last-child{font-size:var(--font-size-xs);font-weight:600;color:var(--text-primary);word-break:break-word}.ir__meta>view.is-danger text:last-child{color:var(--danger-600)}.ir__body{padding:var(--space-2) var(--space-3);border:1px solid var(--border-light);border-radius:var(--radius-md)}.ir__section+.ir__section{margin-top:var(--space-3);padding-top:var(--space-3);border-top:1px dashed var(--border-light)}.ir__bodybtn{text-align:center;padding:10px;border:1px solid var(--teacher-200,#bfdbfe);border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.ir__bodybtn text{font-size:var(--font-size-sm);color:var(--teacher-700)}.ir__attachment{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--border-light);border-radius:var(--radius-md);margin-top:6px}.ir__attachment-open{flex-shrink:0;font-size:var(--font-size-xs);color:var(--teacher-700)}.ir__bodyhint{font-size:var(--font-size-sm);color:var(--text-tertiary);text-align:center;padding:var(--space-3) 0}.ir__bodyhint.is-link{color:var(--danger-600)}.ir__label{font-size:var(--font-size-xs);font-weight:600;color:var(--text-tertiary)}.ir__text{display:block;font-size:var(--font-size-base);color:var(--text-primary);margin-top:4px;line-height:1.65;white-space:pre-wrap;word-break:break-word}.ir__text.is-danger{color:var(--danger-600)}.ir__ck{background:var(--gray-50);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)}.ir__ck-row{display:flex;gap:var(--space-3);padding:5px 0}.ir__ck-row .ir__label{width:62px;flex-shrink:0}.ir__feedback{background:var(--success-50);border-radius:var(--radius-md);padding:var(--space-2) var(--space-3)}.ir__feedback-label{font-size:var(--font-size-xs);font-weight:600;color:var(--success-700)}.ir__feedback-text{display:block;font-size:var(--font-size-sm);color:var(--text-primary);margin-top:4px;line-height:1.55;word-break:break-word}.ir__score{display:inline-block;margin-top:5px;font-size:var(--font-size-xs);color:var(--success-700)}.ir__next{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.ir__next.is-warning{background:var(--warning-50,#fff7ed)}.ir__next-label{flex-shrink:0;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.ir__next-text{font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.ir__actions{display:flex;gap:var(--space-2)}.ir__actions.is-three button{font-size:var(--font-size-sm);padding-left:4px;padding-right:4px}.ir__pass{min-height:var(--touch-target-min);border-radius:var(--radius-md);border:none;background:var(--teacher-600);color:#fff;font-size:var(--font-size-md)}.ir__pass::after{border:none}.ir__risk{min-height:var(--touch-target-min);border-radius:var(--radius-md);border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600);font-size:var(--font-size-md)}.ir__risk::after{border:none}.ir__done-text{text-align:center;color:var(--text-tertiary);font-size:var(--font-size-sm);line-height:var(--touch-target-min)}.ir__paging{text-align:center;padding:var(--space-3) 0;font-size:var(--font-size-sm);color:var(--teacher-700)}.ir__paging.is-end{color:var(--text-tertiary)}.ir__visit-summary{display:flex;justify-content:space-between;gap:12px;padding:var(--space-2) var(--space-3);border-radius:var(--radius-md);background:var(--gray-50);font-size:var(--font-size-xs);color:var(--text-secondary)}.ir__visit-students{border-top:1px solid var(--border-light);padding-top:var(--space-2)}.ir__visit-row{display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) 0;border-bottom:1px solid var(--border-light)}.ir__visit-row:last-child{border-bottom:0}.ir__visit-copy{min-width:0}.ir__visit-copy>text:last-child{display:block;margin-top:2px;font-size:10px;color:var(--text-tertiary)}.ir__visit-done{font-size:var(--font-size-sm);color:var(--success-600)}.ir__visit-btn{font-size:var(--font-size-sm);color:#fff;background:var(--teacher-600);border:none;border-radius:var(--radius-md);padding:7px 14px;flex-shrink:0}.ir__visit-btn[disabled]{background:var(--gray-300);color:var(--text-tertiary)}.ir__queue-bar{display:flex;align-items:center;justify-content:space-between;gap:var(--space-2)}.ir__queue-note{font-size:var(--font-size-sm);color:var(--text-secondary)}.ir__queue-toggle{font-size:var(--font-size-sm);color:var(--teacher-700);flex-shrink:0}.ir__queue-item{padding:0}@media(max-width:360px){.ir__batch{align-items:flex-start;flex-direction:column;gap:5px}.ir__batch-choice{max-width:100%}.ir__summary{flex-direction:column}.ir__summary-metrics{width:100%}.ir__meta{grid-template-columns:1fr}.ir__ck-row{flex-direction:column;gap:3px}.ir__ck-row .ir__label{width:auto}.ir__actions.is-three{flex-direction:column}}
 .ir__paging{width:100%;border:0;background:transparent}.ir__paging::after{border:0}.ir__queue-toggle{margin:0;padding:0;border:0;background:transparent;line-height:var(--touch-target-min)}.ir__queue-toggle::after{border:0}
 </style>
