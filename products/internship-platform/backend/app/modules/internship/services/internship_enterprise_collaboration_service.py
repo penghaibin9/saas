@@ -105,6 +105,8 @@ def _current_placement(db, record: InternshipRecord, context) -> InternshipPlace
 
 
 def _filter_record_status(q, status: str | None):
+    if internship_id is not None:
+        base = base.where(InternshipRecord.id == int(internship_id))
     normalized = str(status or "ALL").upper()
     if normalized in {"", "ALL"}:
         return q
@@ -266,7 +268,10 @@ def _task_row(record: InternshipRecord, student: StudentProfile, evaluation: Int
     return payload
 
 
-def list_evaluation_tasks_in_tx(db, *, context, page: int, page_size: int, status: str | None = None) -> dict:
+def list_evaluation_tasks_in_tx(
+    db, *, context, page: int, page_size: int, status: str | None = None,
+    internship_id: int | None = None,
+) -> dict:
     mentor_contact_id = _mentor_scope(db, context)
     latest = _latest_eval_subquery(context)
     base = (
