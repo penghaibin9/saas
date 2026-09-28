@@ -1,0 +1,50 @@
+name: Internship Standalone G11 IAM
+
+on:
+  pull_request:
+    paths:
+      - "products/internship-platform/backend/app/core/security.py"
+      - "products/internship-platform/backend/app/core/permissions.py"
+      - "products/internship-platform/backend/app/api/router.py"
+      - "products/internship-platform/backend/app/api/v1/auth_recovery.py"
+      - "products/internship-platform/backend/app/api/v1/mobile_internship_context.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_student_account_service.py"
+      - "products/internship-platform/backend/tests/test_yiyang_c04_g11_password_reset.py"
+      - "products/internship-platform/mobile/src/services/internshipApi.js"
+      - "products/internship-platform/mobile/src/pages/teacher-internship/internship-students/detail.vue"
+      - ".github/workflows/internship-standalone-g11.yml"
+
+jobs:
+  g11:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      JWT_SECRET: g11-actions-secret-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install G11 backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Compile G11 IAM authority
+        run: |
+          python -m py_compile             products/internship-platform/backend/app/core/security.py             products/internship-platform/backend/app/api/v1/auth_recovery.py             products/internship-platform/backend/app/modules/internship/services/internship_student_account_service.py             products/internship-platform/backend/app/api/v1/mobile_internship_context.py
+      - name: Run Yiyang G11 only
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_c04_g11_password_reset.py
+      - name: Verify G11 mobile source closure
+        run: python products/internship-platform/scripts/check_mobile_import_closure.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: products/internship-platform/mobile/package.json
+      - name: Install standalone mobile dependencies
+        working-directory: products/internship-platform/mobile
+        run: npm install --no-audit --no-fund
+      - name: Build standalone WeChat mobile
+        working-directory: products/internship-platform/mobile
+        run: npm run build:mp-weixin
