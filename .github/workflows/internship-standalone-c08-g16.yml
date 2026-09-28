@@ -12,6 +12,7 @@ on:
       - "products/internship-platform/backend/app/modules/internship/services/internship_teacher_activity_service.py"
       - "products/internship-platform/backend/app/api/v1/teacher_mobile_internship.py"
       - "products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py"
+      - "products/internship-platform/mobile/package.json"
       - "products/internship-platform/mobile/src/pages/teacher-internship/activity/index.vue"
       - "products/internship-platform/mobile/src/services/teacherApi.js"
       - ".github/workflows/internship-standalone-c08-g16.yml"
