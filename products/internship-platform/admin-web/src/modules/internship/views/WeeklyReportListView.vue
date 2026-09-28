@@ -491,6 +491,8 @@ export default {
 .wr-obligation__head strong { font-size:16px; color:var(--t1); }
 .wr-obligation__head p { margin:5px 0 0; font-size:12px; color:var(--t3); line-height:1.6; }
 .wr-obligation__filters { display:flex; gap:6px; flex-wrap:wrap; }
+.wr-obligation__filters .mp-tab { padding:7px 12px; border:1px solid var(--card-b); border-radius:8px; background:var(--card); color:var(--t2); cursor:pointer; }
+.wr-obligation__filters .mp-tab.is-active { border-color:var(--pri-100); background:var(--pri-bg); color:var(--pri); font-weight:600; }
 .wr-tabs { display: flex; gap: 6px; padding: 7px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); overflow-x: auto; }
 .wr-tabs--type { background: linear-gradient(100deg, var(--pri-bg), var(--card) 52%); }
 .wr-tabs--status { margin-top: -8px; padding-left: 14px; border-top: 0; border-radius: 0 0 12px 12px; box-shadow: none; }
