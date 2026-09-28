@@ -486,3 +486,138 @@ def week(user: dict, *, batch_id=None, timezone_name: str | None = None) -> dict
             "time": item["time"],
         })
     return {"hasData": True, "timezoneName": str(zone.key), "days": legacy}
+
+
+
+def _month_keys(start: date, end: date):
+    current = date(start.year, start.month, 1)
+    last = date(end.year, end.month, 1)
+    while current <= last:
+        yield current.strftime("%Y-%m")
+        if current.month == 12:
+            current = date(current.year + 1, 1, 1)
+        else:
+            current = date(current.year, current.month + 1, 1)
+
+
+def attendance_history(user: dict, *, batch_id=None, timezone_name: str | None = None) -> dict:
+    """SP03 projection over the canonical C02 calendar, never a second attendance authority."""
+    _require_db()
+    zone, local_now, _offset = _local_clock(timezone_name)
+    with _session() as db:
+        record, _student, batch = _student_record(
+            db, user, batch_id=batch_id, for_write=False)
+        start = (
+            record.intern_start_date.date()
+            if record.intern_start_date
+            else batch.start_date.date()
+            if batch and batch.start_date
+            else local_now.date()
+        )
+        configured_end = (
+            record.intern_end_date.date()
+            if record.intern_end_date
+            else batch.end_date.date()
+            if batch and batch.end_date
+            else local_now.date()
+        )
+        visible_end = min(configured_end, local_now.date())
+        selected_batch_id = str(record.batch_id or "")
+        internship_id = str(record.id)
+
+    if visible_end < start:
+        rows = []
+    else:
+        rows = []
+        for month_value in _month_keys(start, visible_end):
+            monthly = calendar(
+                user,
+                month=month_value,
+                batch_id=batch_id,
+                timezone_name=str(zone.key),
+            )
+            rows.extend(
+                item for item in monthly["days"]
+                if item["status"] not in ("OUTSIDE", "FUTURE")
+                and start.isoformat() <= item["date"] <= visible_end.isoformat()
+            )
+
+    summary = {
+        "CHECKIN": sum(1 for item in rows if item["status"] == "CHECKIN"),
+        "ABSENT": sum(1 for item in rows if item["status"] in ("ABSENT", "PENDING")),
+        "LEAVE": sum(1 for item in rows if item["status"] == "LEAVE"),
+        "MAKEUP": sum(1 for item in rows if item["status"] == "MAKEUP"),
+        "EXEMPT": sum(1 for item in rows if item["status"] == "EXEMPT"),
+    }
+    return {
+        "hasData": True,
+        "batchId": selected_batch_id,
+        "internshipId": internship_id,
+        "timezoneName": str(zone.key),
+        "internshipStartDate": start.isoformat(),
+        "internshipEndDate": configured_end.isoformat(),
+        "throughDate": visible_end.isoformat(),
+        "summary": summary,
+        "totalCountedDays": sum(summary.values()),
+        "items": sorted(rows, key=lambda item: item["date"], reverse=True),
+    }
+
+
+def attendance_history_pdf(user: dict, *, batch_id=None,
+                           timezone_name: str | None = None) -> dict:
+    """SP03 real PDF, generated from the exact same history projection shown on screen."""
+    from app.services import pdf_util
+
+    data = attendance_history(
+        user, batch_id=batch_id, timezone_name=timezone_name)
+    summary = data["summary"]
+    lines = [
+        f"实习期间：{data['internshipStartDate']} 至 {data['internshipEndDate']}",
+        f"统计截至：{data['throughDate']}　时区：{data['timezoneName']}",
+        "",
+        (
+            f"已签到 {summary['CHECKIN']} 天　"
+            f"未签到 {summary['ABSENT']} 天　"
+            f"请假 {summary['LEAVE']} 天　"
+            f"补签 {summary['MAKEUP']} 天　"
+            f"免签 {summary['EXEMPT']} 天"
+        ),
+        "",
+        "考勤明细",
+    ]
+    labels = {
+        "CHECKIN": "已签到",
+        "ABSENT": "未签到",
+        "PENDING": "未签到",
+        "LEAVE": "请假",
+        "MAKEUP": "补签",
+        "EXEMPT": "免签",
+    }
+    for item in reversed(data["items"]):
+        extra = []
+        if item.get("time"):
+            extra.append(str(item["time"]))
+        if item.get("address"):
+            extra.append(str(item["address"]))
+        lines.append(
+            f"{item['date']}　{labels.get(item['status'], item['status'])}"
+            + (f"　{' · '.join(extra)}" if extra else "")
+        )
+    content = pdf_util.build_text_pdf(
+        "岗位实习签到考勤记录",
+        "\n".join(lines),
+        watermark=(
+            f"跃科岗位实习管理平台 · 学生本人导出 · "
+            f"批次 {data['batchId']} · 实习记录 {data['internshipId']}"
+        ),
+    )
+    if not content.startswith(b"%PDF"):
+        raise AppException("DATA_CONFLICT", "考勤 PDF 生成失败")
+    result = pdf_util.pack_pdf_result(content, "岗位实习签到考勤记录.pdf")
+    result.update({
+        "batchId": data["batchId"],
+        "internshipId": data["internshipId"],
+        "rowCount": len(data["items"]),
+        "summary": summary,
+    })
+    return result
