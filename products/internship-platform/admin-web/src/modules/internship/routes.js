@@ -188,6 +188,12 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.RISK, title: P.RISK_BOARD, requiresAuth: true, permissionKey: 'internship.risk.view' }
     },
     {
+      path: 'feedback',
+      name: 'internship-feedback',
+      component: () => import('@/modules/internship/views/InternshipFeedbackView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.RISK, title: '学生意见反馈', requiresAuth: true, permissionKey: 'internship.complaint.view' }
+    },
+    {
       path: 'risk-disposal',
       name: 'internship-risk-disposal',
       component: () => import('@/modules/internship/views/RiskDisposalView.vue'),
