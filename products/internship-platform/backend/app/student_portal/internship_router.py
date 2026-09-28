@@ -21,6 +21,7 @@ from app.modules.internship.services import internship_student_consent_context_s
 from app.modules.internship.services import internship_student_leave_context_service as leaves
 from app.modules.internship.services import internship_student_makeup_context_service as makeups
 from app.modules.internship.services import internship_student_report_context_service as reports
+from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
 from app.modules.internship.services import internship_student_eval_service as student_evals
 from app.modules.internship.services.internship_student_context_guard import (
     require_context_fields,
@@ -118,6 +119,14 @@ def portal_safety_commit(
     user=Depends(get_current_user),
 ):
     return success(safety.commit_my_completion(completion_id, body or {}, user))
+
+
+@router.get("/context/notices", summary="本人所选批次通知公告")
+def portal_notices(
+    batchId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(teacher_activity.list_student_notices(user, batch_id=batchId))
 
 
 @router.get("/context/applications", summary="本人所选批次正式实习申请")
