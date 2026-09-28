@@ -33,7 +33,42 @@
 
         <view class="card g16-card">
           <view class="row-between">
-            <view><text class="eyebrow">02 · 本人工作报告</text><text class="title">工作留痕</text></view>
+            <view><text class="eyebrow">02 · 本人补签</text><text class="title">缺卡申请补签</text></view>
+            <MobileStatusTag type="default">{{ makeups.length }} 条</MobileStatusTag>
+          </view>
+          <MobileInlineAlert type="info" description="补签必须提交原因，由校级岗位实习管理员审核；审批通过后才会生成 MAKEUP 签到事实。" />
+          <picker mode="date" :value="makeupForm.localDate" :end="todayValue" @change="makeupForm.localDate=$event.detail.value">
+            <view class="field"><text>补签日期</text><text>{{ makeupForm.localDate || '请选择' }} ▾</text></view>
+          </picker>
+          <textarea v-model="makeupForm.reason" class="textarea small" maxlength="500" placeholder="补签原因（至少5字）" />
+          <view class="teacher-checkin-evidence">
+            <view>
+              <text class="strong">佐证材料（选填）</text>
+              <text class="muted">{{ makeupEvidenceName || '可上传图片、PDF、Word 等正式佐证文件' }}</text>
+            </view>
+            <button class="btn btn-ghost" :disabled="makeupEvidenceUploading || makeupSubmitting" @click="pickMakeupEvidence">
+              {{ makeupEvidenceUploading ? '上传中…' : (makeupForm.evidenceFileId ? '更换佐证' : '上传佐证') }}
+            </button>
+          </view>
+          <button class="btn btn-primary" :loading="makeupSubmitting" :disabled="makeupEvidenceUploading" @click="submitMakeup">提交补签申请</button>
+          <view v-for="row in makeups" :key="row.id" class="report">
+            <view class="row-between">
+              <text class="strong">{{ row.localDate }}</text>
+              <MobileStatusTag :type="makeupStatusTone(row.status)">{{ makeupStatusLabel(row.status) }}</MobileStatusTag>
+            </view>
+            <text class="body">{{ row.reason }}</text>
+            <text v-if="row.reviewComment" class="muted">审核意见：{{ row.reviewComment }}</text>
+            <view class="row-between">
+              <text v-if="row.evidenceFileId" class="link" @click="openMakeupEvidence(row)">查看佐证</text>
+              <text v-if="row.status==='PENDING'" class="link danger-link" @click="withdrawMakeup(row)">撤回</text>
+            </view>
+          </view>
+          <text v-if="!makeups.length" class="muted">当前批次暂无教师补签申请</text>
+        </view>
+
+        <view class="card g16-card">
+          <view class="row-between">
+            <view><text class="eyebrow">03 · 本人工作报告</text><text class="title">工作留痕</text></view>
             <text v-if="form.expectedVersion != null" class="link" @click="resetForm">取消修改</text>
           </view>
           <picker mode="date" :value="form.reportDate" @change="form.reportDate=$event.detail.value">
@@ -53,7 +88,7 @@
 
         <view class="card g16-card">
           <view class="row-between">
-            <view><text class="eyebrow">03 · 周报 / 月报 / 总结</text><text class="title">教师本人周期报告</text></view>
+            <view><text class="eyebrow">04 · 周报 / 月报 / 总结</text><text class="title">教师本人周期报告</text></view>
             <text v-if="periodForm.expectedVersion != null" class="link" @click="resetPeriodForm">取消修改</text>
           </view>
           <picker :range="periodLabels" :value="periodTypeIndex" @change="onPeriodType">
@@ -77,7 +112,7 @@
         </view>
 
         <view class="card g16-card">
-          <view><text class="eyebrow">04 · 紧急通知</text><text class="title">批次通知</text></view>
+          <view><text class="eyebrow">05 · 紧急通知</text><text class="title">批次通知</text></view>
           <MobileInlineAlert type="info" description="通知来自服务端正式业务库，学生退出或重新登录后仍会重新读取。" />
           <view v-if="canPublish" class="notice-form">
             <picker :range="noticeTypeLabels" :value="noticeTypeIndex" @change="onNoticeType">
@@ -197,7 +232,7 @@ const blankNotice = () => ({
 })
 
 export default {
-  data() { return { state:'loading', batches:[], batchId:'', batchIndex:0, checkins:[], reports:[], periodReports:[], notices:[], pendingNotices:[], activeNotice:null, acknowledgingNotice:false, checking:false, checkinPhotoFileId:'', checkinPhotoName:'', checkinPhotoUploading:false, checkinTimezoneName:this.detectTimezone(), saving:false, periodSaving:false, publishing:false, form:blank(), periodForm:blankPeriod(), notice:blankNotice(), noticeUploading:false, noticeWithdrawingId:'' } },
+  data() { return { state:'loading', batches:[], batchId:'', batchIndex:0, checkins:[], makeups:[], reports:[], periodReports:[], notices:[], pendingNotices:[], activeNotice:null, acknowledgingNotice:false, checking:false, checkinPhotoFileId:'', checkinPhotoName:'', checkinPhotoUploading:false, checkinTimezoneName:this.detectTimezone(), makeupForm:{localDate:'',reason:'',evidenceFileId:''}, makeupEvidenceName:'', makeupEvidenceUploading:false, makeupSubmitting:false, saving:false, periodSaving:false, publishing:false, form:blank(), periodForm:blankPeriod(), notice:blankNotice(), noticeUploading:false, noticeWithdrawingId:'' } },
   computed: {
     context() { return useInternshipContextStore() },
     batchLabels() { return this.batches.map((b) => b.name || ('批次 '+b.id)) },
@@ -210,6 +245,7 @@ export default {
     noticeTypeIndex() { return Math.max(0, noticeTypeOptions.findIndex((x) => x.code === this.notice.noticeType)) },
     noticeUrgencyIndex() { return Math.max(0, noticeUrgencyOptions.findIndex((x) => x.code === this.notice.urgency)) },
     todayChecked() { return this.checkins.find((x) => x.localDate === today()) || null },
+    todayValue() { return today() },
     canPublish() { return this.context.can('internship.communication.manage') && /ADMIN/i.test(this.context.roleCode || '') }
   },
   onLoad() { this.load() },
@@ -222,14 +258,16 @@ export default {
         this.batches=this.context.batches||[]; this.batchId=this.context.selectedBatchId||''
         this.batchIndex=Math.max(0,this.batches.findIndex((b)=>String(b.id)===String(this.batchId)))
         if (!this.batchId) { this.state='ready'; return }
-        const [a,b,p,c,n]=await Promise.all([
+        const [a,m,b,p,c,n]=await Promise.all([
           teacherApi.getMyInternshipCheckins(this.batchId),
+          teacherApi.getMyInternshipMakeups(this.batchId),
           teacherApi.getMyInternshipWorkReports(this.batchId,1,20),
           teacherApi.getMyInternshipPeriodReports(this.batchId,1,20),
           teacherApi.getInternshipEmergencyNotices(this.batchId,true),
           teacherApi.getPendingInternshipEmergencyNotices(this.batchId)
         ])
         this.checkins=a||[]
+        this.makeups=m?.items||[]
         this.reports=b?.items||[]
         this.periodReports=p?.items||[]
         this.notices=c||[]
@@ -242,7 +280,7 @@ export default {
     async onBatch(e) {
       this.batchIndex=Number(e.detail.value)||0
       this.context.selectBatch(this.batches[this.batchIndex]?.id)
-      this.batchId=this.context.selectedBatchId; this.resetForm(); this.resetPeriodForm(); this.notice=blankNotice(); this.pendingNotices=[]; this.activeNotice=null; this.acknowledgingNotice=false; this.checkinPhotoFileId=''; this.checkinPhotoName=''; await this.load()
+      this.batchId=this.context.selectedBatchId; this.resetForm(); this.resetPeriodForm(); this.notice=blankNotice(); this.pendingNotices=[]; this.activeNotice=null; this.acknowledgingNotice=false; this.checkinPhotoFileId=''; this.checkinPhotoName=''; this.makeupForm={localDate:'',reason:'',evidenceFileId:''}; this.makeupEvidenceName=''; await this.load()
     },
     detectTimezone() {
       try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' }
@@ -331,6 +369,58 @@ export default {
           submit({})
         }
       })
+    },
+    makeupStatusLabel(value) {
+      return {PENDING:'待审核',APPROVED:'已通过',REJECTED:'已驳回',WITHDRAWN:'已撤回'}[String(value||'').toUpperCase()] || value || '—'
+    },
+    makeupStatusTone(value) {
+      return {APPROVED:'success',REJECTED:'danger',PENDING:'warning'}[String(value||'').toUpperCase()] || 'default'
+    },
+    async pickMakeupEvidence() {
+      if(this.makeupEvidenceUploading || this.makeupSubmitting) return
+      this.makeupEvidenceUploading=true
+      try {
+        const file=await chooseSingleFile()
+        if(!file) return
+        const uploaded=await uploadBusinessFile(file,{bizType:'INTERNSHIP_TEACHER_MAKEUP'})
+        if(!uploaded?.fileId) throw new Error('佐证上传结果不完整')
+        this.makeupForm.evidenceFileId=String(uploaded.fileId)
+        this.makeupEvidenceName=uploaded.fileName||file.name||'补签佐证'
+        toast('补签佐证已上传')
+      } catch(e) { toast(e?.message||'补签佐证上传失败') }
+      finally { this.makeupEvidenceUploading=false }
+    },
+    async openMakeupEvidence(row) {
+      if(!row?.evidenceFileId) return
+      try { await openBusinessFile(row.evidenceFileId,row.evidence?.fileName||'教师补签佐证') }
+      catch(e) { toast(e?.message||'佐证文件暂时无法打开') }
+    },
+    async submitMakeup() {
+      if(!this.batchId || this.makeupSubmitting || this.makeupEvidenceUploading) return
+      if(!this.makeupForm.localDate) return toast('请选择补签日期')
+      if((this.makeupForm.reason||'').trim().length<5) return toast('补签原因至少填写5个字')
+      this.makeupSubmitting=true
+      try {
+        await teacherApi.applyMyInternshipMakeup({
+          batchId:Number(this.batchId),
+          localDate:this.makeupForm.localDate,
+          reason:this.makeupForm.reason.trim(),
+          evidenceFileId:this.makeupForm.evidenceFileId||undefined
+        })
+        this.makeupForm={localDate:'',reason:'',evidenceFileId:''}
+        this.makeupEvidenceName=''
+        toast('补签申请已提交，等待校级管理员审核')
+        await this.load()
+      } catch(e) { toast(e?.message||'补签申请提交失败') }
+      finally { this.makeupSubmitting=false }
+    },
+    async withdrawMakeup(row) {
+      if(!row?.id || row.status!=='PENDING') return
+      try {
+        await teacherApi.withdrawMyInternshipMakeup(row.id)
+        toast('补签申请已撤回')
+        await this.load()
+      } catch(e) { toast(e?.message||'补签申请撤回失败') }
     },
     resetForm() { this.form=blank() },
     editReport(row) { this.form={reportDate:row.reportDate,workContent:row.workContent||'',issueContent:row.issueContent||'',nextPlan:row.nextPlan||'',studentCount:row.studentCount==null?'':String(row.studentCount),expectedVersion:Number(row.version||0)} },
@@ -476,6 +566,6 @@ export default {
 </script>
 
 <style scoped>
-.g16-card{padding:14px;display:flex;flex-direction:column;gap:12px}.teacher-checkin-evidence{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border-light);border-radius:10px;background:var(--gray-50)}.notice-dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}.notice-attachments{display:flex;flex-direction:column;gap:7px}.notice-file{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;background:var(--gray-50);font-size:12px}.notice-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--teacher-700)}.notice-remove{flex:0 0 auto;color:var(--danger-600)}.g16-batch{flex-direction:row;align-items:center;justify-content:space-between}.eyebrow,.muted{display:block;font-size:11px;color:var(--text-tertiary);line-height:1.6}.eyebrow{color:var(--teacher-700);font-weight:700}.title{display:block;font-size:17px;font-weight:700}.strong{font-weight:600}.link{font-size:12px;color:var(--teacher-700)}.list-row,.field{display:flex;justify-content:space-between;padding:10px;border-top:1px solid var(--border-light);font-size:12px}.field{border:1px solid var(--border-light);border-radius:8px}.input,.textarea{width:100%;box-sizing:border-box;border:1px solid var(--border-light);border-radius:8px;padding:10px;font-size:13px}.textarea{height:120px}.textarea.small{height:80px}.report{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:8px;background:var(--gray-50)}.body{font-size:13px;line-height:1.65;white-space:pre-wrap}.notice-form{display:flex;flex-direction:column;gap:8px}
+.g16-card{padding:14px;display:flex;flex-direction:column;gap:12px}.danger-link{color:var(--danger-600)}.teacher-checkin-evidence{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border-light);border-radius:10px;background:var(--gray-50)}.notice-dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}.notice-attachments{display:flex;flex-direction:column;gap:7px}.notice-file{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;background:var(--gray-50);font-size:12px}.notice-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--teacher-700)}.notice-remove{flex:0 0 auto;color:var(--danger-600)}.g16-batch{flex-direction:row;align-items:center;justify-content:space-between}.eyebrow,.muted{display:block;font-size:11px;color:var(--text-tertiary);line-height:1.6}.eyebrow{color:var(--teacher-700);font-weight:700}.title{display:block;font-size:17px;font-weight:700}.strong{font-weight:600}.link{font-size:12px;color:var(--teacher-700)}.list-row,.field{display:flex;justify-content:space-between;padding:10px;border-top:1px solid var(--border-light);font-size:12px}.field{border:1px solid var(--border-light);border-radius:8px}.input,.textarea{width:100%;box-sizing:border-box;border:1px solid var(--border-light);border-radius:8px;padding:10px;font-size:13px}.textarea{height:120px}.textarea.small{height:80px}.report{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:8px;background:var(--gray-50)}.body{font-size:13px;line-height:1.65;white-space:pre-wrap}.notice-form{display:flex;flex-direction:column;gap:8px}
 .g16-notice-mask{position:fixed;z-index:9999;inset:0;background:rgba(15,23,42,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}.g16-notice-dialog{width:100%;max-width:560px;max-height:82vh;background:var(--bg-card);border-radius:16px;padding:18px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}.g16-notice-body{max-height:42vh;padding:12px;border:1px solid var(--border-light);border-radius:10px;background:var(--gray-50);box-sizing:border-box}
 </style>
