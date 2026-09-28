@@ -232,6 +232,28 @@ def publish_emergency_notice(
     )
 
 
+@router.get("/emergency-notices/pending", summary="本人当前批次待强弹确认紧急通知")
+def pending_teacher_emergency_notices(
+    batchId: int = Query(..., ge=1),
+    user=Depends(require_permission("internship.communication.view")),
+):
+    return success(activity_svc.pending_teacher_notices(user, batch_id=batchId))
+
+
+@router.post("/emergency-notices/{notice_id}/ack", summary="本人明确确认紧急通知已知悉")
+def acknowledge_teacher_emergency_notice(
+    notice_id: int,
+    batchId: int = Query(..., ge=1),
+    user=Depends(require_permission("internship.communication.view")),
+):
+    return success(
+        activity_svc.acknowledge_teacher_notice(
+            user, notice_id, batch_id=batchId
+        ),
+        message="已记录知悉回执",
+    )
+
+
 @router.post("/emergency-notices/{notice_id}/withdraw", summary="校级管理员撤回紧急通知")
 def withdraw_emergency_notice(
     notice_id: int,
