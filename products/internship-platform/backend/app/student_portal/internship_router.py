@@ -17,6 +17,7 @@ from app.modules.internship.services import internship_safety_service as safety
 from app.modules.internship.services import internship_student_application_context_service as applications
 from app.modules.internship.services import internship_student_change_context_service as changes
 from app.modules.internship.services import internship_student_compliance_service as compliance
+from app.modules.internship.services import internship_student_checkin_service as checkins
 from app.modules.internship.services import internship_student_consent_context_service as consent_context
 from app.modules.internship.services import internship_student_leave_context_service as leaves
 from app.modules.internship.services import internship_student_makeup_context_service as makeups
@@ -119,6 +120,26 @@ def portal_safety_commit(
     user=Depends(get_current_user),
 ):
     return success(safety.commit_my_completion(completion_id, body or {}, user))
+
+
+@router.get("/context/attendance", summary="本人完整签到考勤统计")
+def portal_attendance(
+    batchId: int = Query(..., ge=1),
+    timezoneName: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    return success(checkins.attendance_history(
+        user, batch_id=batchId, timezone_name=timezoneName))
+
+
+@router.get("/context/attendance/pdf", summary="本人导出完整签到考勤 PDF")
+def portal_attendance_pdf(
+    batchId: int = Query(..., ge=1),
+    timezoneName: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    return success(checkins.attendance_history_pdf(
+        user, batch_id=batchId, timezone_name=timezoneName))
 
 
 @router.get("/context/notices", summary="本人所选批次通知公告")
