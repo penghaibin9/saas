@@ -100,6 +100,57 @@ def stats_process_analytics_export(
     ))
 
 
+@router.get("/teacher-management", summary="AP16 教师本人业务管理台账")
+def teacher_management(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    keyword: str = Query("", max_length=100),
+    user=Depends(require_permission(_P_VIEW)),
+):
+    from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
+    return success(teacher_activity.teacher_management_ledger(
+        user, batch_id=batchId, keyword=keyword
+    ))
+
+
+@router.post("/teacher-management/export", summary="AP16 教师管理台账 Excel")
+def teacher_management_export(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    keyword: str = Query("", max_length=100),
+    user=Depends(require_permission(_P_EXPORT)),
+):
+    from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
+    return success(teacher_activity.export_teacher_management_ledger(
+        user, batch_id=batchId, keyword=keyword
+    ))
+
+
+@router.get("/teacher-management/makeups", summary="AP16 教师补签审核队列")
+def teacher_makeup_queue(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(100, ge=1, le=200),
+    user=Depends(require_permission("internship.guidance.manage")),
+):
+    from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
+    return success(teacher_activity.list_teacher_makeups_admin(
+        user, batch_id=batchId, status=status, page=page, page_size=pageSize
+    ))
+
+
+@router.post("/teacher-management/makeups/{makeupId}/review", summary="AP16 审核教师本人补签")
+def review_teacher_makeup(
+    makeupId: int,
+    body: dict,
+    user=Depends(require_permission("internship.guidance.manage")),
+):
+    from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
+    return success(
+        teacher_activity.review_teacher_makeup(user, makeupId, body),
+        message="教师补签审核已完成",
+    )
+
+
 @router.get("/stats/overview", summary="实习总览统计（指标/计数/成绩分布，按数据范围+维度筛选）")
 def stats_overview(college: Optional[str] = None, major: Optional[str] = None,
                    className: Optional[str] = None, batchId: Optional[str] = None,
