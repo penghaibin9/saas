@@ -164,8 +164,14 @@ def test_ap07_page_and_full_excel_share_same_canonical_fields_and_export_all_row
         1, 1, batch_id=batch_id, user=ADMIN)
     assert total == 2
     assert len(page) == 1
-    row = page[0]
-    assert row["id"] == str(record_id)
+
+    # Production sorting is updated_at/id descending; do not force fixture id=1
+    # to be the first visible row. Locate the rich-fact student from the full
+    # two-row service result while separately proving pageSize=1 is respected.
+    full_rows, full_total = service.list_students(
+        1, 2, batch_id=batch_id, user=ADMIN)
+    assert full_total == 2
+    row = next(item for item in full_rows if item["id"] == str(record_id))
     assert row["collegeName"] == "信息工程学院"
     assert row["majorName"] == "软件技术"
     assert row["sourceRegion"] == "未采集"
