@@ -41,5 +41,13 @@ export const statsApi = {
 
   exportStats(params = {}) {
     return call(() => request(`${B}/export`, { method: 'POST', params }))
+  },
+
+  getProcessAnalytics(params = {}) {
+    return call(() => request(`${B}/process-analytics`, { params }))
+  },
+
+  exportProcessAnalytics(params = {}) {
+    return call(() => request(`${B}/process-analytics/export`, { method: 'POST', params }))
   }
 }
