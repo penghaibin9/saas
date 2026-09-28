@@ -232,8 +232,15 @@ def list_weekly(
             WeeklyReport.week_number.desc(),
             WeeklyReport.id.desc(),
         ).offset((safe_page - 1) * safe_page_size).limit(safe_page_size)).all()
+        items = []
+        for row in rows:
+            item = _weekly_row(row)
+            snap = quality.latest_weekly_snapshot(db, row.id)
+            item["immutableVersion"] = int(snap.version_no) if snap else 0
+            item["attachments"] = (snap.attachment_meta_json or []) if snap else []
+            items.append(item)
         return {
-            "items": [_weekly_row(row) for row in rows],
+            "items": items,
             "batchId": str(selected_batch_id),
             "internshipId": str(record.id),
             "page": safe_page,
@@ -243,6 +250,7 @@ def list_weekly(
             # 首屏仍返回第一页；客户端只在深链目标不在首屏时额外请求这一页，
             # 不为对象定位把整个历史列表一次性拉到手机上。
             "focusPage": focus_page,
+            "rules": quality.rules_for_batch(db, selected_batch_id),
         }
 
 
@@ -257,13 +265,21 @@ def submit_weekly(user: dict, body: dict) -> dict:
     work_content = str(payload.get("workContent") or "").strip()
     harvest_content = str(payload.get("harvestContent") or "").strip()
     plan_content = str(payload.get("planContent") or "").strip()
-    if len(work_content) < 10 or len(harvest_content) < 10:
-        raise AppException(
-            "VALIDATION_ERROR", "本周工作内容与本周收获均至少 10 个字")
+    if not work_content or not harvest_content:
+        raise AppException("VALIDATION_ERROR", "本周工作内容与本周收获不能为空")
 
     with session() as db:
         record, _student, _batch_id = require_explicit_context(
             db, user, payload, for_write=True)
+        rules = quality.rules_for_batch(db, record.batch_id)
+        total_words = len(work_content) + len(harvest_content) + len(plan_content)
+        minimum = int(rules.get("weeklyMinWords") or 30)
+        if total_words < minimum:
+            raise AppException("VALIDATION_ERROR", f"周报正文合计至少 {minimum} 字")
+        attachment_ids, attachment_meta = quality.validate_attachments(
+            payload.get("attachmentFileIds") or payload.get("attachments") or [],
+            rules,
+        )
         existing = db.scalar(select(WeeklyReport).where(
             WeeklyReport.tenant_id == _tid(),
             WeeklyReport.internship_id == record.id,
@@ -284,8 +300,7 @@ def submit_weekly(user: dict, body: dict) -> dict:
             existing.work_content = work_content
             existing.harvest_content = harvest_content
             existing.plan_content = plan_content
-            existing.word_count = (
-                len(work_content) + len(harvest_content) + len(plan_content))
+            existing.word_count = total_words
             existing.report_version = int(existing.report_version or 1) + 1
             existing.version = current_version + 1
             existing.status = "PENDING_REVIEW"
@@ -304,8 +319,7 @@ def submit_weekly(user: dict, body: dict) -> dict:
                 work_content=work_content,
                 harvest_content=harvest_content,
                 plan_content=plan_content,
-                word_count=(
-                    len(work_content) + len(harvest_content) + len(plan_content)),
+                word_count=total_words,
                 report_version=1,
                 status="PENDING_REVIEW",
                 submitted_at=datetime.utcnow(),
@@ -314,6 +328,19 @@ def submit_weekly(user: dict, body: dict) -> dict:
             db.flush()
             action = "SUBMIT_VERSIONED"
 
+        snapshot = quality.append_weekly_snapshot(
+            db,
+            row=row,
+            record=record,
+            student=_student,
+            content_json={
+                "workContent": work_content,
+                "harvestContent": harvest_content,
+                "planContent": plan_content,
+            },
+            attachment_ids=attachment_ids,
+            attachment_meta=attachment_meta,
+        )
         weekly_legacy._trail(
             db,
             row.id,
@@ -326,9 +353,16 @@ def submit_weekly(user: dict, body: dict) -> dict:
                 "expectedVersion": current_version,
                 "newVersion": int(row.version or 0),
                 "reportVersion": int(row.report_version or 1),
+                "immutableVersion": int(snapshot.version_no),
+                "attachmentCount": len(attachment_ids),
+                "minimumWords": minimum,
             },
         )
         from app.modules.internship.services import internship_todo_helper as todo
         todo.push_weekly_todo(db, row, record)
         db.commit()
-        return _weekly_row(row)
+        result = _weekly_row(row)
+        result["immutableVersion"] = int(snapshot.version_no)
+        result["attachments"] = attachment_meta
+        result["minimumWords"] = minimum
+        return result
