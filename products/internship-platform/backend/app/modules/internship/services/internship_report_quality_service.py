@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 
 from app.core.exceptions import AppException
 from app.models import (
@@ -13,6 +13,7 @@ from app.models import (
     InternshipReportReview,
     InternshipReportRuleConfig,
     InternshipReportVersion,
+    StudentProfile,
     WeeklyReport,
 )
 from app.services import file_service
@@ -420,6 +421,230 @@ def export_report_review_performance(user: dict, batch_id) -> dict:
     )
     return xlsx_util.pack_xlsx_result(
         content, "岗位实习报告批阅绩效.xlsx", len(rows),
+    )
+
+
+def report_obligations(
+    user: dict, batch_id, *, keyword: str = "", missing_only: bool = False,
+    page: int = 1, page_size: int = 50,
+) -> dict:
+    """Per-student required/submitted/approved truth from batch rules and formal report facts."""
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
+    page = max(1, int(page or 1))
+    page_size = min(20000, max(1, int(page_size or 50)))
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
+        rules = rules_for_batch(db, batch.id)
+        required = {
+            "daily": int(rules.get("dailyRequiredCount") or 0),
+            "weekly": int(rules.get("weeklyRequiredCount") or 0),
+            "monthly": int(rules.get("monthlyRequiredCount") or 0),
+            "summary": int(rules.get("summaryRequiredCount") or 0),
+        }
+
+        scoped = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False),
+            ),
+            user,
+        ).subquery()
+        scoped_ids = select(scoped.c.id)
+
+        query = select(InternshipRecord, StudentProfile).join(
+            StudentProfile,
+            StudentProfile.id == InternshipRecord.student_id,
+        ).where(
+            InternshipRecord.id.in_(scoped_ids),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False),
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )
+        term = str(keyword or "").strip()
+        if term:
+            like = f"%{term}%"
+            query = query.where(or_(
+                StudentProfile.real_name.like(like),
+                StudentProfile.student_no.like(like),
+                InternshipRecord.advisor_name.like(like),
+                InternshipRecord.enterprise_name.like(like),
+                InternshipRecord.position_name.like(like),
+            ))
+        record_rows = db.execute(
+            query.order_by(StudentProfile.student_no, StudentProfile.id)
+        ).all()
+        record_ids = [int(record.id) for record, _student in record_rows]
+
+        weekly = {}
+        process = {}
+        if record_ids:
+            for internship_id, submitted, approved in db.execute(
+                select(
+                    WeeklyReport.internship_id,
+                    func.count(WeeklyReport.id),
+                    func.sum(case((WeeklyReport.status == "APPROVED", 1), else_=0)),
+                ).where(
+                    WeeklyReport.tenant_id == _tid(),
+                    WeeklyReport.internship_id.in_(record_ids),
+                    WeeklyReport.is_deleted.is_(False),
+                ).group_by(WeeklyReport.internship_id)
+            ).all():
+                weekly[int(internship_id)] = {
+                    "submitted": int(submitted or 0),
+                    "approved": int(approved or 0),
+                }
+
+            for internship_id, report_type, submitted, approved in db.execute(
+                select(
+                    InternshipProcessReport.internship_id,
+                    InternshipProcessReport.report_type,
+                    func.count(InternshipProcessReport.id),
+                    func.sum(case((InternshipProcessReport.status == "APPROVED", 1), else_=0)),
+                ).where(
+                    InternshipProcessReport.tenant_id == _tid(),
+                    InternshipProcessReport.internship_id.in_(record_ids),
+                    InternshipProcessReport.is_deleted.is_(False),
+                ).group_by(
+                    InternshipProcessReport.internship_id,
+                    InternshipProcessReport.report_type,
+                )
+            ).all():
+                process[(int(internship_id), str(report_type or "").upper())] = {
+                    "submitted": int(submitted or 0),
+                    "approved": int(approved or 0),
+                }
+
+        def metric(required_count: int, fact: dict | None) -> dict:
+            submitted = int((fact or {}).get("submitted") or 0)
+            approved = int((fact or {}).get("approved") or 0)
+            configured = required_count > 0
+            missing = max(0, required_count - submitted) if configured else None
+            return {
+                "configured": configured,
+                "required": required_count if configured else 0,
+                "submitted": submitted,
+                "approved": approved,
+                "missing": missing,
+            }
+
+        items = []
+        for record, student in record_rows:
+            rid = int(record.id)
+            daily = metric(required["daily"], process.get((rid, "DAILY")))
+            weekly_metric = metric(required["weekly"], weekly.get(rid))
+            monthly = metric(required["monthly"], process.get((rid, "MONTHLY")))
+            summary = metric(required["summary"], process.get((rid, "SUMMARY")))
+            metrics = [daily, weekly_metric, monthly, summary]
+            configured = [item for item in metrics if item["configured"]]
+            missing_total = sum(int(item["missing"] or 0) for item in configured)
+            required_total = sum(int(item["required"]) for item in configured)
+            submitted_against_required = sum(
+                min(int(item["submitted"]), int(item["required"])) for item in configured
+            )
+            completion_rate = (
+                round(submitted_against_required * 100.0 / required_total, 1)
+                if required_total else None
+            )
+            status = (
+                "UNCONFIGURED" if not configured
+                else ("MISSING" if missing_total > 0 else "COMPLETE")
+            )
+            row = {
+                "recordId": str(record.id),
+                "studentId": str(student.id),
+                "studentName": student.real_name or "-",
+                "studentNo": student.student_no or "-",
+                "advisorName": record.advisor_name or "",
+                "companyName": record.enterprise_name or "",
+                "positionName": record.position_name or "",
+                "daily": daily,
+                "weekly": weekly_metric,
+                "monthly": monthly,
+                "summary": summary,
+                "requiredTotal": required_total,
+                "submittedAgainstRequired": submitted_against_required,
+                "missingTotal": missing_total,
+                "completionRate": completion_rate,
+                "status": status,
+                "statusLabel": {
+                    "UNCONFIGURED": "应交数未配置",
+                    "MISSING": "存在未交",
+                    "COMPLETE": "已交齐",
+                }[status],
+            }
+            if not missing_only or status == "MISSING":
+                items.append(row)
+
+        total = len(items)
+        start = (page - 1) * page_size
+        return {
+            "batchId": str(batch.id),
+            "batchName": getattr(batch, "batch_name", "") or "",
+            "rules": required,
+            "items": items[start:start + page_size],
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+            "missingOnly": bool(missing_only),
+            "definition": {
+                "submitted": "存在正式报告事实即计为实交；退回修改仍属于已提交过",
+                "approved": "当前正式报告状态为已通过",
+                "missing": "仅在批次应交数大于0时计算；0表示学校未配置，不伪造完成率",
+            },
+        }
+
+
+def export_report_obligations(
+    user: dict, batch_id, *, keyword: str = "", missing_only: bool = False,
+) -> dict:
+    from app.services import xlsx_util
+
+    data = report_obligations(
+        user, batch_id, keyword=keyword, missing_only=missing_only,
+        page=1, page_size=20000,
+    )
+    headers = [
+        "学号", "姓名", "指导教师", "企业", "岗位", "状态", "完成率",
+        "日报应交", "日报实交", "日报已通过", "日报未交",
+        "周报应交", "周报实交", "周报已通过", "周报未交",
+        "月报应交", "月报实交", "月报已通过", "月报未交",
+        "总结应交", "总结实交", "总结已通过", "总结未交",
+        "总应交", "按应交口径已提交", "总未交",
+    ]
+    rows = []
+    for item in data["items"]:
+        values = []
+        for key in ("daily", "weekly", "monthly", "summary"):
+            metric = item[key]
+            values.extend([
+                metric["required"] if metric["configured"] else "未配置",
+                metric["submitted"],
+                metric["approved"],
+                metric["missing"] if metric["configured"] else "未配置",
+            ])
+        rows.append([
+            item["studentNo"], item["studentName"], item["advisorName"],
+            item["companyName"], item["positionName"], item["statusLabel"],
+            (str(item["completionRate"]) + "%") if item["completionRate"] is not None else "未配置",
+            *values,
+            item["requiredTotal"], item["submittedAgainstRequired"], item["missingTotal"],
+        ])
+    content = xlsx_util.build_ledger_xlsx(
+        "报告应交未交",
+        headers,
+        rows,
+        watermark=(
+            "跃科岗位实习管理平台 · 报告应交/未交台账 · "
+            f"{(user or {}).get('realName') or '系统'} · {datetime.now():%Y-%m-%d %H:%M}"
+        ),
+    )
+    return xlsx_util.pack_xlsx_result(
+        content, "岗位实习报告应交未交台账.xlsx", len(rows),
     )
 
 
