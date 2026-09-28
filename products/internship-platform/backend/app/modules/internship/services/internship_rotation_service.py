@@ -136,6 +136,11 @@ def create_rotation(record_id, body: dict, user: dict):
 
     with session() as db:
         record = assert_internship_record_scope(db, record_id, user, "新增轮岗安排", lock=True)
+        requested_batch = payload.get("batchId")
+        if requested_batch in (None, ""):
+            raise AppException("VALIDATION_ERROR", "缺少当前实习批次 batchId")
+        if int(record.batch_id or 0) != int(requested_batch):
+            raise AppException("DATA_CONFLICT", "学生记录不属于当前实习批次，请刷新后重试")
         if str(record.status or "").upper() not in {"ONBOARD", "ASSESSING", "APPROVED"}:
             raise AppException("DATA_CONFLICT", "当前实习状态不能新增轮岗安排")
         batch = db.get(InternshipBatch, record.batch_id) if record.batch_id else None
@@ -217,9 +222,11 @@ def create_rotation(record_id, body: dict, user: dict):
         return _view(db, row)
 
 
-def list_for_record(record_id, user: dict):
+def list_for_record(record_id, user: dict, *, batch_id=None):
     with session() as db:
         record = assert_internship_record_scope(db, record_id, user, "查看轮岗记录")
+        if batch_id not in (None, "") and int(record.batch_id or 0) != int(batch_id):
+            raise AppException("DATA_CONFLICT", "学生记录不属于当前实习批次，请刷新后重试")
         rows = db.scalars(select(InternshipRotation).where(
             InternshipRotation.tenant_id == _tid(),
             InternshipRotation.internship_id == record.id,
@@ -292,6 +299,9 @@ def evaluate_rotation(rotation_id, body: dict, user: dict):
         if not row:
             raise not_found("轮岗记录不存在")
         record = assert_internship_record_scope(db, row.internship_id, user, "评定轮岗成绩", lock=True)
+        requested_batch = payload.get("batchId")
+        if requested_batch in (None, "") or int(record.batch_id or 0) != int(requested_batch):
+            raise AppException("DATA_CONFLICT", "轮岗记录不属于当前实习批次，请刷新后重试")
         expected = payload.get("expectedVersion")
         if expected is None or int(expected) != int(row.version or 0):
             raise AppException("DATA_CONFLICT", "轮岗记录已变化，请刷新后重试")
