@@ -988,14 +988,31 @@ def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
 def export_weekly_reports(status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
     from app.modules.internship.services.internship_export_util import load_export_rows
+    from app.modules.internship.services import internship_report_quality_service as quality
+
     items, total = load_export_rows(
         list_weekly_reports, status=status, keyword=keyword, batch_id=batch_id, user=user)
     from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
     require_exportable(total)
-    headers = ["学生", "班级", "企业", "周次", "提交时间", "版本", "字数", "风险", "状态"]
-    rows = [[it["studentName"], it["className"], it["enterpriseName"], it["week"],
-             it["submitAt"], it["version"], it["wordCount"], it["riskFlag"],
-             it["statusLabel"]] for it in items]
+
+    with session() as db:
+        reviews = quality.latest_review_map(db, "WEEKLY", [it.get("id") for it in items])
+
+    headers = [
+        "学生", "班级", "企业", "周次", "提交时间", "版本", "字数", "风险", "状态",
+        "五级评价", "批阅教师", "批阅时间", "批阅意见",
+    ]
+    rows = []
+    for it in items:
+        review = reviews.get(int(it["id"])) if str(it.get("id") or "").isdigit() else None
+        rows.append([
+            it["studentName"], it["className"], it["enterpriseName"], it["week"],
+            it["submitAt"], it["version"], it["wordCount"], it["riskFlag"], it["statusLabel"],
+            review.get("ratingLevel") if review else "",
+            review.get("reviewerName") if review else "",
+            review.get("reviewedAt") if review else "",
+            review.get("comment") if review else "",
+        ])
     wm = f"岗位实习中心·周报台账 · 导出人：{_op_name()} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
     content = xlsx_util.build_ledger_xlsx("周报台账", headers, rows, watermark=wm)
     packed = xlsx_util.pack_xlsx_result(content, "周报台账.xlsx", len(items))
