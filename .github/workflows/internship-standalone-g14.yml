@@ -1,11 +1,7 @@
 name: Internship Standalone G14 Statistics Truth
 
 on:
-  pull_request:
-    paths:
-      - "products/internship-platform/backend/app/modules/internship/services/internship_stats_service.py"
-      - "products/internship-platform/backend/tests/test_yiyang_c06_g14_stats.py"
-      - ".github/workflows/internship-standalone-g14.yml"
+  workflow_dispatch:
 
 jobs:
   g14:
