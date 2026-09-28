@@ -32,7 +32,23 @@
           <view class="pr__field">
             <text class="pr__label">正文 <text class="pr__req">*</text></text>
             <textarea v-model="form.content" class="pr__textarea" maxlength="8000" :placeholder="contentPlaceholder" />
-            <text class="pr__count">{{ (form.content || '').length }} 字</text>
+            <text class="pr__count">{{ (form.content || '').length }} / 至少 {{ minimum }} 字</text>
+          </view>
+          <view class="pr__field">
+            <view class="row-between">
+              <text class="pr__label">图片/视频附件</text>
+              <text class="pr__count">图片≤{{ rules.maxImages }}，视频≤{{ rules.maxVideos }}</text>
+            </view>
+            <view v-for="(file, index) in form.attachments" :key="file.fileId" class="pr__attachment">
+              <view class="flex-1" @click="openAttachment(file)">
+                <text class="t-sm t-bold">{{ file.fileName || '附件' }}</text>
+                <text class="pr__attachment-meta">{{ file.mimeType || '' }} · {{ file.readyForBusiness === false ? '安全扫描中' : '可用' }}</text>
+              </view>
+              <text class="pr__remove" @click.stop="removeAttachment(index)">删除</text>
+            </view>
+            <button class="pr__attach-btn" :disabled="uploading || submitting" @click="addAttachment">
+              {{ uploading ? '上传中…' : '+ 添加图片/视频' }}
+            </button>
           </view>
         </view>
         <view class="card stack">
@@ -53,6 +69,7 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
+import fileSdk from '@/services/fileSdk'
 import MobileInlineAlert from '@/components/MobileInlineAlert.vue'
 import { toast } from '@/utils/nav'
 
@@ -67,12 +84,13 @@ export default {
   components: { MobileInlineAlert },
   data() {
     return {
-      pageState: 'loading', loaded: false, submitting: false, showTypePick: false,
+      pageState: 'loading', loaded: false, submitting: false, uploading: false, showTypePick: false,
       reportType: 'DAILY',
       typeOptions: [
         { v: 'DAILY', l: '日报' }, { v: 'MONTHLY', l: '月报' }, { v: 'SUMMARY', l: '实习总结' }
       ],
-      form: { periodKey: '', content: '' }, reports: [], receipt: null,
+      form: { periodKey: '', content: '', attachments: [] }, reports: [], receipt: null,
+      rules: { weeklyMinWords: 30, monthlyMinWords: 100, summaryMinWords: 300, maxImages: 9, maxVideos: 3 },
       batchId: '', internshipId: '', loadSequence: 0
     }
   },
@@ -83,10 +101,15 @@ export default {
       return this.reportType === 'DAILY' ? '如 2026-07-10' : '如 2026-07'
     },
     contentPlaceholder() {
-      const min = { DAILY: 30, MONTHLY: 100, SUMMARY: 300 }[this.reportType] || 30
-      return `请填写${this.typeLabel}正文（至少 ${min} 字）`
+      return `请填写${this.typeLabel}正文（至少 ${this.minimum} 字）`
     },
-    minimum() { return { DAILY: 30, MONTHLY: 100, SUMMARY: 300 }[this.reportType] || 30 },
+    minimum() {
+      return {
+        DAILY: Number(this.rules.weeklyMinWords || 30),
+        MONTHLY: Number(this.rules.monthlyMinWords || 100),
+        SUMMARY: Number(this.rules.summaryMinWords || 300)
+      }[this.reportType] || 30
+    },
     typeReports() { return this.reports.filter((item) => item.reportType === this.reportType) },
     currentReport() {
       const period = this.reportType === 'SUMMARY' ? 'FINAL' : this.form.periodKey
@@ -117,6 +140,7 @@ export default {
         ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
         : v === 'MONTHLY' ? `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` : 'FINAL'
       this.form.content = DEFAULT_TPL[v] || ''
+      this.form.attachments = []
     },
     async load() {
       const sequence = ++this.loadSequence
@@ -129,8 +153,12 @@ export default {
         const result = await studentApi.getInternshipProcessReports(this.batchId, this.internshipId)
         if (sequence !== this.loadSequence) return
         this.reports = result.items || []
+        this.rules = { ...this.rules, ...(result.rules || {}) }
         const current = this.currentReport
-        if (current?.status === 'RETURNED') this.form.content = current.content || this.form.content
+        if (current?.status === 'RETURNED') {
+          this.form.content = current.content || this.form.content
+          this.form.attachments = current.attachments || []
+        }
         this.loaded = true
         this.pageState = 'ready'
       } catch (e) {
@@ -142,13 +170,46 @@ export default {
       this.reportType = v
       uni.setNavigationBarTitle({ title: '填写' + this.typeLabel })
       this.prepareForm(v)
-      if (this.currentReport) this.form.content = this.currentReport.content || ''
+      if (this.currentReport) {
+        this.form.content = this.currentReport.content || ''
+        this.form.attachments = this.currentReport.attachments || []
+      }
     },
     statusLabel(status) { return ({ PENDING_REVIEW: '待批阅', APPROVED: '已通过', RETURNED: '已退回' })[status] || status || '未知' },
     selectRecord(item) {
       if (this.submitting) return
       this.form.periodKey = item.periodKey
       this.form.content = item.content || ''
+      this.form.attachments = item.attachments || []
+    },
+    async addAttachment() {
+      if (this.uploading || this.submitting) return
+      this.uploading = true
+      try {
+        const picked = await fileSdk.choose()
+        if (!picked) return
+        const uploaded = await fileSdk.upload(picked, {
+          bizType: 'INTERNSHIP_REPORT_DRAFT',
+          bizId: this.internshipId || ''
+        })
+        if (!uploaded?.fileId) throw new Error('上传结果缺少文件编号')
+        this.form.attachments = [...this.form.attachments, uploaded]
+      } catch (e) {
+        toast((e && e.message) || '附件上传失败，请重试')
+      } finally {
+        this.uploading = false
+      }
+    },
+    removeAttachment(index) {
+      if (this.submitting || this.uploading) return
+      this.form.attachments = this.form.attachments.filter((_, i) => i !== index)
+    },
+    async openAttachment(file) {
+      try {
+        await fileSdk.open(file.fileId)
+      } catch (e) {
+        toast((e && e.message) || '附件暂时无法打开')
+      }
     },
     async submit() {
       if (this.submitting || !this.canSubmit) return
@@ -159,7 +220,9 @@ export default {
           batchId: this.batchId, internshipId: this.internshipId,
           reportType: this.reportType,
           periodKey: this.reportType === 'SUMMARY' ? 'FINAL' : this.form.periodKey,
-          content: this.form.content.trim(), expectedVersion: current?.version ?? 0
+          content: this.form.content.trim(),
+          attachmentFileIds: this.form.attachments.map((file) => file.fileId),
+          expectedVersion: current?.version ?? 0
         })
         this.receipt = {
           actionLabel: current ? `${this.typeLabel}已重新提交` : `${this.typeLabel}已提交`,
@@ -191,4 +254,9 @@ export default {
 .pr__input { border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 10px 12px; font-size: var(--font-size-sm); }
 .pr__textarea { border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 10px 12px; min-height: 160px; font-size: var(--font-size-sm); width: 100%; box-sizing: border-box; }
 .pr__count { font-size: var(--font-size-xs); color: var(--text-tertiary); text-align: right; }
+.pr__attachment { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); }
+.pr__attachment-meta { display: block; margin-top: 3px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.pr__remove { flex-shrink: 0; font-size: var(--font-size-sm); color: var(--danger-600); }
+.pr__attach-btn { margin: 0; min-height: var(--touch-target-min); border: 1px dashed var(--border-base); background: var(--bg-card); color: var(--brand-primary); font-size: var(--font-size-sm); }
+.pr__attach-btn::after { border: none; }
 </style>
