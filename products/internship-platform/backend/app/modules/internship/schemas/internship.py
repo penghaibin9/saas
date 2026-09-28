@@ -141,6 +141,7 @@ class ExceptionHandleRequest(BaseModel):
 class ReportReviewRequest(BaseModel):
     action: str = Field(..., description="APPROVE / RETURN")
     comment: Optional[str] = Field(None, description="退回时必填 ≥5 字")
+    ratingLevel: Optional[int] = Field(None, ge=1, le=5, description="五级批阅评价 1~5；通过时必填")
     expectedVersion: Optional[int] = Field(None, ge=0, description="乐观锁期望版本")
     version: Optional[int] = Field(None, ge=0, description="expectedVersion 别名")
 
