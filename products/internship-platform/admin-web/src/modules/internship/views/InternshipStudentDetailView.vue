@@ -60,6 +60,7 @@
       <div v-show="activeSection === 'placement'" class="isd-placement-actions">
         <button v-if="canManage && ['PREPARING', 'READY'].includes(detail.status)" class="mp-btn" :disabled="onboardLoading || submitting" @click="checkOnboard()">{{ onboardLoading ? '正在核对…' : '核对上岗条件' }}</button>
         <button v-if="canManage" class="mp-btn mp-btn--primary" @click="openAssign">{{ detail.positionId ? '调整岗位' : '分配岗位' }}</button>
+        <button v-if="canEvalQr" class="mp-btn" :disabled="qrLoading" @click="openEvaluationQr">{{ qrLoading ? '正在生成…' : '企业扫码评价' }}</button>
         <button v-if="canManage && detail.positionId" class="mp-btn mp-btn--danger-ghost" @click="askUnassign">退岗</button>
       </div>
       <section v-if="(onboardLoading || onboardError || onboardChecklist) && ['profile', 'placement'].includes(activeSection)" class="mp-card isd-check" aria-label="上岗条件核对" aria-live="polite" :aria-busy="onboardLoading">
@@ -145,6 +146,31 @@
       </div>
     </AppDrawer>
 
+    <AppDrawer v-model:visible="qrVisible" title="企业扫码评价" mode="modal" size="medium">
+      <div class="qr-eval">
+        <div v-if="qrLoading" class="qr-eval__state">正在生成企业评价二维码…</div>
+        <div v-else-if="qrError" class="qr-eval__error" role="alert">{{ qrError }}</div>
+        <template v-else-if="qrEntry">
+          <div class="qr-eval__intro">
+            <strong>{{ qrEntry.studentName || detail?.name }} · 企业评价</strong>
+            <p>{{ qrEntry.securityNote }}</p>
+          </div>
+          <AppQRCode :value="qrEntry.url" :size="220" label="企业扫码后进入指定学生评价任务">
+            <img class="qr-eval__image" :src="qrEntry.qrImageDataUrl" alt="企业扫码评价二维码" />
+          </AppQRCode>
+          <div class="qr-eval__facts">
+            <span>批次 #{{ qrEntry.batchId }}</span>
+            <span>安置快照 #{{ qrEntry.placementSnapshotId }}</span>
+          </div>
+          <div class="qr-eval__link">{{ qrEntry.url }}</div>
+          <div class="ie-actions">
+            <button type="button" class="mp-btn" @click="copyQrLink">复制评价链接</button>
+            <button type="button" class="mp-btn mp-btn--primary" @click="qrVisible = false">完成</button>
+          </div>
+        </template>
+      </div>
+    </AppDrawer>
+
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
@@ -156,10 +182,11 @@
 <script>
 /** 实习学生详情：普通状态流只负责 READY/ONBOARD/ASSESS；归档统一进入正式归档中心。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSensitiveText, AppStatusTag, AppInternshipPositionPicker } from '@/components/common'
+import { AppSensitiveText, AppStatusTag, AppInternshipPositionPicker, AppQRCode } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
+import { enterpriseEvalApi } from '@/modules/internship/api/enterprise-eval.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
@@ -172,7 +199,7 @@ const STATUS_NEXT = {
 
 export default {
   name: 'InternshipStudentDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSensitiveText, AppStatusTag, AppDrawer, AppConfirmDialog, AppInternshipPositionPicker },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSensitiveText, AppStatusTag, AppDrawer, AppConfirmDialog, AppInternshipPositionPicker, AppQRCode },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -182,6 +209,7 @@ export default {
       sections: [{ key: 'profile', label: '基本资料' }, { key: 'eligibility', label: '资格审核' }, { key: 'placement', label: '岗位去向' }, { key: 'history', label: '处理记录' }],
       eligibilityOptions: [{ value: 'QUALIFIED', label: '合格', hint: '已按学校要求核对，可以继续实习准备' }, { value: 'UNQUALIFIED', label: '不合格', hint: '本次未通过，请在说明中写清后续安排' }, { value: 'PENDING', label: '待认定', hint: '暂未形成结论，继续核对或补充材料' }],
       assignVisible: false, assignPositionId: '', assignError: '',
+      qrVisible: false, qrLoading: false, qrError: '', qrEntry: null,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, extra: null }
     }
   },
@@ -202,6 +230,15 @@ export default {
     canManage() { return !this.isReadonly && canCode(this.ctx, 'internship.student.manage') },
     canReview() { return !this.isReadonly && canCode(this.ctx, 'internship.student.eligibility.review') },
     canArchive() { return canCode(this.ctx, 'internship.archive.view') },
+    canEvalQr() {
+      return !!(
+        this.detail &&
+        this.detail.enterpriseId &&
+        this.detail.positionId &&
+        ['ONBOARD', 'ASSESSING'].includes(this.detail.status) &&
+        canCode(this.ctx, 'internship.eval.enterprise.manage')
+      )
+    },
     statusAction() { return this.detail && this.detail.status !== 'ARCHIVED' ? STATUS_NEXT[this.detail.status] : null },
     pageSubtitle() {
       if (!this.detail) return this.loading ? '加载中' : '核对本批次学生实习档案'
@@ -232,13 +269,13 @@ export default {
   },
   watch: {
     '$route.params.id': { immediate: true, handler() {
-      this.assignVisible = false; this.confirm.visible = false
+      this.assignVisible = false; this.qrVisible = false; this.qrEntry = null; this.qrError = ''; this.confirm.visible = false
       this.reviewForm = { status: '', reason: '' }; this.reviewError = ''; this.reviewConflict = false
       this.load()
       this.focusHeading()
     } },
     '$route.query.batchId'() {
-      this.confirm.visible = false; this.assignVisible = false
+      this.confirm.visible = false; this.assignVisible = false; this.qrVisible = false; this.qrEntry = null; this.qrError = ''
       this.reviewForm = { status: '', reason: '' }; this.reviewError = ''; this.reviewConflict = false
       this.load()
     }
@@ -275,6 +312,40 @@ export default {
         path: `/admin/internship/positions/${this.detail.positionId}`,
         query: { batchId: String(this.detail.batchId || this.$route.query.batchId || ''), returnTo: this.$route.fullPath }
       })
+    },
+    async openEvaluationQr() {
+      if (!this.canEvalQr || this.qrLoading) return
+      this.qrVisible = true
+      this.qrLoading = true
+      this.qrError = ''
+      this.qrEntry = null
+      const recordId = this.detail?.id || this.$route.params.id
+      const res = await enterpriseEvalApi.getQrEntry(recordId)
+      this.qrLoading = false
+      if (!this.qrVisible || String(recordId) !== String(this.detail?.id || this.$route.params.id)) return
+      if (res.code !== 0) {
+        this.qrError = res.message || '企业评价二维码生成失败'
+        return
+      }
+      this.qrEntry = res.data
+    },
+    async copyQrLink() {
+      const value = String(this.qrEntry?.url || '')
+      if (!value) return
+      try {
+        await navigator.clipboard.writeText(value)
+        toast.success('企业评价链接已复制')
+      } catch {
+        const input = document.createElement('textarea')
+        input.value = value
+        input.style.position = 'fixed'
+        input.style.opacity = '0'
+        document.body.appendChild(input)
+        input.select()
+        document.execCommand('copy')
+        document.body.removeChild(input)
+        toast.success('企业评价链接已复制')
+      }
     },
     goBack() {
       if (this.volunteerReturnTo) return this.$router.push(this.volunteerReturnTo)
@@ -398,6 +469,7 @@ export default {
 @import '@/styles/module-page.css';
 .sd-card-note{margin:4px 0 0;font-size:12px;line-height:1.5;color:var(--t3,#64748b)}.sd-warn{color:var(--danger,#dc2626)}.sd-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 22px}.sd-kv{display:flex;flex-direction:column;gap:4px;min-width:0}.sd-kv--full{grid-column:1/-1}.sd-k{font-size:12px;color:var(--t3,#64748b)}.sd-v{font-size:13px;line-height:1.55;color:var(--t1,#0f1e3d);min-width:0}.sd-v--wrap{word-break:break-word;white-space:normal}.sd-dest-actions{margin-top:16px;padding:14px;border-radius:9px;background:var(--warning-50,#fff7ed);display:flex;align-items:center;justify-content:space-between;gap:16px}.sd-dest-actions>div:first-child{display:flex;flex-direction:column;gap:4px}.sd-dest-actions strong{font-size:13px;color:var(--t1,#0f1e3d)}.sd-dest-actions span{font-size:12px;line-height:1.5;color:var(--t2,#475569)}.sd-dest-actions__buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;flex-shrink:0}.mp-btn{padding:8px 14px;border:1px solid var(--line,#d9dee8);border-radius:8px;background:#fff;cursor:pointer;font-size:13px;line-height:1.4;white-space:nowrap}.mp-btn:hover{border-color:var(--pri,#2563eb);color:var(--pri,#2563eb)}.mp-btn--primary{background:var(--pri,#2563eb);color:#fff;border-color:var(--pri,#2563eb)}.mp-btn--primary:hover{color:#fff}.mp-btn--danger-ghost{border-color:var(--danger-300,#fca5a5);color:var(--danger,#dc2626)}.mp-btn:disabled{opacity:.5;cursor:not-allowed}.ie-form{display:grid;grid-template-columns:1fr;gap:16px}.ie-intro{padding:12px 14px;border-radius:8px;background:var(--pri-50,#eff6ff)}.ie-intro strong{font-size:14px;color:var(--t1,#0f1e3d)}.ie-intro p{margin:5px 0 0;font-size:12px;line-height:1.55;color:var(--t2,#475569)}.ie-fld{display:flex;flex-direction:column;gap:6px}.ie-fld--full{grid-column:1/-1}.ie-lbl{font-size:12px;color:var(--t2,#475569)}.ie-lbl i{color:var(--danger,#dc2626);font-style:normal}.ie-err{color:var(--danger,#dc2626);font-size:12px;margin:0;padding:9px 11px;border-radius:7px;background:var(--danger-50,#fef2f2)}.ie-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}@media(max-width:720px){.sd-grid{grid-template-columns:1fr}.sd-dest-actions{align-items:flex-start;flex-direction:column}.sd-dest-actions__buttons{justify-content:flex-start}.mp-btn{max-width:100%;white-space:normal}}
 
+.qr-eval{display:flex;flex-direction:column;align-items:center;gap:16px;padding:4px}.qr-eval__state,.qr-eval__error{width:100%;box-sizing:border-box;padding:16px;border-radius:8px;background:var(--surface-soft,#f8fafc);font-size:13px;color:var(--t2,#475569)}.qr-eval__error{background:var(--danger-50,#fef2f2);color:var(--danger,#dc2626)}.qr-eval__intro{width:100%;padding:12px 14px;border-radius:9px;background:var(--pri-50,#eff6ff)}.qr-eval__intro strong{font-size:14px}.qr-eval__intro p{margin:5px 0 0;font-size:12px;line-height:1.6;color:var(--t2,#475569)}.qr-eval__image{display:block;width:220px;height:220px;object-fit:contain}.qr-eval__facts{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--t3,#64748b)}.qr-eval__link{width:100%;max-height:88px;overflow:auto;padding:10px;border:1px solid var(--line,#d9dee8);border-radius:8px;background:#fff;font-size:11px;line-height:1.5;word-break:break-all}.qr-eval .ie-actions{width:100%}
 .isd.mps{gap:12px}
 .isd-identity{display:flex;align-items:center;flex-wrap:wrap;gap:10px 20px;color:var(--t2);font-size:13px;margin:0}
 .isd-sections{display:flex;gap:26px;border-bottom:1px solid var(--card-b);margin-bottom:4px;overflow:auto}
