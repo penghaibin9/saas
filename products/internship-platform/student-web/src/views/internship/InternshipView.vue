@@ -601,6 +601,27 @@
           <span>{{ evalReceipt.nextStep }}</span>
           <button type="button" @click="evalReceipt = null">关闭</button>
         </div>
+        <section class="sp-card sp-formal-docs">
+          <div class="sp-panel__head">正式鉴定与证明 <span class="sp-muted">根据已审核正式业务事实生成</span></div>
+          <div class="sp-formal-docs__grid">
+            <div>
+              <strong>企业实习鉴定表</strong>
+              <p>读取学校已审核的企业评价，保留企业意见、评分、企业导师和签章区。</p>
+              <div class="sp-formal-docs__actions">
+                <button class="sp-btn" :disabled="busy" @click="generateFormalDocument('ENTERPRISE_EVALUATION')">生成最新 PDF</button>
+                <button v-if="latestFormalDocument('ENTERPRISE_EVALUATION')" class="sp-btn sp-btn--ghost" :disabled="busy" @click="downloadFormalDocument(latestFormalDocument('ENTERPRISE_EVALUATION'))">下载 V{{ latestFormalDocument('ENTERPRISE_EVALUATION').documentVersion }}</button>
+              </div>
+            </div>
+            <div>
+              <strong>学生实习证明</strong>
+              <p>实习结束进入考核/归档后生成；签到考勤天数按正式签到和已批准补签自动计算。</p>
+              <div class="sp-formal-docs__actions">
+                <button class="sp-btn" :disabled="busy" @click="generateFormalDocument('INTERNSHIP_CERTIFICATE')">生成最新 PDF</button>
+                <button v-if="latestFormalDocument('INTERNSHIP_CERTIFICATE')" class="sp-btn sp-btn--ghost" :disabled="busy" @click="downloadFormalDocument(latestFormalDocument('INTERNSHIP_CERTIFICATE'))">下载 V{{ latestFormalDocument('INTERNSHIP_CERTIFICATE').documentVersion }}</button>
+              </div>
+            </div>
+          </div>
+        </section>
         <div class="two">
           <section class="sp-card">
             <div class="sp-panel__head">实习自评 / 鉴定</div>
@@ -787,6 +808,7 @@ const appealReason = ref('')
 const appealMeta = ref(null)
 const selfEvalMeta = ref(null)
 const evalReceipt = ref(null)
+const formalDocuments = ref([])
 
 const brandSchool = computed(() => cfg.brand?.schoolName || '学校')
 const studentName = computed(() => session.user?.realName || '同学')
@@ -1038,6 +1060,7 @@ function resetSourceStates() {
   planMeta.value = null
   selfEvalMeta.value = null
   appealMeta.value = null
+  formalDocuments.value = []
 }
 
 function rowsFrom(data) {
@@ -1130,13 +1153,15 @@ async function fetchTabSource(key) {
     return !!planMeta.value?.id
   }
   if (key === 'eval') {
-    const [selfEval, appeal] = await Promise.all([
+    const [selfEval, appeal, docs] = await Promise.all([
       internshipCoreApi.selfEval(context()),
       portalApi.internshipScoreAppealStatus(context()),
+      internshipCoreApi.formalDocuments(context()),
     ])
     selfEvalMeta.value = selfEval || null
     appealMeta.value = appeal || null
-    return !!selfEvalMeta.value || !!appealMeta.value || !!my.value.score
+    formalDocuments.value = rowsFrom(docs)
+    return !!selfEvalMeta.value || !!appealMeta.value || !!my.value.score || formalDocuments.value.length > 0
   }
   if (key === 'enterprises') {
     enterprises.value = rowsFrom(await portalApi.internshipEnterprises(enterpriseCity.value))
@@ -1759,6 +1784,48 @@ async function submitReport() {
     ui.notify(reportError.value)
   } finally { busy.value = false }
 }
+function latestFormalDocument(type) {
+  return formalDocuments.value
+    .filter((item) => item.documentType === type && item.status === 'GENERATED')
+    .sort((a, b) => Number(b.documentVersion || 0) - Number(a.documentVersion || 0))[0] || null
+}
+async function downloadPackedPdf(data, fallbackName) {
+  const raw = atob(String(data?.contentBase64 || ''))
+  const bytes = new Uint8Array(raw.length)
+  for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i)
+  const blob = new Blob([bytes], { type: data?.mediaType || 'application/pdf' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = data?.filename || fallbackName
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  URL.revokeObjectURL(url)
+}
+async function generateFormalDocument(type) {
+  if (busy.value) return
+  busy.value = true
+  try {
+    const row = await internshipCoreApi.generateFormalDocument(currentInternshipContext(), type)
+    ui.notify(row?.reused ? '正式文书已是最新版本' : '正式文书已生成')
+    formalDocuments.value = rowsFrom(await internshipCoreApi.formalDocuments(currentInternshipContext()))
+    await downloadFormalDocument(row)
+  } catch (e) {
+    ui.notify(e?.message || '正式文书生成失败')
+  } finally {
+    busy.value = false
+  }
+}
+async function downloadFormalDocument(row) {
+  if (!row?.id) return
+  try {
+    const data = await internshipCoreApi.formalDocumentPdf(currentInternshipContext(), row.id)
+    await downloadPackedPdf(data, (row.documentTypeLabel || '岗位实习正式文书') + '.pdf')
+  } catch (e) {
+    ui.notify(e?.message || '正式文书下载失败')
+  }
+}
 async function submitSelfEval() {
   busy.value = true
   try {
@@ -1849,4 +1916,5 @@ onMounted(load)
 @media(max-width:1000px){.sp-preparation{grid-template-columns:1fr}.sp-preparation__facts{gap:20px}}
 .sp-attendance-overview{display:flex;align-items:center;gap:22px;margin:12px 0 16px}.sp-attendance-ring{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;position:relative}.sp-attendance-ring::after{content:'';position:absolute;width:94px;height:94px;border-radius:50%;background:var(--card)}.sp-attendance-ring>div{position:relative;z-index:1;text-align:center;display:flex;flex-direction:column}.sp-attendance-ring strong{font-size:25px}.sp-attendance-ring span{font-size:11px;color:var(--t3)}.sp-attendance-legend{display:grid;gap:8px;flex:1}.sp-attendance-legend>div{display:grid;grid-template-columns:10px 1fr auto;align-items:center;gap:8px;font-size:12px}.sp-attendance-legend .dot{width:9px;height:9px;border-radius:50%}.dot.checkin{background:var(--ok-fg)}.dot.absent{background:var(--danger-fg)}.dot.leave{background:var(--warn-fg)}.dot.makeup{background:var(--pri)}.dot.exempt{background:var(--t4)}.sp-attendance-list{display:flex;flex-direction:column;max-height:520px;overflow:auto}.sp-attendance-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--line)}.sp-attendance-row>div{display:flex;flex-direction:column;gap:3px}.sp-attendance-row span{font-size:11px;color:var(--t3)}@media(max-width:760px){.sp-attendance-overview{align-items:flex-start;flex-direction:column}}
 .sp-home-attendance{margin-bottom:14px}.sp-home-attendance__grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}.sp-home-attendance__grid>div{padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--bg2);display:flex;flex-direction:column;gap:5px}.sp-home-attendance__grid span{font-size:11px;color:var(--t3)}.sp-home-attendance__grid strong{font-size:20px}@media(max-width:900px){.sp-home-attendance__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.sp-formal-docs{margin-bottom:14px}.sp-formal-docs__grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.sp-formal-docs__grid>div{padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}.sp-formal-docs__grid strong{font-size:14px}.sp-formal-docs__grid p{min-height:42px;margin:6px 0 12px;color:var(--t3);font-size:12px;line-height:1.6}.sp-formal-docs__actions{display:flex;gap:8px;flex-wrap:wrap}@media(max-width:800px){.sp-formal-docs__grid{grid-template-columns:1fr}}
 </style>
