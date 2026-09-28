@@ -26,8 +26,22 @@ class CheckinRule(BaseModel):
 
 class WeeklyReportRuleCfg(BaseModel):
     frequency: str = Field("WEEKLY", description="WEEKLY/BIWEEKLY")
-    minWordCount: int = Field(800, ge=0, le=5000)
+    minWordCount: int = Field(30, ge=0, le=5000)
+    requiredCount: int = Field(0, ge=0, le=100, description="本批次学生应交周报篇数；0 表示按周期推导")
     deadlineWeekday: int = Field(7, ge=1, le=7, description="每周几前必须提交，1=周一...7=周日")
+    reviewSlaHours: int = Field(48, ge=1, le=720, description="教师准时批阅时限（小时）")
+
+
+class ProcessReportRuleCfg(BaseModel):
+    dailyMinWords: int = Field(30, ge=1, le=5000)
+    dailyRequiredCount: int = Field(0, ge=0, le=500)
+    monthlyMinWords: int = Field(100, ge=1, le=10000)
+    monthlyRequiredCount: int = Field(0, ge=0, le=60)
+    summaryMinWords: int = Field(300, ge=1, le=20000)
+    summaryRequiredCount: int = Field(1, ge=0, le=1)
+    maxImages: int = Field(9, ge=0, le=30)
+    maxVideos: int = Field(3, ge=0, le=10)
+    reviewSlaHours: int = Field(48, ge=1, le=720)
 
 
 class GuidanceRuleCfg(BaseModel):
@@ -83,6 +97,7 @@ class RulesConfig(BaseModel):
 
     checkin: CheckinRule = Field(default_factory=CheckinRule)
     weeklyReport: WeeklyReportRuleCfg = Field(default_factory=WeeklyReportRuleCfg)
+    processReport: ProcessReportRuleCfg = Field(default_factory=ProcessReportRuleCfg)
     guidance: GuidanceRuleCfg = Field(default_factory=GuidanceRuleCfg)
     evaluation: EvaluationRuleCfg = Field(default_factory=EvaluationRuleCfg)
     score: ScoreRuleCfg = Field(default_factory=ScoreRuleCfg)
