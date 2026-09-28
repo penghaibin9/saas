@@ -298,6 +298,13 @@
       }
     },
     {
+      "path": "pages/teacher-internship/school-stats/index",
+      "style": {
+        "navigationBarTitleText": "校级实习统计",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/teacher-internship/student-eval/index",
       "style": {
         "navigationBarTitleText": "学生实习鉴定",
