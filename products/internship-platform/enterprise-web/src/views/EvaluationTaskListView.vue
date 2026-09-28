@@ -1,13 +1,15 @@
 <script setup>
 import { computed,onBeforeUnmount,reactive,ref,watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { assertEvaluationContext,createRequestFence,evaluationContextKey,freezeEvaluationTarget } from '../services/evaluationContext.js'
 import { enterpriseInternshipApi } from '../services/enterpriseInternshipApi'
 import { useEnterpriseContextStore } from '../stores/enterpriseContext'
 
 // Authority contract: canonical source=ENTERPRISE_ONLINE; actor/member/time 由服务端写入并审计，客户端 payload 不得伪造。
 const context=useEnterpriseContextStore()
+const route=useRoute()
 const SCORE_FIELDS=['attendanceScore','skillScore','attitudeScore','collaborationScore','safetyScore']
-const loading=ref(true),submitting=ref(false),error=ref(''),items=ref([]),tab=ref('PENDING'),selected=ref(null),receipt=ref(null)
+const loading=ref(true),submitting=ref(false),error=ref(''),items=ref([]),tab=ref('PENDING'),selected=ref(null),receipt=ref(null),deepLinkOpened=ref('')
 const page=ref(1),pageSize=50,total=ref(null),hasNext=ref(false)
 const form=reactive({attendanceScore:null,skillScore:null,attitudeScore:null,collaborationScore:null,safetyScore:null,overallComment:'',recommendHire:false})
 const pageInfo=computed(()=>total.value===null?`第 ${page.value} 页`:`第 ${page.value} 页 · 共 ${total.value} 项`)
@@ -16,6 +18,14 @@ const batchId=computed(()=>String(context.campaign?.batchId||''))
 const contextKey=computed(()=>evaluationContextKey(context))
 const listFence=createRequestFence(),submitFence=createRequestFence()
 const taskCount=computed(()=>total.value===null?items.value.length:total.value)
+const requestedInternshipId=computed(()=>{
+  const value=String(route.query?.internshipId||'').trim()
+  return /^[1-9]\d*$/.test(value)?value:''
+})
+const requestedBatchId=computed(()=>{
+  const value=String(route.query?.batchId||'').trim()
+  return /^[1-9]\d*$/.test(value)?value:''
+})
 
 function resetForm(){Object.assign(form,{attendanceScore:null,skillScore:null,attitudeScore:null,collaborationScore:null,safetyScore:null,overallComment:'',recommendHire:false})}
 function validate(){
@@ -31,12 +41,32 @@ async function load(){
   const current=listFence.start()
   loading.value=true;error.value=''
   if(!collabReady.value){items.value=[];total.value=null;hasNext.value=false;error.value='学校尚未开放当前批次的实习评价协同';loading.value=false;return}
+  if(requestedBatchId.value&&String(batchId.value)!==requestedBatchId.value){
+    items.value=[];total.value=null;hasNext.value=false;error.value='扫码任务不属于当前企业协同批次，请重新扫码或切换到正确企业账号';loading.value=false;return
+  }
   try{
-    const data=await enterpriseInternshipApi.evaluationTasks({batchId:batchId.value,status:tab.value==='ALL'?'':tab.value,page:page.value,pageSize})
+    const deepId=requestedInternshipId.value
+    const data=await enterpriseInternshipApi.evaluationTasks({
+      batchId:batchId.value,
+      status:deepId?'':(tab.value==='ALL'?'':tab.value),
+      page:page.value,
+      pageSize,
+      internshipId:deepId
+    })
     if(!current())return
     items.value=Array.isArray(data)?data:(data?.items||[])
     total.value=Array.isArray(data)||data?.total===undefined||data?.total===null?null:Number(data.total)
     hasNext.value=Array.isArray(data)?false:(data?.hasNext===true||(Number.isFinite(total.value)&&page.value*pageSize<total.value))
+    if(deepId){
+      const item=items.value.find(row=>String(row?.internshipId||row?.id||'')===deepId)
+      const key=`${contextKey.value}:${deepId}`
+      if(item&&deepLinkOpened.value!==key&&(item.task_status||item.taskStatus||item.status)!=='COMPLETED'){
+        deepLinkOpened.value=key
+        start(item)
+      }else if(!item){
+        error.value='当前企业账号无权访问该扫码评价任务，或该学生已不属于当前企业'
+      }
+    }
   }catch(e){if(current()){items.value=[];total.value=null;hasNext.value=false;error.value=e.message||'评价任务加载失败'}}finally{if(current())loading.value=false}
 }
 function start(item){
@@ -72,11 +102,17 @@ function nextPage(){if(!hasNext.value)return;page.value+=1;load()}
 watch([tab,contextKey],([,newContext],[,oldContext]=[])=>{
   page.value=1
   if(newContext!==oldContext){
-    submitFence.invalidate();selected.value=null;receipt.value=null;submitting.value=false;resetForm()
+    submitFence.invalidate();selected.value=null;receipt.value=null;submitting.value=false;deepLinkOpened.value='';resetForm()
     items.value=[];total.value=null;hasNext.value=false
   }
   load()
 },{immediate:true})
+watch(requestedInternshipId,()=>{
+  page.value=1
+  deepLinkOpened.value=''
+  selected.value=null
+  load()
+})
 onBeforeUnmount(()=>{listFence.dispose();submitFence.dispose()})
 </script>
 <template>
