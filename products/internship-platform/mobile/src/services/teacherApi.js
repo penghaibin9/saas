@@ -8,11 +8,20 @@ export const teacherApi = {
   async getWeeklyDetail(id) {
     const d = await realRequest('/internship/reports/' + encodeURIComponent(String(id || '')))
     const c = d?.content || {}
-    return { work: c.work || '', harvest: c.harvest || '', plan: c.plan || '', positionName: d?.positionName || '', reviewComment: d?.reviewComment || '' }
+    return {
+      work: c.work || '',
+      harvest: c.harvest || '',
+      plan: c.plan || '',
+      positionName: d?.positionName || '',
+      reviewComment: d?.reviewComment || '',
+      attachments: d?.attachments || [],
+      immutableVersions: d?.immutableVersions || []
+    }
   },
-  reviewWeekly: (id, action, comment, expectedVersion) =>
-    realRequest(`/mobile/teacher/internship/weekly/${encodeURIComponent(String(id || ''))}/review`, {
-      method: 'POST', data: { action, comment: comment || '', expectedVersion }
+  reviewWeekly: (id, action, comment, expectedVersion, ratingLevel = null) =>
+    realRequest(`/internship/reports/${encodeURIComponent(String(id || ''))}/review`, {
+      method: 'POST',
+      data: { action, comment: comment || '', expectedVersion, ratingLevel }
     }),
   getInternshipVisitPlans: () => realRequest('/mobile/teacher/internship/visit-plans'),
   createInternshipGuidance: (body) => realRequest('/mobile/teacher/internship/guidance', { method: 'POST', data: body || {} }),
