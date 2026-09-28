@@ -321,6 +321,7 @@ def report_review_performance(user: dict, batch_id) -> dict:
             reviewer_name = str(row.reviewer_name or "系统")
             key = reviewer_id or f"name:{reviewer_name}"
             item = buckets.setdefault(key, {
+                "rowKey": key,
                 "reviewerUserId": reviewer_id,
                 "reviewerName": reviewer_name,
                 "reviewCount": 0,
