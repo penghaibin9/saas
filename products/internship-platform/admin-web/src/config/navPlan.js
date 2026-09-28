@@ -74,7 +74,8 @@ export const NAV_PLAN = [{
     ]),
     mod('in-archive-stats', '归档与分析', '/admin/internship/archive', [
       leaf('材料归档', '/admin/internship/archive?panel=records', 'internship.archive.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/material-center'] }),
-      leaf('实习统计', '/admin/internship/stats?dimension=overview', 'internship.stats.view', 'ANALYTICS_VIEW')
+      leaf('实习统计', '/admin/internship/stats?dimension=overview', 'internship.stats.view', 'ANALYTICS_VIEW'),
+      leaf('监管上报', '/admin/internship/regulatory-reporting', 'internship.reporting.view', 'WORKBENCH')
     ])
   ]
 }]
