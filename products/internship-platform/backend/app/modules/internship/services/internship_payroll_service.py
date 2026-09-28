@@ -1,6 +1,7 @@
 """Yiyang C05/G13 monthly payroll statements with immutable correction versions."""
 from __future__ import annotations
 
+import calendar
 import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -163,6 +164,13 @@ def submit_my(user: dict, body: dict):
 
     with session() as db:
         record, student, _batch = require_explicit_context(db, user, payload, for_write=True)
+        year, month_no = [int(part) for part in month.split("-", 1)]
+        month_start = date(year, month_no, 1)
+        month_end = date(year, month_no, calendar.monthrange(year, month_no)[1])
+        intern_start = record.intern_start_date.date() if record.intern_start_date else None
+        intern_end = record.intern_end_date.date() if record.intern_end_date else None
+        if intern_start and month_end < intern_start or intern_end and month_start > intern_end:
+            raise AppException("VALIDATION_ERROR", "工资月份必须落在当前实习周期内")
         file_obj = file_access_service.require_file_access(file_id, user=user, action="bind")
         if not str(file_obj.mime_type or "").lower().startswith("image/"):
             raise AppException("VALIDATION_ERROR", "工资凭证必须是图片")
