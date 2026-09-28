@@ -44,6 +44,7 @@ def _scope(user):
 def _row(r, rec, stu, class_name=None):
     return {
         "id": str(r.id), "internId": str(r.internship_id),
+        "batchId": str(rec.batch_id) if rec and rec.batch_id else "",
         "reportType": r.report_type, "reportTypeLabel": TYPE_LABEL.get(r.report_type, r.report_type),
         "periodKey": r.period_key,
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
@@ -256,13 +257,31 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
 
 def export_reports(report_type=None, status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.modules.internship.services.internship_export_util import load_export_rows
+
     items, _ = load_export_rows(
         list_reports, report_type=report_type, status=status, keyword=keyword,
         batch_id=batch_id, user=user)
+    with session() as db:
+        reviews = quality.latest_review_map(db, "PROCESS", [it.get("id") for it in items])
+
     label = TYPE_LABEL.get((report_type or "").upper(), "过程报告")
-    rows = [[it["studentNo"], it["studentName"], it["enterpriseName"], it["periodKey"],
-             it["wordCount"], it["submitAt"], it["statusLabel"]] for it in items]
-    headers = ["学号", "姓名", "企业", "周期", "字数", "提交时间", "状态"]
+    headers = [
+        "学号", "姓名", "企业", "报告类型", "周期", "字数", "提交时间", "状态",
+        "五级评价", "总结评分(0-100)", "批阅教师", "批阅时间", "批阅意见",
+    ]
+    rows = []
+    for it in items:
+        review = reviews.get(int(it["id"])) if str(it.get("id") or "").isdigit() else None
+        rows.append([
+            it["studentNo"], it["studentName"], it["enterpriseName"],
+            it["reportTypeLabel"], it["periodKey"], it["wordCount"], it["submitAt"],
+            it["statusLabel"],
+            review.get("ratingLevel") if review else "",
+            review.get("summaryScore") if review and review.get("summaryScore") is not None else "",
+            review.get("reviewerName") if review else "",
+            review.get("reviewedAt") if review else "",
+            review.get("comment") if review else "",
+        ])
     wm = f"岗位实习中心·{label}台账 · {_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M}"
     content = xlsx_util.build_ledger_xlsx(f"{label}台账", headers, rows, watermark=wm)
     return xlsx_util.pack_xlsx_result(content, f"{label}台账.xlsx", len(items))
