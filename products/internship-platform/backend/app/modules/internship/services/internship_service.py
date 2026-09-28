@@ -39,7 +39,16 @@ DEFAULT_RULES = {
     "checkin": {"requireDaily": True, "geofenceRadiusM": 500, "maxAccuracyM": 200,
                 "allowedExceptionTypes": ["OUT_OF_RANGE", "LOW_ACCURACY", "LOCATION_UNCERTAIN",
                                           "MOCK_LOCATION", "MISSING"]},
-    "weeklyReport": {"frequency": "WEEKLY", "minWordCount": 800, "deadlineWeekday": 7},
+    "weeklyReport": {
+        "frequency": "WEEKLY", "minWordCount": 30, "requiredCount": 0,
+        "deadlineWeekday": 7, "reviewSlaHours": 48,
+    },
+    "processReport": {
+        "dailyMinWords": 30, "dailyRequiredCount": 0,
+        "monthlyMinWords": 100, "monthlyRequiredCount": 0,
+        "summaryMinWords": 300, "summaryRequiredCount": 1,
+        "maxImages": 9, "maxVideos": 3, "reviewSlaHours": 48,
+    },
     "guidance": {"minVisitsPerTerm": 2, "minCommunicationsPerMonth": 2},
     "evaluation": {"enterpriseWeight": 0.4, "teacherWeight": 0.4, "selfWeight": 0.2},
     "score": {"passThreshold": 60.0, "components": [
