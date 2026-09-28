@@ -195,10 +195,18 @@ def _scope_filter(db, tenant_id: int, user):
             Major.is_deleted.is_(False),
         )).all())
         if major_ids:
+            major_class_ids = set(int(x) for x in db.scalars(select(SchoolClass.id).where(
+                SchoolClass.tenant_id == int(tenant_id),
+                SchoolClass.major_id.in_(major_ids),
+                SchoolClass.is_deleted.is_(False),
+            )).all())
+            major_conds = [StudentProfile.major_id.in_(major_ids)]
+            if major_class_ids:
+                major_conds.append(StudentProfile.class_id.in_(major_class_ids))
             student_ids.update(int(x) for x in db.scalars(select(StudentProfile.id).where(
                 StudentProfile.tenant_id == int(tenant_id),
-                StudentProfile.major_id.in_(major_ids),
                 StudentProfile.is_deleted.is_(False),
+                or_(*major_conds),
             )).all())
 
     college_names = {str(x).strip() for x in (resolved.get("collegeNames") or set()) if str(x).strip()}
