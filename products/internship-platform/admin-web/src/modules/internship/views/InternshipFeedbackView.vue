@@ -330,7 +330,7 @@ export default {
       if (!this.canHandle) return
       this.confirm = { visible: true, action, submitting: false }
     },
-    async submitConclusion(reason) {
+    async submitConclusion({ reason = '' } = {}) {
       const conclusion = String(reason || '').trim()
       if (conclusion.length < 5) {
         toast.error('处理意见不少于5个字')
