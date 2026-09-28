@@ -1,0 +1,169 @@
+from types import SimpleNamespace
+
+import pytest
+
+from app.core.exceptions import AppException
+from app.models import InternshipCheckin, InternshipTeacherCheckin
+from app.modules.internship.services import internship_teacher_activity_service as svc
+
+
+class _ScalarRows:
+    def __init__(self, rows):
+        self._rows = rows
+
+    def all(self):
+        return list(self._rows)
+
+
+class _FakeDb:
+    def __init__(self, scalar_values=None):
+        self.scalar_values = list(scalar_values or [])
+        self.added = []
+        self.committed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+    def get(self, _model, ident):
+        return SimpleNamespace(id=int(ident), tenant_id=1, is_deleted=False)
+
+    def scalar(self, _query):
+        return self.scalar_values.pop(0) if self.scalar_values else None
+
+    def scalars(self, _query):
+        return _ScalarRows([])
+
+    def add(self, row):
+        self.added.append(row)
+
+    def flush(self):
+        for row in self.added:
+            if getattr(row, "id", None) is None:
+                row.id = 55
+
+    def commit(self):
+        self.committed = True
+
+
+def _teacher():
+    return {
+        "userId": "7",
+        "realName": "张老师",
+        "currentRoleCode": "INTERN_MENTOR",
+        "userType": "TEACHER",
+    }
+
+
+def _admin():
+    return {
+        "userId": "9",
+        "realName": "实习管理员",
+        "currentRoleCode": "SCHOOL_ADMIN",
+        "userType": "SCHOOL_ADMIN",
+    }
+
+
+def test_g16_teacher_checkin_is_not_student_checkin_fact():
+    assert InternshipTeacherCheckin.__tablename__ == "t_internship_teacher_checkin"
+    assert InternshipCheckin.__tablename__ == "t_internship_checkin"
+    assert InternshipTeacherCheckin.__tablename__ != InternshipCheckin.__tablename__
+
+
+def test_g16_timezone_and_location_are_server_validated():
+    name, zone = svc._zone("Asia/Shanghai")
+    assert name == "Asia/Shanghai"
+    assert zone.key == "Asia/Shanghai"
+
+    with pytest.raises(AppException):
+        svc._zone("Not/A_Real_Zone")
+    with pytest.raises(AppException):
+        svc._location({"latitude": 28.2})
+    with pytest.raises(AppException):
+        svc._location({"latitude": 91, "longitude": 112})
+
+
+def test_g16_schoolwide_notice_is_admin_only(monkeypatch):
+    monkeypatch.setattr(svc, "_scope_mode", lambda _user: "SCOPED")
+    with pytest.raises(AppException):
+        svc._require_school_admin(_teacher())
+
+    monkeypatch.setattr(svc, "_scope_mode", lambda _user: "ADMIN_TENANT")
+    svc._require_school_admin(_admin())
+
+
+def test_g16_teacher_checkin_writes_teacher_audit(monkeypatch):
+    db = _FakeDb()
+    audits = []
+    monkeypatch.setattr(svc, "session", lambda: db)
+    monkeypatch.setattr(svc, "_tid", lambda: 1)
+    monkeypatch.setattr(
+        svc,
+        "_assert_teacher_batch_scope",
+        lambda _db, batch_id, _user: SimpleNamespace(id=int(batch_id)),
+    )
+    monkeypatch.setattr(
+        svc,
+        "add_audit",
+        lambda _db, **kwargs: audits.append(kwargs) or "evt",
+    )
+
+    result = svc.checkin(
+        _teacher(),
+        {
+            "batchId": 12,
+            "timezoneName": "Asia/Shanghai",
+            "latitude": 28.2282,
+            "longitude": 112.9388,
+            "accuracyM": 12,
+            "address": "益阳职业技术学院",
+        },
+    )
+
+    assert result["batchId"] == "12"
+    assert result["teacherUserId"] == "7"
+    assert result["alreadyCheckedIn"] is False
+    assert db.committed is True
+    assert audits[0]["target_type"] == "TEACHER_CHECKIN"
+    assert audits[0]["action"] == "TEACHER_CHECKIN_CREATE"
+
+
+def test_g16_emergency_notice_is_persisted_and_audited(monkeypatch):
+    db = _FakeDb(scalar_values=[3])
+    audits = []
+    monkeypatch.setattr(svc, "session", lambda: db)
+    monkeypatch.setattr(svc, "_tid", lambda: 1)
+    monkeypatch.setattr(svc, "_scope_mode", lambda _user: "ADMIN_TENANT")
+    monkeypatch.setattr(
+        svc,
+        "add_audit",
+        lambda _db, **kwargs: audits.append(kwargs) or "evt",
+    )
+
+    result = svc.publish_emergency_notice(
+        _admin(),
+        {"batchId": 8, "title": "暴雨紧急提醒", "content": "今天停止现场实习，请留意后续通知。"},
+    )
+
+    assert result["status"] == "PUBLISHED"
+    assert result["recipientCount"] == 3
+    assert result["title"] == "暴雨紧急提醒"
+    assert db.committed is True
+    assert audits[0]["target_type"] == "EMERGENCY_NOTICE"
+    assert audits[0]["action"] == "EMERGENCY_NOTICE_PUBLISH"
+    assert audits[0]["detail"]["delivery"] == "PERSISTED_IN_APP"
+
+
+def test_g16_mobile_routes_are_exposed():
+    from app.api.v1.mobile_internship_student import router as student_router
+    from app.api.v1.teacher_mobile_internship import router as teacher_router
+
+    teacher_paths = {route.path for route in teacher_router.routes}
+    student_paths = {route.path for route in student_router.routes}
+
+    assert "/internship/activity/checkins" in teacher_paths
+    assert "/internship/activity/work-reports" in teacher_paths
+    assert "/internship/emergency-notices" in teacher_paths
+    assert "/mobile/internship/emergency-notices" in student_paths
