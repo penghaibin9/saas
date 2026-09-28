@@ -143,6 +143,9 @@
                 <AppFormItem label="每日必打卡">
                   <AppRadioGroup v-model="rulesForm.checkin.requireDaily" :options="boolOptions" :disabled="readonly" />
                 </AppFormItem>
+                <AppFormItem label="计划要求签到天数" hint="0 表示学校暂未配置；计划书与签到统计统一读取此规则">
+                  <AppNumberInput v-model="rulesForm.checkin.requiredDays" :min="0" :max="366" :step="1" :disabled="readonly" />
+                </AppFormItem>
                 <AppFormItem label="电子围栏半径（米）">
                   <AppNumberInput v-model="rulesForm.checkin.geofenceRadiusM" :min="50" :max="5000" :step="50" :disabled="readonly" />
                 </AppFormItem>
@@ -319,7 +322,7 @@ import { withInternshipBatch, internshipBatchListReturn } from '../navigation.js
 
 const RULE_LABELS = {
   checkin: '打卡', weeklyReport: '周报', processReport: '日报/月报/总结', guidance: '指导', evaluation: '评价', score: '成绩',
-  requireDaily: '每日必打卡', geofenceRadiusM: '电子围栏半径（米）', maxAccuracyM: '最大定位误差（米）', frequency: '提交频率',
+  requireDaily: '每日必打卡', requiredDays: '计划要求签到天数', geofenceRadiusM: '电子围栏半径（米）', maxAccuracyM: '最大定位误差（米）', frequency: '提交频率',
   minWordCount: '正文最少字数', requiredCount: '应交周报篇数', deadlineWeekday: '截止（周几前）', reviewSlaHours: '准时批阅时限（小时）',
   dailyMinWords: '日报最少字数', dailyRequiredCount: '应交日报篇数',
   monthlyMinWords: '月报最少字数', monthlyRequiredCount: '应交月报篇数',
@@ -339,7 +342,7 @@ const blankForm = () => ({
 
 /** 规则表单默认值（与后端 internship_service.DEFAULT_RULES 对齐；权重以百分数呈现）。 */
 const blankRulesForm = () => ({
-  checkin: { requireDaily: true, geofenceRadiusM: 500, maxAccuracyM: 200 },
+  checkin: { requireDaily: true, requiredDays: 0, geofenceRadiusM: 500, maxAccuracyM: 200 },
   weeklyReport: { frequency: 'WEEKLY', minWordCount: 30, requiredCount: 0, deadlineWeekday: 7, reviewSlaHours: 48 },
   processReport: {
     dailyMinWords: 30, dailyRequiredCount: 0,
