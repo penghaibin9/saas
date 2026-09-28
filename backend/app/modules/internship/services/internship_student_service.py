@@ -168,11 +168,11 @@ def list_assignment_logs(page: int, page_size: int, keyword: str | None = None, 
 
 def _current_scope(user: dict | None = None) -> dict:
     """教师数据范围。user 由 API 层显式传入（FastAPI 同步端点在独立线程上下文，contextvar 不可靠传播，
-    故不能只依赖 get_current_user_ctx）；懒加载 resolve_teacher_scope 避免与 mobile_teacher_service 循环 import。
+    故不能只依赖 get_current_user_ctx）；优先用登录服务签名的稳定范围 claims 覆盖旧名称范围。
     ADMIN_TENANT（明确的校级业务管理员）→ 看全校；SCOPED（指导教师/学院负责人/辅导员）
     按关系收敛；无范围信息保持空范围并默认拒绝。"""
-    from app.services.mobile_teacher_service import resolve_teacher_scope
-    return resolve_teacher_scope(user or get_current_user_ctx() or {})
+    from app.modules.internship.services.internship_scope import resolve_internship_scope
+    return resolve_internship_scope(user or get_current_user_ctx() or {})
 
 
 def _rec_in_scope(scope: dict, db, r: InternshipRecord, stu) -> bool:
@@ -181,6 +181,9 @@ def _rec_in_scope(scope: dict, db, r: InternshipRecord, stu) -> bool:
         return True
     from app.modules.internship.services.internship_service import resolve_student_class_college_names
     from app.services.mobile_teacher_service import scope_match_row
+    from app.modules.internship.services.internship_scope import _student_matches_stable_scope
+    if (scope.get("roleCode") or "").upper() not in ADVISOR_ROLE_CODES and _student_matches_stable_scope(db, scope, stu):
+        return True
     class_name, college_name = resolve_student_class_college_names(db, stu)
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
                            class_name=class_name, advisor_name=r.advisor_name,

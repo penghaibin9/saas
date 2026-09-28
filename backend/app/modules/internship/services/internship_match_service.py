@@ -183,8 +183,8 @@ def _match_row(db, m: InternshipMatch) -> dict:
 # ═══════════ 数据范围（P0-D：与 internship_service 同一机制） ═══════════
 
 def _current_scope(user: dict | None = None) -> dict:
-    from app.services.mobile_teacher_service import resolve_teacher_scope
-    return resolve_teacher_scope(user or get_current_user_ctx() or {})
+    from app.modules.internship.services.internship_scope import resolve_internship_scope
+    return resolve_internship_scope(user or get_current_user_ctx() or {})
 
 
 def _rec_in_scope(scope: dict, db, rec, stu) -> bool:

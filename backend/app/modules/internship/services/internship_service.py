@@ -128,8 +128,8 @@ def _students_map(db, ids: list[int]) -> dict:
 # 与 internship_student_service 同一机制：user 由 API 层显式传入（FastAPI 同步端点 contextvar 不可靠）。
 
 def _current_scope(user: dict | None = None) -> dict:
-    from app.services.mobile_teacher_service import resolve_teacher_scope
-    return resolve_teacher_scope(user or get_current_user_ctx() or {})
+    from app.modules.internship.services.internship_scope import resolve_internship_scope
+    return resolve_internship_scope(user or get_current_user_ctx() or {})
 
 
 def resolve_student_class_college_names(db, stu) -> tuple[str | None, str | None]:
@@ -165,6 +165,11 @@ def _rec_in_scope(scope: dict, db, r: "InternshipRecord | None", stu) -> bool:
     if r is None:
         return False
     from app.services.mobile_teacher_service import scope_match_row
+    from app.modules.internship.services.internship_scope import _student_matches_stable_scope
+    if (scope.get("roleCode") or "").upper() not in {
+        "INTERN_MENTOR", "INTERNSHIP_MENTOR", "INTERN_ADVISOR", "GD_MENTOR", "MENTOR",
+    } and _student_matches_stable_scope(db, scope, stu):
+        return True
     class_name, college_name = resolve_student_class_college_names(db, stu)
     return scope_match_row(scope, student_no=(stu.student_no if stu else None),
                            class_name=class_name, advisor_name=r.advisor_name,
@@ -259,17 +264,33 @@ def _bulk_context(db, rows, id_attr: str = "internship_id"):
             select(College).where(College.id.in_(college_ids))).all()}
     stu_college_name_map = {sid: college_name_map.get(cid)
                             for sid, cid in stu_college_id_map.items()}
-    return rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map
+    stable_scope_context = {
+        "classMajorIds": class_major_map,
+        "majorCollegeIds": major_college_map,
+        "studentCollegeIds": stu_college_id_map,
+    }
+    return rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map, stable_scope_context
 
 
 def _rec_in_scope_pre(scope: dict, rec, stu, class_name_map, college_name_map,
-                      stu_college_name_map=None) -> bool:
+                      stu_college_name_map=None, stable_scope_context=None) -> bool:
     """与 _rec_in_scope 等价，但用 _bulk_context 预加载的班级/学院名映射，不再逐行 db.get。"""
     if scope.get("mode") != "SCOPED":
         return True
     if rec is None:
         return False
     from app.services.mobile_teacher_service import scope_match_row
+    from app.modules.internship.services.internship_scope import (
+        ADVISOR_SCOPE_ROLES, _student_matches_stable_scope_preloaded,
+    )
+    context = stable_scope_context or {}
+    if (scope.get("roleCode") or "").upper() not in ADVISOR_SCOPE_ROLES and _student_matches_stable_scope_preloaded(
+        scope, stu,
+        class_major_ids=context.get("classMajorIds"),
+        major_college_ids=context.get("majorCollegeIds"),
+        student_college_ids=context.get("studentCollegeIds"),
+    ):
+        return True
     class_name = college_name = None
     if stu is not None:
         if getattr(stu, "class_id", None):
@@ -442,7 +463,8 @@ def list_checkins(page, page_size, result=None, keyword=None, internship_id=None
         rows = db.scalars(q.order_by(InternshipCheckin.checkin_date.desc(),
                                      InternshipCheckin.id.desc())).all()
         scope = _current_scope(user)
-        rec_map, stu_map, class_name_map, college_name_map, stu_college_name_map = _bulk_context(db, rows)
+        (rec_map, stu_map, class_name_map, college_name_map,
+         stu_college_name_map, stable_scope_context) = _bulk_context(db, rows)
         items = []
         for c in rows:
             rec = rec_map.get(c.internship_id)
@@ -454,7 +476,7 @@ def list_checkins(page, page_size, result=None, keyword=None, internship_id=None
             if rec is None or rec.is_deleted or stu is None:
                 continue
             if not _rec_in_scope_pre(scope, rec, stu, class_name_map, college_name_map,
-                                     stu_college_name_map):  # P0-D 数据范围
+                                     stu_college_name_map, stable_scope_context):  # P0-D 数据范围
                 continue
             items.append(_checkin_row(c, rec, stu))
         total = len(items)
