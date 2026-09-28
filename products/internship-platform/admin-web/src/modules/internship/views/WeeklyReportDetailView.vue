@@ -132,6 +132,13 @@
               <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅动作写入审批留痕，学生端即时同步状态</p>
             </template>
             <EmptyState v-else :title="'该周报' + (detail.status === 'APPROVED' ? '已通过' : '已退回')" description="批阅结果已同步学生端，留痕见下方审批记录" />
+            <div v-if="detail.status !== 'PENDING_REVIEW' && latestReview" class="wr-review-result">
+              <strong>本版批阅结果</strong>
+              <span>五级评价：{{ latestReview.ratingLevel ? (latestReview.ratingLevel + ' / 5') : '未评分' }}</span>
+              <span v-if="latestReview.reviewerName">批阅教师：{{ latestReview.reviewerName }}</span>
+              <span v-if="latestReview.reviewedAt">批阅时间：{{ String(latestReview.reviewedAt).replace('T', ' ').slice(0, 19) }}</span>
+              <span v-if="latestReview.comment">批阅意见：{{ latestReview.comment }}</span>
+            </div>
           </div>
         </section>
 
@@ -184,6 +191,11 @@ export default {
       ]
     },
     activeChips() { return this.action === 'RETURN' ? REJECT_WEEKLY : APPROVE_WEEKLY },
+    latestReview() {
+      const versions = this.detail?.immutableVersions || []
+      const version = versions.find(item => item?.review)
+      return version?.review || null
+    },
     resubmitComparison() {
       const versions = this.detail?.versions || []
       if (!this.detail?.isResubmit || versions.length < 2) return null
@@ -314,6 +326,9 @@ export default {
 .wr-rating label b { color:var(--danger-600); }
 .wr-rating select { height:38px; padding:0 10px; border:1px solid var(--border-base); border-radius:7px; background:var(--bg-card); color:var(--text-primary); }
 .wr-rating span { font-size:11px; line-height:1.5; color:var(--text-secondary); }
+.wr-review-result { display:grid; gap:5px; margin-top:12px; padding:12px; border:1px solid var(--border-base); border-radius:8px; background:var(--bg-page); font-size:12px; }
+.wr-review-result strong { color:var(--text-primary); }
+.wr-review-result span { color:var(--text-secondary); }
 .wr-chips { margin-bottom: var(--space-2); }
 .wr-ver__toggle { margin-top: var(--space-1); padding: 0; border: 0; background: none; color: var(--color-primary); cursor: pointer; font-size: var(--font-size-sm); }
 .wr-ver__body { margin-top: var(--space-2); padding: var(--space-2); border-radius: var(--radius-sm); background: var(--color-bg-subtle, #f6f7f9); }
