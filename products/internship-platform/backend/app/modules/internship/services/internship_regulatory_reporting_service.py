@@ -828,6 +828,46 @@ def task_detail(task_id: int):
         return result
 
 
+def list_task_rows(
+    task_id: int, *, page: int = 1, page_size: int = 50, error_only: bool = False,
+) -> dict:
+    page = max(1, int(page or 1))
+    page_size = min(200, max(1, int(page_size or 50)))
+    with session() as db:
+        task = _task(db, task_id)
+        base = select(InternshipRegulatoryTaskRow).where(
+            InternshipRegulatoryTaskRow.tenant_id == _tid(),
+            InternshipRegulatoryTaskRow.task_id == task.id,
+            InternshipRegulatoryTaskRow.is_deleted.is_(False),
+        )
+        if error_only:
+            base = base.where(InternshipRegulatoryTaskRow.is_valid.is_(False))
+        total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
+        rows = db.scalars(
+            base.order_by(InternshipRegulatoryTaskRow.row_no)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+        return {
+            "items": [
+                {
+                    "id": str(row.id),
+                    "rowNo": int(row.row_no),
+                    "studentId": str(row.student_id) if row.student_id else "",
+                    "internshipId": str(row.internship_id) if row.internship_id else "",
+                    "payload": dict(row.payload_json or {}),
+                    "errors": list(row.validation_errors_json or []),
+                    "isValid": bool(row.is_valid),
+                }
+                for row in rows
+            ],
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+            "errorOnly": bool(error_only),
+        }
+
+
 def validate_task(task_id: int, user=None):
     with session() as db:
         task = _task(db, task_id, lock=True)
