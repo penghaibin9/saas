@@ -91,6 +91,28 @@ class InternshipTeacherPeriodReport(PKMixin, TenantMixin, CommonMixin, Base):
     submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
+class InternshipEmergencyNoticeTeacherReceipt(PKMixin, TenantMixin, CommonMixin, Base):
+    """Teacher explicit acknowledgement for important/urgent internship notices."""
+    __tablename__ = "t_internship_emergency_notice_teacher_receipt"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "notice_id", "teacher_user_id",
+            name="uk_ix_emergency_notice_teacher_receipt",
+        ),
+        Index(
+            "ix_ix_emergency_notice_teacher_receipt_lookup",
+            "tenant_id", "batch_id", "teacher_user_id", "acknowledged_at",
+        ),
+    )
+
+    notice_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    teacher_user_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    acknowledged_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    acknowledged_channel: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="TEACHER_MOBILE_FORCE_POPUP")
+
+
 class InternshipEmergencyNotice(PKMixin, TenantMixin, CommonMixin, Base):
     """School emergency notice fact. Student re-login reads this persisted row."""
     __tablename__ = "t_internship_emergency_notice"
