@@ -608,6 +608,11 @@ def export_report_obligations(
         user, batch_id, keyword=keyword, missing_only=missing_only,
         page=1, page_size=20000,
     )
+    if int(data.get("total") or 0) > len(data.get("items") or []):
+        raise AppException(
+            "VALIDATION_ERROR",
+            "当前应交/未交台账超过 20000 行，请缩小数据范围后再导出",
+        )
     headers = [
         "学号", "姓名", "指导教师", "企业", "岗位", "状态", "完成率",
         "日报应交", "日报实交", "日报已通过", "日报未交",
