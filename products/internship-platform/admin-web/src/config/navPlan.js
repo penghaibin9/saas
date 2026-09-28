@@ -62,6 +62,7 @@ export const NAV_PLAN = [{
     ]),
     mod('in-risk', '风险与变更', '/admin/internship/risks', [
       leaf('风险预警', '/admin/internship/risks?panel=board', 'internship.risk.view'),
+      leaf('学生意见反馈', '/admin/internship/feedback', 'internship.complaint.view', 'TASK_QUEUE'),
       leaf('风险处置', '/admin/internship/risk-disposal?stage=pending', 'internship.risk.handle', 'TASK_QUEUE'),
       leaf('调岗退岗', '/admin/internship/changes?panel=pending', 'internship.change.view', 'TASK_QUEUE'),
       leaf('事故与应急', '/admin/internship/compliance?tab=incidents', 'internship.incident.handle', 'TASK_QUEUE')
