@@ -11,6 +11,14 @@ on:
       - "products/internship-platform/backend/app/modules/internship/services/internship_process_report_service.py"
       - "products/internship-platform/backend/app/modules/internship/services/internship_student_report_context_service.py"
       - "products/internship-platform/backend/app/modules/internship/routers/internship_process.py"
+      - "products/internship-platform/backend/app/modules/internship/routers/internship.py"
+      - "products/internship-platform/backend/app/modules/internship/schemas/internship.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_service.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_plan_task_service.py"
+      - "products/internship-platform/mobile/src/services/teacherApi.js"
+      - "products/internship-platform/mobile/src/pages/student-internship/process-report/index.vue"
+      - "products/internship-platform/mobile/src/pages/teacher-internship/process-report-review/index.vue"
+      - "products/internship-platform/mobile/src/pages/teacher-internship/internship-review/index.vue"
       - "products/internship-platform/backend/tests/test_yiyang_c08_g15_report_quality.py"
       - ".github/workflows/internship-standalone-c08-g15.yml"
   workflow_dispatch:
@@ -43,6 +51,11 @@ jobs:
           python-version: "3.12"
           cache: "pip"
           cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: products/internship-platform/mobile/package-lock.json
       - name: Install standalone backend dependencies
         run: python -m pip install -r products/internship-platform/backend/requirements.txt
       - name: Compile G15 authority
@@ -73,3 +86,8 @@ jobs:
           PY
       - name: Run C08/G15 acceptance only
         run: pytest -q products/internship-platform/backend/tests/test_yiyang_c08_g15_report_quality.py
+      - name: Build standalone WeChat mobile
+        working-directory: products/internship-platform/mobile
+        run: |
+          npm ci
+          npm run build:mp-weixin
