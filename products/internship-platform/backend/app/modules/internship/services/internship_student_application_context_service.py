@@ -79,13 +79,13 @@ def save(user: dict, body: dict) -> dict:
     application_type = str(payload.get("applicationType") or "").upper()
     if application_type not in legacy.TYPE_LABEL:
         raise AppException(
-            "VALIDATION_ERROR", "applicationType 必须是 POSITION 或 SELF_ARRANGED")
+            "VALIDATION_ERROR", "applicationType 必须是 POSITION、SELF_ARRANGED 或 EXEMPTION")
     with session() as db:
         record, student = _student_record(
             db, user, for_write=True, payload=payload)
         if record.status not in ("PREPARING", "READY"):
             raise AppException("DATA_CONFLICT", "当前实习状态不可新增或修改申请")
-        if record.position_id or record.destination_type == "SELF_ARRANGED":
+        if record.position_id or record.destination_type in ("SELF_ARRANGED", "EXEMPTED"):
             raise AppException("DATA_CONFLICT", "实习去向已落实，不可再新增或修改申请")
 
         app_id = payload.get("id")
@@ -108,10 +108,12 @@ def save(user: dict, body: dict) -> dict:
             if row.application_type != application_type:
                 raise AppException("VALIDATION_ERROR", "申请类型不可变更，请新建申请")
         else:
-            volunteer = 0 if application_type == "SELF_ARRANGED" else int(
-                payload.get("volunteerNo") or 1)
-            if application_type == "SELF_ARRANGED" and volunteer != 0:
-                raise AppException("VALIDATION_ERROR", "自主实习志愿序号必须为0")
+            if application_type == "SELF_ARRANGED":
+                volunteer = 0
+            elif application_type == "EXEMPTION":
+                volunteer = -1
+            else:
+                volunteer = int(payload.get("volunteerNo") or 1)
             if application_type == "POSITION" and volunteer not in (1, 2, 3):
                 raise AppException("VALIDATION_ERROR", "岗位志愿顺序只能为1至3")
             row = db.scalar(select(InternshipApplication).where(
@@ -207,12 +209,17 @@ def submit(user: dict, app_id, body: dict) -> dict:
         _expected(payload, row.version, required=True)
         if row.status != "DRAFT":
             raise AppException("DATA_CONFLICT", "仅草稿申请可提交")
-        if len(str(row.application_note or "").strip()) < 5:
+        if row.application_type != "EXEMPTION" and len(str(row.application_note or "").strip()) < 5:
             raise AppException("VALIDATION_ERROR", "申请说明不少于5字")
         if row.application_type == "POSITION":
             position, company = legacy._position(db, row.position_id)
             _reject_campaign_position(position)
             legacy._apply_position_snapshot(row, position, company)
+        elif row.application_type == "EXEMPTION":
+            values = legacy._clean_exemption(
+                legacy._snapshot_body(row), require_complete=True)
+            for field, value in values.items():
+                setattr(row, field, value)
         else:
             values = legacy._clean_self_arranged(
                 legacy._snapshot_body(row), require_complete=True)
