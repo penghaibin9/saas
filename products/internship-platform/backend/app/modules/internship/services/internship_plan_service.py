@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (
-    InternshipAuditTrail, InternshipBatch, InternshipBatchPlan,
+    InternshipAuditTrail, InternshipBatch, InternshipBatchPlan, InternshipBatchScopeRule,
     InternshipPlanAck, InternshipRecord, StudentProfile,
 )
 from app.services import file_service
@@ -310,11 +310,59 @@ def _plan_row(plan, batch=None):
     }
 
 
+def _assert_plan_batch_scope(db, batch: InternshipBatch, user, action: str) -> None:
+    """Batch-level plan may be used by scoped leaders only when the whole target cohort is in scope."""
+    from app.modules.internship.services.internship_service import _current_scope
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
+    scope = _current_scope(user)
+    if scope.get("mode") != "SCOPED":
+        return
+
+    base = select(InternshipRecord.id).where(
+        InternshipRecord.tenant_id == _tid(),
+        InternshipRecord.batch_id == batch.id,
+        InternshipRecord.is_deleted.is_(False),
+    )
+    total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
+    if total:
+        scoped = apply_internship_record_scope(base, user).subquery()
+        scoped_count = int(db.scalar(select(func.count()).select_from(scoped)) or 0)
+        if scoped_count == total:
+            return
+        raise no_permission(f"{action}超出当前学院/专业授权范围")
+
+    scope_rule = db.scalar(select(InternshipBatchScopeRule).where(
+        InternshipBatchScopeRule.tenant_id == _tid(),
+        InternshipBatchScopeRule.batch_id == batch.id,
+        InternshipBatchScopeRule.is_deleted.is_(False),
+    ))
+    if scope_rule and scope_rule.rule_json:
+        from app.services import student_scope_resolver
+        rule = student_scope_resolver.parse_rule(scope_rule.rule_json)
+        all_result = student_scope_resolver.resolve(
+            db, _tid(), rule, user=None, limit=None,
+        )
+        scoped_result = student_scope_resolver.resolve(
+            db, _tid(), rule, user=user, limit=None,
+        )
+        if (
+            all_result.matched_count > 0
+            and scoped_result.out_of_scope_count == 0
+            and scoped_result.matched_count == all_result.matched_count
+        ):
+            return
+    raise no_permission(
+        f"{action}无法证明当前批次全部属于你的学院/专业范围；请先配置批次选人范围或由校级管理员处理"
+    )
+
+
 def get_plan_context(batch_id, user=None) -> dict:
     with session() as db:
         batch = db.get(InternshipBatch, _as_id(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("批次不存在")
+        _assert_plan_batch_scope(db, batch, user, "查看实习计划")
         return {
             "basicSnapshot": _batch_snapshot(batch),
             "rulesSnapshot": _rules_snapshot(batch),
@@ -327,6 +375,7 @@ def get_plan_by_batch(batch_id, user=None):
         batch = db.get(InternshipBatch, _as_id(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("批次不存在")
+        _assert_plan_batch_scope(db, batch, user, "查看实习计划")
         plan = db.scalar(select(InternshipBatchPlan).where(
             InternshipBatchPlan.tenant_id == _tid(),
             InternshipBatchPlan.batch_id == batch.id,
@@ -358,6 +407,7 @@ def save_plan(batch_id, body, user=None) -> dict:
             InternshipBatch.is_deleted.is_(False)).with_for_update())
         if not batch:
             raise not_found("批次不存在")
+        _assert_plan_batch_scope(db, batch, user, "保存实习计划")
         plan = db.scalar(select(InternshipBatchPlan).where(
             InternshipBatchPlan.tenant_id == _tid(),
             InternshipBatchPlan.batch_id == batch.id,
@@ -412,6 +462,7 @@ def publish_plan(batch_id, body=None, user=None) -> dict:
             InternshipBatch.is_deleted.is_(False)).with_for_update())
         if not batch:
             raise not_found("批次不存在")
+        _assert_plan_batch_scope(db, batch, user, "发布实习计划")
         plan = db.scalar(select(InternshipBatchPlan).where(
             InternshipBatchPlan.tenant_id == _tid(),
             InternshipBatchPlan.batch_id == batch.id,
