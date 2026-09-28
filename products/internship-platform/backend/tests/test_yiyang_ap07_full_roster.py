@@ -211,12 +211,16 @@ def test_ap07_page_and_full_excel_share_same_canonical_fields_and_export_all_row
     assert headers == expected_headers
 
     header_to_col = {value: index + 1 for index, value in enumerate(headers)}
+    rich_row = next(
+        row_no for row_no in range(3, sheet.max_row + 1)
+        if sheet.cell(row=row_no, column=header_to_col["学号"]).value == "AP07-001"
+    )
     values = {
-        header: sheet.cell(row=3, column=column).value
+        header: sheet.cell(row=rich_row, column=column).value
         for header, column in header_to_col.items()
     }
     assert values["统一社会信用代码"] == "91430900MA4L123456"
-    assert sheet.cell(row=3, column=header_to_col["统一社会信用代码"]).data_type == "s"
+    assert sheet.cell(row=rich_row, column=header_to_col["统一社会信用代码"]).data_type == "s"
     assert values["约定报酬"] == 3500
     assert values["专业对口"] == "对口"
     assert values["三方协议状态"] == "EFFECTIVE"
