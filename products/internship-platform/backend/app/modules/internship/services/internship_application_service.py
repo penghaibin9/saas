@@ -647,6 +647,71 @@ def list_applications(page: int, page_size: int, status=None, application_type=N
         ], total
 
 
+def export_applications(
+    *, status: str | None = None, application_type: str | None = None,
+    keyword: str | None = None, batch_id=None, user: dict | None = None,
+) -> tuple[bytes, str, int]:
+    """Export the complete scoped result set, never just the current page."""
+    from app.services import xlsx_util
+
+    rows, total = list_applications(
+        1, 20000, status, application_type, keyword,
+        batch_id=batch_id, user=user,
+    )
+    if total > 20000:
+        raise AppException(
+            "VALIDATION_ERROR",
+            "当前筛选结果超过 20000 条，请缩小批次或筛选条件后再导出",
+        )
+
+    headers = [
+        "申请类型", "学生姓名", "学号", "校内指导教师", "状态",
+        "实习单位/免实习", "岗位/免实习去向", "统一社会信用代码",
+        "实习部门", "岗位类别", "工作地点", "实习开始日期", "实习结束日期",
+        "约定薪资(元/月)", "免实习类型", "免实习原因", "免实习佐证",
+        "提交时间", "审核人", "审核时间", "审核意见",
+    ]
+    data_rows = []
+    for row in rows:
+        is_exemption = row.get("applicationType") == "EXEMPTION"
+        data_rows.append([
+            row.get("applicationTypeLabel") or row.get("applicationType") or "",
+            row.get("studentName") or "",
+            row.get("studentNo") or "",
+            row.get("advisorName") or "",
+            row.get("statusLabel") or row.get("status") or "",
+            "免实习" if is_exemption else (row.get("companyName") or ""),
+            row.get("exemptionDestination") if is_exemption else (row.get("positionName") or ""),
+            row.get("companyCreditCode") or "",
+            row.get("internshipDepartment") or "",
+            row.get("positionCategory") or "",
+            " / ".join(filter(None, [
+                row.get("workCountry"), row.get("workProvince"),
+                row.get("workCity"), row.get("workDistrict"), row.get("workAddress"),
+            ])),
+            row.get("internshipStartDate") or "",
+            row.get("internshipEndDate") or "",
+            row.get("agreedSalary") if row.get("agreedSalary") is not None else "",
+            row.get("exemptionType") or "",
+            row.get("exemptionReason") or "",
+            "已上传" if row.get("evidenceFileId") else "",
+            row.get("submittedAt") or "",
+            row.get("reviewedBy") or "",
+            row.get("reviewedAt") or "",
+            row.get("reviewComment") or "",
+        ])
+    content = xlsx_util.build_ledger_xlsx(
+        "实习申请审核",
+        headers,
+        data_rows,
+        watermark=(
+            "跃科岗位实习管理平台 · 实习申请审核导出 · "
+            f"{datetime.now():%Y-%m-%d %H:%M}"
+        ),
+    )
+    return content, "实习申请审核台账.xlsx", len(data_rows)
+
+
 _CURRENT_FILLED_STATUSES = ("DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED")
 
 
