@@ -25,7 +25,7 @@ from app.models.internship import (
     InternshipChangeRequest, InternshipCheckin, InternshipCheckinExemption, InternshipCommunicationLog, InternshipComplaint,
     InternshipEnterpriseEval, InternshipFinalScore, InternshipGuidance, InternshipInsurance,
     InternshipLeave, InternshipMakeup, InternshipPlanAck, InternshipPlanTaskProgress,
-    InternshipProcessReport, InternshipRecord, InternshipScoreConfig, InternshipStudentEval,
+    InternshipProcessReport, InternshipProcessReportVersion, InternshipRecord, InternshipScoreConfig, InternshipStudentEval,
     InternshipVisit, InternshipVisitPlan, RiskRecord, WeeklyReport,
 )
 from app.models.internship_agreement_template import InternshipAgreementTemplate
