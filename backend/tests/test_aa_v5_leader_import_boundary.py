@@ -3,6 +3,7 @@ import pytest
 
 from app.core.exceptions import AppException
 from app.services.saas_role_templates import role_catalog, role_codes_from_row, resolve_role_code
+from app.services.mock_rbac_service import ROLE_CATALOG
 from app.services.system_implementation_service import _role_suggestions
 
 
@@ -26,6 +27,9 @@ def test_school_leader_and_explicit_college_management_keep_existing_contracts()
     leader = next(row for row in role_catalog()["items"] if row["roleCode"] == "LEADER")
     assert leader["roleName"] == "校领导"
     assert leader["defaultScope"] == "SCHOOL"
+    legacy_catalog_leader = next(row for row in ROLE_CATALOG if row["roleCode"] == "LEADER")
+    assert legacy_catalog_leader["roleName"] == "校领导"
+    assert legacy_catalog_leader["defaultScope"] == "SCHOOL"
     assert _role_suggestions("院领导", "信息学院") == []
     assert _role_suggestions("院领导", "校领导办公室") == []
     assert _role_suggestions("院长", "校领导办公室") == []
