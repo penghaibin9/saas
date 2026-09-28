@@ -2,7 +2,7 @@
  * 岗位实习正式申请审核：只调用已上线的后端接口。
  * 学生端负责提交，PC 端负责按数据范围审核并查看留痕。
  */
-import { request } from '@/services/http/client'
+import { request, requestBlob } from '@/services/http/client'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
@@ -24,6 +24,20 @@ async function callList(params = {}) {
 
 export const internshipApplicationApi = {
   getApplications(params = {}) { return callList(params) },
+  async exportApplications(params = {}) {
+    try {
+      const blob = await requestBlob('/internship/applications/export.xlsx', { params })
+      const url = URL.createObjectURL(blob)
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = '实习申请审核台账.xlsx'
+      anchor.click()
+      URL.revokeObjectURL(url)
+      return ok(true)
+    } catch (error) {
+      return toErr(error)
+    }
+  },
   getDetail(id) { return call(() => request(`/internship/applications/${id}`)) },
   review(id, { action, comment = '', expectedVersion, version, recordExpectedVersion, recordVersion } = {}) {
     return call(() => request(`/internship/applications/${id}/review`, {
