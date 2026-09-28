@@ -645,7 +645,7 @@ const tabGroups = [
   { key: 'change-result', label: '变更与结果', hint: '调岗退岗、求助、评价与成绩', tabs: tabs.filter((item) => ['change', 'help', 'eval'].includes(item.key)) }
 ]
 const reportTab = ref('周报')
-const reportTabs = ['周报', '月报', '实习总结']
+const reportTabs = ['日报', '周报', '月报', '实习总结']
 const currentMonth = () => {
   const now = new Date()
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -663,23 +663,43 @@ const selectedBatchId = ref('')
 const internshipCandidates = ref([])
 const weeklyForm = reactive({ week: null, workContent: '', harvestContent: '', planContent: '', attachments: [] })
 const reportForm = reactive({ periodKey: currentMonth(), content: '', attachments: [] })
+const reportRules = ref({
+  dailyMinWords: 30, weeklyMinWords: 30, monthlyMinWords: 100, summaryMinWords: 300,
+  dailyRequiredCount: 0, weeklyRequiredCount: 0, monthlyRequiredCount: 0, summaryRequiredCount: 1
+})
 const reportReceipt = ref(null)
 const reportError = ref('')
 const weeklyEditing = computed(() => (my.value.weeklyReports || []).some((item) =>
   Number(item.weekNo || item.week) === Number(weeklyForm.week) && item.status === 'RETURNED'))
-const processType = computed(() => reportTab.value === '实习总结' ? 'SUMMARY' : 'MONTHLY')
+const processType = computed(() => ({
+  '日报': 'DAILY',
+  '月报': 'MONTHLY',
+  '实习总结': 'SUMMARY'
+})[reportTab.value] || 'MONTHLY')
 const processReportRows = computed(() => (my.value.processReports || []).filter((item) => item.reportType === processType.value))
 const processEditing = computed(() => processReportRows.value.some((item) =>
   item.periodKey === (processType.value === 'SUMMARY' ? 'FINAL' : reportForm.periodKey) && item.status === 'RETURNED'))
-const reportMinimum = computed(() => processType.value === 'SUMMARY' ? 300 : 100)
-const weeklyCanSubmit = computed(() => Number(weeklyForm.week) >= 1 && weeklyForm.workContent.trim().length >= 10 && weeklyForm.harvestContent.trim().length >= 10)
+const reportMinimum = computed(() => ({
+  DAILY: Number(reportRules.value.dailyMinWords || 30),
+  MONTHLY: Number(reportRules.value.monthlyMinWords || 100),
+  SUMMARY: Number(reportRules.value.summaryMinWords || 300)
+})[processType.value] || 30)
+const weeklyWordCount = computed(() =>
+  weeklyForm.workContent.trim().length + weeklyForm.harvestContent.trim().length + weeklyForm.planContent.trim().length)
+const weeklyCanSubmit = computed(() =>
+  Number(weeklyForm.week) >= 1
+  && weeklyForm.workContent.trim().length >= 1
+  && weeklyForm.harvestContent.trim().length >= 1
+  && weeklyWordCount.value >= Number(reportRules.value.weeklyMinWords || 30))
 const reportCanSubmit = computed(() => (processType.value === 'SUMMARY' || !!reportForm.periodKey) && reportForm.content.trim().length >= reportMinimum.value)
 const reportEditorTitle = computed(() => reportTab.value === '周报'
   ? (weeklyEditing.value ? `第 ${weeklyForm.week} 周 · 修改重交` : '填写周报')
   : (processEditing.value ? `${reportTab.value} · 修改重交` : `填写${reportTab.value}`))
 const reportPlaceholder = computed(() => processType.value === 'SUMMARY'
   ? '建议按“岗位与职责、主要成果、能力提升、不足与改进”分段填写。'
-  : '建议按“本月工作、主要成果、能力提升、问题与下月计划”分段填写。')
+  : processType.value === 'DAILY'
+    ? '记录当天岗位工作、学习收获、问题与改进。'
+    : '建议按“本月工作、主要成果、能力提升、问题与下月计划”分段填写。')
 const evalForm = reactive({ performance: '', reflection: '', problems: '', enterpriseRating: null,
   enterpriseFeedback: '', positionRating: null, positionFeedback: '' })
 const leaveForm = reactive({ leaveType: 'SICK', startDate: '', endDate: '', reason: '', evidenceFileId: '', fileName: '' })
@@ -910,6 +930,19 @@ const metrics = computed(() => [
   { t: '考勤异常', v: (my.value.attendanceExceptions || []).length, u: '次', c: (my.value.attendanceExceptions || []).length ? 'var(--warn-fg)' : 'var(--ok-fg)' },
   { t: '风险等级', v: riskText(my.value.riskLevel), u: '', c: my.value.riskLevel === 'HIGH' ? 'var(--danger-fg)' : 'var(--ok-fg)' }
 ])
+const reportProgress = computed(() => {
+  const process = my.value.processReports || []
+  const current = [
+    { key: 'daily', label: '日报', required: Number(reportRules.value.dailyRequiredCount || 0), submitted: process.filter((x) => x.reportType === 'DAILY').length },
+    { key: 'weekly', label: '周报', required: Number(reportRules.value.weeklyRequiredCount || 0), submitted: (my.value.weeklyReports || []).length },
+    { key: 'monthly', label: '月报', required: Number(reportRules.value.monthlyRequiredCount || 0), submitted: process.filter((x) => x.reportType === 'MONTHLY').length },
+    { key: 'summary', label: '总结', required: Number(reportRules.value.summaryRequiredCount || 0), submitted: process.filter((x) => x.reportType === 'SUMMARY').length }
+  ]
+  return current.map((item) => ({
+    ...item,
+    rate: item.required > 0 ? Math.min(100, Math.round(item.submitted * 100 / item.required)) : null
+  }))
+})
 
 function resetSourceStates() {
   Object.values(sourceStates).forEach((state) => Object.assign(state, { status: 'idle', message: '' }))
