@@ -16,6 +16,8 @@ async function callList(path, params = {}) {
 
 export const planApi = {
   getTemplates() { return call(() => request('/internship/plans/templates')) },
+  bulkExportPdf(batchIds = []) { return call(() => request('/internship/plans/bulk-export.pdf', { method:'POST', body:{ batchIds } })) },
+  bulkExportXlsx(batchIds = []) { return call(() => request('/internship/plans/bulk-export.xlsx', { method:'POST', body:{ batchIds } })) },
   getBatchPlanContext(batchId) { return call(() => request(`/internship/plans/batch/${batchId}/context`)) },
   getBatchPlan(batchId) { return call(() => request(`/internship/plans/batch/${batchId}`)) },
   exportBatchPlanPdf(batchId) { return call(() => request(`/internship/plans/batch/${batchId}/export.pdf`, { method: 'POST' })) },
