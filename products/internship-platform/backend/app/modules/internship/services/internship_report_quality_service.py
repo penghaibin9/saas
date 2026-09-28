@@ -235,6 +235,45 @@ def latest_weekly_snapshot(db, report_id) -> InternshipReportVersion | None:
     ))
 
 
+def latest_review_map(db, report_kind: str, report_ids) -> dict[int, dict]:
+    """Latest immutable review per report for detail/export/performance projections."""
+    ids = []
+    for raw in report_ids or []:
+        try:
+            rid = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if rid > 0 and rid not in ids:
+            ids.append(rid)
+    if not ids:
+        return {}
+    kind = str(report_kind or "").strip().upper()
+    rows = db.scalars(select(InternshipReportReview).where(
+        InternshipReportReview.tenant_id == _tid(),
+        InternshipReportReview.report_kind == kind,
+        InternshipReportReview.report_id.in_(ids),
+    ).order_by(
+        InternshipReportReview.reviewed_at.desc(),
+        InternshipReportReview.id.desc(),
+    )).all()
+    out = {}
+    for row in rows:
+        rid = int(row.report_id)
+        if rid in out:
+            continue
+        out[rid] = {
+            "action": row.action,
+            "ratingLevel": int(row.rating_level) if row.rating_level is not None else None,
+            "summaryScore": float(row.summary_score) if row.summary_score is not None else None,
+            "comment": row.comment or "",
+            "reviewerUserId": row.reviewer_user_id or "",
+            "reviewerName": row.reviewer_name or "",
+            "reviewedAt": row.reviewed_at.isoformat() if row.reviewed_at else "",
+            "reportVersionId": str(row.report_version_id),
+        }
+    return out
+
+
 def weekly_snapshot_view(db, report_id) -> dict:
     rows = db.scalars(select(InternshipReportVersion).where(
         InternshipReportVersion.tenant_id == _tid(),
