@@ -240,8 +240,14 @@ export const studentInternshipSafetySubmit = (courseId, body) =>
 export const studentInternshipSafetyCommit = (completionId, body) =>
   realRequest(`/mobile/internship/safety/completions/${enc(completionId)}/commit`, { method: 'POST', data: body || {} })
 
-export const studentInternshipApplications = () =>
-  realRequest('/mobile/internship/context/applications')
+export const studentInternshipApplications = (batchId = '', internshipId = '') => {
+  try {
+    if (String(batchId || '').trim() && String(internshipId || '').trim()) {
+      return realRequest(studentContextPath('/mobile/internship/context/applications', batchId, internshipId))
+    }
+    return realRequest('/mobile/internship/context/applications')
+  } catch (e) { return Promise.reject(e) }
+}
 export const studentInternshipApplicationSave = (body) =>
   realRequest('/mobile/internship/context/applications', { method: 'PUT', data: body || {} })
 export const studentInternshipApplicationSubmit = (applicationId, body) =>
