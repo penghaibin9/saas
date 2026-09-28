@@ -26,6 +26,12 @@ from app.services import file_service
 from app.services.db_service import _iso, _tid, session
 
 
+NOTICE_TYPES = {"AGREEMENT", "TRAINING", "SAFETY", "NOTICE", "OTHER"}
+NOTICE_URGENCY = {"NORMAL", "IMPORTANT", "URGENT"}
+NOTICE_ATTACHMENT_EXTENSIONS = {"rar", "zip", "doc", "docx", "pdf", "xls", "xlsx"}
+MAX_NOTICE_ATTACHMENTS = 9
+
+
 def _teacher_identity(user: dict) -> tuple[int, str]:
     user_id = stable_user_id(user)
     if not user_id:
@@ -78,6 +84,47 @@ def _zone(name: str | None) -> tuple[str, ZoneInfo]:
         return value, ZoneInfo(value)
     except ZoneInfoNotFoundError:
         raise AppException("VALIDATION_ERROR", "timezoneName 不是有效的 IANA 时区") from None
+
+
+def _notice_datetime(value, label: str) -> datetime | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, datetime):
+        parsed = value
+    else:
+        raw = str(value).strip()
+        try:
+            parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            raise AppException("VALIDATION_ERROR", f"{label}格式不正确") from None
+    if parsed.tzinfo is not None:
+        parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
+    return parsed
+
+
+def _notice_attachment_ids(value) -> list[str]:
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        raise AppException("VALIDATION_ERROR", "通知附件必须以列表提交")
+    out = []
+    for raw in value:
+        fid = str(raw or "").strip()
+        if not fid or fid in out:
+            continue
+        meta = file_service.get_file_meta(fid)
+        if not meta:
+            raise AppException("VALIDATION_ERROR", "通知附件不存在或无权访问")
+        ext = str(meta.get("ext") or "").lower()
+        if ext not in NOTICE_ATTACHMENT_EXTENSIONS:
+            raise AppException(
+                "VALIDATION_ERROR",
+                "通知附件仅支持 RAR、ZIP、WORD、EXCEL、PDF 格式",
+            )
+        out.append(fid)
+    if len(out) > MAX_NOTICE_ATTACHMENTS:
+        raise AppException("VALIDATION_ERROR", f"通知附件最多上传{MAX_NOTICE_ATTACHMENTS}个")
+    return out
 
 
 def _location(body: dict) -> tuple[float | None, float | None, float | None]:
@@ -530,11 +577,26 @@ def list_my_period_reports(
 
 
 def _notice_view(row: InternshipEmergencyNotice) -> dict:
+    attachments = []
+    for file_id in list(row.attachment_file_ids_json or []):
+        try:
+            meta = file_service.attachment_view(str(file_id))
+        except Exception:  # noqa: BLE001 - one unavailable attachment must not hide the notice
+            meta = None
+        if meta:
+            attachments.append(meta)
     return {
         "id": str(row.id),
         "batchId": str(row.batch_id),
         "title": row.title,
         "content": row.content,
+        "noticeType": row.notice_type or "NOTICE",
+        "urgency": row.urgency or "NORMAL",
+        "validFrom": _iso(row.valid_from) or "",
+        "validUntil": _iso(row.valid_until) or "",
+        "forcePopup": (row.urgency or "NORMAL") in ("IMPORTANT", "URGENT"),
+        "attachmentFileIds": list(row.attachment_file_ids_json or []),
+        "attachments": attachments,
         "senderName": row.sender_name_snapshot or "",
         "recipientCount": int(row.recipient_count or 0),
         "status": row.status,
@@ -549,10 +611,21 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
     _require_school_admin(user)
     title = str(payload.get("title") or "").strip()
     content = str(payload.get("content") or "").strip()
+    notice_type = str(payload.get("noticeType") or "NOTICE").strip().upper()
+    urgency = str(payload.get("urgency") or "IMPORTANT").strip().upper()
+    valid_from = _notice_datetime(payload.get("validFrom"), "有效期开始时间")
+    valid_until = _notice_datetime(payload.get("validUntil"), "有效期结束时间")
+    attachment_ids = _notice_attachment_ids(payload.get("attachmentFileIds"))
     if len(title) < 2 or len(title) > 200:
-        raise AppException("VALIDATION_ERROR", "紧急通知标题需为 2 到 200 个字")
+        raise AppException("VALIDATION_ERROR", "通知标题需为 2 到 200 个字")
     if len(content) < 5 or len(content) > 5000:
-        raise AppException("VALIDATION_ERROR", "紧急通知正文需为 5 到 5000 个字")
+        raise AppException("VALIDATION_ERROR", "通知正文需为 5 到 5000 个字")
+    if notice_type not in NOTICE_TYPES:
+        raise AppException("VALIDATION_ERROR", "公告类型不合法")
+    if urgency not in NOTICE_URGENCY:
+        raise AppException("VALIDATION_ERROR", "紧急程度不合法")
+    if valid_from and valid_until and valid_from > valid_until:
+        raise AppException("VALIDATION_ERROR", "有效期结束时间不能早于开始时间")
     sender_id, sender_name = _teacher_identity(user)
     with session() as db:
         batch = _batch(db, payload.get("batchId"))
@@ -566,6 +639,11 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
             batch_id=batch.id,
             title=title,
             content=content,
+            notice_type=notice_type,
+            urgency=urgency,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            attachment_file_ids_json=attachment_ids or None,
             sender_user_id=sender_id,
             sender_name_snapshot=sender_name,
             recipient_count=recipient_count,
@@ -575,6 +653,9 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
         )
         db.add(row)
         db.flush()
+        for file_id in attachment_ids:
+            file_service.bind_file_biz(
+                file_id, "INTERNSHIP_NOTICE", str(row.id), user=user, db=db)
         add_audit(
             db,
             target_type="EMERGENCY_NOTICE",
@@ -582,7 +663,15 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
             action="EMERGENCY_NOTICE_PUBLISH",
             user=user,
             batch_id=batch.id,
-            detail={"recipientCount": recipient_count, "delivery": "PERSISTED_IN_APP"},
+            detail={
+                "recipientCount": recipient_count,
+                "delivery": "PERSISTED_IN_APP",
+                "noticeType": notice_type,
+                "urgency": urgency,
+                "attachmentCount": len(attachment_ids),
+                "validFrom": _iso(valid_from) or "",
+                "validUntil": _iso(valid_until) or "",
+            },
         )
         db.commit()
         return _notice_view(row)
@@ -653,11 +742,14 @@ def list_student_notices(user: dict, *, batch_id) -> list[dict]:
         )
         if not ctx.record or int(ctx.record.batch_id or 0) != int(batch.id):
             raise no_permission("当前学生不属于该实习批次")
+        now = datetime.utcnow()
         rows = db.scalars(select(InternshipEmergencyNotice).where(
             InternshipEmergencyNotice.tenant_id == _tid(),
             InternshipEmergencyNotice.batch_id == batch.id,
             InternshipEmergencyNotice.status == "PUBLISHED",
             InternshipEmergencyNotice.is_deleted.is_(False),
+            ((InternshipEmergencyNotice.valid_from.is_(None)) | (InternshipEmergencyNotice.valid_from <= now)),
+            ((InternshipEmergencyNotice.valid_until.is_(None)) | (InternshipEmergencyNotice.valid_until >= now)),
         ).order_by(
             InternshipEmergencyNotice.published_at.desc(),
             InternshipEmergencyNotice.id.desc(),
