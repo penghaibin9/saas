@@ -326,3 +326,13 @@ export const studentInternshipHelp = (batchId, internshipId) => {
 }
 export const studentInternshipHelpSubmit = (body) =>
   realRequest('/mobile/internship/context/help', { method: 'POST', data: body || {} })
+export const studentInternshipSupport = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/support', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipSupportAsk = (body) =>
+  realRequest('/mobile/internship/context/support/ask', { method: 'POST', data: body || {} })
+export const studentInternshipSupportSolved = (sessionId, body) =>
+  realRequest(`/mobile/internship/context/support/${enc(sessionId)}/solved`, { method: 'POST', data: body || {} })
+export const studentInternshipSupportUnresolved = (sessionId, body) =>
+  realRequest(`/mobile/internship/context/support/${enc(sessionId)}/unresolved`, { method: 'POST', data: body || {} })
