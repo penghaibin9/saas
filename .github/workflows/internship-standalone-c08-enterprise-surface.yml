@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 20
     env:
       PYTHONPATH: products/internship-platform/backend
-      DATABASE_URL: sqlite+pysqlite:///:memory:
+      DATABASE_URL: "sqlite+pysqlite:///:memory:"
       JWT_SECRET: c08-enterprise-surface-actions-secret
     steps:
       - uses: actions/checkout@v4
