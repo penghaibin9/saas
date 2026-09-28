@@ -518,7 +518,10 @@
                     <button v-for="file in w.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="openReportAttachment(file)">{{ file.fileName || '附件' }}</button>
                   </div>
                   <div v-if="w.reviewComment" class="report-feedback"><strong>教师意见</strong>{{ w.reviewComment }}</div>
-                  <button v-if="w.status === 'RETURNED'" type="button" class="report-revise" @click="editWeekly(w)">按意见修改</button>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="report-revise" :disabled="busy" @click="downloadReportPdf('WEEKLY',w)">下载 PDF</button>
+                    <button v-if="w.status === 'RETURNED'" type="button" class="report-revise" @click="editWeekly(w)">按意见修改</button>
+                  </div>
                 </div>
               </div>
             </template>
@@ -535,7 +538,10 @@
                     <button v-for="file in p.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="openReportAttachment(file)">{{ file.fileName || '附件' }}</button>
                   </div>
                   <div v-if="p.reviewComment" class="report-feedback"><strong>教师意见</strong>{{ p.reviewComment }}</div>
-                  <button v-if="p.status === 'RETURNED'" type="button" class="report-revise" @click="editProcessReport(p)">按意见修改</button>
+                  <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <button type="button" class="report-revise" :disabled="busy" @click="downloadReportPdf('PROCESS',p)">下载 PDF</button>
+                    <button v-if="p.status === 'RETURNED'" type="button" class="report-revise" @click="editProcessReport(p)">按意见修改</button>
+                  </div>
                 </div>
               </div>
             </template>
@@ -1423,6 +1429,32 @@ async function submitHelp() {
     ui.notify(d?.message || '求助已提交')
     helpForm.content = ''; helpForm.title = ''
   } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
+}
+async function downloadReportPdf(kind, row) {
+  if (busy.value || !row?.id) return
+  busy.value = true
+  reportError.value = ''
+  try {
+    const data = await internshipCoreApi.reportPdf(currentInternshipContext(), kind, row.id)
+    const raw = atob(String(data?.contentBase64 || ''))
+    const bytes = new Uint8Array(raw.length)
+    for (let i = 0; i < raw.length; i += 1) bytes[i] = raw.charCodeAt(i)
+    const blob = new Blob([bytes], { type: data?.mediaType || 'application/pdf' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = data?.filename || '实习报告.pdf'
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    URL.revokeObjectURL(url)
+    ui.notify('报告 PDF 已生成')
+  } catch (e) {
+    reportError.value = e?.message || '报告 PDF 生成失败'
+    ui.notify(reportError.value)
+  } finally {
+    busy.value = false
+  }
 }
 async function uploadReportAttachment(event, target) {
   const input = event?.target
