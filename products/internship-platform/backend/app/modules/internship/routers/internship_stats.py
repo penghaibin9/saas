@@ -47,6 +47,15 @@ def stats_metric_drilldown(metricKey: str, subset: str = Query(..., pattern="^(n
         class_name=className, batch_id=batchId))
 
 
+@router.get("/stats/procurement-overview", summary="益阳采购口径四组统计（概况/去向/活动/质量）")
+def stats_procurement_overview(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    user=Depends(require_permission(_P_VIEW)),
+):
+    from app.modules.internship.services import internship_procurement_stats_service as procurement
+    return success(procurement.overview(user, batch_id=batchId))
+
+
 @router.get("/stats/overview", summary="实习总览统计（指标/计数/成绩分布，按数据范围+维度筛选）")
 def stats_overview(college: Optional[str] = None, major: Optional[str] = None,
                    className: Optional[str] = None, batchId: Optional[str] = None,
