@@ -687,6 +687,33 @@ class InternshipEmergencyNoticeReceipt(PKMixin, TenantMixin, CommonMixin, Base):
     )
 
 
+
+class InternshipSupportSession(PKMixin, TenantMixin, CommonMixin, Base):
+    """SM14 FAQ session and three-unresolved transfer state."""
+    __tablename__ = "t_internship_support_session"
+    __table_args__ = (
+        Index(
+            "ix_ix_support_student_status",
+            "tenant_id", "internship_id", "student_id", "status", "id",
+        ),
+    )
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    status: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="ACTIVE",
+        comment="ACTIVE/SOLVED/TRANSFERRED",
+    )
+    unresolved_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_question: Mapped[str | None] = mapped_column(Text)
+    last_answer: Mapped[str | None] = mapped_column(Text)
+    context_json: Mapped[list | None] = mapped_column(JSON)
+    transferred_risk_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    transferred_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+
+
 class InternshipPlanAck(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_plan_ack 计划书学生确认回执（迁移 0038）。一学生一计划一条。"""
     __tablename__ = "t_internship_plan_ack"
