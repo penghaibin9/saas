@@ -841,7 +841,14 @@ def list_task_rows(
             InternshipRegulatoryTaskRow.is_deleted.is_(False),
         )
         if error_only:
-            base = base.where(InternshipRegulatoryTaskRow.is_valid.is_(False))
+            if task.validated_at is None:
+                return {
+                    "items": [], "total": 0, "page": page, "pageSize": page_size,
+                    "errorOnly": True,
+                }
+            base = base.where(
+                func.json_length(InternshipRegulatoryTaskRow.validation_errors_json) > 0
+            )
         total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
         rows = db.scalars(
             base.order_by(InternshipRegulatoryTaskRow.row_no)
@@ -858,6 +865,10 @@ def list_task_rows(
                     "payload": dict(row.payload_json or {}),
                     "errors": list(row.validation_errors_json or []),
                     "isValid": bool(row.is_valid),
+                    "validationState": (
+                        "PENDING" if task.validated_at is None
+                        else ("FAILED" if row.validation_errors_json else "PASSED")
+                    ),
                 }
                 for row in rows
             ],
