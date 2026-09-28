@@ -22,6 +22,22 @@
           @click="goPanel(view.key)"
         >{{ view.label }}</button>
       </nav>
+      <div class="isl-ledger-mode">
+        <div class="isl-ledger-toggle" role="group" aria-label="一览表列模式">
+          <button type="button" :class="{ 'is-active': tableMode === 'compact' }" @click="tableMode = 'compact'">精简视图</button>
+          <button type="button" :class="{ 'is-active': tableMode === 'full' }" @click="tableMode = 'full'">完整一览表</button>
+        </div>
+        <details v-if="tableMode === 'full'" class="isl-column-config">
+          <summary>显示列 {{ selectedFullColumnKeys.length }}/{{ fullColumnOptions.length }}</summary>
+          <div>
+            <label v-for="column in fullColumnOptions" :key="column.key">
+              <input v-model="selectedFullColumnKeys" type="checkbox" :value="column.key" />
+              <span>{{ column.title }}</span>
+            </label>
+          </div>
+        </details>
+        <span v-if="tableMode === 'full'" class="isl-ledger-note">页面与 Excel 使用同一服务端事实；生源地暂无独立来源时明确显示“未采集”。</span>
+      </div>
       <form class="isl-filters" @submit.prevent="search">
         <label class="isl-keyword">学生姓名 / 学号<input v-model="filters.keyword" type="search" placeholder="输入姓名或学号" /></label>
         <label v-for="field in filterFields.slice(1, 3)" :key="field.key">{{ field.label }}<select v-model="filters[field.key]"><option value="">全部</option><option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
@@ -51,6 +67,11 @@
         <template #cell-status="{ row }">
           <AppStatusTag :type="row.statusTone" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
+        <template #cell-companyCreditCode="{ row }"><span class="mono">{{ row.companyCreditCode || '未采集' }}</span></template>
+        <template #cell-majorMatchLabel="{ row }"><AppStatusTag :type="row.majorMatch === true ? 'success' : row.majorMatch === false ? 'warning' : 'default'">{{ row.majorMatchLabel || '未确认' }}</AppStatusTag></template>
+        <template #cell-agreedSalary="{ row }">{{ row.agreedSalary == null ? '未采集' : (row.agreedSalaryCurrency || 'CNY') + ' ' + Number(row.agreedSalary).toFixed(2) }}</template>
+        <template #cell-rotationScoreSummary="{ row }"><span :title="row.rotationScoreSummary || ''">{{ row.rotationScoreSummary || (row.rotationCount ? '轮岗成绩待评定' : '无轮岗') }}</span></template>
+        <template #cell-latestActualSalary="{ row }">{{ row.latestActualSalary == null ? '未确认' : (row.latestActualSalaryCurrency || 'CNY') + ' ' + Number(row.latestActualSalary).toFixed(2) + (row.latestPayrollMonth ? ' · ' + row.latestPayrollMonth : '') }}</template>
         <template #cell-actions="{ row }">
           <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
         </template>
@@ -141,6 +162,39 @@ const PANEL_PRESETS = {
   mentor: () => EMPTY_FILTERS()
 }
 
+const COMPACT_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'eligibility', title: '实习资格' },
+  { key: 'placement', title: '岗位与去向' },
+  { key: 'status', title: '实习状态' },
+  { key: 'advisor', title: '指导教师' },
+  { key: 'actions', title: '操作', width: '170px' }
+]
+const FULL_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'grade', title: '年级' },
+  { key: 'collegeName', title: '学院' },
+  { key: 'majorName', title: '专业' },
+  { key: 'sourceRegion', title: '生源地' },
+  { key: 'placement', title: '岗位与去向' },
+  { key: 'companyCreditCode', title: '统一社会信用代码' },
+  { key: 'companyNature', title: '单位性质' },
+  { key: 'companyIndustry', title: '行业分类' },
+  { key: 'workCity', title: '实际工作城市' },
+  { key: 'internshipDepartment', title: '实习部门' },
+  { key: 'positionCategory', title: '岗位类别' },
+  { key: 'majorMatchLabel', title: '专业对口' },
+  { key: 'agreedSalary', title: '约定报酬' },
+  { key: 'agreementStatus', title: '三方协议' },
+  { key: 'rotationScoreSummary', title: '轮岗成绩', width: '220px' },
+  { key: 'latestActualSalary', title: '最近实发工资' },
+  { key: 'eligibility', title: '实习资格' },
+  { key: 'status', title: '实习状态' },
+  { key: 'advisor', title: '指导教师' },
+  { key: 'actions', title: '操作', width: '170px' }
+]
+const DEFAULT_FULL_KEYS = FULL_COLUMNS.map((column) => column.key)
+
 export default {
   name: 'InternshipStudentListView',
   components: { ModulePageShell, ModuleToolbar, DataTable, LoadingState, ErrorState, EmptyState,
@@ -155,17 +209,17 @@ export default {
       advisorVisible: false, advisorRow: null, advisorAssignmentUserId: '', advisorAssignmentReason: '', advisorError: '',
       advisorLoading: false, advisorLoadError: '', advisorSequence: 0,
       importVisible: false,
-      columns: [
-        { key: 'student', title: '学生' },
-        { key: 'eligibility', title: '实习资格' },
-        { key: 'placement', title: '岗位与去向' },
-        { key: 'status', title: '实习状态' },
-        { key: 'advisor', title: '指导教师' },
-        { key: 'actions', title: '操作', width: '170px' }
-      ]
+      tableMode: 'compact',
+      selectedFullColumnKeys: [...DEFAULT_FULL_KEYS]
     }
   },
   computed: {
+    fullColumnOptions() { return FULL_COLUMNS.filter((column) => !['student', 'actions'].includes(column.key)) },
+    columns() {
+      if (this.tableMode !== 'full') return COMPACT_COLUMNS
+      const selected = new Set(['student', 'actions', ...this.selectedFullColumnKeys])
+      return FULL_COLUMNS.filter((column) => selected.has(column.key))
+    },
     advisorUnchanged() { return !!this.advisorAssignmentUserId && String(this.advisorAssignmentUserId) === String(this.advisorRow?.advisorUserId || '') },
     pageTitle() { return ({ roster: '实习学生名单', eligibility: '实习资格审核', mentor: '导师分配', status: '在岗学生', position: '待分配岗位', destination: '去向待落实', enterprise: '已落岗学生' })[this.activePanel] },
     statusOpts() { return STUDENT_STATUS },
@@ -431,6 +485,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.isl-ledger-mode{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 18px;border-bottom:1px solid var(--line);background:var(--field-bg)}.isl-ledger-toggle{display:flex;border:1px solid var(--border-base);border-radius:8px;overflow:hidden;background:#fff}.isl-ledger-toggle button{padding:6px 11px;border:0;border-left:1px solid var(--border-base);background:#fff;color:var(--text-secondary);font-size:12px;cursor:pointer}.isl-ledger-toggle button:first-child{border-left:0}.isl-ledger-toggle button.is-active{background:var(--pri-bg);color:var(--pri);font-weight:600}.isl-column-config{position:relative;font-size:12px;color:var(--text-secondary)}.isl-column-config summary{cursor:pointer}.isl-column-config>div{position:absolute;z-index:20;top:28px;left:0;display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));gap:8px;width:360px;max-height:320px;overflow:auto;padding:12px;border:1px solid var(--border-base);border-radius:10px;background:#fff;box-shadow:var(--s2)}.isl-column-config label{display:flex;align-items:center;gap:7px}.isl-ledger-note{font-size:11px;color:var(--text-tertiary)}
 .isl-filters { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px; padding:16px 18px; }
 .isl-filters label { display:flex; flex-direction:column; gap:7px; color:var(--text-secondary); font-size:12px; }
 .isl-keyword { flex:1 1 210px; }
@@ -467,7 +522,7 @@ export default {
 .isl-list{padding:0;overflow:hidden}.isl-list .isl-viewnav{border:0;border-radius:0;box-shadow:none;padding:14px 18px;background:transparent;border-bottom:1px solid var(--line);flex-wrap:wrap}
 .isl-list :deep(.tac){display:flex;flex-wrap:nowrap;gap:12px}
 .isl-list :deep(.tac__btn){padding:2px 0}
-.isl-list :deep(.dt){border:0;box-shadow:none;border-radius:0}.isl-list :deep(table){min-width:900px}
+.isl-list :deep(.dt){border:0;box-shadow:none;border-radius:0}.isl-list :deep(table){min-width:900px}.isl-list:has(.isl-ledger-toggle button:nth-child(2).is-active) :deep(table){min-width:2200px}
 .isl .mp-cell-sub{line-height:1.6}.isl .mp-cell-main.mp-link{display:block;text-decoration:none;font-weight:500}
 @media(max-width:800px){.isl-list{overflow:auto}}
 </style>
