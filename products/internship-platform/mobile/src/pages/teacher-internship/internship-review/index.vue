@@ -14,6 +14,7 @@
           <button class="ir__quick-btn" @click="openExemptions">免签审批</button>
           <button class="ir__quick-btn" @click="openMaterials">材料审核</button>
           <button class="ir__quick-btn" @click="openPayroll">工资单审核</button>
+          <button v-if="internshipContext.can('internship.stats.view')" class="ir__quick-btn" @click="openSchoolStats">校级统计</button>
         </view>
         <view class="ir__tabs page-pad"><MobileSegmented :items="tabs" v-model="tab" /></view>
         <view class="page-pad ir__page" style="padding-top:0;">
@@ -230,6 +231,7 @@ export default {
     }
   },
   computed: {
+    internshipContext() { return useInternshipContextStore() },
     currentBatchLabel() {
       const batch = this.batches[this.batchIndex]
       return batch ? `${batch.name || batch.batchNo || '未命名批次'}${batch.status ? ` · ${batch.status === 'RUNNING' ? '进行中' : batch.status}` : ''}` : '请选择实习批次'
@@ -285,6 +287,7 @@ export default {
     openExemptions() { uni.navigateTo({ url: '/pages/teacher-internship/checkin-exemption/index' }) },
     openMaterials() { uni.navigateTo({ url: '/pages/teacher-internship/material-review/index' }) },
     openPayroll() { uni.navigateTo({ url: '/pages/teacher-internship/payroll-review/index' }) },
+    openSchoolStats() { uni.navigateTo({ url: '/pages/teacher-internship/school-stats/index' }) },
     toast,
     invalidateReads() { this.hidden = true; this.readEpoch++; this.visitEpoch++; this.pagingBusy = false },
     readIsCurrent(epoch, generation) { return !this.hidden && epoch === this.readEpoch && generation === currentSessionGeneration() },
