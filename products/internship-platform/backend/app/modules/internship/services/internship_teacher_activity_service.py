@@ -22,6 +22,7 @@ from app.models import (
     InternshipTeacherWorkReport,
 )
 from app.modules.internship.services.internship_audit_service import add_audit
+from app.modules.internship.services.internship_checkin_evidence_service import watermark_photo
 from app.modules.internship.services.internship_identity import stable_user_id
 from app.modules.internship.services.internship_record_resolver import (
     resolve_student_internship_context,
@@ -284,6 +285,17 @@ def _checkin_view(row: InternshipTeacherCheckin, *, already=False) -> dict:
         "accuracyM": float(row.accuracy_m) if row.accuracy_m is not None else None,
         "address": row.address or "",
         "note": row.note or "",
+        "result": row.result or "RECORDED",
+        "distanceM": float(row.distance_m) if row.distance_m is not None else None,
+        "coordinateSystem": row.coordinate_system or "",
+        "countryRegion": row.country_region or "",
+        "locationProvider": row.location_provider or "",
+        "photoFileId": row.photo_file_id or "",
+        "watermarkedFileId": row.watermarked_file_id or "",
+        "photoSha256": row.photo_sha256 or "",
+        "watermarkedSha256": row.watermarked_sha256 or "",
+        "watermarkText": row.watermark_text or "",
+        "evidenceAvailable": bool(row.photo_file_id and row.watermarked_file_id),
         "alreadyCheckedIn": bool(already),
     }
 
@@ -293,8 +305,25 @@ def checkin(user: dict, body: dict) -> dict:
     teacher_id, teacher_name = _teacher_identity(user)
     timezone_name, tz = _zone(payload.get("timezoneName"))
     lat, lng, accuracy = _location(payload)
+    photo_file_id = str(payload.get("photoFileId") or "").strip() or None
+    if photo_file_id and lat is None:
+        raise AppException("VALIDATION_ERROR", "教师签到上传现场照片时必须同时提供定位，才能生成可信位置水印")
+
+    coordinate_system = str(
+        payload.get("coordinateSystem") or ("GCJ02" if lat is not None else "")
+    ).strip().upper() or None
+    if coordinate_system not in (None, "GCJ02", "WGS84"):
+        raise AppException("VALIDATION_ERROR", "coordinateSystem 仅支持 GCJ02/WGS84")
+    country_region = str(payload.get("countryRegion") or "").strip()[:100] or None
+    location_provider = str(payload.get("locationProvider") or "").strip()[:50] or None
+    address = str(payload.get("address") or "").strip()[:500] or None
+    result = "NO_LOCATION" if lat is None else (
+        "LOW_ACCURACY" if accuracy is not None and accuracy > 200 else "NORMAL"
+    )
+
     now_utc = datetime.now(timezone.utc)
-    local_date = now_utc.astimezone(tz).date()
+    local_now = now_utc.astimezone(tz)
+    local_date = local_now.date()
     with session() as db:
         batch = _assert_teacher_batch_scope(db, payload.get("batchId"), user)
         existing = db.scalar(select(InternshipTeacherCheckin).where(
@@ -318,11 +347,43 @@ def checkin(user: dict, body: dict) -> dict:
             latitude=lat,
             longitude=lng,
             accuracy_m=accuracy,
-            address=str(payload.get("address") or "").strip()[:500] or None,
+            address=address,
             note=str(payload.get("note") or "").strip()[:500] or None,
+            result=result,
+            coordinate_system=coordinate_system,
+            country_region=country_region,
+            location_provider=location_provider,
+            photo_file_id=photo_file_id,
         )
         db.add(row)
         db.flush()
+
+        evidence = None
+        if photo_file_id:
+            location_text = address or f"{lat:.6f},{lng:.6f}"
+            watermark_text = (
+                f"教师签到 · {teacher_name}\n"
+                f"{local_now.strftime('%Y-%m-%d %H:%M:%S')} {timezone_name}\n"
+                f"{location_text}\n"
+                f"{coordinate_system or 'GCJ02'} {lat:.6f},{lng:.6f}"
+            )
+            evidence = watermark_photo(
+                original_file_id=photo_file_id,
+                checkin_id=int(row.id),
+                watermark_text=watermark_text,
+                actor=user,
+                batch_id=str(batch.id),
+                subject_type="TEACHER",
+                subject_id=teacher_id,
+                biz_type="INTERNSHIP_TEACHER_CHECKIN",
+                db=db,
+            )
+            row.photo_file_id = evidence["originalFileId"]
+            row.watermarked_file_id = evidence["watermarkedFileId"]
+            row.photo_sha256 = evidence["originalSha256"] or None
+            row.watermarked_sha256 = evidence["watermarkedSha256"] or None
+            row.watermark_text = watermark_text
+
         add_audit(
             db,
             target_type="TEACHER_CHECKIN",
@@ -330,16 +391,22 @@ def checkin(user: dict, body: dict) -> dict:
             action="TEACHER_CHECKIN_CREATE",
             user=user,
             batch_id=batch.id,
+            file_ids=[
+                fid for fid in [row.photo_file_id, row.watermarked_file_id] if fid
+            ],
             detail={
                 "teacherUserId": str(teacher_id),
                 "localDate": local_date.isoformat(),
                 "timezoneName": timezone_name,
                 "hasLocation": lat is not None,
+                "result": result,
+                "coordinateSystem": coordinate_system or "",
+                "countryRegion": country_region or "",
+                "hasTrustedPhotoEvidence": bool(evidence),
             },
         )
         db.commit()
         return _checkin_view(row)
-
 
 def list_my_checkins(user: dict, *, batch_id, limit: int = 31) -> list[dict]:
     teacher_id, _ = _teacher_identity(user)
