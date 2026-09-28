@@ -70,6 +70,7 @@ def _user():
 
 
 def test_g15_approve_requires_five_level_rating(monkeypatch):
+    monkeypatch.setattr(svc, "_tid", lambda: 1)
     monkeypatch.setattr(
         svc,
         "latest_process_snapshot",
@@ -102,6 +103,7 @@ def test_g15_summary_requires_0_to_100_score(monkeypatch):
 
 
 def test_g15_return_can_be_unrated_but_is_version_bound(monkeypatch):
+    monkeypatch.setattr(svc, "_tid", lambda: 1)
     monkeypatch.setattr(
         svc,
         "latest_process_snapshot",
