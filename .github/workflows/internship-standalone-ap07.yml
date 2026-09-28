@@ -1,7 +1,12 @@
 name: Internship Standalone AP07 Full Roster
 
 on:
-  workflow_dispatch:
+  pull_request:
+    paths:
+      - "products/internship-platform/backend/app/modules/internship/services/internship_student_service.py"
+      - "products/internship-platform/backend/tests/test_yiyang_ap07_full_roster.py"
+      - "products/internship-platform/admin-web/src/modules/internship/views/InternshipStudentListView.vue"
+      - ".github/workflows/internship-standalone-ap07.yml"
 
 jobs:
   ap07:
