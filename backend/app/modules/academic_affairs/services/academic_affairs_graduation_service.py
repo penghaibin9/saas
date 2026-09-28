@@ -231,14 +231,28 @@ def _check_course_elective(db, s):
     if not acad:
         return {"item": "COURSE_ELECTIVE", "result": "UNKNOWN", "owner": "AA_STAFF",
                 "evidence": "无学业记录", **meta}
-    earned = _earned_credits(db, acad, AcademicGrade.nature == "ELECTIVE")
-    target, target_error = _module_credit_target(prog.requirement_json, ("选修", "ELECTIVE"))
-    if target_error:
+    categories = (
+        ("选修", ("选修", "ELECTIVE"), ("ELECTIVE", "LIMITED_ELECTIVE", "PUBLIC_ELECTIVE")),
+        ("专业选修", ("专业选修",), ("ELECTIVE", "LIMITED_ELECTIVE")),
+        ("公共选修", ("公共选修",), ("PUBLIC_ELECTIVE",)),
+    )
+    checks = []
+    for label, aliases, natures in categories:
+        target, error = _module_credit_target(prog.requirement_json, aliases)
+        if error == "方案未设置该模块学分目标":
+            continue
+        if error:
+            return {"item": "COURSE_ELECTIVE", "result": "UNKNOWN", "owner": "AA_STAFF",
+                    "evidence": f"{error}（{label}）", **meta}
+        earned = _earned_credits(db, acad, AcademicGrade.nature.in_(natures))
+        checks.append((label, earned, target))
+    if not checks or (len(checks) > 1 and checks[0][0] == "选修"):
         return {"item": "COURSE_ELECTIVE", "result": "UNKNOWN", "owner": "AA_STAFF",
-                "evidence": f"{target_error}（选修；已修 {float(earned)} 学分）", **meta}
-    ok = float(earned) >= float(target)
+                "evidence": "方案选修学分目标缺失或总目标与分项并存，需明确口径", **meta}
+    ok = all(earned >= target for _, earned, target in checks)
+    evidence = "；".join(f"{label}已得 {earned}/{target} 学分" for label, earned, target in checks)
     return {"item": "COURSE_ELECTIVE", "result": "PASS" if ok else "FAIL",
-            "owner": "AA_STAFF", "evidence": f"选修已得 {float(earned)}/{float(target)} 学分", **meta}
+            "owner": "AA_STAFF", "evidence": evidence, **meta}
 
 
 def _check_practice(db, s):

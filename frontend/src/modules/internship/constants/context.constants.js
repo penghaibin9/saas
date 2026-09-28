@@ -7,6 +7,14 @@ export const tenantBrandConfig = {
 export const currentRole = { userId: '', userName: '', roleCode: '', roleName: '实习管理员' }
 export const dataScope = { scopeCode: '', scopeName: '按服务端授权范围' }
 
+// 建批次是全校写入；后端 internship_service.assert_admin_tenant 还校验校级管理身份。
+const SCHOOL_BATCH_ROLES = new Set([
+  'SCHOOL_ADMIN', 'ACADEMIC_ADMIN', 'STUDENT_AFFAIRS_ADMIN',
+  'GRADUATION_ADMIN', 'LEADER', 'SCHOOL_LEADER', 'SECURITY_AUDITOR'
+])
+export const canCreateSchoolBatch = (roleCode, scope) =>
+  scope === 'SCHOOL' && SCHOOL_BATCH_ROLES.has(roleCode)
+
 const deny = (reason) => ({ visible: true, allowed: false, reason })
 const allow = { visible: true, allowed: true, reason: '' }
 // 静态兜底态（离线/取不到 permissionPatterns 时用；正式构建下由 getContext 收紧为禁用）。

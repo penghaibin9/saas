@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -197,6 +198,8 @@ def test_current_credit_structure_drives_elective_and_practice_checks(db_mode):
 
 @pytest.mark.parametrize("requirement,expected", [
     ({"creditStructure": [{"module": "选修", "creditTarget": 2}]}, 2),
+    ({"creditStructure": [{"module": "专业选修", "creditTarget": 2}]}, 2),
+    ({"creditStructure": [{"module": "公共选修", "creditTarget": 2}]}, 2),
     ({"ELECTIVE": 2}, 2),
     ({"creditStructure": [{"module": "选修", "creditTarget": 2}], "ELECTIVE": 2}, 2),
     ({"creditStructure": [{"module": "实践环节", "creditTarget": 0}]}, 0),
@@ -204,6 +207,8 @@ def test_current_credit_structure_drives_elective_and_practice_checks(db_mode):
     ({"creditStructure": [{"module": "选修", "creditTarget": 2}], "ELECTIVE": 3}, None),
     ({"creditStructure": [{"module": "选修", "creditTarget": 2},
                           {"module": "ELECTIVE", "creditTarget": 2}]}, None),
+    ({"creditStructure": [{"module": "专业选修", "creditTarget": 2},
+                          {"module": "公共选修", "creditTarget": 2}]}, None),
     ({"选修": 2, "ELECTIVE": 2}, None),
     ({"creditStructure": [{"module": "选修", "creditTarget": -1}]}, None),
     ({"creditStructure": [{"module": "选修", "creditTarget": "NaN"}]}, None),
@@ -217,7 +222,9 @@ def test_current_credit_structure_drives_elective_and_practice_checks(db_mode):
 def test_module_credit_target_requires_explicit_unambiguous_value(requirement, expected):
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as svc
 
-    aliases = ("实践", "实践环节", "PRACTICE") if expected == 0 else ("选修", "ELECTIVE")
+    aliases = ("实践", "实践环节", "PRACTICE") if expected == 0 else (
+        "选修", "专业选修", "公共选修", "ELECTIVE"
+    )
     target, error = svc._module_credit_target(json.dumps(requirement), aliases)
     assert target == expected
     assert (error is None) == (expected is not None)
@@ -234,3 +241,24 @@ def test_practice_aliases_are_one_requirement_not_additive():
         json.dumps(requirement, ensure_ascii=False), ("实践", "实践环节", "PRACTICE"))
     assert target is None
     assert error == "方案模块学分目标重复或冲突"
+
+
+def test_elective_check_keeps_professional_and_public_targets_separate(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as svc
+
+    def check(modules, credits):
+        program = SimpleNamespace(requirement_json=json.dumps({"creditStructure": [
+            {"module": name, "creditTarget": target} for name, target in modules
+        ]}, ensure_ascii=False))
+        monkeypatch.setattr(svc, "_program_resolution", lambda _db, _student: SimpleNamespace(program=program))
+        monkeypatch.setattr(svc, "_acad_of", lambda _db, _student: object())
+        monkeypatch.setattr(svc, "_program_meta", lambda _resolution: {})
+        monkeypatch.setattr(svc, "_earned_credits", lambda _db, _acad, condition:
+                            sum(credits.get(nature, 0) for nature in condition.right.value))
+        return svc._check_course_elective(None, object())
+
+    targets = [("专业选修", 2), ("公共选修", 1)]
+    assert check(targets, {"ELECTIVE": 2, "PUBLIC_ELECTIVE": 1})["result"] == "PASS"
+    assert check(targets, {"ELECTIVE": 3})["result"] == "FAIL"
+    assert check([("选修", 1)], {"PUBLIC_ELECTIVE": 1})["result"] == "PASS"
+    assert check([("选修", 3), *targets], {"ELECTIVE": 2, "PUBLIC_ELECTIVE": 1})["result"] == "UNKNOWN"
