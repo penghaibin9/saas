@@ -5,12 +5,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from math import ceil
 
 from sqlalchemy import and_, false, func, or_, select
 
 from app.core.tenant_scoped import tenant_get
 from app.adapters.employment_gateway import employment_gateway
-from app.models import (College, InternshipAgreement, InternshipArchive,
+from app.models import (College, InternshipAgreement, InternshipApplication, InternshipArchive,
                         InternshipCheckin, InternshipEnterpriseEval, InternshipFinalScore,
                         InternshipGuidance, InternshipLeave, InternshipRecord,
                         InternshipStudentEval, InternshipVisit, Major, RiskRecord, SchoolClass,
@@ -24,6 +25,8 @@ METRIC_VERSION = "internship-stats-v1"
 METRIC_DEFINITIONS = {
     "placementRate": {"key": "placementRate", "label": "实习落实率", "numeratorLabel": "已落实去向学生", "denominatorLabel": "本批次实习学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "去向为已分配岗位、自主实习或免实习的学生。"},
     "matchRate": {"key": "matchRate", "label": "岗位匹配率", "numeratorLabel": "已分配岗位学生", "denominatorLabel": "本批次实习学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "已分配岗位学生。"},
+    "majorMatchRate": {"key": "majorMatchRate", "label": "专业对口率", "numeratorLabel": "明确专业对口学生", "denominatorLabel": "已确认专业对口事实学生", "threshold": 80, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "仅使用正式实习申请 major_match 明确真值；未知不默认是/否，也不以岗位分配率替代。"},
+    "reportTaskCompletionRate": {"key": "reportTaskCompletionRate", "label": "周报任务完成率", "numeratorLabel": "已提交周报篇数", "denominatorLabel": "按实习周期和批次频率应交篇数", "threshold": 90, "emptyPolicy": "null", "distinctKey": "weeklyReportUnit", "note": "按每名学生实习起止日期与批次 weeklyReport.frequency 计算应交篇数；有一篇周报不等于全部完成。"},
     "agreementSignRate": {"key": "agreementSignRate", "label": "协议签署率", "numeratorLabel": "已生效协议学生", "denominatorLabel": "本批次实习学生", "threshold": 95, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "协议状态为生效或已归档。"},
     "arrivalRate": {"key": "arrivalRate", "label": "到岗率", "numeratorLabel": "有有效打卡学生", "denominatorLabel": "应在岗学生", "threshold": 90, "emptyPolicy": "null", "distinctKey": "internshipId", "note": "应在岗学生为状态 ONBOARD、ASSESSING、ARCHIVED；分子为该队列中至少一条有效打卡的不同实习记录，避免历史打卡与当前在岗状态混算。"},
     "checkinComplyRate": {"key": "checkinComplyRate", "label": "打卡合规率", "numeratorLabel": "合规打卡", "denominatorLabel": "全部打卡", "threshold": 85, "emptyPolicy": "null", "distinctKey": "checkinId", "note": "正常、补录或请假打卡为合规。"},
@@ -111,6 +114,89 @@ def _metric(key, label, num, den, threshold, note=""):
             "definition": METRIC_DEFINITIONS.get(key), "note": note or METRIC_DEFINITIONS.get(key, {}).get("note", "")}
 
 
+def _latest_approved_application_facts(db, record_ids: list[int]) -> dict[int, InternshipApplication]:
+    """One approved legacy/self-arranged application fact per internship record.
+
+    Recruitment-campaign rows are excluded here because G14 needs the explicitly confirmed
+    major_match fact carried by the formal application snapshot. Unknown stays unknown.
+    """
+    ids = [int(value) for value in record_ids if value]
+    if not ids:
+        return {}
+    rows = db.scalars(select(InternshipApplication).where(
+        InternshipApplication.tenant_id == _tid(),
+        InternshipApplication.campaign_id.is_(None),
+        InternshipApplication.is_deleted.is_(False),
+        InternshipApplication.status == "APPROVED",
+        InternshipApplication.record_id.in_(ids),
+    ).order_by(
+        InternshipApplication.record_id,
+        InternshipApplication.reviewed_at.desc(),
+        InternshipApplication.id.desc(),
+    )).all()
+    out = {}
+    for row in rows:
+        rid = int(row.record_id or 0)
+        if rid and rid not in out:
+            out[rid] = row
+    return out
+
+
+def _weekly_expected_count(record: InternshipRecord, batch) -> int:
+    """Return planned weekly-report units for one internship record.
+
+    The frequency is authoritative batch configuration. Dates come from the student's
+    internship record first and fall back to batch dates. Missing/invalid dates mean the
+    denominator is unknown and therefore contributes 0 rather than inventing a task count.
+    """
+    rules = (batch.rules_config or {}) if batch else {}
+    weekly = rules.get("weeklyReport") or {}
+    frequency = str(weekly.get("frequency") or "WEEKLY").upper()
+    cadence_days = {"WEEKLY": 7, "BIWEEKLY": 14}.get(frequency)
+    if cadence_days is None:
+        return 0
+    start = record.intern_start_date or (batch.start_date if batch else None)
+    end = record.intern_end_date or (batch.end_date if batch else None)
+    if not start or not end:
+        return 0
+    start_date = start.date() if hasattr(start, "date") else start
+    end_date = end.date() if hasattr(end, "date") else end
+    if end_date < start_date:
+        return 0
+    days = (end_date - start_date).days + 1
+    return max(1, int(ceil(days / cadence_days)))
+
+
+def _weekly_task_facts(db, records: list[InternshipRecord], batch) -> dict:
+    expected_by_record = {int(row.id): _weekly_expected_count(row, batch) for row in records}
+    valid_ids = [rid for rid, expected in expected_by_record.items() if expected > 0]
+    submitted_by_record = {rid: 0 for rid in expected_by_record}
+    if valid_ids:
+        rows = db.execute(select(
+            WeeklyReport.internship_id,
+            func.count(WeeklyReport.id),
+        ).where(
+            WeeklyReport.tenant_id == _tid(),
+            WeeklyReport.is_deleted.is_(False),
+            WeeklyReport.internship_id.in_(valid_ids),
+            WeeklyReport.submitted_at.is_not(None),
+        ).group_by(WeeklyReport.internship_id)).all()
+        for rid, count in rows:
+            submitted_by_record[int(rid)] = int(count or 0)
+    expected_total = sum(expected_by_record.values())
+    # Extra historical rows cannot raise completion above the authoritative planned units.
+    submitted_total = sum(
+        min(int(submitted_by_record.get(rid, 0)), int(expected or 0))
+        for rid, expected in expected_by_record.items()
+    )
+    return {
+        "expectedByRecord": expected_by_record,
+        "submittedByRecord": submitted_by_record,
+        "expectedTotal": expected_total,
+        "submittedTotal": submitted_total,
+    }
+
+
 def overview(user, college=None, major=None, class_name=None, batch_id=None) -> dict:
     from app.modules.internship.services.internship_batch_context import (
         batch_public_fields, resolve_batch)
@@ -147,6 +233,19 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
         onboard = sum(1 for r in kept if r.status == "ONBOARD")
         assessing_arch = sum(1 for r in kept if r.status in ("ASSESSING", "ARCHIVED"))
         eval_base = sum(1 for r in kept if r.status in ("ONBOARD", "ASSESSING", "ARCHIVED"))
+
+        application_facts = _latest_approved_application_facts(db, [r.id for r in kept])
+        major_match_known = {
+            rid: app for rid, app in application_facts.items()
+            if app.major_match is not None
+        }
+        major_match_den = len(major_match_known)
+        major_match_num = sum(1 for app in major_match_known.values() if app.major_match is True)
+        report_task = _weekly_task_facts(
+            db,
+            [r for r in kept if r.status in ("ONBOARD", "ASSESSING", "ARCHIVED")],
+            batch,
+        )
 
         def _cnt(model, *conds):
             return db.scalar(select(func.count()).select_from(model).where(
@@ -211,6 +310,11 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
                     "去向已落实（分配岗位/自主实习/免实习）学生 / 本批次全部实习学生"),
             _metric("matchRate", "岗位匹配率", matched, total, 90,
                     "已分配岗位学生 / 本批次全部实习学生"),
+            _metric("majorMatchRate", "专业对口率", major_match_num, major_match_den, 80,
+                    "明确专业对口学生 / 已确认专业对口事实学生；未知不纳入分母"),
+            _metric("reportTaskCompletionRate", "周报任务完成率",
+                    report_task["submittedTotal"], report_task["expectedTotal"], 90,
+                    "已提交周报篇数 / 按学生实习周期与批次频率计算的应交篇数"),
             _metric("agreementSignRate", "协议签署率", agr_signed, total, 95),
             _metric("arrivalRate", "到岗率", arrived, eval_base, 90),
             _metric("checkinComplyRate", "打卡合规率", checkin_ok, checkin_total, 85),
@@ -265,6 +369,18 @@ def overview(user, college=None, major=None, class_name=None, batch_id=None) -> 
             "counters": counters,
             "metrics": metrics,
             "scoreDistribution": dist,
+            "procurementFacts": {
+                "majorMatch": {
+                    "knownStudents": major_match_den,
+                    "matchedStudents": major_match_num,
+                    "unknownStudents": max(0, total - major_match_den),
+                },
+                "weeklyReportTasks": {
+                    "expected": report_task["expectedTotal"],
+                    "submitted": report_task["submittedTotal"],
+                    "frequency": str(((batch.rules_config or {}).get("weeklyReport") or {}).get("frequency") or "WEEKLY").upper(),
+                },
+            },
             "partial": ([] if employment_configured else [{
                 "key": "employment",
                 "status": employment.get("status") or "NOT_CONFIGURED",
@@ -315,6 +431,19 @@ def metric_drilldown(user, metric_key, subset, page=1, page_size=20, college=Non
         onsite = {r.id for r in kept if r.status in ("ONBOARD", "ASSESSING", "ARCHIVED")}
         weekly_base = {r.id for r in kept if r.status in ("ONBOARD", "ASSESSING")}
         eval_base = {r.id for r in kept if r.status in ("ASSESSING", "ARCHIVED")}
+        application_facts = _latest_approved_application_facts(db, [r.id for r in kept])
+        major_known = {rid for rid, app in application_facts.items() if app.major_match is not None}
+        major_positive = {rid for rid, app in application_facts.items() if app.major_match is True}
+        report_task = _weekly_task_facts(
+            db,
+            [r for r in kept if r.status in ("ONBOARD", "ASSESSING", "ARCHIVED")],
+            batch,
+        )
+        report_den = {rid for rid, expected in report_task["expectedByRecord"].items() if expected > 0}
+        report_positive = {
+            rid for rid in report_den
+            if int(report_task["submittedByRecord"].get(rid, 0)) > 0
+        }
         def related_ids(model, *conditions):
             return set(db.scalars(select(model.internship_id).where(
                 model.tenant_id == _tid(), model.is_deleted.is_(False),
@@ -322,6 +451,8 @@ def metric_drilldown(user, metric_key, subset, page=1, page_size=20, college=Non
         positive = {
             "placementRate": {r.id for r in kept if r.destination_type in ("ASSIGNED", "SELF_ARRANGED", "EXEMPTED")},
             "matchRate": {r.id for r in kept if r.position_id or r.destination_type == "ASSIGNED"},
+            "majorMatchRate": major_positive,
+            "reportTaskCompletionRate": report_positive,
             "agreementSignRate": related_ids(InternshipAgreement, InternshipAgreement.status.in_(["EFFECTIVE", "ARCHIVED"])),
             "arrivalRate": related_ids(InternshipCheckin, InternshipCheckin.result.in_(["NORMAL", "RECORDED", "LEAVE"])) & onsite,
             "weeklySubmitRate": related_ids(WeeklyReport) & weekly_base,
@@ -333,6 +464,8 @@ def metric_drilldown(user, metric_key, subset, page=1, page_size=20, college=Non
             "archiveRate": related_ids(InternshipArchive, InternshipArchive.status == "ARCHIVED"),
         }
         denominator = {
+            "majorMatchRate": major_known,
+            "reportTaskCompletionRate": report_den,
             "arrivalRate": onsite, "weeklySubmitRate": weekly_base,
             "enterpriseEvalRate": eval_base, "studentEvalRate": eval_base,
             "scorePublishRate": eval_base, "archiveRate": eval_base,
@@ -345,9 +478,15 @@ def metric_drilldown(user, metric_key, subset, page=1, page_size=20, college=Non
         for rec in selected[start:start + int(page_size)]:
             stu = tenant_get(db, StudentProfile, rec.student_id)
             org = _org_of(db, stu, cache)
-            rows.append({"internshipId": str(rec.id), "studentId": str(rec.student_id),
-                         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
-                         "status": rec.status, "college": org[0], "major": org[1], "className": org[2]})
+            app_fact = application_facts.get(int(rec.id))
+            rows.append({
+                "internshipId": str(rec.id), "studentId": str(rec.student_id),
+                "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
+                "status": rec.status, "college": org[0], "major": org[1], "className": org[2],
+                "majorMatch": app_fact.major_match if app_fact is not None else None,
+                "weeklyExpected": int(report_task["expectedByRecord"].get(int(rec.id), 0)),
+                "weeklySubmitted": int(report_task["submittedByRecord"].get(int(rec.id), 0)),
+            })
         return {"metricVersion": METRIC_VERSION, "definition": METRIC_DEFINITIONS[metric_key],
                 "subset": subset, "total": len(selected), "items": rows, "page": int(page),
                 "pageSize": int(page_size), "appliedFilters": {"batchId": str(batch.id), "college": college or "",
