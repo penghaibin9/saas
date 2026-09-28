@@ -1,0 +1,28 @@
+name: Internship Standalone G14 Statistics Truth
+
+on:
+  pull_request:
+    paths:
+      - "products/internship-platform/backend/app/modules/internship/services/internship_stats_service.py"
+      - "products/internship-platform/backend/tests/test_yiyang_c06_g14_stats.py"
+      - ".github/workflows/internship-standalone-g14.yml"
+
+jobs:
+  g14:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: products/internship-platform/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Compile statistics authority
+        run: python -m py_compile products/internship-platform/backend/app/modules/internship/services/internship_stats_service.py
+      - name: Run Yiyang G14 only
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_c06_g14_stats.py
