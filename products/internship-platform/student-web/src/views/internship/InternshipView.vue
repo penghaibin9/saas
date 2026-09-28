@@ -55,6 +55,33 @@
         <div><strong style="color:#613400">暂无实习记录</strong><p class="sp-muted" style="margin:6px 0 0;color:#8b5c00">{{ my.message || '你尚未被纳入实习安排，建档后此处会显示企业、岗位与周月报待办。' }}</p></div>
       </section>
 
+      <!-- 通知公告 SP01 -->
+      <template v-else-if="tab === 'notices'">
+        <section class="sp-card">
+          <div class="sp-panel__head">通知公告 <span class="sp-muted">当前批次 {{ notices.length }} 条</span></div>
+          <p class="sp-muted" style="margin:-4px 0 14px">学校或院系发布的岗位实习通知；附件统一走文件安全授权，不拼接原始存储地址。</p>
+          <StateBlock v-if="!notices.length" type="empty" text="当前批次暂无有效通知公告" />
+          <div v-else style="display:flex;flex-direction:column;gap:12px">
+            <article v-for="item in notices" :key="item.id" style="padding:14px;border:1px solid var(--line);border-radius:12px;background:var(--bg2)">
+              <div style="display:flex;justify-content:space-between;gap:16px;align-items:flex-start">
+                <div style="min-width:0">
+                  <strong style="display:block;font-size:15px">{{ item.title }}</strong>
+                  <span class="sp-muted">{{ noticeTypeText(item.noticeType) }} · {{ item.senderName || '学校' }} · {{ fmt(item.publishedAt) }}</span>
+                </div>
+                <StatusTag :text="noticeUrgencyText(item.urgency)" :tone="item.urgency === 'URGENT' ? 'danger' : item.urgency === 'IMPORTANT' ? 'warn' : 'primary'" />
+              </div>
+              <p style="margin:12px 0 0;line-height:1.75;white-space:pre-wrap;word-break:break-word">{{ item.content }}</p>
+              <p v-if="item.validFrom || item.validUntil" class="sp-muted" style="margin:8px 0 0">有效期：{{ item.validFrom ? String(item.validFrom).slice(0,10) : '不限' }} 至 {{ item.validUntil ? String(item.validUntil).slice(0,10) : '不限' }}</p>
+              <div v-if="item.attachments?.length" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
+                <button v-for="file in item.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="openNoticeAttachment(file)">
+                  {{ file.fileName || '通知附件' }}
+                </button>
+              </div>
+            </article>
+          </div>
+        </section>
+      </template>
+
       <!-- 我的实习 -->
       <template v-else-if="tab === 'overview'">
         <section v-if="internshipCandidates.length > 1" class="sp-card" style="margin-bottom:16px">
@@ -568,6 +595,7 @@ import AppDatePicker from '../../components/AppDatePicker.vue'
 import FlowSteps from '../../components/FlowSteps.vue'
 import { portalApi } from '../../services/portalApi'
 import { internshipCoreApi } from '../../services/internshipCoreApi'
+import fileSdk from '../../services/fileSdk'
 import { usePortalConfigStore } from '../../stores/portalConfig'
 import { useSessionStore } from '../../stores/session'
 import { useUiStore } from '../../stores/ui'
@@ -579,7 +607,7 @@ const session = useSessionStore()
 const route = useRoute()
 const router = useRouter()
 const tabs = [
-  { key: 'overview', label: '我的实习' }, { key: 'agreement', label: '三方协议' },
+  { key: 'overview', label: '我的实习' }, { key: 'notices', label: '通知公告' }, { key: 'agreement', label: '三方协议' },
   { key: 'checkin', label: '每日打卡' }, { key: 'leave', label: '实习请假' },
   { key: 'makeup', label: '补卡申请' }, { key: 'intention', label: '岗位意向' },
   { key: 'application', label: '正式申请' }, { key: 'change', label: '调岗退岗' },
@@ -589,7 +617,7 @@ const tabs = [
 ]
 const tab = ref('overview')
 const tabGroups = [
-  { key: 'onboard', label: '安排与入岗', hint: '确认实习安排与上岗前条件', tabs: tabs.filter((item) => ['overview', 'plan', 'insurance', 'agreement'].includes(item.key)) },
+  { key: 'onboard', label: '安排与入岗', hint: '确认实习安排与上岗前条件', tabs: tabs.filter((item) => ['overview', 'notices', 'plan', 'insurance', 'agreement'].includes(item.key)) },
   { key: 'selection', label: '选岗与申请', hint: '查岗位、填意向、提交正式申请', tabs: tabs.filter((item) => ['enterprises', 'intention', 'application'].includes(item.key)) },
   { key: 'process', label: '在岗办理', hint: '打卡、补卡、请假与过程报告', tabs: tabs.filter((item) => ['checkin', 'makeup', 'leave', 'report'].includes(item.key)) },
   { key: 'change-result', label: '变更与结果', hint: '调岗退岗、求助、评价与成绩', tabs: tabs.filter((item) => ['change', 'help', 'eval'].includes(item.key)) }
@@ -665,6 +693,7 @@ const insuranceMeta = ref(null)
 const insuranceError = ref(''), insuranceConflict = ref(false)
 const insuranceReadOnly = computed(() => !!my.value.historyMode || (insuranceMeta.value?.status === 'VERIFIED' && insuranceMeta.value.canRenew !== true))
 let insuranceEpoch = 0
+const notices = ref([])
 const planMeta = ref(null)
 const helpForm = reactive({ title: '', content: '', riskLevel: 'MEDIUM' })
 const appealReason = ref('')
@@ -683,6 +712,22 @@ const AGREEMENT_MAP = {
 }
 function statusText(s) { return STATUS_MAP[s] || s || '—' }
 function riskText(s) { return RISK_MAP[s] || s || '—' }
+function noticeTypeText(value) {
+  return ({ AGREEMENT: '实习协议', TRAINING: '岗前培训', SAFETY: '安全条例', NOTICE: '通知公告', OTHER: '其他' })[String(value || '').toUpperCase()] || '通知公告'
+}
+function noticeUrgencyText(value) {
+  return ({ NORMAL: '普通', IMPORTANT: '重要', URGENT: '紧急' })[String(value || '').toUpperCase()] || '普通'
+}
+async function openNoticeAttachment(file) {
+  try {
+    const blob = await fileSdk.fetchPreviewBlob(String(file.fileId))
+    const url = URL.createObjectURL(blob)
+    window.open(url, '_blank', 'noopener,noreferrer')
+    setTimeout(() => URL.revokeObjectURL(url), 60000)
+  } catch (e) {
+    ui.notify(e?.message || '通知附件暂时无法打开')
+  }
+}
 function reviewText(s) { return REVIEW_MAP[s] || s || '—' }
 function fmt(t) {
   if (!t) return '—'
@@ -863,6 +908,7 @@ function resetSourceStates() {
   insuranceMeta.value = null
   insuranceEpoch++; insuranceError.value = ''; insuranceConflict.value = false
   Object.keys(insForm).forEach(key => { insForm[key] = '' })
+  notices.value = []
   planMeta.value = null
   selfEvalMeta.value = null
   appealMeta.value = null
@@ -875,6 +921,10 @@ function rowsFrom(data) {
 async function fetchTabSource(key) {
   const context = () => currentInternshipContext()
   if (['overview', 'checkin', 'help'].includes(key)) return true
+  if (key === 'notices') {
+    notices.value = rowsFrom(await internshipCoreApi.notices(context()))
+    return notices.value.length > 0
+  }
   if (key === 'leave') {
     leaves.value = rowsFrom(await internshipCoreApi.leaves(context()))
     return leaves.value.length > 0
