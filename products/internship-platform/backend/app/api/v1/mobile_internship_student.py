@@ -20,6 +20,7 @@ from app.modules.internship.services import internship_student_leave_context_ser
 from app.modules.internship.services import internship_student_makeup_context_service as makeups
 from app.modules.internship.services import internship_student_report_context_service as reports
 from app.modules.internship.services import internship_student_notice_service as student_notices
+from app.modules.internship.services import internship_student_support_service as student_support
 from app.modules.internship.services import internship_student_eval_service as student_evals
 from app.modules.internship.services import internship_student_checkin_service as checkins
 from app.modules.internship.services import internship_checkin_exemption_service as checkin_exemptions
@@ -568,6 +569,45 @@ def submit_selected_score_appeal(
 ):
     require_context_fields(body or {})
     return success(score_appeals.create(user, body or {}), message="成绩申诉已提交")
+
+
+@router.get("/context/support", summary="本人当前实习智能客服会话")
+def my_support_session(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(student_support.current(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/support/ask", summary="岗位实习 FAQ 智能客服提问")
+def ask_support(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    require_context_fields(body or {})
+    return success(student_support.ask(user, body or {}))
+
+
+@router.post("/context/support/{session_id}/solved", summary="本人确认智能客服已解决")
+def solve_support(
+    session_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    require_context_fields(body or {})
+    return success(student_support.solved(user, session_id, body or {}))
+
+
+@router.post("/context/support/{session_id}/unresolved", summary="本人确认未解决；连续三次自动转人工")
+def unresolved_support(
+    session_id: str,
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    require_context_fields(body or {})
+    return success(student_support.unresolved(user, session_id, body or {}))
 
 
 @router.post("/context/help", summary="本人在当前实习记录发起求助")
