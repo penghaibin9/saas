@@ -111,6 +111,13 @@
       }
     },
     {
+      "path": "pages/student-internship/process-facts/index",
+      "style": {
+        "navigationBarTitleText": "轮岗与工资",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/student-internship/process-report/index",
       "style": {
         "navigationBarTitleText": "过程报告"
@@ -270,6 +277,13 @@
       }
     },
     {
+      "path": "pages/teacher-internship/payroll-review/index",
+      "style": {
+        "navigationBarTitleText": "工资单审核",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/teacher-internship/plan-task-review/index",
       "style": {
         "navigationBarTitleText": "实习计划任务确认",
@@ -287,6 +301,13 @@
       "path": "pages/teacher-internship/student-eval/index",
       "style": {
         "navigationBarTitleText": "学生实习鉴定",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/student-process/index",
+      "style": {
+        "navigationBarTitleText": "学生过程事实",
         "navigationStyle": "custom"
       }
     }
