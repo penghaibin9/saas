@@ -64,7 +64,9 @@ def _wrap(draw, text: str, font, max_width: int) -> list[str]:
 
 
 def watermark_photo(*, original_file_id: str, checkin_id: int, watermark_text: str,
-                    actor: dict, student_id: int, batch_id: str | None, db) -> dict:
+                    actor: dict, student_id: int | None = None, batch_id: str | None = None,
+                    subject_type: str = "STUDENT", subject_id=None,
+                    biz_type: str = "INTERNSHIP_CHECKIN", db) -> dict:
     file_obj = file_access_service.require_file_access(
         original_file_id, user=actor, action="bind"
     )
@@ -111,26 +113,35 @@ def watermark_photo(*, original_file_id: str, checkin_id: int, watermark_text: s
     result = file_service.store_bytes(
         out.getvalue(),
         f"checkin-{checkin_id}-watermarked.jpg",
-        biz_type="INTERNSHIP_CHECKIN",
+        biz_type=biz_type,
         mime_type="image/jpeg",
         biz_id=checkin_id,
         user=actor,
         visibility="BIZ_SCOPED",
         db=db,
     )
+    subject = str(subject_type or "STUDENT").upper()
+    resolved_subject_id = subject_id if subject_id not in (None, "") else student_id
+    if resolved_subject_id in (None, ""):
+        raise AppException("VALIDATION_ERROR", "签到凭证缺少业务主体")
+    scope = {"batchId": str(batch_id or "")}
+    if subject == "STUDENT":
+        scope["studentId"] = str(resolved_subject_id)
+    elif subject == "TEACHER":
+        scope["teacherUserId"] = str(resolved_subject_id)
     file_business_binding_service.bind_file_to_business(
         db,
         file_id=original_file_id,
-        biz_type="INTERNSHIP_CHECKIN",
+        biz_type=biz_type,
         biz_id=checkin_id,
         actor=actor,
-        subject_type="STUDENT",
-        subject_id=student_id,
+        subject_type=subject,
+        subject_id=resolved_subject_id,
         relation_type="BUSINESS_EVIDENCE",
         module_code="INTERNSHIP",
-        student_id=student_id,
+        student_id=int(resolved_subject_id) if subject == "STUDENT" else None,
         batch_id=str(batch_id or "") or None,
-        scope={"studentId": str(student_id), "batchId": str(batch_id or "")},
+        scope=scope,
     )
     return {
         "originalFileId": str(original_file_id),
