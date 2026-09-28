@@ -74,6 +74,26 @@ async function resolveEditableSelfArrangedApplication(body) {
 }
 
 export const internshipCoreApi = {
+  formalDocuments(context) {
+    const batchId = String(context?.batchId || '').trim()
+    const internshipId = String(context?.internshipId || '').trim()
+    if (!batchId || !internshipId) return Promise.reject(new Error('实习上下文不完整'))
+    return request(`/portal/internship/context/formal-documents?batchId=${encode(batchId)}&internshipId=${encode(internshipId)}`)
+  },
+  generateFormalDocument(context, documentType) {
+    return request('/portal/internship/context/formal-documents/generate', {
+      method: 'POST',
+      body: { ...context, documentType }
+    })
+  },
+  formalDocumentPdf(context, documentId) {
+    const batchId = String(context?.batchId || '').trim()
+    const internshipId = String(context?.internshipId || '').trim()
+    if (!batchId || !internshipId) return Promise.reject(new Error('实习上下文不完整'))
+    return request(
+      `/portal/internship/context/formal-documents/${encode(documentId)}/pdf?batchId=${encode(batchId)}&internshipId=${encode(internshipId)}`
+    )
+  },
   attendance(context, timezoneName = '') {
     const batchId = String(context?.batchId || '').trim()
     if (!batchId) return Promise.reject(new Error('请先选择实习批次'))
