@@ -59,6 +59,7 @@ export const NAV_PLAN = [{
       leaf('计划任务', '/admin/internship/plans', 'internship.plan.view', 'CONFIG_VIEW'),
       leaf('报告批阅', '/admin/internship/reports?panel=review', 'internship.report.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/process-reports'] }),
       leaf('指导巡访', '/admin/internship/guidance?panel=guidance', 'internship.guidance.view'),
+      leaf('教师管理', '/admin/internship/teacher-management', 'internship.stats.view', 'WORKBENCH'),
       leaf('指导计划', '/admin/internship/guidance-plan', 'internship.guidance.view', 'CONFIG_VIEW')
     ]),
     mod('in-risk', '风险与变更', '/admin/internship/risks', [
