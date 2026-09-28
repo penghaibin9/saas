@@ -72,3 +72,9 @@ from app.models.internship_report_quality import (
     InternshipReportRuleConfig,
     InternshipReportVersion,
 )
+
+from app.models.internship_teacher_activity import (
+    InternshipEmergencyNotice,
+    InternshipTeacherCheckin,
+    InternshipTeacherWorkReport,
+)
