@@ -1,0 +1,89 @@
+name: Internship Standalone C05 Process Facts
+
+on:
+  pull_request:
+    paths:
+      - "products/internship-platform/backend/app/models/internship_rotation_payroll.py"
+      - "products/internship-platform/backend/app/models/__init__.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_rotation_service.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_payroll_service.py"
+      - "products/internship-platform/backend/app/api/v1/mobile_internship_student.py"
+      - "products/internship-platform/backend/app/api/v1/mobile_internship_context.py"
+      - "products/internship-platform/backend/alembic/versions/0006_yiyang_rotation_payroll.py"
+      - "products/internship-platform/backend/tests/test_yiyang_c05_rotation_payroll.py"
+      - "products/internship-platform/mobile/**"
+      - "products/internship-platform/scripts/check_mobile_import_closure.py"
+      - ".github/workflows/internship-standalone-c05.yml"
+
+jobs:
+  c05:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: c05_test
+          MYSQL_DATABASE: internship_c05
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pc05_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:c05_test@127.0.0.1:3306/internship_c05?charset=utf8mb4
+      JWT_SECRET: c05-actions-secret-not-for-production
+      FILE_STORAGE_DIR: /tmp/internship-c05-files
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install C05 backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Compile C05 authority
+        run: |
+          python -m py_compile             products/internship-platform/backend/app/models/internship_rotation_payroll.py             products/internship-platform/backend/app/modules/internship/services/internship_rotation_service.py             products/internship-platform/backend/app/modules/internship/services/internship_payroll_service.py             products/internship-platform/backend/app/api/v1/mobile_internship_student.py             products/internship-platform/backend/app/api/v1/mobile_internship_context.py
+      - name: Upgrade empty MySQL to ix0006
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade ix0006
+      - name: Verify C05 MySQL facts only
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ["DATABASE_URL"])
+          expected = {
+              "t_internship_rotation",
+              "t_internship_rotation_project",
+              "t_internship_payroll_statement",
+              "t_internship_payroll_version",
+          }
+          with engine.connect() as db:
+              version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+              tables = set(db.execute(text(
+                  "SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()"
+              )).scalars())
+          assert version == "ix0006", version
+          assert expected <= tables, sorted(expected - tables)
+          print({"version": version, "c05Tables": sorted(expected)})
+          PY
+      - name: Run Yiyang G12-G13 only
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_c05_rotation_payroll.py
+      - name: Verify mobile source closure
+        run: python products/internship-platform/scripts/check_mobile_import_closure.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: products/internship-platform/mobile/package.json
+      - name: Install standalone mobile dependencies
+        working-directory: products/internship-platform/mobile
+        run: npm install --no-audit --no-fund
+      - name: Build standalone WeChat mobile
+        working-directory: products/internship-platform/mobile
+        run: npm run build:mp-weixin
