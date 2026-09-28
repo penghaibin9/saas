@@ -24,7 +24,9 @@ from app.modules.internship.routers import (
     internship_communication,
     internship_complaint,
     internship_compliance,
+    internship_enterprise_collaboration,
     internship_enterprise_eval_versioned,
+    internship_enterprise_portal,
     internship_formal_document,
     internship_guardian_consent_delivery,
     internship_insurance,
@@ -97,6 +99,11 @@ def build_staff_internship_router() -> APIRouter:
 api_router = APIRouter()
 api_router.include_router(auth_recovery.router)
 api_router.include_router(build_staff_internship_router())
+
+# The enterprise surface must never inherit require_staff. Its own signed EnterprisePrincipal
+# and grant/context dependencies are the only authority for these routes.
+api_router.include_router(internship_enterprise_portal.router)
+api_router.include_router(internship_enterprise_collaboration.router)
 
 
 def build_student_mobile_router() -> APIRouter:

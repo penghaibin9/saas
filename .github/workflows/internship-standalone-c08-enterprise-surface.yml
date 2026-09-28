@@ -1,0 +1,44 @@
+name: Internship Standalone C08 Enterprise Surface
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/backend/app/api/router.py"
+      - "products/internship-platform/backend/app/modules/internship/routers/internship_enterprise_portal.py"
+      - "products/internship-platform/backend/app/modules/internship/routers/internship_enterprise_collaboration.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_enterprise_collaboration_service.py"
+      - "products/internship-platform/backend/tests/test_yiyang_c08_enterprise_surface.py"
+      - "products/internship-platform/enterprise-web/**"
+      - ".github/workflows/internship-standalone-c08-enterprise-surface.yml"
+
+jobs:
+  enterprise-surface:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: sqlite+pysqlite:///:memory:
+      JWT_SECRET: c08-enterprise-surface-actions-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install standalone backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Verify enterprise route surface
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_c08_enterprise_surface.py
+      - name: Install enterprise web dependencies
+        working-directory: products/internship-platform/enterprise-web
+        run: npm install --no-audit --no-fund
+      - name: Build enterprise web
+        working-directory: products/internship-platform/enterprise-web
+        run: npm run build
