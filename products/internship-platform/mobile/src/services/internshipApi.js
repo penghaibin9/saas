@@ -178,6 +178,8 @@ export const teacherInternshipInsuranceVerify = (insuranceId, body) =>
 // ── 学生岗位实习：当前批次权威流程 ──
 export const studentInternshipDashboard = (batchId = '') =>
   realRequest(optionalBatch('/mobile/internship/context/my', batchId))
+export const studentInternshipEmergencyNotices = (batchId) =>
+  realRequest(batchPath('/mobile/internship/emergency-notices', batchId))
 export const studentInternshipRotations = (batchId, internshipId) =>
   realRequest(studentContextPath('/mobile/internship/context/rotations', batchId, internshipId))
 export const studentInternshipRotationSelfEvaluation = (rotationId, body) =>
