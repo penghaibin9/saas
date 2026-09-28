@@ -32,6 +32,9 @@
           </picker>
         </view>
 
+        <MobileInlineAlert v-if="i.destinationType === 'EXEMPTED'" type="success" title="免实习已批准"
+          description="学校已正式批准本次免实习申请。企业、岗位、协议、保险、打卡和周报等普通上岗事项不再要求办理。" />
+
         <view class="in__qualification card">
           <view class="in__qualification-head"><text class="in__qualification-label">学校资格认定</text><MobileStatusTag :label="qualification.label" :type="qualification.status === 'QUALIFIED' ? 'success' : qualification.status === 'UNQUALIFIED' ? 'danger' : 'warning'" /></view>
           <text class="in__qualification-title">{{ qualification.status === 'QUALIFIED' ? '实习资格已通过' : qualification.status === 'UNQUALIFIED' ? '请查看认定说明' : '关注本批次资格认定' }}</text>
@@ -188,6 +191,7 @@ export default {
     blockingReason() { return (this.compliance.blockers || []).map((x) => `${x.label}：${x.reason || x.statusLabel}`).join('；') },
     completenessText() { const c = this.compliance.completeness; return c ? `${c.done}/${c.required}` : '' },
     currentStage() {
+      if (this.i?.destinationType === 'EXEMPTED') return 'result'
       if (this.i?.historyMode || ['ASSESSING', 'ARCHIVED', 'ENDED'].includes(this.i?.statusText)) return 'result'
       if (!this.i?.company || !this.i?.post) return 'selection'
       if (this.i?.statusText === 'ONBOARD') return 'process'
