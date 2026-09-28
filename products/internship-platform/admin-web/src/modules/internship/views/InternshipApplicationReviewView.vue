@@ -15,7 +15,7 @@
       <DataTable v-else-if="rows.length" :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
         <template #cell-applicationType="{ row }"><AppStatusTag :type="row.applicationType === 'SELF_ARRANGED' ? 'warning' : 'info'">{{ row.applicationTypeLabel }}</AppStatusTag></template>
         <template #cell-applicant="{ row }"><div class="iar-cell"><strong>{{ row.studentName }}</strong><span>{{ row.studentNo }}<template v-if="row.advisorName"> · {{ row.advisorName }}</template></span></div></template>
-        <template #cell-destination="{ row }"><div class="iar-cell"><strong>{{ row.companyName || '—' }}</strong><span>{{ row.positionName || '—' }}</span></div></template>
+        <template #cell-destination="{ row }"><div class="iar-cell"><strong>{{ row.applicationType === 'EXEMPTION' ? '免实习' : (row.companyName || '—') }}</strong><span>{{ row.applicationType === 'EXEMPTION' ? (row.exemptionDestination || '去向待补充') : (row.positionName || '—') }}</span></div></template>
         <template #cell-status="{ row }"><AppStatusTag :type="statusTone(row.status)">{{ row.statusLabel }}</AppStatusTag></template>
         <template #cell-actions="{ row }"><AppButton variant="ghost" size="sm" @click="openDetail(row.id)">{{ row.status === 'PENDING_REVIEW' ? '审核申请' : '查看详情' }}</AppButton></template>
       </DataTable>
@@ -32,7 +32,7 @@
           <section class="iar-card"><header><h2>办理记录</h2></header><div class="iar-body"><AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无操作记录" /></div></section>
         </div>
         <aside class="iar-card iar-review"><header><h2>{{ drawer.data.status === 'PENDING_REVIEW' ? '审核申请' : '审核结果' }}</h2></header><div class="iar-body">
-          <template v-if="drawer.data.status === 'PENDING_REVIEW'"><p class="iar-note">通过后落实本次实习去向，并取消该学生其他进行中的申请。</p><div class="iar-actions"><AppPermissionButton code="internship.application.review" :allowed="canBtn('internship.application.review')" variant="primary" @click="askReview('APPROVE')">通过并落实去向</AppPermissionButton><AppPermissionButton code="internship.application.review" :allowed="canBtn('internship.application.review')" variant="ghost" :danger="true" @click="askReview('REJECT')">驳回申请</AppPermissionButton></div></template>
+          <template v-if="drawer.data.status === 'PENDING_REVIEW'"><p class="iar-note">{{ drawer.data.applicationType === 'EXEMPTION' ? '通过后正式标记为免实习，并取消该学生其他进行中的实习申请。' : '通过后落实本次实习去向，并取消该学生其他进行中的申请。' }}</p><div class="iar-actions"><AppPermissionButton code="internship.application.review" :allowed="canBtn('internship.application.review')" variant="primary" @click="askReview('APPROVE')">通过并落实去向</AppPermissionButton><AppPermissionButton code="internship.application.review" :allowed="canBtn('internship.application.review')" variant="ghost" :danger="true" @click="askReview('REJECT')">驳回申请</AppPermissionButton></div></template>
           <template v-else><AppStatusTag :type="statusTone(drawer.data.status)">{{ drawer.data.statusLabel }}</AppStatusTag><AppDescriptionList v-if="drawer.data.reviewedAt" :items="reviewItems" :columns="1" /><p v-else class="iar-note">当前申请无需审核，可查看左侧办理记录。</p></template>
         </div></aside>
       </div>
@@ -72,8 +72,15 @@ import { useInternshipBatchStore } from '@/stores/internshipBatch'
 const TYPE_OPTIONS = [
   { value: '', label: '全部申请' },
   { value: 'POSITION', label: '岗位志愿' },
-  { value: 'SELF_ARRANGED', label: '自主实习' }
+  { value: 'SELF_ARRANGED', label: '自主实习' },
+  { value: 'EXEMPTION', label: '免实习申请' }
 ]
+const EXEMPTION_TYPE_LABEL = {
+  FURTHER_STUDY: '升学',
+  MILITARY: '参军入伍',
+  HEALTH: '健康原因',
+  OTHER: '其他'
+}
 const STATUS_OPTIONS = [
   { value: 'ALL', label: '全部状态' },
   { value: 'PENDING_REVIEW', label: '待审核' },
@@ -122,6 +129,19 @@ export default {
     isDetail() { return !!this.$route.query.id },
     detailItems() {
       const data = this.drawer.data || {}
+      if (data.applicationType === 'EXEMPTION') {
+        return [
+          { label: '学生', value: `${data.studentName || '—'}（${data.studentNo || '—'}）` },
+          { label: '校内指导教师', value: data.advisorName || '—' },
+          { label: '申请类型', value: data.applicationTypeLabel || '免实习申请' },
+          { label: '免实习类型', value: EXEMPTION_TYPE_LABEL[data.exemptionType] || data.exemptionType || '—' },
+          { label: '免实习后去向', value: data.exemptionDestination || '—' },
+          { label: '申请原因', value: data.exemptionReason || '—' },
+          { label: '佐证材料', value: data.evidenceFileId ? '已上传' : '未上传' },
+          { label: '提交时间', value: data.submittedAt || '未提交' },
+          { label: '当前状态', value: data.statusLabel || '—' }
+        ]
+      }
       const companyRegion = [data.companyProvince, data.companyCity, data.companyDistrict].filter(Boolean).join(' / ')
       const workRegion = [data.workCountry, data.workProvince, data.workCity, data.workDistrict].filter(Boolean).join(' / ')
       const registry = data.companyRegistryVerified
@@ -172,7 +192,7 @@ export default {
     evidenceFiles() {
       const data = this.drawer.data || {}
       const files = []
-      if (data.evidenceFileId) files.push({ id: data.evidenceFileId, name: '自主实习证明材料', sensitive: true })
+      if (data.evidenceFileId) files.push({ id: data.evidenceFileId, name: data.applicationType === 'EXEMPTION' ? '免实习佐证材料' : '自主实习证明材料', sensitive: true })
       ;(data.agreementFileIds || []).forEach((id, index) => {
         if (id) files.push({ id, name: `三方协议材料 ${index + 1}`, sensitive: true })
       })
@@ -200,7 +220,7 @@ export default {
     },
     restoreLocation() {
       const q = this.$route.query
-      this.applicationType = ['POSITION', 'SELF_ARRANGED'].includes(q.type) ? q.type : ''
+      this.applicationType = ['POSITION', 'SELF_ARRANGED', 'EXEMPTION'].includes(q.type) ? q.type : ''
       this.status = STATUS_OPTIONS.some(item => item.value === q.status) ? q.status : 'PENDING_REVIEW'
       this.keyword = String(q.keyword || '')
       const page = Number(q.page); this.page = Number.isSafeInteger(page) && page > 0 ? page : 1
@@ -288,7 +308,9 @@ export default {
         visible: true,
         title: approve ? '通过实习申请' : '驳回实习申请',
         content: approve
-          ? `确认通过「${data.studentName}」的申请？系统将立即落实其实习去向，并取消该学生其他进行中的申请。`
+          ? (data.applicationType === 'EXEMPTION'
+              ? `确认通过「${data.studentName}」的免实习申请？系统将正式标记免实习，并取消该学生其他进行中的申请。`
+              : `确认通过「${data.studentName}」的申请？系统将立即落实其实习去向，并取消该学生其他进行中的申请。`)
           : `确认驳回「${data.studentName}」的申请？请填写可执行的驳回原因。`,
         danger: !approve,
         confirmText: approve ? '通过并落实' : '确认驳回',
