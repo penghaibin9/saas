@@ -7,6 +7,8 @@ from sqlalchemy import func, select
 
 from app.core.exceptions import AppException
 from app.models import (
+    InternshipBatch,
+    InternshipRecord,
     InternshipReportReview,
     InternshipReportRuleConfig,
     InternshipReportVersion,
@@ -31,7 +33,16 @@ def rules_for_batch(db, batch_id) -> dict:
         InternshipReportRuleConfig.is_deleted.is_(False),
     ))
     if not row:
-        return dict(DEFAULT_RULES)
+        rules = dict(DEFAULT_RULES)
+        batch = db.get(InternshipBatch, int(batch_id))
+        legacy = (batch.rules_config or {}) if batch else {}
+        weekly = legacy.get("weeklyReport") or {}
+        if weekly.get("minWordCount") not in (None, ""):
+            try:
+                rules["weeklyMinWords"] = max(1, int(weekly.get("minWordCount")))
+            except (TypeError, ValueError):
+                pass
+        return rules
     return {
         "weeklyMinWords": int(row.weekly_min_words or 30),
         "planTaskMinWords": int(row.plan_task_min_words or 10),
@@ -120,6 +131,135 @@ def append_process_snapshot(db, *, row, record, student, content: str,
     return snap
 
 
+
+def append_weekly_snapshot(db, *, row, record, student, content_json: dict,
+                           attachment_ids: list[str], attachment_meta: list[dict]) -> InternshipReportVersion:
+    next_no = int(db.scalar(select(func.max(InternshipReportVersion.version_no)).where(
+        InternshipReportVersion.tenant_id == _tid(),
+        InternshipReportVersion.report_kind == "WEEKLY",
+        InternshipReportVersion.report_id == row.id,
+    )) or 0) + 1
+    snap = InternshipReportVersion(
+        tenant_id=_tid(),
+        report_kind="WEEKLY",
+        report_id=row.id,
+        version_no=next_no,
+        internship_id=record.id,
+        student_id=student.id,
+        report_type=None,
+        period_key=str(row.week_number),
+        word_count=int(row.word_count or 0),
+        content_json=content_json or {},
+        attachment_file_ids_json=attachment_ids or [],
+        attachment_meta_json=attachment_meta or [],
+        submitted_at=row.submitted_at or datetime.utcnow(),
+    )
+    db.add(snap)
+    db.flush()
+    for fid in attachment_ids or []:
+        file_service.bind_file_biz(
+            fid, "INTERNSHIP_WEEKLY_REPORT", str(row.id), user=None, db=db)
+    return snap
+
+
+def latest_weekly_snapshot(db, report_id) -> InternshipReportVersion | None:
+    return db.scalar(select(InternshipReportVersion).where(
+        InternshipReportVersion.tenant_id == _tid(),
+        InternshipReportVersion.report_kind == "WEEKLY",
+        InternshipReportVersion.report_id == int(report_id),
+    ).order_by(
+        InternshipReportVersion.version_no.desc(),
+        InternshipReportVersion.id.desc(),
+    ))
+
+
+def weekly_snapshot_view(db, report_id) -> dict:
+    rows = db.scalars(select(InternshipReportVersion).where(
+        InternshipReportVersion.tenant_id == _tid(),
+        InternshipReportVersion.report_kind == "WEEKLY",
+        InternshipReportVersion.report_id == int(report_id),
+    ).order_by(InternshipReportVersion.version_no.desc())).all()
+    reviews = db.scalars(select(InternshipReportReview).where(
+        InternshipReportReview.tenant_id == _tid(),
+        InternshipReportReview.report_kind == "WEEKLY",
+        InternshipReportReview.report_id == int(report_id),
+    ).order_by(InternshipReportReview.reviewed_at.desc())).all()
+    by_version = {int(r.report_version_id): r for r in reviews}
+    return {
+        "versions": [{
+            "id": str(v.id),
+            "versionNo": int(v.version_no),
+            "wordCount": int(v.word_count or 0),
+            "content": v.content_json or {},
+            "attachments": v.attachment_meta_json or [],
+            "submittedAt": v.submitted_at.isoformat() if v.submitted_at else "",
+            "review": ({
+                "action": by_version[v.id].action,
+                "ratingLevel": by_version[v.id].rating_level,
+                "comment": by_version[v.id].comment or "",
+                "reviewerName": by_version[v.id].reviewer_name or "",
+                "reviewedAt": by_version[v.id].reviewed_at.isoformat()
+                if by_version[v.id].reviewed_at else "",
+            } if v.id in by_version else None),
+        } for v in rows],
+    }
+
+
+def record_weekly_review(db, *, row, action: str, comment: str, user: dict,
+                         rating_level=None) -> InternshipReportReview:
+    snap = latest_weekly_snapshot(db, row.id)
+    if not snap:
+        record = db.get(InternshipRecord, row.internship_id)
+        if not record:
+            raise AppException("DATA_CONFLICT", "周报关联实习记录不存在")
+        # 兼容 ix0008 上线前已提交、尚未批阅的周报：以当前正式行建立基线快照。
+        snap = append_weekly_snapshot(
+            db,
+            row=row,
+            record=record,
+            student=type("_StudentRef", (), {"id": record.student_id})(),
+            content_json={
+                "workContent": row.work_content or "",
+                "harvestContent": row.harvest_content or "",
+                "planContent": row.plan_content or "",
+            },
+            attachment_ids=[],
+            attachment_meta=[],
+        )
+    if db.scalar(select(InternshipReportReview).where(
+        InternshipReportReview.tenant_id == _tid(),
+        InternshipReportReview.report_version_id == snap.id,
+    )):
+        raise AppException("DATA_CONFLICT", "当前周报版本已经批阅，请刷新后重试")
+
+    rating = None
+    if rating_level not in (None, ""):
+        try:
+            rating = int(rating_level)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "五级评价必须是 1 到 5") from None
+        if rating < 1 or rating > 5:
+            raise AppException("VALIDATION_ERROR", "五级评价必须是 1 到 5")
+    if action == "APPROVE" and rating is None:
+        raise AppException("VALIDATION_ERROR", "通过周报时必须选择五级评价")
+
+    review = InternshipReportReview(
+        tenant_id=_tid(),
+        report_kind="WEEKLY",
+        report_id=row.id,
+        report_version_id=snap.id,
+        action=action,
+        rating_level=rating,
+        summary_score=None,
+        comment=(comment or "").strip() or None,
+        reviewer_user_id=str((user or {}).get("userId") or (user or {}).get("id") or "") or None,
+        reviewer_name=(user or {}).get("realName") or "系统",
+        reviewed_at=datetime.utcnow(),
+    )
+    db.add(review)
+    db.flush()
+    return review
+
 def latest_process_snapshot(db, report_id) -> InternshipReportVersion | None:
     return db.scalar(select(InternshipReportVersion).where(
         InternshipReportVersion.tenant_id == _tid(),
@@ -175,7 +315,19 @@ def record_process_review(db, *, row, action: str, comment: str, user: dict,
                           rating_level=None, summary_score=None) -> InternshipReportReview:
     snap = latest_process_snapshot(db, row.id)
     if not snap:
-        raise AppException("DATA_CONFLICT", "当前报告缺少提交版本快照，禁止无证据批阅")
+        record = db.get(InternshipRecord, row.internship_id)
+        if not record:
+            raise AppException("DATA_CONFLICT", "报告关联实习记录不存在")
+        # 兼容 ix0008 上线前已提交、尚未批阅的过程报告：当前正式行作为基线版本。
+        snap = append_process_snapshot(
+            db,
+            row=row,
+            record=record,
+            student=type("_StudentRef", (), {"id": record.student_id})(),
+            content=row.content or "",
+            attachment_ids=[],
+            attachment_meta=[],
+        )
     if db.scalar(select(InternshipReportReview).where(
         InternshipReportReview.tenant_id == _tid(),
         InternshipReportReview.report_version_id == snap.id,
