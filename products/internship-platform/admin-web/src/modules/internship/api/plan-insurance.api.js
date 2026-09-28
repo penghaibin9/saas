@@ -15,7 +15,11 @@ async function callList(path, params = {}) {
 }
 
 export const planApi = {
+  getTemplates() { return call(() => request('/internship/plans/templates')) },
+  getBatchPlanContext(batchId) { return call(() => request(`/internship/plans/batch/${batchId}/context`)) },
   getBatchPlan(batchId) { return call(() => request(`/internship/plans/batch/${batchId}`)) },
+  exportBatchPlanPdf(batchId) { return call(() => request(`/internship/plans/batch/${batchId}/export.pdf`, { method: 'POST' })) },
+  exportBatchPlanXlsx(batchId) { return call(() => request(`/internship/plans/batch/${batchId}/export.xlsx`, { method: 'POST' })) },
   saveBatchPlan(batchId, body) { return call(() => request(`/internship/plans/batch/${batchId}`, { method: 'PUT', body })) },
   publishBatchPlan(batchId, body) { return call(() => request(`/internship/plans/batch/${batchId}/publish`, { method: 'POST', body })) },
   getPlanAcks(params = {}) { return callList('/internship/plan-acks', params) },
