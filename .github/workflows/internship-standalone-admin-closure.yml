@@ -2,6 +2,12 @@ name: Internship Standalone Admin Closure
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "products/internship-platform/admin-web/**"
+      - "products/internship-platform/scripts/check_admin_import_closure.py"
+      - ".github/workflows/internship-standalone-admin-closure.yml"
 
 jobs:
   admin-closure:
