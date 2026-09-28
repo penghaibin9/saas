@@ -59,6 +59,13 @@ class TeacherCheckinBody(_StrictBody):
     locationProvider: str | None = Field(default=None, max_length=50)
 
 
+class TeacherMakeupBody(_StrictBody):
+    batchId: int = Field(gt=0)
+    localDate: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
+    reason: str = Field(min_length=5, max_length=500)
+    evidenceFileId: str | None = Field(default=None, max_length=64)
+
+
 class TeacherWorkReportBody(_StrictBody):
     batchId: int = Field(gt=0)
     reportDate: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")
@@ -156,6 +163,41 @@ def teacher_checkin(
     return success(
         activity_svc.checkin(user, body.model_dump(exclude_none=True)),
         message="教师签到已记录",
+    )
+
+
+@router.get("/activity/makeups", summary="教师本人补签申请")
+def my_teacher_makeups(
+    batchId: int = Query(..., ge=1),
+    status: Literal["PENDING", "APPROVED", "REJECTED", "WITHDRAWN"] | None = Query(None),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=100),
+    user=Depends(require_permission("internship.guidance.view")),
+):
+    return success(activity_svc.list_my_teacher_makeups(
+        user, batch_id=batchId, status=status, page=page, page_size=pageSize
+    ))
+
+
+@router.post("/activity/makeups", summary="教师本人申请补签")
+def apply_teacher_makeup(
+    body: TeacherMakeupBody,
+    user=Depends(require_permission("internship.guidance.manage")),
+):
+    return success(
+        activity_svc.apply_teacher_makeup(user, body.model_dump(exclude_none=True)),
+        message="教师补签申请已提交",
+    )
+
+
+@router.post("/activity/makeups/{makeup_id}/withdraw", summary="教师本人撤回待审补签")
+def withdraw_teacher_makeup(
+    makeup_id: int,
+    user=Depends(require_permission("internship.guidance.manage")),
+):
+    return success(
+        activity_svc.withdraw_teacher_makeup(user, makeup_id),
+        message="教师补签申请已撤回",
     )
 
 
