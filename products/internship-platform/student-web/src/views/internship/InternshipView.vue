@@ -482,6 +482,11 @@
               <div class="sp-fieldlabel">本周工作内容 <span>至少 10 字</span></div><textarea v-model="weeklyForm.workContent" class="sp-inp" style="margin-bottom:12px" placeholder="具体说明完成了什么任务、产出了什么结果" />
               <div class="sp-fieldlabel">收获与体会 <span>至少 10 字</span></div><textarea v-model="weeklyForm.harvestContent" class="sp-inp" style="margin-bottom:12px" placeholder="记录技能、经验和需要改进的地方" />
               <div class="sp-fieldlabel">下周计划</div><textarea v-model.trim="weeklyForm.planContent" class="sp-inp" style="margin-bottom:12px" placeholder="下周安排" />
+              <div class="sp-fieldlabel">附件（图片/视频/RAR/ZIP/WORD/EXCEL/PDF）</div>
+              <input type="file" class="sp-inp" style="margin-bottom:8px" :disabled="busy" accept="image/*,video/*,.rar,.zip,.doc,.docx,.pdf,.xls,.xlsx" @change="uploadReportAttachment($event,'weekly')" />
+              <div v-if="weeklyForm.attachments.length" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+                <button v-for="(file,index) in weeklyForm.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="removeReportAttachment('weekly',index)">移除 · {{ file.fileName }}</button>
+              </div>
               <button class="sp-btn" :disabled="busy || !weeklyCanSubmit" @click="submitWeekly">{{ weeklyEditing ? '重新提交周报' : '提交周报' }}</button>
             </template>
             <template v-else>
@@ -490,6 +495,11 @@
               </template>
               <div class="sp-fieldlabel">正文 <span>至少 {{ reportMinimum }} 字</span></div><textarea v-model="reportForm.content" class="sp-inp" style="min-height:220px;margin-bottom:6px" :placeholder="reportPlaceholder" />
               <div class="report-count">{{ reportForm.content.trim().length }} / {{ reportMinimum }} 字</div>
+              <div class="sp-fieldlabel" style="margin-top:12px">附件（图片/视频/RAR/ZIP/WORD/EXCEL/PDF）</div>
+              <input type="file" class="sp-inp" style="margin-bottom:8px" :disabled="busy" accept="image/*,video/*,.rar,.zip,.doc,.docx,.pdf,.xls,.xlsx" @change="uploadReportAttachment($event,'process')" />
+              <div v-if="reportForm.attachments.length" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+                <button v-for="(file,index) in reportForm.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="removeReportAttachment('process',index)">移除 · {{ file.fileName }}</button>
+              </div>
               <button class="sp-btn" :disabled="busy || !reportCanSubmit" @click="submitReport">{{ processEditing ? '重新提交' : '提交' }}{{ reportTab }}</button>
             </template>
           </section>
@@ -504,6 +514,9 @@
                     <StatusTag :text="reviewText(w.status)" :tone="w.status==='APPROVED'?'success':w.status==='RETURNED'?'danger':'warn'" />
                   </div>
                   <p class="report-item__summary">{{ w.workContent || '正文未返回' }}</p>
+                  <div v-if="w.attachments?.length" style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0">
+                    <button v-for="file in w.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="openReportAttachment(file)">{{ file.fileName || '附件' }}</button>
+                  </div>
                   <div v-if="w.reviewComment" class="report-feedback"><strong>教师意见</strong>{{ w.reviewComment }}</div>
                   <button v-if="w.status === 'RETURNED'" type="button" class="report-revise" @click="editWeekly(w)">按意见修改</button>
                 </div>
@@ -518,6 +531,9 @@
                     <StatusTag :text="reviewText(p.status)" :tone="p.status==='APPROVED'?'success':p.status==='RETURNED'?'danger':'warn'" />
                   </div>
                   <p class="report-item__summary">{{ p.content || '正文未返回' }}</p>
+                  <div v-if="p.attachments?.length" style="display:flex;flex-wrap:wrap;gap:6px;margin:8px 0">
+                    <button v-for="file in p.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="openReportAttachment(file)">{{ file.fileName || '附件' }}</button>
+                  </div>
                   <div v-if="p.reviewComment" class="report-feedback"><strong>教师意见</strong>{{ p.reviewComment }}</div>
                   <button v-if="p.status === 'RETURNED'" type="button" class="report-revise" @click="editProcessReport(p)">按意见修改</button>
                 </div>
@@ -639,8 +655,8 @@ const currentSource = computed(() => sourceStates[tab.value] || { label: '当前
 const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
 const selectedBatchId = ref('')
 const internshipCandidates = ref([])
-const weeklyForm = reactive({ week: null, workContent: '', harvestContent: '', planContent: '' })
-const reportForm = reactive({ periodKey: currentMonth(), content: '' })
+const weeklyForm = reactive({ week: null, workContent: '', harvestContent: '', planContent: '', attachments: [] })
+const reportForm = reactive({ periodKey: currentMonth(), content: '', attachments: [] })
 const reportReceipt = ref(null)
 const reportError = ref('')
 const weeklyEditing = computed(() => (my.value.weeklyReports || []).some((item) =>
@@ -1408,6 +1424,55 @@ async function submitHelp() {
     helpForm.content = ''; helpForm.title = ''
   } catch (e) { ui.notify(e?.message || '提交失败') } finally { busy.value = false }
 }
+async function uploadReportAttachment(event, target) {
+  const input = event?.target
+  const file = input?.files?.[0]
+  if (!file || busy.value) return
+  busy.value = true
+  reportError.value = ''
+  try {
+    const uploaded = await fileSdk.upload(file, { bizType: 'INTERNSHIP_REPORT' })
+    if (!uploaded?.fileId) throw new Error('附件上传响应缺少文件标识')
+    const list = target === 'weekly' ? weeklyForm.attachments : reportForm.attachments
+    if (!list.some((item) => String(item.fileId) === String(uploaded.fileId))) {
+      list.push({
+        fileId: String(uploaded.fileId),
+        fileName: uploaded.fileName || file.name || '报告附件',
+        mimeType: uploaded.mimeType || file.type || '',
+        sizeBytes: Number(uploaded.sizeBytes || file.size || 0),
+        ext: uploaded.ext || ''
+      })
+    }
+    ui.notify('报告附件已上传')
+  } catch (e) {
+    reportError.value = e?.message || '报告附件上传失败'
+    ui.notify(reportError.value)
+  } finally {
+    busy.value = false
+    if (input) input.value = ''
+  }
+}
+function removeReportAttachment(target, index) {
+  if (busy.value) return
+  const list = target === 'weekly' ? weeklyForm.attachments : reportForm.attachments
+  list.splice(index, 1)
+}
+async function openReportAttachment(file) {
+  try {
+    const mime = String(file?.mimeType || '').toLowerCase()
+    const ext = String(file?.ext || file?.fileName?.split('.').pop() || '').toLowerCase()
+    if (mime.startsWith('image/') || mime.startsWith('video/') || ext === 'pdf') {
+      const blob = await fileSdk.fetchPreviewBlob(String(file.fileId))
+      const url = URL.createObjectURL(blob)
+      window.open(url, '_blank', 'noopener,noreferrer')
+      setTimeout(() => URL.revokeObjectURL(url), 60000)
+    } else {
+      await fileSdk.download(String(file.fileId), file.fileName || '报告附件')
+    }
+  } catch (e) {
+    ui.notify(e?.message || '报告附件打开失败')
+  }
+}
 function switchReportTab(value) {
   if (!reportTabs.includes(value) || busy.value) return
   reportTab.value = value
@@ -1421,14 +1486,19 @@ function editWeekly(item) {
     week: Number(item.weekNo || item.week),
     workContent: item.workContent || '',
     harvestContent: item.harvestContent || '',
-    planContent: item.planContent || ''
+    planContent: item.planContent || '',
+    attachments: Array.isArray(item.attachments) ? item.attachments.map((file) => ({ ...file })) : []
   })
   reportError.value = ''
 }
 function editProcessReport(item) {
   if (busy.value || item?.status !== 'RETURNED') return
   reportTab.value = item.reportType === 'SUMMARY' ? '实习总结' : '月报'
-  Object.assign(reportForm, { periodKey: item.periodKey || (item.reportType === 'SUMMARY' ? 'FINAL' : currentMonth()), content: item.content || '' })
+  Object.assign(reportForm, {
+    periodKey: item.periodKey || (item.reportType === 'SUMMARY' ? 'FINAL' : currentMonth()),
+    content: item.content || '',
+    attachments: Array.isArray(item.attachments) ? item.attachments.map((file) => ({ ...file })) : []
+  })
   reportError.value = ''
 }
 async function submitWeekly() {
@@ -1449,7 +1519,8 @@ async function submitWeekly() {
       weekNo: weeklyForm.week,
       workContent: weeklyForm.workContent,
       harvestContent: weeklyForm.harvestContent,
-      planContent: weeklyForm.planContent
+      planContent: weeklyForm.planContent,
+      attachmentFileIds: weeklyForm.attachments.map((file) => String(file.fileId))
     })
     reportReceipt.value = {
       ...result, id: result?.id || existing?.id || '', version: result?.reportVersion ?? (Number(existing?.reportVersion || existing?.version || 0) + 1),
@@ -1457,7 +1528,7 @@ async function submitWeekly() {
       nextStep: '等待指导教师批阅；若被退回，可从右侧记录继续修改。'
     }
     ui.notify(reportReceipt.value.actionLabel)
-    Object.assign(weeklyForm, { workContent: '', harvestContent: '', planContent: '' })
+    Object.assign(weeklyForm, { workContent: '', harvestContent: '', planContent: '', attachments: [] })
     await loadTab('report', true)
   }
   catch (e) {
@@ -1484,6 +1555,7 @@ async function submitReport() {
       reportType,
       periodKey,
       content: reportForm.content,
+      attachmentFileIds: reportForm.attachments.map((file) => String(file.fileId)),
       expectedVersion: existing?.version ?? 0
     })
     reportReceipt.value = {
@@ -1492,7 +1564,7 @@ async function submitReport() {
       nextStep: '等待指导教师批阅；退回意见会保留在当前记录中。'
     }
     ui.notify(reportReceipt.value.actionLabel)
-    Object.assign(reportForm, { periodKey: reportType === 'SUMMARY' ? 'FINAL' : currentMonth(), content: '' })
+    Object.assign(reportForm, { periodKey: reportType === 'SUMMARY' ? 'FINAL' : currentMonth(), content: '', attachments: [] })
     await loadTab('report', true)
   }
   catch (e) {
