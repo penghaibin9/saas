@@ -113,12 +113,12 @@ async function runJourney() {
     else if (/^H-exam-schedule-[AB]$/.test(step)) { actorRole = 'school'; bizType = 'EXAM_COURSE'; bizId = report.examCourseIds[step.at(-1)]; action = 'EXAM_COURSE_SCHEDULE' }
     else if (/^H-exam-room-[AB]$/.test(step)) { actorRole = 'school'; bizType = 'EXAM_ROOM'; bizId = report.examRoomIds[step.at(-1)]; action = 'EXAM_ROOM_ADD' }
     else if (/^H-exam-seats-\d+$/.test(step)) { actorRole = 'school'; bizType = 'EXAM_ROOM'; bizId = step.match(/\d+$/)[0]; action = 'EXAM_SEAT_ASSIGN' }
-    else if (/^H-exam-invigilator-[AB]$/.test(step)) { actorRole = 'school'; bizType = 'EXAM_INVIGILATOR'; bizId = report.examInvigilatorIds[step.at(-1)]; action = 'EXAM_INVIGILATOR_ADD' }
+    else if (/^H-exam-invigilator-[AB]-[12]$/.test(step)) { actorRole = 'school'; bizType = 'EXAM_INVIGILATOR'; bizId = report.examInvigilatorIds[step.slice(-3)]; action = 'EXAM_INVIGILATOR_ADD' }
     else if (/^H-exam-attendance-\d+-\d+$/.test(step)) {
       const match = step.match(/^H-exam-attendance-(\d+)-(\d+)$/)
       actorRole = Object.entries(report.examRoomIds).find(([, roomId]) => roomId === match[1])?.[0]
       assert.ok(actorRole, '正式考场未绑定本故事监考教师')
-      actorRole = `teacher${actorRole}`; bizType = 'EXAM_ROOM_STUDENT'; bizId = match[1]; studentId = match[2]; action = 'EXAM_ATTENDANCE_PRESENT'
+      actorRole = `teacher${actorRole === 'A' ? 'B' : 'A'}`; bizType = 'EXAM_ROOM_STUDENT'; bizId = match[1]; studentId = match[2]; action = 'EXAM_ATTENDANCE_PRESENT'
     }
     if (actorRole) {
       const account = fixture.accounts[actorRole]
@@ -1314,7 +1314,8 @@ async function runJourney() {
         const checkbox = courseDrawer.locator('label.app-checkbox').filter({ hasText: candidate.courseName })
           .filter({ hasText: candidate.teachingClassName })
         await expect(checkbox).toHaveCount(1)
-        await checkbox.locator('input[type="checkbox"]').check()
+        await checkbox.click()
+        await expect(checkbox.locator('input[type="checkbox"]')).toBeChecked()
       }
       const previewResponse = responseFor(school, `${examPath}/${examBatchId}/course-candidates/preview`, 'POST')
       await courseDrawer.getByRole('button', { name: '预览圈课', exact: true }).click()
@@ -1512,39 +1513,44 @@ async function runJourney() {
 
       const invigilatorsPath = `${apiPath}/exam/rooms/${roomId}/invigilators`
       let invigilators = await readOnly('school', invigilatorsPath)
-      const teacher = fixture.accounts[`teacher${label}`]
-      assert.ok(invigilators.items.length <= 1, '考场已有额外监考安排，禁止猜测本人责任')
-      if (!invigilators.items.length) {
-        await phase(`校教务指定学院 ${label} 正常教师账号本人监考`)
-        await selectExamBatch()
-        await examRow().getByRole('button', { name: '考场', exact: true }).click()
-        const drawer = school.getByRole('dialog', { name: `考场编排 · ${course.courseName}`, exact: true })
-        const picker = drawer.locator('.app-remote-select').filter({ hasText: '选择监考教师' })
-        await picker.getByRole('combobox').click()
-        const searched = school.waitForResponse(response => {
-          const url = new URL(response.url())
-          return url.pathname === `${apiPath}/courses/teachers/search` && url.searchParams.get('keyword') === teacher.loginName
-        }, { timeout: 120_000 })
-        await picker.locator('input').fill(teacher.loginName)
-        const teacherOptions = await read(await searched)
-        const matchedTeacher = (teacherOptions.items || teacherOptions.list || teacherOptions)
-          .find(item => item.loginName === teacher.loginName || item.teacherKey === teacher.teacherKey)
-        assert.ok(matchedTeacher, '正式教师检索未返回本场已登录监考账号')
-        await picker.getByRole('option').filter({ hasText: matchedTeacher.label || matchedTeacher.teacherName || matchedTeacher.realName }).click()
-        await beforeWrite(`H-exam-invigilator-${label}`)
-        const assigned = responseFor(school, invigilatorsPath, 'POST')
-        await drawer.getByRole('button', { name: '指定监考', exact: true }).click()
-        const receipt = await read(await assigned)
-        assert.equal(receipt.examRoomId, roomId); assert.equal(receipt.teacherKey, teacher.teacherKey)
-        report.examInvigilatorIds[label] = receipt.invigilatorId; await save()
+      // 正式考务规则禁止任课教师监考本人课程，两院教师交叉监考。
+      const teachers = [fixture.accounts[`teacher${label === 'A' ? 'B' : 'A'}`], fixture.accounts.teacherC]
+      assert.ok(invigilators.items.every(item => teachers.some(teacher => teacher.teacherKey === item.teacherKey)),
+        '考场已有非预期监考安排，禁止猜测本人责任')
+      for (const teacher of teachers) {
+        const key = `${label}-${teachers.indexOf(teacher) + 1}`
+        if (!invigilators.items.some(item => item.teacherKey === teacher.teacherKey)) {
+          await phase(`校教务为学院 ${label} 指定正式教师监考`)
+          await selectExamBatch()
+          await examRow().getByRole('button', { name: '考场', exact: true }).click()
+          const drawer = school.getByRole('dialog', { name: `考场编排 · ${course.courseName}`, exact: true })
+          const picker = drawer.locator('.app-remote-select').filter({ hasText: '选择监考教师' })
+          await picker.getByRole('combobox').click()
+          const searched = school.waitForResponse(response => {
+            const url = new URL(response.url())
+            return url.pathname === `${apiPath}/courses/teachers/search` && url.searchParams.get('keyword') === teacher.loginName
+          }, { timeout: 120_000 })
+          await picker.locator('input').fill(teacher.loginName)
+          const teacherOptions = await read(await searched)
+          const matchedTeacher = (teacherOptions.items || teacherOptions.list || teacherOptions)
+            .find(item => item.loginName === teacher.loginName || item.teacherKey === teacher.teacherKey)
+          assert.ok(matchedTeacher, '正式教师检索未返回本场已登录监考账号')
+          await picker.getByRole('option').filter({ hasText: matchedTeacher.label || matchedTeacher.teacherName || matchedTeacher.realName }).click()
+          await beforeWrite(`H-exam-invigilator-${key}`)
+          const assigned = responseFor(school, invigilatorsPath, 'POST')
+          await drawer.getByRole('button', { name: '指定监考', exact: true }).click()
+          const receipt = await read(await assigned)
+          assert.equal(receipt.examRoomId, roomId); assert.equal(receipt.teacherKey, teacher.teacherKey)
+          invigilators = await readOnly('school', invigilatorsPath)
+        }
+        const invigilatorId = invigilators.items.find(item => item.teacherKey === teacher.teacherKey)?.invigilatorId
+        assert.ok(invigilatorId, '正式监考指派未写入考场')
+        report.examInvigilatorIds[key] = invigilatorId
+        if (!report.checkpoints.some(item => item.step === `H-exam-invigilator-${key}`))
+          await observed(`H-exam-invigilator-${key}`, { roomId, invigilatorId, teacherUserId: teacher.userId })
       }
-      invigilators = await readOnly('school', invigilatorsPath)
-      assert.equal(invigilators.items.length, 1)
-      assert.equal(invigilators.items[0].teacherKey, teacher.teacherKey)
-      const invigilatorId = invigilators.items[0].invigilatorId
-      assert.equal(invigilatorId, report.examInvigilatorIds[label] || invigilatorId)
-      report.examInvigilatorIds[label] = invigilatorId; await save()
-      await observed(`H-exam-invigilator-${label}`, { roomId, invigilatorId, teacherUserId: teacher.userId })
+      assert.deepEqual(new Set(invigilators.items.map(item => item.teacherKey)), new Set(teachers.map(item => item.teacherKey)))
+      await save()
     }
 
     examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
@@ -1567,7 +1573,7 @@ async function runJourney() {
     await observed('H-exam-batch-publish', { batchId: examBatchId, status: examBatch.status })
 
     for (const label of ['A', 'B']) {
-      const role = `teacher${label}`, teacherPage = pages[role], roomId = report.examRoomIds[label]
+      const role = `teacher${label === 'A' ? 'B' : 'A'}`, teacherPage = pages[role], roomId = report.examRoomIds[label]
       const attendancePath = `${apiPath}/exam/rooms/${roomId}/attendance`
       const expectedStudents = fixture.colleges[label].studentIds.map(String)
       const pendingAttendance = await readOnly(role, attendancePath)

@@ -35,6 +35,7 @@ IDENTITIES = {
     "collegeB": ("乙学院教学秘书", "COLLEGE_ADMIN", "B"),
     "teacherA": ("甲学院任课教师", "ACADEMIC_TEACHER", "A"),
     "teacherB": ("乙学院任课教师", "ACADEMIC_TEACHER", "B"),
+    "teacherC": ("甲学院交叉监考教师", "ACADEMIC_TEACHER", "A"),
     "leader": ("学校只读观察员", "LEADER", None),
 }
 
