@@ -65,6 +65,17 @@
                   <text class="pr__content-label">报告正文</text>
                   <text class="pr__content-text">{{ detail[r.id].content || '（无正文）' }}</text>
                 </view>
+                <view v-if="latestAttachments(r.id).length" class="pr__attachments">
+                  <text class="pr__content-label">图片/视频附件</text>
+                  <view v-for="file in latestAttachments(r.id)" :key="file.fileId"
+                    class="pr__attachment" @click.stop="openAttachment(file)">
+                    <view class="flex-1">
+                      <text class="t-sm t-bold">{{ file.fileName || '附件' }}</text>
+                      <text class="pr__attachment-meta">{{ file.kind || file.mimeType || '' }}</text>
+                    </view>
+                    <text class="pr__open">查看</text>
+                  </view>
+                </view>
                 <view class="pr__next">
                   <text class="pr__next-label">批阅重点</text>
                   <text class="pr__next-text">核对内容是否真实、完整、与当前实习阶段相符；退回意见应让学生能直接修改。</text>
@@ -90,6 +101,7 @@ import {
   teacherInternshipProcessReportReview
 } from '@/services/internshipApi'
 import { useInternshipContextStore } from '@/stores/internshipContext'
+import fileSdk from '@/services/fileSdk'
 import { toast } from '@/utils/nav'
 
 export default {
@@ -190,15 +202,58 @@ export default {
         this.expanded = ''
       } finally { if (sequence === this.loadSeq && this.loadingDetail === r.id) this.loadingDetail = '' }
     },
+    latestAttachments(reportId) {
+      const versions = this.detail[reportId]?.versions || []
+      return versions[0]?.attachments || []
+    },
+    async openAttachment(file) {
+      try {
+        await fileSdk.open(file.fileId)
+      } catch (e) {
+        toast((e && e.message) || '附件暂时无法打开')
+      }
+    },
     review(r, action) {
       if (!this.canReview || this.actingId || this.state !== 'ready') return
+      const version = this.detail[r.id]?.version
+      if (version == null) { toast('请先打开报告正文'); return }
+      if (action === 'RETURN') {
+        this.confirmReview(r, action, null, null)
+        return
+      }
+      uni.showActionSheet({
+        itemList: ['1级（需明显改进）', '2级', '3级（合格）', '4级', '5级（优秀）'],
+        success: ({ tapIndex }) => {
+          const ratingLevel = Number(tapIndex) + 1
+          const isSummary = String(r.reportType || this.detail[r.id]?.reportType || '').toUpperCase() === 'SUMMARY'
+          if (!isSummary) {
+            this.confirmReview(r, action, ratingLevel, null)
+            return
+          }
+          uni.showModal({
+            title: '实习总结评分',
+            editable: true,
+            placeholderText: '请输入 0～100 分',
+            success: (m) => {
+              if (!m.confirm) return
+              const score = Number(String(m.content || '').trim())
+              if (!Number.isFinite(score) || score < 0 || score > 100) {
+                toast('总结评分必须是 0～100 分')
+                return
+              }
+              this.confirmReview(r, action, ratingLevel, score)
+            }
+          })
+        }
+      })
+    },
+    confirmReview(r, action, ratingLevel, summaryScore) {
       const sequence = this.loadSeq
       const batchId = this.batchId
       const version = this.detail[r.id]?.version
-      if (version == null) { toast('请先打开报告正文'); return }
       const reject = action === 'RETURN'
       uni.showModal({
-        title: reject ? '退回报告' : '通过报告',
+        title: reject ? '退回报告' : '确认通过',
         editable: true,
         placeholderText: reject ? '请填写具体修改要求（至少5字）' : '可填写批阅意见',
         content: '',
@@ -209,9 +264,14 @@ export default {
           this.actingId = r.id
           try {
             await teacherInternshipProcessReportReview(r.id, batchId, {
-              action, comment, expectedVersion: version, batchId
+              action,
+              comment,
+              ratingLevel,
+              summaryScore,
+              expectedVersion: version,
+              batchId
             })
-            toast(reject ? '已退回学生修改' : '报告已通过')
+            toast(reject ? '已退回学生修改' : '报告已完成五级批阅')
             await this.load()
           } catch (e) {
             if (String(e && e.code) === 'DATA_CONFLICT') {
@@ -227,5 +287,5 @@ export default {
 </script>
 
 <style scoped>
-.pr__context{display:flex;flex-direction:column;gap:var(--space-3)}.pr__batch{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3)}.pr__batch-copy{min-width:0;display:flex;flex-direction:column;gap:3px}.pr__eyebrow{font-size:var(--font-size-xs);color:var(--text-tertiary)}.pr__batch-name{font-size:var(--font-size-md);font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pr__picker{flex-shrink:0}.pr__pick-val{color:var(--teacher-700);font-size:var(--font-size-sm);white-space:nowrap}.pr__arrow{margin-left:4px;color:var(--text-tertiary)}.pr__summary{display:flex;align-items:stretch;gap:var(--space-3);padding:var(--space-3)}.pr__summary-main{flex:1;min-width:0}.pr__summary-label{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary)}.pr__summary-value{display:flex;align-items:baseline;gap:4px;margin-top:4px}.pr__summary-value text:first-child{font-size:34px;line-height:1;font-weight:700;color:var(--teacher-700)}.pr__summary-value text:last-child{font-size:var(--font-size-sm);color:var(--text-secondary)}.pr__summary-note{display:block;margin-top:8px;font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.pr__summary-metrics{width:48%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--gray-50);border-radius:var(--radius-md);overflow:hidden}.pr__metric{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 4px;border-left:1px solid var(--border-light)}.pr__metric:first-child{border-left:0}.pr__metric text:first-child{font-size:var(--font-size-lg);font-weight:700;color:var(--text-primary)}.pr__metric text:last-child{font-size:10px;color:var(--text-tertiary)}.pr__list{padding-top:0}.pr{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3)}.pr.is-expanded{border-color:var(--teacher-200,#bfdbfe)}.pr__head{align-items:flex-start}.pr__identity{min-width:0}.pr__sub{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary);margin-top:3px}.pr__head-right{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:6px}.pr__chevron{font-size:10px;color:var(--teacher-700)}.pr__brief{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:var(--space-2);background:var(--gray-50);border-radius:var(--radius-md)}.pr__brief>view{min-width:0;display:flex;flex-direction:column;gap:3px}.pr__brief text:first-child{font-size:10px;color:var(--text-tertiary)}.pr__brief text:last-child{font-size:var(--font-size-xs);font-weight:600;color:var(--text-primary);word-break:break-word}.pr__loading{padding:var(--space-4) 0;text-align:center}.pr__meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;font-size:var(--font-size-xs);color:var(--text-tertiary)}.pr__content{background:var(--gray-50);border-radius:var(--radius-md);padding:var(--space-3);max-height:420px;overflow:auto}.pr__content-label{display:block;margin-bottom:7px;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.pr__content-text{font-size:var(--font-size-sm);color:var(--text-primary);line-height:1.75;white-space:pre-wrap;word-break:break-word}.pr__next{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.pr__next-label{flex-shrink:0;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.pr__next-text{font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.pr__actions{display:flex;gap:var(--space-2)}.pr__reject,.pr__approve{min-height:var(--touch-target-min);border-radius:var(--radius-md);font-size:var(--font-size-md)}.pr__reject{border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600)}.pr__approve{border:none;background:var(--teacher-600);color:#fff}.pr__reject::after,.pr__approve::after{border:none}.pr__reject[disabled],.pr__approve[disabled]{opacity:.55}@media(max-width:360px){.pr__summary{flex-direction:column}.pr__summary-metrics{width:100%}.pr__brief{grid-template-columns:1fr}.pr__batch{align-items:flex-start}}
+.pr__context{display:flex;flex-direction:column;gap:var(--space-3)}.pr__batch{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3)}.pr__batch-copy{min-width:0;display:flex;flex-direction:column;gap:3px}.pr__eyebrow{font-size:var(--font-size-xs);color:var(--text-tertiary)}.pr__batch-name{font-size:var(--font-size-md);font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pr__picker{flex-shrink:0}.pr__pick-val{color:var(--teacher-700);font-size:var(--font-size-sm);white-space:nowrap}.pr__arrow{margin-left:4px;color:var(--text-tertiary)}.pr__summary{display:flex;align-items:stretch;gap:var(--space-3);padding:var(--space-3)}.pr__summary-main{flex:1;min-width:0}.pr__summary-label{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary)}.pr__summary-value{display:flex;align-items:baseline;gap:4px;margin-top:4px}.pr__summary-value text:first-child{font-size:34px;line-height:1;font-weight:700;color:var(--teacher-700)}.pr__summary-value text:last-child{font-size:var(--font-size-sm);color:var(--text-secondary)}.pr__summary-note{display:block;margin-top:8px;font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.pr__summary-metrics{width:48%;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));background:var(--gray-50);border-radius:var(--radius-md);overflow:hidden}.pr__metric{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 4px;border-left:1px solid var(--border-light)}.pr__metric:first-child{border-left:0}.pr__metric text:first-child{font-size:var(--font-size-lg);font-weight:700;color:var(--text-primary)}.pr__metric text:last-child{font-size:10px;color:var(--text-tertiary)}.pr__list{padding-top:0}.pr{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3)}.pr.is-expanded{border-color:var(--teacher-200,#bfdbfe)}.pr__head{align-items:flex-start}.pr__identity{min-width:0}.pr__sub{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary);margin-top:3px}.pr__head-right{flex-shrink:0;display:flex;flex-direction:column;align-items:flex-end;gap:6px}.pr__chevron{font-size:10px;color:var(--teacher-700)}.pr__brief{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;padding:var(--space-2);background:var(--gray-50);border-radius:var(--radius-md)}.pr__brief>view{min-width:0;display:flex;flex-direction:column;gap:3px}.pr__brief text:first-child{font-size:10px;color:var(--text-tertiary)}.pr__brief text:last-child{font-size:var(--font-size-xs);font-weight:600;color:var(--text-primary);word-break:break-word}.pr__loading{padding:var(--space-4) 0;text-align:center}.pr__meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 12px;font-size:var(--font-size-xs);color:var(--text-tertiary)}.pr__content{background:var(--gray-50);border-radius:var(--radius-md);padding:var(--space-3);max-height:420px;overflow:auto}.pr__content-label{display:block;margin-bottom:7px;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.pr__content-text{font-size:var(--font-size-sm);color:var(--text-primary);line-height:1.75;white-space:pre-wrap;word-break:break-word}.pr__attachments{display:flex;flex-direction:column;gap:8px}.pr__attachment{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border-light);border-radius:var(--radius-md);background:var(--bg-card)}.pr__attachment-meta{display:block;margin-top:3px;font-size:10px;color:var(--text-tertiary)}.pr__open{font-size:var(--font-size-xs);color:var(--teacher-700);flex-shrink:0}.pr__next{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--teacher-50,#eff6ff)}.pr__next-label{flex-shrink:0;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.pr__next-text{font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.pr__actions{display:flex;gap:var(--space-2)}.pr__reject,.pr__approve{min-height:var(--touch-target-min);border-radius:var(--radius-md);font-size:var(--font-size-md)}.pr__reject{border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600)}.pr__approve{border:none;background:var(--teacher-600);color:#fff}.pr__reject::after,.pr__approve::after{border:none}.pr__reject[disabled],.pr__approve[disabled]{opacity:.55}@media(max-width:360px){.pr__summary{flex-direction:column}.pr__summary-metrics{width:100%}.pr__brief{grid-template-columns:1fr}.pr__batch{align-items:flex-start}}
 </style>
