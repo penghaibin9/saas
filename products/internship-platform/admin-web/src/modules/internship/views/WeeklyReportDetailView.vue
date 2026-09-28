@@ -112,6 +112,14 @@
                   <div class="mp-radio__desc">退回原因必填（≥5 字），学生端收到不可关闭的退回提醒</div>
                 </div>
               </label>
+              <div v-if="action === 'APPROVE'" class="wr-rating">
+                <label for="weekly-rating">五级评价 <b>*</b></label>
+                <select id="weekly-rating" v-model="ratingLevel" :disabled="submitting || conflict.active || !canReview">
+                  <option value="">请选择评价等级</option>
+                  <option v-for="item in ratingOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
+                </select>
+                <span>评分会绑定当前提交版本，学生重交不会覆盖历史批阅事实。</span>
+              </div>
               <label for="weekly-review-comment" class="mp-note" style="display: block; margin: var(--space-3) 0 var(--space-1)">
                 {{ action === 'RETURN' ? '退回原因（必填，≥5 字）' : '评语（选填）' }}
               </label>
@@ -161,11 +169,20 @@ export default {
     LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, AppInlineAlert, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
-    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', formError: '', submitting: false,
+    return { loading: true, error: '', detail: null, action: 'APPROVE', comment: '', ratingLevel: '', formError: '', submitting: false,
       openVersions: [], conflict: emptyConflict(), lastReceipt: null, loadEpoch: 0 }
   },
   computed: {
     canReview() { return canCode(this.ctx, 'internship.report.review') },
+    ratingOptions() {
+      return [
+        { value: 1, label: '1级 · 需明显改进' },
+        { value: 2, label: '2级 · 待提升' },
+        { value: 3, label: '3级 · 合格' },
+        { value: 4, label: '4级 · 良好' },
+        { value: 5, label: '5级 · 优秀' }
+      ]
+    },
     activeChips() { return this.action === 'RETURN' ? REJECT_WEEKLY : APPROVE_WEEKLY },
     resubmitComparison() {
       const versions = this.detail?.versions || []
@@ -189,6 +206,7 @@ export default {
       this.detail = null
       this.action = 'APPROVE'
       this.comment = ''
+      this.ratingLevel = ''
       this.formError = ''
       this.conflict = emptyConflict()
       this.lastReceipt = null
@@ -234,9 +252,17 @@ export default {
         toast.error('退回原因必填且不少于 5 个字')
         return
       }
+      if (action === 'APPROVE' && ![1, 2, 3, 4, 5].includes(Number(this.ratingLevel))) {
+        this.formError = '通过周报时必须选择 1～5 级评价'
+        toast.error(this.formError)
+        return
+      }
       this.submitting = true
       const res = await internshipApi.reviewWeeklyReport(this.detail.id, {
-        action, comment: this.comment, expectedVersion: this.detail.version
+        action,
+        comment: this.comment,
+        ratingLevel: action === 'APPROVE' ? Number(this.ratingLevel) : undefined,
+        expectedVersion: this.detail.version
       })
       this.submitting = false
       if (this.detail !== current || this.$route.params.id !== id) return
@@ -250,6 +276,7 @@ export default {
         }
         toast.success('批阅完成：' + res.data.statusLabel + '，已留痕并同步学生端')
         this.comment = ''
+        this.ratingLevel = ''
         this.load()
         // 连续批阅：有下一条自动跳转，无则提示队列完成
         this.$refs.queueBar && this.$refs.queueBar.advance()
@@ -282,6 +309,11 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .wr-kept { white-space: pre-wrap; overflow-wrap: anywhere; }
+.wr-rating { display:grid; gap:6px; margin:var(--space-3) 0; padding:12px; border:1px solid var(--border-base); border-radius:8px; background:var(--bg-page); }
+.wr-rating label { font-size:13px; font-weight:600; color:var(--text-primary); }
+.wr-rating label b { color:var(--danger-600); }
+.wr-rating select { height:38px; padding:0 10px; border:1px solid var(--border-base); border-radius:7px; background:var(--bg-card); color:var(--text-primary); }
+.wr-rating span { font-size:11px; line-height:1.5; color:var(--text-secondary); }
 .wr-chips { margin-bottom: var(--space-2); }
 .wr-ver__toggle { margin-top: var(--space-1); padding: 0; border: 0; background: none; color: var(--color-primary); cursor: pointer; font-size: var(--font-size-sm); }
 .wr-ver__body { margin-top: var(--space-2); padding: var(--space-2); border-radius: var(--radius-sm); background: var(--color-bg-subtle, #f6f7f9); }
