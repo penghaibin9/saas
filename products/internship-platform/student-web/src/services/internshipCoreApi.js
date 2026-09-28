@@ -74,6 +74,11 @@ async function resolveEditableSelfArrangedApplication(body) {
 }
 
 export const internshipCoreApi = {
+  notices(context) {
+    const batchId = String(context?.batchId || '').trim()
+    if (!batchId) return Promise.reject(new Error('请先选择实习批次'))
+    return request(`/portal/internship/context/notices?batchId=${encode(batchId)}`)
+  },
   async applications(context) {
     const data = await request(`/portal/internship/context/applications${contextQuery(context)}`)
     return decorateApplicationReviewFeedback(data)
