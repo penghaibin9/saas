@@ -184,7 +184,7 @@ def freeze(batch_id, body: dict, user: dict) -> dict:
             rec = db.scalars(select(InternshipRecord).where(
                 InternshipRecord.tenant_id == _tid(),
                 InternshipRecord.student_id == int(s.id),
-                InternshipRecord.batch_id == int(batch_id))).first()
+                InternshipRecord.batch_id == int(batch_id)).with_for_update()).first()
             if rec is None:
                 rec = InternshipRecord(tenant_id=_tid(), student_id=int(s.id),
                                        batch_id=int(batch_id), status="PREPARING",
@@ -343,7 +343,9 @@ def add_participants(batch_id, student_ids, user: dict, reason: str = "") -> dic
         raise AppException("VALIDATION_ERROR", "请至少选择一名学生")
 
     with session() as db:
-        _get_batch(db, batch_id)
+        batch = _get_batch(db, batch_id)
+        if batch.status != "RUNNING":
+            raise AppException("DATA_CONFLICT", "只有进行中的批次可以人工补录参与学生")
         # 新增名单仍属于“新选人”动作，继续复用 resolver 的学籍资格 + 数据范围双重口径。
         allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": ids}),
                                 user=user, limit=None)
@@ -366,6 +368,12 @@ def add_participants(batch_id, student_ids, user: dict, reason: str = "") -> dic
                                        eligibility_status="PENDING", destination_type="NONE")
                 db.add(rec)
                 db.flush()
+            elif rec.is_deleted:
+                rec.is_deleted = False
+                rec.status = "PREPARING"
+                rec.eligibility_status = "PENDING"
+                rec.destination_type = "NONE"
+                rec.version = int(rec.version or 0) + 1
             # 曾被移出的人重新加入：复活原行而不是插重复行（唯一键也不允许）
             revived = db.scalars(select(InternshipBatchParticipant).where(
                 InternshipBatchParticipant.tenant_id == _tid(),
@@ -394,19 +402,30 @@ def add_participants(batch_id, student_ids, user: dict, reason: str = "") -> dic
 
 
 def remove_participant(batch_id, participant_id, reason: str, expected_version, user: dict | None = None) -> dict:
-    """移出名单。保留行 + 记原因，便于追溯"这个人当初在不在名单里"。"""
+    """Remove from active roster without erasing legal history.
+
+    Only PREPARING, not-yet-placed students may be removed.  The participant row is retained as
+    REMOVED evidence, while its canonical InternshipRecord is soft-deleted so operational lists
+    and statistics stop counting it.  A later manual re-add revives that exact record.
+    """
     from app.core.optimistic_lock import require_expected_version
-    from app.models import InternshipBatchParticipant
+    from app.models import InternshipBatchParticipant, InternshipRecord
 
     if not reason or len(reason.strip()) < 2:
         raise AppException("VALIDATION_ERROR", "移出原因必填（不少于 2 字）")
     expected = require_expected_version(expected_version)
 
     with session() as db:
-        _get_batch(db, batch_id)
-        row = db.get(InternshipBatchParticipant, int(participant_id))
-        if (not row or row.is_deleted or int(row.tenant_id) != _tid()
-                or int(row.batch_id) != int(batch_id)):
+        batch = _get_batch(db, batch_id)
+        if batch.status != "RUNNING":
+            raise AppException("DATA_CONFLICT", "只有进行中的批次可以调整正式参与名单")
+        row = db.scalar(select(InternshipBatchParticipant).where(
+            InternshipBatchParticipant.id == int(participant_id),
+            InternshipBatchParticipant.tenant_id == _tid(),
+            InternshipBatchParticipant.batch_id == int(batch_id),
+            InternshipBatchParticipant.is_deleted.is_(False),
+        ).with_for_update())
+        if not row:
             raise not_found("参与人记录不存在")
         if int(row.student_id) not in _visible_participant_student_ids(db, [row], user=user):
             from app.core.exceptions import no_permission
@@ -415,14 +434,45 @@ def remove_participant(batch_id, participant_id, reason: str, expected_version, 
             raise AppException("APPROVAL_VERSION_CONFLICT", "数据已被他人修改，请刷新后重试")
         if row.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "该学生已不在名单中")
+
+        rec = None
+        if row.internship_id:
+            rec = db.scalar(select(InternshipRecord).where(
+                InternshipRecord.id == int(row.internship_id),
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == int(batch_id),
+            ).with_for_update())
+        if rec and not rec.is_deleted:
+            if rec.status != "PREPARING":
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "该学生已进入上岗/考核流程，不能直接移出批次；请先走正式变更或退岗流程",
+                )
+            if rec.position_id or str(rec.destination_type or "NONE") not in ("", "NONE"):
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "该学生已经落实实习去向，不能直接移出批次；请先解除去向后再处理",
+                )
+            rec.is_deleted = True
+            rec.version = int(rec.version or 0) + 1
+
         row.status = "REMOVED"
         row.remove_reason = reason.strip()
         row.version = int(row.version or 0) + 1
-        _audit(db, batch_id, "移出参与人",
-               {"studentId": int(row.student_id), "name": row.snapshot_name or "",
-                "reason": reason.strip()})
+        _audit(db, batch_id, "移出参与人", {
+            "studentId": int(row.student_id),
+            "name": row.snapshot_name or "",
+            "reason": reason.strip(),
+            "internshipId": str(row.internship_id or ""),
+            "recordSoftDeleted": bool(rec),
+        })
         db.commit()
-        return {"id": str(row.id), "status": row.status}
+        return {
+            "id": str(row.id),
+            "status": row.status,
+            "internshipId": str(row.internship_id or ""),
+            "recordSoftDeleted": bool(rec),
+        }
 
 
 def summary(batch_id, user: dict | None = None) -> dict:
