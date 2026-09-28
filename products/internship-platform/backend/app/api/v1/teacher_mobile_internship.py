@@ -63,6 +63,8 @@ class TeacherWorkReportBody(_StrictBody):
     nextPlan: str | None = Field(default=None, max_length=4000)
     studentCount: int | None = Field(default=None, ge=0)
     attachmentFileIds: list[str] = Field(default_factory=list, max_length=9)
+    audienceScope: Literal["ALL", "COLLEGE"] = "ALL"
+    recipientCollegeIds: list[int] = Field(default_factory=list, max_length=100)
     expectedVersion: int | None = Field(default=None, ge=0)
 
 
