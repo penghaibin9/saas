@@ -19,6 +19,7 @@ from app.modules.internship.services import internship_student_dashboard_service
 from app.modules.internship.services import internship_student_leave_context_service as leaves
 from app.modules.internship.services import internship_student_makeup_context_service as makeups
 from app.modules.internship.services import internship_student_report_context_service as reports
+from app.modules.internship.services import internship_student_notice_service as student_notices
 from app.modules.internship.services import internship_student_eval_service as student_evals
 from app.modules.internship.services import internship_student_checkin_service as checkins
 from app.modules.internship.services import internship_checkin_exemption_service as checkin_exemptions
@@ -60,6 +61,30 @@ def my_emergency_notices(
     user=Depends(get_current_user),
 ):
     return success(teacher_activity.list_student_notices(user, batch_id=batchId))
+
+
+@router.get("/emergency-notices/pending", summary="本人当前批次待强弹确认紧急通知")
+def my_pending_emergency_notices(
+    batchId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(student_notices.pending_notices(user, batch_id=batchId))
+
+
+@router.post("/emergency-notices/{notice_id}/ack", summary="本人明确确认紧急通知已知悉")
+def acknowledge_emergency_notice(
+    notice_id: int,
+    batchId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(
+        student_notices.acknowledge_notice(
+            user,
+            notice_id=notice_id,
+            batch_id=batchId,
+        ),
+        message="已记录知悉回执",
+    )
 
 
 @router.get("/compliance/my", summary="本人岗位实习权威合规状态与下一步")
