@@ -9,6 +9,10 @@ from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (
+    College,
+    Major,
+    SchoolClass,
+    StudentProfile,
     InternshipBatch,
     InternshipEmergencyNotice,
     InternshipEmergencyNoticeTeacherReceipt,
@@ -126,6 +130,121 @@ def _notice_attachment_ids(value) -> list[str]:
     if len(out) > MAX_NOTICE_ATTACHMENTS:
         raise AppException("VALIDATION_ERROR", f"通知附件最多上传{MAX_NOTICE_ATTACHMENTS}个")
     return out
+
+
+def _notice_audience(payload: dict) -> tuple[str, list[int]]:
+    scope = str((payload or {}).get("audienceScope") or "ALL").strip().upper()
+    if scope not in ("ALL", "COLLEGE"):
+        raise AppException("VALIDATION_ERROR", "通知接收范围仅支持全校或指定学院")
+    raw = (payload or {}).get("recipientCollegeIds") or []
+    if not isinstance(raw, list):
+        raise AppException("VALIDATION_ERROR", "指定学院必须以列表提交")
+    ids = []
+    for value in raw:
+        try:
+            cid = int(value)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "学院ID格式不正确") from None
+        if cid > 0 and cid not in ids:
+            ids.append(cid)
+    if scope == "COLLEGE" and not ids:
+        raise AppException("VALIDATION_ERROR", "指定学院发布时至少选择一个学院")
+    if scope == "ALL":
+        ids = []
+    return scope, ids
+
+
+def _student_college_id(db, student: StudentProfile | None) -> int | None:
+    if student is None:
+        return None
+    if getattr(student, "college_id", None):
+        return int(student.college_id)
+    major_id = getattr(student, "major_id", None)
+    if major_id:
+        major = db.get(Major, int(major_id))
+        if major and major.tenant_id == _tid() and not major.is_deleted and major.college_id:
+            return int(major.college_id)
+    class_id = getattr(student, "class_id", None)
+    if class_id:
+        cls = db.get(SchoolClass, int(class_id))
+        if cls and cls.tenant_id == _tid() and not cls.is_deleted and cls.major_id:
+            major = db.get(Major, int(cls.major_id))
+            if major and major.tenant_id == _tid() and not major.is_deleted and major.college_id:
+                return int(major.college_id)
+    return None
+
+
+def notice_applies_to_student(db, row: InternshipEmergencyNotice, student: StudentProfile | None) -> bool:
+    scope = str(getattr(row, "audience_scope", None) or "ALL").upper()
+    if scope == "ALL":
+        return True
+    if scope != "COLLEGE":
+        return False
+    target_ids = {int(x) for x in (row.recipient_college_ids_json or []) if str(x).isdigit()}
+    college_id = _student_college_id(db, student)
+    return bool(college_id and college_id in target_ids)
+
+
+def _notice_applies_to_teacher(db, row: InternshipEmergencyNotice, user: dict, teacher_id: int) -> bool:
+    scope = str(getattr(row, "audience_scope", None) or "ALL").upper()
+    if scope == "ALL":
+        return True
+    if scope != "COLLEGE":
+        return False
+    target_ids = {int(x) for x in (row.recipient_college_ids_json or []) if str(x).isdigit()}
+    if not target_ids:
+        return False
+
+    from app.services.mobile_teacher_service import resolve_teacher_scope
+    teacher_scope = resolve_teacher_scope(user)
+    if teacher_scope.get("mode") == "ADMIN_TENANT":
+        return True
+
+    college_names = {str(x) for x in (teacher_scope.get("collegeNames") or set()) if str(x)}
+    if college_names:
+        visible_ids = set(db.scalars(select(College.id).where(
+            College.tenant_id == _tid(),
+            College.college_name.in_(college_names),
+            College.is_deleted.is_(False),
+        )).all())
+        if target_ids.intersection(int(x) for x in visible_ids):
+            return True
+
+    records = db.scalars(select(InternshipRecord).where(
+        InternshipRecord.tenant_id == _tid(),
+        InternshipRecord.batch_id == row.batch_id,
+        InternshipRecord.advisor_user_id == teacher_id,
+        InternshipRecord.is_deleted.is_(False),
+    )).all()
+    student_ids = {int(rec.student_id) for rec in records if rec.student_id}
+    if not student_ids:
+        return False
+    students = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.id.in_(student_ids),
+        StudentProfile.is_deleted.is_(False),
+    )).all()
+    return any((_student_college_id(db, student) in target_ids) for student in students)
+
+
+def _recipient_student_count(db, batch_id: int, audience_scope: str, college_ids: list[int]) -> int:
+    records = db.scalars(select(InternshipRecord).where(
+        InternshipRecord.tenant_id == _tid(),
+        InternshipRecord.batch_id == batch_id,
+        InternshipRecord.is_deleted.is_(False),
+    )).all()
+    student_ids = {int(rec.student_id) for rec in records if rec.student_id}
+    if not student_ids:
+        return 0
+    if audience_scope == "ALL":
+        return len(student_ids)
+    students = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.id.in_(student_ids),
+        StudentProfile.is_deleted.is_(False),
+    )).all()
+    targets = set(college_ids)
+    return sum(1 for student in students if _student_college_id(db, student) in targets)
 
 
 def _location(body: dict) -> tuple[float | None, float | None, float | None]:
@@ -598,6 +717,8 @@ def _notice_view(row: InternshipEmergencyNotice) -> dict:
         "forcePopup": (row.urgency or "NORMAL") in ("IMPORTANT", "URGENT"),
         "attachmentFileIds": list(row.attachment_file_ids_json or []),
         "attachments": attachments,
+        "audienceScope": row.audience_scope or "ALL",
+        "recipientCollegeIds": [str(x) for x in (row.recipient_college_ids_json or [])],
         "senderName": row.sender_name_snapshot or "",
         "recipientCount": int(row.recipient_count or 0),
         "status": row.status,
@@ -617,6 +738,7 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
     valid_from = _notice_datetime(payload.get("validFrom"), "有效期开始时间")
     valid_until = _notice_datetime(payload.get("validUntil"), "有效期结束时间")
     attachment_ids = _notice_attachment_ids(payload.get("attachmentFileIds"))
+    audience_scope, college_ids = _notice_audience(payload)
     if len(title) < 2 or len(title) > 200:
         raise AppException("VALIDATION_ERROR", "通知标题需为 2 到 200 个字")
     if len(content) < 5 or len(content) > 5000:
@@ -630,11 +752,16 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
     sender_id, sender_name = _teacher_identity(user)
     with session() as db:
         batch = _batch(db, payload.get("batchId"))
-        recipient_count = int(db.scalar(select(func.count(func.distinct(InternshipRecord.student_id))).where(
-            InternshipRecord.tenant_id == _tid(),
-            InternshipRecord.batch_id == batch.id,
-            InternshipRecord.is_deleted.is_(False),
-        )) or 0)
+        if audience_scope == "COLLEGE":
+            existing_colleges = set(db.scalars(select(College.id).where(
+                College.tenant_id == _tid(),
+                College.id.in_(college_ids),
+                College.is_deleted.is_(False),
+            )).all())
+            if existing_colleges != set(college_ids):
+                raise AppException("VALIDATION_ERROR", "指定接收学院不存在或不在当前学校")
+        recipient_count = _recipient_student_count(
+            db, batch.id, audience_scope, college_ids)
         row = InternshipEmergencyNotice(
             tenant_id=_tid(),
             batch_id=batch.id,
@@ -645,6 +772,8 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
             valid_from=valid_from,
             valid_until=valid_until,
             attachment_file_ids_json=attachment_ids or None,
+            audience_scope=audience_scope,
+            recipient_college_ids_json=college_ids or None,
             sender_user_id=sender_id,
             sender_name_snapshot=sender_name,
             recipient_count=recipient_count,
@@ -670,6 +799,8 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
                 "noticeType": notice_type,
                 "urgency": urgency,
                 "attachmentCount": len(attachment_ids),
+                "audienceScope": audience_scope,
+                "recipientCollegeIds": [str(x) for x in college_ids],
                 "validFrom": _iso(valid_from) or "",
                 "validUntil": _iso(valid_until) or "",
             },
@@ -679,6 +810,7 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
 
 
 def list_teacher_notices(user: dict, *, batch_id, include_withdrawn: bool = True) -> list[dict]:
+    teacher_id, _teacher_name = _teacher_identity(user)
     with session() as db:
         batch = _assert_teacher_batch_scope(db, batch_id, user)
         query = select(InternshipEmergencyNotice).where(
@@ -692,7 +824,10 @@ def list_teacher_notices(user: dict, *, batch_id, include_withdrawn: bool = True
             InternshipEmergencyNotice.published_at.desc(),
             InternshipEmergencyNotice.id.desc(),
         ).limit(100)).all()
-        return [_notice_view(row) for row in rows]
+        return [
+            _notice_view(row) for row in rows
+            if _notice_applies_to_teacher(db, row, user, teacher_id)
+        ]
 
 
 def pending_teacher_notices(user: dict, *, batch_id) -> list[dict]:
@@ -727,6 +862,7 @@ def pending_teacher_notices(user: dict, *, batch_id) -> list[dict]:
             {**_notice_view(row), "requiresPopup": True}
             for row in notices
             if int(row.id) not in acknowledged
+            and _notice_applies_to_teacher(db, row, user, teacher_id)
         ]
 
 
@@ -747,6 +883,8 @@ def acknowledge_teacher_notice(user: dict, notice_id, *, batch_id) -> dict:
         ))
         if not notice:
             raise not_found("紧急通知不存在、已撤回或不属于当前批次")
+        if not _notice_applies_to_teacher(db, notice, user, teacher_id):
+            raise no_permission("该通知不属于你的接收范围")
         receipt = db.scalar(select(InternshipEmergencyNoticeTeacherReceipt).where(
             InternshipEmergencyNoticeTeacherReceipt.tenant_id == _tid(),
             InternshipEmergencyNoticeTeacherReceipt.notice_id == notice.id,
@@ -849,4 +987,7 @@ def list_student_notices(user: dict, *, batch_id) -> list[dict]:
             InternshipEmergencyNotice.published_at.desc(),
             InternshipEmergencyNotice.id.desc(),
         ).limit(50)).all()
-        return [_notice_view(row) for row in rows]
+        return [
+            _notice_view(row) for row in rows
+            if notice_applies_to_student(db, row, ctx.student)
+        ]
