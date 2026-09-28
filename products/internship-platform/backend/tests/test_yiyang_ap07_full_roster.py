@@ -195,7 +195,7 @@ def test_ap07_page_and_full_excel_share_same_canonical_fields_and_export_all_row
     exported = service.export_students(batch_id=batch_id, user=ADMIN)
     assert exported["rowCount"] == 2
     assert exported["exportedRows"] == 2
-    assert exported["sourceTotal"] == 2
+    assert exported["totalRows"] == 2
 
     workbook = load_workbook(BytesIO(base64.b64decode(exported["contentBase64"])))
     sheet = workbook.active
