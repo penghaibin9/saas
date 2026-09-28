@@ -9,12 +9,14 @@ from app.core.exceptions import AppException
 from app.models import (
     InternshipBatch,
     InternshipRecord,
+    InternshipProcessReport,
     InternshipReportReview,
     InternshipReportRuleConfig,
     InternshipReportVersion,
+    WeeklyReport,
 )
 from app.services import file_service
-from app.services.db_service import _tid
+from app.services.db_service import _tid, session
 
 REPORT_DOCUMENT_EXTENSIONS = {"rar", "zip", "doc", "docx", "pdf", "xls", "xlsx"}
 MAX_REPORT_DOCUMENTS = 9
@@ -272,6 +274,152 @@ def latest_review_map(db, report_kind: str, report_ids) -> dict[int, dict]:
             "reportVersionId": str(row.report_version_id),
         }
     return out
+
+
+def report_review_performance(user: dict, batch_id) -> dict:
+    """Auditable reviewer performance based on immutable review facts, not page counts."""
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=False)
+        scoped = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False),
+            ),
+            user,
+        ).subquery()
+        scoped_ids = select(scoped.c.id)
+
+        weekly_ids = select(WeeklyReport.id).where(
+            WeeklyReport.tenant_id == _tid(),
+            WeeklyReport.internship_id.in_(scoped_ids),
+            WeeklyReport.is_deleted.is_(False),
+        )
+        process_ids = select(InternshipProcessReport.id).where(
+            InternshipProcessReport.tenant_id == _tid(),
+            InternshipProcessReport.internship_id.in_(scoped_ids),
+            InternshipProcessReport.is_deleted.is_(False),
+        )
+
+        reviews = list(db.scalars(select(InternshipReportReview).where(
+            InternshipReportReview.tenant_id == _tid(),
+            InternshipReportReview.report_kind == "WEEKLY",
+            InternshipReportReview.report_id.in_(weekly_ids),
+        )).all())
+        reviews.extend(db.scalars(select(InternshipReportReview).where(
+            InternshipReportReview.tenant_id == _tid(),
+            InternshipReportReview.report_kind == "PROCESS",
+            InternshipReportReview.report_id.in_(process_ids),
+        )).all())
+
+        buckets: dict[str, dict] = {}
+        for row in reviews:
+            reviewer_id = str(row.reviewer_user_id or "")
+            reviewer_name = str(row.reviewer_name or "系统")
+            key = reviewer_id or f"name:{reviewer_name}"
+            item = buckets.setdefault(key, {
+                "reviewerUserId": reviewer_id,
+                "reviewerName": reviewer_name,
+                "reviewCount": 0,
+                "approvedCount": 0,
+                "returnedCount": 0,
+                "weeklyReviewCount": 0,
+                "processReviewCount": 0,
+                "ratedCount": 0,
+                "ratingTotal": 0,
+                "ratingDistribution": {"1": 0, "2": 0, "3": 0, "4": 0, "5": 0},
+                "summaryScoredCount": 0,
+                "summaryScoreTotal": 0.0,
+                "lastReviewedAt": "",
+            })
+            item["reviewCount"] += 1
+            if row.action == "APPROVE":
+                item["approvedCount"] += 1
+            elif row.action == "RETURN":
+                item["returnedCount"] += 1
+            if row.report_kind == "WEEKLY":
+                item["weeklyReviewCount"] += 1
+            else:
+                item["processReviewCount"] += 1
+            if row.rating_level is not None:
+                rating = int(row.rating_level)
+                if 1 <= rating <= 5:
+                    item["ratedCount"] += 1
+                    item["ratingTotal"] += rating
+                    item["ratingDistribution"][str(rating)] += 1
+            if row.summary_score is not None:
+                item["summaryScoredCount"] += 1
+                item["summaryScoreTotal"] += float(row.summary_score)
+            reviewed_at = row.reviewed_at.isoformat() if row.reviewed_at else ""
+            if reviewed_at > item["lastReviewedAt"]:
+                item["lastReviewedAt"] = reviewed_at
+
+        items = []
+        for raw in buckets.values():
+            item = dict(raw)
+            item["averageRating"] = (
+                round(item["ratingTotal"] / item["ratedCount"], 2)
+                if item["ratedCount"] else None
+            )
+            item["summaryAverageScore"] = (
+                round(item["summaryScoreTotal"] / item["summaryScoredCount"], 2)
+                if item["summaryScoredCount"] else None
+            )
+            item.pop("ratingTotal", None)
+            item.pop("summaryScoreTotal", None)
+            items.append(item)
+        items.sort(key=lambda x: (-int(x["reviewCount"]), x["reviewerName"]))
+
+        return {
+            "batchId": str(batch.id),
+            "batchName": getattr(batch, "batch_name", "") or "",
+            "items": items,
+            "total": len(items),
+            "reviewFactCount": len(reviews),
+            "definition": {
+                "reviewCount": "不可变批阅事实数；同一报告退回后重交再次批阅会形成新的批阅事实",
+                "averageRating": "仅统计已填写的1～5级评价",
+                "summaryAverageScore": "仅统计实习总结已填写的0～100分",
+            },
+        }
+
+
+def export_report_review_performance(user: dict, batch_id) -> dict:
+    from app.services import xlsx_util
+
+    data = report_review_performance(user, batch_id)
+    headers = [
+        "批阅教师", "批阅次数", "通过", "退回", "周报批阅", "日报/月报/总结批阅",
+        "平均等级(1-5)", "1级", "2级", "3级", "4级", "5级",
+        "总结评分篇数", "总结平均分", "最近批阅时间",
+    ]
+    rows = []
+    for item in data["items"]:
+        dist = item["ratingDistribution"]
+        rows.append([
+            item["reviewerName"], item["reviewCount"], item["approvedCount"], item["returnedCount"],
+            item["weeklyReviewCount"], item["processReviewCount"],
+            item["averageRating"] if item["averageRating"] is not None else "",
+            dist["1"], dist["2"], dist["3"], dist["4"], dist["5"],
+            item["summaryScoredCount"],
+            item["summaryAverageScore"] if item["summaryAverageScore"] is not None else "",
+            item["lastReviewedAt"],
+        ])
+    content = xlsx_util.build_ledger_xlsx(
+        "报告批阅绩效",
+        headers,
+        rows,
+        watermark=(
+            "跃科岗位实习管理平台 · 报告批阅绩效 · "
+            f"{(user or {}).get('realName') or '系统'} · {datetime.now():%Y-%m-%d %H:%M}"
+        ),
+    )
+    return xlsx_util.pack_xlsx_result(
+        content, "岗位实习报告批阅绩效.xlsx", len(rows),
+    )
 
 
 def weekly_snapshot_view(db, report_id) -> dict:
