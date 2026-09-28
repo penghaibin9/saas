@@ -2,14 +2,20 @@
 from __future__ import annotations
 
 from datetime import datetime
+import base64
+from io import BytesIO
+from urllib.parse import urlencode
 
 from sqlalchemy import select
+
+from app.config import settings
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import is_super_admin
 from app.core.tenant_scoped import tenant_get
 from app.models import (
-    InternshipAuditTrail, InternshipEnterpriseEval, InternshipRecord, StudentProfile,
+    InternshipAuditTrail, InternshipCampaignEnterprise, InternshipEnterpriseEval,
+    InternshipRecord, InternshipRecruitmentCampaign, StudentProfile, Tenant,
 )
 from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
 from app.services.db_service import _as_id, _iso, _tid, session
@@ -434,6 +440,116 @@ def get_eval(eval_id, user=None) -> dict:
                 "action": item.action, "operator": item.operator_name or "",
                 "detail": item.detail_json or {}, "occurredAt": _iso(item.occurred_at),
             } for item in trail],
+        }
+
+
+def enterprise_evaluation_qr_entry(user, internship_id) -> dict:
+    """Generate a QR navigation entry without turning the QR itself into an auth credential.
+
+    The enterprise browser still has to authenticate and pass the existing company/member/grant/
+    current-placement checks before it can read or submit the evaluation task.
+    """
+    portal_base = str(getattr(settings, "ENTERPRISE_PORTAL_BASE_URL", "") or "").strip().rstrip("/")
+    if not portal_base:
+        raise AppException(
+            "CONFIG_NOT_READY",
+            "未配置企业协同端公网地址 ENTERPRISE_PORTAL_BASE_URL，不能生成可扫码评价入口",
+            http_status=409,
+        )
+
+    with session() as db:
+        record = db.get(InternshipRecord, _as_id(internship_id))
+        if not record or record.is_deleted or record.tenant_id != _tid():
+            raise not_found("实习记录不存在")
+        student = db.get(StudentProfile, record.student_id)
+        scope, in_scope = _scope_ctx(user)
+        if not in_scope(scope, db, record, student):
+            raise no_permission("该学生不在你的岗位实习数据范围内")
+        if not record.enterprise_id or not record.position_id:
+            raise AppException("DATA_CONFLICT", "该学生尚未形成企业岗位关系，不能生成企业扫码评价入口")
+        placement = _placement_truth(db, record)
+
+        campaign = db.scalar(
+            select(InternshipRecruitmentCampaign)
+            .join(
+                InternshipCampaignEnterprise,
+                InternshipCampaignEnterprise.campaign_id == InternshipRecruitmentCampaign.id,
+            )
+            .where(
+                InternshipRecruitmentCampaign.tenant_id == _tid(),
+                InternshipRecruitmentCampaign.batch_id == record.batch_id,
+                InternshipRecruitmentCampaign.is_deleted.is_(False),
+                InternshipCampaignEnterprise.tenant_id == _tid(),
+                InternshipCampaignEnterprise.company_id == record.enterprise_id,
+                InternshipCampaignEnterprise.status == "ACCEPTED",
+                InternshipCampaignEnterprise.is_deleted.is_(False),
+            )
+            .order_by(
+                InternshipRecruitmentCampaign.round_no.desc(),
+                InternshipRecruitmentCampaign.id.desc(),
+            )
+        )
+        if not campaign:
+            raise AppException(
+                "DATA_CONFLICT",
+                "当前企业没有该批次已接受的企业协同关系，不能生成扫码评价入口",
+            )
+
+        tenant = db.get(Tenant, _tid())
+        tenant_code = str(getattr(tenant, "tenant_code", "") or "").strip()
+        if not tenant_code:
+            raise AppException("CONFIG_NOT_READY", "当前学校缺少 tenantCode，不能生成企业扫码评价入口")
+
+        query = urlencode({
+            "tenantCode": tenant_code,
+            "campaignId": str(campaign.id),
+            "batchId": str(record.batch_id),
+            "internshipId": str(record.id),
+            "entry": "qr-evaluation",
+        })
+        url = f"{portal_base}/evaluations?{query}"
+
+        try:
+            import qrcode
+            image = qrcode.make(url)
+            out = BytesIO()
+            image.save(out, format="PNG")
+            qr_data_url = "data:image/png;base64," + base64.b64encode(out.getvalue()).decode("ascii")
+        except Exception as exc:  # pragma: no cover - deployment dependency failure
+            raise AppException("QR_RENDER_FAILED", "企业评价二维码生成失败，请检查二维码运行依赖") from exc
+
+        db.add(InternshipAuditTrail(
+            tenant_id=_tid(),
+            target_id=record.id,
+            target_type="ENT_EVAL_QR",
+            action="ENTERPRISE_EVALUATION_QR_ISSUE",
+            operator_name=_op_name(user),
+            detail_json={
+                "internshipId": str(record.id),
+                "studentId": str(record.student_id),
+                "companyId": str(record.enterprise_id),
+                "positionId": str(record.position_id),
+                "placementSnapshotId": str(placement.id),
+                "campaignId": str(campaign.id),
+                "batchId": str(record.batch_id),
+                "authRequired": True,
+            },
+            occurred_at=datetime.utcnow(),
+        ))
+        db.commit()
+        return {
+            "internshipId": str(record.id),
+            "studentName": student.real_name if student else "",
+            "companyId": str(record.enterprise_id),
+            "positionId": str(record.position_id),
+            "placementSnapshotId": str(placement.id),
+            "campaignId": str(campaign.id),
+            "batchId": str(record.batch_id),
+            "tenantCode": tenant_code,
+            "url": url,
+            "qrImageDataUrl": qr_data_url,
+            "authRequired": True,
+            "securityNote": "二维码仅用于导航；企业仍须登录并通过企业成员、批次授权和当前安置快照校验。",
         }
 
 
