@@ -11,6 +11,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import no_permission, not_found
+from app.models import StudentProfile
 from app.models.internship import (
     InternshipBatch,
     InternshipEmergencyNoticeReceipt,
@@ -105,10 +106,15 @@ def pending_notices(user: dict, *, batch_id) -> list[dict]:
             InternshipEmergencyNoticeReceipt.notice_id.in_([int(n.id) for n in notices]),
             InternshipEmergencyNoticeReceipt.is_deleted.is_(False),
         )).all())
+        student = db.get(StudentProfile, record.student_id)
+        from app.modules.internship.services.internship_teacher_activity_service import (
+            notice_applies_to_student,
+        )
         return [
             _notice_view(row)
             for row in notices
             if int(row.id) not in receipt_notice_ids
+            and notice_applies_to_student(db, row, student)
         ]
 
 
@@ -130,6 +136,12 @@ def acknowledge_notice(user: dict, *, notice_id, batch_id) -> dict:
         ))
         if not notice:
             raise not_found("紧急通知不存在、已撤回或不属于当前批次")
+        student = db.get(StudentProfile, record.student_id)
+        from app.modules.internship.services.internship_teacher_activity_service import (
+            notice_applies_to_student,
+        )
+        if not notice_applies_to_student(db, notice, student):
+            raise no_permission("该通知不属于当前学生接收范围")
 
         receipt = db.scalar(select(InternshipEmergencyNoticeReceipt).where(
             InternshipEmergencyNoticeReceipt.tenant_id == _tid(),
