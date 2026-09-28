@@ -1,0 +1,29 @@
+name: Internship Standalone AP07 Full Roster
+
+on:
+  pull_request:
+    paths:
+      - "products/internship-platform/backend/app/modules/internship/services/internship_student_service.py"
+      - "products/internship-platform/backend/tests/test_yiyang_ap07_full_roster.py"
+      - "products/internship-platform/admin-web/src/modules/internship/views/InternshipStudentListView.vue"
+      - ".github/workflows/internship-standalone-ap07.yml"
+
+jobs:
+  ap07:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PYTHONPATH: products/internship-platform/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Compile AP07 service
+        run: python -m py_compile products/internship-platform/backend/app/modules/internship/services/internship_student_service.py
+      - name: Run AP07 roster and xlsx acceptance only
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_ap07_full_roster.py
