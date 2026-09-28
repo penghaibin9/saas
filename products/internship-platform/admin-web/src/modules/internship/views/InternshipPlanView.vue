@@ -3,6 +3,8 @@
     role-name="实习管理员 / 指导教师" :data-scope-name="scopeHint">
     <template #actions>
       <AppButton v-if="reviewId" variant="ghost" @click="closeTaskReview">返回完成度台账</AppButton>
+      <AppExportButton v-if="!reviewId && plan" :export-fn="exportPdfFn" :has-permission="canExportPlan">导出计划 PDF</AppExportButton>
+      <AppExportButton v-if="!reviewId && plan" :export-fn="exportXlsxFn" :has-permission="canExportPlan">导出计划 Excel</AppExportButton>
       <AppButton v-if="!reviewId && batchId && canEdit" variant="primary" :loading="publishing" :disabled="!plan || dirty || saving || writeConflict" @click="publish">发布并下发</AppButton>
     </template>
 
@@ -18,19 +20,87 @@
       </nav>
       <template v-if="activePanel === 'plan' || activePanel === 'acks'">
         <section v-show="activePanel === 'plan'" class="card card--editor">
-          <h3 class="card__title">计划编制</h3>
-          <AppFormItem label="计划标题" required>
-            <AppTextInput v-model="form.title" :disabled="!canEdit" />
+          <div class="card__head">
+            <div>
+              <h3 class="card__title">计划编制</h3>
+              <span class="card__sub">AP03 · 计划正文、批次规则和导出文书使用同一份正式事实</span>
+            </div>
+          </div>
+
+          <div v-if="canEdit" class="plan-template">
+            <AppFormItem label="内置专业方案模板" hint="套用后只是预填草稿，仍可逐项修改；保存时记录模板来源。">
+              <div class="plan-template__row">
+                <AppSelect v-model="form.templateCode" :options="templateOptions" placeholder="选择模板（可选）" />
+                <AppButton variant="secondary" :disabled="!form.templateCode" @click="applyTemplate">套用模板</AppButton>
+              </div>
+            </AppFormItem>
+          </div>
+
+          <div class="plan-grid">
+            <AppFormItem label="计划标题" required>
+              <AppTextInput v-model="form.title" :disabled="!canEdit" />
+            </AppFormItem>
+            <AppFormItem label="实习类别" required>
+              <AppSelect v-model="form.internshipType" :options="planTypeOptions" :disabled="!canEdit" placeholder="请选择实习类别" />
+            </AppFormItem>
+            <AppFormItem label="实习对象" required>
+              <AppTextInput v-model="form.targetAudience" :disabled="!canEdit" placeholder="如：2024级软件技术专业学生" />
+            </AppFormItem>
+            <AppFormItem label="负责人" required>
+              <AppTextInput v-model="form.responsibleName" :disabled="!canEdit" placeholder="专业负责人 / 实习负责人" />
+            </AppFormItem>
+          </div>
+
+          <AppFormItem label="实习目的" required>
+            <AppTextarea v-model="form.objectives" :rows="3" :disabled="!canEdit" placeholder="不少于 5 字" />
           </AppFormItem>
-          <AppFormItem label="实习目标">
-            <AppTextarea v-model="form.objectives" :rows="3" :disabled="!canEdit" />
+          <AppFormItem label="实习要求" required>
+            <AppTextarea v-model="form.requirements" :rows="4" :disabled="!canEdit" placeholder="安全、纪律、协议、保险、签到、报告等要求" />
           </AppFormItem>
-          <AppFormItem label="计划正文" required>
+          <AppFormItem label="实习内容" required>
             <AppTextarea v-model="form.content" :rows="8" placeholder="不少于 20 字" :disabled="!canEdit" />
           </AppFormItem>
+          <AppFormItem label="考核内容" required>
+            <AppTextarea v-model="form.assessmentContent" :rows="4" :disabled="!canEdit" placeholder="说明本计划考核内容；分数比例读取当前批次成绩规则" />
+          </AppFormItem>
+
+          <section class="plan-source">
+            <h4>批次基本信息与执行规则（同源）</h4>
+            <div class="plan-source__grid">
+              <span>计划人数 <b>{{ planBasic.plannedCount ?? 0 }}</b></span>
+              <span>开始 <b>{{ planBasic.startDate || '未配置' }}</b></span>
+              <span>结束 <b>{{ planBasic.endDate || '未配置' }}</b></span>
+              <span>实习周数 <b>{{ planBasic.internshipWeeks ?? '未配置' }}</b></span>
+              <span>签到天数 <b>{{ planRules.requiredCheckinDays || '未配置' }}</b></span>
+              <span>周记篇数 <b>{{ planRules.weeklyRequiredCount || '未配置' }}</b></span>
+              <span>周记字数 <b>{{ planRules.weeklyMinWordCount || '未配置' }}</b></span>
+              <span>及格线 <b>{{ planRules.scorePassThreshold ?? '未配置' }}</b></span>
+            </div>
+            <div class="plan-score-components">
+              <span>考核比例：</span>
+              <b v-for="(item, index) in planRules.scoreComponents || []" :key="index">
+                {{ item.name }} {{ Math.round(Number(item.weight || 0) * 100) }}%
+              </b>
+              <span v-if="!(planRules.scoreComponents || []).length">未配置</span>
+            </div>
+            <p class="hint">签到天数、周记篇数/字数、考核比例由“实习批次 → 业务规则”统一维护；计划发布时冻结规则版本，避免两套口径。</p>
+          </section>
+
+          <AppFormItem label="计划附件" hint="最多 20 个文件；上传后保存草稿时正式绑定本计划。">
+            <FileUploader v-if="canEdit" biz-type="TEMP_PRIVATE" :disabled="saving || form.attachmentFileIds.length >= 20"
+              button-text="上传计划附件" @uploaded="onPlanFileUploaded" @error="onPlanFileError" />
+            <div v-if="attachmentFiles.length" class="plan-files">
+              <div v-for="file in attachmentFiles" :key="file.fileId || file.id" class="plan-file">
+                <button type="button" class="mp-link" @click="previewPlanFile(file)">{{ file.fileName || file.name || ('文件 #' + (file.fileId || file.id)) }}</button>
+                <button v-if="canEdit" type="button" class="plan-file__remove" @click="removePlanFile(file)">移除</button>
+              </div>
+            </div>
+            <span v-else class="hint">暂无计划附件</span>
+          </AppFormItem>
+
           <AppButton v-if="canEdit" variant="secondary" :loading="saving" @click="save">保存草稿</AppButton>
-          <p v-if="plan" class="hint">状态：{{ plan.statusLabel }} · {{ plan.publishedAt || '未发布' }}</p>
-          <AppInlineAlert v-else-if="canEdit" type="info" class="hint">尚未保存计划，填写后请先保存草稿</AppInlineAlert>
+          <p v-if="plan" class="hint">状态：{{ plan.statusLabel }} · 版本 V{{ plan.version }} · {{ plan.publishedAt || '未发布' }}</p>
+          <AppInlineAlert v-else-if="canEdit" type="info" class="hint">尚未保存计划，填写完整字段并至少配置一项任务后保存草稿。</AppInlineAlert>
         </section>
         <section v-show="activePanel === 'acks'" class="card">
           <h3 class="card__title">学生确认台账</h3>
@@ -171,14 +241,23 @@ import { AppButton } from '@/components/ui'
 import {
   AppFormItem, AppTextInput, AppTextarea, AppSelect, AppQuickFilterChips,
   AppDeadlinePicker, AppDateDisplay, AppConfirmDialog, AppInlineAlert,
-  AppStatusTag, AppSearchBox, AppMetricCard
+  AppStatusTag, AppSearchBox, AppMetricCard, AppExportButton
 } from '@/components/common'
+import FileUploader from '@/components/file/FileUploader.vue'
 import { planApi } from '@/modules/internship/api/plan-insurance.api'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { canCode } from '@/modules/internship/composables/permission'
 import { fileSdk } from '@/services/file/fileSdk'
 import { isConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
+
+function blankPlanForm() {
+  return {
+    title: '', templateCode: '', internshipType: '', targetAudience: '',
+    responsibleName: '', objectives: '', requirements: '', content: '',
+    assessmentContent: '', attachmentFileIds: []
+  }
+}
 
 let _taskKey = 0
 function newTask(src = {}) {
@@ -196,13 +275,15 @@ export default {
   components: {
     ModulePageShell, DataTable, ErrorState, AppButton, AppFormItem, AppTextInput, AppTextarea,
     AppSelect, AppQuickFilterChips, AppDeadlinePicker, AppDateDisplay, AppConfirmDialog,
-    AppInlineAlert, AppStatusTag, AppSearchBox, AppMetricCard
+    AppInlineAlert, AppStatusTag, AppSearchBox, AppMetricCard, AppExportButton, FileUploader
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      plan: null, savedSnapshot: '', writeError: '', writeConflict: false, loadError: '', loadSequence: 0, loading: false, saving: false, publishing: false,
-      form: { title: '', objectives: '', content: '' },
+      plan: null, planContext: null, templates: [], attachmentFiles: [],
+      savedSnapshot: '', writeError: '', writeConflict: false, loadError: '', loadSequence: 0,
+      loading: false, saving: false, publishing: false,
+      form: blankPlanForm(),
       tasks: [],
       acks: [], ackError: '', ackSequence: 0, ackLoading: false, ackStatus: '', ackPagination: { page: 1, pageSize: 10, total: 0 },
       ackCols: [
@@ -241,6 +322,23 @@ export default {
     reviewRow() { return this.progRows.find(row => String(row.id) === this.reviewId) || null },
     reviewTask() { return this.tasks.find(task => Number(task.sortOrder) === Number(this.reviewRow?.taskSortOrder)) || null },
     canReview() { return canCode(this.ctx, 'internship.task.review') },
+    canExportPlan() { return canCode(this.ctx, 'internship.plan.view') },
+    templateOptions() {
+      return this.templates.map(item => ({ label: item.name, value: item.code }))
+    },
+    planTypeOptions() {
+      const source = this.planContext?.planTypes || []
+      return source.length ? source : [
+        { value:'POST', label:'顶岗实习（岗位实习）' },
+        { value:'COGNITIVE', label:'认知实习' },
+        { value:'FOLLOW_POST', label:'跟岗实习' },
+        { value:'APPRENTICESHIP', label:'学徒制' },
+        { value:'COMPREHENSIVE', label:'综合实训' },
+        { value:'OTHER', label:'其他' }
+      ]
+    },
+    planBasic() { return this.plan?.basicSnapshot || this.planContext?.basicSnapshot || {} },
+    planRules() { return this.plan?.rulesSnapshot || this.planContext?.rulesSnapshot || {} },
     draftSnapshot() { return JSON.stringify({ ...this.form, tasks: this.buildTasksPayload() }) },
     dirty() { return this.savedSnapshot !== '' && this.draftSnapshot !== this.savedSnapshot },
     activePanel() { if (this.reviewId) return 'progress'; return this.panels.some(item => item.value === this.$route.query.panel) ? this.$route.query.panel : 'plan' },
@@ -306,25 +404,47 @@ export default {
       this.ackLoading = false; this.progLoading = false
       const sequence = ++this.loadSequence
       const batchId = this.batchId
-      this.plan = null; this.form = { title: '', objectives: '', content: '' }; this.tasks = []
+      this.plan = null; this.planContext = null; this.form = blankPlanForm(); this.tasks = []; this.attachmentFiles = []
       this.acks = []; this.ackPagination.page = 1; this.ackPagination.total = 0
       this.progRows = []; this.progTotal = 0; this.taskSummary = null
       this.pendingReview = null; this.reviewError = ''; this.reviewConflict = false; this.reviewCd.visible = false; this.delCd.visible = false
       this.loadError = ''; this.writeError = ''; this.writeConflict = false; this.savedSnapshot = ''; this.loading = false
       if (!batchId) return
       this.loading = true
-      const res = await planApi.getBatchPlan(batchId)
+      const [res, contextRes, templateRes] = await Promise.all([
+        planApi.getBatchPlan(batchId),
+        planApi.getBatchPlanContext(batchId),
+        planApi.getTemplates()
+      ])
       if (sequence !== this.loadSequence || batchId !== this.batchId) return
       this.loading = false
-      if (res.code !== 0) { this.loadError = res.message || '计划加载失败，请重试'; return }
+      if (res.code !== 0 || contextRes.code !== 0 || templateRes.code !== 0) {
+        this.loadError = res.message || contextRes.message || templateRes.message || '计划加载失败，请重试'
+        return
+      }
+      this.planContext = contextRes.data || null
+      this.templates = templateRes.data || []
       if (res.data?.id != null) {
         this.plan = res.data
-        this.form = { title: res.data.title, objectives: res.data.objectives, content: res.data.content }
+        this.form = {
+          title: res.data.title || '',
+          templateCode: res.data.templateCode || '',
+          internshipType: res.data.internshipType || '',
+          targetAudience: res.data.targetAudience || '',
+          responsibleName: res.data.responsibleName || '',
+          objectives: res.data.objectives || '',
+          requirements: res.data.requirements || '',
+          content: res.data.content || '',
+          assessmentContent: res.data.assessmentContent || '',
+          attachmentFileIds: [...(res.data.attachmentFileIds || [])]
+        }
+        this.attachmentFiles = [...(res.data.attachments || [])]
         this.hydrateTasks(res.data.tasks)
       } else {
         this.plan = null
-        this.form = { title: '', objectives: '', content: '' }
+        this.form = blankPlanForm()
         this.tasks = []
+        this.attachmentFiles = []
       }
       const query = this.$route.query
       this.progPage = Math.max(1, Number(query.progPage) || 1)
@@ -334,6 +454,44 @@ export default {
       this.loadProgressSummary()
       this.loadProgress()
     },
+    applyTemplate() {
+      if (!this.canEdit || !this.form.templateCode) return
+      const template = this.templates.find(item => item.code === this.form.templateCode)
+      if (!template) return toast.error('所选模板不存在，请刷新后重试')
+      this.form = {
+        ...this.form,
+        title: template.title || this.form.title,
+        internshipType: template.internshipType || this.form.internshipType,
+        targetAudience: template.targetAudience || this.form.targetAudience,
+        objectives: template.objectives || this.form.objectives,
+        requirements: template.requirements || this.form.requirements,
+        content: template.content || this.form.content,
+        assessmentContent: template.assessmentContent || this.form.assessmentContent
+      }
+      this.hydrateTasks(template.tasks || [])
+      toast.success('模板已套用到当前草稿，请核对后保存')
+    },
+    onPlanFileUploaded(file) {
+      const id = String(file?.fileId || file?.id || '')
+      if (!id || this.form.attachmentFileIds.includes(id)) return
+      if (this.form.attachmentFileIds.length >= 20) return toast.warning('计划附件最多 20 个')
+      this.form.attachmentFileIds = [...this.form.attachmentFileIds, id]
+      this.attachmentFiles = [...this.attachmentFiles, { ...file, fileId:id }]
+      toast.success('附件已上传，保存草稿后正式绑定计划')
+    },
+    onPlanFileError(error) { toast.error(error?.message || '计划附件上传失败') },
+    removePlanFile(file) {
+      const id = String(file?.fileId || file?.id || '')
+      this.form.attachmentFileIds = this.form.attachmentFileIds.filter(item => String(item) !== id)
+      this.attachmentFiles = this.attachmentFiles.filter(item => String(item.fileId || item.id) !== id)
+    },
+    async previewPlanFile(file) {
+      const id = String(file?.fileId || file?.id || '')
+      if (!id) return
+      try { await fileSdk.preview(id) } catch (error) { toast.error(error?.message || '附件暂时无法预览') }
+    },
+    exportPdfFn() { return planApi.exportBatchPlanPdf(this.batchId) },
+    exportXlsxFn() { return planApi.exportBatchPlanXlsx(this.batchId) },
     buildTasksPayload() {
       return this.tasks
         .map((t, i) => ({
@@ -377,9 +535,15 @@ export default {
     async save() {
       if (!this.canEdit || this.saving || this.publishing || this.writeConflict) return
       this.writeError = ''
-      if (this.form.title.trim().length < 2 || this.form.content.trim().length < 20) {
-        this.writeError = '计划标题至少 2 字、正文至少 20 字，请在计划编制中补全。'; return
+      if ((this.form.title || '').trim().length < 2 || (this.form.content || '').trim().length < 20) {
+        this.writeError = '计划标题至少 2 字、实习内容至少 20 字。'; return
       }
+      if (!this.form.internshipType) { this.writeError = '请选择实习类别。'; return }
+      if ((this.form.targetAudience || '').trim().length < 2) { this.writeError = '请填写实习对象。'; return }
+      if ((this.form.responsibleName || '').trim().length < 2) { this.writeError = '请填写计划负责人。'; return }
+      if ((this.form.objectives || '').trim().length < 5) { this.writeError = '实习目的至少 5 字。'; return }
+      if ((this.form.requirements || '').trim().length < 5) { this.writeError = '实习要求至少 5 字。'; return }
+      if ((this.form.assessmentContent || '').trim().length < 5) { this.writeError = '考核内容至少 5 字。'; return }
       if (!this.buildTasksPayload().length) { this.writeError = '请在任务清单中至少添加一项可执行任务。'; return }
       if (!this.validateTasks()) return
       const batchId = this.batchId
@@ -512,7 +676,20 @@ export default {
 .review-evidence { padding: 14px; border-radius: 8px; background: var(--bg-page, #f7f9fc); margin-bottom: 12px; }
 .review-evidence p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 8px 0 0; }
 .plan-nav { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 4px; }
-.card--editor { max-width: 960px; }
+.card--editor { max-width: 1100px; }
+.plan-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0 16px; }
+.plan-template { padding:12px; margin-bottom:14px; border:1px solid var(--border-light); border-radius:10px; background:var(--bg-page); }
+.plan-template__row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:10px; align-items:end; }
+.plan-source { margin:16px 0; padding:14px; border:1px solid var(--border-light); border-radius:10px; background:var(--bg-page); }
+.plan-source h4 { margin:0 0 10px; }
+.plan-source__grid { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:8px; }
+.plan-source__grid span { display:grid; gap:4px; padding:9px; border-radius:8px; background:var(--bg-card); font-size:11px; color:var(--text-tertiary); }
+.plan-source__grid b { font-size:13px; color:var(--text-primary); }
+.plan-score-components { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; font-size:12px; }
+.plan-score-components b { padding:3px 7px; border-radius:999px; background:var(--primary-50); color:var(--primary-700); }
+.plan-files { display:grid; gap:6px; margin-top:8px; }
+.plan-file { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 10px; border:1px solid var(--border-light); border-radius:8px; }
+.plan-file__remove { border:0; background:transparent; color:var(--danger-600); cursor:pointer; }
 .card--editor .card__title { margin-bottom: 20px; }
 .bar { display: flex; gap: var(--space-3); margin-bottom: var(--space-3); flex-wrap: wrap; align-items: center; }
 .layout { display: flex; flex-direction: column; gap: var(--space-4); }
@@ -533,6 +710,7 @@ export default {
 .task-actions { display: flex; gap: var(--space-3); margin-top: var(--space-3); flex-wrap: wrap; }
 .req-text { white-space: pre-wrap; font-size: var(--font-size-sm); color: var(--text-secondary); }
 @media (max-width: 960px) {
+  .plan-grid,.plan-source__grid,.plan-template__row { grid-template-columns:1fr; }
   .task-row { grid-template-columns: 1fr; }
   .task-row__idx { text-align: left; }
   .task-row__ops { flex-direction: row; }
