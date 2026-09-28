@@ -761,6 +761,8 @@ def get_weekly_report_detail(report_id, user=None) -> dict:
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_id == w.id,
             InternshipAuditTrail.target_type == "REPORT").order_by(InternshipAuditTrail.id)).all()
         row = _report_row(w, rec, stu)
+        from app.modules.internship.services import internship_report_quality_service as quality
+        immutable = quality.weekly_snapshot_view(db, w.id)
         row.update({
             # 教师移动端从统一待办进入周报队列时，需要先由服务端把待办对象
             # 解析回它所属的正式实习批次；客户端不能猜测或自行拼接批次。
@@ -770,6 +772,11 @@ def get_weekly_report_detail(report_id, user=None) -> dict:
                         "plan": w.plan_content or ""},
             "reviewComment": w.review_comment or "",
             "versions": _report_versions(trail, w),
+            "immutableVersions": immutable.get("versions") or [],
+            "attachments": (
+                (immutable.get("versions") or [{}])[0].get("attachments") or []
+                if immutable.get("versions") else []
+            ),
             "trail": [{"who": t.operator_name or "系统", "time": _iso(t.occurred_at),
                        "action": t.action,
                        "affected": json.dumps(t.detail_json or {}, ensure_ascii=False)} for t in trail],
