@@ -144,6 +144,7 @@ export default {
         { label: '实习保险', path: '/pages/student-internship/insurance/index', icon: '🛡️', stages: ['onboard'] },
         { label: '实习计划', path: '/pages/student-internship/plan/index', icon: '🗂️', stages: ['onboard', 'process'] },
         { label: '实习材料', path: '/pages/student-internship/materials/index', icon: '📎', stages: ['onboard', 'process', 'result'] },
+        { label: '轮岗与工资', path: '/pages/student-internship/process-facts/index', icon: '💼', stages: ['process', 'result'] },
         { label: '实习请假', path: '/pages/student-internship/leave/index', icon: '🗓️', today: true },
         { label: '补卡申请', path: '/pages/student-internship/makeup/index', icon: '📍', today: true },
         { label: '日报', path: '/pages/student-internship/process-report/index?type=daily', icon: '📝', today: true },
