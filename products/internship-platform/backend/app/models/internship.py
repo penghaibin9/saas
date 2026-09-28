@@ -596,43 +596,13 @@ class InternshipProcessReport(PKMixin, TenantMixin, CommonMixin, Base):
     period_key: Mapped[str] = mapped_column(String(20), nullable=False, comment="周期键，如 2026-03")
     content: Mapped[str | None] = mapped_column(Text)
     word_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    attachment_file_ids: Mapped[list | None] = mapped_column(
-        JSON, comment="图片/视频等附件 file_id 列表；只存文件中心正式文件")
-    min_words_snapshot: Mapped[int | None] = mapped_column(
-        Integer, comment="提交时生效的最低字数快照")
     submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING_REVIEW",
                                         comment="PENDING_REVIEW/APPROVED/RETURNED")
     review_action: Mapped[str | None] = mapped_column(String(50))
     review_comment: Mapped[str | None] = mapped_column(String(500))
-    rating_level: Mapped[int | None] = mapped_column(
-        Integer, comment="教师五级评价 1-5；仅 APPROVED 时可写")
-    summary_score: Mapped[int | None] = mapped_column(
-        Integer, comment="实习总结 0-100 分；仅 SUMMARY 且 APPROVED 时可写")
     reviewed_by_name: Mapped[str | None] = mapped_column(String(100))
     reviewed_at: Mapped[datetime | None] = mapped_column(DateTime)
-
-
-class InternshipProcessReportVersion(PKMixin, TenantMixin, CommonMixin, Base):
-    """过程报告不可覆盖历史版本。每次首次提交/退回重交均追加一条内容快照。"""
-    __tablename__ = "t_internship_process_report_version"
-    __table_args__ = (
-        UniqueConstraint("tenant_id", "report_id", "report_version",
-                         name="uk_intern_process_report_version"),
-    )
-
-    report_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
-    report_version: Mapped[int] = mapped_column(Integer, nullable=False)
-    content: Mapped[str | None] = mapped_column(Text)
-    word_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    attachment_file_ids: Mapped[list | None] = mapped_column(JSON)
-    min_words_snapshot: Mapped[int | None] = mapped_column(Integer)
-    submitted_at: Mapped[datetime | None] = mapped_column(DateTime)
-    status_snapshot: Mapped[str] = mapped_column(
-        String(50), nullable=False, default="PENDING_REVIEW")
-    review_comment: Mapped[str | None] = mapped_column(String(500))
-    rating_level: Mapped[int | None] = mapped_column(Integer)
-    summary_score: Mapped[int | None] = mapped_column(Integer)
 
 
 class InternshipChangeRequest(PKMixin, TenantMixin, CommonMixin, Base):
