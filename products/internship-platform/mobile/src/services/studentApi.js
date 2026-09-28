@@ -38,6 +38,7 @@ function mapInternshipDashboard(r) {
 export const studentApi = {
   getInternship: (batchId = '') => internship.studentInternshipDashboard(batchId).then(mapInternshipDashboard),
   getInternshipCompliance: (operation, batchId) => internship.studentInternshipCompliance(operation, batchId),
+  getInternshipNotices: (batchId) => internship.studentInternshipEmergencyNotices(batchId),
   getPendingEmergencyNotices: (batchId) => internship.studentInternshipPendingEmergencyNotices(batchId),
   acknowledgeEmergencyNotice: (noticeId, batchId) => internship.studentInternshipAcknowledgeEmergencyNotice(noticeId, batchId),
   getInternshipAgreements: () => internship.studentInternshipAgreements(),
