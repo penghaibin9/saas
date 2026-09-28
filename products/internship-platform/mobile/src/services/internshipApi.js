@@ -320,6 +320,15 @@ export const studentInternshipScoreAppeal = (batchId, internshipId) => {
 }
 export const studentInternshipScoreAppealSubmit = (body) =>
   realRequest('/mobile/internship/context/score-appeal', { method: 'POST', data: body || {} })
+export const studentInternshipFeedback = (batchId, internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/context/feedback', batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
+export const studentInternshipFeedbackSubmit = (body) =>
+  realRequest('/mobile/internship/context/feedback', { method: 'POST', data: body || {} })
+export const studentInternshipFeedbackWithdraw = (feedbackId, body) =>
+  realRequest(`/mobile/internship/context/feedback/${enc(feedbackId)}/withdraw`, { method: 'POST', data: body || {} })
+
 export const studentInternshipHelp = (batchId, internshipId) => {
   try { return realRequest(studentContextPath('/mobile/internship/context/help', batchId, internshipId)) }
   catch (e) { return Promise.reject(e) }
