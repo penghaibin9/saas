@@ -84,7 +84,7 @@ export const enterpriseInternshipApi={
   withdrawAccept:(id,reason)=>{const text=String(reason||'').trim();if(text.length<2)throw new Error('撤回拟接收必须填写原因');return request(`${AUTH_ROOT}/applications/${id}/withdraw-accept`,{method:'POST',params:requireRecruitmentAccess(),body:{reason:text}})},
   internshipStudents:({batchId,page=1,pageSize=50,status='',keyword=''}={})=>request(`${AUTH_ROOT}/internship-students`,{params:{...collaborationParams(batchId),page,pageSize,status,keyword}}),
   internshipStudent:(id,batchId)=>request(`${AUTH_ROOT}/internship-students/${id}`,{params:collaborationParams(batchId)}),
-  evaluationTasks:({batchId,status='',page=1,pageSize=50}={})=>request(`${AUTH_ROOT}/evaluation-tasks`,{params:{...collaborationParams(batchId),status,page,pageSize}}),
+  evaluationTasks:({batchId,status='',page=1,pageSize=50,internshipId=''}={})=>request(`${AUTH_ROOT}/evaluation-tasks`,{params:{...collaborationParams(batchId),status,page,pageSize,...(positiveId(internshipId)?{internshipId:positiveId(internshipId)}:{})}}),
   submitEvaluation:(id,payload={},batchId)=>request(`${AUTH_ROOT}/evaluation-tasks/${id}/submit`,{method:'POST',params:collaborationParams(batchId),body:evaluationPayload(payload)}),
 }
 export const enterpriseDecisionStatuses=Object.freeze([...DECISIONS])
