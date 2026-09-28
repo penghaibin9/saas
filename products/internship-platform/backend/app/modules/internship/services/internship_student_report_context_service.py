@@ -9,6 +9,7 @@ from app.core.exceptions import AppException, not_found
 from app.models import InternshipProcessReport, WeeklyReport
 from app.modules.internship.services import internship_service as weekly_legacy
 from app.modules.internship.services import internship_process_report_service as legacy
+from app.modules.internship.services import internship_report_quality_service as quality
 from app.modules.internship.services.internship_student_context_guard import (
     require_expected_version,
     require_explicit_context,
@@ -55,12 +56,6 @@ def submit(user: dict, body: dict) -> dict:
         raise AppException(
             "VALIDATION_ERROR", "reportType 必须是 DAILY/MONTHLY/SUMMARY")
     content = str(payload.get("content") or "").strip()
-    minimum = legacy.MIN_WORDS.get(report_type, 30)
-    if len(content) < minimum:
-        raise AppException(
-            "VALIDATION_ERROR",
-            f"{legacy.TYPE_LABEL[report_type]}正文至少 {minimum} 字",
-        )
     period_key = str(payload.get("periodKey") or "").strip()
     if report_type == "SUMMARY":
         period_key = "FINAL"
@@ -72,6 +67,17 @@ def submit(user: dict, body: dict) -> dict:
     with session() as db:
         record, student, _batch_id = require_explicit_context(
             db, user, payload, for_write=True)
+        rules = quality.rules_for_batch(db, record.batch_id)
+        minimum = quality.minimum_words(rules, report_type)
+        if len(content) < minimum:
+            raise AppException(
+                "VALIDATION_ERROR",
+                f"{legacy.TYPE_LABEL[report_type]}正文至少 {minimum} 字",
+            )
+        attachment_ids, attachment_meta = quality.validate_attachments(
+            payload.get("attachmentFileIds") or payload.get("attachments") or [],
+            rules,
+        )
         existing = db.scalar(select(InternshipProcessReport).where(
             InternshipProcessReport.tenant_id == _tid(),
             InternshipProcessReport.internship_id == record.id,
@@ -116,6 +122,15 @@ def submit(user: dict, body: dict) -> dict:
             db.flush()
             action = "SUBMIT_VERSIONED"
 
+        snapshot = quality.append_process_snapshot(
+            db,
+            row=row,
+            record=record,
+            student=student,
+            content=content,
+            attachment_ids=attachment_ids,
+            attachment_meta=attachment_meta,
+        )
         legacy._trail(
             db,
             row.id,
@@ -127,11 +142,18 @@ def submit(user: dict, body: dict) -> dict:
                 "internshipId": str(record.id),
                 "expectedVersion": current_version,
                 "newVersion": int(row.version or 0),
+                "reportVersion": int(snapshot.version_no),
+                "attachmentCount": len(attachment_ids),
+                "minimumWords": minimum,
             },
             operator=legacy._op_name(user),
         )
         db.commit()
-        return _context_row(row, record, student)
+        result = _context_row(row, record, student)
+        result["reportVersion"] = int(snapshot.version_no)
+        result["attachments"] = attachment_meta
+        result["minimumWords"] = minimum
+        return result
 
 
 def _weekly_row(row) -> dict:
