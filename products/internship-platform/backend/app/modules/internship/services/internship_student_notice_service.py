@@ -20,6 +20,7 @@ from app.modules.internship.services.internship_audit_service import add_audit
 from app.modules.internship.services.internship_record_resolver import (
     resolve_student_internship_context,
 )
+from app.services import file_service
 from app.services.db_service import _iso, _tid, session
 
 
@@ -47,16 +48,31 @@ def _student_context(db, user: dict, batch_id):
 
 
 def _notice_view(row: InternshipEmergencyNotice, *, acknowledged_at=None) -> dict:
+    attachments = []
+    for file_id in list(row.attachment_file_ids_json or []):
+        try:
+            meta = file_service.attachment_view(str(file_id))
+        except Exception:  # noqa: BLE001
+            meta = None
+        if meta:
+            attachments.append(meta)
+    force_popup = (row.urgency or "NORMAL") in ("IMPORTANT", "URGENT")
     return {
         "id": str(row.id),
         "batchId": str(row.batch_id),
         "title": row.title,
         "content": row.content,
+        "noticeType": row.notice_type or "NOTICE",
+        "urgency": row.urgency or "NORMAL",
+        "validFrom": _iso(row.valid_from) or "",
+        "validUntil": _iso(row.valid_until) or "",
         "senderName": row.sender_name_snapshot or "",
         "publishedAt": _iso(row.published_at) or "",
+        "attachmentFileIds": list(row.attachment_file_ids_json or []),
+        "attachments": attachments,
         "status": row.status,
         "acknowledgedAt": _iso(acknowledged_at) or "",
-        "requiresPopup": acknowledged_at is None and row.status == "PUBLISHED",
+        "requiresPopup": acknowledged_at is None and row.status == "PUBLISHED" and force_popup,
     }
 
 
@@ -64,11 +80,15 @@ def pending_notices(user: dict, *, batch_id) -> list[dict]:
     """Return only notices that still require an explicit student acknowledgement."""
     with session() as db:
         batch, record = _student_context(db, user, batch_id)
+        now = datetime.utcnow()
         notices = db.scalars(select(InternshipEmergencyNotice).where(
             InternshipEmergencyNotice.tenant_id == _tid(),
             InternshipEmergencyNotice.batch_id == batch.id,
             InternshipEmergencyNotice.status == "PUBLISHED",
+            InternshipEmergencyNotice.urgency.in_(("IMPORTANT", "URGENT")),
             InternshipEmergencyNotice.is_deleted.is_(False),
+            ((InternshipEmergencyNotice.valid_from.is_(None)) | (InternshipEmergencyNotice.valid_from <= now)),
+            ((InternshipEmergencyNotice.valid_until.is_(None)) | (InternshipEmergencyNotice.valid_until >= now)),
         ).order_by(
             InternshipEmergencyNotice.published_at.asc(),
             InternshipEmergencyNotice.id.asc(),
