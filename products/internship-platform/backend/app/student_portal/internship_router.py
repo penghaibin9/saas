@@ -24,6 +24,7 @@ from app.modules.internship.services import internship_student_makeup_context_se
 from app.modules.internship.services import internship_student_report_context_service as reports
 from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
 from app.modules.internship.services import internship_student_eval_service as student_evals
+from app.modules.internship.services import internship_formal_document_service as formal_documents
 from app.modules.internship.services.internship_student_context_guard import (
     require_context_fields,
 )
@@ -398,6 +399,42 @@ def portal_weekly_report_submit(
         reports.submit_weekly(user, body or {}),
         message="周报已提交",
     )
+
+
+@router.get("/context/formal-documents", summary="本人当前实习正式文书")
+def portal_formal_documents(
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(formal_documents.student_list_documents(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post("/context/formal-documents/generate", summary="本人按正式事实生成鉴定表或实习证明")
+def portal_formal_document_generate(
+    body: dict = Body(...),
+    user=Depends(get_current_user),
+):
+    require_context_fields(body or {})
+    return success(
+        formal_documents.student_generate(user, body or {}),
+        message="正式文书已生成",
+    )
+
+
+@router.get("/context/formal-documents/{document_id}/pdf", summary="本人下载正式文书 PDF")
+def portal_formal_document_pdf(
+    document_id: int,
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(formal_documents.student_document_pdf(
+        user, document_id,
+        batch_id=batchId,
+        internship_id=internshipId,
+    ))
 
 
 @router.get("/context/self-eval", summary="本人当前批次实习自评")
