@@ -121,6 +121,16 @@
             <button type="button" class="sp-btn" @click="router.push('/portal/employment')">进入就业中心</button>
           </div>
         </section>
+        <section v-if="!['PREPARING', 'READY'].includes(my.status)" class="sp-card sp-home-attendance">
+          <div class="sp-panel__head">首页考勤状态 <button type="button" class="sp-link" @click="selectTab('checkin')">查看全部</button></div>
+          <div class="sp-home-attendance__grid">
+            <div><span>已签到</span><strong>{{ attendance.summary?.CHECKIN || 0 }}</strong></div>
+            <div><span>未签到</span><strong>{{ attendance.summary?.ABSENT || 0 }}</strong></div>
+            <div><span>请假</span><strong>{{ attendance.summary?.LEAVE || 0 }}</strong></div>
+            <div><span>补签</span><strong>{{ attendance.summary?.MAKEUP || 0 }}</strong></div>
+            <div><span>免签</span><strong>{{ attendance.summary?.EXEMPT || 0 }}</strong></div>
+          </div>
+        </section>
         <section v-if="!['PREPARING', 'READY'].includes(my.status)" class="sp-card sp-report-progress">
           <div class="sp-panel__head">四类报告完成进度 <button type="button" class="sp-link" @click="selectTab('report')">去填写</button></div>
           <div class="sp-report-progress__grid">
@@ -1171,7 +1181,7 @@ async function load() {
     }
     if (data.batchId) persistInternshipBatch(data.batchId)
     if (!data.hasData) return
-    const initialSources = [...new Set(['agreement', 'insurance', 'plan', 'report', tab.value])]
+    const initialSources = [...new Set(['agreement', 'insurance', 'plan', 'report', 'checkin', tab.value])]
     await Promise.all(initialSources.map((key) => loadTab(key, true)))
   } catch (e) { error.value = e?.message || '实习信息加载失败' } finally { loading.value = false }
 }
@@ -1211,12 +1221,12 @@ async function doCheckin() {
       idempotencyKey: `portal-checkin-${new Date().toISOString().slice(0, 10)}`
     })
     ui.notify('打卡已记录')
-    const [freshAttendance] = await Promise.all([
+    const [freshAttendance, freshMy] = await Promise.all([
       internshipCoreApi.attendance(currentInternshipContext()),
       portalApi.internshipMy()
     ])
     attendance.value = freshAttendance || attendance.value
-    my.value = await portalApi.internshipMy() || my.value
+    my.value = freshMy || my.value
   } catch (e) { ui.notify(e?.message || '打卡失败') } finally { busy.value = false }
 }
 async function submitMakeup() {
@@ -1838,4 +1848,5 @@ onMounted(load)
 .sp-completion{display:flex;align-items:center;justify-content:space-between;gap:24px;margin-bottom:20px;border-left:4px solid var(--pri)}.sp-completion h2{margin:6px 0 4px;font-size:18px}.sp-completion p{margin:0;line-height:1.6}.sp-completion__actions{display:flex;flex-shrink:0;gap:10px}@media(max-width:720px){.sp-completion{align-items:flex-start;flex-direction:column}.sp-completion__actions{width:100%;flex-wrap:wrap}}
 @media(max-width:1000px){.sp-preparation{grid-template-columns:1fr}.sp-preparation__facts{gap:20px}}
 .sp-attendance-overview{display:flex;align-items:center;gap:22px;margin:12px 0 16px}.sp-attendance-ring{width:150px;height:150px;border-radius:50%;display:grid;place-items:center;flex:0 0 auto;position:relative}.sp-attendance-ring::after{content:'';position:absolute;width:94px;height:94px;border-radius:50%;background:var(--card)}.sp-attendance-ring>div{position:relative;z-index:1;text-align:center;display:flex;flex-direction:column}.sp-attendance-ring strong{font-size:25px}.sp-attendance-ring span{font-size:11px;color:var(--t3)}.sp-attendance-legend{display:grid;gap:8px;flex:1}.sp-attendance-legend>div{display:grid;grid-template-columns:10px 1fr auto;align-items:center;gap:8px;font-size:12px}.sp-attendance-legend .dot{width:9px;height:9px;border-radius:50%}.dot.checkin{background:var(--ok-fg)}.dot.absent{background:var(--danger-fg)}.dot.leave{background:var(--warn-fg)}.dot.makeup{background:var(--pri)}.dot.exempt{background:var(--t4)}.sp-attendance-list{display:flex;flex-direction:column;max-height:520px;overflow:auto}.sp-attendance-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:10px 0;border-bottom:1px solid var(--line)}.sp-attendance-row>div{display:flex;flex-direction:column;gap:3px}.sp-attendance-row span{font-size:11px;color:var(--t3)}@media(max-width:760px){.sp-attendance-overview{align-items:flex-start;flex-direction:column}}
+.sp-home-attendance{margin-bottom:14px}.sp-home-attendance__grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px}.sp-home-attendance__grid>div{padding:11px 12px;border:1px solid var(--line);border-radius:9px;background:var(--bg2);display:flex;flex-direction:column;gap:5px}.sp-home-attendance__grid span{font-size:11px;color:var(--t3)}.sp-home-attendance__grid strong{font-size:20px}@media(max-width:900px){.sp-home-attendance__grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 </style>
