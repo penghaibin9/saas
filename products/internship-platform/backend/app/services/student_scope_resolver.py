@@ -187,6 +187,20 @@ def _scope_filter(db, tenant_id: int, user):
             StudentProfile.is_deleted.is_(False),
         )).all())
 
+    major_names = {str(x).strip() for x in (resolved.get("majorNames") or set()) if str(x).strip()}
+    if major_names:
+        major_ids = set(int(x) for x in db.scalars(select(Major.id).where(
+            Major.tenant_id == int(tenant_id),
+            Major.major_name.in_(major_names),
+            Major.is_deleted.is_(False),
+        )).all())
+        if major_ids:
+            student_ids.update(int(x) for x in db.scalars(select(StudentProfile.id).where(
+                StudentProfile.tenant_id == int(tenant_id),
+                StudentProfile.major_id.in_(major_ids),
+                StudentProfile.is_deleted.is_(False),
+            )).all())
+
     college_names = {str(x).strip() for x in (resolved.get("collegeNames") or set()) if str(x).strip()}
     if college_names:
         college_ids = set(int(x) for x in db.scalars(select(College.id).where(
