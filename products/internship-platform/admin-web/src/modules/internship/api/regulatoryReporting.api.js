@@ -64,6 +64,19 @@ export const regulatoryReportingApi = {
     return call(() => request('/internship/regulatory-reporting/tasks', { params }))
   },
 
+  getTask(taskId) {
+    return call(() => request(
+      `/internship/regulatory-reporting/tasks/${encodeURIComponent(String(taskId || ''))}`
+    ))
+  },
+
+  listTaskRows(taskId, params = {}) {
+    return call(() => request(
+      `/internship/regulatory-reporting/tasks/${encodeURIComponent(String(taskId || ''))}/rows`,
+      { params }
+    ))
+  },
+
   createTask(reportCode, batchId) {
     return call(() => request('/internship/regulatory-reporting/tasks', {
       method: 'POST',
