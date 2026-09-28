@@ -118,6 +118,12 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.GUIDANCE_VISIT, title: M.GUIDANCE_VISIT, requiresAuth: true, permissionKey: 'internship.guidance.view' }
     },
     {
+      path: 'teacher-management',
+      name: 'internship-teacher-management',
+      component: () => import('@/modules/internship/views/TeacherManagementView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.GUIDANCE_VISIT, title: '教师管理', requiresAuth: true, permissionKey: 'internship.stats.view' }
+    },
+    {
       path: 'guidance/new',
       name: 'internship-guidance-new',
       component: () => import('@/modules/internship/views/GuidanceRecordFormView.vue'),
