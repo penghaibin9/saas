@@ -121,6 +121,21 @@
             <button type="button" class="sp-btn" @click="router.push('/portal/employment')">进入就业中心</button>
           </div>
         </section>
+        <section v-if="!['PREPARING', 'READY'].includes(my.status)" class="sp-card sp-report-progress">
+          <div class="sp-panel__head">四类报告完成进度 <button type="button" class="sp-link" @click="selectTab('report')">去填写</button></div>
+          <div class="sp-report-progress__grid">
+            <div v-for="item in reportProgress" :key="item.key" class="sp-report-progress__item">
+              <div class="sp-report-progress__row">
+                <strong>{{ item.label }}</strong>
+                <span>{{ item.required > 0 ? item.submitted + '/' + item.required : item.submitted + ' 篇 · 应交数未配置' }}</span>
+              </div>
+              <div class="sp-report-progress__track">
+                <span :style="{ width: (item.rate == null ? 0 : item.rate) + '%' }"></span>
+              </div>
+            </div>
+          </div>
+          <p v-if="reportProgress.some((item) => item.required === 0)" class="sp-muted" style="margin:10px 0 0">应交篇数未配置的类型不计算完成率，避免把“已交过”误当成“已完成”。</p>
+        </section>
         <div v-if="!['PREPARING', 'READY'].includes(my.status)" class="m4">
           <div v-for="m in metrics" :key="m.t" class="sp-metric"><div class="sp-metric__label">{{ m.t }}</div><div class="sp-metric__value" :style="{color:m.c}">{{ m.v }}<small>{{ m.u }}</small></div></div>
         </div>
@@ -479,9 +494,10 @@
             <div class="sp-panel__head">{{ reportEditorTitle }}</div>
             <template v-if="reportTab==='周报'">
               <div class="sp-fieldlabel">周次</div><input v-model.number="weeklyForm.week" type="number" min="1" class="sp-inp" style="margin-bottom:12px" placeholder="第几周" />
-              <div class="sp-fieldlabel">本周工作内容 <span>至少 10 字</span></div><textarea v-model="weeklyForm.workContent" class="sp-inp" style="margin-bottom:12px" placeholder="具体说明完成了什么任务、产出了什么结果" />
-              <div class="sp-fieldlabel">收获与体会 <span>至少 10 字</span></div><textarea v-model="weeklyForm.harvestContent" class="sp-inp" style="margin-bottom:12px" placeholder="记录技能、经验和需要改进的地方" />
+              <div class="sp-fieldlabel">本周工作内容</div><textarea v-model="weeklyForm.workContent" class="sp-inp" style="margin-bottom:12px" placeholder="具体说明完成了什么任务、产出了什么结果" />
+              <div class="sp-fieldlabel">收获与体会</div><textarea v-model="weeklyForm.harvestContent" class="sp-inp" style="margin-bottom:12px" placeholder="记录技能、经验和需要改进的地方" />
               <div class="sp-fieldlabel">下周计划</div><textarea v-model.trim="weeklyForm.planContent" class="sp-inp" style="margin-bottom:12px" placeholder="下周安排" />
+              <div class="report-count">周报正文合计 {{ weeklyWordCount }} / {{ reportRules.weeklyMinWords || 30 }} 字</div>
               <div class="sp-fieldlabel">附件（图片/视频/RAR/ZIP/WORD/EXCEL/PDF）</div>
               <input type="file" class="sp-inp" style="margin-bottom:8px" :disabled="busy" accept="image/*,video/*,.rar,.zip,.doc,.docx,.pdf,.xls,.xlsx" @change="uploadReportAttachment($event,'weekly')" />
               <div v-if="weeklyForm.attachments.length" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
@@ -490,6 +506,9 @@
               <button class="sp-btn" :disabled="busy || !weeklyCanSubmit" @click="submitWeekly">{{ weeklyEditing ? '重新提交周报' : '提交周报' }}</button>
             </template>
             <template v-else>
+              <template v-if="reportTab === '日报'">
+                <div class="sp-fieldlabel">报告日期</div><input v-model="reportForm.periodKey" type="date" class="sp-inp" style="margin-bottom:12px" />
+              </template>
               <template v-if="reportTab === '月报'">
                 <div class="sp-fieldlabel">报告月份</div><input v-model="reportForm.periodKey" type="month" class="sp-inp" style="margin-bottom:12px" />
               </template>
@@ -1568,7 +1587,7 @@ function editWeekly(item) {
 }
 function editProcessReport(item) {
   if (busy.value || item?.status !== 'RETURNED') return
-  reportTab.value = item.reportType === 'SUMMARY' ? '实习总结' : '月报'
+  reportTab.value = item.reportType === 'SUMMARY' ? '实习总结' : item.reportType === 'DAILY' ? '日报' : '月报'
   Object.assign(reportForm, {
     periodKey: item.periodKey || (item.reportType === 'SUMMARY' ? 'FINAL' : currentMonth()),
     content: item.content || '',
@@ -1613,8 +1632,9 @@ async function submitWeekly() {
 }
 async function submitReport() {
   if (busy.value || !reportCanSubmit.value) {
-    reportError.value = processType.value === 'MONTHLY' && !reportForm.periodKey
-      ? '请选择报告月份。' : `${reportTab.value}正文至少填写 ${reportMinimum.value} 字。`
+    reportError.value = ['DAILY', 'MONTHLY'].includes(processType.value) && !reportForm.periodKey
+      ? (processType.value === 'DAILY' ? '请选择报告日期。' : '请选择报告月份。')
+      : reportTab.value + '正文至少填写 ' + reportMinimum.value + ' 字。'
     return
   }
   reportError.value = ''
@@ -1697,6 +1717,7 @@ onMounted(load)
 </script>
 
 <style scoped>
+.sp-report-progress{margin-bottom:14px}.sp-report-progress__grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.sp-report-progress__item{padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}.sp-report-progress__row{display:flex;justify-content:space-between;gap:10px;font-size:12px}.sp-report-progress__row span{color:var(--t3)}.sp-report-progress__track{height:7px;margin-top:9px;border-radius:999px;background:#e8edf5;overflow:hidden}.sp-report-progress__track span{display:block;height:100%;border-radius:999px;background:var(--pri)}@media(max-width:900px){.sp-report-progress__grid{grid-template-columns:1fr 1fr}}
 .sp-now { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 14px; padding: 20px 22px; border-color: color-mix(in srgb, var(--pri) 28%, var(--line)); background: linear-gradient(120deg, color-mix(in srgb, var(--pri) 8%, white), white 68%); box-shadow: 0 12px 32px rgba(30, 64, 175, .08); }
 .sp-now__copy { min-width: 0; }
 .sp-now__eyebrow { color: var(--pri); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
