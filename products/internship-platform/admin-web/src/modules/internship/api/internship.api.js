@@ -199,6 +199,19 @@ export const internshipApi = {
     return call(() => request(`/internship/batches/${id}/participants/summary`))
   },
 
+  addBatchParticipants(id, studentIds = [], reason = '') {
+    return call(() => request(`/internship/batches/${id}/participants/add`, {
+      method: 'POST', body: { studentIds, reason }
+    }))
+  },
+
+  removeBatchParticipant(id, participantId, { reason, version } = {}) {
+    return call(() => request(
+      `/internship/batches/${id}/participants/${participantId}/remove`,
+      { method: 'POST', body: { reason, version } }
+    ))
+  },
+
   activateBatch(id, { expectedVersion, version } = {}) {
     return call(() => request(`/internship/batches/${id}/activate`, {
       method: 'POST', body: { expectedVersion: expectedVersion ?? version }
