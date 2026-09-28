@@ -116,7 +116,8 @@ def generate_tasks(user, bid, teaching_task_ids, evaluator_type="STUDENT"):
             teaching_task = db.query(AaTeachingTask).filter(
                 AaTeachingTask.id == teaching_task_id,
                 AaTeachingTask.tenant_id == _legacy._tid(),
-            ).first()
+                AaTeachingTask.is_deleted.is_(False),
+            ).populate_existing().with_for_update().first()
             if not teaching_task:
                 continue
             duplicate = db.query(AaEvaluationTask).filter(
@@ -169,7 +170,8 @@ def generate_role_tasks(user, bid, evaluator_type, assignments):
             teaching_task = db.query(AaTeachingTask).filter(
                 AaTeachingTask.id == teaching_task_id,
                 AaTeachingTask.tenant_id == _legacy._tid(),
-            ).first()
+                AaTeachingTask.is_deleted.is_(False),
+            ).populate_existing().with_for_update().first()
             if not teaching_task:
                 continue
             evaluator_key = (

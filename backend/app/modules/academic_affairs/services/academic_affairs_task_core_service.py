@@ -478,6 +478,154 @@ def adjust_task(task_id, user, body) -> dict:
         return result
 
 
+def _validate_draft_task_voidable(task, batch, dependent_counts: dict[str, int]) -> None:
+    """只允许作废尚未分配、仍处草稿批次且没有下游引用的误生成任务。"""
+    if str(batch.status or "").upper() != "DRAFT":
+        raise AppException("DATA_CONFLICT", "仅草稿批次中的任务可以作废")
+    if (str(task.status or "").upper() != "PENDING_ASSIGN"
+            or str(getattr(task, "teacher_key", "") or "").strip()
+            or getattr(task, "teacher_id", None)):
+        raise AppException("DATA_CONFLICT", "任务已分配或已进入办理流程，不能按草稿作废")
+    if any(int(value or 0) for value in dependent_counts.values()):
+        raise AppException("DATA_CONFLICT", "任务已有业务引用，不能作废")
+
+
+def _validate_auto_draft_teaching_class(task, teaching_class, roster_versions, roster_members,
+                                        teacher_count: int, consumer_count: int) -> None:
+    """Allow only the untouched initial roster projection created with a draft task."""
+    if teaching_class is None:
+        return
+    if (teaching_class.status != "ACTIVE" or teaching_class.class_type != "ADMIN"
+            or teaching_class.source_type != "TEACHING_TASK"
+            or int(teaching_class.source_id or 0) != int(task.id)
+            or teaching_class.roster_status != "LOCKED"):
+        raise AppException("DATA_CONFLICT", "教学班不是未使用的任务自动投影，不能作废")
+    if teacher_count or consumer_count:
+        raise AppException("DATA_CONFLICT", "教学班已分配教师或已被正式业务消费，不能作废")
+    if len(roster_versions) != 1:
+        raise AppException("DATA_CONFLICT", "教学班名单已有后续版本或缺少初始版本，不能作废")
+    version = roster_versions[0]
+    if (version.is_deleted or int(version.id) != int(teaching_class.current_roster_version_id or 0)
+            or int(version.version_no or 0) != 1
+            or version.source_type != "ADMIN_CLASS"
+            or int(version.source_id or 0) != int(task.class_id or 0)
+            or version.status != "LOCKED"
+            or int(teaching_class.current_roster_version_no or 0) != 1
+            or len(roster_members) != int(version.member_count or 0)
+            or any(member.is_deleted or member.status != "ACTIVE" or member.roster_version_id != version.id
+                   or member.source_type != "ADMIN_CLASS" for member in roster_members)):
+        raise AppException("DATA_CONFLICT", "教学班名单已被调整或使用，不能作废")
+
+
+def void_draft_task(task_id, user, reason: str) -> dict:
+    """由当前开课学院责任人逻辑作废无下游依赖的误生成草稿任务。"""
+    from app.models import (AaAttendanceSession, AaEvaluationResult, AaEvaluationTask, AaExamCourse,
+                            AaGradeTask, AaRosterConsumerSnapshot, AaScheduleChange, AaScheduleItem,
+                            AaSelectionCourse, AaTeachingClass, AaTeachingClassMember,
+                            AaTeachingClassRosterVersion, AaTeachingClassTeacher, AaTeachingTask,
+                            AaTextbookSelection)
+    from .academic_affairs_task_service import _require_college_task_action
+
+    cleaned_reason = str(reason or "").strip()
+    if len(cleaned_reason) < 5 or len(cleaned_reason) > 500:
+        raise AppException("VALIDATION_ERROR", "作废原因须为 5 至 500 个字")
+    with session() as db:
+        task = db.scalar(select(AaTeachingTask).where(
+            AaTeachingTask.id == int(task_id), AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.is_deleted.is_(False),
+        ))
+        if not task:
+            raise not_found("教学任务不存在")
+        # manage scope 同时校验本院范围、当前责任人、权限、可写学期及草稿阶段。
+        batch = _require_college_task_action(db, task, user, "manage")
+        db.refresh(task, with_for_update=True)
+        if task.is_deleted or task.batch_id != batch.id:
+            raise AppException("APPROVAL_VERSION_CONFLICT", "任务已变化，请刷新后核对")
+        teaching_class = db.query(AaTeachingClass).filter(
+            AaTeachingClass.tenant_id == _tid(), AaTeachingClass.teaching_task_id == task.id,
+            AaTeachingClass.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
+        roster_versions = []
+        roster_members = []
+        class_teacher_count = 0
+        class_consumer_count = 0
+        if teaching_class:
+            roster_versions = db.scalars(select(AaTeachingClassRosterVersion).where(
+                AaTeachingClassRosterVersion.tenant_id == _tid(),
+                AaTeachingClassRosterVersion.teaching_class_id == teaching_class.id,
+            ).order_by(AaTeachingClassRosterVersion.version_no).with_for_update()).all()
+            roster_members = db.scalars(select(AaTeachingClassMember).where(
+                AaTeachingClassMember.tenant_id == _tid(),
+                AaTeachingClassMember.teaching_class_id == teaching_class.id,
+            ).order_by(AaTeachingClassMember.id)).all()
+            class_teacher_count = int(db.scalar(select(AaTeachingClassTeacher.id).where(
+                AaTeachingClassTeacher.tenant_id == _tid(),
+                AaTeachingClassTeacher.teaching_class_id == teaching_class.id,
+            ).limit(1)) is not None)
+            class_consumer_count = int(db.scalar(select(AaRosterConsumerSnapshot.id).where(
+                AaRosterConsumerSnapshot.tenant_id == _tid(),
+                AaRosterConsumerSnapshot.teaching_class_id == teaching_class.id,
+            ).limit(1)) is not None)
+        _validate_auto_draft_teaching_class(
+            task, teaching_class, roster_versions, roster_members,
+            class_teacher_count, class_consumer_count,
+        )
+        dependent_counts = {
+            "schedule": int(db.scalar(select(AaScheduleItem.id).where(
+                AaScheduleItem.tenant_id == _tid(), AaScheduleItem.task_id == task.id,
+                AaScheduleItem.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "selection": int(db.scalar(select(AaSelectionCourse.id).where(
+                AaSelectionCourse.tenant_id == _tid(), AaSelectionCourse.teaching_task_id == task.id,
+                AaSelectionCourse.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "grade": int(db.scalar(select(AaGradeTask.id).where(
+                AaGradeTask.tenant_id == _tid(), AaGradeTask.teaching_task_id == task.id,
+                AaGradeTask.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "scheduleChange": int(db.scalar(select(AaScheduleChange.id).where(
+                AaScheduleChange.tenant_id == _tid(), AaScheduleChange.task_id == task.id,
+                AaScheduleChange.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "examCourse": int(db.scalar(select(AaExamCourse.id).where(
+                AaExamCourse.tenant_id == _tid(), AaExamCourse.teaching_task_id == task.id,
+                AaExamCourse.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "textbookSelection": int(db.scalar(select(AaTextbookSelection.id).where(
+                AaTextbookSelection.tenant_id == _tid(), AaTextbookSelection.task_id == task.id,
+                AaTextbookSelection.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "evaluationTask": int(db.scalar(select(AaEvaluationTask.id).where(
+                AaEvaluationTask.tenant_id == _tid(), AaEvaluationTask.teaching_task_id == task.id,
+                AaEvaluationTask.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "evaluationResult": int(db.scalar(select(AaEvaluationResult.id).where(
+                AaEvaluationResult.tenant_id == _tid(), AaEvaluationResult.teaching_task_id == task.id,
+                AaEvaluationResult.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "attendanceSession": int(db.scalar(select(AaAttendanceSession.id).where(
+                AaAttendanceSession.tenant_id == _tid(), AaAttendanceSession.teaching_task_id == task.id,
+                AaAttendanceSession.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "rosterConsumer": int(db.scalar(select(AaRosterConsumerSnapshot.id).where(
+                AaRosterConsumerSnapshot.tenant_id == _tid(), AaRosterConsumerSnapshot.teaching_task_id == task.id,
+                AaRosterConsumerSnapshot.is_deleted.is_(False),
+            ).limit(1)) is not None),
+        }
+        _validate_draft_task_voidable(task, batch, dependent_counts)
+        if teaching_class:
+            teaching_class.status = "ARCHIVED"
+            _audit(db, "AA_TEACHING_CLASS", teaching_class.id, "ARCHIVE_AUTO_DRAFT_VOID",
+                   f"taskId={task.id};initialRosterVersionId={teaching_class.current_roster_version_id}")
+        task.is_deleted = True
+        _audit(db, "AA_TASK", task.id, "VOID_DRAFT", cleaned_reason)
+        db.flush()
+        result = {"taskId": str(task.id), "batchId": str(batch.id), "isDeleted": True,
+                  "status": "VOIDED", "reason": cleaned_reason}
+        db.commit()
+        return result
+
+
 def _term_id_of(db, batch_id) -> int:
     from app.models import AaTeachingTaskBatch
     b = db.get(AaTeachingTaskBatch, int(batch_id))

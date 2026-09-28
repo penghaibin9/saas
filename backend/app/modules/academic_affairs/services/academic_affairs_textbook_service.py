@@ -141,7 +141,10 @@ def create_selection(user, body):
     with session() as db:
         ctx = _ctx(user, db)
         task_id = int(body.taskId)
-        tt = db.query(AaTeachingTask).filter(AaTeachingTask.id == task_id, AaTeachingTask.tenant_id == _tid()).first()
+        tt = db.query(AaTeachingTask).filter(
+            AaTeachingTask.id == task_id, AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
         if not tt:
             raise not_found("教学任务不存在")
         tb = db.query(AaTextbook).filter(AaTextbook.id == int(body.textbookId), AaTextbook.tenant_id == _tid()).first()

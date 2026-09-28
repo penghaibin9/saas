@@ -523,3 +523,30 @@ for(const change of [{reviewedAt:'2026-09-08T08:01:00Z'},{reviewedBy:'someone-el
   vm.loading=false;await vm.submitReview(row,'APPROVE','');await vm.submitReview(row,'APPROVE','')
   assert.equal(writes,1);assert.ok(vm.pending);assert.equal(vm.receipt.pending,true)
 })
+
+test('仅草稿批次中未分配的任务显示作废动作',()=>{
+  const vm=instance('AaTaskDetailView')
+  vm.workbench={status:'DRAFT',actions:{canAssign:true}}
+  assert.equal(vm.canVoidDraftRow({status:'PENDING_ASSIGN',teacherKey:''}),true)
+  assert.equal(vm.canVoidDraftRow({status:'ASSIGNED',teacherKey:'teacher-b'}),false)
+  vm.workbench.status='APPROVED'
+  assert.equal(vm.canVoidDraftRow({status:'PENDING_ASSIGN',teacherKey:''}),false)
+})
+
+test('作废草稿命令从正式批次回读确认任务已移除',async()=>{
+  const calls=[]
+  const vm=instance('AaTaskDetailView',{
+    teachingTaskWorkbenchApi:{getBatch:async id=>ok({batchId:id,status:'DRAFT',actions:{canAssign:true}})},
+    academicAffairsApi:{
+      voidDraftTeachingTask:async(id,reason)=>{calls.push(['VOID',id,reason]);return ok({isDeleted:true,status:'VOIDED'})},
+      getBatchTasks:async(id,params)=>{calls.push(['READ',id,params.taskId]);return page([])}
+    }
+  })
+  vm.loading=false;vm.workbench={batchId:'a',status:'DRAFT',actions:{canAssign:true}}
+  vm.rows=[{taskId:'44',status:'PENDING_ASSIGN',teacherKey:''}]
+  vm.voidDraft={visible:true,submitting:false,invalid:false,taskId:'44',courseName:'重复课程',teachingClassCode:'TC1-X-1',reason:'确认是同课程同班重复草稿'}
+  await vm.doVoidDraft()
+  assert.equal(calls[0][0],'VOID');assert.equal(calls[0][1],'44')
+  assert.equal(calls.filter(x=>x[0]==='READ').length,2)
+  assert.equal(vm.pendingResult,null);assert.equal(vm.receipt.status,'草稿任务已从正式列表移除')
+})

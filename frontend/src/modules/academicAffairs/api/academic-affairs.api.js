@@ -528,6 +528,9 @@ export const academicAffairsApi = {
   assignTeacher(taskId, body) {
     return call(() => request(`${BASE}/teaching-tasks/${taskId}/assign`, { method: 'POST', body }))
   },
+  voidDraftTeachingTask(taskId, reason) {
+    return call(() => request(`${BASE}/teaching-tasks/${taskId}/void-draft`, { method: 'POST', body: { reason } }))
+  },
   teacherActTask(taskId, action, reason) {
     return call(() => request(`${BASE}/teaching-tasks/${taskId}/teacher-act`, { method: 'POST', body: { action, reason } }))
   },

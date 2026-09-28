@@ -80,14 +80,17 @@ def _term(db, term_id):
     return row
 
 
-def _task_term(db, task_id):
+def _task_term(db, task_id, *, lock=False):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
 
-    task = db.query(AaTeachingTask).filter(
+    task_query = db.query(AaTeachingTask).filter(
         AaTeachingTask.id == int(task_id),
         AaTeachingTask.tenant_id == _legacy._tid(),
         AaTeachingTask.is_deleted.is_(False),
-    ).first()
+    ).populate_existing()
+    if lock:
+        task_query = task_query.with_for_update()
+    task = task_query.first()
     if not task:
         raise not_found("教学任务不存在")
     batch = db.query(AaTeachingTaskBatch).filter(
@@ -269,7 +272,7 @@ def create_selection(user, body):
 
     with _legacy.session() as db:
         _legacy._ctx(user, db)
-        task, task_batch = _task_term(db, int(body.taskId))
+        task, task_batch = _task_term(db, int(body.taskId), lock=True)
         _require_teacher_selection_scope(db, task, user)
         textbook = db.query(AaTextbook).filter(
             AaTextbook.id == int(body.textbookId),

@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Path, Query
+from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -54,6 +55,10 @@ _COURSE_APPROVE = legacy._COURSE_APPROVE
 prog_svc = legacy.prog_svc
 course_svc = course_public_svc
 task_svc = legacy.task_svc
+
+
+class VoidDraftTaskBody(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=500, description="作废原因，5 至 500 字")
 
 
 # ═══════════ 培养方案 ════════════
@@ -382,6 +387,15 @@ def task_assign(
     user=Depends(require_permission("academicAffairs.teachingTask.manage")),
 ):
     return success(task_svc.assign_teacher(taskId, user, body), message="已分配")
+
+
+@router.post("/teaching-tasks/{taskId}/void-draft", summary="作废无下游引用的未分配草稿教学任务")
+def task_void_draft(
+    body: VoidDraftTaskBody,
+    taskId: int = Path(...),
+    user=Depends(require_permission("academicAffairs.teachingTask.manage")),
+):
+    return success(task_svc.void_draft_task(taskId, user, body.reason), message="草稿任务已作废")
 
 
 @router.post("/teaching-tasks/{taskId}/teacher-act", summary="教师确认/退回教学任务")
