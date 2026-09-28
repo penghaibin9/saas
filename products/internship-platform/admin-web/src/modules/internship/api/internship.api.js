@@ -301,6 +301,16 @@ export const internshipApi = {
     }))
   },
 
+  getReportObligations(params = {}) {
+    return call(() => request('/internship/report-obligations', { params }))
+  },
+
+  exportReportObligations(params = {}) {
+    return call(() => request('/internship/report-obligations/export', {
+      method: 'POST', params
+    }))
+  },
+
   getReportReviewPerformance(params = {}) {
     return call(() => request('/internship/report-review-performance', { params }))
   },
