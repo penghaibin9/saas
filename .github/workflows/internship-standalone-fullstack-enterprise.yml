@@ -100,6 +100,62 @@ jobs:
         working-directory: products/internship-platform/enterprise-web
         run: npx playwright test -c playwright.fullstack-enterprise.config.mjs
 
+      - name: Verify enterprise evaluation database facts
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine=create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+          with engine.connect() as db:
+              evaluation=db.execute(text("""
+                  SELECT internship_id, student_id, batch_id, source_type,
+                         placement_snapshot_id, enterprise_id, position_id,
+                         attendance_score, skill_score, attitude_score,
+                         collaboration_score, safety_score, overall_comment,
+                         recommend_hire, submit_status, school_review_status
+                  FROM t_internship_enterprise_eval
+                  WHERE tenant_id=88201 AND internship_id=88301 AND is_deleted=0
+                  ORDER BY id DESC LIMIT 1
+              """)).mappings().one()
+              audit=db.execute(text("""
+                  SELECT action, target_type, detail_json
+                  FROM t_internship_audit_trail
+                  WHERE tenant_id=88201
+                    AND target_type='ENT_EVAL'
+                    AND action='ENTERPRISE_ONLINE_SUBMIT'
+                  ORDER BY id DESC LIMIT 1
+              """)).mappings().one()
+
+          assert evaluation["internship_id"] == 88301
+          assert evaluation["student_id"] == 88291
+          assert evaluation["batch_id"] == 88241
+          assert evaluation["source_type"] == "ENTERPRISE_ONLINE"
+          assert evaluation["placement_snapshot_id"] == 88311
+          assert evaluation["enterprise_id"] == 88251
+          assert evaluation["position_id"] == 88281
+          assert [
+              evaluation["attendance_score"],
+              evaluation["skill_score"],
+              evaluation["attitude_score"],
+              evaluation["collaboration_score"],
+              evaluation["safety_score"],
+          ] == [95, 92, 96, 94, 98]
+          assert evaluation["recommend_hire"] in (1, True)
+          assert evaluation["submit_status"] == "SUBMITTED"
+          assert evaluation["school_review_status"] == "PENDING"
+          assert "智能制造产线实习期间表现稳定" in evaluation["overall_comment"]
+          assert audit["action"] == "ENTERPRISE_ONLINE_SUBMIT"
+          assert audit["target_type"] == "ENT_EVAL"
+          print({
+              "enterpriseEvaluation": "PASS",
+              "internshipId": evaluation["internship_id"],
+              "placementSnapshotId": evaluation["placement_snapshot_id"],
+              "scores": [95,92,96,94,98],
+              "audit": audit["action"],
+          })
+          PY
+
       - name: Upload full-stack enterprise evidence
         if: always()
         uses: actions/upload-artifact@v4
