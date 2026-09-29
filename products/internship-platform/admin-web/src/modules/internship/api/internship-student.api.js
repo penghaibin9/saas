@@ -80,6 +80,52 @@ export const internStudentApi = {
   assignAdvisor(id, { advisorUserId, reason = '', expectedVersion }) {
     return call(() => request(`${BASE}/${id}/advisor`, { method: 'POST', body: { advisorUserId, reason, expectedVersion } }))
   },
+  allocationImportDryRun(rows, batchId) {
+    return call(() => request(`${BASE}/allocation-import/dry-run`, {
+      method: 'POST', body: { rows, batchId }
+    }))
+  },
+  allocationImportConfirm(rows, batchId) {
+    return call(() => request(`${BASE}/allocation-import/confirm`, {
+      method: 'POST', body: { rows, batchId }
+    }))
+  },
+  async downloadAllocationImportTemplate() {
+    const blob = await requestBlob(`${BASE}/allocation-import/template`)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '实习分配导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+  async uploadAllocationImportXlsx(file, batchId) {
+    try {
+      const q = batchId ? `?batchId=${encodeURIComponent(batchId)}` : ''
+      return ok(await requestUpload(`${BASE}/allocation-import/xlsx${q}`, file))
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  async downloadAllocationImportErrors(rows, errors) {
+    try {
+      const blob = await requestBlob(`${BASE}/allocation-import/errors-xlsx`, {
+        method: 'POST',
+        body: { rows, errors }
+      })
+      const buf = await blob.arrayBuffer()
+      const bytes = new Uint8Array(buf)
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i])
+      return ok({
+        contentBase64: btoa(binary),
+        filename: '实习分配导入错误行.xlsx',
+        mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+    } catch (e) {
+      return toErr(e)
+    }
+  },
   importDryRun(rows, batchId) {
     return call(() => request(`${BASE}/import/dry-run`, { method: 'POST', body: { rows, batchId } }))
   },
