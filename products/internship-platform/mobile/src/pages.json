@@ -14,9 +14,30 @@
   },
   "pages": [
     {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "岗位实习登录",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/common/change-password/index",
+      "style": {
+        "navigationBarTitleText": "修改密码",
+        "navigationStyle": "custom"
+      }
+    },
+    {
       "path": "pages/student-internship/index",
       "style": {
         "navigationBarTitleText": "岗位实习",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/index",
+      "style": {
+        "navigationBarTitleText": "岗位实习教师工作台",
         "navigationStyle": "custom"
       }
     },
