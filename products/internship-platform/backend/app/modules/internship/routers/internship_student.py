@@ -44,12 +44,13 @@ def intern_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, 
                     keyword: Optional[str] = None, classId: Optional[str] = None,
                     status: Optional[str] = None, riskLevel: Optional[str] = None,
                     eligibility: Optional[str] = None, destination: Optional[str] = None,
-                    hasPosition: Optional[bool] = None, batchId: Optional[str] = None,
+                    hasPosition: Optional[bool] = None, hasAdvisor: Optional[bool] = None,
+                    batchId: Optional[str] = None,
                     user=Depends(require_permission(_P_VIEW))):
     items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
                                      status=status, risk_level=riskLevel, eligibility=eligibility,
                                      destination=destination, has_position=hasPosition,
-                                     batch_id=batchId, user=user)
+                                     has_advisor=hasAdvisor, batch_id=batchId, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -57,12 +58,13 @@ def intern_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, 
 def intern_student_stats(keyword: Optional[str] = None, classId: Optional[str] = None,
                          status: Optional[str] = None, riskLevel: Optional[str] = None,
                          eligibility: Optional[str] = None, destination: Optional[str] = None,
-                         hasPosition: Optional[bool] = None, batchId: Optional[str] = None,
+                         hasPosition: Optional[bool] = None, hasAdvisor: Optional[bool] = None,
+                         batchId: Optional[str] = None,
                          user=Depends(require_permission(_P_VIEW))):
     return success(svc.student_stats(
         batch_id=batchId, keyword=keyword, class_id=classId, status=status,
         risk_level=riskLevel, eligibility=eligibility, destination=destination,
-        has_position=hasPosition, user=user))
+        has_position=hasPosition, has_advisor=hasAdvisor, user=user))
 
 
 @router.get("/intern-students/advisors", summary="可分配的在职指导教师账号")
@@ -121,11 +123,12 @@ def intern_export(keyword: Optional[str] = None, status: Optional[str] = None,
                   eligibility: Optional[str] = None, batchId: Optional[str] = None,
                   classId: Optional[str] = None, riskLevel: Optional[str] = None,
                   destination: Optional[str] = None, hasPosition: Optional[bool] = None,
+                  hasAdvisor: Optional[bool] = None,
                   user=Depends(require_permission(_P_EXPORT))):
     data = svc.export_students(
         keyword=keyword, status=status, eligibility=eligibility, batch_id=batchId,
         class_id=classId, risk_level=riskLevel, destination=destination,
-        has_position=hasPosition, user=user)
+        has_position=hasPosition, has_advisor=hasAdvisor, user=user)
     audit_log.record("导出实习学生", "internship-student:export",
                      detail={"rowCount": data["rowCount"], "batchId": data.get("batchId"),
                              "batchName": data.get("batchName")})
