@@ -14,6 +14,7 @@ class InternshipRegulatoryTemplateVersion(PKMixin, TenantMixin, CommonMixin, Bas
     __table_args__ = (
         UniqueConstraint("tenant_id", "report_code", "version_no", name="uk_ix_reg_tpl_version"),
         Index("ix_ix_reg_tpl_active", "tenant_id", "report_code", "status", "is_deleted"),
+        Index("ix_ix_reg_tpl_source_file", "tenant_id", "source_file_id", "is_deleted"),
     )
 
     report_code: Mapped[str] = mapped_column(String(16), nullable=False, index=True, comment="RP01/RP02")
@@ -21,6 +22,9 @@ class InternshipRegulatoryTemplateVersion(PKMixin, TenantMixin, CommonMixin, Bas
     template_name: Mapped[str] = mapped_column(String(200), nullable=False)
     source_label: Mapped[str] = mapped_column(String(120), nullable=False)
     source_reference: Mapped[str | None] = mapped_column(String(500))
+    source_file_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    source_file_name: Mapped[str | None] = mapped_column(String(255))
+    source_file_sha256: Mapped[str | None] = mapped_column(String(64))
     official_verified: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False,
         comment="仅真实目标平台模板经正式联调确认后方可为1；采购基线必须为0",
@@ -39,6 +43,8 @@ class InternshipRegulatoryTask(PKMixin, TenantMixin, CommonMixin, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "task_no", name="uk_ix_reg_task_no"),
         Index("ix_ix_reg_task_batch", "tenant_id", "batch_id", "report_code", "status", "is_deleted"),
+        Index("ix_ix_reg_task_output_file", "tenant_id", "output_file_id"),
+        Index("ix_ix_reg_task_error_file", "tenant_id", "error_file_id"),
     )
 
     task_no: Mapped[str] = mapped_column(String(80), nullable=False)
@@ -54,9 +60,11 @@ class InternshipRegulatoryTask(PKMixin, TenantMixin, CommonMixin, Base):
     valid_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_rows: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     output_filename: Mapped[str | None] = mapped_column(String(255))
+    output_file_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     output_sha256: Mapped[str | None] = mapped_column(String(64))
     output_size: Mapped[int | None] = mapped_column(BigInteger)
     error_filename: Mapped[str | None] = mapped_column(String(255))
+    error_file_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     error_sha256: Mapped[str | None] = mapped_column(String(64))
     external_submission_ref: Mapped[str | None] = mapped_column(String(200))
     receipt_code: Mapped[str | None] = mapped_column(String(120))
