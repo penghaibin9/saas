@@ -594,6 +594,7 @@ def set_cooperation(company_id, action: str, reason: str = "", expected_version=
             EmpCompany.is_deleted.is_(False)).with_for_update())
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
+        assert_company_writable(db, c.id, user)
         if expected_version is None:
             raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
         if int(expected_version) != int(c.version or 0):
@@ -631,6 +632,7 @@ def set_blacklist(company_id, on: bool, reason: str = "", expected_version=None,
             EmpCompany.is_deleted.is_(False)).with_for_update())
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
+        assert_company_writable(db, c.id, user)
         if expected_version is None:
             raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
         if int(expected_version) != int(c.version or 0):
@@ -954,5 +956,5 @@ def export_enterprises(keyword=None, coop_status=None, industry=None, region=Non
     items, _ = load_export_rows(
         list_enterprises, keyword=keyword, coop_status=coop_status,
         industry=industry, region=region, user=user)
-    user = get_current_user_ctx() or {}
-    return excel.build_export(build_export_spec(), items, operator_name=user.get("realName", "-"))
+    operator = user or get_current_user_ctx() or {}
+    return excel.build_export(build_export_spec(), items, operator_name=operator.get("realName", "-"))
