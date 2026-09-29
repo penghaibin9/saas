@@ -19,11 +19,14 @@ def standalone_db(tmp_path):
     import app.db.session as db_session
     from app.config import settings
     from app.models import (
+        College,
         EmpCompany,
         InternshipApplication,
         InternshipBatch,
         InternshipPosition,
         InternshipRecord,
+        Major,
+        SchoolClass,
         StudentProfile,
     )
 
@@ -34,6 +37,9 @@ def standalone_db(tmp_path):
 
     engine = db_session.get_engine()
     for table in (
+        College.__table__,
+        Major.__table__,
+        SchoolClass.__table__,
         EmpCompany.__table__,
         InternshipBatch.__table__,
         StudentProfile.__table__,
@@ -54,7 +60,10 @@ def standalone_db(tmp_path):
 
 def _seed_g10():
     from app.db.session import get_sessionmaker
-    from app.models import InternshipApplication, InternshipBatch, InternshipRecord, StudentProfile
+    from app.models import (
+        College, InternshipApplication, InternshipBatch, InternshipRecord,
+        Major, SchoolClass, StudentProfile,
+    )
 
     db = get_sessionmaker()()
     try:
@@ -68,6 +77,22 @@ def _seed_g10():
         db.add(batch)
         db.flush()
 
+        college = College(
+            tenant_id=TID, college_name="信息工程学院", status="ACTIVE")
+        db.add(college)
+        db.flush()
+        major = Major(
+            tenant_id=TID, college_id=college.id,
+            major_name="软件技术", status="ACTIVE")
+        db.add(major)
+        db.flush()
+        school_class = SchoolClass(
+            tenant_id=TID, major_id=major.id,
+            class_name="软件技术2401", grade="2024",
+            status="ACTIVE", class_status="NORMAL")
+        db.add(school_class)
+        db.flush()
+
         for index in range(65):
             student = StudentProfile(
                 tenant_id=TID,
@@ -76,6 +101,9 @@ def _seed_g10():
                 current_stage="INTERNSHIP",
                 student_status="NORMAL",
                 status="ACTIVE",
+                college_id=college.id,
+                major_id=major.id,
+                class_id=school_class.id,
             )
             db.add(student)
             db.flush()
@@ -105,7 +133,12 @@ def _seed_g10():
                     volunteer_no=0,
                     company_name=f"G10企业{index + 1:03d}",
                     position_name="测试岗位",
-                    work_address="湖南省益阳市",
+                    work_address="湖南省益阳市赫山区",
+                    internship_department="研发部",
+                    position_category="技术类",
+                    agreed_salary=3500,
+                    company_industry="软件和信息技术服务业",
+                    enterprise_mentor_name="企业导师张老师",
                     contact_name="企业联系人",
                     contact_phone="13800138000",
                     status=status,
@@ -159,3 +192,41 @@ def test_g10_full_scope_counts_and_drilldown_are_not_page_length(standalone_db):
     assert filled_total == 45
     assert len(filled_items) == 20
     assert all(item["applicationState"] == "FILLED" for item in filled_items)
+
+
+def test_g10_ap05_export_contains_procurement_fields(standalone_db):
+    from io import BytesIO
+
+    from openpyxl import load_workbook
+
+    from app.core.context import set_current_user, set_tenant
+    from app.modules.internship.services import internship_application_service as svc
+
+    set_tenant({"tenantId": str(TID)})
+    set_current_user(USER)
+    batch_id = _seed_g10()
+
+    payload, filename, row_count = svc.export_applications(
+        status="REVIEWED", batch_id=batch_id, user=USER)
+    assert filename.endswith(".xlsx")
+    assert row_count == 15
+
+    workbook = load_workbook(BytesIO(payload), read_only=True, data_only=True)
+    sheet = workbook.active
+    rows = list(sheet.iter_rows(values_only=True))
+    assert rows
+    headers = [str(value or "") for value in rows[0]]
+    for required in (
+        "申请时间", "学号", "姓名", "院系", "实习单位/免实习",
+        "实习岗位/免实习去向", "实习单位地址", "所属科室",
+        "职位类别", "实习薪资(元/月)", "所属行业", "校内指导老师",
+        "企业老师", "状态", "免实习原因", "免实习佐证",
+    ):
+        assert required in headers
+
+    data = [dict(zip(headers, row)) for row in rows[1:] if any(value is not None for value in row)]
+    assert data
+    first = data[0]
+    assert first["院系"] == "信息工程学院"
+    assert first["所属行业"] == "软件和信息技术服务业"
+    assert first["企业老师"] == "企业导师张老师"
