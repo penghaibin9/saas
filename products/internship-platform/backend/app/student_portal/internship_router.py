@@ -19,6 +19,7 @@ from app.modules.internship.services import internship_student_change_context_se
 from app.modules.internship.services import internship_student_compliance_service as compliance
 from app.modules.internship.services import internship_student_checkin_service as checkins
 from app.modules.internship.services import internship_student_consent_context_service as consent_context
+from app.modules.internship.services import internship_student_dashboard_service as dashboard
 from app.modules.internship.services import internship_student_leave_context_service as leaves
 from app.modules.internship.services import internship_student_makeup_context_service as makeups
 from app.modules.internship.services import internship_student_report_context_service as reports
@@ -30,6 +31,15 @@ from app.modules.internship.services.internship_student_context_guard import (
 )
 
 router = APIRouter(prefix="/portal/internship", tags=["学生PC门户-岗位实习权威接口"])
+
+
+@router.get("/my", summary="本人岗位实习工作台（学生 PC）")
+def portal_my(
+    batchId: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    """Reuse the same explicit-batch dashboard authority as the student mini-program."""
+    return success(dashboard.get_my_dashboard(user, batch_id=batchId))
 
 
 @router.get("/compliance", summary="本人岗位实习权威合规状态")
