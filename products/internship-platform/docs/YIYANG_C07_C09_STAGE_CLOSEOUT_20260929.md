@@ -227,6 +227,35 @@ source MySQL 8.4
 - Android / iOS 真机验收；
 - 学校正式域名 / HTTPS / CAS / 门户联调。
 
+## 7.1 C09 灾备真实恢复演练
+
+已完成真实执行：
+
+- 使用 production-like Docker Compose 启动 MySQL 8.4、Redis、migrate、backend。
+- 写入一份真实本地附件字节，并在 `t_file_object` 登记 size + SHA-256。
+- `backup.sh` 生成同一 backup-set 下的：
+  - MySQL dump
+  - 附件 tar.gz
+  - manifest
+  - 三类 SHA-256
+- `restore-drill.sh` 恢复到隔离数据库 `internship_restore_drill`。
+- 恢复后核验：
+  - Alembic = `ix0023`
+  - 恢复表数量
+  - local FileObject 数量
+  - 附件 size
+  - 附件 SHA-256
+  - external storage 对象数必须为 0 才可 PASS
+- 演练结束自动销毁隔离 DB 和 Docker volumes，避免污染后续测试。
+
+专项成功证据：
+
+- Workflow：`Internship Standalone C09 Recovery Drill`
+- Run：`36570679259`
+- 结果：**success**
+
+该证据证明仓库内的生产备份/恢复链可真实执行，不代表学校正式生产环境已经完成首轮备份；上线后仍需保留真实学校 backup-set、异地副本与恢复演练记录。
+
 ## 8. 当前禁止误报的事项
 
 截至本收口基线，以下仍不能写“全部完成”：
@@ -238,7 +267,7 @@ source MySQL 8.4
 - 学校真实 CAS / 门户 / 消息 / 数据平台 UAT。
 - 微信开发者工具与 Android/iOS 真机。
 - 浏览器五端真实账号主链 G01～G20 最终证据。
-- 正式备份→隔离恢复执行证据。
+- ~~正式备份→隔离恢复执行证据。~~ 已完成工程级真实恢复演练；学校正式生产备份仍需上线后留存现场证据。
 - 校方 15 日试运行、培训、售后与最终签字。
 
 ## 9. 下一施工顺序
@@ -246,7 +275,7 @@ source MySQL 8.4
 继续从本基线向前，不回退 C02～C08：
 
 ```text
-备份 + 附件隔离恢复真演练
+备份 + 附件隔离恢复真演练 ✅
 → G01～G18 浏览器/接口总验收编排
 → 接真实学校历史数据执行 G19
 → 正式 UAT 环境执行 G20
