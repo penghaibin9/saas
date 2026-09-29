@@ -37,7 +37,7 @@
             <text v-if="t.reviewComment" class="pl__task-reject">退回：{{ t.reviewComment }}</text>
             <view v-if="t.evidenceFileId" class="pl__evidence">已上传任务凭证</view>
             <view v-if="canSubmit(t)" class="pl__task-act">
-              <textarea v-model="t._note" class="pl__input" maxlength="500" placeholder="填写完成说明（至少5字）" />
+              <textarea v-model="t._note" class="pl__input" maxlength="500" :placeholder="'填写完成说明（至少' + minimumWords + '字）'" />
               <view class="pl__file-row">
                 <button class="btn btn-secondary btn-sm" :disabled="submitting === t.sortOrder || uploading === t.sortOrder" @click="chooseEvidence(t)">
                   {{ uploading === t.sortOrder ? '上传中…' : (t._evidenceFileId ? '重新上传凭证' : '上传完成凭证') }}
@@ -128,6 +128,7 @@ export default {
           _evidenceFileName: t.evidenceFileId ? '已上传凭证' : ''
         }))
         this.summary = (taskData && taskData.summary) || (plan && plan.taskSummary) || { total: 0, approved: 0, rate: 0 }
+        this.minimumWords = Math.max(1, Number(taskData?.minimumWords || 10))
         this.pageState = plan ? 'ready' : 'empty'
       } catch (e) {
         if (seq === this.loadSeq) this.pageState = 'error'
@@ -182,7 +183,7 @@ export default {
     async submitTask(t) {
       if (this.submitting !== false || this.uploading) return
       const note = (t._note || '').trim()
-      if (note.length < 5) return toast('完成说明至少5字')
+      if (note.length < this.minimumWords) return toast('完成说明至少' + this.minimumWords + '字')
       this.submitting = t.sortOrder
       try {
         await studentInternshipPlanTaskSubmit(t.sortOrder, {
