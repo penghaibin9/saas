@@ -9,6 +9,7 @@ from app.api.v1 import (
     auth_recovery,
     standalone_browser_auth,
     standalone_rbac,
+    standalone_student_portal,
     mobile_internship_context,
     mobile_internship_selection,
     mobile_internship_student,
@@ -102,6 +103,7 @@ api_router = APIRouter()
 api_router.include_router(standalone_browser_auth.router)
 api_router.include_router(auth_recovery.router)
 api_router.include_router(standalone_rbac.router)
+api_router.include_router(standalone_student_portal.router)
 api_router.include_router(build_staff_internship_router())
 
 # The enterprise surface must never inherit require_staff. Its own signed EnterprisePrincipal
