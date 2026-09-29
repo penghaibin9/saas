@@ -62,5 +62,5 @@ jobs:
           name: internship-enterprise-browser-evidence
           path: |
             products/internship-platform/enterprise-web/test-results
-          if-no-files-found: error
+          if-no-files-found: ignore
           retention-days: 14
