@@ -31,7 +31,8 @@ def _methods(router):
 def test_enterprise_college_scope_is_separate_internship_fact():
     table = InternshipEnterpriseCollegeScope.__table__
     assert table.name == "t_internship_enterprise_college_scope"
-    assert {"tenant_id", "company_id", "college_id", "scope_source", "is_deleted", "version"} <= set(table.c)
+    columns = set(table.c.keys())
+    assert {"tenant_id", "company_id", "college_id", "scope_source", "is_deleted", "version"} <= columns
     assert any(
         set(constraint.columns.keys()) == {"tenant_id", "company_id", "college_id"}
         for constraint in table.constraints
@@ -76,7 +77,8 @@ def test_direct_position_assignment_rechecks_enterprise_college_scope():
 
 def test_removed_additional_plan_is_not_teacher_task_truth():
     assignment_table = InternshipPlanAssignment.__table__
-    assert {"internship_id", "plan_id", "status", "is_primary"} <= set(assignment_table.c)
+    columns = set(assignment_table.c.keys())
+    assert {"internship_id", "plan_id", "status", "is_primary"} <= columns
 
     source = inspect.getsource(plan_task_svc.list_progress)
     assert "InternshipPlanAssignment.status == \"ACTIVE\"" in source
