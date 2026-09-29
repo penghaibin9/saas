@@ -69,7 +69,7 @@ def test_g17_certificate_requires_completed_formal_facts():
         "intern_end_date": datetime.utcnow() + timedelta(days=10),
     })()
     with pytest.raises(AppException):
-        svc._certificate_fact(record)
+        svc._certificate_fact(None, record)
 
     record.status = "ASSESSING"
     with pytest.raises(AppException):
