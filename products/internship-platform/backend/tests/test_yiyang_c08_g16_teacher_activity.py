@@ -20,8 +20,9 @@ class _ScalarRows:
 
 
 class _FakeDb:
-    def __init__(self, scalar_values=None):
+    def __init__(self, scalar_values=None, scalar_rows=None):
         self.scalar_values = list(scalar_values or [])
+        self.scalar_rows = list(scalar_rows or [])
         self.added = []
         self.committed = False
 
@@ -38,7 +39,8 @@ class _FakeDb:
         return self.scalar_values.pop(0) if self.scalar_values else None
 
     def scalars(self, _query):
-        return _ScalarRows([])
+        rows = self.scalar_rows.pop(0) if self.scalar_rows else []
+        return _ScalarRows(rows)
 
     def add(self, row):
         self.added.append(row)
@@ -204,7 +206,12 @@ def test_g16_teacher_photo_requires_location(monkeypatch):
 
 
 def test_g16_emergency_notice_is_persisted_and_audited(monkeypatch):
-    db = _FakeDb(scalar_values=[3])
+    db = _FakeDb(scalar_rows=[[
+        SimpleNamespace(student_id=101),
+        SimpleNamespace(student_id=102),
+        SimpleNamespace(student_id=103),
+        SimpleNamespace(student_id=103),
+    ]])
     audits = []
     monkeypatch.setattr(svc, "session", lambda: db)
     monkeypatch.setattr(svc, "_tid", lambda: 1)
