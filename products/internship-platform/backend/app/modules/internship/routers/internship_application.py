@@ -83,7 +83,8 @@ def application_review(application_id: str, body: dict = Body(...), user=Depends
     result = svc.review_application(
         application_id, b.get("action", ""), b.get("comment", ""), user,
         expected_version=b.get("expectedVersion", b.get("version")),
-        record_expected_version=b.get("recordExpectedVersion"))
+        record_expected_version=b.get("recordExpectedVersion"),
+        expected_batch_id=b.get("batchId"))
     audit_log.record("审核实习申请", f"internship-application:{application_id}",
                      detail={"action": b.get("action", "")})
     return success(result, message="申请已处理")
