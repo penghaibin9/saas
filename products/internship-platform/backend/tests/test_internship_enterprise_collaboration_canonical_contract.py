@@ -19,6 +19,7 @@ from app.models import (
 )
 from app.modules.internship.services import (
     internship_application_service,
+    internship_enterprise_collaboration_service,
     internship_position_service,
 )
 
@@ -115,3 +116,19 @@ def test_forbidden_duplicate_authority_model_names_do_not_exist():
         assert not hasattr(models, duplicate_name), (
             f"{duplicate_name} duplicates an already-frozen internship authority"
         )
+
+
+
+def test_enterprise_collaboration_filters_keep_status_and_deeplink_scopes_separate():
+    status_source = inspect.getsource(internship_enterprise_collaboration_service._filter_record_status)
+    evaluation_source = inspect.getsource(internship_enterprise_collaboration_service.list_evaluation_tasks_in_tx)
+
+    # Status filtering must be a pure transformation of q; a previous regression referenced
+    # free variables named internship_id/base and crashed every real enterprise student list.
+    assert "internship_id" not in status_source
+    assert "base =" not in status_source
+    assert "return q" in status_source
+
+    # Deep-link evaluation lookup is a different concern and must narrow the evaluation query.
+    assert "if internship_id is not None:" in evaluation_source
+    assert "InternshipRecord.id == int(internship_id)" in evaluation_source
