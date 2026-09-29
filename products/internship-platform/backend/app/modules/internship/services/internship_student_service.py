@@ -1052,6 +1052,8 @@ def allocation_import_dry_run(rows: list[dict], batch_id=None, user=None) -> dic
 
             wants_advisor = bool(advisor_name)
             wants_position = bool(company_name or credit_code or position_name)
+            advisor_changed = False
+            position_changed = False
             if not wants_advisor and not wants_position:
                 _allocation_error(errors, row_no, "advisorName", "至少填写指导教师或企业岗位分配")
                 continue
@@ -1059,8 +1061,7 @@ def allocation_import_dry_run(rows: list[dict], batch_id=None, user=None) -> dic
             if wants_advisor:
                 try:
                     advisor = _advisor(db, advisor_name=advisor_name)
-                    if record.advisor_user_id == advisor.id:
-                        _allocation_error(errors, row_no, "advisorName", "当前已是该指导教师，无需重复分配")
+                    advisor_changed = int(record.advisor_user_id or 0) != int(advisor.id)
                 except AppException as exc:
                     _allocation_error(errors, row_no, "advisorName", exc.message)
 
@@ -1072,6 +1073,8 @@ def allocation_import_dry_run(rows: list[dict], batch_id=None, user=None) -> dic
                 company = _allocation_company(db, name=company_name, credit_code=credit_code)
                 if not company:
                     _allocation_error(errors, row_no, "companyName", "企业未唯一匹配，请核对名称/统一社会信用代码")
+                elif credit_code and company_name and company.name != company_name:
+                    _allocation_error(errors, row_no, "companyName", "企业名称与统一社会信用代码不匹配")
                 elif company.blacklist or company.coop_status == "BLACKLIST":
                     _allocation_error(errors, row_no, "companyName", "黑名单企业不能分配实习学生")
                 elif company.coop_status != "ACTIVE":
@@ -1081,17 +1084,34 @@ def allocation_import_dry_run(rows: list[dict], batch_id=None, user=None) -> dic
                     if not position:
                         _allocation_error(errors, row_no, "positionName", "当前批次/企业下未唯一匹配该岗位")
                     else:
-                        if record.position_id == position.id:
-                            _allocation_error(errors, row_no, "positionName", "学生已分配到该岗位，无需重复分配")
-                        if record.status in ("ONBOARD", "ASSESSING"):
+                        position_changed = int(record.position_id or 0) != int(position.id)
+                        if position_changed and record.status in ("ONBOARD", "ASSESSING"):
                             _allocation_error(errors, row_no, "positionName", "学生已上岗/考核，换岗必须走正式变更审批")
-                        if position.status != "PUBLISHED":
+                        if position_changed and position.status != "PUBLISHED":
                             _allocation_error(errors, row_no, "positionName", f"岗位不是已上架状态（当前 {position.status}）")
-                        resolved_positions[int(position.id)] = position
-                        position_demand[int(position.id)] = position_demand.get(int(position.id), 0) + 1
+                        if position_changed and position.status == "PUBLISHED":
+                            from app.modules.internship.services.internship_position_rights import (
+                                evaluate_position_publishability,
+                            )
+                            rights = evaluate_position_publishability(
+                                position, company, batch, student, operation="ASSIGN", db=db)
+                            if not rights["passed"]:
+                                reasons = [
+                                    item.get("reason") or item.get("label") or item.get("code")
+                                    for item in [*(rights.get("blockers") or []), *(rights.get("unknowns") or [])]
+                                ]
+                                _allocation_error(
+                                    errors, row_no, "positionName",
+                                    "岗位劳动权益不满足分配条件：" + "；".join(str(x) for x in reasons if x),
+                                )
+                            resolved_positions[int(position.id)] = position
+                            position_demand[int(position.id)] = position_demand.get(int(position.id), 0) + 1
 
             if not any(e["rowNo"] == row_no for e in errors):
-                valid += 1
+                if not advisor_changed and not position_changed:
+                    _allocation_error(errors, row_no, "studentNo", "指导教师和企业岗位均未变化，无需重复导入")
+                else:
+                    valid += 1
 
         for position_id, demand in position_demand.items():
             position = resolved_positions[position_id]
@@ -1169,13 +1189,12 @@ def allocation_import_confirm(rows: list[dict], batch_id=None, user=None) -> dic
             advisor_name = str(row.get("advisorName") or "").strip()
             if advisor_name:
                 advisor = _advisor(db, advisor_name=advisor_name)
-                if record.advisor_user_id == advisor.id:
-                    raise AppException("DATA_CONFLICT", f"{student_no} 的指导教师已被其他操作更新")
-                assign_advisor_in_tx(
-                    db, record, advisor.id, str(row.get("remark") or "").strip(),
-                    user=user, expected_version=int(record.version or 0),
-                )
-                advisor_count += 1
+                if int(record.advisor_user_id or 0) != int(advisor.id):
+                    assign_advisor_in_tx(
+                        db, record, advisor.id, str(row.get("remark") or "").strip(),
+                        user=user, expected_version=int(record.version or 0),
+                    )
+                    advisor_count += 1
 
             position_name = str(row.get("positionName") or "").strip()
             company_name = str(row.get("companyName") or "").strip()
@@ -1187,11 +1206,12 @@ def allocation_import_confirm(rows: list[dict], batch_id=None, user=None) -> dic
                 position = _allocation_position(db, batch.id, company.id, position_name)
                 if not position:
                     raise AppException("DATA_CONFLICT", f"{student_no} 的岗位在确认导入时已变化")
-                _assert_direct_position_change_allowed(record)
-                assign_position_in_tx(
-                    db, record, position.id, int(record.version or 0), user=user,
-                )
-                position_count += 1
+                if int(record.position_id or 0) != int(position.id):
+                    _assert_direct_position_change_allowed(record)
+                    assign_position_in_tx(
+                        db, record, position.id, int(record.version or 0), user=user,
+                    )
+                    position_count += 1
 
             processed += 1
             _trail(db, record.id, "ALLOCATION_IMPORT", {
