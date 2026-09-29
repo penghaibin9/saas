@@ -90,7 +90,7 @@ export default {
         { v: 'DAILY', l: '日报' }, { v: 'MONTHLY', l: '月报' }, { v: 'SUMMARY', l: '实习总结' }
       ],
       form: { periodKey: '', content: '', attachments: [] }, reports: [], receipt: null,
-      rules: { weeklyMinWords: 30, monthlyMinWords: 100, summaryMinWords: 300, maxImages: 9, maxVideos: 3 },
+      rules: { dailyMinWords: 30, weeklyMinWords: 30, monthlyMinWords: 100, summaryMinWords: 300, maxImages: 9, maxVideos: 3 },
       batchId: '', internshipId: '', loadSequence: 0
     }
   },
@@ -105,7 +105,7 @@ export default {
     },
     minimum() {
       return {
-        DAILY: Number(this.rules.weeklyMinWords || 30),
+        DAILY: Number(this.rules.dailyMinWords || 30),
         MONTHLY: Number(this.rules.monthlyMinWords || 100),
         SUMMARY: Number(this.rules.summaryMinWords || 300)
       }[this.reportType] || 30
