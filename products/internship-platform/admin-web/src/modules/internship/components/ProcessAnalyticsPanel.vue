@@ -73,7 +73,7 @@
           :rows="items"
           row-key="rowKey"
         >
-          <template v-for="column in rateColumns" #[`cell-${column.key}]="{ row }" :key="`rate-${column.key}`">
+          <template v-for="column in rateColumns" #[`cell-${column.key}`]="{ row }" :key="`rate-${column.key}`">
             <span>{{ formatRate(row[column.key]) }}</span>
           </template>
           <template #cell-totalScore="{ row }">
