@@ -39,6 +39,9 @@ jobs:
       - name: Install enterprise web dependencies
         working-directory: products/internship-platform/enterprise-web
         run: npm install --no-audit --no-fund
+      - name: Test enterprise web contracts
+        working-directory: products/internship-platform/enterprise-web
+        run: npm test
       - name: Build enterprise web
         working-directory: products/internship-platform/enterprise-web
         run: npm run build
