@@ -134,6 +134,21 @@
       @imported="onImported"
     />
 
+    <AppExcelImportDrawer
+      :key="'allocation-' + scopeEpoch"
+      v-model:visible="allocationImportVisible"
+      title="导入实习分配"
+      show-account-boundary
+      template-name="实习分配导入模板.xlsx"
+      :required-fields="['学号']"
+      :preview-fields="['studentNo', 'advisorName', 'companyName', 'companyCreditCode', 'positionName', 'remark']"
+      :download-template-fn="() => internStudentApi.downloadAllocationImportTemplate()"
+      :upload-fn="(file) => internStudentApi.uploadAllocationImportXlsx(file, this.batchStore.selectedBatchId)"
+      :confirm-fn="({ rows }) => internStudentApi.allocationImportConfirm(rows, this.batchStore.selectedBatchId)"
+      :download-errors-fn="({ rows, errors }) => internStudentApi.downloadAllocationImportErrors(rows, errors)"
+      @imported="onAllocationImported"
+    />
+
   </ModulePageShell>
 </template>
 
@@ -209,6 +224,7 @@ export default {
       advisorVisible: false, advisorRow: null, advisorAssignmentUserId: '', advisorAssignmentReason: '', advisorError: '',
       advisorLoading: false, advisorLoadError: '', advisorSequence: 0,
       importVisible: false,
+      allocationImportVisible: false,
       tableMode: 'compact',
       selectedFullColumnKeys: [...DEFAULT_FULL_KEYS]
     }
@@ -261,9 +277,12 @@ export default {
         { key: 'create', label: '学生建档', variant: 'primary',
           disabled: denyManage || denyBatch,
           disabledReason: denyManage ? '无学生建档权限' : batchReason },
-        { key: 'import', label: '导入 Excel',
+        { key: 'import', label: '导入学生',
           disabled: denyManage || denyBatch,
           disabledReason: denyManage ? '无学生导入权限' : batchReason },
+        { key: 'allocationImport', label: '导入分配',
+          disabled: denyManage || !this.batchStore.selectedBatchId,
+          disabledReason: denyManage ? '无实习分配权限' : '请先选择实习批次' },
         { key: 'insurance', label: '保险核验', variant: 'ghost', disabled: !this.canInsuranceView, disabledReason: '无保险查看权限' }
       ]
     },
@@ -291,7 +310,7 @@ export default {
     resetScope() {
       this.scopeEpoch++; this.loadSequence++; this.submitting = false
       this.advisorSequence++; this.advisorLoading = false; this.advisorLoadError = ''
-      this.createVisible = false; this.advisorVisible = false; this.importVisible = false
+      this.createVisible = false; this.advisorVisible = false; this.importVisible = false; this.allocationImportVisible = false
       this.cform = { studentId: '', advisorUserId: '', remark: '' }; this.cError = ''
       this.advisorRow = null; this.advisorAssignmentUserId = ''; this.advisorAssignmentReason = ''; this.advisorError = ''; this.advisorConflict = false
       this.rows = []; this.total = 0
@@ -341,6 +360,12 @@ export default {
     },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 人（脱敏 + 水印，已写审计）`) },
     onImported(data) { toast.success(`已导入 ${data.created || 0} 人`); this.load() },
+    onAllocationImported(data) {
+      toast.success(
+        `分配导入完成：处理 ${data.processed || 0} 人，导师 ${data.advisorAssigned || 0} 人，岗位 ${data.positionAssigned || 0} 人`
+      )
+      this.load()
+    },
     async load() {
       const seq = ++this.loadSequence
       this.rows = []; this.total = 0
@@ -374,7 +399,7 @@ export default {
         this.$router.push({ path: '/admin/internship/insurance', query: this.batchStore.withBatchQuery({}) })
         return
       }
-      if ((key === 'create' || key === 'import') && !this.canStudentManage) return toast.error('无学生管理权限')
+      if ((key === 'create' || key === 'import' || key === 'allocationImport') && !this.canStudentManage) return toast.error('无学生管理权限')
       if ((key === 'create' || key === 'import') && !this.canWriteBatch) {
         return toast.error(!this.batchStore.selectedBatchId ? '请先选择实习批次' : '当前批次不可新增学生')
       }
@@ -383,6 +408,10 @@ export default {
         this.createVisible = true
       }
       if (key === 'import') { this.importVisible = true }
+      if (key === 'allocationImport') {
+        if (!this.batchStore.selectedBatchId) return toast.error('请先选择实习批次')
+        this.allocationImportVisible = true
+      }
     },
     async submitCreate() {
       if (this.submitting || !this.canStudentManage || !this.canWriteBatch) return
