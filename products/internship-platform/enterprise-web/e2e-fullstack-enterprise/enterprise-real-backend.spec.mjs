@@ -107,4 +107,40 @@ test('enterprise HR logs into real MySQL context and enters recruitment home', a
   await expect(page.getByRole('heading', { name: '评价任务' })).toBeVisible()
   await expect(page.getByText('企业协同学生王强 · 智能制造产线运维实习生')).toBeVisible()
   await page.screenshot({ path: 'test-results-fullstack-enterprise/enterprise-real-evaluations.png', fullPage: true })
+
+  await page.getByRole('button', { name: '开始评价' }).click()
+  const dialog = page.locator('.dialog')
+  await expect(dialog).toBeVisible()
+  await dialog.locator('.scores label').filter({ hasText: '出勤' }).locator('input').fill('95')
+  await dialog.locator('.scores label').filter({ hasText: '技能' }).locator('input').fill('92')
+  await dialog.locator('.scores label').filter({ hasText: '态度' }).locator('input').fill('96')
+  await dialog.locator('.scores label').filter({ hasText: '协作' }).locator('input').fill('94')
+  await dialog.locator('.scores label').filter({ hasText: '安全纪律' }).locator('input').fill('98')
+  await dialog.locator('textarea').fill('学生在智能制造产线实习期间表现稳定，能够遵守安全规范并完成岗位任务。')
+  await dialog.getByText('建议后续录用 / 留用').locator('input').check()
+
+  const submitResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/enterprise-portal/evaluation-tasks/88301/submit' &&
+    r.request().method() === 'POST')
+  const refreshedEvaluations = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/enterprise-portal/evaluation-tasks' &&
+    r.request().method() === 'GET')
+
+  await dialog.getByRole('button', { name: '提交企业评价' }).click()
+  const submitted = await payload(
+    submitResponse,
+    '/api/v1/internship/enterprise-portal/evaluation-tasks/88301/submit',
+  )
+  expect(submitted.sourceType).toBe('ENTERPRISE_ONLINE')
+  expect(submitted.placementSnapshotId).toBe('88311')
+  expect(submitted.reviewStatus).toBe('PENDING')
+  expect(submitted.internshipId).toBe('88301')
+
+  const afterSubmit = await payload(
+    refreshedEvaluations,
+    '/api/v1/internship/enterprise-portal/evaluation-tasks',
+  )
+  expect(afterSubmit.total).toBe(0)
+  await expect(page.getByText('企业评价已提交学校审核')).toBeVisible()
+  await page.screenshot({ path: 'test-results-fullstack-enterprise/enterprise-real-evaluation-submitted.png', fullPage: true })
 })
