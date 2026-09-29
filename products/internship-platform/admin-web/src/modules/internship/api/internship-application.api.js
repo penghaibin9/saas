@@ -39,12 +39,13 @@ export const internshipApplicationApi = {
     }
   },
   getDetail(id) { return call(() => request(`/internship/applications/${id}`)) },
-  review(id, { action, comment = '', expectedVersion, version, recordExpectedVersion, recordVersion } = {}) {
+  review(id, { action, comment = '', expectedVersion, version, recordExpectedVersion, recordVersion, batchId } = {}) {
     return call(() => request(`/internship/applications/${id}/review`, {
       method: 'POST',
       body: {
         action, comment, expectedVersion: expectedVersion ?? version,
-        recordExpectedVersion: recordExpectedVersion ?? recordVersion
+        recordExpectedVersion: recordExpectedVersion ?? recordVersion,
+        batchId
       }
     }))
   }
