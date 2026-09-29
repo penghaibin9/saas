@@ -17,6 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
 
 from app.config import settings
+from app.core.context import set_current_user, set_tenant
 from app.core.exceptions import AppException, unauthorized
 from app.core.response import success
 from app.core.security import create_access_token, decode_token, verify_password
@@ -218,6 +219,11 @@ def browser_login(
     try:
         tenant, user, role_code, role_name = _resolve_account(db, body)
         channel = _channel_from_client_type(body.clientType)
+        set_tenant({
+            "tenantId": str(tenant.id),
+            "tenantCode": tenant.tenant_code,
+            "schoolName": tenant.school_name,
+        })
         claims = _claims(
             tenant=tenant,
             user=user,
@@ -226,6 +232,7 @@ def browser_login(
             channel=channel,
             session_id=tab_id,
         )
+        set_current_user(dict(claims))
         access_token = create_access_token(claims)
         refresh_token = issue_refresh(claims)
         _set_refresh_cookie(response, refresh_token, channel, tab_id)
