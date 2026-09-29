@@ -89,7 +89,14 @@ Run：`36578706708`，结果：**success**。
 
 因此 PC 端当前允许表述：
 
-> 管理员 PC、指导教师 PC、学生 PC 已完成真实 MySQL/FastAPI/Chromium 工程级端到端验收；企业 Portal 已完成独立 Chromium 主链证据，但真实 MySQL 企业账号全栈浏览器证据仍需继续补齐。
+> 管理员 PC、指导教师 PC、学生 PC 已完成真实 MySQL/FastAPI/Chromium 工程级端到端验收；企业 Portal 也已完成真实 MySQL/FastAPI/Chromium 工程级全栈验收。
+
+企业 Portal 真后端证据进一步包括：
+
+- `Internship Standalone Fullstack Enterprise Browser` / Run `36587566385`：真实企业账号登录、招聘季、企业首页/资料、真实岗位列表，**success**。
+- Run `36588732900`：在同一真实栈继续打通 `INTERNSHIP_COLLAB` 授权、实习学生、待评价任务，**success**。
+- Run `36589268583`：企业 HR 在 Chromium 中真实填写五项评分和总体评价并提交；随后 MySQL 回查 `t_internship_enterprise_eval` 的学生/批次/企业/岗位/PlacementSnapshot、五项分数、`ENTERPRISE_ONLINE` 来源、`SUBMITTED/PENDING` 状态，并回查 `ENTERPRISE_ONLINE_SUBMIT` 审计，全部通过，**success**。
+- 上述企业全栈链不使用 API route mock。
 
 仍不能把上述 CI/UAT 同规格证据表述为“校方正式数据已签字验收”。
 
@@ -97,7 +104,7 @@ Run：`36578706708`，结果：**success**。
 
 接下来不再横向新增 G01～G18 功能，优先补“真实后端/现场方式证据”：
 
-1. 企业 Portal 真实 MySQL/FastAPI 浏览器账号链；
+1. ~~企业 Portal 真实 MySQL/FastAPI 浏览器账号链；~~ 已完成工程级全栈验收；
 2. 学生/教师微信开发者工具与真机；
 3. 外部企业登记、监管平台、学校统一认证/门户；
 4. 正式 G19 / G20 / 15 日试运行与最终签字。
