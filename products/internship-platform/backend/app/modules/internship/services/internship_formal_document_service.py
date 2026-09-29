@@ -471,6 +471,65 @@ def _view(row: InternshipFormalDocument) -> dict:
     }
 
 
+def document_readiness(user: dict, internship_id) -> dict:
+    """G17 admin preflight: expose real blockers instead of failing after a generate click."""
+    with session() as db:
+        record = assert_internship_record_scope(
+            db, internship_id, user, "查看正式文书生成条件")
+        latest_rows = db.scalars(select(InternshipFormalDocument).where(
+            InternshipFormalDocument.tenant_id == _tid(),
+            InternshipFormalDocument.internship_id == record.id,
+            InternshipFormalDocument.is_deleted.is_(False),
+        ).order_by(
+            InternshipFormalDocument.document_type,
+            InternshipFormalDocument.document_version.desc(),
+            InternshipFormalDocument.id.desc(),
+        )).all()
+        latest_by_type = {}
+        for row in latest_rows:
+            latest_by_type.setdefault(row.document_type, row)
+
+        items = []
+        for document_type, label in SUPPORTED_DOCUMENTS.items():
+            latest = latest_by_type.get(document_type)
+            try:
+                snapshot = build_source_snapshot(db, record, document_type)
+                digest = source_hash(snapshot)
+                ready = True
+                reason = ""
+                up_to_date = bool(
+                    latest
+                    and latest.status == "GENERATED"
+                    and latest.file_id
+                    and latest.source_hash == digest
+                )
+            except AppException as exc:
+                digest = ""
+                ready = False
+                up_to_date = False
+                reason = str(exc.message or "当前正式业务事实尚不满足生成条件")
+            items.append({
+                "documentType": document_type,
+                "documentTypeLabel": label,
+                "ready": ready,
+                "reason": reason,
+                "currentSourceHash": digest,
+                "latestDocumentId": str(latest.id) if latest else "",
+                "latestVersion": int(latest.document_version or 0) if latest else 0,
+                "latestStatus": latest.status if latest else "",
+                "latestFileId": latest.file_id if latest else "",
+                "latestFileSha256": latest.file_sha256 if latest else "",
+                "upToDate": up_to_date,
+            })
+
+        return {
+            "internshipId": str(record.id),
+            "studentId": str(record.student_id),
+            "batchId": str(record.batch_id or ""),
+            "items": items,
+        }
+
+
 def list_documents(user: dict, internship_id) -> list[dict]:
     with session() as db:
         record = assert_internship_record_scope(db, internship_id, user, "查看正式文书")
