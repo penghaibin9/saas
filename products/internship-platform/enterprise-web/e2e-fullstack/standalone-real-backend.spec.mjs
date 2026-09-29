@@ -49,6 +49,41 @@ test('admin teacher PC uses real MySQL auth RBAC and internship APIs end to end'
   await page.screenshot({ path: 'test-results-fullstack-pc/admin-real-backend.png', fullPage: true })
 })
 
+test('internship mentor PC uses real MySQL auth and read-only batch context end to end', async ({ page }) => {
+  await page.goto('http://127.0.0.1:5176/login')
+  await page.getByLabel('学校编码').fill('YIYANG-FULLSTACK')
+  await page.getByLabel('账号').fill('yiyang.fullstack.mentor')
+  await page.getByLabel('密码').fill('Fullstack-Mentor-2026!')
+
+  const loginResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/auth/browser-login' && r.request().method() === 'POST')
+  const rbacResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/rbac/current-context' && r.request().method() === 'GET')
+  const batchesResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/batches' && r.request().method() === 'GET')
+  const dashboardResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/dashboard' && r.request().method() === 'GET')
+
+  await page.getByRole('button', { name: '登录' }).click()
+
+  const login = await expectApiOk(loginResponse, '/api/v1/auth/browser-login')
+  expect(login.currentRole.roleCode).toBe('INTERN_MENTOR')
+
+  const rbac = await expectApiOk(rbacResponse, '/api/v1/rbac/current-context')
+  expect(rbac.permissionPatterns).toContain('internship.batch.view')
+  expect(rbac.permissionPatterns).toContain('internship.dashboard.view')
+  expect(rbac.permissionPatterns).not.toContain('internship.batch.manage')
+
+  const batches = await expectApiOk(batchesResponse, '/api/v1/internship/batches')
+  expect(batches.total).toBe(1)
+  await expectApiOk(dashboardResponse, '/api/v1/internship/dashboard')
+
+  await expect(page).toHaveURL(/\/admin\/internship(?:\?|$)/)
+  await expect(page.getByRole('heading', { name: '今日工作' })).toBeVisible()
+  await expect(page.locator('select option:checked')).toContainText('2026岗位实习')
+  await page.screenshot({ path: 'test-results-fullstack-pc/mentor-real-backend.png', fullPage: true })
+})
+
 test('student PC uses real MySQL auth portal config and internship homepage end to end', async ({ page }) => {
   await page.goto('http://127.0.0.1:5201/student/login')
   await expect(page.getByRole('heading', { name: '学生端登录' })).toBeVisible()
