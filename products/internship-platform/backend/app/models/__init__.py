@@ -24,7 +24,7 @@ from app.models.internship import (
     InternshipBatch, InternshipBatchParticipant, InternshipBatchPlan, InternshipBatchScopeRule,
     InternshipChangeRequest, InternshipCheckin, InternshipCheckinExemption, InternshipCommunicationLog, InternshipComplaint,
     InternshipEnterpriseEval, InternshipFinalScore, InternshipGuidance, InternshipInsurance,
-    InternshipLeave, InternshipMakeup, InternshipPlanAck, InternshipPlanTaskProgress,
+    InternshipLeave, InternshipMakeup, InternshipPlanAck, InternshipPlanAssignment, InternshipPlanTaskProgress,
     InternshipProcessReport, InternshipRecord, InternshipScoreConfig, InternshipStudentEval,
     InternshipVisit, InternshipVisitPlan, RiskRecord, WeeklyReport,
 )
