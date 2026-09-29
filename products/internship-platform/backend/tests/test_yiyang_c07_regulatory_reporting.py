@@ -132,10 +132,10 @@ def test_g18_authoritative_teacher_term_and_rights_sources():
 def test_g18_file_evidence_model_contract():
     from app.models import InternshipRegulatoryTask, InternshipRegulatoryTemplateVersion
 
-    template_columns = InternshipRegulatoryTemplateVersion.__table__.c
-    task_columns = InternshipRegulatoryTask.__table__.c
-    assert {"source_file_id", "source_file_name", "source_file_sha256"} <= set(template_columns)
-    assert {"output_file_id", "output_sha256", "error_file_id", "error_sha256"} <= set(task_columns)
+    template_columns = set(InternshipRegulatoryTemplateVersion.__table__.c.keys())
+    task_columns = set(InternshipRegulatoryTask.__table__.c.keys())
+    assert {"source_file_id", "source_file_name", "source_file_sha256"} <= template_columns
+    assert {"output_file_id", "output_sha256", "error_file_id", "error_sha256"} <= task_columns
 
 
 def test_g18_school_confirmed_template_requires_real_source_file(monkeypatch):
