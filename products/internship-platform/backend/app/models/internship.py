@@ -724,6 +724,43 @@ class InternshipSupportSession(PKMixin, TenantMixin, CommonMixin, Base):
 
 
 
+class InternshipPlanAssignment(PKMixin, TenantMixin, CommonMixin, Base):
+    """AP04 学生↔正式实习计划多方案分配。
+
+    不替代 InternshipRecord，也不复制计划正文；一条正式实习记录可关联多份已发布
+    InternshipBatchPlan。PRIMARY 为本批次主计划，MANUAL 为管理员追加方案。
+    """
+    __tablename__ = "t_internship_plan_assignment"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "internship_id", "plan_id",
+            name="uk_ix_plan_assignment_internship_plan",
+        ),
+        Index(
+            "ix_ix_plan_assignment_active",
+            "tenant_id", "internship_id", "status", "is_deleted",
+        ),
+    )
+
+    internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    plan_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    plan_batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    assignment_source: Mapped[str] = mapped_column(
+        String(30), nullable=False, default="MANUAL",
+        comment="PRIMARY_AUTO/MANUAL/IMPORT",
+    )
+    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="ACTIVE",
+        comment="ACTIVE/REMOVED",
+    )
+    assigned_by_name: Mapped[str | None] = mapped_column(String(100))
+    assigned_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime)
+    remove_reason: Mapped[str | None] = mapped_column(String(500))
+
+
 class InternshipPlanAck(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_plan_ack 计划书学生确认回执（迁移 0038）。一学生一计划一条。"""
     __tablename__ = "t_internship_plan_ack"
