@@ -8,7 +8,8 @@ from sqlalchemy import func, select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (
     InternshipAuditTrail, InternshipBatch, InternshipBatchPlan, InternshipBatchScopeRule,
-    InternshipPlanAck, InternshipRecord, StudentProfile,
+    InternshipPlanAck, InternshipPlanAssignment, InternshipPlanTaskProgress,
+    InternshipRecord, StudentProfile,
 )
 from app.services import file_service
 from app.services.db_service import _as_id, _iso, _tid, session
@@ -779,17 +780,183 @@ def list_acks(page, page_size, batch_id=None, status=None, keyword=None, user=No
         return items[start:start + page_size], total
 
 
-def student_my_plan(user) -> dict | None:
+def _student_plan_for_record(db, record, plan_id=None, *, lock=False):
+    """Resolve one plan explicitly assigned to this student's canonical internship record.
+
+    Compatibility: legacy/current primary plan may be projected from record.batch_id when old data
+    predates plan-assignment rows.  Any non-primary plan requires an ACTIVE assignment fact.
+    """
+    if not record or not record.batch_id:
+        return None, None
+    assignment = None
+    plan = None
+
+    if plan_id not in (None, ""):
+        try:
+            pid = int(plan_id)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "planId 格式非法") from None
+        aq = select(InternshipPlanAssignment).where(
+            InternshipPlanAssignment.tenant_id == _tid(),
+            InternshipPlanAssignment.internship_id == record.id,
+            InternshipPlanAssignment.plan_id == pid,
+            InternshipPlanAssignment.status == "ACTIVE",
+            InternshipPlanAssignment.is_deleted.is_(False),
+        )
+        assignment = db.scalar(aq.with_for_update() if lock else aq)
+        pq = select(InternshipBatchPlan).where(
+            InternshipBatchPlan.tenant_id == _tid(),
+            InternshipBatchPlan.id == pid,
+            InternshipBatchPlan.status == "PUBLISHED",
+            InternshipBatchPlan.is_deleted.is_(False),
+        )
+        plan = db.scalar(pq.with_for_update() if lock else pq)
+        if not plan:
+            raise AppException("DATA_NOT_FOUND", "实习方案不存在或尚未发布")
+        if not assignment and int(plan.batch_id or 0) != int(record.batch_id or 0):
+            raise AppException("NO_PERMISSION", "该实习方案未分配给当前学生", http_status=403)
+    else:
+        aq = select(InternshipPlanAssignment).where(
+            InternshipPlanAssignment.tenant_id == _tid(),
+            InternshipPlanAssignment.internship_id == record.id,
+            InternshipPlanAssignment.status == "ACTIVE",
+            InternshipPlanAssignment.is_primary.is_(True),
+            InternshipPlanAssignment.is_deleted.is_(False),
+        ).order_by(
+            InternshipPlanAssignment.assigned_at.asc(),
+            InternshipPlanAssignment.id.asc(),
+        )
+        assignment = db.scalar(aq.with_for_update() if lock else aq)
+        if assignment:
+            pq = select(InternshipBatchPlan).where(
+                InternshipBatchPlan.tenant_id == _tid(),
+                InternshipBatchPlan.id == assignment.plan_id,
+                InternshipBatchPlan.status == "PUBLISHED",
+                InternshipBatchPlan.is_deleted.is_(False),
+            )
+            plan = db.scalar(pq.with_for_update() if lock else pq)
+        if not plan:
+            pq = select(InternshipBatchPlan).where(
+                InternshipBatchPlan.tenant_id == _tid(),
+                InternshipBatchPlan.batch_id == record.batch_id,
+                InternshipBatchPlan.status == "PUBLISHED",
+                InternshipBatchPlan.is_deleted.is_(False),
+            )
+            plan = db.scalar(pq.with_for_update() if lock else pq)
+    return plan, assignment
+
+
+def student_assigned_plans(user) -> dict:
     from app.modules.internship.services.internship_agreement_service import _student_record
     with session() as db:
         record, _student = _student_record(db, user)
-        if not record or not record.batch_id:
-            return None
-        plan = db.scalar(select(InternshipBatchPlan).where(
+        if not record:
+            return {"items": [], "total": 0, "primaryPlanId": ""}
+
+        assignments = db.scalars(select(InternshipPlanAssignment).where(
+            InternshipPlanAssignment.tenant_id == _tid(),
+            InternshipPlanAssignment.internship_id == record.id,
+            InternshipPlanAssignment.status == "ACTIVE",
+            InternshipPlanAssignment.is_deleted.is_(False),
+        ).order_by(
+            InternshipPlanAssignment.is_primary.desc(),
+            InternshipPlanAssignment.assigned_at.asc(),
+            InternshipPlanAssignment.id.asc(),
+        )).all()
+
+        rows = []
+        seen_plan_ids = set()
+        for assignment in assignments:
+            plan = db.scalar(select(InternshipBatchPlan).where(
+                InternshipBatchPlan.id == assignment.plan_id,
+                InternshipBatchPlan.tenant_id == _tid(),
+                InternshipBatchPlan.status == "PUBLISHED",
+                InternshipBatchPlan.is_deleted.is_(False),
+            ))
+            if not plan:
+                continue
+            batch = db.get(InternshipBatch, plan.batch_id)
+            ack = db.scalar(select(InternshipPlanAck).where(
+                InternshipPlanAck.tenant_id == _tid(),
+                InternshipPlanAck.plan_id == plan.id,
+                InternshipPlanAck.internship_id == record.id,
+                InternshipPlanAck.is_deleted.is_(False),
+            ))
+            progress = db.scalars(select(InternshipPlanTaskProgress).where(
+                InternshipPlanTaskProgress.tenant_id == _tid(),
+                InternshipPlanTaskProgress.plan_id == plan.id,
+                InternshipPlanTaskProgress.internship_id == record.id,
+                InternshipPlanTaskProgress.is_deleted.is_(False),
+            )).all()
+            approved = sum(1 for item in progress if item.status == "APPROVED")
+            rows.append({
+                "assignmentId": str(assignment.id),
+                "planId": str(plan.id),
+                "planVersion": int(plan.version or 0),
+                "planTitle": plan.title,
+                "planBatchId": str(plan.batch_id),
+                "batchName": batch.batch_name if batch else "",
+                "internshipType": plan.internship_type or "",
+                "internshipTypeLabel": PLAN_TYPES.get(plan.internship_type, plan.internship_type or ""),
+                "isPrimary": bool(assignment.is_primary),
+                "ackStatus": ack.status if ack else "PENDING",
+                "ackStatusLabel": ACK_LABEL.get(ack.status if ack else "PENDING"),
+                "taskCount": len(progress),
+                "approvedTaskCount": approved,
+                "taskRate": round(approved * 100 / len(progress)) if progress else 0,
+            })
+            seen_plan_ids.add(int(plan.id))
+
+        # Legacy compatibility before ix0021 backfill has run.
+        primary = db.scalar(select(InternshipBatchPlan).where(
             InternshipBatchPlan.tenant_id == _tid(),
             InternshipBatchPlan.batch_id == record.batch_id,
             InternshipBatchPlan.status == "PUBLISHED",
-            InternshipBatchPlan.is_deleted.is_(False)))
+            InternshipBatchPlan.is_deleted.is_(False),
+        ))
+        if primary and int(primary.id) not in seen_plan_ids:
+            batch = db.get(InternshipBatch, primary.batch_id)
+            ack = db.scalar(select(InternshipPlanAck).where(
+                InternshipPlanAck.tenant_id == _tid(),
+                InternshipPlanAck.plan_id == primary.id,
+                InternshipPlanAck.internship_id == record.id,
+                InternshipPlanAck.is_deleted.is_(False),
+            ))
+            progress = db.scalars(select(InternshipPlanTaskProgress).where(
+                InternshipPlanTaskProgress.tenant_id == _tid(),
+                InternshipPlanTaskProgress.plan_id == primary.id,
+                InternshipPlanTaskProgress.internship_id == record.id,
+                InternshipPlanTaskProgress.is_deleted.is_(False),
+            )).all()
+            approved = sum(1 for item in progress if item.status == "APPROVED")
+            rows.insert(0, {
+                "assignmentId": "",
+                "planId": str(primary.id),
+                "planVersion": int(primary.version or 0),
+                "planTitle": primary.title,
+                "planBatchId": str(primary.batch_id),
+                "batchName": batch.batch_name if batch else "",
+                "internshipType": primary.internship_type or "",
+                "internshipTypeLabel": PLAN_TYPES.get(primary.internship_type, primary.internship_type or ""),
+                "isPrimary": True,
+                "ackStatus": ack.status if ack else "PENDING",
+                "ackStatusLabel": ACK_LABEL.get(ack.status if ack else "PENDING"),
+                "taskCount": len(progress),
+                "approvedTaskCount": approved,
+                "taskRate": round(approved * 100 / len(progress)) if progress else 0,
+            })
+
+        primary_id = next((item["planId"] for item in rows if item["isPrimary"]), "")
+        return {"items": rows, "total": len(rows), "primaryPlanId": primary_id}
+
+
+def student_my_plan(user, plan_id=None) -> dict | None:
+    from app.modules.internship.services.internship_agreement_service import _student_record
+    with session() as db:
+        record, _student = _student_record(db, user)
+        if not record:
+            return None
+        plan, assignment = _student_plan_for_record(db, record, plan_id)
         if not plan:
             return None
         ack = db.scalar(select(InternshipPlanAck).where(
@@ -797,7 +964,6 @@ def student_my_plan(user) -> dict | None:
             InternshipPlanAck.plan_id == plan.id,
             InternshipPlanAck.internship_id == record.id,
             InternshipPlanAck.is_deleted.is_(False)))
-        from app.models import InternshipPlanTaskProgress
         from app.modules.internship.services.internship_plan_task_service import _merge_tasks_with_progress
         progress_rows = db.scalars(select(InternshipPlanTaskProgress).where(
             InternshipPlanTaskProgress.tenant_id == _tid(),
@@ -809,6 +975,9 @@ def student_my_plan(user) -> dict | None:
         approved = sum(1 for task in tasks if task.get("progressStatus") == "APPROVED")
         return {
             **_plan_row(plan),
+            "assignmentId": str(assignment.id) if assignment else "",
+            "isPrimary": bool(assignment.is_primary) if assignment else int(plan.batch_id) == int(record.batch_id),
+            "planBatchId": str(plan.batch_id),
             "ackId": str(ack.id) if ack else "",
             "ackStatus": ack.status if ack else "PENDING",
             "ackStatusLabel": ACK_LABEL.get(ack.status if ack else "PENDING"),
@@ -834,13 +1003,10 @@ def student_acknowledge(user, body=None) -> dict:
                 db, user, payload, for_write=True)
         else:
             record, student = _student_record(db, user, for_write=True)
-        plan = db.scalar(select(InternshipBatchPlan).where(
-            InternshipBatchPlan.tenant_id == _tid(),
-            InternshipBatchPlan.batch_id == record.batch_id,
-            InternshipBatchPlan.status == "PUBLISHED",
-            InternshipBatchPlan.is_deleted.is_(False)).with_for_update())
+        plan, _assignment = _student_plan_for_record(
+            db, record, payload.get("planId"), lock=True)
         if not plan:
-            raise AppException("DATA_NOT_FOUND", "当前批次没有已发布实习计划")
+            raise AppException("DATA_NOT_FOUND", "当前没有可确认的已发布实习方案")
         ack = db.scalar(select(InternshipPlanAck).where(
             InternshipPlanAck.tenant_id == _tid(),
             InternshipPlanAck.plan_id == plan.id,
@@ -862,6 +1028,8 @@ def student_acknowledge(user, body=None) -> dict:
         ack.version = int(ack.version or 0) + 1
         _trail(db, plan.id, "STUDENT_ACK_VERSIONED", {
             "studentNo": student.student_no if student else "",
+            "planId": str(plan.id),
+            "planBatchId": str(plan.batch_id),
             "planVersion": int(plan.version or 0),
             "newAckVersion": int(ack.version or 0),
         }, _op_name(user))
