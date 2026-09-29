@@ -857,6 +857,7 @@ def enterprise_stats(user=Depends(require_permission("internship.enterprise.view
 
 @router.post("/enterprises/import/dry-run", summary="企业库导入·预校验（不写库）")
 def enterprise_import_dry_run(body: EnterpriseImport, user=Depends(require_permission("internship.enterprise.manage"))):
+    svc.assert_admin_tenant(user, "企业库 Excel 导入")
     return success(ent.import_dry_run(body.rows))
 
 
@@ -872,6 +873,7 @@ def enterprise_import_template(user=Depends(require_permission("internship.enter
 
 @router.post("/enterprises/import/xlsx", summary="企业库导入·上传 Excel 解析+预校验（不写库，返回行数据供确认）")
 async def enterprise_import_xlsx(file: UploadFile = File(...), user=Depends(require_permission("internship.enterprise.manage"))):
+    svc.assert_admin_tenant(user, "企业库 Excel 导入")
     content = await read_safe_xlsx_upload(file)
     rows = ent.import_read(content)          # 底座表头映射
     dry = ent.import_dry_run(rows)           # 底座统一预校验
@@ -886,6 +888,7 @@ def enterprise_import_errors_xlsx(body: ImportErrorsExport, user=Depends(require
 
 @router.post("/enterprises/import/confirm", summary="企业库导入·确认（整批事务，预校验须全通过）")
 def enterprise_import_confirm(body: EnterpriseImport, user=Depends(require_permission("internship.enterprise.manage"))):
+    svc.assert_admin_tenant(user, "企业库 Excel 导入")
     result = ent.import_confirm(body.rows)
     audit_log.record("导入企业库", "internship-enterprise:import", detail=result)
     return success(result, message="导入完成")
