@@ -78,7 +78,7 @@ jobs:
           grep -q "procurementMinimumVus: 5000" products/internship-platform/load/g20_internship.k6.js
           grep -q "G20_REAL_RUN_ACK" products/internship-platform/load/g20_internship.k6.js
           grep -q "SMOKE_ONLY" products/internship-platform/scripts/g20_validate_evidence.py
-          echo "Tooling contract passed. This job does NOT execute or claim the real 5000-VU G20 acceptance run."
+          echo "Tooling contract passed, including formal-load identity-pool qualification. This job does NOT execute or claim the real 5000-VU G20 acceptance run."
 
   runtime-readiness:
     name: C09 MySQL 8.4 Redis readiness
