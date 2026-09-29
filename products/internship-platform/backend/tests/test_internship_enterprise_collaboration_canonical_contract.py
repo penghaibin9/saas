@@ -56,8 +56,9 @@ def test_formal_application_owns_three_slots_and_intention_stays_separate():
     ) in uniques
 
     save_source = inspect.getsource(internship_application_service.save_my)
-    assert 'volunteer = 0 if app_type == "SELF_ARRANGED"' in save_source
-    assert "volunteer not in (1, 2, 3)" in save_source
+    assert 'if app_type == "SELF_ARRANGED":' in save_source
+    assert "volunteer = 0" in save_source
+    assert 'if app_type == "POSITION" and volunteer not in (1, 2, 3):' in save_source
 
 
 def test_school_position_approval_must_land_through_existing_assignment_authority():
