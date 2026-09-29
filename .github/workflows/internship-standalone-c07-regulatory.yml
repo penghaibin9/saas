@@ -6,6 +6,7 @@ on:
     paths:
       - "products/internship-platform/backend/app/models/internship_regulatory_reporting.py"
       - "products/internship-platform/backend/alembic/versions/0007_yiyang_regulatory_reporting.py"
+      - "products/internship-platform/backend/alembic/versions/0023_yiyang_regulatory_file_evidence.py"
       - "products/internship-platform/backend/app/modules/internship/services/internship_regulatory_reporting_service.py"
       - "products/internship-platform/backend/app/modules/internship/routers/internship_regulatory_reporting.py"
       - "products/internship-platform/backend/app/models/__init__.py"
@@ -51,9 +52,9 @@ jobs:
             products/internship-platform/backend/app/models/internship_regulatory_reporting.py \
             products/internship-platform/backend/app/modules/internship/services/internship_regulatory_reporting_service.py \
             products/internship-platform/backend/app/modules/internship/routers/internship_regulatory_reporting.py
-      - name: Upgrade empty MySQL to ix0007
-        run: alembic -c products/internship-platform/backend/alembic.ini upgrade ix0007
-      - name: Verify C07 database head
+      - name: Upgrade empty MySQL through G18 file evidence
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade ix0023
+      - name: Verify C07/G18 database facts
         run: |
           python - <<'PY'
           import os
@@ -70,9 +71,28 @@ jobs:
               tables = set(db.execute(text(
                   "SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()"
               )).scalars())
-          assert version == "ix0007", version
+              template_columns = set(db.execute(text(
+                  "SELECT column_name FROM information_schema.columns "
+                  "WHERE table_schema=DATABASE() AND table_name='t_internship_regulatory_template_version'"
+              )).scalars())
+              task_columns = set(db.execute(text(
+                  "SELECT column_name FROM information_schema.columns "
+                  "WHERE table_schema=DATABASE() AND table_name='t_internship_regulatory_task'"
+              )).scalars())
+          assert version == "ix0023", version
           assert expected <= tables, sorted(expected - tables)
-          print({"version": version, "tables": sorted(expected)})
+          assert {"source_file_id", "source_file_name", "source_file_sha256"} <= template_columns
+          assert {"output_file_id", "output_sha256", "error_file_id", "error_sha256"} <= task_columns
+          print({
+              "version": version,
+              "tables": sorted(expected),
+              "templateEvidenceColumns": sorted(
+                  {"source_file_id", "source_file_name", "source_file_sha256"} & template_columns
+              ),
+              "taskEvidenceColumns": sorted(
+                  {"output_file_id", "output_sha256", "error_file_id", "error_sha256"} & task_columns
+              ),
+          })
           PY
       - name: Run C07/G18 acceptance only
         run: pytest -q products/internship-platform/backend/tests/test_yiyang_c07_regulatory_reporting.py
