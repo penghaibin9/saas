@@ -306,6 +306,48 @@ def _clean_self_arranged(body: dict, *, require_complete: bool) -> dict:
     }
 
 
+def _clear_exemption_company_snapshot(app: InternshipApplication) -> None:
+    """An exemption is not a company placement; never retain company/position facts on it."""
+    for attr in (
+        "company_name", "position_name", "work_address", "contact_name", "contact_phone",
+        "company_credit_code", "company_principal", "company_scale", "company_phone",
+        "company_email", "company_nature", "company_industry", "company_registered_address",
+        "company_postal_code", "company_province", "company_city", "company_district",
+        "internship_department", "work_content", "enterprise_mentor_name",
+        "enterprise_mentor_phone", "position_category", "work_country", "work_province",
+        "work_city", "work_district", "internship_start_date", "internship_end_date",
+        "internship_mode", "major_match", "agreed_salary", "agreement_file_ids",
+    ):
+        setattr(app, attr, None)
+    app.registry_verification_status = "UNVERIFIED"
+    app.registry_verification_provider = None
+    app.registry_reference = None
+    app.registry_verified_at = None
+
+
+def _bind_application_files(db, app: InternshipApplication, user=None) -> None:
+    """Bind uploaded evidence to the application business object after the row has an id."""
+    from app.services import file_service
+
+    if app.evidence_file_id:
+        file_service.bind_file_biz(
+            app.evidence_file_id,
+            "INTERNSHIP_APPLICATION_EVIDENCE",
+            str(app.id),
+            user=user,
+            db=db,
+        )
+    for file_id in list(app.agreement_file_ids or []):
+        if file_id:
+            file_service.bind_file_biz(
+                file_id,
+                "INTERNSHIP_APPLICATION_AGREEMENT",
+                str(app.id),
+                user=user,
+                db=db,
+            )
+
+
 def _snapshot_body(row: InternshipApplication) -> dict:
     return {
         "companyName": row.company_name,
@@ -569,6 +611,13 @@ def save_my(user: dict, body: dict) -> dict:
             app.position_id = pos.id
             _apply_position_snapshot(app, pos, company)
             app.contact_phone = app.evidence_file_id = None
+        elif app_type == "EXEMPTION":
+            if rec.position_id:
+                raise AppException("DATA_CONFLICT", "已分配校内岗位，请通过正式变更流程处理免实习")
+            app.position_id = None
+            _clear_exemption_company_snapshot(app)
+            for field, value in _clean_exemption(body, require_complete=False).items():
+                setattr(app, field, value)
         else:
             if rec.position_id:
                 raise AppException("DATA_CONFLICT", "已分配校内岗位，请通过实习变更流程申请自主实习")
@@ -585,6 +634,7 @@ def save_my(user: dict, body: dict) -> dict:
         app.reviewed_by_name = app.reviewed_at = app.review_comment = None
         app.version = int(app.version or 0) + 1
         db.flush()
+        _bind_application_files(db, app, user)
         _trail(db, app.id, "SAVE_DRAFT", {"applicationType": app_type, "volunteerNo": app.volunteer_no}, user)
         db.commit()
         return _row(db, app, rec, stu)
@@ -612,6 +662,7 @@ def submit_my(user: dict, app_id) -> dict:
         app.status = "PENDING_REVIEW"
         app.submitted_at = datetime.utcnow()
         app.version = int(app.version or 0) + 1
+        _bind_application_files(db, app, user)
         _trail(db, app.id, "SUBMIT", {"applicationType": app.application_type}, user)
         db.commit()
         return _row(db, app, rec, stu)
