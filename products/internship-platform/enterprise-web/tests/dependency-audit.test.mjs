@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 
-const workflow=fs.readFileSync(new URL('../../.github/workflows/internship-enterprise-portal.yml',import.meta.url),'utf8')
+const workflow=fs.readFileSync(new URL('../../../../.github/workflows/internship-enterprise-portal.yml',import.meta.url),'utf8')
 
 test('A02 targeted workflow enforces locked production dependency audit with evidence',()=>{
   assert.match(workflow,/npm ci --no-audit --no-fund/)
