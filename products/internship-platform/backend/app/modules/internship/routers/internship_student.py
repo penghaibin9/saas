@@ -79,6 +79,80 @@ def assignment_logs(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, 
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/intern-students/allocation-import/template", summary="实习分配导入·下载 Excel 模板")
+def allocation_import_template(user=Depends(require_permission(_P_MANAGE))):
+    data = xlsx_util.build_template_xlsx(
+        svc.ALLOCATION_IMPORT_HEADERS,
+        sample=svc.ALLOCATION_IMPORT_SAMPLE,
+        notes=svc.ALLOCATION_IMPORT_NOTES,
+        required=svc.ALLOCATION_IMPORT_REQUIRED,
+    )
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA, headers={
+        "Content-Disposition": "attachment; filename=internship_allocation_import_template.xlsx"
+    })
+
+
+@router.post("/intern-students/allocation-import/xlsx", summary="实习分配导入·解析并预校验")
+async def allocation_import_xlsx(
+    file: UploadFile = File(...),
+    batchId: Optional[str] = Query(None),
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    content = await read_safe_xlsx_upload(file)
+    rows = xlsx_util.read_xlsx(content, svc.ALLOCATION_IMPORT_HEADER_MAP)
+    return success({
+        **svc.allocation_import_dry_run(rows, batch_id=batchId, user=user),
+        "rows": rows,
+    })
+
+
+@router.post("/intern-students/allocation-import/dry-run", summary="实习分配导入·预校验")
+def allocation_import_dry_run(
+    body: StudentImport,
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    return success(svc.allocation_import_dry_run(
+        body.rows, batch_id=body.batchId, user=user))
+
+
+@router.post("/intern-students/allocation-import/confirm", summary="实习分配导入·确认")
+def allocation_import_confirm(
+    body: StudentImport,
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    result = svc.allocation_import_confirm(
+        body.rows, batch_id=body.batchId, user=user)
+    audit_log.record(
+        "导入实习分配",
+        "internship-student:allocation-import",
+        detail={
+            "rowCount": result.get("processed"),
+            "advisorAssigned": result.get("advisorAssigned"),
+            "positionAssigned": result.get("positionAssigned"),
+            "batchId": result.get("batchId"),
+        },
+    )
+    return success(result, message="实习分配导入完成")
+
+
+@router.post("/intern-students/allocation-import/errors-xlsx", summary="实习分配导入·下载错误行 Excel")
+def allocation_import_errors_xlsx(
+    body: dict = Body(...),
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    rows = body.get("rows") or []
+    errors = body.get("errors") or []
+    data = xlsx_util.build_error_rows_xlsx(
+        svc.ALLOCATION_IMPORT_HEADERS,
+        rows,
+        errors,
+        svc._allocation_row_values_for_error,
+    )
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA, headers={
+        "Content-Disposition": "attachment; filename=internship_allocation_import_errors.xlsx"
+    })
+
+
 @router.post("/intern-students/import/dry-run", summary="按学号建档·预校验（不写库）")
 def intern_import_dry_run(body: StudentImport, user=Depends(require_permission(_P_MANAGE))):
     return success(svc.import_dry_run(body.rows, batch_id=body.batchId))
