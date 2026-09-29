@@ -3,6 +3,13 @@
     <MobilePrivacyGate />
     <MobileGlobalState :state="pageState" @retry="load">
       <view class="page-pad stack" v-if="plan">
+        <view v-if="plans.length > 1" class="card pl__switcher">
+          <text class="pl__label">当前实习方案</text>
+          <picker mode="selector" :range="planLabels" :value="planIndex" :disabled="submitting !== false || uploading !== false" @change="onPlanChange">
+            <view class="pl__picker">{{ planLabels[planIndex] || '选择实习方案' }} <text>▾</text></view>
+          </picker>
+          <text class="pl__switch-note">每份方案独立确认、独立记录任务进度。</text>
+        </view>
         <view class="card">
           <text class="card-title">{{ plan.title }}</text>
           <text class="pl__status">{{ plan.ackStatusLabel }}</text>
@@ -54,6 +61,7 @@
 
 <script>
 import {
+  studentInternshipPlans,
   studentInternshipPlan,
   studentInternshipPlanAcknowledge,
   studentInternshipPlanTasks,
@@ -66,26 +74,51 @@ import { toast } from '@/utils/nav'
 export default {
   data() {
     return {
-      pageState: 'loading', plan: null, tasks: [],
-      context: {},
+      pageState: 'loading', plan: null, plans: [], selectedPlanId: '', planIndex: 0, tasks: [],
+      context: {}, loadSeq: 0,
       summary: { total: 0, approved: 0, rate: 0 },
       submitting: false, uploading: false
     }
   },
+  computed: {
+    planLabels() {
+      return this.plans.map((item) => `${item.isPrimary ? '主方案 · ' : ''}${item.planTitle || '未命名方案'} · ${item.batchName || ''}`)
+    }
+  },
   onLoad() { this.load() },
+  onUnload() { this.loadSeq++ },
   methods: {
-    async load() {
+    async load(preferredPlanId = '') {
+      const seq = ++this.loadSeq
       this.pageState = 'loading'
       try {
-        const [plan, taskData, dashboard] = await Promise.all([
-          studentInternshipPlan(),
-          studentInternshipPlanTasks().catch(() => null),
+        const [planListData, dashboard] = await Promise.all([
+          studentInternshipPlans(),
           studentApi.getInternship()
         ])
+        if (seq !== this.loadSeq) return
         this.context = {
           batchId: dashboard?.batchId || '',
           internshipId: dashboard?.recordId || dashboard?.internshipId || ''
         }
+        this.plans = planListData?.items || []
+        const candidate = String(preferredPlanId || this.selectedPlanId || '')
+        const selected = this.plans.find((item) => String(item.planId) === candidate)
+          || this.plans.find((item) => item.isPrimary)
+          || this.plans[0]
+        this.selectedPlanId = selected ? String(selected.planId) : ''
+        this.planIndex = Math.max(0, this.plans.findIndex((item) => String(item.planId) === this.selectedPlanId))
+        if (!this.selectedPlanId) {
+          this.plan = null
+          this.tasks = []
+          this.pageState = 'empty'
+          return
+        }
+        const [plan, taskData] = await Promise.all([
+          studentInternshipPlan(this.selectedPlanId),
+          studentInternshipPlanTasks(this.selectedPlanId)
+        ])
+        if (seq !== this.loadSeq) return
         this.plan = plan
         const sourceTasks = (taskData && taskData.tasks) || (plan && plan.tasks) || []
         this.tasks = sourceTasks.map((t) => ({
@@ -94,11 +127,19 @@ export default {
           _evidenceFileId: t.evidenceFileId || '',
           _evidenceFileName: t.evidenceFileId ? '已上传凭证' : ''
         }))
-        this.summary = (taskData && taskData.summary) || (plan && plan.taskSummary) || this.summary
+        this.summary = (taskData && taskData.summary) || (plan && plan.taskSummary) || { total: 0, approved: 0, rate: 0 }
         this.pageState = plan ? 'ready' : 'empty'
       } catch (e) {
-        this.pageState = 'error'
+        if (seq === this.loadSeq) this.pageState = 'error'
       }
+    },
+    onPlanChange(e) {
+      const index = Number(e?.detail?.value || 0)
+      const selected = this.plans[index]
+      if (!selected || String(selected.planId) === this.selectedPlanId) return
+      this.planIndex = index
+      this.selectedPlanId = String(selected.planId)
+      this.load(this.selectedPlanId)
     },
     canSubmit(t) {
       if (!this.plan || this.plan.ackStatus !== 'ACKNOWLEDGED') return false
@@ -115,7 +156,7 @@ export default {
           planVersion: this.plan.version || this.plan.planVersion
         })
         toast('已确认当前版本实习计划')
-        await this.load()
+        await this.load(this.selectedPlanId)
       } catch (e) {
         toast((e && e.message) || '计划确认失败，请刷新后重试')
         if (String(e && e.code) === 'DATA_CONFLICT') await this.load()
@@ -151,7 +192,7 @@ export default {
           expectedVersion: t.progressVersion ?? t.version ?? 0
         })
         toast('已提交，等待教师确认')
-        await this.load()
+        await this.load(this.selectedPlanId)
       } catch (e) {
         toast((e && e.message) || '提交失败，请刷新后重试')
         if (String(e && e.code) === 'DATA_CONFLICT') await this.load()
@@ -167,7 +208,7 @@ export default {
 </script>
 
 <style scoped>
-.pl__status { display:block;margin-top:6px;font-size:var(--font-size-sm);color:var(--warning-600); }
+.pl__switcher{display:grid;gap:8px}.pl__picker{padding:10px 12px;border:1px solid var(--border-light);border-radius:8px;background:var(--bg-card);font-size:var(--font-size-sm);color:var(--text-primary)}.pl__switch-note{font-size:11px;color:var(--text-tertiary)}.pl__status { display:block;margin-top:6px;font-size:var(--font-size-sm);color:var(--warning-600); }
 .pl__prog { margin-top:10px;font-size:var(--font-size-sm);color:var(--text-secondary); }
 .pl__bar { height:6px;background:#e2e8f0;border-radius:3px;margin-top:6px;overflow:hidden; }
 .pl__bar-in { height:100%;background:var(--primary-500,#2563eb);border-radius:3px; }
