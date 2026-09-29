@@ -5,7 +5,7 @@
     :subtitle="pageSubtitle"
   >
     <template #actions>
-      <AppExportButton v-if="canExport" :export-fn="exportFn" @exported="onExported">导出名单</AppExportButton>
+      <AppExportButton v-if="canExport" :export-fn="exportFn" @exported="onExported">{{ exportButtonLabel }}</AppExportButton>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
     </template>
 
@@ -42,7 +42,7 @@
         <label class="isl-keyword">学生姓名 / 学号<input v-model="filters.keyword" type="search" placeholder="输入姓名或学号" /></label>
         <label v-for="field in filterFields.slice(1, 3)" :key="field.key">{{ field.label }}<select v-model="filters[field.key]"><option value="">全部</option><option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
         <div class="isl-filter-actions"><button class="mp-btn mp-btn--primary" type="submit">查询</button><button class="mp-btn" type="button" @click="reset">重置</button></div>
-        <details class="isl-more" :open="!!(appliedFilters.destination || appliedFilters.hasPosition)"><summary>更多筛选{{ filters.destination || filters.hasPosition ? ' · 已选择' : '' }}</summary><div><label v-for="field in filterFields.slice(3)" :key="field.key">{{ field.label }}<select v-model="filters[field.key]"><option value="">全部</option><option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option></select></label></div></details>
+        <details class="isl-more" :open="!!(appliedFilters.destination || appliedFilters.hasPosition || appliedFilters.hasAdvisor)"><summary>更多筛选{{ filters.destination || filters.hasPosition || filters.hasAdvisor ? ' · 已选择' : '' }}</summary><div><label v-for="field in filterFields.slice(3)" :key="field.key">{{ field.label }}<select v-model="filters[field.key]"><option value="">全部</option><option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option></select></label></div></details>
       </form>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -150,7 +150,7 @@ import { canCode } from '@/modules/internship/composables/permission'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 
-const EMPTY_FILTERS = () => ({ keyword: '', status: '', eligibility: '', destination: '', hasPosition: '' })
+const EMPTY_FILTERS = () => ({ keyword: '', status: '', eligibility: '', destination: '', hasPosition: '', hasAdvisor: '' })
 
 const PANEL_PRESETS = {
   roster: () => EMPTY_FILTERS(),
@@ -159,7 +159,7 @@ const PANEL_PRESETS = {
   destination: () => ({ ...EMPTY_FILTERS(), destination: 'NONE' }),
   position: () => ({ ...EMPTY_FILTERS(), hasPosition: 'false' }),
   enterprise: () => ({ ...EMPTY_FILTERS(), hasPosition: 'true' }),
-  mentor: () => EMPTY_FILTERS()
+  mentor: () => ({ ...EMPTY_FILTERS(), hasAdvisor: 'false' })
 }
 
 const COMPACT_COLUMNS = [
@@ -239,7 +239,8 @@ export default {
         { key: 'status', label: '实习状态', type: 'select', options: STUDENT_STATUS },
         { key: 'eligibility', label: '实习资格', type: 'select', options: ELIGIBILITY_STATUS },
         { key: 'destination', label: '去向', type: 'select', options: DESTINATION_TYPE },
-        { key: 'hasPosition', label: '岗位', type: 'select', options: [{ value: 'true', label: '已分配' }, { value: 'false', label: '未分配' }] }
+        { key: 'hasPosition', label: '岗位', type: 'select', options: [{ value: 'true', label: '已分配' }, { value: 'false', label: '未分配' }] },
+        { key: 'hasAdvisor', label: '指导教师', type: 'select', options: [{ value: 'true', label: '已分配' }, { value: 'false', label: '未分配' }] }
       ]
     },
     canView() { return this.allowed('internship.student.view') },
@@ -266,8 +267,15 @@ export default {
         { key: 'insurance', label: '保险核验', variant: 'ghost', disabled: !this.canInsuranceView, disabledReason: '无保险查看权限' }
       ]
     },
+    exportButtonLabel() {
+      if (this.activePanel === 'position') return '导出未分配岗位学生'
+      if (this.activePanel === 'mentor') return '导出未分配导师学生'
+      return '导出名单'
+    },
     pageSubtitle() {
-      return this.activePanel === 'mentor' ? '核对本批次指导关系，按实际安排分配或调整校内指导教师。' : this.activePanel === 'eligibility' ? '按批次核对资格，记录认定结果和学生后续安排。' : '查找本批次学生，进入档案核对资格、指导关系与实习安排。'
+      if (this.activePanel === 'mentor') return '仅列出当前批次尚未分配校内指导教师的学生，可逐个分配并一键导出未分配名单。'
+      if (this.activePanel === 'position') return '仅列出当前批次尚未落实岗位的学生，可进入档案分配企业岗位并一键导出未分配名单。'
+      return this.activePanel === 'eligibility' ? '按批次核对资格，记录认定结果和学生后续安排。' : '查找本批次学生，进入档案核对资格、指导关系与实习安排。'
     },
   },
   watch: {
@@ -297,6 +305,7 @@ export default {
         if (Object.hasOwn(q, key)) this.filters[key] = String(q[key] || '')
       }
       if (!['true', 'false'].includes(this.filters.hasPosition)) this.filters.hasPosition = ''
+      if (!['true', 'false'].includes(this.filters.hasAdvisor)) this.filters.hasAdvisor = ''
       this.appliedFilters = { ...this.filters }
       this.page = Math.max(1, Math.floor(Number(q.page) || 1))
       this.load()
@@ -320,6 +329,8 @@ export default {
       const params = { ...this.appliedFilters, batchId: this.batchStore.selectedBatchId }
       if (!params.hasPosition) delete params.hasPosition
       else params.hasPosition = params.hasPosition === 'true'
+      if (!params.hasAdvisor) delete params.hasAdvisor
+      else params.hasAdvisor = params.hasAdvisor === 'true'
       return params
     },
     async exportFn() {
