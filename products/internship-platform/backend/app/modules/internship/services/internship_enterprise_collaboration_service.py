@@ -105,8 +105,6 @@ def _current_placement(db, record: InternshipRecord, context) -> InternshipPlace
 
 
 def _filter_record_status(q, status: str | None):
-    if internship_id is not None:
-        base = base.where(InternshipRecord.id == int(internship_id))
     normalized = str(status or "ALL").upper()
     if normalized in {"", "ALL"}:
         return q
@@ -281,6 +279,8 @@ def list_evaluation_tasks_in_tx(
         .outerjoin(InternshipEnterpriseEval, InternshipEnterpriseEval.id == latest.c.evaluation_id)
         .where(*_record_conditions(context, mentor_contact_id))
     )
+    if internship_id is not None:
+        base = base.where(InternshipRecord.id == int(internship_id))
     normalized = str(status or "ALL").upper()
     if normalized == "PENDING":
         base = base.where(or_(
