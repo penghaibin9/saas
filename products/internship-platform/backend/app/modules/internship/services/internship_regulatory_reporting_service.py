@@ -27,9 +27,11 @@ from app.models import (
     InternshipRegulatoryTaskRow,
     InternshipRegulatoryTemplateVersion,
     InternshipSpecialFiling,
+    InternshipPosition,
     Major,
     SchoolClass,
     StudentProfile,
+    User,
 )
 from app.services.db_service import _as_id, _iso, _tid, session
 
@@ -151,18 +153,18 @@ _FIELD_METADATA = {
     "workCity": ("InternshipApplication.work_city", "—"),
     "internshipStartDate": ("InternshipApplication.internship_start_date；缺失时回退 InternshipRecord.intern_start_date", "日期"),
     "internshipEndDate": ("InternshipApplication.internship_end_date；缺失时回退 InternshipRecord.intern_end_date", "日期"),
-    "advisorEmployeeNo": ("当前 Standalone 正式事实尚未接入指导教师工号；必填时保持校验失败", "—"),
+    "advisorEmployeeNo": ("InternshipRecord.advisor_user_id → User.login_name（教师稳定工号键）", "—"),
     "insured": ("InternshipInsurance.status=VERIFIED", "—"),
     "agreementSigned": ("InternshipRecord.agreement_info 状态解析", "—"),
     "missingDocumentExplanation": ("由保险与三方协议正式事实派生", "—"),
     "majorMatch": ("InternshipApplication.major_match", "—"),
     "highRisk": ("InternshipSpecialFiling(HIGH_RISK) / InternshipRecord.risk_level", "—"),
     "highRiskType": ("InternshipSpecialFiling.filing_type", "—"),
-    "nightOrOvertime": ("当前正式业务事实未接入夜班/加班结论，保持“未知”", "—"),
+    "nightOrOvertime": ("InternshipRecord.position_id → InternshipPosition.night_shift / overtime_allowed", "—"),
     "holidayInternship": ("当前正式业务事实未接入节假日实习结论，保持“未知”", "—"),
     "filingStatus": ("InternshipSpecialFiling 审核状态派生", "—"),
     "className": ("SchoolClass.class_name", "—"),
-    "startTerm": ("当前正式业务事实尚未接入实习起始学期；必填时保持校验失败", "—"),
+    "startTerm": ("InternshipBatch.academic_year + InternshipBatch.term", "—"),
     "positionName": ("InternshipApplication.position_name；缺失时回退 InternshipRecord.position_name", "—"),
     "internshipType": ("InternshipRecord.destination_type", "—"),
     "internshipArrangement": ("InternshipApplication.internship_mode / application_type", "—"),
@@ -329,6 +331,24 @@ def _duration_days(start, end):
         return max(0, (b - a).days + 1)
     except Exception:
         return ""
+
+
+def _batch_start_term(batch) -> str:
+    academic_year = str(getattr(batch, "academic_year", "") or "").strip()
+    term = str(getattr(batch, "term", "") or "").strip()
+    return " ".join(part for part in (academic_year, term) if part)
+
+
+def _night_or_overtime(position) -> str:
+    if position is None:
+        return "未知"
+    night = getattr(position, "night_shift", None)
+    overtime = getattr(position, "overtime_allowed", None)
+    if night is True or overtime is True:
+        return "是"
+    if night is False and overtime is False:
+        return "否"
+    return "未知"
 
 
 def _agreement_signed(record):
@@ -612,6 +632,11 @@ def _approved_application_map(db, record_ids: list[int]) -> dict[int, Internship
 
 
 def _load_facts(db, batch_id: int) -> list[dict]:
+    batch = db.scalar(select(InternshipBatch).where(
+        InternshipBatch.tenant_id == _tid(),
+        InternshipBatch.id == int(batch_id),
+        InternshipBatch.is_deleted.is_(False),
+    ))
     records = db.scalars(select(InternshipRecord).where(
         InternshipRecord.tenant_id == _tid(),
         InternshipRecord.batch_id == batch_id,
@@ -650,6 +675,25 @@ def _load_facts(db, batch_id: int) -> list[dict]:
     )).all():
         filings.setdefault(int(filing.internship_id), []).append(filing)
 
+    advisor_ids = {int(record.advisor_user_id) for record in records if record.advisor_user_id}
+    advisors = ({
+        int(user.id): user for user in db.scalars(select(User).where(
+            User.tenant_id == _tid(),
+            User.id.in_(advisor_ids),
+            User.is_deleted.is_(False),
+        )).all()
+    } if advisor_ids else {})
+
+    position_ids = {int(record.position_id) for record in records if record.position_id}
+    positions = ({
+        int(position.id): position for position in db.scalars(select(InternshipPosition).where(
+            InternshipPosition.tenant_id == _tid(),
+            InternshipPosition.id.in_(position_ids),
+            InternshipPosition.is_deleted.is_(False),
+        )).all()
+    } if position_ids else {})
+
+    start_term = _batch_start_term(batch) if batch else ""
     facts = []
     for record in records:
         student = students.get(int(record.student_id))
@@ -659,6 +703,8 @@ def _load_facts(db, batch_id: int) -> list[dict]:
         insurance = insurances.get(int(record.id))
         major = majors.get(int(student.major_id)) if student.major_id else None
         clazz = classes.get(int(student.class_id)) if student.class_id else None
+        advisor = advisors.get(int(record.advisor_user_id)) if record.advisor_user_id else None
+        position = positions.get(int(record.position_id)) if record.position_id else None
         approved_filings = [x for x in filings.get(int(record.id), []) if x.status == "APPROVED"]
         high = next((x for x in approved_filings if x.filing_type == "HIGH_RISK"), None)
         overseas_filing = next((x for x in approved_filings if x.filing_type == "OVERSEAS"), None)
@@ -701,14 +747,14 @@ def _load_facts(db, batch_id: int) -> list[dict]:
             "workCity": str(getattr(app, "work_city", "") or "") if app else "",
             "internshipStartDate": _date(start),
             "internshipEndDate": _date(end),
-            "advisorEmployeeNo": "",
+            "advisorEmployeeNo": str(advisor.login_name or "") if advisor else "",
             "insured": insured,
             "agreementSigned": agreement,
             "missingDocumentExplanation": "；".join(missing_doc),
             "majorMatch": _yes_no(major_match, unknown=True),
             "highRisk": "是" if (high or record.risk_level == "HIGH") else "否",
             "highRiskType": str(high.filing_type if high else ""),
-            "nightOrOvertime": "未知",
+            "nightOrOvertime": _night_or_overtime(position),
             "holidayInternship": "未知",
             "filingStatus": (
                 "已备案" if approved_filings else
@@ -716,7 +762,7 @@ def _load_facts(db, batch_id: int) -> list[dict]:
                 "无需备案"
             ),
             "className": str(clazz.class_name or "") if clazz else "",
-            "startTerm": "",
+            "startTerm": start_term,
             "positionName": str((getattr(app, "position_name", "") if app else "") or record.position_name or ""),
             "internshipType": str(record.destination_type or ""),
             "internshipArrangement": organization,
