@@ -97,3 +97,33 @@ def test_receipt_is_blocked_without_real_adapter(monkeypatch):
             {"status": "ACCEPTED", "receiptCode": "fake"},
         )
     assert "回执" in str(exc.value)
+
+
+def test_g18_authoritative_teacher_term_and_rights_sources():
+    class Batch:
+        academic_year = "2025-2026"
+        term = "第二学期"
+
+    class SafePosition:
+        night_shift = False
+        overtime_allowed = False
+
+    class NightPosition:
+        night_shift = True
+        overtime_allowed = False
+
+    class UnknownPosition:
+        night_shift = False
+        overtime_allowed = None
+
+    assert svc._batch_start_term(Batch()) == "2025-2026 第二学期"
+    assert svc._night_or_overtime(SafePosition()) == "否"
+    assert svc._night_or_overtime(NightPosition()) == "是"
+    assert svc._night_or_overtime(UnknownPosition()) == "未知"
+    assert svc._night_or_overtime(None) == "未知"
+
+    rp01 = {field["key"]: field for field in svc.baseline_definition("RP01")["fields"]}
+    rp02 = {field["key"]: field for field in svc.baseline_definition("RP02")["fields"]}
+    assert "User.login_name" in rp01["advisorEmployeeNo"]["source"]
+    assert "InternshipPosition.night_shift" in rp01["nightOrOvertime"]["source"]
+    assert "InternshipBatch.academic_year" in rp02["startTerm"]["source"]
