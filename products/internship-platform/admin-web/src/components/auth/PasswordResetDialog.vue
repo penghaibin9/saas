@@ -50,7 +50,7 @@
 import { onBeforeUnmount, onMounted, reactive, toRefs, watch } from 'vue'
 import LoginCaptcha from './LoginCaptcha.vue'
 import { request } from '@/services/http/client'
-import { createResetFlow, resetFlowState } from '../../../../shared/passwordResetFlow.mjs'
+import { createResetFlow, resetFlowState } from '@/security/flows/passwordResetFlow.mjs'
 
 const props = defineProps({ loginName: { type: String, default: '' }, tenantCode: { type: String, default: '' }, identifierType: { type: String, default: 'ACCOUNT' } })
 defineEmits(['close', 'done'])
