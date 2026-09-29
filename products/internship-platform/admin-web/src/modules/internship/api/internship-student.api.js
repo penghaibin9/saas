@@ -42,6 +42,22 @@ export const internStudentApi = {
   createStudent(body) {
     return call(() => request(BASE, { method: 'POST', body }))
   },
+  getPlanAssignments(id) {
+    return call(() => request(`${BASE}/${id}/plan-assignments`))
+  },
+  getPlanOptions(id, keyword = '') {
+    return call(() => request(`${BASE}/${id}/plan-options`, { params: { keyword: keyword || undefined } }))
+  },
+  assignPlans(id, planIds = []) {
+    return call(() => request(`${BASE}/${id}/plan-assignments`, {
+      method: 'POST', body: { planIds }
+    }))
+  },
+  removePlanAssignment(id, assignmentId, { reason, expectedVersion }) {
+    return call(() => request(`${BASE}/${id}/plan-assignments/${assignmentId}/remove`, {
+      method: 'POST', body: { reason, expectedVersion }
+    }))
+  },
   updateStudent(id, body) {
     return call(() => request(`${BASE}/${id}`, { method: 'PUT', body }))
   },
