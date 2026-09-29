@@ -839,14 +839,20 @@ def enterprises(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=2
                 keyword: Optional[str] = None, coopStatus: Optional[str] = None,
                 industry: Optional[str] = None, region: Optional[str] = None,
                 blacklist: Optional[bool] = None, user=Depends(require_permission("internship.enterprise.view"))):
-    items, total = ent.list_enterprises(page, pageSize, keyword=keyword, coop_status=coopStatus,
-                                        industry=industry, region=region, blacklist=blacklist)
+    items, total = ent.list_enterprises(
+        page, pageSize, keyword=keyword, coop_status=coopStatus,
+        industry=industry, region=region, blacklist=blacklist, user=user)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/enterprises/scope-colleges", summary="当前账号可用于企业适用范围的学院")
+def enterprise_scope_colleges(user=Depends(require_permission("internship.enterprise.view"))):
+    return success(ent.enterprise_scope_options(user=user))
 
 
 @router.get("/enterprises/stats", summary="企业库统计（按合作状态/行业/黑名单）")
 def enterprise_stats(user=Depends(require_permission("internship.enterprise.view"))):
-    return success(ent.enterprise_stats())
+    return success(ent.enterprise_stats(user=user))
 
 
 @router.post("/enterprises/import/dry-run", summary="企业库导入·预校验（不写库）")
@@ -889,8 +895,9 @@ def enterprise_import_confirm(body: EnterpriseImport, user=Depends(require_permi
 def enterprise_export(keyword: Optional[str] = None, coopStatus: Optional[str] = None,
                       industry: Optional[str] = None, region: Optional[str] = None,
                       user=Depends(require_permission("internship.enterprise.export"))):
-    data = ent.export_enterprises(keyword=keyword, coop_status=coopStatus,
-                                  industry=industry, region=region)
+    data = ent.export_enterprises(
+        keyword=keyword, coop_status=coopStatus,
+        industry=industry, region=region, user=user)
     audit_log.record("导出企业库", "internship-enterprise:export",
                      detail={"rowCount": data["rowCount"]})
     return success(data)
@@ -898,52 +905,55 @@ def enterprise_export(keyword: Optional[str] = None, coopStatus: Optional[str] =
 
 @router.post("/enterprises", summary="新增企业（初始待审核）")
 def create_enterprise(body: EnterpriseCreate, user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.create_enterprise(body)
+    result = ent.create_enterprise(body, user=user)
     audit_log.record("新增企业", f"internship-enterprise:{result['id']}", detail={"name": result["name"]})
     return success(result, message="已创建")
 
 
 @router.get("/enterprises/{company_id}", summary="企业详情（含联系人/导师/合作资质/审计）")
 def enterprise_detail(company_id: str, user=Depends(require_permission("internship.enterprise.view"))):
-    return success(ent.get_enterprise(company_id))
+    return success(ent.get_enterprise(company_id, user=user))
 
 
 @router.put("/enterprises/{company_id}", summary="编辑企业")
 def update_enterprise(company_id: str, body: EnterpriseUpdate, user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.update_enterprise(company_id, body)
+    result = ent.update_enterprise(company_id, body, user=user)
     audit_log.record("编辑企业", f"internship-enterprise:{company_id}")
     return success(result, message="已保存")
 
 
 @router.post("/enterprises/{company_id}/review", summary="企业资质审核（仅待审核可审：通过→合作中/驳回）")
 def review_enterprise(company_id: str, body: EnterpriseReview, user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.review_enterprise(company_id, body.action, body.comment or "", body.expectedVersion)
+    result = ent.review_enterprise(
+        company_id, body.action, body.comment or "", body.expectedVersion, user=user)
     audit_log.record("企业资质审核", f"internship-enterprise:{company_id}", detail={"action": body.action})
     return success(result, message="审核完成")
 
 
 @router.post("/enterprises/{company_id}/cooperation", summary="合作启停（暂停/恢复/归档）")
 def cooperation(company_id: str, body: CoopActionRequest, user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.set_cooperation(company_id, body.action, body.reason or "", body.expectedVersion)
+    result = ent.set_cooperation(
+        company_id, body.action, body.reason or "", body.expectedVersion, user=user)
     audit_log.record("企业合作状态变更", f"internship-enterprise:{company_id}", detail={"action": body.action})
     return success(result, message="已更新")
 
 
 @router.post("/enterprises/{company_id}/blacklist", summary="拉黑/移出黑名单（拉黑须原因）")
 def blacklist(company_id: str, body: BlacklistRequest, user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.set_blacklist(company_id, body.on, body.reason or "", body.expectedVersion)
+    result = ent.set_blacklist(
+        company_id, body.on, body.reason or "", body.expectedVersion, user=user)
     audit_log.record("企业黑名单变更", f"internship-enterprise:{company_id}", detail={"on": body.on})
     return success(result, message="已更新")
 
 
 @router.get("/enterprises/{company_id}/contacts", summary="企业联系人/导师列表（电话脱敏）")
 def list_contacts(company_id: str, user=Depends(require_permission("internship.enterprise.view"))):
-    return success({"items": ent.list_contacts(company_id)})
+    return success({"items": ent.list_contacts(company_id, user=user)})
 
 
 @router.post("/enterprises/{company_id}/contacts", summary="新增联系人/企业导师")
 def add_contact(company_id: str, body: ContactCreate, user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.add_contact(company_id, body)
+    result = ent.add_contact(company_id, body, user=user)
     audit_log.record("新增企业联系人", f"internship-enterprise:{company_id}", detail={"name": result["name"]})
     return success(result, message="已新增")
 
@@ -951,13 +961,13 @@ def add_contact(company_id: str, body: ContactCreate, user=Depends(require_permi
 @router.put("/enterprises/{company_id}/contacts/{contact_id}", summary="编辑联系人/企业导师")
 def update_contact(company_id: str, contact_id: str, body: ContactUpdate,
                    user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.update_contact(company_id, contact_id, body)
+    result = ent.update_contact(company_id, contact_id, body, user=user)
     audit_log.record("编辑企业联系人", f"internship-enterprise:{company_id}")
     return success(result, message="已保存")
 
 
 @router.delete("/enterprises/{company_id}/contacts/{contact_id}", summary="删除联系人/企业导师（软删）")
 def delete_contact(company_id: str, contact_id: str, user=Depends(require_permission("internship.enterprise.manage"))):
-    result = ent.delete_contact(company_id, contact_id)
+    result = ent.delete_contact(company_id, contact_id, user=user)
     audit_log.record("删除企业联系人", f"internship-enterprise:{company_id}")
     return success(result, message="已删除")
