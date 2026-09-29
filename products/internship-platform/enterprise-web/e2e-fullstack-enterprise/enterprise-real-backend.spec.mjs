@@ -81,4 +81,30 @@ test('enterprise HR logs into real MySQL context and enters recruitment home', a
   await expect(page.getByRole('heading', { name: '我的岗位', exact: true })).toBeVisible()
   await expect(page.getByText('智能制造产线运维实习生')).toBeVisible()
   await page.screenshot({ path: 'test-results-fullstack-enterprise/enterprise-real-position-list.png', fullPage: true })
+
+  const studentsResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/enterprise-portal/internship-students' &&
+    r.request().method() === 'GET')
+  await page.getByRole('link', { name: '实习学生' }).click()
+  const students = await payload(studentsResponse, '/api/v1/internship/enterprise-portal/internship-students')
+  expect(students.total).toBe(1)
+  expect(students.items[0].name).toBe('企业协同学生王强')
+  expect(students.items[0].positionName).toBe('智能制造产线运维实习生')
+  expect(students.items[0].status).toBe('ONBOARD')
+  await expect(page.getByRole('heading', { name: '实习学生' })).toBeVisible()
+  await expect(page.getByText('企业协同学生王强')).toBeVisible()
+  await page.screenshot({ path: 'test-results-fullstack-enterprise/enterprise-real-students.png', fullPage: true })
+
+  const evaluationsResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/enterprise-portal/evaluation-tasks' &&
+    r.request().method() === 'GET')
+  await page.getByRole('link', { name: '评价任务' }).click()
+  const evaluations = await payload(evaluationsResponse, '/api/v1/internship/enterprise-portal/evaluation-tasks')
+  expect(evaluations.total).toBe(1)
+  expect(evaluations.items[0].studentName).toBe('企业协同学生王强')
+  expect(evaluations.items[0].status).toBe('PENDING')
+  expect(evaluations.items[0].placementSnapshotId).toBe('88311')
+  await expect(page.getByRole('heading', { name: '评价任务' })).toBeVisible()
+  await expect(page.getByText('企业协同学生王强 · 智能制造产线运维实习生')).toBeVisible()
+  await page.screenshot({ path: 'test-results-fullstack-enterprise/enterprise-real-evaluations.png', fullPage: true })
 })
