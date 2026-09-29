@@ -9,6 +9,7 @@ on:
       - "products/internship-platform/backend/app/api/v1/standalone_browser_auth.py"
       - "products/internship-platform/backend/app/api/v1/auth_recovery.py"
       - "products/internship-platform/backend/app/api/router.py"
+      - "products/internship-platform/backend/app/main.py"
       - "products/internship-platform/backend/tests/test_standalone_browser_auth_mysql.py"
       - ".github/workflows/internship-standalone-browser-auth.yml"
 
