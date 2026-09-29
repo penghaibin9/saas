@@ -26,6 +26,7 @@ from app.modules.internship.schemas.internship_student import (AdvisorAssignment
                                             StudentStatusRequest, UnassignRequest)
 from app.services import audit_log
 from app.modules.internship.services import internship_student_service as svc
+from app.modules.internship.services import internship_plan_assignment_service as plan_assignment_svc
 from app.services import xlsx_util
 
 router = APIRouter(prefix="/internship", tags=["岗位实习-实习学生"])
@@ -219,6 +220,68 @@ def create_intern_student(body: StudentRecordCreate, user=Depends(require_permis
 @router.get("/intern-students/{record_id}", summary="实习学生详情（企业/岗位/导师/资格/去向/审计）")
 def intern_student_detail(record_id: str, user=Depends(require_permission(_P_VIEW))):
     return success(svc.get_student(record_id, user=user))
+
+
+@router.get("/intern-students/{record_id}/plan-assignments", summary="学生已分配实习方案")
+def student_plan_assignments(
+    record_id: str,
+    user=Depends(require_permission(_P_VIEW)),
+):
+    return success(plan_assignment_svc.list_assignments(record_id, user=user))
+
+
+@router.get("/intern-students/{record_id}/plan-options", summary="学生可追加的已发布实习方案")
+def student_plan_options(
+    record_id: str,
+    keyword: Optional[str] = None,
+    user=Depends(require_permission(_P_VIEW)),
+):
+    return success(plan_assignment_svc.plan_options(
+        record_id, user=user, keyword=keyword or ""))
+
+
+@router.post("/intern-students/{record_id}/plan-assignments", summary="为学生追加一个或多个实习方案")
+def student_plan_assign(
+    record_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    result = plan_assignment_svc.assign_plans(
+        record_id, (body or {}).get("planIds") or [], user=user,
+        source=str((body or {}).get("source") or "MANUAL").upper(),
+    )
+    audit_log.record(
+        "分配实习方案",
+        f"internship-student:{record_id}",
+        detail={
+            "planIds": (body or {}).get("planIds") or [],
+            "added": result.get("added"),
+            "alreadyAssigned": result.get("alreadyAssigned"),
+        },
+    )
+    return success(result, message="实习方案已分配")
+
+
+@router.post("/intern-students/{record_id}/plan-assignments/{assignment_id}/remove", summary="移除未确认且未开始任务的附加实习方案")
+def student_plan_assignment_remove(
+    record_id: str,
+    assignment_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    result = plan_assignment_svc.remove_assignment(
+        record_id,
+        assignment_id,
+        reason=(body or {}).get("reason") or "",
+        expected_version=(body or {}).get("expectedVersion"),
+        user=user,
+    )
+    audit_log.record(
+        "移除实习方案",
+        f"internship-student:{record_id}",
+        detail={"assignmentId": assignment_id, "reason": (body or {}).get("reason") or ""},
+    )
+    return success(result, message="附加实习方案已移除")
 
 
 @router.put("/intern-students/{record_id}", summary="编辑实习学生（已归档不可编辑）")
