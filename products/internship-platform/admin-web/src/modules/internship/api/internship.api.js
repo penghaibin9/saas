@@ -440,6 +440,10 @@ export const internshipApi = {
     return call(() => request(`/internship/enterprises/${id}`))
   },
 
+  getEnterpriseScopeColleges() {
+    return call(() => request('/internship/enterprises/scope-colleges'))
+  },
+
   createEnterprise(body) {
     return call(() => request('/internship/enterprises', { method: 'POST', body }))
   },
