@@ -616,13 +616,17 @@ def _nullable_bool(value):
     raise ValueError("须填写是/否")
 
 
-def import_dry_run(rows: list[dict], template_version=None) -> dict:
+def import_dry_run(rows: list[dict], template_version=None, user=None) -> dict:
     """逐行预校验：title/company 必填；企业须存在且合作中；容量为正整数；批内+库内去重。"""
     with session() as db:
         if template_version != "POSITION_IMPORT_V2":
             raise AppException("VALIDATION_ERROR", "仅支持 POSITION_IMPORT_V2 模板")
-        companies = db.scalars(select(EmpCompany).where(
-            EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))).all()
+        company_query = select(EmpCompany).where(
+            EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))
+        from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+        company_query = enterprise_scope.apply_company_scope(
+            company_query, EmpCompany.id, db, user)
+        companies = db.scalars(company_query).all()
         existing = {(p.company_id, (p.title or "").strip().lower()) for p in db.scalars(
             select(InternshipPosition).where(
                 InternshipPosition.tenant_id == _tid(),
@@ -696,13 +700,17 @@ def import_dry_run(rows: list[dict], template_version=None) -> dict:
                 "invalidRows": len(errors), "errors": errors}
 
 
-def import_confirm(rows: list[dict], template_version=None) -> dict:
-    pre = import_dry_run(rows, template_version)
+def import_confirm(rows: list[dict], template_version=None, user=None) -> dict:
+    pre = import_dry_run(rows, template_version, user=user)
     if pre["invalidRows"] > 0:
         raise AppException("DATA_CONFLICT", "存在未通过预校验的行，禁止确认导入")
     with session() as db:
-        companies = db.scalars(select(EmpCompany).where(
-            EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))).all()
+        company_query = select(EmpCompany).where(
+            EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))
+        from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+        company_query = enterprise_scope.apply_company_scope(
+            company_query, EmpCompany.id, db, user)
+        companies = db.scalars(company_query).all()
         created = 0
         for r in rows or []:
             if (r.get("templateVersion") or "").strip() != "POSITION_IMPORT_V2":
