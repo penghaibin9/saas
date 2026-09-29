@@ -513,8 +513,15 @@ def publish_plan(batch_id, body=None, user=None) -> dict:
             ack_count += 1
         from app.modules.internship.services.internship_plan_task_service import init_progress_for_plan
         progress_count = init_progress_for_plan(db, plan, records)
+        from app.modules.internship.services import internship_plan_assignment_service as assignment_svc
+        primary_assignment_count = 0
+        for record in records:
+            assignment_svc.ensure_primary_assignment_in_tx(
+                db, plan=plan, record=record, user=user)
+            primary_assignment_count += 1
         _trail(db, plan.id, "PUBLISH_VERSIONED", {
             "ackCount": ack_count, "taskProgressInit": progress_count,
+            "primaryPlanAssignmentCount": primary_assignment_count,
             "internshipType": plan.internship_type,
             "rulesVersion": int(batch.rules_version or 1),
             "newVersion": int(plan.version or 0),
@@ -523,6 +530,7 @@ def publish_plan(batch_id, body=None, user=None) -> dict:
         return {
             **_plan_row(plan, batch), "ackCount": ack_count,
             "taskProgressInit": progress_count,
+            "primaryPlanAssignmentCount": primary_assignment_count,
         }
 
 
