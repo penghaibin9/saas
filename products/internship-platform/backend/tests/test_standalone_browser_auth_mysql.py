@@ -140,6 +140,14 @@ def test_staff_browser_login_refresh_me_logout_real_mysql():
         assert me_data["currentRole"]["roleCode"] == "SCHOOL_ADMIN"
         assert me_data["tenantId"] == str(TENANT_ID)
 
+        batches = client.get(
+            "/api/v1/internship/batches?page=1&pageSize=20",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert batches.status_code == 200, batches.text
+        assert batches.json()["code"] == 0
+        assert batches.json()["data"]["total"] == 0
+
         refreshed = client.post(
             "/api/v1/auth/browser-refresh",
             headers={
@@ -196,6 +204,12 @@ def test_student_browser_channel_and_cross_surface_fail_closed_real_mysql():
         )
         assert me.status_code == 200, me.text
         assert me.json()["data"]["currentRole"]["roleCode"] == "STUDENT"
+
+        denied_staff_route = student_client.get(
+            "/api/v1/internship/batches?page=1&pageSize=20",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert denied_staff_route.status_code == 403, denied_staff_route.text
 
     with TestClient(app) as wrong_surface:
         denied_student = _login(
