@@ -283,12 +283,14 @@ export const studentInternshipMakeupWithdraw = (makeupId, body) =>
     method: 'POST', data: body || {}
   })
 
-export const studentInternshipPlan = () =>
-  realRequest('/mobile/internship/context/plan')
+export const studentInternshipPlans = () =>
+  realRequest('/mobile/internship/context/plans')
+export const studentInternshipPlan = (planId = '') =>
+  realRequest('/mobile/internship/context/plan' + (planId ? ('?planId=' + enc(planId)) : ''))
 export const studentInternshipPlanAcknowledge = (body) =>
   realRequest('/mobile/internship/context/plan/acknowledge', { method: 'POST', data: body || {} })
-export const studentInternshipPlanTasks = () =>
-  realRequest('/mobile/internship/context/plan/tasks')
+export const studentInternshipPlanTasks = (planId = '') =>
+  realRequest('/mobile/internship/context/plan/tasks' + (planId ? ('?planId=' + enc(planId)) : ''))
 export const studentInternshipPlanTaskSubmit = (sortOrder, body) =>
   realRequest(`/mobile/internship/context/plan/tasks/${enc(sortOrder)}/submit`, { method: 'POST', data: body || {} })
 
