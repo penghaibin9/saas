@@ -215,16 +215,29 @@ def test_g10_ap05_export_contains_procurement_fields(standalone_db):
     sheet = workbook.active
     rows = list(sheet.iter_rows(values_only=True))
     assert rows
-    headers = [str(value or "") for value in rows[0]]
-    for required in (
+    required_headers = (
         "申请时间", "学号", "姓名", "院系", "实习单位/免实习",
         "实习岗位/免实习去向", "实习单位地址", "所属科室",
         "职位类别", "实习薪资(元/月)", "所属行业", "校内指导老师",
         "企业老师", "状态", "免实习原因", "免实习佐证",
-    ):
+    )
+    header_index = next(
+        (
+            index for index, row in enumerate(rows)
+            if set(required_headers) <= {str(value or "") for value in row}
+        ),
+        None,
+    )
+    assert header_index is not None, rows[:5]
+    headers = [str(value or "") for value in rows[header_index]]
+    for required in required_headers:
         assert required in headers
 
-    data = [dict(zip(headers, row)) for row in rows[1:] if any(value is not None for value in row)]
+    data = [
+        dict(zip(headers, row))
+        for row in rows[header_index + 1:]
+        if any(value is not None for value in row)
+    ]
     assert data
     first = data[0]
     assert first["院系"] == "信息工程学院"
