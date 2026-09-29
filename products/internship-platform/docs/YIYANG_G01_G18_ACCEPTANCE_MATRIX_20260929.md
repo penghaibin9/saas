@@ -81,18 +81,25 @@ Run：`36578706708`，结果：**success**。
 - 企业 Portal：招聘季登录/刷新、企业首页、企业资料、岗位、报名学生、冻结档案 PDF、招聘授权失效后的实习协同降级、实习学生、评价任务，Run `36577104582`，**success**。
 - 三类浏览器任务均上传 Chromium screenshot / trace 证据。
 
-边界说明：
+补充真实后端证据：
 
-> 当前浏览器证据使用隔离 API fixture 验证真实页面、路由、鉴权客户端状态机和交互流程；它证明 PC 前端主链可运行，但**不等于真实 MySQL 后端账号 + 学校正式数据的端到端 UAT**。
+- `Internship Standalone Browser Auth` / Run `36580751862`：真实 MySQL 8.4 + Redis 下，Staff/Student 浏览器登录、HttpOnly refresh、`/auth/me`、Standalone RBAC、学生 Portal 配置、`/portal/internship/my`、staff 业务接口与学生越权 403 均通过。
+- `Internship Standalone Fullstack PC Browser` / Run `36581139541`：**无 API mock**，真实 MySQL 8.4 + Redis + FastAPI + Vite + Chromium，学校管理员 PC 与学生 PC 完整登录并进入岗位实习页面，真实命中 RBAC、批次、看板、portal-config、internship-my。
+- `Internship Standalone Fullstack PC Browser` / Run `36581895278`：在同一真实栈追加 `INTERN_MENTOR` 指导教师账号；教师可读取批次与工作台，但不拥有 `internship.batch.manage`，管理员/教师/学生三类 PC 真实后端浏览器旅程全部成功。
+
+因此 PC 端当前允许表述：
+
+> 管理员 PC、指导教师 PC、学生 PC 已完成真实 MySQL/FastAPI/Chromium 工程级端到端验收；企业 Portal 已完成独立 Chromium 主链证据，但真实 MySQL 企业账号全栈浏览器证据仍需继续补齐。
+
+仍不能把上述 CI/UAT 同规格证据表述为“校方正式数据已签字验收”。
 
 ## 四、下一道验收门
 
 接下来不再横向新增 G01～G18 功能，优先补“真实后端/现场方式证据”：
 
-1. G01～G18 当前 HEAD MySQL 8.4 聚合回归；
-2. 管理/教师 PC + 学生 PC 真实 FastAPI / MySQL 账号链；
-3. 学生/教师微信开发者工具与真机；
-4. 外部企业登记、监管平台、学校统一认证/门户；
-5. 正式 G19 / G20 / 15 日试运行与最终签字。
+1. 企业 Portal 真实 MySQL/FastAPI 浏览器账号链；
+2. 学生/教师微信开发者工具与真机；
+3. 外部企业登记、监管平台、学校统一认证/门户；
+4. 正式 G19 / G20 / 15 日试运行与最终签字。
 
 PR #275 在上述现场项关闭前继续保持 Draft。
