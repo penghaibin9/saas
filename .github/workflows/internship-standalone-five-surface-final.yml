@@ -120,5 +120,5 @@ jobs:
     steps:
       - name: Record build-only verdict
         run: |
-          echo "Backend + admin/teacher PC + student PC + student/teacher WeChat + enterprise portal build gates passed."
+          echo "Backend + admin/teacher PC + student PC + student/teacher WeChat + enterprise portal contract/build gates passed."
           echo "This is a source/build gate only. Browser UAT, WeChat developer-tool/real-phone UAT and formal 5000-VU G20 remain separate evidence gates."
