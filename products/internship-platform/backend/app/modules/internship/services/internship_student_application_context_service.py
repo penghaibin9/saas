@@ -162,6 +162,14 @@ def save(user: dict, body: dict) -> dict:
             legacy._apply_position_snapshot(row, position, company)
             row.contact_phone = None
             row.evidence_file_id = None
+        elif application_type == "EXEMPTION":
+            if record.position_id:
+                raise AppException("DATA_CONFLICT", "已分配校内岗位，请通过正式变更流程处理免实习")
+            row.position_id = None
+            legacy._clear_exemption_company_snapshot(row)
+            for field, value in legacy._clean_exemption(
+                    payload, require_complete=False).items():
+                setattr(row, field, value)
         else:
             row.position_id = None
             for field, value in legacy._clean_self_arranged(
@@ -179,6 +187,8 @@ def save(user: dict, body: dict) -> dict:
         row.reviewed_at = None
         row.review_comment = None
         row.version = int(row.version or 0) + 1
+        db.flush()
+        legacy._bind_application_files(db, row, user)
         legacy._trail(db, row.id, "SAVE_DRAFT_VERSIONED", {
             "before": before,
             "afterVersion": int(row.version or 0),
@@ -228,6 +238,7 @@ def submit(user: dict, app_id, body: dict) -> dict:
         row.status = "PENDING_REVIEW"
         row.submitted_at = datetime.utcnow()
         row.version = int(row.version or 0) + 1
+        legacy._bind_application_files(db, row, user)
         legacy._trail(db, row.id, "SUBMIT_VERSIONED", {
             "applicationType": row.application_type,
             "newVersion": int(row.version or 0),
