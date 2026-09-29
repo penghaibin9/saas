@@ -67,7 +67,7 @@ test('enterprise HR logs into real MySQL context and enters recruitment home', a
   expect(dashboard.metrics.applicants).toBe(0)
 
   await expect(page.getByRole('heading', { name: '企业首页' })).toBeVisible()
-  await expect(page.getByText('2026岗位实习企业双选', { exact: true })).toBeVisible()
+  await expect(page.getByRole('banner').getByText('2026岗位实习企业双选', { exact: true })).toBeVisible()
   await page.screenshot({ path: 'test-results-fullstack-enterprise/enterprise-real-backend.png', fullPage: true })
 
   const positionsResponse = page.waitForResponse(r =>
