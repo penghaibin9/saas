@@ -465,17 +465,56 @@
         </div>
       </template>
 
-      <!-- 实习计划 -->
+      <!-- 实习计划 / 多方案 -->
       <template v-else-if="tab === 'plan'">
+        <section v-if="planAssignments.length > 1" class="sp-card sp-plan-switch">
+          <div class="sp-fieldlabel">当前实习方案</div>
+          <select v-model="selectedPlanId" class="sp-inp" :disabled="busy" @change="changePlan">
+            <option v-for="item in planAssignments" :key="item.planId" :value="String(item.planId)">
+              {{ item.isPrimary ? '主方案 · ' : '' }}{{ item.planTitle }} · {{ item.batchName }}
+            </option>
+          </select>
+          <p class="sp-muted" style="margin:8px 0 0">每份方案单独确认、单独记录任务进度；切换不会改变你的实习主记录。</p>
+        </section>
         <section class="sp-card">
-          <div class="sp-panel__head">实习计划书</div>
+          <div class="sp-panel__head">实习计划书 <span v-if="planMeta?.isPrimary" class="sp-muted">主方案</span></div>
           <template v-if="planMeta && (planMeta.title || planMeta.planTitle || planMeta.id)">
             <p style="font-size:15px;font-weight:600">{{ planMeta.title || planMeta.planTitle || '实习计划' }}</p>
-            <p class="sp-muted" style="margin-top:8px">状态：{{ planMeta.statusLabel || planMeta.status || '—' }}</p>
-            <p v-if="planMeta.content || planMeta.summary" class="sp-muted" style="margin-top:10px;white-space:pre-wrap">{{ planMeta.content || planMeta.summary }}</p>
-            <button v-if="planMeta.canAcknowledge !== false && planMeta.status !== 'ACKNOWLEDGED'" class="sp-btn" style="margin-top:12px" :disabled="busy" @click="ackPlan">确认计划</button>
+            <p class="sp-muted" style="margin-top:8px">
+              {{ planMeta.internshipTypeLabel || '' }}
+              <span v-if="planMeta.batchName"> · {{ planMeta.batchName }}</span>
+              · {{ planMeta.ackStatusLabel || (planMeta.ackStatus === 'ACKNOWLEDGED' ? '已确认' : '待确认') }}
+            </p>
+            <p v-if="planMeta.objectives" class="sp-muted" style="margin-top:10px;white-space:pre-wrap"><b>实习目的：</b>{{ planMeta.objectives }}</p>
+            <p v-if="planMeta.requirements" class="sp-muted" style="margin-top:10px;white-space:pre-wrap"><b>实习要求：</b>{{ planMeta.requirements }}</p>
+            <p v-if="planMeta.content || planMeta.summary" class="sp-muted" style="margin-top:10px;white-space:pre-wrap"><b>实习内容：</b>{{ planMeta.content || planMeta.summary }}</p>
+            <button v-if="planMeta.ackStatus !== 'ACKNOWLEDGED'" class="sp-btn" style="margin-top:12px" :disabled="busy" @click="ackPlan">确认当前方案</button>
           </template>
           <p v-else class="sp-muted">暂无已发布计划</p>
+        </section>
+        <section v-if="planMeta?.id" class="sp-card sp-plan-tasks">
+          <div class="sp-panel__head">方案任务 <span class="sp-muted">{{ planTaskSummary.approved || 0 }}/{{ planTaskSummary.total || 0 }} 已完成</span></div>
+          <p v-if="planMeta.ackStatus !== 'ACKNOWLEDGED'" class="sp-muted">请先确认当前方案，再提交任务完成情况。</p>
+          <StateBlock v-else-if="!planTasks.length" type="empty" text="当前方案暂无任务" />
+          <div v-else class="sp-plan-task-list">
+            <article v-for="task in planTasks" :key="task.sortOrder" class="sp-plan-task">
+              <div class="sp-plan-task__head">
+                <div><strong>{{ task.sortOrder }}. {{ task.name }}</strong><p>{{ task.requirement || '未填写完成要求' }}</p></div>
+                <StatusTag :text="task.progressStatusLabel || task.progressStatus" :tone="task.progressStatus === 'APPROVED' ? 'success' : task.progressStatus === 'REJECTED' ? 'danger' : task.progressStatus === 'SUBMITTED' ? 'warn' : 'neutral'" />
+              </div>
+              <p v-if="task.deadline" class="sp-muted">截止：{{ fmt(task.deadline) }}</p>
+              <p v-if="task.reviewComment" class="report-feedback"><strong>教师意见</strong>{{ task.reviewComment }}</p>
+              <template v-if="planMeta.ackStatus === 'ACKNOWLEDGED' && !['APPROVED','SUBMITTED'].includes(task.progressStatus)">
+                <div class="sp-fieldlabel">完成说明 <span>至少 {{ planTaskMinimumWords }} 字</span></div>
+                <textarea v-model="task._note" class="sp-inp" style="margin-bottom:8px" :disabled="busy" placeholder="说明完成过程、结果与收获" />
+                <div class="sp-fieldlabel">任务凭证（选传）</div>
+                <input type="file" class="sp-inp" :disabled="busy" @change="uploadPlanTaskEvidence($event, task)" />
+                <p v-if="task._evidenceFileName" class="sp-muted">{{ task._evidenceFileName }}</p>
+                <button class="sp-btn" style="margin-top:10px" :disabled="busy || String(task._note || '').trim().length < planTaskMinimumWords" @click="submitPlanTask(task)">提交任务</button>
+              </template>
+              <p v-else-if="task.studentNote" class="sp-muted" style="white-space:pre-wrap">完成说明：{{ task.studentNote }}</p>
+            </article>
+          </div>
         </section>
       </template>
 
@@ -803,6 +842,11 @@ let insuranceEpoch = 0
 const attendance = ref({ summary: { CHECKIN:0, ABSENT:0, LEAVE:0, MAKEUP:0, EXEMPT:0 }, items: [], totalCountedDays: 0 })
 const notices = ref([])
 const planMeta = ref(null)
+const planAssignments = ref([])
+const selectedPlanId = ref('')
+const planTasks = ref([])
+const planTaskSummary = ref({ total: 0, approved: 0, rate: 0 })
+const planTaskMinimumWords = ref(10)
 const helpForm = reactive({ title: '', content: '', riskLevel: 'MEDIUM' })
 const appealReason = ref('')
 const appealMeta = ref(null)
@@ -1058,6 +1102,11 @@ function resetSourceStates() {
     dailyRequiredCount: 0, weeklyRequiredCount: 0, monthlyRequiredCount: 0, summaryRequiredCount: 1
   }
   planMeta.value = null
+  planAssignments.value = []
+  selectedPlanId.value = ''
+  planTasks.value = []
+  planTaskSummary.value = { total: 0, approved: 0, rate: 0 }
+  planTaskMinimumWords.value = 10
   selfEvalMeta.value = null
   appealMeta.value = null
   formalDocuments.value = []
@@ -1149,7 +1198,31 @@ async function fetchTabSource(key) {
     return true
   }
   if (key === 'plan') {
-    planMeta.value = await internshipCoreApi.plan()
+    const listData = await internshipCoreApi.plans()
+    planAssignments.value = rowsFrom(listData)
+    const selected = planAssignments.value.find((item) => String(item.planId) === String(selectedPlanId.value || ''))
+      || planAssignments.value.find((item) => item.isPrimary)
+      || planAssignments.value[0]
+    selectedPlanId.value = selected ? String(selected.planId) : ''
+    if (!selectedPlanId.value) {
+      planMeta.value = null
+      planTasks.value = []
+      planTaskSummary.value = { total: 0, approved: 0, rate: 0 }
+      return false
+    }
+    const [plan, taskData] = await Promise.all([
+      internshipCoreApi.plan(selectedPlanId.value),
+      internshipCoreApi.planTasks(selectedPlanId.value)
+    ])
+    planMeta.value = plan || null
+    planTaskMinimumWords.value = Number(taskData?.minimumWords || 10)
+    planTaskSummary.value = taskData?.summary || plan?.taskSummary || { total: 0, approved: 0, rate: 0 }
+    planTasks.value = rowsFrom(taskData?.tasks || []).map((task) => ({
+      ...task,
+      _note: task.progressStatus === 'REJECTED' ? (task.studentNote || '') : '',
+      _evidenceFileId: task.evidenceFileId || '',
+      _evidenceFileName: task.evidenceFileId ? '已上传凭证' : ''
+    }))
     return !!planMeta.value?.id
   }
   if (key === 'eval') {
@@ -1580,11 +1653,62 @@ async function saveInsurance() {
     insuranceError.value = insuranceConflict.value ? '保单已被更新。填写内容已保留；重新读取会载入最新保单，请核对后再提交。' : (e?.message || '保险提交失败，填写内容已保留')
   } finally { busy.value = false }
 }
+async function changePlan() {
+  if (busy.value || !selectedPlanId.value) return
+  await loadTab('plan', true)
+}
+async function uploadPlanTaskEvidence(event, task) {
+  if (busy.value || !task) return
+  const file = event?.target?.files?.[0]
+  if (!file) return
+  if (Number(file.size || 0) > 20 * 1024 * 1024) {
+    ui.notify('单个任务凭证不能超过20MB')
+    if (event?.target) event.target.value = ''
+    return
+  }
+  busy.value = true
+  try {
+    const uploaded = await internshipCoreApi.uploadPlanTaskEvidence(file)
+    const fileId = uploaded?.fileId || uploaded?.id
+    if (!fileId) throw new Error('上传响应缺少文件标识')
+    task._evidenceFileId = String(fileId)
+    task._evidenceFileName = uploaded?.fileName || file.name || '任务凭证'
+    ui.notify('任务凭证已上传')
+  } catch (e) {
+    ui.notify(e?.message || '任务凭证上传失败')
+  } finally {
+    busy.value = false
+    if (event?.target) event.target.value = ''
+  }
+}
+async function submitPlanTask(task) {
+  if (busy.value || !task || !planMeta.value?.id) return
+  const note = String(task._note || '').trim()
+  if (note.length < planTaskMinimumWords.value) return ui.notify(`完成说明至少 ${planTaskMinimumWords.value} 字`)
+  busy.value = true
+  try {
+    await internshipCoreApi.submitPlanTask(task.sortOrder, {
+      ...currentInternshipContext(),
+      planId: String(planMeta.value.id),
+      planVersion: planMeta.value.version,
+      expectedVersion: Number(task.progressVersion ?? task.version ?? 0),
+      studentNote: note,
+      evidenceFileId: task._evidenceFileId || ''
+    })
+    ui.notify('任务已提交，等待指导教师确认')
+    await loadTab('plan', true)
+  } catch (e) {
+    ui.notify(e?.message || '任务提交失败，填写内容已保留')
+  } finally {
+    busy.value = false
+  }
+}
 async function ackPlan() {
   busy.value = true
   try {
     await internshipCoreApi.acknowledgePlan({
       ...currentInternshipContext(),
+      planId: String(planMeta.value?.id || selectedPlanId.value || ''),
       planVersion: planMeta.value?.version,
       expectedVersion: planMeta.value?.ackVersion
     })
@@ -1868,7 +1992,7 @@ onMounted(load)
 </script>
 
 <style scoped>
-.sp-report-progress{margin-bottom:14px}.sp-report-progress__grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.sp-report-progress__item{padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}.sp-report-progress__row{display:flex;justify-content:space-between;gap:10px;font-size:12px}.sp-report-progress__row span{color:var(--t3)}.sp-report-progress__track{height:7px;margin-top:9px;border-radius:999px;background:#e8edf5;overflow:hidden}.sp-report-progress__track span{display:block;height:100%;border-radius:999px;background:var(--pri)}@media(max-width:900px){.sp-report-progress__grid{grid-template-columns:1fr 1fr}}
+.sp-plan-switch{margin-bottom:14px}.sp-plan-task-list{display:grid;gap:10px}.sp-plan-task{padding:14px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}.sp-plan-task__head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px}.sp-plan-task__head strong{font-size:14px;color:var(--t1)}.sp-plan-task__head p{margin:5px 0 0;color:var(--t3);font-size:12px;line-height:1.6;white-space:pre-wrap}.sp-plan-tasks{margin-top:14px}.sp-report-progress{margin-bottom:14px}.sp-report-progress__grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.sp-report-progress__item{padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--bg2)}.sp-report-progress__row{display:flex;justify-content:space-between;gap:10px;font-size:12px}.sp-report-progress__row span{color:var(--t3)}.sp-report-progress__track{height:7px;margin-top:9px;border-radius:999px;background:#e8edf5;overflow:hidden}.sp-report-progress__track span{display:block;height:100%;border-radius:999px;background:var(--pri)}@media(max-width:900px){.sp-report-progress__grid{grid-template-columns:1fr 1fr}}
 .sp-now { display: flex; align-items: center; justify-content: space-between; gap: 28px; margin-bottom: 14px; padding: 20px 22px; border-color: color-mix(in srgb, var(--pri) 28%, var(--line)); background: linear-gradient(120deg, color-mix(in srgb, var(--pri) 8%, white), white 68%); box-shadow: 0 12px 32px rgba(30, 64, 175, .08); }
 .sp-now__copy { min-width: 0; }
 .sp-now__eyebrow { color: var(--pri); font-size: 10px; font-weight: 800; letter-spacing: .12em; }
