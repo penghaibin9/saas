@@ -587,23 +587,35 @@ def update_student_record(rec_id, body, user=None) -> dict:
         return _row_of(db, r)
 
 
+def assign_advisor_in_tx(
+    db, record: InternshipRecord, advisor_user_id, reason: str = "",
+    user=None, expected_version=None,
+) -> InternshipRecord:
+    r = record
+    _assert_write_scope(db, r, user)
+    _require_record_version(r, expected_version)
+    if r.status == "ARCHIVED":
+        raise AppException("DATA_CONFLICT", "已归档记录不可变更指导教师")
+    advisor = _advisor(db, advisor_user_id)
+    before = r.advisor_user_id
+    if before == advisor.id:
+        raise AppException("DATA_CONFLICT", "该学生已分配给此指导教师")
+    r.advisor_user_id, r.advisor_name = advisor.id, advisor.real_name
+    r.version = int(r.version or 0) + 1
+    _trail(db, r.id, "ASSIGN_ADVISOR", {
+        "fromUserId": str(before or ""),
+        "toUserId": str(advisor.id),
+        "reason": (reason or "").strip(),
+        "recordVersion": int(r.version or 0),
+    })
+    return r
+
+
 def assign_advisor(rec_id, advisor_user_id, reason: str = "", user=None, expected_version=None) -> dict:
     with session() as db:
         r = _get_for_update(db, rec_id)
-        _assert_write_scope(db, r, user)
-        _require_record_version(r, expected_version)
-        if r.status == "ARCHIVED":
-            raise AppException("DATA_CONFLICT", "已归档记录不可变更指导教师")
-        advisor = _advisor(db, advisor_user_id)
-        before = r.advisor_user_id
-        if before == advisor.id:
-            raise AppException("DATA_CONFLICT", "该学生已分配给此指导教师")
-        r.advisor_user_id, r.advisor_name = advisor.id, advisor.real_name
-        r.version = int(r.version or 0) + 1
-        _trail(db, r.id, "ASSIGN_ADVISOR", {"fromUserId": str(before or ""),
-                                             "toUserId": str(advisor.id),
-                                             "reason": (reason or "").strip(),
-                                             "recordVersion": int(r.version or 0)})
+        assign_advisor_in_tx(
+            db, r, advisor_user_id, reason, user=user, expected_version=expected_version)
         db.commit()
         return _row_of(db, r)
 
@@ -920,6 +932,287 @@ def student_stats(batch_id=None, keyword=None, class_id=None, status=None,
         return {"total": total, "byStatus": by_status, "assigned": assigned,
                 "unassigned": unassigned, "qualified": qualified,
                 **batch_public_fields(batch)}
+
+
+# ═══════════ AP04 实习分配 Excel：师生分配 + 企业岗位分配 ═══════════
+
+ALLOCATION_IMPORT_HEADERS = [
+    "学号", "指导教师", "企业名称", "统一社会信用代码", "岗位名称", "备注",
+]
+ALLOCATION_IMPORT_REQUIRED = ["学号"]
+ALLOCATION_IMPORT_HEADER_MAP = {
+    "学号": "studentNo",
+    "指导教师": "advisorName",
+    "企业名称": "companyName",
+    "统一社会信用代码": "companyCreditCode",
+    "岗位名称": "positionName",
+    "备注": "remark",
+}
+ALLOCATION_IMPORT_SAMPLE = [
+    "2023115001", "刘强", "湖南示例科技有限公司", "91430000EXAMPLE01", "软件开发实习生", "专业方向匹配",
+]
+ALLOCATION_IMPORT_NOTES = [
+    "本模板只用于当前批次的分配，不创建学生、不创建企业、不创建岗位。",
+    "每行至少填写“指导教师”或“企业+岗位”中的一类；两类都填则同一事务一起办理。",
+    "指导教师须匹配唯一的在职岗位实习指导教师账号。",
+    "企业优先按统一社会信用代码匹配；未填信用代码时按企业名称精确匹配。",
+    "岗位必须属于当前批次、所填企业，并且处于已上架且有剩余名额状态。",
+    "已经上岗或进入考核的学生禁止通过本导入直接换岗，必须走正式实习变更流程。",
+]
+
+
+def _allocation_error(errors: list[dict], row_no: int, field: str, message: str) -> None:
+    errors.append({"rowNo": row_no, "field": field, "message": message})
+
+
+def _allocation_company(db, *, name: str = "", credit_code: str = ""):
+    q = select(EmpCompany).where(
+        EmpCompany.tenant_id == _tid(),
+        EmpCompany.is_deleted.is_(False),
+    )
+    code = str(credit_code or "").strip()
+    company_name = str(name or "").strip()
+    if code:
+        rows = db.scalars(q.where(EmpCompany.credit_code == code)).all()
+    elif company_name:
+        rows = db.scalars(q.where(EmpCompany.name == company_name)).all()
+    else:
+        return None
+    if len(rows) != 1:
+        return None
+    return rows[0]
+
+
+def _allocation_position(db, batch_id: int, company_id: int, title: str):
+    rows = db.scalars(select(InternshipPosition).where(
+        InternshipPosition.tenant_id == _tid(),
+        InternshipPosition.batch_id == int(batch_id),
+        InternshipPosition.company_id == int(company_id),
+        InternshipPosition.title == str(title or "").strip(),
+        InternshipPosition.is_deleted.is_(False),
+    )).all()
+    return rows[0] if len(rows) == 1 else None
+
+
+def allocation_import_dry_run(rows: list[dict], batch_id=None, user=None) -> dict:
+    """Validate assignment rows without mutating any allocation facts."""
+    from app.modules.internship.services.internship_batch_context import (
+        batch_public_fields, resolve_batch,
+    )
+
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=True)
+        profiles = {
+            s.student_no: s for s in db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == _tid(),
+                StudentProfile.is_deleted.is_(False),
+            )).all()
+        }
+        records = {
+            int(r.student_id): r for r in db.scalars(select(InternshipRecord).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False),
+            )).all()
+        }
+
+        errors: list[dict] = []
+        seen_students: set[str] = set()
+        valid = 0
+        position_demand: dict[int, int] = {}
+        resolved_positions: dict[int, InternshipPosition] = {}
+
+        for index, raw in enumerate(rows or []):
+            row_no = index + 1
+            row = raw or {}
+            student_no = str(row.get("studentNo") or "").strip()
+            advisor_name = str(row.get("advisorName") or "").strip()
+            company_name = str(row.get("companyName") or "").strip()
+            credit_code = str(row.get("companyCreditCode") or "").strip()
+            position_name = str(row.get("positionName") or "").strip()
+
+            if not student_no:
+                _allocation_error(errors, row_no, "studentNo", "学号必填")
+                continue
+            if student_no in seen_students:
+                _allocation_error(errors, row_no, "studentNo", "同一导入文件内学号重复")
+                continue
+            seen_students.add(student_no)
+
+            student = profiles.get(student_no)
+            record = records.get(int(student.id)) if student else None
+            if not student or not record:
+                _allocation_error(errors, row_no, "studentNo", "当前批次未找到该学生正式实习记录")
+                continue
+            try:
+                _assert_write_scope(db, record, user)
+            except AppException as exc:
+                _allocation_error(errors, row_no, "studentNo", exc.message)
+                continue
+
+            wants_advisor = bool(advisor_name)
+            wants_position = bool(company_name or credit_code or position_name)
+            if not wants_advisor and not wants_position:
+                _allocation_error(errors, row_no, "advisorName", "至少填写指导教师或企业岗位分配")
+                continue
+
+            if wants_advisor:
+                try:
+                    advisor = _advisor(db, advisor_name=advisor_name)
+                    if record.advisor_user_id == advisor.id:
+                        _allocation_error(errors, row_no, "advisorName", "当前已是该指导教师，无需重复分配")
+                except AppException as exc:
+                    _allocation_error(errors, row_no, "advisorName", exc.message)
+
+            if wants_position:
+                if not position_name:
+                    _allocation_error(errors, row_no, "positionName", "企业分配时岗位名称必填")
+                if not company_name and not credit_code:
+                    _allocation_error(errors, row_no, "companyName", "企业分配时企业名称或统一社会信用代码至少填写一项")
+                company = _allocation_company(db, name=company_name, credit_code=credit_code)
+                if not company:
+                    _allocation_error(errors, row_no, "companyName", "企业未唯一匹配，请核对名称/统一社会信用代码")
+                elif company.blacklist or company.coop_status == "BLACKLIST":
+                    _allocation_error(errors, row_no, "companyName", "黑名单企业不能分配实习学生")
+                elif company.coop_status != "ACTIVE":
+                    _allocation_error(errors, row_no, "companyName", "企业当前不是合作中状态")
+                elif position_name:
+                    position = _allocation_position(db, batch.id, company.id, position_name)
+                    if not position:
+                        _allocation_error(errors, row_no, "positionName", "当前批次/企业下未唯一匹配该岗位")
+                    else:
+                        if record.position_id == position.id:
+                            _allocation_error(errors, row_no, "positionName", "学生已分配到该岗位，无需重复分配")
+                        if record.status in ("ONBOARD", "ASSESSING"):
+                            _allocation_error(errors, row_no, "positionName", "学生已上岗/考核，换岗必须走正式变更审批")
+                        if position.status != "PUBLISHED":
+                            _allocation_error(errors, row_no, "positionName", f"岗位不是已上架状态（当前 {position.status}）")
+                        resolved_positions[int(position.id)] = position
+                        position_demand[int(position.id)] = position_demand.get(int(position.id), 0) + 1
+
+            if not any(e["rowNo"] == row_no for e in errors):
+                valid += 1
+
+        for position_id, demand in position_demand.items():
+            position = resolved_positions[position_id]
+            remaining = max(0, int(position.headcount or 0) - int(position.allocated_count or 0))
+            if demand > remaining:
+                for index, raw in enumerate(rows or []):
+                    row_no = index + 1
+                    company = _allocation_company(
+                        db,
+                        name=str((raw or {}).get("companyName") or "").strip(),
+                        credit_code=str((raw or {}).get("companyCreditCode") or "").strip(),
+                    )
+                    if (
+                        company
+                        and int(company.id) == int(position.company_id)
+                        and str((raw or {}).get("positionName") or "").strip() == position.title
+                    ):
+                        _allocation_error(
+                            errors, row_no, "positionName",
+                            f"本文件拟分配 {demand} 人，但岗位仅剩 {remaining} 个名额",
+                        )
+                valid = sum(
+                    1 for i in range(len(rows or []))
+                    if not any(e["rowNo"] == i + 1 for e in errors)
+                )
+
+        return {
+            "total": len(rows or []),
+            "validRows": valid,
+            "invalidRows": len({int(e["rowNo"]) for e in errors}),
+            "errors": errors,
+            **batch_public_fields(batch),
+        }
+
+
+def allocation_import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
+    """Apply advisor + enterprise position allocation in one transaction per upload."""
+    from app.modules.internship.services.internship_batch_context import (
+        batch_public_fields, resolve_batch,
+    )
+
+    pre = allocation_import_dry_run(rows, batch_id=batch_id, user=user)
+    if pre["invalidRows"] > 0:
+        raise AppException("DATA_CONFLICT", "存在未通过预校验的分配行，禁止确认导入")
+
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=True)
+        profiles = {
+            s.student_no: s for s in db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == _tid(),
+                StudentProfile.is_deleted.is_(False),
+            )).all()
+        }
+        advisor_count = 0
+        position_count = 0
+        processed = 0
+
+        for raw in rows or []:
+            row = raw or {}
+            student_no = str(row.get("studentNo") or "").strip()
+            student = profiles.get(student_no)
+            if not student:
+                raise AppException("DATA_CONFLICT", f"确认导入时学生不存在：{student_no}")
+
+            record = db.scalar(select(InternshipRecord).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.student_id == student.id,
+                InternshipRecord.is_deleted.is_(False),
+            ).with_for_update())
+            if not record:
+                raise AppException("DATA_CONFLICT", f"确认导入时学生已不在当前批次：{student_no}")
+            _assert_write_scope(db, record, user)
+
+            advisor_name = str(row.get("advisorName") or "").strip()
+            if advisor_name:
+                advisor = _advisor(db, advisor_name=advisor_name)
+                if record.advisor_user_id == advisor.id:
+                    raise AppException("DATA_CONFLICT", f"{student_no} 的指导教师已被其他操作更新")
+                assign_advisor_in_tx(
+                    db, record, advisor.id, str(row.get("remark") or "").strip(),
+                    user=user, expected_version=int(record.version or 0),
+                )
+                advisor_count += 1
+
+            position_name = str(row.get("positionName") or "").strip()
+            company_name = str(row.get("companyName") or "").strip()
+            credit_code = str(row.get("companyCreditCode") or "").strip()
+            if position_name or company_name or credit_code:
+                company = _allocation_company(db, name=company_name, credit_code=credit_code)
+                if not company:
+                    raise AppException("DATA_CONFLICT", f"{student_no} 的企业在确认导入时已变化")
+                position = _allocation_position(db, batch.id, company.id, position_name)
+                if not position:
+                    raise AppException("DATA_CONFLICT", f"{student_no} 的岗位在确认导入时已变化")
+                _assert_direct_position_change_allowed(record)
+                assign_position_in_tx(
+                    db, record, position.id, int(record.version or 0), user=user,
+                )
+                position_count += 1
+
+            processed += 1
+            _trail(db, record.id, "ALLOCATION_IMPORT", {
+                "studentNo": student_no,
+                "advisorAssigned": bool(advisor_name),
+                "positionAssigned": bool(position_name or company_name or credit_code),
+                "batchId": str(batch.id),
+                "remark": str(row.get("remark") or "").strip(),
+            })
+
+        db.commit()
+        return {
+            "processed": processed,
+            "advisorAssigned": advisor_count,
+            "positionAssigned": position_count,
+            **batch_public_fields(batch),
+        }
+
+
+def _allocation_row_values_for_error(row: dict) -> list:
+    return [row.get(ALLOCATION_IMPORT_HEADER_MAP[h], "") for h in ALLOCATION_IMPORT_HEADERS]
 
 
 # ═══════════ 导入 / 导出 ═══════════
