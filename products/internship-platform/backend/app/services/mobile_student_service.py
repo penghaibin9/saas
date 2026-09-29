@@ -16,8 +16,21 @@ def resolve_student(db,user):
         except Exception:pass
     uid=user.get("userId") or user.get("id")
     if uid:
-        link=db.scalar(select(StudentAccountLink).where(StudentAccountLink.tenant_id==_tid(),StudentAccountLink.user_id==int(uid),StudentAccountLink.is_deleted.is_(False)).order_by(StudentAccountLink.id.desc()))
-        if link:return tenant_get(db,StudentProfile,link.student_id)
+        raw_uid=str(uid).strip()
+        if raw_uid.startswith("db-"):
+            raw_uid=raw_uid[3:]
+        try:
+            user_id=int(raw_uid)
+        except (TypeError,ValueError):
+            user_id=0
+        if user_id>0:
+            link=db.scalar(select(StudentAccountLink).where(
+                StudentAccountLink.tenant_id==_tid(),
+                StudentAccountLink.user_id==user_id,
+                StudentAccountLink.link_status=="ACTIVE",
+                StudentAccountLink.is_deleted.is_(False),
+            ).order_by(StudentAccountLink.id.desc()))
+            if link:return tenant_get(db,StudentProfile,link.student_id)
     sno=str(user.get("studentNo") or "").strip()
     if sno:return db.scalar(select(StudentProfile).where(StudentProfile.tenant_id==_tid(),StudentProfile.student_no==sno,StudentProfile.is_deleted.is_(False)))
     return None
