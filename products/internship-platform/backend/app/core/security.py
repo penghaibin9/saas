@@ -69,7 +69,15 @@ def _validate_db_subject(user: dict, request_path: str = "") -> dict:
         db.close()
 
 
-def get_current_user(request:Request,authorization:str|None=Header(None,alias="Authorization")):
+async def get_current_user(request:Request,authorization:str|None=Header(None,alias="Authorization")):
+    """Resolve the verified subject in the request task context.
+
+    FastAPI executes ordinary sync dependencies/endpoints in worker threads. ContextVar writes
+    made inside a sync dependency do not reliably flow back into the parent request task, so a
+    later sync endpoint may see no tenant even though authentication succeeded. Keeping this
+    dependency async establishes tenant/user context in the request task before downstream sync
+    permission dependencies and endpoints are dispatched to thread workers.
+    """
     raw=str(authorization or "").strip()
     if not raw.lower().startswith("bearer "):raise unauthorized()
     user=decode_token(raw.split(None,1)[1])
