@@ -63,10 +63,22 @@ test('enterprise HR logs into real MySQL context and enters recruitment home', a
   expect(company.qualificationStatus).toBe('PASSED')
 
   const dashboard = await payload(dashboardResponse, '/api/v1/internship/enterprise-portal/dashboard')
-  expect(dashboard.metrics.published).toBe(0)
+  expect(dashboard.metrics.published).toBe(1)
   expect(dashboard.metrics.applicants).toBe(0)
 
   await expect(page.getByRole('heading', { name: '企业首页' })).toBeVisible()
   await expect(page.getByText('2026岗位实习企业双选', { exact: true })).toBeVisible()
   await page.screenshot({ path: 'test-results-fullstack-enterprise/enterprise-real-backend.png', fullPage: true })
+
+  const positionsResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/enterprise-portal/positions' &&
+    r.request().method() === 'GET')
+  await page.getByRole('link', { name: '我的岗位' }).click()
+  const positions = await payload(positionsResponse, '/api/v1/internship/enterprise-portal/positions')
+  expect(positions.total).toBe(1)
+  expect(positions.items[0].title).toBe('智能制造产线运维实习生')
+  expect(positions.items[0].status).toBe('PUBLISHED')
+  await expect(page.getByRole('heading', { name: '我的岗位', exact: true })).toBeVisible()
+  await expect(page.getByText('智能制造产线运维实习生')).toBeVisible()
+  await page.screenshot({ path: 'test-results-fullstack-enterprise/enterprise-real-position-list.png', fullPage: true })
 })
