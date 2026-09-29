@@ -20,11 +20,14 @@ _PASSWORD = re.compile(r"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).{10,1
 
 def _account(db, user):
     raw = str((user or {}).get("userId") or "")
+    raw_tenant = str((user or {}).get("tenantId") or (user or {}).get("tenant_id") or "")
     if not raw.startswith("db-") or not raw[3:].isdigit():
         raise unauthorized("仅真实数据库账号可执行账号安全操作")
+    if not raw_tenant.isdigit() or int(raw_tenant) <= 0:
+        raise unauthorized("真实账号令牌缺少学校上下文")
     row = db.scalar(select(User).where(
         User.id == int(raw[3:]),
-        User.tenant_id == _tid(),
+        User.tenant_id == int(raw_tenant),
         User.is_deleted.is_(False),
         User.status == "ACTIVE",
     ).with_for_update())
@@ -86,7 +89,7 @@ def change_password(body: dict = Body(...), user=Depends(get_current_user)):
         account.credential_version = before + 1
         account.version = int(account.version or 0) + 1
         db.add(InternshipAuditTrail(
-            tenant_id=_tid(),
+            tenant_id=int(account.tenant_id),
             target_id=account.id,
             target_type="ACCOUNT_RESET",
             action="STUDENT_PASSWORD_CHANGE",
