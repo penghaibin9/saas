@@ -122,17 +122,15 @@ def _merge_tasks_with_progress(plan, progress_rows):
     return result
 
 
-def _student_current_context(db, user, *, lock=False):
+def _student_current_context(db, user, *, plan_id=None, lock=False):
     from app.modules.internship.services.internship_agreement_service import _student_record
+    from app.modules.internship.services import internship_plan_service as plan_service
+
     record, student = _student_record(db, user, for_write=lock)
-    if not record or not record.batch_id:
+    if not record:
         return record, student, None, None
-    plan_query = select(InternshipBatchPlan).where(
-        InternshipBatchPlan.tenant_id == _tid(),
-        InternshipBatchPlan.batch_id == record.batch_id,
-        InternshipBatchPlan.status == "PUBLISHED",
-        InternshipBatchPlan.is_deleted.is_(False))
-    plan = db.scalar(plan_query.with_for_update() if lock else plan_query)
+    plan, _assignment = plan_service._student_plan_for_record(
+        db, record, plan_id, lock=lock)
     if not plan:
         return record, student, None, None
     ack_query = select(InternshipPlanAck).where(
@@ -144,9 +142,10 @@ def _student_current_context(db, user, *, lock=False):
     return record, student, plan, ack
 
 
-def student_tasks(user) -> dict:
+def student_tasks(user, plan_id=None) -> dict:
     with session() as db:
-        record, _student, plan, ack = _student_current_context(db, user)
+        record, _student, plan, ack = _student_current_context(
+            db, user, plan_id=plan_id)
         if not record or not plan:
             return {
                 "planId": "", "planVersion": 0, "ackId": "", "ackStatus": "PENDING",
@@ -170,6 +169,8 @@ def student_tasks(user) -> dict:
         approved = sum(1 for task in tasks if task.get("progressStatus") == "APPROVED")
         return {
             "planId": str(plan.id), "planVersion": int(plan.version or 0),
+            "planBatchId": str(plan.batch_id),
+            "planTitle": plan.title,
             "ackId": str(ack.id) if ack else "", "ackStatus": ack.status if ack else "PENDING",
             "ackVersion": int(ack.version or 0) if ack else 0,
             "tasks": tasks,
@@ -190,11 +191,12 @@ def student_submit_task(user, sort_order: int, body: dict) -> dict:
     evidence_file_id = _validate_file(
         payload.get("evidenceFileId") or payload.get("fileId"))
     with session() as db:
-        record, _student, plan, ack = _student_current_context(db, user, lock=True)
+        record, _student, plan, ack = _student_current_context(
+            db, user, plan_id=payload.get("planId"), lock=True)
         if not record or not plan:
             raise AppException("DATA_NOT_FOUND", "当前批次没有已发布实习计划")
         from app.modules.internship.services import internship_report_quality_service as quality
-        rules = quality.rules_for_batch(db, record.batch_id)
+        rules = quality.rules_for_batch(db, plan.batch_id)
         minimum = int(rules.get("planTaskMinWords") or 10)
         if len(note) < minimum:
             raise AppException("VALIDATION_ERROR", f"完成说明至少 {minimum} 字")
@@ -241,24 +243,48 @@ def list_progress(page, page_size, batch_id=None, status=None, keyword=None,
         query = select(InternshipPlanTaskProgress).where(
             InternshipPlanTaskProgress.tenant_id == _tid(),
             InternshipPlanTaskProgress.is_deleted.is_(False))
+        if batch_id:
+            try:
+                bid = int(batch_id)
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "batchId 格式非法") from None
+            plan_ids = list(db.scalars(select(InternshipBatchPlan.id).where(
+                InternshipBatchPlan.tenant_id == _tid(),
+                InternshipBatchPlan.batch_id == bid,
+                InternshipBatchPlan.is_deleted.is_(False),
+            )).all())
+            if not plan_ids:
+                return [], 0
+            query = query.where(InternshipPlanTaskProgress.plan_id.in_(plan_ids))
         if status:
             query = query.where(InternshipPlanTaskProgress.status == status)
         if task_sort_order is not None:
             query = query.where(
                 InternshipPlanTaskProgress.task_sort_order == int(task_sort_order))
         rows = db.scalars(query.order_by(InternshipPlanTaskProgress.id.desc())).all()
+        plan_map = {
+            int(row.id): row for row in db.scalars(select(InternshipBatchPlan).where(
+                InternshipBatchPlan.tenant_id == _tid(),
+                InternshipBatchPlan.id.in_({int(item.plan_id) for item in rows} or {0}),
+                InternshipBatchPlan.is_deleted.is_(False),
+            )).all()
+        }
         items = []
         for progress in rows:
             record = db.get(InternshipRecord, progress.internship_id)
             student = db.get(StudentProfile, progress.student_id)
-            if batch_id and (not record or str(record.batch_id) != str(batch_id)):
+            plan = plan_map.get(int(progress.plan_id))
+            if not plan:
                 continue
             if keyword and (not student or keyword.strip() not in (student.real_name or "")
                             and keyword.strip() not in (student.student_no or "")):
                 continue
             if not in_scope(scope, db, record, student):
                 continue
-            items.append(_row(progress, record, student))
+            item = _row(progress, record, student, batch_id=plan.batch_id)
+            item["planTitle"] = plan.title
+            item["planBatchId"] = str(plan.batch_id)
+            items.append(item)
         total = len(items)
         start = (max(1, page) - 1) * page_size
         return items[start:start + page_size], total
@@ -283,8 +309,16 @@ def review_progress(prog_id, action: str, comment: str = "", user=None,
         student = db.get(StudentProfile, progress.student_id)
         if not _rec_in_scope(_current_scope(user), db, record, student):
             raise no_permission("只能处理本人指导学生的任务完成确认")
-        from app.modules.internship.services.internship_batch_context import assert_record_batch
-        assert_record_batch(record, expected_batch_id)
+        plan = db.get(InternshipBatchPlan, progress.plan_id)
+        if not plan or plan.is_deleted or plan.tenant_id != _tid():
+            raise AppException("DATA_CONFLICT", "任务所属实习方案不存在")
+        if expected_batch_id not in (None, ""):
+            try:
+                expected_plan_batch = int(expected_batch_id)
+            except (TypeError, ValueError):
+                raise AppException("VALIDATION_ERROR", "batchId 格式非法") from None
+            if int(plan.batch_id or 0) != expected_plan_batch:
+                raise AppException("DATA_CONFLICT", "任务不属于当前选择的实习方案批次，请刷新")
         _expected(expected_version, progress.version)
         if progress.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅待确认任务可批阅")
@@ -298,7 +332,7 @@ def review_progress(prog_id, action: str, comment: str = "", user=None,
             "newVersion": int(progress.version or 0),
         }, _op_name(user))
         db.commit()
-        return _row(progress, record, student)
+        return _row(progress, record, student, batch_id=plan.batch_id)
 
 
 def batch_summary(batch_id, user=None) -> dict:
