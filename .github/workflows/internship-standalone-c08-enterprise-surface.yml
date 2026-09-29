@@ -11,6 +11,7 @@ on:
       - "products/internship-platform/backend/app/modules/internship/routers/internship_enterprise_collaboration.py"
       - "products/internship-platform/backend/app/modules/internship/services/internship_enterprise_collaboration_service.py"
       - "products/internship-platform/backend/tests/test_yiyang_c08_enterprise_surface.py"
+      - "products/internship-platform/backend/tests/test_internship_enterprise_collaboration_canonical_contract.py"
       - "products/internship-platform/enterprise-web/**"
       - ".github/workflows/internship-standalone-c08-enterprise-surface.yml"
 
@@ -34,8 +35,11 @@ jobs:
           node-version: "20"
       - name: Install standalone backend dependencies
         run: python -m pip install -r products/internship-platform/backend/requirements.txt
-      - name: Verify enterprise route surface
-        run: pytest -q products/internship-platform/backend/tests/test_yiyang_c08_enterprise_surface.py
+      - name: Verify enterprise route and collaboration authority surface
+        run: |
+          pytest -q \
+            products/internship-platform/backend/tests/test_yiyang_c08_enterprise_surface.py \
+            products/internship-platform/backend/tests/test_internship_enterprise_collaboration_canonical_contract.py
       - name: Install enterprise web dependencies
         working-directory: products/internship-platform/enterprise-web
         run: npm install --no-audit --no-fund
