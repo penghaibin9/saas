@@ -7,6 +7,8 @@ on:
       - feat/internship-standalone-yiyang-v1
     paths:
       - ".github/workflows/internship-standalone-g01-g18-current-head.yml"
+      - "products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py"
+      - "products/internship-platform/backend/tests/test_standalone_browser_auth_mysql.py"
 
 jobs:
   g01-g18:
