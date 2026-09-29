@@ -11,7 +11,9 @@ const required = [
   "path: 'attendance'",
   "path: 'reports'",
   "path: 'archive'",
-  "path: 'stats'"
+  "path: 'stats'",
+  "path: 'regulatory-reporting'",
+  "path: 'formal-documents'"
 ]
 for (const token of required) {
   if (!routes.includes(token)) throw new Error(`standalone route missing: ${token}`)
@@ -26,7 +28,9 @@ const forbidden = [
   '@/modules/platform'
 ]
 for (const token of forbidden) {
-  if (nav.includes(token)) throw new Error(`forbidden cross-domain navigation found: ${token}`)
+  if (nav.includes(token) || routes.includes(token)) {
+    throw new Error(`forbidden cross-domain route/navigation found: ${token}`)
+  }
 }
 
 console.log('Standalone admin route surface: OK')
