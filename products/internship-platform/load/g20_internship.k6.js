@@ -68,6 +68,7 @@ export const options = {
     http_req_failed: [`rate<${MAX_ERROR_RATE}`],
     http_req_duration: [`p(95)<${P95_MS}`, `p(99)<${P99_MS}`]
   },
+  summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   discardResponseBodies: true,
   noConnectionReuse: false,
   userAgent: 'Yueke-Internship-G20-k6/1.0'
