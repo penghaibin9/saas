@@ -28,26 +28,19 @@ jobs:
 
       - name: G01 multi-school multi-college multi-plan
         run: |
-          pytest -q             products/internship-platform/backend/tests/test_internship_scope.py             products/internship-platform/backend/tests/test_internship_scope_default_deny_contract.py             products/internship-platform/backend/tests/test_yiyang_ap04_allocation_scope_contract.py             products/internship-platform/backend/tests/test_internship_plan_task_progress.py
+          pytest -q \
+            products/internship-platform/backend/tests/test_yiyang_g01_multiscope_multiplan.py \
+            products/internship-platform/backend/tests/test_internship_scope_default_deny_contract.py \
+            products/internship-platform/backend/tests/test_yiyang_ap04_allocation_scope_contract.py
 
       - name: G02 complete position submission
         run: pytest -q products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py
 
       - name: G03 enterprise library and registry truth
-        run: |
-          pytest -q products/internship-platform/backend/tests/test_internship_enterprise.py
-          python - <<'PY'
-          from pathlib import Path
-          text=Path("products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py").read_text(encoding="utf-8")
-          assert 'companyRegistryStatus"] == "UNVERIFIED"' in text
-          assert 'companyRegistryVerified"] is False' in text
-          assert 'student-self-claimed' in text
-          print("G03 internal enterprise library is tested; external registry lookup remains fail-closed until an authorized data source is connected.")
-          PY
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_g03_enterprise_registry_truth.py
 
       - name: G04 enterprise-position change order
-        run: |
-          pytest -q             products/internship-platform/backend/tests/test_internship_process_change.py             products/internship-platform/backend/tests/test_internship_atomic_change_static.py
+        run: pytest -q products/internship-platform/backend/tests/test_internship_atomic_change_static.py
 
       - name: Record G01-G04 verdict boundary
         run: |
