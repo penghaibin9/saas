@@ -363,6 +363,12 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.EMPLOYMENT_ARCHIVE, title: '监管上报', requiresAuth: true, permissionKey: 'internship.reporting.view' }
     },
     {
+      path: 'formal-documents',
+      name: 'internship-formal-documents',
+      component: () => import('@/modules/internship/views/FormalDocumentWorkspaceView.vue'),
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.EMPLOYMENT_ARCHIVE, title: '正式文书', requiresAuth: true, permissionKey: 'internship.archive.view' }
+    },
+    {
       path: 'material-center',
       name: 'internship-material-center',
       component: () => import('@/modules/internship/views/InternshipMaterialCenterView.vue'),
@@ -389,7 +395,7 @@ const internshipRoutes = {
     {
       path: 'employment-archive-stats',
       name: 'internship-employment-archive-stats',
-      redirect: '/admin/employment'
+      redirect: '/admin/internship/archive'
     },
     {
       path: 'agreement-templates/new',
