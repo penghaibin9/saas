@@ -303,6 +303,7 @@ export default {
         { label: '企业性质', value: d.nature }, { label: '规模', value: d.scale },
         { label: '地区', value: d.region }, { label: '城市', value: d.city },
         { label: '详细地址', value: d.address }, { label: '来源', value: d.sourceLabel },
+        { label: '岗位实习适用学院', value: d.schoolWide ? '全校通用' : (d.collegeScopeNames || []).join('、'), span: 2 },
         { label: '联系人', value: d.contactPerson }, { label: '联系电话(脱敏)', value: d.contactPhoneMasked },
         { label: '累计实习生', value: String(d.internCount) }, { label: '备注', value: d.remark }
       ]
