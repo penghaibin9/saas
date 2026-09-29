@@ -1,16 +1,33 @@
 /**
- * @deprecated 已废弃。请使用 @/modules/dashboard/adapter/dashboard.adapter.js。
- * 本文件仅保留兼容导出，供历史代码过渡。
- * TODO(migrate): 全项目无引用后删除本文件。
+ * Standalone internship risk helpers.
+ *
+ * This file intentionally has no dependency on the full-platform dashboard module.
+ * The standalone product only needs the compatibility projections below.
  */
-export {
-  filterHighRiskStudents,
-  filterFocusStudents,
-  buildFocusStudents,
-  buildRiskAlerts
-} from '@/modules/dashboard/adapter/dashboard.adapter.js'
+const HIGH_RISK_LEVELS = ['HIGH', 'CRITICAL']
+const FOCUS_RISK_LEVELS = ['MEDIUM', 'HIGH', 'CRITICAL']
 
-/** @deprecated 请从 store/adapter 获取关联关系 */
+export function filterHighRiskStudents(students = []) {
+  return students.filter((student) => HIGH_RISK_LEVELS.includes(String(student?.riskLevel || '').toUpperCase()))
+}
+
+export function filterFocusStudents(students = []) {
+  return students.filter((student) => FOCUS_RISK_LEVELS.includes(String(student?.riskLevel || '').toUpperCase()))
+}
+
+export function buildRiskAlerts(state = {}) {
+  return (state.risks || []).filter((risk) => !['resolved', 'ignored'].includes(String(risk?.status || '').toLowerCase()))
+}
+
+export function buildFocusStudents(state = {}) {
+  const focusIds = new Set(
+    buildRiskAlerts(state)
+      .filter((risk) => risk?.studentId && FOCUS_RISK_LEVELS.includes(String(risk?.riskLevel || risk?.level || '').toUpperCase()))
+      .map((risk) => String(risk.studentId))
+  )
+  return (state.students || []).filter((student) => focusIds.has(String(student?.studentId ?? student?.id ?? '')))
+}
+
 export const RISK_STUDENT_MAP = {
   'risk-checkin': 'stu-001',
   'risk-report': 'stu-001',
