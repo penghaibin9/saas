@@ -83,7 +83,7 @@ jobs:
           PY
       - name: Run C08/G17 backend acceptance only
         run: pytest -q products/internship-platform/backend/tests/test_yiyang_c08_g17_formal_documents.py
-      - name: Verify G17 admin entry and standalone build
+      - name: Verify G17 admin entry, import closure and standalone build
         working-directory: products/internship-platform/admin-web
         run: |
           npm install --no-audit --no-fund
