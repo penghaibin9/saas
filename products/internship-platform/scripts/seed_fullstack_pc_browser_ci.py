@@ -21,6 +21,8 @@ STAFF_ID = 88111
 STUDENT_ID = 88112
 STAFF_ROLE_ID = 88121
 STUDENT_ROLE_ID = 88122
+MENTOR_ROLE_ID = 88123
+MENTOR_ID = 88113
 STUDENT_PROFILE_ID = 88131
 BATCH_ID = 88141
 
@@ -56,6 +58,14 @@ def seed() -> None:
                 status="ACTIVE",
             ),
             Role(
+                id=MENTOR_ROLE_ID,
+                tenant_id=TENANT_ID,
+                role_code="INTERN_MENTOR",
+                role_name="实习指导教师",
+                role_type="SYSTEM",
+                status="ACTIVE",
+            ),
+            Role(
                 id=STUDENT_ROLE_ID,
                 tenant_id=TENANT_ID,
                 role_code="STUDENT",
@@ -70,6 +80,17 @@ def seed() -> None:
                 real_name="益阳实习管理员",
                 password_hash=hash_password("Fullstack-Admin-2026!"),
                 user_type="SCHOOL_ADMIN",
+                status="ACTIVE",
+                must_change_password=False,
+                credential_version=0,
+            ),
+            User(
+                id=MENTOR_ID,
+                tenant_id=TENANT_ID,
+                login_name="yiyang.fullstack.mentor",
+                real_name="李指导老师",
+                password_hash=hash_password("Fullstack-Mentor-2026!"),
+                user_type="TEACHER",
                 status="ACTIVE",
                 must_change_password=False,
                 credential_version=0,
@@ -126,6 +147,12 @@ def seed() -> None:
             ),
             UserRole(
                 tenant_id=TENANT_ID,
+                user_id=MENTOR_ID,
+                role_id=MENTOR_ROLE_ID,
+                status="ACTIVE",
+            ),
+            UserRole(
+                tenant_id=TENANT_ID,
                 user_id=STUDENT_ID,
                 role_id=STUDENT_ROLE_ID,
                 status="ACTIVE",
@@ -135,6 +162,7 @@ def seed() -> None:
         print({
             "tenantId": TENANT_ID,
             "staff": "yiyang.fullstack.admin",
+            "mentor": "yiyang.fullstack.mentor",
             "student": "202688013",
             "batchId": BATCH_ID,
         })
