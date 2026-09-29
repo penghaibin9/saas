@@ -51,8 +51,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: "npm"
-          cache-dependency-path: products/internship-platform/admin-web/package-lock.json
       - name: Install standalone backend dependencies
         run: python -m pip install -r products/internship-platform/backend/requirements.txt
       - name: Compile G17 authority
@@ -88,7 +86,7 @@ jobs:
       - name: Verify G17 admin entry and standalone build
         working-directory: products/internship-platform/admin-web
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run check:routes
           npm run check:imports
           npm run build
