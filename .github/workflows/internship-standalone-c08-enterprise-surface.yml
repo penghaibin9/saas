@@ -51,3 +51,12 @@ jobs:
       - name: Run enterprise browser evidence
         working-directory: products/internship-platform/enterprise-web
         run: npm run test:e2e
+      - name: Upload enterprise browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-enterprise-browser-evidence
+          path: |
+            products/internship-platform/enterprise-web/test-results
+          if-no-files-found: error
+          retention-days: 14
