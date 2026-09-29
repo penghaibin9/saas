@@ -17,7 +17,7 @@ from app.models.excel_import_job import ExcelImportJob
 from app.models.file import (
     ArchiveManifest, ArchiveManifestItem, FileAsset, FileBinding, FileObject, FileVersion,
 )
-from app.models.enterprise import EmpCompany, InternshipEnterpriseContact
+from app.models.enterprise import EmpCompany, InternshipEnterpriseCollegeScope, InternshipEnterpriseContact
 
 from app.models.internship import (
     AttendanceException, InternshipAgreement, InternshipArchive, InternshipAuditTrail,
