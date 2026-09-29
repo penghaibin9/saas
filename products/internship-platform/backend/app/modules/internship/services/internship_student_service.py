@@ -183,9 +183,24 @@ def _rec_in_scope(scope: dict, db, r: InternshipRecord, stu) -> bool:
     from app.modules.internship.services.internship_service import resolve_student_class_college_names
     from app.services.mobile_teacher_service import scope_match_row
     class_name, college_name = resolve_student_class_college_names(db, stu)
-    return scope_match_row(scope, student_no=(stu.student_no if stu else None),
-                           class_name=class_name, advisor_name=r.advisor_name,
-                           college_name=college_name, advisor_user_id=r.advisor_user_id)
+    major_name = ""
+    if stu is not None:
+        major_id = getattr(stu, "major_id", None)
+        if not major_id and getattr(stu, "class_id", None):
+            cls = tenant_get(db, SchoolClass, stu.class_id)
+            major_id = cls.major_id if cls else None
+        if major_id:
+            major = tenant_get(db, Major, major_id)
+            major_name = major.major_name if major else ""
+    return scope_match_row(
+        scope,
+        student_no=(stu.student_no if stu else None),
+        class_name=class_name,
+        advisor_name=r.advisor_name,
+        college_name=college_name,
+        major_name=major_name,
+        advisor_user_id=r.advisor_user_id,
+    )
 
 
 def _row(r: InternshipRecord, stu: StudentProfile | None, batch_name: str = "",
