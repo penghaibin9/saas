@@ -10,6 +10,8 @@ on:
       - "products/internship-platform/backend/app/api/v1/auth_recovery.py"
       - "products/internship-platform/backend/app/services/mobile_student_service.py"
       - "products/internship-platform/backend/app/api/v1/standalone_rbac.py"
+      - "products/internship-platform/backend/app/api/v1/standalone_student_portal.py"
+      - "products/internship-platform/backend/app/student_portal/internship_router.py"
       - "products/internship-platform/backend/app/api/router.py"
       - "products/internship-platform/backend/app/main.py"
       - "products/internship-platform/backend/tests/test_standalone_browser_auth_mysql.py"
@@ -72,6 +74,8 @@ jobs:
             ("/api/v1/auth/browser-logout","POST"),
             ("/api/v1/auth/me","GET"),
             ("/api/v1/rbac/current-context","GET"),
+            ("/api/v1/mobile/me/portal-config","GET"),
+            ("/api/v1/portal/internship/my","GET"),
           }
           assert required <= paths, sorted(required-paths)
           print(sorted(required))
