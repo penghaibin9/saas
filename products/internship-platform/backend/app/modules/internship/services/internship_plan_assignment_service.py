@@ -239,7 +239,11 @@ def plan_options(record_id, user=None, keyword: str = "") -> list[dict]:
         for plan in plans:
             try:
                 batch = _assert_plan_scope(db, plan, user, "选择实习方案")
-            except Exception:
+            except AppException as exc:
+                if exc.code in {"NO_PERMISSION", "NO_DATA_SCOPE"}:
+                    continue
+                raise
+            if batch.status != "RUNNING":
                 continue
             label = f"{batch.batch_name} · {plan.title}"
             if term and term not in label.lower():
@@ -292,7 +296,12 @@ def assign_plans(record_id, plan_ids, user=None, source: str = "MANUAL") -> dict
             ).with_for_update())
             if not plan:
                 raise AppException("DATA_CONFLICT", f"实习方案 {plan_id} 不存在或未发布")
-            _assert_plan_scope(db, plan, user, "分配实习方案")
+            plan_batch = _assert_plan_scope(db, plan, user, "分配实习方案")
+            if plan_batch.status != "RUNNING":
+                raise AppException(
+                    "DATA_CONFLICT",
+                    f"实习方案 {plan_id} 所属批次不是进行中状态，不能新增分配",
+                )
             existing = db.scalar(select(InternshipPlanAssignment).where(
                 InternshipPlanAssignment.tenant_id == _tid(),
                 InternshipPlanAssignment.internship_id == record.id,
