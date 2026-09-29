@@ -31,7 +31,7 @@
 
 <script>
 import { request, currentSessionGeneration } from '@/services/http/client'
-import { createPhoneBindingFlow, phoneBindingState } from '../../../../shared/phoneBindingFlow.mjs'
+import { createPhoneBindingFlow, phoneBindingState } from '@/security/flows/phoneBindingFlow.mjs'
 export default {
   props: { contextKey: { type: String, default: '' } }, emits: ['changed'],
   data() { return { state: phoneBindingState(), flow: null, clock: Date.now(), timer: null } },
