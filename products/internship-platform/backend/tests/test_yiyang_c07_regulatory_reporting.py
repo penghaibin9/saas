@@ -127,3 +127,49 @@ def test_g18_authoritative_teacher_term_and_rights_sources():
     assert "User.login_name" in rp01["advisorEmployeeNo"]["source"]
     assert "InternshipPosition.night_shift" in rp01["nightOrOvertime"]["source"]
     assert "InternshipBatch.academic_year" in rp02["startTerm"]["source"]
+
+
+def test_g18_file_evidence_model_contract():
+    from app.models import InternshipRegulatoryTask, InternshipRegulatoryTemplateVersion
+
+    template_columns = InternshipRegulatoryTemplateVersion.__table__.c
+    task_columns = InternshipRegulatoryTask.__table__.c
+    assert {"source_file_id", "source_file_name", "source_file_sha256"} <= set(template_columns)
+    assert {"output_file_id", "output_sha256", "error_file_id", "error_sha256"} <= set(task_columns)
+
+
+def test_g18_school_confirmed_template_requires_real_source_file(monkeypatch):
+    from app.services import file_service
+
+    monkeypatch.setattr(
+        file_service,
+        "get_file_meta",
+        lambda file_id, user=None: {
+            "fileId": str(file_id),
+            "fileName": "监管平台导入模板2026.xlsx",
+            "ext": "xlsx",
+            "sha256": "b" * 64,
+            "readyForBusiness": True,
+        },
+    )
+    meta = svc._regulatory_source_file_meta("901", user={"userId": "1"})
+    assert meta["fileId"] == "901"
+    assert meta["fileName"].endswith(".xlsx")
+    assert meta["sha256"] == "b" * 64
+
+    with pytest.raises(AppException):
+        svc._regulatory_source_file_meta("", user={"userId": "1"})
+
+    monkeypatch.setattr(
+        file_service,
+        "get_file_meta",
+        lambda file_id, user=None: {
+            "fileId": str(file_id),
+            "fileName": "不是监管模板.pdf",
+            "ext": "pdf",
+            "sha256": "c" * 64,
+            "readyForBusiness": True,
+        },
+    )
+    with pytest.raises(AppException):
+        svc._regulatory_source_file_meta("902", user={"userId": "1"})
