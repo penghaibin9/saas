@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     API_PREFIX:str="/api/v1"
     SOURCE_BASELINE_SHA:str="adea054e2fd59cc0b83bbdb22f10ec98a8e2fd8c"
     DATABASE_URL:str=""
+    EXPECTED_ALEMBIC_REVISION:str=""
     REDIS_URL:str=""
     REDIS_KEY_PREFIX:str="internship-standalone"
     REDIS_CONNECT_TIMEOUT:float=0.5
