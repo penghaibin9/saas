@@ -55,6 +55,8 @@ def validate(summary: dict[str, Any]) -> dict[str, Any]:
     business_paths = [str(item) for item in (summary.get("businessPaths") or [])]
     ack = bool(summary.get("realRunAcknowledged"))
     auth = bool(summary.get("authConfigured"))
+    auth_identity_count = int(summary.get("authIdentityCount") or 0)
+    identity_pool_ok = auth_identity_count >= vus if vus > 0 else False
     business = bool(summary.get("businessScenarioConfigured")) and bool(business_paths)
     threshold_ok, threshold_checks = thresholds_pass(summary)
 
@@ -77,6 +79,7 @@ def validate(summary: dict[str, Any]) -> dict[str, Any]:
         procurement_scale
         and ack
         and auth
+        and identity_pool_ok
         and business
         and threshold_ok
         and evidence_complete
@@ -88,6 +91,8 @@ def validate(summary: dict[str, Any]) -> dict[str, Any]:
         verdict = "SMOKE_ONLY"
     elif not ack or not auth or not business:
         verdict = "FAIL_CONFIG"
+    elif not identity_pool_ok:
+        verdict = "FAIL_IDENTITY_POOL"
     elif not evidence_complete:
         verdict = "FAIL_EVIDENCE"
     else:
@@ -102,6 +107,8 @@ def validate(summary: dict[str, Any]) -> dict[str, Any]:
         "requestedVus": vus,
         "realRunAcknowledged": ack,
         "authConfigured": auth,
+        "authIdentityCount": auth_identity_count,
+        "identityPoolMatchesVus": identity_pool_ok,
         "businessScenarioConfigured": business,
         "configuredPaths": paths,
         "businessPaths": business_paths,
@@ -121,6 +128,7 @@ def validate(summary: dict[str, Any]) -> dict[str, Any]:
         "notes": [
             "SMOKE_ONLY is not procurement performance acceptance.",
             "5000 rows of seed/demo data are not accepted as 5000-user concurrency evidence.",
+            "Formal PASS requires at least one distinct authenticated test identity per requested VU; a shared single token is smoke evidence only.",
             "PASS means the supplied k6 run met the configured thresholds; school/tender SLA values must override operational defaults when formally specified.",
         ],
     }
@@ -133,6 +141,7 @@ def self_test() -> dict[str, Any]:
         "requestedVus": 5000,
         "realRunAcknowledged": True,
         "authConfigured": True,
+        "authIdentityCount": 5000,
         "businessScenarioConfigured": True,
         "configuredPaths": ["/health", "/api/v1/internship/dashboard"],
         "businessPaths": ["/api/v1/internship/dashboard"],
@@ -149,10 +158,18 @@ def self_test() -> dict[str, Any]:
     }
     result = validate(fake)
     assert result["g20Qualified"] is True and result["verdict"] == "PASS"
+    fake["authIdentityCount"] = 1
+    shared = validate(fake)
+    assert shared["g20Qualified"] is False and shared["verdict"] == "FAIL_IDENTITY_POOL"
     fake["requestedVus"] = 20
     smoke = validate(fake)
     assert smoke["g20Qualified"] is False and smoke["verdict"] == "SMOKE_ONLY"
-    return {"ok": True, "qualifiedCase": result["verdict"], "smokeCase": smoke["verdict"]}
+    return {
+        "ok": True,
+        "qualifiedCase": result["verdict"],
+        "sharedTokenCase": shared["verdict"],
+        "smokeCase": smoke["verdict"],
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
