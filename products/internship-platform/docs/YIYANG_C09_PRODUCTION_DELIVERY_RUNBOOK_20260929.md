@@ -184,7 +184,8 @@ scripts/g20_validate_evidence.py
 G20_BASE_URL=https://正式域名 \
 G20_VUS=20 \
 G20_AUTH_TOKEN='<测试账号token>' \
-G20_PATHS='/health,/api/v1/<真实只读业务接口1>,/api/v1/<真实只读业务接口2>' \
+G20_BATCH_ID='<真实压测批次>' \
+G20_PATHS='/health,/api/v1/internship/dashboard?batchId={batchId},/api/v1/internship/stats/procurement-overview?batchId={batchId},/api/v1/internship/stats/process-analytics?batchId={batchId}&groupBy=STUDENT&period=ALL&page=1&pageSize=50,/api/v1/internship/risks?batchId={batchId}&page=1&pageSize=20' \
 k6 run load/g20_internship.k6.js
 ```
 
@@ -207,7 +208,7 @@ G20_VUS=5000 \
 G20_REAL_RUN_ACK=YES \
 G20_AUTH_TOKEN='<专用压测账号token>' \
 G20_BATCH_ID='<真实压测批次>' \
-G20_PATHS='/health,/api/v1/<批次统计接口>,/api/v1/<过程统计接口>,/api/v1/<风险列表接口>' \
+G20_PATHS='/health,/api/v1/internship/dashboard?batchId={batchId},/api/v1/internship/stats/procurement-overview?batchId={batchId},/api/v1/internship/stats/process-analytics?batchId={batchId}&groupBy=STUDENT&period=ALL&page=1&pageSize=50,/api/v1/internship/risks?batchId={batchId}&page=1&pageSize=20' \
 G20_P95_MS='<校方/采购SLA>' \
 G20_P99_MS='<校方/采购SLA>' \
 G20_MAX_ERROR_RATE='<校方/采购SLA>' \
@@ -221,6 +222,15 @@ python scripts/g20_validate_evidence.py g20-k6-summary.json \
   --report artifacts/g20-formal.json \
   --require-qualified
 ```
+
+本仓库当前已确认用于 G20 的只读核心接口为：
+
+- `GET /api/v1/internship/dashboard?batchId={batchId}`
+- `GET /api/v1/internship/stats/procurement-overview?batchId={batchId}`
+- `GET /api/v1/internship/stats/process-analytics?batchId={batchId}&groupBy=STUDENT&period=ALL&page=1&pageSize=50`
+- `GET /api/v1/internship/risks?batchId={batchId}&page=1&pageSize=20`
+
+这些接口均走真实鉴权和数据范围，不使用 mock URL；正式压测前仍需用专用压测账号验证其对目标批次有只读权限。
 
 正式结果必须保留：
 
