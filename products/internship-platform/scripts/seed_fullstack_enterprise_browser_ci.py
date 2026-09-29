@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from app.core.security import hash_password
 from app.db.session import get_sessionmaker
-from app.models import EmpCompany, InternshipBatch, Tenant, User
+from app.models import EmpCompany, InternshipBatch, InternshipPosition, Tenant, User
 from app.models.internship_enterprise_portal import (
     InternshipCampaignEnterprise,
     InternshipEnterpriseAccessGrant,
@@ -17,6 +17,7 @@ COMPANY_ID=88251
 USER_ID=88213
 MEMBER_ID=88261
 CAMPAIGN_ID=88271
+POSITION_ID=88281
 
 db=get_sessionmaker()()
 now=datetime.utcnow().replace(microsecond=0)
@@ -56,6 +57,21 @@ try:
         school_confirm_start_at=now, school_confirm_end_at=now+timedelta(days=25),
         enterprise_access_end_at=now+timedelta(days=30),
     )
+    position=InternshipPosition(
+        id=POSITION_ID, tenant_id=TENANT_ID, company_id=COMPANY_ID,
+        company_name="益阳智能制造有限公司", batch_id=BATCH_ID, campaign_id=CAMPAIGN_ID,
+        source_type="ENTERPRISE", title="智能制造产线运维实习生",
+        category="智能制造", major_requirement="机电一体化/智能制造",
+        grade_requirement="2026级", work_location="益阳高新区",
+        work_address="湖南省益阳市高新区产业园", salary_range="3500-4500元/月",
+        headcount=8, allocated_count=0, daily_hours=8, weekly_hours=40,
+        shift_type="DAY", night_shift=False, overtime_allowed=False,
+        rest_days_per_week=2, remuneration_type="MONTHLY",
+        remuneration_amount=4000, remuneration_cycle="MONTH",
+        accommodation_provided=True, meal_provided=True, hazardous_flag=False,
+        work_content="产线巡检、设备点检、工艺记录与安全协作",
+        rights_status="PASSED", status="PUBLISHED", publish_at=now-timedelta(days=1),
+    )
     participation=InternshipCampaignEnterprise(
         tenant_id=TENANT_ID, campaign_id=CAMPAIGN_ID, company_id=COMPANY_ID,
         status="ACCEPTED", invite_source="MANUAL",
@@ -71,7 +87,7 @@ try:
         grant_type="RECRUITMENT", campaign_id=CAMPAIGN_ID, batch_id=BATCH_ID,
         valid_from=now-timedelta(days=1), valid_until=now+timedelta(days=30), status="ACTIVE",
     )
-    db.add_all([tenant,batch,company,user,campaign,participation,member,grant])
+    db.add_all([tenant,batch,company,user,campaign,position,participation,member,grant])
     db.commit()
     print({"tenantCode":"YIYANG-ENTERPRISE","campaignId":CAMPAIGN_ID,"memberId":MEMBER_ID})
 except Exception:
