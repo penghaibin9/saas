@@ -163,6 +163,99 @@ jobs:
           assert payload["checks"]["redis"] == "READY", payload
           assert payload["checks"]["fileStorage"] == "READY", payload
           PY
+      - name: Prove G19 source-to-standalone migration on MySQL 8.4
+        run: |
+          python - <<'PY'
+          from sqlalchemy import create_engine, text
+
+          admin = create_engine("mysql+pymysql://root:c09_root@127.0.0.1:3306/mysql?charset=utf8mb4")
+          with admin.begin() as db:
+              db.execute(text("DROP DATABASE IF EXISTS internship_c09_source"))
+              db.execute(text(
+                  "CREATE DATABASE internship_c09_source "
+                  "CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
+              ))
+          PY
+
+          DATABASE_URL='mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09_source?charset=utf8mb4'             alembic -c products/internship-platform/backend/alembic.ini upgrade head
+
+          python - <<'PY'
+          from sqlalchemy import create_engine, text
+
+          source = create_engine(
+              "mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09_source?charset=utf8mb4"
+          )
+          with source.begin() as db:
+              db.execute(text("""
+                  INSERT INTO t_tenant
+                    (id, tenant_code, school_name, deploy_mode, db_mode, status,
+                     created_at, updated_at, is_deleted, version)
+                  VALUES
+                    (777, 'G19-SMOKE-777', 'G19迁移演练学校', 'SAAS', 'SHARED', 'ACTIVE',
+                     NOW(), NOW(), 0, 0)
+              """))
+              db.execute(text("""
+                  INSERT INTO t_college
+                    (id, tenant_id, college_name, status, sort_order,
+                     created_at, updated_at, is_deleted, version)
+                  VALUES
+                    (7001, 777, '智能制造学院', 'ACTIVE', 1,
+                     NOW(), NOW(), 0, 0)
+              """))
+              db.execute(text("""
+                  INSERT INTO t_student_profile
+                    (id, tenant_id, student_no, real_name, current_stage,
+                     student_status, status, created_at, updated_at, is_deleted, version)
+                  VALUES
+                    (70001, 777, 'G190001', '迁移验收学生', 'ENROLLED',
+                     'NORMAL', 'ACTIVE', NOW(), NOW(), 0, 0)
+              """))
+          PY
+
+          python products/internship-platform/scripts/g19_migration_bridge.py             --source 'mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09_source?charset=utf8mb4'             --target "$DATABASE_URL"             --tenant-id 777             --mode copy             --report /tmp/g19-copy.json
+
+          python products/internship-platform/scripts/g19_migration_bridge.py             --source 'mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09_source?charset=utf8mb4'             --target "$DATABASE_URL"             --tenant-id 777             --mode verify             --report /tmp/g19-verify.json
+
+          python - <<'PY'
+          import json, os
+          from sqlalchemy import create_engine, text
+
+          copy=json.load(open("/tmp/g19-copy.json", encoding="utf-8"))
+          verify=json.load(open("/tmp/g19-verify.json", encoding="utf-8"))
+          assert copy["g19Qualified"] is True, copy
+          assert verify["g19Qualified"] is True, verify
+          assert not verify["verification"]["countMismatches"], verify
+          assert not verify["verification"]["logicalOrphans"], verify
+
+          by_table={row["table"]:row for row in verify["verification"]["tableCounts"]}
+          for table in ("t_tenant", "t_college", "t_student_profile"):
+              row=by_table[table]
+              assert row["sourceRows"] == row["targetRows"] == 1, row
+              assert row["sourceFingerprintSha256"] == row["targetFingerprintSha256"], row
+
+          engine=create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+          with engine.connect() as db:
+              tenant=db.execute(text(
+                  "SELECT id,tenant_code,school_name FROM t_tenant WHERE id=777"
+              )).mappings().one()
+              college=db.execute(text(
+                  "SELECT id,tenant_id,college_name FROM t_college WHERE id=7001"
+              )).mappings().one()
+              student=db.execute(text(
+                  "SELECT id,tenant_id,student_no,real_name FROM t_student_profile WHERE id=70001"
+              )).mappings().one()
+          assert tenant["id"] == 777 and tenant["tenant_code"] == "G19-SMOKE-777"
+          assert college["tenant_id"] == 777
+          assert student["tenant_id"] == 777 and student["student_no"] == "G190001"
+          print({
+              "g19": "PASS",
+              "tenantIdPreserved": tenant["id"],
+              "fingerprints": {
+                  name: by_table[name]["targetFingerprintSha256"]
+                  for name in ("t_tenant", "t_college", "t_student_profile")
+              },
+          })
+          PY
       - name: Stop API
         if: always()
         run: |
