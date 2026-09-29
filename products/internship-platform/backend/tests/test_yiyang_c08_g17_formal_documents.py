@@ -73,7 +73,7 @@ def test_g17_certificate_requires_completed_formal_facts():
 
     record.status = "ASSESSING"
     with pytest.raises(AppException):
-        svc._certificate_fact(record)
+        svc._certificate_fact(None, record)
 
 
 def test_g17_staff_routes_are_exposed():
