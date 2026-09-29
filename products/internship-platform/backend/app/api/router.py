@@ -8,6 +8,7 @@ from app.core.student_portal_module_gate import enforce_student_portal_module_ac
 from app.api.v1 import (
     auth_recovery,
     standalone_browser_auth,
+    standalone_mobile_auth,
     standalone_rbac,
     standalone_student_portal,
     mobile_internship_context,
@@ -101,6 +102,7 @@ def build_staff_internship_router() -> APIRouter:
 
 api_router = APIRouter()
 api_router.include_router(standalone_browser_auth.router)
+api_router.include_router(standalone_mobile_auth.router)
 api_router.include_router(auth_recovery.router)
 api_router.include_router(standalone_rbac.router)
 api_router.include_router(standalone_student_portal.router)
