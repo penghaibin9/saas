@@ -1,0 +1,72 @@
+import { test, expect } from '@playwright/test'
+
+const apiPath = response => new URL(response.url()).pathname
+
+async function payload(responsePromise, path) {
+  const response = await responsePromise
+  expect(apiPath(response)).toBe(path)
+  expect(response.ok()).toBeTruthy()
+  const body = await response.json()
+  expect(body.code).toBe(0)
+  return body.data
+}
+
+test('enterprise HR logs into real MySQL context and enters recruitment home', async ({ page }) => {
+  await page.goto('login')
+  await expect(page.getByRole('heading', { name: '企业协同中心' })).toBeVisible()
+
+  await page.getByLabel('学校编码').fill('YIYANG-ENTERPRISE')
+  await page.getByLabel('手机号或登录账号').fill('enterprise.fullstack.hr')
+  await page.getByLabel('密码').fill('Enterprise-Evidence-2026!')
+
+  const loginResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/enterprise-portal/auth/browser-login' &&
+    r.request().method() === 'POST')
+  const campaignsResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/enterprise-portal/campaigns' &&
+    r.request().method() === 'GET')
+
+  await page.getByRole('button', { name: '登录' }).click()
+
+  const login = await payload(loginResponse, '/api/v1/internship/enterprise-portal/auth/browser-login')
+  expect(login.context.tenantCode).toBe('YIYANG-ENTERPRISE')
+  expect(login.context.memberRole).toBe('HR')
+  expect(login.context.companyId).toBe('88251')
+
+  const campaigns = await payload(campaignsResponse, '/api/v1/internship/enterprise-portal/campaigns')
+  expect(campaigns).toHaveLength(1)
+  expect(campaigns[0].campaignName).toBe('2026岗位实习企业双选')
+  expect(campaigns[0].recruitmentAvailable).toBe(true)
+
+  await expect(page.getByRole('heading', { name: '选择招聘季' })).toBeVisible()
+
+  const contextResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/enterprise-portal/context' &&
+    r.request().method() === 'GET')
+  const dashboardResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/enterprise-portal/dashboard' &&
+    r.request().method() === 'GET')
+  const companyResponse = page.waitForResponse(r =>
+    apiPath(r) === '/api/v1/internship/enterprise-portal/company' &&
+    r.request().method() === 'GET')
+
+  await page.getByRole('button').filter({ hasText: '2026岗位实习企业双选' }).click()
+
+  const context = await payload(contextResponse, '/api/v1/internship/enterprise-portal/context')
+  expect(context.memberRole).toBe('HR')
+  expect(context.campaignId).toBe('88271')
+  expect(context.batchId).toBe('88241')
+  expect(context.capabilities.recruitmentWrite).toBe(true)
+
+  const company = await payload(companyResponse, '/api/v1/internship/enterprise-portal/company')
+  expect(company.name).toBe('益阳智能制造有限公司')
+  expect(company.qualificationStatus).toBe('PASSED')
+
+  const dashboard = await payload(dashboardResponse, '/api/v1/internship/enterprise-portal/dashboard')
+  expect(dashboard.metrics.published).toBe(0)
+  expect(dashboard.metrics.applicants).toBe(0)
+
+  await expect(page.getByRole('heading', { name: '企业首页' })).toBeVisible()
+  await expect(page.getByText('2026岗位实习企业双选', { exact: true })).toBeVisible()
+  await page.screenshot({ path: 'test-results-fullstack-enterprise/enterprise-real-backend.png', fullPage: true })
+})
