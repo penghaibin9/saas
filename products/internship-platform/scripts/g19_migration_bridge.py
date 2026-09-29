@@ -476,6 +476,55 @@ def migrate_local_file_bytes(
     }
 
 
+def _canonical_row(row: dict[str, Any], columns: list[str]) -> str:
+    payload = {name: row.get(name) for name in columns}
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    )
+
+
+def table_fingerprint(
+    conn: Connection,
+    table: Table,
+    *,
+    tenant_id: int,
+    include_global: bool,
+    columns: list[str],
+) -> tuple[int | None, str | None]:
+    clause = scope_clause(table, tenant_id)
+    if clause is None and not include_global:
+        return None, None
+    if not columns:
+        return 0, hashlib.sha256(b"").hexdigest()
+
+    stmt = select(*(table.c[name] for name in columns))
+    if clause is not None:
+        stmt = stmt.where(clause)
+
+    digest = hashlib.sha256()
+    count = 0
+    if "id" in table.c and "id" in columns:
+        stmt = stmt.order_by(table.c.id)
+        for row in conn.execute(stmt).mappings():
+            digest.update(_canonical_row(dict(row), columns).encode("utf-8"))
+            digest.update(b"\n")
+            count += 1
+    else:
+        rows = [
+            _canonical_row(dict(row), columns)
+            for row in conn.execute(stmt).mappings()
+        ]
+        for encoded in sorted(rows):
+            digest.update(encoded.encode("utf-8"))
+            digest.update(b"\n")
+            count += 1
+    return count, digest.hexdigest()
+
+
 def verify_counts(
     source_engine: Engine,
     target_engine: Engine,
@@ -498,9 +547,35 @@ def verify_counts(
             if source_count is None:
                 rows.append({"table": name, "scope": "GLOBAL_SKIPPED"})
                 continue
-            item = {"table": name, "sourceRows": source_count, "targetRows": target_count}
+            columns = migration_columns(source, target)
+            source_fp_count, source_fp = table_fingerprint(
+                src, source,
+                tenant_id=tenant_id,
+                include_global=include_global,
+                columns=columns,
+            )
+            target_fp_count, target_fp = table_fingerprint(
+                dst, target,
+                tenant_id=tenant_id,
+                include_global=include_global,
+                columns=columns,
+            )
+            item = {
+                "table": name,
+                "sourceRows": source_count,
+                "targetRows": target_count,
+                "fingerprintColumns": columns,
+                "sourceFingerprintRows": source_fp_count,
+                "targetFingerprintRows": target_fp_count,
+                "sourceFingerprintSha256": source_fp,
+                "targetFingerprintSha256": target_fp,
+            }
             rows.append(item)
-            if source_count != target_count:
+            if (
+                source_count != target_count
+                or source_fp_count != target_fp_count
+                or source_fp != target_fp
+            ):
                 mismatches.append(item)
     return rows, mismatches
 
@@ -527,6 +602,7 @@ def self_test() -> dict[str, Any]:
     assert "t_internship_record" in manifest.tables
     assert "t_file_object" in manifest.tables
     assert safe_relative_key("tenant/1/a.pdf").as_posix() == "tenant/1/a.pdf"
+    assert _canonical_row({"b": 2, "a": 1}, ["a", "b"]) == '{"a":1,"b":2}'
     try:
         safe_relative_key("../escape")
     except MigrationError:
@@ -538,6 +614,7 @@ def self_test() -> dict[str, Any]:
         "manifestTables": len(manifest.tables),
         "manifestSha256": manifest.sha256,
         "logicalChecks": len(LOGICAL_REFS),
+        "contentFingerprint": "sha256-per-table",
     }
 
 
