@@ -18,6 +18,7 @@ const P95_MS = Math.max(1, numberEnv('G20_P95_MS', 1500))
 const P99_MS = Math.max(P95_MS, numberEnv('G20_P99_MS', 3000))
 const MAX_ERROR_RATE = Math.max(0, Math.min(1, numberEnv('G20_MAX_ERROR_RATE', 0.01)))
 const TOKEN = String(__ENV.G20_AUTH_TOKEN || '')
+const TOKEN_FILE = String(__ENV.G20_AUTH_TOKENS_FILE || '').trim()
 const REAL_RUN_ACK = String(__ENV.G20_REAL_RUN_ACK || '').toUpperCase() === 'YES'
 const BATCH_ID = String(__ENV.G20_BATCH_ID || '')
 const INTERNSHIP_ID = String(__ENV.G20_INTERNSHIP_ID || '')
@@ -48,7 +49,28 @@ if (missingPlaceholders.length) {
 }
 
 const businessScenarioConfigured = businessPaths.length > 0
-const authConfigured = TOKEN.length > 0
+
+const loadAuthTokens = () => {
+  let values = []
+  if (TOKEN_FILE) {
+    const parsed = JSON.parse(open(TOKEN_FILE))
+    if (!Array.isArray(parsed)) throw new Error('G20_AUTH_TOKENS_FILE must contain a JSON array')
+    values = parsed
+  } else if (TOKEN) {
+    values = [TOKEN]
+  }
+  const normalized = values.map(value => String(value || '').trim()).filter(Boolean)
+  const unique = Array.from(new Set(normalized))
+  if (normalized.length !== unique.length) {
+    throw new Error('G20 auth token pool contains duplicate identities/tokens')
+  }
+  return unique
+}
+
+const authTokens = loadAuthTokens()
+const authIdentityCount = authTokens.length
+const authConfigured = authIdentityCount > 0
+const identityPoolMatchesVus = authIdentityCount >= VUS
 
 export const options = {
   scenarios: {
@@ -74,11 +96,11 @@ export const options = {
   userAgent: 'Yueke-Internship-G20-k6/1.0'
 }
 
-const headers = TOKEN ? { Authorization: `Bearer ${TOKEN}` } : {}
-
 export default function () {
   const index = exec.scenario.iterationInTest % paths.length
   const path = paths[index]
+  const token = authTokens.length ? authTokens[(exec.vu.idInTest - 1) % authTokens.length] : ''
+  const headers = token ? { Authorization: `Bearer ${token}` } : {}
   const response = http.get(`${BASE_URL}${path}`, {
     headers,
     tags: {
@@ -120,6 +142,9 @@ export function handleSummary(data) {
     businessPaths,
     businessScenarioConfigured,
     authConfigured,
+    authIdentityCount,
+    identityPoolMatchesVus,
+    tokenPoolFileConfigured: Boolean(TOKEN_FILE),
     operationalThresholds: {
       p95Ms: P95_MS,
       p99Ms: P99_MS,
@@ -133,8 +158,9 @@ export function handleSummary(data) {
         VUS >= 5000 &&
         REAL_RUN_ACK &&
         businessScenarioConfigured &&
-        authConfigured,
-      note: 'Final procurement qualification is decided by g20_validate_evidence.py after metric and threshold checks.'
+        authConfigured &&
+        identityPoolMatchesVus,
+      note: 'Formal PASS requires at least one distinct authenticated test identity per requested VU. Final qualification is decided by g20_validate_evidence.py.'
     }
   }
 
@@ -145,6 +171,8 @@ export function handleSummary(data) {
       '=== Yueke Internship G20 evidence ===',
       `VUs: ${VUS} (procurement minimum: 5000)`,
       `Business paths: ${businessPaths.length}`,
+      `Auth identities: ${authIdentityCount}`,
+      `Identity pool covers VUs: ${identityPoolMatchesVus}`,
       `Real-run acknowledged: ${REAL_RUN_ACK}`,
       'Evidence: g20-k6-summary.json',
       ''
