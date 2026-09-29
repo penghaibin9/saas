@@ -6,6 +6,17 @@ on:
     branches:
       - feat/internship-standalone-yiyang-v1
     paths:
+      - "products/internship-platform/backend/tests/test_yiyang_g01_multiscope_multiplan.py"
+      - "products/internship-platform/backend/tests/test_internship_scope_default_deny_contract.py"
+      - "products/internship-platform/backend/tests/test_yiyang_ap04_allocation_scope_contract.py"
+      - "products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py"
+      - "products/internship-platform/backend/tests/test_yiyang_g03_enterprise_registry_truth.py"
+      - "products/internship-platform/backend/tests/test_internship_atomic_change_static.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_application_service.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_student_application_context_service.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_enterprise_service.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_change_service.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_student_change_context_service.py"
       - ".github/workflows/internship-standalone-g01-g04.yml"
 
 jobs:
