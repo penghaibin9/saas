@@ -19,14 +19,11 @@ STUDENT_ROLE_ID = 88022
 def _seed():
     db = get_sessionmaker()()
     try:
-        for model in (UserRole, Role, User, Tenant):
-            db.execute(delete(model).where(model.id.in_([
-                TENANT_ID,
-                STAFF_ID,
-                STUDENT_ID,
-                STAFF_ROLE_ID,
-                STUDENT_ROLE_ID,
-            ])))
+        db.execute(delete(UserRole).where(UserRole.tenant_id == TENANT_ID))
+        db.execute(delete(Role).where(Role.tenant_id == TENANT_ID))
+        db.execute(delete(User).where(User.tenant_id == TENANT_ID))
+        db.execute(delete(Tenant).where(Tenant.id == TENANT_ID))
+        db.commit()
         tenant = Tenant(
             id=TENANT_ID,
             tenant_code="AUTH-GATE",
