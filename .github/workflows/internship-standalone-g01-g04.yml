@@ -1,0 +1,58 @@
+name: Internship Standalone G01 G04 Core Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - ".github/workflows/internship-standalone-g01-g04.yml"
+
+jobs:
+  g01-g04:
+    name: G01-G04 engineering acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      JWT_SECRET: g01-g04-ci-only-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install standalone backend
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+
+      - name: G01 multi-school multi-college multi-plan
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_internship_scope.py             products/internship-platform/backend/tests/test_internship_scope_default_deny_contract.py             products/internship-platform/backend/tests/test_yiyang_ap04_allocation_scope_contract.py             products/internship-platform/backend/tests/test_internship_plan_task_progress.py
+
+      - name: G02 complete position submission
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py
+
+      - name: G03 enterprise library and registry truth
+        run: |
+          pytest -q products/internship-platform/backend/tests/test_internship_enterprise.py
+          python - <<'PY'
+          from pathlib import Path
+          text=Path("products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py").read_text(encoding="utf-8")
+          assert 'companyRegistryStatus"] == "UNVERIFIED"' in text
+          assert 'companyRegistryVerified"] is False' in text
+          assert 'student-self-claimed' in text
+          print("G03 internal enterprise library is tested; external registry lookup remains fail-closed until an authorized data source is connected.")
+          PY
+
+      - name: G04 enterprise-position change order
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_internship_process_change.py             products/internship-platform/backend/tests/test_internship_atomic_change_static.py
+
+      - name: Record G01-G04 verdict boundary
+        run: |
+          echo "G01 internal multi-tenant/college/plan authority: PASS"
+          echo "G02 complete position submission: PASS"
+          echo "G03 internal enterprise library + false-verification guard: PASS"
+          echo "G03 external enterprise registry lookup: BLOCKED_EXTERNAL until authorized source is connected"
+          echo "G04 enterprise/position change transaction and re-onboard order: PASS"
