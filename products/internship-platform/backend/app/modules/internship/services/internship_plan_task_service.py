@@ -165,12 +165,16 @@ def student_tasks(user, plan_id=None) -> dict:
                 InternshipPlanTaskProgress.internship_id == record.id,
                 InternshipPlanTaskProgress.is_deleted.is_(False))).all()
         tasks = _merge_tasks_with_progress(plan, rows)
+        from app.modules.internship.services import internship_report_quality_service as quality
+        rules = quality.rules_for_batch(db, plan.batch_id)
+        minimum_words = int(rules.get("planTaskMinWords") or 10)
         total = len(tasks)
         approved = sum(1 for task in tasks if task.get("progressStatus") == "APPROVED")
         return {
             "planId": str(plan.id), "planVersion": int(plan.version or 0),
             "planBatchId": str(plan.batch_id),
             "planTitle": plan.title,
+            "minimumWords": minimum_words,
             "ackId": str(ack.id) if ack else "", "ackStatus": ack.status if ack else "PENDING",
             "ackVersion": int(ack.version or 0) if ack else 0,
             "tasks": tasks,
