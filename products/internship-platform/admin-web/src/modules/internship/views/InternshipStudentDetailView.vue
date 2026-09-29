@@ -112,6 +112,48 @@
           </div>
         </section>
 
+      <section v-show="activeSection === 'plans'" class="mp-card">
+        <div class="mp-card__head isd-plan-head">
+          <div>
+            <h2 class="isd-title">实习方案分配</h2>
+            <p class="sd-card-note">一名学生可分配多个已发布实习方案；每份方案分别确认、分别记录任务进度。</p>
+          </div>
+          <button v-if="canManage" class="mp-btn mp-btn--primary" :disabled="planAssignmentsLoading || submitting" @click="openPlanAssign">追加实习方案</button>
+        </div>
+        <div class="mp-card__body">
+          <p v-if="planAssignmentsLoading" class="isd-readonly">正在读取实习方案…</p>
+          <p v-else-if="planAssignmentsError" class="isd-error" role="alert">{{ planAssignmentsError }} <button type="button" class="mp-link" @click="loadPlanAssignments">重试</button></p>
+          <EmptyState v-else-if="!planAssignments.length" title="尚未分配实习方案" description="主计划发布后会自动生成主方案；管理员也可追加其他已发布方案。" />
+          <div v-else class="isd-plan-list">
+            <article v-for="row in planAssignments" :key="row.id" class="isd-plan-card">
+              <div class="isd-plan-card__main">
+                <div class="isd-plan-card__title">
+                  <strong>{{ row.planTitle || '未命名方案' }}</strong>
+                  <AppStatusTag :type="row.isPrimary ? 'success' : 'info'">{{ row.isPrimary ? '主方案' : '附加方案' }}</AppStatusTag>
+                </div>
+                <p>{{ row.batchName || ('批次 #' + row.planBatchId) }}</p>
+                <div class="isd-plan-metrics">
+                  <span>确认：<b>{{ row.ackStatus === 'ACKNOWLEDGED' ? '已确认' : '待确认' }}</b></span>
+                  <span>任务：<b>{{ row.approvedTaskCount }}/{{ row.taskCount }} 已完成</b></span>
+                  <span v-if="row.startedTaskCount">已开始 <b>{{ row.startedTaskCount }}</b> 项</span>
+                  <span>分配：{{ formatDateTime(row.assignedAt) || '—' }}</span>
+                </div>
+              </div>
+              <div class="isd-plan-card__actions">
+                <button
+                  v-if="canManage && !row.isPrimary"
+                  type="button"
+                  class="mp-btn mp-btn--danger-ghost"
+                  :disabled="submitting || row.ackStatus === 'ACKNOWLEDGED' || Number(row.startedTaskCount || 0) > 0"
+                  :title="row.ackStatus === 'ACKNOWLEDGED' ? '学生已确认，不能直接移除' : (Number(row.startedTaskCount || 0) > 0 ? '已有任务办理记录，不能直接移除' : '')"
+                  @click="askRemovePlan(row)"
+                >移除方案</button>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
+
       <section v-show="activeSection === 'history'" class="mp-card">
         <div class="mp-card__head"><h2 class="isd-title">处理记录</h2><span class="sd-card-note">最近 20 条</span></div>
         <div v-if="!detail.auditTrail?.length" class="isd-readonly">暂无处理记录</div>
@@ -142,6 +184,28 @@
         <div class="ie-actions">
           <button type="button" class="mp-btn" @click="assignVisible = false">取消</button>
           <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !assignPositionId" @click="submitAssign">确认分配</button>
+        </div>
+      </div>
+    </AppDrawer>
+
+    <AppDrawer v-model:visible="planAssignVisible" title="追加实习方案" mode="modal" size="medium">
+      <div class="ie-form">
+        <div class="ie-intro">
+          <strong>{{ detail?.name || '当前学生' }} · 多方案分配</strong>
+          <p>仅展示当前账号有权查看的已发布方案。可一次选择多个；已分配方案不会重复生成回执或任务。</p>
+        </div>
+        <p v-if="planOptionsLoading" class="isd-readonly">正在读取可选方案…</p>
+        <p v-else-if="planAssignError" class="ie-err">{{ planAssignError }}</p>
+        <div v-else-if="planOptions.length" class="isd-plan-options">
+          <label v-for="row in planOptions" :key="row.id" class="isd-plan-option" :class="{ 'is-disabled': row.alreadyAssigned }">
+            <input v-model="selectedPlanIds" type="checkbox" :value="row.id" :disabled="row.alreadyAssigned || submitting" />
+            <span><strong>{{ row.title }}</strong><small>{{ row.batchName }}{{ row.alreadyAssigned ? ' · 已分配' : '' }}</small></span>
+          </label>
+        </div>
+        <EmptyState v-else title="暂无可追加方案" description="请先在实习计划管理中发布其他方案，或当前权限范围内没有可用方案。" />
+        <div class="ie-actions">
+          <button type="button" class="mp-btn" :disabled="submitting" @click="planAssignVisible = false">取消</button>
+          <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !selectedPlanIds.length" @click="submitPlanAssignments">确认追加 {{ selectedPlanIds.length }} 个方案</button>
         </div>
       </div>
     </AppDrawer>
@@ -206,9 +270,11 @@ export default {
       loading: true, error: '', submitting: false, detail: null, loadSequence: 0,
       reviewForm: { status: '', reason: '' }, reviewError: '', reviewConflict: false,
       onboardLoading: false, onboardError: '', onboardChecklist: null, onboardSequence: 0,
-      sections: [{ key: 'profile', label: '基本资料' }, { key: 'eligibility', label: '资格审核' }, { key: 'placement', label: '岗位去向' }, { key: 'history', label: '处理记录' }],
+      sections: [{ key: 'profile', label: '基本资料' }, { key: 'eligibility', label: '资格审核' }, { key: 'placement', label: '岗位去向' }, { key: 'plans', label: '实习方案' }, { key: 'history', label: '处理记录' }],
       eligibilityOptions: [{ value: 'QUALIFIED', label: '合格', hint: '已按学校要求核对，可以继续实习准备' }, { value: 'UNQUALIFIED', label: '不合格', hint: '本次未通过，请在说明中写清后续安排' }, { value: 'PENDING', label: '待认定', hint: '暂未形成结论，继续核对或补充材料' }],
       assignVisible: false, assignPositionId: '', assignError: '',
+      planAssignments: [], planAssignmentsLoading: false, planAssignmentsError: '',
+      planAssignVisible: false, planOptions: [], planOptionsLoading: false, planAssignError: '', selectedPlanIds: [],
       qrVisible: false, qrLoading: false, qrError: '', qrEntry: null,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, extra: null }
     }
@@ -269,13 +335,15 @@ export default {
   },
   watch: {
     '$route.params.id': { immediate: true, handler() {
-      this.assignVisible = false; this.qrVisible = false; this.qrEntry = null; this.qrError = ''; this.confirm.visible = false
+      this.assignVisible = false; this.planAssignVisible = false; this.qrVisible = false; this.qrEntry = null; this.qrError = ''; this.confirm.visible = false
+      this.planAssignments = []; this.planOptions = []; this.selectedPlanIds = []; this.planAssignmentsError = ''; this.planAssignError = ''
       this.reviewForm = { status: '', reason: '' }; this.reviewError = ''; this.reviewConflict = false
       this.load()
       this.focusHeading()
     } },
     '$route.query.batchId'() {
-      this.confirm.visible = false; this.assignVisible = false; this.qrVisible = false; this.qrEntry = null; this.qrError = ''
+      this.confirm.visible = false; this.assignVisible = false; this.planAssignVisible = false; this.qrVisible = false; this.qrEntry = null; this.qrError = ''
+      this.planAssignments = []; this.planOptions = []; this.selectedPlanIds = []; this.planAssignmentsError = ''; this.planAssignError = ''
       this.reviewForm = { status: '', reason: '' }; this.reviewError = ''; this.reviewConflict = false
       this.load()
     }
@@ -371,13 +439,79 @@ export default {
       if (seq !== this.loadSequence) return
       if (res.code === 0 && this.$route.query.batchId && String(res.data.batchId) !== String(this.$route.query.batchId)) {
         this.detail = null; this.error = '此档案不属于当前批次，请返回名单重新进入'
-      } else if (res.code === 0) this.detail = res.data
-      else { this.detail = null; this.error = res.message || '实习档案加载失败，请重试' }
+      } else if (res.code === 0) {
+        this.detail = res.data
+        this.loadPlanAssignments()
+      } else { this.detail = null; this.error = res.message || '实习档案加载失败，请重试' }
       this.loading = false
     },
     async refreshReview() {
       await this.load()
       if (!this.error) { this.reviewConflict = false; this.reviewError = '' }
+    },
+    async loadPlanAssignments() {
+      const recordId = String(this.detail?.id || this.$route.params.id || '')
+      if (!recordId) return
+      this.planAssignmentsLoading = true
+      this.planAssignmentsError = ''
+      const res = await internStudentApi.getPlanAssignments(recordId)
+      if (recordId !== String(this.detail?.id || this.$route.params.id || '')) return
+      this.planAssignmentsLoading = false
+      if (res.code === 0) this.planAssignments = res.data?.items || []
+      else {
+        this.planAssignments = []
+        this.planAssignmentsError = res.message || '实习方案读取失败'
+      }
+    },
+    async openPlanAssign() {
+      if (!this.canManage || this.submitting) return
+      this.planAssignVisible = true
+      this.planOptionsLoading = true
+      this.planAssignError = ''
+      this.selectedPlanIds = []
+      const recordId = String(this.detail?.id || '')
+      const res = await internStudentApi.getPlanOptions(recordId)
+      if (!this.planAssignVisible || recordId !== String(this.detail?.id || '')) return
+      this.planOptionsLoading = false
+      if (res.code === 0) this.planOptions = res.data || []
+      else {
+        this.planOptions = []
+        this.planAssignError = res.message || '可选实习方案读取失败'
+      }
+    },
+    async submitPlanAssignments() {
+      if (!this.canManage || this.submitting || !this.selectedPlanIds.length) return
+      const recordId = String(this.detail?.id || '')
+      this.submitting = true
+      this.planAssignError = ''
+      try {
+        const res = await internStudentApi.assignPlans(recordId, [...this.selectedPlanIds])
+        if (recordId !== String(this.detail?.id || '')) return
+        if (res.code !== 0) {
+          this.planAssignError = res.message || '实习方案分配失败'
+          return
+        }
+        toast.success(`已追加 ${res.data?.added || 0} 个实习方案`)
+        this.planAssignVisible = false
+        this.selectedPlanIds = []
+        await this.loadPlanAssignments()
+      } finally {
+        this.submitting = false
+      }
+    },
+    askRemovePlan(row) {
+      if (!this.canManage || !row || row.isPrimary || this.submitting) return
+      this.confirm = {
+        visible: true,
+        title: '移除附加实习方案',
+        message: `确认从“${this.detail.name}”当前实习记录中移除“${row.planTitle}”？仅未确认且未开始任务的附加方案可移除。`,
+        type: 'warning',
+        confirmText: '确认移除',
+        requireReason: true,
+        reasonLabel: '移除原因',
+        action: 'PLAN_REMOVE',
+        extra: row
+      }
     },
     openAssign() {
       if (!this.canManage || this.submitting) return
@@ -447,6 +581,9 @@ export default {
         else if (action === 'DEST') res = await internStudentApi.setDestination(this.detail.id, {
           destination: extra, reason: reason || '', expectedVersion: this.detail.version
         })
+        else if (action === 'PLAN_REMOVE') res = await internStudentApi.removePlanAssignment(
+          this.detail.id, extra.id, { reason: reason || '', expectedVersion: extra.version }
+        )
         if (recordId !== this.detail?.id) return
         if (res && res.code === 0) {
           toast.success('已保存并写入处理记录'); this.confirm.visible = false
@@ -454,7 +591,8 @@ export default {
             this.reviewForm = { status: '', reason: '' }; this.reviewError = ''
             window.__SAAS_DIRTY_FORM_GUARD__?.markSaved()
           }
-          this.load()
+          if (action === 'PLAN_REMOVE') await this.loadPlanAssignments()
+          else this.load()
         } else if (res && action === 'ELIG') {
           this.confirm.visible = false; this.reviewError = res.message || '保存失败，填写内容已保留'
           this.reviewConflict = res.code === 409001 || res.code === 'DATA_CONFLICT'
@@ -490,8 +628,8 @@ export default {
 .isd-result__reason{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.8;margin:20px 0}.isd-note{padding-top:20px;margin-top:22px;border-top:1px solid var(--line)}
 .isd-error{color:var(--danger);background:var(--danger-50,#fff2f0);font-size:13px;line-height:1.7;padding:12px;margin-top:15px}.isd-error button{display:block;margin-top:8px}
 .isd-readonly{padding:24px;font-size:14px;color:var(--t2)}.isd-readonly h3{font-size:15px;color:var(--t1);margin-top:0}.isd-readonly p{line-height:1.7}
-.isd-placement-actions{display:flex;gap:10px;margin-bottom:16px}.isd-history{list-style:none;margin:0;padding:24px}.isd-history li{display:flex;gap:18px;padding-bottom:24px}.isd-history__dot{width:9px;height:9px;border:3px solid var(--pri-bg);background:var(--pri);border-radius:50%;margin-top:3px;flex:none}.isd-history h3{font-size:14px;font-weight:600;margin:0 0 8px}.isd-history h3 span{font-size:12px;color:var(--t3);font-weight:400;margin-left:18px}.isd-history p{font-size:13px;margin:6px 0;line-height:1.7}.isd-history__reason{white-space:pre-wrap;overflow-wrap:anywhere}.isd-history time{color:var(--t3);font-size:12px}
+.isd-plan-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.isd-plan-list{display:grid;gap:10px}.isd-plan-card{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px;border:1px solid var(--line,#d9dee8);border-radius:10px;background:var(--card,#fff)}.isd-plan-card__main{min-width:0;flex:1}.isd-plan-card__title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.isd-plan-card__main p{margin:5px 0;color:var(--t2,#475569);font-size:12px}.isd-plan-metrics{display:flex;gap:8px 16px;flex-wrap:wrap;color:var(--t3,#64748b);font-size:12px}.isd-plan-metrics b{color:var(--t1,#0f1e3d)}.isd-plan-card__actions{flex:none}.isd-plan-options{display:grid;gap:8px;max-height:420px;overflow:auto}.isd-plan-option{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--line,#d9dee8);border-radius:8px;cursor:pointer}.isd-plan-option.is-disabled{opacity:.55;cursor:not-allowed}.isd-plan-option input{margin-top:3px}.isd-plan-option span{display:grid;gap:4px}.isd-plan-option small{color:var(--t3,#64748b);font-size:12px}.isd-placement-actions{display:flex;gap:10px;margin-bottom:16px}.isd-history{list-style:none;margin:0;padding:24px}.isd-history li{display:flex;gap:18px;padding-bottom:24px}.isd-history__dot{width:9px;height:9px;border:3px solid var(--pri-bg);background:var(--pri);border-radius:50%;margin-top:3px;flex:none}.isd-history h3{font-size:14px;font-weight:600;margin:0 0 8px}.isd-history h3 span{font-size:12px;color:var(--t3);font-weight:400;margin-left:18px}.isd-history p{font-size:13px;margin:6px 0;line-height:1.7}.isd-history__reason{white-space:pre-wrap;overflow-wrap:anywhere}.isd-history time{color:var(--t3);font-size:12px}
 .isd-check{margin-top:16px}.isd-check .mp-card__head{display:flex;align-items:center;justify-content:space-between;gap:12px}.isd-check .mp-card__body{font-size:13px;line-height:1.7}.isd-check p{margin:8px 0}.isd-check ul{padding-left:20px;margin:12px 0}.isd-check li{padding:4px 0;overflow-wrap:anywhere}.isd-placement-actions{flex-wrap:wrap}
-@media(max-width:900px){.isd-layout{grid-template-columns:1fr}.isd-facts{gap:18px;padding:18px}.isd-sections{gap:20px}.isd-review__footer{flex-wrap:wrap}}
+@media(max-width:900px){.isd-plan-card,.isd-plan-head{align-items:stretch;flex-direction:column}.isd-plan-card__actions{align-self:flex-start}.isd-layout{grid-template-columns:1fr}.isd-facts{gap:18px;padding:18px}.isd-sections{gap:20px}.isd-review__footer{flex-wrap:wrap}}
 @media(max-width:600px){.isd-review fieldset{grid-template-columns:1fr}.isd-choice{align-items:center}.isd-field span{display:block;margin:4px 0 0}}
 </style>
