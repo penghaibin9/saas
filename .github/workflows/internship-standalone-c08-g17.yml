@@ -13,6 +13,11 @@ on:
       - "products/internship-platform/backend/app/modules/internship/routers/internship_formal_document.py"
       - "products/internship-platform/backend/app/api/router.py"
       - "products/internship-platform/backend/tests/test_yiyang_c08_g17_formal_documents.py"
+      - "products/internship-platform/admin-web/src/modules/internship/views/FormalDocumentWorkspaceView.vue"
+      - "products/internship-platform/admin-web/src/modules/internship/api/formal-document.api.js"
+      - "products/internship-platform/admin-web/src/modules/internship/routes.js"
+      - "products/internship-platform/admin-web/src/config/navPlan.js"
+      - "products/internship-platform/admin-web/scripts/check-standalone-routes.mjs"
       - ".github/workflows/internship-standalone-c08-g17.yml"
 
 jobs:
@@ -43,6 +48,11 @@ jobs:
           python-version: "3.12"
           cache: "pip"
           cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: products/internship-platform/admin-web/package-lock.json
       - name: Install standalone backend dependencies
         run: python -m pip install -r products/internship-platform/backend/requirements.txt
       - name: Compile G17 authority
@@ -73,5 +83,12 @@ jobs:
           } <= columns
           print({"version": version, "columnCount": len(columns)})
           PY
-      - name: Run C08/G17 acceptance only
+      - name: Run C08/G17 backend acceptance only
         run: pytest -q products/internship-platform/backend/tests/test_yiyang_c08_g17_formal_documents.py
+      - name: Verify G17 admin entry and standalone build
+        working-directory: products/internship-platform/admin-web
+        run: |
+          npm ci
+          npm run check:routes
+          npm run check:imports
+          npm run build
