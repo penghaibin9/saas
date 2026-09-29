@@ -140,6 +140,7 @@ def get_my_dashboard(user, batch_id=None):
             "historyMode": ctx.mode == "history",
             "recordId": str(record.id), "batchId": str(record.batch_id or ""),
             "batchName": getattr(batch, "batch_name", "") or "",
+            "status": record.status,
             "recordStatus": record.status,
             "destinationType": record.destination_type,
             "eligibilityReview": eligibility_result(db, record),
