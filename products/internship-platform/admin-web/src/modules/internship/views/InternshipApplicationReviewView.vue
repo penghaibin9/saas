@@ -22,7 +22,7 @@
       <LoadingState v-else-if="loading" />
       <DataTable v-else-if="rows.length" :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
         <template #cell-applicationType="{ row }"><AppStatusTag :type="row.applicationType === 'SELF_ARRANGED' ? 'warning' : 'info'">{{ row.applicationTypeLabel }}</AppStatusTag></template>
-        <template #cell-applicant="{ row }"><div class="iar-cell"><strong>{{ row.studentName }}</strong><span>{{ row.studentNo }}<template v-if="row.advisorName"> · {{ row.advisorName }}</template></span></div></template>
+        <template #cell-applicant="{ row }"><div class="iar-cell"><strong>{{ row.studentName }}</strong><span>{{ row.studentNo }}<template v-if="row.collegeName"> · {{ row.collegeName }}</template><template v-if="row.advisorName"> · {{ row.advisorName }}</template></span></div></template>
         <template #cell-destination="{ row }"><div class="iar-cell"><strong>{{ row.applicationType === 'EXEMPTION' ? '免实习' : (row.companyName || '—') }}</strong><span>{{ row.applicationType === 'EXEMPTION' ? (row.exemptionDestination || '去向待补充') : (row.positionName || '—') }}</span></div></template>
         <template #cell-status="{ row }"><AppStatusTag :type="statusTone(row.status)">{{ row.statusLabel }}</AppStatusTag></template>
         <template #cell-actions="{ row }"><AppButton variant="ghost" size="sm" @click="openDetail(row.id)">{{ row.status === 'PENDING_REVIEW' ? '审核申请' : '查看详情' }}</AppButton></template>
@@ -90,10 +90,11 @@ const EXEMPTION_TYPE_LABEL = {
   OTHER: '其他'
 }
 const STATUS_OPTIONS = [
-  { value: 'ALL', label: '全部状态' },
-  { value: 'PENDING_REVIEW', label: '待审核' },
-  { value: 'APPROVED', label: '已通过' },
+  { value: 'ALL', label: '全部' },
+  { value: 'PENDING_REVIEW', label: '未审核' },
+  { value: 'REVIEWED', label: '已审核' },
   { value: 'REJECTED', label: '已驳回' },
+  { value: 'APPROVED', label: '已通过' },
   { value: 'WITHDRAWN', label: '已撤回' },
   { value: 'CANCELLED', label: '已取消' }
 ]
@@ -140,6 +141,8 @@ export default {
       if (data.applicationType === 'EXEMPTION') {
         return [
           { label: '学生', value: `${data.studentName || '—'}（${data.studentNo || '—'}）` },
+          { label: '院系', value: data.collegeName || '—' },
+          { label: '专业 / 班级', value: [data.majorName, data.className].filter(Boolean).join(' / ') || '—' },
           { label: '校内指导教师', value: data.advisorName || '—' },
           { label: '申请类型', value: data.applicationTypeLabel || '免实习申请' },
           { label: '免实习类型', value: EXEMPTION_TYPE_LABEL[data.exemptionType] || data.exemptionType || '—' },
@@ -157,6 +160,8 @@ export default {
         : '未通过授权企业登记数据源核验'
       return [
         { label: '学生', value: `${data.studentName || '—'}（${data.studentNo || '—'}）` },
+        { label: '院系', value: data.collegeName || '—' },
+        { label: '专业 / 班级', value: [data.majorName, data.className].filter(Boolean).join(' / ') || '—' },
         { label: '校内指导教师', value: data.advisorName || '—' },
         { label: '申请类型', value: data.applicationTypeLabel || '—' },
         { label: '志愿顺序', value: data.applicationType === 'POSITION' ? `第 ${data.volunteerNo} 志愿` : '自主实习' },
@@ -383,7 +388,13 @@ export default {
       const current = () => this.confirm === confirmation && this.drawer.id === String(snapshot.id) && snapshot.batchId === this.batchStore.selectedBatchId && snapshot.ticket === this.detailTicket
       confirmation.submitting = true; this.reviewError = ''
       try {
-        const result = await internshipApplicationApi.review(snapshot.id, { action: confirmation.action, comment: reason, expectedVersion: snapshot.expectedVersion, recordExpectedVersion: snapshot.recordExpectedVersion })
+        const result = await internshipApplicationApi.review(snapshot.id, {
+          action: confirmation.action,
+          comment: reason,
+          expectedVersion: snapshot.expectedVersion,
+          recordExpectedVersion: snapshot.recordExpectedVersion,
+          batchId: snapshot.batchId
+        })
         if (!current()) return
         if (isConflict(result)) {
           this.conflict = { ...emptyConflict(), active: true, detail: result.message || '记录已更新', stale: true }
