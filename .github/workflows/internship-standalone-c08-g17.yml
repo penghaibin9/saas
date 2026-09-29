@@ -14,6 +14,7 @@ on:
       - "products/internship-platform/backend/app/api/router.py"
       - "products/internship-platform/backend/tests/test_yiyang_c08_g17_formal_documents.py"
       - "products/internship-platform/admin-web/src/modules/internship/views/FormalDocumentWorkspaceView.vue"
+      - "products/internship-platform/admin-web/src/modules/internship/components/ProcessAnalyticsPanel.vue"
       - "products/internship-platform/admin-web/src/modules/internship/api/formal-document.api.js"
       - "products/internship-platform/admin-web/src/modules/internship/routes.js"
       - "products/internship-platform/admin-web/src/config/navPlan.js"
