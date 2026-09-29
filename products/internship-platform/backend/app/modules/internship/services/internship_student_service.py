@@ -660,6 +660,8 @@ def _assign_position_core_in_tx(db, record: InternshipRecord, position_id, expec
     c = tenant_get(db, EmpCompany, p.company_id)
     if not c or c.is_deleted:
         raise not_found("岗位所属企业不存在")
+    from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+    enterprise_scope.assert_company_visible(db, c.id, user)
     if c.blacklist or c.coop_status == "BLACKLIST":
         raise AppException("DATA_CONFLICT", "黑名单企业岗位不可分配学生")
     from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
