@@ -206,7 +206,7 @@ test('admin teacher PC login reaches the standalone internship workbench', async
   await expect(page).toHaveURL(/\/admin\/internship(?:\?|$)/)
   await expect(page.getByRole('heading', { name: '今日工作' })).toBeVisible()
   await expect(page.getByText('按实习流程办理')).toBeVisible()
-  await expect(page.getByText('2026岗位实习')).toBeVisible()
+  await expect(page.locator('select option:checked')).toContainText('2026岗位实习')
   await page.screenshot({ path: 'test-results-surfaces/admin-internship-workbench.png', fullPage: true })
 
   expect(seen.some(item => item.path.endsWith('/auth/browser-login'))).toBeTruthy()
@@ -229,7 +229,7 @@ test('student PC login reaches the standalone internship page without a parent p
   await expect(page.getByText('益阳职业技术学院 · 岗位实习')).toBeVisible()
   await expect(page.getByText('学生 PC 端')).toBeVisible()
   await expect(page.getByText('学生张三')).toBeVisible()
-  await expect(page.getByText('暂无实习记录')).toBeVisible()
+  await expect(page.getByText('暂无实习记录', { exact: true })).toBeVisible()
   await expect(page.getByText('浏览器验收账号当前暂无实习记录')).toBeVisible()
   await page.screenshot({ path: 'test-results-surfaces/student-internship-home.png', fullPage: true })
 
