@@ -28,8 +28,8 @@
 import { back as navBack } from '@/utils/nav'
 import { getStatusBarHeight } from '@/utils/deviceInfo'
 
-const STUDENT_HOME = '/pages/student/home/index'
-const TEACHER_HOME = '/pages/teacher/workbench/index'
+const STUDENT_HOME = '/pages/student-internship/index'
+const TEACHER_HOME = '/pages/teacher-internship/index'
 
 function defaultFallback(variant) {
   // H5 刷新/消息深链可能只有一层页面栈。显式 fallback 仍有最高优先级；
