@@ -206,7 +206,7 @@ python scripts/g20_validate_evidence.py g20-k6-summary.json \
 G20_BASE_URL=https://UAT正式域名 \
 G20_VUS=5000 \
 G20_REAL_RUN_ACK=YES \
-G20_AUTH_TOKEN='<专用压测账号token>' \
+G20_AUTH_TOKENS_FILE='/secure/g20-auth-tokens.json' \
 G20_BATCH_ID='<真实压测批次>' \
 G20_PATHS='/health,/api/v1/internship/dashboard?batchId={batchId},/api/v1/internship/stats/procurement-overview?batchId={batchId},/api/v1/internship/stats/process-analytics?batchId={batchId}&groupBy=STUDENT&period=ALL&page=1&pageSize=50,/api/v1/internship/risks?batchId={batchId}&page=1&pageSize=20' \
 G20_P95_MS='<校方/采购SLA>' \
@@ -214,6 +214,18 @@ G20_P99_MS='<校方/采购SLA>' \
 G20_MAX_ERROR_RATE='<校方/采购SLA>' \
 k6 run load/g20_internship.k6.js
 ```
+
+正式压测账号 token 池文件必须放在压测机安全目录，格式为 JSON 字符串数组，例如：
+
+```json
+["token-user-0001", "token-user-0002", "…"]
+```
+
+要求：
+- token 数量不少于 `G20_VUS`，5000 VU 即至少 5000 个不同测试身份；
+- 文件不得提交到 Git、不得上传到投标材料；
+- k6 只在内存中按 VU 分配 token，生成的证据只记录身份数量，不记录任何 token；
+- 只有单个 `G20_AUTH_TOKEN` 时可做 smoke，但正式证据会被验证器判为 `FAIL_IDENTITY_POOL`。
 
 再执行：
 
