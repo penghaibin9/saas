@@ -65,7 +65,7 @@ def position_stats(user=Depends(require_permission(_P_VIEW))):
 
 @router.post("/positions/import/dry-run", summary="岗位导入·预校验（高级粘贴/Excel 共用，不写库）")
 def position_import_dry_run(body: PositionImport, user=Depends(require_permission(_P_MANAGE))):
-    return success(pos.import_dry_run(body.rows, body.templateVersion))
+    return success(pos.import_dry_run(body.rows, body.templateVersion, user=user))
 
 
 @router.get("/positions/import/template", summary="岗位库导入·下载 Excel 模板(.xlsx)")
@@ -96,7 +96,7 @@ def position_import_template(user=Depends(require_permission(_P_MANAGE))):
 async def position_import_xlsx(file: UploadFile = File(...), user=Depends(require_permission(_P_MANAGE))):
     content = await read_safe_xlsx_upload(file)
     rows = xlsx_util.read_xlsx(content, _POS_XLSX_MAP)
-    dry = pos.import_dry_run(rows, "POSITION_IMPORT_V2")
+    dry = pos.import_dry_run(rows, "POSITION_IMPORT_V2", user=user)
     return success({"templateVersion": "POSITION_IMPORT_V2", "rows": rows, **dry})
 
 
@@ -110,7 +110,7 @@ def position_import_errors_xlsx(body: PositionImportErrors, user=Depends(require
 
 @router.post("/positions/import/confirm", summary="岗位导入·确认（整批事务，预校验须全通过）")
 def position_import_confirm(body: PositionImport, user=Depends(require_permission(_P_MANAGE))):
-    result = pos.import_confirm(body.rows, body.templateVersion)
+    result = pos.import_confirm(body.rows, body.templateVersion, user=user)
     audit_log.record("导入岗位库", "internship-position:import", detail=result)
     return success(result, message="导入完成")
 
