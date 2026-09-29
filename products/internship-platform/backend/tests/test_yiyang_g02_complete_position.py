@@ -31,12 +31,13 @@ def standalone_db(tmp_path, monkeypatch):
     from app.models import (
         AuditOutbox,
         InternshipApplication,
+        FileBinding,
+        FileObject,
         InternshipAuditTrail,
         InternshipBatch,
         InternshipRecord,
         StudentProfile,
     )
-    from app.modules.internship.services import internship_application_service as legacy
 
     old_url = settings.DATABASE_URL
     settings.DATABASE_URL = f"sqlite+pysqlite:///{(tmp_path / 'yiyang-g02.db').as_posix()}"
@@ -51,16 +52,40 @@ def standalone_db(tmp_path, monkeypatch):
         InternshipApplication.__table__,
         InternshipAuditTrail.__table__,
         AuditOutbox.__table__,
+        FileObject.__table__,
+        FileBinding.__table__,
     ):
         table.create(bind=engine, checkfirst=True)
 
-    def accept_test_file(file_id, required=False):
-        value = str(file_id or "").strip()
-        if required and not value:
-            raise AssertionError("G02 fixture expected a required file id")
-        return value or None
-
-    monkeypatch.setattr(legacy, "_validate_file", accept_test_file)
+    db = db_session.get_sessionmaker()()
+    try:
+        for file_id, name in (
+            (9101, "g02-evidence.pdf"),
+            (9102, "g02-agreement-1.jpg"),
+            (9103, "g02-agreement-2.jpg"),
+        ):
+            db.add(FileObject(
+                id=file_id,
+                tenant_id=TID,
+                file_key=f"g02/{name}",
+                file_name=name,
+                ext=name.rsplit(".", 1)[-1],
+                mime_type="application/pdf" if name.endswith(".pdf") else "image/jpeg",
+                size_bytes=128,
+                sha256=(f"{file_id:064x}")[-64:],
+                visibility="PRIVATE",
+                security_level="NORMAL",
+                status="AVAILABLE",
+                storage_backend="local",
+                storage_zone="ACTIVE",
+                upload_source="SYSTEM",
+                scan_required=False,
+                scan_status="NOT_REQUIRED",
+                scan_attempts=0,
+            ))
+        db.commit()
+    finally:
+        db.close()
 
     try:
         yield
@@ -150,8 +175,8 @@ def _payload(batch_id, record_id):
         "internshipMode": "自主实习",
         "majorMatch": True,
         "agreedSalary": "2800.00",
-        "evidenceFileId": "file-g02-evidence",
-        "agreementFileIds": ["file-g02-agreement-1", "file-g02-agreement-2"],
+        "evidenceFileId": "9101",
+        "agreementFileIds": ["9102", "9103"],
         # A malicious/student-supplied claim must never create a fake green verification state.
         "registryVerificationStatus": "VERIFIED",
         "registryVerificationProvider": "student-self-claimed",
@@ -183,7 +208,7 @@ def test_g02_complete_position_roundtrip_and_review(standalone_db):
     assert draft["internshipEndDate"] == "2027-01-15"
     assert draft["majorMatch"] is True
     assert draft["agreedSalary"] == 2800.0
-    assert draft["agreementFileIds"] == ["file-g02-agreement-1", "file-g02-agreement-2"]
+    assert draft["agreementFileIds"] == ["9102", "9103"]
     assert draft["companyRegistryStatus"] == "UNVERIFIED"
     assert draft["companyRegistryVerified"] is False
     assert draft["companyRegistryProvider"] == ""
@@ -219,6 +244,17 @@ def test_g02_complete_position_roundtrip_and_review(standalone_db):
     try:
         application = db.get(InternshipApplication, int(submitted["id"]))
         record = db.get(InternshipRecord, int(record_id))
+        from app.models import FileBinding
+        bindings = list(db.query(FileBinding).filter(
+            FileBinding.tenant_id == TID,
+            FileBinding.biz_id == str(application.id),
+            FileBinding.is_deleted.is_(False),
+        ).all())
+        assert {(row.file_id, row.biz_type) for row in bindings} == {
+            (9101, "INTERNSHIP_APPLICATION_EVIDENCE"),
+            (9102, "INTERNSHIP_APPLICATION_AGREEMENT"),
+            (9103, "INTERNSHIP_APPLICATION_AGREEMENT"),
+        }
         assert application.company_credit_code == "91430900MA4L12345X"
         assert application.registry_verification_status == "UNVERIFIED"
         assert record.destination_type == "SELF_ARRANGED"
