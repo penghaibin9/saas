@@ -1,4 +1,4 @@
-import { request, requestBlob } from '@/services/http/client'
+import { request, requestBlob, requestUpload } from '@/services/http/client'
 
 function ok(data) {
   return { code: 0, data, message: 'ok' }
@@ -41,6 +41,15 @@ export const regulatoryReportingApi = {
     return call(() => request(
       `/internship/regulatory-reporting/templates/${encodeURIComponent(String(reportCode || ''))}/versions`,
       { method: 'POST', body: body || {} }
+    ))
+  },
+
+  uploadTemplateSource(file) {
+    return call(() => requestUpload(
+      '/files?bizType=INTERNSHIP_REGULATORY_TEMPLATE',
+      file,
+      'file',
+      { timeoutMs: 30000 }
     ))
   },
 
