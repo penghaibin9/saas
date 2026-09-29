@@ -7,7 +7,9 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "check:routes": "node scripts/check-standalone-routes.mjs"
+    "check:routes": "node scripts/check-standalone-routes.mjs",
+    "check:imports": "node scripts/check-standalone-imports.mjs",
+    "prebuild": "npm run check:routes && npm run check:imports"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",
