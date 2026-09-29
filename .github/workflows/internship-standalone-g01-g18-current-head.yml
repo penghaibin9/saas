@@ -1,0 +1,81 @@
+name: Internship Standalone G01 G18 Current Head Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - ".github/workflows/internship-standalone-g01-g18-current-head.yml"
+
+jobs:
+  g01-g18:
+    name: G01-G18 current-head engineering acceptance
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: g01_g18_root
+          MYSQL_DATABASE: internship_g01_g18
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pg01_g18_root --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:g01_g18_root@127.0.0.1:3306/internship_g01_g18?charset=utf8mb4
+      JWT_SECRET: g01-g18-current-head-ci-secret-not-for-production
+      EXPECTED_ALEMBIC_REVISION: ix0023
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+
+      - name: Install standalone backend
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+
+      - name: Upgrade empty MySQL 8.4 to current schema head
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade head
+
+      - name: Verify current schema head
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine=create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+          with engine.connect() as db:
+              revision=db.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar_one()
+          assert revision == os.environ["EXPECTED_ALEMBIC_REVISION"], revision
+          print({"schemaRevision": revision})
+          PY
+
+      - name: G01-G04 core authority and workflow
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_yiyang_g01_multiscope_multiplan.py             products/internship-platform/backend/tests/test_internship_scope_default_deny_contract.py             products/internship-platform/backend/tests/test_yiyang_ap04_allocation_scope_contract.py             products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py             products/internship-platform/backend/tests/test_yiyang_g03_enterprise_registry_truth.py             products/internship-platform/backend/tests/test_internship_atomic_change_static.py
+
+      - name: G05-G09 checkin and custom materials
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_yiyang_c02_checkin.py             products/internship-platform/backend/tests/test_yiyang_c03_custom_materials.py
+
+      - name: G10-G14 statistics IAM rotation payroll truth
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py             products/internship-platform/backend/tests/test_yiyang_c04_g11_password_reset.py             products/internship-platform/backend/tests/test_yiyang_c05_rotation_payroll.py             products/internship-platform/backend/tests/test_yiyang_c06_g14_stats.py
+
+      - name: G15-G18 report teacher documents regulatory
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_yiyang_c08_g15_report_quality.py             products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py             products/internship-platform/backend/tests/test_yiyang_c08_g17_formal_documents.py             products/internship-platform/backend/tests/test_yiyang_c07_regulatory_reporting.py
+
+      - name: Record acceptance boundary
+        run: |
+          echo "G01-G18 current HEAD repository engineering acceptance: PASS"
+          echo "G03 authorized external enterprise-registry source: BLOCKED_EXTERNAL"
+          echo "G18 real regulator template/import/receipt: BLOCKED_EXTERNAL"
+          echo "This workflow does not claim school/regulator formal acceptance."
