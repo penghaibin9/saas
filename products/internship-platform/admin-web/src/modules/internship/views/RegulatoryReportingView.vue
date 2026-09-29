@@ -95,6 +95,29 @@
           </label>
         </div>
 
+        <div class="template-source-file">
+          <div>
+            <strong>来源模板文件</strong>
+            <p>学校确认模板版本必须绑定真实来源 Excel/CSV。系统保存文件 ID 与 SHA-256，后续版本和上报任务可追溯。</p>
+          </div>
+          <div class="template-source-file__value">
+            <template v-if="templateEditor.sourceFileId">
+              <span>{{ templateEditor.sourceFileName || ('文件 #' + templateEditor.sourceFileId) }}</span>
+              <code>{{ templateEditor.sourceFileSha256 || 'SHA-256 待读取' }}</code>
+            </template>
+            <span v-else class="template-source-file__missing">尚未绑定来源模板文件</span>
+          </div>
+          <label class="template-source-file__upload">
+            <input
+              type="file"
+              accept=".xlsx,.xls,.xlsm,.csv"
+              :disabled="templateUploading || templateSaving"
+              @change="uploadTemplateSource"
+            />
+            <span>{{ templateUploading ? '正在上传…' : (templateEditor.sourceFileId ? '更换来源文件' : '上传来源文件') }}</span>
+          </label>
+        </div>
+
         <div class="field-table-wrap">
           <table class="field-table">
             <thead>
@@ -121,7 +144,7 @@
         <div class="template-editor-actions">
           <span class="template-warning">保存后新版本立即成为 ACTIVE，旧版本转为 RETIRED；历史上报任务仍绑定原模板版本，不会被覆盖。</span>
           <AppButton
-            :disabled="templateSaving"
+            :disabled="templateSaving || templateUploading"
             @click="saveTemplateVersion"
           >{{ templateSaving ? '正在保存…' : '保存并启用新版本' }}</AppButton>
         </div>
@@ -220,7 +243,9 @@
           <div><span>模板版本</span><strong>V{{ detailTask.template?.versionNo || '—' }}</strong></div>
           <div><span>总行数</span><strong>{{ detailTask.totalRows || 0 }}</strong></div>
           <div><span>错误行</span><strong>{{ detailTask.errorRows || 0 }}</strong></div>
-          <div><span>文件 SHA-256</span><code>{{ detailTask.outputSha256 || '尚未生成正式文件' }}</code></div>
+          <div><span>正式文件</span><strong>{{ detailTask.outputFilename || '尚未生成' }}</strong><code v-if="detailTask.outputFileId">fileId {{ detailTask.outputFileId }}</code></div>
+          <div><span>正式文件 SHA-256</span><code>{{ detailTask.outputSha256 || '尚未生成正式文件' }}</code></div>
+          <div><span>错误文件</span><strong>{{ detailTask.errorFilename || '尚未生成' }}</strong><code v-if="detailTask.errorFileId">fileId {{ detailTask.errorFileId }} · {{ detailTask.errorSha256 || '无SHA' }}</code></div>
           <div><span>外部提交凭据</span><strong>{{ detailTask.externalSubmissionRef || '尚未登记' }}</strong></div>
         </div>
 
@@ -354,6 +379,7 @@ export default {
       dictionaryCode: '',
       templateEditor: null,
       templateSaving: false,
+      templateUploading: false,
       detailTask: null,
       detailRows: { items: [], total: 0, page: 1, pageSize: 50 },
       detailErrorOnly: false,
@@ -396,6 +422,9 @@ export default {
         reportCode: code,
         templateName: current.templateName || '',
         sourceReference: current.sourceReference || '',
+        sourceFileId: current.sourceFileId || '',
+        sourceFileName: current.sourceFileName || '',
+        sourceFileSha256: current.sourceFileSha256 || '',
         changeReason: '',
         fields: (current.fields || []).map(field => ({
           key: field.key || '',
@@ -408,8 +437,38 @@ export default {
       this.showMessage('')
     },
     closeTemplateEditor() {
-      if (this.templateSaving) return
+      if (this.templateSaving || this.templateUploading) return
       this.templateEditor = null
+    },
+    async uploadTemplateSource(event) {
+      const editor = this.templateEditor
+      const input = event?.target
+      const file = input?.files?.[0]
+      if (!editor || !file || this.templateUploading || this.templateSaving) return
+      const ext = String(file.name || '').split('.').pop().toLowerCase()
+      if (!['xlsx', 'xls', 'xlsm', 'csv'].includes(ext)) {
+        this.showMessage('来源模板仅支持 xlsx/xls/xlsm/csv 文件', 'error')
+        if (input) input.value = ''
+        return
+      }
+      if (Number(file.size || 0) > 20 * 1024 * 1024) {
+        this.showMessage('来源模板文件不能超过 20MB', 'error')
+        if (input) input.value = ''
+        return
+      }
+      this.templateUploading = true
+      this.showMessage('')
+      const res = await regulatoryReportingApi.uploadTemplateSource(file)
+      this.templateUploading = false
+      if (input) input.value = ''
+      if (res.code !== 0 || !res.data?.fileId) {
+        this.showMessage(res.message || '来源模板文件上传失败', 'error')
+        return
+      }
+      editor.sourceFileId = String(res.data.fileId)
+      editor.sourceFileName = res.data.fileName || file.name || '来源模板'
+      editor.sourceFileSha256 = res.data.sha256 || ''
+      this.showMessage('来源模板文件已上传并取得文件哈希；保存版本后会绑定到该模板版本。')
     },
     async downloadFieldDictionary(code) {
       const template = this.templateFor(code)
@@ -430,6 +489,10 @@ export default {
         this.showMessage('请填写可追溯的模板来源或文件版本', 'error')
         return
       }
+      if (!editor.sourceFileId) {
+        this.showMessage('请先上传学校/目标平台提供的真实来源模板文件', 'error')
+        return
+      }
       if ((editor.changeReason || '').trim().length < 2) {
         this.showMessage('请填写本次模板变更原因', 'error')
         return
@@ -447,6 +510,7 @@ export default {
         templateName: editor.templateName,
         sourceLabel: 'SCHOOL_CONFIRMED_TEMPLATE',
         sourceReference: editor.sourceReference,
+        sourceFileId: editor.sourceFileId,
         changeReason: editor.changeReason,
         fields: editor.fields.map(field => ({
           key: field.key,
@@ -653,7 +717,7 @@ h2 { margin: 4px 0 0; font-size: 17px; color: var(--text-primary); }
 .template-meta-grid { display: grid; grid-template-columns: 1fr 1.4fr 1.4fr; gap: 12px; }
 .template-meta-grid label { display: grid; gap: 7px; color: var(--text-secondary); font-size: 12px; }
 .template-meta-grid input, .field-table input[type='text'], .field-table input:not([type]) { width: 100%; min-width: 120px; box-sizing: border-box; height: 36px; padding: 0 9px; border: 1px solid var(--border-base); border-radius: 7px; background: var(--bg-card); color: var(--text-primary); }
-.field-table-wrap { overflow: auto; max-height: 560px; border: 1px solid var(--border-base); border-radius: 10px; }
+.template-source-file{display:grid;grid-template-columns:minmax(220px,1fr) minmax(280px,1.4fr) auto;gap:14px;align-items:center;padding:14px;border:1px solid var(--border-base);border-radius:10px;background:var(--bg-page)}.template-source-file p{margin:5px 0 0;color:var(--text-secondary);font-size:12px;line-height:1.6}.template-source-file__value{display:grid;gap:4px;min-width:0;font-size:12px}.template-source-file__value span{font-weight:600;overflow-wrap:anywhere}.template-source-file__value code{font-size:11px;color:var(--text-secondary);overflow-wrap:anywhere}.template-source-file__missing{color:#a61b1b!important;font-weight:500!important}.template-source-file__upload{position:relative;display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:0 12px;border:1px solid var(--border-base);border-radius:8px;background:var(--bg-card);cursor:pointer;font-size:12px}.template-source-file__upload input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer}.template-source-file__upload:has(input:disabled){opacity:.55;cursor:not-allowed}.field-table-wrap { overflow: auto; max-height: 560px; border: 1px solid var(--border-base); border-radius: 10px; }
 .field-table { width: 100%; min-width: 1080px; border-collapse: collapse; font-size: 12px; }
 .field-table th, .field-table td { padding: 9px; border-bottom: 1px solid var(--border-base); vertical-align: middle; text-align: left; }
 .field-table th { position: sticky; top: 0; z-index: 1; background: var(--bg-card); color: var(--text-secondary); }
@@ -704,6 +768,7 @@ h2 { margin: 4px 0 0; font-size: 17px; color: var(--text-primary); }
 @media (max-width: 980px) {
   .report-grid { grid-template-columns: 1fr; }
   .template-meta-grid { grid-template-columns: 1fr; }
+  .template-source-file { grid-template-columns: 1fr; align-items:stretch; }
   .template-editor-actions { align-items: stretch; flex-direction: column; }
   .detail-metrics, .payload-grid { grid-template-columns: 1fr; }
   .history-row { grid-template-columns: 1fr; gap: 4px; }
