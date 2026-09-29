@@ -3,12 +3,14 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from sqlalchemy import text
 
 from app.api.router import api_router
 from app.config import settings
+from app.core.context import set_current_user, set_tenant
 from app.core.exceptions import register_exception_handlers
+from app.core.security import decode_token
 from app.db.session import get_engine
 
 app = FastAPI(
@@ -18,6 +20,44 @@ app = FastAPI(
 )
 
 register_exception_handlers(app)
+
+
+@app.middleware("http")
+async def signed_bearer_context(request: Request, call_next):
+    """Install signed tenant/user context before sync dependencies/endpoints enter threadpools.
+
+    FastAPI sync dependencies may run in worker threads. ContextVar mutations made inside one
+    dependency are not a reliable request-wide authority source for later sync services. Installing
+    the already-signed JWT context at the ASGI boundary makes tenant scope available consistently;
+    the normal auth dependency still performs account/credential-version validation.
+    """
+    set_tenant(None)
+    set_current_user(None)
+    raw = str(request.headers.get("Authorization") or "").strip()
+    if raw.lower().startswith("bearer "):
+        token = raw.split(None, 1)[1].strip()
+        if token:
+            try:
+                claims = decode_token(token)
+                tenant_id = claims.get("tenantId") or claims.get("tenant_id")
+                if tenant_id:
+                    set_tenant({
+                        "tenantId": str(tenant_id),
+                        "tenantCode": str(claims.get("tenantCode") or ""),
+                        "schoolName": str(claims.get("tenantName") or ""),
+                    })
+                    set_current_user(dict(claims))
+            except Exception:
+                # Authentication dependencies remain the canonical error surface.
+                set_tenant(None)
+                set_current_user(None)
+    try:
+        return await call_next(request)
+    finally:
+        set_tenant(None)
+        set_current_user(None)
+
+
 app.include_router(api_router, prefix=settings.API_PREFIX)
 
 
