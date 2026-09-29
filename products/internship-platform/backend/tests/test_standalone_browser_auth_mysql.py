@@ -6,7 +6,7 @@ from sqlalchemy import delete
 from app.core.security import hash_password
 from app.db.session import get_sessionmaker
 from app.main import app
-from app.models import Role, Tenant, User, UserRole
+from app.models import Role, StudentAccountLink, StudentProfile, Tenant, User, UserRole
 
 
 TENANT_ID = 88001
@@ -14,11 +14,14 @@ STAFF_ID = 88011
 STUDENT_ID = 88012
 STAFF_ROLE_ID = 88021
 STUDENT_ROLE_ID = 88022
+STUDENT_PROFILE_ID = 88031
 
 
 def _seed():
     db = get_sessionmaker()()
     try:
+        db.execute(delete(StudentAccountLink).where(StudentAccountLink.tenant_id == TENANT_ID))
+        db.execute(delete(StudentProfile).where(StudentProfile.tenant_id == TENANT_ID))
         db.execute(delete(UserRole).where(UserRole.tenant_id == TENANT_ID))
         db.execute(delete(Role).where(Role.tenant_id == TENANT_ID))
         db.execute(delete(User).where(User.tenant_id == TENANT_ID))
@@ -70,12 +73,32 @@ def _seed():
             must_change_password=False,
             credential_version=0,
         )
+        student_profile = StudentProfile(
+            id=STUDENT_PROFILE_ID,
+            tenant_id=TENANT_ID,
+            student_no="202688012",
+            real_name="认证学生",
+            current_stage="ENROLLED",
+            student_status="NORMAL",
+            status="ACTIVE",
+        )
+        student_link = StudentAccountLink(
+            tenant_id=TENANT_ID,
+            student_id=STUDENT_PROFILE_ID,
+            user_id=STUDENT_ID,
+            link_status="ACTIVE",
+            bound_login_name="202688012",
+            bound_student_no="202688012",
+            source="IDENTITY_IMPORT",
+        )
         db.add_all([
             tenant,
             staff_role,
             student_role,
             staff,
             student,
+            student_profile,
+            student_link,
             UserRole(
                 tenant_id=TENANT_ID,
                 user_id=STAFF_ID,
@@ -204,6 +227,14 @@ def test_student_browser_channel_and_cross_surface_fail_closed_real_mysql():
         )
         assert me.status_code == 200, me.text
         assert me.json()["data"]["currentRole"]["roleCode"] == "STUDENT"
+
+        internship_my = student_client.get(
+            "/api/v1/portal/internship/my",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert internship_my.status_code == 200, internship_my.text
+        assert internship_my.json()["code"] == 0
+        assert internship_my.json()["data"]["hasData"] is False
 
         denied_staff_route = student_client.get(
             "/api/v1/internship/batches?page=1&pageSize=20",
