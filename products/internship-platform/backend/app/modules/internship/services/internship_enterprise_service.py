@@ -15,9 +15,12 @@ from datetime import datetime
 from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.core.field_crypto import encrypt_field, mask_phone_encrypted
-from app.models import EmpCompany, InternshipAuditTrail, InternshipEnterpriseContact
+from app.models import (
+    College, EmpCompany, InternshipAuditTrail, InternshipEnterpriseCollegeScope,
+    InternshipEnterpriseContact, InternshipRecord, Major, SchoolClass, StudentProfile,
+)
 from app.services import excel  # 公共 Excel 导入导出底座（V1.1）
 from app.services.db_service import _as_id, _iso, _tid, session
 
@@ -83,7 +86,264 @@ def _get(db, company_id) -> EmpCompany:
     return row
 
 
-def _row(c: EmpCompany) -> dict:
+def _student_college_id(db, student) -> int | None:
+    if student is None:
+        return None
+    college_id = getattr(student, "college_id", None)
+    if college_id:
+        return int(college_id)
+    major_id = getattr(student, "major_id", None)
+    if not major_id and getattr(student, "class_id", None):
+        school_class = db.get(SchoolClass, student.class_id)
+        major_id = school_class.major_id if school_class else None
+    if major_id:
+        major = db.get(Major, major_id)
+        if major and not major.is_deleted and major.tenant_id == _tid() and major.college_id:
+            return int(major.college_id)
+    return None
+
+
+def resolve_user_college_ids(db, user=None) -> set[int] | None:
+    """Return None for tenant-wide admins; otherwise the exact colleges in current data scope."""
+    from app.modules.internship.services.internship_service import _current_scope
+
+    scope = _current_scope(user)
+    if scope.get("mode") != "SCOPED":
+        return None
+
+    college_ids: set[int] = set()
+    college_names = {str(v).strip() for v in scope.get("collegeNames") or set() if str(v).strip()}
+    if college_names:
+        college_ids.update(int(row.id) for row in db.scalars(select(College).where(
+            College.tenant_id == _tid(),
+            College.college_name.in_(college_names),
+            College.is_deleted.is_(False),
+        )).all())
+
+    major_names = {str(v).strip() for v in scope.get("majorNames") or set() if str(v).strip()}
+    if major_names:
+        college_ids.update(int(row.college_id) for row in db.scalars(select(Major).where(
+            Major.tenant_id == _tid(),
+            Major.major_name.in_(major_names),
+            Major.is_deleted.is_(False),
+            Major.college_id.is_not(None),
+        )).all() if row.college_id)
+
+    class_names = {str(v).strip() for v in scope.get("classNames") or set() if str(v).strip()}
+    if class_names:
+        classes = db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == _tid(),
+            SchoolClass.class_name.in_(class_names),
+            SchoolClass.is_deleted.is_(False),
+        )).all()
+        major_ids = {int(row.major_id) for row in classes if row.major_id}
+        if major_ids:
+            college_ids.update(int(row.college_id) for row in db.scalars(select(Major).where(
+                Major.tenant_id == _tid(),
+                Major.id.in_(major_ids),
+                Major.is_deleted.is_(False),
+                Major.college_id.is_not(None),
+            )).all() if row.college_id)
+
+    student_nos = {str(v).strip() for v in scope.get("studentNos") or set() if str(v).strip()}
+    if student_nos:
+        students = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.student_no.in_(student_nos),
+            StudentProfile.is_deleted.is_(False),
+        )).all()
+        college_ids.update(cid for cid in (_student_college_id(db, student) for student in students) if cid)
+
+    advisor_ids = {int(v) for v in scope.get("advisorUserIds") or set() if str(v).isdigit()}
+    advisor_names = {str(v).strip() for v in scope.get("advisorNames") or set() if str(v).strip()}
+    if advisor_ids or advisor_names:
+        clauses = []
+        if advisor_ids:
+            clauses.append(InternshipRecord.advisor_user_id.in_(advisor_ids))
+        if advisor_names:
+            clauses.append(InternshipRecord.advisor_name.in_(advisor_names))
+        records = db.scalars(select(InternshipRecord).where(
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False),
+            or_(*clauses),
+        )).all() if clauses else []
+        student_ids = {int(row.student_id) for row in records if row.student_id}
+        if student_ids:
+            students = db.scalars(select(StudentProfile).where(
+                StudentProfile.tenant_id == _tid(),
+                StudentProfile.id.in_(student_ids),
+                StudentProfile.is_deleted.is_(False),
+            )).all()
+            college_ids.update(cid for cid in (_student_college_id(db, student) for student in students) if cid)
+
+    return college_ids
+
+
+def _company_scope_map(db, company_ids) -> dict[int, list[dict]]:
+    ids = {int(value) for value in company_ids or [] if value}
+    if not ids:
+        return {}
+    rows = db.execute(select(
+        InternshipEnterpriseCollegeScope.company_id,
+        InternshipEnterpriseCollegeScope.college_id,
+        College.college_name,
+    ).join(
+        College,
+        (College.id == InternshipEnterpriseCollegeScope.college_id)
+        & (College.tenant_id == InternshipEnterpriseCollegeScope.tenant_id)
+        & (College.is_deleted.is_(False)),
+    ).where(
+        InternshipEnterpriseCollegeScope.tenant_id == _tid(),
+        InternshipEnterpriseCollegeScope.company_id.in_(ids),
+        InternshipEnterpriseCollegeScope.is_deleted.is_(False),
+    ).order_by(
+        InternshipEnterpriseCollegeScope.company_id,
+        College.college_name,
+    )).all()
+    out: dict[int, list[dict]] = {}
+    for company_id, college_id, college_name in rows:
+        out.setdefault(int(company_id), []).append({
+            "id": str(college_id),
+            "name": college_name or "",
+        })
+    return out
+
+
+def _company_scope_ids(db, company_id) -> set[int]:
+    return {
+        int(value) for value in db.scalars(select(
+            InternshipEnterpriseCollegeScope.college_id
+        ).where(
+            InternshipEnterpriseCollegeScope.tenant_id == _tid(),
+            InternshipEnterpriseCollegeScope.company_id == int(company_id),
+            InternshipEnterpriseCollegeScope.is_deleted.is_(False),
+        )).all()
+    }
+
+
+def apply_company_scope(query, company_column, db, user=None):
+    """Apply AP04 enterprise applicability to any query carrying a company id column."""
+    allowed = resolve_user_college_ids(db, user)
+    if allowed is None:
+        return query
+    scoped_company_ids = select(InternshipEnterpriseCollegeScope.company_id).where(
+        InternshipEnterpriseCollegeScope.tenant_id == _tid(),
+        InternshipEnterpriseCollegeScope.is_deleted.is_(False),
+    )
+    if not allowed:
+        return query.where(~company_column.in_(scoped_company_ids))
+    allowed_company_ids = select(InternshipEnterpriseCollegeScope.company_id).where(
+        InternshipEnterpriseCollegeScope.tenant_id == _tid(),
+        InternshipEnterpriseCollegeScope.college_id.in_(allowed),
+        InternshipEnterpriseCollegeScope.is_deleted.is_(False),
+    )
+    return query.where(or_(
+        ~company_column.in_(scoped_company_ids),
+        company_column.in_(allowed_company_ids),
+    ))
+
+
+def assert_company_visible(db, company_id, user=None) -> None:
+    allowed = resolve_user_college_ids(db, user)
+    if allowed is None:
+        return
+    scoped = _company_scope_ids(db, int(company_id))
+    if scoped and scoped.isdisjoint(allowed):
+        raise no_permission("该企业不在你的学院数据范围内")
+
+
+def assert_company_writable(db, company_id, user=None) -> None:
+    allowed = resolve_user_college_ids(db, user)
+    if allowed is None:
+        return
+    scoped = _company_scope_ids(db, int(company_id))
+    if not scoped:
+        raise no_permission("全校通用企业仅校级管理员可维护；学院角色只能维护本院限定企业")
+    if not scoped.issubset(allowed):
+        raise no_permission("该企业同时属于其他学院范围，当前账号不能修改")
+
+
+def enterprise_scope_options(user=None) -> dict:
+    with session() as db:
+        allowed = resolve_user_college_ids(db, user)
+        q = select(College).where(
+            College.tenant_id == _tid(),
+            College.is_deleted.is_(False),
+        )
+        if allowed is not None:
+            if not allowed:
+                return {"mode": "SCOPED", "items": [], "schoolWideAllowed": False}
+            q = q.where(College.id.in_(allowed))
+        rows = db.scalars(q.order_by(College.college_name, College.id)).all()
+        return {
+            "mode": "ADMIN_TENANT" if allowed is None else "SCOPED",
+            "items": [{"id": str(row.id), "name": row.college_name or ""} for row in rows],
+            "schoolWideAllowed": allowed is None,
+        }
+
+
+def _validated_scope_ids(db, raw_ids, *, user=None, creating=False) -> set[int]:
+    requested = set()
+    for raw in raw_ids or []:
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "适用学院 ID 格式非法") from None
+        if value > 0:
+            requested.add(value)
+
+    allowed = resolve_user_college_ids(db, user)
+    if allowed is not None:
+        if not requested and creating:
+            requested = set(allowed)
+        if not requested:
+            raise no_permission("学院范围账号不能把企业设置为全校通用")
+        if not requested.issubset(allowed):
+            raise no_permission("不能把企业适用范围扩大到当前账号无权管理的学院")
+
+    if requested:
+        valid = set(db.scalars(select(College.id).where(
+            College.tenant_id == _tid(),
+            College.id.in_(requested),
+            College.is_deleted.is_(False),
+        )).all())
+        valid = {int(value) for value in valid}
+        if valid != requested:
+            raise AppException("VALIDATION_ERROR", "存在无效或已停用的适用学院")
+    return requested
+
+
+def _sync_company_scope(db, company_id: int, raw_ids, *, user=None, creating=False) -> set[int]:
+    requested = _validated_scope_ids(db, raw_ids, user=user, creating=creating)
+    existing = db.scalars(select(InternshipEnterpriseCollegeScope).where(
+        InternshipEnterpriseCollegeScope.tenant_id == _tid(),
+        InternshipEnterpriseCollegeScope.company_id == int(company_id),
+    ).with_for_update()).all()
+    by_college = {int(row.college_id): row for row in existing}
+    now = datetime.utcnow()
+    for college_id, row in by_college.items():
+        if college_id in requested:
+            if row.is_deleted:
+                row.is_deleted = False
+                row.scope_source = "MANUAL"
+                row.updated_at = now
+                row.version = int(row.version or 0) + 1
+        elif not row.is_deleted:
+            row.is_deleted = True
+            row.updated_at = now
+            row.version = int(row.version or 0) + 1
+    for college_id in requested - set(by_college):
+        db.add(InternshipEnterpriseCollegeScope(
+            tenant_id=_tid(),
+            company_id=int(company_id),
+            college_id=college_id,
+            scope_source="MANUAL",
+        ))
+    return requested
+
+
+def _row(c: EmpCompany, scope_items=None) -> dict:
+    scope_items = list(scope_items or [])
     return {
         "id": str(c.id), "name": c.name, "creditCode": c.credit_code or "",
         "industry": c.industry or "", "nature": c.nature or "", "scale": c.scale or "",
@@ -100,6 +360,10 @@ def _row(c: EmpCompany) -> dict:
         "blacklist": bool(c.blacklist), "blacklistReason": c.blacklist_reason or "",
         "internCount": c.intern_count, "hiredCount": c.hired_count,
         "remark": c.remark or "",
+        "collegeScopes": scope_items,
+        "collegeScopeIds": [str(item["id"]) for item in scope_items],
+        "collegeScopeNames": [item["name"] for item in scope_items],
+        "schoolWide": len(scope_items) == 0,
         "reviewBy": c.review_by or "", "reviewAt": _iso(c.review_at), "reviewComment": c.review_comment or "",
         "archivedAt": _iso(c.archived_at), "archivedBy": c.archived_by or "",
         "updatedAt": _iso(c.updated_at), "version": int(c.version or 0),
@@ -120,10 +384,13 @@ def _contact_row(t: InternshipEnterpriseContact) -> dict:
 # ═══════════ 列表 / 详情 ═══════════
 
 def list_enterprises(page: int, page_size: int, keyword=None, coop_status=None,
-                     industry=None, region=None, blacklist=None) -> tuple[list[dict], int]:
+                     industry=None, region=None, blacklist=None, user=None) -> tuple[list[dict], int]:
     with session() as db:
-        q = select(EmpCompany).where(EmpCompany.tenant_id == _tid(),
-                                     EmpCompany.is_deleted.is_(False))
+        q = select(EmpCompany).where(
+            EmpCompany.tenant_id == _tid(),
+            EmpCompany.is_deleted.is_(False),
+        )
+        q = apply_company_scope(q, EmpCompany.id, db, user)
         if keyword:
             like = f"%{keyword.strip()}%"
             q = q.where(or_(EmpCompany.name.like(like), EmpCompany.credit_code.like(like),
@@ -139,12 +406,14 @@ def list_enterprises(page: int, page_size: int, keyword=None, coop_status=None,
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(EmpCompany.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        return [_row(c) for c in rows], total
+        scope_map = _company_scope_map(db, [row.id for row in rows])
+        return [_row(row, scope_map.get(int(row.id), [])) for row in rows], total
 
 
-def get_enterprise(company_id) -> dict:
+def get_enterprise(company_id, user=None) -> dict:
     with session() as db:
         c = _get(db, company_id)
+        assert_company_visible(db, c.id, user)
         contacts = db.scalars(select(InternshipEnterpriseContact).where(
             InternshipEnterpriseContact.tenant_id == _tid(),
             InternshipEnterpriseContact.company_id == c.id,
@@ -159,7 +428,7 @@ def get_enterprise(company_id) -> dict:
         from app.modules.internship.services import internship_position_service as _pos
         position_summary = _pos.count_for_enterprise(c.id)
         return {
-            **_row(c),
+            **_row(c, _company_scope_map(db, [c.id]).get(int(c.id), [])),
             "contacts": [_contact_row(t) for t in contacts],
             "mentorCount": sum(1 for t in contacts if t.contact_type == "MENTOR"),
             "contactCount": sum(1 for t in contacts if t.contact_type == "CONTACT"),
@@ -186,7 +455,7 @@ def _apply(c: EmpCompany, body) -> None:
         c.contact_phone_encrypted = encrypt_field(phone)
 
 
-def create_enterprise(body) -> dict:
+def create_enterprise(body, user=None) -> dict:
     with session() as db:
         name = (getattr(body, "name", "") or "").strip()
         name_err = _validate_company_name(name)
@@ -207,19 +476,26 @@ def create_enterprise(body) -> dict:
         _apply(c, body)
         db.add(c)
         db.flush()
-        _trail(db, c.id, "CREATE", {"name": name, "source": c.source})
+        scope_ids = _sync_company_scope(
+            db, c.id, getattr(body, "collegeScopeIds", None), user=user, creating=True)
+        _trail(db, c.id, "CREATE", {
+            "name": name, "source": c.source,
+            "collegeScopeIds": [str(value) for value in sorted(scope_ids)],
+            "schoolWide": len(scope_ids) == 0,
+        })
         db.commit()
         db.refresh(c)
-        return _row(c)
+        return _row(c, _company_scope_map(db, [c.id]).get(int(c.id), []))
 
 
-def update_enterprise(company_id, body) -> dict:
+def update_enterprise(company_id, body, user=None) -> dict:
     with session() as db:
         c = db.scalar(select(EmpCompany).where(
             EmpCompany.id == _as_id(company_id), EmpCompany.tenant_id == _tid(),
             EmpCompany.is_deleted.is_(False)).with_for_update())
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
+        assert_company_writable(db, c.id, user)
         expected = getattr(body, "expectedVersion", None)
         if expected is None:
             raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
@@ -251,7 +527,12 @@ def update_enterprise(company_id, body) -> dict:
                 if dup:
                     raise AppException("DATA_CONFLICT", f"统一社会信用代码已存在：{normalized_cc}")
 
+        old_scope_ids = _company_scope_ids(db, c.id)
         _apply(c, body)
+        new_scope_ids = old_scope_ids
+        if "collegeScopeIds" in body.model_fields_set:
+            new_scope_ids = _sync_company_scope(
+                db, c.id, getattr(body, "collegeScopeIds", None), user=user, creating=False)
         identity_changed = (c.name or "") != old_name or (c.credit_code or "") != old_cc
         if identity_changed:
             c.qualification_status = "UNREVIEWED"
@@ -265,13 +546,15 @@ def update_enterprise(company_id, body) -> dict:
             "name": c.name, "identityInvalidated": identity_changed,
             "previousName": old_name if identity_changed else "",
             "previousCreditCode": old_cc if identity_changed else "",
+            "collegeScopeBefore": [str(value) for value in sorted(old_scope_ids)],
+            "collegeScopeAfter": [str(value) for value in sorted(new_scope_ids)],
         })
         db.commit()
         db.refresh(c)
-        return _row(c)
+        return _row(c, _company_scope_map(db, [c.id]).get(int(c.id), []))
 
 
-def review_enterprise(company_id, action: str, comment: str = "", expected_version=None) -> dict:
+def review_enterprise(company_id, action: str, comment: str = "", expected_version=None, user=None) -> dict:
     """资质审核：仅 PENDING 可审。APPROVE→ACTIVE+资质通过；REJECT→REJECTED+资质不通过。"""
     if action not in ("APPROVE", "REJECT"):
         raise AppException("VALIDATION_ERROR", "非法审核动作")
@@ -283,6 +566,7 @@ def review_enterprise(company_id, action: str, comment: str = "", expected_versi
             EmpCompany.is_deleted.is_(False)).with_for_update())
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
+        assert_company_writable(db, c.id, user)
         if expected_version is None:
             raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
         if int(expected_version) != int(c.version or 0):
@@ -299,10 +583,10 @@ def review_enterprise(company_id, action: str, comment: str = "", expected_versi
         _trail(db, c.id, f"REVIEW_{action}", {"comment": comment})
         db.commit()
         db.refresh(c)
-        return _row(c)
+        return _row(c, _company_scope_map(db, [c.id]).get(int(c.id), []))
 
 
-def set_cooperation(company_id, action: str, reason: str = "", expected_version=None) -> dict:
+def set_cooperation(company_id, action: str, reason: str = "", expected_version=None, user=None) -> dict:
     """合作启停：SUSPEND(ACTIVE→SUSPENDED) / RESUME(SUSPENDED→ACTIVE) / ARCHIVE(→ARCHIVED)。"""
     with session() as db:
         c = db.scalar(select(EmpCompany).where(
@@ -336,10 +620,10 @@ def set_cooperation(company_id, action: str, reason: str = "", expected_version=
         _trail(db, c.id, f"COOP_{action}", {"reason": reason})
         db.commit()
         db.refresh(c)
-        return _row(c)
+        return _row(c, _company_scope_map(db, [c.id]).get(int(c.id), []))
 
 
-def set_blacklist(company_id, on: bool, reason: str = "", expected_version=None) -> dict:
+def set_blacklist(company_id, on: bool, reason: str = "", expected_version=None, user=None) -> dict:
     """拉黑 / 移出黑名单。移出时恢复拉黑前状态；缺历史证据则 fail-closed 回待审核。"""
     with session() as db:
         c = db.scalar(select(EmpCompany).where(
@@ -383,14 +667,15 @@ def set_blacklist(company_id, on: bool, reason: str = "", expected_version=None)
         _trail(db, c.id, "BLACKLIST_ON" if on else "BLACKLIST_OFF", detail)
         db.commit()
         db.refresh(c)
-        return _row(c)
+        return _row(c, _company_scope_map(db, [c.id]).get(int(c.id), []))
 
 
 # ═══════════ 联系人 / 企业导师 ═══════════
 
-def list_contacts(company_id) -> list[dict]:
+def list_contacts(company_id, user=None) -> list[dict]:
     with session() as db:
         c = _get(db, company_id)
+        assert_company_visible(db, c.id, user)
         rows = db.scalars(select(InternshipEnterpriseContact).where(
             InternshipEnterpriseContact.tenant_id == _tid(),
             InternshipEnterpriseContact.company_id == c.id,
@@ -399,9 +684,10 @@ def list_contacts(company_id) -> list[dict]:
         return [_contact_row(t) for t in rows]
 
 
-def add_contact(company_id, body) -> dict:
+def add_contact(company_id, body, user=None) -> dict:
     with session() as db:
         c = _get(db, company_id)
+        assert_company_writable(db, c.id, user)
         name = (getattr(body, "name", "") or "").strip()
         if not name:
             raise AppException("VALIDATION_ERROR", "姓名必填")
@@ -440,9 +726,10 @@ def _get_contact(db, company_id: int, contact_id) -> InternshipEnterpriseContact
     return t
 
 
-def update_contact(company_id, contact_id, body) -> dict:
+def update_contact(company_id, contact_id, body, user=None) -> dict:
     with session() as db:
         c = _get(db, company_id)
+        assert_company_writable(db, c.id, user)
         t = db.scalar(select(InternshipEnterpriseContact).where(
             InternshipEnterpriseContact.id == _as_id(contact_id),
             InternshipEnterpriseContact.tenant_id == _tid(),
@@ -491,9 +778,10 @@ def update_contact(company_id, contact_id, body) -> dict:
         return _contact_row(t)
 
 
-def delete_contact(company_id, contact_id) -> dict:
+def delete_contact(company_id, contact_id, user=None) -> dict:
     with session() as db:
         c = _get(db, company_id)
+        assert_company_writable(db, c.id, user)
         t = _get_contact(db, c.id, contact_id)
         t.is_deleted = True
         _trail(db, c.id, "CONTACT_DELETE", {"contactId": str(t.id), "name": t.name})
@@ -503,18 +791,23 @@ def delete_contact(company_id, contact_id) -> dict:
 
 # ═══════════ 统计 ═══════════
 
-def enterprise_stats() -> dict:
+def enterprise_stats(user=None) -> dict:
     with session() as db:
-        base = [EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False)]
-        total = int(db.scalar(select(func.count()).select_from(EmpCompany).where(*base)) or 0)
+        query = select(EmpCompany).where(
+            EmpCompany.tenant_id == _tid(),
+            EmpCompany.is_deleted.is_(False),
+        )
+        query = apply_company_scope(query, EmpCompany.id, db, user)
+        scoped = query.subquery()
+        total = int(db.scalar(select(func.count()).select_from(scoped)) or 0)
         by_status = {}
         for st in COOP_LABEL:
-            by_status[st] = int(db.scalar(select(func.count()).select_from(EmpCompany).where(
-                *base, EmpCompany.coop_status == st)) or 0)
-        black = int(db.scalar(select(func.count()).select_from(EmpCompany).where(
-            *base, EmpCompany.blacklist.is_(True))) or 0)
-        ind_rows = db.execute(select(EmpCompany.industry, func.count()).where(*base).group_by(
-            EmpCompany.industry)).all()
+            by_status[st] = int(db.scalar(select(func.count()).select_from(scoped).where(
+                scoped.c.coop_status == st)) or 0)
+        black = int(db.scalar(select(func.count()).select_from(scoped).where(
+            scoped.c.blacklist.is_(True))) or 0)
+        ind_rows = db.execute(select(scoped.c.industry, func.count()).group_by(
+            scoped.c.industry)).all()
         return {
             "total": total,
             "byCoopStatus": [{"status": st, "label": COOP_LABEL[st], "count": by_status[st]}
@@ -655,11 +948,11 @@ def import_confirm(rows: list[dict]) -> dict:
     return {"created": result.get("created", 0)}
 
 
-def export_enterprises(keyword=None, coop_status=None, industry=None, region=None) -> dict:
+def export_enterprises(keyword=None, coop_status=None, industry=None, region=None, user=None) -> dict:
     """导出 Excel 台账（走底座；联系电话已在列表层脱敏，黑名单列由底座 mask 转「是/否」）。"""
     from app.modules.internship.services.internship_export_util import load_export_rows
     items, _ = load_export_rows(
         list_enterprises, keyword=keyword, coop_status=coop_status,
-        industry=industry, region=region)
+        industry=industry, region=region, user=user)
     user = get_current_user_ctx() or {}
     return excel.build_export(build_export_spec(), items, operator_name=user.get("realName", "-"))
