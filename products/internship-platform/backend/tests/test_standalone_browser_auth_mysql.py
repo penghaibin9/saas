@@ -238,6 +238,16 @@ def test_student_browser_channel_and_cross_surface_fail_closed_real_mysql():
         assert me.status_code == 200, me.text
         assert me.json()["data"]["currentRole"]["roleCode"] == "STUDENT"
 
+        portal_config = student_client.get(
+            "/api/v1/mobile/me/portal-config",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert portal_config.status_code == 200, portal_config.text
+        portal_data = portal_config.json()["data"]
+        assert portal_data["enabled"] is True
+        assert portal_data["modules"]["internship"] is True
+        assert portal_data["brand"]["schoolName"] == "浏览器认证验收学校"
+
         internship_my = student_client.get(
             "/api/v1/portal/internship/my",
             headers={"Authorization": f"Bearer {data['accessToken']}"},
