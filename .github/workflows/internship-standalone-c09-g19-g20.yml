@@ -10,6 +10,8 @@ on:
       - "products/internship-platform/scripts/g20_validate_evidence.py"
       - "products/internship-platform/backend/alembic/sql/0001_internship_standalone_baseline.json"
       - "products/internship-platform/backend/app/main.py"
+      - "products/internship-platform/scripts/check_w2_import_closure.py"
+      - "products/internship-platform/backend/app/services/browser_auth_session_blocklist.py"
       - "products/internship-platform/backend/app/config.py"
       - "products/internship-platform/backend/Dockerfile"
       - "products/internship-platform/deploy/**"
@@ -53,9 +55,13 @@ jobs:
         run: python products/internship-platform/scripts/g19_migration_bridge.py --self-test
       - name: Verify G20 evidence qualification contract
         run: python products/internship-platform/scripts/g20_validate_evidence.py --self-test
+      - name: Validate backend import closure
+        env:
+          PYTHONPATH: products/internship-platform/backend
+        run: python products/internship-platform/scripts/check_w2_import_closure.py
       - name: Validate production readiness and ops scripts
         run: |
-          python -m py_compile products/internship-platform/backend/app/main.py products/internship-platform/backend/app/config.py
+          python -m py_compile products/internship-platform/backend/app/main.py products/internship-platform/backend/app/config.py products/internship-platform/backend/app/services/browser_auth_session_blocklist.py
           bash -n products/internship-platform/deploy/backup/backup.sh
           bash -n products/internship-platform/deploy/backup/restore-drill.sh
           grep -q "mysql:8.4" products/internship-platform/deploy/docker-compose.production.yml
