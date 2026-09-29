@@ -45,3 +45,9 @@ jobs:
       - name: Build enterprise web
         working-directory: products/internship-platform/enterprise-web
         run: npm run build
+      - name: Install Chromium for enterprise browser evidence
+        working-directory: products/internship-platform/enterprise-web
+        run: npx playwright install --with-deps chromium
+      - name: Run enterprise browser evidence
+        working-directory: products/internship-platform/enterprise-web
+        run: npm run test:e2e
