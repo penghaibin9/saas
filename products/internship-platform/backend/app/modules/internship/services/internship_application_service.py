@@ -14,8 +14,10 @@ from sqlalchemy import func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.tenant_scoped import tenant_get
-from app.models import (EmpCompany, InternshipApplication, InternshipAuditTrail, InternshipPosition,
-                        InternshipRecord, StudentProfile)
+from app.models import (
+    College, EmpCompany, InternshipApplication, InternshipAuditTrail, InternshipPosition,
+    InternshipRecord, Major, SchoolClass, StudentProfile,
+)
 from app.modules.internship.services import internship_student_service as student_svc
 from app.services.db_service import _as_id, _iso, _tid, session
 
@@ -368,16 +370,84 @@ def _apply_position_snapshot(app: InternshipApplication, pos: InternshipPosition
     app.registry_reference = None
     app.registry_verified_at = None
 
+def _student_org_context(db, students) -> dict[int, dict]:
+    """Batch-resolve class/major/college labels for list/export; no per-row org queries."""
+    students = [student for student in students or [] if student is not None]
+    if not students:
+        return {}
+    class_ids = {int(student.class_id) for student in students if getattr(student, "class_id", None)}
+    major_ids = {int(student.major_id) for student in students if getattr(student, "major_id", None)}
+    college_ids = {int(student.college_id) for student in students if getattr(student, "college_id", None)}
+
+    classes = {}
+    class_major_ids = {}
+    if class_ids:
+        class_rows = db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == _tid(),
+            SchoolClass.id.in_(class_ids),
+            SchoolClass.is_deleted.is_(False),
+        )).all()
+        classes = {int(row.id): row.class_name or "" for row in class_rows}
+        class_major_ids = {
+            int(row.id): int(row.major_id) for row in class_rows if row.major_id
+        }
+        major_ids.update(class_major_ids.values())
+
+    majors = {}
+    major_college_ids = {}
+    if major_ids:
+        major_rows = db.scalars(select(Major).where(
+            Major.tenant_id == _tid(),
+            Major.id.in_(major_ids),
+            Major.is_deleted.is_(False),
+        )).all()
+        majors = {int(row.id): row.major_name or "" for row in major_rows}
+        major_college_ids = {
+            int(row.id): int(row.college_id) for row in major_rows if row.college_id
+        }
+        college_ids.update(major_college_ids.values())
+
+    colleges = {}
+    if college_ids:
+        college_rows = db.scalars(select(College).where(
+            College.tenant_id == _tid(),
+            College.id.in_(college_ids),
+            College.is_deleted.is_(False),
+        )).all()
+        colleges = {int(row.id): row.college_name or "" for row in college_rows}
+
+    result = {}
+    for student in students:
+        class_id = int(student.class_id) if getattr(student, "class_id", None) else None
+        major_id = int(student.major_id) if getattr(student, "major_id", None) else None
+        if not major_id and class_id:
+            major_id = class_major_ids.get(class_id)
+        college_id = int(student.college_id) if getattr(student, "college_id", None) else None
+        if not college_id and major_id:
+            college_id = major_college_ids.get(major_id)
+        result[int(student.id)] = {
+            "className": classes.get(class_id, "") if class_id else "",
+            "majorName": majors.get(major_id, "") if major_id else "",
+            "collegeName": colleges.get(college_id, "") if college_id else "",
+        }
+    return result
+
+
 def _row(db, app: InternshipApplication, rec=None, stu=None, *,
-         pos=None, company=None, preloaded: bool = False) -> dict:
+         pos=None, company=None, preloaded: bool = False, org=None) -> dict:
     rec = rec or tenant_get(db, InternshipRecord, app.record_id, tenant_id=app.tenant_id)
     stu = stu or tenant_get(db, StudentProfile, app.student_id, tenant_id=app.tenant_id)
     if not preloaded:
         pos = tenant_get(db, InternshipPosition, app.position_id, tenant_id=app.tenant_id) if app.position_id else None
         company = tenant_get(db, EmpCompany, pos.company_id, tenant_id=app.tenant_id) if pos else None
+    if org is None:
+        org = _student_org_context(db, [stu]).get(int(stu.id), {}) if stu else {}
     return {
         "id": str(app.id), "recordId": str(app.record_id), "studentId": str(app.student_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
+        "collegeName": org.get("collegeName") or "",
+        "majorName": org.get("majorName") or "",
+        "className": org.get("className") or "",
         "advisorName": rec.advisor_name if rec else "", "applicationType": app.application_type,
         "applicationTypeLabel": TYPE_LABEL.get(app.application_type, app.application_type),
         "volunteerNo": app.volunteer_no, "positionId": str(app.position_id) if app.position_id else "",
@@ -640,9 +710,14 @@ def list_applications(page: int, page_size: int, status=None, application_type=N
                 InternshipApplication.id.desc(),
             ).offset((max(1, int(page or 1)) - 1) * size).limit(size)
         ).all()
+        org_map = _student_org_context(
+            db, [student for _application, _record, student, _position, _company in rows])
         return [
-            _row(db, application, record, student,
-                 pos=position, company=company, preloaded=True)
+            _row(
+                db, application, record, student,
+                pos=position, company=company, preloaded=True,
+                org=org_map.get(int(student.id), {}),
+            )
             for application, record, student, position, company in rows
         ], total
 
@@ -665,37 +740,47 @@ def export_applications(
         )
 
     headers = [
-        "申请类型", "学生姓名", "学号", "校内指导教师", "状态",
-        "实习单位/免实习", "岗位/免实习去向", "统一社会信用代码",
-        "实习部门", "岗位类别", "工作地点", "实习开始日期", "实习结束日期",
-        "约定薪资(元/月)", "免实习类型", "免实习原因", "免实习佐证",
-        "提交时间", "审核人", "审核时间", "审核意见",
+        "申请类型", "申请时间", "学号", "姓名", "院系", "专业", "班级",
+        "实习单位/免实习", "实习岗位/免实习去向", "实习单位地址",
+        "所属科室", "职位类别", "实习薪资(元/月)", "所属行业",
+        "校内指导老师", "企业老师", "统一社会信用代码",
+        "实习开始日期", "实习结束日期", "状态",
+        "免实习类型", "免实习原因", "免实习佐证",
+        "审核人", "审核时间", "审核意见",
     ]
     data_rows = []
     for row in rows:
         is_exemption = row.get("applicationType") == "EXEMPTION"
+        work_address = " / ".join(filter(None, [
+            row.get("workCountry"), row.get("workProvince"),
+            row.get("workCity"), row.get("workDistrict"), row.get("workAddress"),
+        ]))
         data_rows.append([
             row.get("applicationTypeLabel") or row.get("applicationType") or "",
-            row.get("studentName") or "",
+            row.get("submittedAt") or "",
             row.get("studentNo") or "",
-            row.get("advisorName") or "",
-            row.get("statusLabel") or row.get("status") or "",
+            row.get("studentName") or "",
+            row.get("collegeName") or "",
+            row.get("majorName") or "",
+            row.get("className") or "",
             "免实习" if is_exemption else (row.get("companyName") or ""),
             row.get("exemptionDestination") if is_exemption else (row.get("positionName") or ""),
-            row.get("companyCreditCode") or "",
-            row.get("internshipDepartment") or "",
-            row.get("positionCategory") or "",
-            " / ".join(filter(None, [
-                row.get("workCountry"), row.get("workProvince"),
-                row.get("workCity"), row.get("workDistrict"), row.get("workAddress"),
-            ])),
-            row.get("internshipStartDate") or "",
-            row.get("internshipEndDate") or "",
-            row.get("agreedSalary") if row.get("agreedSalary") is not None else "",
+            "" if is_exemption else work_address,
+            "" if is_exemption else (row.get("internshipDepartment") or ""),
+            "" if is_exemption else (row.get("positionCategory") or ""),
+            "" if is_exemption else (
+                row.get("agreedSalary") if row.get("agreedSalary") is not None else ""
+            ),
+            "" if is_exemption else (row.get("companyIndustry") or ""),
+            row.get("advisorName") or "",
+            "" if is_exemption else (row.get("enterpriseMentorName") or ""),
+            "" if is_exemption else (row.get("companyCreditCode") or ""),
+            "" if is_exemption else (row.get("internshipStartDate") or ""),
+            "" if is_exemption else (row.get("internshipEndDate") or ""),
+            row.get("statusLabel") or row.get("status") or "",
             row.get("exemptionType") or "",
             row.get("exemptionReason") or "",
             "已上传" if row.get("evidenceFileId") else "",
-            row.get("submittedAt") or "",
             row.get("reviewedBy") or "",
             row.get("reviewedAt") or "",
             row.get("reviewComment") or "",
