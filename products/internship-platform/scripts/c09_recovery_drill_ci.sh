@@ -81,12 +81,12 @@ row_count="$(printf '%s\n' "SELECT COUNT(*) FROM t_file_object WHERE file_key='g
 
 rm -f "$BACKUP_DIR"/manifest_*.json "$BACKUP_DIR"/manifest_*.json.sha256       "$BACKUP_DIR"/mysql_*.sql.gz "$BACKUP_DIR"/mysql_*.sql.gz.sha256       "$BACKUP_DIR"/files_*.tar.gz "$BACKUP_DIR"/files_*.tar.gz.sha256       "$BACKUP_DIR"/restore-evidence-ci.json "$BACKUP_DIR"/restore-evidence-ci.json.sha256
 
-SOURCE_COMMIT="${GITHUB_SHA:-local-ci}" KEEP_DAYS=30 ./backup/backup.sh
+SOURCE_COMMIT="${GITHUB_SHA:-local-ci}" KEEP_DAYS=30 bash ./backup/backup.sh
 manifest="$(ls -1t "$BACKUP_DIR"/manifest_*.json | head -1)"
 [ -s "$manifest" ] || { echo "backup manifest missing" >&2; exit 1; }
 [ -s "$manifest.sha256" ] || { echo "backup manifest checksum missing" >&2; exit 1; }
 
-EXPECTED_ALEMBIC_REVISION=ix0023 EVIDENCE_FILE="$BACKUP_DIR/restore-evidence-ci.json" ./backup/restore-drill.sh "$manifest" internship_restore_drill
+EXPECTED_ALEMBIC_REVISION=ix0023 EVIDENCE_FILE="$BACKUP_DIR/restore-evidence-ci.json" bash ./backup/restore-drill.sh "$manifest" internship_restore_drill
 
 python3 - "$BACKUP_DIR/restore-evidence-ci.json" "$file_sha" <<'PY'
 import json
