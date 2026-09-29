@@ -280,7 +280,7 @@ export default {
       tab: 'review', midtermQueue: [], gradeQueue: [],
       midtermPage: 1, midtermTotal: 0, midtermHasMore: false, midtermLoadingMore: false,
       gradePage: 1, gradeTotal: 0, gradeHasMore: false, gradeLoadingMore: false,
-      midtermError: '', gradeError: '',
+      midtermError: '', gradeError: '', defensePendingTotal: 0,
       readEpoch: 0, midtermEpoch: 0, gradeEpoch: 0, studentLoadingMore: false,
       loaded: { midterm: false, peer: false, defense: false, grade: false },
       mode: 'list', reviewKind: '', queue: [], queueIndex: 0, detail: null, detailState: 'loading', detailRequestEpoch: 0,
@@ -324,7 +324,7 @@ export default {
         { key: 'review', label: '批阅', count: this.pendingReviewCount },
         { key: 'midterm', label: '中期', count: this.midtermTotal },
         { key: 'peer', label: '评阅', count: this.graduationQueues.reviews.total },
-        { key: 'defense', label: '答辩', count: 0 },
+        { key: 'defense', label: '答辩', count: this.defensePendingTotal },
         { key: 'grade', label: '成绩', count: this.gradeTotal }
       ]
     },
@@ -407,7 +407,7 @@ export default {
         if (epoch !== this.readEpoch) return
         this.applyReviewTruth(d)
         this.state = 'ready'
-        this.loadMidterm(); this.loadGrade()
+        this.loadMidterm(); this.loadGrade(); this.loadDefensePendingCount()
         this._maybeBootReview()
       }).catch((error) => { if (epoch === this.readEpoch) this.state = normalizeError(error).pageState || 'error' }).finally(() => { if (done) done() })
     },
@@ -481,6 +481,15 @@ export default {
       })
     },
     loadMoreMidterm() { if (this.midtermHasMore && !this.midtermLoadingMore) this.loadMidterm(null, true) },
+    // 答辩页签徽标显示“待我评分”的真实数量（此前写死为 0）
+    loadDefensePendingCount() {
+      const epoch = this.readEpoch
+      graduationTeacherPagingApi.defenseScores(1, 1).then((r) => {
+        if (epoch !== this.readEpoch) return
+        const meta = (r && r._pageMeta) || {}
+        this.defensePendingTotal = Number(meta.total || (Array.isArray(r) ? r.length : 0))
+      }).catch(() => { if (epoch === this.readEpoch) this.defensePendingTotal = 0 })
+    },
     loadReviews(done) {
       return this.loadGraduationQueue('reviews').then((ok) => { this.loaded.peer = ok }).finally(() => done && done())
     },

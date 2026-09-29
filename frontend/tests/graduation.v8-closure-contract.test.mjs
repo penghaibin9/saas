@@ -34,7 +34,7 @@ test('material and review writes expose human receipts backed by server readback
     assert.match(source, /await this\.load/)
   }
   for (const source of [proposal, finalReview]) {
-    assert.match(source, /服务器最新/)
+    assert.match(source, /当前结论：/)
   }
 })
 

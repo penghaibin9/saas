@@ -242,6 +242,12 @@ def teacher_graduation_my_students(
     return success(_paged_service(tea.graduation_my_students, user, batchId, page, pageSize))
 
 
+@router.get("/workbench", summary="老师毕设工作台：按我的身份汇总待办（与 PC 同源）")
+def teacher_graduation_workbench(batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
+    from app.modules.graduation.services import graduation_teacher_workbench_service as workbench
+    return success(workbench.build(user, batch_id=_require_batch(batchId)))
+
+
 @router.get("/proposal/{proposal_id}")
 def teacher_proposal_detail(proposal_id: str, batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
     _material_student(GraduationProposal, proposal_id, batchId)

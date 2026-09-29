@@ -184,17 +184,36 @@ def initialize_student_materials(gd_student_id: int, user: dict | None = None) -
 def initialize_batch_materials_in_session(db, batch_id: int, user: dict | None = None) -> dict:
     """Idempotently initialize all active students in a batch in the caller's transaction."""
     _batch_for_update(db, int(batch_id))
-    active_rule(db, int(batch_id), lock=True)
-    student_ids = list(db.scalars(select(GraduationStudent.id).where(
+    # 规则与材料项只读一次、已有材料目录一次查出，整批一次写入；
+    # 逐个学生查询/加锁在 6000+ 学生的批次上要几分钟，会让“启用规则”请求超时。
+    rule = active_rule(db, int(batch_id), lock=True)
+    items = rule_items(db, int(rule.id), lock=True)
+    students = list(db.scalars(select(GraduationStudent).where(
         GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
         GraduationStudent.record_status == "ACTIVE",
         func.coalesce(GraduationStudent.stage, "") != "ARCHIVED",
         GraduationStudent.is_deleted.is_(False),
     ).order_by(GraduationStudent.id).with_for_update()).all())
+    existing: dict[int, set[str]] = {}
+    for sid, code in db.execute(select(
+        GraduationStudentMaterial.gd_student_id, GraduationStudentMaterial.material_code,
+    ).where(
+        GraduationStudentMaterial.tenant_id == _tid(),
+        GraduationStudentMaterial.batch_id == int(batch_id),
+        GraduationStudentMaterial.is_deleted.is_(False),
+    )).all():
+        existing.setdefault(int(sid), set()).add(code)
+    actor = _actor_id(user)
     created = 0
-    for gd_student_id in student_ids:
-        created += int(initialize_student_materials_in_session(db, int(gd_student_id), user)["created"])
-    return {"batchId": str(batch_id), "studentCount": len(student_ids), "created": created}
+    for student in students:
+        have = existing.get(int(student.id), set())
+        for item in items:
+            if item.material_code in have:
+                continue
+            db.add(_new_material(student, item, int(rule.id), int(rule.rule_version), actor))
+            created += 1
+    db.flush()
+    return {"batchId": str(batch_id), "studentCount": len(students), "created": created}
 
 
 def initialize_batch_materials(batch_id: int, user: dict | None = None) -> dict:

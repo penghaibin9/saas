@@ -188,6 +188,15 @@ import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
+// 教师按业务关系自动获得身份；学生队列必须按当前页面的职责取数（评委看本组学生、秘书看本组学生、评阅老师看被分配的学生），
+// 否则后端默认按“指导教师”返回，评委/秘书/评阅老师会看不到自己要处理的学生。
+// 查重记录页只列已提交过论文的学生（不再把批次内全部学生列出来）。
+const QUEUE_FINAL_STATUS = { 'graduation-plagiarism-ledger': 'SUBMITTED' }
+const QUEUE_IDENTITY_HINTS = {
+  'graduation-defense-scoring': 'GD_DEFENSE_EXPERT',
+  'graduation-defense-confirmation': 'GD_DEFENSE_SECRETARY',
+  'graduation-review-tasks': 'GD_REVIEWER',
+}
 const PANEL_ROUTES = { plagiarism: 'graduation-plagiarism-ledger', review: 'graduation-review-tasks', defense: 'graduation-defense-scoring', grade: 'graduation-grade-ledger' }
 const PANEL_PERMISSIONS = {
   plagiarism: ['graduationDesign.plagiarism.view'],
@@ -265,7 +274,10 @@ export default {
       return `${batch}${this.workContract}`
     },
     workModeLabel() { return this.mode === 'batch' ? '服务端成绩台账' : `按学生连续处理 · ${this.tabLabel}` },
-    tabLabel() { return { plagiarism: '查重记录', review: '教师评阅', defense: '答辩评分', grade: '成绩评定' }[this.tab] || '当前业务' },
+    tabLabel() {
+      if (this.tab === 'defense' && this.$route.name === 'graduation-defense-confirmation') return '答辩确认'
+      return { plagiarism: '查重记录', review: '教师评阅', defense: '答辩评分', grade: '成绩评定' }[this.tab] || '当前业务'
+    },
     workContract() {
       if (this.mode === 'batch') return '服务端分页与缺项队列；不在当前页二次筛选。'
       if (this.tab === 'defense') return '评委只提交本人评分；秘书只确认完整轮次，二者权限严格分离。'
@@ -553,10 +565,16 @@ export default {
       }
       this.sideLoading = true
       try {
-        const res = await gdStudentApi.getStudents({ keyword, batchId, pageSize: 20 })
+        const identityHint = QUEUE_IDENTITY_HINTS[this.$route.name]
+        const res = await gdStudentApi.getStudents({ keyword, batchId, pageSize: 20, ...(identityHint ? { gdIdentity: identityHint } : {}), ...(QUEUE_FINAL_STATUS[this.$route.name] ? { finalStatus: QUEUE_FINAL_STATUS[this.$route.name] } : {}) })
         if (token !== this.studentLoadToken || batchId !== String(this.batchStore.selectedBatchId || '') || keyword !== this.studentKeyword) return false
         if (res.code === 0) {
           this.studentOptions = Array.isArray(res.data?.list) ? res.data.list : []
+          // 队列里只有一个学生时直接选中，省得老师再点一次学生行。
+          if (!this.current && this.mode !== 'batch' && !keyword && this.studentOptions.length === 1
+            && !this.routeText(this.$route.query.studentId)) {
+            this.selectStudent(this.studentOptions[0])
+          }
           return true
         }
         this.studentOptions = []

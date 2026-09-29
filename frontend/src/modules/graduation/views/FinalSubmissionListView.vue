@@ -653,10 +653,10 @@ export default {
           await this.loadStats()
           this.reviewReceipt = {
             title: `${targetName}的成果材料已处理`,
-            result: `服务器最新结论：${res.data.statusLabel}；待审队列已回读`,
+            result: `当前结论：${res.data?.statusLabel || (action === 'APPROVE' ? '已通过' : '已退回，待学生修改')}`,
             next: action === 'APPROVE' ? '该版本可进入正式评阅、答辩或成绩环节。' : '下一步由学生按意见修改并提交新版本。'
           }
-          toast.success('批阅完成，服务器最新结论与待审队列已回读')
+          toast.success('批阅完成，待审队列已更新')
           if (!this.autoNext || !pendingQueue) {
             if (this.selectedRow) { this.selectedRow.status = res.data.status; this.selectedRow.statusLabel = res.data.statusLabel }
             await this.loadSelectedDetail()

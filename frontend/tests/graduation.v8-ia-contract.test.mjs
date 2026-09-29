@@ -11,12 +11,13 @@ import { GRADUATION_WORKSPACES } from '../src/modules/graduation/config/graduati
 
 const read = async (path) => (await readFile(new URL(path, import.meta.url), 'utf8')).replace(/\r\n/g, '\n')
 
-test('V8 keeps eight workspaces and compresses the primary sidebar to 24 entries', () => {
+test('V8 keeps eight workspaces and compresses the primary sidebar to 29 entries', () => {
   assert.equal(GRADUATION_WORKSPACES.length, 8)
-  assert.equal(GRADUATION_WORKSPACES.reduce((sum, workspace) => sum + workspace.children.length, 0), 24)
+  assert.equal(GRADUATION_WORKSPACES.reduce((sum, workspace) => sum + workspace.children.length, 0), 29)
   assert.deepEqual(GRADUATION_WORKSPACES.map((workspace) => workspace.label), [
-    '我的工作台', '批次与实施', '题目与选题', '过程指导',
-    '开题与成果', '答辩与成绩', '风险与归档', '模板与设置'
+    // 2026-09 按业务阶段重排：总览 + 6 个阶段 + 更多（原页面全部保留为阶段页签）
+    '总览', '① 准备', '② 选题', '③ 过程与中期',
+    '④ 论文与评阅', '⑤ 答辩', '⑥ 成绩与归档', '更多'
   ])
 })
 

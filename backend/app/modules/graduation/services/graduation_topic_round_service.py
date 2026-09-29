@@ -429,41 +429,6 @@ def match_round(round_id) -> dict:
 
 # ═══════════ 退选重选 / 容量冲突复核 / 统计 / 归档（Batch 3） ═══════════
 
-def withdraw_choices(round_id, gd_student_id) -> dict:
-    """学生退选：撤回本轮全部待处理志愿（仅进行中轮次；已确认/已匹配的须走变更流程，不可自助退选）。
-    退选后学生可重新提交志愿（submit_choices 覆盖语义）。"""
-    with session() as db:
-        r = db.scalars(select(GraduationTopicRound).where(
-            GraduationTopicRound.id == int(round_id),
-            GraduationTopicRound.tenant_id == _tid(),
-            GraduationTopicRound.is_deleted.is_(False),
-        ).with_for_update()).first()
-        if r.status != "OPEN":
-            raise AppException("DATA_CONFLICT", "仅进行中的轮次可退选")
-        stu = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.id == int(gd_student_id),
-            GraduationStudent.tenant_id == _tid(),
-            GraduationStudent.is_deleted.is_(False),
-        ).with_for_update()).first()
-        assert_student_access(db, stu, "topic.choice.withdraw")
-        chs = db.scalars(select(GraduationTopicChoice).where(
-            GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
-            GraduationTopicChoice.gd_student_id == int(gd_student_id),
-            GraduationTopicChoice.is_deleted.is_(False),
-            GraduationTopicChoice.status != "WITHDRAWN").with_for_update()).all()
-        if not chs:
-            raise not_found("当前没有可退选的志愿")
-        if any(c.status in ("CONFIRMED", "MATCHED") for c in chs):
-            raise AppException("DATA_CONFLICT", "已被确认/匹配的选题不可自助退选，请走「课题变更」流程")
-        for c in chs:
-            c.status = "WITHDRAWN"
-            c.is_deleted = True
-            c.submission_version = int(c.submission_version or 0) + 1
-        _audit(db, round_id, "WITHDRAW_CHOICES", f"学生 {stu.name if stu else gd_student_id} 退选 {len(chs)} 个志愿")
-        db.commit()
-        return {"withdrawn": len(chs)}
-
-
 def list_capacity_conflicts(round_id) -> list[dict]:
     """容量冲突人工复核：列出本轮「待处理志愿数 > 剩余容量」的过热题目及竞争学生，供管理员人工确认/驳回。"""
     with session() as db:

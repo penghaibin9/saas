@@ -29,6 +29,13 @@
     </EmptyState>
 
     <div v-else class="mp-stack gdb-page">
+      <section v-if="setup && !setup.allDone" class="gdb-setup" aria-label="开工检查">
+        <div>
+          <strong>开工检查：还差 {{ setup.total - setup.doneCount }} 步</strong>
+          <p>{{ setupNextText }}</p>
+        </div>
+        <button type="button" class="mp-btn mp-btn--primary" @click="goWithBatch('/admin/graduation/setup')">去完成 →</button>
+      </section>
       <section class="gdb-overview gdb-work" aria-label="当前最高优先工作">
         <div v-if="firstWorkItem" class="gdb-focus">
           <div class="gdb-focus__priority" :class="priorityClass(firstWorkItem.priority)">
@@ -146,6 +153,8 @@ import { ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, Empt
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
+import { matchPermission } from '@/config/navPlan'
+import { isGraduationManager } from '@/modules/graduation/config/graduationWorkspaces'
 
 const EMPTY_HERO = () => ({
   stats: [], flow: [], todos: [], todayWorkItems: [], riskAlerts: [], moduleStats: [], actionableRiskCount: 0,
@@ -183,7 +192,8 @@ export default {
   data() {
     return {
       batchStore: useGraduationBatchStore(), loading: true, error: '', hero: EMPTY_HERO(),
-      moduleStats: [], moduleStatsLoading: false, moduleStatsError: '', moduleStatsBatchId: '', moduleStatsLoadToken: 0
+      moduleStats: [], moduleStatsLoading: false, moduleStatsError: '', moduleStatsBatchId: '', moduleStatsLoadToken: 0,
+      setup: null, setupToken: 0
     }
   },
   computed: {
@@ -228,6 +238,10 @@ export default {
       return this.priorityTodo ? `先处理「${this.priorityTodo.label}」` : `今日待办 ${this.todoLoad} 项`
     },
     priorityDetail() { return '继续关注队列、风险和阶段进度。' },
+    setupNextText() {
+      const next = (this.setup?.steps || []).find((step) => !step.done)
+      return next ? `下一步：${next.title}。${next.detail || ''}` : ''
+    },
     visibleRiskAlerts() {
       const leadStudent = String(this.firstWorkItem?.student?.id || this.firstWorkItem?.student?.studentId || '')
       const leadText = `${this.firstWorkItem?.business || ''} ${this.firstWorkItem?.whyHere || ''}`
@@ -238,9 +252,27 @@ export default {
       }).slice(0, 4)
     }
   },
-  created() { this.load() },
+  created() {
+    // 普通老师（只有自动带出的导师/评阅/评委/秘书身份）进入毕设中心直接落到“我的毕设工作”。
+    const patterns = this.ctx?.permissionPatterns
+    if (Array.isArray(patterns) && !isGraduationManager(patterns, matchPermission) && !this.$route?.query?.extension) {
+      this.$router.replace({ path: '/admin/graduation/my-work', query: { ...(this.$route?.query || {}) } }).catch(() => {})
+      return
+    }
+    this.load()
+  },
   watch: { 'batchStore.selectedBatchId'() { this.load() } },
   methods: {
+    /** 开工检查（首次使用向导）：只给有学生管理权限的管理员看；失败时不打扰总览。 */
+    async loadSetup() {
+      const token = ++this.setupToken
+      const patterns = this.ctx?.permissionPatterns
+      if (!Array.isArray(patterns) || !matchPermission(patterns, 'graduationDesign.student.manage')) { this.setup = null; return }
+      try {
+        const res = await graduationApi.getSetupCheck({ batchId: this.batchStore.selectedBatchId })
+        if (token === this.setupToken) this.setup = res.code === 0 ? res.data : null
+      } catch { if (token === this.setupToken) this.setup = null }
+    },
     batchStatusLabel(value) { return ({ DRAFT: '草稿', PREPARING: '准备中', RUNNING: '进行中', OPEN: '办理中', CLOSED: '已结束', ARCHIVED: '已归档', VOIDED: '已作废' }[value] || (value ? `状态待确认（${value}）` : '—')) },
     async load() {
       this.moduleStatsLoadToken += 1
@@ -248,7 +280,8 @@ export default {
       this.moduleStatsLoading = false
       this.moduleStatsError = ''
       this.moduleStatsBatchId = ''
-      if (!this.batchStore.selectedBatchId) { this.loading = false; this.error = ''; this.hero = EMPTY_HERO(); return }
+      if (!this.batchStore.selectedBatchId) { this.loading = false; this.error = ''; this.hero = EMPTY_HERO(); this.setup = null; return }
+      this.loadSetup()
       this.loading = true
       this.error = ''
       try {
@@ -322,6 +355,9 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gdb-setup { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border: 1px solid var(--warning-200, #fde68a); border-radius: 12px; background: var(--warning-50, #fffbeb); }
+.gdb-setup strong { font-size: 15px; }
+.gdb-setup p { margin: 2px 0 0; color: var(--text-secondary, #475569); overflow-wrap: anywhere; }
 /* Content-only adaptation: the shared shell and all dashboard data stay upstream. */
 .gdb-shell { container: gd-dashboard / inline-size; min-width: 0; }
 .gdb-shell :deep(.mps__title) { font-size: 22px; line-height: 1.35; }

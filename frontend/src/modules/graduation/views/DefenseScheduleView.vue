@@ -197,7 +197,7 @@ export default {
       if (!this.rows.length) return '当前批次还没有答辩组，先建立分组。'
       const pending = this.rows.filter((row) => !row.published).length
       const blocked = this.rows.filter((row) => !row.published && !this.publishPreflight(row).ready).length
-      return pending ? `待发布 ${pending} 组，其中 ${blocked} 组仍有编排缺口；先修复缺口再发布。` : '当前批次答辩组均已发布，可按服务器回执发送通知。'
+      return pending ? (blocked ? `待发布 ${pending} 组，其中 ${blocked} 组还缺时间、地点、组长、秘书、评委或学生，补齐后再发布。` : `待发布 ${pending} 组，信息已齐全，可以发布。`) : '当前批次答辩组均已发布，可按服务器回执发送通知。'
     },
     filteredRows() {
       if (this.filterKey === 'published') return this.rows.filter((row) => row.published)
@@ -502,7 +502,9 @@ export default {
     },
     publishPreflight(row) {
       const members = Array.isArray(row?.members) ? row.members : []
-      const missingJudges = (row?.chairMentorId ? 0 : 1) + members.filter((member) => !(member?.mentorId || member?.expertId)).length
+      // 接口的 members 只是姓名字符串，工号绑定信息在 memberDetails 里；只看 members 会把已绑定的评委误报为“缺稳定评委”
+      const details = Array.isArray(row?.memberDetails) && row.memberDetails.length ? row.memberDetails : members
+      const missingJudges = (row?.chairMentorId ? 0 : 1) + details.filter((member) => !(member?.mentorId || member?.expertId)).length
       const students = Math.max(0, Number(row?.studentCount) || 0)
       const gaps = {
         missingJudges,

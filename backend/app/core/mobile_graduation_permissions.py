@@ -15,6 +15,7 @@ from app.core.security import get_current_user
 MOBILE_GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
     "teacher_graduation_batches": "graduationDesign.dashboard.view",
     "teacher_graduation": "graduationDesign.dashboard.view",
+    "teacher_graduation_workbench": "graduationDesign.dashboard.view",
     "teacher_proposal_detail": "graduationDesign.proposal.view",
     "teacher_proposal_review": "graduationDesign.proposal.review",
     "teacher_final_detail": "graduationDesign.final.view",
@@ -40,6 +41,17 @@ MOBILE_GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
     "teacher_graduation_taskbook_change": "graduationDesign.taskbook.update",
     "teacher_graduation_defense_score_pending": "graduationDesign.defense.view",
     "teacher_graduation_defense_score_entry": "graduationDesign.defense.score",
+}
+
+# 老师同时持有多个毕设身份时，这些队列固定以对应身份打开（例如既是导师又是评委：答辩待评分走评委身份）。
+MOBILE_IDENTITY_PREFERENCE: dict[str, str] = {
+    "teacher_graduation_defense_score_pending": "GD_DEFENSE_EXPERT",
+    "teacher_graduation_defense_score_entry": "GD_DEFENSE_EXPERT",
+    "teacher_reviews_my": "GD_REVIEWER",
+    "teacher_review_submit": "GD_REVIEWER",
+    "teacher_midterm_queue": "GD_MENTOR",
+    "teacher_graduation_my_students": "GD_MENTOR",
+    "teacher_graduation_taskbook_list": "GD_MENTOR",
 }
 
 _STABLE_ID_REQUIRED = {
@@ -77,6 +89,10 @@ def require_mobile_graduation_request_permission(
     request.state.permission_code = code
     from app.core.context import set_current_permission_code
     set_current_permission_code(code)
+    # 老师不用切换角色：按业务关系为本次请求换上能做这件事的毕设身份。
+    from app.modules.graduation.services.graduation_auto_identity import identity_hint, overlay_for_request
+    overlay_for_request(user, code, path_params={**dict(request.path_params or {}), "__path__": path},
+                        hint=identity_hint(request) or MOBILE_IDENTITY_PREFERENCE.get(endpoint_name))
     checked = enforce_permission(user, code)
 
     role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()

@@ -202,3 +202,43 @@ def test_u8_teacher_mobile_batch_and_college_scope_fail_closed(db_mode):
             assert page["hasMore"] is False
     finally:
         _clear_ctx()
+
+
+def test_teacher_mobile_midterm_queue_includes_students_ready_for_first_check(db_mode):
+    """回归：中期记录只在首次检查时落库，此前教师队列看不到任何“待检查”学生。"""
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationProposal, GraduationStudent
+    from app.modules.graduation.services import graduation_mobile_teacher_query_service as query
+
+    db = get_sessionmaker()()
+    try:
+        batch = _new_batch(db, "midterm-ready", 3)
+        ready = GraduationStudent(
+            tenant_id=TID, batch_id=batch.id, student_no="U8R0001", name="开题已通过生",
+            topic_title="U8就绪课题", stage="GUIDING", record_status="ACTIVE",
+        )
+        not_ready = GraduationStudent(
+            tenant_id=TID, batch_id=batch.id, student_no="U8R0002", name="开题待审生",
+            topic_title="U8未就绪课题", stage="GUIDING", record_status="ACTIVE",
+        )
+        db.add_all([ready, not_ready])
+        db.flush()
+        db.add_all([
+            GraduationProposal(tenant_id=TID, gd_student_id=ready.id, version="v1", status="APPROVED"),
+            GraduationProposal(tenant_id=TID, gd_student_id=not_ready.id, version="v1", status="PENDING_REVIEW",
+                               active_key=f"pending:{not_ready.id}"),
+        ])
+        db.commit()
+        batch_id, ready_id = int(batch.id), int(ready.id)
+    finally:
+        db.close()
+
+    try:
+        user = _ctx()
+        page = query.midterms_page({**user, "graduationBatchId": str(batch_id)}, 1, 20)
+        assert page["total"] == 1
+        assert page["items"][0]["gdStudentId"] == str(ready_id)
+        assert page["items"][0]["status"] == "PENDING"
+        assert page["items"][0]["exists"] is False
+    finally:
+        _clear_ctx()

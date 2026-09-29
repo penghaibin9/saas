@@ -182,6 +182,14 @@ export const graduationDefenseGradeApi = {
       })
     })
   },
+  submitAdvisorScore(gdStudentId, body) {
+    return call(() => {
+      requireAction('graduationDesign.grade.advisorScore')
+      return request(`${GRADE}/${gdStudentId}/advisor-score`, {
+        method: 'POST', params: batchParams(), body,
+      })
+    })
+  },
   withdrawGrade(gdStudentId, reason) {
     return call(() => {
       requireAction('graduationDesign.grade.withdraw')

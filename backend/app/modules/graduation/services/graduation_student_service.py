@@ -195,64 +195,6 @@ def _state_flow(stage: str) -> list[dict]:
 
 # ═══════════ 列表 / 详情 ═══════════
 
-def list_students(page: int, page_size: int, keyword=None, class_id=None, batch_id=None,
-                  stage=None, risk_level=None, advisor_name=None, has_topic=None,
-                  eligibility=None, student_group=None, has_defense_group=None,
-                  grad_qual_status=None, material_complete=None, archive_view=None) -> tuple[list[dict], int]:
-    with session() as db:
-        q = select(GraduationStudent).where(GraduationStudent.tenant_id == _tid(),
-                                            GraduationStudent.is_deleted.is_(False),
-                                            GraduationStudent.record_status == "ACTIVE")
-        if class_id:
-            q = q.where(GraduationStudent.class_id == class_id)
-        if batch_id:
-            q = q.where(GraduationStudent.batch_id == int(batch_id))
-        if stage:
-            q = q.where(GraduationStudent.stage == stage)
-        if risk_level:
-            q = q.where(GraduationStudent.risk_level == risk_level)
-        if advisor_name:
-            q = q.where(GraduationStudent.advisor_name == advisor_name)
-        if has_topic is True:
-            q = q.where(GraduationStudent.topic_id.is_not(None))
-        elif has_topic is False:
-            q = q.where(GraduationStudent.topic_id.is_(None))
-        if eligibility:
-            q = q.where(GraduationStudent.eligibility_status == eligibility)
-        if student_group:
-            q = q.where(GraduationStudent.student_group == student_group)
-        if has_defense_group is True:
-            q = q.where(GraduationStudent.defense_group_id.is_not(None))
-        elif has_defense_group is False:
-            q = q.where(GraduationStudent.defense_group_id.is_(None))
-        if grad_qual_status:
-            q = q.where(GraduationStudent.grad_qual_status == grad_qual_status)
-        if archive_view == "archived":
-            q = q.where(GraduationStudent.stage == "ARCHIVED")
-        elif archive_view == "candidates":
-            q = q.where(GraduationStudent.stage != "ARCHIVED")
-        rows = db.scalars(q.order_by(GraduationStudent.id.desc())).all()
-        batches = {b.id: b for b in db.scalars(select(GraduationBatch).where(
-            GraduationBatch.tenant_id == _tid(), GraduationBatch.is_deleted.is_(False))).all()}
-        items = []
-        for s in rows:
-            if not can_access_student(db, s):
-                continue
-            if keyword:
-                kw = keyword.strip()
-                if kw not in (s.name or "") and kw not in (s.student_no or "") and kw not in (s.topic_title or ""):
-                    continue
-            mat = _material_snapshot(db, s.id)
-            if material_complete is True and not mat["materialComplete"]:
-                continue
-            if material_complete is False and mat["materialComplete"]:
-                continue
-            items.append(_row(s, batches.get(s.batch_id), mat))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
-
-
 def get_student(sid) -> dict:
     """详情：主档 + 批次/选题关联 + 开题/成果/查重 + 状态流 + 审计。"""
     with session() as db:
@@ -1001,3 +943,7 @@ def export_students_xlsx(keyword=None, class_id=None, batch_id=None, stage=None,
     # 与列表 total 对齐（build_export 通常已写 rowCount=len(items)）
     pack["rowCount"] = total
     return pack
+
+
+# 列表唯一实现为 SQL 读模型（原由 services/__init__.py 导入时替换，现显式绑定）。
+from app.modules.graduation.services.graduation_student_read_service import list_students  # noqa: E402,F401

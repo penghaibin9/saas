@@ -18,7 +18,7 @@
       </div>
       <div class="defense-context">
         <span>答辩时间</span>
-        <strong>{{ form.defenseDate || '待安排' }}</strong>
+        <strong>{{ form.defenseDate ? String(form.defenseDate).replace('T', ' ') : '待安排' }}</strong>
       </div>
       <div class="defense-context">
         <span>已分配学生</span>
@@ -378,7 +378,9 @@ export default {
       return body
     },
     _applyGroupPeople(row) {
-      const members = Array.isArray(row.members) ? row.members : []
+      // 接口的 members 只是姓名字符串，工号/ID 在 memberDetails 里；优先用带 ID 的明细，否则已绑定的评委会被当成“历史评委”
+      const details = Array.isArray(row.memberDetails) && row.memberDetails.length ? row.memberDetails : null
+      const members = details || (Array.isArray(row.members) ? row.members : [])
       const memberIds = []
       const legacyNames = []
       members.forEach((member) => {

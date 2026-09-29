@@ -1,7 +1,7 @@
 <template>
   <GraduationFormPageShell
     :ctx="ctx"
-    :title="pageTitle"
+    :title="student?.name ? `${pageTitle} · ${student.name}` : pageTitle"
     :subtitle="student ? `${student.name}（${student.studentNo}）` : ''"
     :back-to="backTo"
   >
@@ -174,6 +174,9 @@ export default {
       return ACTION_TITLES[this.action] || '过程指导'
     },
     backTo() {
+      // 从老师工作台进入时带 returnTo：保存/取消后回到工作台，而不是过程指导台。
+      const back = String(this.$route.query.returnTo || '')
+      if (/^\/admin\/graduation(?:[/?#]|$)/.test(back) && !back.startsWith('//')) return back
       const panel = { taskbook: 'taskbook', guidance: 'guidance', plan: 'plan', eval: 'eval', midterm: 'midterm', rectify: 'midterm' }[this.action] || 'taskbook'
       return `/admin/graduation/process?panel=${panel}`
     }

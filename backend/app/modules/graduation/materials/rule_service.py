@@ -62,7 +62,7 @@ def rule_item(db, batch_id: int, material_code: str, *, lock: bool = False) -> t
         stmt = stmt.with_for_update()
     item = db.scalars(stmt).first()
     if not item:
-        raise AppException("MATERIAL_NOT_IN_BATCH_RULE", "该材料不在当前批次冻结规则中")
+        raise AppException("MATERIAL_NOT_IN_BATCH_RULE", "学校还没有给本批次配置这项材料的提交规则，暂时无法提交，请联系学校管理员")
     return rule, item
 
 
@@ -330,6 +330,9 @@ def activate_rule(
         candidate.version = int(candidate.version or 0) + 1
         from .command_service import initialize_batch_materials_in_session
 
+        # 会话未开自动 flush：不先落库，下面按“当前启用规则”查到的仍是旧规则，
+        # 新批次（还没有材料记录）就会按旧规则生成目录。
+        db.flush()
         initialized = initialize_batch_materials_in_session(db, int(candidate.batch_id), user)
         db.commit()
         return {

@@ -23,6 +23,7 @@ from app.modules.graduation.schemas.graduation_defense_score import (
     SecondDefenseRequest,
 )
 from app.modules.graduation.schemas.graduation_grade import (
+    AdvisorScoreRequest,
     GradeCalculateRequest,
     GradeReviewRequest,
     GradeWithdrawRequest,
@@ -51,7 +52,12 @@ from app.modules.graduation.services.graduation_batch_context import (
     load_student_in_batch,
     require_batch_id,
 )
-from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
+from app.modules.graduation.services import graduation_identity as gid
+from app.modules.graduation.services import graduation_review_read_service as review_read
+from app.modules.graduation.services import graduation_review_w76_lifecycle_service as formal_review
+from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, has_full_scope
+from app.core.exceptions import no_permission, not_found
+from sqlalchemy import select
 from app.services.db_service import _tid, session
 
 router = APIRouter(prefix="/graduation", tags=["毕业设计-批次安全接口"])
@@ -175,56 +181,78 @@ def plagiarism_dispute_review(
     return success(review.review_dispute(pid, body.action, body.comment), message="已审核")
 
 
-# ── 评阅 ──
+# ── 正式评阅（W7 证据锁定 + W7.6 待办生命周期；原 overlay 已并入此处，唯一实现）──
+# 读取返回冻结的 FileVersion/版本 DTO；写入由 graduation_review_closure_service 持有证据锁，
+# W7.6 同步衍生统一待办并复用评阅中心的超时/处理时长指标。
+def _review_batch(review_id, batch_id, *, require_assigned_reviewer: bool = False) -> int:
+    """Fail closed on tenant/reviewer before exposing any student/batch metadata."""
+    try:
+        rid = int(review_id)
+    except (TypeError, ValueError):
+        raise not_found("评阅任务不存在") from None
+    with session() as db:
+        row = db.scalars(select(GraduationReview).where(
+            GraduationReview.id == rid,
+            GraduationReview.tenant_id == _tid(),
+            GraduationReview.is_deleted.is_(False),
+        )).first()
+        if not row:
+            raise not_found("评阅任务不存在")
+        if require_assigned_reviewer and not has_full_scope():
+            mentor = gid.current_user_mentor(db)
+            assigned = getattr(row, "reviewer_mentor_id", None)
+            if not mentor or not assigned or int(mentor.id) != int(assigned):
+                raise no_permission("无权提交他人评阅任务")
+        student = db.scalars(select(GraduationStudent).where(
+            GraduationStudent.id == int(row.gd_student_id),
+            GraduationStudent.tenant_id == _tid(),
+            GraduationStudent.record_status == "ACTIVE",
+            GraduationStudent.is_deleted.is_(False),
+        )).first()
+        assert_student_batch(student, batch_id)
+        return int(student.id)
+
+
 @router.get("/gd-reviews/stats")
 def review_stats(batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
-    return success(review.review_stats(batch_id=require_batch_id(batchId)))
+    return success(formal_review.review_stats(batch_id=batchId))
 
 
 @router.get("/gd-reviews")
-def review_list(
-    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-    gdStudentId: Optional[str] = None, reviewerName: Optional[str] = None,
-    status: Optional[str] = None, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
-):
+def review_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                gdStudentId: Optional[str] = None, reviewerName: Optional[str] = None,
+                status: Optional[str] = None, batchId: int = Query(..., ge=1),
+                user=Depends(get_current_user)):
     if gdStudentId:
         _student_batch(gdStudentId, batchId)
-    items, total = review.list_reviews(
-        page, pageSize, gd_student_id=gdStudentId, reviewer_name=reviewerName,
-        status=status, batch_id=batchId,
-    )
+    items, total = review_read.list_reviews(page, pageSize, gd_student_id=gdStudentId,
+                                            reviewer_name=reviewerName, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/gd-reviews/assign")
-def review_assign(
-    body: ReviewAssignRequest, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
-):
+def review_assign(body: ReviewAssignRequest, batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
     _student_batch(body.gdStudentId, batchId, for_update=True)
-    return success(review.assign_review(
-        body.gdStudentId, body.reviewerName, body.gdFinalId,
-        reviewer_mentor_id=body.reviewerMentorId,
-    ), message="已分配")
+    return success(formal_review.assign_review(body.gdStudentId, body.reviewerName, body.gdFinalId,
+                                               reviewer_mentor_id=body.reviewerMentorId), message="已分配")
 
 
 @router.post("/gd-reviews/{rid}/submit")
-def review_submit(
-    rid: str, body: ReviewSubmitRequest, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
-):
-    _record_batch(GraduationReview, rid, batchId)
-    return success(review.submit_review(rid, body.score, body.opinion), message="已提交")
+def review_submit(rid: str, body: ReviewSubmitRequest, batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
+    # Object authorization precedes SoD/business validation inside the closure service,
+    # so an unrelated caller cannot probe advisor/reviewer conflict metadata.
+    _review_batch(rid, batchId, require_assigned_reviewer=True)
+    return success(formal_review.submit_review(
+        rid, body.score, body.opinion, expected_version=body.expectedVersion,
+        file_version_id=body.fileVersionId, categories=body.categories, issues=body.issues,
+        idempotency_key=body.idempotencyKey,
+    ), message="已提交")
 
 
 @router.post("/gd-reviews/{rid}/return")
-def review_return(
-    rid: str, body: ReviewReturnRequest, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
-):
-    _record_batch(GraduationReview, rid, batchId)
-    return success(review.return_review(rid, body.reason), message="已退回")
+def review_return(rid: str, body: ReviewReturnRequest, batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
+    _review_batch(rid, batchId)
+    return success(formal_review.return_review(rid, body.reason), message="已退回")
 
 
 # ── 答辩评分 ──
@@ -341,6 +369,15 @@ def grade_calculate(
     ), message="已核算")
 
 
+@router.post("/gd-grades/{gd_student_id}/advisor-score", summary="导师给本人指导学生打导师分")
+def grade_advisor_score(
+    gd_student_id: str, body: AdvisorScoreRequest,
+    batchId: int = Query(..., ge=1), user=Depends(get_current_user),
+):
+    _student_batch(gd_student_id, batchId, for_update=True)
+    return success(grade.submit_advisor_score(gd_student_id, body.score, body.comment), message="导师分已保存")
+
+
 @router.post("/gd-grades/{gd_student_id}/review")
 def grade_review(
     gd_student_id: str, body: GradeReviewRequest,
@@ -411,3 +448,10 @@ def archive_file_batch(
 def student_import_confirm(body: ExcelImportRows, user=Depends(get_current_user)):
     result = students.import_confirm(body.rows, body.previewToken)
     return success(result, message="导入完成")
+
+
+# 评阅中心只读投影（/graduation/review-center/*）挂在本批次安全 router 下，
+# 共享同一模块授权依赖；原由 routers/__init__.py 在导入时动态挂载，现显式声明。
+from app.modules.graduation.routers import graduation_review_center  # noqa: E402
+
+router.include_router(graduation_review_center.router)

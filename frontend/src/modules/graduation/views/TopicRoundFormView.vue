@@ -30,6 +30,7 @@ import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { AppDateTimePicker, AppDeadlinePicker } from '@/components/common/date'
 import { gdTopicRoundApi } from '@/modules/graduation/api/graduation-topic-round.api'
 import { AppGraduationDesignBatchPicker } from '@/components/common'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
 import { toDateTimeInputValue, withDeadlineTime, addDays, validateRange } from '@/utils/dateUtils'
 
@@ -45,6 +46,11 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return { form: EMPTY_FORM(), selectedBatchInfo: null, formError: '', submitting: false }
+  },
+  created() {
+    // 新建轮次默认挂到当前批次，避免“不关联批次”的轮次学生端找不到
+    const currentBatchId = String(this.$route.query.batchId || useGraduationBatchStore().selectedBatchId || '')
+    if (currentBatchId) this.form.batchId = currentBatchId
   },
   computed: {
     selectedBatch() {

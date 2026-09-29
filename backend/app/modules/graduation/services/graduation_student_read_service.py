@@ -141,7 +141,10 @@ def list_students(
         filters.append(or_(proposal_current != "APPROVED", final_current != "APPROVED"))
 
     requested_final_status = str(final_status or "").strip().upper()
-    if requested_final_status:
+    if requested_final_status == "SUBMITTED":
+        # 已提交过论文（初稿/定稿）的学生，用于查重记录的待处理队列
+        filters.append(final_current != "NOT_SUBMITTED")
+    elif requested_final_status:
         filters.append(final_current == requested_final_status)
 
     with session() as db:
