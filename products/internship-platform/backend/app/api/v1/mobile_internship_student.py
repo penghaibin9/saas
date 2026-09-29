@@ -381,9 +381,17 @@ def withdraw_selected_makeup(
         user, makeup_id, body or {}), message="补卡已撤回")
 
 
-@router.get("/context/plan", summary="本人当前已发布实习计划及回执版本")
-def my_selected_plan(user=Depends(get_current_user)):
-    return success(plans.student_my_plan(user))
+@router.get("/context/plans", summary="本人已分配的全部实习方案")
+def my_assigned_plans(user=Depends(get_current_user)):
+    return success(plans.student_assigned_plans(user))
+
+
+@router.get("/context/plan", summary="本人选中的已发布实习方案及回执版本")
+def my_selected_plan(
+    planId: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    return success(plans.student_my_plan(user, plan_id=planId))
 
 
 @router.post("/context/plan/acknowledge", summary="按正文与回执版本确认实习计划")
@@ -395,9 +403,12 @@ def acknowledge_selected_plan(
     return success(plans.student_acknowledge(user, body or {}), message="已确认当前版本实习计划")
 
 
-@router.get("/context/plan/tasks", summary="本人当前计划任务与进度版本")
-def my_selected_plan_tasks(user=Depends(get_current_user)):
-    return success(plan_tasks.student_tasks(user))
+@router.get("/context/plan/tasks", summary="本人选中方案的任务与进度版本")
+def my_selected_plan_tasks(
+    planId: str | None = Query(default=None),
+    user=Depends(get_current_user),
+):
+    return success(plan_tasks.student_tasks(user, plan_id=planId))
 
 
 @router.post("/context/plan/tasks/{sort_order}/submit", summary="按版本提交当前计划任务完成情况")
