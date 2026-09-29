@@ -141,8 +141,11 @@ def browser_login(
     audit_log.record(
         "ENTERPRISE_LOGIN",
         f"enterprise-member:{result['context']['memberId']}",
-        detail={"companyId": result["context"]["companyId"], "transport": "BROWSER_COOKIE"},
-        tenant_id=int(result["context"]["tenantId"]),
+        detail={
+            "tenantId": int(result["context"]["tenantId"]),
+            "companyId": result["context"]["companyId"],
+            "transport": "BROWSER_COOKIE",
+        },
     )
     return success(_browser_result(result, response, tab_id))
 
@@ -163,8 +166,11 @@ def browser_accept_invite(
     audit_log.record(
         "ENTERPRISE_INVITE_ACCEPT",
         f"enterprise-member:{result['context']['memberId']}",
-        detail={"companyId": result["context"]["companyId"], "transport": "BROWSER_COOKIE"},
-        tenant_id=int(result["context"]["tenantId"]),
+        detail={
+            "tenantId": int(result["context"]["tenantId"]),
+            "companyId": result["context"]["companyId"],
+            "transport": "BROWSER_COOKIE",
+        },
     )
     return success(_browser_result(result, response, tab_id), message="企业邀请已接受")
 
