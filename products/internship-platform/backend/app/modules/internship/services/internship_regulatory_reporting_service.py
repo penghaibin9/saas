@@ -383,6 +383,9 @@ def _template_view(row) -> dict:
         "templateName": row.template_name,
         "sourceLabel": row.source_label,
         "sourceReference": row.source_reference or "",
+        "sourceFileId": str(row.source_file_id) if row.source_file_id else "",
+        "sourceFileName": row.source_file_name or "",
+        "sourceFileSha256": row.source_file_sha256 or "",
         "officialVerified": bool(row.official_verified),
         "fields": list(row.field_schema_json or []),
         "enums": dict(row.enum_schema_json or {}),
@@ -405,7 +408,11 @@ def _task_view(row) -> dict:
         "validRows": int(row.valid_rows or 0),
         "errorRows": int(row.error_rows or 0),
         "outputFilename": row.output_filename or "",
+        "outputFileId": str(row.output_file_id) if row.output_file_id else "",
         "outputSha256": row.output_sha256 or "",
+        "errorFilename": row.error_filename or "",
+        "errorFileId": str(row.error_file_id) if row.error_file_id else "",
+        "errorSha256": row.error_sha256 or "",
         "externalSubmissionRef": row.external_submission_ref or "",
         "receiptCode": row.receipt_code or "",
         "receiptMessage": row.receipt_message or "",
@@ -485,6 +492,42 @@ def list_templates(report_code: str | None = None):
         return [_template_view(row) for row in rows]
 
 
+def _regulatory_source_file_meta(file_id, user=None) -> dict:
+    from app.services import file_service
+
+    raw = str(file_id or "").strip()
+    if not raw:
+        raise AppException(
+            "VALIDATION_ERROR",
+            "学校确认模板必须绑定来源 Excel 文件，不能只填写文字说明",
+        )
+    meta = file_service.get_file_meta(raw, user=user)
+    if not meta:
+        raise AppException("VALIDATION_ERROR", "来源模板文件不存在或不在当前租户")
+    ext = str(meta.get("ext") or "").lower()
+    if ext not in {"xlsx", "xls", "xlsm", "csv"}:
+        raise AppException(
+            "VALIDATION_ERROR",
+            "监管上报来源模板仅支持 xlsx/xls/xlsm/csv 文件",
+        )
+    return meta
+
+
+def _stored_regulatory_file(file_id, user=None):
+    if not file_id:
+        return None
+    from app.services import file_service
+
+    resolved = file_service.resolve_download(str(file_id), user=user)
+    if not resolved:
+        return None
+    local_path, filename = resolved
+    try:
+        return local_path.read_bytes(), filename
+    except OSError:
+        return None
+
+
 def create_template_version(report_code: str, body: dict, user=None):
     code = str(report_code or "").upper()
     baseline_definition(code)
@@ -525,6 +568,8 @@ def create_template_version(report_code: str, body: dict, user=None):
 
     with session() as db:
         current = _ensure_baseline(db, code)
+        source_file_id = payload.get("sourceFileId") or current.source_file_id
+        source_meta = _regulatory_source_file_meta(source_file_id, user=user)
         version = int(db.scalar(select(func.max(InternshipRegulatoryTemplateVersion.version_no)).where(
             InternshipRegulatoryTemplateVersion.tenant_id == _tid(),
             InternshipRegulatoryTemplateVersion.report_code == code,
@@ -541,6 +586,9 @@ def create_template_version(report_code: str, body: dict, user=None):
             template_name=str(payload.get("templateName") or current.template_name)[:200],
             source_label=str(payload.get("sourceLabel") or "SCHOOL_CONFIRMED_TEMPLATE")[:120],
             source_reference=source_reference[:500],
+            source_file_id=int(source_meta["fileId"]),
+            source_file_name=str(source_meta.get("fileName") or "")[:255],
+            source_file_sha256=str(source_meta.get("sha256") or "")[:64] or None,
             official_verified=False,
             field_schema_json=normalized_fields,
             enum_schema_json=dict(payload.get("enums") or {}),
@@ -551,9 +599,20 @@ def create_template_version(report_code: str, body: dict, user=None):
         )
         db.add(row)
         db.flush()
+        from app.services import file_service
+        file_service.bind_file_biz(
+            source_meta["fileId"],
+            "INTERNSHIP_REGULATORY_TEMPLATE",
+            str(row.id),
+            user=user,
+            db=db,
+        )
         _audit(db, row.id, "REGULATORY_TEMPLATE_VERSION_CREATE", {
             "reportCode": code, "versionNo": version, "officialVerified": False,
-            "note": "人工录入模板不得自行宣称目标平台已官方核验",
+            "sourceFileId": str(source_meta["fileId"]),
+            "sourceFileName": source_meta.get("fileName") or "",
+            "sourceFileSha256": source_meta.get("sha256") or "",
+            "note": "人工/学校确认模板不得自行宣称目标平台已官方核验",
         }, user)
         db.commit()
         return _template_view(row)
@@ -982,16 +1041,35 @@ def _rows(db, task_id: int):
 def error_file(task_id: int, user=None):
     with session() as db:
         task = _task(db, task_id, lock=True)
+        stored = _stored_regulatory_file(task.error_file_id, user=user)
+        if stored:
+            payload, stored_name = stored
+            return payload, task.error_filename or stored_name
+
         rows = [
             (row.row_no, dict(row.payload_json or {}), list(row.validation_errors_json or []))
             for row in _rows(db, task.id) if row.validation_errors_json
         ]
         payload = build_error_workbook(task.report_code, rows)
         filename = f"{task.task_no}-errors.xlsx"
+        from app.services import file_service
+        meta = file_service.store_bytes(
+            payload,
+            filename,
+            biz_type="INTERNSHIP_REGULATORY_ERROR",
+            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            biz_id=str(task.id),
+            user=user,
+            db=db,
+        )
         task.error_filename = filename
-        task.error_sha256 = sha256(payload).hexdigest()
+        task.error_file_id = int(meta["fileId"])
+        task.error_sha256 = str(meta.get("sha256") or sha256(payload).hexdigest())
         _audit(db, task.id, "REGULATORY_ERROR_XLSX_EXPORT", {
-            "filename": filename, "sha256": task.error_sha256, "errorRows": len(rows),
+            "filename": filename,
+            "fileId": str(task.error_file_id),
+            "sha256": task.error_sha256,
+            "errorRows": len(rows),
         }, user)
         db.commit()
         return payload, filename
@@ -1002,6 +1080,17 @@ def export_file(task_id: int, user=None):
         task = _task(db, task_id, lock=True)
         if task.status not in {"VALIDATED", "EXPORTED"}:
             raise AppException("DATA_CONFLICT", "只有全部校验通过的任务才能生成正式上报文件")
+
+        stored = _stored_regulatory_file(task.output_file_id, user=user)
+        if stored and task.status == "EXPORTED":
+            payload, stored_name = stored
+            if task.output_sha256 and sha256(payload).hexdigest() != task.output_sha256:
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "已冻结上报文件哈希校验失败，禁止继续下载或外部提交",
+                )
+            return payload, task.output_filename or stored_name
+
         template = db.get(InternshipRegulatoryTemplateVersion, task.template_version_id)
         if not template:
             raise not_found("上报模板版本不存在")
@@ -1017,9 +1106,20 @@ def export_file(task_id: int, user=None):
             task.report_code, [dict(row.payload_json or {}) for row in rows], definition
         )
         filename = f"{task.task_no}.xlsx"
-        digest = sha256(payload).hexdigest()
+        from app.services import file_service
+        meta = file_service.store_bytes(
+            payload,
+            filename,
+            biz_type="INTERNSHIP_REGULATORY_EXPORT",
+            mime_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            biz_id=str(task.id),
+            user=user,
+            db=db,
+        )
+        digest = str(meta.get("sha256") or sha256(payload).hexdigest())
         task.status = "EXPORTED"
         task.output_filename = filename
+        task.output_file_id = int(meta["fileId"])
         task.output_sha256 = digest
         task.output_size = len(payload)
         task.exported_at = datetime.utcnow()
@@ -1028,8 +1128,12 @@ def export_file(task_id: int, user=None):
             history.append(_history("EXPORTED", _actor(user), filename))
         task.status_history_json = history
         _audit(db, task.id, "REGULATORY_FORMAL_XLSX_EXPORT", {
-            "filename": filename, "sha256": digest, "bytes": len(payload),
-            "totalRows": len(rows), "templateVersionId": str(task.template_version_id),
+            "filename": filename,
+            "fileId": str(task.output_file_id),
+            "sha256": digest,
+            "bytes": len(payload),
+            "totalRows": len(rows),
+            "templateVersionId": str(task.template_version_id),
         }, user)
         db.commit()
         return payload, filename
