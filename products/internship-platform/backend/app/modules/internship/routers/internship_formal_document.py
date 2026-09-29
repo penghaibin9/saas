@@ -11,6 +11,14 @@ from app.modules.internship.services import internship_formal_document_service a
 router = APIRouter(prefix="/internship/formal-documents", tags=["岗位实习-正式文书"])
 
 
+@router.get("/by-internship/{internship_id}/readiness", summary="学生正式文书生成条件预检")
+def readiness(
+    internship_id: int,
+    user=Depends(require_permission("internship.archive.view")),
+):
+    return success(svc.document_readiness(user, internship_id))
+
+
 @router.get("/by-internship/{internship_id}", summary="学生正式文书版本列表")
 def documents(
     internship_id: int,
