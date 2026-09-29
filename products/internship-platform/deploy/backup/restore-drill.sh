@@ -151,17 +151,18 @@ mkdir -p "$(dirname "$EVIDENCE_FILE")"
 BACKUP_SET_ID="$backup_set_id" SOURCE_COMMIT="$source_commit" REVISION="$revision" TABLE_COUNT="$table_count" LOCAL_FILES="$local_files" HASHED_FILES="$hashed_files" EXTERNAL_FILES="$external_files" ELAPSED="$elapsed" DRILL_DB="$drill_db" python3 - "$EVIDENCE_FILE" <<'PY'
 import json,os,sys
 from datetime import datetime,timezone
+external=int(os.environ["EXTERNAL_FILES"])
 payload={
  "schemaVersion":1,
  "gate":"C09-RESTORE",
- "verdict":"PASS",
+ "verdict":"PASS" if external == 0 else "BLOCKED_EXTERNAL_STORAGE",
  "backupSetId":os.environ["BACKUP_SET_ID"],
  "sourceCommit":os.environ["SOURCE_COMMIT"],
  "alembicRevision":os.environ["REVISION"],
  "tableCount":int(os.environ["TABLE_COUNT"]),
  "localFileObjectsVerified":int(os.environ["LOCAL_FILES"]),
  "hashedFileObjectsVerified":int(os.environ["HASHED_FILES"]),
- "externalStorageObjects":int(os.environ["EXTERNAL_FILES"]),
+ "externalStorageObjects":external,
  "restoreSeconds":int(os.environ["ELAPSED"]),
  "drillDatabase":os.environ["DRILL_DB"],
  "completedAtUtc":datetime.now(timezone.utc).isoformat(),
@@ -172,4 +173,8 @@ with open(sys.argv[1],"w",encoding="utf-8") as handle:
     handle.write("\n")
 PY
 sha256sum "$EVIDENCE_FILE" > "${EVIDENCE_FILE}.sha256"
+if [ "$external_files" -gt 0 ]; then
+  echo "[restore-drill] BLOCKED_EXTERNAL_STORAGE external_objects=$external_files evidence=$EVIDENCE_FILE" >&2
+  exit 3
+fi
 echo "[restore-drill] PASS evidence=$EVIDENCE_FILE"
