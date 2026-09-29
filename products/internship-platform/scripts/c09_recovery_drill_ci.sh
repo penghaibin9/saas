@@ -76,7 +76,7 @@ insert_sql="INSERT INTO t_file_object (
 
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T mysql   sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE"'   <<< "$insert_sql"
 
-row_count="$(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T mysql   sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE" -Nse "SELECT COUNT(*) FROM t_file_object WHERE file_key='''gate/c09-recovery-evidence.txt'''"'   | tr -d '\r')"
+row_count="$(printf '%s\n' "SELECT COUNT(*) FROM t_file_object WHERE file_key='gate/c09-recovery-evidence.txt';" | docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysql -uroot "$MYSQL_DATABASE" --batch --skip-column-names' | tr -d '\r')"
 [ "$row_count" = "1" ] || { echo "recovery evidence FileObject seed failed" >&2; exit 1; }
 
 rm -f "$BACKUP_DIR"/manifest_*.json "$BACKUP_DIR"/manifest_*.json.sha256       "$BACKUP_DIR"/mysql_*.sql.gz "$BACKUP_DIR"/mysql_*.sql.gz.sha256       "$BACKUP_DIR"/files_*.tar.gz "$BACKUP_DIR"/files_*.tar.gz.sha256       "$BACKUP_DIR"/restore-evidence-ci.json "$BACKUP_DIR"/restore-evidence-ci.json.sha256
