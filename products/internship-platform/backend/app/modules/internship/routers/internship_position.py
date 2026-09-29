@@ -52,14 +52,15 @@ def positions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200
               keyword: Optional[str] = None, status: Optional[str] = None,
               companyId: Optional[str] = None, batchId: Optional[str] = None,
               risk: Optional[bool] = None, user=Depends(require_permission(_P_VIEW))):
-    items, total = pos.list_positions(page, pageSize, keyword=keyword, status=status,
-                                      company_id=companyId, batch_id=batchId, risk=risk)
+    items, total = pos.list_positions(
+        page, pageSize, keyword=keyword, status=status,
+        company_id=companyId, batch_id=batchId, risk=risk, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/positions/stats", summary="岗位库统计（按状态/风险/容量）")
 def position_stats(user=Depends(require_permission(_P_VIEW))):
-    return success(pos.position_stats())
+    return success(pos.position_stats(user=user))
 
 
 @router.post("/positions/import/dry-run", summary="岗位导入·预校验（高级粘贴/Excel 共用，不写库）")
@@ -118,15 +119,16 @@ def position_import_confirm(body: PositionImport, user=Depends(require_permissio
 def position_export(keyword: Optional[str] = None, status: Optional[str] = None,
                     companyId: Optional[str] = None, batchId: Optional[str] = None,
                     user=Depends(require_permission(_P_EXPORT))):
-    data = pos.export_positions(keyword=keyword, status=status, company_id=companyId,
-                                batch_id=batchId)
+    data = pos.export_positions(
+        keyword=keyword, status=status, company_id=companyId,
+        batch_id=batchId, user=user)
     audit_log.record("导出岗位库", "internship-position:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
 
 @router.post("/positions", summary="新增岗位（草稿；必须关联企业）")
 def create_position(body: PositionCreate, user=Depends(require_permission(_P_MANAGE))):
-    result = pos.create_position(body)
+    result = pos.create_position(body, user=user)
     audit_log.record("新增岗位", f"internship-position:{result['id']}", detail={"title": result["title"]})
     return success(result, message="已创建")
 
@@ -138,7 +140,7 @@ def position_detail(position_id: str, user=Depends(require_permission(_P_VIEW)))
 
 @router.put("/positions/{position_id}", summary="编辑岗位（已归档不可编辑）")
 def update_position(position_id: str, body: PositionUpdate, user=Depends(require_permission(_P_MANAGE))):
-    result = pos.update_position(position_id, body)
+    result = pos.update_position(position_id, body, user=user)
     audit_log.record("编辑岗位", f"internship-position:{position_id}")
     return success(result, message="已保存")
 
@@ -146,13 +148,17 @@ def update_position(position_id: str, body: PositionUpdate, user=Depends(require
 @router.post("/positions/{position_id}/status",
              summary="岗位状态机（提交/退回补正/上架/下架/暂停/归档；黑名单·停用企业不能上架）")
 def position_status(position_id: str, body: PositionStatusAction, user=Depends(require_permission(_P_PUBLISH))):
-    result = pos.set_status(position_id, body.action, body.reason or "", expected_version=body.expectedVersion)
+    result = pos.set_status(
+        position_id, body.action, body.reason or "",
+        expected_version=body.expectedVersion, user=user)
     audit_log.record("岗位状态变更", f"internship-position:{position_id}", detail={"action": body.action})
     return success(result, message="已更新")
 
 
 @router.post("/positions/{position_id}/risk", summary="风险岗位标记/解除（标记须说明）")
 def position_risk(position_id: str, body: PositionRiskRequest, user=Depends(require_permission(_P_MANAGE))):
-    result = pos.mark_risk(position_id, body.on, body.note or "", expected_version=body.expectedVersion)
+    result = pos.mark_risk(
+        position_id, body.on, body.note or "",
+        expected_version=body.expectedVersion, user=user)
     audit_log.record("岗位风险标记", f"internship-position:{position_id}", detail={"on": body.on})
     return success(result, message="已更新")
