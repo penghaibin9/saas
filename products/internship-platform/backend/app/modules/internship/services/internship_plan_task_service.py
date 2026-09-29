@@ -232,7 +232,7 @@ def student_submit_task(user, sort_order: int, body: dict) -> dict:
             "newVersion": int(progress.version or 0),
         }, _op_name(user))
         db.commit()
-        return _row(progress, record, _student)
+        return _row(progress, record, _student, batch_id=plan.batch_id)
 
 
 def list_progress(page, page_size, batch_id=None, status=None, keyword=None,
