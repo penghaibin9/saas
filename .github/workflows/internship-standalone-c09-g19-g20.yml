@@ -12,6 +12,7 @@ on:
       - "products/internship-platform/backend/app/main.py"
       - "products/internship-platform/scripts/check_w2_import_closure.py"
       - "products/internship-platform/backend/app/services/browser_auth_session_blocklist.py"
+      - "products/internship-platform/backend/app/services/message_center_service.py"
       - "products/internship-platform/backend/app/config.py"
       - "products/internship-platform/backend/Dockerfile"
       - "products/internship-platform/deploy/**"
