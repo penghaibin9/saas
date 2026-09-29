@@ -1015,6 +1015,11 @@ def validate_task(task_id: int, user=None):
         task.valid_rows = valid
         task.error_rows = error_rows
         task.validated_at = datetime.utcnow()
+        # Validation rules/code may evolve while the frozen task rows remain unchanged.
+        # A previously generated error workbook must never be reused after revalidation.
+        task.error_file_id = None
+        task.error_filename = None
+        task.error_sha256 = None
         if error_rows == 0:
             task.status = "VALIDATED"
             task.status_history_json = list(task.status_history_json or []) + [
@@ -1147,6 +1152,25 @@ def mark_submitted(task_id: int, body: dict, user=None):
         task = _task(db, task_id, lock=True)
         if task.status != "EXPORTED":
             raise AppException("DATA_CONFLICT", "必须先导出正式上报文件，才能登记外部提交")
+        if not task.output_file_id or not task.output_sha256:
+            raise AppException(
+                "DATA_CONFLICT",
+                "正式上报文件缺少文件中心证据或 SHA-256，请重新生成后再提交",
+            )
+        stored = _stored_regulatory_file(task.output_file_id, user=user)
+        if not stored:
+            raise AppException(
+                "DATA_CONFLICT",
+                "冻结的正式上报文件已不可读取，禁止登记外部提交",
+            )
+        payload, _stored_name = stored
+        digest = sha256(payload).hexdigest()
+        if digest != task.output_sha256:
+            raise AppException(
+                "DATA_CONFLICT",
+                "冻结的正式上报文件 SHA-256 校验失败，禁止登记外部提交",
+            )
+
         history = list(task.status_history_json or [])
         history.append(_history("SUBMITTED_EXTERNAL", _actor(user), reference))
         history.append(_history("RECEIPT_PENDING", _actor(user), "尚未取得目标平台真实回执"))
@@ -1156,6 +1180,8 @@ def mark_submitted(task_id: int, body: dict, user=None):
         task.submitted_at = datetime.utcnow()
         _audit(db, task.id, "REGULATORY_EXTERNAL_SUBMISSION_RECORDED", {
             "externalSubmissionRef": reference,
+            "outputFileId": str(task.output_file_id),
+            "outputSha256": task.output_sha256,
             "finalStatus": "RECEIPT_PENDING",
             "acceptedClaimed": False,
         }, user)
