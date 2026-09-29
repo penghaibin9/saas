@@ -367,7 +367,7 @@ def _procurement_row_facts(db, records: list[InternshipRecord], students: dict[i
 
 def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status=None,
                             risk_level=None, eligibility=None, destination=None,
-                            has_position=None, user=None) -> list[InternshipRecord]:
+                            has_position=None, has_advisor=None, user=None) -> list[InternshipRecord]:
     from app.modules.internship.services.internship_batch_context import resolve_batch
     batch = resolve_batch(db, batch_id, for_write=False)
     q = select(InternshipRecord).where(
@@ -387,6 +387,10 @@ def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status
         q = q.where(InternshipRecord.position_id.is_not(None))
     elif has_position is False:
         q = q.where(InternshipRecord.position_id.is_(None))
+    if has_advisor is True:
+        q = q.where(InternshipRecord.advisor_user_id.is_not(None))
+    elif has_advisor is False:
+        q = q.where(InternshipRecord.advisor_user_id.is_(None))
     if keyword:
         like = f"%{keyword.strip()}%"
         q = q.join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
@@ -414,7 +418,7 @@ def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status
 
 def list_students(page: int, page_size: int, keyword=None, class_id=None, status=None,
                   risk_level=None, eligibility=None, destination=None,
-                  has_position=None, batch_id=None, user=None) -> tuple[list[dict], int]:
+                  has_position=None, has_advisor=None, batch_id=None, user=None) -> tuple[list[dict], int]:
     with session() as db:
         scope = _current_scope(user)
         sql_safe = scope.get("mode") != "SCOPED" or (
@@ -437,6 +441,10 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
                 q = q.where(InternshipRecord.position_id.is_not(None))
             elif has_position is False:
                 q = q.where(InternshipRecord.position_id.is_(None))
+            if has_advisor is True:
+                q = q.where(InternshipRecord.advisor_user_id.is_not(None))
+            elif has_advisor is False:
+                q = q.where(InternshipRecord.advisor_user_id.is_(None))
             if scope.get("mode") == "SCOPED":
                 q = q.where(InternshipRecord.advisor_user_id.in_(scope["advisorUserIds"]))
             if keyword or class_id:
@@ -454,7 +462,7 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
             kept = _collect_scoped_records(
                 db, batch_id=batch_id, keyword=keyword, class_id=class_id, status=status,
                 risk_level=risk_level, eligibility=eligibility, destination=destination,
-                has_position=has_position, user=user)
+                has_position=has_position, has_advisor=has_advisor, user=user)
             total = len(kept)
             start = (max(1, page) - 1) * page_size
             kept = kept[start:start + page_size]
@@ -895,12 +903,12 @@ def set_destination(rec_id, destination: str, reason: str = "", user=None, expec
 
 def student_stats(batch_id=None, keyword=None, class_id=None, status=None,
                   risk_level=None, eligibility=None, destination=None,
-                  has_position=None, user=None) -> dict:
+                  has_position=None, has_advisor=None, user=None) -> dict:
     with session() as db:
         kept = _collect_scoped_records(
             db, batch_id=batch_id, keyword=keyword, class_id=class_id, status=status,
             risk_level=risk_level, eligibility=eligibility, destination=destination,
-            has_position=has_position, user=user)
+            has_position=has_position, has_advisor=has_advisor, user=user)
         total = len(kept)
         by_status = [{"status": s, "label": STATUS_LABEL[s],
                       "count": sum(1 for r in kept if r.status == s)} for s in STATUS_LABEL]
@@ -1052,7 +1060,7 @@ def _row_values_for_error(r: dict) -> list:
 
 def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
                     class_id=None, risk_level=None, destination=None, has_position=None,
-                    user=None) -> dict:
+                    has_advisor=None, user=None) -> dict:
     from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
     from app.services import xlsx_util
     with session() as db:
@@ -1062,7 +1070,7 @@ def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
     items, total = load_export_rows(
         list_students, keyword=keyword, status=status, eligibility=eligibility,
         batch_id=batch_id, class_id=class_id, risk_level=risk_level,
-        destination=destination, has_position=has_position, user=user)
+        destination=destination, has_position=has_position, has_advisor=has_advisor, user=user)
     headers = [
         "学号", "姓名", "年级", "学院", "专业", "班级", "生源地", "实习批次",
         "校内指导教师", "企业名称", "统一社会信用代码", "单位性质", "行业分类",
