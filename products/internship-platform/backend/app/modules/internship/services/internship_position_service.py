@@ -141,10 +141,15 @@ def _row(p: InternshipPosition, db=None) -> dict:
 # ═══════════ 列表 / 详情 ═══════════
 
 def list_positions(page: int, page_size: int, keyword=None, status=None,
-                   company_id=None, batch_id=None, risk=None) -> tuple[list[dict], int]:
+                   company_id=None, batch_id=None, risk=None, user=None) -> tuple[list[dict], int]:
     with session() as db:
-        q = select(InternshipPosition).where(InternshipPosition.tenant_id == _tid(),
-                                             InternshipPosition.is_deleted.is_(False))
+        q = select(InternshipPosition).where(
+            InternshipPosition.tenant_id == _tid(),
+            InternshipPosition.is_deleted.is_(False),
+        )
+        from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+        q = enterprise_scope.apply_company_scope(
+            q, InternshipPosition.company_id, db, user)
         if keyword:
             like = f"%{keyword.strip()}%"
             q = q.where(or_(InternshipPosition.title.like(like),
@@ -170,6 +175,9 @@ def get_position(pos_id, *, user=None) -> dict:
     with session() as db:
         p = _get(db, pos_id)
         c = tenant_get(db, EmpCompany, p.company_id)
+        from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+        if c:
+            enterprise_scope.assert_company_visible(db, c.id, user)
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(),
             InternshipAuditTrail.target_type == "POSITION",
@@ -224,12 +232,14 @@ def _validate_geofence(lat, lng, radius) -> None:
         raise AppException("VALIDATION_ERROR", "岗位围栏须同时填写中心经纬度和半径")
 
 
-def create_position(body) -> dict:
+def create_position(body, user=None) -> dict:
     with session() as db:
         title = (getattr(body, "title", "") or "").strip()
         if not title:
             raise AppException("VALIDATION_ERROR", "岗位名称必填")
         c = _company(db, body.companyId)  # 岗位必须关联企业
+        from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+        enterprise_scope.assert_company_writable(db, c.id, user)
         mentor_id, mentor_name = _resolve_mentor(db, c.id, getattr(body, "mentorContactId", None))
         _validate_geofence(getattr(body, "geofenceLat", None), getattr(body, "geofenceLng", None),
                            getattr(body, "geofenceRadiusM", None))
@@ -271,7 +281,7 @@ def create_position(body) -> dict:
         return _row(p, db)
 
 
-def update_position(pos_id, body) -> dict:
+def update_position(pos_id, body, user=None) -> dict:
     with session() as db:
         p = db.scalar(select(InternshipPosition).where(
             InternshipPosition.id == _as_id(pos_id),
@@ -279,6 +289,8 @@ def update_position(pos_id, body) -> dict:
             InternshipPosition.is_deleted.is_(False)).with_for_update())
         if not p:
             raise not_found("岗位不存在或不在当前数据范围内")
+        from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+        enterprise_scope.assert_company_writable(db, p.company_id, user)
         if int(p.version or 0) != int(body.expectedVersion):
             raise AppException("DATA_CONFLICT", "岗位已被其他用户修改，请刷新后重试")
         before = {name: getattr(p, name) for name in (
@@ -381,7 +393,7 @@ def update_position(pos_id, body) -> dict:
 
 # ═══════════ 状态机 ═══════════
 
-def set_status(pos_id, action: str, reason: str = "", *, expected_version=None) -> dict:
+def set_status(pos_id, action: str, reason: str = "", *, expected_version=None, user=None) -> dict:
     """SUBMIT / RETURN / PUBLISH / OFFLINE / SUSPEND / ARCHIVE。"""
     outbox_id = None
     with session() as db:
@@ -398,6 +410,8 @@ def set_status(pos_id, action: str, reason: str = "", *, expected_version=None) 
                 if campaign.status != "OPEN":
                     raise AppException("DATA_CONFLICT", "招聘季当前不允许企业补正，请先核对招聘安排")
         p = _get(db, pos_id, lock=True)
+        from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+        enterprise_scope.assert_company_writable(db, p.company_id, user)
         if expected_version is not None and int(p.version or 0) != expected_version:
             raise AppException("DATA_CONFLICT", "岗位已被修改，请刷新后核对再办理")
         if p.status == "ARCHIVED":
@@ -476,9 +490,11 @@ def set_status(pos_id, action: str, reason: str = "", *, expected_version=None) 
     return result
 
 
-def mark_risk(pos_id, on: bool, note: str = "", *, expected_version=None) -> dict:
+def mark_risk(pos_id, on: bool, note: str = "", *, expected_version=None, user=None) -> dict:
     with session() as db:
         p = _get(db, pos_id, lock=True)
+        from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+        enterprise_scope.assert_company_writable(db, p.company_id, user)
         if expected_version is not None and int(p.version or 0) != expected_version:
             raise AppException("DATA_CONFLICT", "岗位已被修改，请刷新后核对再办理")
         if p.status == "ARCHIVED":
@@ -504,39 +520,51 @@ def mark_risk(pos_id, on: bool, note: str = "", *, expected_version=None) -> dic
 
 # ═══════════ 统计 ═══════════
 
-def position_stats() -> dict:
+def position_stats(user=None) -> dict:
     with session() as db:
-        base = [InternshipPosition.tenant_id == _tid(), InternshipPosition.is_deleted.is_(False)]
-        total = int(db.scalar(select(func.count()).select_from(InternshipPosition).where(*base)) or 0)
+        query = select(InternshipPosition).where(
+            InternshipPosition.tenant_id == _tid(),
+            InternshipPosition.is_deleted.is_(False),
+        )
+        from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+        query = enterprise_scope.apply_company_scope(
+            query, InternshipPosition.company_id, db, user)
+        scoped = query.subquery()
+        total = int(db.scalar(select(func.count()).select_from(scoped)) or 0)
         by_status = []
         for st in STATUS_LABEL:
-            by_status.append({"status": st, "label": STATUS_LABEL[st],
-                              "count": int(db.scalar(select(func.count()).select_from(
-                                  InternshipPosition).where(*base, InternshipPosition.status == st)) or 0)})
-        risk = int(db.scalar(select(func.count()).select_from(InternshipPosition).where(
-            *base, InternshipPosition.risk_flag.is_(True))) or 0)
-        cap = db.execute(select(func.coalesce(func.sum(InternshipPosition.headcount), 0),
-                                func.coalesce(func.sum(InternshipPosition.allocated_count), 0)).where(
-            *base, InternshipPosition.status == "PUBLISHED")).first()
+            by_status.append({
+                "status": st,
+                "label": STATUS_LABEL[st],
+                "count": int(db.scalar(select(func.count()).select_from(scoped).where(
+                    scoped.c.status == st)) or 0),
+            })
+        risk = int(db.scalar(select(func.count()).select_from(scoped).where(
+            scoped.c.risk_flag.is_(True))) or 0)
+        cap = db.execute(select(
+            func.coalesce(func.sum(scoped.c.headcount), 0),
+            func.coalesce(func.sum(scoped.c.allocated_count), 0),
+        ).where(scoped.c.status == "PUBLISHED")).first()
         published_capacity = int(cap[0] or 0)
         published_allocated = int(cap[1] or 0)
         util = round(published_allocated * 100.0 / published_capacity, 1) if published_capacity else 0.0
-        # 已上架岗位按专业要求聚合；空专业计入 unlimitedMajorCount
-        pub_rows = db.scalars(select(InternshipPosition).where(
-            *base, InternshipPosition.status == "PUBLISHED")).all()
+        pub_rows = db.execute(select(
+            scoped.c.major_requirement, scoped.c.headcount, scoped.c.allocated_count,
+        ).where(scoped.c.status == "PUBLISHED")).all()
         major_map: dict[str, dict] = {}
         unlimited = 0
-        for p in pub_rows:
-            req = (p.major_requirement or "").strip()
+        for major_requirement, headcount, allocated_count in pub_rows:
+            req = (major_requirement or "").strip()
             if not req:
                 unlimited += 1
                 key = "(不限专业)"
             else:
                 key = req
-            bucket = major_map.setdefault(key, {"major": key, "count": 0, "capacity": 0, "allocated": 0})
+            bucket = major_map.setdefault(
+                key, {"major": key, "count": 0, "capacity": 0, "allocated": 0})
             bucket["count"] += 1
-            bucket["capacity"] += int(p.headcount or 0)
-            bucket["allocated"] += int(p.allocated_count or 0)
+            bucket["capacity"] += int(headcount or 0)
+            bucket["allocated"] += int(allocated_count or 0)
         by_major = sorted(major_map.values(), key=lambda x: (-x["count"], x["major"]))
         return {
             "total": total, "byStatus": by_status, "riskCount": risk,
@@ -731,31 +759,35 @@ def import_confirm(rows: list[dict], template_version=None) -> dict:
         return {"created": created}
 
 
-def export_positions(keyword=None, status=None, company_id=None, batch_id=None) -> dict:
+def export_positions(keyword=None, status=None, company_id=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
     from app.modules.internship.services.internship_export_util import require_exportable
     with session() as db:
-        count_query = select(func.count()).select_from(InternshipPosition).where(
+        scoped_query = select(InternshipPosition).where(
             InternshipPosition.tenant_id == _tid(),
             InternshipPosition.is_deleted.is_(False))
+        from app.modules.internship.services import internship_enterprise_service as enterprise_scope
+        scoped_query = enterprise_scope.apply_company_scope(
+            scoped_query, InternshipPosition.company_id, db, user)
         if keyword:
             like = f"%{keyword.strip()}%"
-            count_query = count_query.where(or_(
+            scoped_query = scoped_query.where(or_(
                 InternshipPosition.title.like(like),
                 InternshipPosition.company_name.like(like),
                 InternshipPosition.major_requirement.like(like)))
         if status:
-            count_query = count_query.where(InternshipPosition.status == status)
+            scoped_query = scoped_query.where(InternshipPosition.status == status)
         if company_id:
-            count_query = count_query.where(
+            scoped_query = scoped_query.where(
                 InternshipPosition.company_id == _opt_int(company_id, "企业"))
         if batch_id:
-            count_query = count_query.where(
+            scoped_query = scoped_query.where(
                 InternshipPosition.batch_id == _opt_int(batch_id, "批次"))
-        total = int(db.scalar(count_query) or 0)
+        total = int(db.scalar(select(func.count()).select_from(scoped_query.subquery())) or 0)
         require_exportable(total)
-    items, _ = list_positions(1, total, keyword=keyword, status=status,
-                              company_id=company_id, batch_id=batch_id)
+    items, _ = list_positions(
+        1, total, keyword=keyword, status=status,
+        company_id=company_id, batch_id=batch_id, user=user)
     headers = ["批次ID", "岗位名称", "关联企业", "工作内容", "工作地址", "每日工时",
                "每周工时", "班次", "是否夜班", "是否允许加班", "每周休息天数",
                "报酬类型", "报酬金额", "发放周期", "是否住宿", "是否供餐",
@@ -772,8 +804,8 @@ def export_positions(keyword=None, status=None, company_id=None, batch_id=None) 
             it["specialEquipment"] or "", it["prohibitedReason"] or "", it["headcount"],
             it["majorRequirement"], it["gradeRequirement"], it["mentorName"], it["statusLabel"],
             it["rightsStatus"], it["rightsRuleVersion"] or "", it.get("remark") or ""])
-    user = get_current_user_ctx() or {}
-    wm = (f"岗位实习中心·岗位库台账 · 导出人：{user.get('realName', '-')} · "
+    operator = user or get_current_user_ctx() or {}
+    wm = (f"岗位实习中心·岗位库台账 · 导出人：{operator.get('realName', '-')} · "
           f"{datetime.now():%Y-%m-%d %H:%M}")
     content = xlsx_util.build_ledger_xlsx("岗位库台账", headers, data_rows, watermark=wm)
     return xlsx_util.pack_xlsx_result(content, "岗位库台账.xlsx", len(items))
