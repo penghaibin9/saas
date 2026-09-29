@@ -72,3 +72,93 @@ jobs:
           grep -q "G20_REAL_RUN_ACK" products/internship-platform/load/g20_internship.k6.js
           grep -q "SMOKE_ONLY" products/internship-platform/scripts/g20_validate_evidence.py
           echo "Tooling contract passed. This job does NOT execute or claim the real 5000-VU G20 acceptance run."
+
+  runtime-readiness:
+    name: C09 MySQL 8.4 Redis readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: c09_root
+          MYSQL_DATABASE: internship_c09
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pc09_root --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      APP_ENV: ci
+      DATABASE_URL: mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09?charset=utf8mb4
+      EXPECTED_ALEMBIC_REVISION: ix0023
+      REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_KEY_PREFIX: internship-standalone:c09
+      JWT_SECRET: c09-ci-only-jwt-secret-with-sufficient-length-20260929
+      FILE_STORAGE_DIR: /tmp/internship-c09-files
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install standalone backend
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Upgrade empty MySQL 8.4 to current head
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade head
+      - name: Verify migration head
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine=create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+          with engine.connect() as db:
+              actual=db.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar_one()
+          assert actual == os.environ["EXPECTED_ALEMBIC_REVISION"], (actual, os.environ["EXPECTED_ALEMBIC_REVISION"])
+          print({"alembicRevision": actual})
+          PY
+      - name: Start API and prove readiness
+        run: |
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/internship-c09-api.log 2>&1 &
+          echo $! > /tmp/internship-c09-api.pid
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health/ready > /tmp/internship-c09-ready.json; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            cat /tmp/internship-c09-api.log
+            exit 1
+          fi
+          cat /tmp/internship-c09-ready.json
+          python - <<'PY'
+          import json
+          payload=json.load(open("/tmp/internship-c09-ready.json", encoding="utf-8"))
+          assert payload["status"] == "READY", payload
+          assert payload["checks"]["database"] == "READY", payload
+          assert payload["checks"]["schemaRevision"] == "ix0023", payload
+          assert payload["checks"]["redis"] == "READY", payload
+          assert payload["checks"]["fileStorage"] == "READY", payload
+          PY
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f /tmp/internship-c09-api.pid ]; then
+            kill "$(cat /tmp/internship-c09-api.pid)" 2>/dev/null || true
+          fi
