@@ -163,6 +163,16 @@ def test_staff_browser_login_refresh_me_logout_real_mysql():
         assert me_data["currentRole"]["roleCode"] == "SCHOOL_ADMIN"
         assert me_data["tenantId"] == str(TENANT_ID)
 
+        rbac = client.get(
+            "/api/v1/rbac/current-context",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert rbac.status_code == 200, rbac.text
+        rbac_data = rbac.json()["data"]
+        assert rbac_data["currentRole"]["roleCode"] == "SCHOOL_ADMIN"
+        assert rbac_data["moduleEntitlements"] == ["internship"]
+        assert "internship.*" in rbac_data["permissionPatterns"]
+
         batches = client.get(
             "/api/v1/internship/batches?page=1&pageSize=20",
             headers={"Authorization": f"Bearer {data['accessToken']}"},
