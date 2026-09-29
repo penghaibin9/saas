@@ -177,6 +177,8 @@ class EnterpriseCreate(BaseModel):
     cooperationLevel: Optional[str] = None
     contactPerson: Optional[str] = None
     contactPhone: Optional[str] = None
+    collegeScopeIds: Optional[List[str]] = Field(
+        None, description="岗位实习适用学院ID；空列表=全校通用（仅校级管理员）")
     remark: Optional[str] = None
 
 
@@ -194,6 +196,8 @@ class EnterpriseUpdate(BaseModel):
     cooperationLevel: Optional[str] = None
     contactPerson: Optional[str] = None
     contactPhone: Optional[str] = None
+    collegeScopeIds: Optional[List[str]] = Field(
+        None, description="岗位实习适用学院ID；显式空列表=全校通用（仅校级管理员）")
     remark: Optional[str] = None
 
 
