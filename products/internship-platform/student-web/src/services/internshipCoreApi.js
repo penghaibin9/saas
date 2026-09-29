@@ -170,13 +170,27 @@ export const internshipCoreApi = {
       method: 'POST', body
     })
   },
-  plan() {
-    return request('/portal/internship/context/plan')
+  plans() {
+    return request('/portal/internship/context/plans')
+  },
+  plan(planId = '') {
+    return request('/portal/internship/context/plan' + (planId ? `?planId=${encode(planId)}` : ''))
+  },
+  planTasks(planId = '') {
+    return request('/portal/internship/context/plan/tasks' + (planId ? `?planId=${encode(planId)}` : ''))
   },
   acknowledgePlan(body) {
     return request('/portal/internship/context/plan/acknowledge', {
       method: 'POST', body
     })
+  },
+  submitPlanTask(sortOrder, body) {
+    return request(`/portal/internship/context/plan/tasks/${encode(sortOrder)}/submit`, {
+      method: 'POST', body
+    })
+  },
+  uploadPlanTaskEvidence(file) {
+    return uploadFile('/files?bizType=INTERNSHIP_PLAN_TASK', file)
   },
   changes(context) {
     return request(`/portal/internship/context/changes${contextQuery(context)}`)
