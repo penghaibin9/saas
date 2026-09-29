@@ -8,7 +8,11 @@ on:
       - "products/internship-platform/scripts/g19_migration_bridge.py"
       - "products/internship-platform/load/g20_internship.k6.js"
       - "products/internship-platform/scripts/g20_validate_evidence.py"
-      - "products/internship-platform/backend/alembic/sql/0001_internship_standalone_baseline.json"
+      - "products/internship-platform/backend/alembic/sql/0001_internship_standalone_baseline.json"\n      - "products/internship-platform/backend/app/main.py"
+      - "products/internship-platform/backend/app/config.py"
+      - "products/internship-platform/backend/Dockerfile"
+      - "products/internship-platform/deploy/**"
+      - "products/internship-platform/docs/YIYANG_C09_PRODUCTION_DELIVERY_RUNBOOK_20260929.md"
       - ".github/workflows/internship-standalone-c09-g19-g20.yml"
   pull_request:
     branches: [ main ]
@@ -43,6 +47,21 @@ jobs:
         run: python products/internship-platform/scripts/g19_migration_bridge.py --self-test
       - name: Verify G20 evidence qualification contract
         run: python products/internship-platform/scripts/g20_validate_evidence.py --self-test
+      - name: Validate production readiness and ops scripts
+        run: |
+          python -m py_compile \
+            products/internship-platform/backend/app/main.py \
+            products/internship-platform/backend/app/config.py
+          bash -n products/internship-platform/deploy/backup/backup.sh
+          bash -n products/internship-platform/deploy/backup/restore-drill.sh
+          grep -q "mysql:8.4" products/internship-platform/deploy/docker-compose.production.yml
+          grep -q "EXPECTED_ALEMBIC_REVISION=ix0023" products/internship-platform/deploy/env.production.example
+      - name: Validate production compose contract
+        working-directory: products/internship-platform/deploy
+        run: |
+          cp env.production.example .env.production
+          docker compose --env-file .env.production -f docker-compose.production.yml config --quiet
+          rm -f .env.production
       - name: Guard against false procurement acceptance
         run: |
           grep -q "procurementMinimumVus: 5000" products/internship-platform/load/g20_internship.k6.js
