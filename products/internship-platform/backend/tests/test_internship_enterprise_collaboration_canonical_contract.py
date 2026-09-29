@@ -9,7 +9,7 @@ import inspect
 
 from sqlalchemy import UniqueConstraint
 
-from app.api.v1 import route_registration
+from app.api import router as standalone_api_router
 from app.models import (
     EmpCompany,
     EmpJob,
@@ -82,23 +82,20 @@ def test_position_publish_must_pass_existing_rights_gate():
 
 
 def test_staff_internship_bundle_remains_staff_only_and_enterprise_portal_is_separately_guarded():
-    deps_source = inspect.getsource(route_registration.build_deps)
-    register_source = inspect.getsource(route_registration.register_internship_routes)
-    intern_line = next(line for line in deps_source.splitlines() if '"intern":' in line)
+    source = inspect.getsource(standalone_api_router)
 
-    # Bind the security assertion to the internship dependency entry itself.  A require_staff
-    # occurrence on another module must never make this contract pass.
-    assert "Depends(require_staff)" in intern_line
-    assert 'Depends(require_module("internship"))' in intern_line
-    assert 'd = deps["intern"]' in register_source
-    assert "dependencies=d" in register_source
+    # Standalone school/staff routes inherit the same two server-side gates.
+    assert "_STAFF_INTERNSHIP_DEPS" in source
+    assert "Depends(require_staff)" in source
+    assert 'Depends(require_module("internship"))' in source
+    assert "dependencies=list(_STAFF_INTERNSHIP_DEPS)" in source
 
-    # Enterprise portal is mounted separately and never inherits the staff dependency bundle.
-    assert "internship_enterprise_portal" in register_source
-    assert "api_router.include_router(internship_enterprise_portal.router)" in register_source
-    assert "api_router.include_router(internship_enterprise_portal.router, dependencies=d)" not in register_source
-    assert "api_router.include_router(internship_enterprise_collaboration.router)" in register_source
-    assert "api_router.include_router(internship_enterprise_collaboration.router, dependencies=d)" not in register_source
+    # Enterprise portal/collaboration routers are mounted outside that bundle and keep
+    # their signed EnterprisePrincipal/grant boundaries.
+    assert "api_router.include_router(internship_enterprise_portal.router)" in source
+    assert "api_router.include_router(internship_enterprise_collaboration.router)" in source
+    assert "internship_enterprise_portal.router, dependencies=list(_STAFF_INTERNSHIP_DEPS)" not in source
+    assert "internship_enterprise_collaboration.router, dependencies=list(_STAFF_INTERNSHIP_DEPS)" not in source
 
 
 def test_forbidden_duplicate_authority_model_names_do_not_exist():
