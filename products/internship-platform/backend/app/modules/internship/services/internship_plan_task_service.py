@@ -7,7 +7,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (
-    InternshipAuditTrail, InternshipBatchPlan, InternshipPlanAck,
+    InternshipAuditTrail, InternshipBatchPlan, InternshipPlanAck, InternshipPlanAssignment,
     InternshipPlanTaskProgress, InternshipRecord, StudentProfile,
 )
 from app.services.db_service import _as_id, _iso, _tid, session
@@ -273,12 +273,35 @@ def list_progress(page, page_size, batch_id=None, status=None, keyword=None,
                 InternshipBatchPlan.is_deleted.is_(False),
             )).all()
         }
+        active_pairs = {
+            (int(row.internship_id), int(row.plan_id))
+            for row in db.scalars(select(InternshipPlanAssignment).where(
+                InternshipPlanAssignment.tenant_id == _tid(),
+                InternshipPlanAssignment.internship_id.in_(
+                    {int(item.internship_id) for item in rows} or {0}
+                ),
+                InternshipPlanAssignment.plan_id.in_(
+                    {int(item.plan_id) for item in rows} or {0}
+                ),
+                InternshipPlanAssignment.status == "ACTIVE",
+                InternshipPlanAssignment.is_deleted.is_(False),
+            )).all()
+        }
         items = []
         for progress in rows:
             record = db.get(InternshipRecord, progress.internship_id)
             student = db.get(StudentProfile, progress.student_id)
             plan = plan_map.get(int(progress.plan_id))
             if not plan:
+                continue
+            # Legacy primary progress has no assignment row until ix0021 backfill runs.
+            # An additional plan, however, must have an ACTIVE assignment fact; removed plans
+            # cannot remain in teacher queues merely because their NOT_STARTED progress rows exist.
+            active_assignment = (int(progress.internship_id), int(progress.plan_id)) in active_pairs
+            legacy_primary = bool(
+                record and int(record.batch_id or 0) == int(plan.batch_id or 0)
+            )
+            if not active_assignment and not legacy_primary:
                 continue
             if keyword and (not student or keyword.strip() not in (student.real_name or "")
                             and keyword.strip() not in (student.student_no or "")):
@@ -353,11 +376,27 @@ def batch_summary(batch_id, user=None) -> dict:
             InternshipPlanTaskProgress.tenant_id == _tid(),
             InternshipPlanTaskProgress.plan_id == plan.id,
             InternshipPlanTaskProgress.is_deleted.is_(False))).all()
+        active_internship_ids = set(db.scalars(select(
+            InternshipPlanAssignment.internship_id
+        ).where(
+            InternshipPlanAssignment.tenant_id == _tid(),
+            InternshipPlanAssignment.plan_id == plan.id,
+            InternshipPlanAssignment.status == "ACTIVE",
+            InternshipPlanAssignment.is_deleted.is_(False),
+        )).all())
         by_student = {}
         pending = 0
         for progress in rows:
             record = db.get(InternshipRecord, progress.internship_id)
             student = db.get(StudentProfile, progress.student_id)
+            active_assignment = int(progress.internship_id) in {
+                int(value) for value in active_internship_ids
+            }
+            legacy_primary = bool(
+                record and int(record.batch_id or 0) == int(plan.batch_id or 0)
+            )
+            if not active_assignment and not legacy_primary:
+                continue
             if not in_scope(scope, db, record, student):
                 continue
             summary = by_student.setdefault(progress.student_id, {"total": 0, "approved": 0})
