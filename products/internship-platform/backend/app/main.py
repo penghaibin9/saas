@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
+import os
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from sqlalchemy import text
 
 from app.api.router import api_router
 from app.config import settings
 from app.core.exceptions import register_exception_handlers
+from app.db.session import get_engine
 
 app = FastAPI(
     title=settings.APP_NAME,
@@ -24,3 +29,70 @@ def health() -> dict:
         "sourceBaseline": settings.SOURCE_BASELINE_SHA,
         "phase": "W2",
     }
+
+
+@app.get("/health/ready", tags=["ops"])
+def readiness() -> dict:
+    checks: dict[str, object] = {
+        "database": "NOT_CONFIGURED",
+        "schemaRevision": None,
+        "schemaExpected": settings.EXPECTED_ALEMBIC_REVISION or None,
+        "redis": "NOT_CONFIGURED",
+        "fileStorage": "UNKNOWN",
+    }
+    ready = True
+
+    try:
+        if not (settings.DATABASE_URL or "").strip():
+            ready = False
+        else:
+            with get_engine().connect() as db:
+                db.execute(text("SELECT 1")).scalar_one()
+                revision = db.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar_one()
+            checks["database"] = "READY"
+            checks["schemaRevision"] = str(revision)
+            expected = (settings.EXPECTED_ALEMBIC_REVISION or "").strip()
+            if expected and str(revision) != expected:
+                checks["database"] = "SCHEMA_MISMATCH"
+                ready = False
+    except Exception:
+        checks["database"] = "UNAVAILABLE"
+        ready = False
+
+    redis_url = (settings.REDIS_URL or "").strip()
+    if redis_url:
+        try:
+            from redis import Redis
+
+            client = Redis.from_url(
+                redis_url,
+                socket_connect_timeout=settings.REDIS_CONNECT_TIMEOUT,
+                socket_timeout=settings.REDIS_SOCKET_TIMEOUT,
+                decode_responses=True,
+            )
+            checks["redis"] = "READY" if client.ping() else "UNAVAILABLE"
+            if checks["redis"] != "READY":
+                ready = False
+        except Exception:
+            checks["redis"] = "UNAVAILABLE"
+            ready = False
+
+    try:
+        file_root = Path(settings.FILE_STORAGE_DIR).expanduser().resolve()
+        file_root.mkdir(parents=True, exist_ok=True)
+        writable = file_root.is_dir() and os.access(file_root, os.R_OK | os.W_OK | os.X_OK)
+        checks["fileStorage"] = "READY" if writable else "UNAVAILABLE"
+        if not writable:
+            ready = False
+    except Exception:
+        checks["fileStorage"] = "UNAVAILABLE"
+        ready = False
+
+    payload = {
+        "status": "READY" if ready else "NOT_READY",
+        "product": "internship-standalone",
+        "checks": checks,
+    }
+    if not ready:
+        raise HTTPException(status_code=503, detail=payload)
+    return payload
