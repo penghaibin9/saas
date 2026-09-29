@@ -10,9 +10,9 @@ import inspect
 from sqlalchemy import UniqueConstraint
 
 from app.api import router as standalone_api_router
+import app.models as models
 from app.models import (
     EmpCompany,
-    EmpJob,
     InternshipApplication,
     InternshipIntention,
     InternshipPosition,
@@ -36,9 +36,8 @@ def test_existing_company_and_internship_position_are_the_authorities():
     assert EmpCompany.__tablename__ == "t_emp_company"
     assert InternshipPosition.__tablename__ == "t_internship_position"
 
-    # Employment jobs remain a different domain and must never become internship positions.
-    assert EmpJob.__tablename__ == "t_emp_job"
-    assert EmpJob.__table__.name != InternshipPosition.__table__.name
+    # Standalone must not pull the employment-domain job authority back into the extracted product.
+    assert not hasattr(models, "EmpJob")
 
 
 def test_formal_application_owns_three_slots_and_intention_stays_separate():
@@ -99,8 +98,6 @@ def test_staff_internship_bundle_remains_staff_only_and_enterprise_portal_is_sep
 
 
 def test_forbidden_duplicate_authority_model_names_do_not_exist():
-    import app.models as models
-
     for duplicate_name in (
         "EnterpriseCompany",
         "EnterpriseJob",
