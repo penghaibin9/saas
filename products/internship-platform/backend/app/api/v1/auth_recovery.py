@@ -38,14 +38,27 @@ def me(user=Depends(get_current_user)):
     db = get_sessionmaker()()
     try:
         row = _account(db, user)
-        return success({
+        role_code = str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or row.user_type or "")
+        role_name = str((user or {}).get("currentRoleName") or role_code)
+        payload = {
             "userId": f"db-{row.id}",
             "loginName": row.login_name,
             "realName": row.real_name,
             "userType": row.user_type,
             "mustChangePassword": bool(row.must_change_password),
             "credentialVersion": int(row.credential_version or 0),
-        })
+            "tenantId": str(row.tenant_id),
+            "currentRole": {"roleCode": role_code, "roleName": role_name},
+            "user": {
+                "userId": f"db-{row.id}",
+                "loginName": row.login_name,
+                "realName": row.real_name,
+                "userType": row.user_type,
+                "studentNo": row.login_name if str(row.user_type or "").upper() == "STUDENT" else None,
+                "tenantId": str(row.tenant_id),
+            },
+        }
+        return success(payload)
     finally:
         db.close()
 
