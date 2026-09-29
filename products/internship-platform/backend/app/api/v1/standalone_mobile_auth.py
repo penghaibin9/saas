@@ -178,11 +178,11 @@ def mobile_refresh(body: MobileRefreshRequest):
 
 @router.post("/logout", summary="Standalone 移动端登出当前会话")
 def mobile_logout(
-    body: MobileLogoutRequest = Body(default_factory=MobileLogoutRequest),
+    body: MobileLogoutRequest | None = Body(default=None),
     authorization: str | None = Header(default=None),
 ):
     session_id = ""
-    if body.refreshToken:
+    if body and body.refreshToken:
         claims = consume_refresh(body.refreshToken)
         if claims:
             session_id = str(claims.get("authSessionId") or "")
