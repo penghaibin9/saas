@@ -26,6 +26,7 @@
           <RouterLink class="ie-company" :to="detailLink(row)">{{ row.name }}</RouterLink>
           <div class="mp-cell-sub">{{ row.creditCode || '信用代码未登记' }}</div>
           <div class="mp-cell-sub">{{ row.industry || '行业未登记' }} · {{ row.region || '地区未登记' }}</div>
+          <div class="mp-cell-sub">{{ row.schoolWide ? '适用：全校通用' : '适用：' + (row.collegeScopeNames || []).join('、') }}</div>
         </template>
         <template #cell-contact="{ row }">
           <template v-if="row.contactPerson">
@@ -150,7 +151,7 @@ export default {
         .map(a => ({ ...a, disabled: !this.can(a.permission), disabledReason: this.reason(a.permission) }))
     },
     pageSubtitle() {
-      return this.activePanel === 'qualification' ? '进入企业核验资料与考察记录，再完成准入审核。' : '本校共享企业库，核对合作状态与资质，继续企业对接。'
+      return this.activePanel === 'qualification' ? '进入企业核验资料与考察记录，再完成准入审核。' : '企业库按当前账号学院数据范围自动收敛；全校通用企业对所有学院可见。'
     },
     listQuery() {
       const query = { panel: this.activePanel, page: String(this.page) }
