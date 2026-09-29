@@ -98,7 +98,7 @@ test('enterprise HR logs into real MySQL context and enters recruitment home', a
   const evaluationsResponse = page.waitForResponse(r =>
     apiPath(r) === '/api/v1/internship/enterprise-portal/evaluation-tasks' &&
     r.request().method() === 'GET')
-  await page.getByRole('link', { name: '评价任务' }).click()
+  await page.getByRole('link', { name: '评价任务', exact: true }).click()
   const evaluations = await payload(evaluationsResponse, '/api/v1/internship/enterprise-portal/evaluation-tasks')
   expect(evaluations.total).toBe(1)
   expect(evaluations.items[0].studentName).toBe('企业协同学生王强')
