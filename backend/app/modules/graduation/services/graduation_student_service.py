@@ -525,6 +525,7 @@ def set_stage(sid, action: str, reason: str = "") -> dict:
                 GraduationRiskCase.is_deleted.is_(False),
                 GraduationRiskCase.gd_student_id == s.id,
                 GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+                GraduationRiskCase.condition_active.is_(True),
             )) or 0)
             if open_n > 0:
                 raise AppException("DATA_CONFLICT", f"仍有 {open_n} 条未关闭风险，不能归档")
@@ -701,6 +702,7 @@ def batch_archive(record_ids: list[str], reason: str = "") -> dict:
                 GraduationRiskCase.is_deleted.is_(False),
                 GraduationRiskCase.gd_student_id == s.id,
                 GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+                GraduationRiskCase.condition_active.is_(True),
             )) or 0)
             if open_n > 0:
                 skipped += 1

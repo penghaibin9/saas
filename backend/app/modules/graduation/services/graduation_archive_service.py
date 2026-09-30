@@ -168,6 +168,9 @@ def _count_open_risks(db, stu: GraduationStudent) -> int:
         GraduationRiskCase.is_deleted.is_(False),
         GraduationRiskCase.gd_student_id == stu.id,
         GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+        # 最近一次扫描已确认触发条件消失的风险（如开题后来通过了）不再拦归档；
+        # 页面仍会列出，管理员可顺手关闭。
+        GraduationRiskCase.condition_active.is_(True),
         GraduationRiskCase.risk_code.notin_(_ARCHIVE_NON_BLOCKING_RISK_CODES),
     )) or 0)
 

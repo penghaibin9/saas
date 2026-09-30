@@ -102,6 +102,7 @@ def _assert_no_open_risk(db, student: GraduationStudent) -> None:
         GraduationRiskCase.gd_student_id == int(student.id),
         GraduationRiskCase.risk_code != "GD-R12",
         GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+        GraduationRiskCase.condition_active.is_(True),
         GraduationRiskCase.is_deleted.is_(False),
     )) or 0)
     if count:

@@ -200,6 +200,7 @@ def build_snapshot(db, batch, mode: str, *, lock: bool = False) -> dict:
         GraduationRiskCase.gd_student_id.in_(ids),
         GraduationRiskCase.is_deleted.is_(False),
         GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+        GraduationRiskCase.condition_active.is_(True),
         GraduationRiskCase.risk_code.notin_(_ARCHIVE_NON_BLOCKING_RISK_CODES),
     ).order_by(GraduationRiskCase.gd_student_id, GraduationRiskCase.id), lock=lock)
     risk_counts: dict[int, int] = defaultdict(int)
