@@ -133,6 +133,20 @@
                 <div><span>{{ defenseModeEyebrow }}</span><strong>{{ defenseModeTitle }}</strong></div>
                 <AppButton v-if="canEnterScore" variant="primary" :disabled="commandLocked" :title="enterScoreReason" @click="openScoreEntry">录入本人评分</AppButton>
               </div>
+              <div v-if="scorePanel && scorePanel.members.length" class="gd-panel-progress">
+                <div class="gd-panel-progress__head">
+                  <strong>答辩组评分进度（第{{ scorePanel.roundNo }}轮）</strong>
+                  <span>已评 {{ scorePanel.scoredCount }} / {{ scorePanel.total }} 位</span>
+                </div>
+                <p :class="['gd-panel-progress__hint', scorePanel.pendingNames.length ? 'is-pending' : 'is-done']">{{ scorePanel.pendingNames.length ? `还差 ${scorePanel.pendingNames.join('、')} 未评` : scorePanel.hint }}</p>
+                <ul class="gd-panel-progress__list">
+                  <li v-for="m in scorePanel.members" :key="(m.mentorId || m.expertId || m.name) + m.role">
+                    <span>{{ m.name }}<small>{{ m.role }}</small></span>
+                    <StatusTag :type="panelTone(m.status)" :label="m.status === 'SCORED' || m.status === 'CONFIRMED' ? `${m.statusLabel} · ${m.score}分` : m.statusLabel" dot />
+                  </li>
+                </ul>
+              </div>
+              <p v-else-if="scorePanel" class="mp-note">{{ scorePanel.hint }}</p>
               <ul v-if="scoreList.length" class="gp-timeline">
                 <li v-for="d in scoreList" :key="d.id" class="gp-timeline-item"><div class="mp-cell-main">{{ d.judgeName }}（第{{ d.roundNo }}轮）· {{ d.absent ? '缺席' : d.score }} · <StatusTag :type="d.status === 'CONFIRMED' ? 'success' : 'warning'" :label="d.statusLabel" dot /></div><div v-if="d.absent && d.absentReason" class="mp-cell-sub">缺席说明：{{ d.absentReason }}</div></li>
               </ul>
@@ -238,6 +252,7 @@ export default {
       plagiarismList: [],
       reviewList: [],
       scoreList: [],
+      scorePanel: null,
       grade: null,
       reviewerMentorId: '',
       submitting: false,
@@ -386,6 +401,9 @@ export default {
     }
   },
   methods: {
+    panelTone(status) {
+      return { CONFIRMED: 'success', SCORED: 'primary', ABSENT: 'warning' }[status] || 'danger'
+    },
     routeText(value) { return Array.isArray(value) ? String(value[0] || '') : String(value || '') },
     routePage(value) {
       const page = Number.parseInt(this.routeText(value), 10)
@@ -670,8 +688,10 @@ export default {
       try {
         const res = await graduationDefenseGradeApi.getScoreList({ gdStudentId: snapshot.studentId, batchId: snapshot.batchId, pageSize: 50 })
         if (token !== this.scoreToken || !this.isCurrentSnapshot(snapshot)) return false
-        if (res.code === 0) this.scoreList = Array.isArray(res.data?.list) ? res.data.list : []
-        else { this.scoreList = []; this.loadError = res.message || '评分记录加载失败' }
+        if (res.code === 0) {
+          this.scoreList = Array.isArray(res.data?.list) ? res.data.list : []
+          this.scorePanel = res.data?.panel || null
+        } else { this.scoreList = []; this.scorePanel = null; this.loadError = res.message || '评分记录加载失败' }
         return res.code === 0
       } finally { if (token === this.scoreToken) this.panelLoading = false }
     },
@@ -825,6 +845,15 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gd-panel-progress { margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 10px; background: var(--bg-card, #fff); }
+.gd-panel-progress__head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.gd-panel-progress__head span { color: var(--text-tertiary, #64748b); font-size: 12px; }
+.gd-panel-progress__hint { margin: 6px 0; font-size: 13px; font-weight: 600; }
+.gd-panel-progress__hint.is-pending { color: var(--danger, #dc2626); }
+.gd-panel-progress__hint.is-done { color: var(--success-600, #16a34a); }
+.gd-panel-progress__list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.gd-panel-progress__list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px dashed var(--border-color, #e2e8f0); font-size: 13px; }
+.gd-panel-progress__list small { margin-left: 6px; color: var(--text-tertiary, #64748b); font-size: 11px; }
 .dg-command { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; margin-bottom: var(--space-3); padding: 12px 14px; border: 1px solid var(--primary-100, #dbeafe); border-radius: var(--radius-lg, 12px); background: linear-gradient(120deg, var(--primary-50, #eff6ff), var(--bg-card, #fff) 76%); }
 .dg-command > div:first-child { display: grid; min-width: 0; gap: 2px; }
 .dg-command > div:first-child > span { color: var(--primary-600, #2563eb); font-size: 10px; font-weight: 700; letter-spacing: .08em; }

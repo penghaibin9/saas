@@ -220,7 +220,9 @@ def _rule_check(db, student: GraduationStudent, *, base_check):
         if not payload["final"]["files"]:
             missing.append("成果定稿文件")
         missing.extend(payload["fileErrors"])
-    return normalized, list(dict.fromkeys(missing))
+    from app.modules.graduation.services.graduation_archive_v2_preview import student_rule_check
+
+    return student_rule_check(db, student, normalized, list(dict.fromkeys(missing)))
 
 
 def _token_payload(mode: str, batch: GraduationBatch, snapshot: dict) -> dict:

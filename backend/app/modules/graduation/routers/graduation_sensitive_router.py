@@ -274,7 +274,11 @@ def defense_list(
         page, pageSize, gd_student_id=gdStudentId, judge_name=judgeName,
         round_no=roundNo, batch_id=batchId,
     )
-    return success(paginate(items, total, page, pageSize))
+    data = paginate(items, total, page, pageSize)
+    if gdStudentId:
+        # 答辩组全部评委及各自评分状态（含未评分），供秘书确认前查看“还差谁”。
+        data = {**data, "panel": defense.panel_progress(gdStudentId)}
+    return success(data)
 
 
 @router.post("/gd-defense-scores/entry")
