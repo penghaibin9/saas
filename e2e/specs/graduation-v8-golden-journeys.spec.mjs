@@ -45,7 +45,7 @@ async function assertHealthyPage(page) {
 const ROLE_HOME_QUERY = {
   '待评阅开题': { tab: 'PENDING_REVIEW' },
   '待评阅成果': { tab: 'PENDING_REVIEW' },
-  '批次与规则': { panel: 'list' },
+  '批次与时间节点': { panel: 'list' },
   '题目库': { panel: 'list' },
   '过程指导台': { panel: 'taskbook' },
   '毕设材料归档': { panel: 'archive' },
@@ -83,8 +83,8 @@ async function openStaffFromRoleHome(page, entryLabel, expectedPath) {
     return
   }
   const workspaceByEntry = {
-    '批次与规则': '批次与实施', '题目库': '题目与选题', '过程指导台': '过程指导',
-    '答辩安排': '答辩与成绩', '成绩台账': '答辩与成绩', '毕设材料归档': '风险与归档'
+    '批次与时间节点': '① 准备', '题目库': '② 选题', '过程指导台': '③ 过程与中期',
+    '答辩安排': '⑤ 答辩', '成绩台账': '⑥ 成绩与归档', '毕设材料归档': '⑥ 成绩与归档'
   }
   const workspaceLabel = workspaceByEntry[entryLabel]
   expect(workspaceLabel, `缺少 ${entryLabel} 的 Role Home 工作区映射`).toBeTruthy()
@@ -171,7 +171,7 @@ test.describe('Graduation V8 W15 · eight role-home navigation handoffs', () => 
   })
 
   test('GDJ-01 batch, student and mentor handoff', async ({ page }) => {
-    await openStaffFromRoleHome(page, '批次与规则', '/admin/graduation/batches')
+    await openStaffFromRoleHome(page, '批次与时间节点', '/admin/graduation/batches')
     const screenshotA = await capture(page, 'GDJ-01', 'A-first-screen')
     const row = page.locator('.dt__tr').filter({ has: page.locator(`.gd-batch-identity[data-batch-id="${fixture.batchId}"]`) })
     await expect(row).toHaveCount(1)

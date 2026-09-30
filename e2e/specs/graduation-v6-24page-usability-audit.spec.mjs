@@ -40,7 +40,7 @@ const SCREEN_META = {
   '答辩评分': { id: 'defense-score', surfaces: ['.gp-layout', '.dg-batch'] },
   '答辩秘书确认': { id: 'defense-confirmation', surfaces: ['.gp-layout', '.dg-batch'] },
   '导师评分': { id: 'advisor-score', surfaces: ['.as-layout', '.as-card'] },
-  '成绩台账': { id: 'grade-ledger', surfaces: ['.dg-batch', '.dt', 'table'] },
+  '成绩台账': { id: 'grade-ledger', surfaces: ['.gd-business-view[data-graduation-defense-workspace="grades"]', '.dg-command', '.gp-panel'] },
   '问题预警': { id: 'risk', surfaces: ['.rk-split', '.rk-list'] },
   '毕设材料归档': { id: 'archive', surfaces: ['.rk-split', '.rk-list'] },
   '全部模板': { id: 'templates', surfaces: ['.dt', 'table', '.mp-card'] }
@@ -333,7 +333,7 @@ test.describe.serial('V6 · 29-page real-browser usability and text-density audi
       await fs.writeFile(reportPath, JSON.stringify(report, null, 2), 'utf8')
       await testInfo.attach(`graduation-v6-24page-usability-audit-chunk-${chunkIndex + 1}`, { path: reportPath, contentType: 'application/json' })
 
-      expect(report.measuredScreens, `chunk ${chunkIndex + 1} must retain evidence for all six production screens`).toHaveLength(6)
+      expect(report.measuredScreens, `chunk ${chunkIndex + 1} must retain evidence for every production screen in the chunk`).toHaveLength(screens.length)
       expect(hardFailures, `chunk ${chunkIndex + 1} must have no structural usability blocker`).toEqual([])
     })
   }
