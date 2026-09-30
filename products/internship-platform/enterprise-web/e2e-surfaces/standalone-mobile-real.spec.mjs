@@ -1,0 +1,48 @@
+import { test, expect } from '@playwright/test'
+
+test('real backend student H5 login reaches standalone internship home', async ({ page }) => {
+  const seen=[]
+  page.on('response', response => {
+    const url=new URL(response.url())
+    if(url.pathname.startsWith('/api/v1/')) seen.push({path:url.pathname,status:response.status()})
+  })
+
+  await page.goto('http://127.0.0.1:5203/#/pages/login/index')
+  await expect(page.getByText('学生移动端',{exact:true})).toBeVisible()
+  const inputs=page.locator('input')
+  await inputs.nth(0).fill('FULLSTACK')
+  await inputs.nth(1).fill('202688112')
+  await inputs.nth(2).fill('Fullstack-Student-2026!')
+  await page.getByRole('button',{name:'登录',exact:true}).click()
+
+  await expect(page).toHaveURL(/#\/pages\/student-internship\/index/)
+  await expect(page.getByText('我的岗位实习',{exact:true})).toBeVisible()
+  await expect(page.getByText('当前暂无实习任务',{exact:true})).toBeVisible()
+  await page.screenshot({path:'test-results-mobile-real/student-home.png',fullPage:true})
+
+  expect(seen.some(x=>x.path.endsWith('/auth/login')&&x.status===200)).toBeTruthy()
+})
+
+test('real backend teacher H5 login reaches standalone teacher workbench', async ({ page }) => {
+  const seen=[]
+  page.on('response', response => {
+    const url=new URL(response.url())
+    if(url.pathname.startsWith('/api/v1/')) seen.push({path:url.pathname,status:response.status()})
+  })
+
+  await page.goto('http://127.0.0.1:5203/#/pages/login/index?entry=teacher')
+  await expect(page.getByText('教师移动端',{exact:true})).toBeVisible()
+  const inputs=page.locator('input')
+  await inputs.nth(0).fill('FULLSTACK')
+  await inputs.nth(1).fill('fullstack.teacher')
+  await inputs.nth(2).fill('Fullstack-Teacher-2026!')
+  await page.getByRole('button',{name:'登录',exact:true}).click()
+
+  await expect(page).toHaveURL(/#\/pages\/teacher-internship\/index/)
+  await expect(page.getByText('岗位实习教师工作台',{exact:true})).toBeVisible()
+  await expect(page.getByText('2026岗位实习全栈验收',{exact:true})).toBeVisible()
+  await page.screenshot({path:'test-results-mobile-real/teacher-workbench.png',fullPage:true})
+
+  expect(seen.some(x=>x.path.endsWith('/auth/login')&&x.status===200)).toBeTruthy()
+  expect(seen.some(x=>x.path.includes('/teacher-mobile/')&&x.status===200)).toBeTruthy()
+})
