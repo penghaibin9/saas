@@ -287,8 +287,8 @@ def get_choice_detail(choice_id) -> dict:
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("志愿不存在")
         _assert_choice_decision_access(db, c, "topic.choice.detail")
-        stu = db.get(GraduationStudent, c.gd_student_id)
-        topic = db.get(GraduationTopic, c.topic_id)
+        stu = tenant_get(db, GraduationStudent, c.gd_student_id)
+        topic = tenant_get(db, GraduationTopic, c.topic_id)
         return _choice_row(c, stu, topic)
 
 
@@ -379,8 +379,8 @@ def reject_choice(choice_id, reason: str = "", operator_name: str = "") -> dict:
         _audit(db, c.round_id, "REJECT_CHOICE",
               f"{operator_name or '教师'} 驳回志愿 choiceId={choice_id}：{reason or '未说明理由'}")
         db.commit()
-        stu = db.get(GraduationStudent, c.gd_student_id)
-        topic = db.get(GraduationTopic, c.topic_id)
+        stu = tenant_get(db, GraduationStudent, c.gd_student_id)
+        topic = tenant_get(db, GraduationTopic, c.topic_id)
         return _choice_row(c, stu, topic)
 
 
