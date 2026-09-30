@@ -258,8 +258,9 @@
                   <span v-if="selectedArchive.dataAnomaly" class="ar-anomaly">历史主档异常，当前归档记录仅允许只读查看</span>
                   <template v-else>
                     <button v-if="canArchivePreview && ['NOT_GENERATED', 'REJECTED'].includes(selectedArchive.status)" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doGenerate(selectedArchive)">生成清单</button>
+                    <button v-if="canArchivePreview && selectedArchive.status === 'PENDING_SUBMIT'" class="mp-btn" :disabled="contextLocked" @click="doGenerate(selectedArchive)">重新核对材料</button>
                     <button v-if="canArchiveFile && selectedArchive.status === 'PENDING_SUBMIT' && !selectedArchive.missingItems.length" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doSubmit(selectedArchive)">提交归档</button>
-                    <span v-if="selectedArchive.status === 'PENDING_SUBMIT' && selectedArchive.missingItems.length" class="mp-note">缺件补齐后方可提交归档</span>
+                    <span v-if="selectedArchive.status === 'PENDING_SUBMIT' && selectedArchive.missingItems.length" class="mp-note">以上材料补齐后，点「重新核对材料」再提交归档</span>
                     <button v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doFile(selectedArchive)">核验归档</button>
                     <button v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" class="mp-btn" :disabled="contextLocked" @click="askRejectArchive(selectedArchive)">驳回</button>
                     <span v-if="selectedArchive.status === 'FILED'" class="mp-note">已正式归档备案，记录只读</span>
@@ -1008,6 +1009,8 @@ export default {
           return true
         }
         this.archiveWriteFailed(res)
+        // 提交被材料缺件拦截时，服务器已写回最新缺件清单；刷新后页面直接列出缺哪几项。
+        if (action === 'submit-archive' && ![503001, 503002].includes(Number(res?.code))) await this.loadArchives()
       } catch (error) {
         this.archiveWriteFailed({ code: 503001, message: errorText(error, '连接中断，无法确认服务器是否已经完成操作。') })
       } finally {

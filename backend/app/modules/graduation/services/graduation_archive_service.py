@@ -196,6 +196,15 @@ def get_archive(gd_student_id) -> dict:
         row = _row(a, stu)
         if not a.id:
             row["id"] = ""
+        if a.status != "FILED":
+            # Read-only live check with the same rule as submit/file/batch preview,
+            # so a stale "材料齐全" saved at generate time never hides a new gap.
+            try:
+                checklist, missing = _check_completeness(db, stu)
+            except AppException:
+                checklist, missing = None, None
+            if checklist is not None:
+                row["checklist"], row["missingItems"] = checklist, missing
         return row
 
 
@@ -235,6 +244,10 @@ def _assert_no_open_risks(db, stu: GraduationStudent) -> None:
         )
 
 
+def _missing_message(missing: list[str]) -> str:
+    return f"还缺 {len(missing)} 项材料，不能提交归档：" + "、".join(str(item) for item in missing)
+
+
 def submit_archive(gd_student_id) -> dict:
     with session() as db:
         stu = _stu_for_update(db, gd_student_id)
@@ -247,7 +260,11 @@ def submit_archive(gd_student_id) -> dict:
         checklist, missing = _check_completeness(db, stu)
         a.checklist_json, a.missing_items = checklist, missing
         if missing:
-            raise AppException("DATA_CONFLICT", f"仍缺 {len(missing)} 项材料，不能提交")
+            # Keep the refreshed checklist so the page shows exactly what is missing.
+            a.version += 1
+            _audit(db, a.id, "提交归档被拦截", detail=f"缺失 {len(missing)} 项：" + "、".join(missing)[:900])
+            db.commit()
+            raise AppException("DATA_CONFLICT", _missing_message(missing))
         a.status = "SUBMITTED"
         a.submitted_at = datetime.now(timezone.utc)
         a.version += 1
