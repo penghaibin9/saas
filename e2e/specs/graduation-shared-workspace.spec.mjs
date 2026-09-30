@@ -117,6 +117,9 @@ test.describe('Graduation existing shared shell integration', () => {
 
     await page.getByRole('navigation', { name: '二级菜单', exact: true })
       .getByRole('button', { name: '更多', exact: true }).click()
+    await dismissGuide(page)
+    await page.getByRole('navigation', { name: '三级菜单', exact: true })
+      .getByRole('button', { name: '全部模板', exact: true }).click()
     await expectDestination(page, '/admin/graduation/templates', fixture.batchId)
     await expectSharedShell(page, fixture.batchId)
     await dismissGuide(page)
