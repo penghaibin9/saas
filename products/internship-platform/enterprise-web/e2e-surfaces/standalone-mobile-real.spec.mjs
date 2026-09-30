@@ -54,7 +54,7 @@ test('real backend teacher H5 login reaches standalone teacher workbench', async
 
   await expect(page).toHaveURL(/#\/pages\/teacher-internship\/index/)
   await expect(page.getByText('岗位实习教师工作台',{exact:true})).toBeVisible()
-  await expect(page.getByText('2026岗位实习全栈验收',{exact:true})).toBeVisible()
+  await expect(page.getByText('2026岗位实习全栈验收',{exact:true}).first()).toBeVisible()
   await expect(page.getByText('实习学生',{exact:true})).toBeVisible()
   await page.screenshot({path:'test-results-mobile-real/teacher-workbench.png',fullPage:true})
 
