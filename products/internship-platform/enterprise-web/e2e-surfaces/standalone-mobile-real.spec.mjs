@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test'
 
+async function submitMobileLogin(page) {
+  // uni-app H5 compiles <button> into a custom uni-button host, so ARIA role based
+  // lookup is not stable across builds. Target the product-owned login class that
+  // is present on both student and teacher standalone login surfaces.
+  const submit = page.locator('.login-form .btn-primary')
+  await expect(submit).toBeVisible()
+  await expect(submit).toContainText('登录')
+  await submit.click()
+}
+
 test('real backend student H5 login reaches standalone internship home', async ({ page }) => {
   const seen=[]
   page.on('response', response => {
@@ -13,7 +23,7 @@ test('real backend student H5 login reaches standalone internship home', async (
   await inputs.nth(0).fill('FULLSTACK')
   await inputs.nth(1).fill('202688112')
   await inputs.nth(2).fill('Fullstack-Student-2026!')
-  await page.getByRole('button',{name:'登录',exact:true}).click()
+  await submitMobileLogin(page)
 
   await expect(page).toHaveURL(/#\/pages\/student-internship\/index/)
   await expect(page.getByText('我的岗位实习',{exact:true})).toBeVisible()
@@ -36,7 +46,7 @@ test('real backend teacher H5 login reaches standalone teacher workbench', async
   await inputs.nth(0).fill('FULLSTACK')
   await inputs.nth(1).fill('fullstack.teacher')
   await inputs.nth(2).fill('Fullstack-Teacher-2026!')
-  await page.getByRole('button',{name:'登录',exact:true}).click()
+  await submitMobileLogin(page)
 
   await expect(page).toHaveURL(/#\/pages\/teacher-internship\/index/)
   await expect(page.getByText('岗位实习教师工作台',{exact:true})).toBeVisible()
