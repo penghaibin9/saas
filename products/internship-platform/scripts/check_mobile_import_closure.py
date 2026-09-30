@@ -48,6 +48,17 @@ def main() -> int:
                     target.relative_to(ROOT).as_posix() if ROOT in target.parents else str(target),
                 ))
 
+    forbidden_routes = {
+        "/pages/student/home/index": "parent student home",
+        "/pages/teacher/workbench/index": "parent teacher workbench",
+    }
+    route_escapes: list[tuple[str, str, str]] = []
+    for source in files:
+        text = source.read_text(encoding="utf-8")
+        for route, label in forbidden_routes.items():
+            if route in text:
+                route_escapes.append((source.relative_to(ROOT).as_posix(), route, label))
+
     if missing:
         print("Standalone mobile import closure is incomplete:")
         for source, spec, target in missing:
@@ -55,7 +66,17 @@ def main() -> int:
         print(f"TOTAL_MISSING={len(missing)}")
         return 1
 
-    print(f"Standalone mobile import closure OK: {len(files)} source files checked.")
+    if route_escapes:
+        print("Standalone mobile navigation escapes back into the parent product:")
+        for source, route, label in route_escapes:
+            print(f"- {source}: {route} ({label})")
+        print(f"TOTAL_ROUTE_ESCAPES={len(route_escapes)}")
+        return 1
+
+    print(
+        f"Standalone mobile import/navigation closure OK: "
+        f"{len(files)} source files checked; no parent home routes found."
+    )
     return 0
 
 
