@@ -250,3 +250,49 @@ def test_rule_check_flags_rule_items_even_when_legacy_items_all_present(db_mode)
         db.close()
         set_current_user(None)
         set_tenant(None)
+
+
+def test_batch_preview_explains_skips_per_student_in_plain_words(graduation_client, auth_headers, db_mode):
+    """批量预览说清每个被跳过学生的原因（缺哪几项 / 几条风险没关），并可定位到学生。"""
+    h = auth_headers
+    batch_id = _batch(graduation_client, h)
+    _school_rule(batch_id)
+    missing_gid = _gd_student(graduation_client, h, batch_id)
+    risk_gid = _gd_student(graduation_client, h, batch_id)
+
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationRiskCase
+
+    db = get_sessionmaker()()
+    try:
+        for code in ("GD-R06", "GD-R07"):
+            db.add(GraduationRiskCase(
+                tenant_id=MAIN, risk_code=code, risk_name="测试风险", gd_student_id=int(risk_gid),
+                level="MEDIUM", status="OPEN",
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+    for path in ("batch-generate/preview", "batch-file/preview"):
+        body = graduation_client.post(f"{GD_ARCHIVE}/{path}", headers=h, params={"batchId": batch_id}).json()
+        assert body["code"] == 0, body
+        data = body["data"]
+        assert {"skippedStudents", "skippedStudentsTruncated", "missingSummary", "openRiskTotal"} <= set(data)
+        # 名单条数与计数一致（未截断时）。
+        assert len(data["skippedStudents"]) == data["skippedCount"]
+
+    data = graduation_client.post(f"{GD_ARCHIVE}/batch-generate/preview", headers=h,
+                                  params={"batchId": batch_id}).json()["data"]
+    rows = {row["gdStudentId"]: row for row in data["skippedStudents"]}
+    assert set(rows) == {str(missing_gid), str(risk_gid)}
+    missing_row = rows[str(missing_gid)]
+    assert missing_row["studentName"].startswith("口径") and missing_row["studentNo"]
+    assert any(text.startswith("缺：") and CUSTOM_NAME in text for text in missing_row["reasons"])
+    assert "还有 2 条风险没关闭" in rows[str(risk_gid)]["reasons"]
+    assert data["openRiskTotal"] == 2
+    summary = {item["name"]: item["count"] for item in data["missingSummary"]}
+    assert summary[CUSTOM_NAME] == 2 and summary["指导记录附件"] == 2
+    # 页面文字里不出现内部词。
+    flat = " ".join(" ".join(row["reasons"]) for row in data["skippedStudents"])
+    assert "missing_materials" not in flat and "open_risks" not in flat

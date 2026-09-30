@@ -24,7 +24,7 @@ def _archive_no(value) -> str:
 def preview_batch_file(batch_id=None, archive_batch_no: str | None = None) -> dict:
     from app.modules.graduation.services import graduation_archive_consistency as consistency
     from app.modules.graduation.services import graduation_archive_service as service
-    from app.modules.graduation.services.graduation_archive_batch_scale import row_block_reasons
+    from app.modules.graduation.services.graduation_archive_batch_scale import row_block_reasons, skip_details
 
     archive_no = _archive_no(archive_batch_no)
     with session() as db:
@@ -52,6 +52,7 @@ def preview_batch_file(batch_id=None, archive_batch_no: str | None = None) -> di
             "previewToken": consistency._sign_token(payload),
             "expiresInSeconds": 600,
             "generatedAt": datetime.now(timezone.utc).isoformat(),
+            **skip_details(db, snapshot["rows"], "FILE"),
         }
 
 
