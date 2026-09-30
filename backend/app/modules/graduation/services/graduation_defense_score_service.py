@@ -196,6 +196,81 @@ def list_scores(page: int, page_size: int, gd_student_id=None, judge_name=None,
         return items, total
 
 
+def _seat_row(rows, seat: dict):
+    """Match a score row to a panel seat by stable mentor/expert identity only."""
+    for d in rows:
+        if seat.get("mentorId") is not None and d.judge_mentor_id is not None \
+                and int(seat["mentorId"]) == int(d.judge_mentor_id):
+            return d
+        if seat.get("expertId") is not None and getattr(d, "expert_id", None) is not None \
+                and int(seat["expertId"]) == int(d.expert_id):
+            return d
+    return None
+
+
+def panel_progress(gd_student_id) -> dict | None:
+    """当前轮次答辩组每位评委的评分进度，与“确认本轮成绩”使用同一席位口径。
+
+    秘书据此看到“还差谁未评”，而不是只能看到已评分的评委。
+    学生不在当前数据范围内时返回 None（不泄露答辩组信息）。
+    """
+    from app.modules.graduation.services import graduation_identity as gid
+
+    with session() as db:
+        stu = db.get(GraduationStudent, int(gd_student_id))
+        if not stu or stu.is_deleted or stu.tenant_id != _tid():
+            return None
+        if int(stu.id) not in set(accessible_student_ids(db, _tid())):
+            return None
+        round_no = _active_round_no(db, stu.id)
+        rows = db.scalars(select(GraduationDefenseScore).where(
+            GraduationDefenseScore.tenant_id == _tid(), GraduationDefenseScore.gd_student_id == stu.id,
+            GraduationDefenseScore.round_no == round_no,
+            GraduationDefenseScore.is_deleted.is_(False),
+        ).order_by(GraduationDefenseScore.id)).all()
+        group = db.get(GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
+        seats = gid.judge_panel_seats(group)
+        members = []
+        for index, seat in enumerate(seats):
+            row = _seat_row(rows, seat)
+            covered = bool(row is not None and gid.score_row_covers_seat(row, seat))
+            if not covered:
+                status, label = "NOT_SCORED", "未评分"
+            elif row.status == "CONFIRMED":
+                status, label = "CONFIRMED", "已确认"
+            elif row.absent:
+                status, label = "ABSENT", "缺席"
+            else:
+                status, label = "SCORED", "已评分"
+            members.append({
+                "name": seat.get("name") or "未命名评委",
+                "role": "主席" if index == 0 and (group.chair or group.chair_mentor_id) else "评委",
+                "mentorId": str(seat["mentorId"]) if seat.get("mentorId") else None,
+                "expertId": str(seat["expertId"]) if seat.get("expertId") else None,
+                "status": status, "statusLabel": label,
+                "score": row.score if covered and not row.absent else None,
+            })
+        pending = [m["name"] for m in members if m["status"] == "NOT_SCORED"]
+        if not group:
+            hint = "该生还没有分到答辩组"
+        elif not seats:
+            hint = "答辩组还没有设置评委"
+        elif pending:
+            hint = f"还差 {len(pending)} 位评委未评分：" + "、".join(pending)
+        elif members and all(m["status"] == "CONFIRMED" for m in members):
+            hint = "本轮成绩已确认"
+        else:
+            hint = "全部评委已评分，可以确认本轮成绩"
+        return {
+            "gdStudentId": str(stu.id), "roundNo": round_no,
+            "defenseGroupId": str(group.id) if group else None,
+            "defenseGroupName": (getattr(group, "group_name", None) or "") if group else "",
+            "members": members, "total": len(members),
+            "scoredCount": len(members) - len(pending),
+            "pendingNames": pending, "hint": hint,
+        }
+
+
 def judge_pending() -> list[dict]:
     """答辩评委（本人）·待评分学生名单（已发布分组，含本人当前轮次评分状态）。"""
     from app.modules.graduation.services import graduation_identity as gid
