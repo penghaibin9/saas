@@ -16,6 +16,8 @@
           <text v-if="todayChecked" class="muted">{{ todayChecked.checkedInAt }} · {{ checkinResultLabel(todayChecked.result) }}</text>
           <text v-if="todayChecked?.accuracyM != null" class="muted">定位精度约 {{ Math.round(todayChecked.accuracyM) }} 米 · {{ todayChecked.coordinateSystem || 'GCJ02' }}</text>
           <text v-if="todayChecked?.watermarkedFileId" class="link" @click="openCheckinEvidence(todayChecked)">查看服务端水印照片</text>
+          <text v-if="todayChecked?.note" class="muted">签到备注：{{ todayChecked.note }}</text>
+          <textarea v-if="!todayChecked" v-model.trim="checkinNote" class="textarea small" maxlength="500" placeholder="签到备注（选填，例如：企业现场巡访、学生集中指导）" />
           <view v-if="!todayChecked" class="teacher-checkin-evidence">
             <view>
               <text class="strong">现场照片（建议）</text>
@@ -26,8 +28,27 @@
             </button>
           </view>
           <button v-if="!todayChecked" class="btn btn-primary" :loading="checking" :disabled="checkinPhotoUploading" @click="checkin">本人签到</button>
-          <view v-for="row in checkins.slice(0,5)" :key="row.id" class="list-row">
-            <text>{{ row.localDate }}</text><text class="muted">{{ checkinResultLabel(row.result) }} · {{ row.address || '已记录' }}</text>
+          <view class="teacher-calendar">
+            <view class="row-between">
+              <view><text class="strong">完整签到日历</text><text class="muted">查看最近一年本人签到与补签事实</text></view>
+              <picker mode="date" fields="month" :value="calendarMonth" @change="calendarMonth=$event.detail.value">
+                <text class="link">{{ calendarMonth }} ▾</text>
+              </picker>
+            </view>
+            <view class="teacher-calendar-week">
+              <text v-for="item in calendarWeekdays" :key="item">{{ item }}</text>
+            </view>
+            <view class="teacher-calendar-grid">
+              <view v-for="cell in calendarCells" :key="cell.key" class="teacher-calendar-day" :class="{ 'has-record': !!cell.row }">
+                <text>{{ cell.day || '' }}</text>
+                <text v-if="cell.row" class="teacher-calendar-mark">{{ checkinResultShort(cell.row.result) }}</text>
+              </view>
+            </view>
+            <view v-for="row in monthCheckins" :key="'month-'+row.id" class="list-row">
+              <view><text>{{ row.localDate }}</text><text v-if="row.note" class="muted">{{ row.note }}</text></view>
+              <text class="muted">{{ checkinResultLabel(row.result) }} · {{ row.address || '已记录' }}</text>
+            </view>
+            <text v-if="!monthCheckins.length" class="muted">当前月份暂无签到记录</text>
           </view>
         </view>
 
@@ -99,7 +120,18 @@
           <textarea v-model="periodForm.issueContent" class="textarea small" maxlength="4000" placeholder="本周期问题与风险（选填）" />
           <textarea v-model="periodForm.nextPlan" class="textarea small" maxlength="4000" placeholder="下一周期计划（选填）" />
           <input v-model="periodForm.studentCount" class="input" type="number" placeholder="涉及学生人数（选填）" />
-          <button class="btn btn-primary" :loading="periodSaving" @click="savePeriodReport">保存周期报告</button>
+          <view class="period-attachments">
+            <view class="row-between"><text class="strong">照片 / 附件</text><text class="muted">{{ periodForm.attachments.length }}/9</text></view>
+            <view v-for="(file,index) in periodForm.attachments" :key="file.fileId" class="notice-file">
+              <text class="notice-file-name" @click="openPeriodAttachment(file)">{{ file.fileName }}</text>
+              <text class="notice-remove" @click="removePeriodAttachment(index)">移除</text>
+            </view>
+            <button v-if="periodForm.attachments.length<9" class="btn btn-ghost" :loading="periodAttachmentUploading" :disabled="periodSaving" @click="addPeriodAttachment">
+              {{ periodAttachmentUploading ? '上传中…' : '添加照片 / 附件' }}
+            </button>
+            <text class="muted">移动端可上传照片或业务附件；保存时与当前周次、月份或总结版本一起留痕。</text>
+          </view>
+          <button class="btn btn-primary" :loading="periodSaving" :disabled="periodAttachmentUploading" @click="savePeriodReport">保存周期报告</button>
           <view v-for="row in periodReports" :key="row.id" class="report">
             <view class="row-between">
               <text class="strong">{{ periodTypeLabel(row.reportType) }} · {{ row.periodKey }}</text>
@@ -212,7 +244,7 @@ const currentIsoWeek = () => {
   return t.getUTCFullYear() + '-W' + String(week).padStart(2,'0')
 }
 const defaultPeriodKey = (type) => type === 'WEEKLY' ? currentIsoWeek() : (type === 'MONTHLY' ? currentMonth() : 'SUMMARY')
-const blankPeriod = (type='WEEKLY') => ({ reportType:type, periodKey:defaultPeriodKey(type), content:'', issueContent:'', nextPlan:'', studentCount:'', expectedVersion:null })
+const blankPeriod = (type='WEEKLY') => ({ reportType:type, periodKey:defaultPeriodKey(type), content:'', issueContent:'', nextPlan:'', studentCount:'', attachmentFileIds:[], attachments:[], expectedVersion:null })
 
 const noticeTypeOptions = [
   { code:'AGREEMENT', label:'实习协议' },
@@ -232,7 +264,7 @@ const blankNotice = () => ({
 })
 
 export default {
-  data() { return { state:'loading', batches:[], batchId:'', batchIndex:0, checkins:[], makeups:[], reports:[], periodReports:[], notices:[], pendingNotices:[], activeNotice:null, acknowledgingNotice:false, checking:false, checkinPhotoFileId:'', checkinPhotoName:'', checkinPhotoUploading:false, checkinTimezoneName:this.detectTimezone(), makeupForm:{localDate:'',reason:'',evidenceFileId:''}, makeupEvidenceName:'', makeupEvidenceUploading:false, makeupSubmitting:false, saving:false, periodSaving:false, publishing:false, form:blank(), periodForm:blankPeriod(), notice:blankNotice(), noticeUploading:false, noticeWithdrawingId:'' } },
+  data() { return { state:'loading', batches:[], batchId:'', batchIndex:0, checkins:[], makeups:[], reports:[], periodReports:[], notices:[], pendingNotices:[], activeNotice:null, acknowledgingNotice:false, checking:false, checkinPhotoFileId:'', checkinPhotoName:'', checkinPhotoUploading:false, checkinNote:'', checkinTimezoneName:this.detectTimezone(), calendarMonth:today().slice(0,7), calendarWeekdays:['一','二','三','四','五','六','日'], makeupForm:{localDate:'',reason:'',evidenceFileId:''}, makeupEvidenceName:'', makeupEvidenceUploading:false, makeupSubmitting:false, saving:false, periodSaving:false, periodAttachmentUploading:false, publishing:false, form:blank(), periodForm:blankPeriod(), notice:blankNotice(), noticeUploading:false, noticeWithdrawingId:'' } },
   computed: {
     context() { return useInternshipContextStore() },
     batchLabels() { return this.batches.map((b) => b.name || ('批次 '+b.id)) },
@@ -246,6 +278,26 @@ export default {
     noticeUrgencyIndex() { return Math.max(0, noticeUrgencyOptions.findIndex((x) => x.code === this.notice.urgency)) },
     todayChecked() { return this.checkins.find((x) => x.localDate === today()) || null },
     todayValue() { return today() },
+    monthCheckins() {
+      const prefix=String(this.calendarMonth||'')
+      return (this.checkins||[]).filter((row)=>String(row.localDate||'').startsWith(prefix)).slice().sort((a,b)=>String(b.localDate||'').localeCompare(String(a.localDate||'')))
+    },
+    calendarCells() {
+      const [year,month]=String(this.calendarMonth||'').split('-').map(Number)
+      if(!year||!month||month<1||month>12) return []
+      const first=new Date(year,month-1,1)
+      const leading=(first.getDay()+6)%7
+      const days=new Date(year,month,0).getDate()
+      const byDate=new Map((this.checkins||[]).map((row)=>[String(row.localDate||''),row]))
+      const cells=[]
+      for(let i=0;i<leading;i+=1) cells.push({key:'blank-before-'+i,day:'',row:null})
+      for(let day=1;day<=days;day+=1){
+        const dateKey=String(year)+'-'+String(month).padStart(2,'0')+'-'+String(day).padStart(2,'0')
+        cells.push({key:dateKey,day,row:byDate.get(dateKey)||null})
+      }
+      while(cells.length%7) cells.push({key:'blank-after-'+cells.length,day:'',row:null})
+      return cells
+    },
     canPublish() { return this.context.can('internship.communication.manage') && /ADMIN/i.test(this.context.roleCode || '') }
   },
   onLoad() { this.load() },
@@ -259,7 +311,7 @@ export default {
         this.batchIndex=Math.max(0,this.batches.findIndex((b)=>String(b.id)===String(this.batchId)))
         if (!this.batchId) { this.state='ready'; return }
         const [a,m,b,p,c,n]=await Promise.all([
-          teacherApi.getMyInternshipCheckins(this.batchId),
+          teacherApi.getMyInternshipCheckins(this.batchId,366),
           teacherApi.getMyInternshipMakeups(this.batchId),
           teacherApi.getMyInternshipWorkReports(this.batchId,1,20),
           teacherApi.getMyInternshipPeriodReports(this.batchId,1,20),
@@ -280,7 +332,7 @@ export default {
     async onBatch(e) {
       this.batchIndex=Number(e.detail.value)||0
       this.context.selectBatch(this.batches[this.batchIndex]?.id)
-      this.batchId=this.context.selectedBatchId; this.resetForm(); this.resetPeriodForm(); this.notice=blankNotice(); this.pendingNotices=[]; this.activeNotice=null; this.acknowledgingNotice=false; this.checkinPhotoFileId=''; this.checkinPhotoName=''; this.makeupForm={localDate:'',reason:'',evidenceFileId:''}; this.makeupEvidenceName=''; await this.load()
+      this.batchId=this.context.selectedBatchId; this.resetForm(); this.resetPeriodForm(); this.notice=blankNotice(); this.pendingNotices=[]; this.activeNotice=null; this.acknowledgingNotice=false; this.checkinPhotoFileId=''; this.checkinPhotoName=''; this.checkinNote=''; this.calendarMonth=today().slice(0,7); this.makeupForm={localDate:'',reason:'',evidenceFileId:''}; this.makeupEvidenceName=''; await this.load()
     },
     detectTimezone() {
       try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' }
@@ -289,6 +341,10 @@ export default {
     checkinResultLabel(value) {
       const map={NORMAL:'正常签到',RECORDED:'已记录',NO_LOCATION:'无定位待核实',LOW_ACCURACY:'定位精度不足',LOCATION_UNCERTAIN:'定位待核实',MAKEUP:'补签'}
       return map[String(value||'').toUpperCase()] || '已记录'
+    },
+    checkinResultShort(value) {
+      const map={NORMAL:'签',RECORDED:'签',NO_LOCATION:'核',LOW_ACCURACY:'核',LOCATION_UNCERTAIN:'核',MAKEUP:'补'}
+      return map[String(value||'').toUpperCase()] || '签'
     },
     captureCheckinPhoto() {
       if (this.checkinPhotoUploading || this.checking) return
@@ -340,6 +396,7 @@ export default {
           const result=await teacherApi.createMyInternshipCheckin({
             batchId:Number(this.batchId),
             timezoneName:this.checkinTimezoneName,
+            note:this.checkinNote.trim()||undefined,
             photoFileId:this.checkinPhotoFileId||undefined,
             coordinateSystem:loc.latitude!=null?'GCJ02':undefined,
             locationProvider:loc.latitude!=null?'UNI_GCJ02':undefined,
@@ -347,6 +404,7 @@ export default {
           })
           this.checkinPhotoFileId=''
           this.checkinPhotoName=''
+          this.checkinNote=''
           toast(result?.evidenceAvailable?'教师签到成功，水印证据已留存':'教师签到已记录')
           await this.load()
         } catch(e) { toast(e?.message||'签到失败') }
@@ -442,6 +500,7 @@ export default {
       this.resetPeriodForm(type)
     },
     editPeriodReport(row) {
+      const ids=Array.isArray(row.attachmentFileIds)?row.attachmentFileIds.map((value)=>String(value)):[]
       this.periodForm={
         reportType:row.reportType,
         periodKey:row.periodKey,
@@ -449,8 +508,37 @@ export default {
         issueContent:row.issueContent||'',
         nextPlan:row.nextPlan||'',
         studentCount:row.studentCount==null?'':String(row.studentCount),
+        attachmentFileIds:ids,
+        attachments:ids.map((fileId,index)=>({fileId,fileName:'已上传附件 '+(index+1)})),
         expectedVersion:Number(row.version||0)
       }
+    },
+    async addPeriodAttachment() {
+      if(this.periodAttachmentUploading||this.periodSaving||this.periodForm.attachments.length>=9) return
+      this.periodAttachmentUploading=true
+      try {
+        const file=await chooseSingleFile()
+        if(!file) return
+        const uploaded=await uploadBusinessFile(file,{bizType:'INTERNSHIP_TEACHER_PERIOD_REPORT'})
+        if(!uploaded?.fileId) throw new Error('周期报告附件上传结果不完整')
+        const fileId=String(uploaded.fileId)
+        if(!this.periodForm.attachmentFileIds.includes(fileId)){
+          this.periodForm.attachmentFileIds.push(fileId)
+          this.periodForm.attachments.push({fileId,fileName:uploaded.fileName||file.name||'周期报告附件'})
+        }
+        toast('周期报告附件已上传')
+      } catch(e) { toast(e?.message||'周期报告附件上传失败') }
+      finally { this.periodAttachmentUploading=false }
+    },
+    removePeriodAttachment(index) {
+      if(this.periodAttachmentUploading||this.periodSaving) return
+      this.periodForm.attachmentFileIds.splice(index,1)
+      this.periodForm.attachments.splice(index,1)
+    },
+    async openPeriodAttachment(file) {
+      if(!file?.fileId) return
+      try { await openBusinessFile(file.fileId,file.fileName||'周期报告附件') }
+      catch(e) { toast(e?.message||'周期报告附件暂时无法打开') }
     },
     async savePeriodReport() {
       if (!this.batchId || this.periodSaving) return
@@ -464,7 +552,8 @@ export default {
           periodKey:this.periodForm.periodKey,
           content:this.periodForm.content,
           issueContent:this.periodForm.issueContent,
-          nextPlan:this.periodForm.nextPlan
+          nextPlan:this.periodForm.nextPlan,
+          attachmentFileIds:[...this.periodForm.attachmentFileIds]
         }
         if(String(this.periodForm.studentCount).trim()) body.studentCount=Number(this.periodForm.studentCount)
         if(this.periodForm.expectedVersion!=null) body.expectedVersion=this.periodForm.expectedVersion
@@ -566,6 +655,6 @@ export default {
 </script>
 
 <style scoped>
-.g16-card{padding:14px;display:flex;flex-direction:column;gap:12px}.danger-link{color:var(--danger-600)}.teacher-checkin-evidence{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border-light);border-radius:10px;background:var(--gray-50)}.notice-dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}.notice-attachments{display:flex;flex-direction:column;gap:7px}.notice-file{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;background:var(--gray-50);font-size:12px}.notice-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--teacher-700)}.notice-remove{flex:0 0 auto;color:var(--danger-600)}.g16-batch{flex-direction:row;align-items:center;justify-content:space-between}.eyebrow,.muted{display:block;font-size:11px;color:var(--text-tertiary);line-height:1.6}.eyebrow{color:var(--teacher-700);font-weight:700}.title{display:block;font-size:17px;font-weight:700}.strong{font-weight:600}.link{font-size:12px;color:var(--teacher-700)}.list-row,.field{display:flex;justify-content:space-between;padding:10px;border-top:1px solid var(--border-light);font-size:12px}.field{border:1px solid var(--border-light);border-radius:8px}.input,.textarea{width:100%;box-sizing:border-box;border:1px solid var(--border-light);border-radius:8px;padding:10px;font-size:13px}.textarea{height:120px}.textarea.small{height:80px}.report{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:8px;background:var(--gray-50)}.body{font-size:13px;line-height:1.65;white-space:pre-wrap}.notice-form{display:flex;flex-direction:column;gap:8px}
+.g16-card{padding:14px;display:flex;flex-direction:column;gap:12px}.danger-link{color:var(--danger-600)}.teacher-checkin-evidence{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px;border:1px solid var(--border-light);border-radius:10px;background:var(--gray-50)}.teacher-calendar{display:flex;flex-direction:column;gap:8px;padding-top:4px}.teacher-calendar-week,.teacher-calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}.teacher-calendar-week text{text-align:center;font-size:10px;color:var(--text-tertiary)}.teacher-calendar-day{min-height:42px;border:1px solid var(--border-light);border-radius:7px;padding:5px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11px;color:var(--text-tertiary);background:var(--gray-50)}.teacher-calendar-day.has-record{border-color:var(--teacher-300,#93c5fd);background:var(--teacher-50,#eff6ff);color:var(--text-primary)}.teacher-calendar-mark{font-size:9px;color:var(--teacher-700);font-weight:700}.period-attachments{display:flex;flex-direction:column;gap:7px;padding:10px;border:1px solid var(--border-light);border-radius:10px;background:var(--gray-50)}.notice-dates{display:grid;grid-template-columns:1fr 1fr;gap:8px}.notice-attachments{display:flex;flex-direction:column;gap:7px}.notice-file{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 10px;border-radius:8px;background:var(--gray-50);font-size:12px}.notice-file-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--teacher-700)}.notice-remove{flex:0 0 auto;color:var(--danger-600)}.g16-batch{flex-direction:row;align-items:center;justify-content:space-between}.eyebrow,.muted{display:block;font-size:11px;color:var(--text-tertiary);line-height:1.6}.eyebrow{color:var(--teacher-700);font-weight:700}.title{display:block;font-size:17px;font-weight:700}.strong{font-weight:600}.link{font-size:12px;color:var(--teacher-700)}.list-row,.field{display:flex;justify-content:space-between;padding:10px;border-top:1px solid var(--border-light);font-size:12px}.field{border:1px solid var(--border-light);border-radius:8px}.input,.textarea{width:100%;box-sizing:border-box;border:1px solid var(--border-light);border-radius:8px;padding:10px;font-size:13px}.textarea{height:120px}.textarea.small{height:80px}.report{display:flex;flex-direction:column;gap:6px;padding:10px;border-radius:8px;background:var(--gray-50)}.body{font-size:13px;line-height:1.65;white-space:pre-wrap}.notice-form{display:flex;flex-direction:column;gap:8px}
 .g16-notice-mask{position:fixed;z-index:9999;inset:0;background:rgba(15,23,42,.68);display:flex;align-items:center;justify-content:center;padding:24px;box-sizing:border-box}.g16-notice-dialog{width:100%;max-width:560px;max-height:82vh;background:var(--bg-card);border-radius:16px;padding:18px;box-sizing:border-box;display:flex;flex-direction:column;gap:12px}.g16-notice-body{max-height:42vh;padding:12px;border:1px solid var(--border-light);border-radius:10px;background:var(--gray-50);box-sizing:border-box}
 </style>

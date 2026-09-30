@@ -1,3 +1,4 @@
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -296,3 +297,19 @@ def test_g16_period_report_routes_are_exposed():
     from app.api.v1.teacher_mobile_internship import router as teacher_router
     paths = {route.path for route in teacher_router.routes}
     assert "/internship/activity/period-reports" in paths
+
+
+def test_g16_teacher_mobile_surface_keeps_tm13_tm14_procurement_controls():
+    source = (
+        Path(__file__).resolve().parents[2]
+        / "mobile/src/pages/teacher-internship/activity/index.vue"
+    ).read_text(encoding="utf-8")
+    for token in (
+        '完整签到日历',
+        'v-model.trim="checkinNote"',
+        'getMyInternshipCheckins(this.batchId,366)',
+        'attachmentFileIds:[...this.periodForm.attachmentFileIds]',
+        'addPeriodAttachment',
+        '添加照片 / 附件',
+    ):
+        assert token in source
