@@ -19,13 +19,14 @@
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template #footer>
-      <button type="button" class="mp-btn" @click="$router.push('/admin/graduation/topic-rounds')">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">创建</button>
+      <AppButton @click="$router.push('/admin/graduation/topic-rounds')">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting" @click="submit">创建</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { AppDateTimePicker, AppDeadlinePicker } from '@/components/common/date'
 import { gdTopicRoundApi } from '@/modules/graduation/api/graduation-topic-round.api'
@@ -42,7 +43,7 @@ const EMPTY_FORM = () => ({
 
 export default {
   name: 'TopicRoundFormView',
-  components: { GraduationFormPageShell, AppDateTimePicker, AppDeadlinePicker, AppGraduationDesignBatchPicker },
+  components: { AppButton, GraduationFormPageShell, AppDateTimePicker, AppDeadlinePicker, AppGraduationDesignBatchPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { form: EMPTY_FORM(), selectedBatchInfo: null, formError: '', submitting: false }

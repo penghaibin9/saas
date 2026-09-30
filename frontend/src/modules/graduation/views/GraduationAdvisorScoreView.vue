@@ -9,11 +9,11 @@
       <section class="as-card as-list">
         <header class="as-card__head">
           <div><strong>选择学生</strong><span>当前批次 · 只列论文定稿已通过的学生</span></div>
-          <button type="button" class="mp-btn" :disabled="loading" @click="loadStudents">刷新</button>
+          <AppButton :disabled="loading" @click="loadStudents">刷新</AppButton>
         </header>
         <div class="as-search">
           <input v-model.trim="keyword" class="ie-in" placeholder="搜索学生姓名 / 学号" @keyup.enter="loadStudents" />
-          <button type="button" class="mp-btn mp-btn--primary" :disabled="loading" @click="loadStudents">查询</button>
+          <AppButton variant="primary" :disabled="loading" @click="loadStudents">查询</AppButton>
         </div>
         <ErrorState v-if="error" :description="error" @retry="loadStudents" />
         <LoadingState v-else-if="loading" />
@@ -61,10 +61,10 @@
               <p v-if="willReset" class="as-warn">该生的综合成绩已经核算过，修改导师分后会退回“待核算”，需要管理员重新核算。</p>
               <p v-if="formError" class="as-error">{{ formError }}</p>
               <div class="as-actions">
-                <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !scoreValid" @click="submit">
+                <AppButton variant="primary" :disabled="submitting || !scoreValid" @click="submit">
                   {{ submitting ? '正在保存…' : '保存导师分' }}
-                </button>
-                <button v-if="students.length > 1" type="button" class="mp-btn" @click="selectNext">选下一位学生</button>
+                </AppButton>
+                <AppButton v-if="students.length > 1" @click="selectNext">选下一位学生</AppButton>
               </div>
             </template>
           </template>
@@ -76,6 +76,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
@@ -86,7 +87,7 @@ const CHIPS = [95, 90, 85, 80, 75, 70, 60]
 
 export default {
   name: 'GraduationAdvisorScoreView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState },
+  components: { AppButton, ModulePageShell, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

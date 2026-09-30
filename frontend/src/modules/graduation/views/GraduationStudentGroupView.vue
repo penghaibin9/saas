@@ -109,15 +109,16 @@
     </template>
 
     <template v-if="batchMode || student" #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !objectReady || !groupName" @click="submit">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting || !objectReady || !groupName" @click="submit">
         {{ submitting ? '正在保存…' : (batchMode ? `确认批量设置 ${recordIds.length} 人` : '确认设置分组') }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
@@ -127,7 +128,7 @@ const SAFE_PREFIX = '/admin/graduation/'
 
 export default {
   name: 'GraduationStudentGroupView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

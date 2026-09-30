@@ -105,7 +105,7 @@
             <LoadingState v-else-if="panelLoading" />
 
             <section v-else-if="tab === 'plagiarism' && canPanel('plagiarism')" class="gp-panel">
-              <div class="gp-panel__head"><div><span>正式成果版本的查重事实</span><strong>查重记录</strong></div><button class="mp-btn mp-btn--primary" :disabled="commandLocked || !canAction('submitPlagiarism')" :title="actionReason('submitPlagiarism')" @click="doSubmitPlagiarism">发起查重</button></div>
+              <div class="gp-panel__head"><div><span>正式成果版本的查重事实</span><strong>查重记录</strong></div><AppButton variant="primary" :disabled="commandLocked || !canAction('submitPlagiarism')" :title="actionReason('submitPlagiarism')" @click="doSubmitPlagiarism">发起查重</AppButton></div>
               <ul v-if="plagiarismList.length" class="gp-timeline">
                 <li v-for="p in plagiarismList" :key="p.id" class="gp-timeline-item">
                   <div class="mp-cell-main"><AppDateDisplay :value="p.submitAt" mode="datetime" /> · <StatusTag :type="p.overThreshold ? 'danger' : 'success'" :label="p.status === 'DONE' ? (p.rate || '—') : p.statusLabel" dot /></div>
@@ -120,7 +120,7 @@
             <section v-else-if="tab === 'review' && canPanel('review')" class="gp-panel">
               <div class="gp-panel__head gp-panel__head--form">
                 <div><span>独立评阅与回避关系</span><strong>教师评阅</strong></div>
-                <div class="ie-actions"><AppGraduationMentorPicker v-model="reviewerMentorId" :query="{ qualificationStatus: 'QUALIFIED', valueMode: 'id', excludeMentorId: current?.mentorId || '', excludeTeacherName: current?.advisorName || '' }" placeholder="搜索评阅教师（自动回避该生导师）" style="width: 260px" /><button class="mp-btn mp-btn--primary" :disabled="commandLocked || !canAction('assignReview')" :title="actionReason('assignReview')" @click="doAssignReview">分配评阅</button></div>
+                <div class="ie-actions"><AppGraduationMentorPicker v-model="reviewerMentorId" :query="{ qualificationStatus: 'QUALIFIED', valueMode: 'id', excludeMentorId: current?.mentorId || '', excludeTeacherName: current?.advisorName || '' }" placeholder="搜索评阅教师（自动回避该生导师）" style="width: 260px" /><AppButton variant="primary" :disabled="commandLocked || !canAction('assignReview')" :title="actionReason('assignReview')" @click="doAssignReview">分配评阅</AppButton></div>
               </div>
               <ul v-if="reviewList.length" class="gp-timeline">
                 <li v-for="r in reviewList" :key="r.id" class="gp-timeline-item"><div class="mp-cell-main">{{ r.reviewerName }} · <StatusTag :type="r.statusTone" :label="r.statusLabel" dot /></div><div v-if="r.opinion" class="mp-cell-sub">评分 {{ r.score }} · {{ r.opinion }}</div><div class="ie-actions"><button v-if="['ASSIGNED', 'REVIEWING', 'RETURNED'].includes(r.status)" class="mp-link" :disabled="commandLocked || !canAction('submitReview')" :title="actionReason('submitReview')" @click="openReviewSubmit(r)">提交评阅</button><button v-if="r.status === 'COMPLETED'" class="mp-link" :disabled="commandLocked || !canAction('returnReview')" :title="actionReason('returnReview')" @click="openReviewReturn(r)">退回重评</button></div></li>
@@ -131,15 +131,15 @@
             <section v-else-if="tab === 'defense' && canPanel('defense')" class="gp-panel">
               <div class="gp-panel__head">
                 <div><span>{{ defenseModeEyebrow }}</span><strong>{{ defenseModeTitle }}</strong></div>
-                <button v-if="canEnterScore" class="mp-btn mp-btn--primary" :disabled="commandLocked" :title="enterScoreReason" @click="openScoreEntry">录入本人评分</button>
+                <AppButton v-if="canEnterScore" variant="primary" :disabled="commandLocked" :title="enterScoreReason" @click="openScoreEntry">录入本人评分</AppButton>
               </div>
               <ul v-if="scoreList.length" class="gp-timeline">
                 <li v-for="d in scoreList" :key="d.id" class="gp-timeline-item"><div class="mp-cell-main">{{ d.judgeName }}（第{{ d.roundNo }}轮）· {{ d.absent ? '缺席' : d.score }} · <StatusTag :type="d.status === 'CONFIRMED' ? 'success' : 'warning'" :label="d.statusLabel" dot /></div><div v-if="d.absent && d.absentReason" class="mp-cell-sub">缺席说明：{{ d.absentReason }}</div></li>
               </ul>
               <EmptyState v-else title="暂无评分记录" description="本轮完整性由服务端判断；页面不根据当前列表推导确认条件。" />
               <div class="ie-actions ie-actions--footer">
-                <button v-if="canConfirmScores" class="mp-btn" :disabled="commandLocked" :title="confirmScoresReason" @click="askConfirmScores">确认本轮成绩</button>
-                <button v-if="canCreateSecondDefense" class="mp-btn" :disabled="commandLocked" :title="secondDefenseReason" @click="openSecondDefense">发起二次答辩</button>
+                <AppButton v-if="canConfirmScores" :disabled="commandLocked" :title="confirmScoresReason" @click="askConfirmScores">确认本轮成绩</AppButton>
+                <AppButton v-if="canCreateSecondDefense" :disabled="commandLocked" :title="secondDefenseReason" @click="openSecondDefense">发起二次答辩</AppButton>
               </div>
               <p class="mp-note">评委只能提交本人评分；秘书只能确认服务端判定为完整的评分轮次，不能代替评委补分。</p>
             </section>
@@ -150,11 +150,11 @@
                 <div class="gp-grade-grid"><div><span>导师分</span><strong>{{ grade.advisorScore ?? '—' }}</strong></div><div><span>评阅分</span><strong>{{ grade.reviewerScore ?? '—' }}</strong></div><div><span>答辩分</span><strong>{{ grade.defenseScore ?? '—' }}</strong></div><div><span>综合分</span><strong>{{ grade.totalScore ?? '—' }}</strong><small>{{ grade.gradeLevel || '未定级' }}</small></div></div>
                 <div class="gp-kv"><span>发布时间</span><AppDateDisplay :value="grade.publishedAt" mode="datetime" /></div>
                 <div class="ie-actions ie-actions--footer">
-                  <button v-if="['DRAFT', 'WITHDRAWN'].includes(grade.status)" class="mp-btn mp-btn--primary" :disabled="commandLocked || !canManageGrade" :title="manageGradeReason" @click="openCalculate">核算成绩</button>
-                  <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="commandLocked || !canReviewGrade" :title="reviewGradeReason" @click="askGradeReview">复核通过</button>
-                  <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="commandLocked || !canReviewGrade" :title="reviewGradeReason" @click="openReturnGrade">复核退回</button>
-                  <button v-if="grade.status === 'REVIEWED'" class="mp-btn mp-btn--primary" :disabled="commandLocked || !canPublishGrade" :title="publishGradeReason" @click="askPublishGrade">发布成绩</button>
-                  <button v-if="grade.status === 'PUBLISHED'" class="mp-btn mp-link--danger" :disabled="commandLocked || !canWithdrawGrade" :title="withdrawGradeReason" @click="openWithdraw">撤回</button>
+                  <AppButton v-if="['DRAFT', 'WITHDRAWN'].includes(grade.status)" variant="primary" :disabled="commandLocked || !canManageGrade" :title="manageGradeReason" @click="openCalculate">核算成绩</AppButton>
+                  <AppButton v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" :disabled="commandLocked || !canReviewGrade" :title="reviewGradeReason" @click="askGradeReview">复核通过</AppButton>
+                  <AppButton v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" :disabled="commandLocked || !canReviewGrade" :title="reviewGradeReason" @click="openReturnGrade">复核退回</AppButton>
+                  <AppButton v-if="grade.status === 'REVIEWED'" variant="primary" :disabled="commandLocked || !canPublishGrade" :title="publishGradeReason" @click="askPublishGrade">发布成绩</AppButton>
+                  <AppButton v-if="grade.status === 'PUBLISHED'" variant="danger" :disabled="commandLocked || !canWithdrawGrade" :title="withdrawGradeReason" @click="openWithdraw">撤回</AppButton>
                 </div>
               </template>
               <EmptyState v-else title="暂无成绩记录" description="成绩生成、复核、发布和撤回顺序由服务端状态机控制。" />
@@ -178,6 +178,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppSearchBox, AppGraduationMentorPicker } from '@/components/common'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
@@ -219,7 +220,7 @@ const freezeSnapshot = (value) => Object.freeze({ ...value })
 
 export default {
   name: 'GraduationDefenseGradeView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppGraduationMentorPicker, AppSearchBox, AppConfirmDialog },
+  components: { AppButton, ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppGraduationMentorPicker, AppSearchBox, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

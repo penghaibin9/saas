@@ -97,15 +97,16 @@
     </template>
 
     <template v-if="canAssignMentor && student" #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitDisabled" @click="submit">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitDisabled" @click="submit">
         {{ submitting ? '正在保存…' : (form.mode === 'change' ? '确认调整导师' : '确认分配导师') }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
 import { AppAvailableGraduationMentorPicker } from '@/components/common'
@@ -118,7 +119,7 @@ const SAFE_PREFIX = '/admin/graduation/'
 
 export default {
   name: 'GraduationMentorAssignView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, AppAvailableGraduationMentorPicker },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, AppAvailableGraduationMentorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -129,7 +129,7 @@ async function studentNavigationHarness({ writeEnabled = true, panel = 'roster' 
   const body = script.replace(/^import\s+[\s\S]*?\s+from\s+(['"])[^'"]+\1[^\S\n]*;?[^\S\n]*$/gm, '')
     .replace(/export\s+default\s+/, 'globalThis.studentOptions = ')
   const sandbox = Object.fromEntries([
-    'ModulePageShell', 'ModuleToolbar', 'AdvancedFilter', 'DataTable',
+    'AppButton', 'ModulePageShell', 'ModuleToolbar', 'AdvancedFilter', 'DataTable',
     'StatusTag', 'RiskTag', 'LoadingState', 'ErrorState', 'EmptyState',
     'AppConfirmDialog', 'AppSensitiveText', 'AppExportButton', 'AppPageGuide',
     'AppExcelImportDrawer'

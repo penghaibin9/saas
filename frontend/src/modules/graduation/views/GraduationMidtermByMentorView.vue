@@ -17,7 +17,7 @@
       </div>
     </template>
     <template #actions>
-      <button type="button" class="mp-btn" :disabled="loading" @click="load">刷新</button>
+      <AppButton :disabled="loading" @click="load">刷新</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -72,13 +72,14 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
 export default {
   name: 'GraduationMidtermByMentorView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState },
+  components: { AppButton, ModulePageShell, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { batchStore: useGraduationBatchStore(), loading: true, error: '', rows: [], s: {}, open: {}, token: 0 }

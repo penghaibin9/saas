@@ -23,13 +23,14 @@
       <AppAuditTrail :records="mentorAuditRecords" compact :show-ip="false" />
     </template>
     <template v-if="detail && detail.qualificationStatus !== 'ARCHIVED'" #footer>
-      <button type="button" class="mp-btn mp-btn--primary" @click="goEdit">编辑导师</button>
-      <button v-if="detail.qualificationStatus === 'QUALIFIED'" type="button" class="mp-btn" @click="goEval">导师评价</button>
+      <AppButton variant="primary" @click="goEdit">编辑导师</AppButton>
+      <AppButton v-if="detail.qualificationStatus === 'QUALIFIED'" @click="goEval">导师评价</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, EmptyState, StatusTag } from '@/components/business'
 import { AppAuditTrail } from '@/components/common'
@@ -37,7 +38,7 @@ import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.
 
 export default {
   name: 'GraduationMentorDetailView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, EmptyState, StatusTag, AppAuditTrail },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, EmptyState, StatusTag, AppAuditTrail },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null }

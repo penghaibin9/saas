@@ -189,18 +189,19 @@
     </template>
 
     <template #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button v-if="groupId && eligibleFree.length" type="button" class="mp-btn" :disabled="!picked.length || submitting" @click="assign">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton v-if="groupId && eligibleFree.length" :disabled="!picked.length || submitting" @click="assign">
         {{ submitting ? '处理中…' : `分配所选（${picked.length}）` }}
-      </button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || loading" @click="save">
+      </AppButton>
+      <AppButton variant="primary" :disabled="submitting || loading" @click="save">
         {{ submitting ? '保存中…' : groupId ? '保存编排' : '创建答辩组' }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { EmptyState, ErrorState, LoadingState } from '@/components/business'
 import { AppDateTimePicker } from '@/components/common/date'
@@ -228,7 +229,7 @@ const EMPTY_FORM = () => ({
 
 export default {
   name: 'DefenseGroupFormView',
-  components: {
+  components: { AppButton,
     GraduationFormPageShell,
     AppDateTimePicker,
     EmptyState,

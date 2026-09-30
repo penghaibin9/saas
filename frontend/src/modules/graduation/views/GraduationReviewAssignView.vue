@@ -10,11 +10,11 @@
       <section class="ra-card ra-list">
         <header class="ra-card__head">
           <div><strong>选择学生</strong><span>当前批次 · 只列已通过定稿的学生</span></div>
-          <button type="button" class="mp-btn" :disabled="loading" @click="loadStudents">刷新</button>
+          <AppButton :disabled="loading" @click="loadStudents">刷新</AppButton>
         </header>
         <div class="ra-search">
           <input v-model.trim="keyword" class="ie-in" placeholder="搜索学生姓名 / 学号" @keyup.enter="loadStudents" />
-          <button type="button" class="mp-btn mp-btn--primary" :disabled="loading" @click="loadStudents">查询</button>
+          <AppButton variant="primary" :disabled="loading" @click="loadStudents">查询</AppButton>
         </div>
         <ErrorState v-if="error" :description="error" @retry="loadStudents" />
         <LoadingState v-else-if="loading" />
@@ -61,10 +61,10 @@
           </label>
           <p v-if="formError" class="ra-error">{{ formError }}</p>
           <div class="ra-actions">
-            <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !reviewerMentorId" @click="assignReview">
+            <AppButton variant="primary" :disabled="submitting || !reviewerMentorId" @click="assignReview">
               {{ submitting ? '正在分配…' : '分配正式评阅' }}
-            </button>
-            <button v-if="assigned" type="button" class="mp-btn" @click="openReviewCenter">进入统一评阅中心</button>
+            </AppButton>
+            <AppButton v-if="assigned" @click="openReviewCenter">进入统一评阅中心</AppButton>
           </div>
           <p class="ra-note">这里只列出论文定稿已通过的学生。评阅老师不能是该生的指导老师；提交时系统会再检查一次，不符合会直接提示原因，不会留下半条记录。</p>
         </template>
@@ -75,6 +75,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppGraduationMentorPicker } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
@@ -84,7 +85,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationReviewAssignView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppGraduationMentorPicker },
+  components: { AppButton, ModulePageShell, LoadingState, ErrorState, EmptyState, AppGraduationMentorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

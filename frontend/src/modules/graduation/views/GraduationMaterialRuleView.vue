@@ -41,7 +41,7 @@
             <small>{{ draft.items.filter((i) => i.enabled).length }} 项材料</small>
           </div>
           <div class="mr-actions">
-            <button type="button" class="mp-btn" :disabled="busy" @click="showImpact(draft)">查看启用影响</button>
+            <AppButton :disabled="busy" @click="showImpact(draft)">查看启用影响</AppButton>
           </div>
           <div v-if="impact && impact.ruleId === draft.id" class="mr-impact">
             <p>启用后会影响本批次 <b>{{ impact.data.affectedStudents }}</b> 名学生，现有材料记录 <b>{{ impact.data.existingMaterialRows }}</b> 条。</p>
@@ -54,11 +54,11 @@
               我已了解：启用时会同步更新学生已有的材料清单（已归档的学生不受影响）
             </label>
             <div class="mr-actions">
-              <button
-                type="button" class="mp-btn mp-btn--primary"
+              <AppButton
+                variant="primary"
                 :disabled="busy || (impact.data.requiresCatalogRepair && !confirmRepair)"
                 @click="activate(draft)"
-              >{{ busy ? '正在启用，请不要关闭页面…' : '确认启用' }}</button>
+              >{{ busy ? '正在启用，请不要关闭页面…' : '确认启用' }}</AppButton>
             </div>
           </div>
         </div>
@@ -70,7 +70,7 @@
             <strong>{{ active ? '修改规则（保存为新草稿）' : '创建第一版规则' }}</strong>
             <span>灰色的是毕设主流程必需的材料，不能关闭</span>
           </div>
-          <button type="button" class="mp-btn" :disabled="busy" @click="resetEditor">恢复为{{ active ? '当前规则' : '标准模板' }}</button>
+          <AppButton :disabled="busy" @click="resetEditor">恢复为{{ active ? '当前规则' : '标准模板' }}</AppButton>
         </header>
         <div class="mr-scroll">
           <table class="mr-table mr-edit">
@@ -96,7 +96,7 @@
         </div>
         <p v-if="formError" class="mr-error">{{ formError }}</p>
         <div class="mr-actions">
-          <button type="button" class="mp-btn mp-btn--primary" :disabled="busy" @click="saveDraft">保存为草稿</button>
+          <AppButton variant="primary" :disabled="busy" @click="saveDraft">保存为草稿</AppButton>
           <span class="mr-note">保存后会出现在上面的“待启用的草稿”，确认影响后才会生效。</span>
         </div>
       </section>
@@ -105,6 +105,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationMaterialCenterApi } from '@/modules/graduation/api/graduation-material-center.api'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
@@ -120,7 +121,7 @@ const MB = 1024 * 1024
 
 export default {
   name: 'GraduationMaterialRuleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState },
+  components: { AppButton, ModulePageShell, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

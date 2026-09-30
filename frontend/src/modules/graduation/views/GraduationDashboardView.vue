@@ -23,8 +23,8 @@
       description="选择当前工作批次后，再查看真实待办、风险和阶段进度。"
     >
       <template #actions>
-        <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/batches?panel=create')">＋ 新增毕设批次</button>
-        <button class="mp-btn" @click="$router.push('/admin/graduation/batches?panel=list')">去批次列表</button>
+        <AppButton variant="primary" @click="$router.push('/admin/graduation/batches?panel=create')">＋ 新增毕设批次</AppButton>
+        <AppButton @click="$router.push('/admin/graduation/batches?panel=list')">去批次列表</AppButton>
       </template>
     </EmptyState>
 
@@ -34,7 +34,7 @@
           <strong>开工检查：还差 {{ setup.total - setup.doneCount }} 步</strong>
           <p>{{ setupNextText }}</p>
         </div>
-        <button type="button" class="mp-btn mp-btn--primary" @click="goWithBatch('/admin/graduation/setup')">去完成 →</button>
+        <AppButton variant="primary" @click="goWithBatch('/admin/graduation/setup')">去完成 →</AppButton>
       </section>
       <section class="gdb-overview gdb-work" aria-label="当前最高优先工作">
         <div v-if="firstWorkItem" class="gdb-focus">
@@ -55,12 +55,12 @@
               <span><b>最近变化</b>{{ firstWorkItem.recentChange || '暂无新变化' }}</span>
             </div>
           </div>
-          <button
-            type="button"
-            class="mp-btn mp-btn--primary gdb-focus__action"
+          <AppButton
+           
+            variant="primary" class="gdb-focus__action"
             :aria-label="`${firstWorkItem.primaryAction?.label || '去处理'}：${firstWorkItem.student?.name || firstWorkItem.business || '毕业设计事项'}`"
             @click="goWorkItem(firstWorkItem)"
-          >{{ firstWorkItem.primaryAction?.label || '去处理' }} →</button>
+          >{{ firstWorkItem.primaryAction?.label || '去处理' }} →</AppButton>
         </div>
         <div v-else class="gdb-focus gdb-focus--empty">
           <span class="gdb-focus__ok">✓</span>
@@ -149,6 +149,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
@@ -187,7 +188,7 @@ function moduleStatsFromOverview(overview = {}) {
 
 export default {
   name: 'GraduationDashboardView',
-  components: { ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState },
+  components: { AppButton, ModulePageShell, ModuleToolbar, RiskTag, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

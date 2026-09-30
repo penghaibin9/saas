@@ -16,7 +16,7 @@
         <div><b>{{ conflictCount('advancedNoMentor') }}</b><span>进阶段无导师</span></div>
         <div><b>{{ conflictCount('unqualifiedMentor') }}</b><span>导师未认证</span></div>
       </div>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="loading" @click="load">{{ loading ? '检测中…' : '重新检测' }}</button>
+      <AppButton variant="primary" :disabled="loading" @click="load">{{ loading ? '检测中…' : '重新检测' }}</AppButton>
     </section>
 
     <p class="mc-scope-note">
@@ -87,12 +87,13 @@
     </div>
 
     <template #footer>
-      <button type="button" class="mp-btn" @click="goBack">返回导师与分配</button>
+      <AppButton @click="goBack">返回导师与分配</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
@@ -105,7 +106,7 @@ const EMPTY_CONFLICTS = () => ({ overCapacity: [], advancedNoMentor: [], unquali
 
 export default {
   name: 'GraduationMentorConflictsView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, EmptyState },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

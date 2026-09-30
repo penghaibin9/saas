@@ -40,7 +40,7 @@
             <div><b>{{ riskStats?.criticalOpenCount ?? '—' }}</b><span>紧急风险</span></div>
             <div><b>{{ lastScanStats?.elapsedMs == null ? '—' : `${lastScanStats.elapsedMs}ms` }}</b><span>扫描耗时</span></div>
           </div>
-          <button v-if="canRiskScan" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doScan">{{ actionBusy === 'scan-risk' ? '扫描中…' : '扫描生成风险项' }}</button>
+          <AppButton v-if="canRiskScan" variant="primary" :disabled="contextLocked" @click="doScan">{{ actionBusy === 'scan-risk' ? '扫描中…' : '扫描生成风险项' }}</AppButton>
         </section>
 
         <section class="rk-rules" aria-label="13类毕业设计风险规则摘要">
@@ -78,7 +78,7 @@
           description="可调整条件或重新运行服务端扫描；没有记录不代表浏览器已自行判定无风险。"
         >
           <template v-if="canRiskScan" #actions>
-            <button class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doScan">扫描生成风险项</button>
+            <AppButton variant="primary" :disabled="contextLocked" @click="doScan">扫描生成风险项</AppButton>
           </template>
         </EmptyState>
         <div v-else class="rk-split" :class="{ 'is-command-locked': contextLocked }" :aria-busy="contextLocked">
@@ -146,9 +146,9 @@
                 <div v-if="selectedRisk.lastDetectedAt" class="mp-kv"><span class="mp-kv__k">最近仍命中</span><span class="mp-kv__v">{{ formatDateTime(selectedRisk.lastDetectedAt) }}</span></div>
                 <div v-if="selectedRisk.handleNote" class="mp-kv"><span class="mp-kv__k">处理记录</span><span class="mp-kv__v">{{ selectedRisk.handleNote }}</span></div>
                 <div class="ie-actions ie-actions--left">
-                  <button v-if="canRiskAccept && selectedRisk.status === 'OPEN'" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="askRiskAction('accept', selectedRisk)">受理</button>
-                  <button v-if="canRiskProcess && selectedRisk.status === 'PROCESSING'" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="askRiskAction('process', selectedRisk)">记录处理</button>
-                  <button v-if="canRiskClose && (selectedRisk.status === 'PROCESSING' || (selectedRisk.status === 'OPEN' && selectedRisk.conditionActive === false))" class="mp-btn" :disabled="contextLocked" @click="askRiskAction('close', selectedRisk)">关闭风险</button>
+                  <AppButton v-if="canRiskAccept && selectedRisk.status === 'OPEN'" variant="primary" :disabled="contextLocked" @click="askRiskAction('accept', selectedRisk)">受理</AppButton>
+                  <AppButton v-if="canRiskProcess && selectedRisk.status === 'PROCESSING'" variant="primary" :disabled="contextLocked" @click="askRiskAction('process', selectedRisk)">记录处理</AppButton>
+                  <AppButton v-if="canRiskClose && (selectedRisk.status === 'PROCESSING' || (selectedRisk.status === 'OPEN' && selectedRisk.conditionActive === false))" :disabled="contextLocked" @click="askRiskAction('close', selectedRisk)">关闭风险</AppButton>
                   <span v-if="selectedRisk.status === 'CLOSED'" class="mp-note">该风险已关闭</span>
                 </div>
                 <p class="mp-note">受理、处理、关闭均按 permission + status 调用原接口并写入审计；页面不会自动修改风险。</p>
@@ -173,8 +173,8 @@
             <small>固定顺序：预览 → 用户确认 → 一次性 previewToken → execute → 服务器回读 / 精确对账。</small>
           </div>
           <div class="ar-command__actions">
-            <button v-if="canArchivePreview && canArchiveFile" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="startArchivePreview('batch-generate')">{{ previewBusy === 'batch-generate-preview' ? '预览中…' : '批量生成提交' }}</button>
-            <button v-if="canArchivePreview && canArchiveFile" class="mp-btn" :disabled="contextLocked" @click="startArchivePreview('batch-file')">{{ previewBusy === 'batch-file-preview' ? '预览中…' : '一键核验备案' }}</button>
+            <AppButton v-if="canArchivePreview && canArchiveFile" variant="primary" :disabled="contextLocked" @click="startArchivePreview('batch-generate')">{{ previewBusy === 'batch-generate-preview' ? '预览中…' : '批量生成提交' }}</AppButton>
+            <AppButton v-if="canArchivePreview && canArchiveFile" :disabled="contextLocked" @click="startArchivePreview('batch-file')">{{ previewBusy === 'batch-file-preview' ? '预览中…' : '一键核验备案' }}</AppButton>
             <AppExportButton v-if="canArchiveExport" :export-fn="exportArchivesFn">导出台账</AppExportButton>
           </div>
         </section>
@@ -257,11 +257,11 @@
                 <div class="ie-actions ie-actions--left">
                   <span v-if="selectedArchive.dataAnomaly" class="ar-anomaly">历史主档异常，当前归档记录仅允许只读查看</span>
                   <template v-else>
-                    <button v-if="canArchivePreview && ['NOT_GENERATED', 'REJECTED'].includes(selectedArchive.status)" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doGenerate(selectedArchive)">生成清单</button>
-                    <button v-if="canArchiveFile && selectedArchive.status === 'PENDING_SUBMIT' && !selectedArchive.missingItems.length" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doSubmit(selectedArchive)">提交归档</button>
+                    <AppButton v-if="canArchivePreview && ['NOT_GENERATED', 'REJECTED'].includes(selectedArchive.status)" variant="primary" :disabled="contextLocked" @click="doGenerate(selectedArchive)">生成清单</AppButton>
+                    <AppButton v-if="canArchiveFile && selectedArchive.status === 'PENDING_SUBMIT' && !selectedArchive.missingItems.length" variant="primary" :disabled="contextLocked" @click="doSubmit(selectedArchive)">提交归档</AppButton>
                     <span v-if="selectedArchive.status === 'PENDING_SUBMIT' && selectedArchive.missingItems.length" class="mp-note">缺件补齐后方可提交归档</span>
-                    <button v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doFile(selectedArchive)">核验归档</button>
-                    <button v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" class="mp-btn" :disabled="contextLocked" @click="askRejectArchive(selectedArchive)">驳回</button>
+                    <AppButton v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" variant="primary" :disabled="contextLocked" @click="doFile(selectedArchive)">核验归档</AppButton>
+                    <AppButton v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" :disabled="contextLocked" @click="askRejectArchive(selectedArchive)">驳回</AppButton>
                     <span v-if="selectedArchive.status === 'FILED'" class="mp-note">已正式归档备案，记录只读</span>
                   </template>
                 </div>
@@ -315,6 +315,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 /** 风险 / 归档 / 统计工作台：服务端规则真值、不可变命令快照、一次性归档令牌。 */
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
@@ -357,7 +358,7 @@ function errorText(error, fallback) {
 
 export default {
   name: 'GraduationRiskArchiveView',
-  components: { AppPageGuide, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExportButton, AppPagination, AppStackedBarChart },
+  components: { AppButton, AppPageGuide, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExportButton, AppPagination, AppStackedBarChart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

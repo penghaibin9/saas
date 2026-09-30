@@ -20,7 +20,7 @@
       </div>
     </template>
     <template #actions>
-      <button type="button" class="mp-btn" :disabled="loading" @click="load">刷新</button>
+      <AppButton :disabled="loading" @click="load">刷新</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -55,12 +55,12 @@
                 <small>{{ task.hint }}</small>
               </div>
               <b class="tw-task__count" :aria-label="`${task.count} 件`">{{ task.count }}</b>
-              <button
+              <AppButton
                 v-if="task.action !== 'topic.choice' && task.items.length"
-                type="button"
-                class="mp-btn mp-btn--primary"
+               
+                variant="primary"
                 @click="go(task, task.items[0])"
-              >{{ startLabel(task) }} →</button>
+              >{{ startLabel(task) }} →</AppButton>
             </div>
             <ul class="tw-items">
               <li v-for="item in visibleItems(task)" :key="`${task.key}-${item.id || item.gdStudentId}`" class="tw-item">
@@ -82,7 +82,7 @@
                     <button type="button" class="mp-link" :disabled="busy" @click="rejecting = ''">取消</button>
                   </template>
                   <template v-else>
-                    <button type="button" class="mp-btn mp-btn--primary mp-btn--sm" :disabled="busy" @click="confirmChoice(item)">确认</button>
+                    <AppButton variant="primary" :disabled="busy" @click="confirmChoice(item)">确认</AppButton>
                     <button type="button" class="mp-link mp-link--danger" :disabled="busy" @click="startReject(item)">驳回</button>
                   </template>
                 </div>
@@ -148,6 +148,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { gdTopicRoundApi } from '@/modules/graduation/api/graduation-topic-round.api'
@@ -167,7 +168,7 @@ const PREVIEW = 5
 
 export default {
   name: 'TeacherWorkbenchView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState },
+  components: { AppButton, ModulePageShell, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -160,15 +160,16 @@
     </template>
 
     <template #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || loading" @click="submitForm">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting || loading" @click="submitForm">
         {{ submitting ? '保存中…' : editing ? '保存题目' : form.submitReview ? '保存并提交审核' : '保存草稿' }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { ErrorState, LoadingState } from '@/components/business'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
@@ -206,7 +207,7 @@ const freezeSnapshot = (value) => Object.freeze({ ...value })
 
 export default {
   name: 'TopicLibFormView',
-  components: {
+  components: { AppButton,
     GraduationFormPageShell,
     ErrorState,
     LoadingState,

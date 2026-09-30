@@ -61,9 +61,9 @@
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc">
         <template v-if="showRosterEmptyActions" #actions>
-          <button class="mp-btn mp-btn--primary" :disabled="!writeEnabled" @click="onToolbar('create')">＋ 建档</button>
-          <button class="mp-btn" :disabled="!writeEnabled" @click="onToolbar('import')">导入 Excel</button>
-          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-students')">怎么导入名单？</button>
+          <AppButton variant="primary" :disabled="!writeEnabled" @click="onToolbar('create')">＋ 建档</AppButton>
+          <AppButton :disabled="!writeEnabled" @click="onToolbar('import')">导入 Excel</AppButton>
+          <AppButton @click="$router.push('/admin/help?topic=gd-card-students')">怎么导入名单？</AppButton>
         </template>
       </EmptyState>
       <DataTable
@@ -150,6 +150,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 /** 毕设学生列表：真实学生主档投影；毕业资格为教务只读镜像。 */
 import {
   ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
@@ -252,7 +253,7 @@ function errorText(error, fallback) { return error?.message || fallback }
 
 export default {
   name: 'GraduationStudentListView',
-  components: { AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
+  components: { AppButton, AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

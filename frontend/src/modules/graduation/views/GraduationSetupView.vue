@@ -7,14 +7,14 @@
     :data-scope-name="ctx.dataScope?.scopeName"
   >
     <template #actions>
-      <button type="button" class="mp-btn" :disabled="loading" @click="load">重新检查</button>
+      <AppButton :disabled="loading" @click="load">重新检查</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" text="正在检查…" />
     <EmptyState v-else-if="!hasBatch || !data.batch" title="先新建一个毕设批次" description="批次是一届毕业设计的容器：时间节点、学生、导师都挂在批次下面。">
       <template #actions>
-        <button class="mp-btn mp-btn--primary" type="button" @click="$router.push('/admin/graduation/batches/create')">＋ 新建毕设批次</button>
+        <AppButton variant="primary" @click="$router.push('/admin/graduation/batches/create')">＋ 新建毕设批次</AppButton>
       </template>
     </EmptyState>
 
@@ -42,13 +42,13 @@
               怎么处理：在「导师与分配」里把导师的工号改成他登录系统用的账号；还没有账号的，请在「系统管理 › 教职工账号」里用工号给老师建账号。
             </p>
           </div>
-          <button
+          <AppButton
             v-if="!step.done"
-            type="button"
-            class="mp-btn"
+           
+           
             :class="{ 'mp-btn--primary': index === firstTodo }"
             @click="go(step)"
-          >{{ actionLabel(step) }} →</button>
+          >{{ actionLabel(step) }} →</AppButton>
         </li>
       </ol>
     </div>
@@ -56,6 +56,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
@@ -65,7 +66,7 @@ const LABELS = { timeline: '去设置时间', students: '去导入学生', mento
 
 export default {
   name: 'GraduationSetupView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState },
+  components: { AppButton, ModulePageShell, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { batchStore: useGraduationBatchStore(), loading: true, error: '', data: EMPTY(), token: 0 }

@@ -48,8 +48,8 @@
       description="先把学生分进组、排好时间地点和评委秘书，再发布并发送通知。"
     >
       <template #actions>
-        <button v-if="canCreateGroup" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="openCreate">＋ 新增答辩组</button>
-        <button class="mp-btn" :disabled="contextLocked" @click="goExperts">先维护答辩专家库</button>
+        <AppButton v-if="canCreateGroup" variant="primary" :disabled="contextLocked" @click="openCreate">＋ 新增答辩组</AppButton>
+        <AppButton :disabled="contextLocked" @click="goExperts">先维护答辩专家库</AppButton>
       </template>
     </EmptyState>
 
@@ -127,6 +127,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 /** 答辩安排（/admin/graduation/defense）：可恢复工作上下文、latest-wins、发布/通知命令快照。 */
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDateDisplay } from '@/components/common/date'
@@ -144,7 +145,7 @@ const freezeSnapshot = (value) => Object.freeze({ ...value })
 
 export default {
   name: 'DefenseScheduleView',
-  components: { AppPageGuide, ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton, AppConfirmDialog },
+  components: { AppButton, AppPageGuide, ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppExportButton, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -37,19 +37,20 @@
       </div>
     </template>
     <template v-if="detail && canEdit" #footer>
-      <button type="button" class="mp-btn mp-btn--primary" @click="goEdit">编辑题目</button>
+      <AppButton variant="primary" @click="goEdit">编辑题目</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 
 export default {
   name: 'TopicLibDetailView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, EmptyState },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, assigned: [] }

@@ -112,15 +112,16 @@
     </template>
 
     <template #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !form.studentId" @click="submit">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting || !form.studentId" @click="submit">
         {{ submitting ? '正在建档…' : '确认建档' }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import {
   AppGraduationCandidateStudentPicker,
@@ -135,7 +136,7 @@ const SAFE_PREFIX = '/admin/graduation/'
 
 export default {
   name: 'GraduationStudentFormView',
-  components: {
+  components: { AppButton,
     GraduationFormPageShell,
     AppGraduationCandidateStudentPicker,
     AppGraduationDesignBatchPicker,
