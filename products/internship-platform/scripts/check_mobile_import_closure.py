@@ -51,6 +51,7 @@ def main() -> int:
     forbidden_routes = {
         "/pages/student/home/index": "parent student home",
         "/pages/teacher/workbench/index": "parent teacher workbench",
+        "/pages/student/employment/index": "parent employment module",
     }
     route_escapes: list[tuple[str, str, str]] = []
     for source in files:
@@ -75,7 +76,7 @@ def main() -> int:
 
     print(
         f"Standalone mobile import/navigation closure OK: "
-        f"{len(files)} source files checked; no parent home routes found."
+        f"{len(files)} source files checked; no parent product routes found."
     )
     return 0
 
