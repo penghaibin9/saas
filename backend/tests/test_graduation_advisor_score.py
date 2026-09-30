@@ -65,7 +65,10 @@ def test_other_teacher_cannot_score(graduation_client, auth_headers, db_mode):
     gid = _student(graduation_client, auth_headers, "AS002", "他人学生", "导师乙")
     other = _mentor_headers("AS002X", "导师丙")
     res = graduation_client.post(f"{GD_GRADE}/{gid}/advisor-score", headers=other, json={"score": 80})
-    assert res.status_code in (403, 404) or res.json().get("code") not in (0, None)
+    body = res.json()
+    # 必须是“无权限/找不到”，不能因为别的原因（如定稿未通过 409）而恰好失败。
+    assert res.status_code in (403, 404) or str(body.get("code", "")).startswith(("403", "404")), res.text
+    assert res.status_code != 409 and not str(body.get("code", "")).startswith("409"), res.text
 
 
 def test_final_not_approved_blocks_score(graduation_client, auth_headers, db_mode):
