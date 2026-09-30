@@ -99,6 +99,13 @@ jobs:
         working-directory: products/internship-platform/enterprise-web
         run: npx playwright test -c playwright.standalone-pc-real.config.mjs
 
+      - name: Collect backend readiness evidence
+        if: always()
+        run: |
+          mkdir -p products/internship-platform/enterprise-web/test-results-surfaces-real
+          cp /tmp/internship-ready.json products/internship-platform/enterprise-web/test-results-surfaces-real/backend-ready.json 2>/dev/null || true
+          cp /tmp/internship-fullstack-backend.log products/internship-platform/enterprise-web/test-results-surfaces-real/backend.log 2>/dev/null || true
+
       - name: Upload PC full-stack evidence
         if: always()
         uses: actions/upload-artifact@v4
