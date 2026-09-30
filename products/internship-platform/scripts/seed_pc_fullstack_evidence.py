@@ -21,8 +21,10 @@ from app.models import (
 TENANT_ID = 88101
 STAFF_ID = 88111
 STUDENT_ID = 88112
+TEACHER_ID = 88113
 STAFF_ROLE_ID = 88121
 STUDENT_ROLE_ID = 88122
+TEACHER_ROLE_ID = 88123
 STUDENT_PROFILE_ID = 88131
 BATCH_ID = 88141
 
@@ -63,6 +65,14 @@ def main() -> None:
             role_type="SYSTEM",
             status="ACTIVE",
         )
+        teacher_role = Role(
+            id=TEACHER_ROLE_ID,
+            tenant_id=TENANT_ID,
+            role_code="INTERN_MENTOR",
+            role_name="实习指导教师",
+            role_type="SYSTEM",
+            status="ACTIVE",
+        )
         staff = User(
             id=STAFF_ID,
             tenant_id=TENANT_ID,
@@ -70,6 +80,17 @@ def main() -> None:
             real_name="全栈验收管理员",
             password_hash=hash_password("Fullstack-Staff-2026!"),
             user_type="SCHOOL_ADMIN",
+            status="ACTIVE",
+            must_change_password=False,
+            credential_version=0,
+        )
+        teacher = User(
+            id=TEACHER_ID,
+            tenant_id=TENANT_ID,
+            login_name="fullstack.teacher",
+            real_name="全栈验收教师",
+            password_hash=hash_password("Fullstack-Teacher-2026!"),
+            user_type="INTERN_MENTOR",
             status="ACTIVE",
             must_change_password=False,
             credential_version=0,
@@ -121,7 +142,9 @@ def main() -> None:
             tenant,
             staff_role,
             student_role,
+            teacher_role,
             staff,
+            teacher,
             student,
             profile,
             link,
@@ -130,6 +153,12 @@ def main() -> None:
                 tenant_id=TENANT_ID,
                 user_id=STAFF_ID,
                 role_id=STAFF_ROLE_ID,
+                status="ACTIVE",
+            ),
+            UserRole(
+                tenant_id=TENANT_ID,
+                user_id=TEACHER_ID,
+                role_id=TEACHER_ROLE_ID,
                 status="ACTIVE",
             ),
             UserRole(
@@ -144,6 +173,7 @@ def main() -> None:
             "tenantCode": tenant.tenant_code,
             "staffLogin": staff.login_name,
             "studentLogin": student.login_name,
+            "teacherLogin": teacher.login_name,
             "batchId": batch.id,
             "batchNo": batch.batch_no,
         })
