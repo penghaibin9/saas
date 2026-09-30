@@ -61,7 +61,8 @@ def _session_hash(session_id: str) -> str:
 
 
 def _channel_from_client_type(client_type: str | None) -> str:
-    return "student" if str(client_type or "").strip().upper() == "STUDENT_PC" else "staff"
+    client = str(client_type or "").strip().upper()
+    return "student" if client in {"STUDENT_PC", "STUDENT_MINI"} else "staff"
 
 
 def _cookie_name(channel: str, session_id: str) -> str:

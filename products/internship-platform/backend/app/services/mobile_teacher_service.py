@@ -5,14 +5,17 @@ from app.models import College,Major,SchoolClass,TeacherStudentScope
 from app.services.db_service import _tid,session
 _ADVISOR_ROLES=frozenset({"INTERN_MENTOR","TEACHER","INTERNSHIP_ADVISOR"})
 def _role(user):return str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or (user or {}).get("userType") or "").upper()
+def _db_user_id(value):
+    raw=str(value or "").strip()
+    if raw.lower().startswith("db-"):raw=raw[3:]
+    return int(raw) if raw.isdigit() else None
 def resolve_teacher_scope(user=None):
     u=user or get_current_user_ctx() or {};role=_role(u)
     if role in {"SCHOOL_ADMIN","PLATFORM_SUPER_ADMIN"}:
         return {"mode":"ADMIN_TENANT","roleCode":role,"by":"ROLE","studentNos":set(),"classNames":set(),"collegeNames":set(),"majorNames":set(),"advisorNames":set(),"advisorUserIds":set()}
     scope={"mode":"SCOPED","roleCode":role,"by":"DEFAULT_DENY","studentNos":set(),"classNames":set(),"collegeNames":set(),"majorNames":set(),"advisorNames":set(),"advisorUserIds":set()}
-    try:
-        if u.get("userId") or u.get("id"):scope["advisorUserIds"].add(int(u.get("userId") or u.get("id")))
-    except Exception:pass
+    advisor_user_id=_db_user_id(u.get("userId") or u.get("id"))
+    if advisor_user_id is not None:scope["advisorUserIds"].add(advisor_user_id)
     if str(u.get("realName") or "").strip():scope["advisorNames"].add(str(u.get("realName")).strip())
     keys={str(u.get("loginName") or "").strip(),str(u.get("userId") or u.get("id") or "").strip(),str(u.get("realName") or "").strip()}-{""}
     if not keys:return scope

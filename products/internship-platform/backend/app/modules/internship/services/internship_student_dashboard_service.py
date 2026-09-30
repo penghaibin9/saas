@@ -153,7 +153,7 @@ def get_my_dashboard(user, batch_id=None):
             "enterpriseMentor": record.enterprise_mentor_name or "",
             "todayCheckin": {
                 "done": bool(checkin),
-                "time": _iso(getattr(checkin, "checkin_time", None)) or "",
+                "time": _iso(getattr(checkin, "checkin_at", None)) or "",
                 "totalDays": checkin_total,
             },
             "weekly": {
