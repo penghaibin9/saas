@@ -3,16 +3,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.core.field_crypto import encrypt_field, mask_id_card_encrypted, mask_phone_encrypted
 from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
+from app.core.tenant_scoped import tenant_get
 from app.models import (CsAuditTrail, CsDiscipline, CsDormException, CsDormRecord, CsGrant, CsLeave,
                         CsMentalRecord, CsServiceStudent, CsWorkOrder)
 from app.services import shadow_student_service as shadow
-from app.services.db_service import _iso, _tid, session
+from app.services.db_service import _as_id, _iso, _tid, session
 
 L_LEAVE_T = {"SICK": "病假", "PERSONAL": "事假", "GOOUT": "外出报备"}
 L_LEAVE_S = {"PENDING_REVIEW": "待审批", "APPROVED": "已通过", "RETURNED": "已退回", "CANCELLED": "已销假"}
@@ -42,6 +43,44 @@ def _audit(db, biz_type, biz_id, action, detail="", before="", after=""):
     db.add(CsAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=str(biz_id), action=action,
                         operator=n, role_name=r, detail=detail, before_val=before, after_val=after,
                         occurred_at=datetime.utcnow()))
+
+
+def _work_order_notice(db, order: CsWorkOrder, *, status_label: str, note: str,
+                       status: str, version: int):
+    """同事务写学生结果通知；投递失败不回滚已经办结的正式工单。"""
+    student = _stu_of(db, order.cs_student_id)
+    if not student or student.tenant_id != _tid() or student.is_deleted:
+        return None
+    student_id = int(getattr(student, "student_id", 0) or 0)
+    if student_id <= 0:
+        return None
+    from app.services.message_event_outbox_service import emit_receiver_notice
+    outbox = emit_receiver_notice(
+        db,
+        event_code="CAMPUS_SERVICE.WORKORDER_UPDATED",
+        source_module="campus-service",
+        source_biz_type="work_order",
+        source_biz_id=int(order.id),
+        receiver_id=student_id,
+        receiver_as="student",
+        title=f"服务申请{status_label}",
+        content=f"你的服务申请“{order.title}”{status_label}。处理说明：{note}",
+        action_key="student.campus-service.work-order",
+        action_params={"caseId": f"workorder:{order.id}"},
+        dedup_extra=f"{version}:{status}",
+    )
+    return int(getattr(outbox, "id", 0) or 0) or None
+
+
+def _drain_work_order_notice(outbox_id):
+    if not outbox_id:
+        return
+    from app.services.message_event_outbox_service import try_process_pending_outbox
+    try:
+        try_process_pending_outbox(worker_id="campus-workorder-inline", outbox_ids=[int(outbox_id)])
+    except Exception:
+        # 事务与审计已经提交；worker 会按 outbox 重试，不能因即时通知失败伪装写操作失败。
+        pass
 
 
 def _page(items, page, page_size):
@@ -83,7 +122,7 @@ def _require_cs_scope(db, cs_student_id, scope_ids="__q__", student_id=None):
         from app.services.affairs_dashboard_service import _allowed_class_ids
         allowed, _ = _allowed_class_ids(db, get_current_user_ctx() or {})
         if allowed is not None:
-            s = db.get(StudentProfile, int(student_id))
+            s = tenant_get(db, StudentProfile, int(student_id))
             if not s or s.class_id not in allowed:
                 raise AppException("NO_DATA_SCOPE", "该记录不在您的数据范围内")
         return
@@ -93,7 +132,7 @@ def _require_cs_scope(db, cs_student_id, scope_ids="__q__", student_id=None):
 
 
 def _get_stu(db, sid) -> CsServiceStudent:
-    s = db.get(CsServiceStudent, int(sid))
+    s = tenant_get(db, CsServiceStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("学生服务记录不存在或不在当前数据范围内")
     _require_cs_scope(db, s.id)
@@ -101,7 +140,7 @@ def _get_stu(db, sid) -> CsServiceStudent:
 
 
 def _stu_of(db, csid):
-    return db.get(CsServiceStudent, csid)
+    return tenant_get(db, CsServiceStudent, csid)
 
 
 def _cs_students_by_ids(db, rows, attr="cs_student_id"):
@@ -294,7 +333,7 @@ def list_grants(page, page_size, keyword=None, type=None, status=None):
 
 def get_grant_detail(gid) -> dict:
     with session() as db:
-        x = db.get(CsGrant, int(gid))
+        x = tenant_get(db, CsGrant, int(gid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("资助申请不存在")
         _require_cs_scope(db, x.cs_student_id)
@@ -307,7 +346,7 @@ def _grant_act(gid, target, need_reason=False, reason=None, node="", action="", 
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     ver = require_expected_version(expected_version)
     with session() as db:
-        x = db.get(CsGrant, int(gid))
+        x = tenant_get(db, CsGrant, int(gid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("资助申请不存在")
         _require_cs_scope(db, x.cs_student_id)
@@ -438,7 +477,7 @@ def handle_dorm_exception(eid, note, complete=False, expected_version=None) -> d
         raise AppException("VALIDATION_ERROR", "处理说明必填且不少于 5 字")
     ver = require_expected_version(expected_version)
     with session() as db:
-        e = db.get(CsDormException, int(eid))
+        e = tenant_get(db, CsDormException, int(eid))
         if not e or e.is_deleted or e.tenant_id != _tid():
             raise not_found("宿舍异常不存在")
         _require_cs_scope(db, e.cs_student_id)
@@ -517,7 +556,7 @@ def _wo_row(x: CsWorkOrder, stu=None) -> dict:
             "name": stu.name if stu else "", "className": stu.class_name if stu else "",
             "type": x.wo_type, "typeLabel": L_WO_T.get(x.wo_type, x.wo_type),
             "priority": x.priority, "handler": x.handler or "",
-            "status": x.status, "statusLabel": L_WO_S.get(x.status, x.status),
+            "status": x.status, "statusLabel": L_WO_S.get(x.status, "状态待确认"),
             "version": int(x.version or 0),
             "detail": x.detail or "", "createTime": _iso(x.created_at),
             "updateTime": _iso(x.updated_at), "closeTime": _iso(x.close_time) or ""}
@@ -525,36 +564,55 @@ def _wo_row(x: CsWorkOrder, stu=None) -> dict:
 
 def list_work_orders(page, page_size, keyword=None, type=None, status=None, priority=None):
     with session() as db:
-        q = select(CsWorkOrder).where(CsWorkOrder.tenant_id == _tid(), CsWorkOrder.is_deleted.is_(False))
+        # 工单经常作为服务大厅的主队列。不能像旧实现那样先把当前学校所有工单取回，
+        # 再在 Python 过滤和分页；那会随着历史工单增长拖慢教师端并把大量无关数据带出数据库。
+        q = (
+            select(CsWorkOrder, CsServiceStudent)
+            .outerjoin(CsServiceStudent, and_(
+                CsServiceStudent.id == CsWorkOrder.cs_student_id,
+                CsServiceStudent.tenant_id == CsWorkOrder.tenant_id,
+                CsServiceStudent.is_deleted.is_(False)))
+            .where(CsWorkOrder.tenant_id == _tid(), CsWorkOrder.is_deleted.is_(False))
+        )
         if type:
             q = q.where(CsWorkOrder.wo_type == type)
         if status:
             q = q.where(CsWorkOrder.status == status)
         if priority:
             q = q.where(CsWorkOrder.priority == priority)
-        rows = db.scalars(q.order_by(CsWorkOrder.id.desc())).all()
         scope_ids = _cs_scope_student_ids(db)
-        cs_map = _cs_students_by_ids(db, rows)
-        items = []
-        for x in rows:
-            if scope_ids is not None and x.cs_student_id not in scope_ids:
-                continue
-            stu = cs_map.get(int(x.cs_student_id)) if x.cs_student_id else None
-            if keyword and (not stu or (keyword.strip() not in (stu.name or "") and keyword.strip() not in x.title)):
-                continue
-            items.append(_wo_row(x, stu))
-        return _page(items, page, page_size)
+        if scope_ids is not None:
+            q = q.where(CsWorkOrder.cs_student_id.in_(scope_ids or {-1}))
+        if keyword and keyword.strip():
+            like = f"%{keyword.strip()}%"
+            q = q.where(or_(CsWorkOrder.title.like(like), CsServiceStudent.name.like(like), CsWorkOrder.code.like(like)))
+        total = int(db.scalar(select(func.count()).select_from(q.order_by(None).subquery())) or 0)
+        rows = db.execute(
+            q.order_by(CsWorkOrder.id.desc()).offset((max(1, int(page)) - 1) * int(page_size)).limit(int(page_size))
+        ).all()
+        return [_wo_row(order, student) for order, student in rows], total
 
 
 def get_work_order_detail(wid) -> dict:
     with session() as db:
-        x = db.get(CsWorkOrder, int(wid))
+        x = tenant_get(db, CsWorkOrder, _as_id(wid))
         if not x or x.is_deleted or x.tenant_id != _tid():
             raise not_found("工单不存在")
         _require_cs_scope(db, x.cs_student_id)
         stu = _stu_of(db, x.cs_student_id)
+        if stu and (stu.tenant_id != _tid() or stu.is_deleted):
+            stu = None
         row = _wo_row(x, stu)
         row["trail"] = x.trail_json or []
+        from app.core.permissions import has_permission
+        from app.modules.internship.services.internship_score_appeal_service import is_score_appeal
+        specialized = is_score_appeal(x)
+        can_handle = x.status in {"PENDING_HANDLE", "PROCESSING"} and not specialized and has_permission(
+            get_current_user_ctx() or {}, "campusService.workOrder.handle")
+        row["allowedActions"] = ["handle", "complete", "close"] if can_handle else []
+        row["actionHint"] = ("实习成绩申诉请到岗位实习成绩申诉工作台办理" if specialized else
+                             "" if can_handle else "工单已结束" if x.status in {"COMPLETED", "CLOSED"} else
+                             "当前身份可查看，处理需由有服务工单办理权限的学工人员完成")
         return {"order": row, "student": _stu_row(stu, db=db, profiles=shadow.load_profiles(db, [stu])) if stu else None}
 
 
@@ -582,7 +640,7 @@ def assign_work_orders(ids, handler) -> dict:
     with session() as db:
         scope_ids = _cs_scope_student_ids(db)
         for wid in ids:
-            w = db.get(CsWorkOrder, int(wid))
+            w = tenant_get(db, CsWorkOrder, int(wid))
             if not w or w.tenant_id != _tid() or w.is_deleted:
                 continue
             if scope_ids is not None and int(w.cs_student_id or 0) not in scope_ids:
@@ -604,10 +662,11 @@ def handle_work_order(wid, note, close=False, expected_version=None) -> dict:
         raise AppException("VALIDATION_ERROR", "处理说明必填且不少于 5 字")
     ver = require_expected_version(expected_version)
     with session() as db:
-        w = db.get(CsWorkOrder, int(wid))
+        w = tenant_get(db, CsWorkOrder, _as_id(wid))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
         _require_cs_scope(db, w.cs_student_id)
+        _require_open_service_order(w)
         before = w.status
         new_status = "COMPLETED" if close else "PROCESSING"
         trail = list(w.trail_json or []) + [{"title": "办结" if close else "处理中",
@@ -620,8 +679,13 @@ def handle_work_order(wid, note, close=False, expected_version=None) -> dict:
             db, CsWorkOrder, entity_id=int(w.id), tenant_id=_tid(),
             expected_version=ver, values=values, expected_status=before)
         _audit(db, "WORKORDER", w.id, "处理工单", note.strip(), before, new_status)
+        outbox_id = _work_order_notice(
+            db, w, status_label=L_WO_S.get(new_status, "状态已更新"), note=note.strip(),
+            status=new_status, version=ver + 1)
         db.commit()
-        return {"id": str(w.id), "status": new_status, "version": ver + 1}
+        result = {"id": str(w.id), "status": new_status, "version": ver + 1}
+    _drain_work_order_notice(outbox_id)
+    return result
 
 
 def close_work_order(wid, reason, expected_version=None) -> dict:
@@ -629,20 +693,36 @@ def close_work_order(wid, reason, expected_version=None) -> dict:
         raise AppException("VALIDATION_ERROR", "关闭原因必填且不少于 5 字")
     ver = require_expected_version(expected_version)
     with session() as db:
-        w = db.get(CsWorkOrder, int(wid))
+        w = tenant_get(db, CsWorkOrder, _as_id(wid))
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("工单不存在")
         _require_cs_scope(db, w.cs_student_id)
+        _require_open_service_order(w)
         before = w.status
         atomic_versioned_update(
             db, CsWorkOrder, entity_id=int(w.id), tenant_id=_tid(),
             expected_version=ver, values={
                 "status": "CLOSED",
                 "close_time": datetime.utcnow(),
+                "trail_json": list(w.trail_json or []) + [{
+                    "title": "关闭工单", "desc": reason.strip(),
+                    "time": _iso(datetime.utcnow()), "tone": "default"}],
             }, expected_status=before)
         _audit(db, "WORKORDER", w.id, "关闭工单", reason.strip(), before, "CLOSED")
+        outbox_id = _work_order_notice(
+            db, w, status_label="已关闭", note=reason.strip(), status="CLOSED", version=ver + 1)
         db.commit()
-        return {"id": str(w.id), "status": "CLOSED", "version": ver + 1}
+        result = {"id": str(w.id), "status": "CLOSED", "version": ver + 1}
+    _drain_work_order_notice(outbox_id)
+    return result
+
+
+def _require_open_service_order(order):
+    from app.modules.internship.services.internship_score_appeal_service import is_score_appeal
+    if is_score_appeal(order):
+        raise AppException("DATA_CONFLICT", "实习成绩申诉请到岗位实习成绩申诉工作台办理")
+    if order.status not in {"PENDING_HANDLE", "PROCESSING"}:
+        raise AppException("DATA_CONFLICT", "该工单已结束，请刷新查看处理结果")
 
 # ═══ 心理关怀 ═══
 

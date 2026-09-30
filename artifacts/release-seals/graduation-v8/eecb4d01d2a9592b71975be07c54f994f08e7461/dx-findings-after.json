@@ -1,0 +1,169 @@
+{
+  "verificationHead": "a8cc0f99136d87023536d31576a8eb7fe919651b",
+  "generatedAt": "2026-08-30T18:06:49.615719+08:00",
+  "dxP0": 0,
+  "dxP1": 0,
+  "result": "PASS",
+  "resolvedP1": [
+    {
+      "id": "DX-P1-01",
+      "title": "52 个叶子菜单造成重复导航",
+      "status": "RESOLVED",
+      "evidence": "menu-tree.json",
+      "target": "8 workspaces / 24 primary leaves; legacy routes preserved",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-02",
+      "title": "批次阶段与规则入口不能精确落地",
+      "status": "RESOLVED",
+      "evidence": "baseline-browser/admin-batch-stages.png",
+      "target": "batchId + panel lands on the exact batch detail view",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-03",
+      "title": "总览按数量而非紧急度排序",
+      "status": "RESOLVED",
+      "evidence": "baseline-browser/adminDashboard.png",
+      "target": "todayWorkItems ordered by CRITICAL > HIGH > OVERDUE > DUE_24H > RELEASE_BLOCKER > RETURNED > WAITING_REVIEW > NORMAL",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-04",
+      "title": "学生页 11 个等权视图",
+      "status": "RESOLVED",
+      "evidence": "baseline-browser/adminStudents.png",
+      "target": "5 primary groups with preserved panel deep links",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-05",
+      "title": "题目页 11 个等权视图与行操作拥挤",
+      "status": "RESOLVED",
+      "evidence": "baseline-browser/adminTopics.png",
+      "target": "5 primary groups and row-action restraint",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-06",
+      "title": "材料中心 12 个原始技术列主导",
+      "status": "RESOLVED",
+      "evidence": "baseline-browser/admin-material-center.png",
+      "target": "human first columns; raw codes secondary",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-07",
+      "title": "文件证据技术信息优先",
+      "status": "RESOLVED",
+      "evidence": "source audit",
+      "target": "human summary first; fileVersionId/SHA in expandable evidence",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-08",
+      "title": "过程页默认要求再次搜索学生",
+      "status": "RESOLVED",
+      "evidence": "baseline-browser/teacher-pc-taskbook.png",
+      "target": "studentId + panel exact deep link",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-09",
+      "title": "DefenseGrade 与专业队列命令归属重叠",
+      "status": "RESOLVED",
+      "evidence": "baseline-browser/admin-defense.png",
+      "target": "read-centric dossier; single primary command owner",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-10",
+      "title": "成绩申诉缺少版本事实",
+      "status": "RESOLVED",
+      "evidence": "baseline-browser/admin-grade-ledger.png",
+      "target": "grade version/change/reason/receipt/next actor",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-11",
+      "title": "学生 PC 先显示反馈块再显示工作台",
+      "status": "RESOLVED",
+      "evidence": "baseline-browser/student-pc-graduationFirst.png",
+      "target": "eight-step workbench is the first screen",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-12",
+      "title": "默认界面泄漏 W7.5/FileVersion/SHA 工程语言",
+      "status": "RESOLVED",
+      "evidence": "baseline-browser/student-pc-graduationFirst.png",
+      "target": "human language by default; evidence expandable",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-13",
+      "title": "题目接口硬上限 500 且无真实分页",
+      "status": "RESOLVED",
+      "evidence": "backend/app/services/mobile_student_service.py:1156",
+      "target": "cursor contract, pageSize <= 30, items/nextCursor/total/hasMore",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-14",
+      "title": "学生 Mini 题目错误可静默为空",
+      "status": "RESOLVED",
+      "evidence": "source audit",
+      "target": "visible retryable error state",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-15",
+      "title": "教师 Mini 任务书错误被 catch 吞掉",
+      "status": "RESOLVED",
+      "evidence": "miniapp/src/pages/teacher/graduation-taskbook/index.vue:152",
+      "target": "visible error, retry, correlation evidence",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-16",
+      "title": "专业角色 Mini 映射缺口",
+      "status": "RESOLVED",
+      "evidence": "miniapp/src/config/roles.config.js",
+      "target": "supported high-value queue or explicit PC_ONLY_REASON for every role",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-17",
+      "title": "写操作只用 toast 反馈",
+      "status": "RESOLVED",
+      "evidence": "source audit",
+      "target": "durable receipt with what changed and next actor",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-18",
+      "title": "重新提交版本差异不一致",
+      "status": "RESOLVED",
+      "evidence": "source audit",
+      "target": "consistent V1 → V2 diff in proposal/final/appeal",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-19",
+      "title": "receipt 与 nextActor 输出不一致",
+      "status": "RESOLVED",
+      "evidence": "source audit",
+      "target": "common receipt schema across commands",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    },
+    {
+      "id": "DX-P1-20",
+      "title": "归档未知结果会诱导盲重试",
+      "status": "RESOLVED",
+      "evidence": "source audit",
+      "target": "UNKNOWN outcome with safe verify/reconcile path and no duplicate command",
+      "resolutionEvidence": "D-GATE-GD-V8 + W15 8/8 L4 + W16 canonical gates"
+    }
+  ]
+}

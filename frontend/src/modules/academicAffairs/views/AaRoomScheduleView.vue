@@ -10,6 +10,14 @@
     </template>
 
     <div class="mp-stack">
+      <AaScheduleObjectBar
+        :name="classroomText || '教室课表'"
+        :identity="classroomId ? `教室 #${classroomId} · ${termId ? `学期 #${termId}` : '当前正式学期'}` : '选择教室后读取课程占用与停用提示'"
+        source="来源：正式课表；维修与预约须在教学资源占用页交叉核对"
+        :status="classroomId ? '只读正式占用' : '对象待选择'"
+        :owner="ctx.currentRole.roleName || '教务排课岗'"
+        next-owner="排课岗核对资源后继续编排"
+      />
       <div class="aa-filter">
         <label class="aa-filter__item aa-filter__item--grow">
           教室
@@ -52,10 +60,11 @@ import { AppSectionCard, AppClassroomPicker, AppTermEntityPicker } from '@/compo
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
 
 export default {
   name: 'AaRoomScheduleView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppClassroomPicker, AppTermEntityPicker, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppClassroomPicker, AppTermEntityPicker, AaScheduleGrid, AaScheduleObjectBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -85,18 +94,22 @@ export default {
       if (!this.classroomId) return
       this.loading = true
       this.error = ''
-      const res = await academicAffairsApi.getRoomSchedule(this.classroomId, {
-        termId: this.termId || undefined, week: this.week || undefined
-      })
-      this.loading = false
-      if (res.code === 0) {
-        this.items = res.data.items || []
-        this.note = res.data.note || ''
-        if (res.data.classroomText) this.classroomText = res.data.classroomText
-      } else {
-        this.error = res.message
+      try {
+        const res = await academicAffairsApi.getRoomSchedule(this.classroomId, {
+          termId: this.termId || undefined, week: this.week || undefined
+        })
+        if (res.code === 0) {
+          this.items = res.data?.items || []
+          this.note = res.data?.note || ''
+          if (res.data?.classroomText) this.classroomText = res.data.classroomText
+        } else {
+          this.error = res.message || '教室课表读取失败'
+          this.items = []
+        }
+      } catch (error) {
+        this.error = error?.message || '网络连接中断，未能读取教室课表'
         this.items = []
-      }
+      } finally { this.loading = false }
     }
   }
 }

@@ -51,12 +51,12 @@ export const positionApi = {
     return call(() => request(`/internship/positions/${id}`, { method: 'PUT', body }))
   },
 
-  setPositionStatus(id, { action, reason }) {
-    return call(() => request(`/internship/positions/${id}/status`, { method: 'POST', body: { action, reason } }))
+  setPositionStatus(id, { action, reason, expectedVersion }) {
+    return call(() => request(`/internship/positions/${id}/status`, { method: 'POST', body: { action, reason, expectedVersion } }))
   },
 
-  markPositionRisk(id, { on, note }) {
-    return call(() => request(`/internship/positions/${id}/risk`, { method: 'POST', body: { on, note } }))
+  markPositionRisk(id, { on, note, expectedVersion }) {
+    return call(() => request(`/internship/positions/${id}/risk`, { method: 'POST', body: { on, note, expectedVersion } }))
   },
 
   getPositionStats() {

@@ -85,6 +85,7 @@ def test_college_scope_is_applied_before_count_page_and_aggregate(monkeypatch):
         {"currentRoleCode": "COLLEGE_ADMIN"},
         page=1,
         page_size=1,
+        batch_id=1,
     )
 
     assert total == 1

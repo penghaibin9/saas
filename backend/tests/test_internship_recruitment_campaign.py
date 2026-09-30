@@ -20,6 +20,20 @@ def _unique_sets():
     }
 
 
+def test_campaign_window_offsets_normalize_before_validation_and_storage():
+    from datetime import datetime, timedelta, timezone
+    local = timezone(timedelta(hours=8))
+    values = service._body_values({
+        "inviteStartAt": datetime(2026, 9, 6, 0, 0, tzinfo=local),
+        "inviteEndAt": datetime(2026, 9, 6, 23, 59, 59, tzinfo=local),
+        "enterpriseAccessEndAt": datetime(2026, 9, 7, 0, 0, tzinfo=local),
+    })
+    assert values["invite_start_at"] == datetime(2026, 9, 5, 16, 0)
+    assert values["invite_end_at"] == datetime(2026, 9, 6, 15, 59, 59)
+    assert values["enterprise_access_end_at"] == datetime(2026, 9, 6, 16, 0)
+    service._validate_windows(values)
+
+
 def _index_sets():
     return {
         tuple(column.name for column in index.columns)

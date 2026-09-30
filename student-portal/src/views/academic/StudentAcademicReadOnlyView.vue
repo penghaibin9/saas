@@ -1,72 +1,69 @@
 <template>
-  <div class="sp-page read-page">
-    <section class="read-hero">
-      <div>
-        <div class="read-hero__eyebrow">教务学业 · {{ config.title }}</div>
-        <h1>{{ config.heading }}</h1>
-        <p>{{ config.description }}</p>
-      </div>
-      <button class="sp-btn sp-btn--ghost" type="button" :disabled="loading" @click="load">
-        {{ loading ? '加载中…' : '刷新数据' }}
-      </button>
-    </section>
-
-    <StateBlock v-if="loading" type="loading" :text="`正在读取本人${config.title}数据…`" />
-    <section v-else-if="error" class="sp-card read-error">
-      <StateBlock type="error" :text="error" />
-      <button class="sp-btn sp-btn--ghost" type="button" @click="load">重新加载</button>
-    </section>
-
-    <template v-else>
-      <section v-if="metrics.length" class="metric-grid">
-        <article v-for="metric in metrics" :key="metric.label" class="metric-card">
-          <span>{{ metric.label }}</span><b>{{ metric.value }}</b><small v-if="metric.note">{{ metric.note }}</small>
-        </article>
-      </section>
-
-      <section class="sp-card content-card">
-        <header class="section-head">
-          <div><strong>{{ config.sectionTitle }}</strong><span>{{ config.sectionDescription }}</span></div>
-          <StatusTag :text="summaryTag" :tone="summaryTone" />
-        </header>
-        <StateBlock v-if="!rows.length" type="empty" :text="data.note || config.emptyText" />
-        <div v-else class="record-list">
-          <article v-for="(row, index) in rows" :key="rowKey(row, index)" class="record-item">
-            <header>
-              <div>
-                <strong>{{ primaryText(row) }}</strong>
-                <span>{{ secondaryText(row) }}</span>
-              </div>
-              <StatusTag :text="statusText(row)" :tone="statusTone(row)" />
-            </header>
-            <dl>
-              <div v-for="field in detailFields(row)" :key="field.label">
-                <dt>{{ field.label }}</dt><dd>{{ field.value }}</dd>
-              </div>
-            </dl>
-          </article>
-        </div>
-      </section>
-
-      <section class="sp-card read-note">
-        <strong>数据口径</strong>
-        <span>{{ config.note }}</span>
-      </section>
-    </template>
+  <div data-academic-page class="sp-page academic-prototype readonly-page">
+    <AcademicPrototypeHeader :title="config.title" :group="['attendance','calendar'].includes(model) ? '注册与安排' : model === 'clearance' ? '成绩与考试' : '培养与毕业'" :description="config.description" :loading="loading" @refresh="load" />
+    <StateBlock v-if="loading" type="loading" :text="'正在读取' + config.title + '…'" />
+    <div v-else-if="error" class="card pad"><StateBlock type="error" :text="error" /><button class="btn" @click="load">重新加载</button></div>
+    <div v-else class="stack">
+      <template v-if="model === 'attendance'">
+        <div class="notice"><AcademicPrototypeIcon name="circle-info" /><span>只能查看本人的已提交记录；未提交与无课不能记为缺勤。</span></div>
+        <section class="card pad"><div class="metrics-inline"><div v-for="metric in attendanceMetrics" :key="metric.label" class="metric"><small>{{ metric.label }}</small><strong>{{ metric.value }}</strong></div></div></section>
+        <section class="card table-wrap"><table class="table"><thead><tr><th>日期</th><th>课程</th><th>节次</th><th>本人状态</th><th>查看</th></tr></thead><tbody><tr v-for="(row, index) in rows" :key="rowKey(row, index)"><td>{{ pick(row, ['sessionDate', 'attendanceDate', 'date'], '未提供') }}</td><td>{{ primaryText(row) }}</td><td>{{ pick(row, ['slotLabel', 'slotNo'], '未提供') }}</td><td><span class="tag" :class="tagColor(row)">{{ statusText(row) }}</span></td><td><RouterLink v-if="attendanceScheduleRoute(row)" class="btn link small" :to="attendanceScheduleRoute(row)">正式课次</RouterLink><span v-else class="muted" title="该历史考勤未保留可核验的正式课位回链">课位回链未提供</span></td></tr></tbody></table><StateBlock v-if="!rows.length" type="empty" :text="config.emptyText" /></section>
+      </template>
+      <template v-else-if="model === 'calendar'">
+        <div class="titleline"><h2>{{ calendarMonthLabel }}</h2><div class="row"><button class="btn small" aria-label="上个月" @click="shiftMonth(-1)"><AcademicPrototypeIcon name="angle-left" /></button><button class="btn small" aria-label="下个月" @click="shiftMonth(1)"><AcademicPrototypeIcon name="angle-right" /></button><span class="tag">{{ data.termLabel || '学期待提供' }}</span></div></div>
+        <div v-if="data.hasTerm === false" class="notice amber">{{ data.note || '学校尚未设置当前学期，暂不能核对校历。' }}</div>
+        <div class="calendar-grid"><div v-for="day in ['一','二','三','四','五','六','日']" :key="day" class="head">{{ day }}</div><div v-for="(cell,index) in calendarCells" :key="index" :class="{ today: cell.date === todayDate }"><strong>{{ cell.day || '' }}</strong><small v-for="event in cell.events" :key="event.eventId || event.startDate + event.remark">{{ primaryText(event) }}</small><small v-if="cell.week">教学第 {{ cell.week }} 周</small></div></div>
+        <section class="card"><header class="card-head"><h2>本月需留意</h2></header><div class="card-body"><div v-for="(row,index) in monthEvents" :key="rowKey(row,index)" class="taskline"><AcademicPrototypeIcon name="calendar-days" /><div><strong>{{ row.startDate || row.eventDate }} · {{ primaryText(row) }}</strong><small>{{ row.remark || row.description || calendarType(row.eventType) }}<template v-if="row.swapToDate"> · 调至 {{ row.swapToDate }}</template></small></div></div><p v-if="!monthEvents.length" class="muted">本月暂无已返回的校历事件。</p><div class="taskline"><AcademicPrototypeIcon name="circle-info" /><div><strong>调休 / 补课</strong><small>实际节次以正式课表为准，不能简单按自然星期推导。</small></div></div></div></section>
+        <div><RouterLink class="btn primary" to="/academic/schedule">查看正式课表</RouterLink></div>
+      </template>
+      <template v-else-if="model === 'credits'">
+        <section class="card pad"><div class="titleline"><div><span class="label">已获得 / 方案要求</span><div class="callout-number">{{ data.earnedCredits ?? data.obtainedCredits ?? '待确认' }} <small>/ {{ data.requiredCredits ?? '待核验' }} 学分</small></div></div><span class="tag">仅正式结果计入</span></div><div class="spacer14"></div><div v-if="creditProgress !== null" class="progress"><i :style="{ width: creditProgress + '%' }"></i></div><p v-else class="muted">培养方案要求尚未完整核定，暂不计算完成比例。</p></section>
+        <section class="card"><header class="card-head"><h2>模块修读情况</h2></header><div class="card-body"><p class="muted">当前未提供培养方案模块明细，请以学校适用方案核对。</p></div></section>
+        <div class="notice"><AcademicPrototypeIcon name="circle-info" /><span>已选学分、已修读学分、已获得学分分别展示。实际毕业要求采用适用方案和历史身份。</span></div>
+        <section v-if="rows.length" class="card"><header class="card-head"><h2>正式有效课程</h2></header><div class="table-wrap"><table class="table"><thead><tr><th>课程</th><th>课程代码</th><th>已获学分</th></tr></thead><tbody><tr v-for="(row,index) in rows" :key="rowKey(row,index)"><td>{{ primaryText(row) }}</td><td>{{ row.courseCode || '未提供' }}</td><td>{{ row.credit ?? row.earnedCredit ?? '待确认' }}</td></tr></tbody></table></div></section>
+        <div><RouterLink class="btn primary" to="/academic/grades">查看正式成绩</RouterLink></div>
+      </template>
+      <template v-else-if="model === 'clearance'">
+        <div class="notice"><AcademicPrototypeIcon name="circle-info" /><span>清考是课程补救考核，不是离校服务；不新增学生报名按钮。</span></div>
+        <section class="card table-wrap"><table class="table"><thead><tr><th>课程</th><th>清考批次</th><th>结果</th><th>下一步</th></tr></thead><tbody><tr v-for="(row,index) in rows" :key="rowKey(row,index)"><td>{{ primaryText(row) }}</td><td>{{ row.batchName || row.termCode || '批次未提供' }}</td><td>{{ clearanceResult(row) }}</td><td><RouterLink class="btn link small" to="/academic/grades">查看成绩</RouterLink></td></tr></tbody></table><StateBlock v-if="!rows.length" type="empty" :text="config.emptyText" /></section>
+      </template>
+      <template v-else-if="model === 'warning'">
+        <div v-if="warningPageReady" class="row between"><span>第 {{ warningPage }} 页 · 共 {{ warningTotal }} 条</span><div class="row"><button class="btn small" :disabled="warningPage <= 1" @click="changeWarningPage(warningPage - 1)">上一页</button><button class="btn small" :disabled="!data.hasMore" @click="changeWarningPage(warningPage + 1)">下一页</button></div></div>
+        <div v-if="focusRecordId && !rows.some((row,index) => rowKey(row,index) === focusRecordId)" class="notice amber">当前页尚未定位原预警，请翻页核对；这不表示该预警已处理或不存在。</div>
+        <div v-if="warningIsPartial" class="notice amber" role="status"><AcademicPrototypeIcon name="circle-info" /><span>当前接口返回 {{ rows.length }} 条，本人正式记录共 {{ warningTotal }} 条。请联系教务老师查询其余记录；本页不会把当前列表当作全部数据。</span></div>
+        <StateBlock v-if="!rows.length" type="empty" :text="warningTotal ? '当前页没有预警记录，请返回上一页核对' : '当前没有学业预警'" />
+        <section v-for="(row,index) in rows" :key="rowKey(row,index)" class="card" :class="{ 'is-target': rowKey(row,index) === focusRecordId }"><header class="card-head"><h2>有一项学业事项需要关注</h2></header><div class="card-body"><div class="row between"><h2>{{ primaryText(row) }}</h2><span class="tag" :class="tagColor(row)">{{ statusText(row) }}</span></div><dl class="definition"><dt>相关课程</dt><dd>{{ row.courseName || '以预警事项为准' }}</dd><dt>判定来源</dt><dd>{{ row.reason || row.triggerReason || '未提供' }}</dd><dt>责任老师</dt><dd>{{ row.responsibleTeacherName || row.teacherName || row.owner || '待学校提供' }}</dd><dt>当前建议</dt><dd>{{ row.requirement || row.handleRequirement || row.note || '请向学校责任老师核对处理要求' }}</dd></dl><footer class="form-foot"><RouterLink class="btn" to="/academic/grades">查看原成绩</RouterLink><RouterLink class="btn primary" to="/academic/makeup">打开补考重修</RouterLink></footer></div></section>
+        <div class="notice"><AcademicPrototypeIcon name="circle-info" /><span>{{ config.note }}</span></div>
+      </template>
+      <div v-else class="notice amber">当前入口未绑定可用的教务页面，请返回学业总览。</div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
-import StatusTag from '../../components/StatusTag.vue'
+import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
+import AcademicPrototypeIcon from '../../components/academic/AcademicPrototypeIcon.vue'
+import { createStudentAcademicCommandGuard, readStudentAcademicSnapshot, studentAcademicIdentity } from '../../components/academic/studentAcademicCommandGuard'
+
+import { academicErrorKind, academicErrorMessage } from '../../components/academic/studentAcademicUi'
 import { portalApi } from '../../services/portalApi'
+import { useSessionStore } from '../../stores/session'
 
 const route = useRoute()
+const router = useRouter()
+const session = useSessionStore()
+const guard = createStudentAcademicCommandGuard(() => studentAcademicIdentity(session))
 const loading = ref(true)
 const error = ref('')
 const data = ref({})
+const focusRecordId = computed(() => String(route.query.warningId || route.query.recordId || ''))
+const warningPage = computed(() => {
+  const page = Number(route.query.warningPage || 1)
+  return Number.isSafeInteger(page) && page >= 1 ? page : 1
+})
 
 const CONFIGS = {
   attendance: {
@@ -101,7 +98,7 @@ const CONFIGS = {
     title: '学业预警', heading: '查看本人学业预警与处理要求',
     description: '展示预警原因、责任老师、处理要求和当前状态。',
     sectionTitle: '预警记录', sectionDescription: '按风险程度和时间展示本人预警', emptyText: '当前没有学业预警',
-    loader: () => portalApi.academicWarning(),
+    loader: () => portalApi.academicWarning({ page: warningPage.value, pageSize: 50 }),
     note: '预警用于提前干预，不等同于处分或最终学籍结论；请按记录中的要求及时联系责任老师。'
   },
   graduation: {
@@ -120,22 +117,50 @@ const config = computed(() => CONFIGS[model.value] || {
   loader: null
 })
 const rows = computed(() => rowsOf(data.value))
-const metrics = computed(() => metricRows(model.value, data.value, rows.value))
-const summaryTag = computed(() => {
-  if (model.value === 'warning') return rows.value.length ? `${rows.value.length} 条待关注` : '暂无预警'
-  if (model.value === 'graduation') return graduationSummary(data.value)
-  return `${rows.value.length} 条`
+const warningTotal = computed(() => {
+  const value = Number(data.value?.total)
+  return Number.isFinite(value) && value >= rows.value.length ? value : rows.value.length
 })
-const summaryTone = computed(() => {
-  if (model.value === 'warning' && rows.value.length) return 'warn'
-  if (model.value === 'graduation') return graduationTone(data.value)
-  return 'default'
+const warningPageReady = computed(() => Number.isInteger(data.value?.page) && data.value.page === warningPage.value && data.value.pageSize === 50 && typeof data.value.hasMore === 'boolean')
+const warningIsPartial = computed(() => model.value === 'warning' && !warningPageReady.value && warningTotal.value > rows.value.length)
+function changeWarningPage(page) {
+  if (loading.value || !warningPageReady.value || page < 1 || (page > warningPage.value && !data.value.hasMore)) return
+  router.push({ path: route.path, query: { ...route.query, warningPage: String(page) } })
+}
+const metrics = computed(() => metricRows(model.value, data.value, rows.value))
+const attendanceMetrics = computed(() => [
+  { label: '已提交课次', value: rows.value.filter(row => !['UNSUBMITTED','NOT_SUBMITTED','DRAFT'].includes(String(row.status || row.attendanceStatus).toUpperCase())).length },
+  metrics.value.find(item => item.label === '出勤') || { label: '出勤', value: 0 },
+  { label: '迟到', value: rows.value.filter(row => String(row.status || row.attendanceStatus).toUpperCase() === 'LATE').length }
+])
+const todayDate = new Date().toLocaleDateString('en-CA')
+const calendarMonth = ref(todayDate.slice(0,7))
+const calendarMonthLabel = computed(() => calendarMonth.value.replace('-', ' 年 ') + ' 月')
+const monthEvents = computed(() => rows.value.filter(row => String(row.startDate || row.eventDate || '').slice(0,7) <= calendarMonth.value && String(row.endDate || row.startDate || row.eventDate || '').slice(0,7) >= calendarMonth.value))
+const calendarCells = computed(() => {
+  const [year, month] = calendarMonth.value.split('-').map(Number)
+  const offset = (new Date(year, month - 1, 1).getDay() + 6) % 7
+  const count = new Date(year, month, 0).getDate()
+  return Array.from({ length: Math.ceil((offset + count) / 7) * 7 }, (_, index) => {
+    const day = index - offset + 1
+    if (day < 1 || day > count) return { day: null, events: [] }
+    const date = calendarMonth.value + '-' + String(day).padStart(2,'0')
+    return { day, date, events: monthEvents.value.filter(event => String(event.startDate || event.eventDate).slice(0,10) === date), week: (data.value.weeks || []).find(week => String(week.startDate).slice(0,10) === date)?.weekNo }
+  })
+})
+function shiftMonth(delta) { const [year, month] = calendarMonth.value.split('-').map(Number); const date = new Date(year, month - 1 + delta, 1); calendarMonth.value = date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2,'0') }
+function tagColor(row) { return { success: 'green', danger: 'red', warn: 'amber', default: 'gray' }[statusTone(row)] }
+const creditProgress = computed(() => {
+  const value = data.value
+  const earned = value.earnedCredits ?? value.obtainedCredits
+  if (value.resolutionStatus !== 'RESOLVED' || value.requiredCredits == null || earned == null || Number(value.requiredCredits) <= 0) return null
+  return Math.min(100, Math.max(0, Number(earned) / Number(value.requiredCredits) * 100))
 })
 
 function rowsOf(value) {
   if (Array.isArray(value)) return value
   if (!value || typeof value !== 'object') return []
-  for (const key of ['items', 'list', 'records', 'events', 'details', 'requirements', 'courses', 'warnings']) {
+  for (const key of ['items', 'list', 'records', 'events', 'passedCourses', 'details', 'requirements', 'courses', 'warnings']) {
     if (Array.isArray(value[key])) return value[key]
   }
   return []
@@ -146,6 +171,15 @@ function pick(row, keys, fallback = '') {
     if (value !== undefined && value !== null && value !== '') return value
   }
   return fallback
+}
+function attendanceScheduleRoute(row) {
+  const lesson = String(row?.scheduleItemId || row?.itemId || '').trim()
+  if (!/^\d+$/.test(lesson) || Number(lesson) <= 0) return null
+  const week = Number(row?.weekNo)
+  return {
+    path: '/academic/schedule',
+    query: { lesson, from: 'attendance', ...(Number.isSafeInteger(week) && week > 0 ? { week: String(week) } : {}) }
+  }
 }
 function metricRows(type, value, list) {
   const number = (keys) => {
@@ -168,7 +202,7 @@ function metricRows(type, value, list) {
   }
   if (type === 'warning') {
     return [
-      { label: '预警记录', value: list.length },
+      { label: '预警记录', value: Number.isFinite(Number(value.total)) && Number(value.total) >= list.length ? Number(value.total) : list.length },
       { label: '高风险', value: list.filter((row) => String(pick(row, ['level', 'warningLevel'])).toUpperCase() === 'HIGH').length },
       { label: '待处理', value: list.filter((row) => !['CLOSED', 'RESOLVED', 'COMPLETED'].includes(String(pick(row, ['status'])).toUpperCase())).length }
     ]
@@ -181,113 +215,81 @@ function metricRows(type, value, list) {
     ]
   }
   if (type === 'calendar') {
-    return [{ label: '当前教学周', value: pick(value, ['currentWeek', 'weekNo'], '待确认') }, { label: '校历事件', value: list.length }, { label: '学期', value: pick(value, ['termName', 'termCode'], '当前学期') }]
+    return [{ label: '教学周数', value: value.weekMeta?.teachingWeeks ?? '待确认' }, { label: '校历事件', value: list.length }, { label: '学期', value: pick(value, ['termLabel', 'termName', 'termCode'], '待确认') }]
   }
   return [{ label: config.value.title, value: list.length }]
 }
 function rowKey(row, index) { return String(pick(row, ['id', 'warningId', 'eventId', 'recordId', 'courseId', 'requirementId'], `${model.value}:${index}`)) }
 function primaryText(row) {
+  if (model.value === 'calendar') return row.eventName || row.title || row.remark || calendarType(row.eventType)
   const maps = {
     attendance: ['courseName', 'courseCode'], calendar: ['eventName', 'title', 'name'], clearance: ['courseName', 'courseCode'],
-    credits: ['courseName', 'categoryName', 'requirementName'], warning: ['warningName', 'typeLabel', 'title', 'reason'],
+    credits: ['courseName', 'categoryName', 'requirementName'], warning: ['warningName', 'sourceLabel', 'typeLabel', 'title', 'reason'],
     graduation: ['requirementName', 'itemName', 'name', 'title']
   }
   return String(pick(row, maps[model.value] || ['name', 'title'], config.value.title))
 }
-function secondaryText(row) {
-  const maps = {
-    attendance: ['sessionDate', 'attendanceDate', 'termCode'], calendar: ['eventDate', 'startDate', 'date'], clearance: ['termCode', 'examDate'],
-    credits: ['termCode', 'courseCode', 'categoryCode'], warning: ['triggerTime', 'createdAt', 'levelLabel'],
-    graduation: ['categoryName', 'evidenceSource', 'source']
-  }
-  return String(pick(row, maps[model.value] || ['createdAt'], ''))
-}
 function statusText(row) {
-  const value = String(pick(row, ['statusLabel', 'resultLabel', 'status', 'result', 'attendanceStatus'], '待确认'))
-  const map = { PRESENT: '出勤', LATE: '迟到', ABSENT: '缺勤', LEAVE: '请假', MET: '已达成', NOT_MET: '未达成', GAP: '存在缺口', PASSED: '已通过', FAILED: '未通过', ACTIVE: '待关注', CLOSED: '已关闭' }
+  if (model.value === 'calendar') return calendarType(row.eventType)
+  const value = String(pick(row, ['statusLabel', 'resultLabel', 'status', 'result', 'attendanceStatus', 'passStatus'], '待确认'))
+  const map = { PENDING_HANDLE: '待处理', PROCESSING: '跟进中', ESCALATED: '已升级', FINISHED: '已正式发布', SCORED: '成绩待发布', PRESENT: '出勤', LATE: '迟到', ABSENT: '缺勤', LEAVE: '请假', MET: '已达成', NOT_MET: '未达成', GAP: '存在缺口', PASSED: '已通过', FAILED: '未通过', ACTIVE: '待关注', CLOSED: '已关闭' }
   return map[value.toUpperCase()] || value
 }
 function statusTone(row) {
-  const value = String(pick(row, ['status', 'result', 'attendanceStatus'], '')).toUpperCase()
+  const value = String(pick(row, ['status', 'result', 'attendanceStatus', 'passStatus'], '')).toUpperCase()
   if (['PRESENT', 'MET', 'PASSED', 'COMPLETED', 'QUALIFIED', 'CLOSED', 'RESOLVED'].includes(value)) return 'success'
-  if (['ABSENT', 'FAILED', 'NOT_MET', 'GAP', 'UNQUALIFIED', 'HIGH'].includes(value)) return 'danger'
-  if (['LATE', 'LEAVE', 'ACTIVE', 'PENDING', 'MEDIUM'].includes(value)) return 'warn'
+  if (['ABSENT', 'FAILED', 'NOT_MET', 'GAP', 'UNQUALIFIED', 'HIGH', 'ESCALATED'].includes(value)) return 'danger'
+  if (['LATE', 'LEAVE', 'ACTIVE', 'PENDING', 'MEDIUM', 'PENDING_HANDLE', 'PROCESSING'].includes(value)) return 'warn'
   return 'default'
 }
-function detailFields(row) {
-  const definitions = {
-    attendance: [['日期', ['sessionDate', 'attendanceDate']], ['节次', ['slotLabel', 'slotNo']], ['教师', ['teacherName']], ['说明', ['note', 'remark']]],
-    calendar: [['开始', ['startDate', 'eventDate', 'startAt']], ['结束', ['endDate', 'endAt']], ['类型', ['eventTypeLabel', 'eventType']], ['说明', ['description', 'note']]],
-    clearance: [['课程代码', ['courseCode']], ['考试时间', ['examDate', 'startAt']], ['成绩', ['score', 'finalScore']], ['说明', ['note', 'reviewNote']]],
-    credits: [['课程代码', ['courseCode']], ['课程类别', ['categoryName', 'courseType']], ['学分', ['credit', 'earnedCredit']], ['绩点', ['gpa', 'gradePoint']]],
-    warning: [['预警等级', ['levelLabel', 'level']], ['触发原因', ['reason', 'triggerReason']], ['责任老师', ['responsibleTeacherName', 'teacherName']], ['处理要求', ['requirement', 'handleRequirement', 'note']]],
-    graduation: [['要求值', ['requiredValue', 'requiredCredits']], ['当前值', ['currentValue', 'earnedCredits']], ['证据来源', ['evidenceSource', 'source']], ['缺口说明', ['gapReason', 'note']]]
-  }
-  return (definitions[model.value] || []).map(([label, keys]) => ({ label, value: String(pick(row, keys, '—')) }))
+function clearanceResult(row) {
+  // FINISHED is set only when the makeup service publishes the formal grade.
+  if (String(row.status || '').toUpperCase() !== 'FINISHED') return '结果尚未正式发布'
+  return row.score ?? row.finalScore ?? '正式结果待核对'
 }
-function graduationSummary(value) {
-  const result = String(pick(value, ['result', 'status', 'qualificationStatus'], '')).toUpperCase()
-  if (['QUALIFIED', 'PASSED', 'MET'].includes(result)) return '系统自查已达成'
-  if (['UNQUALIFIED', 'FAILED', 'GAP', 'NOT_MET'].includes(result)) return '系统自查存在缺口'
-  return `${rows.value.length} 项`
-}
-function graduationTone(value) {
-  const result = String(pick(value, ['result', 'status', 'qualificationStatus'], '')).toUpperCase()
-  if (['QUALIFIED', 'PASSED', 'MET'].includes(result)) return 'success'
-  if (['UNQUALIFIED', 'FAILED', 'GAP', 'NOT_MET'].includes(result)) return 'danger'
-  return 'default'
-}
+function calendarType(value) { return ({ TEACHING: '教学周', EXAM: '考试安排', HOLIDAY: '节假日', INTERNSHIP: '实习安排', SWAP: '调课' })[value] || '校历安排' }
 async function load() {
+  const loader = config.value.loader
+  const readModel = model.value
+  const requestedPage = warningPage.value
+  const title = config.value.title
+  const scope = 'academic-readonly'
+  data.value = {}
   loading.value = true
   error.value = ''
-  try {
-    if (!config.value.loader) throw new Error('当前路由未绑定允许的教务读取接口')
-    data.value = await config.value.loader() || {}
-  } catch (e) {
-    error.value = e?.message || `${config.value.title}数据读取失败，请稍后重试`
-  } finally {
+  const read = await readStudentAcademicSnapshot(guard, async () => {
+    if (!loader) throw new Error('当前路由未绑定允许的教务读取接口')
+    const result = await loader()
+    if (readModel === 'warning') {
+      if (!result || !Array.isArray(result.items)) throw new Error('预警记录无法核对')
+      const paged = result.page != null || requestedPage > 1
+      if (paged && (result.page !== requestedPage || result.pageSize !== 50 || !Number.isInteger(result.total) || result.total < 0 || result.items.length > 50 || (result.items.length > 0 && result.total < (requestedPage - 1) * 50 + result.items.length) || typeof result.hasMore !== 'boolean' || result.hasMore !== (requestedPage * 50 < result.total))) {
+        throw new Error('预警分页回执无法核对，请重新加载')
+      }
+    }
+    return result
+  }, scope)
+  if (read.stale) return
+  if (!read.ok) {
+    if (academicErrorKind(read.error) === 'forbidden') { guard.invalidate(); data.value = {} }
+    error.value = academicErrorMessage(read.error, `${title}数据读取失败，请稍后重试`)
     loading.value = false
+    return
   }
+  data.value = read.value || {}
+  loading.value = false
 }
 
 onMounted(load)
-watch(model, load)
+watch(() => [model.value, model.value === 'warning' ? warningPage.value : null], load)
+onBeforeUnmount(() => guard.dispose())
 </script>
 
+<style src="../../components/academic/studentAcademicPrototype.css"></style>
 <style scoped>
-.read-page { max-width: 1080px; margin: 0 auto; }
-.read-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 16px; padding: 24px 26px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(135deg, #fff, var(--pri-50)); }
-.read-hero__eyebrow { color: var(--pri); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
-.read-hero h1 { margin: 8px 0 6px; color: var(--t1); font-size: 24px; }
-.read-hero p { margin: 0; color: var(--t3); font-size: 13px; line-height: 1.65; }
-.read-error { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
-.metric-card { padding: 16px 18px; border: 1px solid var(--line); border-radius: 13px; background: #fff; }
-.metric-card span, .metric-card b, .metric-card small { display: block; }
-.metric-card span { color: var(--t3); font-size: 12px; }
-.metric-card b { margin-top: 7px; color: var(--t1); font-size: 22px; }
-.metric-card small { margin-top: 4px; color: var(--t4); font-size: 11px; }
-.content-card { padding: 18px 20px; }
-.section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
-.section-head strong, .section-head span { display: block; }
-.section-head strong { color: var(--t1); font-size: 15px; }
-.section-head span { margin-top: 4px; color: var(--t3); font-size: 12px; }
-.record-list { display: grid; gap: 10px; }
-.record-item { padding: 14px; border: 1px solid var(--line2); border-radius: 11px; }
-.record-item > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; }
-.record-item > header strong, .record-item > header span { display: block; }
-.record-item > header strong { color: var(--t1); font-size: 14px; }
-.record-item > header span { margin-top: 4px; color: var(--t4); font-size: 11.5px; }
-.record-item dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 16px; margin: 12px 0 0; padding-top: 11px; border-top: 1px solid var(--line2); }
-.record-item dl div { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 8px; }
-.record-item dt { color: var(--t4); font-size: 12px; }
-.record-item dd { margin: 0; color: var(--t2); font-size: 12.5px; overflow-wrap: anywhere; }
-.read-note { display: flex; gap: 12px; margin-top: 14px; color: var(--t3); font-size: 12.5px; }
-.read-note strong { color: var(--t1); white-space: nowrap; }
-@media (max-width: 720px) {
-  .read-hero, .section-head, .record-item > header { align-items: stretch; flex-direction: column; }
-  .metric-grid { grid-template-columns: 1fr; }
-  .record-item dl { grid-template-columns: 1fr; }
-  .record-item dl div { grid-template-columns: 1fr; gap: 3px; }
-}
+.definition{margin:14px 0}.is-target{border-color:var(--pri)}
+.calendar-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));border-left:1px solid var(--line);border-top:1px solid var(--line)}
+.calendar-grid>div{min-height:83px;padding:8px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);font-size:12px;background:var(--surface)}
+.calendar-grid .head{min-height:35px;background:var(--soft);text-align:center}.calendar-grid .today{background:var(--priSoft)}.calendar-grid strong{display:block}.calendar-grid small{display:block;margin-top:6px;font-size:11px}
+.callout-number{font-size:32px;color:var(--pri);font-weight:750;line-height:1.1;margin-top:6px}
 </style>

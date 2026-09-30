@@ -28,6 +28,16 @@ def test_issue_contract_is_stable_for_frontend_and_submit_gate():
     }
 
 
+def test_credit_snapshot_mismatch_message_formats_numeric_values_without_runtime_error():
+    from app.modules.academic_affairs.services.academic_affairs_program_quality_service import (
+        _course_credit_snapshot_mismatch_message,
+    )
+
+    assert _course_credit_snapshot_mismatch_message("数据库原理", 2.0, 2.5) == (
+        "课程“数据库原理”方案学分 2 与课程库 2.5 不一致"
+    )
+
+
 class _Query:
     def __init__(self, rows):
         self.rows = list(rows)

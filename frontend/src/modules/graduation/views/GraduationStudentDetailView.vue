@@ -380,7 +380,7 @@ export default {
       L.loading = false
     },
     levelLabel(level) {
-      return { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }[level] || level
+      return { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }[level] || (level ? '等级待确认' : '—')
     },
     async load() {
       this.loading = true; this.error = ''

@@ -27,6 +27,9 @@ def _date(value):
 
 def _expected_count(config, section, keys, default):
     node = (config or {}).get(section) or {}
+    # A section's boolean enable flag does not specify a quantity.
+    if not isinstance(node, dict):
+        return default
     for key in keys:
         if node.get(key) is not None:
             return max(0, int(node[key]))
@@ -59,6 +62,8 @@ def material_quantity_facts(db, rec, batch) -> dict:
                 leave_days.add(cursor.isoformat())
             cursor += timedelta(days=1)
     checkin_cfg = cfg.get("checkin") or {}
+    if not isinstance(checkin_cfg, dict):
+        checkin_cfg = {}
     configured_checkin = _expected_count(
         cfg, "checkin", ("expectedDays", "requiredDays"), weekdays)
     expected_checkin = max(
@@ -94,6 +99,8 @@ def material_quantity_facts(db, rec, batch) -> dict:
     duration_days = ((end - start).days + 1) if start and end and start <= end else 0
     duration_months = max(1, (duration_days + 29) // 30) if duration_days else 0
     guidance_cfg = cfg.get("guidance") or {}
+    if not isinstance(guidance_cfg, dict):
+        guidance_cfg = {}
     expected_guidance = _expected_count(
         cfg, "guidance", ("expectedCount", "minCount"),
         max(0, int(guidance_cfg.get("minCommunicationsPerMonth") or 0) * duration_months),

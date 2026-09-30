@@ -213,6 +213,55 @@ def test_pending_search_never_crosses_tenant_or_data_scope(client, db_mode):
     assert hit["total"] == 1, f"total 必须只统计授权范围内的命中：{hit['total']}"
 
 
+def test_pending_hides_workflow_task_assigned_to_another_counselor(client, db_mode):
+    """班级可见不等于待办归我：列表必须与审批动作的 assignee 校验一致。"""
+    from app.db.session import get_sessionmaker
+    from app.models import CsLeave, User, WorkflowInstance, WorkflowTask
+
+    ids = _seed(db_mode)
+    db = get_sessionmaker()()
+    try:
+        other = User(
+            tenant_id=TID,
+            login_name=f"pending_other_{ids['target_leave']}",
+            real_name="其他辅导员",
+            password_hash="test-hash",
+            user_type="TEACHER",
+            status="ACTIVE",
+        )
+        db.add(other)
+        db.flush()
+        instance = WorkflowInstance(
+            tenant_id=TID,
+            workflow_code="AFFAIRS_LEAVE",
+            source_module="student-affairs",
+            source_biz_type="LEAVE",
+            source_biz_id=int(ids["target_leave"]),
+            applicant_id=int(ids["target_student"]),
+            title="待办指派一致性测试",
+            status="RUNNING",
+            current_node="COUNSELOR_REVIEW",
+        )
+        db.add(instance)
+        db.flush()
+        leave = db.get(CsLeave, int(ids["target_leave"]))
+        leave.workflow_instance_id = instance.id
+        db.add(WorkflowTask(
+            tenant_id=TID,
+            instance_id=instance.id,
+            node_code="COUNSELOR_REVIEW",
+            assignee_id=other.id,
+            status="PENDING",
+        ))
+        db.commit()
+    finally:
+        db.close()
+
+    hidden = _pending(client, _hdr(client, "counselor01"), page=1, pageSize=20, keyword=TARGET_NAME)
+    assert hidden["total"] == 0
+    assert hidden["list"] == []
+
+
 def test_pending_search_total_matches_paging_without_gap_or_dup(client, db_mode):
     """搜索结果分页必须无重复、无遗漏，且 total 与逐页累计一致。"""
     ids = _seed(db_mode)

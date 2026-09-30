@@ -1,8 +1,10 @@
 import { defineStore } from 'pinia'
 import { teacherInternshipContext } from '@/services/internshipApi'
+import { currentSessionGeneration, sessionChangedError } from '@/services/sessionGeneration.mjs'
 
 const STORAGE_KEY = 'gx_internship_context_v1'
 let _loadPromise = null
+let _loadEpoch = 0
 
 function matches(code, patterns) {
   return (patterns || []).some((p) => {
@@ -55,12 +57,15 @@ export const useInternshipContextStore = defineStore('internshipContext', {
     async load(force = false) {
       if (_loadPromise) return _loadPromise
       if (this.loaded && !force) return this.selectedBatchId
+      const epoch = ++_loadEpoch, generation = currentSessionGeneration()
+      const isCurrent = () => epoch === _loadEpoch && generation === currentSessionGeneration()
       _loadPromise = (async () => {
         this.loading = true
         this.error = ''
         this.moduleAccessError = ''
         try {
           const data = await teacherInternshipContext()
+          if (!isCurrent()) throw sessionChangedError()
           const healthy = data.moduleAccessHealthy !== false
           this.moduleAccessHealthy = healthy
           this.moduleAccessError = data.moduleAccessError || ''
@@ -85,14 +90,16 @@ export const useInternshipContextStore = defineStore('internshipContext', {
           this.persist()
           return this.selectedBatchId
         } catch (e) {
+          if (!isCurrent()) throw e
           this.loaded = false
           this.permissionPatterns = []
+          this.batches = []; this.selectedBatchId = ''
           if (!this.error) this.error = (e && e.message) || '实习权限或批次加载失败'
           throw e
         } finally {
-          this.loading = false
+          if (isCurrent()) this.loading = false
         }
-      })().finally(() => { _loadPromise = null })
+      })().finally(() => { if (epoch === _loadEpoch) _loadPromise = null })
       return _loadPromise
     },
     selectBatch(batchId) {
@@ -104,6 +111,7 @@ export const useInternshipContextStore = defineStore('internshipContext', {
       return true
     },
     clear() {
+      _loadEpoch++; _loadPromise = null
       this.loaded = false
       this.loading = false
       this.error = ''

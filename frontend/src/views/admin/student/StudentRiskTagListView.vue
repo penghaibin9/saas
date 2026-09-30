@@ -1,6 +1,6 @@
 <template>
-  <ModulePageShell
-    title="学生风险标签"
+  <ModulePageShell flat
+    title="风险标签"
     :subtitle="'共 ' + pagination.total + ' 条标签 · 新增 / 跟进 / 作废全程留痕'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
@@ -11,6 +11,7 @@
     </template>
 
     <div class="mp-stack">
+      <p class="flat-note">查询结果 <strong>{{ pagination.total }}</strong></p>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -18,8 +19,7 @@
       <EmptyState
         v-else-if="!rows.length"
         title="暂无风险标签"
-        description="系统预警会自动生成标签，也可点击右上角「新增风险标签」人工建档"
-      />
+        description="可调整筛选条件，或进入风险预警处理"><template #actions><button class="mp-link" @click="reset">重置筛选</button></template></EmptyState>
       <DataTable
         v-else
         :columns="columns"
@@ -52,7 +52,7 @@
           <RiskTag :level="row.level" />
         </template>
         <template #cell-status="{ row }">
-          <AppStatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />
+          <AppStatusTag :type="statusTone(row.status)" :label="row.statusLabel || statusLabel(row.status)" dot />
         </template>
         <template #cell-follow="{ row }">
           <template v-if="row.followUps.length">
@@ -79,7 +79,7 @@
             编辑
           </button>
           <button
-            v-if="ctx.permissionActions.voidRiskTag.visible"
+            v-if="ctx.permissionActions.voidRiskTag?.visible"
             class="mp-link rt-gap"
             :class="{ 'is-disabled': !can('voidRiskTag') || row.status === 'VOIDED' }"
             :title="row.status === 'VOIDED' ? '该标签已作废' : reason('voidRiskTag')"
@@ -90,9 +90,7 @@
         </template>
       </DataTable>
 
-      <p class="mp-note">
-        作废为逻辑删除且原因必填；风险等级变化会同步学生主档风险标识；导出名单默认脱敏并附水印。
-      </p>
+
     </div>
 
     <!-- 新增 / 编辑标签 -->
@@ -305,8 +303,8 @@ export default {
       return row.status === 'RESOLVED' || row.status === 'VOIDED'
     },
     statusLabel(v) {
-      const hit = this.ctx.statusOptions.riskTagStatus.find((o) => o.value === v)
-      return hit ? hit.label : v
+      const hit = this.ctx.statusOptions.riskTagStatus?.find((o) => o.value === v)
+      return hit ? hit.label : '状态待确认'
     },
     statusTone(v) {
       return { ACTIVE: 'warning', FOLLOWING: 'processing', RESOLVED: 'success', VOIDED: 'default' }[v] || 'default'

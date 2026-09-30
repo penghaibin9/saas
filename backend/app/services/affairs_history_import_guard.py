@@ -390,8 +390,9 @@ def install() -> None:
     old_assert = service.assert_confirm_allowed
     old_confirm = service.confirm
 
-    def dry_run(domain, rows, *, namespace=None, user=None):
-        result = old_dry_run(domain, rows, namespace=namespace, user=user)
+    def dry_run(domain, rows, *, namespace=None, user=None, orientation_batch_id=None):
+        result = old_dry_run(domain, rows, namespace=namespace, user=user,
+                             orientation_batch_id=orientation_batch_id)
         if domain != "student-affairs":
             return result
         batch_no = result["batchNo"]

@@ -101,10 +101,13 @@ def test_existing_pc_and_miniapp_contracts_stay_compatible():
     assert '@router.post("/academic/evaluation/submit"' in portal_router
     assert "academicEvaluationTasks: () => request('/portal/academic/evaluation/tasks')" in portal_api
     assert "academicEvaluationSubmit" in portal_api
-    assert "realRequest('/mobile/academic/evaluation/tasks')" in mini_api
+    assert "realRequest('/mobile/academic/evaluation/tasks', { data: params })" in mini_api
     assert "realRequest('/mobile/academic/evaluation/submit'" in mini_api
-    assert "aa.evaluation_tasks_my(user)" in mobile_router
+    assert "aa.evaluation_tasks_my(user, page=page, page_size=page_size, task_id=task_id)" in mobile_router
     assert "aa.evaluation_submit_my(user, body)" in mobile_router
+    assert "mobile_academic_affairs_public_service as aa" in mobile_router
+    portal_service = _read("app/student_portal/services/academic_service.py")
+    assert "mobile_academic_affairs_public_service as aa" in portal_service
 
 
 def test_miniapp_only_counts_actionable_evaluations_and_uses_valid_tokens():
@@ -120,7 +123,12 @@ def test_miniapp_only_counts_actionable_evaluations_and_uses_valid_tokens():
 
     assert "function pendingEvaluationCount(data)" in home
     assert "row.canSubmit === true && row.submitted !== true" in home
-    assert "pendingEvaluationCount(results[3].value)" in home
+    # 评教属于按需加载的次级信息；无论它在并发数组中的位置如何，首页徽标
+    # 必须消费服务端返回的 pending，而不是仅数当前页列表。
+    assert "pendingEvaluationCount(results[0].value)" in home
+    assert "nextPendingTaskId" in home
+    assert "getMyDeferrals({ status: 'RETURNED', page: 1, pageSize: 20 })" in home
+    assert "returnedDeferCount = deferRowsRaw" in home
     assert 'v-if="t.canSubmit"' in evaluation
     assert "本人已匿名提交" in evaluation
     assert "--color-primary" not in evaluation

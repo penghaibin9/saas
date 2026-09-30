@@ -718,10 +718,20 @@ export const systemApi = {
     }
   },
 
-  async assignUserRoles(id, roleCodes) {
+  async assignUserRoles(id, roleCodes, roleAssignments) {
     try {
       return ok(await request(`/system/users/${encodeURIComponent(id)}/roles`, {
-        method: 'PUT', body: { roleCodes }
+        method: 'PUT',
+        body: {
+          roleCodes,
+          ...(Array.isArray(roleAssignments) ? {
+            roleAssignments: roleAssignments.map((item) => ({
+              roleCode: item.roleCode,
+              scopeType: item.scopeType,
+              scopeIds: item.scopeIds || []
+            }))
+          } : {})
+        }
       }))
     } catch (error) {
       return fail(error.message || '角色分配失败')
@@ -1067,20 +1077,41 @@ export const systemApi = {
     }
   },
 
-  async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode, visiblePermissionCodes } = {}) {
+  async adoptRole(id, body) {
+    try {
+      return ok(await request(`/system/roles/${encodeURIComponent(id)}/adopt`, { method: 'POST', body }))
+    } catch (error) {
+      return fail(error.message || '转为本校维护失败')
+    }
+  },
+
+  async registerLegacyRoleAssignment(id, { reason, expectedVersion } = {}) {
+    try {
+      return ok(await request(`/system/role-assignments/legacy/${encodeURIComponent(id)}/register`, {
+        method: 'POST', body: { reason, expectedVersion }
+      }))
+    } catch (error) {
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
+    }
+  },
+
+  async saveRolePermissions(id, { menuKeys, buttonKeys, scopeCode, scopeTarget, expectedVersion, reason, requestId } = {}) {
     try {
       const permissionCodes = permissionCodesFromSelection(menuKeys, buttonKeys)
-      const visible = visiblePermissionCodes
-        || (_lastPermissionTreeVisibleCodes.length
-          ? _lastPermissionTreeVisibleCodes
-          : permissionCodes)
+      const body = {
+        permissionCodes,
+        scopeCode,
+        expectedVersion,
+        reason,
+        requestId
+      }
+      // The role editor currently changes the scope code, not CUSTOM target
+      // membership. Omitting an untouched target lets the backend preserve the
+      // existing structured target instead of interpreting `{}` as a clear.
+      if (scopeTarget !== undefined) body.scopeTarget = scopeTarget
       const data = await request(`/system/roles/${encodeURIComponent(id)}/permissions`, {
         method: 'PUT',
-        body: {
-          permissionCodes,
-          visiblePermissionCodes: visible,
-          scopeCode
-        }
+        body
       })
       return ok(data)
     } catch (error) {
@@ -1208,17 +1239,6 @@ export const systemApi = {
     }
   },
 
-  /** 停用组织节点（真实库：班级有在籍学生先转出，后端最终校验） */
-  async deprecateOrgNode(id, { type, reason }) {
-    try {
-      return ok(await request(`/system/org-nodes/${encodeURIComponent(id)}/status`, {
-        method: 'PUT', body: { type, action: 'DISABLE', reason }
-      }))
-    } catch (error) {
-      return fail(error.message || '组织节点停用失败')
-    }
-  },
-
   importOrg() {
     return fail('组织导入请前往实施中心「数据导入与智能匹配」：/admin/system/implementation/data-mapping')
   },
@@ -1259,6 +1279,24 @@ export const systemApi = {
       return ok(await request('/system/brand/reset', { method: 'POST', body: { reason } }))
     } catch (error) {
       return fail(error.message || '品牌恢复默认失败')
+    }
+  },
+
+  async getDictionaries() {
+    try {
+      return ok(await request('/system/dictionaries'))
+    } catch (error) {
+      return fail(error.message || '数据字典加载失败')
+    }
+  },
+
+  async saveDictionary(dictCode, payload) {
+    try {
+      return ok(await request(`/system/dictionaries/${encodeURIComponent(dictCode)}`, {
+        method: 'PUT', body: payload
+      }))
+    } catch (error) {
+      return fail(error.message || '数据字典保存失败')
     }
   },
 

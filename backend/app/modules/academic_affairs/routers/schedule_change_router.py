@@ -1,19 +1,33 @@
 """D5-S4 调停课 Move Only Router。
 
 只迁出 legacy 大 Router 已有的调课/停课/补课申请、预检、审批、撤销、归档与统计入口。
-DTO、权限依赖、sched_change_svc 与状态机全部复用原合同，不改变审批或课表改写语义。
+权限依赖与路由 metadata 继续复用原合同；P1-06/P1-07 仅替换高风险命令契约/实现。
 """
 from __future__ import annotations
 
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Path
+from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.routers import academic_affairs as legacy
+from app.modules.academic_affairs.services import academic_affairs_schedule_change_r3_service as r3_service
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-调停课"])
+
+
+class _R3ScheduleChangeReviewBody(BaseModel):
+    action: str = "APPROVE"
+    comment: Optional[str] = None
+    expectedVersion: int = Field(..., ge=0)
+
+
+# Preserve the move-only structural contract: both moved and legacy modules expose the
+# same DTO/service objects, while the public moved routes get the R3 required-version DTO.
+legacy.ScheduleChangeReviewBody = _R3ScheduleChangeReviewBody
+legacy.sched_change_svc = r3_service
 
 ScheduleChangeSubmit = legacy.ScheduleChangeSubmit
 ScheduleChangeReviewBody = legacy.ScheduleChangeReviewBody
@@ -95,6 +109,14 @@ def schedule_change_archive(
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/schedule-change/origin-items/{itemId}", summary="本人正式课位摘要（教师课表直达调停课）")
+def schedule_change_origin_item(
+    itemId: int = Path(...),
+    user=Depends(require_permission("academicAffairs.scheduleChange.apply")),
+):
+    return success(sched_change_svc.get_origin_item(itemId, user))
+
+
 @router.get("/schedule-change/{changeId}", summary="调停课详情（含通知单打印数据）")
 def schedule_change_detail(
     changeId: int = Path(...),
@@ -105,11 +127,20 @@ def schedule_change_detail(
 
 @router.post("/schedule-change/{changeId}/approve", summary="审批通过（学院/教务处；终审通过即改写课表）")
 def schedule_change_approve(
-    body: ScheduleChangeReviewBody = ScheduleChangeReviewBody(action="APPROVE"),
+    body: ScheduleChangeReviewBody,
     changeId: int = Path(...),
     user=Depends(_SC_REVIEW),
 ):
-    return success(sched_change_svc.review(changeId, user, "APPROVE", body.comment or ""), message="已通过")
+    return success(
+        sched_change_svc.review(
+            changeId,
+            user,
+            "APPROVE",
+            body.comment or "",
+            expected_version=body.expectedVersion,
+        ),
+        message="已通过",
+    )
 
 
 @router.post("/schedule-change/{changeId}/reject", summary="驳回（原因≥5 字）")
@@ -118,7 +149,16 @@ def schedule_change_reject(
     changeId: int = Path(...),
     user=Depends(_SC_REVIEW),
 ):
-    return success(sched_change_svc.review(changeId, user, "REJECT", body.comment or ""), message="已驳回")
+    return success(
+        sched_change_svc.review(
+            changeId,
+            user,
+            "REJECT",
+            body.comment or "",
+            expected_version=body.expectedVersion,
+        ),
+        message="已驳回",
+    )
 
 
 @router.post("/schedule-change/{changeId}/cancel", summary="撤销（仅 SUBMITTED/COLLEGE_REVIEW，APPROVED 后 409）")

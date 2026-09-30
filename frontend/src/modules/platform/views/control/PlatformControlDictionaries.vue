@@ -3,10 +3,10 @@
     <LoadingState v-if="loading" text="正在加载字典…" />
     <div v-else class="pcd__grid">
       <AppCard v-for="(items, code) in dicts" :key="code" class="pcd__card">
-        <AppSectionHeader :title="dictLabels[code] || code" />
+        <AppSectionHeader :title="dictLabels[code] || '其他字典'" />
         <ul class="pcd__items">
           <li v-for="(it, i) in items" :key="code + i" class="pcd__item">
-            <input v-model="it.code" class="pcd__input pcd__input--code" placeholder="code" />
+            <input v-model="it.code" class="pcd__input pcd__input--code" placeholder="枚举编码" />
             <input v-model="it.label" class="pcd__input" placeholder="显示名" />
             <input v-model="it.enabled" type="checkbox" title="启用" />
           </li>
@@ -55,7 +55,7 @@ export default {
     async save(code, items) {
       const valid = items.filter((i) => i.code && i.label)
       const res = await platformControlApi.putDictionary(code, valid)
-      if (res.code === 0) toast.success('「' + (this.dictLabels[code] || code) + '」已保存')
+      if (res.code === 0) toast.success('「' + (this.dictLabels[code] || '其他字典') + '」已保存')
       else toast.error(res.message)
     }
   }

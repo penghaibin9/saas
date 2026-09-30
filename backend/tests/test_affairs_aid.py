@@ -44,6 +44,10 @@ def _seed(db_mode):
         tenant_id=TID, login_name="counselor01", real_name="王莉",
         password_hash="test-only", user_type="TEACHER", status="ACTIVE",
     )
+    counselor_b_user = User(
+        tenant_id=TID, login_name="counselor02", real_name="李老师",
+        password_hash="test-only", user_type="TEACHER", status="ACTIVE",
+    )
     college_user = User(
         tenant_id=TID, login_name="college_admin01", real_name="学院管理员",
         password_hash="test-only", user_type="TEACHER", status="ACTIVE",
@@ -52,7 +56,7 @@ def _seed(db_mode):
         tenant_id=TID, login_name="school_admin01", real_name="学校管理员",
         password_hash="test-only", user_type="SCHOOL_ADMIN", status="ACTIVE",
     )
-    db.add_all([counselor_user, college_user, school_user]); db.flush()
+    db.add_all([counselor_user, counselor_b_user, college_user, school_user]); db.flush()
 
     roles = {}
     for code, name in (
@@ -65,6 +69,7 @@ def _seed(db_mode):
         roles[code] = role
     db.add_all([
         UserRole(tenant_id=TID, user_id=counselor_user.id, role_id=roles["COUNSELOR"].id, status="ACTIVE"),
+        UserRole(tenant_id=TID, user_id=counselor_b_user.id, role_id=roles["COUNSELOR"].id, status="ACTIVE"),
         UserRole(tenant_id=TID, user_id=college_user.id, role_id=roles["COLLEGE_ADMIN"].id, status="ACTIVE"),
         UserRole(tenant_id=TID, user_id=school_user.id, role_id=roles["SCHOOL_ADMIN"].id, status="ACTIVE"),
     ])
@@ -76,7 +81,7 @@ def _seed(db_mode):
             duty_type="PRIMARY", status="ACTIVE", effective_from=now - timedelta(days=1),
         ),
         AffairsCounselorAssignment(
-            tenant_id=TID, class_id=b.id, user_id=counselor_user.id,
+            tenant_id=TID, class_id=b.id, user_id=counselor_b_user.id,
             duty_type="PRIMARY", status="ACTIVE", effective_from=now - timedelta(days=1),
         ),
         TeacherStudentScope(

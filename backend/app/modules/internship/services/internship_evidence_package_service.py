@@ -14,6 +14,7 @@ from sqlalchemy.exc import IntegrityError
 
 import app.models as models
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     FileObject, InternshipAuditTrail, InternshipBatch, InternshipEvidencePackage,
     InternshipRecord, StudentProfile,
@@ -28,7 +29,9 @@ MAX_STUDENTS = 500
 PACKAGE_VERSION = "INTERNSHIP_EVIDENCE_V2"
 METRIC_VERSION = "internship-compliance-v2"
 DOWNLOADABLE_STATUSES = {"AVAILABLE", "STORED"}
-SENSITIVE_KEYS = ("phone", "mobile", "id_card", "idcard", "token", "client_ip", "guardian_phone")
+SENSITIVE_KEYS = (
+    "phone", "mobile", "id_card", "idcard", "token", "client_ip", "guardian_phone", "contact",
+)
 
 EVIDENCE_MODELS = (
     ("agreements", "InternshipAgreement"),
@@ -42,6 +45,7 @@ EVIDENCE_MODELS = (
     ("reports", "WeeklyReport"),
     ("guidance", "InternshipGuidance"),
     ("visits", "InternshipVisit"),
+    ("complaints", "InternshipComplaint"),
     ("risks", "RiskRecord"),
     ("incidents", "InternshipIncident"),
     ("enterprise-evaluations", "InternshipEnterpriseEval"),
@@ -141,21 +145,30 @@ def _attachment(db, file_id: str, user, prefix: str, entries, file_manifest, mis
 
 
 def _record_entries(db, rec, user, base: str, entries, files, missing):
-    student = db.get(StudentProfile, rec.student_id)
+    student = tenant_get(db, StudentProfile, rec.student_id)
     _add_json(entries, f"{base}evidence/student-profile.json",
               _safe_row(student) if student else None)
     _add_json(entries, f"{base}evidence/internship-record.json", _safe_row(rec))
-    company = db.get(getattr(models, "EmpCompany"), rec.enterprise_id) if rec.enterprise_id else None
-    position = db.get(getattr(models, "InternshipPosition"), rec.position_id) if rec.position_id else None
+    company = tenant_get(db, getattr(models, "EmpCompany"), rec.enterprise_id) if rec.enterprise_id else None
+    position = tenant_get(db, getattr(models, "InternshipPosition"), rec.position_id) if rec.position_id else None
     _add_json(entries, f"{base}evidence/company-position.json", {
         "company": _safe_row(company) if company else None,
         "position": _safe_row(position) if position else None,
     })
     evaluation = evaluate_internship_compliance(rec.id, "ARCHIVE", user=user, db=db)
     _add_json(entries, f"{base}evidence/compliance-result.json", evaluation)
+    audit_sources: dict[str, list[int]] = {}
+    audit_types = {
+        "InternshipComplaint": "COMPLAINT",
+        "RiskRecord": "RISK",
+        "InternshipIncident": "INTERNSHIP_INCIDENT",
+    }
     for folder, model_name in EVIDENCE_MODELS:
-        rows = [_safe_row(x) for x in _query_evidence(db, model_name, rec.id)]
+        source_rows = _query_evidence(db, model_name, rec.id)
+        rows = [_safe_row(x) for x in source_rows]
         _add_json(entries, f"{base}evidence/{folder}.json", rows)
+        if model_name in audit_types:
+            audit_sources[audit_types[model_name]] = [int(x.id) for x in source_rows]
         for row in rows:
             for file_id in _file_ids(row):
                 _attachment(db, file_id, user, f"{base}attachments", entries, files, missing)
@@ -164,6 +177,17 @@ def _record_entries(db, rec, user, base: str, entries, files, missing):
         InternshipAuditTrail.target_type == "INTERN_STUDENT",
         InternshipAuditTrail.target_id == rec.id).order_by(InternshipAuditTrail.id)).all()
     _add_json(entries, f"{base}audit/internship-audit.json", [_safe_row(x) for x in audits])
+    for target_type, target_ids in audit_sources.items():
+        related = [] if not target_ids else db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(),
+            InternshipAuditTrail.target_type == target_type,
+            InternshipAuditTrail.target_id.in_(target_ids),
+        ).order_by(InternshipAuditTrail.id)).all()
+        _add_json(
+            entries,
+            f"{base}audit/{target_type.lower().replace('_', '-')}-audit.json",
+            [_safe_row(x) for x in related],
+        )
     return evaluation
 
 
@@ -324,6 +348,10 @@ def _build_zip(entries: dict[str, bytes], manifest: dict) -> bytes:
 def generate(package_type, target_id, user=None):
     typ = (package_type or "").upper()
     with session() as db:
+        from app.modules.internship.services.internship_audit_service import (
+            assert_high_risk_write_available,
+        )
+        assert_high_risk_write_available(db)
         records, batch_id = _resolve_records(db, typ, target_id, user)
         if not records:
             raise not_found("当前数据范围内没有可生成证据包的实习记录")

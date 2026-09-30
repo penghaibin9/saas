@@ -8,9 +8,11 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.domain_request_permissions import require_orientation_request_permission
 from app.core.response import paginate, success
 from app.core.security import require_staff
-from app.schemas.orientation import (ArchiveCreate, BatchCreate, BatchUpdate, BlockedBody,
-                                      CommentBody, DormBody, ExceptionCreate, FlowUpdate, FollowUpBody,
-                                      IdsBody, NoteBody, NoticeCreate, PointCreate, PointUpdate,
+from app.schemas.orientation import (ArchiveCreate, BatchCreate, BatchFlowRefreshBody, BatchUpdate, BlockedBody,
+                                      DormBody, ExceptionCreate, FlowUpdate, FollowUpBody,
+                                      GreenApproveBody, GreenReasonBody, IdsBody, NoteBody,
+                                      MaterialApproveBody, MaterialReturnBody,
+                                      NoticeCreate, PaymentSyncBody, PointCreate, PointUpdate,
                                       ReasonBody, RemarkBody, StudentCreate, StudentUpdate, VerifyBody)
 from app.services import orientation_service as svc
 
@@ -21,24 +23,26 @@ router = APIRouter(prefix="/orientation", tags=["数字迎新"],
 
 
 @router.get("/dashboard", summary="迎新看板")
-def dashboard(user=Depends(require_staff)):
-    return success(svc.get_dashboard())
+def dashboard(batchId: Optional[str] = None, user=Depends(require_staff)):
+    return success(svc.get_dashboard(user=user, batch_id=batchId))
 
 
 @router.get("/students", summary="新生台账列表")
 def students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-             keyword: Optional[str] = None, classId: Optional[str] = None, stage: Optional[str] = None,
+             keyword: Optional[str] = None, classId: Optional[str] = None,
+             batchId: Optional[str] = None, stage: Optional[str] = None,
              reportStatus: Optional[str] = None, paymentStatus: Optional[str] = None,
-             riskLevel: Optional[str] = None, user=Depends(require_staff)):
-    items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId, stage=stage,
+             riskLevel: Optional[str] = None, pendingArrival: bool = False, user=Depends(require_staff)):
+    items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
+                                     batch_id=batchId, stage=stage,
                                      report_status=reportStatus, payment_status=paymentStatus,
-                                     risk_level=riskLevel)
+                                     risk_level=riskLevel, pending_arrival=pendingArrival, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/students/{sid}", summary="新生详情")
 def student_detail(sid: str, user=Depends(require_staff)):
-    return success(svc.get_student_detail(sid))
+    return success(svc.get_student_detail(sid, user=user))
 
 
 @router.post("/students", summary="新增新生")
@@ -58,13 +62,15 @@ def student_void(sid: str, body: ReasonBody, user=Depends(require_staff)):
 
 @router.post("/students/{sid}/verify", summary="新生信息核验（通过/不通过；不通过原因≥5字）")
 def student_verify(sid: str, body: VerifyBody, user=Depends(require_staff)):
-    return success(svc.verify_student(sid, body.passed, body.reason), message="已核验")
+    return success(svc.verify_student(sid, body.passed, body.reason, body.expectedVersion), message="已核验")
 
 
 @router.get("/progress", summary="报到进度")
 def progress(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-             keyword: Optional[str] = None, blockedOnly: str = "NO", user=Depends(require_staff)):
-    items, total = svc.list_progress(page, pageSize, keyword=keyword, blocked_only=blockedOnly)
+             keyword: Optional[str] = None, blockedOnly: str = "NO",
+             batchId: Optional[int] = Query(default=None, gt=0), user=Depends(require_staff)):
+    items, total = svc.list_progress(page, pageSize, keyword=keyword, blocked_only=blockedOnly,
+                                     batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -73,67 +79,125 @@ def progress_blocked(sid: str, body: BlockedBody, user=Depends(require_staff)):
     return success(svc.update_blocked(sid, body.blockedStep, body.blockedReason), message="已更新")
 
 
-@router.post("/progress/{sid}/resolve", summary="标记卡点人工已处理")
+@router.post("/progress/{sid}/resolve", summary="人工豁免卡点（原因和审计证据必填）")
 def progress_resolve(sid: str, body: NoteBody = Body(default=NoteBody()), user=Depends(require_staff)):
-    return success(svc.resolve_blocked(sid, body.note), message="已处理")
+    return success(svc.resolve_blocked(sid, body.note), message="已记录人工豁免")
 
 
 @router.get("/payments", summary="缴费列表")
 def payments(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
              keyword: Optional[str] = None, paymentStatus: Optional[str] = None,
+             batchId: Optional[int] = Query(None, ge=1), orientationStudentId: Optional[int] = Query(None, ge=1),
              user=Depends(require_staff)):
-    items, total = svc.list_payments(page, pageSize, keyword=keyword, payment_status=paymentStatus)
+    items, total = svc.list_payments(page, pageSize, keyword=keyword,
+                                     payment_status=paymentStatus, user=user, batch_id=batchId, orientation_student_id=orientationStudentId)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.put("/payments/{sid}", summary="同步/人工核验缴费事实（CAS）")
+def payment_sync(sid: str, body: PaymentSyncBody, user=Depends(require_staff)):
+    from app.services.orientation_qualification_service import sync_payment
+    return success(sync_payment(sid, body.model_dump(), user=user), message="缴费事实已更新")
 
 
 @router.get("/green-channels", summary="绿色通道列表")
 def green_channels(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                   keyword: Optional[str] = None, status: Optional[str] = None,
-                   user=Depends(require_staff)):
-    items, total = svc.list_green_channels(page, pageSize, keyword=keyword, status=status)
+                   keyword: Optional[str] = None, status: Optional[str] = None, batchId: Optional[int] = Query(None, ge=1),
+                   orientationStudentId: Optional[int] = Query(None, ge=1), user=Depends(require_staff)):
+    items, total = svc.list_green_channels(page, pageSize, keyword=keyword, status=status, user=user, batch_id=batchId, orientation_student_id=orientationStudentId)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/green-channels/{gid}/approve", summary="绿色通道通过")
-def gc_approve(gid: str, body: RemarkBody = Body(default=RemarkBody()), user=Depends(require_staff)):
-    return success(svc.approve_green_channel(gid, body.remark), message="已通过")
+def gc_approve(gid: str, body: GreenApproveBody, user=Depends(require_staff)):
+    return success(svc.approve_green_channel(
+        gid, body.remark, body.expectedVersion, user=user,
+    ), message="已通过")
 
 
 @router.post("/green-channels/{gid}/reject", summary="绿色通道驳回（原因≥5字）")
-def gc_reject(gid: str, body: ReasonBody, user=Depends(require_staff)):
-    return success(svc.reject_green_channel(gid, body.reason), message="已驳回")
+def gc_reject(gid: str, body: GreenReasonBody, user=Depends(require_staff)):
+    return success(svc.reject_green_channel(
+        gid, body.reason, body.expectedVersion, user=user,
+    ), message="已驳回")
 
 
 @router.post("/green-channels/{gid}/return", summary="绿色通道退回（原因≥5字）")
-def gc_return(gid: str, body: ReasonBody, user=Depends(require_staff)):
-    return success(svc.return_green_channel(gid, body.reason), message="已退回")
+def gc_return(gid: str, body: GreenReasonBody, user=Depends(require_staff)):
+    return success(svc.return_green_channel(
+        gid, body.reason, body.expectedVersion, user=user,
+    ), message="已退回")
+
+
+@router.get("/qualifications", summary="服务端报到资格列表")
+def qualifications(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                   keyword: Optional[str] = None, verdict: Optional[str] = None,
+                   batchId: Optional[int] = Query(None, ge=1), orientationStudentId: Optional[int] = Query(None, ge=1),
+                   queue: Optional[str] = Query(None, pattern="^(ready|blocked)$"),
+                   user=Depends(require_staff)):
+    from app.services.orientation_qualification_service import list_qualifications
+    items, total = list_qualifications(
+        page, pageSize, keyword=keyword, verdict=verdict, queue=queue, user=user,
+        batch_id=batchId, orientation_student_id=orientationStudentId,
+    )
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/qualifications/{sid}", summary="服务端报到资格详情")
+def qualification_detail(sid: str, user=Depends(require_staff)):
+    from app.services.orientation_qualification_service import qualification_detail
+    return success(qualification_detail(sid, user=user))
+
+
+@router.post("/qualifications/{sid}/recalculate", summary="重算并保存报到资格决策")
+def qualification_recalculate(sid: str, user=Depends(require_staff)):
+    from app.services.orientation_qualification_service import qualification_detail
+    return success(qualification_detail(sid, user=user, recalculate=True), message="资格已重算")
+
+
+@router.post("/students/{sid}/finalize", summary="学院最终确认并进入正式学生生命周期")
+def enrollment_finalize(sid: str, body: dict = Body(...), user=Depends(require_staff)):
+    from app.services.orientation_enrollment_finalize_service import finalize
+    return success(finalize(sid, body, user=user), message="学院确认已完成")
+
+
+@router.post("/students/{sid}/activate", summary="激活迎新学生主档与登录账号")
+def enrollment_activate(sid: str, body: dict = Body(...), user=Depends(require_staff)):
+    from app.services.orientation_enrollment_finalize_service import activate
+    return success(activate(sid, body, user=user), message="学生身份与账号已激活")
 
 
 @router.get("/materials", summary="材料审核列表")
 def materials(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
               keyword: Optional[str] = None, status: Optional[str] = None,
-              materialType: Optional[str] = None, user=Depends(require_staff)):
+              materialType: Optional[str] = None, batchId: Optional[int] = None,
+              orientationStudentId: Optional[int] = Query(None, ge=1), user=Depends(require_staff)):
     items, total = svc.list_materials(page, pageSize, keyword=keyword, status=status,
-                                      material_type=materialType)
+                                      material_type=materialType, user=user, batch_id=batchId,
+                                      orientation_student_id=orientationStudentId)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/materials/{mid}/approve", summary="材料通过")
-def mat_approve(mid: str, body: CommentBody = Body(default=CommentBody()), user=Depends(require_staff)):
-    return success(svc.approve_material(mid, body.comment), message="已通过")
+def mat_approve(mid: str, body: MaterialApproveBody, user=Depends(require_staff)):
+    return success(svc.approve_material(mid, body.comment, user=user,
+                                        expected_version=body.expectedVersion), message="已通过")
 
 
 @router.post("/materials/{mid}/return", summary="材料退回（原因≥5字）")
-def mat_return(mid: str, body: ReasonBody, user=Depends(require_staff)):
-    return success(svc.return_material(mid, body.reason), message="已退回")
+def mat_return(mid: str, body: MaterialReturnBody, user=Depends(require_staff)):
+    return success(svc.return_material(mid, body.reason, user=user,
+                                       expected_version=body.expectedVersion), message="已退回")
 
 
 @router.get("/dorms", summary="宿舍入住列表")
 def dorms(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+          batchId: Optional[int] = Query(None, ge=1),
+          orientationStudentId: Optional[int] = Query(None, ge=1),
           keyword: Optional[str] = None, dormStatus: Optional[str] = None,
           building: Optional[str] = None, user=Depends(require_staff)):
     items, total = svc.list_dorms(page, pageSize, keyword=keyword, dorm_status=dormStatus,
-                                  building=building)
+                                  building=building, batch_id=batchId, orientation_student_id=orientationStudentId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -161,10 +225,10 @@ def exception_create(body: ExceptionCreate, user=Depends(require_staff)):
 @router.get("/exceptions", summary="迎新异常列表")
 def exceptions(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                keyword: Optional[str] = None, exceptionType: Optional[str] = None,
-               status: Optional[str] = None, riskLevel: Optional[str] = None,
+               status: Optional[str] = None, riskLevel: Optional[str] = None, batchId: Optional[int] = None,
                user=Depends(require_staff)):
     items, total = svc.list_exceptions(page, pageSize, keyword=keyword, exception_type=exceptionType,
-                                       status=status, risk_level=riskLevel)
+                                       status=status, risk_level=riskLevel, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -226,6 +290,11 @@ def batch_activate(bid: str, user=Depends(require_staff)):
     return success(svc.activate_batch(bid), message="已启用")
 
 
+@router.post("/batches/{bid}/student-numbers/assign", summary="批次内为未分配学号的新生一键自动编号（最多2万）")
+def batch_assign_student_numbers(bid: str, body: dict = Body(...), user=Depends(require_staff)):
+    return success(svc.assign_batch_student_numbers(bid, body), message="学号批量处理完成")
+
+
 @router.post("/batches/{bid}/close", summary="结束批次（进行中→已结束）")
 def batch_close(bid: str, user=Depends(require_staff)):
     return success(svc.close_batch(bid), message="已结束")
@@ -278,6 +347,16 @@ def flow_config_update(fid: str, body: FlowUpdate, user=Depends(require_staff)):
     return success(svc.update_flow_config(fid, body.model_dump()), message="已更新")
 
 
+@router.post("/flow-config/complete-standard", summary="补齐供后续批次采用的标准报到环节")
+def flow_config_complete_standard(user=Depends(require_staff)):
+    return success(svc.complete_standard_flow_config(), message="标准环节已核对并补齐")
+
+
+@router.post("/batches/{bid}/refresh-flow-version", summary="空批次采用最新报到流程版本")
+def batch_refresh_flow_version(bid: str, body: BatchFlowRefreshBody, user=Depends(require_staff)):
+    return success(svc.refresh_empty_batch_flow_version(bid, body.expectedVersion), message="批次已采用最新流程")
+
+
 # ═══ 迎新通知 ═══
 
 @router.get("/notices", summary="迎新通知列表")
@@ -302,9 +381,9 @@ def notice_send(nid: str, user=Depends(require_staff)):
 
 @router.get("/archives", summary="迎新归档列表")
 def archives(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-             keyword: Optional[str] = None, status: Optional[str] = None,
+             keyword: Optional[str] = None, status: Optional[str] = None, batchId: Optional[int] = Query(None, ge=1),
              user=Depends(require_staff)):
-    items, total = svc.list_archives(page, pageSize, keyword=keyword, status=status)
+    items, total = svc.list_archives(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -316,3 +395,15 @@ def archive_create(body: ArchiveCreate, user=Depends(require_staff)):
 @router.post("/archives/{aid}/run", summary="执行归档")
 def archive_run(aid: str, user=Depends(require_staff)):
     return success(svc.run_archive(aid), message="已归档")
+
+
+@router.get("/archives/{aid}/items", summary="迎新归档快照")
+def archive_items(aid: str, page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                  user=Depends(require_staff)):
+    items, total = svc.archive_items(aid, page, pageSize)
+    return success(paginate(items, total, page, pageSize))
+
+
+@router.post("/students/{sid}/disposition", summary="未到校、延期及取消入学处理")
+def disposition_student(sid: str, body: dict = Body(...), user=Depends(require_staff)):
+    return success(svc.disposition_student(sid, body), message="已处理")

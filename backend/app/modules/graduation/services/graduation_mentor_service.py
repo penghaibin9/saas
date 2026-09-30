@@ -497,21 +497,30 @@ def unassigned_students(page: int, page_size: int, keyword=None) -> tuple[list[d
 
 def mentor_stats(batch_id=None) -> dict:
     with session() as db:
+        from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+
         base = [GraduationMentor.tenant_id == _tid(), GraduationMentor.is_deleted.is_(False)]
-        total = int(db.scalar(select(func.count()).select_from(GraduationMentor).where(*base)) or 0)
-        by_status = [{"status": s, "label": QUAL_LABEL[s],
-                      "count": int(db.scalar(select(func.count()).select_from(GraduationMentor).where(
-                          *base, GraduationMentor.qualification_status == s)) or 0)} for s in QUAL_LABEL]
+        status_counts = {
+            str(status or ""): int(count)
+            for status, count in db.execute(
+                select(GraduationMentor.qualification_status, func.count(GraduationMentor.id))
+                .where(*base)
+                .group_by(GraduationMentor.qualification_status)
+            ).all()
+        }
+        total = sum(status_counts.values())
+        by_status = [{"status": status, "label": QUAL_LABEL[status],
+                      "count": status_counts.get(status, 0)} for status in QUAL_LABEL]
         qualified = db.scalars(select(GraduationMentor).where(
             *base, GraduationMentor.qualification_status == "QUALIFIED")).all()
         full_count = sum(1 for m in qualified if m.current_count >= m.max_capacity)
         total_capacity = sum(m.max_capacity for m in qualified)
         total_assigned = sum(m.current_count for m in qualified)
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+        scope = student_scope_select(db, _tid(), batch_id=batch_id)
         unassigned_total = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
             GraduationStudent.mentor_id.is_(None), GraduationStudent.record_status == "ACTIVE",
-            GraduationStudent.id.in_(scope_ids or [-1]))) or 0)
+            GraduationStudent.id.in_(scope))) or 0)
         return {"total": total, "byStatus": by_status, "qualifiedCount": len(qualified),
                 "fullCapacityCount": full_count, "totalCapacity": total_capacity,
                 "totalAssigned": total_assigned, "unassignedStudents": unassigned_total,

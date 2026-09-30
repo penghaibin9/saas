@@ -2,11 +2,16 @@
 
 对应必测 SYS02-T01～T04：
 状态机非法转换拒绝 / 未购买模块不能安装启用 / 同一快照重复应用幂等 / 验收后普通修改拒绝。
+商业授权场景只用真实套餐 + 已支付订单构造，不再写退休的 FEATURES override。
 """
+import hashlib
+import json
+
 import pytest
 
 from app.core.context import set_tenant
 from app.core.exceptions import AppException
+from app.services import platform_defaults as defaults
 from app.services import platform_service as platform
 from app.services import system_implementation_service as impl
 
@@ -20,9 +25,7 @@ def _session():
     return get_sessionmaker()()
 
 
-@pytest.fixture()
-def tenant_ctx(db_mode):
-    """所有实施接口都读上下文租户，这里显式钉住，并建好真实租户行。"""
+def _ensure_tenant_row() -> None:
     from app.models import Tenant
 
     with _session() as db:
@@ -30,8 +33,57 @@ def tenant_ctx(db_mode):
             db.add(Tenant(id=MAIN_TENANT_ID, tenant_code="demo",
                           school_name="实施测试学校", status="ACTIVE"))
             db.commit()
-    platform.put_config_json(MAIN_TENANT_ID, "TENANT_META", "-",
-                             {"status": "active", "packageCode": "professional"})
+
+
+def _activate_package(overrides: dict | None = None) -> str:
+    """用生产订单链构造 SYS-02 的商业授权前置条件。"""
+    _ensure_tenant_row()
+    features = {**defaults.DEFAULT_FEATURES,
+                **{str(k): bool(v) for k, v in (overrides or {}).items() if k in defaults.FEATURE_KEYS}}
+    digest = hashlib.sha256(json.dumps(features, sort_keys=True).encode()).hexdigest()[:10]
+    package_code = f"sys02_{digest}"[:50]
+    platform.put_config_json(0, "PACKAGE", package_code, {
+        "packageCode": package_code,
+        "packageName": f"SYS02实施测试套餐-{digest}",
+        "price": 1,
+        "durationDays": 30,
+        "maxStudents": 10000,
+        "maxUsers": 1000,
+        "storageLimitMb": 20480,
+        "features": features,
+        "enabled": True,
+        "remark": "SYS-02 paid-order entitlement fixture",
+    })
+    platform.put_config_json(MAIN_TENANT_ID, "TENANT_META", "-", {
+        "status": "trial", "packageCode": "trial", "environment": "test",
+    })
+    created = platform.create_order({
+        "tenantId": str(MAIN_TENANT_ID),
+        "packageCode": package_code,
+        "orderType": "NEW",
+        "durationDays": 30,
+        "amount": 1,
+        "remark": "SYS-02实施商业授权测试",
+    })
+    paid = platform.order_action(
+        created["orderNo"], "mark-paid",
+        expected_version=int(created["version"]),
+        reason="SYS02真实订单入账测试",
+    )
+    if paid.get("repairTaskRequired"):
+        paid = platform.order_action(
+            created["orderNo"], "repair-activation",
+            expected_version=int(paid["version"]),
+            reason="SYS02修复订单激活测试",
+        )
+    assert paid.get("tenantActivated") is True
+    return package_code
+
+
+@pytest.fixture()
+def tenant_ctx(db_mode):
+    """所有实施接口都读上下文租户，并要求真实商业授权已物化。"""
+    _activate_package({})
     set_tenant({"tenantId": str(MAIN_TENANT_ID)})
     try:
         yield MAIN_TENANT_ID
@@ -65,22 +117,18 @@ def _set_status(project_id: int, status: str) -> None:
 def test_t01_illegal_state_transitions_are_rejected(tenant_ctx):
     project_id = _new_project()
 
-    # 没预览就应用
     with pytest.raises(AppException) as no_preview:
         impl.apply_snapshot(ADMIN, project_id, {"confirmText": "确认应用", "reason": "跳过预览直接应用"})
     assert no_preview.value.code == "DATA_CONFLICT"
 
-    # 没应用就跑上线检查
     with pytest.raises(AppException) as no_apply:
         impl.run_checks(ADMIN, project_id)
     assert no_apply.value.code == "DATA_CONFLICT"
 
-    # 没通过检查就验收
     with pytest.raises(AppException) as no_check:
         impl.accept_project(ADMIN, project_id, {"confirmText": "确认验收", "comment": "还没检查就验收"})
     assert no_check.value.code == "DATA_CONFLICT"
 
-    # 确认文案错了也不许过
     impl.preview_project(ADMIN, project_id)
     with pytest.raises(AppException):
         impl.apply_snapshot(ADMIN, project_id, {"confirmText": "应用", "reason": "确认文案不对"})
@@ -97,8 +145,8 @@ def test_t01b_preview_requires_configurable_state(tenant_ctx):
 
 # ── SYS02-T02：未购买模块不能安装启用 ───────────────────────────────────────
 def test_t02_unentitled_module_cannot_be_installed(tenant_ctx):
-    # 高职标准版默认勾选毕设；把平台侧的毕设功能关掉
-    platform.put_config_json(MAIN_TENANT_ID, "FEATURES", "-", {"graduation": False})
+    # 用真实已支付套餐构造“未购买毕业设计”，而不是写 FEATURES 覆盖。
+    _activate_package({"graduation": False})
     project_id = _new_project("HIGHER_VOCATIONAL")
 
     preview = impl.preview_project(ADMIN, project_id)
@@ -111,7 +159,6 @@ def test_t02_unentitled_module_cannot_be_installed(tenant_ctx):
         impl.apply_snapshot(ADMIN, project_id, {"confirmText": "确认应用", "reason": "尝试安装未购买模块"})
     assert caught.value.code == "DATA_CONFLICT"
 
-    # 即使强行把状态摆到 PREVIEW_READY 且预览未标阻断，应用前也会重算授权
     from app.models import SystemImplementationProject
 
     with _session() as db:
@@ -130,7 +177,7 @@ def test_t02_unentitled_module_cannot_be_installed(tenant_ctx):
 
 
 def test_t02b_entitled_modules_pass_the_gate(tenant_ctx):
-    platform.put_config_json(MAIN_TENANT_ID, "FEATURES", "-", {})
+    _activate_package({})
     project_id = _new_project("HIGHER_VOCATIONAL")
     preview = impl.preview_project(ADMIN, project_id)
     entitlement = preview["preview"]["entitlement"]
@@ -264,7 +311,6 @@ def test_t04b_change_project_is_the_only_way_forward(tenant_ctx):
     assert changed["status"] == "CONFIGURING"
     assert changed["id"] != str(project_id), "变更必须是新项目，不是改旧项目"
 
-    # 已有进行中的变更项目时，不允许再开一个
     with pytest.raises(AppException) as second:
         impl.create_change_project(ADMIN, int(installation.id), {"projectName": "再开一个"})
     assert second.value.code == "DATA_CONFLICT"
@@ -272,7 +318,6 @@ def test_t04b_change_project_is_the_only_way_forward(tenant_ctx):
 
 # ── 接口层：仍然是同一套 /system/implementation/projects/*，没有 v2 ────────────
 def test_no_v2_route_and_workspace_contract(client, auth_headers, tenant_ctx):
-    # 用 OpenAPI 全量路径核对，而不是 app.routes（顶层拿不到被 include 的子路由）
     schema = client.get("/openapi.json").json()
     paths = set(schema.get("paths") or {})
     assert not any("/implementation/v2" in p for p in paths), "禁止另建 v2 路由"
@@ -289,7 +334,6 @@ def test_no_v2_route_and_workspace_contract(client, auth_headers, tenant_ctx):
                           headers=auth_headers).json()
     assert preview["code"] == 0
     data = preview["data"]
-    # 工作区首屏合同：快照哈希 + 幂等键 + 影响对象 + 授权结论，缺一不可
     assert data["previewHash"]
     assert data["idempotencyKey"] == data["previewHash"]
     assert "impact" in data["preview"] and "entitlement" in data["preview"]

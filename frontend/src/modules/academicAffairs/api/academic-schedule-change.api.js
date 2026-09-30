@@ -6,9 +6,9 @@
 import { request } from '@/services/http/client'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
-function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
+function fail(message, code = 1, metadata = {}) { return Promise.resolve({ code, data: null, message, ...metadata }) }
 function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
+  if (e?.biz) return fail(e.message, e.code || 1, { bizCode: e.bizCode, details: e.details, traceId: e.traceId })
   return fail(e?.message || '真实接口不可用', 503001)
 }
 async function call(fn) {
@@ -40,6 +40,10 @@ export const CHANGE_STATUS = [
 ]
 
 export const scheduleChangeApi = {
+  /** 教师课表点击课位后的只读摘要；后端按本人关系与 PUBLISHED 状态收敛。 */
+  originItem(itemId) {
+    return call(() => request(`${BASE}/origin-items/${itemId}`))
+  },
   /** 台账/列表（范围过滤：教务处全量 / 学院按班级 / 教师按本人课位） */
   list(params = {}) {
     return callList(BASE, params)
@@ -64,13 +68,17 @@ export const scheduleChangeApi = {
   submit(body) {
     return call(() => request(BASE, { method: 'POST', body }))
   },
-  /** 审批通过（学院/教务处；终审通过即改写课表 → APPLIED） */
-  approve(id, comment = '') {
-    return call(() => request(`${BASE}/${id}/approve`, { method: 'POST', body: { action: 'APPROVE', comment } }))
+  /** 审批通过：必须回传当前行 version，后端做 expectedVersion CAS。 */
+  approve(id, expectedVersion, comment = '') {
+    return call(() => request(`${BASE}/${id}/approve`, {
+      method: 'POST', body: { action: 'APPROVE', comment, expectedVersion }
+    }))
   },
-  /** 驳回（原因≥5 字） */
-  reject(id, comment) {
-    return call(() => request(`${BASE}/${id}/reject`, { method: 'POST', body: { action: 'REJECT', comment } }))
+  /** 驳回：必须回传当前行 version；原因≥5字。 */
+  reject(id, expectedVersion, comment) {
+    return call(() => request(`${BASE}/${id}/reject`, {
+      method: 'POST', body: { action: 'REJECT', comment, expectedVersion }
+    }))
   },
   /** 撤销（仅 SUBMITTED/COLLEGE_REVIEW；APPROVED 后 409） */
   cancel(id, reason = '') {

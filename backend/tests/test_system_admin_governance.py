@@ -28,7 +28,10 @@ def test_employment_feature_key_independent():
 
 def test_feature_enabled_unknown_denied(monkeypatch):
     from app.services import platform_service as ps
-    monkeypatch.setattr(ps, "effective_features", lambda tid: {"internship": True})
+    from app.services import commercial_entitlement_authority_service as commercial
+    # The facade delegates to the paid-order authority; patch its read seam,
+    # not the retired FEATURES facade which the runtime no longer consumes.
+    monkeypatch.setattr(commercial, "effective_features", lambda tid: {"internship": True})
     assert ps.feature_enabled(1, "internship") is True
     assert ps.feature_enabled(1, "not_a_real_feature_key") is False
 
@@ -166,32 +169,39 @@ def test_module_storage_failure_never_defaults_enabled(monkeypatch):
     assert caught.value.http_status == 503
 
 
-def test_module_feature_expected_version_conflict(monkeypatch):
+def test_module_feature_expected_version_conflict(db_mode):
     from app.core.exceptions import AppException
-    from app.db import session as db_session
-    from app.services import system_governance_service as gov
+    from app.services import tenant_capability_setting_service as caps
 
-    monkeypatch.setattr(db_session, "db_enabled", lambda: False)
-    monkeypatch.setattr(gov, "_tid", lambda: 0)
-    gov._MEMORY_DOCS.pop(gov.DOC_MODULE_FEATURES, None)
-    gov._MEMORY_DOCS.pop(f"{gov.DOC_MODULE_FEATURES}__ver", None)
-    first = gov.save_module_features(
-        {"userId": "db-1"},
-        {"studentAffairs": {"enabled": False}},
-        "收口并发版本测试",
-        expected_version=0,
+    tenant_id = 1000000000000000001
+    first = caps.set_capability(
+        "studentAffairs", enabled=False, reason="收口并发版本测试",
+        expected_version=0, tenant_id=tenant_id, user={"userId": "db-1"},
     )
-    assert first["studentAffairs"]["version"] == 1
+    assert first["version"] == 1
     with pytest.raises(AppException) as caught:
-        gov.save_module_features(
-            {"userId": "db-1"},
-            {"studentAffairs": {"enabled": True}},
-            "使用过期版本重试",
-            expected_version=0,
+        caps.set_capability(
+            "studentAffairs", enabled=True, reason="使用过期版本重试",
+            expected_version=0, tenant_id=tenant_id, user={"userId": "db-1"},
         )
     assert caught.value.code == "DATA_CONFLICT"
-    gov._MEMORY_DOCS.pop(gov.DOC_MODULE_FEATURES, None)
-    gov._MEMORY_DOCS.pop(f"{gov.DOC_MODULE_FEATURES}__ver", None)
+    current = caps.get_capability("studentAffairs", tenant_id)
+    assert current["version"] == 1 and current["schoolEnabled"] is False
+
+
+def test_legacy_bulk_capability_writer_remains_closed(monkeypatch):
+    from app.core.exceptions import AppException
+    from app.modules.system_admin.routers import system_cross_authority_hardening  # noqa: F401
+    from app.services import system_governance_service as gov
+
+    def unexpected_write(*args, **kwargs):
+        pytest.fail("retired bulk writer must not persist any configuration")
+    monkeypatch.setattr(gov, "_save", unexpected_write)
+    with pytest.raises(AppException) as caught:
+        gov.save_module_features({"userId": "db-1"}, {"studentAffairs": {"enabled": False}},
+                                 "验证旧批量入口保持关闭", expected_version=0)
+    assert caught.value.code == "CAPABILITY_AUTHORITY_MOVED"
+    assert caught.value.http_status == 409
 
 
 def test_delegation_rejects_platform_and_excess_role():
@@ -249,15 +259,20 @@ def test_org_bypass_allowlist_documented():
     assert "academic_affairs_major_split_service" in ORG_WRITE_BYPASS_ALLOWLIST
 
 
-def test_system_catalog_nine_workspaces():
-    # 通过读取前端目录源文件统计二级工作区
+def test_system_catalog_eight_workspaces():
+    # 学校系统管理已收口为 8 个二级工作区；实施能力并入“系统概览”，不再单独造第九组。
     text = (ROOT / "frontend" / "src" / "modules" / "system" / "systemManagementCatalog.js").read_text(encoding="utf-8")
-    assert "系统总览" in text
-    assert "实施与验收" in text
-    assert "身份与账号" in text
-    assert "组织与任职" in text
-    assert "角色权限与数据范围" in text
-    assert "模块与学校配置" in text
-    assert "流程配置与运行" in text
-    assert "安全与审计" in text
-    assert "接口同步与数据迁移" in text
+    for label in (
+        "系统概览",
+        "身份与账号",
+        "组织主数据",
+        "角色与权限",
+        "学校配置",
+        "流程配置",
+        "安全与审计",
+        "接口与同步",
+    ):
+        assert label in text
+    assert "实施总览" in text
+    assert "上线检查与验收" in text
+    assert "收口为 8 个二级工作区" in text

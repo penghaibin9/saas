@@ -156,14 +156,34 @@ def reset_login_failures_compat(key: str) -> None:
     risk.reset_failure(key, risk_type=risk.LOGIN_ACCOUNT)
 
 
-def captcha_required(scene: str, tenant_code: str | None, login_name: str | None) -> bool:
+def _resolved_login_user(db, tenant_code, login_name, identifier_type):
+    if identifier_type == "PHONE":
+        from app.services.phone_login_service import require_phone_identifier, resolve_verified_phone_user
+        phone = require_phone_identifier(tenant_code, login_name)
+        tenant_id = resolve_tenant_id(tenant_code)
+        return resolve_verified_phone_user(db, tenant_id=tenant_id, phone=phone) if tenant_id else None
+    if identifier_type != "ACCOUNT":
+        raise AppException("VALIDATION_ERROR", "不支持的登录方式", http_status=422)
+    return auth_service_db._find_login_user(db, login_name, tenant_code)
+
+
+def _subject_risk_key(tenant_code, login_name, user):
+    # A verified alias and the original account share the same durable subject bucket.
+    return login_guard_key(str(user.tenant_id), f"user:{user.id}") if user is not None else login_guard_key(tenant_code, login_name)
+
+
+def captcha_required(scene: str, tenant_code: str | None, login_name: str | None, identifier_type: str = "ACCOUNT") -> bool:
     scene = str(scene or "").strip().upper()
     if scene == PLATFORM_LOGIN:
         return True
     plane = PLATFORM if scene == PLATFORM_LOGIN else TENANT
     tenant_id = None if plane == PLATFORM else resolve_tenant_id(tenant_code)
+    with get_sessionmaker()() as db:
+        user = _resolved_login_user(db, tenant_code, login_name, identifier_type)
+        key = _subject_risk_key(tenant_code, login_name, user)
+        if user is not None:
+            tenant_id = int(user.tenant_id)
     policy = resolve_login_policy(tenant_id=tenant_id, principal_plane=plane)
-    key = login_guard_key(tenant_code, login_name)
     kind = risk.PLATFORM_ACCOUNT if plane == PLATFORM else risk.LOGIN_ACCOUNT
     count = risk.failure_count(key, risk_type=kind, tenant_id=tenant_id)
     if count is None:
@@ -264,6 +284,10 @@ def _login_result(db, user, context: dict, contexts: list[dict], client_type: st
 
 
 def build_login_result(db, user, client_type: str = "PC") -> dict:
+    auth_service_db.assert_mini_client_user_type(user, client_type)
+    if str(client_type or "").upper() in {"MP", "STUDENT_MINI", "TEACHER_MINI"}:
+        from app.services.wx_binding_approval_service import assert_school_wx_subject
+        assert_school_wx_subject(user)
     auth_service_db._ensure_tenant_login_allowed(db, user)
     contexts = auth_service_db._role_contexts(db, user)
     if not contexts:
@@ -272,23 +296,40 @@ def build_login_result(db, user, client_type: str = "PC") -> dict:
 
 
 def login_with_password(login_name: str, password: str, tenant_code: str | None = None,
-                        client_type: str = "PC") -> dict:
+                        client_type: str = "PC", *, identifier_type: str = "ACCOUNT") -> dict:
     if not db_enabled():
         raise AppException("UNAUTHORIZED", "账号密码登录需启用数据库（DB_ENABLED=true）")
     login_name = str(login_name or "").strip()
+    audit_subject = "PHONE_LOGIN" if identifier_type == "PHONE" else login_name
     tenant_code = str(tenant_code or "").strip() or None
     plane = _plane(client_type)
-    lock_key = login_guard_key(tenant_code, login_name)
     db = get_sessionmaker()()
     try:
-        user = auth_service_db._find_login_user(db, login_name, tenant_code)
+        user = _resolved_login_user(db, tenant_code, login_name, identifier_type)
+        if user is not None:
+            # User first, binding second: serialize password verification/signing with security writers.
+            db.refresh(user, with_for_update=True)
+            if user.is_deleted or user.status != "ACTIVE":
+                user = None
+            elif identifier_type == "PHONE":
+                from app.models import PhoneLoginBinding
+                from app.services.phone_login_service import normalize_login_phone, phone_lookup
+                binding = db.scalar(select(PhoneLoginBinding).where(
+                    PhoneLoginBinding.tenant_id == user.tenant_id, PhoneLoginBinding.user_id == user.id,
+                    PhoneLoginBinding.state == "VERIFIED", PhoneLoginBinding.is_deleted.is_(False),
+                    PhoneLoginBinding.active_phone_lookup == phone_lookup(user.tenant_id, normalize_login_phone(login_name)),
+                ).with_for_update().execution_options(populate_existing=True))
+                if binding is None:
+                    user = None
+        # Resolved aliases share a lock. Unknown identifiers remain non-enumerating.
+        lock_key = _subject_risk_key(tenant_code, login_name, user)
         tenant_id = None if plane == PLATFORM else (int(user.tenant_id) if user is not None else resolve_tenant_id(tenant_code))
         policy = resolve_login_policy(tenant_id=tenant_id, principal_plane=plane)
         remain = _remaining_lock(lock_key, tenant_id=tenant_id, plane=plane)
         if remain > 0:
             from app.services import audit_log
             audit_log.record(
-                "LOGIN_LOCKED", login_name,
+                "LOGIN_LOCKED", audit_subject,
                 detail={"remainSeconds": remain, "tenantCode": tenant_code, "policyRevision": policy["policyRevision"]},
                 result="DENIED", tenant_id=tenant_id,
             )
@@ -297,11 +338,15 @@ def login_with_password(login_name: str, password: str, tenant_code: str | None 
         platform_account = bool(user and str(user.user_type or "").upper() in {"PLATFORM_OP", "PLATFORM_SUPER_ADMIN"})
         if user and platform_account != (plane == PLATFORM):
             user = None
+        client = str(client_type or "").upper()
+        if user and ((client == "STUDENT_MINI" and user.user_type != "STUDENT") or
+                     (client == "TEACHER_MINI" and user.user_type not in {"TEACHER", "STAFF", "ADMIN", "SCHOOL_ADMIN"})):
+            user = None
         if user is None or not verify_password(password or "", user.password_hash):
             from app.services import audit_log
             count, locked = _record_bad_password(lock_key, tenant_id=tenant_id, plane=plane, policy=policy)
             audit_log.record(
-                "LOGIN_FAIL", login_name,
+                "LOGIN_FAIL", audit_subject,
                 detail={
                     "failCount": count, "locked": bool(locked), "tenantCode": tenant_code,
                     "policyRevision": policy["policyRevision"], "policyQuality": policy["dataQuality"],
@@ -322,7 +367,7 @@ def login_with_password(login_name: str, password: str, tenant_code: str | None 
         if not contexts:
             from app.services import audit_log
             audit_log.record(
-                "LOGIN_NO_ACTIVE_ROLE", login_name,
+                "LOGIN_NO_ACTIVE_ROLE", audit_subject,
                 detail={"tenantId": str(user.tenant_id)}, result="DENIED", tenant_id=int(user.tenant_id),
             )
             raise AppException("NO_PERMISSION", "账号尚未分配有效岗位，请联系学校管理员")
@@ -380,6 +425,10 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
     db = get_sessionmaker()()
     try:
         user = auth_service_db._load_token_user(db, user_ctx)
+        db.refresh(user, with_for_update=True)
+        auth_service_db.validate_credential_epoch(user, user_ctx)
+        if user.is_deleted or user.status != "ACTIVE":
+            raise unauthorized("账号已停用，请重新登录")
         if not verify_password(old_password or "", user.password_hash):
             result = risk.record_failure(
                 lock_key,
@@ -397,28 +446,33 @@ def change_own_password(user_ctx: dict, old_password: str, new_password: str) ->
         user.password_hash = hash_password(new_password)
         user.must_change_password = False
         user.version = int(user.version or 0) + 1
+        user.credential_version = int(getattr(user, "credential_version", 0) or 0) + 1
+        from app.services import audit_log
+        audit_log.record_critical_in_session(db, "PASSWORD_CHANGE", f"user:{user.id}",
+            detail={"credentialVersion": user.credential_version, "policyRevision": policy["policyRevision"]},
+            tenant_id=user.tenant_id, resource_id=str(user.id))
         auth_service_db.force_subject_revalidation(f"db-{user.id}", user.tenant_id)
         db.commit()
-        auth_service_db.invalidate_subject_cache(f"db-{user.id}", user.tenant_id, user_ctx.get("activeContextId"))
-        from app.core.token_store import revoke_refresh_by_user
-        revoke_refresh_by_user(f"db-{user.id}")
-        from app.services import audit_log
-        audit_log.record("PASSWORD_CHANGE", user.login_name,
-                         detail={"policyRevision": policy["policyRevision"]}, result="SUCCESS")
-        return {"success": True, "reloginRequired": True}
+        return auth_service_db.credential_change_receipt(user, user_ctx)
     finally:
         db.close()
 
 
-def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | None = None) -> dict:
+def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | None = None,
+            *, binding_approval_token: str | None = None,
+            client_type: str = "STUDENT_MINI") -> dict:
     if not db_enabled():
         raise AppException("UNAUTHORIZED", "微信登录需启用数据库（DB_ENABLED=true）")
     try:
         claims = decode_token(wx_token)
-    except Exception:  # noqa: BLE001
+    except Exception:
         raise AppException("UNAUTHORIZED", "微信绑定令牌无效或已过期，请重新发起微信登录")
     if claims.get("purpose") != "wx_bind" or not claims.get("wxOpenid"):
         raise AppException("UNAUTHORIZED", "微信绑定令牌无效")
+    from app.services.wx_auth_service import normalize_mini_client_type
+    client_type = normalize_mini_client_type(client_type)
+    if str(claims.get("clientType") or "").upper() != client_type:
+        raise AppException("UNAUTHORIZED", "微信绑定凭证与当前入口不匹配，请重新发起微信登录")
     openid = claims["wxOpenid"]
     login_name = str(login_name or "").strip()
     normalized_tenant = str(tenant_code or "").strip() or None
@@ -433,36 +487,57 @@ def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | No
         remain = _remaining_lock(lock_key, tenant_id=tenant_id, plane=TENANT)
         if remain > 0:
             raise AppException("UNAUTHORIZED", f"失败次数过多，账号已锁定，请 {remain // 60 + 1} 分钟后再试")
+        # Serialize with recovery/password writes. Recheck all state after locking.
+        if user is not None:
+            db.refresh(user, with_for_update=True)
+            if (str(user.status or "").upper() != "ACTIVE" or user.is_deleted
+                    or str(user.user_type or "").upper().startswith("PLATFORM")):
+                user = None
         if user is None or not verify_password(password, user.password_hash):
             count, locked = _record_bad_password(lock_key, tenant_id=tenant_id, plane=TENANT, policy=policy)
             if locked:
                 raise AppException("UNAUTHORIZED", f"失败次数过多，账号已锁定 {policy['loginFailLockMinutes']} 分钟")
             if count >= int(policy["captchaAfterFailures"]):
-                raise AppException(
-                    "CAPTCHA_REQUIRED", "账号、学校编码或密码不正确，请输入验证码后继续",
-                    details={"captchaRequired": True, "scene": WX_BIND}, http_status=401,
-                )
+                raise AppException("CAPTCHA_REQUIRED", "账号、学校编码或密码不正确，请输入验证码后继续",
+                                   details={"captchaRequired": True, "scene": WX_BIND}, http_status=401)
             raise AppException("UNAUTHORIZED", "账号、学校编码或密码不正确")
 
         from app.models import WxAccountBinding
-        from app.services import wx_auth_service
-
+        from app.services import audit_log, wx_auth_service
+        from app.services.wx_binding_approval_service import (
+            assert_school_wx_subject, consume_in_session,
+        )
+        auth_service_db.assert_mini_client_user_type(user, client_type)
+        assert_school_wx_subject(user)
+        auth_service_db._ensure_tenant_login_allowed(db, user)
+        if not auth_service_db._role_contexts(db, user):
+            raise AppException("NO_PERMISSION", "账号尚未分配有效岗位，请联系学校管理员")
         existing = db.scalars(select(WxAccountBinding).where(
             WxAccountBinding.wx_openid == openid,
             WxAccountBinding.tenant_id == user.tenant_id,
-            WxAccountBinding.is_deleted.is_(False),
-        )).first()
+        ).with_for_update()).first()
+        if existing is not None and existing.is_deleted:
+            raise AppException("DATA_CONFLICT", "该微信关联已归档，请联系学校核验处理", http_status=409)
         if existing is not None and existing.user_id != user.id:
             raise AppException("DATA_CONFLICT", "该微信已绑定本校其他账号")
-        if existing is None:
-            db.add(WxAccountBinding(
-                tenant_id=user.tenant_id, wx_openid=openid, user_id=user.id, status="ACTIVE",
-            ))
-        if wx_auth_service._find_legacy_user_by_openid(db, openid) is None:
-            user.wx_openid = openid
+        already_active = existing is not None and str(existing.status or "").upper() == "ACTIVE"
+        legacy_same_identity = existing is None and user.wx_openid == openid
+        approval_ref = None
+        if not (already_active or legacy_same_identity):
+            approval_ref = consume_in_session(db, user, openid, binding_approval_token)
+        # Reuse the canonical binding writer (including legacy cross-user conflict checks).
+        wx_auth_service.bind_openid_in_session(db, openid, user)
+        audit_log.record_critical_in_session(
+            db, "WX_BINDING_ACTIVATED", f"user:{user.id}", tenant_id=user.tenant_id,
+            detail={"approvalRef": approval_ref, "existingIdentity": bool(already_active or legacy_same_identity),
+                    "channel": "PASSWORD_WX_BIND"},
+        )
         db.commit()
         db.refresh(user)
         _reset_account_risk(lock_key, tenant_id=tenant_id, plane=TENANT)
-        return build_login_result(db, user, client_type="MP")
+        return build_login_result(db, user, client_type=client_type)
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()

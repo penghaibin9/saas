@@ -11,7 +11,7 @@ def text(path: str) -> str:
 
 def test_w76_formal_review_todo_uses_shared_unified_todo_and_stable_reviewer_identity():
     lifecycle = text("backend/app/modules/graduation/services/graduation_review_w76_lifecycle_service.py")
-    router = text("backend/app/modules/graduation/routers/graduation_review_w7_router.py")
+    router = text("backend/app/modules/graduation/routers/graduation_sensitive_router.py")
 
     assert 'TODO_FORMAL_REVIEW = "GD_FORMAL_REVIEW"' in lifecycle
     assert "GraduationReview" in lifecycle and "reviewer_mentor_id" in lifecycle
@@ -21,7 +21,7 @@ def test_w76_formal_review_todo_uses_shared_unified_todo_and_stable_reviewer_ide
     assert "正式评阅退回重评" in lifecycle
     assert "reconcile_formal_todos" in lifecycle
     assert "reviewer_account_unresolved" in lifecycle
-    assert "graduation_review_w76_lifecycle_service as review" in router
+    assert "graduation_review_w76_lifecycle_service as formal_review" in router
 
 
 def test_w76_student_reject_message_is_transactional_projection_of_append_only_feedback():
@@ -38,7 +38,7 @@ def test_w76_student_reject_message_is_transactional_projection_of_append_only_f
     assert "GRADUATION_DESIGN.REVIEW_REJECTED" in guard
     assert "student.graduation.review-feedback" in guard
     assert '"studentPc": "/graduation/feedback"' in guard
-    assert '"studentMini": None' in guard
+    assert '"studentMini": "/pages/student/graduation/index"' in guard
     assert "message_event_outbox_service" in guard
     assert "UnifiedMessage" not in feedback
 
@@ -53,7 +53,8 @@ def test_w76_resubmit_reuses_canonical_proposal_final_todos():
     todo = text("backend/app/modules/graduation/services/graduation_todo_helper.py")
 
     assert "is_resubmit=bool(existing)" in records
-    assert "todo.push_proposal_todo(db, proposal, student)" in records
+    assert "todo.require_mentor_assignee_id(db, student, action_label=\"开题报告\")" in records
+    assert "todo.push_proposal_todo(db, proposal, student, assignee_id=assignee_id)" in records
     assert "same_type = [row for row in existing if row.final_type == final_type]" in records
     assert "todo.push_final_todo(db, final, student)" in records
     assert 'TODO_PROPOSAL = "GD_PROPOSAL_REVIEW"' in todo
@@ -90,7 +91,7 @@ def test_w76_formal_review_stats_share_exact_reader_task_scope():
 
 
 def test_w76_w7_router_batch_and_reviewer_guards_fail_closed_before_metadata():
-    router = text("backend/app/modules/graduation/routers/graduation_review_w7_router.py")
+    router = text("backend/app/modules/graduation/routers/graduation_sensitive_router.py")
 
     assert "def _review_batch(review_id, batch_id, *, require_assigned_reviewer: bool = False)" in router
     assert "GraduationReview.tenant_id == _tid()" in router
@@ -101,10 +102,11 @@ def test_w76_w7_router_batch_and_reviewer_guards_fail_closed_before_metadata():
     assert "gid.current_user_mentor(db)" in router
     assert "reviewer_mentor_id" in router
     assert 'raise no_permission("无权提交他人评阅任务")' in router
-    guard = router[router.index("def _review_batch"):router.index("@router.get")]
+    guard = router[router.index("def _review_batch"):router.index("@router.get", router.index("def _review_batch"))]
     assert guard.index("if require_assigned_reviewer") < guard.index("student = db.scalars")
     assert "_review_batch(rid, batchId, require_assigned_reviewer=True)" in router
-    assert "_record_batch" not in router
+    review_section = router[router.index("def _review_batch"):router.index("# ── 答辩评分")]
+    assert "_record_batch" not in review_section
 
 
 def test_w76_communication_registry_owns_review_event_and_todo_types():

@@ -5,7 +5,7 @@
         <p>岗位实习中心</p>
         <h1>实习档案</h1>
       </div>
-      <button type="button" @click="router.push('/internship/selection')">返回实习选岗</button>
+      <button type="button" @click="router.push({ path: '/internship/selection', query: route.query })">返回实习选岗</button>
     </div>
 
     <div v-if="loading" class="page-state">正在加载实习档案…</div>
@@ -42,8 +42,8 @@
 </template>
 
 <script setup>
-import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import InternshipProfileEditor from '../../components/recruitment/InternshipProfileEditor.vue'
 import MaterialSharePreview from '../../components/recruitment/MaterialSharePreview.vue'
 import {
@@ -58,6 +58,8 @@ import {
 import { internshipSelectionApi } from '../../services/internshipSelectionApi'
 
 const router = useRouter()
+const route = useRoute()
+const selectionApi = computed(() => internshipSelectionApi.forScope(route.query))
 const loading = ref(true)
 const busy = ref(false)
 const error = ref('')
@@ -71,18 +73,20 @@ const contactSharingMode = ref('AFTER_INTERVIEW')
 const previewConfirmed = ref(false)
 const pdfBusy = ref(false)
 const pdfUrl = ref('')
+let alive = true
 let requestSeq = 0
 let previewRequestSeq = 0
 
 async function load() {
   const requestId = ++requestSeq
+  previewRequestSeq++; previewConfirmed.value = false; pdfUrl.value = '';
   loading.value = true
   error.value = ''
   try {
     const [profileData, completenessData, itemData] = await Promise.all([
-      internshipSelectionApi.profile(),
-      internshipSelectionApi.profileCompleteness(),
-      internshipSelectionApi.profileItems()
+      selectionApi.value.profile(),
+      selectionApi.value.profileCompleteness(),
+      selectionApi.value.profileItems()
     ])
     if (requestId !== requestSeq) return
     profile.value = normalizeInternshipProfile(profileData || {})
@@ -94,7 +98,7 @@ async function load() {
   } finally {
     if (requestId === requestSeq) loading.value = false
   }
-  if (!error.value) await loadPreview()
+  if (requestId === requestSeq && !error.value) await loadPreview()
 }
 
 async function loadPreview() {
@@ -104,7 +108,7 @@ async function loadPreview() {
   previewConfirmed.value = false
   pdfUrl.value = ''
   try {
-    const data = await internshipSelectionApi.profilePreview()
+    const data = await selectionApi.value.profilePreview()
     if (requestId !== previewRequestSeq) return
     preview.value = normalizeMaterialPreview(data || {})
   } catch (err) {
@@ -116,12 +120,13 @@ async function loadPreview() {
   }
 }
 
-async function refreshAfterWrite() {
+async function refreshAfterWrite(api) {
   const [profileData, completenessData, itemData] = await Promise.all([
-    internshipSelectionApi.profile(),
-    internshipSelectionApi.profileCompleteness(),
-    internshipSelectionApi.profileItems()
+    api.profile(),
+    api.profileCompleteness(),
+    api.profileItems()
   ])
+  if (!alive || api !== selectionApi.value) return
   profile.value = normalizeInternshipProfile(profileData || {})
   completeness.value = normalizeProfileCompleteness(completenessData || {})
   items.value = normalizeProfileItems(itemData || [])
@@ -129,11 +134,14 @@ async function refreshAfterWrite() {
 }
 
 async function saveProfile(payload) {
+  if (busy.value) return
+  const api = selectionApi.value
   busy.value = true
   try {
-    await internshipSelectionApi.updateProfile(payload)
-    await refreshAfterWrite()
+    await api.updateProfile(payload)
+    if (alive && api === selectionApi.value) await refreshAfterWrite(api)
   } catch (err) {
+    if (!alive || api !== selectionApi.value) return
     error.value = err?.message || '实习档案保存失败'
   } finally {
     busy.value = false
@@ -141,11 +149,14 @@ async function saveProfile(payload) {
 }
 
 async function addItem(payload) {
+  if (busy.value) return
+  const api = selectionApi.value
   busy.value = true
   try {
-    await internshipSelectionApi.createProfileItem(payload)
-    await refreshAfterWrite()
+    await api.createProfileItem(payload)
+    if (alive && api === selectionApi.value) await refreshAfterWrite(api)
   } catch (err) {
+    if (!alive || api !== selectionApi.value) return
     error.value = err?.message || '材料条目添加失败'
   } finally {
     busy.value = false
@@ -154,11 +165,14 @@ async function addItem(payload) {
 
 async function deleteItem(item) {
   if (!item?.id) return
+  if (busy.value) return
+  const api = selectionApi.value
   busy.value = true
   try {
-    await internshipSelectionApi.deleteProfileItem(item.id)
-    await refreshAfterWrite()
+    await api.deleteProfileItem(item.id)
+    if (alive && api === selectionApi.value) await refreshAfterWrite(api)
   } catch (err) {
+    if (!alive || api !== selectionApi.value) return
     error.value = err?.message || '材料条目删除失败'
   } finally {
     busy.value = false
@@ -166,22 +180,28 @@ async function deleteItem(item) {
 }
 
 async function generatePdfPreview() {
+  if (pdfBusy.value) return
+  const api = selectionApi.value
+  const previewSequence = previewRequestSeq
   pdfBusy.value = true
   try {
-    const data = await internshipSelectionApi.profilePdfPreview(buildPdfPreviewRequest({
+    const data = await api.profilePdfPreview(buildPdfPreviewRequest({
       previewHash: preview.value.previewHash,
       contactSharingMode: contactSharingMode.value
     }))
+    if (!alive || api !== selectionApi.value || previewSequence !== previewRequestSeq) return
     pdfUrl.value = String(data?.url || data?.fileUrl || data?.previewUrl || '')
     if (!pdfUrl.value) previewError.value = 'PDF 已生成，但服务端未返回可预览地址'
   } catch (err) {
-    previewError.value = err?.message || 'PDF 生成失败'
+    if (alive && api === selectionApi.value && previewSequence === previewRequestSeq) previewError.value = err?.message || 'PDF 生成失败'
   } finally {
     pdfBusy.value = false
   }
 }
 
+watch(() => [route.query.batchId, route.query.campaignId, route.query.recordId], load)
 onMounted(load)
+onBeforeUnmount(() => { alive = false; requestSeq++; previewRequestSeq++ })
 </script>
 
 <style scoped>

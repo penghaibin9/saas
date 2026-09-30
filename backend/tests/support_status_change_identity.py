@@ -58,17 +58,37 @@ def _ensure_permission(db, code):
     return row
 
 
-def _ensure_account(db, login_name):
+def _ensure_account(
+    db,
+    login_name,
+    *,
+    real_name=None,
+    user_type=None,
+    permissions=None,
+):
     """建/取一个启用账号，并把它需要的审批权限经专属角色授予到位。"""
     from app.models import Role, RolePermission, User, UserRole
 
-    real_name, user_type, permissions = _ACCOUNTS[login_name]
+    if login_name in _ACCOUNTS:
+        default_real_name, default_user_type, default_permissions = _ACCOUNTS[login_name]
+        real_name = real_name or default_real_name
+        user_type = user_type or default_user_type
+        permissions = tuple(permissions or default_permissions)
+    else:
+        assert real_name and user_type and permissions, f"自定义测试账号缺少身份合同：{login_name}"
+        permissions = tuple(permissions)
+
     user = db.query(User).filter(User.tenant_id == TID, User.login_name == login_name).first()
     if user is None:
         user = User(tenant_id=TID, login_name=login_name, real_name=real_name,
                     password_hash="x", user_type=user_type, status="ACTIVE")
         db.add(user)
         db.flush()
+    else:
+        user.real_name = real_name
+        user.user_type = user_type
+        user.status = "ACTIVE"
+        user.is_deleted = False
 
     role_code = f"TEST_{login_name.upper()}"
     role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == role_code).first()
@@ -76,19 +96,30 @@ def _ensure_account(db, login_name):
         role = Role(tenant_id=TID, role_code=role_code, role_name=role_code, status="ACTIVE")
         db.add(role)
         db.flush()
-    if db.query(UserRole).filter(
+    else:
+        role.status = "ACTIVE"
+        role.is_deleted = False
+    link = db.query(UserRole).filter(
         UserRole.tenant_id == TID, UserRole.user_id == user.id, UserRole.role_id == role.id
-    ).first() is None:
+    ).first()
+    if link is None:
         db.add(UserRole(tenant_id=TID, user_id=user.id, role_id=role.id, status="ACTIVE"))
+    else:
+        link.status = "ACTIVE"
+        link.is_deleted = False
     for code in permissions:
         permission = _ensure_permission(db, code)
-        if db.query(RolePermission).filter(
+        role_permission = db.query(RolePermission).filter(
             RolePermission.tenant_id == TID,
             RolePermission.role_id == role.id,
             RolePermission.permission_id == permission.id,
-        ).first() is None:
+        ).first()
+        if role_permission is None:
             db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=permission.id,
                                   status="ACTIVE"))
+        else:
+            role_permission.status = "ACTIVE"
+            role_permission.is_deleted = False
     db.flush()
     return user
 
@@ -96,18 +127,48 @@ def _ensure_account(db, login_name):
 def seed_status_change_identity(db, *, class_ids=(), college_ids=()):
     """种出异动审批全链所需的真实身份图，返回各登录名对应的 user_id。
 
-    class_ids：这些行政班的辅导员统一设为 counselor01；
-    college_ids：这些学院的教学秘书统一设为 college_admin01。
+    默认情况下，class_ids 行政班统一设为 counselor01，保持历史测试行为。
+    若测试已显式用 TeacherStudentScope 把 counselor01 限定到部分班级，则范围外班级
+    必须分配独立真实辅导员，不能一边正式把班级交给 counselor01、一边又期待跨班 403。
+    college_ids 仍统一由 college_admin01 作为学院节点真实受理人。
     """
-    from app.models import College, SchoolClass
+    from app.models import College, SchoolClass, TeacherStudentScope
 
     ensure_current_term(db)
     users = {name: _ensure_account(db, name) for name in _ACCOUNTS}
+    db.flush()
+
+    explicit_default_classes: set[str] = set()
+    scopes = db.query(TeacherStudentScope).filter(
+        TeacherStudentScope.tenant_id == TID,
+        TeacherStudentScope.teacher_key == "counselor01",
+        TeacherStudentScope.role_code == "COUNSELOR",
+        TeacherStudentScope.scope_type == "CLASS",
+        TeacherStudentScope.status == "ACTIVE",
+        TeacherStudentScope.is_deleted.is_(False),
+    ).all()
+    for scope in scopes:
+        value = str(scope.ref_value or "").strip()
+        if value:
+            explicit_default_classes.add(value)
+            explicit_default_classes.add(value.rstrip("班"))
+            explicit_default_classes.add(value.rstrip("班") + "班")
 
     for class_id in class_ids:
         row = db.get(SchoolClass, int(class_id))
-        if row is not None:
-            row.counselor_id = int(users["counselor01"].id)
+        if row is None:
+            continue
+        counselor = users["counselor01"]
+        class_name = str(row.class_name or "").strip()
+        if explicit_default_classes and class_name not in explicit_default_classes:
+            counselor = _ensure_account(
+                db,
+                f"pytest_status_change_counselor_{row.id}",
+                real_name=f"{class_name or row.id}测试辅导员",
+                user_type="TEACHER",
+                permissions=(COUNSELOR_PERM,),
+            )
+        row.counselor_id = int(counselor.id)
     for college_id in college_ids:
         row = db.get(College, int(college_id))
         if row is not None:

@@ -3,6 +3,42 @@ from importlib import import_module, util
 from pathlib import Path
 from types import SimpleNamespace
 
+import pytest
+
+
+def test_new_offering_gets_distinct_code_without_renaming_existing_class(client, db_mode, monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.models import AaTerm, AaTeachingTaskBatch, AaTeachingTask
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_teaching_class_service as service
+    from app.modules.academic_affairs.services import academic_affairs_grade_core_service as grade_core
+    tid = 1000000000000000001
+    monkeypatch.setattr(service, '_tid', lambda: tid)
+    monkeypatch.setattr(service._core, '_tid', lambda: tid)
+    monkeypatch.setattr(grade_core, '_tid', lambda: tid)
+    with get_sessionmaker()() as db:
+        term = AaTerm(tenant_id=tid, year_code='NEW-OFFERING-2026', term_no=1)
+        db.add(term); db.flush()
+        batch = AaTeachingTaskBatch(tenant_id=tid, term_id=term.id, batch_name='不同批次教学班编号验收')
+        db.add(batch); db.flush()
+        code = f'TC{term.id}-OFFER-1'
+        tasks = [AaTeachingTask(tenant_id=tid, batch_id=batch.id, course_id=1, course_code='OFFER', class_id=1,
+                  source_program_course_id=1, teaching_class_code=code, formation_mode='ADMIN_FIXED', status='PENDING_ASSIGN') for _ in range(2)]
+        db.add_all(tasks); db.flush()
+        original = service.ensure_teaching_class_for_task(db, tasks[0].id, initialize_admin_roster=False)
+        original_code = original.class_code
+        newer = service.ensure_teaching_class_for_task(db, tasks[1].id, initialize_admin_roster=False)
+        assert newer.class_code != original_code
+        assert tasks[1].teaching_class_code == newer.class_code
+        assert original.class_code == original_code
+        assert newer.teaching_task_id == tasks[1].id
+        assert original.teaching_task_id == tasks[0].id
+        tasks[1].teaching_class_code = original_code
+        db.flush()
+        with pytest.raises(AppException):
+            service.ensure_teaching_class_for_task(db, tasks[1].id, initialize_admin_roster=False)
+        db.rollback()
+
 
 def test_teaching_class_models_have_required_version_fields():
     from app.models import (

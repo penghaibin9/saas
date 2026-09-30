@@ -24,7 +24,7 @@ def _stu_token(real_name, student_no):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{student_no}", "realName": real_name, "studentNo": student_no,
         "userType": "STUDENT", "tid": "x", "tenantId": str(TID), "activeContextId": "ctx",
-        "currentRoleCode": "STUDENT", "clientType": "MP"})}
+        "currentRoleCode": "STUDENT", "clientType": "STUDENT_MINI"})}
 
 
 def _college_admin_token(login_name):
@@ -34,6 +34,23 @@ def _college_admin_token(login_name):
         "userId": f"u-{login_name}", "loginName": login_name, "realName": login_name,
         "userType": "ADMIN", "tid": "x", "tenantId": str(TID), "activeContextId": "ctx",
         "currentRoleCode": "COLLEGE_ADMIN", "clientType": "PC"})}
+
+
+def _archive_identity(exemption_id):
+    from app.db.session import get_sessionmaker
+    from app.models import AaExemption
+
+    db = get_sessionmaker()()
+    try:
+        row = db.get(AaExemption, int(exemption_id))
+        assert row is not None
+        return {
+            "expectedVersion": int(row.version or 0),
+            "expectedStatus": row.status,
+            "expectedEvidenceManifestHash": row.evidence_manifest_hash,
+        }
+    finally:
+        db.close()
 
 
 def _seed(db_mode):
@@ -175,16 +192,19 @@ def test_p3_print_cross_college_scope_403(client, db_mode):
 def test_a1_archive_non_terminal_409(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    assert client.post(f"{BASE}/exemption/{ids['exemptionPending']}/archive", headers=admin).status_code == 409
+    assert client.post(f"{BASE}/exemption/{ids['exemptionPending']}/archive", headers=admin,
+                       json=_archive_identity(ids["exemptionPending"])).status_code == 409
 
 
 def test_a2_archive_success_and_idempotent(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
-    r1 = client.post(f"{BASE}/exemption/{ids['exemptionApproved']}/archive", headers=admin).json()
+    r1 = client.post(f"{BASE}/exemption/{ids['exemptionApproved']}/archive", headers=admin,
+                     json=_archive_identity(ids["exemptionApproved"])).json()
     assert r1["code"] == 0 and r1["data"]["archiveStatus"] == "ARCHIVED"
-    # 幂等：已归档再次调用不报错，状态不变
-    r2 = client.post(f"{BASE}/exemption/{ids['exemptionApproved']}/archive", headers=admin).json()
+    # 幂等：重新读取当前版本/证据身份后再次调用，状态不变。
+    r2 = client.post(f"{BASE}/exemption/{ids['exemptionApproved']}/archive", headers=admin,
+                     json=_archive_identity(ids["exemptionApproved"])).json()
     assert r2["code"] == 0 and r2["data"]["archiveStatus"] == "ARCHIVED"
 
 
@@ -192,8 +212,9 @@ def test_a3_archive_list_query_and_filter(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     r = client.get(f"{BASE}/exemption/archive-list", headers=admin).json()
-    assert r["code"] == 0 and r["data"]["total"] == 2
-    client.post(f"{BASE}/exemption/{ids['exemptionApproved']}/archive", headers=admin)
+    assert r["code"] == 0 and r["data"]["total"] == 1
+    client.post(f"{BASE}/exemption/{ids['exemptionApproved']}/archive", headers=admin,
+                json=_archive_identity(ids["exemptionApproved"]))
     filtered = client.get(f"{BASE}/exemption/archive-list", headers=admin,
                           params={"status": "ARCHIVED"}).json()
     assert filtered["data"]["total"] == 1
@@ -203,5 +224,6 @@ def test_a3_archive_list_query_and_filter(client, db_mode):
 def test_a4_archive_student_forbidden_403(client, db_mode):
     ids = _seed(db_mode)
     stu = _stu_token("归甲", "AR2401")
-    assert client.post(f"{BASE}/exemption/{ids['exemptionApproved']}/archive", headers=stu).status_code == 403
+    assert client.post(f"{BASE}/exemption/{ids['exemptionApproved']}/archive", headers=stu,
+                       json=_archive_identity(ids["exemptionApproved"])).status_code == 403
     assert client.get(f"{BASE}/exemption/archive-list", headers=stu).status_code == 403

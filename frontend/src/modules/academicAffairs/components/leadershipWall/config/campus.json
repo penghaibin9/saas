@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "baseWidth": 1920,
+  "baseHeight": 1080,
+  "campusIsIllustration": true,
+  "markers": [
+    {
+      "id": "mingde",
+      "name": "明德楼",
+      "x": 54,
+      "y": 11
+    },
+    {
+      "id": "boxue",
+      "name": "博学楼",
+      "x": 26,
+      "y": 22
+    },
+    {
+      "id": "shiyan",
+      "name": "实验楼",
+      "x": 87,
+      "y": 22
+    },
+    {
+      "id": "zhixing",
+      "name": "知行楼",
+      "x": 46,
+      "y": 48
+    },
+    {
+      "id": "qiushi",
+      "name": "求是楼",
+      "x": 77,
+      "y": 66
+    }
+  ],
+  "libraryLabel": {
+    "text": "图书馆",
+    "x": 72,
+    "y": 42
+  },
+  "legend": [
+    "空闲参考",
+    "教学使用参考",
+    "预约使用参考",
+    "维护参考"
+  ]
+}

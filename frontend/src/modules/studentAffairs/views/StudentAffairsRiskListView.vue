@@ -1,5 +1,5 @@
 <template>
-  <AppPageShell
+  <AppPageShell flat
     title="风险预警"
     subtitle="聚合学业、请假、宿舍、心理等来源的风险记录，PC 端负责分派、处置、升级和闭环入口。"
     role-name="学工角色"
@@ -29,19 +29,8 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/dashboard')"
     >
-      <TaskContextBar
-        :role-name="roleName"
-        :scope-name="scopeName"
-        :pending="pendingCount"
-        :overdue="stats && stats.overdue"
-        :filter-summary="taskFilterSummary"
-        next-hint="优先分派或处置超时、高危风险记录。"
-        :degraded="!!errorMessage"
-        @clear-filter="clearTaskFilters"
-      />
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
-      </div>
+      <div v-if="taskFilterSummary" class="flat-note">{{ taskFilterSummary }}<button class="mp-link" @click="clearTaskFilters">清除筛选</button></div>
+      <BusinessMetrics :items="metricCards" />
 
       <AppSectionCard v-if="isRulePanel" title="风险规则摘要">
         <div class="sa-rules">
@@ -105,7 +94,7 @@
               <!-- 推荐主动作：按状态机推出「这条现在最该做的一件事」，只是视觉层级，
                    动作本身仍来自 row.allowedActions，不比它更宽。 -->
               <div v-if="primaryAction(row)" class="sa-actions__recommended">
-                <span class="sa-actions__hint">推荐下一步</span>
+
                 <AppPermissionButton
                   class="sa-actions__primary"
                   :allowed="canBtn(primaryAction(row).code)"
@@ -203,12 +192,12 @@
 </template>
 
 <script>
+import BusinessMetrics from '@/components/workspace/BusinessMetrics.vue'
 import {
   AppConfirmDialog,
   AppFormItem,
   AppGlobalState,
   AppInlineAlert,
-  AppMetricCard,
   AppPageShell,
   AppPermissionButton,
   AppRiskTag,
@@ -220,7 +209,6 @@ import {
   AppTextInput,
   AppTextarea
 } from '@/components/common'
-import TaskContextBar from '@/modules/studentAffairs/components/TaskContextBar.vue'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
@@ -276,14 +264,13 @@ const SCAN_ROLES = new Set([
 export default {
   name: 'StudentAffairsRiskListView',
   props: { ctx: { type: Object, default: null } },
-  components: {
+  components: { BusinessMetrics,
     AppButton,
     AppConfirmDialog,
     AppDrawer,
     AppFormItem,
     AppGlobalState,
     AppInlineAlert,
-    AppMetricCard,
     AppPageShell,
     AppPermissionButton,
     AppRiskTag,
@@ -295,7 +282,6 @@ export default {
     AppSectionCard,
     AppStatusTag,
     DataTable,
-    TaskContextBar
   },
   data() {
     return {
@@ -694,7 +680,7 @@ export default {
         DORM: '宿舍异常',
         MENTAL: '心理关注',
         MANUAL: '人工建单'
-      })[source] || source || '未设置'
+      })[source] || (source ? '来源待确认' : '未设置')
     },
     statusKind(status) {
       if (status === 'CLOSED') return 'success'

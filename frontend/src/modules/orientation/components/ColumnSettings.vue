@@ -32,7 +32,7 @@
 /**
  * ColumnSettings — 表格列设置（模块局部组件）。
  * Props:
- *  - columns: mock/api fieldColumns 下发 [{ key, title, locked?, sensitive?, default? }]
+ *  - columns: 展示层 fieldColumns [{ key, title, locked?, sensitive?, default? }]
  *  - selectedKeys(v-model): 当前显示列 key 数组
  */
 import { AppButton } from '@/components/ui'

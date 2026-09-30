@@ -52,11 +52,17 @@ def test_formal_services_bind_archive_and_state_guards_without_runtime_installer
 
 
 def test_batch_archive_routes_consume_preview_token_before_dynamic_student_path():
-    router = text("backend/app/modules/graduation/routers/graduation_archive_sensitive_router.py")
-    assert router.index('"/gd-archives/batch-generate"') < router.index('"/gd-archives/{gd_student_id}"')
-    assert router.index('"/gd-archives/batch-file"') < router.index('"/gd-archives/{gd_student_id}"')
-    assert "preview_token=_preview_token(body)" in router
-    assert "archiveBatchNo" in router
+    # 批量归档接口的唯一实现在批次安全 router（先于 archive_sensitive_router 注册），
+    # 因而 /gd-archives/batch-* 总是在 /gd-archives/{gd_student_id} 之前命中。
+    router = text("backend/app/modules/graduation/routers/graduation_sensitive_router.py")
+    assert '"/gd-archives/batch-generate"' in router and '"/gd-archives/batch-file"' in router
+    assert 'preview_token=(body or {}).get("previewToken")' in router
+    assert '(body or {}).get("archiveBatchNo")' in router
+    registration = text("backend/app/api/v1/route_registration.py")
+    assert registration.index("include_router(graduation_sensitive_router.router") < registration.index(
+        "include_router(graduation_archive_sensitive_router.router")
+    dynamic = text("backend/app/modules/graduation/routers/graduation_archive_sensitive_router.py")
+    assert '"/gd-archives/batch-generate"' not in dynamic, "batch routes must have exactly one implementation"
     permissions = text("backend/app/modules/graduation/services/graduation_permission_extensions.py")
     assert '"batch_generate_preview", "batch_file_preview"' in permissions
     assert '"batch_generate", "batch_file"' in permissions
@@ -81,7 +87,10 @@ def test_xlsx_formula_injection_is_neutralized_in_public_and_legacy_exports():
     assert "cell.data_type == \"f\"" in legacy
     assert "def sanitize_xlsx_export" in legacy
     service = text("backend/app/modules/graduation/services/graduation_service.py")
-    assert service.count("@sanitize_xlsx_export") >= 3
+    # 三个台账导出（答辩表 + 开题/成果台账）都必须经过公式注入净化
+    assert service.count("@sanitize_xlsx_export") >= 1
+    assert "export_proposals_xlsx = sanitize_xlsx_export(_export_proposals_xlsx)" in service
+    assert "export_finals_xlsx = sanitize_xlsx_export(_export_finals_xlsx)" in service
 
 
 def test_second_defense_is_exactly_round_two_and_rejects_stale_grade_states():

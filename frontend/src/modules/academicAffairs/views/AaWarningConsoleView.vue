@@ -1,19 +1,27 @@
 <template>
   <ModulePageShell
-    title="学业预警 · 教务处控制台"
+    :title="tabTitle"
     subtitle="多维度分类（学分/挂科/绩点/补考重修/毕业风险）· 预警规则 · 跟进闭环 · 统计"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <div class="aawc-tabs">
       <button v-for="t in tabs" :key="t.key" :class="['aawc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
     </div>
 
+    <section v-if="actionReceipt" class="aawc-receipt" role="status">
+      <div><strong>{{ actionReceipt.verified ? '✓' : '…' }} {{ actionReceipt.title }}</strong><span>{{ actionReceipt.studentName }} · 当前预警对象</span></div>
+      <div><small>处理结果</small><b>{{ actionReceipt.result }}</b></div>
+      <div><small>下一步</small><b>{{ actionReceipt.next }}</b></div>
+      <AppButton size="small" variant="ghost" @click="reopenReceipt">查看该生预警</AppButton>
+    </section>
+
     <!-- 预警看板 -->
     <div v-if="tab === 'dashboard'" class="mp-stack">
       <AppInlineAlert v-if="scanResult" type="success" :message="scanResultText" />
       <div class="aawc-bar">
-        <AppButton variant="primary" size="small" :loading="scanning" @click="scanOne('all')">一键扫描 5 类规则</AppButton>
+        <AppButton variant="primary" size="small" :loading="scanning" :disabled="!canRule || !!scanPending" @click="askScan('all')">扫描全部预警规则</AppButton>
       </div>
       <LoadingState v-if="summaryLoading" />
       <ErrorState v-else-if="summaryError" :description="summaryError" @retry="loadSummary" />
@@ -52,7 +60,7 @@
     <!-- 5 类分维度列表（学分/挂科/绩点/补考重修/毕业风险） -->
     <div v-else-if="category" class="mp-stack">
       <div class="aawc-bar">
-        <AppButton variant="primary" size="small" :loading="scanning" @click="scanOne(category.scanKey)">扫描本类预警</AppButton>
+        <AppButton variant="primary" size="small" :loading="scanning" :disabled="!canRule || !!scanPending" @click="askScan(category.scanKey)">扫描本类预警</AppButton>
         <AppInlineAlert v-if="scanResult" type="success" :message="scanResultText" />
       </div>
       <div class="aa-filter">
@@ -82,7 +90,7 @@
           </div>
           <div class="aawc-rule-edit">
             <AppNumberInput v-model="ruleEdits[r.key]" :step="r.type === 'int' ? 1 : 0.05" :min="r.min" :max="r.max" />
-            <AppButton size="small" variant="primary" :loading="ruleSaving === r.key" @click="saveRuleValue(r)">保存</AppButton>
+            <AppButton size="small" variant="primary" :loading="ruleSaving === r.key" :disabled="!canRule" @click="saveRuleValue(r)">保存</AppButton>
           </div>
         </div>
       </template>
@@ -132,12 +140,12 @@
           </section>
 
           <AppActionBar>
-            <AppButton size="small" :disabled="isClosed" @click="assignVisible = true">指派</AppButton>
-            <AppButton size="small" :disabled="isClosed" @click="followVisible = true">＋ 新增跟进</AppButton>
-            <AppButton size="small" variant="ghost" :disabled="isClosed" @click="remind">提醒</AppButton>
-            <AppButton size="small" variant="warning" :disabled="isClosed" @click="escalateVisible = true">升级</AppButton>
-            <AppButton size="small" variant="primary" :disabled="isClosed" @click="closeVisible = true">关闭</AppButton>
-            <AppButton size="small" variant="danger" :disabled="detail.warning.recordStatus === 'VOIDED'" @click="voidVisible = true">作废（误报）</AppButton>
+            <AppButton size="small" :disabled="isClosed || !canHandle || !!actionPending" @click="assignVisible = true">指派</AppButton>
+            <AppButton size="small" :disabled="isClosed || !canHandle || !!actionPending" @click="followVisible = true">＋ 新增跟进</AppButton>
+            <AppButton size="small" variant="ghost" :disabled="isClosed || !canHandle || !!actionPending" @click="remind">提醒</AppButton>
+            <AppButton size="small" variant="warning" :disabled="isClosed || !canHandle || !!actionPending" @click="escalateVisible = true">升级</AppButton>
+            <AppButton size="small" variant="primary" :disabled="isClosed || !canHandle || !!actionPending" @click="closeVisible = true">关闭</AppButton>
+            <AppButton size="small" variant="danger" :disabled="detail.warning.recordStatus === 'VOIDED' || !canHandle || !!actionPending" @click="voidVisible = true">作废（误报）</AppButton>
           </AppActionBar>
         </div>
       </AppDrawer>
@@ -170,7 +178,6 @@
       <AppConfirmDialog v-model:visible="closeVisible" type="primary" title="关闭预警" message="确认关闭该预警？" confirm-text="确认关闭" require-reason phrase-scene-key="aa.warning.close" reason-label="关闭说明" reason-placeholder="请说明关闭依据，如成绩回升/学分补齐（不少于5字）" :submitting="acting" @confirm="submitClose" />
       <AppConfirmDialog v-model:visible="voidVisible" type="danger" title="作废预警（误报）" message="作废为逻辑处理，预警与处理过程保留可追溯。" confirm-text="确认作废" require-reason phrase-scene-key="aa.warning.void" reason-label="误报说明" reason-placeholder="请说明误报原因（不少于5字）" :submitting="acting" @confirm="submitVoid" />
     </div>
-
     <!-- 预警统计 -->
     <div v-else-if="tab === 'stats'" class="mp-stack">
       <LoadingState v-if="summaryLoading" />
@@ -218,6 +225,7 @@
         <template #cell-status="{ row }"><StatusTag :type="notifyStatusColor(row.status)" :label="NOTIFY_STATUS[row.status] || row.status" dot /></template>
       </DataTable>
     </div>
+    <AppConfirmDialog v-model:visible="scanConfirm.visible" title="确认执行预警扫描" :message="scanConfirm.message" confirm-text="按当前规则扫描" :submitting="scanning" @confirm="scanOne" />
   </ModulePageShell>
 </template>
 
@@ -233,12 +241,15 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from
 import { AppStatusTag as StatusTag, AppRiskTag as RiskTag, AppInlineAlert, AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases, AppDescriptionList, AppTeacherPicker } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
-import { academicAffairsApi, academicAffairsWarningApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicAffairsWarningApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import {
   WARNING_LEVEL, WARNING_SOURCE, WARNING_STATUS, warningStatusColor,
   NOTIFY_SCENE, NOTIFY_RECEIVER, NOTIFY_STATUS, notifyStatusColor
 } from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
+import { currentUserFromToken } from '@/services/http/client'
+import { matchPermission } from '@/config/navPlan'
+import { gradeError } from './parallel-c/grade-review'
 
 // scanKey 对应 academicAffairsWarningApi.scan(key)：fail 历史挂 /warnings/scan，其余挂 /warnings/scan/{key}
 const CATEGORY_BY_TAB = {
@@ -256,9 +267,10 @@ export default {
     AppFormItem, AppTextInput, AppTextarea, AppSelect, AppNumberInput, AppConfirmDialog, AppActionBar, AppQuickPhrases, AppTeacherPicker,
     AppDescriptionList, AppButton, AppDrawer
   },
+  props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
+      alive: true, scope: 0, readSeq: {},
       WARNING_LEVEL, WARNING_SOURCE, WARNING_STATUS, NOTIFY_SCENE, NOTIFY_RECEIVER, NOTIFY_STATUS,
       tab: 'dashboard',
       tabs: [
@@ -273,7 +285,7 @@ export default {
         { key: 'stats', label: '预警统计' },
         { key: 'notify', label: '预警通知' }
       ],
-      scanning: false, scanResult: null,
+      scanning: false, scanResult: null, scanPending: null, scanConfirm: { visible: false, key: '', rules: [], message: '' },
       summary: { total: 0, bySource: [], byLevel: [], byStatus: [] }, summaryLoading: true, summaryError: '',
       rows: [], listLoading: false, listError: '',
       pagination: { page: 1, pageSize: 20, total: 0 },
@@ -296,8 +308,9 @@ export default {
         { key: 'title', title: '通知标题' }, { key: 'scene', title: '触发场景' },
         { key: 'status', title: '状态' }, { key: 'sentAt', title: '发送时间' }
       ],
-      rulesLoading: true, rulesError: '', rules: [], ruleEdits: {}, ruleSaving: '',
+      rulesLoading: true, rulesError: '', rules: [], ruleEdits: {}, ruleSaving: '', ruleUncertain: {},
       detailVisible: false, detailLoading: false, detailError: '', detailId: '', detail: null,
+      actionReceipt: null, actionPending: null,
       assignVisible: false, assignForm: { ownerId: '', ownerName: '' },
       followVisible: false, followForm: { way: 'TALK', content: '', result: '', nextPlan: '' },
       escalateVisible: false, closeVisible: false, voidVisible: false, acting: false,
@@ -308,6 +321,10 @@ export default {
     }
   },
   computed: {
+    tabTitle() { return this.tabs.find(item => item.key === this.tab)?.label || '学业预警' },
+    identity() { const u=currentUserFromToken()||{}; return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns]) },
+    canHandle() { return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.warning.handle') },
+    canRule() { return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.warning.rule.manage') },
     warningLevelOptions() { return Object.entries(WARNING_LEVEL).map(([value, label]) => ({ value, label })) },
     warningStatusOptions() { return Object.entries(WARNING_STATUS).map(([value, label]) => ({ value, label })) },
     warningSourceOptions() { return Object.entries(WARNING_SOURCE).map(([value, label]) => ({ value, label })) },
@@ -315,7 +332,8 @@ export default {
     dashboardSources() { return this.summary.bySource },
     scanResultText() {
       if (!this.scanResult) return ''
-      if (this.scanResult.created !== undefined) return `扫描完成：新增 ${this.scanResult.created} · 更新 ${this.scanResult.updated}`
+      if (this.scanResult.pending) return '扫描结果待核实：请读取当前名单，不要重复执行扫描。'
+      if (this.scanResult.created !== undefined) return `扫描完成：新增 ${this.scanResult.created} · 更新 ${this.scanResult.updated} · ${this.scanResult.notificationState==='VERIFIED'&&Number.isFinite(this.scanResult.notified)?`通知对象 ${this.scanResult.notified} 个`:'通知结果待核对'}`
       const keys = Object.keys(this.scanResult)
       const c = keys.reduce((s, k) => s + (this.scanResult[k].created || 0), 0)
       const u = keys.reduce((s, k) => s + (this.scanResult[k].updated || 0), 0)
@@ -334,19 +352,31 @@ export default {
       ]
       if (s) {
         items.push({ label: '班级', value: `${s.className}（${s.collegeName}）` })
-        items.push({ label: 'GPA / 学分', value: `${s.gpa.toFixed(1)} / ${s.obtainedCredits}·${s.requiredCredits}` })
+        const gpa=Number.isFinite(Number(s.gpa))?Number(s.gpa).toFixed(1):'待核对'
+        const credits=s.obtainedCredits==null||s.requiredCredits==null?'待核对':`${s.obtainedCredits} / ${s.requiredCredits}`
+        items.push({ label: 'GPA / 学分', value: `${gpa} / ${credits}` })
       }
       return items
     }
   },
+  watch: {
+    identity(){this.actionPending=null;this.scanPending=null;this.invalidatePrivate()},
+    '$route.query':{deep:true,handler(query){const q=query?.tab;if(q&&this.tabs.some(t=>t.key===q)&&q!==this.tab){this.scope++;this.tab=q;this.enter()}if(query?.warningId&&String(query.warningId)!==String(this.detailId))this.openFollowup(query.warningId)}}
+  },
   async created() {
-    const c = await academicAffairsApi.getContext()
-    if (c.code === 0) this.ctx = c.data
-    const q = this.$route && this.$route.query && this.$route.query.tab
+    const query = (this.$route && this.$route.query) || {}
+    const q = query.tab
     if (q && this.tabs.some((t) => t.key === q)) this.tab = q
     this.enter()
+    if (query.warningId) await this.openFollowup(query.warningId)
   },
+  beforeUnmount(){this.alive=false;this.invalidatePrivate()},
   methods: {
+    token(kind,extra=''){const seq=(this.readSeq[kind]||0)+1;this.readSeq[kind]=seq;return {kind,seq,scope:this.scope,identity:this.identity,tab:this.tab,extra:String(extra)}},
+    current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&this.readSeq[c.kind]===c.seq},
+    denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
+    invalidatePrivate(){this.scope++;this.readSeq={};this.rows=[];this.detail=null;this.detailId='';this.detailVisible=false;this.notifyRows=[];this.actionReceipt=null;this.assignVisible=false;this.followVisible=false;this.escalateVisible=false;this.closeVisible=false;this.voidVisible=false;this.acting=false},
+    readFail(err,fallback){if(this.denied(err))this.invalidatePrivate();return gradeError(err,fallback)},
     onOwnerPicked(value, items) {
       this.assignForm.ownerId = value || ''
       this.assignForm.ownerName = items?.[0]?.raw?.teacherName || items?.[0]?.label || ''
@@ -364,6 +394,8 @@ export default {
       return `${Math.max(4, Math.round((count / max) * 100))}%`
     },
     switchTab(k) {
+      if(this.acting||this.scanning)return
+      this.scope++
       this.tab = k
       this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => {})
       this.enter()
@@ -382,134 +414,154 @@ export default {
       else if (this.tab === 'notify') { this.notifyPagination.page = 1; this.loadNotifications(); this.loadNotifySummary() }
     },
     async loadSummary() {
-      this.summaryLoading = true; this.summaryError = ''
-      const res = await api.summary()
-      if (res.code === 0) this.summary = res.data
-      else this.summaryError = res.message
-      this.summaryLoading = false
+      const c=this.token('summary');this.summaryLoading = true; this.summaryError = ''
+      try{const res = await api.summary();if(!this.current(c))return;if(res.code !== 0)throw res;if(!Array.isArray(res.data?.bySource)||!Array.isArray(res.data?.byLevel)||!Array.isArray(res.data?.byStatus))throw {code:503};this.summary = res.data}
+      catch(err){if(this.current(c))this.summaryError=this.readFail(err,'预警汇总读取失败，请重试。')}
+      finally{if(this.current(c))this.summaryLoading=false}
     },
     async loadList() {
       if (!this.category) return
-      this.listLoading = true; this.listError = ''
-      const res = await api.list({
+      const category={...this.category},page=this.pagination.page,c=this.token('list',category.sourceCode);this.listLoading = true; this.listError = ''
+      try{const res = await api.list({
         sourceCode: this.category.sourceCode, level: this.catFilters.level || undefined,
         status: this.catFilters.status || undefined, page: this.pagination.page, pageSize: this.pagination.pageSize
       })
-      if (res.code === 0) { this.rows = res.data.list; this.pagination.total = res.data.total }
-      else this.listError = res.message
-      this.listLoading = false
+      if(!this.current(c)||this.category?.sourceCode!==category.sourceCode||this.pagination.page!==page)return;if(res.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503};this.rows=res.data.list;this.pagination.total=Number.isFinite(res.data.total)?res.data.total:res.data.list.length}
+      catch(err){if(this.current(c))this.listError=this.readFail(err,'预警名单读取失败，请重试。')}
+      finally{if(this.current(c))this.listLoading=false}
     },
     onPageChange(p) { this.pagination.page = p; this.loadList() },
     async loadFollowList() {
-      this.listLoading = true; this.listError = ''
-      const res = await api.list({
+      const page=this.pagination.page,c=this.token('list','followup');this.listLoading = true; this.listError = ''
+      try{const res = await api.list({
         status: this.followFilters.status || undefined, sourceCode: this.followFilters.sourceCode || undefined,
         page: this.pagination.page, pageSize: this.pagination.pageSize
       })
-      if (res.code === 0) { this.rows = res.data.list; this.pagination.total = res.data.total }
-      else this.listError = res.message
-      this.listLoading = false
+      if(!this.current(c)||this.tab!=='followup'||this.pagination.page!==page)return;if(res.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503};this.rows=res.data.list;this.pagination.total=Number.isFinite(res.data.total)?res.data.total:res.data.list.length}
+      catch(err){if(this.current(c))this.listError=this.readFail(err,'预警跟进名单读取失败，请重试。')}
+      finally{if(this.current(c))this.listLoading=false}
     },
     onFollowPageChange(p) { this.pagination.page = p; this.loadFollowList() },
     notifyStatusColor,
     async loadNotifySummary() {
-      this.notifySummaryLoading = true
-      const res = await api.notificationSummary()
-      if (res.code === 0) this.notifySummary = res.data
-      this.notifySummaryLoading = false
+      const c=this.token('notifySummary');this.notifySummaryLoading = true
+      try{const res=await api.notificationSummary();if(!this.current(c))return;if(res.code!==0)throw res;this.notifySummary={total:res.data?.total??null,unread:res.data?.unread??null,read:res.data?.read??null}}
+      catch(err){if(this.current(c))this.notifyError=this.readFail(err,'通知汇总读取失败，请重试。')}
+      finally{if(this.current(c))this.notifySummaryLoading=false}
     },
     async loadNotifications() {
-      this.notifyLoading = true; this.notifyError = ''
-      const res = await api.notifications({ page: this.notifyPagination.page, pageSize: this.notifyPagination.pageSize })
-      if (res.code === 0) { this.notifyRows = res.data.list; this.notifyPagination.total = res.data.total }
-      else this.notifyError = res.message
-      this.notifyLoading = false
+      const page=this.notifyPagination.page,c=this.token('notifications');this.notifyLoading = true; this.notifyError = ''
+      try{const res=await api.notifications({page,pageSize:this.notifyPagination.pageSize});if(!this.current(c)||this.tab!=='notify'||this.notifyPagination.page!==page)return;if(res.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503};this.notifyRows=res.data.list;this.notifyPagination.total=Number.isFinite(res.data.total)?res.data.total:res.data.list.length}
+      catch(err){if(this.current(c))this.notifyError=this.readFail(err,'预警通知读取失败，请重试。')}
+      finally{if(this.current(c))this.notifyLoading=false}
     },
     onNotifyPageChange(p) { this.notifyPagination.page = p; this.loadNotifications() },
-    async scanOne(key) {
-      if (this.scanning) return
-      this.scanning = true
-      const res = await api.scan(key)
-      this.scanning = false
-      if (res.code === 0) {
-        this.scanResult = res.data
-        toast.success('扫描完成')
-        if (this.tab === 'dashboard') this.loadSummary()
-        else if (this.category) this.loadList()
-      } else toast.error(res.message || '扫描失败')
+    async askScan(key){
+      if(!this.canRule||this.scanning||this.scanPending)return
+      const c=this.token('scanRules')
+      try{const res=await api.getRules();if(!this.current(c))return;if(res.code!==0)throw res;if(!Array.isArray(res.data?.items))throw {code:503};const rules=res.data.items.map(r=>({key:String(r.key),label:String(r.label||r.key),value:r.value}));this.scanConfirm={visible:true,key,rules,message:`将按刚读取的 ${rules.length} 条正式规则执行${key==='all'?'全部':'本类'}扫描。扫描可能生成或更新预警，请确认。`}}
+      catch(err){if(this.current(c))toast.error(this.readFail(err,'扫描规则读取失败，请重试。'))}
+    },
+    async scanOne() {
+      const frozen=this.scanConfirm;if(!this.canRule||this.scanning||this.scanPending||!frozen.visible)return
+      const c=this.token('scanExecute');this.scanning=true
+      try{const currentRules=await api.getRules();if(!this.current(c))return;if(currentRules?.code!==0)throw currentRules;if(!Array.isArray(currentRules.data?.items))throw {code:503};const normalize=items=>items.map(r=>[String(r.key),r.value]).sort((a,b)=>a[0].localeCompare(b[0]));const same=JSON.stringify(normalize(currentRules.data.items))===JSON.stringify(normalize(frozen.rules));if(!same){this.scanConfirm.visible=false;toast.error('预警规则已变化，请重新确认后再扫描。');return}
+        let res;try{res=await api.scan(frozen.key)}catch(err){res=err}
+        if(!this.current(c))return
+        this.scanConfirm.visible=false
+        if(res?.code===0&&res.data&&typeof res.data==='object'){this.scanResult=res.data;toast.success('扫描回执已收到，正在读取当前名单。')}
+        else if(/403|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){throw res}
+        else{this.scanPending={key:frozen.key,rules:frozen.rules};this.scanResult={pending:true};toast.error('扫描结果待核实，请勿重复执行。')}
+        if(this.tab==='dashboard')await this.loadSummary();else if(this.category)await this.loadList()
+      }catch(err){if(this.current(c))toast.error(this.readFail(err,'扫描未执行，请核对权限和规则。'))}finally{if(this.current(c))this.scanning=false}
     },
     async loadRules() {
-      this.rulesLoading = true; this.rulesError = ''
-      const res = await api.getRules()
-      if (res.code === 0) {
-        this.rules = res.data.items
-        this.ruleEdits = Object.fromEntries(this.rules.map((r) => [r.key, r.value]))
-      } else this.rulesError = res.message
-      this.rulesLoading = false
+      const c=this.token('rules');this.rulesLoading = true; this.rulesError = ''
+      try{const res=await api.getRules();if(!this.current(c))return;if(res.code!==0)throw res;if(!Array.isArray(res.data?.items))throw {code:503};this.rules=res.data.items;this.ruleEdits=Object.fromEntries(this.rules.map(r=>[r.key,r.value]))}
+      catch(err){if(this.current(c))this.rulesError=this.readFail(err,'预警规则读取失败，请重试。')}
+      finally{if(this.current(c))this.rulesLoading=false}
     },
     async saveRuleValue(r) {
-      this.ruleSaving = r.key
-      const res = await api.saveRule(r.key, this.ruleEdits[r.key])
-      this.ruleSaving = ''
-      if (res.code === 0) { toast.success('规则已保存，下次扫描生效'); this.loadRules() }
-      else toast.error(res.message)
+      if(!this.canRule||this.ruleSaving||this.ruleUncertain[r.key])return
+      const numeric=Number(this.ruleEdits[r.key]);if(!Number.isFinite(numeric)||numeric<Number(r.min)||numeric>Number(r.max)||(r.type==='int'&&!Number.isInteger(numeric))){toast.error(`请输入 ${r.min} 至 ${r.max} 范围内的${r.type==='int'?'整数':'数值'}`);return}
+      const c=this.token('ruleWrite',r.key);this.ruleSaving=r.key
+      try{const before=await api.getRules();if(!this.current(c))return;if(before?.code!==0)throw before;const old=before.data?.items?.find(item=>String(item.key)===String(r.key));if(!old||Number(old.value)!==Number(r.value)){toast.error('规则当前值已变化，请刷新后重新填写。');await this.loadRules();return}
+        let res;try{res=await api.saveRule(r.key,numeric)}catch(err){res=err}
+        if(!this.current(c))return
+        if(res?.code!==0){if(/403|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' ')))throw res;this.ruleUncertain={...this.ruleUncertain,[r.key]:true}}
+        const after=await api.getRules();if(after?.code!==0)throw after;const saved=after.data?.items?.find(item=>String(item.key)===String(r.key));if(Number(saved?.value)===numeric&&res?.code===0){toast.success('已核对正式规则值，下次扫描生效');this.ruleUncertain={...this.ruleUncertain,[r.key]:false}}else{this.ruleUncertain={...this.ruleUncertain,[r.key]:true};toast.error('规则结果待核实，请刷新规则，勿重复保存。')}this.rules=after.data.items;this.ruleEdits=Object.fromEntries(this.rules.map(item=>[item.key,item.value]))
+      }catch(err){if(this.current(c))toast.error(this.readFail(err,'规则保存前核对未完成，请重试。'))}finally{if(this.current(c))this.ruleSaving=''}
     },
     async openFollowup(warningId) {
-      this.detailId = warningId
+      if(!warningId)return
+      if(this.tab!=='followup'){this.scope++;this.tab='followup';this.$router?.replace?.({query:{...this.$route.query,tab:'followup',warningId:String(warningId)}})?.catch?.(()=>{});this.pagination.page=1;this.loadFollowList()}
+      this.detailId = String(warningId)
       this.detailVisible = true
       this.detailLoading = true
       this.detailError = ''
-      const res = await api.detail(warningId)
-      this.detailLoading = false
-      if (res.code === 0) this.detail = res.data
-      else this.detailError = res.message
+      const c=this.token('detail',warningId)
+      try{const res=await api.detail(warningId);if(!this.current(c)||String(this.detailId)!==String(warningId))return;if(res.code!==0)throw res;if(String(res.data?.warning?.warningId)!==String(warningId)||!Array.isArray(res.data?.interventions))throw {code:503};this.detail=res.data}
+      catch(err){if(this.current(c))this.detailError=this.readFail(err,'预警详情读取失败，请重试。')}
+      finally{if(this.current(c))this.detailLoading=false}
     },
     reloadDetailAndList() {
       this.openFollowup(this.detailId)
       if (this.tab === 'followup') this.loadFollowList()
       else if (this.category) this.loadList()
     },
+    recordActionReceipt(title, result, next, verified=true) {
+      this.actionReceipt = {
+        title, result, next, verified,
+        warningId: this.detailId,
+        studentName: this.detail?.student?.studentName || '学生'
+      }
+    },
+    async performWarningAction(kind,send,verify,{title,result,next}){
+      if(!this.canHandle||this.acting||this.actionPending||!this.detailId)return false
+      const c=this.token('action',this.detailId);this.acting=true;this.actionPending={warningId:this.detailId,kind}
+      try{let res;try{res=await send()}catch(err){res=err}if(!this.current(c))return false
+        if(res?.code!==0&&/403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.actionPending=null;throw res}
+        let fresh;try{fresh=await api.detail(c.extra)}catch(err){fresh=err}if(!this.current(c))return false
+        const exact=fresh?.code===0&&String(fresh.data?.warning?.warningId)===c.extra
+        if(res?.code===0&&exact&&verify(fresh.data)){this.detail=fresh.data;this.actionPending=null;this.recordActionReceipt(title,result,next,true);return true}
+        this.recordActionReceipt('结果待核实','已读取当前预警，但不能证明本次操作完成','请勿重复操作，联系教务管理员核对操作记录',false);return false
+      }catch(err){if(this.current(c))toast.error(this.readFail(err,'操作前核对未完成，请重试。'));return false}finally{if(this.current(c))this.acting=false}
+    },
+    reopenReceipt() {
+      if (!this.actionReceipt?.warningId) return
+      this.tab = 'followup'
+      this.openFollowup(this.actionReceipt.warningId)
+    },
     async submitAssign() {
-      if (!this.assignForm.ownerName) { toast.error('请填写跟进人姓名'); return }
-      this.acting = true
-      const res = await api.assign(this.detailId, this.assignForm.ownerId || undefined, this.assignForm.ownerName)
-      this.acting = false
-      if (res.code === 0) { toast.success('已指派'); this.assignVisible = false; this.assignForm = { ownerId: '', ownerName: '' }; this.reloadDetailAndList() }
-      else toast.error(res.message)
+      if (!this.assignForm.ownerId || !this.assignForm.ownerName) { toast.error('请选择跟进教师'); return }
+      const frozen={ownerId:String(this.assignForm.ownerId),ownerName:this.assignForm.ownerName}
+      const ok=await this.performWarningAction('assign',()=>api.assign(this.detailId,frozen.ownerId,frozen.ownerName),fresh=>fresh.warning.owner===frozen.ownerName,{title:'跟进责任已指派',result:frozen.ownerName,next:'跟进人记录干预并填写下一步计划'})
+      if(ok){toast.success('已回读当前跟进人');this.assignVisible=false;this.assignForm={ownerId:'',ownerName:''};this.loadFollowList()}
     },
     async submitFollowup() {
       if (!this.followForm.content || this.followForm.content.trim().length < 5) { toast.error('跟进内容不少于5字'); return }
-      this.acting = true
-      const res = await api.addIntervention(this.detailId, this.followForm)
-      this.acting = false
-      if (res.code === 0) { toast.success('跟进已记录'); this.followVisible = false; this.followForm = { way: 'TALK', content: '', result: '', nextPlan: '' }; this.reloadDetailAndList() }
-      else toast.error(res.message)
+      const frozen={way:this.followForm.way,content:this.followForm.content.trim(),result:this.followForm.result||'',nextPlan:this.followForm.nextPlan||''};let interventionId=''
+      const ok=await this.performWarningAction('followup',async()=>{const res=await api.addIntervention(this.detailId,frozen);interventionId=String(res?.data?.interventionId||'');return res},fresh=>!!interventionId&&fresh.interventions.some(item=>String(item.id)===interventionId&&item.way===frozen.way&&item.content===frozen.content&&String(item.result||'')===frozen.result&&String(item.nextPlan||'')===frozen.nextPlan),{title:'预警跟进已记录',result:this.wayLabel(frozen.way),next:frozen.nextPlan||'继续观察证据变化并按计划复查'})
+      if(ok){toast.success('已回读正式跟进记录');this.followVisible=false;this.followForm={way:'TALK',content:'',result:'',nextPlan:''};this.loadFollowList()}
     },
     async remind() {
-      const res = await api.remind(this.detailId)
-      if (res.code === 0) {
-        const n = res.data && res.data.notified
-        toast.success(n ? `已提醒，推送通知 ${n} 条` : '已提醒（未解析到可通知对象，请检查该生班级/辅导员绑定）')
-        this.reloadDetailAndList()
-      } else toast.error(res.message)
+      const before=Number(this.detail?.warning?.remindCount);let notified=null
+      const ok=await this.performWarningAction('remind',async()=>{const res=await api.remind(this.detailId);notified=Number.isFinite(Number(res?.data?.notified))?Number(res.data.notified):null;return res},fresh=>Number.isFinite(before)&&Number(fresh.warning.remindCount)>before,{title:'预警提醒已发送',result:notified==null?'通知对象数量待核对':`${notified} 个通知对象`,next:'通知送达和阅读状态请在通知台账继续核对'})
+      if(ok){toast.success('已回读提醒计数');this.loadFollowList()}
     },
     async submitEscalate({ reason }) {
-      this.acting = true
-      const res = await api.escalate(this.detailId, reason)
-      this.acting = false
-      if (res.code === 0) { toast.success('已升级'); this.escalateVisible = false; this.reloadDetailAndList() } else toast.error(res.message)
+      const ok=await this.performWarningAction('escalate',()=>api.escalate(this.detailId,reason),fresh=>fresh.warning.status==='ESCALATED'&&fresh.warning.level==='HIGH',{title:'预警已升级',result:'当前状态：已升级',next:'升级原因需在审计记录中继续核对'})
+      if(ok){toast.success('已回读升级状态');this.escalateVisible=false;this.loadFollowList()}
     },
     async submitClose({ reason }) {
-      this.acting = true
-      const res = await api.close(this.detailId, reason)
-      this.acting = false
-      if (res.code === 0) { toast.success('已关闭'); this.closeVisible = false; this.reloadDetailAndList() } else toast.error(res.message)
+      const frozen=String(reason||'')
+      const ok=await this.performWarningAction('close',()=>api.close(this.detailId,frozen),fresh=>fresh.warning.status==='CLOSED'&&String(fresh.warning.closeResult||'')===frozen,{title:'预警已关闭',result:'当前状态：已关闭',next:'关闭说明已按本次内容回读'})
+      if(ok){toast.success('已回读关闭状态');this.closeVisible=false;this.loadFollowList()}
     },
     async submitVoid({ reason }) {
-      this.acting = true
-      const res = await api.void(this.detailId, reason)
-      this.acting = false
-      if (res.code === 0) { toast.success('已作废'); this.voidVisible = false; this.reloadDetailAndList() } else toast.error(res.message)
+      const frozen=String(reason||'')
+      const ok=await this.performWarningAction('void',()=>api.void(this.detailId,frozen),fresh=>fresh.warning.recordStatus==='VOIDED'&&String(fresh.warning.voidReason||'')===frozen,{title:'误报预警已作废',result:'当前记录：已作废',next:'误报说明已按本次内容回读'})
+      if(ok){toast.success('已回读作废状态');this.voidVisible=false;this.loadFollowList()}
     }
   }
 }
@@ -520,6 +572,8 @@ export default {
 .aawc-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); margin-bottom: 16px; flex-wrap: wrap; }
 .aawc-tab { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--text-secondary, #64748b); border-bottom: 2px solid transparent; white-space: nowrap; }
 .aawc-tab.is-active { color: var(--primary-color, #2563eb); border-bottom-color: var(--primary-color, #2563eb); font-weight: 600; }
+.aawc-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto minmax(200px,auto) auto; align-items: center; gap: 18px; margin-bottom: 16px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: #f3fbf5; }
+.aawc-receipt strong, .aawc-receipt span, .aawc-receipt small, .aawc-receipt b { display: block; }.aawc-receipt strong { color: #15803d; }.aawc-receipt span, .aawc-receipt small { margin-top: 3px; color: #64748b; font-size: 11px; }.aawc-receipt b { margin-top: 3px; font-size: 12px; }
 .aawc-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
 .aa-filter { display: flex; gap: 12px; align-items: center; }
 .aa-select { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; }
@@ -535,6 +589,7 @@ export default {
 .aawc-bar-track { flex: 1; height: 10px; background: var(--fill-light, #f1f5f9); border-radius: 5px; overflow: hidden; }
 .aawc-bar-fill { display: block; height: 100%; background: var(--primary-color, #2563eb); border-radius: 5px; }
 .aawc-bar-count { width: 40px; text-align: right; font-size: 13px; color: var(--text-secondary, #64748b); }
+@media (max-width: 760px) { .aawc-receipt { grid-template-columns: 1fr; gap: 10px; } }
 .aawc-rule-row { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; background: var(--fill-light, #f8fafc); border-radius: 10px; }
 .aawc-rule-label { font-size: 14px; font-weight: 500; }
 .aawc-rule-edit { display: flex; align-items: center; gap: 8px; }

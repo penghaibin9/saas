@@ -1,8 +1,69 @@
 import { createHash } from 'node:crypto'
 import { expect } from '../lib/observability.mjs'
 
+const BROWSER_LOGIN_WINDOW_MS = 60_000
+const BROWSER_LOGIN_SAFE_LIMIT = 9
+const BROWSER_LOGIN_HEADROOM_MS = 500
+const browserLoginStarts = []
+let browserLoginPace = Promise.resolve()
+
 function accessTokenFromEnvelope(payload) {
   return String(payload?.data?.accessToken || '')
+}
+
+export async function paceBrowserLogin(page) {
+  let release
+  const previous = browserLoginPace
+  browserLoginPace = new Promise((resolve) => { release = resolve })
+  await previous
+  try {
+    const pruneExpired = () => {
+      const now = Date.now()
+      while (browserLoginStarts.length && now - browserLoginStarts[0] >= BROWSER_LOGIN_WINDOW_MS) {
+        browserLoginStarts.shift()
+      }
+    }
+    pruneExpired()
+    if (browserLoginStarts.length >= BROWSER_LOGIN_SAFE_LIMIT) {
+      const waitMs = Math.max(
+        0,
+        BROWSER_LOGIN_WINDOW_MS - (Date.now() - browserLoginStarts[0]) + BROWSER_LOGIN_HEADROOM_MS
+      )
+      if (waitMs > 0) await page.waitForTimeout(waitMs)
+      pruneExpired()
+    }
+    browserLoginStarts.push(Date.now())
+  } finally {
+    release()
+  }
+}
+
+function retryAfterMs(response) {
+  const raw = String(response?.headers?.()['retry-after'] || '').trim()
+  const seconds = Number(raw)
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.ceil(seconds * 1000) + BROWSER_LOGIN_HEADROOM_MS
+  }
+  return BROWSER_LOGIN_WINDOW_MS + BROWSER_LOGIN_HEADROOM_MS
+}
+
+async function submitBrowserLogin(page, button) {
+  let response = null
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    await paceBrowserLogin(page)
+    const responsePromise = page.waitForResponse((candidate) =>
+      candidate.url().includes('/api/v1/auth/browser-login') && candidate.request().method() === 'POST'
+    )
+    await button.click()
+    response = await responsePromise
+    if (response.status() !== 429) return response
+
+    // The shared real backend may have already consumed this runner IP's login budget during
+    // bootstrap before Playwright starts. Respect the production limiter's retry window instead
+    // of spoofing client IPs or weakening the backend threshold, then retry the same real login.
+    if (attempt === 0) await page.waitForTimeout(retryAfterMs(response))
+  }
+  return response
 }
 
 async function browserRefreshCookie(page, channel = 'staff') {
@@ -46,11 +107,13 @@ export class StaffLoginPage {
     const agreement = this.page.locator('label.agreement input[type=checkbox]')
     if (await agreement.count() && !(await agreement.isChecked())) await agreement.check()
 
-    const responsePromise = this.page.waitForResponse((response) =>
-      response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
+    // The production auth contract intentionally limits one client IP to 10 login attempts per
+    // rolling minute. Browser E2E exercises many real roles from one runner IP, so respect that
+    // contract with headroom instead of spoofing X-Forwarded-For or weakening the backend limit.
+    const response = await submitBrowserLogin(
+      this.page,
+      this.page.getByRole('button', { name: /进入教师工作台|登录中/ })
     )
-    await this.page.getByRole('button', { name: /进入教师工作台|登录中/ }).click()
-    const response = await responsePromise
     expect(response.ok(), `staff login HTTP ${response.status()}`).toBeTruthy()
     this.lastAccessToken = accessTokenFromEnvelope(await response.json())
     expect(this.lastAccessToken, 'staff browser-login must return an in-memory access token').toBeTruthy()
@@ -62,7 +125,7 @@ export class StaffLoginPage {
     const currentRole = await this.currentRoleText().catch(() => '')
     if (roleMatches(currentRole, rolePattern)) return
 
-    await this.page.getByRole('button', { name: /身份列表/ }).click()
+    await this.page.getByTitle('查看账号与切换身份', { exact: true }).click()
     const menu = this.page.locator('.uchip__menu')
     await expect(menu).toBeVisible()
     const target = menu.locator('button.uchip__ctx').filter({ hasText: rolePattern }).first()
@@ -74,6 +137,16 @@ export class StaffLoginPage {
     const responsePromise = this.page.waitForResponse((response) =>
       response.url().includes('/api/v1/auth/browser-switch-role') && response.request().method() === 'POST'
     )
+    // The role switch replaces the access token in the current document and then hard-navigates
+    // to /workbench.  The new document has no in-memory access token, so its first bootstrap call
+    // consumes and rotates the new HttpOnly refresh session.  Capture that response before the
+    // click: waiting only for `networkidle` can return during the short quiet window before this
+    // bootstrap refresh starts, and an immediate deep link would abort the one-shot rotation.
+    const bootstrapRefreshPromise = this.page.waitForResponse(
+      (response) => response.url().includes('/api/v1/auth/browser-refresh')
+        && response.request().method() === 'POST',
+      { timeout: 60_000 },
+    ).catch(() => null)
     const navigationPromise = this.page.waitForEvent('framenavigated', {
       predicate: (frame) => frame === this.page.mainFrame(),
       timeout: 60_000,
@@ -82,6 +155,9 @@ export class StaffLoginPage {
     const response = await responsePromise
     expect(response.ok(), `staff role switch HTTP ${response.status()}`).toBeTruthy()
     await navigationPromise
+    const bootstrapRefresh = await bootstrapRefreshPromise
+    expect(bootstrapRefresh, 'staff role switch must finish the new document refresh bootstrap').toBeTruthy()
+    expect(bootstrapRefresh.ok(), `staff post-switch refresh HTTP ${bootstrapRefresh.status()}`).toBeTruthy()
     await expect(this.page).toHaveURL(/\/workbench/)
 
     await expect.poll(
@@ -126,11 +202,10 @@ export class StudentLoginPage {
     const agreement = this.page.locator('label.agreement input[type=checkbox]')
     if (!(await agreement.isChecked())) await agreement.check()
 
-    const responsePromise = this.page.waitForResponse((response) =>
-      response.url().includes('/api/v1/auth/browser-login') && response.request().method() === 'POST'
+    const response = await submitBrowserLogin(
+      this.page,
+      this.page.getByRole('button', { name: /进入学生服务门户|登录中/ })
     )
-    await this.page.getByRole('button', { name: /进入学生服务门户|登录中/ }).click()
-    const response = await responsePromise
     expect(response.ok(), `student login HTTP ${response.status()}`).toBeTruthy()
     this.lastAccessToken = accessTokenFromEnvelope(await response.json())
     expect(this.lastAccessToken, 'student browser-login must return an in-memory access token').toBeTruthy()

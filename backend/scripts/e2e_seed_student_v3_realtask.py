@@ -230,7 +230,7 @@ def _seed_funding_batch(facts: dict, tokens: dict) -> dict:
     open_batch = next((row for row in (batches.get("items") or [])
                        if str(row.get("status") or "").upper() in {"OPEN", "PUBLISHED", "APPLYING"}), None)
     if open_batch:
-        return {"projectId": project_id, "batchId": str(open_batch["batchId"])}
+        return {"projectId": project_id, "projectName": FUNDING_PROJECT_NAME, "batchId": str(open_batch["batchId"])}
 
     today = date.today()
     batch = _call("/student-affairs/funding/batches", admin, "POST", {
@@ -242,7 +242,7 @@ def _seed_funding_batch(facts: dict, tokens: dict) -> dict:
         "quota": 50,
         "publish": True,
     })
-    return {"projectId": project_id, "batchId": str(batch["batchId"])}
+    return {"projectId": project_id, "projectName": FUNDING_PROJECT_NAME, "batchId": str(batch["batchId"])}
 
 
 

@@ -39,7 +39,8 @@ def test_reviewed_and_missing_filters_reach_sql_read_model():
     assert "grade.list_grades(" in router
     assert "status=status" in router
     assert "missing_type=missingType" in router
-    assert "list_grades = grade_read.list_grades" in (ROOT / "backend/app/modules/graduation/services/__init__.py").read_text(encoding="utf-8")
+    # 成绩列表唯一实现为 SQL 读模型，由 service 模块显式绑定（不再依赖包初始化替换）
+    assert "from app.modules.graduation.services.graduation_grade_read_service import list_grades" in service
     assert "GraduationGrade.status == status" in read_model
     assert "_missing_clause(missing_type)" in read_model
-    assert "GraduationGrade.status == status" in service or "def list_grades" in service
+    assert "def list_grades" not in service, "旧的 Python 过滤实现已删除，不得重新出现第二份实现"

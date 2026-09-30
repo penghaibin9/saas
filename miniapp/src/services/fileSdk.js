@@ -95,7 +95,8 @@ function openDownloaded(downloaded, fileName = '', { strictNative = false } = {}
     uni.openDocument({
       filePath: downloaded.tempFilePath, fileType: ext || undefined, showMenu: true,
       success: resolve,
-      fail: (error) => reject({ code: 'PREVIEW_FAILED', biz: true, message: error?.errMsg || '当前文件无法预览，请在 PC 端查看' })
+      // 原生 errMsg 常含设备实现、路径或英文错误码，不得直接展示给学生/教师。
+      fail: () => reject({ code: 'PREVIEW_FAILED', biz: true, message: '当前文件无法预览，请在 PC 端查看' })
     })
   })
 }
@@ -108,6 +109,21 @@ export async function openBusinessFile(fileId) {
     throw { code: 404001, biz: true, message: '附件不存在或尚未通过安全扫描' }
   }
   const downloaded = await realDownload(`/files/download/${enc(id)}`)
+  await openDownloaded(downloaded, meta.fileName)
+  return meta
+}
+
+export async function openBusinessFileInline(fileId) {
+  const id = String(fileId || '').trim()
+  if (!id) throw { code: 'FILE_REQUIRED', biz: true, message: '附件不存在' }
+  const meta = normalizeFile(await realRequest(`/files/${enc(id)}`))
+  if (!meta.canPreview && !meta.canDownload) {
+    throw { code: 404001, biz: true, message: '附件不存在或尚未通过安全扫描' }
+  }
+  const downloaded = await realDownload(`/files/download/${enc(id)}`)
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    return { ...meta, inlineUrl: downloaded.tempFilePath }
+  }
   await openDownloaded(downloaded, meta.fileName)
   return meta
 }
@@ -180,6 +196,9 @@ export const fileSdk = {
   },
   async open(fileId) {
     return openBusinessFile(fileId)
+  },
+  async openInline(fileId) {
+    return openBusinessFileInline(fileId)
   },
   async download(fileId) {
     return realDownload(`/files/download/${enc(fileId)}`)

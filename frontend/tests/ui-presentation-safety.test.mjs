@@ -5,7 +5,8 @@ import test from 'node:test'
 import {
   normalizeUiError,
   presentAuditRecord,
-  safeEnumLabel
+  safeEnumLabel,
+  safeLocalizedText
 } from '../src/utils/presentationSafety.js'
 
 test('SQL、路径、枚举和 JSON 错误不会进入用户文案', () => {
@@ -59,6 +60,12 @@ test('未知枚举与审计字段使用安全 fallback', () => {
     [row.displayAction, row.displayResult, row.displayRole, row.displayTarget],
     ['业务操作', '结果待确认', '业务经办人', '相关业务对象']
   )
+})
+
+test('混合来源文案保留中文业务说明但不回显英文枚举码', () => {
+  assert.equal(safeLocalizedText({ value: '学校人工登记' }), '学校人工登记')
+  assert.equal(safeLocalizedText({ value: 'NEW_BACKEND_STATUS', unknownLabel: '状态待确认' }), '状态待确认')
+  assert.equal(safeLocalizedText({ value: 'READY', dictionary: { READY: '已就绪' } }), '已就绪')
 })
 
 test('公共组件源码不再包含任意对象 JSON 或 unknown raw fallback', () => {

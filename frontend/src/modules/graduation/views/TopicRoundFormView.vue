@@ -19,17 +19,19 @@
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template #footer>
-      <button type="button" class="mp-btn" @click="$router.push('/admin/graduation/topic-rounds')">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">创建</button>
+      <AppButton @click="$router.push('/admin/graduation/topic-rounds')">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting" @click="submit">创建</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { AppDateTimePicker, AppDeadlinePicker } from '@/components/common/date'
 import { gdTopicRoundApi } from '@/modules/graduation/api/graduation-topic-round.api'
 import { AppGraduationDesignBatchPicker } from '@/components/common'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
 import { toDateTimeInputValue, withDeadlineTime, addDays, validateRange } from '@/utils/dateUtils'
 
@@ -41,10 +43,15 @@ const EMPTY_FORM = () => ({
 
 export default {
   name: 'TopicRoundFormView',
-  components: { GraduationFormPageShell, AppDateTimePicker, AppDeadlinePicker, AppGraduationDesignBatchPicker },
+  components: { AppButton, GraduationFormPageShell, AppDateTimePicker, AppDeadlinePicker, AppGraduationDesignBatchPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { form: EMPTY_FORM(), selectedBatchInfo: null, formError: '', submitting: false }
+  },
+  created() {
+    // 新建轮次默认挂到当前批次，避免“不关联批次”的轮次学生端找不到
+    const currentBatchId = String(this.$route.query.batchId || useGraduationBatchStore().selectedBatchId || '')
+    if (currentBatchId) this.form.batchId = currentBatchId
   },
   computed: {
     selectedBatch() {

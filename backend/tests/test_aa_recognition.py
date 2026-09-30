@@ -185,3 +185,55 @@ def test_freetext_target_backward_compatible(client, db_mode):
     r = client.post(f"{BASE}/grade-recognitions/student/submit", headers=stu, json=freetext)
     assert r.status_code == 400, r.text
     assert "目标课程" in r.text or "课程库" in r.text
+
+
+def test_student_recognition_course_options_versions_and_submit_identity(client, db_mode):
+    """SR025 MySQL/API acceptance; append to test_aa_recognition.py, owner schedules db_mode."""
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse
+
+    ids = _seed(db_mode)
+    db = get_sessionmaker()()
+    try:
+        version2 = AaCourse(tenant_id=TID, course_code="TGT001", course_name="高等数学第二版",
+                            credit=4, version=2, status="DISABLED")
+        foreign = AaCourse(tenant_id=TID + 1, course_code="TGT001", course_name="别校同码",
+                           credit=4, version=3, status="ENABLED")
+        db.add_all([version2, foreign])
+        db.flush()
+        version2_id = str(version2.id)
+        db.commit()
+    finally:
+        db.close()
+    student = {"Authorization": "Bearer " + create_access_token({
+        "userId": "sr025-api-student", "studentId": str(ids["profile"]),
+        "userType": "STUDENT", "tenantId": str(TID), "activeContextId": "ctx",
+        "currentRoleCode": "STUDENT", "clientType": "MP",
+    })}
+    endpoint = f"{BASE}/grade-recognitions/student/course-options"
+    page1 = client.get(endpoint, headers=student, params={"keyword": "TGT001", "pageSize": 1})
+    page2 = client.get(endpoint, headers=student, params={"keyword": "TGT001", "pageSize": 1, "page": 2})
+    assert page1.status_code == page2.status_code == 200, (page1.text, page2.text)
+    first, second = page1.json()["data"], page2.json()["data"]
+    assert first["total"] == second["total"] == 2
+    assert first["items"] == [{"courseId": version2_id, "courseCode": "TGT001",
+                               "courseName": "高等数学第二版", "version": 2}]
+    assert second["items"][0]["courseId"] == str(ids["target"])
+    assert second["items"][0]["version"] == 1
+    submitted = client.post(f"{BASE}/grade-recognitions/student/submit", headers=student,
+                            json=_body(ids, targetCourseId=version2_id, targetCourseName="错误展示标签"))
+    assert submitted.status_code == 200, submitted.text
+    assert submitted.json()["data"]["targetCourseId"] == version2_id
+    assert submitted.json()["data"]["targetCourseName"] == "高等数学第二版"
+    # Existing staff reads/writes and the student route boundary stay separate.
+    admin = _hdr(client, "school_admin01")
+    assert client.get(endpoint, headers=admin).status_code == 403
+    db = get_sessionmaker()()
+    try:
+        db.get(AaCourse, ids["target"]).is_deleted = True
+        db.commit()
+    finally:
+        db.close()
+    after = client.get(endpoint, headers=student, params={"keyword": "TGT001"})
+    assert after.status_code == 200 and after.json()["data"]["total"] == 1, after.text

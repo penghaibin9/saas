@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from app.api.v1 import todos as todos_api
 from app.core.exceptions import AppException
 from app.services import teacher_mobile_student_keyset_service as student_svc
+from app.services import teacher_student_visibility_service as visibility_svc
 
 
 def _sample_cursor(**overrides):
@@ -49,7 +50,7 @@ def test_t3_my_students_is_true_keyset_search_and_class_filter_cannot_bypass_sco
     assert ".offset(" not in module_source
     assert ".limit(size + 1)" in source
     assert "scope = teacher_guard.resolve_teacher_scope(user)" in source
-    assert "compile_teacher_student_visibility(user, student.id, scope=scope)" in source
+    assert "compile_teacher_mobile_student_visibility" in source
     assert "object_visibility" in source
     assert "student.class_id == normalized_class_id" in source
     assert "student.student_no.like" in source
@@ -68,21 +69,20 @@ def test_t3_my_students_is_true_keyset_search_and_class_filter_cannot_bypass_sco
 
 
 def test_t3_my_students_keeps_advisor_role_relation_exclusive():
-    source = inspect.getsource(student_svc.list_continuous)
-    assert "if is_advisor_scope(scope):" in source
-    assert "object_visibility = canonical_visibility" in source
-    assert "class_owner_visibility = _class_owner_predicate" in source
-    assert "object_visibility = or_(canonical_visibility, class_owner_visibility)" in source
-    advisor_pos = source.index("if is_advisor_scope(scope):")
-    class_owner_pos = source.index("class_owner_visibility = _class_owner_predicate")
+    source = inspect.getsource(visibility_svc.compile_teacher_mobile_student_visibility)
+    assert "if is_advisor_scope(resolved_scope):" in source
+    assert "return canonical" in source
+    assert "_class_owner_visibility" in source
+    advisor_pos = source.index("if is_advisor_scope(resolved_scope):")
+    class_owner_pos = source.index("_class_owner_visibility")
     assert advisor_pos < class_owner_pos
 
 
 def test_t3_my_students_preserves_direct_counselor_head_teacher_relation_in_sql():
-    source = inspect.getsource(student_svc._class_owner_predicate)
+    source = inspect.getsource(visibility_svc._class_owner_visibility)
     assert "exists(" in source
-    assert "SchoolClass.counselor_id == uid" in source
-    assert "SchoolClass.head_teacher_id == uid" in source
+    assert "SchoolClass.counselor_id == user_id" in source
+    assert "SchoolClass.head_teacher_id == user_id" in source
     assert ".all()" not in source
 
 

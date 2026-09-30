@@ -24,9 +24,23 @@ FOCUS_MODES = frozenset({FOCUS_DETAIL, FOCUS_LIST_FOCUS, FOCUS_NONE})
 #: 已经真正实现对象聚焦的页面 → 该页面消费的 query 参数名。
 #: 每条都由 miniapp/tests/action-focus-contract.test.mjs 逐页证明。
 FOCUS_READY_PAGES: dict[str, str] = {
+    "/pages/teacher/risk-students/index": "recordId",
+    "/pages/student/affairs/dorm": "rectificationId",
+    "/pages/teacher/dorm-review/index": "recordId",
+    "/pages/teacher/affairs/work-study/index": "recordId",
+    "/pages/student/affairs/loan": "recordId",
+    "/pages/teacher/affairs/loan/index": "recordId",
+    "/pages/student/affairs/reduction": "recordId",
+    "/pages/teacher/affairs/reduction/index": "recordId",
+    "/pages/teacher/affairs/index": "recordId",
     "/pages/student/affairs/leave": "recordId",
     "/pages/student/affairs/aid": "recordId",
     "/pages/student/affairs/funding": "recordId",
+    "/pages/student/my-work/index": "caseId",
+    "/pages/student/weekly-report/index": "reportId",
+    # 教师毕设批阅页会先以 batchId + recordId 读取受范围保护的详情，再进入该条批阅，
+    # 不能退化成只打开队列第一页。
+    "/pages/teacher/graduation-guide/index": "recordId",
     # 补交材料入口早于 V3 就已实现聚焦，沿用它自己的参数名，不为统一而改坏现网深链。
     "/pages/student/affairs/index": "materialRequirementId",
 }

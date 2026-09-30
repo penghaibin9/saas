@@ -80,10 +80,10 @@ test('U15 三个批阅/核实详情页把提示条放在状态判断之外，并
     assert.match(src, /kept: this\.comment/, `${name} 撞车后应把老师刚敲的原文带进提示`)
     // 提示条必须出现在 status===PENDING_REVIEW（或 !=='COMPLETED'）判断的 template 之前，
     // 否则记录一旦被别人办完，承载它的那块表单连同提示条会一起被换掉。
-    const noticeAt = src.indexOf('<ConflictNotice')
+    const noticeAt = src.search(/<(?:ConflictNotice|AppInlineAlert)[^>]*v-if="conflict\.active"/)
     const templateAt = src.search(/<template v-if="detail\.status/)
     assert.ok(noticeAt > -1 && templateAt > -1 && noticeAt < templateAt,
-      `${name} 的 ConflictNotice 必须在状态 template 之外`)
+      `${name} 的冲突提示必须在状态 template 之外`)
   }
 })
 
@@ -231,7 +231,7 @@ test('U15 五个写操作页面都接了撞车提示，且不在冲突分支里�
     'InternshipApplicationReviewView.vue', 'AttendanceView.vue'
   ]) {
     const src = view(name)
-    assert.match(src, /ConflictNotice/, `${name} 应渲染撞车提示`)
+    assert.match(src, /v-if="conflict\.active"/, `${name} 应渲染撞车提示`)
     assert.match(src, /isConflict/, `${name} 应判定撞车`)
     assert.match(src, /captureConflict/, `${name} 应拉最新真值`)
   }
@@ -257,15 +257,22 @@ test('U4/U6 连续处理已覆盖到本批新接的两页', () => {
   assert.match(view('AttendanceView.vue'), /openNextUp/)
 })
 
-test('U8 五个工作台都保持了刷新前的筛选', () => {
+// Application now restores exact URL context; see internship.application-ui.behavior.test.mjs.
+test('U8 三个工作台保留会话筛选，成绩台账把筛选写入可刷新的深链', () => {
   for (const name of [
-    'AttendanceExceptionListView.vue', 'InternshipApplicationReviewView.vue',
-    'AttendanceView.vue', 'ScoreView.vue', 'WeeklyReportListView.vue'
+    'AttendanceExceptionListView.vue',
+    'AttendanceView.vue', 'WeeklyReportListView.vue'
   ]) {
     const src = view(name)
     assert.match(src, /restoreWorkContext/, `${name} 应恢复上次筛选`)
     assert.match(src, /captureWorkContext/, `${name} 应保存当前筛选`)
   }
+  const score = view('ScoreView.vue')
+  assert.match(score, /applyStageFromRoute/)
+  assert.match(score, /q\.keyword/)
+  assert.match(score, /q\.status/)
+  assert.match(score, /q\.incompleteOnly/)
+  assert.match(score, /this\.\$router\.replace\(\{ query/)
 })
 
 // ───────── 收尾批：把「后端有、前端没入口」的两条链路补上 ─────────
@@ -278,7 +285,7 @@ test('U15 巡访计划状态迁移有了前端入口，且接了撞车提示', (
   for (const a of ['PUBLISH', 'START', 'COMPLETE', 'CANCEL']) {
     assert.match(src, new RegExp(`'${a}'`), `缺少动作 ${a}`)
   }
-  assert.match(src, /ConflictNotice/)
+  assert.match(src, /<AppInlineAlert v-if="conflict\.active"/)
   assert.match(src, /isConflict/)
 })
 
@@ -297,7 +304,8 @@ test('U15 巡访计划的动作白名单不能与后端状态机脱节', () => {
 test('U15 企业考察审核有了前端入口，且接了撞车提示', () => {
   const src = view('InternshipEnterpriseDetailView.vue')
   assert.match(src, /listInspections/, '要能列出考察记录')
-  assert.match(src, /createInspection/, '要能登记考察')
+  assert.match(src, /<EnterpriseInspectionForm/, '详情应挂载考察登记表单')
+  assert.match(view('components/EnterpriseInspectionForm.vue'), /createInspection/, '登记表单应调用正式创建接口')
   assert.match(src, /submitInspection/, '要能提交审核')
   assert.match(src, /reviewInspection/, '要能通过/驳回')
   assert.match(src, /ConflictNotice/)
@@ -315,21 +323,22 @@ test('U10 导出口径与屏幕筛选一致（前后端都要认这个参数）'
   assert.match(svc, /incomplete_only=incomplete_only/, '必须真的透传给 list_scores')
 })
 
-test('U15 巡访页把 require-reason 改成可配置后，旧动作不能退化成选填', () => {
+test('U15 巡访页把 require-reason 改成可配置后，打开动作不能退化成选填', () => {
   // 模板原本硬编码 :require-reason="true"，为了让"发布/开始/完成"不逼老师编字才改成
-  // cd.requireReason。改完之后**每一处 cd 赋值**都必须显式带上这个字段，否则撤销指导记录、
-  // 巡访整改跟进会从"原因必填"悄悄变成"可不填"——而撤销原因是要写审计的。
+  // cd.requireReason。改完之后**每一处打开确认框的 cd 赋值**都必须显式带上这个字段，否则
+  // 撤销指导记录、巡访整改跟进会从"原因必填"悄悄变成"可不填"——而撤销原因是要写审计的。
   const src = view('GuidanceVisitView.vue')
   assert.match(src, /:require-reason="cd\.requireReason"/)
   // 只在每个 cd 赋值块内部找，不能全文件数 requireReason（PLAN_ACTIONS 里也有）
   const blocks = src.split('this.cd = {').slice(1)
-  assert.ok(blocks.length >= 3, `cd 赋值点应有 3 处，实际 ${blocks.length}`)
+    .filter(block => /visible:\s*true/.test(block.slice(0, block.indexOf('submitting:'))))
+  assert.ok(blocks.length >= 3, `打开确认框的 cd 赋值点应有 3 处，实际 ${blocks.length}`)
   blocks.forEach((block, i) => {
     // 不能用 indexOf('}') 找块尾：内容里有 `${a.label}` 这种模板插值，会被提前截断。
     // 三处 cd 赋值都以 submitting 结尾，切到它即可覆盖整个对象。
     const body = block.slice(0, block.indexOf('submitting:'))
     assert.match(body, /requireReason:/,
-      `第 ${i + 1} 处 cd 赋值没写 requireReason，会退化成原因选填：${body.slice(0, 120)}`)
+      `第 ${i + 1} 处打开确认框时没写 requireReason，会退化成原因选填：${body.slice(0, 120)}`)
   })
 })
 

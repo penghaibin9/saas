@@ -1,6 +1,7 @@
 """学工批处理安全门：请假逾期扫描与资助发放台账的并发、范围和副作用。"""
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 import re
 from datetime import datetime
 
@@ -68,13 +69,14 @@ def install() -> None:
         return {"count": count}
 
     def disbursement_row(row, user, student=None):
+        from app.core.permissions import has_permission
         data = old_disb_row(row, user, student)
         data["version"] = int(row.version or 0)
         data["allowedActions"] = {
             "PENDING": ["ISSUE", "FAIL"],
             "FAILED": ["ISSUE"],
             "RETURNED": ["ISSUE", "FAIL"],
-        }.get(row.bank_status, [])
+        }.get(row.bank_status, []) if has_permission(user, 'studentAffairs.funding.disburse.manage') else []
         return data
 
     def generate_disbursements(batch_id, user):
@@ -150,7 +152,7 @@ def install() -> None:
                 f"你的资助已发放，批次号：{number}", "WORKFLOW_RESULT", row.application_id,
             )
             db.commit(); db.refresh(row)
-            student = db.get(StudentProfile, int(row.student_id))
+            student = tenant_get(db, StudentProfile, int(row.student_id))
             result = disbursement_row(row, user, student)
         funding._drain_message_outbox()
         return result
@@ -180,12 +182,12 @@ def install() -> None:
                 "STATUS_CHANGED", row.application_id,
             )
             db.commit(); db.refresh(row)
-            student = db.get(StudentProfile, int(row.student_id))
+            student = tenant_get(db, StudentProfile, int(row.student_id))
             result = disbursement_row(row, user, student)
         funding._drain_message_outbox()
         return result
 
-    def disbursement_stats(user):
+    def disbursement_stats(user, batch_id=None):
         from app.services.affairs_dashboard_service import _allowed_class_ids
         from decimal import Decimal
         with session() as db:
@@ -198,6 +200,8 @@ def install() -> None:
             ]
             if allowed is not None:
                 conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+            if batch_id is not None:
+                conds.append(FundingDisbursement.batch_id == int(batch_id))
             rows = db.scalars(select(FundingDisbursement).join(
                 StudentProfile, StudentProfile.id == FundingDisbursement.student_id,
             ).where(*conds)).all()

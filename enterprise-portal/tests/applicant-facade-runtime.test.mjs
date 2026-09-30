@@ -53,3 +53,17 @@ test('contact reveal and withdraw accept use the frozen dedicated POST routes',a
     assert.deepEqual(JSON.parse(calls[1].options.body),{reason:'岗位计划调整'})
   }finally{globalThis.fetch=originalFetch;setEnterpriseApiContext('NONE',0)}
 })
+
+test('internship collaboration preserves large batch ids without JavaScript precision loss',async()=>{
+  installSessionStorage()
+  const batchId='9007199254740993'
+  setEnterpriseApiContext('COLLABORATION',batchId)
+  const calls=[];const originalFetch=globalThis.fetch
+  globalThis.fetch=async(url)=>{calls.push(String(url));return response({items:[],total:0,page:1,pageSize:50})}
+  try{
+    await enterpriseInternshipApi.internshipStudents()
+    assert.equal(calls.length,1)
+    const url=new URL(calls[0],'http://local')
+    assert.equal(url.searchParams.get('batchId'),batchId)
+  }finally{globalThis.fetch=originalFetch;setEnterpriseApiContext('NONE',0)}
+})

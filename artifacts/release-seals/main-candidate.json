@@ -1,0 +1,102 @@
+{
+  "schemaVersion": 1,
+  "verificationBaselineCommit": "58c2bc95727032f2b8a0560ba71156f10beaab22",
+  "verifiedAt": "2026-09-02T09:45:37+08:00",
+  "branch": "main",
+  "releaseGates": {
+    "repositoryHygiene": "passed",
+    "mysqlMigrations": "passed",
+    "backendMatrix": "partial",
+    "frontendApps": "passed",
+    "browserJourneys": "pending",
+    "securityAndDependencies": "partial",
+    "backupRestore": "partial",
+    "capacitySmoke": "pending"
+  },
+  "checks": {
+    "repositoryHygiene": {
+      "status": "passed",
+      "forbiddenTrackedFiles": 0,
+      "oversizedUnregisteredFiles": 0,
+      "unallowlistedExactDuplicateGroups": 0
+    },
+    "documentation": {
+      "status": "passed",
+      "activeMarkdownFilesChecked": 30,
+      "brokenLinks": 0,
+      "workflowYamlFilesValidated": 106
+    },
+    "sourceConvergence": {
+      "status": "passed",
+      "containsOriginMain": true,
+      "nonMainWorktrees": 0,
+      "localCommitsAheadOfOriginMain": 11
+    },
+    "frontendApps": {
+      "status": "passed",
+      "adminPc": { "tests": "passed", "lint": "passed", "build": "passed" },
+      "studentPc": { "tests": 124, "failures": 0, "lint": "passed", "build": "passed" },
+      "miniapp": { "tests": 260, "failures": 0, "h5Build": "passed", "wechatBuild": "passed" },
+      "enterprisePortal": { "tests": 98, "failures": 0, "lint": "passed", "build": "passed" },
+      "fixedDemoCredentialScan": "passed"
+    },
+    "mysqlMigrations": {
+      "status": "passed",
+      "freshDatabase": "passed",
+      "historicalBaselineCommit": "50d6a2f0043b98d6a018fe7be498cd197d406d54",
+      "historicalUpgrade": "passed",
+      "schemaConvergence": "passed",
+      "ormParityTables": 471,
+      "head": "20260901_orientation_self_activate_o6"
+    },
+    "backendTargeted": {
+      "status": "passed",
+      "tests": 36,
+      "failures": 0,
+      "scope": "MOE standards, sandbox seed, relational closure, professional catalog and backup/restore contracts"
+    },
+    "backendFullMatrix": {
+      "status": "partial",
+      "collectedTests": 6688,
+      "shardsRequired": 4,
+      "note": "A long-running local RBAC/tenant/security subset was stopped after sustained passing progress; the isolated four-shard CI matrix remains mandatory before deployment."
+    },
+    "security": {
+      "status": "partial",
+      "permissionCatalog": "passed",
+      "sensitiveFieldContracts": "passed",
+      "dataGovernanceContracts": "passed",
+      "internshipPermissionContracts": "passed",
+      "internshipSourceClosure": "passed",
+      "graduationProductionContracts": "passed",
+      "pythonVulnerabilityAudit": "not_run",
+      "productionDependencyAudit": "not_run"
+    },
+    "browserJourneys": {
+      "status": "pending",
+      "internshipReadinessContracts": 9,
+      "registeredCapabilities": 20,
+      "authenticatedBrowserReplay": "not_run"
+    },
+    "backupRestore": {
+      "status": "partial",
+      "contractTests": "passed",
+      "productionLikeRestoreDrill": "not_run"
+    },
+    "capacitySmoke": {
+      "status": "pending"
+    }
+  },
+  "warnings": [
+    "Admin PC build passes with existing CSS import-order and large-chunk warnings.",
+    "CI workflow physical deletion is deferred until GitHub protected required-check names can be read.",
+    "The complete backend four-shard matrix must run in isolated CI databases before deployment."
+  ],
+  "blockers": [
+    "Run the complete backend four-shard MySQL matrix.",
+    "Run authenticated first-school browser journeys on the candidate commit.",
+    "Run production dependency and Python vulnerability audits.",
+    "Run a production-like backup/restore drill and capacity smoke."
+  ],
+  "deliverable": false
+}

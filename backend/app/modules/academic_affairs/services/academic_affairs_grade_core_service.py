@@ -263,6 +263,11 @@ def _raise_grade_task_tt_conflict(exist) -> None:
             "成绩错误请走成绩更正/复查/补考/重修，不得通过重建成绩任务解决。"
         ),
         http_status=409,
+        details={
+            "existingGradeTaskId": str(exist.id),
+            "existingStatus": str(exist.status or ""),
+            "teachingTaskId": str(exist.teaching_task_id or ""),
+        },
     )
 
 
@@ -396,8 +401,8 @@ def create_grade_task_in_session(db, body, user) -> dict:
             if allowed is not None and tt.class_id and tt.class_id not in allowed:
                 raise AppException("NO_DATA_SCOPE", "该教学任务不在您的学院范围内")
         if not can_with_task:
-            if not tt.teacher_key or tt.teacher_key not in _user_keys(user):
-                raise AppException("NO_DATA_SCOPE", "只能为自己负责的教学任务创建成绩任务")
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            teacher_authority.require_teacher(db, tt, user, lock=True)
 
         # 权威学期：先解析教学任务/批次学期，再归档校验（禁止用请求 termId 抢先校验）
         term_id, term_code = _resolve_grade_task_term(
@@ -559,6 +564,8 @@ def _write_score_row(db, t, sid, usual, final, exception_flag, mid=None):
     与 enter_score 同款：按 平时/期中/期末 占比合成；占比>0 的分项未录全 → total=None，
     发布门禁会拦为「未录全」，绝不产出缺权重的错误总评（批量导入模板无期中列时 mid 恒 None）。"""
     from app.models import AaGradeRecord
+    from .academic_affairs_dynamic_grade_service import require_fixed_score_entry
+    require_fixed_score_entry(db, t)
     exception_flag = (exception_flag or "NORMAL").upper()
     total = None
     if exception_flag == "NORMAL":
@@ -593,6 +600,8 @@ def enter_score(task_id, user, body) -> dict:
             raise not_found("成绩录入任务不存在")
         guard_term_writable(db, t.term_id)  # 归档11卡§6.2：已归档学期的成绩不应再录入
         _check_course_scope(t, user)
+        from .academic_affairs_dynamic_grade_service import require_fixed_score_entry
+        require_fixed_score_entry(db, t)
         if t.status not in ("NOT_STARTED", "INPUTTING", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可录入（已提交/已发布，如需修改请走成绩更正）")
         sid = int(body.studentId)
@@ -848,23 +857,41 @@ def submit_task(task_id, user) -> dict:
         return {"gradeTaskId": str(t.id), "status": t.status}
 
 
-def college_review(task_id, user, action, reason="") -> dict:
+def college_review(task_id, user, action, reason="", expected_evidence_hash=None) -> dict:
     """学院审核：通过→ACADEMIC_REVIEW；退回→RETURNED（原因≥5字）。"""
     action = (action or "").upper()
     with session() as db:
         from app.models import AaGradeTask, WorkflowInstance, WorkflowTask
-        t = db.get(AaGradeTask, int(task_id))
+        t = db.scalars(select(AaGradeTask).where(
+            AaGradeTask.id == int(task_id), AaGradeTask.tenant_id == _tid(),
+            AaGradeTask.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True)).first()
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("成绩录入任务不存在")
-        _check_college_scope(db, t, user)
+        from . import academic_affairs_grade_review_evidence_service as review_evidence
+        from .academic_affairs_archive_service import guard_term_writable
+        review_evidence.require_scope(db, t, user)
+        guard_term_writable(db, t.term_id)
         if t.status != "SUBMITTED":
-            raise AppException("DATA_CONFLICT", "当前状态不可学院审核")
+            raise AppException("DATA_CONFLICT", "当前状态不可学院审核", http_status=409)
+        evidence = None
+        if action == "APPROVE":
+            if not expected_evidence_hash:
+                raise AppException("APPROVAL_VERSION_CONFLICT", "请先读取并确认当前审核证据", http_status=409)
+            evidence = review_evidence.build_evidence(db, t, user)
+            if expected_evidence_hash != evidence["evidenceHash"] or evidence["blockers"]:
+                raise AppException("APPROVAL_VERSION_CONFLICT", "审核证据已变化或存在阻断，请重新核对", http_status=409,
+                                   details={"currentEvidenceHash": evidence["evidenceHash"], "blockers": evidence["blockers"]})
         n, r, uid = _op()
-        inst = db.get(WorkflowInstance, int(t.workflow_instance_id)) if t.workflow_instance_id else None
+        inst = db.scalars(select(WorkflowInstance).where(
+            WorkflowInstance.id == int(t.workflow_instance_id), WorkflowInstance.tenant_id == _tid(),
+            WorkflowInstance.source_biz_type == "AA_GRADE_TASK", WorkflowInstance.source_biz_id == t.id,
+            WorkflowInstance.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True)).first() if t.workflow_instance_id else None
         wtask = db.scalars(select(WorkflowTask).where(
             WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == (inst.id if inst else 0),
             WorkflowTask.node_code == "COLLEGE_REVIEW", WorkflowTask.status == "PENDING",
-            WorkflowTask.is_deleted.is_(False))).first() if inst else None
+            WorkflowTask.is_deleted.is_(False)).with_for_update().execution_options(populate_existing=True)).first() if inst else None
         if action == "RETURN":
             if not reason or len(reason.strip()) < 5:
                 raise AppException("VALIDATION_ERROR", "退回原因必填且不少于5字")
@@ -878,6 +905,7 @@ def college_review(task_id, user, action, reason="") -> dict:
         elif action == "APPROVE":
             if wtask:
                 wtask.status, wtask.acted_at = "APPROVED", datetime.utcnow()
+                wtask.action_reason = (reason or "").strip() or None
             next_node = "ACADEMIC_REVIEW"
             if inst:
                 from app.modules.academic_affairs.services.academic_affairs_grade_task_assignee_guard import (
@@ -890,7 +918,7 @@ def college_review(task_id, user, action, reason="") -> dict:
             t.college_reviewed_at = datetime.utcnow()
             t.college_reviewer_id = int(uid) if uid.isdigit() else None
             t.status = "ACADEMIC_REVIEW"
-            _audit(db, "AA_GRADE_TASK", t.id, "COLLEGE_APPROVE")
+            _audit(db, "AA_GRADE_TASK", t.id, "COLLEGE_APPROVE", f"evidenceHash={evidence['evidenceHash']};reason={(reason or '').strip()}")
         else:
             raise AppException("VALIDATION_ERROR", "无效操作")
         db.commit()
@@ -1187,7 +1215,7 @@ def change_college_review(record_id, user, action, reason="") -> dict:
         from app.models import AaGradeRecord, AaGradeTask
         rec = db.get(AaGradeRecord, int(record_id))
         if rec and not rec.is_deleted and rec.tenant_id == _tid():
-            t = db.get(AaGradeTask, int(rec.task_id))
+            t = db.query(AaGradeTask).filter(AaGradeTask.id == int(rec.task_id), AaGradeTask.tenant_id == _tid()).first()
             if t:
                 _check_college_scope(db, t, user)
     return _change_review(record_id, user, action, reason, "COLLEGE_REVIEW", "ACADEMIC_REVIEW")
@@ -1205,7 +1233,7 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
             rec = db.get(AaGradeRecord, int(record_id))
             if not rec or rec.is_deleted or rec.tenant_id != _tid():
                 raise not_found("成绩明细不存在")
-            t = db.get(AaGradeTask, int(rec.task_id)) if rec.task_id else None
+            t = db.query(AaGradeTask).filter(AaGradeTask.id == int(rec.task_id), AaGradeTask.tenant_id == _tid()).first() if rec.task_id else None
             new_total = None
             if t and _scores_complete(t, rec.usual_score, rec.midterm_score, rec.final_score):
                 new_total = _compose_total(t, rec.usual_score, rec.midterm_score, rec.final_score)
@@ -1217,10 +1245,10 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
             rec.change_at = datetime.utcnow()
             rec.version_no = (rec.version_no or 1) + 1
             if rec.acad_grade_id:
-                g = db.get(AcademicGrade, int(rec.acad_grade_id))
+                g = db.query(AcademicGrade).filter(AcademicGrade.id == int(rec.acad_grade_id), AcademicGrade.tenant_id == _tid()).first()
                 if g:
                     g.score, g.pass_status, g.source = new_total, rec.pass_status, "CHANGE"
-                    a = db.get(AcademicStudent, int(g.acad_student_id)) if g.acad_student_id else None
+                    a = db.query(AcademicStudent).filter(AcademicStudent.id == int(g.acad_student_id), AcademicStudent.tenant_id == _tid()).first() if g.acad_student_id else None
                     if a:
                         _refresh_aggregates(db, a)  # 更正终审后即时重算 GPA/学分/挂科聚合（与 publish/复查一致）
             emit_receiver_notice(
@@ -1284,7 +1312,8 @@ def list_grade_audit(user, biz_type=None, page=1, page_size=50):
                           .order_by(AffairsAuditTrail.id.desc()).offset(offset).limit(page_size)).all()
         items = [{"id": str(a.id), "bizType": a.biz_type, "bizId": str(a.biz_id) if a.biz_id else None,
                   "action": a.action, "operator": a.operator, "roleName": a.role_name,
-                  "detail": a.detail, "occurredAt": a.occurred_at.isoformat() if a.occurred_at else None}
+                  "detail": a.detail, "beforeValue": a.before_val, "afterValue": a.after_val,
+                  "occurredAt": a.occurred_at.isoformat() if a.occurred_at else None}
                  for a in rows]
         return items, total
 
@@ -1322,7 +1351,7 @@ def export_transcript_xlsx(user, student_id, purpose="") -> bytes:
     data = transcript(student_id, user)
     with session() as db:
         from app.models import StudentProfile
-        stu = db.get(StudentProfile, int(student_id))
+        stu = db.query(StudentProfile).filter(StudentProfile.id == int(student_id), StudentProfile.tenant_id == _tid()).first()
         stu_label = f"{stu.real_name}（学号 {stu.student_no}）" if stu else f"学生ID {student_id}"
     n, r, uid = _op()
     watermark = (f"{stu_label} 成绩单  导出人：{n or '-'}  "
@@ -1377,35 +1406,41 @@ def fail_list(user, term=None, page=1, page_size=50):
 def exception_list(user, term=None, exception_flag=None, page=1, page_size=50):
     """成绩异常清单（读侧，跨录入任务汇总缺考/缓考/免修/作弊标记学生，供教务/学院巡查）。
     数据源：t_aa_grade_record.exception_flag。学院角色按任务 class_id 收敛。"""
-    from app.models import AaGradeRecord, AaGradeTask, StudentProfile
+    from app.models import AaGradeRecord, AaGradeTask, AaTeachingTask, StudentProfile
+    from .academic_affairs_grade_task_read_service import _scope_conditions, _formal_teacher_projection
     with session() as db:
         join_task = and_(AaGradeTask.id == AaGradeRecord.task_id, AaGradeTask.tenant_id == AaGradeRecord.tenant_id)
         join_stu = and_(StudentProfile.id == AaGradeRecord.student_id,
                         StudentProfile.tenant_id == AaGradeRecord.tenant_id)
-        conds = [AaGradeRecord.tenant_id == _tid(), AaGradeRecord.is_deleted.is_(False),
+        conds = [*_scope_conditions(db, user), AaGradeRecord.tenant_id == _tid(), AaGradeRecord.is_deleted.is_(False),
                  AaGradeRecord.exception_flag.is_not(None), AaGradeRecord.exception_flag != "NORMAL"]
         if exception_flag:
             conds.append(AaGradeRecord.exception_flag == exception_flag.upper())
         if term:
             conds.append(AaGradeTask.term_code == term)
-        role = (user.get("currentRoleCode") or "").upper()
-        if role == "COLLEGE_ADMIN":
-            from app.core.affairs_security import build_affairs_context
-            ctx = build_affairs_context(user, db)
-            allowed = ctx.allowed_class_ids(db)
-            if allowed is not None:
-                conds.append(AaGradeTask.class_id.in_(list(allowed) or [0]))
+        join_teaching = and_(AaTeachingTask.id == AaGradeTask.teaching_task_id,
+                            AaTeachingTask.tenant_id == AaGradeTask.tenant_id,
+                            AaTeachingTask.is_deleted.is_(False))
         total = db.scalar(select(func.count()).select_from(AaGradeRecord)
                           .join(AaGradeTask, join_task).outerjoin(StudentProfile, join_stu)
+                          .outerjoin(AaTeachingTask, join_teaching)
                           .where(*conds)) or 0
         offset = (max(1, page) - 1) * page_size
         rows = db.execute(select(AaGradeRecord, AaGradeTask, StudentProfile)
                           .join(AaGradeTask, join_task).outerjoin(StudentProfile, join_stu)
+                          .outerjoin(AaTeachingTask, join_teaching)
                           .where(*conds).order_by(AaGradeRecord.id.desc())
                           .offset(offset).limit(page_size)).all()
+        teachers = _formal_teacher_projection(db, [t.teaching_task_id for _r, t, _s in rows if t.teaching_task_id])
         out = [{"recordId": str(r.id), "gradeTaskId": str(t.id), "studentId": str(r.student_id),
                 "studentName": (s.real_name if s else ""), "studentNo": (s.student_no if s else ""),
                 "courseName": t.course_name or "", "term": t.term_code or "",
+                "teacherKey": t.teacher_key,
+                "teacherNames": teachers.get(int(t.teaching_task_id or 0), {}).get("teacherNames", []),
+                "teacherKeys": teachers.get(int(t.teaching_task_id or 0), {}).get("teacherKeys", []),
+                "teacherAuthorityReady": teachers.get(int(t.teaching_task_id or 0), {}).get("authorityReady", False),
+                "classId": str(t.class_id) if t.class_id is not None else None,
+                "teachingTaskId": str(t.teaching_task_id) if t.teaching_task_id is not None else None,
                 "exceptionFlag": r.exception_flag, "taskStatus": t.status} for r, t, s in rows]
         return out, total
 

@@ -18,7 +18,7 @@ def test_public_mobile_exam_facade_uses_safe_read_service():
     apply_source = inspect.getsource(facade.exam_defer_apply_my)
     for source in (exam_source, options_source, apply_source):
         assert "student_exam_read_service as safe_exam" in source
-    assert "safe_exam.exam_my(user)" in exam_source
+    assert "safe_exam.exam_my(user, page=page, page_size=page_size)" in exam_source
     assert "safe_exam.deferrable_courses(user)" in options_source
     assert "safe_exam.defer_apply(user, body or {})" in apply_source
     assert 'if not isinstance(body, dict)' in apply_source

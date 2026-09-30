@@ -1,6 +1,7 @@
-"""E2E live flow: 岗位实习中心 6 business chains across PC / MP / Portal.
+"""E2E server-truth flow: 岗位实习中心 6 business chains across PC / MP / Portal.
 
-Requires: backend on :8000, MySQL sandbox-school, bootstrap credentials.
+Requires: a real backend/MySQL sandbox and bootstrap credentials. Runtime origin,
+tenant and stable password are supplied through E2E_* environment variables.
 Credentials: backend/tmp/e2e_internship_credentials.local.json
 Evidence:   backend/tmp/e2e_internship_live_evidence.json
 State:      backend/tmp/e2e_internship_state.local.json
@@ -8,6 +9,7 @@ State:      backend/tmp/e2e_internship_state.local.json
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import traceback
@@ -19,9 +21,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-BASE = "http://127.0.0.1:8011/api/v1"
-TENANT = "sandbox-school"
-STABLE_PWD = "E2eTest@2026"
+BASE = os.getenv("E2E_API_BASE_URL", "http://127.0.0.1:8011/api/v1").rstrip("/")
+TENANT = os.getenv("E2E_TENANT_CODE", "sandbox-school")
+STABLE_PWD = os.getenv("E2E_STABLE_PASSWORD", "E2eTest@2026")
 OUT_DIR = Path(__file__).resolve().parents[1] / "tmp"
 OUT_DIR.mkdir(exist_ok=True)
 CRED_PATH = OUT_DIR / "e2e_internship_credentials.local.json"
@@ -31,8 +33,8 @@ EVIDENCE_PATH = OUT_DIR / "e2e_internship_live_evidence.json"
 IX = "/internship"
 MOB = "/mobile"
 PORTAL = "/portal"
-BATCH_NO = "E2E-IX-20260723C"
-PREFIX = "E2E岗位实习测试"
+BATCH_NO = os.getenv("E2E_INTERNSHIP_BATCH_NO", "E2E-IX-20260723C")
+PREFIX = os.getenv("E2E_INTERNSHIP_PREFIX", "E2E岗位实习测试")
 
 MATRIX: list[dict] = []
 BUGS: list[dict] = []

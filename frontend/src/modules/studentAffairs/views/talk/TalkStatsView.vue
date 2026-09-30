@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="谈心谈话统计"
-    subtitle="谈话工作量与完成率聚合，可按谈话类型或辅导员分组。仅聚合口径，不含谈话原文。"
+    subtitle="工作量与完成率聚合"
     role-name="学工处 / 学院"
     data-scope-name="按数据范围聚合"
     watermark-purpose="谈话工作量统计"
@@ -37,8 +37,8 @@ import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const TYPE_LABELS = {
-  ACADEMIC: '学业', PSYCHOLOGICAL: '心理', LIFE: '生活', CAREER: '就业', DISCIPLINE: '违纪',
-  ECONOMIC: '经济', SAFETY: '安全', ROUTINE: '常规', OTHER: '其他'
+  DAILY: '日常谈话', ACADEMIC: '学业帮扶', PSYCHOLOGY: '心理疏导', DISCIPLINE: '违纪教育',
+  EMPLOYMENT: '就业指导', INTERNSHIP: '实习指导', AID: '资助谈话', DORM: '宿舍问题'
 }
 const GROUPS = [{ key: 'TYPE', label: '按谈话类型' }, { key: 'COUNSELOR', label: '按辅导员' }]
 

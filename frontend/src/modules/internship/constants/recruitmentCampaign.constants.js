@@ -99,15 +99,3 @@ export function participationStatusLabel(status) {
 export function canTransition(status, target) {
   return (CAMPAIGN_TRANSITIONS[status] || []).includes(target)
 }
-
-/** 日期 → 当日 00:00:00 的无时区 ISO 串（后端按 naive datetime 解析） */
-export function toIsoStart(date) {
-  const d = String(date || '').slice(0, 10)
-  return d ? `${d}T00:00:00` : null
-}
-
-/** 日期 → 当日 23:59:59，避免「选到当天却在当天失效」 */
-export function toIsoEnd(date) {
-  const d = String(date || '').slice(0, 10)
-  return d ? `${d}T23:59:59` : null
-}

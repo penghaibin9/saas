@@ -16,52 +16,62 @@ function campaignFromAuthContext(authContext,campaignId){
 }
 function campaignRows(data){return Array.isArray(data)?data:(Array.isArray(data?.items)?data.items:[])}
 function findCampaign(data,campaignId){return campaignRows(data).find(item=>String(item.id||item.campaignId)===String(campaignId))||null}
+function validId(value){return /^[1-9]\d*$/.test(String(value??'').trim())}
+let nextContextEpoch=0
 
 export const useEnterpriseContextStore=defineStore('enterpriseContext',{
-  state:()=>({schoolName:'',companyName:'',memberName:'',memberRole:'',campaign:null,contextMode:'NONE',capabilities:{recruitmentWrite:false,internshipCollab:false},contextReady:false,loading:false,error:''}),
+  state:()=>({scopeKey:'',contextEpoch:0,schoolName:'',companyName:'',memberName:'',memberRole:'',campaign:null,contextMode:'NONE',capabilities:{recruitmentWrite:false,internshipCollab:false},unreadMessages:0,contextReady:false,loading:false,error:''}),
   getters:{
     historyMode:(state)=>['CLOSED','ARCHIVED'].includes(String(state.campaign?.status||'')),
     recruitmentContextReady:(state)=>state.contextReady&&state.contextMode==='RECRUITMENT',
     recruitmentWritable:(state)=>state.contextReady&&state.contextMode==='RECRUITMENT'&&state.capabilities?.recruitmentWrite===true&&!['CLOSED','ARCHIVED'].includes(String(state.campaign?.status||'')),
-    internshipCollabReady:(state)=>state.contextReady&&state.capabilities?.internshipCollab===true&&Number(state.campaign?.batchId)>0,
+    internshipCollabReady:(state)=>state.contextReady&&state.capabilities?.internshipCollab===true&&validId(state.campaign?.batchId),
     applicationViewAllowed:(state)=>state.contextReady&&state.contextMode==='RECRUITMENT'&&APPLICATION_ROLES.has(String(state.memberRole||'').toUpperCase()),
     applicationReviewAllowed:(state)=>state.contextReady&&state.contextMode==='RECRUITMENT'&&APPLICATION_ROLES.has(String(state.memberRole||'').toUpperCase()),
   },
   actions:{
+    async loadMessageCount(){
+      try{const result=await enterpriseInternshipApi.messageCount();this.unreadMessages=Math.max(0,Number(result?.unread)||0)}
+      catch{this.unreadMessages=0}
+    },
     async load(){
       if(this.loading)return
+      this.contextEpoch=++nextContextEpoch
+      this.scopeKey=''
       const campaignId=getSelectedCampaignId()
       if(!campaignId){this.contextReady=false;this.contextMode='NONE';this.capabilities={recruitmentWrite:false,internshipCollab:false};this.campaign=null;setEnterpriseApiContext('NONE',0);this.error='尚未选择招聘季，请先从企业登录后的招聘季列表进入。';return}
       this.loading=true;this.error='';this.contextReady=false;this.contextMode='NONE';this.capabilities={recruitmentWrite:false,internshipCollab:false};this.campaign=null;setEnterpriseApiContext('NONE',0)
       try{
         const campaigns=await enterpriseInternshipApi.campaigns()
         const selected=findCampaign(campaigns,campaignId)
-        const selectedBatchId=Number(selected?.batchId||0)
+        const selectedBatchId=validId(selected?.batchId)?String(selected.batchId):''
         if(selected)this.campaign={...selected,id:selected.id||selected.campaignId||campaignId}
 
         let authContext=null,mode='NONE',recruitmentError=null
         try{authContext=await enterpriseInternshipApi.context(campaignId);mode='RECRUITMENT'}catch(error){recruitmentError=error}
-        if(!authContext&&Number.isInteger(selectedBatchId)&&selectedBatchId>0){
+        if(!authContext&&selectedBatchId){
           try{authContext=await enterpriseInternshipApi.collaborationContext(selectedBatchId);mode='COLLABORATION'}catch{/* fail closed below */}
         }
         if(!authContext)throw recruitmentError||new Error('当前企业没有可用的招聘或实习协同授权')
 
+        this.scopeKey=JSON.stringify([authContext.tenantId,authContext.companyId,authContext.memberId,authContext.grantId].map(value=>String(value||'')))
         this.contextMode=mode
         this.memberRole=authContext?.memberRole||''
         const fromAuth=campaignFromAuthContext(authContext,campaignId)
         this.campaign={...(this.campaign||{}),...fromAuth,id:(this.campaign?.id||fromAuth.id||campaignId)}
-        if(!this.campaign?.batchId&&selectedBatchId>0)this.campaign.batchId=String(selectedBatchId)
+        if(!this.campaign?.batchId&&selectedBatchId)this.campaign.batchId=selectedBatchId
         const serverCapabilities={recruitmentWrite:authContext?.capabilities?.recruitmentWrite===true,internshipCollab:authContext?.capabilities?.internshipCollab===true}
         this.capabilities={recruitmentWrite:mode==='RECRUITMENT'&&serverCapabilities.recruitmentWrite,internshipCollab:serverCapabilities.internshipCollab}
-        if(!Number(this.campaign?.batchId))this.capabilities={...this.capabilities,internshipCollab:false}
+        if(!validId(this.campaign?.batchId))this.capabilities={...this.capabilities,internshipCollab:false}
         this.contextReady=true
         setEnterpriseApiContext(mode,this.campaign?.batchId)
 
         // UX gates mirror server permissions only. Every backend request still revalidates member,
         // tenant, company, campaign/batch and active Grant scope before returning or mutating data.
         try{const company=await enterpriseInternshipApi.company();this.companyName=company?.name||company?.companyName||''}catch{this.companyName=''}
+        await this.loadMessageCount()
       }catch(error){
-        this.contextReady=false;this.contextMode='NONE';this.capabilities={recruitmentWrite:false,internshipCollab:false};this.campaign=null;setEnterpriseApiContext('NONE',0);this.error=error?.message||'企业上下文加载失败'
+        this.contextReady=false;this.contextMode='NONE';this.capabilities={recruitmentWrite:false,internshipCollab:false};this.unreadMessages=0;this.campaign=null;setEnterpriseApiContext('NONE',0);this.error=error?.message||'企业上下文加载失败'
       }finally{this.loading=false}
     },
   },

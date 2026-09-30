@@ -2,6 +2,7 @@
  * 岗位实习中心 · 归档中心 API（生产级：仅走真实后端，不回退 mock）。
  */
 import { request } from '@/services/http/client'
+import fileSdk from '@/services/file/fileSdk'
 
 function ok(data) {
   return Promise.resolve({ code: 0, data, message: 'ok' })
@@ -44,6 +45,10 @@ export const archiveApi = {
     return call(() => request(`${B}/${id}`))
   },
 
+  preflight(id) {
+    return call(() => request(`${B}/${id}/preflight`, { method: 'POST' }))
+  },
+
   byBatch(params = {}) {
     return call(() => request(`${B}/by-batch`, { params }))
   },
@@ -79,5 +84,31 @@ export const archiveApi = {
 
   buildPackage(id) {
     return call(() => request(`${B}/${id}/package`, { method: 'POST' }))
+  },
+
+  buildBatchPackage(batchId, { afterId = 0, limit = 20 } = {}) {
+    return call(() => request(`/internship/archive-batches/${batchId}/packages`, {
+      method: 'POST', body: { afterId, limit }
+    }))
+  },
+
+  verifyRestore(packageId) {
+    return call(() => request(`/internship/archive-packages/${packageId}/restore-check`, { method: 'POST' }))
+  },
+
+  employmentTransition(id) {
+    return call(() => request(`${B}/${id}/employment-transition`))
+  },
+
+  downloadPackage(packageId, fileName = '实习归档.zip') {
+    return fileSdk.downloadFrom(
+      `/internship/archive-packages/${encodeURIComponent(packageId)}/download`, fileName
+    )
+  },
+
+  downloadBatchPackage(packageId, fileName = '实习批次归档.zip') {
+    return fileSdk.downloadFrom(
+      `/internship/archive-batch-packages/${encodeURIComponent(packageId)}/download`, fileName
+    )
   }
 }

@@ -361,6 +361,8 @@ def _preview_in_session(db, term, proposed) -> dict:
     conflict_count = sum(int(row["conflictCount"] or 0) for row in impacts)
     status = str(term.status or "").upper()
     blockers = []
+    from .academic_affairs_schedule_resource_guard import formal_timeline_head_id
+    active_head_id = formal_timeline_head_id(db, term.id) if structural else None
 
     if not changes:
         conclusion = "未检测到字段变化。"
@@ -382,6 +384,11 @@ def _preview_in_session(db, term, proposed) -> dict:
             "message": "已发布或冻结学期禁止直接修改时间轴，请保留原时间轴或走正式变更流程。",
         })
         conclusion = "当前状态禁止直接修改学期时间轴。"
+        can_save = False
+        direct_allowed = False
+    elif active_head_id is not None:
+        blockers.append({"code": "FORMAL_SCHEDULE_TIMELINE_LOCKED", "message": "该学期已有正式课表，禁止直接改写时间轴。"})
+        conclusion = "请保留正式课表所用时间轴，通过正式业务变更处理课程调整。"
         can_save = False
         direct_allowed = False
     elif conflict_count:
@@ -423,6 +430,8 @@ def impact_preview(term_id: int, user, body: dict | None = None) -> dict:
 
 def update_term(term_id: int, user, body: dict) -> dict:
     with session() as db:
+        from . import academic_affairs_schedule_resource_guard as resource_guard
+        resource_guard.lock_formal_authority(db)
         term = _term(db, term_id, lock=True)
         expected = body.get("expectedVersion")
         if expected is not None and int(expected) != int(getattr(term, "version", 0) or 0):
@@ -451,6 +460,7 @@ def update_term(term_id: int, user, body: dict) -> dict:
         structural = bool(preview["structuralChange"])
         term.term_name = proposed["termName"] or term.term_name
         if structural:
+            resource_guard.require_no_formal_timeline(db, term.id)
             term.start_date = proposed["startDate"]
             term.end_date = proposed["endDate"]
             term.teaching_weeks = proposed["teachingWeeks"]

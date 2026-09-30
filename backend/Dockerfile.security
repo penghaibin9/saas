@@ -1,0 +1,119 @@
+# Build from REPOSITORY ROOT, not backend/: shared runtime contracts are required.
+# The reviewed Python image is BUILD-ONLY. The shipped root filesystem is based on
+# UBI Micro and receives only runtime RPMs installed through the builder's UBI repos.
+# Security workflows override both defaults with immutable RepoDigests before build.
+ARG SECURITY_PYTHON_BASE_IMAGE=registry.access.redhat.com/ubi9/python-312-minimal:9.8
+ARG RUNTIME_BASE_IMAGE=registry.access.redhat.com/ubi9/ubi-micro:9.8
+
+FROM ${SECURITY_PYTHON_BASE_IMAGE} AS wheels
+USER 0
+WORKDIR /build
+RUN microdnf -y --setopt=tsflags=nodocs --setopt=install_weak_deps=0 update \
+    && microdnf -y --setopt=tsflags=nodocs --setopt=install_weak_deps=0 install gcc python3.12-devel \
+    && microdnf -y clean all --enablerepo='*'
+COPY backend/requirements.txt ./requirements.txt
+RUN pip wheel --no-cache-dir --no-deps --wheel-dir /wheels -r requirements.txt
+
+FROM ${SECURITY_PYTHON_BASE_IMAGE} AS appenv
+USER 0
+RUN microdnf -y --setopt=tsflags=nodocs --setopt=install_weak_deps=0 update \
+    && microdnf -y clean all --enablerepo='*'
+COPY backend/requirements.txt /tmp/requirements.txt
+COPY --from=wheels /wheels /tmp/wheels
+RUN python3.12 -m venv /opt/secure-venv \
+    && /opt/secure-venv/bin/pip install --no-cache-dir --no-index --find-links /tmp/wheels -r /tmp/requirements.txt \
+    && /opt/secure-venv/bin/pip check \
+    && rm -rf /tmp/wheels /tmp/requirements.txt
+
+FROM ${RUNTIME_BASE_IMAGE} AS micro-root
+
+FROM ${SECURITY_PYTHON_BASE_IMAGE} AS rootfs
+USER 0
+ARG INSTALL_ROOT=/runtime-root
+RUN microdnf -y --setopt=tsflags=nodocs --setopt=install_weak_deps=0 install dnf \
+    && microdnf -y clean all --enablerepo='*' \
+    && mkdir -p "$INSTALL_ROOT/usr"
+COPY --from=micro-root / /runtime-root/
+# Red Hat's documented UBI Micro pattern: use a builder-side full dnf with
+# --installroot against the mounted/future micro rootfs. Only runtime RPMs enter
+# the shipped filesystem; the builder's dnf/rpm/curl dependency chain never does.
+# Keep the target RPM database intact so Trivy audits the real native inventory.
+# Keep /var/lib/dpkg metadata on any legacy Debian compatibility root; this UBI
+# production path instead retains /usr/lib/sysimage/rpm (or /var/lib/rpm).
+RUN dnf install \
+      --installroot "$INSTALL_ROOT" \
+      --releasever=/ \
+      --setopt install_weak_deps=false \
+      --setopt=reposdir=/etc/yum.repos.d/ \
+      --nodocs -y \
+      python3.12 ca-certificates tzdata \
+    && dnf clean all --installroot "$INSTALL_ROOT" \
+    && rm -rf "$INSTALL_ROOT/var/cache/dnf" "$INSTALL_ROOT/var/cache/yum" \
+    && rpm --root "$INSTALL_ROOT" -q python3.12 ca-certificates tzdata >/dev/null \
+    && for pkg in curl-minimal libcurl-minimal; do \
+         if rpm --root "$INSTALL_ROOT" -q "$pkg" >/dev/null 2>&1; then \
+           echo "unexpected runtime package: $pkg" >&2; exit 1; \
+         fi; \
+       done
+
+# Python application environment is created in the reviewed Python builder and
+# copied into the micro root. Its Python executable resolves to the tracked
+# python3.12 runtime RPM installed above; Python packages remain the frozen graph.
+COPY --from=appenv /opt/secure-venv /runtime-root/opt/secure-venv
+COPY backend/requirements.txt /runtime-root/app/backend/requirements.txt
+COPY backend/app /runtime-root/app/backend/app
+COPY backend/alembic /runtime-root/app/backend/alembic
+COPY backend/alembic.ini /runtime-root/app/backend/alembic.ini
+RUN mkdir -p /runtime-root/app/backend/scripts
+COPY backend/scripts/security_profile_probe.py \
+     backend/scripts/security_runtime_launcher.py \
+     backend/scripts/check_production_redis.py \
+     backend/scripts/check_production_file_scan.py \
+     backend/scripts/run_scheduled_jobs.py \
+     backend/scripts/cleanup_shared_import_batches.py \
+     backend/scripts/check_crypto_compatibility.py \
+     /runtime-root/app/backend/scripts/
+COPY shared /runtime-root/app/shared
+COPY docs/architecture /runtime-root/app/docs/architecture
+
+# Numeric UID keeps the image independent of passwd tooling. Strip set-id bits and
+# every reviewed administration/network/shell CLI from the actual future rootfs.
+# Native RPM inventory remains intact; surface reduction is never scan suppression.
+RUN mkdir -p "$INSTALL_ROOT/app/backend/data" "$INSTALL_ROOT/app/backend/uploads" "$INSTALL_ROOT/app/backend/exports" \
+         "$INSTALL_ROOT/usr/local/sbin" "$INSTALL_ROOT/usr/local/bin" "$INSTALL_ROOT/usr/sbin" "$INSTALL_ROOT/usr/bin" "$INSTALL_ROOT/sbin" "$INSTALL_ROOT/bin" \
+    && chown 10001:10001 "$INSTALL_ROOT/app/backend/data" "$INSTALL_ROOT/app/backend/uploads" "$INSTALL_ROOT/app/backend/exports" \
+    && chmod 0770 "$INSTALL_ROOT/app/backend/data" "$INSTALL_ROOT/app/backend/uploads" "$INSTALL_ROOT/app/backend/exports" \
+    && find "$INSTALL_ROOT/usr/bin" "$INSTALL_ROOT/usr/sbin" "$INSTALL_ROOT/bin" "$INSTALL_ROOT/sbin" \
+         -xdev -type f \( -perm -4000 -o -perm -2000 \) -exec chmod a-s {} + 2>/dev/null \
+    && find "$INSTALL_ROOT/usr/local/sbin" "$INSTALL_ROOT/usr/local/bin" "$INSTALL_ROOT/usr/sbin" "$INSTALL_ROOT/usr/bin" \
+         -maxdepth 1 \( -type f -o -type l \) -name 'perl*' -delete 2>/dev/null \
+    && for tool in apt apt-get apt-cache apt-cdrom apt-config apt-mark \
+         dpkg dpkg-deb dpkg-divert dpkg-maintscript-helper dpkg-query dpkg-realpath \
+         dpkg-split dpkg-statoverride dpkg-trigger update-alternatives \
+         microdnf dnf yum rpm rpmkeys rpm2cpio rpmdb rpmquery \
+         curl wget git ssh scp sftp nc netcat ncat socat telnet ftp \
+         su passwd chfn chsh chpasswd useradd userdel usermod \
+         groupadd groupdel groupmod gpasswd newgrp mount umount nsenter \
+         gzip gunzip zcat infocmp sqlite3 systemd-homed getfacl setfacl \
+         pcre2grep grep egrep fgrep sh dash bash; do \
+         for dir in /usr/local/sbin /usr/local/bin /usr/sbin /usr/bin /sbin /bin; do \
+           rm -f -- "$INSTALL_ROOT$dir/$tool"; \
+         done; \
+       done \
+    && (test -d "$INSTALL_ROOT/usr/lib/sysimage/rpm" || test -d "$INSTALL_ROOT/var/lib/rpm") \
+    && test ! -e "$INSTALL_ROOT/bin/sh" \
+    && test ! -e "$INSTALL_ROOT/usr/bin/sh"
+
+FROM scratch
+COPY --from=rootfs /runtime-root/ /
+WORKDIR /app/backend
+ENV ENV="" \
+    PATH=/opt/secure-venv/bin:/usr/bin \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=/app/backend
+USER 10001:10001
+EXPOSE 8000
+HEALTHCHECK --interval=30s --timeout=8s --start-period=60s --retries=3 \
+    CMD ["python", "scripts/security_profile_probe.py", "ready"]
+CMD ["python", "scripts/security_runtime_launcher.py", "backend"]

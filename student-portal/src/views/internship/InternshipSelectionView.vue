@@ -7,8 +7,8 @@
         <p>浏览学校认可实习岗位，完善材料后选择 1–3 个志愿并整组投递。</p>
       </div>
       <div class="header-actions">
-        <button type="button" class="profile-entry" @click="router.push('/internship/profile')">实习档案</button>
-        <button type="button" class="volunteer-entry" @click="volunteerOpen = true">我的志愿 {{ volunteerSelectedCount }}/3</button>
+        <button type="button" class="profile-entry" @click="router.push({ path: '/internship/profile', query: route.query })">实习档案</button>
+        <button v-if="catalogReady" type="button" class="volunteer-entry" @click="volunteerOpen = true">我的志愿 {{ volunteerSelectedCount }}/3</button>
       </div>
     </header>
 
@@ -18,9 +18,21 @@
       <span>{{ error }}</span>
       <button type="button" @click="loadContext">重新加载</button>
     </div>
-    <RecruitmentContextBar v-else :context="context" />
+    <section v-else-if="context.catalogState === 'NO_OPEN_CAMPAIGN'" class="preparation-card" aria-labelledby="selection-preparation-title">
+      <div class="preparation-mark" aria-hidden="true">01</div>
+      <div>
+        <p class="preparation-kicker">选岗前准备</p>
+        <h2 id="selection-preparation-title">等待学校开放选岗</h2>
+        <p>{{ context.blockReason }}</p>
+        <div class="preparation-actions">
+          <button type="button" class="profile-entry" @click="router.push('/internship')">查看实习准备</button>
+          <button type="button" class="preparation-refresh" @click="loadContext">重新检查</button>
+        </div>
+      </div>
+    </section>
+    <RecruitmentContextBar v-else-if="catalogReady" :context="context" />
 
-    <main class="selection-shell" aria-label="实习选岗工作区">
+    <main v-if="catalogReady" class="selection-shell" aria-label="实习选岗工作区">
       <PositionSearchFilters v-model="query" @search="loadPositions" />
 
       <div class="catalog-workspace">
@@ -30,7 +42,7 @@
               <strong>学校认可岗位</strong>
               <span v-if="!catalogLoading">共 {{ total }} 个符合条件的岗位</span>
             </div>
-            <span class="server-note">服务端筛选 · 每页 {{ query.pageSize }} 条</span>
+            <span class="server-note">每页 {{ query.pageSize }} 条</span>
           </div>
 
           <div v-if="catalogLoading" class="catalog-state">正在查询岗位…</div>
@@ -114,14 +126,14 @@
       </div>
     </main>
 
-    <button type="button" class="volunteer-fab" @click="volunteerOpen = true">我的志愿 {{ volunteerSelectedCount }}/3</button>
+    <button v-if="catalogReady" type="button" class="volunteer-fab" @click="volunteerOpen = true">我的志愿 {{ volunteerSelectedCount }}/3</button>
     <button v-if="volunteerOpen" type="button" class="volunteer-backdrop" aria-label="关闭我的志愿" @click="volunteerOpen = false" />
   </div>
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import RecruitmentContextBar from '../../components/recruitment/RecruitmentContextBar.vue'
 import PositionSearchFilters from '../../components/recruitment/PositionSearchFilters.vue'
 import PositionCard from '../../components/recruitment/PositionCard.vue'
@@ -149,6 +161,8 @@ import {
 import { internshipSelectionApi } from '../../services/internshipSelectionApi.js'
 
 const router = useRouter()
+const route = useRoute()
+const selectionApi = computed(() => internshipSelectionApi.forScope(route.query))
 const loading = ref(true)
 const error = ref('')
 const context = ref(normalizeRecruitmentContext())
@@ -176,7 +190,9 @@ const submissionConfirmed = ref(false)
 const submitConfirmOpen = ref(false)
 const submissionBusy = ref(false)
 const submitError = ref({ code: '', message: '', invalidItems: [] })
+let contextRequestSeq = 0
 let catalogRequestSeq = 0
+const catalogReady = computed(() => !loading.value && !error.value && context.value.catalogState === 'AVAILABLE')
 let detailRequestSeq = 0
 let volunteerRequestSeq = 0
 
@@ -192,25 +208,39 @@ function resetSubmitPreview() {
 }
 
 async function loadContext() {
+  const requestId = ++contextRequestSeq
+  catalogRequestSeq++; detailRequestSeq++; volunteerRequestSeq++
   loading.value = true
   error.value = ''
+  positions.value = []; total.value = 0
+  selectedPositionId.value = null; selectedPosition.value = null
+  volunteerGroup.value = normalizeVolunteerGroup({ status: 'UNAVAILABLE' })
+  volunteerSlots.value = volunteerGroup.value.slots
   try {
-    context.value = normalizeRecruitmentContext(await internshipSelectionApi.context())
-  } catch (err) {
-    error.value = err?.message || '请稍后重试'
-  } finally {
+    const next = normalizeRecruitmentContext(await selectionApi.value.context())
+    if (requestId !== contextRequestSeq) return
+    context.value = next
     loading.value = false
+    if (next.catalogState === 'AVAILABLE') await Promise.all([loadPositions(query.value), loadVolunteerGroup()])
+    else { volunteerLoading.value = false; volunteerOpen.value = false }
+  } catch (err) {
+    if (requestId !== contextRequestSeq) return
+    error.value = err?.message || '请稍后重试'
+    volunteerLoading.value = false
+  } finally {
+    if (requestId === contextRequestSeq) loading.value = false
   }
 }
 
 async function loadPositions(nextQuery = query.value) {
+  if (!catalogReady.value) return
   const normalized = normalizeCatalogQuery(nextQuery)
   query.value = normalized
   const requestId = ++catalogRequestSeq
   catalogLoading.value = true
   catalogError.value = ''
   try {
-    const data = await internshipSelectionApi.positions(normalized)
+    const data = await selectionApi.value.positions(normalized)
     if (requestId !== catalogRequestSeq) return
     const items = data?.items || data?.list || []
     positions.value = (Array.isArray(items) ? items : []).map(normalizePosition)
@@ -241,7 +271,7 @@ async function selectPosition(positionId, force = false) {
   detailLoading.value = true
   detailError.value = ''
   try {
-    const data = await internshipSelectionApi.position(positionId)
+    const data = await selectionApi.value.position(positionId)
     if (requestId !== detailRequestSeq) return
     selectedPosition.value = normalizePosition(data || {})
   } catch (err) {
@@ -254,13 +284,14 @@ async function selectPosition(positionId, force = false) {
 }
 
 async function loadVolunteerGroup() {
+  if (!catalogReady.value) return
   const requestId = ++volunteerRequestSeq
   volunteerLoading.value = true
   volunteerError.value = ''
   volunteerGroup.value = normalizeVolunteerGroup({ status: 'UNAVAILABLE' })
   volunteerSlots.value = volunteerGroup.value.slots
   try {
-    const data = await internshipSelectionApi.volunteers()
+    const data = await selectionApi.value.volunteers()
     if (requestId !== volunteerRequestSeq) return
     const normalized = normalizeVolunteerGroup(data || {})
     volunteerGroup.value = normalized
@@ -288,7 +319,7 @@ async function persistVolunteerSlots(nextSlots) {
   volunteerError.value = ''
   try {
     const payload = buildVolunteerGroupSaveRequest(volunteerGroup.value, proposedSlots)
-    const data = await internshipSelectionApi.saveVolunteers(payload)
+    const data = await selectionApi.value.saveVolunteers(payload)
     if (data) {
       const normalized = normalizeVolunteerGroup(data)
       volunteerGroup.value = normalized
@@ -353,7 +384,7 @@ async function prepareFinalSubmit() {
   submissionConfirmed.value = false
   submissionBusy.value = true
   try {
-    const data = await internshipSelectionApi.materialPreview()
+    const data = await selectionApi.value.materialPreview()
     submissionPreview.value = normalizeMaterialPreview(data || {})
     if (!submissionPreview.value.previewHash || !submissionPreview.value.consentPolicyVersion) {
       throw new Error('企业视角材料预览不完整，请先完善实习档案。')
@@ -383,10 +414,10 @@ async function submitFinalVolunteerGroup() {
       preview: submissionPreview.value,
       contactSharingMode: contactSharingMode.value
     })
-    await internshipSelectionApi.submitVolunteers(payload)
+    await selectionApi.value.submitVolunteers(payload)
     submitConfirmOpen.value = false
     submissionConfirmed.value = false
-    await Promise.all([loadVolunteerGroup(), loadContext()])
+    await loadContext()
   } catch (err) {
     submitError.value = normalizeVolunteerSubmitError(err)
   } finally {
@@ -398,9 +429,9 @@ async function withdrawVolunteerGroup() {
   submissionBusy.value = true
   submitError.value = { code: '', message: '', invalidItems: [] }
   try {
-    await internshipSelectionApi.withdrawVolunteers({ expectedGroupVersion: volunteerGroup.value.version })
+    await selectionApi.value.withdrawVolunteers({ expectedGroupVersion: volunteerGroup.value.version })
     resetSubmitPreview()
-    await Promise.all([loadVolunteerGroup(), loadContext()])
+    await loadContext()
   } catch (err) {
     submitError.value = normalizeVolunteerSubmitError(err)
   } finally {
@@ -412,7 +443,7 @@ async function requestVolunteerUnlock() {
   submissionBusy.value = true
   submitError.value = { code: '', message: '', invalidItems: [] }
   try {
-    await internshipSelectionApi.requestUnlock({
+    await selectionApi.value.requestUnlock({
       expectedGroupVersion: volunteerGroup.value.version,
       reason: '学生申请重新调整岗位志愿'
     })
@@ -429,14 +460,15 @@ function changePage(page) {
 }
 function viewCompany(companyId) {
   if (!companyId) return
-  router.push(`/internship/selection/company/${encodeURIComponent(companyId)}`)
+  router.push({ path: `/internship/selection/company/${encodeURIComponent(companyId)}`, query: { batchId: route.query.batchId, campaignId: route.query.campaignId, recordId: route.query.recordId } })
 }
 
+watch(() => [route.query.batchId, route.query.campaignId, route.query.recordId], loadContext)
 onMounted(async () => {
-  await Promise.all([loadContext(), loadVolunteerGroup()])
-  await loadPositions(query.value)
+  await loadContext()
 })
 onBeforeUnmount(() => {
+  contextRequestSeq += 1
   catalogRequestSeq += 1
   detailRequestSeq += 1
   volunteerRequestSeq += 1
@@ -444,6 +476,15 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.preparation-card { display:flex; align-items:flex-start; gap:24px; max-width:860px; padding:32px; margin-top:24px; border:1px solid #dfe7f2; border-radius:14px; background:#fff; }
+.preparation-mark { display:grid; place-items:center; flex:none; width:56px; height:56px; border-radius:16px; background:#edf3ff; color:#2f6bff; font-size:22px; font-weight:700; }
+.preparation-kicker { margin:0 0 8px; color:#526a90; font-size:12px; }
+.preparation-card h2 { margin:0 0 12px; color:#20304a; font-size:22px; }
+.preparation-card p { line-height:1.8; color:#56657b; }
+.preparation-actions { display:flex; gap:16px; align-items:center; flex-wrap:wrap; margin-top:24px; }
+.preparation-refresh { border:0; background:none; color:#355f9a; cursor:pointer; padding:10px 0; }
+@media(max-width:700px) { .preparation-card { padding:24px 18px; gap:16px; } .preparation-mark { width:40px; height:40px; font-size:18px; } .preparation-card h2 { font-size:19px; } }
+
 .selection-page { min-width:0; padding:20px; background:#f7f8fa; min-height:100%; }
 .selection-header { display:flex; align-items:flex-end; justify-content:space-between; gap:20px; margin-bottom:16px; }
 .selection-kicker { margin:0 0 4px; color:#2f6bff; font-size:12px; font-weight:600; }

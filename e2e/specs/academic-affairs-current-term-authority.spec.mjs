@@ -167,7 +167,7 @@ test('A-W1 current term: legacy real click persists, then governance removes the
 
     await openAcademicW1StaffPage(page, '/admin/academic-affairs/terms/current')
     await expect(page.getByRole('heading', { name: '当前学期' }).first()).toBeVisible()
-    await expect(page.getByText('暂保留教务当前学期兼容切换', { exact: false })).toBeVisible()
+    await expect(page.getByText('校级教务可将已发布学期设为全校当前学期。', { exact: true })).toBeVisible()
     await expect(termRow(page, governanceTerm)).toBeVisible()
 
     const legacyRow = termRow(page, legacyCurrent)
@@ -207,23 +207,28 @@ test('A-W1 current term: legacy real click persists, then governance removes the
     await capture(page, testInfo, 'a-w1-current-term-governance-no-bypass')
 
     await gotoAcademicW1StaffPage(page, '/admin/academic-affairs/terms')
-    await expect(page.getByRole('heading', { name: '学年学期' }).first()).toBeVisible()
-    await expect(page.getByText('全校统一学期治理已启用', { exact: false })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '学期管理', level: 1 })).toBeVisible()
+    const termLedger = page.getByRole('region', { name: '正式学期定义台账' })
+    await expect(termLedger).toBeVisible()
+    const governanceLedgerRow = termLedger.getByRole('row').filter({ hasText: governanceName }).first()
+    await expect(governanceLedgerRow).toContainText('学校统一日历治理')
+    await expect(governanceLedgerRow).toContainText('当前学期')
+    const legacyLedgerRow = termLedger.getByRole('row').filter({ hasText: legacyName }).first()
+    await expect(legacyLedgerRow).toContainText('统一治理切换')
     await expect(page.getByRole('button', { name: '发布并设为当前' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '设为当前学期' })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '统一治理切换' }).first()).toBeVisible()
     await capture(page, testInfo, 'a-w1-term-ledger-governance-no-bypass')
 
     await gotoAcademicW1StaffPage(page, '/admin/academic-affairs/terms/new')
     await expect(page.getByRole('heading', { name: '新建学年学期' }).first()).toBeVisible()
     await expect(page.getByPlaceholder(/如 17 或 20/)).toBeVisible()
-    await expect(page.getByText(/正式教学任务不会默认18周/)).toBeVisible()
+    await expect(page.getByText(/填写校历确认的实际周数/)).toBeVisible()
     await capture(page, testInfo, 'a-w1-term-create-no-18-week-default')
 
     await gotoAcademicW1StaffPage(page, '/admin/academic-affairs/terms/current')
     await page.getByRole('button', { name: '前往学年学期与业务日历' }).click()
     await expect(page).toHaveURL(/\/admin\/system\/academic-calendar(?:\?|$)/)
-    await expect(page.getByText('学年学期与业务日历', { exact: false }).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '学年学期与业务日历', level: 1 })).toBeVisible()
   } finally {
     await restoreAcademicW1State(api, { originalCurrent, legacyBaseTerm, governanceTerm })
   }

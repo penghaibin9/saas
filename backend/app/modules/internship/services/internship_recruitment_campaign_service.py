@@ -5,10 +5,11 @@ must match expectedVersion before mutation. `phase` and material readiness are a
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, not_found
 from app.models import InternshipBatch
@@ -192,6 +193,8 @@ def _row(campaign: InternshipRecruitmentCampaign, now: datetime | None = None) -
 
 def _body_values(body: dict[str, Any]) -> dict[str, Any]:
     def _clean(value):
+        if isinstance(value, datetime) and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).replace(tzinfo=None)
         return value.strip() if isinstance(value, str) else value
 
     values: dict[str, Any] = {}
@@ -245,6 +248,19 @@ def _validate_identity(values: dict[str, Any]) -> None:
         values["teacher_confirm_sla_hours"] = hours
 
 
+def _commit_campaign(db):
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        error = str(exc.orig)
+        if "uk_intern_recruit_campaign_round" in error:
+            raise AppException("VALIDATION_ERROR", "该实习批次的招募轮次已存在，请使用其他轮次") from exc
+        if "uk_intern_recruit_campaign_code" in error:
+            raise AppException("VALIDATION_ERROR", "招聘季编码已存在，请使用其他编码") from exc
+        raise
+
+
 def create_campaign(body: dict[str, Any] | None, user=None):
     body = dict(body or {})
     tenant_id = _tid()
@@ -275,8 +291,7 @@ def create_campaign(body: dict[str, Any] | None, user=None):
             **values,
         )
         db.add(campaign)
-        db.flush()
-        db.commit()
+        _commit_campaign(db)
         return _row(campaign)
 
 
@@ -309,7 +324,7 @@ def update_campaign(campaign_id: int, body: dict[str, Any] | None, user=None):
         for field, value in values.items():
             setattr(campaign, field, value)
         campaign.version = current_version + 1
-        db.commit()
+        _commit_campaign(db)
         return _row(campaign)
 
 

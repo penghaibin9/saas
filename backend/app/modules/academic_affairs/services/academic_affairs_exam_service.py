@@ -15,6 +15,8 @@ from datetime import datetime
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import enforce_permission
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 # 批次 6 态
@@ -25,6 +27,8 @@ _D_SUBMITTED, _D_COUNSELOR, _D_TEACHER = "SUBMITTED", "COUNSELOR_REVIEW", "TEACH
 _D_COLLEGE, _D_FINAL = "COLLEGE_REVIEW", "ACADEMIC_FINAL"
 _D_APPROVED, _D_RETURNED, _D_REJECTED = "APPROVED", "RETURNED", "REJECTED"
 _DEFER_CHAIN = {_D_COUNSELOR: _D_TEACHER, _D_TEACHER: _D_COLLEGE, _D_COLLEGE: _D_FINAL, _D_FINAL: _D_APPROVED}
+_DEFER_COUNSELOR_PERMISSION = "academicAffairs.deferredExam.counselorReview"
+_DEFER_REVIEW_PERMISSION = "academicAffairs.deferredExam.review"
 
 
 def _resolve_classroom_id(db, text):
@@ -707,14 +711,14 @@ def my_exam_schedule(user, student_id) -> dict:
             return {"hasData": False, "items": [], "note": "暂无已发布的个人考试安排"}
         items = []
         for s in seats:
-            c = db.get(AaExamCourse, s.exam_course_id)
+            c = tenant_get(db, AaExamCourse, s.exam_course_id)
             if not c or c.is_deleted or c.tenant_id != _tid():
                 continue
-            b = db.get(AaExamBatch, c.batch_id) if c.batch_id else None
+            b = tenant_get(db, AaExamBatch, c.batch_id) if c.batch_id else None
             # 仅已发布批次对学生可见（DRAFT/排考中不露）
             if b and (b.status or "") not in ("PUBLISHED", "CLOSED", "ARCHIVED"):
                 continue
-            room = db.get(AaExamRoom, s.exam_room_id)
+            room = tenant_get(db, AaExamRoom, s.exam_room_id)
             items.append({
                 "examCourseId": str(c.id),
                 "courseName": c.course_name or "",
@@ -736,6 +740,7 @@ def _defer_dto(d):
     return {"deferId": str(d.id), "studentId": str(d.student_id), "studentName": d.student_name,
             "examCourseId": str(d.exam_course_id), "courseName": d.course_name,
             "reasonType": d.reason_type, "reason": d.reason, "status": d.status,
+            "currentNode": d.current_node or "", "version": int(d.version or 0),
             "returnReason": d.return_reason, "applyAt": _iso(d.apply_at)}
 
 
@@ -860,17 +865,58 @@ def _visible_defer_record(user, db, ctx, d) -> bool:
     return False
 
 
-def defer_review(user, defer_id, action, reason=""):
+def _require_defer_version(d, expected_version) -> None:
+    """Guard every state write with the version the caller actually read.
+
+    The row lock below remains the authority for concurrent requests.  The optional
+    client version closes the stale-page path without breaking existing PC callers
+    that have not yet been upgraded to send it.
+    """
+    if expected_version in (None, ""):
+        return
+    try:
+        wanted = int(expected_version)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from exc
+    current = int(d.version or 0)
+    if wanted != current:
+        raise AppException(
+            "APPROVAL_VERSION_CONFLICT",
+            "该缓考申请已发生变化，请刷新后再处理",
+            details={"expectedVersion": wanted, "currentVersion": current},
+            http_status=409,
+        )
+
+
+def _require_defer_review_permission(user, status: str) -> None:
+    """Do not rely on a route alone: mobile and PC share this canonical command."""
+    permission = (
+        _DEFER_COUNSELOR_PERMISSION
+        if status == _D_COUNSELOR
+        else _DEFER_REVIEW_PERMISSION
+    )
+    enforce_permission(user, permission)
+
+
+def defer_review(user, defer_id, action, reason="", expected_version=None):
     """四级审批任一节点：APPROVE 推进/最终 APPROVED；RETURN 退回学生补材料；REJECT 驳回终态。"""
     from app.models import AaDeferredExam
     with session() as db:
         ctx = _ctx(user, db)
-        d = db.query(AaDeferredExam).filter(AaDeferredExam.id == defer_id, AaDeferredExam.tenant_id == _tid()).first()
+        d = db.query(AaDeferredExam).filter(
+            AaDeferredExam.id == defer_id,
+            AaDeferredExam.tenant_id == _tid(),
+            AaDeferredExam.is_deleted.is_(False),
+        ).with_for_update().first()
         if not d:
             raise not_found("缓考申请不存在")
         if d.status not in _DEFER_CHAIN:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请已处理，不可重复审批", http_status=409)
         _check_defer_scope(user, db, ctx, d)
+        _require_defer_review_permission(user, d.status)
+        _require_defer_version(d, expected_version)
+        action = str(action or "").strip().upper()
+        before = f"status={d.status};node={d.current_node or ''};version={int(d.version or 0)}"
         if action == "APPROVE":
             d.status = _DEFER_CHAIN[d.status]
             d.current_node = d.status
@@ -879,51 +925,88 @@ def defer_review(user, defer_id, action, reason=""):
             if len(reason) < 5:
                 raise _bad("退回原因必填且不少于5字")
             d.status = _D_RETURNED
+            d.current_node = "STUDENT_RESUBMIT"
             d.return_reason = reason
         elif action == "REJECT":
             d.status = _D_REJECTED
+            d.current_node = _D_REJECTED
             d.return_reason = (reason or "").strip()
         else:
             raise _bad("非法审批动作")
-        _audit(db, "DEFERRED_EXAM", d.id, "DEFER_REVIEW_ACT", f"{action}->{d.status}")
+        d.version = int(d.version or 0) + 1
+        after = f"status={d.status};node={d.current_node or ''};version={int(d.version or 0)}"
+        _audit(db, "DEFERRED_EXAM", d.id, "DEFER_REVIEW_ACT", f"{action}->{d.status}", before, after)
         db.commit()
         return _defer_dto(d)
 
 
-def defer_resubmit(user, defer_id):
+def defer_resubmit(user, defer_id, expected_version=None):
     from app.models import AaDeferredExam
-    ctx = get_current_user_ctx() or {}
+    from app.services.mobile_student_service import _require_student, resolve_student
+
     with session() as db:
-        d = db.query(AaDeferredExam).filter(AaDeferredExam.id == defer_id, AaDeferredExam.tenant_id == _tid()).first()
+        # ``student_no`` is a display attribute, not a durable authorization key.  It
+        # can be corrected and (after archive) reused.  Resolve the authenticated
+        # student once and constrain this write by the stable StudentProfile id.
+        student = resolve_student(db, _require_student(user))
+        if not student:
+            raise not_found("学生档案不存在")
+        d = db.query(AaDeferredExam).filter(
+            AaDeferredExam.id == defer_id,
+            AaDeferredExam.tenant_id == _tid(),
+            AaDeferredExam.is_deleted.is_(False),
+        ).with_for_update().first()
         if not d:
             raise not_found("缓考申请不存在")
-        if str(d.student_no) != str(ctx.get("studentNo")):
+        if int(d.student_id) != int(student.id):
             raise no_data_scope("仅本人可重提")
         if d.status != _D_RETURNED:
             raise _invalid("仅退回状态可重提")
+        _require_defer_version(d, expected_version)
+        before = f"status={d.status};node={d.current_node or ''};version={int(d.version or 0)}"
         d.status = _D_COUNSELOR
         d.current_node = "COUNSELOR"
-        _audit(db, "DEFERRED_EXAM", d.id, "DEFER_RESUBMIT", "补材料重提")
+        d.version = int(d.version or 0) + 1
+        after = f"status={d.status};node={d.current_node or ''};version={int(d.version or 0)}"
+        _audit(db, "DEFERRED_EXAM", d.id, "DEFER_RESUBMIT", "补材料重提", before, after)
         db.commit()
         return _defer_dto(d)
 
 
-def defer_list(user, status=None, student_only=False, page=1, page_size=50):
+def defer_list(user, status=None, student_only=False, page=1, page_size=50, defer_id=None):
     """缓考列表。修复：非 student_only 模式下此前对 TENANT_ALL 以外角色完全不做范围收敛，
     任意持权限的辅导员/任课教师/学院教务都能看到全校缓考记录（含学生申请理由等敏感信息）。
     现按 _visible_defer_record 的真实业务关系逐条过滤（按班级/授课/学院，与记录当前处于
     哪个审批节点无关，历史/终态记录同样可见），TENANT_ALL 角色不受影响，仍返回全量。"""
     from app.models import AaDeferredExam
-    raw_ctx = get_current_user_ctx() or {}
     with session() as db:
-        affairs_ctx = _ctx(user, db)
         q = db.query(AaDeferredExam).filter(AaDeferredExam.tenant_id == _tid(), AaDeferredExam.is_deleted.is_(False))
         if student_only:
-            q = q.filter(AaDeferredExam.student_no == raw_ctx.get("studentNo"))
+            # Same durable identity rule as the write command above.  In
+            # particular, never authorize a historical record by a client token's
+            # mutable student number.
+            from app.services.mobile_student_service import _require_student, resolve_student
+
+            student = resolve_student(db, _require_student(user))
+            if not student:
+                raise not_found("学生档案不存在")
+            q = q.filter(AaDeferredExam.student_id == student.id)
+        if defer_id is not None:
+            q = q.filter(AaDeferredExam.id == defer_id)
         if status:
             q = q.filter(AaDeferredExam.status == status)
+        if student_only:
+            # Student history is a high-frequency mobile read: count/offset/limit
+            # in MySQL rather than materializing every historical application.
+            total = q.count()
+            if defer_id is not None and total == 0:
+                raise not_found("未找到可查看的缓考申请")
+            rows = q.order_by(AaDeferredExam.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+            return [_defer_dto(d) for d in rows], total
+
+        affairs_ctx = _ctx(user, db)
         rows = q.order_by(AaDeferredExam.id.desc()).all()
-        if not student_only and not _is_school(affairs_ctx):
+        if not _is_school(affairs_ctx):
             rows = [d for d in rows if _visible_defer_record(user, db, affairs_ctx, d)]
         total = len(rows)
         return [_defer_dto(d) for d in rows[(page - 1) * page_size: page * page_size]], total

@@ -168,16 +168,17 @@ async function prepareAidPublicity(admin, studentId) {
 }
 
 async function prepareInternshipChange(studentApi, internshipFixture) {
-  const existing = items(await studentApi.get('/portal/internship/change'))
+  const headers = { 'X-Internship-Batch-Id': String(internshipFixture.batchId) }
+  const existing = items(await studentApi.request('GET', '/portal/internship/change', { headers }))
     .find((row) => String(row.status || '') === 'PENDING')
   if (existing) return { id: String(existing.id), batchId: internshipFixture.batchId }
 
-  const created = await studentApi.post('/portal/internship/change', {
+  const created = await studentApi.request('POST', '/portal/internship/change', { headers, body: {
     changeType: 'WITHDRAW_POST',
     reason: '当前岗位与后续实践方向不一致，申请退岗后重新接受学校岗位匹配。',
     targetEnterpriseName: '',
     targetPositionName: ''
-  })
+  } })
   if (!created.id) throw new Error('Golden internship change request did not return id')
   if (String(created.status || '') !== 'PENDING') {
     throw new Error(`Golden internship change request must be PENDING, got ${created.status || 'UNKNOWN'}`)
@@ -343,11 +344,7 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
   test.beforeAll(async () => {
     adminApi = await loginApi(config.sandboxAdmin)
     internshipFixture = await loadInternshipFixture()
-    const studentApi = await loginApi(config.student)
-
     aidFixture = await prepareAidPublicity(adminApi, internshipFixture.studentId)
-    internshipChangeFixture = await prepareInternshipChange(studentApi, internshipFixture)
-    graduationFixture = await prepareGraduationReviewFixture(adminApi)
   })
 
   test('Student Affairs aid publicity review · Screenshot B', async ({ page }, testInfo) => {
@@ -360,42 +357,50 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
     await expect(page.locator('.sa-grid--metrics')).toBeVisible()
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: aidFixture.studentNo }).first()).toBeVisible()
-    expect(await page.locator('.ap-note').evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('11px')
+    expect(await page.locator('.ap-note').evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('0px')
 
     await capture(page, testInfo, 'rollout-review-affairs-aid-publicity-b')
   })
 
   test('Internship change review queue · Screenshot B', async ({ page }, testInfo) => {
+    internshipChangeFixture = await prepareInternshipChange(await loginApi(config.student), internshipFixture)
     await page.setViewportSize(VIEWPORT)
     await openGoldenStaffPage(page, `/admin/internship/changes?panel=pending&id=${encodeURIComponent(internshipChangeFixture.id)}`)
     await setStorage(page, 'internship.selectedBatchId', internshipChangeFixture.batchId)
     await page.reload()
 
     await expect(page).toHaveURL(/\/admin\/internship\/changes/)
-    await expect(page.getByRole('heading', { name: '实习变更审核', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '调岗退岗', exact: true })).toBeVisible()
     await expect(page.locator('.mp-tabs')).toBeVisible()
     await expect(page.locator('.lv-list')).toBeVisible()
     await expect(page.locator('.lv-main')).toBeVisible()
     await expect(page.locator('.lv-main')).toContainText(internshipFixture.studentName)
     await expect(page.locator('.lv-main')).toContainText(/退岗|当前岗位与后续实践方向不一致/)
-    expect(await page.locator('.lv-main').evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe('17px')
+    await expect(page.locator('.lv-item.is-active')).toContainText(internshipFixture.studentName)
 
     await capture(page, testInfo, 'rollout-review-internship-change-b')
   })
 
   test('Graduation proposal review queue · Screenshot B', async ({ page }, testInfo) => {
+    graduationFixture = await prepareGraduationReviewFixture(adminApi)
     await page.setViewportSize(VIEWPORT)
 
     await new StudentLoginPage(page, config.studentBaseUrl).login(STUDENT_TWO)
     const studentGraduation = new StudentGraduationPage(page, config.studentBaseUrl)
     await studentGraduation.open()
+    await studentGraduation.signTaskbookIfNeeded()
+
     const proposalStep = studentGraduation.step('开题')
-    if (!(await proposalStep.getByText(/待审核|待审阅|已提交/).count())) {
-      await studentGraduation.signTaskbookIfNeeded()
+    const submitAction = proposalStep.getByRole('button').filter({
+      hasText: /填写开题报告|修改后重交开题报告|提交开题报告|完善/
+    }).first()
+    if (await submitAction.count()) {
       await studentGraduation.submitProposal({
         suffix: graduationFixture.runId,
         fileName: `proposal-review-${graduationFixture.runId}.pdf`
       })
+    } else {
+      await expect(proposalStep).toContainText(/待.*审|已提交|审核中|已通过/)
     }
 
     await addStaffSession(page, adminApi)
@@ -404,7 +409,7 @@ test.describe.serial('Golden rollout · review / workflow queues · Batch 8', ()
     await staffGraduation.selectStudent()
 
     await expect(page).toHaveURL(/\/admin\/graduation\/proposals/)
-    await expect(page.getByRole('heading', { name: '开题审核', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '开题报告批阅', exact: true })).toBeVisible()
     await expect(page.locator('.pr-split')).toBeVisible()
     await expect(page.locator('.pr-list')).toBeVisible()
     await expect(page.locator('.pr-pane')).toBeVisible()

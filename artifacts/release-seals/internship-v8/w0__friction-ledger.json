@@ -1,0 +1,347 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T11:20:10.1847069Z",
+  "items": [
+    {
+      "id": "IX-DX-P1-01",
+      "finding": "Staff PC 12×99 high-exposure navigation",
+      "source": "frontend/src/config/navPlan.js",
+      "severity": "P1",
+      "status": "RESOLVED_W1",
+      "resolutionEvidence": "artifacts/internship-v8/w1/menu-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-02",
+      "finding": "Dashboard todo remains category/count oriented",
+      "source": "frontend/src/modules/internship/views/InternshipDashboardView.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W2",
+      "resolutionEvidence": "artifacts/internship-v8/w2/today-work-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-03",
+      "finding": "Match sidebar duplicates local process panels",
+      "source": "frontend/src/modules/internship/views/InternshipMatchListView.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W4_MENU_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "Only the match workbench, change queue, and assignment log remain high exposure; recommendation/manual/batch/conflict/result deep links are preserved as hidden compatibility entries."
+    },
+    {
+      "id": "IX-DX-P1-04",
+      "finding": "Four application menu leaves share one review surface",
+      "source": "frontend/src/config/navPlan.js",
+      "severity": "P1",
+      "status": "RESOLVED_W4_MENU_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "The sidebar now exposes the application review owner, agreement owner, and policy-distinct self-arranged queue; position and all-ledger filters remain hidden deep links."
+    },
+    {
+      "id": "IX-DX-P1-05",
+      "finding": "Attendance command ownership overlaps ledger and full detail",
+      "source": "frontend/src/modules/internship/views/AttendanceView.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W7_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "The high-exposure attendance table no longer performs final exception decisions. It saves the current queue and routes to the full detail owner with location, device, student explanation, expectedVersion, conflict recovery, audit trail, and a truthful persistent receipt."
+    },
+    {
+      "id": "IX-DX-P1-06",
+      "finding": "Process report menu duplicates local tabs",
+      "source": "frontend/src/config/navPlan.js",
+      "severity": "P1",
+      "status": "RESOLVED_W4_MENU_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "Only plan tasks and process-report review remain high exposure; report issues and daily/weekly/monthly/returned views remain hidden query deep links."
+    },
+    {
+      "id": "IX-DX-P1-07",
+      "finding": "Eleven risk leaves are primarily one workbench filters",
+      "source": "frontend/src/config/navPlan.js",
+      "severity": "P1",
+      "status": "RESOLVED_W4_MENU_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "Risk read-only workbench, permission-gated disposal queue, compliance, and incident authorities remain visible; all risk type/stage filters are hidden deep links."
+    },
+    {
+      "id": "IX-DX-P1-08",
+      "finding": "Score page mixes rules, ledger and commands",
+      "source": "frontend/src/modules/internship/views/ScoreView.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W13_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w13/evaluation-score-appeal-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-09",
+      "finding": "Material/archive ownership is exposed through repeated entries",
+      "source": "frontend/src/config/navPlan.js",
+      "severity": "P1",
+      "status": "RESOLVED_W4_MENU_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "Materials and archive share one visible owner; student-material and package-generation entries remain hidden compatibility paths."
+    },
+    {
+      "id": "IX-DX-P1-10",
+      "finding": "Material technical evidence is too prominent",
+      "source": "frontend/src/modules/internship/views/InternshipMaterialCenterView.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W14_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w14/archive-fileversion-recovery-employment-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-11",
+      "finding": "Compliance surface is dense and needs visual grouping",
+      "source": "frontend/src/modules/internship/views/InternshipComplianceView.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W6_STATIC_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "Seven preserved deep-link tabs are grouped into onboarding gate, incident handling, exception approval, and regulatory evidence. Exact blocked students now render before metrics with why-here, latest evaluation, next owner, rule version, and exact student route."
+    },
+    {
+      "id": "IX-DX-P1-12",
+      "finding": "Guidance/visit sidebar duplicates local views",
+      "source": "frontend/src/config/navPlan.js",
+      "severity": "P1",
+      "status": "RESOLVED_W4_MENU_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "Guidance/visit workbench and guidance plan are the two visible owners; communication, visit, issue, and rectification views remain hidden deep links."
+    },
+    {
+      "id": "IX-DX-P1-13",
+      "finding": "Leave status menu leaves duplicate one workbench",
+      "source": "frontend/src/config/navPlan.js",
+      "severity": "P1",
+      "status": "RESOLVED_W7_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "One leave workbench remains visible and now leads with bounded exact requests before KPI, keeps all legacy status deep links, requires full-detail/evidence review, preserves conflict text, continues to the next request, and retains the server receipt."
+    },
+    {
+      "id": "IX-DX-P1-14",
+      "finding": "Student PC presents fourteen parallel tabs",
+      "source": "student-portal/src/views/internship/InternshipView.vue",
+      "severity": "P1",
+      "status": "PARTIAL_W9_STATIC_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w9/student-pc-workbench-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-15",
+      "finding": "Student PC local failures may collapse into empty data",
+      "source": "student-portal/src/views/internship/InternshipView.vue",
+      "severity": "P1",
+      "status": "PARTIAL_W9_STATIC_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w9/student-pc-workbench-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-16",
+      "finding": "Student Mini presents sixteen equal self-service entries",
+      "source": "miniapp/src/pages/student/internship/index.vue",
+      "severity": "P1",
+      "status": "PARTIAL_W10_STATIC_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w10/mobile-today-first-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-17",
+      "finding": "Teacher Mini static quick actions compete with Today First",
+      "source": "miniapp/src/pages/teacher/workbench/index.vue",
+      "severity": "P1",
+      "status": "PARTIAL_W10_STATIC_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w10/mobile-today-first-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-18",
+      "finding": "Teacher Mini anomaly facts require PC parity audit",
+      "source": "miniapp/src/pages/teacher/internship-review/index.vue",
+      "severity": "P1",
+      "status": "PARTIAL_W10_CONTRACT_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w10/mobile-today-first-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-19",
+      "finding": "Enterprise Portal must be part of journey acceptance",
+      "source": "enterprise-portal/src/layouts/EnterprisePortalLayout.vue",
+      "severity": "P1",
+      "status": "PARTIAL_W5_STATIC_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w5/enterprise-today-first-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-20",
+      "finding": "Critical writes need persistent action receipts",
+      "source": "frontend/src/modules/internship/views",
+      "severity": "P1",
+      "status": "RESOLVED_W14_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w14/archive-fileversion-recovery-employment-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-21",
+      "finding": "Weekly resubmit needs human before/after comparison",
+      "source": "frontend/src/modules/internship/views/WeeklyReportDetailView.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W8_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "The detail page renders the latest returned snapshot and current resubmission side by side with the prior reviewer comment; historical bodies come from immutable REVIEW_RETURN audit snapshots rather than reconstructed text."
+    },
+    {
+      "id": "IX-DX-P1-22",
+      "finding": "Cross-page and cross-surface queue resume is not unified",
+      "source": "frontend/src/modules/internship/composables/reviewQueue.js",
+      "severity": "P1",
+      "status": "PARTIAL_W2_STAFF_PC",
+      "resolutionEvidence": "Today Work now seeds the existing weekly-report and attendance-exception session queues; cross-surface continuation remains pending."
+    },
+    {
+      "id": "IX-DX-P0-23",
+      "finding": "Legacy internship account bootstrap still calls the retired mixed-identity import and cannot seed a clean exact-head database",
+      "source": "scripts/check/e2e_bootstrap_internship_accounts.py",
+      "severity": "P0",
+      "status": "OPEN_BASELINE"
+    },
+    {
+      "id": "IX-DX-P1-24",
+      "finding": "Staff Internship Center reports a missing batch as load failure and offers only an indirect batch-management recovery path",
+      "source": "frontend/src/modules/internship/views/InternshipDashboardView.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W2",
+      "resolutionEvidence": "Dashboard renders an actionable batch setup state with direct batch management and retry actions."
+    },
+    {
+      "id": "IX-DX-P1-25",
+      "finding": "A four-step first-run overlay blocks the staff Today Work surface before the user can act",
+      "source": "frontend/src/modules/internship/views/InternshipDashboardView.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W3_STATIC_BROWSER_DB_PENDING",
+      "resolutionEvidence": "The Staff workbench opts out of automatic first-run overlay while preserving top-bar manual replay; Internship Today Work remains the first concrete-object surface. Contracts, full Staff tests, lint and build pass; authenticated Browser replay awaits isolated MySQL recovery."
+    },
+    {
+      "id": "IX-DX-P1-26",
+      "finding": "Student PC and Mini local runtime silently target localhost:8000 when VITE_API_BASE_URL is absent, which can connect to an unrelated local service",
+      "source": "student-portal and miniapp runtime configuration",
+      "severity": "P1",
+      "status": "OPEN_BASELINE"
+    },
+    {
+      "id": "IX-DX-INFRA-27",
+      "finding": "The isolated Docker MySQL instance stopped completing connection handshakes after full migration and canonical seed; a targeted container restart returned Docker Engine HTTP 500",
+      "source": "internship-v8-mysql on 127.0.0.1:43327",
+      "severity": "INFRA",
+      "status": "RUNTIME_BLOCKED_EXTERNAL_STATE"
+    },
+    {
+      "id": "IX-DX-P0-28",
+      "finding": "Approving a destination change for an ONBOARD student replaced the assignment but preserved ONBOARD, allowing check-in before the new consent, agreement and compliance chain was completed",
+      "source": "backend/app/modules/internship/services/internship_change_service.py",
+      "severity": "P0",
+      "status": "RESOLVED_W11_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w11/change-reonboard-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-29",
+      "finding": "Student Mini asked users to type a raw position database ID, while CHANGE_ENTERPRISE could be submitted without any targetPositionId and would later fail approval",
+      "source": "miniapp/src/pages/student/internship/change/index.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W11_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w11/change-reonboard-contract.json"
+    },
+    {
+      "id": "IX-DX-P0-30",
+      "finding": "HIGH/CRITICAL incident-created risks omitted source_type/source_id, so the source uniqueness constraint could not protect the incident-to-risk identity and the risk could close independently of incident evidence.",
+      "source": "backend/app/modules/internship/services/internship_incident_service.py and internship_risk_service.py",
+      "severity": "P0",
+      "status": "RESOLVED_W12_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w12/risk-incident-evidence-contract.json"
+    },
+    {
+      "id": "IX-DX-P0-31",
+      "finding": "Audit outbox DEAD/stalled health was visible but did not fail closed before new high-risk incident, linked-risk and regulatory-package writes.",
+      "source": "backend/app/modules/internship/services/internship_audit_service.py",
+      "severity": "P0",
+      "status": "RESOLVED_W12_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w12/risk-incident-evidence-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-32",
+      "finding": "Risk and incident cards did not expose canonical source identity, latest event, current action or explain why evidence-blocked closure was unavailable.",
+      "source": "RiskDisposalView.vue, InternshipComplianceView.vue and Teacher Mini internship-risk",
+      "severity": "P1",
+      "status": "RESOLVED_W12_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w12/risk-incident-evidence-contract.json"
+    },
+    {
+      "id": "IX-DX-P0-33",
+      "finding": "Enterprise evaluation rows were not frozen to the exact formal placement, and current-task reads could treat an old-position evaluation as completion for a new placement.",
+      "source": "internship_enterprise_collaboration_service.py, internship_enterprise_eval_service.py and InternshipEnterpriseEval",
+      "severity": "P0",
+      "status": "RESOLVED_W13_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w13/evaluation-score-appeal-contract.json"
+    },
+    {
+      "id": "IX-DX-P0-34",
+      "finding": "The effective backend score authority rejects client-supplied component scores, while Staff and Teacher Mini still submitted raw five-part scores, making the main score action fail against the real service.",
+      "source": "internship_score_fact_guard.py, ScoreView.vue and Teacher Mini internship-score",
+      "severity": "P0",
+      "status": "RESOLVED_W13_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w13/evaluation-score-appeal-contract.json"
+    },
+    {
+      "id": "IX-DX-P0-35",
+      "finding": "Score review and final publish were one command, and a reviewed score could be recomputed directly without an explicit audited return transition.",
+      "source": "internship_score_service.py and internship_score_fact_guard.py",
+      "severity": "P0",
+      "status": "RESOLVED_W13_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w13/evaluation-score-appeal-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-36",
+      "finding": "Evaluation and score surfaces hid source readiness, mixed missing/calculate/review/publish/appeal work, and did not retain durable server receipts.",
+      "source": "ScoreView.vue, evaluation views, Student PC, Enterprise Portal and both Mini surfaces",
+      "severity": "P1",
+      "status": "RESOLVED_W13_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w13/evaluation-score-appeal-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-37",
+      "finding": "The Staff score page and verified help knowledge exposed independent score archive even though the canonical backend intentionally disables it in favor of total internship archive freeze.",
+      "source": "ScoreView.vue and verifiedHelpOverrides.js",
+      "severity": "P1",
+      "status": "RESOLVED_W13_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w13/evaluation-score-appeal-contract.json"
+    },
+    {
+      "id": "IX-DX-P0-38",
+      "finding": "Archive previously committed prepared Manifest, business archive and Manifest finalize in separate transactions, so a failed response could leave an already archived student and supersede the prior frozen Manifest.",
+      "source": "internship_material_center_compat.py and internship_archive_service.py",
+      "severity": "P0",
+      "status": "RESOLVED_W14_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w14/archive-fileversion-recovery-employment-contract.json"
+    },
+    {
+      "id": "IX-DX-P0-39",
+      "finding": "Archive packages lacked a frozen-Manifest drift check, scoped recovery verification and FileVersion-authoritative batch package path.",
+      "source": "internship_streaming_package_service.py and ArchiveView.vue",
+      "severity": "P0",
+      "status": "RESOLVED_W14_STATIC_BUILD_RUNTIME_DB_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w14/archive-fileversion-recovery-employment-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-40",
+      "finding": "Staff Dashboard loaded and Python-filtered every internship record in the selected batch before returning at most eight Today Work objects, making memory and query work grow with the full 20K cohort.",
+      "source": "backend/app/modules/internship/services/internship_service.py#get_dashboard_summary",
+      "severity": "P1",
+      "status": "RESOLVED_W15_STATIC_BUILD_RUNTIME_20K_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w15/scale-accessibility-recovery-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-41",
+      "finding": "Weekly, attendance, material-center and archive lists materialized batch-wide IDs or per-student rule/file rows before Python scope and pagination, leaving N+1 or full-batch cost on 20K paths.",
+      "source": "internship_service.py, internship_material_center_service.py and internship_archive_service.py",
+      "severity": "P1",
+      "status": "RESOLVED_W15_STATIC_BUILD_RUNTIME_20K_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w15/scale-accessibility-recovery-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-42",
+      "finding": "Teacher Mini fetched one fixed 50-row page, filtered it locally by advisor name and reported loaded-row counts as queue totals, so large queues could silently disappear or undercount.",
+      "source": "backend/app/services/_mobile_teacher_service_impl.py and miniapp internship-review",
+      "severity": "P1",
+      "status": "RESOLVED_W15_STATIC_BUILD_RUNTIME_20K_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w15/scale-accessibility-recovery-contract.json"
+    },
+    {
+      "id": "IX-DX-P1-43",
+      "finding": "Critical grouped navigation, archive tabs, progress and continuous-processing controls lacked consistent operable button and selected/current semantics across Staff PC, Student PC and Mini surfaces.",
+      "source": "ArchiveView.vue, InternshipDashboardView.vue, Student PC InternshipView.vue and MobileSegmented.vue",
+      "severity": "P1",
+      "status": "RESOLVED_W15_STATIC_BUILD_BROWSER_ACCESSIBILITY_PENDING",
+      "resolutionEvidence": "artifacts/internship-v8/w15/scale-accessibility-recovery-contract.json"
+    }
+  ]
+}

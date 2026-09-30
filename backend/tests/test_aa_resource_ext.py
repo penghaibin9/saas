@@ -40,7 +40,7 @@ def _mk_equipment(client, hdr, code="EQ001", **kw):
 def _mk_classroom(client, hdr, building_code="Z", room_code="101", **kw):
     body = {"buildingCode": building_code, "buildingName": kw.get("buildingName", building_code),
             "roomCode": room_code, "capacity": kw.get("capacity", 60),
-            "roomType": kw.get("roomType", "MULTIMEDIA")}
+            "roomType": kw.get("roomType", "MULTIMEDIA"), "allowBorrow": kw.get("allowBorrow", False)}
     return client.post(f"{BASE}/classrooms", headers=hdr, json=body)
 
 
@@ -127,7 +127,18 @@ def test_b1_lab_booking_review_conflict(client, db_mode):
     assert b1["code"] == 0 and b1["data"]["status"] == "PENDING"
     bid1 = b1["data"]["bookingId"]
     assert client.post(f"{BASE}/labs/bookings/{bid1}/review", headers=hdr,
-                       json={"action": "APPROVE"}).json()["data"]["status"] == "APPROVED"
+                       json={"action": "APPROVE"}).status_code == 409
+    cid = _mk_classroom(client, hdr, "L", "801", allowBorrow=True).json()["data"]["classroomId"]
+    lab = client.get(f"{BASE}/labs/{lid}", headers=hdr).json()["data"]
+    bound = client.put(f"{BASE}/labs/{lid}/schedule-resource", headers=hdr,
+                       json={"classroomId": cid, "expectedVersion": lab["version"]})
+    assert bound.status_code == 200, bound.text
+    approved = client.post(f"{BASE}/labs/bookings/{bid1}/review", headers=hdr,
+                           json={"action": "APPROVE", "expectedClassroomId": cid,
+                                 "expectedLabVersion": bound.json()["data"]["version"]})
+    assert approved.status_code == 200, approved.text
+    assert approved.json()["data"]["status"] == "APPROVED"
+    assert approved.json()["data"]["classroomId"] == str(cid)
     assert client.post(f"{BASE}/labs/bookings", headers=hdr,
                        json={"labId": str(lid), "bookingDate": "2027-06-20", "slotNo": 1}).status_code == 409
     b3 = client.post(f"{BASE}/labs/bookings", headers=hdr,
@@ -239,8 +250,24 @@ def test_o1_resource_occupancy_aggregates_booking_and_schedule(client, db_mode):
     start = date(2026, 9, 1)
     target = start + timedelta(days=14)
     weekday = target.isoweekday()
-    cid = _mk_classroom(client, hdr, "O", "501").json()["data"]["classroomId"]
-    _setup_term_and_schedule(client, hdr, "O501", weekday, 5, target.isoformat())
+    cid = _mk_classroom(client, hdr, "O", "501", allowBorrow=True).json()["data"]["classroomId"]
+    term_id, batch_id = _setup_term_and_schedule(client, hdr, "O501", weekday, 5, target.isoformat())
+    from app.db.session import get_sessionmaker
+    from app.models import AaScheduleBatch, AaScheduleScopeHead
+
+    # Publication must have selected this exact formal SCHOOL scope, not just
+    # left an EFFECTIVE item or an unheaded PUBLISHED batch behind.
+    with get_sessionmaker()() as db:
+        head = db.query(AaScheduleScopeHead).filter(
+            AaScheduleScopeHead.tenant_id == TID,
+            AaScheduleScopeHead.term_id == int(term_id),
+            AaScheduleScopeHead.scope_type == "SCHOOL",
+            AaScheduleScopeHead.scope_id == 0,
+            AaScheduleScopeHead.is_deleted.is_(False),
+        ).one()
+        assert int(head.active_batch_id) == int(batch_id)
+        batch = db.get(AaScheduleBatch, int(batch_id))
+        assert batch.status == "PUBLISHED" and not batch.is_deleted
     b = client.post(f"{BASE}/classrooms/bookings", headers=hdr,
                     json={"classroomId": str(cid), "bookingDate": target.isoformat(), "slotNo": 6,
                          "purpose": "资源占用测试预约"}).json()
@@ -249,28 +276,37 @@ def test_o1_resource_occupancy_aggregates_booking_and_schedule(client, db_mode):
     assert occ["code"] == 0
     sources = {it["source"] for it in occ["data"]["items"]}
     assert "BOOKING" in sources and "SCHEDULE" in sources
-    assert any(it["resourceLabel"] == "O501" and it["slotNo"] == 5 and it["source"] == "SCHEDULE"
-              for it in occ["data"]["items"])
+    schedule = [it for it in occ["data"]["items"] if it["source"] == "SCHEDULE"
+                and it["resourceLabel"] == "O501" and it["slotNo"] == 5]
+    assert len(schedule) == 1
+    assert schedule[0]["resourceKind"] == "CLASSROOM"
+    assert isinstance(schedule[0]["resourceId"], str)
+    assert schedule[0]["resourceId"] == str(cid)
+    lab_only = client.get(f"{BASE}/resources/occupancy", headers=hdr,
+                          params={"date": target.isoformat(), "resourceKind": "LAB"}).json()
+    assert lab_only["code"] == 0
+    assert all(it["resourceKind"] == "LAB" and it["source"] == "BOOKING"
+               for it in lab_only["data"]["items"])
     assert any(it["resourceLabel"] == "O501" and it["slotNo"] == 6 and it["source"] == "BOOKING"
               for it in occ["data"]["items"])
 
 
-def test_c1_resource_conflict_booking_overlaps_schedule(client, db_mode):
+def test_c1_resource_conflict_guard_prevents_booking_overlap(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     start = date(2026, 9, 1)
     target = start + timedelta(days=21)
     weekday = target.isoweekday()
-    cid = _mk_classroom(client, hdr, "C", "601").json()["data"]["classroomId"]
+    cid = _mk_classroom(client, hdr, "C", "601", allowBorrow=True).json()["data"]["classroomId"]
     _setup_term_and_schedule(client, hdr, "C601", weekday, 7, target.isoformat())
     b = client.post(f"{BASE}/classrooms/bookings", headers=hdr,
                     json={"classroomId": str(cid), "bookingDate": target.isoformat(), "slotNo": 7,
                          "purpose": "资源冲突测试预约"}).json()
-    client.post(f"{BASE}/classrooms/bookings/{b['data']['bookingId']}/review", headers=hdr, json={"action": "APPROVE"})
+    approval = client.post(f"{BASE}/classrooms/bookings/{b['data']['bookingId']}/review", headers=hdr, json={"action": "APPROVE"})
+    assert approval.status_code == 409, approval.text
     conf = client.get(f"{BASE}/resources/conflicts", headers=hdr,
                       params={"dateFrom": target.isoformat()}).json()
-    assert conf["code"] == 0 and conf["data"]["total"] >= 1
-    hit = [c for c in conf["data"]["items"] if c["resourceLabel"] == "C601" and c["slotNo"] == 7]
-    assert hit and hit[0]["scheduleCourseName"] == "资源冲突测试课"
+    assert conf["code"] == 0 and conf["data"]["total"] == 0
+    assert conf["data"]["items"] == []
     assert client.get(f"{BASE}/resources/conflicts", headers=hdr,
                       params={"dateFrom": target.isoformat(),
                               "dateTo": (target + timedelta(days=40)).isoformat()}).status_code == 400

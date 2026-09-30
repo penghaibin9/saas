@@ -32,6 +32,12 @@ export default defineConfig({
       '/api': {
         target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
         changeOrigin: true
+      },
+      // 资讯页面由后端以公开 HTML 提供；与生产 Nginx 的 /news 反向代理保持一致，
+      // 不能让 Vite 的 history fallback 把读者送到业务系统登录页。
+      '/news': {
+        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
+        changeOrigin: true
       }
     }
   }

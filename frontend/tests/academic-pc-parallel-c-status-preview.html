@@ -1,0 +1,30 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>C组认定与学籍局部演练</title><style>body{margin:0;background:#f4f7fc;font-family:system-ui;color:#243650}#tools{display:flex;gap:14px;padding:14px;background:#fff2cf;position:sticky;top:0;z-index:10}#app{max-width:1200px;padding:20px;margin:auto}</style>
+<div id="tools"><b>隔离演练 · 全部合成数据</b><button data-page="approval">异动审批</button><button data-page="effective">异动生效</button><button data-page="recognition">成绩认定</button><label>响应<select id="response"><option value="normal">正常</option><option value="409">409</option><option value="403">403</option><option value="timeout">响应丢失</option></select></label><span id="calls">本次写入 0</span></div><div id="app"></div>
+<script type="module">
+import {createApp,h,reactive} from 'vue'
+import {createPinia} from 'pinia'
+import {createRouter,createMemoryHistory,RouterView} from 'vue-router'
+import '../src/styles/tokens.css'
+import '../src/styles/high-contrast-skin.css'
+import Approval from '../src/modules/academicAffairs/views/AaStatusChangeApprovalView.vue'
+import Detail from '../src/modules/academicAffairs/views/AaStatusChangeDetailView.vue'
+import Effective from '../src/modules/academicAffairs/views/AaStatusChangeEffectiveView.vue'
+import Recognition from '../src/modules/academicAffairs/views/AaGradeRecognitionView.vue'
+import {academicAffairsApi as api} from '../src/modules/academicAffairs/api/academic-affairs.api.js'
+import {statusChangeConvenienceApi} from '../src/modules/academicAffairs/api/status-change-convenience.api.js'
+const copy=x=>structuredClone(x),ok=data=>({code:0,data:copy(data)}),list=rows=>ok({list:rows,total:rows.length})
+const changes=[{changeId:'9007199254740993',studentId:'16',realName:'演练 · 林晓宁',changeType:'SUSPEND',changeTypeLabel:'休学',fromStatus:'REGISTERED',toStatus:'SUSPENDED',reason:'演练材料：申请休学一年',status:'SUBMITTED',currentNode:'COUNSELOR_REVIEW',currentTaskId:'9007199254740994',version:1,decisionVersion:0,expectedStudentVersion:2,effectiveDate:'2099-09-01'},{changeId:'C2',studentId:'17',realName:'演练 · 陈亦安',changeType:'SUSPEND',changeTypeLabel:'休学',fromStatus:'REGISTERED',toStatus:'SUSPENDED',reason:'演练材料：计划休学',status:'IN_REVIEW',currentNode:'AA_OFFICE_FINAL',currentTaskId:'TASK2',version:3,decisionVersion:2,expectedStudentVersion:2,effectiveDate:'2099-09-01'}]
+const recognitions=[{recognitionId:'R1',studentId:'16',studentNo:'DEMO001',studentName:'演练 · 林晓宁',sourceCourseName:'演练原数学课程',sourceScore:80,sourceCredit:0,sourceOrigin:'演练原专业',targetCourseId:'1000000000000063602',targetCourseName:'演练高等数学',attachmentFileIds:[],reason:'原课程学习证明',status:'SUBMITTED'}]
+let writes=0
+const write=fn=>async(...args)=>{writes++;document.querySelector('#calls').textContent=`本次写入 ${writes}`;const mode=document.querySelector('#response').value;if(mode==='403')return {code:403002,bizCode:'NO_DATA_SCOPE'};if(mode==='409')return {code:409001,bizCode:'APPROVAL_VERSION_CONFLICT'};const row=fn(...args);if(mode==='timeout')throw Error('演练响应丢失');return ok(row)}
+api.getStatusChanges=async query=>list(changes.filter(r=>(!query.status||r.status===query.status)&&(!query.changeType||r.changeType===query.changeType)))
+api.getStatusChange=async id=>ok(changes.find(r=>r.changeId===id))
+api.reviewStatusChange=write((id,action,reason,version)=>{const row=changes.find(r=>r.changeId===id);if(version!==row.decisionVersion)throw {code:409};row.decisionVersion++;row.version++;if(action!=='APPROVE'){row.status=action==='RETURN'?'RETURNED':'REJECTED';row.currentTaskId=''}else if(row.currentNode==='AA_OFFICE_FINAL'){row.status='APPROVED_PENDING_EFFECTIVE';row.currentNode='';row.currentTaskId=''}else{row.status='IN_REVIEW';row.currentNode='COLLEGE_REVIEW';row.currentTaskId='NEXT-TASK'}return row})
+statusChangeConvenienceApi.listMaterials=async()=>ok({items:[]})
+api.listRecognitions=async query=>list(recognitions.filter(r=>!query.status||r.status===query.status))
+api.reviewRecognition=write((id,action,reason)=>{const row=recognitions.find(r=>r.recognitionId===id);row.status=action==='APPROVE'?'APPROVED':'REJECTED';row.reviewReason=reason;return row})
+const ctx=reactive({currentRole:{roleCode:'SCHOOL_ADMIN',roleName:'演练责任岗'},dataScope:{scopeName:'本地合成数据'},permissionPatterns:['*']})
+const router=createRouter({history:createMemoryHistory(),routes:[{path:'/approval',component:Approval,props:()=>({ctx})},{path:'/effective',component:Effective,props:()=>({ctx})},{path:'/recognition',component:Recognition,props:()=>({ctx})},{path:'/admin/academic-affairs/status-changes/:id',component:Detail,props:()=>({ctx})},{path:'/admin/academic-affairs/status-changes',redirect:'/approval'}]})
+await router.push('/approval');await router.isReady();createApp({render:()=>h(RouterView)}).use(createPinia()).use(router).mount('#app')
+for(const button of document.querySelectorAll('[data-page]'))button.onclick=()=>router.push('/'+button.dataset.page)
+</script></html>

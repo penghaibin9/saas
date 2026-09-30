@@ -17,10 +17,21 @@ def _hdr(client, login_name):
 
 def _seed_students(n=1):
     from app.db.session import get_sessionmaker
-    from app.models import AaTerm, College, Major, SchoolClass, StudentProfile
+    from app.models import AaTerm, College, Major, SchoolClass, StudentProfile, Tenant
     from tests.support_grade_review_identity import seed_grade_review_identity
 
     db = get_sessionmaker()()
+    if db.get(Tenant, TID) is None:
+        db.add(Tenant(
+            id=TID,
+            tenant_code="aa-bugfix-regression",
+            school_name="教务回归测试学校",
+            short_name="教务回归",
+            deploy_mode="SAAS",
+            db_mode="SHARED",
+            status="ACTIVE",
+        ))
+        db.flush()
     term = AaTerm(
         tenant_id=TID, year_code="2026-2027", term_no=1,
         term_name="2026-2027第1学期", teaching_weeks=18,
@@ -154,8 +165,15 @@ def test_bf5_publish_then_transcript_consistent(client, db_mode):
         "studentId": str(sids[0]), "usualScore": 80, "finalScore": 90})
     assert entered.status_code == 200, entered.text
     assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr).status_code == 200
-    assert client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr,
-                       json={"action": "APPROVE"}).status_code == 200
+    college_hdr = _hdr(client, "college_admin01")
+    evidence = client.get(f"{BASE}/grade-tasks/{tid}/review-evidence", headers=college_hdr)
+    assert evidence.status_code == 200, evidence.text
+    evidence_hash = evidence.json()["data"]["evidenceHash"]
+    reviewed = client.post(
+        f"{BASE}/grade-tasks/{tid}/college-review", headers=college_hdr,
+        json={"action": "APPROVE", "expectedEvidenceHash": evidence_hash},
+    )
+    assert reviewed.status_code == 200, reviewed.text
     pub_resp = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
     assert pub_resp.status_code == 200, pub_resp.text
     pub = pub_resp.json()

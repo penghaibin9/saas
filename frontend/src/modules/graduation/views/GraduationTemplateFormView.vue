@@ -24,13 +24,14 @@
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template #footer>
-      <button type="button" class="mp-btn" @click="$router.push(backTo)">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="save">{{ editing ? '保存' : '创建' }}</button>
+      <AppButton @click="$router.push(backTo)">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting" @click="save">{{ editing ? '保存' : '创建' }}</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { graduationTemplateApi } from '@/modules/graduation/api/graduation-template.api'
 import { toast } from '@/utils/toast'
@@ -39,7 +40,7 @@ const TYPE_LABEL = { MATERIAL: '材料模板', TASKBOOK: '任务书模板', PROP
 
 export default {
   name: 'GraduationTemplateFormView',
-  components: { GraduationFormPageShell },
+  components: { AppButton, GraduationFormPageShell },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

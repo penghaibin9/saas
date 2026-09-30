@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="套餐 / 模块授权管理"
-    subtitle="单模块 / 组合 / 旗舰套餐定义 · 底座模块（主档 / 权限流程 / 集成 / PC 端）随套餐必含"
+    subtitle="单模块 / 组合 / 旗舰套餐定义 · 底座模块（主档 / 权限流程 / 集成 / 电脑端）随套餐必含"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >

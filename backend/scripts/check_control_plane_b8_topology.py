@@ -27,6 +27,7 @@ from app.services.sandbox_school_master_seed import validate_school_master
 from app.services.sandbox_school_mentor_workload import validate_school_mentor_workload_20k
 from app.services.sandbox_school_role_reconcile import (
     EXPECTED_ORG_SCOPES,
+    EXPECTED_ORG_SCOPE_TYPES,
     REQUIRED_ROLE_CODES,
     SECONDARY_ROLE_ASSIGNMENT_COUNTS,
 )
@@ -74,6 +75,7 @@ def _final_role_topology(db, tenant_id: int) -> tuple[dict, dict]:
         actual = int(db.scalar(select(func.count()).select_from(TeacherStudentScope).where(
             TeacherStudentScope.tenant_id == tenant_id,
             TeacherStudentScope.role_code == code,
+            TeacherStudentScope.scope_type == EXPECTED_ORG_SCOPE_TYPES[code],
             TeacherStudentScope.status == "ACTIVE",
             TeacherStudentScope.is_deleted.is_(False),
         )) or 0)
@@ -152,7 +154,7 @@ def main() -> None:
     if not shadow_report.get("zeroUnexplainedDrift") or shadow_report.get("tenantPermissionUniverseCount", 0) <= 400:
         raise RuntimeError(f"B8 shadow not sealed on 20K topology: {shadow_report}")
     if "*" not in set(ROLE_PERMISSIONS.get("SCHOOL_ADMIN", set())):
-        raise RuntimeError("B8-02 must not retire SCHOOL_ADMIN runtime wildcard before the explicit cutover card")
+        raise RuntimeError("legacy SCHOOL_ADMIN compatibility shadow unexpectedly changed")
 
     db = get_sessionmaker()()
     try:
@@ -170,6 +172,7 @@ def main() -> None:
             RoleTemplatePermission.role_template_id == int(template.id),
             RoleTemplatePermission.is_deleted.is_(False),
         )).all())
+        runtime_codes = set(shadow.published_system_role_permissions(db, "SCHOOL_ADMIN"))
     finally:
         db.close()
 
@@ -178,6 +181,8 @@ def main() -> None:
         raise RuntimeError(f"SCHOOL_ADMIN explicit snapshot drift expected={len(expected_codes)} actual={len(template_codes)}")
     if any(code.startswith("platform.") or code.startswith("enterprise.") for code in template_codes):
         raise RuntimeError("SCHOOL_ADMIN snapshot contains forbidden PLATFORM/enterprise permission")
+    if runtime_codes != expected_codes or "*" in runtime_codes:
+        raise RuntimeError("SCHOOL_ADMIN runtime did not cut over to the explicit published template")
 
     evidence = {
         "schemaVersion": 2,
@@ -196,7 +201,10 @@ def main() -> None:
         "schoolAdminTemplateVersion": template_version,
         "schoolAdminExplicitPermissionCount": len(template_codes),
         "tenantPermissionUniverseCount": len(expected_codes),
-        "runtimeSchoolAdminWildcardStillPresent": True,
+        "legacySchoolAdminWildcardShadowStillPresent": True,
+        "legacyWildcardRuntimeReachable": False,
+        "runtimeSchoolAdminWildcardStillPresent": False,
+        "runtimeSchoolAdminWildcardRetired": True,
         "shadow": {
             "roleCount": shadow_report["roleCount"],
             "unexplainedDriftCount": shadow_report["unexplainedDriftCount"],

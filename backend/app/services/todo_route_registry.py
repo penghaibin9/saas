@@ -31,10 +31,17 @@ _PC_EXACT: dict[str, tuple[str, str]] = {
 
 # 尚无详情路由时，只能落到真实可处理列表；仍下发 recordId，不把列表伪装成详情页。
 _PC_LIST: dict[str, tuple[str, str, dict[str, str]]] = {
+    "WORK_STUDY_REVIEW": ("todo-route:student-affairs-work-study", "/admin/student-affairs/funding/work-study", {}),
+    "WORK_STUDY_ONBOARD": ("todo-route:student-affairs-work-study", "/admin/student-affairs/funding/work-study", {}),
+    "STUDENT_LOAN_REVIEW": ("todo-route:student-affairs-loan", "/admin/student-affairs/funding/loans", {}),
+    "STUDENT_LOAN_CONFIRM": ("todo-route:student-affairs-loan", "/admin/student-affairs/funding/loans", {}),
+    "FEE_REDUCTION_REVIEW": ("todo-route:student-affairs-reduction", "/admin/student-affairs/funding/fee-reductions", {}),
+    "FEE_REDUCTION_FULFILL": ("todo-route:student-affairs-reduction", "/admin/student-affairs/funding/fee-reductions", {}),
+    "MATERIAL_REVIEW": ("todo-route:student-affairs-material", "/admin/student-affairs/material-operations", {}),
     "LEAVE_APPROVAL": ("todo-route:student-affairs-leave-queue", "/admin/student-affairs/leave", {"status": "PENDING"}),
-    "LEAVE_OVERDUE": ("todo-route:student-affairs-leave-ledger", "/admin/student-affairs/leave/ledger", {"status": "OVERDUE"}),
-    "LEAVE_CANCEL": ("todo-route:student-affairs-leave-queue", "/admin/student-affairs/leave", {"status": "CANCEL_PENDING"}),
-    "LEAVE_EXTENSION": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "PENDING"}),
+    "LEAVE_OVERDUE": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "OVERDUE"}),
+    "LEAVE_CANCEL": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "WAIT_CANCEL_LEAVE"}),
+    "LEAVE_EXTENSION": ("todo-route:student-affairs-leave-followup", "/admin/student-affairs/leave/followup", {"status": "EXTENSION_REVIEW"}),
     "DISCIPLINE_APPROVAL": ("todo-route:student-affairs-discipline-queue", "/admin/student-affairs/discipline", {"status": "PENDING"}),
     "DISCIPLINE_REMOVE": ("todo-route:student-affairs-discipline-queue", "/admin/student-affairs/discipline", {"status": "REMOVE_PENDING"}),
     "AID_APPROVAL": ("todo-route:student-affairs-aid-queue", "/admin/student-affairs/aid", {"status": "PENDING"}),
@@ -52,12 +59,32 @@ _PC_LIST: dict[str, tuple[str, str, dict[str, str]]] = {
     "EMPLOYMENT_FOLLOWUP": ("todo-route:employment-followup-queue", "/admin/employment/followups", {"status": "OPEN"}),
 }
 
+# PC 列表页已实现 recordId -> detail-first -> 对象聚焦的业务类型。
+# exact=True 的证据由 frontend/tests/student-affairs-todo-pc-focus.contract.test.mjs 逐页约束；
+# 不允许只改本表、页面不消费 recordId。
+_PC_LIST_FOCUS = frozenset({
+    "AA_SCHEDULE_CHANGE_APPROVAL",
+    "AA_GRADE_ENTRY",
+    "DORM_TRANSFER",
+    "WORK_STUDY_REVIEW", "WORK_STUDY_ONBOARD",
+    "STUDENT_LOAN_REVIEW", "STUDENT_LOAN_CONFIRM",
+    "FEE_REDUCTION_REVIEW", "FEE_REDUCTION_FULFILL",
+    "MATERIAL_REVIEW",
+    "LEAVE_APPROVAL", "LEAVE_OVERDUE", "LEAVE_CANCEL", "LEAVE_EXTENSION",
+    "AID_APPROVAL", "AID_ADJUST", "FUNDING_APPROVAL",
+    "DISCIPLINE_APPROVAL", "DISCIPLINE_REMOVE",
+})
+
 # 学生小程序当前真实业务页。query.recordId 用于页面 focus。
 # V3 §4.4：第三项是 focusMode——页面真的会读 recordId 定位对象才写 LIST_FOCUS，
 # 只是个安全入口就写 NONE；exact 由 mobile_focus_contract.is_route_exact() 统一判定，
 # 不再由本表自行宣称。
 _STUDENT_MINI: dict[str, tuple[str, str, str]] = {
+    "DORM_RECTIFICATION": ("todo-route:student-mini-dorm-rectification", "/pages/student/affairs/dorm", FOCUS_LIST_FOCUS),
+    "STUDENT_LOAN_SUPPLEMENT": ("todo-route:student-mini-loan", "/pages/student/affairs/loan", FOCUS_LIST_FOCUS),
+    "FEE_REDUCTION_CORRECTION": ("todo-route:student-mini-reduction", "/pages/student/affairs/reduction", FOCUS_LIST_FOCUS),
     "LEAVE_APPROVAL": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
+    "LEAVE_STUDENT_RESUBMIT": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
     "LEAVE_OVERDUE": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
     "LEAVE_CANCEL": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
     "LEAVE_EXTENSION": ("todo-route:student-mini-leave", "/pages/student/affairs/leave", FOCUS_LIST_FOCUS),
@@ -67,9 +94,9 @@ _STUDENT_MINI: dict[str, tuple[str, str, str]] = {
     "DISCIPLINE_APPROVAL": ("todo-route:student-mini-discipline", "/pages/student/affairs/discipline", FOCUS_NONE),
     "DISCIPLINE_REMOVE": ("todo-route:student-mini-discipline", "/pages/student/affairs/discipline", FOCUS_NONE),
     "ACAD_WARNING_HANDLE": ("todo-route:student-mini-academic-warning", "/pages/student/academic-affairs/warning", FOCUS_NONE),
-    "INTERN_WEEKLY_REVIEW": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
-    "INTERN_LEAVE_APPROVAL": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
-    "INTERN_EXCEPTION_HANDLE": ("todo-route:student-mini-internship", "/pages/student/internship/index", FOCUS_NONE),
+    "INTERN_WEEKLY_REVIEW": ("todo-route:student-mini-internship", "/pages/student-internship/index", FOCUS_NONE),
+    "INTERN_LEAVE_APPROVAL": ("todo-route:student-mini-internship", "/pages/student-internship/index", FOCUS_NONE),
+    "INTERN_EXCEPTION_HANDLE": ("todo-route:student-mini-internship", "/pages/student-internship/index", FOCUS_NONE),
 }
 
 # Student PC 当前真实业务页。query.tab 定位到 AffairsFourEndView/AcademicView
@@ -78,7 +105,10 @@ _STUDENT_MINI: dict[str, tuple[str, str, str]] = {
 # tab（如 leave/aid/funding）已经实现了 LIST_FOCUS，就假装 PC 端也一样。
 # 第三项是该目标的静态 query（如 {"tab": "leave"}）。
 _STUDENT_PC: dict[str, tuple[str, str, dict[str, str], str]] = {
+    "STUDENT_LOAN_SUPPLEMENT": ("todo-route:student-pc-loan", "/campus-service", {"tab": "loan"}, FOCUS_LIST_FOCUS),
+    "FEE_REDUCTION_CORRECTION": ("todo-route:student-pc-reduction", "/campus-service", {"tab": "reduction"}, FOCUS_LIST_FOCUS),
     "LEAVE_APPROVAL": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
+    "LEAVE_STUDENT_RESUBMIT": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
     "LEAVE_OVERDUE": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
     "LEAVE_CANCEL": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
     "LEAVE_EXTENSION": ("todo-route:student-pc-leave", "/campus-service", {"tab": "leave"}, FOCUS_NONE),
@@ -98,6 +128,15 @@ _STUDENT_PC: dict[str, tuple[str, str, dict[str, str], str]] = {
 # and is registered in mobile_focus_contract, focusMode stays NONE and routeExact remains false.
 # This is intentional: a safe business queue is better than pretending a list page is object-exact.
 _TEACHER_MINI: dict[str, tuple[str, str, str]] = {
+    "DORM_RECTIFICATION": ("todo-route:teacher-mini-dorm-rectify", "/pages/teacher/dorm-review/index", FOCUS_LIST_FOCUS),
+    "DORM_RECTIFICATION_RECHECK": ("todo-route:teacher-mini-dorm-recheck", "/pages/teacher/dorm-review/index", FOCUS_LIST_FOCUS),
+    "WORK_STUDY_REVIEW": ("todo-route:teacher-mini-work-study", "/pages/teacher/affairs/work-study/index", FOCUS_LIST_FOCUS),
+    "WORK_STUDY_ONBOARD": ("todo-route:teacher-mini-work-study", "/pages/teacher/affairs/work-study/index", FOCUS_LIST_FOCUS),
+    "STUDENT_LOAN_REVIEW": ("todo-route:teacher-mini-loan", "/pages/teacher/affairs/loan/index", FOCUS_LIST_FOCUS),
+    "STUDENT_LOAN_CONFIRM": ("todo-route:teacher-mini-loan", "/pages/teacher/affairs/loan/index", FOCUS_LIST_FOCUS),
+    "FEE_REDUCTION_REVIEW": ("todo-route:teacher-mini-reduction", "/pages/teacher/affairs/reduction/index", FOCUS_LIST_FOCUS),
+    "FEE_REDUCTION_FULFILL": ("todo-route:teacher-mini-reduction", "/pages/teacher/affairs/reduction/index", FOCUS_LIST_FOCUS),
+    "MATERIAL_REVIEW": ("todo-route:teacher-mini-material", "/pages/teacher/affairs/index", FOCUS_LIST_FOCUS),
     "LEAVE_APPROVAL": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
     "LEAVE_OVERDUE": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
     "LEAVE_CANCEL": ("todo-route:teacher-mini-leave", "/pages/teacher/affairs-leave/index", FOCUS_NONE),
@@ -107,20 +146,22 @@ _TEACHER_MINI: dict[str, tuple[str, str, str]] = {
     "AID_APPROVAL": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
     "AID_ADJUST": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
     "FUNDING_APPROVAL": ("todo-route:teacher-mini-affairs", "/pages/teacher/affairs-review/index", FOCUS_NONE),
-    "RISK_HANDLE": ("todo-route:teacher-mini-risk", "/pages/teacher/risk-students/index", FOCUS_NONE),
+    "RISK_HANDLE": ("todo-route:teacher-mini-risk", "/pages/teacher/risk-students/index", FOCUS_LIST_FOCUS),
     "ACAD_WARNING_HANDLE": ("todo-route:teacher-mini-academic-warning", "/pages/teacher/academic-warning/index", FOCUS_NONE),
     "AA_SCHEDULE_CHANGE_APPROVAL": ("todo-route:teacher-mini-schedule-change", "/pages/teacher/academic-affairs/schedule-change-review", FOCUS_NONE),
     "AA_STATUS_APPROVAL": ("todo-route:teacher-mini-status-change", "/pages/teacher/academic-affairs/status-change-review", FOCUS_NONE),
     "AA_GRADE_ENTRY": ("todo-route:teacher-mini-grade-entry", "/pages/teacher/academic-affairs/grade-entry", FOCUS_NONE),
-    "GD_PROPOSAL_REVIEW": ("todo-route:teacher-mini-graduation-topics", "/pages/teacher/graduation-topics/index", FOCUS_NONE),
+    # 开题报告不是选题志愿审核。毕业设计指导页已消费 recordId、按当前教师数据范围
+    # 精确回读待审开题并打开批阅工作区，故不得再把待办误送到选题页。
+    "GD_PROPOSAL_REVIEW": ("todo-route:teacher-mini-graduation-proposal-review", "/pages/teacher/graduation-guide/index", FOCUS_LIST_FOCUS),
     "GD_TOPIC_CHANGE_REVIEW": ("todo-route:teacher-mini-graduation-topics", "/pages/teacher/graduation-topics/index", FOCUS_NONE),
     "GD_FINAL_REVIEW": ("todo-route:teacher-mini-graduation-guide", "/pages/teacher/graduation-guide/index", FOCUS_NONE),
     "GD_DEFENSE_SCORE": ("todo-route:teacher-mini-defense-score", "/pages/teacher/defense-score/index", FOCUS_NONE),
-    "INTERN_WEEKLY_REVIEW": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
-    "INTERN_EXCEPTION_HANDLE": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
-    "INTERN_LEAVE_APPROVAL": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
-    "INTERN_VISIT_RECTIFY": ("todo-route:teacher-mini-internship-review", "/pages/teacher/internship-review/index", FOCUS_NONE),
-    "DORM_TRANSFER": ("todo-route:teacher-mini-dorm", "/pages/teacher/dorm-review/index", FOCUS_NONE),
+    "INTERN_WEEKLY_REVIEW": ("todo-route:teacher-mini-internship-review", "/pages/teacher-internship/internship-review/index", FOCUS_NONE),
+    "INTERN_EXCEPTION_HANDLE": ("todo-route:teacher-mini-internship-review", "/pages/teacher-internship/internship-review/index", FOCUS_NONE),
+    "INTERN_LEAVE_APPROVAL": ("todo-route:teacher-mini-internship-review", "/pages/teacher-internship/internship-review/index", FOCUS_NONE),
+    "INTERN_VISIT_RECTIFY": ("todo-route:teacher-mini-internship-review", "/pages/teacher-internship/internship-review/index", FOCUS_NONE),
+    "DORM_TRANSFER": ("todo-route:teacher-mini-dorm", "/pages/teacher/dorm-review/index", FOCUS_LIST_FOCUS),
     "DORM_EXCEPTION": ("todo-route:teacher-mini-dorm", "/pages/teacher/dorm-review/index", FOCUS_NONE),
     "EMPLOYMENT_FOLLOWUP": ("todo-route:teacher-mini-employment", "/pages/teacher/employment-follow/index", FOCUS_NONE),
 }
@@ -145,7 +186,7 @@ def _student_pc_target(type_code: str, rid: str) -> dict | None:
         "query": {**static_query, "recordId": rid},
         "path": path,
         "focusMode": focus_mode,
-        "exact": is_route_exact(focus_mode, path),
+        "exact": focus_mode == FOCUS_LIST_FOCUS,
     }
 
 
@@ -154,10 +195,25 @@ def _mini_target(mapping: dict[str, tuple[str, str, str]], type_code: str, rid: 
     if not target:
         return None
     route_name, path, focus_mode = target
+    query = {"recordId": rid}
+    if type_code == "DORM_RECTIFICATION" and path == "/pages/student/affairs/dorm":
+        query = {"rectificationId": rid}
+    if type_code in {"DORM_RECTIFICATION", "DORM_RECTIFICATION_RECHECK"} and path == "/pages/teacher/dorm-review/index":
+        query["tab"] = "recheck"
+    # This page hosts several independent workflows with overlapping numeric IDs.
+    # Without type it defaults to AID_APPROVAL and can open a different business.
+    if path == "/pages/teacher/affairs-review/index":
+        query["type"] = type_code
+    # 毕设指导页承载开题和成果两种独立的审核状态机。仅有 recordId 时页面不能
+    # 推断它属于哪个队列，必须由后端 typed todo 传递 kind，才可以精确打开该条。
+    if type_code == "GD_PROPOSAL_REVIEW":
+        query["kind"] = "proposal"
+    elif type_code == "GD_FINAL_REVIEW":
+        query["kind"] = "final"
     return {
         "routeName": route_name,
         "routeParams": {"recordId": rid},
-        "query": {"recordId": rid},
+        "query": query,
         "path": path,
         "focusMode": focus_mode,
         "exact": is_route_exact(focus_mode, path),
@@ -187,13 +243,15 @@ def resolve_todo_route(todo_type: str | None, record_id: Any, *, client: str) ->
         fallback = _PC_LIST.get(type_code)
         if fallback:
             route_name, path, query = fallback
+            focus_mode = FOCUS_LIST_FOCUS if type_code in _PC_LIST_FOCUS else FOCUS_NONE
             return {
                 "routeName": route_name,
                 "routeParams": {"recordId": rid},
                 "query": {**query, "recordId": rid},
                 "path": path,
-                "focusMode": FOCUS_NONE,
-                "exact": False,
+                "focusMode": focus_mode,
+                # PC 的 LIST_FOCUS 由对应页面合同测试证明；这里不复用 Mini 端页面白名单。
+                "exact": focus_mode == FOCUS_LIST_FOCUS,
             }
         return None
 
@@ -213,7 +271,14 @@ def route_contract_snapshot() -> dict[str, dict[str, Any]]:
     """供 CI/合同测试枚举，防新增 todoType 后又回到前端猜路由。"""
     return {
         "pcExact": {key: {"routeName": value[0], "pathTemplate": value[1]} for key, value in _PC_EXACT.items()},
-        "pcList": {key: {"routeName": value[0], "path": value[1]} for key, value in _PC_LIST.items()},
+        "pcList": {
+            key: {
+                "routeName": value[0], "path": value[1],
+                "focusMode": FOCUS_LIST_FOCUS if key in _PC_LIST_FOCUS else FOCUS_NONE,
+                "exact": key in _PC_LIST_FOCUS,
+            }
+            for key, value in _PC_LIST.items()
+        },
         "studentMini": {
             key: {
                 "routeName": value[0],

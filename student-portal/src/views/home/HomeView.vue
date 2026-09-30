@@ -9,9 +9,7 @@
         <div class="home-hero__orb home-hero__orb--two" />
         <div class="home-hero__top">
           <div class="home-hero__identity">
-            <div class="home-hero__eyebrow">MY STUDENT JOURNEY</div>
-            <h1>{{ greeting }}，{{ studentName }}</h1>
-            <p>今天先完成最重要的一件事，其他事项已按影响程度和截止时间排好顺序。</p>
+            <h1>我的工作台</h1>
             <div class="home-hero__chips">
               <span v-for="c in identity" :key="c.label" class="home-chip"><small>{{ c.label }}</small><b>{{ c.value }}</b></span>
             </div>
@@ -19,7 +17,6 @@
           <div class="home-stage">
             <span>当前成长阶段</span>
             <strong>{{ stageLabel }}</strong>
-            <div class="home-stage__bar"><i /></div>
             <small>{{ domains.length ? `${domains.filter((d) => d.hasData).length} 个环节已有业务数据` : '等待学校发布阶段信息' }}</small>
           </div>
         </div>
@@ -44,20 +41,7 @@
         </article>
       </section>
 
-      <section class="home-card home-journey">
-        <div class="home-card__head">
-          <div><h2>我的成长航线</h2><p>跨模块统一查看当前阶段和下一步。</p></div>
-          <span>{{ journey.filter((item) => item.done).length }} / {{ journey.length }} 已完成</span>
-        </div>
-        <div class="home-journey__track">
-          <button v-for="(item, index) in journey" :key="item.key" type="button" class="home-journey__item"
-                  :class="{ 'is-done': item.done, 'is-current': item.current }" @click="router.push(item.path)">
-            <span class="home-journey__node">{{ item.done ? '✓' : index + 1 }}</span>
-            <strong>{{ item.label }}</strong>
-            <small>{{ item.state }}</small>
-          </button>
-        </div>
-      </section>
+
 
       <div class="home-grid">
         <section class="home-card home-todos">
@@ -66,7 +50,7 @@
             <span>{{ todos.length }} 项待办</span>
           </div>
           <StateBlock v-if="todoState === 'ERROR'" type="error" text="待办加载失败，请稍后重试" />
-          <StateBlock v-else-if="!todos.length" type="empty" text="暂无待办，一切就绪" />
+          <StateBlock v-else-if="!todos.length" type="empty" text="暂未收到待办，请结合下方办理进度核对各项手续" />
           <div v-else class="home-todo-list">
             <!-- SP-H03/H06：只消费 t.action，未落地的类型 disabled + 给出原因，不猜路由。 -->
             <button v-for="(t, index) in todos" :key="t.id || `${t.title}-${index}`" type="button" class="home-todo"
@@ -107,7 +91,7 @@
 
           <section class="home-card">
             <div class="home-card__head">
-              <div><h2>环节状态</h2><p>来自各业务域的真实状态。</p></div>
+              <div><h2>环节状态</h2><p>查看各项服务的办理状态。</p></div>
             </div>
             <StateBlock v-if="!domains.length" type="empty" text="暂无环节信息" />
             <div v-else class="home-domain-list">
@@ -121,9 +105,24 @@
         </div>
       </div>
 
+      <section class="home-card home-journey">
+        <div class="home-card__head">
+          <div><h2>我的成长航线</h2><p>跨模块统一查看当前阶段和下一步。</p></div>
+          <span>{{ journey.filter((item) => item.done).length }} / {{ journey.length }} 已完成</span>
+        </div>
+        <div class="home-journey__track">
+          <button v-for="(item, index) in journey" :key="item.key" type="button" class="home-journey__item"
+                  :class="{ 'is-done': item.done, 'is-current': item.current }" @click="router.push(item.path)">
+            <span class="home-journey__node">{{ item.done ? '✓' : index + 1 }}</span>
+            <strong>{{ item.label }}</strong>
+            <small>{{ item.state }}</small>
+          </button>
+        </div>
+      </section>
+
       <section class="home-card home-quick-card">
         <div class="home-card__head">
-          <div><h2>快捷服务</h2><p>直接进入高频模块，不必逐层寻找。</p></div>
+          <div><h2>快捷服务</h2><p>查看学校为你开通的服务。</p></div>
         </div>
         <StateBlock v-if="!quick.length" type="empty" text="暂无已开通的快捷服务" />
         <div v-else class="home-quick">
@@ -143,7 +142,6 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { useSessionStore } from '../../stores/session'
 import { portalApi } from '../../services/portalApi'
 import { localizeStatusSuffixText } from '../../services/visibleEnumLocalization'
 import { moduleByKey } from '../../platform/moduleRegistry'
@@ -151,7 +149,6 @@ import StateBlock from '../../components/StateBlock.vue'
 import StatusTag from '../../components/StatusTag.vue'
 
 const router = useRouter()
-const session = useSessionStore()
 const loading = ref(true)
 const home = ref({})
 const audit = ref({})
@@ -169,7 +166,6 @@ function sectionState(key) {
 const todoState = computed(() => sectionState('todo'))
 const messageState = computed(() => sectionState('message'))
 
-const studentName = computed(() => home.value.student?.name || session.user?.realName || '同学')
 const stageLabel = computed(() => home.value.stage?.label || '在校')
 const todos = computed(() => home.value.todos || [])
 const msgs = computed(() => home.value.notices || [])
@@ -189,10 +185,7 @@ const focusMeta = computed(() => {
   return parts.filter(Boolean).join(' · ') || '请及时处理'
 })
 
-const greeting = computed(() => {
-  const h = new Date().getHours()
-  return h < 11 ? '上午好' : h < 13 ? '中午好' : h < 18 ? '下午好' : '晚上好'
-})
+
 
 const identity = computed(() => {
   const s = home.value.student || {}
@@ -217,7 +210,7 @@ const metrics = computed(() => {
       unit: '',
       sub: auditUnavailable ? '暂不可用' : `培养要求 ${c.requiredCredits ?? '—'}`,
       color: 'var(--t1)' },
-    { title: '平均绩点 GPA',
+    { title: '平均绩点',
       value: auditUnavailable ? '—' : metricValue(c.gpa),
       unit: '',
       sub: auditUnavailable ? '暂不可用' : '截至最新学期',
@@ -235,7 +228,7 @@ const metrics = computed(() => {
   ]
 })
 
-const ctaText = computed(() => (topAlert.value ? '立即处理' : todos.value.length ? '去办理' : ''))
+const ctaText = computed(() => nextAction.value?.label || (topAlert.value ? '立即处理' : todos.value.length ? '去办理' : ''))
 // SP-H05：可见性与落点由服务端 quickServices 决定（已按本租户模块开通过滤）；
 // 本地 MODULES 只提供 icon/theme，不再自行 filter 出入口，避免租户禁用模块后仍展示。
 const quick = computed(() => (home.value.quickServices || []).map((entry) => {
@@ -243,7 +236,7 @@ const quick = computed(() => (home.value.quickServices || []).map((entry) => {
   return { ...entry, d1: mod.d1, d2: mod.d2 }
 }))
 
-const STATUS_LABELS = { CHECKED_IN: '已报到', ONBOARD: '进行中', DONE: '已完成', NORMAL: '正常', SIGNED: '已签约', WARNING: '预警', PENDING: '待处理', PROCESSING: '进行中', APPROVED: '已通过', VERIFIED: '已核验', UNEMPLOYED: '暂未就业', EMPLOYED: '已就业', JOB_SEEKING: '求职中', NOT_STARTED: '尚未开始' }
+const STATUS_LABELS = { CHECKED_IN: '已现场报到', COLLEGE_CONFIRMED: '入学手续已完成', ONBOARD: '进行中', DONE: '已完成', NORMAL: '正常', SIGNED: '已签约', WARNING: '预警', PENDING: '待处理', PROCESSING: '进行中', APPROVED: '已通过', VERIFIED: '已核验', UNEMPLOYED: '暂未就业', EMPLOYED: '已就业', JOB_SEEKING: '求职中', NOT_STARTED: '尚未开始' }
 // SP-H04：跨域生命周期由服务端归一，前端只认这 6 个统一值，不再本地维护
 // DONE_STATES 把 DONE/APPROVED/VERIFIED/CHECKED_IN/SIGNED 一刀切当"已完成"——
 // SIGNED 只是就业去向类型，不能推出毕业或离校完成。

@@ -66,14 +66,29 @@ export const useGraduationBatchStore = defineStore('graduationBatch', {
      */
     async ensureLoaded(opts = {}) {
       if (this.initialized && !opts.force && !opts.batchIdFromUrl) return
+      const urlId = opts.batchIdFromUrl ? String(opts.batchIdFromUrl) : ''
       this.batchLoading = true
       this.batchError = ''
       try {
         const res = await graduationBatchApi.getBatches({ page: 1, pageSize: 200 })
         if (res.code !== 0) {
           this.batchError = res.message || '批次列表加载失败'
-          this.availableBatches = []
-          this.applyBatch(null)
+          if (urlId) {
+            const authorizedTaskBatch = {
+              id: urlId,
+              batchName: `评阅任务批次 ${urlId}`,
+              status: 'RUNNING',
+              academicYear: '',
+              gradeYear: '',
+              currentStage: ''
+            }
+            this.availableBatches = [authorizedTaskBatch]
+            this.applyBatch(authorizedTaskBatch)
+            this.initialized = true
+          } else {
+            this.availableBatches = []
+            this.applyBatch(null)
+          }
           this.needsExplicitSelect = false
           return
         }
@@ -81,7 +96,6 @@ export const useGraduationBatchStore = defineStore('graduationBatch', {
         // 有效批次：未作废
         this.availableBatches = list.filter((b) => b.status !== 'VOIDED')
         const running = this.availableBatches.filter((b) => b.status === 'RUNNING')
-        const urlId = opts.batchIdFromUrl ? String(opts.batchIdFromUrl) : ''
         const storedId = readStoredBatchId()
 
         let chosen = null
@@ -89,6 +103,21 @@ export const useGraduationBatchStore = defineStore('graduationBatch', {
 
         if (urlId) {
           chosen = this.availableBatches.find((b) => String(b.id) === urlId) || null
+          // A formally assigned reviewer can have an authorized review task while the
+          // general batch catalog is intentionally empty under their narrow data scope.
+          // Preserve the explicit URL context in that one case; every downstream API
+          // still performs object-level batch/task authorization and fails closed.
+          if (!chosen && this.availableBatches.length === 0) {
+            chosen = {
+              id: urlId,
+              batchName: `评阅任务批次 ${urlId}`,
+              status: 'RUNNING',
+              academicYear: '',
+              gradeYear: '',
+              currentStage: ''
+            }
+            this.availableBatches = [chosen]
+          }
         }
         if (!chosen && storedId) {
           chosen = this.availableBatches.find((b) => String(b.id) === storedId) || null
@@ -110,8 +139,23 @@ export const useGraduationBatchStore = defineStore('graduationBatch', {
         this.initialized = true
       } catch (e) {
         this.batchError = e?.message || '批次列表加载失败'
-        this.availableBatches = []
-        this.applyBatch(null)
+        if (urlId) {
+          const authorizedTaskBatch = {
+            id: urlId,
+            batchName: `评阅任务批次 ${urlId}`,
+            status: 'RUNNING',
+            academicYear: '',
+            gradeYear: '',
+            currentStage: ''
+          }
+          this.availableBatches = [authorizedTaskBatch]
+          this.applyBatch(authorizedTaskBatch)
+          this.needsExplicitSelect = false
+          this.initialized = true
+        } else {
+          this.availableBatches = []
+          this.applyBatch(null)
+        }
       } finally {
         this.batchLoading = false
       }

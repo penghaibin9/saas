@@ -1,0 +1,31 @@
+/* Only the timetable workspace body; shared shell and navigation remain authoritative. */
+.aa-schedule-workspace {
+  --text-900: var(--text-primary);
+  --text-700: var(--text-secondary);
+  --text-600: var(--text-secondary);
+  --text-500: var(--text-secondary);
+  --text-400: var(--text-tertiary);
+  --bg-white: var(--bg-card);
+  --bg-100: var(--bg-page);
+  --fill-50: var(--bg-page);
+  --fill-100: var(--bg-page);
+  --border-100: var(--border-base);
+  --border-200: var(--border-base);
+  --border-300: var(--border-base);
+  min-width: 0;
+}
+.aa-schedule-workspace :deep(.mps__head) { padding-bottom: 10px; border-bottom: 1px solid var(--border-base); }
+.aa-schedule-workspace :deep(.mps__title) { font-size: 20px; line-height: 1.35; }
+.aa-schedule-workspace :deep(.mps__subtitle) { color: var(--text-secondary); line-height: 1.6; }
+.aa-schedule-workspace :deep(.mps__chip--scope) { background: var(--bg-card); }
+.aa-schedule-workspace .aa-filter { padding: 10px 12px; border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); flex-wrap: wrap; }
+.aa-schedule-workspace :is(.aa-input, .aa-select) { min-height: 36px; }
+.aa-schedule-workspace .aa-filter__item--grow { flex: 1; min-width: 220px; max-width: 420px; }
+.aa-schedule-workspace :is(button, input, select, [tabindex]):focus-visible { outline: 2px solid var(--pri); outline-offset: 3px; }
+.aa-schedule-workspace .mp-note { color: var(--text-secondary); font-size: 13px; line-height: 1.7; }
+@media (max-width: 760px) {
+  .aa-schedule-workspace .aa-filter { padding: 12px; gap: 12px; }
+  .aa-schedule-workspace .aa-filter__item { min-width: 0; flex: 1 1 150px; }
+  .aa-schedule-workspace .aa-today-item { grid-template-columns: 64px minmax(0, 1fr); }
+  .aa-schedule-workspace .aa-today-item em { grid-column: 2; }
+}

@@ -1,41 +1,31 @@
 <template>
   <ModulePageShell
-    title="企业岗位库"
+    class="enterprise-list"
+    :title="activePanel === 'qualification' ? '企业准入' : '企业库'"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppExportButton :export-fn="exportFn" :has-permission="can('exportEnterprises')">⬇ 导出 Excel 台账</AppExportButton>
+      <AppExportButton :export-fn="exportFn" :has-permission="can('exportEnterprises')">{{ appliedFilters.blacklist ? '导出台账（不限黑名单）' : '导出企业台账' }}</AppExportButton>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
     </template>
 
     <div class="mp-stack">
-      <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
-      <section v-if="activePanel === 'stats' && entStats" class="mp-card ie-stats">
-        <div class="mp-card__head"><span class="mp-card__title">企业库统计</span></div>
-        <div class="mp-card__body">
-          <div class="ie-stats__grid">
-            <AppMetricCard title="企业总数" :value="entStats.total" />
-            <AppMetricCard title="黑名单" :value="entStats.blacklistCount" :accent="entStats.blacklistCount ? 'risk' : 'primary'" />
-            <AppMetricCard v-for="s in entStats.byCoopStatus" :key="s.status" :title="s.label" :value="s.count" />
-          </div>
-          <div v-if="entStats.byIndustry?.length" class="ie-stats__ind">
-            <span class="mp-note">行业分布：</span>
-            <span v-for="(ind, i) in entStats.byIndustry" :key="ind.industry">{{ ind.industry }} {{ ind.count }}<template v-if="i < entStats.byIndustry.length - 1"> · </template></span>
-          </div>
-        </div>
-      </section>
-
+      <p v-if="receipt" class="ie-receipt" role="status">{{ receipt }}</p>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
-
+      <div class="ie-list-head">
+        <span>{{ loading ? '正在查询企业…' : error ? '企业列表暂不可用' : `筛选结果 ${total} 家` }}</span>
+        <AppButton variant="ghost" size="sm" :disabled="loading" @click="load">刷新列表</AppButton>
+      </div>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无企业" description="可通过「＋ 新增企业」或「导入」补充企业库" />
+      <EmptyState v-else-if="!rows.length" title="当前筛选下没有企业" :description="activePanel === 'qualification' ? '可切换合作状态查看已审核企业，或重置筛选。' : '可调整筛选；有维护权限时，也可新增或导入企业。'" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-company="{ row }">
-          <div class="mp-cell-main">{{ row.name }}</div>
-          <div class="mp-cell-sub">{{ row.creditCode || '无信用代码' }} · {{ row.sourceLabel }}</div>
+          <RouterLink class="ie-company" :to="detailLink(row)">{{ row.name }}</RouterLink>
+          <div class="mp-cell-sub">{{ row.creditCode || '信用代码未登记' }}</div>
+          <div class="mp-cell-sub">{{ row.industry || '行业未登记' }} · {{ row.region || '地区未登记' }}</div>
         </template>
         <template #cell-contact="{ row }">
           <template v-if="row.contactPerson">
@@ -52,15 +42,29 @@
           <AppStatusTag :type="row.qualificationStatus === 'PASSED' ? 'success' : (row.qualificationStatus === 'FAILED' ? 'danger' : 'default')">{{ row.qualificationLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
+          <div class="ie-actions">
+            <RouterLink class="mp-link" :to="detailLink(row, 'coop')">{{ row.coopStatus === 'PENDING' ? '核验准入' : '合作与资质' }}</RouterLink>
+            <RouterLink v-if="can('editEnterprise') && row.coopStatus !== 'ARCHIVED'" class="mp-link" :to="editLink(row)">编辑资料</RouterLink>
+          </div>
         </template>
       </DataTable>
+      <details class="ie-stats" :open="statsOpen" @toggle="toggleStats">
+        <summary>本校企业概况 <span>全校企业库，非当前批次或筛选结果</span></summary>
+        <div v-if="statsLoading" class="mp-note">正在读取概况…</div>
+        <div v-else-if="statsError" role="alert" class="ie-stats-error">{{ statsError }} <AppButton variant="ghost" size="sm" @click="loadStats">重试</AppButton></div>
+        <template v-else-if="entStats">
+          <dl class="ie-stats__grid"><div><dt>企业总数</dt><dd>{{ entStats.total ?? '—' }}</dd></div><div><dt>已标记黑名单</dt><dd>{{ entStats.blacklistCount ?? '—' }}</dd></div><div v-for="s in entStats.byCoopStatus || []" :key="s.status"><dt>{{ s.status === 'BLACKLIST' ? '黑名单状态' : s.label }}</dt><dd>{{ s.count ?? '—' }}</dd></div></dl>
+          <p v-if="entStats.byIndustry?.length" class="mp-note">行业分布：<span v-for="(item, index) in entStats.byIndustry" :key="item.industry">{{ index ? ' · ' : '' }}{{ item.industry }} {{ item.count }}</span></p>
+        </template>
+      </details>
     </div>
 
     <!-- 新增 / 编辑：独立表单页 /admin/internship/enterprises/new 与 /:id/edit（EnterpriseFormView） -->
 
     <!-- Excel 导入（正式 xlsx · 公共底座） -->
     <AppExcelImportDrawer
+      v-if="can('importEnterprises')"
+      :key="scopeEpoch"
       v-model:visible="importVisible"
       title="导入企业"
       template-name="企业导入模板.xlsx"
@@ -73,30 +77,18 @@
       @imported="onImported"
     />
 
-    <AppConfirmDialog
-      v-model:visible="confirm.visible"
-      :title="confirm.title"
-      :message="confirm.message"
-      :type="confirm.type"
-      :confirm-text="confirm.confirmText"
-      :require-reason="confirm.requireReason"
-      :reason-label="confirm.reasonLabel"
-      :submitting="submitting"
-      @confirm="onConfirm"
-    />
   </ModulePageShell>
 </template>
 
 <script>
-/** 企业库列表（/admin/internship/enterprises）：筛选 + 审核/暂停/黑名单状态机 + 真导入导出 + 脱敏；新增/编辑走独立表单页 EnterpriseFormView。 */
+/** 企业库负责检索与导入导出；准入审核和合作变更统一在企业详情中办理。 */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppExportButton, AppStatusTag, AppMetricCard } from '@/components/common'
+import { AppExportButton, AppStatusTag } from '@/components/common'
+import { AppButton } from '@/components/ui'
 import { AppExcelImportDrawer } from '@/components/common/excel'
-import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { TableActionColumn } from '@/modules/internship/components'
-import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
+import { canCode } from '@/modules/internship/composables/permission'
 
 const EMPTY_FILTERS = () => ({ keyword: '', coopStatus: '', industry: '', region: '', blacklist: '' })
 const ENTERPRISE_PANEL_PRESETS = {
@@ -111,206 +103,150 @@ const ENTERPRISE_PANEL_PRESETS = {
   cooperation: () => ({ ...EMPTY_FILTERS(), coopStatus: 'ACTIVE' }),
   positions: () => EMPTY_FILTERS()
 }
-const ENTERPRISE_PANEL_HINTS = {
-  list: '合作企业主档 · 联系电话默认脱敏',
-  detail: '点击行「详情」进入企业详情页',
-  contacts: '联系人在企业详情页维护',
-  mentor: '企业导师在企业详情页维护',
-  qualification: '待审核企业 · 行内可「审核」资质',
-  blacklist: '黑名单企业 · 可「移出黑名单」',
-  archive: '已归档企业台账',
-  stats: '企业库统计 · 合作状态/行业/黑名单汇总',
-  cooperation: '合作中企业',
-  positions: '关联岗位请前往岗位库筛选企业'
-}
 
 export default {
   name: 'InternshipEnterpriseListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppMetricCard, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState, AppConfirmDialog, TableActionColumn, ModuleSummaryStrip },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppButton, AppStatusTag, AppExportButton, AppExcelImportDrawer, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       internshipApi,
-      loading: true, error: '', submitting: false, activePanel: 'list',
-      rows: [], total: 0, page: 1, pageSize: 10,
+      loading: true, error: '', activePanel: 'list',
+      rows: [], total: 0, page: 1, pageSize: 20,
+      listSequence: 0, statsSequence: 0, scopeEpoch: 0, receipt: '',
+      statsOpen: false, statsLoading: false, statsError: '',
       filters: EMPTY_FILTERS(),
+      appliedFilters: EMPTY_FILTERS(),
       importVisible: false,
-      confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null, extra: null },
       entStats: null,
       columns: [
-        { key: 'company', title: '企业 / 信用代码' },
-        { key: 'industry', title: '行业' },
-        { key: 'region', title: '地区' },
+        { key: 'company', title: '企业信息', width: '300px' },
         { key: 'contact', title: '联系人 / 电话' },
         { key: 'coopStatus', title: '合作状态' },
         { key: 'qualification', title: '资质' },
-        { key: 'internCount', title: '实习生' },
-        { key: 'actions', title: '操作', width: '260px' }
+        { key: 'internCount', title: '实习生', width: '80px' },
+        { key: 'actions', title: '操作', width: '160px' }
       ]
     }
   },
   computed: {
     perms() { return this.ctx.permissionActions || {} },
-    coopStatusOptions() { return this.ctx.statusOptions.coopStatus || [] },
-    industryOptions() { return this.ctx.statusOptions.enterpriseIndustry || [] },
+    coopStatusOptions() { return this.ctx.statusOptions?.coopStatus || [] },
+    industryOptions() { return this.ctx.statusOptions?.enterpriseIndustry || [] },
     filterFields() {
       return [
         { key: 'keyword', label: '关键词', type: 'text', placeholder: '企业名称 / 信用代码 / 联系人' },
         { key: 'coopStatus', label: '合作状态', type: 'select', options: this.coopStatusOptions },
         { key: 'industry', label: '行业', type: 'select', options: this.industryOptions },
-        { key: 'region', label: '地区', type: 'text', placeholder: '省/市' }
+        { key: 'region', label: '地区', type: 'text', placeholder: '省/市' },
+        { key: 'blacklist', label: '黑名单', type: 'select', options: [{ value: 'true', label: '仅黑名单' }, { value: 'false', label: '排除黑名单' }] }
       ]
     },
     toolbarActions() {
-      const pa = this.perms
       return [
-        { key: 'create', label: '＋ 新增企业', variant: 'primary' },
-        { key: 'import', label: '导入' }
-      ].filter((a) => !pa[a.key + 'Enterprise'] || pa[a.key + 'Enterprise'].visible !== false)
-        .map((a) => {
-          const p = pa[({ create: 'createEnterprise', import: 'importEnterprises' })[a.key]]
-          return p ? { ...a, disabled: !p.allowed, disabledReason: p.reason } : a
-        })
+        { key: 'create', label: '新增企业', variant: 'primary', permission: 'createEnterprise' },
+        { key: 'import', label: '导入企业', permission: 'importEnterprises' }
+      ].filter(a => this.perms[a.permission]?.visible !== false && this.perms[a.permission])
+        .map(a => ({ ...a, disabled: !this.can(a.permission), disabledReason: this.reason(a.permission) }))
     },
     pageSubtitle() {
-      const hint = ENTERPRISE_PANEL_HINTS[this.activePanel] || ENTERPRISE_PANEL_HINTS.list
-      return `维护合作企业和实习岗位，检查企业资质、岗位容量和专业匹配情况 · 共 ${this.total} 家 · ${hint}`
+      return this.activePanel === 'qualification' ? '进入企业核验资料与考察记录，再完成准入审核。' : '本校共享企业库，核对合作状态与资质，继续企业对接。'
     },
-    summaryMetrics() {
-      const s = this.entStats
-      if (!s) return []
-      const m = [{ label: '合作企业', value: s.total }]
-      if (s.blacklistCount != null) m.push({ label: '黑名单', value: s.blacklistCount, tone: s.blacklistCount ? 'warn' : undefined })
-      const pending = (s.byCoopStatus || []).find((x) => x.status === 'PENDING')
-      if (pending) m.push({ label: '待审核企业', value: pending.count, tone: pending.count ? 'warn' : undefined })
-      return m
+    listQuery() {
+      const query = { panel: this.activePanel, page: String(this.page) }
+      if (typeof this.$route.query.batchId === 'string') query.batchId = this.$route.query.batchId
+      for (const [key, value] of Object.entries(this.appliedFilters)) query[key] = value
+      return query
     }
   },
   watch: {
-    '$route.query.panel': {
+    '$route.query': {
       immediate: true,
-      handler(panel) {
-        this.applyPanel((panel || 'list').toString())
-      }
-    }
+      deep: true,
+      handler() { this.restoreQuery(); this.load() }
+    },
+    ctx: { deep: true, handler() {
+      this.scopeEpoch++; this.listSequence++; this.statsSequence++
+      this.entStats = null; this.statsError = ''; this.statsLoading = false
+      this.importVisible = false; this.receipt = ''; this.rows = []; this.total = 0
+      this.restoreQuery(); this.load()
+      if (this.statsOpen) this.loadStats()
+    } }
   },
+  beforeUnmount() { this.scopeEpoch++; this.listSequence++; this.statsSequence++ },
   methods: {
-    applyPanel(panel) {
-      const key = ENTERPRISE_PANEL_PRESETS[panel] ? panel : 'list'
-      this.activePanel = key
-      this.filters = (ENTERPRISE_PANEL_PRESETS[key] || ENTERPRISE_PANEL_PRESETS.list)()
-      this.page = 1
-      // 摘要条常驻使用企业统计，进入统计面板时强制刷新，其余面板复用已加载数据
-      if (key === 'stats' || !this.entStats) this.loadStats()
-      this.load()
+    restoreQuery() {
+      const q = this.$route.query
+      this.activePanel = Object.hasOwn(ENTERPRISE_PANEL_PRESETS, q.panel) ? q.panel : 'list'
+      const filters = ENTERPRISE_PANEL_PRESETS[this.activePanel]()
+      for (const key of Object.keys(filters)) if (typeof q[key] === 'string') filters[key] = q[key]
+      if (!['true', 'false'].includes(filters.blacklist)) filters.blacklist = ''
+      this.filters = filters; this.appliedFilters = { ...filters }
+      this.page = Math.min(1000000, Math.max(1, Number.parseInt(q.page, 10) || 1))
+      if (this.activePanel === 'stats') { this.statsOpen = true; if (!this.entStats && !this.statsLoading) this.loadStats() }
+    },
+    navigate() {
+      const query = this.listQuery
+      if (JSON.stringify(query) === JSON.stringify(this.$route.query)) return this.load()
+      return this.$router.replace({ path: '/admin/internship/enterprises', query })
+    },
+    toggleStats(event) {
+      this.statsOpen = event.target.open
+      if (this.statsOpen && !this.entStats && !this.statsLoading && !this.statsError) this.loadStats()
     },
     async loadStats() {
-      const res = await internshipApi.getEnterpriseStats()
-      if (res.code === 0) this.entStats = res.data
+      const sequence = ++this.statsSequence, scope = this.scopeEpoch
+      this.entStats = null; this.statsError = ''
+      if (!canCode(this.ctx, 'internship.enterprise.view')) { this.statsError = '当前账号没有查看企业库的权限'; this.statsLoading = false; return }
+      this.statsLoading = true
+      try {
+        const res = await internshipApi.getEnterpriseStats()
+        if (sequence !== this.statsSequence || scope !== this.scopeEpoch) return
+        if (res.code === 0) this.entStats = res.data
+        else this.statsError = res.message || '企业概况读取失败'
+      } catch { if (sequence === this.statsSequence && scope === this.scopeEpoch) this.statsError = '企业概况读取失败，请重试' }
+      finally { if (sequence === this.statsSequence && scope === this.scopeEpoch) this.statsLoading = false }
     },
     can(key) { const p = this.perms[key]; return !!(p && p.allowed) },
     reason(key) { const p = this.perms[key]; return p && !p.allowed ? p.reason : '' },
     async load() {
+      const sequence = ++this.listSequence, scope = this.scopeEpoch
       this.loading = true; this.error = ''
-      const p = { ...this.filters, page: this.page, pageSize: this.pageSize }
+      this.rows = []; this.total = 0
+      if (!canCode(this.ctx, 'internship.enterprise.view')) { this.error = '当前账号没有查看企业库的权限'; this.loading = false; return }
+      const p = { ...this.appliedFilters, page: this.page, pageSize: this.pageSize }
       if (p.blacklist === '') delete p.blacklist
-      else if (p.blacklist === 'true') p.blacklist = true
-      const res = await internshipApi.getEnterprises(p)
-      if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
-      this.loading = false
+      else p.blacklist = p.blacklist === 'true'
+      try {
+        const res = await internshipApi.getEnterprises(p)
+        if (sequence !== this.listSequence || scope !== this.scopeEpoch) return
+        if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total }
+        else this.error = res.message || '企业列表读取失败'
+      } catch { if (sequence === this.listSequence && scope === this.scopeEpoch) this.error = '企业列表读取失败，请重试' }
+      finally { if (sequence === this.listSequence && scope === this.scopeEpoch) this.loading = false }
     },
-    search() { this.page = 1; this.load() },
-    reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
-    turnPage(p) { this.page = p; this.load() },
+    search() { this.page = 1; this.appliedFilters = { ...this.filters }; return this.navigate() },
+    reset() { this.filters = ENTERPRISE_PANEL_PRESETS[this.activePanel](); return this.search() },
+    turnPage(p) { this.page = p; return this.navigate() },
     onToolbar(key) {
-      if (key === 'create') { if (!this.can('createEnterprise')) return toast.error(this.reason('createEnterprise')); this.$router.push('/admin/internship/enterprises/new') }
+      if (key === 'create') { if (!this.can('createEnterprise')) return toast.error(this.reason('createEnterprise')); this.$router.push({ path: '/admin/internship/enterprises/new', query: this.listQuery }) }
       if (key === 'import') { if (!this.can('importEnterprises')) return toast.error(this.reason('importEnterprises')); this.importVisible = true }
     },
-    goEdit(row) {
-      if (!this.can('editEnterprise')) return toast.error(this.reason('editEnterprise'))
-      this.$router.push(`/admin/internship/enterprises/${row.id}/edit`)
-    },
-    rowActions(row) {
-      const actions = [
-        { key: 'detail', label: '详情' },
-        { key: 'edit', label: '编辑', disabled: !this.can('editEnterprise'), disabledReason: this.reason('editEnterprise') }
-      ]
-      if (row.coopStatus === 'PENDING') {
-        actions.push({ key: 'review', label: '审核通过', disabled: !this.can('reviewEnterprise'), disabledReason: this.reason('reviewEnterprise') })
-        actions.push({ key: 'reviewReject', label: '审核驳回', danger: true, disabled: !this.can('reviewEnterprise'), disabledReason: this.reason('reviewEnterprise') })
-      } else if (row.coopStatus === 'ACTIVE') {
-        actions.push({ key: 'coopSuspend', label: '暂停' })
-      } else if (row.coopStatus === 'SUSPENDED') {
-        actions.push({ key: 'coopResume', label: '恢复' })
-      }
-      if (!row.blacklist && row.coopStatus !== 'ARCHIVED') {
-        actions.push({ key: 'blacklistOn', label: '拉黑', danger: true, disabled: !this.can('blacklistEnterprise'), disabledReason: this.reason('blacklistEnterprise') })
-      }
-      if (row.blacklist) {
-        actions.push({ key: 'blacklistOff', label: '移出黑名单', disabled: !this.can('blacklistEnterprise'), disabledReason: this.reason('blacklistEnterprise') })
-      }
-      return actions
-    },
-    onRowAction(key, row) {
-      if (key === 'detail') return this.$router.push('/admin/internship/enterprises/' + row.id)
-      if (key === 'edit') return this.goEdit(row)
-      if (key === 'review') return this.askReview(row, 'APPROVE')
-      if (key === 'reviewReject') return this.askReview(row, 'REJECT')
-      if (key === 'coopSuspend') return this.askCoop(row, 'SUSPEND')
-      if (key === 'coopResume') return this.askCoop(row, 'RESUME')
-      if (key === 'blacklistOn') return this.askBlacklist(row, true)
-      if (key === 'blacklistOff') return this.askBlacklist(row, false)
-    },
-    exportFn() {
-      return internshipApi.exportEnterprises({ ...this.filters })
+    detailLink(row, section = 'basic') { return { path: `/admin/internship/enterprises/${String(row.id)}`, query: { ...this.listQuery, section } } },
+    editLink(row) { return { path: `/admin/internship/enterprises/${String(row.id)}/edit`, query: this.listQuery } },
+    async exportFn() {
+      if (!this.can('exportEnterprises')) return { code: 1, message: this.reason('exportEnterprises') || '当前账号没有导出权限' }
+      const scope = this.scopeEpoch
+      const { keyword, coopStatus, industry, region } = this.appliedFilters
+      const res = await internshipApi.exportEnterprises({ keyword, coopStatus, industry, region })
+      return scope === this.scopeEpoch ? res : { code: 1, message: '身份已切换，请重新导出' }
     },
     onImported(data) {
-      toast.success(`已导入 ${data.created || 0} 家（初始待审核）`)
-      this.load()
+      this.receipt = `已导入 ${data.created ?? 0} 家企业；新企业为待审核状态，可进入企业准入继续核验。`
+      this.load(); this.entStats = null
+      if (this.statsOpen) this.loadStats()
     },
-    askReview(row, decision = 'APPROVE') {
-      // BUG-002：驳回分支原来在 PC 端无入口（弹窗文案写了驳回，实际只能通过）。
-      // 驳回强制填审核意见——企业要凭这条意见整改后重新提交。
-      if (!this.can('reviewEnterprise')) return toast.error(this.reason('reviewEnterprise'))
-      const reject = decision === 'REJECT'
-      this.confirm = {
-        visible: true,
-        title: reject ? '企业资质驳回' : '企业资质审核通过',
-        message: reject
-          ? `确认驳回「${row.name}」的资质核验？驳回后状态转为「已驳回」，企业需整改后重新提交。`
-          : `确认「${row.name}」资质合格？通过后状态转为「合作中」，可发布岗位。`,
-        type: reject ? 'danger' : 'primary',
-        confirmText: reject ? '确认驳回' : '通过（资质合格）',
-        requireReason: reject,
-        reasonLabel: reject ? '驳回原因（必填）' : '审核意见（选填）',
-        action: reject ? 'REVIEW_REJECT' : 'REVIEW_APPROVE',
-        row,
-        extra: null
-      }
-    },
-    askCoop(row, action) {
-      const map = { SUSPEND: { t: '暂停合作', c: '确认暂停', type: 'warning' }, RESUME: { t: '恢复合作', c: '确认恢复', type: 'primary' } }
-      const m = map[action]
-      this.confirm = { visible: true, title: m.t, message: `确认对「${row.name}」执行「${m.t}」？`, type: m.type, confirmText: m.c, requireReason: false, action: 'COOP_' + action, row, extra: null }
-    },
-    askBlacklist(row, on) {
-      if (!this.can('blacklistEnterprise')) return toast.error(this.reason('blacklistEnterprise'))
-      this.confirm = { visible: true, title: on ? '加入黑名单' : '移出黑名单', message: on ? `确认将「${row.name}」拉黑？拉黑后不再向学生推荐。` : `确认将「${row.name}」移出黑名单？恢复为合作中。`, type: on ? 'danger' : 'primary', confirmText: on ? '确认拉黑' : '确认移出', requireReason: on, reasonLabel: '拉黑原因', action: on ? 'BLACKLIST_ON' : 'BLACKLIST_OFF', row, extra: null }
-    },
-    async onConfirm({ reason } = {}) {
-      const { action, row } = this.confirm
-      this.submitting = true
-      try {
-        let res
-        if (action === 'REVIEW_APPROVE') res = await internshipApi.reviewEnterprise(row.id, { action: 'APPROVE', comment: reason || '', expectedVersion: row.version })
-        else if (action === 'REVIEW_REJECT') res = await internshipApi.reviewEnterprise(row.id, { action: 'REJECT', comment: reason || '', expectedVersion: row.version })
-        else if (action.startsWith('COOP_')) res = await internshipApi.setEnterpriseCooperation(row.id, { action: action.slice(5), reason: reason || '', expectedVersion: row.version })
-        else if (action === 'BLACKLIST_ON') res = await internshipApi.setEnterpriseBlacklist(row.id, { on: true, reason: reason || '', expectedVersion: row.version })
-        else if (action === 'BLACKLIST_OFF') res = await internshipApi.setEnterpriseBlacklist(row.id, { on: false, expectedVersion: row.version })
-        if (res && res.code === 0) { toast.success('已更新并写入留痕'); this.confirm.visible = false; await this.load() }
-        else if (res) toast.error(res.message)
-      } finally { this.submitting = false }
-    }
+
   }
 }
 </script>
@@ -319,7 +255,20 @@ export default {
 @import '@/styles/module-page.css';
 
 .ie-bl { margin-left: var(--space-2); font-size: 11px; color: var(--danger, #dc2626); }
-.ie-stats__grid { display: flex; flex-wrap: wrap; gap: var(--space-3); }
-.ie-stats__grid > * { flex: 1 1 160px; }
-.ie-stats__ind { margin-top: var(--space-3); font-size: 13px; }
+.enterprise-list :deep(.mps__head) { padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; }
+.enterprise-list :deep(.mps__head::before) { display: none; }
+.enterprise-list :deep(.dt__table) { min-width: 930px; }
+.ie-list-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; font-size: 13px; color: var(--text-secondary); }
+.ie-company { color: var(--text-primary); text-decoration: none; font-weight: 600; line-height: 1.5; }
+.ie-company:hover { color: var(--primary-500); text-decoration: underline; }
+.ie-company:focus-visible, .ie-actions a:focus-visible { outline: 2px solid var(--primary-500); outline-offset: 3px; border-radius: 3px; }
+.ie-actions { display: flex; flex-wrap: wrap; gap: 8px 14px; }
+.ie-stats { border-top: 1px solid var(--border-base); padding: 14px 0; }
+.ie-stats summary { cursor: pointer; font-size: 13px; font-weight: 600; }
+.ie-stats summary span { display: inline-block; margin-left: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.ie-stats__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 16px; margin: 20px 0; }
+.ie-stats__grid dt { color: var(--text-secondary); font-size: 12px; }
+.ie-stats__grid dd { margin: 6px 0 0; font-size: 22px; font-weight: 600; }
+.ie-stats-error { margin-top: 12px; color: var(--danger); }
+.ie-receipt { padding: 12px 16px; margin: 0; border: 1px solid var(--border-base); border-radius: 8px; background: var(--bg-section); }
 </style>

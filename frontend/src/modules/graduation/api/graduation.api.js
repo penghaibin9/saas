@@ -137,6 +137,18 @@ export const graduationApi = {
   getDashboardSummary(params = {}) {
     return callStrict(() => request('/graduation/dashboard', { params: withBatch(params) }))
   },
+  /** 老师毕设工作台：按我的身份（导师/评阅/评委/秘书）汇总的待办、我的学生、我的答辩组。 */
+  getTeacherWorkbench(params = {}) {
+    return callStrict(() => request('/graduation/teacher-workbench', { params: withBatch(params) }))
+  },
+  /** 首次使用向导：批次时间 / 学生 / 导师 / 导师账号 / 发布 五项自动检查（按数据范围）。 */
+  getSetupCheck(params = {}) {
+    return callStrict(() => request('/graduation/setup-check', { params: withBatch(params) }))
+  },
+  /** 中期检查按导师看：已检查 / 待检查 / 整改待复核。 */
+  getMidtermByMentor(params = {}) {
+    return callStrict(() => request('/graduation/midterm-by-mentor', { params: withBatch(params) }))
+  },
   getStudents(params = {}) { return listStrict('/graduation/students', params) },
   getStudentDetail(id, params = {}) {
     return callStrict(() => request(`/graduation/students/${id}`, { params: withBatch(params) }))

@@ -226,10 +226,29 @@ def _program_items(db, term, college_ids):
     students = [row for row in query.all() if is_enrolled(getattr(row, "student_status", None))]
     if not students:
         return []
-    unresolved = []
+    # 培养方案解析只取决于专业、年级和班级。标准沙箱达到 2 万学生后，逐人解析会
+    # 对同一范围重复执行相同查询；按解析范围分组后，每个组合只解析一次，同时仍按
+    # 学生人数计算阻断数量并保留前 20 条学生证据。
+    grouped = {}
     for student in students:
-        result = resolve_student_program(db, student, tenant_id=_tid())
-        if result.status != "RESOLVED":
+        scope_key = (
+            int(student.major_id) if getattr(student, "major_id", None) else None,
+            str(getattr(student, "grade", None) or "").strip(),
+            int(student.class_id) if getattr(student, "class_id", None) else None,
+        )
+        grouped.setdefault(scope_key, []).append(student)
+
+    unresolved = []
+    unresolved_count = 0
+    for grouped_students in grouped.values():
+        sample = grouped_students[0]
+        result = resolve_student_program(db, sample, tenant_id=_tid())
+        if result.status == "RESOLVED":
+            continue
+        unresolved_count += len(grouped_students)
+        for student in grouped_students:
+            if len(unresolved) >= 20:
+                break
             unresolved.append({
                 "studentId": str(student.id),
                 "studentNo": getattr(student, "student_no", None),
@@ -242,9 +261,9 @@ def _program_items(db, term, college_ids):
         key="PROGRAM_BINDING_UNRESOLVED",
         severity="BLOCKER",
         title="在读学生培养方案未完整绑定",
-        summary=f"当前范围有 {len(unresolved)} 名在读学生无法唯一解析培养方案。",
+        summary=f"当前范围有 {unresolved_count} 名在读学生无法唯一解析培养方案。",
         rule_code="DASHBOARD_PROGRAM_BINDING_REQUIRED",
-        count=len(unresolved),
+        count=unresolved_count,
         route="/admin/academic-affairs/programs",
         owner_role="专业负责人 / 学院教务员",
         deadline=_deadline_from_start(term, 30),

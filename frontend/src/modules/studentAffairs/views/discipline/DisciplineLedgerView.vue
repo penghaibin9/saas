@@ -1,26 +1,24 @@
 <template>
-  <AppPageShell
+  <AppPageShell flat
     title="违纪处分台账"
-    subtitle="全量处分记录只读台账 + 处分投影一致性对账（EFFECTIVE 案件数 ↔ t_cs_discipline 生效行数）。"
+    subtitle="全量处分记录只读台账 + 处分投影一致性对账（已生效案件 ↔ t_cs_discipline 生效行数）。"
     role-name="学工处 / 学院"
     data-scope-name="学院本院 / 学工处全校"
     watermark-purpose="违纪处分台账查看"
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载处分台账..." @retry="load"
                     @back="$router.push('/admin/student-affairs/discipline')">
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-      </div>
+      <BusinessMetrics :items="metricCards" />
 
-      <AppSectionCard title="处分投影对账">
+      <details class="flat-details" :class="{ 'has-error': recon.consistent !== true }" :open="recon.consistent !== true"><summary>数据核对 · {{ recon.consistent === true ? '一致' : '需核查' }}</summary>
         <div class="dl-recon" :class="recon.consistent ? 'is-ok' : 'is-bad'">
-          <div class="dl-recon__item"><span>EFFECTIVE 案件数</span><b>{{ recon.effectiveCases }}</b></div>
+          <div class="dl-recon__item"><span>已生效案件</span><b>{{ recon.effectiveCases }}</b></div>
           <div class="dl-recon__sep">↔</div>
-          <div class="dl-recon__item"><span>生效投影行数</span><b>{{ recon.activeProjections }}</b></div>
+          <div class="dl-recon__item"><span>已同步记录</span><b>{{ recon.activeProjections }}</b></div>
           <StatusTag :type="recon.consistent ? 'success' : 'danger'"
                      :label="recon.consistent ? '一致' : '不一致（需核查）'" dot />
         </div>
-      </AppSectionCard>
+      </details>
 
       <AppSectionCard title="处分记录">
         <div class="dl-filters">
@@ -45,7 +43,8 @@
 </template>
 
 <script>
-import { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, AppStatusTag } from '@/components/common'
+import BusinessMetrics from '@/components/workspace/BusinessMetrics.vue'
+import { AppDateDisplay, AppGlobalState, AppPageShell, AppPagination, AppSectionCard, AppStatusTag } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
@@ -68,7 +67,7 @@ const CASE_COLUMNS = [
 
 export default {
   name: 'DisciplineLedgerView',
-  components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag, DataTable },
+  components: { BusinessMetrics, AppDateDisplay, AppGlobalState, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag, DataTable },
   data() {
     return {
       caseColumns: CASE_COLUMNS,
@@ -132,7 +131,7 @@ export default {
       this.paging.page = 1
       this.loadPage()
     },
-    discTypeLabel(t) { return DISC_TYPES[t] || t || '—' },
+    discTypeLabel(t) { return DISC_TYPES[t] || (t ? '类型待确认' : '—') },
     statusType(s) {
       if (s === 'EFFECTIVE') return 'danger'
       if (s === 'REMOVED') return 'success'

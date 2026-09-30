@@ -4,6 +4,7 @@
     :subtitle="pageMeta.subtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <template #actions>
       <AppButton variant="primary" @click="goApply">＋ 新增{{ pageMeta.title }}</AppButton>
@@ -24,12 +25,12 @@
                  :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.realName }}</div>
-          <div class="mp-cell-sub">{{ row.fromStatus }} → {{ row.toStatus }}</div>
+          <div class="mp-cell-sub">{{ studentStatus(row.fromStatus) }} → {{ studentStatus(row.toStatus) }}</div>
         </template>
         <template #cell-node="{ row }"><span>{{ nodeLabel(row.currentNode) }}</span></template>
         <template #cell-status="{ row }"><StatusTag :type="statusColor(row.status)" :label="statusLabel(row.status)" dot /></template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="goDetail(row)">详情 / 审批</button>
+          <AppButton size="small" variant="ghost" @click="goDetail(row)">详情 / 审批</AppButton>
         </template>
       </DataTable>
     </div>
@@ -44,6 +45,9 @@
  */
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
+import { currentUserFromToken } from '@/services/http/client'
+import { gradeError } from './parallel-c/grade-review'
+import { ACADEMIC_STUDENT_STATUS_LABELS } from '../config/academicStudentLabels'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { STATUS_LABEL, NODE_LABEL, TYPE_PAGE_META, statusColor } from '@/modules/academicAffairs/constants/status-change'
 
@@ -55,6 +59,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      alive:true,readSeq:0,
       loading: true, error: '', rows: [], page: 1, pageSize: 20, total: 0, filters: EMPTY(),
       columns: [
         { key: 'student', title: '学生 / 状态变化' },
@@ -65,6 +70,7 @@ export default {
     }
   },
   computed: {
+    readerIdentity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns])},
     changeType() { return this.$route.meta.changeType },
     pageMeta() { return TYPE_PAGE_META[this.changeType] || { title: '学籍异动申请', subtitle: '' } },
     filterFields() {
@@ -75,10 +81,13 @@ export default {
     pageStats() {
       const m = {}
       for (const r of this.rows) m[r.status] = (m[r.status] || 0) + 1
-      return Object.keys(m).map((k) => ({ key: k, label: STATUS_LABEL[k] || k, count: m[k] }))
+      return Object.keys(m).map((k) => ({ key: k, label: STATUS_LABEL[k] || '状态待核对', count: m[k] }))
     }
   },
   watch: {
+    readerIdentity(){this.clearRead();this.reset()},
+    filters:{deep:true,flush:'sync',handler(){this.clearRead()}},
+
     // 四个类型共用同一组件实例时（用户在侧栏切换叶子），路由变化需重新拉取
     '$route.meta.changeType'() {
       this.page = 1
@@ -89,38 +98,30 @@ export default {
   created() {
     this.load()
   },
+  beforeUnmount(){this.alive=false;this.clearRead()},
   methods: {
-    statusLabel(s) { return STATUS_LABEL[s] || s || '' },
+    studentStatus(value){return ACADEMIC_STUDENT_STATUS_LABELS[value]||'学籍状态待核对'},
+    clearRead(){this.readSeq++;this.rows=[];this.total=0;this.loading=false;this.error=''},
+    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     statusColor,
-    nodeLabel(n) { return n ? (NODE_LABEL[n] || n) : '—' },
+    nodeLabel(n) { return n ? (NODE_LABEL[n] || '节点待核对') : '—' },
     goApply() { this.$router.push(`/admin/academic-affairs/status-changes/new?type=${this.changeType}`) },
     goDetail(row) { this.$router.push(`/admin/academic-affairs/status-changes/${row.changeId}`) },
     turnPage(p) { this.page = p; this.load() },
     search() { this.page = 1; this.load() },
     reset() { this.filters = EMPTY(); this.page = 1; this.load() },
     async load() {
-      this.loading = true
-      this.error = ''
-      const res = await academicAffairsApi.getStatusChanges({
-        changeType: this.changeType,
-        status: this.filters.status || undefined,
-        page: this.page,
-        pageSize: this.pageSize
-      })
-      if (res.code === 0) {
-        this.rows = res.data.list
-        this.total = res.data.total
-      } else {
-        this.error = res.message
-      }
-      this.loading = false
+      const identity=this.readerIdentity,seq=++this.readSeq,context=JSON.stringify([this.filters,this.changeType,this.phase])
+      const valid=()=>this.alive&&seq===this.readSeq&&identity===this.readerIdentity&&context===JSON.stringify([this.filters,this.changeType,this.phase])
+      this.loading=true;this.error='';this.rows=[];this.total=0;if(this.pagination)this.pagination.total=0
+      try{const res=await academicAffairsApi.getStatusChanges({changeType:this.changeType,status:this.filters.status||undefined,page:this.page,pageSize:this.pageSize});if(!valid())return;if(res?.code!==0)throw res;this.rows=res.data?.list||[];this.total=res.data?.total??this.rows.length}
+      catch(err){if(valid())this.error=gradeError(err,'异动记录读取失败，请重试。')}finally{if(valid())this.loading=false}
     }
   }
 }
 </script>
 
 <style scoped>
-@import '@/styles/module-page.css';
 .aa-chips { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .aa-chip { padding: 3px 10px; border-radius: 12px; background: var(--fill-100, #f2f3f5); font-size: 12px; color: var(--text-700, #4e5969); }
 .aa-chips__note { font-size: 12px; color: var(--text-400, #8a9099); }

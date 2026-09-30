@@ -65,7 +65,6 @@
           <AppButton variant="ghost" @click="backToList">取消</AppButton>
           <AppButton variant="primary" :disabled="submitting" @click="submit">{{ isCreate ? '确认建档' : '保存变更' }}</AppButton>
         </div>
-        <p class="mp-note">提交后写入审计留痕；编辑模式仅提交实际修改的字段（避免误写脱敏展示值）。敏感字段展示与导出仍按角色权限脱敏。</p>
       </template>
     </div>
     <AppConfirmDialog

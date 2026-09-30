@@ -1,27 +1,30 @@
 <template>
-  <ModulePageShell title="指导巡访管理" subtitle="记录指导教师联系学生、企业沟通、现场巡访和问题整改情况 · 指导记录 · 教师巡访 · 安全隐患整改跟进"
+  <ModulePageShell title="指导巡访" subtitle="记录学生指导与企业沟通，跟进巡访和问题整改。"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppPermissionButton v-if="tab === 'guidance' || tab === 'visit'" code="internship.guidance.manage" :allowed="canBtn('internship.guidance.manage')" variant="primary" @click="goCreate">＋ 新增{{ tab === 'guidance' ? '指导' : '巡访' }}记录</AppPermissionButton>
-      <AppPermissionButton v-else-if="tab === 'communication'" code="internship.communication.manage" :allowed="canBtn('internship.communication.manage')" variant="primary" @click="goCreate">＋ 登记沟通</AppPermissionButton>
-      <AppPermissionButton v-else-if="tab === 'visit-plan'" code="internship.visit.plan.manage" :allowed="canBtn('internship.visit.plan.manage')" variant="primary" @click="goCreate">＋ 新建巡访计划</AppPermissionButton>
+      <AppPermissionButton v-if="tab === 'guidance' || tab === 'visit'" :code="tab === 'visit' ? 'internship.visit.manage' : 'internship.guidance.manage'" :allowed="canBtn(tab === 'visit' ? 'internship.visit.manage' : 'internship.guidance.manage')" variant="primary" @click="goCreate">新增{{ tab === 'guidance' ? '指导' : '巡访' }}记录</AppPermissionButton>
+      <AppPermissionButton v-else-if="tab === 'communication'" code="internship.communication.manage" :allowed="canBtn('internship.communication.manage')" variant="primary" @click="goCreate">登记沟通</AppPermissionButton>
+      <AppPermissionButton v-else-if="tab === 'visit-plan'" code="internship.visit.plan.manage" :allowed="canBtn('internship.visit.plan.manage')" variant="primary" @click="goCreate">新建巡访计划</AppPermissionButton>
       <AppButton variant="ghost" @click="goGuidancePlan">指导计划</AppButton>
-      <AppExportButton v-if="canExportTab" :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
+      <AppExportButton v-if="canExportTab" :export-fn="exportFn" @exported="onExported">导出 Excel 台账</AppExportButton>
     </template>
 
     <div class="mp-stack">
-      <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
+      <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
+
+      <ModuleSummaryStrip v-if="summaryMetrics.length" :metrics="summaryMetrics" />
+      <div v-if="statsError" class="state is-err" role="alert">{{ statsError }} <button type="button" class="mp-link" @click="loadStats">重试统计</button></div>
 
       <div class="tabs">
         <button v-for="t in tabs" :key="t.key" type="button" class="tabs__btn" :class="{ 'is-active': tab === t.key }" @click="switchTab(t.key)">{{ t.label }}</button>
       </div>
 
-      <div class="bar">
-        <AppSearchBox v-model="keyword" placeholder="按学生姓名搜索" @search="reload" />
+      <div v-if="tab === 'guidance' || tab === 'visit'" class="bar">
+        <AppSearchBox v-if="tab === 'guidance' || tab === 'visit'" v-model="keyword" placeholder="按学生姓名搜索" @search="reload" />
         <AppQuickFilterChips v-if="tab === 'visit'" v-model="rectifyFilter" :options="rectifyOptions" allow-clear @change="reload" />
       </div>
 
-      <DualPaneWorkspace :aside-title="tab === 'guidance' ? '指导记录' : '巡访记录'" :aside-count="total">
+      <DualPaneWorkspace :aside-title="activeTabLabel" :aside-count="total">
         <!-- 左栏：记录队列（紧凑列表，连续处理） -->
         <template #aside>
           <div v-if="loading" class="state">加载中…</div>
@@ -31,15 +34,16 @@
             <li v-for="r in rows" :key="r.id">
               <button type="button" class="gv-item" :class="{ 'is-active': String(r.id) === selectedId }" @click="select(r.id)">
                 <div class="gv-item__row">
-                  <span class="gv-item__name">{{ r.studentName }}</span>
+                  <span class="gv-item__name">{{ recordTitle(r) }}</span>
                   <template v-if="tab === 'guidance'">
                     <AppStatusTag v-if="r.toRisk" type="danger">已转风险</AppStatusTag>
                   </template>
-                  <AppStatusTag v-else :type="rectifyTone(r.rectifyStatus)">{{ r.rectifyStatusLabel }}</AppStatusTag>
+                  <AppStatusTag v-else-if="tab === 'visit'" :type="rectifyTone(r.rectifyStatus)">{{ r.rectifyStatusLabel }}</AppStatusTag>
+                  <AppStatusTag v-else-if="tab === 'visit-plan'">{{ r.statusLabel }}</AppStatusTag>
                 </div>
-                <div class="gv-item__sub">{{ [r.studentNo, tab === 'guidance' ? r.advisorName : r.enterpriseName].filter(Boolean).join(' · ') }}</div>
+                <div class="gv-item__sub">{{ recordMeta(r) }}</div>
                 <div v-if="tab === 'guidance'" class="gv-item__sub">{{ [r.methodLabel, r.topic, r.createdAt].filter(Boolean).join(' · ') }}</div>
-                <div v-else class="gv-item__sub">{{ [r.methodLabel, r.visitAt].filter(Boolean).join(' · ') }}</div>
+                <div v-else-if="tab === 'visit'" class="gv-item__sub">{{ [r.methodLabel, r.visitAt].filter(Boolean).join(' · ') }}</div>
               </button>
             </li>
           </ul>
@@ -53,7 +57,7 @@
         <section class="mp-card gv-main">
           <template v-if="!selectedId">
             <EmptyState title="从左侧选择一条记录查看详情"
-              :description="tab === 'guidance' ? '可查看指导内容、附件与操作留痕，并对记录发起撤销' : '可查看巡访反馈、安全隐患与整改要求，并跟进整改'" />
+              :description="`选择${activeTabLabel}后，可在此查看内容与可用操作。`"><template #actions><AppButton variant="ghost" :disabled="loading" @click="load">刷新列表</AppButton></template></EmptyState>
           </template>
           <div v-else-if="detail.loading" class="state gv-main__state">详情加载中…</div>
           <div v-else-if="detail.error" class="state is-err gv-main__state">
@@ -62,12 +66,12 @@
           <template v-else-if="detail.data">
             <div class="gv-main__body">
               <div class="gv-head">
-                <span class="gv-head__name">{{ detail.data.studentName }}</span>
+                <span class="gv-head__name">{{ recordTitle(detail.data) }}</span>
                 <AppStatusTag v-if="tab === 'guidance' && detail.data.toRisk" type="danger">已转风险</AppStatusTag>
                 <AppStatusTag v-else-if="tab === 'visit' && detail.data.rectifyStatus" :type="rectifyTone(detail.data.rectifyStatus)">{{ detail.data.rectifyStatusLabel }}</AppStatusTag>
               </div>
 
-              <div class="sec-t">{{ tab === 'guidance' ? '指导详情' : '巡访详情' }}</div>
+              <div class="sec-t">{{ activeTabLabel }}详情</div>
               <AppDescriptionList :items="detailItems" :columns="2" />
 
               <template v-if="detail.data.attachment">
@@ -97,43 +101,60 @@
 
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
-      :reason-label="cd.reasonLabel" :submitting="cd.submitting" @confirm="onConfirm">
-      <ConflictNotice :state="conflict" />
+      :reason-label="cd.reasonLabel" :submitting="cd.submitting" :confirm-disabled="conflict.active" @confirm="onConfirm">
+      <AppInlineAlert v-if="conflict.active" type="warning" title="记录已更新，本次操作已暂停"
+        description="已保留填写内容。请取消后核对记录最新状态，再重新选择可用操作。">
+        <p v-if="conflict.stale">最新详情加载失败，请关闭确认框后重试加载。</p>
+        <AppDescriptionList v-else-if="conflict.latest.length" :items="conflict.latest" :columns="1" />
+      </AppInlineAlert>
     </AppConfirmDialog>
 
-    <AppDrawer :visible="commDlg.visible" title="登记企业沟通" mode="modal" size="large" @update:visible="commDlg.visible = $event">
+    <AppDrawer :visible="commDlg.visible" title="登记企业沟通" mode="modal" size="large" @update:visible="!commDlg.submitting && (commDlg.visible = $event)">
+      <p class="gv-form-hint">登记与当前批次学生相关的沟通，保存后查看记录详情。</p>
+      <fieldset class="gv-form-fields" :disabled="commDlg.submitting">
       <AppFormItem label="企业" required>
         <AppInternshipEnterprisePicker v-model="commForm.enterpriseId" placeholder="按企业名称搜索" />
       </AppFormItem>
       <AppFormItem label="实习学生" required>
-        <AppInternshipStudentPicker v-model="commForm.internshipId" placeholder="按姓名 / 学号搜索"
+        <AppInternshipStudentPicker v-model="commForm.internshipId" :key="batchStore.selectedBatchId" :query="{ batchId: batchStore.selectedBatchId }" placeholder="按姓名 / 学号搜索"
           data-scope-hint="指导教师仅本人指导学生；管理员按数据范围" />
       </AppFormItem>
       <AppFormItem label="沟通方式">
         <AppSelect v-model="commForm.communicationType" :options="commTypeOptions" />
       </AppFormItem>
+      <AppFormItem label="联系人"><AppTextInput v-model="commForm.contactName" placeholder="选填：本次沟通联系人" /></AppFormItem>
       <AppFormItem label="沟通摘要" required>
         <AppTextarea v-model="commForm.summary" placeholder="不少于 2 字，写清沟通事项与结论" :maxlength="500" />
       </AppFormItem>
-      <p v-if="commDlg.error" class="gv-form-error">{{ commDlg.error }}</p>
+      <AppFormItem label="沟通结果"><AppTextarea v-model="commForm.result" :rows="2" placeholder="选填：已达成的结论或后续安排" /></AppFormItem>
+      </fieldset>
+      <p v-if="commDlg.error" role="alert" class="gv-form-error">{{ commDlg.error }}</p>
       <template #footer>
-        <AppButton variant="text" @click="commDlg.visible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="commDlg.submitting" @click="submitCommunication">登记</AppButton>
+        <AppButton variant="text" :disabled="commDlg.submitting" @click="commDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="commDlg.submitting" @click="submitCommunication">保存沟通记录</AppButton>
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="planDlg.visible" title="新建巡访计划" mode="modal" size="medium" @update:visible="planDlg.visible = $event">
+    <AppDrawer :visible="planDlg.visible" title="新建巡访计划" mode="modal" size="large" @update:visible="!planDlg.submitting && (planDlg.visible = $event)">
+      <p class="gv-form-hint">先保存为草稿，核对安排后在详情中发布。</p>
+      <fieldset class="gv-form-fields" :disabled="planDlg.submitting">
       <AppFormItem label="巡访企业">
         <AppInternshipEnterprisePicker v-model="planForm.enterpriseId" placeholder="按企业名称搜索（可留空）"
           @change="onPlanEnterpriseChange" />
       </AppFormItem>
+      <div class="gv-form-grid">
+        <AppFormItem label="计划日期"><AppDatePicker v-model="planForm.planDate" /></AppFormItem>
+        <AppFormItem label="巡访方式"><AppSelect v-model="planForm.method" :options="planMethodOptions" /></AppFormItem>
+      </div>
+      <AppFormItem label="巡访地点"><AppTextInput v-model="planForm.location" placeholder="选填：企业地点或线上会议安排" /></AppFormItem>
       <AppFormItem label="巡访目标">
         <AppTextarea v-model="planForm.objective" placeholder="不少于 2 字；与企业至少填一项" :maxlength="500" />
       </AppFormItem>
-      <p v-if="planDlg.error" class="gv-form-error">{{ planDlg.error }}</p>
+      </fieldset>
+      <p v-if="planDlg.error" role="alert" class="gv-form-error">{{ planDlg.error }}</p>
       <template #footer>
-        <AppButton variant="text" @click="planDlg.visible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="planDlg.submitting" @click="submitVisitPlan">创建</AppButton>
+        <AppButton variant="text" :disabled="planDlg.submitting" @click="planDlg.visible = false">取消</AppButton>
+        <AppButton variant="primary" :loading="planDlg.submitting" @click="submitVisitPlan">保存草稿并查看</AppButton>
       </template>
     </AppDrawer>
   </ModulePageShell>
@@ -149,12 +170,12 @@ import { ModulePageShell, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
   AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination,
-  AppFormItem, AppSelect, AppTextarea,
+  AppFormItem, AppSelect, AppTextarea, AppTextInput, AppDatePicker, AppInlineAlert,
   AppInternshipEnterprisePicker, AppInternshipStudentPicker } from '@/components/common'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
 import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
-import ConflictNotice from './components/ConflictNotice.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
@@ -174,9 +195,10 @@ const DETAIL = {
     { key: 'rectifyStatusLabel', label: '整改状态' }, { key: 'monthlyReport', label: '月度小结' }
   ],
   communication: [
-    { key: 'enterpriseName', label: '企业' }, { key: 'studentName', label: '关联学生' }, { key: 'channel', label: '渠道' },
-    { key: 'topic', label: '主题' }, { key: 'content', label: '沟通内容' }, { key: 'statusLabel', label: '状态' },
-    { key: 'advisorName', label: '记录人' }, { key: 'createdAt', label: '时间' }
+    { key: 'communicationTypeLabel', label: '沟通方式' }, { key: 'contactName', label: '联系人' },
+    { key: 'summary', label: '沟通摘要' }, { key: 'result', label: '沟通结果' },
+    { key: 'advisorName', label: '记录人' }, { key: 'occurredAt', label: '沟通时间' },
+    { key: 'followUpDueAt', label: '跟进截止' }
   ],
   'visit-plan': [
     { key: 'enterpriseName', label: '企业' }, { key: 'ownerName', label: '责任人' }, { key: 'planDate', label: '计划日期' },
@@ -221,18 +243,19 @@ export default {
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, ModuleSummaryStrip, AppButton,
     AppDrawer, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
     AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination,
-    AppFormItem, AppSelect, AppTextarea,
-    AppInternshipEnterprisePicker, AppInternshipStudentPicker, ConflictNotice },
+    AppFormItem, AppSelect, AppTextarea, AppTextInput, AppDatePicker,
+    AppInternshipEnterprisePicker, AppInternshipStudentPicker, AppInlineAlert, ActionReceipt },
   data() {
     return {
       commDlg: { visible: false, submitting: false, error: '' },
-      commForm: { enterpriseId: '', internshipId: '', summary: '', communicationType: 'PHONE' },
+      commForm: { enterpriseId: '', internshipId: '', summary: '', communicationType: 'PHONE', contactName: '', result: '' },
       commTypeOptions: [
         { value: 'PHONE', label: '电话沟通' }, { value: 'ONSITE', label: '实地走访' },
         { value: 'ONLINE', label: '线上会议' }, { value: 'OTHER', label: '其他' }
       ],
+      planMethodOptions: [{ value: 'ONSITE', label: '现场巡访' }, { value: 'ONLINE', label: '线上巡访' }, { value: 'PHONE', label: '电话巡访' }],
       planDlg: { visible: false, submitting: false, error: '' },
-      planForm: { enterpriseId: '', enterpriseName: '', objective: '' },
+      planForm: { enterpriseId: '', enterpriseName: '', objective: '', planDate: '', method: 'ONSITE', location: '' },
       tab: 'guidance',
       tabs: [
         { key: 'guidance', label: '指导记录' },
@@ -241,12 +264,14 @@ export default {
         { key: 'visit-plan', label: '巡访计划' }
       ],
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
+      listSequence: 0, statsSequence: 0, statsError: '',
       keyword: '', rectifyFilter: '', rectifyOptions: RECTIFY_OPTIONS,
       selectedId: '',
       detail: { loading: false, error: '', data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', reasonLabel: '说明', requireReason: true, submitting: false },
       conflict: emptyConflict(),
       pending: null,
+      lastReceipt: null,
       scopeHint: '指导教师仅本人指导学生；管理员全校',
       guidanceStats: null,
       visitStats: null
@@ -282,6 +307,7 @@ export default {
     summaryMetrics() {
       return this.statsCards.slice(0, 5).map((c) => ({ label: c.label, value: c.value }))
     },
+    activeTabLabel() { return this.tabs.find((item) => item.key === this.tab)?.label || '指导巡访' },
     canExportTab() { return this.tab === 'guidance' || this.tab === 'visit' },
     detailFields() { return DETAIL[this.tab] || DETAIL.guidance },
     detailItems() { const d = this.detail.data || {}; return this.detailFields.map((f) => ({ label: f.label, value: d[f.key] })) },
@@ -292,6 +318,7 @@ export default {
       }))
     }
   },
+  beforeUnmount() { this.resetCreateDialogs() },
   watch: {
     '$route.query.panel': {
       immediate: true,
@@ -304,8 +331,8 @@ export default {
     '$route.query.keyword': {
       immediate: true,
       handler(kw) {
-        if (kw && String(kw) !== this.keyword) {
-          this.keyword = String(kw)
+        if (String(kw || '') !== this.keyword) {
+          this.keyword = String(kw || '')
           this.page = 1
           this.load()
         }
@@ -316,12 +343,14 @@ export default {
       handler(id) {
         const sid = (id || '').toString()
         if (sid === this.selectedId) return
+        this.resetDetail()
         this.selectedId = sid
         if (sid) this.loadDetail(sid)
         else this.detail = { loading: false, error: '', data: null }
       }
     },
     'batchStore.selectedBatchId'() {
+      this.resetCreateDialogs()
       this.page = 1
       this.clearSelection()
       this.loadStats()
@@ -332,8 +361,10 @@ export default {
     canBtn(code) { return canCode(this.ctx, code) },
     /** 打开巡访计划的状态迁移确认框 */
     openPlanAction(a) {
-      const d = this.detail.data || {}
-      this.pending = { kind: 'plan-transition', id: this.selectedId, action: a.action }
+      const d = this.detail.data
+      if (!d || this.detail.loading || this.detail.error || this.cd.submitting || !this.canBtn('internship.visit.plan.manage') || !this.planActions.some(item => item.action === a.action)) return
+      this.pending = { kind: 'plan-transition', id: this.selectedId, action: a.action,
+        expectedVersion: d.version, objectLabel: d.enterpriseName || d.objective || '巡访计划' }
       this.conflict = emptyConflict()
       this.cd = {
         visible: true,
@@ -366,29 +397,52 @@ export default {
         return
       }
       const { tab, rectifyFilter } = cfg
+      const changed = this.tab !== tab
       this.tab = tab
+      if (changed) {
+        this.resetCreateDialogs()
+        this.resetDetail()
+        this.selectedId = String(this.$route.query.id || '')
+        if (this.selectedId) this.loadDetail(this.selectedId)
+      }
       if (!this.$route.query.keyword) this.keyword = ''
       this.rectifyFilter = rectifyFilter
       this.page = 1
       this.loadStats()
       this.load()
     },
+    recordTitle(row) {
+      if (this.tab === 'communication') return row.summary || '企业沟通'
+      if (this.tab === 'visit-plan') return row.enterpriseName || row.objective || '巡访计划'
+      return row.studentName || '未提供学生姓名'
+    },
+    recordMeta(row) {
+      if (this.tab === 'communication') return [row.communicationTypeLabel, row.contactName, row.advisorName, row.occurredAt].filter(Boolean).join(' · ')
+      if (this.tab === 'visit-plan') return [row.ownerName, row.planDate, row.objective].filter(Boolean).join(' · ')
+      return [row.studentNo, this.tab === 'guidance' ? row.advisorName : row.enterpriseName].filter(Boolean).join(' · ')
+    },
+    resetDetail() {
+      this.detail = { loading: false, error: '', data: null }
+      this.pending = null
+      this.cd = { ...this.cd, visible: false, submitting: false }
+      this.conflict = emptyConflict()
+      this.lastReceipt = null
+    },
     async loadStats() {
-      if (!this.batchStore.selectedBatchId) {
-        this.guidanceStats = null
-        this.visitStats = null
-        return
-      }
-      if (this.tab === 'guidance') {
-        const res = await guidanceVisitApi.getGuidanceStats(2, { batchId: this.batchStore.selectedBatchId })
-        if (res.code === 0) this.guidanceStats = res.data
-      } else if (this.tab === 'visit') {
-        const res = await guidanceVisitApi.getVisitStats({ batchId: this.batchStore.selectedBatchId })
-        if (res.code === 0) this.visitStats = res.data
-      } else {
-        this.guidanceStats = null
-        this.visitStats = null
-      }
+      const sequence = ++this.statsSequence
+      const batchId = this.batchStore.selectedBatchId
+      const tab = this.tab
+      this.guidanceStats = null
+      this.visitStats = null
+      this.statsError = ''
+      if (!batchId || !['guidance', 'visit'].includes(tab)) return
+      const res = tab === 'guidance'
+        ? await guidanceVisitApi.getGuidanceStats(2, { batchId })
+        : await guidanceVisitApi.getVisitStats({ batchId })
+      if (sequence !== this.statsSequence || batchId !== this.batchStore.selectedBatchId || tab !== this.tab) return
+      if (res.code !== 0) { this.statsError = res.message || '统计加载失败'; return }
+      if (tab === 'guidance') this.guidanceStats = res.data
+      else this.visitStats = res.data
     },
     rectifyTone(s) { return s === 'PENDING' ? 'warning' : s === 'DONE' ? 'success' : 'default' },
     exportFn() {
@@ -404,6 +458,10 @@ export default {
       this.planForm.enterpriseName = item?.label || ''
     },
     async submitCommunication() {
+      if (this.commDlg.submitting || !this.canBtn('internship.communication.manage')) return
+      const dialog = this.commDlg
+      const batchId = this.batchStore.selectedBatchId
+      if (!batchId) { dialog.error = '请先选择批次'; return }
       const f = this.commForm
       if (!f.enterpriseId || !f.internshipId) { this.commDlg.error = '请选择企业与实习学生'; return }
       if ((f.summary || '').trim().length < 2) { this.commDlg.error = '沟通摘要不少于 2 字'; return }
@@ -411,36 +469,74 @@ export default {
       const res = await guidanceVisitApi.createCommunication({
         enterpriseId: String(f.enterpriseId),
         internshipId: String(f.internshipId),
-        batchId: this.batchStore.selectedBatchId,
+        batchId, contactName: f.contactName.trim(), result: f.result.trim(),
         summary: f.summary.trim(),
         communicationType: f.communicationType || 'PHONE'
       })
+      if (this.commDlg !== dialog || this.commForm !== f || batchId !== this.batchStore.selectedBatchId) return
       this.commDlg.submitting = false
       if (res.code !== 0) { this.commDlg.error = res.message || '登记失败'; return }
-      this.commDlg.visible = false; toast.success('沟通已登记'); this.reload()
+      this.commDlg.visible = false
+      this.showCreatedRecord(res.data.id)
+      this.lastReceipt = {
+        id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel || '沟通已登记',
+        version: res.data?.version, actionLabel: '登记企业沟通',
+        objectLabel: res.data?.summary || f.summary.trim(),
+        auditText: '沟通记录与创建留痕已同事务提交', nextStep: res.data?.followUpRequired ? '按后续事项继续跟进' : '可继续登记或查看其他协作对象'
+      }
+      toast.success('沟通已登记'); this.reload()
     },
     async submitVisitPlan() {
+      if (this.planDlg.submitting || !this.canBtn('internship.visit.plan.manage')) return
+      const dialog = this.planDlg
+      const batchId = this.batchStore.selectedBatchId
+      if (!batchId) { dialog.error = '请先选择批次'; return }
       const f = this.planForm
       const objective = (f.objective || '').trim()
       const name = (f.enterpriseName || '').trim()
       if (objective.length < 2 && !name) { this.planDlg.error = '请至少选择企业或填写巡访目标'; return }
       this.planDlg.submitting = true; this.planDlg.error = ''
       const res = await guidanceVisitApi.createVisitPlan({
-        enterpriseName: name, objective: objective || name
+        batchId, enterpriseId: f.enterpriseId ? String(f.enterpriseId) : undefined,
+        enterpriseName: name, objective: objective || name,
+        planDate: f.planDate || '', method: f.method, location: f.location.trim()
       })
+      if (this.planDlg !== dialog || this.planForm !== f || batchId !== this.batchStore.selectedBatchId) return
       this.planDlg.submitting = false
       if (res.code !== 0) { this.planDlg.error = res.message || '创建失败'; return }
-      this.planDlg.visible = false; toast.success('巡访计划已创建'); this.reload()
+      this.planDlg.visible = false
+      this.showCreatedRecord(res.data.id)
+      this.lastReceipt = {
+        id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel,
+        version: res.data?.version, actionLabel: '创建巡访计划',
+        objectLabel: res.data?.enterpriseName || res.data?.objective || '巡访计划',
+        auditText: '巡访计划与创建留痕已同事务提交', nextStep: '进入计划详情发布并按状态连续推进'
+      }
+      toast.success('巡访计划已创建'); this.reload()
+    },
+    resetCreateDialogs() {
+      this.commDlg = { visible: false, submitting: false, error: '' }
+      this.planDlg = { visible: false, submitting: false, error: '' }
+    },
+    showCreatedRecord(id) {
+      this.resetDetail()
+      this.selectedId = String(id)
+      const query = this.batchStore.withBatchQuery({ ...this.$route.query, id: this.selectedId })
+      delete query.receipt
+      this.$router.replace({ query })
+      this.loadDetail(this.selectedId)
     },
     goCreate() {
+      if (this.commDlg.submitting || this.planDlg.submitting) return
       if (this.tab === 'communication') {
         if (!this.batchStore.selectedBatchId) return toast.error('请先选择实习批次')
-        this.commForm = { enterpriseId: '', internshipId: '', summary: '', communicationType: 'PHONE' }
+        this.commForm = { enterpriseId: '', internshipId: '', summary: '', communicationType: 'PHONE', contactName: '', result: '' }
         this.commDlg = { visible: true, submitting: false, error: '' }
         return
       }
       if (this.tab === 'visit-plan') {
-        this.planForm = { enterpriseId: '', enterpriseName: '', objective: '' }
+        if (!this.batchStore.selectedBatchId) return toast.error('请先选择实习批次')
+        this.planForm = { enterpriseId: '', enterpriseName: '', objective: '', planDate: '', method: 'ONSITE', location: '' }
         this.planDlg = { visible: true, submitting: false, error: '' }
         return
       }
@@ -460,6 +556,10 @@ export default {
     },
     reload() { this.page = 1; this.load() },
     async load() {
+      const sequence = ++this.listSequence
+      const batchId = this.batchStore.selectedBatchId
+      const tab = this.tab
+      this.rows = []; this.total = 0
       if (!this.batchStore.selectedBatchId) {
         this.loading = false; this.error = '请先选择批次'; this.rows = []; this.total = 0
         return
@@ -471,6 +571,7 @@ export default {
       else if (this.tab === 'communication') res = await guidanceVisitApi.getCommunications(params)
       else if (this.tab === 'visit-plan') res = await guidanceVisitApi.getVisitPlans(params)
       else { if (this.rectifyFilter) params.rectify = this.rectifyFilter; res = await guidanceVisitApi.getVisits(params) }
+      if (sequence !== this.listSequence || batchId !== this.batchStore.selectedBatchId || tab !== this.tab) return
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; this.total = 0; return }
       this.rows = res.data.list; this.total = res.data.total
@@ -486,21 +587,41 @@ export default {
       this.$router.replace({ query: this.batchStore.withBatchQuery({ ...this.$route.query, id: sid }) })
     },
     clearSelection() {
+      this.selectedId = ''
+      this.resetDetail()
       const query = { ...this.$route.query }
       delete query.id
       this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
     },
     async loadDetail(id) {
       this.detail = { loading: true, error: '', data: null }
+      const workspace = this.detail
+      const tab = this.tab
+      const batchId = this.batchStore.selectedBatchId
       let res
       if (this.tab === 'guidance') res = await guidanceVisitApi.getGuidanceDetail(id)
       else if (this.tab === 'communication') res = await guidanceVisitApi.getCommunicationDetail(id)
       else if (this.tab === 'visit-plan') res = await guidanceVisitApi.getVisitPlanDetail(id)
       else res = await guidanceVisitApi.getVisitDetail(id)
-      if (String(this.selectedId) !== String(id)) return
+      if (this.detail !== workspace || tab !== this.tab || batchId !== this.batchStore.selectedBatchId || String(this.selectedId) !== String(id)) return
       this.detail.loading = false
       if (res.code !== 0) { this.detail.error = res.message || '详情加载失败'; return }
       this.detail.data = res.data
+      if (this.$route.query.receipt === 'created' && String(this.$route.query.id || '') === String(id)) {
+        const d = res.data
+        this.lastReceipt = {
+          id: d.id, status: d.status || d.rectifyStatus,
+          statusLabel: this.tab === 'guidance' ? '指导记录已创建' : '巡访记录已创建',
+          version: d.version,
+          actionLabel: this.tab === 'guidance' ? '新增指导记录' : '新增巡访记录',
+          objectLabel: `${d.studentName || '学生'} · ${this.tab === 'guidance' ? (d.topic || '指导记录') : '教师巡访'}`,
+          auditText: '记录与创建留痕已同事务提交',
+          nextStep: d.toRisk ? '风险线索已联动，继续进入风险工作台跟进' : d.rectifyStatus === 'PENDING' ? '安全隐患已进入整改队列' : '可继续查看详情或新增下一条记录'
+        }
+        const query = { ...this.$route.query }
+        delete query.receipt
+        this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
+      }
     },
     async downloadAtt() {
       const a = this.detail.data?.attachment
@@ -508,61 +629,95 @@ export default {
       try { await guidanceVisitApi.downloadAttachment(a.fileId, a.fileName) } catch (e) { toast.error('下载失败：' + (e.message || '')) }
     },
     openVoid(d) {
-      this.pending = { kind: 'void', id: this.selectedId }
+      if (this.tab !== 'guidance' || !d || this.detail.loading || this.detail.error || this.cd.submitting || !this.canBtn('internship.guidance.manage')) return
+      this.conflict = emptyConflict()
+      this.pending = { kind: 'void', id: this.selectedId, expectedVersion: d.version,
+        objectLabel: `${d.studentName || '学生'} · ${d.topic || '指导记录'}` }
       this.cd = { visible: true, title: '撤销指导记录', content: `撤销「${d.studentName}」的指导记录，撤销原因将写入审计。`,
         danger: true, confirmText: '撤销', reasonLabel: '撤销原因', requireReason: true, submitting: false }
     },
     openRectify(d) {
-      this.pending = { kind: 'rectify', id: this.selectedId }
+      if (this.tab !== 'visit' || !d || d.rectifyStatus !== 'PENDING' || this.detail.loading || this.detail.error || this.cd.submitting || !this.canBtn('internship.visit.manage')) return
+      this.conflict = emptyConflict()
+      this.pending = { kind: 'rectify', id: this.selectedId, expectedVersion: d.version,
+        objectLabel: `${d.studentName || '学生'} · 巡访整改` }
       this.cd = { visible: true, title: '巡访整改跟进', content: `将「${d.studentName}」的安全隐患整改标记为「已整改」，跟进说明将写入审计。`,
         danger: false, confirmText: '标记已整改', reasonLabel: '整改跟进说明', requireReason: true, submitting: false }
     },
     async onConfirm({ reason }) {
       const p = this.pending
+      if (!p || this.cd.submitting || this.conflict.active || this.detail.loading || this.detail.error) return
+      const permission = { void: 'internship.guidance.manage', rectify: 'internship.visit.manage', 'plan-transition': 'internship.visit.plan.manage' }[p.kind]
+      if (!permission || !this.canBtn(permission) || String(p.id) !== String(this.selectedId)) return
+      const dialog = this.cd
       this.cd.submitting = true
       let res
       if (p.kind === 'plan-transition') {
-        res = await guidanceVisitApi.transitionVisitPlan(p.id, p.action, { reason: reason || '' })
+        res = await guidanceVisitApi.transitionVisitPlan(p.id, p.action, {
+          reason: reason || '', expectedVersion: p.expectedVersion
+        })
       } else if (p.kind === 'void') {
-        res = await guidanceVisitApi.voidGuidance(p.id, { reason })
+        res = await guidanceVisitApi.voidGuidance(p.id, { reason, expectedVersion: p.expectedVersion })
       } else {
-        res = await guidanceVisitApi.rectifyVisit(p.id, { status: 'DONE', note: reason })
+        res = await guidanceVisitApi.rectifyVisit(p.id, {
+          status: 'DONE', note: reason, expectedVersion: p.expectedVersion
+        })
       }
+      if (this.pending !== p || this.cd !== dialog) return
       this.cd.submitting = false
       if (isConflict(res)) {
-        // 两个教师同时推进同一条计划时，后端条件更新会让输家拿 409。
-        // 弹窗不关、填的内容不动，只把最新状态摆出来让他自己决定。
-        this.conflict = await captureConflict({
+        // 先阻止重提，再回读最新详情；原确认单的版本保持不变。
+        this.conflict = { ...emptyConflict(), active: true, kept: reason || '' }
+        const captured = await captureConflict({
           res,
           kept: reason || '',
-          refresh: () => this.loadDetail(p.id),
+          refresh: async () => {
+            await this.loadDetail(p.id)
+            if (this.detail.error) throw new Error(this.detail.error)
+          },
           latest: () => {
             const d = this.detail.data
             if (!d) throw new Error('最新详情未拉回')
+            if (this.pending !== p) throw new Error('当前记录已切换')
             return [
-              { label: '最新状态', value: d.statusLabel || d.status || '' },
-              { label: '负责人', value: d.ownerName || '' },
+              { label: '最新状态', value: d.statusLabel || d.rectifyStatusLabel || d.status || '' },
+              { label: '负责人', value: d.ownerName || d.advisorName || '' },
               { label: '取消原因', value: d.cancelReason || '' }
             ]
           }
         })
+        if (this.pending === p && this.cd === dialog) this.conflict = captured
         return
       }
       if (res.code !== 0) return toast.error(res.message || '操作失败')
       this.cd.visible = false
       this.conflict = emptyConflict()
+      if (p.kind === 'void') this.clearSelection()
+      this.lastReceipt = {
+        id: res.data?.id, status: res.data?.status || res.data?.rectifyStatus,
+        statusLabel: res.data?.statusLabel || res.data?.rectifyStatusLabel || (p.kind === 'void' ? '已撤销' : '操作成功'),
+        version: res.data?.version,
+        actionLabel: p.kind === 'plan-transition' ? `巡访计划${this.cd.confirmText}` : p.kind === 'void' ? '撤销指导记录' : '完成巡访整改',
+        objectLabel: p.objectLabel,
+        auditText: '状态更新与操作留痕已同事务提交',
+        nextStep: p.kind === 'rectify' ? '整改已闭环，可查看完整审计记录' : '按最新服务端状态继续下一合法动作'
+      }
       toast.success('操作成功，已写审计')
       this.loadStats(); this.load()
-      if (p.kind === 'void') this.clearSelection()
-      else this.loadDetail(p.id)
+      if (p.kind !== 'void') this.loadDetail(p.id)
     }
   }
 }
 </script>
 
 <style scoped>
-.gv-form-error { color: var(--danger-600, #d92d20); margin: var(--space-2) 0 0; }
 @import '@/styles/module-page.css';
+.gv-form-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.gv-form-hint { margin: 0 0 20px; color: var(--text-secondary); font-size: 13px; }
+.gv-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+@media (max-width: 600px) { .gv-form-grid { grid-template-columns: 1fr; gap: 0; } }
+.gv-form-error { color: var(--danger-600, #d92d20); margin: var(--space-2) 0 0; }
+
 
 .tabs { display: flex; gap: var(--space-2); border-bottom: 1px solid var(--border-light); }
 .tabs__btn { border: none; background: none; padding: var(--space-2) var(--space-3); cursor: pointer; color: var(--text-secondary); font-size: var(--font-size-sm); border-bottom: 2px solid transparent; }

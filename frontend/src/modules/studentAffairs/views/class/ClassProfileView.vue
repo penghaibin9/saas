@@ -207,7 +207,7 @@ export default {
       if (m.key === 'currentLeave' && m.value) return 'warning'
       return 'primary'
     },
-    positionLabel(v) { return (POSITIONS.find((o) => o.value === v) || {}).label || v },
+    positionLabel(v) { return (POSITIONS.find((o) => o.value === v) || {}).label || (v ? '待确认' : '—') },
     studentName(sid) {
       const s = this.stu.rows.find((x) => String(x.studentId) === String(sid))
       return s ? `${s.realName}（${s.studentNo}）` : `学生#${sid}`

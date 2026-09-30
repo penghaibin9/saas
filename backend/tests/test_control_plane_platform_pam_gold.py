@@ -151,7 +151,7 @@ def test_platform_access_view_uses_stable_request_ids_and_real_scope_catalog():
     source = (root / "frontend/src/modules/platform/views/control/PlatformAccessView.vue").read_text(encoding="utf-8")
     assert "randomUUID" in source
     assert "requestId: requestId()" in source
-    assert "SupportTicket 数字 ID" in source
+    assert "支持工单编号" in source
     assert "tenant.context.read" in source
     assert "tenant.audit.read" in source
     assert "file.metadata.read" in source

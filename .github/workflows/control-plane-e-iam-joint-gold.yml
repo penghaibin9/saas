@@ -290,7 +290,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          CONTROL_REMOTE="$(git ls-remote origin 'refs/heads/integration/control-plane-option-b-20260815' | awk '{print $1}')"
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            CONTROL_REMOTE="$(git ls-remote origin "refs/heads/$GITHUB_HEAD_REF" | awk '{print $1}')"
+          else
+            CONTROL_REMOTE="$(git ls-remote origin 'refs/heads/integration/control-plane-option-b-20260815' | awk '{print $1}')"
+          fi
           E_REMOTE="$(git ls-remote origin 'refs/pull/132/head' | awk '{print $1}')"
           test "$CONTROL_REMOTE" = "$CONTROL_HEAD"
           test "$E_REMOTE" = "$E_HEAD"

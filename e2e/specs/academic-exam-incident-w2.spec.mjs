@@ -121,7 +121,7 @@ test('W2 exam incidents: OPEN -> CLOSE / HANDOFF / VOID with server-authoritativ
   await page.getByRole('button', { name: '清空' }).click()
   await openDetail(page, attempt.discipline.studentNo)
   const caseRef = `DISC-W2-E2E-${process.env.GITHUB_RUN_ID || 'LOCAL'}-${testInfo.retry}`
-  await page.getByLabel('处分 / 后续处理线索编号（HANDOFF 必填）').fill(caseRef)
+  await page.getByLabel(/处分 \/ 后续处理线索编号/).fill(caseRef)
   await page.getByRole('button', { name: '移交处理线索' }).click()
   const handed = await confirmDecision(
     page,

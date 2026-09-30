@@ -6,6 +6,7 @@ DB_ENABLED=true 时，students / approvals / todos / messages / audit 全部走�
 """
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 from datetime import datetime
 from typing import Optional
 
@@ -67,6 +68,8 @@ def _student_row(s: StudentProfile, phone_plain: str | None = None, id_card_plai
         "collegeId": str(s.college_id or ""), "collegeName": getattr(s, "_college_name", "") or "",
         "majorId": str(s.major_id or ""), "majorName": getattr(s, "_major_name", "") or "",
         "classId": str(s.class_id or ""), "className": getattr(s, "_class_name", "") or "",
+        "counselorId": str(getattr(s, "_counselor_id", "") or ""),
+        "counselorName": getattr(s, "_counselor_name", "") or "",
         "grade": s.grade or "", "currentStage": s.current_stage, "studentStatus": s.student_status,
         "riskLevel": (s.remark or "NONE") if (s.remark in ("HIGH", "MEDIUM", "LOW")) else "NONE",
         # TODO(P4)：riskLevel 应来自风险信号表；冻结册第一批无该字段，暂借 remark 存放演示值
@@ -78,7 +81,7 @@ def _student_row(s: StudentProfile, phone_plain: str | None = None, id_card_plai
 
 
 def _org_names(db, rows: list[StudentProfile]) -> None:
-    from app.models import College, Major, SchoolClass
+    from app.models import College, Major, SchoolClass, User
     tenant_id = _tid()
     college_ids = {s.college_id for s in rows if s.college_id is not None}
     major_ids = {s.major_id for s in rows if s.major_id is not None}
@@ -89,13 +92,21 @@ def _org_names(db, rows: list[StudentProfile]) -> None:
     majors = ({m.id: m.major_name for m in db.scalars(select(Major).where(
         Major.tenant_id == tenant_id, Major.id.in_(major_ids),
         Major.is_deleted.is_(False))).all()} if major_ids else {})
-    classes = ({k.id: k.class_name for k in db.scalars(select(SchoolClass).where(
+    class_rows = (db.scalars(select(SchoolClass).where(
         SchoolClass.tenant_id == tenant_id, SchoolClass.id.in_(class_ids),
-        SchoolClass.is_deleted.is_(False))).all()} if class_ids else {})
+        SchoolClass.is_deleted.is_(False))).all() if class_ids else [])
+    classes = {row.id: row for row in class_rows}
+    counselor_ids = {row.counselor_id for row in class_rows if row.counselor_id is not None}
+    counselors = ({u.id: u.real_name for u in db.scalars(select(User).where(
+        User.tenant_id == tenant_id, User.id.in_(counselor_ids),
+        User.is_deleted.is_(False), User.status == "ACTIVE")).all()} if counselor_ids else {})
     for s in rows:
         s._college_name = colleges.get(s.college_id, "")
         s._major_name = majors.get(s.major_id, "")
-        s._class_name = classes.get(s.class_id, "")
+        school_class = classes.get(s.class_id)
+        s._class_name = school_class.class_name if school_class else ""
+        s._counselor_id = school_class.counselor_id if school_class else None
+        s._counselor_name = counselors.get(s._counselor_id, "")
 
 
 def _primary_phone(db, student_id: int) -> str | None:
@@ -258,7 +269,7 @@ def create_student(body) -> dict:
         except IntegrityError as e:
             db.rollback()
             raise AppException("DATA_CONFLICT", "学号已存在（租户内唯一）") from e
-        s = db.get(StudentProfile, result.student_id)
+        s = tenant_get(db, StudentProfile, result.student_id)
         db.refresh(s)
         _org_names(db, [s])
         row = _student_row(s, body.phone)

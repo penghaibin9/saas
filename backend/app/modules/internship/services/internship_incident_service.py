@@ -153,12 +153,23 @@ def report_incident(body, user=None):
         raise AppException("VALIDATION_ERROR", "学生事故上报必须关联 internshipId")
     with session() as db:
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        from app.services import file_service
         rec = assert_internship_record_scope(db, b["internshipId"], user, "事故上报")
         b["studentId"], b["batchId"], b["companyId"] = (
             rec.student_id, rec.batch_id, rec.enterprise_id)
         existing = _find_by_idempotency_key(db, key)
         if existing:
             return _idempotent_result(existing)
+        severity = str(b.get("severity") or "MEDIUM").upper()
+        if severity in ("HIGH", "CRITICAL"):
+            from app.modules.internship.services.internship_audit_service import (
+                assert_high_risk_write_available,
+            )
+            assert_high_risk_write_available(db)
+        file_ids = [str(value) for value in (b.get("fileIds") or []) if value]
+        for file_id in file_ids:
+            if not file_service.get_file_meta(file_id, user=user):
+                raise AppException("VALIDATION_ERROR", "事故证据附件不存在或无权访问")
         no = f"INC-{datetime.utcnow():%Y%m%d%H%M%S%f}"
         x = InternshipIncident(
             tenant_id=_tid(), incident_no=no,
@@ -167,13 +178,13 @@ def report_incident(body, user=None):
             company_id=_as_id(b["companyId"]) if b.get("companyId") else None,
             student_id=_as_id(b["studentId"]) if b.get("studentId") else None,
             incident_type=b.get("incidentType") or "OTHER",
-            severity=str(b.get("severity") or "MEDIUM").upper(),
+            severity=severity,
             occurred_at=b.get("occurredAt"), location=b.get("location"),
             summary=str(b.get("summary") or "").strip(),
             injury_flag=bool(b.get("injuryFlag")),
             affected_persons=b.get("affectedPersons"),
             emergency_action=b.get("emergencyAction"),
-            file_ids=b.get("fileIds") or [], reported_by_name=_op(user),
+            file_ids=file_ids, reported_by_name=_op(user),
             reported_at=datetime.utcnow(), idempotency_key=key, status="REPORTED")
         db.add(x)
         try:
@@ -189,11 +200,16 @@ def report_incident(body, user=None):
                 raise AppException(
                     "DATA_CONFLICT", "该幂等键已被历史事故占用，请更换 idempotencyKey") from None
             return _idempotent_result(winner)
+        for file_id in file_ids:
+            file_service.bind_file_biz(
+                file_id, "INTERNSHIP_INCIDENT", str(x.id), user=user, db=db)
         if x.internship_id and x.severity in ("HIGH", "CRITICAL"):
             r = RiskRecord(
                 tenant_id=_tid(), internship_id=x.internship_id,
                 risk_code="INT-INCIDENT", risk_title="实习事故：" + (x.incident_type or "其他"),
-                risk_level="HIGH", source_module="incident", status="PENDING_HANDLE")
+                risk_level="HIGH", source_module="incident",
+                source_type="INCIDENT", source_id=x.id,
+                source_version=int(x.version or 0), status="PENDING_HANDLE")
             db.add(r)
             db.flush()
             x.risk_id = r.id
@@ -231,14 +247,35 @@ def transition(iid, status, body=None, user=None):
         old_status = x.status
         if target not in allowed.get(old_status, set()):
             raise AppException("DATA_CONFLICT", f"不允许 {old_status}→{target}")
+        if target == "CLOSED" or x.severity in ("HIGH", "CRITICAL"):
+            from app.modules.internship.services.internship_audit_service import (
+                assert_high_risk_write_available,
+            )
+            assert_high_risk_write_available(db)
+        submitted_file_ids = None
+        new_file_ids = []
+        if "fileIds" in b:
+            from app.services import file_service
+            submitted_file_ids = [str(value) for value in (b.get("fileIds") or []) if value]
+            existing_file_ids = {str(value) for value in (x.file_ids or []) if value}
+            for file_id in submitted_file_ids:
+                # Already-bound evidence belongs to this tenant-scoped incident and was
+                # authorized when reported. Re-authorizing it as a fresh upload after its
+                # biz type changed to INTERNSHIP_INCIDENT incorrectly rejects the evidence.
+                if file_id in existing_file_ids:
+                    continue
+                if not file_service.get_file_meta(file_id, user=user):
+                    raise AppException("VALIDATION_ERROR", "事故证据附件不存在或无权访问")
+                new_file_ids.append(file_id)
         for key, attr in (
             ("investigationConclusion", "investigation_conclusion"),
             ("rectificationPlan", "rectification_plan"),
             ("responsibilityConclusion", "responsibility_conclusion"),
-            ("fileIds", "file_ids"),
         ):
             if key in b:
                 setattr(x, attr, b[key])
+        if submitted_file_ids is not None:
+            x.file_ids = submitted_file_ids
         if target == "CLOSED":
             from app.core.permissions import enforce_permission, is_super_admin
             enforce_permission(user or {}, "internship.incident.close")
@@ -253,9 +290,16 @@ def transition(iid, status, body=None, user=None):
             x.closed_at = datetime.utcnow()
             x.closed_by_name = _op(user)
         x.version = int(x.version or 0) + 1
+        if submitted_file_ids is not None:
+            for file_id in new_file_ids:
+                file_service.bind_file_biz(
+                    file_id, "INTERNSHIP_INCIDENT", str(x.id), user=user, db=db)
         _audit(db, x.id, "INTERNSHIP_INCIDENT", f"TRANSITION_{target}", user, {
             "from": old_status, "to": target, "severity": x.severity,
             "actorUserId": _uid(user), "version": int(x.version or 0),
         })
         db.commit()
-        return {"id": str(x.id), "status": x.status, "version": int(x.version or 0)}
+        return {"id": str(x.id), "status": x.status, "version": int(x.version or 0),
+                "riskId": str(x.risk_id or ""),
+                "nextStep": "生成学生监管证据包" if x.status == "CLOSED" else "继续事故处置闭环",
+                "evidenceTarget": {"packageType": "STUDENT", "targetId": str(x.internship_id or "")}}

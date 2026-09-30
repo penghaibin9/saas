@@ -253,7 +253,12 @@ def ensure_workflow_assignees(
         "SA_OFFICE_REVIEW", "SA_OFFICE_FINAL", "SCHOOL_REVIEW",
     ),
 ) -> dict[str, int]:
-    """为测试学生显式建立真实用户、角色、辅导员责任和学院范围。"""
+    """为测试学生显式建立真实用户、角色、辅导员责任和学院范围。
+
+    若测试已显式用 TeacherStudentScope 把默认 counselor01 限定到某些班级，
+    则不得再把范围外班级的正式 AffairsCounselorAssignment 也绑定给 counselor01；
+    范围外班级使用独立真实测试辅导员，避免测试夹具自己扩大被测账号的数据范围。
+    """
     from app.db.session import get_sessionmaker
     from app.models import (
         AffairsCounselorAssignment, College, SchoolClass, StudentProfile,
@@ -269,13 +274,36 @@ def ensure_workflow_assignees(
             for role_code in {_NODE_ROLE[node] for node in requested_nodes}
         }
         users = {node: role_users[_NODE_ROLE[node]] for node in requested_nodes}
+        default_counselor = users.get("COUNSELOR_REVIEW") or users.get("CLASS_REVIEW")
+        explicit_default_classes: set[str] = set()
+        if default_counselor is not None:
+            scopes = db.scalars(select(TeacherStudentScope).where(
+                TeacherStudentScope.tenant_id == TID,
+                TeacherStudentScope.teacher_key == default_counselor.login_name,
+                TeacherStudentScope.role_code == "COUNSELOR",
+                TeacherStudentScope.scope_type == "CLASS",
+                TeacherStudentScope.status == "ACTIVE",
+                TeacherStudentScope.is_deleted.is_(False),
+            )).all()
+            for scope in scopes:
+                value = str(scope.ref_value or "").strip()
+                if value:
+                    explicit_default_classes |= {value, value + "班", value.rstrip("班")}
+
         for student_id in ids:
             student = db.get(StudentProfile, student_id)
             assert student is not None and not student.is_deleted, f"测试学生不存在：{student_id}"
             school_class = db.get(SchoolClass, int(student.class_id)) if student.class_id else None
             if any(node in {"COUNSELOR_REVIEW", "CLASS_REVIEW"} for node in nodes):
                 assert school_class is not None, f"测试学生未配置班级：{student_id}"
-                counselor = users.get("COUNSELOR_REVIEW") or users.get("CLASS_REVIEW")
+                counselor = default_counselor
+                assert counselor is not None
+                if explicit_default_classes and school_class.class_name not in explicit_default_classes:
+                    counselor = _ensure_role_user(
+                        db, "COUNSELOR",
+                        login_name=f"pytest_counselor_class_{school_class.id}",
+                        real_name=f"{school_class.class_name}测试辅导员",
+                    )
                 school_class.counselor_id = counselor.id
                 assignment = db.scalars(select(AffairsCounselorAssignment).where(
                     AffairsCounselorAssignment.tenant_id == TID,

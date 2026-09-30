@@ -29,11 +29,12 @@ def test_readonly_view_has_explicit_api_allowlist():
         "portalApi.academicCalendar()",
         "portalApi.academicClearance()",
         "portalApi.academicCredits()",
-        "portalApi.academicWarning()",
+        "portalApi.academicWarning({ page: warningPage.value, pageSize: 50 })",
         "portalApi.academicGraduationAudit()",
     ):
         assert method in source
-    assert "if (!config.value.loader) throw new Error" in source
+    assert "const loader = config.value.loader" in source
+    assert "if (!loader) throw new Error" in source
     assert "当前路由未绑定允许的教务读取接口" in source
 
 

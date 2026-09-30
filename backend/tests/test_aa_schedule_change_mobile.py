@@ -13,10 +13,32 @@ BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
 
 
-def _hdr(client, login_name):
+def _hdr(client, login_name, client_type="TEACHER_MINI"):
     data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+                       json={"loginName": login_name, "password": "any", "clientType": client_type}).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
+
+
+def test_schedule_change_mobile_routes_reject_non_teacher_mini_tokens(client, db_mode):
+    """PC and student tokens must not use a teacher-mini route by changing a URL."""
+    # 采用测试夹具已经登记在该租户的学生账号，避免伪造 tenant 声明先被
+    # 令牌租户校验拦截，从而掩盖教师小程序路由自身的角色拒绝。
+    student_headers = _hdr(client, "student01", client_type="STUDENT_MINI")
+    pc_headers = _hdr(client, "academic01", client_type="ADMIN_PC")
+    cases = [
+        ("GET", f"{MOB}/teacher/academic/schedule/mine", None),
+        ("POST", f"{MOB}/teacher/academic/schedule-changes/conflict-check", {}),
+        ("POST", f"{MOB}/teacher/academic/schedule-changes", {}),
+        ("GET", f"{MOB}/teacher/academic/schedule-changes", None),
+        ("GET", f"{MOB}/teacher/academic/schedule-changes/pending", None),
+        ("POST", f"{MOB}/teacher/academic/schedule-changes/1/review", {"action": "APPROVE", "expectedVersion": 0}),
+        ("GET", f"{MOB}/teacher/academic/schedule-changes/1", None),
+        ("POST", f"{MOB}/teacher/academic/schedule-changes/1/cancel", {}),
+    ]
+    for headers in (student_headers, pc_headers):
+        for method, path, body in cases:
+            response = client.request(method, path, headers=headers, json=body)
+            assert response.status_code == 403, (method, path, response.text)
 
 
 def _seed(db_mode):
@@ -159,7 +181,7 @@ def test_conflict_check_and_submit_flow_via_mobile(client, db_mode):
     hdr = _hdr(client, "academic01")
 
     body = {"originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
-            "targetWeekday": 3, "targetSlotNo": 2}
+            "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 3, "targetEndWeek": 3, "targetWeekParity": "ALL"}
     chk = client.post(f"{MOB}/teacher/academic/schedule-changes/conflict-check", headers=hdr, json=body).json()
     assert chk["code"] == 0 and chk["data"]["conflict"] is None
 
@@ -177,7 +199,7 @@ def test_cancel_flow_via_mobile(client, db_mode):
     _, origin = _published_item(client, admin, ids["class"])
     hdr = _hdr(client, "academic01")
     body = {"originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
-            "targetWeekday": 3, "targetSlotNo": 2}
+            "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 3, "targetEndWeek": 3, "targetWeekParity": "ALL"}
     change_id = client.post(f"{MOB}/teacher/academic/schedule-changes", headers=hdr, json=body).json()["data"]["changeId"]
 
     r = client.post(f"{MOB}/teacher/academic/schedule-changes/{change_id}/cancel", headers=hdr,
@@ -191,9 +213,31 @@ def test_cross_scope_submit_403_via_mobile(client, db_mode):
     _, origin = _published_item(client, admin, ids["class"], teacher_key="other_teacher", teacher_name="他人")
     hdr = _hdr(client, "academic01")
     body = {"originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
-            "targetWeekday": 3, "targetSlotNo": 2}
+            "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 3, "targetEndWeek": 3, "targetWeekParity": "ALL"}
     r = client.post(f"{MOB}/teacher/academic/schedule-changes", headers=hdr, json=body)
     assert r.status_code == 403
+
+
+def test_pc_teacher_schedule_origin_handoff_is_self_only(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+
+    own = client.get(
+        f"{BASE}/schedule-change/origin-items/{origin}",
+        headers=_hdr(client, "academic01"),
+    )
+    assert own.status_code == 200, own.text
+    data = own.json()["data"]
+    assert data["itemId"] == origin
+    assert data["courseName"] == "高等数学"
+    assert data["batchName"]
+
+    forbidden = client.get(
+        f"{BASE}/schedule-change/origin-items/{origin}",
+        headers=_hdr(client, "teacher01"),
+    )
+    assert forbidden.status_code == 403
 
 
 def test_detail_ownership_guard_via_mobile(client, db_mode):
@@ -202,7 +246,7 @@ def test_detail_ownership_guard_via_mobile(client, db_mode):
     _, origin = _published_item(client, admin, ids["class"])
     hdr = _hdr(client, "academic01")
     body = {"originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
-            "targetWeekday": 3, "targetSlotNo": 2}
+            "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 3, "targetEndWeek": 3, "targetWeekParity": "ALL"}
     change_id = client.post(f"{MOB}/teacher/academic/schedule-changes", headers=hdr, json=body).json()["data"]["changeId"]
 
     ok = client.get(f"{MOB}/teacher/academic/schedule-changes/{change_id}", headers=hdr)

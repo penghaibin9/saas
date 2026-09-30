@@ -33,6 +33,8 @@ def test_d9_textbook_hot_lists_are_db_paginated_and_stats_are_sql_aggregated():
         read.list_order_batches,
         read.list_distribution_records,
         read.list_fees,
+        read.my_student_distributions,
+        read.my_student_fees,
     ):
         source = inspect.getsource(fn)
         assert "func.count" in source

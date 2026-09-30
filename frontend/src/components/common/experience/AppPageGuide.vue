@@ -26,7 +26,12 @@ export default {
   components: { AppStepGuide },
   props: {
     /** 引导键，对应 config/help/guides.js 的注册键，如 graduation.gd-batches */
-    guideKey: { type: String, required: true }
+    guideKey: { type: String, required: true },
+    /**
+     * 是否在当前版本未看过时自动弹出。
+     * 对“今天先做什么”类高频首页可关闭自动弹出，仍保留顶栏「重看本页引导」。
+     */
+    autoOpen: { type: Boolean, default: true }
   },
   data() {
     return { open: false, unsubscribe: null }
@@ -45,7 +50,7 @@ export default {
   methods: {
     /** 首次进入且未看过当前版本时自动弹。 */
     async autoOpenIfUnseen() {
-      if (!this.steps.length) return
+      if (!this.autoOpen || !this.steps.length) return
       const key = guidePrefKey(this.guideKey)
       try {
         const d = await request('/me/preferences', { params: { keys: key } })

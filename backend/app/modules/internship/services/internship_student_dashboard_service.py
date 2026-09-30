@@ -10,14 +10,17 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException
+from app.core.tenant_scoped import tenant_get
 from app.models import (
-    InternshipAgreement, InternshipBatch, InternshipCheckin, InternshipInsurance,
-    InternshipLeave, InternshipPosition, WeeklyReport,
+    InternshipAgreement, InternshipArchive, InternshipBatch, InternshipCheckin,
+    InternshipFinalScore, InternshipInsurance, InternshipLeave, InternshipPosition,
+    WeeklyReport,
 )
 from app.modules.internship.services.internship_record_resolver import (
     resolve_student_internship_context,
 )
 from app.services.db_service import _iso, _tid, session
+from app.modules.internship.services.internship_eligibility_result import eligibility_result
 
 
 def _student(db, user):
@@ -65,44 +68,59 @@ def get_my_dashboard(user, batch_id=None):
                 "hasData": False, "needSelect": False,
                 "message": ctx.message or "你暂无实习记录", "candidates": ctx.candidates,
             }
-        batch = ctx.batch or (db.get(InternshipBatch, record.batch_id) if record.batch_id else None)
-        position = db.get(InternshipPosition, record.position_id) if record.position_id else None
+        batch = ctx.batch or (
+            tenant_get(db, InternshipBatch, record.batch_id) if record.batch_id else None
+        )
+        position = (
+            tenant_get(db, InternshipPosition, record.position_id) if record.position_id else None
+        )
 
-        reports = db.scalars(select(WeeklyReport).where(
+        latest_report = db.scalar(select(WeeklyReport).where(
             WeeklyReport.tenant_id == _tid(),
             WeeklyReport.internship_id == record.id,
             WeeklyReport.is_deleted.is_(False)).order_by(
-                WeeklyReport.week_number.desc(), WeeklyReport.id.desc())).all()
-        latest_report = reports[0] if reports else None
+                WeeklyReport.week_number.desc(), WeeklyReport.id.desc()).limit(1))
 
         today = f"{datetime.now():%Y-%m-%d}"
-        checkin = db.scalars(select(InternshipCheckin).where(
+        checkin = db.scalar(select(InternshipCheckin).where(
             InternshipCheckin.tenant_id == _tid(),
             InternshipCheckin.internship_id == record.id,
             InternshipCheckin.checkin_date == today,
             InternshipCheckin.is_deleted.is_(False)).order_by(
-                InternshipCheckin.id.desc())).first()
+                InternshipCheckin.id.desc()).limit(1))
         checkin_total = int(db.scalar(select(func.count()).select_from(InternshipCheckin).where(
             InternshipCheckin.tenant_id == _tid(),
             InternshipCheckin.internship_id == record.id,
             InternshipCheckin.is_deleted.is_(False))) or 0)
 
-        agreement = db.scalars(select(InternshipAgreement).where(
+        agreement = db.scalar(select(InternshipAgreement).where(
             InternshipAgreement.tenant_id == _tid(),
             InternshipAgreement.internship_id == record.id,
             InternshipAgreement.is_deleted.is_(False)).order_by(
-                InternshipAgreement.id.desc())).first()
-        insurance = db.scalars(select(InternshipInsurance).where(
+                InternshipAgreement.id.desc()).limit(1))
+        insurance = db.scalar(select(InternshipInsurance).where(
             InternshipInsurance.tenant_id == _tid(),
             InternshipInsurance.internship_id == record.id,
             InternshipInsurance.is_deleted.is_(False)).order_by(
-                InternshipInsurance.id.desc())).first()
-        leave = db.scalars(select(InternshipLeave).where(
+                InternshipInsurance.id.desc()).limit(1))
+        leave = db.scalar(select(InternshipLeave).where(
             InternshipLeave.tenant_id == _tid(),
             InternshipLeave.internship_id == record.id,
             InternshipLeave.status.in_(("PENDING", "APPROVED")),
             InternshipLeave.is_deleted.is_(False)).order_by(
-                InternshipLeave.id.desc())).first()
+                InternshipLeave.id.desc()).limit(1))
+        score = db.scalar(select(InternshipFinalScore).where(
+            InternshipFinalScore.tenant_id == _tid(),
+            InternshipFinalScore.internship_id == record.id,
+            InternshipFinalScore.status.in_(("PUBLISHED", "ARCHIVED")),
+            InternshipFinalScore.is_deleted.is_(False),
+        ).order_by(InternshipFinalScore.id.desc()).limit(1))
+        archive = db.scalar(select(InternshipArchive).where(
+            InternshipArchive.tenant_id == _tid(),
+            InternshipArchive.internship_id == record.id,
+            InternshipArchive.status == "ARCHIVED",
+            InternshipArchive.is_deleted.is_(False),
+        ).order_by(InternshipArchive.id.desc()).limit(1))
 
         agreement_status = agreement.status if agreement else "PENDING"
         insurance_status = insurance.status if insurance else "NOT_SUBMITTED"
@@ -123,6 +141,7 @@ def get_my_dashboard(user, batch_id=None):
             "recordId": str(record.id), "batchId": str(record.batch_id or ""),
             "batchName": getattr(batch, "batch_name", "") or "",
             "recordStatus": record.status,
+            "eligibilityReview": eligibility_result(db, record),
             "enterpriseId": str(record.enterprise_id or ""),
             "enterpriseName": record.enterprise_name or "",
             "positionId": str(record.position_id or ""),
@@ -142,6 +161,27 @@ def get_my_dashboard(user, batch_id=None):
             "agreementStatus": agreement_status,
             "insuranceStatus": insurance_status,
             "leaveStatus": leave.status if leave else "NONE",
+            "score": ({
+                "id": str(score.id),
+                "status": score.status,
+                "totalScore": score.total_score,
+                "passLine": score.pass_line,
+                "isPass": bool(score.is_pass),
+                "checkinScore": score.checkin_score,
+                "weeklyScore": score.weekly_score,
+                "monthlyScore": score.monthly_score,
+                "enterpriseScore": score.enterprise_score,
+                "schoolScore": score.school_score,
+                "publishedAt": _iso(score.published_at) or "",
+                "version": int(score.version or 0),
+            } if score else None),
+            "archive": ({
+                "id": str(archive.id),
+                "status": archive.status,
+                "completeness": int(archive.completeness or 0),
+                "archivedAt": _iso(archive.archived_at) or "",
+                "archivedByName": archive.archived_by_name or "",
+            } if archive else None),
             "timeline": _timeline(record, agreement_status, insurance_status),
             "candidates": ctx.candidates,
         }

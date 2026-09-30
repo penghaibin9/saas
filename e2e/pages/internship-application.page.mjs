@@ -22,10 +22,41 @@ export class StudentInternshipApplicationPage {
     this.fixture = fixture
   }
 
+  async selectExactBatchIfNeeded() {
+    const selector = this.page.getByText('请选择要办理的实习批次', { exact: true })
+    if (await selector.isVisible().catch(() => false)) {
+      const target = this.page.getByRole('button').filter({ hasText: this.fixture.batchName }).first()
+      await expect(target).toBeVisible()
+      const selected = this.page.waitForResponse((response) =>
+        apiPath(response) === '/api/v1/portal/internship/my'
+        && response.request().headers()['x-internship-batch-id'] === String(this.fixture.batchId)
+      )
+      await target.click()
+      await selected
+      await expect(selector).toBeHidden()
+    }
+  }
+
+  async openApplicationTab() {
+    const button = this.page.getByRole('button', { name: '正式申请', exact: true })
+    if (!(await button.isVisible().catch(() => false))) {
+      const group = this.page.locator('details.sp-process-group').filter({ hasText: '选岗与申请' }).first()
+      await expect(group).toBeVisible()
+      if (!(await group.evaluate((element) => element.open))) {
+        await group.locator('summary').click()
+      }
+    }
+    await expect(button).toBeVisible()
+    await button.click()
+  }
+
   async open() {
+    const initial = this.page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/my')
     await this.page.goto(`${this.baseUrl}/internship`)
-    await expect(this.page.getByRole('button', { name: '正式申请' })).toBeVisible()
-    await this.page.getByRole('button', { name: '正式申请' }).click()
+    await initial
+    await this.selectExactBatchIfNeeded()
+    await this.openApplicationTab()
     await expect(this.page.getByText('提交正式申请', { exact: true })).toBeVisible()
     await expect(this.page.getByText('我的申请', { exact: true })).toBeVisible()
   }
@@ -83,17 +114,24 @@ export class StudentInternshipApplicationPage {
 
   async expectRejectedFeedback(note, rejectReason) {
     await this.open()
+    const reloaded = this.page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/my')
     await this.page.reload()
-    await expect(this.page.getByRole('button', { name: '正式申请' })).toBeVisible()
-    await this.page.getByRole('button', { name: '正式申请' }).click()
+    await reloaded
+    await this.selectExactBatchIfNeeded()
+    await this.openApplicationTab()
     await expect(this.page.getByText(note, { exact: false }).first()).toBeVisible()
     await expect(this.page.getByText(`驳回原因：${rejectReason}`, { exact: false }).first()).toBeVisible()
     await expect(this.page.getByText(/已驳回|REJECTED/).first()).toBeVisible()
   }
 
   async expectApprovedAndLanded({ companyName, positionName }) {
+    const initial = this.page.waitForResponse((response) =>
+      apiPath(response) === '/api/v1/portal/internship/my')
     await this.page.goto(`${this.baseUrl}/internship`)
-    await expect(this.page.getByRole('button', { name: '我的实习' })).toBeVisible()
+    await initial
+    await this.selectExactBatchIfNeeded()
+    await expect(this.page.getByRole('navigation', { name: '实习办理分组' }).getByRole('button', { name: '我的实习', exact: true })).toBeVisible()
     await expect(this.page.getByText(companyName, { exact: false }).first()).toBeVisible()
     await expect(this.page.getByText(positionName, { exact: false }).first()).toBeVisible()
   }
@@ -119,8 +157,8 @@ export class StaffInternshipApplicationPage {
     return `${this.baseUrl}/admin/internship/applications?${query}`
   }
 
-  applicationDrawer() {
-    return this.page.getByRole('dialog').filter({ hasText: this.fixture.studentName }).last()
+  applicationWorkspace() {
+    return this.page.locator('.iar-workspace').filter({ hasText: this.fixture.studentName })
   }
 
   async openPending() {
@@ -140,9 +178,10 @@ export class StaffInternshipApplicationPage {
     await row.getByRole('button', { name: /审核|查看/ }).click()
     const body = await expectSuccessfulResponse(await detailResponse, '教师打开自主实习申请详情')
     expect(String(body?.data?.id || '')).toBe(String(appId))
-    const drawer = this.applicationDrawer()
+    const drawer = this.applicationWorkspace()
     await expect(drawer).toBeVisible()
-    await expect(drawer.getByRole('heading', { name: '自主实习证明材料', exact: true })).toBeVisible()
+    await expect(this.page).toHaveURL(new RegExp(`[?&]id=${appId}(?:&|$)`))
+    await expect(drawer.getByRole('heading', { name: '申请说明与证明材料', exact: true })).toBeVisible()
     return body?.data || {}
   }
 
@@ -152,7 +191,7 @@ export class StaffInternshipApplicationPage {
       && response.request().method() === 'GET'
     )
     const downloadPromise = this.page.waitForEvent('download').catch(() => null)
-    await this.applicationDrawer().getByRole('button', { name: '下载' }).click()
+    await this.applicationWorkspace().getByRole('button', { name: '下载' }).click()
     const response = await responsePromise
     expect(response.ok(), `证明材料下载 HTTP ${response.status()}`).toBeTruthy()
     const download = await downloadPromise
@@ -161,13 +200,13 @@ export class StaffInternshipApplicationPage {
 
   async reject(appId, reason) {
     const detail = await this.openApplication(appId)
-    const drawer = this.applicationDrawer()
-    const reject = drawer.getByRole('button', { name: '驳回' })
+    const drawer = this.applicationWorkspace()
+    const reject = drawer.getByRole('button', { name: '驳回申请', exact: true })
     await expect(reject).toBeEnabled()
     await reject.click()
     const dialog = this.page.getByRole('dialog').filter({ hasText: '驳回实习申请' }).first()
     await expect(dialog).toBeVisible()
-    await dialog.getByRole('textbox', { name: '请填写具体原因，便于对方理解和修改' }).fill(reason)
+    await dialog.getByRole('textbox', { name: '审核意见' }).fill(reason)
     const responsePromise = this.page.waitForResponse((response) =>
       apiPath(response) === `/api/v1/internship/applications/${appId}/review`
       && response.request().method() === 'POST'
@@ -180,7 +219,7 @@ export class StaffInternshipApplicationPage {
 
   async approve(appId) {
     const detail = await this.openApplication(appId)
-    const drawer = this.applicationDrawer()
+    const drawer = this.applicationWorkspace()
     const approve = drawer.getByRole('button', { name: '通过并落实去向' })
     await expect(approve).toBeEnabled()
     await approve.click()
@@ -197,19 +236,12 @@ export class StaffInternshipApplicationPage {
   }
 
   async openFinal(appId) {
-    await this.page.goto(this.url({ status: 'ALL', appId }))
-    await expect(this.page.getByText('实习申请审核').first()).toBeVisible()
-    await this.dismissGuideIfPresent()
-    const response = await this.page.waitForResponse((r) =>
-      apiPath(r) === `/api/v1/internship/applications/${appId}` && r.request().method() === 'GET'
-    ).catch(() => null)
-    if (response) return (await expectSuccessfulResponse(response, '管理员读取申请最终详情'))?.data || {}
-    const row = this.page.locator('tbody tr').filter({ hasText: this.fixture.studentName }).first()
-    await expect(row).toBeVisible()
     const detailResponse = this.page.waitForResponse((r) =>
       apiPath(r) === `/api/v1/internship/applications/${appId}` && r.request().method() === 'GET'
     )
-    await row.getByRole('button', { name: /查看|审核/ }).click()
+    await this.page.goto(this.url({ status: 'ALL', appId }))
+    await this.dismissGuideIfPresent()
+    await expect(this.applicationWorkspace()).toBeVisible()
     return (await expectSuccessfulResponse(await detailResponse, '管理员读取申请最终详情'))?.data || {}
   }
 }

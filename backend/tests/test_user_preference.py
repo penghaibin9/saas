@@ -12,6 +12,49 @@ BASE = "/api/v1/me/preferences"
 GUIDE_KEY = "guide.graduation.gd-batches"
 
 
+def test_student_home_shortcuts_roundtrip_and_isolation(client, db_mode):
+    """Same production preference API: ordered shortcuts, retry, empty, account/tenant isolation."""
+    import json
+    from sqlalchemy import func, select
+    from app.db.session import get_sessionmaker
+    from app.models import UserPreference
+
+    key = "mini.student.home.shortcuts.v1"
+    student_a = _token("shortcut-a", user_type="STUDENT", role="STUDENT")
+    student_b = _token("shortcut-b", user_type="STUDENT", role="STUDENT")
+    other_school = _token("shortcut-a", user_type="STUDENT", role="STUDENT", tenant_id=OTHER, tid="other")
+
+    def read(headers):
+        response = client.get(BASE, headers=headers, params={"keys": key})
+        assert response.status_code == 200
+        assert response.json()["code"] == 0
+        return response.json()["data"]["items"]
+
+    value = json.dumps(["student/academic-affairs/schedule", "student/affairs/leave"])
+    assert read(student_a) == {}
+    for _ in range(2):
+        response = client.post(BASE, headers=student_a, json={"key": key, "value": value})
+        assert response.status_code == 200
+        assert response.json()["data"] == {"key": key, "value": value}
+    assert read(student_a) == {key: value}
+    assert read(student_b) == {}
+    assert read(other_school) == {}
+    # Client-supplied account and tenant identifiers cannot redirect the preference write.
+    response = client.post(BASE, headers=student_b, json={
+        "key": key, "value": "[]", "userKey": "shortcut-a", "tenantId": str(OTHER),
+    })
+    assert response.status_code == 200
+    assert read(student_b) == {key: "[]"}
+    assert read(student_a) == {key: value}
+    assert read(other_school) == {}
+    with get_sessionmaker()() as db:
+        assert db.scalar(select(func.count()).select_from(UserPreference).where(
+            UserPreference.tenant_id == MAIN, UserPreference.user_key == "shortcut-a",
+            UserPreference.pref_key == key,
+        )) == 1
+    assert client.get(BASE, params={"keys": key}).status_code in (401, 403)
+
+
 def _token(user_id, user_type="TEACHER", tenant_id=MAIN, tid="demo", role="COUNSELOR"):
     from app.core.security import create_access_token
     return {"Authorization": "Bearer " + create_access_token({

@@ -37,7 +37,7 @@ export const platformSecurityOpsApi = {
     body: { reason }
   }),
   approveTenantPurge: (jobId, body, mfaAccessToken) => {
-    if (!mfaAccessToken) throw new Error('永久销毁前必须完成 MFA 二次认证')
+    if (!mfaAccessToken) throw new Error('永久销毁前必须完成二次认证')
     return request(`/platform/tenant-offboarding/${jobId}/approve-purge`, {
       method: 'POST',
       auth: false,

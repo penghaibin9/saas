@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import argparse
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -20,6 +21,7 @@ log = logging.getLogger("app.scheduler")
 
 # 频率（秒）
 INTERVAL_DELIVERY = 15          # 消息投递 / Outbox
+INTERVAL_FILE_JOBS = 30         # 文档派生 + 毕业冻结证据包
 INTERVAL_STUDENT_AFFAIRS = 60    # 学工补偿租约 + 异步导出 + 审批导出
 INTERVAL_ACADEMIC_EFFECTIVE = 60 # Stage C1：已批准的未来生效学籍异动
 INTERVAL_SCHEDULED_MSG = 45     # 定时消息到点发布
@@ -219,6 +221,13 @@ def job_delivery_and_outbox() -> None:
         lambda tenant_id: password_reset_svc.process_delivery_jobs(
             limit=30, worker_id="scheduler-password-reset", tenant_id=tenant_id),
     )
+    if settings.PHONE_SMS_CONSUMERS_READY:
+        _run_for_tenants(
+            "phone_binding_sms", tenant_state.BACKGROUND_AUTH_SECURITY,
+            lambda tenant_id: password_reset_svc.process_delivery_jobs(
+                limit=30, worker_id="scheduler-phone-binding", tenant_id=tenant_id,
+                purposes=("BIND_PHONE", "CHANGE_PHONE")),
+        )
     _run_isolated(
         "internship_audit_outbox",
         lambda: internship_audit.process_pending(
@@ -253,6 +262,7 @@ def job_student_affairs_background() -> None:
     """Student-affairs mutation jobs require a writable effective tenant."""
     from app.services import affairs_appeal_repair_service as repair
     from app.services import affairs_archive_service as archive
+    from app.services import affairs_funding_export_service as funding_export
     from app.services import affairs_leave_export_service as leave_export
     from app.services import approval_export_service as approval_export
     from app.services import tenant_effective_state_service as tenant_state
@@ -262,11 +272,40 @@ def job_student_affairs_background() -> None:
     _run_for_tenants("affairs_leave_export", tenant_state.BACKGROUND_BUSINESS_WRITE,
                      lambda tenant_id: leave_export.run_pending(
                          limit=2, worker_id=f"scheduler-affairs:{tenant_id}"))
+    _run_for_tenants("affairs_funding_export", tenant_state.BACKGROUND_BUSINESS_WRITE,
+                     lambda tenant_id: funding_export.run_pending(
+                         limit=2, worker_id=f"scheduler-funding:{tenant_id}"))
     _run_for_tenants("approval_export", tenant_state.BACKGROUND_BUSINESS_WRITE,
                      lambda tenant_id: approval_export.run_pending(
                          limit=2, worker_id=f"scheduler-approval:{tenant_id}"))
     _run_for_tenants("affairs_archive_package", tenant_state.BACKGROUND_BUSINESS_WRITE,
                      lambda _tid: archive.run_pending_packages(limit=2))
+
+
+def job_file_derivatives() -> None:
+    """Process tenant-scoped document intelligence and frozen-package FileJobs."""
+    from app.modules.platform.document_lifecycle import derived_worker
+    from app.services import tenant_effective_state_service as tenant_state
+    from app.workers.frozen_package_worker import process_pending_frozen_packages
+
+    _run_for_tenants(
+        "document_lifecycle_jobs",
+        tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda tenant_id: derived_worker.process_pending_jobs(
+            tenant_id=tenant_id,
+            limit=20,
+            worker_id=f"scheduler-document:{tenant_id}",
+        ),
+    )
+    _run_for_tenants(
+        "frozen_package_jobs",
+        tenant_state.BACKGROUND_BUSINESS_WRITE,
+        lambda tenant_id: process_pending_frozen_packages(
+            tenant_id=tenant_id,
+            limit=20,
+            worker_id=f"scheduler-frozen:{tenant_id}",
+        ),
+    )
 
 
 def job_academic_future_effective() -> None:
@@ -350,28 +389,48 @@ class _Ticker:
         self.next_at = now + self.interval
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    # Install module-owned recurring-writer fences only after the broad service
+    # package has finished importing. This avoids service-package circular imports
+    # while guaranteeing the standalone scheduler is fenced before its first tick.
+    from app.services.module_commerce_background_guard import install as _install_module_background_guards
+    _install_module_background_guards()
+
     if not db_enabled():
         raise RuntimeError("scheduler requires DB_ENABLED=true")
+    parser = argparse.ArgumentParser(description="独立调度进程")
+    parser.add_argument(
+        "--only",
+        choices=("delivery",),
+        action="append",
+        default=[],
+        help="只运行指定安全调度组；省略时运行完整生产调度。",
+    )
+    args = parser.parse_args(argv)
+    only = set(args.only or [])
+
     log.info(
         "external scheduler started intervals delivery=%ss affairs=%ss academic_effective=%ss grade_deadline=%ss scheduled=%ss expire=%ss leave=%ss risk=%ss stats=%ss",
         INTERVAL_DELIVERY, INTERVAL_STUDENT_AFFAIRS, INTERVAL_ACADEMIC_EFFECTIVE,
         INTERVAL_GRADE_DEADLINE, INTERVAL_SCHEDULED_MSG, INTERVAL_EXPIRE_NUDGE,
         INTERVAL_LEAVE_OVERDUE, INTERVAL_LEAVE_OVERDUE, INTERVAL_STATS)
     now0 = time.monotonic()
-    tickers = [
-        _Ticker(INTERVAL_DELIVERY, now0, job_delivery_and_outbox),
-        _Ticker(INTERVAL_STUDENT_AFFAIRS, now0, job_student_affairs_background),
-        _Ticker(INTERVAL_ACADEMIC_EFFECTIVE, now0, job_academic_future_effective),
-        _Ticker(INTERVAL_GRADE_DEADLINE, now0, job_grade_deadline),
-        _Ticker(INTERVAL_SCHEDULED_MSG, now0, job_scheduled_messages),
-        _Ticker(INTERVAL_EXPIRE_NUDGE, now0, job_expire_and_nudge),
-        _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_leave_overdue),
-        _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_risk_timeout),
-        _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_counselor_temp_expire),
-        _Ticker(INTERVAL_STATS, now0, job_stats_reconcile),
-        _Ticker(INTERVAL_CLEANUP, now0, lambda: _run_isolated("cleanup", cleanup_import_batches)),
+    ticker_specs = [
+        ("delivery", _Ticker(INTERVAL_DELIVERY, now0, job_delivery_and_outbox)),
+        ("file_derivatives", _Ticker(INTERVAL_FILE_JOBS, now0, job_file_derivatives)),
+        ("student_affairs", _Ticker(INTERVAL_STUDENT_AFFAIRS, now0, job_student_affairs_background)),
+        ("academic_effective", _Ticker(INTERVAL_ACADEMIC_EFFECTIVE, now0, job_academic_future_effective)),
+        ("grade_deadline", _Ticker(INTERVAL_GRADE_DEADLINE, now0, job_grade_deadline)),
+        ("scheduled_messages", _Ticker(INTERVAL_SCHEDULED_MSG, now0, job_scheduled_messages)),
+        ("expire_nudge", _Ticker(INTERVAL_EXPIRE_NUDGE, now0, job_expire_and_nudge)),
+        ("leave_overdue", _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_leave_overdue)),
+        ("risk_timeout", _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_risk_timeout)),
+        ("counselor_temp", _Ticker(INTERVAL_LEAVE_OVERDUE, now0, job_counselor_temp_expire)),
+        ("stats", _Ticker(INTERVAL_STATS, now0, job_stats_reconcile)),
+        ("cleanup", _Ticker(INTERVAL_CLEANUP, now0, lambda: _run_isolated("cleanup", cleanup_import_batches))),
     ]
+    tickers = [ticker for name, ticker in ticker_specs if not only or name in only]
+    log.info("external scheduler active job groups=%s", sorted(only) if only else [name for name, _ in ticker_specs])
     while True:
         now = time.monotonic()
         for t in tickers:

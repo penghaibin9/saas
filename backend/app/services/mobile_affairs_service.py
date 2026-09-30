@@ -22,25 +22,49 @@ def _me(db, user):
 
 # ═══════════ 学生自视图 ═══════════
 
-def leave_my(user) -> dict:
+def _self_leave_condition(db, stu):
+    """Legacy reads may use a verified profile link or a unique school number, never a name."""
+    from app.models import CsLeave, CsServiceStudent, StudentProfile
+    linked = list(db.scalars(select(CsServiceStudent.id).where(
+        CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
+        CsServiceStudent.student_id == stu.id,
+    )))
+    if stu.student_no:
+        count = db.scalar(select(func.count()).select_from(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+            StudentProfile.student_no == stu.student_no,
+        ))
+        legacy = list(db.scalars(select(CsServiceStudent.id).where(
+            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
+            CsServiceStudent.student_id.is_(None), CsServiceStudent.student_no == stu.student_no,
+        )))
+        if count == 1 and len(legacy) == 1:
+            linked.extend(legacy)
+    return or_(CsLeave.student_id == stu.id, and_(CsLeave.student_id.is_(None), CsLeave.cs_student_id.in_(linked or [-1])))
+
+
+def leave_my(user, *, page: int = 1, page_size: int = 20) -> dict:
     """本人请假记录：t_cs_leave 双状态列并行(P0 §4.2 集成①)——13A 新提交走
     student_id+affairs_status；老 campus-service 提交只有 cs_student_id+status。
     只按 student_id 查会漏掉老记录（学生自己在「我的申请」能看到、在本页却看不到），
-    这里同 my_applications 一样再按 CsServiceStudent 解析补上 cs_student_id 分支。"""
-    from app.models import CsLeave, CsServiceStudent
+    历史分支仅接受已绑定主档或校内唯一学号，不以姓名判断本人归属。"""
+    from app.models import CsLeave
     from app.services import affairs_leave_service as leave_svc
     L = {**leave_svc.L_AFF, "PENDING_REVIEW": "待审批"}
+    page = max(1, int(page or 1))
+    page_size = min(100, max(1, int(page_size or 20)))
     with session() as db:
         stu = _me(db, user)
-        cs = db.scalars(select(CsServiceStudent).where(
-            CsServiceStudent.tenant_id == _tid(), CsServiceStudent.is_deleted.is_(False),
-            (CsServiceStudent.student_no == stu.student_no) | (CsServiceStudent.name == stu.real_name))).first()
-        conds = [CsLeave.student_id == stu.id]
-        if cs:
-            conds.append(CsLeave.cs_student_id == cs.id)
-        rows = db.scalars(select(CsLeave).where(
-            CsLeave.tenant_id == _tid(), or_(*conds), CsLeave.is_deleted.is_(False))
-            .order_by(CsLeave.id.desc())).all()
+        conds = [
+            CsLeave.tenant_id == _tid(),
+            _self_leave_condition(db, stu),
+            CsLeave.is_deleted.is_(False),
+        ]
+        total = int(db.scalar(select(func.count()).select_from(CsLeave).where(*conds)) or 0)
+        rows = db.scalars(select(CsLeave).where(*conds)
+            .order_by(CsLeave.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)).all()
         items = []
         for x in rows:
             st = x.affairs_status or x.status
@@ -48,23 +72,55 @@ def leave_my(user) -> dict:
             items.append({
                 "leaveId": str(x.id), "leaveType": x.leave_type, "days": float(x.days or 0),
                 "startTime": _iso(x.start_time), "endTime": _iso(x.end_time),
-                "status": st, "statusLabel": L.get(st, st or ""),
-                "affairsStatusLabel": L.get(x.affairs_status, x.affairs_status or ""),
+                "status": st, "statusLabel": L.get(st, "状态待确认"),
+                "affairsStatusLabel": L.get(st, "状态待确认"),
                 "reason": x.reason or "",
                 "returnReason": getattr(x, "return_reason", None) or "",
                 "version": int(x.version or 0),
                 "allowedActions": actions,
             })
-        return {"items": items}
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "pageSize": page_size,
+            "hasMore": page * page_size < total,
+        }
+
+
+def leave_detail_my(user, leave_id: int) -> dict:
+    """Self projection: no teacher-only actions, raw audit text or other student's data."""
+    from app.models import CsLeave
+    from app.core.exceptions import not_found
+    from app.services import affairs_leave_service as svc
+    from app.services.affairs_student_contract_security_guard import _secure_timeline
+    with session() as db:
+        student = _me(db, user)
+        record = db.scalar(select(CsLeave).where(
+            CsLeave.id == leave_id, CsLeave.tenant_id == _tid(), CsLeave.is_deleted.is_(False),
+            _self_leave_condition(db, student),
+        ))
+        if record is None:
+            raise not_found("请假申请不存在或不属于本人")
+        result = svc._row(record, student, include_attachments=True, db=db)
+        result['leaveId'] = str(record.id)
+        result['affairsStatus'] = record.affairs_status or record.status
+        result['status'] = result['affairsStatus']
+        result['allowedActions'] = [a for a in result['allowedActions'] if a in {
+            'EDIT_RETURNED', 'RESUBMIT', 'SUBMIT_CANCEL', 'SUBMIT_EXTENSION',
+        }]
+        svc._leave_progress(db, record, result)
+        result['timeline'] = _secure_timeline(db, biz_type='LEAVE', biz_id=record.id, created_at=record.created_at)
+        result.pop('studentId', None)
+        result.pop('workflowInstanceId', None)
+        return result
 
 
 def aid_my(user) -> dict:
     from app.models import AidApply, AidObjection
+    from app.services.affairs_aid_service import EFFECTIVE_STATUSES, LEVELS, presentation
     # 困难认定核心状态机把“退回学生修改”落为 DRAFT；这个投影属于正式学生自视图合同，
     # 直接在权威 service 中表达，禁止再靠 router 启动期 monkey-patch 改写。
-    L = {"DRAFT": "已退回待修改", "COUNSELOR_REVIEW": "辅导员初审", "COLLEGE_REVIEW": "学院复审",
-         "SCHOOL_REVIEW": "学校终审", "PUBLICITY": "公示中", "APPROVED": "已认定",
-         "REJECTED": "已驳回", "RETURNED": "已退回", "CANCELLED": "已取消"}
     with session() as db:
         stu = _me(db, user)
         rows = db.scalars(select(AidApply).where(
@@ -73,24 +129,28 @@ def aid_my(user) -> dict:
         open_ids = set(db.scalars(select(AidObjection.apply_id).where(
             AidObjection.tenant_id == _tid(), AidObjection.student_id == stu.id,
             AidObjection.status == "SUBMITTED", AidObjection.is_deleted.is_(False))).all())
-        approved = next((x for x in rows if x.status == "APPROVED"), None)
+        approved = next((x for x in rows if x.status in EFFECTIVE_STATUSES), None)
         items = []
         for x in rows:
             pending = int(x.id) in open_ids
             items.append({
                 "applyId": str(x.id), "applyLevel": x.apply_level,
                 "finalLevel": x.final_level, "status": x.status,
-                "statusLabel": L.get(x.status, x.status),
+                **presentation(x.status, pending_objection=pending),
+                "applyLevelLabel": LEVELS.get(x.apply_level, "等级待确认"),
+                "finalLevelLabel": LEVELS.get(x.final_level, "尚未认定"),
                 "returnReason": getattr(x, "return_reason", None) or "",
                 "allowedActions": (["EDIT_RETURNED", "RESUBMIT"] if x.status in {"DRAFT", "RETURNED"} else [])
                     + (["SUBMIT_OBJECTION"] if x.status == "PUBLICITY" and not pending else []),
                 "hasPendingObjection": pending,
             })
-        return {"currentLevel": (approved.final_level if approved else None), "items": items}
+        return {"currentLevel": (approved.final_level if approved else None),
+                "currentLevelLabel": LEVELS.get(approved.final_level, "等级待确认") if approved else "尚未认定",
+                "items": items}
 
 
 def funding_my(user) -> dict:
-    from app.models import FundingAppeal, FundingApplication
+    from app.models import FundingAppeal, FundingApplication, FundingBatch, FundingProject
     L = {"DRAFT": "草稿", "SUBMITTED": "已提交", "COUNSELOR_REVIEW": "辅导员初审",
          "COLLEGE_REVIEW": "学院评审", "SCHOOL_REVIEW": "学校审批", "PUBLICITY": "公示中",
          "GRANTED": "已获资助", "REJECTED": "已驳回", "RETURNED": "已退回",
@@ -106,11 +166,24 @@ def funding_my(user) -> dict:
         # 学生交了佐证材料就必须看得见它挂在哪一笔申请上，否则提交完像掉进黑洞。
         # 一次分组查询取全部条数，不逐行查（N+1）。
         attachment_counts = _funding_attachment_counts(db, [int(x.id) for x in rows])
+        batch_ids = {x.batch_id for x in rows if x.batch_id}
+        batches = {b.id: b for b in db.scalars(select(FundingBatch).where(
+            FundingBatch.id.in_(batch_ids), FundingBatch.tenant_id == _tid(),
+            FundingBatch.is_deleted.is_(False))).all()} if batch_ids else {}
+        project_ids = {b.project_id for b in batches.values() if b.project_id}
+        projects = {p.id: p for p in db.scalars(select(FundingProject).where(
+            FundingProject.id.in_(project_ids), FundingProject.tenant_id == _tid(),
+            FundingProject.is_deleted.is_(False))).all()} if project_ids else {}
         items = []
         for x in rows:
             pending = int(x.id) in open_ids
+            batch = batches.get(x.batch_id)
+            project = projects.get(batch.project_id) if batch else None
             items.append({
                 "applicationId": str(x.id), "projectType": x.project_type,
+                "batchId": str(x.batch_id) if x.batch_id else "",
+                "projectName": project.project_name if project else "历史资助项目",
+                "schoolYear": batch.year_code if batch else "",
                 "status": x.status, "statusLabel": L.get(x.status, x.status),
                 "returnReason": x.return_reason or "",
                 "allowedActions": (["EDIT_RETURNED", "RESUBMIT"] if x.status == "RETURNED" else [])
@@ -149,8 +222,7 @@ def _funding_attachment_counts(db, application_ids: list[int]) -> dict[int, int]
 
 
 def discipline_my(user) -> dict:
-    """学生端仅回数量+生效处分的申诉入口所需最小信息（caseId/申诉状态），不回完整卷宗细节
-    （既有 t_cs_discipline 约定，13A 沿用）。"""
+    """学生端返回本人当前处分与已解除结果，不回完整卷宗细节。"""
     from app.models import DisciplineAppeal, DisciplineCase
     L_DISC_TYPE = {"WARNING": "警告", "SERIOUS_WARNING": "严重警告", "DEMERIT": "记过",
                    "PROBATION": "留校察看", "EXPEL": "开除学籍"}
@@ -158,7 +230,8 @@ def discipline_my(user) -> dict:
         stu = _me(db, user)
         rows = db.scalars(select(DisciplineCase).where(
             DisciplineCase.tenant_id == _tid(), DisciplineCase.student_id == stu.id,
-            DisciplineCase.status == "EFFECTIVE", DisciplineCase.is_deleted.is_(False))
+            DisciplineCase.status.in_(["EFFECTIVE", "REMOVED"]),
+            DisciplineCase.is_deleted.is_(False))
             .order_by(DisciplineCase.id.desc())).all()
         appeals = db.scalars(select(DisciplineAppeal).where(
             DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.student_id == stu.id,
@@ -172,42 +245,66 @@ def discipline_my(user) -> dict:
             items.append({
                 "caseId": str(x.id), "discType": x.disc_type,
                 "discTypeLabel": L_DISC_TYPE.get(x.disc_type, x.disc_type),
+                "caseStatus": x.status,
+                "caseStatusLabel": "已解除" if x.status == "REMOVED" else "已生效",
                 "effectiveAt": _iso(x.effective_at),
+                "removedAt": _iso(x.removed_at),
                 "appealStatus": ap.status if ap else None,
                 "appealResult": ap.result if ap else None,
                 "appealReviewOpinion": ap.review_opinion if ap else "",
                 # 一案一诉：只要曾提交过申诉（含已结案）即不可再申
-                "allowedActions": ["SUBMIT_APPEAL"] if ap is None else [],
+                "allowedActions": ["SUBMIT_APPEAL"] if x.status == "EFFECTIVE" and ap is None else [],
             })
-        return {"activeCount": len(rows), "detailNote": "处分明细不在移动端展示，如有疑问请联系辅导员",
+        active_count = sum(1 for row in rows if row.status == "EFFECTIVE")
+        return {"activeCount": active_count, "historyCount": len(rows),
+               "detailNote": "处分卷宗明细按权限管理，如有疑问请联系辅导员",
                "items": items}
 
 
 def dorm_my(user) -> dict:
-    """我的宿舍：当前床位 + 学校自选开关(决定是否显示选床入口)。"""
-    from app.models import DormBed, DormBuilding, DormRoom
+    """我的宿舍：D4 正式入住事实 + D3 批次分配/预留投影。"""
+    from app.models import DormBed, DormBuilding, DormRoom, DormStay
     from app.core.tenant_scoped import tenant_get
-    from app.services import affairs_dorm_service as dorm
+    from app.services import dorm_allocation_service as allocation
     with session() as db:
         stu = _me(db, user)
         bed = db.scalars(select(DormBed).where(
             DormBed.tenant_id == _tid(), DormBed.student_id == stu.id,
             DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False))).first()
+        stays = db.scalars(select(DormStay).where(
+            DormStay.tenant_id == _tid(), DormStay.student_id == stu.id,
+            DormStay.status == "ACTIVE", DormStay.is_deleted.is_(False))).all()
+        if (bed is None) != (len(stays) == 0) or len(stays) > 1 \
+                or (bed and int(stays[0].bed_id) != int(bed.id)):
+            raise AppException("DATA_INCONSISTENT", "当前床位与住宿历史不一致，请联系宿管核对")
         my_bed = None
         if bed:
             b = tenant_get(db, DormBuilding, int(bed.building_id))
             room = tenant_get(db, DormRoom, int(bed.room_id))
             my_bed = {"bedId": str(bed.id), "building": b.building_name if b else "",
                       "room": room.room_no if room else "", "bedNo": bed.bed_no,
-                      "occupiedAt": _iso(bed.occupied_at)}
-    cfg = dorm.get_dorm_config(user)  # selfSelectEnabled + studentNotice
-    return {"myBed": my_bed, "hasBed": bool(my_bed), **cfg}
+                      "stayId": str(stays[0].id),
+                      "occupiedAt": _iso(stays[0].checkin_at or bed.occupied_at)}
+    cfg = allocation.student_config(user)
+    from app.services import dorm_presence_service as presence
+    return {
+        "myBed": my_bed, "hasBed": bool(my_bed),
+        "presence": presence.my_presence(user),
+        "presenceProvider": presence.provider_status(user),
+        **cfg,
+    }
+
+
+def dorm_stays_my(user) -> dict:
+    from app.services.affairs_dorm_stay_service import my_stays
+    return my_stays(user)
 
 
 def overview_my(user) -> dict:
     """学工自视图总览（各域本人计数）。"""
     from app.models import (AffairsRiskRecord, AidApply, CsLeave, DisciplineCase,
                             FundingApplication, TalkRecord)
+    from app.services.affairs_aid_service import EFFECTIVE_STATUSES
     with session() as db:
         stu = _me(db, user)
         sid = stu.id
@@ -220,7 +317,7 @@ def overview_my(user) -> dict:
         return {
             "studentName": stu.real_name,
             "leaveCount": _c(CsLeave, CsLeave.affairs_status.is_not(None)),
-            "aidApproved": _c(AidApply, AidApply.status == "APPROVED"),
+            "aidApproved": _c(AidApply, AidApply.status.in_(EFFECTIVE_STATUSES)),
             "fundingGranted": _c(FundingApplication, FundingApplication.status == "GRANTED"),
             "disciplineActive": _c(DisciplineCase, DisciplineCase.status == "EFFECTIVE"),
             "riskOpen": _c(AffairsRiskRecord, AffairsRiskRecord.status.notin_(["CLOSED"])),
@@ -231,50 +328,37 @@ def overview_my(user) -> dict:
 # ═══════════ 学生自选床位（受学校开关控制）═══════════
 
 def dorm_select_options(user) -> dict:
-    """选床可选项：先回配置，放开时按本人性别列可选楼(带空床数)。"""
-    from app.services import affairs_dorm_service as dorm
-    with session() as db:
-        stu = _me(db, user)
-        gender = stu.gender
-    cfg = dorm.get_dorm_config(user)
-    if not cfg["selfSelectEnabled"]:
-        return {**cfg, "buildings": []}
-    buildings, _ = dorm.list_buildings(user, gender=gender)
-    return {**cfg, "buildings": buildings}
+    """仅返回本人所属已发布批次的冻结资源池。"""
+    from app.services.dorm_allocation_service import student_options
+    return student_options(user)
 
 
 def _require_self_select_on(user):
-    from app.services import affairs_dorm_service as dorm
-    if not dorm.is_self_select_enabled():
-        raise no_permission(dorm._NOTICE_OFF)
+    from app.services.dorm_allocation_service import student_config
+    if not student_config(user).get("canSelfSelect"):
+        raise no_permission("当前没有可用的学生自选住宿批次")
 
 
 def dorm_rooms(user, building_id, floor=None) -> dict:
-    """学生浏览某楼房间（选床级联，仅学校放开自选时可用）。"""
-    from app.services import affairs_dorm_service as dorm
-    with session() as db:
-        _me(db, user)
-    _require_self_select_on(user)
-    items, total = dorm.list_rooms(building_id, user, floor)
-    return {"items": items, "total": total}
+    """学生浏览本人批次冻结资源池内某楼房间。"""
+    from app.services.dorm_allocation_service import student_rooms
+    result = student_rooms(user, int(building_id))
+    if floor is not None:
+        result["items"] = [row for row in result["items"] if int(row.get("floorNo") or 0) == int(floor)]
+        result["total"] = len(result["items"])
+    return result
 
 
 def dorm_beds(user, room_id) -> dict:
-    """学生浏览某房床位（选床级联，仅学校放开自选时可用）。"""
-    from app.services import affairs_dorm_service as dorm
-    with session() as db:
-        _me(db, user)
-    _require_self_select_on(user)
-    return {"items": dorm.list_beds(room_id, user)}
+    """学生浏览本人批次冻结资源池内某房空床。"""
+    from app.services.dorm_allocation_service import student_beds
+    return student_beds(user, int(room_id))
 
 
 def dorm_self_select(user, bed_id) -> dict:
-    """学生自选某空床入住本人。学校未放开→403（含提醒文案）。只能给自己选。"""
-    from app.services import affairs_dorm_service as dorm
-    with session() as db:
-        stu = _me(db, user)
-        sid = stu.id
-    return dorm.self_select_checkin(bed_id, user, sid)
+    """原子确认本人批次分配项；仅预留床位，不伪造正式入住。"""
+    from app.services.dorm_allocation_service import student_select_bed
+    return student_select_bed(user, int(bed_id))
 
 
 def talk_my(user) -> dict:
@@ -379,9 +463,9 @@ def teacher_affairs(user) -> dict:
         existing_types = {c["todoType"] for c in cards}
         try:
             from app.services import mobile_teacher_service as tea
-            dorm = tea.affairs_dorm_pending(user)
-            tr_n = len((dorm or {}).get("transfers") or [])
-            ex_n = len((dorm or {}).get("exceptions") or [])
+            dorm = tea.affairs_dorm_pending(user, page_size=1)
+            tr_n = int((dorm or {}).get("transferTotal") or 0)
+            ex_n = int((dorm or {}).get("exceptionTotal") or 0)
             if tr_n and "DORM_TRANSFER" not in existing_types:
                 cards.append({"todoType": "DORM_TRANSFER", "label": label["DORM_TRANSFER"], "count": tr_n})
             if ex_n and "DORM_EXCEPTION" not in existing_types:

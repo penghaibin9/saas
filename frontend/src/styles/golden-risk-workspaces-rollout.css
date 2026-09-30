@@ -6,26 +6,26 @@
 /* --------------------------------------------------------------------------
  * Student Affairs · risk warning
  * ----------------------------------------------------------------------- */
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) {
   gap: 12px;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) > .mps__head {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) > .mps__head {
   padding-bottom: 2px;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .mps__title {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .mps__title {
   font-size: 26px;
   letter-spacing: -0.02em;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .mps__subtitle {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .mps__subtitle {
   max-width: 760px;
   font-size: 13px;
   line-height: 1.55;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .task-context-bar {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .task-context-bar {
   grid-template-columns: minmax(0, 1fr) minmax(300px, .72fr);
   gap: 14px;
   margin-bottom: 2px;
@@ -36,30 +36,30 @@
   box-shadow: 0 10px 28px -26px rgba(30, 64, 175, .45);
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .task-context-bar__items {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .task-context-bar__items {
   gap: 7px;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .task-context-bar__item,
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .task-context-bar__filter {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .task-context-bar__item,
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .task-context-bar__filter {
   min-height: 28px;
   padding: 4px 8px;
   border-color: #dde7f5;
   background: rgba(255, 255, 255, .9);
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .task-context-bar__hint {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .task-context-bar__hint {
   padding-left: 14px;
   font-size: 13px;
   line-height: 1.5;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics {
   grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics .metric-card {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics .metric-card {
   min-height: 102px;
   padding: 14px 16px;
   border-color: #dce5f2;
@@ -68,64 +68,64 @@
   box-shadow: 0 14px 30px -30px rgba(15, 40, 90, .6);
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics .metric-value {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics .metric-value {
   margin-top: 5px;
   font-size: 27px;
   letter-spacing: -0.03em;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .app-section-card {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .app-section-card {
   border-color: #dce5f2;
   border-radius: 16px;
   box-shadow: 0 18px 42px -34px rgba(15, 40, 90, .62);
   overflow: hidden;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .app-section-card__head {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .app-section-card__head {
   padding: 15px 18px 13px;
   background: linear-gradient(180deg, #ffffff, #fbfcff);
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .app-section-card__title {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .app-section-card__title {
   font-size: 15px;
   font-weight: 700;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .app-section-card__body {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .app-section-card__body {
   padding: 14px 18px 16px;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-toolbar {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-toolbar {
   gap: 10px;
   margin-bottom: 10px;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .dt {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .dt {
   border-color: #dbe3ee;
   border-radius: 14px;
   box-shadow: 0 14px 34px -34px rgba(15, 40, 90, .55);
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .dt__th {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .dt__th {
   padding-block: 12px;
   font-size: 12.5px;
   font-weight: 700;
   letter-spacing: .02em;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .dt__td {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .dt__td {
   padding-block: 13px;
   font-size: 13.5px;
   line-height: 1.5;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .dt__td:first-child {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .dt__td:first-child {
   font-size: 14.5px;
   font-weight: 700;
   color: #1e3a5f;
 }
 
-#app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .dt__pager {
+#app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .dt__pager {
   padding-block: 9px;
   background: #fbfcfe;
 }
@@ -429,7 +429,7 @@
 }
 
 @media (max-width: 1180px) {
-  #app .base-portal-layout .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics {
+  #app .base-portal-layout:not(.bpl-workspace) .mps:has(.sa-grid--metrics):has(.sa-toolbar):has(.dt) .sa-grid--metrics {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 

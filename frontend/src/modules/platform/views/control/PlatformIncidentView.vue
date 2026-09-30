@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="告警与事件中心" subtitle="当前P0/P1 · 受影响租户 · 未确认告警 · 更新时间 · 通知覆盖"
+  <ModulePageShell title="告警与事件中心" subtitle="当前一级或二级事件 · 受影响租户 · 未确认告警 · 更新时间 · 通知覆盖"
                    role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
     <template #actions>
       <ModuleToolbar :actions="[{ key: 'create', label: '＋ 登记事件' }, { key: 'refresh', label: '刷新' }]"
@@ -10,7 +10,7 @@
     <ErrorState v-else-if="error" :text="error" @retry="load" />
     <template v-else>
       <div class="pin__grid">
-        <AppCard class="pin__stat" :class="{ 'pin__stat--warn': overview.p0p1ActiveCount }"><div class="pin__stat-num">{{ overview.p0p1ActiveCount }}</div><div class="pin__stat-label">当前 P0/P1</div></AppCard>
+        <AppCard class="pin__stat" :class="{ 'pin__stat--warn': overview.p0p1ActiveCount }"><div class="pin__stat-num">{{ overview.p0p1ActiveCount }}</div><div class="pin__stat-label">当前一级或二级事件</div></AppCard>
         <AppCard class="pin__stat"><div class="pin__stat-num">{{ overview.activeCount }}</div><div class="pin__stat-label">进行中事件</div></AppCard>
         <AppCard class="pin__stat" :class="{ 'pin__stat--warn': overview.unacknowledgedCount }"><div class="pin__stat-num">{{ overview.unacknowledgedCount }}</div><div class="pin__stat-label">未确认</div></AppCard>
       </div>
@@ -20,8 +20,8 @@
         <div class="pin__form">
           <input v-model.trim="form.title" class="pin__input" placeholder="事件标题" />
           <select v-model="form.severity" class="pin__input">
-            <option value="P0">P0</option><option value="P1">P1</option>
-            <option value="P2">P2</option><option value="P3">P3</option>
+            <option value="P0">一级（最高）</option><option value="P1">二级（高）</option>
+            <option value="P2">三级（中）</option><option value="P3">四级（低）</option>
           </select>
           <input v-model.trim="form.affectedServiceCodesText" class="pin__input" placeholder="受影响服务码，逗号分隔" />
           <button class="mp-link" @click="submitCreate">创建（受影响租户按当前依赖图快照一次）</button>
@@ -33,7 +33,7 @@
         <DataTable :columns="listColumns" :rows="incidents" row-key="incidentId" row-clickable @row-click="selectIncident">
           <template #cell-scope="{ row }">
             <div class="pin__cell-main">{{ row.title }}</div>
-            <div class="pin__cell-sub">{{ row.severity }} · {{ row.affectedServiceCodes.join('、') }}</div>
+            <div class="pin__cell-sub">{{ severityLabel(row.severity) }} · {{ serviceLabels(row.affectedServiceCodes) }}</div>
           </template>
           <template #cell-status="{ row }">
             <StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />
@@ -48,10 +48,10 @@
             <option v-for="s in statusOptions" :key="s" :value="s">{{ statusLabel(s) }}</option>
           </select>
           <button class="mp-link" @click="advanceStatus">推进状态</button>
-          <button v-if="selected.status === 'RESOLVED'" class="mp-link" @click="requestProblem">申请转Problem</button>
+          <button v-if="selected.status === 'RESOLVED'" class="mp-link" @click="requestProblem">申请转为问题</button>
         </div>
         <p v-if="selected.problemConversionRequestedAt" class="pin__note">
-          已于 {{ selected.problemConversionRequestedAt }} 转为 Problem
+          已于 {{ selected.problemConversionRequestedAt }} 转为问题
           <button v-if="selected.problemId" class="mp-link" @click="$router.push('/admin/platform/problems')">前往问题管理中心 →</button>
         </p>
 
@@ -87,6 +87,7 @@
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
+import { platformServiceLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
 
 const STATUS_ORDER = ['DETECTED', 'ACKNOWLEDGED', 'MITIGATING', 'MONITORING', 'RESOLVED']
@@ -123,8 +124,12 @@ export default {
   },
   created() { this.load() },
   methods: {
+    serviceLabels(values) { return (values || []).map((value) => platformServiceLabel(value)).join('、') || '未指定服务' },
     statusLabel(status) {
       return STATUS_LABELS[status] || '状态待确认'
+    },
+    severityLabel(value) {
+      return { P0: '一级（最高）', P1: '二级（高）', P2: '三级（中）', P3: '四级（低）' }[value] || '级别待确认'
     },
     statusTone(s) {
       return { DETECTED: 'danger', ACKNOWLEDGED: 'warning', MITIGATING: 'warning', MONITORING: 'warning', RESOLVED: 'success' }[s] || 'default'
@@ -158,7 +163,7 @@ export default {
     },
     async requestProblem() {
       const res = await platformControlApi.requestIncidentProblemConversion(this.selected.incidentId)
-      if (res.code === 0) { toast.success('已登记转Problem申请'); this.selected = res.data }
+      if (res.code === 0) { toast.success('已登记转为问题的申请'); this.selected = res.data }
       else toast.error(res.message)
     },
     async submitUpdate() {

@@ -35,14 +35,20 @@ function mapTask(t = {}) {
     title: t.title || '审批任务',
     type: TYPE_LABEL[t.sourceBizType] || t.sourceBizType || '审批',
     sourceBizType: t.sourceBizType || '',
+    sourceModule: t.sourceModule || '',
     sourceBizId: String(t.sourceBizId || ''),
+    nodeCode: t.nodeCode || '',
+    submittedAt: t.submittedAt || null,
+    actedAt: t.actedAt || null,
     orderNo: t.sourceBizId ? String(t.sourceBizId) : '',
     student: t.applicantName || '申请人',
     studentNo: t.studentNo || '',
     className: t.className || '',
     submitTime: fmt(t.submittedAt),
     actedTime: fmt(t.actedAt),
-    status: rawStatus === 'PENDING' ? 'PENDING_REVIEW' : rawStatus,
+    // 学籍异动服务以 TRANSFERRED 持久化“退回申请人”，不能展示成未知状态。
+    status: rawStatus === 'PENDING' ? 'PENDING_REVIEW' :
+      (rawStatus === 'TRANSFERRED' && t.sourceBizType === 'AA_STATUS_CHANGE' ? 'RETURNED' : rawStatus),
     level: urgency === 'OVERDUE' || urgency === 'NEAR_DEADLINE' ? 'high' : 'normal',
     allowedActions: Array.isArray(t.allowedActions) ? t.allowedActions : [],
     fields: [

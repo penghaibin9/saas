@@ -110,3 +110,16 @@ class EnterpriseLogin(BaseModel):
 
 class EnterpriseRefresh(BaseModel):
     refreshToken: str = Field(min_length=16)
+
+
+class VolunteerLockRelease(BaseModel):
+    reason: str = Field(min_length=2, max_length=500)
+    expectedGroupVersion: int = Field(ge=0)
+    expectedRecordVersion: int = Field(ge=0)
+
+
+class VolunteerSchoolConfirm(BaseModel):
+    applicationId: int = Field(gt=0)
+    expectedGroupVersion: int = Field(ge=0)
+    expectedRecordVersion: int = Field(ge=0)
+    expectedApplicationVersion: int = Field(ge=0)

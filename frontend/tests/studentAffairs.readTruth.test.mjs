@@ -19,6 +19,7 @@ const LEAVE_APPROVAL = 'frontend/src/modules/studentAffairs/views/leave/LeaveApp
 const MATERIAL_OPS = 'frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue'
 const RISK_LIST = 'frontend/src/modules/studentAffairs/views/StudentAffairsRiskListView.vue'
 const DORM_TRANSFER = 'frontend/src/modules/studentAffairs/views/dorm/DormTransferView.vue'
+const AID_WORKBENCH = 'frontend/src/modules/studentAffairs/views/AidWorkbenchView.vue'
 
 test('C1 leave approval searches on the server instead of filtering the current page', () => {
   const source = read(LEAVE_APPROVAL)
@@ -101,7 +102,7 @@ test('C8 material registration takes business context instead of hand-typed ids'
   assert.match(api, /material-center\/item-suggestions/)
 
   // 业务详情侧提供正式入口，自动携带 bizType/bizId
-  const aid = read('frontend/src/modules/studentAffairs/views/AidWorkbenchView.vue')
+  const aid = read(AID_WORKBENCH)
   assert.match(aid, /requireMaterial\(\)/)
   assert.match(aid, /bizType: 'AID'/)
   assert.match(aid, /material-operations/)
@@ -164,4 +165,19 @@ test('C6 dorm transfer keeps the student carried in from the profile page', () =
   // 老师要能看见带进来的是谁，并且仍可换人
   assert.match(source, /prefilledStudentHint/)
   assert.match(source, /AppStudentPicker v-model="dlg\.studentId"/)
+})
+
+test('R8 aid workbench ignores stale list, detail and sensitive reveal responses', () => {
+  const source = read(AID_WORKBENCH)
+  assert.match(source, /listRequestSeq:\s*0/)
+  assert.match(source, /detailRequestSeq:\s*0/)
+  assert.match(source, /revealRequestSeq:\s*0/)
+  assert.match(source, /const requestSeq = \+\+this\.listRequestSeq/)
+  assert.match(source, /requestSeq !== this\.listRequestSeq/)
+  assert.match(source, /const requestSeq = \+\+this\.detailRequestSeq/)
+  assert.match(source, /String\(this\.selected\.applyId\) !== requestApplyId/)
+  assert.match(source, /const requestSeq = \+\+this\.revealRequestSeq/)
+  assert.match(source, /revealAidFamily\(requestApplyId, reason\)/)
+  assert.match(source, /this\.detailRequestSeq \+= 1/)
+  assert.match(source, /this\.revealRequestSeq \+= 1/)
 })

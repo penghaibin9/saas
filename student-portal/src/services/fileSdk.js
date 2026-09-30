@@ -91,10 +91,12 @@ export const fileSdk = {
     if (!path || !String(path).startsWith('/')) throw new Error('服务端未返回有效文件授权路径')
     return downloadFile(path, fileName)
   },
-  async preview(fileId, _fileName = '附件', options = {}) {
+  async preview(fileId, fileName = '附件', options = {}) {
+    void fileName
     return this.fetchPreviewBlob(fileId, options)
   },
-  async previewFrom(ticket, _fileName = '附件', options = {}) {
+  async previewFrom(ticket, fileName = '附件', options = {}) {
+    void fileName
     return this.fetchPreviewBlobFrom(ticket, options)
   }
 }

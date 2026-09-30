@@ -14,6 +14,9 @@ from app.services import control_plane_auth_service as p0
 
 
 class _FakeSession:
+    def refresh(self, user, *, with_for_update=False):
+        assert with_for_update is True
+
     def close(self):
         return None
 
@@ -40,6 +43,8 @@ def _user(**overrides):
         "version": 2,
         "must_change_password": False,
         "password_hash": "hash",
+        "status": "ACTIVE",
+        "is_deleted": False,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -187,7 +192,14 @@ def test_change_own_password_forces_revalidation_before_commit(monkeypatch):
     user = _user()
 
     class _PasswordChangeSession(_FakeSession):
+        audit = None
+
+        def add(self, row):
+            self.audit = row
+
         def commit(self):
+            assert self.audit.action == "PASSWORD_CHANGE"
+            assert self.audit.detail_json["credentialVersion"] == 1
             calls.append("commit")
 
     fake_db = _PasswordChangeSession()
@@ -218,7 +230,9 @@ def test_change_own_password_forces_revalidation_before_commit(monkeypatch):
         "new-password",
     )
 
-    assert result == {"success": True, "reloginRequired": True}
+    assert result == {"success": True, "reloginRequired": True, "runtimeMaterialized": True,
+        "credentialVersion": 1, "cacheInvalidated": True, "cacheRecoveryRequired": False,
+        "refreshCleanupRequired": False, "warning": ""}
     assert user.version == 3
     assert user.password_hash == "new-hash"
     assert calls[:2] == [("force", "db-7", 1001), "commit"]

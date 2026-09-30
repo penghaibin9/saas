@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:18:09.624311Z",
+  "source": "GitHub public REST API",
+  "githubCliAuthenticated": false,
+  "items": [
+    {
+      "number": 202,
+      "title": "test(internship): real leave rejection/resubmit audit",
+      "headRefName": "audit/internship-real-journey-20260823",
+      "baseRefName": "main",
+      "draft": true,
+      "updatedAt": "2026-08-23T12:18:10Z",
+      "url": "https://github.com/penghaibin9/saas/pull/202"
+    },
+    {
+      "number": 109,
+      "title": "fix(internship): start V9.2 school-scale production seal",
+      "headRefName": "agent/internship-v9-2-school-scale-20260813",
+      "baseRefName": "main",
+      "draft": true,
+      "updatedAt": "2026-08-13T12:46:41Z",
+      "url": "https://github.com/penghaibin9/saas/pull/109"
+    }
+  ]
+}

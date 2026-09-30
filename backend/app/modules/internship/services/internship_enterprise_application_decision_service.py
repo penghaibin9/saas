@@ -7,7 +7,7 @@ from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.field_crypto import decrypt_field
-from app.models import InternshipApplication, InternshipPosition, StudentContact
+from app.models import InternshipApplication, InternshipPosition, InternshipRecord, StudentContact
 from app.models.internship_application_material_snapshot import InternshipApplicationMaterialSnapshot
 from app.models.internship_enterprise_application_decision import InternshipEnterpriseApplicationDecision
 from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
@@ -42,6 +42,7 @@ def _owned_application_in_tx(db, *, context, application_id: int, lock: bool = F
         InternshipApplication.id == int(application_id),
         InternshipApplication.tenant_id == context.tenant_id,
         InternshipApplication.batch_id == context.batch_id,
+        InternshipApplication.campaign_id == context.campaign_id,
         InternshipApplication.material_snapshot_id.is_not(None),
         InternshipApplication.is_deleted.is_(False),
         InternshipPosition.tenant_id == context.tenant_id,
@@ -49,11 +50,32 @@ def _owned_application_in_tx(db, *, context, application_id: int, lock: bool = F
         InternshipPosition.company_id == context.company_id,
         InternshipPosition.is_deleted.is_(False),
     )
-    if lock:
-        stmt = stmt.with_for_update()
     pair = db.execute(stmt).first()
     if not pair:
         raise not_found("申请不存在或不属于当前企业")
+    if lock:
+        # Resolve ownership without locking, then serialize with student/school writers.
+        # Re-read after waiting: the student may have changed this slot meanwhile.
+        application = pair[0]
+        record = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == application.record_id,
+            InternshipRecord.tenant_id == context.tenant_id,
+            InternshipRecord.batch_id == context.batch_id,
+            InternshipRecord.student_id == application.student_id,
+            InternshipRecord.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True))
+        if not record:
+            raise not_found("申请关联的实习记录不存在")
+        db.scalar(select(InternshipVolunteerGroup).where(
+            InternshipVolunteerGroup.record_id == record.id,
+            InternshipVolunteerGroup.tenant_id == context.tenant_id,
+            InternshipVolunteerGroup.campaign_id == context.campaign_id,
+            InternshipVolunteerGroup.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True))
+        pair = db.execute(stmt.where(InternshipApplication.record_id == record.id)
+                          .with_for_update().execution_options(populate_existing=True)).first()
+        if not pair:
+            raise not_found("申请已变化或不再属于当前企业，请刷新后重试")
     return pair[0], pair[1]
 
 
@@ -347,6 +369,8 @@ def set_decision_in_tx(
     group_svc.lazy_release_expired_lock_in_tx(
         db, group=group, tenant_id=context.tenant_id, user=_actor(context),
     )
+    if group.status not in {"SUBMITTED", "LOCKED"}:
+        raise AppException("DATA_CONFLICT", "学生志愿已退回或撤回，不能继续处理旧投递")
 
     decision = _current_decision_in_tx(db, context=context, application=application)
     if decision is None:

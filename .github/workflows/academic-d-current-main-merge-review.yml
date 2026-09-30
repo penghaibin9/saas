@@ -83,6 +83,10 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Install frontend contract dependencies
+        working-directory: frontend
+        run: npm ci
+
       - name: Run focused merged-tree UI source contracts
         run: |
           set -euo pipefail

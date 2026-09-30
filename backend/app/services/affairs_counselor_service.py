@@ -452,7 +452,9 @@ def handover(user, class_id, from_user_id, to_user_id, reason, version):
                 AffairsCounselorAssignment.duty_type == "PRIMARY")).all()
         if not from_rows:
             raise not_found("原辅导员没有有效责任关系")
-        current = next((x for x in from_rows if x.duty_type == "PRIMARY"), from_rows[0])
+        current = next((x for x in from_rows if x.duty_type == "PRIMARY"), None)
+        if current is None:
+            raise AppException("DATA_CONFLICT", "原辅导员不是该班主辅导员，不能发起主责交接")
         atomic_claim_version(db, current, version)
         actor = _actor_id(user)
         old_counselor_id = c.counselor_id

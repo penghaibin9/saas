@@ -22,9 +22,12 @@ try { LEGACY_TOKEN_KEYS.forEach((key) => localStorage.removeItem(key)) } catch {
 
 const state = { token: '', sessionGeneration: 0, roleSwitchInFlight: false, offlineUntil: 0, notified: false }
 
-/** 开发态首次探测超时更短，避免后端未启动时每页白等 4s */
+/**
+ * 开发态会承载标准演示沙箱（2 万学生及完整过程数据）。首次请求还可能包含
+ * Vite 冷启动与后端连接池预热，2 秒会把正常慢查询误判成离线并触发 15 秒冷却。
+ */
 const REQUEST_TIMEOUT_MS =
-  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV ? 2000 : 4000
+  typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV ? 10000 : 4000
 
 /** 后端不可达后的冷却窗口（ms）；冷却内读请求跳过 fetch，直接让 mock fallback 接管 */
 const OFFLINE_COOLDOWN_MS = 15000
@@ -112,7 +115,7 @@ function markOffline() {
   if (!state.notified) {
     state.notified = true
     try {
-      toast.info('服务暂时不可用，已切换为只读体验数据')
+      toast.info('服务暂时不可用，请稍后重试')
     } catch {
       /* toast 不可用时静默 */
     }
@@ -162,6 +165,7 @@ async function rawRequest(path, {
       })
       const err = new Error(normalized.userMessage)
       err.biz = true
+      err.httpStatus = res.status
       err.code = payload.code
       err.bizCode = payload.bizCode
       err.details = payload.details
@@ -177,7 +181,8 @@ async function rawRequest(path, {
 
     const timedOut = ['AbortError', 'TimeoutError'].includes(e?.name) || /abort/i.test(String(e?.message || ''))
     const failClosed = !canUseMockFallback() || isWriteMethod(method)
-    markOffline()
+    // A slow endpoint does not prove that unrelated endpoints are offline.
+    if (!timedOut) markOffline()
 
     if (timedOut) {
       throw transportFailure(e, {
@@ -366,6 +371,8 @@ export function getToken() {
   return state.token
 }
 
+export function currentSessionGeneration() { return state.sessionGeneration }
+
 export function currentUserFromToken() {
   const t = state.token
   if (!t || t.split('.').length !== 3) return null
@@ -466,8 +473,12 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
     method: 'POST',
     auth: false,
     forceProbe: true,
+    // Password verification plus first-worker role/session warm-up can exceed the
+    // ordinary 4s production read timeout on modest school servers. Keep the
+    // larger budget scoped to interactive login so normal API failures stay fast.
+    timeoutMs: 15000,
     headers: browserSessionHeaders(),
-    body: { loginName, password, tenantCode: tenantCode || undefined,
+    body: { ...(challenge.identifierType ? { identifierType: challenge.identifierType, identifier: loginName } : { loginName }), password, tenantCode: tenantCode || undefined,
       clientType: challenge.clientType || 'PC', captchaId: challenge.captchaId || undefined,
       captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined }
   })
@@ -477,13 +488,14 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
 
 export async function request(path, options = {}) {
   assertNoRoleSwitchTransition()
-  await ensureToken()
+  if (options.auth !== false) await ensureToken()
   assertNoRoleSwitchTransition()
   const generationAtStart = state.sessionGeneration
   const accessTokenAtStart = state.token
   try {
     return await rawRequest(path, options)
   } catch (e) {
+    if (options.noAuthRetry) throw e
     if (e.biz && e.code === 401001) {
       if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
       // 同一逻辑会话内，别的请求可能已经完成 refresh；允许使用同身份的新 accessToken 重试。
@@ -514,7 +526,7 @@ export async function logoutRemote() {
   clearAuthSession()
 }
 
-export async function requestUpload(path, file, fieldName = 'file') {
+export async function requestUpload(path, file, fieldName = 'file', { timeoutMs = 15000 } = {}) {
   assertNoRoleSwitchTransition()
   await ensureToken()
   assertNoRoleSwitchTransition()
@@ -523,7 +535,8 @@ export async function requestUpload(path, file, fieldName = 'file') {
   const fd = new FormData()
   fd.append(fieldName, file)
   const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), 15000)
+  const uploadTimeout = Math.min(120000, Math.max(15000, Number(timeoutMs) || 15000))
+  const timer = setTimeout(() => controller.abort(), uploadTimeout)
   try {
     const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}`, {
       method: 'POST',

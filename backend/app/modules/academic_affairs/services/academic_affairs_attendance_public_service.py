@@ -232,18 +232,18 @@ def create_session(user, body) -> dict:
     return relation_guard.create_session(user, body)
 
 
-def get_session(session_id, user) -> dict:
+def get_session(session_id, user, page=None, page_size=None) -> dict:
     """稳定公开入口：详情读取与执行权限共用 relation-aware Authority。"""
     from . import academic_affairs_attendance_teacher_relation_guard as relation_guard
 
-    return relation_guard.get_session(session_id, user)
+    return relation_guard.get_session(session_id, user, page=page, page_size=page_size)
 
 
-def mark_attendance(session_id, user, body) -> dict:
+def mark_attendance(session_id, user, body, *, include_roster=True) -> dict:
     """稳定公开入口：逐生点名只走 relation-aware command。"""
     from . import academic_affairs_attendance_teacher_relation_guard as relation_guard
 
-    return relation_guard.mark_attendance(session_id, user, body)
+    return relation_guard.mark_attendance(session_id, user, body, include_roster=include_roster)
 
 
 def submit_session(session_id, user) -> dict:
@@ -260,8 +260,8 @@ def list_sessions(user, page=1, page_size=20, class_id=None, term_code=None, ses
     return read_guard.list_sessions(user, page, page_size, class_id, term_code, session_type)
 
 
-def attendance_stats(user, class_id=None, term_code=None, session_type=None):
+def attendance_stats(user, class_id=None, term_code=None, session_type=None, page=None, page_size=None):
     """稳定公开入口：统计只走 relation-aware read Authority。"""
     from . import academic_affairs_attendance_teacher_relation_read_guard as read_guard
 
-    return read_guard.attendance_stats(user, class_id, term_code, session_type)
+    return read_guard.attendance_stats(user, class_id, term_code, session_type, page, page_size)

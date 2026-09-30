@@ -1,0 +1,1095 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:18:09.624311Z",
+  "source": "frontend/src/config/navPlan.js::NAV_PLAN[internship]",
+  "summary": {
+    "workspaceCount": 11,
+    "leafCount": 100,
+    "visibleLeafCount": 34,
+    "hiddenCompatibilityLeafCount": 66,
+    "uniquePathCount": 98
+  },
+  "group": {
+    "key": "internship",
+    "label": "岗位实习中心",
+    "moduleKey": "internship",
+    "children": [
+      {
+        "key": "in-workbench",
+        "label": "今日工作",
+        "path": "/admin/internship",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "今日工作台",
+            "path": "/admin/internship",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.dashboard.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "全局趋势 / 统计",
+            "path": "/admin/internship/stats?dimension=trend",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.stats.view",
+            "entryType": "ANALYTICS_VIEW"
+          },
+          {
+            "label": "当前批次进度",
+            "path": "/admin/internship?panel=batch-progress",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.dashboard.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "我的待办",
+            "path": "/admin/internship?panel=todos",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.dashboard.view",
+            "entryType": "TASK_QUEUE"
+          }
+        ]
+      },
+      {
+        "key": "in-batch-rules",
+        "label": "批次与学生",
+        "path": "/admin/internship/batches",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "批次管理",
+            "path": "/admin/internship/batches?panel=list",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.batch.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "学生管理",
+            "path": "/admin/internship/students?panel=roster",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.student.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "资格认定",
+            "path": "/admin/internship/students?panel=eligibility",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.student.eligibility.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "保险核验",
+            "path": "/admin/internship/insurance",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.insurance.verify",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "批次详情",
+            "path": "/admin/internship/batches?panel=list",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.batch.view",
+            "entryType": "DETAIL"
+          },
+          {
+            "label": "参与学生配置",
+            "path": "/admin/internship/batches?panel=participants",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.batch.manage",
+            "entryType": "CONFIG_VIEW"
+          },
+          {
+            "label": "阶段与规则配置",
+            "path": "/admin/internship/batches?panel=configuration",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.batch.manage",
+            "entryType": "CONFIG_VIEW"
+          },
+          {
+            "label": "学生实习状态",
+            "path": "/admin/internship/students?panel=status",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.student.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "学生实习详情",
+            "path": "/admin/internship/students?panel=roster",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.student.view",
+            "entryType": "DETAIL"
+          },
+          {
+            "label": "学生材料",
+            "path": "/admin/internship/archive?panel=materials",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.student.material.view",
+            "entryType": "WORKBENCH"
+          }
+        ]
+      },
+      {
+        "key": "in-enterprise-position",
+        "label": "企业岗位与招聘",
+        "path": "/admin/internship/enterprises",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "企业库",
+            "path": "/admin/internship/enterprises?panel=list",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.enterprise.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "岗位库",
+            "path": "/admin/internship/positions?panel=list",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.position.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "招聘季与企业邀请",
+            "path": "/admin/internship/recruitment-campaigns",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.recruitment.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "企业准入审核",
+            "path": "/admin/internship/enterprises?panel=qualification",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.enterprise.manage",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "企业详情",
+            "path": "/admin/internship/enterprises?panel=detail",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.enterprise.view",
+            "entryType": "DETAIL"
+          },
+          {
+            "label": "企业联系人",
+            "path": "/admin/internship/enterprises?panel=contacts",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.enterprise.contact.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "企业导师",
+            "path": "/admin/internship/enterprises?panel=mentor",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.enterprise.mentor.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "企业黑名单",
+            "path": "/admin/internship/enterprises?panel=blacklist",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.enterprise.blacklist.manage",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "岗位详情",
+            "path": "/admin/internship/positions?panel=detail",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.position.view",
+            "entryType": "DETAIL"
+          },
+          {
+            "label": "岗位发布",
+            "path": "/admin/internship/positions?panel=publish",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.position.publish",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "岗位专业匹配",
+            "path": "/admin/internship/positions?panel=requirement",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.position.match.view",
+            "entryType": "CONFIG_VIEW"
+          }
+        ]
+      },
+      {
+        "key": "in-match-assign",
+        "label": "选岗与匹配",
+        "path": "/admin/internship/match",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "选岗 / 匹配工作台",
+            "path": "/admin/internship/match?panel=intention",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.match.intention.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "调岗退岗",
+            "path": "/admin/internship/changes?panel=pending",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.change.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "分配记录",
+            "path": "/admin/internship/assignment-logs",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.match.log.view",
+            "entryType": "ANALYTICS_VIEW"
+          },
+          {
+            "label": "岗位推荐",
+            "path": "/admin/internship/match?panel=recommend",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.match.recommend.view",
+            "entryType": "ANALYTICS_VIEW"
+          },
+          {
+            "label": "手动匹配",
+            "path": "/admin/internship/match?panel=manual",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.match.manual",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "批量匹配",
+            "path": "/admin/internship/match?panel=batch",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.match.batch",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "匹配冲突",
+            "path": "/admin/internship/match?panel=conflict",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.match.conflict.view",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "匹配结果",
+            "path": "/admin/internship/match?panel=results",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.match.result.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "指导老师分配",
+            "path": "/admin/internship/students?panel=mentor",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.match.advisor.assign",
+            "entryType": "TASK_QUEUE"
+          }
+        ]
+      },
+      {
+        "key": "in-apply-agreement",
+        "label": "申请与协议",
+        "path": "/admin/internship/agreements",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "实习申请审核",
+            "path": "/admin/internship/applications?status=PENDING_REVIEW",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.application.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "三方协议工作台",
+            "path": "/admin/internship/agreements?panel=confirm",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.agreement.view",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "自主实习申请",
+            "path": "/admin/internship/applications?status=PENDING_REVIEW&type=SELF_ARRANGED",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.application.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "岗位申请",
+            "path": "/admin/internship/applications?status=PENDING_REVIEW&type=POSITION",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.application.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "审核台账",
+            "path": "/admin/internship/applications?status=ALL",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.application.view",
+            "entryType": "ANALYTICS_VIEW"
+          },
+          {
+            "label": "协议模板",
+            "path": "/admin/internship/agreement-templates",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.agreement.template.manage",
+            "entryType": "CONFIG_VIEW"
+          },
+          {
+            "label": "协议发起",
+            "path": "/admin/internship/agreements?panel=issue",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.agreement.issue",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "协议变更",
+            "path": "/admin/internship/agreements?panel=change",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.agreement.change",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "协议归档",
+            "path": "/admin/internship/agreements?panel=archive",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.agreement.archive",
+            "entryType": "TASK_QUEUE"
+          }
+        ]
+      },
+      {
+        "key": "in-attendance-leave",
+        "label": "考勤与请假",
+        "path": "/admin/internship/attendance",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "考勤工作台",
+            "path": "/admin/internship/attendance?panel=checkins",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.attendance.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "异常核验",
+            "path": "/admin/internship/attendance?panel=exceptions",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.attendance.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "请假审批 / 台账",
+            "path": "/admin/internship/leaves?panel=pending",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.leave.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "补卡申请台账",
+            "path": "/admin/internship/attendance?panel=makeup-apply",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.makeup.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "补卡审批",
+            "path": "/admin/internship/attendance?panel=makeup-review",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.makeup.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "连续未打卡",
+            "path": "/admin/internship/exceptions?status=PENDING_HANDLE",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.attendance.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "请假台账",
+            "path": "/admin/internship/leaves?panel=all",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.leave.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "已批准请假",
+            "path": "/admin/internship/leaves?panel=approved",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.leave.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "超期未归",
+            "path": "/admin/internship/risks?panel=leave-overdue",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.risk.view",
+            "entryType": "TASK_QUEUE"
+          }
+        ]
+      },
+      {
+        "key": "in-weekly-task",
+        "label": "计划与过程报告",
+        "path": "/admin/internship/reports",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "计划任务",
+            "path": "/admin/internship/plans",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.plan.view",
+            "entryType": "CONFIG_VIEW"
+          },
+          {
+            "label": "过程报告批阅",
+            "path": "/admin/internship/reports?panel=review",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.report.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "报告问题",
+            "path": "/admin/internship/reports?panel=issues",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.report.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "实习任务",
+            "path": "/admin/internship/plans?panel=tasks",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.task.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "日报台账",
+            "path": "/admin/internship/reports?type=daily&panel=all",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.report.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "周报台账",
+            "path": "/admin/internship/reports?panel=all",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.report.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "月报台账",
+            "path": "/admin/internship/reports?type=monthly&panel=all",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.report.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "周报退回",
+            "path": "/admin/internship/reports?panel=returned",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.report.review",
+            "entryType": "TASK_QUEUE"
+          }
+        ]
+      },
+      {
+        "key": "in-guidance-visit",
+        "label": "指导与巡访",
+        "path": "/admin/internship/guidance",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "指导巡访工作台",
+            "path": "/admin/internship/guidance?panel=guidance",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.guidance.record.create",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "指导计划 / 不足预警",
+            "path": "/admin/internship/guidance-plan",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.guidance.manage",
+            "entryType": "CONFIG_VIEW"
+          },
+          {
+            "label": "企业沟通",
+            "path": "/admin/internship/guidance?panel=communication",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.communication.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "指导不足预警",
+            "path": "/admin/internship/guidance-plan?insufficient=1",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.guidance.insufficient.view",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "巡访计划",
+            "path": "/admin/internship/guidance?panel=visit&view=plan",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.visit.plan.manage",
+            "entryType": "CONFIG_VIEW"
+          },
+          {
+            "label": "巡访记录",
+            "path": "/admin/internship/guidance?panel=visit&view=record",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.visit.record.create",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "巡访问题",
+            "path": "/admin/internship/guidance?panel=visit&view=issue",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.visit.issue.handle",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "整改跟进",
+            "path": "/admin/internship/guidance?panel=rectify",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.visit.rectify.handle",
+            "entryType": "TASK_QUEUE"
+          }
+        ]
+      },
+      {
+        "key": "in-risk",
+        "label": "风险与合规",
+        "path": "/admin/internship/risks",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "风险工作台",
+            "path": "/admin/internship/risks?panel=board",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.risk.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "风险处置",
+            "path": "/admin/internship/risk-disposal?stage=pending",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.risk.handle",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "上岗 / 监管合规",
+            "path": "/admin/internship/compliance?tab=overview",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.compliance.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "事故与应急",
+            "path": "/admin/internship/compliance?tab=incidents",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.incident.handle",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "风险提醒",
+            "path": "/admin/internship/risks",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.risk.view",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "未落实岗位",
+            "path": "/admin/internship/risks?panel=no-position",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.risk.view",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "长期未打卡",
+            "path": "/admin/internship/risks?panel=no-checkin",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.risk.view",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "周报逾期",
+            "path": "/admin/internship/risks?panel=report-overdue",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.risk.view",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "离岗异常",
+            "path": "/admin/internship/risks?panel=off-post",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.risk.view",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "企业投诉",
+            "path": "/admin/internship/risk-disposal?caseType=complaint",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.complaint.intake",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "安全风险",
+            "path": "/admin/internship/risk-disposal?panel=safety",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.risk.handle",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "实习中断",
+            "path": "/admin/internship/risk-disposal?panel=interrupt",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.risk.handle",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "风险跟进",
+            "path": "/admin/internship/risk-disposal?stage=processing",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.risk.handle",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "风险关闭",
+            "path": "/admin/internship/risk-disposal?stage=closed",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.risk.close",
+            "entryType": "TASK_QUEUE"
+          }
+        ]
+      },
+      {
+        "key": "in-eval-score",
+        "label": "评价与成绩",
+        "path": "/admin/internship/enterprise-evals",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "评价工作台",
+            "path": "/admin/internship/enterprise-evals",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.eval.enterprise.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "成绩工作台",
+            "path": "/admin/internship/scores?stage=overview",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.score.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "成绩申诉",
+            "path": "/admin/internship/scores?stage=appeal",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.score.publish",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "学生自评台账",
+            "path": "/admin/internship/student-evals?view=self",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.eval.self.view",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "学生对企业评价",
+            "path": "/admin/internship/student-evals?view=enterprise",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.eval.enterprise_by_student.view",
+            "entryType": "ANALYTICS_VIEW"
+          },
+          {
+            "label": "学生对岗位评价",
+            "path": "/admin/internship/student-evals?view=position",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.eval.position_by_student.view",
+            "entryType": "ANALYTICS_VIEW"
+          },
+          {
+            "label": "指导老师评价",
+            "path": "/admin/internship/student-evals?view=advisor",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.eval.advisor.manage",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "成绩审核",
+            "path": "/admin/internship/scores?stage=review",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.score.review",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "成绩发布",
+            "path": "/admin/internship/scores?stage=publish",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.score.publish",
+            "entryType": "TASK_QUEUE"
+          },
+          {
+            "label": "成绩复核",
+            "path": "/admin/internship/scores?stage=recheck",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.score.recheck",
+            "entryType": "TASK_QUEUE"
+          }
+        ]
+      },
+      {
+        "key": "in-employment-archive-stats",
+        "label": "归档与分析",
+        "path": "/admin/internship/archive",
+        "status": "implemented",
+        "disabled": false,
+        "badge": "",
+        "children": [
+          {
+            "label": "材料与归档",
+            "path": "/admin/internship/archive?panel=records",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.archive.manage",
+            "entryType": "WORKBENCH"
+          },
+          {
+            "label": "实习统计",
+            "path": "/admin/internship/stats?dimension=overview",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.stats.view",
+            "entryType": "ANALYTICS_VIEW"
+          },
+          {
+            "label": "就业衔接",
+            "path": "/admin/employment?panel=follow-up",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "permissionKey": "internship.employment.view",
+            "entryType": "CROSS_MODULE"
+          },
+          {
+            "label": "未就业帮扶",
+            "path": "/admin/employment?panel=assistance",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.employment.view",
+            "entryType": "CROSS_MODULE"
+          },
+          {
+            "label": "实习档案包",
+            "path": "/admin/internship/archive?panel=packages",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.archive.package.generate",
+            "entryType": "ACTION"
+          },
+          {
+            "label": "企业统计",
+            "path": "/admin/internship/stats?dimension=enterprise",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.stats.enterprise.view",
+            "entryType": "ANALYTICS_VIEW"
+          },
+          {
+            "label": "岗位统计",
+            "path": "/admin/internship/stats?dimension=position",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.stats.position.view",
+            "entryType": "ANALYTICS_VIEW"
+          },
+          {
+            "label": "学生成绩统计",
+            "path": "/admin/internship/stats?dimension=score",
+            "status": "implemented",
+            "disabled": false,
+            "badge": "",
+            "hidden": true,
+            "permissionKey": "internship.stats.score.view",
+            "entryType": "ANALYTICS_VIEW"
+          }
+        ]
+      }
+    ]
+  }
+}

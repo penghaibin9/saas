@@ -25,5 +25,5 @@ def test_disbursement_fixture_uses_real_students():
 
 def test_monthly_work_study_inputs_include_hours():
     text = read("backend/tests/test_affairs_funding_ext.py")
-    assert '"monthCode": "2025-11"' in text and '"workHours": 48' in text
+    assert '"monthCode": "2025-11"' in text and '"workHours": 40' in text
     assert '"monthCode": "2025-12"' in text and '"workHours": 32' in text

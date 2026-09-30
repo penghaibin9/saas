@@ -135,7 +135,7 @@ def test_main_session_business_context_and_role_rollback_are_preserved():
         "this.identity = previousIdentity",
     ):
         assert token in SESSION_STORE
-    assert "clearSensitiveLocalDrafts" not in SESSION_STORE
+    assert "clearSensitiveLocalDrafts()" in SESSION_STORE
     assert "tenantId:" not in SESSION_STORE
     assert "activeContextId:" not in SESSION_STORE
 
@@ -157,5 +157,5 @@ def test_academic_identity_enhancement_is_isolated_in_pinia_plugin():
 
 
 def test_student_evaluation_contract_remains_available_to_current_pages():
-    assert "getMyEvaluationTasks: () => real.acadEvaluationTasks()" in STUDENT_API
+    assert "getMyEvaluationTasks: (params = {}) => real.acadEvaluationTasks(params)" in STUDENT_API
     assert "submitEvaluation: (body) => real.acadEvaluationSubmit(body)" in STUDENT_API

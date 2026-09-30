@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+import pytest
+
 MOB = "/api/v1/mobile"
 GD_SCORE = "/api/v1/graduation/gd-defense-scores"
 TID = 1000000000000000001
@@ -23,7 +25,7 @@ def _defense_expert(name, tid=TID):
     })}
 
 
-def _seed(db_mode, published=True):
+def _seed(db_mode, published=True, member_id_type=int):
     """1个答辩组(chair=评委甲, members=[评委乙])，1个学生挂在组下。返回 gd_student_id(str)。"""
     from app.db.session import get_sessionmaker
     from app.models import GraduationBatch, GraduationDefenseGroup, GraduationMentor, GraduationStudent
@@ -48,7 +50,7 @@ def _seed(db_mode, published=True):
         db.flush()
         g = GraduationDefenseGroup(tenant_id=TID, batch_id=batch.id, group_name="答辩一组", chair="评委甲",
                                    chair_mentor_id=judge_a.id,
-                                   members_json=[{"mentorId": judge_b.id, "name": "评委乙", "teacherNo": "MOB-JB"}],
+                                   members_json=[{"mentorId": member_id_type(judge_b.id), "name": "评委乙", "teacherNo": "MOB-JB"}],
                                    secretary="", published=published)
         db.add(g)
         db.flush()
@@ -68,8 +70,9 @@ def _items(data):
     return data.get("items", []) if isinstance(data, dict) else data
 
 
-def test_panel_members_see_pending_outsider_does_not(db_mode, graduation_client):
-    gid = _seed(db_mode)
+@pytest.mark.parametrize("member_id_type", [int, str])
+def test_panel_members_see_pending_outsider_does_not(db_mode, graduation_client, member_id_type):
+    gid = _seed(db_mode, member_id_type=member_id_type)
 
     r1 = graduation_client.get(f"{MOB}/teacher/graduation/defense/pending", headers=_defense_expert("评委甲"))
     assert r1.status_code == 200

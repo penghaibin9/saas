@@ -10,14 +10,16 @@ from __future__ import annotations
 
 from datetime import date, timedelta
 
+from tests.support_academic_review_identity import ensure_college_review_scope, ensure_course_review_college
+
 MOB = "/api/v1/mobile"
 BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
 
 
-def _hdr(client, login_name):
+def _hdr(client, login_name, *, client_type="TEACHER_MINI"):
     data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+                       json={"loginName": login_name, "password": "any", "clientType": client_type}).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
@@ -54,15 +56,20 @@ def _seed(db_mode):
 
 
 def _enabled_course(client, hdr, code):
+    owner_college_id = ensure_course_review_college()
     created = client.post(f"{BASE}/courses", headers=hdr, json={
         "courseCode": code, "courseName": "程序设计", "category": "MAJOR_CORE", "nature": "REQUIRED",
         "credit": 4, "hoursTotal": 64, "hoursTheory": 48, "hoursPractice": 16,
-        "examMode": "EXAM"})
+        "examMode": "EXAM", "ownerCollegeId": str(owner_college_id)})
     assert created.status_code == 200, created.text
     cid = created.json()["data"]["courseId"]
     submitted = client.post(f"{BASE}/courses/{cid}/submit", headers=hdr)
     assert submitted.status_code == 200, submitted.text
-    college = client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})
+    college = client.post(
+        f"{BASE}/courses/{cid}/review",
+        headers=_hdr(client, "college_admin01"),
+        json={"action": "APPROVE"},
+    )
     assert college.status_code == 200, college.text
     academic = client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})
     assert academic.status_code == 200, academic.text
@@ -70,6 +77,7 @@ def _enabled_course(client, hdr, code):
 
 
 def _published_bound_program(client, hdr, course_id, class_id, major_id):
+    ensure_college_review_scope(major_ids=[major_id])
     created = client.post(f"{BASE}/programs", headers=hdr, json={
         "programName": f"软件技术2026方案-{course_id}",
         "majorId": str(major_id),
@@ -88,7 +96,11 @@ def _published_bound_program(client, hdr, course_id, class_id, major_id):
 
     submitted = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
     assert submitted.status_code == 200, submitted.text
-    college = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
+    college = client.post(
+        f"{BASE}/programs/{pid}/review",
+        headers=_hdr(client, "college_admin01"),
+        json={"action": "APPROVE"},
+    )
     assert college.status_code == 200, college.text
     academic = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
     assert academic.status_code == 200, academic.text
@@ -151,6 +163,77 @@ def test_my_tasks_scope_via_mobile(client, db_mode):
     assert not any(t["taskId"] == task_id for t in other["data"]["list"])
 
 
+def test_my_tasks_are_server_paged_and_exact_deep_link_scoped(client, db_mode):
+    """42 条任务必须在数据库分页，工作台 taskId 直达不能依赖首批本地缓存。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    first_task_id = _assigned_task(client, admin, "MP201", ids["class"], ids["major"])
+    db = get_sessionmaker()()
+    try:
+        source = db.get(AaTeachingTask, int(first_task_id))
+        assert source is not None
+        for index in range(41):
+            db.add(AaTeachingTask(
+                tenant_id=TID,
+                batch_id=source.batch_id,
+                course_id=source.course_id,
+                course_code=f"MTPG{index:03d}",
+                course_name=f"移动教学任务分页课{index:03d}",
+                class_id=source.class_id,
+                teaching_class_code=f"MTPG-CLASS-{index:03d}",
+                teaching_class_name=f"移动分页教学班{index:03d}",
+                teacher_id=source.teacher_id,
+                teacher_key="academic01",
+                teacher_name="赵敏",
+                expected_students=source.expected_students,
+                weekly_hours=source.weekly_hours,
+                total_hours=source.total_hours,
+                start_week=source.start_week,
+                end_week=source.end_week,
+                status="ASSIGNED",
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+    teacher = _hdr(client, "academic01")
+    pages = [client.get(
+        f"{MOB}/teacher/academic/tasks", headers=teacher,
+        params={"page": page, "pageSize": 20},
+    ) for page in (1, 2, 3)]
+    assert all(response.status_code == 200 for response in pages)
+    data = [response.json()["data"] for response in pages]
+    assert [
+        (item["page"], item["pageSize"], item["total"], item["hasMore"], len(item["list"]))
+        for item in data
+    ] == [(1, 20, 42, True, 20), (2, 20, 42, True, 20), (3, 20, 42, False, 2)]
+    task_ids = [{item["taskId"] for item in item_page["list"]} for item_page in data]
+    assert task_ids[0].isdisjoint(task_ids[1])
+    assert task_ids[0].isdisjoint(task_ids[2])
+    assert task_ids[1].isdisjoint(task_ids[2])
+
+    focused_task_id = next(iter(task_ids[2]))
+    focused = client.get(
+        f"{MOB}/teacher/academic/tasks", headers=teacher,
+        params={"page": 1, "pageSize": 20, "taskId": focused_task_id},
+    ).json()["data"]
+    assert focused["page"] == 1
+    assert focused["pageSize"] == 20
+    assert focused["total"] == 1
+    assert focused["hasMore"] is False
+    assert [item["taskId"] for item in focused["list"]] == [focused_task_id]
+
+    other = client.get(
+        f"{MOB}/teacher/academic/tasks", headers=_hdr(client, "teacher01"),
+        params={"taskId": focused_task_id},
+    )
+    assert other.status_code == 200
+    assert other.json()["data"]["total"] == 0
+
+
 def test_confirm_flow_via_mobile(client, db_mode):
     ids = _seed(db_mode)
     hdr = _hdr(client, "school_admin01")
@@ -192,3 +275,16 @@ def test_cross_teacher_act_403_via_mobile(client, db_mode):
     r = client.post(f"{MOB}/teacher/academic/tasks/{task_id}/act", headers=other_hdr,
                     json={"action": "CONFIRM"})
     assert r.status_code == 403
+
+
+def test_teacher_academic_mobile_routes_reject_pc_session(client, db_mode):
+    """教师移动 URL 不能由 PC/旧通用会话绕过；页面隐藏不是权限边界。"""
+    _seed(db_mode)
+    pc_hdr = _hdr(client, "academic01", client_type="PC")
+    for path, params in (
+        (f"{MOB}/teacher/academic/tasks", None),
+        (f"{MOB}/teacher/academic/evaluation/batches", None),
+        (f"{MOB}/teacher/academic/grade-tasks", None),
+    ):
+        response = client.get(path, headers=pc_hdr, params=params)
+        assert response.status_code == 403, response.text

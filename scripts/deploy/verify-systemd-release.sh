@@ -5,6 +5,7 @@ BASE_URL="${BASE_URL:-http://127.0.0.1:8000}"
 APP_ROOT="${APP_ROOT:-/opt/school-lifecycle}"
 ENV_FILE="${ENV_FILE:-/etc/school-lifecycle/backend.env}"
 ENV_RUNNER="$APP_ROOT/current/scripts/deploy/run-with-envfile.py"
+smoke_tenant=""
 fail=0
 pass() { printf '  [PASS] %s\n' "$1"; }
 failure() { printf '  [FAIL] %s\n' "$1"; fail=$((fail + 1)); }
@@ -21,14 +22,45 @@ else
   # systemd EnvironmentFile 是数据文件，不可 shell source；这里只安全读取非业务运行参数。
   ops_token="$(python3 "$ENV_RUNNER" --get "$ENV_FILE" INTERNAL_OPS_TOKEN 2>/dev/null || true)"
   public_base="$(python3 "$ENV_RUNNER" --get "$ENV_FILE" PUBLIC_BASE_URL 2>/dev/null || true)"
+  smoke_tenant="$(python3 "$ENV_RUNNER" --get "$ENV_FILE" RELEASE_SMOKE_TENANT_CODE 2>/dev/null || true)"
   [ -n "$ops_token" ] && pass "运维探针令牌可安全读取" || failure "INTERNAL_OPS_TOKEN 无法读取"
   [ -n "$public_base" ] && pass "PUBLIC_BASE_URL 可安全读取" || failure "PUBLIC_BASE_URL 无法读取"
+  [ -n "$smoke_tenant" ] && pass "发布冒烟租户已配置" || failure "RELEASE_SMOKE_TENANT_CODE 无法读取"
 fi
+
+smoke_tenant_query="$(python3 - "$smoke_tenant" <<'PY'
+from urllib.parse import urlencode
+import sys
+print(urlencode({"tenant": sys.argv[1]}))
+PY
+)"
 
 for svc in school-lifecycle-backend school-lifecycle-scheduler school-lifecycle-file-scan; do
   systemctl is-active --quiet "$svc" && pass "$svc systemd active" || failure "$svc 未运行"
 done
 nginx -t >/dev/null 2>&1 && pass "nginx -t" || failure "nginx 配置错误"
+
+# A systemd unit being active only proves that uvicorn was spawned; application
+# startup still needs a short window for model imports and MySQL/Redis checks.
+# Poll the expected response rather than rejecting a healthy release because
+# the first TCP request races that startup work.
+wait_for_expected_body() {
+  local url="$1" pattern="$2" attempts="$3" header="${4:-}"
+  local body attempt
+  for ((attempt = 1; attempt <= attempts; attempt++)); do
+    if [ -n "$header" ]; then
+      body="$(curl -sS --max-time 5 -H "$header" "$url" 2>/dev/null || true)"
+    else
+      body="$(curl -sS --max-time 5 "$url" 2>/dev/null || true)"
+    fi
+    if printf '%s' "$body" | grep -q "$pattern"; then
+      printf '%s' "$body"
+      return 0
+    fi
+    sleep 2
+  done
+  return 1
+}
 
 nginx_dump="$(nginx -T 2>/dev/null || true)"
 printf '%s' "$nginx_dump" | grep -Eq 'location[[:space:]]+(\^~[[:space:]]+)?/portal/' \
@@ -41,8 +73,8 @@ printf '%s' "$nginx_dump" | grep -Eq 'location[[:space:]]+(\^~[[:space:]]+)?/exp
   && pass "Nginx 包含 exports 保护规则" || failure "Nginx 缺少 /exports/ 保护规则"
 
 # 后端本机探针：区分应用本身故障与 Nginx/TLS 故障。
-health="$(curl -fsS --max-time 5 "$BASE_URL/health" 2>/dev/null || true)"
-ready="$(curl -fsS --max-time 15 -H "X-Ops-Token: $ops_token" "$BASE_URL/health/ready" 2>/dev/null || true)"
+health="$(wait_for_expected_body "$BASE_URL/health" '"status":"UP"' 30 || true)"
+ready="$(wait_for_expected_body "$BASE_URL/health/ready" '"status":"READY"' 30 "X-Ops-Token: $ops_token" || true)"
 printf '%s' "$health" | grep -q '"status":"UP"' && pass "/health UP" || failure "/health 异常"
 printf '%s' "$ready" | grep -q '"status":"READY"' && pass "/health/ready READY" || failure "/health/ready 未就绪"
 
@@ -120,7 +152,7 @@ PY
       [ "$code" = "404" ] && pass "公网 ${path} 被静态拒绝" || failure "公网 ${path} HTTP=$code，预期 404"
     done
 
-    public_unauth="$(curl -sS --max-time 10 --resolve "$resolve_arg" "${public_base}/api/v1/mobile/me/overview" 2>/dev/null || true)"
+    public_unauth="$(curl -sS --max-time 10 --resolve "$resolve_arg" "${public_base}/api/v1/mobile/me/overview?${smoke_tenant_query}" 2>/dev/null || true)"
     printf '%s' "$public_unauth" | grep -q '401001' && pass "公网 API 未登录访问被拒绝" || failure "公网 API 鉴权冒烟失败"
   else
     failure "PUBLIC_BASE_URL 无法解析为 HTTPS origin"
@@ -132,7 +164,7 @@ fi
 docs_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 5 "$BASE_URL/docs" 2>/dev/null || true)"
 [ "$docs_code" = "404" ] && pass "生产文档端点关闭" || failure "/docs HTTP=$docs_code"
 # 401 本来就是期望结果，不能用 curl -f 吞掉响应体，否则永远匹配不到业务码 401001。
-unauth="$(curl -sS --max-time 5 "$BASE_URL/api/v1/mobile/me/overview" 2>/dev/null || true)"
+unauth="$(curl -sS --max-time 5 "$BASE_URL/api/v1/mobile/me/overview?${smoke_tenant_query}" 2>/dev/null || true)"
 printf '%s' "$unauth" | grep -q '401001' && pass "后端本机未登录访问被拒绝" || failure "后端本机鉴权冒烟失败"
 
 printf '== 发布验收：FAIL=%s ==\n' "$fail"

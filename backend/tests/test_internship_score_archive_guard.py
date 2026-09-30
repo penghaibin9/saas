@@ -37,6 +37,7 @@ def _seed(db_mode):
             batch_no=f"SCORE-ARCHIVE-{uuid4().hex[:8]}",
             status="RUNNING",
             planned_count=1,
+            start_date=date.today(),
             end_date=date.today(),
             rules_config={"compliance": {"studentConsent": {
                 "requireGuardianConsentForMinor": False,
@@ -100,13 +101,14 @@ def _seed(db_mode):
         db.add_all([
             InternshipInsurance(
                 tenant_id=TID, internship_id=record.id,
-                student_id=student.id, status="VERIFIED"),
+                student_id=student.id, status="VERIFIED",
+                effective_date=date.today().isoformat(), expiry_date=date.today().isoformat()),
             InternshipAgreement(
                 tenant_id=TID, internship_id=record.id,
                 student_id=student.id, status="EFFECTIVE"),
             InternshipCheckin(
                 tenant_id=TID, internship_id=record.id,
-                checkin_date="2026-07-01", checkin_at=datetime.utcnow(),
+                checkin_date=date.today().isoformat(), checkin_at=datetime.utcnow(),
                 result="NORMAL"),
             WeeklyReport(
                 tenant_id=TID, internship_id=record.id,

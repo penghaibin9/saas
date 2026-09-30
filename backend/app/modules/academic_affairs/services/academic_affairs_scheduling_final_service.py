@@ -316,7 +316,13 @@ def conflict_report(user, batch_id):
 
 
 def summary(user, batch_id):
-    from app.models import AaScheduleBatch, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import (
+        AaScheduleBatch,
+        AaScheduleItem,
+        AaTeacherAvailability,
+        AaTeachingTask,
+        AaTeachingTaskBatch,
+    )
 
     with _base.session() as db:
         _base._ctx(user, db)
@@ -327,18 +333,27 @@ def summary(user, batch_id):
         ).first()
         if not batch:
             raise not_found("课表批次不存在")
-        task_batch_ids = [row.id for row in db.query(AaTeachingTaskBatch).filter(
+        task_batch_query = db.query(AaTeachingTaskBatch).filter(
             AaTeachingTaskBatch.tenant_id == _base._tid(),
             AaTeachingTaskBatch.term_id == int(batch.term_id),
             AaTeachingTaskBatch.is_deleted.is_(False),
-        ).all()]
-        tasks = db.query(AaTeachingTask).filter(
+        )
+        if batch.college_id:
+            task_batch_query = task_batch_query.filter(
+                AaTeachingTaskBatch.college_id == int(batch.college_id),
+            )
+        task_batches = task_batch_query.all()
+        task_batch_ids = [row.id for row in task_batches]
+        all_tasks = db.query(AaTeachingTask).filter(
             AaTeachingTask.tenant_id == _base._tid(),
             AaTeachingTask.batch_id.in_(task_batch_ids or [-1]),
-            AaTeachingTask.status == "READY",
-            AaTeachingTask.no_auto_schedule.is_(False),
+            AaTeachingTask.status != "MERGED",
             AaTeachingTask.is_deleted.is_(False),
         ).all()
+        tasks = [
+            row for row in all_tasks
+            if row.status == "READY" and not bool(row.no_auto_schedule)
+        ]
         items = db.query(AaScheduleItem).filter(
             AaScheduleItem.tenant_id == _base._tid(),
             AaScheduleItem.batch_id == batch.id,
@@ -361,9 +376,23 @@ def summary(user, batch_id):
             if expected <= 0 or actual < expected:
                 missing.append({
                     "taskId": str(task.id),
+                    "courseCode": task.course_code,
                     "courseName": task.course_name,
+                    "teacherName": task.teacher_name,
+                    "teacherKey": task.teacher_key,
+                    "classId": str(task.class_id) if task.class_id else None,
+                    "className": task.teaching_class_name,
+                    "weeklyHours": expected,
+                    "totalHours": int(task.total_hours or 0),
+                    "startWeek": task.start_week,
+                    "endWeek": task.end_week,
+                    "requiredRoomType": task.required_room_type,
                     "expectedSessions": expected,
                     "scheduledSessions": actual,
+                    "remainingSessions": max(0, expected - actual),
+                    "issueType": "UNSCHEDULED" if actual == 0 else "PARTIAL",
+                    "issueLabel": "未排" if actual == 0 else "部分漏排",
+                    "canSchedule": True,
                 })
             elif actual > expected:
                 over.append({
@@ -375,12 +404,129 @@ def summary(user, batch_id):
         conflicts = conflict_report_in_session(db, batch)
         expected_sessions = sum(max(0, int(task.weekly_hours or 0)) for task in tasks)
         scheduled_sessions = sum(counts.values())
+        task_status_counts = {}
+        for task in all_tasks:
+            task_status_counts[task.status] = task_status_counts.get(task.status, 0) + 1
+        confirmed_task_count = sum(
+            1 for task in all_tasks if task.status in {"TEACHER_CONFIRMED", "READY"}
+        )
+        not_ready = [
+            task for task in all_tasks
+            if task.status != "READY" and not bool(task.no_auto_schedule)
+        ]
+        invalid_queue = [{
+            "taskId": str(task.id),
+            "courseCode": task.course_code,
+            "courseName": task.course_name,
+            "teacherName": task.teacher_name,
+            "teacherKey": task.teacher_key,
+            "classId": str(task.class_id) if task.class_id else None,
+            "className": task.teaching_class_name,
+            "weeklyHours": int(task.weekly_hours or 0),
+            "totalHours": int(task.total_hours or 0),
+            "startWeek": task.start_week,
+            "endWeek": task.end_week,
+            "requiredRoomType": task.required_room_type,
+            "expectedSessions": int(task.weekly_hours or 0),
+            "scheduledSessions": 0,
+            "remainingSessions": max(0, int(task.weekly_hours or 0)),
+            "issueType": "NOT_READY",
+            "issueLabel": "教学任务未就绪",
+            "taskStatus": task.status,
+            "canSchedule": False,
+        } for task in not_ready]
+        full_task_queue = sorted(
+            [*missing, *invalid_queue],
+            key=lambda row: ({"UNSCHEDULED": 0, "PARTIAL": 1, "NOT_READY": 2}.get(row["issueType"], 9),
+                             str(row.get("courseName") or "")),
+        )
+        task_queue = full_task_queue[:100]
+        pending_availability_count = db.query(AaTeacherAvailability).filter(
+            AaTeacherAvailability.tenant_id == _base._tid(),
+            AaTeacherAvailability.term_id == int(batch.term_id),
+            AaTeacherAvailability.status == "PENDING",
+            AaTeacherAvailability.is_deleted.is_(False),
+        ).count()
+        teacher_objection_count = sum(1 for item in items if item.objection_status == "PENDING")
         complete = not missing and not over and not orphan_items and conflicts["hardCount"] == 0
+
+        blockers = []
+        if not all_tasks:
+            blockers.append("本学期还没有可供排课的教学任务")
+        if not_ready:
+            blockers.append(f"{len(not_ready)} 个教学任务尚未达到 READY")
+        if pending_availability_count:
+            blockers.append(f"{pending_availability_count} 条教师不可排时间待处理")
+        if missing:
+            blockers.append(f"{len(missing)} 个教学任务仍有未排节次")
+        if over:
+            blockers.append(f"{len(over)} 个教学任务排课超量")
+        if orphan_items:
+            blockers.append(f"{len(orphan_items)} 个课位无法回溯教学任务")
+        if conflicts["hardCount"]:
+            blockers.append(f"{conflicts['hardCount']} 个硬冲突必须清零")
+        if batch.status == "PRE_PUBLISHED" and teacher_objection_count:
+            blockers.append(f"{teacher_objection_count} 条教师异议待处理")
+
+        if batch.status in {"PUBLISHED", "SUPERSEDED", "ARCHIVED"}:
+            current_stage_key = "PUBLISH"
+            next_action = {
+                "code": "CHANGE_LEDGER" if batch.status == "PUBLISHED" else "READ_ONLY",
+                "label": "进入调停课台账" if batch.status == "PUBLISHED" else "查看历史课表",
+                "description": "正式课表日常变更走调停课审批" if batch.status == "PUBLISHED" else "该批次只读留痕",
+            }
+        elif batch.status == "PRE_PUBLISHED":
+            current_stage_key = "PRE_PUBLISH"
+            next_action = {
+                "code": "HANDLE_OBJECTIONS" if teacher_objection_count else "PUBLISH",
+                "label": "处理教师异议" if teacher_objection_count else "正式发布",
+                "description": "异议清零后再正式发布" if teacher_objection_count else "发布后同步教师、学生四端课表",
+            }
+        elif not all_tasks or not_ready:
+            current_stage_key = "PREPARE"
+            next_action = {"code": "TEACHING_TASKS", "label": "完善教学任务", "description": "先完成教师、班级、周学时和周次确认"}
+        elif pending_availability_count and not scheduled_sessions:
+            current_stage_key = "PREFERENCE"
+            next_action = {"code": "AVAILABILITY", "label": "处理教师偏好", "description": "采纳或驳回待处理的不可排时间"}
+        elif not scheduled_sessions:
+            current_stage_key = "AUTO"
+            next_action = {"code": "AUTO_DRY_RUN", "label": "执行试排预览", "description": "先预览，不写入正式课表"}
+        elif missing:
+            current_stage_key = "MANUAL"
+            next_action = {"code": "TASK_QUEUE", "label": "处理未排与漏排", "description": "从任务队列逐项补齐剩余节次"}
+        else:
+            current_stage_key = "QUALITY"
+            next_action = {
+                "code": "CONFLICTS" if conflicts["hardCount"] else "PRE_PUBLISH",
+                "label": "处理硬冲突" if conflicts["hardCount"] else "进入预发布检查",
+                "description": "硬冲突必须清零" if conflicts["hardCount"] else "排课完整，可执行预发布闸门",
+            }
+
+        stage_order = [
+            ("PREPARE", "数据准备"),
+            ("PREFERENCE", "教师偏好"),
+            ("AUTO", "自动初排"),
+            ("MANUAL", "人工微调"),
+            ("QUALITY", "冲突与漏排"),
+            ("PRE_PUBLISH", "预发布"),
+            ("PUBLISH", "正式发布"),
+        ]
+        current_index = next(i for i, row in enumerate(stage_order) if row[0] == current_stage_key)
+        workflow_steps = [{
+            "key": key,
+            "label": label,
+            "state": "completed" if index < current_index else ("current" if index == current_index else "pending"),
+        } for index, (key, label) in enumerate(stage_order)]
         return {
             "batchId": str(batch.id),
+            "batchName": batch.batch_name,
             "termId": str(batch.term_id),
             "batchStatus": batch.status,
-            "totalTasks": len(tasks),
+            "totalTasks": len(all_tasks),
+            "readyTaskCount": len(tasks),
+            "confirmedTaskCount": confirmed_task_count,
+            "notReadyTaskCount": len(not_ready),
+            "excludedTaskCount": sum(1 for task in all_tasks if bool(task.no_auto_schedule)),
             "scheduledTasks": len(counts),
             "completionRate": round(len(counts) / len(tasks) * 100, 1) if tasks else 0.0,
             "scheduledHours": scheduled_sessions,
@@ -388,12 +534,25 @@ def summary(user, batch_id):
             "hardConflicts": conflicts["hardCount"],
             "softConflicts": conflicts["softCount"],
             "missingTaskCount": len(missing),
+            "unplacedTaskCount": sum(1 for row in missing if row["issueType"] == "UNSCHEDULED"),
+            "partiallyScheduledTaskCount": sum(1 for row in missing if row["issueType"] == "PARTIAL"),
             "overScheduledTaskCount": len(over),
             "orphanItemCount": len(orphan_items),
+            "pendingAvailabilityCount": pending_availability_count,
+            "teacherObjectionCount": teacher_objection_count,
+            "taskStatusCounts": task_status_counts,
             "missingTasks": missing,
+            "taskQueue": task_queue,
+            "taskQueueTotal": len(full_task_queue),
             "overScheduledTasks": over,
             "orphanItemIds": [str(item.id) for item in orphan_items],
             "complete": complete,
             "canPrePublish": complete,
+            "workflow": {
+                "currentStageKey": current_stage_key,
+                "steps": workflow_steps,
+                "blockers": blockers,
+                "nextAction": next_action,
+            },
             "ruleVersion": "AA_SCHEDULE_RULE_V2",
         }

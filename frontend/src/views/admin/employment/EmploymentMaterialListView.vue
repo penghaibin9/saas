@@ -213,7 +213,7 @@ export default {
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     async init() {
       const [ctx, status, cols, batch, exp] = await Promise.all([

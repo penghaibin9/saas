@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import io
+from datetime import datetime
 
 from openpyxl import Workbook
 
@@ -38,6 +39,8 @@ def _ensure_term():
             term_no=1,
             term_name="2026-2027第1学期",
             teaching_weeks=18,
+            start_date=datetime(2026, 9, 7),
+            end_date=datetime(2027, 1, 10),
             status="PUBLISHED",
             is_current=True,
         )
@@ -121,6 +124,32 @@ def _seed_ready_task(term_id, *, teacher_key="T1", teacher_name="王老师",
     db.commit()
     db.close()
     return ids
+
+
+def _ensure_archive_test_room():
+    from app.db.session import get_sessionmaker
+    from app.models import AaClassroom
+
+    db = get_sessionmaker()()
+    try:
+        room = db.query(AaClassroom).filter(
+            AaClassroom.tenant_id == TID,
+            AaClassroom.room_name == "A101",
+            AaClassroom.is_deleted.is_(False),
+        ).first()
+        if room is None:
+            db.add(AaClassroom(
+                tenant_id=TID,
+                building_code="TEST",
+                building_name="排课测试楼",
+                room_code="A101",
+                room_name="A101",
+                capacity=60,
+                status="AVAILABLE",
+            ))
+            db.commit()
+    finally:
+        db.close()
 
 
 def _schedule_term_id(batch_id):
@@ -312,6 +341,7 @@ def test_13_archive_requires_published(client, db_mode):
 
 def test_13_archive_success_and_listed(client, db_mode):
     admin = _hdr(client, "school_admin01")
+    _ensure_archive_test_room()
     bid = _batch(client, admin)
     item = _item(client, admin, bid)
     assert item.status_code == 200, item.text

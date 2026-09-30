@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "V6.0",
+  "productExactHead": "e6438ddf8dfcf2f71129fe54b46a1fbdd5e831ac",
+  "verdict": "PASS",
+  "suites": [
+    {
+      "name": "frontend selected V6 contracts",
+      "passed": 92,
+      "failed": 0
+    },
+    {
+      "name": "post-funding targeted contracts",
+      "passed": 23,
+      "failed": 0
+    },
+    {
+      "name": "student portal full",
+      "passed": 102,
+      "failed": 0
+    },
+    {
+      "name": "miniapp relevant V6 contracts",
+      "passed": 34,
+      "failed": 0
+    },
+    {
+      "name": "backend focused V6",
+      "passed": 66,
+      "failed": 0
+    },
+    {
+      "name": "backend activity/four-end/material final",
+      "passed": 24,
+      "failed": 0,
+      "skipped": 0,
+      "durationSeconds": 2359.78
+    },
+    {
+      "name": "real MySQL acceptance",
+      "passed": 1,
+      "failed": 0
+    },
+    {
+      "name": "final risk+dorm read-truth",
+      "passed": 8,
+      "failed": 0
+    },
+    {
+      "name": "final mini role/status contracts",
+      "passed": 14,
+      "failed": 0
+    },
+    {
+      "name": "final batch/material contracts",
+      "passed": 19,
+      "failed": 0
+    }
+  ],
+  "builds": [
+    {
+      "target": "frontend production",
+      "status": "PASS"
+    },
+    {
+      "target": "student portal production",
+      "status": "PASS"
+    },
+    {
+      "target": "miniapp H5 production",
+      "status": "PASS"
+    },
+    {
+      "target": "miniapp Weixin production",
+      "status": "PASS"
+    },
+    {
+      "target": "enterprise portal production",
+      "status": "PASS"
+    }
+  ],
+  "knownOutOfScopeBaseline": [
+    "miniapp graduation V9/handoff has 3 pre-existing non-student-affairs failures recorded by W0; V6 no-spread rule applies and no skip/xfail was added."
+  ]
+}

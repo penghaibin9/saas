@@ -1,0 +1,135 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:18:09.624311Z",
+  "authorityBoundaries": [
+    "ACCEPT_INTENT is enterprise intent and never School Placement",
+    "Client companyId/campaign/role is never data-scope authority",
+    "Student contact is server-revealed only after ContactSharing authority allows it",
+    "Unsupported mobile commands require explicit PC_ONLY_REASON and destination"
+  ],
+  "rows": [
+    {
+      "roleCode": "SCHOOL_ADMIN",
+      "surface": "Staff PC",
+      "dataScope": "TENANT/SCHOOL",
+      "entry": "/admin/internship",
+      "todayWorkTypes": [
+        "application",
+        "placement",
+        "risk",
+        "score",
+        "archive"
+      ],
+      "primaryCommands": [
+        "BATCH_CREATE",
+        "SCHOOL_CONFIRM_PLACEMENT",
+        "SCORE_PUBLISH",
+        "ARCHIVE"
+      ]
+    },
+    {
+      "roleCode": "COLLEGE_ADMIN",
+      "surface": "Staff PC",
+      "dataScope": "COLLEGE",
+      "entry": "/admin/internship",
+      "todayWorkTypes": [
+        "qualification",
+        "application",
+        "risk",
+        "score"
+      ],
+      "primaryCommands": [
+        "QUALIFICATION_REVIEW",
+        "APPLICATION_REVIEW",
+        "RISK_ACTION"
+      ]
+    },
+    {
+      "roleCode": "INTERN_MENTOR",
+      "surface": "Staff PC + Teacher Mini",
+      "dataScope": "STABLE_ADVISOR_RELATION",
+      "entry": "/workbench + /pages/teacher/workbench/index",
+      "todayWorkTypes": [
+        "weekly",
+        "attendanceException",
+        "leave",
+        "visit",
+        "risk"
+      ],
+      "primaryCommands": [
+        "ATTENDANCE_EXCEPTION_DECISION",
+        "LEAVE_REVIEW",
+        "WEEKLY_REVIEW",
+        "GUIDANCE_CREATE",
+        "VISIT_RECTIFY"
+      ]
+    },
+    {
+      "roleCode": "STUDENT",
+      "surface": "Student PC + Student Mini",
+      "dataScope": "SELF",
+      "entry": "/internship + /pages/student/internship/index",
+      "todayWorkTypes": [
+        "selection",
+        "compliance",
+        "checkin",
+        "report",
+        "change",
+        "appeal"
+      ],
+      "primaryCommands": [
+        "APPLICATION_SUBMIT",
+        "CHECKIN",
+        "AGREEMENT_CONFIRM",
+        "EVALUATION_SUBMIT"
+      ]
+    },
+    {
+      "roleCode": "COMPANY_ADMIN",
+      "surface": "Enterprise Portal",
+      "dataScope": "ENTERPRISE_MEMBER_GRANT_CONTEXT",
+      "entry": "/home",
+      "todayWorkTypes": [
+        "companyProfile",
+        "position",
+        "candidate",
+        "evaluation"
+      ],
+      "primaryCommands": [
+        "POSITION_SUBMIT",
+        "ENTERPRISE_DECISION",
+        "EVALUATION_SUBMIT"
+      ]
+    },
+    {
+      "roleCode": "HR",
+      "surface": "Enterprise Portal",
+      "dataScope": "ENTERPRISE_MEMBER_GRANT_CONTEXT",
+      "entry": "/home",
+      "todayWorkTypes": [
+        "position",
+        "candidate"
+      ],
+      "primaryCommands": [
+        "POSITION_SUBMIT",
+        "ENTERPRISE_DECISION"
+      ]
+    },
+    {
+      "roleCode": "MENTOR",
+      "surface": "Enterprise Portal",
+      "dataScope": "FORMAL_INTERNSHIP_STUDENTS_ONLY",
+      "entry": "/home",
+      "todayWorkTypes": [
+        "internshipStudent",
+        "evaluation"
+      ],
+      "primaryCommands": [
+        "EVALUATION_SUBMIT"
+      ],
+      "deniedReasons": [
+        "Applicant materials are forbidden to enterprise MENTOR"
+      ]
+    }
+  ]
+}

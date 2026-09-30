@@ -1,0 +1,22 @@
+# This Dockerfile-specific allowlist also keeps secrets out of the BUILD CONTEXT.
+**
+!backend/
+!backend/requirements.txt
+!backend/alembic.ini
+!backend/app/
+!backend/app/**
+!backend/alembic/
+!backend/alembic/**
+!backend/scripts/
+!backend/scripts/**
+!shared/
+!shared/**
+!docs/
+!docs/architecture/
+!docs/architecture/**
+**/.env
+**/.env.*
+**/__pycache__
+**/*.pyc
+**/*.pem
+**/*.key

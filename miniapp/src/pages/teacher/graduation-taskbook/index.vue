@@ -13,6 +13,9 @@
     </view>
 
     <MobileGlobalState :state="state" @retry="load">
+      <template #before>
+        <MobileGraduationBatchContext />
+      </template>
       <!-- 列表 -->
       <view class="page-pad" v-if="tab === 'list'">
         <MobileGlobalState v-if="!list || !list.length" state="empty" title="暂无任务书"
@@ -65,9 +68,12 @@
 
       <!-- 下达 -->
       <view class="page-pad" v-if="tab === 'issue'">
-        <MobileGlobalState v-if="!students.length" state="empty" title="暂无可下达学生"
+        <MobileInlineAlert v-if="graduationQueues.students.error" type="warning" title="指导学生加载失败，请稍后重试" :description="graduationQueues.students.error" />
+        <button v-if="graduationQueues.students.hasMore || graduationQueues.students.error" class="btn btn-secondary" :disabled="graduationQueues.students.loading || submitting" @click="loadGraduationQueue('students', graduationQueues.students.page > 0)">加载更多指导学生</button>
+        <MobileGlobalState v-if="graduationQueues.students.loading && !students.length" state="loading" />
+        <MobileGlobalState v-else-if="!students.length && !graduationQueues.students.error" state="empty" title="暂无可下达学生"
           description="仅可为本人指导的毕设学生下达任务书。" />
-        <view class="card tb__form" v-else>
+        <view class="card tb__form" v-if="students.length">
           <view class="tb__row">
             <text class="tb__row-k">指导学生</text>
             <picker class="tb__picker" mode="selector" :range="studentLabels" :value="studentIndex" @change="(e) => studentIndex = Number(e.detail.value)">
@@ -101,6 +107,7 @@
 
 <script>
 import { teacherApi } from '@/services/teacherApi'
+import { graduationTeacherQueue } from '@/services/graduationTeacherQueue'
 import { graduationTeacherPagingApi, GRADUATION_TEACHER_PAGE_SIZE } from '@/services/graduationTeacherPagingApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
@@ -108,30 +115,41 @@ import { toast } from '@/utils/nav'
 const submitLock = createSubmitLock(1500)
 
 export default {
+  mixins: [graduationTeacherQueue(['students'])],
   data() {
     return {
       tab: 'list', list: null, total: 0, page: 1, hasMore: false, loadingMore: false,
       state: 'loading', expanded: null, drafts: {}, acting: false,
-      students: [], studentIndex: 0,
+      studentIndex: 0, loadEpoch: 0,
       issueForm: { objective: '', content: '', progressPlan: '', outcomeRequirement: '' },
       submitting: false
     }
   },
-  onLoad() { this.load() },
+  onLoad() { uni.$on('graduation:teacher-batch-ready', this.onBatchReady); this.load() },
+  onUnload() { this.loadEpoch++; this.resetGraduationQueues(); uni.$off('graduation:teacher-batch-ready', this.onBatchReady) },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
   computed: {
+    students() { return this.graduationQueues.students.items },
     studentLabels() { return this.students.map((s) => `${s.name}（${s.studentNo}）· ${s.topicTitle || '未选题'}`) }
   },
   methods: {
+    onBatchReady() {
+      this.resetGraduationQueues()
+      this.studentIndex = 0; this.expanded = null; this.drafts = {}; this.tab = 'list'
+      this.issueForm = { objective: '', content: '', progressPlan: '', outcomeRequirement: '' }
+      this.load()
+    },
     load(done, append = false) {
+      const epoch = ++this.loadEpoch
       if (!append) this.state = 'loading'
       const targetPage = append ? this.page + 1 : 1
-      if (append) this.loadingMore = true
-      graduationTeacherPagingApi.taskbooks(targetPage, GRADUATION_TEACHER_PAGE_SIZE)
+      this.loadingMore = append
+      return graduationTeacherPagingApi.taskbooks(targetPage, GRADUATION_TEACHER_PAGE_SIZE)
         .then((d) => {
+          if (epoch !== this.loadEpoch) return
           const rows = (d && d.list) || []
           this.list = append ? [...(this.list || []), ...rows] : rows
           this.page = Number((d && d.page) || targetPage)
@@ -139,18 +157,16 @@ export default {
           this.hasMore = !!(d && d.hasMore)
           this.state = 'ready'
         })
-        .catch(() => { if (!append) this.state = 'error' })
-        .finally(() => { this.loadingMore = false; if (done) done() })
+        .catch((error) => { if (epoch !== this.loadEpoch) return; if (!append) this.state = normalizeError(error).pageState || 'error'; else toast('加载失败，请重试') })
+        .finally(() => { if (epoch === this.loadEpoch) this.loadingMore = false; if (done) done() })
     },
     loadMore() {
-      if (!this.hasMore || this.loadingMore) return
+      if (!this.hasMore || this.loadingMore || this.state !== 'ready') return
       this.load(null, true)
     },
     onIssueTab() {
       this.tab = 'issue'
-      if (!this.students.length) {
-        teacherApi.getGraduationMyStudents().then((d) => { this.students = d || [] }).catch(() => {})
-      }
+      if (!this.students.length) this.loadGraduationQueue('students')
     },
     toggle(t) {
       if (t.status !== 'CONFIRMED') return
@@ -159,7 +175,7 @@ export default {
       if (!this.drafts[t.id]) {
         const draft = { content: t.content || '', progressPlan: t.progressPlan || '',
           outcomeRequirement: t.outcomeRequirement || '', reason: '' }
-        this.$set ? this.$set(this.drafts, t.id, draft) : (this.drafts[t.id] = draft)
+        this.drafts[t.id] = draft
       }
     },
     submitChange(t) {

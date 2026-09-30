@@ -93,14 +93,20 @@ function optionAdapter(loader) {
 const student = optionAdapter((keyword) => studentAffairsApi.searchStudents(keyword))
 const riskOwner = optionAdapter((keyword) => studentAffairsApi.searchRiskOwners(keyword))
 
-const aidBatch = entityAdapter(async (keyword) => {
-  const rows = rowsOf(await studentAffairsApi.getAidBatches({ page: 1, pageSize: 100 }))
-  return rows.filter((row) => matches(row, keyword, ['batchName', 'schoolYear', 'status']))
-}, {
-  value: ['batchId', 'id'],
-  label: (row) => row.batchName,
-  desc: (row) => [row.schoolYear, statusLabel(row.status)].filter(Boolean).join(' · ')
-})
+function aidBatchOption(row) {
+  return safeEntityOption({ value: row.batchId, label: row.batchName,
+    desc: [row.schoolYear, statusLabel(row.status)].filter(Boolean).join(' · '), raw: row })
+}
+const aidBatch = {
+  async search(keyword = '') {
+    return rowsOf(await studentAffairsApi.getAidBatches({ keyword, page: 1, pageSize: 100 })).map(aidBatchOption)
+  },
+  async resolve(value) {
+    const values = Array.isArray(value) ? value : [value]
+    const options = await Promise.all(values.map(async id => aidBatchOption(assertOk(await studentAffairsApi.getAidBatch(id)))))
+    return Array.isArray(value) ? options : options[0]
+  }
+}
 
 const fundingProject = entityAdapter(async (keyword) => {
   const rows = rowsOf(await studentAffairsApi.getFundingProjects({ page: 1, pageSize: 100 }))
@@ -114,7 +120,7 @@ const fundingBatch = entityAdapter(async (keyword, query) => {
   const rows = rowsOf(await studentAffairsApi.getFundingBatches({ projectId: query.projectId || '', page: 1, pageSize: 100 }))
   return rows.filter((row) => matches(row, keyword, ['schoolYear', 'projectName', 'projectType', 'status']))
 }, {
-  value: ['batchId', 'id'], label: (row) => `${row.schoolYear || '未设学年'} · ${row.projectName || row.projectType || '资助批次'}`,
+  value: ['batchId', 'id'], label: (row) => `${row.schoolYear || '未设学年'} · ${row.projectName || projectTypeLabel(row.projectType) || '资助批次'}`,
   desc: (row) => statusLabel(row.status)
 })
 

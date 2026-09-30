@@ -619,7 +619,7 @@ export const platformApi = {
       const row = webhookList.find((w) => w.id === payload.id)
       if (!row) return fail('订阅不存在')
       Object.assign(row, { name: payload.name ?? row.name, retryPolicy: payload.retryPolicy ?? row.retryPolicy })
-      audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'CONFIG', actionLabel: '配置变更', target: `Webhook「${row.name}」`, summary: '编辑订阅（签名密钥不变更）' })
+      audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'CONFIG', actionLabel: '配置变更', target: `回调订阅「${row.name}」`, summary: '编辑订阅（签名密钥不变更）' })
       return ok(clone(row))
     }
     if (!payload.name || !payload.url) return fail('订阅名称与回调地址为必填项')
@@ -637,7 +637,7 @@ export const platformApi = {
       statusLabel: '启用中'
     }
     webhookList.unshift(row)
-    audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'CREATE', actionLabel: '新增', target: `Webhook「${row.name}」`, summary: '签名密钥一次性下发，系统仅存密文' })
+    audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'CREATE', actionLabel: '新增', target: `回调订阅「${row.name}」`, summary: '签名密钥一次性下发，系统仅存密文' })
     return ok(clone(row))
   },
 
@@ -647,7 +647,7 @@ export const platformApi = {
     if (action === 'DISABLE' && (!reason || reason.trim().length < 5)) return fail('停用原因必填且不少于 5 个字')
     row.status = action === 'DISABLE' ? 'DISABLED' : 'ENABLED'
     row.statusLabel = action === 'DISABLE' ? '已停用' : '启用中'
-    audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'DISABLE', actionLabel: action === 'DISABLE' ? '停用/作废' : '恢复启用', target: `Webhook「${row.name}」`, summary: action === 'DISABLE' ? '停止事件投递，历史投递日志保留' : '恢复投递', reason: reason || '' })
+    audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'DISABLE', actionLabel: action === 'DISABLE' ? '停用/作废' : '恢复启用', target: `回调订阅「${row.name}」`, summary: action === 'DISABLE' ? '停止事件投递，历史投递日志保留' : '恢复投递', reason: reason || '' })
     return ok({ id, status: row.status })
   },
 
@@ -656,7 +656,7 @@ export const platformApi = {
     if (!row) return fail('订阅不存在')
     row.lastDelivery = now() + ' · 重推成功'
     row.failCount24h = 0
-    audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'UPDATE', actionLabel: '手动重推', target: `Webhook「${row.name}」`, summary: '失败事件重推成功，失败计数清零' })
+    audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'UPDATE', actionLabel: '手动重推', target: `回调订阅「${row.name}」`, summary: '失败事件重推成功，失败计数清零' })
     return ok({ id, lastDelivery: row.lastDelivery })
   },
 

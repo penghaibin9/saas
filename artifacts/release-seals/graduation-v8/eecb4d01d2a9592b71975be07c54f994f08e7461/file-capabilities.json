@@ -1,0 +1,22 @@
+{
+  "candidates": 588,
+  "registered": 588,
+  "uncovered": 0,
+  "byModule": {
+    "academic-affairs": 151,
+    "archive": 5,
+    "employment": 2,
+    "file-center": 20,
+    "graduation": 125,
+    "identity-import": 15,
+    "internship": 118,
+    "mobile-shared": 6,
+    "orientation": 3,
+    "shared-platform": 66,
+    "shared-xlsx": 4,
+    "student-affairs": 24,
+    "system-management": 44,
+    "system-migration": 5
+  },
+  "uncoveredItems": []
+}

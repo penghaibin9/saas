@@ -25,6 +25,10 @@ def test_supplemental_routes_mount_with_path_and_method():
     expected = {
         ("/mobile/teacher/affairs/student-candidates", frozenset({"GET"})),
         ("/mobile/teacher/affairs/activities/ongoing", frozenset({"GET"})),
+        ("/mobile/teacher/affairs/activities", frozenset({"GET"})),
+        ("/mobile/teacher/affairs/activities/{activity_id}/participants", frozenset({"GET"})),
+        ("/mobile/teacher/affairs/activities/{activity_id}/transition", frozenset({"POST"})),
+        ("/mobile/teacher/affairs/activities/{activity_id}/confirm", frozenset({"POST"})),
         ("/mobile/teacher/affairs/activities/{activity_id}/checkin-token", frozenset({"GET"})),
         ("/mobile/teacher/affairs/appeals/{kind}", frozenset({"GET"})),
         ("/mobile/teacher/affairs/appeals/{kind}/{appeal_id}/review", frozenset({"POST"})),

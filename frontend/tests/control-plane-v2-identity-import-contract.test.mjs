@@ -15,6 +15,8 @@ const api = readFront('src/modules/system/api/dataExchange.api.js')
 const dialog = readFront('src/modules/system/components/ImportDialog.vue')
 const student = readFront('src/modules/system/views/SystemStudentImportView.vue')
 const teacher = readFront('src/modules/system/views/SystemTeacherImportView.vue')
+const workspace = readFront('src/modules/system/components/workspace/IdentityImportWorkspace.vue')
+const controller = readFront('src/modules/system/utils/identityImportWorkspace.js')
 const worker = readRepo('backend/app/workers/identity_import_worker.py')
 const service = readRepo('deploy/systemd/school-lifecycle-identity-import.service')
 
@@ -33,11 +35,19 @@ test('P-01 browser polling is pure-read and confirm re-reads current server stat
   assert.match(api, /while \(isIdentityImportProcessing\(current\)\)/)
   assert.match(api, /current = await this\.getImport\(jobId, context\)/)
   assert.match(api, /getImport\(jobId, context = \{\}\)[\s\S]*?request\(`\/data-exchange\/imports\/\$\{jobId\}`/)
+  assert.match(student, /kind="students"/)
+  assert.match(teacher, /kind="teachers"/)
   for (const view of [student, teacher]) {
-    assert.match(view, /const current = await dataExchangeApi\.getImport\(jobId\)/)
-    assert.match(view, /if \(!canConfirmIdentityImport\(current\)\)/)
-    assert.match(view, /confirmImport\(jobId, current\.version\)/)
+    assert.match(view, /IdentityImportWorkspace/)
+    assert.match(view, /canLeave\(to\)/)
   }
+  assert.match(workspace, /createImportController/)
+  assert.match(workspace, /api: dataExchangeApi/)
+  assert.match(controller, /const current = await api\.getImport\(jobId\)/)
+  assert.match(controller, /!canConfirmIdentityImport\(current\)/)
+  assert.match(controller, /confirmImport\(jobId, current\.version\)/)
+  assert.match(controller, /reviewFingerprint\(current\) !== approved/)
+  assert.match(controller, /state\.uncertain = true/)
 })
 
 test('P-01 canonical worker exclusively claims durable identity jobs', () => {

@@ -42,8 +42,11 @@ def _seed(db_mode):
 def test_checkin_success_then_409(client, db_mode):
     _seed(db_mode)
     h = _stu_token("打卡生", "CK0001")
+    preflight = client.post("/api/v1/mobile/internship/checkin/preflight", headers=h)
+    assert preflight.status_code == 200, preflight.json()
     ok = client.post("/api/v1/mobile/internship/checkin", headers=h,
-                     json={"lat": 30.5, "lng": 114.3, "address": "企业园区"}).json()
+                     json={"lat": 30.5, "lng": 114.3, "address": "企业园区",
+                           "checkinToken": preflight.json()["data"]["token"]}).json()
     assert ok["code"] == 0 and ok["data"]["result"] == "RECORDED"
     dup = client.post("/api/v1/mobile/internship/checkin", headers=h, json={}).json()
     assert dup["code"] == 409001

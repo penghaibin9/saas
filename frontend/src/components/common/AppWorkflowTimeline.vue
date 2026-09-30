@@ -12,7 +12,7 @@
       <div class="app-wf-timeline__content">
         <div class="app-wf-timeline__title-row">
           <span class="app-wf-timeline__name">{{ n.name || n.label }}</span>
-          <span v-if="n.result" class="app-wf-timeline__result" :class="`is-${stateOf(n)}`">{{ n.result }}</span>
+          <span v-if="n.result" class="app-wf-timeline__result" :class="`is-${stateOf(n)}`">{{ resultLabel(n.result) }}</span>
         </div>
         <div v-if="n.handler || n.at" class="app-wf-timeline__meta">
           <template v-if="n.handler">{{ n.handler }}</template>
@@ -25,6 +25,10 @@
 </template>
 
 <script>
+import { safeLocalizedText } from '@/utils/presentationSafety'
+
+const RESULT_LABELS = { PASS: '通过', PASSED: '通过', SUCCESS: '成功', APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', PENDING: '待处理', PROCESSING: '处理中', COMPLETED: '已完成', FAILED: '失败', CANCELLED: '已取消' }
+
 /**
  * AppWorkflowTimeline — 审批流 / 业务流转时间线（比 AppStepBar 更适合“审批历史+当前节点”）。
  * Props:
@@ -42,6 +46,7 @@ export default {
     horizontal: { type: Boolean, default: false }
   },
   methods: {
+    resultLabel(value) { return safeLocalizedText({ value, dictionary: RESULT_LABELS, unknownLabel: '结果待确认' }) },
     stateOf(n) {
       if (n.state) return n.state
       const i = this.nodes.indexOf(n)

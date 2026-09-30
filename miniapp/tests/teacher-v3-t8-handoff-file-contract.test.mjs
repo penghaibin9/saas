@@ -4,7 +4,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 const repo = path.resolve(import.meta.dirname, '..', '..')
-const handoff = JSON.parse(fs.readFileSync(path.join(repo, 'miniapp-v3-handoff.json'), 'utf8'))
+const handoff = JSON.parse(fs.readFileSync(path.join(repo, 'artifacts/release-seals/miniapp-v3-handoff.json'), 'utf8'))
 
 test('T8 consumes a sealed Student V3 handoff with versioned shared contracts', () => {
   assert.equal(handoff.schema, 'miniapp-v3-handoff/1')

@@ -72,10 +72,16 @@ def _seed_600_finals():
 
 
 def test_m10_public_service_entrypoints_are_bound_to_sql_read_model():
-    assert service.list_finals.__module__ == "app.modules.graduation.services"
+    # 入口已从包级运行时补丁内联到 graduation_service，本身只委托 SQL 读模型。
+    import inspect
+
+    owner = "app.modules.graduation.services.graduation_service"
+    assert service.list_finals.__module__ == owner
     assert service.list_finals.__name__ == "list_finals"
-    assert service.final_stats.__module__ == "app.modules.graduation.services"
-    assert service.export_finals_xlsx.__module__ == "app.modules.graduation.services"
+    assert service.final_stats.__module__ == owner
+    assert service.export_finals_xlsx.__module__ == owner
+    assert "final_read" in inspect.getsource(service.list_finals)
+    assert "final_read" in inspect.getsource(service.final_stats)
 
 
 def test_m10_mysql_pagination_not_submitted_and_stats(db_mode, graduation_client, auth_headers):

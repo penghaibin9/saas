@@ -1,24 +1,27 @@
 <template>
   <BasePortalLayout
+    workspace
+    class="aa-workspace-ui"
     :title="brandTitle"
     subtitle="教务中心"
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
-    <template v-if="ctx">
-      <div v-if="isArchiveArea && canManageArchive" class="aa-ops-strip">
+    <div v-if="ctx" class="aa-business-area">
+      <details v-if="isArchiveArea && canManageArchive" class="aa-ops-strip">
+        <summary>归档检查工具</summary>
         <div>
-          <strong>{{ isSemesterPilot ? '真实学期验收' : '生产验收工具' }}</strong>
-          <span>{{ isSemesterPilot ? '只读取真实学校正式事实并冻结六阶段证据，不生成业务数据。' : '真实学校完整学期上线时，可进入隐藏验收工作区。' }}</span>
+          <strong>{{ isSemesterPilot ? '学期验收' : '学期完整性检查' }}</strong>
+          <span>{{ isSemesterPilot ? '核对本学期六个阶段的办理记录与验收证据。' : '归档前可核对本学期各阶段的办理记录。' }}</span>
         </div>
         <button v-if="!isSemesterPilot" type="button" @click="openSemesterPilot">真实学期验收</button>
         <button v-else type="button" @click="closeSemesterPilot">返回教务归档</button>
-      </div>
+      </details>
       <AaSemesterPilotView v-if="isSemesterPilot && canManageArchive" />
       <template v-if="!(isSemesterPilot && canManageArchive)">
         <router-view v-if="ctx" :ctx="ctx" />
       </template>
-    </template>
+    </div>
     <ErrorState
       v-else-if="error"
       title="教务中心加载失败"
@@ -44,16 +47,23 @@ import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affai
 import { academicAffairsPickerAdapters } from '@/modules/academicAffairs/pickerAdapters'
 import AaSemesterPilotView from '@/modules/academicAffairs/views/AaSemesterPilotView.vue'
 import { matchPermission } from '@/config/navPlan'
+import { currentUserFromToken } from '@/services/http/client'
+import { academicIdentity, createAcademicReturnStore } from '../academicFlowContext.js'
 import router from '@/router'
+import '@/modules/academicAffairs/styles/business-workspace.css'
+import '@/modules/academicAffairs/styles/module-navigation.css'
 
 export default {
   name: 'AdminAcademicAffairsLayout',
   components: { BasePortalLayout, ErrorState, LoadingState, AaSemesterPilotView },
   provide() {
-    return { appPickerAdapters: academicAffairsPickerAdapters }
+    return { appPickerAdapters: academicAffairsPickerAdapters, conciseBusinessHeader: true,
+      academicFlow: { identity: () => academicIdentity(currentUserFromToken(), this.ctx || {}), returns: this.returnPositions,
+        captureReturn: () => this.returnPositions.remember(this.$route, academicIdentity(currentUserFromToken(), this.ctx || {}), this.$el?.querySelector('.tw-main')?.scrollTop || 0),
+        back: this.returnToPosition, restorePosition: this.restoreReturnPosition } }
   },
   data() {
-    return { ctx: null, error: '' }
+    return { ctx: null, error: '', contextRequest: 0, loadedIdentity: '', pendingReturn: null, returnPositions: createAcademicReturnStore(globalThis.sessionStorage) }
   },
   computed: {
     brandTitle() {
@@ -75,20 +85,51 @@ export default {
   created() {
     this.loadContext()
   },
+  mounted() { window.addEventListener('focus', this.loadContext) },
+  beforeUnmount() { this.contextRequest++; window.removeEventListener('focus', this.loadContext) },
   methods: {
-    async loadContext() {
+    async returnToPosition(token, fallback) {
+      const identity = academicIdentity(currentUserFromToken(), this.ctx || {})
+      const position = this.returnPositions.resolve(token, identity)
+      this.pendingReturn = position ? { ...position, identity } : null
+      await this.$router.push(position?.path || fallback)
+    },
+    async restoreReturnPosition() {
+      const position = this.pendingReturn
+      if (!position) return
+      await this.$nextTick()
+      if (this.pendingReturn !== position || this.$route.fullPath !== position.path ||
+        position.identity !== academicIdentity(currentUserFromToken(), this.ctx || {})) return
+      const main = this.$el?.querySelector('.tw-main')
+      if (main) { main.scrollTop = position.scrollTop; this.pendingReturn = null }
+    },
+    async loadContext(event) {
+      const request = ++this.contextRequest
+      const identity = academicIdentity(currentUserFromToken())
+      const keepContent = event?.type === 'focus' && identity === this.loadedIdentity && this.ctx
+      const previousScope = academicIdentity(currentUserFromToken(), this.ctx || {})
       this.error = ''
-      this.ctx = null
+      if (!keepContent) this.ctx = null
       try {
         const res = await academicAffairsApi.getContext()
+        if (request !== this.contextRequest || identity !== academicIdentity(currentUserFromToken())) return
         if (!res || res.code !== 0 || !res.data) {
           throw new Error((res && res.message) || '无法读取当前角色、权限和数据范围')
         }
-        if (import.meta.env && import.meta.env.PROD && !Array.isArray(res.data.permissionPatterns)) {
+        if (!Array.isArray(res.data.permissionPatterns)) {
           throw new Error('权限上下文读取失败。为保护学校数据，教务菜单已停止加载，请重新登录后再试。')
         }
+        if (keepContent && previousScope === academicIdentity(currentUserFromToken(), res.data)) return
+        if (keepContent && previousScope !== academicIdentity(currentUserFromToken(), res.data)) {
+          this.ctx = null
+          await this.$nextTick()
+          if (request !== this.contextRequest || identity !== academicIdentity(currentUserFromToken())) return
+        }
+        this.loadedIdentity = identity
         this.ctx = res.data
       } catch (err) {
+        if (request !== this.contextRequest || identity !== academicIdentity(currentUserFromToken())) return
+        this.ctx = null
         this.error = (err && err.message) || '请检查网络或重新登录后再试'
       }
     },
@@ -113,7 +154,9 @@ export default {
 </script>
 
 <style scoped>
-.aa-ops-strip { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border-light, #e5e7eb); border-radius: 10px; background: var(--bg-section, #f8fafc); }
+.aa-ops-strip { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
+.aa-ops-strip summary { color: var(--text-secondary); font-size: 13px; cursor: pointer; }
+.aa-ops-strip[open] > div { margin: 12px 0; }
 .aa-ops-strip > div { min-width: 0; display: grid; gap: 3px; }
 .aa-ops-strip strong { color: var(--text-primary, #0f172a); font-size: 13px; }
 .aa-ops-strip span { color: var(--text-tertiary, #64748b); font-size: 12px; }

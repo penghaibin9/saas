@@ -22,7 +22,6 @@ from app.models.internship_volunteer_group import InternshipVolunteerGroup
 from app.modules.internship.services import internship_enterprise_application_decision_service as decision_svc
 from app.modules.internship.services import internship_position_rights as rights_svc
 from app.modules.internship.services import internship_student_service as student_svc
-from app.modules.internship.services.internship_assignment_snapshot_authority import install_assignment_snapshot_authority
 
 pytestmark = pytest.mark.skipif(
     not (os.environ.get("TEST_DATABASE_URL") or os.environ.get("DATABASE_URL") or "").startswith("mysql"),
@@ -155,8 +154,6 @@ def test_mysql_student_enterprise_school_chain_closes_one_canonical_placement(mo
     tenant_id, base = _tenant(), _base()
     now = datetime.utcnow()
     _allow_assignment(monkeypatch)
-    install_assignment_snapshot_authority()
-
     db = _session()
     try:
         company = EmpCompany(

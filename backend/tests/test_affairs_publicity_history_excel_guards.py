@@ -16,7 +16,9 @@ def test_publicity_has_formal_duration_and_serialized_scans():
     assert "学年格式应为YYYY-YYYY" in rules
     assert aid.count("with_for_update(skip_locked=True)") >= 1
     assert funding.count("with_for_update(skip_locked=True)") >= 1
-    assert "timedelta(days=max(1" in aid and "timedelta(days=max(1" in funding
+    assert "func.timestampadd(literal_column('DAY'), func.greatest(1, func.coalesce(AidBatch.publicity_days, 5)), AidApply.publicity_at)" in aid
+    assert "due <= now, ~open_objection" in aid
+    assert "timedelta(days=max(1" in funding
     assert "_pending_objection_ids" in aid
     assert "_pending_appeal_ids" in funding
 

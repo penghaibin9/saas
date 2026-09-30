@@ -5,8 +5,7 @@
  * 与旧「学业过程」模块（同目录 api/academic.api.js，接 /academic/* + mock 兜底）互不干扰、并存。
  *
  * 以代码为准（后端 academic_affairs.py 实测签名）：
- *  - 学期基础字段（学年/学期号/名称/起止日期）仅有 新建/列表/当前/发布 四端点，无 PUT 更新端点 →
- *    本模块不提供 updateTerm（勘误见施工记录）。
+ *  - 学期详情、影响预览与 PUT 更新由 academic-affairs-term-detail.api.js 提供。
  *  - 学期状态机 DRAFT→PUBLISHED→FROZEN→ARCHIVED 全 4 态：DRAFT/PUBLISHED 走 create/publish；
  *    FROZEN 走 Tier1-R2 新增 freeze/unfreeze（学期状态）；ARCHIVED 由「教务归档」二级模块
  *    academic_affairs_archive_service 的批次确认归档写入，本模块 getTermArchiveOverview 仅只读联动。
@@ -23,7 +22,7 @@ function fail(message, code = 1) {
   return Promise.resolve({ code, data: null, message })
 }
 function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
+  if (e?.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message, bizCode: e.bizCode, details: e.details, httpStatus: e.httpStatus, traceId: e.traceId })
   return fail(e?.message || '真实接口不可用', 503001)
 }
 async function call(fn) {
@@ -33,9 +32,14 @@ async function call(fn) {
     return toErr(e)
   }
 }
-async function callList(path, params = {}) {
+async function callList(path, params = {}, requirePage = false) {
   try {
     const d = await request(path, { params })
+    if (requirePage && (!Array.isArray(d?.items) || !Number.isSafeInteger(d.total) || d.total < 0
+      || !Number.isSafeInteger(d.page) || d.page < 1 || !Number.isSafeInteger(d.pageSize) || d.pageSize < 1
+      || d.items.length > d.pageSize || d.items.length > d.total)) {
+      return fail('正式分页回执不完整，请重新读取；不能按空列表办理。', 503001)
+    }
     return ok({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 })
   } catch (e) {
     return toErr(e)
@@ -50,6 +54,7 @@ export const academicAffairsApi = {
     let roleName = '教务管理员'
     let roleCode = u.currentRoleCode || ''
     const scopeName = '本校教务数据（按后端数据范围）'
+    let dataScope = { scope: '', scopeName, name: scopeName }
     let permissionPatterns = null
     try {
       if (shouldTryReal()) {
@@ -64,6 +69,7 @@ export const academicAffairsApi = {
             const cr = rc.currentRole || {}
             if (cr.roleName) roleName = cr.roleName
             if (cr.roleCode) roleCode = cr.roleCode
+            if (rc.dataScope) dataScope = { ...rc.dataScope, name: rc.dataScope.scopeName || rc.dataScope.scopeLabel || scopeName }
           }
         } catch {
           /* current-context 不可用：展示降级；后端接口仍是最终权限边界 */
@@ -78,7 +84,7 @@ export const academicAffairsApi = {
     return ok({
       tenantBrandConfig: { schoolName },
       currentRole: { roleName, roleCode },
-      dataScope: { scopeName, name: scopeName },
+      dataScope,
       permissionActions: {},
       permissionPatterns
     })
@@ -91,6 +97,12 @@ export const academicAffairsApi = {
   /** 教务看板提醒聚合：成绩提交进度/考试安排/学籍异动/学业预警/毕业资格预警/教务待办（P4 六卡，零新表只读聚合）。 */
   getDashboardReminders() {
     return call(() => request(`${BASE}/dashboard/reminders`))
+  },
+  getDashboardRoleQueue(params = {}) {
+    return call(() => request(`${BASE}/dashboard/role-queue`, { params }))
+  },
+  getGradePublicationEffect(taskId) {
+    return call(() => request(`${BASE}/grade-tasks/${encodeURIComponent(taskId)}/publication-effect`))
   },
 
   /* ── 学年学期 ── */
@@ -348,8 +360,10 @@ export const academicAffairsApi = {
   submitStatusChange(body) {
     return call(() => request(`${BASE}/status-changes`, { method: 'POST', body }))
   },
-  reviewStatusChange(changeId, action, reason) {
-    return call(() => request(`${BASE}/status-changes/${changeId}/review`, { method: 'POST', body: { action, reason } }))
+  reviewStatusChange(changeId, action, reason, expectedDecisionVersion) {
+    const body = { action, reason }
+    if (expectedDecisionVersion != null) body.expectedDecisionVersion = expectedDecisionVersion
+    return call(() => request(`${BASE}/status-changes/${changeId}/review`, { method: 'POST', body }))
   },
   /** 异动统计（Tier1「异动统计」）：按类型/状态/在途节点聚合，范围过滤同列表。 */
   getStatusChangeStats(params = {}) {
@@ -551,14 +565,23 @@ export const academicAffairsApi = {
   getScheduleBatches(params = {}) {
     return callList(`${BASE}/schedule-batches`, params)
   },
+  getScheduleBatch(batchId) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}`))
+  },
   createScheduleBatch(body) {
     return call(() => request(`${BASE}/schedule-batches`, { method: 'POST', body }))
   },
   addScheduleItem(batchId, body) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/items`, { method: 'POST', body }))
   },
+  preflightScheduleItem(batchId, body) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/items/preflight`, { method: 'POST', body }))
+  },
   moveScheduleItem(itemId, weekday, slotNo) {
     return call(() => request(`${BASE}/schedule-items/${itemId}/move`, { method: 'PUT', body: { weekday, slotNo } }))
+  },
+  preflightScheduleMove(itemId, weekday, slotNo) {
+    return call(() => request(`${BASE}/schedule-items/${itemId}/move-preflight`, { method: 'POST', body: { weekday, slotNo } }))
   },
   importSchedule(batchId, items) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/import`, { method: 'POST', body: { items } }))
@@ -568,6 +591,9 @@ export const academicAffairsApi = {
   },
   publishSchedule(batchId) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/publish`, { method: 'POST' }))
+  },
+  startScheduleCorrection(batchId, reason) {
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/correction-draft`, { method: 'POST', body: { reason } }))
   },
   voidReissueSchedule(batchId, reason) {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/void-reissue`, { method: 'POST', body: { reason } }))
@@ -624,6 +650,9 @@ export const academicAffairsApi = {
   getTeacherSchedule(teacherKey, params = {}) {
     return call(() => request(`${BASE}/schedule/teacher/${teacherKey}`, { params }))
   },
+  getMyTeacherToday() {
+    return call(() => request(`${BASE}/teacher/today`))
+  },
   getRoomSchedule(classroomId, params = {}) {
     return call(() => request(`${BASE}/schedule/room/${classroomId}`, { params }))
   },
@@ -656,8 +685,10 @@ export const academicAffairsApi = {
   voidCertificate(cid, reason) { return call(() => request(`${BASE}/graduation-certificates/${cid}/void`, { method: 'POST', body: { reason } })) },
   // 成绩认定/课程替代（转专业/转学：原修课程替代现计划课程）
   listRecognitions(params = {}) { return callList(`${BASE}/grade-recognitions`, params) },
-  submitRecognition(body) { return call(() => request(`${BASE}/grade-recognitions`, { method: 'POST', body })) },
-  reviewRecognition(rid, action, reason = '') { return call(() => request(`${BASE}/grade-recognitions/${rid}/review`, { method: 'POST', body: { action, reason } })) },
+  getRecognition(recognitionId) { return call(() => request(`${BASE}/grade-recognitions/${recognitionId}/detail`)) },
+  submitRecognition(body, commandKey) { return call(() => request(`${BASE}/grade-recognitions`, { method: 'POST', body, ...(commandKey == null ? {} : { headers: { 'Idempotency-Key': commandKey } }) })) },
+  reviewRecognition(rid, action, reason = '', commandKey) { return call(() => request(`${BASE}/grade-recognitions/${rid}/review`, { method: 'POST', body: { action, reason }, ...(commandKey == null ? {} : { headers: { 'Idempotency-Key': commandKey } }) })) },
+  getGradeCommandReceipt(commandKey, operation) { return call(() => request(`${BASE}/grade-command-receipts/${encodeURIComponent(commandKey)}`, { params: { operation } })) },
   createGradeTask(body) {
     return call(() => request(`${BASE}/grade-tasks`, { method: 'POST', body }))
   },
@@ -715,11 +746,15 @@ export const academicAffairsApi = {
   submitGradeTask(taskId) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/submit`, { method: 'POST' }))
   },
-  collegeReviewGrade(taskId, action, reason) {
-    return call(() => request(`${BASE}/grade-tasks/${taskId}/college-review`, { method: 'POST', body: { action, reason } }))
+  getGradeReviewEvidence(taskId) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/review-evidence`))
+  },
+  collegeReviewGrade(taskId, action, reason = '', expectedEvidenceHash = null) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/college-review`, { method: 'POST', body: { action, reason, expectedEvidenceHash } }))
   },
   publishGrades(taskId) {
-    return call(() => request(`${BASE}/grade-tasks/${taskId}/publish`, { method: 'POST' }))
+    // 当前发布合同包含提交后的预警扫描；为该单次命令保留回执等待时间，不重试写入。
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/publish`, { method: 'POST', timeoutMs: 60000 }))
   },
   returnGradeTask(taskId, reason) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/return`, { method: 'POST', body: { reason } }))
@@ -727,17 +762,26 @@ export const academicAffairsApi = {
   archiveGradeTask(taskId) {
     return call(() => request(`${BASE}/grade-tasks/${taskId}/archive`, { method: 'POST' }))
   },
-  requestGradeChange(taskId, recordId, body) {
-    return call(() => request(`${BASE}/grade-tasks/${taskId}/records/${recordId}/change-request`, { method: 'POST', body }))
+  requestGradeChange(taskId, recordId, body, commandKey) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/records/${recordId}/change-request`, { method: 'POST', headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined, body }))
   },
-  changeCollegeReview(recordId, action, reason) {
-    return call(() => request(`${BASE}/grade-change/${recordId}/college-review`, { method: 'POST', body: { action, reason } }))
+  getGradeChanges(params) {
+    return callList(`${BASE}/grade-changes`, params, true)
   },
-  changeAcademicReview(recordId, action, reason) {
-    return call(() => request(`${BASE}/grade-change/${recordId}/academic-review`, { method: 'POST', body: { action, reason } }))
+  getGradeChangeDetail(changeRequestId) {
+    return call(() => request(`${BASE}/grade-changes/${changeRequestId}/detail`))
   },
-  getTranscript(studentId) {
-    return call(() => request(`${BASE}/students/${studentId}/transcript`))
+  getGradeChangeSource(taskId, recordId) {
+    return call(() => request(`${BASE}/grade-tasks/${taskId}/records/${recordId}/change-source`))
+  },
+  changeCollegeReview(recordId, action, reason, identity, commandKey) {
+    return call(() => request(`${BASE}/grade-change/${recordId}/college-review`, { method: 'POST', headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined, body: { ...identity, action, reason } }))
+  },
+  changeAcademicReview(recordId, action, reason, identity, commandKey) {
+    return call(() => request(`${BASE}/grade-change/${recordId}/academic-review`, { method: 'POST', headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined, body: { ...identity, action, reason } }))
+  },
+  getTranscript(studentId, params) {
+    return call(() => request(`${BASE}/students/${studentId}/transcript`, params ? { params } : undefined))
   },
   /** 导出学生成绩单 xlsx（同步下载）：返回 Blob；purpose 必填（≥5 字，写审计+水印）。 */
   async exportTranscript(studentId, purpose) {
@@ -768,7 +812,7 @@ export const academicAffairsApi = {
     }
   },
 
-  /* ── 课堂考勤（PC 只读统计/查询；教师逐生录入在移动端） ── */
+  /* ── 课堂考勤（PC/移动端复用同一正式场次写链） ── */
   getAttendanceStats(params = {}) {
     return call(() => request(`${BASE}/attendance/stats`, { params }))
   },
@@ -778,13 +822,23 @@ export const academicAffairsApi = {
   getAttendanceSession(sessionId) {
     return call(() => request(`${BASE}/attendance/sessions/${sessionId}`))
   },
+  openAttendanceSession(body) {
+    return call(() => request(`${BASE}/attendance/sessions/open`, { method: 'POST', body }))
+  },
+  markAttendanceSession(sessionId, studentId, status) {
+    return call(() => request(`${BASE}/attendance/sessions/${sessionId}/mark`, { method: 'POST', body: { studentId, status } }))
+  },
+  submitAttendanceSession(sessionId) {
+    return call(() => request(`${BASE}/attendance/sessions/${sessionId}/submit`, { method: 'POST' }))
+  },
 
   /* ── 成绩复查（学生发起在小程序；教务处复审在 PC：维持/调整/不予受理） ── */
   getGradeRechecks(params = {}) {
     return callList(`${BASE}/grade-rechecks`, params)
   },
-  reviewGradeRecheck(recheckId, body) {
-    return call(() => request(`${BASE}/grade-rechecks/${recheckId}/review`, { method: 'POST', body }))
+  getGradeRecheck(recheckId) { return call(() => request(`${BASE}/grade-rechecks/${recheckId}/detail`)) },
+  reviewGradeRecheck(recheckId, body, commandKey) {
+    return call(() => request(`${BASE}/grade-rechecks/${recheckId}/review`, { method: 'POST', body, ...(commandKey == null ? {} : { headers: { 'Idempotency-Key': commandKey } }) }))
   },
 
   /* ── 教师工作量申报（教师端申报在小程序；教务处审核在 PC） ── */
@@ -905,16 +959,19 @@ export const academicAffairsApi = {
   getStatsResourceDetail(params = {}) { return callList(`${BASE}/stats/resource/detail`, params) },
 
   /* ── 教学资源 · 教室字典（R4 · /academic-affairs/classrooms/*；细粒度权限 academicAffairs.classroom.*） ── */
-  listClassrooms({ keyword = '', buildingCode = '', roomType = '', status = '', page = 1, pageSize = 20 } = {}) {
+  listClassrooms({ keyword = '', buildingCode = '', buildingId = '', floorNo = '', roomType = '', status = '', page = 1, pageSize = 20 } = {}) {
     const params = { page, pageSize }
     if (keyword) params.keyword = keyword
     if (buildingCode) params.buildingCode = buildingCode
+    if (buildingId) params.buildingId = buildingId
+    if (floorNo !== '') params.floorNo = floorNo
     if (roomType) params.roomType = roomType
     if (status) params.status = status
     return call(() => request(`${BASE}/classrooms`, { params }))
   },
-  getClassroomOptions(keyword = '') {
+  getClassroomOptions(keyword = '', purpose) {
     const params = keyword ? { keyword } : {}
+    if (purpose) params.purpose = purpose
     return call(() => request(`${BASE}/classrooms/options`, { params }))
   },
   getClassroom(id) {
@@ -942,8 +999,9 @@ export const academicAffairsOrgApi = {
   createCollege(body) { return call(() => request(`${BASE}/orgs/colleges`, { method: 'POST', body })) },
   updateCollege(id, body) { return call(() => request(`${BASE}/orgs/colleges/${id}`, { method: 'PUT', body })) },
   deleteCollege(id) { return call(() => request(`${BASE}/orgs/colleges/${id}`, { method: 'DELETE' })) },
-  bindSecretary(id, secretaryId) {
-    return call(() => request(`${BASE}/orgs/colleges/${id}/secretary`, { method: 'POST', body: { secretaryId } }))
+  listSecretaryCandidates(id, params = {}) { return callList(`${BASE}/orgs/colleges/${id}/secretary-candidates`, params) },
+  bindSecretary(id, secretaryId, expectedVersion) {
+    return call(() => request(`${BASE}/orgs/colleges/${id}/secretary`, { method: 'POST', body: { secretaryId, expectedVersion } }))
   },
   // ── 专业 ──
   listMajors(params = {}) { return callList(`${BASE}/orgs/majors`, params) },
@@ -954,20 +1012,24 @@ export const academicAffairsOrgApi = {
   listClasses(params = {}) { return callList(`${BASE}/orgs/classes`, params) },
   createClass(body) { return call(() => request(`${BASE}/orgs/classes`, { method: 'POST', body })) },
   updateClass(id, body) { return call(() => request(`${BASE}/orgs/classes/${id}`, { method: 'PUT', body })) },
+  previewClassState(id, body) { return call(() => request(`${BASE}/orgs/classes/${id}/state-preview`, { method: 'POST', body })) },
   deleteClass(id) { return call(() => request(`${BASE}/orgs/classes/${id}`, { method: 'DELETE' })) },
   // ── 年级 / 教学班 / 班级学生 / 班级调整（个体移动，既有轻量端点）──
   listGrades(params = {}) { return call(() => request(`${BASE}/orgs/grades`, { params })) },
   listTeachingClasses(params = {}) { return callList(`${BASE}/orgs/teaching-classes`, params) },
   listClassStudents(classId, params = {}) { return callList(`${BASE}/orgs/classes/${classId}/students`, params) },
   adjustClass(body) { return call(() => request(`${BASE}/orgs/class-adjustments`, { method: 'POST', body })) },
+  previewClassTransfer(body) { return call(() => request(`${BASE}/orgs/class-adjustments/preview`, { method: 'POST', body })) },
   // ── 组织树 / 统计 / 变更审计 ──
   orgTree() { return call(() => request(`${BASE}/orgs/tree`)) },
+  listOrgReferenceChecks(params = {}) { return callList(`${BASE}/orgs/sync-check`, params) },
+  getOrgReferenceCheck(type, id) { return call(() => request(`${BASE}/orgs/sync-check/${type}/${id}`)) },
   orgStats() { return call(() => request(`${BASE}/orgs/stats`)) },
   listAudit(params = {}) { return callList(`${BASE}/orgs/audit`, params) },
   // ── 专业方向（06号卡：总开关默认关闭，业务政策待学校确认；启用后按专业维护方向）──
   getMajorDirectionToggle() { return call(() => request(`${BASE}/orgs/major-direction-toggle`)) },
-  setMajorDirectionToggle(enabled) {
-    return call(() => request(`${BASE}/orgs/major-direction-toggle`, { method: 'POST', body: { enabled } }))
+  setMajorDirectionToggle(enabled, expectedVersion) {
+    return call(() => request(`${BASE}/orgs/major-direction-toggle`, { method: 'POST', body: { enabled, expectedVersion } }))
   },
   listDirections(majorId, params = {}) { return callList(`${BASE}/orgs/majors/${majorId}/directions`, params) },
   createDirection(majorId, body) {
@@ -976,22 +1038,22 @@ export const academicAffairsOrgApi = {
   updateDirection(majorId, directionId, body) {
     return call(() => request(`${BASE}/orgs/majors/${majorId}/directions/${directionId}`, { method: 'PUT', body }))
   },
-  disableDirection(majorId, directionId) {
-    return call(() => request(`${BASE}/orgs/majors/${majorId}/directions/${directionId}/disable`, { method: 'POST' }))
+  disableDirection(majorId, directionId, body = {}) {
+    return call(() => request(`${BASE}/orgs/majors/${majorId}/directions/${directionId}/disable`, { method: 'POST', body }))
   },
   // ── 班级调整申请单（08号卡：行政班层面批量组织调整——合班/拆班/停用/毕业清班）──
   listClassAdjustments(params = {}) { return callList(`${BASE}/orgs/class-adjustment-requests`, params) },
   createClassAdjustment(body) {
     return call(() => request(`${BASE}/orgs/class-adjustment-requests`, { method: 'POST', body }))
   },
-  precheckClassAdjustment(id) {
-    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/precheck`, { method: 'POST' }))
+  precheckClassAdjustment(id, expectedVersion) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/precheck`, { method: 'POST', body: { expectedVersion } }))
   },
-  executeClassAdjustment(id) {
-    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/execute`, { method: 'POST' }))
+  executeClassAdjustment(id, expectedVersion) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/execute`, { method: 'POST', body: { expectedVersion } }))
   },
-  cancelClassAdjustment(id) {
-    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/cancel`, { method: 'POST' }))
+  cancelClassAdjustment(id, expectedVersion) {
+    return call(() => request(`${BASE}/orgs/class-adjustment-requests/${id}/cancel`, { method: 'POST', body: { expectedVersion } }))
   }
 }
 
@@ -1022,13 +1084,13 @@ export const academicAffairsSelectionApi = {
   mySelections(batchId) { return call(() => request(`${BASE}/selection/student/my`, { params: batchId ? { batchId } : {} })) },
   // ── 教务处调整 / 补选 / 统计 ──
   adjustRecord(recordId, reason) { return call(() => request(`${BASE}/selection/records/${recordId}/adjust`, { method: 'POST', body: { reason } })) },
-  reselectGuide(id) { return call(() => request(`${BASE}/selection/batches/${id}/reselect-guide`)) },
+  reselectGuide(id, params = {}) { return call(() => request(`${BASE}/selection/batches/${id}/reselect-guide`, { params })) },
   /** 学生本人补选指引（06号卡）：待补选记录 + 该批次仍有余量课程；batchId 可选。 */
   studentReselectGuide(batchId) { return call(() => request(`${BASE}/selection/student/reselect-guide`, { params: batchId ? { batchId } : {} })) },
   batchStats(id) { return call(() => request(`${BASE}/selection/batches/${id}/stats`)) },
   timeTick() { return call(() => request(`${BASE}/selection/time-tick`, { method: 'POST' })) },
   // ── 冲突检测（09号卡） ──
-  conflictReport(id, studentNo) { return call(() => request(`${BASE}/selection/batches/${id}/conflict-report`, { params: studentNo ? { studentNo } : {} })) },
+  conflictReport(id, studentNo, params = {}) { return call(() => request(`${BASE}/selection/batches/${id}/conflict-report`, { params: { ...params, ...(studentNo ? { studentNo } : {}) } })) },
   async exportConflictReport(id, purpose) {
     try {
       const blob = await requestBlob(`${BASE}/selection/batches/${id}/conflict-report/export`, { method: 'POST', body: { purpose } })
@@ -1097,6 +1159,7 @@ export const academicAffairsExamApi = {
   publishBatch(id) { return call(() => request(`${BASE}/exam/batches/${id}/publish`, { method: 'POST' })) },
   finishBatch(id) { return call(() => request(`${BASE}/exam/batches/${id}/finish`, { method: 'POST' })) },
   archiveBatch(id) { return call(() => request(`${BASE}/exam/batches/${id}/archive`, { method: 'POST' })) },
+  getMyInvigilation() { return call(() => request(`${BASE}/exam/my-invigilation`)) },
   // 考场 / 座位 / 监考
   addRoom(cid, body) { return call(() => request(`${BASE}/exam/courses/${cid}/rooms`, { method: 'POST', body })) },
   listRooms(cid) { return call(() => request(`${BASE}/exam/courses/${cid}/rooms`)) },
@@ -1127,21 +1190,22 @@ export const academicAffairsExamApi = {
 
 /* ═══════════ 补考重修缓考免修（SM-12 · /academic-affairs/makeup|retake|exemption/*） ═══════════ */
 export const academicAffairsMakeupApi = {
+  commandReceipt(commandKey, operation) { return call(() => request(`${BASE}/makeup-command-receipts/${encodeURIComponent(commandKey)}`, { params: { operation } })) },
   // 补考
-  makeupPending(params = {}) { return callList(`${BASE}/makeup/pending`, params) },
-  listBatches(params = {}) { return callList(`${BASE}/makeup/batches`, params) },
+  makeupPending(params = {}) { return callList(`${BASE}/makeup/pending`, params, true) },
+  listBatches(params = {}) { return callList(`${BASE}/makeup/batches`, params, true) },
   createBatch(body) { return call(() => request(`${BASE}/makeup/batches`, { method: 'POST', body })) },
   // 纳入只认 gradeId：课程、版本、修读次数、原始分全部由服务器从这条正式成绩推导，
   // 前端不再传 courseName/originScore（传了也会被 422 挡下）。
   enroll(bid, body) { return call(() => request(`${BASE}/makeup/batches/${bid}/enroll`, { method: 'POST', body })) },
-  batchRecords(bid, params = {}) { return callList(`${BASE}/makeup/batches/${bid}/records`, params) },
+  batchRecords(bid, params = {}) { return callList(`${BASE}/makeup/batches/${bid}/records`, params, true) },
   publishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/publish`, { method: 'POST' })) },
   score(mid, score) { return call(() => request(`${BASE}/makeup/records/${mid}/score`, { method: 'POST', body: { score } })) },
   collegeReview(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/college-review`, { method: 'POST' })) },
   linkExam(bid, examBatchId) { return call(() => request(`${BASE}/makeup/batches/${bid}/link-exam`, { method: 'POST', body: { examBatchId } })) },
   finishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/finish`, { method: 'POST' })) },
   stats(params = {}) { return call(() => request(`${BASE}/makeup/stats`, { params })) },
-  statsDetail(params = {}) { return callList(`${BASE}/makeup/stats/detail`, params) },
+  statsDetail(params = {}) { return callList(`${BASE}/makeup/stats/detail`, params, true) },
   async exportStats(body = {}) {
     try {
       const blob = await requestBlob(`${BASE}/makeup/stats/export`, { method: 'POST', body })
@@ -1152,24 +1216,24 @@ export const academicAffairsMakeupApi = {
   // 毕业清考（复用补考审核链；名单自动圈定，回写 source=CLEARANCE）
   createClearanceBatch(body) { return call(() => request(`${BASE}/makeup/clearance/batches`, { method: 'POST', body })) },
   clearanceScan(bid, dryRun = false) { return call(() => request(`${BASE}/makeup/clearance/batches/${bid}/scan`, { method: 'POST', params: { dryRun } })) },
-  clearanceRecords(bid, params = {}) { return callList(`${BASE}/makeup/clearance/batches/${bid}/records`, params) },
+  clearanceRecords(bid, params = {}) { return callList(`${BASE}/makeup/clearance/batches/${bid}/records`, params, true) },
   // 重修
   retakeApply(body) { return call(() => request(`${BASE}/retake/apply`, { method: 'POST', body })) },
   retakeMy(params = {}) { return call(() => request(`${BASE}/retake/my`, { params })) },
-  retakeApplies(params = {}) { return callList(`${BASE}/retake/applies`, params) },
-  retakeReview(aid, action, reason = '') { return call(() => request(`${BASE}/retake/applies/${aid}/review`, { method: 'POST', body: { action, reason } })) },
-  retakeEnroll(aid, teachingTaskRef) { return call(() => request(`${BASE}/retake/applies/${aid}/enroll`, { method: 'POST', body: { teachingTaskRef } })) },
+  retakeApplies(params = {}) { return callList(`${BASE}/retake/applies`, params, true) },
+  retakeReview(aid, action, reason = '', identity, commandKey) { return call(() => request(`${BASE}/retake/applies/${aid}/review`, { method: 'POST', headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined, body: { ...identity, action, reason } })) },
+  retakeEnroll(aid, teachingTaskRef, identity, commandKey) { return call(() => request(`${BASE}/retake/applies/${aid}/enroll`, { method: 'POST', headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined, body: { ...identity, teachingTaskRef } })) },
   // 免修
   exemptionApply(body) { return call(() => request(`${BASE}/exemption/apply`, { method: 'POST', body })) },
   exemptionMy(params = {}) { return call(() => request(`${BASE}/exemption/my`, { params })) },
-  exemptionApplies(params = {}) { return callList(`${BASE}/exemption/applies`, params) },
-  exemptionReview(eid, action, reason = '') { return call(() => request(`${BASE}/exemption/applies/${eid}/review`, { method: 'POST', body: { action, reason } })) },
+  exemptionApplies(params = {}) { return callList(`${BASE}/exemption/applies`, params, true) },
+  exemptionReview(eid, action, reason = '', identity, commandKey) { return call(() => request(`${BASE}/exemption/applies/${eid}/review`, { method: 'POST', headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined, body: { ...identity, action, reason } })) },
   // 缓考合流
-  deferredPool(params = {}) { return callList(`${BASE}/makeup/deferred-pool`, params) },
+  deferredPool(params = {}) { return callList(`${BASE}/makeup/deferred-pool`, params, true) },
   mergeDeferred(did, batchId) { return call(() => request(`${BASE}/makeup/deferred-pool/${did}/merge`, { method: 'POST', body: { batchId } })) },
   // 材料归档
-  archiveExemption(eid) { return call(() => request(`${BASE}/exemption/${eid}/archive`, { method: 'POST' })) },
-  archiveList(params = {}) { return callList(`${BASE}/exemption/archive-list`, params) }
+  archiveExemption(eid, identity, commandKey) { return call(() => request(`${BASE}/exemption/${eid}/archive`, { method: 'POST', headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined, body: identity })) },
+  archiveList(params = {}) { return callList(`${BASE}/exemption/archive-list`, params, true) }
 }
 
 /* ═══════════ 教材管理（/academic-affairs/textbooks/*） ═══════════ */
@@ -1181,6 +1245,7 @@ export const academicAffairsTextbookApi = {
   // 选用
   listSelections(params = {}) { return callList(`${BASE}/textbooks/selections`, params) },
   createSelection(body) { return call(() => request(`${BASE}/textbooks/selections`, { method: 'POST', body })) },
+  updateSelection(id, body) { return call(() => request(`${BASE}/textbooks/selections/${id}`, { method: 'PUT', body })) },
   submitSelection(id) { return call(() => request(`${BASE}/textbooks/selections/${id}/submit`, { method: 'POST' })) },
   withdrawSelection(id) { return call(() => request(`${BASE}/textbooks/selections/${id}/withdraw`, { method: 'POST' })) },
   // 审核
@@ -1200,7 +1265,7 @@ export const academicAffairsTextbookApi = {
   sign(rid) { return call(() => request(`${BASE}/textbooks/distribution-records/${rid}/sign`, { method: 'POST' })) },
   // 费用
   feeLedger(params = {}) { return callList(`${BASE}/textbooks/fee-ledger`, params) },
-  markFee(id, action, amount, waiveReason = '') { return call(() => request(`${BASE}/textbooks/fee-ledger/${id}/mark`, { method: 'POST', body: { action, amount, waiveReason } })) },
+  markFee(id, action, amount, waiveReason = '', expectedPaidAmount) { return call(() => request(`${BASE}/textbooks/fee-ledger/${id}/mark`, { method: 'POST', body: { action, amount, waiveReason, expectedPaidAmount } })) },
   stock() { return call(() => request(`${BASE}/textbooks/stock`)) },
   // 统计
   stats() { return call(() => request(`${BASE}/textbooks/stats`)) }
@@ -1209,12 +1274,13 @@ export const academicAffairsTextbookApi = {
 /* ═══════════ 教室预约（/academic-affairs/classrooms/bookings） ═══════════ */
 export const academicAffairsClassroomBookingApi = {
   list(params = {}) { return callList(`${BASE}/classrooms/bookings`, params) },
-  book(body) { return call(() => request(`${BASE}/classrooms/bookings`, { method: 'POST', body })) },
-  review(id, action, reason = '') { return call(() => request(`${BASE}/classrooms/bookings/${id}/review`, { method: 'POST', body: { action, reason } })) }
+  book(body, commandKey) { return call(() => request(`${BASE}/classrooms/bookings`, { method: 'POST', body, headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined })) },
+  review(id, action, reason = '', identity, commandKey) { return call(() => request(`${BASE}/classrooms/bookings/${id}/review`, { method: 'POST', body: { action, reason }, headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined })) }
 }
 
 /* ═══════════ 教学资源续卡：实训室资源（/academic-affairs/labs/*，结构对齐教室字典） ═══════════ */
 export const academicAffairsLabApi = {
+  bindScheduleRoom(id, body, commandKey) { return call(() => request(`${BASE}/labs/${id}/schedule-resource`, { method: 'PUT', body, headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined })) },
   list({ keyword = '', labType = '', status = '', page = 1, pageSize = 20 } = {}) {
     const params = { page, pageSize }
     if (keyword) params.keyword = keyword
@@ -1252,12 +1318,13 @@ export const academicAffairsEquipmentApi = {
 /* ═══════════ 教学资源续卡：实训室预约（/academic-affairs/labs/bookings，与教室预约同一算法） ═══════════ */
 export const academicAffairsLabBookingApi = {
   list(params = {}) { return callList(`${BASE}/labs/bookings`, params) },
-  book(body) { return call(() => request(`${BASE}/labs/bookings`, { method: 'POST', body })) },
-  review(id, action, reason = '') { return call(() => request(`${BASE}/labs/bookings/${id}/review`, { method: 'POST', body: { action, reason } })) }
+  book(body, commandKey) { return call(() => request(`${BASE}/labs/bookings`, { method: 'POST', body, headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined })) },
+  review(id, action, reason = '', identity, commandKey) { return call(() => request(`${BASE}/labs/bookings/${id}/review`, { method: 'POST', body: { ...identity, action, reason }, headers: commandKey ? { 'Idempotency-Key': commandKey } : undefined })) }
 }
 
 /* ═══════════ 教学资源续卡：资源占用 / 资源冲突 / 资源维修 / 资源统计（/academic-affairs/resources/*） ═══════════ */
 export const academicAffairsResourceApi = {
+  commandReceipt(commandKey, operation) { return call(() => request(`${BASE}/resources/command-receipts/${encodeURIComponent(commandKey)}`, { params: { operation } })) },
   occupancy(dateStr, resourceKind = '') {
     const params = { date: dateStr }
     if (resourceKind) params.resourceKind = resourceKind
@@ -1375,8 +1442,8 @@ export const academicAffairsArchiveApi = {
   confirm(id, force) { return call(() => request(`${BASE}/archive/batches/${id}/confirm`, { method: 'POST', body: { force } })) },
   unfreeze(id, reason) { return call(() => request(`${BASE}/archive/batches/${id}/unfreeze`, { method: 'POST', body: { reason } })) },
   cancel(id) { return call(() => request(`${BASE}/archive/batches/${id}/cancel`, { method: 'POST' })) },
-  /** 归档缺失提醒（10 卡）：9 域实时预检查，不落库。termId 缺省取当前学期。 */
-  precheck(termId) { return call(() => request(`${BASE}/archive/precheck`, { params: termId ? { termId } : {} })) },
+  /** 十三域实时预检查，不落库。2 万学生沙箱需要完整聚合，单独给足 30 秒读取预算。 */
+  precheck(termId) { return call(() => request(`${BASE}/archive/precheck`, { params: termId ? { termId } : {}, timeoutMs: 30000 })) },
   /** 归档导出（12 卡）：下载记录查询（只读）。 */
   downloadLog(id) { return call(() => request(`${BASE}/archive/batches/${id}/download-log`)) },
   /** 单数据域水印 xlsx 下载（返回 Blob）。 */

@@ -195,17 +195,36 @@ def test_builtin_role_initialization_is_idempotent_without_committing():
     assert second_db.added == []
 
 
-def test_disabled_builtin_role_is_restored_by_initialization():
+@pytest.mark.parametrize("status,is_deleted", [("DISABLED", False), ("ACTIVE", True), ("ACTIVE", False)])
+def test_initialization_preserves_school_role_configuration(status, is_deleted):
     roles = [SimpleNamespace(
-        role_code=item["roleCode"], role_type="SYSTEM", is_deleted=False,
-        status="DISABLED" if item["roleCode"] == "STUDENT" else "ACTIVE",
-        version=0, remark="", role_name="旧名称") for item in BUILTIN_ROLE_TEMPLATES]
+        role_code=item["roleCode"], role_type="SYSTEM", is_deleted=is_deleted,
+        status=status, version=7, remark="学校配置的备注",
+        role_name="学校配置的名称") for item in BUILTIN_ROLE_TEMPLATES]
+    before = [vars(role).copy() for role in roles]
     db = _FakeDb([roles])
     report = saas_role_service.ensure_builtin_roles(db, 1001)
-    assert report["restored"] == 1
-    student = next(role for role in roles if role.role_code == "STUDENT")
-    assert student.status == "ACTIVE"
-    assert student.role_name == "学生"
+    assert report["restored"] == 0
+    assert report["unchanged"] == len(BUILTIN_ROLE_TEMPLATES)
+    assert [vars(role) for role in roles] == before
+    assert db.added == []
+
+
+def test_initialization_rejects_custom_role_collision_without_overwriting_it():
+    role = SimpleNamespace(role_code="SCHOOL_ADMIN", role_type="CUSTOM", role_name="学校角色")
+    before = vars(role).copy()
+    with pytest.raises(AppException) as exc:
+        saas_role_service.ensure_builtin_roles(_FakeDb([[role]]), 1001)
+    assert exc.value.code == "DATA_CONFLICT"
+    assert vars(role) == before
+
+
+def test_binding_unavailable_preset_role_fails_without_creating_membership():
+    db = _FakeDb([[]])
+    with pytest.raises(AppException) as exc:
+        saas_role_service.ensure_user_roles(db, 1001, 7, ["STUDENT"])
+    assert exc.value.code == "DATA_CONFLICT"
+    assert db.added == []
 
 
 def test_only_system_administrators_have_identity_import_permission():

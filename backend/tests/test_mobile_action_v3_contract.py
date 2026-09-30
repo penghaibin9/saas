@@ -156,7 +156,7 @@ def test_route_exact_requires_real_object_focus():
     assert is_route_exact(FOCUS_DETAIL, "/pages/common/message-detail/index") is True
     # LIST_FOCUS 只有页面实现了才精确
     assert is_route_exact(FOCUS_LIST_FOCUS, "/pages/student/affairs/leave") is True
-    assert is_route_exact(FOCUS_LIST_FOCUS, "/pages/student/internship/index") is False
+    assert is_route_exact(FOCUS_LIST_FOCUS, "/pages/student-internship/index") is False
     # 仅有入口不算对象级闭环
     assert is_route_exact("NONE", "/pages/student/affairs/leave") is False
     assert is_route_exact("nonsense", "/pages/student/affairs/leave") is False
@@ -188,8 +188,12 @@ def test_adapter_holds_no_route_map_of_its_own():
     assert "/admin/" not in body
     # 只允许保留端前缀白名单
     snapshot = adapter.action_contract_snapshot()
-    assert snapshot["allowedPrefixes"]["studentMini"] == ["/pages/student/", "/pages/common/"]
-    assert snapshot["allowedPrefixes"]["teacherMini"] == ["/pages/teacher/", "/pages/common/"]
+    assert snapshot["allowedPrefixes"]["studentMini"] == [
+        "/pages/student/", "/pages/student-internship/", "/pages/common/",
+    ]
+    assert snapshot["allowedPrefixes"]["teacherMini"] == [
+        "/pages/teacher/", "/pages/teacher-internship/", "/pages/common/",
+    ]
 
 
 def test_adapter_only_reads_from_the_two_existing_authorities():
@@ -245,6 +249,21 @@ def test_returned_leave_message_reaches_the_leave_object():
     assert action["disabledReason"] is None
 
 
+def test_returned_internship_weekly_message_reaches_the_exact_weekly_report():
+    action = adapter.build_message_action(
+        "student.internship.weekly-report",
+        {"reportId": "23", "batchId": "7", "internshipId": "19", "weekNo": 4},
+        client=adapter.CLIENT_STUDENT_MINI,
+    )
+    target = action["target"]
+    assert target["path"] == "/pages/student/weekly-report/index"
+    assert target["query"]["reportId"] == "23"
+    assert target["query"]["weekNo"] == 4
+    assert target["focusMode"] == FOCUS_LIST_FOCUS
+    assert target["routeExact"] is True
+    assert action["disabledReason"] is None
+
+
 def test_affairs_keys_claiming_list_focus_have_a_focus_ready_page():
     for key in sorted(_canonical_affairs_action_keys() & set(messages.ACTION_REGISTRY)):
         spec = messages.ACTION_REGISTRY[key]
@@ -260,4 +279,6 @@ def test_affairs_keys_never_send_students_into_teacher_pages():
         path = messages.ACTION_REGISTRY[key].get("studentMini")
         if not path:
             continue
-        assert path.startswith(("/pages/student/", "/pages/common/")), f"{key} -> {path}"
+        assert path.startswith((
+            "/pages/student/", "/pages/student-internship/", "/pages/common/",
+        )), f"{key} -> {path}"

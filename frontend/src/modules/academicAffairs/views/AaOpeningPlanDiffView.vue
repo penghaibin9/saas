@@ -124,7 +124,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: false,
+      requestRevision: 0, loading: false,
       error: '',
       terms: [],
       rows: [],
@@ -141,13 +141,14 @@ export default {
       ]
     }
   },
+  beforeUnmount() { this.requestRevision++ },
   async created() {
     await this.loadTerms()
     if (this.filters.termId) await this.load()
   },
   methods: {
-    statusLabel(value) { return LABELS[value] || value || '—' },
-    responsibilityLabel(value) { return RESPONSIBILITY[value] || value || '—' },
+    statusLabel(value) { return LABELS[value] || (value ? '待确认' : '—') },
+    responsibilityLabel(value) { return RESPONSIBILITY[value] || (value ? '待确认' : '—') },
     statusType(value) {
       if (value === 'READY') return 'success'
       if (['MISSING_TASK', 'DUPLICATE_TASK', 'COURSE_UNRESOLVED', 'TERM_UNRESOLVED', 'NO_CLASS', 'OVER_OPENED'].includes(value)) return 'danger'
@@ -160,17 +161,19 @@ export default {
       ])
       if (termsRes.code === 0) this.terms = termsRes.data.list || []
       if (currentRes.code === 0 && currentRes.data?.termId) this.filters.termId = String(currentRes.data.termId)
-      else if (this.terms[0]?.termId) this.filters.termId = String(this.terms[0].termId)
+      else this.error = currentRes.message || '学校尚未设置当前学期，请明确选择检查学期'
     },
     setStatus(value) {
       this.filters.status = value
       this.load()
     },
     openProgram(row) {
-      this.$router.push(`/admin/academic-affairs/programs/${row.programId}`)
+      this.$router.push({ path: `/admin/academic-affairs/programs/${row.programId}`, query: { returnTo: this.$route.fullPath } })
     },
     async load() {
-      if (!this.filters.termId || this.loading) return
+      const revision = ++this.requestRevision
+      this.rows = []; this.summary = null
+      if (!this.filters.termId) { this.loading = false; return }
       this.loading = true
       this.error = ''
       const res = await programQualityApi.openingDifferences({
@@ -179,6 +182,7 @@ export default {
         gradeYear: this.filters.gradeYear || undefined,
         status: this.filters.status || undefined
       })
+      if (revision !== this.requestRevision) return
       if (res.code === 0) {
         this.rows = res.data.items || []
         this.summary = res.data.summary || null

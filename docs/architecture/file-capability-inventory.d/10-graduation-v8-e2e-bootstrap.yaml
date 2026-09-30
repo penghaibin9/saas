@@ -1,0 +1,23 @@
+entries:
+  - module: graduation
+    client: backend
+    route: test-tooling://graduation-v8/identity-import-bootstrap
+    page: backend/scripts/e2e_bootstrap_graduation_accounts.py
+    action: seed-graduation-v8-e2e-identities
+    fileCategory: E2E_IDENTITY_IMPORT_XLSX
+    api: GET /api/v1/system/identity-import/template; POST /api/v1/system/identity-import/validate-file; POST /api/v1/system/identity-import/execute
+    backendService: backend/scripts/e2e_bootstrap_graduation_accounts.py
+    storageMode: MEMORY_ONLY_GENERATED_WORKBOOK_AND_MULTIPART_REQUEST
+    authMode: authenticated+system-identity-import-permission
+    dataScope: sandbox-tenant+fixed-e2e-identities
+    versioned: false
+    scanGated: true
+    preview: false
+    download: true
+    import: true
+    export: false
+    archive: false
+    status: active
+    risk: P2
+    targetPhase: '10'
+    notes: V8 仅用于隔离 E2E 租户的账号引导。脚本下载权威 XLSX 模板，以 openpyxl 在内存填充固定测试身份，再通过正式 validate-file 与 execute 接口提交；Content-Disposition 仅用于构造 multipart 请求，不提供生产下载能力，也不落盘持久化。

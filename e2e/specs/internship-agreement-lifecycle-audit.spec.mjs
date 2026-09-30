@@ -3,8 +3,12 @@ import fs from 'node:fs/promises'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { StaffLoginPage, StudentLoginPage } from '../pages/login.page.mjs'
+import { loginMiniH5 } from '../lib/miniapp-login.mjs'
+import { submitInAppPrompt } from '../lib/in-app-dialog.mjs'
 
-const miniBaseUrl = process.env.E2E_STUDENT_MINI_BASE_URL || 'http://127.0.0.1:5188'
+const miniBaseUrl = process.env.E2E_STUDENT_MINI_BASE_URL
+  || process.env.E2E_MINIAPP_BASE_URL
+  || 'http://127.0.0.1:5188'
 const REJECT_REASON = 'IX011学生核对后发现协议内容需学校重新发起'
 const ENTERPRISE_SIGNER = 'IX011企业HR张老师'
 
@@ -38,17 +42,7 @@ async function pickInternshipStudent(page, fixture) {
 }
 
 async function loginMini(page, entry, account) {
-  await page.goto(`${miniBaseUrl}/#/pages/login/${entry}/index`)
-  const accountHint = entry === 'teacher' ? '工号 / 手机号' : '学号 / 手机号'
-  const accountField = page.locator('uni-input.field').filter({ hasText: accountHint }).first()
-  const passwordField = page.locator('uni-input.field').filter({ hasText: '密码' }).first()
-  await accountField.locator('input').fill(account.username)
-  await passwordField.locator('input').fill(account.password)
-  await page.locator('.agreement__box').click()
-  await page.locator('uni-button.account-button').click()
-  await expect(page).toHaveURL(entry === 'teacher'
-    ? /#\/pages\/teacher\/workbench\/index/
-    : /#\/pages\/student\/home\/index/)
+  await loginMiniH5(page, { baseUrl: miniBaseUrl, entry, account })
 
   if (entry === 'teacher') {
     // e2e_advisor_a is intentionally multi-role (GD_MENTOR + INTERN_MENTOR).
@@ -69,15 +63,22 @@ async function loginMini(page, entry, account) {
   }
 }
 
-async function openStudentAgreementTab(page) {
+async function openStudentAgreementTab(page, fixture) {
   await page.goto(`${config.studentBaseUrl}/internship`)
   await page.getByRole('button', { name: '三方协议', exact: true }).click()
+  const selector = page.getByText('请选择要办理的实习批次', { exact: true })
+  if (await selector.count()) {
+    await expect(selector).toBeVisible()
+    const exactBatch = page.getByRole('button').filter({ hasText: fixture.batchName }).first()
+    await expect(exactBatch).toBeVisible()
+    await exactBatch.click()
+  }
   await expect(page.getByText('实习三方协议', { exact: false }).first()).toBeVisible()
 }
 
 async function generateAgreement(page, fixture) {
   await page.goto(`${config.staffBaseUrl}/admin/internship/agreements?batchId=${encodeURIComponent(fixture.batchId)}&panel=issue`)
-  await page.getByRole('button', { name: '＋ 生成协议', exact: true }).click()
+  await page.getByRole('button', { name: '生成协议', exact: true }).click()
   await pickInternshipStudent(page, fixture)
   const templateField = formItem(page, '协议模板')
   await templateField.locator('select').selectOption({ label: fixture.templateName })
@@ -87,7 +88,7 @@ async function generateAgreement(page, fixture) {
     apiPath(response) === '/api/v1/internship/agreements'
       && response.request().method() === 'POST'
   )
-  await page.getByRole('button', { name: '生成', exact: true }).click()
+  await page.getByRole('button', { name: '生成草稿', exact: true }).click()
   const created = await createPromise
   const createPayload = await payloadOf(created)
   expect(createPayload.body?.code, createPayload.text).toBe(0)
@@ -141,19 +142,16 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
 
   test('IX-011：Student PC 真实驳回；旧协议保留，学校重新生成新版本实例并下发', async ({ page }) => {
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
-    await openStudentAgreementTab(page)
+    await openStudentAgreementTab(page, fixture)
     await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.positionName, { exact: false }).first()).toBeVisible()
 
-    page.once('dialog', async (dialog) => {
-      expect(dialog.type()).toBe('prompt')
-      await dialog.accept(REJECT_REASON)
-    })
     const rejectPromise = page.waitForResponse((response) =>
       apiPath(response) === `/api/v1/portal/internship/context/agreements/${oldAgreementId}/confirm`
         && response.request().method() === 'POST'
     )
     await page.getByRole('button', { name: '驳回协议', exact: true }).click()
+    await submitInAppPrompt(page, REJECT_REASON, { confirmText: '确认驳回' })
     const rejected = await rejectPromise
     const rejectBody = rejected.request().postDataJSON()
     expect(rejectBody?.action).toBe('REJECT')
@@ -175,13 +173,13 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
 
   test('IX-011：Student Mini 与 Student PC 读取同一新协议；Student PC 真实确认进入企业签署', async ({ page }) => {
     await loginMini(page, 'student', config.student)
-    await page.goto(`${miniBaseUrl}/#/pages/student/internship/agreement/index?id=${encodeURIComponent(newAgreementId)}`)
+    await page.goto(`${miniBaseUrl}/#/pages/student-internship/agreement/index?id=${encodeURIComponent(newAgreementId)}`)
     await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.positionName, { exact: false }).first()).toBeVisible()
     await expect(page.getByText('待学生确认', { exact: false }).first()).toBeVisible()
 
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
-    await openStudentAgreementTab(page)
+    await openStudentAgreementTab(page, fixture)
     const confirmPromise = page.waitForResponse((response) =>
       apiPath(response) === `/api/v1/portal/internship/context/agreements/${newAgreementId}/confirm`
         && response.request().method() === 'POST'
@@ -209,7 +207,8 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
     const uploadedPayload = await payloadOf(uploaded)
     expect(uploadedPayload.body?.code, uploadedPayload.text).toBe(0)
     expect(String(uploadedPayload.body?.data?.fileId || '')).not.toBe('')
-    await expect(page.getByText('已上传：', { exact: false }).first()).toBeVisible()
+    await expect(page.locator('.agd-att')).toContainText('待确认登记')
+    await expect(page.getByRole('button', { name: '确认企业已签署', exact: true })).toBeEnabled()
     await formItem(page, '企业经办人').locator('input').fill(ENTERPRISE_SIGNER)
 
     const enterprisePromise = page.waitForResponse((response) =>
@@ -227,7 +226,9 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
     await expect(page.getByText('待学校确认', { exact: true }).first()).toBeVisible()
 
     await loginMini(page, 'teacher', config.mentor)
-    await page.goto(`${miniBaseUrl}/#/pages/teacher/agreement-confirm/index`)
+    await page.goto(`${miniBaseUrl}/#/pages/teacher-internship/agreement-confirm/index`)
+    await page.getByText('切换批次', { exact: false }).click()
+    await page.getByText(fixture.batchName, { exact: false }).last().click()
     await expect(page.getByText(fixture.studentName, { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.positionName, { exact: false }).first()).toBeVisible()
@@ -255,12 +256,12 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
 
   test('IX-011：生效后 PC/Mini 同源、PDF 可生成、Staff 真实归档并完成只读 MySQL seal', async ({ page }) => {
     await new StudentLoginPage(page, config.studentBaseUrl).login(config.student)
-    await openStudentAgreementTab(page)
+    await openStudentAgreementTab(page, fixture)
     await expect(page.getByText('已生效', { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
 
     await loginMini(page, 'student', config.student)
-    await page.goto(`${miniBaseUrl}/#/pages/student/internship/agreement/index?id=${encodeURIComponent(newAgreementId)}`)
+    await page.goto(`${miniBaseUrl}/#/pages/student-internship/agreement/index?id=${encodeURIComponent(newAgreementId)}`)
     await expect(page.getByText('已生效', { exact: false }).first()).toBeVisible()
     await expect(page.getByText(fixture.companyName, { exact: false }).first()).toBeVisible()
 
@@ -270,7 +271,7 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
       apiPath(response) === `/api/v1/internship/agreements/${newAgreementId}/pdf`
         && response.request().method() === 'POST'
     )
-    await page.getByRole('button', { name: '下载 PDF 套打', exact: true }).click()
+    await page.getByRole('button', { name: '下载 PDF', exact: true }).click()
     const pdfResponse = await pdfPromise
     const pdfPayload = await payloadOf(pdfResponse)
     expect(pdfPayload.body?.code, pdfPayload.text).toBe(0)
@@ -280,7 +281,7 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
       apiPath(response) === `/api/v1/internship/agreements/${newAgreementId}/archive`
         && response.request().method() === 'POST'
     )
-    await page.getByRole('button', { name: '归档', exact: true }).click()
+    await page.getByRole('button', { name: '归档协议', exact: true }).click()
     const archiveDialog = page.getByRole('dialog')
     await archiveDialog.getByRole('button', { name: '归档', exact: true }).click()
     const archived = await archivePromise
@@ -290,7 +291,7 @@ test.describe('岗位实习审计：IX-011 三方协议完整链', () => {
     await expect(page.getByText('已归档', { exact: true }).first()).toBeVisible()
     await expect(page.getByText('仅可查看与打印，不可再变更', { exact: false }).first()).toBeVisible()
     await expect(page.getByRole('button', { name: '学校确认生效', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: '归档', exact: true })).toHaveCount(0)
+    await expect(page.getByRole('button', { name: '归档协议', exact: true })).toHaveCount(0)
 
     execFileSync('python', ['../backend/scripts/e2e_verify_internship_agreement_db.py'], {
       cwd: process.cwd(),

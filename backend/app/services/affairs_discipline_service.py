@@ -508,10 +508,21 @@ def review_remove(case_id, user, action, reason="", expected_version=None) -> di
 # ═══════════ 查询 / 对账 ═══════════
 
 def get_case(case_id, user) -> dict:
+    """处分单条详情：仅在 detail 读取最新申诉摘要，避免主列表逐行查询。"""
     with session() as db:
+        from app.models import DisciplineAppeal
         x, s = _load(db, case_id)
         _scope_or_403(db, x.student_id, user)
-        return _row(x, s)
+        row = _row(x, s)
+        appeal = db.scalars(select(DisciplineAppeal).where(
+            DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.case_id == int(x.id),
+            DisciplineAppeal.is_deleted.is_(False)
+        ).order_by(DisciplineAppeal.id.desc())).first()
+        row["appealSummary"] = None if not appeal else {
+            "appealId": str(appeal.id), "status": appeal.status,
+            "statusLabel": _L_APPEAL.get(appeal.status, appeal.status), "result": appeal.result or None,
+        }
+        return row
 
 
 def list_cases(user, status=None, disc_type=None, page=1, page_size=20, student_id=None):
@@ -662,7 +673,7 @@ def submit_appeal(case_id, body, user, *, skip_scope_check: bool = False) -> dic
         return appeal_todo.sync_after_submit("DISCIPLINE_APPEAL_REVIEW", result_row, "appealId", "id")
 
 
-def list_appeals(user, status=None, page=1, page_size=50):
+def list_appeals(user, status=None, page=1, page_size=50, case_id=None, appeal_id=None):
     from app.models import DisciplineAppeal, DisciplineCase, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
@@ -670,6 +681,16 @@ def list_appeals(user, status=None, page=1, page_size=50):
         conds = [DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.is_deleted.is_(False)]
         if status:
             conds.append(DisciplineAppeal.status == status)
+        if case_id not in (None, ""):
+            try:
+                conds.append(DisciplineAppeal.case_id == int(case_id))
+            except (TypeError, ValueError):
+                return [], 0
+        if appeal_id not in (None, ""):
+            try:
+                conds.append(DisciplineAppeal.id == int(appeal_id))
+            except (TypeError, ValueError):
+                return [], 0
         rows = db.scalars(select(DisciplineAppeal).where(*conds).order_by(
             DisciplineAppeal.id.desc())).all()
         students = _students_by_ids(db, rows)
@@ -723,7 +744,10 @@ def review_appeal(appeal_id, body, user) -> dict:
         _audit(db, a.case_id, "DISCIPLINE_APPEAL_REVIEW", result)
         db.commit(); db.refresh(a)
         _drain_message_outbox()
-        s = db.get(StudentProfile, int(a.student_id)) if a.student_id else None
+        s = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == int(a.student_id), StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False)
+        )).first() if a.student_id else None
         result_row = _appeal_row(a, s)
         from app.services import affairs_appeal_todo_service as appeal_todo
         return appeal_todo.sync_after_review("DISCIPLINE_APPEAL_REVIEW", int(appeal_id), result_row)

@@ -17,6 +17,7 @@ from sqlalchemy import and_, func, select
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.modules.academic_affairs.services.academic_affairs_schedule_service import _detect_conflict
 from app.services.db_service import _iso, _tid, session
 
@@ -59,7 +60,7 @@ def _audit(db, biz_id, action, detail=""):
 def _msg(db, receiver_id, title, content, mtype, biz_id):
     from app.services.message_event_outbox_service import emit_receiver_notice
     code = "SCHEDULE_CHANGE.RETURNED" if "RETURNED" in (mtype or "").upper() else "SCHEDULE_CHANGE.RESULT"
-    emit_receiver_notice(
+    row = emit_receiver_notice(
         db,
         event_code=code,
         source_module="academic-affairs",
@@ -71,6 +72,7 @@ def _msg(db, receiver_id, title, content, mtype, biz_id):
         receiver_as="user",
         dedup_extra=mtype,
     )
+    return int(row.id) if row is not None else None
 
 
 def _schedule_change_assignee(db, node, change):
@@ -169,7 +171,214 @@ def _can_manage_all(ctx) -> bool:
     return ctx.scope_type == "TENANT_ALL"
 
 
+def _require_current_published_origin(db, batch, origin, *, lock_scope=False):
+    """Fail closed unless ``origin`` belongs to the current formal timetable truth.
+
+    ``PUBLISHED`` is only a lifecycle label. Once a batch is superseded, a stale
+    browser link or an old sandbox row must not create/apply a change against it
+    because all four timetable projections consume ScopeHead instead.
+    """
+    from app.models import AaScheduleScopeHead
+    from . import academic_affairs_schedule_truth_service as truth_service
+
+    if not batch or batch.is_deleted or batch.status != "PUBLISHED":
+        raise AppException(
+            "DATA_CONFLICT",
+            "该课位已发生变化或不再属于正式发布课表，请返回本人课表刷新后重新发起",
+            http_status=409,
+        )
+    scope_type = "COLLEGE" if batch.college_id else "SCHOOL"
+    scope_id = int(batch.college_id or 0)
+    if lock_scope:
+        # Final approval and publication serialize on the same authority row.  Keep
+        # this lock until the caller commits the schedule mutation, otherwise a
+        # correction draft can replace the head between validation and apply.
+        head = truth_service.lock_scope_head(
+            db, int(batch.term_id), scope_type, scope_id,
+        )
+        db.refresh(batch)
+        if origin is not None:
+            db.refresh(origin)
+        if batch.is_deleted or batch.status != "PUBLISHED":
+            raise AppException(
+                "DATA_CONFLICT",
+                "该课位已发生变化或不再属于正式发布课表，请返回本人课表刷新后重新发起",
+                http_status=409,
+            )
+    else:
+        head = db.scalars(select(AaScheduleScopeHead).where(
+            AaScheduleScopeHead.tenant_id == _tid(),
+            AaScheduleScopeHead.term_id == int(batch.term_id),
+            AaScheduleScopeHead.scope_type == scope_type,
+            AaScheduleScopeHead.scope_id == scope_id,
+            AaScheduleScopeHead.is_deleted.is_(False),
+        )).first()
+    if not head or int(head.active_batch_id or 0) != int(batch.id):
+        raise AppException(
+            "DATA_CONFLICT",
+            "该课位来自已被顶替的历史课表，不能继续调停课；请从当前正式课表重新发起",
+            details={
+                "originItemId": str(origin.id if origin else ""),
+                "originBatchId": str(batch.id),
+                "activeBatchId": str(head.active_batch_id if head and head.active_batch_id else ""),
+            },
+            http_status=409,
+        )
+    return head
+
+
+def _validate_adjust_window(origin, start_week: int, end_week: int, parity: str) -> None:
+    """A partial adjustment may only move occurrences contained by the origin."""
+    if start_week > end_week:
+        raise AppException("VALIDATION_ERROR", "目标起始周不能晚于结束周")
+    if start_week < int(origin.start_week) or end_week > int(origin.end_week):
+        raise AppException("VALIDATION_ERROR", "调课周次必须位于原课位有效周次内")
+    origin_parity = str(origin.week_parity or "ALL").upper()
+    target_parity = str(parity or "ALL").upper()
+    if origin_parity != "ALL" and target_parity != origin_parity:
+        raise AppException("VALIDATION_ERROR", "调课单双周必须属于原课位有效周次")
+    effective_parity = origin_parity if origin_parity != "ALL" else target_parity
+    if effective_parity == "ODD" and not any(week % 2 == 1 for week in range(start_week, end_week + 1)):
+        raise AppException("VALIDATION_ERROR", "所选教学周不存在单周课次")
+    if effective_parity == "EVEN" and not any(week % 2 == 0 for week in range(start_week, end_week + 1)):
+        raise AppException("VALIDATION_ERROR", "所选教学周不存在双周课次")
+
+
+def _clone_residual_item(db, origin, change_id: int, start_week: int, end_week: int, parity: str):
+    """Append one effective residual segment; the published origin remains immutable history."""
+    from app.models import AaScheduleItem
+
+    item = AaScheduleItem(
+        tenant_id=_tid(), batch_id=origin.batch_id, task_id=origin.task_id,
+        course_id=origin.course_id, course_name=origin.course_name,
+        class_id=origin.class_id, class_name=origin.class_name,
+        teacher_key=origin.teacher_key, teacher_name=origin.teacher_name,
+        weekday=origin.weekday, slot_no=origin.slot_no,
+        start_week=int(start_week), end_week=int(end_week), week_parity=parity,
+        classroom_id=origin.classroom_id, classroom_text=origin.classroom_text,
+        # change_id is the canonical link for the moved/new occurrence named by
+        # AaScheduleChange.new_item_id. Residual source segments are ordinary
+        # effective carry-forward rows; linking them as the changed occurrence
+        # makes strict teacher/attendance consumers reject the whole task.
+        source=origin.source, change_id=None, status="EFFECTIVE",
+    )
+    db.add(item)
+    db.flush()
+    return item
+
+
+def _create_adjust_residuals(db, change, origin) -> list[int]:
+    """Preserve all origin occurrences outside a partial ADJUST window."""
+    if change.change_type not in {"ADJUST", "STOP"}:
+        return []
+    start_week = int(change.target_start_week or origin.start_week)
+    end_week = int(change.target_end_week or origin.end_week)
+    origin_parity = str(origin.week_parity or "ALL").upper()
+    target_parity = origin_parity if change.change_type == "STOP" else str(change.target_week_parity or "ALL").upper()
+    _validate_adjust_window(origin, start_week, end_week, target_parity)
+    residuals = []
+    if int(origin.start_week) < start_week:
+        residuals.append(_clone_residual_item(
+            db, origin, change.id, int(origin.start_week), start_week - 1,
+            str(origin.week_parity or "ALL").upper(),
+        ).id)
+    if end_week < int(origin.end_week):
+        residuals.append(_clone_residual_item(
+            db, origin, change.id, end_week + 1, int(origin.end_week),
+            str(origin.week_parity or "ALL").upper(),
+        ).id)
+    if change.change_type == "ADJUST" and origin_parity == "ALL" and target_parity in {"ODD", "EVEN"}:
+        complement = "EVEN" if target_parity == "ODD" else "ODD"
+        residuals.append(_clone_residual_item(
+            db, origin, change.id, start_week, end_week, complement,
+        ).id)
+    return [int(value) for value in residuals]
+
+
 _TERMINAL_STATES = ("APPLIED", "REJECTED", "CANCELLED")
+_COLLEGE_OPERATOR_ROLES = frozenset({"COLLEGE_ADMIN", "COLLEGE_SA"})
+
+
+def _uses_college_change_scope(ctx, user) -> bool:
+    """Only college operators consume the college branch of the change ledger.
+
+    A teacher may legitimately carry an additional college scope for other
+    academic-affairs reads.  That scope must not replace the teacher_key owner
+    rule for the teacher's own schedule-change applications; otherwise submit
+    succeeds by ownership while list/detail immediately hide the new document.
+    """
+    role = str((user or {}).get("currentRoleCode") or "").strip().upper()
+    return ctx.scope_type == "COLLEGE" and role in _COLLEGE_OPERATOR_ROLES
+
+
+def _teacher_key_for_origin(db, origin, user, *, lock=False):
+    """Use current formal teacher relation; schedule snapshot is legacy fallback only."""
+    ctx = build_affairs_context(user, db)
+    if _can_manage_all(ctx):
+        return str(origin.teacher_key or "")
+    if origin.task_id:
+        from app.models import AaTeachingTask
+        from . import academic_affairs_teacher_relation_authority as teacher_authority
+        query = db.query(AaTeachingTask).filter(
+            AaTeachingTask.id == int(origin.task_id),
+            AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.is_deleted.is_(False),
+        )
+        if lock:
+            query = query.with_for_update()
+        task = query.first()
+        if not task:
+            raise AppException("DATA_CONFLICT", "原课位关联教学任务已失效，请刷新本人课表", http_status=409)
+        authority = teacher_authority.require_teacher(db, task, user, lock=lock)
+        matched = [str(value).strip() for value in authority.get("matchedTeacherKeys", []) if str(value).strip()]
+        if matched:
+            return matched[0]
+    keys = _derive_keys(user)
+    if not origin.teacher_key or origin.teacher_key not in keys:
+        raise no_data_scope("仅可对本人当前任课课位办理调停课")
+    return str(origin.teacher_key)
+
+
+def get_origin_item(item_id, user) -> dict:
+    """Return the display summary used by the teacher change-application handoff.
+
+    This is deliberately a read-side projection.  It applies the same tenant,
+    published-state and teacher-ownership rules as ``submit`` so the route cannot
+    be used to inspect another teacher's timetable item.  The command still
+    repeats every check under lock; this helper never authorizes a write.
+    """
+    from app.models import AaScheduleBatch, AaScheduleItem
+
+    with session() as db:
+        origin = tenant_get(db, AaScheduleItem, int(item_id), tenant_id=_tid())
+        if not origin or origin.is_deleted or origin.tenant_id != _tid():
+            raise not_found("原课位不存在或已发生变化")
+        batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()) if origin.batch_id else None
+        if origin.status != "EFFECTIVE":
+            raise AppException(
+                "DATA_CONFLICT",
+                "该课位已发生变化或不再属于正式发布课表，请返回本人课表刷新后重新发起",
+                http_status=409,
+            )
+        _require_current_published_origin(db, batch, origin)
+
+        _teacher_key_for_origin(db, origin, user)
+
+        return {
+            "itemId": str(origin.id),
+            "batchId": str(batch.id),
+            "batchName": batch.batch_name or "正式课表",
+            "termId": str(batch.term_id or ""),
+            "courseName": origin.course_name or "",
+            "className": origin.class_name or "",
+            "teacherName": origin.teacher_name or "",
+            "weekday": origin.weekday,
+            "slotNo": origin.slot_no,
+            "startWeek": origin.start_week,
+            "endWeek": origin.end_week,
+            "weekParity": origin.week_parity or "ALL",
+            "classroom": origin.classroom_text or "",
+        }
 
 
 # ═══════════ 冲突预检（只读，不落库；供三申请表单提交前 UX 反馈）═══════════
@@ -177,28 +386,44 @@ _TERMINAL_STATES = ("APPLIED", "REJECTED", "CANCELLED")
 def conflict_check(body, user) -> dict:
     """只读预检：复用 `_detect_conflict`（不重复实现算法）。仍需归属校验——
     否则会变成一个可被任意教师用来探测他人课表安排信息的越权通道（CLAUDE.md §6.1）。"""
-    from app.models import AaScheduleItem
+    from app.models import AaScheduleBatch, AaScheduleItem
     origin_id = getattr(body, "originItemId", None)
     if not origin_id:
         raise AppException("VALIDATION_ERROR", "originItemId 必填")
+    ct = str(getattr(body, "changeType", "ADJUST") or "ADJUST").upper()
+    if ct not in {"ADJUST", "MAKEUP"}:
+        raise AppException("VALIDATION_ERROR", "冲突预检类型仅支持 ADJUST/MAKEUP")
     tw, ts = getattr(body, "targetWeekday", None), getattr(body, "targetSlotNo", None)
     if tw is None or ts is None:
         raise AppException("VALIDATION_ERROR", "目标星期/节次必填")
     with session() as db:
-        origin = db.get(AaScheduleItem, int(origin_id))
+        origin = tenant_get(db, AaScheduleItem, int(origin_id), tenant_id=_tid())
         if not origin or origin.is_deleted or origin.tenant_id != _tid():
             raise not_found("原课表项不存在")
-        ctx = build_affairs_context(user, db)
-        if not _can_manage_all(ctx):
-            keys = _derive_keys(user)
-            if not origin.teacher_key or origin.teacher_key not in keys:
-                raise no_data_scope("仅可对本人任课课位做冲突预检")
-        tsw = int(getattr(body, "targetStartWeek", None) or origin.start_week)
-        tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
-        tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
+        batch = tenant_get(db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()) if origin.batch_id else None
+        _require_current_published_origin(db, batch, origin)
+        actor_teacher_key = _teacher_key_for_origin(db, origin, user)
+        raw_start_week = getattr(body, "targetStartWeek", None)
+        raw_end_week = getattr(body, "targetEndWeek", None)
+        if raw_start_week is None or raw_end_week is None:
+            raise AppException("VALIDATION_ERROR", "冲突预检必须明确目标教学周范围")
+        tsw = int(raw_start_week)
+        tew = int(raw_end_week)
+        if tsw < 1 or tew < tsw:
+            raise AppException("VALIDATION_ERROR", "目标教学周非法")
+        if ct == "MAKEUP":
+            if tsw != tew:
+                raise AppException("VALIDATION_ERROR", "补课冲突预检一次只能选择一个具体教学周")
+            tp = "ALL"
+        else:
+            tp = getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL"
+            _validate_adjust_window(origin, tsw, tew, tp)
         tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
-        conflict = _detect_conflict(db, origin.batch_id, int(tw), int(ts), tsw, tew, tp,
-                                    origin.teacher_key, origin.class_id, tcr, exclude_id=origin.id)
+        conflict = _detect_conflict(
+            db, origin.batch_id, int(tw), int(ts), tsw, tew, tp,
+            actor_teacher_key, origin.class_id, tcr,
+            exclude_id=(origin.id if ct == "ADJUST" else None),
+        )
         return {"conflict": conflict}
 
 
@@ -213,20 +438,17 @@ def submit(body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "调停课原因必填且不少于 5 字")
     with session() as db:
         from app.models import AaScheduleBatch, AaScheduleChange, AaScheduleItem
-        ctx = build_affairs_context(user, db)
-        origin = db.get(AaScheduleItem, int(body.originItemId)) if getattr(body, "originItemId", None) else None
+        origin = tenant_get(
+            db, AaScheduleItem, int(body.originItemId), tenant_id=_tid()
+        ) if getattr(body, "originItemId", None) else None
         if not origin or origin.is_deleted or origin.tenant_id != _tid():
             raise not_found("原课表项不存在")
         if origin.status != "EFFECTIVE":
             raise AppException("DATA_CONFLICT", "原课表项已变更/失效，不可再发起调停课")
-        b = db.get(AaScheduleBatch, int(origin.batch_id)) if origin.batch_id else None
-        if not b or b.status != "PUBLISHED":
-            raise AppException("DATA_CONFLICT", "仅已发布课表的课位可发起调停课")
-        # 数据范围(COURSE)：非 TENANT_ALL 角色须为本人任课课位
-        if not _can_manage_all(ctx):
-            keys = _derive_keys(user)
-            if not origin.teacher_key or origin.teacher_key not in keys:
-                raise no_data_scope("仅可对本人任课课位发起调停课")
+        b = tenant_get(db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()) if origin.batch_id else None
+        _require_current_published_origin(db, b, origin)
+        # 数据范围(COURSE)：以当前正式任课关系裁决。
+        actor_teacher_key = _teacher_key_for_origin(db, origin, user)
         # 停课需给出后续安排（真实业务：不填补课安排且课程仍有周学时缺口 → 422 警示）
         if ct == "STOP" and not (getattr(body, "makeupPlan", None) or "").strip():
             raise AppException("VALIDATION_ERROR", "停课须填写补课/后续安排说明")
@@ -240,11 +462,13 @@ def submit(body, user) -> dict:
             tew = int(getattr(body, "targetEndWeek", None) or origin.end_week)
             tp = (getattr(body, "targetWeekParity", None) or origin.week_parity or "ALL")
             tcr = getattr(body, "targetClassroom", None) or origin.classroom_text
+            if ct == "ADJUST":
+                _validate_adjust_window(origin, tsw, tew, tp)
             if tw < 1 or tw > 7:
                 raise AppException("VALIDATION_ERROR", "目标星期非法")
             # 提交即三重冲突预检（同批次；排除原课位自身）
             conflict = _detect_conflict(db, origin.batch_id, tw, ts, tsw, tew, tp,
-                                        origin.teacher_key, origin.class_id, tcr,
+                                        actor_teacher_key, origin.class_id, tcr,
                                         exclude_id=origin.id)
             if conflict:
                 raise AppException("DATA_CONFLICT",
@@ -254,7 +478,8 @@ def submit(body, user) -> dict:
             tenant_id=_tid(), term_id=b.term_id, batch_id=origin.batch_id, origin_item_id=origin.id,
             task_id=origin.task_id, change_type=ct,
             course_name=origin.course_name, class_id=origin.class_id, class_name=origin.class_name,
-            teacher_key=origin.teacher_key, teacher_name=origin.teacher_name,
+            teacher_key=actor_teacher_key,
+            teacher_name=(user or {}).get("realName") or (user or {}).get("name") or origin.teacher_name,
             origin_weekday=origin.weekday, origin_slot_no=origin.slot_no,
             origin_start_week=origin.start_week, origin_end_week=origin.end_week,
             origin_week_parity=origin.week_parity, origin_classroom=origin.classroom_text,
@@ -282,6 +507,8 @@ def submit(body, user) -> dict:
 def review(cid, user, action, comment="") -> dict:
     action = (action or "").upper()
     with session() as db:
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        lock_formal_authority(db)
         from app.models import WorkflowInstance, WorkflowTask
         x = _load(db, cid)
         if x.status not in _ACTIVE:
@@ -301,12 +528,16 @@ def review(cid, user, action, comment="") -> dict:
             if inst:
                 inst.status = "REJECTED"
             _todo_done(db, x.id)
-            _msg(db, x.applicant_id or 0, f"{L_CT[x.change_type]}未通过", comment.strip(),
-                 "WORKFLOW_RESULT", x.id)
+            outbox_id = _msg(db, x.applicant_id or 0, f"{L_CT[x.change_type]}未通过", comment.strip(),
+                             "WORKFLOW_RESULT", x.id)
             _audit(db, x.id, "REJECT", comment.strip())
             db.commit()
             from app.services.message_event_outbox_service import try_process_pending_outbox
-            try_process_pending_outbox(worker_id="aa-sched-change-inline")
+            try_process_pending_outbox(
+                limit=1,
+                worker_id="aa-sched-change-inline",
+                outbox_ids=[outbox_id] if outbox_id else None,
+            )
             db.refresh(x)
             return _row(x)
 
@@ -335,10 +566,15 @@ def review(cid, user, action, comment="") -> dict:
             inst.status = "APPROVED"
         _audit(db, x.id, "APPROVE", "终审通过")
         applied = _apply_schedule(db, x)
+        outbox_ids = applied.pop("_outboxIds", [])
         _todo_done(db, x.id)
         db.commit()
         from app.services.message_event_outbox_service import try_process_pending_outbox
-        try_process_pending_outbox(worker_id="aa-sched-change-inline")
+        try_process_pending_outbox(
+            limit=max(1, len(outbox_ids)),
+            worker_id="aa-sched-change-inline",
+            outbox_ids=outbox_ids,
+        )
         db.refresh(x)
         out = _row(x)
         out["applied"] = applied
@@ -347,11 +583,30 @@ def review(cid, user, action, comment="") -> dict:
 
 def _apply_schedule(db, x) -> dict:
     """终审通过后改写课表：原课位标 CHANGED(保留历史)，调课/补课生成新项并回链本单，STATUS_CHANGED 通知师生。"""
-    from app.models import AaScheduleItem, StudentProfile, User
-    origin = db.get(AaScheduleItem, int(x.origin_item_id)) if x.origin_item_id else None
+    from app.models import AaScheduleBatch, AaScheduleItem, StudentProfile, User
+    origin = tenant_get(
+        db, AaScheduleItem, int(x.origin_item_id), tenant_id=_tid()
+    ) if x.origin_item_id else None
+    batch = tenant_get(
+        db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()
+    ) if origin and origin.batch_id else None
+    _require_current_published_origin(db, batch, origin, lock_scope=True)
+    from . import academic_affairs_schedule_resource_guard as resource_guard
+    term = resource_guard.lock_term(db, batch.term_id)
     # 复核目标冲突仍为 0（并发防护）
     new_item_id = None
+    target_classroom_id = None
     if x.change_type in ("ADJUST", "MAKEUP"):
+        from .academic_affairs_schedule_service import _resolve_classroom_id
+        from .academic_affairs_resource_service import _load as load_classroom
+        target_classroom_id = (origin.classroom_id if origin and x.target_classroom == origin.classroom_text
+                               else _resolve_classroom_id(db, x.target_classroom))
+        if not target_classroom_id and str(x.target_classroom or "").strip():
+            raise AppException("DATA_CONFLICT", "目标课位尚未关联正式教室 ID，不能生效", http_status=409)
+        if target_classroom_id:
+            classroom = load_classroom(db, target_classroom_id)
+            if classroom.status != "AVAILABLE" or not classroom.allow_schedule:
+                raise AppException("DATA_CONFLICT", "目标教室当前不可用或未允许排课", http_status=409)
         conflict = _detect_conflict(db, x.batch_id, x.target_weekday, x.target_slot_no,
                                     x.target_start_week, x.target_end_week, x.target_week_parity or "ALL",
                                     x.teacher_key, x.class_id, x.target_classroom,
@@ -359,6 +614,7 @@ def _apply_schedule(db, x) -> dict:
         if conflict:
             raise AppException("DATA_CONFLICT", f"复核目标课位冲突（{conflict['type']}）：{conflict['detail']}")
     # 原课位：调课/停课置 CHANGED（保留历史，禁直接 UPDATE 已发布项）；补课不动原课位
+    residual_item_ids = _create_adjust_residuals(db, x, origin) if origin else []
     if origin and x.change_type in ("ADJUST", "STOP"):
         origin.status = "CHANGED"
     # 调课/补课生成新课表项，回链本单
@@ -372,7 +628,10 @@ def _apply_schedule(db, x) -> dict:
             start_week=x.target_start_week or origin.start_week,
             end_week=x.target_end_week or origin.end_week,
             week_parity=x.target_week_parity or "ALL",
-            classroom_text=x.target_classroom, change_id=x.id, status="EFFECTIVE")
+            classroom_id=target_classroom_id,
+            classroom_text=x.target_classroom, source=origin.source,
+            change_id=x.id, status="EFFECTIVE")
+        resource_guard.require_no_booking_conflict(db, term, [ni])
         db.add(ni)
         db.flush()
         new_item_id = ni.id
@@ -390,12 +649,15 @@ def _apply_schedule(db, x) -> dict:
     title = f"{L_CT[x.change_type]}通知：{x.course_name or ''}"
     content = _notice_text(x)
     teacher_notified = 0
+    outbox_ids: list[int] = []
     if x.teacher_key:
         acc = db.scalars(select(User).where(
             User.tenant_id == _tid(), User.login_name == x.teacher_key,
             User.is_deleted.is_(False), User.status == "ACTIVE")).first()
         if acc:
-            _msg(db, acc.id, title, content, "STATUS_CHANGED", x.id)
+            outbox_id = _msg(db, acc.id, title, content, "STATUS_CHANGED", x.id)
+            if outbox_id:
+                outbox_ids.append(outbox_id)
             teacher_notified = 1
     students = 0
     if x.class_id:
@@ -410,11 +672,16 @@ def _apply_schedule(db, x) -> dict:
                    StudentProfile.class_id == int(x.class_id),
                    StudentProfile.is_deleted.is_(False))).all()
         for (uid,) in rows:
-            _msg(db, uid, title, content, "STATUS_CHANGED", x.id)
+            outbox_id = _msg(db, uid, title, content, "STATUS_CHANGED", x.id)
+            if outbox_id:
+                outbox_ids.append(outbox_id)
             students += 1
     _audit(db, x.id, "APPLIED", f"newItem={new_item_id},pushed={students}生+{teacher_notified}师")
-    return {"status": "APPLIED", "newItemId": str(new_item_id or ""), "originKept": "CHANGED(历史留痕)",
-            "notified": {"students": int(students), "teacher": teacher_notified, "channel": "STATUS_CHANGED"}}
+    return {"status": "APPLIED", "newItemId": str(new_item_id or ""),
+            "residualItemIds": [str(value) for value in residual_item_ids],
+            "originKept": "CHANGED(历史留痕)",
+            "notified": {"students": int(students), "teacher": teacher_notified, "channel": "STATUS_CHANGED"},
+            "_outboxIds": outbox_ids}
 
 
 def _notice_text(x) -> str:
@@ -467,7 +734,7 @@ def get_change(cid, user) -> dict:
         x = _load(db, cid)
         ctx = build_affairs_context(user, db)
         if not _can_manage_all(ctx):
-            if ctx.scope_type == "COLLEGE":
+            if _uses_college_change_scope(ctx, user):
                 allowed = ctx.allowed_class_ids(db)
                 if not x.class_id or int(x.class_id) not in (allowed or set()):
                     raise no_data_scope("该调停课单不在您的数据范围内")
@@ -475,7 +742,46 @@ def get_change(cid, user) -> dict:
                 keys = _derive_keys(user)
                 if not x.teacher_key or x.teacher_key not in keys:
                     raise no_data_scope("仅可查看本人发起的调停课单")
-        return _row(x)
+        result = _row(x)
+        result["reviewNode"] = _review_node(db, x, user)
+        return result
+
+
+def _review_node(db, change, user) -> dict:
+    from app.core.permissions import has_permission
+    from app.models import User, WorkflowTask
+    from .academic_affairs_schedule_change_r3_service import _actor_numeric_id
+
+    result = {"canReview": False, "assigneeName": None, "reason": "当前单据不在待审阶段"}
+    if change.status not in _ACTIVE or not change.workflow_instance_id:
+        return result
+    tasks = db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == change.workflow_instance_id,
+        WorkflowTask.node_code == change.current_node, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False),
+    ).limit(2)).all()
+    if len(tasks) != 1:
+        result["reason"] = "当前审批任务不唯一或未生成，请联系流程管理员核对"
+        return result
+    task = tasks[0]
+    actor = db.scalars(select(User).where(
+        User.tenant_id == _tid(), User.id == task.assignee_id, User.is_deleted.is_(False),
+    )).first()
+    result["assigneeName"] = actor.real_name if actor else None
+    actor_id = _actor_numeric_id(user, required=False)
+    if actor_id is None:
+        result["reason"] = "无法确认当前审批人的真实账号身份"
+        return result
+    if int(task.assignee_id or 0) != actor_id:
+        result["reason"] = "本单由指定受理人办理，当前账号可查看但不能审批"
+        return result
+    if not any(has_permission(user, code) for code in (
+        "academicAffairs.scheduleChange.collegeReview", "academicAffairs.scheduleChange.academicReview",
+    )):
+        result["reason"] = "当前身份没有调停课审核权限"
+        return result
+    result.update(canReview=True, reason="")
+    return result
 
 
 def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=None,
@@ -502,7 +808,7 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
             conds.append(AaScheduleChange.created_at <= date_to + " 23:59:59")
         # 范围收敛：TENANT_ALL 全量；COLLEGE 按所辖班级；其余(教师) 仅本人课位
         if not _can_manage_all(ctx):
-            if ctx.scope_type == "COLLEGE":
+            if _uses_college_change_scope(ctx, user):
                 allowed = ctx.allowed_class_ids(db)
                 if not allowed:
                     return [], 0
@@ -555,7 +861,7 @@ def stats(user, term_id=None, dimension=None):
         if term_id:
             conds.append(AaScheduleChange.term_id == int(term_id))
         if not _can_manage_all(ctx):
-            if ctx.scope_type == "COLLEGE":
+            if _uses_college_change_scope(ctx, user):
                 allowed = ctx.allowed_class_ids(db)
                 if not allowed:
                     return dict(_EMPTY_STATS)

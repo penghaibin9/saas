@@ -1,0 +1,25 @@
+// Scoped by an opt-in root: only the four student shell pages consume this style.
+.student-shell {
+  background: #f6f8fc; color: #142440; min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  padding-bottom: calc(80px + env(safe-area-inset-bottom));
+  --text-primary: #142440; --text-secondary: #65718a; --text-tertiary: #7b8598;
+  --brand-primary: #1671f8; --page-padding-mobile: 16px;
+  button { font-family: inherit; }
+  .shell-pad { padding: 16px; }
+  .shell-panel { background: #fff; border-radius: 16px; padding: 18px 16px; margin-bottom: 14px; }
+  .shell-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+  .shell-title { font-size: 20px; line-height: 1.5; font-weight: 700; }
+  .shell-link { display: inline-flex; align-items: center; gap: 3px; color: #1671f8; font-size: 14px; min-height: 44px; flex-shrink: 0; }
+  .shell-muted { display: block; color: #65718a; font-size: 13px; line-height: 1.6; }
+  .shell-search { display: flex; gap: 10px; align-items: center; min-height: 46px; margin-top: 16px; padding: 0 14px; background: #fff; border-radius: 28px; color: #7b8598; font-size: 15px; }
+  .shell-search input { flex: 1; min-width: 0; color: #142440; font-size: 15px; }
+  .shell-row { display: flex; align-items: center; gap: 14px; min-height: 74px; }
+  .shell-row + .shell-row { border-top: 1px solid #edf0f5; }
+  .shell-row__body { flex: 1; min-width: 0; }
+  .shell-row__title { display: block; font-size: 16px; font-weight: 600; line-height: 1.5; }
+  .shell-empty { padding: 26px 12px; text-align: center; }
+  .shell-empty .shell-row__title { margin: 10px 0 4px; }
+  .shell-plain-button { padding: 0; margin: 0; background: transparent; border: 0; line-height: inherit; text-align: left; }
+  .shell-plain-button::after { border: 0; }
+}

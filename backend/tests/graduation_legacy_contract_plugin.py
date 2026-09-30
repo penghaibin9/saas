@@ -108,6 +108,63 @@ def _ensure_running_batch(db, student) -> None:
         db.commit()
 
 
+def _ensure_legacy_stable_mentor(db, student) -> None:
+    """Upgrade old name-only Graduation fixtures to today's stable mentor/account contract.
+
+    Test-only compatibility: production still fails closed when a student has no
+    GraduationMentor subject or the mentor has no active User account.
+    """
+    if student is None:
+        return
+    from app.models import GraduationMentor, User
+
+    mentor = db.get(GraduationMentor, int(student.mentor_id)) if student.mentor_id else None
+    if mentor is None:
+        advisor_name = str(getattr(student, "advisor_name", "") or "").strip()
+        if not advisor_name:
+            return
+        mentor = db.scalars(select(GraduationMentor).where(
+            GraduationMentor.tenant_id == MAIN_TENANT_ID,
+            GraduationMentor.teacher_name == advisor_name,
+            GraduationMentor.is_deleted.is_(False),
+        ).order_by(GraduationMentor.id).limit(1)).first()
+        if mentor is None:
+            teacher_no = f"LEGACY-GD-{int(student.id)}"
+            mentor = GraduationMentor(
+                tenant_id=MAIN_TENANT_ID,
+                teacher_no=teacher_no,
+                teacher_name=advisor_name,
+                qualification_status="QUALIFIED",
+                max_capacity=999,
+                current_count=0,
+            )
+            db.add(mentor)
+            db.flush()
+        student.mentor_id = int(mentor.id)
+
+    teacher_no = str(mentor.teacher_no or "").strip()
+    if not teacher_no:
+        return
+    account = db.scalars(select(User).where(
+        User.tenant_id == MAIN_TENANT_ID,
+        User.login_name == teacher_no,
+        User.is_deleted.is_(False),
+    ).limit(1)).first()
+    if account is None:
+        db.add(User(
+            tenant_id=MAIN_TENANT_ID,
+            login_name=teacher_no,
+            real_name=mentor.teacher_name or teacher_no,
+            password_hash="!legacy-graduation-test-only!",
+            user_type="TEACHER",
+            status="ACTIVE",
+            must_change_password=False,
+        ))
+    elif account.status != "ACTIVE":
+        account.status = "ACTIVE"
+    db.flush()
+
+
 def _inject_mobile_material_version(client, path: str, kwargs: dict, body: dict) -> None:
     if path not in {"/api/v1/mobile/graduation/proposal", "/api/v1/mobile/graduation/final"}:
         return
@@ -122,7 +179,9 @@ def _inject_mobile_material_version(client, path: str, kwargs: dict, body: dict)
         student = _current_student(db, kwargs, bid)
         if not student:
             return
+        _ensure_legacy_stable_mentor(db, student)
         _ensure_running_batch(db, student)
+        db.commit()
         if path.endswith("/proposal"):
             code = "PROPOSAL_REPORT"
         else:

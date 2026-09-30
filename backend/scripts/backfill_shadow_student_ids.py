@@ -131,6 +131,8 @@ def scan_domain(db, domain: str, tenant_id: int, apply: bool) -> dict:
         details["matched"].append({"rowId": int(r.id), "key": key, "studentId": pid})
         if apply:
             r.student_id = pid
+            if domain == "orientation":
+                r.identity_status = "LINKED"
             r.version = int(getattr(r, "version", 0) or 0) + 1
 
     return {"domain": domain, "label": label, "counts": counts, "details": details}

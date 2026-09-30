@@ -30,7 +30,7 @@ GRADUATION_PERMISSION_CODES = frozenset({
     )},
     "graduationDesign.defense.manage",
     *{f"graduationDesign.grade.{x}" for x in (
-        "view", "calculate", "review", "publish", "withdraw", "appealReview",
+        "view", "calculate", "review", "publish", "withdraw", "appealReview", "advisorScore",
     )},
     *{f"graduationDesign.risk.{x}" for x in ("view", "scan", "accept", "process", "close")},
     *{f"graduationDesign.archive.{x}" for x in ("view", "preview", "file", "export")},
@@ -47,7 +47,10 @@ def _group(code: str, *endpoint_names: str) -> dict[str, str]:
 
 # Endpoint 名称是代码符号，重构时测试会发现缺项；不依赖 URL 文本。
 GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
-    **_group("graduationDesign.dashboard.view", "dashboard", "gd_stats_overview", "gd_stats_college_comparison"),
+    **_group("graduationDesign.dashboard.view", "dashboard", "gd_stats_overview", "gd_stats_college_comparison",
+             "teacher_workbench"),
+    **_group("graduationDesign.student.manage", "setup_check"),
+    **_group("graduationDesign.midterm.review", "midterm_by_mentor"),
     **_group("graduationDesign.batch.view", "batches", "batch_detail", "batch_stats", "batch_export"),
     **_group("graduationDesign.batch.create", "batch_create"),
     **_group("graduationDesign.batch.update", "batch_update", "batch_stages", "batch_rules", "batch_void"),
@@ -143,6 +146,7 @@ GRADUATION_ENDPOINT_PERMISSIONS: dict[str, str] = {
     **_group("graduationDesign.grade.review", "gd_grade_review"),
     **_group("graduationDesign.grade.publish", "gd_grade_publish"),
     **_group("graduationDesign.grade.withdraw", "gd_grade_withdraw"),
+    **_group("graduationDesign.grade.advisorScore", "gd_grade_advisor_score"),
     **_group("graduationDesign.grade.appealReview", "appeal_list", "appeal_review"),
     **_group("graduationDesign.grade.view", "gd_excellent_outcome_candidates", "gd_excellent_outcomes",
              "gd_excellent_outcome_nominate"),
@@ -175,6 +179,11 @@ GRADUATION_DYNAMIC_PERMISSION_ENDPOINTS = {
 GRADUATION_ENDPOINT_PERMISSION_OVERRIDES = {
     "graduation_batch.batch_archive": "graduationDesign.batch.archive",
     "graduation_student.batch_archive": "graduationDesign.student.manage",
+
+    # PLAT-A frozen-package projection lives outside the graduation routers, but
+    # remains governed by the same explicit graduation action catalogue.
+    "platform_integrity.graduation_manifest_package": "graduationDesign.archive.view",
+    "platform_integrity.graduation_manifest_package_build": "graduationDesign.archive.file",
 
     # Stage 6 材料中心：显式动作权限；文件对象范围仍由 resolver 二次收敛。
     "graduation_material_center.material_rules": "graduationDesign.student.view",
@@ -246,6 +255,7 @@ GRADUATION_ENDPOINT_PERMISSION_OVERRIDES = {
     "graduation_sensitive_router.grade_review": "graduationDesign.grade.review",
     "graduation_sensitive_router.grade_publish": "graduationDesign.grade.publish",
     "graduation_sensitive_router.grade_withdraw": "graduationDesign.grade.withdraw",
+    "graduation_sensitive_router.grade_advisor_score": "graduationDesign.grade.advisorScore",
     "graduation_sensitive_router.archive_generate_preview": "graduationDesign.archive.preview",
     "graduation_sensitive_router.archive_generate_batch": "graduationDesign.archive.file",
     "graduation_sensitive_router.archive_file_preview": "graduationDesign.archive.preview",
@@ -358,8 +368,13 @@ def require_graduation_request_permission(
 
     module_name = getattr(endpoint, "__module__", "").rsplit(".", 1)[-1]
     qualified_name = f"{module_name}.{endpoint_name}"
+    from app.modules.graduation.services.graduation_auto_identity import identity_hint, overlay_for_request
+    path_params = {**dict(request.path_params or {}), "__path__": request.url.path}
+    hint = identity_hint(request)
     if qualified_name in GRADUATION_DYNAMIC_PERMISSION_ENDPOINTS:
         request.state.permission_code = "graduationDesign.material.review.dynamic"
+        # 老师不用切换角色：按业务关系为本次材料请求换上指导/评阅/秘书身份。
+        overlay_for_request(user, None, dynamic=True, path_params=path_params, hint=hint)
         return user
 
     code = graduation_permission_for_endpoint(endpoint)
@@ -368,6 +383,8 @@ def require_graduation_request_permission(
         if method not in {"GET", "HEAD", "OPTIONS"}:
             raise no_permission(f"毕业设计写接口未登记动作权限：{endpoint_name or 'unknown'}")
         raise no_permission(f"毕业设计读接口未登记动作权限：{endpoint_name or 'unknown'}")
+    # 老师不用切换角色：当前岗位做不了、但按业务关系持有能做这件事的毕设身份时，本请求换上该身份。
+    overlay_for_request(user, code, path_params=path_params, hint=hint)
     request.state.permission_code = code
     from app.core.context import set_current_permission_code
     set_current_permission_code(code)

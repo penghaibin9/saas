@@ -34,6 +34,8 @@ def _require_student(user):
 
 def _group_value(todo_type):
     value = str(todo_type or "").upper()
+    if value in {"FEE_REDUCTION_FULFILL", "STUDENT_LOAN_CONFIRM", "WORK_STUDY_ONBOARD"}:
+        return "confirm"
     if any(x in value for x in ("RISK", "WARNING", "EXCEPTION", "OVERDUE")):
         return "risk"
     if any(x in value for x in ("REVIEW", "REPORT", "PROPOSAL", "SCORE")):
@@ -47,6 +49,7 @@ def _group_expr():
     from app.models import UnifiedTodo
     value = func.upper(func.coalesce(UnifiedTodo.todo_type, ""))
     return case(
+        (value.in_(["FEE_REDUCTION_FULFILL", "STUDENT_LOAN_CONFIRM", "WORK_STUDY_ONBOARD"]), "confirm"),
         (or_(value.like("%RISK%"), value.like("%WARNING%"),
              value.like("%EXCEPTION%"), value.like("%OVERDUE%")), "risk"),
         (or_(value.like("%REVIEW%"), value.like("%REPORT%"),
@@ -359,8 +362,12 @@ def student_messages_page(user, tab="todo", page=1, page_size=20):
     if tab not in enabled:
         items, total = [], 0
     elif tab == "todo":
+        # “待办”标签与角标必须同口径，只展示仍由当前学生办理的 PENDING 项。
+        # 已由状态机关闭的历史项留在台账/审计中，不能继续混在待办页并显示“已完成”。
         # client=studentMini：typed route 必须按学生小程序解析，否则拿到的是 /admin/... PC 路径。
-        rows, total = todo_svc.list_todos(current, page=page, page_size=size, client="studentMini")
+        rows, total = todo_svc.list_todos(
+            current, status="PENDING", page=page, page_size=size, client="studentMini"
+        )
         items = [_student_todo_item(row) for row in rows]
     elif tab == "notice":
         rows, total = message_svc.list_messages(current, page=page, page_size=size)

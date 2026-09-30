@@ -1,0 +1,708 @@
+{
+  "schemaVersion": 1,
+  "strategy": "remove archived byte-identical copies after local backup",
+  "backupRoot": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统\\_local-backup\\repo-cleanup-20260902\\duplicate-files",
+  "applied": true,
+  "resolutions": [
+    {
+      "removedPath": "artifacts/release-seals/internship-v8/w0__4plus1-role-surface.json",
+      "canonicalPath": "artifacts/release-seals/internship-v8/w0__role-surface-coverage.json",
+      "sha256": "5ae633bbbdd0ad083af414ccfdb0335044e082c2a8121672bcfca7108289232a"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/岗位实习中心/05-岗位实习API.md",
+      "canonicalPath": "docs/05-数据接口权限与安全/api/05-岗位实习API.md",
+      "sha256": "29f1e70f5d3b30c5de70a0f68e6f340f1ab4aced8fa287ab5f740fb2dfa9e644"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/岗位实习中心/ui/fable5-pc-final/PC-v7-02-岗位实习中心-完整管理版.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/PC-v7-02-岗位实习中心-完整管理版.html",
+      "sha256": "a723fc6ae6465ae87e07e1a7aa22f4224d693d468fdf7903ae8b8cd6090523fb"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/岗位实习中心/ui/fable5-pc-final/PC-v7-02-岗位实习中心.pdf",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/PC-v7-02-岗位实习中心.pdf",
+      "sha256": "15221091947a4ea02eb69e2982f13e18ab3b6587976bed5b58e12525194aa6ea"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/岗位实习中心/ui/fable5-pc-final/PC岗位实习中心.zip",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/PC岗位实习中心.zip",
+      "sha256": "feb37984f48a242952f9e7d1eaf33800c21aebadc645f14e635e5bced4df6c2a"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/岗位实习中心/ui/fable5-pc-final/PC岗位实习中心/.thumbnail",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/PC岗位实习中心/.thumbnail",
+      "sha256": "23650ce40ab9b538db67beae39bcfe077b7b5d8e1ed157ce528c3b049e49ff38"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/岗位实习中心/ui/fable5-pc-final/PC岗位实习中心/PC-v7-02-岗位实习中心-print-qlbsj0.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/PC岗位实习中心/PC-v7-02-岗位实习中心-print-qlbsj0.dc.html",
+      "sha256": "e74553ed2fd7133a5aa6f7607c361baf10fec2ad6c31abe5a72a7a20b91b73f2"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/岗位实习中心/ui/fable5-pc-final/PC岗位实习中心/PC-v7-02-岗位实习中心.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/PC岗位实习中心/PC-v7-02-岗位实习中心.dc.html",
+      "sha256": "7945f467b0de431604498d9466335c55ca18395a169b9169d47c877ff78051a7"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/岗位实习中心/ui/pc-ui-v2/03-岗位实习管理.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/pc-ui-v2/03-岗位实习管理.dc.html",
+      "sha256": "5b7ff055d44d33a84ce04a1439c1f5e6ff40fe87fc2046a7700c72fae6a04e69"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/岗位实习中心/ui/pc-ui-v2/10-岗位实习.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/pc-ui-v2/10-岗位实习.dc.html",
+      "sha256": "ac7b4d3edebe61bea2966ab85ccee025bd047fae479e650a8d7c56d49182caa4"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/数字迎新中心/03-数字迎新API.md",
+      "canonicalPath": "docs/05-数据接口权限与安全/api/03-数字迎新API.md",
+      "sha256": "0b59f1c91c4909e78e23e7ed71ec9423f20609a3c029e292b936b27fb71a23a2"
+    },
+    {
+      "removedPath": "docs/03-业务模块设计/毕业设计中心/23-毕业设计.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/pc-ui-v2/23-毕业设计.dc.html",
+      "sha256": "b715a3839ef427f70bf871ba5bbe4cf2d6f5ae457fb9690c4fed01ae6b4985ef"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/.thumbnail",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/PC岗位实习中心/uploads/.thumbnail",
+      "sha256": "9abd8aaef080ac045ecc94a68d95f346d356dacb33bacb82fa9f518f6429d304"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/Canvas-2.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/Canvas.dc.html",
+      "sha256": "7535b5fb9f91a8c2746782180743d133a52ccd393c870a6740ae8b3c9e4c63f8"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/03-mob.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-mob.png",
+      "sha256": "029699b92ed76c9d06a14590d0ce09a8824491104fb63f9f05bff6310478bf62"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/03-white2.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/03-white.png",
+      "sha256": "d168c8f29f848ca6fbb712257a98dde6edb3ee56c019574e7f5bbb0f99a7f060"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/04-white.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-white3.png",
+      "sha256": "593a662e6732c6372648d11cd53a063d5f474db79db6d98acc94b36c4cceb6b5"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/管理端原型 v6 三主题拔高版.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/pc-ui-v2/00-基准-管理端v6三主题.dc.html",
+      "sha256": "759491f7fcc784ea2be22ff1775ffef9a0f5e8fd4b43b24fb17e920b676fbde3"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/PC岗位实习中心/uploads/Canvas-2.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/Canvas.dc.html",
+      "sha256": "7535b5fb9f91a8c2746782180743d133a52ccd393c870a6740ae8b3c9e4c63f8"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/PC岗位实习中心/uploads/Canvas.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/Canvas.dc.html",
+      "sha256": "7535b5fb9f91a8c2746782180743d133a52ccd393c870a6740ae8b3c9e4c63f8"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/.thumbnail",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/.thumbnail",
+      "sha256": "9abd8aaef080ac045ecc94a68d95f346d356dacb33bacb82fa9f518f6429d304"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/Canvas-2.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/Canvas-2.dc.html",
+      "sha256": "7535b5fb9f91a8c2746782180743d133a52ccd393c870a6740ae8b3c9e4c63f8"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/Canvas.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/Canvas-2.dc.html",
+      "sha256": "7535b5fb9f91a8c2746782180743d133a52ccd393c870a6740ae8b3c9e4c63f8"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/support.js",
+      "canonicalPath": "docs/03-业务模块设计/岗位实习中心/ui/fable5-pc-final/PC岗位实习中心/support.js",
+      "sha256": "3ad3de37c0093797d83c8fd90bd447d33bcc2ab5fd007294eb5fce2771d794ef"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/screenshots/01-s.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/screenshots/01-s.png",
+      "sha256": "63c85935905ec3dc7e8fe83f4edc6e588f731a15f3af2f26491017cf7042831d"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/screenshots/01-登录页.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/screenshots/01-登录页.png",
+      "sha256": "322709d3123607f433c7f4ed5b6db668e7f2b670543d56eb6d0f4bb33ebacd9d"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/screenshots/02-s.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/screenshots/02-s.png",
+      "sha256": "1512e13f33eedf396041393f27d4eecc590027f8e337df224901dcc0d103d038"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/screenshots/03-s.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/screenshots/03-s.png",
+      "sha256": "8c170aef2ce43048464d8dd8ea0e2a124b40a910b0d7dc00bb2348f1bde048da"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/screenshots/04-s.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/screenshots/04-s.png",
+      "sha256": "0acc74f3bcb466fadf787ed8fdcef98315365b503eef3d7773fb6b2f3b6907cc"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/screenshots/05-s.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/screenshots/05-s.png",
+      "sha256": "fe1236f618acd721a3dc9f99b29a014de55a477c5e6e84d17ded0842a050e6e5"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/01-eye2.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/01-eye2.png",
+      "sha256": "5b3d47869a93bf887946f52714b82b4fbbbcca09e1b3f2664d0cc9e89f9afe4d"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/01-mob.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/01-mob.png",
+      "sha256": "3b1d41cc4d1b1b97bd66b3a032c2cbf6c7157ca1e1d1aafd70e6889b910c4804"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/01-mono.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/01-mono.png",
+      "sha256": "cd3517c23c28e697ae58f21731aaa869016061eea3d858e71ae45fdaa70a4198"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/01-review.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/01-review.png",
+      "sha256": "795a099613d405c58995f1539483913ee178dc0916ccd2d10d2596f1d96bf598"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/01-themec.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/01-themec.png",
+      "sha256": "7769fb44cb5a106373df2ecdeaceb06a1d20ffa31f2f563bacb11886823b046f"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/01-themec2.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/01-themec2.png",
+      "sha256": "ffb75a248e7cabf8698afe2dfe1154f15dbc5118f82624794e54a87898ddb7a8"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/01-w.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/01-w.png",
+      "sha256": "8b0c70548e22c38a2eeb58b297eaabe306d1844f61051cff9646660a6664fc10"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/01-white.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/01-white.png",
+      "sha256": "e1771af7e54550ded9f4297a809835e8c6a88d2739ee707bd9c3c9b6265ed2e0"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/01-white2.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/01-white2.png",
+      "sha256": "533cd596929b97bfc164b77564ed6dc654e944160b44921432f26fcac7c4f117"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/01-white3.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/01-white3.png",
+      "sha256": "af2d0d492455ab77ad8edea18b63586358b30f4abb68675b917dfb190bf258b8"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/02-eye2.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-eye2.png",
+      "sha256": "aecf8c2e499653313ee46d5fe413c7fc6ef00e445392f1111d0b8992b798d2a7"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/02-mob.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-mob.png",
+      "sha256": "029699b92ed76c9d06a14590d0ce09a8824491104fb63f9f05bff6310478bf62"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/02-mono.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-mono.png",
+      "sha256": "e30ee5c7b9d3fc456c0be9e0cec2d972504765c7d39d43305362de7f16c40e72"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/02-review.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-review.png",
+      "sha256": "a265fd7cd9ac9ae2380f1cc94002f123e380b46350c2400756c193d3f3f6e351"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/02-themec.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-themec.png",
+      "sha256": "67b17f15b71d174f9952ff20e0b84194ee70ebd72f45b3651c2fe428facb1048"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/02-themec2.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-themec2.png",
+      "sha256": "ecb538b00525471b66bd5e1404968308961c4378f32b10bfa347119cda77034c"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/02-w.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-w.png",
+      "sha256": "939259fadea4eac0ec6923a530d48aeaed241a04d1b245472ce64b128f0a737a"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/02-white.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-white.png",
+      "sha256": "df12152c62f44fbdb2d75620fed1628f9ba63a0ffea48889e5c0fb924de4a5b9"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/02-white2.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-white2.png",
+      "sha256": "ef41bd1457e5197b5fadc33811edb675f6d14f5f125d71e4b754b02da0bf8f27"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/02-white3.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-white3.png",
+      "sha256": "593a662e6732c6372648d11cd53a063d5f474db79db6d98acc94b36c4cceb6b5"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/03-mob.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-mob.png",
+      "sha256": "029699b92ed76c9d06a14590d0ce09a8824491104fb63f9f05bff6310478bf62"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/03-mono.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/03-mono.png",
+      "sha256": "5fa5a017f1e3130c7562af4390da1fabf4f32a9e5ac8129dd2c69a58e438115d"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/03-review.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/03-review.png",
+      "sha256": "e45f6fde5063d1b95a2b3d989918ffe3f64d7a1076cf65681957b77c615db96b"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/03-w.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/03-w.png",
+      "sha256": "3a2b2625c2e6871b608ac520b6ea99ded1129542ec4c7f60b8dfc0f532bc9c2b"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/03-white.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/03-white.png",
+      "sha256": "d168c8f29f848ca6fbb712257a98dde6edb3ee56c019574e7f5bbb0f99a7f060"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/03-white2.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/03-white.png",
+      "sha256": "d168c8f29f848ca6fbb712257a98dde6edb3ee56c019574e7f5bbb0f99a7f060"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/04-mono.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/04-mono.png",
+      "sha256": "a55ca9054bee0e252adc74813a4e5811749cd526a94ad6797cd35a43e2f474cd"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/04-review.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/04-review.png",
+      "sha256": "1d7cb10448272ae6b903831ec63a885d18eceac3df536b439a26b93f3ecb439e"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/04-w.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/04-w.png",
+      "sha256": "c50569028d4dd59b0352b16fb277dbd428e9f8d6222f8f8eb835e1b2b03cb8f4"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/04-white.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/02-white3.png",
+      "sha256": "593a662e6732c6372648d11cd53a063d5f474db79db6d98acc94b36c4cceb6b5"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/04-white2.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/04-white2.png",
+      "sha256": "24aa7c239efc232cb480b273a81c793210839a93d029f24ba95743f415e64873"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/05-review.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/05-review.png",
+      "sha256": "5467dadd38b0be675f3680c840caef6a9018d66ca664d8c2054cd4a99ae73cb7"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/05-w.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/05-w.png",
+      "sha256": "8f2b569efe3b6d662955f97068811bb74769de8bd942e0780fcf2d983a31280c"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/shots/05-white.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/shots/05-white.png",
+      "sha256": "fd2d2e0ef85b588a140e1f2d9afc85137a7ef3e6ea901b568d328dd8cfc7d504"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/support.js",
+      "canonicalPath": "docs/03-业务模块设计/岗位实习中心/ui/fable5-pc-final/PC岗位实习中心/support.js",
+      "sha256": "3ad3de37c0093797d83c8fd90bd447d33bcc2ab5fd007294eb5fce2771d794ef"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/uploads/00-全端UI视觉与交互设计规范 V2.1 最终冻结版.md",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/uploads/00-全端UI视觉与交互设计规范 V2.1 最终冻结版.md",
+      "sha256": "99c3761f5c224bf9ebb3df723300d0f725b783091de813e5659a512acbcfff0a"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/uploads/00-全端UI设计规范与页面骨架蓝图 V1.0.md",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/uploads/00-全端UI设计规范与页面骨架蓝图 V1.0.md",
+      "sha256": "367e1e5583d9e79ac9cbdd6b8ea2fcb943d861bc60bfcec2e439cc4e4fc54bd4"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/uploads/pasted-1783053246867-0.png",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/uploads/pasted-1783053246867-0.png",
+      "sha256": "fbeeddeff2373eaf4b62c31928e70d647946019601241745e4a9e4e7cbf490cb"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/管理端原型 v1.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/管理端原型 v1.dc.html",
+      "sha256": "bb3b3424e632b7b9d69e8cae812fc84083985e7caf748185e6db60abb85320c5"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/管理端原型 v2.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/管理端原型 v2.dc.html",
+      "sha256": "25b58c089f8f123f2459fb3dce92f7f0de7fd803c94f8bea7d5ea45a891bf2f2"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/管理端原型 v3.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/管理端原型 v3.dc.html",
+      "sha256": "61f06f1e240761d46ac18818a0768f8a992da73b8b12223a3f60e6249e8d2ebf"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/管理端原型 v4 Future Campus.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/管理端原型 v4 Future Campus.dc.html",
+      "sha256": "b37c6345afd7b9c54948c17337c4bb319908e5fcbeb9f4d9bbe4d6b806516baa"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/管理端原型 v5 Campus Orbit-print-1hcyf9t.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/管理端原型 v5 Campus Orbit-print-1hcyf9t.dc.html",
+      "sha256": "489ea2a0a3fd5e4f11a6e60561b89455a02f0d05d56ce610ee3c6094e5a76772"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/管理端原型 v5 Campus Orbit.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/管理端原型 v5 Campus Orbit.dc.html",
+      "sha256": "17a1b1c534a95ae7939a51ca6065929afc6690c0f3d53e9cdcba3fe2002e7d7f"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/管理端原型 v6 三主题拔高版.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/管理端原型 v6 三主题拔高版.dc.html",
+      "sha256": "759491f7fcc784ea2be22ff1775ffef9a0f5e8fd4b43b24fb17e920b676fbde3"
+    },
+    {
+      "removedPath": "docs/04-UI与全端交互/ui/fable5-pc-final/archive/uploads/平台设计/管理端原型.dc.html",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/管理端原型.dc.html",
+      "sha256": "596147f4df534396c7ef1b705e8d019be6dc64019f56596c37ffbe1d6dc62a55"
+    },
+    {
+      "removedPath": "docs/07-部署运维交付与商业化/20-岗位实习预设便捷字段与提示词.md",
+      "canonicalPath": "docs/03-业务模块设计/岗位实习中心/20-岗位实习预设便捷字段与提示词.md",
+      "sha256": "e8e72cae43490ea5fd2be75b3889d87167f72d7c6f12fa61296f62da42d0f299"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/00-全局必读/00-全端UI视觉与交互设计规范 V2.1 最终冻结版.md",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/uploads/00-全端UI视觉与交互设计规范 V2.1 最终冻结版.md",
+      "sha256": "99c3761f5c224bf9ebb3df723300d0f725b783091de813e5659a512acbcfff0a"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/00-全局必读/00-全端UI设计规范与页面骨架蓝图 V1.0.md",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/uploads/00-全端UI设计规范与页面骨架蓝图 V1.0.md",
+      "sha256": "367e1e5583d9e79ac9cbdd6b8ea2fcb943d861bc60bfcec2e439cc4e4fc54bd4"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/00-全局必读/00-商业化SaaS总控作战手册V1.0.md",
+      "canonicalPath": "docs/08-历史记录与归档/archive/path-conflicts/commercialization/00-商业化SaaS总控作战手册V1.0.md",
+      "sha256": "e22dda002c59f4bcd634cd29e36f535dce8af07f99be1446a230359a28a88a06"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/00-全局必读/00-职校学生全生命周期SaaS平台开发冻结总册 V3.0-增强版.md",
+      "canonicalPath": "docs/08-历史记录与归档/source-design/00-职校学生全生命周期SaaS平台开发冻结总册 V3.0-增强版.md",
+      "sha256": "38e21ad6937c19f4b2290e6a2caca8848b877a6fffe596ce58f772f80b7c900e"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/00-全局必读/03-模块开关权限菜单控制模型.md",
+      "canonicalPath": "docs/01-产品需求与范围/commercialization/03-模块开关权限菜单控制模型.md",
+      "sha256": "fdc9356188d67372f550fa094f771608580412e38c42456098700ad5585ca90f"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/00-全局必读/07-P5.5-SaaS后台与授权开关人工拍板记录.md",
+      "canonicalPath": "docs/08-历史记录与归档/archive/path-conflicts/commercialization/07-P5.5-SaaS后台与授权开关人工拍板记录.md",
+      "sha256": "8c41fd0b28dd3560af7ef0bf5af2e639f36725fe3b16b6122a9234d7a1d1febd"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/00-全局必读/menu-freeze.md",
+      "canonicalPath": "docs/08-历史记录与归档/archive/path-conflicts/frontend/menu-freeze.md",
+      "sha256": "b1e1cc69ffe557716f654a93767a116a011209209dd7299aad2c4e70b27c40b0"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/00-全局必读/module-boundary.md",
+      "canonicalPath": "docs/08-历史记录与归档/archive/path-conflicts/frontend/module-boundary.md",
+      "sha256": "7df886b22f40cd5def8c0e6e3277e719c1156439ec9b4d225f937ecd4686c6f1"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/00-全局必读/page-map.md",
+      "canonicalPath": "docs/08-历史记录与归档/archive/path-conflicts/frontend/page-map.md",
+      "sha256": "e659348d0d2db6b5e8ace9e2d1b6d9b44ab89947f6375ba70fba3e9624dd4075"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/00-全局必读/route-freeze.md",
+      "canonicalPath": "docs/08-历史记录与归档/archive/path-conflicts/frontend/route-freeze.md",
+      "sha256": "f8d930980de3626e7f47ae4cbb0bdb0d293e14c701853cf0ca62264f40d2176b"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/01-先做底座/01-学生主档与身份中心深化设计.md",
+      "canonicalPath": "docs/08-历史记录与归档/source-design/01-学生主档与身份中心深化设计.md",
+      "sha256": "128b217291b7ad74ad72663119bee12bbd3c25495f67405350ff0af89a75bf7f"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/01-先做底座/09A-PC管理端中心多角色工作台补充修订 V1.1.md",
+      "canonicalPath": "docs/08-历史记录与归档/source-design/09A-PC管理端中心多角色工作台补充修订 V1.1.md",
+      "sha256": "728c2bf880695d20fc57b74ce35d1760f7acbc66696bff971289fe8778cb94b4"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/01-先做底座/09B-学生PC门户中心深化设计 V1.0.md",
+      "canonicalPath": "docs/08-历史记录与归档/source-design/09B-学生PC门户中心深化设计 V1.0.md",
+      "sha256": "dbc0760a9d8c5b16f236870743f0abe7bccf2527b522380758d92c053e7e7ac8"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/01-先做底座/11-权限与流程中心深化设计 V1.0.md",
+      "canonicalPath": "docs/08-历史记录与归档/source-design/11-权限与流程中心深化设计 V1.0.md",
+      "sha256": "dafd4b5d0d9a900b9439654fa1d15ea3f653cb32ab3cb89c1c0158f4ecb5a658"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/02-核心可卖模块/05-毕业设计中心反向建模与深化设计 V1.0.md",
+      "canonicalPath": "docs/03-业务模块设计/毕业设计中心/05-毕业设计中心反向建模与深化设计 V1.0.md",
+      "sha256": "90ad8fe105213dda74a469b024677401f86e1b590386fe5b7c9fb88b157af45c"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/02-核心可卖模块/06-岗位实习中心反向建模与深化设计 V1.0.md",
+      "canonicalPath": "docs/08-历史记录与归档/source-design/06-岗位实习中心反向建模与深化设计 V1.0.md",
+      "sha256": "eb9144102b9cdb09bebf3f4a55f4286d07c1de4d406f3499aa22e8e603b7ec72"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/02-核心可卖模块/10-数据驾驶舱中心框架级深化设计 V1.0.md",
+      "canonicalPath": "docs/08-历史记录与归档/source-design/10-数据驾驶舱中心框架级深化设计 V1.0.md",
+      "sha256": "91683c682168c29286f3e300c745ca7c2c909b8f67167a0f8b8fd549e2a4ad7b"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/03-后续业务模块/02-数字迎新中心深化设计 V1.0.md",
+      "canonicalPath": "docs/03-业务模块设计/数字迎新中心/02-数字迎新中心深化设计 V1.0.md",
+      "sha256": "2e2fea8993ec05500aa65f35ac9668bdec3f49dc3b76e34b237a2405a5ddbfb9"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/03-后续业务模块/03-在校服务中心深化设计 V1.0.md",
+      "canonicalPath": "docs/03-业务模块设计/在校服务中心/03-在校服务中心深化设计 V1.0.md",
+      "sha256": "0279fa85584822df809f6e04988e45c03673777ca56c5b5d5f77782231a2131d"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/03-后续业务模块/04-学业过程中心深化设计 V1.0.md",
+      "canonicalPath": "docs/03-业务模块设计/学业过程中心/04-学业过程中心深化设计 V1.0.md",
+      "sha256": "0fd42633822446a08a84fd2a01b8fe392a65aa69963f092ec3c75e3ae5e27d18"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/03-后续业务模块/07-毕业与就业中心深化设计 V1.0.md",
+      "canonicalPath": "docs/03-业务模块设计/就业与离校中心/07-毕业与就业中心深化设计 V1.0.md",
+      "sha256": "37d300f895bfa4af0362f816e2e206170e726c0fb9742744f5bfedeab0f71bef"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/04-后期能力/08A-学生小程序中心.md",
+      "canonicalPath": "docs/08-历史记录与归档/source-design/08A-学生小程序中心.md",
+      "sha256": "c1c50acb25e4b2eef7e9888f2a17ae8e540f3c06372e8309a3b8d1f76c1c9402"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/04-后期能力/08B《教师移动工作台中心》.md",
+      "canonicalPath": "docs/08-历史记录与归档/source-design/08B《教师移动工作台中心》.md",
+      "sha256": "ab2f480050cb2036c476943ed102a0508f7d9044d32d5dc3a3aeb900fa225636"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/ai-handoff/04-后期能力/12-集成开放中心深化设计 V1.0.md",
+      "canonicalPath": "docs/08-历史记录与归档/source-design/12-集成开放中心深化设计 V1.0.md",
+      "sha256": "d6cb68a98fdb7aa64b5426de1ec06dcd6379843099ff00c6173821dadef1cc07"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/archive/D1-现有系统反向建模报告.md",
+      "canonicalPath": "docs/02-总体架构与公共底座/D1-现有系统反向建模报告.md",
+      "sha256": "4cf0fd5b08f7c9535ddaf44d919328492b8cb3390231caec007bc1ecde11edb4"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/archive/original-docx/05-毕业设计中心反向建模与深化设计 V1.0-原docx存档.docx",
+      "canonicalPath": "docs/03-业务模块设计/毕业设计中心/05-毕业设计中心反向建模与深化设计 V1.0-原docx存档.docx",
+      "sha256": "a92d99ea0f10f8e075df183cfa540e77b9a9ecbd17c4d23fa4bc392dd12849ef"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/00-系统管理中心-权限角色模块授权与权责边界设计.md",
+      "canonicalPath": "docs/03-业务模块设计/系统管理中心/00-系统管理中心-权限角色模块授权与权责边界设计.md",
+      "sha256": "6e20f31d9c9df84e893e1a367d7205aa4471f232b3c0f69f94837e1aab4efcba"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/02A-数字迎新-生产级施工审计与续接说明.md",
+      "canonicalPath": "docs/03-业务模块设计/数字迎新中心/02A-数字迎新-生产级施工审计与续接说明.md",
+      "sha256": "e5887ec6f48b1ac5f438641cc3b6f6c3a9863e580232074cd1780ece1d25ab02"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-13B-V1不可做与后置能力清单.md",
+      "canonicalPath": "docs/03-业务模块设计/跨模块融合/13A-13B-V1不可做与后置能力清单.md",
+      "sha256": "86bc4fc591eae40041a951c1e846ca1a6e228a7c6496187b6a8872fed13976d1"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-13B-V1范围冻结表.md",
+      "canonicalPath": "docs/03-业务模块设计/跨模块融合/13A-13B-V1范围冻结表.md",
+      "sha256": "43f07841683adec135227c8fea63833b41f08d43493253feedda19b6b746c8c3"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-13B-异常兜底与人工处理设计.md",
+      "canonicalPath": "docs/03-业务模块设计/跨模块融合/13A-13B-异常兜底与人工处理设计.md",
+      "sha256": "e0e70f2fb659f34888f6503d712fc86866888cb888cd3490a782de4a36780641"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-13B-打印导出归档模板设计.md",
+      "canonicalPath": "docs/03-业务模块设计/跨模块融合/13A-13B-打印导出归档模板设计.md",
+      "sha256": "ec57c2014d4ce330f4b6b930c5bae628aa1cecda57c5911eaba2aaa049832738"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-13B-模块发布灰度与授权控制设计.md",
+      "canonicalPath": "docs/03-业务模块设计/跨模块融合/13A-13B-模块发布灰度与授权控制设计.md",
+      "sha256": "7a5233bcd34757dc456149e0895f8944fb1195c5adcd844b341077bfcd1a06c3"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-13B-融合决策与复用清单.md",
+      "canonicalPath": "docs/03-业务模块设计/跨模块融合/13A-13B-融合决策与复用清单.md",
+      "sha256": "c4f7175bae5b4a7a1959f40bc2f833dca8ca3b07045b6c33147b0a967a93e5bd"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-13B-重叠子模块归属与菜单收编设计.md",
+      "canonicalPath": "docs/03-业务模块设计/跨模块融合/13A-13B-重叠子模块归属与菜单收编设计.md",
+      "sha256": "ac0d77bc1fb6d3b0ed282e83779d61e3e64030c037dd52a25821506e75b93f6e"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心-商业化对标审计与补丁建议（第一轮）.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心-商业化对标审计与补丁建议（第一轮）.md",
+      "sha256": "c3de3c548b5756060f0e740671d1a99550b4944870d357717291390fc457350d"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心ABCD任务包三级模块开发与关联布局总表.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心ABCD任务包三级模块开发与关联布局总表.md",
+      "sha256": "540106119857f82571cacaffec8ca9376e30ac18042e0bf695c2c89ff45a9439"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心B包-PC高频主线生产级施工卡.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心B包-PC高频主线生产级施工卡.md",
+      "sha256": "a1fc65ed854d45afd9865b8ff6b3470a9adb0fe58f58812c44804becbacd74df"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心C包-审批业务闭环生产级施工卡.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心C包-审批业务闭环生产级施工卡.md",
+      "sha256": "248c3e025e29af94c74b2f6d052a44c6457d47dcd10c68c618f9c4a7ec806bdc"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心D包-上线补强与商业增强施工卡.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心D包-上线补强与商业增强施工卡.md",
+      "sha256": "8dfd82e7f444bcc805f7ebf448d2b64ebe1d047d12272da7ba1c582453b4f0f4"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心V1范围与开发顺序.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心V1范围与开发顺序.md",
+      "sha256": "b580464c5a5b7ba7f54f95d903196430a72c96a2b9090bf6075af98e74cc4b85"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心与现有系统融合设计.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心与现有系统融合设计.md",
+      "sha256": "51ab548814c32b2ff16f9e2dd7a68f1115289ae04600d9f85aa6dd6cbdf1c3ce"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心全量规划施工图.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心全量规划施工图.md",
+      "sha256": "9bdcd76ef3ed94dc39ce130d7d7e322b851d93a91780b426c88000af847b71ee"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心四大任务包施工总图.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心四大任务包施工总图.md",
+      "sha256": "b6b39e560f0af5fc95dc38d310389655ad9c1c03f3da4347d1a0a593ae6516cd"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心开发阶段与验收用例.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心开发阶段与验收用例.md",
+      "sha256": "d6b062ab78bfb0e11dde1cf554c3e42102e6a53d23b688c0e0abe0380b0eaab4"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心移动端入口设计.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心移动端入口设计.md",
+      "sha256": "25611fd5178cd302cfc4c146eef57fa76c389ee2b38072b8293455fe016173dc"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心表单字段与校验规则.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心表单字段与校验规则.md",
+      "sha256": "264b4518fd0c2e9dc5dc84819921f121e3a1d92331d9a69b1eee80f2eabfd001"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心页面级交互与按钮动作矩阵.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心页面级交互与按钮动作矩阵.md",
+      "sha256": "cca6f6db04bf1d0abf3416c1393dd006af626abc19d645ba7b38328247b7e3e0"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13A-学工中心页面级验收用例总表.md",
+      "canonicalPath": "docs/03-业务模块设计/学工中心/13A-学工中心页面级验收用例总表.md",
+      "sha256": "326b933b89c492fc0e4c5b7367b542b6b2b1eca2586d3ab5113d6a589a4351c9"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13B-教务中心-P8上线检查单.md",
+      "canonicalPath": "docs/03-业务模块设计/教务中心/13B-教务中心-P8上线检查单.md",
+      "sha256": "706a05cdbc20ec3019c8962b8022bdda419a41b3dcd93f3d9998bb6c98ce9cd4"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13B-教务中心V1范围与开发顺序.md",
+      "canonicalPath": "docs/03-业务模块设计/教务中心/13B-教务中心V1范围与开发顺序.md",
+      "sha256": "e0bc9b99675b215824a51cd21e09a48142d03755861c1ad19d56b28ba3e89e84"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13B-教务中心移动端入口设计.md",
+      "canonicalPath": "docs/03-业务模块设计/教务中心/13B-教务中心移动端入口设计.md",
+      "sha256": "a20fbf381ffdee370c63e91ed4a7d5b8310489bea4bd09545fe3f764b75ecf58"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13B-教务中心表单字段与校验规则.md",
+      "canonicalPath": "docs/03-业务模块设计/教务中心/13B-教务中心表单字段与校验规则.md",
+      "sha256": "3c9fb97f6e4d1d0afb87f639d84042ef6be3f1ad7c6dac3fc935fb9d8a4bc343"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/13B-教务中心页面树与路由设计.md",
+      "canonicalPath": "docs/03-业务模块设计/教务中心/13B-教务中心页面树与路由设计.md",
+      "sha256": "17fb2449401f381671c39dbce9e929a2b20a8b0c4386b66e07f9ed476437e9b4"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/_13-现有系统集成事实速查.md",
+      "canonicalPath": "docs/03-业务模块设计/跨模块融合/_13-现有系统集成事实速查.md",
+      "sha256": "f6777056905f00c3ee31a8749bbd173f1836d906fce7cc54bc398fa292b314c3"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/legacy-modules/系统三级目录结构对标.md",
+      "canonicalPath": "docs/03-业务模块设计/跨模块融合/系统三级目录结构对标.md",
+      "sha256": "2e298775868eebd38e698a8932181273b4cd36a760b5f9b6a48f1a1fe014bd5f"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/source-design/00-全端UI视觉与交互设计规范 V2.1 最终冻结版.md",
+      "canonicalPath": "docs/04-UI与全端交互/ui/fable5-pc-final/Future Campus SaaS 设计升级/uploads/平台设计/uploads/00-全端UI视觉与交互设计规范 V2.1 最终冻结版.md",
+      "sha256": "99c3761f5c224bf9ebb3df723300d0f725b783091de813e5659a512acbcfff0a"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/source-design/02-数字迎新中心深化设计 V1.0.md",
+      "canonicalPath": "docs/03-业务模块设计/数字迎新中心/02-数字迎新中心深化设计 V1.0.md",
+      "sha256": "2e2fea8993ec05500aa65f35ac9668bdec3f49dc3b76e34b237a2405a5ddbfb9"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/source-design/03-在校服务中心深化设计 V1.0.md",
+      "canonicalPath": "docs/03-业务模块设计/在校服务中心/03-在校服务中心深化设计 V1.0.md",
+      "sha256": "0279fa85584822df809f6e04988e45c03673777ca56c5b5d5f77782231a2131d"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/source-design/04-学业过程中心深化设计 V1.0.md",
+      "canonicalPath": "docs/03-业务模块设计/学业过程中心/04-学业过程中心深化设计 V1.0.md",
+      "sha256": "0fd42633822446a08a84fd2a01b8fe392a65aa69963f092ec3c75e3ae5e27d18"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/source-design/05-毕业设计中心反向建模与深化设计 V1.0.md",
+      "canonicalPath": "docs/03-业务模块设计/毕业设计中心/05-毕业设计中心反向建模与深化设计 V1.0.md",
+      "sha256": "90ad8fe105213dda74a469b024677401f86e1b590386fe5b7c9fb88b157af45c"
+    },
+    {
+      "removedPath": "docs/08-历史记录与归档/source-design/07-毕业与就业中心深化设计 V1.0.md",
+      "canonicalPath": "docs/03-业务模块设计/就业与离校中心/07-毕业与就业中心深化设计 V1.0.md",
+      "sha256": "37d300f895bfa4af0362f816e2e206170e726c0fb9742744f5bfedeab0f71bef"
+    },
+    {
+      "removedPath": "docs/学生主档统一整改实施总控计划.md",
+      "canonicalPath": "docs/00-项目入口与总控/学生主档统一整改实施总控计划.md",
+      "sha256": "de58b81429e228aea29d48ca09de1b8e86c9e54cd73f0c35d29da71eb1043221"
+    }
+  ]
+}

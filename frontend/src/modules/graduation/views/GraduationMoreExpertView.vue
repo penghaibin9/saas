@@ -16,13 +16,14 @@
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template #footer>
-      <button type="button" class="mp-btn" @click="$router.push('/admin/graduation/more?panel=experts')">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">保存</button>
+      <AppButton @click="$router.push('/admin/graduation/more?panel=experts')">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting" @click="submit">保存</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
 import { AppSelect } from '@/components/common'
@@ -30,7 +31,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMoreExpertView',
-  components: { GraduationFormPageShell, AppSelect },
+  components: { AppButton, GraduationFormPageShell, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

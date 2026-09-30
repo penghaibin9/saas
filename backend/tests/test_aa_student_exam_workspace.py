@@ -31,14 +31,18 @@ def test_exam_workspace_uses_real_exam_and_defer_contracts():
         "await load()",
     ):
         assert token in source
-    assert "考试日期、时间、考场、座位和缓考资格均以服务器已发布数据为准" in source
+    assert "本页面只显示本人正式考试安排；缓考申请不会自动修改考试时间。" in source
+    assert "考试信息来自学校本人正式安排。入场证件要求以学校通知为准。" in source
 
 
-def test_exam_workspace_separates_schedule_apply_and_records():
+def test_exam_workspace_keeps_schedule_apply_and_records_distinct_in_state():
     source = _read("student-portal/src/views/academic/StudentExamView.vue")
 
-    for tab in ("schedule", "apply", "records"):
-        assert f"tab === '{tab}'" in source
+    assert "['schedule', 'apply', 'records'].includes" in source
+    assert "? String(route.query.tab) : 'schedule'" in source
+    assert "tab === 'apply'" in source
+    assert "我的缓考申请" in source
     assert "returnedDeferrals" in source
     assert "String(record.status || '').toUpperCase() === 'RETURNED'" in source
+    assert "if (returnedDeferrals.value.length && tab.value === 'schedule') tab.value = 'records'" in source
     assert "window.prompt" not in source

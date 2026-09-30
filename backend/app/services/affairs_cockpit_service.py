@@ -188,6 +188,8 @@ def cockpit(user) -> dict:
             "disciplineCases": _total_or_none(disc),
             "activities": _total_or_none(act),
         },
-        "disciplineReconcileConsistent": bool(reconcile.get("consistent", True)) if disc["status"] == "OK" else None,
+        "disciplineReconcileConsistent": (
+            reconcile.get("consistent") if isinstance(reconcile.get("consistent"), bool) else None
+        ) if disc["status"] == "OK" else None,
         "updatedAt": _iso(datetime.utcnow()),
     }

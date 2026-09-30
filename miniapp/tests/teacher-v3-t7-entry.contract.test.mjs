@@ -9,7 +9,7 @@ const root = path.resolve(here, '..')
 const read = (rel) => fs.readFileSync(path.join(root, rel), 'utf8')
 
 test('T7 employment quick actions must resolve to the real recommendation and verification workspace', () => {
-  const workbench = read('src/pages/teacher/workbench/index.vue')
+  const workbench = read('src/services/teacherServiceCatalog.mjs')
   const page = read('src/pages/teacher/employment-follow/index.vue')
   assert.match(workbench, /recommend:\s*'\/pages\/teacher\/employment-follow\/index\?tab=unemployed'/)
   assert.match(workbench, /verify:\s*'\/pages\/teacher\/employment-follow\/index\?tab=verify'/)

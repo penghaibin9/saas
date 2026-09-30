@@ -25,7 +25,7 @@ on:
       - 'student-portal/src/views/internship/InternshipSelectionView.vue'
       - 'student-portal/src/views/internship/InternshipView.vue'
       - 'student-portal/src/services/internshipSelectionApi.js'
-      - 'miniapp/src/pages/student/internship/index.vue'
+      - 'miniapp/src/pages/student-internship/index.vue'
       - 'miniapp/src/components/login/MiniLoginAuthPanel.vue'
       - 'e2e/specs/internship-placement-assignment-audit.spec.mjs'
       - 'e2e/lib/internship-enterprise-position-browser.mjs'

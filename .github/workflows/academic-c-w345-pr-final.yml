@@ -215,5 +215,6 @@ jobs:
           grep -q 'v-if="canSubmit"' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
           grep -q 'task.isOverdue === true' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
           grep -q 'gradeReminderApi.extendDeadline' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
-          grep -q 'GRADE.ENTRY_REMINDED' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
+          grep -q 'gradeReminderApi.remind' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
+          grep -q '写入消息提醒' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
           ! grep -q '当前未配置独立成绩催录消息事件模板' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue

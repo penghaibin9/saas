@@ -209,6 +209,7 @@ def _template_name(db, a) -> str:
 def _row(db, a, rec, stu):
     return {
         "id": str(a.id), "internId": str(a.internship_id),
+        "batchId": str(rec.batch_id) if rec and rec.batch_id else "",
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
         "advisorName": rec.advisor_name if rec else "",
         "enterpriseName": a.enterprise_name or (rec.enterprise_name if rec else ""),
@@ -228,6 +229,7 @@ def _row(db, a, rec, stu):
             "SYSTEM_GENERATED": "系统生成", "LEGACY_UNKNOWN": "历史来源未知",
         }.get(a.source_type or "LEGACY_UNKNOWN", "历史来源未知"),
         "createdAt": _iso(a.created_at) or "",
+        "updatedAt": _iso(a.updated_at) or "",
         # 历史协议（本次修复前生成）rendered_body 为空时按结构化字段兜底渲染，不写库、只读时补齐
         # BUG-011：历史快照里遗留的 ISO 时间戳（2026-03-02T00:00:00）在展示/打印时规范为中文日期
         "renderedBody": _normalize_body_dates(a.rendered_body or _render_body(db, None, rec, stu, a)),
@@ -516,14 +518,20 @@ def get_agreement(aid, user=None) -> dict:
 
 
 def get_student_agreement(user, aid) -> dict:
-    """学生本人查看协议详情（含渲染正文）。此前路由调用的同名函数不存在（必现500），
-    且误用教师端 get_agreement() 的教师数据范围校验对学生本人也不适用——改为按
-    my_agreements() 同款的本人实习记录关联校验。"""
+    """学生本人按协议 ID 查看详情。
+
+    协议 ID 已唯一确定实习记录，所有权应沿 agreement -> record -> student 校验；
+    不能再用“自动选择唯一进行中批次”，否则同一学生有多个进行中批次时会误判 403。
+    """
     from app.services import file_service
     with session() as db:
         a = _get(db, aid)
-        rec, stu = _student_record(db, user)
-        if not rec or a.internship_id != rec.id:
+        rec, stu = _ctx(db, a)
+        if (
+            not rec
+            or not stu
+            or str(stu.student_no or "") != str((user or {}).get("studentNo") or "")
+        ):
             raise no_permission("只能查看本人的协议")
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "AGREEMENT",

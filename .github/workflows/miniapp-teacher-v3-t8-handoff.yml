@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - 'miniapp/**'
-      - 'miniapp-v3-handoff.json'
+      - 'artifacts/release-seals/miniapp-v3-handoff.json'
       - 'backend/alembic/versions/**'
       - '.github/workflows/miniapp-teacher-v3-t8-handoff.yml'
   workflow_dispatch:

@@ -25,6 +25,7 @@ from app.models.internship_enterprise_portal import (
 from app.modules.internship.services.internship_recruitment_window_guard import (
     assert_campaign_operation_window,
 )
+from app.modules.internship.services.internship_enterprise_access_service import effective_grant_status
 from app.services import file_business_binding_service
 from app.services.db_service import _iso
 
@@ -196,17 +197,23 @@ def update_company_profile_in_tx(db, *, context, payload: dict[str, Any]) -> dic
     return _company_row(row)
 
 
-def _campaign(db, context) -> InternshipRecruitmentCampaign:
-    row = db.scalar(
-        select(InternshipRecruitmentCampaign).where(
+def _campaign(db, context, *, lock: bool = False) -> InternshipRecruitmentCampaign:
+    stmt = select(InternshipRecruitmentCampaign).where(
             InternshipRecruitmentCampaign.id == context.campaign_id,
             InternshipRecruitmentCampaign.tenant_id == context.tenant_id,
             InternshipRecruitmentCampaign.is_deleted.is_(False),
         )
-    )
+    row = db.scalar(stmt.with_for_update().execution_options(populate_existing=True) if lock else stmt)
     if not row:
         raise not_found("招聘季不存在或不在当前企业上下文")
     return row
+
+
+def _writable_campaign(db, context) -> InternshipRecruitmentCampaign:
+    campaign = _campaign(db, context, lock=True)
+    if str(campaign.status or "").upper() != "OPEN":
+        raise AppException("DATA_CONFLICT", "招聘季当前不可编辑，岗位记录仅供查阅")
+    return campaign
 
 
 def _campaign_row(row: InternshipRecruitmentCampaign, participation_status: str | None = None) -> dict:
@@ -245,7 +252,30 @@ def campaigns_for_principal_in_tx(db, *, principal) -> list[dict]:
         )
         .order_by(InternshipRecruitmentCampaign.id.desc())
     ).all()
-    return [_campaign_row(campaign, participation.status) for participation, campaign in rows]
+    # Same member/company and exact recruitment or collaboration scope as context resolution.
+    # Keep company participation visible even when this member cannot enter it.
+    grants = db.scalars(select(InternshipEnterpriseAccessGrant).where(
+        InternshipEnterpriseAccessGrant.tenant_id == principal.tenant_id,
+        InternshipEnterpriseAccessGrant.member_id == principal.member_id,
+        InternshipEnterpriseAccessGrant.company_id == principal.company_id,
+        InternshipEnterpriseAccessGrant.is_deleted.is_(False),
+    )).all()
+    by_scope = {}
+    for grant in grants:
+        by_scope.setdefault((grant.grant_type, grant.campaign_id, grant.batch_id), grant)
+    now = datetime.utcnow()
+    result = []
+    for participation, campaign in rows:
+        grant = by_scope.get(("RECRUITMENT", campaign.id, campaign.batch_id))
+        collab = by_scope.get(("INTERNSHIP_COLLAB", None, campaign.batch_id))
+        status = effective_grant_status(grant, now=now) if grant else "MISSING"
+        result.append({
+            **_campaign_row(campaign, participation.status),
+            "recruitmentAccessStatus": status,
+            "recruitmentAvailable": participation.status == "ACCEPTED" and status == "ACTIVE",
+            "collaborationAvailable": bool(collab and effective_grant_status(collab, now=now) == "ACTIVE"),
+        })
+    return result
 
 
 def context_projection_in_tx(db, *, context) -> dict:
@@ -352,8 +382,27 @@ def list_positions_in_tx(db, *, context, page: int, page_size: int, status: str 
     return {"items": [_position_row(row) for row in rows], "total": total, "page": page, "pageSize": page_size}
 
 
+def school_returns_in_tx(db, *, context, position_ids: list[int]) -> dict[int, dict]:
+    """Only deliberately enterprise-visible return notes, never general staff audit data."""
+    if not position_ids:
+        return {}
+    latest = select(func.max(InternshipAuditTrail.id)).where(
+        InternshipAuditTrail.tenant_id == context.tenant_id,
+        InternshipAuditTrail.target_type == "POSITION",
+        InternshipAuditTrail.target_id.in_(position_ids),
+        InternshipAuditTrail.action == "STATUS_RETURN",
+        InternshipAuditTrail.detail_json["enterpriseVisible"].as_boolean().is_(True),
+    ).group_by(InternshipAuditTrail.target_id)
+    rows = db.scalars(select(InternshipAuditTrail).where(InternshipAuditTrail.id.in_(latest))).all()
+    return {row.target_id: {
+        "id": str(row.id), "reason": str((row.detail_json or {}).get("reason") or ""),
+        "returnedAt": _iso(row.occurred_at),
+    } for row in rows}
+
+
 def get_position_in_tx(db, *, context, position_id: int) -> dict:
-    return _position_row(_position(db, context, position_id))
+    row = _position(db, context, position_id)
+    return {**_position_row(row), "schoolReturn": school_returns_in_tx(db, context=context, position_ids=[row.id]).get(row.id)}
 
 
 def _coerce_number(value, field: str, *, integer: bool = False, minimum=None, maximum=None):
@@ -423,9 +472,7 @@ def _validate_position_relations_in_tx(db, *, context, values: dict[str, Any]) -
 
 def create_position_in_tx(db, *, context, payload: dict[str, Any]) -> dict:
     _assert_editor(context)
-    campaign = _campaign(db, context)
-    if str(campaign.status or "").upper() in {"CLOSED", "ARCHIVED"}:
-        raise AppException("DATA_CONFLICT", "招聘季已关闭，不能新建岗位")
+    _writable_campaign(db, context)
     values = _normalized_position_values(payload, creating=True)
     _validate_position_relations_in_tx(db, context=context, values=values)
     company = _company(db, context)
@@ -454,6 +501,7 @@ def create_position_in_tx(db, *, context, payload: dict[str, Any]) -> dict:
 
 def update_position_in_tx(db, *, context, position_id: int, payload: dict[str, Any]) -> dict:
     _assert_editor(context)
+    _writable_campaign(db, context)
     if payload.get("expectedVersion") is None:
         raise AppException("DATA_CONFLICT", "编辑岗位必须携带当前版本")
     row = _position(db, context, position_id, lock=True)
@@ -504,7 +552,7 @@ def _assert_submit_ready(row: InternshipPosition) -> None:
 
 def submit_position_in_tx(db, *, context, position_id: int, expected_version: int | None) -> dict:
     _assert_editor(context)
-    campaign = _campaign(db, context)
+    campaign = _campaign(db, context, lock=True)
     assert_campaign_operation_window(campaign, "POSITION_SUBMIT")
     row = _position(db, context, position_id, lock=True)
     if row.status != "DRAFT":
@@ -528,9 +576,7 @@ def submit_position_in_tx(db, *, context, position_id: int, expected_version: in
 
 def withdraw_position_in_tx(db, *, context, position_id: int, expected_version: int | None) -> dict:
     _assert_editor(context)
-    campaign = _campaign(db, context)
-    if str(campaign.status or "").upper() != "OPEN":
-        raise AppException("DATA_CONFLICT", "招聘季当前状态不允许撤回岗位")
+    _writable_campaign(db, context)
     row = _position(db, context, position_id, lock=True)
     if row.status != "PENDING":
         raise AppException("DATA_CONFLICT", "仅待学校审核岗位可撤回")
@@ -558,14 +604,90 @@ def dashboard_in_tx(db, *, context) -> dict:
     published = int(db.scalar(select(func.count()).select_from(base.where(InternshipPosition.status == "PUBLISHED").subquery())) or 0)
     pending = int(db.scalar(select(func.count()).select_from(base.where(InternshipPosition.status == "PENDING").subquery())) or 0)
     _rows, applicants = decision_svc.list_owned_applications_in_tx(db, context=context, page=1, page_size=1)
-    _rows, todo = decision_svc.list_owned_applications_in_tx(db, context=context, page=1, page_size=1, decision_status="PENDING")
+    pending_applications, todo = decision_svc.list_owned_applications_in_tx(
+        db, context=context, page=1, page_size=3, decision_status="PENDING")
     _rows, interview = decision_svc.list_owned_applications_in_tx(db, context=context, page=1, page_size=1, decision_status="INTERVIEW")
     _rows, accept_intent = decision_svc.list_owned_applications_in_tx(db, context=context, page=1, page_size=1, decision_status="ACCEPT_INTENT")
     tasks = []
-    if pending:
-        tasks.append({"key": "pending-positions", "title": f"{pending} 个岗位等待学校审核", "description": "待审核岗位不可继续编辑；如需修改先撤回到草稿。", "href": "/positions", "actionLabel": "查看岗位"})
-    if todo:
-        tasks.append({"key": "pending-applications", "title": f"{todo} 份报名申请待处理", "description": "仅企业管理员/HR可处理，所有决定继续由服务端校验招聘季和企业范围。", "href": "/applicants", "actionLabel": "处理报名"})
+    campaign = _campaign(db, context)
+    writable = _role(context) in _EDITOR_ROLES and campaign.status == "OPEN"
+    if writable:
+        public_return = select(func.max(InternshipAuditTrail.id)).where(
+            InternshipAuditTrail.tenant_id == context.tenant_id,
+            InternshipAuditTrail.target_type == "POSITION",
+            InternshipAuditTrail.target_id == InternshipPosition.id,
+            InternshipAuditTrail.action == "STATUS_RETURN",
+            InternshipAuditTrail.detail_json["enterpriseVisible"].as_boolean().is_(True),
+        ).correlate(InternshipPosition).scalar_subquery()
+        last_submission = select(func.max(InternshipAuditTrail.id)).where(
+            InternshipAuditTrail.tenant_id == context.tenant_id,
+            InternshipAuditTrail.target_type == "POSITION",
+            InternshipAuditTrail.target_id == InternshipPosition.id,
+            InternshipAuditTrail.action.in_(["STATUS_SUBMIT", "ENTERPRISE_POSITION_SUBMIT", "ENTERPRISE_POSITION_WITHDRAW"]),
+        ).correlate(InternshipPosition).scalar_subquery()
+        needs_correction = func.coalesce(public_return > func.coalesce(last_submission, 0), False)
+        draft_rows = db.execute(base.add_columns(needs_correction).where(InternshipPosition.status == "DRAFT").order_by(
+            needs_correction.desc(), InternshipPosition.updated_at.desc(), InternshipPosition.id.desc(),
+        ).limit(3)).all()
+        drafts = [position for position, _ in draft_rows]
+        returns = school_returns_in_tx(db, context=context, position_ids=[p.id for p in drafts])
+        for position, correction_pending in draft_rows:
+            position_id = str(position.id)
+            returned = returns.get(position.id) if correction_pending else None
+            tasks.append({
+                "key": f"position:{position_id}",
+                "objectType": "INTERNSHIP_POSITION",
+                "objectId": position_id,
+                "title": f"{position.title} · {'待补正' if returned else '草稿待提交'}",
+                "description": returned["reason"] if returned else "继续完善岗位资料，保存后提交学校审核。",
+                "whyHere": "学校已退回该岗位，请按意见补充。" if returned else "该岗位尚未提交学校审核。",
+                "recentChange": "学校已给出补正意见" if returned else f"岗位版本 v{int(position.version or 0)}",
+                "waitingOn": "企业管理员或 HR 完善原岗位资料",
+                "nextActor": "重新提交后由学校审核发布条件" if returned else "提交后由学校审核发布条件",
+                "href": f"/positions/{position_id}/edit?campaignId={context.campaign_id}",
+                "actionLabel": "补正这个岗位" if returned else "继续填写",
+                "resumeKey": f"enterprise:position:{position_id}",
+            })
+    for application in pending_applications:
+        application_id = str(application.get("applicationId") or "")
+        student = dict(application.get("student") or {})
+        student_name = student.get("realName") or "学生"
+        position_title = application.get("positionTitle") or "申请岗位"
+        submitted_at = application.get("submittedAt") or "提交时间待核对"
+        tasks.append({
+            "key": f"application:{application_id}",
+            "objectType": "INTERNSHIP_APPLICATION",
+            "objectId": application_id,
+            "title": f"{student_name} · {position_title}",
+            "description": f"第 {int(application.get('volunteerNo') or 0)} 志愿，仍等待企业处理。",
+            "whyHere": "该报名属于当前企业与招聘季，企业决定尚未形成。",
+            "recentChange": f"学生提交于 {submitted_at}",
+            "waitingOn": "等待企业管理员或 HR 核对材料并作出企业决定",
+            "nextActor": "如选择拟接收，下一步仍由学校最终确认正式落岗",
+            "href": f"/applications/{application_id}",
+            "actionLabel": "处理这份报名",
+            "resumeKey": f"enterprise:application:{application_id}",
+        })
+    pending_positions = db.scalars(
+        base.where(InternshipPosition.status == "PENDING").order_by(
+            InternshipPosition.updated_at.desc(), InternshipPosition.id.desc()).limit(2)
+    ).all()
+    for position in pending_positions:
+        position_id = str(position.id)
+        tasks.append({
+            "key": f"position:{position_id}",
+            "objectType": "INTERNSHIP_POSITION",
+            "objectId": position_id,
+            "title": f"{position.title} · 待学校审核",
+            "description": "岗位已提交，当前不可直接编辑；确需修改时可从详情撤回到草稿。",
+            "whyHere": "学校尚未完成岗位发布审核。",
+            "recentChange": f"岗位版本 v{int(position.version or 0)}",
+            "waitingOn": "等待学校审核岗位发布条件",
+            "nextActor": "学校通过后岗位才会进入学生可见的正式岗位库",
+            "href": f"/positions/{position_id}/edit",
+            "actionLabel": "查看这个岗位",
+            "resumeKey": f"enterprise:position:{position_id}",
+        })
     return {
         "metrics": {
             "published": published,

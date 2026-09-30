@@ -23,15 +23,17 @@ export async function internshipStaffLogin(page) {
   await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
 }
 
-export async function confirmInternshipPositionStatus(page, positionId, triggerName, confirmName) {
-  await page.getByRole('button', { name: triggerName, exact: true }).click()
+export async function confirmInternshipPositionStatus(page, positionId, actionName) {
+  await page.getByRole('link', { name: '发布管理', exact: true }).click()
+  const actionLabel = `${actionName}岗位`
+  await page.getByRole('button', { name: actionLabel, exact: true }).click()
   const dialog = page.getByRole('dialog')
   await expect(dialog).toBeVisible()
   const responsePromise = page.waitForResponse((response) =>
     internshipApiPath(response) === `/api/v1/internship/positions/${positionId}/status`
       && response.request().method() === 'POST'
   )
-  await dialog.getByRole('button', { name: confirmName, exact: true }).click()
+  await dialog.getByRole('button', { name: actionLabel, exact: true }).click()
   const response = await responsePromise
   const { text, body } = await internshipPayloadOf(response)
   return { response, text, body }

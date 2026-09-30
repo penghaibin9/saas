@@ -314,7 +314,8 @@ def _mobile_teacher_identity_deny(request: Request):
 
 
 _READONLY_EXEMPT_PREFIXES = (
-    "/api/v1/auth", "/api/v1/platform", "/health", "/docs", "/openapi", "/redoc",
+    "/api/v1/auth", "/api/v1/platform", "/api/v1/internship/enterprise-portal/auth",
+    "/health", "/docs", "/openapi", "/redoc",
 )
 _DEMO_READONLY_TENANT_ID = str(DEMO_SCHOOL.tenant_id)
 

@@ -166,8 +166,9 @@ def sel_record_adjust(
 
 
 @router.get("/selection/batches/{batchId}/reselect-guide", summary="补选指引（CLOSED 批次，教务处视角）")
-def sel_reselect_guide(batchId: int = Path(...), user=Depends(require_permission(_SEL_VIEW))):
-    return success(selection_svc.reselect_guide(user, batchId))
+def sel_reselect_guide(batchId: int = Path(...), page: int = 1, pageSize: int = 20,
+                       user=Depends(require_permission(_SEL_VIEW))):
+    return success(selection_svc.reselect_guide(user, batchId, page, pageSize))
 
 
 @router.get("/selection/student/reselect-guide", summary="补选指引（学生本人待补选记录+可选课程，06号卡）")

@@ -142,7 +142,7 @@ test('S7 通知设置把站内分类与微信订阅分成两个区块', () => {
 
 test('S7 微信侧状态只认服务端，未配置/未授权都如实显示', () => {
   assert.match(notify, /v-if="!wechat\.configured"/)
-  assert.match(notify, /学校尚未开通微信提醒/)
+  assert.match(notify, /微信提醒暂不可用/)
   assert.match(notify, /wechat\.effective \? '已授权' : '未授权'/)
   // 点过按钮不等于开启：授权结果必须回服务端复核
   assert.match(notify, /complete: \(\) => \{[\s\S]*?this\.load\(\)/)
@@ -151,7 +151,7 @@ test('S7 微信侧状态只认服务端，未配置/未授权都如实显示', (
 test('S7 订阅授权只由用户点击触发，且只请求已配置的模板', () => {
   assert.match(notify, /requestSubscribe\(\)/)
   assert.match(notify, /@click="requestSubscribe"/)
-  assert.match(notify, /scenes \|\| \[\]\)\.filter\(\(scene\) => scene\.ready\)/)
+  assert.match(notify, /scene\.ready && scene\.templateId/)
   assert.match(notify, /if \(!this\.wechat\.configured \|\| !ready\.length\)/)
   assert.doesNotMatch(notify, /onLoad[\s\S]{0,200}requestSubscribeMessage/, '不得在页面加载时自动弹授权')
 })

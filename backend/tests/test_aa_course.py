@@ -13,6 +13,8 @@ C16 已启用课程强制新版本后 prevVersionId 回链+旧版本仍在列表
 """
 from __future__ import annotations
 
+from tests.support_academic_review_identity import ensure_course_review_college
+
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
@@ -24,11 +26,34 @@ def _hdr(client, login_name):
 
 
 def _course(client, hdr, code="CS101", **extra):
+    owner_college_id = extra.pop("ownerCollegeId", None) or ensure_course_review_college()
     body = {"courseCode": code, "courseName": "数据结构", "courseNameEn": "Data Structure",
             "category": "MAJOR_CORE", "nature": "REQUIRED", "credit": 4,
             "hoursTotal": 64, "hoursTheory": 48, "hoursPractice": 16, "examMode": "EXAM",
-            "isCore": True, **extra}
+            "ownerCollegeId": str(owner_college_id), "isCore": True, **extra}
     return client.post(f"{BASE}/courses", headers=hdr, json=body)
+
+
+def _course_review(client, course_id, action="APPROVE", reason=""):
+    """按当前真实节点选择审核 actor；学院节点不得由校级账号代做。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse
+
+    db = get_sessionmaker()()
+    try:
+        course = db.query(AaCourse).filter(
+            AaCourse.id == int(course_id),
+            AaCourse.tenant_id == TID,
+            AaCourse.is_deleted.is_(False),
+        ).first()
+        assert course is not None
+        login_name = "college_admin01" if course.status == "COLLEGE_REVIEW" else "school_admin01"
+    finally:
+        db.close()
+    body = {"action": action}
+    if reason:
+        body["reason"] = reason
+    return client.post(f"{BASE}/courses/{course_id}/review", headers=_hdr(client, login_name), json=body)
 
 
 def _seed_teacher(db_mode, login="t_course_owner01", name="王老师"):
@@ -97,9 +122,9 @@ def test_c1_two_level_review_to_enabled(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     cid = _course(client, hdr).json()["data"]["courseId"]
     client.post(f"{BASE}/courses/{cid}/submit", headers=hdr)
-    r1 = client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"}).json()
+    r1 = _course_review(client, cid).json()
     assert r1["data"]["status"] == "ACADEMIC_REVIEW"  # 学院审过→教务审
-    r2 = client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"}).json()
+    r2 = _course_review(client, cid).json()
     assert r2["data"]["status"] == "ENABLED"  # 教务审过→启用
     assert r2["data"]["categoryLabel"] == "专业核心" and r2["data"]["natureLabel"] == "必修"
 
@@ -114,8 +139,8 @@ def test_c3_enabled_edit_forces_new_version(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     cid = _course(client, hdr, code="CS103").json()["data"]["courseId"]
     client.post(f"{BASE}/courses/{cid}/submit", headers=hdr)
-    client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})
-    client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # ENABLED
+    _course_review(client, cid)
+    _course_review(client, cid)  # ENABLED
     # 改已启用课程 → 生成 v2 草稿
     r = client.put(f"{BASE}/courses/{cid}", headers=hdr, json={
         "courseCode": "CS103", "courseName": "数据结构(修订)", "category": "MAJOR_CORE",
@@ -134,8 +159,7 @@ def test_c5_reject_returns(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     cid = _course(client, hdr, code="CS105").json()["data"]["courseId"]
     client.post(f"{BASE}/courses/{cid}/submit", headers=hdr)
-    r = client.post(f"{BASE}/courses/{cid}/review", headers=hdr,
-                    json={"action": "RETURN", "reason": "学时构成需调整"}).json()
+    r = _course_review(client, cid, action="RETURN", reason="学时构成需调整").json()
     assert r["data"]["status"] == "RETURNED"
 
 
@@ -170,8 +194,8 @@ def test_c9_disable_blocked_by_live_program_reference_then_allowed(client, db_mo
     hdr = _hdr(client, "school_admin01")
     cid = _course(client, hdr, code="CS111").json()["data"]["courseId"]
     client.post(f"{BASE}/courses/{cid}/submit", headers=hdr)
-    client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})
-    client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # ENABLED
+    _course_review(client, cid)
+    _course_review(client, cid)  # ENABLED
     pid = _seed_live_program_reference(db_mode, cid)
     # 被在途/生效方案引用 → 停用 400 拦截
     assert client.post(f"{BASE}/courses/{cid}/disable", headers=hdr).status_code == 400
@@ -181,8 +205,8 @@ def test_c9_disable_blocked_by_live_program_reference_then_allowed(client, db_mo
     # 未被引用的课程：停用/启用正常闭环
     cid2 = _course(client, hdr, code="CS112").json()["data"]["courseId"]
     client.post(f"{BASE}/courses/{cid2}/submit", headers=hdr)
-    client.post(f"{BASE}/courses/{cid2}/review", headers=hdr, json={"action": "APPROVE"})
-    client.post(f"{BASE}/courses/{cid2}/review", headers=hdr, json={"action": "APPROVE"})
+    _course_review(client, cid2)
+    _course_review(client, cid2)
     d = client.post(f"{BASE}/courses/{cid2}/disable", headers=hdr).json()
     assert d["data"]["status"] == "DISABLED"
     e = client.post(f"{BASE}/courses/{cid2}/enable", headers=hdr).json()
@@ -195,7 +219,9 @@ def test_c10_teacher_search_selector(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     tid = _seed_teacher(db_mode, login="t_search01", name="张三")
     r = client.get(f"{BASE}/courses/teachers/search", headers=hdr, params={"keyword": "张三"}).json()
-    assert any(it["value"] == str(tid) for it in r["data"]["items"])
+    teacher = next(it for it in r["data"]["items"] if it["value"] == str(tid))
+    assert teacher["loginName"] == "t_search01"
+    assert teacher["teacherKey"] == "t_search01"
 
 
 def test_c11_student_forbidden_on_new_endpoints(client, db_mode):
@@ -287,8 +313,8 @@ def test_c16_prev_version_id_exposed_for_archive_view(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     cid = _course(client, hdr, code="CS205").json()["data"]["courseId"]
     client.post(f"{BASE}/courses/{cid}/submit", headers=hdr)
-    client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})
-    client.post(f"{BASE}/courses/{cid}/review", headers=hdr, json={"action": "APPROVE"})  # ENABLED v1
+    _course_review(client, cid)
+    _course_review(client, cid)  # ENABLED v1
     r = client.put(f"{BASE}/courses/{cid}", headers=hdr, json={
         "courseCode": "CS205", "courseName": "数据结构(修订)", "category": "MAJOR_CORE",
         "nature": "REQUIRED", "credit": 5, "hoursTotal": 64, "hoursTheory": 48,

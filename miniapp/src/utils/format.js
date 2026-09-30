@@ -41,4 +41,12 @@ export function clampPercent(v) {
   return Math.max(0, Math.min(100, Math.round(n)))
 }
 
-export default { pad2, fromNow, deadlineText, isOverdue, clampPercent }
+/** 将带时区的接口时间转换为设备本地时间。 */
+export function formatDateTime(input) {
+  if (!input) return '—'
+  const date = new Date(input)
+  if (Number.isNaN(date.getTime())) return '—'
+  return [date.getFullYear(), pad2(date.getMonth() + 1), pad2(date.getDate())].join('-') + ' ' + pad2(date.getHours()) + ':' + pad2(date.getMinutes())
+}
+
+export default { formatDateTime, pad2, fromNow, deadlineText, isOverdue, clampPercent }

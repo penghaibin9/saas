@@ -291,6 +291,13 @@ def get_my_course_detail(course_id, user):
 def start_my_course(course_id, user):
     with session() as db:
         course, student, record, _ = _course_and_context(db, course_id, user, for_write=True)
+        from app.modules.internship.services.internship_scope import lock_internship_record
+        from app.modules.internship.services.internship_record_resolver import ACTIVE_RECORD_STATUSES
+        record = lock_internship_record(db, record.id)
+        if record.student_id != student.id or record.batch_id != course.batch_id:
+            raise AppException("NO_PERMISSION", "该课程不属于当前学生选择的实习批次")
+        if record.status not in ACTIVE_RECORD_STATUSES:
+            raise AppException("DATA_CONFLICT", "实习记录状态已变化，请重新读取")
         row = db.scalar(_completion_query(record.id, course.id).with_for_update())
         if row and str(row.course_version or "") != str(course.course_version or ""):
             _reset_for_course_version(db, row, course, user, start=True)
@@ -473,7 +480,7 @@ def ensure_completion(body, user=None):
         raise AppException("VALIDATION_ERROR", "internshipId 与 courseId 必填")
     with session() as db:
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
-        record = assert_internship_record_scope(db, b["internshipId"], user, "创建安全教育记录")
+        record = assert_internship_record_scope(db, b["internshipId"], user, "创建安全教育记录", lock=True)
         course = db.get(InternshipSafetyCourse, _as_id(b["courseId"]))
         if (not course or course.tenant_id != _tid() or course.is_deleted or
                 course.status != "ACTIVE" or course.batch_id != record.batch_id):

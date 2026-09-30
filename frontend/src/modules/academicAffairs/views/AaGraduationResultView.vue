@@ -10,6 +10,7 @@
     </template>
 
     <div class="mp-stack">
+      <AppInlineAlert v-if="writeNotice" :type="pendingWrite ? 'warning' : 'success'" :description="writeNotice" />
       <AppInlineAlert
         type="info"
         title="逐项证据不是一句结论"
@@ -113,6 +114,11 @@ import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAle
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { GRAD_ITEM_LABEL, GRAD_ITEM_RESULT, gradItemColor, OVERALL_LABEL, overallColor, CONCLUSION_LABEL, GRAD_STATUS_LABEL } from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
+import { currentUserFromToken } from '@/services/http/client'
+import { matchPermission } from '@/config/navPlan'
+import { gradeError } from './parallel-c/grade-review'
+
+const exactId=value=>typeof value==='string'&&value.trim()?value:(typeof value==='number'&&Number.isSafeInteger(value)?String(value):'')
 
 const SOURCE_LABELS = {
   STUDENT_PROFILE: '学生主档', ACADEMIC_GRADE: '正式成绩主账', PROGRAM_AND_GRADE: '培养方案与正式成绩',
@@ -128,15 +134,19 @@ export default {
   data() {
     return {
       CONCLUSION_LABEL,
+      alive:true,scope:0,seq:0,rosterSeq:0,pendingWrite:null,writeNotice:'',
       loading: true, error: '', rows: [], rosters: null, busy: false,
       filters: { overall: '' },
-      pagination: { page: 1, pageSize: 50, total: 0 },
+      pagination: { page: 1, pageSize: 20, total: 0 },
       finalDlg: { visible: false, submitting: false, resultId: '', conclusion: 'GRADUATED' },
       collegeRejectDlg: { visible: false, row: null }
     }
   },
   computed: {
-    batchId() { return this.$route.params.batchId },
+    batchId() { return String(this.$route.params.batchId) },
+    identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns])},
+    canCollege(){return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.graduation.collegeReview')},
+    canFinal(){return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.graduation.final')},
     overallOptions() {
       return [
         { value: '', label: '全部预审结果' },
@@ -145,15 +155,23 @@ export default {
       ]
     }
   },
+  watch:{identity(){this.clearPrivate();this.load();this.loadRosters()},batchId(){this.clearPrivate();this.load();this.loadRosters()}},
   created() { this.load(); this.loadRosters() },
+  beforeUnmount(){this.alive=false;this.clearPrivate()},
   methods: {
+    capture(){return {scope:this.scope,identity:this.identity,batchId:this.batchId}},
+    current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.batchId===this.batchId},
+    denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
+    clearPrivate(){this.scope++;this.seq++;this.rosterSeq++;this.rows=[];this.rosters=null;this.error='';this.loading=false;this.busy=false;this.pendingWrite=null;this.writeNotice='';this.finalDlg={visible:false,submitting:false,resultId:'',conclusion:'GRADUATED'};this.collegeRejectDlg={visible:false,row:null}},
+    fail(err,fallback){if(this.denied(err))this.clearPrivate();return gradeError(err,fallback)},
+    signature(row){return JSON.stringify([String(row?.resultId||''),String(row?.batchId||''),row?.status||'',row?.overall||'',(row?.items||[]).map(item=>[item.item,item.result,item.evidenceHash||'',item.checkedAt||''])])},
     gradItemColor, overallColor,
     itemLabel(i) { return GRAD_ITEM_LABEL[i] || i },
     itemResult(r) { return GRAD_ITEM_RESULT[r] || r },
     overallLabel(o) { return OVERALL_LABEL[o] || o || '' },
-    statusLabel(s) { return GRAD_STATUS_LABEL[s] || s || '' },
+    statusLabel(s) { return GRAD_STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     conclusionLabel(c) { return CONCLUSION_LABEL[c] || c },
-    sourceLabel(value) { return SOURCE_LABELS[value] || value || '—' },
+    sourceLabel(value) { return SOURCE_LABELS[value] || (value ? '待确认' : '—') },
     shortHash(value) { return value ? `${String(value).slice(0, 10)}…` : '—' },
     formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 19) : '—' },
     drillEvidence(item) {
@@ -162,10 +180,10 @@ export default {
       this.$router.push(route)
     },
     canCollegeApprove(r) {
-      return Boolean(r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
+      return Boolean(this.canCollege && !this.pendingWrite && r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
     },
-    canCollegeReject(r) { return Boolean(r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
-    canNormalFinal(r) { return Boolean(r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
+    canCollegeReject(r) { return Boolean(this.canCollege && !this.pendingWrite && r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
+    canNormalFinal(r) { return Boolean(this.canFinal && !this.pendingWrite && r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     search() { this.pagination.page = 1; this.load() },
     onPaginationChange({ page }) {
       if (!page || page === this.pagination.page || this.loading) return
@@ -173,27 +191,44 @@ export default {
       this.load()
     },
     async loadRosters() {
+      const c=this.capture(),seq=++this.rosterSeq
       try {
-        const res = await academicAffairsApi.getGradRosters(this.batchId)
-        if (res.code === 0) this.rosters = res.data
-        else toast.error(res.message || '三名单加载失败')
+        const res=await academicAffairsApi.getGradRosters(c.batchId)
+        if(!this.current(c)||seq!==this.rosterSeq)return
+        if(res.code!==0)throw res
+        if(!['graduated','completed','delayed'].every(key=>Array.isArray(res.data?.[key])))throw {code:503}
+        this.rosters=res.data
       } catch (e) {
-        toast.error((e && e.message) || '三名单加载失败')
+        if(this.current(c)&&seq===this.rosterSeq)toast.error(this.fail(e,'三名单加载失败'))
       }
     },
-    async collegeReview(r, action) {
-      if (this.busy || action !== 'APPROVE' || !this.canCollegeApprove(r)) return
-      this.busy = true
-      try {
-        const res = await academicAffairsApi.collegeReviewGrad(r.resultId, 'APPROVE', '')
-        if (res.code === 0) { toast.success('学院初审已通过'); await this.load() }
-        else toast.error(res.message || '处理失败')
-      } catch (e) {
-        toast.error((e && e.message) || '处理失败')
-      } finally {
-        this.busy = false
-      }
+    async writeResult(kind,row,send,verify,success){
+      if(this.pendingWrite||!row)return false
+      const resultId=exactId(row.resultId),c=this.capture(),shown=this.signature(row)
+      if(!resultId||String(row.batchId)!==c.batchId)return false
+      this.busy=true
+      try{
+        const before=await academicAffairsApi.getGradResult(resultId)
+        if(!this.current(c))return false
+        if(before?.code!==0)throw before
+        if(exactId(before.data?.resultId)!==resultId||String(before.data?.batchId)!==c.batchId)throw {code:409}
+        if(this.signature(before.data)!==shown)throw {code:409,message:'正式结果已变化'}
+        this.pendingWrite={kind,resultId,batchId:c.batchId};this.writeNotice='结果待核实，请勿重复操作。'
+        let res;try{res=await send(before.data)}catch(err){res=err}
+        if(!this.current(c))return false
+        if(res?.code!==0&&/403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingWrite=null;this.writeNotice='';throw res}
+        const after=await academicAffairsApi.getGradResult(resultId)
+        if(!this.current(c))return false
+        if(res?.code===0&&after?.code===0&&exactId(after.data?.resultId)===resultId&&String(after.data?.batchId)===c.batchId&&verify(after.data,res)){this.pendingWrite=null;this.writeNotice=success;return true}
+        this.writeNotice='结果待核实：已读取当前正式结果，但不能证明本次操作完成，请勿重复操作。';return false
+      }catch(err){if(this.current(c))toast.error(this.fail(err,'操作前核对未完成，请重新读取。'));return false}
+      finally{if(this.current(c))this.busy=false}
     },
+   async collegeReview(r, action) {
+     if (this.busy || action !== 'APPROVE' || !this.canCollegeApprove(r)) return
+      const ok=await this.writeResult('college-approve',r,()=>academicAffairsApi.collegeReviewGrad(r.resultId,'APPROVE',''),fresh=>fresh.status==='ACADEMIC_REVIEW','已核对正式学院初审通过状态。')
+      if(ok){toast.success(this.writeNotice);await this.load()}
+   },
     openCollegeReject(r) {
       if (!this.canCollegeReject(r) || this.busy) return
       this.collegeRejectDlg = { visible: true, row: r }
@@ -201,22 +236,11 @@ export default {
     async doCollegeReject({ reason } = {}) {
       const row = this.collegeRejectDlg.row
       const note = String(reason || '').trim()
-      if (!row || this.busy) return
-      if (note.length < 5) { toast.error('驳回原因不少于 5 字'); return }
-      this.busy = true
-      try {
-        const res = await academicAffairsApi.collegeReviewGrad(row.resultId, 'REJECT', note)
-        if (res.code === 0) {
-          toast.success('学院初审已驳回')
-          this.collegeRejectDlg = { visible: false, row: null }
-          await this.load()
-        } else toast.error(res.message || '处理失败')
-      } catch (e) {
-        toast.error((e && e.message) || '处理失败')
-      } finally {
-        this.busy = false
-      }
-    },
+     if (!row || this.busy) return
+     if (note.length < 5) { toast.error('驳回原因不少于 5 字'); return }
+      const ok=await this.writeResult('college-reject',row,()=>academicAffairsApi.collegeReviewGrad(row.resultId,'REJECT',note),fresh=>fresh.status==='REJECTED'&&String(fresh.reviewNote||'')===note,'已核对正式学院初审退回状态和原因。')
+      if(ok){toast.success(this.writeNotice);this.collegeRejectDlg={visible:false,row:null};await this.load()}
+   },
     openFinal(r) {
       if (!this.canNormalFinal(r)) {
         toast.error('当前结果不满足普通教务终审条件，请先重新预审并核对系统结论')
@@ -232,47 +256,38 @@ export default {
         toast.error('当前结果已不满足普通终审条件，请重新加载并核对系统预审')
         return
       }
-      if (this.finalDlg.submitting) return
-      this.finalDlg.submitting = true
+     if (this.finalDlg.submitting) return
+      this.finalDlg.submitting=true
       try {
-        const fresh = await academicAffairsApi.getGradResult(this.finalDlg.resultId)
-        if (fresh.code !== 0) { toast.error(fresh.message || '终审前状态重读失败'); return }
-        if (!this.canNormalFinal(fresh.data)) {
-          this.finalDlg.visible = false
-          toast.error('终审前状态已变化，请重新加载并核对系统预审')
-          await this.load()
-          return
-        }
-        const res = await academicAffairsApi.finalGrad(this.finalDlg.resultId, this.finalDlg.conclusion, true)
-        if (res.code === 0) {
-          this.finalDlg.visible = false
-          toast.success('终审完成，已写学籍')
-          await this.load()
-          await this.loadRosters()
-        } else toast.error(res.message || '终审失败')
-      } catch (e) {
-        toast.error((e && e.message) || '终审失败')
-      } finally {
-        this.finalDlg.submitting = false
-      }
-    },
+        const fresh=await academicAffairsApi.getGradResult(this.finalDlg.resultId)
+        if(fresh?.code!==0||exactId(fresh.data?.resultId)!==exactId(this.finalDlg.resultId)||String(fresh.data?.batchId)!==this.batchId||!this.canNormalFinal(fresh.data))throw fresh
+        Object.assign(row,fresh.data)
+        const conclusion=this.finalDlg.conclusion
+        const ok=await this.writeResult('final',row,before=>{if(before.status!=='ACADEMIC_REVIEW'||before.overall!=='SYSTEM_PASSED')throw {code:409};return academicAffairsApi.finalGrad(before.resultId,conclusion,true)},after=>after.status===conclusion&&after.conclusion===conclusion,`已核对正式终审结论：${CONCLUSION_LABEL[conclusion]||conclusion}。`)
+        if(ok){toast.success(this.writeNotice);this.finalDlg.visible=false;await this.load();await this.loadRosters()}
+      } catch(err) { toast.error(this.fail(err,'终审前核对未完成，请重新读取。')) }
+      finally { this.finalDlg.submitting=false }
+   },
     async load() {
+      const c=this.capture(),seq=++this.seq
       this.loading = true
       this.error = ''
       try {
-        const res = await academicAffairsApi.getGradResults(this.batchId, {
+        const res = await academicAffairsApi.getGradResults(c.batchId, {
           overall: this.filters.overall || undefined,
           page: this.pagination.page,
           pageSize: this.pagination.pageSize
         })
-        if (res.code === 0) {
-          this.rows = res.data.list
-          this.pagination.total = res.data.total
-        } else this.error = res.message || '毕业预审结果加载失败'
+        if(!this.current(c)||seq!==this.seq)return
+        if(res.code!==0)throw res
+        if(!Array.isArray(res.data?.list))throw {code:503}
+        if(res.data.list.some(row=>String(row.batchId)!==c.batchId))throw {code:503}
+        this.rows=res.data.list
+        this.pagination.total = res.data.total
       } catch (e) {
-        this.error = (e && e.message) || '毕业预审结果加载失败'
+        if(this.current(c)&&seq===this.seq)this.error=this.fail(e,'毕业预审结果加载失败')
       } finally {
-        this.loading = false
+        if(this.current(c)&&seq===this.seq)this.loading=false
       }
     }
   }

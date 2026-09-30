@@ -5,7 +5,7 @@
 
 ## 1. 上线前准入
 
-正式环境必须满足：MySQL 8、Redis、Nginx/HTTPS、ClamAV clamd、独立 scheduler、独立 file-scan worker；管理 PC、miniapp H5、学生 PC 三端同一次 release 发布。
+正式环境必须满足：MySQL 8、Redis、Nginx/HTTPS、ClamAV clamd、独立 scheduler、独立 file-scan worker；管理 PC、miniapp H5、学生 PC、企业协同 PC 四个客户端同一次 release 发布。
 
 环境文件以 `deploy/env/backend.systemd.env.example` 为后端示例，同时必须配置 `/etc/school-lifecycle/backup.env`（可用 `BACKUP_ENV_FILE` 显式覆盖）。关键红线包括：
 
@@ -40,7 +40,7 @@ sudo ENV_FILE=/etc/school-lifecycle/backend.env \
   bash scripts/deploy/install-systemd-release.sh --apply
 ```
 
-发布脚本使用排他锁串行执行，负责：创建独立 release、在维护窗口前完成冻结 Python 依赖与三端构建、短暂静默 Web/后台写入者、通过数据治理 backup runner 生成 **MySQL + uploads + manifest + SHA-256 + 异地回读** 的受治理恢复点、`alembic upgrade head`、动态单头/current 校验、原子 symlink 切换、backend/scheduler/file-scan 三服务启动和发布后验收。miniapp H5 必须由当前 release 注入正式 `PUBLIC_BASE_URL`，正式产物不得包含 localhost/127.0.0.1 API origin。
+发布脚本使用排他锁串行执行，负责：创建独立 release、在维护窗口前完成冻结 Python 依赖与四个客户端构建、短暂静默 Web/后台写入者、通过数据治理 backup runner 生成 **MySQL + uploads + manifest + SHA-256 + 异地回读** 的受治理恢复点、`alembic upgrade head`、动态单头/current 校验、原子 symlink 切换、backend/scheduler/file-scan 三服务启动和发布后验收。miniapp H5 必须由当前 release 注入正式 `PUBLIC_BASE_URL`，四个客户端正式产物均不得包含 localhost/127.0.0.1 API origin。
 
 **正式数据库只允许 Alembic 演进。** `0001_init_core_tables` 已改为冻结 MySQL 8 DDL，不再在运行迁移时导入当前 ORM `metadata.create_all`。新增 migration 的 `upgrade()` 必须遵守 expand/contract：同一发布不得直接 drop/rename 旧结构、原位改变类型或直接收紧 `nullable=False` 破坏 N-1 代码兼容；收缩动作在旧代码退役后的后续 release 再做。
 
@@ -60,7 +60,7 @@ sudo ENV_FILE=/etc/school-lifecycle/backend.env \
 - 数据库 current == 仓库动态唯一 Alembic head；
 - ClamAV 可用；
 - COS 模式完成真实小对象 write/delete，或 local 存储合同可用；
-- 管理 PC、miniapp H5、学生 PC 都来自当前 release；
+- 管理 PC、miniapp H5、学生 PC、企业协同 PC 都来自当前 release；
 - 真实 443/TLS/server_name 路径返回 HSTS、CSP、X-Frame-Options、X-Content-Type-Options；
 - production `/docs` 关闭；
 - 未认证业务访问被拒绝。

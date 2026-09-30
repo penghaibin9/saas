@@ -20,13 +20,15 @@ test('internship score workflow correction exposes real return withdraw republis
   const text = buildHelpSearchText(card)
   assert.match(text, /待核算/)
   assert.match(text, /待复核/)
+  assert.match(text, /待发布/)
   assert.match(text, /已发布/)
   assert.match(text, /已撤回/)
-  assert.match(text, /已归档/)
+  assert.match(text, /总档案.*冻结/)
+  assert.doesNotMatch(text, /状态：.*已归档/)
   assert.match(text, /不少于 5 个字/)
   assert.match(text, /撤回后可重新核算/)
   assert.match(text, /最终发布仅限学校管理员/)
-  assert.match(text, /企业评价.*不能手工/)
+  assert.match(text, /客户端不得直接填写五项分数/)
 })
 
 test('graduation grade correction uses real ledger, authoritative sources and lifecycle', () => {

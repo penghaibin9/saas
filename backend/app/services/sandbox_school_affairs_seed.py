@@ -774,6 +774,7 @@ def validate_affairs_facts(db, tenant_id: int) -> dict:
         "fundingIssued": count(FundingDisbursement, FundingDisbursement.bank_status == "ISSUED", FundingDisbursement.is_deleted.is_(False)),
         "disciplineCases": count(DisciplineCase, DisciplineCase.is_deleted.is_(False)),
         "effectiveDiscipline": count(DisciplineCase, DisciplineCase.status == "EFFECTIVE", DisciplineCase.is_deleted.is_(False)),
+        "revokedDiscipline": count(DisciplineCase, DisciplineCase.status == "REVOKED", DisciplineCase.is_deleted.is_(False)),
         "riskRecords": count(AffairsRiskRecord, AffairsRiskRecord.is_deleted.is_(False)),
     }
     expected = {
@@ -790,10 +791,22 @@ def validate_affairs_facts(db, tenant_id: int) -> dict:
         "fundingGranted": EXPECTED_FUNDING_GRANTED,
         "fundingIssued": EXPECTED_FUNDING_GRANTED,
         "disciplineCases": EXPECTED_DISCIPLINE_CASES,
-        "effectiveDiscipline": EXPECTED_EFFECTIVE_DISCIPLINE,
         "riskRecords": EXPECTED_AFFAIRS_RISKS,
     }
     mismatch = {k: {"expected": expected[k], "actual": report[k]} for k in expected if expected[k] != report[k]}
+    # 学工种子刚落库时 50 条处分均为 EFFECTIVE；完整教务主链随后会通过
+    # GRADUATION_CLEARANCE 正式撤销其中 1 条。两种都是合法阶段，但 49 条
+    # EFFECTIVE 若没有对应的 REVOKED 主案，仍必须判为断链。
+    discipline_lifecycle = (report["effectiveDiscipline"], report["revokedDiscipline"])
+    allowed_discipline_lifecycles = {
+        (EXPECTED_EFFECTIVE_DISCIPLINE, 0),
+        (EXPECTED_EFFECTIVE_DISCIPLINE - 1, 1),
+    }
+    if discipline_lifecycle not in allowed_discipline_lifecycles:
+        mismatch["disciplineLifecycle"] = {
+            "expected": sorted(allowed_discipline_lifecycles),
+            "actual": discipline_lifecycle,
+        }
     if mismatch:
         raise RuntimeError(f"20K 学工数据验收失败: {mismatch}")
 

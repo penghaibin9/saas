@@ -13,17 +13,29 @@
 export const ROLE = {
   STUDENT: 'student',
   COUNSELOR: 'counselor', // 辅导员 / 班主任
+  PSYCHOLOGY_TEACHER: 'psychology_teacher', // 心理教师
+  DORM_MANAGER: 'dorm_manager', // 宿管 / 公寓管理员
   MENTOR: 'mentor', // 毕业设计指导教师
   INTERN_MENTOR: 'intern_mentor', // 实习指导教师
   EMPLOYMENT: 'employment', // 就业老师
   ACADEMIC: 'academic', // 教务老师
   COLLEGE_ADMIN: 'college_admin', // 学院管理员
+  SCHOOL_ADMIN: 'school_admin', // 学校管理员
+  STUDENT_AFFAIRS: 'student_affairs', // 学工管理
+  GRADUATION_ADMIN: 'graduation_admin', // 校级毕设管理员
+  GD_COLLEGE_ADMIN: 'gd_college_admin', // 学院毕设管理员
+  GD_MAJOR_ADMIN: 'gd_major_admin', // 专业毕设负责人
+  GD_REVIEWER: 'gd_reviewer', // 正式评阅教师
+  GD_DEFENSE_SECRETARY: 'gd_defense_secretary', // 答辩秘书
+  GD_GRADE_ADMIN: 'gd_grade_admin', // 毕设成绩管理员
   GD_DEFENSE_EXPERT: 'gd_defense_expert' // 答辩评委（面板成员，仅评分权限，答辩秘书 GD_DEFENSE_SECRETARY 侧重分组管理不接此身份）
 }
 
 const BACKEND_ROLE_TO_ROLE_KEY = Object.freeze({
   STUDENT: ROLE.STUDENT,
   COUNSELOR: ROLE.COUNSELOR,
+  PSYCHOLOGY_TEACHER: ROLE.PSYCHOLOGY_TEACHER,
+  DORM_MANAGER: ROLE.DORM_MANAGER,
   GD_MENTOR: ROLE.MENTOR,
   MENTOR: ROLE.MENTOR,
   INTERN_MENTOR: ROLE.INTERN_MENTOR,
@@ -32,6 +44,16 @@ const BACKEND_ROLE_TO_ROLE_KEY = Object.freeze({
   ACADEMIC_TEACHER: ROLE.ACADEMIC,
   ACADEMIC_ADMIN: ROLE.ACADEMIC,
   COLLEGE_ADMIN: ROLE.COLLEGE_ADMIN,
+  SCHOOL_ADMIN: ROLE.SCHOOL_ADMIN,
+  STUDENT_AFFAIRS_ADMIN: ROLE.STUDENT_AFFAIRS,
+  STUDENT_AFFAIRS: ROLE.STUDENT_AFFAIRS,
+  SA_ADMIN: ROLE.STUDENT_AFFAIRS,
+  GRADUATION_ADMIN: ROLE.GRADUATION_ADMIN,
+  GD_COLLEGE_ADMIN: ROLE.GD_COLLEGE_ADMIN,
+  GD_MAJOR_ADMIN: ROLE.GD_MAJOR_ADMIN,
+  GD_REVIEWER: ROLE.GD_REVIEWER,
+  GD_DEFENSE_SECRETARY: ROLE.GD_DEFENSE_SECRETARY,
+  GD_GRADE_ADMIN: ROLE.GD_GRADE_ADMIN,
   GD_DEFENSE_EXPERT: ROLE.GD_DEFENSE_EXPERT
 })
 
@@ -68,7 +90,7 @@ export const roleConfigs = {
       { key: 'contact', label: '联系学生', icon: '☎' },
       { key: 'record', label: '记录联系', icon: '✎' },
       { key: 'risk', label: '风险学生', icon: '⚠' },
-      { key: 'care', label: '创建关怀', icon: '♥' },
+      { key: 'care', label: '谈心谈话', icon: '♥' },
       { key: 'affairs', label: '学工待办', icon: '📋' },
       { key: 'affairsLeave', label: '请假管理', icon: '🗓' },
       { key: 'dormReview', label: '宿舍待办', icon: '🏠' },
@@ -82,6 +104,36 @@ export const roleConfigs = {
       { key: 'orientationVerify', label: '迎新核验', icon: '▣' }
     ],
     permissionActions: ['approval.handle', 'risk.handle', 'student.contact', 'care.create', 'student360.view']
+  },
+  [ROLE.PSYCHOLOGY_TEACHER]: {
+    key: ROLE.PSYCHOLOGY_TEACHER,
+    label: '心理教师',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'PSY_STUDENT',
+    dataScopeText: '专项授权关注学生',
+    workbench: ['risk', 'contact'],
+    quickActions: [
+      { key: 'mental', label: '心理关注', icon: '🧠' },
+      { key: 'risk', label: '风险处置', icon: '⚠' },
+      { key: 'talk', label: '谈心谈话', icon: '💬' },
+      { key: 'contact', label: '联系学生', icon: '☎' }
+    ],
+    permissionActions: ['risk.handle', 'student.contact', 'care.create', 'student360.view']
+  },
+  [ROLE.DORM_MANAGER]: {
+    key: ROLE.DORM_MANAGER,
+    label: '宿管',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'DORM_BUILDING',
+    dataScopeText: '本人负责楼栋',
+    workbench: ['dorm-review', 'risk'],
+    quickActions: [
+      { key: 'dormReview', label: '宿舍待办', icon: '🏠' },
+      { key: 'risk', label: '宿舍风险', icon: '⚠' }
+    ],
+    permissionActions: ['dorm.inspect', 'dorm.recheck', 'dorm.exception.handle']
   },
   [ROLE.MENTOR]: {
     key: ROLE.MENTOR,
@@ -111,6 +163,8 @@ export const roleConfigs = {
     dataScopeText: '本人实习学生',
     workbench: ['intern-review', 'leave', 'risk'],
     quickActions: [
+      { key: 'internship-students', label: '实习学生', icon: '▤' },
+      { key: 'internship-positions', label: '岗位核对', icon: '▦' },
       { key: 'weekly', label: '批阅周报', icon: '▤' },
       { key: 'checkin', label: '异常打卡', icon: '📍' },
       { key: 'makeup', label: '补卡审批', icon: '🔖' },
@@ -120,12 +174,14 @@ export const roleConfigs = {
       { key: 'stu-eval', label: '实习鉴定', icon: '📋' },
       { key: 'ent-eval', label: '企业评价', icon: '🏢' },
       { key: 'insurance', label: '保险核验', icon: '🛡' },
+      { key: 'internship-risk', label: '风险处置', icon: '⚠' },
       { key: 'internship-change', label: '调岗退岗初审', icon: '🔀' },
       { key: 'internship-score', label: '实习成绩', icon: '💯' },
       { key: 'agreement-confirm', label: '协议确认', icon: '📃' },
       { key: 'process-report', label: '过程报告批阅', icon: '📰' },
       { key: 'plan-task', label: '计划任务确认', icon: '☑' },
-      { key: 'internship-application', label: '实习申请审核', icon: '📥' }
+      { key: 'internship-application', label: '实习申请审核', icon: '📥' },
+      { key: 'internship-volunteers', label: '岗位确认', icon: '📥' }
     ],
     permissionActions: ['intern.weekly.review', 'intern.leave.approve', 'intern.checkin.handle', 'visit.create']
   },
@@ -179,12 +235,120 @@ export const roleConfigs = {
     quickActions: [
       { key: 'overview', label: '学院数据', icon: '▦' },
       { key: 'risk', label: '风险概览', icon: '⚠' },
-      { key: 'urge', label: '移动催办', icon: '☎' },
+      { key: 'urge', label: '发布通知', icon: '☎' },
       { key: 'approval', label: '待审批', icon: '✓' },
       { key: 'notifyPublish', label: '发布通知', icon: '📣' },
       { key: 'orientationDashboard', label: '迎新看板', icon: '🎒' }
     ],
     permissionActions: ['college.overview', 'risk.handle', 'approval.handle', 'urge.send']
+  },
+  [ROLE.SCHOOL_ADMIN]: {
+    key: ROLE.SCHOOL_ADMIN, label: '学校管理员', side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index', dataScope: 'SCHOOL', dataScopeText: '学校授权范围',
+    workbench: ['approval'],
+    quickActions: [
+      { key: 'todos', label: '我的待办', icon: '✓' },
+      { key: 'affairs', label: '学工办理', icon: '📋' },
+      { key: 'orientationDashboard', label: '迎新办理', icon: '🎒' }
+    ],
+    permissionActions: ['approval.handle']
+  },
+  [ROLE.STUDENT_AFFAIRS]: {
+    key: ROLE.STUDENT_AFFAIRS, label: '学工管理', side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index', dataScope: 'AUTHORIZED', dataScopeText: '学工授权范围',
+    workbench: ['approval'],
+    quickActions: [
+      { key: 'todos', label: '我的待办', icon: '✓' },
+      { key: 'affairs', label: '学工办理', icon: '📋' },
+      { key: 'orientationDashboard', label: '迎新办理', icon: '🎒' }
+    ],
+    permissionActions: ['approval.handle']
+  },
+  // 毕设 specialist 身份必须在移动端显式存在。每种身份只呈现其高价值队列，
+  // 服务端仍按 currentRoleCode、关系和 batch context 裁剪数据，不在客户端放宽 Authority。
+  [ROLE.GRADUATION_ADMIN]: {
+    key: ROLE.GRADUATION_ADMIN,
+    label: '校级毕设管理员',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'SCHOOL',
+    dataScopeText: '本校毕业设计',
+    workbench: ['gd-oversight'],
+    quickActions: [
+      { key: 'gd-overview', label: '毕设总览', icon: '▦' },
+      { key: 'gd-grade', label: '成绩异常', icon: '⚠' },
+      { key: 'gd-defense', label: '答辩异常', icon: '🛡' }
+    ],
+    permissionActions: ['gd.overview', 'gd.grade.review', 'gd.defense.view']
+  },
+  [ROLE.GD_COLLEGE_ADMIN]: {
+    key: ROLE.GD_COLLEGE_ADMIN,
+    label: '学院毕设管理员',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'COLLEGE',
+    dataScopeText: '本学院毕业设计',
+    workbench: ['gd-oversight'],
+    quickActions: [
+      { key: 'gd-overview', label: '学院待办', icon: '▦' },
+      { key: 'gd-defense', label: '答辩安排', icon: '🛡' },
+      { key: 'gd-grade', label: '成绩复核', icon: '✓' }
+    ],
+    permissionActions: ['gd.overview', 'gd.defense.view', 'gd.grade.review']
+  },
+  [ROLE.GD_MAJOR_ADMIN]: {
+    key: ROLE.GD_MAJOR_ADMIN,
+    label: '专业毕设负责人',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'MAJOR',
+    dataScopeText: '本专业毕业设计',
+    workbench: ['gd-major'],
+    quickActions: [
+      { key: 'topic-review', label: '选题与变更', icon: '📝' },
+      { key: 'gd-overview', label: '过程异常', icon: '⚠' },
+      { key: 'gd-defense', label: '答辩安排', icon: '🛡' }
+    ],
+    permissionActions: ['gd.topic.review', 'gd.overview', 'gd.defense.view']
+  },
+  [ROLE.GD_REVIEWER]: {
+    key: ROLE.GD_REVIEWER,
+    label: '毕设评阅教师',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'ASSIGNED_REVIEWS',
+    dataScopeText: '分配给我的正式评阅',
+    workbench: ['gd-review'],
+    quickActions: [
+      { key: 'gd-peer-review', label: '我的评阅', icon: '▤' }
+    ],
+    permissionActions: ['gd.formalReview.read', 'gd.formalReview.submit']
+  },
+  [ROLE.GD_DEFENSE_SECRETARY]: {
+    key: ROLE.GD_DEFENSE_SECRETARY,
+    label: '答辩秘书',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'ASSIGNED_DEFENSE_GROUPS',
+    dataScopeText: '本人负责的答辩组',
+    workbench: ['gd-defense'],
+    quickActions: [
+      { key: 'gd-defense', label: '当日答辩', icon: '🛡' }
+    ],
+    permissionActions: ['gd.defense.view', 'gd.defense.confirm']
+  },
+  [ROLE.GD_GRADE_ADMIN]: {
+    key: ROLE.GD_GRADE_ADMIN,
+    label: '毕设成绩管理员',
+    side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index',
+    dataScope: 'SCHOOL',
+    dataScopeText: '本校毕业设计成绩',
+    workbench: ['gd-grade'],
+    quickActions: [
+      { key: 'gd-grade', label: '成绩复核', icon: '✓' }
+    ],
+    permissionActions: ['gd.grade.read', 'gd.grade.review']
   },
   [ROLE.GD_DEFENSE_EXPERT]: {
     key: ROLE.GD_DEFENSE_EXPERT,
@@ -203,8 +367,10 @@ export const roleConfigs = {
 
 // 教师端「多身份切换」：同一个人可绑定多个教师身份（08B 3.2 当前工作上下文）
 export const teacherIdentities = [
-  ROLE.COUNSELOR, ROLE.MENTOR, ROLE.INTERN_MENTOR, ROLE.EMPLOYMENT, ROLE.ACADEMIC, ROLE.COLLEGE_ADMIN,
-  ROLE.GD_DEFENSE_EXPERT
+  ROLE.COUNSELOR, ROLE.DORM_MANAGER, ROLE.MENTOR, ROLE.INTERN_MENTOR, ROLE.EMPLOYMENT, ROLE.ACADEMIC, ROLE.COLLEGE_ADMIN,
+  ROLE.SCHOOL_ADMIN, ROLE.STUDENT_AFFAIRS,
+  ROLE.GRADUATION_ADMIN, ROLE.GD_COLLEGE_ADMIN, ROLE.GD_MAJOR_ADMIN, ROLE.GD_REVIEWER,
+  ROLE.GD_DEFENSE_SECRETARY, ROLE.GD_DEFENSE_EXPERT, ROLE.GD_GRADE_ADMIN
 ]
 
 export function getRoleConfig(roleKey) {

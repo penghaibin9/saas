@@ -19,7 +19,7 @@ def _stu_token(real_name, student_no):
     """使用正式 DB 登录链生成 token，禁止测试自行伪造真实账号上下文。"""
     from app.services.auth_service_db import login_with_password
 
-    data = login_with_password(student_no, "Test@123456", client_type="MP")
+    data = login_with_password(student_no, "Test@123456", client_type="STUDENT_MINI")
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
@@ -228,6 +228,89 @@ def test_s1_full_lifecycle(client, db_mode):
     assert client.post(f"{BASE}/selection/batches/{bid}/archive", headers=admin).json()["data"]["status"] == "ARCHIVED"
 
 
+def test_mobile_selection_pages_use_server_paging_search_and_stable_self_scope(client, db_mode):
+    """Mobile must not fetch a whole batch then filter it or trust a studentId query value."""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaSelectionCourse
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, scid = _make_open_batch(
+        client, admin, ids["course1"], capacity=5,
+        name="移动端分页选课批次", teaching_task_id=ids["task1"],
+    )
+    db = get_sessionmaker()()
+    try:
+        # One formal batch with 23 courses proves both SQL LIMIT/OFFSET and server
+        # keyword filtering; no fixture reaches an end state by direct mutation.
+        for index in range(1, 23):
+            course = AaCourse(
+                tenant_id=TID, course_code=f"MPSEL{index:03d}",
+                course_name=f"移动端分页课程{index:02d}", credit=1, status="ENABLED",
+            )
+            db.add(course); db.flush()
+            db.add(AaSelectionCourse(
+                tenant_id=TID, batch_id=int(bid), course_id=int(course.id),
+                course_name=course.course_name, credit=1, capacity=30,
+                min_capacity=1, selected_count=0, status="OPEN",
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+    student_a = _stu_token("选甲", "SEL2401")
+    catalog = client.get(
+        "/api/v1/mobile/academic/selection/batches?page=1&pageSize=20",
+        headers=student_a,
+    ).json()
+    assert catalog["code"] == 0
+    assert str(bid) in {str(item["batchId"]) for item in catalog["data"]["items"]}
+
+    first = client.get(
+        f"/api/v1/mobile/academic/selection/courses-page?batchId={bid}&page=1&pageSize=20&studentId={ids['s2']}",
+        headers=student_a,
+    ).json()
+    assert first["code"] == 0
+    assert first["data"]["total"] == 23 and len(first["data"]["items"]) == 20
+    assert first["data"]["hasMore"] is True
+    assert all("courseCode" in item for item in first["data"]["items"])
+    second = client.get(
+        f"/api/v1/mobile/academic/selection/courses-page?batchId={bid}&page=2&pageSize=20",
+        headers=student_a,
+    ).json()
+    assert second["code"] == 0
+    assert second["data"]["page"] == 2 and len(second["data"]["items"]) == 3
+    searched = client.get(
+        f"/api/v1/mobile/academic/selection/courses-page?batchId={bid}&keyword=MPSEL022&page=1&pageSize=20",
+        headers=student_a,
+    ).json()
+    assert searched["code"] == 0
+    assert searched["data"]["total"] == 1
+    assert searched["data"]["items"][0]["courseCode"] == "MPSEL022"
+
+    enrolled = client.post(
+        f"{BASE}/selection/student/enroll", headers=student_a,
+        json={"selectionCourseId": str(scid)},
+    ).json()
+    assert enrolled["code"] == 0
+    records = client.get(
+        f"/api/v1/mobile/academic/selection/my-page?batchId={bid}&page=1&pageSize=20",
+        headers=student_a,
+    ).json()
+    assert records["code"] == 0 and records["data"]["total"] == 1
+    assert records["data"]["items"][0]["selectionCourseId"] == str(scid)
+    assert "DROP" in records["data"]["items"][0]["allowedActions"]
+
+    # A different student can see an open catalog but cannot read student A's
+    # record by guessing the same batch/course ids.
+    student_b = _stu_token("选乙", "SEL2402")
+    forged = client.get(
+        f"/api/v1/mobile/academic/selection/my-page?batchId={bid}&selectionCourseId={scid}&studentId={ids['s1']}",
+        headers=student_b,
+    ).json()
+    assert forged["code"] == 0 and forged["data"]["total"] == 0
+
+
 def test_s2_publish_without_course_409(client, db_mode):
     _seed(db_mode)
     admin = _hdr(client, "school_admin01")
@@ -250,6 +333,37 @@ def test_s3_enroll_when_not_open_409(client, db_mode):
     stu = _stu_token("选甲", "SEL2401")
     assert client.post(f"{BASE}/selection/student/enroll", headers=stu,
                        json={"selectionCourseId": str(scid)}).status_code == 409
+
+
+def test_s3b_expired_open_batch_rejects_student_command_without_waiting_for_tick(client, db_mode):
+    from datetime import datetime, timedelta
+    from app.db.session import get_sessionmaker
+    from app.models import AaSelectionBatch
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, scid = _make_open_batch(client, admin, ids["course1"], teaching_task_id=ids["task1"])
+    db = get_sessionmaker()()
+    try:
+        batch = db.get(AaSelectionBatch, int(bid))
+        batch.select_end_at = datetime.utcnow() - timedelta(seconds=1)
+        db.commit()
+    finally:
+        db.close()
+
+    stu = _stu_token("选甲", "SEL2401")
+    visible = client.get(f"{BASE}/selection/student/courses", headers=stu).json()
+    course = next(
+        item for group in visible["data"]["items"] for item in group["courses"]
+        if str(item["selectionCourseId"]) == str(scid)
+    )
+    assert "ENROLL" not in course["allowedActions"]
+    rejected = client.post(
+        f"{BASE}/selection/student/enroll", headers=stu,
+        json={"selectionCourseId": str(scid)},
+    )
+    assert rejected.status_code == 409
+    assert "选课窗口已截止" in rejected.text
 
 
 def test_s4_capacity_full_409(client, db_mode):

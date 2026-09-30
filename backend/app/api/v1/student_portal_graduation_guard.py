@@ -4,6 +4,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Body, Depends
 
 from app.core.exceptions import no_permission
+from app.core.permissions import require_module
 from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.graduation.services import graduation_extension_action_service as extension_action_svc
@@ -12,7 +13,14 @@ from app.modules.graduation.services import graduation_student_feedback_service 
 from app.modules.graduation.services.graduation_material_temp_service import abandon_temporary_material
 from app.modules.graduation.services.graduation_taskbook_confirmation_service import confirm_with_evidence
 
-router = APIRouter(prefix="/portal/graduation", tags=["学生PC门户-毕业设计高风险修复"])
+# Student PC does not inherit the staff graduation router bundle. Keep the same
+# commercial/data-state authority at this independent entry point so an old
+# student session cannot continue writing after the module is unpurchased/frozen.
+router = APIRouter(
+    prefix="/portal/graduation",
+    tags=["学生PC门户-毕业设计高风险修复"],
+    dependencies=[Depends(require_module("graduation"))],
+)
 
 
 def _student(user: dict) -> dict:

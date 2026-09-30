@@ -1,0 +1,2162 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:18:09.624311Z",
+  "backendEndpointInventoryCount": 326,
+  "commands": [
+    {
+      "command": "BATCH_CREATE",
+      "primaryStaffSurface": "InternshipBatchListView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batch_create",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.create_batch"
+          ],
+          "line": 714
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreement-templates",
+          "routerFile": "backend/app/modules/internship/routers/internship_agreement_template.py",
+          "function": "create_template",
+          "permissions": [
+            "internship.agreement.template.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_template_service.create_template"
+          ],
+          "line": 58
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/archive/by-batch",
+          "routerFile": "backend/app/modules/internship/routers/internship_archive.py",
+          "function": "archive_by_batch",
+          "permissions": [
+            "internship.archive.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_archive_service.by_batch"
+          ],
+          "line": 45
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/batches",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batches",
+          "permissions": [
+            "internship.batch.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.list_batches"
+          ],
+          "line": 706
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/export",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batch_export",
+          "permissions": [
+            "internship.batch.export"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.export_batches"
+          ],
+          "line": 698
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/batches/{batchId}/participants",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "list_participants",
+          "permissions": [
+            "internship.batch.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.list_participants"
+          ],
+          "line": 76
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "PARTICIPANT_IMPORT",
+      "primaryStaffSurface": "BatchParticipantScope.vue",
+      "endpointCandidates": [
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/batches/{batchId}/participants",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "list_participants",
+          "permissions": [
+            "internship.batch.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.list_participants"
+          ],
+          "line": 76
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/add",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "add_participants",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.add_participants"
+          ],
+          "line": 95
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/freeze",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "freeze",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.freeze"
+          ],
+          "line": 69
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/preview",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "preview",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.preview"
+          ],
+          "line": 63
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/batches/{batchId}/participants/rule",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "get_rule",
+          "permissions": [
+            "internship.batch.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.get_rule"
+          ],
+          "line": 57
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/batches/{batchId}/participants/summary",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "participant_summary",
+          "permissions": [
+            "internship.batch.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.summary"
+          ],
+          "line": 89
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "QUALIFICATION_REVIEW",
+      "primaryStaffSurface": "InternshipStudentListView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/preview",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "preview",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.preview"
+          ],
+          "line": 63
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/workbench/student-evals/{eval_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "workbench_student_eval_review",
+          "permissions": [
+            "internship.eval.self.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_student_eval_service.review"
+          ],
+          "line": 79
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/intern-students/{record_id}/eligibility",
+          "routerFile": "backend/app/modules/internship/routers/internship_student.py",
+          "function": "student_eligibility",
+          "permissions": [
+            "internship.student.eligibility.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_student_service.set_eligibility"
+          ],
+          "line": 192
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/student-evals/{eval_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "student_eval_review",
+          "permissions": [
+            "internship.eval.self.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_student_eval_service.review"
+          ],
+          "line": 605
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/archive",
+          "routerFile": "backend/app/modules/internship/routers/internship_archive.py",
+          "function": "archive_list",
+          "permissions": [
+            "internship.archive.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_archive_service.list_by_student"
+          ],
+          "line": 31
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "ENTERPRISE_REVIEW",
+      "primaryStaffSurface": "InternshipEnterpriseListView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/inspections/{iid}/{action}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "inspection_action",
+          "permissions": [
+            "internship.enterprise.inspection.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_inspection_service.review",
+            "app.modules.internship.services.internship_enterprise_inspection_service.submit"
+          ],
+          "line": 136
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/workbench/enterprise-evals/{eval_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "workbench_enterprise_eval_review",
+          "permissions": [
+            "internship.eval.enterprise.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_eval_service.review"
+          ],
+          "line": 55
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprise-evals/{eval_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "enterprise_eval_review",
+          "permissions": [
+            "internship.eval.enterprise.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_eval_service.review"
+          ],
+          "line": 564
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprise-evals/{eval_id}/review-versioned",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_eval_versioned.py",
+          "function": "review_versioned",
+          "permissions": [
+            "internship.eval.enterprise.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_eval_service.review"
+          ],
+          "line": 19
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprises/{company_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "review_enterprise",
+          "permissions": [
+            "internship.enterprise.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_service.review_enterprise"
+          ],
+          "line": 871
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/auth/browser-invite/accept",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_browser_auth.py",
+          "function": "browser_accept_invite",
+          "permissions": [],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_auth_service.accept_invite"
+          ],
+          "line": 151
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "POSITION_REVIEW_PUBLISH",
+      "primaryStaffSurface": "InternshipPositionListView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/preview",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "preview",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.preview"
+          ],
+          "line": 63
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/change-requests/{change_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_process.py",
+          "function": "change_review",
+          "permissions": [
+            "internship.change.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_change_service.review_change"
+          ],
+          "line": 79
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/emergency-plans/{iid}/{action}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "emergency_action",
+          "permissions": [
+            "internship.incident.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.review_plan"
+          ],
+          "line": 226
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/exemptions/{exemption_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "exemption_review",
+          "permissions": [
+            "internship.compliance.exempt.approve"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_compliance_service.review_exemption"
+          ],
+          "line": 248
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/filings/{iid}/{level}/{action}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "filing_action",
+          "permissions": [
+            "internship.filing.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_special_filing_service.review",
+            "app.modules.internship.services.internship_special_filing_service.submit"
+          ],
+          "line": 195
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "APPLICATION_SUBMIT",
+      "primaryStaffSurface": "Student PC/Mini application",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreement-templates",
+          "routerFile": "backend/app/modules/internship/routers/internship_agreement_template.py",
+          "function": "create_template",
+          "permissions": [
+            "internship.agreement.template.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_template_service.create_template"
+          ],
+          "line": 58
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/applications",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "applications",
+          "permissions": [
+            "internship.application.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.list_applications"
+          ],
+          "line": 24
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/applications/{application_id}",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_detail",
+          "permissions": [
+            "internship.application.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.get_application"
+          ],
+          "line": 34
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batch_create",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.create_batch"
+          ],
+          "line": 714
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/communications",
+          "routerFile": "backend/app/modules/internship/routers/internship_communication.py",
+          "function": "create_communication",
+          "permissions": [
+            "internship.communication.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_communication_service.create_communication"
+          ],
+          "line": 39
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "APPLICATION_REVIEW",
+      "primaryStaffSurface": "InternshipApplicationReviewView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/applications",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "applications",
+          "permissions": [
+            "internship.application.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.list_applications"
+          ],
+          "line": 24
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/applications/{application_id}",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_detail",
+          "permissions": [
+            "internship.application.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.get_application"
+          ],
+          "line": 34
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/preview",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "preview",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.preview"
+          ],
+          "line": 63
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/change-requests/{change_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_process.py",
+          "function": "change_review",
+          "permissions": [
+            "internship.change.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_change_service.review_change"
+          ],
+          "line": 79
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/emergency-plans/{iid}/{action}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "emergency_action",
+          "permissions": [
+            "internship.incident.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.review_plan"
+          ],
+          "line": 226
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "ENTERPRISE_DECISION",
+      "primaryStaffSurface": "Enterprise ApplicantDetailView.vue",
+      "endpointCandidates": [
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/enterprise-portal/applications",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_portal.py",
+          "function": "applications",
+          "permissions": [
+            "internship.application.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_application_decision_service.list_owned_applications_in_tx"
+          ],
+          "line": 236
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/enterprise-portal/applications/{application_id}",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_portal.py",
+          "function": "application_detail",
+          "permissions": [
+            "internship.application.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_application_decision_service.material_detail_in_tx"
+          ],
+          "line": 244
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprise-portal/applications/{application_id}/contact-view",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_portal.py",
+          "function": "application_contact_view",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_application_decision_service.contact_view_in_tx"
+          ],
+          "line": 284
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprise-portal/applications/{application_id}/decision",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_portal.py",
+          "function": "application_decision",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_application_decision_service.set_decision_in_tx"
+          ],
+          "line": 293
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprise-portal/applications/{application_id}/withdraw-accept",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_portal.py",
+          "function": "withdraw_accept",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_application_decision_service.withdraw_accept_in_tx"
+          ],
+          "line": 303
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/applications",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "applications",
+          "permissions": [
+            "internship.application.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.list_applications"
+          ],
+          "line": 24
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "SCHOOL_CONFIRM_PLACEMENT",
+      "primaryStaffSurface": "InternshipMatchListView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreement-templates",
+          "routerFile": "backend/app/modules/internship/routers/internship_agreement_template.py",
+          "function": "create_template",
+          "permissions": [
+            "internship.agreement.template.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_template_service.create_template"
+          ],
+          "line": 58
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreements/{agreement_id}/enterprise-confirm",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "agreement_enterprise_confirm",
+          "permissions": [
+            "internship.agreement.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_service.enterprise_confirm"
+          ],
+          "line": 481
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreements/{agreement_id}/school-confirm",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "agreement_school_confirm",
+          "permissions": [
+            "internship.agreement.schoolConfirm"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_service.school_confirm"
+          ],
+          "line": 488
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreements/{agreement_id}/school-confirm",
+          "routerFile": "backend/app/modules/internship/routers/internship_material_center.py",
+          "function": "agreement_school_confirm_guard",
+          "permissions": [
+            "internship.agreement.schoolConfirm"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_service.school_confirm",
+            "app.modules.internship.services.internship_material_center_compat.preflight_agreement"
+          ],
+          "line": 118
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batch_create",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.create_batch"
+          ],
+          "line": 714
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/communications",
+          "routerFile": "backend/app/modules/internship/routers/internship_communication.py",
+          "function": "create_communication",
+          "permissions": [
+            "internship.communication.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_communication_service.create_communication"
+          ],
+          "line": 39
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "AGREEMENT_CONFIRM",
+      "primaryStaffSurface": "AgreementView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreements/{agreement_id}/enterprise-confirm",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "agreement_enterprise_confirm",
+          "permissions": [
+            "internship.agreement.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_service.enterprise_confirm"
+          ],
+          "line": 481
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreements/{agreement_id}/esign/sign",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "agreement_esign_sign",
+          "permissions": [
+            "internship.agreement.sign"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_service.esign_sign"
+          ],
+          "line": 525
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreements/{agreement_id}/esign/start",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "agreement_esign_start",
+          "permissions": [
+            "internship.agreement.sign"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_service.esign_start"
+          ],
+          "line": 518
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreements/{agreement_id}/school-confirm",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "agreement_school_confirm",
+          "permissions": [
+            "internship.agreement.schoolConfirm"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_service.school_confirm"
+          ],
+          "line": 488
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreements/{agreement_id}/school-confirm",
+          "routerFile": "backend/app/modules/internship/routers/internship_material_center.py",
+          "function": "agreement_school_confirm_guard",
+          "permissions": [
+            "internship.agreement.schoolConfirm"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_service.school_confirm",
+            "app.modules.internship.services.internship_material_center_compat.preflight_agreement"
+          ],
+          "line": 118
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/agreement-templates",
+          "routerFile": "backend/app/modules/internship/routers/internship_agreement_template.py",
+          "function": "templates",
+          "permissions": [
+            "internship.agreement.template.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_template_service.list_templates"
+          ],
+          "line": 30
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "CHECKIN",
+      "primaryStaffSurface": "Student Mini checkin",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreement-templates",
+          "routerFile": "backend/app/modules/internship/routers/internship_agreement_template.py",
+          "function": "create_template",
+          "permissions": [
+            "internship.agreement.template.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_template_service.create_template"
+          ],
+          "line": 58
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batch_create",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.create_batch"
+          ],
+          "line": 714
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/checkins",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "checkins",
+          "permissions": [
+            "internship.attendance.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.list_checkins"
+          ],
+          "line": 76
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/checkins/export",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "checkins_export",
+          "permissions": [
+            "internship.attendance.export"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.export_checkins"
+          ],
+          "line": 86
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/communications",
+          "routerFile": "backend/app/modules/internship/routers/internship_communication.py",
+          "function": "create_communication",
+          "permissions": [
+            "internship.communication.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_communication_service.create_communication"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/complaints",
+          "routerFile": "backend/app/modules/internship/routers/internship_complaint.py",
+          "function": "create_complaint",
+          "permissions": [
+            "internship.complaint.intake"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_complaint_service.create_complaint"
+          ],
+          "line": 40
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "ATTENDANCE_EXCEPTION_DECISION",
+      "primaryStaffSurface": "AttendanceExceptionDetailView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/exceptions/{exception_id}/handle",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "handle_exception",
+          "permissions": [
+            "internship.attendance.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.handle_attendance_exception"
+          ],
+          "line": 119
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/enterprise-portal/applications",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_portal.py",
+          "function": "applications",
+          "permissions": [
+            "internship.application.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_application_decision_service.list_owned_applications_in_tx"
+          ],
+          "line": 236
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/enterprise-portal/applications/{application_id}",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_portal.py",
+          "function": "application_detail",
+          "permissions": [
+            "internship.application.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_application_decision_service.material_detail_in_tx"
+          ],
+          "line": 244
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprise-portal/applications/{application_id}/contact-view",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_portal.py",
+          "function": "application_contact_view",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_application_decision_service.contact_view_in_tx"
+          ],
+          "line": 284
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprise-portal/applications/{application_id}/decision",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_portal.py",
+          "function": "application_decision",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_application_decision_service.set_decision_in_tx"
+          ],
+          "line": 293
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprise-portal/applications/{application_id}/withdraw-accept",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_portal.py",
+          "function": "withdraw_accept",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_application_decision_service.withdraw_accept_in_tx"
+          ],
+          "line": 303
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "MAKEUP_REVIEW",
+      "primaryStaffSurface": "AttendanceView.vue / Teacher Mini",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/makeups/{makeup_id}/approve",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "makeup_approve",
+          "permissions": [
+            "internship.makeup.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_makeup_service.review"
+          ],
+          "line": 145
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/makeups/{makeup_id}/reject",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "makeup_reject",
+          "permissions": [
+            "internship.makeup.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_makeup_service.review"
+          ],
+          "line": 153
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/preview",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "preview",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.preview"
+          ],
+          "line": 63
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/change-requests/{change_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_process.py",
+          "function": "change_review",
+          "permissions": [
+            "internship.change.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_change_service.review_change"
+          ],
+          "line": 79
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/emergency-plans/{iid}/{action}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "emergency_action",
+          "permissions": [
+            "internship.incident.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.review_plan"
+          ],
+          "line": 226
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "LEAVE_REVIEW",
+      "primaryStaffSurface": "LeaveReviewView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/leaves/{leave_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "leave_review",
+          "permissions": [
+            "internship.leave.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_leave_service.review"
+          ],
+          "line": 435
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/preview",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "preview",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.preview"
+          ],
+          "line": 63
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/change-requests/{change_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_process.py",
+          "function": "change_review",
+          "permissions": [
+            "internship.change.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_change_service.review_change"
+          ],
+          "line": 79
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/emergency-plans/{iid}/{action}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "emergency_action",
+          "permissions": [
+            "internship.incident.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.review_plan"
+          ],
+          "line": 226
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/exemptions/{exemption_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "exemption_review",
+          "permissions": [
+            "internship.compliance.exempt.approve"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_compliance_service.review_exemption"
+          ],
+          "line": 248
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "WEEKLY_REVIEW",
+      "primaryStaffSurface": "WeeklyReportDetailView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/process-reports/{report_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_material_center.py",
+          "function": "process_report_review_guard",
+          "permissions": [
+            "internship.report.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_material_center_compat.preflight_process_report",
+            "app.modules.internship.services.internship_process_report_service.review_report"
+          ],
+          "line": 150
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/process-reports/{report_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_process.py",
+          "function": "report_review",
+          "permissions": [
+            "internship.report.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_process_report_service.review_report"
+          ],
+          "line": 47
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/reports/batch-review",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "reports_batch_review",
+          "permissions": [
+            "internship.report.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.batch_review_weekly_reports"
+          ],
+          "line": 313
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/reports/{report_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "review_report",
+          "permissions": [
+            "internship.report.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.review_weekly_report"
+          ],
+          "line": 304
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/preview",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "preview",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.preview"
+          ],
+          "line": 63
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "GUIDANCE_CREATE",
+      "primaryStaffSurface": "GuidanceVisitView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/guidances",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "create_guidance",
+          "permissions": [
+            "internship.guidance.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_guidance_service.create"
+          ],
+          "line": 206
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreement-templates",
+          "routerFile": "backend/app/modules/internship/routers/internship_agreement_template.py",
+          "function": "create_template",
+          "permissions": [
+            "internship.agreement.template.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_template_service.create_template"
+          ],
+          "line": 58
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batch_create",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.create_batch"
+          ],
+          "line": 714
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/communications",
+          "routerFile": "backend/app/modules/internship/routers/internship_communication.py",
+          "function": "create_communication",
+          "permissions": [
+            "internship.communication.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_communication_service.create_communication"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/complaints",
+          "routerFile": "backend/app/modules/internship/routers/internship_complaint.py",
+          "function": "create_complaint",
+          "permissions": [
+            "internship.complaint.intake"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_complaint_service.create_complaint"
+          ],
+          "line": 40
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/consents",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "consent_create",
+          "permissions": [
+            "internship.consent.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_consent_service.create_pending"
+          ],
+          "line": 147
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "VISIT_RECTIFY",
+      "primaryStaffSurface": "GuidanceVisitView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/visit-plans",
+          "routerFile": "backend/app/modules/internship/routers/internship_visit_plan.py",
+          "function": "create_visit_plan",
+          "permissions": [
+            "internship.visit.plan.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_visit_plan_service.create_visit_plan"
+          ],
+          "line": 36
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/visit-plans/{plan_id}/transition",
+          "routerFile": "backend/app/modules/internship/routers/internship_visit_plan.py",
+          "function": "transition",
+          "permissions": [
+            "internship.visit.plan.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_visit_plan_service.transition"
+          ],
+          "line": 46
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/visits",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "create_visit",
+          "permissions": [
+            "internship.visit.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_visit_service.create"
+          ],
+          "line": 248
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreement-templates",
+          "routerFile": "backend/app/modules/internship/routers/internship_agreement_template.py",
+          "function": "create_template",
+          "permissions": [
+            "internship.agreement.template.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_template_service.create_template"
+          ],
+          "line": 58
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batch_create",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.create_batch"
+          ],
+          "line": 714
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "CHANGE_REVIEW",
+      "primaryStaffSurface": "ChangeRequestListView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/change-requests/{change_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_process.py",
+          "function": "change_review",
+          "permissions": [
+            "internship.change.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_change_service.review_change"
+          ],
+          "line": 79
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/preview",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "preview",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.preview"
+          ],
+          "line": 63
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/change-requests",
+          "routerFile": "backend/app/modules/internship/routers/internship_process.py",
+          "function": "change_list",
+          "permissions": [
+            "internship.change.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_change_service.list_changes"
+          ],
+          "line": 64
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/change-requests/{change_id}",
+          "routerFile": "backend/app/modules/internship/routers/internship_process.py",
+          "function": "change_detail",
+          "permissions": [
+            "internship.change.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_change_service.get_change"
+          ],
+          "line": 74
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/emergency-plans/{iid}/{action}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "emergency_action",
+          "permissions": [
+            "internship.incident.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.review_plan"
+          ],
+          "line": 226
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "RISK_ACTION",
+      "primaryStaffSurface": "RiskDisposalView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/risks/{risk_id}/close",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "risk_close",
+          "permissions": [
+            "internship.risk.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_risk_service.close"
+          ],
+          "line": 395
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/risks/{risk_id}/follow",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "risk_follow",
+          "permissions": [
+            "internship.risk.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_risk_service.follow"
+          ],
+          "line": 368
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/risks/{risk_id}/handle",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "risk_handle",
+          "permissions": [
+            "internship.risk.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_risk_service.handle"
+          ],
+          "line": 357
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{bid}/close",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batch_close",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.close_batch"
+          ],
+          "line": 743
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/communications/{comm_id}/follow-up-done",
+          "routerFile": "backend/app/modules/internship/routers/internship_communication.py",
+          "function": "follow_up_done",
+          "permissions": [
+            "internship.communication.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_communication_service.complete_follow_up"
+          ],
+          "line": 49
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/complaints/{complaint_id}/followup",
+          "routerFile": "backend/app/modules/internship/routers/internship_complaint.py",
+          "function": "followup",
+          "permissions": [
+            "internship.complaint.intake"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_complaint_service.followup"
+          ],
+          "line": 55
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "INCIDENT_TRANSITION",
+      "primaryStaffSurface": "InternshipComplianceView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/incidents/{iid}/transition",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "incident_transition",
+          "permissions": [
+            "internship.incident.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.transition"
+          ],
+          "line": 214
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{bid}/close",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batch_close",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.close_batch"
+          ],
+          "line": 743
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/complaints/{complaint_id}/transition",
+          "routerFile": "backend/app/modules/internship/routers/internship_complaint.py",
+          "function": "transition",
+          "permissions": [
+            "internship.complaint.intake"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_complaint_service.transition"
+          ],
+          "line": 45
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/emergency-plans",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "emergency_create",
+          "permissions": [
+            "internship.incident.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.create_plan"
+          ],
+          "line": 220
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/emergency-plans/{iid}/{action}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "emergency_action",
+          "permissions": [
+            "internship.incident.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.review_plan"
+          ],
+          "line": 226
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/incidents",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "incident_report",
+          "permissions": [
+            "internship.incident.report"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.report_incident"
+          ],
+          "line": 208
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "EVALUATION_SUBMIT",
+      "primaryStaffSurface": "4+1 evaluation surfaces",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprise-evals",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "enterprise_eval_create",
+          "permissions": [
+            "internship.eval.enterprise.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_eval_service.create"
+          ],
+          "line": 552
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/enterprise-portal/evaluation-tasks/{internship_id}/submit",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_collaboration.py",
+          "function": "submit_evaluation",
+          "permissions": [
+            "internship.eval.enterprise.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_collaboration_service.submit_evaluation_in_tx"
+          ],
+          "line": 110
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreement-templates",
+          "routerFile": "backend/app/modules/internship/routers/internship_agreement_template.py",
+          "function": "create_template",
+          "permissions": [
+            "internship.agreement.template.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_template_service.create_template"
+          ],
+          "line": 58
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "batch_create",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_service.create_batch"
+          ],
+          "line": 714
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/communications",
+          "routerFile": "backend/app/modules/internship/routers/internship_communication.py",
+          "function": "create_communication",
+          "permissions": [
+            "internship.communication.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_communication_service.create_communication"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/complaints",
+          "routerFile": "backend/app/modules/internship/routers/internship_complaint.py",
+          "function": "create_complaint",
+          "permissions": [
+            "internship.complaint.intake"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_complaint_service.create_complaint"
+          ],
+          "line": 40
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "SCORE_CALCULATE_REVIEW_PUBLISH",
+      "primaryStaffSurface": "ScoreView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/scores/compute",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "score_compute",
+          "permissions": [
+            "internship.score.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_score_service.compute"
+          ],
+          "line": 651
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/scores/{score_id}/publish",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "score_publish",
+          "permissions": [
+            "internship.score.publish"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_score_service.publish"
+          ],
+          "line": 663
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/preview",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "preview",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.preview"
+          ],
+          "line": 63
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/change-requests/{change_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_process.py",
+          "function": "change_review",
+          "permissions": [
+            "internship.change.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_change_service.review_change"
+          ],
+          "line": 79
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/emergency-plans/{iid}/{action}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "emergency_action",
+          "permissions": [
+            "internship.incident.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.review_plan"
+          ],
+          "line": 226
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "SCORE_APPEAL_REVIEW",
+      "primaryStaffSurface": "ScoreView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/auth/browser-invite/accept",
+          "routerFile": "backend/app/modules/internship/routers/internship_enterprise_browser_auth.py",
+          "function": "browser_accept_invite",
+          "permissions": [],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_enterprise_auth_service.accept_invite"
+          ],
+          "line": 151
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/applications/{application_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_application.py",
+          "function": "application_review",
+          "permissions": [
+            "internship.application.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_application_service.review_application"
+          ],
+          "line": 39
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/batches/{batchId}/participants/preview",
+          "routerFile": "backend/app/modules/internship/routers/internship_participant.py",
+          "function": "preview",
+          "permissions": [
+            "internship.batch.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_participant_service.preview"
+          ],
+          "line": 63
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/change-requests/{change_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_process.py",
+          "function": "change_review",
+          "permissions": [
+            "internship.change.review"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_change_service.review_change"
+          ],
+          "line": 79
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/emergency-plans/{iid}/{action}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "emergency_action",
+          "permissions": [
+            "internship.incident.handle"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_incident_service.review_plan"
+          ],
+          "line": 226
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/exemptions/{exemption_id}/review",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "exemption_review",
+          "permissions": [
+            "internship.compliance.exempt.approve"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_compliance_service.review_exemption"
+          ],
+          "line": 248
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "ARCHIVE",
+      "primaryStaffSurface": "ArchiveView.vue",
+      "endpointCandidates": [
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/archive/{internship_id}/archive",
+          "routerFile": "backend/app/modules/internship/routers/internship_material_center.py",
+          "function": "archive_student_guard",
+          "permissions": [
+            "internship.archive.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_archive_service.archive_student",
+            "app.modules.internship.services.internship_material_center_compat.abort_manifest",
+            "app.modules.internship.services.internship_material_center_compat.finalize_manifest",
+            "app.modules.internship.services.internship_material_center_compat.prepare_archive_manifest"
+          ],
+          "line": 167
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreement-templates",
+          "routerFile": "backend/app/modules/internship/routers/internship_agreement_template.py",
+          "function": "create_template",
+          "permissions": [
+            "internship.agreement.template.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_template_service.create_template"
+          ],
+          "line": 58
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreements/{agreement_id}/archive",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "agreement_archive",
+          "permissions": [
+            "internship.agreement.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_service.archive"
+          ],
+          "line": 510
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/archive",
+          "routerFile": "backend/app/modules/internship/routers/internship_archive.py",
+          "function": "archive_list",
+          "permissions": [
+            "internship.archive.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_archive_service.list_by_student"
+          ],
+          "line": 31
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/archive-packages/{package_id}/download",
+          "routerFile": "backend/app/modules/internship/routers/internship_archive.py",
+          "function": "archive_package_download",
+          "permissions": [
+            "internship.archive.package"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_archive_service.resolve_archive_package_download"
+          ],
+          "line": 77
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/archive/by-batch",
+          "routerFile": "backend/app/modules/internship/routers/internship_archive.py",
+          "function": "archive_by_batch",
+          "permissions": [
+            "internship.archive.view"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_archive_service.by_batch"
+          ],
+          "line": 45
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    },
+    {
+      "command": "PACKAGE_GENERATE",
+      "primaryStaffSurface": "ArchiveView.vue",
+      "endpointCandidates": [
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/archive-packages/{package_id}/download",
+          "routerFile": "backend/app/modules/internship/routers/internship_archive.py",
+          "function": "archive_package_download",
+          "permissions": [
+            "internship.archive.package"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_archive_service.resolve_archive_package_download"
+          ],
+          "line": 77
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/archive/{internship_id}/package",
+          "routerFile": "backend/app/modules/internship/routers/internship_archive.py",
+          "function": "archive_package",
+          "permissions": [
+            "internship.archive.package"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_archive_service.build_package"
+          ],
+          "line": 72
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/archive/{internship_id}/package",
+          "routerFile": "backend/app/modules/internship/routers/internship_material_center.py",
+          "function": "archive_package_guard",
+          "permissions": [
+            "internship.archive.package"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_material_center_compat.build_versioned_package"
+          ],
+          "line": 205
+        },
+        {
+          "method": "GET",
+          "path": "/api/v1/internship/compliance/evidence-packages/{package_id}/download",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "package_download",
+          "permissions": [
+            "internship.evidence.export"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_evidence_package_service.resolve_package_download"
+          ],
+          "line": 280
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/compliance/evidence-packages/{package_type}/{target_id}",
+          "routerFile": "backend/app/modules/internship/routers/internship_compliance.py",
+          "function": "package",
+          "permissions": [
+            "internship.evidence.export"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_evidence_package_service.generate"
+          ],
+          "line": 274
+        },
+        {
+          "method": "POST",
+          "path": "/api/v1/internship/agreements",
+          "routerFile": "backend/app/modules/internship/routers/internship.py",
+          "function": "agreement_generate",
+          "permissions": [
+            "internship.agreement.manage"
+          ],
+          "serviceCalls": [
+            "app.modules.internship.services.internship_agreement_service.generate"
+          ],
+          "line": 463
+        }
+      ],
+      "traceStatus": "BASELINE_CANDIDATES",
+      "sealRequirement": "Before L4, select one canonical endpoint/service and trace scope/version/audit/readback/next surface."
+    }
+  ],
+  "unmappedCommands": []
+}

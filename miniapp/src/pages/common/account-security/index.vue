@@ -14,6 +14,7 @@
       </view>
 
       <view class="section-head"><text class="section-head__title">安全设置</text></view>
+      <PhoneBindingPanel v-if="phoneVisible" :context-key="phoneContext" @changed="phoneChanged" />
       <view class="list-group">
         <view class="list-row" @click="go('/pages/common/change-password/index')">
           <text class="flex-1 t-md">修改密码</text>
@@ -33,19 +34,30 @@
 <script>
 import { useSessionStore } from '@/stores/session'
 import { enrichProfileReal } from '@/services/realApi'
-import { go } from '@/utils/nav'
+import { go, relaunch } from '@/utils/nav'
+import PhoneBindingPanel from '@/components/auth/PhoneBindingPanel.vue'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 
 export default {
-  data() { return { info: {}, isStudent: true } },
+  components: { PhoneBindingPanel },
+  data() { return { info: {}, isStudent: true, phoneVisible: false, phoneContext: '' } },
   onShow() {
+    this.info = {}
+    const generation = currentSessionGeneration(), revision = (this.profileRevision || 0) + 1
+    this.profileRevision = revision
+    const current = () => this.phoneVisible && this.profileRevision === revision && currentSessionGeneration() === generation
     const session = useSessionStore()
+    this.phoneContext = [session.identity.userId, session.side, session.currentRole].join('|')
+    this.phoneVisible = true
     this.isStudent = session.side === 'student'
     if (this.isStudent) {
       enrichProfileReal().then((p) => {
+        if (!current()) return
         this.info = { name: (p.base || {}).name, studentNo: (p.base || {}).studentNo,
           className: (p.org || {}).className, phoneMasked: (p.contact || {}).phone,
           tenantName: (session.mockUser || {}).tenantName }
       }).catch(() => {
+        if (!current()) return
         this.info = { name: (session.mockUser || {}).name, tenantName: (session.mockUser || {}).tenantName }
       })
     } else {
@@ -54,7 +66,12 @@ export default {
         scopeText: session.dataScopeText, tenantName: u.tenantName }
     }
   },
-  methods: { go }
+  onHide() { this.phoneVisible = false; this.info = {} },
+  onUnload() { this.phoneVisible = false; this.info = {} },
+  methods: { go, phoneChanged() {
+    const session = useSessionStore(), route = session.isTeacher ? '/pages/login/teacher/index' : '/pages/login/student/index'
+    this.phoneVisible = false; session.logout(); relaunch(route)
+  } }
 }
 </script>
 

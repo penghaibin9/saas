@@ -881,7 +881,10 @@ def list_batch_jobs(user: dict, *, page: int = 1, page_size: int = 50) -> tuple[
     with session() as db:
         from app.core.affairs_security import build_affairs_context
         ctx = build_affairs_context(user or {}, db)
-        conds = [AffairsBatchJob.tenant_id == _tid(), AffairsBatchJob.is_deleted.is_(False)]
+        # This API belongs to material reminders. Housing jobs have separate scope,
+        # execution and receipt contracts even though they share the job tables.
+        conds = [AffairsBatchJob.tenant_id == _tid(), AffairsBatchJob.is_deleted.is_(False),
+                 AffairsBatchJob.job_type == "MATERIAL_REMIND"]
         if ctx.scope_type != "TENANT_ALL":
             conds.append(AffairsBatchJob.requested_by == _user_key(user))
         total = int(db.scalar(select(func.count()).select_from(AffairsBatchJob).where(*conds)) or 0)
@@ -895,6 +898,7 @@ def get_batch_job(user: dict, job_id: int) -> dict:
     with session() as db:
         job = db.scalars(select(AffairsBatchJob).where(
             AffairsBatchJob.tenant_id == _tid(), AffairsBatchJob.id == int(job_id),
+            AffairsBatchJob.job_type == "MATERIAL_REMIND",
             AffairsBatchJob.is_deleted.is_(False),
         )).first()
         if not job:

@@ -199,7 +199,10 @@ def test_3_integrity_error_on_uk_becomes_409(client, db_mode):
     other = IntegrityError("stmt", {}, Exception("Duplicate entry for key 'uk_other'"))
     assert core._is_grade_task_tt_uk_violation(other) is False
 
-    with patch.object(core, "_find_existing_grade_task_by_teaching_task", side_effect=[None, MagicMock(
+    with patch(
+        "app.modules.academic_affairs.services.academic_affairs_teacher_relation_authority.require_teacher",
+        return_value={"source": "TEACHING_TASK_MIGRATION_FALLBACK"},
+    ), patch.object(core, "_find_existing_grade_task_by_teaching_task", side_effect=[None, MagicMock(
             id=99, status="NOT_STARTED", is_deleted=False)]):
         mock_db = MagicMock()
         mock_tt = MagicMock()

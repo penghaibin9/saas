@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell
+  <ModulePageShell flat
     title="学生主档"
     :subtitle="'共 ' + pagination.total + ' 名学生 · 手机号 / 身份证默认脱敏展示'"
     :role-name="ctx.currentRole.roleName"
@@ -17,9 +17,10 @@
       :description="ctx.permissionActions.viewList.reason || '请联系系统管理员开通'"
     />
     <div v-else class="mp-stack">
-      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset">
+      <p class="flat-note">查询结果 <strong>{{ pagination.total }}</strong></p>
+      <AdvancedFilter :primary-count="3" v-model="filters" :fields="filterFields" @search="search" @reset="reset">
         <template #ops>
-          <label class="sl-voided-toggle">
+          <label class="student-voided-toggle">
             <input v-model="filters.includeVoided" type="checkbox" @change="search" />
             显示已作废
           </label>
@@ -31,8 +32,7 @@
       <EmptyState
         v-else-if="!rows.length"
         title="没有符合条件的学生"
-        description="可调整筛选条件，或确认当前数据范围是否覆盖目标班级"
-      />
+        description="可调整筛选条件，或确认当前数据范围是否覆盖目标班级"><template #actions><button class="mp-link" @click="reset">重置筛选</button></template></EmptyState>
       <DataTable
         v-else
         :columns="visibleColumns"
@@ -125,10 +125,7 @@
         </template>
       </DataTable>
 
-      <p class="mp-note">
-        管理动作全部写入审计留痕；作废为逻辑删除，可追溯不可物理清除；导出默认脱敏并附
-        「{{ ctx.tenantBrandConfig.watermarkText }}」水印。
-      </p>
+
     </div>
 
     <!-- 新增 / 编辑学生 -->
@@ -295,7 +292,7 @@ export default {
     toolbarActions() {
       const pa = this.ctx.permissionActions
       return [
-        { key: 'create', label: '＋ 新增学生', variant: 'primary', perm: 'createStudent' },
+        { key: 'create', label: '新增学生', variant: 'primary', perm: 'createStudent' },
         { key: 'import', label: '批量导入', perm: 'importStudents' },
         { key: 'export', label: '批量导出', perm: 'exportStudents' },
         { key: 'columns', label: '列设置', perm: 'columnSettings' }
@@ -337,7 +334,7 @@ export default {
     },
     statusLabel(v) {
       const hit = this.ctx.statusOptions.studentStatus.find((o) => o.value === v)
-      return hit ? hit.label : v
+      return hit ? hit.label : (v === 'NORMAL' ? '在读' : v)
     },
     statusTone(v) {
       return { ADMITTED: 'processing', ACTIVE: 'success', SUSPENDED: 'warning', GRADUATED: 'info', DROPPED: 'default', VOIDED: 'default' }[v] || 'default'
@@ -510,7 +507,7 @@ export default {
 .sl-gap {
   margin-left: var(--space-2);
 }
-.sl-voided-toggle {
+.student-voided-toggle {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);

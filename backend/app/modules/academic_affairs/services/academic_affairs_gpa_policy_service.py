@@ -12,6 +12,7 @@ SUPERSEDED + active_scope_key 唯一索引兜底并发发布），职责不同�
 from __future__ import annotations
 
 import json
+import math
 from datetime import datetime
 
 from sqlalchemy.exc import IntegrityError
@@ -47,24 +48,35 @@ def _policy_dto(row) -> dict:
 
 
 def _validate_bands(bands) -> str:
+    """Validate coverage of the existing integer-score domain, without changing bands.
+
+    AcademicGrade.score is an integer. Decimal scores are not rounded here;
+    evaluation also refuses any uncovered input rather than silently returning zero.
+    """
     if not isinstance(bands, list) or not bands:
         raise AppException("VALIDATION_ERROR", "BANDS 策略必须提供非空的分数区间数组")
     normalized = []
     for item in bands:
         try:
-            lo, hi, point = float(item["minScore"]), float(item["maxScore"]), float(item["point"])
-        except (KeyError, TypeError, ValueError) as exc:
-            raise AppException("VALIDATION_ERROR", "BANDS 每项须包含 minScore/maxScore/point") from exc
-        if lo > hi:
-            raise AppException("VALIDATION_ERROR", f"区间下限不能大于上限：{lo}-{hi}")
+            raw = (item["minScore"], item["maxScore"], item["point"])
+            if any(isinstance(value, bool) for value in raw):
+                raise ValueError("boolean is not a score")
+            lo, hi, point = map(float, raw)
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            raise AppException("VALIDATION_ERROR", "BANDS 每项须包含有效 minScore/maxScore/point") from exc
+        if not all(math.isfinite(value) for value in (lo, hi, point)) or not (
+                0 <= lo <= hi <= 100 and 0 <= point <= 5):
+            raise AppException("VALIDATION_ERROR", "绩点区间须为有限数值：0≤下限≤上限≤100，绩点0至5")
         normalized.append({"minScore": lo, "maxScore": hi, "point": round(point, 2)})
-    normalized.sort(key=lambda b: b["minScore"])
+    normalized.sort(key=lambda item: item["minScore"])
     for prev, cur in zip(normalized, normalized[1:]):
         if cur["minScore"] <= prev["maxScore"]:
-            raise AppException(
-                "VALIDATION_ERROR",
-                f"BANDS 区间存在重叠：{prev['minScore']}-{prev['maxScore']} 与 {cur['minScore']}-{cur['maxScore']}",
-            )
+            raise AppException("VALIDATION_ERROR", "BANDS 区间存在重叠")
+    missing = [score for score in range(101)
+               if not any(item["minScore"] <= score <= item["maxScore"] for item in normalized)]
+    if missing:
+        sample = "、".join(map(str, missing[:12]))
+        raise AppException("VALIDATION_ERROR", f"BANDS 未覆盖全部0至100整数成绩，缺少：{sample}")
     return json.dumps(normalized, ensure_ascii=False)
 
 
@@ -132,25 +144,58 @@ def _ensure_default_policy(db):
         return existing
 
 
+def _validate_linear_parameters(fail, anchor, divisor):
+    """Accept existing integer configuration fields, reject silent coercion/defaulting."""
+    values = []
+    try:
+        for value in (fail, anchor, divisor):
+            if isinstance(value, bool):
+                raise ValueError("boolean parameter")
+            number = float(value)
+            if not math.isfinite(number) or not number.is_integer():
+                raise ValueError("parameter must be a finite integer")
+            values.append(int(number))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise AppException("VALIDATION_ERROR", "线性绩点参数必须为有限整数") from exc
+    fail, anchor, divisor = values
+    if not (0 <= fail <= 100 and 0 <= anchor <= 100 and divisor > 0):
+        raise AppException("VALIDATION_ERROR", "及格线和锚点须在0至100之间，除数须大于0")
+    if (fail - anchor) / divisor < 0 or (100 - anchor) / divisor > 5:
+        raise AppException("VALIDATION_ERROR", "线性公式会产生负绩点或大于5的绩点，请核对参数")
+    return fail, anchor, divisor
+
+
 def evaluate_policy(policy, score) -> float:
-    """按策略把 0-100 分数换算成绩点；LINEAR 支持自定义锚点，BANDS 按区间查表。"""
-    s = float(score if score is not None else 0)
+    """Evaluate the same policy; invalid inputs/rules fail rather than becoming zero."""
+    try:
+        if isinstance(score, bool):
+            raise ValueError("boolean score")
+        s = float(score if score is not None else 0)
+        if not math.isfinite(s) or not 0 <= s <= 100:
+            raise ValueError("score outside domain")
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise AppException("VALIDATION_ERROR", "成绩必须是0至100之间的有限数值") from exc
     scale = str(policy.scale_type or "LINEAR").upper()
     if scale == "BANDS":
         try:
-            bands = json.loads(policy.bands_json or "[]")
-        except (TypeError, ValueError):
-            bands = []
+            bands = json.loads(_validate_bands(json.loads(policy.bands_json or "[]")))
+        except (TypeError, ValueError, AppException) as exc:
+            raise AppException("GPA_POLICY_INVALID", "绩点区间策略无效，请核对完整分段", http_status=409) from exc
         for band in bands:
-            if float(band["minScore"]) <= s <= float(band["maxScore"]):
-                return round(float(band["point"]), 2)
-        return 0.0
-    fail = float(policy.linear_fail_score if policy.linear_fail_score is not None else 60)
-    anchor = float(policy.linear_anchor_score if policy.linear_anchor_score is not None else 50)
-    divisor = float(policy.linear_divisor or 10)
-    if s < fail:
-        return 0.0
-    return round((s - anchor) / divisor, 2)
+            if band["minScore"] <= s <= band["maxScore"]:
+                return round(band["point"], 2)
+        raise AppException("GPA_POLICY_INVALID", "绩点分段未覆盖本次成绩，禁止默认为0", http_status=409)
+    if scale != "LINEAR":
+        raise AppException("GPA_POLICY_INVALID", "不支持的绩点换算类型", http_status=409)
+    try:
+        fail, anchor, divisor = _validate_linear_parameters(
+            policy.linear_fail_score if policy.linear_fail_score is not None else 60,
+            policy.linear_anchor_score if policy.linear_anchor_score is not None else 50,
+            policy.linear_divisor if policy.linear_divisor is not None else 10,
+        )
+    except AppException as exc:
+        raise AppException("GPA_POLICY_INVALID", "线性绩点策略参数无效", http_status=409) from exc
+    return 0.0 if s < fail else round((s - anchor) / divisor, 2)
 
 
 def course_point_frozen(db, grade_row) -> float:
@@ -200,11 +245,11 @@ def activate_gpa_policy(user, payload: dict) -> dict:
     if scale_type == "BANDS":
         bands_json = _validate_bands(payload.get("bands"))
     else:
-        linear_fail = int(payload.get("linearFailScore") if payload.get("linearFailScore") is not None else 60)
-        linear_anchor = int(payload.get("linearAnchorScore") if payload.get("linearAnchorScore") is not None else 50)
-        linear_divisor = int(payload.get("linearDivisor") or 10)
-        if linear_divisor <= 0:
-            raise AppException("VALIDATION_ERROR", "linearDivisor 必须大于 0")
+        linear_fail, linear_anchor, linear_divisor = _validate_linear_parameters(
+            payload.get("linearFailScore") if payload.get("linearFailScore") is not None else 60,
+            payload.get("linearAnchorScore") if payload.get("linearAnchorScore") is not None else 50,
+            payload.get("linearDivisor") if payload.get("linearDivisor") is not None else 10,
+        )
 
     with session() as db:
         same = db.query(AaGpaPointPolicy).filter(

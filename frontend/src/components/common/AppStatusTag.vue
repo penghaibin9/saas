@@ -29,6 +29,7 @@ const STATUS_MAP = {
   PASSED: { label: '已通过', type: 'success' },
   COMPLETED: { label: '已完成', type: 'success' },
   FINISHED: { label: '已结束', type: 'success' },
+  ENDED: { label: '已结束', type: 'default' },
   RETURNED: { label: '已退回', type: 'warning' },
   REJECTED: { label: '已驳回', type: 'danger' },
   FAILED: { label: '未通过', type: 'danger' },

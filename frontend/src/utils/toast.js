@@ -1,5 +1,5 @@
 import { reactive } from 'vue'
-import { normalizeUiError } from './presentationSafety'
+import { normalizeUiError } from './presentationSafety.js'
 
 /**
  * 轻提示服务（配合 AppToast.vue 使用，App.vue 挂载一次 <AppToast />）
@@ -22,8 +22,19 @@ function normalizeCrossClientMessage(message) {
     .replace(/^已记录对 (.+) 的线下成果催办（未发送站内消息）$/, '已向 $1 发送成果站内催办并写入留痕')
 }
 
+const recentPushes = new Map()
+
 function push(type, message, duration) {
+  // 同一条提示在极短时间内重复触发（接口层和页面各弹一次「已保存」）只显示一次。
+  const dedupeKey = `${type}|${message}`
+  const now = Date.now()
+  const recent = recentPushes.get(dedupeKey)
+  if (recent && now - recent.at < 800 && toastState.items.some((item) => item.id === recent.id)) return recent.id
   const id = ++seed
+  recentPushes.set(dedupeKey, { id, at: now })
+  if (recentPushes.size > 50) recentPushes.delete(recentPushes.keys().next().value)
+  // 记录最近一次“成功”提示，供离开页面的未提交内容提醒判断：刚保存成功后跳回列表不应再弹“会丢失内容”
+  if (type === 'success' && typeof window !== 'undefined') window.__SAAS_LAST_SAVE_SUCCESS_AT__ = Date.now()
   const displayMessage = type === 'error'
     ? normalizeUiError(message).userMessage
     : normalizeCrossClientMessage(message)

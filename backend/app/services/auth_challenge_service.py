@@ -68,9 +68,14 @@ def login_guard_key(tenant_code: str | None, login_name: str | None) -> str:
     return "pw:" + _digest("login-subject\n" + normalized)[:40]
 
 
-def _subject_hash(tenant_code: str | None, login_name: str | None) -> str:
+def _subject_hash(tenant_code: str | None, login_name: str | None, identifier_type: str = "ACCOUNT") -> str:
     if not (login_name or "").strip():
         return ""
+    if identifier_type == "PHONE":
+        from app.services.phone_login_service import require_phone_identifier
+        login_name = "PHONE\n" + require_phone_identifier(tenant_code, login_name)
+    elif identifier_type != "ACCOUNT":
+        raise AppException("VALIDATION_ERROR", "不支持的登录方式", http_status=422)
     return _digest(f"subject\n{(tenant_code or '*').strip().lower()}\n{login_name.strip().lower()}")
 
 
@@ -268,6 +273,7 @@ def issue_captcha(
     login_name: str | None = None,
     client_nonce: str | None = None,
     client_type: str | None = None,
+    *, identifier_type: str = "ACCOUNT",
 ) -> dict[str, Any]:
     scene = (scene or "").strip().upper()
     if scene not in _ALLOWED_SCENES:
@@ -283,7 +289,7 @@ def issue_captcha(
     payload = {
         "answer": _digest(f"answer\n{captcha_id}\n{code}"),
         "scene": scene,
-        "subject": _subject_hash(tenant_code, login_name),
+        "subject": _subject_hash(tenant_code, login_name, identifier_type),
         "nonce": _nonce_hash(client_nonce),
         "clientType": client_type,
         "ip": _ip_hash(),
@@ -308,6 +314,7 @@ def verify_captcha(
     login_name: str | None = None,
     client_nonce: str | None = None,
     client_type: str | None = None,
+    *, identifier_type: str = "ACCOUNT",
 ) -> None:
     details = {"captchaRequired": True, "scene": scene}
     if not captcha_id or not captcha_code:
@@ -318,7 +325,7 @@ def verify_captcha(
     if payload.get("scene") != scene:
         raise AppException("CAPTCHA_INVALID", "验证码无效，请刷新后重试", details=details, http_status=401)
     expected_subject = str(payload.get("subject") or "")
-    if not hmac.compare_digest(expected_subject, _subject_hash(tenant_code, login_name)):
+    if not hmac.compare_digest(expected_subject, _subject_hash(tenant_code, login_name, identifier_type)):
         raise AppException("CAPTCHA_INVALID", "验证码无效，请刷新后重试", details=details, http_status=401)
     expected_nonce = str(payload.get("nonce") or "")
     if not hmac.compare_digest(expected_nonce, _nonce_hash(client_nonce)):
@@ -332,7 +339,7 @@ def verify_captcha(
         raise AppException("CAPTCHA_INVALID", "验证码错误，请重新输入", details=details, http_status=401)
 
 
-def captcha_required(scene: str, tenant_code: str | None, login_name: str | None) -> bool:
+def captcha_required(scene: str, tenant_code: str | None, login_name: str | None, identifier_type: str = "ACCOUNT") -> bool:
     if scene == PLATFORM_LOGIN:
         return True
     threshold = max(1, int(getattr(settings, "CAPTCHA_AFTER_FAILURES", 2) or 2))
@@ -349,12 +356,13 @@ def enforce_login_captcha(
     captcha_code: str | None,
     client_nonce: str | None,
     client_type: str | None = None,
+    *, identifier_type: str = "ACCOUNT",
 ) -> None:
-    required = captcha_required(scene, tenant_code, login_name)
+    required = captcha_required(scene, tenant_code, login_name, identifier_type)
     supplied = bool(captcha_id or captcha_code)
     if not required and not supplied:
         return
-    verify_captcha(captcha_id, captcha_code, scene, tenant_code, login_name, client_nonce, client_type)
+    verify_captcha(captcha_id, captcha_code, scene, tenant_code, login_name, client_nonce, client_type, identifier_type=identifier_type)
 
 
 def reset_for_tests() -> None:

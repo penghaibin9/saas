@@ -95,6 +95,7 @@ def _row(c: EmpCompany) -> dict:
         "coopStatus": c.coop_status, "coopStatusLabel": COOP_LABEL.get(c.coop_status, c.coop_status),
         "coopStatusTone": COOP_TONE.get(c.coop_status, "default"),
         "qualificationStatus": c.qualification_status,
+        "accessValidUntil": c.access_valid_until.isoformat() + "Z" if c.access_valid_until else None,
         "qualificationLabel": QUAL_LABEL.get(c.qualification_status, c.qualification_status),
         "blacklist": bool(c.blacklist), "blacklistReason": c.blacklist_reason or "",
         "internCount": c.intern_count, "hiredCount": c.hired_count,

@@ -54,7 +54,7 @@ test.describe.serial('Golden rollout · exception / recovery workspaces · Batch
     await openStaffWorkspace(page, adminApi, '/admin/student-affairs/leave/followup')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/leave\/followup/)
-    await expect(page.getByRole('heading', { name: '延期销假', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '续假与返校', exact: true })).toBeVisible()
     await expect(page.locator('.bar')).toBeVisible()
     await expect(page.locator('.dpw')).toBeVisible()
     await expect(page.locator('.lv-main')).toBeVisible()

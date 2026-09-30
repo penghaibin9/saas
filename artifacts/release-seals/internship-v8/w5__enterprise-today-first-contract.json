@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "implementedAt": "2026-08-30T10:35:00Z",
+  "status": "IMPLEMENTED_STATIC_AND_BUILD_GATES_GREEN_RUNTIME_MYSQL_PENDING",
+  "scope": "Enterprise Collaboration Portal as the fifth internship surface",
+  "navigation": {
+    "modulesPreserved": 6,
+    "labels": ["首页", "企业资料", "我的岗位", "报名学生", "实习学生", "评价任务"],
+    "newSidebarCreated": false
+  },
+  "todayFirst": {
+    "beforeKpi": true,
+    "boundedExactObjects": true,
+    "maxApplicationObjects": 3,
+    "maxPositionObjects": 2,
+    "fields": [
+      "objectType",
+      "objectId",
+      "whyHere",
+      "recentChange",
+      "waitingOn",
+      "nextActor",
+      "exact href",
+      "resumeKey"
+    ],
+    "errorRenderedAsEmpty": false,
+    "brokenLegacyApplicantHrefFixed": "/applicants -> /applications/:id"
+  },
+  "authorityBoundaries": {
+    "acceptIntentEqualsPlacement": false,
+    "schoolFinalPlacementPreserved": true,
+    "contactRequiresServerContactView": true,
+    "enterpriseCanPublishPosition": false,
+    "mentorCanViewApplicants": false,
+    "newAuthorityCreated": false
+  },
+  "verification": [
+    { "gate": "Today First plus authority targeted contracts", "result": "13 passed, 0 failed" },
+    { "gate": "enterprise portal full node test suite", "result": "95 passed, 0 failed" },
+    { "gate": "enterprise portal ESLint", "result": "GREEN" },
+    { "gate": "enterprise portal production build", "result": "GREEN" },
+    { "gate": "backend enterprise position service Python compile", "result": "GREEN" },
+    {
+      "gate": "positive and negative browser runtime",
+      "result": "RUNTIME_BLOCKED",
+      "reason": "The isolated exact-head Docker MySQL stopped accepting handshakes after canonical migration and seed completion."
+    }
+  ],
+  "incidentalGateRepairs": [
+    "Made two enterprise portal source/workflow contract tests CRLF-safe on Windows."
+  ]
+}

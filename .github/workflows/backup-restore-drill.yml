@@ -9,6 +9,8 @@ on:
       - main
     paths:
       - "deploy/backup/restore-drill.sh"
+      - "backend/alembic/versions/**"
+      - "backend/app/models/**"
       - ".github/workflows/backup-restore-drill.yml"
 
 permissions:

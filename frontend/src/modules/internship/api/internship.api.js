@@ -321,13 +321,14 @@ export const internshipApi = {
     return call(() => request(`/internship/change-requests/${id}`))
   },
 
-  reviewChangeRequest(id, { action, comment, expectedVersion, version } = {}) {
+  reviewChangeRequest(id, { action, comment, expectedVersion, version, recordExpectedVersion } = {}) {
     return call(() => request(`/internship/change-requests/${id}/review`, {
       method: 'POST',
       body: {
         action: action === 'APPROVE' ? 'APPROVE' : 'REJECT',
         comment,
-        expectedVersion: expectedVersion ?? version
+        expectedVersion: expectedVersion ?? version,
+        recordExpectedVersion
       }
     }))
   },

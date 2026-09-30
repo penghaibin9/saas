@@ -1,0 +1,86 @@
+name: Official news package integration checks
+on:
+  push:
+    branches: [feat/yueke-official-site-60-gallery-20260909]
+    paths: ['.github/workflows/official-news-check.yml', '.github/official-news-release.json', '.github/import-news-release.py']
+permissions:
+  contents: write
+concurrency:
+  group: yueke-news-package-import
+  cancel-in-progress: false
+jobs:
+  news-package:
+    if: github.repository == 'penghaibin9/saas' && github.ref == 'refs/heads/feat/yueke-official-site-60-gallery-20260909'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: news-test-only
+          MYSQL_DATABASE: test_yueke_news
+        ports: ['3306:3306']
+        options: --health-cmd="mysqladmin ping -h 127.0.0.1 -pnews-test-only" --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      NEWS_TEST_REQUIRED: 'true'
+      NEWS_TEST_DATABASE_URL: mysql+pymysql://root:news-test-only@127.0.0.1:3306/test_yueke_news?charset=utf8mb4
+      NODE_OPTIONS: --max-old-space-size=6144
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 1
+      - name: Refuse concurrent branch movement
+        env:
+          EXPECTED_HEAD: ${{ github.sha }}
+        run: test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+      - name: Download hash-locked owner-approved implementation
+        run: |
+          python -m pip install playwright==1.55.0
+          python -m playwright install --with-deps chromium
+          python .github/import-news-release.py download
+          python .github/import-news-release.py apply
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Install existing backend dependency lock
+        run: python -m pip install -r backend/requirements.txt
+      - name: Real MySQL schema transactions root gates and public HTML
+        working-directory: backend
+        run: |
+          set -o pipefail
+          mkdir -p ../news-check-output
+          python -m unittest discover -s tests/website_news -v 2>&1 | tee ../news-check-output/mysql-tests.log
+      - name: Existing website contracts and real production frontend build
+        working-directory: frontend
+        run: |
+          set -o pipefail
+          node --test tests/official-showcase.test.mjs tests/website-news-package.test.mjs tests/portal-enterprise-entry-contract.test.mjs tests/official-site-story-contract.test.mjs 2>&1 | tee ../news-check-output/frontend-tests.log
+          npm ci
+          npm run build 2>&1 | tee ../news-check-output/frontend-build.log
+      - name: Real Vue upload confirm close-browser worker and SSR browser checks
+        run: python frontend/scripts/website-news-browser.py
+      - name: Commit only verified newsroom paths to the original branch
+        env:
+          BRANCH: feat/yueke-official-site-60-gallery-20260909
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import os,subprocess
+          names=Path(os.environ['RUNNER_TEMP'],'news-paths.txt').read_text().splitlines()
+          subprocess.run(['git','add','--',*names],check=True)
+          PY
+          if git diff --cached --quiet; then echo 'Already imported'; exit 0; fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(website-news): upload ZIP approve once and publish all approved news with durable MySQL queue'
+          git push origin "HEAD:$BRANCH"
+          git rev-parse HEAD | tee news-check-output/IMPORTED_COMMIT
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: official-news-package-checks-${{ github.sha }}
+          path: news-check-output/
+          if-no-files-found: warn
+          retention-days: 7

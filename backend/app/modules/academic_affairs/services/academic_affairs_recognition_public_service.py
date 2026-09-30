@@ -8,6 +8,8 @@ from __future__ import annotations
 import json
 from datetime import datetime
 
+from sqlalchemy import func, select
+
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 
@@ -63,12 +65,24 @@ def _resolve_student(db, *, student_no=None):
     return rows[0]
 
 
-def submit(user, body, *, student_no=None) -> dict:
+def submit(user, body, *, student_no=None, command_key=None) -> dict:
     from app.models import AaGradeRecognition
 
+    from . import academic_affairs_grade_command_receipt as receipt_service
     with _base.session() as db:
         if student_no is not None:
             _base._require_school(user, db)
+        if command_key is not None and student_no is None:
+            raise AppException("VALIDATION_ERROR", "学生自助提交暂不使用教务命令回执")
+        receipt, cached = receipt_service.begin(db, user, "RECOGNITION_SUBMIT", command_key, {
+            "studentNo": student_no,
+            "body": {key: getattr(body, key, None) for key in (
+                "sourceCourseName", "sourceScore", "sourceCredit", "sourceOrigin",
+                "targetCourseId", "attachmentFileIds", "reason",
+            )},
+        })
+        if cached is not None:
+            return cached
         profile = _resolve_student(db, student_no=student_no)
         source_name = (getattr(body, "sourceCourseName", None) or "").strip()
         target_course = _base._resolve_target(db, body)
@@ -156,16 +170,25 @@ def submit(user, body, *, student_no=None) -> dict:
                 f"evidence={evidence['count']};manifestHash={evidence['manifestHash'][:16]}"
             ),
         )
+        db.flush()
+        receipt_service.finish(db, receipt, _base._dto(row))
         db.commit()
         return _base._dto(row)
 
 
-def review(user, recognition_id, action, reason="") -> dict:
+def review(user, recognition_id, action, reason="", *, command_key=None) -> dict:
     from app.models import AaCourse, AaGradeRecognition, AcademicGrade
     from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_service
 
+    from . import academic_affairs_grade_command_receipt as receipt_service
     with _base.session() as db:
         _base._require_school(user, db)
+        receipt, cached = receipt_service.begin(db, user, "RECOGNITION_REVIEW", command_key, {
+            "recognitionId": str(recognition_id), "action": str(action or "").upper(),
+            "reason": str(reason or "").strip(),
+        })
+        if cached is not None:
+            return cached
         row = db.query(AaGradeRecognition).filter(
             AaGradeRecognition.id == int(recognition_id),
             AaGradeRecognition.tenant_id == _base._tid(),
@@ -186,6 +209,8 @@ def review(user, recognition_id, action, reason="") -> dict:
             row.reviewed_by = _base._op()
             row.reviewed_at = datetime.utcnow()
             _base._audit(db, row.id, "RECOG_REJECT", reason_text[:100])
+            db.flush()
+            receipt_service.finish(db, receipt, _base._dto(row))
             db.commit()
             return _base._dto(row)
         if action_code != "APPROVE":
@@ -286,11 +311,14 @@ def review(user, recognition_id, action, reason="") -> dict:
                 f"manifestHash={str(evidence['manifestHash'] or '')[:16]}"
             ),
         )
+        db.flush()
+        receipt_service.finish(db, receipt, _base._dto(row))
         db.commit()
         return _base._dto(row)
 
 
 def my(user):
+    """兼容学生 PC 的完整本人历史读取；移动端必须调用 ``my_page``。"""
     from app.models import AaGradeRecognition
 
     with _base.session() as db:
@@ -301,3 +329,39 @@ def my(user):
             AaGradeRecognition.is_deleted.is_(False),
         ).order_by(AaGradeRecognition.id.desc()).all()
         return [_base._dto(row) for row in rows]
+
+
+def my_page(user, *, page: int, page_size: int) -> tuple[list[dict], int]:
+    """学生移动端认定历史的 MySQL 有界读取，绝不先取全量再由前端截断。"""
+    from app.models import AaGradeRecognition
+    from app.services.mobile_student_service import _require_student
+
+    _require_student(user)
+    if isinstance(page, bool) or isinstance(page_size, bool):
+        raise AppException("VALIDATION_ERROR", "页码格式不正确")
+    try:
+        page = int(page)
+        page_size = int(page_size)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "页码格式不正确") from exc
+    if page < 1 or page > 100000 or page_size < 1 or page_size > 50:
+        raise AppException("VALIDATION_ERROR", "页码须大于等于 1，每页最多 50 条")
+
+    with _base.session() as db:
+        profile = _resolve_student(db)
+        conditions = (
+            AaGradeRecognition.tenant_id == _base._tid(),
+            AaGradeRecognition.student_id == profile.id,
+            AaGradeRecognition.is_deleted.is_(False),
+        )
+        total = int(db.scalar(
+            select(func.count()).select_from(AaGradeRecognition).where(*conditions)
+        ) or 0)
+        rows = db.scalars(
+            select(AaGradeRecognition)
+            .where(*conditions)
+            .order_by(AaGradeRecognition.id.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        ).all()
+        return [_base._dto(row) for row in rows], total

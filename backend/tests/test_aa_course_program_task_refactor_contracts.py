@@ -148,11 +148,11 @@ def test_d4_move_only_reuses_legacy_contract_objects_and_services():
     assert course_program_task_router.prog_svc is legacy.prog_svc
     assert course_program_task_router.task_svc is legacy.task_svc
     assert course_program_task_router.course_svc is course_public_svc
-    # A-W2 only replaces the ENABLED -> v+1 writer; all other course capabilities remain
-    # a transparent compatibility pass-through to the mature legacy course service.
+    # A-W2 keeps mature course reads/creation as compatibility pass-through, while the
+    # ENABLED -> v+1 update writer and node-authorized review writer are deliberate public overrides.
     assert course_public_svc.create_course is legacy.course_svc.create_course
     assert course_public_svc.list_courses is legacy.course_svc.list_courses
-    assert course_public_svc.review_course is legacy.course_svc.review_course
+    assert course_public_svc.review_course is not legacy.course_svc.review_course
     assert course_public_svc.update_course is not legacy.course_svc.update_course
     assert course_program_task_router._PROG_VIEW is legacy._PROG_VIEW
     assert course_program_task_router._COURSE_VIEW is legacy._COURSE_VIEW

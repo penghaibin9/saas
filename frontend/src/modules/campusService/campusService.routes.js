@@ -95,7 +95,8 @@ export const campusServiceRoutes = {
     {
       path: 'work-orders',
       name: 'campus-service-work-orders',
-      redirect: '/admin/student-affairs/dashboard'
+      component: () => import('./views/WorkOrderView.vue'),
+      meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campusService.workOrder.view', title: '学生服务工单' }
     }
   ]
 }

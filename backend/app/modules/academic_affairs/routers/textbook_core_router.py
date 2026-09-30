@@ -6,11 +6,12 @@ legacy 的目录、选用、审核、征订、到货、发放签收、费用、�
 from __future__ import annotations
 
 from typing import Optional
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, Field
 
-from app.core.permissions import require_permission
+from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
 from app.modules.academic_affairs.services import academic_affairs_textbook_read_service as textbook_read
 from app.modules.academic_affairs.services import academic_affairs_textbook_service as textbook_svc
@@ -46,6 +47,12 @@ class SelectionBody(BaseModel):
     remark: Optional[str] = None
 
 
+class SelectionUpdateBody(BaseModel):
+    textbookId: str = Field(..., pattern=r"^[1-9]\d*$")
+    expectedQty: int = Field(..., ge=1)
+    remark: str = Field(..., min_length=1, max_length=1000)
+
+
 class ReviewBatchBody(BaseModel):
     batchName: Optional[str] = None
     termId: Optional[str] = None
@@ -70,12 +77,14 @@ class DistGenerateBody(BaseModel):
     orderBatchId: str = Field(..., min_length=1)
     classId: Optional[str] = None
     studentIds: list[str] = Field(default_factory=list)
+    appendToBatchId: Optional[str] = Field(None, pattern=r"^[1-9]\d*$", description="仅显式补充此既有批次的未列入学生；不替换原记录")
 
 
 class FeeMarkBody(BaseModel):
     action: str = Field(..., description="PAID/PARTIAL/WAIVE")
     amount: Optional[float] = Field(None, ge=0, description="PARTIAL 部分收款金额")
     waiveReason: Optional[str] = Field("", max_length=500)
+    expectedPaidAmount: Optional[Decimal] = Field(None, ge=0, max_digits=12, decimal_places=2, description="本次操作核对的原已收金额，部分收款必填")
 
 
 @router.post("/textbooks", summary="新增教材目录")
@@ -101,10 +110,17 @@ def selection_create(body: SelectionBody, user=Depends(require_permission(_TB_SE
 
 
 @router.get("/textbooks/selections", summary="选用列表")
-def selections(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+def selections(status: Optional[str] = None, selectionId: Optional[int] = None,
+               termId: Optional[int] = None,
+               page: int = 1, pageSize: int = 50,
                user=Depends(require_permission(_TB_VIEW))):
-    items, total = textbook_svc.list_selections(user, status, page, pageSize)
+    items, total = textbook_svc.list_selections(user, status, page, pageSize, selection_id=selectionId, term_id=termId)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.put("/textbooks/selections/{sid}", summary="修改教材选用草稿/退回申报")
+def selection_update(body: SelectionUpdateBody, sid: int = Path(...), user=Depends(require_permission(_TB_SELECTION))):
+    return success(textbook_svc.update_selection(user, sid, body), message="已保存")
 
 
 @router.post("/textbooks/selections/{sid}/submit", summary="提交选用")
@@ -124,7 +140,7 @@ def review_create(body: ReviewBatchBody, user=Depends(require_permission(_TB_REV
 
 @router.get("/textbooks/review-batches", summary="审核批次列表")
 def review_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
-                   user=Depends(require_permission(_TB_VIEW))):
+                   user=Depends(require_permission(_TB_REVIEW))):
     items, total = textbook_read.list_review_batches(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
@@ -141,13 +157,13 @@ def order_create(body: OrderBatchBody, user=Depends(require_permission(_TB_ORDER
 
 @router.get("/textbooks/order-batches", summary="征订批次列表")
 def order_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
-                  user=Depends(require_permission(_TB_VIEW))):
+                  user=Depends(require_permission(_TB_ORDER))):
     items, total = textbook_read.list_order_batches(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/textbooks/order-batches/{bid}/items", summary="征订明细")
-def order_batch_items(bid: int = Path(...), user=Depends(require_permission(_TB_VIEW))):
+def order_batch_items(bid: int = Path(...), user=Depends(require_permission(_TB_ORDER))):
     return success({"items": textbook_svc.order_items(user, bid)})
 
 
@@ -168,11 +184,12 @@ def order_archive(bid: int = Path(...), user=Depends(require_permission(_TB_ORDE
 
 @router.post("/textbooks/distribution-batches", summary="生成发放名单（按班级+征订批次）")
 def dist_generate(body: DistGenerateBody, user=Depends(require_permission(_TB_DIST))):
-    return success(textbook_svc.generate_distribution(user, int(body.orderBatchId), body.classId, body.studentIds), message="已生成")
+    return success(textbook_svc.generate_distribution(user, int(body.orderBatchId), body.classId, body.studentIds,
+        append_to_batch_id=int(body.appendToBatchId) if body.appendToBatchId else None), message="已处理发放名单")
 
 
 @router.get("/textbooks/distribution-batches/{bid}/records", summary="发放明细")
-def dist_records(bid: int = Path(...), page: int = 1, pageSize: int = 100, user=Depends(require_permission(_TB_VIEW))):
+def dist_records(bid: int = Path(...), page: int = 1, pageSize: int = 100, user=Depends(require_permission(_TB_DIST))):
     items, total = textbook_read.list_distribution_records(user, bid, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
@@ -184,21 +201,22 @@ def dist_sign(rid: int = Path(...), user=Depends(require_permission(_TB_DIST))):
 
 @router.get("/textbooks/fee-ledger", summary="教材费用台账")
 def fee_ledger(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
-               user=Depends(require_permission(_TB_VIEW))):
+               user=Depends(require_permission(_TB_FEE))):
     items, total = textbook_read.list_fees(user, status, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/textbooks/fee-ledger/{fid}/mark", summary="标记已收/部分收款/减免")
 def fee_mark(body: FeeMarkBody, fid: int = Path(...), user=Depends(require_permission(_TB_FEE))):
-    return success(textbook_svc.mark_fee(user, fid, body.action, body.amount, body.waiveReason), message="已处理")
+    return success(textbook_svc.mark_fee(user, fid, body.action, body.amount, body.waiveReason,
+        expected_paid_amount=body.expectedPaidAmount), message="已处理")
 
 
 @router.get("/textbooks/stock", summary="教材库存（到货量-已发放签收量）")
-def textbook_stock(user=Depends(require_permission(_TB_VIEW))):
+def textbook_stock(user=Depends(require_any_permission(_TB_ORDER, _TB_DIST))):
     return success({"items": textbook_read.textbook_stock(user)})
 
 
 @router.get("/textbooks/stats", summary="教材统计（征订/到货率/欠费）")
-def textbook_stats(user=Depends(require_permission(_TB_VIEW))):
+def textbook_stats(user=Depends(require_any_permission(_TB_REVIEW, _TB_ORDER, _TB_DIST, _TB_FEE))):
     return success(textbook_read.stats(user))

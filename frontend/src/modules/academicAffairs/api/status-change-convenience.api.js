@@ -10,7 +10,7 @@ function ok(data) {
 }
 
 function toErr(e) {
-  if (e?.biz) return { code: e.code || 1, data: null, message: e.message || '提交失败' }
+  if (e?.biz) return { code: e.code || 1, bizCode: e.bizCode || e.biz?.code, data: e.details || null, message: e.message || '提交失败' }
   return { code: 503001, data: null, message: e?.message || '真实接口不可用' }
 }
 

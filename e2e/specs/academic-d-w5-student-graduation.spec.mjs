@@ -93,12 +93,13 @@ async function openStudentGraduationAudit(page) {
 }
 
 async function assertAbnormalStudentSurface(page) {
-  await expect(page.getByRole('heading', { name: '毕业条件还有待处理事项' })).toBeVisible({ timeout: 15_000 })
-  await expect(page.getByText('正式预审存在阻断项', { exact: true })).toBeVisible()
-  await expect(page.getByText('逐项核对真实业务事实', { exact: true })).toBeVisible()
-  await expect(page.getByRole('button', { name: '重新核验' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '毕业资格自查', level: 1 })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('heading', { name: '尚有条件需要补齐', level: 2 })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '正式预审存在阻断项', level: 2 })).toBeVisible()
+  await expect(page.getByText('不能把实时通过显示成已批准毕业', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '刷新', exact: true })).toBeVisible()
   await expect(page.getByRole('heading', { name: '当前毕业条件已通过实时核验' })).toHaveCount(0)
-  await expect(page.locator('.graduation-hero')).not.toHaveClass(/is-passed/)
+  await expect(page.getByRole('heading', { name: '当前实时核验已通过' })).toHaveCount(0)
   await expect(page.locator('body')).not.toContainText('毕业自查暂时无法加载')
 }
 
@@ -124,7 +125,7 @@ test.describe.serial('Academic D W5 · student graduation qualification exact tr
     await capture(page, testInfo, 'academic-d-w5-student-graduation-abnormal', 1280, 720)
     await capture(page, testInfo, 'academic-d-w5-student-graduation-abnormal', 1440, 900)
 
-    const refreshButton = page.getByRole('button', { name: '重新核验' })
+    const refreshButton = page.getByRole('button', { name: '刷新', exact: true })
     await refreshButton.click()
     // Manual recheck is a UI truth contract, not a transport-observation contract. The
     // initial navigation already proves this surface reads the canonical endpoint; here

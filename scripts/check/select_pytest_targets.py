@@ -146,6 +146,15 @@ RULES: list[tuple[tuple[str, ...], list[str]]] = [
 CORE_TOUCH = (
     "backend/app/core/", "backend/app/middleware/", "backend/app/main.py",
 )
+DEDICATED_PHONE_TESTS = {
+    "tests/test_phone_binding_mysql.py",
+    "tests/test_phone_browser.py",
+    "tests/test_phone_governance.py",
+    "tests/test_phone_import_xlsx.py",
+    "tests/test_phone_login_mysql.py",
+    "tests/test_phone_reset_mysql.py",
+}
+
 CORE_TESTS = [
     "tests/test_p1_tenant_readonly_guard.py",
     "tests/test_p1_config_guards.py",
@@ -195,6 +204,7 @@ def _changed_backend_tests(files: list[str]) -> list[str]:
         if path.startswith(prefix)
         and path.endswith(".py")
         and path.rsplit("/", 1)[-1].startswith("test_")
+        and path[len("backend/"):] not in DEDICATED_PHONE_TESTS
     ]
 
 

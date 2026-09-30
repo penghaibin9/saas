@@ -103,11 +103,17 @@ def _seed_single_publishable_task(term_id: str) -> int:
     且只有这一条任务的最小化数据，才能让批次真正达到可发布状态；同时挂一个真实行政班
     +学生，"发布通知"才有真实接收对象（notified>=1），不是排到一个查无此人的假班级号。"""
     from app.db.session import get_sessionmaker
-    from app.models import (AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTimeSlot, College,
-                            SchoolClass, StudentProfile, User)
+    from app.models import (AaClassroom, AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTimeSlot,
+                            College, SchoolClass, StudentProfile, User)
     db = get_sessionmaker()()
     db.add(AaTimeSlot(tenant_id=TID, slot_no=1, slot_name="第1节",
                       start_time="00:00", end_time="23:59", enabled=True, status="ENABLED"))
+    # 正式发布只认 canonical classroom_id。人工排课仍传显示名 A101，
+    # 由服务按教室字典精确解析并回填稳定 ID。
+    db.add(AaClassroom(
+        tenant_id=TID, building_code="A", building_name="A楼", room_code="101",
+        room_name="A101", capacity=50, status="AVAILABLE",
+    ))
     # 发布通知按 teacher_key 匹配 User.login_name 找接收账号——没有真实教师账号，
     # notified 永远是 0，"发布通知"这条断言就验证不到任何东西。
     db.add(User(tenant_id=TID, login_name="T1", real_name="王老师", user_type="TEACHER", status="ACTIVE",
