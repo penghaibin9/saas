@@ -42,7 +42,9 @@ test('real backend student PC login reaches standalone internship page', async (
   await expect(page).toHaveURL(/\/student\/internship(?:\?|$)/)
   await expect(page.getByText('全栈浏览器验收学校 · 岗位实习')).toBeVisible()
   await expect(page.getByText('全栈验收学生')).toBeVisible()
-  await expect(page.getByText('暂无实习记录',{exact:true})).toBeVisible()
+  await expect(page.getByText('2026岗位实习全栈验收',{exact:true}).first()).toBeVisible()
+  await expect(page.getByText('软件测试实习生',{exact:true}).first()).toBeVisible()
+  await expect(page.getByText('全栈验收企业',{exact:true}).first()).toBeVisible()
   await page.screenshot({path:'test-results-surfaces-real/real-student-internship.png',fullPage:true})
 
   expect(seen.some(x=>x.path.endsWith('/auth/browser-login')&&x.status===200)).toBeTruthy()

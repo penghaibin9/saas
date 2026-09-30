@@ -27,10 +27,14 @@ test('real backend student H5 login reaches standalone internship home', async (
 
   await expect(page).toHaveURL(/#\/pages\/student-internship\/index/)
   await expect(page.getByText('我的岗位实习',{exact:true})).toBeVisible()
-  await expect(page.getByText('当前暂无实习任务',{exact:true})).toBeVisible()
+  await expect(page.getByText('2026岗位实习全栈验收',{exact:true}).first()).toBeVisible()
+  await expect(page.getByText('软件测试实习生',{exact:true}).first()).toBeVisible()
+  await expect(page.getByText('全栈验收企业',{exact:true}).first()).toBeVisible()
   await page.screenshot({path:'test-results-mobile-real/student-home.png',fullPage:true})
 
   expect(seen.some(x=>x.path.endsWith('/auth/login')&&x.status===200)).toBeTruthy()
+  expect(seen.some(x=>x.path.endsWith('/mobile/internship/context/my')&&x.status===200)).toBeTruthy()
+  expect(seen.some(x=>x.path.endsWith('/mobile/internship/compliance/my')&&x.status===200)).toBeTruthy()
 })
 
 test('real backend teacher H5 login reaches standalone teacher workbench', async ({ page }) => {
@@ -51,8 +55,9 @@ test('real backend teacher H5 login reaches standalone teacher workbench', async
   await expect(page).toHaveURL(/#\/pages\/teacher-internship\/index/)
   await expect(page.getByText('岗位实习教师工作台',{exact:true})).toBeVisible()
   await expect(page.getByText('2026岗位实习全栈验收',{exact:true})).toBeVisible()
+  await expect(page.getByText('实习学生',{exact:true})).toBeVisible()
   await page.screenshot({path:'test-results-mobile-real/teacher-workbench.png',fullPage:true})
 
   expect(seen.some(x=>x.path.endsWith('/auth/login')&&x.status===200)).toBeTruthy()
-  expect(seen.some(x=>x.path.includes('/teacher-mobile/')&&x.status===200)).toBeTruthy()
+  expect(seen.some(x=>x.path.endsWith('/mobile/teacher/internship/context')&&x.status===200)).toBeTruthy()
 })

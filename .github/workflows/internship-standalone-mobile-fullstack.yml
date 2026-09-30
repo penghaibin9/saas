@@ -9,6 +9,7 @@ on:
       - "products/internship-platform/backend/app/**"
       - "products/internship-platform/mobile/**"
       - "products/internship-platform/scripts/seed_pc_fullstack_evidence.py"
+      - "products/internship-platform/scripts/seed_real_fullstack_internship.py"
       - "products/internship-platform/enterprise-web/e2e-surfaces/standalone-mobile-real.spec.mjs"
       - "products/internship-platform/enterprise-web/playwright.standalone-mobile-real.config.mjs"
       - ".github/workflows/internship-standalone-mobile-fullstack.yml"
@@ -67,6 +68,7 @@ jobs:
         run: |
           alembic -c products/internship-platform/backend/alembic.ini upgrade head
           python products/internship-platform/scripts/seed_pc_fullstack_evidence.py
+          python products/internship-platform/scripts/seed_real_fullstack_internship.py
 
       - name: Start real standalone FastAPI
         run: |

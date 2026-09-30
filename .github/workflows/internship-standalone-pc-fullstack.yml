@@ -10,6 +10,7 @@ on:
       - "products/internship-platform/admin-web/**"
       - "products/internship-platform/student-web/**"
       - "products/internship-platform/scripts/seed_pc_fullstack_evidence.py"
+      - "products/internship-platform/scripts/seed_real_fullstack_internship.py"
       - "products/internship-platform/enterprise-web/e2e-surfaces/standalone-pc-real.spec.mjs"
       - "products/internship-platform/enterprise-web/playwright.standalone-pc-real.config.mjs"
       - ".github/workflows/internship-standalone-pc-fullstack.yml"
@@ -68,6 +69,7 @@ jobs:
         run: |
           alembic -c products/internship-platform/backend/alembic.ini upgrade head
           python products/internship-platform/scripts/seed_pc_fullstack_evidence.py
+          python products/internship-platform/scripts/seed_real_fullstack_internship.py
 
       - name: Start real standalone FastAPI
         run: |

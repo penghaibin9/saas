@@ -75,9 +75,10 @@ def teacher_internship_context(
 
     access = get_effective_access_context(user)
     healthy = bool(access.get("moduleAccessHealthy", True))
+    permission_patterns = access.get("permissionPatterns") or access.get("permissions") or []
     return success({
         "roleCode": access.get("roleCode"),
-        "permissionPatterns": (access.get("permissionPatterns") or []) if healthy else [],
+        "permissionPatterns": permission_patterns if healthy else [],
         "permissionVersion": access.get("permissionVersion"),
         "moduleAccessHealthy": healthy,
         "moduleAccessError": access.get("moduleAccessError") or "",
