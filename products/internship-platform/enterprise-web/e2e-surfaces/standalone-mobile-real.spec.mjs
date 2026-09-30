@@ -10,7 +10,9 @@ async function submitMobileLogin(page) {
   await submit.click()
 }
 
-test('real backend student H5 login reaches standalone internship home', async ({ page }) => {
+test('real backend student H5 login reaches standalone internship home and records a real checkin', async ({ page, context }) => {
+  await context.grantPermissions(['geolocation'], { origin: 'http://127.0.0.1:5203' })
+  await context.setGeolocation({ latitude: 28.2282, longitude: 112.9388, accuracy: 15 })
   const seen=[]
   page.on('response', response => {
     const url=new URL(response.url())
@@ -32,9 +34,34 @@ test('real backend student H5 login reaches standalone internship home', async (
   await expect(page.getByText('全栈验收企业',{exact:true}).first()).toBeVisible()
   await page.screenshot({path:'test-results-mobile-real/student-home.png',fullPage:true})
 
+  await page.getByText('今日打卡',{exact:true}).click()
+  await expect(page).toHaveURL(/#\/pages\/student-internship\/checkin\/index/)
+  await expect(page.getByText('完整签到日历',{exact:true})).toBeVisible()
+
+  await page.locator('.ci__circle').click()
+  await expect(page.getByText(/确认签到/)).toBeVisible()
+  const preflightResponse = page.waitForResponse(r =>
+    new URL(r.url()).pathname === '/api/v1/mobile/internship/checkin/preflight' && r.request().method() === 'POST')
+  const checkinResponse = page.waitForResponse(r =>
+    new URL(r.url()).pathname === '/api/v1/mobile/internship/checkin' && r.request().method() === 'POST')
+  await page.getByText('确定',{exact:true}).click()
+
+  const preflight = await preflightResponse
+  expect(preflight.status()).toBe(200)
+  expect((await preflight.json()).code).toBe(0)
+  const checkin = await checkinResponse
+  expect(checkin.status()).toBe(200)
+  const checkinPayload = await checkin.json()
+  expect(checkinPayload.code).toBe(0)
+  expect(['RECORDED','NORMAL','OUT_OF_RANGE','LOW_ACCURACY','LOCATION_UNCERTAIN']).toContain(checkinPayload.data.result)
+  await expect(page.locator('.ci__circle')).toContainText('今日已签到')
+  await page.screenshot({path:'test-results-mobile-real/student-checkin.png',fullPage:true})
+
   expect(seen.some(x=>x.path.endsWith('/auth/login')&&x.status===200)).toBeTruthy()
   expect(seen.some(x=>x.path.endsWith('/mobile/internship/context/my')&&x.status===200)).toBeTruthy()
   expect(seen.some(x=>x.path.endsWith('/mobile/internship/compliance/my')&&x.status===200)).toBeTruthy()
+  expect(seen.some(x=>x.path.endsWith('/mobile/internship/checkin/preflight')&&x.status===200)).toBeTruthy()
+  expect(seen.some(x=>x.path.endsWith('/mobile/internship/checkin')&&x.status===200)).toBeTruthy()
 })
 
 test('real backend teacher H5 login reaches standalone teacher workbench', async ({ page }) => {
@@ -58,6 +85,19 @@ test('real backend teacher H5 login reaches standalone teacher workbench', async
   await expect(page.getByText('实习学生',{exact:true})).toBeVisible()
   await page.screenshot({path:'test-results-mobile-real/teacher-workbench.png',fullPage:true})
 
+  const rosterResponse = page.waitForResponse(r =>
+    new URL(r.url()).pathname === '/api/v1/internship/intern-students' && r.request().method() === 'GET')
+  await page.getByText('实习学生',{exact:true}).click()
+  await expect(page).toHaveURL(/#\/pages\/teacher-internship\/internship-students\/index/)
+  const roster = await rosterResponse
+  expect(roster.status()).toBe(200)
+  const rosterPayload = await roster.json()
+  expect(rosterPayload.code).toBe(0)
+  await expect(page.getByText('全栈验收学生',{exact:true})).toBeVisible()
+  await expect(page.getByText('软件测试实习生',{exact:true})).toBeVisible()
+  await page.screenshot({path:'test-results-mobile-real/teacher-student-roster.png',fullPage:true})
+
   expect(seen.some(x=>x.path.endsWith('/auth/login')&&x.status===200)).toBeTruthy()
   expect(seen.some(x=>x.path.endsWith('/mobile/teacher/internship/context')&&x.status===200)).toBeTruthy()
+  expect(seen.some(x=>x.path.endsWith('/internship/intern-students')&&x.status===200)).toBeTruthy()
 })
