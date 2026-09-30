@@ -5,7 +5,7 @@
       <view class="page-pad stack">
         <view class="msg-tabs"><button v-for="tab in tabs" :key="tab.key" class="msg-tab" :class="{on:category===tab.key}" @click="selectCategory(tab.key)">{{ tab.label }}</button></view>
         <view v-for="row in items" :key="row.messageId" class="card msg-item" :class="{unread:row.readStatus==='UNREAD'}" @click="openMessage(row)">
-          <view class="row-between"><text class="msg-title">{{ row.title }}</text><MobileStatusTag v-if="row.readStatus==='UNREAD'" type="warning">未读</MobileStatusTag></view>
+          <view class="row-between"><text class="msg-title">{{ row.title }}</text><MobileStatusTag v-if="row.readStatus==='UNREAD'" status="UNREAD" label="未读" /></view>
           <text class="msg-summary">{{ expanded===row.messageId ? row.content : row.summary }}</text><text class="msg-meta">{{ categoryLabel(row.category) }} · {{ row.createdAt || '时间待确认' }}</text>
         </view>
         <MobileGlobalState v-if="!items.length" state="empty" title="暂无站内信" description="岗位实习业务消息、提醒和系统通知会显示在这里。" />
@@ -18,7 +18,7 @@
 import teacherApi from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 export default {
-  data:()=>({state:'loading',error:'',items:[],category:'ALL',page:1,pageSize:20,hasMore:false,unread:0,expanded:'',loadingMore:false,tabs:[{key:'ALL',label:'全部'},{key:'ANNOUNCEMENT',label:'公告'},{key:'BUSINESS',label:'业务'},{key:'TODO',label:'待办'},{key:'SYSTEM',label:'系统'}]}),
+  data:()=>({state:'loading',error:'',items:[],category:'ALL',page:1,pageSize:20,hasMore:false,unread:0,expanded:'',loadingMore:false,tabs:[{key:'ALL',label:'全部'},{key:'EMERGENCY',label:'紧急'},{key:'ANNOUNCEMENT',label:'公告'},{key:'BUSINESS',label:'业务'},{key:'TODO',label:'待办'},{key:'SYSTEM',label:'系统'}]}),
   onLoad(){this.load()},onPullDownRefresh(){this.load().finally(()=>uni.stopPullDownRefresh())},
   methods:{
     categoryLabel(v){return ({ANNOUNCEMENT:'公告',BUSINESS:'业务',TODO:'待办',SYSTEM:'系统',EMERGENCY:'紧急'}[String(v||'').toUpperCase()]||'消息')},

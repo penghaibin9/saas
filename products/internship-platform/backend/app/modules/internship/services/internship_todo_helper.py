@@ -15,6 +15,15 @@ TODO_WEEKLY = "INTERN_WEEKLY_REVIEW"
 TODO_LEAVE = "INTERN_LEAVE_APPROVAL"
 TODO_EXCEPTION = "INTERN_EXCEPTION_HANDLE"
 TODO_VISIT_RECTIFY = "INTERN_VISIT_RECTIFY"
+TODO_MAKEUP = "INTERN_MAKEUP_APPROVAL"
+TODO_CHANGE = "INTERN_CHANGE_APPROVAL"
+TODO_ENTERPRISE_CHANGE = "INTERN_ENTERPRISE_CHANGE"
+TODO_CHECKIN_EXEMPTION = "INTERN_EXEMPTION_APPROVAL"
+TODO_APPLICATION = "INTERN_APPLICATION_REVIEW"
+TODO_EXEMPTION_APPLICATION = "INTERN_EXEMPTION_APPLICATION"
+TODO_DAILY_REVIEW = "INTERN_DAILY_REVIEW"
+TODO_MONTHLY_REVIEW = "INTERN_MONTHLY_REVIEW"
+TODO_SUMMARY_REVIEW = "INTERN_SUMMARY_REVIEW"
 
 
 def resolve_advisor_assignee_id(db, rec) -> int:
@@ -117,3 +126,72 @@ def push_visit_rectify_todo(db, visit, rec) -> bool:
         db, biz_type="INTERN_VISIT", biz_id=visit.id, todo_type=TODO_VISIT_RECTIFY,
         assignee_id=aid, student_id=getattr(rec, "student_id", None) or getattr(visit, "student_id", None),
         title=f"巡访整改待跟进：{_stu_name(db, rec)}")
+
+
+
+def push_makeup_todo(db, makeup, rec) -> bool:
+    return todo_upsert(
+        db, biz_type="INTERN_MAKEUP", biz_id=makeup.id, todo_type=TODO_MAKEUP,
+        assignee_id=resolve_advisor_assignee_id(db, rec),
+        student_id=getattr(rec, "student_id", None),
+        title=f"补签申请待审：{_stu_name(db, rec)}")
+
+
+def change_todo_type(change) -> str:
+    return TODO_ENTERPRISE_CHANGE if str(getattr(change, "change_type", "") or "").upper() == "CHANGE_ENTERPRISE" else TODO_CHANGE
+
+
+def push_change_todo(db, change, rec) -> bool:
+    label = "企业变更" if change_todo_type(change) == TODO_ENTERPRISE_CHANGE else "岗位/实习变更"
+    return todo_upsert(
+        db, biz_type="INTERN_CHANGE", biz_id=change.id, todo_type=change_todo_type(change),
+        assignee_id=resolve_advisor_assignee_id(db, rec),
+        student_id=getattr(rec, "student_id", None),
+        title=f"{label}待审：{_stu_name(db, rec)}")
+
+
+def push_checkin_exemption_todo(db, item, rec) -> bool:
+    return todo_upsert(
+        db, biz_type="INTERN_CHECKIN_EXEMPTION", biz_id=item.id,
+        todo_type=TODO_CHECKIN_EXEMPTION,
+        assignee_id=resolve_advisor_assignee_id(db, rec),
+        student_id=getattr(rec, "student_id", None),
+        title=f"免签申请待审：{_stu_name(db, rec)}")
+
+
+def application_todo_type(app) -> str:
+    return TODO_EXEMPTION_APPLICATION if str(getattr(app, "application_type", "") or "").upper() == "EXEMPTION" else TODO_APPLICATION
+
+
+def push_application_todo(db, app, rec) -> bool:
+    app_type = str(getattr(app, "application_type", "") or "").upper()
+    label = {
+        "EXEMPTION": "免实习申请",
+        "SELF_ARRANGED": "自主实习申请",
+        "POSITION": "实习岗位申请",
+    }.get(app_type, "实习申请")
+    return todo_upsert(
+        db, biz_type="INTERN_APPLICATION", biz_id=app.id,
+        todo_type=application_todo_type(app),
+        assignee_id=resolve_advisor_assignee_id(db, rec),
+        student_id=getattr(rec, "student_id", None),
+        title=f"{label}待审：{_stu_name(db, rec)}")
+
+
+def process_report_todo_type(report) -> str:
+    return {
+        "DAILY": TODO_DAILY_REVIEW,
+        "MONTHLY": TODO_MONTHLY_REVIEW,
+        "SUMMARY": TODO_SUMMARY_REVIEW,
+    }.get(str(getattr(report, "report_type", "") or "").upper(), TODO_DAILY_REVIEW)
+
+
+def push_process_report_todo(db, report, rec) -> bool:
+    label = {"DAILY": "日报", "MONTHLY": "月报", "SUMMARY": "实习总结"}.get(
+        str(getattr(report, "report_type", "") or "").upper(), "过程报告")
+    return todo_upsert(
+        db, biz_type="INTERN_PROCESS_REPORT", biz_id=report.id,
+        todo_type=process_report_todo_type(report),
+        assignee_id=resolve_advisor_assignee_id(db, rec),
+        student_id=getattr(rec, "student_id", None),
+        title=f"{label}待批：{_stu_name(db, rec)}")

@@ -176,6 +176,8 @@ def student_submit(rec, report_type: str, period_key: str, content: str) -> dict
             dup.version = int(dup.version or 0) + 1
             _trail(db, dup.id, "RESUBMIT", {"reportType": rt, "periodKey": pk,
                                              "version": int(dup.version or 0)})
+            from app.modules.internship.services import internship_todo_helper as todo
+            todo.push_process_report_todo(db, dup, rec)
             db.commit()
             return {"id": str(dup.id), "status": dup.status, "version": int(dup.version or 0),
                     "message": "已重新提交"}
@@ -185,6 +187,8 @@ def student_submit(rec, report_type: str, period_key: str, content: str) -> dict
         db.add(row)
         db.flush()
         _trail(db, row.id, "SUBMIT", {"reportType": rt, "periodKey": pk})
+        from app.modules.internship.services import internship_todo_helper as todo
+        todo.push_process_report_todo(db, row, rec)
         db.commit()
         return {"id": str(row.id), "status": row.status, "message": f"{TYPE_LABEL[rt]}提交成功"}
 
@@ -241,6 +245,8 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
             },
             operator=_op_name(user),
         )
+        from app.modules.internship.services import internship_todo_helper as todo
+        todo.todo_done(db, biz_id=r.id, todo_type=todo.process_report_todo_type(r))
         db.commit()
         return {
             "id": str(r.id),

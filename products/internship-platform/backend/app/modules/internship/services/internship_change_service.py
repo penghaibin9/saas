@@ -282,6 +282,8 @@ def student_apply(rec, stu, body) -> dict:
             db.rollback()
             raise AppException("DATA_CONFLICT", _DUP_PENDING_MSG) from exc
         _trail(db, c.id, "APPLY", {"changeType": ctype})
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.push_change_todo(db, c, rec)
         try:
             db.commit()
         except IntegrityError as exc:
@@ -304,6 +306,8 @@ def withdraw_change(cid, rec, stu) -> dict:
             raise AppException("DATA_CONFLICT", "仅待审核申请可撤回")
         c.status = "WITHDRAWN"
         _trail(db, c.id, "WITHDRAW", {})
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=c.id, todo_type=ix_todo.change_todo_type(c))
         db.commit()
         return {"id": str(c.id), "status": "WITHDRAWN"}
 
@@ -465,6 +469,8 @@ def review_change(cid, action: str, comment: str = "", user=None, *, expected_ve
             } if action == "APPROVE" else before,
             "atomic": True,
         }, operator=_op_name(user))
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=change.id, todo_type=ix_todo.change_todo_type(change))
         db.commit()
         receipt_impact = _impact_preview(change, record) if action == "APPROVE" else {
             "requiresReonboard": False,

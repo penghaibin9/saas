@@ -664,6 +664,8 @@ def submit_my(user: dict, app_id) -> dict:
         app.version = int(app.version or 0) + 1
         _bind_application_files(db, app, user)
         _trail(db, app.id, "SUBMIT", {"applicationType": app.application_type}, user)
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.push_application_todo(db, app, rec)
         db.commit()
         return _row(db, app, rec, stu)
 
@@ -679,6 +681,8 @@ def withdraw_my(user: dict, app_id) -> dict:
         app.status = "WITHDRAWN"
         app.version = int(app.version or 0) + 1
         _trail(db, app.id, "WITHDRAW", {}, user)
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=app.id, todo_type=ix_todo.application_todo_type(app))
         db.commit()
         return _row(db, app, rec, stu)
 
@@ -1104,6 +1108,8 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
                 },
             )
             _trail(db, app.id, "REJECT", {"comment": comment}, user)
+            from app.modules.internship.services import internship_todo_helper as ix_todo
+            ix_todo.todo_done(db, biz_id=app.id, todo_type=ix_todo.application_todo_type(app))
             db.commit()
             app = _get_legacy_application(db, app_id)
             out = _row(db, app, rec, stu)
@@ -1160,6 +1166,10 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
             other.reviewed_by_name, other.reviewed_at = _op_name(user), datetime.utcnow()
             other.version = int(other.version or 0) + 1
         _trail(db, app.id, "APPROVE", {"applicationType": app.application_type}, user)
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=app.id, todo_type=ix_todo.application_todo_type(app))
+        for other in others:
+            ix_todo.todo_done(db, biz_id=other.id, todo_type=ix_todo.application_todo_type(other))
         db.commit()
         app = _get_legacy_application(db, app_id)
         rec = tenant_get(db, InternshipRecord, app.record_id, tenant_id=app.tenant_id)

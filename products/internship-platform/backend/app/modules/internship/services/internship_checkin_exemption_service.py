@@ -141,6 +141,8 @@ def apply(user: dict, body: dict):
             "endDate": item.end_date,
             "fileIds": [file_id] if file_id else [],
         })
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.push_checkin_exemption_todo(db, item, record)
         db.commit()
         return _row(item, student)
 
@@ -164,6 +166,8 @@ def withdraw(user: dict, exemption_id, body: dict):
         item.status = "WITHDRAWN"
         item.version = int(item.version or 0) + 1
         _trail(db, item, "EXEMPTION_WITHDRAW", user)
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=item.id, todo_type=ix_todo.TODO_CHECKIN_EXEMPTION)
         db.commit()
         return _row(item, student)
 
@@ -241,5 +245,7 @@ def review(exemption_id, body: dict, user: dict):
             "reason": comment,
         })
         student = db.get(StudentProfile, item.student_id)
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=item.id, todo_type=ix_todo.TODO_CHECKIN_EXEMPTION)
         db.commit()
         return _row(item, student)

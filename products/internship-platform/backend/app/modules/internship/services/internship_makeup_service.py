@@ -246,6 +246,8 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
             "evidenceFileId": evidence_file_id or "",
             "evidenceRequired": _evidence_required(makeup_type),
         }, operator=m.apply_by_name or "学生")
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.push_makeup_todo(db, m, rec)
         try:
             db.commit()
         except IntegrityError as exc:
@@ -266,6 +268,8 @@ def withdraw(user, makeup_id) -> dict:
         m.status = "WITHDRAWN"
         m.version += 1
         _trail(db, m.id, "WITHDRAW", {}, operator=_op_name(user))
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=m.id, todo_type=ix_todo.TODO_MAKEUP)
         db.commit()
         return {"id": str(m.id), "status": "WITHDRAWN"}
 
@@ -458,6 +462,8 @@ def review(user, makeup_id, action: str, comment: str = "", *, expected_version=
             "evidenceFileId": evidence_file_id,
             "evidenceViewed": bool(evidence_file_id),
         }, operator=_op_name(user))
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=m.id, todo_type=ix_todo.TODO_MAKEUP)
         db.commit()
         return {"id": str(m.id), "status": status, "statusLabel": STATUS_LABEL[status], "version": new_ver}
 

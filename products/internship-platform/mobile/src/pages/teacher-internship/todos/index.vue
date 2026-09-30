@@ -6,7 +6,7 @@
         <scroll-view scroll-x class="td-filters"><view class="td-filter-row"><button v-for="f in filters" :key="f.key" class="td-filter" :class="{on:group===f.key}" @click="selectGroup(f.key)">{{ f.label }} {{ counts[f.key] || 0 }}</button></view></scroll-view>
         <MobileInlineAlert type="info" description="待办必须进入对应业务页面完成真实审核/处置；本页不提供脱离业务事实的直接完成按钮。" />
         <view v-for="row in items" :key="row.todoId" class="card td-item">
-          <view class="row-between"><view class="td-copy"><text class="td-title">{{ row.title }}</text><text class="td-meta">{{ row.groupLabel }} · {{ row.typeLabel }}</text></view><MobileStatusTag :type="row.status==='PENDING'?'warning':'default'">{{ row.status==='PENDING'?'待处理':'已处理' }}</MobileStatusTag></view>
+          <view class="row-between"><view class="td-copy"><text class="td-title">{{ row.title }}</text><text class="td-meta">{{ row.groupLabel }} · {{ row.typeLabel }}</text></view><MobileStatusTag :status="row.status" :label="row.status==='PENDING'?'待处理':'已处理'" /></view>
           <text v-if="row.dueAt" class="td-meta">截止：{{ row.dueAt }}</text>
           <button v-if="row.actionPath && row.status==='PENDING'" class="btn btn-primary" @click="openTodo(row)">进入真实业务办理</button>
           <text v-else-if="row.status==='PENDING'" class="td-meta">该历史待办暂无移动端办理映射，请在教师 PC 端处理。</text>

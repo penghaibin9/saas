@@ -6,7 +6,7 @@
         <MobileInlineAlert type="info" description="只展示学校已真实分配给当前账号的教师身份；切换后权限、数据范围和实习批次会重新从服务端加载。" />
         <view v-for="role in roles" :key="role.roleCode" class="card rs-item" :class="{current:role.roleCode===currentRole}" @click="pick(role)">
           <view class="rs-copy"><text class="rs-title">{{ role.roleName || role.roleCode }}</text><text class="rs-code">{{ role.roleCode }}</text></view>
-          <MobileStatusTag v-if="role.roleCode===currentRole" type="success">当前身份</MobileStatusTag>
+          <MobileStatusTag v-if="role.roleCode===currentRole" type="success" label="当前身份" />
           <text v-else class="rs-arrow">切换 ›</text>
         </view>
         <MobileInlineAlert v-if="roles.length<2" type="warning" description="当前账号只有一个教师身份，无需切换；如岗位职责不完整，请由学校管理员调整角色授权。" />

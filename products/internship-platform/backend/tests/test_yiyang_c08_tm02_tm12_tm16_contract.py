@@ -36,3 +36,37 @@ def test_tm16_mobile_surface_rotates_tokens_and_reloads_internship_context():
     assert "commitNewSessionTokens" in auth
     assert "uni.removeStorageSync('gx_internship_context_v1')" in auth
     assert "同一账号" in page
+
+
+def test_tm12_business_submission_and_resolution_feed_unified_todo():
+    helper=_read("backend/app/modules/internship/services/internship_todo_helper.py")
+    makeup=_read("backend/app/modules/internship/services/internship_makeup_service.py")
+    change=_read("backend/app/modules/internship/services/internship_change_service.py")
+    exemption=_read("backend/app/modules/internship/services/internship_checkin_exemption_service.py")
+    application=_read("backend/app/modules/internship/services/internship_application_service.py")
+    reports=_read("backend/app/modules/internship/services/internship_student_report_context_service.py")
+    review=_read("backend/app/modules/internship/services/internship_process_report_service.py")
+    for token in (
+        "INTERN_MAKEUP_APPROVAL","INTERN_CHANGE_APPROVAL","INTERN_ENTERPRISE_CHANGE",
+        "INTERN_EXEMPTION_APPROVAL","INTERN_APPLICATION_REVIEW","INTERN_EXEMPTION_APPLICATION",
+        "INTERN_DAILY_REVIEW","INTERN_MONTHLY_REVIEW","INTERN_SUMMARY_REVIEW",
+    ):
+        assert token in helper
+    assert "push_makeup_todo" in makeup and "TODO_MAKEUP" in makeup
+    assert "push_change_todo" in change and "change_todo_type" in change
+    assert "push_checkin_exemption_todo" in exemption and "TODO_CHECKIN_EXEMPTION" in exemption
+    assert "push_application_todo" in application and "application_todo_type" in application
+    assert "push_process_report_todo" in reports
+    assert "process_report_todo_type" in review and "todo_done" in review
+
+
+def test_tm02_message_aliases_and_mobile_status_tags_remain_readable():
+    backend=_read("backend/app/api/v1/teacher_mobile_workbench.py")
+    role=_read("mobile/src/pages/teacher-internship/role-switch/index.vue")
+    todos=_read("mobile/src/pages/teacher-internship/todos/index.vue")
+    messages=_read("mobile/src/pages/teacher-internship/messages/index.vue")
+    assert '"TODO_NOTICE","TODO","REMINDER"' in backend
+    assert '"ANNOUNCEMENT","NOTICE"' in backend
+    assert 'label="当前身份"' in role
+    assert ':status="row.status"' in todos
+    assert 'status="UNREAD" label="未读"' in messages

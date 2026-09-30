@@ -156,6 +156,8 @@ def submit(user: dict, body: dict) -> dict:
             },
             operator=legacy._op_name(user),
         )
+        from app.modules.internship.services import internship_todo_helper as todo
+        todo.push_process_report_todo(db, row, record)
         db.commit()
         result = _context_row(row, record, student)
         result["reportVersion"] = int(snapshot.version_no)

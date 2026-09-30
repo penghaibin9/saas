@@ -22,6 +22,7 @@ TODO_META = {
     "INTERN_EXCEPTION_HANDLE": ("ATTENDANCE", "打卡异常", "/pages/teacher-internship/internship-review/index"),
     "INTERN_EXEMPTION_APPROVAL": ("ATTENDANCE", "免签审批", "/pages/teacher-internship/checkin-exemption/index"),
     "INTERN_APPLICATION_REVIEW": ("APPLICATION", "实习岗位申请", "/pages/teacher-internship/internship-application/index"),
+    "INTERN_EXEMPTION_APPLICATION": ("APPLICATION", "免实习申请", "/pages/teacher-internship/internship-application/index"),
     "INTERN_CHANGE_APPROVAL": ("CHANGE", "岗位变更", "/pages/teacher-internship/internship-change/index"),
     "INTERN_ENTERPRISE_CHANGE": ("CHANGE", "企业变更", "/pages/teacher-internship/internship-change/index"),
     "INTERN_VISIT_RECTIFY": ("VISIT", "巡访整改", "/pages/teacher-internship/internship-review/index"),
@@ -50,9 +51,20 @@ def _msg_vis(uid: int, ctx: str):
 def _msg_source():
     return or_(UnifiedMessage.source_module == "internship", UnifiedMessage.source_module.is_(None))
 
+def _msg_category(row) -> str:
+    if row.category:
+        return str(row.category).upper()
+    value = str(row.message_type or "").upper()
+    if value == "EMERGENCY": return "EMERGENCY"
+    if value in {"ANNOUNCEMENT","NOTICE"}: return "ANNOUNCEMENT"
+    if value in {"TODO_NOTICE","TODO","REMINDER"}: return "TODO"
+    if value in {"BUSINESS","BIZ"}: return "BUSINESS"
+    return "SYSTEM"
+
+
 def _msg(row):
     content=str(row.rendered_content_plain or row.content or "")
-    return {"messageId":str(row.id),"category":str(row.category or row.message_type or "SYSTEM").upper(),
+    return {"messageId":str(row.id),"category":_msg_category(row),
             "priority":str(row.priority or "NORMAL").upper(),"title":str(row.rendered_title or row.title or "站内消息"),
             "content":content,"summary":content[:120],"readStatus":str(row.status or "UNREAD").upper(),
             "readAt":_iso(row.read_at) if row.read_at else None,
@@ -86,7 +98,22 @@ def messages(category:str=Query("ALL",max_length=30), readStatus:str|None=Query(
                 raise AppException("VALIDATION_ERROR","readStatus 仅支持 UNREAD 或 READ",http_status=422)
             conds.append(UnifiedMessage.status==read_status)
         if category not in {"","ALL"}:
-            conds.append(or_(UnifiedMessage.category==category,UnifiedMessage.message_type==category))
+            aliases={
+                "EMERGENCY":("EMERGENCY",),
+                "ANNOUNCEMENT":("ANNOUNCEMENT","NOTICE"),
+                "TODO":("TODO_NOTICE","TODO","REMINDER"),
+                "BUSINESS":("BUSINESS","BIZ"),
+                "SYSTEM":("SYSTEM",),
+            }
+            types=aliases.get(category,(category,))
+            if category=="EMERGENCY":
+                conds.append(or_(UnifiedMessage.category=="EMERGENCY",UnifiedMessage.priority=="EMERGENCY",
+                                 UnifiedMessage.message_type.in_(types)))
+            elif category=="SYSTEM":
+                conds.append(or_(UnifiedMessage.category=="SYSTEM",UnifiedMessage.message_type.in_(types),
+                                 and_(UnifiedMessage.category.is_(None),UnifiedMessage.message_type.is_(None))))
+            else:
+                conds.append(or_(UnifiedMessage.category==category,UnifiedMessage.message_type.in_(types)))
         total=int(db.scalar(select(func.count()).select_from(UnifiedMessage).where(*conds)) or 0)
         rows=db.scalars(select(UnifiedMessage).where(*conds).order_by(
             UnifiedMessage.created_at.desc(),UnifiedMessage.id.desc()).offset((page-1)*pageSize).limit(pageSize)).all()
