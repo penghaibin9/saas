@@ -112,13 +112,12 @@
         </div>
         <section class="sp-card sp-completion">
           <div>
-            <span class="sp-preparation__eyebrow">结项与就业衔接</span>
-            <h2>{{ my.status === 'ARCHIVED' || my.historyMode ? '实习结果已归档' : ['ASSESSING','ENDED'].includes(my.status) ? '实习进入结项考核' : '结项进度与就业去向' }}</h2>
-            <p class="sp-muted">{{ my.status === 'ARCHIVED' || my.historyMode ? '实习档案已形成历史记录；就业去向、材料核验与后续跟进在就业中心继续办理。' : ['ASSESSING','ENDED'].includes(my.status) ? '请完成实习总结、自评和评价，等待学校核算并发布正式成绩。' : '可提前查看结项要求和就业服务；正式成绩与归档结果将在完成实习考核后显示。' }}</p>
+            <span class="sp-preparation__eyebrow">结项与归档</span>
+            <h2>{{ my.status === 'ARCHIVED' || my.historyMode ? '实习结果已归档' : ['ASSESSING','ENDED'].includes(my.status) ? '实习进入结项考核' : '结项进度' }}</h2>
+            <p class="sp-muted">{{ my.status === 'ARCHIVED' || my.historyMode ? '实习档案已形成历史记录；正式成绩、鉴定与归档材料均在本系统留存，可继续查看。' : ['ASSESSING','ENDED'].includes(my.status) ? '请完成实习总结、自评和评价，等待学校核算并发布正式成绩。' : '可提前查看结项要求；正式成绩与归档结果将在完成实习考核后显示。' }}</p>
           </div>
           <div class="sp-completion__actions">
             <button type="button" class="sp-btn sp-btn--ghost" @click="selectTab('eval')">查看鉴定与成绩</button>
-            <button type="button" class="sp-btn" @click="router.push('/portal/employment')">进入就业中心</button>
           </div>
         </section>
         <section v-if="!['PREPARING', 'READY'].includes(my.status)" class="sp-card sp-home-attendance">

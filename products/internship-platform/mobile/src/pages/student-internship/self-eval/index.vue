@@ -39,9 +39,8 @@
           </view>
           <view v-if="dashboard.archive" class="se__archive">
             <text>实习档案已归档 · 完整度 {{ dashboard.archive.completeness }}%</text>
-            <text>{{ formatTime(dashboard.archive.archivedAt) }} 完成归档，后续去向进入就业中心继续办理。</text>
+            <text>{{ formatTime(dashboard.archive.archivedAt) }} 完成归档；正式成绩、鉴定与归档材料均保留在岗位实习系统中。</text>
           </view>
-          <button class="btn btn-primary" @click="openEmployment">查看就业衔接</button>
         </view>
         <MobileInlineAlert v-if="historyMode" type="info" title="历史实习记录" description="历史批次仅可查看鉴定，不可重新提交。" />
         <MobileInlineAlert v-else-if="conflictText" type="warning" title="版本已变化，草稿已保留" :description="conflictText" />
@@ -99,7 +98,7 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { toast, go } from '@/utils/nav'
+import { toast } from '@/utils/nav'
 
 export default {
   data() {
@@ -148,7 +147,6 @@ export default {
     onEntRate(e) { if (!this.readonly) this.form.enterpriseRating = Number(e.detail.value) + 1 },
     onPosRate(e) { if (!this.readonly) this.form.positionRating = Number(e.detail.value) + 1 },
     formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '—' },
-    openEmployment() { go('/pages/student/employment/index') },
     async load() {
       this.pageState = 'loading'
       try {
