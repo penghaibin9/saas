@@ -87,7 +87,7 @@ test.describe('Graduation planning leaf presentation under the existing workspac
       // Removing the marker must be reactive when the same parent routes to another page.
       await page.evaluate(() => { document.documentElement.style.zoom = '' })
       await page.getByRole('navigation', { name: '二级菜单', exact: true })
-        .getByRole('button', { name: '批次与实施', exact: true }).click()
+        .getByRole('button', { name: '① 准备', exact: true }).click()
       await dismissGuide(page)
       await page.getByRole('navigation', { name: '三级菜单', exact: true })
         .getByRole('button', { name: '学生与进度', exact: true }).click()

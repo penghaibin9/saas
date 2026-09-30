@@ -56,6 +56,9 @@ export const ENTERPRISE_LOGIN_URL = sanitizeEntryUrl(
  */
 export const HR_LOGIN_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_HR_LOGIN_URL'))
 
+/** 舆情服务验收后配置实际地址；未配置时保留入口位置。 */
+export const PUBLIC_OPINION_LOGIN_URL = sanitizeEntryUrl(readEnv('VITE_PORTAL_PUBLIC_OPINION_LOGIN_URL'))
+
 /** 教师 H5：与微信小程序共用 miniapp 工程，直接进入教师身份登录页。 */
 export const TEACHER_H5_LOGIN_URL = sanitizeEntryUrl(
   readEnv('VITE_PORTAL_TEACHER_H5_LOGIN_URL') || `${STUDENT_PORTAL_ORIGIN}/miniapp/#/pages/login/teacher/index`

@@ -28,7 +28,7 @@ function page({ panel = 'roster', writeEnabled = true, batchId = '71' } = {}) {
     setStage: async (...args) => { calls.writes.push(['stage', ...args]); return { code: 0, data: {} } },
     batchArchive: async (...args) => { calls.writes.push(['archive', ...args]); return { code: 0, data: {} } }
   }
-  const components = Object.fromEntries('ModulePageShell ModuleToolbar AdvancedFilter DataTable StatusTag RiskTag LoadingState ErrorState EmptyState AppConfirmDialog AppSensitiveText AppExportButton AppPageGuide AppExcelImportDrawer'.split(' ').map(name => [name, {}]))
+  const components = Object.fromEntries('AppButton ModulePageShell ModuleToolbar AdvancedFilter DataTable StatusTag RiskTag LoadingState ErrorState EmptyState AppConfirmDialog AppSensitiveText AppExportButton AppPageGuide AppExcelImportDrawer'.split(' ').map(name => [name, {}]))
   const constants = Object.fromEntries('GD_STAGE GD_RISK_LEVEL HAS_TOPIC GD_ELIGIBILITY GD_GRAD_QUAL HAS_DEFENSE_GROUP MATERIAL_COMPLETE ARCHIVE_VIEW'.split(' ').map(name => [name, []]))
   const sandbox = { ...components, ...constants, gdStudentApi, useGraduationBatchStore: () => store,
     buildStudentQuery: queryBuilder, exportFilenameHint: (...args) => args.join('-'), toast: { success() {}, error() {} } }
@@ -46,7 +46,9 @@ function page({ panel = 'roster', writeEnabled = true, batchId = '71' } = {}) {
 }
 
 test('only the three approved task labels differ in the complete production script', () => {
-  const normalized = script.replace("label: '选题 / 导师 / 资格'", "label: '关系与资格'")
+  // 统一按钮组件时只新增了 AppButton 的导入与注册；去掉这两处后脚本必须与原锁定版本完全一致。
+  const normalized = script.replace("import { AppButton } from '@/components/ui'\n", '').replace('components: { AppButton, ', 'components: { ')
+    .replace("label: '选题 / 导师 / 资格'", "label: '关系与资格'")
     .replace("label: '材料 / 答辩'", "label: '材料与答辩'").replace("label: '毕业资格 / 归档'", "label: '收口与归档'")
   assert.equal(createHash('sha256').update(normalized).digest('hex'), '4f11fb4f9ad979f005cdaa957b5b486c93432887b323b087d81738f0c3acf5fb')
 })

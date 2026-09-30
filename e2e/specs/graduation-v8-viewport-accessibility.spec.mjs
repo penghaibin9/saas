@@ -217,8 +217,10 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
     for (const viewport of MOBILE_VIEWPORTS) {
       await page.setViewportSize(viewport)
       await page.goto(`${MINI_BASE_URL}/#/pages/student/graduation/index`)
-      await expect(page.getByText('材料库', { exact: true })).toBeVisible()
-      await expect(page.getByText('尚未上传版本', { exact: false }).first()).toBeVisible()
+      const materialLibrary = page.getByText('我的材料库', { exact: true })
+      await expect(materialLibrary).toBeVisible()
+      await materialLibrary.click()
+      await expect(page.getByText(/当前第 \d+ 版|尚未上传版本/).first()).toBeVisible()
       await expect(page.locator('body')).not.toContainText(/TOPIC_ATTACHMENT|NOT_SUBMITTED|真实接口不可用|登录已失效/)
       await settle(page)
       const overviewAudit = await auditMobileFit(page, viewport)

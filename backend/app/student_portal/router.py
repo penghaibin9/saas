@@ -27,15 +27,16 @@ from app.student_portal.services import service_hall_service as service_hall
 router = APIRouter(prefix="/portal", tags=["学生PC门户"])
 
 
+# ── 毕业设计：办理进度与当前要做（与小程序同源派生） ──
+@router.get("/graduation/journey", summary="我的毕业设计办理进度与当前要做（本人）")
+def graduation_journey(user=Depends(get_current_user)):
+    return success(graduation.journey(user))
+
+
 # ── 毕业设计（第2期）：任务书 PC 电子确认 + 打印 ──
 @router.get("/graduation/taskbook", summary="查看本人毕设任务书（本人）")
 def graduation_taskbook(user=Depends(get_current_user)):
     return success(graduation.taskbook(user))
-
-
-@router.post("/graduation/taskbook/sign", summary="任务书电子确认（可靠留痕+置确认态）")
-def graduation_taskbook_sign(user=Depends(get_current_user), body: dict = Body(...)):
-    return success(graduation.taskbook_sign(user, body))
 
 
 @router.post("/graduation/taskbook/print", summary="任务书打印留痕（本人）")

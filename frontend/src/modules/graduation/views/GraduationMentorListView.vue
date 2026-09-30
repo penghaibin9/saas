@@ -28,8 +28,8 @@
         description="导师报上来是「待审核」，审过变「已认证」才能带学生。记得给每位导师定容量——不定容量，分配时就拦不住超载。"
       >
         <template #actions>
-          <button v-if="canMentorManage" class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/mentors/create')">＋ 申报导师</button>
-          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-mentor-maintain')">怎么维护导师？</button>
+          <AppButton v-if="canMentorManage" variant="primary" @click="$router.push('/admin/graduation/mentors/create')">＋ 申报导师</AppButton>
+          <AppButton @click="$router.push('/admin/help?topic=gd-card-mentor-maintain')">怎么维护导师？</AppButton>
         </template>
       </EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
@@ -107,6 +107,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton, AppPageGuide } from '@/components/common'
@@ -121,7 +122,7 @@ const EMPTY_U_FILTERS = () => ({ keyword: '', dateStart: '', dateEnd: '' })
 
 export default {
   name: 'GraduationMentorListView',
-  components: { AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
+  components: { AppButton, AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -52,11 +52,13 @@ test('W4 teacher graduation preview preserves review context and stays locked un
   assert.match(teacher, /旧版审核已锁定/)
 })
 
-test('W4 student graduation miniapp stays small-material-first and makes PC-only/high-sensitivity boundaries explicit', () => {
-  assert.match(student, /\['THESIS_DRAFT', 'THESIS_FINAL', 'DESIGN_WORK', 'SOURCE_CODE', 'WORK_DESCRIPTION'\]/)
-  assert.match(student, /大型论文、作品或源代码请到学生 PC 上传/)
-  assert.match(student, /论文定稿、作品和源代码请使用学生 PC 上传/)
-  assert.match(student, /8 \* 1024 \* 1024/)
+test('W4 student graduation miniapp allows thesis PDF/Word on phone and keeps large-package boundaries explicit', () => {
+  // 产品决定（2026-09-28）：学生可在手机提交论文初稿/定稿（PDF/Word ≤20MB）；设计作品包、源代码仍走电脑端
+  assert.match(student, /const PC_ONLY_MATERIAL_CODES = \['DESIGN_WORK', 'SOURCE_CODE'\]/)
+  assert.match(student, /const MOBILE_DOC_EXTENSIONS = \['pdf', 'doc', 'docx'\]/)
+  assert.match(student, /20 \* 1024 \* 1024/)
+  assert.match(student, /设计作品包、源代码等大型文件请到电脑端上传/)
+  assert.doesNotMatch(student, /#ifdef MP-WEIXIN[\s\S]*?请使用学生 PC 上传/)
   assert.match(student, /materialVersionText\(m\)/)
   assert.match(student, /const version = material && material\.currentVersion && material\.currentVersion\.versionNo/)
   assert.match(student, /m\.rejectReason/)

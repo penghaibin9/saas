@@ -1,6 +1,6 @@
 """阶段 6：学生 PC/小程序与教师小程序毕业设计材料公共版本入口。
 
-旧开题/成果 POST URL 保持不变；大型论文、作品和源代码仍引导学生 PC 上传。
+旧开题/成果 POST URL 保持不变；论文初稿/定稿可在小程序提交，设计作品包和源代码仍引导学生 PC 上传。
 所有本地文件字节响应统一委托公共文件权威合同。
 """
 from __future__ import annotations
@@ -25,7 +25,9 @@ router = APIRouter(
     dependencies=[Depends(require_module("graduation"))],
 )
 
-LARGE_PC_ONLY_CODES = {"THESIS_DRAFT", "THESIS_FINAL", "DESIGN_WORK", "SOURCE_CODE", "WORK_DESCRIPTION"}
+# 论文初稿/定稿与作品说明允许学生在小程序提交（大小仍由材料规则 max_size_bytes 与公共文件服务把关）；
+# 设计作品包和源代码通常为大体积压缩包，仍引导学生 PC 上传。
+LARGE_PC_ONLY_CODES = {"DESIGN_WORK", "SOURCE_CODE"}
 
 
 def _with_batch(user: dict, batch_id: int | None) -> dict:
@@ -66,7 +68,7 @@ def submit_material(
 ):
     code = str(material_code or "").upper()
     if str(body.clientSurface or "").upper() in {"MINIAPP", "MP_WEIXIN"} and code in LARGE_PC_ONLY_CODES:
-        raise AppException("PC_REQUIRED", "论文、作品、源代码等大型材料请使用学生 PC 上传")
+        raise AppException("PC_REQUIRED", "设计作品包、源代码等大型材料请使用学生 PC 上传")
     result = commands.submit_material(
         _with_batch(user, batchId), code, body.fileId, expected_version=body.expectedVersion,
     )

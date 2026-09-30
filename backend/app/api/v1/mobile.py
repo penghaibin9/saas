@@ -593,6 +593,11 @@ def graduation_my(batchId: int | None = None, user=Depends(get_current_user)):
     return success(stu.graduation_my(_with_gd_batch(user, batchId)))
 
 
+@gd.get("/journey", summary="我的毕业设计办理进度与当前要做（与学生 PC 同源）")
+def graduation_journey(batchId: int | None = None, user=Depends(get_current_user)):
+    return success(stu.graduation_journey(_with_gd_batch(user, batchId)))
+
+
 @gd.get("/materials/{file_id}/download", summary="下载本人毕业设计材料")
 def graduation_material_download(file_id: str, user=Depends(get_current_user)):
     """学生下载入口：不走 PC 管理端 staff 门禁，仍由材料绑定关系做本人鉴权。"""
@@ -655,29 +660,14 @@ def graduation_proposal(batchId: int | None = None, user=Depends(get_current_use
     return success(stu.graduation_proposal(_with_gd_batch(user, batchId)))
 
 
-@gd.post("/proposal", summary="开题·本人提交/重交开题报告")
-def graduation_submit_proposal(body: dict = Body(...), batchId: int | None = None, user=Depends(get_current_user)):
-    return success(stu.graduation_submit_proposal(_with_gd_batch(user, batchId), body), message="开题报告已提交")
-
-
 @gd.get("/final", summary="成果·查看本人论文提交状态")
 def graduation_final(batchId: int | None = None, user=Depends(get_current_user)):
     return success(stu.graduation_final(_with_gd_batch(user, batchId)))
 
 
-@gd.post("/final", summary="成果·本人提交/重交论文（初稿/定稿）")
-def graduation_submit_final(body: dict = Body(...), batchId: int | None = None, user=Depends(get_current_user)):
-    return success(stu.graduation_submit_final(_with_gd_batch(user, batchId), body), message="论文成果已提交")
-
-
 @gd.get("/taskbook", summary="任务书·查看本人任务书")
 def graduation_taskbook(batchId: int | None = None, user=Depends(get_current_user)):
     return success(stu.graduation_taskbook(_with_gd_batch(user, batchId)))
-
-
-@gd.post("/taskbook/confirm", summary="任务书·本人确认（含变更后重新确认）")
-def graduation_taskbook_confirm(batchId: int | None = None, user=Depends(get_current_user)):
-    return success(stu.graduation_taskbook_confirm(_with_gd_batch(user, batchId)), message="已确认")
 
 
 @gd.get("/midterm", summary="中期检查·查看本人状态")
@@ -899,11 +889,6 @@ def teacher_internship(
         user, batch_id=batch_id, focus_report_id=focus_report_id, weekly_page=weekly_page,
         exception_page=exception_page, page_size=page_size,
     ))
-
-
-@router.get("/teacher/graduation", summary="教师·毕设待审")
-def teacher_graduation(user=Depends(get_current_user)):
-    return success(tea.graduation(user))
 
 
 @router.get("/teacher/employment", summary="教师·就业帮扶")
@@ -1721,174 +1706,6 @@ def teacher_internship_application_review(application_id: str, body: dict = Body
     return success(tea.internship_application_review(
         user, application_id, str(body.get("action") or "").upper(), body.get("comment") or ""),
         message="审核完成")
-
-
-@router.get("/teacher/graduation/proposal/{proposal_id}",
-            summary="教师·毕设开题详情（批阅前真实查看：背景/方案/成果+历史版本，范围校验）")
-def teacher_proposal_detail(proposal_id: str, batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.proposal_detail(_with_gd_batch(user, batchId), proposal_id))
-
-
-@router.post("/teacher/graduation/proposal/{proposal_id}/review",
-             summary="教师·毕设开题批阅（APPROVE/REJECT，范围校验+审计）")
-def teacher_proposal_review(proposal_id: str, body: dict = Body(...),
-                            batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.proposal_review(
-        _with_gd_batch(user, batchId), proposal_id, str(body.get("action") or "").upper(),
-        body.get("comment") or "", body.get("expectedVersion"), body.get("fileVersionId"),
-    ), message="批阅完成")
-
-
-@router.get("/teacher/graduation/final/{final_id}",
-            summary="教师·毕设成果详情（批阅前真实查看：类型/版本/查重+历史版本+真实附件，范围校验）")
-def teacher_final_detail(final_id: str, batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.final_detail(_with_gd_batch(user, batchId), final_id))
-
-
-@router.post("/teacher/graduation/final/{final_id}/review",
-             summary="教师·毕设成果批阅（APPROVE/REJECT，查重超标不可通过，范围校验+审计）")
-def teacher_final_review(final_id: str, body: dict = Body(...),
-                         batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.final_review(
-        _with_gd_batch(user, batchId), final_id, str(body.get("action") or "").upper(),
-        body.get("comment") or "", body.get("expectedVersion"), body.get("fileVersionId"),
-    ), message="批阅完成")
-
-
-# ── 中期检查（教师移动端）──
-@router.get("/teacher/graduation/midterm/queue", summary="教师·中期待检查/待复核整改队列")
-def teacher_midterm_queue(batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_midterm_queue(_with_gd_batch(user, batchId)))
-
-
-@router.get("/teacher/graduation/midterm/{gd_student_id}", summary="教师·中期检查详情（范围校验）")
-def teacher_midterm_detail(gd_student_id: str, batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_midterm_detail(_with_gd_batch(user, batchId), gd_student_id))
-
-
-@router.post("/teacher/graduation/midterm/{gd_student_id}/check",
-             summary="教师·中期检查结论 PASS/RECTIFY/FAIL（范围校验+审计）")
-def teacher_midterm_check(gd_student_id: str, body: dict = Body(...),
-                          batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_midterm_check(_with_gd_batch(user, batchId), gd_student_id, body.get("conclusion") or "",
-                                                body.get("comment") or "", body.get("rectifyDeadline")),
-                   message="已提交中期结论")
-
-
-@router.post("/teacher/graduation/midterm/{gd_student_id}/rectify-review",
-             summary="教师·复核中期整改 PASS/FAIL（范围校验+审计）")
-def teacher_midterm_rectify_review(gd_student_id: str, body: dict = Body(...),
-                                   batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_midterm_rectify_review(_with_gd_batch(user, batchId), gd_student_id, body.get("action") or "",
-                                                         body.get("comment") or ""), message="复核完成")
-
-
-# ── 评阅（评阅教师移动端）──
-@router.get("/teacher/graduation/reviews/my", summary="教师·本人评阅待办任务")
-def teacher_reviews_my(batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_my_reviews(_with_gd_batch(user, batchId)))
-
-
-@router.post("/teacher/graduation/review/{review_id}/submit",
-             summary="教师·提交评阅评分(0-100)+意见（本人任务，审计）")
-def teacher_review_submit(review_id: str, body: dict = Body(...),
-                          batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_review_submit(_with_gd_batch(user, batchId), review_id, body.get("score"),
-                                                body.get("opinion") or ""), message="评阅已提交")
-
-
-# ── 答辩安排（教师移动端只读）──
-@router.get("/teacher/graduation/defense/arrangements", summary="教师·本人指导学生答辩编排（只读）")
-def teacher_defense_arrangements(batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_defense_arrangements(_with_gd_batch(user, batchId)))
-
-
-# ── 成绩（教师移动端：待复核队列 + 详情 + 复核）──
-@router.get("/teacher/graduation/grade/queue", summary="教师·成绩待复核队列")
-def teacher_grade_queue(batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_grade_queue(_with_gd_batch(user, batchId)))
-
-
-@router.get("/teacher/graduation/grade/{gd_student_id}", summary="教师·成绩三段构成详情（范围校验）")
-def teacher_grade_detail(gd_student_id: str, batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_grade_detail(_with_gd_batch(user, batchId), gd_student_id))
-
-
-@router.post("/teacher/graduation/grade/{gd_student_id}/review",
-             summary="教师·复核成绩 APPROVE/RETURN（RETURN 原因≥5字，范围校验+审计）")
-def teacher_grade_review(gd_student_id: str, body: dict = Body(...),
-                         batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_grade_review(_with_gd_batch(user, batchId), gd_student_id, body.get("action") or "",
-                                               body.get("comment") or ""), message="复核完成")
-
-
-@router.get("/teacher/graduation/choices/pending", summary="教师·本人指导题目下待确认的选题志愿")
-def teacher_graduation_choices_pending(batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_choices_pending(_with_gd_batch(user, batchId)))
-
-
-@router.post("/teacher/graduation/choices/{choice_id}/review",
-             summary="教师·确认/驳回选题志愿（CONFIRM/REJECT，范围校验+审计）")
-def teacher_graduation_choice_review(choice_id: str, body: dict = Body(...),
-                                     batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_choice_review(_with_gd_batch(user, batchId), choice_id, str(body.get("action") or "").upper(),
-                                                body.get("reason") or ""), message="处理完成")
-
-
-@router.get("/teacher/graduation/change-requests/pending", summary="教师·与本人相关的待审选题变更申请")
-def teacher_graduation_change_requests_pending(batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_change_requests_pending(_with_gd_batch(user, batchId)))
-
-
-@router.post("/teacher/graduation/change-requests/{request_id}/review",
-             summary="教师·审核选题变更申请（APPROVE/REJECT，范围校验+审计）")
-def teacher_graduation_change_request_review(request_id: str, body: dict = Body(...),
-                                             batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_change_request_review(
-        _with_gd_batch(user, batchId), request_id, str(body.get("action") or "").upper(), body.get("comment") or ""),
-        message="处理完成")
-
-
-@router.get("/teacher/graduation/my-students", summary="过程指导·本人指导的毕设学生列表")
-def teacher_graduation_my_students(batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_my_students(_with_gd_batch(user, batchId)))
-
-
-@router.post("/teacher/graduation/{gd_student_id}/guidance", summary="过程指导·快速新增指导记录（仅本人指导学生）")
-def teacher_graduation_guidance_create(gd_student_id: str, body: dict = Body(...),
-                                       batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_guidance_create(_with_gd_batch(user, batchId), gd_student_id, body), message="已记录")
-
-
-@router.get("/teacher/graduation/taskbooks", summary="指导教师·任务书列表（范围校验）")
-def teacher_graduation_taskbook_list(batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_taskbook_list(_with_gd_batch(user, batchId)))
-
-
-@router.post("/teacher/graduation/taskbooks/{gd_student_id}/issue",
-             summary="指导教师·下达任务书（须已分配导师且尚无任务书，owner 校验）")
-def teacher_graduation_taskbook_issue(gd_student_id: str, body: dict = Body(...),
-                                      batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_taskbook_issue(_with_gd_batch(user, batchId), gd_student_id, body), message="任务书已下达")
-
-
-@router.post("/teacher/graduation/taskbooks/{gd_student_id}/change",
-             summary="指导教师·变更任务书（原因≥5字，仅已确认可变更，owner 校验）")
-def teacher_graduation_taskbook_change(gd_student_id: str, body: dict = Body(...),
-                                       batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_taskbook_change(_with_gd_batch(user, batchId), gd_student_id, body), message="已提交变更")
-
-
-@router.get("/teacher/graduation/defense/pending", summary="答辩评委·本人待评分学生名单（范围校验）")
-def teacher_graduation_defense_score_pending(batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_defense_score_pending(_with_gd_batch(user, batchId)))
-
-
-@router.post("/teacher/graduation/defense/{gd_student_id}/score",
-             summary="答辩评委·录入/更新本人评分（judgeName 服务端强制取当前登录人，范围校验）")
-def teacher_graduation_defense_score_entry(gd_student_id: str, body: dict = Body(...),
-                                           batchId: int | None = None, user=Depends(get_current_user)):
-    return success(tea.graduation_defense_score_entry(_with_gd_batch(user, batchId), gd_student_id, body), message="已保存")
 
 
 @router.get("/teacher/academic/warnings", summary="教师·范围内学业预警分页")

@@ -211,6 +211,8 @@ export const portalApi = {
     return data
   },
   signGraduationTaskbook: (taskbookVersion = renderedGraduationTaskbookVersion) => request('/portal/graduation/taskbook/sign', { method: 'POST', body: { confirm: true, taskbookVersion } }),
+  // 办理进度 + 唯一“当前要做”：后端统一派生，与小程序同源
+  graduationJourney: () => request('/portal/graduation/journey'),
   graduationProposal: () => request('/portal/graduation/proposal'),
   submitGraduationProposal: (body) => request('/portal/graduation/proposal/submit', { method: 'POST', body }),
   graduationMidterm: () => request('/portal/graduation/midterm'),

@@ -165,7 +165,7 @@ export async function ensureMidtermApproved(page, fixture) {
   const query = new URLSearchParams({ ...params, studentId: fixture.gdStudentId, panel: 'midterm', returnTo })
   await page.goto(`${config.staffBaseUrl}/admin/graduation/process/${fixture.gdStudentId}/midterm?${query}`)
   await dismissGraduationGuide(page)
-  await expect(page.getByRole('heading', { name: '发起中期检查', exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: /^发起中期检查(?:\s*·|$)/ })).toBeVisible()
   await page.getByLabel('检查意见', { exact: false }).fill('已核对开题及当前研究进展，中期检查通过，继续完成论文初稿。')
   const responsePromise = page.waitForResponse((response) =>
     response.request().method() === 'POST'

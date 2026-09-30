@@ -10,6 +10,11 @@ from app.services import mobile_student_service as stu
 from app.student_portal.services import common_service as common
 
 
+def journey(user: dict) -> dict:
+    """办理进度与唯一“当前要做”（复用 graduation_journey，与小程序完全同源）。"""
+    return stu.graduation_journey(user)
+
+
 def taskbook(user: dict) -> dict:
     """查看本人任务书（复用 graduation_taskbook）。"""
     return stu.graduation_taskbook(user)

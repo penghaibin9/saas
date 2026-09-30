@@ -18,7 +18,7 @@
       </div>
       <div class="defense-context">
         <span>答辩时间</span>
-        <strong>{{ form.defenseDate || '待安排' }}</strong>
+        <strong>{{ form.defenseDate ? String(form.defenseDate).replace('T', ' ') : '待安排' }}</strong>
       </div>
       <div class="defense-context">
         <span>已分配学生</span>
@@ -189,18 +189,19 @@
     </template>
 
     <template #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button v-if="groupId && eligibleFree.length" type="button" class="mp-btn" :disabled="!picked.length || submitting" @click="assign">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton v-if="groupId && eligibleFree.length" :disabled="!picked.length || submitting" @click="assign">
         {{ submitting ? '处理中…' : `分配所选（${picked.length}）` }}
-      </button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || loading" @click="save">
+      </AppButton>
+      <AppButton variant="primary" :disabled="submitting || loading" @click="save">
         {{ submitting ? '保存中…' : groupId ? '保存编排' : '创建答辩组' }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { EmptyState, ErrorState, LoadingState } from '@/components/business'
 import { AppDateTimePicker } from '@/components/common/date'
@@ -228,7 +229,7 @@ const EMPTY_FORM = () => ({
 
 export default {
   name: 'DefenseGroupFormView',
-  components: {
+  components: { AppButton,
     GraduationFormPageShell,
     AppDateTimePicker,
     EmptyState,
@@ -378,7 +379,9 @@ export default {
       return body
     },
     _applyGroupPeople(row) {
-      const members = Array.isArray(row.members) ? row.members : []
+      // 接口的 members 只是姓名字符串，工号/ID 在 memberDetails 里；优先用带 ID 的明细，否则已绑定的评委会被当成“历史评委”
+      const details = Array.isArray(row.memberDetails) && row.memberDetails.length ? row.memberDetails : null
+      const members = details || (Array.isArray(row.members) ? row.members : [])
       const memberIds = []
       const legacyNames = []
       members.forEach((member) => {

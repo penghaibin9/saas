@@ -23,6 +23,12 @@
           </view>
           <view v-if="extraMetrics.length" class="wb-metrics"><text v-for="m in extraMetrics" :key="m.key">{{ m.label }} {{ m.value }}</text></view>
         </view>
+        <view v-if="gd" class="ts-panel">
+          <view class="ts-heading"><view class="ts-title"><view class="ts-marker" /><text>毕业设计</text><text class="ts-count">（{{ gd.todoTotal || 0 }}）</text></view><button class="ts-link ts-plain" @click="go('/pages/teacher/graduation-guide/index')">进入<MobileShellIcon name="chevron-right" :size="16" /></button></view>
+          <text class="ts-muted">你在本批次是{{ (gd.identityLabels || []).join('、') }}，不用切换身份。</text>
+          <view v-if="!gdTasks.length" class="ts-empty">现在没有要你处理的毕设事项。</view>
+          <view v-for="t in gdTasks" :key="t.key" class="ts-row" @click="openGdTask(t)"><view class="ts-body"><text class="ts-row-title">{{ t.title }}</text><text class="ts-muted">{{ t.identityLabel }} · {{ t.count }} 件{{ gdMobileRoute(t) ? '' : ' · 请在电脑端处理' }}</text></view><button class="ts-link ts-plain" @click.stop="openGdTask(t)">{{ gdMobileRoute(t) ? '去处理' : '说明' }}</button></view>
+        </view>
         <view v-if="riskCount || wb.partialFailures?.risk" class="ts-panel">
           <view class="ts-heading"><view class="ts-title"><view class="ts-marker wb-risk-marker" /><text>需要关注</text></view><button class="ts-link ts-plain" @click="goRiskList">风险台账<MobileShellIcon name="chevron-right" :size="16" /></button></view>
           <view v-if="wb.partialFailures?.risk" class="ts-error"><text>关注事项加载失败</text><button class="ts-link ts-plain" @click="retryLoad">重试</button></view>
@@ -42,7 +48,7 @@
 </template>
 
 <script>
-import { normalizeError } from '@/services/request'
+import { normalizeError, realRequest, getTeacherGraduationBatch, setTeacherGraduationBatch } from '@/services/request'
 import { tenantBrandConfig } from '@/config'
 import { useSessionStore } from '@/stores/session'
 import { useInternshipContextStore } from '@/stores/internshipContext'
@@ -70,7 +76,7 @@ ensureTeacherPerformanceApi()
 export default {
   data() {
     return {
-      brand: tenantBrandConfig, wb: null, state: 'loading', user: {}, roleConfig: {},
+      brand: tenantBrandConfig, wb: null, state: 'loading', user: {}, roleConfig: {}, gd: null,
       internshipContextReady: false, internshipContextError: '',
       lastLoadedAt: 0, loadedContextKey: '', loadedFreshnessVersion: -1, notices: [], noticeState: 'loading', today: teacherDateText(), greeting: teacherGreeting()
     }
@@ -99,7 +105,8 @@ export default {
       const title = String(this.wb?.contextTitle || '').trim()
       return !title || /^[A-Z][A-Z0-9_]*$/.test(title) ? (this.roleConfig.label || title || '教师') : title
     },
-    riskCount() { return Array.isArray(this.wb?.riskStudents) ? this.wb.riskStudents.length : 0 }
+    riskCount() { return Array.isArray(this.wb?.riskStudents) ? this.wb.riskStudents.length : 0 },
+    gdTasks() { return (this.gd?.tasks || []).filter((t) => Number(t.count) > 0).slice(0, 4) }
   },
   onLoad() {
     this._pageActive = true
@@ -226,6 +233,7 @@ export default {
         this.lastLoadedAt = Date.now()
         this.state = 'ready'
         this.loadNotices(contextKey)
+        this.loadGraduation(contextKey)
         return workbench
       })().catch((error) => {
         if (this._pageActive && this._loadEpoch === epoch && generation === currentSessionGeneration()) this.state = normalizeError(error).pageState || 'error'
@@ -256,7 +264,50 @@ export default {
       if (r && r.actionType === 'RISK_HANDLE') return go('/pages/teacher/affairs-review/index?type=RISK_HANDLE')
       go('/pages/teacher/risk-students/index')
     },
-    openStudent(r) { go('/pages/teacher/student-detail/index?id=' + r.id) }
+    openStudent(r) { go('/pages/teacher/student-detail/index?id=' + r.id) },
+    /** 毕业设计卡片：身份由服务端按业务关系自动判定（导师/评阅/评委/秘书），与电脑端“我的毕设工作”同源。
+     *  没有毕设身份的老师接口返回无权限，卡片直接不显示，不打扰。 */
+    async loadGraduation(contextKey) {
+      const seq = (this._gdSeq || 0) + 1; this._gdSeq = seq
+      const stale = () => !this._pageActive || seq !== this._gdSeq || contextKey !== this.contextKey(useSessionStore())
+      try {
+        let batch = getTeacherGraduationBatch()
+        if (!batch || !batch.id) {
+          const data = await realRequest('/mobile/teacher/graduation/batches')
+          if (stale()) return
+          const items = (data && data.items) || []
+          const picked = items.find((b) => String(b.id) === String(data && data.selectedBatchId)) || items[0]
+          if (!picked) { this.gd = null; return }
+          setTeacherGraduationBatch({ id: picked.id, name: picked.batchName, status: picked.status })
+        }
+        const gd = await realRequest('/mobile/teacher/graduation/workbench')
+        if (stale()) return
+        this.gd = gd && Array.isArray(gd.identities) && gd.identities.length ? gd : null
+      } catch (_) {
+        if (!stale()) this.gd = null
+      }
+    },
+    gdMobileRoute(t) {
+      return ({
+        topicChoice: '/pages/teacher/graduation-topics/index',
+        topicChange: '/pages/teacher/graduation-topics/index',
+        taskbook: '/pages/teacher/graduation-taskbook/index',
+        proposal: '/pages/teacher/graduation-guide/index?tab=review',
+        final: '/pages/teacher/graduation-guide/index?tab=review',
+        midterm: '/pages/teacher/graduation-guide/index?tab=midterm',
+        review: '/pages/teacher/graduation-guide/index?tab=peer',
+        defenseScore: '/pages/teacher/defense-score/index'
+      })[t && t.key] || ''
+    },
+    openGdTask(t) {
+      const path = this.gdMobileRoute(t)
+      if (path) return go(path)
+      const messages = {
+        advisorScore: '导师评分请在电脑端「毕业设计中心 › 我的毕设工作 › 导师评分」中处理',
+        defenseConfirm: '确认答辩成绩需要核对全组评分，请在电脑端「毕业设计中心 › 我的毕设工作」中处理'
+      }
+      toast(messages[t && t.key] || '该事项请在电脑端「毕业设计中心 › 我的毕设工作」中处理')
+    }
   }
 }
 </script>

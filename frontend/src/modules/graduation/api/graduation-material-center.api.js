@@ -140,14 +140,16 @@ export const graduationMaterialCenterApi = {
     return request('/graduation/material-center/rules', { params: batchId ? { batchId } : {} })
   },
   createRule(payload) {
-    return request('/graduation/material-center/rules', { method: 'POST', data: payload })
+    return request('/graduation/material-center/rules', { method: 'POST', body: payload })
   },
   ruleImpact(ruleId) {
     return request(`/graduation/material-center/rules/${encodeURIComponent(ruleId)}/impact`)
   },
   activateRule(ruleId, { confirmCatalogRepair = false, expectedVersion } = {}) {
     return request(`/graduation/material-center/rules/${encodeURIComponent(ruleId)}/activate`, {
-      method: 'POST', data: { confirmCatalogRepair, expectedVersion }
+      method: 'POST', body: { confirmCatalogRepair, expectedVersion },
+      // 启用时要为本批次全部学生生成材料清单，学生多时会比普通请求久
+      timeoutMs: 600000
     })
   },
   overview(params = {}) { return request('/graduation/material-center/overview', { params }) },

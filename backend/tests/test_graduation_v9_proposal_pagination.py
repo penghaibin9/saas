@@ -72,10 +72,16 @@ def _seed_600():
 
 
 def test_m9_public_service_entrypoints_are_bound_to_sql_read_model():
-    assert service.list_proposals.__module__ == "app.modules.graduation.services"
+    # 入口已从包级运行时补丁内联到 graduation_service，本身只委托 SQL 读模型。
+    import inspect
+
+    owner = "app.modules.graduation.services.graduation_service"
+    assert service.list_proposals.__module__ == owner
     assert service.list_proposals.__name__ == "list_proposals"
-    assert service.proposal_stats.__module__ == "app.modules.graduation.services"
-    assert service.export_proposals_xlsx.__module__ == "app.modules.graduation.services"
+    assert service.proposal_stats.__module__ == owner
+    assert service.export_proposals_xlsx.__module__ == owner
+    assert "proposal_read" in inspect.getsource(service.list_proposals)
+    assert "proposal_read" in inspect.getsource(service.proposal_stats)
 
 
 def test_m9_mysql_pagination_not_submitted_and_keyword(db_mode, graduation_client, auth_headers):
