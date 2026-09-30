@@ -200,6 +200,18 @@
       }
     },
     {
+      "path": "pages/teacher-internship/role-switch/index",
+      "style": {"navigationBarTitleText": "切换工作身份","navigationStyle": "custom"}
+    },
+    {
+      "path": "pages/teacher-internship/todos/index",
+      "style": {"navigationBarTitleText": "分类待办","navigationStyle": "custom"}
+    },
+    {
+      "path": "pages/teacher-internship/messages/index",
+      "style": {"navigationBarTitleText": "站内信","navigationStyle": "custom"}
+    },
+    {
       "path": "pages/teacher-internship/agreement-confirm/index",
       "style": {
         "navigationBarTitleText": "三方协议学校确认",

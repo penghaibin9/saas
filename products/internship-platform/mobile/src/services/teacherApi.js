@@ -29,6 +29,12 @@ export const teacherApi = {
   handleInternshipRisk: (id, body) => realRequest(`/mobile/teacher/internship/risks/${encodeURIComponent(String(id || ''))}/handle`, { method: 'POST', data: body || {} }),
   followInternshipRisk: (id, body) => realRequest(`/mobile/teacher/internship/risks/${encodeURIComponent(String(id || ''))}/follow`, { method: 'POST', data: body || {} }),
   closeInternshipRisk: (id, body) => realRequest(`/mobile/teacher/internship/risks/${encodeURIComponent(String(id || ''))}/close`, { method: 'POST', data: body || {} }),
+  getInternshipWorkbenchTodos: ({ status='PENDING', group='ALL', page=1, pageSize=50 }={}) =>
+    realRequest(`/teacher-mobile/internship/workbench/todos?status=${encodeURIComponent(status)}&group=${encodeURIComponent(group)}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`),
+  getInternshipWorkbenchMessages: ({ category='ALL', readStatus='', page=1, pageSize=20 }={}) =>
+    realRequest(`/teacher-mobile/internship/workbench/messages?category=${encodeURIComponent(category)}&readStatus=${encodeURIComponent(readStatus)}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`),
+  readInternshipWorkbenchMessage: (messageId) =>
+    realRequest(`/teacher-mobile/internship/workbench/messages/${encodeURIComponent(String(messageId||''))}/read`, { method:'POST' }),
   getMyInternshipCheckins: (batchId, limit = 31) => realRequest(`/teacher-mobile/internship/activity/checkins?batchId=${encodeURIComponent(String(batchId || ''))}&limit=${encodeURIComponent(limit)}`),
   createMyInternshipCheckin: (body) => realRequest('/teacher-mobile/internship/activity/checkins', { method: 'POST', data: body || {} }),
   getMyInternshipMakeups: (batchId, status = '') => realRequest(`/teacher-mobile/internship/activity/makeups?batchId=${encodeURIComponent(String(batchId || ''))}&status=${encodeURIComponent(status || '')}`),

@@ -93,8 +93,8 @@ def _clear_refresh_cookie(response: Response, channel: str, session_id: str) -> 
     )
 
 
-def _role_for_user(db, *, tenant_id: int, user: User) -> tuple[str, str]:
-    row = db.execute(
+def _roles_for_user(db, *, tenant_id: int, user: User) -> list[tuple[str, str]]:
+    rows = db.execute(
         select(Role.role_code, Role.role_name)
         .join(UserRole, UserRole.role_id == Role.id)
         .where(
@@ -107,10 +107,9 @@ def _role_for_user(db, *, tenant_id: int, user: User) -> tuple[str, str]:
             Role.is_deleted.is_(False),
         )
         .order_by(UserRole.id)
-        .limit(1)
-    ).first()
-    if row:
-        return str(row[0]), str(row[1])
+    ).all()
+    if rows:
+        return [(str(row[0]), str(row[1])) for row in rows]
 
     user_type = str(user.user_type or "").strip().upper()
     fallback = {
@@ -124,8 +123,12 @@ def _role_for_user(db, *, tenant_id: int, user: User) -> tuple[str, str]:
         "LEADER": ("LEADER", "领导"),
     }.get(user_type)
     if fallback:
-        return fallback
+        return [fallback]
     raise AppException("NO_PERMISSION", "账号未分配岗位实习可用角色", http_status=403)
+
+
+def _role_for_user(db, *, tenant_id: int, user: User) -> tuple[str, str]:
+    return _roles_for_user(db, tenant_id=tenant_id, user=user)[0]
 
 
 def _resolve_account(db, body: BrowserLoginRequest) -> tuple[Tenant, User, str, str]:

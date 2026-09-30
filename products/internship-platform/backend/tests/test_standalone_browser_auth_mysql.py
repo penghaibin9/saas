@@ -14,6 +14,7 @@ STAFF_ID = 88011
 STUDENT_ID = 88012
 STAFF_ROLE_ID = 88021
 STUDENT_ROLE_ID = 88022
+MENTOR_ROLE_ID = 88023
 STUDENT_PROFILE_ID = 88031
 
 
@@ -42,6 +43,10 @@ def _seed():
             role_name="学校管理员",
             role_type="SYSTEM",
             status="ACTIVE",
+        )
+        mentor_role = Role(
+            id=MENTOR_ROLE_ID, tenant_id=TENANT_ID, role_code="INTERN_MENTOR",
+            role_name="实习指导教师", role_type="SYSTEM", status="ACTIVE",
         )
         student_role = Role(
             id=STUDENT_ROLE_ID,
@@ -94,6 +99,7 @@ def _seed():
         db.add_all([
             tenant,
             staff_role,
+            mentor_role,
             student_role,
             staff,
             student,
@@ -104,6 +110,9 @@ def _seed():
                 user_id=STAFF_ID,
                 role_id=STAFF_ROLE_ID,
                 status="ACTIVE",
+            ),
+            UserRole(
+                tenant_id=TENANT_ID, user_id=STAFF_ID, role_id=MENTOR_ROLE_ID, status="ACTIVE",
             ),
             UserRole(
                 tenant_id=TENANT_ID,
@@ -280,3 +289,47 @@ def test_student_browser_channel_and_cross_surface_fail_closed_real_mysql():
             session_id="wrong-staff-tab",
         )
         assert denied_staff.status_code == 403
+
+
+
+def test_teacher_mobile_login_exposes_assigned_roles_and_switches_without_logout_real_mysql():
+    _seed()
+    with TestClient(app) as client:
+        login = client.post("/api/v1/auth/login", json={
+            "tenantCode":"AUTH-GATE","loginName":"auth.staff","password":"Staff-Evidence-2026!","clientType":"TEACHER_MINI"})
+        assert login.status_code == 200, login.text
+        data = login.json()["data"]
+        assert data["currentRole"]["roleCode"] == "SCHOOL_ADMIN"
+        assert [r["roleCode"] for r in data["availableRoles"]] == ["SCHOOL_ADMIN","INTERN_MENTOR"]
+        switched = client.post("/api/v1/auth/switch-role",
+            headers={"Authorization":f"Bearer {data['accessToken']}"},
+            json={"roleCode":"INTERN_MENTOR","refreshToken":data["refreshToken"]})
+        assert switched.status_code == 200, switched.text
+        out = switched.json()["data"]
+        assert out["currentRole"]["roleCode"] == "INTERN_MENTOR"
+        assert out["currentRole"]["contextId"] == "role-intern_mentor"
+        assert out["refreshToken"] != data["refreshToken"]
+        context = client.get("/api/v1/rbac/current-context",
+            headers={"Authorization":f"Bearer {out['accessToken']}"})
+        assert context.status_code == 200, context.text
+        assert context.json()["data"]["currentRole"]["roleCode"] == "INTERN_MENTOR"
+        assert "internship.student.view" in context.json()["data"]["permissionPatterns"]
+        replay = client.post("/api/v1/auth/switch-role",
+            headers={"Authorization":f"Bearer {data['accessToken']}"},
+            json={"roleCode":"SCHOOL_ADMIN","refreshToken":data["refreshToken"]})
+        assert replay.status_code == 401
+
+
+def test_teacher_mobile_role_switch_rejects_unassigned_role_before_consuming_refresh_real_mysql():
+    _seed()
+    with TestClient(app) as client:
+        data = client.post("/api/v1/auth/login", json={
+            "tenantCode":"AUTH-GATE","loginName":"auth.staff","password":"Staff-Evidence-2026!","clientType":"TEACHER_MINI"}).json()["data"]
+        denied = client.post("/api/v1/auth/switch-role",
+            headers={"Authorization":f"Bearer {data['accessToken']}"},
+            json={"roleCode":"SECURITY_AUDITOR","refreshToken":data["refreshToken"]})
+        assert denied.status_code == 403
+        ok = client.post("/api/v1/auth/switch-role",
+            headers={"Authorization":f"Bearer {data['accessToken']}"},
+            json={"roleCode":"INTERN_MENTOR","refreshToken":data["refreshToken"]})
+        assert ok.status_code == 200, ok.text

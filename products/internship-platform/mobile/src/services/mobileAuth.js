@@ -14,6 +14,10 @@ function normalizedIdentity(data={}) {
     studentNo:user.studentNo||'',
     roleCode:String(role.roleCode||'').toUpperCase(),
     roleName:role.roleName||'',
+    activeContextId:role.contextId||'',
+    availableRoles:(Array.isArray(data.availableRoles)?data.availableRoles:[]).map((item)=>({
+      roleCode:String(item.roleCode||'').toUpperCase(),roleName:item.roleName||item.roleCode||'',contextId:item.contextId||''
+    })).filter((item)=>item.roleCode),
     tenantId:String(data.tenantId||''),
     tenantCode:data.tenantCode||'',
     tenantName:data.tenantName||''
@@ -46,6 +50,18 @@ export async function loginMobile({tenantCode='',loginName='',password='',client
   const session={logged:true,isTeacher,identity}
   try { uni.setStorageSync(SESSION_KEY,session) } catch (e) {}
   setForcePasswordChange(!!data.mustChangePassword)
+  return {data,identity,home:mobileHome(identity)}
+}
+
+export async function switchMobileRole(roleCode='') {
+  const current=currentMobileSession(), refreshToken=getRefreshToken()
+  const target=String(roleCode||'').trim().toUpperCase()
+  if(!target||!refreshToken) throw {code:'AUTH_REQUIRED',biz:true,message:'当前会话已失效，请重新登录'}
+  const data=await realRequest('/auth/switch-role',{method:'POST',data:{roleCode:target,refreshToken}})
+  commitNewSessionTokens(data.accessToken||'',data.refreshToken||'')
+  const identity=normalizedIdentity(data)
+  const session={...current,logged:true,isTeacher:true,identity}
+  try { uni.setStorageSync(SESSION_KEY,session);uni.removeStorageSync('gx_internship_context_v1') } catch (e) {}
   return {data,identity,home:mobileHome(identity)}
 }
 

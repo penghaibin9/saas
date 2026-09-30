@@ -8,17 +8,19 @@ from __future__ import annotations
 
 import secrets
 
-from fastapi import APIRouter, Body, Header
+from fastapi import APIRouter, Body, Depends, Header
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy import select
 
-from app.api.v1.standalone_browser_auth import _resolve_account
+from app.api.v1.standalone_browser_auth import _resolve_account, _roles_for_user
 from app.config import settings
 from app.core.context import set_current_user, set_tenant
 from app.core.exceptions import AppException, unauthorized
 from app.core.response import success
-from app.core.security import _validate_db_subject, create_access_token, decode_token
+from app.core.security import _validate_db_subject, create_access_token, decode_token, get_current_user
 from app.core.token_store import block_jti, consume_refresh, issue_refresh
 from app.db.session import get_sessionmaker
+from app.models import Tenant, User
 from app.services import audit_log
 from app.services.browser_auth_session_blocklist import auth_session_blocked, block_auth_session
 
@@ -53,6 +55,20 @@ class MobileLogoutRequest(BaseModel):
     refreshToken: str | None = Field(default=None, max_length=1024)
 
 
+class MobileSwitchRoleRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    roleCode: str = Field(min_length=2, max_length=50)
+    refreshToken: str = Field(min_length=20, max_length=1024)
+
+
+def _available_role_payload(roles: list[tuple[str, str]]) -> list[dict]:
+    return [
+        {"roleCode": str(code).upper(), "roleName": str(name or code),
+         "contextId": f"role-{str(code).lower()}"}
+        for code, name in roles
+    ]
+
+
 def _claims(*, tenant, user, role_code: str, role_name: str, client_type: str) -> dict:
     return {
         "userId": f"db-{user.id}",
@@ -72,7 +88,10 @@ def _claims(*, tenant, user, role_code: str, role_name: str, client_type: str) -
     }
 
 
-def _public_payload(*, claims: dict, access_token: str, refresh_token: str) -> dict:
+def _public_payload(
+    *, claims: dict, access_token: str, refresh_token: str,
+    available_roles: list[tuple[str, str]] | None = None,
+) -> dict:
     return {
         "accessToken": access_token,
         "refreshToken": refresh_token,
@@ -88,7 +107,11 @@ def _public_payload(*, claims: dict, access_token: str, refresh_token: str) -> d
         "currentRole": {
             "roleCode": claims["currentRoleCode"],
             "roleName": claims["currentRoleName"],
+            "contextId": claims["activeContextId"],
         },
+        "availableRoles": _available_role_payload(available_roles or [
+            (claims["currentRoleCode"], claims["currentRoleName"])
+        ]),
         "tenantId": claims["tenantId"],
         "tenantCode": claims["tenantCode"],
         "tenantName": claims["tenantName"],
@@ -102,6 +125,7 @@ def mobile_login(body: MobileLoginRequest):
     db = get_sessionmaker()()
     try:
         tenant, user, role_code, role_name = _resolve_account(db, body)
+        roles = _roles_for_user(db, tenant_id=int(tenant.id), user=user)
         client_type = body.clientType
         is_student = role_code == "STUDENT" or str(user.user_type or "").upper() == "STUDENT"
         if client_type == "STUDENT_MINI" and not is_student:
@@ -138,9 +162,57 @@ def mobile_login(body: MobileLoginRequest):
                 claims=claims,
                 access_token=access_token,
                 refresh_token=refresh_token,
+                available_roles=roles,
             ),
             message="登录成功",
         )
+    finally:
+        db.close()
+
+
+
+
+@router.post("/switch-role", summary="Standalone 教师移动端同账号切换已授权身份")
+def mobile_switch_role(body: MobileSwitchRoleRequest, user=Depends(get_current_user)):
+    client_type = str((user or {}).get("clientType") or "").strip().upper()
+    if client_type != "TEACHER_MINI":
+        raise AppException("NO_PERMISSION", "仅教师移动端支持工作身份切换", http_status=403)
+    raw_user_id = str((user or {}).get("userId") or "")
+    raw_tenant_id = str((user or {}).get("tenantId") or "")
+    if not raw_user_id.startswith("db-") or not raw_user_id[3:].isdigit() or not raw_tenant_id.isdigit():
+        raise unauthorized("当前账号身份无效，请重新登录")
+
+    db = get_sessionmaker()()
+    try:
+        tenant = db.scalar(select(Tenant).where(
+            Tenant.id == int(raw_tenant_id), Tenant.is_deleted.is_(False), Tenant.status == "ACTIVE"))
+        account = db.scalar(select(User).where(
+            User.id == int(raw_user_id[3:]), User.tenant_id == int(raw_tenant_id),
+            User.is_deleted.is_(False), User.status == "ACTIVE"))
+        if not tenant or not account:
+            raise unauthorized("账号或学校已停用，请重新登录")
+        roles = _roles_for_user(db, tenant_id=int(tenant.id), user=account)
+        target_code = str(body.roleCode or "").strip().upper()
+        target = next(((code, name) for code, name in roles if str(code).upper() == target_code), None)
+        if not target or target_code == "STUDENT":
+            raise AppException("NO_PERMISSION", "当前账号未分配该教师工作身份", http_status=403)
+
+        refresh_claims = consume_refresh(body.refreshToken, expected_claims=user)
+        if not refresh_claims:
+            raise unauthorized("当前会话已变化，请刷新页面后重试身份切换")
+        claims = _claims(
+            tenant=tenant, user=account, role_code=str(target[0]),
+            role_name=str(target[1]), client_type=client_type)
+        access_token = create_access_token(claims)
+        refresh_token = issue_refresh(claims)
+        audit_log.record(
+            "MOBILE_ROLE_SWITCH", f"user:{account.id}",
+            detail={"tenantId": int(tenant.id),
+                    "fromRole": str((user or {}).get("currentRoleCode") or ""),
+                    "toRole": str(target[0]), "clientType": client_type})
+        return success(_public_payload(
+            claims=claims, access_token=access_token, refresh_token=refresh_token,
+            available_roles=roles), message="身份切换成功")
     finally:
         db.close()
 

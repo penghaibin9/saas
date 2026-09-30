@@ -1,7 +1,7 @@
 <template>
   <view class="page-wrap">
     <MobileNavBar variant="teacher" title="岗位实习教师工作台" subtitle="指导、审核、评价与统计">
-      <template #right><text class="tw-logout" @click="logout">退出</text></template>
+      <template #right><view class="tw-nav-actions"><text v-if="canSwitchRole" class="tw-role-switch" @click="openRoleSwitch">切换身份</text><text class="tw-logout" @click="logout">退出</text></view></template>
     </MobileNavBar>
     <MobileGlobalState :state="state" :description="error" @retry="load">
       <view class="page-pad stack">
@@ -23,10 +23,12 @@
 
 <script>
 import { useInternshipContextStore } from '@/stores/internshipContext'
-import { logoutMobile } from '@/services/mobileAuth'
+import { currentMobileSession, logoutMobile } from '@/services/mobileAuth'
 import { go, relaunch } from '@/utils/nav'
 export default {
   data:()=>({state:'loading',error:'',items:[
+    {label:'分类待办',icon:'✅',permission:'internship.dashboard.view',path:'/pages/teacher-internship/todos/index'},
+    {label:'站内信',icon:'💬',permission:'internship.dashboard.view',path:'/pages/teacher-internship/messages/index'},
     {label:'实习学生',icon:'👥',permission:'internship.student.view',path:'/pages/teacher-internship/internship-students/index'},
     {label:'岗位核对',icon:'🏢',permission:'internship.position.view',path:'/pages/teacher-internship/internship-positions/index'},
     {label:'实习申请',icon:'📋',permission:'internship.application.view',path:'/pages/teacher-internship/internship-application/index'},
@@ -41,19 +43,24 @@ export default {
     context(){return useInternshipContextStore()},
     batchLabels(){return this.context.batches.map(b=>b.name||b.batchName||'实习批次')},
     batchIndex(){return Math.max(0,this.context.batches.findIndex(b=>String(b.id)===String(this.context.selectedBatchId)))},
-    visibleItems(){return this.items.filter(item=>this.context.can(item.permission))}
+    visibleItems(){return this.items.filter(item=>this.context.can(item.permission))},
+    canSwitchRole(){
+      const roles=currentMobileSession()?.identity?.availableRoles||[]
+      return roles.filter((item)=>String(item.roleCode||'').toUpperCase()!=='STUDENT').length>1
+    }
   },
   onShow(){this.load()},
   methods:{
     async load(){this.state='loading';this.error='';try{await this.context.load(true);this.state='ready'}catch(e){this.error=e?.message||'教师工作台加载失败';this.state='error'}},
     changeBatch(e){const b=this.context.batches[Number(e.detail.value)];if(b&&this.context.selectBatch(b.id))this.load()},
     open(item){const batch=this.context.selectedBatchId;go(item.path+(batch?'?batchId='+encodeURIComponent(batch):''))},
+    openRoleSwitch(){go('/pages/teacher-internship/role-switch/index')},
     async logout(){await logoutMobile();this.context.clear();relaunch('/pages/login/index?entry=teacher')}
   }
 }
 </script>
 
 <style scoped>
-.tw-logout{font-size:12px;color:#fff}.tw-hero{display:flex;align-items:center;justify-content:space-between;gap:12px}.tw-eyebrow{display:block;font-size:11px;color:var(--text-tertiary)}.tw-title{display:block;margin-top:5px;font-size:16px;font-weight:600}.tw-switch{color:var(--brand-primary);font-size:13px}
+.tw-nav-actions{display:flex;align-items:center;gap:12px}.tw-role-switch,.tw-logout{font-size:12px;color:#fff}.tw-role-switch{font-weight:600}.tw-hero{display:flex;align-items:center;justify-content:space-between;gap:12px}.tw-eyebrow{display:block;font-size:11px;color:var(--text-tertiary)}.tw-title{display:block;margin-top:5px;font-size:16px;font-weight:600}.tw-switch{color:var(--brand-primary);font-size:13px}
 .tw-grid{display:flex;flex-wrap:wrap;padding:8px}.tw-item{width:33.33%;min-height:92px;box-sizing:border-box;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px}.tw-icon{font-size:25px}.tw-label{font-size:12px;color:var(--text-secondary)}
 </style>

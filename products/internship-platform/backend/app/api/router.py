@@ -15,6 +15,7 @@ from app.api.v1 import (
     mobile_internship_selection,
     mobile_internship_student,
     teacher_mobile_internship,
+    teacher_mobile_workbench,
 )
 from app.student_portal.internship_router import router as student_portal_internship_router
 from app.student_portal.internship_selection_router import router as student_portal_selection_router
@@ -142,6 +143,11 @@ def build_teacher_mobile_router() -> APIRouter:
     )
     router.include_router(
         teacher_mobile_internship.router,
+        prefix="/teacher-mobile",
+        dependencies=[Depends(require_staff)],
+    )
+    router.include_router(
+        teacher_mobile_workbench.router,
         prefix="/teacher-mobile",
         dependencies=[Depends(require_staff)],
     )
