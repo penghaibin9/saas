@@ -148,10 +148,20 @@ def todos(status:str=Query("PENDING",max_length=20),group:str=Query("ALL",max_le
           UnifiedTodo.source_module=="internship",UnifiedTodo.assignee_id==uid]
     status_conds=[] if status=="ALL" else [UnifiedTodo.status==status]
     with session() as db:
-        all_rows=db.scalars(select(UnifiedTodo).where(*base,*status_conds).order_by(UnifiedTodo.id.desc())).all()
+        # 分类计数必须由数据库聚合，不能把教师全部待办实体加载进 Python。
+        # 5000+ 学生场景下，一个指导教师可能积累大量历史待办；这里只取 todo_type + count，
+        # 页面实体仍严格按 page/pageSize 分页，避免移动工作台随历史数据量线性涨内存。
+        type_counts=db.execute(
+            select(UnifiedTodo.todo_type,func.count())
+            .where(*base,*status_conds)
+            .group_by(UnifiedTodo.todo_type)
+        ).all()
         counts={key:0 for key in GROUP_LABELS}
-        for row in all_rows:
-            g=_todo_meta(row.todo_type)[0];counts["ALL"]+=1;counts[g]=counts.get(g,0)+1
+        for todo_type,count in type_counts:
+            g=_todo_meta(todo_type)[0]
+            n=int(count or 0)
+            counts["ALL"]+=n
+            counts[g]=counts.get(g,0)+n
         conds=[*base,*status_conds]
         if group!="ALL":
             known=[code for code,meta in TODO_META.items() if meta[0]==group]
