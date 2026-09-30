@@ -34,7 +34,7 @@ test('real backend student H5 login reaches standalone internship home and recor
   await expect(page.getByText('全栈验收企业',{exact:true}).first()).toBeVisible()
   await page.screenshot({path:'test-results-mobile-real/student-home.png',fullPage:true})
 
-  await page.getByText('今日打卡',{exact:true}).click()
+  await page.getByText('今日打卡',{exact:true}).first().click()
   await expect(page).toHaveURL(/#\/pages\/student-internship\/checkin\/index/)
   await expect(page.getByText('完整签到日历',{exact:true})).toBeVisible()
 
