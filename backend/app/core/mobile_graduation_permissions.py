@@ -77,7 +77,24 @@ def require_mobile_graduation_request_permission(
     user: dict = Depends(get_current_user),
 ) -> dict:
     path = request.url.path.rstrip("/")
-    if "/mobile/teacher/graduation" not in path:
+    is_teacher_context = "/mobile/teacher/graduation" in path
+    is_material_review = (
+        request.method.upper() == "POST"
+        and "/mobile/graduation/material-center/materials/" in path
+        and path.endswith("/review")
+    )
+    if not is_teacher_context and not is_material_review:
+        return user
+
+    # 材料审核路由不在 /mobile/teacher/graduation 下，但教师仍须按目标学生关系自动切到
+    # 指导/评阅/秘书身份；具体材料码对应的动作权限由材料中心服务继续裁决。
+    if is_material_review:
+        from app.modules.graduation.services.graduation_auto_identity import identity_hint, overlay_for_request
+        overlay_for_request(
+            user, None, dynamic=True,
+            path_params={**dict(request.path_params or {}), "__path__": path},
+            hint=identity_hint(request),
+        )
         return user
 
     endpoint = request.scope.get("endpoint")

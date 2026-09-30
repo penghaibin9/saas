@@ -249,6 +249,7 @@ def submit_advisor_score(gd_student_id, score, comment=None) -> dict:
         final = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(),
             GraduationFinal.gd_student_id == stu.id,
+            GraduationFinal.final_type == "定稿",
             GraduationFinal.is_deleted.is_(False),
         ).order_by(GraduationFinal.id.desc())).first()
         if not final or final.status != "APPROVED":

@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import enforce_permission
+from app.core.tenant_scoped import tenant_get
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationStudent, GraduationTopic,
                         GraduationTopicChoice, GraduationTopicRound)
 from app.services.db_service import _iso, _tid, session
@@ -142,7 +143,7 @@ def create_round(body) -> dict:
         db.flush()
         _audit(db, r.id, "CREATE", r.round_name)
         db.commit()
-        batch = db.get(GraduationBatch, r.batch_id) if r.batch_id else None
+        batch = tenant_get(db, GraduationBatch, r.batch_id) if r.batch_id else None
         return _row_round(r, batch if batch and not batch.is_deleted else None)
 def open_round(rid) -> dict:
     with session() as db:
@@ -235,7 +236,7 @@ def submit_choices(round_id, gd_student_id, choices: list[dict], *, admin_import
                 raise AppException("VALIDATION_ERROR", "志愿序号须从1开始且不重复")
             orders.add(order)
             tid = int(ch.get("topicId") or ch.get("topic_id"))
-            t = db.get(GraduationTopic, tid)
+            t = tenant_get(db, GraduationTopic, tid)
             if not t or t.is_deleted or t.tenant_id != _tid():
                 raise not_found(f"题目 {tid} 不存在")
             if t.review_status != "APPROVED" or t.status != "CONFIRMED":
@@ -442,7 +443,7 @@ def list_capacity_conflicts(round_id) -> list[dict]:
             by_topic.setdefault(int(c.topic_id), []).append(c)
         out = []
         for tid, group in by_topic.items():
-            t = db.get(GraduationTopic, tid)
+            t = tenant_get(db, GraduationTopic, tid)
             if not t or t.is_deleted:
                 continue
             remaining = max(0, int(t.capacity or 0) - int(t.selected or 0))
@@ -450,7 +451,7 @@ def list_capacity_conflicts(round_id) -> list[dict]:
                 continue  # 不过热
             students = []
             for c in sorted(group, key=lambda x: x.choice_order):
-                s = db.get(GraduationStudent, int(c.gd_student_id))
+                s = tenant_get(db, GraduationStudent, int(c.gd_student_id))
                 students.append({"choiceId": str(c.id), "gdStudentId": str(c.gd_student_id),
                                  "studentName": s.name if s else "", "className": s.class_name if s else "",
                                  "choiceOrder": c.choice_order, "advisorName": t.advisor_name or ""})
@@ -477,7 +478,7 @@ def round_stats(round_id) -> dict:
                 topic_pending[int(c.topic_id)] = topic_pending.get(int(c.topic_id), 0) + 1
         over = 0
         for tid, cnt in topic_pending.items():
-            t = db.get(GraduationTopic, tid)
+            t = tenant_get(db, GraduationTopic, tid)
             if t and cnt > max(0, int(t.capacity or 0) - int(t.selected or 0)):
                 over += 1
         by_status = [{"status": s, "label": CHOICE_LABEL.get(s, s), "count": status_count.get(s, 0)}
@@ -781,7 +782,7 @@ def active_round(batch_id=None) -> dict | None:
         r = db.scalars(q.order_by(GraduationTopicRound.id.desc())).first()
         if not r:
             return None
-        batch = db.get(GraduationBatch, r.batch_id) if r.batch_id else None
+        batch = tenant_get(db, GraduationBatch, r.batch_id) if r.batch_id else None
         return _row_round(r, batch if batch and not batch.is_deleted else None)
 
 

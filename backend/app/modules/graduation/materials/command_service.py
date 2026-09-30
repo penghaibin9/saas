@@ -9,6 +9,7 @@ from sqlalchemy import func, insert, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import enforce_permission
+from app.core.tenant_scoped import tenant_get
 from app.models import GraduationArchiveRecord, GraduationBatch, GraduationStudent, GraduationTemplate
 from app.models.file import ArchiveManifest, FileAsset, FileBinding, FileObject, FileVersion
 from app.models.graduation_material import (
@@ -1002,7 +1003,7 @@ def update_template_policy_status(policy_id: int, enabled: bool, expected_versio
                 FileVersion.tenant_id == _tid(), FileVersion.id == int(policy.current_version_id or 0),
                 FileVersion.is_current.is_(True), FileVersion.is_deleted.is_(False),
             )).first()
-            file_obj = db.get(FileObject, int(version.file_object_id)) if version else None
+            file_obj = tenant_get(db, FileObject, int(version.file_object_id)) if version else None
             if not version or not file_obj:
                 raise AppException("DATA_CONFLICT", "模板当前文件版本不存在")
             assert_file_ready_for_business(str(file_obj.id), user=user)

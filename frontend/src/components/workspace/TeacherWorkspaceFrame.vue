@@ -88,7 +88,6 @@ const shortcuts = computed(() => prefs.value.shortcuts.map(id => pages.value.fin
 async function confirmUnsubmitted(to, from) {
   if (to.path === from.path) return true
   if (window.__SAAS_DIRTY_FORM_GUARD__?.handlesRoute?.(from)) return true
-  if (Date.now() - Number(window.__SAAS_LAST_SAVE_SUCCESS_AT__ || 0) < 4000) return true
   const editing = [...document.querySelectorAll('textarea')].some(field => !field.readOnly && !field.disabled && field.value.trim() && field.getClientRects().length)
   return !editing || await systemConfirm({ title:'确认离开当前工作区', message:'当前表单还有填写内容，继续离开会丢失未提交的内容。', confirmText:'放弃内容并离开', type:'danger' })
 }

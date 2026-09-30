@@ -302,7 +302,11 @@ export default {
     openGdTask(t) {
       const path = this.gdMobileRoute(t)
       if (path) return go(path)
-      toast('确认答辩成绩需要核对全组评分，请在电脑端「毕业设计中心 › 我的毕设工作」中处理')
+      const messages = {
+        advisorScore: '导师评分请在电脑端「毕业设计中心 › 我的毕设工作 › 导师评分」中处理',
+        defenseConfirm: '确认答辩成绩需要核对全组评分，请在电脑端「毕业设计中心 › 我的毕设工作」中处理'
+      }
+      toast(messages[t && t.key] || '该事项请在电脑端「毕业设计中心 › 我的毕设工作」中处理')
     }
   }
 }

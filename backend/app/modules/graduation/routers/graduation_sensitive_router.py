@@ -11,6 +11,7 @@ from fastapi import APIRouter, Body, Depends, Query
 
 from app.core.response import paginate, success
 from app.core.security import get_current_user
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     GraduationPlagiarismCheck,
     GraduationReview,
@@ -71,11 +72,11 @@ def _student_batch(gd_student_id, batch_id, *, for_update: bool = False) -> int:
 
 def _record_batch(model, record_id, batch_id, *, student_field: str = "gd_student_id") -> int:
     with session() as db:
-        row = db.get(model, int(record_id))
+        row = tenant_get(db, model, int(record_id))
         if not row or getattr(row, "is_deleted", False) or row.tenant_id != _tid():
             from app.core.exceptions import not_found
             raise not_found("业务记录不存在")
-        student = db.get(GraduationStudent, int(getattr(row, student_field)))
+        student = tenant_get(db, GraduationStudent, int(getattr(row, student_field)))
         assert_student_batch(student, batch_id)
         return int(student.id)
 

@@ -3228,7 +3228,7 @@ def _assert_midterm_student_scope(gd_student_id) -> None:
     from app.services.db_service import session as _gd_session
     with _gd_session() as db:
         try:
-            student = db.get(GraduationStudent, int(gd_student_id))
+            student = tenant_get(db, GraduationStudent, int(gd_student_id))
         except (TypeError, ValueError):
             student = None
         if not can_access_student(db, student):
@@ -3279,12 +3279,22 @@ def graduation_midterm_rectify_review(user: dict, gd_student_id: str, action: st
 # ══════════ 评阅（评阅教师移动端：本人评阅任务 + 提交评分/意见；SoD 回避后端已在分配时强制） ══════════
 
 def graduation_my_reviews(user: dict) -> list:
-    """评阅·本人作为评阅教师的待提交任务（ASSIGNED/REVIEWING/RETURNED）。评阅人身份即范围。"""
+    """评阅·本人作为评阅教师的待提交任务。教师端只按稳定 reviewer_mentor_id 收敛。"""
     u = _require_teacher(user)
     if not db_enabled():
         return []
     from app.modules.graduation.services import graduation_review_service as rv
-    rows, _ = _safe_list(rv.list_reviews, 1, 100, reviewer_name=u.get("realName") or "")
+    from app.modules.graduation.services import graduation_identity as gid
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") == "ADMIN_TENANT":
+        rows, _ = _safe_list(rv.list_reviews, 1, 100, reviewer_name=u.get("realName") or "")
+    else:
+        with _session() as db:
+            me = gid.current_user_mentor(db)
+            mentor_id = int(me.id) if me is not None else None
+        if mentor_id is None:
+            return []
+        rows, _ = _safe_list(rv.list_reviews, 1, 100, reviewer_mentor_id=mentor_id)
     return [r for r in rows if r.get("status") in ("ASSIGNED", "REVIEWING", "RETURNED")]
 
 
@@ -3302,12 +3312,17 @@ def graduation_review_submit(user: dict, review_id: str, score, opinion: str | N
     if not opinion or len(str(opinion).strip()) < 5:
         raise AppException("VALIDATION_ERROR", "评阅意见必填且不少于 5 字")
     from app.modules.graduation.services import graduation_review_service as rv
+    from app.modules.graduation.services import graduation_identity as gid
     scope = resolve_teacher_scope(u)
-    mine, _ = rv.list_reviews(1, 500, reviewer_name=u.get("realName") or "")
-    target = next((r for r in mine if str(r.get("id")) == str(review_id)), None)
-    if not target and scope["mode"] == "ADMIN_TENANT":
+    if scope.get("mode") == "ADMIN_TENANT":
         allr, _ = rv.list_reviews(1, 500)
         target = next((r for r in allr if str(r.get("id")) == str(review_id)), None)
+    else:
+        with _session() as db:
+            me = gid.current_user_mentor(db)
+            mentor_id = int(me.id) if me is not None else None
+        mine, _ = rv.list_reviews(1, 500, reviewer_mentor_id=mentor_id) if mentor_id is not None else ([], 0)
+        target = next((r for r in mine if str(r.get("id")) == str(review_id)), None)
     if not target:
         raise AppException("NO_PERMISSION", "该评阅任务不属于你或不存在")
     result = rv.submit_review(review_id, s, str(opinion).strip())

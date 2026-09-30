@@ -157,7 +157,7 @@ export default {
     async load() {
       const token = ++this.loadToken
       this.error = ''
-      if (!this.batchId) { this.rules = []; this.rows = []; return }
+      if (!this.batchId) { this.rules = []; this.rows = []; this.loading = false; return }
       this.loading = true
       try {
         const data = await graduationMaterialCenterApi.listRules(this.batchId)

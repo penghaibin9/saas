@@ -14,6 +14,7 @@ from sqlalchemy import func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import has_permission
+from app.core.tenant_scoped import tenant_get
 from app.models import (GraduationAuditTrail, GraduationDefenseExpert, GraduationDefenseGroup,
                         GraduationDefenseScore, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
@@ -90,7 +91,7 @@ def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None,
     # Proxy scoring is intentionally unavailable: experts score their own stable seat,
     # while secretaries record absence/confirm through dedicated actions.
     can_proxy = False
-    group = db.get(GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
+    group = tenant_get(db, GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
     seats = gid.judge_panel_seats(group)
     me = gid.current_user_mentor(db)
 
@@ -192,7 +193,7 @@ def list_scores(page: int, page_size: int, gd_student_id=None, judge_name=None,
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(GraduationDefenseScore.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [_row(d, db.get(GraduationStudent, d.gd_student_id)) for d in rows]
+        items = [_row(d, tenant_get(db, GraduationStudent, d.gd_student_id)) for d in rows]
         return items, total
 
 
@@ -217,7 +218,7 @@ def panel_progress(gd_student_id) -> dict | None:
     from app.modules.graduation.services import graduation_identity as gid
 
     with session() as db:
-        stu = db.get(GraduationStudent, int(gd_student_id))
+        stu = tenant_get(db, GraduationStudent, int(gd_student_id))
         if not stu or stu.is_deleted or stu.tenant_id != _tid():
             return None
         if int(stu.id) not in set(accessible_student_ids(db, _tid())):
@@ -228,7 +229,7 @@ def panel_progress(gd_student_id) -> dict | None:
             GraduationDefenseScore.round_no == round_no,
             GraduationDefenseScore.is_deleted.is_(False),
         ).order_by(GraduationDefenseScore.id)).all()
-        group = db.get(GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
+        group = tenant_get(db, GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
         seats = gid.judge_panel_seats(group)
         members = []
         for index, seat in enumerate(seats):
@@ -379,7 +380,7 @@ def confirm_scores(gd_student_id) -> dict:
         pending = [d for d in rows if d.status == "PENDING"]
         if pending:
             raise AppException("DATA_CONFLICT", "仍有评委未完成评分")
-        group = db.get(GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
+        group = tenant_get(db, GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
         seats = gid.judge_panel_seats(group)
         if seats:
             missing = [

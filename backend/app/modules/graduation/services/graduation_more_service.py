@@ -9,6 +9,7 @@ from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (GraduationAuditTrail, GraduationDefenseExpert, GraduationGrade,
                         GraduationGradeAppeal, GraduationPeerReview, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
@@ -123,7 +124,7 @@ APPEAL_LABEL = {"PENDING": "待复核", "APPROVED": "已受理", "REJECTED": "�
 
 
 def _appeal_row(db, a: GraduationGradeAppeal) -> dict:
-    s = db.get(GraduationStudent, a.gd_student_id)
+    s = tenant_get(db, GraduationStudent, a.gd_student_id)
     return {"id": str(a.id), "gdStudentId": str(a.gd_student_id), "studentName": s.name if s else "",
             "reason": a.reason, "status": a.status, "statusLabel": APPEAL_LABEL.get(a.status, a.status),
             "reviewComment": a.review_comment or "", "reviewedBy": a.reviewed_by or "",

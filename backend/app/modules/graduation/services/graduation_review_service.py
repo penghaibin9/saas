@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (GraduationAuditTrail, GraduationFinal, GraduationPlagiarismCheck,
                         GraduationReview, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
@@ -39,7 +40,7 @@ def _audit(db, biz_type, bid, action, detail="", before="", after=""):
 
 
 def _stu(db, sid) -> GraduationStudent:
-    s = db.get(GraduationStudent, int(sid))
+    s = tenant_get(db, GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
     return assert_student_access(db, s, "review")
@@ -77,7 +78,7 @@ def list_plagiarism(page: int, page_size: int, gd_student_id=None, status=None, 
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(GraduationPlagiarismCheck.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [_plag_row(p, db.get(GraduationStudent, p.gd_student_id)) for p in rows]
+        items = [_plag_row(p, tenant_get(db, GraduationStudent, p.gd_student_id)) for p in rows]
         return items, total
 
 
@@ -133,7 +134,7 @@ def set_plagiarism_result(pid, rate: str, report_url: str = None) -> dict:
         ).with_for_update()).first()
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("查重记录不存在")
-        assert_student_access(db, db.get(GraduationStudent, p.gd_student_id), "plagiarism.result")
+        assert_student_access(db, tenant_get(db, GraduationStudent, p.gd_student_id), "plagiarism.result")
         if p.status != "CHECKING":
             raise AppException("DATA_CONFLICT", "仅「检测中」记录可回填结果")
         try:
@@ -193,7 +194,7 @@ def _review_row(r: GraduationReview, stu=None) -> dict:
 
 
 def list_reviews(page: int, page_size: int, gd_student_id=None, reviewer_name=None,
-                 status=None, batch_id=None) -> tuple[list[dict], int]:
+                 status=None, batch_id=None, reviewer_mentor_id=None) -> tuple[list[dict], int]:
     with session() as db:
         scope_ids = accessible_student_ids(db, _tid())
         q = select(GraduationReview).where(GraduationReview.tenant_id == _tid(),
@@ -205,14 +206,16 @@ def list_reviews(page: int, page_size: int, gd_student_id=None, reviewer_name=No
             q = q.where(GraduationReview.gd_student_id.in_(select(GraduationStudent.id).where(
                 GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
                 GraduationStudent.is_deleted.is_(False))))
-        if reviewer_name:
+        if reviewer_mentor_id is not None:
+            q = q.where(GraduationReview.reviewer_mentor_id == int(reviewer_mentor_id))
+        elif reviewer_name:
             q = q.where(GraduationReview.reviewer_name == reviewer_name)
         if status:
             q = q.where(GraduationReview.status == status)
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(GraduationReview.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [_review_row(r, db.get(GraduationStudent, r.gd_student_id)) for r in rows]
+        items = [_review_row(r, tenant_get(db, GraduationStudent, r.gd_student_id)) for r in rows]
         return items, total
 
 
@@ -284,14 +287,14 @@ def submit_review(rid, score: int, opinion: str) -> dict:
         ).with_for_update()).first()
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("评阅任务不存在")
-        review_policy.authorize(db, db.get(GraduationStudent, r.gd_student_id), "submit")
+        review_policy.authorize(db, tenant_get(db, GraduationStudent, r.gd_student_id), "submit")
         # 评阅提交只认稳定 reviewer_mentor_id；历史缺 ID 的任务必须先治理。
         if not has_full_scope():
             me = gid.current_user_mentor(db)
             if not r.reviewer_mentor_id or not me or int(me.id) != int(r.reviewer_mentor_id):
                 raise no_permission("仅稳定ID匹配的被指派评阅人可提交本任务")
         if r.status == "COMPLETED" and r.score == score and (r.opinion or "") == opinion:
-            return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
+            return _review_row(r, tenant_get(db, GraduationStudent, r.gd_student_id))
         if r.status not in ("ASSIGNED", "REVIEWING", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可提交评阅")
         r.score = score
@@ -301,7 +304,7 @@ def submit_review(rid, score: int, opinion: str) -> dict:
         r.version += 1
         _audit(db, "REVIEW", r.id, "提交评阅", detail=f"score={score}")
         db.commit()
-        return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
+        return _review_row(r, tenant_get(db, GraduationStudent, r.gd_student_id))
 
 
 def return_review(rid, reason: str) -> dict:
@@ -314,9 +317,9 @@ def return_review(rid, reason: str) -> dict:
         ).with_for_update()).first()
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("评阅任务不存在")
-        review_policy.authorize(db, db.get(GraduationStudent, r.gd_student_id), "return")
+        review_policy.authorize(db, tenant_get(db, GraduationStudent, r.gd_student_id), "return")
         if r.status == "RETURNED":
-            return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
+            return _review_row(r, tenant_get(db, GraduationStudent, r.gd_student_id))
         if r.status != "COMPLETED":
             raise AppException("DATA_CONFLICT", "仅「已完成」评阅可退回重评")
         history_snapshot = (
@@ -327,7 +330,7 @@ def return_review(rid, reason: str) -> dict:
         r.version += 1
         _audit(db, "REVIEW", r.id, "退回重评", history_snapshot)
         db.commit()
-        return _review_row(r, db.get(GraduationStudent, r.gd_student_id))
+        return _review_row(r, tenant_get(db, GraduationStudent, r.gd_student_id))
 
 
 def review_stats(batch_id=None) -> dict:

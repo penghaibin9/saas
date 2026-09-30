@@ -230,6 +230,7 @@ def _mentor_tasks(db, tenant_id: int, mentor_id: int, batch_ids: list[int]) -> l
     latest_final_id = select(func.max(GraduationFinal.id)).where(
         GraduationFinal.tenant_id == GraduationStudent.tenant_id,
         GraduationFinal.gd_student_id == GraduationStudent.id,
+        GraduationFinal.final_type == "定稿",
         GraduationFinal.is_deleted.is_(False),
     ).correlate(GraduationStudent).scalar_subquery()
     final_approved = select(GraduationFinal.id).where(
@@ -302,16 +303,25 @@ def _group_students(db, tenant_id: int, group_id: int) -> list[GraduationStudent
     ).order_by(GraduationStudent.id)).all()
 
 
-def _round_scores(db, tenant_id: int, student_id: int) -> tuple[int, list]:
-    from app.modules.graduation.services import graduation_defense_score_service as score_svc
-    round_no = score_svc._active_round_no(db, int(student_id))
+def _round_scores_bulk(db, tenant_id: int, student_ids: list[int]) -> dict[int, tuple[int, list]]:
+    """一次取出答辩组学生全部评分，消除工作台按学生逐条查询。"""
+    ids = [int(value) for value in student_ids]
+    if not ids:
+        return {}
     rows = db.scalars(select(GraduationDefenseScore).where(
         GraduationDefenseScore.tenant_id == tenant_id,
-        GraduationDefenseScore.gd_student_id == int(student_id),
-        GraduationDefenseScore.round_no == round_no,
+        GraduationDefenseScore.gd_student_id.in_(ids),
         GraduationDefenseScore.is_deleted.is_(False),
-    )).all()
-    return round_no, rows
+    ).order_by(GraduationDefenseScore.gd_student_id, GraduationDefenseScore.round_no, GraduationDefenseScore.id)).all()
+    grouped: dict[int, list] = {}
+    for row in rows:
+        grouped.setdefault(int(row.gd_student_id), []).append(row)
+    result: dict[int, tuple[int, list]] = {}
+    for student_id in ids:
+        student_rows = grouped.get(student_id, [])
+        round_no = max((int(row.round_no or 1) for row in student_rows), default=1)
+        result[student_id] = (round_no, [row for row in student_rows if int(row.round_no or 1) == round_no])
+    return result
 
 
 def _defense_tasks(db, tenant_id: int, mentor, groups: list[tuple], held: frozenset) -> tuple[dict | None, dict | None, list[dict]]:
@@ -322,6 +332,7 @@ def _defense_tasks(db, tenant_id: int, mentor, groups: list[tuple], held: frozen
     group_rows: list[dict] = []
     for group, roles in groups:
         students = _group_students(db, tenant_id, group.id)
+        score_map = _round_scores_bulk(db, tenant_id, [int(stu.id) for stu in students])
         seats = gid.judge_panel_seats(group)
         my_seat = next((seat for seat in seats if gid.user_matches_judge_seat(seat, mentor=mentor)), None)
         scored_by_me = 0
@@ -329,7 +340,7 @@ def _defense_tasks(db, tenant_id: int, mentor, groups: list[tuple], held: frozen
         for stu in students:
             if not group.published:
                 continue
-            round_no, rows = _round_scores(db, tenant_id, stu.id)
+            round_no, rows = score_map.get(int(stu.id), (1, []))
             base = {**_student_brief(stu), "groupId": str(group.id), "groupName": group.group_name,
                     "defenseDate": group.defense_date or "", "location": group.location or "", "roundNo": round_no}
             if my_seat is not None and ("组长" in roles or "评委" in roles):
