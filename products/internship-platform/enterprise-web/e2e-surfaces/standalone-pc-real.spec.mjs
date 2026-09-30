@@ -17,7 +17,7 @@ test('real backend admin PC login reaches standalone internship workbench', asyn
   await expect(page).toHaveURL(/\/admin\/internship(?:\?|$)/)
   await expect(page.getByRole('heading',{name:'今日工作'})).toBeVisible()
   await expect(page.locator('select option:checked')).toContainText('2026岗位实习全栈验收')
-  await page.screenshot({path:'test-results-surfaces/real-admin-workbench.png',fullPage:true})
+  await page.screenshot({path:'test-results-surfaces-real/real-admin-workbench.png',fullPage:true})
 
   expect(seen.some(x=>x.path.endsWith('/auth/browser-login')&&x.status===200)).toBeTruthy()
   expect(seen.some(x=>x.path.endsWith('/rbac/current-context')&&x.status===200)).toBeTruthy()
@@ -43,7 +43,7 @@ test('real backend student PC login reaches standalone internship page', async (
   await expect(page.getByText('全栈浏览器验收学校 · 岗位实习')).toBeVisible()
   await expect(page.getByText('全栈验收学生')).toBeVisible()
   await expect(page.getByText('暂无实习记录',{exact:true})).toBeVisible()
-  await page.screenshot({path:'test-results-surfaces/real-student-internship.png',fullPage:true})
+  await page.screenshot({path:'test-results-surfaces-real/real-student-internship.png',fullPage:true})
 
   expect(seen.some(x=>x.path.endsWith('/auth/browser-login')&&x.status===200)).toBeTruthy()
   expect(seen.some(x=>x.path.endsWith('/mobile/me/portal-config')&&x.status===200)).toBeTruthy()
