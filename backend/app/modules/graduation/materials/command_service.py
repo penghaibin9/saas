@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, insert, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -127,7 +127,12 @@ def _required_status(item: GraduationMaterialItem) -> str:
 
 def _new_material(student: GraduationStudent, item: GraduationMaterialItem, rule_id: int, rule_version: int,
                   actor_id: int | None) -> GraduationStudentMaterial:
-    return GraduationStudentMaterial(
+    return GraduationStudentMaterial(**_new_material_values(student, item, rule_id, rule_version, actor_id))
+
+
+def _new_material_values(student: GraduationStudent, item: GraduationMaterialItem, rule_id: int,
+                         rule_version: int, actor_id: int | None) -> dict:
+    return dict(
         tenant_id=_tid(), batch_id=int(student.batch_id), gd_student_id=int(student.id),
         student_id=student.student_id, topic_id=student.topic_id, rule_id=int(rule_id),
         rule_version=int(rule_version), material_code=item.material_code,
@@ -181,20 +186,50 @@ def initialize_student_materials(gd_student_id: int, user: dict | None = None) -
         return result
 
 
+_INIT_CHUNK = 1000
+
+
 def initialize_batch_materials_in_session(db, batch_id: int, user: dict | None = None) -> dict:
-    """Idempotently initialize all active students in a batch in the caller's transaction."""
+    """Idempotently initialize all active students in a batch in the caller's transaction.
+
+    Set-based equivalent of calling ``initialize_student_materials_in_session`` per
+    student: the same students and existing rows are locked, and only missing
+    (student, material code) placeholders are inserted, in chunks.
+    """
     _batch_for_update(db, int(batch_id))
-    active_rule(db, int(batch_id), lock=True)
-    student_ids = list(db.scalars(select(GraduationStudent.id).where(
+    rule = active_rule(db, int(batch_id), lock=True)
+    items = rule_items(db, int(rule.id), lock=True)
+    students = list(db.scalars(select(GraduationStudent).where(
         GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
         GraduationStudent.record_status == "ACTIVE",
         func.coalesce(GraduationStudent.stage, "") != "ARCHIVED",
         GraduationStudent.is_deleted.is_(False),
     ).order_by(GraduationStudent.id).with_for_update()).all())
+    actor_id = _actor_id(user)
     created = 0
-    for gd_student_id in student_ids:
-        created += int(initialize_student_materials_in_session(db, int(gd_student_id), user)["created"])
-    return {"batchId": str(batch_id), "studentCount": len(student_ids), "created": created}
+    for start in range(0, len(students), _INIT_CHUNK):
+        chunk = students[start:start + _INIT_CHUNK]
+        existing: dict[int, set[str]] = {}
+        for gd_student_id, code in db.execute(select(
+            GraduationStudentMaterial.gd_student_id, GraduationStudentMaterial.material_code,
+        ).where(
+            GraduationStudentMaterial.tenant_id == _tid(),
+            GraduationStudentMaterial.batch_id == int(batch_id),
+            GraduationStudentMaterial.gd_student_id.in_([int(row.id) for row in chunk]),
+            GraduationStudentMaterial.is_deleted.is_(False),
+        ).with_for_update()).all():
+            existing.setdefault(int(gd_student_id), set()).add(str(code))
+        new_rows = [
+            _new_material_values(student, item, int(rule.id), int(rule.rule_version), actor_id)
+            for student in chunk
+            for item in items
+            if item.material_code not in existing.get(int(student.id), set())
+        ]
+        if new_rows:
+            # ORM bulk INSERT: same column defaults as db.add(), without per-object overhead.
+            db.execute(insert(GraduationStudentMaterial), new_rows)
+            created += len(new_rows)
+    return {"batchId": str(batch_id), "studentCount": len(students), "created": created}
 
 
 def initialize_batch_materials(batch_id: int, user: dict | None = None) -> dict:
