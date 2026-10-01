@@ -1129,8 +1129,8 @@ export default {
 </script>
 
 <style scoped>
-.aa-current-term-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; padding:9px 12px; border-radius:8px; background:var(--primary-50,#f4f8ff); color:var(--text-600,#64748b); font-size:12px; }
 @import '@/styles/module-page.css';
+.aa-current-term-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; padding:9px 12px; border-radius:8px; background:var(--primary-50,#f4f8ff); color:var(--text-600,#64748b); font-size:12px; }
 .aa-task-settings { border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
 .aa-task-settings summary { padding: 12px 16px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .aa-task-settings summary span { margin-left: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 400; }

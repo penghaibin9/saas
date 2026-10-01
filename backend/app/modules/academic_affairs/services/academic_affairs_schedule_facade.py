@@ -24,6 +24,9 @@ def __getattr__(name):
 def _enrolled_items(db, student_id, batch_id, membership=None):
     from app.models import AaScheduleItem, AaSelectionCourse, AaSelectionRecord
 
+    batch_ids = sorted({int(value) for value in batch_id}) if isinstance(batch_id, (list, tuple, set)) else [int(batch_id)]
+    if not batch_ids:
+        return []
     locked = db.query(AaSelectionRecord).filter(
         AaSelectionRecord.tenant_id == _legacy._tid(),
         AaSelectionRecord.student_id == int(student_id),
@@ -47,7 +50,7 @@ def _enrolled_items(db, student_id, batch_id, membership=None):
             continue
         query = db.query(AaScheduleItem).filter(
             AaScheduleItem.tenant_id == _legacy._tid(),
-            AaScheduleItem.batch_id == int(batch_id),
+            AaScheduleItem.batch_id.in_(batch_ids),
             AaScheduleItem.task_id == int(course.teaching_task_id),
             AaScheduleItem.status == "EFFECTIVE",
             AaScheduleItem.is_deleted.is_(False),
