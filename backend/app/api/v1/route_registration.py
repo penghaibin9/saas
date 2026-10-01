@@ -212,13 +212,11 @@ def register_academic_affairs_routes(api_router: APIRouter, deps: dict) -> None:
 
 def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
     from app.modules.graduation.routers import (
-        graduation, graduation_archive, graduation_archive_sensitive_router, graduation_batch,
-        graduation_defense_score, graduation_extension, graduation_grade, graduation_guidance,
-        graduation_material_center, graduation_material_sensitive_router, graduation_mentor,
-        graduation_midterm, graduation_more, graduation_p0_guard, graduation_review,
-        graduation_risk, graduation_sensitive_router, graduation_stats, graduation_student,
-        graduation_student_eval, graduation_taskbook, graduation_template,
-        graduation_topic, graduation_topic_change, graduation_topic_round,
+        graduation, graduation_archive_sensitive_router, graduation_batch,
+        graduation_extension, graduation_material_center, graduation_material_sensitive_router,
+        graduation_mentor, graduation_more, graduation_p0_guard, graduation_risk,
+        graduation_sensitive_router, graduation_student, graduation_student_eval,
+        graduation_template, graduation_topic, graduation_topic_change, graduation_topic_round,
     )
     d = deps["gd"]
     api_router.include_router(graduation_p0_guard.router, dependencies=d)
@@ -231,13 +229,12 @@ def register_graduation_routes(api_router: APIRouter, deps: dict) -> None:
         graduation_extension.router,
         dependencies=[Depends(require_staff), Depends(require_module("graduation"))],
     )
+    # 已删除只剩被遮蔽声明的旧 router（archive/defense_score/grade/guidance/midterm/review/stats/taskbook），
+    # 这些路径的唯一实现位于上面先注册的 *_sensitive_router。
     for r in (
         graduation_batch, graduation_student, graduation_topic,
         graduation_topic_round, graduation_topic_change, graduation_mentor,
-        graduation_taskbook, graduation_guidance, graduation_midterm,
-        graduation_student_eval, graduation_review, graduation_defense_score,
-        graduation_grade, graduation_risk, graduation_archive, graduation_stats,
-        graduation_template, graduation_more,
+        graduation_student_eval, graduation_risk, graduation_template, graduation_more,
     ):
         api_router.include_router(r.router, dependencies=d)
 

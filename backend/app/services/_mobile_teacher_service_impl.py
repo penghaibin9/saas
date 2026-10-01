@@ -3217,6 +3217,24 @@ def graduation_midterm_queue(user: dict) -> list:
     return out
 
 
+def _assert_midterm_student_scope(gd_student_id) -> None:
+    """中期检查按稳定身份核对范围：导师看 mentor_id（台账工号 = 登录账号），管理员看数据范围。
+
+    历史实现按导师姓名比对，同名导师会互相看到/检查对方学生；这里改为与 PC 端同一个
+    can_access_student（有 mentor_id 时只认 ID，只有历史无 ID 数据才按姓名兼容）。
+    """
+    from app.models import GraduationStudent
+    from app.modules.graduation.services.graduation_scope_service import can_access_student
+    from app.services.db_service import session as _gd_session
+    with _gd_session() as db:
+        try:
+            student = tenant_get(db, GraduationStudent, int(gd_student_id))
+        except (TypeError, ValueError):
+            student = None
+        if not can_access_student(db, student):
+            raise AppException("NO_PERMISSION", "该生不在你的指导范围内")
+
+
 def graduation_midterm_detail(user: dict, gd_student_id: str) -> dict:
     """中期检查·按学生查看真实记录（结论/检查意见/整改内容/复核）。范围校验。"""
     u = _require_teacher(user)
@@ -3224,10 +3242,7 @@ def graduation_midterm_detail(user: dict, gd_student_id: str) -> dict:
         raise AppException("VALIDATION_ERROR", "演示模式不支持查看真实中期记录")
     from app.modules.graduation.services import graduation_midterm_service as mt
     d = mt.get_midterm(gd_student_id)  # 学生不存在 → 404
-    scope = resolve_teacher_scope(u)
-    if scope["mode"] == "SCOPED" and not scope_match_row(
-            scope, advisor_name=d.get("advisorName"), student_no=d.get("studentNo")):
-        raise AppException("NO_PERMISSION", "该生不在你的指导范围内")
+    _assert_midterm_student_scope(gd_student_id)
     return d
 
 
@@ -3239,10 +3254,7 @@ def graduation_midterm_check(user: dict, gd_student_id: str, conclusion: str,
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实中期检查")
     from app.modules.graduation.services import graduation_midterm_service as mt
     d = mt.get_midterm(gd_student_id)
-    scope = resolve_teacher_scope(u)
-    if scope["mode"] == "SCOPED" and not scope_match_row(
-            scope, advisor_name=d.get("advisorName"), student_no=d.get("studentNo")):
-        raise AppException("NO_PERMISSION", "该生不在你的指导范围内")
+    _assert_midterm_student_scope(gd_student_id)
     result = mt.conduct_check(gd_student_id, str(conclusion or "").upper(), comment, rectify_deadline)
     _audit_write("MOBILE_MIDTERM_CHECK", f"graduation/midterm:{gd_student_id}",
                  {"operator": u.get("realName"), "conclusion": conclusion, "comment": (comment or "")[:200]})
@@ -3257,10 +3269,7 @@ def graduation_midterm_rectify_review(user: dict, gd_student_id: str, action: st
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实复核")
     from app.modules.graduation.services import graduation_midterm_service as mt
     d = mt.get_midterm(gd_student_id)
-    scope = resolve_teacher_scope(u)
-    if scope["mode"] == "SCOPED" and not scope_match_row(
-            scope, advisor_name=d.get("advisorName"), student_no=d.get("studentNo")):
-        raise AppException("NO_PERMISSION", "该生不在你的指导范围内")
+    _assert_midterm_student_scope(gd_student_id)
     result = mt.review_rectification(gd_student_id, str(action or "").upper(), comment)
     _audit_write("MOBILE_MIDTERM_RECTIFY_REVIEW", f"graduation/midterm:{gd_student_id}",
                  {"operator": u.get("realName"), "action": action})
@@ -3270,12 +3279,22 @@ def graduation_midterm_rectify_review(user: dict, gd_student_id: str, action: st
 # ══════════ 评阅（评阅教师移动端：本人评阅任务 + 提交评分/意见；SoD 回避后端已在分配时强制） ══════════
 
 def graduation_my_reviews(user: dict) -> list:
-    """评阅·本人作为评阅教师的待提交任务（ASSIGNED/REVIEWING/RETURNED）。评阅人身份即范围。"""
+    """评阅·本人作为评阅教师的待提交任务。教师端只按稳定 reviewer_mentor_id 收敛。"""
     u = _require_teacher(user)
     if not db_enabled():
         return []
     from app.modules.graduation.services import graduation_review_service as rv
-    rows, _ = _safe_list(rv.list_reviews, 1, 100, reviewer_name=u.get("realName") or "")
+    from app.modules.graduation.services import graduation_identity as gid
+    scope = resolve_teacher_scope(u)
+    if scope.get("mode") == "ADMIN_TENANT":
+        rows, _ = _safe_list(rv.list_reviews, 1, 100, reviewer_name=u.get("realName") or "")
+    else:
+        with _session() as db:
+            me = gid.current_user_mentor(db)
+            mentor_id = int(me.id) if me is not None else None
+        if mentor_id is None:
+            return []
+        rows, _ = _safe_list(rv.list_reviews, 1, 100, reviewer_mentor_id=mentor_id)
     return [r for r in rows if r.get("status") in ("ASSIGNED", "REVIEWING", "RETURNED")]
 
 
@@ -3293,12 +3312,17 @@ def graduation_review_submit(user: dict, review_id: str, score, opinion: str | N
     if not opinion or len(str(opinion).strip()) < 5:
         raise AppException("VALIDATION_ERROR", "评阅意见必填且不少于 5 字")
     from app.modules.graduation.services import graduation_review_service as rv
+    from app.modules.graduation.services import graduation_identity as gid
     scope = resolve_teacher_scope(u)
-    mine, _ = rv.list_reviews(1, 500, reviewer_name=u.get("realName") or "")
-    target = next((r for r in mine if str(r.get("id")) == str(review_id)), None)
-    if not target and scope["mode"] == "ADMIN_TENANT":
+    if scope.get("mode") == "ADMIN_TENANT":
         allr, _ = rv.list_reviews(1, 500)
         target = next((r for r in allr if str(r.get("id")) == str(review_id)), None)
+    else:
+        with _session() as db:
+            me = gid.current_user_mentor(db)
+            mentor_id = int(me.id) if me is not None else None
+        mine, _ = rv.list_reviews(1, 500, reviewer_mentor_id=mentor_id) if mentor_id is not None else ([], 0)
+        target = next((r for r in mine if str(r.get("id")) == str(review_id)), None)
     if not target:
         raise AppException("NO_PERMISSION", "该评阅任务不属于你或不存在")
     result = rv.submit_review(review_id, s, str(opinion).strip())

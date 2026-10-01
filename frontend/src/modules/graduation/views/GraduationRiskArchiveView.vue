@@ -25,14 +25,14 @@
       <EmptyState
         v-if="!hasBatch"
         title="请先选择或创建毕设批次"
-        description="顶部批次条选择当前工作批次后，再运行服务端风险扫描与处置。"
+        description="在页面顶部选好毕设批次后，再扫描并处理风险。"
       />
       <template v-else>
         <section class="rk-command" aria-label="风险扫描结论">
           <div class="rk-command__headline">
             <span>最近扫描事实</span>
             <strong>{{ riskConclusion }}</strong>
-            <small>{{ batchStore.selectedBatchName || batchStore.selectedBatchId }} · 风险由服务端规则扫描生成，前端不自行判定。</small>
+            <small>{{ batchStore.selectedBatchName || batchStore.selectedBatchId }} · 风险由系统按统一规则扫描得出。</small>
           </div>
           <div class="rk-command__metrics">
             <div><b>{{ lastScanStats?.scannedStudents ?? '—' }}</b><span>扫描学生</span></div>
@@ -40,17 +40,17 @@
             <div><b>{{ riskStats?.criticalOpenCount ?? '—' }}</b><span>紧急风险</span></div>
             <div><b>{{ lastScanStats?.elapsedMs == null ? '—' : `${lastScanStats.elapsedMs}ms` }}</b><span>扫描耗时</span></div>
           </div>
-          <button v-if="canRiskScan" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doScan">{{ actionBusy === 'scan-risk' ? '扫描中…' : '扫描生成风险项' }}</button>
+          <AppButton v-if="canRiskScan" variant="primary" :disabled="contextLocked" @click="doScan">{{ actionBusy === 'scan-risk' ? '扫描中…' : '扫描生成风险项' }}</AppButton>
         </section>
 
         <section class="rk-rules" aria-label="13类毕业设计风险规则摘要">
           <div class="rk-rules__head">
-            <div><span>服务端规则统计</span><strong>13 类风险全覆盖</strong></div>
+            <div><span>风险规则</span><strong>13 类风险全覆盖</strong></div>
             <small v-if="lastScanAt">上次扫描：{{ formatDateTime(lastScanAt) }}</small>
             <small v-else>尚未执行过扫描</small>
           </div>
-          <p v-if="riskStatsError" class="rk-rules__degraded">规则统计暂时不可用：{{ riskStatsError }}。风险队列仍按服务端返回展示，不使用前端静态目录替代。</p>
-          <div v-else-if="riskStatsLoading" class="rk-rules__degraded">正在读取服务端 13 类规则统计…</div>
+          <p v-if="riskStatsError" class="rk-rules__degraded">规则统计暂时不可用：{{ riskStatsError }}。下方风险列表仍可正常处理。</p>
+          <div v-else-if="riskStatsLoading" class="rk-rules__degraded">正在读取 13 类风险规则统计…</div>
           <div v-else-if="riskRuleRows.length" class="rk-rules__grid">
             <span v-for="rule in riskRuleRows" :key="rule.riskCode" :title="`${rule.riskName}：${rule.count}`">
               <b>{{ rule.riskCode }}</b>
@@ -58,7 +58,7 @@
               <em>{{ rule.count }}</em>
             </span>
           </div>
-          <p v-else class="rk-rules__degraded">服务端未返回风险规则统计，请刷新或重新扫描。</p>
+          <p v-else class="rk-rules__degraded">暂时没读到风险规则统计，请刷新或重新扫描。</p>
         </section>
 
         <AdvancedFilter
@@ -75,10 +75,10 @@
         <EmptyState
           v-else-if="!riskRows.length"
           title="当前筛选下没有风险记录"
-          description="可调整条件或重新运行服务端扫描；没有记录不代表浏览器已自行判定无风险。"
+          description="可调整筛选条件，或重新扫描一次。"
         >
           <template v-if="canRiskScan" #actions>
-            <button class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doScan">扫描生成风险项</button>
+            <AppButton variant="primary" :disabled="contextLocked" @click="doScan">扫描生成风险项</AppButton>
           </template>
         </EmptyState>
         <div v-else class="rk-split" :class="{ 'is-command-locked': contextLocked }" :aria-busy="contextLocked">
@@ -146,12 +146,12 @@
                 <div v-if="selectedRisk.lastDetectedAt" class="mp-kv"><span class="mp-kv__k">最近仍命中</span><span class="mp-kv__v">{{ formatDateTime(selectedRisk.lastDetectedAt) }}</span></div>
                 <div v-if="selectedRisk.handleNote" class="mp-kv"><span class="mp-kv__k">处理记录</span><span class="mp-kv__v">{{ selectedRisk.handleNote }}</span></div>
                 <div class="ie-actions ie-actions--left">
-                  <button v-if="canRiskAccept && selectedRisk.status === 'OPEN'" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="askRiskAction('accept', selectedRisk)">受理</button>
-                  <button v-if="canRiskProcess && selectedRisk.status === 'PROCESSING'" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="askRiskAction('process', selectedRisk)">记录处理</button>
-                  <button v-if="canRiskClose && (selectedRisk.status === 'PROCESSING' || (selectedRisk.status === 'OPEN' && selectedRisk.conditionActive === false))" class="mp-btn" :disabled="contextLocked" @click="askRiskAction('close', selectedRisk)">关闭风险</button>
+                  <AppButton v-if="canRiskAccept && selectedRisk.status === 'OPEN'" variant="primary" :disabled="contextLocked" @click="askRiskAction('accept', selectedRisk)">受理</AppButton>
+                  <AppButton v-if="canRiskProcess && selectedRisk.status === 'PROCESSING'" variant="primary" :disabled="contextLocked" @click="askRiskAction('process', selectedRisk)">记录处理</AppButton>
+                  <AppButton v-if="canRiskClose && (selectedRisk.status === 'PROCESSING' || (selectedRisk.status === 'OPEN' && selectedRisk.conditionActive === false))" :disabled="contextLocked" @click="askRiskAction('close', selectedRisk)">关闭风险</AppButton>
                   <span v-if="selectedRisk.status === 'CLOSED'" class="mp-note">该风险已关闭</span>
                 </div>
-                <p class="mp-note">请核对风险成因后受理、记录处理或关闭；处理结果和关闭原因将保留在风险台账。</p>
+                <p class="mp-note">受理、处理、关闭均按 permission + status 调用原接口并写入审计；页面不会自动修改风险。</p>
               </div>
             </section>
           </section>
@@ -170,20 +170,35 @@
           <div class="ar-command__copy">
             <span>归档工作结论</span>
             <strong>{{ archiveConclusion }}</strong>
-            <small>先预览可办理名单，确认后提交，再核对实际办理结果。取消或切换批次后需重新预览。</small>
+            <small>办理步骤：先点按钮预览，看清哪些学生能办、哪些会被跳过以及原因，再确认执行。预览结果 10 分钟内有效。</small>
           </div>
           <div class="ar-command__actions">
-            <button v-if="canArchivePreview && canArchiveFile" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="startArchivePreview('batch-generate')">{{ previewBusy === 'batch-generate-preview' ? '预览中…' : '批量生成提交' }}</button>
-            <button v-if="canArchivePreview && canArchiveFile" class="mp-btn" :disabled="contextLocked" @click="startArchivePreview('batch-file')">{{ previewBusy === 'batch-file-preview' ? '预览中…' : '一键核验备案' }}</button>
+            <AppButton v-if="canArchivePreview && canArchiveFile" variant="primary" :disabled="contextLocked" @click="startArchivePreview('batch-generate')">{{ previewBusy === 'batch-generate-preview' ? '预览中…' : '批量生成提交' }}</AppButton>
+            <AppButton v-if="canArchivePreview && canArchiveFile" :disabled="contextLocked" @click="startArchivePreview('batch-file')">{{ previewBusy === 'batch-file-preview' ? '预览中…' : '一键核验备案' }}</AppButton>
             <AppExportButton v-if="canArchiveExport" :export-fn="exportArchivesFn">导出台账</AppExportButton>
           </div>
         </section>
 
         <section v-if="archivePreviewEvidence" class="ar-preview-evidence" role="status" data-testid="archive-preview-token-evidence">
-          <div><span>本次预览凭证</span><strong>{{ archivePreviewEvidence.maskedToken }}</strong><small>凭证已脱敏，仅用于本次确认；取消、切换批次、离开页面或办理后失效。</small></div>
+          <div><span>预览有效期</span><strong>10 分钟</strong><small>取消、切换批次、离开页面或执行后需重新预览。</small></div>
           <div><span>档案批次号</span><strong>{{ archivePreviewEvidence.archiveBatchNo || '执行时生成' }}</strong><small>批次 {{ archivePreviewEvidence.batchName || archivePreviewEvidence.batchId }}</small></div>
-          <div><span>候选 / 可执行</span><strong>{{ archivePreviewEvidence.candidateCount }} / {{ archivePreviewEvidence.executableCount }}</strong><small>跳过 {{ archivePreviewEvidence.skippedCount }}</small></div>
+          <div><span>共 / 可办理</span><strong>{{ archivePreviewEvidence.candidateCount }} / {{ archivePreviewEvidence.executableCount }}</strong><small>跳过 {{ archivePreviewEvidence.skippedCount }} 人</small></div>
           <div><span>预览时间</span><strong>{{ formatDateTime(archivePreviewEvidence.previewedAt) }}</strong><small>{{ archivePreviewEvidence.kindLabel }}</small></div>
+        </section>
+
+        <section v-if="archiveSkipDetail && archiveSkipDetail.students.length" class="ar-skip" data-testid="archive-preview-skipped">
+          <div class="ar-skip__head">
+            <div><strong>本次跳过的学生（{{ archiveSkipDetail.total }} 人）</strong><small>{{ archiveSkipDetail.kindLabel }} · {{ archiveSkipDetail.summary }}</small></div>
+            <button class="mp-link" :disabled="contextLocked" @click="archiveSkipDetail = null">收起</button>
+          </div>
+          <ul class="ar-skip__list">
+            <li v-for="item in archiveSkipDetail.students" :key="item.gdStudentId">
+              <div><b>{{ item.studentName || '未命名学生' }}</b><small>{{ item.studentNo }}</small></div>
+              <span class="ar-skip__why">{{ item.reasons.join('；') }}</span>
+              <button v-if="canStudentView" class="mp-link" :disabled="contextLocked" @click="openArchiveStudent(item)">查看学生 →</button>
+            </li>
+          </ul>
+          <p v-if="archiveSkipDetail.truncated" class="mp-note">只列出前 {{ archiveSkipDetail.students.length }} 人；其余学生可在下方归档队列按状态筛选查看。</p>
         </section>
 
         <AdvancedFilter
@@ -246,7 +261,7 @@
                 <div v-if="selectedArchive.archiveBatchNo" class="mp-kv"><span class="mp-kv__k">档案批次号</span><span class="mp-kv__v">{{ selectedArchive.archiveBatchNo }}</span></div>
                 <div class="mp-kv"><span class="mp-kv__k">材料完整性</span><span class="mp-kv__v" :class="selectedArchive.missingItems?.length ? 'is-missing' : 'is-complete'">{{ selectedArchive.missingItems?.length ? `缺失 ${selectedArchive.missingItems.length} 项` : '必备材料齐全' }}</span></div>
                 <template v-if="selectedArchive.missingItems?.length">
-                  <div class="ar-missing-head"><div><strong>缺件明细</strong><span>点击后携带学生、缺件、批次、来源与 returnTo 精确进入补齐位置。</span></div><b>{{ selectedArchive.missingItems.length }} 项</b></div>
+                  <div class="ar-missing-head"><div><strong>缺件明细</strong><span>点「去补齐」直接打开该学生对应的办理页面，办完可返回这里。</span></div><b>{{ selectedArchive.missingItems.length }} 项</b></div>
                   <ul class="ar-missing">
                     <li v-for="item in selectedArchive.missingItems" :key="item" class="ar-missing__item">
                       <span class="ar-missing__name">✕ {{ item }}</span>
@@ -257,15 +272,16 @@
                 <div class="ie-actions ie-actions--left">
                   <span v-if="selectedArchive.dataAnomaly" class="ar-anomaly">历史主档异常，当前归档记录仅允许只读查看</span>
                   <template v-else>
-                    <button v-if="canArchivePreview && ['NOT_GENERATED', 'REJECTED'].includes(selectedArchive.status)" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doGenerate(selectedArchive)">生成清单</button>
-                    <button v-if="canArchiveFile && selectedArchive.status === 'PENDING_SUBMIT' && !selectedArchive.missingItems.length" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doSubmit(selectedArchive)">提交归档</button>
-                    <span v-if="selectedArchive.status === 'PENDING_SUBMIT' && selectedArchive.missingItems.length" class="mp-note">缺件补齐后方可提交归档</span>
-                    <button v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" class="mp-btn mp-btn--primary" :disabled="contextLocked" @click="doFile(selectedArchive)">核验归档</button>
-                    <button v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" class="mp-btn" :disabled="contextLocked" @click="askRejectArchive(selectedArchive)">驳回</button>
+                    <AppButton v-if="canArchivePreview && ['NOT_GENERATED', 'REJECTED'].includes(selectedArchive.status)" variant="primary" :disabled="contextLocked" @click="doGenerate(selectedArchive)">生成清单</AppButton>
+                    <AppButton v-if="canArchivePreview && selectedArchive.status === 'PENDING_SUBMIT'" :disabled="contextLocked" @click="doGenerate(selectedArchive)">重新核对材料</AppButton>
+                    <AppButton v-if="canArchiveFile && selectedArchive.status === 'PENDING_SUBMIT' && !selectedArchive.missingItems.length" variant="primary" :disabled="contextLocked" @click="doSubmit(selectedArchive)">提交归档</AppButton>
+                    <span v-if="selectedArchive.status === 'PENDING_SUBMIT' && selectedArchive.missingItems.length" class="mp-note">以上材料补齐后，点「重新核对材料」再提交归档</span>
+                    <AppButton v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" variant="primary" :disabled="contextLocked" @click="doFile(selectedArchive)">核验归档</AppButton>
+                    <AppButton v-if="canArchiveFile && selectedArchive.status === 'SUBMITTED'" :disabled="contextLocked" @click="askRejectArchive(selectedArchive)">驳回</AppButton>
                     <span v-if="selectedArchive.status === 'FILED'" class="mp-note">已正式归档备案，记录只读</span>
                   </template>
                 </div>
-                <p class="mp-note">生成、提交、核验、驳回均绑定当前学生与批次并回读服务器；已备案版本只读。</p>
+                <p class="mp-note">生成、提交、核验、驳回都只针对当前选中的学生；已备案的记录不能再修改。</p>
               </div>
             </section>
           </section>
@@ -276,7 +292,7 @@
     <div v-if="tab === 'stats' && canStatsView" class="mp-stack ra-panel">
       <EmptyState v-if="!hasBatch" title="请先选择毕设批次" description="选择批次后查看当前数据范围的跨模块统计。" />
       <template v-else>
-        <p class="mp-note">以下为当前批次与当前数据范围的服务端汇总；不以当前页二次筛选冒充全量。</p>
+        <p class="mp-note">以下是当前批次、你有权限查看的全部学生的汇总，不受上方筛选影响。</p>
         <ErrorState v-if="statsError" :description="statsError" @retry="loadStats" />
         <LoadingState v-else-if="statsLoading" />
         <template v-else-if="overview">
@@ -315,6 +331,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 /** 风险 / 归档 / 统计工作台：服务端规则真值、不可变命令快照、一次性归档令牌。 */
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
@@ -357,7 +374,7 @@ function errorText(error, fallback) {
 
 export default {
   name: 'GraduationRiskArchiveView',
-  components: { AppPageGuide, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExportButton, AppPagination, AppStackedBarChart },
+  components: { AppButton, AppPageGuide, ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExportButton, AppPagination, AppStackedBarChart },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -393,6 +410,7 @@ export default {
       confirm: EMPTY_CONFIRM(),
       actionReceipt: null,
       archivePreviewEvidence: null,
+      archiveSkipDetail: null,
       archiveCommandSnapshot: null,
       commandSnapshot: null,
       actionBusy: '',
@@ -436,7 +454,7 @@ export default {
     pageSubtitle() {
       if (!this.hasBatch) return '请先在顶部选择或创建毕设批次'
       const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
-      return `${batch}风险扫描与处置 / 一次性令牌归档 / 服务端汇总`
+      return `${batch}风险处理与材料归档`
     },
     selectedRisk() { return this.riskRows.find((row) => String(row.id) === this.riskSelKey) || null },
     riskSelIndex() { return this.riskRows.findIndex((row) => String(row.id) === this.riskSelKey) },
@@ -452,16 +470,16 @@ export default {
     },
     riskConclusion() {
       if (this.riskStatsError) return '风险队列可继续读取，但 13 类规则统计处于降级态。'
-      if (!this.lastScanAt) return '当前批次尚未扫描；先运行服务端 13 类规则，再进入处置队列。'
+      if (!this.lastScanAt) return '当前批次还没扫描过风险；先点「扫描生成风险项」，再逐条处理。'
       const stats = this.lastScanStats || {}
       return `最近扫描 ${stats.scannedStudents ?? 0} 人；当前开放 ${this.riskStats?.openCount ?? 0} 条，其中紧急 ${this.riskStats?.criticalOpenCount ?? 0} 条。`
     },
     archiveConclusion() {
-      if (this.actionBusy === 'batch-generate' || this.actionBusy === 'batch-file') return '正在执行已确认命令；上下文已锁定，等待服务器回读或精确对账。'
-      if (this.archiveCommandSnapshot?.phase === 'READY') return `一次性预览凭证已签发，可执行 ${this.archiveCommandSnapshot.executableCount} 条；取消后凭证作废。`
+      if (this.actionBusy === 'batch-generate' || this.actionBusy === 'batch-file') return '正在执行，请稍候；完成前页面暂时锁定。'
+      if (this.archiveCommandSnapshot?.phase === 'READY') return `预览完成，可办理 ${this.archiveCommandSnapshot.executableCount} 人；取消后需重新预览。`
       if (!this.archiveRows.length) return '当前归档队列为空或尚未加载。'
       const missing = this.archiveRows.filter((row) => row.missingItems?.length).length
-      return missing ? `当前页 ${missing} 人存在材料缺口；先按精确深链补齐，再办理归档。` : '当前页材料完整性已回读，可逐人办理或先批量预览。'
+      return missing ? `当前页有 ${missing} 人材料没齐；点「去补齐」处理后再办理归档。` : '当前页学生材料都已核对，可逐人办理，或先点「批量生成提交」预览。'
     },
     stageChartData() {
       return (this.overview?.byStage || []).filter((row) => Number(row.count) > 0).map((row) => ({ label: row.label, count: row.count, cat: '人数' }))
@@ -491,7 +509,7 @@ export default {
   },
   beforeRouteLeave(to, from, next) {
     if (this.contextLocked) {
-      toast.info('当前命令尚未完成，请等待服务器回执或取消确认后再离开')
+      toast.info('操作还没完成，请等它结束或先取消确认，再离开页面')
       next(false)
       return
     }
@@ -1008,6 +1026,8 @@ export default {
           return true
         }
         this.archiveWriteFailed(res)
+        // 提交被材料缺件拦截时，服务器已写回最新缺件清单；刷新后页面直接列出缺哪几项。
+        if (action === 'submit-archive' && ![503001, 503002].includes(Number(res?.code))) await this.loadArchives()
       } catch (error) {
         this.archiveWriteFailed({ code: 503001, message: errorText(error, '连接中断，无法确认服务器是否已经完成操作。') })
       } finally {
@@ -1020,19 +1040,19 @@ export default {
       if (!this.canArchivePreview) return
       return this.runSingleArchiveWrite('generate-archive', row,
         (snapshot) => graduationRiskArchiveApi.generateArchive(snapshot.gdStudentId, { batchId: snapshot.batchId }),
-        (_res, snapshot) => ({ title: `${snapshot.row.studentName} · 归档清单已生成`, result: '服务器已回读最新归档状态。', next: '存在缺件时按精确深链补齐；材料齐全后提交归档。' }))
+        (_res, snapshot) => ({ title: `${snapshot.row.studentName} · 归档清单已生成`, result: '已刷新为最新状态。', next: '有缺件时点「去补齐」逐项处理；材料齐全后提交归档。' }))
     },
     doSubmit(row) {
       if (!this.canArchiveFile) return
       return this.runSingleArchiveWrite('submit-archive', row,
         (snapshot) => graduationRiskArchiveApi.submitArchive(snapshot.gdStudentId, { batchId: snapshot.batchId }),
-        (_res, snapshot) => ({ title: `${snapshot.row.studentName} · 归档已提交`, result: '服务器已回读最新归档状态。', next: '下一步由归档授权角色核验并备案。' }))
+        (_res, snapshot) => ({ title: `${snapshot.row.studentName} · 归档已提交`, result: '已刷新为最新状态。', next: '下一步由有归档权限的老师核验并备案。' }))
     },
     doFile(row) {
       if (!this.canArchiveFile) return
       return this.runSingleArchiveWrite('file-archive', row,
         (snapshot) => graduationRiskArchiveApi.fileArchive(snapshot.gdStudentId, snapshot.archiveBatchNo || null, { batchId: snapshot.batchId }),
-        (_res, snapshot) => ({ title: `${snapshot.row.studentName} · 已正式归档备案`, result: '服务器已回读 FILED 状态；归档版本只读。', next: '可导出台账或执行备份核验。' }))
+        (_res, snapshot) => ({ title: `${snapshot.row.studentName} · 已正式归档备案`, result: '该生已正式归档，记录不能再修改。', next: '可以导出归档台账。' }))
     },
     askRejectArchive(row) {
       if (!this.canArchiveFile || this.contextLocked || !row) return
@@ -1050,21 +1070,40 @@ export default {
         row: { ...row }
       }
     },
-    maskPreviewToken(token) {
-      const value = String(token || '')
-      if (!value) return '未签发'
-      if (value.length <= 10) return '已签发 · 一次性'
-      return `${value.slice(0, 5)}…${value.slice(-4)}`
-    },
-    invalidateArchivePreview(_reason = '') {
+    invalidateArchivePreview(reason = '') {
       this.archiveCommandSnapshot = null
       this.archivePreviewEvidence = null
+      // 跳过名单在取消确认后仍保留，方便逐个点开学生；换批次、离页或重新预览时清空。
+      if (['new-preview', 'batch-change', 'route-leave'].includes(reason)) this.archiveSkipDetail = null
+    },
+    buildSkipDetail(kindLabel, data = {}) {
+      const students = (Array.isArray(data.skippedStudents) ? data.skippedStudents : []).map((row) => ({
+        gdStudentId: String(row.gdStudentId || ''),
+        studentName: row.studentName || '',
+        studentNo: row.studentNo || '',
+        reasons: Array.isArray(row.reasons) && row.reasons.length ? row.reasons : ['不满足办理条件']
+      })).filter((row) => row.gdStudentId)
+      if (!students.length) return null
+      return {
+        kindLabel,
+        total: Math.max(students.length, Number(data.skippedCount) || 0),
+        truncated: Boolean(data.skippedStudentsTruncated),
+        summary: this.formatSkipReasons(data),
+        students
+      }
     },
     formatSkipReasons(preview = {}) {
       const rows = Array.isArray(preview.skipReasons) ? preview.skipReasons : []
       if (!rows.length) return '无'
-      const labels = { already_submitted_or_filed: '已提交 / 已备案', already_submitted: '已提交 / 已备案', dirty_data: '历史主档异常（只读）', missing_materials: '材料不齐', open_risks: '风险未关闭', out_of_scope: '不在当前范围' }
-      return rows.map((row) => `${labels[row.reason] || row.reason} ${row.count}`).join('；')
+      const labels = { already_submitted_or_filed: '已经提交或备案过', already_submitted: '已经提交或备案过', dirty_data: '学生档案信息有问题（只能查看）', missing_materials: '材料没齐', open_risks: '还有风险没关闭', out_of_scope: '不在你的管理范围' }
+      const missing = Array.isArray(preview.missingSummary) ? preview.missingSummary.slice(0, 5) : []
+      const risks = Number(preview.openRiskTotal) || 0
+      return rows.map((row) => {
+        let text = `${labels[row.reason] || '其他原因'} ${row.count} 人`
+        if (row.reason === 'missing_materials' && missing.length) text += `（${missing.map((m) => `缺${m.name} ${m.count} 人`).join('、')}）`
+        if (row.reason === 'open_risks' && risks) text += `（共 ${risks} 条风险）`
+        return text
+      }).join('；')
     },
     async startArchivePreview(kind) {
       if (!this.canArchivePreview || !this.canArchiveFile || this.contextLocked) return
@@ -1088,7 +1127,7 @@ export default {
         }
         const data = res.data || {}
         if (!data.previewToken) {
-          toast.error('服务端未签发归档执行凭证，禁止进入正式执行')
+          toast.error('没有拿到预览结果，请重新点一次预览')
           this.invalidateArchivePreview('token-missing')
           return
         }
@@ -1110,18 +1149,18 @@ export default {
           kindLabel: kind === 'batch-file' ? '一键核验备案预览' : '批量生成提交预览',
           batchId: snapshot.batchId,
           batchName: data.batchName || this.batchStore.selectedBatchName || '当前批次',
-          maskedToken: this.maskPreviewToken(snapshot.previewToken),
           archiveBatchNo: snapshot.archiveBatchNo,
           candidateCount: snapshot.candidateCount,
           executableCount: snapshot.executableCount,
           skippedCount: snapshot.skippedCount,
           previewedAt: snapshot.previewedAt
         }
+        this.archiveSkipDetail = this.buildSkipDetail(this.archivePreviewEvidence.kindLabel, data)
         const action = snapshot.executableCount > 0 ? kind : `${kind}-noop`
         this.confirm = {
           visible: true,
           title: kind === 'batch-file' ? '一键核验备案' : '批量生成提交',
-          message: `候选 ${snapshot.candidateCount} 人，可执行 ${snapshot.executableCount}，跳过 ${snapshot.skippedCount}。主要跳过原因：${this.formatSkipReasons(data)}。确认后只消费本次预览凭证一次。`,
+          message: `候选 ${snapshot.candidateCount} 人，可执行 ${snapshot.executableCount}，跳过 ${snapshot.skippedCount}。跳过原因：${this.formatSkipReasons(data)}。${snapshot.skippedCount ? '跳过的学生可在页面上的「本次跳过的学生」里逐个查看。' : ''}`,
           type: kind === 'batch-file' ? 'warning' : 'primary',
           confirmText: snapshot.executableCount > 0 ? (kind === 'batch-file' ? '确认核验备案' : '确认生成提交') : '知道了',
           requireReason: false,
@@ -1174,7 +1213,7 @@ export default {
           this.confirm = EMPTY_CONFIRM()
           await Promise.all([this.loadRisks(), this.loadRiskStats()])
           const label = action === 'accept' ? '风险已受理' : action === 'process' ? '处理记录已保存' : '风险已关闭'
-          this.actionReceipt = { title: label, result: '服务器已接受操作并回读最新风险状态。', next: '可继续处理下一条风险。' }
+          this.actionReceipt = { title: label, result: '已处理，并刷新为最新风险状态。', next: '可继续处理下一条风险。' }
           toast.success(label)
         } else {
           toast.error(res.message || '风险操作失败')
@@ -1228,9 +1267,9 @@ export default {
         if (res.code === 0) {
           await this.loadArchives()
           if (action === 'batch-file') {
-            this.actionReceipt = { title: '批量备案已核对', result: `服务器结果：已备案 ${res.data?.filed || 0}，跳过 ${res.data?.skipped || 0}`, next: res.data?.reconciled ? '连接中断后已按归档批次号精确对账，无需重复提交。' : '一次性凭证已消费；备案记录只读。' }
+            this.actionReceipt = { title: '批量备案已核对', result: `服务器结果：已备案 ${res.data?.filed || 0}，跳过 ${res.data?.skipped || 0}`, next: res.data?.reconciled ? '网络中断过，已按归档批次号重新核对结果，不需要重复提交。' : '已备案的记录不能再修改。' }
           } else {
-            this.actionReceipt = { title: '批量生成提交已完成', result: `服务器结果：成功 ${res.data?.submitted || 0}，跳过 ${res.data?.skipped || 0}`, next: '一次性凭证已消费；请在归档队列核对最新清单。' }
+            this.actionReceipt = { title: '批量生成提交已完成', result: `服务器结果：成功 ${res.data?.submitted || 0}，跳过 ${res.data?.skipped || 0}`, next: '请在下方归档队列查看最新结果；要再办理需重新预览。' }
           }
           toast.success(this.actionReceipt.title)
         } else if (Number(res.code) === 503002) {
@@ -1260,7 +1299,7 @@ export default {
       this.actionBusy = 'verify-archive-result'
       try {
         await this.loadArchives()
-        this.actionReceipt = { title: '台账已刷新', result: '已从服务器重新读取当前归档状态。', next: '按最新状态继续；仍不完整时重新预览，禁止复用旧凭证。' }
+        this.actionReceipt = { title: '台账已刷新', result: '已重新读取最新归档状态。', next: '按最新状态继续；需要批量办理时请重新预览。' }
       } finally {
         this.actionBusy = ''
         this.commandSnapshot = null
@@ -1312,6 +1351,16 @@ export default {
 </script>
 
 <style scoped>
+.ar-skip { margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--warning-200, #fde68a); border-radius: 10px; background: var(--warning-50, #fffbeb); }
+.ar-skip__head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.ar-skip__head > div { display: grid; gap: 2px; }
+.ar-skip__head small { color: var(--text-tertiary, #64748b); font-size: 12px; }
+.ar-skip__list { display: grid; gap: 2px; max-height: 320px; margin: 8px 0 0; padding: 0; overflow: auto; list-style: none; }
+.ar-skip__list li { display: grid; grid-template-columns: minmax(120px, 180px) minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px dashed var(--warning-200, #fde68a); font-size: 13px; }
+.ar-skip__list li > div { display: grid; }
+.ar-skip__list small { color: var(--text-tertiary, #64748b); font-size: 11px; }
+.ar-skip__why { color: var(--text-secondary, #334155); }
+@media (max-width: 720px) { .ar-skip__list li { grid-template-columns: 1fr; } }
 @import '@/styles/module-page.css';
 .ra-panel { gap: var(--space-3); }
 .gp-tabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-3); border-bottom: 1px solid var(--border-light, #e2e8f0); }

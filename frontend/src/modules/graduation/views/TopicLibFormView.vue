@@ -69,11 +69,7 @@
 
         <div class="ie-fld">
           <span class="ie-lbl">指导教师</span>
-          <span v-if="mentorSelfBound" class="ie-in topic-mentor-self">
-            {{ editing?.advisorName ? `${editing.advisorName} · 本人指导（由系统核对绑定）` : '本人指导（由系统核对绑定）' }}
-          </span>
-          <AppGraduationMentorPicker v-else v-model="form.advisorName" placeholder="按姓名 / 工号搜索导师" />
-          <small v-if="mentorSelfBound" class="ie-hint">保存时由服务端核对并绑定当前导师，无法在这里改选他人。</small>
+          <AppGraduationMentorPicker v-model="form.advisorName" placeholder="按姓名 / 工号搜索导师" />
         </div>
         <label class="ie-fld">
           <span class="ie-lbl">适用专业</span>
@@ -145,7 +141,7 @@
         <strong>{{ completionCount === 5 ? '主要材料已齐全' : `建议再完善 ${5 - completionCount} 项` }}</strong>
         <ul class="gd-form-checklist">
           <li :class="{ 'is-ready': titleReady }">题目名称清楚且不少于 2 字</li>
-          <li :class="{ 'is-ready': advisorReady }">{{ mentorSelfBound ? '指导教师由系统在保存时核对绑定' : '指导教师已经明确' }}</li>
+          <li :class="{ 'is-ready': Boolean(form.advisorName) }">指导教师已经明确</li>
           <li :class="{ 'is-ready': Boolean(form.category && form.difficulty) }">分类与难度已经选择</li>
           <li :class="{ 'is-ready': Boolean(form.requirements) }">题目要求可以指导过程实施</li>
           <li :class="{ 'is-ready': Boolean(form.outcome) }">预期成果可用于最终验收</li>
@@ -164,22 +160,23 @@
     </template>
 
     <template #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || loading" @click="submitForm">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting || loading" @click="submitForm">
         {{ submitting ? '保存中…' : editing ? '保存题目' : form.submitReview ? '保存并提交审核' : '保存草稿' }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { ErrorState, LoadingState } from '@/components/business'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
 import { AppGraduationDesignBatchPicker, AppGraduationMentorPicker, AppSelect, AppTemplateChips } from '@/components/common'
 import { GD_TOPIC_CATEGORY, GD_TOPIC_DIFFICULTY } from '@/modules/graduation/constants/graduation-topic.constants'
+import { useGraduationBatchStore } from '@/stores/graduationBatch'
 import { toast } from '@/utils/toast'
-import { currentUserFromToken } from '@/services/http/client'
 
 const SKILL_CHIPS = [
   '要求有一定编程基础，掌握 Java / Python / JavaScript 之一',
@@ -210,7 +207,7 @@ const freezeSnapshot = (value) => Object.freeze({ ...value })
 
 export default {
   name: 'TopicLibFormView',
-  components: {
+  components: { AppButton,
     GraduationFormPageShell,
     ErrorState,
     LoadingState,
@@ -267,12 +264,6 @@ export default {
     titleReady() {
       return Boolean(this.form.title && this.form.title.length >= 2)
     },
-    mentorSelfBound() {
-      return Boolean(this.ctx && currentUserFromToken()?.currentRoleCode === 'GD_MENTOR')
-    },
-    advisorReady() {
-      return this.mentorSelfBound || Boolean(this.form.advisorName)
-    },
     capacityReady() {
       const value = Number(this.form.capacity)
       return Number.isFinite(value) && value >= 1 && value <= 99
@@ -280,7 +271,7 @@ export default {
     completionCount() {
       return [
         this.titleReady,
-        this.advisorReady,
+        Boolean(this.form.advisorName),
         Boolean(this.form.category && this.form.difficulty),
         Boolean(this.form.requirements),
         Boolean(this.form.outcome)
@@ -321,6 +312,9 @@ export default {
       if (!id) {
         const sourceType = String(this.$route.query.sourceType || 'TEACHER').toUpperCase()
         this.form = EMPTY_FORM(Object.prototype.hasOwnProperty.call(APPLY_TITLES, sourceType) ? sourceType : 'TEACHER')
+        // 新建题目默认挂到当前批次，否则题目不属于任何批次、学生选题时看不到
+        const currentBatchId = String(this.$route.query.batchId || useGraduationBatchStore().selectedBatchId || '')
+        if (currentBatchId) this.form.batchId = currentBatchId
         return
       }
       this.loading = true
@@ -366,9 +360,7 @@ export default {
       this.formError = this.validate()
       if (this.formError) return
 
-      const draft = { ...this.form, batchId: this.form.batchId || null }
-      if (currentUserFromToken()?.currentRoleCode === 'GD_MENTOR') delete draft.advisorName
-      const body = freezeSnapshot(draft)
+      const body = freezeSnapshot({ ...this.form, batchId: this.form.batchId || null })
       const snapshot = freezeSnapshot({
         editing: Boolean(this.editing),
         id: this.editing?.id || null,
@@ -427,12 +419,6 @@ export default {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.topic-mentor-self {
-  display: flex;
-  align-items: center;
-  min-height: 36px;
 }
 
 .topic-review-choice {

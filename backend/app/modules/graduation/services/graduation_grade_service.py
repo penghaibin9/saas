@@ -20,9 +20,6 @@ from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefense
 from app.services.db_service import _iso, _tid, session
 from app.modules.graduation.services.graduation_command_service import _conflict_guard
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids, assert_student_access
-from app.modules.graduation.services.graduation_review_quorum import (
-    completed_reviews, current_evidence_review_ids, require_review_count,
-)
 from app.modules.graduation.policies import grade_policy
 
 STATUS_LABEL = {
@@ -90,25 +87,21 @@ def _grade_level(total: int | None) -> str | None:
 
 
 def _source_scores(db, stu: GraduationStudent) -> dict:
-    batch = db.scalars(select(GraduationBatch).where(
-        GraduationBatch.id == stu.batch_id, GraduationBatch.tenant_id == _tid(),
-        GraduationBatch.is_deleted.is_(False),
-    )).first() if stu.batch_id else None
     final = db.scalars(select(GraduationFinal).where(
         GraduationFinal.tenant_id == _tid(),
         GraduationFinal.gd_student_id == stu.id,
         GraduationFinal.final_type == "定稿",
+        GraduationFinal.status == "APPROVED",
         GraduationFinal.is_deleted.is_(False),
     ).order_by(GraduationFinal.id.desc())).first()
     review_rows = db.scalars(select(GraduationReview).where(
         GraduationReview.tenant_id == _tid(),
         GraduationReview.gd_student_id == stu.id,
         GraduationReview.gd_final_id == (final.id if final else -1),
+        GraduationReview.status == "COMPLETED",
+        GraduationReview.score.is_not(None),
         GraduationReview.is_deleted.is_(False),
     ).order_by(GraduationReview.id)).all()
-    review_rows, required = completed_reviews(
-        batch, final, review_rows, current_evidence_review_ids(db, review_rows),
-    )
     review_scores = [row.score for row in review_rows]
     defense_round = db.scalar(select(func.max(GraduationDefenseScore.round_no)).where(
         GraduationDefenseScore.tenant_id == _tid(),
@@ -129,7 +122,6 @@ def _source_scores(db, stu: GraduationStudent) -> dict:
     payload = {
         "studentId": int(stu.id),
         "finalId": int(final.id) if final else None,
-        "requiredReviewers": required,
         "reviews": [{"id": int(row.id), "score": int(row.score)} for row in review_rows],
         "defenseRound": int(defense_round) if defense_round else None,
         "defenseScores": [{"id": int(row.id), "score": int(row.score)} for row in defense_rows],
@@ -141,7 +133,6 @@ def _source_scores(db, stu: GraduationStudent) -> dict:
         "reviewerScore": round(sum(review_scores) / len(review_scores)) if review_scores else None,
         "finalId": str(final.id) if final else "",
         "reviewSourceCount": len(review_scores),
-        "requiredReviewers": required,
         "defenseScore": round(sum(defense_scores) / len(defense_scores)) if defense_scores else None,
         "defenseSourceCount": len(defense_scores),
         "defenseRound": defense_round,
@@ -179,30 +170,6 @@ def _row(g: GraduationGrade, stu=None) -> dict:
             "updatedAt": _iso(g.updated_at), "version": g.version}
 
 
-def list_grades(page: int, page_size: int, keyword=None, status=None, batch_id=None) -> tuple[list[dict], int]:
-    with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
-        q = select(GraduationGrade).where(GraduationGrade.tenant_id == _tid(),
-                                           GraduationGrade.is_deleted.is_(False),
-                                           GraduationGrade.gd_student_id.in_(scope_ids or [-1]))
-        if status:
-            q = q.where(GraduationGrade.status == status)
-        if batch_id:
-            q = q.where(GraduationGrade.gd_student_id.in_(select(GraduationStudent.id).where(
-                GraduationStudent.tenant_id == _tid(), GraduationStudent.batch_id == int(batch_id),
-                GraduationStudent.is_deleted.is_(False))))
-        rows = db.scalars(q.order_by(GraduationGrade.id.desc())).all()
-        items = []
-        for g in rows:
-            stu = db.query(GraduationStudent).filter(GraduationStudent.id == g.gd_student_id, GraduationStudent.tenant_id == _tid()).first()
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_row(g, stu))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
-
-
 def get_grade(gd_student_id) -> dict:
     with session() as db:
         stu = _stu(db, gd_student_id)
@@ -233,7 +200,6 @@ def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defe
         if g.status == "PUBLISHED":
             raise AppException("DATA_CONFLICT", "已发布成绩不可直接核算，请先撤回")
         sources = _source_scores(db, stu)
-        require_review_count(sources["reviewSourceCount"], sources["requiredReviewers"])
         if sources["reviewerScore"] is None or sources["defenseScore"] is None:
             raise AppException("DATA_CONFLICT", "Review and confirmed defense scores must exist before calculation")
         authoritative_reviewer = sources["reviewerScore"]
@@ -269,6 +235,48 @@ def calculate_grade(gd_student_id, advisor_score=None, reviewer_score=None, defe
 
 
 @_conflict_guard
+def submit_advisor_score(gd_student_id, score, comment=None) -> dict:
+    """导师给本人指导学生打导师分（只写导师分，不核算综合分）。
+
+    范围由指导关系收敛；论文定稿通过后才能打分；已发布成绩须先撤回。
+    分数变化时已核算/已复核的成绩退回「待核算」，综合分必须重新核算。
+    """
+    if isinstance(score, bool) or not isinstance(score, int) or not 0 <= score <= 100:
+        raise AppException("VALIDATION_ERROR", "导师分必须是 0-100 的整数")
+    with session() as db:
+        stu = _stu_for_update(db, gd_student_id)
+        grade_policy.authorize(db, stu, "advisorScore")
+        final = db.scalars(select(GraduationFinal).where(
+            GraduationFinal.tenant_id == _tid(),
+            GraduationFinal.gd_student_id == stu.id,
+            GraduationFinal.final_type == "定稿",
+            GraduationFinal.is_deleted.is_(False),
+        ).order_by(GraduationFinal.id.desc())).first()
+        if not final or final.status != "APPROVED":
+            raise AppException("DATA_CONFLICT", "该生论文定稿还没有通过，暂时不能打导师分")
+        g = _get_or_create(db, stu, for_update=True)
+        if g.status == "PUBLISHED":
+            raise AppException("DATA_CONFLICT", "成绩已发布，如需修改导师分请先由管理员撤回")
+        before = g.advisor_score
+        if before != score:
+            g.advisor_score = score
+            if g.status in ("CALCULATED", "REVIEWED"):
+                g.status = "DRAFT"
+                g.total_score = None
+                g.grade_level = None
+                g.calculated_at = None
+                g.reviewed_by = None
+                g.reviewed_at = None
+                g.source_snapshot_hash = None
+            g.version += 1
+        note = (comment or "").strip()
+        _audit(db, g.id, "导师评分", detail=f"advisorScore={score}" + (f";{note}" if note else ""),
+               before="" if before is None else str(before), after=str(score))
+        db.commit()
+        return _row(g, stu)
+
+
+@_conflict_guard
 def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
     if action not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
@@ -276,11 +284,6 @@ def review_grade(gd_student_id, action: str, comment: str = None) -> dict:
         stu = _stu_for_update(db, gd_student_id)
         grade_policy.authorize(db, stu, "review")
         g = _get_or_create(db, stu, for_update=True)
-        if action == "APPROVE":
-            sources = _source_scores(db, stu)
-            require_review_count(sources["reviewSourceCount"], sources["requiredReviewers"])
-            if g.source_snapshot_hash != sources["sourceSnapshotHash"]:
-                raise AppException("APPROVAL_VERSION_CONFLICT", "评阅或答辩来源已变化，请重新核算")
         if action == "APPROVE" and g.status == "REVIEWED":
             return _row(g, stu)
         if g.status != "CALCULATED":
@@ -309,12 +312,11 @@ def publish_grade(gd_student_id) -> dict:
         stu = _stu_for_update(db, gd_student_id)
         grade_policy.authorize(db, stu, "publish")
         g = _get_or_create(db, stu, for_update=True)
-        current_sources = _source_scores(db, stu)
-        require_review_count(current_sources["reviewSourceCount"], current_sources["requiredReviewers"])
         if g.status == "PUBLISHED":
             return _row(g, stu)
         if g.status != "REVIEWED" or not g.reviewed_at:
             raise AppException("DATA_CONFLICT", "仅「复核通过」成绩可发布")
+        current_sources = _source_scores(db, stu)
         if not g.source_snapshot_hash or g.source_snapshot_hash != current_sources["sourceSnapshotHash"]:
             raise AppException("APPROVAL_VERSION_CONFLICT", "Authoritative scores changed; recalculate before publishing")
         n, _ = _op()
@@ -381,3 +383,7 @@ def grade_stats(batch_id=None) -> dict:
         )) or 0)
         return {"total": total, "byStatus": by_status, "publishedAvg": avg, "excellentCount": excellent,
                 "batchId": str(batch_id) if batch_id else None}
+
+
+# 列表唯一实现为 SQL 读模型（原由 services/__init__.py 导入时替换，现显式绑定）。
+from app.modules.graduation.services.graduation_grade_read_service import list_grades  # noqa: E402,F401

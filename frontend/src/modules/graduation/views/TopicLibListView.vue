@@ -58,9 +58,9 @@
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc">
         <template v-if="showCreateEmptyActions" #actions>
-          <button class="mp-btn mp-btn--primary" @click="onToolbar('create')">{{ createLabel }}</button>
-          <button class="mp-btn" @click="onToolbar('import')">导入 Excel</button>
-          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-topic-declare')">怎么申报题目？</button>
+          <AppButton variant="primary" @click="onToolbar('create')">{{ createLabel }}</AppButton>
+          <AppButton @click="onToolbar('import')">导入 Excel</AppButton>
+          <AppButton @click="$router.push('/admin/help?topic=gd-card-topic-declare')">怎么申报题目？</AppButton>
         </template>
       </EmptyState>
       <DataTable
@@ -223,6 +223,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton, AppPageGuide } from '@/components/common'
@@ -353,7 +354,7 @@ const TOPIC_LIB_INLINE_ROUTES = new Set([
 
 export default {
   name: 'TopicLibListView',
-  components: { GraduationBatchStrip, AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
+  components: { AppButton, GraduationBatchStrip, AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -3,8 +3,6 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
-import pytest
-
 from conftest import make_org_class
 
 GD_RISK = "/api/v1/graduation/gd-risks"
@@ -79,19 +77,12 @@ def test_archive_generate_blocks_submit_until_complete_then_files(graduation_cli
     assert export.json()["data"]["rowCount"] >= 1
 
 
-@pytest.mark.parametrize("file_mode", ["single", "batch"])
-def test_complete_archive_is_idempotent_and_archives_student_atomically(graduation_client, auth_headers, db_mode, file_mode):
+def test_complete_archive_is_idempotent_and_archives_student_atomically(graduation_client, auth_headers, db_mode):
     from datetime import datetime
-    from sqlalchemy import select, text
-    from app.core.context import get_tenant, set_tenant
     from app.db.session import get_sessionmaker
-    from app.models import (GraduationArchiveRecord, GraduationDefenseScore, GraduationFinal, GraduationGrade, GraduationMentor,
+    from app.models import (GraduationDefenseScore, GraduationFinal, GraduationGrade,
                             GraduationMidterm, GraduationProposal, GraduationReview,
                             GraduationStudent, GraduationTaskBook, PortalSignRecord)
-    from app.modules.graduation.services.graduation_review_quorum import current_evidence_review_ids
-    from app.modules.graduation.services.graduation_package9_guard import GraduationArchiveVersion
-    from app.models.file import FileAsset, FileObject, FileVersion
-    from app.models.graduation_material import GraduationStudentMaterial
     h = auth_headers
     gid = _gd_student(graduation_client, h, "AR-COMPLETE-01", "完整归档测试生")
     uploaded = graduation_client.post(
@@ -106,9 +97,6 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
     file_id = int(uploaded["data"]["fileId"])
 
     db = get_sessionmaker()()
-    uploaded_file = db.get(FileObject, file_id)
-    uploaded_file.status = "AVAILABLE"
-    uploaded_file.scan_status = "CLEAN"
     final = GraduationFinal(
         tenant_id=1000000000000000001, gd_student_id=int(gid), final_type="定稿",
         version="v1", submit_at=datetime.utcnow(), plagiarism_rate="8.0%",
@@ -116,38 +104,6 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
     )
     db.add(final)
     db.flush()
-    stu = db.get(GraduationStudent, int(gid))
-    asset = FileAsset(tenant_id=1000000000000000001, asset_code=f"archive-final-{gid}",
-                      title="归档定稿", category_code="GRADUATION_FINAL")
-    db.add(asset)
-    db.flush()
-    version = FileVersion(tenant_id=1000000000000000001, asset_id=asset.id,
-                          file_object_id=file_id, version_no=1, status="APPROVED", is_current=True)
-    db.add(version)
-    db.flush()
-    material = GraduationStudentMaterial(
-        tenant_id=1000000000000000001, batch_id=stu.batch_id, gd_student_id=int(gid),
-        material_code="THESIS_FINAL", material_name="成果定稿", biz_stage="SUBMISSION",
-        source_record_type="FINAL", source_record_id=str(final.id),
-        asset_id=asset.id, current_version_id=version.id,
-        business_status="APPROVED", review_status="APPROVED",
-    )
-    db.add(material)
-    db.flush()
-    batch_id = int(stu.batch_id)
-    reviewers = [
-        GraduationMentor(tenant_id=1000000000000000001, teacher_no=f"AR-{gid}-{n}",
-                         teacher_name=name, qualification_status="QUALIFIED")
-        for n, name in ((1, "李评阅"), (2, "王评阅"))
-    ]
-    db.add_all(reviewers)
-    db.flush()
-    first_review = GraduationReview(tenant_id=1000000000000000001, gd_student_id=int(gid),
-                                    gd_final_id=final.id, reviewer_name="李评阅",
-                                    reviewer_mentor_id=reviewers[0].id, status="COMPLETED", score=88)
-    second_review = GraduationReview(tenant_id=1000000000000000001, gd_student_id=int(gid),
-                                     gd_final_id=final.id, reviewer_name="王评阅",
-                                     reviewer_mentor_id=reviewers[1].id, status="COMPLETED", score=88)
     db.add_all([
         GraduationTaskBook(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CONFIRMED",
                            taskbook_version=1),
@@ -156,33 +112,13 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
                          content_hash=f"taskbook-{gid}", signer_name="测试学生"),
         GraduationProposal(tenant_id=1000000000000000001, gd_student_id=int(gid), version="v1", status="APPROVED"),
         GraduationMidterm(tenant_id=1000000000000000001, gd_student_id=int(gid), status="CHECKED_PASS"),
-        first_review,
+        GraduationReview(tenant_id=1000000000000000001, gd_student_id=int(gid), gd_final_id=final.id,
+                         reviewer_name="李评阅", status="COMPLETED", score=88),
         GraduationDefenseScore(tenant_id=1000000000000000001, gd_student_id=int(gid),
                                judge_name="王评委", score=90, status="CONFIRMED"),
         GraduationGrade(tenant_id=1000000000000000001, gd_student_id=int(gid),
                         total_score=89, grade_level="良好", status="PUBLISHED"),
     ])
-    db.flush()
-    file_hash = db.execute(text("SELECT sha256 FROM t_file_object WHERE id=:file_id"), {"file_id": file_id}).scalar_one()
-    db.execute(text("UPDATE t_gd_review SET material_id=:material,file_version_id=:version,source_sha256=:sha "
-                    "WHERE tenant_id=:tenant AND id=:first"), {
-        "material": material.id, "version": version.id, "sha": file_hash,
-        "tenant": 1000000000000000001, "first": first_review.id,
-    })
-    db.commit()
-    db.close()
-
-    one_reviewer = graduation_client.post(f"{GD_ARCHIVE}/{gid}/generate", headers=h).json()["data"]
-    assert any(item["item"] == "review" and not item["present"] for item in one_reviewer["checklist"])
-    assert graduation_client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).status_code == 409
-    db = get_sessionmaker()()
-    db.add(second_review)
-    db.flush()
-    db.execute(text("UPDATE t_gd_review SET material_id=:material,file_version_id=:version,source_sha256=:sha "
-                    "WHERE tenant_id=:tenant AND id=:review"), {
-        "material": material.id, "version": version.id, "sha": file_hash,
-        "tenant": 1000000000000000001, "review": second_review.id,
-    })
     db.commit()
     db.close()
 
@@ -192,61 +128,9 @@ def test_complete_archive_is_idempotent_and_archives_student_atomically(graduati
     submitted_retry = graduation_client.post(f"{GD_ARCHIVE}/{gid}/submit", headers=h).json()["data"]
     assert submitted_retry["version"] == submitted["version"]
 
-    # The ORM FILED listener must use the archive's tenant even outside a request
-    # or when an unrelated request context remains on the worker thread.
-    for ambient_tenant in (None, {"tenantId": "1000000000000000002"}):
-        db = get_sessionmaker()()
-        previous_tenant = get_tenant()
-        try:
-            archive = db.scalars(select(GraduationArchiveRecord).where(
-                GraduationArchiveRecord.tenant_id == 1000000000000000001,
-                GraduationArchiveRecord.gd_student_id == int(gid),
-            )).one()
-            review_rows = db.scalars(select(GraduationReview).where(
-                GraduationReview.tenant_id == 1000000000000000001,
-                GraduationReview.gd_student_id == int(gid),
-            )).all()
-            set_tenant(ambient_tenant)
-            assert len(review_rows) == 2
-            assert current_evidence_review_ids(db, review_rows, tenant_id=archive.tenant_id) == {
-                int(row.id) for row in review_rows
-            }
-            if ambient_tenant is not None:
-                assert current_evidence_review_ids(db, review_rows) == set()
-            archive.status = "FILED"
-            archive.archive_batch_no = "GDARCH-CONTEXT-ROLLBACK"
-            archive.filed_at = datetime.utcnow()
-            archive.verified_by = "context-test"
-            db.flush()
-            assert db.scalars(select(GraduationArchiveVersion).where(
-                GraduationArchiveVersion.tenant_id == archive.tenant_id,
-                GraduationArchiveVersion.archive_record_id == archive.id,
-            )).one().archive_version == 1
-        finally:
-            db.rollback()
-            db.close()
-            set_tenant(previous_tenant)
-
-    if file_mode == "batch":
-        preview_response = graduation_client.post(
-            f"{GD_ARCHIVE}/batch-file/preview", headers=h, params={"batchId": batch_id},
-        )
-        assert preview_response.status_code == 200, preview_response.json()
-        preview = preview_response.json()["data"]
-        assert preview["candidateCount"] == preview["executableCount"] == 1
-        batch_response = graduation_client.post(
-            f"{GD_ARCHIVE}/batch-file", headers=h, params={"batchId": batch_id},
-            json={"archiveBatchNo": "GDARCH-TEST-001", "previewToken": preview["previewToken"]},
-        )
-        assert batch_response.status_code == 200, batch_response.json()
-        assert batch_response.json()["data"]["filed"] == 1
-        assert batch_response.json()["data"]["failed"] == 0
-
-    filed_response = graduation_client.post(
+    filed = graduation_client.post(
         f"{GD_ARCHIVE}/{gid}/file", headers=h, json={"archiveBatchNo": "GDARCH-TEST-001"},
-    )
-    assert filed_response.status_code == 200, filed_response.json()
-    filed = filed_response.json()["data"]
+    ).json()["data"]
     filed_retry = graduation_client.post(
         f"{GD_ARCHIVE}/{gid}/file", headers=h, json={"archiveBatchNo": "GDARCH-TEST-001"},
     ).json()["data"]

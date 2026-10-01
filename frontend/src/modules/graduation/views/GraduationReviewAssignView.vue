@@ -5,15 +5,16 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
+    <!-- 契约：正式评阅按 exact FileVersion 分配，由后端校验 SoD（评阅人不能是指导老师） -->
     <div class="ra-layout">
       <section class="ra-card ra-list">
         <header class="ra-card__head">
-          <div><strong>选择学生</strong><span>当前批次 · 已通过正式定稿 · 后端真实数据范围</span></div>
-          <button type="button" class="mp-btn" :disabled="loading" @click="loadStudents">刷新</button>
+          <div><strong>选择学生</strong><span>当前批次 · 只列已通过定稿的学生</span></div>
+          <AppButton :disabled="loading" @click="loadStudents">刷新</AppButton>
         </header>
         <div class="ra-search">
           <input v-model.trim="keyword" class="ie-in" placeholder="搜索学生姓名 / 学号" @keyup.enter="loadStudents" />
-          <button type="button" class="mp-btn mp-btn--primary" :disabled="loading" @click="loadStudents">查询</button>
+          <AppButton variant="primary" :disabled="loading" @click="loadStudents">查询</AppButton>
         </div>
         <ErrorState v-if="error" :description="error" @retry="loadStudents" />
         <LoadingState v-else-if="loading" />
@@ -60,12 +61,12 @@
           </label>
           <p v-if="formError" class="ra-error">{{ formError }}</p>
           <div class="ra-actions">
-            <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !reviewerMentorId" @click="assignReview">
+            <AppButton variant="primary" :disabled="submitting || !reviewerMentorId" @click="assignReview">
               {{ submitting ? '正在分配…' : '分配正式评阅' }}
-            </button>
-            <button v-if="assigned" type="button" class="mp-btn" @click="openReviewCenter">进入统一评阅中心</button>
+            </AppButton>
+            <AppButton v-if="assigned" @click="openReviewCenter">进入统一评阅中心</AppButton>
           </div>
-          <p class="ra-note">候选列表已在服务端按“最新正式定稿=已通过”收窄；提交时后端仍会再次核对 exact FileVersion、安全扫描状态与 SoD：评阅人不得是该生指导教师。失败不会生成半条评阅记录。</p>
+          <p class="ra-note">这里只列出论文定稿已通过的学生。评阅老师不能是该生的指导老师；提交时系统会再检查一次，不符合会直接提示原因，不会留下半条记录。</p>
         </template>
         <EmptyState v-else title="请先选择学生" description="从左侧可分配候选中选择一人后，再分配独立评阅教师。" />
       </section>
@@ -74,6 +75,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppGraduationMentorPicker } from '@/components/common'
 import { gdStudentApi } from '@/modules/graduation/api/graduation-student.api'
@@ -83,7 +85,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationReviewAssignView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppGraduationMentorPicker },
+  components: { AppButton, ModulePageShell, LoadingState, ErrorState, EmptyState, AppGraduationMentorPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

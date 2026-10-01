@@ -61,8 +61,6 @@ def _install_validation_and_permission_hardening() -> None:
     gp.GRADUATION_PERMISSION_CODES = frozenset(set(gp.GRADUATION_PERMISSION_CODES) | {submit_code})
     gp.GRADUATION_ENDPOINT_PERMISSIONS["submit_gd_topic_review"] = submit_code
     gp.GRADUATION_ENDPOINT_PERMISSION_OVERRIDES["graduation_topic.submit_gd_topic_review"] = submit_code
-    gp.GRADUATION_ENDPOINT_PERMISSION_OVERRIDES["graduation_release_hardening.appeal_list"] = "graduationDesign.grade.appealReview"
-    gp.GRADUATION_ENDPOINT_PERMISSION_OVERRIDES["graduation_release_hardening.archive_list"] = "graduationDesign.archive.view"
 
     old_effective = perms.get_effective_permission_patterns
     if not getattr(old_effective, "_gd_topic_submit_alias", False):
@@ -73,36 +71,6 @@ def _install_validation_and_permission_hardening() -> None:
             return sorted(patterns)
         effective_patterns._gd_topic_submit_alias = True
         perms.get_effective_permission_patterns = effective_patterns
-
-
-def _install_router_overlays() -> None:
-    from fastapi import APIRouter, Depends, Query
-    from app.core.permissions import require_permission
-    from app.core.response import paginate, success
-    from app.modules.graduation.routers import graduation_archive, graduation_more
-    from app.modules.graduation.services import graduation_archive_service as archive_service
-    from app.modules.graduation.services import graduation_more_service as more_service
-
-    archive_router = APIRouter(prefix="/graduation", tags=["毕业设计-上线硬化"])
-
-    @archive_router.get("/gd-archives", summary="归档列表（分页+精确备案批次筛选）")
-    def archive_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200), keyword: str | None = None, status: str | None = None, batchId: str | None = None, archiveBatchNo: str | None = None, user=Depends(require_permission("graduationDesign.archive.view"))):
-        items, total = archive_service.list_archives(page, pageSize, keyword=keyword, status=status, batch_id=batchId, archive_batch_no=archiveBatchNo)
-        return success(paginate(items, total, page, pageSize))
-
-    appeal_router = APIRouter(prefix="/graduation", tags=["毕业设计-上线硬化"])
-
-    @appeal_router.get("/gd-grade-appeals", summary="成绩申诉列表（SQL 分页+批次范围）")
-    def appeal_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200), status: str | None = None, keyword: str | None = None, batchId: str | None = None, user=Depends(require_permission("graduationDesign.grade.appealReview"))):
-        items, total = more_service.list_appeals(page=page, page_size=pageSize, status=status, keyword=keyword, batch_id=batchId)
-        return success(paginate(items, total, page, pageSize))
-
-    if not getattr(graduation_archive.router, "_gd_release_archive_overlay", False):
-        graduation_archive.router.routes[0:0] = list(archive_router.routes)
-        graduation_archive.router._gd_release_archive_overlay = True
-    if not getattr(graduation_more.router, "_gd_release_appeal_overlay", False):
-        graduation_more.router.routes[0:0] = list(appeal_router.routes)
-        graduation_more.router._gd_release_appeal_overlay = True
 
 
 def install() -> None:
@@ -123,4 +91,3 @@ def install() -> None:
     _install_process_hardening()
     _install_archive_hardening()
     _install_validation_and_permission_hardening()
-    _install_router_overlays()

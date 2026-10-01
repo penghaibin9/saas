@@ -10,7 +10,6 @@ from app.core.context import get_current_user_ctx, get_tenant, set_tenant
 from app.core.exceptions import AppException
 from app.models import (
     GraduationArchiveRecord,
-    GraduationBatch,
     GraduationDefenseScore,
     GraduationFinal,
     GraduationGrade,
@@ -27,7 +26,6 @@ from app.modules.graduation.services import graduation_archive_service as archiv
 from app.modules.graduation.services import graduation_defense_score_service as defense_score_service
 from app.modules.graduation.services import graduation_mentor_service as mentor_service
 from app.modules.graduation.services.graduation_archive_terminal_guard import register_graduation_archive_guard
-from app.modules.graduation.services.graduation_review_quorum import completed_reviews, current_evidence_review_ids
 
 
 class GraduationArchiveVersion(PKMixin, TenantMixin, CommonMixin, Base):
@@ -79,19 +77,15 @@ def _strict_check_completeness(db, student: GraduationStudent) -> tuple[list[dic
     proposal = _latest(db, GraduationProposal, tenant_id, student.id)
     midterm = _latest(db, GraduationMidterm, tenant_id, student.id)
     final = _latest(db, GraduationFinal, tenant_id, student.id, GraduationFinal.final_type == "定稿")
-    batch = db.scalars(select(GraduationBatch).where(
-        GraduationBatch.id == student.batch_id,
-        GraduationBatch.tenant_id == tenant_id,
-        GraduationBatch.is_deleted.is_(False),
-    )).first() if student.batch_id else None
-    reviews = db.scalars(select(GraduationReview).where(
-        GraduationReview.tenant_id == tenant_id,
-        GraduationReview.gd_student_id == student.id,
-        GraduationReview.gd_final_id == (final.id if final else -1),
-        GraduationReview.is_deleted.is_(False),
-    )).all()
-    eligible_reviews, minimum_reviewers = completed_reviews(
-        batch, final, reviews, current_evidence_review_ids(db, reviews, tenant_id=tenant_id),
+    review = (
+        _latest(
+            db,
+            GraduationReview,
+            tenant_id,
+            student.id,
+            GraduationReview.gd_final_id == int(final.id),
+        )
+        if final else None
     )
     defense = _latest(db, GraduationDefenseScore, tenant_id, student.id)
     grade = _latest(db, GraduationGrade, tenant_id, student.id)
@@ -101,7 +95,7 @@ def _strict_check_completeness(db, student: GraduationStudent) -> tuple[list[dic
         "proposal": bool(proposal and proposal.status == "APPROVED"),
         "midterm": bool(midterm and midterm.status in {"CHECKED_PASS", "RECTIFIED_PASS"}),
         "final": bool(final and final.status == "APPROVED"),
-        "review": len(eligible_reviews) >= minimum_reviewers,
+        "review": bool(review and review.status == "COMPLETED"),
         "defenseScore": bool(defense and defense.status == "CONFIRMED"),
         "grade": bool(grade and grade.status == "PUBLISHED"),
     }

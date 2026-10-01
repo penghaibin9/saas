@@ -9,15 +9,6 @@ test('graduation landing shows the workbench before return-and-resubmit history'
   assert.ok(closure.indexOf('<GraduationWorkbenchView') < closure.indexOf('<GraduationFeedbackResubmitView'))
 })
 
-test('extension card shows only the matching student-owned batch name', () => {
-  const panel = read('src/components/graduation/GraduationExtensionPanel.vue')
-  assert.match(panel, /portalApi\.domainMy\('graduation'\)/)
-  assert.match(panel, /String\(next\.batchId\) === String\(mine\.batchId\)/)
-  assert.match(panel, /mine\?\.hasData/)
-  assert.match(panel, /\{\{ batchName \|\| '批次名称待核对' \}\}/)
-  assert.doesNotMatch(panel, /\{\{\s*data\.batchId\s*\}\}/)
-})
-
 test('student-facing evidence is human-first while technical evidence remains available on demand', () => {
   const feedback = read('src/views/graduation/GraduationFeedbackResubmitView.vue')
   const materials = read('src/views/graduation/GraduationMaterialsView.vue')

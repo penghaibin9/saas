@@ -8,7 +8,6 @@
   >
     <template #actions>
       <div class="gd-actions">
-        <button v-if="graduationReturnTo" class="mp-btn" @click="$router.push(graduationReturnTo)">返回毕业审核</button>
         <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
         <AppExportButton v-if="exportVisible" :export-fn="exportStudentsFn">导出 Excel</AppExportButton>
       </div>
@@ -62,9 +61,9 @@
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc">
         <template v-if="showRosterEmptyActions" #actions>
-          <button class="mp-btn mp-btn--primary" :disabled="!writeEnabled" @click="onToolbar('create')">＋ 建档</button>
-          <button class="mp-btn" :disabled="!writeEnabled" @click="onToolbar('import')">导入 Excel</button>
-          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-students')">怎么导入名单？</button>
+          <AppButton variant="primary" :disabled="!writeEnabled" @click="onToolbar('create')">＋ 建档</AppButton>
+          <AppButton :disabled="!writeEnabled" @click="onToolbar('import')">导入 Excel</AppButton>
+          <AppButton @click="$router.push('/admin/help?topic=gd-card-students')">怎么导入名单？</AppButton>
         </template>
       </EmptyState>
       <DataTable
@@ -151,6 +150,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 /** 毕设学生列表：真实学生主档投影；毕业资格为教务只读镜像。 */
 import {
   ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
@@ -173,7 +173,6 @@ const EMPTY_FILTERS = () => ({
   eligibility: '', studentGroup: '', hasDefenseGroup: '', gradQualStatus: '',
   materialComplete: '', archiveView: '', dateStart: '', dateEnd: ''
 })
-const academicReturn = value => typeof value === 'string' && /^\/admin\/academic-affairs\/graduation\/(?:audit-console|\d+\/results)(?:\?[^#]*)?$/.test(value) ? value : ''
 const PANEL_PRESETS = {
   roster: () => EMPTY_FILTERS(),
   progress: () => ({ ...EMPTY_FILTERS(), stage: 'GUIDING' }),
@@ -254,7 +253,7 @@ function errorText(error, fallback) { return error?.message || fallback }
 
 export default {
   name: 'GraduationStudentListView',
-  components: { AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
+  components: { AppButton, AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -268,7 +267,6 @@ export default {
     }
   },
   computed: {
-    graduationReturnTo() { return academicReturn(this.$route.query.returnTo) },
     activeGroupKey() { return PRIMARY_GROUPS.find((group) => group.panels.includes(this.activePanel))?.key || 'roster' },
     activeGroupPanels() {
       const group = PRIMARY_GROUPS.find((item) => item.key === this.activeGroupKey) || PRIMARY_GROUPS[0]

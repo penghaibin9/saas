@@ -17,6 +17,7 @@ from app.core.response import success
 from app.core.security import get_current_user
 from app.models import (
     GraduationBatch,
+    GraduationDefenseGroup,
     GraduationFinal,
     GraduationProposal,
     GraduationReview,
@@ -24,6 +25,8 @@ from app.models import (
     GraduationTopicChangeRequest,
     GraduationTopicChoice,
 )
+from app.modules.graduation.services import graduation_auto_identity as auto
+from app.modules.graduation.services import graduation_identity as gid
 from app.modules.graduation.services import graduation_mobile_teacher_query_service as mobile_queries
 from app.modules.graduation.services.graduation_scope_service import accessible_student_ids
 from app.services import mobile_teacher_service as tea
@@ -159,18 +162,60 @@ def _paged_service(fn: Callable, user: dict, batch_id: int, page: int, page_size
 @router.get("/batches", summary="教师·可处理的毕业设计批次")
 def teacher_graduation_batches(user=Depends(get_current_user)):
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
-        if not scope_ids:
-            return success({"items": [], "selectedBatchId": None})
-        batch_ids = [int(x) for x in db.scalars(select(GraduationStudent.batch_id).where(
-            GraduationStudent.tenant_id == _tid(),
-            GraduationStudent.id.in_(scope_ids),
-            GraduationStudent.batch_id.is_not(None),
-            GraduationStudent.is_deleted.is_(False),
-        ).distinct()).all() if x]
+        held = auto.held_identities(user)
+        mentor = gid.current_user_mentor(db)
+        batch_ids: set[int] = set()
+        if mentor is not None and held:
+            if "GD_MENTOR" in held:
+                batch_ids.update(int(x) for x in db.scalars(select(GraduationStudent.batch_id).where(
+                    GraduationStudent.tenant_id == _tid(),
+                    GraduationStudent.mentor_id == int(mentor.id),
+                    GraduationStudent.batch_id.is_not(None),
+                    GraduationStudent.is_deleted.is_(False),
+                    GraduationStudent.record_status == "ACTIVE",
+                ).distinct()).all() if x)
+            if "GD_REVIEWER" in held:
+                batch_ids.update(int(x) for x in db.scalars(
+                    select(GraduationStudent.batch_id)
+                    .join(GraduationReview, GraduationReview.gd_student_id == GraduationStudent.id)
+                    .where(
+                        GraduationReview.tenant_id == _tid(),
+                        GraduationReview.reviewer_mentor_id == int(mentor.id),
+                        GraduationReview.is_deleted.is_(False),
+                        GraduationStudent.tenant_id == _tid(),
+                        GraduationStudent.batch_id.is_not(None),
+                        GraduationStudent.is_deleted.is_(False),
+                    ).distinct()
+                ).all() if x)
+            if held.intersection({"GD_DEFENSE_EXPERT", "GD_DEFENSE_SECRETARY"}):
+                groups = db.scalars(select(GraduationDefenseGroup).where(
+                    GraduationDefenseGroup.tenant_id == _tid(),
+                    GraduationDefenseGroup.is_deleted.is_(False),
+                    GraduationDefenseGroup.batch_id.is_not(None),
+                )).all()
+                for group in groups:
+                    secretary = (
+                        "GD_DEFENSE_SECRETARY" in held
+                        and group.secretary_mentor_id is not None
+                        and int(group.secretary_mentor_id) == int(mentor.id)
+                    )
+                    expert = "GD_DEFENSE_EXPERT" in held and (
+                        (group.chair_mentor_id is not None and int(group.chair_mentor_id) == int(mentor.id))
+                        or any(gid.user_matches_judge_seat(seat, mentor=mentor) for seat in gid.judge_panel_seats(group))
+                    )
+                    if secretary or expert:
+                        batch_ids.add(int(group.batch_id))
+        if not batch_ids:
+            scope_ids = accessible_student_ids(db, _tid())
+            batch_ids.update(int(x) for x in db.scalars(select(GraduationStudent.batch_id).where(
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.id.in_(scope_ids or [-1]),
+                GraduationStudent.batch_id.is_not(None),
+                GraduationStudent.is_deleted.is_(False),
+            ).distinct()).all() if x)
         rows = db.scalars(select(GraduationBatch).where(
             GraduationBatch.tenant_id == _tid(),
-            GraduationBatch.id.in_(batch_ids or [-1]),
+            GraduationBatch.id.in_(sorted(batch_ids) or [-1]),
             GraduationBatch.is_deleted.is_(False),
             GraduationBatch.status.in_(("DRAFT", "RUNNING", "CLOSED")),
         ).order_by(
@@ -240,6 +285,12 @@ def teacher_graduation_my_students(
     pageSize: int = Query(20, ge=1, le=100), user=Depends(get_current_user),
 ):
     return success(_paged_service(tea.graduation_my_students, user, batchId, page, pageSize))
+
+
+@router.get("/workbench", summary="老师毕设工作台：按我的身份汇总待办（与 PC 同源）")
+def teacher_graduation_workbench(batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
+    from app.modules.graduation.services import graduation_teacher_workbench_service as workbench
+    return success(workbench.build(user, batch_id=_require_batch(batchId)))
 
 
 @router.get("/proposal/{proposal_id}")

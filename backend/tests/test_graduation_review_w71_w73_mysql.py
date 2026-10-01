@@ -49,7 +49,7 @@ def test_w71_w72_contract_is_exact_version_append_only_and_same_transaction():
     evidence = _read("app/modules/graduation/services/graduation_review_feedback_service.py")
     records = _read("app/modules/graduation/materials/record_service.py")
     schema = _read("app/modules/graduation/schemas/graduation_review.py")
-    overlay = _read("app/modules/graduation/routers/graduation_review_w7_router.py")
+    overlay = _read("app/modules/graduation/routers/graduation_sensitive_router.py")
     assert 'down_revision = "20260820_teacher_emp_reco"' in migration
     for column in ("material_id", "file_version_id", "source_sha256", "started_at"):
         assert f'"{column}"' in migration

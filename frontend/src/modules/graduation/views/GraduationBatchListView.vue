@@ -22,7 +22,7 @@
         description="当前筛选条件下没有批次。可以放宽条件，或清空筛选看全部。"
       >
         <template #actions>
-          <button type="button" class="mp-btn" @click="reset">清空筛选</button>
+          <AppButton @click="reset">清空筛选</AppButton>
         </template>
       </EmptyState>
       <EmptyState
@@ -31,8 +31,8 @@
         description="先建立本届毕业设计批次并设置阶段时间，才能导入学生、分配导师和开放选题。"
       >
         <template #actions>
-          <button type="button" class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/batches/create')">＋ 新建批次</button>
-          <button type="button" class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-batch-create')">查看建批说明</button>
+          <AppButton variant="primary" @click="$router.push('/admin/graduation/batches/create')">＋ 新建批次</AppButton>
+          <AppButton @click="$router.push('/admin/help?topic=gd-card-batch-create')">查看建批说明</AppButton>
         </template>
       </EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
@@ -73,6 +73,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppExportButton, AppPageGuide } from '@/components/common'
@@ -85,7 +86,7 @@ const EMPTY_FILTERS = () => ({ keyword: '', status: '', dateStart: '', dateEnd: 
 
 export default {
   name: 'GraduationBatchListView',
-  components: {
+  components: { AppButton,
     AppPageGuide,
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
     AppConfirmDialog, AppDateDisplay, AppExportButton

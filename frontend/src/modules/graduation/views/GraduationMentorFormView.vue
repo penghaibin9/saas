@@ -21,13 +21,14 @@
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template #footer>
-      <button type="button" class="mp-btn" @click="$router.push('/admin/graduation/mentors')">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">保存</button>
+      <AppButton @click="$router.push('/admin/graduation/mentors')">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting" @click="submit">保存</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
 import { MENTOR_TYPE } from '@/modules/graduation/constants/graduation-mentor.constants'
@@ -41,7 +42,7 @@ const EMPTY_FORM = () => ({
 
 export default {
   name: 'GraduationMentorFormView',
-  components: { GraduationFormPageShell, AppSelect },
+  components: { AppButton, GraduationFormPageShell, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { MENTOR_TYPE, editing: null, form: EMPTY_FORM(), formError: '', submitting: false }

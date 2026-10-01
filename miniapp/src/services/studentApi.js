@@ -99,6 +99,8 @@ export const studentApi = {
   submitInternshipSafetyCourse: (id, body) => internship.studentInternshipSafetySubmit(id, body),
   commitInternshipSafety: (id, body) => internship.studentInternshipSafetyCommit(id, body),
   getGraduation: () => latestRead('student:graduation:overview', () => real.enrichGraduation()),
+  // 办理进度 + 唯一“当前要做”：后端统一派生，与学生 PC 同源
+  getGraduationJourney: () => latestRead('student:graduation:journey', () => realRequest('/mobile/graduation/journey')),
   getGraduationMaterialLibrary: () =>
     latestRead('student:graduation:materials', () => realRequest('/mobile/graduation/material-center/library?includeHistory=true')),
   submitGraduationMaterial: (materialCode, body) =>

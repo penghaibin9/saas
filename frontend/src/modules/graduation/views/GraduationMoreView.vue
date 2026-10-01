@@ -30,7 +30,7 @@
         description="成果互查是让学生之间互相查论文、再据此整改。这一步不是必做的——学校要求做才做。"
       >
         <template v-if="canPeerAssign" #actions>
-          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/more/peer-assign')">分配互查</button>
+          <AppButton variant="primary" @click="$router.push('/admin/graduation/more/peer-assign')">分配互查</AppButton>
         </template>
       </EmptyState>
       <DataTable v-else :columns="peerCols" :rows="rows" row-key="id">
@@ -47,7 +47,7 @@
         description="把评委先录进专家库，之后每次排答辩直接从库里挑，不用重复录入。校外专家可以标记，需要回避的也能在这里记上。"
       >
         <template v-if="canManageExperts" #actions>
-          <button class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/more/expert/create')">＋ 新增专家</button>
+          <AppButton variant="primary" @click="$router.push('/admin/graduation/more/expert/create')">＋ 新增专家</AppButton>
         </template>
       </EmptyState>
       <DataTable v-else :columns="expertCols" :rows="rows" row-key="id">
@@ -112,6 +112,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 /** 互查整改 / 答辩专家库 / 成绩更正申诉（/admin/graduation/more?panel=peer|experts|appeals）。 */
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
@@ -134,7 +135,7 @@ const MORE_TABS = [
 
 export default {
   name: 'GraduationMoreView',
-  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppPermissionButton },
+  components: { AppButton, ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppPermissionButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

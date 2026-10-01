@@ -9,12 +9,14 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
 from app.core.tenant_scoped import tenant_get
-from app.models import GraduationGuidance, GraduationGuidancePlan, GraduationMidterm, GraduationStudent
+from app.models import (
+    GraduationGuidance, GraduationGuidancePlan, GraduationMidterm, GraduationProposal, GraduationStudent,
+)
 from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
 from app.modules.graduation.services.graduation_scope_service import assert_student_access
 from app.services.db_service import _iso, _tid, session
@@ -93,12 +95,74 @@ def list_plans(page, page_size, gd_student_id=None, batch_id=None):
         return [svc._plan_row(row, student) for row, student in rows], total
 
 
+def _approved_proposal_exists():
+    return exists().where(
+        GraduationProposal.tenant_id == GraduationStudent.tenant_id,
+        GraduationProposal.gd_student_id == GraduationStudent.id,
+        GraduationProposal.is_deleted.is_(False),
+        GraduationProposal.status == "APPROVED",
+    )
+
+
+def _midterm_eligible_clause():
+    """可发起中期检查的学生：已处于中期阶段，或仍在「指导中」但开题已通过。
+
+    不再要求管理员逐个把学生「推进」到中期阶段；首次检查时由 conduct_check 自动完成阶段迁移。
+    """
+    return or_(
+        GraduationStudent.stage == "MIDTERM",
+        and_(GraduationStudent.stage == "GUIDING", _approved_proposal_exists()),
+    )
+
+
+def _no_midterm_row():
+    return ~exists().where(
+        GraduationMidterm.tenant_id == GraduationStudent.tenant_id,
+        GraduationMidterm.gd_student_id == GraduationStudent.id,
+        GraduationMidterm.is_deleted.is_(False),
+    )
+
+
+def _virtual_midterm_row(student) -> dict:
+    """尚未检查学生的只读“待检查”行；不落库，首次检查时才创建真实记录。"""
+    from app.modules.graduation.services import graduation_midterm_service as svc
+    return {
+        "exists": False, "id": None, "gdStudentId": str(student.id),
+        "studentName": student.name, "studentNo": student.student_no or "",
+        "advisorName": student.advisor_name or "", "status": "PENDING",
+        "statusLabel": svc.STATUS_LABEL["PENDING"], "statusTone": svc.STATUS_TONE["PENDING"],
+        "conclusion": "", "conclusionLabel": "", "checkComment": "",
+        "checkBy": "", "checkedAt": None, "rectifyDeadline": None,
+        "rectifyContent": "", "rectifySubmittedAt": None, "rectifyAttempts": 0,
+        "reviewComment": "", "reviewedBy": "", "reviewedAt": None, "updatedAt": None,
+    }
+
+
 def list_midterms(page, page_size, keyword=None, status=None, batch_id=None):
+    """中期检查列表。
+
+    “待检查”(PENDING) 除已落库记录外，还包含开题已通过、尚未发起检查的学生（虚拟行排在最前），
+    这样教师无需等待管理员推进阶段即可在 PC 与小程序看到自己的中期待办。
+    """
     from app.modules.graduation.services import graduation_midterm_service as svc
     if not batch_id:
         raise AppException("VALIDATION_ERROR", "请先选择毕业设计批次")
+    page = max(1, int(page or 1))
     with session() as db:
         scope_select = student_scope_select(db, _tid(), batch_id=batch_id)
+        keyword_clause = _keyword_filter(keyword)
+
+        include_virtual = status in (None, "", "PENDING")
+        virtual_total = 0
+        virtual_filters = []
+        if include_virtual:
+            virtual_filters = [*_student_filters(scope_select), _midterm_eligible_clause(), _no_midterm_row()]
+            if keyword_clause is not None:
+                virtual_filters.append(keyword_clause)
+            virtual_total = int(db.scalar(
+                select(func.count()).select_from(GraduationStudent).where(*virtual_filters)
+            ) or 0)
+
         filters = [
             GraduationMidterm.tenant_id == _tid(),
             GraduationMidterm.is_deleted.is_(False),
@@ -106,21 +170,33 @@ def list_midterms(page, page_size, keyword=None, status=None, batch_id=None):
         ]
         if status:
             filters.append(GraduationMidterm.status == status)
-        keyword_clause = _keyword_filter(keyword)
         if keyword_clause is not None:
             filters.append(keyword_clause)
         join_on = GraduationStudent.id == GraduationMidterm.gd_student_id
-        total = int(db.scalar(
+        real_total = int(db.scalar(
             select(func.count()).select_from(GraduationMidterm)
             .join(GraduationStudent, join_on).where(*filters)
         ) or 0)
-        rows = db.execute(
-            select(GraduationMidterm, GraduationStudent)
-            .join(GraduationStudent, join_on).where(*filters)
-            .order_by(GraduationMidterm.id.desc())
-            .offset((max(1, page) - 1) * page_size).limit(page_size)
-        ).all()
-        return [svc._row(row, student) for row, student in rows], total
+
+        offset = (page - 1) * page_size
+        items: list[dict] = []
+        if include_virtual and offset < virtual_total:
+            students = db.scalars(
+                select(GraduationStudent).where(*virtual_filters)
+                .order_by(GraduationStudent.id.asc()).offset(offset).limit(page_size)
+            ).all()
+            items.extend(_virtual_midterm_row(student) for student in students)
+        remaining = page_size - len(items)
+        if remaining > 0:
+            real_offset = max(0, offset - virtual_total)
+            rows = db.execute(
+                select(GraduationMidterm, GraduationStudent)
+                .join(GraduationStudent, join_on).where(*filters)
+                .order_by(GraduationMidterm.id.desc())
+                .offset(real_offset).limit(remaining)
+            ).all()
+            items.extend({"exists": True, **svc._row(row, student)} for row, student in rows)
+        return items, virtual_total + real_total
 
 
 def get_midterm(gd_student_id) -> dict:
@@ -174,9 +250,25 @@ def conduct_check(gd_student_id, conclusion, comment=None, rectify_deadline=None
     if conclusion not in ("PASS", "RECTIFY", "FAIL"):
         raise AppException("VALIDATION_ERROR", "conclusion 必须是 PASS/RECTIFY/FAIL")
     with session() as db:
-        student, row = _locked_student_midterm(db, gd_student_id, "midterm.review", create=True)
-        if student.stage not in ("MIDTERM", "FINAL_CHECK"):
+        student, row = _locked_student_midterm(db, gd_student_id, "midterm.review")
+        if student.stage == "GUIDING":
+            approved = db.scalar(select(func.count()).select_from(GraduationProposal).where(
+                GraduationProposal.tenant_id == _tid(), GraduationProposal.gd_student_id == student.id,
+                GraduationProposal.is_deleted.is_(False), GraduationProposal.status == "APPROVED",
+            ))
+            if not approved:
+                raise AppException("DATA_CONFLICT", "开题报告通过后才能进行中期检查")
+            # 开题已通过即自动进入中期阶段，无需管理员逐个推进。
+            student.stage = "MIDTERM"
+            svc._audit(db, student.id, "自动进入中期阶段", "开题已通过，发起中期检查", "GUIDING", "MIDTERM")
+        elif student.stage not in ("MIDTERM", "FINAL_CHECK"):
             raise AppException("DATA_CONFLICT", "当前阶段不可发起中期检查")
+        if not row:
+            row = GraduationMidterm(
+                tenant_id=_tid(), gd_student_id=student.id, batch_id=student.batch_id, status="PENDING",
+            )
+            db.add(row)
+            db.flush()
         if row.status not in ("PENDING", "RECTIFIED_PASS", "CHECKED_FAIL"):
             raise AppException("DATA_CONFLICT", "该中期检查已被处理，请刷新")
         operator, _ = svc._op()

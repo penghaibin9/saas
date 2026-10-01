@@ -12,6 +12,7 @@ import hashlib
 import json
 from contextvars import ContextVar
 from collections import defaultdict
+from types import SimpleNamespace
 
 from sqlalchemy import and_, select
 
@@ -288,6 +289,25 @@ def enrich_snapshot(db, batch, snapshot: dict, *, lock: bool = False) -> dict:
     return snapshot
 
 
+def student_rule_check(db, student, checklist: list[dict], missing: list[str]) -> tuple[list[dict], list[str]]:
+    """Single-student generate/submit uses exactly the batch preview readiness rule.
+
+    Without this, generate/submit only saw the seven legacy business items and a
+    student could be submitted as complete while filing later failed on active
+    material-rule items (e.g. 指导记录附件 or a school-added required material).
+    A batch without an enabled rule keeps the legacy result; filing still fails
+    closed on the missing rule.
+    """
+    row = {"studentId": str(student.id), "checklist": list(checklist), "missing": list(missing)}
+    try:
+        enrich_snapshot(db, SimpleNamespace(id=int(student.batch_id)), {"rows": [row]})
+    except AppException as exc:
+        if exc.code == "MATERIAL_RULE_NOT_INITIALIZED":
+            return checklist, missing
+        raise
+    return row["checklist"], row["missing"]
+
+
 def _freeze_state(db, batch_id: int, student_ids: list[int], *, lock: bool = False):
     _, items, rule_hash = _load_rule_items(db, int(batch_id), lock=lock)
     grouped = _load_material_rows(db, student_ids, lock=lock)
@@ -420,4 +440,4 @@ def install_archive_v2_guard() -> None:
     manifests.batch_file = guarded_batch_file
 
 
-__all__ = ["enrich_snapshot", "install_archive_v2_guard"]
+__all__ = ["enrich_snapshot", "install_archive_v2_guard", "student_rule_check"]

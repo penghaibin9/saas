@@ -69,7 +69,7 @@
                 <tr v-for="p in detail.proposals" :key="p.id">
                   <td class="is-who">{{ graduationMaterialStageLabel(p.type) }}</td>
                   <td>{{ p.version }}</td>
-                  <td>{{ fmtTime(p.submitAt) || '未提交' }}</td>
+                  <td>{{ p.submitAt }}</td>
                   <td><StatusTag :status="p.status" dot /></td>
                   <td>{{ p.reviewer }}</td>
                 </tr>
@@ -82,7 +82,7 @@
                 <tr v-for="f in detail.finals" :key="f.id">
                   <td class="is-who">{{ graduationMaterialStageLabel(f.type) }}</td>
                   <td>{{ f.version }}</td>
-                  <td>{{ fmtTime(f.submitAt) || '未提交' }}</td>
+                  <td>{{ f.submitAt }}</td>
                   <td><StatusTag :status="f.status" dot /></td>
                   <td>{{ f.plagiarism }}</td>
                 </tr>
@@ -96,7 +96,7 @@
                   <td class="is-who">{{ p.version }}</td>
                   <td>{{ p.rate }}</td>
                   <td>{{ graduationPlagiarismStatusLabel(p.status) }}</td>
-                  <td>{{ fmtTime(p.time) || '未记录' }}</td>
+                  <td>{{ p.time }}</td>
                 </tr>
               </tbody>
             </table>
@@ -238,8 +238,6 @@ import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-ri
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
 
-const academicReturn = value => typeof value === 'string' && /^\/admin\/academic-affairs\/graduation\/(?:audit-console|\d+\/results)(?:\?[^#]*)?$/.test(value) ? value : ''
-
 export default {
   name: 'GraduationStudentDetailView',
   components: { ModulePageShell, ModuleToolbar, StatusTag, LoadingState, ErrorState, AppConfirmDialog, AppSensitiveText, AppAuditTrail, AppSectionCard, AppDescriptionList },
@@ -271,7 +269,6 @@ export default {
     }
   },
   computed: {
-    graduationReturnTo() { return this.detail ? academicReturn(this.$route.query.returnTo) : '' },
     topicInfoItems() {
       if (!this.detail) return []
       const d = this.detail
@@ -300,10 +297,9 @@ export default {
     },
     toolbarActions() {
       if (!this.detail || this.detail.stage === 'ARCHIVED') {
-        return this.graduationReturnTo ? [{ key: 'backAcademic', label: '返回毕业审核' }, { key: 'back', label: '返回列表' }] : [{ key: 'back', label: '返回列表' }]
+        return [{ key: 'back', label: '返回列表' }]
       }
       const actions = []
-      if (this.graduationReturnTo) actions.push({ key: 'backAcademic', label: '返回毕业审核' })
       if (!this.detail.topicId) actions.push({ key: 'assignTopic', label: '分配选题' })
       if (!this.detail.advisorName) actions.push({ key: 'assignAdvisor', label: '分配导师' })
       if (this.detail.stage !== 'DEFENSE' && this.detail.stage !== 'ARCHIVED') {
@@ -394,7 +390,6 @@ export default {
       this.loading = false
     },
     async onToolbar(key) {
-      if (key === 'backAcademic' && this.graduationReturnTo) { this.$router.push(this.graduationReturnTo); return }
       if (key === 'back') { this.$router.push('/admin/graduation/students'); return }
       if (key === 'assignTopic') {
         this.$router.push(`/admin/graduation/students/${this.detail.id}/assign-topic`)

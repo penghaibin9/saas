@@ -426,7 +426,10 @@ def _row(r: GraduationRiskCase, stu=None) -> dict:
         "id": str(r.id), "riskCode": r.risk_code, "riskName": r.risk_name,
         "gdStudentId": str(r.gd_student_id), "studentName": stu.name if stu else "",
         "studentNo": stu.student_no if stu else "", "advisorName": stu.advisor_name if stu else "",
-        "level": r.level, "status": r.status, "statusLabel": STATUS_LABEL.get(r.status, r.status),
+        "level": r.level, "status": r.status,
+        # 条件已消失（例如开题后来通过了）的风险不会被自动关闭，列表上要一眼看出来，免得当成误报。
+        "statusLabel": STATUS_LABEL.get(r.status, r.status) + (
+            "（条件已消失，可关闭）" if r.status in ("OPEN", "PROCESSING") and getattr(r, "condition_active", True) is False else ""),
         "statusTone": STATUS_TONE.get(r.status, "default"), "assignee": r.assignee or "",
         "handleNote": r.handle_note or "", "closeReason": r.close_reason or "",
         "detectedAt": _iso(r.detected_at), "firstDetectedAt": _iso(first_at),
@@ -477,58 +480,6 @@ def list_risks(page: int, page_size: int, risk_code=None, level=None, status=Non
         ).all()
         items = [_row(risk, student) for risk, student in rows]
         return items, total
-
-
-def accept_risk(rid, assignee: str = None) -> dict:
-    with session() as db:
-        r = tenant_get(db, GraduationRiskCase, int(rid))
-        if not r or r.is_deleted or r.tenant_id != _tid():
-            raise not_found("风险记录不存在")
-        assert_student_access(db, tenant_get(db, GraduationStudent, r.gd_student_id), "risk.accept")
-        if r.status != "OPEN":
-            raise AppException("DATA_CONFLICT", "仅「待受理」风险可受理")
-        n, _ = _op()
-        r.status = "PROCESSING"
-        r.assignee = assignee or n
-        _audit(db, r.id, "受理风险")
-        db.commit()
-        return _row(r, tenant_get(db, GraduationStudent, r.gd_student_id))
-
-
-def process_risk(rid, note: str) -> dict:
-    with session() as db:
-        r = tenant_get(db, GraduationRiskCase, int(rid))
-        if not r or r.is_deleted or r.tenant_id != _tid():
-            raise not_found("风险记录不存在")
-        assert_student_access(db, tenant_get(db, GraduationStudent, r.gd_student_id), "risk.process")
-        if r.status != "PROCESSING":
-            raise AppException("DATA_CONFLICT", "仅「处理中」风险可记录处理")
-        r.handle_note = note
-        _audit(db, r.id, "处理风险", note)
-        db.commit()
-        return _row(r, tenant_get(db, GraduationStudent, r.gd_student_id))
-
-
-def close_risk(rid, reason: str) -> dict:
-    if not reason or len(reason.strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "关闭原因必填且不少于 5 字")
-    with session() as db:
-        r = tenant_get(db, GraduationRiskCase, int(rid))
-        if not r or r.is_deleted or r.tenant_id != _tid():
-            raise not_found("风险记录不存在")
-        assert_student_access(db, tenant_get(db, GraduationStudent, r.gd_student_id), "risk.close")
-        # 处理中可关；待受理且条件已消失也可直接关闭（避免空转受理）
-        allow_open_inactive = (
-            r.status == "OPEN" and getattr(r, "condition_active", True) is False
-        )
-        if r.status != "PROCESSING" and not allow_open_inactive:
-            raise AppException("DATA_CONFLICT", "仅「处理中」风险可关闭（条件已消失的待受理除外）")
-        r.status = "CLOSED"
-        r.close_reason = reason.strip()
-        r.closed_at = _now()
-        _audit(db, r.id, "关闭风险", reason.strip())
-        db.commit()
-        return _row(r, tenant_get(db, GraduationStudent, r.gd_student_id))
 
 
 def risk_stats(batch_id=None) -> dict:

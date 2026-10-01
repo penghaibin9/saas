@@ -842,6 +842,10 @@ export function getVisibleNavPlan({ includePlanned = false, permissionPatterns =
     // 用于一个页面被多个真实后端权限码共同覆盖的场景，如学生主档 view/picker 两组角色）
     if (applyPerm && Array.isArray(leaf.permissionAny) && leaf.permissionAny.length
         && !leaf.permissionAny.some((k) => matchPermission(permissionPatterns, k))) return false
+    // menuRequiresAny：只决定“菜单里是否展示”，不参与路由权限投影（旧链接照常可进）。
+    // 用于给同一权限码下的不同人群（如毕设管理员 vs 普通老师）收敛菜单。
+    if (applyPerm && Array.isArray(leaf.menuRequiresAny) && leaf.menuRequiresAny.length
+        && !leaf.menuRequiresAny.some((k) => matchPermission(permissionPatterns, k))) return false
     return true
   }
   const keepMod = (mod2) => {

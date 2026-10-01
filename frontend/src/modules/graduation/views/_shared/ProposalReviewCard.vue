@@ -359,10 +359,10 @@ export default {
           if (!this.sameTask(proposalId, detailId)) return
           this.reviewReceipt = {
             title: `${targetName}的开题材料已处理`,
-            result: `服务器最新结论：${this.detail?.statusLabel || res.data.statusLabel}`,
+            result: `当前结论：${this.detail?.statusLabel || res.data?.statusLabel || (action === 'APPROVE' ? '已通过' : '已退回，待学生修改')}`,
             next: action === 'APPROVE' ? '学生端已同步，可继续后续环节。' : '下一步由学生按意见修改并提交新版本。'
           }
-          toast.success('批阅完成，服务器最新结论已回读并同步学生端')
+          toast.success('批阅完成，学生端已同步')
           this.$emit('reviewed', res.data)
         } else if (isGraduationConflictResponse(res)) {
           const conflictMessage = graduationConflictMessage(res)

@@ -18,8 +18,8 @@
       <div><dt>发起人</dt><dd>{{ detail.requestedBy }} · {{ detail.requestedAt }}</dd></div>
     </dl>
     <template v-if="canTopicReview && detail && detail.status === 'PENDING'" #footer>
-      <button type="button" class="mp-btn mp-btn--primary" @click="askApprove">通过</button>
-      <button type="button" class="mp-btn mp-link--danger" @click="askReject">驳回</button>
+      <AppButton variant="primary" @click="askApprove">通过</AppButton>
+      <AppButton variant="danger" @click="askReject">驳回</AppButton>
     </template>
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
@@ -30,6 +30,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, StatusTag } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
@@ -39,7 +40,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'TopicChangeDetailView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, StatusTag, AppConfirmDialog },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, StatusTag, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

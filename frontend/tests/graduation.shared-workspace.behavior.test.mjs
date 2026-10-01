@@ -71,9 +71,9 @@ test('uses the existing workspace opt-in without adding another shell, sidebar o
   assert.match(source, /<router-view v-else :key="businessViewKey" :ctx="businessCtx"/)
 })
 
-test('all 8 workspaces and 24 production leaves preserve their targets and inherit the selected batch', () => {
+test('all 8 workspaces and 29 production leaves preserve their targets and inherit the selected batch', () => {
   assert.equal(workspaces.length, 8)
-  assert.equal(leaves.length, 24)
+  assert.equal(leaves.length, 29)
   const { options, calls } = loadLayout()
   for (const item of [...workspaces, ...leaves]) {
     const before = new URL(item.path, 'https://test.invalid')

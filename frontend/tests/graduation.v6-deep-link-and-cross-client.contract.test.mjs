@@ -3,8 +3,6 @@ import { readFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import vm from 'node:vm'
-import { parse, compileTemplate } from '@vue/compiler-sfc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const read = (path) => readFileSync(resolve(here, '..', path), 'utf8')
@@ -22,34 +20,6 @@ const studentMini = read('../miniapp/src/pages/student/graduation/index.vue')
 const teacherMini = read('../miniapp/src/pages/teacher/graduation-guide/index.vue')
 const teacherCountTruth = read('../miniapp/src/services/graduationTeacherCountTruth.js')
 const miniFileSdk = read('../miniapp/src/services/fileSdk.js')
-
-function topicForm(roleCode, api) {
-  const { descriptor, errors } = parse(topic)
-  assert.deepEqual(errors, [])
-  const source = descriptor.script.content.replace(/^import .*$/gm, '').replace('export default', 'globalThis.component =')
-  const actor = { currentRoleCode: roleCode }
-  const sandbox = {
-    gdTopicApi: api,
-    currentUserFromToken: () => actor,
-    toast: { success() {}, info() {} },
-    GD_TOPIC_CATEGORY: [], GD_TOPIC_DIFFICULTY: [],
-    GraduationFormPageShell: {}, ErrorState: {}, LoadingState: {},
-    AppGraduationDesignBatchPicker: {}, AppGraduationMentorPicker: {}, AppSelect: {}, AppTemplateChips: {}
-  }
-  vm.runInNewContext(source, sandbox)
-  const component = sandbox.component
-  const instance = {
-    ...component.data(),
-    ctx: { ctxKey: roleCode, currentRole: { roleCode: roleCode === 'GD_MENTOR' ? 'SCHOOL_ADMIN' : 'GD_MENTOR' } },
-    $route: { params: {}, query: {} },
-    $router: { resolve: () => ({ fullPath: '/admin/graduation/topics' }), push: async () => {} }
-  }
-  for (const [key, getter] of Object.entries(component.computed)) {
-    Object.defineProperty(instance, key, { get: () => getter.call(instance) })
-  }
-  for (const [key, method] of Object.entries(component.methods)) instance[key] = method.bind(instance)
-  return { instance, actor }
-}
 
 test('deep-link shell keeps work context and safe return while using an in-flow sticky footer', () => {
   assert.match(shell, /layout === 'inline'/)
@@ -107,45 +77,6 @@ test('topic application deep link explains the real review handoff without bypas
   assert.match(topic, /beforeRouteLeave/)
   assert.match(topic, /submitReview/)
   assert.match(topic, /审核通过后才进入选题轮次/)
-})
-
-test('mentor topic form self-binds without a picker or client-supplied advisor, while manager keeps selection', async () => {
-  const { descriptor } = parse(topic)
-  assert.deepEqual(compileTemplate({ source: descriptor.template.content, filename: 'TopicLibFormView.vue', id: 'topic-form' }).errors, [])
-  assert.match(descriptor.template.content, /v-if="mentorSelfBound"[\s\S]*AppGraduationMentorPicker v-else/)
-  const mentorBodies = []
-  let release
-  const pending = new Promise(resolve => { release = resolve })
-  const mentor = topicForm('GD_MENTOR', {
-    createTopic: async body => { mentorBodies.push(body); await pending; return { code: 0, data: { id: 'T1' } } },
-    updateTopic: async () => { throw Error('unexpected update') }
-  }).instance
-  mentor.form.title = '真实导师申报题目'
-  mentor.form.advisorName = '前页残留的其他导师'
-  assert.equal(mentor.mentorSelfBound, true)
-  assert.equal(mentor.advisorReady, true)
-  assert.equal(mentor.completionCount, 2)
-  const saving = mentor.submitForm()
-  await mentor.submitForm()
-  assert.equal(mentorBodies.length, 1)
-  assert.equal(Object.hasOwn(mentorBodies[0], 'advisorName'), false)
-  mentor.form.title = '保存中改动不能覆盖快照'
-  assert.equal(mentorBodies[0].title, '真实导师申报题目')
-  release()
-  await saving
-
-  const managerBodies = []
-  const manager = topicForm('SCHOOL_ADMIN', {
-    createTopic: async body => { managerBodies.push(body); return { code: 0, data: { id: 'T2' } } },
-    updateTopic: async () => { throw Error('unexpected update') }
-  }).instance
-  manager.form.title = '管理员申报题目'
-  assert.equal(manager.mentorSelfBound, false)
-  assert.equal(manager.advisorReady, false)
-  manager.form.advisorName = '管理员选择的导师'
-  assert.equal(manager.advisorReady, true)
-  await manager.submitForm()
-  assert.equal(managerBodies[0].advisorName, '管理员选择的导师')
 })
 
 test('defense group deep link separates schedule, real identities and students, then rereads server truth', () => {
@@ -215,12 +146,13 @@ test('teacher miniapp locks an exact batch task before previewing the same FileV
   assert.match(miniFileSdk, /realDownload\(`\$\{openPath\}\?ticket=/)
 })
 
-test('student miniapp keeps high-frequency status and hands large thesis upload to student PC', () => {
+// 产品决定（2026-09-28）：论文初稿/定稿可在手机提交（PDF/Word ≤20MB）；仅设计作品包、源代码等大型文件交给电脑端。
+test('student miniapp accepts thesis PDF/Word on phone and hands only large packages to student PC', () => {
   assert.match(studentMini, /毕业设计/)
-  assert.match(studentMini, /学生\s*PC/)
   assert.match(studentMini, /论文/)
   assert.match(studentMini, /material/)
   assert.match(studentMini, /fileSdk\.upload/)
   assert.match(studentMini, /onPullDownRefresh/)
-  assert.match(studentMini, /(?:正式|大型)论文[^\n<]*学生\s*PC/)
+  assert.match(studentMini, /设计作品包、源代码等大型文件请到电脑端上传/)
+  assert.doesNotMatch(studentMini, /(?:正式|大型)论文[^\n<]*学生\s*PC/)
 })

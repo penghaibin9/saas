@@ -27,7 +27,7 @@
         description="当前筛选条件下没有课题。可以放宽条件，或清空筛选看全部。"
       >
         <template #actions>
-          <button class="mp-btn" @click="reset">清空筛选</button>
+          <AppButton @click="reset">清空筛选</AppButton>
         </template>
       </EmptyState>
       <EmptyState
@@ -36,9 +36,9 @@
         description="学生能选的题，都来自题目库。老师申报的题目要先经管理员审核通过才会入池，入池后才会出现在这里、学生才选得到。"
       >
         <template #actions>
-          <button v-if="canTopicReview" class="mp-btn mp-btn--primary" @click="$router.push('/admin/graduation/topic-lib?panel=pending')">去审核待审题目</button>
-          <button v-if="canTopicView" class="mp-btn" @click="$router.push('/admin/graduation/topic-lib?panel=list')">去题目库</button>
-          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-topic-review')">怎么审核题目？</button>
+          <AppButton v-if="canTopicReview" variant="primary" @click="$router.push('/admin/graduation/topic-lib?panel=pending')">去审核待审题目</AppButton>
+          <AppButton v-if="canTopicView" @click="$router.push('/admin/graduation/topic-lib?panel=list')">去题目库</AppButton>
+          <AppButton @click="$router.push('/admin/help?topic=gd-card-topic-review')">怎么审核题目？</AppButton>
         </template>
       </EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
@@ -113,6 +113,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import {
   ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
   StatusTag, LoadingState, ErrorState, EmptyState
@@ -130,7 +131,7 @@ const EMPTY_FILTERS = () => ({ keyword: '', status: '', dateStart: '', dateEnd: 
 
 export default {
   name: 'TopicManageView',
-  components: { AppPageGuide,
+  components: { AppButton, AppPageGuide,
     ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag,
     LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppExportButton
   },

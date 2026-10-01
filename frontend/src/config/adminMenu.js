@@ -44,7 +44,8 @@ function moduleCandidates(group, mod) {
     sensitive: row.path.includes('/logs') || row.path.includes('/security'),
     permissionKey: row.permissionKey || mod.permissionKey,
     permissionAny: Array.isArray(row.permissionAny) ? row.permissionAny : [],
-    permissionAll: Array.isArray(row.permissionAll) ? row.permissionAll : []
+    permissionAll: Array.isArray(row.permissionAll) ? row.permissionAll : [],
+    menuRequiresAny: Array.isArray(row.menuRequiresAny) ? row.menuRequiresAny : []
   }))
 }
 
@@ -109,6 +110,9 @@ function canSeeCandidate(leaf, ctx) {
 
   const patterns = ctx && ctx.permissionPatterns
   if (Array.isArray(patterns)) {
+    // 仅菜单可见性：同一权限码下再按人群收敛（不影响路由权限）。
+    const menuKeys = leaf.menuRequiresAny || []
+    if (menuKeys.length && !menuKeys.some((key) => matchPermission(patterns, key))) return false
     const anyKeys = leaf.permissionAny || []
     const allKeys = leaf.permissionAll || []
     if (anyKeys.length) return anyKeys.some((key) => matchPermission(patterns, key))

@@ -60,7 +60,7 @@ def _teacher_workbook() -> bytes:
             ["e2e_advisor_a", "E2E指导教师A", COLLEGE, "指导教师",
              "GD_MENTOR,INTERN_MENTOR", "", ""],
             ["e2e_advisor_b", "E2E指导教师B", COLLEGE, "指导教师",
-             "GD_MENTOR,GD_REVIEWER", "", ""],
+             "GD_MENTOR", "", ""],
             ["e2e_reviewer", "E2E评阅教师", COLLEGE, "评阅教师",
              "GD_REVIEWER", "", ""],
             ["e2e_defense_a", "E2E答辩专家A", COLLEGE, "答辩专家",

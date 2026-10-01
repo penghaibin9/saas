@@ -16,7 +16,7 @@
 
     <template v-else-if="data">
       <div class="gdep__summary">
-        <div><span>当前批次</span><strong>{{ batchName || '批次名称待核对' }}</strong></div>
+        <div><span>当前批次</span><strong>{{ data.batchId || '未识别' }}</strong></div>
         <div><span>延期状态</span><strong>{{ data.defenseDelay?.statusLabel || '未申请' }}</strong></div>
         <div><span>优秀成果</span><strong>{{ data.excellentOutcome?.statusLabel || '暂无认定' }}</strong></div>
         <div><span>下一步</span><strong>{{ nextStep }}</strong></div>
@@ -73,10 +73,8 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { graduationExtensionApi } from '@/services/graduationExtensionApi'
-import { portalApi } from '@/services/portalApi'
 
 const data = ref(null)
-const batchName = ref('')
 const loading = ref(false)
 const error = ref('')
 const reason = ref('')
@@ -102,17 +100,7 @@ async function load() {
   if (loading.value) return
   loading.value = true
   error.value = ''
-  try {
-    const [extension, overview] = await Promise.allSettled([
-      graduationExtensionApi.my(), portalApi.domainMy('graduation')
-    ])
-    if (extension.status === 'rejected') throw extension.reason
-    const next = extension.value
-    const mine = overview.status === 'fulfilled' ? overview.value : null
-    batchName.value = next?.batchId && mine?.hasData && String(next.batchId) === String(mine.batchId)
-      ? String(mine.batchName || '').trim() : ''
-    data.value = next
-  }
+  try { data.value = await graduationExtensionApi.my() }
   catch (e) { error.value = e?.message || '延期答辩与优秀成果状态加载失败' }
   finally { loading.value = false }
 }

@@ -22,7 +22,7 @@ test('batch create edit and detail never belong to overview', () => {
   const fullPath=path+'?batchId=51'
   assert.equal(workspaceRouteOwner(path,fullPath).modKey,'gd-batch-impl')
   const pages=GRADUATION_WORKSPACES.flatMap(m=>m.children.map(l=>({...l,id:l.path,moduleKey:m.key})))
-  assert.equal(activeWorkspacePage(pages,{fullPath,query:{}},'gd-workbench').label,'批次与规则')
+  assert.equal(activeWorkspacePage(pages,{fullPath,query:{}},'gd-workbench').label,'批次与时间节点')
  }
 })
 

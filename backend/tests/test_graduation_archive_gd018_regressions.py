@@ -68,3 +68,39 @@ def test_gdr12_exclusion_and_system_snapshot_fallback_are_bound_to_batch_preview
     assert "elif item.material_code in _SYSTEM_SNAPSHOT_CODES:" in preview
     assert "present = _source_ready(" in preview
     assert "legacy_present, sid, guidance_ids, plagiarism, proposal_defense_ids" in preview
+
+
+def test_risk_whose_condition_has_cleared_does_not_block_archive(db_mode):
+    """扫描已确认触发条件消失的风险（如开题后来通过了）不拦归档；仍命中的风险照旧拦。"""
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationRiskCase, GraduationStudent
+    from app.modules.graduation.services.graduation_archive_service import _count_open_risks
+
+    _set_ctx()
+    db = get_sessionmaker()()
+    try:
+        suffix = uuid.uuid4().hex[:10].upper()
+        student = GraduationStudent(
+            tenant_id=TID, student_no=f"GD18B-{suffix}", name="GD18条件消失生",
+            stage="COMPLETED", record_status="ACTIVE",
+        )
+        db.add(student)
+        db.flush()
+        cleared = GraduationRiskCase(
+            tenant_id=TID, risk_code="GD-R04", risk_name="开题逾期未提交或未获通过",
+            gd_student_id=int(student.id), level="HIGH", status="OPEN",
+        )
+        cleared.condition_active = False
+        db.add(cleared)
+        db.commit()
+        assert _count_open_risks(db, student) == 0
+
+        db.add(GraduationRiskCase(
+            tenant_id=TID, risk_code="GD-R06", risk_name="指导记录不足",
+            gd_student_id=int(student.id), level="MEDIUM", status="OPEN",
+        ))
+        db.commit()
+        assert _count_open_risks(db, student) == 1
+    finally:
+        db.close()
+        _clear_ctx()

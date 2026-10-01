@@ -28,6 +28,13 @@ _SCHED_TIER1_VIEW = legacy._SCHED_TIER1_VIEW
 _SCHED_ROOM_VIEW = legacy._SCHED_ROOM_VIEW
 
 
+@router.get("/schedule/my/today", summary="电脑端教师本人今日正式课次")
+def schedule_my_today(user=Depends(require_permission("academicAffairs.schedule.view"))):
+    from app.modules.academic_affairs.services.academic_affairs_teacher_today_service import teacher_today_projection
+
+    return success(teacher_today_projection(user))
+
+
 @router.post("/schedule-batches", summary="新建课表批次")
 def schedule_batch_create(
     body: ScheduleBatchCreate,
