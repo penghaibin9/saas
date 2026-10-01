@@ -50,7 +50,7 @@ jobs:
       SCHEDULER_MODE: external
     steps:
       - name: Checkout exact INT trigger head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

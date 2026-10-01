@@ -61,7 +61,7 @@ jobs:
 
     steps:
       - name: Checkout exact A head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
@@ -150,7 +150,7 @@ jobs:
 
     steps:
       - name: Checkout exact A head
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
