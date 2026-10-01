@@ -57,7 +57,7 @@ jobs:
             > audit-artifacts/file-capability-report.txt
       - name: Upload audit report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: file-capability-audit-report
           path: audit-artifacts/

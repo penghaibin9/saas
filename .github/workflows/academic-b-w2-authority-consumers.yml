@@ -69,7 +69,7 @@ jobs:
             --junitxml=w2-junit.xml
       - name: Upload W2 JUnit evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-b-w2-junit-${{ github.sha }}
           path: backend/w2-junit.xml

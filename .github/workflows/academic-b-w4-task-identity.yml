@@ -83,7 +83,7 @@ jobs:
           npm run build
       - name: Upload W4 JUnit evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-b-w4-task-identity-${{ github.sha }}
           path: backend/w4-junit.xml

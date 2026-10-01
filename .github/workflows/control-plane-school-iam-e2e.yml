@@ -453,7 +453,7 @@ jobs:
 
       - name: Upload school IAM Gold candidate evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: control-plane-school-iam-e2e-${{ github.event.pull_request.head.sha || github.sha }}
           path: |
