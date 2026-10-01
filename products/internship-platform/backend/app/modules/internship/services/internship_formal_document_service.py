@@ -6,7 +6,7 @@ A changed source snapshot creates a new document version; old PDFs are never ove
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -18,12 +18,16 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table
-from sqlalchemy import select
+from sqlalchemy import func, select
 
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
+from app.core.field_crypto import decrypt_sensitive
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     College,
     InternshipCheckin,
+    InternshipRecord,
+    InternshipEnterpriseContact,
     InternshipEnterpriseEval,
     InternshipFinalScore,
     InternshipMakeup,
@@ -34,6 +38,9 @@ from app.models import (
     Major,
     SchoolClass,
     StudentProfile,
+    StudentContact,
+    User,
+    WeeklyReport,
     Tenant,
 )
 from app.models.file import FileObject
@@ -90,10 +97,137 @@ def _org_name(db, model, ident, attr) -> str:
     return str(getattr(row, attr, "") or "")
 
 
+
+def _gender_label(value) -> str:
+    return {"M": "男", "MALE": "男", "1": "男", "男": "男",
+            "F": "女", "FEMALE": "女", "2": "女", "女": "女"}.get(str(value or "").upper(), "未登记")
+
+
+def _as_date(value):
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value or "")[:10])
+    except ValueError:
+        return None
+
+
+def _phone_for_pdf(reference: dict) -> str:
+    """Decrypt only at the authorized PDF boundary; cleartext never enters source JSON."""
+    token = str(reference.get("phoneEncrypted") or "")
+    if not token:
+        return "未登记"
+    try:
+        return str(decrypt_sensitive(token, "phone", allow_legacy_plaintext=False) or "未登记")
+    except AppException:
+        return "待核实"
+
+
+def _contact_reference(row, encrypted, *, name="", source="") -> dict:
+    token = str(encrypted or "")
+    result = {"source": source, "sourceId": str(row.id) if row else "",
+              "name": name, "phoneEncrypted": token if token.startswith("gAAAA") else ""}
+    result["status"] = "AVAILABLE" if _phone_for_pdf(result) not in {"未登记", "待核实"} else "UNAVAILABLE"
+    return result
+
+
+def _contacts_snapshot(db, record, student, *, evaluation=None) -> dict:
+    phone = db.scalar(select(StudentContact).where(
+        StudentContact.tenant_id == _tid(), StudentContact.student_id == student.id,
+        StudentContact.contact_type == "PHONE", StudentContact.is_deleted.is_(False),
+        StudentContact.verified_status != "EXPIRED",
+    ).order_by(StudentContact.is_primary.desc(), StudentContact.id.desc()).limit(1))
+    advisor = tenant_get(db, User, record.advisor_user_id) if record.advisor_user_id else None
+    contact_id = (evaluation or {}).get("enterpriseContactId") or record.mentor_contact_id
+    mentor = tenant_get(db, InternshipEnterpriseContact, contact_id) if contact_id else None
+    if mentor and (mentor.company_id != record.enterprise_id or mentor.status != "ACTIVE"):
+        mentor = None
+    return {
+        "student": _contact_reference(phone, getattr(phone, "contact_value_encrypted", None),
+            name=student.real_name, source="StudentContact.PHONE"),
+        "advisor": _contact_reference(advisor, getattr(advisor, "phone_encrypted", None),
+            name=getattr(advisor, "real_name", None) or record.advisor_name or "", source="User"),
+        "enterpriseMentor": _contact_reference(mentor, getattr(mentor, "phone_encrypted", None),
+            name=(evaluation or {}).get("mentorName") or getattr(mentor, "name", None)
+                 or record.enterprise_mentor_name or "", source="InternshipEnterpriseContact"),
+    }
+
+
+def _attendance_facts(db, record) -> dict:
+    """Use compliance_facts accepted statuses and the union of normal/makeup dates."""
+    start, end = _as_date(record.intern_start_date), _as_date(record.intern_end_date)
+    def scoped_dates(model, *conditions):
+        query = select(model.checkin_date).where(
+            model.tenant_id == _tid(), model.internship_id == record.id,
+            model.is_deleted.is_(False), *conditions)
+        if start:
+            query = query.where(model.checkin_date >= start.isoformat())
+        if end:
+            query = query.where(model.checkin_date <= end.isoformat())
+        return {day.isoformat() for value in db.scalars(query).all()
+                if (day := _as_date(value)) is not None
+                and (start is None or day >= start) and (end is None or day <= end)}
+    normal = scoped_dates(InternshipCheckin, InternshipCheckin.result.in_(("NORMAL", "RECORDED")))
+    makeup = scoped_dates(InternshipMakeup, InternshipMakeup.status == "APPROVED")
+    return {"checkinDays": len(normal), "makeupDays": len(makeup),
+            "attendanceDays": len(normal | makeup),
+            "countBasis": "实习日期内NORMAL/RECORDED签到与已批准补签按日期去重；同日重叠仅计一天，异常签到和请假不计到岗天数"}
+
+
+def _process_facts(db, record) -> dict:
+    submitted = ("PENDING_REVIEW", "APPROVED", "RETURNED", "OVERDUE")
+    weekly = int(db.scalar(select(func.count()).select_from(WeeklyReport).where(
+        WeeklyReport.tenant_id == _tid(), WeeklyReport.internship_id == record.id,
+        WeeklyReport.is_deleted.is_(False), WeeklyReport.submitted_at.is_not(None),
+        WeeklyReport.status.in_(submitted))) or 0)
+    grouped = dict(db.execute(select(InternshipProcessReport.report_type, func.count()).where(
+        InternshipProcessReport.tenant_id == _tid(), InternshipProcessReport.internship_id == record.id,
+        InternshipProcessReport.is_deleted.is_(False), InternshipProcessReport.submitted_at.is_not(None),
+        InternshipProcessReport.status.in_(submitted),
+        InternshipProcessReport.report_type.in_(("DAILY", "MONTHLY", "SUMMARY")),
+    ).group_by(InternshipProcessReport.report_type)).all())
+    return {**_attendance_facts(db, record),
+            "reports": {"DAILY": int(grouped.get("DAILY", 0)), "WEEKLY": weekly,
+                        "MONTHLY": int(grouped.get("MONTHLY", 0)), "SUMMARY": int(grouped.get("SUMMARY", 0))},
+            "reportCountBasis": "按实习记录统计已提交报告主单，包含退回待改；未提交、撤回、作废及软删除不计，重交版本不重复计数"}
+
+
+def _student_document_context(db, user, payload, *, lock=False):
+    from app.services.mobile_student_service import _require_student, resolve_student
+    from app.modules.internship.services.internship_student_context_guard import require_context_fields
+    from app.modules.internship.services.internship_record_resolver import resolve_student_internship_context
+    from app.modules.internship.services.internship_batch_context import parse_required_batch_id
+    require_context_fields(payload)
+    batch_id = parse_required_batch_id(payload.get("batchId"))
+    student = resolve_student(db, _require_student(user))
+    if not student or student.tenant_id != _tid() or student.is_deleted:
+        raise no_permission("当前账号尚未绑定有效学生主档")
+    ctx = resolve_student_internship_context(db, student=student, batch_id=batch_id, for_write=False)
+    record = ctx.record
+    if not record or str(record.id) != str(payload.get("internshipId")):
+        raise no_permission("当前账号无权访问该实习记录")
+    if lock:
+        record = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == record.id, InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.student_id == student.id, InternshipRecord.batch_id == batch_id,
+            InternshipRecord.is_deleted.is_(False),
+        ).with_for_update())
+        if not record:
+            raise not_found("实习记录已变化，请刷新后重试")
+    return record, student, batch_id
+
+
 def _base_snapshot(db, record, student, document_type: str) -> dict:
     tenant = db.get(Tenant, _tid())
+    group = tenant_get(db, SchoolClass, student.class_id) if student.class_id else None
+    major_id = student.major_id or getattr(group, "major_id", None)
+    major = tenant_get(db, Major, major_id) if major_id else None
+    college_id = student.college_id or getattr(major, "college_id", None)
     return {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
+        "templateVersion": "YIYANG-SP06-SP07-20261002-V2",
         "documentType": document_type,
         "school": {
             "tenantId": str(_tid()),
@@ -114,9 +248,10 @@ def _base_snapshot(db, record, student, document_type: str) -> dict:
             "id": str(student.id),
             "studentNo": student.student_no,
             "realName": student.real_name,
-            "grade": student.grade or "",
-            "collegeName": _org_name(db, College, student.college_id, "college_name"),
-            "majorName": _org_name(db, Major, student.major_id, "major_name"),
+            "grade": student.grade or getattr(group, "grade", None) or "",
+            "gender": _gender_label(student.gender),
+            "collegeName": _org_name(db, College, college_id, "college_name"),
+            "majorName": _org_name(db, Major, major_id, "major_name"),
             "className": _org_name(db, SchoolClass, student.class_id, "class_name"),
         },
     }
@@ -150,8 +285,13 @@ def _enterprise_evaluation(db, record) -> dict:
         "collaboration": int(row.collaboration_score or 0),
         "safety": int(row.safety_score or 0),
     }
+    from app.modules.internship.services.internship_score_service import _grade_level
+    average_score = round(sum(scores.values()) / 5, 1)
     return {
         "evaluationId": str(row.id),
+        "enterpriseContactId": str(row.enterprise_contact_id or ""),
+        "gradeLevel": _grade_level(average_score),
+        "gradeBasis": "平台现有百分制展示口径：90优秀、80良好、70中等、60及格；非新增学校评分政策",
         "mentorName": row.mentor_name or "",
         "scores": scores,
         "averageScore": round(sum(scores.values()) / 5, 1),
@@ -185,25 +325,14 @@ def _certificate_fact(db, record) -> dict:
             "DATA_CONFLICT", "实习尚未结束，不能提前生成正式实习证明",
             http_status=409,
         )
-    checkin_days = set(db.scalars(select(InternshipCheckin.checkin_date).where(
-        InternshipCheckin.tenant_id == _tid(),
-        InternshipCheckin.internship_id == record.id,
-        InternshipCheckin.is_deleted.is_(False),
-    )).all())
-    makeup_days = set(db.scalars(select(InternshipMakeup.checkin_date).where(
-        InternshipMakeup.tenant_id == _tid(),
-        InternshipMakeup.internship_id == record.id,
-        InternshipMakeup.status == "APPROVED",
-        InternshipMakeup.is_deleted.is_(False),
-    )).all())
-    attendance_days = len({str(day) for day in checkin_days.union(makeup_days) if day})
+    attendance = _attendance_facts(db, record)
     return {
         "status": record.status,
         "enterpriseName": record.enterprise_name,
         "positionName": record.position_name,
         "startDate": _iso(record.intern_start_date),
         "endDate": _iso(record.intern_end_date),
-        "attendanceDays": attendance_days,
+        **attendance,
     }
 
 
@@ -302,12 +431,21 @@ def build_source_snapshot(db, record, document_type: str) -> dict:
     data = _base_snapshot(db, record, student, document_type)
     if document_type == "ENTERPRISE_EVALUATION":
         data["enterpriseEvaluation"] = _enterprise_evaluation(db, record)
+        data["contacts"] = _contacts_snapshot(db, record, student, evaluation=data["enterpriseEvaluation"])
+        data["processFacts"] = _process_facts(db, record)
     elif document_type == "INTERNSHIP_CERTIFICATE":
         data["completion"] = _certificate_fact(db, record)
     elif document_type == "FINAL_ASSESSMENT":
         data["finalAssessment"] = _final_assessment(db, record)
     else:
         data["summaryReport"] = _summary_report(db, record)
+    if document_type == "ENTERPRISE_EVALUATION":
+        data["missingFields"] = [label for code, label in (
+            ("student", "学生联系电话"), ("advisor", "校内导师联系电话"),
+            ("enterpriseMentor", "企业导师联系电话"))
+            if data["contacts"][code]["status"] != "AVAILABLE"]
+        if data["student"]["gender"] == "未登记":
+            data["missingFields"].append("学生性别")
     return data
 
 
@@ -338,10 +476,11 @@ def _identity_table(snapshot: dict, styles: dict):
     internship = snapshot["internship"]
     rows = [
         ["姓名", student["realName"], "学号", student["studentNo"]],
+        ["性别", student.get("gender", "未登记"), "年级", student["grade"]],
         ["学院", student["collegeName"], "专业", student["majorName"]],
-        ["班级", student["className"], "年级", student["grade"]],
+        ["班级", student["className"], "校内导师", internship["advisorName"]],
         ["实习单位", internship["enterpriseName"], "岗位", internship["positionName"]],
-        ["开始日期", internship["startDate"], "结束日期", internship["endDate"]],
+        ["开始日期", internship["startDate"][:10], "结束日期", internship["endDate"][:10]],
     ]
     return Table(
         [[Paragraph(_safe(cell), styles["body"]) for cell in row] for row in rows],
@@ -369,6 +508,20 @@ def render_formal_pdf(document_type: str, snapshot: dict, *, document_version: i
     ]
     if document_type == "ENTERPRISE_EVALUATION":
         fact = snapshot["enterpriseEvaluation"]
+        contacts = snapshot.get("contacts") or {}
+        for key, label in (("student", "学生联系电话"), ("advisor", "校内导师联系电话"), ("enterpriseMentor", "企业导师联系电话")):
+            if key in contacts:
+                story.append(Paragraph(_safe(label + "：" + _phone_for_pdf(contacts[key])), styles["body"]))
+        process = snapshot.get("processFacts")
+        if process:
+            attendance = "签到 {checkinDays} 天 / 补签 {makeupDays} 天 / 去重考勤 {attendanceDays} 天".format(**process)
+            reports = "日志 {DAILY} 篇 / 周记 {WEEKLY} 篇 / 月报 {MONTHLY} 篇 / 总结 {SUMMARY} 篇".format(**process["reports"])
+            for line in (attendance, "已提交报告：" + reports):
+                story.append(Paragraph(_safe(line), styles["body"]))
+            for line in (process["countBasis"], process["reportCountBasis"]):
+                story.append(Paragraph(_safe(line), styles["small"]))
+            story.append(Spacer(1, 8))
+        story.append(Paragraph("企业考评等级：" + _safe(fact.get("gradeLevel")), styles["body"]))
         story.extend([
             Paragraph(f"企业导师：{_safe(fact['mentorName'])}", styles["body"]),
             Paragraph(
@@ -394,7 +547,7 @@ def render_formal_pdf(document_type: str, snapshot: dict, *, document_version: i
         story.extend([
             Paragraph(
                 f"兹证明 {_safe(snapshot['student']['realName'])}（学号 {_safe(snapshot['student']['studentNo'])}）"
-                f"于 {_safe(fact['startDate'])} 至 {_safe(fact['endDate'])} 在 "
+                f"于 {_safe(str(fact['startDate'])[:10])} 至 {_safe(str(fact['endDate'])[:10])} 在 "
                 f"{_safe(fact['enterpriseName'])} 完成岗位实习，实习岗位为 {_safe(fact['positionName'])}。",
                 styles["body"],
             ),
@@ -497,6 +650,7 @@ def document_readiness(user: dict, internship_id) -> dict:
                 digest = source_hash(snapshot)
                 ready = True
                 reason = ""
+                missing_fields = snapshot.get("missingFields", [])
                 up_to_date = bool(
                     latest
                     and latest.status == "GENERATED"
@@ -508,11 +662,13 @@ def document_readiness(user: dict, internship_id) -> dict:
                 ready = False
                 up_to_date = False
                 reason = str(exc.message or "当前正式业务事实尚不满足生成条件")
+                missing_fields = []
             items.append({
                 "documentType": document_type,
                 "documentTypeLabel": label,
                 "ready": ready,
                 "reason": reason,
+                "missingFields": missing_fields,
                 "currentSourceHash": digest,
                 "latestDocumentId": str(latest.id) if latest else "",
                 "latestVersion": int(latest.document_version or 0) if latest else 0,
@@ -656,15 +812,9 @@ def resolve_download(user: dict, document_id):
 
 def student_list_documents(user: dict, *, batch_id, internship_id) -> list[dict]:
     """Student may only list formal documents belonging to the explicitly selected own record."""
-    from app.modules.internship.services.internship_student_context_guard import (
-        require_explicit_context,
-    )
     with session() as db:
-        record, student, _batch_id = require_explicit_context(
-            db, user,
-            {"batchId": batch_id, "internshipId": internship_id},
-            for_write=False,
-        )
+        record, student, _batch_id = _student_document_context(
+            db, user, {"batchId": batch_id, "internshipId": internship_id})
         rows = db.scalars(select(InternshipFormalDocument).where(
             InternshipFormalDocument.tenant_id == _tid(),
             InternshipFormalDocument.internship_id == record.id,
@@ -679,9 +829,6 @@ def student_list_documents(user: dict, *, batch_id, internship_id) -> list[dict]
 
 def student_generate(user: dict, body: dict) -> dict:
     """SP06/SP07 student-triggered generation from already approved authoritative facts."""
-    from app.modules.internship.services.internship_student_context_guard import (
-        require_explicit_context,
-    )
     payload = body or {}
     document_type = normalize_document_type(payload.get("documentType"))
     if document_type not in {"ENTERPRISE_EVALUATION", "INTERNSHIP_CERTIFICATE"}:
@@ -690,8 +837,8 @@ def student_generate(user: dict, body: dict) -> dict:
             "学生端仅支持生成企业实习鉴定表和学生实习证明",
         )
     with session() as db:
-        record, student, batch_id = require_explicit_context(
-            db, user, payload, for_write=False)
+        record, student, batch_id = _student_document_context(
+            db, user, payload, lock=True)
         snapshot = build_source_snapshot(db, record, document_type)
         digest = source_hash(snapshot)
         latest = db.scalars(select(InternshipFormalDocument).where(
@@ -764,9 +911,6 @@ def student_generate(user: dict, body: dict) -> dict:
 
 def student_document_pdf(user: dict, document_id, *, batch_id, internship_id) -> dict:
     """Return own generated formal PDF as a download-safe payload for the standalone student PC."""
-    from app.modules.internship.services.internship_student_context_guard import (
-        require_explicit_context,
-    )
     from app.services import pdf_util
 
     try:
@@ -774,11 +918,8 @@ def student_document_pdf(user: dict, document_id, *, batch_id, internship_id) ->
     except (TypeError, ValueError):
         raise not_found("正式文书不存在") from None
     with session() as db:
-        record, student, _batch_id = require_explicit_context(
-            db, user,
-            {"batchId": batch_id, "internshipId": internship_id},
-            for_write=False,
-        )
+        record, student, _batch_id = _student_document_context(
+            db, user, {"batchId": batch_id, "internshipId": internship_id})
         row = db.scalar(select(InternshipFormalDocument).where(
             InternshipFormalDocument.id == did,
             InternshipFormalDocument.tenant_id == _tid(),

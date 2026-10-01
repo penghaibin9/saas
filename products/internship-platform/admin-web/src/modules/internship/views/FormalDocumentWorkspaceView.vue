@@ -56,6 +56,7 @@
             <p v-if="!item.ready" class="fdw-blocker">{{ item.reason || '正式业务事实尚不完整。' }}</p>
             <p v-else-if="item.upToDate" class="fdw-ready">当前正式事实与最新 PDF 一致，无需重复生成。</p>
             <p v-else class="fdw-ready is-warning">当前正式事实已满足条件，且与历史版本不同，可生成新版本。</p>
+            <p v-if="item.missingFields?.length" class="fdw-blocker">待完善资料：{{ item.missingFields.join("、") }}。PDF将如实标注缺项，请核实后重新生成。</p>
             <div class="fdw-actions">
               <AppButton
                 v-if="item.latestDocumentId"
@@ -174,7 +175,7 @@ export default {
   methods: {
     documentHint(type) {
       return {
-        ENTERPRISE_EVALUATION: '基于已审核企业评价生成企业实习鉴定表。',
+        ENTERPRISE_EVALUATION: '包含性别、学生及校企导师电话、签到补签、四类报告数量、企业评分与等级。',
         INTERNSHIP_CERTIFICATE: '基于已结束实习事实和考勤事实生成学生实习证明。',
         FINAL_ASSESSMENT: '基于已发布且完整的最终成绩生成实习考核成绩表。',
         SUMMARY_REPORT: '基于已通过批阅的不可变实习总结版本生成正式总结报告。'

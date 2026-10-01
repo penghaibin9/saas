@@ -644,7 +644,7 @@
           <div class="sp-formal-docs__grid">
             <div>
               <strong>企业实习鉴定表</strong>
-              <p>读取学校已审核的企业评价，保留企业意见、评分、企业导师和签章区。</p>
+              <p>包含性别、学生与校企导师电话、签到补签、日志/周记/月报/总结数量、企业评分等级及签章区；缺失资料如实标注。</p>
               <div class="sp-formal-docs__actions">
                 <button class="sp-btn" :disabled="busy" @click="generateFormalDocument('ENTERPRISE_EVALUATION')">生成最新 PDF</button>
                 <button v-if="latestFormalDocument('ENTERPRISE_EVALUATION')" class="sp-btn sp-btn--ghost" :disabled="busy" @click="downloadFormalDocument(latestFormalDocument('ENTERPRISE_EVALUATION'))">下载 V{{ latestFormalDocument('ENTERPRISE_EVALUATION').documentVersion }}</button>
@@ -652,7 +652,7 @@
             </div>
             <div>
               <strong>学生实习证明</strong>
-              <p>实习结束进入考核/归档后生成；签到考勤天数按正式签到和已批准补签自动计算。</p>
+              <p>实习结束进入考核/归档后生成；有效签到与已批准补签按实习日期去重，异常和实习期外记录不计入。</p>
               <div class="sp-formal-docs__actions">
                 <button class="sp-btn" :disabled="busy" @click="generateFormalDocument('INTERNSHIP_CERTIFICATE')">生成最新 PDF</button>
                 <button v-if="latestFormalDocument('INTERNSHIP_CERTIFICATE')" class="sp-btn sp-btn--ghost" :disabled="busy" @click="downloadFormalDocument(latestFormalDocument('INTERNSHIP_CERTIFICATE'))">下载 V{{ latestFormalDocument('INTERNSHIP_CERTIFICATE').documentVersion }}</button>
