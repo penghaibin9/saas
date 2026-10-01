@@ -131,6 +131,7 @@ def batch_compliance_stats(batch_id, user=None):
                 by_code.setdefault(code, []).append(entry)
 
         labels = {
+            "minimumAge": "实习年龄未通过",
             "enterpriseAccess": "缺企业准入",
             "studentConsent": "缺学生知情",
             "guardianConsent": "缺监护人确认",

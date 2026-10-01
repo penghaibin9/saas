@@ -342,7 +342,7 @@
 
         <template v-else-if="activeTab === 'exemptions'">
           <section v-if="exemptionEditor && can('internship.compliance.exempt.request')" class="mp-card incident-editor">
-            <div class="mp-card__head"><div><strong>申请合规豁免</strong><p class="mp-note">说明特殊情况、替代措施和有效期，提交学校审核。</p></div></div>
+            <div class="mp-card__head"><div><strong>申请合规豁免</strong><p class="mp-note">说明特殊情况、替代措施和有效期，提交学校审核。未满16周岁不得安排岗位实习；年龄条件不可豁免，出生日期存疑请联系学校核实。</p></div></div>
             <fieldset class="form-grid incident-fields" :disabled="acting">
               <label>学生<select v-model="forms.exemption.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
               <label>检查项<select v-model="forms.exemption.checkCode"><option value="">请选择检查项</option><option v-for="item in exemptionChecks" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
@@ -355,7 +355,7 @@
             <div class="consent-actions"><AppButton variant="secondary" :disabled="acting" @click="closeExemptionEditor">返回台账</AppButton><AppButton variant="primary" :loading="acting" :disabled="!exemptionFormValid" @click="requestExemption">提交学校审核</AppButton></div>
           </section>
           <section v-if="!exemptionEditor" class="mp-card incident-ledger"><div class="mp-card__head"><strong>豁免台账</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>学生 / 检查项</th><th>申请原因</th><th>有效期与状态</th><th>经办人员</th><th>操作</th></tr></thead><tbody>
-            <tr v-for="row in workbench.exemptions || []" :key="row.id"><td><strong>{{ row.studentName }}</strong><div class="cell-sub">{{ row.studentNo }}</div><div>{{ exemptionCheckText(row.checkCode) }}</div></td><td>{{ row.reason }}</td><td><span class="state-tag">{{ complianceStatusText(row.status) }}</span><div class="cell-sub">截至 {{ fmt(row.validUntil) }}</div></td><td>申请：{{ row.requestedByName || '—' }}<div class="cell-sub">审核：{{ row.reviewedByName || '待审核' }}</div></td><td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.compliance.exempt.approve')"><button type="button" class="mp-link" @click="openAction('exemption-review', row, 'APPROVE')">批准</button><button type="button" class="danger-link" @click="openAction('exemption-review', row, 'REJECT')">拒绝</button></template></td></tr>
+            <tr v-for="row in workbench.exemptions || []" :key="row.id"><td><strong>{{ row.studentName }}</strong><div class="cell-sub">{{ row.studentNo }}</div><div>{{ exemptionCheckText(row.checkCode) }}</div></td><td>{{ row.reason }}</td><td><span class="state-tag">{{ complianceStatusText(row.status) }}</span><div class="cell-sub">截至 {{ fmt(row.validUntil) }}</div></td><td>申请：{{ row.requestedByName || '—' }}<div class="cell-sub">审核：{{ row.reviewedByName || '待审核' }}</div></td><td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.compliance.exempt.approve')"><span v-if="row.exemptible === false" class="field-help">年龄条件不可豁免</span><button v-else type="button" class="mp-link" @click="openAction('exemption-review', row, 'APPROVE')">批准</button><button type="button" class="danger-link" @click="openAction('exemption-review', row, 'REJECT')">拒绝</button></template></td></tr>
             <tr v-if="showEmpty(workbench.exemptions)"><td colspan="5" class="empty-cell">暂无豁免记录</td></tr>
           </tbody></table></div></section>
         </template>
@@ -704,6 +704,7 @@ export default {
     blockerText(items) { return items?.length ? items.map((item) => `${item.label}：${item.reason}`).join('；') : '无' },
     blockerOwner(codes) {
       const owners = {
+        minimumAge: '学校学生主档核验经办人',
         enterpriseAccess: '企业准入经办人', studentConsent: '学生本人', guardianConsent: '已绑定监护人',
         safetyEducation: '学生与安全教育审核人', insurance: '保险核验经办人', agreement: '协议当前确认方',
         specialFiling: '学院 / 学校备案审核人', workRights: '岗位审核经办人', emergency: '应急预案责任人'
@@ -711,7 +712,7 @@ export default {
       return (codes || []).map((code) => owners[code] || '合规经办人').filter((value, index, all) => all.indexOf(value) === index).join('、') || '合规经办人'
     },
     filingTypeText(value) { return FILING_TYPES.find((item) => item.value === value)?.label || (value ? '其他备案类型' : '-') },
-    exemptionCheckText(value) { return EXEMPTION_CHECKS.find((item) => item.value === value)?.label || (value ? '其他检查项' : '-') },
+    exemptionCheckText(value) { if (String(value || '').trim().toLowerCase() === 'minimumage') return '岗位实习年龄（不可豁免）'; return EXEMPTION_CHECKS.find((item) => item.value === value)?.label || (value ? '其他检查项' : '-') },
     complianceStatusText(value) { return COMPLIANCE_STATUS_LABELS[value] || (value ? '状态待确认' : '-') },
     severityText(value) { return ({ LOW: '一般', MEDIUM: '较大', HIGH: '重大', CRITICAL: '特别重大' })[value] || '程度待确认' },
     packageTypeText(value) { return ({ BATCH: '批次包', STUDENT: '学生包' })[value] || '其他证据包' },
@@ -1000,6 +1001,10 @@ export default {
       catch (downloadError) { this.$message?.error?.(downloadError.message || '下载失败') }
     },
     openAction(kind, row, action = '', level = '', fromRoute = false) {
+      if (kind === 'exemption-review' && action === 'APPROVE' && row.exemptible === false) {
+        this.reviewError = '岗位实习年龄不可豁免，请联系学校核实学生主档；该申请仅可拒绝。'
+        return
+      }
       const dialog = emptyDialog()
       dialog.open = true; dialog.kind = kind; dialog.row = { ...row, fileIds: [...(kind === 'exemption-review' ? row.evidenceFileIds || [] : row.fileIds || [])] }; dialog.action = action; dialog.level = level
       if (kind === 'revoke-consent') { dialog.title = '作废知情确认任务'; dialog.description = '作废后学生或监护人无法再确认，必须重新下发新任务。'; dialog.commentLabel = '作废原因（至少5字）'; dialog.commentPlaceholder = '说明作废原因'; dialog.confirmText = '确认作废' }

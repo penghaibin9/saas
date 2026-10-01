@@ -10,6 +10,10 @@ from __future__ import annotations
 from app.core.tenant_scoped import tenant_get
 from datetime import datetime
 
+from app.modules.internship.services.internship_student_age import (
+    minimum_age_item, student_age_years,
+)
+
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
@@ -169,23 +173,6 @@ def summarize_required_safety_courses(courses, completions, *, required: bool) -
     }
 
 
-def _age_years(birth):
-    if not birth:
-        return None
-    if isinstance(birth, str):
-        try:
-            birth = datetime.fromisoformat(birth[:10]).date()
-        except ValueError:
-            return None
-    if isinstance(birth, datetime):
-        birth = birth.date()
-    try:
-        today = datetime.utcnow().date()
-        return today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
-    except Exception:
-        return None
-
-
 def _apply_exemption(db, rec, code, status, reason):
     row = db.scalars(select(InternshipComplianceExemption).where(
         InternshipComplianceExemption.tenant_id == _tid(),
@@ -267,6 +254,12 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
                 "evaluatedAt": datetime.utcnow().isoformat() + "Z",
             }
 
+        age_gate = minimum_age_item(student, record=rec, batch=batch)
+        items.append({**_item(
+            age_gate["code"], age_gate["label"], required=True,
+            status=age_gate["status"], reason=age_gate["reason"],
+        ), "exemptible": False})
+
         from app.modules.internship.services.internship_eligibility_result import eligibility_result
         eligibility = eligibility_result(db, rec)
         items.append(_item(
@@ -338,7 +331,7 @@ def evaluate_my(user: dict, operation="ONBOARD", batch_id=None) -> dict:
 
         gcfg = rules.get("guardianConsent") or {"label": "监护人知情确认", "required": False, "severity": "BLOCK"}
         need_guardian = bool(cfg.get("required") and cfg.get("requireGuardianConsentForMinor"))
-        age = _age_years(getattr(student, "birth_date", None))
+        age = student_age_years(student)
         guardian_rows = [x for x in consents if x.consent_type == "GUARDIAN"]
         if not need_guardian:
             status, reason, required = "NOT_APPLICABLE", "当前规则不要求监护人确认", False

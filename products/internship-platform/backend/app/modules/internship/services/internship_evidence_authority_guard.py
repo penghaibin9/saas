@@ -8,6 +8,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.modules.internship.services.internship_student_age import (
+    assert_exemption_allowed, is_non_exemptible_check,
+)
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -213,6 +217,7 @@ def _assert_no_active_exemption(db, internship_id: int, check_code: str) -> None
 
 def grant_exemption(body, user=None):
     payload = body or {}
+    assert_exemption_allowed(payload.get("checkCode"))
     reason = str(payload.get("reason") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "豁免原因不少于 5 字")
@@ -305,6 +310,7 @@ def review_exemption(exemption_id, body, user=None):
             raise AppException("DATA_CONFLICT", "仅待审核豁免可处理")
 
         if action == "APPROVE":
+            assert_exemption_allowed(exemption.check_code)
             ok, invalid_reason = validate_evidence(
                 db,
                 exemption.evidence_file_ids,
@@ -359,12 +365,15 @@ def _invalidate_exemptions(db, internship_id, user=None) -> bool:
         InternshipComplianceExemption.is_deleted.is_(False),
     ).with_for_update()).all()
     for exemption in rows:
-        ok, reason = validate_evidence(
-            db,
-            exemption.evidence_file_ids,
-            biz_type="INTERNSHIP_COMPLIANCE_EXEMPTION",
-            biz_id=exemption.id,
-        )
+        if is_non_exemptible_check(exemption.check_code):
+            ok, reason = False, "岗位实习年龄不可豁免，历史豁免不得作为放行依据"
+        else:
+            ok, reason = validate_evidence(
+                db,
+                exemption.evidence_file_ids,
+                biz_type="INTERNSHIP_COMPLIANCE_EXEMPTION",
+                biz_id=exemption.id,
+            )
         if ok:
             continue
         exemption.status = "INVALIDATED"

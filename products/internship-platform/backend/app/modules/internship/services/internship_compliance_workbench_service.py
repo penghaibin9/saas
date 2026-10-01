@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.modules.internship.services.internship_student_age import is_non_exemptible_check
+
 from sqlalchemy import and_, func, or_, select
 from app.core.permissions import is_super_admin
 from app.core.exceptions import AppException
@@ -334,6 +336,7 @@ def _group_exemptions(db, record_map, students, record_ids) -> list[dict]:
         out.append({
             **_student_meta(record, students),
             "id": str(row.id), "checkCode": row.check_code,
+            "exemptible": not is_non_exemptible_check(row.check_code),
             "reason": row.reason, "status": row.status,
             "evidenceFileIds": row.evidence_file_ids or [],
             "validFrom": _iso(row.valid_from), "validUntil": _iso(row.valid_until),

@@ -1,7 +1,12 @@
 """Catalog and volunteer submission share one canonical eligibility guard."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
+
+from app.config import settings
+from app.modules.internship.services.internship_student_age import (
+    minimum_age_item, student_age_years,
+)
 
 from sqlalchemy import and_, false, func, literal, or_, select
 
@@ -141,6 +146,10 @@ def apply_catalog_query_eligibility_filters_in_tx(
     if not student or not batch:
         return query.where(false())
 
+    today = (current + timedelta(hours=settings.TIMEZONE_OFFSET_HOURS)).date()
+    if minimum_age_item(student, record=record, today=today)["status"] != "VALID":
+        return query.where(false())
+
     rules = get_batch_compliance_rules(db, batch)
     rights_cfg = dict(rules.get("workRights") or {})
     try:
@@ -198,17 +207,8 @@ def apply_catalog_query_eligibility_filters_in_tx(
     )
 
     # Student-specific APPLY blockers that do not exist at school-side PUBLISH time.
-    birth = getattr(student, "birth_date", None)
-    is_minor = False
-    if birth is not None:
-        if hasattr(birth, "date"):
-            birth = birth.date()
-        try:
-            today = current.date()
-            years = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
-            is_minor = years < 18
-        except Exception:
-            is_minor = False
+    age = student_age_years(student, today=today)
+    is_minor = age is not None and age < 18
     if not rights_cfg.get("nightShiftAllowed", False) or is_minor:
         query = query.where(InternshipPosition.night_shift.is_(False))
     if not rights_cfg.get("overtimeAllowed", False):
@@ -308,6 +308,7 @@ def evaluate_position_for_student_in_tx(
 
     rights = evaluate_position_publishability(
         position, company, batch, student, operation="APPLY", db=db,
+        today=(current + timedelta(hours=settings.TIMEZONE_OFFSET_HOURS)).date(), record=record,
     )
     if not rights.get("passed"):
         raise AppException(

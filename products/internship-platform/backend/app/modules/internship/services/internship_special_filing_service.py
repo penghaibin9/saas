@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.modules.internship.services.internship_student_age import student_age_years
+
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
@@ -58,17 +60,9 @@ def evaluate_triggers(position, student=None, school_region=None):
     region = getattr(position, "work_location", None) or getattr(position, "work_address", None) or ""
     if school_region and region and school_region not in region:
         out.append(("CROSS_PROVINCE", "岗位地点跨省"))
-    birth = getattr(student, "birth_date", None) if student else None
-    if birth:
-        try:
-            if hasattr(birth, "date"):
-                birth = birth.date()
-            today = datetime.utcnow().date()
-            age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
-            if age < 18:
-                out.append(("MINOR", "学生未满18周岁"))
-        except Exception:
-            pass
+    age = student_age_years(student)
+    if age is not None and age < 18:
+        out.append(("MINOR", "学生未满18周岁"))
     return out
 
 

@@ -5,6 +5,8 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta
 
+from app.modules.internship.services.internship_student_age import student_age_years
+
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
@@ -34,16 +36,9 @@ def _audit(db, consent, action, user=None, detail=None):
 def evaluate_applicability(student, consent_type):
     if consent_type == "STUDENT":
         return True, "REQUIRED"
-    birth = getattr(student, "birth_date", None)
-    if not birth:
+    age = student_age_years(student)
+    if age is None:
         return None, "PENDING_VERIFY"
-    if isinstance(birth, str):
-        try:
-            birth = datetime.fromisoformat(birth[:10]).date()
-        except ValueError:
-            return None, "PENDING_VERIFY"
-    today = datetime.utcnow().date()
-    age = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
     return age < 18, "REQUIRED" if age < 18 else "NOT_APPLICABLE"
 
 

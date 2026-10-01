@@ -27,61 +27,17 @@ from app.modules.internship.services.internship_position_rights import evaluate_
 from app.services.db_service import _as_id, _tid, session
 
 
-_RESIDENT_ID_WEIGHTS = (7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2)
-_RESIDENT_ID_CHECK_CODES = "10X98765432"
+from app.modules.internship.services.internship_student_age import (
+    assert_exemption_allowed, has_reached_age, minimum_age_item, student_birth_date,
+)
 
 
 def _student_birth_date(student) -> date | None:
-    """Return a verified birth date without exposing the stored identity number.
-
-    Some deployments may add a dedicated ``birth_date`` column. The current
-    student master stores only an encrypted resident ID, so use that as the
-    authoritative fallback. Missing/corrupt ciphertext and malformed IDs stay
-    unknown so the guardian-consent gate remains fail-closed.
-    """
-    if student is None:
-        return None
-    direct = getattr(student, "birth_date", None)
-    if isinstance(direct, datetime):
-        direct = direct.date()
-    if isinstance(direct, date):
-        return direct
-
-    stored = getattr(student, "id_card_encrypted", None)
-    if not stored:
-        return None
-    try:
-        plain = decrypt_sensitive(stored, "id_card")
-    except Exception:  # decryption failure must not bypass guardian consent
-        return None
-    text = str(plain or "").strip().upper()
-    if len(text) == 18:
-        if not text[:17].isdigit() or text[-1] not in "0123456789X":
-            return None
-        expected = _RESIDENT_ID_CHECK_CODES[
-            sum(int(number) * weight for number, weight in zip(text[:17], _RESIDENT_ID_WEIGHTS)) % 11
-        ]
-        if text[-1] != expected:
-            return None
-        birth_text = text[6:14]
-    elif len(text) == 15 and text.isdigit():
-        birth_text = f"19{text[6:12]}"
-    else:
-        return None
-    try:
-        birth = datetime.strptime(birth_text, "%Y%m%d").date()
-    except ValueError:
-        return None
-    return birth if birth <= datetime.utcnow().date() else None
+    return student_birth_date(student, decryptor=decrypt_sensitive)
 
 
 def _is_adult(birth: date, *, today: date | None = None) -> bool:
-    today = today or datetime.utcnow().date()
-    try:
-        eighteenth_birthday = birth.replace(year=birth.year + 18)
-    except ValueError:  # February 29 becomes adult on February 28 in a non-leap year.
-        eighteenth_birthday = birth.replace(year=birth.year + 18, day=28)
-    return today >= eighteenth_birthday
+    return has_reached_age(birth, 18, today=today)
 
 
 def _pick(rows, statuses):
@@ -156,7 +112,7 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
         rules = get_batch_compliance_rules(db, batch)
         version = rule_version_label(batch)
         stu = db.get(StudentProfile, rec.student_id)
-        items = []
+        items = [minimum_age_item(stu, record=rec, batch=batch)]
 
         def apply_exemption(code, status, reason, evidence):
             ex = db.scalars(select(InternshipComplianceExemption).where(
@@ -479,6 +435,7 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
 
 def grant_exemption(body, user=None):
     b = body or {}
+    assert_exemption_allowed(b.get("checkCode"))
     reason = (b.get("reason") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "豁免原因不少于 5 字")
@@ -542,6 +499,7 @@ def review_exemption(exemption_id, body, user=None):
         if x.status != "PENDING_REVIEW":
             raise AppException("DATA_CONFLICT", "仅待审核豁免可处理")
         if action == "APPROVE":
+            assert_exemption_allowed(x.check_code)
             if not x.valid_until or x.valid_until <= datetime.utcnow():
                 raise AppException("DATA_CONFLICT", "豁免有效期无效")
             if not x.evidence_file_ids:
@@ -597,6 +555,7 @@ def batch_compliance_stats(batch_id, user=None):
             for code in set(codes + archive_codes):
                 by_code.setdefault(code, []).append(entry)
         labels = {
+            "minimumAge": "实习年龄未通过",
             "enterpriseAccess": "缺企业准入", "studentConsent": "缺学生知情",
             "guardianConsent": "缺监护人确认", "safetyEducation": "缺安全教育",
             "agreement": "缺协议", "insurance": "缺保险",
