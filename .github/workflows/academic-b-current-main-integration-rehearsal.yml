@@ -101,7 +101,7 @@ jobs:
           test "$(git rev-parse MERGE_HEAD)" = "4b706f392bd4213edcf4fbf81e4c292f90028c12"
           git diff --check
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip

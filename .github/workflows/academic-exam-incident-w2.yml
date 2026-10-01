@@ -108,7 +108,7 @@ jobs:
       - name: Assert exact W2 branch head
         run: test "$(git rev-parse HEAD)" = "$W2_EXPECTED_SHA"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip

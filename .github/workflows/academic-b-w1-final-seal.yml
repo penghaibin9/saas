@@ -42,7 +42,7 @@ jobs:
           fetch-depth: 0
       - name: Assert exact W1 final head
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
@@ -134,7 +134,7 @@ jobs:
           fetch-depth: 0
       - name: Assert exact W1 final head
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
