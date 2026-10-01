@@ -157,7 +157,7 @@ jobs:
             --maxfail=1 \
             --junitxml=/tmp/academic-b-current-main-junit.xml
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '22'
 
