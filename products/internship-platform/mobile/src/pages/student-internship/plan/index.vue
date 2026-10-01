@@ -19,6 +19,31 @@
           </view>
         </view>
         <view class="card">
+          <text class="pl__label">计划基本信息</text>
+          <view class="pl__facts">
+            <view><text>计划编号</text><b>{{ plan.planNo || '—' }}</b></view>
+            <view><text>实习类别</text><b>{{ plan.internshipTypeLabel || '—' }}</b></view>
+            <view><text>适用专业</text><b>{{ plan.majorName || '—' }}</b></view>
+            <view><text>培养层次</text><b>{{ plan.educationLevel || '—' }}</b></view>
+            <view><text>指导老师</text><b>{{ context.advisorName || '—' }}</b></view>
+            <view><text>负责人</text><b>{{ plan.responsibleName || '—' }}</b></view>
+            <view><text>开始时间</text><b>{{ plan.basicSnapshot?.startDate || '—' }}</b></view>
+            <view><text>结束时间</text><b>{{ plan.basicSnapshot?.endDate || '—' }}</b></view>
+            <view class="pl__fact-wide"><text>补贴标准</text><b>{{ plan.subsidyStandard || '—' }}</b></view>
+            <view><text>应签到</text><b>{{ plan.rulesSnapshot?.requiredCheckinDays ?? 0 }} 天</b></view>
+            <view><text>应写日报</text><b>{{ plan.rulesSnapshot?.dailyRequiredCount ?? 0 }} 篇</b></view>
+            <view><text>应写周报</text><b>{{ plan.rulesSnapshot?.weeklyRequiredCount ?? 0 }} 篇</b></view>
+            <view><text>应写月报</text><b>{{ plan.rulesSnapshot?.monthlyRequiredCount ?? 0 }} 篇</b></view>
+            <view><text>应写总结</text><b>{{ plan.rulesSnapshot?.summaryRequiredCount ?? 0 }} 篇</b></view>
+          </view>
+          <view class="pl__score" v-if="(plan.rulesSnapshot?.scoreComponents || []).length">
+            <text>考核占比</text>
+            <view class="pl__score-tags">
+              <text v-for="(item, i) in plan.rulesSnapshot.scoreComponents" :key="i">{{ item.name || '考核项' }} {{ Math.round(Number(item.weight || 0) * 100) }}%</text>
+            </view>
+          </view>
+        </view>
+        <view class="card">
           <text class="pl__label">实习目标</text>
           <text class="pl__text">{{ plan.objectives || '—' }}</text>
           <text class="pl__label">计划正文</text>
@@ -99,7 +124,8 @@ export default {
         if (seq !== this.loadSeq) return
         this.context = {
           batchId: dashboard?.batchId || '',
-          internshipId: dashboard?.recordId || dashboard?.internshipId || ''
+          internshipId: dashboard?.recordId || dashboard?.internshipId || '',
+          advisorName: dashboard?.advisorName || ''
         }
         this.plans = planListData?.items || []
         const candidate = String(preferredPlanId || this.selectedPlanId || '')
@@ -210,6 +236,7 @@ export default {
 
 <style scoped>
 .pl__switcher{display:grid;gap:8px}.pl__picker{padding:10px 12px;border:1px solid var(--border-light);border-radius:8px;background:var(--bg-card);font-size:var(--font-size-sm);color:var(--text-primary)}.pl__switch-note{font-size:11px;color:var(--text-tertiary)}.pl__status { display:block;margin-top:6px;font-size:var(--font-size-sm);color:var(--warning-600); }
+.pl__facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}.pl__facts>view{display:grid;gap:3px;padding:8px;border-radius:8px;background:var(--bg-subtle,#f8fafc)}.pl__facts text{font-size:11px;color:var(--text-tertiary)}.pl__facts b{font-size:13px;color:var(--text-primary);font-weight:600;overflow-wrap:anywhere}.pl__fact-wide{grid-column:1/-1}.pl__score{margin-top:10px;font-size:12px;color:var(--text-secondary)}.pl__score-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.pl__score-tags text{padding:4px 7px;border-radius:999px;background:var(--primary-50,#eff6ff);color:var(--primary-700,#1d4ed8)}
 .pl__prog { margin-top:10px;font-size:var(--font-size-sm);color:var(--text-secondary); }
 .pl__bar { height:6px;background:#e2e8f0;border-radius:3px;margin-top:6px;overflow:hidden; }
 .pl__bar-in { height:100%;background:var(--primary-500,#2563eb);border-radius:3px; }

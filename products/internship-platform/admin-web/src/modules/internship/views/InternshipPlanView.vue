@@ -43,6 +43,18 @@
             <AppFormItem label="实习类别" required>
               <AppSelect v-model="form.internshipType" :options="planTypeOptions" :disabled="!canEdit" placeholder="请选择实习类别" />
             </AppFormItem>
+            <AppFormItem label="计划编号" required>
+              <AppTextInput v-model="form.planNo" :disabled="!canEdit" placeholder="如：YYZY-2026-GWSX-001" />
+            </AppFormItem>
+            <AppFormItem label="适用专业" required>
+              <AppTextInput v-model="form.majorName" :disabled="!canEdit" placeholder="如：软件技术" />
+            </AppFormItem>
+            <AppFormItem label="培养层次" required>
+              <AppTextInput v-model="form.educationLevel" :disabled="!canEdit" placeholder="如：高职（专科）" />
+            </AppFormItem>
+            <AppFormItem label="补贴标准" required>
+              <AppTextInput v-model="form.subsidyStandard" :disabled="!canEdit" placeholder="如：按学校实习补贴管理办法执行" />
+            </AppFormItem>
             <AppFormItem label="实习对象" required>
               <AppTextInput v-model="form.targetAudience" :disabled="!canEdit" placeholder="如：2024级软件技术专业学生" />
             </AppFormItem>
@@ -253,7 +265,8 @@ import { toast } from '@/utils/toast'
 
 function blankPlanForm() {
   return {
-    title: '', templateCode: '', internshipType: '', targetAudience: '',
+    title: '', templateCode: '', internshipType: '', planNo: '', majorName: '',
+    educationLevel: '', subsidyStandard: '', targetAudience: '',
     responsibleName: '', objectives: '', requirements: '', content: '',
     assessmentContent: '', attachmentFileIds: []
   }
@@ -430,6 +443,10 @@ export default {
           title: res.data.title || '',
           templateCode: res.data.templateCode || '',
           internshipType: res.data.internshipType || '',
+          planNo: res.data.planNo || '',
+          majorName: res.data.majorName || '',
+          educationLevel: res.data.educationLevel || '',
+          subsidyStandard: res.data.subsidyStandard || '',
           targetAudience: res.data.targetAudience || '',
           responsibleName: res.data.responsibleName || '',
           objectives: res.data.objectives || '',
@@ -539,6 +556,10 @@ export default {
         this.writeError = '计划标题至少 2 字、实习内容至少 20 字。'; return
       }
       if (!this.form.internshipType) { this.writeError = '请选择实习类别。'; return }
+      if ((this.form.planNo || '').trim().length < 2) { this.writeError = '请填写正式计划编号。'; return }
+      if ((this.form.majorName || '').trim().length < 2) { this.writeError = '请填写适用专业。'; return }
+      if ((this.form.educationLevel || '').trim().length < 2) { this.writeError = '请填写培养层次。'; return }
+      if (!(this.form.subsidyStandard || '').trim()) { this.writeError = '请填写补贴标准；无固定金额时写明执行口径。'; return }
       if ((this.form.targetAudience || '').trim().length < 2) { this.writeError = '请填写实习对象。'; return }
       if ((this.form.responsibleName || '').trim().length < 2) { this.writeError = '请填写计划负责人。'; return }
       if ((this.form.objectives || '').trim().length < 5) { this.writeError = '实习目的至少 5 字。'; return }

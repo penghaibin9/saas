@@ -178,6 +178,7 @@ def _rules_snapshot(batch) -> dict:
     rules = _deep_merge(DEFAULT_RULES, dict(batch.rules_config or {}))
     checkin = dict(rules.get("checkin") or {})
     weekly = dict(rules.get("weeklyReport") or {})
+    process = dict(rules.get("processReport") or {})
     score = dict(rules.get("score") or {})
     evaluation = dict(rules.get("evaluation") or {})
     return {
@@ -185,6 +186,12 @@ def _rules_snapshot(batch) -> dict:
         "requiredCheckinDays": int(checkin.get("requiredDays") or 0),
         "weeklyRequiredCount": int(weekly.get("requiredCount") or 0),
         "weeklyMinWordCount": int(weekly.get("minWordCount") or 0),
+        "dailyRequiredCount": int(process.get("dailyRequiredCount") or 0),
+        "dailyMinWordCount": int(process.get("dailyMinWords") or 0),
+        "monthlyRequiredCount": int(process.get("monthlyRequiredCount") or 0),
+        "monthlyMinWordCount": int(process.get("monthlyMinWords") or 0),
+        "summaryRequiredCount": int(process.get("summaryRequiredCount") or 0),
+        "summaryMinWordCount": int(process.get("summaryMinWords") or 0),
         "scorePassThreshold": float(score.get("passThreshold") or 0),
         "scoreComponents": list(score.get("components") or []),
         "evaluationWeights": evaluation,
@@ -200,6 +207,18 @@ def _validate_plan_fields(payload: dict) -> dict:
     requirements = str(payload.get("requirements") or "").strip()
     assessment = str(payload.get("assessmentContent") or "").strip()
     responsible = str(payload.get("responsibleName") or "").strip()
+    plan_no = str(payload.get("planNo") or "").strip()
+    major_name = str(payload.get("majorName") or "").strip()
+    education_level = str(payload.get("educationLevel") or "").strip()
+    subsidy_standard = str(payload.get("subsidyStandard") or "").strip()
+    if plan_no and not 2 <= len(plan_no) <= 100:
+        raise AppException("VALIDATION_ERROR", "计划编号需为 2 到 100 个字")
+    if major_name and not 2 <= len(major_name) <= 200:
+        raise AppException("VALIDATION_ERROR", "适用专业需为 2 到 200 个字")
+    if education_level and not 2 <= len(education_level) <= 100:
+        raise AppException("VALIDATION_ERROR", "培养层次需为 2 到 100 个字")
+    if subsidy_standard and len(subsidy_standard) > 200:
+        raise AppException("VALIDATION_ERROR", "补贴标准不能超过 200 个字")
     if len(target) < 2 or len(target) > 500:
         raise AppException("VALIDATION_ERROR", "实习对象需填写 2 到 500 个字")
     if len(objectives) < 5 or len(objectives) > 4000:
@@ -212,6 +231,10 @@ def _validate_plan_fields(payload: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "负责人需填写 2 到 100 个字")
     return {
         "internshipType": internship_type,
+        "planNo": plan_no,
+        "majorName": major_name,
+        "educationLevel": education_level,
+        "subsidyStandard": subsidy_standard,
         "targetAudience": target,
         "objectives": objectives,
         "requirements": requirements,
@@ -290,6 +313,10 @@ def _plan_row(plan, batch=None):
         "id": str(plan.id), "batchId": str(plan.batch_id),
         "batchName": batch.batch_name if batch else basic.get("batchName", ""),
         "title": plan.title,
+        "planNo": plan.plan_no or "",
+        "majorName": plan.major_name or "",
+        "educationLevel": plan.education_level or "",
+        "subsidyStandard": plan.subsidy_standard or "",
         "internshipType": plan.internship_type or "",
         "internshipTypeLabel": PLAN_TYPES.get(plan.internship_type, plan.internship_type or ""),
         "targetAudience": plan.target_audience or "",
@@ -422,6 +449,10 @@ def save_plan(batch_id, body, user=None) -> dict:
                 tenant_id=_tid(), batch_id=batch.id, title=title, status="DRAFT")
             db.add(plan)
         plan.title = title
+        plan.plan_no = fields["planNo"] or None
+        plan.major_name = fields["majorName"] or None
+        plan.education_level = fields["educationLevel"] or None
+        plan.subsidy_standard = fields["subsidyStandard"] or None
         plan.internship_type = fields["internshipType"]
         plan.target_audience = fields["targetAudience"]
         plan.objectives = fields["objectives"]
@@ -544,6 +575,10 @@ def _plan_document_lines(plan_view: dict) -> list[str]:
         for item in components
     ) or "未配置"
     lines = [
+        f"计划编号：{plan_view.get('planNo') or '—'}",
+        f"适用专业：{plan_view.get('majorName') or '—'}",
+        f"培养层次：{plan_view.get('educationLevel') or '—'}",
+        f"补贴标准：{plan_view.get('subsidyStandard') or '—'}",
         f"实习对象：{plan_view.get('targetAudience') or '—'}",
         f"实习类别：{plan_view.get('internshipTypeLabel') or '—'}",
         f"实习人数：{basic.get('plannedCount', 0)} 人",
@@ -556,8 +591,11 @@ def _plan_document_lines(plan_view: dict) -> list[str]:
         f"实习周数：{basic.get('internshipWeeks') if basic.get('internshipWeeks') is not None else '—'}",
         f"负责人：{plan_view.get('responsibleName') or '—'}",
         f"计划签到天数：{rules.get('requiredCheckinDays') or '未配置'}",
-        f"周记篇数：{rules.get('weeklyRequiredCount') or '未配置'}",
-        f"周记最少字数：{rules.get('weeklyMinWordCount') or '未配置'}",
+        f"日报篇数：{rules.get('dailyRequiredCount') if rules.get('dailyRequiredCount') is not None else '未配置'}",
+        f"周记篇数：{rules.get('weeklyRequiredCount') if rules.get('weeklyRequiredCount') is not None else '未配置'}",
+        f"月报篇数：{rules.get('monthlyRequiredCount') if rules.get('monthlyRequiredCount') is not None else '未配置'}",
+        f"总结篇数：{rules.get('summaryRequiredCount') if rules.get('summaryRequiredCount') is not None else '未配置'}",
+        f"周记最少字数：{rules.get('weeklyMinWordCount') if rules.get('weeklyMinWordCount') is not None else '未配置'}",
         f"考核分数比例：{comp_text}",
         f"及格线：{rules.get('scorePassThreshold') if rules.get('scorePassThreshold') is not None else '—'}",
         "",
@@ -602,6 +640,10 @@ def export_plan_xlsx(batch_id, user=None) -> dict:
     basic = plan.get("basicSnapshot") or {}
     rules = plan.get("rulesSnapshot") or {}
     rows = [
+        ["计划编号", plan.get("planNo") or ""],
+        ["适用专业", plan.get("majorName") or ""],
+        ["培养层次", plan.get("educationLevel") or ""],
+        ["补贴标准", plan.get("subsidyStandard") or ""],
         ["实习对象", plan.get("targetAudience") or ""],
         ["实习类别", plan.get("internshipTypeLabel") or ""],
         ["实习人数", basic.get("plannedCount", 0)],
@@ -613,9 +655,12 @@ def export_plan_xlsx(batch_id, user=None) -> dict:
         ["结束时间", basic.get("endDate") or ""],
         ["实习周数", basic.get("internshipWeeks") if basic.get("internshipWeeks") is not None else ""],
         ["负责人", plan.get("responsibleName") or ""],
-        ["计划签到天数", rules.get("requiredCheckinDays") or "未配置"],
-        ["周记篇数", rules.get("weeklyRequiredCount") or "未配置"],
-        ["周记最少字数", rules.get("weeklyMinWordCount") or "未配置"],
+        ["计划签到天数", rules.get("requiredCheckinDays") if rules.get("requiredCheckinDays") is not None else "未配置"],
+        ["日报篇数", rules.get("dailyRequiredCount") if rules.get("dailyRequiredCount") is not None else "未配置"],
+        ["周记篇数", rules.get("weeklyRequiredCount") if rules.get("weeklyRequiredCount") is not None else "未配置"],
+        ["月报篇数", rules.get("monthlyRequiredCount") if rules.get("monthlyRequiredCount") is not None else "未配置"],
+        ["总结篇数", rules.get("summaryRequiredCount") if rules.get("summaryRequiredCount") is not None else "未配置"],
+        ["周记最少字数", rules.get("weeklyMinWordCount") if rules.get("weeklyMinWordCount") is not None else "未配置"],
         ["及格线", rules.get("scorePassThreshold") if rules.get("scorePassThreshold") is not None else ""],
     ]
     for index, item in enumerate(rules.get("scoreComponents") or [], 1):

@@ -644,10 +644,17 @@ class InternshipChangeRequest(PKMixin, TenantMixin, CommonMixin, Base):
 class InternshipBatchPlan(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_batch_plan 实习计划书（批次级，迁移 0038）。一批次一份。"""
     __tablename__ = "t_internship_batch_plan"
-    __table_args__ = (UniqueConstraint("tenant_id", "batch_id", name="uk_intern_batch_plan"),)
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "batch_id", name="uk_intern_batch_plan"),
+        UniqueConstraint("tenant_id", "plan_no", name="uk_ix_intern_plan_no"),
+    )
 
     batch_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
+    plan_no: Mapped[str | None] = mapped_column(String(100), comment="正式实习计划编号")
+    major_name: Mapped[str | None] = mapped_column(String(200), comment="计划适用专业名称")
+    education_level: Mapped[str | None] = mapped_column(String(100), comment="培养层次，如高职/中职")
+    subsidy_standard: Mapped[str | None] = mapped_column(String(200), comment="实习补贴标准")
     objectives: Mapped[str | None] = mapped_column(Text, comment="实习目标")
     content: Mapped[str | None] = mapped_column(Text, comment="计划正文")
     tasks_json: Mapped[list | None] = mapped_column(JSON, comment="任务清单")
