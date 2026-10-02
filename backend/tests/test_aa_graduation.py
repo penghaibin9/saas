@@ -136,6 +136,120 @@ def _gen_precheck(client, hdr, bid, sid):
     return client.post(f"{BASE}/graduation-audit-batches/{bid}/precheck", headers=hdr).json()["data"]
 
 
+@pytest.mark.parametrize("open_status", [None, "ACADEMIC_REVIEW"])
+def test_graduation_archive_counts_flushed_results_before_closing_batch(client, db_mode, open_status):
+    """归档后立即查询须消费本事务的新状态，未办结果仍阻止关闭批次。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, AffairsAuditTrail, StudentProfile
+
+    ids = _seed(db_mode)
+    headers = _hdr(client, "school_admin01")
+    batch_id = int(_batch(client, headers, ids["term"]))
+    statuses = ["GRADUATED", "COMPLETED", "ARCHIVED", "DELAYED", "REJECTED"]
+    if open_status:
+        statuses.append(open_status)
+    with get_sessionmaker()() as db:
+        assert db.autoflush is False
+        for index, status in enumerate(statuses):
+            student = StudentProfile(
+                tenant_id=TID, student_no=f"GRARCH{index}", real_name=f"归档测试学生{index}",
+                current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE",
+            )
+            db.add(student); db.flush()
+            db.add(AaGraduationAuditResult(
+                tenant_id=TID, batch_id=batch_id, student_id=student.id, status=status,
+                overall="SYSTEM_PASSED", item_results_json="[]",
+            ))
+        db.commit()
+
+    response = client.post(f"{BASE}/graduation-audit-batches/{batch_id}/archive", headers=headers)
+    assert response.status_code == 200, response.text
+    receipt = response.json()["data"]
+    closed = open_status is None
+    assert receipt["archived"] == 2
+    assert receipt["batchClosed"] is closed
+    assert receipt["batchStatus"] == ("ARCHIVED" if closed else "DRAFT")
+    with get_sessionmaker()() as db:
+        assert db.get(AaGraduationAuditBatch, batch_id).status == receipt["batchStatus"]
+        rows = db.query(AaGraduationAuditResult).filter_by(tenant_id=TID, batch_id=batch_id).all()
+        assert sorted(row.status for row in rows) == sorted([
+            "ARCHIVED", "ARCHIVED", "ARCHIVED", "DELAYED", "REJECTED",
+        ] + ([open_status] if open_status else []))
+        assert db.query(AffairsAuditTrail).filter_by(
+            tenant_id=TID, biz_id=batch_id, biz_type="AA_GRAD_AUDIT", action="ARCHIVE",
+        ).count() == 1
+    repeated = client.post(f"{BASE}/graduation-audit-batches/{batch_id}/archive", headers=headers)
+    assert repeated.status_code == 409, repeated.text
+    with get_sessionmaker()() as db:
+        assert db.query(AffairsAuditTrail).filter_by(
+            tenant_id=TID, biz_id=batch_id, biz_type="AA_GRAD_AUDIT", action="ARCHIVE",
+        ).count() == 1
+
+
+def test_graduation_archive_without_final_results_is_rejected(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaGraduationAuditBatch, AffairsAuditTrail
+
+    ids = _seed(db_mode)
+    headers = _hdr(client, "school_admin01")
+    batch_id = int(_batch(client, headers, ids["term"]))
+    response = client.post(f"{BASE}/graduation-audit-batches/{batch_id}/archive", headers=headers)
+    assert response.status_code == 400, response.text
+    with get_sessionmaker()() as db:
+        assert db.get(AaGraduationAuditBatch, batch_id).status == "DRAFT"
+        assert db.query(AffairsAuditTrail).filter_by(
+            tenant_id=TID, biz_id=batch_id, biz_type="AA_GRAD_AUDIT", action="ARCHIVE",
+        ).count() == 0
+
+
+@pytest.mark.parametrize("open_status", [None, "ACADEMIC_REVIEW"])
+def test_graduation_archive_closes_only_fully_archived_historical_batch(client, db_mode, open_status):
+    from app.db.session import get_sessionmaker
+    from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, AffairsAuditTrail
+
+    ids = _seed(db_mode)
+    headers = _hdr(client, "school_admin01")
+    batch_id = int(_batch(client, headers, ids["term"]))
+    with get_sessionmaker()() as db:
+        db.get(AaGraduationAuditBatch, batch_id).status = "PRECHECKED"
+        result = AaGraduationAuditResult(
+            tenant_id=TID, batch_id=batch_id, student_id=ids["s"], status="ARCHIVED",
+            conclusion="GRADUATED", overall="SYSTEM_PASSED", item_results_json="[]",
+        )
+        db.add(result)
+        if open_status:
+            from app.models import StudentProfile
+            student = StudentProfile(
+                tenant_id=TID, student_no="GRARCHOPEN", real_name="未办归档测试学生",
+                current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE",
+            )
+            db.add(student); db.flush()
+            db.add(AaGraduationAuditResult(
+                tenant_id=TID, batch_id=batch_id, student_id=student.id, status=open_status,
+                overall="SYSTEM_PASSED", item_results_json="[]",
+            ))
+        db.commit()
+        result_id = result.id
+    response = client.post(f"{BASE}/graduation-audit-batches/{batch_id}/archive", headers=headers)
+    assert response.status_code == (409 if open_status else 200), response.text
+    if not open_status:
+        assert response.json()["data"] == {
+            "batchId": str(batch_id), "archived": 0, "batchStatus": "ARCHIVED", "batchClosed": True,
+        }
+    with get_sessionmaker()() as db:
+        assert db.get(AaGraduationAuditBatch, batch_id).status == ("PRECHECKED" if open_status else "ARCHIVED")
+        stored = db.get(AaGraduationAuditResult, result_id)
+        assert (stored.status, stored.conclusion) == ("ARCHIVED", "GRADUATED")
+        audits = db.query(AffairsAuditTrail).filter_by(
+            tenant_id=TID, biz_id=batch_id, biz_type="AA_GRAD_AUDIT", action="ARCHIVE",
+        ).all()
+        assert len(audits) == (0 if open_status else 1)
+        if audits:
+            assert "收尾" in audits[0].detail and "archived=0" in audits[0].detail
+    repeated = client.post(f"{BASE}/graduation-audit-batches/{batch_id}/archive", headers=headers)
+    assert repeated.status_code == 409, repeated.text
+
+
 def _result_id(client, hdr, bid):
     return client.get(f"{BASE}/graduation-audit-batches/{bid}/results", headers=hdr).json()["data"]["items"][0]["resultId"]
 

@@ -599,19 +599,25 @@ def archive_batch(batch_id, user) -> dict:
                 AaGraduationAuditResult.tenant_id == _tid(), AaGraduationAuditResult.batch_id == b.id,
                 AaGraduationAuditResult.status == "ARCHIVED",
                 AaGraduationAuditResult.is_deleted.is_(False))) or 0
-            if already:
-                raise AppException("IDEMPOTENCY_CONFLICT", "该批次已归档，暂无新增可归档结果")
-            raise AppException("BAD_REQUEST", "该批次暂无已终审的毕业/结业结果，无法归档")
+            if not already:
+                raise AppException("BAD_REQUEST", "该批次暂无已终审的毕业/结业结果，无法归档")
         for r in eligible:
             r.status = "ARCHIVED"
+        # 会话禁用自动刷新，先写入本次归档状态，再查询是否仍有未办结果。
+        db.flush()
         remaining_open = db.scalar(select(func.count()).select_from(AaGraduationAuditResult).where(
             AaGraduationAuditResult.tenant_id == _tid(), AaGraduationAuditResult.batch_id == b.id,
             AaGraduationAuditResult.status.notin_(["ARCHIVED", "DELAYED", "REJECTED"]),
             AaGraduationAuditResult.is_deleted.is_(False))) or 0
         batch_closed = remaining_open == 0
+        if not eligible and not batch_closed:
+            raise AppException("IDEMPOTENCY_CONFLICT", "该批次已归档，暂无新增可归档结果")
         if batch_closed:
             b.status = "ARCHIVED"
-        _audit(db, b.id, "ARCHIVE", f"archived={len(eligible)},batchClosed={batch_closed}")
+        detail = f"archived={len(eligible)},batchClosed={batch_closed}"
+        if not eligible:
+            detail += ";历史已归档结果批次收尾"
+        _audit(db, b.id, "ARCHIVE", detail)
         db.commit()
         return {"batchId": str(batch_id), "archived": len(eligible), "batchStatus": b.status,
                 "batchClosed": batch_closed}
