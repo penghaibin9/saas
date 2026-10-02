@@ -154,6 +154,7 @@ async function runJourney() {
     const temporary = `${resultFile}.recovery.tmp`
     await fs.writeFile(temporary, JSON.stringify(report, null, 2), 'utf8'); await fs.rename(temporary, resultFile)
   }
+  const previousRoleEvidence = report.roles
   const previousRun = report.exam409Proof || { pending: report.pending, failure: report.failure, receipts: report.receipts, errors: report.errors }
   report.scenario = 'A-H'; report.passed = false; report.phase = '正常学校账号登录'; report.roles = []; report.failure = null
   report.batchIds ||= {}; report.taskIds ||= {}; report.scheduleBatchIds ||= {}; report.scheduleItemIds ||= {}
@@ -195,7 +196,7 @@ async function runJourney() {
     else if (step.startsWith('G-final-')) { bizId = step.slice(8); actorRole = 'school'; bizType = 'AA_GRAD_AUDIT'; action = 'ACADEMIC_FINAL_IMMUTABLE' }
     else if (['H-batch', 'H-check', 'H-confirm'].includes(step)) {
       actorRole = 'school'; bizType = 'AA_ARCHIVE'; bizId = report.archiveBatchId
-      action = { 'H-batch': 'ARCHIVE_BATCH_CREATE', 'H-check': 'ARCHIVE_CHECK_V2', 'H-confirm': 'ARCHIVE_CONFIRM' }[step]
+      action = { 'H-batch': 'ARCHIVE_BATCH_CREATE', 'H-check': 'ARCHIVE_CHECK_V2', 'H-confirm': 'ARCHIVE_CONFIRM_IMMUTABLE' }[step]
     }
     else if (examStep === 'H-exam-batch') { actorRole = 'school'; bizType = 'EXAM_BATCH'; bizId = examReport.examBatchId; action = 'EXAM_BATCH_CREATE' }
     else if (examStep.startsWith('H-exam-course-add-')) { actorRole = 'school'; bizType = 'EXAM_COURSE'; bizId = examStep.slice(18); action = 'EXAM_COURSE_ADD' }
@@ -347,6 +348,90 @@ async function runJourney() {
     return page
   }
   const pages = {}
+  assert.ok(process.env.E2E_STUDENT_BASE_URL, '必须显式配置已核验的隔离学生门户；配置不代表已获准启动')
+  const studentBase = isolatedUrl('E2E_STUDENT_BASE_URL', '', closedJourney ? '5201' : '5200', '') + '/portal'
+  const loginStudents = async (supplies = [], supplyOwners = []) => {
+    const studentPages = []
+    const studentKeys = ['A', 'B'].flatMap(label => [1, 2].map(ordinal => `${fixture.prefix}${label}${ordinal}`))
+    assert.deepEqual(Object.keys(preparation.studentLoginCredentials || {}).sort(), studentKeys.sort(), '四名原学生凭据不完整')
+    for (const label of ['A', 'B']) for (let ordinal = 1; ordinal <= 2; ordinal++) {
+      const key = `${fixture.prefix}${label}${ordinal}`
+      const credential = preparation.studentLoginCredentials?.[key]
+      const activation = preparation.studentActivationReceipts?.[key]
+      assert.equal(credential?.mustChangePassword, false); assert.equal(activation?.completed, true)
+      assert.equal(credential.tenantCode, fixture.tenantCode)
+      assert.equal(credential.loginName, key); assert.equal(typeof credential.password, 'string'); assert.ok(credential.password.length > 0)
+      assert.equal(activation.newLogin.roleCode, 'STUDENT')
+      const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
+      contexts.push(context); const page = await context.newPage(); activePage = page
+      authenticated = false
+      page.on('pageerror', () => failures.push({ role: key, kind: '页面脚本错误' }))
+      page.on('response', response => {
+        const url = new URL(response.url())
+        if (!url.pathname.startsWith('/api/v1/')) return
+        if (url.origin !== new URL(api).origin) failures.push({ role: key, kind: '后端目标错误' })
+        if (response.status() >= 400) failures.push({ role: key, path: url.pathname, status: response.status() })
+        receipts.push({ role: key, method: response.request().method(), path: url.pathname, status: response.status() })
+      })
+      const helper = new StudentLoginPage(page, studentBase)
+      await helper.login({ tenant: credential.tenantCode, username: credential.loginName, password: credential.password })
+      const claims = decodeJwt(helper.lastAccessToken)
+      assert.equal(String(claims.tenantId), fixture.tenantId)
+      assert.equal(String(claims.userId), String(activation.newLogin.userId))
+      assert.equal(claims.currentRoleCode, 'STUDENT')
+      assert.equal(claims.studentId, fixture.colleges[label].studentIds[ordinal - 1], '实际登录未对应原学院原学生编号')
+      helper.lastAccessToken = ''
+      fixture.accounts[key] = { loginName: credential.loginName, userId: String(claims.userId).replace(/^db-/, ''), roleCode: claims.currentRoleCode }
+      const supply = supplies[supplyOwners.indexOf(label)]
+      studentPages.push({ key, label, ordinal, page, supply, studentId: claims.studentId })
+    }
+    assert.equal(new Set(studentPages.map(item => item.studentId)).size, 4, '四个登录必须对应四名不同的原学生')
+    assert.equal(failures.length, 0, '学生登录或后端目标未验证通过，不发布选课批次')
+    authenticated = true; return studentPages
+  }
+  const finishReadback = async studentPages => {
+    await phase('封存后六种正常职责与四名学生刷新回读')
+    const isBusinessWrite = row => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(row.method)
+      && (row.path.startsWith(apiPath) || row.path.startsWith('/api/v1/portal/academic/'))
+    const businessWrites = () => receipts.filter(isBusinessWrite).length
+    const readbackWriteAttempts = []
+    for (const page of [...roles.map(role => pages[role]), ...studentPages.map(item => item.page)]) {
+      page.on('request', request => {
+        const row = { method: request.method(), path: new URL(request.url()).pathname }
+        if (isBusinessWrite(row)) readbackWriteAttempts.push(row)
+      })
+    }
+    const writesBeforeReadback = businessWrites()
+    for (const role of roles) {
+      const page = pages[role], expectedScope = report.roles.find(item => item.role === role).reads[0]
+      for (const reload of [false, true]) {
+        const flow = await visit(page, `/admin/academic-affairs?termId=${report.termId}`, `${apiPath}/flow`, reload)
+        assert.equal(flow.term.termId, report.termId); assert.equal(flow.term.status, 'ARCHIVED')
+        assert.equal(flow.viewer.scopeType, expectedScope.scopeType)
+        assert.deepEqual(flow.viewer.collegeIds, expectedScope.collegeIds)
+        await expect(page.locator('[aria-label="学期责任接力"]')).toBeVisible()
+      }
+      await capture(page, `终态-${role}-封存后刷新`)
+      await observed(`final-read-${role}`, { termId: report.termId, termStatus: 'ARCHIVED', scopeType: expectedScope.scopeType, refreshed: true })
+    }
+    for (const { page, studentId } of studentPages) {
+      for (const reload of [false, true]) {
+        const response = responseFor(page, '/api/v1/portal/academic/graduation-audit')
+        if (reload) await page.reload()
+        else await page.goto(`${studentBase}/academic/graduation`)
+        const result = await read(await response)
+        assert.equal(result.progress.hasAudit, true); assert.equal(result.progress.conclusion, 'GRADUATED')
+        await expect(page.getByRole('heading', { name: '已形成毕业结论', exact: true })).toBeVisible()
+      }
+      await capture(page, `终态-学生${studentId}-毕业结果刷新`)
+      await observed(`final-read-student-${studentId}`, { studentId, conclusion: 'GRADUATED', refreshed: true })
+    }
+    assert.equal(businessWrites(), writesBeforeReadback, '封存后结果回读不得触发业务写入')
+    assert.deepEqual(readbackWriteAttempts, [], '封存后只读回读不得尝试业务写入，包括尚未响应的请求')
+    report.uncovered = []; await save()
+    assert.equal(failures.length, 0, '实际页面或接口存在错误')
+    assert.equal(report.pending, null); report.passed = true; report.phase = '场景 A 至 H 完成'
+  }
   const stage = (flow, label) => {
     const unit = flow.unitProgress.find(item => item.collegeId === fixture.colleges[label].collegeId)
     assert.ok(unit, '学校责任总览缺少场景学院')
@@ -377,6 +462,27 @@ async function runJourney() {
     await phase('正常学校账号登录')
     const school = await login('school')
     pages.school = school
+    if (closedJourney && (previousRun.pending?.step === 'H-confirm' || report.checkpoints.some(item => item.step === 'H' && item.proof.termStatus === 'ARCHIVED'))) {
+      assert.equal(path.basename(fixtureFile), 'v5closed02-state.json')
+      assert.ok(report.pending === null || report.pending.step === 'H-confirm')
+      assert.deepEqual(previousRoleEvidence.map(item => item.role).sort(), [...roles].sort())
+      report.roles = previousRoleEvidence
+      const checked = report.checkpoints.filter(item => item.step === 'H-check').at(-1)
+      assert.equal(checked.proof.batchId, report.archiveBatchId)
+      assert.equal(checked.proof.domains.length, 13)
+      assert.ok(checked.proof.domains.every(item => ['PASS', 'NOT_APPLICABLE'].includes(item.result)))
+      const archive = await readOnly('school', `${apiPath}/archive/batches/${report.archiveBatchId}`)
+      const term = await readOnly('school', `${apiPath}/terms/${report.termId}`)
+      assert.equal(archive.termId, report.termId); assert.equal(archive.status, 'ARCHIVED')
+      assert.equal(term.status, 'ARCHIVED')
+      const manifest = await readOnly('school', `${apiPath}/archive/batches/${report.archiveBatchId}/manifest/verify`)
+      assert.equal(manifest.ok, true); assert.equal(manifest.versions.length, 1)
+      await observed('H-confirm', { batchId: report.archiveBatchId, status: archive.status, manifestVerified: true })
+      await observed('H', { termId: report.termId, batchId: report.archiveBatchId, termStatus: term.status })
+      for (const role of roles.filter(role => role !== 'school')) pages[role] = await login(role)
+      await finishReadback(await loginStudents())
+      return
+    }
     // Read-only authorization calculation: an older receipt from another
     // database cannot certify this instance's narrowed college templates.
     await phase('第九阶段：学院校级动作收窄门禁')
@@ -1463,44 +1569,7 @@ finally:
         ['DRAFT', 'PUBLISHED', 'OPEN', 'CLOSED', 'LOCKED'].indexOf(to), '选课批次未达到已办理状态')
       await observed(step, { batchId: selection.batchId, status: savedBatch.status })
     }
-    assert.ok(process.env.E2E_STUDENT_BASE_URL, '必须显式配置已核验的隔离学生门户；配置不代表已获准启动')
-    const studentBase = isolatedUrl('E2E_STUDENT_BASE_URL', '', closedJourney ? '5201' : '5200', '') + '/portal'
-    const studentPages = []
-    const studentKeys = ['A', 'B'].flatMap(label => [1, 2].map(ordinal => `${fixture.prefix}${label}${ordinal}`))
-    assert.deepEqual(Object.keys(preparation.studentLoginCredentials || {}).sort(), studentKeys.sort(), '四名原学生凭据不完整')
-    for (const label of ['A', 'B']) for (let ordinal = 1; ordinal <= 2; ordinal++) {
-      const key = `${fixture.prefix}${label}${ordinal}`
-      const credential = preparation.studentLoginCredentials?.[key]
-      const activation = preparation.studentActivationReceipts?.[key]
-      assert.equal(credential?.mustChangePassword, false); assert.equal(activation?.completed, true)
-      assert.equal(credential.tenantCode, fixture.tenantCode)
-      assert.equal(credential.loginName, key); assert.equal(typeof credential.password, 'string'); assert.ok(credential.password.length > 0)
-      assert.equal(activation.newLogin.roleCode, 'STUDENT')
-      const context = await browser.newContext({ viewport: { width: 1440, height: 1100 }, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
-      contexts.push(context); const page = await context.newPage(); activePage = page
-      authenticated = false
-      page.on('pageerror', () => failures.push({ role: key, kind: '页面脚本错误' }))
-      page.on('response', response => {
-        const url = new URL(response.url())
-        if (!url.pathname.startsWith('/api/v1/')) return
-        if (url.origin !== new URL(api).origin) failures.push({ role: key, kind: '后端目标错误' })
-        if (response.status() >= 400) failures.push({ role: key, path: url.pathname, status: response.status() })
-        receipts.push({ role: key, method: response.request().method(), path: url.pathname, status: response.status() })
-      })
-      const helper = new StudentLoginPage(page, studentBase)
-      await helper.login({ tenant: credential.tenantCode, username: credential.loginName, password: credential.password })
-      const claims = decodeJwt(helper.lastAccessToken)
-      assert.equal(String(claims.tenantId), fixture.tenantId)
-      assert.equal(String(claims.userId), String(activation.newLogin.userId))
-      assert.equal(claims.currentRoleCode, 'STUDENT')
-      assert.equal(claims.studentId, fixture.colleges[label].studentIds[ordinal - 1], '实际登录未对应原学院原学生编号')
-      helper.lastAccessToken = ''
-      fixture.accounts[key] = { loginName: credential.loginName, userId: String(claims.userId).replace(/^db-/, ''), roleCode: claims.currentRoleCode }
-      const supply = supplies[supplyOwners.indexOf(label)]
-      studentPages.push({ key, label, ordinal, page, supply, studentId: claims.studentId })
-    }
-    assert.equal(new Set(studentPages.map(item => item.studentId)).size, 4, '四个登录必须对应四名不同的原学生')
-    assert.equal(failures.length, 0, '学生登录或后端目标未验证通过，不发布选课批次')
+    const studentPages = await loginStudents(supplies, supplyOwners)
     await selectSavedBatch(school)
     authenticated = true
     await selectionCommand('DRAFT', 'PUBLISHED', '发布', 'publish')
@@ -2551,47 +2620,7 @@ finally:
     const termAfterArchive = await readOnly('school', `${apiPath}/terms/${report.termId}`)
     assert.equal(termAfterArchive.status, 'ARCHIVED')
     await observed('H', { termId: report.termId, batchId: archiveBatchId, termStatus: termAfterArchive.status })
-    await phase('封存后六种正常职责与四名学生刷新回读')
-    const isBusinessWrite = row => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(row.method)
-      && (row.path.startsWith(apiPath) || row.path.startsWith('/api/v1/portal/academic/'))
-    const businessWrites = () => receipts.filter(isBusinessWrite).length
-    const readbackWriteAttempts = []
-    for (const page of [...roles.map(role => pages[role]), ...studentPages.map(item => item.page)]) {
-      page.on('request', request => {
-        const row = { method: request.method(), path: new URL(request.url()).pathname }
-        if (isBusinessWrite(row)) readbackWriteAttempts.push(row)
-      })
-    }
-    const writesBeforeReadback = businessWrites()
-    for (const role of roles) {
-      const page = pages[role], expectedScope = report.roles.find(item => item.role === role).reads[0]
-      for (const reload of [false, true]) {
-        const flow = await visit(page, `/admin/academic-affairs?termId=${report.termId}`, `${apiPath}/flow`, reload)
-        assert.equal(flow.term.termId, report.termId); assert.equal(flow.term.status, 'ARCHIVED')
-        assert.equal(flow.viewer.scopeType, expectedScope.scopeType)
-        assert.deepEqual(flow.viewer.collegeIds, expectedScope.collegeIds)
-        await expect(page.locator('[aria-label="学期责任接力"]')).toBeVisible()
-      }
-      await capture(page, `终态-${role}-封存后刷新`)
-      await observed(`final-read-${role}`, { termId: report.termId, termStatus: 'ARCHIVED', scopeType: expectedScope.scopeType, refreshed: true })
-    }
-    for (const { page, studentId } of studentPages) {
-      for (const reload of [false, true]) {
-        const response = responseFor(page, '/api/v1/portal/academic/graduation-audit')
-        if (reload) await page.reload()
-        else await page.goto(`${studentBase}/academic/graduation`)
-        const result = await read(await response)
-        assert.equal(result.progress.hasAudit, true); assert.equal(result.progress.conclusion, 'GRADUATED')
-        await expect(page.getByRole('heading', { name: '已形成毕业结论', exact: true })).toBeVisible()
-      }
-      await capture(page, `终态-学生${studentId}-毕业结果刷新`)
-      await observed(`final-read-student-${studentId}`, { studentId, conclusion: 'GRADUATED', refreshed: true })
-    }
-    assert.equal(businessWrites(), writesBeforeReadback, '封存后结果回读不得触发业务写入')
-    assert.deepEqual(readbackWriteAttempts, [], '封存后只读回读不得尝试业务写入，包括尚未响应的请求')
-    report.uncovered = []; await save()
-    assert.equal(failures.length, 0, '实际页面或接口存在错误')
-    assert.equal(report.pending, null); report.passed = true; report.phase = '场景 A 至 H 完成'
+    await finishReadback(studentPages)
   } catch (error) {
     report.failure = { phase: report.phase, type: error.name || 'Error', message: '当前阶段未通过；保留正式对象及待核对命令，未自动重放写入。', sourceLocation: sourceLocation(error) }
     if (authenticated && activePage) await capture(activePage, '当前阶段-失败时脱敏页面').catch(() => {})
