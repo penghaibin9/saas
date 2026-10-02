@@ -7,16 +7,20 @@ import { renderToString } from 'vue/server-renderer'
 import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 import * as registry from '../src/modules/academicAffairs/config/academicFlowRegistry.js'
 
+const permissionSource = readFileSync(new URL('../src/config/navPlan.js', import.meta.url), 'utf8')
+const matchPermission = new Function(`${permissionSource.match(/export function matchPermission\(patterns, code\) \{[\s\S]*?\n\}/)[0].replace('export ', '')}; return matchPermission`)()
+
 const ok = data => ({ code: 0, data })
 const id = '9007199254740993'
 const batch = extra => ({ batchId: id, status: 'ARRANGED', batchName: '期末考试', publishAction: { allowed: true }, ...extra })
 const course = extra => ({ examCourseId: '9007199254740995', status: 'PENDING_CONFIRM', confirmAction: { allowed: true }, ...extra })
 const readiness = extra => ({ batchId: id, canPublish: true, blockingReasons: [], ...extra })
 function instance(api = {}, convenienceApi = {}) {
-  const value = page('AaExamConsoleView', { ...registry,
+  const value = page('AaExamConsoleView', { ...registry, matchPermission,
     academicAffairsExamApi: { getBatch: async () => ok(batch()), listCourses: async () => ok({ list: [course()], total: 1 }), batchStats: async () => ok({}), ...api },
     academicAffairsExamConvenienceApi: { getReadiness: async () => ok(readiness()), ...convenienceApi }
   })
+  value.state.ctx.permissionPatterns = ['academicAffairs.exam.manage', 'academicAffairs.exam.arrange', 'academicAffairs.exam.publish']
   value.state.ctx.dataScope = { scope: 'TENANT_ALL' }; value.state.current = batch()
   value.state.readiness = readiness(); value.state.courses = [course()]; value.state.load = async () => {}
   return value
@@ -147,4 +151,48 @@ test('真实发布按钮接受已编排阶段但被无资格或未知就绪禁�
     if (shouldShow) assert.match(html, /<button disabled[^>]*>发布/)
     else { assert.doesNotMatch(html, /<button/); assert.match(html, /由开课责任学院确认/) }
   }
+})
+
+
+test('全校只读范围不授予考务写动作，名单与考场仍能读取', async () => {
+  const writes = []
+  const { state } = instance(Object.fromEntries(['createBatch', 'confirmBatchCourses', 'finishBatch', 'archiveBatch', 'setSchedule', 'addPatrol', 'addRoom'].map(name => [name, async () => { writes.push(name); return ok({}) }])), { previewCourses: async () => { writes.push('preview'); return ok({}) }, confirmCourses: async () => { writes.push('circle'); return ok({}) } })
+  state.ctx.permissionPatterns = ['academicAffairs.exam.view']
+  state.current = batch({ status: 'COURSE_CONFIRMED' }); state.form = { termId: '1', batchName: '考试' }
+  state.selectedTaskIds = ['T']; state.coursePreview = { previewToken: 'preview' }
+  state.openCreate(); await state.openAddCourse(); state.openAutoPlan(); state.openSchedule(course())
+  await state.submitCreate(); await state.previewCourses(); await state.confirmCourses(); await state.runAutoArrange(); await state.submitSchedule(); await state.submitPatrol(); await state.submitRoom()
+  for (const fn of ['confirmBatchCourses', 'finishBatch', 'archiveBatch', 'publishBatch']) await state.lc(fn, '办理')
+  assert.equal(writes.length, 0); assert.equal(state.confirmVisible, false)
+  assert.equal(state.canManageExam, false); assert.equal(state.canArrangeExam, false); assert.equal(state.canPublishPermission, false)
+  assert.equal(state.createVisible, false); assert.equal(state.courseVisible, false); assert.equal(state.autoPlanVisible, false); assert.equal(state.schedVisible, false)
+})
+
+test('考务管理编排发布权限独立，学院编排不取得学校批次管理', () => {
+  const { state } = instance()
+  for (const [code, key] of [['manage', 'canManageExam'], ['arrange', 'canArrangeExam'], ['publish', 'canPublishPermission']]) {
+    state.ctx.permissionPatterns = ['academicAffairs.exam.' + code]
+    for (const candidate of ['canManageExam', 'canArrangeExam', 'canPublishPermission']) assert.equal(state[candidate], candidate === key)
+  }
+  state.ctx.dataScope = { scope: 'COLLEGE' }; state.ctx.permissionPatterns = ['academicAffairs.exam.arrange']
+  assert.equal(state.canArrangeExam, true); assert.equal(state.canManageExam, false)
+})
+
+test('考务确认窗口打开后撤权不得发送批次管理请求', async () => {
+  let writes = 0
+  const { state } = instance({ finishBatch: async () => { writes++; return ok(batch()) } })
+  state.current = batch({ status: 'PUBLISHED' }); await state.lc('finishBatch', '结束')
+  assert.equal(state.confirmVisible, true)
+  state.ctx.permissionPatterns = ['academicAffairs.exam.view']; await state.onConfirm()
+  assert.equal(writes, 0)
+})
+
+test('自动时间安排返回后撤销编排权限不能继续第二次写请求', async () => {
+  let writes = 0
+  const pending = deferred()
+  const { state } = instance({ autoArrange: async () => { writes++; return ok({}) } }, { autoTimes: () => pending.promise })
+  state.autoPlan = { dates: ['2027-07-05'], sessions: [{ start: '09:00', end: '11:00' }], maxPerDayPerClass: 1 }
+  const running = state.runAutoArrange(); state.ctx.permissionPatterns = ['academicAffairs.exam.view']
+  pending.resolve(ok({})); await running
+  assert.equal(writes, 0); assert.equal(state.autoArranging, false)
 })

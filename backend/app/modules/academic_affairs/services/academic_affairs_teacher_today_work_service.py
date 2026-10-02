@@ -188,7 +188,7 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_start_
             actions.append({
                 "kind": "TEACHING_TASK", "id": str(row.id),
                 "title": f"确认《{row.course_name or '教学任务'}》",
-                "note": " · ".join(value for value in (row.class_name, row.teaching_class_name, "学院已分配") if value),
+                "note": " · ".join(value for value in (row.teaching_class_name, "学院已分配") if value),
                 "action": "去确认", "primary": True,
                 "path": f"/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId={row.id}",
             })
@@ -275,7 +275,7 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_start_
         actions.append({
             "kind": "GRADE_SETUP", "id": str(task.id),
             "title": f"开始《{task.course_name or '课程'}》成绩录入",
-            "note": f"{task.teaching_class_name or task.class_name or '正式教学班'} · 尚未建立成绩任务",
+            "note": f"{task.teaching_class_name or '正式教学班'} · 尚未建立成绩任务",
             "action": "开始录入",
             "path": f"/admin/academic-affairs/grade-entry?teachingTaskId={task.id}&action=create",
         })

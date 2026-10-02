@@ -47,6 +47,15 @@ def test_selection_scope_guard_is_installed_on_existing_owner_at_package_import(
     assert course_selection_router.selection_svc.get_conflict_report is guard._selection_conflict_report
 
 
+def test_selection_scope_guard_reaches_canonical_read_function_globals():
+    from app.modules.academic_affairs.services import academic_affairs_selection_read_core_service as read_core
+
+    assert read_core._scope_values is guard._selection_scope_values
+    assert read_core._scope_course_query is guard._selection_scope_course_query
+    assert selection_read._require_batch_visible.__globals__["_scope_course_query"] is guard._selection_scope_course_query
+    assert selection_read._require_course_visible.__globals__["_scope_course_query"] is guard._selection_scope_course_query
+
+
 def test_roster_hot_reads_are_sql_paged_and_aggregated_on_existing_owner():
     assert academic_read.roster is guard._roster_sql
     assert academic_read.roster_status_summary is guard._roster_status_summary_sql

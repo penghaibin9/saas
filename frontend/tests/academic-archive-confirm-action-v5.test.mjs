@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { compile } from '@vue/compiler-dom'
 import * as Vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { matchPermission } from '../src/config/navPlan.js'
 import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 import * as registry from '../src/modules/academicAffairs/config/academicFlowRegistry.js'
 import { gradeError } from '../src/modules/academicAffairs/views/parallel-c/grade-review.js'
@@ -13,7 +14,7 @@ const ok = data => ({ code: 0, data })
 const batch = (extra = {}) => ({ batchId: '9007199254740993', batchName: '本学期学校归档', status: 'READY', scopeType: 'TENANT_ALL', missingCount: 0, items: domains.map(domain => ({ domain, result: 'PASS' })), confirmAction: { allowed: true, reason: '' }, ...extra })
 const deniedAction = { allowed: false, reason: '当前学校归档责任任职已失效，请联系校教务处核对。' }
 function instance(api = {}) {
-  const result = page('AaArchiveConsoleView', { ...registry, gradeError, academicAffairsArchiveApi: api }, {
+  const result = page('AaArchiveConsoleView', { ...registry, gradeError, matchPermission, academicAffairsArchiveApi: api }, {
     ctx: { currentRole: { roleCode: 'CUSTOM_SCHOOL_ROLE' }, dataScope: { scope: 'TENANT_ALL' }, permissionPatterns: ['academicAffairs.archive.manage'], permissionVersion: '1' }
   })
   result.state.current = batch(); result.state.items = result.state.current.items
@@ -136,7 +137,7 @@ test('发送前读取失败不沿用缓存许可，原确认内容保持', async
 
 test('真实按钮与对话框模板缺许可时禁用，原因及重新核对入口可见', async () => {
   const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaArchiveConsoleView.vue', import.meta.url), 'utf8')
-  const template = source.match(/<div v-if="!isCollegeScope" class="aaar-head">[\s\S]*?(?=<div v-if="!isCollegeScope \|\| current.archivedAt")/)[0]
+  const template = source.match(/<div v-if="canManageArchive" class="aaar-head">[\s\S]*?(?=<div v-if="!isCollegeScope \|\| current.archivedAt")/)[0]
   const dialogTemplate = source.match(/<AppConfirmDialog[\s\S]*?<\/AppConfirmDialog>/)[0]
   for (const snippet of [template, dialogTemplate]) {
     const render = new Function('Vue', compile(snippet, { mode: 'function', prefixIdentifiers: true }).code)(Vue)

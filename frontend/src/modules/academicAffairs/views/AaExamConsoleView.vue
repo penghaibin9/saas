@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton v-if="viewMode === 'exam' && schoolExamScope" variant="primary" @click="openCreate">创建考试批次</AppButton>
+      <AppButton v-if="viewMode === 'exam' && canManageExam" variant="primary" @click="openCreate">创建考试批次</AppButton>
       <AppButton v-else size="small" variant="ghost" :disabled="loading" @click="load">刷新正式数据</AppButton>
     </template>
 
@@ -55,20 +55,20 @@
               <div class="aaexam-title">{{ current.batchName }}</div>
               <StatusTag :type="statusType(current.status)" :label="statusLabel(current.status)" dot />
             </div>
-            <div v-if="schoolExamScope" class="aaexam-actions">
-              <AppButton v-if="current.status === 'DRAFT'" size="small" variant="ghost" @click="openAddCourse">+ 批量圈课</AppButton>
-              <AppButton v-if="current.status === 'DRAFT'" size="small" variant="primary" @click="lc('confirmBatchCourses', '推进(课程确认完成)')">推进</AppButton>
-              <AppButton v-if="['COURSE_CONFIRMED','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openPatrol">巡考安排</AppButton>
-              <AppButton v-if="current.status === 'COURSE_CONFIRMED'" size="small" variant="ghost" :loading="autoArranging" @click="openAutoPlan">自动排考</AppButton>
+            <div v-if="schoolExamScope && (canManageExam || canArrangeExam || canPublishPermission)" class="aaexam-actions">
+              <AppButton v-if="canManageExam && current.status === 'DRAFT'" size="small" variant="ghost" @click="openAddCourse">+ 批量圈课</AppButton>
+              <AppButton v-if="canManageExam && current.status === 'DRAFT'" size="small" variant="primary" @click="lc('confirmBatchCourses', '推进(课程确认完成)')">推进</AppButton>
+              <AppButton v-if="canArrangeExam && ['COURSE_CONFIRMED','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openPatrol">巡考安排</AppButton>
+              <AppButton v-if="canArrangeExam && current.status === 'COURSE_CONFIRMED'" size="small" variant="ghost" :loading="autoArranging" @click="openAutoPlan">自动排考</AppButton>
               <AppButton
-                v-if="['COURSE_CONFIRMED', 'ARRANGED'].includes(current.status)"
+                v-if="['COURSE_CONFIRMED', 'ARRANGED'].includes(current.status) && canPublishPermission"
                 size="small"
                 variant="primary"
                 :disabled="!canPublishExam || examActionBusy || saving"
                 @click="lc('publishBatch', '发布')"
               >发布</AppButton>
-              <AppButton v-if="current.status === 'PUBLISHED'" size="small" variant="warning" @click="lc('finishBatch', '结束考试')">结束</AppButton>
-              <AppButton v-if="current.status === 'FINISHED'" size="small" variant="ghost" @click="lc('archiveBatch', '归档')">归档</AppButton>
+              <AppButton v-if="canManageExam && current.status === 'PUBLISHED'" size="small" variant="warning" @click="lc('finishBatch', '结束考试')">结束</AppButton>
+              <AppButton v-if="canManageExam && current.status === 'FINISHED'" size="small" variant="ghost" @click="lc('archiveBatch', '归档')">归档</AppButton>
             </div>
           </div>
 
@@ -169,7 +169,7 @@
             <template #cell-ops="{ row }">
               <button v-if="row.confirmAction?.allowed === true" class="mp-link" :disabled="examActionBusy || saving || batchDetailLoading" @click="confirm(row, 'CONFIRM')">确认</button>
               <span v-else-if="row.status === 'PENDING_CONFIRM'" class="mp-cell-sub">{{ courseConfirmReason(row) }}</span>
-              <button class="mp-link" @click="openSchedule(row)">设时间</button>
+              <button v-if="canArrangeExam" class="mp-link" @click="openSchedule(row)">设时间</button>
               <button class="mp-link" @click="openArrange(row)">考场</button>
             </template>
           </DataTable>
@@ -463,6 +463,7 @@
 <script>
 import { academicFlowOwner, academicFlowNextOwner, academicFlowText } from '../config/academicFlowRegistry.js'
 /** 考务管理 · 教务处控制台：批次生命周期 + 批量圈课 + 两段式自动排考 + 发布就绪。 */
+import { matchPermission } from '@/config/navPlan'
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppCheckboxGroup, AppTermEntityPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker } from '@/components/common'
@@ -525,6 +526,9 @@ export default {
     }
   },
   computed: {
+    canManageExam() { return this.schoolExamScope && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.exam.manage') },
+    canArrangeExam() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.exam.arrange') },
+    canPublishPermission() { return this.schoolExamScope && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.exam.publish') },
     viewMode() {
       const tab = String(this.$route.query.tab || '').toLowerCase()
       return tab === 'defer' ? 'defer' : tab === 'archive' ? 'archive' : 'exam'
@@ -597,9 +601,9 @@ export default {
       return !!this.autoResult && String(this.autoResult.batchId) === String(this.current?.batchId) && !this.readinessError &&
         this.readiness?.canPublish === true && ['missedCourseCount', 'invigilatorGapCount', 'roomShortageCount'].every(key => this.readiness[key] === 0)
     },
-    canArrangeRooms() { return ['COURSE_CONFIRMED', 'ARRANGED'].includes(this.current?.status) },
+    canArrangeRooms() { return this.canArrangeExam && ['COURSE_CONFIRMED', 'ARRANGED'].includes(this.current?.status) },
     canPublishExam() {
-      return !this.batchDetailLoading && !this.readinessError && this.current?.publishAction?.allowed === true &&
+      return this.canPublishPermission && !this.batchDetailLoading && !this.readinessError && this.current?.publishAction?.allowed === true &&
         this.readiness?.batchId === this.current?.batchId && this.readiness?.canPublish === true
     },
     publishReason() {
@@ -635,6 +639,7 @@ export default {
     this.load()
   },
   methods: {
+    canRunBatchAction(fn) { return fn === 'publishBatch' ? this.canPublishExam : ['confirmBatchCourses', 'finishBatch', 'archiveBatch'].includes(fn) && this.canManageExam },
     clearExamAction() {
       this.examActionSeq++; this.examActionBusy = false; this.examActionError = ''
       this.confirmVisible = false; this.pendingAction = null; this.pendingMethod = ''
@@ -810,9 +815,9 @@ export default {
       finally { if (current()) this.batchDetailLoading = false }
     },
     onCoursePageChange(page) { this.coursePagination.page = Number(page || 1); this.refresh() },
-    openCreate() { this.form = { batchName: '', termId: this.examRouteTermId() }; this.formError = ''; this.createVisible = true },
+    openCreate() { if (!this.canManageExam) return; this.form = { batchName: '', termId: this.examRouteTermId() }; this.formError = ''; this.createVisible = true },
     async submitCreate() {
-      if (this.saving) return
+      if (!this.canManageExam || this.saving) return
       const identity = this.identityKey
       if (!this.form.termId) { this.formError = '请选择正式学期'; return }
       if (!this.form.batchName) { this.formError = '批次名称必填'; return }
@@ -827,7 +832,7 @@ export default {
       } finally { if (identity === this.identityKey) this.saving = false }
     },
     async lc(fn, label) {
-      if (!this.current || this.saving || this.examActionBusy || !this.alive) return
+      if (!this.canRunBatchAction(fn) || !this.current || this.saving || this.examActionBusy || !this.alive) return
       if (fn === 'publishBatch' && !this.canPublishExam) { this.examActionError = this.publishReason || '考试发布许可或就绪结论尚未确认'; return }
       const batch = { ...this.current }, identity = this.identityKey, route = this.$route.fullPath, seq = ++this.examActionSeq
       const current = () => this.alive && seq === this.examActionSeq && batch.batchId === this.current?.batchId && identity === this.identityKey && route === this.$route.fullPath
@@ -843,7 +848,7 @@ export default {
       this.confirmMessage = `确认对批次「${this.current.batchName}」执行「${label}」？`
       this.pendingMethod = fn
       this.pendingAction = async () => {
-        if (!current() || this.saving) return
+        if (!current() || !this.canRunBatchAction(fn) || this.saving) return
         this.saving = true
         try {
           if (fn === 'publishBatch') {
@@ -851,6 +856,7 @@ export default {
             if (!current()) return
             if (!loaded || !this.canPublishExam) { this.examActionError = this.readinessError || this.publishReason || '考试发布许可或就绪结论尚未确认'; return }
           }
+          if (!this.canRunBatchAction(fn)) return
           const res = await api[fn](batch.batchId)
           if (!current()) return
           if (res.code === 0) { toast.success(label + '成功'); this.current = res.data; await this.load(); await this.refresh() }
@@ -861,6 +867,7 @@ export default {
       this.confirmVisible = true
     },
     async openAddCourse() {
+      if (!this.canManageExam) return
       this.courseVisible = true
       this.candidateKeyword = ''
       this.courseCandidates = []
@@ -895,6 +902,7 @@ export default {
       }
     },
     async previewCourses() {
+      if (!this.canManageExam) return
       if (!this.selectedTaskIds.length) { this.courseError = '请至少选择 1 门应考课程'; return }
       this.saving = true; this.courseError = ''
       const res = await convenienceApi.previewCourses(this.current.batchId, this.selectedTaskIds)
@@ -903,6 +911,7 @@ export default {
       else { this.coursePreview = null; this.courseError = res.message }
     },
     async confirmCourses() {
+      if (!this.canManageExam) return
       const previewToken = this.coursePreview?.previewToken
       if (!previewToken) { this.courseError = '预览已失效，请重新预览'; return }
       this.saving = true; this.courseError = ''
@@ -922,6 +931,7 @@ export default {
       this.coursePreview = null
     },
     openAutoPlan() {
+      if (!this.schoolExamScope || !this.canArrangeExam) return
       this.autoPlan = { dates: [''], sessions: [{ start: '', end: '' }], maxPerDayPerClass: 1 }
       this.autoPlanError = ''
       this.autoPlanVisible = true
@@ -936,7 +946,7 @@ export default {
     addAutoSession() { this.autoPlan.sessions.push({ start: '', end: '' }) },
     removeAutoSession(index) { if (this.autoPlan.sessions.length > 1) this.autoPlan.sessions.splice(index, 1) },
     async runAutoArrange() {
-      if (!this.current || this.autoArranging) return
+      if (!this.schoolExamScope || !this.canArrangeExam || !this.current || this.autoArranging) return
       const batchId = this.current.batchId, identity = this.identityKey, seq = ++this.autoSeq
       const current = () => seq === this.autoSeq && batchId === this.current?.batchId && identity === this.identityKey
       const dates = [...new Set(this.autoPlan.dates.map((value) => String(value || '').trim()).filter(Boolean))]
@@ -970,7 +980,7 @@ export default {
           timePlan = timeRes.data
           this.autoTimeReceipt = { key, batchId, data: timePlan }
         }
-        if (!current()) return
+        if (!current() || !this.canArrangeExam || !this.schoolExamScope) return
         const arrangeRes = await api.autoArrange(batchId)
         if (!current()) return
         if (arrangeRes.code !== 0) {
@@ -983,7 +993,7 @@ export default {
         await this.refresh()
         if (current() && this.autoArrangeComplete) toast.success('本批次完整就绪检查通过，仍以正式发布校验为准')
       } catch (error) { if (current()) this.autoPlanError = (this.autoTimeReceipt ? '时间安排已保存；' : '') + (error?.message || '办理结果未确认，请核对正式记录') }
-      finally { if (current()) this.autoArranging = false }
+      finally { if (seq === this.autoSeq) this.autoArranging = false }
     },
     async confirm(row, action) {
       if (!this.alive || this.examActionBusy || this.saving || this.batchDetailLoading || action !== 'CONFIRM') return
@@ -1008,8 +1018,9 @@ export default {
       } catch (error) { if (current()) this.examActionError = academicFlowText(error?.message, '课程确认结果尚未核对，请重新读取当前批次。') }
       finally { if (current()) this.examActionBusy = false }
     },
-    openSchedule(row) { this.schedCourse = row; this.sched = { examDate: row.examDate || '', startTime: row.startTime || '', endTime: row.endTime || '' }; this.schedVisible = true },
+    openSchedule(row) { if (!this.canArrangeExam) return; this.schedCourse = row; this.sched = { examDate: row.examDate || '', startTime: row.startTime || '', endTime: row.endTime || '' }; this.schedVisible = true },
     async submitSchedule() {
+      if (!this.canArrangeExam || this.saving) return
       this.saving = true
       const res = await api.setSchedule(this.schedCourse.examCourseId, this.sched)
       this.saving = false
@@ -1074,12 +1085,14 @@ export default {
       this.$router.push({ path: '/admin/academic-affairs/exam/print/seating', query: { roomId } })
     },
     async openPatrol() {
+      if (!this.schoolExamScope || !this.canArrangeExam) return
       this.patrolForm = { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }
       this.patrolError = ''; this.patrolVisible = true
       const res = await api.listPatrols(this.current.batchId)
       this.patrols = res.code === 0 ? (res.data.items || []) : []
     },
     async submitPatrol() {
+      if (!this.schoolExamScope || !this.canArrangeExam || this.saving) return
       if (!this.patrolForm.teacherKey) { this.patrolError = '巡考教师工号必填'; return }
       this.saving = true
       const res = await api.addPatrol(this.current.batchId, this.patrolForm)

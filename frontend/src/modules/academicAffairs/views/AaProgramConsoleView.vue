@@ -10,7 +10,7 @@
       <AppButton @click="$router.push('/admin/academic-affairs/programs')">方案列表</AppButton>
       <AppButton v-if="tab === 'review' && canReviewProgram(activeProgram)" variant="primary" @click="openReview(activeProgram, 'APPROVE')">审核方案</AppButton>
       <AppButton v-if="tab === 'publish' && activeProgram && hasPermission('academicAffairs.program.publish')" variant="primary" @click="openBind(activeProgram)">核验并发布</AppButton>
-      <AppButton v-if="tab === 'changeStatus' && activeProgram && hasPermission('academicAffairs.program.changeStatus')" variant="primary" @click="openChange(activeProgram)">发起版本变更</AppButton>
+      <AppButton v-if="tab === 'changeStatus' && activeProgram && hasPermission('academicAffairs.program.manage')" variant="primary" @click="openChange(activeProgram)">发起版本变更</AppButton>
     </template>
 
     <details class="aapc-workspace-directory"><summary>切换相关工作区</summary><div class="aapc-tabs">
@@ -89,8 +89,8 @@
               <AppButton @click="viewBindings(activeProgram)">查看绑定记录</AppButton>
             </template>
             <template v-else>
-              <AppButton v-if="hasPermission('academicAffairs.program.changeStatus')" variant="primary" @click="openChange(activeProgram)">建立方案新版本</AppButton>
-              <AppButton v-for="act in availableChangeActions(activeProgram.status)" :key="act" @click="openChangeAction(activeProgram, act)">{{ changeActionLabel(act) }}</AppButton>
+              <AppButton v-if="hasPermission('academicAffairs.program.manage')" variant="primary" @click="openChange(activeProgram)">建立方案新版本</AppButton>
+              <AppButton v-for="act in hasPermission('academicAffairs.program.changeStatus') ? availableChangeActions(activeProgram.status) : []" :key="act" @click="openChangeAction(activeProgram, act)">{{ changeActionLabel(act) }}</AppButton>
             </template>
           </div>
         </section>
@@ -155,7 +155,7 @@
           <!-- 计划变更（收编入口：已发布/启用计划的变更须带原因，走同一版本链机制） -->
           <template v-if="tab === 'planChange'">
             <button class="mp-link" @click="$router.push(`/admin/academic-affairs/programs/${row.programId}`)">查看</button>
-            <button v-if="canNewVersion(row.status)" class="mp-link" @click="openChange(row)">发起变更</button>
+            <button v-if="canNewVersion(row.status) && hasPermission('academicAffairs.program.manage')" class="mp-link" @click="openChange(row)">发起变更</button>
           </template>
           <!-- 课程模块 -->
           <template v-if="tab === 'courseModules'">
@@ -205,7 +205,7 @@
           </template>
           <!-- 方案变更 -->
           <template v-if="tab === 'changeStatus'">
-            <button v-for="act in availableChangeActions(row.status)" :key="act" class="mp-link"
+            <button v-for="act in hasPermission('academicAffairs.program.changeStatus') ? availableChangeActions(row.status) : []" :key="act" class="mp-link"
                     :class="{ 'is-danger': act === 'DISABLE' }" @click="openChangeAction(row, act)">{{ changeActionLabel(act) }}</button>
             <button class="mp-link" @click="viewChangeLog(row)">变更记录</button>
           </template>
@@ -287,7 +287,7 @@
       </div>
       <template #footer>
         <AppButton variant="ghost" @click="bindVisible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="saving" @click="submitBind">确认绑定</AppButton>
+        <AppButton v-if="hasPermission('academicAffairs.program.publish')" variant="primary" :loading="saving" @click="submitBind">确认绑定</AppButton>
       </template>
     </AppDrawer>
 
@@ -447,7 +447,7 @@ export default {
       courseVisible: false, courseForm: { programCourseId: '', courseName: '', module: '', openTermNo: null, credit: null },
       creditVisible: false, creditForm: { module: '', creditTarget: 0, note: '', _editing: false, _origModule: '' },
       gradVisible: false, gradForm: { requirementId: '', category: 'ABILITY', content: '', sortOrder: 0 },
-      bindVisible: false, bindRow: null, bindForm: { gradeYear: '', classId: '' },
+      bindVisible: false, bindIdentity: '', bindRow: null, bindForm: { gradeYear: '', classId: '' },
       bindingsVisible: false, bindingRows: [],
       practiceVisible: false,
       practiceForm: { segmentId: '', segmentName: '', segmentType: 'OTHER', openTermNo: null, weeks: null, credit: null, orgMode: 'CENTRALIZED', location: '', assessmentMode: 'CHECK', sortOrder: 0 },
@@ -566,7 +566,7 @@ export default {
     }
   },
   watch: {
-    workflowIdentity() { this.workflowRequestRevision++; this.workflowProgram = null; this.workflowEvidence = null; this.workflowChangeLog = []; if (this.isWorkflowView) this.loadWorkflowEvidence() },
+    workflowIdentity() { this.bindVisible = false; this.changeDlg.visible = false; this.planChangeDlg.visible = false; this.workflowRequestRevision++; this.workflowProgram = null; this.workflowEvidence = null; this.workflowChangeLog = []; if (this.isWorkflowView) this.loadWorkflowEvidence() },
     '$route.query.tab': async function (nextTab) {
       if (!nextTab || nextTab === this.tab || !this.tabs.some((item) => item.key === nextTab)) return
       this.tab = nextTab
@@ -827,9 +827,11 @@ export default {
 
     // ── 计划变更（收编入口：同一版本链机制 + 强制变更原因留痕） ──
     openChange(row) {
-      this.planChangeDlg = { visible: true, submitting: false, row }
+      if (!row || !this.hasPermission('academicAffairs.program.manage')) return
+      this.planChangeDlg = { visible: true, submitting: false, row, identity: this.workflowIdentity }
     },
     async doChange(payload) {
+      if (!this.planChangeDlg.visible || this.planChangeDlg.submitting || this.planChangeDlg.identity !== this.workflowIdentity || !this.hasPermission('academicAffairs.program.manage')) return
       const reason = (payload && payload.reason) || ''
       this.planChangeDlg.submitting = true
       const res = await academicAffairsApi.changeProgram(this.planChangeDlg.row.programId, reason)
@@ -988,12 +990,15 @@ export default {
 
     // ── 方案发布 ──
     openBind(row) {
+      if (!row || !this.hasPermission('academicAffairs.program.publish')) return
+      this.bindIdentity = this.workflowIdentity
       this.bindRow = row
       this.bindForm = { gradeYear: '', classId: '' }
       this.formError = ''
       this.bindVisible = true
     },
     async submitBind() {
+      if (this.saving || !this.bindVisible || !this.bindRow || this.bindIdentity !== this.workflowIdentity || !this.hasPermission('academicAffairs.program.publish')) return
       if (!this.bindForm.gradeYear) { this.formError = '绑定年级必填'; return }
       this.saving = true
       const res = await academicAffairsApi.bindProgramGrade(this.bindRow.programId, this.bindForm.gradeYear, this.bindForm.classId || undefined)
@@ -1010,15 +1015,17 @@ export default {
 
     // ── 方案变更（状态生命周期：冻结/恢复/停用，原因必填） ──
     openChangeAction(row, action) {
+      if (!row || !this.hasPermission('academicAffairs.program.changeStatus')) return
       const label = this.changeActionLabel(action)
       this.changeDlg = {
-        visible: true, action, row,
+        visible: true, action, row, identity: this.workflowIdentity,
         title: `${label}「${row.programName}」`,
         type: action === 'DISABLE' ? 'danger' : (action === 'FREEZE' ? 'warning' : 'primary'),
         confirmText: `确认${label}`, submitting: false
       }
     },
     async doChangeStatus(payload) {
+      if (!this.changeDlg.visible || this.changeDlg.submitting || this.changeDlg.identity !== this.workflowIdentity || !this.hasPermission('academicAffairs.program.changeStatus')) return
       const reason = (payload && payload.reason) || ''
       this.changeDlg.submitting = true
       const res = await academicAffairsApi.changeProgramStatus(this.changeDlg.row.programId, this.changeDlg.action, reason)

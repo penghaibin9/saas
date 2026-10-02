@@ -5,6 +5,9 @@ import test from 'node:test'
 import * as flow from '../src/modules/academicAffairs/academicFlowContext.js'
 import { isDeniedResult } from '../src/modules/academicAffairs/components/parallel-a/resultState.js'
 
+const permissionSource = readFileSync(new URL('../src/config/navPlan.js', import.meta.url), 'utf8')
+const matchPermission = new Function(`${permissionSource.match(/export function matchPermission\(patterns, code\) \{[\s\S]*?\n\}/)[0].replace('export ', '')}; return matchPermission`)()
+
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
 const batch = id => ({ batchId: id, batchName: `批次${id}`, status: 'DRAFT' })
 const ok = data => ({ code: 0, data })
@@ -52,18 +55,21 @@ test('uncertain create result preserves the form and releases submitting', async
   assert.match(state.formError, /核对批次/)
 })
 function mount(file = 'AaSelectionConsoleView', overrides = {}) {
-  const source = readFileSync(new URL(`../src/modules/academicAffairs/views/${file}.vue`, import.meta.url), 'utf8')
+  const source = readFileSync(new URL(`../src/modules/academicAffairs/${file === 'AaSelectionSpecialWorkspace' ? 'components/parallel-a' : 'views'}/${file}.vue`, import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import (.*?) from .*$/gm,
     (_, binding) => `const ${binding.replace(/ as /g, ': ')} = dependencies`).replace('export default', 'component =')
   const api = { listBatches: async () => ok({ list: [], total: 0 }), listCourses: async id => ok({ list: [{ id }] }),
     batchStats: async id => ok({ batchId: id }), listRounds: async id => ok({ items: [{ id }] }),
     getBatch: async id => ok(batch(id)), batchPreflight: async () => ok({ allowed: true }), ...overrides }
   const context = { dependencies: { ...flow, academicAffairsApi: api, academicAffairsSelectionApi: api,
-    isDeniedResult, currentUserFromToken: () => ({}), toast: { success() {}, error() {} } } }
+    isDeniedResult, matchPermission, currentUserFromToken: () => ({}), toast: { success() {}, error() {} } } }
   vm.runInNewContext(script, context)
   const component = context.component
-  const state = Object.assign(component.data(), component.methods, { ctx: {}, $route: { fullPath: '/selection', query: {} },
+  const state = Object.assign(component.data(), component.methods, { ctx: { permissionPatterns: ['academicAffairs.selection.*'] }, $route: { fullPath: '/selection', query: {} },
     activeTab: 'batch', academicFlow: { identity: () => 'tenant:user:role', restorePosition() {} } })
+  for (const [key, getter] of Object.entries(component.computed || {})) {
+    if (key.startsWith('can') || ['ruleWritable', 'ruleChanged'].includes(key)) Object.defineProperty(state, key, { get: () => getter.call(state), configurable: true })
+  }
   for (const key of ['listGate', 'detailGate', 'rosterGate']) state[key] = flow.createAcademicRequestGate(() => key === 'listGate' ? state.pageContext() : state.commandContext())
   return { state, component, api }
 }
@@ -337,4 +343,55 @@ test('scheduling workbench uses latest batch response while previous batch is lo
   const a = state.loadWorkbench(); state.$route = { fullPath: '/scheduling?batchId=B', query: { batchId: 'B' } }
   state.workbenchBatchId = 'B'; await state.loadWorkbench(); slow.resolve(ok({ batchId: 'A' })); await a
   assert.equal(state.workbench.batchId, 'B'); component.beforeUnmount.call(state)
+})
+
+
+test('selection readers cannot send management, round or lifecycle commands', async () => {
+  const writes = []
+  const { state } = mount(undefined, Object.fromEntries(['createBatch', 'timeTick', 'createRound', 'openRound', 'publishBatch', 'lockBatch', 'addCourse', 'cancelCourse'].map(name => [name, async () => { writes.push(name); return ok({}) }])))
+  state.ctx.permissionPatterns = ['academicAffairs.selection.view', 'academicAffairs.selection.rosterView']
+  state.current = batch('B'); state.form.batchName = '批次'; state.form.termId = '52'; state.form.classIds = ['1']
+  state.roundForm.roundName = '轮次'; state.courseForm.teachingTaskId = 'T'; state.courseForm.courseId = 'C'
+  state.openCreate(); state.openAddRound(); state.openAddCourse()
+  await state.submitCreate(); await state.runTimeTick(); await state.submitRound(); await state.submitCourse()
+  state.roundAction({ roundId: 'R' }, 'openRound', '开启'); state.cancelCourse({ selectionCourseId: 'C' })
+  await state.lifecycle('publishBatch', '发布'); await state.lifecycle('lockBatch', '锁定名单')
+  assert.equal(writes.length, 0); assert.equal(state.confirmVisible, false)
+  assert.equal(state.createVisible, false); assert.equal(state.roundVisible, false); assert.equal(state.courseVisible, false)
+  assert.equal(state.canReadRoster, true)
+})
+
+test('selection lock and rule permissions do not grant batch management', async () => {
+  const { state } = mount()
+  state.ctx.permissionPatterns = ['academicAffairs.selection.lock']
+  assert.equal(state.canLockSelection, true); assert.equal(state.canManageSelection, false); assert.equal(state.canManageRule, false)
+  state.ctx.permissionPatterns = ['academicAffairs.selection.rule.manage']
+  assert.equal(state.canLockSelection, false); assert.equal(state.canManageSelection, false); assert.equal(state.canManageRule, true)
+  state.ctx.permissionPatterns = []
+  assert.equal(state.canReadRoster, false)
+})
+
+test('selection confirmation rechecks permissions immediately before its command', async () => {
+  const writes = []
+  const { state } = mount(undefined, { publishBatch: async () => { writes.push('publish'); return ok({}) }, openRound: async () => { writes.push('round'); return ok({}) }, cancelCourse: async () => { writes.push('cancel'); return ok({}) } })
+  state.current = batch('B')
+  for (const prepare of [() => state.lifecycle('publishBatch', '发布'), () => state.roundAction({ roundId: 'R' }, 'openRound', '开启'), () => state.cancelCourse({ selectionCourseId: 'C' })]) {
+    state.ctx.permissionPatterns = ['academicAffairs.selection.*']; await prepare()
+    assert.equal(state.confirmVisible, true)
+    state.ctx.permissionPatterns = ['academicAffairs.selection.view']; await state.onConfirm()
+  }
+  assert.equal(writes.length, 0)
+})
+
+test('selection rule reader and permission revoked during formal read cannot save', async () => {
+  let writes = 0
+  const response = deferred()
+  const { state } = mount('AaSelectionSpecialWorkspace', { getBatch: () => response.promise, saveRule: async () => { writes++; return ok({}) } })
+  state.batch = { ...batch('B'), rule: { maxCredits: 1 } }; state.mode = 'rule'; state.$emit = () => {}; state.ruleDraft.maxCredits = 2
+  state.ctx.permissionPatterns = ['academicAffairs.selection.view']
+  assert.equal(state.ruleWritable, false); await state.saveRule(); assert.equal(writes, 0)
+  state.ctx.permissionPatterns = ['academicAffairs.selection.rule.manage']
+  const pending = state.saveRule(); state.ctx.permissionPatterns = ['academicAffairs.selection.view']
+  response.resolve(ok(state.batch)); await pending
+  assert.equal(writes, 0); assert.equal(state.saving, false)
 })

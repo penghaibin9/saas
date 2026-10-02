@@ -6,9 +6,9 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton v-if="activeTab === 'batch' && !routeTerm().scoped" variant="ghost" :loading="tickBusy" :disabled="saving || tickBusy" @click="runTimeTick">按时间批量开选/截止</AppButton>
+      <AppButton v-if="activeTab === 'batch' && canManageSelection && !routeTerm().scoped" variant="ghost" :loading="tickBusy" :disabled="saving || tickBusy" @click="runTimeTick">按时间批量开选/截止</AppButton>
       <span v-if="activeTab === 'batch' && routeTerm().scoped">全校批量开选与截止由全校统筹办理。</span>
-      <AppButton v-if="activeTab === 'batch'" variant="primary" :disabled="routeTerm().invalid" @click="openCreate">新建批次</AppButton>
+      <AppButton v-if="activeTab === 'batch' && canManageSelection" variant="primary" :disabled="routeTerm().invalid" @click="openCreate">新建批次</AppButton>
     </template>
 
     <div class="aa-selection-layout">
@@ -78,12 +78,12 @@
               <span v-else>{{ detailLoading ? '正在读取当前批次责任' : '当前批次责任待重新核对' }}</span>
             </aside>
 
-            <div v-if="activeTab === 'batch'" class="aa-selection-actions" :inert="detailLoading || !!detailError || saving">
-              <AppButton v-if="current.status === 'DRAFT'" variant="primary" size="small" @click="lifecycle('publishBatch', '发布')">发布</AppButton>
-              <AppButton v-if="current.status === 'PUBLISHED'" variant="primary" size="small" @click="lifecycle('openBatch', '开选')">开选</AppButton>
-              <AppButton v-if="current.status === 'OPEN'" variant="warning" size="small" @click="lifecycle('closeBatch', '截止')">截止</AppButton>
-              <AppButton v-if="current.status === 'CLOSED'" variant="primary" size="small" @click="lifecycle('lockBatch', '锁定名单')">锁定名单</AppButton>
-              <AppButton v-if="current.status === 'LOCKED'" variant="ghost" size="small" @click="lifecycle('archiveBatch', '归档')">归档</AppButton>
+            <div v-if="activeTab === 'batch' && (canManageSelection || canLockSelection)" class="aa-selection-actions" :inert="detailLoading || !!detailError || saving">
+              <AppButton v-if="canManageSelection && current.status === 'DRAFT'" variant="primary" size="small" @click="lifecycle('publishBatch', '发布')">发布</AppButton>
+              <AppButton v-if="canManageSelection && current.status === 'PUBLISHED'" variant="primary" size="small" @click="lifecycle('openBatch', '开选')">开选</AppButton>
+              <AppButton v-if="canManageSelection && current.status === 'OPEN'" variant="warning" size="small" @click="lifecycle('closeBatch', '截止')">截止</AppButton>
+              <AppButton v-if="canLockSelection && current.status === 'CLOSED'" variant="primary" size="small" @click="lifecycle('lockBatch', '锁定名单')">锁定名单</AppButton>
+              <AppButton v-if="canManageSelection && current.status === 'LOCKED'" variant="ghost" size="small" @click="lifecycle('archiveBatch', '归档')">归档</AppButton>
             </div>
           </section>
 
@@ -98,6 +98,7 @@
 
           <AaSelectionSpecialWorkspace
             v-if="activeTab !== 'batch'"
+            :ctx="ctx"
             :mode="activeTab"
             :batch="current"
             :rounds="rounds"
@@ -134,7 +135,7 @@
                 <h3>选课轮次</h3>
                 <p>{{ rounds.length ? '轮次决定学生当前可选、可退以及是否需要抽签。' : '当前未建立轮次，继续使用批次级先到先得模式。' }}</p>
               </div>
-              <AppButton v-if="!['LOCKED','ARCHIVED'].includes(current.status)" size="small" variant="ghost" @click="openAddRound">+ 添加轮次</AppButton>
+              <AppButton v-if="canManageRule && !['LOCKED','ARCHIVED'].includes(current.status)" size="small" variant="ghost" @click="openAddRound">+ 添加轮次</AppButton>
             </header>
 
             <div v-if="rounds.length" class="aa-selection-table-wrap">
@@ -148,9 +149,9 @@
                   <StatusTag :type="roundStatusType(row.status)" :label="roundStatusLabel(row.status)" dot />
                 </template>
                 <template #cell-ops="{ row }">
-                  <button v-if="['DRAFT','CLOSED'].includes(row.status)" class="mp-link" @click="roundAction(row, 'openRound', '开启轮次')">开启</button>
-                  <button v-if="row.status === 'OPEN'" class="mp-link" @click="roundAction(row, 'closeRound', '关闭轮次')">关闭</button>
-                  <button v-if="row.status === 'CLOSED' && row.mode === 'LOTTERY'" class="mp-link is-danger" @click="roundAction(row, 'drawRound', '抽签摇号（一次性，不可重摇）')">摇号</button>
+                  <button v-if="canManageRule && ['DRAFT','CLOSED'].includes(row.status)" class="mp-link" @click="roundAction(row, 'openRound', '开启轮次')">开启</button>
+                  <button v-if="canManageRule && row.status === 'OPEN'" class="mp-link" @click="roundAction(row, 'closeRound', '关闭轮次')">关闭</button>
+                  <button v-if="canManageRule && row.status === 'CLOSED' && row.mode === 'LOTTERY'" class="mp-link is-danger" @click="roundAction(row, 'drawRound', '抽签摇号（一次性，不可重摇）')">摇号</button>
                 </template>
               </DataTable>
             </div>
@@ -173,7 +174,7 @@
                 <h3>可选课程与实时容量</h3>
                 <p>容量、已选与余量均来自当前批次真实课程供给；名单入口保留在每门课程。</p>
               </div>
-              <AppButton v-if="['DRAFT','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openAddCourse">+ 添加课程</AppButton>
+              <AppButton v-if="canManageSelection && ['DRAFT','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openAddCourse">+ 添加课程</AppButton>
             </header>
 
             <EmptyState v-if="!courses.length" title="未配置课程" description="添加至少一门课程后方可发布" />
@@ -193,8 +194,8 @@
                   <StatusTag :type="row.status === 'OPEN' ? 'success' : 'default'" :label="row.status === 'OPEN' ? '开放' : '已取消'" dot />
                 </template>
                 <template #cell-ops="{ row }">
-                  <button class="mp-link" @click="openRoster(row)">名单</button>
-                  <button v-if="current.status === 'CLOSED' && row.status === 'OPEN'" class="mp-link is-danger" @click="cancelCourse(row)">取消开课</button>
+                  <button class="mp-link" v-if="canReadRoster" @click="openRoster(row)">名单</button>
+                  <button v-if="canManageSelection && current.status === 'CLOSED' && row.status === 'OPEN'" class="mp-link is-danger" @click="cancelCourse(row)">取消开课</button>
                 </template>
               </DataTable>
               <AppPagination v-if="coursePagination.total" :total="coursePagination.total" :page="coursePagination.page" :page-size="coursePagination.pageSize" :show-size-changer="false" @change="onCoursePage" />
@@ -302,6 +303,7 @@
 import AcademicObjectResponsibility from '../components/AcademicObjectResponsibility.vue'
 
 /** 选课管理 · 教务处控制台（/admin/academic-affairs/selection）：批次生命周期 + 课程供给 + 名单 + 统计。 */
+import { matchPermission } from '@/config/navPlan'
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker, AppPagination, AppClassPicker } from '@/components/common'
@@ -359,6 +361,10 @@ export default {
     }
   },
   computed: {
+    canManageSelection() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.manage') },
+    canManageRule() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.rule.manage') },
+    canLockSelection() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.lock') },
+    canReadRoster() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.rosterView') },
     pageTitle() { return { batch: '选课批次', rule: '选课规则', reselect: '补选管理', conflict: '冲突检测' }[this.activeTab] || '选课管理' },
     pageSubtitle() { return { batch: '规则、轮次、课程与名单在同一批次办理', rule: '切批次必须重新读取，确认锁定原对象', reselect: '只处理当前窗口和当前范围的对象', conflict: '接口失败不当成零冲突' }[this.activeTab] || '' },
     activeTab() {
@@ -500,7 +506,7 @@ export default {
       return this.load()
     },
     async runTimeTick() {
-      if (this.routeTerm().scoped || this.tickBusy || this.saving) return
+      if (!this.canManageSelection || this.routeTerm().scoped || this.tickBusy || this.saving) return
       const context = this.pageContext()
       this.tickBusy = true; this.tickReceipt = null
       try {
@@ -694,9 +700,9 @@ export default {
       if (s === 'CLOSED') return 'warning'
       return 'primary'
     },
-    openAddRound() { this.roundForm = { roundName: '', mode: 'FCFS', ctrl: 'BOTH' }; this.roundError = ''; this.roundVisible = true },
+    openAddRound() { if (!this.canManageRule) return; this.roundForm = { roundName: '', mode: 'FCFS', ctrl: 'BOTH' }; this.roundError = ''; this.roundVisible = true },
     async submitRound() {
-      if (this.saving || !this.current) return
+      if (!this.canManageRule || this.saving || !this.current) return
       const context = this.commandContext()
       if (!this.roundForm.roundName) { this.roundError = '轮次名称必填'; return }
       this.saving = true
@@ -711,11 +717,13 @@ export default {
       else this.roundError = res.message
     },
     roundAction(row, fn, label) {
+      if (!this.canManageRule) return
       const roundId = row.roundId
       const context = this.commandContext()
       this.confirmTitle = label
       this.confirmMessage = `确认对「第${row.roundNo}轮 ${row.roundName}」执行「${label}」？`
       this.pendingAction = async () => {
+        if (!this.canManageRule) return
         const res = await api[fn](roundId)
         if (!this.isCurrent(context)) return
         if (res.code === 0) {
@@ -727,13 +735,14 @@ export default {
       this.confirmContext = context; this.confirmVisible = true
     },
     openCreate() {
+      if (!this.canManageSelection) return
       const term = this.routeTerm()
       if (term.invalid) return
       this.form = { batchName: '', termId: term.id, maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [] }
       this.formError = ''; this.createVisible = true
     },
     async submitCreate() {
-      if (this.saving) return
+      if (!this.canManageSelection || this.saving) return
       const context = this.pageContext()
       const term = this.routeTerm()
       if (term.invalid || (term.scoped && String(this.form.termId) !== term.id)) {
@@ -759,13 +768,14 @@ export default {
       } finally { this.saving = false }
     },
     async lifecycle(fn, label) {
+      if (fn === 'lockBatch' ? !this.canLockSelection : !this.canManageSelection) return
       if (!this.current || this.saving || this.detailLoading || this.detailError) return
       const batch = { ...this.current }
       const context = this.commandContext()
       const action = { publishBatch: 'PUBLISH', openBatch: 'OPEN', closeBatch: 'CLOSE', lockBatch: 'LOCK' }[fn]
       if (action) {
         const checked = await this.refreshPreflight()
-        if (!this.isCurrent(context)) return
+        if (!this.isCurrent(context) || (fn === 'lockBatch' ? !this.canLockSelection : !this.canManageSelection)) return
         if (!checked || !checked.allowed) {
           toast.error(this.preflightMessage(checked))
           return
@@ -774,6 +784,7 @@ export default {
       this.confirmTitle = label
       this.confirmMessage = `确认对批次「${batch.batchName}」（${batch.batchId}）执行「${label}」？`
       this.pendingAction = async () => {
+        if (fn === 'lockBatch' ? !this.canLockSelection : !this.canManageSelection) return
         const res = await api[fn](batch.batchId)
         if (!this.isCurrent(context)) return
         if (res.code === 0) {
@@ -790,6 +801,7 @@ export default {
       this.confirmContext = context; this.confirmVisible = true
     },
     openAddCourse() {
+      if (!this.canManageSelection) return
       this.courseForm = { courseId: '', teachingTaskId: '', courseCode: '', courseName: '', teacherName: '', teachingClassName: '', capacity: 30, minCapacity: 1 }
       this.courseError = ''
       this.courseVisible = true
@@ -826,7 +838,7 @@ export default {
       this.courseError = ''
     },
     async submitCourse() {
-      if (this.saving || !this.current) return
+      if (!this.canManageSelection || this.saving || !this.current) return
       const context = this.commandContext()
       if (!this.courseForm.teachingTaskId || !this.courseForm.courseId) {
         this.courseError = '请选择当前批次学期的已就绪教学任务'
@@ -844,11 +856,13 @@ export default {
       else this.courseError = res.message
     },
     cancelCourse(row) {
+      if (!this.canManageSelection) return
       const courseId = row.selectionCourseId
       const context = this.commandContext()
       this.confirmTitle = '取消开课'
       this.confirmMessage = `确认取消「${row.courseName}」开课？已选学生将置为课程取消状态。`
       this.pendingAction = async () => {
+        if (!this.canManageSelection) return
         const res = await api.cancelCourse(courseId)
         if (!this.isCurrent(context)) return
         if (res.code === 0) { toast.success('已取消开课'); await this.refreshDetail() }
@@ -857,12 +871,12 @@ export default {
       this.confirmContext = context; this.confirmVisible = true
     },
     async openRoster(row) {
-      if (!row) return
+      if (!this.canReadRoster || !row) return
       this.rosterCourse = row; this.rosterRows = []; this.rosterVisible = true; this.rosterPagination.page = 1
       await this.loadRoster()
     },
     async loadRoster() {
-      if (!this.rosterCourse) return
+      if (!this.canReadRoster || !this.rosterCourse) return
       const latest = this.rosterGate.begin()
       this.rosterLoading = true; this.rosterError = ''
       const res = await api.courseRoster(this.rosterCourse.selectionCourseId, {

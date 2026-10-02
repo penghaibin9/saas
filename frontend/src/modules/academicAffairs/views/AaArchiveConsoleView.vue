@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton v-if="!isCollegeScope" variant="primary" :disabled="actionBusy || !!pendingCommand" @click="openCreate">新建归档批次</AppButton>
+      <AppButton v-if="canManageArchive" variant="primary" :disabled="actionBusy || !!pendingCommand" @click="openCreate">新建归档批次</AppButton>
     </template>
 
     <AppInlineAlert v-if="actionNotice" :type="pendingCommand ? 'warning' : 'success'" :description="actionNotice" />
@@ -17,7 +17,7 @@
         <header class="aaar-list-head"><div><h2>学期归档批次</h2><p>{{ isCollegeScope ? '查看学校归档进度；本院缺项请进入实时预检' : '选择批次查看十三域正式结论' }}</p></div><span>{{ rows.length }} 个批次</span></header>
         <LoadingState v-if="loading" />
         <ErrorState v-else-if="listError" :description="listError" @retry="load" />
-        <EmptyState v-else-if="!rows.length" title="暂无归档批次" :description="isCollegeScope ? '学校归档批次由校教务统筹建立' : '按学期新建归档批次'" />
+        <EmptyState v-else-if="!rows.length" title="暂无归档批次" :description="canManageArchive ? '按学期新建归档批次' : '学校归档批次由校教务统筹建立'" />
         <ul v-else class="aaar-items">
           <li
             v-for="b in rows"
@@ -37,7 +37,7 @@
       </section>
 
       <div class="aaar-detail">
-        <EmptyState v-if="!current" title="选择批次" :description="isCollegeScope ? '从左侧选择批次查看学校归档进度，并进入本院实时预检' : '从左侧选择归档批次执行完整性检查与归档'" />
+        <EmptyState v-if="!current" :title="!rows.length && !canManageArchive ? '等待校教务建立归档批次' : '选择批次'" :description="isCollegeScope ? '从左侧选择批次查看学校归档进度，并进入本院实时预检' : canManageArchive ? '从左侧选择归档批次执行完整性检查与归档' : rows.length ? '从左侧选择批次查看学校归档进度；正式检查与封存由校教务负责' : '批次建立后，可在此查阅学校归档进度'" />
         <template v-else>
           <section class="aaar-object-card">
             <div class="aaar-object-main">
@@ -64,7 +64,7 @@
             <li :class="{ 'is-done': current.status === 'ARCHIVED', 'is-current': current.status === 'READY' }"><b>{{ current.status === 'ARCHIVED' ? '✓' : '4' }}</b><span><strong>正式封存</strong><small>{{ current.status === 'READY' ? '等待确认' : '按状态解锁' }}</small></span></li>
             <li :class="{ 'is-done': current.status === 'ARCHIVED' }"><b>{{ current.status === 'ARCHIVED' ? '✓' : '5' }}</b><span><strong>受控纠错</strong><small>{{ current.status === 'ARCHIVED' ? '普通解冻关闭' : '封存后启用' }}</small></span></li>
           </ol>
-          <div v-if="!isCollegeScope" class="aaar-head">
+          <div v-if="canManageArchive" class="aaar-head">
             <div><strong>当前主动作</strong><small>先检查完整性；只有十三域无已阻断或待治理事项才可确认归档</small></div>
             <div class="aaar-actions">
               <AppButton v-if="['DRAFT','MISSING_ITEMS','READY'].includes(current.status)" size="small" variant="ghost" :disabled="!!pendingCommand" :loading="actionBusy" @click="doCheck">完整性检查</AppButton>
@@ -90,7 +90,7 @@
           />
 
           <AaArchiveCorrectionWorkspace
-            v-if="!isCollegeScope && current.status === 'ARCHIVED'"
+            v-if="canManageArchive && current.status === 'ARCHIVED'"
             :batch="current"
             :items="items"
             @refresh-batch="refreshCurrentFromServer"
@@ -107,7 +107,7 @@
       </div>
     </div>
 
-    <AppDrawer :visible="createVisible" title="新建归档批次" mode="modal" size="small" @close="createVisible = false">
+    <AppDrawer :visible="createVisible && canManageArchive" title="新建归档批次" mode="modal" size="small" @close="createVisible = false">
       <div class="aaar-form">
         <AppFormItem label="学期" required><AppTermEntityPicker v-model="form.termId" placeholder="选择要归档的学期（一学期一批次）" :disabled="saving" /></AppFormItem>
         <AppInlineAlert type="warning" description="确认归档后该学期将成为不可普通回退的历史事实，教务写操作会被拦截；如后续发现错误，必须走归档后纠错并保留原版本。" />
@@ -115,7 +115,7 @@
       </div>
       <template #footer>
         <AppButton variant="ghost" :disabled="saving" @click="createVisible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="saving" @click="submitCreate">创建</AppButton>
+        <AppButton variant="primary" :loading="saving" :disabled="!canManageArchive || !!pendingCommand" @click="submitCreate">创建</AppButton>
       </template>
     </AppDrawer>
 
@@ -124,7 +124,7 @@
       :title="confirmTitle"
       :message="confirmMessage"
       :submitting="actionBusy"
-      :confirm-disabled="confirmKind === 'confirm' && !canConfirmArchive"
+      :confirm-disabled="!canManageArchive || (confirmKind === 'confirm' && !canConfirmArchive)"
       @confirm="onConfirm"
     ><AppInlineAlert v-if="confirmKind === 'confirm' && (confirmError || !canConfirmArchive)" type="warning" :description="confirmError || confirmReason" /></AppConfirmDialog>
   </ModulePageShell>
@@ -140,6 +140,7 @@ import { AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermEntityPicker } fr
 import { academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import AaArchiveCorrectionWorkspace from '@/modules/academicAffairs/components/AaArchiveCorrectionWorkspace.vue'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
 import { currentUserFromToken } from '@/services/http/client'
 import { gradeError } from './parallel-c/grade-review'
 import { readAllPages } from '../components/parallel-a/pagedRead'
@@ -166,7 +167,7 @@ export default {
   computed:{
     identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,u.permissionVersion,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionVersion,this.ctx.permissionPatterns])},
     pageTitle(){return this.$route.query?.entry==='batch'?'批量归档':'归档与封存'},
-    pageSubtitle(){return this.isCollegeScope?'查看学校归档进度，按本院实时预检处理本院缺项':this.$route.query?.entry==='batch'?'复用正式学期归档批次；不另建旁路归档引擎':'十三个教务数据域先检查、处理缺失，再形成不可普通回退的学期归档事实'},
+    pageSubtitle(){return this.isCollegeScope?'查看学校归档进度，按本院实时预检处理本院缺项':!this.canManageArchive?'查阅学校归档进度；建立批次、处理缺项和正式封存由校教务负责':this.$route.query?.entry==='batch'?'复用正式学期归档批次；不另建旁路归档引擎':'十三个教务数据域先检查、处理缺失，再形成不可普通回退的学期归档事实'},
     isCollegeScope(){return this.current?.scopeType==='COLLEGE'||(this.ctx.dataScope?.scopeType||this.ctx.dataScope?.scope)==='COLLEGE'||this.rows.some(row=>row.scopeType==='COLLEGE')},
     archiveScopeNote(){return academicFlowText(this.current?.scopeNote,'学校封存材料由校教务统筹，本院缺项请查看本院实时预检。')},
     archiveOwner(){
@@ -176,7 +177,8 @@ export default {
       }
       return academicFlowOwner(this.current?.responsibility)
     },
-    canConfirmArchive(){return !this.isCollegeScope&&this.current?.confirmAction?.allowed===true},
+    canManageArchive(){return !this.isCollegeScope&&matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.archive.manage')},
+    canConfirmArchive(){return this.canManageArchive&&this.current?.confirmAction?.allowed===true},
     confirmReason(){return this.confirmActionReason(this.current)},
     blockerText(){if(this.isCollegeScope)return '本院缺项请查看实时预检';const raw=this.current?.missingCount;if(raw==null||raw==='')return '阻断数量待核对';const count=Number(raw);if(!Number.isInteger(count)||count<0)return '阻断数量待核对';if(count>0)return `${count} 个数据域阻断`;if(this.current?.status==='ARCHIVED')return '无当前办理阻断';if(!this.items.length)return '尚未执行十三域检查';return '无阻断，可按状态继续'},
     nextRole(){
@@ -271,13 +273,14 @@ export default {
       } else toast.error(this.fail(res,'归档批次刷新失败'))
       } catch (err) { if(this.isCurrent(c)&&seq===this.detailSeq)toast.error(this.fail(err,'归档批次刷新失败')) }
     },
-   openCreate() { if (!this.isCollegeScope && !this.actionBusy && !this.invalidRouteTerm()) { this.form = { termId: this.routeTermId() }; this.formError = ''; this.createVisible = true } },
+   openCreate() { if (this.canManageArchive && !this.actionBusy && !this.pendingCommand && !this.invalidRouteTerm()) { this.form = { termId: this.routeTermId() }; this.formError = ''; this.createVisible = true } },
     async runBatchWrite(kind,batchId,validate,send,verify,success){
-      if(this.isCollegeScope||this.pendingCommand)return false
+      if(!this.canManageArchive||this.pendingCommand)return false
       const c=this.capture(),id=String(batchId);this.actionBusy=true;this.pendingCommand={kind,batchId:id,termId:String(this.current?.termId||this.routeTermId()),sent:false};this.actionNotice='结果待核实，请勿重复操作。'
       let res, sent=false
       try {
         const before=await api.getBatch(id)
+        if(!this.canManageArchive){this.pendingCommand=null;this.actionNotice='';this.confirmError='当前账号没有教务归档办理权限，请联系校教务处。';return false}
         if(!this.isCurrent(c))return false
         if(before?.code!==0||String(before.data?.batchId)!==id||!Array.isArray(before.data?.items))throw before
         this.pendingCommand.termId=String(before.data.termId)
@@ -295,7 +298,7 @@ export default {
       }catch(err){if(this.isCurrent(c)){if(!sent){this.pendingCommand=null;this.actionNotice='';if(kind==='confirm'&&this.current)this.current={...this.current,confirmAction:null}}const message=this.fail(err,sent?'操作结果待核实，请勿重复操作。':'操作前核对未完成，请重试。');if(kind==='confirm')this.confirmError=message;toast.error(message)}return false}finally{if(this.isCurrent(c))this.actionBusy=false}
     },
    async submitCreate() {
-     if(this.isCollegeScope)return
+     if(!this.canManageArchive)return
      if (!this.form.termId) { this.formError = '请选择学期'; return }
      if(this.invalidRouteTerm()||(this.routeTermId()&&String(this.form.termId)!==this.routeTermId())){this.formError='当前归档学期与页面学期不一致，请返回本学期重新选择。';return}
       if(this.saving||this.pendingCommand)return
@@ -304,14 +307,14 @@ export default {
       }catch(e){if(this.isCurrent(c))this.formError=this.fail(e,'创建失败')}finally{if(this.isCurrent(c))this.saving=false}
    },
     async doCheck() {
-      if (this.isCollegeScope || !this.current || this.actionBusy || this.pendingCommand) return
+      if (!this.canManageArchive || !this.current || this.actionBusy || this.pendingCommand) return
       const batchId=String(this.current.batchId)
       const ok=await this.runBatchWrite('check',batchId,before=>['DRAFT','MISSING_ITEMS','READY'].includes(before.status),()=>api.check(batchId),fresh=>this.validItems(fresh.items)&&['READY','MISSING_ITEMS'].includes(fresh.status),'已核对十三域完整性检查结果。')
       if(ok){toast.success(this.actionNotice);await this.load()}
     },
     confirmActionReason(batch){return academicFlowText(batch?.confirmAction?.reason,batch?.confirmAction?.allowed===false?'当前账号暂不可确认归档，请核对学校归档责任任职及办理权限。':'尚未取得当前账号的归档确认权限，请重新读取批次后核对。')},
     async doConfirm() {
-      if (this.isCollegeScope || !this.current || this.actionBusy || this.pendingCommand || this.current.status !== 'READY') return
+      if (!this.canManageArchive || !this.current || this.actionBusy || this.pendingCommand || this.current.status !== 'READY') return
       if(!this.canConfirmArchive){this.confirmError=this.confirmReason;return}
       const batchId = String(this.current.batchId),c=this.capture(),seq=++this.detailSeq
       this.actionBusy=true;this.confirmError='';this.confirmVisible=false;this.pendingAction=null
@@ -326,6 +329,7 @@ export default {
       this.confirmTitle = '确认归档'
       this.confirmMessage = `确认归档「${batchName}」？归档后该学期将形成不可普通回退的历史事实，教务写操作受限。`
       this.pendingAction = async () => {
+        if(!this.canManageArchive)return
         const ok=await this.runBatchWrite('confirm',batchId,before=>before.confirmAction?.allowed===true&&before.status==='READY'&&this.validItems(before.items)&&!before.items.some(item=>['BLOCKED','UNKNOWN'].includes(this.itemState(item))),()=>api.confirm(batchId, false),fresh=>fresh.status==='ARCHIVED'&&this.validItems(fresh.items),'已核对正式十三域归档状态。')
         if(ok){toast.success(this.actionNotice);this.confirmVisible=false;await this.load();const b=this.rows.find(row=>String(row.batchId)===String(batchId));if(b)await this.selectAfterAction(b)}
       }
@@ -334,20 +338,21 @@ export default {
       finally{if(this.isCurrent(c)&&seq===this.detailSeq)this.actionBusy=false}
     },
     doCancel() {
-      if (this.isCollegeScope || !this.current || this.actionBusy || ['ARCHIVED', 'CANCELLED'].includes(this.current.status)) return
+      if (!this.canManageArchive || !this.current || this.actionBusy || ['ARCHIVED', 'CANCELLED'].includes(this.current.status)) return
       const batchId = this.current.batchId
       const batchName = this.current.batchName
       this.confirmKind = 'cancel';this.confirmError=''
       this.confirmTitle = '取消批次'
       this.confirmMessage = `确认取消归档批次「${batchName}」？`
       this.pendingAction = async () => {
+        if(!this.canManageArchive)return
         const ok=await this.runBatchWrite('cancel',batchId,before=>!['ARCHIVED','CANCELLED'].includes(before.status),()=>api.cancel(batchId),fresh=>fresh.status==='CANCELLED','已核对正式取消状态。')
         if(ok){toast.success(this.actionNotice);this.confirmVisible=false;await this.load();const b=this.rows.find(row=>String(row.batchId)===String(batchId));if(b)await this.selectAfterAction(b)}
       }
       this.confirmVisible = true
     },
     async onConfirm() {
-      if (this.actionBusy || !this.pendingAction) return
+      if (!this.canManageArchive || this.actionBusy || !this.pendingAction) return
       if (this.pendingCommand) return
       if(this.confirmKind==='confirm'&&!this.canConfirmArchive){this.confirmError=this.confirmReason;return}
       const action = this.pendingAction

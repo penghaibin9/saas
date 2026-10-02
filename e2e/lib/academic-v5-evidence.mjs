@@ -10,7 +10,7 @@ import pymysql
 
 try:
     u = urlsplit(os.environ['DATABASE_URL'])
-    if (u.scheme != 'mysql+pymysql' or u.hostname != '127.0.0.1' or u.port != 3311 or u.path != '/student_lifecycle_v5_e2e'):
+    if (u.scheme != 'mysql+pymysql' or u.hostname != '127.0.0.1' or u.port not in (3311, 3314) or u.path != '/student_lifecycle_v5_e2e'):
         raise ValueError('isolated database mismatch')
     tenant, kind, object_id, action, user_id, login_name = sys.argv[1:7]
     if kind not in ('AA_SELECTION', 'AA_TASK', 'AA_TASK_BATCH', 'AA_GRADE_TASK', 'AA_SCHEDULE_BATCH', 'AA_GRAD_AUDIT', 'AA_ARCHIVE', 'EXAM_BATCH', 'EXAM_COURSE', 'EXAM_ROOM', 'EXAM_INVIGILATOR', 'EXAM_ROOM_STUDENT') or action not in ('SELECTION_BATCH_PUBLISH', 'SELECTION_BATCH_OPEN', 'SELECTION_BATCH_CLOSE', 'SELECTION_LOCK', 'SELECTION_ENROLL', 'SELECTION_DROP', 'ASSIGN', 'TEACHER_CONFIRM', 'COLLEGE_CONFIRM', 'ACADEMIC_APPROVE', 'SUBMIT', 'COLLEGE_APPROVE', 'CREATE', 'PRE_PUBLISH', 'PUBLISH', 'GENERATE', 'PRECHECK_IMMUTABLE', 'ACADEMIC_FINAL_IMMUTABLE', 'ARCHIVE', 'ARCHIVE_BATCH_CREATE', 'ARCHIVE_CHECK_V2', 'ARCHIVE_CONFIRM', 'EXAM_BATCH_CREATE', 'EXAM_COURSE_ADD', 'EXAM_COURSE_CONFIRM', 'EXAM_BATCH_CONFIRM', 'EXAM_COURSE_SCHEDULE', 'EXAM_ROOM_ADD', 'EXAM_SEAT_ASSIGN', 'EXAM_INVIGILATOR_ADD', 'EXAM_ATTENDANCE_PRESENT', 'EXAM_BATCH_PUBLISH', 'EXAM_BATCH_FINISH', 'EXAM_BATCH_ARCHIVE'):
@@ -19,7 +19,7 @@ try:
         raise ValueError('invalid selection audit action')
     if not tenant.isdecimal() or not object_id.isdecimal() or not user_id.isdecimal():
         raise ValueError('invalid business identity')
-    conn = pymysql.connect(host='127.0.0.1', port=3311, user=unquote(u.username or ''),
+    conn = pymysql.connect(host='127.0.0.1', port=u.port, user=unquote(u.username or ''),
         password=unquote(u.password or ''), database='student_lifecycle_v5_e2e', charset='utf8mb4', autocommit=False)
     try:
         with conn.cursor() as cur:
@@ -58,7 +58,7 @@ export function auditRows({ tenantId, bizType, bizId, action, account, studentId
   const url = new URL(process.env.DATABASE_URL || '')
   assert.equal(url.protocol, 'mysql+pymysql:')
   assert.equal(url.hostname, '127.0.0.1')
-  assert.equal(url.port, '3311')
+  assert.ok(['3311', '3314'].includes(url.port), '仅允许原隔离库或已结束学期独立副本')
   assert.equal(url.pathname, '/student_lifecycle_v5_e2e')
   assert.match(String(tenantId), /^[1-9]\d*$/)
   assert.match(String(bizId), /^[1-9]\d*$/)

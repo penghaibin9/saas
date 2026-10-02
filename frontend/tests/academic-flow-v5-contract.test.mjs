@@ -8,7 +8,7 @@ import { renderToString } from 'vue/server-renderer'
 import * as registry from '../src/modules/academicAffairs/config/academicFlowRegistry.js'
 import * as context from '../src/modules/academicAffairs/academicFlowContext.js'
 import { projectAcademicCollegeModules } from '../src/modules/academicAffairs/config/academicCollegeNavigation.js'
-import { NAV_PLAN, getVisibleNavPlan } from '../src/config/navPlan.js'
+import { NAV_PLAN, getVisibleNavPlan, matchPermission } from '../src/config/navPlan.js'
 import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 import { isDeniedResult } from '../src/modules/academicAffairs/components/parallel-a/resultState.js'
 import * as gradeHelpers from '../src/modules/academicAffairs/views/parallel-c/grade-review.js'
@@ -244,7 +244,7 @@ test('object responsibility is bound to its string ID and does not infer assigne
 })
 
 function programPage(api) {
-  const result = page('AaProgramConsoleView', { ...registry, ...programConstants, academicAffairsApi: api, programQualityApi: { validate: async () => ({ code: 0, data: { issues: [] } }) } }, { ctx: { ctxKey: 'school:user:role', currentRole: { roleCode: 'COLLEGE_ADMIN' }, dataScope: { scopeType: 'COLLEGE' } } })
+  const result = page('AaProgramConsoleView', { matchPermission, ...registry, ...programConstants, academicAffairsApi: api, programQualityApi: { validate: async () => ({ code: 0, data: { issues: [] } }) } }, { ctx: { ctxKey: 'school:user:role', currentRole: { roleCode: 'COLLEGE_ADMIN' }, dataScope: { scopeType: 'COLLEGE' } } })
   result.state.tab = 'publish'; result.state.activeProgramId = '9007199254740993'; result.state.rows = [{ programId: '9007199254740993' }, { programId: '9007199254740995' }]
   return result
 }
@@ -427,5 +427,74 @@ test('selection detail failures release loading, preserve an error and do not re
     assert.equal(state.detailLoading, false)
     assert.ok(state.detailError)
     assert.equal(state.current.responsibility, null)
+  }
+})
+
+
+test('培养方案只读账号不能打开或发送发布与状态变更', async () => {
+  let writes = 0
+  const { state } = programPage({ bindProgramGrade: async () => { writes++; return { code: 409 } }, changeProgram: async () => { writes++; return { code: 409 } }, changeProgramStatus: async () => { writes++; return { code: 409 } } })
+  const row = { programId: '9007199254740993', programName: '正式方案', status: 'PUBLISHED' }
+  state.ctx.permissionPatterns = ['academicAffairs.program.view']
+  state.openBind(row); state.openChange(row); state.openChangeAction(row, 'FREEZE')
+  assert.equal(state.bindVisible, false); assert.equal(state.planChangeDlg.visible, false); assert.equal(state.changeDlg.visible, false)
+  state.bindForm.gradeYear = '2027'
+  await state.submitBind(); await state.doChange({ reason: '正式原因' }); await state.doChangeStatus({ reason: '正式原因' })
+  assert.equal(writes, 0)
+})
+
+test('培养方案发布与变更独立授权，弹窗打开后撤权或换身份不发请求', async () => {
+  let writes = 0
+  const { state, definition } = programPage({ bindProgramGrade: async () => { writes++; return { code: 409 } }, changeProgram: async () => { writes++; return { code: 409 } }, changeProgramStatus: async () => { writes++; return { code: 409 } } })
+  const row = { programId: '9007199254740993', programName: '正式方案', status: 'PUBLISHED' }
+  state.ctx.permissionPatterns = ['academicAffairs.program.publish']; state.openBind(row); state.bindForm.gradeYear = '2027'
+  state.openChange(row); assert.equal(state.planChangeDlg.visible, false)
+  state.ctx.permissionPatterns = ['academicAffairs.program.view']; await state.submitBind(); assert.equal(writes, 0)
+  state.ctx.permissionPatterns = ['academicAffairs.program.changeStatus']; state.openChangeAction(row, 'FREEZE'); state.openChange(row); assert.equal(state.planChangeDlg.visible, false)
+  state.bindVisible = false; state.openBind(row); assert.equal(state.bindVisible, false)
+  state.ctx.currentRole = { roleCode: 'OTHER' }; await state.doChangeStatus({ reason: '正式原因' }); await state.doChange({ reason: '正式原因' }); assert.equal(writes, 0)
+  definition.watch.workflowIdentity.call(state)
+  assert.equal(state.bindVisible, false); assert.equal(state.changeDlg.visible, false); assert.equal(state.planChangeDlg.visible, false)
+  assert.equal(state.bindForm.gradeYear, '2027')
+})
+
+test('培养方案合法发布和状态变更仍发送正式原对象且不重复确认', async () => {
+  const writes = []
+  const response = deferred()
+  const { state } = programPage({ bindProgramGrade: async (...args) => { writes.push(['bind', ...args]); return { code: 409, message: '保留输入' } }, changeProgramStatus: (...args) => { writes.push(['status', ...args]); return response.promise } })
+  const row = { programId: '9007199254740993', programName: '正式方案', status: 'PUBLISHED' }
+  state.ctx.permissionPatterns = ['academicAffairs.program.publish']; state.openBind(row); state.bindForm = { gradeYear: '2027', classId: '9007199254740995' }; await state.submitBind()
+  assert.deepEqual(writes[0], ['bind', row.programId, '2027', '9007199254740995']); assert.equal(state.bindForm.gradeYear, '2027')
+  state.ctx.permissionPatterns = ['academicAffairs.program.changeStatus']; state.openChangeAction(row, 'FREEZE')
+  const pending = state.doChangeStatus({ reason: '按正式责任冻结' }); await state.doChangeStatus({ reason: '重复确认' })
+  response.resolve({ code: 409, message: '保留输入' }); await pending
+  assert.equal(writes.length, 2); assert.deepEqual(writes[1], ['status', row.programId, 'FREEZE', '按正式责任冻结'])
+})
+
+
+test('生成培养方案新版本使用正式编制权限，不混用状态变更权限', async () => {
+  let writes = 0
+  const { state } = programPage({ changeProgram: async () => { writes++; return { code: 409, message: '保留原版本' } } })
+  const row = { programId: '9007199254740993', programName: '正式方案', status: 'PUBLISHED' }
+  state.ctx.permissionPatterns = ['academicAffairs.program.changeStatus']; state.openChange(row)
+  assert.equal(state.planChangeDlg.visible, false)
+  state.ctx.permissionPatterns = ['academicAffairs.program.manage']; state.openChange(row)
+  assert.equal(state.planChangeDlg.visible, true); state.openChangeAction(row, 'FREEZE'); assert.equal(state.changeDlg.visible, false)
+  await state.doChange({ reason: '建立正规新版本' }); assert.equal(writes, 1)
+  state.ctx.permissionPatterns = ['academicAffairs.program.view']; await state.doChange({ reason: '撤权后不发' }); assert.equal(writes, 1)
+})
+
+
+test('当前培养方案工作区的实际状态按钮模板按变更权限展示', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaProgramConsoleView.vue', import.meta.url), 'utf8')
+  const snippet = source.match(/<AppButton v-for="act in [^\n]*activeProgram.status[^\n]*<\/AppButton>/)[0]
+  const render = new Function('Vue', compile(snippet, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  for (const [permissions, shown] of [[['academicAffairs.program.view'], false], [['academicAffairs.program.changeStatus'], true]]) {
+    const { state } = programPage({})
+    state.ctx.permissionPatterns = permissions
+    const runtime = { activeProgram: { status: 'PUBLISHED' }, availableChangeActions: () => ['FREEZE', 'DISABLE'], hasPermission: state.hasPermission.bind(state), changeActionLabel: state.changeActionLabel.bind(state), openChangeAction() {} }
+    const html = await renderToString(Vue.createSSRApp({ render, setup: () => runtime, components: { AppButton: button } }))
+    if (shown) { assert.match(html, /冻结/); assert.match(html, /停用/) }
+    else assert.doesNotMatch(html, /<button|冻结|停用/)
   }
 })

@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 
+const permissionSource = readFileSync(new URL('../src/config/navPlan.js', import.meta.url), 'utf8')
+const matchPermission = new Function(`${permissionSource.match(/export function matchPermission\(patterns, code\) \{[\s\S]*?\n\}/)[0].replace('export ', '')}; return matchPermission`)()
+
 function attendance(api, roomId = '21001') {
   const source = readFileSync(new URL('../src/modules/academicAffairs/components/AaExamAttendanceWorkbench.vue', import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'component =')
@@ -14,7 +17,9 @@ function attendance(api, roomId = '21001') {
 }
 
 function exam(api, convenienceApi) {
-  const result = page('AaExamConsoleView', { academicAffairsExamApi: api, academicAffairsExamConvenienceApi: convenienceApi })
+  const result = page('AaExamConsoleView', { matchPermission, academicAffairsExamApi: api, academicAffairsExamConvenienceApi: convenienceApi })
+  result.state.ctx.dataScope = { scope: 'SCHOOL' }
+  result.state.ctx.permissionPatterns = ['academicAffairs.exam.arrange']
   result.state.current = { batchId: 'a' }
   result.state.autoPlan = { dates: ['2026-10-01'], sessions: [{ start: '08:00', end: '09:00' }], maxPerDayPerClass: 1 }
   result.state.refresh = async () => {}
@@ -50,9 +55,10 @@ test('teacher assignment failure clears old schedule and is not an empty success
 
 test('考务批次列表消费有效网址学期，无学期保持原查询，创建沿用已核学期', async () => {
   const calls = []
-  const { state } = page('AaExamConsoleView', {
+  const { state } = page('AaExamConsoleView', { matchPermission,
     academicAffairsExamApi: { listBatches: async params => { calls.push(params); return { code: 0, data: { list: [], total: 0 } } } }
   })
+  state.ctx.dataScope = { scope: 'SCHOOL' }; state.ctx.permissionPatterns = ['academicAffairs.exam.manage']
   state.$route.query = { termId: '9007199254740993' }
   await state.load()
   assert.equal(calls[0].termId, '9007199254740993')

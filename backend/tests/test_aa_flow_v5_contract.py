@@ -30,6 +30,36 @@ def test_flow_has_twelve_stages_and_exactly_six_states():
     assert service.FLOW_STATUSES == {"NOT_STARTED", "ACTION_REQUIRED", "BLOCKED", "READY", "DONE", "NOT_APPLICABLE"}
 
 
+@pytest.mark.parametrize("status,class_name", [("ASSIGNED", "甲教学班"), ("ASSIGNED", None), ("READY", "甲教学班"), ("READY", None)])
+def test_teacher_workbench_reads_real_task_class_field(monkeypatch, status, class_name):
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
+    from app.modules.academic_affairs.services import academic_affairs_teacher_today_work_service as work
+    from app.modules.academic_affairs.services import academic_affairs_teacher_relation_authority as authority
+    task = AaTeachingTask(id=10, tenant_id=1, batch_id=2, course_id=3,
+        course_name="公共课", teaching_class_name=class_name, status=status)
+    assert not hasattr(task, "class_name")
+    monkeypatch.setattr(work, "_tid", lambda: 1)
+    monkeypatch.setattr(work, "_user_keys", lambda user: set())
+    monkeypatch.setattr(authority, "relation_scope", lambda *args, **kwargs: {"taskIds": {10}})
+    db = MagicMock()
+    db.scalars.return_value.all.side_effect = [
+        [AaTeachingTaskBatch(id=2, tenant_id=1, term_id=4, status="DRAFT")],
+        [task], [task], [], [],
+    ]
+    result = work.current_term_workbench(db, {}, term_id=4)
+    assert len(result["actionItems"]) == 1
+    item = result["actionItems"][0]
+    assert item["id"] == "10"
+    if status == "ASSIGNED":
+        assert item["kind"] == "TEACHING_TASK"
+        assert item["note"] == " · ".join(value for value in (class_name, "学院已分配") if value)
+        assert item["path"].endswith("teacher-confirm?taskId=10")
+    else:
+        assert item["kind"] == "GRADE_SETUP"
+        assert item["note"] == f"{class_name or '正式教学班'} · 尚未建立成绩任务"
+        assert item["path"].endswith("teachingTaskId=10&action=create")
+
+
 @pytest.mark.parametrize("courses,batches,expected", [
     ({}, {}, ("NOT_STARTED", "SCHOOL", "exam.manage")),
     ({"PENDING_CONFIRM": 1}, {"DRAFT": 1}, ("ACTION_REQUIRED", "COLLEGE", "exam.manage")),
@@ -919,3 +949,111 @@ def test_mysql_task_batch_progress_keeps_colleges_and_tenants_isolated(flow_tena
         db.flush()
         assert service._task_projection(db, term, 12)[0] == "BLOCKED"
         db.rollback()
+
+
+def _seed_v5_live_responsibility_identity(db, tid, *, role_code, scope_type, scope_id, org_type, permissions):
+    """只在隔离测试库建立正式账号、角色、范围和任职，不替换授权解析。"""
+    from datetime import datetime
+    from app.models import Role, RoleAssignmentScope, RolePermission, StaffAssignment, User, UserRole
+    from tests.support_academic_review_identity import _ensure_permission
+
+    account = User(tenant_id=tid, login_name="v5-live-responsibility", real_name="责任范围测试人员",
+        user_type="TEACHER", password_hash="unused-in-service-test", status="ACTIVE")
+    role = Role(tenant_id=tid, role_code=role_code, role_name="责任范围测试岗位",
+        role_type="SYSTEM" if role_code == "COLLEGE_ADMIN" else "CUSTOM", status="ACTIVE")
+    db.add_all([account, role]); db.flush()
+    link = UserRole(tenant_id=tid, user_id=account.id, role_id=role.id, status="ACTIVE")
+    db.add(link); db.flush()
+    grants = {}
+    for code in permissions:
+        grant = RolePermission(tenant_id=tid, role_id=role.id,
+            permission_id=_ensure_permission(db, code).id, status="ACTIVE")
+        db.add(grant); grants[code] = grant
+    db.add(RoleAssignmentScope(tenant_id=tid, user_role_id=link.id, user_id=account.id,
+        role_code=role_code, scope_type=scope_type, scope_id=scope_id, status="ACTIVE",
+        effective_at=datetime(2020, 1, 1)))
+    appointment = StaffAssignment(tenant_id=tid, user_id=account.id, org_type=org_type,
+        org_node_id=scope_id, assignment_type="LEADER", status="ACTIVE", effective_at=datetime(2020, 1, 1))
+    db.add(appointment); db.flush()
+    claims = {"tenantId": str(tid), "userId": str(account.id), "loginName": account.login_name,
+        "userType": "TEACHER", "currentRoleCode": role_code, "activeContextId": f"role:{role.id}"}
+    return claims, appointment, grants
+
+
+def test_mysql_major_leader_resolves_only_live_own_appointment_and_permission(flow_tenant_context):
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import AaProgram, College, Major
+    from app.modules.academic_affairs.services import academic_affairs_responsibility_service as responsibility
+
+    tid = flow_tenant_context
+    with get_sessionmaker()() as db:
+        college = College(tenant_id=tid, college_name="负责人测试学院", status="ACTIVE")
+        db.add(college); db.flush()
+        majors = [Major(tenant_id=tid, college_id=college.id, major_name=f"负责人专业{i}", status="ACTIVE") for i in range(2)]
+        db.add_all(majors); db.flush()
+        programs = [AaProgram(tenant_id=tid, major_id=major.id, program_name=f"负责人方案{i}",
+            grade_year="2041", status="DRAFT") for i, major in enumerate(majors)]
+        db.add_all(programs)
+        # 复用现有方案审核测试岗位，不新增产品角色或改变学校流程政策。
+        claims, appointment, grants = _seed_v5_live_responsibility_identity(db, tid,
+            role_code="V5_PROGRAM_COLLEGE_REVIEWER", scope_type="MAJOR", scope_id=majors[0].id,
+            org_type="MAJOR", permissions=["academicAffairs.program.manage"])
+        db.commit()
+        own = responsibility.resolve_program(db, programs[0])
+        assert own["resolved"] and own["assigneeUserIds"] == [claims["userId"]]
+        assert own["orgType"] == "MAJOR" and own["orgId"] == str(majors[0].id)
+        assert not responsibility.resolve_program(db, programs[1])["resolved"]
+        appointment.org_node_id = majors[1].id; db.commit()
+        assert not responsibility.resolve_program(db, programs[0])["resolved"]
+        assert not responsibility.resolve_program(db, programs[1])["resolved"], "外专业任职不能绕过本人正式专业范围"
+        appointment.org_node_id = majors[0].id
+        appointment.expires_at = datetime(2020, 1, 2); db.commit()
+        expired = responsibility.resolve_program(db, programs[0])
+        assert not expired["resolved"] and expired["blockerCode"] == "ASSIGNMENT_EXPIRED"
+        appointment.expires_at = None; db.commit()
+        assert responsibility.resolve_program(db, programs[0])["resolved"]
+        grants["academicAffairs.program.manage"].status = "DISABLED"; db.commit()
+        assert not responsibility.resolve_program(db, programs[0])["resolved"]
+
+
+def test_mysql_college_leader_assignment_keeps_flow_in_own_college(flow_tenant_context):
+    from datetime import datetime
+    from app.core.affairs_security import build_affairs_context
+    from app.core.exceptions import AppException
+    from app.core.permissions import has_permission
+    from app.db.session import get_sessionmaker
+    from app.models import AaTerm, College
+    from app.modules.system_admin.services import role_template_service as templates
+
+    tid = flow_tenant_context
+    permissions = ["academicAffairs.term.view", "academicAffairs.program.view"]
+    draft = templates.create_draft(template_code="COLLEGE_ADMIN", template_name="学院管理测试模板",
+        permission_codes=permissions, change_reason="隔离库学院负责人范围回归", actor_user_id=None)
+    templates.publish_draft(int(draft["id"]), expected_version=int(draft["version"]), actor_user_id=None)
+    with get_sessionmaker()() as db:
+        colleges = [College(tenant_id=tid, college_name=f"负责人范围学院{i}", status="ACTIVE") for i in range(2)]
+        term = AaTerm(tenant_id=tid, year_code="2041-2042", term_no=1, status="PUBLISHED",
+            start_date=datetime(2041, 9, 1), end_date=datetime(2042, 1, 20))
+        db.add_all([*colleges, term]); db.flush()
+        claims, appointment, _grants = _seed_v5_live_responsibility_identity(db, tid,
+            role_code="COLLEGE_ADMIN", scope_type="COLLEGE", scope_id=colleges[0].id,
+            org_type="COLLEGE", permissions=[])
+        own_id, other_id, term_id = int(colleges[0].id), int(colleges[1].id), int(term.id)
+        db.commit()
+        ctx = build_affairs_context(claims, db)
+        assert ctx.scope_type == "COLLEGE" and ctx.college_ids == {own_id}
+    for requested in (None, own_id):
+        result = service.flow(claims, term_id=term_id, college_id=requested)
+        assert result["viewer"]["scopeType"] == "COLLEGE"
+        assert result["viewer"]["collegeIds"] == [str(own_id)]
+        assert any(row["orgType"] == "COLLEGE" and row["orgId"] == str(own_id)
+            and row["assignmentType"] == "LEADER" for row in result["viewer"]["assignments"])
+        assert [row["collegeId"] for row in result["unitProgress"]] == [str(own_id)]
+        assert result["schoolStage"] is None and result["schoolGates"] == []
+        assert all(not row["primaryAction"] or row["primaryAction"]["label"].startswith("查看") for row in result["stages"])
+    with pytest.raises(AppException) as denied:
+        service.flow(claims, term_id=term_id, college_id=other_id)
+    assert denied.value.code == "NO_DATA_SCOPE" and denied.value.http_status == 403
+    for code in ("academicAffairs.term.manage", "academicAffairs.selection.manage", "academicAffairs.grade.publish", "academicAffairs.archive.manage"):
+        assert not has_permission(claims, code)

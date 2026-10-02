@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { compile } from '@vue/compiler-dom'
 import * as Vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import { matchPermission } from '../src/config/navPlan.js'
 import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 import * as registry from '../src/modules/academicAffairs/config/academicFlowRegistry.js'
 import { gradeError } from '../src/modules/academicAffairs/views/parallel-c/grade-review.js'
@@ -11,7 +12,7 @@ import { safeBusinessMessage, safeEnumLabel } from '../src/utils/presentationSaf
 import { readAllPages } from '../src/modules/academicAffairs/components/parallel-a/pagedRead.js'
 
 const domainNames = ['STUDENT_STATUS', 'REGISTRATION', 'STATUS_CHANGE', 'PROGRAM', 'TEACHING_TASK', 'SCHEDULE', 'SELECTION', 'EXAM', 'GRADE', 'MAKEUP', 'EVALUATION', 'TEXTBOOK', 'GRADUATION']
-const ctx = { currentRole: {}, dataScope: {} }
+const ctx = { currentRole: {}, dataScope: {}, permissionPatterns: ['academicAffairs.archive.manage'] }
 const slot = { setup: (_, { slots }) => () => Vue.h('section', [slots.actions?.(), slots.default?.()]) }
 const components = {
   ModulePageShell: slot, AppFormItem: slot,
@@ -24,7 +25,7 @@ const components = {
   AaArchiveCorrectionWorkspace: { render: () => Vue.h('p', '学校封存纠错工作区') },
   DataTable: { props: ['rows'], setup: props => () => Vue.h('p', props.rows.map(row => row.remark).join('；')) }
 }
-const deps = { ...components, ...registry, gradeError, safeBusinessMessage, safeEnumLabel }
+const deps = { ...components, ...registry, gradeError, safeBusinessMessage, safeEnumLabel, matchPermission }
 const archiveDeps = api => ({ ...deps, readAllPages, academicAffairsArchiveApi: api })
 const batch = (overrides = {}) => ({ batchId: '9007199254740993', termId: '52', termCode: '2026-2027-1', batchName: '秋季学期归档', status: 'READY', scopeType: 'COLLEGE', scopeNote: '学校封存材料由校教务统筹；请查看本院实时预检', missingCount: null, items: [], ...overrides })
 const precheck = (termId, overrides = {}) => ({ code: 0, data: { termId, termCode: `学期${termId}`, scopeType: 'COLLEGE', scopeNote: '仅核验本院学生及开课业务明细', result: 'PASS', blockingCount: 0, blockedDomains: 0, domains: domainNames.map(domain => ({ domain, domainLabel: '业务域', result: 'PASS', blockingCount: 0, recordCount: 1 })), ...overrides } })
@@ -63,6 +64,22 @@ test('真实上下文仅有 dataScope.scope 时，无批次的学院仍展示学
   const exportHtml = await renderPage('ArchiveExportView', { loading: false, rows: [] }, props)
   assert.match(exportHtml, /查看本院实时预检/)
   assert.doesNotMatch(exportHtml, /正式检查已完成/)
+})
+
+test('只读校级身份的空批次说明交给校教务，有办理权限的学校身份仍可新建', async () => {
+  const props = { ctx: { currentRole: { roleCode: 'LEADER' }, dataScope: { scope: 'SCHOOL' }, permissionPatterns: ['academicAffairs.archive.read'] } }
+  const html = await renderPage('AaArchiveConsoleView', { loading: false, rows: [] }, props)
+  assert.match(html, /等待校教务建立归档批次/)
+  assert.match(html, /批次建立后，可在此查阅学校归档进度/)
+  assert.doesNotMatch(html, /按学期新建归档批次|执行完整性检查与归档|>新建归档批次</)
+  const { state } = page('AaArchiveConsoleView', deps, props)
+  assert.equal(state.pageSubtitle, '查阅学校归档进度；建立批次、处理缺项和正式封存由校教务负责')
+  const existing = await renderPage('AaArchiveConsoleView', { loading: false, rows: [batch({ scopeType: 'TENANT_ALL' })], current: null }, props)
+  assert.match(existing, /从左侧选择批次查看学校归档进度；正式检查与封存由校教务负责/)
+  assert.doesNotMatch(existing, /执行完整性检查与归档|>新建归档批次</)
+  const writer = await renderPage('AaArchiveConsoleView', { loading: false, rows: [] })
+  assert.match(writer, />新建归档批次</)
+  assert.match(writer, /按学期新建归档批次/)
 })
 
 test('学院已封存批次保留真实封存时间，不能渲染学校材料或纠错工作区', async () => {
@@ -553,4 +570,63 @@ test('学校日志权限拒绝清除全部私有材料，同时在主页面保�
   const html = await renderPage('ArchiveExportView', { loading: false, current: state.current, rows: state.rows, items: state.items, logError: state.logError, listError: state.listError })
   assert.match(html, /无权/)
   assert.doesNotMatch(html, /暂无已归档批次|暂无下载记录|正式记录 20/)
+})
+
+
+test('学校只读领导保留正式进度且不暴露归档管理入口，范围不代替权限', async () => {
+  const current = batch({ scopeType: 'TENANT_ALL', items: [], confirmAction: { allowed: true } })
+  const leader = { currentRole: { roleCode: 'SCHOOL_LEADER' }, dataScope: { scope: 'TENANT_ALL' }, permissionPatterns: ['academicAffairs.archive.view'] }
+  for (const status of ['READY', 'ARCHIVED']) {
+    const html = await renderPage('AaArchiveConsoleView', { loading: false, rows: [current], current: { ...current, status } }, { ctx: leader })
+    assert.match(html, /秋季学期归档/)
+    assert.doesNotMatch(html, />新建归档批次<|>完整性检查<|>确认归档<|>取消<|学校封存纠错工作区/)
+  }
+  let calls = 0
+  const { state } = page('AaArchiveConsoleView', archiveDeps(new Proxy({}, { get: () => async () => { calls++; throw Error('不应发送') } })), { ctx: leader })
+  state.current = current; state.form.termId = '52'
+  state.openCreate(); await state.submitCreate(); await state.doCheck(); await state.doConfirm(); state.doCancel()
+  await state.runBatchWrite('cancel', current.batchId, () => true, () => { calls++ }, () => true, '')
+  state.pendingAction = async () => { calls++ }; await state.onConfirm()
+  assert.equal(calls, 0); assert.equal(state.createVisible, false); assert.equal(state.confirmVisible, false)
+  assert.equal(state.canConfirmArchive, false)
+})
+
+test('归档弹窗及确认闭包在权限收回后停止写入，仍可只读学校进度', async () => {
+  let writes = 0, reads = 0
+  const management = () => ({ currentRole: {}, dataScope: { scope: 'TENANT_ALL' }, permissionPatterns: ['academicAffairs.archive.manage'] })
+  const current = batch({ scopeType: 'TENANT_ALL', items: domainNames.map(domain => ({ domain, result: 'PASS' })), confirmAction: { allowed: true } })
+  for (const kind of ['create', 'cancel', 'confirm']) {
+    const { state } = page('AaArchiveConsoleView', archiveDeps({
+      getBatch: async () => { reads++; return { code: 0, data: current } },
+      createBatch: async () => { writes++ }, cancel: async () => { writes++ }, confirm: async () => { writes++ },
+    }), { ctx: management() })
+    state.current = current; state.form.termId = '52'; state.load = async () => {}
+    if (kind === 'create') state.openCreate()
+    if (kind === 'cancel') state.doCancel()
+    if (kind === 'confirm') await state.doConfirm()
+    const closure = state.pendingAction
+    state.ctx.permissionPatterns = ['academicAffairs.archive.view']
+    if (kind === 'create') await state.submitCreate()
+    else { await state.onConfirm(); await closure() }
+    assert.equal(writes, 0)
+    assert.equal(state.canManageArchive, false)
+    await state.refreshCurrentFromServer()
+    assert.equal(state.current.batchId, current.batchId)
+  }
+  assert.ok(reads > 0)
+})
+
+test('归档命令异步回读期间撤权，发送前复核阻止检查取消和确认', async () => {
+  for (const kind of ['check', 'cancel', 'confirm']) {
+    const pending = deferred(); let writes = 0
+    const { state } = page('AaArchiveConsoleView', archiveDeps({ getBatch: () => pending.promise }), {
+      ctx: { currentRole: {}, dataScope: { scope: 'TENANT_ALL' }, permissionPatterns: ['academicAffairs.archive.manage'] },
+    })
+    state.current = batch({ scopeType: 'TENANT_ALL', confirmAction: { allowed: true } })
+    const command = state.runBatchWrite(kind, state.current.batchId, () => true, () => { writes++ }, () => true, '')
+    state.ctx.permissionPatterns = ['academicAffairs.archive.view']
+    pending.resolve({ code: 0, data: state.current }); await command
+    assert.equal(writes, 0); assert.equal(state.pendingCommand, null)
+    assert.match(state.confirmError, /没有教务归档办理权限/)
+  }
 })
