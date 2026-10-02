@@ -6,7 +6,6 @@ GraduationEvaluationRun，review_note 只做审核留痕，不能充当毕业 Ov
 """
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime
 from types import SimpleNamespace
@@ -151,15 +150,16 @@ def _approve_for_final(client, hdr, rid):
     assert resp.json()["data"]["status"] == "ACADEMIC_REVIEW"
 
 
-def _append_formal_pass_fixture(rid, sid):
+def _append_formal_pass_fixture(rid, sid, monkeypatch):
     """Append a semantically consistent PASS run for tests that exercise final/read projections.
 
     The initial real precheck run remains immutable and abnormal. This helper models a later
     formal rerun after blockers were resolved by appending Run#N; it never overwrites history.
     """
     from app.db.session import get_sessionmaker
-    from app.models import AaGraduationAuditResult, GraduationEvaluationRun
+    from app.models import AaGraduationAuditResult, GraduationEvaluationRun, StudentProfile
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as graduation_service
+    from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
 
     db = get_sessionmaker()()
     try:
@@ -180,7 +180,15 @@ def _append_formal_pass_fixture(rid, sid):
             {"item": "FEE", "result": "UNKNOWN", "evidence": "财务未对接，本项不阻断"},
         ])
         payload = json.dumps(items, ensure_ascii=False, sort_keys=True)
-        marker = hashlib.sha256(f"D-W0:{rid}:{sid}:{run_no}".encode("utf-8")).hexdigest()
+        # 仅隔离跨域供数；正式身份事实解析及终审依据比较保持真实执行。
+        monkeypatch.setattr(graduation_service, "_run_items", lambda db, student: items)
+        from app.core.context import get_tenant, set_tenant
+        previous_tenant = get_tenant()
+        set_tenant(TID)
+        try:
+            evaluated = immutable.evaluate_student(db, db.get(StudentProfile, int(sid)))
+        finally:
+            set_tenant(previous_tenant)
         db.add(GraduationEvaluationRun(
             tenant_id=TID,
             batch_id=result.batch_id,
@@ -188,8 +196,8 @@ def _append_formal_pass_fixture(rid, sid):
             student_id=int(sid),
             run_no=run_no,
             program_id=previous.program_id,
-            input_snapshot_json=json.dumps({"contract": "D-W0", "resolved": True}, ensure_ascii=False),
-            input_hash=marker,
+            input_snapshot_json=json.dumps(evaluated["inputSnapshot"], ensure_ascii=False),
+            input_hash=evaluated["inputHash"],
             item_results_json=payload,
             overall="SYSTEM_PASSED",
             evaluator_version=previous.evaluator_version,
@@ -238,13 +246,13 @@ def test_gr2_status_abnormal(client, db_mode):
     assert status_item["evidence"] == "学籍状态：休学"
 
 
-def test_gr3_final_writes_status(client, db_mode):
+def test_gr3_final_writes_status(client, db_mode, monkeypatch):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
     bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
-    _append_formal_pass_fixture(rid, ids["s"])
+    _append_formal_pass_fixture(rid, ids["s"], monkeypatch)
     _approve_for_final(client, hdr, rid)
     final = client.post(f"{BASE}/graduation-results/{rid}/final", headers=hdr,
                         json={"conclusion": "GRADUATED", "confirm": True})
@@ -258,25 +266,25 @@ def test_gr3_final_writes_status(client, db_mode):
     db.close()
 
 
-def test_gr4_final_needs_confirm(client, db_mode):
+def test_gr4_final_needs_confirm(client, db_mode, monkeypatch):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
     bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
-    _append_formal_pass_fixture(rid, ids["s"])
+    _append_formal_pass_fixture(rid, ids["s"], monkeypatch)
     _approve_for_final(client, hdr, rid)
     assert client.post(f"{BASE}/graduation-results/{rid}/final", headers=hdr,
                        json={"conclusion": "GRADUATED", "confirm": False}).status_code == 409
 
 
-def test_gr5_rosters(client, db_mode):
+def test_gr5_rosters(client, db_mode, monkeypatch):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
     bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
-    _append_formal_pass_fixture(rid, ids["s"])
+    _append_formal_pass_fixture(rid, ids["s"], monkeypatch)
     _approve_for_final(client, hdr, rid)
     final = client.post(f"{BASE}/graduation-results/{rid}/final", headers=hdr,
                         json={"conclusion": "GRADUATED", "confirm": True})
@@ -295,14 +303,14 @@ def test_gr6_precheck_idempotent(client, db_mode):
     assert d["rerunCount"] == 2
 
 
-def test_gr7_roster_org_names(client, db_mode):
+def test_gr7_roster_org_names(client, db_mode, monkeypatch):
     """毕业学生名单补全学号/学院/专业/班级，供 audit-console roster tab 使用。"""
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
     bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
-    _append_formal_pass_fixture(rid, ids["s"])
+    _append_formal_pass_fixture(rid, ids["s"], monkeypatch)
     _approve_for_final(client, hdr, rid)
     final = client.post(f"{BASE}/graduation-results/{rid}/final", headers=hdr,
                         json={"conclusion": "GRADUATED", "confirm": True})

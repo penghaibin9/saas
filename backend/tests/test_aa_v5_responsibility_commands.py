@@ -219,12 +219,15 @@ def test_centralized_public_and_college_professional_schedules_publish_independe
         assert all(db.get(AaScheduleBatch, value).status == "PUBLISHED" for value in schedule_ids)
 
 
-def test_graduation_actual_college_then_school_command_boundary(client, db_mode):
+def test_graduation_actual_college_then_school_command_boundary(client, db_mode, monkeypatch):
     from app.db.session import get_sessionmaker
     from app.models import College, StudentProfile, Role, RolePermission
     from tests.support_grade_review_identity import seed_grade_review_identity, _ensure_permission
-    from tests.test_aa_graduation_d_w0_contract import _seed_formal_result, _decision_rows, _result_status, BASE, TID
+    from tests.test_aa_graduation_d_w0_contract import _seed_formal_result, _decision_rows, _result_status, _complete_pass_items, BASE, TID
     from tests.test_aa_grade_review_flow import _hdr
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as graduation_service
+
+    monkeypatch.setattr(graduation_service, "_run_items", lambda db, student: _complete_pass_items())
 
     with get_sessionmaker()() as db:
         college = College(tenant_id=TID, college_name="毕业责任学院", status="ACTIVE")
@@ -241,10 +244,10 @@ def test_graduation_actual_college_then_school_command_boundary(client, db_mode)
             db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=grant.id, status="ACTIVE"))
         db.commit()
     student_id, result_id, run_id = _seed_formal_result(
-        suffix="V5OWN", overall="SYSTEM_PASSED", review_note="", result_status="SYSTEM_PASSED", college_id=ids[0],
+        suffix="V5OWN", overall="SYSTEM_PASSED", review_note="", result_status="SYSTEM_PASSED", college_id=ids[0], current_basis=True,
     )
     foreign_student, foreign_result, _ = _seed_formal_result(
-        suffix="V5OTHER", overall="SYSTEM_PASSED", review_note="", result_status="SYSTEM_PASSED", college_id=ids[1],
+        suffix="V5OTHER", overall="SYSTEM_PASSED", review_note="", result_status="SYSTEM_PASSED", college_id=ids[1], current_basis=True,
     )
     school = _hdr(client, "school_admin01")
     college_headers = _hdr(client, "college_admin01")

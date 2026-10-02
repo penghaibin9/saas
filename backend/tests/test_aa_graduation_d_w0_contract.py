@@ -52,6 +52,18 @@ def _pass_snapshot(*, evaluated_at: str, fact_version: int = 1, evidence_hashes=
     }
 
 
+def _evaluate_current(db, student):
+    from app.core.context import get_tenant, set_tenant
+    from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
+
+    previous = get_tenant()
+    set_tenant(TID)
+    try:
+        return immutable.evaluate_student(db, student)
+    finally:
+        set_tenant(previous)
+
+
 def _seed_formal_result(
     *,
     suffix: str,
@@ -60,6 +72,7 @@ def _seed_formal_result(
     complete_evidence: bool = True,
     result_status: str = "ACADEMIC_REVIEW",
     college_id: int | None = None,
+    current_basis: bool = False,
 ):
     from app.db.session import get_sessionmaker
     from app.models import (
@@ -108,6 +121,8 @@ def _seed_formal_result(
         )
         db.add(result)
         db.flush()
+        evaluated = _evaluate_current(db, student) if current_basis else None
+        snapshot = evaluated["inputSnapshot"] if evaluated else {"contract": "D-W0", "suffix": suffix}
         run = GraduationEvaluationRun(
             tenant_id=TID,
             batch_id=batch.id,
@@ -115,8 +130,8 @@ def _seed_formal_result(
             student_id=student.id,
             run_no=1,
             program_id=None,
-            input_snapshot_json=json.dumps({"contract": "D-W0", "suffix": suffix}, ensure_ascii=False),
-            input_hash=(suffix.lower()[0] if suffix else "a") * 64,
+            input_snapshot_json=json.dumps(snapshot, ensure_ascii=False),
+            input_hash=evaluated["inputHash"] if evaluated else (suffix.lower()[0] if suffix else "a") * 64,
             item_results_json=json.dumps(items, ensure_ascii=False),
             overall=overall,
             evaluator_version="STAGE_C3_V1",
@@ -352,11 +367,15 @@ def test_d_w0_system_passed_run_with_missing_required_evidence_cannot_graduate(c
         db.close()
 
 
-def test_d_w0_system_passed_run_can_form_normal_decision(client, db_mode):
+def test_d_w0_system_passed_run_can_form_normal_decision(client, db_mode, monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as legacy
+    # 隔离跨域供数；身份事实解析、快照比较、真实权限及终态命令均不替换。
+    monkeypatch.setattr(legacy, "_run_items", lambda db, student: _complete_pass_items())
     student_id, result_id, run_id = _seed_formal_result(
         suffix="C",
         overall="SYSTEM_PASSED",
         review_note="学院初审通过",
+        current_basis=True,
     )
     resp = client.post(
         f"{BASE}/graduation-results/{result_id}/final",
@@ -380,3 +399,64 @@ def test_d_w0_system_passed_run_can_form_normal_decision(client, db_mode):
         assert run.run_no == 1
     finally:
         db.close()
+
+
+def _assert_final_has_no_writes(student_id, result_id):
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsAuditTrail, StudentProfile
+
+    assert _decision_rows(result_id) == []
+    assert _result_status(result_id) == "ACADEMIC_REVIEW"
+    with get_sessionmaker()() as db:
+        assert db.get(StudentProfile, student_id).student_status == "REGISTERED"
+        assert db.query(AffairsAuditTrail).filter(
+            AffairsAuditTrail.tenant_id == TID,
+            AffairsAuditTrail.biz_id == result_id,
+            AffairsAuditTrail.action == "ACADEMIC_FINAL_IMMUTABLE",
+        ).count() == 0
+
+
+def test_d_w0_changed_academic_fact_rejects_final_even_when_still_passed(client, db_mode, monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.models import StudentProfile
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as legacy
+    from app.modules.academic_affairs.services.academic_affairs_student_fact_service import append_student_academic_fact
+
+    monkeypatch.setattr(legacy, "_run_items", lambda db, student: _complete_pass_items())
+    student_id, result_id, _ = _seed_formal_result(
+        suffix="H", overall="SYSTEM_PASSED", review_note="学院已初审", current_basis=True,
+    )
+    with get_sessionmaker()() as db:
+        append_student_academic_fact(
+            db, student_id, grade="2025", source_type="CORRECTION", tenant_id=TID,
+        )
+        db.commit()
+        assert _evaluate_current(db, db.get(StudentProfile, student_id))["overall"] == "SYSTEM_PASSED"
+    resp = client.post(
+        f"{BASE}/graduation-results/{result_id}/final", headers=_hdr(client),
+        json={"conclusion": "GRADUATED", "confirm": True},
+    )
+    assert resp.status_code == 409, resp.text
+    assert "重新预审和学院初审" in resp.json()["message"]
+    _assert_final_has_no_writes(student_id, result_id)
+
+
+def test_d_w0_changed_source_evidence_rejects_final_even_when_still_passed(client, db_mode, monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_graduation_service as legacy
+
+    evidence = {"hash": "approved-source-version-1"}
+    def provider(db, student):
+        return [{**row, "evidenceHash": evidence["hash"]} for row in _complete_pass_items()]
+
+    monkeypatch.setattr(legacy, "_run_items", provider)
+    student_id, result_id, _ = _seed_formal_result(
+        suffix="I", overall="SYSTEM_PASSED", review_note="学院已初审", current_basis=True,
+    )
+    evidence["hash"] = "corrected-source-version-2"
+    resp = client.post(
+        f"{BASE}/graduation-results/{result_id}/final", headers=_hdr(client),
+        json={"conclusion": "GRADUATED", "confirm": True},
+    )
+    assert resp.status_code == 409, resp.text
+    assert "重新预审和学院初审" in resp.json()["message"]
+    _assert_final_has_no_writes(student_id, result_id)

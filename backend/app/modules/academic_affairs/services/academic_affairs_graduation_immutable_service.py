@@ -364,7 +364,7 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
         db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from .academic_affairs_graduation_scope_guard import assert_school_review_authority
         assert_school_review_authority(db, user)
-        from app.models import AaGraduationAuditResult, GraduationDecisionFact, GraduationEvaluationRun
+        from app.models import GraduationDecisionFact, GraduationEvaluationRun, StudentProfile
 
         from .academic_affairs_graduation_term_scope import guard_result_term_writable
         result = guard_result_term_writable(db, result_id)
@@ -404,6 +404,19 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
         )).first()
         if existing:
             raise AppException("IDEMPOTENCY_CONFLICT", "该毕业结果已形成正式决策事实")
+
+        # 与学籍事实追加命令共用学生锁，防止核验后、终态写入前身份依据变化。
+        student = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.id == result.student_id,
+            StudentProfile.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not student or not _approved_run_is_current(run, result, evaluate_student(db, student)):
+            raise AppException(
+                "APPROVAL_VERSION_CONFLICT",
+                "毕业终审依据已变化，请重新预审和学院初审后再终审",
+                http_status=409,
+            )
 
         to_status = graduation_service._CONCLUSION[conclusion]
         changed = graduation_service.change_student_status(
