@@ -93,8 +93,18 @@ async function runJourney() {
   const journeyInput = journeyContract(fixture)
   const closedJourney = !!journeyInput
   if (closedJourney) {
-    assert.ok(path.basename(fixtureFile).startsWith('v5closed01'), '新故事必须使用独立前置文件')
-    assert.ok(path.basename(credentialFile).startsWith('v5closed01'), '新故事必须使用独立私有凭据文件')
+    const closedCase = path.basename(fixtureFile).match(/^(v5closed0[12])-state\.json$/)?.[1]
+    assert.ok(closedCase, '已结束学期必须使用明确的独立前置文件')
+    assert.equal(path.basename(credentialFile), `${closedCase}-credentials.json`, '同一副本必须使用同名私有凭据')
+    if (closedCase === 'v5closed02') {
+      const copy = JSON.parse(await fs.readFile(path.join(root, '.codex-artifacts/v5-closed02-checkpoint-copy-20261003.json'), 'utf8'))
+      const runtime = JSON.parse(await fs.readFile(ignoredFile(process.env.E2E_V5_RUNTIME), 'utf8'))
+      assert.equal(runtime.containerName, 'codex-academic-v5-closed02')
+      assert.equal(copy.container, runtime.containerName); assert.equal(copy.port, 3314)
+      assert.match(String(copy.sourceBackupSha256 || ''), /^[a-f0-9]{64}$/i)
+      assert.equal(copy.sourceBackupSha256, runtime.sourceBackupSha256)
+      assert.equal(copy.oldCasePreserved, true); assert.equal(copy.decisionCountBeforeRetest, 0)
+    }
   }
   const termInput = journeyInput?.term || originalTermInput
   const objectPrefix = journeyInput?.objectPrefix || fixture.prefix
@@ -2607,7 +2617,10 @@ if (process.env.E2E_V5_CONTRACT_CHECK === '1') {
 } else if (process.env.E2E_V5_CHILD === '1') {
   // A standalone browser process keeps login fill values out of test-runner API
   // step parameters. No trace, video, storageState, headers or auth bodies are saved.
-  await runJourney().catch(() => { process.exitCode = 1 })
+  await runJourney().catch(error => {
+    console.error(JSON.stringify({ type: error.name, sourceLocation: sourceLocation(error) }))
+    process.exitCode = 1
+  })
 } else {
   test.use({ trace: 'off', video: 'off', screenshot: 'off' })
   test.describe('V5 场景 A 至 H：同学期两院责任接力与真实归档门禁', () => {
