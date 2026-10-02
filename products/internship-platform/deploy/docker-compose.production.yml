@@ -57,7 +57,7 @@ services:
     environment: &backend-env
       APP_ENV: production
       DATABASE_URL: mysql+pymysql://${DB_USER:-internship_app}:${DB_PASSWORD:?DB_PASSWORD must be set}@mysql:3306/${DB_NAME:-internship_standalone}?charset=utf8mb4
-      EXPECTED_ALEMBIC_REVISION: ${EXPECTED_ALEMBIC_REVISION:-ix0023}
+      EXPECTED_ALEMBIC_REVISION: ${EXPECTED_ALEMBIC_REVISION:-ix0024}
       REDIS_URL: redis://default:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
       REDIS_KEY_PREFIX: internship-standalone:prod
       JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}

@@ -243,6 +243,9 @@ def process_report_review_guard(
     result = report_svc.review_report(
         report_id, action, payload.get("comment", ""), user=user,
         expected_version=payload.get("expectedVersion", payload.get("version")),
+        expected_batch_id=payload.get("batchId"),
+        rating_level=payload.get("ratingLevel"),
+        summary_score=payload.get("summaryScore"),
     )
     return success(result)
 

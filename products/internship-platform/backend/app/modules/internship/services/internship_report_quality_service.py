@@ -166,6 +166,20 @@ def validate_attachments(file_ids, rules: dict) -> tuple[list[str], list[dict]]:
     return ids, metas
 
 
+
+def _bind_report_file(db, file_id, *, row, record, student, kind):
+    from app.core.context import get_current_user_ctx
+    from app.services.file_business_binding_service import bind_file_to_business
+    biz_type = 'INTERNSHIP_WEEKLY_REPORT' if kind == 'WEEKLY' else 'INTERNSHIP_REPORT'
+    bind_file_to_business(db,file_id=file_id,biz_type=biz_type,biz_id=str(row.id),
+        actor=get_current_user_ctx() or {},subject_type='STUDENT',subject_id=str(student.id),
+        module_code='INTERNSHIP',student_id=student.id,batch_id=str(record.batch_id),
+        college_id=student.college_id,class_id=student.class_id,
+        scope={'internshipId':str(record.id),'studentId':str(student.id),'studentNo':student.student_no,
+               'batchId':str(record.batch_id),'advisorUserId':str(record.advisor_user_id or ''),
+               'businessType':biz_type,'businessId':str(row.id)},
+        legacy_target_values={str(row.id),str(record.id),str(student.id),str(student.student_no)})
+
 def append_process_snapshot(db, *, row, record, student, content: str,
                             attachment_ids: list[str], attachment_meta: list[dict]) -> InternshipReportVersion:
     next_no = int(db.scalar(select(func.max(InternshipReportVersion.version_no)).where(
@@ -191,8 +205,7 @@ def append_process_snapshot(db, *, row, record, student, content: str,
     db.add(snap)
     db.flush()
     for fid in attachment_ids or []:
-        file_service.bind_file_biz(
-            fid, "INTERNSHIP_REPORT", str(row.id), user=None, db=db)
+        _bind_report_file(db, fid, row=row, record=record, student=student, kind="PROCESS")
     return snap
 
 
@@ -222,8 +235,7 @@ def append_weekly_snapshot(db, *, row, record, student, content_json: dict,
     db.add(snap)
     db.flush()
     for fid in attachment_ids or []:
-        file_service.bind_file_biz(
-            fid, "INTERNSHIP_WEEKLY_REPORT", str(row.id), user=None, db=db)
+        _bind_report_file(db, fid, row=row, record=record, student=student, kind="WEEKLY")
     return snap
 
 

@@ -1627,6 +1627,7 @@ async function uploadInsurancePolicy(event) {
     if (epoch !== insuranceEpoch) return
     const fileId = uploaded?.fileId || uploaded?.id
     if (!fileId) throw new Error('上传响应缺少文件标识')
+    if (uploaded.readyForBusiness !== true) throw new Error('文件已接收，仍在安全扫描中，暂不能作为保险凭证提交。原材料已保留，请联系学校确认扫描服务后重试。')
     insForm.fileId = String(fileId)
     ui.notify('保单文件已上传')
   } catch (e) {
@@ -1758,6 +1759,7 @@ async function uploadReportAttachment(event, target) {
   try {
     const uploaded = await fileSdk.upload(file, { bizType: 'INTERNSHIP_REPORT' })
     if (!uploaded?.fileId) throw new Error('附件上传响应缺少文件标识')
+    if (uploaded.readyForBusiness !== true) throw new Error('附件尚未通过安全扫描，暂不能提交报告；正文和原附件已保留。')
     const list = target === 'weekly' ? weeklyForm.attachments : reportForm.attachments
     if (!list.some((item) => String(item.fileId) === String(uploaded.fileId))) {
       list.push({

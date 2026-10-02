@@ -35,7 +35,7 @@
               <p style="margin: 0"><b style="color: var(--text-primary)">下周计划：</b>{{ detail.content.plan }}</p>
             </div>
             <div v-if="detail.attachments && detail.attachments.length" style="margin-top: var(--space-3); display: flex; gap: var(--space-2); flex-wrap: wrap">
-              <AppStatusTag v-for="a in detail.attachments" :key="a" type="info">📎 {{ a }}</AppStatusTag>
+              <span v-for="(attachment, index) in detail.attachments" :key="attachment.fileId || index" class="wr-attachment-name">📎 {{ typeof attachment === "string" ? attachment : attachment.fileName || "报告附件" }}</span>
             </div>
           </div>
         </section>
@@ -150,10 +150,12 @@
         </section>
       </div>
     </div>
+    <ReportEvidencePanel v-if="!loading && !error && detail" :key="$route.params.id" :versions="detail.immutableVersions || []" style="margin-top:16px" />
   </ModulePageShell>
 </template>
 
 <script>
+import ReportEvidencePanel from './components/ReportEvidencePanel.vue'
 /**
  * 周报批阅详情（/admin/internship/reports/:id）。
  * 闭环：查看正文/附件/版本 → 通过 / 退回（原因必填）→ 留痕 → 学生端同步。
@@ -172,7 +174,7 @@ import { APPROVE_WEEKLY, REJECT_WEEKLY } from '@/modules/internship/constants/pr
 
 export default {
   name: 'WeeklyReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips,
+  components: { ReportEvidencePanel, ModulePageShell, AppStatusTag, AppRiskTag, AppAuditTrail, AppTemplateChips,
     LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, AppInlineAlert, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -319,6 +321,7 @@ export default {
 </script>
 
 <style scoped>
+.wr-attachment-name{max-width:100%;overflow-wrap:anywhere;font-size:12px;padding:4px 8px;border:1px solid #d9e5f5;border-radius:6px;background:#f4f8ff;color:#285fa5}
 @import '@/styles/module-page.css';
 .wr-kept { white-space: pre-wrap; overflow-wrap: anywhere; }
 .wr-rating { display:grid; gap:6px; margin:var(--space-3) 0; padding:12px; border:1px solid var(--border-base); border-radius:8px; background:var(--bg-page); }

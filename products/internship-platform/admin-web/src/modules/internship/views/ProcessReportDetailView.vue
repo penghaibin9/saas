@@ -81,10 +81,12 @@
         </section>
       </div>
     </div>
+    <ReportEvidencePanel v-if="!loading && !error && detail" :key="$route.params.id" :versions="detail.versions || []" style="margin-top:16px" />
   </ModulePageShell>
 </template>
 
 <script>
+import ReportEvidencePanel from './components/ReportEvidencePanel.vue'
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea, AppInlineAlert } from '@/components/common'
 import { AppButton } from '@/components/ui'
@@ -98,7 +100,7 @@ import { APPROVE_REPORT_SHORT, REJECT_PROCESS_REPORT } from '@/modules/internshi
 
 export default {
   name: 'ProcessReportDetailView',
-  components: { ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea,
+  components: { ReportEvidencePanel, ModulePageShell, AppStatusTag, AppAuditTrail, AppTemplateChips, AppTextarea,
     LoadingState, ErrorState, EmptyState, AppButton, ReviewQueueBar, AppInlineAlert, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {

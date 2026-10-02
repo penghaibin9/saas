@@ -101,7 +101,10 @@ def build_staff_internship_router() -> APIRouter:
     return router
 
 
+from app.api.v1 import standalone_files
+
 api_router = APIRouter()
+api_router.include_router(standalone_files.router)
 api_router.include_router(standalone_browser_auth.router)
 api_router.include_router(standalone_mobile_auth.router)
 api_router.include_router(auth_recovery.router)

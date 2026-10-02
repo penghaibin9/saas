@@ -800,7 +800,10 @@ def review_weekly_report(report_id, action: str, comment: str, user=None, *, exp
     if action == "RETURN" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
-        w = db.get(WeeklyReport, _as_id(report_id))
+        w = db.scalar(select(WeeklyReport).where(
+            WeeklyReport.id == _as_id(report_id), WeeklyReport.tenant_id == _tid(),
+            WeeklyReport.is_deleted.is_(False),
+        ).with_for_update())
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("周报不存在")
         rec = tenant_get(db, InternshipRecord, w.internship_id)

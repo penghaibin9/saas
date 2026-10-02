@@ -162,7 +162,15 @@ def student_submit(user, body) -> dict:
         rec, stu = _student_record(db, user, batch_id=payload.get("batchId"), for_write=True)
         if payload.get("internshipId") is not None and str(payload["internshipId"]) != str(rec.id):
             raise AppException("DATA_CONFLICT", "实习记录与当前批次不一致，请重新读取")
+        # Serialize first creation and later edits on the existing parent record.
+        # Locking a nonexistent insurance row alone does not prevent concurrent inserts.
+        db.refresh(rec, with_for_update=True)
         batch = tenant_get(db, InternshipBatch, rec.batch_id)
+        if batch is not None:
+            db.refresh(batch)
+        from app.modules.internship.services.internship_record_resolver import _is_active_record
+        if rec.is_deleted or not _is_active_record(rec, batch):
+            raise AppException("DATA_CONFLICT", "实习记录或批次已关闭，请刷新后核实", http_status=409)
         ins = db.scalar(select(InternshipInsurance).where(
             InternshipInsurance.tenant_id == _tid(),
             InternshipInsurance.internship_id == rec.id,
@@ -211,22 +219,19 @@ def student_submit(user, body) -> dict:
                 db, InternshipInsurance, entity_id=ins.id, tenant_id=_tid(),
                 expected_version=extract_expected_version(payload),
                 expected_status=ins.status, values=values)
-        # New ORM rows already bind through the after-flush hook. Only atomic
-        # SQL replacements need explicit binding; doing both duplicates the
-        # pending FileBinding before commit when autoflush is disabled.
-        if action != "SUBMIT":
-            from app.services.file_business_binding_service import bind_file_to_business
-            bind_file_to_business(
-                db, file_id=file_id, biz_type="INTERNSHIP_INSURANCE", biz_id=str(ins.id),
-                actor=user, subject_type="STUDENT", subject_id=str(stu.id),
-                module_code="INTERNSHIP", student_id=stu.id, batch_id=str(rec.batch_id),
-                college_id=stu.college_id, class_id=stu.class_id,
-                scope={"internshipId": str(rec.id), "studentId": str(stu.id),
-                       "studentNo": stu.student_no, "batchId": str(rec.batch_id),
-                       "advisorUserId": str(rec.advisor_user_id or ""),
-                       "businessType": "INTERNSHIP_INSURANCE", "businessId": str(ins.id)},
-                legacy_target_values={str(ins.id), str(rec.id), str(stu.id), str(stu.student_no)},
-            )
+        # Standalone commits the first binding explicitly; no router import-order hooks.
+        from app.services.file_business_binding_service import bind_file_to_business
+        bind_file_to_business(
+            db, file_id=file_id, biz_type="INTERNSHIP_INSURANCE", biz_id=str(ins.id),
+            actor=user, subject_type="STUDENT", subject_id=str(stu.id),
+            module_code="INTERNSHIP", student_id=stu.id, batch_id=str(rec.batch_id),
+            college_id=stu.college_id, class_id=stu.class_id,
+            scope={"internshipId": str(rec.id), "studentId": str(stu.id),
+                   "studentNo": stu.student_no, "batchId": str(rec.batch_id),
+                   "advisorUserId": str(rec.advisor_user_id or ""),
+                   "businessType": "INTERNSHIP_INSURANCE", "businessId": str(ins.id)},
+            legacy_target_values={str(ins.id), str(rec.id), str(stu.id), str(stu.student_no)},
+        )
         rec.insurance_info = f"{insurer} · {policy_no} · 待核验"
         _trail(db, ins.id, action, {
             "policyNoMasked": policy_no[-4:].rjust(len(policy_no), "*"),
