@@ -148,7 +148,7 @@ const layoutRoute = {
     // ── R2 调停课（台账/发起/审批，通知单为独立打印路由） ──
     { path: 'schedule-change', name: 'aa-schedule-change-ledger', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeLedgerView.vue'), meta: meta('academicAffairs.scheduleChange.view', '调停课台账') },
     { path: 'schedule-change/apply', name: 'aa-schedule-change-apply', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeApplyView.vue'), meta: meta('academicAffairs.scheduleChange.apply', '发起调停课') },
-    { path: 'schedule-change/approval', name: 'aa-schedule-change-approval', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeApprovalView.vue'), meta: meta('academicAffairs.scheduleChange.collegeReview', '调停课审批') },
+    { path: 'schedule-change/approval', name: 'aa-schedule-change-approval', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeApprovalView.vue'), meta: { ...meta(null, '调停课审批'), permissionAny: ['academicAffairs.scheduleChange.collegeReview', 'academicAffairs.scheduleChange.academicReview'] } },
     // ── R2 调停课续工（冲突检测/统计/归档，Tier1 三级施工卡 07/08/09） ──
     { path: 'schedule-change/stats', name: 'aa-schedule-change-stats', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeStatsView.vue'), meta: meta('academicAffairs.scheduleChange.view', '调停课统计') },
     { path: 'schedule-change/archive', name: 'aa-schedule-change-archive', component: () => import('@/modules/academicAffairs/views/AaScheduleChangeArchiveView.vue'), meta: meta('academicAffairs.scheduleChange.view', '调停课归档') },

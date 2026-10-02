@@ -438,7 +438,7 @@ export const NAV_PLAN = [
     mod('aa-schedule-change', '调停课', '/admin/academic-affairs/schedule-change', [
       academicEntry('aa.schedule-change.schedule.change', I('调停课台账', '/admin/academic-affairs/schedule-change', 'academicAffairs.scheduleChange.view')),
       academicEntry('aa.schedule-change.schedule.change.apply', I('发起调停课（调课/停课/补课）', '/admin/academic-affairs/schedule-change/apply', 'academicAffairs.scheduleChange.apply')),
-      academicEntry('aa.schedule-change.schedule.change.approval', I('调停课审批', '/admin/academic-affairs/schedule-change/approval', 'academicAffairs.scheduleChange.collegeReview')),
+      academicEntry('aa.schedule-change.schedule.change.approval', I('调停课审批', '/admin/academic-affairs/schedule-change/approval', null, null, { permissionAny: ['academicAffairs.scheduleChange.collegeReview', 'academicAffairs.scheduleChange.academicReview'] })),
       // 调停课通知无独立列表页：APPLIED 后系统自动精确送达受影响师生（academic_affairs_schedule_change_service._apply_schedule），
       // 通知单打印为独立路由（/admin/academic-affairs/print/schedule-change/:id/notice，D7），
       // 台账「通知单」按钮/归档「详情」按钮均可到达；叶子指向宿主台账页（对齐下方冲突检测同一模式）
