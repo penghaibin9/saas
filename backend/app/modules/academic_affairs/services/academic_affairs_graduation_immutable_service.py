@@ -65,11 +65,10 @@ def _strict_overall(items: list[dict]) -> str:
 
 
 def _actor_id() -> int | None:
-    _name, _role, raw = graduation_service._op()
-    try:
-        return int(raw) if raw not in (None, "") else None
-    except (TypeError, ValueError):
-        return None
+    from .academic_affairs_schedule_change_service import _op_uid
+
+    value = _op_uid()
+    return value if value is not None and value > 0 else None
 
 
 def _program_id(items: list[dict]) -> int | None:
