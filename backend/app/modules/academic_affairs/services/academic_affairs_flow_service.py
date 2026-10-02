@@ -177,6 +177,31 @@ def _college_archive_stage(rows, term, ctx, college_id, org, school_responsible)
                   **({"schoolResponsibility": school_responsible("archive.manage")} if waiting_school else {})})
 
 
+def _sealed_term_stage(db, term, ctx):
+    """正式封存事实决定当前只读阶段，历史业务投影不再产生办理责任。"""
+    if not term or term.status != "ARCHIVED":
+        return None
+    from app.models import AaArchiveBatch
+    from .academic_affairs_archive_manifest_service import _latest_manifest
+
+    batch = _query(db, AaArchiveBatch, AaArchiveBatch.term_id == term.id,
+                   AaArchiveBatch.status == "ARCHIVED").order_by(AaArchiveBatch.id.desc()).first()
+    manifest = _latest_manifest(db, batch.id) if batch else None
+    complete = bool(manifest and manifest.term_id == term.id and manifest.manifest_hash)
+    stage = _stage(11, term, ctx=ctx, status="DONE" if complete else "BLOCKED",
+        blockers=[] if complete else [_problem("ARCHIVE_MANIFEST_MISSING",
+            "学期已标记封存，但缺少对应正式归档批次或清单，请校教务核查原封存记录")],
+        current_object={"type": "ARCHIVE_BATCH", "id": str(batch.id), "label": batch.batch_name} if batch else None,
+        evidence={"sealedReadOnly": True, "archiveBatchStatus": batch.status if batch else None,
+            "manifestId": str(manifest.id) if complete else None,
+            "manifestVersion": manifest.version_no if complete else None,
+            "scopeNote": "本学期已正式封存，当前为只读结果；历史业务证据保留，不再作为待办或办理前置" if complete
+                         else "本学期停止普通办理，封存证据待核查，不能判定已完成正式归档"})
+    if stage["primaryAction"]:
+        stage["primaryAction"]["label"] = "查看封存清单" if complete else "查看封存证据"
+    return stage
+
+
 def _query(db, model, *conditions):
     return db.query(model).filter(model.tenant_id == _tid(), model.is_deleted.is_(False), *conditions)
 
@@ -1016,6 +1041,21 @@ def flow(user, term_id=None, college_id=None):
                         extra = [row for row in extra if row["code"] not in {"SCHOOL_GATE_NOT_READY", "CROSS_COLLEGE_CONFLICT"}]
                     gates.append(_gate(STAGES[index][0], STAGES[index][1] + "学校门禁", units,
                                        complete_scope=not college_id, extra_blockers=extra))
+        sealed_stage = _sealed_term_stage(db, term, ctx)
+        if sealed_stage:
+            stages[11] = sealed_stage
+            for unit in units:
+                unit_stage = dict(sealed_stage)
+                if unit_stage["primaryAction"]:
+                    unit_stage["primaryAction"] = {**unit_stage["primaryAction"],
+                        "route": unit_stage["primaryAction"]["route"] + f"&collegeId={unit['collegeId']}"}
+                unit["stages"][11] = unit_stage
+                unit.update(status=unit_stage["status"], blockers=unit_stage["blockers"], responsibility=None)
+            # 前十一阶段保留原投影，封存后只读终态替代“首个未办阶段”和实时责任清单。
+            return {"term": {"termId": str(term.id), "termLabel": readiness._term_label(term), "status": term.status},
+                    "viewer": viewer, "schoolStage": sealed_stage if all_school else None,
+                    "myStage": sealed_stage, "unitProgress": units, "currentResponsibilities": [],
+                    "stages": stages, "schoolGates": [], "generatedAt": datetime.utcnow().isoformat()}
         uid = str(ctx.user_id or "").removeprefix("db-")
         related = [row for row in [*stages, *(stage for unit in units for stage in unit["stages"]) ]
                    if uid in (row.get("responsibility") or {}).get("assigneeUserIds", [])

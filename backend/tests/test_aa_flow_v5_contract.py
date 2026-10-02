@@ -345,6 +345,77 @@ def test_current_workflow_assignee_reaches_flow_responsibility_queue(monkeypatch
     assert result["myStage"]["currentObject"]["id"] == "301"
 
 
+@pytest.mark.parametrize("scope", ["TENANT_ALL", "COLLEGE", "ASSIGNED", "MAJOR"])
+@pytest.mark.parametrize("term_status,proof", [("ARCHIVED", "present"), ("ARCHIVED", "missing"), ("PUBLISHED", "present")])
+def test_sealed_term_owns_current_stage_without_rewriting_history(monkeypatch, scope, term_status, proof):
+    from contextlib import nullcontext
+    from app.models import AaArchiveBatch, College, AaTerm
+    from app.modules.academic_affairs.services import academic_affairs_archive_manifest_service as manifest_service
+
+    monkeypatch.setattr(service, "session", lambda: nullcontext(MagicMock()))
+    ctx = Row(scope_type=scope, college_ids={12}, user_id="db-21",
+              permission_codes={"academicAffairs.archive.view"})
+    monkeypatch.setattr(service, "build_affairs_context", lambda *args: ctx)
+    monkeypatch.setattr(service, "_major_scope", lambda *args: {201} if scope == "MAJOR" else set())
+    monkeypatch.setattr(service, "_global_gate_blockers", lambda *args, **kw: [])
+    monkeypatch.setattr(service.responsibility, "viewer_assignments", lambda *args: [])
+    term = AaTerm(id=91, tenant_id=1, year_code="2025-2026", term_no=2, status=term_status)
+    monkeypatch.setattr(service.readiness, "_load_term", lambda *args: term)
+    batch = Row(id=31, status="ARCHIVED", batch_name="正式学期封存")
+    def query(db, model, *conditions):
+        result = MagicMock()
+        result.filter.return_value = result
+        result.order_by.return_value = result
+        result.all.return_value = [Row(id=12, college_name="学院甲")] if model is College else []
+        result.first.return_value = batch if model is AaArchiveBatch else None
+        return result
+    monkeypatch.setattr(service, "_query", query)
+    manifest = Row(id=41, term_id=91, manifest_hash="a" * 64, version_no=1) if proof == "present" else None
+    monkeypatch.setattr(manifest_service, "_latest_manifest", lambda *args: manifest)
+    history = [service._stage(i, term, status="READY") for i in range(12)]
+    history[6] = service._stage(6, term, status="NOT_STARTED", responsible={
+        "resolved": True, "orgId": "12", "assigneeUserIds": ["21"], "source": "STAFF_AFFILIATION"})
+    history[11] = service._stage(11, term, status="BLOCKED", blockers=[service._problem("COLLEGE_NOT_READY", "历史日常记录未启动")])
+    monkeypatch.setattr(service, "_unit_stages", lambda *args: list(history))
+    monkeypatch.setattr(service, "_school_stages", lambda *args, **kw: list(history))
+    monkeypatch.setattr(service, "_teacher_stages", lambda *args: list(history))
+    monkeypatch.setattr(service, "_major_stages", lambda *args: list(history))
+    role = {"TENANT_ALL": "SCHOOL_ADMIN", "COLLEGE": "COLLEGE_ADMIN", "ASSIGNED": "ACADEMIC_TEACHER", "MAJOR": "MAJOR_CUSTOM"}[scope]
+    result = service.flow({"currentRoleCode": role})
+    assert result["stages"][6]["status"] == "NOT_STARTED"
+    if result["unitProgress"]:
+        assert result["unitProgress"][0]["stages"][6]["status"] == "NOT_STARTED"
+    if term_status == "PUBLISHED":
+        assert result["myStage"]["stageCode"] == "F70_TEACHING_OPERATION"
+        assert result["currentResponsibilities"]
+        return
+    current = result["schoolStage"] if scope == "TENANT_ALL" else result["myStage"]
+    assert current["stageCode"] == "F120_ARCHIVE"
+    assert current["status"] == ("DONE" if proof == "present" else "BLOCKED")
+    assert current["responsibility"] is None and current["nextStep"] is None
+    assert current["evidence"]["sealedReadOnly"] is True
+    assert result["currentResponsibilities"] == [] and result["schoolGates"] == []
+    if result["unitProgress"]:
+        assert result["unitProgress"][0]["status"] == current["status"]
+        assert result["unitProgress"][0]["stages"][11]["status"] == current["status"]
+
+
+@pytest.mark.parametrize("case", ["batch_missing", "wrong_term", "empty_hash"])
+def test_sealed_term_requires_matching_batch_and_manifest(monkeypatch, case):
+    from app.modules.academic_affairs.services import academic_affairs_archive_manifest_service as manifest_service
+    query = MagicMock()
+    query.order_by.return_value = query
+    query.first.return_value = None if case == "batch_missing" else Row(id=31, status="ARCHIVED", batch_name="正式封存")
+    monkeypatch.setattr(service, "_query", lambda *args: query)
+    manifest = Row(id=41, term_id=92 if case == "wrong_term" else 91,
+                   manifest_hash="" if case == "empty_hash" else "a" * 64, version_no=1)
+    monkeypatch.setattr(manifest_service, "_latest_manifest", lambda *args: manifest)
+    stage = service._sealed_term_stage(MagicMock(), Row(id=91, status="ARCHIVED"), Row(permission_codes=set()))
+    assert stage["status"] == "BLOCKED"
+    assert stage["blockers"][0]["code"] == "ARCHIVE_MANIFEST_MISSING"
+    assert stage["evidence"]["manifestId"] is None
+
+
 def test_mysql_pending_changes_use_offering_scope_live_workflow_and_current_account(flow_tenant_context):
     from datetime import datetime
     from app.db.session import get_sessionmaker
