@@ -350,6 +350,14 @@ async function runJourney() {
   const pages = {}
   assert.ok(process.env.E2E_STUDENT_BASE_URL, '必须显式配置已核验的隔离学生门户；配置不代表已获准启动')
   const studentBase = isolatedUrl('E2E_STUDENT_BASE_URL', '', closedJourney ? '5201' : '5200', '') + '/portal'
+  const preparation = JSON.parse(await fs.readFile(ignoredFile(process.env.E2E_V5_STUDENTS), 'utf8'))
+  assert.equal(preparation.prefix, fixture.prefix)
+  assert.equal(typeof preparation.tenantId, 'string')
+  assert.equal(preparation.tenantId, fixture.tenantId)
+  if (closedJourney) {
+    assert.equal(preparation.scenarioId, journeyInput.scenarioId)
+    assert.equal(preparation.termId, report.termId)
+  }
   const loginStudents = async (supplies = [], supplyOwners = []) => {
     const studentPages = []
     const studentKeys = ['A', 'B'].flatMap(label => [1, 2].map(ordinal => `${fixture.prefix}${label}${ordinal}`))
@@ -1463,7 +1471,6 @@ finally:
     // Reuse the saved supply and activated students. Earlier A-H checkpoints do
     // not certify this new phase; every resume re-reads the same formal objects.
     await phase('学校与原四名学生办理同一选课批次')
-    const preparation = JSON.parse(await fs.readFile(ignoredFile(process.env.E2E_V5_STUDENTS), 'utf8'))
     assert.equal(preparation.prefix, fixture.prefix)
     assert.equal(typeof preparation.tenantId, 'string', '私有学生准备租户编号必须为字符串，避免长编号精度丢失')
     assert.equal(preparation.tenantId, fixture.tenantId)
