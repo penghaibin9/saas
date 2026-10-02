@@ -2,12 +2,14 @@
   <ModulePageShell :title="reviewId ? '任务批阅' : '计划任务'" :subtitle="reviewId ? '核对任务要求与学生提交，确认结果或说明修改要求。' : '编制实习计划、下发任务并跟踪学生确认。'"
     role-name="实习管理员 / 指导教师" :data-scope-name="scopeHint">
     <template #actions>
+      <AppButton v-if="!reviewId && canExportPlan" variant="secondary" :aria-expanded="bulkExportOpen" @click="bulkExportOpen = !bulkExportOpen">批量导出计划</AppButton>
       <AppButton v-if="reviewId" variant="ghost" @click="closeTaskReview">返回完成度台账</AppButton>
       <AppExportButton v-if="!reviewId && plan" :export-fn="exportPdfFn" :has-permission="canExportPlan">导出计划 PDF</AppExportButton>
       <AppExportButton v-if="!reviewId && plan" :export-fn="exportXlsxFn" :has-permission="canExportPlan">导出计划 Excel</AppExportButton>
       <AppButton v-if="!reviewId && batchId && canEdit" variant="primary" :loading="publishing" :disabled="!plan || dirty || saving || writeConflict" @click="publish">发布并下发</AppButton>
     </template>
 
+    <PlanBulkExportPanel v-if="bulkExportOpen && !reviewId" :ctx="ctx" :can-export="canExportPlan" @close="bulkExportOpen = false" />
     <AppInlineAlert v-if="writeError" type="warning" :title="writeConflict ? '计划已更新，本次操作已暂停' : '操作未完成'" :description="writeError" />
     <p v-if="!reviewId && batchId && canEdit && (!plan || dirty)" class="hint">{{ plan ? '有未保存的修改，请先保存再发布。' : '先填写计划和至少一项任务，保存后即可发布。' }}</p>
     <div v-if="!batchId" class="state">请先选择实习批次</div>
@@ -256,6 +258,7 @@ import {
   AppStatusTag, AppSearchBox, AppMetricCard, AppExportButton
 } from '@/components/common'
 import FileUploader from '@/components/file/FileUploader.vue'
+import PlanBulkExportPanel from '@/modules/internship/components/PlanBulkExportPanel.vue'
 import { planApi } from '@/modules/internship/api/plan-insurance.api'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { canCode } from '@/modules/internship/composables/permission'
@@ -288,11 +291,12 @@ export default {
   components: {
     ModulePageShell, DataTable, ErrorState, AppButton, AppFormItem, AppTextInput, AppTextarea,
     AppSelect, AppQuickFilterChips, AppDeadlinePicker, AppDateDisplay, AppConfirmDialog,
-    AppInlineAlert, AppStatusTag, AppSearchBox, AppMetricCard, AppExportButton, FileUploader
+    AppInlineAlert, AppStatusTag, AppSearchBox, AppMetricCard, AppExportButton, FileUploader, PlanBulkExportPanel
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      bulkExportOpen: false,
       plan: null, planContext: null, templates: [], attachmentFiles: [],
       savedSnapshot: '', writeError: '', writeConflict: false, loadError: '', loadSequence: 0,
       loading: false, saving: false, publishing: false,

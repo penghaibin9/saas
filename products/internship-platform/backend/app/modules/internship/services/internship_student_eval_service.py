@@ -64,20 +64,14 @@ def _scope_ctx(user):
 
 
 def _student_record(db, user, *, batch_id=None, for_write: bool = False):
-    from app.modules.internship.services.internship_record_resolver import (
-        require_active_student_record, resolve_optional_student_record,
-    )
-    student_no = (user or {}).get("studentNo")
-    if not student_no:
-        if for_write:
-            raise AppException("VALIDATION_ERROR", "学生身份信息缺失")
-        return None, None
-    if for_write:
-        return require_active_student_record(
-            db, user, batch_id=batch_id, student_no=student_no)
-    record, student, _context = resolve_optional_student_record(
-        db, user, batch_id=batch_id, student_no=student_no)
-    return record, student
+    from app.core.exceptions import no_permission
+    from app.services.mobile_student_service import _require_student, resolve_student
+    from app.modules.internship.services.internship_record_resolver import resolve_student_internship_context
+    student = resolve_student(db, _require_student(user))
+    if student is None or student.is_deleted or student.tenant_id != _tid():
+        raise no_permission("学生账号未绑定有效的本校学生档案")
+    ctx = resolve_student_internship_context(db, student=student, batch_id=batch_id, for_write=for_write)
+    return ctx.record, ctx.student
 
 
 def _row(row, record, student):

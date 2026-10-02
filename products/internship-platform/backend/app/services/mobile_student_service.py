@@ -11,9 +11,6 @@ def _require_student(user):
     return user or {}
 def resolve_student(db,user):
     sid=user.get("studentId") or user.get("student_id")
-    if sid:
-        try:return tenant_get(db,StudentProfile,int(sid))
-        except Exception:pass
     uid=user.get("userId") or user.get("id")
     if uid:
         raw_uid=str(uid).strip()
@@ -30,7 +27,21 @@ def resolve_student(db,user):
                 StudentAccountLink.link_status=="ACTIVE",
                 StudentAccountLink.is_deleted.is_(False),
             ).order_by(StudentAccountLink.id.desc()))
-            if link:return tenant_get(db,StudentProfile,link.student_id)
+            if not link:
+                return None
+            student = tenant_get(db, StudentProfile, link.student_id)
+            if student is None or student.is_deleted or student.tenant_id != _tid():
+                return None
+            if sid is not None and str(sid) != str(student.id):
+                return None
+            return student
+        return None
+    # Only legacy internal callers without an account subject may use their trusted identity.
+    if sid:
+        try:
+            return tenant_get(db, StudentProfile, int(sid))
+        except (TypeError, ValueError):
+            return None
     sno=str(user.get("studentNo") or "").strip()
     if sno:return db.scalar(select(StudentProfile).where(StudentProfile.tenant_id==_tid(),StudentProfile.student_no==sno,StudentProfile.is_deleted.is_(False)))
     return None

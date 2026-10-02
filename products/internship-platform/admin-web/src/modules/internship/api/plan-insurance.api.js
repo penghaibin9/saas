@@ -15,6 +15,7 @@ async function callList(path, params = {}) {
 }
 
 export const planApi = {
+  getExportOptions(params = {}) { return call(() => request('/internship/plans/export-options', { params })) },
   getTemplates() { return call(() => request('/internship/plans/templates')) },
   bulkExportPdf(batchIds = []) { return call(() => request('/internship/plans/bulk-export.pdf', { method:'POST', body:{ batchIds } })) },
   bulkExportXlsx(batchIds = []) { return call(() => request('/internship/plans/bulk-export.xlsx', { method:'POST', body:{ batchIds } })) },

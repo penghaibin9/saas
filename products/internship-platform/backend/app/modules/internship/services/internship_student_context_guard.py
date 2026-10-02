@@ -31,9 +31,15 @@ def require_explicit_context(db, user: dict, payload: dict, *, for_write: bool):
     except (TypeError, ValueError):
         raise AppException("VALIDATION_ERROR", "internshipId 格式非法") from None
 
+    from app.services.mobile_student_service import _require_student, resolve_student
+    from app.core.exceptions import no_permission
+
+    student = resolve_student(db, _require_student(user))
+    if student is None or student.is_deleted or student.tenant_id != _tid():
+        raise no_permission("学生账号未绑定有效的本校学生档案")
     ctx = resolve_student_internship_context(
         db,
-        student_no=(user or {}).get("studentNo"),
+        student=student,
         batch_id=batch_id,
         for_write=for_write,
     )

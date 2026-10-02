@@ -736,13 +736,12 @@ def bulk_export_plans_pdf(batch_ids, user=None) -> dict:
     plans = _bulk_plan_views(batch_ids, user=user)
     sections = []
     for index, plan in enumerate(plans, 1):
+        if index > 1:
+            sections.extend(["", "----------------------------------------", ""])
         sections.extend([
             f"第 {index} 份计划｜{plan.get('batchName') or plan.get('batchId')}",
             f"计划标题：{plan.get('title') or '—'}",
             *_plan_document_lines(plan),
-            "",
-            "----------------------------------------",
-            "",
         ])
     content = pdf_util.build_text_pdf(
         "岗位实习计划批量导出",

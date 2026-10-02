@@ -41,7 +41,10 @@ def plans_bulk_export_pdf(
     body: dict = Body(...),
     user=Depends(require_permission(_P_PLAN_VIEW)),
 ):
-    return success(plan_svc.bulk_export_plans_pdf((body or {}).get("batchIds") or [], user=user))
+    from app.modules.internship.services.internship_plan_export_options import record_export
+    ids = (body or {}).get("batchIds") or []
+    payload = plan_svc.bulk_export_plans_pdf(ids, user=user)
+    return success(record_export(user, ids, "pdf", payload))
 
 
 @router.post("/plans/bulk-export.xlsx", summary="批量导出实习计划 Excel")
@@ -49,7 +52,10 @@ def plans_bulk_export_xlsx(
     body: dict = Body(...),
     user=Depends(require_permission(_P_PLAN_VIEW)),
 ):
-    return success(plan_svc.bulk_export_plans_xlsx((body or {}).get("batchIds") or [], user=user))
+    from app.modules.internship.services.internship_plan_export_options import record_export
+    ids = (body or {}).get("batchIds") or []
+    payload = plan_svc.bulk_export_plans_xlsx(ids, user=user)
+    return success(record_export(user, ids, "xlsx", payload))
 
 
 @router.get("/plans/batch/{batch_id}", summary="按批次读取实习计划书")
@@ -106,3 +112,14 @@ def plan_task_review(prog_id: int, body: dict = Body(...), user=Depends(require_
     b = body or {}
     return success(task_svc.review_progress(prog_id, b.get("action", ""), b.get("comment", ""),
                                              user=user, expected_version=b.get("expectedVersion")))
+
+
+@router.get('/plans/export-options', summary='批量导出计划选择器（同源权限、分页检索）')
+def plan_export_options(
+    page: int = Query(1, ge=1, le=100000),
+    pageSize: int = Query(20, ge=1, le=50),
+    keyword: str = Query('', max_length=100),
+    user=Depends(require_permission(_P_PLAN_VIEW)),
+):
+    from app.modules.internship.services.internship_plan_export_options import list_options
+    return success(list_options(user, page=page, page_size=pageSize, keyword=keyword))
