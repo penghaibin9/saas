@@ -38,6 +38,50 @@ def test_status_evidence_uses_chinese_without_changing_decision(status, result, 
     }
 
 
+@pytest.mark.parametrize("shape", ["list", "legacy_map", "wrapped_list"])
+@pytest.mark.parametrize("status,label", [
+    ("REGISTERED", "在籍注册"),
+    ("UNRECOGNIZED_INTERNAL_STATUS", "未明确，请核对学籍档案"),
+])
+def test_result_localizes_legacy_status_only_in_read_projection(shape, status, label):
+    from app.modules.academic_affairs.services.academic_affairs_graduation_service import _row
+
+    evidence = {"item": "STATUS", "result": "PASS", "owner": "COLLEGE_STAFF",
+                "evidence": f"student_status={status}", "evidenceHash": "saved-evidence-hash",
+                "checkedAt": "2026-10-02T12:00:00", "facts": {"evidence": f"student_status={status}"}}
+    if shape == "legacy_map":
+        payload = {"STATUS": {key: value for key, value in evidence.items() if key != "item"}}
+    elif shape == "wrapped_list":
+        payload = {"items": [evidence]}
+    else:
+        payload = [evidence]
+    saved = json.dumps(payload, ensure_ascii=False)
+    row = SimpleNamespace(id=1, batch_id=2, student_id=3, overall="SYSTEM_PASSED",
+                          conclusion=None, status="ACADEMIC_REVIEW", rerun_count=1,
+                          review_note="原学院初审意见", item_results_json=saved)
+
+    output = _row(row)
+
+    assert output["items"] == [{**evidence, "evidence": f"学籍状态：{label}"}]
+    assert row.item_results_json == saved
+    assert output["overall"] == "SYSTEM_PASSED"
+    assert output["status"] == "ACADEMIC_REVIEW"
+    assert output["reviewNote"] == "原学院初审意见"
+
+
+def test_result_preserves_chinese_status_and_unrelated_evidence():
+    from app.modules.academic_affairs.services.academic_affairs_graduation_service import _row
+
+    items = [{"item": "STATUS", "result": "FAIL", "evidence": "学籍状态：休学"},
+             {"item": "CREDIT", "result": "UNKNOWN", "evidence": "student_status=REGISTERED"}]
+    row = SimpleNamespace(id=1, batch_id=2, student_id=3, overall="SYSTEM_ABNORMAL",
+                          conclusion=None, status="SYSTEM_ABNORMAL", rerun_count=1,
+                          review_note=None, item_results_json=items)
+
+    assert _row(row)["items"] == items
+    assert row.item_results_json == items
+
+
 def test_legacy_item_evidence_map_is_normalized_for_list_and_filter_reads():
     from app.modules.academic_affairs.services.academic_affairs_graduation_service import _item_results
 

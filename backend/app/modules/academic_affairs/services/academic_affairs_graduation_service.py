@@ -646,10 +646,21 @@ def _item_results(payload) -> list[dict]:
 
 
 def _row(r) -> dict:
+    items = []
+    for item in _item_results(r.item_results_json):
+        evidence = item.get("evidence")
+        if item.get("item") == "STATUS" and isinstance(evidence, str) and evidence.startswith("student_status="):
+            from app.modules.academic_affairs.services.academic_affairs_service import _STATUS_LABEL
+
+            status = evidence.removeprefix("student_status=").strip()
+            label = _STATUS_LABEL.get(status, "未明确，请核对学籍档案")
+            # Localize the response projection only; preserve stored evidence and its hash.
+            item = {**item, "evidence": f"学籍状态：{label}"}
+        items.append(item)
     return {"resultId": str(r.id), "batchId": str(r.batch_id), "studentId": str(r.student_id),
             "overall": r.overall, "conclusion": r.conclusion, "status": r.status,
             "rerunCount": r.rerun_count, "reviewNote": r.review_note or "",
-            "items": _item_results(r.item_results_json)}
+            "items": items}
 
 
 def get_result(result_id, user) -> dict:
