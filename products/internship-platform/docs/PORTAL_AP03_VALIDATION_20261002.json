@@ -1,0 +1,61 @@
+{
+  "baseline": "12c012454538cc12ad318ae93835d40f90f280ba",
+  "branch": "feat/internship-standalone-yiyang-v1",
+  "overallAccepted": false,
+  "tests": {
+    "total": 121,
+    "passed": 117,
+    "failed": 4,
+    "errors": 0,
+    "skipped": 0,
+    "failedCases": [
+      "tests.test_yiyang_student_portal_closure_mysql::test_bound_student_reads_result_page_without_400_or_404[/context/weekly-reports]",
+      "tests.test_yiyang_student_portal_closure_mysql::test_bound_student_reads_result_page_without_400_or_404[/context/reports]",
+      "tests.test_yiyang_student_portal_closure_mysql::test_bound_student_reads_result_page_without_400_or_404[/context/self-eval]",
+      "tests.test_yiyang_student_portal_closure_mysql::test_bound_student_reads_result_page_without_400_or_404[/insurance]"
+    ]
+  },
+  "database": {
+    "mysqlVersion": "8.4.11",
+    "schemaRevision": "ix0024",
+    "host": "127.0.0.1",
+    "port": 13379,
+    "isolated": true
+  },
+  "browserThisRound": "NOT_RUN",
+  "studentResultPage": "FAIL_SHARED_IDENTITY_CONTEXT",
+  "scoreAppeal": "API_STUDENT_SUBMIT_SCHOOL_ACCEPT_OR_REJECT_STUDENT_REREAD_PASSED",
+  "insurance": "ROUTES_REGISTERED_BUT_VALID_STUDENT_READ_BLOCKED",
+  "ap03BulkUi": "NOT_IMPLEMENTED_WRITE_BLOCKED_INCOMPLETE_COMPONENT_REMOVED",
+  "exports": {
+    "pdfPages": 2,
+    "xlsxColumns": 30,
+    "pdfTextChecksPassed": 5,
+    "files": {
+      "plans.pdf": "c2b73d2272a15c627966b6ed626bc4f09d325e1cd2dc002fc6b9458968a9d55b",
+      "plans.xlsx": "85c4787acbda5fd0aca8fbcc6fc55e879e833f473d35bb917c72a4e1fa7c9dbf"
+    }
+  },
+  "pdfVisualReview": "BOTH_PAGES_INSPECTED",
+  "productionDeployment": false,
+  "prMerged": false,
+  "studentProductionBuild": "PASS",
+  "sourceSha256": {
+    "products/internship-platform/backend/app/modules/internship/services/internship_insurance_service.py": "e56dbbb6b67a34995caea7526bb1bc167284a6254fe21f0c0e668d9dc37c22e6",
+    "products/internship-platform/backend/app/modules/internship/services/internship_plan_service.py": "ea83668b3b1ea48eb34d139c9de7da50fa327c48f93bd326e6cb3c6932092eff",
+    "products/internship-platform/backend/app/student_portal/internship_router.py": "a192c8ed75b057e4a114ad65e918aed2505e03fd34108ba9d96b2ba7aef5b306",
+    "products/internship-platform/student-web/src/services/internshipCoreApi.js": "d638cc1db4704355fd7fdc6add07411e5d835870b495771ed5f4059dc613e6fd",
+    "products/internship-platform/student-web/src/views/internship/InternshipView.vue": "54ea7685e3d318a25e5a4603050916871f603e0a82998a65d5a592d7ffb29ab1",
+    "products/internship-platform/backend/tests/test_yiyang_student_portal_closure_mysql.py": "10bc6291354ad7d80c9ec48b30bd78fb30d5cfd059ff3eb669c170c5513692ab",
+    "products/internship-platform/backend/tests/test_yiyang_ap03_bulk_export.py": "9a0b2c5a3f9b65037fe98cb28a6b27a199ac43488dd13f0c8a1437e1e4b3d046",
+    "products/internship-platform/backend/tests/test_yiyang_ap03_bulk_export_mysql.py": "d7dbdd91d1338aa3661bf4917380ce54204389f6eaebbb33fe26d1a002cc31bb"
+  },
+  "evidenceSha256": {
+    "final-results.xml": "b07c3acf21fdadd61009f1651a424c01d24e4ef27533146d81a7f5c4ae000446",
+    "exports/plans.pdf": "c2b73d2272a15c627966b6ed626bc4f09d325e1cd2dc002fc6b9458968a9d55b",
+    "exports/plans.xlsx": "85c4787acbda5fd0aca8fbcc6fc55e879e833f473d35bb917c72a4e1fa7c9dbf",
+    "exports/plan-page-1.png": "68dc55ffba7d0c87fdcc0d7879b43f92ad3e0ddf901261f1a41970d555a4ec83",
+    "exports/plan-page-2.png": "487ecda370e63d81b891461481d5d0d0f5813c8f2f3ed021c8f94770a5cab529"
+  },
+  "duplicatePlanNumber": "409_DATA_CONFLICT_NO_PARTIAL_PLAN_ORIGINAL_UNCHANGED"
+}

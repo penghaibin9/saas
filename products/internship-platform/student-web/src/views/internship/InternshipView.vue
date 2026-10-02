@@ -1181,7 +1181,7 @@ async function fetchTabSource(key) {
   }
   if (key === 'insurance') {
     const epoch = ++insuranceEpoch
-    const result = await internshipCoreApi.insurance()
+    const result = await internshipCoreApi.insurance(currentInternshipContext())
     if (epoch !== insuranceEpoch) return false
     insuranceMeta.value = result
     insuranceError.value = ''; insuranceConflict.value = false

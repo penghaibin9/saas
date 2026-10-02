@@ -287,10 +287,10 @@ def verify_insurance(insurance_id, action: str, comment: str = "", *, expected_v
         return _row(ins, rec, stu, batch=tenant_get(db, InternshipBatch, rec.batch_id))
 
 
-def student_my_insurance(user) -> dict | None:
+def student_my_insurance(user, *, batch_id=None) -> dict | None:
     from app.modules.internship.services.internship_agreement_service import _student_record
     with session() as db:
-        rec, stu = _student_record(db, user)
+        rec, stu = _student_record(db, user, batch_id=batch_id)
         if not rec:
             return None
         ins = db.scalars(select(InternshipInsurance).where(

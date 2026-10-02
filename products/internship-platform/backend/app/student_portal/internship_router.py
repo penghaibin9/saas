@@ -478,3 +478,44 @@ def portal_self_eval_submit(
         student_evals.student_submit(user, body or {}),
         message="实习自评已提交",
     )
+
+
+@router.get('/score/appeal', summary='本人当前实习记录的成绩申诉')
+def portal_score_appeal(
+    batchId: str = Query(...), internshipId: str = Query(...),
+    user=Depends(get_current_user),
+):
+    from app.modules.internship.services import internship_score_appeal_service
+    return success(internship_score_appeal_service.my_latest(
+        user, batch_id=batchId, internship_id=internshipId))
+
+
+@router.post('/score/appeal', summary='本人提交成绩申诉')
+def portal_create_score_appeal(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_score_appeal_service
+    require_context_fields(body)
+    return success(internship_score_appeal_service.create(user, body))
+
+
+@router.get('/insurance', summary='本人所选实习批次的保险信息')
+def portal_insurance(
+    batchId: str = Query(...), internshipId: str = Query(...),
+    user=Depends(get_current_user),
+):
+    from app.modules.internship.services import internship_insurance_service
+    from app.modules.internship.services.internship_student_context_guard import require_explicit_context
+    from app.services.db_service import session
+    with session() as db:
+        require_explicit_context(db, user, {'batchId':batchId, 'internshipId':internshipId}, for_write=False)
+    return success(internship_insurance_service.student_my_insurance(user, batch_id=batchId))
+
+
+@router.post('/insurance', summary='本人提交或更正当前批次保险凭证')
+def portal_save_insurance(body: dict = Body(...), user=Depends(get_current_user)):
+    from app.modules.internship.services import internship_insurance_service
+    from app.modules.internship.services.internship_student_context_guard import require_explicit_context
+    from app.services.db_service import session
+    require_context_fields(body)
+    with session() as db:
+        require_explicit_context(db, user, body, for_write=True)
+    return success(internship_insurance_service.student_submit(user, body))

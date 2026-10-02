@@ -4,6 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import (
@@ -466,7 +467,13 @@ def save_plan(batch_id, body, user=None) -> dict:
         plan.basic_snapshot_json = _batch_snapshot(batch)
         plan.rules_snapshot_json = _rules_snapshot(batch)
         plan.version = int(plan.version or 0) + 1
-        db.flush()
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            if "uk_ix_intern_plan_no" in str(exc.orig):
+                raise AppException("DATA_CONFLICT", "计划编号已被使用，请更换编号后重试", http_status=409) from exc
+            raise
         for file_id in fields["attachmentFileIds"]:
             file_service.bind_file_biz(
                 file_id, "INTERNSHIP_PLAN", str(plan.id), user=user, db=db)
@@ -590,11 +597,11 @@ def _plan_document_lines(plan_view: dict) -> list[str]:
         f"结束时间：{basic.get('endDate') or '—'}",
         f"实习周数：{basic.get('internshipWeeks') if basic.get('internshipWeeks') is not None else '—'}",
         f"负责人：{plan_view.get('responsibleName') or '—'}",
-        f"计划签到天数：{rules.get('requiredCheckinDays') or '未配置'}",
-        f"日报篇数：{rules.get('dailyRequiredCount') if rules.get('dailyRequiredCount') is not None else '未配置'}",
+        f"计划签到天数：{rules.get('requiredCheckinDays') if rules.get('requiredCheckinDays') is not None else '未配置'}",
+        f"日报篇数：{rules.get('dailyRequiredCount') if rules.get('dailyRequiredCount') is not None else '未配置'}；最少字数：{rules.get('dailyMinWordCount') if rules.get('dailyMinWordCount') is not None else '未配置'}",
         f"周记篇数：{rules.get('weeklyRequiredCount') if rules.get('weeklyRequiredCount') is not None else '未配置'}",
-        f"月报篇数：{rules.get('monthlyRequiredCount') if rules.get('monthlyRequiredCount') is not None else '未配置'}",
-        f"总结篇数：{rules.get('summaryRequiredCount') if rules.get('summaryRequiredCount') is not None else '未配置'}",
+        f"月报篇数：{rules.get('monthlyRequiredCount') if rules.get('monthlyRequiredCount') is not None else '未配置'}；最少字数：{rules.get('monthlyMinWordCount') if rules.get('monthlyMinWordCount') is not None else '未配置'}",
+        f"总结篇数：{rules.get('summaryRequiredCount') if rules.get('summaryRequiredCount') is not None else '未配置'}；最少字数：{rules.get('summaryMinWordCount') if rules.get('summaryMinWordCount') is not None else '未配置'}",
         f"周记最少字数：{rules.get('weeklyMinWordCount') if rules.get('weeklyMinWordCount') is not None else '未配置'}",
         f"考核分数比例：{comp_text}",
         f"及格线：{rules.get('scorePassThreshold') if rules.get('scorePassThreshold') is not None else '—'}",
@@ -661,6 +668,9 @@ def export_plan_xlsx(batch_id, user=None) -> dict:
         ["月报篇数", rules.get("monthlyRequiredCount") if rules.get("monthlyRequiredCount") is not None else "未配置"],
         ["总结篇数", rules.get("summaryRequiredCount") if rules.get("summaryRequiredCount") is not None else "未配置"],
         ["周记最少字数", rules.get("weeklyMinWordCount") if rules.get("weeklyMinWordCount") is not None else "未配置"],
+        ["日报最少字数", rules.get("dailyMinWordCount") if rules.get("dailyMinWordCount") is not None else "未配置"],
+        ["月报最少字数", rules.get("monthlyMinWordCount") if rules.get("monthlyMinWordCount") is not None else "未配置"],
+        ["总结最少字数", rules.get("summaryMinWordCount") if rules.get("summaryMinWordCount") is not None else "未配置"],
         ["及格线", rules.get("scorePassThreshold") if rules.get("scorePassThreshold") is not None else ""],
     ]
     for index, item in enumerate(rules.get("scoreComponents") or [], 1):
@@ -691,18 +701,20 @@ def export_plan_xlsx(batch_id, user=None) -> dict:
 
 
 def _bulk_plan_views(batch_ids, user=None) -> list[dict]:
-    ids = []
-    for raw in batch_ids or []:
-        try:
-            bid = int(raw)
-        except (TypeError, ValueError):
-            raise AppException("VALIDATION_ERROR", "批量导出的批次 ID 格式非法") from None
-        if bid > 0 and bid not in ids:
-            ids.append(bid)
-    if not ids:
-        raise AppException("VALIDATION_ERROR", "请至少选择一个实习批次")
-    if len(ids) > 100:
+    if not isinstance(batch_ids, list) or not batch_ids:
+        raise AppException("VALIDATION_ERROR", "请选择实习批次数组")
+    if len(batch_ids) > 100:
         raise AppException("VALIDATION_ERROR", "单次最多批量导出 100 个实习计划")
+    ids = []
+    for raw in batch_ids:
+        if isinstance(raw, bool) or not isinstance(raw, (str, int)):
+            raise AppException("VALIDATION_ERROR", "批量导出的批次 ID 格式非法")
+        value = str(raw).strip()
+        if len(value) > 19 or not value.isascii() or not value.isdigit() or not 0 < int(value) <= 9223372036854775807:
+            raise AppException("VALIDATION_ERROR", "批量导出的批次 ID 必须为有效正整数")
+        bid = int(value)
+        if bid not in ids:
+            ids.append(bid)
     plans = []
     missing = []
     for bid in ids:
@@ -766,12 +778,19 @@ def bulk_export_plans_xlsx(batch_ids, user=None) -> dict:
             plan.get("requirements") or "",
             plan.get("content") or "",
             plan.get("assessmentContent") or "",
-            rules.get("requiredCheckinDays") or "未配置",
-            rules.get("weeklyRequiredCount") or "未配置",
-            rules.get("weeklyMinWordCount") or "未配置",
+            rules.get("requiredCheckinDays") if rules.get("requiredCheckinDays") is not None else "未配置",
+            rules.get("weeklyRequiredCount") if rules.get("weeklyRequiredCount") is not None else "未配置",
+            rules.get("weeklyMinWordCount") if rules.get("weeklyMinWordCount") is not None else "未配置",
             component_text or "未配置",
             plan.get("statusLabel") or "",
             plan.get("version") or 0,
+            plan.get("planNo") or "",
+            plan.get("majorName") or "",
+            plan.get("educationLevel") or "",
+            plan.get("subsidyStandard") or "",
+            *[rules.get(key) if rules.get(key) is not None else "未配置" for key in (
+                "dailyRequiredCount", "dailyMinWordCount", "monthlyRequiredCount",
+                "monthlyMinWordCount", "summaryRequiredCount", "summaryMinWordCount")],
         ])
     content = xlsx_util.build_ledger_xlsx(
         "实习计划批量导出",
@@ -780,6 +799,8 @@ def bulk_export_plans_xlsx(batch_ids, user=None) -> dict:
             "负责人", "开始时间", "结束时间", "实习周数", "实习目的", "实习要求",
             "实习内容", "考核内容", "签到天数", "周记篇数", "周记字数",
             "考核分数比例", "计划状态", "计划版本",
+            "计划编号", "专业", "培养层次", "补贴标准",
+            "日报篇数", "日报字数", "月报篇数", "月报字数", "总结篇数", "总结字数",
         ],
         rows,
         watermark=f"跃科岗位实习管理平台 · 批量导出 {len(rows)} 份计划 · {datetime.now():%Y-%m-%d %H:%M}",

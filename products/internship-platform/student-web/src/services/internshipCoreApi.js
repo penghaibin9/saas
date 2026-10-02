@@ -239,8 +239,8 @@ export const internshipCoreApi = {
   uploadLeaveEvidence(file) {
     return uploadFile('/files?bizType=INTERNSHIP', file)
   },
-  insurance() {
-    return request('/portal/internship/insurance')
+  insurance(params) {
+    return request('/portal/internship/insurance' + contextQuery(params))
   },
   saveInsurance(body) {
     return request('/portal/internship/insurance', { method: 'POST', body })
