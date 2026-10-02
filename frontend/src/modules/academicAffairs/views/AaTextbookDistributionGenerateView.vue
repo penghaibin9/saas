@@ -105,7 +105,7 @@ export default {
   beforeUnmount() { this.sequence++ },
   created() {
     if (this.appendMode) this.classId = this.appendClassId
-    if (!this.orderBatchId) this.error = '缺少征订批次orderBatchId，请从征订到货页进入'
+    if (!this.orderBatchId) this.error = '缺少征订批次，请从征订到货页进入'
   },
   methods: {
     resetScope() { this.sequence++; this.classId = this.appendMode ? this.appendClassId : ''; this.studentIds = []; this.submitting = false; this.error = this.orderBatchId ? '' : '请从征订到货页选择批次' },

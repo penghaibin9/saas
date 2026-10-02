@@ -63,7 +63,7 @@
       <div><span>办理后交接</span><strong>{{ pageSpec.nextRole }}</strong></div>
     </section>
 
-    <ErrorState v-if="error" :description="error" @retry="reload" />
+    <ErrorState v-if="error" :description="error" @retry="retryLoad" />
     <LoadingState v-else-if="loading" />
     <template v-else>
       <AppInlineAlert v-if="tab === 'stock' && rows.some(row => row.dataConflict)" type="danger" title="库存记录存在冲突" description="已签收与待签收占用超过到货数量。请核对到货、发放及退领原记录；负数按实际差额展示，不视为可继续发放。" />
@@ -369,6 +369,10 @@ export default {
     },
     runPrimaryAction() { if (this.tab === 'catalog') this.openTextbook(); else if (this.tab === 'selection') this.openSelection(); else if (this.tab === 'review') this.createReview(); else if (this.tab === 'order') this.createOrder(); else if (['fee', 'stock'].includes(this.tab)) this.reload(); else if (this.tab === 'stats') this.switchTab('order') },
     switchTab(key) { const target = this.resolveTab(key); if (this.saving || target === this.tab) return; this.$router.replace({ query: { ...this.$route.query, tab: target } }) },
+    async retryLoad() {
+      await this.reload()
+      if (!this.error) await this.openSelectionFromRoute()
+    },
     async reload() {
       const seq = ++this.loadSeq, identity = this.identityKey, tab = this.tab, page = this.page
       const current = () => seq === this.loadSeq && identity === this.identityKey && tab === this.tab && page === this.page
@@ -445,15 +449,22 @@ export default {
       if (this.openedSetupTaskId === taskId && this.selectionVisible) return
       if (!this.currentTermId) { this.error = '当前学期尚未设置，无法从教学任务登记教材选用'; return }
       const identity = this.identityKey
-      const result = await academicAffairsApi.listAllTasks({ formalMine: true, termId: this.currentTermId, taskId, page: 1, pageSize: 1 })
-      if (identity !== this.identityKey) return
+      const current = () => identity === this.identityKey && this.$route?.query?.action === 'create' && String(this.$route?.query?.taskId || '').trim() === taskId
+      let result
+      try {
+        result = await academicAffairsApi.listAllTasks({ formalMine: true, termId: this.currentTermId, taskId, page: 1, pageSize: 1 })
+      } catch {
+        if (current()) this.error = '教学任务读取失败，请重试'
+        return
+      }
+      if (!current()) return
       if (result?.code !== 0) { this.error = result?.message || '教学任务读取失败'; return }
       const task = (result.data?.list || []).find(row => String(row.taskId) === taskId)
       if (!task) { this.error = '当前学期本人教学任务不存在或已失去办理权限'; return }
       if (String(task.status || '').toUpperCase() !== 'READY') { this.error = '教学任务尚未完成教务终审，暂不能登记教材选用'; return }
       this.openedSetupTaskId = taskId
       await this.openSelection()
-      if (identity === this.identityKey && this.selectionVisible) {
+      if (current() && this.selectionVisible) {
         this.selectionForm.taskId = taskId
         this.selectionForm.expectedQty = Math.max(1, Number(task.expectedStudents || 1))
       }
