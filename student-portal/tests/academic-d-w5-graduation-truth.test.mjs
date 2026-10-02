@@ -87,7 +87,7 @@ function graduationPage(progress) {
   } }
 }
 
-for (const [conclusion, label] of [['GRADUATED', '已正式毕业'], ['COMPLETED', '已正式结业']]) {
+for (const [conclusion, label] of [['GRADUATED', '已形成毕业结论'], ['COMPLETED', '已形成结业结论']]) {
   test(`formal ${conclusion} leads the page while failed current checks remain available without urging reapplication`, async () => {
     const { state, render } = graduationPage({ hasAudit: true, conclusion, overall: 'SYSTEM_ABNORMAL', items: [
       { item: 'STATUS', result: 'FAIL', evidence: '当前学籍不符合实时在籍规则' },
@@ -95,6 +95,7 @@ for (const [conclusion, label] of [['GRADUATED', '已正式毕业'], ['COMPLETED
     ] })
     const collapsed = await render()
     assert.match(collapsed, new RegExp(label))
+    assert.equal((collapsed.match(new RegExp(`<h2[^>]*>${label}</h2>`, 'g')) || []).length, 1)
     assert.match(collapsed, /查看实时自查补充说明/)
     assert.doesNotMatch(collapsed, /尚有条件需要补齐|未达标|查看课程补救/)
     assert.equal(state.overallPassed.value, false)

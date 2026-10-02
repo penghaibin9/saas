@@ -58,7 +58,7 @@ const ADVISORY_UNKNOWN_ITEMS = new Set(['EMPLOYMENT', 'FEE'])
 const FORMAL_STATUS = {
   DRAFT: '尚未正式预审', PENDING: '正式预审待处理', RUNNING: '正式预审中',
   SYSTEM_PASSED: '正式预审通过', SYSTEM_ABNORMAL: '正式预审存在阻断项', PASSED: '正式预审通过', FAILED: '正式预审未通过',
-  GRADUATED: '已正式毕业', COMPLETED: '已正式结业', DELAYED: '延期毕业'
+  GRADUATED: '已形成毕业结论', COMPLETED: '已形成结业结论', DELAYED: '延期毕业'
 }
 
 const progress = computed(() => audit.value.progress || {})

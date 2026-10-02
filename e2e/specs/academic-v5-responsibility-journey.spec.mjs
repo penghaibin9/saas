@@ -432,6 +432,8 @@ async function runJourney() {
         const result = await read(await response)
         assert.equal(result.progress.hasAudit, true); assert.equal(result.progress.conclusion, 'GRADUATED')
         await expect(page.getByRole('heading', { name: '已形成毕业结论', exact: true })).toBeVisible()
+        await expect(page.getByRole('heading', { name: '尚有条件需要补齐', exact: true })).toHaveCount(0)
+        await expect(page.getByRole('heading', { name: '实时自查补充说明', exact: true })).toHaveCount(0)
       }
       await capture(page, `终态-学生${studentId}-毕业结果刷新`)
       await observed(`final-read-student-${studentId}`, { studentId, conclusion: 'GRADUATED', refreshed: true })
