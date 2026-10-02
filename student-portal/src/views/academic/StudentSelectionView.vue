@@ -75,7 +75,8 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AcademicDecisionTraceCard from '../../components/academic/AcademicDecisionTraceCard.vue'
 import AcademicBusinessReceipt from '../../components/academic/AcademicBusinessReceipt.vue'
 import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
@@ -90,6 +91,9 @@ import { useSessionStore } from '../../stores/session'
 // The shared owner must provide a DROP-specific reader; ENROLL preflight cannot authorize a drop.
 const dropPreflightAvailable = typeof portalApi.academicSelectionDropPreflight === 'function'
 const session = useSessionStore()
+const route = useRoute()
+const router = useRouter()
+const routeBatchId = () => typeof route.query.batchId === 'string' ? route.query.batchId : ''
 const guard = createStudentAcademicCommandGuard(() => studentAcademicIdentity(session), 'selection')
 const loading = ref(true)
 const error = ref('')
@@ -100,7 +104,7 @@ const decisionError = ref(null)
 const tab = ref('courses')
 const receipt = ref(null)
 const receiptTone = ref('success')
-const activeBatchId = ref('')
+const activeBatchId = ref(routeBatchId())
 const search = ref('')
 const detailId = ref('')
 const pendingOperation = ref(null)
@@ -268,7 +272,7 @@ async function load(batchId = activeBatchId.value) {
   if (forbidden) { clearForbidden(forbidden.reason); return }
   if (coursesResult.status === 'fulfilled') {
     rawGroups.value = coursesResult.value || []
-    if (!batchId) availableBatches.value = normalizeGroups(coursesResult.value).map((group) => group.batch).filter((batch) => batch?.batchId)
+    if (!batchId || !availableBatches.value.length) availableBatches.value = normalizeGroups(coursesResult.value).map((group) => group.batch).filter((batch) => batch?.batchId)
   } else coursesError.value = academicErrorMessage(coursesResult.reason, '可办理课程读取失败')
   if (recordsResult.status === 'fulfilled') records.value = rowsOf(recordsResult.value)
   else recordsError.value = academicErrorMessage(recordsResult.reason, '本人选课记录读取失败')
@@ -276,7 +280,21 @@ async function load(batchId = activeBatchId.value) {
   restorePersistentOperation()
   loading.value = false
 }
-function changeBatch() { receipt.value = null; load(activeBatchId.value) }
+function changeBatch() {
+  receipt.value = null
+  const query = { ...route.query }
+  if (activeBatchId.value) query.batchId = activeBatchId.value
+  else delete query.batchId
+  router.push({ query })
+  load(activeBatchId.value)
+}
+watch(() => route.query.batchId, () => {
+  const batchId = routeBatchId()
+  if (disposed || batchId === activeBatchId.value) return
+  activeBatchId.value = batchId
+  receipt.value = null
+  load(batchId)
+})
 async function refreshRecords(context = { batchId: activeBatchId.value, version: requestVersion }) {
   const identity = context.identity || studentAcademicIdentity(session)
   try {

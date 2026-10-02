@@ -657,6 +657,47 @@ test('selection ignores an older batch response even when it finishes last', asy
   assert.equal(page.groups.value[0].batch.batchId, 'B')
 })
 
+test('selection keeps the string batch in navigation and restores it on refresh', async () => {
+  const batchId = '9007199254740993123'
+  const calls = []
+  const api = { academicCourseSelection: async (id) => { calls.push(id); return batch(id) }, academicSelectionRecords: async (id) => [{ recordId: '5', batchId: id }] }
+  const page = mount('Selection', api, { returnTo: '/academic' })
+  page.activeBatchId.value = batchId
+  page.changeBatch()
+  assert.deepEqual(page.navigations[0], { query: { returnTo: '/academic', batchId } })
+  const refreshed = mount('Selection', api, page.navigations[0].query)
+  await refreshed.load()
+  assert.equal(refreshed.activeBatchId.value, batchId)
+  assert.equal(calls.at(-1), batchId)
+  assert.equal(refreshed.batchOptions.value[0].batchId, batchId)
+  assert.equal(refreshed.records.value[0].batchId, batchId)
+})
+
+test('selection follows browser back batch context and clearing retains other query fields', async () => {
+  const query = vue.reactive({ batchId: '2', returnTo: '/academic' })
+  const page = mount('Selection', { academicCourseSelection: async (id) => batch(id), academicSelectionRecords: async (id) => [{ batchId: id }] }, query)
+  await page.load()
+  query.batchId = '1'
+  await vue.nextTick(); await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(page.activeBatchId.value, '1')
+  assert.equal(page.records.value[0].batchId, '1')
+  page.activeBatchId.value = ''
+  page.changeBatch()
+  assert.deepEqual(page.navigations.at(-1), { query: { returnTo: '/academic' } })
+})
+
+test('selection treats repeated batch query values as no batch and cannot publish old identity data', async () => {
+  const pending = deferred()
+  const session = { user: { userId: 'student-A' }, token: 'token-A' }
+  const page = mount('Selection', { academicCourseSelection: () => pending.promise, academicSelectionRecords: async () => [{ recordId: 'private-A' }] }, { batchId: ['1', '2'] }, {}, { session })
+  assert.equal(page.activeBatchId.value, '')
+  const loading = page.load()
+  session.user = { userId: 'student-B' }; session.token = 'token-B'
+  pending.resolve(batch('1')); await loading
+  assert.equal(page.records.value.length, 0)
+  assert.equal(page.groups.value.length, 0)
+})
+
 test('selection requires a fresh formal record, blocks repeat writes, and can reconcile by GET', async () => {
   let writes = 0, failRead = true
   const order = []
