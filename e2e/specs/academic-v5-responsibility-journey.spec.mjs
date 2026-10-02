@@ -1532,6 +1532,7 @@ finally:
         await expect(dialog).toBeVisible(); await beforeWrite(droppedStep)
         const dropped = responseFor(page, '/api/v1/portal/academic/course-selection/drop', 'POST')
         await dialog.getByRole('button', { name: '确认退课', exact: true }).click(); await read(await dropped)
+        await expect(page.getByRole('heading', { name: '退课已确认', exact: true })).toBeVisible()
         const readDrop = responseFor(page, recordsPath); await page.reload()
         record = rows(await read(await readDrop)).find(item => item.selectionCourseId === supply.selectionCourseId)
         assert.equal(record?.status, 'DROPPED')
