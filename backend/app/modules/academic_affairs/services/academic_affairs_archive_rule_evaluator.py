@@ -208,9 +208,9 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
         blocker_count=blockers,
         rule_code="PROGRAM_COVERAGE_AND_VALIDATION",
         summary=(
-            f"本学期学生方案覆盖率100%，{len(program_ids)}个生效方案均无BLOCKER"
+            f"本学期学生方案覆盖率100%，{len(program_ids)}个生效方案均无阻断项"
             if blockers == 0 and coverage == 100
-            else f"方案覆盖率{coverage}%，范围异常{len(invalid_scope)}人，未解析学生{len(unresolved)}人，方案BLOCKER {len(validation_blockers)}项"
+            else f"方案覆盖率{coverage}%，范围异常{len(invalid_scope)}人，未解析学生{len(unresolved)}人，方案阻断项{len(validation_blockers)}项"
         ),
         evidence=evidence,
     )
