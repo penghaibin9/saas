@@ -537,6 +537,23 @@ async function runJourney() {
       }
       report.roles.push(evidence); await save()
     }
+    if (report.pending?.step === 'G-archive') {
+      assert.equal(path.basename(fixtureFile), 'v5closed02-state.json')
+      const batchId = report.graduationBatchId
+      assert.match(String(batchId), /^[1-9]\d*$/)
+      const batches = (await readOnly('school', `${apiPath}/graduation-audit-batches?batchId=${batchId}&page=1&pageSize=1`)).items
+      assert.equal(batches.length, 1); assert.equal(batches[0].batchId, batchId)
+      assert.equal(batches[0].status, 'PRECHECKED')
+      const results = (await readOnly('school', `${apiPath}/graduation-audit-batches/${batchId}/results?page=1&pageSize=20`)).items
+      assert.equal(results.length, 4); assert.ok(results.every(result => result.status === 'ARCHIVED'))
+      assert.deepEqual(results.map(result => result.studentId).sort(), Object.values(fixture.colleges).flatMap(college => college.studentIds).sort())
+      const evidence = auditRows({ tenantId: fixture.tenantId, bizType: 'AA_GRAD_AUDIT',
+        bizId: batchId, action: 'ARCHIVE', account: fixture.accounts.school })
+      const audit = assertActor(evidence, { roleCode: fixture.accounts.school.roleCode, pendingAt: report.pending.sentAt })
+      report.graduationPartialArchive = { batchId, auditId: audit.id,
+        resultIds: results.map(result => result.resultId), originalCommand: report.pending }
+      report.pending = null; await save()
+    }
     if (closedJourney) {
       await phase('已结束学期：学校与两学院接力办理原四名学生注册')
       report.registration ||= { scenarioId: journeyInput.scenarioId, termId: report.termId, batchId: null, actions: {}, reads: [] }
@@ -2464,18 +2481,6 @@ finally:
 
     // H starts with the graduation-batch closure. It is distinct from the
     // thirteen-domain term archive that follows.
-    if (report.pending?.step === 'G-archive' && gradBatch.status !== 'ARCHIVED') {
-      assert.equal(path.basename(fixtureFile), 'v5closed02-state.json')
-      assert.equal(gradBatch.status, 'PRECHECKED')
-      const results = (await readOnly('school', `${gradResultsPath}?page=1&pageSize=20`)).items
-      assert.equal(results.length, 4); assert.ok(results.every(result => result.status === 'ARCHIVED'))
-      const evidence = auditRows({ tenantId: fixture.tenantId, bizType: 'AA_GRAD_AUDIT',
-        bizId: gradBatchId, action: 'ARCHIVE', account: fixture.accounts.school })
-      const audit = assertActor(evidence, { roleCode: fixture.accounts.school.roleCode, pendingAt: report.pending.sentAt })
-      report.graduationPartialArchive = { batchId: gradBatchId, auditId: audit.id,
-        resultIds: results.map(result => result.resultId), originalCommand: report.pending }
-      report.pending = null; await save()
-    }
     if (gradBatch.status !== 'ARCHIVED') {
       await phase('校教务通过审核工作台封存已终审毕业名单')
       await visit(school, `/admin/academic-affairs/graduation/audit-console?batchId=${gradBatchId}&tab=archive`, gradPath)
