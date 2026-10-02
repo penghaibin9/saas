@@ -1521,13 +1521,13 @@ finally:
       if (originalRecordId) assert.equal(record.recordId, originalRecordId, '刷新后必须仍为原本人记录')
       if (savedBatch.status === 'LOCKED') assert.equal(record.status, 'LOCKED')
       await page.getByRole('button', { name: '我的选课与报名', exact: true }).click()
-      await expect(page.locator('.selection-record').filter({ hasText: supply.courseName })).toContainText(record.status === 'LOCKED' ? '名单已锁定' : '已取得名额')
+      await expect(page.locator('.selection-record').filter({ hasText: supply.courseName }).filter({ hasText: `记录 ${record.recordId} ·` })).toContainText(record.status === 'LOCKED' ? '名单已锁定' : '已取得名额')
       const reenrollStep = `R6-reenroll-${key}`
       await observed(report.pending?.step === reenrollStep ? reenrollStep : step, { recordId: record.recordId, selectionCourseId: supply.selectionCourseId })
       if (label === 'A' && ordinal === 1 && !report.checkpoints.some(item => item.step === droppedStep)) {
         assert.equal(savedBatch.status, 'OPEN', '原批次已截止，不能补造退课重选页面验收')
         assert.notEqual(report.pending?.step, droppedStep, '退课命令未确认，禁止自动重放')
-        await page.locator('.selection-record').filter({ hasText: supply.courseName }).getByRole('button', { name: '核对退课', exact: true }).click()
+        await page.locator('.selection-record').filter({ hasText: supply.courseName }).filter({ hasText: `记录 ${record.recordId} ·` }).getByRole('button', { name: '核对退课', exact: true }).click()
         const dialog = page.getByRole('dialog').filter({ hasText: '确认退课' })
         await expect(dialog).toBeVisible(); await beforeWrite(droppedStep)
         const dropped = responseFor(page, '/api/v1/portal/academic/course-selection/drop', 'POST')
@@ -1536,7 +1536,7 @@ finally:
         record = rows(await read(await readDrop)).find(item => item.selectionCourseId === supply.selectionCourseId)
         assert.equal(record?.status, 'DROPPED')
         await page.getByRole('button', { name: '我的选课与报名', exact: true }).click()
-        await expect(page.locator('.selection-record').filter({ hasText: supply.courseName })).toContainText('已退')
+        await expect(page.locator('.selection-record').filter({ hasText: supply.courseName }).filter({ hasText: `记录 ${record.recordId} ·` })).toContainText('已退')
         await observed(droppedStep, { recordId: record.recordId, selectionCourseId: supply.selectionCourseId })
         await page.getByRole('button', { name: '可办理课程', exact: true }).click()
         await submitEnrollment(reenrollStep)
@@ -1544,7 +1544,7 @@ finally:
         record = rows(await read(await readAgain)).find(item => item.selectionCourseId === supply.selectionCourseId)
         assert.equal(record?.status, 'SELECTED')
         await page.getByRole('button', { name: '我的选课与报名', exact: true }).click()
-        await expect(page.locator('.selection-record').filter({ hasText: supply.courseName })).toContainText('已取得名额')
+        await expect(page.locator('.selection-record').filter({ hasText: supply.courseName }).filter({ hasText: `记录 ${record.recordId} ·` })).toContainText('已取得名额')
         await observed(reenrollStep, { recordId: record.recordId, selectionCourseId: supply.selectionCourseId })
       }
     }
