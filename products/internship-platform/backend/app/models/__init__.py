@@ -83,3 +83,5 @@ from app.models.internship_teacher_activity import (
 )
 
 from app.models.internship_formal_document import InternshipFormalDocument
+
+from app.models.audit import SecurityAuditLog

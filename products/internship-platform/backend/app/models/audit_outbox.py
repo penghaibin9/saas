@@ -2,10 +2,9 @@
 from __future__ import annotations
 
 from datetime import datetime
-import hashlib
 import uuid
 
-from sqlalchemy import JSON, DateTime, Integer, String, UniqueConstraint, event
+from sqlalchemy import JSON, DateTime, Integer, String, Index, UniqueConstraint, event
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.models.base import AuditTimeMixin, Base, PKMixin, TenantMixin
@@ -14,6 +13,8 @@ from app.models.base import AuditTimeMixin, Base, PKMixin, TenantMixin
 class AuditOutbox(PKMixin, TenantMixin, AuditTimeMixin, Base):
     __tablename__ = "t_audit_outbox"
     __table_args__ = (
+        Index("ix_audit_outbox_delivery_due", "status", "next_retry_at", "id"),
+        Index("ix_audit_outbox_tenant_status_created", "tenant_id", "status", "created_at"),
         UniqueConstraint("tenant_id", "event_id", name="uk_audit_outbox_event"),
     )
 
@@ -29,18 +30,7 @@ class AuditOutbox(PKMixin, TenantMixin, AuditTimeMixin, Base):
     last_error: Mapped[str | None] = mapped_column(String(1000))
 
 
-def _safe(value):
-    sensitive = ("phone", "mobile", "idcard", "id_card", "token", "client_ip", "contact")
-    if isinstance(value, dict):
-        return {
-            key: ("sha256:" + hashlib.sha256(str(item).encode()).hexdigest()[:16]
-                  if item and any(part in key.lower() for part in sensitive)
-                  else _safe(item))
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_safe(item) for item in value]
-    return value
+from app.core.audit_payload import sanitize_audit_payload as _safe
 
 
 # 一次业务审计 = 恰好一条 outbox 事件。
@@ -75,6 +65,7 @@ def enqueue_internship_trails(db, _flush_context, _instances):
                 "actorUserId": detail.get("actorUserId"),
                 "actorName": trail.operator_name,
                 "actorRole": detail.get("actorRole"),
+                "requestMeta": detail.get("requestMeta") or {},
                 "beforeStatus": detail.get("beforeStatus"),
                 "afterStatus": detail.get("afterStatus"),
                 "expectedVersion": detail.get("expectedVersion"),

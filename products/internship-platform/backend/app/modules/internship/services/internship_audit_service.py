@@ -1,7 +1,6 @@
 """Structured internship audit plus persistent platform audit outbox."""
 from __future__ import annotations
 
-import hashlib
 import uuid
 from datetime import datetime, timedelta
 
@@ -13,29 +12,15 @@ from app.core.exceptions import AppException
 from app.services.db_service import _tid
 from app.services.db_service import session
 
-_SENSITIVE = ("phone", "mobile", "idcard", "id_card", "token", "ip", "contact")
-
-
-def _sanitize(value):
-    if isinstance(value, dict):
-        result = {}
-        for key, item in value.items():
-            if any(part in key.lower() for part in _SENSITIVE) and item:
-                result[key] = "sha256:" + hashlib.sha256(
-                    str(item).encode("utf-8")).hexdigest()[:16]
-            else:
-                result[key] = _sanitize(item)
-        return result
-    if isinstance(value, list):
-        return [_sanitize(x) for x in value]
-    return value
+from app.core.audit_payload import sanitize_audit_payload as _sanitize
+from app.core.context import get_current_user_ctx, get_request_meta, get_trace_id
 
 
 def add_audit(db, *, target_type, target_id, action, user=None, batch_id=None,
               internship_id=None, before_status=None, after_status=None,
               expected_version=None, new_version=None, reason=None,
               rule_version=None, file_ids=None, detail=None, event_id=None):
-    actor = user or {}
+    actor = user if user is not None else (get_current_user_ctx() or {})
     payload = _sanitize({
         "action": action, "targetType": target_type, "targetId": str(target_id),
         "tenantId": str(_tid()), "batchId": str(batch_id or ""),
@@ -46,6 +31,7 @@ def add_audit(db, *, target_type, target_id, action, user=None, batch_id=None,
         "beforeStatus": before_status, "afterStatus": after_status,
         "expectedVersion": expected_version, "newVersion": new_version,
         "reason": reason, "ruleVersion": rule_version, "fileIds": file_ids or [],
+        "requestMeta": {**get_request_meta(), "traceId": get_trace_id()},
         "detailJson": detail or {}, "occurredAt": datetime.utcnow().isoformat() + "Z",
     })
     trail = InternshipAuditTrail(
@@ -95,65 +81,89 @@ def mark_retry(db, event_id: str, error: str):
 
 
 def process_pending(limit: int = 50, worker_id: str = "audit-outbox") -> dict:
-    """把 PENDING / 到期 RETRY_WAIT 的审计事件落到安全审计表并标记 PROCESSED。
-
-    此前 t_audit_outbox 只有生产者没有消费者：行会永远停在 PENDING，
-    而 health() 只看 DEAD 数，于是"队列从没被消费"表现为健康。
-    """
+    """Lock due rows, isolate poison records, commit each sink fact with its delivery state."""
     from app.db.session import get_sessionmaker
+    from app.models.audit import SecurityAuditLog
     from app.services.db_service import audit_insert_in_session
 
+    if type(limit) is not int or not 1 <= limit <= 1000:
+        raise ValueError("audit batch size must be an integer in 1..1000")
     now = datetime.utcnow()
     processed = failed = 0
-    db = get_sessionmaker()()
-    try:
+    with get_sessionmaker()() as db:
         rows = db.scalars(
             select(AuditOutbox)
             .where(AuditOutbox.status.in_(("PENDING", "RETRY_WAIT")))
             .where((AuditOutbox.next_retry_at.is_(None)) | (AuditOutbox.next_retry_at <= now))
-            .order_by(AuditOutbox.id)
-            .limit(max(1, int(limit)))
+            .order_by(AuditOutbox.id).limit(limit)
             .with_for_update(skip_locked=True)
         ).all()
         for row in rows:
             try:
-                payload = dict(row.payload_json or {})
-                audit_insert_in_session(
-                    db, row.event_type, str(payload.get("targetType") or "internship"),
-                    payload, "SUCCESS",
-                    tenant_id=int(row.tenant_id),
-                    resource_id=str(payload.get("targetId") or "") or None,
-                )
-                row.status = "PROCESSED"
-                row.processed_at = now
-                row.last_error = None
+                # Flush inside SAVEPOINT: deferred MySQL errors must not poison the batch.
+                with db.begin_nested():
+                    payload = row.payload_json
+                    if not isinstance(payload, dict):
+                        raise ValueError("Audit payload must be an object")
+                    if payload.get("tenantId") not in (None, "") and str(payload["tenantId"]) != str(row.tenant_id):
+                        raise ValueError("Audit payload tenant does not match its trusted envelope")
+                    existing = db.scalar(select(SecurityAuditLog.id).where(
+                        SecurityAuditLog.tenant_id == row.tenant_id,
+                        SecurityAuditLog.source_event_id == row.event_id))
+                    if existing is None:
+                        audit_insert_in_session(
+                            db, row.event_type, str(payload.get("targetType") or "internship"),
+                            payload, "SUCCESS", tenant_id=int(row.tenant_id),
+                            resource_id=str(payload.get("targetId") or "") or None,
+                            actor_override={"userId": payload.get("actorUserId"),
+                                            "realName": payload.get("actorName"),
+                                            "currentRoleCode": payload.get("actorRole")},
+                            request_meta_override=payload.get("requestMeta") or {},
+                            source_event_id=row.event_id,
+                        )
+                    row.status = "PROCESSED"
+                    row.processed_at = now
+                    row.last_error = None
+                    row.next_retry_at = None
+                    db.flush()
                 processed += 1
-            except Exception as exc:  # noqa: BLE001 — 单条失败进退避重试，不拖垮整批
+            except Exception as exc:
                 row.retry_count = int(row.retry_count or 0) + 1
-                row.last_error = f"{worker_id}: {exc}"[:1000]
+                # SQL exception messages can contain bound payloads, credentials and personal data.
+                row.last_error = f"AUDIT_DELIVERY_FAILED:{type(exc).__name__}"[:1000]
                 row.status = "DEAD" if row.retry_count >= 10 else "RETRY_WAIT"
                 row.next_retry_at = None if row.status == "DEAD" else (
                     now + timedelta(minutes=min(60, 2 ** row.retry_count)))
                 failed += 1
         db.commit()
-    finally:
-        db.close()
     return {"processed": processed, "failed": failed}
 
 
-def health(db) -> dict:
-    rows = dict(db.execute(select(AuditOutbox.status, func.count()).where(
-        AuditOutbox.tenant_id == _tid()).group_by(AuditOutbox.status)).all())
-    # 积压也是不健康：只看 DEAD 会把"消费者根本没跑"判成健康。
+def _queue_health(db, tenant_id: int | None) -> dict:
+    counts_query = select(AuditOutbox.status, func.count()).group_by(AuditOutbox.status)
+    pending_query = select(func.min(AuditOutbox.created_at)).where(
+        AuditOutbox.status.in_(("PENDING", "RETRY_WAIT")))
+    if tenant_id is not None:
+        counts_query = counts_query.where(AuditOutbox.tenant_id == tenant_id)
+        pending_query = pending_query.where(AuditOutbox.tenant_id == tenant_id)
+    rows = dict(db.execute(counts_query).all())
     backlog = int(rows.get("PENDING", 0)) + int(rows.get("RETRY_WAIT", 0))
-    oldest_pending = db.scalar(select(func.min(AuditOutbox.created_at)).where(
-        AuditOutbox.tenant_id == _tid(),
-        AuditOutbox.status.in_(("PENDING", "RETRY_WAIT"))))
+    oldest_pending = db.scalar(pending_query)
     stalled = bool(oldest_pending and (datetime.utcnow() - oldest_pending) > timedelta(hours=1))
     return {"counts": rows, "dead": int(rows.get("DEAD", 0)),
             "backlog": backlog, "stalled": stalled,
             "oldestPendingAt": oldest_pending.isoformat() + "Z" if oldest_pending else None,
             "healthy": int(rows.get("DEAD", 0)) == 0 and not stalled}
+
+
+def health(db) -> dict:
+    return _queue_health(db, _tid())
+
+
+def delivery_health() -> dict:
+    """Process-internal aggregate only; authenticated APIs stay tenant scoped."""
+    with session() as db:
+        return _queue_health(db, None)
 
 
 def health_status() -> dict:
