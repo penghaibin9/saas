@@ -209,7 +209,13 @@ async function runJourney() {
     }
     if (actorRole) {
       const account = fixture.accounts[actorRole]
-      const rows = auditRows({ tenantId: fixture.tenantId, bizType, bizId, action, account, studentId })
+      let rows = auditRows({ tenantId: fixture.tenantId, bizType, bizId, action, account, studentId })
+      const previousCollegeAudits = step.startsWith('G-college-') && report.graduationReapprovalAuditIds?.[bizId]
+      if (previousCollegeAudits) {
+        assert.deepEqual(rows.rows.slice(0, previousCollegeAudits.length).map(row => row.id), previousCollegeAudits,
+          '重新预审前的学院初审审计必须完整保留')
+        rows = { ...rows, rows: rows.rows.slice(previousCollegeAudits.length) }
+      }
       const repeatEnrollment = action === 'SELECTION_ENROLL' && report.checkpoints.some(item => item.step === `R6-drop-${actorRole}`)
       const rescheduled = step === 'H-selection-exam-schedule-replan-A' && examReport.scheduleRecovery?.originalDate === '2027-07-05'
       if (rescheduled) {
@@ -2308,7 +2314,10 @@ finally:
     gradBatch = await exactGradBatch()
     assert.equal(gradBatch.total, 4, '应按同一批次圈定两学院四名虚构学生')
     await observed('G-generate', { batchId: gradBatchId, studentCount: gradBatch.total, status: gradBatch.status })
-    if (gradBatch.status === 'GENERATED' || (gradBatch.status === 'PRECHECKED' && gradBatch.abnormal > 0 && report.pending?.step !== 'G-precheck')) {
+    if (report.requireGraduationReprecheckAfterIdentityRepair) {
+      assert.ok(closedJourney && report.checkpointCopy?.originalFailedCasePreserved, '重新预审仅承接已保护的隔离恢复案例')
+    }
+    if (report.requireGraduationReprecheckAfterIdentityRepair || gradBatch.status === 'GENERATED' || (gradBatch.status === 'PRECHECKED' && gradBatch.abnormal > 0 && report.pending?.step !== 'G-precheck')) {
       await openGradBatch()
       await phase('学校通过正式页面执行十一项毕业资格预审')
       await beforeWrite('G-precheck')
@@ -2316,6 +2325,7 @@ finally:
       await school.getByRole('button', { name: '执行十一项预审', exact: true }).click()
       const receipt = await read(await prechecked)
       assert.equal(receipt.batchId, gradBatchId)
+      report.requireGraduationReprecheckAfterIdentityRepair = false; await save()
     }
     gradBatch = await exactGradBatch()
     assert.ok(['PRECHECKED', 'ARCHIVED'].includes(gradBatch.status))
@@ -2371,6 +2381,10 @@ finally:
           await visit(page, `/admin/academic-affairs/graduation/${gradBatchId}/results`, gradResultsPath)
           const card = page.locator('.aa-result-list section').filter({ hasText: result.realName })
           await expect(card).toHaveCount(1)
+          report.graduationReapprovalAuditIds ||= {}
+          report.graduationReapprovalAuditIds[result.resultId] = auditRows({ tenantId: fixture.tenantId,
+            bizType: 'AA_GRAD_AUDIT', bizId: result.resultId, action: 'COLLEGE_APPROVE', account: fixture.accounts[role] }).rows.map(row => row.id)
+          await save()
           await beforeWrite(`G-college-${result.resultId}`)
           const reviewed = responseFor(page, `${apiPath}/graduation-results/${result.resultId}/college-review`, 'POST')
           await card.getByRole('button', { name: '学院初审通过', exact: true }).click()
@@ -2506,6 +2520,44 @@ finally:
     const termAfterArchive = await readOnly('school', `${apiPath}/terms/${report.termId}`)
     assert.equal(termAfterArchive.status, 'ARCHIVED')
     await observed('H', { termId: report.termId, batchId: archiveBatchId, termStatus: termAfterArchive.status })
+    await phase('封存后六种正常职责与四名学生刷新回读')
+    const isBusinessWrite = row => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(row.method)
+      && (row.path.startsWith(apiPath) || row.path.startsWith('/api/v1/portal/academic/'))
+    const businessWrites = () => receipts.filter(isBusinessWrite).length
+    const readbackWriteAttempts = []
+    for (const page of [...roles.map(role => pages[role]), ...studentPages.map(item => item.page)]) {
+      page.on('request', request => {
+        const row = { method: request.method(), path: new URL(request.url()).pathname }
+        if (isBusinessWrite(row)) readbackWriteAttempts.push(row)
+      })
+    }
+    const writesBeforeReadback = businessWrites()
+    for (const role of roles) {
+      const page = pages[role], expectedScope = report.roles.find(item => item.role === role).reads[0]
+      for (const reload of [false, true]) {
+        const flow = await visit(page, `/admin/academic-affairs?termId=${report.termId}`, `${apiPath}/flow`, reload)
+        assert.equal(flow.term.termId, report.termId); assert.equal(flow.term.status, 'ARCHIVED')
+        assert.equal(flow.viewer.scopeType, expectedScope.scopeType)
+        assert.deepEqual(flow.viewer.collegeIds, expectedScope.collegeIds)
+        await expect(page.locator('[aria-label="学期责任接力"]')).toBeVisible()
+      }
+      await capture(page, `终态-${role}-封存后刷新`)
+      await observed(`final-read-${role}`, { termId: report.termId, termStatus: 'ARCHIVED', scopeType: expectedScope.scopeType, refreshed: true })
+    }
+    for (const { page, studentId } of studentPages) {
+      for (const reload of [false, true]) {
+        const response = responseFor(page, '/api/v1/portal/academic/graduation-audit')
+        if (reload) await page.reload()
+        else await page.goto(`${studentBase}/academic/graduation`)
+        const result = await read(await response)
+        assert.equal(result.progress.hasAudit, true); assert.equal(result.progress.conclusion, 'GRADUATED')
+        await expect(page.getByRole('heading', { name: '已形成毕业结论', exact: true })).toBeVisible()
+      }
+      await capture(page, `终态-学生${studentId}-毕业结果刷新`)
+      await observed(`final-read-student-${studentId}`, { studentId, conclusion: 'GRADUATED', refreshed: true })
+    }
+    assert.equal(businessWrites(), writesBeforeReadback, '封存后结果回读不得触发业务写入')
+    assert.deepEqual(readbackWriteAttempts, [], '封存后只读回读不得尝试业务写入，包括尚未响应的请求')
     report.uncovered = []; await save()
     assert.equal(failures.length, 0, '实际页面或接口存在错误')
     assert.equal(report.pending, null); report.passed = true; report.phase = '场景 A 至 H 完成'
