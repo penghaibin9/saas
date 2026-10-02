@@ -126,6 +126,7 @@ import { teacherApi } from '@/services/teacherApi'
 import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 import { useSessionStore } from '@/stores/session'
+import { me } from '@/services/realApi'
 import { beginPersistentWrite, clearPersistentWrite, isExplicitWriteRejection, isForbiddenResponse, listPersistentWrites, persistWriteAck, teacherWriteContext } from './write-result'
 
 const STATUS_OPTS = [
@@ -219,15 +220,22 @@ export default {
   onLoad(options = {}) {
     this._pageActive = true
     this._viewContext = this.contextKey()
-    this.syncUnknownWrites()
     this.sessionSeed = this.parseSessionSeed(options)
     this.routeSeed = this.sessionSeed ? null : this.parseOccurrenceSeed(options)
+    if (!this.syncUnknownWrites().ok) {
+      this.restoreAttendanceIdentity()
+      return
+    }
     this.load()
     if (this.routeSeed) this.loadTasks()
   },
   onShow() {
     this._pageActive = true
-    this.syncUnknownWrites()
+    if (this._identityRestoring) return
+    if (!this.syncUnknownWrites().ok) {
+      this.restoreAttendanceIdentity()
+      return
+    }
     const context = this.contextKey()
     if (this._viewContext !== context) {
       this._viewContext = context
@@ -276,6 +284,36 @@ export default {
   },
   onBackPress() { if (!this.active) return false; this.backToSessions(); return true },
   methods: {
+    async restoreAttendanceIdentity() {
+      const before = this.contextKey()
+      this._identityRestoring = true
+      this.clearPrivateAttendance()
+      this.writeStorageBlocked = true
+      this.state = 'loading'
+      try {
+        const identity = await me()
+        if (!this._pageActive || this.contextKey() !== before) return
+        const session = useSessionStore()
+        session.applyRealUser(identity)
+        if (session.currentRole !== 'academic') {
+          this.state = 'forbidden'
+          return
+        }
+        this._viewContext = this.contextKey()
+        if (!this.syncUnknownWrites().ok) {
+          this.state = 'error'
+          return
+        }
+        this.load()
+        if (this.routeSeed) this.loadTasks()
+      } catch (error) {
+        if (this._pageActive && this.contextKey() === before) {
+          this.state = normalizeError(error).pageState || 'error'
+        }
+      } finally {
+        this._identityRestoring = false
+      }
+    },
     toggleCreateForm() { if (this.creating) return; this.showForm = !this.showForm; if (this.showForm) this.loadTasks() },
     backToSessions() { if (!this.active) return true; this.closeSession(); return false },
     contextKey() {
@@ -545,6 +583,10 @@ export default {
       }
     },
     async load(requestedPage = this.sessionPage || 1) {
+      if (!this.syncUnknownWrites().ok) {
+        if (!this._identityRestoring) await this.restoreAttendanceIdentity()
+        return
+      }
       const epoch = (this._listEpoch || 0) + 1
       this._listEpoch = epoch
       const context = this.contextKey()
