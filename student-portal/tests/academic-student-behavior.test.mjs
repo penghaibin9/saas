@@ -698,6 +698,16 @@ test('selection treats repeated batch query values as no batch and cannot publis
   assert.equal(page.groups.value.length, 0)
 })
 
+test('selection replaces earlier identity batch options when loading a route batch', async () => {
+  const session = { user: { userId: 'student-A' }, token: 'token-A' }
+  let visibleBatch = 'A'
+  const page = mount('Selection', { academicCourseSelection: async () => batch(visibleBatch), academicSelectionRecords: async () => [] }, { batchId: '2' }, {}, { session })
+  await page.load()
+  session.user = { userId: 'student-B' }; session.token = 'token-B'; visibleBatch = 'B'
+  await page.load()
+  assert.deepEqual(page.batchOptions.value.map(x => x.batchId), ['B'])
+})
+
 test('selection requires a fresh formal record, blocks repeat writes, and can reconcile by GET', async () => {
   let writes = 0, failRead = true
   const order = []

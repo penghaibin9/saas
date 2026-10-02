@@ -256,6 +256,7 @@ async function load(batchId = activeBatchId.value) {
     actingId.value = ''; actingIdentity = ''
     pendingOperation.value = null
     receipt.value = null
+    availableBatches.value = []
   }
   pageIdentity = identity
   loading.value = true
