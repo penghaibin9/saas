@@ -524,7 +524,6 @@ def review_batch_advance(user, batch_id, action, reason=""):
     with _legacy.session() as db:
         ctx = _legacy._ctx(user, db)
         batch = _get_review_batch(db, batch_id, lock=True)
-        _term(db, batch.term_id)
         selections = db.query(AaTextbookSelection).join(AaTextbookReviewBatchItem,
             AaTextbookReviewBatchItem.selection_id == AaTextbookSelection.id,
         ).filter(
@@ -533,10 +532,13 @@ def review_batch_advance(user, batch_id, action, reason=""):
             AaTextbookReviewBatchItem.is_deleted.is_(False),
         ).with_for_update().all()
         source = db.query(_review_sources(db)).filter_by(batch_id=batch.id).first()
+        if ctx.scope_type not in {"COLLEGE", "TENANT_ALL"} or (ctx.scope_type == "COLLEGE" and (
+            not _review_source_valid(batch, source) or source.college_id not in ctx.college_ids
+        )):
+            raise _legacy.no_data_scope("该教材审核批次不在您的学院范围内")
         if not _review_source_valid(batch, source):
             raise _legacy._conflict("教材审核来源学院或学期不完整，请核对原选用与教学任务")
-        if ctx.scope_type not in {"COLLEGE", "TENANT_ALL"} or (ctx.scope_type == "COLLEGE" and source.college_id not in ctx.college_ids):
-            raise _legacy.no_data_scope("该教材审核批次不在您的学院范围内")
+        _term(db, batch.term_id)
         if batch.status not in _legacy._RB_CHAIN or source.reviewing_count != source.item_count:
             raise _legacy._conflict("仅未备案且原选用仍在审核中的批次可办理，已备案或已征订不能退回")
         if action not in {"APPROVE", "RETURN"}:
