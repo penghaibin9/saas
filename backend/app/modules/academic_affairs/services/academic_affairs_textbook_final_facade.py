@@ -8,7 +8,7 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import func
+from sqlalchemy import and_, case, func
 
 from app.core.exceptions import AppException, not_found
 
@@ -112,8 +112,78 @@ def _selection_term(db, selection):
 def _require_teacher_selection_scope(db, task, user, *, lock=False):
     role = str((user or {}).get("currentRoleCode") or "").upper()
     if role != "ACADEMIC_TEACHER":
+        ctx = _legacy._ctx(user, db)
+        from .academic_affairs_task_service import _scope, _visible_task_conditions
+        from app.models import AaTeachingTask
+        if ctx.scope_type not in {"TENANT_ALL", "COLLEGE"} or not db.query(AaTeachingTask.id).filter(
+            AaTeachingTask.id == task.id, AaTeachingTask.tenant_id == _legacy._tid(),
+            AaTeachingTask.is_deleted.is_(False), *_visible_task_conditions(_scope(user, db), AaTeachingTask),
+        ).first():
+            raise _legacy.no_data_scope("该教材选用的教学任务不在您的学院范围内")
         return None
     return teacher_authority.require_teacher(db, task, user, lock=lock)
+
+
+def _review_sources(db):
+    """来源责任在数据库汇总，空/失效/混学院来源不得获得学院动作。"""
+    from app.models import (AaTextbookReviewBatchItem as Item, AaTextbookSelection as Selection,
+                            AaTeachingTask as Task, AaTeachingTaskBatch as TaskBatch, AaTerm, College)
+    tid = _legacy._tid()
+    return db.query(
+        Item.batch_id.label("batch_id"), func.count(Item.id).label("item_count"),
+        func.count(College.id).label("owner_count"),
+        func.count(func.distinct(TaskBatch.college_id)).label("college_count"),
+        func.min(TaskBatch.college_id).label("college_id"),
+        func.min(TaskBatch.term_id).label("min_term_id"), func.max(TaskBatch.term_id).label("max_term_id"),
+        func.sum(case((Selection.status == "REVIEWING", 1), else_=0)).label("reviewing_count"),
+        func.sum(case((AaTerm.status != "ARCHIVED", 1), else_=0)).label("writable_count"),
+    ).outerjoin(Selection, and_(Selection.id == Item.selection_id, Selection.tenant_id == tid, Selection.is_deleted.is_(False))).outerjoin(
+        Task, and_(Task.id == Selection.task_id, Task.tenant_id == tid, Task.is_deleted.is_(False)),
+    ).outerjoin(TaskBatch, and_(TaskBatch.id == Task.batch_id, TaskBatch.tenant_id == tid, TaskBatch.is_deleted.is_(False))).outerjoin(
+        College, and_(College.id == TaskBatch.college_id, College.tenant_id == tid, College.is_deleted.is_(False), College.status == "ACTIVE"),
+    ).outerjoin(AaTerm, and_(AaTerm.id == TaskBatch.term_id, AaTerm.tenant_id == tid, AaTerm.is_deleted.is_(False))).filter(
+        Item.tenant_id == tid, Item.is_deleted.is_(False),
+    ).group_by(Item.batch_id).subquery()
+
+
+def _review_source_valid(batch, source):
+    return bool(source and source.item_count and source.owner_count == source.item_count and
+                source.college_count == 1 and source.college_id and
+                source.min_term_id == source.max_term_id == batch.term_id and
+                (batch.college_id is None or batch.college_id == source.college_id))
+
+
+def _review_actions(ctx, batch, source):
+    from app.core.permissions import _match
+    valid = _review_source_valid(batch, source)
+    responsible = valid and (
+        (batch.status in {"DRAFT", "COLLEGE_REVIEWING"} and ctx.scope_type == "COLLEGE" and source.college_id in ctx.college_ids) or
+        (batch.status in {"COLLEGE_APPROVED", "ACADEMIC_APPROVED"} and ctx.scope_type == "TENANT_ALL")
+    )
+    allowed = bool(responsible and source.reviewing_count == source.item_count and source.writable_count == source.item_count and
+                   _match("academicAffairs.textbook.review.manage", ctx.permission_codes))
+    return {"advance": allowed, "return": allowed}
+
+
+def _review_dto(ctx, batch, source):
+    result = _legacy._rb_dto(batch)
+    result["collegeId"] = str(source.college_id) if _review_source_valid(batch, source) else None
+    result["actions"] = _review_actions(ctx, batch, source)
+    owners = {
+        "DRAFT": ("来源学院教材初审岗", "来源学院教材初审岗"),
+        "COLLEGE_REVIEWING": ("来源学院教材初审岗", "学校教务复审岗"),
+        "COLLEGE_APPROVED": ("学校教务复审岗", "学校教材备案岗"),
+        "ACADEMIC_APPROVED": ("学校教材备案岗", "学校教材征订岗"),
+        "PUBLISHED": ("学校教材征订岗", "教材到货与发放岗"),
+        "RETURNED": ("原教材选用申报人", "重新提交后进入来源学院初审"),
+    }
+    result["currentOwner"], result["nextOwner"] = owners.get(batch.status, ("责任岗位待核对", "按正式状态核对")) if _review_source_valid(batch, source) else ("来源责任尚未解析", "先核对原选用与教学任务")
+    return result
+
+
+def list_review_batches(user, status=None, page=1, page_size=20):
+    from .academic_affairs_textbook_read_service import list_review_batches as read_batches
+    return read_batches(user, status, page, page_size)
 
 
 def _get_selection(db, selection_id, *, lock=False):
@@ -384,10 +454,11 @@ def withdraw_selection(user, selection_id):
 
 
 def create_review_batch(user, body):
-    from app.models import AaTextbookReviewBatch, AaTextbookReviewBatchItem, AaTextbookSelection
+    from app.models import AaTextbookReviewBatch, AaTextbookReviewBatchItem, AaTextbookSelection, College
 
     with _legacy.session() as db:
-        _legacy._require_school(_legacy._ctx(user, db))
+        ctx = _legacy._ctx(user, db)
+        _legacy._require_school(ctx)
         term = _term(db, getattr(body, "termId", None))
         selection_ids = _unique_positive_ids(getattr(body, "selectionIds", None))
         if not selection_ids:
@@ -399,6 +470,7 @@ def create_review_batch(user, body):
         ).with_for_update().all()
         by_id = {int(row.id): row for row in selections}
         accepted = []
+        college_ids = set()
         for selection_id in selection_ids:
             row = by_id.get(selection_id)
             if not row:
@@ -408,11 +480,20 @@ def create_review_batch(user, body):
             task_batch = _selection_term(db, row)
             if int(task_batch.term_id) != int(term.id):
                 raise AppException("DATA_CONFLICT", "审核批次不能混入其它学期教材选用", http_status=409)
+            if not task_batch.college_id:
+                raise _legacy._conflict("教学任务缺少来源学院，无法建立教材审核责任")
+            college_ids.add(int(task_batch.college_id))
             accepted.append(row)
+        if len(college_ids) != 1:
+            raise _legacy._conflict("教材审核批次不能混入多个学院，请按来源学院分别选择选用申报")
+        if not db.query(College.id).filter(College.id.in_(college_ids), College.tenant_id == _legacy._tid(),
+            College.is_deleted.is_(False), College.status == "ACTIVE").first():
+            raise _legacy._conflict("来源学院不存在或已停用，请先核对教学任务")
         batch = AaTextbookReviewBatch(
             tenant_id=_legacy._tid(),
             batch_name=(getattr(body, "batchName", None) or "教材审核批次").strip(),
             term_id=term.id,
+            college_id=next(iter(college_ids)),
             status="DRAFT",
         )
         db.add(batch)
@@ -432,7 +513,8 @@ def create_review_batch(user, body):
             f"纳入 {len(accepted)} 条选用",
         )
         db.commit()
-        return _legacy._rb_dto(batch)
+        source = db.query(_review_sources(db)).filter_by(batch_id=batch.id).first()
+        return _review_dto(ctx, batch, source)
 
 
 def review_batch_advance(user, batch_id, action, reason=""):
@@ -440,24 +522,34 @@ def review_batch_advance(user, batch_id, action, reason=""):
 
     action = str(action or "").upper()
     with _legacy.session() as db:
-        _legacy._require_school(_legacy._ctx(user, db))
+        ctx = _legacy._ctx(user, db)
         batch = _get_review_batch(db, batch_id, lock=True)
         _term(db, batch.term_id)
+        selections = db.query(AaTextbookSelection).join(AaTextbookReviewBatchItem,
+            AaTextbookReviewBatchItem.selection_id == AaTextbookSelection.id,
+        ).filter(
+            AaTextbookSelection.tenant_id == _legacy._tid(), AaTextbookSelection.is_deleted.is_(False),
+            AaTextbookReviewBatchItem.tenant_id == _legacy._tid(), AaTextbookReviewBatchItem.batch_id == batch.id,
+            AaTextbookReviewBatchItem.is_deleted.is_(False),
+        ).with_for_update().all()
+        source = db.query(_review_sources(db)).filter_by(batch_id=batch.id).first()
+        if not _review_source_valid(batch, source):
+            raise _legacy._conflict("教材审核来源学院或学期不完整，请核对原选用与教学任务")
+        if ctx.scope_type not in {"COLLEGE", "TENANT_ALL"} or (ctx.scope_type == "COLLEGE" and source.college_id not in ctx.college_ids):
+            raise _legacy.no_data_scope("该教材审核批次不在您的学院范围内")
+        if batch.status not in _legacy._RB_CHAIN or source.reviewing_count != source.item_count:
+            raise _legacy._conflict("仅未备案且原选用仍在审核中的批次可办理，已备案或已征订不能退回")
+        if action not in {"APPROVE", "RETURN"}:
+            raise _legacy._bad("非法审核动作")
+        if not _review_actions(ctx, batch, source)["advance" if action == "APPROVE" else "return"]:
+            raise _legacy.no_data_scope("当前审核阶段应由来源学院办理" if batch.status in {"DRAFT", "COLLEGE_REVIEWING"} else "当前审核阶段应由学校教务办理")
         if action == "APPROVE":
-            if batch.status not in _legacy._RB_CHAIN:
-                raise _legacy._invalid("该批次已完成审核")
             batch.status = _legacy._RB_CHAIN[batch.status]
+            if ctx.scope_type == "COLLEGE":
+                batch.college_reviewer = _legacy._op()
+            else:
+                batch.academic_reviewer = _legacy._op()
             if batch.status == "PUBLISHED":
-                items = db.query(AaTextbookReviewBatchItem).filter(
-                    AaTextbookReviewBatchItem.batch_id == batch.id,
-                    AaTextbookReviewBatchItem.tenant_id == _legacy._tid(),
-                ).all()
-                selection_ids = [int(item.selection_id) for item in items]
-                selections = db.query(AaTextbookSelection).filter(
-                    AaTextbookSelection.tenant_id == _legacy._tid(),
-                    AaTextbookSelection.id.in_(selection_ids or [0]),
-                    AaTextbookSelection.is_deleted.is_(False),
-                ).with_for_update().all()
                 for selection in selections:
                     selection.status = "APPROVED"
         elif action == "RETURN":
@@ -466,21 +558,9 @@ def review_batch_advance(user, batch_id, action, reason=""):
                 raise _legacy._bad("退回原因必填且不少于5字")
             batch.status = "RETURNED"
             batch.reject_reason = reason
-            items = db.query(AaTextbookReviewBatchItem).filter(
-                AaTextbookReviewBatchItem.batch_id == batch.id,
-                AaTextbookReviewBatchItem.tenant_id == _legacy._tid(),
-            ).all()
-            selection_ids = [int(item.selection_id) for item in items]
-            selections = db.query(AaTextbookSelection).filter(
-                AaTextbookSelection.tenant_id == _legacy._tid(),
-                AaTextbookSelection.id.in_(selection_ids or [0]),
-                AaTextbookSelection.is_deleted.is_(False),
-            ).with_for_update().all()
             for selection in selections:
                 selection.status = "RETURNED"
                 selection.reject_reason = reason
-        else:
-            raise _legacy._bad("非法审核动作")
         _legacy._audit(
             db,
             "AA_TEXTBOOK_REVIEW",
@@ -489,7 +569,8 @@ def review_batch_advance(user, batch_id, action, reason=""):
             f"{action}->{batch.status}",
         )
         db.commit()
-        return _legacy._rb_dto(batch)
+        source = db.query(_review_sources(db)).filter_by(batch_id=batch.id).first()
+        return _review_dto(ctx, batch, source)
 
 
 def create_order_batch(user, body):

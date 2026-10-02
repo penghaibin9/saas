@@ -34,6 +34,11 @@ function paged(data, page, pageSize) {
 }
 
 export const textbookP0Api = {
+  async listReviewBatches(params = {}) {
+    const result = await call(() => request(`${BASE}/review-batches`, { params }))
+    if (result.code !== 0) return result
+    return ok({ ...paged(result.data, params.page || 1, params.pageSize || 20), actions: result.data?.actions || {} })
+  },
   reviewCandidates(termId) {
     return call(() => request(`${BASE}/review-candidates`, { params: { termId } }))
   },

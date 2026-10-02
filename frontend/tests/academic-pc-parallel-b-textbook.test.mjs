@@ -299,3 +299,31 @@ test('returned selection deep link rereads and edits the original selection and 
   assert.equal(updatedId, '301')
   assert.equal(state.selectionDraftReceipt.id, '301')
 })
+
+test('review buttons and creation use only server actions, and creation selects one source college', async () => {
+  let submitted
+  const { state } = page('AaTextbookConsoleView', {
+    textbookP0Api: {
+      listReviewBatches: async () => ({ code: 0, data: { list: [{ reviewBatchId: '6', status: 'DRAFT', actions: { advance: false, return: false } }], total: 1, actions: { createReview: true } } }),
+      reviewCandidates: async () => ({ code: 0, data: { items: [
+        { selectionId: '11', collegeId: '7', collegeName: '学院甲' },
+        { selectionId: '12', collegeId: '8', collegeName: '学院乙' }
+      ] } })
+    },
+    academicAffairsTextbookApi: { createReviewBatch: async body => { submitted = body; return { code: 0 } } }
+  })
+  state.tab = 'review'; state.currentTermId = '52'
+  await state.reload()
+  assert.equal(state.canAdvance(state.rows[0]), false)
+  assert.equal(state.canAdvance({ status: 'PUBLISHED', actions: { advance: true } }), true)
+  assert.equal(state.canAdvance({ status: 'DRAFT' }), false)
+  await state.createReview()
+  assert.equal(state.reviewCreateVisible, true)
+  assert.equal(state.reviewCollegeId, '')
+  await state.submitReview()
+  assert.equal(submitted, undefined)
+  state.reviewCollegeId = '8'
+  await state.submitReview()
+  assert.deepEqual(Array.from(submitted.selectionIds), ['12'])
+  assert.equal(submitted.termId, '52')
+})
