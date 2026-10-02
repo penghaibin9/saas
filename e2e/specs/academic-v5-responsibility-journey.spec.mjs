@@ -265,6 +265,8 @@ async function runJourney() {
   }
   const visit = async (page, target, pathname, reload = false) => {
     activePage = page
+    // Finish the prior document's write-related readback before observing a new navigation.
+    await page.waitForLoadState('networkidle')
     const response = responseFor(page, pathname)
     const destination = new URL(staff + target)
     const current = new URL(page.url())
@@ -1061,6 +1063,7 @@ finally:
       const page = pages[role], batchId = report.scheduleBatchIds[label]
       const target = `/admin/academic-affairs/schedule/${batchId}/edit?classId=${task.classId}&taskId=${task.taskId}&termId=${report.termId}`
       const classViewPath = `${scheduleListPath}/${batchId}/class-view`
+      await page.waitForLoadState('networkidle')
       const classViewResponse = responseFor(page, classViewPath)
       await visit(page, target, `${scheduleListPath}/${batchId}`, true)
       const before = await read(await classViewResponse)
