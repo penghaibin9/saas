@@ -118,6 +118,26 @@ test('学院归档就绪时保留本院责任，并在当前阶段和责任事�
   assert.doesNotMatch(html, /已封存|F120_ARCHIVE|COLLEGE_ADMIN|SECRETARY/)
 })
 
+test('正式封存后展示只读回执，保留历史进度而不再催办责任或伪造历史通过', async () => {
+  const data = payload()
+  data.term.status = 'ARCHIVED'
+  data.stages.push(stage('DONE', { stageCode: 'F120_ARCHIVE', label: '学期归档', primaryAction: { route: '/admin/academic-affairs/archive?termId=9007199254740997' } }))
+  data.currentResponsibilities = [stage('BLOCKED', { primaryAction: { label: '不应出现的办理按钮', route: '/unfinished' } })]
+  const component = loadComponent('AcademicFlowOverview', { AcademicResponsibilityBar: responsibilityComponent, AcademicUnitProgressMatrix: matrixComponent, AcademicSchoolGateCard: gateComponent, AcademicHandoffCard: handoffComponent })
+  component.created = undefined
+  const initial = component.data
+  component.data = () => ({ ...initial(), flow: data })
+  const html = await render(component, { ctx: {}, canOpen: () => true })
+  assert.match(html, /本学期已正式封存/)
+  assert.match(html, /查看学期封存记录/)
+  assert.match(html, /<details>[\s\S]*留存业务进度/)
+  assert.match(html, /存在阻断/)
+  assert.doesNotMatch(html, /当前阶段|不应出现的办理按钮|我的校级责任|当前阻断与责任/)
+  data.stages.at(-1).status = 'BLOCKED'
+  const unverified = await render(component, { ctx: {}, canOpen: () => true })
+  assert.doesNotMatch(unverified, /本学期已正式封存/)
+})
+
 test('college navigation preserves all 17 workspaces, routes, leaf identities and permissions without mutating the catalog', () => {
   const modules = getVisibleNavPlan({ permissionPatterns: ['*'], ctxKey: 'college-v5' }).find(group => group.key === 'academic-affairs').children
   const before = JSON.stringify(modules), catalog = JSON.stringify(NAV_PLAN)

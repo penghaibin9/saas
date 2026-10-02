@@ -418,6 +418,8 @@ async function runJourney() {
         assert.equal(flow.viewer.scopeType, expectedScope.scopeType)
         assert.deepEqual(flow.viewer.collegeIds, expectedScope.collegeIds)
         await expect(page.locator('[aria-label="学期责任接力"]')).toBeVisible()
+        await expect(page.getByRole('heading', { name: '本学期已正式封存', exact: true })).toBeVisible()
+        await expect(page.locator('.flow-mine, .flow-gates')).toHaveCount(0)
       }
       await capture(page, `终态-${role}-封存后刷新`)
       await observed(`final-read-${role}`, { termId: report.termId, termStatus: 'ARCHIVED', scopeType: expectedScope.scopeType, refreshed: true })

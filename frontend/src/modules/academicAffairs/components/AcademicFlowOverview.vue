@@ -8,7 +8,12 @@
     <LoadingState v-if="loading" text="正在核对各责任方的真实进度…" />
     <ErrorState v-else-if="error" :title="errorTitle" :description="error" @retry="load" />
     <template v-else-if="flow">
-      <div v-if="currentStage && !majorView" class="flow-current">
+      <div v-if="archived" class="flow-current" aria-label="学期封存结果">
+        <header><h3>本学期已正式封存</h3><StatusTag label="已封存" type="success" /></header>
+        <p class="flow-note">本学期责任接力已结束。当前仅查看留存业务记录；封存检查结论以正式封存清单为准。</p>
+        <AppButton v-if="archiveStage?.primaryAction?.route && canOpen(archiveStage.primaryAction.route)" @click="$emit('navigate', archiveStage.primaryAction.route)">查看学期封存记录</AppButton>
+      </div>
+      <div v-else-if="currentStage && !majorView" class="flow-current">
         <header><h3>当前阶段 · {{ stageLabel(currentStage) }}</h3><StatusTag :label="status(currentStage.status).label" :type="status(currentStage.status).type" /></header>
         <AcademicResponsibilityBar :responsibility="currentStage.responsibility" />
         <p v-if="currentStage.evidence?.scopeNote" class="flow-note">{{ text(currentStage.evidence.scopeNote) }}</p>
@@ -21,7 +26,7 @@
         <AcademicHandoffCard v-if="currentStage.nextStep" :next-step="currentStage.nextStep" :can-open="canOpen" @navigate="$emit('navigate', $event)" />
       </div>
       <EmptyState v-else-if="!majorView" title="当前责任阶段待明确" description="请核对学期设置与有效责任任职。" />
-      <section v-if="majorView" class="flow-major" aria-label="专业教学只读对账">
+      <section v-if="majorView && !archived" class="flow-major" aria-label="专业教学只读对账">
         <p class="flow-note">依据当前授权专业的正式培养方案与应开教学任务核对；教师分配和学院确认由开课责任学院办理。</p>
         <div class="flow-responsibilities"><article v-for="stage in majorStages" :key="stage.stageCode">
           <header><strong>{{ stageLabel(stage) }}</strong><StatusTag :label="status(stage.status).label" :type="status(stage.status).type" /></header>
@@ -38,8 +43,9 @@
           <ul v-if="stage.blockers?.length"><li v-for="(blocker, index) in stage.blockers" :key="index">{{ blockerMessage(blocker) }}</li></ul>
         </article></div>
       </section>
-      <AcademicUnitProgressMatrix v-if="!teacherView && !majorView" :units="flow.unitProgress" :title="schoolView ? '各学院并行进度' : '本学院教学进度'" />
-      <section v-if="!majorView && flow.currentResponsibilities.length" class="flow-mine" aria-label="我的责任事项">
+      <details v-if="archived && !teacherView && !majorView"><summary>查看留存业务进度</summary><AcademicUnitProgressMatrix :units="flow.unitProgress" title="封存后的业务记录" archived /></details>
+      <AcademicUnitProgressMatrix v-else-if="!teacherView && !majorView" :units="flow.unitProgress" :title="schoolView ? '各学院并行进度' : '本学院教学进度'" />
+      <section v-if="!archived && !majorView && flow.currentResponsibilities.length" class="flow-mine" aria-label="我的责任事项">
         <h3>{{ schoolView ? '我的校级责任' : '当前岗位责任' }}</h3>
         <div class="flow-responsibilities"><article v-for="(stage, index) in flow.currentResponsibilities" :key="`${stage.stageCode}:${stage.responsibility?.orgId || index}`">
           <header><strong>{{ stageLabel(stage) }}</strong><StatusTag :label="status(stage.status).label" :type="status(stage.status).type" size="sm" /></header>
@@ -54,7 +60,7 @@
           <p v-else class="flow-note">按责任分工等待前置事项或下一责任方办理。</p>
         </article></div>
       </section>
-      <section v-if="!majorView && flow.schoolGates.length" class="flow-gates" aria-label="学校统一办理条件"><h3>学校统一办理条件</h3><div><AcademicSchoolGateCard v-for="gate in flow.schoolGates" :key="gate.stageCode" :gate="gate" /></div></section>
+      <section v-if="!archived && !majorView && flow.schoolGates.length" class="flow-gates" aria-label="学校统一办理条件"><h3>学校统一办理条件</h3><div><AcademicSchoolGateCard v-for="gate in flow.schoolGates" :key="gate.stageCode" :gate="gate" /></div></section>
     </template>
   </section>
 </template>
@@ -85,6 +91,8 @@ export default {
     teacherView() { return this.flow?.viewer?.roleCode === 'ACADEMIC_TEACHER' },
     majorView() { return Array.isArray(this.flow?.viewer?.majorIds) && this.flow.viewer.majorIds.length > 0 },
     majorStages() { return this.majorView ? this.flow.stages.filter(stage => ['F30_PROGRAM_COURSE', 'F40_TEACHING_TASK'].includes(stage.stageCode)) : [] },
+    archiveStage() { return this.flow?.stages?.find(stage => stage.stageCode === 'F120_ARCHIVE') },
+    archived() { return this.flow?.term?.status === 'ARCHIVED' && this.archiveStage?.status === 'DONE' },
     heading() { return !this.flow ? '学期责任接力' : this.majorView ? '本专业教学对账' : this.teacherView ? '我的教学责任' : this.schoolView ? '学校教学运行总控' : this.flow.viewer.scopeType === 'COLLEGE' ? '本学院教学运行' : '当前授权范围教学进度' },
     currentStage() { const stage = this.schoolView ? this.flow?.schoolStage : this.flow?.myStage; return stage?.stageCode ? stage : null }
   },

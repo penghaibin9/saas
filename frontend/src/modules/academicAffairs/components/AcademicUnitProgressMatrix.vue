@@ -1,13 +1,13 @@
 <template>
   <section class="academic-unit-progress" aria-label="学院进度">
-    <header><h2>{{ title }}</h2><p>各责任单位分别推进，学校统一办理条件单独核对。</p></header>
+    <header><h2>{{ title }}</h2><p>{{ archived ? '留存业务状态仅供查阅，不作为封存后的新增待办；封存检查结论以正式清单为准。' : '各责任单位分别推进，学校统一办理条件单独核对。' }}</p></header>
     <EmptyState v-if="!units.length" title="当前范围暂无学院进度" description="请核对学期与当前组织范围。" />
     <div v-else class="matrix-scroll" tabindex="0" aria-label="学院进度表，可横向滚动">
-      <table><thead><tr><th scope="col">责任学院</th><th v-for="column in columns" :key="column.stageCode" scope="col">{{ column.label }}</th><th scope="col">当前阻断与责任</th></tr></thead>
+      <table><thead><tr><th scope="col">责任学院</th><th v-for="column in columns" :key="column.stageCode" scope="col">{{ column.label }}</th><th v-if="!archived" scope="col">当前阻断与责任</th></tr></thead>
         <tbody><tr v-for="unit in units" :key="unit.collegeId">
-          <th scope="row">{{ unit.collegeName }}<small>{{ responsibility(unit.responsibility).assigneeLabel }}</small></th>
+          <th scope="row">{{ unit.collegeName }}<small v-if="!archived">{{ responsibility(unit.responsibility).assigneeLabel }}</small></th>
           <td v-for="column in columns" :key="column.stageCode"><StatusTag :label="status(stage(unit, column.stageCode)?.status).label" :type="status(stage(unit, column.stageCode)?.status).type" size="sm" /></td>
-          <td><ul v-if="unit.blockers.length"><li v-for="(blocker, index) in unit.blockers" :key="index">{{ blockerMessage(blocker) }}</li></ul><span v-else>{{ status(unit.status).label }}</span></td>
+          <td v-if="!archived"><ul v-if="unit.blockers.length"><li v-for="(blocker, index) in unit.blockers" :key="index">{{ blockerMessage(blocker) }}</li></ul><span v-else>{{ status(unit.status).label }}</span></td>
         </tr></tbody>
       </table>
     </div>
@@ -19,7 +19,7 @@ import { EmptyState, StatusTag } from '@/components/business'
 import { ACADEMIC_FLOW_STAGES, academicFlowStatus, academicFlowResponsibility, academicFlowBlockerMessage } from '../config/academicFlowRegistry.js'
 export default {
   name: 'AcademicUnitProgressMatrix', components: { EmptyState, StatusTag },
-  props: { units: { type: Array, default: () => [] }, title: { type: String, default: '学院进度矩阵' } },
+  props: { units: { type: Array, default: () => [] }, title: { type: String, default: '学院进度矩阵' }, archived: { type: Boolean, default: false } },
   computed: { columns() { return ACADEMIC_FLOW_STAGES.filter(column => this.units.some(unit => unit.stages.some(stage => stage.stageCode === column.stageCode))) } },
   methods: { status: academicFlowStatus, responsibility: academicFlowResponsibility, blockerMessage: academicFlowBlockerMessage, stage(unit, code) { return unit.stages.find(item => item.stageCode === code) } }
 }
