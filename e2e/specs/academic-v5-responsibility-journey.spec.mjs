@@ -2173,6 +2173,87 @@ finally:
     }
     await observed('F', { termId: report.termId, gradeTaskIds: Object.values(report.gradeTaskIds) })
     report.uncovered = ['G', 'H']; await save()
+    for (const label of ['A', 'B']) {
+      const role = `teacher${label === 'A' ? 'B' : 'A'}`, teacherPage = pages[role], roomId = examPlan.examRoomIds[label]
+      const attendancePath = `${apiPath}/exam/rooms/${roomId}/attendance`
+      const expectedStudents = fixture.colleges[label].studentIds.map(String)
+      const pendingAttendance = await readOnly(role, attendancePath)
+      assert.deepEqual(new Set(pendingAttendance.items.map(item => item.studentId)), new Set(expectedStudents))
+      const needsUiAttendance = pendingAttendance.items.some(item => item.attendanceStatus === 'NOT_STARTED')
+      if (needsUiAttendance) {
+        assert.equal(examBatch.status, 'PUBLISHED', '未到考座位仍存在时不能将批次当作已结束或归档')
+        const invigilations = await visit(teacherPage, '/admin/academic-affairs/exam', `${apiPath}/exam/my-invigilation`)
+        assert.ok(invigilations.items.some(item => item.batchId === examBatchId && item.examRoomId === roomId &&
+          item.teacherKey === fixture.accounts[role].teacherKey), '正常教师本人监考队列缺少本场正式指派')
+        const courseName = (await readOnly('school', `${examCoursesPath}?page=1&pageSize=20`)).items
+          .find(item => item.examCourseId === examCourseIds[label])?.courseName
+        assert.ok(courseName)
+        const teacherRow = teacherPage.getByRole('row').filter({ hasText: examName }).filter({ hasText: courseName })
+        await expect(teacherRow).toHaveCount(1)
+        const loaded = responseFor(teacherPage, attendancePath)
+        await teacherRow.getByRole('button', { name: '到考登记', exact: true }).click()
+        await read(await loaded)
+      }
+      for (const studentId of expectedStudents) {
+        const before = await readOnly(role, attendancePath)
+        assert.equal(before.examRoomId, roomId); assert.equal(before.batchId, examBatchId)
+        const seat = before.items.find(item => item.studentId === studentId)
+        assert.ok(seat && Number.isInteger(seat.version), '正式考场缺少当前学生及版本')
+        if (seat.attendanceStatus === 'NOT_STARTED') {
+          assert.equal(seat.markPresentAction?.allowed, true, '教师本人未获得正式到考办理许可')
+          await phase(`监考教师 ${label} 在本人考场逐生登记正常到考`)
+          const studentRow = teacherPage.locator('[aria-label="本场到考登记"] table tbody tr').filter({ hasText: seat.studentNo })
+          await expect(studentRow).toHaveCount(1)
+          await beforeWrite(`H-selection-exam-attendance-${roomId}-${studentId}`)
+          const marked = responseFor(teacherPage, `${attendancePath}/${studentId}`, 'PUT')
+          await studentRow.getByRole('button', { name: '登记到考', exact: true }).click()
+          const receipt = await read(await marked)
+          assert.equal(receipt.examRoomId, roomId); assert.equal(receipt.batchId, examBatchId)
+          const after = await readOnly(role, attendancePath)
+          const updated = after.items.find(item => item.studentId === studentId)
+          assert.equal(updated?.attendanceStatus, 'PRESENT')
+          assert.equal(updated.version, seat.version + 1, '本人正常到考必须推进该座位版本')
+        }
+        const confirmed = (await readOnly(role, attendancePath)).items.find(item => item.studentId === studentId)
+        assert.equal(confirmed?.attendanceStatus, 'PRESENT')
+        await observed(`H-selection-exam-attendance-${roomId}-${studentId}`, { roomId, studentId, version: confirmed.version })
+      }
+      const collegeAttendance = await readOnly(`college${label}`, attendancePath)
+      assert.deepEqual(new Set(collegeAttendance.items.map(item => item.studentId)), new Set(expectedStudents))
+      assert.ok(collegeAttendance.items.every(item => item.attendanceStatus === 'PRESENT'))
+      const schoolAttendance = await readOnly('school', attendancePath)
+      assert.equal(schoolAttendance.batchId, examBatchId)
+      assert.deepEqual(schoolAttendance.items.map(item => [item.studentId, item.attendanceStatus, item.version]),
+        collegeAttendance.items.map(item => [item.studentId, item.attendanceStatus, item.version]),
+        '校级与本院应回读同一考场的到考状态和版本')
+      if (needsUiAttendance) await capture(teacherPage, `H-selection-${label}-本人到考登记`)
+    }
+
+    for (const [from, to, button, suffix, step] of [
+      ['PUBLISHED', 'FINISHED', '结束', 'finish', 'H-selection-exam-batch-finish'],
+      ['FINISHED', 'ARCHIVED', '归档', 'archive', 'H-selection-exam-batch-archive'],
+    ]) {
+      examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
+      if (examBatch.status === to || (to === 'FINISHED' && examBatch.status === 'ARCHIVED')) {
+        await observed(step, { batchId: examBatchId, status: examBatch.status })
+        continue
+      }
+      assert.equal(examBatch.status, from)
+      await phase(`校教务按同一考务批次完成${button}并核对正式终态`)
+      await selectExamBatch()
+      await school.getByRole('button', { name: button, exact: true }).click()
+      await beforeWrite(step)
+      const completed = responseFor(school, `${examPath}/${examBatchId}/${suffix}`, 'POST')
+      await school.getByRole('dialog', { name: to === 'FINISHED' ? '结束考试' : '归档', exact: true })
+        .getByRole('button', { name: '确认', exact: true }).click()
+      assert.equal((await read(await completed)).batchId, examBatchId)
+      examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
+      assert.equal(examBatch.status, to)
+      await observed(step, { batchId: examBatchId, status: examBatch.status })
+    }
+    assert.equal(examBatch.status, 'ARCHIVED')
+    await observed('H-selection-exam-closed', { batchId: examBatchId, roomIds: examPlan.examRoomIds })
+
     // G: graduate only on a complete formal SYSTEM_PASSED evaluation. Missing
     // internship, thesis, student-service or curriculum facts must remain real
     // blockers; reviewer text may not turn UNKNOWN into PASS.
@@ -2364,87 +2445,6 @@ finally:
     gradBatch = await exactGradBatch()
     assert.equal(gradBatch.status, 'ARCHIVED')
     await observed('G-archive', { batchId: gradBatchId, status: gradBatch.status })
-
-    for (const label of ['A', 'B']) {
-      const role = `teacher${label === 'A' ? 'B' : 'A'}`, teacherPage = pages[role], roomId = examPlan.examRoomIds[label]
-      const attendancePath = `${apiPath}/exam/rooms/${roomId}/attendance`
-      const expectedStudents = fixture.colleges[label].studentIds.map(String)
-      const pendingAttendance = await readOnly(role, attendancePath)
-      assert.deepEqual(new Set(pendingAttendance.items.map(item => item.studentId)), new Set(expectedStudents))
-      const needsUiAttendance = pendingAttendance.items.some(item => item.attendanceStatus === 'NOT_STARTED')
-      if (needsUiAttendance) {
-        assert.equal(examBatch.status, 'PUBLISHED', '未到考座位仍存在时不能将批次当作已结束或归档')
-        const invigilations = await visit(teacherPage, '/admin/academic-affairs/exam', `${apiPath}/exam/my-invigilation`)
-        assert.ok(invigilations.items.some(item => item.batchId === examBatchId && item.examRoomId === roomId &&
-          item.teacherKey === fixture.accounts[role].teacherKey), '正常教师本人监考队列缺少本场正式指派')
-        const courseName = (await readOnly('school', `${examCoursesPath}?page=1&pageSize=20`)).items
-          .find(item => item.examCourseId === examCourseIds[label])?.courseName
-        assert.ok(courseName)
-        const teacherRow = teacherPage.getByRole('row').filter({ hasText: examName }).filter({ hasText: courseName })
-        await expect(teacherRow).toHaveCount(1)
-        const loaded = responseFor(teacherPage, attendancePath)
-        await teacherRow.getByRole('button', { name: '到考登记', exact: true }).click()
-        await read(await loaded)
-      }
-      for (const studentId of expectedStudents) {
-        const before = await readOnly(role, attendancePath)
-        assert.equal(before.examRoomId, roomId); assert.equal(before.batchId, examBatchId)
-        const seat = before.items.find(item => item.studentId === studentId)
-        assert.ok(seat && Number.isInteger(seat.version), '正式考场缺少当前学生及版本')
-        if (seat.attendanceStatus === 'NOT_STARTED') {
-          assert.equal(seat.markPresentAction?.allowed, true, '教师本人未获得正式到考办理许可')
-          await phase(`监考教师 ${label} 在本人考场逐生登记正常到考`)
-          const studentRow = teacherPage.locator('[aria-label="本场到考登记"] table tbody tr').filter({ hasText: seat.studentNo })
-          await expect(studentRow).toHaveCount(1)
-          await beforeWrite(`H-selection-exam-attendance-${roomId}-${studentId}`)
-          const marked = responseFor(teacherPage, `${attendancePath}/${studentId}`, 'PUT')
-          await studentRow.getByRole('button', { name: '登记到考', exact: true }).click()
-          const receipt = await read(await marked)
-          assert.equal(receipt.examRoomId, roomId); assert.equal(receipt.batchId, examBatchId)
-          const after = await readOnly(role, attendancePath)
-          const updated = after.items.find(item => item.studentId === studentId)
-          assert.equal(updated?.attendanceStatus, 'PRESENT')
-          assert.equal(updated.version, seat.version + 1, '本人正常到考必须推进该座位版本')
-        }
-        const confirmed = (await readOnly(role, attendancePath)).items.find(item => item.studentId === studentId)
-        assert.equal(confirmed?.attendanceStatus, 'PRESENT')
-        await observed(`H-selection-exam-attendance-${roomId}-${studentId}`, { roomId, studentId, version: confirmed.version })
-      }
-      const collegeAttendance = await readOnly(`college${label}`, attendancePath)
-      assert.deepEqual(new Set(collegeAttendance.items.map(item => item.studentId)), new Set(expectedStudents))
-      assert.ok(collegeAttendance.items.every(item => item.attendanceStatus === 'PRESENT'))
-      const schoolAttendance = await readOnly('school', attendancePath)
-      assert.equal(schoolAttendance.batchId, examBatchId)
-      assert.deepEqual(schoolAttendance.items.map(item => [item.studentId, item.attendanceStatus, item.version]),
-        collegeAttendance.items.map(item => [item.studentId, item.attendanceStatus, item.version]),
-        '校级与本院应回读同一考场的到考状态和版本')
-      if (needsUiAttendance) await capture(teacherPage, `H-selection-${label}-本人到考登记`)
-    }
-
-    for (const [from, to, button, suffix, step] of [
-      ['PUBLISHED', 'FINISHED', '结束', 'finish', 'H-selection-exam-batch-finish'],
-      ['FINISHED', 'ARCHIVED', '归档', 'archive', 'H-selection-exam-batch-archive'],
-    ]) {
-      examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
-      if (examBatch.status === to || (to === 'FINISHED' && examBatch.status === 'ARCHIVED')) {
-        await observed(step, { batchId: examBatchId, status: examBatch.status })
-        continue
-      }
-      assert.equal(examBatch.status, from)
-      await phase(`校教务按同一考务批次完成${button}并核对正式终态`)
-      await selectExamBatch()
-      await school.getByRole('button', { name: button, exact: true }).click()
-      await beforeWrite(step)
-      const completed = responseFor(school, `${examPath}/${examBatchId}/${suffix}`, 'POST')
-      await school.getByRole('dialog', { name: to === 'FINISHED' ? '结束考试' : '归档', exact: true })
-        .getByRole('button', { name: '确认', exact: true }).click()
-      assert.equal((await read(await completed)).batchId, examBatchId)
-      examBatch = await readOnly('school', `${examPath}/${examBatchId}`)
-      assert.equal(examBatch.status, to)
-      await observed(step, { batchId: examBatchId, status: examBatch.status })
-    }
-    assert.equal(examBatch.status, 'ARCHIVED')
-    await observed('H-selection-exam-closed', { batchId: examBatchId, roomIds: examPlan.examRoomIds })
 
     const schoolPrecheck = await visit(school, `/admin/academic-affairs/archive/precheck?termId=${report.termId}`, precheckPath)
     assert.equal(schoolPrecheck.scopeType, 'TENANT_ALL')
