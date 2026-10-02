@@ -51,6 +51,9 @@ def _runtime_permission_holder_ids(db, permission_code: str, *, cache=None) -> l
 
     current = cache if cache is not None else {}
     tenant_id = _core._tid()
+    holder_key = ("permission_holder_ids", tenant_id, permission_code)
+    if holder_key in current:
+        return list(current[holder_key])
     pair_key = ("active_role_pairs", tenant_id)
     if pair_key not in current:
         current[pair_key] = list(db.execute(
@@ -74,8 +77,14 @@ def _runtime_permission_holder_ids(db, permission_code: str, *, cache=None) -> l
                 permissions.setdefault(int(role_id), set()).add(code)
         current[legacy_key] = permissions
     users = set()
+    role_matches = {}
     for user_id, role in pairs:
         role_code = str(role.role_code or "").strip().upper()
+        match_key = (int(role.id), role_code)
+        if match_key in role_matches:
+            if role_matches[match_key]:
+                users.add(int(user_id))
+            continue
         if str(role.role_type or "").upper() == "SYSTEM" or role_code in ROLE_PERMISSIONS:
             role_key = ("published_role_permissions", tenant_id, role_code)
             if role_key not in current:
@@ -83,9 +92,12 @@ def _runtime_permission_holder_ids(db, permission_code: str, *, cache=None) -> l
             patterns = current[role_key]
         else:
             patterns = current[legacy_key].get(int(role.id), set())
-        if _match(permission_code, patterns):
+        role_matches[match_key] = _match(permission_code, patterns)
+        if role_matches[match_key]:
             users.add(int(user_id))
-    return sorted(users)
+    # The caller owns this one-read-request cache; command callers omit it.
+    current[holder_key] = tuple(sorted(users))
+    return list(current[holder_key])
 
 
 def _preferred_role_candidates(db, candidates, role_code: str) -> list[int]:

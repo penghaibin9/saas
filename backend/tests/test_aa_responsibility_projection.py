@@ -172,3 +172,55 @@ def test_explicit_read_cache_reuses_context_only_within_same_request_and_tenant(
     tenant[0] = 2
     assert not service._scoped_holders(db, [person], "COLLEGE", org, "academicAffairs.program.review", cache=cache)
     assert build.call_count == 3
+
+
+def test_permission_holders_request_cache_preserves_roles_permissions_and_tenants(monkeypatch):
+    from app.core import permissions
+    from app.services import system_role_shadow_service as shadow
+    from app.modules.academic_affairs.services import academic_affairs_grade_task_assignee_guard as guard
+
+    tenant = [1]
+    monkeypatch.setattr(guard._core, "_tid", lambda: tenant[0])
+    monkeypatch.setattr(permissions, "ROLE_PERMISSIONS", {})
+    published = MagicMock(side_effect=lambda db, role: {"read.a"} if role == "FIRST" else {"read.b"})
+    monkeypatch.setattr(shadow, "published_system_role_permissions", published)
+    match = MagicMock(wraps=permissions._match)
+    monkeypatch.setattr(permissions, "_match", match)
+    first = Row(id=10, role_code="FIRST", role_type="SYSTEM")
+    second = Row(id=11, role_code="SECOND", role_type="SYSTEM")
+    custom = Row(id=12, role_code="CUSTOM_LOCAL", role_type="CUSTOM")
+    db = MagicMock()
+    db.execute.return_value.all.return_value = [(1, first), (2, first), (3, second), (4, custom)]
+    db.execute.return_value.__iter__.return_value = iter([(12, "read.b")])
+    cache = {}
+    result = guard._runtime_permission_holder_ids(db, "read.a", cache=cache)
+    assert result == [1, 2]
+    assert match.call_count == 3  # Two users of the same role share only the permission match.
+    result.append(999)
+    assert guard._runtime_permission_holder_ids(db, "read.a", cache=cache) == [1, 2]
+    assert match.call_count == 3 and published.call_count == 2
+    assert guard._runtime_permission_holder_ids(db, "read.b", cache=cache) == [3, 4]
+    assert match.call_count == 6 and published.call_count == 2
+    assert db.execute.call_count == 2
+    # Reusing a dictionary across tenants must never reuse another school's holders.
+    tenant[0] = 2
+    db.execute.return_value.all.return_value = [(8, second)]
+    assert guard._runtime_permission_holder_ids(db, "read.a", cache=cache) == []
+    assert guard._runtime_permission_holder_ids(db, "read.b", cache=cache) == [8]
+    assert published.call_count == 3
+
+
+def test_permission_holders_new_requests_and_uncached_commands_see_revocation(monkeypatch):
+    from app.services import system_role_shadow_service as shadow
+    from app.modules.academic_affairs.services import academic_affairs_grade_task_assignee_guard as guard
+
+    monkeypatch.setattr(guard._core, "_tid", lambda: 1)
+    published = MagicMock(side_effect=[{"read.a"}, set(), {"read.a"}, set()])
+    monkeypatch.setattr(shadow, "published_system_role_permissions", published)
+    db = MagicMock()
+    db.execute.return_value.all.return_value = [(1, Row(id=10, role_code="FIRST", role_type="SYSTEM"))]
+    assert guard._runtime_permission_holder_ids(db, "read.a", cache={}) == [1]
+    assert guard._runtime_permission_holder_ids(db, "read.a", cache={}) == []
+    assert guard._runtime_permission_holder_ids(db, "read.a") == [1]
+    assert guard._runtime_permission_holder_ids(db, "read.a") == []
+    assert published.call_count == 4 and db.execute.call_count == 4
