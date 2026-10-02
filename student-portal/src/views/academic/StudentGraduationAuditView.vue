@@ -1,23 +1,26 @@
 <template>
   <div data-academic-page class="sp-page academic-prototype graduation-page">
-    <AcademicPrototypeHeader :title="showEvidence ? '毕业自查证据' : '毕业资格自查'" group="培养与毕业" :object="showEvidence" description="实时自查与正式审核分开，逐项核对缺口和补正路径。" :loading="loading" @refresh="refreshAudit" />
+    <AcademicPrototypeHeader :title="hasFormalConclusion ? '毕业审核结果' : showEvidence ? '毕业自查证据' : '毕业资格自查'" group="培养与毕业" :object="showEvidence" :description="hasFormalConclusion ? '学校已形成正式结论，实时自查另作补充说明。' : '实时自查与正式审核分开，逐项核对缺口和补正路径。'" :loading="loading" @refresh="refreshAudit" />
     <StateBlock v-if="loading" type="loading" text="正在读取毕业资格、学分和预警事实…" />
     <div v-else-if="error" class="card pad"><StateBlock type="error" :text="error" /><button class="btn" @click="refreshAudit">重新加载</button></div>
     <div v-else class="stack">
-      <div class="notice amber"><AcademicPrototypeIcon name="circle-info" /><span>实时自查只读计算，不创建正式审核记录。正式毕业结论另列。</span></div>
-      <div class="grid-equal">
+      <div v-if="hasFormalConclusion" class="notice"><AcademicPrototypeIcon name="circle-info" /><span>学校已形成正式毕业或结业结论。毕业后的实时自查不撤销正式结论；如发现事实差异，请联系教务老师核对。</span></div>
+      <div v-else class="notice amber"><AcademicPrototypeIcon name="circle-info" /><span>实时自查只读计算，不创建正式审核记录。正式毕业结论另列。</span></div>
+      <section v-if="hasFormalConclusion" class="card pad"><small>学校正式审核结论</small><h2 class="summary-title">{{ formalStatusText }}</h2><p class="muted">{{ heroDescription }}</p><button class="btn" @click="showEvidence = !showEvidence">{{ showEvidence ? '收起实时自查补充说明' : '查看实时自查补充说明' }}</button></section>
+      <div v-else class="grid-equal">
         <section class="card pad"><small>当前实时自查</small><h2 class="summary-title">{{ !progressItems.length ? '当前事实待核对' : overallPassed ? '当前实时核验已通过' : '尚有条件需要补齐' }}</h2><p class="muted">根据当前正式业务事实计算</p><small>{{ passedCount }} 项通过 · {{ blockingPendingCount }} 项待处理 · {{ advisoryPendingCount }} 项提示</small></section>
         <section class="card pad"><small>最近正式审核</small><h2 class="summary-title">{{ formalStatusText }}</h2><p class="muted">不能把实时通过显示成已批准毕业</p></section>
       </div>
-      <section class="card"><header class="card-head"><h2>{{ showEvidence ? '当前证据与补正路径' : '需要关注的证据' }}</h2></header><div class="card-body">
+      <section v-if="!hasFormalConclusion || showEvidence" class="card"><header class="card-head"><h2>{{ hasFormalConclusion ? '实时自查补充说明' : showEvidence ? '当前证据与补正路径' : '需要关注的证据' }}</h2></header><div class="card-body">
+        <p v-if="hasFormalConclusion" class="muted">以下保留当前规则的真实计算结果，不代表学校撤销正式结论，也不要求重新办理毕业。{{ passedCount }} 项通过 · {{ blockingPendingCount }} 项未通过或待核验 · {{ advisoryPendingCount }} 项提示</p>
         <StateBlock v-if="!progressItems.length" type="empty" :text="progress.note || '暂时没有可展示的毕业核验项，请重新核对。'" />
-        <div class="timeline"><div v-for="item in progressItems" :key="item.item" class="taskline" :class="itemTone(item)"><div class="iconbox" :class="itemResult(item) === 'PASS' ? 'green' : 'amber'"><AcademicPrototypeIcon :name="itemResult(item) === 'PASS' ? 'circle-check' : 'circle-info'" /></div><div class="grow"><strong>{{ itemLabel(item.item) }}</strong><small>{{ itemEvidenceText(item) }}</small><RouterLink v-if="showEvidence && remedyRoute(item)" class="btn link small" :to="remedyRoute(item)">查看相关事项</RouterLink></div><StatusTag :text="itemResultText(item)" :tone="itemResult(item) === 'PASS' ? 'success' : 'warn'" /></div></div>
-        <div class="spacer14"></div><button v-if="!showEvidence" class="btn primary" @click="showEvidence = true">展开证据与补正路径</button><div v-else class="row wrap"><RouterLink class="btn primary" to="/academic/makeup">查看课程补救</RouterLink><button class="btn" @click="showEvidence = false">返回毕业自查</button></div>
+        <div class="timeline"><div v-for="item in progressItems" :key="item.item" class="taskline" :class="itemTone(item)"><div class="iconbox" :class="itemResult(item) === 'PASS' ? 'green' : 'amber'"><AcademicPrototypeIcon :name="itemResult(item) === 'PASS' ? 'circle-check' : 'circle-info'" /></div><div class="grow"><strong>{{ itemLabel(item.item) }}</strong><small>{{ itemEvidenceText(item) }}</small><RouterLink v-if="showEvidence && !hasFormalConclusion && remedyRoute(item)" class="btn link small" :to="remedyRoute(item)">查看相关事项</RouterLink></div><StatusTag :text="itemResultText(item)" :tone="itemResult(item) === 'PASS' ? 'success' : 'warn'" /></div></div>
+        <template v-if="!hasFormalConclusion"><div class="spacer14"></div><button v-if="!showEvidence" class="btn primary" @click="showEvidence = true">展开证据与补正路径</button><div v-else class="row wrap"><RouterLink class="btn primary" to="/academic/makeup">查看课程补救</RouterLink><button class="btn" @click="showEvidence = false">返回毕业自查</button></div></template>
       </div></section>
       <template v-if="showEvidence">
-        <AcademicDecisionTraceCard v-if="decisionTrace" :trace="decisionTrace" :content="decisionContent" />
-        <section v-if="safeDecisionText" class="card pad"><h2>规则说明</h2><p class="muted">{{ safeDecisionText }}</p></section>
-        <section class="card pad"><p>{{ blockingPendingCount ? '请优先处理阻断项' : '当前没有阻断项' }}</p><p class="muted">{{ heroDescription }}</p><div class="spacer14"></div><div class="row between"><span>{{ creditProgressLabel }}：{{ obtainedCreditsText }} / {{ requiredCreditsText }} 学分</span><span>{{ creditPctText }}{{ creditPct !== null ? '%' : '' }}</span></div><div class="progress"><i :style="{ width: creditBarWidth }"></i></div><p v-if="warningCount" class="muted">{{ warningCount }} 项学业预警需核对，请前往学业预警查看责任人与处理要求。</p></section>
+        <AcademicDecisionTraceCard v-if="decisionTrace && !hasFormalConclusion" :trace="decisionTrace" :content="decisionContent" />
+        <section v-if="safeDecisionText && !hasFormalConclusion" class="card pad"><h2>规则说明</h2><p class="muted">{{ safeDecisionText }}</p></section>
+        <section class="card pad"><p v-if="!hasFormalConclusion">{{ blockingPendingCount ? '请优先处理阻断项' : '当前没有阻断项' }}</p><p class="muted">{{ heroDescription }}</p><div class="spacer14"></div><div class="row between"><span>{{ creditProgressLabel }}：{{ obtainedCreditsText }} / {{ requiredCreditsText }} 学分</span><span>{{ creditPctText }}{{ creditPct !== null ? '%' : '' }}</span></div><div class="progress"><i :style="{ width: creditBarWidth }"></i></div><p v-if="warningCount" class="muted">{{ warningCount }} 项学业预警需核对，请前往学业预警查看责任人与处理要求。</p></section>
       </template>
       <div class="notice"><AcademicPrototypeIcon name="circle-info" /><span>缺少证据不代表通过，最终毕业结论以学校正式审核为准。</span></div>
     </div>
@@ -55,10 +58,11 @@ const ADVISORY_UNKNOWN_ITEMS = new Set(['EMPLOYMENT', 'FEE'])
 const FORMAL_STATUS = {
   DRAFT: '尚未正式预审', PENDING: '正式预审待处理', RUNNING: '正式预审中',
   SYSTEM_PASSED: '正式预审通过', SYSTEM_ABNORMAL: '正式预审存在阻断项', PASSED: '正式预审通过', FAILED: '正式预审未通过',
-  GRADUATED: '已形成毕业结论', COMPLETED: '已形成结业结论', DELAYED: '延期毕业'
+  GRADUATED: '已正式毕业', COMPLETED: '已正式结业', DELAYED: '延期毕业'
 }
 
 const progress = computed(() => audit.value.progress || {})
+const hasFormalConclusion = computed(() => Boolean(progress.value.hasAudit) && ['GRADUATED', 'COMPLETED'].includes(String(progress.value.conclusion || '').toUpperCase()))
 function traceOf(progress) { return progress && typeof progress.decisionTrace === 'object' ? progress.decisionTrace : null }
 function decisionTextOf(progress) { return progress && progress.decisionText }
 const decisionTrace = computed(() => traceOf(progress.value))
@@ -121,6 +125,7 @@ const formalStatusText = computed(() => {
   return FORMAL_STATUS[status] || '已纳入正式预审'
 })
 const heroDescription = computed(() => {
+  if (hasFormalConclusion.value) return '正式结论以学校审核记录为准。实时自查按当前规则计算，仅作补充核对，不要求重新补齐毕业条件。'
   if (overallPassed.value) return '当前实时核验未发现毕业资格阻断项。你仍可逐项核对学分、实习、毕业设计等事实；最终结论以学校正式审核为准。'
   return '系统已经按学校现有毕业规则完成实时核验。先看最上方规则解释，再逐项处理未通过或待核验条件。'
 })
@@ -133,6 +138,7 @@ function itemResultText(item) {
 function itemLabel(code) { return ITEM_LABELS[String(code || '').toUpperCase()] || code || '毕业条件' }
 function itemTone(item) { return itemResult(item) === 'PASS' ? 'is-pass' : 'is-pending' }
 function itemEvidenceFallback(item) {
+  if (hasFormalConclusion.value && itemResult(item) !== 'PASS') return '当前实时规则尚不能确认该项通过；这是补充核对结果，不改变已形成的正式结论。'
   return itemResult(item) === 'PASS' ? '学校业务系统已经记录满足该项条件的有效事实。' : '当前正式数据还不足以确认该项通过，请按上方建议处理后重新核验。'
 }
 function itemEvidenceText(item) {

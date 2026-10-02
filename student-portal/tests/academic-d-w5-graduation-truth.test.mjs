@@ -2,6 +2,12 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
+import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
+import * as vue from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import * as uiHelpers from '../src/components/academic/studentAcademicUi.js'
+import * as commandGuard from '../src/components/academic/studentAcademicCommandGuard.js'
+import * as localization from '../src/services/visibleEnumLocalization.js'
 import { fileURLToPath } from 'node:url'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
@@ -46,4 +52,71 @@ test('manual recheck is wired through an explicit handler to the canonical serve
   assert.match(view, /@click=['"]refreshAudit['"]/)
   assert.match(view, /async function refreshAudit\(\)\s*\{\s*await load\(\)\s*\}/)
   assert.match(view, /async function load\(\)[\s\S]*?portalApi\.academicGraduationAudit\(\)/)
+})
+
+function graduationPage(progress) {
+  const { descriptor } = parse(view)
+  const compiled = compileScript(descriptor, { id: 'graduation-formal-conclusion' })
+  const modules = {
+    vue: { ...vue, onMounted() {}, onBeforeUnmount() {} },
+    '../../services/portalApi': { portalApi: {} },
+    '../../services/visibleEnumLocalization': localization,
+    '../../stores/session': { useSessionStore: () => ({ user: { userId: 'student-A' } }) },
+    '../../components/academic/studentAcademicUi': uiHelpers,
+    '../../components/academic/studentAcademicCommandGuard': commandGuard
+  }
+  const components = {
+    StatusTag: { props: ['text'], setup: props => () => vue.h('span', props.text) },
+    StateBlock: { props: ['text'], setup: props => () => vue.h('p', props.text) }
+  }
+  const rewrite = code => code.replace(/^import (.+?) from ['"](.+?)['"];?$/gm, (_, binding, module) => {
+    if (binding.startsWith('{')) return `const ${binding.replace(/\bas\b/g, ':')} = modules[${JSON.stringify(module)}]`
+    return `const ${binding} = components[${JSON.stringify(binding)}] || { render: () => null }`
+  })
+  const component = new Function('modules', 'components', rewrite(compiled.content).replace('export default', 'return'))(modules, components)
+  const state = component.setup({}, { expose() {} })
+  state.loading.value = false
+  state.audit.value = { progress, credits: {}, warnings: {} }
+  const template = compileTemplate({ source: descriptor.template.content, filename: 'StudentGraduationAuditView.vue', id: 'graduation-formal-conclusion', compilerOptions: { bindingMetadata: compiled.bindings } })
+  assert.deepEqual(template.errors, [])
+  const render = new Function('modules', 'components', rewrite(template.code).replace('export function render', 'return function render'))(modules, components)
+  return { state, render: () => {
+    const app = vue.createSSRApp({ ...component, setup: () => state, render })
+    app.component('RouterLink', { props: ['to'], setup: (props, { slots }) => () => vue.h('a', { href: props.to }, slots.default?.()) })
+    return renderToString(app)
+  } }
+}
+
+for (const [conclusion, label] of [['GRADUATED', '已正式毕业'], ['COMPLETED', '已正式结业']]) {
+  test(`formal ${conclusion} leads the page while failed current checks remain available without urging reapplication`, async () => {
+    const { state, render } = graduationPage({ hasAudit: true, conclusion, overall: 'SYSTEM_ABNORMAL', items: [
+      { item: 'STATUS', result: 'FAIL', evidence: '当前学籍不符合实时在籍规则' },
+      { item: 'CREDIT', result: 'UNKNOWN', evidence: '学分证据需要核对' }
+    ] })
+    const collapsed = await render()
+    assert.match(collapsed, new RegExp(label))
+    assert.match(collapsed, /查看实时自查补充说明/)
+    assert.doesNotMatch(collapsed, /尚有条件需要补齐|未达标|查看课程补救/)
+    assert.equal(state.overallPassed.value, false)
+    assert.equal(state.blockingPendingCount.value, 2)
+    state.showEvidence.value = true
+    const expanded = await render()
+    assert.match(expanded, /未达标/)
+    assert.match(expanded, /待核验/)
+    assert.match(expanded, /不代表学校撤销正式结论/)
+    assert.doesNotMatch(expanded, /请优先处理阻断项|查看课程补救|查看相关事项|处理后重新核验/)
+  })
+}
+
+test('absence of a real formal conclusion keeps the current graduation checklist and remedies', async () => {
+  for (const progress of [{ hasAudit: false, conclusion: 'GRADUATED' }, { hasAudit: true, conclusion: 'DELAYED' }, { hasAudit: true, conclusion: null }]) {
+    const { state, render } = graduationPage({ ...progress, overall: 'SYSTEM_ABNORMAL', items: [{ item: 'STATUS', result: 'FAIL' }] })
+    state.showEvidence.value = true
+    const html = await render()
+    assert.equal(state.hasFormalConclusion.value, false)
+    assert.match(html, /尚有条件需要补齐/)
+    assert.match(html, /请优先处理阻断项/)
+    assert.match(html, /查看课程补救/)
+    assert.doesNotMatch(html, /学校正式审核结论/)
+  }
 })
