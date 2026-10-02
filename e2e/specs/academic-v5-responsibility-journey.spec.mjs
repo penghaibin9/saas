@@ -1591,12 +1591,16 @@ finally:
       }
       await save()
     }
-    for (const { page, supply } of studentPages) {
+    for (const { page, supply, studentId } of studentPages) {
       authenticated = false
       const readback = responseFor(page, '/api/v1/portal/academic/course-selection/records')
-      await page.reload(); await read(await readback)
+      await page.reload(); const confirmed = await read(await readback)
+      const records = Array.isArray(confirmed) ? confirmed : confirmed.items || confirmed.list || []
+      const record = records.find(item => item.selectionCourseId === supply.selectionCourseId)
+      assert.equal(record?.batchId, selection.batchId); assert.equal(record?.studentId, studentId)
+      assert.equal(record?.status, 'LOCKED')
       await page.getByRole('button', { name: '我的选课与报名', exact: true }).click()
-      await expect(page.locator('.selection-record').filter({ hasText: supply.courseName })).toContainText('名单已锁定')
+      await expect(page.locator('.selection-record').filter({ hasText: supply.courseName }).filter({ hasText: `记录 ${record.recordId} ·` })).toContainText('名单已锁定')
     }
     await observed('R6-selection', { batchId: selection.batchId, studentCount: 4, supplyCount: 2, status: 'LOCKED' })
 
