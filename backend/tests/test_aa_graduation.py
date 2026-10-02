@@ -9,10 +9,33 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime
+from types import SimpleNamespace
+
+import pytest
 
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 _REVIEW_NOTE = "已完成人工核验并留存学院初审意见"
+
+
+@pytest.mark.parametrize("status,result,label", [
+    ("NORMAL", "PASS", "正常"),
+    ("REGISTERED", "PASS", "在籍注册"),
+    ("RETAINED", "PASS", "留级"),
+    ("SUSPENDED", "FAIL", "休学"),
+    ("WITHDRAWN", "FAIL", "退学"),
+    ("GRADUATED", "FAIL", "毕业"),
+    ("UNRECOGNIZED_INTERNAL_STATUS", "FAIL", "未明确，请核对学籍档案"),
+    (None, "PASS", "未明确，请核对学籍档案"),
+    ("", "PASS", "未明确，请核对学籍档案"),
+])
+def test_status_evidence_uses_chinese_without_changing_decision(status, result, label):
+    from app.modules.academic_affairs.services.academic_affairs_graduation_service import _check_status
+
+    assert _check_status(None, SimpleNamespace(student_status=status)) == {
+        "item": "STATUS", "result": result, "owner": "COLLEGE_STAFF",
+        "evidence": f"学籍状态：{label}",
+    }
 
 
 def test_legacy_item_evidence_map_is_normalized_for_list_and_filter_reads():
@@ -168,6 +191,7 @@ def test_gr2_status_abnormal(client, db_mode):
     d = client.get(f"{BASE}/graduation-results/{_result_id(client, hdr, bid)}", headers=hdr).json()["data"]
     status_item = next(i for i in d["items"] if i["item"] == "STATUS")
     assert d["overall"] == "SYSTEM_ABNORMAL" and status_item["result"] == "FAIL"
+    assert status_item["evidence"] == "学籍状态：休学"
 
 
 def test_gr3_final_writes_status(client, db_mode):

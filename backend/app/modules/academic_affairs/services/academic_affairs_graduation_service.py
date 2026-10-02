@@ -55,9 +55,12 @@ def _audit(db, biz_id, action, detail=""):
 # ── 跨域供数检查（三态）──
 
 def _check_status(db, s):
+    from app.modules.academic_affairs.services.academic_affairs_service import _STATUS_LABEL
+
     ok = is_enrolled(s.student_status)
+    status_label = _STATUS_LABEL.get(s.student_status, "未明确，请核对学籍档案")
     return {"item": "STATUS", "result": "PASS" if ok else "FAIL",
-            "owner": "COLLEGE_STAFF", "evidence": f"student_status={s.student_status}"}
+            "owner": "COLLEGE_STAFF", "evidence": f"学籍状态：{status_label}"}
 
 
 def _program_resolution(db, s):
