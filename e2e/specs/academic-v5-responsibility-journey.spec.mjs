@@ -226,6 +226,10 @@ async function runJourney() {
           '重新预审前的学院初审审计必须完整保留')
         rows = { ...rows, rows: rows.rows.slice(previousCollegeAudits.length) }
       }
+      if (step === 'G-archive' && report.graduationPartialArchive) {
+        assert.equal(rows.rows[0]?.id, report.graduationPartialArchive.auditId, '首次部分归档审计必须保留')
+        rows = { ...rows, rows: rows.rows.slice(1) }
+      }
       const repeatEnrollment = action === 'SELECTION_ENROLL' && report.checkpoints.some(item => item.step === `R6-drop-${actorRole}`)
       const rescheduled = step === 'H-selection-exam-schedule-replan-A' && examReport.scheduleRecovery?.originalDate === '2027-07-05'
       if (rescheduled) {
@@ -2460,6 +2464,18 @@ finally:
 
     // H starts with the graduation-batch closure. It is distinct from the
     // thirteen-domain term archive that follows.
+    if (report.pending?.step === 'G-archive' && gradBatch.status !== 'ARCHIVED') {
+      assert.equal(path.basename(fixtureFile), 'v5closed02-state.json')
+      assert.equal(gradBatch.status, 'PRECHECKED')
+      const results = (await readOnly('school', `${gradResultsPath}?page=1&pageSize=20`)).items
+      assert.equal(results.length, 4); assert.ok(results.every(result => result.status === 'ARCHIVED'))
+      const evidence = auditRows({ tenantId: fixture.tenantId, bizType: 'AA_GRAD_AUDIT',
+        bizId: gradBatchId, action: 'ARCHIVE', account: fixture.accounts.school })
+      const audit = assertActor(evidence, { roleCode: fixture.accounts.school.roleCode, pendingAt: report.pending.sentAt })
+      report.graduationPartialArchive = { batchId: gradBatchId, auditId: audit.id,
+        resultIds: results.map(result => result.resultId), originalCommand: report.pending }
+      report.pending = null; await save()
+    }
     if (gradBatch.status !== 'ARCHIVED') {
       await phase('校教务通过审核工作台封存已终审毕业名单')
       await visit(school, `/admin/academic-affairs/graduation/audit-console?batchId=${gradBatchId}&tab=archive`, gradPath)
