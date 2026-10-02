@@ -41,7 +41,7 @@
           <span>{{ todayDate || '今天' }}<template v-if="todayWeek"> · 第{{ todayWeek }}教学周</template></span>
           <small>{{ todayNote }}</small>
         </div>
-        <LoadingState v-if="loading && !loadedOnce" />
+        <LoadingState v-if="loading" />
         <ErrorState v-else-if="todayError" :description="todayError" @retry="load" />
         <div v-else-if="todayItems.length" class="aat-course-list">
           <article v-for="item in todayItems" :key="item.scheduleItemId || item.itemId" class="aat-course">
@@ -62,7 +62,7 @@
       </AppSectionCard>
 
       <AppSectionCard title="我的待办">
-        <LoadingState v-if="loading && !loadedOnce" />
+        <LoadingState v-if="loading" />
         <ErrorState v-else-if="todayError" :description="todayError" @retry="load" />
         <template v-else>
           <div class="aat-work-tabs" role="tablist" aria-label="我的待办状态">
@@ -103,6 +103,7 @@ import { canEnterRoute } from '@/security/permissionGate'
 import { currentUserFromToken } from '@/services/http/client'
 import { academicIdentity } from '../academicFlowContext.js'
 import AcademicFlowOverview from '../components/AcademicFlowOverview.vue'
+import { normalizeUiError } from '@/utils/presentationSafety'
 
 const EMPTY_WORKBENCH = () => ({
   actionItems: [], waitingItems: [],
@@ -116,7 +117,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: false, loadedOnce: false, generation: 0, attendanceOpeningId: '', disposed: false,
+      loading: false, generation: 0, attendanceOpeningId: '', disposed: false,
       workTab: this.$route?.query?.work === 'waiting' ? 'waiting' : 'actions',
       todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', todayError: '',
       workbench: EMPTY_WORKBENCH()
@@ -150,7 +151,7 @@ export default {
   },
   created() { this.load() },
   watch: {
-    identityKey() { this.generation++; this.attendanceOpeningId = ''; this.loadedOnce = false; this.load() },
+    identityKey() { this.generation++; this.attendanceOpeningId = ''; this.load() },
     '$route.query.work'(value) {
       this.workTab = value === 'waiting' ? 'waiting' : 'actions'
     }
@@ -206,7 +207,7 @@ export default {
         const res = await academicAffairsApi.getMyTeacherToday()
         if (!current()) return
         if (res.code !== 0) {
-          this.todayItems = []; this.workbench = EMPTY_WORKBENCH(); this.todayError = res.message || '今日教学读取失败'
+          this.todayItems = []; this.workbench = EMPTY_WORKBENCH(); this.todayError = normalizeUiError(res, { fallback: '今日教学暂时无法读取，请重试' }).userMessage
           return
         }
         const data = res.data || {}
@@ -217,8 +218,8 @@ export default {
         this.todayError = ''
         this.workbench = { ...EMPTY_WORKBENCH(), ...(data.workbench || {}), counts: { ...EMPTY_WORKBENCH().counts, ...(data.workbench?.counts || {}) } }
       } catch (error) {
-        if (!current()) return; this.todayItems = []; this.workbench = EMPTY_WORKBENCH(); this.todayError = error?.message || '今日教学读取失败'
-      } finally { if (current()) { this.loadedOnce = true; this.loading = false } }
+        if (!current()) return; this.todayItems = []; this.workbench = EMPTY_WORKBENCH(); this.todayError = normalizeUiError(error, { fallback: '今日教学暂时无法读取，请重试' }).userMessage
+      } finally { if (current()) this.loading = false }
     }
   }
 }

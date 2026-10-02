@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import { routeTarget } from '../src/modules/academicAffairs/components/leadershipWall/aa-wall-data.mjs'
 import { academicReturnPath } from '../src/modules/academicAffairs/academicFlowContext.js'
+import { normalizeUiError } from '../src/utils/presentationSafety.js'
 
 function workspace(file, dependencies = {}, extra = {}) {
   const source = readFileSync(new URL(`../src/modules/academicAffairs/components/${file}.vue`, import.meta.url), 'utf8')
@@ -12,7 +13,7 @@ function workspace(file, dependencies = {}, extra = {}) {
     .replace(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm, (_, binding) => `const ${binding.replace(/\s+as\s+/g, ': ')} = dependencies${binding.startsWith('{') ? '' : '.' + binding}`)
     .replace('export default', 'component =')
   const context = { dependencies: { currentUserFromToken: () => ({}), academicIdentity: (_, ctx) => ctx.key,
-    safeBusinessMessage: message => message, ...dependencies } }
+    safeBusinessMessage: message => message, normalizeUiError, ...dependencies } }
   vm.runInNewContext(script, context)
   const component = context.component
   const state = { ctx: { key: 'school-a' }, $route: { path: '/admin/academic-affairs', query: {} }, ...component.data(), ...extra }
@@ -77,4 +78,17 @@ test('ambiguous class deep links fail before defaulting to another class', async
   assert.equal(state.classId, '')
   assert.match(state.error, /班级参数/)
   assert.equal(state.items.length, 0)
+})
+
+test('正式课表失败保留中文网络和权限语义，重试保留班级与教学周', async () => {
+  let reads = 0
+  const { state } = workspace('AaTodayTeachingWorkspace', { academicAffairsApi: { getClassSchedule: async () => {
+    if (++reads === 1) throw new TypeError('Failed to fetch')
+    if (reads === 2) return { code: 403001, message: 'forbidden' }
+    return { code: 0, data: { items: [{ itemId: '9007199254740997' }] } }
+  } } }, { initialized: true, classId: '101', week: 2, term: { termId: '7' } })
+  await state.load(); assert.equal(state.error, '网络异常，请检查网络连接后重试'); assert.equal(state.items.length, 0)
+  await state.load(); assert.equal(state.error, '当前账号没有执行此操作的权限')
+  await state.load(); assert.equal(state.error, ''); assert.equal(state.items[0].itemId, '9007199254740997')
+  assert.equal(state.classId, '101'); assert.equal(state.week, 2); assert.equal(state.loading, false)
 })
