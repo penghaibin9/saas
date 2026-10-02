@@ -61,8 +61,35 @@ def normalize_legacy_result(code: str, result: dict) -> dict:
     }
 
 
+def _archived_term_graduate_ids(db, term, student_ids):
+    """仅恢复本期已正式毕业并归档的学生范围，不扩大到历史毕业主档。"""
+    from sqlalchemy import select
+    from app.models import (
+        AaGraduationAuditBatch, AaGraduationAuditResult,
+        GraduationDecisionFact, GraduationEvaluationRun,
+    )
+    from .academic_affairs_graduation_term_scope import batch_term_condition
+
+    result, batch = AaGraduationAuditResult, AaGraduationAuditBatch
+    decision, run = GraduationDecisionFact, GraduationEvaluationRun
+    return set(db.scalars(select(result.student_id).join(
+        batch, batch.id == result.batch_id,
+    ).join(decision, decision.result_id == result.id).join(
+        run, run.id == decision.evaluation_run_id,
+    ).where(
+        result.tenant_id == _tid(), result.is_deleted.is_(False), result.status == "ARCHIVED",
+        result.student_id.in_(student_ids),
+        result.conclusion.in_(["GRADUATED", "COMPLETED"]),
+        batch.tenant_id == _tid(), batch.status == "ARCHIVED", batch_term_condition(term),
+        decision.tenant_id == _tid(), decision.batch_id == batch.id,
+        decision.student_id == result.student_id, decision.conclusion == result.conclusion,
+        run.tenant_id == _tid(), run.batch_id == batch.id, run.result_id == result.id,
+        run.student_id == result.student_id, run.overall == "SYSTEM_PASSED",
+    )))
+
+
 def evaluate_program(db, term=None, *, college_ids=None) -> dict:
-    """指定学期范围内在读学生均能解析到方案，且涉及方案的BLOCKER为0。
+    """指定学期范围内学生均能解析到方案，且涉及方案的BLOCKER为0。
 
     历史归档只核当时处于1..12培养学期范围的 cohort；合法未来届/已超学制届属于
     OUT_OF_SCOPE，不应阻断该历史学期。方案绑定按学期结束时点回放，避免归档后的
@@ -77,7 +104,10 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
     )
     if college_ids:
         query = query.filter(StudentProfile.college_id.in_(list(college_ids)))
-    enrolled = [row for row in query.all() if is_enrolled(getattr(row, "student_status", None))]
+    profiles = query.all()
+    graduates = [row for row in profiles if getattr(row, "student_status", None) in {"GRADUATED", "COMPLETED"}]
+    archived_ids = _archived_term_graduate_ids(db, term, [row.id for row in graduates]) if term is not None and graduates else set()
+    enrolled = [row for row in profiles if is_enrolled(getattr(row, "student_status", None)) or row.id in archived_ids]
 
     students = []
     out_of_scope = 0
@@ -104,7 +134,7 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
     if not students:
         return rule_result(
             "PROGRAM", passed=False, rule_code="PROGRAM_NO_ENROLLED_STUDENT",
-            summary="当前学期范围没有可核验的在读学生，不能证明培养方案覆盖率",
+            summary="当前学期范围没有可核验的在读或本期已归档毕业学生，不能证明培养方案覆盖率",
             blocker_count=max(1, len(invalid_scope)),
             evidence=[*invalid_scope[:30], {"type": "OUT_OF_SCOPE_COHORTS", "students": out_of_scope}],
         )
@@ -160,6 +190,7 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
         {
             "type": "PROGRAM_COVERAGE",
             "enrolledStudents": len(students),
+            "archivedGraduates": sum(student.id in archived_ids for student in students),
             "resolvedStudents": len(resolved),
             "outOfScopeStudents": out_of_scope,
             "invalidScopeStudents": len(invalid_scope),
@@ -177,7 +208,7 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
         blocker_count=blockers,
         rule_code="PROGRAM_COVERAGE_AND_VALIDATION",
         summary=(
-            f"本学期在读学生方案覆盖率100%，{len(program_ids)}个生效方案均无BLOCKER"
+            f"本学期学生方案覆盖率100%，{len(program_ids)}个生效方案均无BLOCKER"
             if blockers == 0 and coverage == 100
             else f"方案覆盖率{coverage}%，范围异常{len(invalid_scope)}人，未解析学生{len(unresolved)}人，方案BLOCKER {len(validation_blockers)}项"
         ),
