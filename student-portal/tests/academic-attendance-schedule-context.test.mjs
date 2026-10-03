@@ -17,8 +17,9 @@ test('attendance record only links when the API supplied a formal schedule item'
 test('schedule consumes the linked lesson and authoritative week from route query', () => {
   assert.match(schedule, /function applyRouteContext\(\)/)
   assert.match(schedule, /selectedLessonId\.value = String\(route\.query\.lesson \|\| ''\)/)
-  assert.match(schedule, /weekOptions\.value\.includes\(requestedWeek\)/)
-  assert.match(schedule, /watch\(\(\) => \[route\.query\.lesson, route\.query\.week\], applyRouteContext/)
+  assert.match(schedule, /function routeWeek\(\)/)
+  assert.match(schedule, /portalApi\.academicSchedule\(requestedWeek\)/)
+  assert.match(schedule, /watch\(\(\) => \[route\.query\.lesson, route\.query\.week\]/)
   assert.match(schedule, /const selectedLessonDate = computed/)
   assert.match(schedule, /返回考勤记录/)
 })

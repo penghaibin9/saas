@@ -105,6 +105,7 @@
 <script>
 import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
+import { me } from '@/services/realApi'
 import { toast } from '@/utils/nav'
 import { useSessionStore } from '@/stores/session'
 import { beginPersistentWrite, clearPersistentWrite, isExplicitWriteRejection, isForbiddenResponse, listPersistentWrites, persistWriteAck, teacherWriteContext } from '../academic-affairs/write-result'
@@ -135,14 +136,18 @@ export default {
   },
   onLoad(options = {}) {
     this._pageActive = true
-    this._viewContext = this.contextKey()
-    this.syncUnknownWrites()
     this.requestedItemId = String(options.scheduleItemId || '')
+    if (this.requestedItemId) { this.tab = 'new'; this.itemIndex = -1 }
+    this._viewContext = this.contextKey()
+    if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
+    this.syncUnknownWrites()
     this.load()
-    if (this.requestedItemId) { this.tab = 'new'; this.itemIndex = -1; this.loadSchedule() }
+    if (this.requestedItemId) this.loadSchedule()
   },
   onShow() {
     this._pageActive = true
+    if (this._identityRestoring) return
+    if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
     this.syncUnknownWrites()
     const context = this.contextKey()
     if (this._viewContext !== context) {
@@ -176,6 +181,8 @@ export default {
   },
   onHide() {
     this._pageActive = false
+    this._identityEpoch = (this._identityEpoch || 0) + 1
+    this._identityRestoring = false
     this._needsRefresh = true
     this._listEpoch = (this._listEpoch || 0) + 1
     this._scheduleEpoch = (this._scheduleEpoch || 0) + 1
@@ -183,6 +190,8 @@ export default {
   },
   onUnload() {
     this._pageActive = false
+    this._identityEpoch = (this._identityEpoch || 0) + 1
+    this._identityRestoring = false
     this._listEpoch = (this._listEpoch || 0) + 1
     this._scheduleEpoch = (this._scheduleEpoch || 0) + 1
     this._conflictEpoch = (this._conflictEpoch || 0) + 1
@@ -204,6 +213,45 @@ export default {
   },
   onBackPress() { if (this.tab !== 'new') return false; this.backToApplications(); return true },
   methods: {
+    needsVerifiedIdentity() {
+      const session = useSessionStore()
+      return session.persistedIdentityVerified === false || !listPersistentWrites(this.contextKey()).ok
+    },
+    async restoreIdentity() {
+      if (this._identityRestoring) return
+      const before = this.contextKey()
+      const epoch = (this._identityEpoch || 0) + 1
+      this._identityEpoch = epoch
+      this._identityRestoring = true
+      this._listEpoch = (this._listEpoch || 0) + 1
+      this._scheduleEpoch = (this._scheduleEpoch || 0) + 1
+      this._conflictEpoch = (this._conflictEpoch || 0) + 1
+      this._writeEpoch = (this._writeEpoch || 0) + 1
+      this.changes = []; this.changesTotal = 0; this.changesHasMore = false
+      this.items = []; this.itemIndex = this.requestedItemId ? -1 : 0
+      this.typeIndex = 0; this.parityIndex = 0
+      this.targetWeekday = ''; this.targetSlotNo = ''; this.targetStartWeek = ''; this.targetEndWeek = ''; this.targetClassroom = ''
+      this.reason = ''; this.makeupPlan = ''
+      this.receipt = null; this.unknownWrites = {}; this.writeStorageBlocked = true
+      this.acting = false; this.submitting = false; this.checking = false
+      this.invalidateConflict()
+      this.state = 'loading'; this.scheduleState = 'idle'; this.scheduleError = ''
+      try {
+        const identity = await me()
+        if (!this._pageActive || this._identityEpoch !== epoch || this.contextKey() !== before) return
+        const session = useSessionStore()
+        session.applyRealUser(identity)
+        if (session.currentRole !== 'academic') { this.state = 'forbidden'; return }
+        this._viewContext = this.contextKey()
+        if (!this.syncUnknownWrites().ok) { this.state = 'error'; return }
+        this.load()
+        if (this.tab === 'new') this.loadSchedule()
+      } catch (error) {
+        if (this._pageActive && this._identityEpoch === epoch && this.contextKey() === before) this.state = normalizeError(error).pageState || 'error'
+      } finally {
+        if (this._identityEpoch === epoch) this._identityRestoring = false
+      }
+    },
     backToApplications() { if (this.submitting || this.acting) { toast('正在处理，请稍候'); return false }; if (this.tab !== 'new') return true; this.tab = 'list'; return false },
     contextKey() {
       return teacherWriteContext(useSessionStore())
@@ -241,6 +289,7 @@ export default {
     },
     async load(page = 1, done) {
       if (typeof page === 'function') { done = page; page = 1 }
+      if (this.needsVerifiedIdentity()) { this.restoreIdentity(); if (done) done(); return }
       const requestedPage = Math.max(1, Number(page) || 1)
       const epoch = (this._listEpoch || 0) + 1
       this._listEpoch = epoch
@@ -264,6 +313,7 @@ export default {
       } finally { if (done) done() }
     },
     async loadSchedule() {
+      if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
       const epoch = (this._scheduleEpoch || 0) + 1
       this._scheduleEpoch = epoch
       const context = this.contextKey()
@@ -301,6 +351,7 @@ export default {
       }
     },
     doConflictCheck() {
+      if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
       if (this.checking || !this.currentItemId) return
       if (!this.targetWeekday || !this.targetSlotNo) { toast('请先填写目标星期与节次'); return }
       const body = this._body()
@@ -322,6 +373,7 @@ export default {
         .finally(() => { if (this._conflictEpoch === epoch && this.contextKey() === context) this.checking = false })
     },
     async doSubmit() {
+      if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
       if (this.submitting || !this.canSubmit) return
       const reason = this.reason.trim()
       if (reason.length < 5) { toast('事由至少 5 个字'); return }
@@ -371,6 +423,7 @@ export default {
         .finally(() => { if (this._writeEpoch === writeEpoch && this.contextKey() === context) this.submitting = false })
     },
     doCancel(x) {
+      if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
       if (this.acting || this.submitting || !this.changes.includes(x) || !this.cancellable(x.status) || this.hasUnknownWrite('cancel', x.changeId)) return
       const changeId = String(x.changeId || '')
       const context = this.contextKey()

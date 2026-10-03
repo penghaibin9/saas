@@ -186,20 +186,14 @@ export function trackWorkbenchEvent(event, detail = {}) {
 
 export async function fetchMyScheduleToday(teacherKey) {
   const key = String(teacherKey || '').trim()
-  if (!key) return { items: [], teacherKey: '' }
-  try {
-    const data = await workbenchRead(
-      'today-schedule',
-      `/academic-affairs/schedule/teacher/${encodeURIComponent(key)}`,
-      {},
-      30_000
-    )
-    const items = Array.isArray(data?.items) ? data.items : []
-    const jsDay = new Date().getDay()
-    const weekday = jsDay === 0 ? 7 : jsDay
-    const today = items.filter((it) => Number(it.weekday || it.dayOfWeek || 0) === weekday)
-    return { items: (today.length ? today : items).slice(0, 6), teacherKey: key, weekday }
-  } catch {
-    return { items: [], teacherKey: key }
-  }
+  if (!key) throw new Error('教师身份尚未就绪，请刷新重试')
+  const data = await workbenchRead(
+    'today-schedule',
+    '/academic-affairs/teacher/today',
+    {},
+    30_000
+  )
+  if (!Array.isArray(data?.todayItems)) throw new Error('今日课表数据不完整，请刷新重试')
+  // 校历、周次和调课日均由正式今日投影裁定；无课不能回退为整周课表。
+  return { items: data.todayItems.slice(0, 6), teacherKey: key }
 }

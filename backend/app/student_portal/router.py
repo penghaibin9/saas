@@ -101,8 +101,8 @@ def academic_transcript_print(user=Depends(get_current_user), body: dict = Body(
 
 
 @router.get("/academic/schedule", summary="我的课表（本人·最新已发布）")
-def academic_schedule(user=Depends(get_current_user)):
-    return success(academic.schedule(user))
+def academic_schedule(user=Depends(get_current_user), week: int | None = Query(None, ge=1, le=99)):
+    return success(academic.schedule(user, week))
 
 
 @router.post("/academic/schedule/print", summary="课表打印留痕（本人）")

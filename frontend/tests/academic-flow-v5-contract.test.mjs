@@ -220,9 +220,14 @@ test('API preserves string identifiers and rejects malformed parameters before s
   await environment.api.get({ termId: '9007199254740997', collegeId: '9007199254740993' })
   assert.equal(sent.options.params.termId, '9007199254740997')
   assert.equal(sent.options.params.collegeId, '9007199254740993')
+  assert.equal(sent.path, '/academic-affairs/flow')
+  assert.equal(sent.options.timeoutMs, 30000, 'the whole-school read needs its own bounded aggregation budget')
   sent = null
   await assert.rejects(environment.api.get({ termId: ['1', '2'] }), /参数无效/)
   assert.equal(sent, null)
+  const timeout = Object.assign(new Error('aggregation timed out'), { bizCode: 'REQUEST_TIMEOUT' })
+  environment.request = async () => { throw timeout }
+  await assert.rejects(environment.api.get(), error => error === timeout)
 })
 
 test('overview actions retain selected term and a scoped return token on the existing navigation preflight', async () => {

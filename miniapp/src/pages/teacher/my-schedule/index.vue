@@ -276,11 +276,11 @@ export default {
         this.teachingWeeks = data && data.teachingWeeks != null ? Number(data.teachingWeeks) : null
         this.termCode = (data && data.termCode) || ''
         this.termStartDate = (data && data.termStartDate) || ''
+        this.selectedWeek = Number.isInteger(returnedWeek) ? returnedWeek : 0
         if (!this._selectionInitialized) {
-          this.selectedWeek = Number.isInteger(returnedWeek) ? returnedWeek : 0
           this.selectedDay = this.todayWeekday || 1
           this._selectionInitialized = true
-        } else if (this.selectedWeek > this.maxWeek || this.selectedWeek < 1) this.selectedWeek = Number.isInteger(returnedWeek) ? returnedWeek : 0
+        }
         if (this.targetLessonId) this.focusDeepLink()
         else if (selectedLessonId) {
           const rows = selectedLessonWasToday ? this.todayItems : this.items

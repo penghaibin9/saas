@@ -1,8 +1,8 @@
 <template>
   <div data-academic-page class="sp-page academic-prototype schedule-page">
-    <AcademicPrototypeHeader :title="selectedLesson ? '正式课次详情' : '我的课表'" group="注册与安排" :object="!!selectedLesson" :description="selectedLesson ? '核对本次上课地点、时间与正式来源。' : '今天去哪里上课，以正式课表为准。'" :term="schedule.termCode" :loading="loading" @refresh="load" />
+    <AcademicPrototypeHeader :title="selectedLesson ? '正式课次详情' : '我的课表'" group="注册与安排" :object="!!selectedLesson" :description="selectedLesson ? '核对本次上课地点、时间与正式来源。' : '今天去哪里上课，以正式课表为准。'" :term="schedule.termCode" :loading="loading" @refresh="refresh" />
     <StateBlock v-if="loading" type="loading" text="正在读取已发布课表…" />
-    <section v-else-if="error" class="card pad"><StateBlock type="error" :text="error" /><button class="btn" @click="load">重新加载</button></section>
+    <section v-else-if="error" class="card pad"><StateBlock type="error" :text="error" /><button class="btn" @click="refresh">重新加载</button></section>
     <div v-else-if="selectedLesson" class="stack">
       <div class="notice"><AcademicPrototypeIcon name="circle-info" />正式课次 · 学校课表发布后形成。当前展示不会创建新课次。</div>
       <div class="grid2">
@@ -24,7 +24,7 @@
         </section>
         <section class="card">
           <header class="card-head"><h2>接下来</h2></header>
-          <div class="card-body stack"><p class="muted">考勤由本课任课教师提交。地点疑问先核对本课正式调整记录。</p><RouterLink class="btn primary" to="/academic/attendance">{{ returnedFromAttendance ? '返回考勤记录' : '查看本人考勤' }}</RouterLink><button class="btn link" @click="selectedLessonId = ''">返回我的课表</button></div>
+          <div class="card-body stack"><p class="muted">考勤由本课任课教师提交。地点疑问先核对本课正式调整记录。</p><RouterLink class="btn primary" to="/academic/attendance">{{ returnedFromAttendance ? '返回考勤记录' : '查看本人考勤' }}</RouterLink><button class="btn link" @click="closeLesson">返回我的课表</button></div>
         </section>
       </div>
     </div>
@@ -33,7 +33,7 @@
         <button class="btn small" aria-label="上一周" :disabled="!selectedWeek || selectedWeek <= 1" @click="moveWeek(-1)"><AcademicPrototypeIcon name="angle-left" /></button>
         <b class="week-label">{{ selectedWeek ? '第' + selectedWeek + '周' : '全部周次' }}{{ weekRange ? ' · ' + weekRange : '' }}</b>
         <button class="btn small" aria-label="下一周" :disabled="!selectedWeek || selectedWeek >= maxWeek" @click="moveWeek(1)"><AcademicPrototypeIcon name="angle-right" /></button>
-        <button class="btn small" :disabled="!currentWeekInRange || selectedWeek === currentWeekInRange" @click="selectedWeek = currentWeekInRange">回到本周</button>
+        <button class="btn small" :disabled="!currentWeekInRange || selectedWeek === currentWeekInRange" @click="changeWeek(currentWeekInRange)">回到本周</button>
         <span class="grow"></span>
         <span v-if="items.length" class="tag green">正式版本 · 已发布</span>
         <button class="btn small" :disabled="printing || !filteredItems.length" @click="printSchedule"><AcademicPrototypeIcon name="file-arrow-down" />{{ printing ? '生成中…' : '打印本人课表' }}</button>
@@ -64,7 +64,7 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
 import AcademicPrototypeIcon from '../../components/academic/AcademicPrototypeIcon.vue'
 import StateBlock from '../../components/StateBlock.vue'
@@ -85,8 +85,10 @@ const printing = ref(false)
 const schedule = ref({ items: [], timeBands: [] })
 const weekCalendar = ref([])
 const selectedWeek = ref(null)
+const lastRequestedWeek = ref(null)
 const selectedLessonId = ref('')
 const route = useRoute()
+const router = useRouter()
 const selectedLesson = computed(() => [...items.value, ...todayItems.value].find((item) => itemKey(item) === selectedLessonId.value))
 const returnedFromAttendance = computed(() => route.query.from === 'attendance')
 
@@ -99,12 +101,12 @@ const days = [
 const items = computed(() => Array.isArray(schedule.value.items) ? schedule.value.items : [])
 const todayItems = computed(() => Array.isArray(schedule.value.todayItems) ? schedule.value.todayItems : [])
 const timeBands = computed(() => Array.isArray(schedule.value.timeBands) ? schedule.value.timeBands : [])
-const maxWeek = computed(() => Math.max(
+const maxWeek = computed(() => Math.min(99, Math.max(
   1,
   Number(schedule.value.teachingWeeks || 0),
   ...items.value.map((item) => Number(item.endWeek) || 0)
-))
-const weekOptions = computed(() => Array.from({ length: Math.min(maxWeek.value, 30) }, (_, index) => index + 1))
+)))
+const weekOptions = computed(() => Array.from({ length: maxWeek.value }, (_, index) => index + 1))
 const currentWeekInRange = computed(() => {
   const week = Number(schedule.value.currentWeek)
   return weekOptions.value.includes(week) ? week : null
@@ -132,7 +134,15 @@ function dayDate(day) {
   const date = dateForWeekday(day)
   return date ? date.slice(5).replace('-', '/') : ''
 }
-function moveWeek(delta) { const week = Number(selectedWeek.value) + delta; if (weekOptions.value.includes(week)) selectedWeek.value = week }
+function changeWeek(week) {
+  if (!weekOptions.value.includes(week) || week === selectedWeek.value) return
+  return router.replace({ query: { ...route.query, week: String(week) } })
+}
+function moveWeek(delta) { return changeWeek(Number(selectedWeek.value) + delta) }
+function closeLesson() {
+  selectedLessonId.value = ''
+  if (route.query.lesson) return router.replace({ query: { ...route.query, lesson: undefined } })
+}
 const todayDateText = computed(() => {
   const value = String(schedule.value.todayDate || '')
   if (!value) return '日期待确认'
@@ -211,13 +221,21 @@ function slotDetail(item) {
     .join('；')
 }
 
-async function load() {
+function routeWeek() {
+  const value = String(route.query.week ?? '')
+  const week = Number(value)
+  return /^\d+$/.test(value) && Number.isSafeInteger(week) && week >= 1 && week <= 99 ? week : null
+}
+function refresh() { return load(lastRequestedWeek.value || selectedWeek.value || routeWeek() || null) }
+async function load(requestedWeek = selectedWeek.value || routeWeek() || null) {
+  lastRequestedWeek.value = requestedWeek
   loading.value = true
   error.value = ''
   calendarError.value = ''
-  const read = await readStudentAcademicSnapshot(guard, () => Promise.allSettled([portalApi.academicSchedule(), portalApi.academicCalendar()]), 'academic-schedule')
+  const read = await readStudentAcademicSnapshot(guard, () => Promise.allSettled([portalApi.academicSchedule(requestedWeek), portalApi.academicCalendar()]), 'academic-schedule')
   if (read.stale) return false
   if (!read.ok) {
+    schedule.value = { items: [], timeBands: [] }; weekCalendar.value = []; selectedWeek.value = null; selectedLessonId.value = ''
     error.value = academicErrorMessage(read.error, '课表读取失败，请稍后重试')
     loading.value = false
     return false
@@ -225,21 +243,25 @@ async function load() {
   const [scheduleResult, calendarResult] = read.value
   if (scheduleResult.status === 'rejected') {
     if (academicErrorKind(scheduleResult.reason) === 'forbidden') clearSensitive(scheduleResult.reason)
-    else { error.value = academicErrorMessage(scheduleResult.reason, '课表读取失败，请稍后重试'); loading.value = false }
+    else { schedule.value = { items: [], timeBands: [] }; weekCalendar.value = []; selectedWeek.value = null; selectedLessonId.value = ''; error.value = academicErrorMessage(scheduleResult.reason, '课表读取失败，请稍后重试'); loading.value = false }
     return false
   }
   if (calendarResult.status === 'rejected' && academicErrorKind(calendarResult.reason) === 'forbidden') {
     clearSensitive(calendarResult.reason)
     return false
   }
-  schedule.value = scheduleResult.value || { items: [], timeBands: [] }
+  const formal = scheduleResult.value
+  const returnedWeek = formal?.week == null ? null : Number(formal.week)
+  if (!Array.isArray(formal?.items) || (formal.termCode && returnedWeek === null) || (returnedWeek !== null && (!Number.isSafeInteger(returnedWeek) || returnedWeek < 1 || returnedWeek > 99)) || (requestedWeek != null && returnedWeek !== requestedWeek)) {
+    schedule.value = { items: [], timeBands: [] }; weekCalendar.value = []; selectedWeek.value = null; selectedLessonId.value = ''
+    error.value = '正式课表周次无法核对，请刷新重试'; loading.value = false
+    return false
+  }
+  schedule.value = formal
+  lastRequestedWeek.value = returnedWeek
   weekCalendar.value = calendarResult.status === 'fulfilled' ? calendarResult.value?.weeks || [] : []
   calendarError.value = calendarResult.status === 'rejected' ? academicErrorMessage(calendarResult.reason, '校历周次读取失败，课表课程仍按正式课表展示。') : ''
-  const currentWeek = Number(schedule.value.currentWeek)
-  selectedWeek.value = Number.isFinite(currentWeek) && currentWeek >= 1 && currentWeek <= maxWeek.value
-    ? currentWeek
-    : null
-  applyRouteContext()
+  selectedWeek.value = returnedWeek
   loading.value = false
   return true
 }
@@ -248,6 +270,7 @@ function clearSensitive(exception) {
   guard.invalidate()
   schedule.value = { items: [], timeBands: [] }
   weekCalendar.value = []
+  selectedWeek.value = null
   selectedLessonId.value = ''
   calendarError.value = ''
   printing.value = false
@@ -271,11 +294,13 @@ async function printSchedule() {
   printing.value = true
   try {
     const audit = await portalApi.academicSchedulePrint({
+      week: command.week,
       reason: command.week ? `个人课表-第${command.week}周` : '个人课表-全部周次'
     })
     if (!guard.isCurrentCommand(command)) { if (!printWindow.closed) printWindow.close(); return }
     if (!Array.isArray(audit?.document?.items)) throw new Error('学校未返回本次正式课表查询件，不能使用页面旧数据打印')
     const documentData = audit.document
+    if (command.week != null && Number(documentData.week) !== command.week) throw new Error('打印查询件周次与当前所选周次不一致，请刷新后重试')
     const documentItems = itemsForWeek(documentData.items, command.week, documentData.teachingWeeks).slice().sort((a, b) => Number(a.weekday) - Number(b.weekday) || Number(a.slotNo) - Number(b.slotNo))
     const documentBands = Array.isArray(documentData.timeBands) ? documentData.timeBands : []
     const documentSlotLabel = (item) => {
@@ -330,13 +355,14 @@ async function printSchedule() {
   }
 }
 
-onMounted(load)
+onMounted(() => load(routeWeek()))
 function applyRouteContext() {
   selectedLessonId.value = String(route.query.lesson || '')
-  const requestedWeek = Number(route.query.week)
-  if (Number.isSafeInteger(requestedWeek) && weekOptions.value.includes(requestedWeek)) selectedWeek.value = requestedWeek
 }
-watch(() => [route.query.lesson, route.query.week], applyRouteContext, { immediate: true })
+watch(() => [route.query.lesson, route.query.week], (next, previous) => {
+  applyRouteContext()
+  if (previous && next[1] !== previous[1]) load(routeWeek())
+}, { immediate: true })
 onBeforeUnmount(() => guard.dispose())
 </script>
 <style src="../../components/academic/studentAcademicPrototype.css"></style>

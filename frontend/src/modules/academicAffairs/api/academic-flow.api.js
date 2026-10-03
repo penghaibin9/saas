@@ -8,7 +8,9 @@ export const academicFlowApi = {
         throw new Error('学期或学院参数无效，请从责任工作台重新进入')
       }
     }
-    const data = await request('/academic-affairs/flow', { params: { termId, collegeId } })
+    // The whole-school projection aggregates twelve stages and their responsible
+    // units. Allow this read to finish without changing the shared write timeout.
+    const data = await request('/academic-affairs/flow', { params: { termId, collegeId }, timeoutMs: 30000 })
     return validateAcademicFlow(data, { termId })
   }
 }

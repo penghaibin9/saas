@@ -17,7 +17,7 @@ function mount(name, api = {}, query = {}, meta = {}, browser = {}) {
   const navigations = []
   const session = browser.session || { user: { userId: 'test-student', studentNo: 'S001' }, token: 'test-token' }
   const modules = {
-    vue: { ...vue, onMounted: () => {}, onBeforeUnmount: (fn) => disposers.push(fn) },
+    vue: { ...vue, inject: (_key, fallback) => browser.registerWorkspaceForm || fallback, onMounted: () => {}, onBeforeUnmount: (fn) => disposers.push(fn) },
     'vue-router': { useRoute: () => ({ query, meta }), useRouter: () => ({ push: (to) => navigations.push(to) }) },
     '../../services/portalApi': { portalApi: api },
     '../../services/systemDialog': {
@@ -42,6 +42,49 @@ function mount(name, api = {}, query = {}, meta = {}, browser = {}) {
   return { ...component.setup({}, { expose() {} }), dispose: () => disposers.forEach((fn) => fn()), navigations }
 }
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
+
+for (const outcome of ['confirmed', 'unmatched', 'network', 'new-draft']) {
+  test(`recheck workspace protection follows the real draft after ${outcome}, including submission and owner release`, async () => {
+    const layoutSource = readFileSync(new URL('../src/layouts/PortalLayout.vue', import.meta.url), 'utf8')
+    const registryCode = layoutSource.slice(layoutSource.indexOf('const activeFormCheck ='), layoutSource.indexOf("provide('registerWorkspaceForm'"))
+    const registry = new Function('computed', 'shallowRef', 'edited', registryCode + ';return {activeFormCheck,hasEdits,registerWorkspaceForm}')(
+      vue.computed, vue.shallowRef, vue.ref(true))
+    const sent = deferred(), acknowledgement = deferred()
+    let posted = false
+    const formal = { recheckId: '5002', acadGradeId: outcome === 'unmatched' ? '9999' : '5001', status: 'SUBMITTED', reason: '请核对本人正式成绩' }
+    const page = mount('Recheck', {
+      academicTranscript: async () => ({ items: [{ gradeId: '5001', courseName: '测试课程' }] }),
+      academicGradeRecheck: async () => posted ? [formal] : [],
+      academicGradeRecheckSubmit: async () => { sent.resolve(); const result = await acknowledgement.promise; posted = true; return result }
+    }, { gradeId: '5001' }, {}, {
+      session: { user: { userId: `recheck-form-${outcome}`, studentNo: 'S001' }, token: 'test-token' },
+      registerWorkspaceForm: registry.registerWorkspaceForm
+    })
+    await page.load()
+    assert.equal(registry.hasEdits.value, false, 'the initial exact-grade link is not an unsaved edit')
+    page.reason.value = '请核对本人正式成绩'
+    assert.equal(registry.hasEdits.value, true)
+    page.applying.value = false
+    assert.equal(registry.hasEdits.value, true, 'returning to records must still protect the hidden draft')
+    assert.equal(page.reason.value, '请核对本人正式成绩')
+    page.applying.value = true
+    const running = page.submit()
+    await sent.promise
+    assert.equal(registry.activeFormCheck.value.busy(), true)
+    if (outcome === 'new-draft') page.reason.value = '提交期间另外填写的新草稿'
+    if (outcome === 'network') acknowledgement.reject(Object.assign(new Error('network unavailable'), { network: true }))
+    else acknowledgement.resolve({ recheckId: '5002' })
+    await running
+    assert.equal(registry.activeFormCheck.value.busy(), false)
+    assert.equal(registry.hasEdits.value, outcome !== 'confirmed')
+    assert.equal(page.receiptTone.value, ['confirmed', 'new-draft'].includes(outcome) ? 'success' : 'waiting')
+    if (outcome === 'new-draft') assert.equal(page.reason.value, '提交期间另外填写的新草稿')
+    registry.registerWorkspaceForm(() => false)
+    const nextOwner = registry.activeFormCheck.value
+    page.dispose()
+    assert.equal(registry.activeFormCheck.value, nextOwner, 'late cleanup cannot unregister the next page')
+  })
+}
 const course = { selectionCourseId: 'C1', courseName: '测试课程', allowedActions: ['ENROLL'], mode: 'LOTTERY' }
 const batch = (id) => [{ batch: { batchId: id, batchName: id }, courses: [course] }]
 const forbidden = () => Object.assign(new Error('禁止访问'), { status: 403 })

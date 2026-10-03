@@ -3,6 +3,56 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
 import { setImmediate } from 'node:timers/promises'
+import { runAdminQuery, resetAdminQueryCoordinatorForTest } from '../src/services/performance/queryCoordinator.js'
+
+function scheduleApi(read, identity = { userId: 'teacher-A', currentRoleCode: 'TEACHER' }) {
+  resetAdminQueryCoordinatorForTest()
+  const source = readFileSync(new URL('../src/modules/workbench/api/workbench.api.js', import.meta.url), 'utf8')
+    .replace(/^import .*$/gm, '').replace(/^export /gm, '')
+  const sandbox = { request: read, runAdminQuery, getToken: () => 'test-token', currentUserFromToken: () => identity }
+  vm.runInNewContext(source, sandbox)
+  return sandbox.fetchMyScheduleToday
+}
+
+test('teacher home preserves an authoritative empty today instead of displaying the nonempty weekly schedule', async () => {
+  const calls = []
+  const fetch = scheduleApi(async path => {
+    calls.push(path)
+    return { items: [{ courseName: '跨周课程', weekday: 6 }], todayItems: [], calendarSource: 'HOLIDAY' }
+  })
+  assert.equal((await fetch('teacher-A')).items.length, 0)
+  assert.deepEqual(calls, ['/academic-affairs/teacher/today'])
+})
+
+test('teacher home keeps formal swapped-day occurrences and large object identities without browser weekday filtering', async () => {
+  const occurrence = { scheduleItemId: '90071992547409931', courseName: '正式调课课次', weekday: 2, slotNo: 3 }
+  const fetch = scheduleApi(async () => ({ items: [{ courseName: '其他周课程' }], todayItems: [occurrence], calendarSource: 'SWAP' }))
+  const result = await fetch('teacher-A')
+  assert.deepEqual(result.items, [occurrence])
+  assert.equal(result.items[0].scheduleItemId, '90071992547409931')
+})
+
+test('teacher home reports failed, incomplete and identity-less reads rather than claiming today is empty', async () => {
+  const unavailable = new Error('正式课表读取失败')
+  const failing = scheduleApi(async () => { throw unavailable })
+  await assert.rejects(failing('teacher-A'), error => error === unavailable)
+  const malformed = scheduleApi(async () => ({ items: [] }))
+  await assert.rejects(malformed('teacher-A'), /今日课表数据不完整/)
+  let calls = 0
+  const anonymous = scheduleApi(async () => { calls++; return { todayItems: [] } })
+  await assert.rejects(anonymous(''), /教师身份尚未就绪/)
+  assert.equal(calls, 0)
+})
+
+test('the cached today projection remains isolated when the current teacher identity changes', async () => {
+  const identity = { userId: 'teacher-A', currentRoleCode: 'TEACHER' }
+  let calls = 0
+  const fetch = scheduleApi(async () => { calls++; return { todayItems: [{ courseName: identity.userId }] } }, identity)
+  assert.equal((await fetch('teacher-A')).items[0].courseName, 'teacher-A')
+  identity.userId = 'teacher-B'
+  assert.equal((await fetch('teacher-B')).items[0].courseName, 'teacher-B')
+  assert.equal(calls, 2)
+})
 
 function deferred() {
   let resolve, reject

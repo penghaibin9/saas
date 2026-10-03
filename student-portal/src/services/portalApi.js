@@ -39,7 +39,7 @@ export const portalApi = {
 
   academicTranscript: () => request('/portal/academic/transcript'),
   academicTranscriptPrint: (body) => request('/portal/academic/transcript/print', { method: 'POST', body }),
-  academicSchedule: () => request('/portal/academic/schedule'),
+  academicSchedule: (week) => request(`/portal/academic/schedule${q({ week })}`),
   academicSchedulePrint: (body) => request('/portal/academic/schedule/print', { method: 'POST', body }),
   academicCourseSelection: (batchId) => request(`/portal/academic/course-selection${q({ batchId })}`),
   academicSelectionPreflight: (body) => request('/portal/academic/course-selection/preflight', { method: 'POST', body }),

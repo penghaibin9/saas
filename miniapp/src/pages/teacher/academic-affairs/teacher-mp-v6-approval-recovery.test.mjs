@@ -22,6 +22,7 @@ function createPage(file, dependencies = {}) {
   const suppliedUni = dependencies.uni || {}
   const sandbox = {
     teacherApi: dependencies.teacherApi || {},
+    normalizeError: () => ({ pageState: 'error' }),
     useSessionStore: () => session,
     approvalContextKey,
     approvalReceiptChanged,
@@ -116,7 +117,7 @@ test('defer conflict clears transport attempt and refreshes formal facts', async
 })
 
 test('schedule-change 403 clears private evidence but retains minimal command reference', async () => {
-  const row = { changeId: 'C1', courseName: 'PLC', status: 'SUBMITTED', currentNode: 'COLLEGE_REVIEW', reason: 'private' }
+  const row = { changeId: 'C1', courseName: 'PLC', status: 'SUBMITTED', currentNode: 'COLLEGE_REVIEW', reason: 'private', version: 1 }
   const { instance } = createPage('./schedule-change-review.vue', {
     teacherApi: { reviewScheduleChange: async () => { throw { status: 403 } } }
   })
@@ -159,7 +160,7 @@ function schedulePayload() {
 }
 
 test('schedule deep link opens only the exact formal lesson and preserves selection on return', async () => {
-  const { instance } = createPage('../my-schedule/index.vue', { teacherApi: { getMySchedule: async () => schedulePayload() } })
+  const { instance } = createPage('../my-schedule/index.vue', { teacherApi: { getMySchedule: async ({ week }) => ({ ...schedulePayload(), week: week || 2 }) } })
   instance.onLoad({ scheduleItemId: 'P1', week: '5', weekday: '3' })
   await instance.load()
   assert.equal(instance.lessonId, 'P1')
@@ -173,7 +174,7 @@ test('schedule deep link opens only the exact formal lesson and preserves select
 })
 
 test('missing schedule deep link fails closed without falling back to another lesson', async () => {
-  const { instance, events } = createPage('../my-schedule/index.vue', { teacherApi: { getMySchedule: async () => schedulePayload() } })
+  const { instance, events } = createPage('../my-schedule/index.vue', { teacherApi: { getMySchedule: async ({ week }) => ({ ...schedulePayload(), week: week || 2 }) } })
   instance.onLoad({ scheduleItemId: 'MISSING' })
   await instance.load()
   assert.equal(instance.lessonId, '')

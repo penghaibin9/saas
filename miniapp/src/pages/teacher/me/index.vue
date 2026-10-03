@@ -3,7 +3,7 @@
     <MobileTeacherHero title="我的" :show-identity="false" />
     <MobileGlobalState v-if="state !== 'ready'" :state="state" @retry="load" />
     <view v-else class="ts-pad">
-      <view class="profile"><view class="profile-avatar">{{ (user.name || '师').slice(0,1) }}</view><view class="ts-body"><text class="profile-name">{{ user.name }}</text><text class="ts-muted">{{ user.tenantName }}</text></view><button class="profile-role ts-plain" @click="go('/pages/role-switch/index')">{{ roleConfig.label }}<MobileShellIcon name="chevron-right" tone="gray" :size="14" /></button></view>
+      <view class="profile"><view class="profile-avatar">{{ (user.name || '师').slice(0,1) }}</view><view class="ts-body"><text class="profile-name">{{ user.name }}</text><text class="ts-muted">{{ user.tenantName }}</text></view><button class="profile-role ts-plain" @click="go('/pages/role-switch/index')">{{ roleName }}<MobileShellIcon name="chevron-right" tone="gray" :size="14" /></button></view>
         <view class="ts-panel profile-settings">
           <view class="ts-row profile-scope"><MobileShellIcon name="user" :size="25" round /><view class="ts-body"><text class="ts-muted">工作范围</text><text class="ts-row-title">{{ dataScopeText || '以当前业务授权范围为准' }}</text></view></view>
           <button class="ts-row ts-plain profile-setting" @click="go('/pages/role-switch/index')"><MobileShellIcon name="clipboard-check" tone="violet" :size="25" round /><text class="ts-body">身份切换</text><text class="ts-muted">{{ identityCount }}个可用身份</text><MobileShellIcon name="chevron-right" tone="gray" :size="18" /></button>
@@ -30,7 +30,7 @@ export default {
   },
   data() {
     return {
-      user: {}, roleConfig: {}, dataScopeText: '', identityCount: 0, state: 'loading', loadSeq: 0,
+      user: {}, roleName: '', dataScopeText: '', identityCount: 0, state: 'loading', loadSeq: 0,
       helpEntry: { key: 'help', label: '帮助与反馈' }
     }
   },
@@ -41,13 +41,19 @@ export default {
     async load() {
       const seq = ++this.loadSeq, generation = currentSessionGeneration()
       this.state = 'loading'
+      this.user = {}; this.roleName = ''; this.dataScopeText = ''; this.identityCount = 0
       try {
         const identity = await me()
         if (seq !== this.loadSeq || generation !== currentSessionGeneration()) return
         const session = useSessionStore(); session.applyRealUser(identity)
         if (!session.isTeacher) { this.state = 'forbidden'; return }
-        this.user = session.mockUser || {}; this.roleConfig = session.roleConfig
-        this.dataScopeText = session.dataScopeText; this.identityCount = session.availableRoles.length; this.state = 'ready'
+        const role = identity?.currentRole || {}
+        const chineseText = value => typeof value === 'string' && /[\u3400-\u9fff]/u.test(value) ? value.trim() : ''
+        this.user = session.mockUser || {}
+        this.roleName = chineseText(role.roleName) || chineseText(role.contextName) || '当前教师身份'
+        this.dataScopeText = chineseText(role.scopeLabel)
+        this.identityCount = (identity?.contexts || identity?.availableContexts || []).length
+        this.state = 'ready'
       } catch (error) { if (seq === this.loadSeq && generation === currentSessionGeneration()) this.state = normalizeError(error).pageState || 'error' }
     },
     go,

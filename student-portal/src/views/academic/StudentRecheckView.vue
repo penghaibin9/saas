@@ -30,10 +30,10 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AcademicBusinessReceipt from '../../components/academic/AcademicBusinessReceipt.vue'
-import { academicErrorKind, academicErrorMessage, academicReceipt, markStudentAcademicFormClean } from '../../components/academic/studentAcademicUi'
+import { academicErrorKind, academicErrorMessage, academicReceipt } from '../../components/academic/studentAcademicUi'
 import StateBlock from '../../components/StateBlock.vue'
 import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
 import AcademicPrototypeIcon from '../../components/academic/AcademicPrototypeIcon.vue'
@@ -52,13 +52,20 @@ const submitting = ref(false)
 const records = ref([])
 const grades = ref([])
 const route = useRoute()
-const selectedGradeId = ref(String(route.query.gradeId || ''))
+const initialGradeId = String(route.query.gradeId || '')
+const selectedGradeId = ref(initialGradeId)
 const reason = ref('')
 const applying = ref(!!route.query.gradeId)
 const currentGrade = computed(() => grades.value.find(grade => String(grade.gradeId) === selectedGradeId.value))
 const receipt = ref(null)
 const receiptTone = ref('success')
 const uncertainGradeId = ref('')
+const hasDraft = computed(() => Boolean(
+  reason.value.length || (selectedGradeId.value && selectedGradeId.value !== initialGradeId)
+))
+const releaseWorkspaceForm = inject('registerWorkspaceForm', null)?.(
+  () => hasDraft.value, () => submitting.value
+)
 
 const inFlightGradeIds = computed(() => new Set(
   records.value
@@ -171,7 +178,6 @@ async function submit() {
       receipt.value = academicReceipt({ title: '成绩复查申请已提交并核对', object: command.courseName, status: statusText(formal.status), operatedAt: formal.createdAt || formal.submittedAt, next: '原正式成绩保持不变，请在本页跟踪复查结果。', relatedTo: '/academic/grades', relatedLabel: '查看正式成绩' })
       if (uncertainGradeId.value === command.gradeId) uncertainGradeId.value = ''
       if ((!selectedGradeId.value || selectedGradeId.value === command.gradeId) && reason.value.trim() === command.reason) { selectedGradeId.value = ''; reason.value = ''; applying.value = false }
-      markStudentAcademicFormClean()
     } else {
       uncertainGradeId.value = command.gradeId
       receiptTone.value = 'waiting'
@@ -200,7 +206,7 @@ function clearSensitive(e) {
   error.value = academicErrorMessage(e)
 }
 onMounted(load)
-onBeforeUnmount(() => guard.dispose())
+onBeforeUnmount(() => { releaseWorkspaceForm?.(); guard.dispose() })
 </script>
 
 <style src="../../components/academic/studentAcademicPrototype.css"></style>

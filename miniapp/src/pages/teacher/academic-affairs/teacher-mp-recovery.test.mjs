@@ -951,8 +951,8 @@ test('schedule day strip uses calendar dates but today lessons remain server aut
 })
 
 test('schedule rejects invalid date labels and retains selected day across same-identity refresh', async () => {
-  const data = { todayDate: '2026-09-08', currentWeek: 2, teachingWeeks: 18, items: [], todayItems: [] }
-  const instance = page('../my-schedule/index.vue', { teacherApi: { getMySchedule: async () => data } })
+  const data = { todayDate: '2026-09-08', currentWeek: 2, teachingWeeks: 18, termCode: '2026-1', items: [], todayItems: [] }
+  const instance = page('../my-schedule/index.vue', { teacherApi: { getMySchedule: async ({ week }) => ({ ...data, week: week || 2 }) } })
   await instance.load()
   assert.equal(instance.selectedDay, 2)
   instance.selectedDay = 4; instance.selectedWeek = 3
