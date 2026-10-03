@@ -1,0 +1,306 @@
+"""Excel(.xlsx) 导入/模板/台账导出通用工具（openpyxl）。
+
+- read_xlsx(file_bytes, header_map)：解析首个 sheet，首行为表头，按「表头文字→字段key」映射为 list[dict]。
+- build_template_xlsx / build_ledger_xlsx / build_error_rows_xlsx：生成真实 .xlsx。
+- 所有业务导出文本统一防公式注入，用户输入不得在 Excel 打开时被执行。
+不做业务校验（脏数据拦截仍由各域 import_dry_run 负责）。
+"""
+from __future__ import annotations
+
+import base64
+import io
+import zipfile
+from datetime import datetime
+from pathlib import Path
+
+from openpyxl import Workbook, load_workbook
+from app.core.exceptions import AppException
+
+MAX_ROWS = 5000
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+MAX_UNCOMPRESSED_BYTES = 50 * 1024 * 1024
+MAX_ZIP_ENTRIES = 2000
+_FORMULA_PREFIXES = ("=", "+", "-", "@")
+
+
+def safe_excel_value(value):
+    """Neutralize spreadsheet formulas while preserving numeric/date values.
+
+    A leading apostrophe is Excel's standard text marker. Leading whitespace is
+    considered too, because office clients may trim it before formula parsing.
+    """
+    if not isinstance(value, str):
+        return value
+    stripped = value.lstrip()
+    if stripped.startswith(_FORMULA_PREFIXES):
+        return "'" + value
+    return value
+
+
+def _safe_row(values) -> list:
+    return [safe_excel_value(value) for value in values]
+
+
+def _upload_limit_message(max_bytes: int) -> str:
+    mb = max(1, int(max_bytes) // (1024 * 1024))
+    return f"Excel 文件不得超过 {mb}MB"
+
+
+async def read_safe_upload(
+    upload,
+    *,
+    max_bytes: int = MAX_UPLOAD_BYTES,
+    too_large_code: str = "VALIDATION_ERROR",
+    too_large_message: str | None = None,
+) -> bytes:
+    """Bound upload memory and reject non-xlsx content before workbook parsing.
+
+    Callers with an already-published larger business limit may pass that exact
+    byte ceiling; package traversal/macro/zip-bomb checks remain the same.
+    """
+    filename = (getattr(upload, "filename", "") or "").lower()
+    if not filename.endswith(".xlsx"):
+        raise AppException("VALIDATION_ERROR", "仅支持 .xlsx 文件")
+    limit = max(1, int(max_bytes))
+    limit_message = too_large_message or _upload_limit_message(limit)
+    chunks: list[bytes] = []
+    size = 0
+    while True:
+        chunk = await upload.read(1024 * 1024)
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > limit:
+            raise AppException(too_large_code, limit_message)
+        chunks.append(chunk)
+    content = b"".join(chunks)
+    validate_xlsx_package(
+        content,
+        max_bytes=limit,
+        too_large_code=too_large_code,
+        too_large_message=limit_message,
+    )
+    return content
+
+
+def _validate_xlsx_archive(archive: zipfile.ZipFile) -> None:
+    """Apply one package-security policy to either byte-backed or path-backed XLSX."""
+    members = archive.infolist()
+    if len(members) > MAX_ZIP_ENTRIES:
+        raise AppException("VALIDATION_ERROR", "XLSX 内部文件数量异常")
+    total = 0
+    for member in members:
+        name = member.filename.replace("\\", "/").lower()
+        if name.startswith("/") or ".." in name.split("/"):
+            raise AppException("VALIDATION_ERROR", "XLSX 包含非法路径")
+        total += member.file_size
+        if total > MAX_UNCOMPRESSED_BYTES:
+            raise AppException("VALIDATION_ERROR", "XLSX 解压后体积异常")
+        if member.file_size > 1024 * 1024 and member.compress_size > 0:
+            if member.file_size / member.compress_size > 100:
+                raise AppException("VALIDATION_ERROR", "XLSX 压缩比异常")
+        if (
+            name.endswith(".bin")
+            or "vbaproject" in name
+            or "/embeddings/" in name
+            or "/oleobjects/" in name
+            or "/externallinks/" in name
+        ):
+            raise AppException("VALIDATION_ERROR", "XLSX 不允许宏、嵌入对象或外部链接")
+
+
+def validate_xlsx_package(
+    file_bytes: bytes,
+    *,
+    max_bytes: int = MAX_UPLOAD_BYTES,
+    too_large_code: str = "VALIDATION_ERROR",
+    too_large_message: str | None = None,
+) -> None:
+    """Reject zip bombs, path traversal, macros, OLE and external workbook links."""
+    limit = max(1, int(max_bytes))
+    if not file_bytes:
+        raise AppException("VALIDATION_ERROR", "Excel 文件为空")
+    if len(file_bytes) > limit:
+        raise AppException(too_large_code, too_large_message or _upload_limit_message(limit))
+    stream = io.BytesIO(file_bytes)
+    if not zipfile.is_zipfile(stream):
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX")
+    try:
+        with zipfile.ZipFile(stream) as archive:
+            _validate_xlsx_archive(archive)
+    except zipfile.BadZipFile:
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX") from None
+
+
+def validate_xlsx_path(
+    file_path: str | Path,
+    *,
+    max_bytes: int = MAX_UPLOAD_BYTES,
+    too_large_code: str = "VALIDATION_ERROR",
+    too_large_message: str | None = None,
+) -> None:
+    """Validate an XLSX package in-place without materializing the whole file in memory."""
+    limit = max(1, int(max_bytes))
+    path = Path(file_path)
+    try:
+        size = path.stat().st_size
+    except OSError:
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX") from None
+    if size <= 0:
+        raise AppException("VALIDATION_ERROR", "Excel 文件为空")
+    if size > limit:
+        raise AppException(too_large_code, too_large_message or _upload_limit_message(limit))
+    if not zipfile.is_zipfile(path):
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX")
+    try:
+        with zipfile.ZipFile(path) as archive:
+            _validate_xlsx_archive(archive)
+    except (OSError, zipfile.BadZipFile):
+        raise AppException("VALIDATION_ERROR", "文件内容不是有效的 XLSX") from None
+
+
+def read_xlsx(file_bytes: bytes, header_map: dict[str, str]) -> list[dict]:
+    """.xlsx 字节 → list[dict]。"""
+    validate_xlsx_package(file_bytes)
+    wb = load_workbook(
+        io.BytesIO(file_bytes), read_only=True, data_only=True, keep_links=False,
+    )
+    if len(wb.worksheets) > 10:
+        wb.close()
+        raise AppException("VALIDATION_ERROR", "XLSX 工作表不得超过 10 个")
+    ws = wb["导入模板"] if "导入模板" in wb.sheetnames else wb.worksheets[0]
+    if ws.max_column > 100:
+        wb.close()
+        raise AppException("VALIDATION_ERROR", "XLSX 单表列数不得超过 100")
+    if ws.max_row > MAX_ROWS + 1:
+        wb.close()
+        raise AppException("VALIDATION_ERROR", f"单次导入不得超过 {MAX_ROWS} 行")
+    it = ws.iter_rows(values_only=True)
+    try:
+        header = next(it)
+    except StopIteration:
+        wb.close()
+        return []
+    idx_key: dict[int, str] = {}
+    for i, h in enumerate(header):
+        name = str(h).strip() if h is not None else ""
+        name = name.rstrip(" *").strip()
+        if name in header_map:
+            idx_key[i] = header_map[name]
+    out: list[dict] = []
+    for row in it:
+        if row is None:
+            continue
+        d, empty = {}, True
+        for i, key in idx_key.items():
+            v = row[i] if i < len(row) else None
+            s = "" if v is None else str(v).strip()
+            d[key] = s
+            if s:
+                empty = False
+        if not empty:
+            out.append(d)
+        if len(out) > MAX_ROWS:
+            wb.close()
+            raise AppException("VALIDATION_ERROR", f"单次导入不得超过 {MAX_ROWS} 行")
+    wb.close()
+    return out
+
+
+def build_template_xlsx(headers: list[str], sample: list | None = None,
+                        samples: list[list] | None = None,
+                        notes: list[str] | None = None,
+                        required: list[str] | None = None) -> bytes:
+    """生成预制导入模板 .xlsx。模板示例由服务端定义，不属于用户导出数据。"""
+    from openpyxl.styles import Font, PatternFill
+    req = set(required or [])
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "导入模板"
+    ws.append([(h + " *") if h in req else h for h in headers])
+    head_fill = PatternFill("solid", fgColor="DCE6F1")
+    for cell in ws[1]:
+        cell.font = Font(bold=True)
+        cell.fill = head_fill
+    for row in ([sample] if sample else []) + (samples or []):
+        ws.append(row)
+    for i, _ in enumerate(headers, start=1):
+        ws.column_dimensions[chr(64 + i)].width = 24
+    ws.freeze_panes = "A2"
+    if notes:
+        ns = wb.create_sheet("填写说明")
+        ns.append(["填写说明（请阅读后删除本页或忽略，仅导入「导入模板」页）"])
+        ns["A1"].font = Font(bold=True, size=12)
+        for i, note in enumerate(notes, start=2):
+            ns.cell(row=i, column=1, value=note)
+        ns.column_dimensions["A"].width = 80
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def build_ledger_xlsx(sheet_title: str, headers: list[str], data_rows: list[list],
+                      watermark: str | None = None) -> bytes:
+    """生成台账 .xlsx；业务数据逐单元格防公式注入。"""
+    from openpyxl.styles import Font, PatternFill
+    wb = Workbook()
+    ws = wb.active
+    ws.title = (sheet_title or "台账")[:28]
+    row_idx = 1
+    if watermark:
+        ws.append([safe_excel_value(watermark)])
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=max(len(headers), 1))
+        ws["A1"].font = Font(bold=True, color="666666", size=10)
+        row_idx = 2
+    ws.append(_safe_row(headers))
+    head_fill = PatternFill("solid", fgColor="DCE6F1")
+    for cell in ws[row_idx]:
+        cell.font = Font(bold=True)
+        cell.fill = head_fill
+    for row in data_rows:
+        ws.append(_safe_row(row))
+    for i in range(1, len(headers) + 1):
+        col = chr(64 + i) if i <= 26 else "A"
+        ws.column_dimensions[col].width = 18
+    ws.freeze_panes = "A3" if watermark else "A2"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def build_error_rows_xlsx(template_headers: list[str], rows: list[dict], errors: list[dict],
+                          row_values: callable) -> bytes:
+    """错误行 Excel：原表头 + 错误字段 + 错误原因（仅含出错行）。"""
+    err_by_row: dict[int, list[dict]] = {}
+    for error in errors or []:
+        err_by_row.setdefault(int(error.get("rowNo") or 0), []).append(error)
+    headers = template_headers + ["错误字段", "错误原因"]
+    data: list[list] = []
+    for i, row in enumerate(rows or []):
+        row_no = i + 1
+        if row_no not in err_by_row:
+            continue
+        messages = err_by_row[row_no]
+        fields = "；".join(str(item.get("field") or "") for item in messages)
+        reason = "；".join(str(item.get("message") or "") for item in messages)
+        data.append(list(row_values(row)) + [fields, reason])
+    return build_ledger_xlsx(
+        "导入错误行", headers, data,
+        watermark="以下为未通过预校验的行，请修正后重新导入（仅导入「导入模板」页）",
+    )
+
+
+def pack_xlsx_result(content: bytes, filename: str, row_count: int,
+                     tenant_label: str = "") -> dict:
+    """API 响应：xlsx 二进制转 base64，文件名补时间戳。"""
+    name = filename if filename.endswith(".xlsx") else f"{filename}.xlsx"
+    if not any(char.isdigit() for char in name[-20:]):
+        stem = name[:-5] if name.endswith(".xlsx") else name
+        suffix = f"_{tenant_label}" if tenant_label else ""
+        name = f"{stem}{suffix}_{datetime.now():%Y%m%d_%H%M}.xlsx"
+    return {
+        "filename": name,
+        "contentBase64": base64.b64encode(content).decode("ascii"),
+        "rowCount": row_count,
+        "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }

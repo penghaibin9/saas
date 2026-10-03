@@ -1,0 +1,39 @@
+name: Internship Standalone C06 Statistics
+
+on:
+  workflow_dispatch:
+
+jobs:
+  c06:
+    runs-on: ubuntu-latest
+    timeout-minutes: 22
+    env:
+      PYTHONPATH: products/internship-platform/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Compile C06 statistics
+        run: |
+          python -m py_compile             products/internship-platform/backend/app/modules/internship/services/internship_stats_service.py             products/internship-platform/backend/app/modules/internship/services/internship_procurement_stats_service.py
+      - name: Run Yiyang G14 and four-group statistics
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_yiyang_c06_g14_stats.py             products/internship-platform/backend/tests/test_yiyang_c06_procurement_stats.py
+      - name: Verify mobile source closure
+        run: python products/internship-platform/scripts/check_mobile_import_closure.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: products/internship-platform/mobile/package.json
+      - name: Install standalone mobile dependencies
+        working-directory: products/internship-platform/mobile
+        run: npm install --no-audit --no-fund
+      - name: Build standalone WeChat mobile
+        working-directory: products/internship-platform/mobile
+        run: npm run build:mp-weixin

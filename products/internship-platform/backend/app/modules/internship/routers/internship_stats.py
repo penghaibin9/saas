@@ -1,0 +1,181 @@
+"""岗位实习中心 · 实习统计 API（/api/v1/internship/stats/*）。
+
+指标口径（落实率/协议签署率/打卡合规率/成绩分布/就业率/归档率）+ 维度筛选（学院/专业/班级）+
+数据范围隔离（service 内处理）+ 导出。PC 管理端（学生 403 由注册处 require_staff 统一门禁）。
+
+权限（P3）：查询 internship.stats.view（含指导教师本人范围聚合、领导只读、督导审计）；
+导出 internship.stats.export（仅管理员/学院负责人）。
+"""
+from __future__ import annotations
+
+from typing import Optional
+
+from fastapi import APIRouter, Depends, Query
+
+from app.core.permissions import require_permission
+from app.core.response import success
+from app.modules.internship.services import internship_stats_service as svc
+
+router = APIRouter(prefix="/internship", tags=["岗位实习-实习统计"])
+
+_P_VIEW = "internship.stats.view"
+_P_EXPORT = "internship.stats.export"
+
+
+@router.get("/stats/command-screen", summary="岗位实习监管大屏只读聚合")
+def command_screen(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    user=Depends(require_permission(_P_VIEW)),
+):
+    from app.modules.internship.services.internship_command_screen_service import overview
+    return success(overview(user, batchId))
+
+
+@router.get("/stats/metrics", summary="实习统计指标字典")
+def stats_metrics(user=Depends(require_permission(_P_VIEW))):
+    return success(svc.metric_definitions())
+
+
+@router.get("/stats/metrics/{metricKey}/drilldown", summary="实习统计指标明细")
+def stats_metric_drilldown(metricKey: str, subset: str = Query(..., pattern="^(numerator|denominator)$"),
+                           page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                           college: Optional[str] = None, major: Optional[str] = None,
+                           className: Optional[str] = None, batchId: Optional[str] = None,
+                           user=Depends(require_permission(_P_VIEW))):
+    return success(svc.metric_drilldown(
+        user, metricKey, subset, page=page, page_size=pageSize, college=college, major=major,
+        class_name=className, batch_id=batchId))
+
+
+@router.get("/stats/procurement-overview", summary="益阳采购口径四组统计（概况/去向/活动/质量）")
+def stats_procurement_overview(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    user=Depends(require_permission(_P_VIEW)),
+):
+    from app.modules.internship.services import internship_procurement_stats_service as procurement
+    return success(procurement.overview(user, batch_id=batchId))
+
+
+@router.get("/stats/process-analytics", summary="益阳采购 AP19-AP24 过程统计与绩效汇总")
+def stats_process_analytics(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    groupBy: str = Query("STUDENT", pattern="^(STUDENT|ADVISOR|HOMEROOM|COLLEGE|MAJOR|CLASS)$"),
+    period: str = Query("ALL", pattern="^(WEEK|MONTH|ALL)$"),
+    anchor: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    columns: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(50, ge=1, le=500),
+    user=Depends(require_permission(_P_VIEW)),
+):
+    from app.modules.internship.services import internship_process_statistics_service as process_stats
+    return success(process_stats.query(
+        user,
+        batch_id=batchId,
+        group_by=groupBy,
+        period=period,
+        anchor=anchor,
+        columns=columns,
+        page=page,
+        page_size=pageSize,
+    ))
+
+
+@router.post("/stats/process-analytics/export", summary="导出益阳采购 AP19-AP24 同条件 Excel")
+def stats_process_analytics_export(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    groupBy: str = Query("STUDENT", pattern="^(STUDENT|ADVISOR|HOMEROOM|COLLEGE|MAJOR|CLASS)$"),
+    period: str = Query("ALL", pattern="^(WEEK|MONTH|ALL)$"),
+    anchor: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
+    columns: Optional[str] = None,
+    user=Depends(require_permission(_P_EXPORT)),
+):
+    from app.modules.internship.services import internship_process_statistics_service as process_stats
+    return success(process_stats.export(
+        user,
+        batch_id=batchId,
+        group_by=groupBy,
+        period=period,
+        anchor=anchor,
+        columns=columns,
+    ))
+
+
+@router.get("/teacher-management", summary="AP16 教师本人业务管理台账")
+def teacher_management(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    keyword: str = Query("", max_length=100),
+    user=Depends(require_permission(_P_VIEW)),
+):
+    from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
+    return success(teacher_activity.teacher_management_ledger(
+        user, batch_id=batchId, keyword=keyword
+    ))
+
+
+@router.post("/teacher-management/export", summary="AP16 教师管理台账 Excel")
+def teacher_management_export(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    keyword: str = Query("", max_length=100),
+    user=Depends(require_permission(_P_EXPORT)),
+):
+    from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
+    return success(teacher_activity.export_teacher_management_ledger(
+        user, batch_id=batchId, keyword=keyword
+    ))
+
+
+@router.get("/teacher-management/makeups", summary="AP16 教师补签审核队列")
+def teacher_makeup_queue(
+    batchId: str = Query(..., min_length=1, max_length=64),
+    status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(100, ge=1, le=200),
+    user=Depends(require_permission("internship.guidance.manage")),
+):
+    from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
+    return success(teacher_activity.list_teacher_makeups_admin(
+        user, batch_id=batchId, status=status, page=page, page_size=pageSize
+    ))
+
+
+@router.post("/teacher-management/makeups/{makeupId}/review", summary="AP16 审核教师本人补签")
+def review_teacher_makeup(
+    makeupId: int,
+    body: dict,
+    user=Depends(require_permission("internship.guidance.manage")),
+):
+    from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
+    return success(
+        teacher_activity.review_teacher_makeup(user, makeupId, body),
+        message="教师补签审核已完成",
+    )
+
+
+@router.get("/stats/overview", summary="实习总览统计（指标/计数/成绩分布，按数据范围+维度筛选）")
+def stats_overview(college: Optional[str] = None, major: Optional[str] = None,
+                   className: Optional[str] = None, batchId: Optional[str] = None,
+                   user=Depends(require_permission(_P_VIEW))):
+    return success(svc.overview(user, college=college, major=major, class_name=className,
+                                batch_id=batchId))
+
+
+@router.get("/stats/dimensions", summary="统计维度选项（学院/专业/班级）")
+def stats_dimensions(batchId: Optional[str] = None, user=Depends(require_permission(_P_VIEW))):
+    return success(svc.dimension_options(user, batch_id=batchId))
+
+
+@router.get("/stats/trends", summary="实习业务月度趋势（建档、报告、指导、巡访）")
+def stats_trends(college: Optional[str] = None, major: Optional[str] = None,
+                 className: Optional[str] = None, months: int = Query(6, ge=3, le=12),
+                 batchId: Optional[str] = None,
+                 user=Depends(require_permission(_P_VIEW))):
+    return success(svc.trends(user, college=college, major=major, class_name=className,
+                              months=months, batch_id=batchId))
+
+
+@router.post("/stats/export", summary="导出实习统计台账（xlsx）")
+def stats_export(college: Optional[str] = None, major: Optional[str] = None,
+                 className: Optional[str] = None, batchId: Optional[str] = None,
+                 user=Depends(require_permission(_P_EXPORT))):
+    return success(svc.export_stats(user, college=college, major=major, class_name=className,
+                                    batch_id=batchId))

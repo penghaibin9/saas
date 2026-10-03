@@ -1,0 +1,15 @@
+name: Internship Standalone W3 Mobile Closure
+
+on:
+  workflow_dispatch:
+
+jobs:
+  import-closure:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify standalone mobile imports
+        run: python products/internship-platform/scripts/check_mobile_import_closure.py

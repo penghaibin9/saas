@@ -1,0 +1,123 @@
+name: Internship Standalone Mobile Fullstack Evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/backend/app/**"
+      - "products/internship-platform/mobile/**"
+      - "products/internship-platform/scripts/seed_pc_fullstack_evidence.py"
+      - "products/internship-platform/scripts/seed_real_fullstack_internship.py"
+      - "products/internship-platform/enterprise-web/e2e-surfaces/standalone-mobile-real.spec.mjs"
+      - "products/internship-platform/enterprise-web/playwright.standalone-mobile-real.config.mjs"
+      - ".github/workflows/internship-standalone-mobile-fullstack.yml"
+
+jobs:
+  mobile-fullstack:
+    name: Real MySQL FastAPI student and teacher H5 Chromium
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: "yes"
+          MYSQL_DATABASE: internship_mobile_fullstack
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      APP_ENV: ci
+      DATABASE_URL: mysql+pymysql://root@127.0.0.1:3306/internship_mobile_fullstack?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_KEY_PREFIX: internship-standalone:mobile-fullstack
+      JWT_SECRET: ci-only-not-production
+      EXPECTED_ALEMBIC_REVISION: ix0023
+      FILE_STORAGE_DIR: /tmp/internship-mobile-fullstack-files
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install backend
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+
+      - name: Upgrade MySQL and seed mobile full-stack fixture
+        run: |
+          alembic -c products/internship-platform/backend/alembic.ini upgrade head
+          python products/internship-platform/scripts/seed_pc_fullstack_evidence.py
+          python products/internship-platform/scripts/seed_real_fullstack_internship.py
+
+      - name: Start real standalone FastAPI
+        run: |
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 >/tmp/internship-mobile-backend.log 2>&1 &
+          echo $! >/tmp/internship-mobile-backend.pid
+          for i in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:8000/health/ready >/tmp/internship-mobile-ready.json; then
+              cat /tmp/internship-mobile-ready.json
+              break
+            fi
+            if [ "$i" = "60" ]; then
+              cat /tmp/internship-mobile-backend.log
+              exit 1
+            fi
+            sleep 2
+          done
+
+      - name: Install mobile and Playwright dependencies
+        run: |
+          npm --prefix products/internship-platform/mobile install --no-audit --no-fund
+          npm --prefix products/internship-platform/enterprise-web ci --no-audit --no-fund
+
+      - name: Install Chromium
+        working-directory: products/internship-platform/enterprise-web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run real backend mobile H5 browser evidence
+        working-directory: products/internship-platform/enterprise-web
+        run: npx playwright test -c playwright.standalone-mobile-real.config.mjs
+
+      - name: Collect mobile evidence
+        if: always()
+        run: |
+          mkdir -p products/internship-platform/enterprise-web/test-results-mobile-real
+          cp /tmp/internship-mobile-ready.json products/internship-platform/enterprise-web/test-results-mobile-real/backend-ready.json 2>/dev/null || true
+          cp /tmp/internship-mobile-backend.log products/internship-platform/enterprise-web/test-results-mobile-real/backend.log 2>/dev/null || true
+
+      - name: Upload mobile full-stack evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-standalone-mobile-fullstack-evidence
+          path: products/internship-platform/enterprise-web/test-results-mobile-real
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Stop backend
+        if: always()
+        run: |
+          if [ -f /tmp/internship-mobile-backend.pid ]; then
+            kill "$(cat /tmp/internship-mobile-backend.pid)" 2>/dev/null || true
+          fi

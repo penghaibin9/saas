@@ -1,0 +1,172 @@
+<template>
+  <text class="mobile-status-tag" :class="`is-${semantic}`">{{ displayLabel }}</text>
+</template>
+
+<script>
+/**
+ * 学生/教师微信端共用状态词表。
+ * ARCHIVED=已归档；VOIDED=已作废。未知状态显示安全占位，raw code 只进入开发日志。
+ */
+const STATUS_MAP = {
+  DRAFT: { label: '草稿', type: 'default' },
+  PENDING_SUBMIT: { label: '待提交', type: 'default' },
+  PENDING: { label: '待处理', type: 'warning' },
+  PENDING_REVIEW: { label: '待审核', type: 'warning' },
+  TEACHER_REVIEW: { label: '任课教师审核中', type: 'warning' },
+  PENDING_HANDLE: { label: '待处理', type: 'warning' },
+  PENDING_CONFIRM: { label: '待确认', type: 'warning' },
+  SUBMITTED: { label: '已提交', type: 'processing' },
+  WITHDRAWN: { label: '已撤回', type: 'default' },
+  REVIEWING: { label: '审核中', type: 'processing' },
+  PROCESSING: { label: '处理中', type: 'processing' },
+  APPROVED: { label: '已通过', type: 'success' },
+  ALLOCATED: { label: '已分配', type: 'processing' },
+  UNALLOCATED: { label: '待学校调剂', type: 'warning' },
+  CONFIRMED: { label: '已确认', type: 'success' },
+  COMPLETED: { label: '已完成', type: 'success' },
+  FINISHED: { label: '已结束', type: 'success' },
+  RETURNED: { label: '已退回', type: 'warning' },
+  REJECTED: { label: '已驳回', type: 'danger' },
+  FAILED: { label: '未通过', type: 'danger' },
+  OVERDUE: { label: '已逾期', type: 'danger' },
+  ABNORMAL: { label: '异常', type: 'danger' },
+  CANCELLED: { label: '已取消', type: 'default' },
+  PUBLISHED: { label: '已发布', type: 'success' },
+  ARCHIVED: { label: '已归档', type: 'info' },
+  VOIDED: { label: '已作废', type: 'danger' },
+  READONLY: { label: '只读', type: 'info' },
+  NOT_STARTED: { label: '未开始', type: 'default' },
+  TODO: { label: '待办理', type: 'warning' },
+  DONE: { label: '已完成', type: 'success' },
+  // 统一消息的阅读状态不是业务审批状态，仍需给出明确、可理解的文案。
+  UNREAD: { label: '未读', type: 'processing' },
+  READ: { label: '已读', type: 'info' },
+  SENT: { label: '已发送', type: 'processing' },
+  DELIVERED: { label: '已送达', type: 'processing' },
+  PENDING_ACK: { label: '待确认', type: 'warning' },
+  ACKNOWLEDGED: { label: '已确认', type: 'success' },
+  EXPIRED: { label: '已失效', type: 'default' },
+  IN_PROGRESS: { label: '办理中', type: 'processing' },
+  DOING: { label: '办理中', type: 'processing' },
+  BLOCKED: { label: '暂未通过', type: 'danger' },
+  WAIVED: { label: '已免办', type: 'info' },
+  NOT_REQUIRED: { label: '无需办理', type: 'info' },
+
+  // 教学任务 / 课表
+  PENDING_ASSIGN: { label: '待分配教师', type: 'warning' },
+  ASSIGNED: { label: '待教师确认', type: 'processing' },
+  TEACHER_CONFIRMED: { label: '教师已确认', type: 'success' },
+  REJECTED_BY_TEACHER: { label: '教师已退回', type: 'danger' },
+  COLLEGE_CONFIRMED: { label: '学院已确认', type: 'processing' },
+  READY: { label: '已就绪', type: 'success' },
+  MERGED: { label: '已并入合班', type: 'info' },
+  PRE_PUBLISHED: { label: '预发布', type: 'processing' },
+
+  // 选课
+  OPEN: { label: '开放中', type: 'processing' },
+  CLOSED: { label: '已截止', type: 'warning' },
+  LOCKED: { label: '名单已锁定', type: 'success' },
+  SELECTED: { label: '已选中', type: 'success' },
+  DROPPED: { label: '已退选', type: 'default' },
+  PENDING_LOTTERY: { label: '待摇号', type: 'warning' },
+  LOTTERY_LOST: { label: '未中签', type: 'danger' },
+  COURSE_CANCELLED: { label: '课程已取消', type: 'danger' },
+
+  // 考务 / 考勤
+  COURSE_CONFIRMED: { label: '课程已确认', type: 'processing' },
+  ARRANGED: { label: '已编排', type: 'processing' },
+  REMOVED: { label: '已移除', type: 'default' },
+  ACTIVE: { label: '有效', type: 'success' },
+  EFFECTIVE: { label: '已生效', type: 'success' },
+  VERIFIED: { label: '已核验', type: 'success' },
+  ONBOARD: { label: '已到岗', type: 'success' },
+  NONE: { label: '暂无记录', type: 'info' },
+  ENROLLED: { label: '在读', type: 'success' },
+  NORMAL: { label: '在读', type: 'success' },
+  REGISTERED: { label: '已注册', type: 'success' },
+  PRESENT: { label: '到考', type: 'success' },
+  ABSENT: { label: '缺考', type: 'danger' },
+  LATE: { label: '迟到', type: 'warning' },
+  LEAVE: { label: '请假', type: 'info' },
+  CHEAT: { label: '作弊', type: 'danger' },
+  DEFERRED: { label: '缓考', type: 'warning' },
+  EXEMPT: { label: '免修', type: 'info' },
+
+  // 成绩审核
+  INPUTTING: { label: '录入中', type: 'processing' },
+  COLLEGE_REVIEW: { label: '学院审核中', type: 'warning' },
+  ACADEMIC_REVIEW: { label: '教务终审中', type: 'processing' },
+  CHANGE_REVIEW: { label: '更正审核中', type: 'warning' },
+  UPHELD: { label: '维持原成绩', type: 'success' },
+  ADJUSTED: { label: '成绩已调整', type: 'success' },
+
+  // 教材征订 / 发放 / 费用
+  ORDERED: { label: '已征订', type: 'processing' },
+  PARTIALLY_ARRIVED: { label: '部分到货', type: 'warning' },
+  ARRIVED: { label: '已到货', type: 'success' },
+  DISTRIBUTING: { label: '发放中', type: 'processing' },
+  RECEIVED: { label: '已签收', type: 'success' },
+  EXCLUDED: { label: '不发放', type: 'info' },
+  EXCHANGED: { label: '已换领', type: 'info' },
+  UNPAID: { label: '未收款', type: 'warning' },
+  PARTIAL: { label: '部分收款', type: 'warning' },
+  PAID: { label: '已结清', type: 'success' },
+  WAIVED: { label: '已减免', type: 'info' },
+
+  // 缓考审批节点
+  COUNSELOR_REVIEW: { label: '辅导员审批中', type: 'warning' },
+  TEACHER_CONFIRM: { label: '任课教师确认中', type: 'warning' },
+  ACADEMIC_FINAL: { label: '教务处终审中', type: 'processing' }
+}
+
+const HAS_CHINESE_TEXT = (value) => /[\u3400-\u9fff]/.test(String(value || ''))
+
+function readableLabel(label, mapped) {
+  const value = String(label || '').trim()
+  if (value && HAS_CHINESE_TEXT(value)) return value
+  if (mapped) return mapped.label
+  return value ? '状态待确认' : ''
+}
+
+export default {
+  name: 'MobileStatusTag',
+  props: {
+    status: { type: String, default: '' },
+    type: { type: String, default: '' },
+    label: { type: String, default: '' }
+  },
+  computed: {
+    mapped() {
+      return STATUS_MAP[String(this.status || '').toUpperCase()] || null
+    },
+    semantic() {
+      return this.type || (this.mapped ? this.mapped.type : 'default')
+    },
+    displayLabel() {
+      const supplied = readableLabel(this.label, this.mapped)
+      if (supplied) return supplied
+      if (this.mapped) return this.mapped.label
+      if (this.status && typeof console !== 'undefined') console.warn('[unknown-mobile-status]', this.status)
+      return this.status ? '状态待确认' : '—'
+    }
+  }
+}
+</script>
+
+<style scoped>
+.mobile-status-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.is-success { color: var(--success-700); background: var(--success-50); }
+.is-processing { color: var(--primary-700); background: var(--primary-50); }
+.is-warning { color: var(--warning-700); background: var(--warning-50); }
+.is-danger { color: var(--danger-700); background: var(--danger-50); }
+.is-info { color: var(--info-700); background: var(--info-50); }
+.is-default { color: var(--gray-600); background: var(--gray-100); }
+</style>

@@ -1,0 +1,492 @@
+"""Enterprise E9 collaboration facade over canonical InternshipRecord and InternshipEnterpriseEval.
+
+No second intern/evaluation fact is introduced. All reads/writes use a server-derived
+INTERNSHIP_COLLAB context. COMPANY_ADMIN/HR are company-scoped; MENTOR is additionally scoped to
+its bound InternshipEnterpriseContact. Student contacts and other sensitive profile facts are not
+projected here.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import exists, func, or_, select
+
+from app.core.exceptions import AppException, no_permission, not_found
+from app.models import (
+    InternshipArchive, InternshipAuditTrail, InternshipEnterpriseEval,
+    InternshipFinalScore, InternshipRecord, StudentProfile,
+)
+from app.models import InternshipEnterpriseContact
+from app.models.internship_enterprise_portal import InternshipEnterpriseMember
+from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
+from app.services.db_service import _iso
+
+_ACTIVE_RECORD_STATUSES = {"PREPARING", "READY", "ONBOARD", "ASSESSING"}
+_SCORE_FIELDS = (
+    ("attendanceScore", "attendance_score", "出勤"),
+    ("skillScore", "skill_score", "技能"),
+    ("attitudeScore", "attitude_score", "态度"),
+    ("collaborationScore", "collaboration_score", "协作"),
+    ("safetyScore", "safety_score", "安全纪律"),
+)
+
+
+def _member(db, context) -> InternshipEnterpriseMember:
+    conditions = [
+        InternshipEnterpriseMember.id == context.member_id,
+        InternshipEnterpriseMember.tenant_id == context.tenant_id,
+        InternshipEnterpriseMember.company_id == context.company_id,
+        InternshipEnterpriseMember.member_role == context.member_role,
+        InternshipEnterpriseMember.status == "ACTIVE",
+        InternshipEnterpriseMember.is_deleted.is_(False),
+    ]
+    # INTERNSHIP_COLLAB contexts are already bound to a unique active member_id.
+    # Some authenticated contexts also carry user_id; when present, verify it as
+    # an additional invariant without making it a required field for every caller.
+    context_user_id = getattr(context, "user_id", None)
+    if context_user_id is not None:
+        conditions.append(InternshipEnterpriseMember.user_id == context_user_id)
+    row = db.scalar(select(InternshipEnterpriseMember).where(*conditions))
+    if not row:
+        raise no_permission("企业成员已失效")
+    return row
+
+
+def _mentor_scope(db, context) -> int | None:
+    member = _member(db, context)
+    if str(context.member_role or "").upper() != "MENTOR":
+        return None
+    if not member.contact_id:
+        raise no_permission("企业导师账号尚未绑定导师联系人，不能读取学生范围")
+    return int(member.contact_id)
+
+
+def _record_conditions(context, mentor_contact_id: int | None = None):
+    conditions = [
+        InternshipRecord.tenant_id == context.tenant_id,
+        InternshipRecord.enterprise_id == context.company_id,
+        InternshipRecord.batch_id == context.batch_id,
+        InternshipRecord.position_id.is_not(None),
+        InternshipRecord.current_placement_snapshot_id.is_not(None),
+        exists(select(1).where(
+            InternshipPlacementSnapshot.id == InternshipRecord.current_placement_snapshot_id,
+            InternshipPlacementSnapshot.tenant_id == context.tenant_id,
+            InternshipPlacementSnapshot.record_id == InternshipRecord.id,
+            InternshipPlacementSnapshot.batch_id == InternshipRecord.batch_id,
+            InternshipPlacementSnapshot.company_id == InternshipRecord.enterprise_id,
+            InternshipPlacementSnapshot.position_id == InternshipRecord.position_id,
+        )),
+        InternshipRecord.is_deleted.is_(False),
+        StudentProfile.id == InternshipRecord.student_id,
+        StudentProfile.tenant_id == context.tenant_id,
+        StudentProfile.is_deleted.is_(False),
+    ]
+    if mentor_contact_id is not None:
+        conditions.append(InternshipRecord.mentor_contact_id == mentor_contact_id)
+    return conditions
+
+
+def _current_placement(db, record: InternshipRecord, context) -> InternshipPlacementSnapshot:
+    snapshot = db.scalar(select(InternshipPlacementSnapshot).where(
+        InternshipPlacementSnapshot.id == record.current_placement_snapshot_id,
+        InternshipPlacementSnapshot.tenant_id == context.tenant_id,
+        InternshipPlacementSnapshot.record_id == record.id,
+        InternshipPlacementSnapshot.batch_id == record.batch_id,
+        InternshipPlacementSnapshot.company_id == record.enterprise_id,
+        InternshipPlacementSnapshot.position_id == record.position_id,
+    ))
+    if not snapshot:
+        raise AppException(
+            "DATA_CONFLICT",
+            "该学生尚未形成当前岗位的正式安置快照，企业不能提交评价",
+        )
+    return snapshot
+
+
+def _filter_record_status(q, status: str | None):
+    normalized = str(status or "ALL").upper()
+    if normalized in {"", "ALL"}:
+        return q
+    if normalized == "ACTIVE":
+        return q.where(InternshipRecord.status.in_(sorted(_ACTIVE_RECORD_STATUSES)))
+    if normalized == "COMPLETED":
+        return q.where(InternshipRecord.status == "ARCHIVED")
+    return q.where(InternshipRecord.status == normalized)
+
+
+def _filter_keyword(q, keyword: str | None):
+    value = str(keyword or "").strip()
+    if not value:
+        return q
+    pattern = f"%{value}%"
+    return q.where(or_(
+        StudentProfile.real_name.like(pattern),
+        StudentProfile.student_no.like(pattern),
+        InternshipRecord.position_name.like(pattern),
+        InternshipRecord.enterprise_mentor_name.like(pattern),
+    ))
+
+
+def _latest_eval_map(db, *, context, internship_ids: list[int]) -> dict[int, InternshipEnterpriseEval]:
+    if not internship_ids:
+        return {}
+    rows = db.scalars(
+        select(InternshipEnterpriseEval)
+        .join(InternshipRecord, InternshipRecord.id == InternshipEnterpriseEval.internship_id)
+        .where(
+            InternshipEnterpriseEval.tenant_id == context.tenant_id,
+            InternshipEnterpriseEval.internship_id.in_(internship_ids),
+            InternshipEnterpriseEval.placement_snapshot_id == InternshipRecord.current_placement_snapshot_id,
+            InternshipEnterpriseEval.enterprise_id == InternshipRecord.enterprise_id,
+            InternshipEnterpriseEval.position_id == InternshipRecord.position_id,
+            InternshipRecord.tenant_id == context.tenant_id,
+            InternshipRecord.enterprise_id == context.company_id,
+            InternshipRecord.batch_id == context.batch_id,
+            InternshipRecord.is_deleted.is_(False),
+            InternshipEnterpriseEval.is_deleted.is_(False),
+        )
+        .order_by(InternshipEnterpriseEval.id.desc())
+    ).all()
+    result: dict[int, InternshipEnterpriseEval] = {}
+    for row in rows:
+        result.setdefault(int(row.internship_id), row)
+    return result
+
+
+def _record_row(record: InternshipRecord, student: StudentProfile, evaluation: InternshipEnterpriseEval | None) -> dict:
+    pending_eval = evaluation is None or evaluation.school_review_status == "RETURNED"
+    return {
+        "id": str(record.id),
+        "internshipId": str(record.id),
+        "name": student.real_name,
+        "positionName": record.position_name or "",
+        "advisorName": record.advisor_name or "",
+        "mentorName": record.enterprise_mentor_name or "",
+        "status": record.status,
+        "statusLabel": record.status,
+        "riskLevel": record.risk_level,
+        "startDate": _iso(record.intern_start_date),
+        "endDate": _iso(record.intern_end_date),
+        "evaluationTaskId": str(record.id) if pending_eval else None,
+        "evaluationStatus": "PENDING" if pending_eval else "COMPLETED",
+    }
+
+
+def list_students_in_tx(db, *, context, page: int, page_size: int, status: str | None = None, keyword: str | None = None) -> dict:
+    mentor_contact_id = _mentor_scope(db, context)
+    q = (
+        select(InternshipRecord, StudentProfile)
+        .join(StudentProfile, StudentProfile.id == InternshipRecord.student_id)
+        .where(*_record_conditions(context, mentor_contact_id))
+    )
+    q = _filter_keyword(_filter_record_status(q, status), keyword)
+    total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+    pairs = db.execute(
+        q.order_by(InternshipRecord.id.desc())
+        .offset((max(1, page) - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    ids = [int(record.id) for record, _student in pairs]
+    evals = _latest_eval_map(db, context=context, internship_ids=ids)
+    return {
+        "items": [_record_row(record, student, evals.get(int(record.id))) for record, student in pairs],
+        "total": total,
+        "page": page,
+        "pageSize": page_size,
+        "hasNext": page * page_size < total,
+    }
+
+
+def get_student_in_tx(db, *, context, internship_id: int) -> dict:
+    mentor_contact_id = _mentor_scope(db, context)
+    pair = db.execute(
+        select(InternshipRecord, StudentProfile)
+        .join(StudentProfile, StudentProfile.id == InternshipRecord.student_id)
+        .where(InternshipRecord.id == int(internship_id), *_record_conditions(context, mentor_contact_id))
+    ).first()
+    if not pair:
+        raise not_found("实习记录不存在或不属于当前企业协同范围")
+    record, student = pair
+    evaluation = _latest_eval_map(db, context=context, internship_ids=[int(record.id)]).get(int(record.id))
+    return _record_row(record, student, evaluation)
+
+
+def _latest_eval_subquery(context):
+    return (
+        select(
+            InternshipEnterpriseEval.internship_id.label("internship_id"),
+            func.max(InternshipEnterpriseEval.id).label("evaluation_id"),
+        )
+        .join(InternshipRecord, InternshipRecord.id == InternshipEnterpriseEval.internship_id)
+        .where(
+            InternshipEnterpriseEval.tenant_id == context.tenant_id,
+            InternshipEnterpriseEval.placement_snapshot_id == InternshipRecord.current_placement_snapshot_id,
+            InternshipEnterpriseEval.enterprise_id == InternshipRecord.enterprise_id,
+            InternshipEnterpriseEval.position_id == InternshipRecord.position_id,
+            InternshipRecord.tenant_id == context.tenant_id,
+            InternshipRecord.enterprise_id == context.company_id,
+            InternshipRecord.batch_id == context.batch_id,
+            InternshipRecord.is_deleted.is_(False),
+            InternshipEnterpriseEval.is_deleted.is_(False),
+        )
+        .group_by(InternshipEnterpriseEval.internship_id)
+        .subquery()
+    )
+
+
+def _task_row(record: InternshipRecord, student: StudentProfile, evaluation: InternshipEnterpriseEval | None) -> dict:
+    pending = evaluation is None or evaluation.school_review_status == "RETURNED"
+    payload = {
+        "id": str(record.id),
+        "taskId": str(record.id),
+        "internshipId": str(record.id),
+        "studentName": student.real_name,
+        "positionName": record.position_name or "",
+        "mentorName": record.enterprise_mentor_name or "",
+        "status": "PENDING" if pending else "COMPLETED",
+        "statusLabel": "待评价" if pending else "已提交",
+        "deadline": _iso(record.intern_end_date),
+        "evaluationId": str(evaluation.id) if evaluation else None,
+        "evaluationVersion": int(evaluation.version or 0) if evaluation else None,
+        "placementSnapshotId": str(record.current_placement_snapshot_id),
+        "schoolReviewStatus": evaluation.school_review_status if evaluation else None,
+    }
+    if evaluation and evaluation.school_review_status == "RETURNED":
+        payload.update({
+            "attendanceScore": evaluation.attendance_score,
+            "skillScore": evaluation.skill_score,
+            "attitudeScore": evaluation.attitude_score,
+            "collaborationScore": evaluation.collaboration_score,
+            "safetyScore": evaluation.safety_score,
+            "overallComment": evaluation.overall_comment or "",
+            "recommendHire": bool(evaluation.recommend_hire),
+            "returnReason": evaluation.school_review_comment or "",
+        })
+    return payload
+
+
+def list_evaluation_tasks_in_tx(
+    db, *, context, page: int, page_size: int, status: str | None = None,
+    internship_id: int | None = None,
+) -> dict:
+    mentor_contact_id = _mentor_scope(db, context)
+    latest = _latest_eval_subquery(context)
+    base = (
+        select(InternshipRecord, StudentProfile, InternshipEnterpriseEval)
+        .join(StudentProfile, StudentProfile.id == InternshipRecord.student_id)
+        .outerjoin(latest, latest.c.internship_id == InternshipRecord.id)
+        .outerjoin(InternshipEnterpriseEval, InternshipEnterpriseEval.id == latest.c.evaluation_id)
+        .where(*_record_conditions(context, mentor_contact_id))
+    )
+    if internship_id is not None:
+        base = base.where(InternshipRecord.id == int(internship_id))
+    normalized = str(status or "ALL").upper()
+    if normalized == "PENDING":
+        base = base.where(or_(
+            InternshipEnterpriseEval.id.is_(None),
+            InternshipEnterpriseEval.school_review_status == "RETURNED",
+        ))
+    elif normalized == "COMPLETED":
+        base = base.where(
+            InternshipEnterpriseEval.id.is_not(None),
+            InternshipEnterpriseEval.school_review_status != "RETURNED",
+        )
+    total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
+    rows = db.execute(
+        base.order_by(InternshipRecord.id.desc())
+        .offset((max(1, page) - 1) * page_size)
+        .limit(page_size)
+    ).all()
+    return {
+        "items": [_task_row(record, student, evaluation) for record, student, evaluation in rows],
+        "total": total,
+        "page": page,
+        "pageSize": page_size,
+        "hasNext": page * page_size < total,
+    }
+
+
+def _score_values(payload: dict[str, Any]) -> dict[str, int]:
+    values: dict[str, int] = {}
+    for json_key, column, label in _SCORE_FIELDS:
+        value = payload.get(json_key)
+        if value is None or value == "":
+            raise AppException("VALIDATION_ERROR", f"{label}评分必填")
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError) as exc:
+            raise AppException("VALIDATION_ERROR", f"{label}评分必须是 0-100 的整数") from exc
+        if not 0 <= parsed <= 100:
+            raise AppException("VALIDATION_ERROR", f"{label}评分必须在 0-100 之间")
+        values[column] = parsed
+    return values
+
+
+def _mentor_identity(db, context) -> tuple[int | None, str]:
+    member = _member(db, context)
+    contact = None
+    if member.contact_id:
+        contact = db.scalar(
+            select(InternshipEnterpriseContact).where(
+                InternshipEnterpriseContact.id == member.contact_id,
+                InternshipEnterpriseContact.tenant_id == context.tenant_id,
+                InternshipEnterpriseContact.company_id == context.company_id,
+                InternshipEnterpriseContact.is_deleted.is_(False),
+            )
+        )
+    return (
+        int(member.contact_id) if member.contact_id else None,
+        contact.name if contact else f"企业{context.member_role}",
+    )
+
+
+def _assert_evaluation_writable(db, *, record, tenant_id: int) -> None:
+    """Record is already locked; preserve Record -> Score -> Archive lock order.
+
+    This command must not change facts underlying a published score/frozen archive.
+    Read current rows with locking reads (not a stale repeatable-read snapshot).
+    No monkey-patch or second lifecycle authority is introduced.
+    """
+    from app.modules.internship.services.internship_audit_service import (
+        assert_high_risk_write_available,
+    )
+
+    assert_high_risk_write_available(db)
+    if record.status not in _ACTIVE_RECORD_STATUSES:
+        raise AppException("DATA_CONFLICT", "实习记录已结束或归档，不能直接提交企业评价")
+    score = db.scalar(select(InternshipFinalScore).where(
+        InternshipFinalScore.tenant_id == tenant_id,
+        InternshipFinalScore.internship_id == record.id,
+        InternshipFinalScore.is_deleted.is_(False),
+    ).order_by(InternshipFinalScore.id.desc()).with_for_update())
+    archive = db.scalar(select(InternshipArchive).where(
+        InternshipArchive.tenant_id == tenant_id,
+        InternshipArchive.internship_id == record.id,
+        InternshipArchive.is_deleted.is_(False),
+    ).order_by(InternshipArchive.id.desc()).with_for_update())
+    if (score and score.status in {"PUBLISHED", "ARCHIVED"}) or (
+        archive and archive.status == "ARCHIVED"
+    ):
+        raise AppException(
+            "DATA_CONFLICT", "成绩已发布或总档案已归档，请先通过学校正式更正流程处理",
+        )
+
+
+def _assert_expected_placement(payload: dict[str, Any], placement_id: int) -> None:
+    expected = payload.get("expectedPlacementSnapshotId")
+    # IDs are decimal strings end-to-end: never round a Snowflake ID through JS Number.
+    if not isinstance(expected, str) or not expected.isascii() or not expected.isdecimal() \
+            or expected.startswith("0") or not 1 <= len(expected) <= 19:
+        raise AppException("VALIDATION_ERROR", "请刷新评价任务后提交有效的预期安置快照")
+    if int(expected) != int(placement_id):
+        raise AppException("DATA_CONFLICT", "实习安置已变化，请刷新后针对当前岗位重新评价")
+
+
+def submit_evaluation_in_tx(db, *, context, internship_id: int, payload: dict[str, Any]) -> dict:
+    mentor_contact_id = _mentor_scope(db, context)
+    record = db.scalar(
+        select(InternshipRecord)
+        .join(StudentProfile, StudentProfile.id == InternshipRecord.student_id)
+        .where(InternshipRecord.id == int(internship_id), *_record_conditions(context, mentor_contact_id))
+        .with_for_update()
+    )
+    if not record:
+        raise not_found("实习记录不存在或不属于当前企业协同范围")
+    placement = _current_placement(db, record, context)
+    _assert_expected_placement(payload, placement.id)
+    _assert_evaluation_writable(db, record=record, tenant_id=context.tenant_id)
+
+    evaluation = db.scalar(
+        select(InternshipEnterpriseEval)
+        .where(
+            InternshipEnterpriseEval.tenant_id == context.tenant_id,
+            InternshipEnterpriseEval.internship_id == record.id,
+            InternshipEnterpriseEval.is_deleted.is_(False),
+        )
+        .order_by(InternshipEnterpriseEval.id.desc())
+        .with_for_update()
+    )
+    current_evaluation = bool(
+        evaluation
+        and int(evaluation.placement_snapshot_id or 0) == int(placement.id)
+        and int(evaluation.enterprise_id or 0) == int(record.enterprise_id or 0)
+        and int(evaluation.position_id or 0) == int(record.position_id or 0)
+    )
+    if current_evaluation and evaluation.school_review_status != "RETURNED":
+        raise AppException("DATA_CONFLICT", "该学生企业评价已提交，不能重复评价")
+    if current_evaluation:
+        expected = payload.get("expectedVersion")
+        if expected is None or int(expected) != int(evaluation.version or 0):
+            raise AppException("DATA_CONFLICT", "企业评价版本已变化，请刷新后重试")
+    elif evaluation:
+        # 岗位/企业已变化时保留旧评价作为历史证据，当前安置新建独立评价。
+        evaluation = None
+
+    comment = str(payload.get("overallComment") or "").strip()
+    if not comment:
+        raise AppException("VALIDATION_ERROR", "总体评价必填")
+    if len(comment) > 2000:
+        raise AppException("VALIDATION_ERROR", "总体评价不能超过 2000 字")
+    scores = _score_values(payload)
+    contact_id, mentor_name = _mentor_identity(db, context)
+
+    if evaluation is None:
+        evaluation = InternshipEnterpriseEval(
+            tenant_id=context.tenant_id,
+            internship_id=record.id,
+            student_id=record.student_id,
+            batch_id=record.batch_id,
+            position_name=record.position_name,
+            source="ENTERPRISE",
+            source_type="ENTERPRISE_ONLINE",
+            placement_snapshot_id=placement.id,
+            enterprise_id=record.enterprise_id,
+            position_id=record.position_id,
+        )
+        db.add(evaluation)
+    else:
+        evaluation.version = int(evaluation.version or 0) + 1
+        evaluation.school_review_comment = None
+        evaluation.reviewed_by_name = None
+        evaluation.reviewed_at = None
+
+    evaluation.mentor_name = mentor_name
+    evaluation.enterprise_contact_id = contact_id
+    evaluation.overall_comment = comment
+    evaluation.recommend_hire = bool(payload.get("recommendHire"))
+    evaluation.recorded_by_user_id = str(context.user_id)
+    evaluation.recorded_by_name = mentor_name
+    evaluation.recorded_at = datetime.utcnow()
+    evaluation.submit_status = "SUBMITTED"
+    evaluation.school_review_status = "PENDING"
+    for column, value in scores.items():
+        setattr(evaluation, column, value)
+    db.flush()
+
+    db.add(InternshipAuditTrail(
+        tenant_id=context.tenant_id,
+        target_id=evaluation.id,
+        target_type="ENT_EVAL",
+        action="ENTERPRISE_ONLINE_SUBMIT",
+        operator_name=mentor_name,
+        detail_json={
+            "sourceType": "ENTERPRISE_ONLINE",
+            "enterpriseMemberId": str(context.member_id),
+            "enterpriseUserId": str(context.user_id),
+            "companyId": str(context.company_id),
+            "internshipId": str(record.id),
+            "placementSnapshotId": str(placement.id),
+            "positionId": str(record.position_id),
+            "version": int(evaluation.version or 0),
+        },
+        occurred_at=datetime.utcnow(),
+    ))
+    return {
+        "id": str(evaluation.id),
+        "internshipId": str(record.id),
+        "sourceType": "ENTERPRISE_ONLINE",
+        "placementSnapshotId": str(placement.id),
+        "reviewStatus": "PENDING",
+        "version": int(evaluation.version or 0),
+    }

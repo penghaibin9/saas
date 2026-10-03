@@ -1,0 +1,335 @@
+from __future__ import annotations
+
+from fastapi.testclient import TestClient
+from sqlalchemy import delete
+
+from app.core.security import hash_password
+from app.db.session import get_sessionmaker
+from app.main import app
+from app.models import Role, StudentAccountLink, StudentProfile, Tenant, User, UserRole
+
+
+TENANT_ID = 88001
+STAFF_ID = 88011
+STUDENT_ID = 88012
+STAFF_ROLE_ID = 88021
+STUDENT_ROLE_ID = 88022
+MENTOR_ROLE_ID = 88023
+STUDENT_PROFILE_ID = 88031
+
+
+def _seed():
+    db = get_sessionmaker()()
+    try:
+        db.execute(delete(StudentAccountLink).where(StudentAccountLink.tenant_id == TENANT_ID))
+        db.execute(delete(StudentProfile).where(StudentProfile.tenant_id == TENANT_ID))
+        db.execute(delete(UserRole).where(UserRole.tenant_id == TENANT_ID))
+        db.execute(delete(Role).where(Role.tenant_id == TENANT_ID))
+        db.execute(delete(User).where(User.tenant_id == TENANT_ID))
+        db.execute(delete(Tenant).where(Tenant.id == TENANT_ID))
+        db.commit()
+        tenant = Tenant(
+            id=TENANT_ID,
+            tenant_code="AUTH-GATE",
+            school_name="浏览器认证验收学校",
+            deploy_mode="SAAS",
+            db_mode="SHARED",
+            status="ACTIVE",
+        )
+        staff_role = Role(
+            id=STAFF_ROLE_ID,
+            tenant_id=TENANT_ID,
+            role_code="SCHOOL_ADMIN",
+            role_name="学校管理员",
+            role_type="SYSTEM",
+            status="ACTIVE",
+        )
+        mentor_role = Role(
+            id=MENTOR_ROLE_ID, tenant_id=TENANT_ID, role_code="INTERN_MENTOR",
+            role_name="实习指导教师", role_type="SYSTEM", status="ACTIVE",
+        )
+        student_role = Role(
+            id=STUDENT_ROLE_ID,
+            tenant_id=TENANT_ID,
+            role_code="STUDENT",
+            role_name="学生",
+            role_type="SYSTEM",
+            status="ACTIVE",
+        )
+        staff = User(
+            id=STAFF_ID,
+            tenant_id=TENANT_ID,
+            login_name="auth.staff",
+            real_name="认证管理员",
+            password_hash=hash_password("Staff-Evidence-2026!"),
+            user_type="SCHOOL_ADMIN",
+            status="ACTIVE",
+            must_change_password=False,
+            credential_version=0,
+        )
+        student = User(
+            id=STUDENT_ID,
+            tenant_id=TENANT_ID,
+            login_name="202688012",
+            real_name="认证学生",
+            password_hash=hash_password("Student-Evidence-2026!"),
+            user_type="STUDENT",
+            status="ACTIVE",
+            must_change_password=False,
+            credential_version=0,
+        )
+        student_profile = StudentProfile(
+            id=STUDENT_PROFILE_ID,
+            tenant_id=TENANT_ID,
+            student_no="202688012",
+            real_name="认证学生",
+            current_stage="ENROLLED",
+            student_status="NORMAL",
+            status="ACTIVE",
+        )
+        student_link = StudentAccountLink(
+            tenant_id=TENANT_ID,
+            student_id=STUDENT_PROFILE_ID,
+            user_id=STUDENT_ID,
+            link_status="ACTIVE",
+            bound_login_name="202688012",
+            bound_student_no="202688012",
+            source="IDENTITY_IMPORT",
+        )
+        db.add_all([
+            tenant,
+            staff_role,
+            mentor_role,
+            student_role,
+            staff,
+            student,
+            student_profile,
+            student_link,
+            UserRole(
+                tenant_id=TENANT_ID,
+                user_id=STAFF_ID,
+                role_id=STAFF_ROLE_ID,
+                status="ACTIVE",
+            ),
+            UserRole(
+                tenant_id=TENANT_ID, user_id=STAFF_ID, role_id=MENTOR_ROLE_ID, status="ACTIVE",
+            ),
+            UserRole(
+                tenant_id=TENANT_ID,
+                user_id=STUDENT_ID,
+                role_id=STUDENT_ROLE_ID,
+                status="ACTIVE",
+            ),
+        ])
+        db.commit()
+    finally:
+        db.close()
+
+
+def _login(client: TestClient, *, login_name: str, password: str, client_type: str, session_id: str):
+    response = client.post(
+        "/api/v1/auth/browser-login",
+        json={
+            "tenantCode": "AUTH-GATE",
+            "loginName": login_name,
+            "password": password,
+            "clientType": client_type,
+        },
+        headers={"X-Browser-Session-Id": session_id},
+    )
+    return response
+
+
+def test_staff_browser_login_refresh_me_logout_real_mysql():
+    _seed()
+    with TestClient(app) as client:
+        session_id = "staff-tab-auth-evidence"
+        login = _login(
+            client,
+            login_name="auth.staff",
+            password="Staff-Evidence-2026!",
+            client_type="PC",
+            session_id=session_id,
+        )
+        assert login.status_code == 200, login.text
+        payload = login.json()
+        assert payload["code"] == 0
+        data = payload["data"]
+        assert data["user"]["userId"] == f"db-{STAFF_ID}"
+        assert data["currentRole"]["roleCode"] == "SCHOOL_ADMIN"
+        assert data["tenantId"] == str(TENANT_ID)
+        assert data["accessToken"]
+        assert "refreshToken" not in data
+        assert "httponly" in login.headers["set-cookie"].lower()
+
+        me = client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert me.status_code == 200, me.text
+        me_data = me.json()["data"]
+        assert me_data["user"]["realName"] == "认证管理员"
+        assert me_data["currentRole"]["roleCode"] == "SCHOOL_ADMIN"
+        assert me_data["tenantId"] == str(TENANT_ID)
+
+        rbac = client.get(
+            "/api/v1/rbac/current-context",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert rbac.status_code == 200, rbac.text
+        rbac_data = rbac.json()["data"]
+        assert rbac_data["currentRole"]["roleCode"] == "SCHOOL_ADMIN"
+        assert rbac_data["moduleEntitlements"] == ["internship"]
+        assert "internship.*" in rbac_data["permissionPatterns"]
+
+        batches = client.get(
+            "/api/v1/internship/batches?page=1&pageSize=20",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert batches.status_code == 200, batches.text
+        assert batches.json()["code"] == 0
+        assert batches.json()["data"]["total"] == 0
+
+        refreshed = client.post(
+            "/api/v1/auth/browser-refresh",
+            headers={
+                "X-Browser-Session": "staff",
+                "X-Browser-Session-Id": session_id,
+            },
+        )
+        assert refreshed.status_code == 200, refreshed.text
+        refresh_data = refreshed.json()["data"]
+        assert refresh_data["accessToken"]
+        assert "refreshToken" not in refresh_data
+
+        logout = client.post(
+            "/api/v1/auth/browser-logout",
+            headers={
+                "X-Browser-Session": "staff",
+                "X-Browser-Session-Id": session_id,
+                "Authorization": f"Bearer {refresh_data['accessToken']}",
+            },
+        )
+        assert logout.status_code == 200, logout.text
+        assert logout.json()["data"]["invalidated"] is True
+
+        denied = client.post(
+            "/api/v1/auth/browser-refresh",
+            headers={
+                "X-Browser-Session": "staff",
+                "X-Browser-Session-Id": session_id,
+            },
+        )
+        assert denied.status_code == 401
+
+
+def test_student_browser_channel_and_cross_surface_fail_closed_real_mysql():
+    _seed()
+    with TestClient(app) as student_client:
+        session_id = "student-tab-auth-evidence"
+        login = _login(
+            student_client,
+            login_name="202688012",
+            password="Student-Evidence-2026!",
+            client_type="STUDENT_PC",
+            session_id=session_id,
+        )
+        assert login.status_code == 200, login.text
+        data = login.json()["data"]
+        assert data["user"]["userType"] == "STUDENT"
+        assert data["currentRole"]["roleCode"] == "STUDENT"
+        assert data["user"]["studentNo"] == "202688012"
+
+        me = student_client.get(
+            "/api/v1/auth/me",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert me.status_code == 200, me.text
+        assert me.json()["data"]["currentRole"]["roleCode"] == "STUDENT"
+
+        portal_config = student_client.get(
+            "/api/v1/mobile/me/portal-config",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert portal_config.status_code == 200, portal_config.text
+        portal_data = portal_config.json()["data"]
+        assert portal_data["enabled"] is True
+        assert portal_data["modules"]["internship"] is True
+        assert portal_data["brand"]["schoolName"] == "浏览器认证验收学校"
+
+        internship_my = student_client.get(
+            "/api/v1/portal/internship/my",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert internship_my.status_code == 200, internship_my.text
+        assert internship_my.json()["code"] == 0
+        assert internship_my.json()["data"]["hasData"] is False
+
+        denied_staff_route = student_client.get(
+            "/api/v1/internship/batches?page=1&pageSize=20",
+            headers={"Authorization": f"Bearer {data['accessToken']}"},
+        )
+        assert denied_staff_route.status_code == 403, denied_staff_route.text
+
+    with TestClient(app) as wrong_surface:
+        denied_student = _login(
+            wrong_surface,
+            login_name="auth.staff",
+            password="Staff-Evidence-2026!",
+            client_type="STUDENT_PC",
+            session_id="wrong-student-tab",
+        )
+        assert denied_student.status_code == 403
+
+        denied_staff = _login(
+            wrong_surface,
+            login_name="202688012",
+            password="Student-Evidence-2026!",
+            client_type="PC",
+            session_id="wrong-staff-tab",
+        )
+        assert denied_staff.status_code == 403
+
+
+
+def test_teacher_mobile_login_exposes_assigned_roles_and_switches_without_logout_real_mysql():
+    _seed()
+    with TestClient(app) as client:
+        login = client.post("/api/v1/auth/login", json={
+            "tenantCode":"AUTH-GATE","loginName":"auth.staff","password":"Staff-Evidence-2026!","clientType":"TEACHER_MINI"})
+        assert login.status_code == 200, login.text
+        data = login.json()["data"]
+        assert data["currentRole"]["roleCode"] == "SCHOOL_ADMIN"
+        assert [r["roleCode"] for r in data["availableRoles"]] == ["SCHOOL_ADMIN","INTERN_MENTOR"]
+        switched = client.post("/api/v1/auth/switch-role",
+            headers={"Authorization":f"Bearer {data['accessToken']}"},
+            json={"roleCode":"INTERN_MENTOR","refreshToken":data["refreshToken"]})
+        assert switched.status_code == 200, switched.text
+        out = switched.json()["data"]
+        assert out["currentRole"]["roleCode"] == "INTERN_MENTOR"
+        assert out["currentRole"]["contextId"] == "role-intern_mentor"
+        assert out["refreshToken"] != data["refreshToken"]
+        context = client.get("/api/v1/rbac/current-context",
+            headers={"Authorization":f"Bearer {out['accessToken']}"})
+        assert context.status_code == 200, context.text
+        assert context.json()["data"]["currentRole"]["roleCode"] == "INTERN_MENTOR"
+        assert "internship.student.view" in context.json()["data"]["permissionPatterns"]
+        replay = client.post("/api/v1/auth/switch-role",
+            headers={"Authorization":f"Bearer {data['accessToken']}"},
+            json={"roleCode":"SCHOOL_ADMIN","refreshToken":data["refreshToken"]})
+        assert replay.status_code == 401
+
+
+def test_teacher_mobile_role_switch_rejects_unassigned_role_before_consuming_refresh_real_mysql():
+    _seed()
+    with TestClient(app) as client:
+        data = client.post("/api/v1/auth/login", json={
+            "tenantCode":"AUTH-GATE","loginName":"auth.staff","password":"Staff-Evidence-2026!","clientType":"TEACHER_MINI"}).json()["data"]
+        denied = client.post("/api/v1/auth/switch-role",
+            headers={"Authorization":f"Bearer {data['accessToken']}"},
+            json={"roleCode":"SECURITY_AUDITOR","refreshToken":data["refreshToken"]})
+        assert denied.status_code == 403
+        ok = client.post("/api/v1/auth/switch-role",
+            headers={"Authorization":f"Bearer {data['accessToken']}"},
+            json={"roleCode":"INTERN_MENTOR","refreshToken":data["refreshToken"]})
+        assert ok.status_code == 200, ok.text

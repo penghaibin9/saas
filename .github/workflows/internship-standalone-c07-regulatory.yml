@@ -1,0 +1,98 @@
+name: Internship Standalone C07 Regulatory Reporting
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "products/internship-platform/backend/app/models/internship_regulatory_reporting.py"
+      - "products/internship-platform/backend/alembic/versions/0007_yiyang_regulatory_reporting.py"
+      - "products/internship-platform/backend/alembic/versions/0023_yiyang_regulatory_file_evidence.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_regulatory_reporting_service.py"
+      - "products/internship-platform/backend/app/modules/internship/routers/internship_regulatory_reporting.py"
+      - "products/internship-platform/backend/app/models/__init__.py"
+      - "products/internship-platform/backend/app/api/router.py"
+      - "products/internship-platform/backend/app/config.py"
+      - "products/internship-platform/backend/tests/test_yiyang_c07_regulatory_reporting.py"
+      - ".github/workflows/internship-standalone-c07-regulatory.yml"
+  workflow_dispatch:
+
+jobs:
+  c07-g18:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: c07_test
+          MYSQL_DATABASE: internship_c07
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pc07_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:c07_test@127.0.0.1:3306/internship_c07?charset=utf8mb4
+      JWT_SECRET: c07-actions-secret-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install standalone backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Compile C07 authority
+        run: |
+          python -m py_compile \
+            products/internship-platform/backend/app/models/internship_regulatory_reporting.py \
+            products/internship-platform/backend/app/modules/internship/services/internship_regulatory_reporting_service.py \
+            products/internship-platform/backend/app/modules/internship/routers/internship_regulatory_reporting.py
+      - name: Upgrade empty MySQL through G18 file evidence
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade ix0023
+      - name: Verify C07/G18 database facts
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["DATABASE_URL"])
+          expected = {
+              "t_internship_regulatory_template_version",
+              "t_internship_regulatory_task",
+              "t_internship_regulatory_task_row",
+          }
+          with engine.connect() as db:
+              version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+              tables = set(db.execute(text(
+                  "SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()"
+              )).scalars())
+              template_columns = set(db.execute(text(
+                  "SELECT column_name FROM information_schema.columns "
+                  "WHERE table_schema=DATABASE() AND table_name='t_internship_regulatory_template_version'"
+              )).scalars())
+              task_columns = set(db.execute(text(
+                  "SELECT column_name FROM information_schema.columns "
+                  "WHERE table_schema=DATABASE() AND table_name='t_internship_regulatory_task'"
+              )).scalars())
+          assert version == "ix0023", version
+          assert expected <= tables, sorted(expected - tables)
+          assert {"source_file_id", "source_file_name", "source_file_sha256"} <= template_columns
+          assert {"output_file_id", "output_sha256", "error_file_id", "error_sha256"} <= task_columns
+          print({
+              "version": version,
+              "tables": sorted(expected),
+              "templateEvidenceColumns": sorted(
+                  {"source_file_id", "source_file_name", "source_file_sha256"} & template_columns
+              ),
+              "taskEvidenceColumns": sorted(
+                  {"output_file_id", "output_sha256", "error_file_id", "error_sha256"} & task_columns
+              ),
+          })
+          PY
+      - name: Run C07/G18 acceptance only
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_c07_regulatory_reporting.py

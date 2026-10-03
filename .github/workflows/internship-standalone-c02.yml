@@ -1,0 +1,81 @@
+name: Internship Standalone C02 Checkin
+
+on:
+  workflow_dispatch:
+
+jobs:
+  c02:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: c02_test
+          MYSQL_DATABASE: internship_c02
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pc02_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:c02_test@127.0.0.1:3306/internship_c02?charset=utf8mb4
+      JWT_SECRET: c02-actions-secret-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install C02 backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Compile C02 authority
+        run: |
+          python -m py_compile             products/internship-platform/backend/app/modules/internship/services/internship_checkin_evidence_service.py             products/internship-platform/backend/app/modules/internship/services/internship_student_checkin_service.py             products/internship-platform/backend/app/modules/internship/services/internship_checkin_exemption_service.py             products/internship-platform/backend/app/api/v1/mobile_internship_student.py             products/internship-platform/backend/app/api/v1/mobile_internship_context.py
+      - name: Upgrade empty MySQL to ix0004
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade ix0004
+      - name: Verify C02 MySQL facts only
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as db:
+              version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+              columns = set(db.execute(text(
+                  "SELECT column_name FROM information_schema.columns "
+                  "WHERE table_schema=DATABASE() AND table_name='t_internship_checkin'"
+              )).scalars())
+              exemption = db.execute(text(
+                  "SELECT COUNT(*) FROM information_schema.tables "
+                  "WHERE table_schema=DATABASE() AND table_name='t_internship_checkin_exemption'"
+              )).scalar_one()
+          assert version == "ix0004", version
+          required = {
+              "watermarked_file_id", "evidence_sha256", "watermarked_sha256",
+              "watermark_text", "timezone_name", "timezone_offset_minutes",
+              "coordinate_system", "location_provider", "country_region",
+          }
+          assert required <= columns, sorted(required - columns)
+          assert int(exemption) == 1
+          print({"version": version, "c02Columns": len(required), "exemptionTable": True})
+          PY
+      - name: Run Yiyang G05-G08 only
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_c02_checkin.py
+      - name: Verify mobile source closure
+        run: python products/internship-platform/scripts/check_mobile_import_closure.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: products/internship-platform/mobile/package.json
+      - name: Install standalone mobile dependencies
+        working-directory: products/internship-platform/mobile
+        run: npm install --no-audit --no-fund
+      - name: Build standalone WeChat mobile
+        working-directory: products/internship-platform/mobile
+        run: npm run build:mp-weixin

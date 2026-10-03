@@ -1,0 +1,327 @@
+<template>
+  <div v-if="visible" class="app-confirm-dialog__mask" :class="{ 'sa-workspace-overlay': affairsWorkspace }" @click.self="onCancel">
+    <div class="app-confirm-dialog" :class="`is-${size}`" role="dialog" aria-modal="true" :aria-label="title">
+      <div class="app-confirm-dialog__header" :class="`is-${effType}`">
+        <span class="app-confirm-dialog__icon">{{ effType === 'danger' ? '!' : '?' }}</span>
+        <span class="app-confirm-dialog__title">{{ title }}</span>
+      </div>
+
+      <div class="app-confirm-dialog__body">
+        <p v-if="displayMessage" class="app-confirm-dialog__message">{{ displayMessage }}</p>
+        <slot />
+
+        <div v-if="requireReason" class="app-confirm-dialog__reason">
+          <label class="app-confirm-dialog__label">
+            {{ reasonLabel }}<span class="app-confirm-dialog__required">*</span>
+          </label>
+          <AppQuickPhrases
+            v-if="phraseSceneKey"
+            :scene-key="phraseSceneKey"
+            :group="phraseGroup"
+            @pick="onPickPhrase"
+          />
+          <AppTemplateChips
+            v-if="reasonChips.length"
+            :options="reasonChips"
+            @pick="onPickPhrase"
+          />
+          <textarea
+            ref="reasonEl"
+            :aria-label="reasonLabel"
+            v-model="reason"
+            class="app-confirm-dialog__textarea"
+            :placeholder="reasonPlaceholder"
+            rows="3"
+          />
+          <div v-if="reasonError" class="app-confirm-dialog__error">{{ reasonError }}</div>
+        </div>
+
+        <label v-if="showNotify" class="app-confirm-dialog__notify">
+          <input v-model="notify" type="checkbox" />
+          {{ notifyLabel }}
+        </label>
+      </div>
+
+      <div class="app-confirm-dialog__footer">
+        <button type="button" class="acd-btn" @click="onCancel">{{ cancelText }}</button>
+        <button
+          type="button"
+          class="acd-btn acd-btn--confirm"
+          :class="`is-${effType}`"
+          :disabled="busy || confirmDisabled"
+          @click="onConfirm"
+        >
+          {{ busy ? '提交中…' : confirmText }}
+        </button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script>
+/**
+ * AppConfirmDialog 统一二次确认弹窗
+ * 依据 V2.1 §11.2 / §13.4：
+ *  - 退回/驳回等高风险操作必须触发本弹窗
+ *  - requireReason=true 时原因必填，少于 reasonMinLength（默认5）字不允许提交
+ *  - 确认按钮必须写清楚动作（confirmText），不允许只写“确定”
+ * Props: visible(v-model)、title、message、type: primary|warning|danger、
+ *        confirmText、cancelText、requireReason、reasonLabel、reasonPlaceholder、
+ *        reasonMinLength、showNotify（是否显示“通知学生”勾选）、notifyLabel、submitting（防重复提交）、
+ *        phraseSceneKey/phraseGroup（学工中心场景化词库）、reasonChips（调用方直传的原因芯片文案数组）
+ * Emits: update:visible、confirm({ reason, notify })、cancel
+ * Slots: default（补充说明 / 影响范围 / 附件区）
+ */
+import AppQuickPhrases from './AppQuickPhrases.vue'
+import AppTemplateChips from './form/AppTemplateChips.vue'
+import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
+
+export default {
+  name: 'AppConfirmDialog',
+  inject: { affairsWorkspace: { default: false } },
+  components: { AppQuickPhrases, AppTemplateChips },
+  props: {
+    visible: { type: Boolean, default: false },
+    title: { type: String, required: true },
+    message: { type: String, default: '' },
+    /** content: message 的别名，方便调用方语义化传参 */
+    content: { type: String, default: '' },
+    type: {
+      type: String,
+      default: 'warning',
+      validator: (v) => ['primary', 'warning', 'danger'].includes(v)
+    },
+    /** danger: 便捷布尔，等价 type='danger'（优先级高于 type） */
+    danger: { type: Boolean, default: false },
+    confirmText: { type: String, default: '确认' },
+    confirmDisabled: { type: Boolean, default: false },
+    size: {
+      type: String,
+      default: 'default',
+      validator: (value) => ['default', 'wide'].includes(value)
+    },
+    cancelText: { type: String, default: '取消' },
+    requireReason: { type: Boolean, default: false },
+    initialReason: { type: String, default: '' },
+    reasonLabel: { type: String, default: '处理原因' },
+    reasonPlaceholder: { type: String, default: '请填写具体原因，便于对方理解和修改' },
+    reasonMinLength: { type: Number, default: 5 },
+    showNotify: { type: Boolean, default: false },
+    notifyLabel: { type: String, default: '通知学生' },
+    submitting: { type: Boolean, default: false },
+    /** loading: submitting 的别名 */
+    loading: { type: Boolean, default: false },
+    /** 快捷用语场景 key（见 @/utils/quickPhrases.js）；不传则不显示快捷用语区 */
+    phraseSceneKey: { type: String, default: '' },
+    /** 快捷用语分组（如谈话类型/宿舍检查类型），命中分组的词条置顶 */
+    phraseGroup: { type: String, default: '' },
+    /** 驳回/原因快捷芯片（调用方直传文案数组，与 phraseSceneKey 二选一） */
+    reasonChips: { type: Array, default: () => [] }
+  },
+  emits: ['update:visible', 'confirm', 'cancel'],
+  data() {
+    return { reason: '', notify: true, reasonError: '' }
+  },
+  computed: {
+    displayMessage() {
+      return this.content || this.message
+    },
+    effType() {
+      return this.danger ? 'danger' : this.type
+    },
+    busy() {
+      return this.loading || this.submitting
+    }
+  },
+  watch: {
+    visible(v) {
+      if (v) {
+        this.reason = this.initialReason
+        this.notify = true
+        this.reasonError = ''
+      }
+    }
+  },
+  methods: {
+    onCancel() {
+      this.$emit('update:visible', false)
+      this.$emit('cancel')
+    },
+    onConfirm() {
+      if (this.requireReason) {
+        const trimmed = this.reason.trim()
+        if (trimmed.length < this.reasonMinLength) {
+          this.reasonError = `${this.reasonLabel}不能少于 ${this.reasonMinLength} 个字`
+          return
+        }
+      }
+      this.reasonError = ''
+      this.$emit('confirm', { reason: this.reason.trim(), notify: this.notify })
+    },
+    onPickPhrase(text) {
+      const el = this.$refs.reasonEl
+      const { value, selStart, selEnd } = insertAtCursor(el, this.reason, text)
+      this.reason = value
+      this.$nextTick(() => applyInsertion(el, selStart, selEnd))
+    }
+  }
+}
+</script>
+
+<style scoped>
+.app-confirm-dialog__mask {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-mask);
+  z-index: calc(var(--z-modal) + 10);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: var(--space-6);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.app-confirm-dialog {
+  width: 460px;
+  max-width: 100%;
+  margin-block: auto;
+  flex: 0 0 auto;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  /* 长表单由 mask 承担整框纵向滚动，dialog 自身继续保持 overflow 可见。
+     不能 overflow:hidden：body 里插槽常放 AppStudentPicker 等下拉选择器，
+     其结果面板是相对 body 内部元素绝对定位、超出弹窗自身高度展开的，
+     hidden 会把选项列表从中间截断，看起来"显示不全/太短"。 */
+}
+.app-confirm-dialog.is-wide {
+  width: 760px;
+}
+.app-confirm-dialog__header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-5) var(--space-6) 0;
+}
+.app-confirm-dialog__icon {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.is-primary .app-confirm-dialog__icon {
+  background: var(--primary-50);
+  color: var(--primary-600);
+}
+.is-warning .app-confirm-dialog__icon {
+  background: var(--warning-50);
+  color: var(--warning-600);
+}
+.is-danger .app-confirm-dialog__icon {
+  background: var(--danger-50);
+  color: var(--danger-600);
+}
+.app-confirm-dialog__title {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+.app-confirm-dialog__body {
+  padding: var(--space-4) var(--space-6);
+}
+.app-confirm-dialog__message {
+  margin: 0 0 var(--space-3);
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  line-height: var(--line-height-base);
+}
+.app-confirm-dialog__label {
+  display: block;
+  font-size: var(--font-size-base);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+.app-confirm-dialog__required {
+  color: var(--danger-600);
+  margin-left: 2px;
+}
+.app-confirm-dialog__textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-base);
+  border-radius: var(--radius-base);
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--font-size-base);
+  font-family: var(--font-family-base);
+  color: var(--text-primary);
+  resize: vertical;
+}
+.app-confirm-dialog__textarea:focus {
+  outline: none;
+  border-color: var(--primary-500);
+}
+.app-confirm-dialog__error {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-xs);
+  color: var(--danger-600);
+}
+.app-confirm-dialog__notify {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  font-size: var(--font-size-base);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.app-confirm-dialog__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-6) var(--space-5);
+}
+.acd-btn {
+  height: 34px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-base);
+  border: 1px solid var(--border-base);
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+}
+.acd-btn:hover {
+  border-color: var(--border-dark);
+}
+.acd-btn--confirm {
+  color: var(--text-inverse);
+  border: none;
+}
+.acd-btn--confirm.is-primary {
+  background: var(--primary-600);
+}
+.acd-btn--confirm.is-primary:hover {
+  background: var(--primary-700);
+}
+.acd-btn--confirm.is-warning {
+  background: var(--warning-600);
+}
+.acd-btn--confirm.is-warning:hover {
+  background: var(--warning-700);
+}
+.acd-btn--confirm.is-danger {
+  background: var(--danger-600);
+}
+.acd-btn--confirm.is-danger:hover {
+  background: var(--danger-700);
+}
+.acd-btn--confirm:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+</style>

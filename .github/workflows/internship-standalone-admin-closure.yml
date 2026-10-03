@@ -1,0 +1,41 @@
+name: Internship Standalone Admin Closure
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/admin-web/**"
+      - "products/internship-platform/scripts/check_admin_import_closure.py"
+      - ".github/workflows/internship-standalone-admin-closure.yml"
+
+jobs:
+  admin-closure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Verify standalone admin imports
+        run: python products/internship-platform/scripts/check_admin_import_closure.py
+
+      - name: Verify standalone route surface
+        working-directory: products/internship-platform/admin-web
+        run: npm run check:routes
+
+      - name: Install standalone admin dependencies
+        working-directory: products/internship-platform/admin-web
+        run: npm install --no-audit --no-fund
+
+      - name: Build standalone admin
+        working-directory: products/internship-platform/admin-web
+        run: npm run build

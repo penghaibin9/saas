@@ -1,0 +1,1 @@
+"""Standalone shared services."""
