@@ -160,3 +160,83 @@ test('switching a verified teacher identity clears the previous schedule-change 
   assert.equal(page.state, 'ready')
   assert.equal(reads, 2)
 })
+
+function stopApplication() {
+  const writes = []
+  const session = { identity: { tenantId: '1', userId: '2', activeContextId: '3' },
+    realUser: { tenantId: '1' }, currentRole: 'academic', persistedIdentityVerified: true }
+  const page = changePage({ session, me: async () => {}, teacherApi: {
+    submitAcademicScheduleChange: async body => { writes.push(JSON.parse(JSON.stringify(body))); return { changeId: '71', courseName: '测试课程' } },
+    getAcademicScheduleChanges: async () => ({ list: [], total: 0 })
+  } })
+  page._pageActive = true
+  page.items = [{ itemId: '33103', courseName: '测试课程', startWeek: 1, endWeek: 18, weekParity: 'ALL' }]
+  page.reason = '第六周停课申请'
+  page.makeupPlan = '另行安排补课并通知学生'
+  page.onType({ detail: { value: '1' } })
+  return { page, writes }
+}
+
+test('停课只提交明确选择的一次教学周，不携带隐藏的调课目标', async () => {
+  const { page, writes } = stopApplication()
+  page.targetWeekday = '4'; page.targetSlotNo = '4'; page.targetClassroom = '旧教室'
+  page.targetStartWeek = '2'; page.targetEndWeek = '12'
+  page.stopWeek = '6'
+  assert.equal(page.canSubmit, true)
+  await page.doSubmit()
+  await setImmediate()
+  assert.equal(writes.length, 1)
+  assert.equal(writes[0].originItemId, '33103')
+  assert.equal(writes[0].changeType, 'STOP')
+  assert.equal(writes[0].targetStartWeek, 6)
+  assert.equal(writes[0].targetEndWeek, 6)
+  assert.equal(writes[0].targetWeekday, null)
+  assert.equal(writes[0].targetSlotNo, null)
+  assert.equal(writes[0].targetClassroom, null)
+  assert.equal(page.stopWeek, '')
+})
+
+test('停课拒绝缺失、非整数、超出课位范围和不匹配单双周的教学周', async () => {
+  const { page, writes } = stopApplication()
+  for (const value of ['', '0', '-1', '6.5', '1e2', '19', '9007199254740992']) {
+    page.stopWeek = value
+    assert.equal(page.canSubmit, false, value)
+    assert.ok(page.stopWeekError, value)
+    await page.doSubmit()
+  }
+  page.items[0].weekParity = 'ODD'; page.stopWeek = '6'
+  assert.equal(page.canSubmit, false)
+  await page.doSubmit()
+  page.stopWeek = '7'
+  assert.equal(page.canSubmit, true)
+  page.items[0].weekParity = 'EVEN'
+  assert.equal(page.canSubmit, false)
+  assert.equal(writes.length, 0)
+})
+
+test('停课与调课切换及更换原课位均要求重新明确教学周，调课原请求保留', () => {
+  const { page } = stopApplication()
+  page.stopWeek = '6'
+  page.onType({ detail: { value: '0' } })
+  assert.equal(page.stopWeek, '')
+  assert.equal(page.targetStartWeek, '')
+  assert.equal(page.targetEndWeek, '')
+  page.targetWeekday = '5'; page.targetSlotNo = '2'; page.targetStartWeek = '6'; page.targetEndWeek = '8'
+  page.targetClassroom = '新教室'; page.parityIndex = 2
+  const body = page._body()
+  assert.equal(body.targetWeekday, 5)
+  assert.equal(body.targetSlotNo, 2)
+  assert.equal(body.targetStartWeek, 6)
+  assert.equal(body.targetEndWeek, 8)
+  assert.equal(body.targetWeekParity, 'EVEN')
+  assert.equal(body.targetClassroom, '新教室')
+  page.onType({ detail: { value: '1' } })
+  assert.equal(page.stopWeek, '')
+  assert.equal(page.targetStartWeek, '')
+  assert.equal(page.targetEndWeek, '')
+  assert.equal(page.canSubmit, false)
+  page.stopWeek = '6'
+  page.onItem({ detail: { value: '0' } })
+  assert.equal(page.stopWeek, '')
+  assert.equal(page.canSubmit, false)
+})

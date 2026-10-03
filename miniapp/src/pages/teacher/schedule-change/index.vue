@@ -84,7 +84,11 @@
             <view class="sc__row"><text class="sc__row-k">目标教室</text><input :disabled="submitting" class="sc__input" v-model="targetClassroom" placeholder="可选" @input="invalidateConflict" /></view>
           </template>
           <view class="sc__row" v-if="typeKey === 'MAKEUP'"><text class="sc__row-k">补课说明</text><input :disabled="submitting" class="sc__input" v-model="makeupPlan" placeholder="可选" /></view>
-          <view class="sc__row" v-if="typeKey === 'STOP'"><text class="sc__row-k">后续安排</text><input :disabled="submitting" class="sc__input" v-model="makeupPlan" placeholder="停课须填写后续安排" /></view>
+          <template v-if="typeKey === 'STOP'">
+            <view class="sc__row"><text class="sc__row-k">停课教学周</text><input :disabled="submitting" class="sc__input" type="number" v-model="stopWeek" placeholder="填写一次停课的教学周" aria-label="停课教学周" @input="invalidateConflict" /></view>
+            <text v-if="stopWeekError" class="sc__conflict-bad">{{ stopWeekError }}</text>
+            <view class="sc__row"><text class="sc__row-k">后续安排</text><input :disabled="submitting" class="sc__input" v-model="makeupPlan" placeholder="停课须填写后续安排" /></view>
+          </template>
           <view class="sc__row" style="border-bottom:none;"><text class="sc__row-k">事由</text><input :disabled="submitting" class="sc__input" v-model="reason" placeholder="至少 5 字" /></view>
         </view>
 
@@ -129,7 +133,7 @@ export default {
       changesHasMore: false, acting: false, changePage: 1,
       items: [], itemIndex: 0, typeIndex: 0, parityIndex: 0,
       targetWeekday: '', targetSlotNo: '', targetStartWeek: '', targetEndWeek: '', targetClassroom: '',
-      makeupPlan: '', reason: '', checking: false, submitting: false,
+      stopWeek: '', makeupPlan: '', reason: '', checking: false, submitting: false,
       conflictChecked: false, conflictResult: null, checkedFingerprint: '', receipt: null,
       requestedItemId: '', scheduleState: 'idle', scheduleError: '', unknownWrites: {}, writeStorageBlocked: false
     }
@@ -161,6 +165,7 @@ export default {
       this.changesTotal = 0
       this.changesHasMore = false
       this.targetWeekday = ''; this.targetSlotNo = ''; this.targetStartWeek = ''; this.targetEndWeek = ''; this.targetClassroom = ''
+      this.stopWeek = ''
       this.requestedItemId = ''
       this.tab = 'list'
       this.items = []
@@ -208,8 +213,18 @@ export default {
     parityLabels() { return PARITIES.map((p) => p.label) },
     currentItemId() { const i = this.items[this.itemIndex]; return i ? i.itemId : null },
     bodyFingerprint() { return JSON.stringify(this._body()) },
+    stopWeekError() {
+      if (this.typeKey !== 'STOP') return ''
+      const raw = String(this.stopWeek).trim()
+      const week = Number(raw)
+      if (!/^\d+$/.test(raw) || !Number.isSafeInteger(week) || week < 1) return '请填写一个有效的停课教学周（正整数）'
+      const item = this.items[this.itemIndex] || {}
+      if ((Number(item.startWeek) > 0 && week < Number(item.startWeek)) || (Number(item.endWeek) > 0 && week > Number(item.endWeek))) return '停课教学周须在原课位的上课周范围内'
+      if ((item.weekParity === 'ODD' && week % 2 === 0) || (item.weekParity === 'EVEN' && week % 2 === 1)) return '所选教学周不是原课位的上课周'
+      return ''
+    },
     conflictReady() { return this.typeKey === 'STOP' || (this.conflictChecked && !this.conflictResult && this.checkedFingerprint === this.bodyFingerprint) },
-    canSubmit() { return !!this.currentItemId && this.conflictReady }
+    canSubmit() { return !!this.currentItemId && this.conflictReady && !this.stopWeekError }
   },
   onBackPress() { if (this.tab !== 'new') return false; this.backToApplications(); return true },
   methods: {
@@ -231,6 +246,7 @@ export default {
       this.items = []; this.itemIndex = this.requestedItemId ? -1 : 0
       this.typeIndex = 0; this.parityIndex = 0
       this.targetWeekday = ''; this.targetSlotNo = ''; this.targetStartWeek = ''; this.targetEndWeek = ''; this.targetClassroom = ''
+      this.stopWeek = ''
       this.reason = ''; this.makeupPlan = ''
       this.receipt = null; this.unknownWrites = {}; this.writeStorageBlocked = true
       this.acting = false; this.submitting = false; this.checking = false
@@ -335,18 +351,27 @@ export default {
       }
     },
     invalidateConflict() { this.conflictChecked = false; this.conflictResult = null; this.checkedFingerprint = '' },
-    onItem(e) { this.itemIndex = Number(e.detail.value); this.invalidateConflict() },
-    onType(e) { this.typeIndex = Number(e.detail.value); this.invalidateConflict() },
+    onItem(e) { this.itemIndex = Number(e.detail.value); this.stopWeek = ''; this.invalidateConflict() },
+    onType(e) {
+      const wasStop = this.typeKey === 'STOP'
+      this.typeIndex = Number(e.detail.value)
+      if (wasStop !== (this.typeKey === 'STOP')) {
+        this.stopWeek = ''; this.targetStartWeek = ''; this.targetEndWeek = ''
+      }
+      this.invalidateConflict()
+    },
     onParity(e) { this.parityIndex = Number(e.detail.value); this.invalidateConflict() },
     _body() {
+      const isStop = this.typeKey === 'STOP'
+      const week = isStop && !this.stopWeekError ? Number(String(this.stopWeek).trim()) : null
       return {
         originItemId: this.currentItemId, changeType: this.typeKey, reason: this.reason.trim(),
-        targetWeekday: this.targetWeekday ? Number(this.targetWeekday) : null,
-        targetSlotNo: this.targetSlotNo ? Number(this.targetSlotNo) : null,
-        targetStartWeek: this.targetStartWeek ? Number(this.targetStartWeek) : null,
-        targetEndWeek: this.targetEndWeek ? Number(this.targetEndWeek) : null,
-        targetWeekParity: PARITIES[this.parityIndex].key,
-        targetClassroom: this.targetClassroom.trim() || null,
+        targetWeekday: !isStop && this.targetWeekday ? Number(this.targetWeekday) : null,
+        targetSlotNo: !isStop && this.targetSlotNo ? Number(this.targetSlotNo) : null,
+        targetStartWeek: isStop ? week : this.targetStartWeek ? Number(this.targetStartWeek) : null,
+        targetEndWeek: isStop ? week : this.targetEndWeek ? Number(this.targetEndWeek) : null,
+        targetWeekParity: isStop ? (this.items[this.itemIndex]?.weekParity || 'ALL') : PARITIES[this.parityIndex].key,
+        targetClassroom: isStop ? null : this.targetClassroom.trim() || null,
         makeupPlan: this.makeupPlan.trim() || null
       }
     },
@@ -409,6 +434,7 @@ export default {
           toast('已提交')
           this.reason = ''; this.makeupPlan = ''; this.targetWeekday = ''; this.targetSlotNo = ''
           this.targetStartWeek = ''; this.targetEndWeek = ''; this.targetClassroom = ''
+          this.stopWeek = ''
           this.invalidateConflict()
           this.tab = 'list'; this.load(1)
         })
