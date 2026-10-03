@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
 
-function mount(name, studentApi, confirm = async () => ({ confirm: true })) {
+function mount(name, studentApi, confirm = async () => ({ confirm: true }), pickerTimers = { setTimeout, clearTimeout }) {
   // 旧用例只关心“本人记录”的处理结果，未重复填写分页元数据。页面改为严格
   // 服务端分页后，测试夹具统一补齐一个单页正式响应；专门分页用例仍传入完整元数据。
   if (name === 'recognition' && typeof studentApi?.getMyRecognition === 'function') {
@@ -114,7 +114,7 @@ function mount(name, studentApi, confirm = async () => ({ confirm: true })) {
     return session.generation
   }
   const uni = { getStorageSync: key => storage.get(key) || '', setStorageSync: (key, value) => storage.set(key, value), removeStorageSync: key => storage.delete(key) }
-  const context = vm.createContext({ studentApi, uni, currentSessionGeneration,
+  const context = vm.createContext({ studentApi, uni, currentSessionGeneration, ...pickerTimers,
     modalConfirm: confirm, isUncertainWriteError: e => !e?.biz, createSubmitLock: () => ({ run: fn => fn() }),
     AcademicPageNav: {}, AcademicPageState: {}, AcademicMaterials: {}, MobileAcademicDecisionCard: {}, safeToast() {}, toast() {}, go() {}, clampPercent: n => Math.max(0, Math.min(100, n)) })
   for (const helper of ['pending-ledger.js', 'read-page.js', 'application-page.js']) {
@@ -527,6 +527,51 @@ test('recheck draft restores by stable grade id after records change their order
   await page.load(); page.picked = 1; page.reason = '核对平时成绩'; page.showForm = true; hook('onHide')
   grades.reverse(); const resumed = reopen(); await resumed.load()
   assert.equal(resumed.grades[resumed.picked].gradeId, 'b'); assert.equal(resumed.reason, '核对平时成绩')
+})
+
+test('复查取消未确认滚轮值后重建选择器，已确认成绩和草稿保持不变', async () => {
+  const timers = new Map()
+  let timerId = 0
+  const grades = [{ gradeId: '90071992547409931', courseName: '已确认课程', score: 77 }, { gradeId: '90071992547409932', courseName: '临时滚轮课程', score: 83 }]
+  const { page, hook } = mount('recheck', {
+    getMyRecheck: async () => ({ items: [], page: 1, pageSize: 20, total: 0, hasMore: false }),
+    getMyTranscript: async () => ({ items: grades })
+  }, undefined, {
+    setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay }); return id },
+    clearTimeout(id) { timers.delete(id) }
+  })
+  await page.load()
+  page.onGradeChange({ detail: { value: '0' } })
+  page.reason = '核对本人正式成绩'
+  page.showForm = true
+  page.onGradePickerCancel()
+  assert.equal(page.picked, 0)
+  assert.equal(page.grades[page.picked].gradeId, '90071992547409931')
+  assert.equal(page.reason, '核对本人正式成绩')
+  assert.equal(page.gradePickerKey, 0, '关闭动画期间不能提前卸载原选择器')
+  assert.equal(page.gradePickerResetting, true)
+  const first = timers.get(timerId)
+  assert.equal(first.delay, 300)
+  first.fn()
+  assert.equal(page.gradePickerKey, 1)
+  assert.equal(page.gradePickerResetting, false)
+  assert.equal(page.picked, 0)
+  page.onGradeChange({ detail: { value: '1' } })
+  page.onGradePickerCancel()
+  timers.get(timerId).fn()
+  assert.equal(page.gradePickerKey, 2)
+  assert.equal(page.picked, 1)
+  assert.equal(page.grades[page.picked].gradeId, '90071992547409932')
+  page.onGradePickerCancel()
+  const pending = timerId
+  const late = timers.get(pending).fn
+  page.onGradePickerCancel()
+  assert.equal(timers.has(pending), false, '连续取消只保留最后一次收尾计时')
+  const latest = timerId
+  hook('beforeUnmount')
+  assert.equal(timers.has(latest), false, '卸载后不再重建旧页面选择器')
+  late()
+  assert.equal(page.gradePickerKey, 2, '即使关闭回调迟到也不能修改已卸载页面')
 })
 
 test('403 read is restricted, not empty or a generic transient error', async () => {
