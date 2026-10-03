@@ -152,7 +152,7 @@ mixins: [academicApplicationPage],
 button, input, textarea { font-family: inherit; }
 .rc__group { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); font-weight: 600; margin-top: var(--space-1); }
 .rc__input { width: 100%; height: 40px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); box-sizing: border-box; }
-.rc__picker { line-height: 40px; color: var(--text-primary); }
+.rc__picker { height: auto; min-height: 44px; padding: 8px var(--space-3); line-height: 24px; overflow-wrap: anywhere; color: var(--text-primary); }
 .rc__textarea { width: 100%; min-height: 60px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: var(--space-2); box-sizing: border-box; }
 .rc__ph { color: var(--text-tertiary); }
 .rc__tip { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); }
