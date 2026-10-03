@@ -30,6 +30,39 @@ def test_flow_has_twelve_stages_and_exactly_six_states():
     assert service.FLOW_STATUSES == {"NOT_STARTED", "ACTION_REQUIRED", "BLOCKED", "READY", "DONE", "NOT_APPLICABLE"}
 
 
+def test_program_projection_preserves_historical_graduates_cohort_and_status(monkeypatch):
+    from datetime import date
+    from app.modules.academic_affairs.services import academic_affairs_archive_rule_evaluator as semantic
+    rows = [Row(id=1, student_no="1", student_status="REGISTERED", major_id=3, grade="2023", class_id=4),
+            Row(id=2, student_no="2", student_status="GRADUATED", major_id=3, grade="2023", class_id=4),
+            Row(id=3, student_no="3", student_status="NORMAL", major_id=3, grade="2026", class_id=4),
+            Row(id=4, student_no="4", student_status="WITHDRAWN", major_id=3, grade="2023", class_id=4)]
+    db = MagicMock()
+    query = db.query.return_value
+    query.filter.return_value = query
+    query.all.return_value = rows
+    monkeypatch.setattr(semantic, "_tid", lambda: 7)
+    graduates = []
+    def archived(db, term, ids):
+        graduates.extend(ids)
+        return {2}
+    monkeypatch.setattr(semantic, "_archived_term_graduate_ids", archived)
+    resolve = MagicMock(return_value=Row(status="RESOLVED", program=Row(id=9)))
+    monkeypatch.setattr(semantic, "resolve_student_program", resolve)
+    monkeypatch.setattr(semantic, "validate_program_db", lambda *args, **kwargs: {"issues": []})
+    term = Row(id=52, year_code="2023-2024", term_no=1, end_date=date(2024, 1, 20))
+    result = semantic.evaluate_program(db, term, college_ids={128}, cache={})
+    assert {column.key for column in db.query.call_args.args} == {
+        "id", "tenant_id", "college_id", "major_id", "class_id", "grade", "student_status", "student_no"}
+    assert graduates == [2]
+    coverage = result["evidence"][0]
+    assert coverage["enrolledStudents"] == 2
+    assert coverage["archivedGraduates"] == 1
+    assert coverage["outOfScopeStudents"] == 1
+    assert resolve.call_count == 1
+    assert resolve.call_args.kwargs["as_of"] == term.end_date
+
+
 @pytest.mark.parametrize("status,class_name", [("ASSIGNED", "甲教学班"), ("ASSIGNED", None), ("READY", "甲教学班"), ("READY", None)])
 def test_teacher_workbench_reads_real_task_class_field(monkeypatch, status, class_name):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
@@ -514,6 +547,38 @@ def test_read_only_schedule_projection_never_requests_resource_locks(monkeypatch
     service._schedule_batch_projection(db, Row(id=1), batch, 12, {})
     assert conflicts.call_args.kwargs == {"lock": False}
     assert live.call_args.kwargs == {"lock": False}
+
+
+def test_college_cross_schedule_matches_canonical_pairs_and_reuses_only_request_facts(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_schedule_truth_service as truth
+    from app.modules.academic_affairs.services.academic_affairs_schedule_conflict_index import iter_same_slot_pairs
+    def item(i, weekday, week, teacher):
+        return Row(id=i, weekday=weekday, slot_no=1, start_week=week, end_week=week,
+                   week_parity="ALL", teacher_key=teacher, teacher_name=None, class_id=None, classroom_id=None)
+    own = [item(1, 1, 2, "A"), item(2, 2, 2, "B")]
+    other = [item(3, 1, 2, "A"), item(4, 1, 3, "A"), item(5, 2, 2, "C"), item(6, 3, 2, "A")]
+    monkeypatch.setattr(service, "_tid", lambda: 7)
+    live = MagicMock(return_value=[30])
+    load = MagicMock(return_value=other)
+    monkeypatch.setattr(truth, "_live_batch_ids", live)
+    monkeypatch.setattr(truth, "_items", load)
+    def old_count(rows):
+        ids = {row.id for row in rows}
+        return sum(1 for left, right in iter_same_slot_pairs([*rows, *other])
+            if (left.id in ids) != (right.id in ids) and truth._weeks_overlap(left, right)
+            and {(k, v) for k, v, _ in truth._resources(left)} & {(k, v) for k, v, _ in truth._resources(right)})
+    cache = {}
+    term, batch = Row(id=52), Row(id=20)
+    assert service._college_cross_schedule_count(None, term, batch, own, cache) == old_count(own) == 1
+    assert service._college_cross_schedule_count(None, term, batch, own[1:], cache) == old_count(own[1:]) == 0
+    assert load.call_count == live.call_count == 1
+    assert live.call_args.kwargs == {"lock": False}
+    service._college_cross_schedule_count(None, term, Row(id=21), own, cache)
+    service._college_cross_schedule_count(None, Row(id=53), batch, own, cache)
+    monkeypatch.setattr(service, "_tid", lambda: 8)
+    service._college_cross_schedule_count(None, term, batch, own, cache)
+    service._college_cross_schedule_count(None, term, batch, own, {})
+    assert load.call_count == 5
 
 
 def test_task_confirmation_uses_college_confirm_permission_after_teacher_confirmation():

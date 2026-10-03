@@ -177,7 +177,16 @@ foreach ($Item in $Services) {
     $Ready = $false
     $Deadline = (Get-Date).AddSeconds(60)
     do {
-        try { $Response = Invoke-WebRequest -UseBasicParsing -Uri $Item.Url -TimeoutSec 3; $Ready = $Response.StatusCode -eq 200 } catch { }
+        try {
+            # Daily services are loopback targets; an ambient proxy must not probe them.
+            $LocalHealthRequest = [System.Net.WebRequest]::Create($Item.Url)
+            $LocalHealthRequest.Proxy = $null
+            $LocalHealthRequest.Timeout = 3000
+            $Response = $LocalHealthRequest.GetResponse()
+            try { $Ready = [int]$Response.StatusCode -eq 200 } finally { $Response.Dispose() }
+        } catch [System.Net.WebException] {
+            if ($_.Exception.Response) { $_.Exception.Response.Dispose() }
+        } catch { }
         if (-not $Ready) { Start-Sleep -Milliseconds 500 }
     } while (-not $Ready -and (Get-Date) -lt $Deadline)
     if (-not $Ready) { throw "$($Item.Name) did not become ready. See .codex-temp/daily-sandbox logs." }

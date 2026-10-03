@@ -174,6 +174,49 @@ def test_explicit_read_cache_reuses_context_only_within_same_request_and_tenant(
     assert build.call_count == 3
 
 
+def test_scoped_holders_reuses_guard_role_pairs_without_skipping_scope_or_fresh_reads(monkeypatch):
+    from app.core import affairs_security
+    from app.services import system_role_shadow_service as shadow
+    from app.modules.academic_affairs.services import academic_affairs_grade_task_assignee_guard as guard
+
+    tenant = [1]
+    permission = "academicAffairs.program.review"
+    monkeypatch.setattr(service, "_tid", lambda: tenant[0])
+    monkeypatch.setattr(guard._core, "_tid", lambda: tenant[0])
+    monkeypatch.setattr(shadow, "published_system_role_permissions", lambda db, code: {permission})
+    monkeypatch.setattr(affairs_security, "build_affairs_context", lambda actor, db: Row(
+        scope_type="COLLEGE", college_ids={12} if actor["userId"] == "1" else {99},
+        permission_codes={permission}))
+    first, second = user(1), user(2)
+    first.login_name = "first"
+    second.login_name = "second"
+    first.user_type = second.user_type = "TEACHER"
+    role = Row(id=4, role_code="COLLEGE_ADMIN", role_type="SYSTEM")
+    db = MagicMock()
+    db.execute.return_value.all.return_value = [(1, role), (2, role)]
+    cache = {}
+    assert guard._runtime_permission_holder_ids(db, permission, cache=cache) == [1, 2]
+    assert service._scoped_holders(db, [first], "COLLEGE", Row(id=12), permission, cache=cache) == [first]
+    assert service._scoped_holders(db, [second], "COLLEGE", Row(id=12), permission, cache=cache) == []
+    assert service._scoped_holders(db, [first, second], "COLLEGE", Row(id=12), permission, cache=cache) == [first]
+    assert service._scoped_holders(db, [first], "COLLEGE", Row(id=12), "other.permission", cache=cache) == []
+    assert db.execute.call_count == 1  # 不同候选集合不再重复读取同租户角色关系。
+
+    db.execute.return_value.all.return_value = []  # 新请求已撤销角色，不能沿用旧请求结果。
+    fresh_cache = {}
+    assert guard._runtime_permission_holder_ids(db, permission, cache=fresh_cache) == []
+    assert service._scoped_holders(db, [first], "COLLEGE", Row(id=12), permission, cache=fresh_cache) == []
+    assert db.execute.call_count == 2
+    service._scoped_holders(db, [first], "COLLEGE", Row(id=12), permission, cache={})
+    service._scoped_holders(db, [first], "COLLEGE", Row(id=12), permission)
+    assert db.execute.call_count == 4  # 缺少显式角色缓存及默认无缓存均沿原查询。
+
+    tenant[0] = 2
+    db.execute.return_value.all.return_value = []
+    assert service._scoped_holders(db, [first], "COLLEGE", Row(id=12), permission, cache=cache) == []
+    assert db.execute.call_count == 5  # 旧租户缓存不可跨校使用。
+
+
 def test_permission_holders_request_cache_preserves_roles_permissions_and_tenants(monkeypatch):
     from app.core import permissions
     from app.services import system_role_shadow_service as shadow

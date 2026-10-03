@@ -88,7 +88,7 @@ def _archived_term_graduate_ids(db, term, student_ids):
     )))
 
 
-def evaluate_program(db, term=None, *, college_ids=None) -> dict:
+def evaluate_program(db, term=None, *, college_ids=None, cache=None) -> dict:
     """指定学期范围内学生均能解析到方案，且涉及方案的BLOCKER为0。
 
     历史归档只核当时处于1..12培养学期范围的 cohort；合法未来届/已超学制届属于
@@ -98,7 +98,11 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
     from app.models import StudentProfile
     from .academic_affairs_status_service import is_enrolled
 
-    query = db.query(StudentProfile).filter(
+    query = db.query(
+        StudentProfile.id, StudentProfile.tenant_id, StudentProfile.college_id,
+        StudentProfile.major_id, StudentProfile.class_id, StudentProfile.grade,
+        StudentProfile.student_status, StudentProfile.student_no,
+    ).filter(
         StudentProfile.tenant_id == _tid(),
         StudentProfile.is_deleted.is_(False),
     )
@@ -152,7 +156,8 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
         resolution = resolution_cache.get(resolution_key)
         if resolution is None:
             resolution = resolve_student_program(
-                db, student, tenant_id=_tid(), as_of=replay_as_of
+                db, student, tenant_id=_tid(), as_of=replay_as_of,
+                **({"cache": cache} if cache is not None else {}),
             )
             resolution_cache[resolution_key] = resolution
         if resolution.status != "RESOLVED" or not resolution.program:
@@ -172,7 +177,7 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
     program_ids = sorted({int(resolution.program.id) for _student, resolution in resolved})
     validation_blockers = []
     for program_id in program_ids:
-        validation = validate_program_db(db, program_id)
+        validation = validate_program_db(db, program_id, **({"cache": cache} if cache is not None else {}))
         for issue in validation.get("issues") or []:
             if str(issue.get("level") or issue.get("severity") or "").upper() != "BLOCKER":
                 continue

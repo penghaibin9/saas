@@ -97,11 +97,12 @@ def _refresh_summary(result: dict) -> dict:
     return result
 
 
-def validate_program_db(db, program_id: int) -> dict:
+def validate_program_db(db, program_id: int, *, cache=None) -> dict:
     from app.models import AaProgram, AaProgramBinding, AaProgramPracticeSegment, SchoolClass
 
-    result = validator.validate_program_db(db, program_id)
-    program = db.query(AaProgram).filter(
+    result = validator.validate_program_db(db, program_id, **({"cache": cache} if cache is not None else {}))
+    facts = cache.get(("PROGRAM_VALIDATION_FACTS", _tid(), int(program_id))) if cache is not None else None
+    program = facts[0] if facts is not None else db.query(AaProgram).filter(
         AaProgram.id == int(program_id),
         AaProgram.tenant_id == _tid(),
         AaProgram.is_deleted.is_(False),
@@ -109,7 +110,7 @@ def validate_program_db(db, program_id: int) -> dict:
     if not program:
         raise not_found("培养方案不存在")
 
-    practices = db.query(AaProgramPracticeSegment).filter(
+    practices = facts[1] if facts is not None else db.query(AaProgramPracticeSegment).filter(
         AaProgramPracticeSegment.tenant_id == _tid(),
         AaProgramPracticeSegment.program_id == int(program_id),
         AaProgramPracticeSegment.status == "ACTIVE",

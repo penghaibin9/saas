@@ -295,6 +295,30 @@ def _schedule_task_ids(db, term, batch, college_id, cache):
     return cache[key]
 
 
+def _college_cross_schedule_count(db, term, batch, own_items, cache):
+    """只比较本院课位与其他批次同槽位，复用本请求的真实课位查询。"""
+    from . import academic_affairs_schedule_truth_service as truth
+
+    key = ("FLOW_OTHER_SCHEDULE_SLOTS", _tid(), int(term.id), int(batch.id))
+    if key not in cache:
+        buckets = {}
+        for item in truth._items(db, truth._live_batch_ids(db, term.id, batch.id, lock=False)):
+            buckets.setdefault((item.weekday, item.slot_no), []).append(item)
+        cache[key] = buckets
+    own_ids = {int(row.id) for row in own_items}
+    count = 0
+    for left in own_items:
+        left_resources = None
+        for right in cache[key].get((left.weekday, left.slot_no), ()):
+            if int(right.id) in own_ids or not truth._weeks_overlap(left, right):
+                continue
+            if left_resources is None:
+                left_resources = {(kind, resource) for kind, resource, _label in truth._resources(left)}
+            if left_resources & {(kind, resource) for kind, resource, _label in truth._resources(right)}:
+                count += 1
+    return count
+
+
 def _schedule_batch_projection(db, term, batch, college_id, cache):
     from app.models import AaCourse, AaScheduleItem, AaScheduleScopeHead
     from . import academic_affairs_schedule_gate_service as gate
@@ -324,18 +348,7 @@ def _schedule_batch_projection(db, term, batch, college_id, cache):
         check["complete"] = bool(task_ids) and not any((missing_owner, check["invalidTasks"], check["missingTasks"],
             check["overScheduledTasks"], hard, invalid_items)) and check["scheduledTasks"] == len(task_ids)
         # 全校批次分院进度只核本院课程；其它学院的缺课不能回退本院。
-        from .academic_affairs_schedule_conflict_index import iter_same_slot_pairs
-        other_items = truth._items(db, truth._live_batch_ids(db, term.id, batch.id, lock=False))
-        own_ids = {int(row.id) for row in own_items}
-        conflicts = []
-        for left, right in iter_same_slot_pairs([*own_items, *other_items]):
-            if (int(left.id) in own_ids) == (int(right.id) in own_ids) or not truth._weeks_overlap(left, right):
-                continue
-            left_resources = {(kind, resource) for kind, resource, _label in truth._resources(left)}
-            right_resources = {(kind, resource) for kind, resource, _label in truth._resources(right)}
-            if left_resources & right_resources:
-                conflicts.append(True)
-        cross_count = len(conflicts)
+        cross_count = _college_cross_schedule_count(db, term, batch, own_items, cache)
     blockers = []
     if not check["complete"]:
         blockers.append(_problem("SCHEDULE_NOT_READY", "课表仍有漏排、资源或硬冲突问题，请进入排课工作区处理"))
@@ -683,7 +696,7 @@ def _unit_stages(db, term, ctx, college, school_responsible, resolver_cache):
     counts = _counts(registrations, AaRegistration)
     put(1, status=_counts_state(counts, done=("REGISTERED",), known=("PENDING_REGISTER", "UNREGISTERED")),
         responsible=org("academicAffairs.registration.manage"), evidence={"byStatus": counts})
-    program = semantic.evaluate_program(db, term, college_ids={cid})
+    program = semantic.evaluate_program(db, term, college_ids={cid}, cache=resolver_cache)
     state, blockers = _semantic(program)
     pending_program = _query(db, AaProgram, AaProgram.status.in_(("DRAFT", "RETURNED", "COLLEGE_REVIEW", "ACADEMIC_REVIEW"))).join(
         Major, (Major.id == AaProgram.major_id) & (Major.tenant_id == _tid())

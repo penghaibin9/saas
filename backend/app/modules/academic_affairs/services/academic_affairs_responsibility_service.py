@@ -106,11 +106,18 @@ def _scoped_holders(db, users, org_type, org, permission_code, *, cache=None):
 
     if not users:
         return []
-    pairs = _cached(cache, ("USER_ROLES", tuple(sorted(int(row.id) for row in users))), lambda: db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
-        UserRole.tenant_id == _tid(), UserRole.user_id.in_([row.id for row in users]),
-        UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
-        Role.tenant_id == _tid(), Role.status == "ACTIVE", Role.is_deleted.is_(False),
-    )).all())
+    user_ids = {int(row.id) for row in users}
+    # The permission guard has already read all active user-role pairs for this tenant
+    # when its explicit request cache is present. Keep the original query otherwise.
+    active_pair_key = ("active_role_pairs", _tid())
+    if cache is not None and active_pair_key in cache:
+        pairs = [(uid, role) for uid, role in cache[active_pair_key] if int(uid) in user_ids]
+    else:
+        pairs = _cached(cache, ("USER_ROLES", tuple(sorted(user_ids))), lambda: db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
+            UserRole.tenant_id == _tid(), UserRole.user_id.in_(user_ids),
+            UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
+            Role.tenant_id == _tid(), Role.status == "ACTIVE", Role.is_deleted.is_(False),
+        )).all())
     allowed = set()
     college_id = int(org.id if org_type == "COLLEGE" else org.college_id) if org_type != "SCHOOL" else None
     by_id = {int(row.id): row for row in users}

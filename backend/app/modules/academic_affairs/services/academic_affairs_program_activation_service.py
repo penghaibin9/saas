@@ -136,6 +136,7 @@ def resolve_program_for_scope(
     grade_year: str | None,
     class_id: int | None = None,
     as_of=None,
+    cache=None,
 ) -> ProgramActivationResolution:
     """Resolve the one formal Program version for a major/grade/class scope.
 
@@ -149,12 +150,18 @@ def resolve_program_for_scope(
                                            "未提供专业，无法解析培养方案")
 
     grade = str(grade_year or "").strip()
-    rows = db.scalars(select(AaProgramBinding).where(
-        AaProgramBinding.tenant_id == int(tenant_id),
-        AaProgramBinding.major_id == int(major_id),
-        AaProgramBinding.status.in_(["ACTIVE", "SUPERSEDED"]),
-        AaProgramBinding.is_deleted.is_(False),
-    ).order_by(AaProgramBinding.id.desc())).all()
+    key = ("PROGRAM_SCOPE_BINDINGS", int(tenant_id), int(major_id))
+    if cache is not None and key in cache:
+        rows = cache[key]
+    else:
+        rows = db.scalars(select(AaProgramBinding).where(
+            AaProgramBinding.tenant_id == int(tenant_id),
+            AaProgramBinding.major_id == int(major_id),
+            AaProgramBinding.status.in_(["ACTIVE", "SUPERSEDED"]),
+            AaProgramBinding.is_deleted.is_(False),
+        ).order_by(AaProgramBinding.id.desc())).all()
+        if cache is not None:
+            cache[key] = tuple(rows)
 
     historical_at = _naive_utc(as_of) if as_of is not None else None
     historical = as_of is not None
