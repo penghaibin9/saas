@@ -90,6 +90,37 @@ const batch = (id) => [{ batch: { batchId: id, batchName: id }, courses: [course
 const forbidden = () => Object.assign(new Error('禁止访问'), { status: 403 })
 const conflict = () => Object.assign(new Error('事实已变化'), { status: 409 })
 
+test('成绩复查创建时间把明确时区的时间点显示为北京时间', () => {
+  const page = mount('Recheck')
+  for (const [input, expected] of [
+    ['2026-10-03T12:11:00Z', '2026-10-03 20:11'],
+    ['2026-10-03T20:11:00+08:00', '2026-10-03 20:11'],
+    ['2026-10-03T08:11:00-04:00', '2026-10-03 20:11'],
+    ['2026-10-03T20:11:00+0800', '2026-10-03 20:11'],
+    ['2026-10-03T16:11:00Z', '2026-10-04 00:11']
+  ]) assert.equal(page.dateTime(input), expected, input)
+  page.dispose()
+})
+
+test('成绩复查不偏移无时区学校本地时间和纯日期', () => {
+  const page = mount('Recheck')
+  for (const [input, expected] of [
+    ['2026-10-03T20:11:00', '2026-10-03 20:11'],
+    ['2026-10-03 20:11', '2026-10-03 20:11'],
+    ['2026-10-03', '2026-10-03'],
+    ['2024-02-29', '2024-02-29']
+  ]) assert.equal(page.dateTime(input), expected, input)
+  page.dispose()
+})
+
+test('成绩复查非法或空日期时间显示明确占位', () => {
+  const page = mount('Recheck')
+  for (const input of [undefined, null, '', ' ', '不是日期', '2026-02-30', '2026-10-03T25:11:00Z', '2026-10-03T12:61:00Z', '2026-10-03T12:11:00+25:00']) {
+    assert.equal(page.dateTime(input), '—', String(input))
+  }
+  page.dispose()
+})
+
 for (const action of ['textbook', 'level-register', 'level-cancel', 'exam', 'recheck', 'evaluation']) {
   for (const invalidation of ['identity', 'unmount', 'cancel']) {
     test(`${action}: an in-app confirmation cannot write after ${invalidation}`, async () => {

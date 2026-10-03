@@ -85,7 +85,25 @@ function scoreText(value, status) {
   const special = { EXEMPT: '免修', EXEMPTED: '免修', DEFERRED: '缓考', ABSENT: '缺考' }
   return special[status] || (value == null || value === '' ? '待确认' : `${value} 分`)
 }
-function dateTime(value) { return String(value || '').slice(0, 16).replace('T', ' ') || '—' }
+function dateTime(value) {
+  const source = String(value ?? '').trim()
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.exec(source)
+  if (!match) return '—'
+  const [, year, month, day, hour, minute, second, zone] = match
+  const calendar = new Date(0)
+  calendar.setUTCFullYear(Number(year), Number(month) - 1, Number(day))
+  if (calendar.getUTCFullYear() !== Number(year) || calendar.getUTCMonth() !== Number(month) - 1 || calendar.getUTCDate() !== Number(day)
+    || (hour !== undefined && (Number(hour) > 23 || Number(minute) > 59 || Number(second || 0) > 59))) return '—'
+  // 学校本地日期没有时区信息，保留其原语义；只有明确的时间点才换算北京时间。
+  if (!zone) return hour === undefined ? `${year}-${month}-${day}` : `${year}-${month}-${day} ${hour}:${minute}`
+  const date = new Date(source.replace(' ', 'T'))
+  if (!Number.isFinite(date.getTime())) return '—'
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(date).map(part => [part.type, part.value]))
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`
+}
 function statusText(status) {
   const map = { SUBMITTED: '复查中', UPHELD: '维持原成绩', ADJUSTED: '已调整', REJECTED: '不予受理' }
   return map[String(status || '').toUpperCase()] || status || '待确认'
