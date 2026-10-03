@@ -185,5 +185,117 @@
     "verified-browser/monthly-review-v2.png": "8991ae77d787335745388d2cbf041ee0fe09f681d79da207a9a73ec7376d9afb",
     "verified-browser/summary-review-v2.png": "5e6971b5f52cd3fda481ce6f68596551b42654af757ee932d4cfd2b79af99e14",
     "verified-browser/weekly-review-v2.png": "69b807b93394a5d8f9c6d7b17915d2fb5684d46a98f2aaa0544ac0ba49910ef5"
+  },
+  "scanClosure20261003": {
+    "baseline": "426c732233446cbda53dde5609ee8179875de702",
+    "date": "2026-10-03",
+    "scope": "Standalone attachment scanning and student pending-upload continuation",
+    "overallAccepted": false,
+    "schemaRevision": "ix0026",
+    "newMigration": false,
+    "auditWorkerAlreadyIntegratedInBaseline": true,
+    "scanWorkerIntegrated": true,
+    "mysqlVersion": "8.4.11",
+    "scannerVersion": "ClamAV 1.5.3",
+    "signatureDatabase": "Isolated EICAR test signature only; not production full signature freshness acceptance",
+    "backend": {
+      "passed": 66,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "newScanCases": 16,
+      "existingDeprecationWarnings": 2905
+    },
+    "frontend": {
+      "passed": 8,
+      "buildExit": 0,
+      "targetedEslintExit": 0
+    },
+    "releaseRevisionContract": {
+      "passed": 1
+    },
+    "browser": {
+      "status": "PASS",
+      "receipts": [
+        {
+          "path": "/api/v1/portal/internship/insurance",
+          "id": "1"
+        },
+        {
+          "path": "/api/v1/portal/internship/context/reports",
+          "id": "1"
+        }
+      ],
+      "errors": [],
+      "failures": [],
+      "unauthenticatedStartup": [
+        {
+          "path": "/api/v1/auth/browser-refresh",
+          "status": 401
+        }
+      ],
+      "insuranceFileId": "1",
+      "realWorker": true,
+      "workerHealthcheck": "PASS"
+    },
+    "compose": {
+      "status": "PASS",
+      "kind": "YAML structural checks only",
+      "dockerComposeUpTested": false,
+      "migrationRevision": "ix0026",
+      "quarantineEnabled": true,
+      "sharedFileVolume": true,
+      "clamavPublicPorts": false
+    },
+    "clamdConfigParser": {
+      "exit": 0,
+      "parserVersion": "1.5.3",
+      "productionImageVersion": "1.4",
+      "productionImageStartupTested": false
+    },
+    "designSource": [
+      "existing_code",
+      "project_rule",
+      "user_decision"
+    ],
+    "sourceSha256": {
+      "backend/app/file_scan_worker.py": "f2991cb27f86badc3bc581d8c36042ead7c64eabd8b1f50e2b8cd02f630f90b4",
+      "backend/app/services/file_scan_service.py": "425e1d955d003bfb3c91612246824368aac8dcb7ac403dc98bc35cac968d2d80",
+      "backend/tests/test_standalone_file_scan_mysql.py": "ab60dee5f46754e7e6a7c6e065135614737a5579fd0bec6276045f2468af7135",
+      "deploy/clamav/clamd.conf": "dafd02aa87086260a9798fc7c8250d87980c893a099c07245fb164d5bedaaadc",
+      "enterprise-web/e2e-surfaces/student-file-scan-real.mjs": "70357f66789393a85da69f33a868bf2a09cc8650386233adf86ace11e89a4d40",
+      "student-web/src/services/fileScanState.js": "2d04581cb43904ea5e57dbd257639d93404da011e145cd74eb41f2bf9c476f22",
+      "student-web/tests/file-scan-state.test.mjs": "5d364d5d0b1c44418e242d6591db2ec746a491f89e96a556f9c253ee5e183a22",
+      "backend/app/services/file_access_service.py": "4690181855241125b92a356d91a58884bef8f2abe74f0200275032cc075f2902",
+      "backend/app/services/internship_file_transfer_service.py": "5e5f3c95ca3c234d65831770d5447bcd726ceb48459b30654475ebc9a83c84f3",
+      "deploy/docker-compose.production.yml": "3b0238555f7c38cfcbe0204a1023b6538e7ed2774537f0884c6455a091c5268c",
+      "scripts/seed_write_browser_evidence.py": "6a5a349dd00e2a3b947b6ecca97f29ccd51b6d21711c308a668e148b2227d2ea",
+      "student-web/package.json": "18f8a68a9dab2f22f1af128e3178e7b78c6822edbfaddfc8c054c2852ee8181c",
+      "student-web/src/services/fileSdk.js": "4a7aa3faeacc61f02d52e3da3195efa568753a60b35101b5cf12ee3fc2e8da08",
+      "student-web/src/views/internship/InternshipView.vue": "f068cbfd07f4155e0a327809c11279f197223492ae9538f368bfea6783029e77"
+    },
+    "evidenceSha256": {
+      "pytest.xml": "6dab184b271bd9a753678666b65679b62adc2fc7f6ef7ea168df4dd32b57ccca",
+      "pytest.txt": "1a25148c4ba10743d3ef8ac0a7690a9fce5d55b85eb07e26ca0bcacd676896d2",
+      "scan-browser.json": "5075e1e317efdc4c463cc78c65b62839415584a5c3010d82e7b7f0fa1f492fbc",
+      "compose-contract.json": "86c21a7a6f3798085d6811e930d6c5a4dacfe045deccca920c6f13fb33766ae7",
+      "clamconf.txt": "b288b12282c42bf9fbcbe97038a78ce0ffc913fc35f07b1e40ac745a8d7f7c59",
+      "insurance-scan-pending.png": "0158bcc152a2a92e58297590d0a01972ec9d6fea1fd2b75adbfa2676056c05fb",
+      "insurance-scanned-submitted.png": "2ce031d5ddfb1899a4ce6b2ac08c9d9172a04547a3709b63b3ffcca1bbe75d49",
+      "report-scanned-submitted.png": "c36ee3a58e11e72f525cfec78985af47e2c8725ddc279b09c02e416141db06c8"
+    },
+    "notVerified": [
+      "Production Compose up and full antivirus signature database update",
+      "All Office/RAR/video parsing or rendering",
+      "Operator recovery of DEAD scan jobs",
+      "Mobile/WeChat real devices",
+      "External regulatory receipt",
+      "School historical data migration",
+      "Formal 5000 concurrency and disaster recovery",
+      "15-day run/training/signoff"
+    ],
+    "merged": false,
+    "productionDeployed": false,
+    "actionsRequested": false
   }
 }

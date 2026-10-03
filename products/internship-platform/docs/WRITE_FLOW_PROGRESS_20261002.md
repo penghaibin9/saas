@@ -47,3 +47,22 @@
 
 本地证据：D:/YuekeInternshipPR275-20261002/local-evidence/write-flows-20261002/。
 后续先推进审计消费和扫描处理，不重复声称本轮已经实测的保险/报告图片写链缺失。
+
+## 2026-10-03 增量：隔离附件扫描与学生继续提交
+
+本次基线为 `426c732233446cbda53dde5609ee8179875de702`，审计消费器已在该基线集成；上文 10 月 2 日的“审计草稿未集成、ix0024”是历史记录，不能当作当前状态。当前迁移头为 ix0026，本批不新增或重写迁移。仍在 PR275 原分支，不合并、不部署。
+
+真实缺口是独立上传只把 Office/PDF/视频/压缩包置为 PENDING，却没有扫描任务入队及独立消费器；学生上传结果被当成错误，无法继续使用已上传附件。本次复用 FileJob/FileScanRecord：上传与任务入队同事务；扫描在数据库锁外执行，核对扫描前后 SHA-256/大小；结果、文件放行、扫描记录与审计 outbox 同事务。CLEAN 才可绑定，风险或异常保持拒绝/隔离。包含旧 PENDING 补入队、有限重试、过期锁恢复、并发领取和旧领取令牌隔离，不重置已 DEAD 的任务。
+
+学生保单和报告保留待扫描文件与填写内容，显示中文状态、手动读取扫描结果，只有安全可用才能提交；切换上下文后的迟到响应不能覆盖新表单。上传入口改为中文控件。生产 Compose 补入私网 ClamAV 与共享文件卷的独立消费器，默认开启扫描要求；心跳包含扫描引擎不可用、失败与死信状态。
+
+实际执行与证据：
+
+- 空的隔离 MySQL 8.4.11 升级到 ix0026；扫描、审计与原保险/报告写链组合 **66 通过，0 失败/错误/跳过**。新增扫描 16 项含真实 ClamAV 的 PDF/docx/zip/mp4 样例与 EICAR/压缩包风险拒绝，以及故障注入、并发、篡改、租户隔离、删除不复活和提交故障。保留既有 2905 项弃用警告。
+- `npm test`：8 通过；学生 `npm run build` 与变更文件 ESLint 退出码 0。迁移头/部署版本契约测试 1 通过。
+- 实际 Chromium、后端、MySQL、ClamAV：学生登录→PDF 保单等待扫描且不能提交→启动真实消费器→读取结果→原表单提交→刷新待核验；月报正文及 PDF 附件同样提交、刷新回读。业务 HTTP 失败与 JS 错误均为 0，消费器健康探针退出 0。登录前正常的 browser-refresh 401 单独记录，没有豁免登录后错误。无网络响应替换、身份依赖覆盖或用 API 代办业务提交。
+- `clamconf -n -c products/internship-platform/deploy/clamav` 配置解析退出 0；Compose 结构检查通过。**没有运行生产镜像或 Docker Compose up**；解析及扫描引擎实际版本为 1.5.3，配置的镜像为 1.4。
+
+复验命令使用独立测试库和真实扫描进程：`python -m pytest -q` 指定 `test_standalone_file_scan_mysql.py`、`test_standalone_audit_worker_mysql.py`、`test_standalone_audit_delivery_mysql.py`、`test_standalone_audit_worker_unit.py`、`test_yiyang_write_flows_mysql.py`；浏览器入口为 `enterprise-web/e2e-surfaces/student-file-scan-real.mjs`，前置运行 `scripts/seed_write_browser_evidence.py` 生成合成账号、有效 PDF 和既有实习安排，不预填已提交业务结果。机器结果与源码/证据 SHA-256 追加在原验证 JSON 的 `scanClosure20261003`。
+
+边界：真实扫描实测使用隔离 EICAR 测试签名，不是正式全量病毒库更新验收；通过的是文件扫描门禁，不代表所有 Office、RAR、视频内容的解析/播放已验收。DEAD 任务保持封闭，本批未新增运维重置入口。生产容器启动、手机/小程序真机、监管真实回执、学校历史数据、正式 5000 并发/容灾、15 天试运行与培训签字仍待验证。全部样例为合成测试资料；本批通过不代表全部 88 条招标参数验收完成。

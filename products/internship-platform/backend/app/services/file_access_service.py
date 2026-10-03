@@ -20,6 +20,7 @@ STATUS_TEXT = {
     "CLEAN": "安全",
     "PENDING": "待扫描",
     "SCANNING": "扫描中",
+    "RUNNING": "扫描中",
     "INFECTED": "已拒绝",
     "ERROR": "扫描失败",
 }

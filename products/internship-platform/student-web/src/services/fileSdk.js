@@ -1,13 +1,7 @@
 import { downloadFile, fetchFileBlob, request, uploadFile } from './request'
+import { FILE_STATUS_TEXT, scanState } from './fileScanState'
 
-export const FILE_STATUS_TEXT = Object.freeze({
-  NOT_REQUIRED: '无需扫描',
-  PENDING: '等待安全扫描',
-  RUNNING: '正在安全扫描',
-  CLEAN: '安全可用',
-  INFECTED: '检测到风险，已拒绝',
-  ERROR: '安全扫描失败'
-})
+export { FILE_STATUS_TEXT }
 
 const enc = encodeURIComponent
 
@@ -15,10 +9,8 @@ export function normalizeFile(file = {}) {
   const scanStatus = String(file.scanStatus || 'NOT_REQUIRED').toUpperCase()
   const allowedActions = Array.isArray(file.allowedActions) ? file.allowedActions : []
   return {
-    ...file,
+    ...scanState(file),
     scanStatus,
-    statusText: file.statusText || FILE_STATUS_TEXT[scanStatus] || '状态未知',
-    readyForBusiness: Boolean(file.readyForBusiness),
     allowedActions,
     canPreview: allowedActions.includes('preview'),
     canDownload: allowedActions.includes('download')

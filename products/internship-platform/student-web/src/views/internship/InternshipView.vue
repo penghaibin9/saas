@@ -447,10 +447,18 @@
             <div class="sp-fieldlabel">失效日</div>
             <AppDatePicker v-model="insForm.expiryDate" class="sp-inp" style="margin-bottom:12px" role="end" :start-value="insForm.effectiveDate" label="到期日期" />
             <div class="sp-fieldlabel">保单扫描件</div>
-            <input type="file" class="sp-inp" style="margin-bottom:6px" :disabled="busy" @change="uploadInsurancePolicy" />
+            <label class="sp-btn sp-btn--ghost" :aria-disabled="busy">
+              上传保单扫描件
+              <input type="file" aria-label="上传保单扫描件" style="position:absolute;width:1px;height:1px;opacity:0" :disabled="busy" @change="uploadInsurancePolicy" />
+            </label>
             <p class="sp-muted" style="margin-bottom:12px">{{ insForm.fileId ? '保单文件已上传' : '请上传保单扫描件' }}</p>
+            <div v-if="pendingInsuranceFile" role="status">
+              <p>{{ pendingInsuranceFile.fileName }} · {{ pendingInsuranceFile.statusText }}</p>
+              <button type="button" class="sp-btn sp-btn--ghost" :disabled="busy" @click="refreshPendingInsurance">查看保单扫描结果</button>
+              <p class="sp-muted">填写内容已保留，扫描通过后可继续提交；被拒绝的文件请更换。</p>
+            </div>
             </fieldset>
-            <button class="sp-btn" :disabled="busy || insuranceConflict || insuranceReadOnly" @click="saveInsurance">{{ busy ? '处理中…' : insuranceMeta?.canRenew ? '更新保单并提交核验' : insuranceMeta?.status === 'REJECTED' ? '补正并重新提交' : '提交保险' }}</button>
+            <button class="sp-btn" :disabled="busy || insuranceConflict || insuranceReadOnly || !!pendingInsuranceFile" @click="saveInsurance">{{ busy ? '处理中…' : insuranceMeta?.canRenew ? '更新保单并提交核验' : insuranceMeta?.status === 'REJECTED' ? '补正并重新提交' : '提交保险' }}</button>
             <button v-if="insuranceConflict" class="sp-btn" :disabled="busy" @click="loadTab('insurance', true)">重新读取最新保单</button>
           </section>
           <section class="sp-card">
@@ -562,11 +570,18 @@
               <div class="sp-fieldlabel">下周计划</div><textarea v-model.trim="weeklyForm.planContent" class="sp-inp" style="margin-bottom:12px" placeholder="下周安排" />
               <div class="report-count">周报正文合计 {{ weeklyWordCount }} / {{ reportRules.weeklyMinWords || 30 }} 字</div>
               <div class="sp-fieldlabel">附件（图片/视频/RAR/ZIP/WORD/EXCEL/PDF）</div>
-              <input type="file" class="sp-inp" style="margin-bottom:8px" :disabled="busy" accept="image/*,video/*,.rar,.zip,.doc,.docx,.pdf,.xls,.xlsx" @change="uploadReportAttachment($event,'weekly')" />
+              <label class="sp-btn sp-btn--ghost" :aria-disabled="busy">
+                添加周报附件
+                <input type="file" aria-label="添加周报附件" style="position:absolute;width:1px;height:1px;opacity:0" :disabled="busy" accept="image/*,video/*,.rar,.zip,.doc,.docx,.pdf,.xls,.xlsx" @change="uploadReportAttachment($event,'weekly')" />
+              </label>
               <div v-if="weeklyForm.attachments.length" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
-                <button v-for="(file,index) in weeklyForm.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="removeReportAttachment('weekly',index)">移除 · {{ file.fileName }}</button>
+                <div v-for="(file,index) in weeklyForm.attachments" :key="file.fileId">
+                  <span role="status">{{ file.fileName }} · {{ file.statusText || '已提交的附件' }}</span>
+                  <button type="button" class="sp-btn sp-btn--ghost sp-btn--sm" :disabled="busy" @click="removeReportAttachment('weekly',index)">移除附件</button>
+                </div>
               </div>
-              <button class="sp-btn" :disabled="busy || !weeklyCanSubmit" @click="submitWeekly">{{ weeklyEditing ? '重新提交周报' : '提交周报' }}</button>
+              <button v-if="!scanFilesReady(weeklyForm.attachments)" type="button" class="sp-btn sp-btn--ghost" :disabled="busy" @click="refreshReportScans('weekly')">查看周报附件扫描结果</button>
+              <button class="sp-btn" :disabled="busy || !weeklyCanSubmit || !scanFilesReady(weeklyForm.attachments)" @click="submitWeekly">{{ weeklyEditing ? '重新提交周报' : '提交周报' }}</button>
             </template>
             <template v-else>
               <template v-if="reportTab === '日报'">
@@ -578,11 +593,18 @@
               <div class="sp-fieldlabel">正文 <span>至少 {{ reportMinimum }} 字</span></div><textarea v-model="reportForm.content" class="sp-inp" style="min-height:220px;margin-bottom:6px" :placeholder="reportPlaceholder" />
               <div class="report-count">{{ reportForm.content.trim().length }} / {{ reportMinimum }} 字</div>
               <div class="sp-fieldlabel" style="margin-top:12px">附件（图片/视频/RAR/ZIP/WORD/EXCEL/PDF）</div>
-              <input type="file" class="sp-inp" style="margin-bottom:8px" :disabled="busy" accept="image/*,video/*,.rar,.zip,.doc,.docx,.pdf,.xls,.xlsx" @change="uploadReportAttachment($event,'process')" />
+              <label class="sp-btn sp-btn--ghost" :aria-disabled="busy">
+                添加报告附件
+                <input type="file" aria-label="添加报告附件" style="position:absolute;width:1px;height:1px;opacity:0" :disabled="busy" accept="image/*,video/*,.rar,.zip,.doc,.docx,.pdf,.xls,.xlsx" @change="uploadReportAttachment($event,'process')" />
+              </label>
               <div v-if="reportForm.attachments.length" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
-                <button v-for="(file,index) in reportForm.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="removeReportAttachment('process',index)">移除 · {{ file.fileName }}</button>
+                <div v-for="(file,index) in reportForm.attachments" :key="file.fileId">
+                  <span role="status">{{ file.fileName }} · {{ file.statusText || '已提交的附件' }}</span>
+                  <button type="button" class="sp-btn sp-btn--ghost sp-btn--sm" :disabled="busy" @click="removeReportAttachment('process',index)">移除附件</button>
+                </div>
               </div>
-              <button class="sp-btn" :disabled="busy || !reportCanSubmit" @click="submitReport">{{ processEditing ? '重新提交' : '提交' }}{{ reportTab }}</button>
+              <button v-if="!scanFilesReady(reportForm.attachments)" type="button" class="sp-btn sp-btn--ghost" :disabled="busy" @click="refreshReportScans('process')">查看报告附件扫描结果</button>
+              <button class="sp-btn" :disabled="busy || !reportCanSubmit || !scanFilesReady(reportForm.attachments)" @click="submitReport">{{ processEditing ? '重新提交' : '提交' }}{{ reportTab }}</button>
             </template>
           </section>
           <section class="sp-card">
@@ -721,6 +743,7 @@ import FlowSteps from '../../components/FlowSteps.vue'
 import { portalApi } from '../../services/portalApi'
 import { internshipCoreApi } from '../../services/internshipCoreApi'
 import fileSdk from '../../services/fileSdk'
+import { scanState, scanFilesReady, refreshScanFiles } from '../../services/fileScanState'
 import { usePortalConfigStore } from '../../stores/portalConfig'
 import { useSessionStore } from '../../stores/session'
 import { useUiStore } from '../../stores/ui'
@@ -772,6 +795,8 @@ const reportRules = ref({
 })
 const reportReceipt = ref(null)
 const reportError = ref('')
+let attachmentEpoch = 0
+const pendingInsuranceFile = ref(null)
 const weeklyEditing = computed(() => (my.value.weeklyReports || []).some((item) =>
   Number(item.weekNo || item.week) === Number(weeklyForm.week) && item.status === 'RETURNED'))
 const processType = computed(() => ({
@@ -1076,6 +1101,10 @@ const reportProgress = computed(() => {
 })
 
 function resetSourceStates() {
+  attachmentEpoch++
+  pendingInsuranceFile.value = null
+  weeklyForm.attachments = []
+  reportForm.attachments = []
   Object.values(sourceStates).forEach((state) => Object.assign(state, { status: 'idle', message: '' }))
   leaves.value = []
   leaveReceipt.value = null
@@ -1627,7 +1656,13 @@ async function uploadInsurancePolicy(event) {
     if (epoch !== insuranceEpoch) return
     const fileId = uploaded?.fileId || uploaded?.id
     if (!fileId) throw new Error('上传响应缺少文件标识')
-    if (uploaded.readyForBusiness !== true) throw new Error('文件已接收，仍在安全扫描中，暂不能作为保险凭证提交。原材料已保留，请联系学校确认扫描服务后重试。')
+    const normalized = scanState(uploaded)
+    if (!normalized.readyForBusiness) {
+      pendingInsuranceFile.value = normalized
+      ui.notify('保单已接收，请等待安全扫描后查看结果')
+      return
+    }
+    pendingInsuranceFile.value = null
     insForm.fileId = String(fileId)
     ui.notify('保单文件已上传')
   } catch (e) {
@@ -1638,7 +1673,7 @@ async function uploadInsurancePolicy(event) {
   }
 }
 async function saveInsurance() {
-  if (busy.value || insuranceConflict.value || insuranceReadOnly.value) return
+  if (busy.value || insuranceConflict.value || insuranceReadOnly.value || pendingInsuranceFile.value) return
   insuranceError.value = ''
   if (insuranceMeta.value?.id && !Number.isInteger(insuranceMeta.value.version)) { insuranceError.value = '当前保单版本缺失，请重新读取后再提交。'; return }
   const epoch = insuranceEpoch
@@ -1756,13 +1791,15 @@ async function uploadReportAttachment(event, target) {
   if (!file || busy.value) return
   busy.value = true
   reportError.value = ''
+  const epoch = attachmentEpoch
+  const list = target === 'weekly' ? weeklyForm.attachments : reportForm.attachments
   try {
     const uploaded = await fileSdk.upload(file, { bizType: 'INTERNSHIP_REPORT' })
+    if (epoch !== attachmentEpoch || list !== (target === 'weekly' ? weeklyForm.attachments : reportForm.attachments)) return
     if (!uploaded?.fileId) throw new Error('附件上传响应缺少文件标识')
-    if (uploaded.readyForBusiness !== true) throw new Error('附件尚未通过安全扫描，暂不能提交报告；正文和原附件已保留。')
-    const list = target === 'weekly' ? weeklyForm.attachments : reportForm.attachments
     if (!list.some((item) => String(item.fileId) === String(uploaded.fileId))) {
       list.push({
+        ...scanState(uploaded),
         fileId: String(uploaded.fileId),
         fileName: uploaded.fileName || file.name || '报告附件',
         mimeType: uploaded.mimeType || file.type || '',
@@ -1770,8 +1807,9 @@ async function uploadReportAttachment(event, target) {
         ext: uploaded.ext || ''
       })
     }
-    ui.notify('报告附件已上传')
+    ui.notify(uploaded.readyForBusiness ? '报告附件已上传' : '附件已接收，请等待安全扫描后查看结果')
   } catch (e) {
+    if (epoch !== attachmentEpoch) return
     reportError.value = e?.message || '报告附件上传失败'
     ui.notify(reportError.value)
   } finally {
@@ -1783,6 +1821,41 @@ function removeReportAttachment(target, index) {
   if (busy.value) return
   const list = target === 'weekly' ? weeklyForm.attachments : reportForm.attachments
   list.splice(index, 1)
+}
+async function refreshPendingInsurance() {
+  if (busy.value || !pendingInsuranceFile.value) return
+  const epoch = insuranceEpoch
+  const original = pendingInsuranceFile.value
+  busy.value = true
+  insuranceError.value = ''
+  try {
+    const refreshed = await refreshScanFiles([original], id => fileSdk.metadata(id),
+      () => epoch === insuranceEpoch && original === pendingInsuranceFile.value)
+    if (!refreshed) return
+    pendingInsuranceFile.value = refreshed[0]
+    if (refreshed[0].readyForBusiness) {
+      insForm.fileId = refreshed[0].fileId
+      pendingInsuranceFile.value = null
+      ui.notify('保单安全扫描通过，可提交核验')
+    }
+  } catch (e) {
+    if (epoch === insuranceEpoch) insuranceError.value = '扫描结果读取失败，保单和填写内容已保留，请重试'
+  } finally { busy.value = false }
+}
+async function refreshReportScans(target) {
+  if (busy.value) return
+  const form = target === 'weekly' ? weeklyForm : reportForm
+  const original = form.attachments
+  const epoch = attachmentEpoch
+  busy.value = true
+  reportError.value = ''
+  try {
+    const refreshed = await refreshScanFiles(original, id => fileSdk.metadata(id),
+      () => epoch === attachmentEpoch && original === form.attachments)
+    if (refreshed) form.attachments = refreshed
+  } catch (e) {
+    if (epoch === attachmentEpoch) reportError.value = '扫描结果读取失败，正文和附件已保留，请重试'
+  } finally { busy.value = false }
 }
 async function openReportAttachment(file) {
   try {
@@ -1830,6 +1903,7 @@ function editProcessReport(item) {
   reportError.value = ''
 }
 async function submitWeekly() {
+  if (!scanFilesReady(weeklyForm.attachments)) return
   if (busy.value || !weeklyCanSubmit.value) {
     reportError.value = !weeklyForm.week ? '请填写周次。' : '周报正文合计至少填写 ' + Number(reportRules.value.weeklyMinWords || 30) + ' 字。'
     return
@@ -1865,6 +1939,7 @@ async function submitWeekly() {
   } finally { busy.value = false }
 }
 async function submitReport() {
+  if (!scanFilesReady(reportForm.attachments)) return
   if (busy.value || !reportCanSubmit.value) {
     reportError.value = ['DAILY', 'MONTHLY'].includes(processType.value) && !reportForm.periodKey
       ? (processType.value === 'DAILY' ? '请选择报告日期。' : '请选择报告月份。')

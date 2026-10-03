@@ -95,6 +95,8 @@ def store_upload(data, filename, content_type, purpose, user):
                 scan_required=state=='QUARANTINED',scan_status='PENDING' if state=='QUARANTINED' else 'NOT_REQUIRED',
                 available_at=datetime.utcnow() if state=='AVAILABLE' else None)
             db.add(row); db.flush()
+            from app.services.file_scan_service import enqueue_file_scan
+            enqueue_file_scan(db, row)
             from app.modules.internship.services.internship_audit_service import add_audit
             add_audit(db,target_type='FILE',target_id=row.id,action='FILE_UPLOAD',user=actor,
                       detail={'fileId':str(row.id),'sha256':row.sha256,'sizeBytes':len(data),'purpose':purpose,'status':state})

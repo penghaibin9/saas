@@ -64,6 +64,10 @@ services:
       FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY must be set}
       SENSITIVE_SEARCH_HMAC_KEY: ${SENSITIVE_SEARCH_HMAC_KEY:?SENSITIVE_SEARCH_HMAC_KEY must be set}
       FILE_STORAGE_DIR: /data/files
+      FILE_SCAN_REQUIRED: "true"
+      CLAMAV_ENABLED: "true"
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
     depends_on:
       mysql:
         condition: service_healthy
@@ -119,6 +123,47 @@ services:
     stop_grace_period: 30s
     networks: [internship]
 
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes:
+      - clamav-data:/var/lib/clamav
+      - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    networks: [internship]
+
+  file-scan-worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    command: ["python", "-m", "app.file_scan_worker"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      clamav:
+        condition: service_healthy
+    volumes:
+      - file-data:/data/files
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.file_scan_worker", "--healthcheck"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    stop_grace_period: 120s
+    networks: [internship]
+
   nginx:
     image: nginx:1.27-alpine
     restart: unless-stopped
@@ -141,6 +186,7 @@ volumes:
   mysql-data:
   redis-data:
   file-data:
+  clamav-data:
 
 networks:
   internship:
