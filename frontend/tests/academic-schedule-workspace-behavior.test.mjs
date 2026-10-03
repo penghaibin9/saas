@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
+import { compile } from '@vue/compiler-dom'
+import * as Vue from 'vue'
+import { renderToString } from 'vue/server-renderer'
 
 // Execute the page's actual Options API methods with controlled transport responses.
 function page(name, dependencies = {}, globals = {}) {
@@ -152,6 +155,32 @@ test('teacher change actions carry a concrete teaching week instead of a method 
   state.week = 8
   state.applyChange('ADJUST')
   assert.equal(destination.query.occurrenceWeek, '8')
+})
+
+test('teacher lesson guidance distinguishes no week, selected week, and management query', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaTeacherScheduleView.vue', import.meta.url), 'utf8')
+  const guidance = source.match(/<p v-if="isSelfView && !selectedOccurrenceWeek"[\s\S]*?<p v-else class="mp-note">[\s\S]*?<\/p>/)?.[0]
+  assert.ok(guidance, '课位详情应保留连续的三分支提示')
+  const render = new Function('Vue', compile(guidance, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const component = page('AaTeacherScheduleView', { currentUserFromToken: () => ({ loginName: 'teacher-1' }) })
+  async function guidanceFor(teacherKey, week) {
+    const state = Object.assign(component.data.call({ $route: { params: {} } }), component.methods, {
+      teacherKey, selfKey: 'teacher-1', week, selectedItem: { itemId: '33103' }
+    })
+    const isSelfView = component.computed.isSelfView.call(state)
+    const selectedOccurrenceWeek = component.computed.selectedOccurrenceWeek.call(state)
+    return renderToString(Vue.createSSRApp({ render, setup: () => ({ isSelfView, selectedOccurrenceWeek }) }))
+  }
+  const noWeek = await guidanceFor('teacher-1', null)
+  assert.match(noWeek, /必须先在上方“周次”选择具体教学周/)
+  assert.doesNotMatch(noWeek, /当前为管理查询视图/)
+  const selectedWeek = await guidanceFor('teacher-1', 6)
+  assert.match(selectedWeek, /已选择第6教学周/)
+  assert.match(selectedWeek, /交学院审核，审批前不改动正式课表/)
+  assert.doesNotMatch(selectedWeek, /当前为管理查询视图/)
+  const management = await guidanceFor('other-teacher', 6)
+  assert.match(management, /当前为管理查询视图/)
+  assert.doesNotMatch(management, /已选择第6教学周/)
 })
 
 test('teacher week and semester views reload when switching back to self', () => {
