@@ -41,6 +41,84 @@ function mount(api, query = {}, session = { user: { userId: 'A', studentNo: 'S00
 const lesson = (id, week) => ({ itemId: id, courseName: `第${week}周课程`, weekday: 4, slotNo: 4, startWeek: week, endWeek: week, weekParity: 'ALL' })
 const schedule = (week) => ({ week, currentWeek: 5, teachingWeeks: 18, termCode: '2026-1', items: [lesson(String(week), week)], todayItems: [] })
 
+test('an attendance backlink missing from the authorized week shows a notice without substituting another lesson', async () => {
+  const { page, route } = mount({
+    academicSchedule: async () => ({ ...schedule(2), items: ['33078', '33079', '33082', '33101'].map(id => lesson(id, 2)) }),
+    academicCalendar: async () => ({ weeks: [] })
+  }, { week: '2', lesson: '33072', from: 'attendance' })
+  await page.load(page.routeWeek())
+  assert.equal(page.selectedLesson.value, undefined)
+  assert.match(page.lessonNotice?.value || '', /不在当前本人正式课表|无法核验/)
+  assert.equal(page.items.value.length, 4, 'the authorized week remains available')
+  assert.equal(page.returnedFromAttendance.value, true)
+  assert.equal(route.query.lesson, '33072', 'the requested historical id is never replaced by the first lesson')
+  await page.closeLesson()
+  await vue.nextTick()
+  assert.equal(page.lessonNotice.value, '')
+  assert.equal(route.query.week, '2')
+})
+
+test('a successful retry restores the exact linked decimal id after a failed read, including remount and closing detail', async () => {
+  const id = '9007199254740993123'
+  let fail = true
+  const api = {
+    academicSchedule: async () => {
+      if (fail) throw new TypeError('Failed to fetch')
+      return { ...schedule(2), items: [lesson('9007199254740993124', 2), lesson(id, 2)] }
+    },
+    academicCalendar: async () => ({ weeks: [] })
+  }
+  const { page, route } = mount(api, { week: '2', lesson: id, from: 'attendance' })
+  await page.load(page.routeWeek())
+  assert.equal(page.selectedLesson.value, undefined)
+  assert.match(page.error.value, /网络|读取失败/)
+  fail = false
+  await page.refresh()
+  assert.equal(page.selectedLesson.value?.itemId, id)
+  assert.equal(page.lessonNotice.value, '')
+  const reloaded = mount(api, { ...route.query }).page
+  await reloaded.load(reloaded.routeWeek())
+  assert.equal(reloaded.selectedLesson.value?.itemId, id)
+  await page.closeLesson()
+  await vue.nextTick()
+  await page.refresh()
+  assert.equal(page.selectedLesson.value, undefined, 'refresh cannot reopen a deliberately closed detail')
+})
+
+test('refresh keeps a lesson explicitly opened from the week grid instead of restoring the old missing backlink', async () => {
+  const { page, route } = mount({
+    academicSchedule: async () => ({ ...schedule(2), items: [lesson('33078', 2), lesson('33079', 2)] }),
+    academicCalendar: async () => ({ weeks: [] })
+  }, { week: '2', lesson: '33072', from: 'attendance' })
+  await page.load(page.routeWeek())
+  assert.equal(page.selectedLesson.value, undefined)
+  // The grid button assigns this same item key to the component's selected lesson.
+  page.selectedLessonId.value = page.itemKey(page.items.value[1])
+  assert.equal(page.selectedLesson.value.itemId, '33079')
+  await page.refresh()
+  assert.equal(page.selectedLesson.value?.itemId, '33079')
+  assert.equal(page.lessonNotice.value, '')
+  assert.equal(route.query.lesson, '33072', 'refresh must not treat the old URL as a new selection')
+})
+
+test('a late week response cannot revive an older attendance backlink or hide the current missing-link notice', async () => {
+  const old = deferred()
+  const { page, route } = mount({
+    academicSchedule: async week => week === 2 ? old.promise : schedule(3),
+    academicCalendar: async () => ({ weeks: [] })
+  }, { week: '2', lesson: '33072', from: 'attendance' })
+  const pending = page.load(2)
+  route.query.week = '3'
+  route.query.lesson = '33073'
+  await vue.nextTick(); await setImmediate()
+  old.resolve({ ...schedule(2), items: [lesson('33072', 2)] })
+  await pending
+  assert.equal(page.selectedWeek.value, 3)
+  assert.equal(page.selectedLesson.value, undefined)
+  assert.match(page.lessonNotice?.value || '', /不在当前本人正式课表|无法核验/)
+  assert.equal(route.query.lesson, '33073')
+})
+
 test('configured teaching weeks above thirty remain navigable within the formal ninety-nine-week limit', async () => {
   const weeks = []
   const { page, route } = mount({

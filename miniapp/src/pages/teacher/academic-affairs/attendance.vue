@@ -77,7 +77,7 @@
         <view v-if="!detailLoading && rosterTotal" class="at__progress card">
           <view>
             <text class="at__progress-title">已核对 {{ markedCount }} / {{ rosterTotal }} 人</text>
-            <text class="at__source-note">{{ unmarkedCount ? `还有 ${unmarkedCount} 人未点名。未操作不会按出勤提交。` : '全班已完成点名，请核对后提交。' }}</text>
+            <text class="at__source-note">{{ active.status === 'DRAFT' ? (unmarkedCount ? `还有 ${unmarkedCount} 人未点名。未操作不会按出勤提交。` : '全班已完成点名，请核对后提交。') : '本场考勤已提交，点名结果仅供查看。' }}</text>
             <text class="at__source-note">正式名单：出勤 {{ statusCounts.PRESENT }} · 迟到 {{ statusCounts.LATE }} · 缺勤 {{ statusCounts.ABSENT }} · 请假 {{ statusCounts.LEAVE }}</text>
             <text v-if="rosterIntegrity !== 'READY'" class="at__integrity">名单数据待教务处核对，暂不能提交本场考勤。</text>
           </view>

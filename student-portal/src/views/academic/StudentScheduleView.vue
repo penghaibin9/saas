@@ -29,6 +29,7 @@
       </div>
     </div>
     <div v-else class="stack">
+      <div v-if="lessonNotice" class="notice amber" role="status"><AcademicPrototypeIcon name="circle-info" />{{ lessonNotice }}<RouterLink v-if="returnedFromAttendance" class="btn link small" to="/academic/attendance">返回考勤记录</RouterLink><button class="btn link small" @click="closeLesson">查看本周课表</button></div>
       <div class="toolbar" data-workspace-filter>
         <button class="btn small" aria-label="上一周" :disabled="!selectedWeek || selectedWeek <= 1" @click="moveWeek(-1)"><AcademicPrototypeIcon name="angle-left" /></button>
         <b class="week-label">{{ selectedWeek ? '第' + selectedWeek + '周' : '全部周次' }}{{ weekRange ? ' · ' + weekRange : '' }}</b>
@@ -91,6 +92,9 @@ const route = useRoute()
 const router = useRouter()
 const selectedLesson = computed(() => [...items.value, ...todayItems.value].find((item) => itemKey(item) === selectedLessonId.value))
 const returnedFromAttendance = computed(() => route.query.from === 'attendance')
+const lessonNotice = computed(() => !loading.value && !error.value && route.query.lesson && !selectedLesson.value
+  ? '该课次不在当前本人正式课表中，暂时无法核验详情。'
+  : '')
 
 const days = [
   { value: 1, label: '周一' }, { value: 2, label: '周二' }, { value: 3, label: '周三' },
@@ -262,6 +266,7 @@ async function load(requestedWeek = selectedWeek.value || routeWeek() || null) {
   weekCalendar.value = calendarResult.status === 'fulfilled' ? calendarResult.value?.weeks || [] : []
   calendarError.value = calendarResult.status === 'rejected' ? academicErrorMessage(calendarResult.reason, '校历周次读取失败，课表课程仍按正式课表展示。') : ''
   selectedWeek.value = returnedWeek
+  if (route.query.lesson && !selectedLessonId.value) applyRouteContext()
   loading.value = false
   return true
 }
