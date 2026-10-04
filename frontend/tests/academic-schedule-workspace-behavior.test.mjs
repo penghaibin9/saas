@@ -5,6 +5,7 @@ import test from 'node:test'
 import { compile } from '@vue/compiler-dom'
 import * as Vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
+import * as teaching from '../src/modules/academicAffairs/constants/teaching.js'
 
 // Execute the page's actual Options API methods with controlled transport responses.
 function page(name, dependencies = {}, globals = {}) {
@@ -38,6 +39,39 @@ test('已发布课表的补排入口精确携带原批次', () => {
   component.methods.openWorkbench.call({ $router: { push: route => { destination = route } } }, { batchId: '41' })
   assert.equal(destination.path, '/admin/academic-affairs/scheduling')
   assert.equal(destination.query.batchId, '41')
+})
+
+test('历史和未知课表批次只进入查看，草稿和预发布才进入编排', () => {
+  const component = page('AaScheduleBatchListView', teaching)
+  let destination
+  const state = Object.assign(component.data(), component.methods, { $router: { push: route => { destination = route } } })
+  for (const status of ['SUPERSEDED', 'VOIDED', 'ARCHIVED', 'PUBLISHED', 'UNKNOWN']) {
+    const row = { batchId: '9007199254740997', status }
+    state.openBatch(row)
+    assert.equal(destination.path, '/admin/academic-affairs/schedule/9007199254740997/views')
+    state.openBatch(row, 'edit')
+    assert.equal(destination.path, '/admin/academic-affairs/schedule/9007199254740997/views')
+  }
+  for (const status of ['DRAFT', 'PRE_PUBLISHED']) {
+    const row = { batchId: '9007199254740997', status }
+    state.openBatch(row)
+    assert.equal(destination.path, '/admin/academic-affairs/schedule/9007199254740997/edit')
+    state.openBatch(row, 'views')
+    assert.equal(destination.path, '/admin/academic-affairs/schedule/9007199254740997/views')
+  }
+  assert.equal(state.statusLabel('SUPERSEDED'), '已被新版本替代')
+})
+
+test('真实课表批次动作模板不把历史和未知状态显示成继续排课', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaScheduleBatchListView.vue', import.meta.url), 'utf8')
+  const template = source.match(/<div class="aa-actions">[\s\S]*?<\/div>/)[0]
+  const render = new Function('Vue', compile(template, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const component = page('AaScheduleBatchListView', teaching)
+  for (const status of ['SUPERSEDED', 'VOIDED', 'ARCHIVED', 'PUBLISHED', 'UNKNOWN', 'DRAFT', 'PRE_PUBLISHED']) {
+    const html = await renderToString(Vue.createSSRApp({ render, setup: () => ({ ...component.data(), ...component.methods, row: { batchId: '41', status } }) }))
+    if (['DRAFT', 'PRE_PUBLISHED'].includes(status)) assert.match(html, /继续排课/)
+    else { assert.doesNotMatch(html, /继续排课/); assert.match(html, /查看/) }
+  }
 })
 
 test('publication record failure remains an error; retry clears it after success', async () => {
