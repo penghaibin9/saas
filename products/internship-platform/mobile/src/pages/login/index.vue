@@ -11,9 +11,9 @@
       </view>
 
       <view class="login-form">
-        <label><text>学校编码</text><input v-model.trim="tenantCode" placeholder="例如 YIYANG" /></label>
-        <label><text>{{ mode==='STUDENT_MINI'?'学号 / 登录账号':'工号 / 登录账号' }}</text><input v-model.trim="loginName" /></label>
-        <label><text>密码</text><input v-model="password" password /></label>
+        <label><text>学校编码</text><input id="mobile-login-school" v-model.trim="tenantCode" placeholder="例如 YIYANG" /></label>
+        <label><text>{{ mode==='STUDENT_MINI'?'学号 / 登录账号':'工号 / 登录账号' }}</text><input id="mobile-login-account" v-model.trim="loginName" /></label>
+        <label><text>密码</text><input id="mobile-login-password" v-model="password" password /></label>
         <MobileInlineAlert v-if="error" type="danger" title="登录失败" :description="error" />
         <button class="btn btn-primary" aria-label="登录" data-testid="mobile-login-submit" :disabled="loading" @click="submit">{{ loading?'登录中…':'登录' }}</button>
       </view>

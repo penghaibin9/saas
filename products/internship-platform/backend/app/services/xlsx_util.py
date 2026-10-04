@@ -165,46 +165,45 @@ def read_xlsx(file_bytes: bytes, header_map: dict[str, str]) -> list[dict]:
     wb = load_workbook(
         io.BytesIO(file_bytes), read_only=True, data_only=True, keep_links=False,
     )
-    if len(wb.worksheets) > 10:
-        wb.close()
-        raise AppException("VALIDATION_ERROR", "XLSX 工作表不得超过 10 个")
-    ws = wb["导入模板"] if "导入模板" in wb.sheetnames else wb.worksheets[0]
-    if ws.max_column > 100:
-        wb.close()
-        raise AppException("VALIDATION_ERROR", "XLSX 单表列数不得超过 100")
-    if ws.max_row > MAX_ROWS + 1:
-        wb.close()
-        raise AppException("VALIDATION_ERROR", f"单次导入不得超过 {MAX_ROWS} 行")
-    it = ws.iter_rows(values_only=True)
     try:
-        header = next(it)
-    except StopIteration:
-        wb.close()
-        return []
-    idx_key: dict[int, str] = {}
-    for i, h in enumerate(header):
-        name = str(h).strip() if h is not None else ""
-        name = name.rstrip(" *").strip()
-        if name in header_map:
-            idx_key[i] = header_map[name]
-    out: list[dict] = []
-    for row in it:
-        if row is None:
-            continue
-        d, empty = {}, True
-        for i, key in idx_key.items():
-            v = row[i] if i < len(row) else None
-            s = "" if v is None else str(v).strip()
-            d[key] = s
-            if s:
-                empty = False
-        if not empty:
-            out.append(d)
-        if len(out) > MAX_ROWS:
-            wb.close()
+        if len(wb.worksheets) > 10:
+            raise AppException("VALIDATION_ERROR", "XLSX 工作表不得超过 10 个")
+        ws = wb["导入模板"] if "导入模板" in wb.sheetnames else wb.worksheets[0]
+        if (ws.max_column or 0) > 100:
+            raise AppException("VALIDATION_ERROR", "XLSX 单表列数不得超过 100")
+        if (ws.max_row or 0) > MAX_ROWS + 1:
             raise AppException("VALIDATION_ERROR", f"单次导入不得超过 {MAX_ROWS} 行")
-    wb.close()
-    return out
+        # OOXML dimensions are optional and can understate the actual cells.
+        # Stream the real rows, retaining both row and column ceilings.
+        ws.reset_dimensions()
+        it = ws.iter_rows(values_only=True)
+        header = next(it, ())
+        if len(header) > 100:
+            raise AppException("VALIDATION_ERROR", "XLSX 单表列数不得超过 100")
+        idx_key: dict[int, str] = {}
+        for i, h in enumerate(header):
+            name = str(h).strip() if h is not None else ""
+            name = name.rstrip(" *").strip()
+            if name in header_map:
+                idx_key[i] = header_map[name]
+        out: list[dict] = []
+        for row_no, row in enumerate(it, start=1):
+            if row_no > MAX_ROWS:
+                raise AppException("VALIDATION_ERROR", f"单次导入不得超过 {MAX_ROWS} 行")
+            if len(row) > 100:
+                raise AppException("VALIDATION_ERROR", "XLSX 单表列数不得超过 100")
+            d, empty = {}, True
+            for i, key in idx_key.items():
+                v = row[i] if i < len(row) else None
+                s = "" if v is None else str(v).strip()
+                d[key] = s
+                if s:
+                    empty = False
+            if not empty:
+                out.append(d)
+        return out
+    finally:
+        wb.close()
 
 
 def build_template_xlsx(headers: list[str], sample: list | None = None,
@@ -269,7 +268,7 @@ def build_ledger_xlsx(sheet_title: str, headers: list[str], data_rows: list[list
 
 
 def build_error_rows_xlsx(template_headers: list[str], rows: list[dict], errors: list[dict],
-                          row_values: callable) -> bytes:
+                          row_values: callable, *, reimportable: bool = False) -> bytes:
     """错误行 Excel：原表头 + 错误字段 + 错误原因（仅含出错行）。"""
     err_by_row: dict[int, list[dict]] = {}
     for error in errors or []:
@@ -284,6 +283,12 @@ def build_error_rows_xlsx(template_headers: list[str], rows: list[dict], errors:
         fields = "；".join(str(item.get("field") or "") for item in messages)
         reason = "；".join(str(item.get("message") or "") for item in messages)
         data.append(list(row_values(row)) + [fields, reason])
+    if reimportable:
+        return build_template_xlsx(headers, samples=data, notes=[
+            '请在「导入模板」页修正原数据列后重新上传。',
+            '「错误字段」与「错误原因」仅供核对，重新上传时不会写入学生资料。',
+            '上传仍只进行预校验，核对通过后确认才保存。',
+        ])
     return build_ledger_xlsx(
         "导入错误行", headers, data,
         watermark="以下为未通过预校验的行，请修正后重新导入（仅导入「导入模板」页）",

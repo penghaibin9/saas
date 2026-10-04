@@ -138,6 +138,7 @@ import { canCode } from '@/modules/internship/composables/permission'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { fileSdk } from '@/services/file/fileSdk'
 import { toast } from '@/utils/toast'
+import { formatDateTime, formatDate as displayDate } from '@/utils/dateUtils'
 
 const TYPES = [
   { value: 'AGREEMENT', label: '实习协议' },
@@ -211,8 +212,8 @@ export default {
       const count = (row.recipientCollegeIds || []).length
       return `指定学院（${count} 个）`
     },
-    formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '—' },
-    formatDate(value) { return value ? String(value).slice(0, 10) : '不限' },
+    formatTime(value) { return formatDateTime(value) },
+    formatDate(value) { return value ? displayDate(value) : '不限' },
     formatSize(value) {
       const size = Number(value || 0)
       if (!size) return ''
@@ -300,8 +301,8 @@ export default {
           : [],
         title: this.form.title.trim(),
         content: this.form.content.trim(),
-        validFrom: this.form.validFrom ? this.form.validFrom + 'T00:00:00' : null,
-        validUntil: this.form.validUntil ? this.form.validUntil + 'T23:59:59' : null,
+        validFrom: this.form.validFrom ? new Date(this.form.validFrom + 'T00:00:00').toISOString() : null,
+        validUntil: this.form.validUntil ? new Date(this.form.validUntil + 'T23:59:59').toISOString() : null,
         attachmentFileIds: this.form.attachments.map((item) => String(item.fileId))
       })
       this.submitting = false

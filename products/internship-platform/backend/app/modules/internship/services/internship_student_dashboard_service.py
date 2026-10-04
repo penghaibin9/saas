@@ -21,6 +21,7 @@ from app.modules.internship.services.internship_record_resolver import (
 )
 from app.services.db_service import _iso, _tid, session
 from app.modules.internship.services.internship_eligibility_result import eligibility_result
+from app.modules.internship.services.internship_student_basic_info_service import present as basic_info_present
 
 
 def _student(db, user):
@@ -137,6 +138,7 @@ def get_my_dashboard(user, batch_id=None):
 
         return {
             "hasData": True, "needSelect": False,
+            "basicInfo": basic_info_present(student, editable=ctx.mode != 'history'),
             "historyMode": ctx.mode == "history",
             "recordId": str(record.id), "batchId": str(record.batch_id or ""),
             "batchName": getattr(batch, "batch_name", "") or "",

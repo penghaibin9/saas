@@ -108,6 +108,55 @@ def authorize_file_object(file_obj, bindings: list[Any], user: dict, action: str
     if action in {"download", "preview", "submit", "archive", "bind"} and not _scan_ready(file_obj):
         return False
 
+    if (str(file_obj.biz_type or "").upper() in {"ARCHIVE_PACKAGE", "ARCHIVE_BATCH_PACKAGE"}
+            or any(str(b.biz_type or "").upper() in {"ARCHIVE_PACKAGE", "ARCHIVE_BATCH_PACKAGE"} for b in bindings)):
+        try:
+            from app.services.file_access_resolvers import authorize_archive_package
+            return bool(authorize_archive_package(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
+    if (str(file_obj.biz_type or "").upper() == "INTERNSHIP_NOTICE"
+            or any(str(b.biz_type or "").upper() == "INTERNSHIP_NOTICE" for b in bindings)):
+        try:
+            from app.modules.internship.services.internship_teacher_activity_service import authorize_notice_file
+            return bool(authorize_notice_file(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
+    if (str(file_obj.biz_type or '').upper() == 'INTERNSHIP_EMPLOYMENT'
+            or any(str(b.biz_type or '').upper() == 'INTERNSHIP_EMPLOYMENT' for b in bindings)):
+        try:
+            from app.modules.internship.services.internship_employment_service import authorize_employment_file
+            return bool(authorize_employment_file(db,file_obj,bindings,user or {},action))
+        except Exception:
+            return False
+
+    if (file_obj.biz_type == 'INTERNSHIP_TEACHER_PERIOD_REPORT'
+            or any(b.biz_type == 'INTERNSHIP_TEACHER_PERIOD_REPORT' for b in bindings)):
+        try:
+            from app.modules.internship.services.internship_teacher_activity_service import authorize_teacher_period_file
+            return bool(authorize_teacher_period_file(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
+    if (file_obj.biz_type == 'INTERNSHIP_TEACHER_CHECKIN'
+            or any(binding.biz_type == 'INTERNSHIP_TEACHER_CHECKIN' for binding in bindings)):
+        try:
+            from app.modules.internship.services.internship_teacher_activity_service import authorize_teacher_checkin_file
+            return bool(authorize_teacher_checkin_file(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
+    from app.modules.internship.services.internship_checkin_evidence_service import STUDENT_EVIDENCE_TYPES
+    if (str(file_obj.biz_type or '').upper() in STUDENT_EVIDENCE_TYPES
+            or any(str(binding.biz_type or '').upper() in STUDENT_EVIDENCE_TYPES for binding in bindings)):
+        try:
+            from app.modules.internship.services.internship_checkin_evidence_service import authorize_student_evidence
+            return bool(authorize_student_evidence(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
     resolver = _RESOLVERS.get(str(file_obj.biz_type or "").upper())
     if resolver is not None:
         try:

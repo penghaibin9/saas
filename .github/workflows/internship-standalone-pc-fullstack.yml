@@ -49,7 +49,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       REDIS_KEY_PREFIX: internship-standalone:pc-fullstack
       JWT_SECRET: ci-only-not-production
-      EXPECTED_ALEMBIC_REVISION: ix0023
+      EXPECTED_ALEMBIC_REVISION: ix0030
       FILE_STORAGE_DIR: /tmp/internship-fullstack-files
     steps:
       - uses: actions/checkout@v4

@@ -46,6 +46,8 @@
 import { studentApi } from '@/services/studentApi'
 import { openBusinessFile } from '@/services/fileApi'
 import { toast } from '@/utils/nav'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { formatDateTime } from '@/utils/format'
 
 const TYPE_LABEL = {
   AGREEMENT: '实习协议',
@@ -65,7 +67,8 @@ export default {
     return {
       state: 'loading',
       requestedBatchId: '',
-      notices: []
+      notices: [],
+      hidden: false, loadSequence: 0, generation: currentSessionGeneration()
     }
   },
   onLoad(options = {}) {
@@ -75,15 +78,28 @@ export default {
   onPullDownRefresh() {
     this.load(() => uni.stopPullDownRefresh())
   },
+  onShow() {
+    const reload = this.hidden || this.generation !== currentSessionGeneration()
+    this.hidden = false
+    if (reload) this.load()
+  },
+  onHide() { this.hidden = true; this.loadSequence++ },
+  onUnload() { this.hidden = true; this.loadSequence++ },
   methods: {
     async load(done) {
+      if (this.generation !== currentSessionGeneration()) { this.notices = []; this.requestedBatchId = ''; this.generation = currentSessionGeneration() }
+      const sequence = ++this.loadSequence, generation = currentSessionGeneration(), batchId = this.requestedBatchId
+      const current = () => !this.hidden && sequence === this.loadSequence && generation === currentSessionGeneration() && batchId === this.requestedBatchId
       this.state = 'loading'
       try {
         const dashboard = await studentApi.getInternship(this.requestedBatchId)
+        if (!current()) return
         const rows = await studentApi.getInternshipNotices(dashboard?.batchId || this.requestedBatchId)
+        if (!current()) return
         this.notices = Array.isArray(rows) ? rows : []
         this.state = 'ready'
       } catch (error) {
+        if (!current()) return
         this.state = 'error'
         toast(error?.message || '通知公告加载失败')
       } finally {
@@ -98,8 +114,8 @@ export default {
       if (v === 'IMPORTANT') return 'warning'
       return 'info'
     },
-    formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '—' },
-    formatDate(value) { return value ? String(value).slice(0, 10) : '不限' },
+    formatTime(value) { return formatDateTime(value) },
+    formatDate(value) { return value ? formatDateTime(value).slice(0, 10) : '不限' },
     formatSize(value) {
       const size = Number(value || 0)
       if (!size) return ''

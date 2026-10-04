@@ -551,13 +551,14 @@ def employment_transition_context(internship_id, user=None) -> dict:
         ):
             raise AppException("DATA_CONFLICT", "归档成绩冻结证据与当前正式结果不一致")
 
-        # 就业中心不是 Standalone 核心域。只经 Gateway 读取衔接上下文；
-        # 默认实现明确返回“未配置”，不得因为实习可见就绕过就业侧权限。
-        destination = employment_gateway.get_student_destination(int(record.student_id)) or {}
+        # Only this archived placement's declaration is a valid handoff context.
+        destination = employment_gateway.get_student_destination(int(record.student_id),internship_id=record.id) or {}
         employment_id = str(destination.get("recordId") or "")
         path = str(destination.get("path") or (
-            f"/admin/internship/employment-handoff?internshipId={record.id}&studentId={record.student_id}"
+            f"/admin/internship/employment?batchId={record.batch_id}&internshipId={record.id}&status=ALL"
         ))
+        if employment_id:
+            path += '&registrationId='+employment_id
         return {
             "internshipId": str(record.id),
             "studentId": str(record.student_id),
@@ -573,7 +574,7 @@ def employment_transition_context(internship_id, user=None) -> dict:
             "finalScoreFreezeHash": current_hash,
             "employmentRecordId": employment_id,
             "employmentRecordExists": bool(destination.get("exists") or employment_id),
-            "employmentGatewayStatus": destination.get("status") or "NOT_CONFIGURED",
+            "employmentGatewayStatus": destination.get("status") or "NOT_SUBMITTED",
             "employmentPath": path,
             "resultAuthority": "PUBLISHED_FINAL_SCORE_FROZEN_IN_ARCHIVE",
         }
@@ -775,15 +776,14 @@ def resolve_archive_package_download(package_id, user=None):
             InternshipEvidencePackage.tenant_id == _tid(),
             InternshipEvidencePackage.package_type == "ARCHIVE",
             InternshipEvidencePackage.is_deleted.is_(False)))
-        if not package or package.status == "INVALIDATED" or not package.package_file_id:
+        if not package or package.status != "READY" or not package.package_file_id:
             raise not_found("归档包不存在或不可下载")
         from app.modules.internship.services.internship_scope import (
             assert_internship_record_scope,
         )
         assert_internship_record_scope(db, package.target_id, user, "下载归档包")
-        resolved = file_service.resolve_download(package.package_file_id, user=user)
-        if not resolved:
-            raise not_found("归档包不存在或不可下载")
+        from app.services.file_access_resolvers import resolve_authorized_archive_download
+        resolved = resolve_authorized_archive_download(db, package, user)
         _trail(db, package.target_id, "PACKAGE_DOWNLOAD", {
             "packageId": str(package.id),
             "packageVersion": package.package_version,

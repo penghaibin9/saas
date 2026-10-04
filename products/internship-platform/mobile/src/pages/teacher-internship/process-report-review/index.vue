@@ -49,9 +49,9 @@
             </view>
 
             <view class="pr__brief">
-              <view><text>报告周期</text><text>{{ r.periodKey || '—' }}</text></view>
+              <view><text>报告周期</text><text>{{ r.periodLabel }}</text></view>
               <view><text>正文长度</text><text>{{ r.wordCount || 0 }} 字</text></view>
-              <view><text>数据版本</text><text>v{{ r.version }}</text></view>
+              <view><text>提交版本</text><text>第 {{ r.reportVersion || 1 }} 版</text></view>
             </view>
 
             <template v-if="expanded === r.id">
@@ -71,7 +71,7 @@
                     class="pr__attachment" @click.stop="openAttachment(file)">
                     <view class="flex-1">
                       <text class="t-sm t-bold">{{ file.fileName || '附件' }}</text>
-                      <text class="pr__attachment-meta">{{ file.kind || file.mimeType || '' }}</text>
+                      <text class="pr__attachment-meta">{{ file.kindLabel }}</text>
                     </view>
                     <text class="pr__open">查看</text>
                   </view>
@@ -91,6 +91,7 @@
         </view>
       </view>
     </MobileGlobalState>
+    <ReportFilePreview ref="reportPreview" />
   </view>
 </template>
 
@@ -101,18 +102,21 @@ import {
   teacherInternshipProcessReportReview
 } from '@/services/internshipApi'
 import { useInternshipContextStore } from '@/stores/internshipContext'
-import fileSdk from '@/services/fileSdk'
+import ReportFilePreview from '@/components/ReportFilePreview.vue'
+import { normalizeError } from '@/services/request'
+import { processReportView, reportFileState } from '@/services/weeklyReportPresentation.mjs'
 import { toast } from '@/utils/nav'
 
 export default {
+  components: { ReportFilePreview },
   data() {
     return {
       list: null, state: 'loading', expanded: '', detail: {}, loadingDetail: '', actingId: '',
-      batches: [], batchId: '', batchIndex: 0, page: 1, hasMore: false, loadingMore: false, loadSeq: 0
+      batches: [], batchId: '', batchIndex: 0, page: 1, hasMore: false, loadingMore: false, loadSeq: 0, hidden: false
     }
   },
   computed: {
-    batchLabels() { return this.batches.map((b) => `${b.name} · ${b.status} · ${b.studentCount}人`) },
+    batchLabels() { return this.batches.map((b) => `${b.name} · ${b.studentCount}人`) },
     canReview() { return useInternshipContextStore().can('internship.report.review') },
     dailyCount() { return (this.list || []).filter((item) => String(item.reportType || item.reportTypeLabel || '').includes('DAILY') || String(item.reportTypeLabel || '').includes('日报')).length },
     monthlyCount() { return (this.list || []).filter((item) => String(item.reportType || item.reportTypeLabel || '').includes('MONTH') || String(item.reportTypeLabel || '').includes('月报')).length },
@@ -125,7 +129,9 @@ export default {
     }
   },
   onLoad() { this.load() },
-  onUnload() { this.loadSeq++ },
+  onShow() { if (this.hidden) { this.hidden = false; this.load() } },
+  onHide() { this.hidden = true; this.loadSeq++; this.$refs.reportPreview?.reset() },
+  onUnload() { this.loadSeq++; this.$refs.reportPreview?.reset() },
   onReachBottom() { this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
@@ -152,7 +158,7 @@ export default {
         if (!this.batchId) { this.list = []; this.state = 'ready'; return }
         const data = await teacherInternshipProcessReports(this.batchId, 1, 20)
         if (sequence !== this.loadSeq) return
-        this.list = (data && (data.items || data.list)) || []
+        this.list = ((data && (data.items || data.list)) || []).map(processReportView)
         this.hasMore = !!data?.hasMore
         this.state = 'ready'
       } catch (e) {
@@ -180,10 +186,10 @@ export default {
         const nextPage = this.page + 1
         const data = await teacherInternshipProcessReports(selectedBatch, nextPage, 20)
         if (sequence !== this.loadSeq || selectedBatch !== this.batchId) return
-        this.list = [...(this.list || []), ...(data?.items || [])]
+        this.list = [...(this.list || []), ...(data?.items || []).map(processReportView)]
         this.page = nextPage
         this.hasMore = !!data?.hasMore
-      } catch (e) { if (sequence === this.loadSeq) toast(e?.message || '报告加载失败，请重试') }
+      } catch (e) { if (sequence === this.loadSeq) toast(normalizeError(e).text) }
       finally { if (sequence === this.loadSeq) this.loadingMore = false }
     },
     async toggle(r) {
@@ -198,20 +204,17 @@ export default {
         this.detail = { ...this.detail, [r.id]: data }
       } catch (e) {
         if (sequence !== this.loadSeq) return
-        toast((e && e.message) || '报告正文加载失败')
+        toast(normalizeError(e).text)
         this.expanded = ''
       } finally { if (sequence === this.loadSeq && this.loadingDetail === r.id) this.loadingDetail = '' }
     },
     latestAttachments(reportId) {
       const versions = this.detail[reportId]?.versions || []
-      return versions[0]?.attachments || []
+      return (versions[0]?.attachments || []).map(reportFileState)
     },
     async openAttachment(file) {
-      try {
-        await fileSdk.open(file.fileId)
-      } catch (e) {
-        toast((e && e.message) || '附件暂时无法打开')
-      }
+      await this.$refs.reportPreview.open(file)
+      uni.pageScrollTo({ selector: '.report-preview', duration: 200 })
     },
     review(r, action) {
       if (!this.canReview || this.actingId || this.state !== 'ready') return
@@ -275,9 +278,9 @@ export default {
             await this.load()
           } catch (e) {
             if (String(e && e.code) === 'DATA_CONFLICT') {
-              toast((e && e.message) || '报告已被其他人处理，正在刷新')
+              toast('报告已被其他人处理，正在刷新')
               await this.load()
-            } else toast((e && e.message) || '报告批阅失败，请重试')
+            } else toast(normalizeError(e).text)
           } finally { this.actingId = '' }
         }
       })

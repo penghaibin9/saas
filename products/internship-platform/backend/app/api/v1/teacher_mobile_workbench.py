@@ -26,7 +26,7 @@ TODO_META = {
     "INTERN_CHANGE_APPROVAL": ("CHANGE", "岗位变更", "/pages/teacher-internship/internship-change/index"),
     "INTERN_ENTERPRISE_CHANGE": ("CHANGE", "企业变更", "/pages/teacher-internship/internship-change/index"),
     "INTERN_VISIT_RECTIFY": ("VISIT", "巡访整改", "/pages/teacher-internship/internship-review/index"),
-    "INTERN_EMPLOYMENT_REPORT": ("OTHER", "就业上报", ""),
+    "INTERN_EMPLOYMENT_REPORT": ("OTHER", "就业上报", "/pages/teacher-internship/employment/index"),
 }
 GROUP_LABELS = {"ALL":"全部","REPORT":"报告批阅","ATTENDANCE":"考勤","APPLICATION":"岗位申请",
                 "LEAVE":"请假","CHANGE":"变更","VISIT":"巡访","OTHER":"其他"}
@@ -79,6 +79,8 @@ def _todo_meta(value: str):
 
 def _todo(row):
     group,label,path=_todo_meta(row.todo_type)
+    if row.todo_type == 'INTERN_EMPLOYMENT_REPORT' and path:
+        path += '?registrationId='+str(row.source_biz_id)
     return {"todoId":str(row.id),"todoType":str(row.todo_type or ""),"group":group,
             "groupLabel":GROUP_LABELS.get(group,"其他"),"typeLabel":label,"title":row.title,
             "status":str(row.status or "PENDING").upper(),"dueAt":_iso(row.due_at) if row.due_at else None,

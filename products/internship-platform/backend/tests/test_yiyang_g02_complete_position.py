@@ -36,7 +36,9 @@ def standalone_db(tmp_path, monkeypatch):
         InternshipAuditTrail,
         InternshipBatch,
         InternshipRecord,
+        StudentAccountLink,
         StudentProfile,
+        UnifiedTodo,
     )
 
     old_url = settings.DATABASE_URL
@@ -48,10 +50,12 @@ def standalone_db(tmp_path, monkeypatch):
     for table in (
         InternshipBatch.__table__,
         StudentProfile.__table__,
+        StudentAccountLink.__table__,
         InternshipRecord.__table__,
         InternshipApplication.__table__,
         InternshipAuditTrail.__table__,
         AuditOutbox.__table__,
+        UnifiedTodo.__table__,
         FileObject.__table__,
         FileBinding.__table__,
     ):
@@ -99,6 +103,7 @@ def standalone_db(tmp_path, monkeypatch):
 def _seed_student_record():
     from app.db.session import get_sessionmaker
     from app.models import InternshipBatch, InternshipRecord, StudentProfile
+    from app.services.student_account_link_service import bind_in_session
 
     db = get_sessionmaker()()
     try:
@@ -121,6 +126,10 @@ def _seed_student_record():
         )
         db.add_all([batch, student])
         db.flush()
+        bind_in_session(
+            db, tenant_id=TID, student_id=student.id,
+            user_id=int(STUDENT["userId"]), student_no=student.student_no,
+        )
         record = InternshipRecord(
             tenant_id=TID,
             student_id=student.id,
@@ -265,6 +274,38 @@ def test_g02_complete_position_roundtrip_and_review(standalone_db):
         assert record.intern_end_date.date().isoformat() == "2027-01-15"
     finally:
         db.close()
+
+
+@pytest.mark.parametrize("identity_case", ["unbound_account", "forged_student"])
+def test_g02_rejects_unbound_account_and_forged_student(standalone_db, identity_case):
+    from app.core.context import set_current_user, set_tenant
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipApplication, InternshipRecord, StudentAccountLink
+    from app.modules.internship.services import internship_student_application_context_service as context
+
+    set_tenant({"tenantId": str(TID)})
+    batch_id, record_id = _seed_student_record()
+    with get_sessionmaker()() as db:
+        record = db.get(InternshipRecord, record_id)
+        link = db.query(StudentAccountLink).one()
+        assert (link.tenant_id, link.student_id, link.user_id, link.link_status) == (
+            TID, record.student_id, int(STUDENT["userId"]), "ACTIVE",
+        )
+        student_id = record.student_id
+
+    user = {**STUDENT, "studentId": str(student_id)}
+    if identity_case == "unbound_account":
+        user["userId"] = "20002"
+    else:
+        user["studentId"] = str(student_id + 1)
+    set_current_user(user)
+    with pytest.raises(AppException) as exc:
+        context.save(user, _payload(batch_id, record_id))
+    assert exc.value.code == "NO_PERMISSION"
+    assert exc.value.http_status == 403
+    with get_sessionmaker()() as db:
+        assert db.query(InternshipApplication).count() == 0
 
 
 def test_g02_rejects_invalid_identity_and_date_order(standalone_db):

@@ -59,6 +59,8 @@ export const NAV_PLAN = [{
       leaf('计划任务', '/admin/internship/plans', 'internship.plan.view', 'CONFIG_VIEW'),
       leaf('报告批阅', '/admin/internship/reports?panel=review', 'internship.report.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/process-reports'] }),
       leaf('指导巡访', '/admin/internship/guidance?panel=guidance', 'internship.guidance.view'),
+      leaf('我的指导报告', '/admin/internship/my-reports', 'internship.guidance.view'),
+      leaf('教师本人报告', '/admin/internship/teacher-reports', 'internship.stats.view'),
       leaf('教师管理', '/admin/internship/teacher-management', 'internship.stats.view', 'WORKBENCH'),
       leaf('指导计划', '/admin/internship/guidance-plan', 'internship.guidance.view', 'CONFIG_VIEW')
     ]),
@@ -76,7 +78,8 @@ export const NAV_PLAN = [{
       leaf('成绩申诉', '/admin/internship/scores?stage=appeal', 'internship.score.publish', 'TASK_QUEUE')
     ]),
     mod('in-archive-stats', '归档与分析', '/admin/internship/archive', [
-      leaf('材料归档', '/admin/internship/archive?panel=records', 'internship.archive.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/material-center'] }),
+      leaf('就业上报', '/admin/internship/employment', 'internship.employment.view', 'TASK_QUEUE'),
+      leaf('材料归档', '/admin/internship/archive?panel=records', 'internship.archive.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/material-center', '/admin/internship/material-requirements'] }),
       leaf('正式文书', '/admin/internship/formal-documents', 'internship.archive.view', 'WORKBENCH'),
       leaf('实习统计', '/admin/internship/stats?dimension=overview', 'internship.stats.view', 'ANALYTICS_VIEW'),
       leaf('监管上报', '/admin/internship/regulatory-reporting', 'internship.reporting.view', 'WORKBENCH')

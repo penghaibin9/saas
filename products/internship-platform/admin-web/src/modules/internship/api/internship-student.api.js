@@ -11,7 +11,7 @@ function fail(message, code = 1) {
   return Promise.resolve({ code, data: null, message })
 }
 function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
+  if (e?.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message, bizCode: e.bizCode, httpStatus: e.httpStatus })
   return fail(e?.message || '真实接口不可用', 503001)
 }
 async function call(fn) {
@@ -33,6 +33,33 @@ async function callList(path, params = {}) {
 const BASE = '/internship/intern-students'
 
 export const internStudentApi = {
+  getBasicInfo(id, batchId) {
+    return call(() => request(`${BASE}/${id}/basic-info`, { params: { batchId } }))
+  },
+  saveBasicInfo(id, batchId, body) {
+    return call(() => request(`${BASE}/${id}/basic-info`, { method: 'PUT', params: { batchId }, body }))
+  },
+  basicInfoImportConfirm(rows, batchId) {
+    return call(() => request(`${BASE}/basic-info-import/confirm`, { method: 'POST', body: { rows, batchId } }))
+  },
+  async uploadBasicInfoXlsx(file, batchId) {
+    try { return ok(await requestUpload(`${BASE}/basic-info-import/xlsx?batchId=${encodeURIComponent(batchId)}`, file)) }
+    catch (e) { return toErr(e) }
+  },
+  async downloadBasicInfoTemplate() {
+    const blob = await requestBlob(`${BASE}/basic-info-import/template`)
+    const url = URL.createObjectURL(blob), link = document.createElement('a')
+    link.href = url; link.download = '学生基础资料导入模板.xlsx'
+    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url)
+  },
+  async downloadBasicInfoErrors(rows, errors) {
+    try {
+      const blob = await requestBlob(`${BASE}/basic-info-import/errors-xlsx`, { method:'POST', body:{rows, errors} })
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte)
+      return ok({ contentBase64:btoa(binary), filename:'学生基础资料错误行.xlsx', mediaType:blob.type })
+    } catch (e) { return toErr(e) }
+  },
   getStudents(params = {}) {
     return callList(BASE, params)
   },

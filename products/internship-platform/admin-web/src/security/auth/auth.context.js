@@ -57,6 +57,8 @@ function syncAuthFromRealToken() {
     if (state.auth.userId) clearAuthContext()
     return
   }
+  // 此独立应用是电脑管理端；退出清空结构后重新登录也须恢复电脑超时策略。
+  state.auth.currentDevice = 'pc-web'
   if (state.auth.userId === u.userId && state.auth.roles[0] === u.currentRoleCode) return
   state.auth.userId = u.userId || ''
   state.auth.username = u.loginName || ''

@@ -334,8 +334,7 @@ def _procurement_row_facts(db, records: list[InternshipRecord], students: dict[i
             "grade": student.grade if student else "",
             "majorName": major.major_name if major else "",
             "classNameFull": cls.class_name if cls else "",
-            # Standalone deliberately does not read orientation.origin.
-            "sourceRegion": "未采集",
+            "sourceRegion": (student.source_region or "未采集") if student else "未采集",
             "companyCreditCode": str(app.company_credit_code or "") if app else "",
             "companyNature": app.company_nature or "" if app else "",
             "companyIndustry": app.company_industry or "" if app else "",
@@ -367,7 +366,7 @@ def _procurement_row_facts(db, records: list[InternshipRecord], students: dict[i
 
 def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status=None,
                             risk_level=None, eligibility=None, destination=None,
-                            has_position=None, has_advisor=None, user=None) -> list[InternshipRecord]:
+                            has_position=None, has_advisor=None, source_region=None, user=None) -> list[InternshipRecord]:
     from app.modules.internship.services.internship_batch_context import resolve_batch
     batch = resolve_batch(db, batch_id, for_write=False)
     q = select(InternshipRecord).where(
@@ -391,12 +390,17 @@ def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status
         q = q.where(InternshipRecord.advisor_user_id.is_not(None))
     elif has_advisor is False:
         q = q.where(InternshipRecord.advisor_user_id.is_(None))
+    if keyword or class_id or source_region:
+        q = q.join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))
+    if source_region:
+        q = q.where(StudentProfile.source_region.contains(source_region.strip(), autoescape=True))
     if keyword:
         like = f"%{keyword.strip()}%"
-        q = q.join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+        q = q.where(
             or_(StudentProfile.real_name.like(like), StudentProfile.student_no.like(like)))
     if class_id:
-        q = q.join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+        q = q.where(
             StudentProfile.class_id == _as_id(class_id))
     rows = db.scalars(q.order_by(InternshipRecord.updated_at.desc(), InternshipRecord.id.desc())).all()
     smap = _students_map(db, [r.student_id for r in rows])
@@ -418,7 +422,7 @@ def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status
 
 def list_students(page: int, page_size: int, keyword=None, class_id=None, status=None,
                   risk_level=None, eligibility=None, destination=None,
-                  has_position=None, has_advisor=None, batch_id=None, user=None) -> tuple[list[dict], int]:
+                  has_position=None, has_advisor=None, batch_id=None, source_region=None, user=None) -> tuple[list[dict], int]:
     with session() as db:
         scope = _current_scope(user)
         sql_safe = scope.get("mode") != "SCOPED" or (
@@ -447,8 +451,11 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
                 q = q.where(InternshipRecord.advisor_user_id.is_(None))
             if scope.get("mode") == "SCOPED":
                 q = q.where(InternshipRecord.advisor_user_id.in_(scope["advisorUserIds"]))
-            if keyword or class_id:
-                q = q.join(StudentProfile, StudentProfile.id == InternshipRecord.student_id)
+            if keyword or class_id or source_region:
+                q = q.join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+                    StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))
+                if source_region:
+                    q = q.where(StudentProfile.source_region.contains(source_region.strip(), autoescape=True))
                 if keyword:
                     like = f"%{keyword.strip()}%"
                     q = q.where(or_(StudentProfile.real_name.like(like), StudentProfile.student_no.like(like)))
@@ -462,7 +469,7 @@ def list_students(page: int, page_size: int, keyword=None, class_id=None, status
             kept = _collect_scoped_records(
                 db, batch_id=batch_id, keyword=keyword, class_id=class_id, status=status,
                 risk_level=risk_level, eligibility=eligibility, destination=destination,
-                has_position=has_position, has_advisor=has_advisor, user=user)
+                has_position=has_position, has_advisor=has_advisor, source_region=source_region, user=user)
             total = len(kept)
             start = (max(1, page) - 1) * page_size
             kept = kept[start:start + page_size]
@@ -1375,7 +1382,7 @@ def _row_values_for_error(r: dict) -> list:
 
 def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
                     class_id=None, risk_level=None, destination=None, has_position=None,
-                    has_advisor=None, user=None) -> dict:
+                    has_advisor=None, source_region=None, user=None) -> dict:
     from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
     from app.services import xlsx_util
     with session() as db:
@@ -1385,7 +1392,7 @@ def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
     items, total = load_export_rows(
         list_students, keyword=keyword, status=status, eligibility=eligibility,
         batch_id=batch_id, class_id=class_id, risk_level=risk_level,
-        destination=destination, has_position=has_position, has_advisor=has_advisor, user=user)
+        destination=destination, has_position=has_position, has_advisor=has_advisor, source_region=source_region, user=user)
     headers = [
         "学号", "姓名", "年级", "学院", "专业", "班级", "生源地", "实习批次",
         "校内指导教师", "企业名称", "统一社会信用代码", "单位性质", "行业分类",
@@ -1421,4 +1428,10 @@ def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
     packed = xlsx_util.pack_xlsx_result(content, f"实习学生台账_{safe_name}.xlsx", len(items))
     packed.update(batch_meta)
     packed.update(pack_export_meta(total, len(items)))
+    from app.modules.internship.services.internship_audit_service import add_audit
+    with session() as db:
+        add_audit(db, target_type='STUDENT_LEDGER', target_id=batch.id, action='STUDENT_LEDGER_EXPORT',
+                  user=user, batch_id=batch.id, detail={'rowCount': len(items), 'matchedCount': total,
+                  'filteredBySourceRegion': bool(source_region), 'columns': headers})
+        db.commit()
     return packed

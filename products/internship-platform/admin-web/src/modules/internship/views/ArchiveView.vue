@@ -116,7 +116,7 @@
               <template v-if="panel.data.archived">
                 <AppPermissionButton v-if="!(pkgFile || panel.data.latestPackage)?.packageId" code="internship.archive.package" :allowed="canBtn('internship.archive.package')"
                   variant="secondary" size="sm" :loading="pkgBusy" :disabled="busy" @click="buildPackage">生成归档包</AppPermissionButton>
-                <AppButton v-else variant="secondary" size="sm" :loading="pkgBusy" :disabled="busy || !canBtn('internship.archive.package')" @click="downloadPackage">下载归档包 (zip)</AppButton>
+                <AppButton v-else variant="secondary" size="sm" :loading="pkgBusy" :disabled="busy || !canBtn('internship.archive.package')" @click="downloadPackage">下载归档包（压缩文件）</AppButton>
                 <AppButton v-if="panel.data.latestPackage || pkgFile" variant="ghost" size="sm" :loading="restoreBusy" :disabled="busy || !canBtn('internship.archive.package')" @click="verifyRestore">恢复校验</AppButton>
                 <AppButton variant="ghost" size="sm" :loading="employmentBusy" :disabled="busy || !canBtn('internship.employment.view')" @click="goEmployment">衔接就业</AppButton>
               </template>
@@ -129,19 +129,18 @@
                   <strong>{{ item.label }}</strong>
                   <span>{{ item.hint }}</span>
                   <small v-if="item.document">
-                    已生成 V{{ item.document.documentVersion }} · {{ item.document.generatedAt || '时间未知' }}
-                    · SHA-256 {{ (item.document.sourceHash || '').slice(0, 12) }}…
+                    已生成第{{ item.document.documentVersion }}版 · {{ item.document.generatedAt || '时间未知' }}
                   </small>
                   <small v-else>尚未生成；生成时会重新核对正式业务事实。</small>
                 </div>
                 <AppStatusTag :type="item.document ? 'success' : 'default'" size="sm">
-                  {{ item.document ? `V${item.document.documentVersion}` : '未生成' }}
+                  {{ item.document ? `第${item.document.documentVersion}版` : '未生成' }}
                 </AppStatusTag>
                 <div class="formal-doc-row__ops">
                   <AppPermissionButton code="internship.archive.execute" :allowed="canBtn('internship.archive.execute')"
                     variant="secondary" size="sm" :loading="formalBusy === item.code"
                     :disabled="busy && formalBusy !== item.code" @click="generateFormal(item)">
-                    {{ item.document ? '核对并更新版本' : '生成 PDF' }}
+                    {{ item.document ? '核对并更新版本' : '生成便携文档' }}
                   </AppPermissionButton>
                   <AppButton variant="ghost" size="sm" :loading="formalBusy === `download:${item.code}`"
                     :disabled="!item.document || (busy && formalBusy !== `download:${item.code}`) || !canBtn('internship.archive.view')"
@@ -149,18 +148,18 @@
                 </div>
               </div>
               <div v-if="formalError" class="state is-err" role="alert">{{ formalError }}</div>
-              <p class="hint">PDF 是业务事实的版本化派生文书；事实未满足时后端会阻断，不会用空值或旧数据强行出证明。</p>
+              <p class="hint">文书依据当前已确认的业务材料生成；资料不齐全时会说明缺项，补齐后再生成。</p>
             </div>
 
             <p v-if="!panel.data.archived" class="hint">归档后可生成档案包，留存冻结的材料清单与扫描件。</p>
-            <p v-else class="hint">“恢复校验”只核对包内行数、文件数与 SHA-256，不会覆盖当前业务数据。</p>
+            <p v-else class="hint">“恢复校验”核对包内学生人数、文件数及文件完整性，不会覆盖当前业务数据。</p>
 
             <details v-if="panel.data.latestPackage || pkgFile" class="tech-details">
-              <summary>展开技术证据</summary>
+              <summary>实施人员使用：归档校验信息</summary>
               <dl>
-                <div><dt>Package ID</dt><dd>{{ (pkgFile || panel.data.latestPackage).packageId }}</dd></div>
+                <div><dt>归档包编号</dt><dd>{{ (pkgFile || panel.data.latestPackage).packageId }}</dd></div>
                 <div><dt>文件数 / 行数</dt><dd>{{ (pkgFile || panel.data.latestPackage).fileCount }} / {{ (pkgFile || panel.data.latestPackage).rowCount }}</dd></div>
-                <div><dt>SHA-256</dt><dd>{{ (pkgFile || panel.data.latestPackage).sha256 }}</dd></div>
+                <div><dt>完整性校验值</dt><dd>{{ (pkgFile || panel.data.latestPackage).sha256 }}</dd></div>
               </dl>
             </details>
 
@@ -299,7 +298,12 @@ export default {
     },
     auditRecords() {
       return (this.panel.data?.auditTrail || []).map((t, i) => ({
-        id: i, action: t.action, actionLabel: ({ ARCHIVE_PREFLIGHT: '归档预检', ARCHIVE: '完成归档', ARCHIVE_REVOKE: '撤销归档', REVOKE: '撤销归档', BUILD_PACKAGE: '生成档案包' })[t.action] || t.action, actor: t.operator,
+        id: i, action: t.action, actionLabel: ({ ARCHIVE_PREFLIGHT: '归档预检', ARCHIVE: '完成归档',
+          ARCHIVE_REVOKE: '撤销归档', REVOKE: '撤销归档', BUILD_PACKAGE: '生成档案包',
+          PACKAGE_DOWNLOAD: '下载归档包', VERSIONED_PACKAGE: '生成归档包',
+          VERSIONED_BATCH_PACKAGE: '生成批次归档包', ARCHIVE_RESTORE_VERIFIED: '归档包恢复校验',
+          ARCHIVE_BATCH_RESTORE_VERIFIED: '批次归档包恢复校验', MANIFEST_FROZEN: '冻结材料清单',
+          MANIFEST_REVOKED: '撤销材料清单' })[t.action] || '归档办理记录', actor: t.operator,
         reason: t.detail && (t.detail.reason || t.detail.note || ''), at: t.occurredAt
       }))
     },
@@ -527,12 +531,12 @@ export default {
       const receipt = res.data?.operationReceipt || {}
       this.lastReceipt = {
         actionLabel: p.kind === 'archive' ? '归档完成' : '撤销归档完成',
-        objectLabel: p.kind === 'archive' ? '业务归档与 Manifest 已原子提交' : '归档、Manifest 与档案包已原子失效',
+        objectLabel: p.kind === 'archive' ? '业务归档与材料清单已一并提交' : '归档、材料清单与档案包已一并失效',
         id: p.id, version: receipt.recordVersion ?? res.data?.recordVersion,
         status: receipt.status || 'COMMITTED', statusLabel: '已提交',
         auditText: p.kind === 'archive'
-          ? `Manifest r${receipt.manifestRevision} · ${receipt.fileVersionCount} 个文件版本`
-          : `失效档案包 ${receipt.invalidatedPackageCount || 0} 个、Manifest ${receipt.revokedManifestCount || 0} 个`,
+          ? `材料清单第${receipt.manifestRevision}版 · ${receipt.fileVersionCount} 个文件版本`
+          : `已失效档案包 ${receipt.invalidatedPackageCount || 0} 个、材料清单 ${receipt.revokedManifestCount || 0} 份`,
         nextStep: p.kind === 'archive' ? '可生成单生归档包并执行恢复校验' : '修正材料后重新预检'
       }
       this.cd.visible = false; this.pending = null; this.keptReason = ''; toast.success('操作成功，已写审计')
@@ -557,7 +561,7 @@ export default {
         actionLabel: '归档包生成', objectLabel: `${res.data.fileName} · ${res.data.fileCount || receipt.fileCount || 0} 个文件`,
         id: receipt.packageId || res.data.packageId, version: receipt.packageVersion || res.data.packageVersion,
         status: receipt.status || 'COMMITTED', statusLabel: '档案包就绪',
-        auditText: `Manifest r${res.data.manifestRevision} · SHA-256 ${res.data.sha256}`,
+        auditText: `依据已冻结材料清单第${res.data.manifestRevision}版生成，文件完整性已核对`,
         nextStep: '下载留存，或执行恢复校验验证行数与哈希'
       }
       toast.success('归档包已生成，可下载')
@@ -591,7 +595,7 @@ export default {
         actionLabel: '恢复校验', objectLabel: '档案包可用于受控恢复',
         id: receipt.packageId, version: res.data.packageVersion,
         status: receipt.status || 'VERIFIED', statusLabel: '行数与哈希一致',
-        auditText: `${receipt.rowCount} 行 · ${receipt.fileCount} 个文件 · SHA-256 ${receipt.packageSha256}`,
+        auditText: `${receipt.rowCount} 名学生 · ${receipt.fileCount} 个文件 · 完整性核对一致`,
         nextStep: '校验仅验证可恢复性，未覆盖当前业务数据'
       }
       toast.success('恢复校验通过，行数与哈希一致')
@@ -613,7 +617,7 @@ export default {
         actionLabel: '批次归档包生成', objectLabel: `${res.data.rowCount} 名学生 · ${res.data.fileCount} 个冻结文件版本`,
         id: receipt.packageId, version: receipt.packageVersion,
         status: receipt.status || 'COMMITTED', statusLabel: '当前分片就绪',
-        auditText: `SHA-256 ${res.data.sha256}`,
+        auditText: '当前分片的文件完整性已核对，校验值可在实施记录中查验',
         nextStep: res.data.hasMore ? '先下载并恢复校验当前分片，再生成下一分片' : '批次全部分片已生成，可下载留存并恢复校验'
       }
       toast.success(res.data.hasMore ? '当前分片已生成，批次仍有下一分片' : '批次归档包已生成完毕')
@@ -646,7 +650,7 @@ export default {
         actionLabel: '批次恢复校验', objectLabel: '当前批次分片可用于受控恢复',
         id: receipt.packageId, version: res.data.packageVersion,
         status: receipt.status || 'VERIFIED', statusLabel: '行数与哈希一致',
-        auditText: `${receipt.rowCount} 行 · ${receipt.fileCount} 个文件 · SHA-256 ${receipt.packageSha256}`,
+        auditText: `${receipt.rowCount} 名学生 · ${receipt.fileCount} 个文件 · 完整性核对一致`,
         nextStep: pkg.hasMore ? '可生成下一分片；校验未覆盖当前业务数据' : '全部分片均应分别留存校验回执'
       }
       toast.success('批次分片恢复校验通过')

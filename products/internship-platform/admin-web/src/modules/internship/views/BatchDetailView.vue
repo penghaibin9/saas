@@ -174,6 +174,7 @@ export default {
       if (!r) return []
       const out = []
       if (r.checkin) out.push({ label: '考勤打卡', value: `${r.checkin.requireDaily ? '每日必打卡' : '不强制每日打卡'}；电子围栏 ${r.checkin.geofenceRadiusM ?? '—'} 米；最大定位误差 ${r.checkin.maxAccuracyM ?? 200} 米` })
+      if(r.teacherCheckin) out.push({label:'教师签到范围',value:r.teacherCheckin.locations?.length ? r.teacherCheckin.locations.map(site=>`${site.name}（${site.radiusM}米，${site.coordinateSystem==='WGS84'?'国际通用坐标':'国内地图坐标'}）`).join('；') : '未配置，只留痕，不判定围栏内正常'})
       if (r.weeklyReport) {
         const day = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'][r.weeklyReport.deadlineWeekday]
         out.push({ label: '实习周报', value: `${r.weeklyReport.frequency === 'WEEKLY' ? '每周 1 次' : '每两周 1 次'}；正文至少 ${r.weeklyReport.minWordCount ?? '—'} 字${day ? `；${day}前提交` : ''}` })

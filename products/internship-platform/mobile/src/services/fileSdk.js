@@ -1,29 +1,20 @@
 import { realDownload, realRequest, realUpload } from './request'
+import { FILE_STATUS_TEXT as FILE_SCAN_TEXT, normalizeFileReadiness } from './fileReadiness.mjs'
 
-export const FILE_STATUS_TEXT = Object.freeze({
-  NOT_REQUIRED: '无需扫描',
-  PENDING: '等待安全扫描',
-  RUNNING: '正在安全扫描',
-  CLEAN: '安全可用',
-  INFECTED: '检测到风险，已拒绝',
-  ERROR: '安全扫描失败'
-})
+export const FILE_STATUS_TEXT = FILE_SCAN_TEXT
 
 const enc = encodeURIComponent
 const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
 const DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])
 
 export function normalizeFile(file = {}) {
-  const scanStatus = String(file.scanStatus || 'NOT_REQUIRED').toUpperCase()
+  const ready = normalizeFileReadiness(file)
   const allowedActions = Array.isArray(file.allowedActions) ? file.allowedActions : []
   return {
-    ...file,
-    scanStatus,
-    statusText: file.statusText || FILE_STATUS_TEXT[scanStatus] || '状态未知',
-    readyForBusiness: Boolean(file.readyForBusiness),
+    ...ready,
     allowedActions,
-    canPreview: allowedActions.includes('preview'),
-    canDownload: allowedActions.includes('download')
+    canPreview: ready.readyForBusiness && allowedActions.includes('preview'),
+    canDownload: ready.readyForBusiness && allowedActions.includes('download')
   }
 }
 
@@ -34,12 +25,32 @@ export function previewIdentity(file = {}) {
   return [fileId, fileVersionId, sourceSha].join(':')
 }
 
-export function chooseSingleFile({ count = 1 } = {}) {
+export function chooseSingleFile({ count = 1, kind = 'file' } = {}) {
   return new Promise((resolve, reject) => {
+    if (kind === 'video') {
+      uni.chooseVideo({
+        sourceType: ['album', 'camera'], compressed: false,
+        success: (res) => resolve({ path: res.tempFilePath, name: res.name || '实习过程.mp4', size: res.size || 0 }),
+        fail: reject
+      })
+      return
+    }
+    if (kind === 'image') {
+      uni.chooseImage({
+        count, sizeType: ['compressed', 'original'],
+        success: (res) => resolve({ path: res.tempFilePaths?.[0], name: '实习照片.jpg', size: res.tempFiles?.[0]?.size || 0 }),
+        fail: reject
+      })
+      return
+    }
+    if (typeof uni.chooseFile === 'function') {
+      uni.chooseFile({ count, type: 'all', success: (res) => resolve(res.tempFiles?.[0] || null), fail: reject })
+      return
+    }
     if (typeof uni.chooseMessageFile === 'function') {
       uni.chooseMessageFile({
         count,
-        type: 'file',
+        type: 'all',
         success: (res) => resolve((res.tempFiles || [])[0] || null),
         fail: reject
       })

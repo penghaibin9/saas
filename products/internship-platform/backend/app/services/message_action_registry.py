@@ -4,6 +4,10 @@ from __future__ import annotations
 from app.core.exceptions import AppException
 
 _ACTIONS = {
+    'student.internship.employment-registration': {
+        'required': ('registrationId','batchId','internshipId'),
+        'routes': {'studentMini':'/pages/student-internship/employment/index'},
+    },
     "student.internship.volunteer-result": {
         "required": ("groupId", "groupVersion"),
         "routes": {

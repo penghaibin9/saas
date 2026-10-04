@@ -85,3 +85,7 @@ from app.models.internship_teacher_activity import (
 from app.models.internship_formal_document import InternshipFormalDocument
 
 from app.models.audit import SecurityAuditLog
+
+from app.models.internship_employment_registration import (
+    InternshipEmploymentRegistration, InternshipEmploymentSubmission, InternshipEmploymentReview,
+)

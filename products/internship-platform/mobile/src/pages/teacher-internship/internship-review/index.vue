@@ -200,7 +200,7 @@
                 <view v-if="c.appealStatus || c.appealNote" class="ir__ck-row"><text class="ir__label">学生申诉</text><text class="ir__text flex-1">{{ c.appealNote || c.appealStatus }}</text></view>
               </view>
               <MobileInlineAlert v-if="!canDecideException(c)" type="danger" title="移动端证据不足，已禁止终态处理" :description="decisionFactMessage(c)" />
-              <view class="ir__next is-warning"><text class="ir__next-label">处理原则</text><text class="ir__next-text">超范围不直接认定作弊；转风险会形成 canonical INT-R07 高风险单，必须填写原因。</text></view>
+              <view class="ir__next is-warning"><text class="ir__next-label">处理原则</text><text class="ir__next-text">超范围不直接认定作弊；转风险会形成 正式高风险记录，必须填写原因。</text></view>
               <view class="ir__actions is-three" v-if="c.status === 'PENDING_HANDLE'">
                 <button class="btn btn-ghost flex-1" :disabled="acting || !canDecideException(c)" @click="ck(c, 'reject')">异常计入</button>
                 <button class="ir__pass flex-1" :disabled="acting || !canDecideException(c)" @click="ck(c, 'ok')">认定有效</button>
@@ -214,14 +214,15 @@
         </view>
       </view>
     </MobileGlobalState>
+    <ReportFilePreview ref="reportPreview" />
   </view>
 </template>
 
 <script>
 import InternshipVisitEvidenceForm from '@/components/teacher/InternshipVisitEvidenceForm.vue'
 import MobileSequentialQueue from '@/components/teacher/MobileSequentialQueue.vue'
+import ReportFilePreview from '@/components/ReportFilePreview.vue'
 import { teacherApi } from '@/services/teacherApi'
-import fileSdk from '@/services/fileSdk'
 import { teacherInternshipEvidenceV3Api } from '@/services/teacherInternshipEvidenceV3Api'
 import { handleCheckin as handleCheckinV3 } from '@/services/teacherSequentialV3Api'
 import { useInternshipContextStore } from '@/stores/internshipContext'
@@ -231,7 +232,7 @@ import { toast } from '@/utils/nav'
 import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 
 export default {
-  components: { InternshipVisitEvidenceForm, MobileSequentialQueue },
+  components: { InternshipVisitEvidenceForm, MobileSequentialQueue, ReportFilePreview },
   mixins: [listPaging(20)],
   data() {
     return {
@@ -268,7 +269,7 @@ export default {
       return this.abnormalPendingCount ? `有 ${this.abnormalPendingCount} 条异常需要人工判断。` : '当前没有待处理打卡异常。'
     },
     tabHelpText() {
-      if (this.tab === 'weekly') return '逾期催交进入真实站内消息 outbox；待批周报仍先展开正文再逐条批阅。'
+      if (this.tab === 'weekly') return '逾期催交通过站内消息提醒学生；待批周报仍先展开正文再逐条批阅。'
       if (this.tab === 'visit') return '巡访记录联系人、工作状态、企业反馈、事实、问题与跟进；教师位置采集默认关闭。'
       return '定位超范围或失败不等于作弊；转风险必须写明原因，并走同一条异常状态机。'
     },
@@ -302,7 +303,7 @@ export default {
     openPayroll() { uni.navigateTo({ url: '/pages/teacher-internship/payroll-review/index' }) },
     openSchoolStats() { uni.navigateTo({ url: '/pages/teacher-internship/school-stats/index' }) },
     toast,
-    invalidateReads() { this.hidden = true; this.readEpoch++; this.visitEpoch++; this.pagingBusy = false },
+    invalidateReads() { this.hidden = true; this.readEpoch++; this.visitEpoch++; this.pagingBusy = false; this.$refs.reportPreview?.reset() },
     readIsCurrent(epoch, generation) { return !this.hidden && epoch === this.readEpoch && generation === currentSessionGeneration() },
     async ensureBatchContext() {
       if (!this.context) this.context = useInternshipContextStore()
@@ -452,11 +453,8 @@ export default {
       }).catch((e) => { w._body = 'error'; toast(normalizeError(e).text) })
     },
     async openWeeklyAttachment(file) {
-      try {
-        await fileSdk.open(file.fileId)
-      } catch (e) {
-        toast(normalizeError(e).text || '附件暂时无法打开')
-      }
+      await this.$refs.reportPreview.open(file)
+      if (!this.hidden) uni.pageScrollTo({ selector: '.report-preview', duration: 200 })
     },
     remindWeekly(w) {
       const id = String(w && w.id || '')

@@ -3,7 +3,8 @@
     <div class="aies__summary">
       共解析 <b>{{ total }}</b> 行 · 校验通过
       <b class="is-good">{{ validRows }}</b> 行 · 失败
-      <b class="is-bad">{{ invalidRows }}</b> 行。仅导入校验通过的数据。
+      <b class="is-bad">{{ invalidRows }}</b> 行。
+      {{ invalidRows > 0 ? '本次尚未导入，请修正错误后重新上传。' : '本次尚未导入，核对后请确认保存。' }}
     </div>
     <AppButton
       v-if="invalidRows > 0"
@@ -11,7 +12,7 @@
       :loading="downloading"
       @click="$emit('download-errors')"
     >
-      下载错误行 Excel
+      下载错误行表格
     </AppButton>
   </div>
 </template>

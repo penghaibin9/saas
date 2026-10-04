@@ -9,6 +9,8 @@
 from __future__ import annotations
 
 from typing import Optional
+from typing import Literal
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 
@@ -122,6 +124,42 @@ def teacher_management_export(
     return success(teacher_activity.export_teacher_management_ledger(
         user, batch_id=batchId, keyword=keyword
     ))
+
+
+@router.get('/teacher-management/checkins', summary='学校按条件分页查看教师签到明细')
+def managed_teacher_checkins(batchId: int = Query(..., ge=1), teacherUserId: int | None = Query(None, ge=1),
+    result: str | None = Query(None, max_length=30), startDate: date | None = Query(None), endDate: date | None = Query(None),
+    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200), user=Depends(require_permission(_P_VIEW))):
+    from app.modules.internship.services import internship_teacher_activity_service as activity
+    return success(activity.list_managed_checkins(user, batch_id=batchId, teacher_user_id=teacherUserId,
+        result=result, start_date=startDate, end_date=endDate, page=page, page_size=pageSize))
+
+
+@router.post('/teacher-management/checkins/export', summary='学校导出筛选后的教师签到明细表格')
+def export_managed_teacher_checkins(batchId: int = Query(..., ge=1), teacherUserId: int | None = Query(None, ge=1),
+    result: str | None = Query(None, max_length=30), startDate: date | None = Query(None), endDate: date | None = Query(None),
+    user=Depends(require_permission(_P_EXPORT))):
+    from app.modules.internship.services import internship_teacher_activity_service as activity
+    return success(activity.export_managed_checkins(user, batch_id=batchId, teacher_user_id=teacherUserId,
+        result=result, start_date=startDate, end_date=endDate))
+
+
+@router.get('/teacher-management/reports', summary='学校查看教师本人周期报告')
+def managed_teacher_reports(batchId: int = Query(..., ge=1),
+    reportType: Literal['WEEKLY', 'MONTHLY', 'SUMMARY'] | None = Query(None),
+    page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission(_P_VIEW))):
+    from app.modules.internship.services import internship_teacher_activity_service as activity
+    return success(activity.list_managed_period_reports(user, batch_id=batchId,
+        report_type=reportType, page=page, page_size=pageSize))
+
+
+@router.post('/teacher-management/reports/export', summary='学校导出教师本人周期报告')
+def export_managed_teacher_reports(batchId: int = Query(..., ge=1),
+    reportType: Literal['WEEKLY', 'MONTHLY', 'SUMMARY'] | None = Query(None),
+    user=Depends(require_permission(_P_EXPORT))):
+    from app.modules.internship.services import internship_teacher_activity_service as activity
+    return success(activity.export_period_reports(user, batch_id=batchId, report_type=reportType, managed=True))
 
 
 @router.get("/teacher-management/makeups", summary="AP16 教师补签审核队列")

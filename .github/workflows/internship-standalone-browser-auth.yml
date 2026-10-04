@@ -51,7 +51,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       REDIS_KEY_PREFIX: internship-standalone:browser-auth
       JWT_SECRET: standalone-browser-auth-ci-secret-20260929
-      EXPECTED_ALEMBIC_REVISION: ix0023
+      EXPECTED_ALEMBIC_REVISION: ix0030
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

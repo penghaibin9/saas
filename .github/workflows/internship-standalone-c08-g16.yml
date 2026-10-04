@@ -101,5 +101,7 @@ jobs:
         working-directory: products/internship-platform/mobile
         run: npm install --no-audit --no-fund
       - name: Build standalone mobile H5
+        env:
+          VITE_API_BASE_URL: "http://127.0.0.1:8000"
         working-directory: products/internship-platform/mobile
         run: npm run build:h5

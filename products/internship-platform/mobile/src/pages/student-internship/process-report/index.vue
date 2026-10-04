@@ -17,11 +17,11 @@
         </view>
         <view v-if="receipt" class="card pr__receipt">
           <text class="t-md t-bold">{{ receipt.actionLabel }}</text>
-          <text>#{{ receipt.id }} · v{{ receipt.version }} · {{ receipt.statusLabel }}</text>
+          <text>报告编号：{{ receipt.id }} · 第 {{ receipt.version }} 版 · {{ receipt.statusLabel }}</text>
           <text>{{ receipt.nextStep }}</text>
         </view>
         <MobileInlineAlert v-if="currentReport && currentReport.status !== 'RETURNED'" type="info"
-          :description="`${typeLabel} ${currentReport.periodKey} 已提交，当前状态：${statusLabel(currentReport.status)}。`" />
+          :description="`${typeLabel} ${currentReport.periodLabel} 已提交，当前状态：${currentReport.statusLabel}。`" />
         <MobileInlineAlert v-else-if="currentReport" type="warning"
           :description="`教师退回：${currentReport.reviewComment || '请按要求修改正文后重新提交'}`" />
         <view class="card stack">
@@ -42,23 +42,26 @@
             <view v-for="(file, index) in form.attachments" :key="file.fileId" class="pr__attachment">
               <view class="flex-1" @click="openAttachment(file)">
                 <text class="t-sm t-bold">{{ file.fileName || '附件' }}</text>
-                <text class="pr__attachment-meta">{{ file.mimeType || '' }} · {{ file.readyForBusiness === false ? '安全扫描中' : '可用' }}</text>
+                <text class="pr__attachment-meta">{{ file.kindLabel }} · {{ file.statusText }}</text>
               </view>
               <text class="pr__remove" @click.stop="removeAttachment(index)">删除</text>
             </view>
-            <button class="pr__attach-btn" :disabled="uploading || submitting" @click="addAttachment">
-              {{ uploading ? '上传中…' : '+ 添加图片/视频' }}
-            </button>
+            <button class="pr__attach-btn" :disabled="uploading || submitting" @click="addAttachment('image')">添加图片</button>
+            <button class="pr__attach-btn" :disabled="uploading || submitting" @click="addAttachment('video')">添加视频</button>
+            <button class="pr__attach-btn" :disabled="uploading || submitting" @click="addAttachment('file')">添加文件</button>
+            <button v-if="form.attachments.length" class="pr__attach-btn" :disabled="scanning || uploading || submitting" @click="refreshAttachments">{{ scanning ? '正在读取扫描结果…' : '查看附件安全扫描结果' }}</button>
+            <text v-if="!attachmentsReady" class="pr__count">附件安全就绪前不能提交，正文和附件会保留。</text>
           </view>
         </view>
         <view class="card stack">
           <text class="card-title">我的{{ typeLabel }}记录</text>
           <text v-if="!typeReports.length" class="pr__empty">暂无记录</text>
           <view v-for="item in typeReports" :key="item.id" class="pr__record" @click="selectRecord(item)">
-            <view><text>{{ item.periodKey }}</text><text>v{{ item.version }} · {{ statusLabel(item.status) }}</text></view>
+            <view><text>{{ item.periodLabel }}</text><text>第 {{ item.reportVersion || 1 }} 版 · {{ item.statusLabel }}</text></view>
             <text>{{ item.reviewComment || '等待教师批阅' }}</text>
           </view>
         </view>
+        <ReportFilePreview ref="reportPreview" />
       </view>
     </MobileGlobalState>
     <MobileSafeAreaBar v-if="loaded && pageState === 'ready'">
@@ -71,6 +74,10 @@
 import { studentApi } from '@/services/studentApi'
 import fileSdk from '@/services/fileSdk'
 import MobileInlineAlert from '@/components/MobileInlineAlert.vue'
+import ReportFilePreview from '@/components/ReportFilePreview.vue'
+import { normalizeError } from '@/services/request'
+import { processReportView, reportFileState, reportFilesReady, refreshReportFiles } from '@/services/weeklyReportPresentation.mjs'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 import { toast } from '@/utils/nav'
 
 const TYPE_LABEL = { DAILY: '日报', MONTHLY: '月报', SUMMARY: '实习总结' }
@@ -81,17 +88,17 @@ const DEFAULT_TPL = {
 }
 
 export default {
-  components: { MobileInlineAlert },
+  components: { MobileInlineAlert, ReportFilePreview },
   data() {
     return {
-      pageState: 'loading', loaded: false, submitting: false, uploading: false, showTypePick: false,
+      pageState: 'loading', loaded: false, submitting: false, uploading: false, scanning: false, showTypePick: false,
       reportType: 'DAILY',
       typeOptions: [
         { v: 'DAILY', l: '日报' }, { v: 'MONTHLY', l: '月报' }, { v: 'SUMMARY', l: '实习总结' }
       ],
       form: { periodKey: '', content: '', attachments: [] }, reports: [], receipt: null,
       rules: { dailyMinWords: 30, weeklyMinWords: 30, monthlyMinWords: 100, summaryMinWords: 300, maxImages: 9, maxVideos: 3 },
-      batchId: '', internshipId: '', loadSequence: 0
+      batchId: '', internshipId: '', loadSequence: 0, hidden: false, generation: currentSessionGeneration()
     }
   },
   computed: {
@@ -115,8 +122,9 @@ export default {
       const period = this.reportType === 'SUMMARY' ? 'FINAL' : this.form.periodKey
       return this.typeReports.find((item) => item.periodKey === period) || null
     },
+    attachmentsReady() { return reportFilesReady(this.form.attachments) },
     canSubmit() {
-      return this.pageState === 'ready' && (!this.currentReport || this.currentReport.status === 'RETURNED') &&
+      return this.pageState === 'ready' && !this.hidden && this.generation === currentSessionGeneration() && !this.uploading && !this.scanning && this.attachmentsReady && (!this.currentReport || this.currentReport.status === 'RETURNED') &&
         (this.reportType === 'SUMMARY' || !!this.form.periodKey) && this.form.content.trim().length >= this.minimum
     }
   },
@@ -133,6 +141,16 @@ export default {
     this.prepareForm(this.reportType)
     this.load()
   },
+  onShow() {
+    const wasHidden = this.hidden
+    this.hidden = false
+    if (this.generation !== currentSessionGeneration()) {
+      this.form = { periodKey: '', content: '', attachments: [] }; this.reports = []; this.receipt = null; this.loaded = false
+      this.batchId = ''; this.internshipId = ''; this.generation = currentSessionGeneration(); this.prepareForm(this.reportType); this.load()
+    } else if (wasHidden && this.pageState === 'loading') this.load()
+  },
+  onHide() { this.hidden = true; this.loadSequence += 1; this.$refs.reportPreview?.reset() },
+  onUnload() { this.hidden = true; this.loadSequence += 1; this.$refs.reportPreview?.reset() },
   methods: {
     prepareForm(v) {
       const d = new Date()
@@ -144,25 +162,27 @@ export default {
     },
     async load() {
       const sequence = ++this.loadSequence
+      const generation = currentSessionGeneration()
       this.pageState = 'loading'
       try {
         const dashboard = await studentApi.getInternship(this.requestedBatchId)
-        if (sequence !== this.loadSequence) return
+        if (this.hidden || generation !== currentSessionGeneration() || sequence !== this.loadSequence) return
         this.batchId = dashboard.batchId || ''
         this.internshipId = dashboard.recordId || ''
         const result = await studentApi.getInternshipProcessReports(this.batchId, this.internshipId)
-        if (sequence !== this.loadSequence) return
-        this.reports = result.items || []
+        if (this.hidden || generation !== currentSessionGeneration() || sequence !== this.loadSequence) return
+        this.reports = (result.items || []).map(processReportView)
         this.rules = { ...this.rules, ...(result.rules || {}) }
         const current = this.currentReport
         if (current?.status === 'RETURNED') {
           this.form.content = current.content || this.form.content
-          this.form.attachments = current.attachments || []
+          this.form.attachments = (current.attachments || []).map(reportFileState)
         }
         this.loaded = true
         this.pageState = 'ready'
+        if (this.form.attachments.length) await this.refreshAttachments()
       } catch (e) {
-        if (sequence === this.loadSequence) this.pageState = 'error'
+        if (!this.hidden && generation === currentSessionGeneration() && sequence === this.loadSequence) this.pageState = 'error'
       }
     },
     pickType(v) {
@@ -172,30 +192,34 @@ export default {
       this.prepareForm(v)
       if (this.currentReport) {
         this.form.content = this.currentReport.content || ''
-        this.form.attachments = this.currentReport.attachments || []
+        this.form.attachments = (this.currentReport.attachments || []).map(reportFileState)
+        this.refreshAttachments()
       }
     },
-    statusLabel(status) { return ({ PENDING_REVIEW: '待批阅', APPROVED: '已通过', RETURNED: '已退回' })[status] || status || '未知' },
     selectRecord(item) {
       if (this.submitting) return
       this.form.periodKey = item.periodKey
       this.form.content = item.content || ''
-      this.form.attachments = item.attachments || []
+      this.form.attachments = (item.attachments || []).map(reportFileState)
+      this.refreshAttachments()
     },
-    async addAttachment() {
+    async addAttachment(kind = 'file') {
       if (this.uploading || this.submitting) return
+      const form = this.form, generation = currentSessionGeneration(), internshipId = this.internshipId
+      const current = () => !this.hidden && form === this.form && generation === currentSessionGeneration() && internshipId === this.internshipId
       this.uploading = true
       try {
-        const picked = await fileSdk.choose()
-        if (!picked) return
+        const picked = await fileSdk.choose({ kind })
+        if (!picked || !current()) return
         const uploaded = await fileSdk.upload(picked, {
-          bizType: 'INTERNSHIP_REPORT_DRAFT',
-          bizId: this.internshipId || ''
+          bizType: 'INTERNSHIP_REPORT',
+          bizId: internshipId || ''
         })
+        if (!current()) return
         if (!uploaded?.fileId) throw new Error('上传结果缺少文件编号')
-        this.form.attachments = [...this.form.attachments, uploaded]
+        this.form.attachments = [...this.form.attachments, reportFileState(uploaded)]
       } catch (e) {
-        toast((e && e.message) || '附件上传失败，请重试')
+        if (current()) toast(normalizeError(e).text)
       } finally {
         this.uploading = false
       }
@@ -204,17 +228,25 @@ export default {
       if (this.submitting || this.uploading) return
       this.form.attachments = this.form.attachments.filter((_, i) => i !== index)
     },
-    async openAttachment(file) {
+    async refreshAttachments() {
+      if (this.scanning || this.uploading) return
+      const files = this.form.attachments, sequence = this.loadSequence, generation = currentSessionGeneration()
+      this.scanning = true
       try {
-        await fileSdk.open(file.fileId)
-      } catch (e) {
-        toast((e && e.message) || '附件暂时无法打开')
-      }
+        const updated = await refreshReportFiles(files, id => fileSdk.metadata(id), () => !this.hidden && files === this.form.attachments && sequence === this.loadSequence && generation === currentSessionGeneration())
+        if (updated) this.form.attachments = updated
+      } catch (error) { if (!this.hidden && generation === currentSessionGeneration()) toast('扫描结果读取失败，正文和附件已保留，请重试') }
+      finally { this.scanning = false }
+    },
+    async openAttachment(file) {
+      await this.$refs.reportPreview.open(file)
+      if (!this.hidden) uni.pageScrollTo({ selector: '.report-preview', duration: 200 })
     },
     async submit() {
       if (this.submitting || !this.canSubmit) return
       this.submitting = true
       const current = this.currentReport
+      const form = this.form, generation = currentSessionGeneration()
       try {
         const result = await studentApi.submitInternshipProcessReport({
           batchId: this.batchId, internshipId: this.internshipId,
@@ -224,6 +256,7 @@ export default {
           attachmentFileIds: this.form.attachments.map((file) => file.fileId),
           expectedVersion: current?.version ?? 0
         })
+        if (this.hidden || form !== this.form || generation !== currentSessionGeneration()) return
         this.receipt = {
           actionLabel: current ? `${this.typeLabel}已重新提交` : `${this.typeLabel}已提交`,
           id: result.id, version: result.version, statusLabel: '待批阅',
@@ -231,7 +264,7 @@ export default {
         }
         await this.load()
       } catch (e) {
-        toast((e && e.message) || '提交失败，正文已保留')
+        if (!this.hidden && form === this.form && generation === currentSessionGeneration()) toast(normalizeError(e).text + '，正文已保留')
       } finally { this.submitting = false }
     }
   }

@@ -22,10 +22,15 @@ from app.modules.internship.services.internship_record_resolver import (
     resolve_student_internship_context,
 )
 from app.services import file_service
+from app.services.mobile_student_service import _require_student, resolve_student
 from app.services.db_service import _iso, _tid, session
 
 
 def _student_context(db, user: dict, batch_id):
+    _require_student(user)
+    student = resolve_student(db, user)
+    if student is None:
+        raise no_permission("当前账号尚未绑定有效学生身份")
     try:
         bid = int(batch_id)
     except (TypeError, ValueError):
@@ -39,7 +44,7 @@ def _student_context(db, user: dict, batch_id):
         raise not_found("实习批次不存在")
     ctx = resolve_student_internship_context(
         db,
-        student_no=(user or {}).get("studentNo"),
+        student=student,
         batch_id=batch.id,
         for_write=False,
     )
@@ -133,13 +138,16 @@ def acknowledge_notice(user: dict, *, notice_id, batch_id) -> dict:
             InternshipEmergencyNotice.batch_id == batch.id,
             InternshipEmergencyNotice.status == "PUBLISHED",
             InternshipEmergencyNotice.is_deleted.is_(False),
-        ))
+        ).with_for_update())
         if not notice:
             raise not_found("紧急通知不存在、已撤回或不属于当前批次")
         student = db.get(StudentProfile, record.student_id)
         from app.modules.internship.services.internship_teacher_activity_service import (
             notice_applies_to_student,
+            notice_is_active,
         )
+        if not notice_is_active(notice):
+            raise not_found("紧急通知尚未生效或已过期")
         if not notice_applies_to_student(db, notice, student):
             raise no_permission("该通知不属于当前学生接收范围")
 
@@ -148,7 +156,7 @@ def acknowledge_notice(user: dict, *, notice_id, batch_id) -> dict:
             InternshipEmergencyNoticeReceipt.notice_id == notice.id,
             InternshipEmergencyNoticeReceipt.student_id == record.student_id,
             InternshipEmergencyNoticeReceipt.is_deleted.is_(False),
-        ))
+        ).with_for_update())
         if receipt:
             return {
                 **_notice_view(notice, acknowledged_at=receipt.acknowledged_at),

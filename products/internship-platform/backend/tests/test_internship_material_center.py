@@ -7,16 +7,20 @@ def read(path: str) -> str:
     return (ROOT / path).read_text(encoding="utf-8")
 
 
-def test_phase4_models_and_migration_are_additive():
+def test_standalone_baseline_contains_complete_file_version_archive_schema():
     model = read("backend/app/models/file.py")
-    migration = read("backend/alembic/versions/0148_internship_material_center.py")
+    migration = read("backend/alembic/versions/0001_internship_standalone_baseline.py")
+    sql = read("backend/alembic/sql/0001_internship_standalone_baseline.mysql.sql")
     for name in ("class FileAsset", "class FileVersion", "class ArchiveManifest", "class ArchiveManifestItem"):
         assert name in model
     for table in ("t_file_asset", "t_file_version", "t_archive_manifest", "t_archive_manifest_item"):
-        assert table in migration
-    assert 'down_revision = "0147_data_exchange_jobs"' in migration
-    assert 'op.add_column("t_file_binding"' in migration
-    assert "uk_file_binding_version_relation" in migration
+        assert table in migration and f"CREATE TABLE {table}" in sql
+    assert 'revision = "ix0001"' in migration and "down_revision = None" in migration
+    # Independent installation already contains the binding columns and indexes;
+    # it must not import the original SaaS 0147/0148 history.
+    assert "uk_file_binding_version_relation" in sql
+    for name in ("asset_id", "version_id", "module_code", "data_scope_snapshot_json"):
+        assert name in sql
 
 
 def test_material_adapter_uses_real_relations_and_system_snapshots():
@@ -44,10 +48,10 @@ def test_scanning_and_infected_files_are_blocked_before_review_or_archive():
 
 
 def test_safety_router_precedes_legacy_routes():
-    registration = read("backend/app/api/v1/route_registration.py")
-    guard_import = registration.index("internship_match, internship_material_center")
-    guard_include = registration.index("api_router.include_router(internship_material_center.router")
-    legacy_loop = registration.index("for r in (", guard_include)
+    registration = read("backend/app/api/router.py")
+    guard_import = registration.index("    internship_material_center,")
+    guard_include = registration.index("        internship_material_center.router,")
+    legacy_loop = registration.index("    for module in (", guard_include)
     assert guard_import < guard_include < legacy_loop
     router = read("backend/app/modules/internship/routers/internship_material_center.py")
     for path in (

@@ -26,6 +26,7 @@ import { safeBusinessMessage } from '@/utils/presentationSafety'
 
 const COMMON_FIELD_LABELS = Object.freeze({
   studentNo: '学号', studentName: '姓名', realName: '姓名', teacherNo: '工号', teacherName: '教师姓名',
+  sourceRegion: '生源地', nation: '民族', gender: '性别',
   className: '班级', batchNo: '批次编号', batchName: '批次名称', topicNo: '课题编号', topicTitle: '课题名称',
   title: '名称', company: '企业', companyName: '企业', enterpriseName: '企业', advisorName: '指导教师',
   mentorType: '导师类型', projectName: '项目名称', projectType: '项目类型', schoolYear: '学年',

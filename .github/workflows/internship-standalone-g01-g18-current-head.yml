@@ -7,6 +7,12 @@ on:
       - feat/internship-standalone-yiyang-v1
     paths:
       - ".github/workflows/internship-standalone-g01-g18-current-head.yml"
+      - ".github/workflows/internship-standalone*.yml"
+      - "products/internship-platform/backend/alembic/versions/**"
+      - "products/internship-platform/backend/tests/test_standalone_release_revision.py"
+      - "products/internship-platform/scripts/check_schema_revision_contract.py"
+      - "products/internship-platform/scripts/c09_recovery_drill_ci.sh"
+      - "products/internship-platform/deploy/**"
       - "products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py"
       - "products/internship-platform/backend/tests/test_standalone_browser_auth_mysql.py"
 
@@ -32,7 +38,7 @@ jobs:
       PYTHONPATH: products/internship-platform/backend
       DATABASE_URL: mysql+pymysql://root:g01_g18_root@127.0.0.1:3306/internship_g01_g18?charset=utf8mb4
       JWT_SECRET: g01-g18-current-head-ci-secret-not-for-production
-      EXPECTED_ALEMBIC_REVISION: ix0023
+      EXPECTED_ALEMBIC_REVISION: ix0030
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -43,6 +49,11 @@ jobs:
 
       - name: Install standalone backend
         run: python -m pip install -r products/internship-platform/backend/requirements.txt
+
+      - name: Verify current schema revision contract
+        run: |
+          python products/internship-platform/scripts/check_schema_revision_contract.py
+          pytest -q products/internship-platform/backend/tests/test_standalone_release_revision.py
 
       - name: Upgrade empty MySQL 8.4 to current schema head
         run: alembic -c products/internship-platform/backend/alembic.ini upgrade head

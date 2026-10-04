@@ -1,16 +1,16 @@
 <template>
   <view class="page-wrap">
     <MobileNavBar variant="brand" title="实习签到" show-back />
-    <MobileGlobalState :state="state" @retry="load">
+    <MobileGlobalState :state="state" :description="error" @retry="load">
       <view class="page-pad" v-if="i">
         <view class="card ci__map">
           <view class="ci__map-bg"><view class="ci__map-pin" /></view>
           <text class="ci__map-loc">{{ preflightRule?.place || i.checkin.place || '公司位置未设置' }} · {{ ruleSummary }}</text>
           <view class="ci__overseas">
-            <view><text class="ci__label">境外签到</text><text class="ci__help">境外定位按 WGS84 记录；坐标系不一致时只转人工核验，不判作弊。</text></view>
+            <view><text class="ci__label">境外签到</text><text class="ci__help">境外定位按国际通用坐标记录；定位信息不一致时转人工核验，不自动判定作弊。</text></view>
             <switch :checked="overseas" @change="overseas = !!$event.detail.value" />
           </view>
-          <input v-if="overseas" v-model.trim="countryRegion" class="ci__input" placeholder="国家/地区，例如 Japan" />
+          <input v-if="overseas" v-model.trim="countryRegion" class="ci__input" placeholder="国家/地区，例如日本" />
         </view>
 
         <view class="card ci__photo">
@@ -23,6 +23,11 @@
               {{ photoUploading ? '上传中…' : (photoFileId ? '重新拍摄' : '现场拍照') }}
             </button>
           </view>
+        </view>
+
+        <view class="card ci__photo">
+          <text class="ci__label">签到备注</text>
+          <textarea v-model="checkinNote" class="ci__textarea" maxlength="500" :disabled="checkingIn || i.historyMode" placeholder="签到备注（选填，例如：今天的岗位任务与到岗情况）" />
         </view>
 
         <view class="ci__circle" :class="i.checkin.done ? 'is-done' : 'is-todo'" @click="checkin">
@@ -53,10 +58,13 @@
               <text class="ci__day-num">{{ d.day }}</text>
               <text class="ci__day-status">{{ calendarStatusLabel(d.status) }}</text>
               <button v-if="d.canApplyMakeup" class="ci__day-action" @click.stop="openMakeup(d)">补卡</button>
+              <button v-if="d.photoFileId" class="ci__day-action" @click.stop="openPhoto(d, true)">原图</button>
+              <button v-if="d.watermarkedFileId" class="ci__day-action" @click.stop="openPhoto(d, false)">水印</button>
             </view>
           </view>
         </view>
 
+        <ReportFilePreview ref="checkinPreview" />
         <view class="section-head"><text class="section-head__title">免签申请</text></view>
         <view class="card ci__exempt">
           <button class="btn btn-ghost ci__exempt-toggle" @click="exemptionOpen = !exemptionOpen">
@@ -104,20 +112,20 @@
 import { studentApi } from '@/services/studentApi'
 import { chooseSingleFile, uploadBusinessFile } from '@/services/fileApi'
 import { toast } from '@/utils/nav'
-
-const STATUS_LABEL = {
-  CHECKIN: '已签', NORMAL: '正常', RECORDED: '已签', OUT_OF_RANGE: '超范围',
-  NO_LOCATION: '无定位', LOW_ACCURACY: '精度不足', LOCATION_UNCERTAIN: '待核实',
-  PENDING: '待签', ABSENT: '缺卡', MAKEUP: '补卡', EXEMPT: '免签',
-  LEAVE: '请假', FUTURE: '', OUTSIDE: ''
-}
+import { normalizeError } from '@/services/request'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { checkinCalendarLabel, checkinReceipt, checkinLocationPolicy } from '@/services/checkinPresentation.mjs'
+import ReportFilePreview from '@/components/ReportFilePreview.vue'
 
 export default {
+  components: { ReportFilePreview },
   data() {
     const now = new Date()
     return {
-      i: null, state: 'loading', checkingIn: false, checkinKey: '', lastResultNote: '', preflightRule: null,
-      photoFileId: '', photoFileName: '', photoUploading: false,
+      i: null, state: 'loading', error: '', requestedBatch: '', hidden: false,
+      generation: currentSessionGeneration(), loadSequence: 0, checkinSequence: 0,
+      checkingIn: false, checkinKey: '', checkinNote: '', lastResultNote: '', preflightRule: null,
+      photoFileId: '', photoFileName: '', photoUploading: false, photoSequence: 0, disposed: false,
       overseas: false, countryRegion: '',
       timezoneName: this.detectTimezone(),
       calendarMonth: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`,
@@ -139,38 +147,73 @@ export default {
       return (d.getDay() + 6) % 7
     }
   },
-  onLoad() { this.load() },
+  onLoad(query = {}) { this.requestedBatch = String(query.batchId || ''); this.load() },
+  onShow() {
+    const reload = this.hidden || this.generation !== currentSessionGeneration()
+    this.hidden = false
+    if (this.generation !== currentSessionGeneration()) this.resetAccount()
+    if (reload) this.load()
+  },
+  onHide() { this.pause() },
+  onUnload() { this.disposed = true; this.pause(); this.resetAccount() },
   onPullDownRefresh() { this.load(() => uni.stopPullDownRefresh()) },
   methods: {
+    async openPhoto(day, original = false) {
+      if (this.disposed || this.hidden || this.state !== 'ready' || this.generation !== currentSessionGeneration()) return
+      const current = this.calendarDays.find(item => item.date === day.date)
+      if (!current) return
+      const fileId = String((original ? current.photoFileId : current.watermarkedFileId) || '')
+      if (!fileId) return
+      await this.$refs?.checkinPreview?.open({ fileId, fileName: `${current.date}签到${original ? '原图' : '水印'}.jpg` })
+    },
     detectTimezone() {
       try { return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Shanghai' }
       catch (e) { return 'Asia/Shanghai' }
     },
-    calendarStatusLabel(status) { return STATUS_LABEL[status] ?? status },
+    calendarStatusLabel: checkinCalendarLabel,
+    pause() { this.hidden = true; this.loadSequence++; this.checkinSequence++; this.checkingIn = false; this.$refs?.checkinPreview?.reset() },
+    resetAccount() {
+      this.photoSequence++
+      this.loadSequence++; this.checkinSequence++; this.generation = currentSessionGeneration()
+      this.i = null; this.calendarData = null; this.calendarDays = []; this.exemptions = []
+      this.requestedBatch = ''; this.checkinKey = ''; this.checkinNote = ''; this.lastResultNote = ''; this.preflightRule = null
+      this.photoFileId = ''; this.photoFileName = ''; this.photoUploading = false; this.checkingIn = false
+      this.overseas = false; this.countryRegion = ''; this.exemptionEvidenceName = ''; this.exemptionOpen = false
+      this.exemptionForm = { startDate: '', endDate: '', reason: '', evidenceFileId: '' }
+    },
     exemptionTone(status) { return status === 'APPROVED' ? 'success' : status === 'REJECTED' ? 'danger' : status === 'WITHDRAWN' ? 'default' : 'warning' },
     async load(done) {
+      this.$refs?.checkinPreview?.reset()
+      if (this.hidden) return
+      if (this.generation !== currentSessionGeneration()) this.resetAccount()
+      const sequence = ++this.loadSequence, generation = currentSessionGeneration()
+      const current = () => !this.hidden && sequence === this.loadSequence && generation === currentSessionGeneration()
       this.state = 'loading'
+      this.error = ''; this.i = null; this.calendarData = null; this.calendarDays = []; this.exemptions = []
       try {
-        const dashboard = await studentApi.getInternship()
-        this.i = dashboard
+        const dashboard = await studentApi.getInternship(this.requestedBatch)
+        if (!current()) return
         if (!dashboard?.batchId || !dashboard?.recordId) {
-          this.calendarData = null
-          this.calendarDays = []
-          this.exemptions = []
-          this.state = 'ready'
+          this.state = 'empty'
+          this.error = '请从实习首页选择本人的批次后进入签到。'
           return
         }
+        if (this.requestedBatch && String(dashboard.batchId) !== this.requestedBatch) throw { code: 404001 }
         const [calendar, exemptions] = await Promise.all([
           studentApi.getCheckinCalendar(this.calendarMonth, this.timezoneName, dashboard.batchId),
           studentApi.getCheckinExemptions(dashboard.batchId, dashboard.recordId)
         ])
+        if (!current()) return
+        this.i = dashboard
         this.calendarData = calendar
         this.calendarDays = calendar?.days || []
         this.exemptions = Array.isArray(exemptions) ? exemptions : exemptions?.items || []
         this.state = 'ready'
       } catch (e) {
-        this.state = 'error'
-        toast(e?.message || '签到信息加载失败')
+        if (!current()) return
+        const error = normalizeError(e)
+        this.state = error.pageState || 'error'; this.error = error.text
+        toast(error.text)
       } finally { if (done) done() }
     },
     async changeMonth(e) {
@@ -178,13 +221,18 @@ export default {
       await this.load()
     },
     capturePhoto() {
-      if (this.photoUploading || this.checkingIn) return
+      if (this.photoUploading || this.checkingIn || this.disposed || this.hidden || !this.i || this.i.historyMode || this.generation !== currentSessionGeneration()) return
+      const generation = currentSessionGeneration(), sequence = ++this.photoSequence
+      const batch = this.i.batchId, record = this.i.recordId
+      const owned = () => !this.disposed && generation === currentSessionGeneration() && sequence === this.photoSequence
+      const current = () => owned() && batch === this.i?.batchId && record === this.i?.recordId
       this.photoUploading = true
       uni.chooseImage({
         count: 1,
         sourceType: ['camera'],
         sizeType: ['original'],
         success: async (res) => {
+          if (!current()) { if (owned()) this.photoUploading = false; return }
           try {
             const path = (res.tempFilePaths || [])[0]
             const source = (res.tempFiles || [])[0] || {}
@@ -192,13 +240,14 @@ export default {
             const uploaded = await uploadBusinessFile({
               path, name: source.name || `checkin-${Date.now()}.jpg`, size: source.size || 0
             }, { bizType: 'INTERNSHIP_CHECKIN_PHOTO' })
+            if (!current()) return
             this.photoFileId = uploaded.fileId
             this.photoFileName = uploaded.fileName || '现场照片已上传'
             toast('现场原图已上传，签到时由服务器生成水印图')
-          } catch (e) { toast(e?.message || '现场照片上传失败') }
-          finally { this.photoUploading = false }
+          } catch (e) { if (current()) toast(normalizeError(e).text) }
+          finally { if (owned()) this.photoUploading = false }
         },
-        fail: () => { this.photoUploading = false }
+        fail: () => { if (owned()) this.photoUploading = false }
       })
     },
     async pickExemptionEvidence() {
@@ -210,7 +259,7 @@ export default {
         const uploaded = await uploadBusinessFile(file, { bizType: 'INTERNSHIP_CHECKIN_EXEMPTION' })
         this.exemptionForm.evidenceFileId = uploaded.fileId
         this.exemptionEvidenceName = uploaded.fileName || file.name || '免签佐证'
-      } catch (e) { toast(e?.message || '佐证上传失败') }
+      } catch (e) { toast(normalizeError(e).text) }
       finally { this.exemptionUploading = false }
     },
     async submitExemption() {
@@ -231,12 +280,13 @@ export default {
         this.exemptionEvidenceName = ''
         this.exemptionOpen = false
         await this.load()
-      } catch (e) { toast(e?.message || '免签申请提交失败') }
+      } catch (e) { toast(normalizeError(e).text) }
       finally { this.exemptionSubmitting = false }
     },
     withdrawExemption(item) {
       uni.showModal({
         title: '撤回免签申请', content: '确认撤回这份待审核免签申请？',
+        confirmText: '确认撤回', cancelText: '暂不撤回',
         success: async (r) => {
           if (!r.confirm) return
           this.exemptionSubmitting = true
@@ -246,7 +296,7 @@ export default {
             })
             toast('免签申请已撤回')
             await this.load()
-          } catch (e) { toast(e?.message || '撤回失败') }
+          } catch (e) { toast(normalizeError(e).text) }
           finally { this.exemptionSubmitting = false }
         }
       })
@@ -255,32 +305,44 @@ export default {
       uni.navigateTo({ url: '/pages/student-internship/makeup/index?date=' + encodeURIComponent(day.date) })
     },
     checkin() {
+      if (this.state !== 'ready' || !this.i || this.hidden || this.generation !== currentSessionGeneration()) return
+      if (this.i.historyMode) return toast('当前历史批次仅可查看签到记录')
       if (this.i.checkin.done) return toast('当地日期今日已签到')
       if (this.checkingIn || this.photoUploading) return
+      const generation = currentSessionGeneration(), batch = this.i.batchId, record = this.i.recordId
       uni.showModal({
         title: '实习签到',
+        confirmText: '确认签到', cancelText: '暂不签到',
         content: this.photoFileId
           ? '将采集一次定位，并把服务器时间和位置写入现场照片水印。确认签到？'
           : '本次未拍现场照片，将只记录服务器时间与定位。确认签到？',
         success: (r) => {
-          if (!r.confirm || this.checkingIn) return
+          if (!r.confirm || this.checkingIn || this.hidden || generation !== currentSessionGeneration() || batch !== this.i?.batchId || record !== this.i?.recordId) return
           this.beginCheckin()
         }
       })
     },
     async beginCheckin() {
+      if (this.checkingIn || this.photoUploading || this.hidden || this.generation !== currentSessionGeneration() || this.state !== 'ready' || !this.i || this.i.historyMode || this.i.checkin.done) return
+      const generation = currentSessionGeneration(), sequence = ++this.checkinSequence
+      const batch = this.i.batchId, record = this.i.recordId
+      const locationPolicy = checkinLocationPolicy(this.overseas)
+      const current = () => !this.hidden && generation === currentSessionGeneration() && sequence === this.checkinSequence && batch === this.i?.batchId && record === this.i?.recordId
       this.checkingIn = true
       this.checkinKey = this.checkinKey || `mp-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
       let preflight
       try {
         preflight = await studentApi.getCheckinPreflight(this.timezoneName, this.i.batchId)
+        if (!current()) return
         this.preflightRule = preflight.rule || null
       } catch (e) {
+        if (!current()) return
         this.checkingIn = false
-        return toast(e?.message || '签到预检失败')
+        return toast(normalizeError(e).text)
       }
 
       const submit = async (loc = {}) => {
+        if (!current()) return
         try {
           const res = await studentApi.submitCheckin({
             ...loc,
@@ -288,33 +350,41 @@ export default {
             idempotencyKey: this.checkinKey,
             checkinToken: preflight.token,
             photoFileId: this.photoFileId || '',
+            note: String(this.checkinNote || '').trim(),
             timezoneName: this.timezoneName,
             countryRegion: this.countryRegion || '',
-            coordinateSystem: this.overseas ? 'WGS84' : 'GCJ02',
-            locationProvider: this.overseas ? 'UNI_WGS84' : 'UNI_GCJ02',
+            coordinateSystem: locationPolicy.coordinateSystem,
+            locationProvider: locationPolicy.locationProvider,
             capturedAt: new Date().toISOString()
           })
+          if (!current()) return
+          const receipt = checkinReceipt(res)
+          if (!receipt) {
+            toast('签到回执暂无法核对，请重新读取日历；未确认前请保留备注和照片')
+            return
+          }
           this.checkinKey = ''
-          const photo = res?.watermarkedFileId ? ' · 水印照片已生成并留存双哈希' : ''
-          const dist = res?.distanceM != null ? ` · 距围栏中心约 ${Math.round(res.distanceM)} 米` : ''
-          this.lastResultNote = `${res?.message || '签到成功'}${dist}${photo}`
+          this.lastResultNote = receipt.summary
+          this.checkinNote = ''
           this.photoFileId = ''
           this.photoFileName = ''
-          toast(res?.message || '签到成功')
+          uni.showModal({ title: receipt.title, content: receipt.content, showCancel: false, confirmText: '知道了' })
           await this.load()
         } catch (e) {
-          if (String(e?.code || '').includes('409') || e?.code === 'DATA_CONFLICT') {
-            toast(e?.message || '当地日期今日已签到')
+          if (!current()) return
+          if (e?.bizCode === 'DATA_CONFLICT' || normalizeError(e).kind === 'conflict') {
+            toast('签到记录或状态已变化，请重新读取日历核对')
             await this.load()
-          } else toast(e?.message || '签到失败，请稍后重试')
-        } finally { this.checkingIn = false }
+          } else toast(normalizeError(e).text)
+        } finally { if (!this.hidden && generation === currentSessionGeneration() && sequence === this.checkinSequence) this.checkingIn = false }
       }
 
       let attempts = 0
       let best = null
       const locate = () => uni.getLocation({
-        type: this.overseas ? 'wgs84' : 'gcj02',
+        type: locationPolicy.type,
         success: (p) => {
+          if (!current()) return
           attempts += 1
           const loc = {
             lat: p.latitude, lng: p.longitude, gpsAccuracy: p.accuracy,
@@ -330,6 +400,7 @@ export default {
           submit(best)
         },
         fail: (err) => {
+          if (!current()) return
           if (this.photoFileId) {
             this.checkingIn = false
             toast('已拍现场照片时必须获取一次位置，才能生成位置水印')
@@ -342,10 +413,11 @@ export default {
               content: '可去设置开启定位；如不上传现场照片，也可继续无定位签到并进入人工核验。',
               confirmText: '去设置', cancelText: '无定位签到',
               success: (choice) => {
+                if (!current()) return
                 if (!choice.confirm) return submit({})
                 uni.openSetting({
-                  success: (res) => res?.authSetting?.['scope.userLocation'] ? locate() : submit({}),
-                  fail: () => submit({})
+                  success: (res) => { if (current()) res?.authSetting?.['scope.userLocation'] ? locate() : submit({}) },
+                  fail: () => { if (current()) submit({}) }
                 })
               }
             })

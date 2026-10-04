@@ -12,7 +12,7 @@
         <text class="mr__eyebrow">当前收件要求</text>
         <picker :range="requirementLabels" :value="requirementIndex" :disabled="!!actingId" @change="onRequirement">
           <view class="mr__requirement-choice">
-            <view class="flex-1"><text class="t-md t-bold">{{ currentRequirement?.materialName }}</text><text class="mr__sub">{{ currentRequirement?.materialCode }}</text></view>
+            <view class="flex-1"><text class="t-md t-bold">{{ currentRequirement?.materialName }}</text></view>
             <text class="mr__switch">切换 ▾</text>
           </view>
         </picker>
@@ -41,7 +41,7 @@
             <view v-for="file in row.submission.files" :key="file.slotNo" class="mr__file">
               <view class="flex-1">
                 <text>{{ file.fileName || ('第' + file.slotNo + '份材料') }}</text>
-                <text class="mr__sub">文件版本 V{{ file.versionNo }} · {{ file.scanStatus || '扫描状态未知' }}</text>
+                <text class="mr__sub">第{{ file.versionNo }}版 · {{ file.statusText }}</text>
               </view>
               <button @click="preview(file.fileId)">查看</button>
             </view>
@@ -68,11 +68,16 @@ import {
   teacherInternshipMaterialReview
 } from '@/services/internshipApi'
 import { openBusinessFile } from '@/services/fileApi'
+import fileSdk from '@/services/fileSdk'
+import { materialSubmissionView, refreshFileReadiness, filesReadyForBusiness } from '@/services/fileReadiness.mjs'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { normalizeError } from '@/services/request'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import { toast } from '@/utils/nav'
 
 const STATES = [
-  { value: 'SUBMITTED', label: '已交待审' },
+  { value: 'PENDING_REVIEW', label: '待审核' },
+  { value: 'SUBMITTED', label: '已交材料' },
   { value: 'MISSING', label: '缺交' },
   { value: 'ALL', label: '全部' }
 ]
@@ -84,21 +89,25 @@ export default {
       batches: [], batchId: '', batchIndex: 0,
       requirements: [], requirementIndex: 0,
       coverage: null, rows: [],
-      stateFilter: 'SUBMITTED', states: STATES,
-      page: 1, hasMore: false, loadingMore: false, actingId: ''
+      stateFilter: 'PENDING_REVIEW', states: STATES,
+      page: 1, hasMore: false, loadingMore: false, actingId: '', requestSeq:0, viewSequence:0, generation:currentSessionGeneration(), hidden:false
     }
   },
   computed: {
     context() { return useInternshipContextStore() },
     batchLabels() { return this.batches.map((b) => `${b.name} · ${b.studentCount}人`) },
-    requirementLabels() { return this.requirements.map((r) => `${r.materialName} · ${r.materialCode}`) },
+    requirementLabels() { return this.requirements.map((r) => r.materialName) },
     currentRequirement() { return this.requirements[this.requirementIndex] || null },
     canReview() { return this.context.can('internship.report.review') },
-    emptyTitle() { return this.stateFilter === 'MISSING' ? '当前没有缺交学生' : this.stateFilter === 'SUBMITTED' ? '当前没有待审核材料' : '当前没有材料记录' }
+    emptyTitle() { return this.stateFilter === 'MISSING' ? '当前没有缺交学生' : this.stateFilter === 'PENDING_REVIEW' ? '当前没有待审核材料' : this.stateFilter==='SUBMITTED'?'当前没有已交材料':'当前没有材料记录' }
   },
   onLoad() { this.load() },
+  onShow() {const wasHidden=this.hidden;this.hidden=false;if(this.generation!==currentSessionGeneration()){this.rows=[];this.requirements=[];this.coverage=null;this.load()}else if(wasHidden){if(this.currentRequirement)return this.loadRequirement();if(this.state==='loading')return this.load()}},
+  onHide() {this.hidden=true;this.viewSequence++},
+  onUnload() {this.hidden=true;this.requestSeq++;this.viewSequence++},
   onReachBottom() { this.loadMore() },
   methods: {
+    current(seq,generation,batchId=this.batchId) {return !this.hidden && seq===this.viewSequence && generation===currentSessionGeneration() && String(batchId)===String(this.batchId)},
     submissionLabel(row) { return row.submission?.statusLabel || '未提交' },
     submissionTone(row) {
       const value = row.submission?.status
@@ -108,35 +117,41 @@ export default {
       return 'default'
     },
     async load() {
+      const seq=++this.requestSeq,generation=this.generation=currentSessionGeneration()
+      this.viewSequence++;this.rows=[];this.coverage=null;this.requirements=[];this.actingId='';this.loadingMore=false
       this.state = 'loading'
       try {
         this.context.restore()
         await this.context.load(true)
+        if(this.hidden || seq!==this.requestSeq || generation!==currentSessionGeneration())return
         this.batches = this.context.batches || []
         this.batchId = this.context.selectedBatchId || ''
         this.batchIndex = Math.max(0, this.batches.findIndex((b) => String(b.id) === String(this.batchId)))
         if (!this.batchId) {
           this.requirements = []; this.rows = []; this.coverage = null; this.state = 'ready'; return
         }
-        this.requirements = await teacherInternshipMaterialRequirements(this.batchId) || []
+        const requirements = await teacherInternshipMaterialRequirements(this.batchId) || []
+        if(this.hidden || seq!==this.requestSeq || generation!==currentSessionGeneration())return
+        this.requirements=requirements
         if (this.requirementIndex >= this.requirements.length) this.requirementIndex = 0
         await this.loadRequirement()
-        this.state = 'ready'
       } catch (e) {
-        this.rows = []; this.coverage = null; this.state = 'error'; toast(e?.message || '材料审核加载失败')
+        if(this.hidden || seq!==this.requestSeq || generation!==currentSessionGeneration())return
+        this.rows = []; this.coverage = null; this.state = 'error'; toast('材料审核读取失败，请重新读取')
       }
     },
     async loadRequirement() {
       const req = this.currentRequirement
+      const seq=++this.viewSequence,generation=this.generation,batchId=this.batchId
+      this.rows=[];this.coverage=null;this.loadingMore=false
       this.page = 1; this.hasMore = false
-      if (!req) { this.rows = []; this.coverage = null; return }
-      const [coverage, data] = await Promise.all([
-        teacherInternshipMaterialCoverage(req.id),
-        teacherInternshipMaterialStudents(req.id, { state: this.stateFilter, page: 1, pageSize: 20 })
-      ])
-      this.coverage = coverage
-      this.rows = data?.items || []
-      this.hasMore = !!data?.hasMore
+      if (!req) {this.state='ready';return}
+      this.state='loading'
+      try {
+        const [coverage, data] = await Promise.all([teacherInternshipMaterialCoverage(req.id),teacherInternshipMaterialStudents(req.id, { state: this.stateFilter, page: 1, pageSize: 20 })])
+        if(!this.current(seq,generation,batchId))return
+        this.coverage = coverage;this.rows = (data?.items || []).map(row=>({...row,submission:materialSubmissionView(row.submission)}));this.hasMore = !!data?.hasMore;this.state='ready'
+      }catch {if(this.current(seq,generation,batchId)){this.state='error';toast('材料名单读取失败，请重新读取')}}
     },
     async onBatch(e) {
       this.batchIndex = Number(e.detail.value) || 0
@@ -158,41 +173,57 @@ export default {
       const req = this.currentRequirement
       if (!req || !this.hasMore || this.loadingMore) return
       this.loadingMore = true
+      const seq=this.viewSequence,generation=this.generation,batchId=this.batchId
       try {
         const next = this.page + 1
         const data = await teacherInternshipMaterialStudents(req.id, {
           state: this.stateFilter, page: next, pageSize: 20
         })
-        this.rows = [...this.rows, ...(data?.items || [])]
+        if(!this.current(seq,generation,batchId))return
+        this.rows = [...this.rows, ...(data?.items || []).map(row=>({...row,submission:materialSubmissionView(row.submission)}))]
         this.page = next
         this.hasMore = !!data?.hasMore
-      } finally { this.loadingMore = false }
+      } catch {if(this.current(seq,generation,batchId))toast('更多材料读取失败，当前名单已保留，请重试')}
+      finally {if(this.current(seq,generation,batchId))this.loadingMore = false}
     },
     async preview(fileId) {
+      if(this.hidden || this.generation!==currentSessionGeneration())return
       try { await openBusinessFile(fileId) }
-      catch (e) { toast(e?.message || '材料无法打开') }
+      catch (e) { toast('材料暂时无法打开，请重新读取后重试') }
     },
     review(row, action) {
       const submission = row.submission
-      if (!submission || submission.status !== 'SUBMITTED' || this.actingId || !this.canReview) return
+      if (!submission || submission.status !== 'SUBMITTED' || this.actingId || !this.canReview || this.hidden || this.generation!==currentSessionGeneration()) return
+      const seq=this.viewSequence,generation=this.generation,batchId=this.batchId
+      const current=()=>this.current(seq,generation,batchId) && this.rows.some(item=>String(item.submission?.id)===String(submission.id) && item.submission.version===submission.version)
       const returning = action === 'RETURN'
       uni.showModal({
         title: returning ? '退回学生重交' : '审核通过',
         editable: true,
+        confirmText:returning?'确认退回':'确认通过',cancelText:'取消',
         placeholderText: returning ? '请写明需要修改的内容（至少5字）' : '可填写审核意见',
         success: async (r) => {
-          if (!r.confirm) return
+          if (!r.confirm || !current() || this.actingId) return
           const comment = String(r.content || '').trim()
           if (returning && comment.length < 5) return toast('退回原因至少5个字')
           this.actingId = submission.id
           try {
+            if(!returning) {
+              let files
+              try {files=await refreshFileReadiness(submission.files || [],id=>fileSdk.metadata(id),current)}
+              catch {if(current())toast('材料安全状态读取失败，请重新读取后审核');return}
+              if(!current())return
+              if(!files?.length || !filesReadyForBusiness(files)){toast('材料尚未安全可用，不能审核通过');return}
+            }
+            if(!current())return
             await teacherInternshipMaterialReview(submission.id, {
               action, comment, expectedVersion: submission.version
             })
+            if(!current())return
             toast(returning ? '已退回，学生可提交新文件版本' : '审核通过，最终版本可进入归档')
             await this.loadRequirement()
-          } catch (e) { toast(e?.message || '材料审核失败') }
-          finally { this.actingId = '' }
+          } catch (e) {if(current())toast(normalizeError(e).text)}
+          finally {if(String(this.actingId)===String(submission.id))this.actingId = ''}
         }
       })
     }

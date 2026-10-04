@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.core.exceptions import AppException, no_permission
 from app.models import (
     InternshipAuditTrail,
+    InternshipBatch,
     InternshipCheckinExemption,
     InternshipRecord,
     StudentProfile,
@@ -17,7 +18,7 @@ from app.modules.internship.services.internship_scope import apply_internship_re
 from app.modules.internship.services.internship_student_context_guard import (
     require_explicit_context,
 )
-from app.services import file_service
+from app.services import file_access_service, file_business_binding_service
 from app.services.db_service import _as_id, _iso, _tid, session
 
 
@@ -84,7 +85,11 @@ def list_my(user: dict, *, batch_id=None, internship_id=None):
 def apply(user: dict, body: dict):
     payload = body or {}
     with session() as db:
-        record, student, batch = require_explicit_context(db, user, payload, for_write=True)
+        record, student, batch_id = require_explicit_context(db, user, payload, for_write=True)
+        batch = db.scalar(select(InternshipBatch).where(InternshipBatch.tenant_id == _tid(),
+            InternshipBatch.id == batch_id, InternshipBatch.is_deleted.is_(False)))
+        if not batch:
+            raise no_permission('当前实习批次不存在或不可办理')
         start = _date(payload.get("startDate"), "免签开始日期")
         end = _date(payload.get("endDate"), "免签结束日期")
         if start > end:
@@ -100,8 +105,8 @@ def apply(user: dict, body: dict):
             raise AppException("VALIDATION_ERROR", "免签日期必须在当前实习起止日期内")
 
         file_id = str(payload.get("evidenceFileId") or "").strip() or None
-        if file_id and not file_service.get_file_meta(file_id, user):
-            raise AppException("VALIDATION_ERROR", "免签佐证材料不存在或尚未安全就绪")
+        if file_id:
+            file_access_service.require_file_access(file_id, user=user, action='bind')
 
         exists = db.scalar(select(InternshipCheckinExemption).where(
             InternshipCheckinExemption.tenant_id == _tid(),
@@ -131,9 +136,11 @@ def apply(user: dict, body: dict):
             db.rollback()
             raise AppException("DATA_CONFLICT", "当前已有待审核免签申请，请刷新后重试") from None
         if file_id:
-            file_service.bind_file_biz(
-                file_id, "INTERNSHIP_CHECKIN_EXEMPTION", item.id, user=user, db=db
-            )
+            file_business_binding_service.bind_file_to_business(db, file_id=file_id,
+                biz_type='INTERNSHIP_CHECKIN_EXEMPTION', biz_id=item.id, actor=user,
+                subject_type='STUDENT', subject_id=student.id, student_id=student.id,
+                batch_id=str(record.batch_id), module_code='INTERNSHIP',
+                scope={'internshipId':str(record.id),'studentId':str(student.id),'batchId':str(record.batch_id)})
         _trail(db, item, "EXEMPTION_APPLY", user, {
             "batchId": str(record.batch_id or ""),
             "internshipId": str(record.id),

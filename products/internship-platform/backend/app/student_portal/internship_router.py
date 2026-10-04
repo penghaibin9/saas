@@ -422,6 +422,18 @@ def portal_weekly_report_submit(
     )
 
 
+@router.get("/context/weekly-reports/{report_id}", summary="本人周报历史版本与批阅评分")
+def portal_weekly_report_detail(
+    report_id: int,
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(reports.weekly_detail(
+        user, report_id=report_id, batch_id=batchId, internship_id=internshipId,
+    ))
+
+
 @router.get("/context/formal-documents", summary="本人当前实习正式文书")
 def portal_formal_documents(
     batchId: int = Query(..., ge=1),

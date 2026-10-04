@@ -36,10 +36,11 @@
             </label>
           </div>
         </details>
-        <span v-if="tableMode === 'full'" class="isl-ledger-note">页面与 Excel 使用同一服务端事实；生源地暂无独立来源时明确显示“未采集”。</span>
+        <span v-if="tableMode === 'full'" class="isl-ledger-note">页面与电子表格使用同一份学生资料；尚未填写生源地的学生显示“未采集”，可进入基础资料完善。</span>
       </div>
       <form class="isl-filters" @submit.prevent="search">
         <label class="isl-keyword">学生姓名 / 学号<input v-model="filters.keyword" type="search" placeholder="输入姓名或学号" /></label>
+        <label class="isl-keyword">生源地<input v-model="filters.sourceRegion" type="search" maxlength="100" placeholder="按生源地区筛选" /></label>
         <label v-for="field in filterFields.slice(1, 3)" :key="field.key">{{ field.label }}<select v-model="filters[field.key]"><option value="">全部</option><option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option></select></label>
         <div class="isl-filter-actions"><button class="mp-btn mp-btn--primary" type="submit">查询</button><button class="mp-btn" type="button" @click="reset">重置</button></div>
         <details class="isl-more" :open="!!(appliedFilters.destination || appliedFilters.hasPosition || appliedFilters.hasAdvisor)"><summary>更多筛选{{ filters.destination || filters.hasPosition || filters.hasAdvisor ? ' · 已选择' : '' }}</summary><div><label v-for="field in filterFields.slice(3)" :key="field.key">{{ field.label }}<select v-model="filters[field.key]"><option value="">全部</option><option v-for="option in field.options" :key="option.value" :value="option.value">{{ option.label }}</option></select></label></div></details>
@@ -77,6 +78,17 @@
         </template>
       </DataTable>
     </section>
+
+    <StudentBasicInfoEditor :key="'basic-' + scopeEpoch" v-model:visible="basicVisible" :record-id="basicRecordId" :batch-id="String(batchStore.selectedBatchId || '')" :can-manage="canStudentManage && canWriteBatch" @saved="load" />
+    <AppExcelImportDrawer :key="'basic-import-' + scopeEpoch" v-model:visible="basicImportVisible"
+      title="导入学生基础资料" template-name="学生基础资料导入模板.xlsx" :required-fields="['学号']"
+      :preview-fields="['studentNo', 'sourceRegion', 'nation', 'gender']"
+      :download-template-fn="() => internStudentApi.downloadBasicInfoTemplate()"
+      :upload-fn="(file) => internStudentApi.uploadBasicInfoXlsx(file, batchStore.selectedBatchId)"
+      :confirm-fn="({ rows }) => internStudentApi.basicInfoImportConfirm(rows, batchStore.selectedBatchId)"
+      :download-errors-fn="({ rows, errors }) => internStudentApi.downloadBasicInfoErrors(rows, errors)" @imported="onBasicImported">
+      <template #result="{ result }"><div class="aeid__result-title">基础资料导入完成</div><p>已处理 {{ result?.updated || 0 }} 名学生。生源地、民族、性别已同步到学生基础资料与实习台账；实际变更已记录业务审计。</p></template>
+    </AppExcelImportDrawer>
 
     <!-- 建档 -->
     <AppDrawer :visible="createVisible" title="实习学生建档" mode="modal" size="large" @update:visible="!submitting && (createVisible = $event)">
@@ -160,12 +172,13 @@ import { AppSensitiveText, AppStatusTag, AppExportButton, AppTextarea, AppIntern
 import { AppExcelImportDrawer } from '@/components/common/excel'
 import { TableActionColumn } from '@/modules/internship/components'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
+import StudentBasicInfoEditor from '@/modules/internship/components/StudentBasicInfoEditor.vue'
 import { STUDENT_STATUS, ELIGIBILITY_STATUS, DESTINATION_TYPE } from '@/modules/internship/constants/internship-student.constants'
 import { canCode } from '@/modules/internship/composables/permission'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 
-const EMPTY_FILTERS = () => ({ keyword: '', status: '', eligibility: '', destination: '', hasPosition: '', hasAdvisor: '' })
+const EMPTY_FILTERS = () => ({ keyword: '', sourceRegion: '', status: '', eligibility: '', destination: '', hasPosition: '', hasAdvisor: '' })
 
 const PANEL_PRESETS = {
   roster: () => EMPTY_FILTERS(),
@@ -208,22 +221,24 @@ const FULL_COLUMNS = [
   { key: 'advisor', title: '指导教师' },
   { key: 'actions', title: '操作', width: '170px' }
 ]
-const DEFAULT_FULL_KEYS = FULL_COLUMNS.map((column) => column.key)
+const DEFAULT_FULL_KEYS = FULL_COLUMNS.filter((column) => !['student', 'actions'].includes(column.key)).map((column) => column.key)
 
 export default {
   name: 'InternshipStudentListView',
   components: { ModulePageShell, ModuleToolbar, DataTable, LoadingState, ErrorState, EmptyState,
     AppDrawer, AppSensitiveText, AppStatusTag, AppExportButton, AppTextarea, AppExcelImportDrawer, TableActionColumn,
-    AppInternshipCandidateStudentPicker, AppInternshipAdvisorPicker },
+    AppInternshipCandidateStudentPicker, AppInternshipAdvisorPicker, StudentBasicInfoEditor },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      internStudentApi,
       loadSequence: 0, scopeEpoch: 0, loading: true, error: '', submitting: false, activePanel: 'roster',
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(), appliedFilters: EMPTY_FILTERS(), advisorConflict: false,
       createVisible: false, cform: { studentId: '', advisorUserId: '', remark: '' }, cError: '',
       advisorVisible: false, advisorRow: null, advisorAssignmentUserId: '', advisorAssignmentReason: '', advisorError: '',
       advisorLoading: false, advisorLoadError: '', advisorSequence: 0,
       importVisible: false,
+      basicVisible: false, basicRecordId: '', basicImportVisible: false,
       allocationImportVisible: false,
       tableMode: 'compact',
       selectedFullColumnKeys: [...DEFAULT_FULL_KEYS]
@@ -283,7 +298,9 @@ export default {
         { key: 'allocationImport', label: '导入分配',
           disabled: denyManage || !this.batchStore.selectedBatchId,
           disabledReason: denyManage ? '无实习分配权限' : '请先选择实习批次' },
-        { key: 'insurance', label: '保险核验', variant: 'ghost', disabled: !this.canInsuranceView, disabledReason: '无保险查看权限' }
+        { key: 'insurance', label: '保险核验', variant: 'ghost', disabled: !this.canInsuranceView, disabledReason: '无保险查看权限' },
+        { key: 'basicImport', label: '导入基础资料', disabled: denyManage || denyBatch,
+          disabledReason: denyManage ? '无学生管理权限' : batchReason }
       ]
     },
     exportButtonLabel() {
@@ -311,6 +328,7 @@ export default {
       this.scopeEpoch++; this.loadSequence++; this.submitting = false
       this.advisorSequence++; this.advisorLoading = false; this.advisorLoadError = ''
       this.createVisible = false; this.advisorVisible = false; this.importVisible = false; this.allocationImportVisible = false
+      this.basicVisible = false; this.basicRecordId = ''; this.basicImportVisible = false
       this.cform = { studentId: '', advisorUserId: '', remark: '' }; this.cError = ''
       this.advisorRow = null; this.advisorAssignmentUserId = ''; this.advisorAssignmentReason = ''; this.advisorError = ''; this.advisorConflict = false
       this.rows = []; this.total = 0
@@ -360,6 +378,7 @@ export default {
     },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 人（脱敏 + 水印，已写审计）`) },
     onImported(data) { toast.success(`已导入 ${data.created || 0} 人`); this.load() },
+    onBasicImported(data) { toast.success(`已处理 ${data.updated || 0} 名学生基础资料`); this.load() },
     onAllocationImported(data) {
       toast.success(
         `分配导入完成：处理 ${data.processed || 0} 人，导师 ${data.advisorAssigned || 0} 人，岗位 ${data.positionAssigned || 0} 人`
@@ -393,6 +412,10 @@ export default {
     turnPage(p) { this.page = p; this.updateQuery() },
     async onToolbar(key) {
       if (this.submitting) return
+      if (key === 'basicImport') {
+        if (!this.canStudentManage || !this.canWriteBatch) return toast.error('请确认学生管理权限和当前可办理批次')
+        this.basicImportVisible = true; return
+      }
       if (key === 'roster') return this.goPanel('roster')
       if (key === 'insurance') {
         if (!this.canInsuranceView) return toast.error('无保险查看权限')
@@ -502,7 +525,7 @@ export default {
       finally { if (scope === this.scopeEpoch && workspace === this.advisorSequence) this.submitting = false }
     },
     rowActions(row) {
-      const actions = [{ key: 'detail', label: '档案' }]
+      const actions = [{ key: 'detail', label: '档案' }, { key: 'basic', label: '基础资料' }]
       if (this.activePanel !== 'mentor' && row.status !== 'ARCHIVED' && this.canWriteBatch && this.canEligibility) actions.push({ key: 'eligibility', label: '审核资格' })
       if (row.status !== 'ARCHIVED' && this.canStudentManage) {
         const assign = { key: 'assignAdvisor', label: row.advisorUserId ? '调整导师' : '分配导师' }
@@ -512,6 +535,7 @@ export default {
       return actions
     },
     onRowAction(key, row) {
+      if (key === 'basic') { this.basicRecordId = String(row.id); this.basicVisible = true; return }
       if (key === 'assignAdvisor') {
         if (!this.canStudentManage || row.status === 'ARCHIVED' || this.submitting) return
         return this.$router.push(this.advisorLocation(row))

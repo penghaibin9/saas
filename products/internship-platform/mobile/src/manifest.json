@@ -2,6 +2,7 @@
   "name": "跃科岗位实习管理平台",
   "appid": "wxb569328a0dbf268b",
   "description": "岗位实习学生端与教师端",
+  "locale": "zh-Hans",
   "versionName": "0.1.0",
   "versionCode": "10",
   "transformPx": false,

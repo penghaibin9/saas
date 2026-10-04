@@ -64,7 +64,12 @@
       </template>
       <template #cell-actions="{ row }">
         <div class="tbl__ops">
-          <template v-if="tab === 'exceptions' && row.status === 'PENDING_HANDLE'">
+          <template v-if="tab === 'checkins'">
+            <AppButton v-if="row.photoFileId" variant="ghost" size="sm" :disabled="photoLoading" @click="openPhoto(row, true)">查看原图</AppButton>
+            <AppButton v-if="row.watermarkedFileId" variant="secondary" size="sm" :disabled="photoLoading" @click="openPhoto(row, false)">查看水印</AppButton>
+            <span v-if="!row.photoFileId && !row.watermarkedFileId" class="tbl__muted">未附现场照片</span>
+          </template>
+          <template v-else-if="tab === 'exceptions' && row.status === 'PENDING_HANDLE'">
             <AppPermissionButton code="internship.attendance.review" :allowed="canBtn('internship.attendance.review')" variant="secondary" size="sm" @click="openExceptionDetail(row)">查看完整证据</AppPermissionButton>
           </template>
           <template v-else-if="tab === 'makeups'">
@@ -74,6 +79,13 @@
         </div>
       </template>
     </DataTable>
+
+    <section v-if="photoLoading || photoFile || photoError" class="attendance-photo" aria-label="签到照片核对">
+      <div class="tbl__ops"><strong>{{ photoRecord?.studentName }} · {{ photoRecord?.date }} · {{ photoOriginal ? '现场原图' : '时间与位置水印' }}</strong><AppButton variant="ghost" size="sm" @click="clearPhoto">关闭照片</AppButton></div>
+      <LoadingState v-if="photoLoading" />
+      <p v-else-if="photoError" role="alert">{{ photoError }}</p>
+      <FilePreviewer v-else-if="photoFile" :key="photoFile.fileId" :file="photoFile" inline :provider="photoProvider" :allow-download="false" @error="photoFailed" />
+    </section>
 
     </template>
     <section v-if="makeupDetail.visible" class="makeup-workspace" aria-label="补卡申请与审批证据">
@@ -136,6 +148,10 @@ import { guidanceVisitApi } from '@/modules/internship/api/guidance-visit.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { fileSdk } from '@/services/file/fileSdk'
+import FilePreviewer from '@/components/file/FilePreviewer.vue'
+import { currentSessionGeneration } from '@/services/http/client'
+import { normalizeUiError } from '@/utils/presentationSafety'
 
 // U8：页签由 URL 的 panel 承载，这里补上 applyPanel 会重置掉的关键词/状态/页码
 const WORK_FIELDS = ['keyword', 'statusFilter', 'page']
@@ -173,7 +189,7 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton,
     AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppSearchBox, AppQuickFilterChips,
-    AppDescriptionList, AppAuditTrail, AppFilePreview, ModuleSummaryStrip, AppInlineAlert, ActionReceipt },
+    AppDescriptionList, AppAuditTrail, AppFilePreview, ModuleSummaryStrip, AppInlineAlert, ActionReceipt, FilePreviewer },
   data() {
     return {
       tab: 'checkins',
@@ -185,6 +201,8 @@ export default {
         { key: 'makeup-review', label: '补卡审批' }
       ],
       loadSeq: 0, rows: [], total: 0, page: 1, pageSize: 50, loading: false, error: '',
+      photoSequence: 0, photoRecord: null, photoFile: null, photoOriginal: false, photoLoading: false, photoError: '', disposed: false,
+      photoProvider: { fetchBytes: descriptor => fileSdk.blob(descriptor.fileId), dispose() {} },
       tabTotals: { checkins: null, exceptions: null, makeupsAll: null, makeupsPending: null },
       keyword: '', statusFilter: '',
       dlg: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: true, submitting: false },
@@ -204,7 +222,7 @@ export default {
     columns() { return COLS[this.tab] },
     statusOptions() { return STATUS_OPTS[this.tab] || [] },
     chipOptions() { return [{ label: '全部状态', value: '' }, ...this.statusOptions] },
-    tableColumns() { const columns = this.columns.map((c) => ({ key: c.key, title: c.label })); return this.tab === 'checkins' ? columns : [...columns, { key: 'actions', title: '操作' }] },
+    tableColumns() { const columns = this.columns.map((c) => ({ key: c.key, title: c.label })); return [...columns, { key: 'actions', title: this.tab === 'checkins' ? '现场照片' : '操作' }] },
     tabLabel() { return this.tabs.find((item) => item.key === this.activePanel)?.label || '考勤记录' },
     panelPurpose() {
       return {
@@ -280,7 +298,9 @@ export default {
     this.workContextReady = true
     if (restored) this.load()
   },
+  beforeUnmount() { this.disposed = true; this.loadSeq++; this.clearPhoto() },
   watch: {
+    'ctx.ctxKey'() { this.resetBatchView() },
     'batchStore.selectedBatchId'(value, previous) {
       if (value === previous) return
       this.resetBatchView()
@@ -303,6 +323,25 @@ export default {
     }
   },
   methods: {
+    clearPhoto() { this.photoSequence++; this.photoRecord = null; this.photoFile = null; this.photoLoading = false; this.photoError = '' },
+    photoFailed(error) { if (this.photoRecord && !this.disposed) this.photoError = normalizeUiError(error).userMessage },
+    async openPhoto(row, original = false) {
+      if (this.disposed || this.tab !== 'checkins' || !this.canBtn('internship.attendance.view') || !this.rows.some(item => String(item.id) === String(row.id))) return
+      const id = String((original ? row.photoFileId : row.watermarkedFileId) || '')
+      if (!id) return
+      this.clearPhoto(); this.photoRecord = row; this.photoOriginal = original; this.photoLoading = true
+      const sequence = this.photoSequence, generation = currentSessionGeneration(), ctxKey = this.ctx.ctxKey, batchId = this.batchStore.selectedBatchId
+      const current = () => !this.disposed && sequence === this.photoSequence && generation === currentSessionGeneration() && ctxKey === this.ctx.ctxKey && batchId === this.batchStore.selectedBatchId
+      try {
+        const meta = await fileSdk.metadata(id)
+        if (!current()) return
+        const expected = original ? row.photoSha256 : row.watermarkedSha256
+        if (String(meta.fileId) !== id || (expected && meta.sha256 !== expected)) throw { message: '照片内容已变化，请刷新考勤台账后重新核对' }
+        if (!meta.canPreview) throw { message: '照片暂不可查看，请核对当前权限及安全扫描状态' }
+        this.photoFile = meta
+      } catch (error) { if (current()) this.photoError = normalizeUiError(error).userMessage }
+      finally { if (current()) this.photoLoading = false }
+    },
     resetBatchView() {
       this.loadSeq++
       this.makeupDetail = { visible: false, id: '', loading: false, error: '', data: null }
@@ -338,6 +377,7 @@ export default {
       }
     },
     async load() {
+      this.clearPhoto()
       if (this.workContextReady) captureWorkContext(this, WORK_FIELDS)
       const seq = ++this.loadSeq
       const tab = this.tab
@@ -522,6 +562,8 @@ export default {
 .nextup__text { flex: 1 1 auto; font-size: var(--font-size-sm); color: var(--text-secondary); }
 .nextup__text b { color: var(--text-primary); }
 .tbl__ops { display: flex; gap: var(--space-1); align-items: center; }
+.attendance-photo { margin-top: 16px; padding: 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.attendance-photo > .tbl__ops { justify-content: space-between; margin-bottom: 12px; }
 .op { border: 1px solid var(--border-base); background: var(--bg-card); border-radius: var(--radius-sm);
   padding: 2px var(--space-2); font-size: var(--font-size-xs); cursor: pointer; color: var(--text-secondary); }
 .op:hover { border-color: var(--primary-500); color: var(--primary-600); }

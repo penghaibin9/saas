@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="实习学生" subtitle="本批次名单与资格进度" show-back fallback-url="/pages/teacher/workbench/index" />
+    <MobileNavBar variant="teacher" title="实习学生" subtitle="本批次名单与资格进度" show-back fallback-url="/pages/teacher-internship/index" />
     <MobileGlobalState :state="state" :description="error" @retry="load">
       <view class="page-pad stack">
         <view class="card its__context"><view><text class="its__eyebrow">当前实习批次</text><text class="its__batch">{{ context.selectedBatch?.name || context.selectedBatch?.batchName || '请选择批次' }}</text></view>

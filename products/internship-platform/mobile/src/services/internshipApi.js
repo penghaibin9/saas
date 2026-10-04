@@ -29,6 +29,16 @@ function studentContextPath(path, batchId, internshipId) {
 }
 
 // ── 教师岗位实习：权限与批次上下文 ──
+export const studentInternshipEmployment = (batchId, internshipId, notificationPage=1) => {
+  try { return realRequest(studentContextPath('/mobile/internship/employment',batchId,internshipId)+'&notificationPage='+enc(notificationPage)) }
+  catch(e) { return Promise.reject(e) }
+}
+export const studentInternshipEmploymentSubmit = body => realRequest('/mobile/internship/employment',{method:'POST',data:body||{}})
+export const studentInternshipEmploymentResultRead = (id,batchId,internshipId) => {
+  try { return realRequest(studentContextPath('/mobile/internship/employment/messages/'+enc(id)+'/read',batchId,internshipId),{method:'POST'}) }
+  catch(e) { return Promise.reject(e) }
+}
+
 export const teacherInternshipContext = () => realRequest('/mobile/teacher/internship/context')
 export const teacherInternshipMyStudents = (batchId) => {
   try { return realRequest(batchPath('/mobile/teacher/internship/my-students', batchId)) }
@@ -205,6 +215,10 @@ export const studentInternshipWeeklyReports = (batchId, internshipId, page = 1, 
 }
 export const studentInternshipWeeklySubmit = (body) =>
   realRequest('/mobile/internship/context/weekly-reports', { method: 'POST', data: body || {} })
+export const studentInternshipWeeklyDetail = (reportId, batchId, internshipId) => {
+  try { return realRequest(studentContextPath(`/mobile/internship/context/weekly-reports/${enc(reportId)}`, batchId, internshipId)) }
+  catch (e) { return Promise.reject(e) }
+}
 export const studentInternshipProcessReports = (batchId, internshipId) => {
   try { return realRequest(studentContextPath('/mobile/internship/context/reports', batchId, internshipId)) }
   catch (e) { return Promise.reject(e) }

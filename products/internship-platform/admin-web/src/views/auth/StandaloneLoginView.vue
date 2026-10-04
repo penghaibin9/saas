@@ -3,7 +3,7 @@
     <section class="sl-card" aria-labelledby="sl-title">
       <div class="sl-brand">跃科岗位实习管理平台</div>
       <h1 id="sl-title">学校管理 / 指导教师登录</h1>
-      <p>登录后只进入岗位实习 Standalone，不依赖原 SaaS 前端运行时。</p>
+      <p>请使用学校分配的账号登录，进入本人待办与实习办理。</p>
       <form @submit.prevent="submit">
         <label>学校编码<input v-model.trim="tenantCode" autocomplete="organization" placeholder="如已绑定学校可留空" /></label>
         <label>账号<input v-model.trim="loginName" autocomplete="username" required /></label>
@@ -17,6 +17,8 @@
 
 <script>
 import { loginWithPassword } from '@/services/http/client'
+import { clearPermissionPatterns } from '@/security/permissionGate'
+import { getAuthContext, refreshLastActive } from '@/security/auth/auth.context'
 
 export default {
   name: 'StandaloneLoginView',
@@ -30,6 +32,10 @@ export default {
       this.error = ''
       try {
         await loginWithPassword(this.loginName, this.password, this.tenantCode, { clientType: 'PC' })
+        // 本人重新登录后重新读取当前权限，避免沿用已超时身份的活跃时间与页面门禁缓存。
+        clearPermissionPatterns()
+        getAuthContext()
+        refreshLastActive()
         const raw = typeof this.$route.query.redirect === 'string' ? this.$route.query.redirect : ''
         const target = raw.startsWith('/') && !raw.startsWith('/login') ? raw : '/admin/internship'
         await this.$router.replace(target)

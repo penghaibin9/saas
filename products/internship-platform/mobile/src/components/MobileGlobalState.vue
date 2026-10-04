@@ -69,7 +69,7 @@ export default {
     goBack() {
       if (this.$?.vnode?.props?.onBack) { this.$emit('back'); return }
       const route = typeof getCurrentPages === 'function' ? getCurrentPages().slice(-1)[0]?.route || '' : ''
-      back(route.startsWith('pages/teacher') ? '/pages/teacher/workbench/index' : route.startsWith('pages/student') ? '/pages/student/home/index' : '/pages/login/index')
+      back(route.startsWith('pages/teacher') ? '/pages/teacher-internship/index' : route.startsWith('pages/student') ? '/pages/student-internship/index' : '/pages/login/index')
     },
     login() { relaunch('/pages/login/index') }
   }

@@ -257,6 +257,8 @@ def _verify_single_package_for_restore(package_id, user=None) -> dict:
         if not package or not package.package_file_id:
             raise AppException("DATA_CONFLICT", "归档包不存在、未就绪或已失效")
         record = core._assert_scope(db, package.target_id, user, "校验实习归档恢复包")
+        from app.services.file_access_resolvers import require_archive_package_file
+        require_archive_package_file(db, package, user)
         file_row = db.scalar(select(FileObject).where(
             FileObject.id == int(package.package_file_id),
             FileObject.tenant_id == _tid(),
@@ -278,7 +280,7 @@ def _verify_single_package_for_restore(package_id, user=None) -> dict:
             ArchiveManifest.module_code == core.MODULE_CODE,
             ArchiveManifest.target_id == str(record.id),
             ArchiveManifest.status.in_(("FROZEN", "PACKAGED")),
-            ArchiveManifest.package_file_id == int(package.package_file_id),
+            ArchiveManifest.id == int((package.manifest_json or {}).get("manifestId") or 0),
             ArchiveManifest.is_deleted.is_(False),
         ).order_by(ArchiveManifest.revision.desc()).with_for_update())
         if not manifest:
@@ -666,6 +668,8 @@ def _verify_batch_package_for_restore(package_id, user=None) -> dict:
         ).with_for_update())
         if not package or not package.package_file_id:
             raise AppException("DATA_CONFLICT", "批次归档包不存在、未就绪或已失效")
+        from app.services.file_access_resolvers import require_archive_package_file
+        require_archive_package_file(db, package, user)
         file_row = db.scalar(select(FileObject).where(
             FileObject.id == int(package.package_file_id),
             FileObject.tenant_id == _tid(), FileObject.is_deleted.is_(False),
@@ -822,9 +826,8 @@ def resolve_batch_package_download(package_id, user=None):
             raise not_found("批次归档包不存在或不可下载")
         for row in records:
             core._assert_scope(db, row.get("internshipId"), user, "下载批次归档包")
-        resolved = file_service.resolve_download(package.package_file_id, user=user)
-        if not resolved:
-            raise not_found("批次归档包不存在或不可下载")
+        from app.services.file_access_resolvers import resolve_authorized_archive_download
+        resolved = resolve_authorized_archive_download(db, package, user)
         db.add(InternshipAuditTrail(
             tenant_id=_tid(), target_id=package.target_id, target_type="ARCHIVE_BATCH",
             action="PACKAGE_DOWNLOAD", operator_name=core._op_name(user),

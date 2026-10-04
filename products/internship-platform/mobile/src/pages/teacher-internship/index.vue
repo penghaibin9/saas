@@ -18,6 +18,7 @@
         <MobileInlineAlert v-if="!visibleItems.length" type="warning" title="暂无岗位实习操作权限" description="请联系学校管理员确认当前教师角色和数据范围。" />
       </view>
     </MobileGlobalState>
+    <TeacherNoticeInbox ref="importantNotices" :batch-id="String(context.selectedBatchId || '')" />
   </view>
 </template>
 
@@ -25,19 +26,23 @@
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import { currentMobileSession, logoutMobile } from '@/services/mobileAuth'
 import { go, relaunch } from '@/utils/nav'
+import TeacherNoticeInbox from '@/components/TeacherNoticeInbox.vue'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 export default {
-  data:()=>({state:'loading',error:'',items:[
+  components:{TeacherNoticeInbox},
+  data:()=>({state:'loading',error:'',loadSequence:0,hidden:false,generation:currentSessionGeneration(),items:[
     {label:'分类待办',icon:'✅',permission:'internship.dashboard.view',path:'/pages/teacher-internship/todos/index'},
     {label:'站内信',icon:'💬',permission:'internship.dashboard.view',path:'/pages/teacher-internship/messages/index'},
     {label:'实习学生',icon:'👥',permission:'internship.student.view',path:'/pages/teacher-internship/internship-students/index'},
     {label:'岗位核对',icon:'🏢',permission:'internship.position.view',path:'/pages/teacher-internship/internship-positions/index'},
     {label:'实习申请',icon:'📋',permission:'internship.application.view',path:'/pages/teacher-internship/internship-application/index'},
     {label:'过程报告',icon:'📝',permission:'internship.report.review',path:'/pages/teacher-internship/process-report-review/index'},
-    {label:'材料审核',icon:'📁',permission:'internship.material.review',path:'/pages/teacher-internship/material-review/index'},
+    {label:'材料审核',icon:'📁',permission:'internship.report.review',path:'/pages/teacher-internship/material-review/index'},
     {label:'工资单审核',icon:'💴',permission:'internship.payroll.review',path:'/pages/teacher-internship/payroll-review/index'},
     {label:'企业评价',icon:'⭐',permission:'internship.evaluation.view',path:'/pages/teacher-internship/enterprise-eval/index'},
     {label:'校级统计',icon:'📊',permission:'internship.stats.view',path:'/pages/teacher-internship/school-stats/index'},
     {label:'教师工作记录',icon:'🧭',permission:'internship.student.view',path:'/pages/teacher-internship/activity/index'}
+    ,{label:'就业上报审核',icon:'🎓',permission:'internship.employment.view',path:'/pages/teacher-internship/employment/index'}
   ]}),
   computed:{
     context(){return useInternshipContextStore()},
@@ -49,9 +54,11 @@ export default {
       return roles.filter((item)=>String(item.roleCode||'').toUpperCase()!=='STUDENT').length>1
     }
   },
-  onShow(){this.load()},
+  onShow(){this.hidden=false;if(this.generation!==currentSessionGeneration()){this.$refs.importantNotices?.reset();this.generation=currentSessionGeneration()}this.load()},
+  onHide(){this.hidden=true;this.loadSequence++;this.$refs.importantNotices?.pause()},
+  onUnload(){this.hidden=true;this.loadSequence++;this.$refs.importantNotices?.pause()},
   methods:{
-    async load(){this.state='loading';this.error='';try{await this.context.load(true);this.state='ready'}catch(e){this.error=e?.message||'教师工作台加载失败';this.state='error'}},
+    async load(){const sequence=++this.loadSequence,generation=currentSessionGeneration(),current=()=>!this.hidden && sequence===this.loadSequence && generation===currentSessionGeneration();this.state='loading';this.error='';try{await this.context.load(true);if(!current())return;this.state='ready';await this.$nextTick();if(current())await this.$refs.importantNotices?.refresh()}catch(e){if(current()){this.error=e?.message||'教师工作台加载失败';this.state='error'}}},
     changeBatch(e){const b=this.context.batches[Number(e.detail.value)];if(b&&this.context.selectBatch(b.id))this.load()},
     open(item){const batch=this.context.selectedBatchId;go(item.path+(batch?'?batchId='+encodeURIComponent(batch):''))},
     openRoleSwitch(){go('/pages/teacher-internship/role-switch/index')},

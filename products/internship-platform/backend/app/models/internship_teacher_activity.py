@@ -45,7 +45,7 @@ class InternshipTeacherCheckin(PKMixin, TenantMixin, CommonMixin, Base):
     watermarked_file_id: Mapped[str | None] = mapped_column(String(64))
     photo_sha256: Mapped[str | None] = mapped_column(String(64))
     watermarked_sha256: Mapped[str | None] = mapped_column(String(64))
-    watermark_text: Mapped[str | None] = mapped_column(String(500))
+    watermark_text: Mapped[str | None] = mapped_column(String(1000))
 
 
 class InternshipTeacherMakeup(PKMixin, TenantMixin, CommonMixin, Base):

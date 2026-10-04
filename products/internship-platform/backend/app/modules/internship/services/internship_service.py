@@ -36,6 +36,7 @@ DEFAULT_STAGES = [
     {"code": "REVIEW", "name": "总结考核", "startDate": "", "endDate": ""},
 ]
 DEFAULT_RULES = {
+    'teacherCheckin': {'maxAccuracyM': 200, 'locations': []},
     "checkin": {"requireDaily": True, "requiredDays": 0, "geofenceRadiusM": 500, "maxAccuracyM": 200,
                 "allowedExceptionTypes": ["OUT_OF_RANGE", "LOW_ACCURACY", "LOCATION_UNCERTAIN",
                                           "MOCK_LOCATION", "MISSING"]},
@@ -432,6 +433,8 @@ def _checkin_row(c: InternshipCheckin, rec, stu) -> dict:
         "result": c.result, "resultLabel": CHECKIN_RESULT_LABEL.get(c.result, c.result),
         "tone": "danger" if c.result in ("OUT_OF_RANGE", "NO_LOCATION", "MOCK_LOCATION") else "success",
         "address": c.address or "", "note": c.note or "",
+        "photoFileId": c.evidence_file_id or "", "watermarkedFileId": c.watermarked_file_id or "",
+        "photoSha256": c.evidence_sha256 or "", "watermarkedSha256": c.watermarked_sha256 or "",
     }
 
 

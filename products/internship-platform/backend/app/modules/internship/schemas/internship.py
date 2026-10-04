@@ -1,7 +1,7 @@
 """岗位实习域请求 DTO。"""
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -92,6 +92,33 @@ class OnboardRuleCfg(BaseModel):
     requireAdvisor: bool = Field(True, description="须分配校内指导教师")
 
 
+class TeacherReportRuleCfg(BaseModel):
+    weeklyMaxWords: int = Field(12000, ge=30, le=12000)
+    monthlyMaxWords: int = Field(12000, ge=100, le=12000)
+    summaryMaxWords: int = Field(12000, ge=300, le=12000)
+
+
+class TeacherCheckinLocation(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False, str_strip_whitespace=True)
+    name: str = Field(min_length=1, max_length=80)
+    centerLat: float = Field(ge=-90, le=90)
+    centerLng: float = Field(ge=-180, le=180)
+    radiusM: int = Field(ge=30, le=5000)
+    coordinateSystem: Literal['GCJ02', 'WGS84']
+
+
+class TeacherCheckinRuleCfg(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    maxAccuracyM: int = Field(200, ge=20, le=2000)
+    locations: List[TeacherCheckinLocation] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode='after')
+    def unique_location_names(self):
+        if len({site.name for site in self.locations}) != len(self.locations):
+            raise ValueError('教师签到地点名称不能重复')
+        return self
+
+
 class RulesConfig(BaseModel):
     """批次规则。compliance 为 P2 合规模块；允许冻结标记等扩展键。"""
     model_config = ConfigDict(extra="allow")
@@ -99,6 +126,8 @@ class RulesConfig(BaseModel):
     checkin: CheckinRule = Field(default_factory=CheckinRule)
     weeklyReport: WeeklyReportRuleCfg = Field(default_factory=WeeklyReportRuleCfg)
     processReport: ProcessReportRuleCfg = Field(default_factory=ProcessReportRuleCfg)
+    teacherReport: TeacherReportRuleCfg = Field(default_factory=TeacherReportRuleCfg)
+    teacherCheckin: TeacherCheckinRuleCfg = Field(default_factory=TeacherCheckinRuleCfg)
     guidance: GuidanceRuleCfg = Field(default_factory=GuidanceRuleCfg)
     evaluation: EvaluationRuleCfg = Field(default_factory=EvaluationRuleCfg)
     score: ScoreRuleCfg = Field(default_factory=ScoreRuleCfg)

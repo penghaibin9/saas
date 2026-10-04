@@ -9,6 +9,13 @@
     "preview": "vite preview --host 0.0.0.0",
     "check:routes": "node scripts/check-standalone-routes.mjs",
     "check:imports": "node scripts/check-standalone-imports.mjs",
+    "test:employment": "node --test tests/employment.behavior.test.mjs",
+    "test:teacher-reports": "node --test tests/teacher-reports.behavior.test.mjs",
+    "test:basic-info": "node --test tests/basic-info.behavior.test.mjs",
+    "test:attendance-photo": "node --test tests/attendance-photo.behavior.test.mjs",
+    "test:teacher-checkin-rule": "node --test tests/teacher-checkin-rule.behavior.test.mjs",
+    "test:teacher-checkin-history": "node --test tests/teacher-checkin-history.behavior.test.mjs",
+    "test:materials": "node --test tests/material-requirements.behavior.test.mjs tests/workspace-navigation.behavior.test.mjs",
     "prebuild": "npm run check:routes && npm run check:imports"
   },
   "dependencies": {

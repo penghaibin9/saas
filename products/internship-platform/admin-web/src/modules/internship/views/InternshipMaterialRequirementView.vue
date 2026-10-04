@@ -4,11 +4,11 @@
       <div>
         <p class="mr-eyebrow">岗位实习 · 材料收件配置</p>
         <h1>自定义材料收件要求</h1>
-        <p>不改代码新增材料类型、模板版本和必交人群；学生提交继续走现有文件扫描与版本中心。</p>
+        <p>按当前实习批次查看学校收件要求、已交进度和缺交名单；收件配置由学校管理员维护。</p>
       </div>
       <div class="mr-head-actions">
         <button type="button" class="ghost" @click="$router.push('/admin/internship/material-center')">材料与证据中心</button>
-        <button type="button" class="primary" :disabled="!batchId || saving" @click="openCreate">新建收件要求</button>
+        <button v-if="canManage" type="button" class="primary" :disabled="!batchId || saving" @click="openCreate">新建收件要求</button>
       </div>
     </header>
 
@@ -18,7 +18,7 @@
         <select :value="batchId" :disabled="loading || saving" @change="changeBatch">
           <option value="">请选择批次</option>
           <option v-for="batch in batches" :key="batch.id" :value="String(batch.id)">
-            {{ batch.batchName }} · {{ batch.status }}
+            {{ batch.batchName }} · {{ batchStatusText(batch.status) }}
           </option>
         </select>
       </label>
@@ -36,7 +36,7 @@
 
     <p v-if="error" class="mr-error" role="alert">{{ error }}</p>
     <p v-if="loading" class="mr-state">正在读取收件要求…</p>
-    <p v-else-if="batchId && !rows.length" class="mr-state">当前批次还没有收件要求。点击“新建收件要求”即可新增，无需改代码。</p>
+    <p v-else-if="batchId && !rows.length && !error" class="mr-state">当前批次还没有收件要求。{{ canManage ? '点击“新建收件要求”即可新增。' : '请联系学校管理员配置。' }}</p>
     <p v-else-if="!batchId" class="mr-state">请先选择实习批次。</p>
 
     <section v-else class="mr-grid">
@@ -44,14 +44,14 @@
         <div class="mr-card-head">
           <div>
             <strong>{{ row.materialName }}</strong>
-            <span>{{ row.materialCode }} · {{ row.isRequired ? '必交' : '选交' }}</span>
+            <span>{{ row.isRequired ? '必交材料' : '选交材料' }}</span>
           </div>
-          <span class="mr-status" :class="'is-' + row.status.toLowerCase()">{{ statusText(row.status) }}</span>
+          <span class="mr-status" :class="'is-' + String(row.status || '').toLowerCase()">{{ statusText(row.status) }}</span>
         </div>
         <p v-if="row.description" class="mr-desc">{{ row.description }}</p>
         <dl class="mr-facts">
           <div><dt>必交人群</dt><dd>{{ audienceText(row) }}</dd></div>
-          <div><dt>允许格式</dt><dd>{{ (row.allowedExtensions || []).join(' / ') || '未限制' }}</dd></div>
+          <div><dt>允许格式</dt><dd>{{ formatText(row.allowedExtensions) }}</dd></div>
           <div><dt>数量</dt><dd>{{ row.minFiles }}～{{ row.maxFiles }} 份</dd></div>
           <div><dt>截止时间</dt><dd>{{ row.dueAt ? fmt(row.dueAt) : '未设置' }}</dd></div>
         </dl>
@@ -60,13 +60,14 @@
           <div>
             <span class="mr-label">当前模板</span>
             <strong>{{ row.template?.fileName || '尚未上传' }}</strong>
-            <small v-if="row.template">V{{ row.template.versionNo }} · SHA-256 {{ shortHash(row.template.sha256) }}</small>
+            <small v-if="row.template">第{{ row.template.versionNo }}版</small>
           </div>
-          <label class="upload">
+          <label v-if="canManage" class="upload">
             {{ templateBusyId === row.id ? '上传中…' : (row.template ? '上传新版本' : '上传模板') }}
             <input type="file" :disabled="templateBusyId === row.id || saving" @change="pickTemplate($event, row)" />
           </label>
         </div>
+        <details><summary>实施人员使用：材料标识与文件校验</summary><p>材料编码：{{ row.materialCode }}</p><p v-if="row.template">文件校验值：{{ row.template.sha256 || '未提供' }}</p></details>
 
         <div v-if="row.coverage" class="mr-coverage">
           <div><strong>{{ row.coverage.requiredStudents }}</strong><span>应交</span></div>
@@ -80,7 +81,7 @@
             {{ coverageBusyId === row.id ? '统计中…' : '刷新已交/缺交' }}
           </button>
           <button type="button" class="ghost" @click="openStudents(row, 'MISSING')">查看缺交</button>
-          <button v-if="row.status === 'DRAFT'" type="button" class="primary" :disabled="saving || !row.template" @click="publish(row)">发布</button>
+          <button v-if="canManage && row.status === 'DRAFT'" type="button" class="primary" :disabled="saving || !row.template" @click="publish(row)">发布</button>
         </div>
       </article>
     </section>
@@ -118,7 +119,7 @@
         <p v-else-if="!students.rows.length" class="mr-state">当前没有符合条件的学生。</p>
         <table v-else>
           <thead><tr><th>学生</th><th>企业</th><th>状态</th><th>文件版本</th></tr></thead>
-          <tbody><tr v-for="item in students.rows" :key="item.internshipId"><td><strong>{{ item.studentName }}</strong><small>{{ item.studentNo }}</small></td><td>{{ item.enterpriseName || '—' }}</td><td>{{ item.submission?.statusLabel || '未提交' }}</td><td>{{ (item.submission?.files || []).map(f => 'V' + f.versionNo).join(' / ') || '—' }}</td></tr></tbody>
+          <tbody><tr v-for="item in students.rows" :key="item.internshipId"><td><strong>{{ item.studentName }}</strong><small>{{ item.studentNo }}</small></td><td>{{ item.enterpriseName || '—' }}</td><td>{{ item.submission?.statusLabel || '未提交' }}</td><td>{{ (item.submission?.files || []).map(f => '第' + f.versionNo + '版').join(' / ') || '—' }}</td></tr></tbody>
         </table>
         <footer><button type="button" class="ghost" @click="closeStudents">关闭</button><button v-if="students.hasMore" type="button" class="primary" :disabled="students.loading" @click="loadStudents(false)">加载更多</button></footer>
       </section>
@@ -129,16 +130,20 @@
 <script>
 import { internshipMaterialCenterApi } from '@/modules/internship/api/material-center.api'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { canCode } from '@/modules/internship/composables/permission'
+import { normalizeUiError } from '@/utils/presentationSafety'
 
 const emptyForm = () => ({
   visible: false, error: '', materialCode: '', materialName: '', description: '',
   audienceType: 'ALL', isRequired: true, allowedExtensions: 'pdf,docx,jpg,png',
   minFiles: 1, maxFiles: 1, dueAt: '', studentIds: '', collegeIds: '', majorIds: '', classIds: ''
 })
-const ids = (value) => String(value || '').split(',').map(v => Number(v.trim())).filter(v => Number.isInteger(v) && v > 0)
+const ids = (value) => String(value || '').split(',').map(v => v.trim()).filter(v => /^\d+$/.test(v))
+  .map(v => v.replace(/^0+(?=\d)/, '')).filter(v => v !== '0')
 
 export default {
   name: 'InternshipMaterialRequirementView',
+  props: { ctx: { type: Object, default: null } },
   data() {
     return {
       rows: [], loading: false, saving: false, error: '', status: 'ALL',
@@ -149,20 +154,26 @@ export default {
   computed: {
     batchStore() { return useInternshipBatchStore() },
     batchId() { return String(this.batchStore.selectedBatchId || '') },
-    batches() { return this.batchStore.availableBatches || [] }
+    batches() { return this.batchStore.availableBatches || [] },
+    canManage() { return !!this.ctx && Array.isArray(this.ctx.permissionPatterns) && canCode(this.ctx, 'internship.archive.manage') }
   },
   async mounted() {
-    await this.batchStore.ensureLoaded({ batchIdFromUrl: String(this.$route.query.batchId || '') })
+    // 父布局已解析深链与权限；重复读取会触发父布局卸载本页，再次挂载后循环。
+    if (!this.batchStore.initialized) await this.batchStore.ensureLoaded({ batchIdFromUrl: String(this.$route.query.batchId || '') })
     await this.load()
   },
   methods: {
     fmt(value) { return String(value || '').slice(0, 16).replace('T', ' ') },
-    shortHash(value) { const text = String(value || ''); return text ? text.slice(0, 12) + '…' : '—' },
-    statusText(value) { return ({ DRAFT: '草稿', PUBLISHED: '已发布', CLOSED: '已关闭' })[value] || value },
+    statusText(value) { return ({ DRAFT: '草稿', PUBLISHED: '已发布', CLOSED: '已关闭' })[value] || '状态待确认' },
+    batchStatusText(value) { return ({ DRAFT: '草稿', RUNNING: '进行中', CLOSED: '已结束', ARCHIVED: '已归档', VOIDED: '已作废' })[value] || '状态待确认' },
+    formatText(values) {
+      const labels = { png: '图片', jpg: '图片', jpeg: '图片', pdf: '便携文档', doc: '文字文档', docx: '文字文档', xls: '电子表格', xlsx: '电子表格', zip: '压缩文件', mp4: '视频' }
+      return [...new Set((values || []).map(value => labels[String(value).toLowerCase()] || '其他文件'))].join(' / ') || '未限制'
+    },
     audienceText(row) {
       if (row.audienceType === 'ALL') return '本批次全部学生'
       if (row.audienceType === 'SELECTED_STUDENTS') return `指定学生 ${(row.audienceFilter?.studentIds || []).length} 人`
-      return '按组织范围'
+      return row.audienceType === 'FILTERED' ? '按组织范围' : '收件范围待确认'
     },
     async changeBatch(event) {
       this.batchStore.selectBatch(event.target.value)
@@ -175,12 +186,13 @@ export default {
       this.loading = true
       try {
         this.rows = await internshipMaterialCenterApi.requirements({ batchId: this.batchId, status: this.status }) || []
-      } catch (e) { this.error = e?.message || '收件要求加载失败' }
+      } catch (e) { this.error = normalizeUiError(e, { fallback: '收件要求加载失败' }).userMessage }
       finally { this.loading = false }
     },
-    openCreate() { this.form = { ...emptyForm(), visible: true } },
+    openCreate() { if (this.canManage) this.form = { ...emptyForm(), visible: true } },
     closeCreate() { if (!this.saving) this.form = emptyForm() },
     async create() {
+      if (!this.canManage || this.saving) return
       const f = this.form
       if (!/^[A-Za-z0-9][A-Za-z0-9_-]{1,79}$/.test(f.materialCode)) return (f.error = '材料编码需为2-80位字母、数字、下划线或短横线')
       if (String(f.materialName || '').trim().length < 2) return (f.error = '请填写材料名称')
@@ -208,12 +220,12 @@ export default {
         })
         this.form = emptyForm()
         await this.load()
-      } catch (e) { f.error = e?.message || '创建收件要求失败' }
+      } catch (e) { f.error = normalizeUiError(e, { fallback: '创建收件要求失败' }).userMessage }
       finally { this.saving = false }
     },
     async pickTemplate(event, row) {
       const file = event.target.files?.[0]; event.target.value = ''
-      if (!file || this.templateBusyId) return
+      if (!this.canManage || !file || this.templateBusyId) return
       this.templateBusyId = row.id; this.error = ''
       try {
         const task = internshipMaterialCenterApi.uploadRequirementTemplate(file)
@@ -221,14 +233,14 @@ export default {
         if (!uploaded?.fileId) throw new Error('上传结果缺少文件编号')
         await internshipMaterialCenterApi.attachRequirementTemplate(row.id, uploaded.fileId)
         await this.load()
-      } catch (e) { this.error = e?.message || '模板上传失败' }
+      } catch (e) { this.error = normalizeUiError(e, { fallback: '模板上传失败' }).userMessage }
       finally { this.templateBusyId = '' }
     },
     async publish(row) {
-      if (this.saving || !row.template) return
+      if (!this.canManage || this.saving || !row.template) return
       this.saving = true; this.error = ''
       try { await internshipMaterialCenterApi.publishRequirement(row.id); await this.load() }
-      catch (e) { this.error = e?.message || '发布失败' }
+      catch (e) { this.error = normalizeUiError(e, { fallback: '发布失败' }).userMessage }
       finally { this.saving = false }
     },
     async loadCoverage(row) {
@@ -237,7 +249,7 @@ export default {
       try {
         row.coverage = await internshipMaterialCenterApi.requirementCoverage(row.id)
         this.rows = [...this.rows]
-      } catch (e) { this.error = e?.message || '统计加载失败' }
+      } catch (e) { this.error = normalizeUiError(e, { fallback: '统计加载失败' }).userMessage }
       finally { this.coverageBusyId = '' }
     },
     openStudents(row, state) {
@@ -257,7 +269,7 @@ export default {
         s.rows = reset ? (data?.list || data?.items || []) : [...s.rows, ...(data?.list || data?.items || [])]
         s.page = page
         s.hasMore = !!data?.hasMore
-      } catch (e) { this.error = e?.message || '学生名单加载失败' }
+      } catch (e) { this.error = normalizeUiError(e, { fallback: '学生名单加载失败' }).userMessage }
       finally { s.loading = false }
     }
   }

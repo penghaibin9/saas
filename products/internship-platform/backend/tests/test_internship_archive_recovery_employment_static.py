@@ -85,18 +85,24 @@ def test_archive_preflight_returns_fix_targets_file_safety_and_receipt():
     assert "/archive-packages/{package_id}/restore-check" in router
 
 
-def test_advanced_journey_normalizes_employment_login_role_and_scope():
-    seed = read("backend/scripts/e2e_seed_internship_v8_advanced_sandbox.py")
-    helper = seed[seed.index("def ensure_employment_scope"):seed.index("def require_enterprise_collaborator")]
-    for evidence in (
-        'Role.role_code == "EMPLOYMENT_TEACHER"',
-        'login_name="e2e_ix_employment"',
-        'password_hash=hash_password("E2eTest@2026")',
-        "db.add(UserRole(",
-        'TeacherStudentScope.scope_type == "STUDENT"',
-    ):
-        assert evidence in helper
-    assert "if user is None:\n        return" not in helper
+def test_standalone_employment_uses_normal_roles_without_archive_write_escalation():
+    # The full-system advanced employment seed is outside this product's boundary.
+    # Check actual permissions instead; normal login, scope loss and exact archive
+    # projection are also exercised by test_internship_employment_mysql.py.
+    from app.core.permissions import ROLE_PERMISSIONS, has_permission
+    mentor = {"currentRoleCode": "INTERN_MENTOR"}
+    counselor = {"currentRoleCode": "COUNSELOR"}
+    for permission in ("internship.employment.view", "internship.employment.review",
+                       "internship.employment.sensitive.view"):
+        assert has_permission(mentor, permission)
+    for permission in ("internship.archive.package", "internship.archive.execute",
+                       "internship.archive.force", "internship.archive.manage"):
+        assert not has_permission(mentor, permission)
+    assert has_permission(counselor, "internship.employment.view")
+    assert not has_permission(counselor, "internship.employment.review")
+    assert not has_permission(counselor, "internship.employment.sensitive.view")
+    assert "EMPLOYMENT_TEACHER" not in ROLE_PERMISSIONS
+    assert "*" not in ROLE_PERMISSIONS["INTERN_MENTOR"]
 
 
 def test_batch_archive_package_is_bounded_streamed_and_manifest_authoritative():

@@ -9,8 +9,16 @@ WORKDIR /app
 
 RUN groupadd --system app && useradd --system --gid app --home /app app
 
+# Sign-in evidence includes Chinese addresses; missing glyphs must never produce
+# an apparently successful but incomplete location watermark.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-noto-cjk \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
+
+RUN python -c "from PIL import ImageFont; font=ImageFont.truetype('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 20); assert font.getbbox('签到地点')[2] > 0"
 
 COPY app ./app
 COPY alembic ./alembic

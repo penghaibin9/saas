@@ -26,6 +26,8 @@ from app.modules.internship.schemas.internship_student import (AdvisorAssignment
                                             StudentStatusRequest, UnassignRequest)
 from app.services import audit_log
 from app.modules.internship.services import internship_student_service as svc
+from app.modules.internship.services import internship_student_basic_info_service as basic_info
+from app.modules.internship.schemas.student_basic_info import StudentBasicInfoUpdate, StudentBasicInfoImport
 from app.modules.internship.services import internship_plan_assignment_service as plan_assignment_svc
 from app.services import xlsx_util
 
@@ -40,6 +42,59 @@ _P_EXPORT = "internship.student.export"
 _P_LOG = "internship.match.log.view"
 
 
+@router.get('/intern-students/basic-info-import/template', summary='基础资料导入模板')
+def basic_info_template(user=Depends(require_permission(_P_MANAGE))):
+    data = xlsx_util.build_template_xlsx(basic_info.IMPORT_HEADERS,
+        notes=['学号必须是当前批次的有效学生。', '生源地填写地区名称，不填写详细家庭住址。',
+               '民族与性别按已知资料填写；暂未采集请保持空白，不填写占位文字。',
+               '本次导入会按表内内容更新三个字段；确认前请核对，空白将清空原字段。',
+               '上传只预校验，确认才整批保存；其他页面更新后必须重新预校验。'], required=['学号'])
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA,
+                             headers={'Content-Disposition': 'attachment; filename=student_basic_info_template.xlsx'})
+
+
+@router.post('/intern-students/basic-info-import/xlsx', summary='基础资料电子表格解析与当前版本预校验')
+async def basic_info_upload(file: UploadFile = File(...), batchId: str = Query(...), user=Depends(require_permission(_P_MANAGE))):
+    rows = xlsx_util.read_xlsx(await read_safe_xlsx_upload(file), basic_info.IMPORT_MAP)
+    return success(basic_info.preview_import(user, batchId, rows))
+
+
+@router.post('/intern-students/basic-info-import/dry-run', summary='基础资料预校验，不写入')
+def basic_info_preview(body: StudentBasicInfoImport, user=Depends(require_permission(_P_MANAGE))):
+    return success(basic_info.preview_import(user, body.batchId, body.rows))
+
+
+@router.post('/intern-students/basic-info-import/confirm', summary='确认整批基础资料，版本冲突全部回滚')
+def basic_info_confirm(body: StudentBasicInfoImport, user=Depends(require_permission(_P_MANAGE))):
+    return success(basic_info.confirm_import(user, body.batchId, body.rows), message='基础资料导入完成')
+
+
+@router.post('/intern-students/basic-info-import/errors-xlsx', summary='基础资料导入错误行电子表格')
+def basic_info_errors(body: dict = Body(...), user=Depends(require_permission(_P_MANAGE))):
+    rows = body.get('rows') or []
+    if len(rows) > 1000:
+        from app.core.exceptions import AppException
+        raise AppException('VALIDATION_ERROR', '错误行下载每次最多1000行')
+    field_labels = {value: label for label, value in basic_info.IMPORT_MAP.items()}
+    errors = [{**error, 'field': field_labels.get(error.get('field'), '基础资料')}
+              for error in body.get('errors') or []]
+    data = xlsx_util.build_error_rows_xlsx(basic_info.IMPORT_HEADERS, rows, errors,
+             lambda row: [row.get(basic_info.IMPORT_MAP[name], '') for name in basic_info.IMPORT_HEADERS],
+             reimportable=True)
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA,
+                             headers={'Content-Disposition': 'attachment; filename=student_basic_info_errors.xlsx'})
+
+
+@router.get('/intern-students/{record_id}/basic-info', summary='范围内学生基础资料当前事实')
+def student_basic_info(record_id: str, batchId: str = Query(...), user=Depends(require_permission(_P_VIEW))):
+    return success(basic_info.get_school(user, record_id, batchId))
+
+
+@router.put('/intern-students/{record_id}/basic-info', summary='学校按主档版本维护学生基础资料')
+def update_student_basic_info(record_id: str, body: StudentBasicInfoUpdate, batchId: str = Query(...), user=Depends(require_permission(_P_MANAGE))):
+    return success(basic_info.save_school(user, record_id, batchId, body.model_dump()), message='学生基础资料已保存')
+
+
 @router.get("/intern-students", summary="实习学生列表（分页+筛选：状态/资格/去向/是否已分配岗位）")
 def intern_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                     keyword: Optional[str] = None, classId: Optional[str] = None,
@@ -47,11 +102,12 @@ def intern_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, 
                     eligibility: Optional[str] = None, destination: Optional[str] = None,
                     hasPosition: Optional[bool] = None, hasAdvisor: Optional[bool] = None,
                     batchId: Optional[str] = None,
+                    sourceRegion: Optional[str] = Query(None, max_length=100),
                     user=Depends(require_permission(_P_VIEW))):
     items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
                                      status=status, risk_level=riskLevel, eligibility=eligibility,
                                      destination=destination, has_position=hasPosition,
-                                     has_advisor=hasAdvisor, batch_id=batchId, user=user)
+                                     has_advisor=hasAdvisor, batch_id=batchId, source_region=sourceRegion, user=user)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -199,11 +255,12 @@ def intern_export(keyword: Optional[str] = None, status: Optional[str] = None,
                   classId: Optional[str] = None, riskLevel: Optional[str] = None,
                   destination: Optional[str] = None, hasPosition: Optional[bool] = None,
                   hasAdvisor: Optional[bool] = None,
+                  sourceRegion: Optional[str] = Query(None, max_length=100),
                   user=Depends(require_permission(_P_EXPORT))):
     data = svc.export_students(
         keyword=keyword, status=status, eligibility=eligibility, batch_id=batchId,
         class_id=classId, risk_level=riskLevel, destination=destination,
-        has_position=hasPosition, has_advisor=hasAdvisor, user=user)
+        has_position=hasPosition, has_advisor=hasAdvisor, source_region=sourceRegion, user=user)
     audit_log.record("导出实习学生", "internship-student:export",
                      detail={"rowCount": data["rowCount"], "batchId": data.get("batchId"),
                              "batchName": data.get("batchName")})

@@ -176,9 +176,11 @@ load/g20_internship.k6.js
 scripts/g20_validate_evidence.py
 ```
 
-### 4.1 小规模 smoke
+当前实际验证使用官方便携运行时`k6 v2.3.0`（压测工具第2.3.0版），下载与校验依据[官方安装说明](https://grafana.com/docs/k6/latest/set-up/install-k6/)。版本升级后应重新跑采集和校验链，不能只以脚本语法正确代替引擎运行。
 
-小规模只验证场景、鉴权、URL 和监控：
+### 4.1 小规模验证
+
+小规模只验证场景、正常账号鉴权、接口地址和监控。当前证据协议为第二版，使用单台负载发生器；多个发生器的局部活动用户数不能直接汇总冒充本协议的持续并发。兼容已验证的工具版本时使用旧版机器可读汇总格式：
 
 ```bash
 G20_BASE_URL=https://正式域名 \
@@ -186,7 +188,7 @@ G20_VUS=20 \
 G20_AUTH_TOKEN='<测试账号token>' \
 G20_BATCH_ID='<真实压测批次>' \
 G20_PATHS='/health,/api/v1/internship/dashboard?batchId={batchId},/api/v1/internship/stats/procurement-overview?batchId={batchId},/api/v1/internship/stats/process-analytics?batchId={batchId}&groupBy=STUDENT&period=ALL&page=1&pageSize=50,/api/v1/internship/risks?batchId={batchId}&page=1&pageSize=20' \
-k6 run load/g20_internship.k6.js
+k6 run --no-usage-report --new-machine-readable-summary=false --out json=g20-raw-metrics.json load/g20_internship.k6.js
 ```
 
 验证结果：
@@ -196,7 +198,7 @@ python scripts/g20_validate_evidence.py g20-k6-summary.json \
   --report artifacts/g20-smoke.json
 ```
 
-此时应为 `SMOKE_ONLY`，不得写入投标验收材料为“5000 并发通过”。
+此时应为 `SMOKE_ONLY`（仅小规模验证），不得写入投标验收材料为“5000 并发通过”。共享单个账号的小规模验证不满足正式账号池要求。原始指标也必须留在授权测试目录，不包含令牌、密码或响应正文。
 
 ### 4.2 正式 5000 VU
 
@@ -212,7 +214,7 @@ G20_PATHS='/health,/api/v1/internship/dashboard?batchId={batchId},/api/v1/intern
 G20_P95_MS='<校方/采购SLA>' \
 G20_P99_MS='<校方/采购SLA>' \
 G20_MAX_ERROR_RATE='<校方/采购SLA>' \
-k6 run load/g20_internship.k6.js
+k6 run --no-usage-report --new-machine-readable-summary=false --out json=g20-raw-metrics.json load/g20_internship.k6.js
 ```
 
 正式压测账号 token 池文件必须放在压测机安全目录，格式为 JSON 字符串数组，例如：
@@ -222,10 +224,21 @@ k6 run load/g20_internship.k6.js
 ```
 
 要求：
-- token 数量不少于 `G20_VUS`，5000 VU 即至少 5000 个不同测试身份；
+- 令牌数量不少于 `G20_VUS`；5000个不同令牌不等于5000个不同账号。正式负载开始前，脚本逐个请求`GET /api/v1/auth/me`，由服务端核验当前有效数据库账号、学校及免改密码状态，以学校和账号的组合去重。使用前`G20_VUS`个令牌时必须恰好验证出同等数量的不同账号，否则在负载前拒绝；
 - 文件不得提交到 Git、不得上传到投标材料；
-- k6 只在内存中按 VU 分配 token，生成的证据只记录身份数量，不记录任何 token；
-- 只有单个 `G20_AUTH_TOKEN` 时可做 smoke，但正式证据会被验证器判为 `FAIL_IDENTITY_POOL`。
+- 压测工具只在内存中按虚拟用户分配令牌，生成的证据只记录核验数量，不记录令牌或账号明细；
+- 只有单个`G20_AUTH_TOKEN`时可做小规模验证，正式模式会在开始前拒绝账号池不足。
+
+固定采购判定与运行门禁：
+
+- 采购原文“平均响应时间不大于3秒”固定为3000毫秒，不能通过调整运行参数提高上限。校验器分别检查总体响应和保持阶段真实业务响应，健康检查的快速返回不能替代业务耗时；
+- 保留原有运行策略默认值：95%请求响应小于1500毫秒、99%请求响应小于3000毫秒、失败率小于1%。这三项可按已授权测试计划调整，不能把默认分位数门槛写成采购原文；
+- 至少保持60秒是现有工程观测下限，学校认可的计划可以要求更长。保持阶段逐次采集实际活动虚拟用户数，最小值须达到申请规模，观测须覆盖窗口首尾；每个虚拟用户须至少成功参与一次实际业务请求。只填写5000、只记录峰值或只调用健康接口均不合格；
+- 接口必须返回成功的业务结果。HTTP（网络请求状态）200但业务失败、返回登录网页或无法解析结果，仍计失败；
+- 第一版汇总、缺失指标、字符串形式的“通过”、非有限数值及不一致的实际指标均不能通过。运行前置条件提示只表示配置和账号准备，不表示压测合格；
+- `PASS`（该次性能运行合格）仅对应已测的性能要求；年度稳定运行率99.5%、备案、试运行及完整采购交付分别取证，不能由一次压测报告替代。
+
+活动虚拟用户数和汇总字段的工具合同参考[执行上下文官方说明](https://grafana.com/docs/k6/latest/javascript-api/k6-execution/)和[自定义汇总官方说明](https://grafana.com/docs/k6/latest/results-output/end-of-test/custom-summary/)。本地仅小规模验证，不在资源紧张的共用调试主机上施加5000人负载。
 
 再执行：
 
@@ -246,16 +259,16 @@ python scripts/g20_validate_evidence.py g20-k6-summary.json \
 
 正式结果必须保留：
 
-- VU 数；
+- 申请虚拟用户数、服务端核验的不同账号数、保持阶段实际最小/最大活动用户数及成功业务参与人数；
 - 总请求数 / RPS；
-- 平均响应；
+- 总体及保持阶段业务平均响应、保持窗口长度与首末样本；
 - P95 / P99；
 - HTTP 失败率；
 - k6 threshold 状态；
 - 服务器 CPU/内存/网络；
 - MySQL 活跃连接/慢 SQL；
 - 测试开始结束时间；
-- 对应部署 commit。
+- 对应部署提交、运行时版本、场景配置、原始指标及汇总文件校验值。未提交源码须另附候选文件指纹，不能仅用旧提交号代表当前程序。
 
 ## 5. 备份与恢复
 

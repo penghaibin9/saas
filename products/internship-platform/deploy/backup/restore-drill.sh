@@ -8,7 +8,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(cd "$HERE/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.production.yml}"
 ENV_FILE="${ENV_FILE:-$DEPLOY_DIR/.env.production}"
-EXPECTED_ALEMBIC_REVISION="${EXPECTED_ALEMBIC_REVISION:-ix0023}"
+EXPECTED_ALEMBIC_REVISION="${EXPECTED_ALEMBIC_REVISION:-ix0030}"
 KEEP_DRILL_DB="${KEEP_DRILL_DB:-0}"
 EVIDENCE_FILE="${EVIDENCE_FILE:-$DEPLOY_DIR/backups/restore-evidence-$(date -u +%Y%m%d_%H%M%S).json}"
 

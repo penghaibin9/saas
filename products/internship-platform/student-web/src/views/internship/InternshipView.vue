@@ -71,7 +71,7 @@
                 <StatusTag :text="noticeUrgencyText(item.urgency)" :tone="item.urgency === 'URGENT' ? 'danger' : item.urgency === 'IMPORTANT' ? 'warn' : 'primary'" />
               </div>
               <p style="margin:12px 0 0;line-height:1.75;white-space:pre-wrap;word-break:break-word">{{ item.content }}</p>
-              <p v-if="item.validFrom || item.validUntil" class="sp-muted" style="margin:8px 0 0">有效期：{{ item.validFrom ? String(item.validFrom).slice(0,10) : '不限' }} 至 {{ item.validUntil ? String(item.validUntil).slice(0,10) : '不限' }}</p>
+              <p v-if="item.validFrom || item.validUntil" class="sp-muted" style="margin:8px 0 0">有效期：{{ noticeDate(item.validFrom) }} 至 {{ noticeDate(item.validUntil) }}</p>
               <div v-if="item.attachments?.length" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
                 <button v-for="file in item.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="openNoticeAttachment(file)">
                   {{ file.fileName || '通知附件' }}
@@ -733,6 +733,7 @@
 </template>
 
 <script setup>
+import { INTERNSHIP_TABS as tabs } from '../../platform/internshipNavigation.js'
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import StateBlock from '../../components/StateBlock.vue'
@@ -754,15 +755,7 @@ const cfg = usePortalConfigStore()
 const session = useSessionStore()
 const route = useRoute()
 const router = useRouter()
-const tabs = [
-  { key: 'overview', label: '我的实习' }, { key: 'notices', label: '通知公告' }, { key: 'agreement', label: '三方协议' },
-  { key: 'checkin', label: '每日打卡' }, { key: 'leave', label: '实习请假' },
-  { key: 'makeup', label: '补卡申请' }, { key: 'intention', label: '岗位意向' },
-  { key: 'application', label: '正式申请' }, { key: 'change', label: '调岗退岗' },
-  { key: 'enterprises', label: '企业岗位库' }, { key: 'insurance', label: '实习保险' },
-  { key: 'plan', label: '实习计划' }, { key: 'help', label: '实习求助' },
-  { key: 'report', label: '周报/月报/总结' }, { key: 'eval', label: '实习成绩/自评' }
-]
+
 const tab = ref('overview')
 const tabGroups = [
   { key: 'onboard', label: '安排与入岗', hint: '确认实习安排与上岗前条件', tabs: tabs.filter((item) => ['overview', 'notices', 'plan', 'insurance', 'agreement'].includes(item.key)) },
@@ -906,6 +899,11 @@ async function openNoticeAttachment(file) {
   }
 }
 function reviewText(s) { return REVIEW_MAP[s] || s || '—' }
+function noticeDate(value) {
+  if (!value) return '不限'
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+}
 function fmt(t) {
   if (!t) return '—'
   const date = new Date(t)

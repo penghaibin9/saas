@@ -105,6 +105,8 @@ jobs:
           grep -q '"path": "pages/student-internship/index"' products/internship-platform/mobile/src/pages.json
           grep -q '"path": "pages/teacher-internship/internship-students/index"' products/internship-platform/mobile/src/pages.json
       - name: Build WeChat mini program
+        env:
+          VITE_API_BASE_URL: "http://127.0.0.1:8000"
         working-directory: products/internship-platform/mobile
         run: |
           npm install --no-audit --no-fund

@@ -105,7 +105,7 @@ def scan(start: str) -> tuple[set[str], list[str]]:
                         candidate = f"{base}.{alias.name}"
                         if module_path(candidate) is not None:
                             queue.append(candidate)
-                        elif (alias.asname or alias.name) not in exports:
+                        elif alias.name not in exports:
                             missing.add(candidate)
 
     return seen, sorted(missing)

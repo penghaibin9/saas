@@ -8,7 +8,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, false, func, or_, select
 
 from app.core.exceptions import AppException, not_found
 from app.models import (
@@ -335,12 +335,24 @@ def _submission_files(db, submission_id):
     ).order_by(InternshipMaterialSubmissionFile.slot_no)).all()
 
 
-def _submission_view(db, row):
-    files = []
-    for item in _submission_files(db, row.id):
-        version = db.get(FileVersion, item.current_version_id)
-        file_obj = db.get(FileObject, item.file_id)
-        files.append({
+def _submission_file_views(db, submission_ids):
+    if not submission_ids:
+        return {}
+    rows = db.execute(select(InternshipMaterialSubmissionFile, FileVersion, FileObject)
+        .outerjoin(FileVersion, and_(
+            FileVersion.id == InternshipMaterialSubmissionFile.current_version_id,
+            FileVersion.tenant_id == _tid(), FileVersion.is_deleted.is_(False)))
+        .outerjoin(FileObject, and_(
+            FileObject.id == InternshipMaterialSubmissionFile.file_id,
+            FileObject.tenant_id == _tid(), FileObject.is_deleted.is_(False)))
+        .where(InternshipMaterialSubmissionFile.tenant_id == _tid(),
+            InternshipMaterialSubmissionFile.submission_id.in_(submission_ids),
+            InternshipMaterialSubmissionFile.is_deleted.is_(False))
+        .order_by(InternshipMaterialSubmissionFile.submission_id,
+            InternshipMaterialSubmissionFile.slot_no)).all()
+    by_submission = {}
+    for item, version, file_obj in rows:
+        by_submission.setdefault(item.submission_id, []).append({
             "slotNo": int(item.slot_no),
             "assetId": str(item.asset_id),
             "fileVersionId": str(item.current_version_id),
@@ -351,6 +363,12 @@ def _submission_view(db, row):
             "sha256": file_obj.sha256 if file_obj else "",
             "scanStatus": file_obj.scan_status if file_obj else "",
         })
+    return by_submission
+
+
+def _submission_view(db, row, *, files=None):
+    if files is None:
+        files = _submission_file_views(db, [row.id]).get(row.id, [])
     return {
         "id": str(row.id),
         "requirementId": str(row.requirement_id),
@@ -361,7 +379,7 @@ def _submission_view(db, row):
         "statusLabel": {
             "DRAFT": "草稿", "SUBMITTED": "待审核", "APPROVED": "已通过",
             "RETURNED": "已退回", "WITHDRAWN": "已撤回",
-        }.get(row.status, row.status),
+        }.get(row.status, "状态待确认"),
         "submitComment": row.submit_comment or "",
         "submittedAt": _iso(row.submitted_at) or "",
         "reviewedBy": row.reviewed_by_name or "",
@@ -456,7 +474,12 @@ def submit_material(user: dict, requirement_id, body: dict):
 
         submission = _submission(db, requirement.id, record.id, lock=True)
         if submission and submission.status in {"SUBMITTED", "APPROVED"}:
-            raise AppException("DATA_CONFLICT", "当前材料正在审核或已通过，不可覆盖")
+            raise AppException("DATA_CONFLICT", "当前材料正在审核或已通过，不可覆盖", http_status=409)
+        expected = payload.get("expectedVersion", 0 if submission is None else None)
+        current_version = int(submission.version or 0) if submission else 0
+        # The existing requirement/submission locks serialize both initial creation and resubmit.
+        if type(expected) is not int or expected != current_version:
+            raise AppException("DATA_CONFLICT", "材料任务已变化，原文件已保留，请重新读取后核对重交", http_status=409)
         if not submission:
             submission = InternshipMaterialSubmission(
                 tenant_id=_tid(),
@@ -581,7 +604,7 @@ def submit_material(user: dict, requirement_id, body: dict):
         return _submission_view(db, submission)
 
 
-def _scoped_students(db, requirement, user=None):
+def _scoped_student_query(requirement, user=None):
     from app.modules.internship.services.internship_scope import apply_internship_record_scope
     scoped = apply_internship_record_scope(
         select(InternshipRecord.id).where(
@@ -591,74 +614,92 @@ def _scoped_students(db, requirement, user=None):
         ),
         user,
     ).subquery()
-    rows = db.execute(select(InternshipRecord, StudentProfile).join(
+    query = select(InternshipRecord, StudentProfile, InternshipMaterialSubmission).join(
         StudentProfile, StudentProfile.id == InternshipRecord.student_id,
-    ).where(
+    ).outerjoin(InternshipMaterialSubmission, and_(
+        InternshipMaterialSubmission.tenant_id == _tid(),
+        InternshipMaterialSubmission.requirement_id == requirement.id,
+        InternshipMaterialSubmission.internship_id == InternshipRecord.id,
+        InternshipMaterialSubmission.is_deleted.is_(False),
+    )).where(
         InternshipRecord.id.in_(select(scoped.c.id)),
         StudentProfile.tenant_id == _tid(),
         StudentProfile.is_deleted.is_(False),
-    )).all()
-    return [(record, student) for record, student in rows if _applies(requirement, student)]
+    )
+    kind = str(requirement.audience_type or "ALL").upper()
+    rules = requirement.audience_filter_json or {}
+    if kind == "ALL":
+        return query
+    if kind == "SELECTED_STUDENTS":
+        return query.where(StudentProfile.id.in_(_ids(rules.get("studentIds"))))
+    if kind == "FILTERED":
+        constraints = []
+        for key, column in (("studentIds", StudentProfile.id),
+                ("collegeIds", StudentProfile.college_id),
+                ("majorIds", StudentProfile.major_id),
+                ("classIds", StudentProfile.class_id)):
+            allowed = _ids(rules.get(key))
+            if allowed:
+                constraints.append(column.in_(allowed))
+        return query.where(*constraints) if constraints else query.where(false())
+    return query.where(false())
 
 
 def coverage(requirement_id, user=None):
     with session() as db:
         requirement = _requirement(db, requirement_id)
-        targets = _scoped_students(db, requirement, user)
-        record_ids = [record.id for record, _student in targets]
-        submissions = db.scalars(select(InternshipMaterialSubmission).where(
-            InternshipMaterialSubmission.tenant_id == _tid(),
-            InternshipMaterialSubmission.requirement_id == requirement.id,
-            InternshipMaterialSubmission.internship_id.in_(record_ids or [-1]),
-            InternshipMaterialSubmission.is_deleted.is_(False),
-        )).all()
-        by_record = {item.internship_id: item for item in submissions}
+        query = _scoped_student_query(requirement, user)
+        grouped = db.execute(query.with_only_columns(
+            InternshipMaterialSubmission.status, func.count(InternshipRecord.id),
+            maintain_column_froms=True).group_by(InternshipMaterialSubmission.status)).all()
         counts = {"SUBMITTED": 0, "APPROVED": 0, "RETURNED": 0, "MISSING": 0}
-        for record, _student in targets:
-            status = by_record.get(record.id).status if by_record.get(record.id) else "MISSING"
-            counts[status if status in counts else "MISSING"] += 1
+        for status, count in grouped:
+            counts[status if status in counts else "MISSING"] += int(count)
+        total = sum(counts.values())
         effective = counts["SUBMITTED"] + counts["APPROVED"]
         return {
             "requirementId": str(requirement.id),
             "batchId": str(requirement.batch_id),
             "materialCode": requirement.material_code,
             "materialName": requirement.material_name,
-            "requiredStudents": len(targets),
+            "requiredStudents": total,
             "effectiveSubmittedStudents": effective,
-            "missingStudents": len(targets) - effective,
+            "missingStudents": total - effective,
             "pendingReviewStudents": counts["SUBMITTED"],
             "approvedStudents": counts["APPROVED"],
             "returnedStudents": counts["RETURNED"],
-            "completionRate": round(effective * 100.0 / len(targets), 1) if targets else 0.0,
+            "completionRate": round(effective * 100.0 / total, 1) if total else 0.0,
         }
 
 
 def list_students(requirement_id, *, state="ALL", page=1, page_size=20, keyword="", user=None):
     with session() as db:
         requirement = _requirement(db, requirement_id)
-        targets = _scoped_students(db, requirement, user)
-        submissions = {
-            row.internship_id: row
-            for row in db.scalars(select(InternshipMaterialSubmission).where(
-                InternshipMaterialSubmission.tenant_id == _tid(),
-                InternshipMaterialSubmission.requirement_id == requirement.id,
-                InternshipMaterialSubmission.is_deleted.is_(False),
-            )).all()
-        }
+        query = _scoped_student_query(requirement, user)
         state_value = str(state or "ALL").upper()
         term = str(keyword or "").strip().lower()
+        status = InternshipMaterialSubmission.status
+        if state_value == "PENDING_REVIEW":
+            query = query.where(status == "SUBMITTED")
+        elif state_value == "SUBMITTED":
+            query = query.where(status.in_(_SUBMITTED))
+        elif state_value == "MISSING":
+            query = query.where(or_(status.is_(None), status.not_in(_SUBMITTED)))
+        elif state_value != "ALL":
+            query = query.where(status == state_value)
+        if term:
+            text = func.lower(func.coalesce(StudentProfile.real_name, "") + " "
+                + func.coalesce(StudentProfile.student_no, "") + " "
+                + func.coalesce(InternshipRecord.enterprise_name, ""))
+            query = query.where(text.contains(term, autoescape=True))
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        size = min(200, max(1, int(page_size)))
+        start = (max(1, int(page)) - 1) * size
+        targets = db.execute(query.order_by(InternshipRecord.id).offset(start).limit(size)).all()
+        files = _submission_file_views(db, [submission.id for _, _, submission in targets if submission])
         rows = []
-        for record, student in targets:
-            submission = submissions.get(record.id)
+        for record, student, submission in targets:
             status = submission.status if submission else "MISSING"
-            effective_state = "SUBMITTED" if status in _SUBMITTED else status
-            if state_value != "ALL":
-                if state_value == "MISSING" and effective_state not in {"MISSING", "RETURNED"}:
-                    continue
-                elif state_value != "MISSING" and state_value != effective_state:
-                    continue
-            if term and term not in f"{student.real_name} {student.student_no} {record.enterprise_name or ''}".lower():
-                continue
             rows.append({
                 "internshipId": str(record.id),
                 "studentId": str(student.id),
@@ -666,18 +707,17 @@ def list_students(requirement_id, *, state="ALL", page=1, page_size=20, keyword=
                 "studentNo": student.student_no,
                 "enterpriseName": record.enterprise_name or "",
                 "status": status,
-                "submission": _submission_view(db, submission) if submission else None,
+                "submission": _submission_view(db, submission,
+                    files=files.get(submission.id, [])) if submission else None,
             })
-        total = len(rows)
-        start = (max(1, int(page)) - 1) * int(page_size)
-        return rows[start:start + int(page_size)], total
+        return rows, total
 
 
 def review_submission(submission_id, body: dict, user=None):
     payload = body or {}
     action = str(payload.get("action") or "").strip().upper()
     if action not in {"APPROVE", "RETURN"}:
-        raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE 或 RETURN")
+        raise AppException("VALIDATION_ERROR", "请选择审核通过或退回重交")
     comment = str(payload.get("comment") or "").strip()
     if action == "RETURN" and len(comment) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因不少于5个字")
@@ -692,8 +732,8 @@ def review_submission(submission_id, body: dict, user=None):
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
         assert_internship_record_scope(db, row.internship_id, user, "审核学生材料", lock=True)
         expected = payload.get("expectedVersion")
-        if expected is None or int(expected) != int(row.version or 0):
-            raise AppException("DATA_CONFLICT", "材料提交已变化，请刷新后重试")
+        if type(expected) is not int or expected != int(row.version or 0):
+            raise AppException("DATA_CONFLICT", "材料提交已变化，请刷新后重试", http_status=409)
         if row.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅待审核材料可处理")
         files = _submission_files(db, row.id)

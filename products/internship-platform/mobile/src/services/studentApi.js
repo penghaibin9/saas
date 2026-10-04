@@ -15,6 +15,7 @@ function mapInternshipDashboard(r) {
   }
   return {
     eligibilityReview: r.eligibilityReview || null,
+    basicInfo: r.basicInfo || null,
     hasBatch: true, needSelect: false, candidates: r.candidates || [],
     historyMode: !!r.historyMode, recordId: r.recordId || '', batchId: r.batchId || '',
     destinationType: r.destinationType || 'NONE',
@@ -36,6 +37,11 @@ function mapInternshipDashboard(r) {
 }
 
 export const studentApi = {
+  getBasicInfo: (batchId, internshipId) => realRequest(`/mobile/internship/context/basic-info?batchId=${encodeURIComponent(batchId)}&internshipId=${encodeURIComponent(internshipId)}`),
+  saveBasicInfo: (batchId, internshipId, body) => realRequest(`/mobile/internship/context/basic-info?batchId=${encodeURIComponent(batchId)}&internshipId=${encodeURIComponent(internshipId)}`, { method: 'PUT', data: body }),
+  getInternshipEmployment: (batchId,internshipId,page=1) => internship.studentInternshipEmployment(batchId,internshipId,page),
+  submitInternshipEmployment: body => internship.studentInternshipEmploymentSubmit(body),
+  readInternshipEmploymentResult: (id,batchId,internshipId) => internship.studentInternshipEmploymentResultRead(id,batchId,internshipId),
   getInternship: (batchId = '') => internship.studentInternshipDashboard(batchId).then(mapInternshipDashboard),
   getInternshipCompliance: (operation, batchId) => internship.studentInternshipCompliance(operation, batchId),
   getInternshipNotices: (batchId) => internship.studentInternshipEmergencyNotices(batchId),
@@ -55,6 +61,11 @@ export const studentApi = {
   submitInternshipSafetyCourse: (id, body) => internship.studentInternshipSafetySubmit(id, body),
   commitInternshipSafety: (id, body) => internship.studentInternshipSafetyCommit(id, body),
   getInternshipProcessReports: (batchId, internshipId) => internship.studentInternshipProcessReports(batchId, internshipId),
+  getInternshipWeeklyReports: (batchId, internshipId, page = 1, pageSize = 20, focusReportId = '') =>
+    internship.studentInternshipWeeklyReports(batchId, internshipId, page, pageSize, focusReportId),
+  getInternshipWeeklyReportDetail: (reportId, batchId, internshipId) =>
+    internship.studentInternshipWeeklyDetail(reportId, batchId, internshipId),
+  submitInternshipWeeklyReport: (body) => internship.studentInternshipWeeklySubmit(body),
   submitInternshipProcessReport: (body) => internship.studentInternshipProcessReportSubmit(body),
   getInternshipSelfEval: (batchId, internshipId) => internship.studentInternshipSelfEval(batchId, internshipId),
   submitInternshipSelfEval: (body) => internship.studentInternshipSelfEvalSubmit(body),
@@ -96,7 +107,7 @@ export const studentApi = {
   withdrawCheckinExemption: (id, body) =>
     realRequest(`/mobile/internship/context/checkin-exemptions/${encodeURIComponent(id)}/withdraw`, { method: 'POST', data: body || {} }),
   getInternshipEnterprises: (city = '') => realRequest('/mobile/internship/enterprises' + (city ? `?city=${encodeURIComponent(city)}` : '')),
-  getInternshipInsurance: () => realRequest('/mobile/internship/insurance'),
+  getInternshipInsurance: (batchId,internshipId) => realRequest('/mobile/internship/insurance?batchId='+encodeURIComponent(String(batchId || ''))+'&internshipId='+encodeURIComponent(String(internshipId || ''))),
   submitInternshipInsurance: (body) => realRequest('/mobile/internship/insurance', { method: 'POST', data: body || {} }),
   getInternshipIntention: () => realRequest('/mobile/internship/intention'),
   saveInternshipIntention: (body) => realRequest('/mobile/internship/intention', { method: 'PUT', data: body || {} }),

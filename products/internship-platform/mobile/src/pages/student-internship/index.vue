@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar title="我的岗位实习" subtitle="查看安排、资格与当前事项" show-back fallback-url="/pages/student/me/index" />
+    <MobileNavBar title="我的岗位实习" subtitle="查看安排、资格与当前事项" show-back fallback-url="/pages/login/index" />
     <MobileGlobalState :state="state" @retry="load">
       <view v-if="needSelect" class="page-pad stack">
         <MobileInlineAlert type="warning" title="请选择要办理的实习批次"
@@ -54,6 +54,8 @@
 
         <MobileInlineAlert v-if="i.historyMode" type="info" title="历史实习记录"
           description="当前批次已结束，仅可查看历史状态，不可继续打卡、周报或发起业务申请。" />
+        <MobileInlineAlert v-if="noticeError" type="warning" title="通知读取未完成" :description="noticeError" />
+        <button v-if="noticeError" class="btn btn-ghost" :disabled="noticeLoading" @click="loadEmergencyNotices()">重新读取通知</button>
         <MobileInlineAlert v-if="complianceError" type="warning" title="合规状态暂不可用" :description="complianceError" />
         <MobileInlineAlert v-else-if="compliance.currentTask" :type="compliance.passed ? 'success' : 'warning'"
           :title="compliance.passed ? '上岗合规已通过' : `当前待办：${compliance.currentTask.label}`"
@@ -62,6 +64,12 @@
           {{ compliance.nextAction.label }}
         </button>
 
+        <view v-if="i.basicInfo" class="card">
+          <text class="section-head__title">基础资料 · {{ i.basicInfo.statusLabel }}</text>
+          <text v-if="i.basicInfo.todoCount" class="in__compliance-reason">1 项待办：请完善{{ i.basicInfo.missingFields.join('、') }}。</text>
+          <text v-else class="in__compliance-reason">生源地、民族、性别已完善，学校台账同步使用当前资料。</text>
+          <button id="student-basic-info-entry" class="btn btn-ghost" @click="openSub('/pages/student-internship/basic-info/index')">{{ i.basicInfo.todoCount ? '去完善基础资料' : '查看基础资料' }}</button>
+        </view>
         <view v-if="canShowDailyWork" class="in__today">
           <view class="in__today-card" @click="openSub('/pages/student-internship/checkin/index')">
             <text class="in__today-icon">📍</text><text class="in__today-title">今日打卡</text>
@@ -141,7 +149,9 @@
           </view>
         </scroll-view>
         <MobileInlineAlert type="warning" description="该通知需要本人明确确认。关闭页面、网络中断或确认失败都不会自动记为已读，下次进入仍会继续提醒。" />
-        <button class="btn btn-primary in__notice-ack" :disabled="noticeAcking" @click="acknowledgeEmergencyNotice">
+        <MobileInlineAlert v-if="noticeError" type="warning" title="通知操作未完成" :description="noticeError" />
+        <button v-if="noticeError" class="btn btn-ghost" :disabled="noticeLoading" @click="loadEmergencyNotices()">重新读取通知</button>
+        <button class="btn btn-primary in__notice-ack" :disabled="noticeAcking || noticeLoading" @click="acknowledgeEmergencyNotice">
           {{ noticeAcking ? '正在记录…' : '我已知悉' }}
         </button>
       </view>
@@ -153,6 +163,7 @@
 import { formatDateTime } from '@/utils/format'
 import { studentApi } from '@/services/studentApi'
 import { openBusinessFile } from '@/services/fileApi'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 import { toast, go } from '@/utils/nav'
 
 const STORAGE_KEY = 'gx_student_internship_batch_v1'
@@ -167,6 +178,7 @@ export default {
       i: null, state: 'loading', loadSequence: 0, selectedBatchId: '', candidates: [],
       compliance: { items: [], blockers: [], warnings: [], timeline: [] }, complianceError: '',
       pendingEmergencyNotices: [], activeEmergencyNotice: null, noticeAcking: false,
+      noticeError: '', noticeLoading: false, noticeSequence: 0, hidden: false, generation: currentSessionGeneration(),
       navItems: [
         { label: '知情确认', path: '/pages/student-internship/consent/index', icon: '✅', stages: ['onboard'] },
         { label: '安全教育', path: '/pages/student-internship/safety/index', icon: '⛑️', stages: ['onboard'] },
@@ -179,6 +191,7 @@ export default {
         { label: '实习材料', path: '/pages/student-internship/materials/index', icon: '📎', stages: ['onboard', 'process', 'result'] },
         { label: '通知公告', path: '/pages/student-internship/notices/index', icon: '🔔', today: true },
         { label: '轮岗与工资', path: '/pages/student-internship/process-facts/index', icon: '💼', stages: ['process', 'result'] },
+        { label: '就业上报', path: '/pages/student-internship/employment/index', icon: '🎓', stages: ['process', 'result'] },
         { label: '实习请假', path: '/pages/student-internship/leave/index', icon: '🗓️', today: true },
         { label: '补卡申请', path: '/pages/student-internship/makeup/index', icon: '📍', today: true },
         { label: '日报', path: '/pages/student-internship/process-report/index?type=daily', icon: '📝', today: true },
@@ -237,12 +250,27 @@ export default {
     }
     this.load()
   },
-  onShow() { if (this.i) this.load() },
-  onUnload() { this.loadSequence++ },
+  onShow() {
+    const reload = this.hidden || !!this.i || this.generation !== currentSessionGeneration()
+    this.hidden = false
+    if (this.generation !== currentSessionGeneration()) this.clearAccountContext()
+    if (reload) this.load()
+  },
+  onHide() { this.hidden = true; this.loadSequence++; this.noticeSequence++; this.noticeAcking = false; this.noticeLoading = false },
+  onUnload() { this.hidden = true; this.loadSequence++; this.noticeSequence++ },
   methods: {
     formatDateTime,
     toast, go,
     candidateStatusLabel(status) { return INTERNSHIP_RECORD_STATUS_LABELS[String(status || '').toUpperCase()] || '状态待确认' },
+    clearAccountContext() {
+      this.loadSequence++; this.noticeSequence++; this.i = null; this.candidates = []; this.selectedBatchId = ''
+      this.compliance = { items: [], blockers: [], warnings: [], timeline: [] }; this.complianceError = ''
+      this.pendingEmergencyNotices = []; this.activeEmergencyNotice = null; this.noticeError = ''
+      this.noticeAcking = false; this.noticeLoading = false; this.generation = currentSessionGeneration()
+      this.persistBatch()
+    },
+    readCurrent(seq, generation) { return !this.hidden && seq === this.loadSequence && generation === currentSessionGeneration() },
+    noticeBatchId() { return String(this.selectedBatchId || this.i?.batchId || '') },
     restoreBatch() { try { this.selectedBatchId = String(uni.getStorageSync(STORAGE_KEY) || '') } catch (e) {} },
     persistBatch() { try { if (this.selectedBatchId) uni.setStorageSync(STORAGE_KEY, this.selectedBatchId); else uni.removeStorageSync(STORAGE_KEY) } catch (e) {} },
     withBatch(path) { if (!this.selectedBatchId) return path; return `${path}${path.includes('?') ? '&' : '?'}batchId=${encodeURIComponent(this.selectedBatchId)}` },
@@ -252,18 +280,21 @@ export default {
       this.pendingEmergencyNotices = []
       this.activeEmergencyNotice = null
       this.noticeAcking = false
+      this.noticeError = ''; this.noticeLoading = false; this.noticeSequence++
       this.persistBatch()
       this.load()
     },
     onCandidatePicker(e) { this.selectCandidate(this.candidates[Number(e.detail.value)]) },
     async load() {
+      if (this.generation !== currentSessionGeneration()) this.clearAccountContext()
       const seq = ++this.loadSequence
+      const generation = currentSessionGeneration()
       const batchId = this.selectedBatchId
       this.state = 'loading'; this.complianceError = ''
       const [dashboard, compliance] = await Promise.allSettled([
         studentApi.getInternship(batchId), studentApi.getInternshipCompliance('ONBOARD', batchId)
       ])
-      if (seq !== this.loadSequence) return
+      if (!this.readCurrent(seq, generation)) return
       if (dashboard.status !== 'fulfilled') { this.state = 'error'; return }
       this.i = dashboard.value
       this.compliance = compliance.status === 'fulfilled' ? compliance.value : { items: [], blockers: [], warnings: [], timeline: [] }
@@ -277,22 +308,24 @@ export default {
         this.persistBatch()
       }
       this.state = 'ready'
-      this.loadEmergencyNotices(seq)
+      await this.loadEmergencyNotices(seq, generation)
     },
-    async loadEmergencyNotices(seq) {
-      if (this.needSelect || !this.i?.hasBatch || this.activeEmergencyNotice) return
-      const batchId = String(this.selectedBatchId || this.i?.batchId || '')
+    async loadEmergencyNotices(seq = this.loadSequence, generation = currentSessionGeneration()) {
+      if (this.needSelect || !this.i?.hasBatch || !this.readCurrent(seq, generation)) return
+      const batchId = this.noticeBatchId()
       if (!batchId) return
+      const noticeSequence = ++this.noticeSequence
+      const current = () => this.readCurrent(seq, generation) && noticeSequence === this.noticeSequence && batchId === this.noticeBatchId()
+      this.noticeLoading = true
       try {
         const rows = await studentApi.getPendingEmergencyNotices(batchId)
-        if (seq !== this.loadSequence || batchId !== String(this.selectedBatchId || this.i?.batchId || '')) return
+        if (!current()) return
         this.pendingEmergencyNotices = Array.isArray(rows) ? rows : []
         this.activeEmergencyNotice = this.pendingEmergencyNotices[0] || null
+        this.noticeError = ''
       } catch (e) {
-        // 通知接口故障不能伪造“已读”，也不应把整个岗位实习首页打成不可用。
-        this.pendingEmergencyNotices = []
-        this.activeEmergencyNotice = null
-      }
+        if (current()) this.noticeError = '通知读取失败，尚不能确认是否有新的重要通知。请重新读取；已有通知会保留。'
+      } finally { if (current()) this.noticeLoading = false }
     },
     noticeTypeLabel(value) {
       return ({ AGREEMENT: '实习协议', TRAINING: '岗前培训', SAFETY: '安全条例', NOTICE: '通知公告', OTHER: '其他' })[String(value || '').toUpperCase()] || '通知公告'
@@ -300,34 +333,36 @@ export default {
     noticeUrgencyLabel(value) {
       return ({ NORMAL: '普通', IMPORTANT: '重要', URGENT: '紧急' })[String(value || '').toUpperCase()] || '普通'
     },
-    noticeDate(value) { return value ? String(value).slice(0, 10) : '不限' },
+    noticeDate(value) { return value ? formatDateTime(value).slice(0, 10) : '不限' },
     async openNoticeAttachment(file) {
       try { await openBusinessFile(file.fileId, file.fileName || '通知附件') }
       catch (e) { toast(e?.message || '通知附件暂时无法打开') }
     },
     async acknowledgeEmergencyNotice() {
       const notice = this.activeEmergencyNotice
-      if (!notice || this.noticeAcking) return
-      const batchId = String(this.selectedBatchId || this.i?.batchId || notice.batchId || '')
+      if (!notice || this.noticeAcking || this.noticeLoading || this.hidden) return
+      const batchId = this.noticeBatchId()
       if (!batchId) return toast('当前实习批次不可用，请刷新后重试')
+      const seq = this.loadSequence, generation = currentSessionGeneration(), noticeSequence = this.noticeSequence
+      const current = () => this.readCurrent(seq, generation) && noticeSequence === this.noticeSequence && batchId === this.noticeBatchId() && this.activeEmergencyNotice === notice
       this.noticeAcking = true
       try {
         await studentApi.acknowledgeEmergencyNotice(notice.id, batchId)
+        if (!current()) return
+        this.noticeError = ''
+        this.noticeAcking = false
         this.pendingEmergencyNotices = this.pendingEmergencyNotices.filter((x) => String(x.id) !== String(notice.id))
         this.activeEmergencyNotice = this.pendingEmergencyNotices[0] || null
         if (!this.activeEmergencyNotice) toast('紧急通知已确认')
       } catch (e) {
-        toast(e?.message || '知悉回执提交失败，通知仍会保留')
+        if (current()) { this.noticeError = e?.message || '知悉回执提交失败，通知仍会保留'; toast(this.noticeError) }
       } finally {
-        this.noticeAcking = false
+        if (current()) this.noticeAcking = false
       }
     },
     complianceTone(status) { if (['VALID', 'EXEMPTED', 'NOT_APPLICABLE'].includes(status)) return 'success'; if (['REJECTED', 'CONFIG_ERROR'].includes(status)) return 'danger'; return 'warning' },
     weekly() {
-      if (this.i?.historyMode) return toast('历史实习记录仅可查看')
-      if (this.i?.weekly?.submitted) return toast('本周周报已提交')
-      const q = 'week=' + encodeURIComponent(this.i.weekly.week) + '&company=' + encodeURIComponent(this.i.company) + '&post=' + encodeURIComponent(this.i.post)
-      go(this.withBatch('/pages/student/weekly-report/index?' + q))
+      go(this.withBatch('/pages/student/weekly-report/index'))
     }
   }
 }

@@ -7,6 +7,7 @@ on:
     paths:
       - "products/internship-platform/scripts/g19_migration_bridge.py"
       - "products/internship-platform/load/g20_internship.k6.js"
+      - "products/internship-platform/load/tests/**"
       - "products/internship-platform/scripts/g20_validate_evidence.py"
       - "products/internship-platform/backend/alembic/sql/0001_internship_standalone_baseline.json"
       - "products/internship-platform/backend/app/main.py"
@@ -23,6 +24,7 @@ on:
     paths:
       - "products/internship-platform/scripts/g19_migration_bridge.py"
       - "products/internship-platform/load/g20_internship.k6.js"
+      - "products/internship-platform/load/tests/**"
       - "products/internship-platform/scripts/g20_validate_evidence.py"
       - "products/internship-platform/backend/alembic/sql/0001_internship_standalone_baseline.json"
       - "products/internship-platform/backend/app/main.py"
@@ -55,7 +57,10 @@ jobs:
       - name: Verify frozen G19 migration contract
         run: python products/internship-platform/scripts/g19_migration_bridge.py --self-test
       - name: Verify G20 evidence qualification contract
-        run: python products/internship-platform/scripts/g20_validate_evidence.py --self-test
+        run: |
+          python products/internship-platform/scripts/g20_validate_evidence.py --self-test
+          python -m unittest discover -s products/internship-platform/load/tests -p 'test_*.py' -v
+          node --test products/internship-platform/load/tests/g20-collector.behavior.test.mjs
       - name: Validate backend import closure
         env:
           PYTHONPATH: products/internship-platform/backend
@@ -66,7 +71,7 @@ jobs:
           bash -n products/internship-platform/deploy/backup/backup.sh
           bash -n products/internship-platform/deploy/backup/restore-drill.sh
           grep -q "mysql:8.4" products/internship-platform/deploy/docker-compose.production.yml
-          grep -q "EXPECTED_ALEMBIC_REVISION=ix0023" products/internship-platform/deploy/env.production.example
+          python products/internship-platform/scripts/check_schema_revision_contract.py
       - name: Validate production compose contract
         working-directory: products/internship-platform/deploy
         run: |
@@ -110,7 +115,7 @@ jobs:
       PYTHONPATH: products/internship-platform/backend
       APP_ENV: ci
       DATABASE_URL: mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09?charset=utf8mb4
-      EXPECTED_ALEMBIC_REVISION: ix0023
+      EXPECTED_ALEMBIC_REVISION: ix0030
       REDIS_URL: redis://127.0.0.1:6379/0
       REDIS_KEY_PREFIX: internship-standalone:c09
       JWT_SECRET: c09-ci-only-jwt-secret-with-sufficient-length-20260929
@@ -155,11 +160,11 @@ jobs:
           fi
           cat /tmp/internship-c09-ready.json
           python - <<'PY'
-          import json
+          import json, os
           payload=json.load(open("/tmp/internship-c09-ready.json", encoding="utf-8"))
           assert payload["status"] == "READY", payload
           assert payload["checks"]["database"] == "READY", payload
-          assert payload["checks"]["schemaRevision"] == "ix0023", payload
+          assert payload["checks"]["schemaRevision"] == os.environ["EXPECTED_ALEMBIC_REVISION"], payload
           assert payload["checks"]["redis"] == "READY", payload
           assert payload["checks"]["fileStorage"] == "READY", payload
           PY

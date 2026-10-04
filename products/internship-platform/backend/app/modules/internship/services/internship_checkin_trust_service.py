@@ -11,6 +11,7 @@ import hmac
 import json
 import secrets
 import time
+from math import asin, cos, radians, sin, sqrt
 
 from app.core.config import settings
 from app.core.exceptions import AppException
@@ -21,6 +22,47 @@ from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
 TOKEN_PREFIX = "ick1"
 TOKEN_TTL_SECONDS = 300
 DEFAULT_MAX_ACCURACY_M = 200
+
+
+def distance_m(lat1, lng1, lat2, lng2) -> float:
+    d_lat, d_lng = radians(lat2 - lat1), radians(lng2 - lng1)
+    value = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lng / 2) ** 2
+    return 6371000 * 2 * asin(sqrt(min(1.0, max(0.0, value))))
+
+
+def teacher_rule(batch) -> dict:
+    from app.modules.internship.schemas.internship import TeacherCheckinRuleCfg
+    try:
+        raw = (getattr(batch, 'rules_config', None) or {}).get('teacherCheckin', {})
+        return TeacherCheckinRuleCfg.model_validate(raw).model_dump()
+    except (ValueError, TypeError, AttributeError):
+        raise AppException('DATA_CONFLICT', '教师签到范围配置异常，请学校管理员核对批次规则', http_status=409) from None
+
+
+def classify_teacher_location(*, lat, lng, accuracy, coordinate_system, rule,
+                              mock_location=False, device_risk_flags=None) -> dict:
+    decision = {'result': 'RECORDED', 'distanceM': None, 'matchedLocation': None,
+                'rule': rule, 'deviceRiskFlags': list(device_risk_flags or [])}
+    if mock_location or device_risk_flags:
+        decision['result'] = 'MOCK_LOCATION'
+    elif lat is None or lng is None:
+        decision['result'] = 'NO_LOCATION'
+    elif rule['locations']:
+        comparable = [site for site in rule['locations'] if site['coordinateSystem'] == coordinate_system]
+        if not comparable:
+            decision['result'] = 'LOCATION_UNCERTAIN'
+        else:
+            candidates = []
+            order = {'NORMAL': 0, 'LOCATION_UNCERTAIN': 1, 'LOW_ACCURACY': 2, 'OUT_OF_RANGE': 3}
+            for site in comparable:
+                distance = distance_m(lat, lng, site['centerLat'], site['centerLng'])
+                result, _ = classify_location(lat=lat, lng=lng, accuracy=accuracy,
+                    rule={'configured': True, 'radiusM': site['radiusM'], 'maxAccuracyM': rule['maxAccuracyM']},
+                    distance_m=distance)
+                candidates.append((order[result], distance, result, site))
+            _, distance, result, site = min(candidates, key=lambda item: (item[0], item[1]))
+            decision.update(result=result, distanceM=distance, matchedLocation=site)
+    return decision
 
 
 def _b64(value: bytes) -> str:

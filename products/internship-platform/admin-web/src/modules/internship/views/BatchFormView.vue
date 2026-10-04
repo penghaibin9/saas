@@ -139,7 +139,7 @@
           <div class="mp-card__body bf-json">
             <div v-if="!advancedJson" class="bf-rules">
               <div class="bf-rules__grp">
-                <div class="bf-rules__t">打卡规则</div>
+                <div class="bf-rules__t">学生打卡规则</div>
                 <AppFormItem label="每日必打卡">
                   <AppRadioGroup v-model="rulesForm.checkin.requireDaily" :options="boolOptions" :disabled="readonly" />
                 </AppFormItem>
@@ -152,6 +152,24 @@
                 <AppFormItem label="最大定位误差（米）" hint="超过该误差时转教师核验，不直接判定正常或超范围">
                   <AppNumberInput v-model="rulesForm.checkin.maxAccuracyM" :min="20" :max="2000" :step="10" :disabled="readonly" />
                 </AppFormItem>
+              </div>
+
+              <div class="bf-rules__grp">
+                <div class="bf-rules__t">教师签到范围</div>
+                <p class="bf-aside">可配置多个企业巡访或学校签到地点。未配置时只记录事实；低精度、围栏边界和坐标系不一致不会判为正常。启用批次后范围冻结。</p>
+                <AppFormItem label="教师最大定位误差（米）" v-slot="{ id }">
+                  <AppNumberInput :id="id" v-model="rulesForm.teacherCheckin.maxAccuracyM" :min="20" :max="2000" :disabled="readonly" />
+                </AppFormItem>
+                <div v-for="(site,index) in rulesForm.teacherCheckin.locations" :key="index" class="bf-teacher-site" :aria-label="`教师签到地点 ${index+1}`">
+                  <AppFormItem :label="`地点 ${index+1} 名称`" v-slot="{ id }"><AppTextInput :id="id" v-model.trim="site.name" :disabled="readonly" placeholder="例如：实习企业巡访点" /></AppFormItem>
+                  <AppFormItem label="地图坐标类型" v-slot="{ id }"><AppSelect :id="id" v-model="site.coordinateSystem" :options="teacherCoordinateOptions" :disabled="readonly" /></AppFormItem>
+                  <AppFormItem label="地点中心纬度" v-slot="{ id }"><AppNumberInput :id="id" v-model="site.centerLat" :min="-90" :max="90" :step="0.000001" :disabled="readonly" /></AppFormItem>
+                  <AppFormItem label="地点中心经度" v-slot="{ id }"><AppNumberInput :id="id" v-model="site.centerLng" :min="-180" :max="180" :step="0.000001" :disabled="readonly" /></AppFormItem>
+                  <AppFormItem label="允许签到半径（米）" v-slot="{ id }"><AppNumberInput :id="id" v-model="site.radiusM" :min="30" :max="5000" :disabled="readonly" /></AppFormItem>
+                  <AppButton variant="ghost" :disabled="readonly" @click="removeTeacherLocation(index)">移除此地点</AppButton>
+                </div>
+                <AppInlineAlert v-if="teacherLocationError" type="warning" :description="teacherLocationError" />
+                <AppButton variant="ghost" :disabled="readonly || rulesForm.teacherCheckin.locations.length>=50" @click="addTeacherLocation">添加教师签到地点</AppButton>
               </div>
 
               <div class="bf-rules__grp">
@@ -204,6 +222,12 @@
                 </AppFormItem>
               </div>
 
+              <div class="bf-rules__grp">
+                <div class="bf-rules__t">教师本人报告字数上限</div>
+                <AppFormItem label="教师周报最多字数"><AppNumberInput v-model="rulesForm.teacherReport.weeklyMaxWords" :min="30" :max="12000" :disabled="readonly" /></AppFormItem>
+                <AppFormItem label="教师月报最多字数"><AppNumberInput v-model="rulesForm.teacherReport.monthlyMaxWords" :min="100" :max="12000" :disabled="readonly" /></AppFormItem>
+                <AppFormItem label="教师总结最多字数"><AppNumberInput v-model="rulesForm.teacherReport.summaryMaxWords" :min="300" :max="12000" :disabled="readonly" /></AppFormItem>
+              </div>
               <div class="bf-rules__grp">
                 <div class="bf-rules__t">指导规则</div>
                 <AppFormItem label="每学期最少巡访次数">
@@ -321,6 +345,8 @@ import { formatDate } from '@/utils/dateUtils'
 import { withInternshipBatch, internshipBatchListReturn } from '../navigation.js'
 
 const RULE_LABELS = {
+  teacherCheckin: '教师签到范围', locations: '允许签到地点', centerLat: '中心纬度', centerLng: '中心经度', radiusM: '允许半径', coordinateSystem: '地图坐标类型',
+  teacherReport: '教师本人报告', weeklyMaxWords: '教师周报最多字数', monthlyMaxWords: '教师月报最多字数', summaryMaxWords: '教师总结最多字数',
   checkin: '打卡', weeklyReport: '周报', processReport: '日报/月报/总结', guidance: '指导', evaluation: '评价', score: '成绩',
   requireDaily: '每日必打卡', requiredDays: '计划要求签到天数', geofenceRadiusM: '电子围栏半径（米）', maxAccuracyM: '最大定位误差（米）', frequency: '提交频率',
   minWordCount: '正文最少字数', requiredCount: '应交周报篇数', deadlineWeekday: '截止（周几前）', reviewSlaHours: '准时批阅时限（小时）',
@@ -342,8 +368,10 @@ const blankForm = () => ({
 
 /** 规则表单默认值（与后端 internship_service.DEFAULT_RULES 对齐；权重以百分数呈现）。 */
 const blankRulesForm = () => ({
+  teacherCheckin: { maxAccuracyM: 200, locations: [] },
   checkin: { requireDaily: true, requiredDays: 0, geofenceRadiusM: 500, maxAccuracyM: 200 },
   weeklyReport: { frequency: 'WEEKLY', minWordCount: 30, requiredCount: 0, deadlineWeekday: 7, reviewSlaHours: 48 },
+  teacherReport: { weeklyMaxWords: 12000, monthlyMaxWords: 12000, summaryMaxWords: 12000 },
   processReport: {
     dailyMinWords: 30, dailyRequiredCount: 0,
     monthlyMinWords: 100, monthlyRequiredCount: 0,
@@ -404,11 +432,29 @@ export default {
       stageRows: [],
       rulesForm: blankRulesForm(),
       boolOptions: BOOL_OPTIONS,
+      teacherCoordinateOptions: [{label:'国内地图坐标',value:'GCJ02'},{label:'国际通用坐标（境外及浏览器定位）',value:'WGS84'}],
       frequencyOptions: FREQUENCY_OPTIONS,
       weekdayOptions: WEEKDAY_OPTIONS
     }
   },
   computed: {
+    teacherLocationError() {
+      const rule=this.rulesForm.teacherCheckin
+      if(!Number.isInteger(Number(rule.maxAccuracyM)) || Number(rule.maxAccuracyM)<20 || Number(rule.maxAccuracyM)>2000) return '教师定位误差须为20至2000米的整数'
+      if(rule.locations.length>50) return '教师签到地点最多50个'
+      const names=new Set()
+      for(const [index,site] of rule.locations.entries()) {
+        const name=String(site.name||'').trim()
+        if(!name || name.length>80 || names.has(name)) return `地点${index+1}名称须填写，最多80字且不能重复`
+        names.add(name)
+        if(!['GCJ02','WGS84'].includes(site.coordinateSystem)) return `请确认地点${index+1}的地图坐标类型`
+        for(const [key,min,max,label] of [['centerLat',-90,90,'纬度'],['centerLng',-180,180,'经度'],['radiusM',30,5000,'半径']]) {
+          const value=site[key]
+          if(value===null || value===undefined || value==='' || !Number.isFinite(Number(value)) || Number(value)<min || Number(value)>max || key==='radiusM' && !Number.isInteger(Number(value))) return `请填写地点${index+1}的有效${label}`
+        }
+      }
+      return ''
+    },
     formSections() { return [
       { key: 'basic', label: '基本信息', order: '01' },
       { key: 'stages', label: '阶段安排', order: '02' },
@@ -525,6 +571,13 @@ export default {
     this.init()
   },
   methods: {
+    addTeacherLocation() {
+      if(this.readonly || this.rulesForm.teacherCheckin.locations.length>=50) return
+      this.rulesForm.teacherCheckin.locations.push({name:'',centerLat:null,centerLng:null,radiusM:500,coordinateSystem:'GCJ02'})
+    },
+    removeTeacherLocation(index) {
+      if(!this.readonly) this.rulesForm.teacherCheckin.locations.splice(index,1)
+    },
     async loadContext() {
       this.contextLoading = true; this.contextError = ''; this.ctx = null
       try {
@@ -588,8 +641,10 @@ export default {
       const base = blankRulesForm()
       const r = d.rules || {}
       this.rulesForm = {
+        teacherCheckin: { ...base.teacherCheckin, ...(r.teacherCheckin || {}), locations: (r.teacherCheckin?.locations || []).map(site=>({...site})) },
         checkin: { ...base.checkin, ...(r.checkin || {}) },
         weeklyReport: { ...base.weeklyReport, ...(r.weeklyReport || {}) },
+        teacherReport: { ...base.teacherReport, ...(r.teacherReport || {}) },
         processReport: { ...base.processReport, ...(r.processReport || {}) },
         guidance: { ...base.guidance, ...(r.guidance || {}) },
         evaluation: {
@@ -610,6 +665,10 @@ export default {
     buildRulesFromForm() {
       const f = this.rulesForm
       return {
+        teacherCheckin: { maxAccuracyM:Number(f.teacherCheckin.maxAccuracyM), locations:f.teacherCheckin.locations.map(site=>({
+          name:String(site.name||'').trim(),centerLat:site.centerLat===null||site.centerLat===''?null:Number(site.centerLat),
+          centerLng:site.centerLng===null||site.centerLng===''?null:Number(site.centerLng),radiusM:Number(site.radiusM),coordinateSystem:site.coordinateSystem
+        })) },
         checkin: {
           requireDaily: !!f.checkin.requireDaily,
           geofenceRadiusM: Number(f.checkin.geofenceRadiusM || 0),
@@ -633,6 +692,7 @@ export default {
           maxVideos: Math.max(0, Number(f.processReport.maxVideos ?? 3)),
           reviewSlaHours: Math.min(720, Math.max(1, Number(f.processReport.reviewSlaHours || 48)))
         },
+        teacherReport: { ...f.teacherReport },
         guidance: {
           minVisitsPerTerm: Number(f.guidance.minVisitsPerTerm || 0),
           minCommunicationsPerMonth: Number(f.guidance.minCommunicationsPerMonth || 0)
@@ -744,6 +804,7 @@ export default {
         if (this.stagesError) return toast.error('阶段时间轴 JSON 配置有误，请先修正')
         if (this.rulesError) return toast.error('规则配置 JSON 配置有误，请先修正')
       } else {
+        if(this.teacherLocationError) { this.focusSection('rules'); return toast.error(this.teacherLocationError) }
         if (this.stageFormError) { this.focusSection('stages'); return toast.error(this.stageFormError) }
         if (this.evalWeightSum !== 100) { this.focusSection('rules'); return toast.error(`评价权重合计须为 100%，当前 ${this.evalWeightSum}%`) }
         if (this.componentWeightSum !== 100) { this.focusSection('rules'); return toast.error(`成绩构成权重合计须为 100%，当前 ${this.componentWeightSum}%`) }
@@ -933,6 +994,7 @@ export default {
 .bf-content .bf-rules__grp { border: 0; border-top: 1px solid var(--card-b); border-radius: 0; padding: 16px 0 0; }
 .bf-content .bf-rules { gap: 24px; }
 .bf-rules__t { font-size: 14px; color: var(--t1); }
+.bf-teacher-site { border:1px solid var(--card-b); border-radius:6px; padding:14px; display:grid; gap:12px; }
 .bf-save-error { padding: 14px 18px; border: 1px solid var(--danger-200); background: var(--danger-50); color: var(--danger-700); font-size: 13px; line-height: 1.7; border-radius: 6px; }
 @media (max-width: 1080px) { .bf-layout { grid-template-columns: 1fr; } .bf-guide { position: static; padding: 0; } .bf-guide nav { display: flex; } .bf-guide p, .bf-guide__label { display: none; } }
 @media (max-width: 800px) { .bf-content .bf-row { grid-template-columns: 1fr; } }

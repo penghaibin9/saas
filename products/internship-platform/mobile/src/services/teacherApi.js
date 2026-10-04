@@ -3,6 +3,10 @@ import { realRequest } from './request'
 import * as sequential from './teacherSequentialV3Api'
 
 export const teacherApi = {
+  getEmploymentRegistrations: ({batchId,status='ALL',page=1,pageSize=20}) => realRequest(`/teacher-mobile/internship/employment?batchId=${encodeURIComponent(String(batchId||''))}&status=${encodeURIComponent(status)}&page=${page}&pageSize=${pageSize}`),
+  getEmploymentRegistration: id => realRequest(`/teacher-mobile/internship/employment/${encodeURIComponent(String(id||''))}`),
+  discloseEmploymentRegistration: (id,purpose) => realRequest(`/teacher-mobile/internship/employment/${encodeURIComponent(String(id||''))}/disclose`,{method:'POST',data:{purpose}}),
+  reviewEmploymentRegistration: (id,body) => realRequest(`/teacher-mobile/internship/employment/${encodeURIComponent(String(id||''))}/review`,{method:'POST',data:body}),
   getWeeklyReports: (options = {}) => sequential.getInternshipReviewQueue(options),
   handleCheckin: (id, action, comment, riskLevel = null) => sequential.handleCheckin(id, action, comment, riskLevel),
   async getWeeklyDetail(id) {
@@ -35,9 +39,10 @@ export const teacherApi = {
     realRequest(`/teacher-mobile/internship/workbench/messages?category=${encodeURIComponent(category)}&readStatus=${encodeURIComponent(readStatus)}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`),
   readInternshipWorkbenchMessage: (messageId) =>
     realRequest(`/teacher-mobile/internship/workbench/messages/${encodeURIComponent(String(messageId||''))}/read`, { method:'POST' }),
-  getMyInternshipCheckins: (batchId, limit = 31) => realRequest(`/teacher-mobile/internship/activity/checkins?batchId=${encodeURIComponent(String(batchId || ''))}&limit=${encodeURIComponent(limit)}`),
+  getMyInternshipCheckins: (batchId, limit = 31, month = '') => realRequest(`/teacher-mobile/internship/activity/checkins?batchId=${encodeURIComponent(String(batchId || ''))}&limit=${encodeURIComponent(limit)}${month ? '&month='+encodeURIComponent(month) : ''}`),
+  getMyInternshipCheckinRule: batchId => realRequest(`/teacher-mobile/internship/activity/checkin-rule?batchId=${encodeURIComponent(String(batchId || ''))}`),
   createMyInternshipCheckin: (body) => realRequest('/teacher-mobile/internship/activity/checkins', { method: 'POST', data: body || {} }),
-  getMyInternshipMakeups: (batchId, status = '') => realRequest(`/teacher-mobile/internship/activity/makeups?batchId=${encodeURIComponent(String(batchId || ''))}&status=${encodeURIComponent(status || '')}`),
+  getMyInternshipMakeups: (batchId, status = '') => realRequest(`/teacher-mobile/internship/activity/makeups?batchId=${encodeURIComponent(String(batchId || ''))}${status ? '&status='+encodeURIComponent(status) : ''}`),
   applyMyInternshipMakeup: (body) => realRequest('/teacher-mobile/internship/activity/makeups', { method: 'POST', data: body || {} }),
   withdrawMyInternshipMakeup: (id) => realRequest(`/teacher-mobile/internship/activity/makeups/${encodeURIComponent(String(id || ''))}/withdraw`, { method: 'POST' }),
   getMyInternshipWorkReports: (batchId, page = 1, pageSize = 20) => realRequest(`/teacher-mobile/internship/activity/work-reports?batchId=${encodeURIComponent(String(batchId || ''))}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`),

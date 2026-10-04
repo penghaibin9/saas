@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import (JSON, BigInteger, Boolean, Computed, DateTime, Float, Integer, String,
+from sqlalchemy import (JSON, BigInteger, Boolean, Computed, DateTime, Double, Float, Integer, String,
                         Text, Index, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -120,8 +120,8 @@ class InternshipCheckin(PKMixin, TenantMixin, CommonMixin, Base):
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     checkin_date: Mapped[str] = mapped_column(String(10), nullable=False, comment="YYYY-MM-DD")
     checkin_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
-    lat: Mapped[float | None] = mapped_column(Float)
-    lng: Mapped[float | None] = mapped_column(Float)
+    lat: Mapped[float | None] = mapped_column(Double)
+    lng: Mapped[float | None] = mapped_column(Double)
     address: Mapped[str | None] = mapped_column(String(300))
     result: Mapped[str] = mapped_column(
         String(30), nullable=False, default="RECORDED",

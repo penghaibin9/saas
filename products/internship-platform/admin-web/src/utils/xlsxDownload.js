@@ -69,5 +69,11 @@ export function downloadXlsxFromApi(payload = {}) {
   URL.revokeObjectURL(href)
 }
 
+/** 保留可点击的导出快照，供浏览器要求本人触发下载时使用；调用方负责释放。 */
+export function prepareXlsxDownload(payload = {}) {
+  if (!payload.contentBase64 || !String(payload.filename || '').endsWith('.xlsx')) throw new Error('报告导出内容不完整，请重新生成')
+  return { url: URL.createObjectURL(base64ToBlob(payload.contentBase64, payload.mediaType)), filename: payload.filename, rowCount: Number(payload.rowCount || 0) }
+}
+
 export default downloadXlsxFromApi
 

@@ -20,6 +20,9 @@
         "navigationStyle": "custom"
       }
     },
+    {"path":"pages/student-internship/basic-info/index","style":{"navigationBarTitleText":"完善基础资料"}},
+    {"path":"pages/student-internship/employment/index","style":{"navigationBarTitleText":"就业上报"}},
+    {"path":"pages/teacher-internship/employment/index","style":{"navigationBarTitleText":"就业上报审核"}},
     {
       "path": "pages/common/change-password/index",
       "style": {
@@ -156,6 +159,13 @@
       "path": "pages/student-internship/process-facts/index",
       "style": {
         "navigationBarTitleText": "轮岗与工资",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/student/weekly-report/index",
+      "style": {
+        "navigationBarTitleText": "实习周报",
         "navigationStyle": "custom"
       }
     },
@@ -341,6 +351,13 @@
       "path": "pages/teacher-internship/plan-task-review/index",
       "style": {
         "navigationBarTitleText": "实习计划任务确认",
+        "navigationStyle": "custom"
+      }
+    },
+    {
+      "path": "pages/teacher-internship/activity/index",
+      "style": {
+        "navigationBarTitleText": "教师工作记录",
         "navigationStyle": "custom"
       }
     },

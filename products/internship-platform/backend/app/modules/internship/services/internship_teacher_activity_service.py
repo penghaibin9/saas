@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import calendar
 from datetime import date, datetime, timezone
 import re
+from math import isfinite
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import func, select
@@ -86,7 +88,7 @@ def _assert_teacher_batch_scope(db, batch_id: int, user: dict) -> InternshipBatc
 
 def _require_school_admin(user: dict) -> None:
     if _scope_mode(user) != "ADMIN_TENANT":
-        raise no_permission("批次紧急通知仅限校级岗位实习管理员发布或撤回")
+        raise no_permission("此操作仅限校级岗位实习管理员办理")
 
 
 def _zone(name: str | None) -> tuple[str, ZoneInfo]:
@@ -123,6 +125,10 @@ def _notice_attachment_ids(value) -> list[str]:
         fid = str(raw or "").strip()
         if not fid or fid in out:
             continue
+        from app.services.file_access_service import require_file_access
+        file = require_file_access(fid, action="bind")
+        if file.biz_id:
+            raise AppException("VALIDATION_ERROR", "通知附件已用于其他业务，请重新上传")
         meta = file_service.get_file_meta(fid)
         if not meta:
             raise AppException("VALIDATION_ERROR", "通知附件不存在或无权访问")
@@ -189,6 +195,51 @@ def notice_applies_to_student(db, row: InternshipEmergencyNotice, student: Stude
     target_ids = {int(x) for x in (row.recipient_college_ids_json or []) if str(x).isdigit()}
     college_id = _student_college_id(db, student)
     return bool(college_id and college_id in target_ids)
+
+
+def notice_is_active(row: InternshipEmergencyNotice, now: datetime | None = None) -> bool:
+    now = now or datetime.utcnow()
+    return bool(
+        not row.is_deleted and row.status == "PUBLISHED"
+        and (row.valid_from is None or row.valid_from <= now)
+        and (row.valid_until is None or row.valid_until >= now)
+    )
+
+
+def authorize_notice_file(db, file, bindings, user: dict, action: str) -> bool:
+    """Every read uses the current notice authority, including the uploader's read."""
+    if db is None or str(file.biz_type or "").upper() != "INTERNSHIP_NOTICE":
+        return False
+    nid = str(file.biz_id or "")
+    if not nid.isdigit():
+        return False
+    bound = any(
+        not b.is_deleted and b.status == "ACTIVE" and b.tenant_id == _tid()
+        and b.file_id == file.id and b.biz_type == "INTERNSHIP_NOTICE" and str(b.biz_id) == nid
+        for b in bindings
+    )
+    if not bound:
+        return False
+    notice = db.get(InternshipEmergencyNotice, int(nid))
+    if (not notice or notice.tenant_id != _tid() or not notice_is_active(notice)
+            or str(file.id) not in {str(x) for x in (notice.attachment_file_ids_json or [])}):
+        return False
+    role = str(user.get("currentRoleCode") or user.get("userType") or "").upper()
+    if role == "STUDENT":
+        from app.services.mobile_student_service import _require_student, resolve_student
+        _require_student(user)
+        student = resolve_student(db, user)
+        if student is None:
+            return False
+        ctx = resolve_student_internship_context(db, student=student, batch_id=notice.batch_id, for_write=False)
+        return bool(ctx.record and ctx.record.batch_id == notice.batch_id
+                    and notice_applies_to_student(db, notice, student))
+    from app.core.permissions import has_permission
+    if not has_permission(user, "internship.communication.view"):
+        return False
+    teacher_id, _ = _teacher_identity(user)
+    _assert_teacher_batch_scope(db, notice.batch_id, user)
+    return _notice_applies_to_teacher(db, notice, user, teacher_id)
 
 
 def _notice_applies_to_teacher(db, row: InternshipEmergencyNotice, user: dict, teacher_id: int) -> bool:
@@ -263,7 +314,7 @@ def _location(body: dict) -> tuple[float | None, float | None, float | None]:
             lat, lng = float(lat_raw), float(lng_raw)
         except (TypeError, ValueError):
             raise AppException("VALIDATION_ERROR", "定位坐标格式非法") from None
-        if not -90 <= lat <= 90 or not -180 <= lng <= 180:
+        if not isfinite(lat) or not isfinite(lng) or not -90 <= lat <= 90 or not -180 <= lng <= 180:
             raise AppException("VALIDATION_ERROR", "定位坐标超出合法范围")
     accuracy = body.get("accuracyM")
     if accuracy is not None:
@@ -271,12 +322,19 @@ def _location(body: dict) -> tuple[float | None, float | None, float | None]:
             accuracy = float(accuracy)
         except (TypeError, ValueError):
             raise AppException("VALIDATION_ERROR", "定位精度格式非法") from None
-        if accuracy < 0:
-            raise AppException("VALIDATION_ERROR", "定位精度不能为负数")
+        if not isfinite(accuracy) or accuracy < 0:
+            raise AppException("VALIDATION_ERROR", "定位精度必须为有限的非负数")
     return lat, lng, accuracy
 
 
 def _checkin_view(row: InternshipTeacherCheckin, *, already=False) -> dict:
+    local_checked = ''
+    if row.checked_in_at:
+        try:
+            _, zone = _zone(row.timezone_name)
+            local_checked = row.checked_in_at.replace(tzinfo=timezone.utc).astimezone(zone).strftime('%Y-%m-%d %H:%M:%S')
+        except AppException:
+            pass
     return {
         "id": str(row.id),
         "batchId": str(row.batch_id),
@@ -285,6 +343,7 @@ def _checkin_view(row: InternshipTeacherCheckin, *, already=False) -> dict:
         "localDate": row.local_date.isoformat() if row.local_date else "",
         "timezoneName": row.timezone_name,
         "checkedInAt": _iso(row.checked_in_at) or "",
+        "localCheckedInAt": local_checked,
         "latitude": float(row.latitude) if row.latitude is not None else None,
         "longitude": float(row.longitude) if row.longitude is not None else None,
         "accuracyM": float(row.accuracy_m) if row.accuracy_m is not None else None,
@@ -306,27 +365,26 @@ def _checkin_view(row: InternshipTeacherCheckin, *, already=False) -> dict:
 
 
 def checkin(user: dict, body: dict) -> dict:
+    from app.modules.internship.services import internship_checkin_trust_service as trust
     payload = body or {}
     teacher_id, teacher_name = _teacher_identity(user)
     timezone_name, tz = _zone(payload.get("timezoneName"))
     lat, lng, accuracy = _location(payload)
     photo_file_id = str(payload.get("photoFileId") or "").strip() or None
     if photo_file_id and lat is None:
-        raise AppException("VALIDATION_ERROR", "教师签到上传现场照片时必须同时提供定位，才能生成可信位置水印")
+        raise AppException("VALIDATION_ERROR", "教师签到上传现场照片时必须同时提供定位，才能生成带位置的水印")
 
     coordinate_system = str(
-        payload.get("coordinateSystem") or ("GCJ02" if lat is not None else "")
+        payload.get("coordinateSystem") or ""
     ).strip().upper() or None
     if coordinate_system not in (None, "GCJ02", "WGS84"):
         raise AppException("VALIDATION_ERROR", "coordinateSystem 仅支持 GCJ02/WGS84")
     country_region = str(payload.get("countryRegion") or "").strip()[:100] or None
     location_provider = str(payload.get("locationProvider") or "").strip()[:50] or None
     address = str(payload.get("address") or "").strip()[:500] or None
-    result = "NO_LOCATION" if lat is None else (
-        "LOW_ACCURACY" if accuracy is not None and accuracy > 200 else "NORMAL"
-    )
 
-    now_utc = datetime.now(timezone.utc)
+    # The persisted MySQL DATETIME and photo watermark both retain whole seconds.
+    now_utc = datetime.now(timezone.utc).replace(microsecond=0)
     local_now = now_utc.astimezone(tz)
     local_date = local_now.date()
     with session() as db:
@@ -341,6 +399,13 @@ def checkin(user: dict, body: dict) -> dict:
         if existing:
             return _checkin_view(existing, already=True)
 
+        if batch.status != 'RUNNING':
+            raise AppException('DATA_CONFLICT', '当前批次未在进行中，不能登记新签到', http_status=409)
+        rule = trust.teacher_rule(batch)
+        decision = trust.classify_teacher_location(lat=lat, lng=lng, accuracy=accuracy,
+            coordinate_system=coordinate_system, rule=rule,
+            mock_location=payload.get('mockLocation', False), device_risk_flags=payload.get('deviceRiskFlags'))
+        result = decision['result']
         row = InternshipTeacherCheckin(
             tenant_id=_tid(),
             batch_id=batch.id,
@@ -355,6 +420,7 @@ def checkin(user: dict, body: dict) -> dict:
             address=address,
             note=str(payload.get("note") or "").strip()[:500] or None,
             result=result,
+            distance_m=decision['distanceM'],
             coordinate_system=coordinate_system,
             country_region=country_region,
             location_provider=location_provider,
@@ -370,7 +436,7 @@ def checkin(user: dict, body: dict) -> dict:
                 f"教师签到 · {teacher_name}\n"
                 f"{local_now.strftime('%Y-%m-%d %H:%M:%S')} {timezone_name}\n"
                 f"{location_text}\n"
-                f"{coordinate_system or 'GCJ02'} {lat:.6f},{lng:.6f}"
+                f"{coordinate_system or '坐标系未确认'} {lat:.6f},{lng:.6f}"
             )
             evidence = watermark_photo(
                 original_file_id=photo_file_id,
@@ -396,6 +462,7 @@ def checkin(user: dict, body: dict) -> dict:
             action="TEACHER_CHECKIN_CREATE",
             user=user,
             batch_id=batch.id,
+            rule_version=int(getattr(batch, 'rules_version', None) or 1),
             file_ids=[
                 fid for fid in [row.photo_file_id, row.watermarked_file_id] if fid
             ],
@@ -408,26 +475,119 @@ def checkin(user: dict, body: dict) -> dict:
                 "coordinateSystem": coordinate_system or "",
                 "countryRegion": country_region or "",
                 "hasTrustedPhotoEvidence": bool(evidence),
+                "locationDecision": decision,
             },
         )
         db.commit()
+        db.refresh(row)
         return _checkin_view(row)
 
-def list_my_checkins(user: dict, *, batch_id, limit: int = 31) -> list[dict]:
-    teacher_id, _ = _teacher_identity(user)
-    limit = min(366, max(1, int(limit or 31)))
+def my_checkin_rule(user: dict, *, batch_id) -> dict:
+    from app.modules.internship.services import internship_checkin_trust_service as trust
+    from app.core.permissions import has_permission
     with session() as db:
         batch = _assert_teacher_batch_scope(db, batch_id, user)
-        rows = db.scalars(select(InternshipTeacherCheckin).where(
+        rule = trust.teacher_rule(batch)
+        return {**rule, 'configured': bool(rule['locations']), 'rulesVersion': batch.rules_version,
+                'batchId': str(batch.id), 'canCheckin': batch.status=='RUNNING' and has_permission(user,'internship.guidance.manage'),
+                'unavailableReason': '当前批次未在进行中，不能登记新签到' if batch.status!='RUNNING' else (
+                    '' if has_permission(user,'internship.guidance.manage') else '当前账号没有登记教师签到的权限')}
+
+
+def list_my_checkins(user: dict, *, batch_id, limit: int = 31, month: str | None = None) -> list[dict]:
+    teacher_id, _ = _teacher_identity(user)
+    limit = min(366, max(1, int(limit or 31)))
+    first = last = None
+    if month is not None:
+        try:
+            if not re.fullmatch(r'\d{4}-\d{2}', month):
+                raise ValueError
+            year, number = map(int, month.split('-'))
+            first = date(year, number, 1)
+            last = date(year, number, calendar.monthrange(year, number)[1])
+        except (ValueError, TypeError):
+            raise AppException('VALIDATION_ERROR', '请选择有效的签到月份') from None
+    with session() as db:
+        batch = _assert_teacher_batch_scope(db, batch_id, user)
+        query = select(InternshipTeacherCheckin).where(
             InternshipTeacherCheckin.tenant_id == _tid(),
             InternshipTeacherCheckin.batch_id == batch.id,
             InternshipTeacherCheckin.teacher_user_id == teacher_id,
             InternshipTeacherCheckin.is_deleted.is_(False),
-        ).order_by(
+        )
+        if first:
+            query = query.where(InternshipTeacherCheckin.local_date.between(first, last))
+        rows = db.scalars(query.order_by(
             InternshipTeacherCheckin.local_date.desc(),
             InternshipTeacherCheckin.id.desc(),
-        ).limit(limit)).all()
+        ).limit(last.day if last else limit)).all()
         return [_checkin_view(row) for row in rows]
+
+
+_CHECKIN_LABELS = {'RECORDED': '仅作留痕', 'NORMAL': '正常签到', 'OUT_OF_RANGE': '超出范围待核实',
+                   'NO_LOCATION': '无定位待核实', 'LOW_ACCURACY': '定位精度不足待核实',
+                   'LOCATION_UNCERTAIN': '定位待核实', 'MOCK_LOCATION': '设备或定位异常待核实', 'MAKEUP': '审批补签'}
+_COORDINATE_LABELS = {'GCJ02': '国内地图坐标', 'WGS84': '国际通用坐标'}
+
+
+def _managed_checkin_query(batch_id, *, teacher_user_id=None, result=None, start_date=None, end_date=None):
+    if result and result not in _CHECKIN_LABELS:
+        raise AppException('VALIDATION_ERROR', '签到结果筛选无效')
+    if start_date and end_date and start_date > end_date:
+        raise AppException('VALIDATION_ERROR', '开始日期不能晚于结束日期')
+    query = select(InternshipTeacherCheckin).where(
+        InternshipTeacherCheckin.tenant_id == _tid(), InternshipTeacherCheckin.batch_id == batch_id,
+        InternshipTeacherCheckin.is_deleted.is_(False))
+    if teacher_user_id is not None:
+        query = query.where(InternshipTeacherCheckin.teacher_user_id == teacher_user_id)
+    if result:
+        query = query.where(InternshipTeacherCheckin.result == result)
+    if start_date:
+        query = query.where(InternshipTeacherCheckin.local_date >= start_date)
+    if end_date:
+        query = query.where(InternshipTeacherCheckin.local_date <= end_date)
+    return query.order_by(InternshipTeacherCheckin.local_date.desc(), InternshipTeacherCheckin.id.desc())
+
+
+def _managed_checkin_view(row):
+    return {**_checkin_view(row), 'resultLabel': _CHECKIN_LABELS.get(row.result, '结果待核实'),
+            'coordinateLabel': _COORDINATE_LABELS.get(row.coordinate_system, '坐标类型未确认')}
+
+
+def list_managed_checkins(user, *, batch_id, page=1, page_size=20, **filters):
+    _require_school_admin(user)
+    page, page_size = max(1, int(page)), min(200, max(1, int(page_size)))
+    with session() as db:
+        batch = _batch(db, batch_id)
+        query = _managed_checkin_query(batch.id, **filters)
+        total = int(db.scalar(select(func.count()).select_from(query.order_by(None).subquery())) or 0)
+        rows = db.scalars(query.offset((page-1)*page_size).limit(page_size)).all()
+        return {'items': [_managed_checkin_view(row) for row in rows], 'total': total,
+                'page': page, 'pageSize': page_size}
+
+
+def export_managed_checkins(user, *, batch_id, **filters):
+    from app.services import xlsx_util
+    _require_school_admin(user)
+    with session() as db:
+        batch = _batch(db, batch_id)
+        rows = db.scalars(_managed_checkin_query(batch.id, **filters).limit(xlsx_util.MAX_ROWS+1)).all()
+        if len(rows) > xlsx_util.MAX_ROWS:
+            raise AppException('VALIDATION_ERROR', '单次签到明细导出最多5000条，请按教师或日期缩小范围后分批导出')
+        views = [_managed_checkin_view(row) for row in rows]
+        values = [[r['teacherName'], r['localDate'], r['localCheckedInAt'], r['timezoneName'],
+                   r['resultLabel'], r['address'], r['note'], r['countryRegion'], r['coordinateLabel'],
+                   r['latitude'], r['longitude'], r['accuracyM'], r['distanceM'],
+                   '已附现场照片' if r['evidenceAvailable'] else '未附现场照片'] for r in views]
+        content = xlsx_util.build_ledger_xlsx('教师签到明细',
+            ['教师姓名', '签到日期', '签到当地时间', '时区', '签到结果', '地图地址', '签到备注',
+             '国家或地区', '坐标类型', '纬度', '经度', '定位精度（米）', '距允许地点中心（米）', '照片情况'], values)
+        add_audit(db, target_type='BATCH', target_id=batch.id, action='TEACHER_CHECKIN_EXPORT', user=user,
+                  batch_id=batch.id, detail={'rowCount': len(rows), 'filters': {
+                      key: value.isoformat() if isinstance(value, date) else value
+                      for key, value in filters.items() if value is not None}})
+        db.commit()
+        return xlsx_util.pack_xlsx_result(content, '教师签到明细.xlsx', len(rows))
 
 
 def _validate_attachments(file_ids) -> list[str]:
@@ -615,6 +775,18 @@ def _normalize_period(report_type, period_key) -> tuple[str, str]:
     raise AppException("VALIDATION_ERROR", "reportType 必须是 WEEKLY/MONTHLY/SUMMARY")
 
 
+def _period_attachment_views(row) -> list[dict]:
+    result = []
+    for fid in row.attachment_file_ids_json or []:
+        meta = file_service.get_file_meta(str(fid), require_ready=False)
+        if not meta:
+            result.append({'fileId': str(fid), 'fileName': '附件已不可用', 'canPreview': False, 'canDownload': False})
+        else:
+            result.append({key: meta[key] for key in ('fileId', 'fileName', 'ext', 'mimeType', 'sizeBytes')})
+            result[-1].update(canPreview=meta['readyForBusiness'], canDownload=meta['readyForBusiness'])
+    return result
+
+
 def _period_report_view(row: InternshipTeacherPeriodReport) -> dict:
     return {
         "id": str(row.id),
@@ -628,9 +800,115 @@ def _period_report_view(row: InternshipTeacherPeriodReport) -> dict:
         "nextPlan": row.next_plan or "",
         "studentCount": row.student_count,
         "attachmentFileIds": list(row.attachment_file_ids_json or []),
+        "attachments": _period_attachment_views(row),
         "submittedAt": _iso(row.submitted_at) or "",
         "version": int(row.version or 0),
     }
+
+
+def teacher_report_rules(batch) -> dict:
+    from app.modules.internship.schemas.internship import TeacherReportRuleCfg
+    config = (getattr(batch, "rules_config", None) or {}).get("teacherReport") or {}
+    try:
+        return TeacherReportRuleCfg(**config).model_dump()
+    except Exception:
+        raise AppException("VALIDATION_ERROR", "教师报告字数规则异常，请联系学校管理员核对") from None
+
+
+def _period_text(kind, key):
+    if kind == 'SUMMARY':
+        return '实习总结'
+    if kind == 'WEEKLY' and re.fullmatch(r'\d{4}-W\d{2}', key):
+        return f'{key[:4]}年第{int(key[-2:])}周'
+    if kind == 'MONTHLY' and re.fullmatch(r'\d{4}-\d{2}', key):
+        return f'{key[:4]}年{int(key[-2:])}月'
+    return '周期待核实'
+
+
+def _period_attachments(db, user, row, values) -> list[str]:
+    from app.models.file import FileObject
+    from app.services.file_access_service import _scan_ready
+    if not isinstance(values, list) or len(values) > 9:
+        raise AppException("VALIDATION_ERROR", "报告附件最多上传9个")
+    ids = list(dict.fromkeys(str(value) for value in values))
+    for fid in ids:
+        file = db.scalar(select(FileObject).where(
+            FileObject.id == int(fid) if fid.isdigit() else FileObject.id == 0,
+            FileObject.tenant_id == _tid(), FileObject.is_deleted.is_(False),
+        ).with_for_update())
+        if not file or str(file.owner_user_id or "") != str(stable_user_id(user)):
+            raise not_found("附件不存在或不属于当前教师")
+        if not _scan_ready(file):
+            raise AppException("FILE_NOT_READY", "附件尚未安全就绪，请稍后重试", http_status=409)
+        if str(file.ext or '').lower() not in {
+                'png', 'jpg', 'jpeg', 'bmp', 'gif', 'webp', 'rar', 'zip', 'doc', 'docx', 'pdf', 'xls', 'xlsx'}:
+            raise AppException("VALIDATION_ERROR", "报告附件仅支持图片、压缩包、办公文档及便携文档")
+        if file.biz_id is not None:
+            if (not row or file.biz_type != 'INTERNSHIP_TEACHER_PERIOD_REPORT'
+                    or str(file.biz_id) != str(row.id)
+                    or fid not in {str(x) for x in (row.attachment_file_ids_json or [])}):
+                raise AppException("VALIDATION_ERROR", "附件已用于其他报告或业务，请重新上传")
+        elif file.biz_type != 'TEMP_PRIVATE':
+            raise AppException("VALIDATION_ERROR", "附件业务来源不符，请重新上传")
+    return ids
+
+
+def authorize_teacher_checkin_file(db, file, bindings, user, action) -> bool:
+    if not db or action not in {'meta', 'download', 'preview', 'archive'}:
+        return False
+    if file.biz_type != 'INTERNSHIP_TEACHER_CHECKIN' or not str(file.biz_id or '').isdigit():
+        return False
+    row = db.scalar(select(InternshipTeacherCheckin).where(
+        InternshipTeacherCheckin.id == int(file.biz_id),
+        InternshipTeacherCheckin.tenant_id == _tid(),
+        InternshipTeacherCheckin.is_deleted.is_(False),
+    ))
+    if not row:
+        return False
+    identifier = str(file.id)
+    if identifier == row.photo_file_id:
+        expected = row.photo_sha256
+    elif identifier == row.watermarked_file_id:
+        expected = row.watermarked_sha256
+    else:
+        return False
+    if not expected or expected != file.sha256:
+        return False
+    if not any(b.tenant_id == _tid() and b.biz_type == 'INTERNSHIP_TEACHER_CHECKIN'
+               and str(b.biz_id) == str(row.id) and b.status == 'ACTIVE'
+               and b.is_current and not b.is_deleted for b in bindings):
+        return False
+    from app.core.permissions import has_permission
+    if _scope_mode(user) == 'ADMIN_TENANT':
+        return has_permission(user, 'internship.stats.view')
+    if str(row.teacher_user_id) != str(stable_user_id(user)) or not has_permission(user, 'internship.guidance.view'):
+        return False
+    _assert_teacher_batch_scope(db, row.batch_id, user)
+    return True
+
+
+def authorize_teacher_period_file(db, file, bindings, user, action) -> bool:
+    if action not in {'meta', 'download', 'preview'} or not db:
+        return False
+    if file.biz_type != 'INTERNSHIP_TEACHER_PERIOD_REPORT' or not str(file.biz_id or '').isdigit():
+        return False
+    row = db.scalar(select(InternshipTeacherPeriodReport).where(
+        InternshipTeacherPeriodReport.id == int(file.biz_id),
+        InternshipTeacherPeriodReport.tenant_id == _tid(),
+        InternshipTeacherPeriodReport.is_deleted.is_(False),
+    ))
+    if not row or str(file.id) not in {str(x) for x in (row.attachment_file_ids_json or [])}:
+        return False
+    if not any(b.biz_type == 'INTERNSHIP_TEACHER_PERIOD_REPORT' and str(b.biz_id) == str(row.id)
+               and b.status == 'ACTIVE' and b.is_current and not b.is_deleted for b in bindings):
+        return False
+    from app.core.permissions import has_permission
+    if _scope_mode(user) == 'ADMIN_TENANT':
+        return has_permission(user, 'internship.stats.view')
+    if str(row.teacher_user_id) != str(stable_user_id(user)) or not has_permission(user, 'internship.guidance.view'):
+        return False
+    _assert_teacher_batch_scope(db, row.batch_id, user)
+    return True
 
 
 def save_period_report(user: dict, body: dict) -> dict:
@@ -645,7 +923,6 @@ def save_period_report(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", f"教师{label}至少填写 {minimum} 个字")
     if len(content) > 12000:
         raise AppException("VALIDATION_ERROR", "教师周期报告不能超过 12000 字")
-    attachments = _validate_attachments(payload.get("attachmentFileIds"))
     student_count = payload.get("studentCount")
     if student_count not in (None, ""):
         try:
@@ -659,6 +936,15 @@ def save_period_report(user: dict, body: dict) -> dict:
 
     with session() as db:
         batch = _assert_teacher_batch_scope(db, payload.get("batchId"), user)
+        # Lock the parent before lookup: concurrent first submissions share the same key.
+        db.execute(select(InternshipBatch.id).where(
+            InternshipBatch.id == batch.id, InternshipBatch.tenant_id == _tid(),
+        ).with_for_update())
+        db.refresh(batch)
+        rules = teacher_report_rules(batch)
+        maximum = rules[{"WEEKLY": "weeklyMaxWords", "MONTHLY": "monthlyMaxWords", "SUMMARY": "summaryMaxWords"}[report_type]]
+        if len(content) > maximum:
+            raise AppException("VALIDATION_ERROR", f"当前批次教师报告最多填写{maximum}个字")
         row = db.scalar(select(InternshipTeacherPeriodReport).where(
             InternshipTeacherPeriodReport.tenant_id == _tid(),
             InternshipTeacherPeriodReport.batch_id == batch.id,
@@ -667,6 +953,7 @@ def save_period_report(user: dict, body: dict) -> dict:
             InternshipTeacherPeriodReport.period_key == period_key,
             InternshipTeacherPeriodReport.is_deleted.is_(False),
         ).with_for_update())
+        attachments = _period_attachments(db, user, row, payload.get("attachmentFileIds") or [])
         action = "TEACHER_PERIOD_REPORT_CREATE"
         if row:
             expected = payload.get("expectedVersion")
@@ -765,7 +1052,56 @@ def list_my_period_reports(
             "total": total,
             "page": page,
             "pageSize": page_size,
+            "rules": teacher_report_rules(batch),
         }
+
+
+def list_managed_period_reports(user, *, batch_id, page=1, page_size=20, report_type=None):
+    _require_school_admin(user)
+    with session() as db:
+        batch = _batch(db, batch_id)
+        query = select(InternshipTeacherPeriodReport).where(
+            InternshipTeacherPeriodReport.tenant_id == _tid(),
+            InternshipTeacherPeriodReport.batch_id == batch.id,
+            InternshipTeacherPeriodReport.is_deleted.is_(False),
+        )
+        if report_type:
+            query = query.where(InternshipTeacherPeriodReport.report_type == report_type)
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        reports = db.scalars(query.order_by(InternshipTeacherPeriodReport.id.desc())
+                             .offset((page-1)*page_size).limit(page_size)).all()
+        return {'items': [_period_report_view(r) for r in reports], 'total': total,
+                'page': page, 'pageSize': page_size, 'rules': teacher_report_rules(batch)}
+
+
+def export_period_reports(user, *, batch_id, report_type=None, managed=False):
+    from app.services import xlsx_util
+    teacher_id, _ = _teacher_identity(user)
+    if managed:
+        _require_school_admin(user)
+    with session() as db:
+        batch = _batch(db, batch_id) if managed else _assert_teacher_batch_scope(db, batch_id, user)
+        query = select(InternshipTeacherPeriodReport).where(
+            InternshipTeacherPeriodReport.tenant_id == _tid(),
+            InternshipTeacherPeriodReport.batch_id == batch.id,
+            InternshipTeacherPeriodReport.is_deleted.is_(False),
+        )
+        if not managed:
+            query = query.where(InternshipTeacherPeriodReport.teacher_user_id == teacher_id)
+        if report_type:
+            query = query.where(InternshipTeacherPeriodReport.report_type == report_type)
+        reports = db.scalars(query.order_by(InternshipTeacherPeriodReport.id)).all()
+        data = [[r.teacher_name_snapshot, {'WEEKLY':'周报','MONTHLY':'月报','SUMMARY':'总结'}.get(r.report_type, '类型待确认'),
+                 _period_text(r.report_type, r.period_key), r.content, r.issue_content or '',
+                 r.next_plan or '', r.student_count, len(r.attachment_file_ids_json or []),
+                 int(r.version or 0)+1, _iso(r.submitted_at)] for r in reports]
+        content = xlsx_util.build_ledger_xlsx('教师本人报告',
+            ['教师姓名','报告类型','报告周期','工作正文','问题与风险','下一步计划','涉及学生人数','附件数量','版本','提交时间'], data)
+        add_audit(db, target_type='TEACHER_PERIOD_REPORT', target_id=batch.id,
+                  action='TEACHER_PERIOD_REPORT_EXPORT', user=user, batch_id=batch.id,
+                  detail={'rowCount': len(data), 'managed': managed})
+        db.commit()
+        return xlsx_util.pack_xlsx_result(content, '教师本人报告.xlsx', len(data))
 
 
 
@@ -1409,9 +1745,11 @@ def acknowledge_teacher_notice(user: dict, notice_id, *, batch_id) -> dict:
             InternshipEmergencyNotice.batch_id == batch.id,
             InternshipEmergencyNotice.status == "PUBLISHED",
             InternshipEmergencyNotice.is_deleted.is_(False),
-        ))
+        ).with_for_update())
         if not notice:
             raise not_found("紧急通知不存在、已撤回或不属于当前批次")
+        if not notice_is_active(notice):
+            raise not_found("紧急通知尚未生效或已过期")
         if not _notice_applies_to_teacher(db, notice, user, teacher_id):
             raise no_permission("该通知不属于你的接收范围")
         receipt = db.scalar(select(InternshipEmergencyNoticeTeacherReceipt).where(
@@ -1419,7 +1757,7 @@ def acknowledge_teacher_notice(user: dict, notice_id, *, batch_id) -> dict:
             InternshipEmergencyNoticeTeacherReceipt.notice_id == notice.id,
             InternshipEmergencyNoticeTeacherReceipt.teacher_user_id == teacher_id,
             InternshipEmergencyNoticeTeacherReceipt.is_deleted.is_(False),
-        ))
+        ).with_for_update())
         if receipt:
             return {
                 **_notice_view(notice),
@@ -1495,15 +1833,9 @@ def withdraw_emergency_notice(user: dict, notice_id, reason: str) -> dict:
 
 def list_student_notices(user: dict, *, batch_id) -> list[dict]:
     with session() as db:
-        batch = _batch(db, batch_id)
-        ctx = resolve_student_internship_context(
-            db,
-            student_no=(user or {}).get("studentNo"),
-            batch_id=batch.id,
-            for_write=False,
-        )
-        if not ctx.record or int(ctx.record.batch_id or 0) != int(batch.id):
-            raise no_permission("当前学生不属于该实习批次")
+        from app.modules.internship.services.internship_student_notice_service import _student_context
+        batch, record = _student_context(db, user, batch_id)
+        student = db.get(StudentProfile, record.student_id)
         now = datetime.utcnow()
         rows = db.scalars(select(InternshipEmergencyNotice).where(
             InternshipEmergencyNotice.tenant_id == _tid(),
@@ -1518,5 +1850,5 @@ def list_student_notices(user: dict, *, batch_id) -> list[dict]:
         ).limit(50)).all()
         return [
             _notice_view(row) for row in rows
-            if notice_applies_to_student(db, row, ctx.student)
+            if notice_applies_to_student(db, row, student)
         ]

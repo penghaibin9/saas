@@ -37,14 +37,15 @@ test('real backend student H5 login reaches standalone internship home and recor
   await page.getByText('今日打卡',{exact:true}).first().click()
   await expect(page).toHaveURL(/#\/pages\/student-internship\/checkin\/index/)
   await expect(page.getByText('完整签到日历',{exact:true})).toBeVisible()
+  await page.locator('.ci__photo textarea').fill('合成签到联调：完成今天的岗位测试任务')
 
   await page.locator('.ci__circle').click()
-  await expect(page.getByText(/确认签到/)).toBeVisible()
+  await expect(page.getByText('确认签到',{exact:true})).toBeVisible()
   const preflightResponse = page.waitForResponse(r =>
     new URL(r.url()).pathname === '/api/v1/mobile/internship/checkin/preflight' && r.request().method() === 'POST')
   const checkinResponse = page.waitForResponse(r =>
     new URL(r.url()).pathname === '/api/v1/mobile/internship/checkin' && r.request().method() === 'POST')
-  await page.getByText('确定',{exact:true}).click()
+  await page.getByText('确认签到',{exact:true}).click()
 
   const preflight = await preflightResponse
   expect(preflight.status()).toBe(200)
@@ -53,9 +54,27 @@ test('real backend student H5 login reaches standalone internship home and recor
   expect(checkin.status()).toBe(200)
   const checkinPayload = await checkin.json()
   expect(checkinPayload.code).toBe(0)
+  expect(checkin.request().postDataJSON().note).toBe('合成签到联调：完成今天的岗位测试任务')
+  expect(checkin.request().postDataJSON().coordinateSystem).toBe('WGS84')
+  expect(checkin.request().postDataJSON().locationProvider).toBe('BROWSER_WGS84')
+  expect(checkin.request().postDataJSON().lat).toBeCloseTo(28.2282,4)
+  expect(checkin.request().postDataJSON().lng).toBeCloseTo(112.9388,4)
   expect(['RECORDED','NORMAL','OUT_OF_RANGE','LOW_ACCURACY','LOCATION_UNCERTAIN']).toContain(checkinPayload.data.result)
+  const receiptTitle = checkinPayload.data.result === 'NORMAL' ? '签到成功' : checkinPayload.data.result === 'RECORDED' ? '签到已记录' : '签到已记录，待核验'
+  await expect(page.getByText(receiptTitle,{exact:true})).toBeVisible()
+  await expect(page.getByText(/励志语：.*积累/)).toBeVisible()
+  await page.screenshot({path:'test-results-mobile-real/student-checkin-receipt.png',fullPage:true})
+  await page.getByText('知道了',{exact:true}).click()
+  await expect(page.locator('.ci__circle')).toContainText('今日已签到')
+  await page.reload()
   await expect(page.locator('.ci__circle')).toContainText('今日已签到')
   await page.screenshot({path:'test-results-mobile-real/student-checkin.png',fullPage:true})
+  for (const width of [375,390,430]) {
+    await page.setViewportSize({width,height:844})
+    await expect(page.locator('.ci__circle')).toContainText('今日已签到')
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth <= window.innerWidth)).toBeTruthy()
+    await page.screenshot({path:`test-results-mobile-real/student-checkin-${width}.png`,fullPage:true})
+  }
 
   expect(seen.some(x=>x.path.endsWith('/auth/login')&&x.status===200)).toBeTruthy()
   expect(seen.some(x=>x.path.endsWith('/mobile/internship/context/my')&&x.status===200)).toBeTruthy()

@@ -35,6 +35,7 @@ def c05_db(tmp_path):
         InternshipRecord,
         InternshipRotation,
         InternshipRotationProject,
+        StudentAccountLink,
         StudentProfile,
     )
 
@@ -51,6 +52,7 @@ def c05_db(tmp_path):
     for table in (
         InternshipBatch.__table__,
         StudentProfile.__table__,
+        StudentAccountLink.__table__,
         InternshipRecord.__table__,
         InternshipApplication.__table__,
         FileObject.__table__,
@@ -80,6 +82,7 @@ def c05_db(tmp_path):
 def _seed():
     from app.db.session import get_sessionmaker
     from app.models import InternshipApplication, InternshipBatch, InternshipRecord, StudentProfile
+    from app.services.student_account_link_service import bind_in_session
 
     db = get_sessionmaker()()
     try:
@@ -98,6 +101,10 @@ def _seed():
             current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE",
         )
         db.add_all([batch, student]); db.flush()
+        bind_in_session(
+            db, tenant_id=TID, student_id=student.id,
+            user_id=int(STUDENT["userId"]), student_no=student.student_no,
+        )
         record = InternshipRecord(
             tenant_id=TID, student_id=student.id, batch_id=batch.id,
             enterprise_name="益阳C05企业", position_name="生产技术实习生",
@@ -349,6 +356,36 @@ def test_g13_monthly_payroll_duplicate_correction_photo_currency_and_agreed_sala
             "evidenceFileId": outside_photo["fileId"],
         })
     assert exc.value.code == "VALIDATION_ERROR"
+
+
+@pytest.mark.parametrize("identity_case", ["unbound_account", "forged_student"])
+def test_c05_rejects_unbound_account_and_forged_student(c05_db, identity_case):
+    from app.core.context import set_current_user, set_tenant
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord, StudentAccountLink
+    from app.modules.internship.services import internship_payroll_service as payrolls
+
+    set_tenant({"tenantId": str(TID)})
+    batch_id, student_id, record_id = _seed()
+    with get_sessionmaker()() as db:
+        link = db.query(StudentAccountLink).one()
+        record = db.get(InternshipRecord, record_id)
+        assert (link.tenant_id, link.student_id, link.user_id, link.link_status) == (
+            TID, student_id, int(STUDENT["userId"]), "ACTIVE",
+        )
+        assert link.student_id == record.student_id
+
+    user = {**STUDENT, "studentId": str(student_id)}
+    if identity_case == "unbound_account":
+        user["userId"] = "2002"
+    else:
+        user["studentId"] = str(student_id + 1)
+    set_current_user(user)
+    with pytest.raises(AppException) as exc:
+        payrolls.list_my(user, batch_id=batch_id, internship_id=record_id)
+    assert exc.value.code == "NO_PERMISSION"
+    assert exc.value.http_status == 403
 
 
 def test_c05_routes_are_registered():

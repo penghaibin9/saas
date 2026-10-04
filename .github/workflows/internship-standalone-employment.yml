@@ -1,0 +1,120 @@
+name: 岗位实习独立版正常角色联调
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feat/internship-standalone-yiyang-v1]
+    paths:
+      - "products/internship-platform/backend/app/**"
+      - "products/internship-platform/backend/alembic/versions/**"
+      - "products/internship-platform/backend/tests/test_internship_employment*.py"
+      - "products/internship-platform/backend/tests/test_yiyang_write_flows_mysql.py"
+      - "products/internship-platform/backend/tests/test_student_notice_identity_mysql.py"
+      - "products/internship-platform/backend/tests/test_yiyang_plan_export_options_mysql.py"
+      - "products/internship-platform/backend/tests/test_student_weekly_detail_mysql.py"
+      - "products/internship-platform/backend/tests/test_archive_package_access_mysql.py"
+      - "products/internship-platform/backend/tests/test_internship_archive_recovery_employment_static.py"
+      - "products/internship-platform/backend/tests/test_internship_material_center.py"
+      - "products/internship-platform/backend/tests/test_teacher_period_reports_mysql.py"
+      - "products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py"
+      - "products/internship-platform/backend/tests/test_student_basic_info_mysql.py"
+      - "products/internship-platform/backend/tests/test_xlsx_stream_bounds.py"
+      - "products/internship-platform/backend/tests/test_checkin_coordinate_mysql.py"
+      - "products/internship-platform/backend/tests/test_checkin_watermark_layout.py"
+      - "products/internship-platform/backend/tests/test_teacher_checkin_photo_mysql.py"
+      - "products/internship-platform/backend/tests/test_teacher_checkin_fence_mysql.py"
+      - "products/internship-platform/backend/tests/test_teacher_checkin_rule_contract.py"
+      - "products/internship-platform/backend/tests/test_teacher_checkin_history_mysql.py"
+      - "products/internship-platform/backend/tests/test_material_submission_mysql.py"
+      - "products/internship-platform/backend/tests/test_internship_insurance_detail.py"
+      - "products/internship-platform/backend/tests/test_standalone_import_closure.py"
+      - "products/internship-platform/scripts/check_w2_import_closure.py"
+      - "products/internship-platform/backend/Dockerfile"
+      - "products/internship-platform/backend/Dockerfile.dockerignore"
+      - "products/internship-platform/backend/requirements.txt"
+      - "products/internship-platform/mobile/**"
+      - "products/internship-platform/admin-web/**"
+      - ".github/workflows/internship-standalone-employment.yml"
+
+jobs:
+  employment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: employment_ci_only
+          MYSQL_DATABASE: internship_employment_test_ci
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pemployment_ci_only --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      APP_ENV: test
+      DATABASE_URL: mysql+pymysql://root:employment_ci_only@127.0.0.1:3306/internship_employment_test_ci?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_KEY_PREFIX: internship-employment-ci
+      GAP09_MYSQL_ACCEPTANCE: "1"
+      EXPECTED_ALEMBIC_REVISION: ix0030
+      FILE_STORAGE_DIR: /tmp/internship-employment-ci-files
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install backend and generate ephemeral test keys
+        run: |
+          python -m pip install -r products/internship-platform/backend/requirements.txt
+          python - <<'PY'
+          import os, secrets
+          from cryptography.fernet import Fernet
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              output.write('FIELD_ENCRYPTION_KEY='+Fernet.generate_key().decode()+'\n')
+              output.write('SENSITIVE_SEARCH_HMAC_KEY='+secrets.token_hex(32)+'\n')
+              output.write('JWT_SECRET='+secrets.token_hex(48)+'\n')
+          PY
+      - name: 安装签到中文水印字库
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-cjk
+      - name: Migrate isolated MySQL and verify current revision
+        run: |
+          python products/internship-platform/scripts/check_schema_revision_contract.py
+          python products/internship-platform/scripts/check_w2_import_closure.py
+          pytest -q products/internship-platform/backend/tests/test_standalone_import_closure.py
+          alembic -c products/internship-platform/backend/alembic.ini upgrade head
+      - name: Exercise normal-role employment, archives, basic facts, attachments, notices and write transactions
+        run: |
+          mkdir -p /tmp/internship-employment-ci-evidence
+          pytest -q products/internship-platform/backend/tests/test_xlsx_stream_bounds.py --junitxml=/tmp/internship-employment-ci-evidence/xlsx-stream-bounds.xml
+          pytest -q products/internship-platform/backend/tests/test_checkin_coordinate_mysql.py products/internship-platform/backend/tests/test_checkin_watermark_layout.py products/internship-platform/backend/tests/test_teacher_checkin_photo_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/checkin-photo.xml
+          pytest -q products/internship-platform/backend/tests/test_teacher_checkin_fence_mysql.py products/internship-platform/backend/tests/test_teacher_checkin_rule_contract.py --junitxml=/tmp/internship-employment-ci-evidence/teacher-checkin-fence.xml
+          pytest -q products/internship-platform/backend/tests/test_teacher_checkin_history_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/teacher-checkin-history.xml
+          pytest -q products/internship-platform/backend/tests/test_material_submission_mysql.py products/internship-platform/backend/tests/test_internship_insurance_detail.py --junitxml=/tmp/internship-employment-ci-evidence/material-submission.xml
+          pytest -q products/internship-platform/backend/tests/test_internship_employment_mysql.py products/internship-platform/backend/tests/test_yiyang_write_flows_mysql.py products/internship-platform/backend/tests/test_student_notice_identity_mysql.py products/internship-platform/backend/tests/test_internship_employment_teacher_permission_contract.py products/internship-platform/backend/tests/test_archive_package_access_mysql.py products/internship-platform/backend/tests/test_internship_archive_recovery_employment_static.py products/internship-platform/backend/tests/test_internship_material_center.py products/internship-platform/backend/tests/test_teacher_period_reports_mysql.py products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py products/internship-platform/backend/tests/test_student_basic_info_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/backend.xml
+      - name: Exercise the actual mobile and PC page controllers
+        run: |
+          npm --prefix products/internship-platform/mobile test
+          npm --prefix products/internship-platform/admin-web run test:employment
+          npm --prefix products/internship-platform/admin-web run test:teacher-reports
+          npm --prefix products/internship-platform/admin-web run test:basic-info
+          npm --prefix products/internship-platform/admin-web run test:attendance-photo
+          npm --prefix products/internship-platform/admin-web run test:teacher-checkin-rule
+          npm --prefix products/internship-platform/admin-web run test:teacher-checkin-history
+          npm --prefix products/internship-platform/admin-web run test:materials
+      - name: Preserve backend results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-employment-ci-results
+          path: /tmp/internship-employment-ci-evidence
+          if-no-files-found: error

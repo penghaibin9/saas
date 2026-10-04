@@ -1,6 +1,6 @@
 <template>
   <div v-if="visible" class="aeid__mask" @click.self="close">
-    <div class="aeid" role="dialog" aria-modal="true">
+    <div class="aeid" role="dialog" aria-modal="true" :aria-label="title">
       <header class="aeid__header">
         <h3>{{ title }}</h3>
         <button type="button" class="aeid__close" aria-label="关闭" @click="close">×</button>
@@ -16,6 +16,7 @@
       </div>
 
       <div class="aeid__body">
+        <p v-if="formError" class="aeid__error" role="alert">{{ formError }}</p>
         <AccountImportBoundaryNotice v-if="showAccountBoundary" class="aeid__boundary" />
 
         <!-- Step 0：模板 + 上传 -->
@@ -46,16 +47,18 @@
         </div>
 
         <!-- Step 2：回执 -->
-        <div v-else class="aeid__result">
+        <div v-else class="aeid__result"><slot name="result" :result="result">
           <div class="aeid__result-icon">✓</div>
           <div class="aeid__result-title">导入完成</div>
           <div class="aeid__result-desc">成功导入 {{ result?.created ?? 0 }} 条数据，失败数据未导入。</div>
           <div class="aeid__result-audit">本次导入已写入审计与导入记录，可在「通用导入记录」中查看。</div>
+          </slot>
         </div>
       </div>
 
       <footer class="aeid__footer">
         <AppButton variant="ghost" @click="close">{{ step === 2 ? '关闭' : '取消' }}</AppButton>
+        <AppButton v-if="step === 1" variant="secondary" :disabled="busy || errBusy" @click="restartUpload">重新上传</AppButton>
         <AppButton
           v-if="step === 0"
           variant="primary"
@@ -94,6 +97,7 @@ import AccountImportBoundaryNotice from '@/components/common/AccountImportBounda
 import AppExcelUpload from './AppExcelUpload.vue'
 import AppImportPreviewTable from './AppImportPreviewTable.vue'
 import AppImportErrorSummary from './AppImportErrorSummary.vue'
+import { normalizeUiError } from '@/utils/presentationSafety'
 
 const EMPTY_PRE = { total: 0, validRows: 0, invalidRows: 0, passed: false, rows: [], errors: [] }
 
@@ -122,87 +126,113 @@ export default {
       templateBusy: false,
       errBusy: false,
       pre: { ...EMPTY_PRE },
-      result: null
+      result: null,
+      formError: '', scopeGeneration: 0
     }
   },
   watch: {
     visible(v) {
-      if (v) Object.assign(this, { step: 0, selectedFile: null, pre: { ...EMPTY_PRE }, result: null })
+      this.scopeGeneration++
+      if (v) this.restartUpload()
     }
   },
+  beforeUnmount() { this.scopeGeneration++ },
   methods: {
     close() {
+      this.scopeGeneration++
       this.$emit('update:visible', false)
+    },
+    restartUpload() {
+      this.scopeGeneration++
+      Object.assign(this, { step: 0, selectedFile: null, pre: { ...EMPTY_PRE }, result: null,
+        formError: '', busy: false, templateBusy: false, errBusy: false })
+    },
+    showError(error, fallback) {
+      this.formError = error?.bizCode === 'DATA_CONFLICT'
+        ? '资料已在其他页面更新，本次未导入，原表格内容已保留。请重新上传并预校验后核对。'
+        : normalizeUiError(error, { fallback }).userMessage
+      toast.error(this.formError)
     },
     onFile(f) {
       this.selectedFile = f
     },
     async downloadTemplate() {
-      if (!this.downloadTemplateFn) return
+      if (!this.visible || !this.downloadTemplateFn || this.templateBusy) return
+      const generation = this.scopeGeneration
       this.templateBusy = true
       try {
         await this.downloadTemplateFn()
       } catch (e) {
-        toast.error(e?.message || '模板下载失败')
+        if (this.visible && generation === this.scopeGeneration) this.showError(e, '模板下载失败')
       } finally {
-        this.templateBusy = false
+        if (generation === this.scopeGeneration) this.templateBusy = false
       }
     },
     async doPreValidate() {
-      if (!this.selectedFile) return
+      if (!this.visible || !this.selectedFile || this.busy) return
+      const generation = this.scopeGeneration
       this.busy = true
+      this.formError = ''
       try {
         const res = await this.uploadFn(this.selectedFile)
+        if (!this.visible || generation !== this.scopeGeneration) return
         if (res?.code === 0) {
           this.pre = { ...EMPTY_PRE, ...res.data }
           this.step = 1
         } else {
-          toast.error(res?.message || '预校验失败')
+          this.showError(res, '预校验失败')
         }
       } catch (e) {
-        toast.error(e?.message || '预校验失败')
+        if (this.visible && generation === this.scopeGeneration) this.showError(e, '预校验失败')
       } finally {
-        this.busy = false
+        if (generation === this.scopeGeneration) this.busy = false
       }
     },
     async downloadErrors() {
+      if (!this.visible || this.errBusy) return
       if (!this.downloadErrorsFn) {
         toast.info('未配置错误行下载')
         return
       }
       this.errBusy = true
+      const generation = this.scopeGeneration
       try {
         const res = await this.downloadErrorsFn({ rows: this.pre.rows, errors: this.pre.errors })
+        if (!this.visible || generation !== this.scopeGeneration) return
         if (res?.code === 0) downloadXlsxFromApi(res.data)
-        else toast.error(res?.message || '错误行下载失败')
+        else this.showError(res, '错误行下载失败')
       } catch (e) {
-        toast.error(e?.message || '错误行下载失败')
+        if (this.visible && generation === this.scopeGeneration) this.showError(e, '错误行下载失败')
       } finally {
-        this.errBusy = false
+        if (generation === this.scopeGeneration) this.errBusy = false
       }
     },
     async doConfirm() {
+      if (!this.visible || this.busy || !this.pre.validRows) return
       if (this.pre.invalidRows > 0) {
         toast.error('存在未通过预校验的行，请先修正后重新上传')
         return
       }
       this.busy = true
+      this.formError = ''
+      const generation = this.scopeGeneration
       try {
         const res = await this.confirmFn({
           rows: this.pre.rows,
           previewToken: this.pre.previewToken
         })
+        if (!this.visible || generation !== this.scopeGeneration) return
         if (res?.code === 0) {
           this.result = res.data
           this.step = 2
           this.$emit('imported', res.data)
         } else {
-          toast.error(res?.message || '导入失败')
+          this.showError(res, '导入失败')
         }
       } catch (e) {
-        toast.error(e?.message || '导入失败')
+        if (this.visible && generation === this.scopeGeneration) this.showError(e, '导入失败')
       } finally {
-        this.busy = false
+        if (generation === this.scopeGeneration) this.busy = false
       }
     }
   }
@@ -210,6 +240,7 @@ export default {
 </script>
 
 <style scoped>
+.aeid__error { color: var(--danger-600); margin: 0 0 var(--space-3); }
 .aeid__mask {
   position: fixed;
   inset: 0;

@@ -24,7 +24,7 @@ def c03_db(tmp_path):
         ArchiveManifest, ArchiveManifestItem, AuditOutbox, FileAsset, FileBinding, FileObject,
         FileVersion, InternshipAuditTrail, InternshipBatch, InternshipMaterialRequirement,
         InternshipMaterialSubmission, InternshipMaterialSubmissionFile,
-        InternshipMaterialTemplateVersion, InternshipRecord, StudentProfile,
+        InternshipMaterialTemplateVersion, InternshipRecord, StudentAccountLink, StudentProfile,
     )
 
     old_url = settings.DATABASE_URL
@@ -38,7 +38,8 @@ def c03_db(tmp_path):
     engine = db_session.get_engine()
 
     for table in (
-        InternshipBatch.__table__, StudentProfile.__table__, InternshipRecord.__table__,
+        InternshipBatch.__table__, StudentProfile.__table__, StudentAccountLink.__table__,
+        InternshipRecord.__table__,
         FileObject.__table__, FileAsset.__table__, FileVersion.__table__, FileBinding.__table__,
         ArchiveManifest.__table__, ArchiveManifestItem.__table__,
         InternshipMaterialRequirement.__table__, InternshipMaterialTemplateVersion.__table__,
@@ -62,6 +63,7 @@ def c03_db(tmp_path):
 def _seed():
     from app.db.session import get_sessionmaker
     from app.models import InternshipBatch, InternshipRecord, StudentProfile
+    from app.services.student_account_link_service import bind_in_session
 
     db = get_sessionmaker()()
     try:
@@ -79,6 +81,11 @@ def _seed():
                 current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE",
             )
             db.add(student); db.flush()
+            if index == 1:
+                bind_in_session(
+                    db, tenant_id=TID, student_id=student.id,
+                    user_id=int(STUDENT["userId"]), student_no=student.student_no,
+                )
             record = InternshipRecord(
                 tenant_id=TID, student_id=student.id, batch_id=batch.id,
                 advisor_name="", eligibility_status="QUALIFIED", destination_type="ASSIGNED",
@@ -192,7 +199,7 @@ def test_g09_custom_requirement_template_resubmit_missing_and_final_archive_sour
     student_v2 = _store("企业接收函_学生版_v2.pdf", b"student-version-two-final", STUDENT)
     submitted_v2 = svc.submit_material(STUDENT, requirement["id"], {
         "batchId": str(batch_id), "internshipId": str(record_ids[0]),
-        "fileIds": [student_v2["fileId"]], "comment": "按退回意见重交",
+        "fileIds": [student_v2["fileId"]], "comment": "按退回意见重交", "expectedVersion": returned["version"],
     })
     assert submitted_v2["status"] == "SUBMITTED"
     assert submitted_v2["files"][0]["versionNo"] == 2
@@ -243,6 +250,36 @@ def test_g09_custom_requirement_template_resubmit_missing_and_final_archive_sour
     assert final_coverage["effectiveSubmittedStudents"] == 1
     assert final_coverage["approvedStudents"] == 1
     assert final_coverage["missingStudents"] == 1
+
+
+@pytest.mark.parametrize("identity_case", ["unbound_account", "forged_student"])
+def test_g09_rejects_unbound_account_and_forged_student(c03_db, identity_case):
+    from app.core.context import set_current_user, set_tenant
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipRecord, StudentAccountLink
+    from app.modules.internship.services import internship_material_requirement_service as svc
+
+    set_tenant({"tenantId": str(TID)})
+    batch_id, student_ids, record_ids = _seed()
+    with get_sessionmaker()() as db:
+        link = db.query(StudentAccountLink).one()
+        record = db.get(InternshipRecord, record_ids[0])
+        assert (link.tenant_id, link.student_id, link.user_id, link.link_status) == (
+            TID, student_ids[0], int(STUDENT["userId"]), "ACTIVE",
+        )
+        assert link.student_id == record.student_id
+
+    user = {**STUDENT, "studentId": str(student_ids[0])}
+    if identity_case == "unbound_account":
+        user["userId"] = "2002"
+    else:
+        user["studentId"] = str(student_ids[1])
+    set_current_user(user)
+    with pytest.raises(AppException) as exc:
+        svc.list_my_requirements(user, batch_id=batch_id, internship_id=record_ids[0])
+    assert exc.value.code == "NO_PERMISSION"
+    assert exc.value.http_status == 403
 
 
 def test_g09_routes_are_registered():

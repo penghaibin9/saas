@@ -2,19 +2,19 @@
   <div class="axu">
     <div class="axu__tpl" v-if="templateName || $slots.tpl">
       <div>
-        <div class="axu__tpl-name">{{ templateName || 'Excel 模板' }}</div>
+        <div class="axu__tpl-name">{{ templateName || '电子表格模板' }}</div>
         <div v-if="requiredText" class="axu__tpl-hint">必填字段：{{ requiredText }}</div>
         <slot name="tpl" />
       </div>
       <AppButton variant="secondary" :loading="templateLoading" @click="$emit('download-template')">
-        下载 Excel 模板
+        下载电子表格模板
       </AppButton>
     </div>
 
     <label class="axu__upload">
       <input type="file" :accept="accept" class="axu__file" @change="onFile" />
       <span class="axu__upload-icon">⇪</span>
-      <span>{{ fileName || '点击选择 Excel 文件（.xlsx）' }}</span>
+      <span>{{ fileName || '点击选择电子表格文件（.xlsx）' }}</span>
     </label>
     <p v-if="error" class="axu__error">{{ error }}</p>
   </div>
@@ -55,7 +55,7 @@ export default {
       this.error = ''
       if (!f) return
       if (!/\.xlsx?$/i.test(f.name)) {
-        this.error = '仅支持 .xlsx 格式文件（学校正式导入请使用 Excel 模板）'
+        this.error = '仅支持 .xlsx 格式文件（学校正式导入请使用电子表格模板）'
         return
       }
       this.fileName = f.name

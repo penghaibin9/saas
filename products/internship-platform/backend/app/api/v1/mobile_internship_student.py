@@ -7,6 +7,7 @@ from app.api.v1.file_contract import validated_local_file_response
 from app.core.permissions import require_module
 from app.core.response import success
 from app.core.security import get_current_user
+from app.adapters.employment_gateway import employment_gateway
 from app.modules.internship.services import internship_agreement_service as agreements
 from app.modules.internship.services import internship_plan_service as plans
 from app.modules.internship.services import internship_plan_task_service as plan_tasks
@@ -16,6 +17,8 @@ from app.modules.internship.services import internship_student_change_context_se
 from app.modules.internship.services import internship_student_compliance_service as compliance
 from app.modules.internship.services import internship_student_consent_context_service as consent_context
 from app.modules.internship.services import internship_student_dashboard_service as dashboard
+from app.modules.internship.services import internship_student_basic_info_service as basic_info
+from app.modules.internship.schemas.student_basic_info import StudentBasicInfoUpdate
 from app.modules.internship.services import internship_student_leave_context_service as leaves
 from app.modules.internship.services import internship_student_makeup_context_service as makeups
 from app.modules.internship.services import internship_student_report_context_service as reports
@@ -31,15 +34,54 @@ from app.modules.internship.services import internship_payroll_service as payrol
 from app.modules.internship.services import internship_score_appeal_service as score_appeals
 from app.modules.internship.services import internship_teacher_activity_service as teacher_activity
 from app.modules.internship.services import internship_risk_service as risks
+from app.modules.internship.services import internship_insurance_service as insurance
 from app.modules.internship.services.internship_student_context_guard import (
     require_context_fields,
+    require_explicit_context,
 )
+from app.services.db_service import session
 
 router = APIRouter(
     prefix="/mobile/internship",
     tags=["学生移动端-岗位实习权威状态"],
     dependencies=[Depends(require_module("internship"))],
 )
+
+@router.get('/insurance', summary='本人明确实习批次的保险信息')
+def my_insurance(batchId: str = Query(...), internshipId: str = Query(...), user=Depends(get_current_user)):
+    with session() as db:
+        require_explicit_context(db,user,{'batchId':batchId,'internshipId':internshipId},for_write=False)
+    return success(insurance.student_my_insurance(user,batch_id=batchId))
+
+
+@router.post('/insurance', summary='本人提交或更正当前批次保险凭证')
+def submit_my_insurance(body: dict = Body(...), user=Depends(get_current_user)):
+    require_context_fields(body)
+    with session() as db:
+        require_explicit_context(db,user,body,for_write=True)
+    return success(insurance.student_submit(user,body))
+
+
+@router.get('/context/basic-info', summary='本人当前批次基础资料与完善待办')
+def my_basic_info(batchId: int = Query(..., ge=1), internshipId: int = Query(..., ge=1), user=Depends(get_current_user)):
+    return success(basic_info.get_my(user, batchId, internshipId))
+
+
+@router.put('/context/basic-info', summary='按主档当前版本保存本人基础资料')
+def save_my_basic_info(body: StudentBasicInfoUpdate, batchId: int = Query(..., ge=1), internshipId: int = Query(..., ge=1), user=Depends(get_current_user)):
+    return success(basic_info.save_my(user, batchId, internshipId, body.model_dump()), message='基础资料已保存')
+
+@router.get('/employment', summary='本人当前实习就业登记及提交历史')
+def my_employment_registration(batchId:int=Query(...,ge=1),internshipId:int=Query(...,ge=1),notificationPage:int=Query(1,ge=1),user=Depends(get_current_user)):
+    return success(employment_gateway.get_my_registration(user,batch_id=batchId,internship_id=internshipId,notification_page=notificationPage))
+
+@router.post('/employment/messages/{message_id}/read', summary='本人明确确认就业核验结果通知已读')
+def read_my_employment_result(message_id:int,batchId:int=Query(...,ge=1),internshipId:int=Query(...,ge=1),user=Depends(get_current_user)):
+    return success(employment_gateway.read_my_notification(user,message_id,batch_id=batchId,internship_id=internshipId),message='已确认结果通知已读')
+
+@router.post('/employment', summary='本人提交就业上报或实习转就业')
+def submit_employment_registration(body:dict=Body(...),user=Depends(get_current_user)):
+    return success(employment_gateway.submit_registration(user,body),message='就业登记已提交，等待指导教师审核')
 
 
 def _selected_checkin_batch(
@@ -540,6 +582,18 @@ def submit_selected_weekly_report(
         reports.submit_weekly(user, body or {}),
         message="周报已提交",
     )
+
+
+@router.get("/context/weekly-reports/{report_id}", summary="本人周报历史版本与批阅评分")
+def my_selected_weekly_report_detail(
+    report_id: int,
+    batchId: int = Query(..., ge=1),
+    internshipId: int = Query(..., ge=1),
+    user=Depends(get_current_user),
+):
+    return success(reports.weekly_detail(
+        user, report_id=report_id, batch_id=batchId, internship_id=internshipId,
+    ))
 
 
 @router.get("/context/self-eval", summary="本人当前批次实习自评")

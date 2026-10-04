@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import calendar as _calendar
 from datetime import date, datetime, timedelta, timezone
-from math import asin, cos, radians, sin, sqrt
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from sqlalchemy import select
@@ -80,9 +79,7 @@ def _float_or_none(value):
 
 
 def _distance_m(lat1, lng1, lat2, lng2) -> float:
-    d_lat, d_lng = radians(lat2 - lat1), radians(lng2 - lng1)
-    a = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lng / 2) ** 2
-    return 6371000 * 2 * asin(sqrt(a))
+    return trust.distance_m(lat1, lng1, lat2, lng2)
 
 
 def _trail(db, *, target_id: int, action: str, user: dict, detail: dict):

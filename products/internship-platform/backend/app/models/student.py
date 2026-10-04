@@ -32,6 +32,8 @@ class StudentProfile(PKMixin, TenantMixin, CommonMixin, Base):
     real_name: Mapped[str] = mapped_column(String(100), nullable=False, index=True,
                                             comment="姓名（冻结册：非敏感）；建索引:审批/巡访/迁移期姓名兜底查询消全表扫描")
     gender: Mapped[str | None] = mapped_column(String(10))
+    nation: Mapped[str | None] = mapped_column(String(50), comment="学生本人或学校维护的民族；未采集保持空值")
+    source_region: Mapped[str | None] = mapped_column(String(100), comment="生源地（地区名称，不采集详细家庭地址）")
     id_card_encrypted: Mapped[str | None] = mapped_column(String(500), comment="敏感：身份证密文（id_card）")
     id_card_hash: Mapped[str | None] = mapped_column(String(128), index=True, comment="身份证 hash（查重）")
     college_id: Mapped[int | None] = mapped_column(BigInteger, index=True)

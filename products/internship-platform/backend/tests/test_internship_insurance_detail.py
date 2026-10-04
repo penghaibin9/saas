@@ -1,5 +1,6 @@
 """Insurance deep links: real MySQL tenant/batch/teacher row isolation."""
 import uuid
+import os
 import pytest
 
 TID = 1000000000000000001
@@ -15,22 +16,35 @@ def context(tenant=TID, role='SCHOOL_ADMIN', uid='1'):
 
 
 @pytest.fixture
-def policy(db_mode):
+def policy():
+    if os.environ.get('GAP09_MYSQL_ACCEPTANCE')!='1':
+        pytest.skip('requires explicitly isolated MySQL')
+    from app.config import settings
+    from sqlalchemy.engine import make_url
+    target=make_url(settings.DATABASE_URL)
+    assert settings.APP_ENV=='test' and target.get_backend_name()=='mysql'
+    assert (target.host,target.port,target.database) in {('127.0.0.1',3318,'internship_pr275_acceptance_test_20261003'),('127.0.0.1',3306,'internship_employment_test_ci')}
+    if target.port==3306:
+        assert os.environ.get('GITHUB_ACTIONS')=='true'
     from app.db.session import get_sessionmaker
-    from app.models import InternshipBatch, InternshipRecord, InternshipInsurance, StudentProfile
+    from app.models import InternshipBatch, InternshipRecord, InternshipInsurance, StudentProfile, User, StudentAccountLink
+    from app.core.security import hash_password
+    from test_yiyang_plan_export_options_mysql import PASSWORD
     context()
     with get_sessionmaker()() as db:
         batches = [InternshipBatch(tenant_id=TID, batch_no=uuid.uuid4().hex,
                    batch_name='保险核验测试批次', status='RUNNING') for _ in range(2)]
         student = StudentProfile(tenant_id=TID, student_no=uuid.uuid4().hex[:20], real_name='虚构核验学生', status='ACTIVE')
-        db.add_all([*batches, student]); db.flush()
+        account=User(tenant_id=TID,login_name='insurance-'+uuid.uuid4().hex,real_name='虚构保险学生',password_hash=hash_password(PASSWORD),user_type='STUDENT',status='ACTIVE')
+        db.add_all([*batches, student,account]); db.flush()
+        db.add(StudentAccountLink(tenant_id=TID,student_id=student.id,user_id=account.id,link_status='ACTIVE',source='IDENTITY_IMPORT',bound_student_no=student.student_no,bound_login_name=account.login_name))
         record = InternshipRecord(tenant_id=TID, student_id=student.id, batch_id=batches[0].id,
                                   advisor_user_id=987654321, status='PREPARING')
         db.add(record); db.flush()
         insurance = InternshipInsurance(tenant_id=TID, internship_id=record.id, student_id=student.id,
                     policy_no='TEST-POLICY', insurer_name='虚构保险公司', status='PENDING_VERIFY')
         db.add(insurance); db.commit()
-        return {'id': str(insurance.id), 'batch': str(batches[0].id), 'other_batch': str(batches[1].id), 'student': student.id}
+        return {'id': str(insurance.id), 'batch': str(batches[0].id), 'other_batch': str(batches[1].id), 'student': student.id, 'user':account.id}
 
 
 def test_detail_and_queue_read_same_record(policy):
@@ -112,11 +126,11 @@ def test_resubmitted_file_binds_atomically_and_old_version_cannot_replace_it(pol
         db.get(InternshipInsurance, int(policy['id'])).status = 'REJECTED'
         files = [FileObject(tenant_id=TID, file_key=f'test-insurance/{uuid.uuid4().hex}.txt',
                  file_name='fictional-policy.txt', ext='txt', mime_type='text/plain', size_bytes=8,
-                 sha256=uuid.uuid4().hex * 2, biz_type='TEMP_PRIVATE', owner_user_id=99001,
+                 sha256=uuid.uuid4().hex * 2, biz_type='TEMP_PRIVATE', owner_user_id=policy['user'],
                  visibility='PRIVATE', status='AVAILABLE', storage_backend='local', storage_zone='ACTIVE',
                  upload_source='USER', scan_required=False, scan_status='NOT_REQUIRED') for _ in range(2)]
         db.add_all(files); db.commit(); file_ids=[str(f.id) for f in files]
-    actor={'tenantId':str(TID),'userId':'99001','userType':'STUDENT','currentRoleCode':'STUDENT',
+    actor={'tenantId':str(TID),'userId':str(policy['user']),'userType':'STUDENT','currentRoleCode':'STUDENT',
            'studentNo':sno,'studentId':str(policy['student']),'realName':'虚构核验学生'}
     context();set_current_user(actor)
     body={'policyNo':'INS-TEST-REPLACEMENT','insurerName':'虚构保险机构','effectiveDate':'2026-09-01',
@@ -159,11 +173,11 @@ def test_insurance_renewal_returns_to_teacher_review_and_preserves_old_evidence(
         student = db.get(StudentProfile, policy['student']); sno = student.student_no
         files = [FileObject(tenant_id=TID, file_key=f'test-renewal/{uuid.uuid4().hex}.txt',
                  file_name='fictional-renewal.txt', ext='txt', mime_type='text/plain', size_bytes=8,
-                 sha256=uuid.uuid4().hex * 2, biz_type='TEMP_PRIVATE', owner_user_id=99001,
+                 sha256=uuid.uuid4().hex * 2, biz_type='TEMP_PRIVATE', owner_user_id=policy['user'],
                  visibility='PRIVATE', status='AVAILABLE', storage_backend='local', storage_zone='ACTIVE',
                  upload_source='USER', scan_required=False, scan_status='NOT_REQUIRED') for _ in range(2)]
         db.add_all(files); db.commit(); file_ids = [str(f.id) for f in files]
-    actor = {'tenantId':str(TID),'userId':'99001','userType':'STUDENT','currentRoleCode':'STUDENT',
+    actor = {'tenantId':str(TID),'userId':str(policy['user']),'userType':'STUDENT','currentRoleCode':'STUDENT',
              'studentNo':sno,'studentId':str(policy['student']),'realName':'虚构续保学生'}
     body = {'policyNo':'RENEW-FIXTURE','insurerName':'虚构保险机构','effectiveDate':start,
             'expiryDate':(today - timedelta(days=1)).isoformat(),'fileId':file_ids[0],

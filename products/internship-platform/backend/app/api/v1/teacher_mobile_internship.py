@@ -8,19 +8,37 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, Query
-from pydantic import BaseModel, ConfigDict, Field
+from fastapi import APIRouter, Body, Depends, Query
+from pydantic import BaseModel, ConfigDict, Field, StrictBool
 
 from app.core.permissions import require_module, require_permission
 from app.core.response import success
 from app.modules.internship.services import internship_teacher_activity_service as activity_svc
 from app.services import teacher_mobile_internship_evidence_service as svc
+from app.adapters.employment_gateway import employment_gateway
 
 router = APIRouter(
     prefix="/internship",
     tags=["teacher-mobile-internship-v3"],
     dependencies=[Depends(require_module("internship"))],
 )
+
+@router.get('/employment', summary='数据范围内就业上报分页与状态')
+def employment_registrations(batchId:int=Query(...,ge=1),internshipId:int|None=Query(None,ge=1),status:str=Query('ALL'),page:int=Query(1,ge=1),
+    pageSize:int=Query(20,ge=1,le=100),user=Depends(require_permission('internship.employment.view'))):
+    return success(employment_gateway.list_registrations(user,batch_id=batchId,internship_id=internshipId,status=status,page=page,page_size=pageSize))
+
+@router.get('/employment/{registration_id}', summary='查看就业登记当前版本与完整历史')
+def employment_registration(registration_id:int,user=Depends(require_permission('internship.employment.view'))):
+    return success(employment_gateway.get_registration(user,registration_id))
+
+@router.post('/employment/{registration_id}/disclose', summary='说明用途并留痕查看完整就业登记')
+def disclose_employment_registration(registration_id:int,body:dict=Body(...),user=Depends(require_permission('internship.employment.sensitive.view'))):
+    return success(employment_gateway.disclose_registration(user,registration_id,body))
+
+@router.post('/employment/{registration_id}/review', summary='核验或退回就业登记的明确版本')
+def review_employment_registration(registration_id:int,body:dict=Body(...),user=Depends(require_permission('internship.employment.review'))):
+    return success(employment_gateway.review_registration(user,registration_id,body),message='就业登记审核结果已保存')
 
 
 class _StrictBody(BaseModel):
@@ -48,15 +66,17 @@ class VisitEvidenceBody(_StrictBody):
 class TeacherCheckinBody(_StrictBody):
     batchId: int = Field(gt=0)
     timezoneName: str = Field(default="Asia/Shanghai", min_length=1, max_length=64)
-    latitude: float | None = Field(default=None, ge=-90, le=90)
-    longitude: float | None = Field(default=None, ge=-180, le=180)
-    accuracyM: float | None = Field(default=None, ge=0)
+    latitude: float | None = Field(default=None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: float | None = Field(default=None, ge=-180, le=180, allow_inf_nan=False)
+    accuracyM: float | None = Field(default=None, ge=0, allow_inf_nan=False)
     address: str | None = Field(default=None, max_length=500)
     note: str | None = Field(default=None, max_length=500)
     photoFileId: str | None = Field(default=None, max_length=64)
     coordinateSystem: Literal["GCJ02", "WGS84"] | None = None
     countryRegion: str | None = Field(default=None, max_length=100)
     locationProvider: str | None = Field(default=None, max_length=50)
+    mockLocation: StrictBool = False
+    deviceRiskFlags: list[Literal['MOCK_LOCATION','EMULATOR','ROOTED','JAILBROKEN','DEVICE_UNTRUSTED']] = Field(default_factory=list, max_length=10)
 
 
 class TeacherMakeupBody(_StrictBody):
@@ -86,7 +106,7 @@ class TeacherPeriodReportBody(_StrictBody):
     content: str = Field(min_length=30, max_length=12000)
     issueContent: str | None = Field(default=None, max_length=4000)
     nextPlan: str | None = Field(default=None, max_length=4000)
-    studentCount: int | None = Field(default=None, ge=0)
+    studentCount: int | None = Field(default=None, ge=0, le=2147483647)
     attachmentFileIds: list[str] = Field(default_factory=list, max_length=9)
     expectedVersion: int | None = Field(default=None, ge=0)
 
@@ -100,6 +120,8 @@ class EmergencyNoticeBody(_StrictBody):
     validFrom: datetime | None = None
     validUntil: datetime | None = None
     attachmentFileIds: list[str] = Field(default_factory=list, max_length=9)
+    audienceScope: Literal["ALL", "COLLEGE"] = "ALL"
+    recipientCollegeIds: list[int] = Field(default_factory=list, max_length=100)
 
 
 class NoticeWithdrawBody(_StrictBody):
@@ -150,9 +172,16 @@ def create_visit_evidence(
 def my_teacher_checkins(
     batchId: int = Query(..., ge=1),
     limit: int = Query(31, ge=1, le=366),
+    month: str | None = Query(None, pattern=r'^\d{4}-\d{2}$'),
     user=Depends(require_permission("internship.guidance.view")),
 ):
-    return success(activity_svc.list_my_checkins(user, batch_id=batchId, limit=limit))
+    return success(activity_svc.list_my_checkins(user, batch_id=batchId, limit=limit, month=month))
+
+
+@router.get('/activity/checkin-rule', summary='教师当前批次签到范围')
+def my_teacher_checkin_rule(batchId: int = Query(..., ge=1),
+                           user=Depends(require_permission('internship.guidance.view'))):
+    return success(activity_svc.my_checkin_rule(user, batch_id=batchId))
 
 
 @router.post("/activity/checkins", summary="教师本人现场签到")
@@ -254,6 +283,13 @@ def save_teacher_period_report(
         activity_svc.save_period_report(user, body.model_dump(exclude_none=True)),
         message="教师周期报告已保存",
     )
+
+
+@router.post('/activity/period-reports/export', summary='导出教师本人周期报告')
+def export_my_period_reports(batchId: int = Query(..., ge=1),
+    reportType: Literal['WEEKLY', 'MONTHLY', 'SUMMARY'] | None = Query(None),
+    user=Depends(require_permission('internship.guidance.view'))):
+    return success(activity_svc.export_period_reports(user, batch_id=batchId, report_type=reportType))
 
 
 @router.get("/emergency-notices", summary="当前范围批次紧急通知")

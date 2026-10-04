@@ -7,13 +7,65 @@ both files to the check-in business object.
 from __future__ import annotations
 
 from io import BytesIO
+from hashlib import sha256
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
+from sqlalchemy import or_, select
 
 from app.config import settings
 from app.core.exceptions import AppException
 from app.services import file_access_service, file_business_binding_service, file_service
+
+STUDENT_EVIDENCE_TYPES = frozenset({'INTERNSHIP_CHECKIN', 'INTERNSHIP_CHECKIN_EXEMPTION'})
+
+
+def authorize_student_evidence(db, file_obj, bindings, user: dict, action: str) -> bool:
+    """Authorize against the current business record, before any uploader fallback."""
+    from app.core.context import current_tenant_id
+    from app.core.permissions import has_permission
+    from app.models import InternshipCheckin, InternshipCheckinExemption, InternshipRecord
+    from app.modules.internship.services.internship_scope import assert_internship_record_scope
+
+    if db is None or action not in {'meta', 'download', 'preview', 'archive'}:
+        return False
+    tenant_id = int(current_tenant_id() or 0)
+    kind = str(file_obj.biz_type or '').upper()
+    if kind not in STUDENT_EVIDENCE_TYPES or file_obj.tenant_id != tenant_id:
+        return False
+    fid = str(file_obj.id)
+    if kind == 'INTERNSHIP_CHECKIN':
+        model = InternshipCheckin
+        predicate = or_(model.evidence_file_id == fid, model.watermarked_file_id == fid)
+    else:
+        model = InternshipCheckinExemption
+        predicate = model.evidence_file_id == fid
+    business = db.scalar(select(model).where(model.tenant_id == tenant_id,
+        model.is_deleted.is_(False), predicate).limit(1))
+    if not business or str(file_obj.biz_id) != str(business.id):
+        return False
+    if not any(binding.tenant_id == tenant_id and not binding.is_deleted
+               and binding.status == 'ACTIVE' and binding.is_current
+               and binding.biz_type == kind and str(binding.biz_id) == str(business.id)
+               for binding in bindings):
+        return False
+    record = db.scalar(select(InternshipRecord).where(InternshipRecord.tenant_id == tenant_id,
+        InternshipRecord.id == business.internship_id, InternshipRecord.is_deleted.is_(False)))
+    if not record:
+        return False
+    if kind == 'INTERNSHIP_CHECKIN_EXEMPTION' and (
+            record.student_id != business.student_id or record.batch_id != business.batch_id):
+        return False
+    if kind == 'INTERNSHIP_CHECKIN':
+        digest = business.evidence_sha256 if fid == business.evidence_file_id else business.watermarked_sha256
+        if not digest or digest != file_obj.sha256:
+            return False
+    if str(user.get('userType') or '').upper() == 'STUDENT':
+        return str(user.get('studentId') or '') == str(record.student_id)
+    if not has_permission(user, 'internship.attendance.view'):
+        return False
+    assert_internship_record_scope(db, record.id, user, '查看签到佐证材料')
+    return True
 
 _CJK_FONTS = (
     "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
@@ -52,6 +104,10 @@ def _wrap(draw, text: str, font, max_width: int) -> list[str]:
     lines = []
     current = ""
     for ch in str(text or ""):
+        if ch == "\n":
+            lines.append(current)
+            current = ""
+            continue
         candidate = current + ch
         if current and draw.textbbox((0, 0), candidate, font=font)[2] > max_width:
             lines.append(current)
@@ -84,8 +140,19 @@ def watermark_photo(*, original_file_id: str, checkin_id: int, watermark_text: s
     if not resolved:
         raise AppException("FILE_NOT_READY", "现场照片尚未安全就绪", http_status=409)
     source_path, source_name = resolved
+    from app.services.internship_file_transfer_service import MAX_UPLOAD_BYTES
     try:
-        with Image.open(source_path) as raw:
+        with source_path.open('rb') as source:
+            original_bytes = source.read(MAX_UPLOAD_BYTES + 1)
+    except OSError as exc:
+        raise AppException('FILE_NOT_READY', '现场照片暂时无法读取，请重新核验材料', http_status=409) from exc
+    if (len(original_bytes) > MAX_UPLOAD_BYTES or len(original_bytes) != file_obj.size_bytes
+            or not file_obj.sha256 or sha256(original_bytes).hexdigest() != file_obj.sha256):
+        raise AppException('FILE_INTEGRITY_ERROR', '现场照片完整性校验失败，请重新上传原图', http_status=409)
+    try:
+        # Decode the exact bytes just verified, so the watermark and recorded
+        # original digest cannot refer to different versions of a stored file.
+        with Image.open(BytesIO(original_bytes)) as raw:
             image = ImageOps.exif_transpose(raw).convert("RGB")
     except Exception as exc:
         raise AppException("VALIDATION_ERROR", "现场照片无法解码，请重新拍摄") from exc
@@ -101,8 +168,17 @@ def watermark_photo(*, original_file_id: str, checkin_id: int, watermark_text: s
     lines = _wrap(draw, watermark_text, font, max_width=width - padding * 2)
     line_height = int(font_size * 1.45)
     panel_height = padding * 2 + line_height * len(lines)
-    top = max(0, height - panel_height)
-    draw.rectangle((0, top, width, height), fill=(0, 0, 0, 150))
+    if panel_height > height // 3:
+        # Keep the full scene and all location text visible when an overlay would
+        # cover the photograph or clip a long address on a small camera image.
+        expanded = Image.new('RGB', (width, height + panel_height), (20, 24, 30))
+        expanded.paste(image, (0, 0))
+        image = expanded
+        draw = ImageDraw.Draw(image, 'RGBA')
+        top = height
+    else:
+        top = height - panel_height
+        draw.rectangle((0, top, width, height), fill=(0, 0, 0, 150))
     y = top + padding
     for line in lines:
         draw.text((padding, y), line, font=font, fill=(255, 255, 255, 245))

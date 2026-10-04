@@ -43,6 +43,11 @@ async function call(fn) {
   }
 }
 
+async function teacherReportCall(fn) {
+  try { return ok(await fn()) }
+  catch (e) { return { code:e?.code || 1, bizCode:e?.bizCode || '', data:null, message:e?.message || '教师报告办理失败' } }
+}
+
 async function callList(path, params = {}) {
   try {
     const d = await request(path, { params })
@@ -57,6 +62,10 @@ function clone(v) {
 }
 
 export const internshipApi = {
+  listEmploymentRegistrations: params => call(()=>request('/teacher-mobile/internship/employment',{params})),
+  getEmploymentRegistration: id => call(()=>request('/teacher-mobile/internship/employment/'+encodeURIComponent(String(id)))),
+  discloseEmploymentRegistration: (id,purpose) => call(()=>request('/teacher-mobile/internship/employment/'+encodeURIComponent(String(id))+'/disclose',{method:'POST',body:{purpose}})),
+  reviewEmploymentRegistration: (id,body) => call(()=>request('/teacher-mobile/internship/employment/'+encodeURIComponent(String(id))+'/review',{method:'POST',body})),
   /** 品牌 / 角色 / 数据范围 / 权限动作 / 字典（布局初始化）；后端在线时合入真实品牌/角色/范围 */
   async getContext() {
     // 角色名/范围名仅用于展示；细粒度按钮 allowed 由后端 permissionPatterns 判定（见下），
@@ -105,7 +114,8 @@ export const internshipApi = {
             readonlyReason = rc.readonlyReason || ''
             const cr = rc.currentRole || {}
             // 优先用后端返回的真实角色名，退回 userType 猜测名仅作离线兜底。
-            if (cr.roleName) roleName = cr.roleName
+            if (cr.roleName && /[\u3400-\u9fff]/.test(cr.roleName)) roleName = cr.roleName
+            else roleName = ({SCHOOL_ADMIN:'学校管理员',INTERN_MENTOR:'实习指导教师',CLASS_ADVISOR:'辅导员',INTERN_ENTERPRISE_TUTOR:'企业导师',INTERN_STUDENT:'实习学生'})[cr.roleCode] || '实习工作人员'
             roleCtx = { ...currentRole, roleCode: cr.roleCode || roleCtx.roleCode }
             const tid = me?.tenantId || me?.user?.tenantId || ''
             ctxKey = `${tid}|${cr.contextId || ''}|${cr.permissionVersion || ''}`
@@ -386,6 +396,24 @@ export const internshipApi = {
 
   getTeacherManagement(params = {}) {
     return call(() => request('/internship/teacher-management', { params }))
+  },
+
+  getTeacherCheckins(params = {}) {
+    return call(() => request('/internship/teacher-management/checkins', { params }))
+  },
+  exportTeacherCheckins(params = {}) {
+    return call(() => request('/internship/teacher-management/checkins/export', { method: 'POST', params }))
+  },
+
+  getTeacherPeriodReports(params = {}, managed = false) {
+    return teacherReportCall(() => request(managed ? '/internship/teacher-management/reports' : '/teacher-mobile/internship/activity/period-reports', { params }))
+  },
+  saveTeacherPeriodReport(body) {
+    return teacherReportCall(() => request('/teacher-mobile/internship/activity/period-reports', { method: 'POST', body }))
+  },
+  exportTeacherPeriodReports(params = {}, managed = false) {
+    const { batchId, reportType } = params
+    return teacherReportCall(() => request(managed ? '/internship/teacher-management/reports/export' : '/teacher-mobile/internship/activity/period-reports/export', { method: 'POST', params: { batchId, reportType } }))
   },
 
   exportTeacherManagement(params = {}) {

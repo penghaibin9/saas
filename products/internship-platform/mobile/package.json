@@ -4,6 +4,7 @@
   "private": true,
   "description": "跃科岗位实习管理平台 · 学生/教师移动端",
   "scripts": {
+    "test": "node --test tests/*.test.mjs",
     "dev:h5": "uni",
     "dev:mp-weixin": "uni -p mp-weixin",
     "build:h5": "uni build",

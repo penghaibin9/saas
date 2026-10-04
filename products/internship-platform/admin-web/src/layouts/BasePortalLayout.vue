@@ -1,113 +1,47 @@
 <template>
-  <div class="ipl-shell">
-    <header class="ipl-header">
-      <div>
-        <strong class="ipl-brand">{{ title }}</strong>
-        <span class="ipl-subtitle">{{ subtitle }}</span>
-      </div>
-      <div class="ipl-user">
-        <span v-if="ctx?.currentRole?.roleName">{{ ctx.currentRole.roleName }}</span>
-        <span v-if="ctx?.dataScope?.scopeName" class="ipl-scope">{{ ctx.dataScope.scopeName }}</span>
-        <button type="button" @click="logout">退出</button>
-      </div>
+  <div class="base-portal-layout bpl-workspace" :style="workspaceColors">
+    <header class="bpl-topbar">
+      <div class="bpl-brand"><span class="bpl-logo"><OfficeBuilding aria-hidden="true" /></span><strong class="bpl-brand__nm">{{ title }}</strong></div>
+      <div class="bpl-search"><div class="bpl-cmdk"><Search class="bpl-ic" aria-hidden="true" /><input v-model.trim="query" type="search" aria-label="搜索实习功能" placeholder="搜索实习功能" @keydown.enter.prevent="selectFirst" @keydown.esc="query = ''" /><div v-if="query" class="bpl-cmdk__panel" role="region" aria-label="实习功能搜索结果"><button v-for="item in results" :key="item.id" type="button" @click="select(item)"><span>{{ item.title }}</span><small>{{ item.trail }}</small></button><p v-if="!results.length">未找到有权限访问的相关功能</p></div></div></div>
+      <div class="bpl-top-r"><WorkspaceDeskUtilities /><button class="bpl-control" type="button" @click="workspaceFrame?.openAppearance()">外观设置</button><span>{{ roleLabel }}</span><button class="bpl-control" type="button" @click="logout">退出</button></div>
     </header>
-    <div class="ipl-body">
-      <aside class="ipl-nav" aria-label="岗位实习功能导航">
-        <section v-for="m in modules" :key="m.key" class="ipl-nav-group">
-          <button type="button" class="ipl-nav-title" :class="{ active: activeModule === m.key }" @click="select(m)">
-            {{ m.label }}
-          </button>
-          <div v-if="activeModule === m.key || moduleContainsRoute(m)" class="ipl-nav-leaves">
-            <button
-              v-for="item in m.children"
-              :key="item.path"
-              type="button"
-              class="ipl-nav-leaf"
-              :class="{ active: isActive(item) }"
-              @click="select(item)"
-            >{{ item.label }}</button>
-          </div>
-        </section>
-      </aside>
-      <main class="ipl-main"><slot /></main>
-    </div>
-    <footer v-if="$slots.footer" class="ipl-footer"><slot name="footer" /></footer>
+    <TeacherWorkspaceFrame v-if="ctx" ref="workspaceFrame" :key="ctx.ctxKey" :modules="modules" :centers="centers" active-center="internship" :active-module="activeModule" :identity-key="identityKey" :scope-name="ctx.dataScope?.scopeName || ''" :resolve-destination="workspaceNavigate" @tokens="workspaceColors = $event"><slot /></TeacherWorkspaceFrame>
+    <main v-else class="bpl-workspace-pending" aria-label="工作区加载状态"><slot /></main>
+    <footer v-if="$slots.footer"><slot name="footer" /></footer>
   </div>
 </template>
-
-<script>
-import { getVisibleNavPlan, navRefMatches } from '@/config/navPlan'
-import { logoutRemote } from '@/services/http/client'
-
-export default {
-  name: 'BasePortalLayout',
-  props: {
-    title: { type: String, required: true },
-    subtitle: { type: String, default: '' },
-    menus: { type: Array, default: () => [] },
-    activeKey: { type: String, default: '' },
-    hideAside: { type: Boolean, default: false },
-    workspace: { type: Boolean, default: false },
-    hideGlobalWorkbench: { type: Boolean, default: false },
-    workspaceNavigate: { type: Function, default: (path) => path },
-    ctx: { type: Object, default: null }
-  },
-  emits: ['menu-select', 'menu-disabled'],
-  computed: {
-    modules() {
-      return getVisibleNavPlan({
-        permissionPatterns: this.ctx?.permissionPatterns || null,
-        ctxKey: this.ctx?.ctxKey || ''
-      }).find((g) => g.key === 'internship')?.children || []
-    },
-    activeModule() {
-      return this.modules.find((m) => this.moduleContainsRoute(m))?.key || this.modules[0]?.key || ''
-    }
-  },
-  methods: {
-    moduleContainsRoute(m) {
-      return (m.children || []).some((item) => this.isActive(item))
-    },
-    isActive(item) {
-      if (!item?.path) return false
-      if (navRefMatches(this.$route.fullPath, item.path)) return true
-      return (item.workspacePaths || []).some((path) => navRefMatches(this.$route.fullPath, path))
-    },
-    select(item) {
-      if (!item?.path || item.disabled) {
-        if (item?.disabled) this.$emit('menu-disabled', item)
-        return
-      }
-      this.$emit('menu-select', item)
-      const target = this.workspaceNavigate ? this.workspaceNavigate(item.path) : item.path
-      const resolved = this.$router.resolve(target)
-      if (resolved.fullPath !== this.$route.fullPath) this.$router.push(target).catch(() => {})
-    },
-    async logout() {
-      await logoutRemote()
-      this.$router.replace('/login').catch(() => {})
-    }
-  }
-}
+<script setup>
+import { computed, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { OfficeBuilding, Search } from '@element-plus/icons-vue'
+import TeacherWorkspaceFrame from '@/components/workspace/TeacherWorkspaceFrame.vue'
+import WorkspaceDeskUtilities from '@/components/workspace/WorkspaceDeskUtilities.vue'
+import { workspacePages, workspaceTokens } from '@/components/workspace/teacherWorkspace'
+import { activeWorkspacePage } from '@/components/workspace/workspaceRouting'
+import { getVisibleNavPlan } from '@/config/navPlan'
+import { currentUserFromToken, logoutRemote } from '@/services/http/client'
+const props = defineProps({ title: { type: String, required: true }, subtitle: { type: String, default: '' }, menus: { type: Array, default: () => [] }, activeKey: { type: String, default: '' }, hideAside: Boolean, workspace: Boolean, hideGlobalWorkbench: Boolean, workspaceNavigate: { type: Function, default: path => path }, ctx: { type: Object, default: null } })
+const emit = defineEmits(['menu-select', 'menu-disabled'])
+const route = useRoute(), router = useRouter(), workspaceFrame = ref(null)
+const workspaceColors = ref(workspaceTokens('blue')), query = ref('')
+const roleLabel = computed(() => { const role = props.ctx?.currentRole; const labels = { SCHOOL_ADMIN: '学校管理员', INTERN_MENTOR: '实习指导教师', TEACHER: '教师', COLLEGE_ADMIN: '院系管理员' }; const name = role?.roleName || ''; return /^[A-Z_]+$/.test(name) ? labels[name] || '学校用户' : name || labels[role?.roleCode] || '学校用户' })
+const modules = computed(() => getVisibleNavPlan({ permissionPatterns: props.ctx?.permissionPatterns || [], ctxKey: props.ctx?.ctxKey || '' }).find(group => group.key === 'internship')?.children || [])
+const pages = computed(() => workspacePages(modules.value))
+const activeModule = computed(() => activeWorkspacePage(pages.value, route)?.moduleKey || modules.value[0]?.key || '')
+const centers = computed(() => modules.value.length ? [{ key: 'internship', label: '岗位实习中心', path: modules.value[0].path }] : [])
+const identityKey = computed(() => { const claims = currentUserFromToken(); return 'internship-shell:' + (claims?.tenantId != null && claims?.userId != null ? JSON.stringify([String(claims.tenantId), String(claims.userId), claims.currentRoleCode || '', claims.activeContextId || '']) : props.ctx?.ctxKey || '') })
+const results = computed(() => pages.value.filter(item => !item.hidden && !item.workspaceHidden && item.title.includes(query.value)).slice(0, 30))
+watch(identityKey, () => { query.value = '' })
+watch(() => route.fullPath, () => { query.value = '' })
+function select(item) { emit('menu-select', item); const destination = props.workspaceNavigate(item.destination || item.path); if (destination) router.push(destination); query.value = '' }
+function selectFirst() { if (results.value.length) select(results.value[0]) }
+async function logout() { await logoutRemote(); await router.replace('/login') }
 </script>
-
 <style scoped>
-.ipl-shell { min-height: 100vh; background: #f4f7fb; }
-.ipl-header { height: 64px; padding: 0 22px; display: flex; align-items: center; justify-content: space-between; background: #fff; border-bottom: 1px solid #e2e8f0; position: sticky; top: 0; z-index: 30; }
-.ipl-brand { font-size: 17px; color: #0f172a; }
-.ipl-subtitle { margin-left: 12px; padding-left: 12px; border-left: 1px solid #cbd5e1; color: #64748b; font-size: 14px; }
-.ipl-user { display: flex; align-items: center; gap: 10px; color: #475569; font-size: 13px; }
-.ipl-scope { padding: 3px 8px; border-radius: 999px; background: #eef2ff; color: #3730a3; }
-.ipl-user button { border: 1px solid #cbd5e1; border-radius: 7px; padding: 6px 10px; background: #fff; cursor: pointer; }
-.ipl-body { display: grid; grid-template-columns: 218px minmax(0, 1fr); min-height: calc(100vh - 64px); }
-.ipl-nav { padding: 16px 10px; background: #0f2746; color: #dbeafe; }
-.ipl-nav-group + .ipl-nav-group { margin-top: 6px; }
-.ipl-nav-title, .ipl-nav-leaf { width: 100%; border: 0; text-align: left; cursor: pointer; }
-.ipl-nav-title { padding: 10px 12px; border-radius: 8px; background: transparent; color: #dbeafe; font-weight: 700; }
-.ipl-nav-title.active { background: rgba(255,255,255,.12); color: #fff; }
-.ipl-nav-leaves { padding: 5px 0 5px 10px; display: grid; gap: 3px; }
-.ipl-nav-leaf { padding: 8px 10px; border-radius: 7px; background: transparent; color: #a9c8eb; font-size: 13px; }
-.ipl-nav-leaf:hover, .ipl-nav-leaf.active { color: #fff; background: rgba(37,99,235,.42); }
-.ipl-main { min-width: 0; padding: 0; }
-.ipl-footer { padding: 12px 22px; border-top: 1px solid #e2e8f0; background: #fff; }
+.base-portal-layout{height:100vh;display:flex;flex-direction:column;overflow:hidden;background:var(--bg);color:var(--t1)}
+.bpl-topbar{height:60px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 20px;background:var(--surface-2);border-bottom:1px solid var(--line);position:relative;z-index:30}
+.bpl-brand{display:flex;align-items:center;gap:12px;flex-shrink:0}.bpl-logo{width:36px;height:36px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--pri);color:var(--pri-on)}.bpl-logo svg{width:25px;height:25px}.bpl-brand__nm{font-size:17px;color:var(--t1)}
+.bpl-search{flex:1;min-width:0;display:flex;margin:0 10px;max-width:600px}.bpl-cmdk{position:relative;width:100%;height:36px;display:flex;align-items:center;gap:8px;padding:0 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}.bpl-ic{width:16px;height:16px;flex-shrink:0}.bpl-cmdk input{width:100%;border:0;background:transparent;outline:0;color:var(--t1)}.bpl-cmdk__panel{position:absolute;top:42px;left:0;right:0;padding:8px;max-height:360px;overflow:auto;background:var(--surface);border:1px solid var(--line);border-radius:9px;box-shadow:0 8px 24px #10203020}.bpl-cmdk__panel button{width:100%;display:flex;justify-content:space-between;gap:12px;padding:10px;border:0;border-radius:6px;background:transparent;color:var(--t1);cursor:pointer}.bpl-cmdk__panel button:hover{background:var(--pri-50)}.bpl-cmdk__panel small,.bpl-cmdk__panel p{color:var(--t3)}
+.bpl-top-r{display:flex;align-items:center;gap:14px;margin-left:auto;white-space:nowrap;font-size:13px}.bpl-control{padding:6px 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface);color:var(--t1);cursor:pointer}.bpl-workspace-pending{flex:1;min-height:0;overflow:auto;padding:24px}
+@media(max-width:1250px){.bpl-brand__nm{font-size:14px}.bpl-search{margin:0 2px}}@media(max-width:900px){.bpl-topbar{padding:0 10px}.bpl-brand__nm{display:none}.bpl-top-r{gap:6px}}
 </style>

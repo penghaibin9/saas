@@ -40,7 +40,7 @@ JWT_SECRET=${C09_JWT_SECRET:-ci-recovery-jwt-secret-not-for-production-20260929}
 FIELD_ENCRYPTION_KEY=${C09_FIELD_ENCRYPTION_KEY:-MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=}
 SENSITIVE_SEARCH_HMAC_KEY=${C09_HMAC_KEY:-ci-recovery-hmac-not-for-production}
 WEB_CONCURRENCY=1
-EXPECTED_ALEMBIC_REVISION=ix0023
+EXPECTED_ALEMBIC_REVISION=ix0030
 FILE_STORAGE_DIR=/data/files
 EOF
 
@@ -86,7 +86,7 @@ manifest="$(ls -1t "$BACKUP_DIR"/manifest_*.json | head -1)"
 [ -s "$manifest" ] || { echo "backup manifest missing" >&2; exit 1; }
 [ -s "$manifest.sha256" ] || { echo "backup manifest checksum missing" >&2; exit 1; }
 
-EXPECTED_ALEMBIC_REVISION=ix0023 EVIDENCE_FILE="$BACKUP_DIR/restore-evidence-ci.json" bash ./backup/restore-drill.sh "$manifest" internship_restore_drill
+EXPECTED_ALEMBIC_REVISION=ix0030 EVIDENCE_FILE="$BACKUP_DIR/restore-evidence-ci.json" bash ./backup/restore-drill.sh "$manifest" internship_restore_drill
 
 python3 - "$BACKUP_DIR/restore-evidence-ci.json" "$file_sha" <<'PY'
 import json
@@ -98,7 +98,7 @@ expected_file_sha = sys.argv[2]
 data = json.loads(path.read_text(encoding="utf-8"))
 
 assert data["verdict"] == "PASS", data
-assert data["alembicRevision"] == "ix0023", data
+assert data["alembicRevision"] == "ix0030", data
 assert int(data["tableCount"]) >= 90, data
 assert int(data["localFileObjectsVerified"]) >= 1, data
 assert int(data["hashedFileObjectsVerified"]) >= 1, data

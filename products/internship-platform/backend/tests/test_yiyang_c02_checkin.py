@@ -49,6 +49,7 @@ def c02_db(tmp_path, monkeypatch):
         InternshipPosition,
         InternshipRecord,
         StudentProfile,
+        UnifiedTodo,
     )
 
     old_url = settings.DATABASE_URL
@@ -72,6 +73,7 @@ def c02_db(tmp_path, monkeypatch):
         InternshipCheckinExemption.__table__,
         InternshipAuditTrail.__table__,
         AuditOutbox.__table__,
+        UnifiedTodo.__table__,
     ):
         table.create(bind=engine, checkfirst=True)
 
@@ -180,7 +182,8 @@ def test_g05_server_watermark_keeps_original_hash_and_creates_derived_hash(tmp_p
         evidence.file_access_service,
         "require_file_access",
         lambda file_id, user=None, action="meta": SimpleNamespace(
-            id=int(file_id), file_name="original.jpg", mime_type="image/jpeg", sha256=original_sha
+            id=int(file_id), file_name="original.jpg", mime_type="image/jpeg",
+            size_bytes=len(original_bytes), sha256=original_sha
         ),
     )
     monkeypatch.setattr(

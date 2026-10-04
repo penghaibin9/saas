@@ -370,6 +370,45 @@ def submit_weekly(user: dict, body: dict) -> dict:
         return result
 
 
+def weekly_detail(user: dict, *, report_id, batch_id, internship_id) -> dict:
+    """本人周报的不可变版本与批阅；不借用学校或教师的详情权限。"""
+    try:
+        rid = int(report_id)
+    except (TypeError, ValueError):
+        raise not_found("周报不存在或不属于当前实习记录") from None
+    with session() as db:
+        record, _student, selected_batch_id = require_explicit_context(
+            db, user, {"batchId": batch_id, "internshipId": internship_id},
+            for_write=False,
+        )
+        row = db.scalar(select(WeeklyReport).where(
+            WeeklyReport.id == rid,
+            WeeklyReport.tenant_id == _tid(),
+            WeeklyReport.internship_id == record.id,
+            WeeklyReport.is_deleted.is_(False),
+        ))
+        if row is None:
+            raise not_found("周报不存在或不属于当前实习记录")
+        item = _weekly_row(row)
+        versions = quality.weekly_snapshot_view(db, row.id)["versions"]
+        for version in versions:
+            if version.get("submittedAt"):
+                version["submittedAt"] = _iso(datetime.fromisoformat(version["submittedAt"]))
+            review = version.get("review")
+            if review and review.get("reviewedAt"):
+                review["reviewedAt"] = _iso(datetime.fromisoformat(review["reviewedAt"]))
+        latest = versions[0] if versions else {}
+        item.update({
+            "batchId": str(selected_batch_id),
+            "immutableVersion": latest.get("versionNo", 0),
+            "attachments": latest.get("attachments") or [],
+            "immutableVersions": versions,
+            "review": latest.get("review"),
+            "rules": quality.rules_for_batch(db, selected_batch_id),
+        })
+        return item
+
+
 
 def export_report_pdf(user: dict, *, report_kind, report_id, batch_id, internship_id) -> dict:
     """SP02: authenticated student downloads own weekly/monthly/summary report as real PDF."""

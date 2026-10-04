@@ -49,7 +49,7 @@ jobs:
       REDIS_KEY_PREFIX: internship-standalone:fullstack-enterprise
       JWT_SECRET: standalone-fullstack-enterprise-jwt-secret-20260929
       SENSITIVE_SEARCH_HMAC_KEY: standalone-fullstack-enterprise-hmac-key
-      EXPECTED_ALEMBIC_REVISION: ix0023
+      EXPECTED_ALEMBIC_REVISION: ix0030
       FILE_STORAGE_DIR: /tmp/internship-fullstack-enterprise-files
     steps:
       - uses: actions/checkout@v4

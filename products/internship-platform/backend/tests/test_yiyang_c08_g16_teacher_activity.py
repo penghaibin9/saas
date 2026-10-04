@@ -46,6 +46,12 @@ class _FakeDb:
     def add(self, row):
         self.added.append(row)
 
+    def execute(self, _query):
+        return None
+
+    def refresh(self, _row):
+        return None
+
     def flush(self):
         for row in self.added:
             if getattr(row, "id", None) is None:
@@ -109,7 +115,7 @@ def test_g16_teacher_checkin_writes_teacher_audit(monkeypatch):
     monkeypatch.setattr(
         svc,
         "_assert_teacher_batch_scope",
-        lambda _db, batch_id, _user: SimpleNamespace(id=int(batch_id)),
+        lambda _db, batch_id, _user: SimpleNamespace(id=int(batch_id), status='RUNNING'),
     )
     monkeypatch.setattr(
         svc,
@@ -135,7 +141,8 @@ def test_g16_teacher_checkin_writes_teacher_audit(monkeypatch):
     assert db.committed is True
     assert audits[0]["target_type"] == "TEACHER_CHECKIN"
     assert audits[0]["action"] == "TEACHER_CHECKIN_CREATE"
-    assert result["result"] == "NORMAL"
+    assert result["result"] == "RECORDED"
+    assert audits[0]['detail']['locationDecision']['rule']['locations'] == []
     assert result["evidenceAvailable"] is False
 
 
@@ -148,7 +155,7 @@ def test_g16_teacher_checkin_photo_generates_trusted_watermark(monkeypatch):
     monkeypatch.setattr(
         svc,
         "_assert_teacher_batch_scope",
-        lambda _db, batch_id, _user: SimpleNamespace(id=int(batch_id)),
+        lambda _db, batch_id, _user: SimpleNamespace(id=int(batch_id), status='RUNNING'),
     )
     monkeypatch.setattr(
         svc,
@@ -268,7 +275,7 @@ def test_g16_teacher_can_save_weekly_period_report(monkeypatch):
     monkeypatch.setattr(
         svc,
         "_assert_teacher_batch_scope",
-        lambda _db, batch_id, _user: SimpleNamespace(id=int(batch_id)),
+        lambda _db, batch_id, _user: SimpleNamespace(id=int(batch_id), status='RUNNING'),
     )
     monkeypatch.setattr(
         svc,
@@ -307,7 +314,9 @@ def test_g16_teacher_mobile_surface_keeps_tm13_tm14_procurement_controls():
     for token in (
         '完整签到日历',
         'v-model.trim="checkinNote"',
-        'getMyInternshipCheckins(this.batchId,366)',
+        '@change="onCalendarMonth"',
+        'await teacherApi.getMyInternshipCheckins(batchId,31,month)',
+        "calendarState==='ready' && !monthCheckins.length",
         'attachmentFileIds:[...this.periodForm.attachmentFileIds]',
         'addPeriodAttachment',
         '添加照片 / 附件',

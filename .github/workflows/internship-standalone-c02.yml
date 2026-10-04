@@ -76,6 +76,11 @@ jobs:
       - name: Install standalone mobile dependencies
         working-directory: products/internship-platform/mobile
         run: npm install --no-audit --no-fund
+      - name: Run standalone checkin behavior
+        working-directory: products/internship-platform/mobile
+        run: node --test tests/checkin.behavior.test.mjs
       - name: Build standalone WeChat mobile
+        env:
+          VITE_API_BASE_URL: "http://127.0.0.1:8000"
         working-directory: products/internship-platform/mobile
         run: npm run build:mp-weixin
