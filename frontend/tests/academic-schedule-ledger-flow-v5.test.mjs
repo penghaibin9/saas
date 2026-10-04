@@ -8,11 +8,73 @@ import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 import { matchPermission } from '../src/config/navPlan.js'
 
 const ok = (rows = []) => ({ code: 0, data: { list: rows, total: rows.length } })
-function instance(api = {}, roleCode = 'COLLEGE_ADMIN', terms = {}) {
+function instance(api = {}, roleCode = 'COLLEGE_ADMIN', terms = {}, permissionPatterns = []) {
   return page('AaScheduleChangeLedgerView', { CHANGE_TYPES: [], CHANGE_STATUS: [], matchPermission,
     scheduleChangeApi: { list: async () => ok(), ...api }, academicAffairsApi: { getCurrentTerm: async () => ({ code: 0, data: { termId: '52', termName: '当前秋季学期' } }), ...terms }
-  }, { ctx: { currentRole: { roleCode }, dataScope: { scope: roleCode === 'ACADEMIC_TEACHER' ? 'ASSIGNED' : 'COLLEGE' }, permissionPatterns: [] } })
+  }, { ctx: { currentRole: { roleCode }, dataScope: { scope: roleCode === 'ACADEMIC_TEACHER' ? 'ASSIGNED' : 'COLLEGE' }, permissionPatterns } })
 }
+
+test('只读领导台账不展示发起和撤销，点击入口也不能导航', async () => {
+  const { state } = instance({}, 'LEADER', {}, ['academicAffairs.scheduleChange.view'])
+  const routes = []; state.$router.push = route => routes.push(route)
+  assert.equal(state.canApply, false)
+  assert.equal(state.cancellable({ status: 'SUBMITTED', canCancel: true }), false)
+  state.goApply()
+  state.askCancel({ changeId: '15', status: 'SUBMITTED', canCancel: true })
+  assert.deepEqual(routes, [])
+  assert.equal(state.confirm.visible, false)
+
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaScheduleChangeLedgerView.vue', import.meta.url), 'utf8')
+  const actions = source.match(/<div class="sc-actions">[^]*?<\/div>/)[0]
+  const render = new Function('Vue', compile(actions, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const AppButton = { setup: (_, { slots }) => () => Vue.h('button', slots.default?.()) }
+  const html = await renderToString(Vue.createSSRApp({ data: () => ({ canApply: state.canApply, isAcademicTeacher: false, selectedId: '', showHistory: false, canReview: false }), methods: { goApply() {}, toggleHistory() {}, goApproval() {} }, render, components: { AppButton } }))
+  assert.doesNotMatch(html, /发起调停课|从个人课表选择课程/)
+  const empty = source.match(/<EmptyState v-else-if="!rows.length"[^>]*\/>/)[0].replace('v-else-if', 'v-if')
+  const renderEmpty = new Function('Vue', compile(empty, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const EmptyState = { props: ['title', 'description'], setup: props => () => Vue.h('p', `${props.title} ${props.description}`) }
+  const emptyHtml = await renderToString(Vue.createSSRApp({ data: () => ({ rows: [], canApply: state.canApply }), render: renderEmpty, components: { EmptyState } }))
+  assert.doesNotMatch(emptyHtml, /发起调停课|创建/)
+})
+
+test('撤销只接受当前权限及服务端严格布尔授权，本人可办而学院他人不可办', async () => {
+  let writes = 0
+  const teacher = instance({ cancel: async () => { writes++; return ok() } }, 'ACADEMIC_TEACHER', {}, ['academicAffairs.scheduleChange.view', 'academicAffairs.scheduleChange.apply']).state
+  assert.equal(teacher.canApply, true)
+  for (const canCancel of [undefined, null, 'true', 1, false]) {
+    assert.equal(teacher.cancellable({ status: 'SUBMITTED', canCancel }), false)
+  }
+  assert.equal(teacher.cancellable({ status: 'SUBMITTED', canCancel: true }), true)
+  assert.equal(teacher.cancellable({ status: 'APPLIED', canCancel: true }), false)
+  const own = { changeId: '15', status: 'SUBMITTED', canCancel: true }
+  teacher.askCancel(own)
+  assert.equal(teacher.confirm.visible, true)
+  await teacher.onConfirm({ reason: '本人撤销申请' })
+  assert.equal(writes, 1)
+  const college = instance({}, 'COLLEGE_ADMIN', {}, ['academicAffairs.scheduleChange.view', 'academicAffairs.scheduleChange.apply']).state
+  assert.equal(college.cancellable({ status: 'COLLEGE_REVIEW', canCancel: false }), false)
+  college.askCancel({ changeId: '15', status: 'COLLEGE_REVIEW', canCancel: false })
+  assert.equal(college.confirm.visible, false)
+})
+
+test('已打开撤销确认后撤权或切换身份均不得发出写请求', async () => {
+  for (const switchIdentity of [false, true]) {
+    let writes = 0
+    const { state, definition } = instance({ cancel: async () => { writes++; return ok() } }, 'ACADEMIC_TEACHER', {}, ['academicAffairs.scheduleChange.view', 'academicAffairs.scheduleChange.apply'])
+    state.askCancel({ changeId: '15', status: 'SUBMITTED', canCancel: true })
+    assert.equal(state.confirm.visible, true)
+    if (switchIdentity) {
+      state.ctx = { ...state.ctx, currentRole: { roleCode: 'LEADER' }, permissionPatterns: ['academicAffairs.scheduleChange.view'] }
+      definition.watch.identityKey.call(state)
+    } else {
+      state.ctx = { ...state.ctx, permissionPatterns: ['academicAffairs.scheduleChange.view'] }
+      // 即使外层身份快照已同步，发送前仍必须重新判断当前权限。
+      state.confirm.identity = state.identityKey
+    }
+    await state.onConfirm({ reason: '本人撤销申请' })
+    assert.equal(writes, 0)
+  }
+})
 
 test('责任深链学期用于三岗位正式列表查询，刷新保留原学期，不回落当前学期', async () => {
   for (const role of ['COLLEGE_ADMIN', 'ACADEMIC_ADMIN', 'ACADEMIC_TEACHER']) {

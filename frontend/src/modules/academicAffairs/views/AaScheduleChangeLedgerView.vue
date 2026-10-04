@@ -7,7 +7,7 @@
   >
     <template #actions>
       <div class="sc-actions">
-        <AppButton variant="primary" @click="goApply">{{ isAcademicTeacher ? '从个人课表选择课程' : '＋ 发起调停课' }}</AppButton>
+        <AppButton v-if="canApply" variant="primary" @click="goApply">{{ isAcademicTeacher ? '从个人课表选择课程' : '＋ 发起调停课' }}</AppButton>
         <AppButton v-if="isAcademicTeacher && !selectedId" @click="toggleHistory">{{ showHistory ? '返回当前学期' : '历史记录' }}</AppButton>
         <AppButton v-if="canReview" @click="goApproval">审批工作台</AppButton>
       </div>
@@ -22,7 +22,7 @@
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无调停课单" description="点右上「＋ 发起调停课」创建" />
+      <EmptyState v-else-if="!rows.length" title="暂无调停课单" :description="canApply ? '点右上「＋ 发起调停课」创建' : '当前范围暂无调停课申请，可稍后刷新查看。'" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="changeId"
                  :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-course="{ row }">
@@ -101,6 +101,7 @@ export default {
     roleName() { return this.ctx?.currentRole?.roleName || '教务' },
     scopeName() { return this.ctx?.dataScope?.scopeName || '按授权范围' },
     isAcademicTeacher() { return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER' },
+    canApply() { return matchPermission(this.ctx?.permissionPatterns || [], 'academicAffairs.scheduleChange.apply') },
     canReview() {
       const patterns = this.ctx?.permissionPatterns || []
       return matchPermission(patterns, 'academicAffairs.scheduleChange.collegeReview') ||
@@ -144,7 +145,7 @@ export default {
     typeTone(t) { return { ADJUST: 'processing', STOP: 'warning', MAKEUP: 'info' }[t] || 'default' },
     statusLabel(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).label || (s ? '状态待确认' : '—') },
     statusTone(s) { return (CHANGE_STATUS.find((x) => x.value === s) || {}).tone || 'default' },
-    cancellable(row) { return ['SUBMITTED', 'COLLEGE_REVIEW'].includes(row.status) },
+    cancellable(row) { return this.canApply && row?.canCancel === true && ['SUBMITTED', 'COLLEGE_REVIEW'].includes(row.status) },
     async initializeTeacherTerm() {
       if (!this.isAcademicTeacher || this.showHistory || this.selectedId || this.routeTermId) return true
       if (this.currentTermId) { this.filters.termId = this.currentTermId; return true }
@@ -196,7 +197,7 @@ export default {
       this.load()
     },
     turnPage(p) { this.page = p; this.load() },
-    goApply() { this.$router.push(this.isAcademicTeacher ? '/admin/academic-affairs/schedule/teacher' : '/admin/academic-affairs/schedule-change/apply') },
+    goApply() { if (this.canApply) this.$router.push(this.isAcademicTeacher ? '/admin/academic-affairs/schedule/teacher' : '/admin/academic-affairs/schedule-change/apply') },
     goApproval() { this.$router.push('/admin/academic-affairs/schedule-change/approval') },
     goDetail(row) { this.$router.push({ path: this.$route.path, query: { ...this.$route.query, termId: this.filters.termId || undefined, changeId: String(row.changeId) } }) },
     closeDetail() { const query = { ...this.$route.query }; delete query.changeId; this.$router.replace({ path: this.$route.path, query }) },
@@ -207,6 +208,7 @@ export default {
     },
     async onConfirm({ reason } = {}) {
       if (this.submitting || !this.confirm.visible || !this.confirm.row || this.confirm.identity !== this.identityKey || this.confirm.route !== this.routeKey) return
+      if (!this.cancellable(this.confirm.row)) { this.confirm.visible = false; return }
       const row = { ...this.confirm.row }
       const identity = this.identityKey
       const seq = ++this.actionSeq

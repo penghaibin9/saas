@@ -264,10 +264,29 @@ def test_c1_adjust_full_chain_applied(client, db_mode):
     r = _submit(client, admin, origin)
     assert r.status_code == 200, r.text
     submitted = r.json()["data"]
+    assert submitted["canCancel"] is True
+
+    from affairs_contract_test_support import role_headers
+
+    owner = role_headers("ACADEMIC_TEACHER", login_name="academic01")
+    leader = role_headers("LEADER", login_name="schedule_readonly_leader")
+    college = _review_hdr("college_admin01")
+    for headers, expected in ((owner, True), (leader, False), (college, False)):
+        detail = client.get(f"{BASE}/schedule-change/{submitted['changeId']}", headers=headers)
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["data"]["canCancel"] is expected
+        ledger = client.get(f"{BASE}/schedule-change", headers=headers)
+        assert ledger.status_code == 200, ledger.text
+        matching = [row for row in ledger.json()["data"]["items"] if row["changeId"] == submitted["changeId"]]
+        assert len(matching) == 1
+        assert matching[0]["canCancel"] is expected
+
     r1, r2_response = _approve_all(client, submitted)
     assert r1.json()["data"]["status"] == "COLLEGE_REVIEW"
+    assert r1.json()["data"]["canCancel"] is False
     r2 = r2_response.json()
     assert r2["data"]["status"] == "APPLIED"
+    assert r2["data"]["canCancel"] is False
     assert r2["data"]["newItemId"] and r2["data"]["applied"]["notified"]["channel"] == "STATUS_CHANGED"
     cv = client.get(f"{BASE}/schedule-batches/{r2['data']['batchId']}/class-view?classId={ids['class']}",
                     headers=admin).json()["data"]["items"]
@@ -275,13 +294,11 @@ def test_c1_adjust_full_chain_applied(client, db_mode):
     assert (3, 2) in slots and (1, 1) not in slots
 
     # 已生效单据仍只对归属教师开放；另一教师具备同一查看权限，也不能按编号读取详情。
-    from affairs_contract_test_support import role_headers
-
-    owner = role_headers("ACADEMIC_TEACHER", login_name="academic01")
     owner_detail = client.get(f"{BASE}/schedule-change/{submitted['changeId']}", headers=owner)
     assert owner_detail.status_code == 200, owner_detail.text
     assert owner_detail.json()["data"]["status"] == "APPLIED"
     assert owner_detail.json()["data"]["teacherKey"] == "academic01"
+    assert owner_detail.json()["data"]["canCancel"] is False
 
     other_teacher = role_headers("ACADEMIC_TEACHER", login_name="schedule_other_teacher")
     other_list = client.get(f"{BASE}/schedule-change", headers=other_teacher)
@@ -291,6 +308,28 @@ def test_c1_adjust_full_chain_applied(client, db_mode):
     assert denied.status_code == 403
     assert denied.json()["bizCode"] == "NO_DATA_SCOPE"
     assert denied.json()["data"] is None
+
+    # 原教师可以撤销自己仍在待审的申请；学院的可读范围不能替代撤销归属。
+    withdraw = _submit(client, owner, r2["data"]["newItemId"],
+                       changeType="STOP", reason="撤销能力回归测试申请",
+                       makeupPlan="撤销测试不变更正式课表",
+                       targetStartWeek=1, targetEndWeek=1)
+    assert withdraw.status_code == 200, withdraw.text
+    withdraw_data = withdraw.json()["data"]
+    assert withdraw_data["canCancel"] is True
+    for headers in (college, leader):
+        rejected_cancel = client.post(f"{BASE}/schedule-change/{withdraw_data['changeId']}/cancel",
+                                      headers=headers, json={"reason": "越权撤销回归"})
+        assert rejected_cancel.status_code == 403
+    cancelled = client.post(f"{BASE}/schedule-change/{withdraw_data['changeId']}/cancel",
+                            headers=owner, json={"reason": "本人撤销测试申请"})
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["data"]["status"] == "CANCELLED"
+    assert cancelled.json()["data"]["canCancel"] is False
+    readback = client.get(f"{BASE}/schedule-change/{withdraw_data['changeId']}", headers=owner)
+    assert readback.status_code == 200, readback.text
+    assert readback.json()["data"]["status"] == "CANCELLED"
+    assert readback.json()["data"]["canCancel"] is False
 
 
 def test_c1b_adjust_submit_preserves_target_classroom(client, db_mode):

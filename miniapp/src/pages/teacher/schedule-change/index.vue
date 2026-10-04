@@ -36,7 +36,7 @@
             <view class="sc__row"><text class="sc__row-k">原课位</text><text class="flex-1 t-sm">周{{ (x.origin || {}).weekday }}第{{ (x.origin || {}).slotNo }}节 {{ (x.origin || {}).classroom || '' }}</text></view>
             <view class="sc__row" v-if="x.changeType !== 'STOP'"><text class="sc__row-k">目标</text><text class="flex-1 t-sm">周{{ (x.target || {}).weekday }}第{{ (x.target || {}).slotNo }}节 {{ (x.target || {}).classroom || '' }}</text></view>
             <view class="sc__row"><text class="sc__row-k">事由</text><text class="flex-1 t-sm">{{ x.reason }}</text></view>
-            <view class="sc__actions" v-if="cancellable(x.status)">
+            <view class="sc__actions" v-if="cancellable(x)">
               <button class="btn btn-ghost flex-1" :disabled="acting || hasUnknownWrite('cancel', x.changeId)" @click="doCancel(x)">{{ hasUnknownWrite('cancel', x.changeId) ? '等待核对撤销结果' : '撤销申请' }}</button>
             </view>
           </view>
@@ -297,7 +297,7 @@ export default {
       })
     },
     statusTone(s) { return STATUS_TONES[s] || 'default' },
-    cancellable(s) { return CANCELLABLE.has(s) },
+    cancellable(row) { return row?.canCancel === true && CANCELLABLE.has(row.status) },
     switchTab(t) {
       if (this.submitting || this.acting) { toast('正在处理，请稍候'); return }
       this.tab = t
@@ -450,7 +450,7 @@ export default {
     },
     doCancel(x) {
       if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
-      if (this.acting || this.submitting || !this.changes.includes(x) || !this.cancellable(x.status) || this.hasUnknownWrite('cancel', x.changeId)) return
+      if (this.acting || this.submitting || !this.changes.includes(x) || !this.cancellable(x) || this.hasUnknownWrite('cancel', x.changeId)) return
       const changeId = String(x.changeId || '')
       const context = this.contextKey()
       const epoch = this._listEpoch
@@ -458,7 +458,7 @@ export default {
       uni.showModal({
         title: '撤销调停课申请', editable: true, placeholderText: '可填写撤销原因（可选）', content: '',
         success: (r) => {
-          if (!r.confirm || !this._pageActive || this.acting || this.submitting || !this.changes.includes(x) || this._listEpoch !== epoch || this.contextKey() !== context || JSON.stringify(x) !== snapshot || String(x.changeId || '') !== changeId) return
+          if (!r.confirm || !this._pageActive || this.acting || this.submitting || !this.changes.includes(x) || !this.cancellable(x) || this._listEpoch !== epoch || this.contextKey() !== context || JSON.stringify(x) !== snapshot || String(x.changeId || '') !== changeId) return
           if (!this.beginWrite(context, 'cancel', changeId)) return
           const writeEpoch = (this._writeEpoch || 0) + 1
           this._writeEpoch = writeEpoch

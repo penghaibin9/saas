@@ -137,7 +137,7 @@ def _todo_done(db, cid):
         r.status, r.version = "DONE", r.version + 1
 
 
-def _row(x) -> dict:
+def _row(x, *, can_cancel=None) -> dict:
     return {
         "changeId": str(x.id), "changeType": x.change_type,
         "changeTypeLabel": L_CT.get(x.change_type, x.change_type),
@@ -154,6 +154,7 @@ def _row(x) -> dict:
                    "weekParity": x.target_week_parity, "classroom": x.target_classroom or ""},
         "makeupPlan": x.makeup_plan or "", "reason": x.reason or "",
         "status": x.status, "currentNode": x.current_node or "",
+        "canCancel": bool(can_cancel is not None and can_cancel(x)),
         "newItemId": str(x.new_item_id or ""), "appliedAt": _iso(x.applied_at),
         "createdAt": _iso(x.created_at), "version": x.version,
     }
@@ -169,6 +170,27 @@ def _load(db, cid):
 
 def _can_manage_all(ctx) -> bool:
     return ctx.scope_type == "TENANT_ALL"
+
+
+def _cancel_checker(user, ctx, *, keys=None):
+    """Project the existing cancel guard once per request, without per-row queries."""
+    from app.core.permissions import has_permission
+
+    permitted = has_permission(user, "academicAffairs.scheduleChange.apply")
+    all_scope = _can_manage_all(ctx)
+    actor_keys = _derive_keys(user) if keys is None else keys
+
+    def allowed(change):
+        return bool(permitted and change.status in _CANCELLABLE and (
+            all_scope or (change.teacher_key and change.teacher_key in actor_keys)
+        ))
+
+    return allowed
+
+
+def _actor_row(db, change, user, *, ctx=None):
+    context = build_affairs_context(user, db) if ctx is None else ctx
+    return _row(change, can_cancel=_cancel_checker(user, context))
 
 
 def _require_current_published_origin(db, batch, origin, *, lock_scope=False):
@@ -513,7 +535,7 @@ def submit(body, user) -> dict:
         _audit(db, x.id, "SUBMIT", f"{ct} item={origin.id}")
         db.commit()
         db.refresh(x)
-        return _row(x)
+        return _actor_row(db, x, user)
 
 
 # ═══════════ 审批（学院审 → 教务处审；终审通过即改写课表）═══════════
@@ -553,7 +575,7 @@ def review(cid, user, action, comment="") -> dict:
                 outbox_ids=[outbox_id] if outbox_id else None,
             )
             db.refresh(x)
-            return _row(x)
+            return _actor_row(db, x, user)
 
         if action != "APPROVE":
             raise AppException("VALIDATION_ERROR", "无效操作")
@@ -573,7 +595,7 @@ def review(cid, user, action, comment="") -> dict:
             _audit(db, x.id, "STEP", f"->{nxt}")
             db.commit()
             db.refresh(x)
-            return _row(x)
+            return _actor_row(db, x, user)
         # 终审通过 → APPROVED，随即系统改写课表 → APPLIED
         x.status, x.version = "APPROVED", x.version + 1
         if inst:
@@ -590,7 +612,7 @@ def review(cid, user, action, comment="") -> dict:
             outbox_ids=outbox_ids,
         )
         db.refresh(x)
-        out = _row(x)
+        out = _actor_row(db, x, user)
         out["applied"] = applied
         return out
 
@@ -735,7 +757,7 @@ def cancel(cid, user, reason="") -> dict:
         _audit(db, x.id, "CANCEL", (reason or "").strip())
         db.commit()
         db.refresh(x)
-        return _row(x)
+        return _actor_row(db, x, user, ctx=ctx)
 
 
 # ═══════════ 查询（范围过滤）═══════════
@@ -747,16 +769,16 @@ def get_change(cid, user) -> dict:
     with session() as db:
         x = _load(db, cid)
         ctx = build_affairs_context(user, db)
+        keys = _derive_keys(user)
         if not _can_manage_all(ctx):
             if _uses_college_change_scope(ctx, user):
                 from .academic_affairs_grade_correction_command import _task_college_id
                 if _task_college_id(db, x) not in ctx.college_ids:
                     raise no_data_scope("该调停课单不在您的数据范围内")
             else:
-                keys = _derive_keys(user)
                 if not x.teacher_key or x.teacher_key not in keys:
                     raise no_data_scope("仅可查看本人发起的调停课单")
-        result = _row(x)
+        result = _row(x, can_cancel=_cancel_checker(user, ctx, keys=keys))
         result["reviewNode"] = _review_node(db, x, user)
         return result
 
@@ -805,6 +827,7 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
     from app.models import AaScheduleChange
     with session() as db:
         ctx = build_affairs_context(user, db)
+        keys = _derive_keys(user)
         conds = [AaScheduleChange.tenant_id == _tid(), AaScheduleChange.is_deleted.is_(False)]
         if change_type:
             conds.append(AaScheduleChange.change_type == change_type.upper())
@@ -828,7 +851,6 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
                     return [], 0
                 conds.append(_offering_college_expression().in_(sorted(allowed)))
             else:
-                keys = _derive_keys(user)
                 if not keys:
                     return [], 0
                 conds.append(AaScheduleChange.teacher_key.in_(list(keys)))
@@ -838,7 +860,8 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
         offset = (max(1, page) - 1) * page_size
         rows = db.scalars(select(AaScheduleChange).where(*conds)
                           .order_by(AaScheduleChange.id.desc()).offset(offset).limit(page_size)).all()
-        return [_row(x) for x in rows], total
+        can_cancel = _cancel_checker(user, ctx, keys=keys)
+        return [_row(x, can_cancel=can_cancel) for x in rows], total
 
 
 # ═══════════ 归档（台账的终态特化视图；服务层强制排除在途态，不依赖前端默认参数）═══════════

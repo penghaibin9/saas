@@ -36,12 +36,12 @@ function writeContract(storage) {
   return sandbox.contract
 }
 
-function changePage({ session, me, teacherApi }) {
+function changePage({ session, me, teacherApi, showModal }) {
   const storage = new Map()
   const uni = {
     getStorageSync: key => storage.get(key) || '',
     setStorageSync: (key, value) => storage.set(key, value),
-    showModal: options => options.success({ confirm: true })
+    showModal: showModal || (options => options.success({ confirm: true }))
   }
   return component('../src/pages/teacher/schedule-change/index.vue', {
     ...writeContract(uni), uni, teacherApi, me, useSessionStore: () => session,
@@ -49,6 +49,42 @@ function changePage({ session, me, teacherApi }) {
     toast() {}
   })
 }
+
+test('调停课撤销仅展示服务端明确允许的本人申请，缺失和字符串授权均拒绝', () => {
+  const template = readFileSync(new URL('../src/pages/teacher/schedule-change/index.vue', import.meta.url), 'utf8')
+    .match(/<template>([\s\S]*?)<\/template>/)[1]
+  assert.match(template, /v-if="cancellable\(x\)"/)
+  const session = { identity: { tenantId: '1', userId: '2', activeContextId: '3' },
+    realUser: { tenantId: '1' }, currentRole: 'academic', persistedIdentityVerified: true }
+  const page = changePage({ session, me: async () => {}, teacherApi: {} })
+  for (const canCancel of [undefined, null, false, 'true']) {
+    assert.equal(page.cancellable({ status: 'SUBMITTED', canCancel }), false)
+  }
+  assert.equal(page.cancellable({ status: 'SUBMITTED', canCancel: true }), true)
+  assert.equal(page.cancellable({ status: 'APPLIED', canCancel: true }), false)
+})
+
+test('调停课撤销在弹窗前及确认时重验服务端授权，不发出已撤权请求', async () => {
+  let modal, writes = 0
+  const session = { identity: { tenantId: '1', userId: '2', activeContextId: '3' },
+    realUser: { tenantId: '1' }, currentRole: 'academic', persistedIdentityVerified: true }
+  const page = changePage({ session, me: async () => {},
+    showModal: options => { modal = options },
+    teacherApi: { cancelAcademicScheduleChange: async () => { writes++ } } })
+  page._pageActive = true
+  page.writeStorageBlocked = false
+  const row = { changeId: '15', status: 'SUBMITTED', canCancel: false }
+  page.changes = [row]
+  page.doCancel(row)
+  assert.equal(modal, undefined)
+  row.canCancel = true
+  page.doCancel(row)
+  assert.ok(modal)
+  row.canCancel = false
+  modal.success({ confirm: true })
+  await setImmediate()
+  assert.equal(writes, 0)
+})
 
 test('teacher schedule keeps server week six after selection and refresh', async () => {
   const weeks = []

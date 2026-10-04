@@ -126,6 +126,7 @@ if ($Service -ne 'all') { $Services = @($Services | Where-Object { $_.Name -in @
 Write-Host '[4/4] Starting application services...' -ForegroundColor Cyan
 foreach ($Item in $Services) {
     Write-Host "[START] $($Item.Name), port $($Item.Port)" -ForegroundColor Cyan
+    $LaunchedProcess = $null
     $StatePath = Join-Path $RuntimeDir ($Item.Name + '.json')
     $Saved = if (Test-Path -LiteralPath $StatePath) { Get-Content -LiteralPath $StatePath -Raw -Encoding UTF8 | ConvertFrom-Json } else { $null }
     $SavedProcess = if ($Saved) { Get-CimInstance Win32_Process -Filter "ProcessId=$($Saved.pid)" } else { $null }
@@ -170,6 +171,7 @@ foreach ($Item in $Services) {
             -ArgumentList ('"' + $Item.Entry + '" ' + $Item.Args) `
             -RedirectStandardOutput (Join-Path $RuntimeDir ($Item.Name + '.out.log')) `
             -RedirectStandardError (Join-Path $RuntimeDir ($Item.Name + '.err.log'))
+        $LaunchedProcess = $Process
         $Started = Get-CimInstance Win32_Process -Filter "ProcessId=$($Process.Id)"
         @{ pid=$Process.Id; created=$Started.CreationDate.ToUniversalTime().ToString('o'); root=$Root; entry=$Item.Entry; port=$Item.Port; backendOrigin=$BackendOrigin } |
             ConvertTo-Json | Set-Content -LiteralPath $StatePath -Encoding UTF8
@@ -190,6 +192,27 @@ foreach ($Item in $Services) {
         if (-not $Ready) { Start-Sleep -Milliseconds 500 }
     } while (-not $Ready -and (Get-Date) -lt $Deadline)
     if (-not $Ready) { throw "$($Item.Name) did not become ready. See .codex-temp/daily-sandbox logs." }
+    if ($Item.Name -eq 'backend' -and $LaunchedProcess) {
+        $ListenerIds = @(Get-NetTCPConnection -State Listen -LocalPort $Item.Port -ErrorAction SilentlyContinue |
+            Select-Object -ExpandProperty OwningProcess -Unique)
+        if ($ListenerIds.Count -ne 1) { throw 'Backend listener ownership could not be verified.' }
+        if ([int]$ListenerIds[0] -ne $LaunchedProcess.Id) {
+            $ServingProcess = Get-CimInstance Win32_Process -Filter "ProcessId=$($ListenerIds[0])"
+            $CreatedDelta = if ($ServingProcess -and $Started) {
+                ($ServingProcess.CreationDate.ToUniversalTime() - $Started.CreationDate.ToUniversalTime()).TotalSeconds
+            } else { -1 }
+            $EntryArgument = '(?:^|\s)(?:"' + [regex]::Escape($Item.Entry) + '"|' + [regex]::Escape($Item.Entry) + ')(?=\s|$)'
+            $ServeArgument = '(?:^|\s)serve\s+' + $Item.Port + '(?:\s|$)'
+            if (-not $ServingProcess -or $ServingProcess.ParentProcessId -ne $LaunchedProcess.Id -or
+                $CreatedDelta -lt 0 -or $CreatedDelta -gt 1 -or
+                $ServingProcess.CommandLine -notmatch $EntryArgument -or
+                $ServingProcess.CommandLine -notmatch $ServeArgument) {
+                throw 'Backend listener is not the verified child of this launch.'
+            }
+            @{ pid=$ServingProcess.ProcessId; created=$ServingProcess.CreationDate.ToUniversalTime().ToString('o'); root=$Root; entry=$Item.Entry; port=$Item.Port; backendOrigin=$BackendOrigin } |
+                ConvertTo-Json | Set-Content -LiteralPath $StatePath -Encoding UTF8
+        }
+    }
     Write-Host "[OK] $($Item.Name) $($Item.Url) -> sandbox-school" -ForegroundColor Green
 }
 if (-not $NoBrowser -and $Service -in @('all','pc')) { Start-Process 'http://localhost:5173/login?tenant=sandbox-school' }
