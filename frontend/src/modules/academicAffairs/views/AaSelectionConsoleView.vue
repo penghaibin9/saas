@@ -74,7 +74,8 @@
             </div>
 
             <aside class="aa-selection-owner-card">
-              <AcademicObjectResponsibility v-if="!detailLoading && !detailError" :object-id="current.batchId" :responsibility="current.responsibility" :next-step="current.nextStep" />
+              <p v-if="!detailLoading && !detailError && current.status === 'ARCHIVED'" role="status">本批次已归档，无待办理责任。课程、名单和统计保留供查阅。</p>
+              <AcademicObjectResponsibility v-else-if="!detailLoading && !detailError" :object-id="current.batchId" :responsibility="current.responsibility" :next-step="current.nextStep" />
               <span v-else>{{ detailLoading ? '正在读取当前批次责任' : '当前批次责任待重新核对' }}</span>
             </aside>
 
