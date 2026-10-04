@@ -15,6 +15,13 @@ function fail(error) {
 }
 
 export const teachingTaskWorkbenchApi = {
+  async getSourceReview(taskId, otherTaskId) {
+    try {
+      return ok(await request(`${BASE}/teaching-tasks/${encodeURIComponent(String(taskId))}/source-review`, { params: { otherTaskId: String(otherTaskId) }, timeoutMs: 15000 }))
+    } catch (error) {
+      return fail(error)
+    }
+  },
   async getBatch(batchId) {
     try {
       return ok(await request(`${BASE}/teaching-task-batches/${batchId}/workbench`))

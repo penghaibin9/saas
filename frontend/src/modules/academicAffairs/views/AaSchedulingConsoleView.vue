@@ -163,7 +163,7 @@
               <StatusTag :type="row.issueType === 'NOT_READY' ? 'warning' : 'danger'" :label="row.issueLabel" dot />
             </template>
             <template #cell-ops="{ row }">
-              <button v-if="row.issueType === 'SOURCE_CONFLICT'" class="mp-link" @click="openTeachingTasks">核对重复开课任务</button>
+              <span v-if="row.issueType === 'SOURCE_CONFLICT'"><button class="mp-link" @click="openTeachingTasks">核对重复开课任务</button><button class="mp-link" @click="openSourceReview(row)">查看来源差异</button></span>
               <button v-else-if="row.canSchedule && row.classId" class="mp-link" @click="openTask(row)">去排课</button>
               <button v-else-if="hasPublishedGap && canCorrectSchedule && row.classId" class="mp-link" @click="openCorrectionDraft(row)">创建草稿后补排</button>
               <button v-else-if="workbench.batchStatus === 'PUBLISHED'" class="mp-link" @click="openPublishedSchedule">查看正式课表</button>
@@ -171,6 +171,8 @@
             </template>
           </DataTable>
         </AppSectionCard>
+        <AppInlineAlert v-if="sourceReviewError" type="warning" :description="sourceReviewError" />
+        <AaTaskSourceReview v-if="sourceReview" :key="sourceReviewContext + ':' + sourceReview.taskId" :task-id="sourceReview.taskId" :other-tasks="sourceReview.otherTasks" :term-id="String(workbench.termId || termId || '')" :context-key="sourceReviewContext" @close="sourceReview = null" />
       </template>
       <EmptyState v-else title="请选择课表批次" description="选择批次后，系统会汇总教学任务、漏排、冲突、教师异议并给出下一步。" />
     </div>
@@ -455,6 +457,7 @@ import AaResourceOccupancyView from './AaResourceOccupancyView.vue'
 import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
 import AaScheduleStageRail from '../components/AaScheduleStageRail.vue'
 import AaSchedulingOptimizerPanel from '../components/AaSchedulingOptimizerPanel.vue'
+import AaTaskSourceReview from '../components/teaching-tasks/AaTaskSourceReview.vue'
 
 const MANAGE_ROLES = new Set(['PLATFORM_SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACADEMIC_ADMIN'])
 const DEFAULT_DAYS = [
@@ -465,7 +468,7 @@ const DEFAULT_DAYS = [
 
 export default {
   name: 'AaSchedulingConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard, AaAuthoritativeImportDrawer, AaResourceOccupancyView, AaScheduleObjectBar, AaScheduleStageRail, AaSchedulingOptimizerPanel },
+  components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard, AaAuthoritativeImportDrawer, AaResourceOccupancyView, AaScheduleObjectBar, AaScheduleStageRail, AaSchedulingOptimizerPanel, AaTaskSourceReview },
   props: { ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
   data() {
@@ -474,7 +477,7 @@ export default {
       tab: 'workbench',
       tabs: [{ key: 'workbench', label: '排课工作台' }, { key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师不可排时间' }, { key: 'auto', label: '自动排课' }, { key: 'conflict', label: '冲突报告' }, { key: 'room', label: '教室可用时间' }, { key: 'import', label: '导入排课结果' }, { key: 'result', label: '排课结果' }, { key: 'adjust', label: '排课调整' }],
       termId: '', termInfo: null,
-      workbenchBatchId: '', workbench: null, workbenchLoading: false, workbenchError: '',
+      workbenchBatchId: '', workbench: null, workbenchLoading: false, workbenchError: '', sourceReview: null, sourceReviewError: '',
       rules: [], catalog: [], timeSlots: [],
       ruleLoading: false, catalogLoading: false, ruleError: '', catalogError: '', termError: '', slotLoadWarning: '',
       editorVisible: false, editingRuleId: '', saving: false, formError: '',
@@ -501,6 +504,7 @@ export default {
     }
   },
   computed: {
+    sourceReviewContext() { return JSON.stringify([this.routeContextKey(), this.termId, this.workbenchBatchId, this.workbench?.termId]) },
     pageMeta() {
       const pages = {
         workbench: { title: '排课工作台', subtitle: '从就绪教学任务进入编排，按真实阻断推进到正式发布。', sectionTitle: '当前批次排课进度', stage: 2 },
@@ -631,6 +635,7 @@ export default {
     routeContextKey() { return JSON.stringify([this.academicFlow?.identity() || academicIdentity(currentUserFromToken(), this.ctx), this.$route?.fullPath]) },
     commandContextKey() { return JSON.stringify([this.disposed, this.routeContextKey(), this.termId, this.workbenchBatchId, this.autoBatchId, this.conflictBatchId]) },
     async syncRoute() {
+      this.sourceReview = null; this.sourceReviewError = ''
       if (!this.routeGate || this.disposed) return
       const current = this.routeGate.begin()
       this.workbenchGate.invalidate(); this.ruleGate.invalidate()
@@ -664,6 +669,7 @@ export default {
       return JSON.parse(JSON.stringify(value))
     },
     async loadWorkbench(value) {
+      this.sourceReview = null; this.sourceReviewError = ''
       if (typeof value === 'string' || typeof value === 'number') this.workbenchBatchId = String(value)
       const batchId = this.workbenchBatchId
       const current = this.workbenchGate.begin()
@@ -695,6 +701,18 @@ export default {
     openTeachingTasks() {
       const termId = this.workbench?.termId || this.termId
       this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: termId ? { termId: String(termId) } : {} })
+    },
+    openSourceReview(row) {
+      this.sourceReview = null; this.sourceReviewError = ''
+      const taskId = String(row?.taskId || '')
+      const group = this.workbench?.duplicateTaskGroups?.find(group => group.taskIds?.some(id => String(id) === taskId))
+      const ids = [...new Set((group?.taskIds || []).map(String))].filter(id => id && id !== taskId)
+      if (!taskId || !ids.length) { this.sourceReviewError = '当前重复任务来源尚未读取完整，请重新读取课表批次后核对'; return }
+      const otherTasks = ids.map((id, index) => {
+        const task = this.workbench.taskQueue?.find(task => String(task.taskId) === id)
+        return { taskId: id, label: `同课程任务${index + 1}${task?.teacherName ? ` · ${task.teacherName}` : ''}${task?.className ? ` · ${task.className}` : ''}` }
+      })
+      this.sourceReview = { taskId, otherTasks }
     },
     openPublishedSchedule() { this.$router.push({ path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/views`, query: this.returnQuery() }) },
     openTask(row) {

@@ -456,6 +456,16 @@ def task_all_list(
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/teaching-tasks/{taskId}/source-review", summary="核对重复任务来源（只读，不确认承接）")
+def task_source_review(
+    taskId: int = Path(..., gt=0),
+    otherTaskId: int = Query(..., gt=0),
+    user=Depends(require_permission("academicAffairs.teachingTask.view")),
+):
+    from app.modules.academic_affairs.services.academic_affairs_task_source_review_service import get_source_review
+    return success(get_source_review(taskId, otherTaskId, user))
+
+
 @router.post("/teaching-tasks/merge", summary="合班（同批次同课程 2+ 条任务合并为一条教学班任务）")
 def task_merge(
     body: MergeTasksBody,

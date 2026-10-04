@@ -81,6 +81,7 @@ test('重复开课任务只提供教学任务核对入口，不引导补排或�
   delete visible.$router
   const html = await renderToString(Vue.createSSRApp({ render, setup: () => visible }))
   assert.match(html, /核对重复开课任务/)
+  assert.match(html, /查看来源差异/)
   assert.doesNotMatch(html, /去排课|创建草稿后补排/)
   state.openTask(state.row)
   assert.equal(destination.path, '/admin/academic-affairs/teaching-tasks')
@@ -113,6 +114,19 @@ test('教学任务核对保留权威学期及大编号，切换或清空上下�
   state.openTeachingTasks()
   assert.equal(destination.path, '/admin/academic-affairs/teaching-tasks')
   assert.deepEqual(Object.keys(destination.query), [])
+})
+
+test('来源差异入口只使用当前重复组，超过两条交由核对工作区明确选择', () => {
+  const component = page('AaSchedulingConsoleView')
+  const state = { ...component.methods, sourceReview: null, workbench: { duplicateTaskGroups: [{ taskIds: ['1000000000000000001', '1000000000000000002', '3'] }], taskQueue: [{ taskId: '1000000000000000002', courseName: '计算机基础', teacherName: '教师乙' }] } }
+  state.openSourceReview({ taskId: '1000000000000000001' })
+  assert.equal(state.sourceReview.taskId, '1000000000000000001')
+  assert.equal(state.sourceReview.otherTasks.length, 2)
+  assert.equal(state.sourceReview.otherTasks[0].taskId, '1000000000000000002')
+  state.workbench = null
+  state.openSourceReview({ taskId: '1000000000000000001' })
+  assert.equal(state.sourceReview, null)
+  assert.match(state.sourceReviewError, /重新读取/)
 })
 
 test('新建课表须明确学院或全校范围，学院编号按字符串传递', async () => {
