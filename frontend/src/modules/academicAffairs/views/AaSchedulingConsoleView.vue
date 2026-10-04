@@ -692,7 +692,10 @@ export default {
     },
     weekRangeText(row) { return row.startWeek && row.endWeek ? `第 ${row.startWeek}-${row.endWeek} 周` : '周次待确认' },
     roomRequirementText(value) { return value ? `教室要求：${value}` : '教室类型不限' },
-    openTeachingTasks() { this.$router.push('/admin/academic-affairs/teaching-tasks') },
+    openTeachingTasks() {
+      const termId = this.workbench?.termId || this.termId
+      this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: termId ? { termId: String(termId) } : {} })
+    },
     openPublishedSchedule() { this.$router.push({ path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/views`, query: this.returnQuery() }) },
     openTask(row) {
       if (row.issueType === 'SOURCE_CONFLICT') return this.openTeachingTasks()

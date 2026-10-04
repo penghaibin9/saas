@@ -76,17 +76,43 @@ test('重复开课任务只提供教学任务核对入口，不引导补排或�
   const render = new Function('Vue', compile(template, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
   const component = page('AaSchedulingConsoleView')
   let destination
-  const state = { ...component.methods, row: { taskId: '14944', classId: '4670', issueType: 'SOURCE_CONFLICT', canSchedule: true }, hasPublishedGap: true, canCorrectSchedule: true, workbench: { batchStatus: 'PUBLISHED' }, $router: { push: route => { destination = route } } }
+  const state = { ...component.methods, row: { taskId: '14944', classId: '4670', issueType: 'SOURCE_CONFLICT', canSchedule: true }, hasPublishedGap: true, canCorrectSchedule: true, workbench: { batchStatus: 'PUBLISHED', termId: '52' }, $router: { push: route => { destination = typeof route === 'string' ? { path: route, query: {} } : route } } }
   const visible = { ...state }
   delete visible.$router
   const html = await renderToString(Vue.createSSRApp({ render, setup: () => visible }))
   assert.match(html, /核对重复开课任务/)
   assert.doesNotMatch(html, /去排课|创建草稿后补排/)
   state.openTask(state.row)
-  assert.equal(destination, '/admin/academic-affairs/teaching-tasks')
+  assert.equal(destination.path, '/admin/academic-affairs/teaching-tasks')
+  assert.equal(destination.query.termId, '52')
   destination = null
   state.openCorrectionDraft(state.row)
-  assert.equal(destination, '/admin/academic-affairs/teaching-tasks')
+  assert.equal(destination.path, '/admin/academic-affairs/teaching-tasks')
+  assert.equal(destination.query.termId, '52')
+})
+
+test('教学任务核对保留权威学期及大编号，切换或清空上下文不携带旧学期', () => {
+  const component = page('AaSchedulingConsoleView')
+  let destination
+  const state = { ...component.methods, workbench: { termId: '1000000000000000052' }, termId: '51', $route: { query: { termId: '50', batchId: '47', classId: '4670', returnToken: 'old' } }, $router: { push: route => { destination = typeof route === 'string' ? { path: route, query: {} } : route } } }
+  state.runWorkbenchAction('TEACHING_TASKS')
+  assert.equal(destination.path, '/admin/academic-affairs/teaching-tasks')
+  assert.equal(destination.query.termId, '1000000000000000052')
+  assert.deepEqual(Object.keys(destination.query), ['termId'])
+
+  state.workbench = null
+  state.termId = '1000000000000000053'
+  state.openTeachingTasks()
+  assert.equal(destination.query.termId, '1000000000000000053')
+  state.workbench = { termId: 54 }
+  state.openTeachingTasks()
+  assert.equal(destination.query.termId, '54')
+
+  state.workbench = null
+  state.termId = ''
+  state.openTeachingTasks()
+  assert.equal(destination.path, '/admin/academic-affairs/teaching-tasks')
+  assert.deepEqual(Object.keys(destination.query), [])
 })
 
 test('新建课表须明确学院或全校范围，学院编号按字符串传递', async () => {
