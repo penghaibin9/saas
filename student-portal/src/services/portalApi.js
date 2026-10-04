@@ -62,7 +62,7 @@ export const portalApi = {
   academicRegistration: () => request('/portal/academic/registration'),
   academicRegistrationRegister: (batchId) => request(`/portal/academic/registration/${encodeURIComponent(batchId)}/register`, { method: 'POST' }),
   academicRegistrationDefer: (batchId, body) => request(`/portal/academic/registration/${encodeURIComponent(batchId)}/defer`, { method: 'POST', body }),
-  academicAttendance: () => request('/portal/academic/attendance'),
+  academicAttendance: (params = {}) => request(`/portal/academic/attendance${q(params)}`),
   academicCalendar: () => request('/portal/academic/calendar'),
   academicClearance: () => request('/portal/academic/clearance'),
   academicExamTicketPrint: (body) => request('/portal/academic/exam/ticket/print', { method: 'POST', body }),

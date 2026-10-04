@@ -190,10 +190,10 @@ def registration_defer(user: dict, batch_id, body: dict) -> dict:
         user, batch_id, body.get("reason"), body.get("requestedUntil"))
 
 
-def attendance(user: dict) -> dict:
+def attendance(user: dict, session_id: int | None = None) -> dict:
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
     _require_student(user)
-    return gaps.attendance_my(user)
+    return gaps.attendance_my(user, session_id=session_id)
 
 
 def calendar(user: dict) -> dict:

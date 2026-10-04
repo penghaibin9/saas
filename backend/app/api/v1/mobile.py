@@ -2403,6 +2403,7 @@ def academic_registration_defer(batch_id: str, body: dict = Body(default={}), us
 def academic_attendance_my(
     course: str = Query("", max_length=100),
     teaching_task_id: int | None = Query(None, alias="teachingTaskId", gt=0),
+    session_id: int | None = Query(None, gt=0),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, alias="pageSize", ge=1, le=100),
     user=Depends(require_mobile_student),
@@ -2410,7 +2411,7 @@ def academic_attendance_my(
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
     return success(gaps.attendance_my(
         user, page=page, page_size=page_size, course=course,
-        teaching_task_id=teaching_task_id,
+        teaching_task_id=teaching_task_id, session_id=session_id,
     ))
 
 

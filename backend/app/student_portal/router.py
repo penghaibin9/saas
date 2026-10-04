@@ -220,8 +220,8 @@ def academic_registration_defer(batch_id: str, user=Depends(get_current_user), b
 
 
 @router.get("/academic/attendance", summary="我的课堂考勤（本人·只读）")
-def academic_attendance(user=Depends(get_current_user)):
-    return success(academic.attendance(user))
+def academic_attendance(user=Depends(get_current_user), session_id: int | None = Query(None, gt=0)):
+    return success(academic.attendance(user, session_id=session_id))
 
 
 @router.get("/academic/calendar", summary="当前学期校历（本人·只读）")

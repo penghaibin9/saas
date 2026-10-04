@@ -396,6 +396,208 @@ test('attendance sends formal teaching-task filtering and paging to the server',
   assert.equal(page.d.items[0].courseName, '全部课程')
 })
 
+const attendanceRow = (sessionId, scheduleItemId = '33103') => ({
+  sessionId, courseName: '历史课程', sessionDate: '2026-10-08', slotNo: 4,
+  scheduleItemId, status: 'PRESENT'
+})
+const attendanceSource = (sessionId, scheduleItemId = '33103') => ({
+  items: [{ ...attendanceRow(sessionId, scheduleItemId), sourceDetail: {
+    verified: true, reason: '', sessionId, scheduleItemId, batchId: '44', termId: '31',
+    termCode: '2026-1', courseName: '历史课程', sessionDate: '2026-10-08',
+    weekNo: 6, weekday: 4, slotNo: 4, scopeHeadVersion: 1,
+    publishedAt: '2026-09-01T08:00:00', teacherName: '历史教师',
+    className: '历史班级', classroom: '历史教室'
+  } }]
+})
+
+test('attendance source reads the exact listed session without replacing filtered paged records', async () => {
+  const calls = []
+  const row = attendanceRow('6171')
+  const { page } = mount('attendance', { getMyAttendance: async params => {
+    calls.push(JSON.parse(JSON.stringify(params)))
+    return params.session_id ? attendanceSource(params.session_id) : {
+      items: [row], summary: { PRESENT: 1 }, total: 21, page: 2, pageSize: 20, hasMore: false
+    }
+  } })
+  page.courseFilter = '历史'
+  await page.load(2)
+  const original = page.d
+  await page.openSource(page.d.items[0])
+  assert.deepEqual(calls[1], { session_id: '6171' })
+  assert.equal(page.d, original)
+  assert.equal(page.attendancePage, 2)
+  assert.equal(page.courseFilter, '历史')
+  assert.equal(page.sourceDetail.sessionId, '6171')
+  assert.equal(page.sourceDetail.scheduleItemId, '33103')
+  assert.equal(page.sourceDetail.slotNo, 4)
+})
+
+test('attendance source refuses unverified, empty, wrong-session and wrong-lesson responses', async () => {
+  const cases = [
+    { items: [] },
+    { items: [{ ...attendanceRow('6171'), sourceDetail: { verified: false, reason: '历史依据未核实' } }] },
+    attendanceSource('6172'),
+    attendanceSource('6171', '33104'),
+    { items: [{ ...attendanceRow('6171'), sourceDetail: { ...attendanceSource('6171').items[0].sourceDetail, weekNo: undefined } }] }
+  ]
+  for (const response of cases) {
+    const { page } = mount('attendance', { getMyAttendance: async params => params.session_id ? response : {
+      items: [attendanceRow('6171')], summary: { PRESENT: 1 }, total: 1, page: 1, pageSize: 20, hasMore: false
+    } })
+    await page.load()
+    await page.openSource(page.d.items[0])
+    assert.equal(page.sourceDetail, null)
+    assert.match(page.sourceError, /无法核验|未核实|不一致/)
+  }
+})
+
+test('attendance source drops late close, another-session and account-switch results', async () => {
+  const pending = []
+  const { page, session, hook } = mount('attendance', { getMyAttendance: async params => params.session_id
+    ? new Promise(resolve => pending.push({ id: params.session_id, resolve }))
+    : { items: [attendanceRow('6171'), attendanceRow('6172')], summary: { PRESENT: 2 }, total: 2, page: 1, pageSize: 20, hasMore: false }
+  })
+  await page.load()
+  const first = page.openSource(page.d.items[0])
+  page.closeSource()
+  pending[0].resolve(attendanceSource('6171'))
+  await first
+  assert.equal(page.sourceDetail, null)
+  const old = page.openSource(page.d.items[0])
+  const current = page.openSource(page.d.items[1])
+  pending[1].resolve(attendanceSource('6171'))
+  pending[2].resolve(attendanceSource('6172'))
+  await Promise.all([old, current])
+  assert.equal(page.sourceDetail.sessionId, '6172')
+  const priorIdentity = page.openSource(page.d.items[0])
+  session.generation++
+  pending[3].resolve(attendanceSource('6171'))
+  await priorIdentity
+  assert.equal(page.sourceDetail, null)
+  hook('onHide')
+  hook('onShow')
+  assert.equal(page.sourceDetail, null)
+})
+
+test('attendance source clears a prior detail on failure or forbidden and allows a normal retry', async () => {
+  let mode = 'ok'
+  const { page } = mount('attendance', { getMyAttendance: async params => {
+    if (!params.session_id) return { items: [attendanceRow('6171')], summary: { PRESENT: 1 }, total: 1, page: 1, pageSize: 20, hasMore: false }
+    if (mode === 'network') throw new Error('network failure')
+    if (mode === 'forbidden') throw { httpStatus: 403 }
+    return attendanceSource('6171')
+  } })
+  await page.load()
+  await page.openSource(page.d.items[0])
+  assert.equal(page.sourceDetail.sessionId, '6171')
+  mode = 'network'
+  await page.openSource(page.d.items[0])
+  assert.equal(page.sourceDetail, null)
+  assert.match(page.sourceError, /失败|重试/)
+  mode = 'forbidden'
+  await page.retrySource()
+  assert.equal(page.sourceDetail, null)
+  assert.match(page.sourceError, /无权|权限/)
+  mode = 'ok'
+  await page.retrySource()
+  assert.equal(page.sourceDetail.sessionId, '6171')
+})
+
+test('attendance source closes on page hide, return and a completed account switch', async () => {
+  const { page, session, hook } = mount('attendance', { getMyAttendance: async params => params.session_id
+    ? attendanceSource('6171')
+    : { items: [attendanceRow('6171')], summary: { PRESENT: 1 }, total: 1, page: 1, pageSize: 20, hasMore: false }
+  })
+  await page.load()
+  await page.openSource(page.d.items[0])
+  assert.equal(page.sourceDetail.sessionId, '6171')
+  hook('onHide')
+  assert.equal(page.sourceDetail, null)
+  hook('onShow')
+  assert.equal(page.sourceDetail, null)
+  await page.load()
+  await page.openSource(page.d.items[0])
+  session.generation++
+  hook('onShow')
+  assert.equal(page.sourceDetail, null)
+  assert.equal(page.d, null, 'the shared identity guard also clears the previous account list')
+})
+
+test('attendance source preserves exact decimal string identities above the safe numeric range', async () => {
+  const sessionId = '9007199254740993123'
+  const scheduleItemId = '9007199254740993124'
+  const calls = []
+  const { page } = mount('attendance', { getMyAttendance: async params => {
+    calls.push(JSON.parse(JSON.stringify(params)))
+    return params.session_id ? attendanceSource(sessionId, scheduleItemId) : {
+      items: [attendanceRow(sessionId, scheduleItemId)], summary: { PRESENT: 1 },
+      total: 1, page: 1, pageSize: 20, hasMore: false
+    }
+  } })
+  await page.load()
+  await page.openSource(page.d.items[0])
+  assert.equal(calls[1].session_id, sessionId)
+  assert.equal(page.sourceDetail?.sessionId, sessionId)
+  assert.equal(page.sourceDetail?.scheduleItemId, scheduleItemId)
+})
+
+test('attendance source refuses rounded numeric identities even if their string form appears to match', async () => {
+  const rounded = Number('9007199254740993')
+  const cases = [
+    { listId: rounded, detail: attendanceSource(String(rounded)) },
+    { listId: '6171', detail: { items: [{ ...attendanceRow('6171'), sourceDetail: { ...attendanceSource('6171').items[0].sourceDetail, sessionId: 6171 } }] } },
+    { listId: '6171', detail: { items: [{ ...attendanceRow('6171', String(rounded)), sourceDetail: { ...attendanceSource('6171', String(rounded)).items[0].sourceDetail, scheduleItemId: rounded } }] }, scheduleItemId: String(rounded) },
+    { listId: '6171', detail: { items: [{ ...attendanceRow('6171'), sourceDetail: { ...attendanceSource('6171').items[0].sourceDetail, batchId: 44 } }] } },
+    { listId: '6171', detail: { items: [{ ...attendanceRow('6171'), sourceDetail: { ...attendanceSource('6171').items[0].sourceDetail, termId: 31 } }] } }
+  ]
+  for (const { listId, detail, scheduleItemId } of cases) {
+    const calls = []
+    const { page } = mount('attendance', { getMyAttendance: async params => {
+      calls.push(JSON.parse(JSON.stringify(params)))
+      return params.session_id ? detail : {
+        items: [attendanceRow(listId, scheduleItemId || '33103')], summary: { PRESENT: 1 },
+        total: 1, page: 1, pageSize: 20, hasMore: false
+      }
+    } })
+    await page.load()
+    await page.openSource(page.d.items[0])
+    assert.equal(page.sourceDetail, null)
+    if (typeof listId === 'number') assert.equal(calls.length, 1, 'numeric list ID must not issue a detail request')
+    else assert.match(page.sourceError, /无法核验/)
+  }
+})
+
+test('attendance source rejects impossible history dates and accepts an unpublished timestamp gap', async () => {
+  const { page } = mount('attendance', { getMyAttendance: async params => {
+    if (!params.session_id) return {
+      items: [{ ...attendanceRow('6171'), sessionDate: '2026-02-30' }],
+      summary: { PRESENT: 1 }, total: 1, page: 1, pageSize: 20, hasMore: false
+    }
+    const result = attendanceSource('6171')
+    result.items[0].sessionDate = '2026-02-30'
+    result.items[0].sourceDetail.sessionDate = '2026-02-30'
+    return result
+  } })
+  await page.load()
+  await page.openSource(page.d.items[0])
+  assert.equal(page.sourceDetail, null)
+  assert.match(page.sourceError, /无法核验/)
+
+  const { page: valid } = mount('attendance', { getMyAttendance: async params => {
+    if (!params.session_id) return {
+      items: [attendanceRow('6171')], summary: { PRESENT: 1 },
+      total: 1, page: 1, pageSize: 20, hasMore: false
+    }
+    const result = attendanceSource('6171')
+    result.items[0].sourceDetail.publishedAt = null
+    return result
+  } })
+  await valid.load()
+  await valid.openSource(valid.d.items[0])
+  assert.equal(valid.sourceDetail?.sessionId, '6171')
+  assert.equal(valid.sourceDateText(valid.sourceDetail.publishedAt), '未记录')
+})
+
 test('recognition preserves draft after timeout and empty readback, and blocks a repeated command', async () => {
   let writes = 0
   const { page } = mount('recognition', { getMyRecognition: async () => ({ items: [] }), submitRecognition: async () => { writes++; throw Error('timeout') } })

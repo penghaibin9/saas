@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import importlib
-from datetime import datetime
+from datetime import date, datetime
 from types import SimpleNamespace
 
 from sqlalchemy import func, select, text
@@ -344,9 +344,120 @@ def _attendance_page_args(page, page_size):
     return page, min(max(1, page_size), 100)
 
 
-def _attendance_student_rows_sql(include_course: bool, include_teaching_task: bool) -> str:
+def _attendance_positive_int(value):
+    """Frozen identifiers/numbers must be exact integers, never floats or booleans."""
+    if isinstance(value, bool) or not isinstance(value, (str, int)):
+        raise ValueError("invalid integer")
+    if isinstance(value, str) and not value.isascii():
+        raise ValueError("invalid integer")
+    if not str(value).isdigit() or int(value) <= 0:
+        raise ValueError("invalid integer")
+    return int(value)
+
+
+def _attendance_source_evidence(attendance_session):
+    """Validate immutable occurrence identity before looking up its retained source."""
+    if attendance_session.source_type != "FORMAL_TEACHING":
+        raise ValueError("该考勤未保存正式课次来源")
+    try:
+        evidence = json.loads(attendance_session.source_evidence or "{}")
+        if not isinstance(evidence, dict) or evidence.get("sourceType") != "FORMAL_TEACHING":
+            raise ValueError()
+        for key in ("scheduleItemId", "activeBatchId", "termId", "teachingTaskId", "classId",
+                    "weekNo", "weekday", "slotNo", "scopeHeadVersion"):
+            _attendance_positive_int(evidence.get(key))
+        if _attendance_positive_int(evidence["weekday"]) > 7:
+            raise ValueError()
+        frozen_date = date.fromisoformat(evidence["sessionDate"])
+        logical_date = date.fromisoformat(evidence.get("logicalDate") or evidence["sessionDate"])
+        if frozen_date.isoformat() != evidence["sessionDate"] or logical_date.isoweekday() != int(evidence["weekday"]):
+            raise ValueError()
+        if evidence["sessionDate"] != attendance_session.session_date:
+            raise ValueError()
+        if int(evidence["slotNo"]) != _attendance_positive_int(attendance_session.slot_no):
+            raise ValueError()
+        if int(evidence["teachingTaskId"]) != _attendance_positive_int(attendance_session.teaching_task_id):
+            raise ValueError()
+        if int(evidence["classId"]) != _attendance_positive_int(attendance_session.class_id):
+            raise ValueError()
+        if not evidence.get("teacherKey") or evidence["teacherKey"] != attendance_session.teacher_key:
+            raise ValueError()
+        # Existing writer canonical identity: batch:item:actual-date:slot.
+        canonical = f"{int(evidence['activeBatchId'])}:{int(evidence['scheduleItemId'])}:{evidence['sessionDate']}:{int(evidence['slotNo'])}"
+        if evidence.get("occurrenceIdentity") != canonical or attendance_session.occurrence_identity != canonical:
+            raise ValueError()
+        published_at = evidence.get("publishedAt")
+        if published_at is not None:
+            datetime.fromisoformat(published_at)
+        return evidence
+    except (TypeError, ValueError, KeyError, OverflowError) as exc:
+        raise ValueError("考勤保存的课次来源信息不完整或不一致，暂无法核实") from exc
+
+
+def _attendance_source_detail(attendance_session, item, batch, *, tenant_id):
+    """Read one historical source; current scope head/calendar/dictionaries are irrelevant."""
+    try:
+        evidence = _attendance_source_evidence(attendance_session)
+        if item is None or batch is None:
+            raise ValueError("原课位或课表批次未保留，暂无法核实来源")
+        if any(row.tenant_id != tenant_id or row.is_deleted for row in (item, batch)) or attendance_session.tenant_id != tenant_id:
+            raise ValueError("原课位或课表批次暂无法核实来源")
+        if batch.status not in {"PUBLISHED", "SUPERSEDED", "ARCHIVED"} or item.status not in {"EFFECTIVE", "CHANGED", "CANCELLED"}:
+            raise ValueError("原课位或课表批次的历史状态暂无法核实")
+        pairs = (
+            (item.id, evidence["scheduleItemId"]), (item.batch_id, evidence["activeBatchId"]),
+            (batch.id, evidence["activeBatchId"]), (batch.term_id, evidence["termId"]),
+            (item.task_id, evidence["teachingTaskId"]), (item.class_id, evidence["classId"]),
+            (item.weekday, evidence["weekday"]), (item.slot_no, evidence["slotNo"]),
+        )
+        if any(_attendance_positive_int(left) != _attendance_positive_int(right) for left, right in pairs):
+            raise ValueError("原课位与考勤保存的课次身份不一致，暂无法核实")
+        week = int(evidence["weekNo"])
+        parity = str(item.week_parity or "ALL").upper()
+        if item.teacher_key != evidence["teacherKey"] or not (_attendance_positive_int(item.start_week) <= week <= _attendance_positive_int(item.end_week)):
+            raise ValueError("原课位与考勤保存的教学安排不一致，暂无法核实")
+        if parity not in {"ALL", "ODD", "EVEN"} or (parity == "ODD" and week % 2 == 0) or (parity == "EVEN" and week % 2 != 0):
+            raise ValueError("原课位与考勤保存的教学周不一致，暂无法核实")
+        if evidence.get("weekParity") not in (None, parity):
+            raise ValueError("原课位与考勤保存的教学周安排不一致，暂无法核实")
+        return {
+            "verified": True, "reason": "", "sessionId": str(attendance_session.id),
+            "scheduleItemId": str(item.id), "batchId": str(batch.id), "termId": str(batch.term_id),
+            "termCode": attendance_session.term_code or evidence.get("termCode") or "",
+            "courseName": attendance_session.course_name or evidence.get("courseName") or "",
+            "sessionDate": evidence["sessionDate"], "weekNo": week,
+            "weekday": int(evidence["weekday"]), "slotNo": int(evidence["slotNo"]),
+            "scopeHeadVersion": int(evidence["scopeHeadVersion"]), "publishedAt": evidence.get("publishedAt"),
+            "teacherName": item.teacher_name or "", "className": item.class_name or "",
+            "classroom": item.classroom_text or "",
+        }
+    except (TypeError, ValueError, KeyError, OverflowError) as exc:
+        return {"verified": False, "reason": str(exc) if isinstance(exc, ValueError) and str(exc) != "invalid integer" else "考勤来源信息暂无法核实"}
+
+
+def _attendance_read_source_detail(db, attendance_session, tenant_id):
+    from app.models import AaScheduleBatch, AaScheduleItem
+    try:
+        evidence = _attendance_source_evidence(attendance_session)
+    except ValueError as exc:
+        return {"verified": False, "reason": str(exc)}
+    item = db.scalars(select(AaScheduleItem).where(
+        AaScheduleItem.tenant_id == tenant_id, AaScheduleItem.is_deleted.is_(False),
+        AaScheduleItem.id == int(evidence["scheduleItemId"]),
+    )).first()
+    batch = db.scalars(select(AaScheduleBatch).where(
+        AaScheduleBatch.tenant_id == tenant_id, AaScheduleBatch.is_deleted.is_(False),
+        AaScheduleBatch.id == int(evidence["activeBatchId"]),
+    )).first()
+    return _attendance_source_detail(attendance_session, item, batch, tenant_id=tenant_id)
+
+
+def _attendance_student_rows_sql(include_course: bool, include_teaching_task: bool, include_session: bool = False) -> str:
     course_condition = "AND LOWER(COALESCE(s.course_name, '')) LIKE :course_keyword" if include_course else ""
     task_condition = "AND s.teaching_task_id = :teaching_task_id" if include_teaching_task else ""
+    session_condition = "AND s.id = :session_id" if include_session else ""
+    source_columns = ", tenant_id, teaching_task_id, class_id, teacher_key, term_code, occurrence_identity" if include_session else ""
+    inner_source_columns = ", s.tenant_id, s.teaching_task_id, s.class_id, s.teacher_key, s.term_code, s.occurrence_identity" if include_session else ""
     # roster_json is a legacy text snapshot. JSON_TABLE keeps that historical write
     # contract intact while returning only the current student's JSON element; IF(JSON_VALID)
     # turns malformed legacy snapshots into an empty array instead of a 500 response.
@@ -356,7 +467,7 @@ def _attendance_student_rows_sql(include_course: bool, include_teaching_task: bo
     return f"""
         SELECT
             session_id, course_name, session_date, slot_no, session_type,
-            source_type, source_evidence, attendance_status
+            source_type, source_evidence, attendance_status {source_columns}
         FROM (
             SELECT
                 s.id AS session_id,
@@ -367,7 +478,7 @@ def _attendance_student_rows_sql(include_course: bool, include_teaching_task: bo
                 s.source_type AS source_type,
                 s.source_evidence AS source_evidence,
                 UPPER(COALESCE(NULLIF(roster.attendance_status, ''), 'PRESENT')) AS attendance_status,
-                ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY roster.roster_position) AS roster_position_rank
+                ROW_NUMBER() OVER (PARTITION BY s.id ORDER BY roster.roster_position) AS roster_position_rank {inner_source_columns}
             FROM t_aa_attendance_session AS s
             JOIN JSON_TABLE(
                 IF(JSON_VALID(s.roster_json), s.roster_json, JSON_ARRAY()),
@@ -382,6 +493,7 @@ def _attendance_student_rows_sql(include_course: bool, include_teaching_task: bo
               AND s.status = 'SUBMITTED'
               {task_condition}
               {course_condition}
+              {session_condition}
         ) AS matched_student_sessions
         WHERE roster_position_rank = 1
     """
@@ -399,13 +511,20 @@ def _attendance_task_id(value):
     return task_id
 
 
-def attendance_my(user, page=1, page_size=20, course="", teaching_task_id=None) -> dict:
+def attendance_my(user, page=1, page_size=20, course="", teaching_task_id=None, session_id=None) -> dict:
     """Current student's submitted attendance, SQL-paged and server-filtered."""
     with session() as db:
         stu = _me(db, user)
         page, page_size = _attendance_page_args(page, page_size)
         course = str(course or "").strip()
         teaching_task_id = _attendance_task_id(teaching_task_id)
+        if session_id not in (None, ""):
+            try:
+                session_id = _attendance_positive_int(session_id)
+            except (TypeError, ValueError) as exc:
+                raise AppException("VALIDATION_ERROR", "考勤场次标识不正确") from exc
+        else:
+            session_id = None
         # Historical ownership is the submitted roster snapshot, not today's
         # administrative class.  This keeps a transferred/graduated student's
         # own old sessions visible without ever widening them to another student.
@@ -416,7 +535,9 @@ def attendance_my(user, page=1, page_size=20, course="", teaching_task_id=None) 
             params["course_keyword"] = f"%{course.lower()}%"
         if teaching_task_id is not None:
             params["teaching_task_id"] = teaching_task_id
-        rows_sql = _attendance_student_rows_sql(bool(course), teaching_task_id is not None)
+        if session_id is not None:
+            params["session_id"] = session_id
+        rows_sql = _attendance_student_rows_sql(bool(course), teaching_task_id is not None, session_id is not None)
         summary_row = db.execute(text(f"""
             SELECT
                 COUNT(*) AS total,
@@ -446,6 +567,9 @@ def attendance_my(user, page=1, page_size=20, course="", teaching_task_id=None) 
                 "sessionType": row["session_type"] or "常规", "status": row["attendance_status"],
                 **_attendance_schedule_context(session_view),
             })
+            if session_id is not None:
+                source_session = SimpleNamespace(**dict(row), id=row["session_id"])
+                items[-1]["sourceDetail"] = _attendance_read_source_detail(db, source_session, params["tenant_id"])
         summary = {
             "PRESENT": int(summary_row["present_count"] or 0),
             "LATE": int(summary_row["late_count"] or 0),

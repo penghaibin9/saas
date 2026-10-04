@@ -14,6 +14,7 @@ function deferred() {
 }
 
 function mount(api, query = {}, session = { user: { userId: 'A', studentNo: 'S001' }, token: 'A' }, printFrame) {
+  session = vue.reactive(session)
   const source = readFileSync(new URL('../src/views/academic/StudentScheduleView.vue', import.meta.url), 'utf8')
   let script = compileScript(parse(source).descriptor, { id: 'schedule-week' }).content
   const route = { query: vue.reactive(query) }
@@ -40,6 +41,160 @@ function mount(api, query = {}, session = { user: { userId: 'A', studentNo: 'S00
 
 const lesson = (id, week) => ({ itemId: id, courseName: `第${week}周课程`, weekday: 4, slotNo: 4, startWeek: week, endWeek: week, weekParity: 'ALL' })
 const schedule = (week) => ({ week, currentWeek: 5, teachingWeeks: 18, termCode: '2026-1', items: [lesson(String(week), week)], todayItems: [] })
+
+const source = (sessionId = '6171', scheduleItemId = '33072') => ({
+  verified: true, reason: '', sessionId, scheduleItemId, batchId: '41', termId: '52',
+  termCode: '2026-2027-1', courseName: '历史实践课', sessionDate: '2026-09-14',
+  weekNo: 2, weekday: 1, slotNo: 1, scopeHeadVersion: 1, publishedAt: '2026-09-01T00:00:00Z',
+  teacherName: '历史任课教师', className: '历史教学班', classroom: '历史实训室'
+})
+const sourcePayload = detail => ({ items: [{ sessionId: detail.sessionId, sourceDetail: detail }] })
+const sourceQuery = (sessionId = '6171', lesson = '33072') => ({ attendanceSessionId: sessionId, lesson, from: 'attendance', week: '2' })
+
+test('historical attendance detail uses the exact authorized session and its saved date, independent of the current timetable', async () => {
+  const calls = []
+  const api = {
+    academicAttendance: async params => { calls.push(params); return sourcePayload(source()) },
+    academicSchedule: async () => { throw new Error('Current timetable is unavailable') },
+    academicCalendar: async () => { throw new Error('Current calendar is unavailable') }
+  }
+  const { page, route } = mount(api, sourceQuery())
+  await page.load(page.routeWeek())
+  assert.equal(page.historyDetail?.value?.sessionDate, '2026-09-14')
+  assert.equal(page.historyDetail.value.scheduleItemId, '33072')
+  assert.equal(page.historyDetail.value.classroom, '历史实训室')
+  await page.refresh()
+  assert.deepEqual(calls, [{ session_id: '6171' }, { session_id: '6171' }])
+  const remounted = mount(api, { ...route.query }).page
+  await remounted.load(remounted.routeWeek())
+  assert.equal(remounted.historyDetail.value.sessionDate, '2026-09-14')
+  assert.equal(remounted.historyActualWeekday?.value, '周一')
+})
+
+test('a swapped lesson displays the actual calendar weekday separately from the frozen timetable weekday', async () => {
+  const detail = { ...source(), sessionDate: '2026-09-15', weekday: 1 }
+  const { page } = mount({ academicAttendance: async () => sourcePayload(detail) }, sourceQuery())
+  await page.load(page.routeWeek())
+  assert.equal(page.historyDetail.value.sessionDate, '2026-09-15')
+  assert.equal(page.historyActualWeekday?.value, '周二')
+  assert.equal(page.historyDetail.value.weekday, 1, 'the frozen logical weekday is retained as timetable evidence')
+})
+
+test('historical source mismatches, empty or unverified sources never reveal a current lesson as historical evidence', async () => {
+  for (const payload of [
+    { items: [] }, sourcePayload({ ...source(), scheduleItemId: '33078' }),
+    sourcePayload({ ...source(), sessionId: '6172' }),
+    { items: [{ sessionId: '6172', sourceDetail: source() }] },
+    { items: [sourcePayload(source()).items[0], sourcePayload(source()).items[0]] },
+    sourcePayload({ ...source(), sessionDate: '2026-02-31' }),
+    sourcePayload({ ...source(), weekday: '1' }),
+    { items: [{ sessionId: '6171', sourceDetail: null }] },
+    { items: [{ sessionId: '6171', sourceDetail: { verified: false, reason: 'INTERNAL_CODE' } }] }
+  ]) {
+    const { page } = mount({ academicAttendance: async () => payload, academicSchedule: async () => schedule(2), academicCalendar: async () => ({ weeks: [] }) }, sourceQuery())
+    await page.load(page.routeWeek())
+    assert.equal(page.historyDetail?.value, null)
+    assert.match(page.historyError.value, /无法核验/)
+    assert.doesNotMatch(page.historyError.value, /INTERNAL_CODE/)
+    assert.equal(page.selectedLesson.value, undefined)
+  }
+})
+
+test('historical read failures clear evidence, report permission refusal, and retry the same exact large ids', async () => {
+  const id = '9007199254740993123', lessonId = '9007199254740993124'
+  let failure
+  const calls = []
+  const { page } = mount({
+    academicAttendance: async params => { calls.push(params); if (failure) throw failure; return sourcePayload(source(id, lessonId)) },
+    academicSchedule: async () => schedule(2), academicCalendar: async () => ({ weeks: [] })
+  }, sourceQuery(id, lessonId))
+  await page.load(page.routeWeek())
+  assert.equal(page.historyDetail?.value?.sessionId, id)
+  failure = { httpStatus: 403, message: 'PRIVATE_CODE' }
+  await page.refresh()
+  assert.equal(page.historyDetail.value, null)
+  assert.match(page.historyError.value, /无权/)
+  assert.doesNotMatch(page.historyError.value, /PRIVATE_CODE/)
+  failure = new TypeError('Failed to fetch')
+  await page.refresh()
+  assert.equal(page.historyDetail.value, null)
+  assert.match(page.historyError.value, /网络|读取失败/)
+  failure = null
+  await page.refresh()
+  assert.equal(page.historyDetail.value.scheduleItemId, lessonId)
+  assert.ok(calls.every(params => params.session_id === id))
+})
+
+test('returning to the current timetable removes historical context and ignores a slow old source read', async () => {
+  const old = deferred()
+  const { page, route } = mount({
+    academicAttendance: async () => old.promise,
+    academicSchedule: async week => schedule(week), academicCalendar: async () => ({ weeks: [] })
+  }, sourceQuery())
+  const pending = page.load(page.routeWeek())
+  await page.closeLesson()
+  await vue.nextTick(); await setImmediate()
+  old.resolve(sourcePayload(source()))
+  await pending
+  assert.equal(route.query.attendanceSessionId, undefined)
+  assert.equal(route.query.lesson, undefined)
+  assert.equal(route.query.week, '2')
+  assert.equal(page.historyDetail?.value, null)
+  assert.equal(page.items.value[0].itemId, '2')
+})
+
+test('old historical responses cannot overwrite another routed session or identity', async () => {
+  const old = deferred()
+  const { page, route, session } = mount({
+    academicAttendance: async params => params.session_id === '6171' ? old.promise : sourcePayload(source('6172', '33079')),
+    academicSchedule: async () => schedule(2), academicCalendar: async () => ({ weeks: [] })
+  }, sourceQuery())
+  const pending = page.load(page.routeWeek())
+  route.query.attendanceSessionId = '6172'; route.query.lesson = '33079'
+  await vue.nextTick(); await setImmediate()
+  assert.equal(page.historyDetail?.value?.sessionId, '6172')
+  session.user = { userId: 'B', studentNo: 'S002' }
+  await vue.nextTick()
+  assert.equal(page.historyDetail.value, null, 'identity changes immediately clear the previous student source')
+  assert.match(page.historyError.value, /身份已变化/)
+  await page.load(page.routeWeek())
+  old.resolve(sourcePayload(source()))
+  await pending
+  assert.equal(page.historyDetail.value.sessionId, '6172')
+  assert.equal(page.historyDetail.value.scheduleItemId, '33079')
+})
+
+test('invalid or repeated session query values are never used to request historical attendance', async () => {
+  let calls = 0
+  for (const id of ['', '0', '6171x', ['6171', '6172']]) {
+    const { page, route } = mount({
+      academicAttendance: async () => { calls++; return sourcePayload(source()) },
+      academicSchedule: async week => schedule(week || 5), academicCalendar: async () => ({ weeks: [] })
+    }, sourceQuery(id))
+    await page.load(page.routeWeek())
+    assert.equal(page.historyDetail.value, null)
+    assert.equal(page.loading.value, false)
+    assert.match(page.historyError.value, /无法核验/)
+    await page.closeLesson()
+    await vue.nextTick(); await setImmediate()
+    assert.equal(route.query.attendanceSessionId, undefined)
+    assert.equal(page.historyMode.value, false)
+  }
+  assert.equal(calls, 0)
+})
+
+test('an identity change during a pending historical read clears evidence and discards the old result without another request', async () => {
+  const pendingSource = deferred()
+  const { page, session } = mount({ academicAttendance: async () => pendingSource.promise }, sourceQuery())
+  const pending = page.load(page.routeWeek())
+  session.user = { userId: 'B', studentNo: 'S002' }
+  await vue.nextTick()
+  pendingSource.resolve(sourcePayload(source()))
+  await pending
+  assert.equal(page.historyDetail.value, null)
+  assert.equal(page.loading.value, false)
+  assert.match(page.historyError.value, /身份已变化/)
+})
 
 test('an attendance backlink missing from the authorized week shows a notice without substituting another lesson', async () => {
   const { page, route } = mount({
