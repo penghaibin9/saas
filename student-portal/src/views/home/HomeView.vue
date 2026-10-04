@@ -83,7 +83,7 @@
                 <span class="home-message__dot" :class="{ 'is-read': m.read }" />
                 <span class="home-message__main">
                   <b :class="{ 'is-read': m.read }">{{ messageTitle(m.title) }}</b>
-                  <small>{{ m.source }} · {{ fmt(m.time) }}</small>
+                  <small>{{ messageSource(m.source) }} · {{ fmt(m.time) }}</small>
                 </span>
               </button>
             </div>
@@ -275,6 +275,11 @@ function statusLabel(s) {
   return /^[A-Z0-9_]+$/.test(raw) ? '状态待确认' : raw
 }
 function messageTitle(value) { return localizeStatusSuffixText(value || '系统通知') }
+function messageSource(value) {
+  const source = String(value ?? '').trim()
+  if (source.toUpperCase() === 'BUSINESS') return '业务通知'
+  return /[\u3400-\u9fff]/.test(source) && !/[A-Za-z_]/.test(source) ? source : '校园消息'
+}
 function modName(key) { return moduleByKey(key)?.title || (String(key || '').includes('academic') ? '教务学业' : key ? '系统' : '') }
 function fmt(t) { return t ? String(t).replace('T', ' ').slice(5, 16) : '' }
 

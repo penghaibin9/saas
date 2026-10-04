@@ -34,7 +34,7 @@
           <small>{{ item.source }}</small>
         </article>
       </div></section>
-      <p class="change-evidence__note">正式课表生效与通知送达分别核对；详情接口未返回送达数量时，不把“已生成通知”写成“全部送达”。</p>
+      <p class="change-evidence__note">{{ receiptNote }}</p>
       <AppButton v-if="detail.status === 'APPLIED'" @click="$emit('notice', detail)">查看通知单</AppButton>
     </template>
   </section>
@@ -53,12 +53,14 @@ export default {
   data() { return { detail: null, loading: false, error: '', sequence: 0 } },
   computed: {
     identity() { return JSON.stringify([currentUserFromToken(), this.ctx]) },
+    cancelled() { return this.detail?.status === 'CANCELLED' },
     statusLabel() { return CHANGE_STATUS.find(item => item.value === this.detail?.status)?.label || '状态待确认' },
     slots() { return [{ title: '原正式课位', value: this.detail.origin }, { title: '拟调整课位', value: this.detail.target, stopped: this.detail.changeType === 'STOP' }] },
     stages() { return ['正式课位', '发起申请', '冲突预检', '审批生效', '通知回执'] },
-    stageIndex() { return this.detail?.status === 'APPLIED' ? 5 : 4 },
+    stageIndex() { return this.cancelled ? 0 : this.detail?.status === 'APPLIED' ? 5 : 4 },
+    receiptNote() { return this.cancelled ? '申请已撤销，流程结束；本申请未改变正式课表，保留原申请与历史节点供核对。' : '正式课表生效与通知送达分别核对；详情接口未返回送达数量时，不把“已生成通知”写成“全部送达”。' },
     ownerLabel() {
-      return { SUBMITTED: '学院教务审核岗', COLLEGE_REVIEW: '教务终审岗', ACADEMIC_REVIEW: '教务终审岗', APPROVED: '课表生效服务', APPLIED: '申请人与通知核对岗', REJECTED: '任课教师', CANCELLED: '任课教师' }[this.detail?.status] || '当前受理岗待确认'
+      return { SUBMITTED: '学院教务审核岗', COLLEGE_REVIEW: '教务终审岗', ACADEMIC_REVIEW: '教务终审岗', APPROVED: '课表生效服务', APPLIED: '申请人与通知核对岗', REJECTED: '任课教师', CANCELLED: '流程已结束' }[this.detail?.status] || '当前受理岗待确认'
     },
     nextOwnerLabel() {
       return { SUBMITTED: '教务终审岗', COLLEGE_REVIEW: '课表生效与通知核对', ACADEMIC_REVIEW: '课表生效与通知核对', APPROVED: '师生通知', APPLIED: '核对通知回执', REJECTED: '修正后重新发起', CANCELLED: '流程结束' }[this.detail?.status] || '按正式状态继续'
@@ -72,10 +74,10 @@ export default {
       return [
         { title: '来源对象与身份', status: detail.originItemId && detail.changeId ? '已提供' : '待核对', tone: detail.originItemId && detail.changeId ? 'success' : 'warning', description: `申请 ${detail.changeId || '未提供'} 来源于正式课表项 ${detail.originItemId || '未提供'}。`, source: `批次 ${detail.batchId || '未提供'} · 课程 ${detail.courseName || '未提供'}` },
         { title: '原正式课位', status: detail.origin?.weekday && detail.origin?.slotNo ? '已提供' : '待核对', tone: detail.origin?.weekday && detail.origin?.slotNo ? 'success' : 'warning', description: detail.origin?.weekday && detail.origin?.slotNo ? `${this.weekday(detail.origin.weekday)}第 ${detail.origin.slotNo} 节 · ${detail.origin.classroom || '教室未提供'}` : '原课位字段不完整。', source: '来源：正式课表快照' },
-        { title: '目标课位与冲突', status: targetReady ? (targetRequired ? '课位已提供' : '不适用') : '待核对', tone: targetReady ? 'info' : 'warning', description: targetRequired ? (targetReady ? `${this.weekday(detail.target.weekday)}第 ${detail.target.slotNo} 节 · ${detail.target.classroom || '教室未提供'}` : '目标课位字段不完整。') : '停课不生成目标课位。', source: '建单时已执行冲突预检；终审仍须核验最新课表，字段齐全不代表当前无冲突' },
-        { title: '材料与事实依据', status: materialReady ? '原因已提供' : '待补充', tone: materialReady ? 'info' : 'warning', description: detail.reason || '未提供申请原因。', source: `后续安排：${detail.makeupPlan || '未提供'}` },
-        { title: '当前节点与版本', status: detail.status && detail.version != null ? '已读取' : '待核对', tone: detail.status && detail.version != null ? 'success' : 'warning', description: `${this.statusLabel} · ${this.ownerLabel}`, source: `当前节点 ${{ COLLEGE_REVIEW: '学院审核', ACADEMIC_REVIEW: '教务审核' }[detail.currentNode] || '以当前状态为准'} · 版本 ${detail.version ?? '未提供'}` },
-        { title: '生效与通知回执', status: appliedReady ? '课表已生效，送达待核对' : '等待办理', tone: appliedReady ? 'warning' : 'info', description: appliedReady ? `生效时间 ${detail.appliedAt}；通知送达数量未随详情返回。` : '尚未到达正式生效与通知回执阶段。', source: appliedReady ? `新课表项 ${detail.newItemId || '停课无新项'}` : `申请时间 ${detail.createdAt || '未提供'}` }
+        { title: '目标课位与冲突', status: targetReady ? (targetRequired ? '课位已提供' : '不适用') : '待核对', tone: targetReady ? 'info' : 'warning', description: targetRequired ? (targetReady ? `${this.weekday(detail.target.weekday)}第 ${detail.target.slotNo} 节 · ${detail.target.classroom || '教室未提供'}` : '目标课位字段不完整。') : '停课不生成目标课位。', source: this.cancelled ? '保留原申请课位与预检记录；申请已撤销，不再进入终审。' : '建单时已执行冲突预检；终审仍须核验最新课表，字段齐全不代表当前无冲突' },
+        { title: '材料与事实依据', status: materialReady ? '原因已提供' : this.cancelled ? '未提供' : '待补充', tone: materialReady || this.cancelled ? 'info' : 'warning', description: detail.reason || '未提供申请原因。', source: `${this.cancelled ? '原后续安排' : '后续安排'}：${detail.makeupPlan || '未提供'}` },
+        { title: '当前节点与版本', status: detail.status && detail.version != null ? '已读取' : '待核对', tone: detail.status && detail.version != null ? 'success' : 'warning', description: `${this.statusLabel} · ${this.ownerLabel}`, source: `${this.cancelled ? '历史节点' : '当前节点'} ${{ COLLEGE_REVIEW: '学院审核', ACADEMIC_REVIEW: '教务审核' }[detail.currentNode] || '以当前状态为准'} · 版本 ${detail.version ?? '未提供'}` },
+        { title: '生效与通知回执', status: this.cancelled ? '已撤销，未生效' : appliedReady ? '课表已生效，送达待核对' : '等待办理', tone: appliedReady ? 'warning' : 'info', description: this.cancelled ? '本申请未改变正式课表；流程已结束，不再进入生效与通知办理。' : appliedReady ? `生效时间 ${detail.appliedAt}；通知送达数量未随详情返回。` : '尚未到达正式生效与通知回执阶段。', source: appliedReady ? `新课表项 ${detail.newItemId || '停课无新项'}` : `申请时间 ${detail.createdAt || '未提供'}` }
       ]
     }
   },
@@ -87,6 +89,7 @@ export default {
     parity(value) { return { ALL: '全周', ODD: '单周', EVEN: '双周' }[value] || '单双周待确认' },
     stageClass(index) { return { 'is-done': index < this.stageIndex, 'is-active': index === this.stageIndex } },
     stageNote(index) {
+      if (this.cancelled) return index < 4 ? '历史申请记录' : index === 4 ? '已撤销，流程结束' : '未生效，不再继续办理'
       if (index < this.stageIndex) return '已由正式状态确认'
       if (index === this.stageIndex) return '当前办理阶段'
       return '等待前序完成'
