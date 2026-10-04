@@ -36,6 +36,10 @@
             开课责任学院
             <AppCollegePicker v-model="gen.collegeId" placeholder="选择负责开课与学院确认的学院" :disabled="generating" data-scope-hint="按当前授权范围选择开课责任学院" />
           </label>
+          <label class="aa-cal-form__item">
+            行政班（可选）
+            <AppClassPicker v-model="gen.classId" placeholder="选择行政班，仅补生成该班" :disabled="generating || !gen.collegeId" data-scope-hint="请选当前开课学院的行政班；留空按全院生成" />
+          </label>
           <label class="aa-cal-form__item aa-cal-form__item--grow">
             批次名称
             <input v-model.trim="gen.batchName" class="aa-input" placeholder="选填，如 2026秋教学任务" maxlength="50" :disabled="generating" />
@@ -43,7 +47,7 @@
           <AppButton variant="primary" :disabled="!gen.termId || !gen.collegeId" :loading="generating" @click="doGenerate">生成并检查</AppButton>
         </div>
         <AppInlineAlert v-if="genError" type="danger" :description="genError" />
-        <p class="mp-note">一个批次明确一个开课责任学院，由该学院落实教师与学院确认，再交校教务终审。系统只生成该学院当前学期应开的课程；无法解析培养方案或年级关系时会说明未生成原因。教学周数以正式校历为准，未维护时不会猜测生成。</p>
+        <p class="mp-note">一个批次明确一个开课责任学院，由该学院落实教师与学院确认，再交校教务终审。行政班留空按全院生成；选择班级时仅为该班补生成新任务。无法解析培养方案或年级关系时会说明未生成原因。教学周数以正式校历为准，未维护时不会猜测生成。</p>
       </AppSectionCard>
 
       <section class="task-batch-filters">
@@ -101,7 +105,7 @@
 <script>
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppTermEntityPicker, AppCollegePicker, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppTermEntityPicker, AppCollegePicker, AppClassPicker, AppInlineAlert } from '@/components/common'
 import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_BATCH_STATUS, taskBatchColor } from '@/modules/academicAffairs/constants/teaching'
 import AaTeachingClassListView from './AaTeachingClassListView.vue'
@@ -116,7 +120,7 @@ import { isDeniedResult, isConflictResult } from '../components/parallel-a/resul
 
 export default {
   name: 'AaTaskBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppTermEntityPicker, AppCollegePicker, AppInlineAlert, AaTeachingClassListView, AaTeachingClassDetailView, AaOperationReceipt, AaTeachingTaskStageRail },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppTermEntityPicker, AppCollegePicker, AppClassPicker, AppInlineAlert, AaTeachingClassListView, AaTeachingClassDetailView, AaOperationReceipt, AaTeachingTaskStageRail },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -126,7 +130,7 @@ export default {
       revision: 0, receipt: null,
       showGen: false,
       generating: false, generateSeq: 0, collegeSeq: 0, genError: '',
-      gen: { termId: '', collegeId: '', batchName: '' },
+      gen: { termId: '', collegeId: '', classId: '', batchName: '' },
       filters: { termId: '', status: '' },
       keyword: '',
       batchStatuses: TASK_BATCH_STATUS,
@@ -169,7 +173,8 @@ export default {
   },
   watch: {
     '$route.fullPath'() { this.restoreFilters(); if (this.workspaceMode === 'tasks') this.load() },
-    generationContext() { this.revision++; this.generateSeq++; this.collegeSeq++; this.generating = false; this.genError = ''; this.rows = []; this.receipt = null; this.showGen = false; this.gen = { termId: '', collegeId: '', batchName: '' }; if (this.workspaceMode === 'tasks') this.load() },
+    generationContext() { this.revision++; this.generateSeq++; this.collegeSeq++; this.generating = false; this.genError = ''; this.rows = []; this.receipt = null; this.showGen = false; this.gen = { termId: '', collegeId: '', classId: '', batchName: '' }; if (this.workspaceMode === 'tasks') this.load() },
+    'gen.collegeId'(next, previous) { if (next !== previous) this.gen.classId = '' },
     showGen(value) { if (value) this.prefillCollege() },
     '$route.query.open'(value) { this.showGen = value === 'generate' },
     workspaceMode(value) {
@@ -214,12 +219,14 @@ export default {
       if (!this.canManage || this.generating) return
       this.genError = ''
       if (!this.gen.termId || !this.gen.collegeId) { this.genError = '请选择学期与开课责任学院'; return }
+      const classId = this.gen.classId == null ? '' : this.gen.classId
+      if (classId !== '' && (typeof classId !== 'string' || !/^[1-9]\d*$/.test(classId))) { this.genError = '请重新选择有效行政班'; return }
       this.generating = true
       const termId = String(this.gen.termId), collegeId = String(this.gen.collegeId), context = this.generationContext, seq = ++this.generateSeq
       const valid = () => !this.disposed && seq === this.generateSeq && context === this.generationContext
       this.receipt = { object: `学期 #${termId}`, status: '结果待确认', pending: true, next: '生成后查询正式批次；请勿重复提交。' }
       try {
-        const res = await academicAffairsApi.generateTaskBatch({ termId, collegeId, batchName: this.gen.batchName || undefined })
+        const res = await academicAffairsApi.generateTaskBatch({ termId, collegeId, batchName: this.gen.batchName || undefined, ...(classId ? { classId } : {}) })
         if (!valid()) return
         if (res.code !== 0) { this.handleFailure(res, '生成失败，请核对培养方案和学期配置'); return }
         const batchId = res.data?.batchId
@@ -230,13 +237,13 @@ export default {
         const batch = readback.data
         const confirmed = String(batch?.termId) === termId && String(batch?.collegeId) === collegeId && String(batch?.batchId) === String(batchId)
         this.receipt = { object: `${batch?.batchName || '教学任务批次'} · #${batchId}`, status: confirmed ? TASK_BATCH_STATUS[batch.status] || '状态待确认' : '结果待确认', pending: !confirmed, time: batch?.generatedAt, next: confirmed ? batch.nextAction?.label || '进入批次核对任务与阻断项，再分配教师。' : '返回批次列表核对，不要重复生成。' }
-        if (confirmed) { this.showGen = false; this.gen = { termId: '', collegeId: '', batchName: '' }; await this.load() }
+        if (confirmed) { this.showGen = false; this.gen = { termId: '', collegeId: '', classId: '', batchName: '' }; await this.load() }
       } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请查询学期正式批次，不要重复生成。') }
       finally { if (valid()) this.generating = false }
     },
     handleFailure(result, fallback) {
       this.error = result?.message || fallback
-      if (isDeniedResult(result)) { this.revision++; this.generateSeq++; this.collegeSeq++; this.generating = false; this.loading = false; this.rows = []; this.receipt = null; this.gen = { termId: '', collegeId: '', batchName: '' }; this.showGen = false }
+      if (isDeniedResult(result)) { this.revision++; this.generateSeq++; this.collegeSeq++; this.generating = false; this.loading = false; this.rows = []; this.receipt = null; this.gen = { termId: '', collegeId: '', classId: '', batchName: '' }; this.showGen = false }
       else if (isConflictResult(result)) this.receipt = { object: `学期 #${this.gen.termId}`, status: '事实已变化，保留输入', pending: true, next: '核对已发布方案和年级绑定后再生成。' }
     },
     async load() {

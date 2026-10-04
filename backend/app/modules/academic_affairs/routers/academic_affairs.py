@@ -1150,6 +1150,7 @@ class TaskBatchGenerate(BaseModel):
     termId: str = Field(..., min_length=1)
     collegeId: Optional[str] = None
     batchName: Optional[str] = None
+    classId: Optional[str] = Field(None, strict=True, pattern=r"^[1-9][0-9]*$")
 
 
 class AssignBody(BaseModel):

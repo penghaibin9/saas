@@ -54,7 +54,7 @@ test('实际表单复用学院选择器，缺学院禁用生成，办理中冻�
   const renderForm = generating => renderToString(Vue.createSSRApp({
     data: () => ({ showGen: true, canManage: true, generating, genError: '', gen: { termId: '52', collegeId: '', batchName: '' } }),
     methods: { doGenerate() {} }, render,
-    components: { AppSectionCard: { setup: (_, { slots }) => () => Vue.h('section', slots.default?.()) }, AppCollegePicker: field, AppTermEntityPicker: field, AppButton: { props: ['disabled'], setup: (props, { slots }) => () => Vue.h('button', { disabled: props.disabled }, slots.default?.()) }, AppInlineAlert: { render: () => null } }
+    components: { AppSectionCard: { setup: (_, { slots }) => () => Vue.h('section', slots.default?.()) }, AppCollegePicker: field, AppClassPicker: field, AppTermEntityPicker: field, AppButton: { props: ['disabled'], setup: (props, { slots }) => () => Vue.h('button', { disabled: props.disabled }, slots.default?.()) }, AppInlineAlert: { render: () => null } }
   }))
   const idle = await renderForm(false)
   assert.match(idle, /开课责任学院/)
@@ -63,6 +63,41 @@ test('实际表单复用学院选择器，缺学院禁用生成，办理中冻�
   const pending = await renderForm(true)
   assert.match(pending, /<input[^>]*disabled[^>]*placeholder="选择学期"/)
   assert.match(pending, /<input[^>]*disabled[^>]*placeholder="选择负责开课与学院确认的学院"/)
+})
+
+test('生成表单使用可选行政班选择器，学院变化清除旧班级', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaTaskBatchListView.vue', import.meta.url), 'utf8')
+  const template = source.match(/<AppSectionCard v-if="showGen && canManage"[\s\S]*?<\/AppSectionCard>/)[0]
+  const render = new Function('Vue', compile(template, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const field = { props: ['modelValue', 'disabled', 'placeholder'], setup: props => () => Vue.h('input', { value: props.modelValue, disabled: props.disabled, placeholder: props.placeholder }) }
+  const renderForm = (collegeId, generating) => renderToString(Vue.createSSRApp({
+    data: () => ({ showGen: true, canManage: true, generating, genError: '', gen: { termId: '52', collegeId, classId: '', batchName: '' } }),
+    methods: { doGenerate() {} }, render,
+    components: { AppSectionCard: { setup: (_, { slots }) => () => Vue.h('section', slots.default?.()) }, AppCollegePicker: field, AppClassPicker: field, AppTermEntityPicker: field, AppButton: { props: ['disabled'], setup: (props, { slots }) => () => Vue.h('button', { disabled: props.disabled }, slots.default?.()) }, AppInlineAlert: { render: () => null } }
+  }))
+  const noCollege = await renderForm('', false)
+  assert.match(noCollege, /行政班（可选）/)
+  assert.match(noCollege, /留空按全院生成/)
+  assert.match(noCollege, /<input[^>]*disabled[^>]*placeholder="选择行政班，仅补生成该班"/)
+  const pending = await renderForm(batch.collegeId, true)
+  assert.match(pending, /<input[^>]*disabled[^>]*placeholder="选择行政班，仅补生成该班"/)
+  const { state, definition } = instance()
+  state.gen.collegeId = batch.collegeId; state.gen.classId = '4666'
+  definition.watch['gen.collegeId'].call(state, '99', batch.collegeId)
+  assert.equal(state.gen.classId, '')
+})
+
+test('未选班保持全院合同，选班仅发送原样字符串，冲突保留班级输入', async () => {
+  const writes = []
+  const { state } = instance({ generateTaskBatch: async body => { writes.push(body); return { code: 409001, message: '目标批次已存在' } } })
+  state.gen = { termId: '52', collegeId: batch.collegeId, classId: '', batchName: '全院任务' }
+  await state.doGenerate()
+  assert.equal(Object.hasOwn(writes[0], 'classId'), false)
+  state.gen.classId = '9007199254740993'
+  await state.doGenerate()
+  assert.equal(writes[1].classId, '9007199254740993')
+  assert.equal(state.gen.classId, '9007199254740993')
+  assert.equal(state.receipt.status, '事实已变化，保留输入')
 })
 
 test('仅真实单院范围且正式分页确认唯一学院时回填，不从不完整候选猜归属', async () => {

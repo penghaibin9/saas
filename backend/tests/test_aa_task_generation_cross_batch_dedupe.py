@@ -1,6 +1,13 @@
 """跨已完成批次补生成课程时不得重复建立同一学期课程任务。"""
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+from types import SimpleNamespace
+from typing import Optional
+
+import pytest
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy.dialects import mysql
 
 from app.models import AaProgramCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm, Tenant
@@ -216,3 +223,173 @@ def test_locked_term_refreshes_identity_map_after_concurrent_archive(db_mode, mo
         assert locked.status == "ARCHIVED"
     finally:
         reader.close()
+
+
+def test_generation_class_id_preserves_large_string_and_rejects_invalid_values():
+    # Execute the actual DTO without importing router registrations or DB fixtures.
+    source = Path(__file__).parents[1] / "app/modules/academic_affairs/routers/academic_affairs.py"
+    tree = ast.parse(source.read_text(encoding="utf-8-sig"))
+    definition = next(node for node in tree.body if isinstance(node, ast.ClassDef) and node.name == "TaskBatchGenerate")
+    namespace = {"BaseModel": BaseModel, "Field": Field, "Optional": Optional}
+    exec(compile(ast.Module(body=[definition], type_ignores=[]), str(source), "exec"), namespace)
+    model = namespace["TaskBatchGenerate"]
+    identity = "9007199254740993"
+    assert model(termId="52", classId=identity).classId == identity
+    assert model(termId="52").classId is None
+    assert model(termId="52", classId=None).classId is None
+    for invalid in ("", "0", "01", "-1", "1.5", " 1", "1\n", "１", True, 1):
+        with pytest.raises(ValidationError):
+            model(termId="52", classId=invalid)
+
+
+def test_requested_generation_class_is_tenant_college_scoped_and_locked(monkeypatch):
+    row = SimpleNamespace(id=9007199254740993)
+
+    class Capture:
+        statement = None
+
+        def scalars(self, statement):
+            self.statement = statement
+            return SimpleNamespace(first=lambda: row)
+
+    db = Capture()
+    monkeypatch.setattr(generation, "_tid", lambda: TID)
+    assert generation._requested_generation_class(db, str(row.id), 128) is row
+    sql = str(db.statement.compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True}))
+    assert "t_class.id = 9007199254740993" in sql
+    for table in ("t_class", "t_major", "t_college"):
+        assert f"{table}.tenant_id = {TID}" in sql
+        assert f"{table}.is_deleted IS false" in sql
+        assert f"{table}.status = 'ACTIVE'" in sql
+    assert "t_class.class_status = 'NORMAL'" in sql
+    assert "t_major.college_id = 128" in sql
+    assert "FOR UPDATE" in sql
+    assert generation._requested_generation_class(db, None, 128) is None
+    db.scalars = lambda _statement: SimpleNamespace(first=lambda: None)
+    from app.core.exceptions import AppException
+    with pytest.raises(AppException) as rejected:
+        generation._requested_generation_class(db, "4670", 128)
+    assert rejected.value.code == "NO_DATA_SCOPE"
+    for invalid in ("", "0", "-1", "1.5", True, 1):
+        with pytest.raises(AppException) as invalid_id:
+            generation._requested_generation_class(db, invalid, 128)
+        assert invalid_id.value.code == "VALIDATION_ERROR"
+
+
+def _scoped_generation_story(client, db_mode, monkeypatch):
+    """Old duplicate pairs coexist with an independent, formally bound new class."""
+    from app.core.config import settings
+    from app.core.tenant_context import invalidate_tenant_cache
+    from app.db.session import get_sessionmaker
+    from app.models import Major, SchoolClass
+
+    monkeypatch.setattr(settings, "MOCK_LOGIN_ENABLED", "true")
+    monkeypatch.setattr(settings, "DEMO_TENANT_READONLY", "false")
+    ids = _seed(db_mode, grade="2026", two=True)
+    old_task_ids = []
+    with get_sessionmaker()() as db:
+        if db.get(Tenant, TID) is None:
+            db.add(Tenant(id=TID, tenant_code="demo", school_name="班级生成回归学校", status="ACTIVE"))
+            db.commit()
+    invalidate_tenant_cache("demo")
+    school = _hdr(client, "school_admin01")
+    course_id = int(_enabled_course(client, school, code="TGCS101", name="独立选修课"))
+    college_id = int(ensure_course_review_college())
+    with get_sessionmaker()() as db:
+        db.get(Major, ids["major"]).college_id = college_id
+        db.commit()
+    program_id = _program(client, school, major_id=ids["major"], grade_year="2026", total_credits=4,
+                          courses=[(course_id, "独立选修课", 4, 1)],
+                          bindings=[("2026", ids["class1"]), ("2026", ids["class2"])], name="独立班级选课方案")
+    term_id = int(_term(client, school, year_code="2026-2027", term_no=1))
+    outside = _seed(db_mode, grade="2026")
+    with get_sessionmaker()() as db:
+        source = db.query(AaProgramCourse).filter(AaProgramCourse.tenant_id == TID,
+                                                 AaProgramCourse.program_id == int(program_id)).one()
+        source.formation_mode = "SELECTABLE"
+        for number in range(2):
+            batch = AaTeachingTaskBatch(tenant_id=TID, term_id=term_id, college_id=college_id,
+                                        batch_name=f"保留历史批次{number}", status="APPROVED")
+            db.add(batch); db.flush()
+            task = AaTeachingTask(tenant_id=TID, batch_id=batch.id, course_id=course_id,
+                                  class_id=ids["class1"], source_program_course_id=source.id,
+                                  formation_mode="SELECTABLE", status="READY")
+            db.add(task); db.flush()
+            old_task_ids.append(int(task.id))
+        foreign = SchoolClass(tenant_id=TID + 1, major_id=ids["major"], class_name="其它租户班", grade="2026", status="ACTIVE")
+        db.add(foreign); db.flush()
+        foreign_id = int(foreign.id)
+        unbound = SchoolClass(tenant_id=TID, major_id=ids["major"], class_name="无绑定独立班", grade="2026", status="ACTIVE")
+        db.add(unbound); db.flush()
+        unbound_id = int(unbound.id)
+        source_id = int(source.id)
+        db.commit()
+    return {**ids, "term": term_id, "owner": college_id, "course": course_id,
+            "outside": outside["class"], "foreign": foreign_id, "unbound": unbound_id,
+            "oldTasks": old_task_ids, "source": source_id, "header": school}
+
+
+def _generation_counts(term_id):
+    from app.db.session import get_sessionmaker
+    with get_sessionmaker()() as db:
+        batches = db.query(AaTeachingTaskBatch.id).filter(AaTeachingTaskBatch.tenant_id == TID,
+                                                          AaTeachingTaskBatch.term_id == term_id).all()
+        tasks = db.query(AaTeachingTask.id).filter(AaTeachingTask.tenant_id == TID,
+                                                   AaTeachingTask.batch_id.in_([row[0] for row in batches])).all()
+        return len(batches), len(tasks)
+
+
+def test_class_scoped_generation_preserves_old_duplicates_and_is_idempotent(client, db_mode, monkeypatch):
+    story = _scoped_generation_story(client, db_mode, monkeypatch)
+    body = {"termId": str(story["term"]), "collegeId": str(story["owner"]), "classId": str(story["class2"])}
+    first = client.post(f"{BASE}/teaching-task-batches/generate", headers=story["header"], json=body)
+    assert first.status_code == 200, first.text
+    assert first.json()["data"]["tasksGenerated"] == 1
+    batch_id = first.json()["data"]["batchId"]
+    tasks = _tasks(client, story["header"], batch_id)
+    assert len(tasks) == 1
+    assert str(tasks[0]["classId"]) == str(story["class2"])
+    assert str(tasks[0]["courseId"]) == str(story["course"])
+    assert _generation_counts(story["term"]) == (3, 3)
+    again = client.post(f"{BASE}/teaching-task-batches/generate", headers=story["header"], json=body)
+    assert again.status_code == 200, again.text
+    assert again.json()["data"]["batchId"] == batch_id
+    assert again.json()["data"]["tasksGenerated"] == 0
+    assert _generation_counts(story["term"]) == (3, 3)
+    from app.db.session import get_sessionmaker
+    with get_sessionmaker()() as db:
+        old = db.query(AaTeachingTask).filter(AaTeachingTask.tenant_id == TID,
+                                               AaTeachingTask.id.in_(story["oldTasks"])).all()
+        assert len(old) == 2
+        assert all(row.status == "READY" and row.class_id == story["class1"]
+                   and row.source_program_course_id == story["source"] for row in old)
+        generated = db.get(AaTeachingTask, int(tasks[0]["taskId"]))
+        assert generated.formation_mode == "SELECTABLE"
+        assert generated.source_program_course_id == story["source"]
+
+
+def test_target_duplicates_and_unscoped_generation_still_conflict_without_writes(client, db_mode, monkeypatch):
+    story = _scoped_generation_story(client, db_mode, monkeypatch)
+    for target in (None, story["class1"]):
+        body = {"termId": str(story["term"]), "collegeId": str(story["owner"])}
+        if target is not None:
+            body["classId"] = str(target)
+        response = client.post(f"{BASE}/teaching-task-batches/generate", headers=story["header"], json=body)
+        assert response.status_code == 409, response.text
+        assert response.json()["details"]["blocker"] == "TASK_GENERATION_EXISTING_TASK_CONFLICT"
+        assert _generation_counts(story["term"]) == (2, 2)
+
+
+def test_generation_rejects_foreign_and_other_college_classes_without_writes(client, db_mode, monkeypatch):
+    story = _scoped_generation_story(client, db_mode, monkeypatch)
+    for target in (story["foreign"], story["outside"]):
+        response = client.post(f"{BASE}/teaching-task-batches/generate", headers=story["header"],
+                               json={"termId": str(story["term"]), "collegeId": str(story["owner"]), "classId": str(target)})
+        assert response.status_code == 403, response.text
+        assert response.json()["bizCode"] == "NO_DATA_SCOPE"
+        assert _generation_counts(story["term"]) == (2, 2)
+    missing_binding = client.post(f"{BASE}/teaching-task-batches/generate", headers=story["header"],
+                                  json={"termId": str(story["term"]), "collegeId": str(story["owner"]), "classId": str(story["unbound"])})
+    assert missing_binding.status_code == 409, missing_binding.text
+    assert missing_binding.json()["bizCode"] == "PROGRAM_NOT_READY"
+    assert _generation_counts(story["term"]) == (2, 2)

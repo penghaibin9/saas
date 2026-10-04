@@ -313,6 +313,33 @@ def _locked_term_statement(term_id: int):
     )
 
 
+def _requested_generation_class(db, class_id, college_id):
+    """An explicit target narrows generation; invalid targets never mean all classes."""
+    if class_id is None:
+        return None
+    if not isinstance(class_id, str) or not re.fullmatch(r"[1-9][0-9]*", class_id):
+        raise AppException("VALIDATION_ERROR", "行政班编号必须为正整数字符串")
+    try:
+        identity = int(class_id)
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", "行政班编号无效") from None
+    from app.models import College, Major, SchoolClass
+
+    target = db.scalars(select(SchoolClass).join(
+        Major, Major.id == SchoolClass.major_id,
+    ).join(College, College.id == Major.college_id).where(
+        SchoolClass.id == identity, SchoolClass.tenant_id == _tid(),
+        SchoolClass.is_deleted.is_(False), SchoolClass.status == "ACTIVE",
+        SchoolClass.class_status == "NORMAL",
+        Major.tenant_id == _tid(), Major.is_deleted.is_(False), Major.status == "ACTIVE",
+        Major.college_id == college_id,
+        College.tenant_id == _tid(), College.is_deleted.is_(False), College.status == "ACTIVE",
+    ).with_for_update()).first()
+    if target is None:
+        raise AppException("NO_DATA_SCOPE", "该行政班不存在或不在当前开课学院的有效班级范围内", http_status=403)
+    return target
+
+
 def generate_batch_tx(db, body, user) -> dict:
     term_id = int(body.termId)
 
@@ -333,6 +360,7 @@ def generate_batch_tx(db, body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "学期不存在，无法生成教学任务")
     if str(term.status or "").upper() == "ARCHIVED":
         raise AppException("TERM_ARCHIVED", "该学期已归档封存，禁止修改", http_status=409)
+    target_class = _requested_generation_class(db, getattr(body, "classId", None), college_id)
     teaching_weeks, week_source = resolve_teaching_weeks(db, term_id)
     conditions = _editable_batch_conditions(AaTeachingTaskBatch, term_id, college_id)
     candidates = db.scalars(
@@ -398,7 +426,15 @@ def generate_batch_tx(db, body, user) -> dict:
         if not courses:
             continue
         for binding in bindings:
-            if binding.class_id:
+            if target_class is not None:
+                if binding.class_id:
+                    if int(binding.class_id) != int(target_class.id):
+                        continue
+                elif (int(binding.major_id or 0) != int(target_class.major_id)
+                      or str(binding.grade_year or "") != str(target_class.grade or "")):
+                    continue
+                target_classes = [target_class]
+            elif binding.class_id:
                 target_classes = [tenant_get(db, SchoolClass, int(binding.class_id), tenant_id=_tid())]
             else:
                 target_classes = db.scalars(select(SchoolClass).where(
@@ -489,6 +525,12 @@ def generate_batch_tx(db, body, user) -> dict:
                         start_week=1, end_week=teaching_weeks, status="PENDING_ASSIGN",
                     ))
                     made += 1
+
+    if target_class is not None and not expected_pairs:
+        raise AppException(
+            "PROGRAM_NOT_READY", "该行政班没有适用于本学期的生效方案课程，不能生成教学任务",
+            http_status=409,
+        )
 
     if (
         made == 0
