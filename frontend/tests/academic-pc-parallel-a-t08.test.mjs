@@ -40,6 +40,40 @@ test('教师确认页读取非空任务后提供可渲染的中文状态',async(
 })
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}}
 
+test('学院确认后学校终审，刷新清除旧办理回执并显示当前就绪任务', async () => {
+  let writes = 0, formalStatus = 'DRAFT'
+  const vm = instance('AaTaskDetailView', {
+    teachingTaskWorkbenchApi: { getBatch: async () => ok({ batchId: 'a', status: formalStatus, actions: { canCollegeConfirm: formalStatus === 'DRAFT' } }) },
+    academicAffairsApi: {
+      collegeConfirmTaskBatch: async () => { writes++; formalStatus = 'COLLEGE_CONFIRMED'; return ok({}) },
+      getBatchTasks: async () => page([{ taskId: 'x', status: formalStatus === 'APPROVED' ? 'READY' : 'TEACHER_CONFIRMED' }])
+    }
+  })
+  vm.loading = false; vm.workbench = { batchId: 'a', status: 'DRAFT', actions: { canCollegeConfirm: true } }
+  await vm.collegeConfirm()
+  assert.equal(vm.receipt.pending, false); assert.match(vm.receipt.next, /终审/)
+  formalStatus = 'APPROVED'
+  await vm.load()
+  assert.equal(vm.workbench.status, 'APPROVED'); assert.equal(vm.rows[0].status, 'READY')
+  assert.equal(vm.receipt, null); assert.equal(writes, 1)
+})
+
+test('学院确认同轮回读已终审，下一步依据正式状态指向排课', async () => {
+  let writes = 0
+  const vm = instance('AaTaskDetailView', {
+    teachingTaskWorkbenchApi: { getBatch: async () => ok({ batchId: 'a', status: writes ? 'APPROVED' : 'DRAFT', actions: { canCollegeConfirm: !writes } }) },
+    academicAffairsApi: {
+      collegeConfirmTaskBatch: async () => { writes++; return ok({}) },
+      getBatchTasks: async () => page([{ taskId: 'x', status: 'READY' }])
+    }
+  })
+  vm.loading = false; vm.workbench = { batchId: 'a', status: 'DRAFT', actions: { canCollegeConfirm: true } }
+  await vm.collegeConfirm()
+  assert.equal(vm.pendingResult, null); assert.equal(vm.receipt.pending, false)
+  assert.match(vm.receipt.next, /进入排课/); assert.doesNotMatch(vm.receipt.next, /终审/)
+  assert.equal(writes, 1)
+})
+
 test('T08 identity switch during batch precheck prevents command under the new identity',async()=>{
   const response=deferred();let writes=0
   const vm=instance('AaTaskDetailView',{teachingTaskWorkbenchApi:{getBatch:()=>response.promise},academicAffairsApi:{collegeConfirmTaskBatch:async()=>{writes++}}})

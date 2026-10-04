@@ -409,7 +409,7 @@ export default {
     },
     async collegeConfirm() {
       const id = this.batchId
-      await this.runAction('canCollegeConfirm', () => academicAffairsApi.collegeConfirmTaskBatch(id), () => ['COLLEGE_CONFIRMED', 'APPROVED'].includes(this.workbench.status) ? TASK_BATCH_STATUS[this.workbench.status] : '', '由教务核对批次正式状态后终审。')
+      await this.runAction('canCollegeConfirm', () => academicAffairsApi.collegeConfirmTaskBatch(id), () => ['COLLEGE_CONFIRMED', 'APPROVED'].includes(this.workbench.status) ? TASK_BATCH_STATUS[this.workbench.status] : '', () => this.workbench.status === 'APPROVED' ? '正式就绪任务可进入排课；名单仍以教学班正式版本为准。' : '由教务核对批次正式状态后终审。')
     },
     openApprove() { if (!this.pendingResult && !this.acting) this.review = { visible: true, action: 'APPROVE', reason: '', invalid: false } },
     openReturn() { if (!this.pendingResult && !this.acting) this.review = { visible: true, action: 'RETURN', reason: this.review.action === 'RETURN' ? this.review.reason : '', invalid: false } },
@@ -490,7 +490,7 @@ export default {
       const status = await pending.confirmedStatus()
       if (!current() || this.pendingResult !== pending) return
       const confirmed = Boolean(pending.acknowledged && status)
-      this.receipt = { object: pending.object, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? pending.next : status ? `当前正式状态：${status}。原请求应答未确认，不能认定是本次办理结果；请联系负责学院核对，不会重提。` : '尚未读到相应正式状态。只查询原办理结果，不会重复提交；请联系负责学院核对。' }
+      this.receipt = { object: pending.object, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? (typeof pending.next === 'function' ? pending.next() : pending.next) : status ? `当前正式状态：${status}。原请求应答未确认，不能认定是本次办理结果；请联系负责学院核对，不会重提。` : '尚未读到相应正式状态。只查询原办理结果，不会重复提交；请联系负责学院核对。' }
       if (confirmed) this.clearPending()
     },
     async queryPendingResult() {
@@ -523,6 +523,7 @@ export default {
         if (taskRes?.code !== 0) { this.handleFailure(taskRes, '任务明细加载失败'); return false }
         if (!Array.isArray(taskRes.data?.list) || !Number.isInteger(taskRes.data?.total)) { this.handleFailure({ message: '任务列表未完整返回，请刷新核对。' }); return false }
         this.workbench = workbenchRes.data || {}; this.rows = taskRes.data.list; this.pagination.total = taskRes.data.total
+        if (!this.pendingResult && this.receipt && !this.receipt.pending) this.receipt = null
         return true
       } catch (error) { if (current()) this.handleFailure(error, '网络连接失败，请重试。'); return false }
       finally { if (current()) this.loading = false }
