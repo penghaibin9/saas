@@ -146,6 +146,60 @@ def _summary(client, facts, batch_id):
     return response.json()["data"]
 
 
+@pytest.mark.parametrize("cross_batch_college", [False, True], ids=["same-college", "different-batch-college"])
+def test_duplicate_ready_tasks_require_source_review_even_when_both_fully_scheduled(client, db_mode, cross_batch_college):
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingClass, AaTeachingClassTeacher, AaTeachingTask, AaTeachingTaskBatch
+
+    facts = _facts(client)
+    batch_id = _candidate(client, facts, 0, pre_publish=False)
+    original_fact = facts["tasks"][0]
+    # 隔离回归初始事实：复现旧数据中的同课程同班跨批次重复任务。
+    with get_sessionmaker()() as db:
+        original = db.get(AaTeachingTask, int(original_fact["taskId"]))
+        duplicate_batch = AaTeachingTaskBatch(tenant_id=TID, term_id=facts["termId"],
+            college_id=int(facts["tasks"][1]["collegeId"] if cross_batch_college else original_fact["collegeId"]),
+            batch_name="重复来源回归批次", status="APPROVED")
+        db.add(duplicate_batch); db.flush()
+        duplicate = AaTeachingTask(tenant_id=TID, batch_id=duplicate_batch.id,
+            course_id=original.course_id, source_program_course_id=original.source_program_course_id,
+            class_id=original.class_id, course_name=original.course_name,
+            teacher_key=original.teacher_key, teacher_name=original.teacher_name,
+            status="READY", weekly_hours=1, total_hours=18, start_week=1, end_week=18)
+        db.add(duplicate); db.flush()
+        teaching_class = AaTeachingClass(tenant_id=TID, teaching_task_id=duplicate.id,
+            term_id=facts["termId"], course_id=duplicate.course_id,
+            class_code="V5-DUPLICATE-TC", class_name="重复来源回归教学班", status="ACTIVE")
+        db.add(teaching_class); db.flush()
+        original_class = db.query(AaTeachingClass).filter(AaTeachingClass.tenant_id == TID,
+            AaTeachingClass.teaching_task_id == original.id).one()
+        relation = db.query(AaTeachingClassTeacher).filter(AaTeachingClassTeacher.tenant_id == TID,
+            AaTeachingClassTeacher.teaching_class_id == original_class.id).one()
+        db.add(AaTeachingClassTeacher(tenant_id=TID, teaching_class_id=teaching_class.id,
+            teacher_id=relation.teacher_id, teacher_key=relation.teacher_key, teacher_name=relation.teacher_name,
+            role_type="PRIMARY", start_week=1, end_week=18, status="ACTIVE"))
+        duplicate_id = str(duplicate.id)
+        db.commit()
+    response = _item(client, facts["school"], batch_id,
+        **{key: value for key, value in {**original_fact, "taskId": duplicate_id}.items() if key != "collegeId"},
+        weekday=3, classroom="发布测试教室0")
+    assert response.status_code == 200, response.text
+    summary = _summary(client, facts, batch_id)
+    assert summary["scheduledContactHours"] == summary["expectedContactHours"] == 36
+    assert summary["missingContactHours"] == summary["excessContactHours"] == 0
+    assert summary["complete"] is False and summary["canPrePublish"] is False
+    assert summary["duplicateTaskGroupCount"] == 1
+    assert {row["taskId"] for row in summary["taskQueue"]} == {original_fact["taskId"], duplicate_id}
+    assert len(summary["taskQueue"]) == 2
+    assert all(row["issueType"] == "SOURCE_CONFLICT" and row["canSchedule"] is False for row in summary["taskQueue"])
+    assert summary["workflow"]["nextAction"]["code"] == "TEACHING_TASKS"
+    before = _snapshot(facts)
+    response = client.post(f"{BASE}/schedule-batches/{batch_id}/pre-publish", headers=facts["school"])
+    assert response.status_code == 409, response.text
+    assert response.json()["details"]["duplicateTaskGroupCount"] == 1
+    assert _snapshot(facts) == before
+
+
 def _snapshot(facts):
     """失败发布不能留下正式头、业务发布流水、状态或成功审计的半截事实。"""
     from app.db.session import get_sessionmaker

@@ -355,7 +355,8 @@ def _pending_teacher_count(tasks):
         or task.status in {"PENDING_ASSIGN", "ASSIGNED", "REJECTED_BY_TEACHER"} for task in tasks)
 
 
-def evaluate_teaching_task(db, term_id, *, college_ids=None, major_ids=None, cache=None) -> dict:
+def evaluate_teaching_task(db, term_id, *, college_ids=None, major_ids=None, cache=None,
+                           include_duplicate_groups=False) -> dict:
     from sqlalchemy import select
     from app.models import AaCourse, AaTeachingClass, AaTeachingTask, AaTeachingTaskBatch, AaTerm
 
@@ -487,7 +488,7 @@ def evaluate_teaching_task(db, term_id, *, college_ids=None, major_ids=None, cac
         *[{"type": "MISSING_TASK", **item} for item in missing[:20]],
         *duplicate[:20], *extra[:20], *unconfirmed[:20], *no_teacher[:20], *unfinished_batches[:20],
     ]
-    return rule_result(
+    result = rule_result(
         "TEACHING_TASK",
         passed=not blockers,
         record_count=len(tasks),
@@ -500,6 +501,9 @@ def evaluate_teaching_task(db, term_id, *, college_ids=None, major_ids=None, cac
         ),
         evidence=evidence,
     )
+    result["duplicateTaskGroupCount"] = len(duplicate)
+    result["duplicateTaskGroups"] = duplicate if include_duplicate_groups else duplicate[:20]
+    return result
 
 
 def _weeks_overlap(left, right) -> bool:

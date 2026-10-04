@@ -69,8 +69,13 @@ def summary(user, batch_id):
 
         # 只在同一个事务里为闸门结果补充前 100 个可处理任务的展示字段，
         # 避免再次执行整套冲突/漏排计算导致工作台超时。
-        queue_source = [*result.get("missingTasks", []), *result.get("invalidTasks", [])]
+        duplicate_ids = {row["taskId"] for row in result.get("duplicateTasks", [])}
+        queue_source = list({row["taskId"]: row for row in [
+            *result.get("missingTasks", []), *result.get("invalidTasks", []),
+            *result.get("duplicateTasks", []),
+        ]}.values())
         queue_source.sort(key=lambda row: (
+            0 if row["taskId"] in duplicate_ids else 1,
             0 if int(row.get("scheduledSessions") or 0) == 0 else 1,
             str(row.get("courseName") or ""),
         ))
@@ -87,6 +92,7 @@ def summary(user, batch_id):
             actual = int(source.get("scheduledSessions") or 0)
             expected = int(source.get("expectedSessions") or source.get("weeklyHours") or 0)
             invalid = source in result.get("invalidTasks", [])
+            duplicate = source["taskId"] in duplicate_ids
             task_queue.append({
                 "taskId": source["taskId"],
                 "courseCode": getattr(task, "course_code", None),
@@ -106,9 +112,9 @@ def summary(user, batch_id):
                 **{key: source.get(key) for key in ("expectedContactHours", "scheduledContactHours",
                     "remainingContactHours", "missingContactHours", "excessContactHours",
                     "weeklyOverloadCount", "scheduledItemCount", "contactHourBasis")},
-                "issueType": "NOT_READY" if invalid else ("UNSCHEDULED" if actual == 0 else "PARTIAL"),
-                "issueLabel": "教学任务数据异常" if invalid else ("未排" if actual == 0 else "部分漏排"),
-                "canSchedule": not invalid and batch.status == "DRAFT",
+                "issueType": "SOURCE_CONFLICT" if duplicate else ("NOT_READY" if invalid else ("UNSCHEDULED" if actual == 0 else "PARTIAL")),
+                "issueLabel": "同课程同班任务重复，先核对开课来源" if duplicate else ("教学任务数据异常" if invalid else ("未排" if actual == 0 else "部分漏排")),
+                "canSchedule": not invalid and not duplicate and batch.status == "DRAFT",
             })
 
         pending_availability_count = db.query(AaTeacherAvailability).filter(
@@ -126,6 +132,8 @@ def summary(user, batch_id):
         ).count()
 
         blockers = []
+        if result.get("duplicateTaskGroupCount"):
+            blockers.append(f"{result['duplicateTaskGroupCount']} 组同课程同班任务重复，请先核对开课来源")
         if result["totalTasks"] == 0:
             blockers.append("本学期还没有 READY 教学任务")
         if result["invalidTaskCount"]:
@@ -147,7 +155,11 @@ def summary(user, batch_id):
         if batch.status == "PRE_PUBLISHED" and teacher_objection_count:
             blockers.append(f"{teacher_objection_count} 条教师异议待处理")
 
-        if batch.status in {"PUBLISHED", "SUPERSEDED", "ARCHIVED"}:
+        if result.get("duplicateTaskGroupCount") and batch.status in {"DRAFT", "PRE_PUBLISHED", "PUBLISHED"}:
+            current_stage_key = "PREPARE"
+            next_action = {"code": "TEACHING_TASKS", "label": "核对重复开课任务",
+                "description": "先回教学任务核对新旧来源承接；不能继续补排重复任务或删除已有教学历史"}
+        elif batch.status in {"PUBLISHED", "SUPERSEDED", "ARCHIVED"}:
             current_stage_key = "PUBLISH"
             if batch.status == "PUBLISHED" and not result["complete"]:
                 next_action = {

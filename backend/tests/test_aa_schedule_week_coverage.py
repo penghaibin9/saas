@@ -58,6 +58,40 @@ def test_two_future_rows_do_not_cover_full_term(monkeypatch):
     assert result["missingContactHours"] == 10
 
 
+@pytest.mark.parametrize("authoritative_count", [0, 1])
+def test_duplicate_task_gate_reuses_opening_reconciliation(monkeypatch, authoritative_count):
+    from app.modules.academic_affairs.services import academic_affairs_archive_rule_evaluator as evaluator
+
+    group = {"courseId": "10", "classId": "9", "taskIds": ["1", "2"]}
+    monkeypatch.setattr(evaluator, "evaluate_teaching_task", lambda *_args, **_kwargs: {
+        "duplicateTaskGroupCount": authoritative_count,
+        "duplicateTaskGroups": [group] if authoritative_count else [],
+    })
+    rows = [item(id=1), item(id=2, slot_no=2),
+            item(id=3, task_id=2, weekday=2), item(id=4, task_id=2, weekday=2, slot_no=2)]
+    result = evaluate(monkeypatch, [task(class_id=9), task(id=2, class_id=9)], rows)
+    assert result["scheduledContactHours"] == result["expectedContactHours"] == 72
+    assert result["missingContactHours"] == 0
+    assert result["complete"] is (authoritative_count == 0)
+    assert result["duplicateTaskGroupCount"] == authoritative_count
+    assert result["canPrePublish"] is (authoritative_count == 0)
+    assert {row["taskId"] for row in result["duplicateTasks"]} == ({"1", "2"} if authoritative_count else set())
+
+
+def test_same_course_in_different_classes_does_not_require_duplicate_reconciliation(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_archive_rule_evaluator as evaluator
+
+    def unexpected(*_args, **_kwargs):
+        pytest.fail("不同班级不应作为同班重复任务核对")
+
+    monkeypatch.setattr(evaluator, "evaluate_teaching_task", unexpected)
+    rows = [item(id=1), item(id=2, slot_no=2),
+            item(id=3, task_id=2, weekday=2), item(id=4, task_id=2, weekday=2, slot_no=2)]
+    result = evaluate(monkeypatch, [task(class_id=9), task(id=2, class_id=10)], rows)
+    assert result["complete"] is True
+    assert result["duplicateTaskGroupCount"] == 0
+
+
 @pytest.mark.parametrize("rows", [
     [item(1, 9), item(10, 18, id=2), item(1, 9, id=3, slot_no=2), item(10, 18, id=4, slot_no=2)],
     [item(1, 18, "ODD"), item(1, 18, "EVEN", id=2),

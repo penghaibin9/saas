@@ -189,7 +189,7 @@ export default {
     schoolGateReady() { return this.gate.summary?.schoolGate?.ready === true },
     contactGateReady() {
       const value = this.contactMetrics(this.gate.summary)
-      return value.known && value.expected === value.scheduled && value.missing === 0 && value.excess === 0 && value.overload === 0
+      return value.known && value.expected === value.scheduled && value.missing === 0 && value.excess === 0 && value.overload === 0 && !(this.gate.summary?.duplicateTaskGroupCount > 0)
     },
     schoolGateBlockers() { return this.schoolGateReasons(this.gate.summary) },
     gateActionReady() {
@@ -200,6 +200,7 @@ export default {
       const hours = this.contactMetrics(row)
       return [
         { label: '教学任务可排', ok: row.totalTasks > 0 && !row.invalidTaskCount, detail: `任务 ${row.totalTasks || 0} 个 · 配置异常 ${row.invalidTaskCount || 0} 个` },
+        { label: '开课来源无重复', ok: !(row.duplicateTaskGroupCount > 0), detail: `同课程同班任务重复 ${row.duplicateTaskGroupCount ?? '待核对'} 组；重复时先核对开课来源` },
         { label: '教学任务计划完整', ok: !row.missingTaskCount && !row.overScheduledTaskCount, detail: `漏排 ${row.missingTaskCount || 0} 个任务 · 超排 ${row.overScheduledTaskCount || 0} 个任务；课位按周次展开核对` },
         { label: '计划总学时完整', ok: hours.known && hours.expected === hours.scheduled && hours.missing === 0 && hours.excess === 0, detail: hours.known ? `计划 ${hours.expected} 学时 · 已排 ${hours.scheduled} 学时 · 缺 ${hours.missing} 学时 · 超 ${hours.excess} 学时` : '计划学时及周次覆盖待核对' },
         { label: '每周学时未超量', ok: hours.known && hours.overload === 0, detail: hours.known ? `周超量 ${hours.overload} 项；总学时达到仍须核对每周上限` : '每周学时上限待核对' },
@@ -405,6 +406,7 @@ export default {
         : '尚未取得全校发布核验结果，请重新检查；仅批次检查通过不能正式发布。']
     },
     gateFailureReason(summary, kind) {
+      if (summary?.duplicateTaskGroupCount > 0) return `存在 ${summary.duplicateTaskGroupCount} 组重复开课任务，请先到教学任务核对开课来源。`
       if (summary?.complete !== true) return '本批次发布条件尚未全部通过，请重新核对漏排、超排和课程冲突。'
       const hours = this.contactMetrics(summary)
       if (!hours.known) return '尚未取得计划总学时和每周学时核验结果，请重新检查。'

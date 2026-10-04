@@ -70,6 +70,25 @@ test('传统自动排课新增量是课位条数，分段漏排显示实际周�
   assert.match(state.autoMissText({ needSessions: 2, placedSessions: 1 }), /待核对/)
 })
 
+test('重复开课任务只提供教学任务核对入口，不引导补排或创建纠错草稿', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaSchedulingConsoleView.vue', import.meta.url), 'utf8')
+  const template = source.match(/<template #cell-ops="\{ row \}">([\s\S]*?)<\/template>/)[1]
+  const render = new Function('Vue', compile(template, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const component = page('AaSchedulingConsoleView')
+  let destination
+  const state = { ...component.methods, row: { taskId: '14944', classId: '4670', issueType: 'SOURCE_CONFLICT', canSchedule: true }, hasPublishedGap: true, canCorrectSchedule: true, workbench: { batchStatus: 'PUBLISHED' }, $router: { push: route => { destination = route } } }
+  const visible = { ...state }
+  delete visible.$router
+  const html = await renderToString(Vue.createSSRApp({ render, setup: () => visible }))
+  assert.match(html, /核对重复开课任务/)
+  assert.doesNotMatch(html, /去排课|创建草稿后补排/)
+  state.openTask(state.row)
+  assert.equal(destination, '/admin/academic-affairs/teaching-tasks')
+  destination = null
+  state.openCorrectionDraft(state.row)
+  assert.equal(destination, '/admin/academic-affairs/teaching-tasks')
+})
+
 test('新建课表须明确学院或全校范围，学院编号按字符串传递', async () => {
   const writes = []
   const component = page('AaScheduleBatchListView', { academicAffairsApi: { createScheduleBatch: async body => { writes.push(body); return { code: 0 } } }, toast: { success() {}, error() {} } })

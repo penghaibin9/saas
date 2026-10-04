@@ -41,6 +41,23 @@ test('新学时核验缺失或周超量时即使旧门禁通过仍不可发布',
   assert.match(state.commandError, /尚未取得计划总学时/)
 })
 
+test('重复开课组即使收到矛盾完整状态也不开放发布，重新回读同样阻断', async () => {
+  const conflict = { ...ready(), ...hours, duplicateTaskGroupCount: 1, duplicateTaskGroups: [{ courseId: '5324', classId: '4670', taskIds: ['14944', '14945'] }] }
+  let writes = 0
+  const { state } = instance({ getScheduleSummary: async () => ok(conflict), getScheduleBatch: async () => ok(row), publishSchedule: async () => { writes++ } }, conflict)
+  assert.equal(state.gateActionReady, false)
+  const item = state.gateChecklist.find(check => check.label === '开课来源无重复')
+  assert.equal(item.ok, false)
+  assert.match(item.detail, /重复 1 组/)
+  await state.confirmGateAction()
+  assert.equal(writes, 0)
+  assert.match(state.commandError, /重复开课/)
+  state.gate.summary = { ...ready(), ...hours, duplicateTaskGroupCount: 0 }
+  await state.confirmGateAction()
+  assert.equal(writes, 0)
+  assert.match(state.commandError, /重复开课/)
+})
+
 test('正式发布同时要求批次完整和全校明确就绪，缺失或非布尔值均不能写', async () => {
   for (const summary of [null, {}, { complete: true }, { complete: true, schoolGate: null },
     { complete: true, schoolGate: { ready: false } }, { complete: true, schoolGate: { ready: 'true' } },

@@ -142,7 +142,8 @@
         </AppSectionCard>
 
         <AppSectionCard title="排课任务队列">
-          <p v-if="hasPublishedGap && canCorrectSchedule" class="mp-note aasg-queue-note">当前是四端正在使用的正式版本，不能直接写入。点击“创建草稿后补排”，系统会先保留现有课位，再把你带到对应班级和教学任务。<template v-if="workbench.taskQueueTotal > workbench.taskQueue.length"> 当前显示优先级最高的 {{ workbench.taskQueue.length }} / {{ workbench.taskQueueTotal }} 项。</template></p>
+          <p v-if="workbench.duplicateTaskGroupCount > 0" class="mp-note aasg-queue-note">先核对重复开课来源，再补齐未排与漏排；计划学时包含待核定任务，不能据此继续重复开课。</p>
+          <p v-else-if="hasPublishedGap && canCorrectSchedule" class="mp-note aasg-queue-note">当前是四端正在使用的正式版本，不能直接写入。点击“创建草稿后补排”，系统会先保留现有课位，再把你带到对应班级和教学任务。<template v-if="workbench.taskQueueTotal > workbench.taskQueue.length"> 当前显示优先级最高的 {{ workbench.taskQueue.length }} / {{ workbench.taskQueueTotal }} 项。</template></p>
           <p v-else class="mp-note aasg-queue-note">默认把未排、部分漏排放在前面。教务员不需要记班级 ID 或教学任务 ID，点击“去排课”即可带入对应批次、班级和任务。<template v-if="workbench.taskQueueTotal > workbench.taskQueue.length"> 当前显示优先级最高的 {{ workbench.taskQueue.length }} / {{ workbench.taskQueueTotal }} 项。</template></p>
           <EmptyState v-if="!workbench.taskQueue.length" title="当前没有待处理任务" description="教学任务已排齐；请继续检查冲突并进入预发布。" />
           <DataTable v-else :columns="taskQueueColumns" :rows="workbench.taskQueue" row-key="taskId">
@@ -162,7 +163,8 @@
               <StatusTag :type="row.issueType === 'NOT_READY' ? 'warning' : 'danger'" :label="row.issueLabel" dot />
             </template>
             <template #cell-ops="{ row }">
-              <button v-if="row.canSchedule && row.classId" class="mp-link" @click="openTask(row)">去排课</button>
+              <button v-if="row.issueType === 'SOURCE_CONFLICT'" class="mp-link" @click="openTeachingTasks">核对重复开课任务</button>
+              <button v-else-if="row.canSchedule && row.classId" class="mp-link" @click="openTask(row)">去排课</button>
               <button v-else-if="hasPublishedGap && canCorrectSchedule && row.classId" class="mp-link" @click="openCorrectionDraft(row)">创建草稿后补排</button>
               <button v-else-if="workbench.batchStatus === 'PUBLISHED'" class="mp-link" @click="openPublishedSchedule">查看正式课表</button>
               <button v-else class="mp-link" @click="openTeachingTasks">完善任务</button>
@@ -693,12 +695,14 @@ export default {
     openTeachingTasks() { this.$router.push('/admin/academic-affairs/teaching-tasks') },
     openPublishedSchedule() { this.$router.push({ path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/views`, query: this.returnQuery() }) },
     openTask(row) {
+      if (row.issueType === 'SOURCE_CONFLICT') return this.openTeachingTasks()
       this.$router.push({
         path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/edit`,
         query: { classId: row.classId, className: row.className || '', taskId: row.taskId, ...this.returnQuery() }
       })
     },
     openCorrectionDraft(row = null) {
+      if (row?.issueType === 'SOURCE_CONFLICT' || this.workbench?.duplicateTaskGroupCount > 0) return this.openTeachingTasks()
       if (!this.hasPublishedGap || !this.canCorrectSchedule) return
       this.correctionTargetTask = row
       this.confirmRequireReason = true

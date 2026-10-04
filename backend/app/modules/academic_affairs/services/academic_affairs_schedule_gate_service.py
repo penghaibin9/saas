@@ -35,6 +35,23 @@ def evaluate(db, batch, *, lock=False) -> dict:
     ).all()
 
     task_map = {int(task.id): task for task in tasks}
+    pairs = {}
+    for task in tasks:
+        if getattr(task, "class_id", None):
+            pairs.setdefault((int(task.course_id), int(task.class_id)), []).append(task)
+    potential_duplicates = {key for key, rows in pairs.items() if len(rows) > 1}
+    duplicate_groups = []
+    if potential_duplicates:
+        # 复用当前方案应开核对，不自行把同课程的多来源条目改成只允许一条。
+        from .academic_affairs_archive_rule_evaluator import evaluate_teaching_task
+        # 任务批次学院不等于课程开课学院，权威核对必须保留跨批次的同课程任务。
+        # 全校计算只用于内部裁决，对外仍投影到本候选可见任务。
+        reconciliation = evaluate_teaching_task(db, batch.term_id, include_duplicate_groups=True)
+        for row in reconciliation.get("duplicateTaskGroups", []):
+            if (int(row["courseId"]), int(row["classId"])) in potential_duplicates:
+                duplicate_groups.append({**row,
+                    "taskIds": [value for value in row["taskIds"] if int(value) in task_map]})
+    duplicate_ids = {task_id for row in duplicate_groups for task_id in row["taskIds"]}
     owned_courses = {int(row.id) for row in db.query(AaCourse).join(
         College, College.id == AaCourse.owner_college_id,
     ).filter(
@@ -79,6 +96,7 @@ def evaluate(db, batch, *, lock=False) -> dict:
     over = []
     invalid_tasks = []
     coverage_rows = []
+    duplicate_tasks = []
     for task in tasks:
         expected = int(task.weekly_hours or 0)
         actual = int(counts.get(int(task.id), 0))
@@ -90,6 +108,8 @@ def evaluate(db, batch, *, lock=False) -> dict:
         row = {"taskId": str(task.id), "courseName": task.course_name,
                "expectedSessions": expected, "scheduledSessions": actual,
                "remainingSessions": max(0, expected - actual), **coverage}
+        if str(task.id) in duplicate_ids:
+            duplicate_tasks.append(row)
         if coverage["invalidTask"]:
             invalid_tasks.append({
                 **row,
@@ -115,6 +135,7 @@ def evaluate(db, batch, *, lock=False) -> dict:
         invalid_coordinate_items,
         invalid_classroom_items,
         conflicts["hardCount"],
+        duplicate_groups,
     ))
     return {
         "batchId": str(batch.id),
@@ -125,6 +146,9 @@ def evaluate(db, batch, *, lock=False) -> dict:
         "totalTasks": len(tasks),
         "missingOwnerTaskIds": missing_owner,
         "missingOwnerCount": len(missing_owner),
+        "duplicateTaskGroupCount": len(duplicate_groups),
+        "duplicateTaskGroups": duplicate_groups[:100],
+        "duplicateTasks": duplicate_tasks,
         "scheduledTasks": len(counts),
         "expectedSessions": expected_sessions,
         "scheduledSessions": scheduled_sessions,
@@ -167,6 +191,8 @@ def require_publishable(db, batch) -> dict:
         reasons.append(f"教学任务周次/周学时异常 {result['invalidTaskCount']} 条")
     if result["missingOwnerCount"]:
         reasons.append(f"课程尚未配置有效开课单位 {result['missingOwnerCount']} 条")
+    if result["duplicateTaskGroupCount"]:
+        reasons.append(f"同课程同班任务重复 {result['duplicateTaskGroupCount']} 组，请先核对开课来源")
     if result["missingTaskCount"]:
         reasons.append(f"漏排教学任务 {result['missingTaskCount']} 条")
     if result["overScheduledTaskCount"]:
