@@ -145,7 +145,11 @@ const currentWeekInRange = computed(() => {
 const filteredItems = computed(() => selectedWeek.value == null
   ? items.value
   : items.value.filter((item) => occursInWeek(item, selectedWeek.value)))
-const visibleDays = computed(() => filteredItems.value.some(item => Number(item.weekday) > 5) ? days : days.slice(0, 5))
+const visibleDays = computed(() => {
+  const visible = filteredItems.value.some(item => Number(item.weekday) > 5) ? days : days.slice(0, 5)
+  if (!dateForWeekday(1)) return visible
+  return visible.slice().sort((a, b) => dateForWeekday(a.value).localeCompare(dateForWeekday(b.value)))
+})
 const slotRows = computed(() => [...new Set([...timeBands.value.map(b => Number(b.slotNo)), ...filteredItems.value.map(item => Number(item.slotNo))])].filter(n => Number.isInteger(n) && n > 0).sort((a,b) => a-b))
 function cellItems(day, slot) { return dayItems(day).filter(item => Number(item.slotNo) === slot) }
 function slotName(slot) { return bandsForSlot({ slotNo: slot })[0]?.slotName || '第' + slot + '节' }

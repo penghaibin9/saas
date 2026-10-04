@@ -929,6 +929,32 @@ test('attendance late submission cannot close a new identity session', async () 
   assert.equal(instance.active, null)
 })
 
+test('Tuesday-start teaching weeks display chronological dates while retaining weekday selection and lesson identity', () => {
+  const instance = page('../my-schedule/index.vue')
+  instance.termStartDate = '2026-09-01'
+  instance.currentWeek = instance.selectedWeek = 5
+  instance.todayDate = '2026-10-01'; instance.selectedDay = 1
+  instance.items = [{ itemId: '90071992547409931', weekday: 1, slotNo: 1, startWeek: 5, endWeek: 6, weekParity: 'ALL' }]
+  assert.deepEqual(Array.from(instance.weekDays, day => day.weekday), [2, 3, 4, 5, 6, 7, 1])
+  assert.deepEqual(Array.from(instance.weekDays, day => `${day.month}/${day.dateNumber}`), ['9/29', '9/30', '10/1', '10/2', '10/3', '10/4', '10/5'])
+  assert.equal(instance.selectedDay, 1)
+  assert.equal(instance.dayItems[0].itemId, '90071992547409931')
+  instance.selectedDay = 4
+  instance.todayItems = [{ scheduleItemId: 'today', weekday: 1, slotNo: 2 }]
+  assert.equal(instance.dayIsToday, true)
+  assert.equal(instance.dayItems[0].scheduleItemId, 'today')
+  instance.selectedWeek = 6
+  assert.equal(instance.selectedDay, 4)
+  assert.equal(instance.dayIsToday, false)
+  assert.equal(instance.weekDateLabel, '10月6日—12日')
+  assert.equal(instance.weekDays[6].dateNumber, 12)
+  instance.selectedDay = 1
+  assert.equal(instance.dayItems[0].itemId, '90071992547409931')
+  instance.termStartDate = ''
+  assert.deepEqual(Array.from(instance.weekDays, day => day.weekday), [1, 2, 3, 4, 5, 6, 7])
+  assert.equal(instance.weekDays[0].dateNumber, undefined)
+})
+
 test('schedule day strip uses calendar dates but today lessons remain server authoritative', () => {
   const instance = page('../my-schedule/index.vue')
   instance.todayDate = '2026-09-08'; instance.currentWeek = 2; instance.selectedWeek = 2; instance.selectedDay = 2
@@ -936,6 +962,7 @@ test('schedule day strip uses calendar dates but today lessons remain server aut
   instance.items = [{ itemId: 1, weekday: 2, slotNo: 1, startWeek: 1, endWeek: 18, weekParity: 'ALL' }]
   instance.todayItems = []
   instance.calendarSource = 'HOLIDAY'
+  assert.deepEqual(Array.from(instance.weekDays, day => day.weekday), [1, 2, 3, 4, 5, 6, 7])
   assert.equal(instance.weekDays[0].dateNumber, 7)
   assert.equal(instance.weekDays[6].dateNumber, 13)
   assert.equal(instance.dayIsToday, true)

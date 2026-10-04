@@ -51,6 +51,43 @@ const source = (sessionId = '6171', scheduleItemId = '33072') => ({
 const sourcePayload = detail => ({ items: [{ sessionId: detail.sessionId, sourceDetail: detail }] })
 const sourceQuery = (sessionId = '6171', lesson = '33072') => ({ attendanceSessionId: sessionId, lesson, from: 'attendance', week: '2' })
 
+test('timetable columns follow a Tuesday-start teaching week without moving lessons to another weekday', async () => {
+  const monday = { ...lesson('90071992547409931', 6), weekday: 1, startWeek: 5, endWeek: 6 }
+  const thursday = { ...lesson('thu', 6), startWeek: 5, endWeek: 6 }
+  const { page } = mount({
+    academicSchedule: async week => ({ ...schedule(week), items: [monday, thursday] }),
+    academicCalendar: async () => ({ weeks: [
+      { weekNo: 5, startDate: '2026-09-29', endDate: '2026-10-05' },
+      { weekNo: 6, startDate: '2026-10-06', endDate: '2026-10-12' }
+    ] })
+  })
+  await page.load(6)
+  assert.deepEqual(page.visibleDays.value.map(day => day.value), [2, 3, 4, 5, 1])
+  assert.deepEqual(page.visibleDays.value.map(day => page.dayDate(day.value)), ['10/06', '10/07', '10/08', '10/09', '10/12'])
+  assert.equal(page.cellItems(1, 4)[0].itemId, monday.itemId)
+  assert.equal(page.cellItems(4, 4)[0].itemId, 'thu')
+  assert.equal(page.cellItems(2, 4).length, 0)
+  page.schedule.value.items.push({ ...monday, itemId: 'sat', weekday: 6 })
+  assert.deepEqual(page.visibleDays.value.map(day => day.value), [2, 3, 4, 5, 6, 7, 1])
+  assert.equal(page.cellItems(6, 4)[0].itemId, 'sat')
+  await page.load(5)
+  assert.equal(page.weekRange.value, '09/29—10/05')
+  assert.equal(page.dayDate(1), '10/05')
+  assert.equal(page.cellItems(1, 4)[0].itemId, monday.itemId)
+})
+
+test('Monday-start and unavailable authoritative weeks preserve the ordinary timetable order', async () => {
+  const { page } = mount({ academicSchedule: async () => schedule(6), academicCalendar: async () => ({ weeks: [
+    { weekNo: 6, startDate: '2026-10-05', endDate: '2026-10-11' }
+  ] }) })
+  await page.load(6)
+  assert.deepEqual(page.visibleDays.value.map(day => day.value), [1, 2, 3, 4, 5])
+  assert.equal(page.dayDate(1), '10/05')
+  page.weekCalendar.value = []
+  assert.deepEqual(page.visibleDays.value.map(day => day.value), [1, 2, 3, 4, 5])
+  assert.equal(page.dayDate(1), '')
+})
+
 test('historical attendance detail uses the exact authorized session and its saved date, independent of the current timetable', async () => {
   const calls = []
   const api = {

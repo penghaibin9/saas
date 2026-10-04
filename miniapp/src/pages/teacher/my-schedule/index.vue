@@ -117,8 +117,9 @@ export default {
       return start
     },
     weekDays() {
+      const firstWeekday = this.selectedWeekStart ? this.selectedWeekStart.getUTCDay() || 7 : 1
       return Array.from({ length: 7 }, (_, i) => {
-        const weekday = i + 1
+        const weekday = (firstWeekday - 1 + i) % 7 + 1
         // Teaching weeks follow the canonical term start, which need not be a Monday.
         if (!this.selectedWeekStart) return { weekday }
         const offset = (weekday - (this.selectedWeekStart.getUTCDay() || 7) + 7) % 7
