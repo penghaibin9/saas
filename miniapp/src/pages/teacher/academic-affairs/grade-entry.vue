@@ -7,7 +7,7 @@
       :before-back="beforePageBack"
       show-back
     />
-    <MobileGlobalState :state="state" @retry="load">
+    <MobileGlobalState :state="state" :description="identityError" @retry="retryLoad">
       <view class="page-pad" v-if="!active && loaded">
         <MobileGlobalState v-if="!tasks.length" state="empty" title="暂无成绩录入任务" description="教务处下达录入任务后会显示在这里。" />
         <view class="list-group" v-else>
@@ -151,8 +151,12 @@
 import { teacherApi } from '@/services/teacherApi'
 import { academicGradeEntryApi } from '@/services/academicGradeEntryApi'
 import { normalizeError } from '@/services/request'
-import { toast } from '@/utils/nav'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { me } from '@/services/realApi'
+import { relaunch, toast } from '@/utils/nav'
 import { useSessionStore } from '@/stores/session'
+import { roleKeyFromBackendRole } from '@/config/roles.config'
+import { FORCE_PASSWORD_CHANGE_ROUTE } from '@/security/passwordChangeGate'
 import { beginPersistentWrite, clearPersistentWrite, getPersistentWrite, isExplicitWriteRejection, isForbiddenResponse, listPersistentWrites, persistWriteAck, teacherWriteContext } from './write-result'
 
 const EXCEPTION_OPTIONS = [
@@ -189,14 +193,15 @@ export default {
       visibleCount: ROSTER_WINDOW, ROSTER_WINDOW,
       entryMode: 'FIXED', components: [], gradeIdentity: null, dynamicCanWrite: true,
       rosterPage: 1, rosterTotal: 0, rosterHasMore: false, rosterVersionId: '',
-      gradePendingWrites: {}, writeStorageBlocked: false, dynamicReadDenied: false, dynamicNeedsReview: false
+      gradePendingWrites: {}, writeStorageBlocked: false, dynamicReadDenied: false, dynamicNeedsReview: false,
+      identityReady: false, identityError: ''
     }
   },
   computed: {
     showMid() { return Number(this.midtermRatio || (this.active && this.active.midtermRatio) || 0) > 0 },
     canEdit() {
       const st = (this.active && this.active.status) || ''
-      return ['NOT_STARTED', 'INPUTTING', 'RETURNED'].includes(st) && (this.entryMode !== 'COMPONENTS' || this.dynamicCanWrite)
+      return this.identityReady && ['NOT_STARTED', 'INPUTTING', 'RETURNED'].includes(st) && (this.entryMode !== 'COMPONENTS' || this.dynamicCanWrite)
     },
     ratioText() { return this.active ? this.ratioOf(this.active) : '' },
     dirtyCount() { return Object.values(this.dirty).filter(Boolean).length },
@@ -212,13 +217,16 @@ export default {
   },
   onLoad(options = {}) {
     this._pageActive = true
-    this._viewContext = this.contextKey()
-    this.syncGradePending(this._viewContext)
     this.requestedTaskId = String(options.id || options.taskId || '')
-    this.load()
+    this.restoreGradeIdentity()
   },
   onShow() {
     this._pageActive = true
+    if (this._identityRestoring) return
+    if (!this.identityReady || useSessionStore().persistedIdentityVerified === false) {
+      this.restoreGradeIdentity()
+      return
+    }
     const context = this.contextKey()
     if (this._viewContext !== context) {
       this._viewContext = context
@@ -242,9 +250,8 @@ export default {
       this.rosterTotal = 0
       this.rosterHasMore = false
       this.rosterVersionId = ''
-      this.syncGradePending(context)
       this._needsRefresh = false
-      this.load()
+      this.restoreGradeIdentity()
       return
     }
     if (!this._needsRefresh) return
@@ -258,6 +265,8 @@ export default {
     this._loadEpoch = (this._loadEpoch || 0) + 1
     this._rosterEpoch = (this._rosterEpoch || 0) + 1
     this._qualityEpoch = (this._qualityEpoch || 0) + 1
+    this._identityEpoch = (this._identityEpoch || 0) + 1
+    this._identityRestoring = false
     this.qualityLoading = false
   },
   onUnload() {
@@ -265,6 +274,8 @@ export default {
     this._loadEpoch = (this._loadEpoch || 0) + 1
     this._rosterEpoch = (this._rosterEpoch || 0) + 1
     this._qualityEpoch = (this._qualityEpoch || 0) + 1
+    this._identityEpoch = (this._identityEpoch || 0) + 1
+    this._identityRestoring = false
     if (this.draftTimer) clearTimeout(this.draftTimer)
   },
   onBackPress() {
@@ -274,6 +285,94 @@ export default {
     return true
   },
   methods: {
+    retryLoad() {
+      if (!this.identityReady || useSessionStore().persistedIdentityVerified === false) return this.restoreGradeIdentity()
+      const pending = this.syncGradePending()
+      if (!pending.ok) { this.identityError = '本机待核对记录暂时无法读取，请检查存储后重试'; this.state = 'error'; return }
+      this.identityError = ''
+      return this.load()
+    },
+    async restoreGradeIdentity() {
+      if (this._identityRestoring) return
+      const before = this.contextKey()
+      const generation = currentSessionGeneration()
+      const epoch = (this._identityEpoch || 0) + 1
+      this._identityEpoch = epoch
+      this._identityRestoring = true
+      this.identityReady = false
+      this.identityError = ''
+      this.state = 'loading'
+      this.loaded = false
+      this.tasks = []
+      this.active = null
+      this.saving = null
+      this.savingAll = false
+      this.submitting = false
+      this.reviewMode = false
+      this.qualityLoading = false
+      this.qualityReport = null
+      this.roster = []
+      this.scores = {}
+      this.dirty = {}
+      this.rowErrors = {}
+      this.rowVersions = {}
+      this.entryMode = 'FIXED'
+      this.dynamicCanWrite = true
+      this.components = []
+      this.gradeIdentity = null
+      this.rosterPage = 1
+      this.rosterTotal = 0
+      this.rosterHasMore = false
+      this.rosterVersionId = ''
+      this.editVersion += 1
+      if (this.draftTimer) clearTimeout(this.draftTimer)
+      this.draftTimer = null
+      this.draftSavedAt = ''
+      this.draftRestoredCount = 0
+      this.gradePendingWrites = {}
+      this._loadEpoch = (this._loadEpoch || 0) + 1
+      this._rosterEpoch = (this._rosterEpoch || 0) + 1
+      this._qualityEpoch = (this._qualityEpoch || 0) + 1
+      this._writeEpoch = (this._writeEpoch || 0) + 1
+      const stillCurrent = () => this._pageActive && this._identityEpoch === epoch && generation === currentSessionGeneration()
+      try {
+        const identity = await me()
+        if (!stillCurrent() || this.contextKey() !== before) return
+        const role = identity?.currentRole?.roleCode
+        if (![identity?.tenantId, identity?.userId, identity?.activeContextId, role].every(value => typeof value === 'string' && value.trim())) {
+          throw new Error('当前教师身份返回不完整，请重试核验')
+        }
+        if (roleKeyFromBackendRole(role) !== 'academic') { this.state = 'forbidden'; return }
+        const session = useSessionStore()
+        session.applyRealUser(identity)
+        if (session.mustChangePassword) {
+          this.state = 'forbidden'
+          relaunch(FORCE_PASSWORD_CHANGE_ROUTE)
+          return
+        }
+        if (session.currentRole !== 'academic') { this.state = 'forbidden'; return }
+        const context = this.contextKey()
+        const parts = JSON.parse(context)
+        if (session.persistedIdentityVerified !== true || !Array.isArray(parts) || parts.length !== 4 || parts.some(value => typeof value !== 'string' || !value.trim())) {
+          throw new Error('当前教师身份尚未完整核验，请重试')
+        }
+        this._viewContext = context
+        this.identityReady = true
+        if (!this.syncGradePending(context).ok) {
+          this.identityError = '本机待核对记录暂时无法读取，请检查存储后重试'
+          this.state = 'error'
+          return
+        }
+        this.load()
+      } catch {
+        if (stillCurrent()) {
+          this.identityError = '当前教师身份核验失败，请重试；成绩和待核对记录尚未读取'
+          this.state = 'error'
+        }
+      } finally {
+        if (this._identityEpoch === epoch) this._identityRestoring = false
+      }
+    },
     contextKey() {
       return teacherWriteContext(useSessionStore())
     },
@@ -433,6 +532,7 @@ export default {
       return item ? item.label : '正常'
     },
     async load() {
+      if (!this.identityReady || useSessionStore().persistedIdentityVerified === false) return this.restoreGradeIdentity()
       const epoch = (this._loadEpoch || 0) + 1
       this._loadEpoch = epoch
       const context = this.contextKey()

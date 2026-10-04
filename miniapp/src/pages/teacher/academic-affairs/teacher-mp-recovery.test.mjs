@@ -53,6 +53,8 @@ function page(file, dependencies = {}) {
     teacherApi: {}, academicGradeEntryApi: {}, toast() {}, go() {},
     createSubmitLock: () => ({ run: (fn) => fn() }),
     normalizeError: () => ({ text: '请求失败' }),
+    currentSessionGeneration: () => 1,
+    roleKeyFromBackendRole: role => role === 'ACADEMIC_TEACHER' ? 'academic' : '',
     ...contract,
     ...approvalRecovery,
     matchCompletedStatusTask,
@@ -65,6 +67,7 @@ function page(file, dependencies = {}) {
   vm.runInNewContext(decoder + '\n' + source, sandbox)
   const options = sandbox.options
   const instance = options.data()
+  if (file === './grade-entry.vue') instance.identityReady = true
   for (const [name, method] of Object.entries(options.methods)) instance[name] = method.bind(instance)
   for (const [name, getter] of Object.entries(options.computed || {})) {
     Object.defineProperty(instance, name, { get: () => getter.call(instance) })
@@ -849,14 +852,32 @@ for (const mode of ['single', 'batch']) {
     let user = 1
     const requests = []
     const write = () => { const request = deferred(); requests.push(request); return request.promise }
+    const session = {
+      identity: { userId: '1' }, realUser: { tenantId: '1', activeContextId: '1' },
+      currentRole: 'academic', persistedIdentityVerified: true,
+      applyRealUser(data) {
+        this.identity.userId = data.userId
+        this.realUser = data
+        this.persistedIdentityVerified = true
+      }
+    }
     const instance = grade({
-      useSessionStore: () => ({ identity: { tenantId: 1, userId: user, activeContextId: user }, currentRole: 'teacher' }),
+      useSessionStore: () => session,
+      me: async () => ({ tenantId: '1', userId: String(user), activeContextId: String(user), currentRole: { roleCode: 'ACADEMIC_TEACHER' } }),
       teacherApi: { enterGradeScore: write }, academicGradeEntryApi: { batchSave: write }
     })
+    instance.identityReady = true
     instance._viewContext = instance.contextKey()
     instance.load = () => {}
     const oldSave = mode === 'single' ? instance.saveScore(instance.roster[0]) : instance.saveAll()
-    for (const identity of [2, 1]) { instance.onHide(); user = identity; instance.onShow() }
+    for (const identity of [2, 1]) {
+      instance.onHide()
+      user = identity
+      session.identity.userId = String(identity)
+      session.realUser.activeContextId = String(identity)
+      instance.onShow()
+      await flush()
+    }
     instance.active = { gradeTaskId: '8', status: 'INPUTTING' }
     instance.roster = [{ studentId: 11 }]
     instance.scores = { 11: { usualScore: '80', finalScore: '90', exceptionFlag: 'NORMAL' } }
@@ -883,10 +904,10 @@ test('schedule cancellation ignores a late acknowledgement across identity round
   })
   instance.load = () => {}
   instance._viewContext = instance.contextKey()
-  instance.changes = [{ changeId: 7, status: 'SUBMITTED' }]
+  instance.changes = [{ changeId: 7, status: 'SUBMITTED', canCancel: true }]
   instance.doCancel(instance.changes[0])
   for (const identity of [2, 1]) { instance.onHide(); user = identity; instance.onShow() }
-  instance.changes = [{ changeId: 8, status: 'SUBMITTED' }]
+  instance.changes = [{ changeId: 8, status: 'SUBMITTED', canCancel: true }]
   instance.doCancel(instance.changes[0])
   requests[0].resolve({})
   await flush()
@@ -1053,7 +1074,7 @@ test('schedule submit and cancellation 5xx responses remain separately unresolve
   assert.equal(instance.hasUnknownWrite('submit', 7), true)
   await instance.doSubmit(); await flush()
   assert.equal(submissions, 1)
-  const row = { changeId: 12, status: 'SUBMITTED' }
+  const row = { changeId: 12, status: 'SUBMITTED', canCancel: true }
   instance.changes = [row]
   instance.doCancel(row); await flush()
   assert.equal(instance.hasUnknownWrite('cancel', 12), true)
