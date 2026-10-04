@@ -43,7 +43,7 @@ function createPage(dependencies = {}) {
     academicGradeEntryApi: {},
     normalizeError: () => ({ text: '请求失败' }),
     toast() {},
-    relaunch() {}, FORCE_PASSWORD_CHANGE_ROUTE: '/pages/common/change-password/index?forced=1',
+    relaunch() {}, forcePasswordChangeRequired: () => false, FORCE_PASSWORD_CHANGE_ROUTE: '/pages/common/change-password/index?forced=1',
     me: async () => ({ tenantId: '1', userId: '2', activeContextId: 'A', currentRole: { roleCode: 'ACADEMIC_TEACHER' } }),
     currentSessionGeneration: () => 1,
     roleKeyFromBackendRole: role => role === 'ACADEMIC_TEACHER' ? 'academic' : '',
@@ -334,6 +334,45 @@ test('forced password change routes to the existing password page before ledger 
   assert.equal(storageReads, 0)
   assert.equal(taskReads, 0)
 })
+
+for (const source of ['store', 'persistent']) {
+  test(`real me without password flag preserves existing ${source} requirement before applying identity`, async () => {
+    let applied = 0, ledgerReads = 0, taskReads = 0, target = ''
+    let persisted = source === 'persistent' ? '1' : ''
+    const gateSource = fs.readFileSync(new URL('../../../security/passwordChangeGate.js', import.meta.url), 'utf8')
+      .replace(/export function/g, 'function').replace(/export const/g, 'const')
+    const gate = { uni: { getStorageSync: () => persisted } }
+    vm.runInNewContext(`${gateSource};globalThis.required = forcePasswordChangeRequired`, gate)
+    const session = {
+      identity: {}, currentRole: 'academic', persistedIdentityVerified: false,
+      mustChangePassword: source === 'store',
+      applyRealUser(data) {
+        applied++
+        this.mustChangePassword = !!data.user?.mustChangePassword
+        persisted = ''
+      }
+    }
+    const { instance } = createPage({
+      useSessionStore: () => session,
+      forcePasswordChangeRequired: gate.required,
+      writeContract: loadWriteContract({ getStorageSync() { ledgerReads++; return '' }, setStorageSync() {} }),
+      me: async () => ({ tenantId: '1', userId: 'db-255482', activeContextId: 'role:83',
+        userType: 'TEACHER', currentRole: { roleCode: 'ACADEMIC_TEACHER', contextType: 'ACADEMIC_TEACHER' },
+        contexts: [{ contextId: 'role:83', roleCode: 'ACADEMIC_TEACHER' }] }),
+      relaunch: route => { target = route },
+      teacherApi: { getGradeTasks: async () => { taskReads++; return { items: [] } } }
+    })
+    instance.onLoad({ id: '8747' })
+    await flush()
+    assert.equal(target, '/pages/common/change-password/index?forced=1')
+    assert.equal(applied, 0)
+    assert.equal(session.mustChangePassword, source === 'store')
+    assert.equal(persisted, source === 'persistent' ? '1' : '')
+    assert.equal(instance.identityReady, false)
+    assert.equal(ledgerReads, 0)
+    assert.equal(taskReads, 0)
+  })
+}
 
 test('cold recovery clears an old busy save before reopening the verified task and ignores its late result', async () => {
   const oldWrite = deferred()

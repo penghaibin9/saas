@@ -156,7 +156,7 @@ import { me } from '@/services/realApi'
 import { relaunch, toast } from '@/utils/nav'
 import { useSessionStore } from '@/stores/session'
 import { roleKeyFromBackendRole } from '@/config/roles.config'
-import { FORCE_PASSWORD_CHANGE_ROUTE } from '@/security/passwordChangeGate'
+import { FORCE_PASSWORD_CHANGE_ROUTE, forcePasswordChangeRequired } from '@/security/passwordChangeGate'
 import { beginPersistentWrite, clearPersistentWrite, getPersistentWrite, isExplicitWriteRejection, isForbiddenResponse, listPersistentWrites, persistWriteAck, teacherWriteContext } from './write-result'
 
 const EXCEPTION_OPTIONS = [
@@ -344,6 +344,11 @@ export default {
         }
         if (roleKeyFromBackendRole(role) !== 'academic') { this.state = 'forbidden'; return }
         const session = useSessionStore()
+        if (session.mustChangePassword || forcePasswordChangeRequired()) {
+          this.state = 'forbidden'
+          relaunch(FORCE_PASSWORD_CHANGE_ROUTE)
+          return
+        }
         session.applyRealUser(identity)
         if (session.mustChangePassword) {
           this.state = 'forbidden'

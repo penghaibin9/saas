@@ -54,6 +54,7 @@ function page(file, dependencies = {}) {
     createSubmitLock: () => ({ run: (fn) => fn() }),
     normalizeError: () => ({ text: '请求失败' }),
     currentSessionGeneration: () => 1,
+    forcePasswordChangeRequired: () => false,
     roleKeyFromBackendRole: role => role === 'ACADEMIC_TEACHER' ? 'academic' : '',
     ...contract,
     ...approvalRecovery,
