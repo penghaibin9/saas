@@ -45,7 +45,7 @@ class ScheduleImportPreload:
         enabled_slots,
         tasks,
         classrooms,
-        task_counts,
+        task_items,
         conflict_rows,
     ):
         self.allowed_batch_ids = tuple(int(v) for v in allowed_batch_ids)
@@ -55,7 +55,9 @@ class ScheduleImportPreload:
         self._task_by_id = {int(row.id): row for row in self._tasks}
         self._classrooms = list(classrooms)
         self._classroom_by_id = {int(row.id): row for row in self._classrooms}
-        self._task_counts = {int(k): int(v) for k, v in task_counts.items()}
+        self._task_items = defaultdict(list)
+        for row in task_items:
+            self._task_items[int(row.task_id)].append(row)
         buckets = defaultdict(list)
         for row in conflict_rows:
             buckets[(int(row.weekday), int(row.slot_no))].append(row)
@@ -90,7 +92,10 @@ class ScheduleImportPreload:
         return self._classroom_by_id.get(int(classroom_id))
 
     def scheduled_count(self, task_id: int) -> int:
-        return int(self._task_counts.get(int(task_id), 0))
+        return len(self._task_items.get(int(task_id), ()))
+
+    def scheduled_items(self, task_id: int) -> list:
+        return list(self._task_items.get(int(task_id), ()))
 
     def detect_conflict(
         self,
@@ -125,7 +130,7 @@ class ScheduleImportPreload:
     def record_item(self, item) -> None:
         if item.task_id is not None:
             task_id = int(item.task_id)
-            self._task_counts[task_id] = self._task_counts.get(task_id, 0) + 1
+            self._task_items[task_id].append(item)
         self._conflict_rows[(int(item.weekday), int(item.slot_no))].append(item)
 
 
@@ -223,11 +228,11 @@ def build_preload(
             )
         ).all()
 
-    task_counts = {}
+    task_items = []
     task_ids = sorted({int(row.id) for row in tasks})
     if task_ids:
-        count_rows = db.execute(
-            select(AaScheduleItem.task_id, func.count(AaScheduleItem.id))
+        task_items = db.scalars(
+            select(AaScheduleItem)
             .where(
                 AaScheduleItem.tenant_id == _base._tid(),
                 AaScheduleItem.batch_id == int(batch.id),
@@ -235,9 +240,7 @@ def build_preload(
                 AaScheduleItem.status == "EFFECTIVE",
                 AaScheduleItem.is_deleted.is_(False),
             )
-            .group_by(AaScheduleItem.task_id)
         ).all()
-        task_counts = {int(task_id): int(count) for task_id, count in count_rows}
 
     conflict_rows = []
     if coordinates:
@@ -268,6 +271,6 @@ def build_preload(
         enabled_slots=enabled_slots,
         tasks=tasks,
         classrooms=classrooms,
-        task_counts=task_counts,
+        task_items=task_items,
         conflict_rows=conflict_rows,
     )

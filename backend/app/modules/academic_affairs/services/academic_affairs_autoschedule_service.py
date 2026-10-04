@@ -157,8 +157,8 @@ class _Grid:
         self.teacher = {}
         self.klass = {}
         self.room = {}
-        self.class_day = {}    # (class_id, weekday) → 已排节数
-        self.teacher_day = {}  # (teacher_key, weekday) → 已排节数
+        self.class_day = {}    # (class_id, active_week, weekday) → 当天计划课时
+        self.teacher_day = {}  # (teacher_key, active_week, weekday) → 当天计划课时
 
     @staticmethod
     def _hit(bucket, key, sw, ew, par) -> bool:
@@ -180,13 +180,25 @@ class _Grid:
     def room_busy(self, rid, wd, sl, sw, ew, par):
         return bool(rid) and self._hit(self.room, (int(rid), wd, sl), sw, ew, par)
 
+    @staticmethod
+    def day_full(bucket, actor, wd, sw, ew, par, limit):
+        from .academic_affairs_schedule_policy import active_weeks
+        return any(bucket.get((actor, week, wd), 0) >= limit
+                   for week in active_weeks(sw, ew, par))
+
     def occupy(self, tk, cid, rid, wd, sl, sw, ew, par):
+        from .academic_affairs_schedule_policy import active_weeks
+        weeks = active_weeks(sw, ew, par)
         if tk:
             self._put(self.teacher, (tk, wd, sl), sw, ew, par)
-            self.teacher_day[(tk, wd)] = self.teacher_day.get((tk, wd), 0) + 1
+            for week in weeks:
+                key = (tk, week, wd)
+                self.teacher_day[key] = self.teacher_day.get(key, 0) + 1
         if cid:
             self._put(self.klass, (int(cid), wd, sl), sw, ew, par)
-            self.class_day[(int(cid), wd)] = self.class_day.get((int(cid), wd), 0) + 1
+            for week in weeks:
+                key = (int(cid), week, wd)
+                self.class_day[key] = self.class_day.get(key, 0) + 1
         if rid:
             self._put(self.room, (int(rid), wd, sl), sw, ew, par)
 
@@ -395,10 +407,10 @@ def _place_task(t, need, sw, ew, par, params, forbidden, grid, cand_rooms, all_r
             if params["respectAvail"] and (t.teacher_key, wd, sl) in avail_block:
                 blocked["TEACHER_UNAVAILABLE"] += 1
                 continue
-            if grid.teacher_day.get((t.teacher_key, wd), 0) >= params["teacherMaxPerDay"]:
+            if grid.day_full(grid.teacher_day, t.teacher_key, wd, sw, ew, par, params["teacherMaxPerDay"]):
                 blocked["DAY_LIMIT"] += 1
                 continue
-            if t.class_id and grid.class_day.get((int(t.class_id), wd), 0) >= params["classMaxPerDay"]:
+            if t.class_id and grid.day_full(grid.class_day, int(t.class_id), wd, sw, ew, par, params["classMaxPerDay"]):
                 blocked["DAY_LIMIT"] += 1
                 continue
             if grid.teacher_busy(t.teacher_key, wd, sl, sw, ew, par):

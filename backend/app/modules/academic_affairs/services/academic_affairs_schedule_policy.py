@@ -11,6 +11,91 @@ PUBLIC_SCHEDULE_MODES = {"SCHOOL_CENTRALIZED", "OFFERING_UNIT", "HYBRID"}
 DEFAULT_PUBLIC_SCHEDULE_MODE = "HYBRID"
 
 
+def _field(row, name, default=None):
+    return row.get(name, default) if isinstance(row, dict) else getattr(row, name, default)
+
+
+def active_weeks(start, end, parity="ALL") -> tuple[int, ...]:
+    """按学期绝对周号展开计划；不把校历停课或实际考勤混入计划学时。"""
+    if parity not in {"ALL", "ODD", "EVEN"} or start < 1 or end < start:
+        return ()
+    return tuple(w for w in range(start, end + 1)
+                 if parity == "ALL" or w % 2 == (1 if parity == "ODD" else 0))
+
+
+def task_coverage(task, items, teaching_weeks: int) -> dict:
+    """唯一计划课时计算；周学时是周上限，总学时可不整除教学周数。"""
+    weekly = int(_field(task, "weekly_hours") or 0)
+    raw_start, raw_end = _field(task, "start_week"), _field(task, "end_week")
+    start = 1 if raw_start is None else int(raw_start)
+    end = teaching_weeks if raw_end is None else int(raw_end)
+    valid_window = 1 <= start <= end <= teaching_weeks <= 30
+    raw_total = _field(task, "total_hours")
+    derived = raw_total is None
+    expected = weekly * (end - start + 1) if derived and valid_window else int(raw_total or 0)
+    invalid_task = (weekly <= 0 or not valid_window or expected <= 0
+                    or expected > weekly * (end - start + 1))
+    counts = {week: 0 for week in range(start, end + 1)} if valid_window else {}
+    invalid_items = []
+    rows = list(items)
+    for index, row in enumerate(rows):
+        sw, ew = int(_field(row, "start_week") or 0), int(_field(row, "end_week") or 0)
+        parity = _field(row, "week_parity")
+        weeks = active_weeks(sw, ew, parity) if 1 <= sw <= ew <= teaching_weeks else ()
+        if (not valid_window or sw < start or ew > end or not weeks
+                or not 1 <= int(_field(row, "weekday") or 0) <= 7
+                or int(_field(row, "slot_no") or 0) <= 0):
+            invalid_items.append(str(_field(row, "id", f"candidate-{index}")))
+            continue
+        for week in weeks:
+            counts[week] += 1
+    scheduled = sum(counts.values())
+    overloaded = [week for week, count in counts.items() if count > weekly]
+    return {
+        "expectedContactHours": max(0, expected),
+        "scheduledContactHours": scheduled,
+        "missingContactHours": max(0, expected - scheduled),
+        "remainingContactHours": max(0, expected - scheduled),
+        "excessContactHours": max(0, scheduled - max(0, expected)),
+        # 单位为“任务—学期周”超量组合数，另保留超量任务数量。
+        "weeklyOverloadCount": len(overloaded),
+        "overloadedWeeks": overloaded,
+        "weekContactHours": counts,
+        "scheduledItemCount": len(rows),
+        "invalidTask": invalid_task,
+        "invalidItemIds": invalid_items,
+        "totalHoursDerived": derived,
+        "contactHourBasis": "旧任务按周学时和有效周窗推导" if derived else "任务计划总学时",
+    }
+
+
+def missing_week_segments(task, coverage) -> list[tuple[int, int, int]]:
+    """把真实剩余学时拆成可由现行排课器安排的连续周窗和每周数量。"""
+    if coverage["invalidTask"] or coverage["invalidItemIds"] or coverage["weeklyOverloadCount"]:
+        return []
+    counts = dict(coverage["weekContactHours"])
+    remaining = coverage["missingContactHours"]
+    weekly = int(_field(task, "weekly_hours"))
+    segments = {}
+    while remaining > 0:
+        selected = []
+        for week, count in counts.items():
+            if count < weekly and remaining:
+                selected.append(week)
+                counts[week] += 1
+                remaining -= 1
+        if not selected:
+            break
+        start = end = selected[0]
+        for week in selected[1:] + [None]:
+            if week == end + 1:
+                end = week
+                continue
+            segments[(start, end)] = segments.get((start, end), 0) + 1
+            start = end = week
+    return [(count, start, end) for (start, end), count in segments.items()]
+
+
 def public_schedule_mode(db):
     from app.services.platform_service import _get_cfg
     row = _get_cfg(db, _tid(), "ACAD_RULE", "PUBLIC_SCHEDULE_MODE")

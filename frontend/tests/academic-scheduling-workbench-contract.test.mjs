@@ -57,7 +57,7 @@ test('pre-publish and publish actions are gated by the canonical completeness ch
   assert.match(source, /检查并正式发布/)
   assert.match(source, /复核发布门禁/)
   assert.match(source, /academicAffairsApi\.getScheduleSummary\(row\.batchId\)/)
-  for (const label of ['教学任务可排', '应排节次完整', '课位关联有效', '硬冲突清零']) {
+  for (const label of ['教学任务可排', '教学任务计划完整', '课位关联有效', '硬冲突清零']) {
     assert.ok(source.includes(label), `missing publish gate: ${label}`)
   }
   assert.match(source, /if \(this\.writeBusy \|\| !this\.gate\.summary\?\.complete \|\| !this\.gate\.batch \|\| this\.gate\.intent === 'view'\) return/)

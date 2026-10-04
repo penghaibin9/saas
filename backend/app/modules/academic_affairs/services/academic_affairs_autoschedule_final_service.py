@@ -46,7 +46,7 @@ def _pending_tasks_for_batch(db, schedule_batch, teaching_weeks: int) -> tuple[l
         AaTeachingTask.is_deleted.is_(False),
         policy.task_scope_condition(db, schedule_batch),
     ).all()
-    done: dict[int, int] = {}
+    done: dict[int, list] = {}
     for item in db.query(AaScheduleItem).filter(
         AaScheduleItem.tenant_id == _base._tid(),
         AaScheduleItem.batch_id == int(schedule_batch.id),
@@ -54,20 +54,15 @@ def _pending_tasks_for_batch(db, schedule_batch, teaching_weeks: int) -> tuple[l
         AaScheduleItem.is_deleted.is_(False),
     ).all():
         if item.task_id:
-            done[int(item.task_id)] = done.get(int(item.task_id), 0) + 1
+            done.setdefault(int(item.task_id), []).append(item)
 
     pending = []
     invalid = []
     for task in tasks:
-        weekly_hours = int(task.weekly_hours or 0)
-        start_week = int(task.start_week or 1)
-        end_week = int(task.end_week or teaching_weeks)
-        if (
-            weekly_hours <= 0
-            or start_week < 1
-            or end_week < start_week
-            or end_week > teaching_weeks
-        ):
+        rows = done.get(int(task.id), [])
+        coverage = policy.task_coverage(task, rows, teaching_weeks)
+        if (coverage["invalidTask"] or coverage["invalidItemIds"]
+                or coverage["excessContactHours"] or coverage["weeklyOverloadCount"]):
             invalid.append({
                 "taskId": str(task.id),
                 "courseName": task.course_name,
@@ -77,12 +72,12 @@ def _pending_tasks_for_batch(db, schedule_batch, teaching_weeks: int) -> tuple[l
                 "endWeek": task.end_week,
                 "reason": "INVALID_TASK",
                 "reasonLabel": REASON_LABEL["INVALID_TASK"],
-                "detail": f"请把周学时设为正整数，起止周控制在 1 至 {teaching_weeks} 周内",
+                "detail": "请核对任务总学时、有效周次及已有课位，先处理无效或超量安排",
+                **coverage,
             })
             continue
-        already = int(done.get(int(task.id), 0))
-        if already < weekly_hours:
-            pending.append((task, weekly_hours - already, already, start_week, end_week))
+        for need, start_week, end_week in policy.missing_week_segments(task, coverage):
+            pending.append((task, need, len(rows), start_week, end_week))
     return pending, invalid
 
 
@@ -158,6 +153,7 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
                 "reason": "NO_HEADCOUNT",
                 "detail": "未填写预计人数，容量校验对该任务失效；请先补齐预计人数再正式排课",
             } for task, _need, _have, _sw, _ew in pending if not task.expected_students]
+            capacity_warnings = list({row["taskId"]: row for row in capacity_warnings}.values())
 
         placed = []
         misses = list(invalid_tasks)
@@ -199,7 +195,11 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
                     "className": task.teaching_class_name,
                     "teacherName": task.teacher_name,
                     "needSessions": need,
-                    "placedSessions": len(positions) + have,
+                    "placedSessions": len(positions),
+                    "existingItemCount": have,
+                    "startWeek": start_week,
+                    "endWeek": end_week,
+                    "missingContactHours": (need - len(positions)) * (end_week - start_week + 1),
                     "reason": final_reason,
                     "reasonLabel": REASON_LABEL.get(final_reason, final_reason),
                     "detail": _base._miss_detail(task, final_reason, params),
@@ -209,6 +209,8 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
                     "taskId": str(task.id),
                     "courseName": task.course_name,
                     "sessions": len(positions),
+                    "startWeek": start_week,
+                    "endWeek": end_week,
                 })
 
         reset_pre_publish = False
@@ -244,8 +246,8 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
                 batch.id,
                 "AUTO_SCHEDULE",
                 (
-                    f"termId={batch.term_id};排入{len(new_items)}节/{len(placed)}个任务；"
-                    f"漏排{len(misses)}；ruleVersion={params['ruleVersion']}"
+                    f"termId={batch.term_id};排入{len(new_items)}条课位/{len({row['taskId'] for row in placed})}个任务；"
+                    f"漏排任务{len({row['taskId'] for row in misses})}；ruleVersion={params['ruleVersion']}"
                 ),
             )
             db.commit()
@@ -255,8 +257,8 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
             "termId": str(batch.term_id),
             "dryRun": bool(dry_run),
             "placedSessions": len(new_items),
-            "placedTasks": len(placed),
-            "missedTasks": len(misses),
+            "placedTasks": len({row["taskId"] for row in placed}),
+            "missedTasks": len({row["taskId"] for row in misses}),
             "invalidTaskCount": len(invalid_tasks),
             "roomPoolSize": len(rooms),
             "params": params,

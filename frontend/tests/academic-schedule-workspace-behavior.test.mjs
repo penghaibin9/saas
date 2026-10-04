@@ -11,12 +11,64 @@ import * as teaching from '../src/modules/academicAffairs/constants/teaching.js'
 function page(name, dependencies = {}, globals = {}) {
   const source = readFileSync(new URL(`../src/modules/academicAffairs/views/${name}.vue`, import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
-    .replace(/^import (.*?) from .*$/gm, (_, binding) => `const ${binding} = dependencies${binding.startsWith('{') ? '' : '.' + binding}`)
+    .replace(/^import (.*?) from .*$/gm, (_, binding) => `const ${binding.replace(/\s+as\s+/g, ': ')} = dependencies${binding.startsWith('{') ? '' : '.' + binding}`)
     .replace('export default', 'component =')
   const context = { dependencies, ...globals }
   vm.runInNewContext(script, context)
   return context.component
 }
+
+test('排课学时缺额按权威结果显示，旧课位缺排与超排不能互相抵消', () => {
+  const component = page('AaSchedulingConsoleView')
+  const state = { ...component.methods, workbench: { expectedHours: 8, scheduledHours: 7, missing: [{ remainingSessions: 4 }], over: [{ expectedSessions: 2, scheduledSessions: 5 }] } }
+  assert.equal(component.computed.repairRemaining.call(state), 4)
+  assert.equal(state.contactMetrics(state.workbench).known, false)
+  state.workbench = { expectedContactHours: 36, scheduledContactHours: 26, missingContactHours: 12, excessContactHours: 2, weeklyOverloadCount: 1, scheduledItemCount: 2 }
+  assert.equal(component.computed.repairRemaining.call(state), 12)
+  const metrics = state.contactMetrics(state.workbench)
+  assert.equal(metrics.scheduled, 26)
+  assert.equal(metrics.excess, 2)
+  assert.equal(metrics.itemCount, 2)
+  state.workbench = { ...state.workbench, batchStatus: 'PUBLISHED', missingContactHours: 0 }
+  state.repairRemaining = 0
+  assert.equal(component.computed.hasPublishedGap.call(state), true)
+})
+
+test('发布清单按总计划学时及逐周超量显示，未知学时不能显示通过', () => {
+  const component = page('AaSchedulePublishView')
+  const state = { ...component.methods, gate: { summary: { complete: true, expectedContactHours: 36, scheduledContactHours: 36, missingContactHours: 0, excessContactHours: 0, weeklyOverloadCount: 1 } } }
+  let checks = component.computed.gateChecklist.call(state)
+  assert.equal(checks.find(row => row.label === '计划总学时完整').ok, true)
+  assert.equal(checks.find(row => row.label === '每周学时未超量').ok, false)
+  state.gate.summary = { complete: true }
+  checks = component.computed.gateChecklist.call(state)
+  assert.equal(checks.find(row => row.label === '计划总学时完整').ok, false)
+  assert.match(checks.find(row => row.label === '计划总学时完整').detail, /待核对/)
+})
+
+test('纠错回执区分课位条数和展开学时，未知回执不伪造学时', async () => {
+  const messages = []
+  let receipt = { batchId: '47', scheduledItemCount: 9, expectedContactHours: 36, scheduledContactHours: 26, missingContactHours: 10, excessContactHours: 0, weeklyOverloadCount: 0 }
+  const component = page('AaSchedulingConsoleView', { toast: { success: text => messages.push(text) }, academicAffairsApi: { startScheduleCorrection: async () => ({ code: 0, data: receipt }) } })
+  const state = { ...component.methods, workbenchBatchId: '44', correctionTargetTask: null, commandContextKey: () => 'same', loadWorkbench: async () => {} }
+  await state.createCorrectionDraft('补齐课程计划')
+  assert.match(messages[0], /保留 9 条现有课位/)
+  assert.match(messages[0], /已排 26 学时.*缺 10 学时/)
+  receipt = { batchId: '48', scheduledSessions: 9, remainingSessions: 1 }
+  await state.createCorrectionDraft('重新核对计划')
+  assert.match(messages[1], /待核对/)
+  assert.doesNotMatch(messages[1], /已排 9 学时|缺 1 学时/)
+})
+
+test('传统自动排课新增量是课位条数，分段漏排显示实际周段与缺学时', async () => {
+  const messages = []
+  const component = page('AaSchedulingConsoleView', { toast: { success: text => messages.push(text) }, academicAffairsSchedulingApi: { autoSchedule: async () => ({ code: 0, data: { placedSessions: 3 } }) } })
+  const state = { ...component.methods, autoBatchId: '47', commandContextKey: () => 'same' }
+  await state.runAuto(false)
+  assert.equal(messages[0], '已新增 3 条课位')
+  assert.match(state.autoMissText({ startWeek: 6, endWeek: 18, needSessions: 2, placedSessions: 1, missingContactHours: 13 }), /第 6—18 周.*缺 13 学时.*1 \/ 2 条课位/)
+  assert.match(state.autoMissText({ needSessions: 2, placedSessions: 1 }), /待核对/)
+})
 
 test('新建课表须明确学院或全校范围，学院编号按字符串传递', async () => {
   const writes = []

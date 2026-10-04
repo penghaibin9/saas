@@ -47,8 +47,8 @@
               <strong>{{ gate.batch?.batchName }}</strong>
               <p>请先处理本批次漏排、超排和课程冲突。正式发布还须通过全校核验。</p>
             </div>
-            <AppStatusTag :type="gate.summary.complete === true ? 'success' : 'danger'" dot>
-              {{ gate.summary.complete === true ? '本批次通过' : '本批次待处理' }}
+            <AppStatusTag :type="gate.summary.complete === true && contactGateReady ? 'success' : 'danger'" dot>
+              {{ gate.summary.complete === true && contactGateReady ? '本批次通过' : '本批次待处理' }}
             </AppStatusTag>
           </div>
           <div class="aa-gate-grid">
@@ -71,7 +71,7 @@
           </div>
           <div class="aa-gate-actions">
             <AppButton @click="gate.visible = false">收起检查</AppButton>
-            <AppButton v-if="!gate.summary.complete" @click="openWorkbench(gate.batch)">返回排课工作台处理</AppButton>
+            <AppButton v-if="!gate.summary.complete || !contactGateReady" @click="openWorkbench(gate.batch)">返回排课工作台处理</AppButton>
             <AppButton
               v-else-if="gate.intent !== 'view'"
               variant="primary"
@@ -187,15 +187,22 @@ export default {
     writeBusy() { return !!this.pendingWrite || this.gate.submitting || this.voidDlg.submitting },
     formalHead() { return scheduleTruthPresentation(this.focusBatch) },
     schoolGateReady() { return this.gate.summary?.schoolGate?.ready === true },
+    contactGateReady() {
+      const value = this.contactMetrics(this.gate.summary)
+      return value.known && value.expected === value.scheduled && value.missing === 0 && value.excess === 0 && value.overload === 0
+    },
     schoolGateBlockers() { return this.schoolGateReasons(this.gate.summary) },
     gateActionReady() {
-      return this.gate.summary?.complete === true && (this.gate.intent === 'pre' || (this.gate.intent === 'pub' && this.schoolGateReady))
+      return this.gate.summary?.complete === true && this.contactGateReady && (this.gate.intent === 'pre' || (this.gate.intent === 'pub' && this.schoolGateReady))
     },
     gateChecklist() {
       const row = this.gate.summary || {}
+      const hours = this.contactMetrics(row)
       return [
         { label: '教学任务可排', ok: row.totalTasks > 0 && !row.invalidTaskCount, detail: `任务 ${row.totalTasks || 0} 个 · 配置异常 ${row.invalidTaskCount || 0} 个` },
-        { label: '应排节次完整', ok: !row.missingTaskCount && !row.overScheduledTaskCount, detail: `应排 ${row.expectedSessions || 0} 节 · 已排 ${row.scheduledSessions || 0} 节 · 漏排 ${row.missingTaskCount || 0} 个任务` },
+        { label: '教学任务计划完整', ok: !row.missingTaskCount && !row.overScheduledTaskCount, detail: `漏排 ${row.missingTaskCount || 0} 个任务 · 超排 ${row.overScheduledTaskCount || 0} 个任务；课位按周次展开核对` },
+        { label: '计划总学时完整', ok: hours.known && hours.expected === hours.scheduled && hours.missing === 0 && hours.excess === 0, detail: hours.known ? `计划 ${hours.expected} 学时 · 已排 ${hours.scheduled} 学时 · 缺 ${hours.missing} 学时 · 超 ${hours.excess} 学时` : '计划学时及周次覆盖待核对' },
+        { label: '每周学时未超量', ok: hours.known && hours.overload === 0, detail: hours.known ? `周超量 ${hours.overload} 项；总学时达到仍须核对每周上限` : '每周学时上限待核对' },
         { label: '课位关联有效', ok: !row.orphanItemCount && !row.invalidCoordinateItemCount, detail: `孤立课位 ${row.orphanItemCount || 0} · 周次坐标异常 ${row.invalidCoordinateItemCount || 0}` },
         { label: '硬冲突清零', ok: !row.hardConflicts, detail: `硬冲突 ${row.hardConflicts || 0} · 软冲突 ${row.softConflicts || 0}` }
       ]
@@ -215,6 +222,12 @@ export default {
   },
   beforeUnmount() { this.disposed = true; this.listSeq += 1; this.recSeq += 1; this.gateSeq += 1; this.focusGate.invalidate() },
   methods: {
+    contactMetrics(row = {}) {
+      row = row || {}
+      const keys = ['expectedContactHours', 'scheduledContactHours', 'missingContactHours', 'excessContactHours', 'weeklyOverloadCount']
+      const valid = key => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0
+      return { known: keys.every(valid), expected: row[keys[0]], scheduled: row[keys[1]], missing: row[keys[2]], excess: row[keys[3]], overload: row[keys[4]] }
+    },
     isPending(row, kind) { return this.pendingWrite?.batchId === row.batchId && this.pendingWrite?.kind === kind },
     clearSensitive(message) {
       this.listSeq += 1; this.recSeq += 1; this.gateSeq += 1; this.focusGate.invalidate()
@@ -393,6 +406,9 @@ export default {
     },
     gateFailureReason(summary, kind) {
       if (summary?.complete !== true) return '本批次发布条件尚未全部通过，请重新核对漏排、超排和课程冲突。'
+      const hours = this.contactMetrics(summary)
+      if (!hours.known) return '尚未取得计划总学时和每周学时核验结果，请重新检查。'
+      if (hours.expected !== hours.scheduled || hours.missing > 0 || hours.excess > 0 || hours.overload > 0) return '计划学时尚未对齐或存在每周超量，请返回排课工作台处理。'
       return kind === 'pub' ? this.schoolGateReasons(summary).join('；') : ''
     },
     async act(row, kind) {
@@ -406,7 +422,7 @@ export default {
       const before = await this.readFormalBatch(row.batchId)
       if (this.disposed || operationContext !== this.focusContextKey()) return
       if (isDeniedResult(before)) return this.clearSensitive(before.message)
-      if (gate.code !== 0 || gate.data?.complete !== true || (kind === 'pub' && gate.data?.schoolGate?.ready !== true) || before.code !== 0 || before.data.status !== expectedBefore) {
+      if (gate.code !== 0 || gate.data?.complete !== true || this.gateFailureReason(gate.data, kind) || (kind === 'pub' && gate.data?.schoolGate?.ready !== true) || before.code !== 0 || before.data.status !== expectedBefore) {
         this.commandError = gate.message || (gate.code === 0 && this.gateFailureReason(gate.data, kind)) || '发布门禁或批次状态已变化，请重新核对'
         this.gate.summary = gate.code === 0 ? gate.data : null
         await this.load()

@@ -8,7 +8,9 @@ import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 import { academicFlowText } from '../src/modules/academicAffairs/config/academicFlowRegistry.js'
 import * as results from '../src/modules/academicAffairs/components/parallel-a/resultState.js'
 
-const ok = data => ({ code: 0, data })
+const hours = { expectedContactHours: 36, scheduledContactHours: 36, missingContactHours: 0, excessContactHours: 0, weeklyOverloadCount: 0, scheduledItemCount: 2 }
+const withHours = data => data && Object.hasOwn(data, 'complete') ? { ...hours, ...data } : data
+const ok = data => ({ code: 0, data: withHours(data) })
 const row = { batchId: '9007199254740993', batchName: '本学期正式课表', status: 'PRE_PUBLISHED' }
 const ready = () => ({ complete: true, schoolGate: { ready: true, blockers: [], requiredBatchIds: [row.batchId] } })
 function instance(api = {}, summary = ready(), intent = 'pub') {
@@ -16,11 +18,28 @@ function instance(api = {}, summary = ready(), intent = 'pub') {
     ctx: { currentRole: { roleCode: 'ACADEMIC_ADMIN' }, dataScope: { scope: 'TENANT_ALL' } },
     focusGate: { invalidate() {} }
   })
-  value.state.gate = { visible: true, loading: false, submitting: false, batch: row, summary, intent }
+  value.state.gate = { visible: true, loading: false, submitting: false, batch: row, summary: withHours(summary), intent }
   value.state.load = async () => {}; value.state.loadRecords = async () => {}
   value.state.statusLabel = status => ({ PUBLISHED: '已发布', PRE_PUBLISHED: '预发布' })[status] || '待核对'
   return value
 }
+
+test('新学时核验缺失或周超量时即使旧门禁通过仍不可发布', async () => {
+  for (const summary of [ready(), { ...ready(), ...hours, weeklyOverloadCount: 1 }, { ...ready(), ...hours, missingContactHours: 4, excessContactHours: 4 }]) {
+    const { state } = instance()
+    state.gate.summary = summary
+    assert.equal(state.gateActionReady, false)
+    let writes = 0; state.act = async () => { writes++ }
+    await state.confirmGateAction()
+    assert.equal(writes, 0)
+    assert.match(state.commandError, /学时|超量/)
+  }
+  let writes = 0
+  const { state } = instance({ getScheduleSummary: async () => ({ code: 0, data: ready() }), getScheduleBatch: async () => ok(row), publishSchedule: async () => { writes++ } })
+  await state.confirmGateAction()
+  assert.equal(writes, 0)
+  assert.match(state.commandError, /尚未取得计划总学时/)
+})
 
 test('正式发布同时要求批次完整和全校明确就绪，缺失或非布尔值均不能写', async () => {
   for (const summary of [null, {}, { complete: true }, { complete: true, schoolGate: null },

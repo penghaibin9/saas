@@ -103,6 +103,9 @@ def summary(user, batch_id):
                 "expectedSessions": expected,
                 "scheduledSessions": actual,
                 "remainingSessions": max(0, expected - actual),
+                **{key: source.get(key) for key in ("expectedContactHours", "scheduledContactHours",
+                    "remainingContactHours", "missingContactHours", "excessContactHours",
+                    "weeklyOverloadCount", "scheduledItemCount", "contactHourBasis")},
                 "issueType": "NOT_READY" if invalid else ("UNSCHEDULED" if actual == 0 else "PARTIAL"),
                 "issueLabel": "教学任务数据异常" if invalid else ("未排" if actual == 0 else "部分漏排"),
                 "canSchedule": not invalid and batch.status == "DRAFT",
@@ -130,9 +133,11 @@ def summary(user, batch_id):
         if pending_availability_count:
             blockers.append(f"{pending_availability_count} 条教师不可排时间待处理")
         if result["missingTaskCount"]:
-            blockers.append(f"{result['missingTaskCount']} 个教学任务仍有未排节次")
+            blockers.append(f"{result['missingTaskCount']} 个教学任务共缺 {result['missingContactHours']} 计划学时")
         if result["overScheduledTaskCount"]:
             blockers.append(f"{result['overScheduledTaskCount']} 个教学任务排课超量")
+        if result["weeklyOverloadCount"]:
+            blockers.append(f"{result['weeklyOverloadCount']} 个任务教学周超过周学时上限")
         if result["orphanItemCount"]:
             blockers.append(f"{result['orphanItemCount']} 个课位无法回溯教学任务")
         if result["invalidCoordinateItemCount"]:
@@ -176,7 +181,7 @@ def summary(user, batch_id):
             next_action = {"code": "AUTO_DRY_RUN", "label": "执行试排预览", "description": "先预览，不写入正式课表"}
         elif result["missingTaskCount"]:
             current_stage_key = "MANUAL"
-            next_action = {"code": "TASK_QUEUE", "label": "处理未排与漏排", "description": "从任务队列逐项补齐剩余节次"}
+            next_action = {"code": "TASK_QUEUE", "label": "处理未排与漏排", "description": "从任务队列逐项补齐剩余计划学时"}
         else:
             current_stage_key = "QUALITY"
             next_action = {

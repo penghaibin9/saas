@@ -57,6 +57,7 @@ def evaluate(db, batch, *, lock=False) -> dict:
         or not classrooms[int(item.classroom_id)].allow_schedule
     )]
     counts: dict[int, int] = {}
+    task_items: dict[int, list] = {}
     orphan_items = []
     invalid_coordinate_items = []
     for item in items:
@@ -72,38 +73,35 @@ def evaluate(db, batch, *, lock=False) -> dict:
             orphan_items.append(item)
             continue
         counts[int(item.task_id)] = counts.get(int(item.task_id), 0) + 1
+        task_items.setdefault(int(item.task_id), []).append(item)
 
     missing = []
     over = []
     invalid_tasks = []
+    coverage_rows = []
     for task in tasks:
         expected = int(task.weekly_hours or 0)
         actual = int(counts.get(int(task.id), 0))
-        start_week = int(task.start_week or 1)
-        end_week = int(task.end_week or teaching_weeks)
-        if expected <= 0 or start_week < 1 or end_week < start_week or end_week > teaching_weeks:
+        coverage = policy.task_coverage(task, task_items.get(int(task.id), []), teaching_weeks)
+        coverage_rows.append(coverage)
+        invalid_ids = set(coverage["invalidItemIds"])
+        invalid_coordinate_items.extend(row for row in task_items.get(int(task.id), [])
+                                        if str(row.id) in invalid_ids and row not in invalid_coordinate_items)
+        row = {"taskId": str(task.id), "courseName": task.course_name,
+               "expectedSessions": expected, "scheduledSessions": actual,
+               "remainingSessions": max(0, expected - actual), **coverage}
+        if coverage["invalidTask"]:
             invalid_tasks.append({
-                "taskId": str(task.id),
-                "courseName": task.course_name,
+                **row,
                 "weeklyHours": task.weekly_hours,
                 "startWeek": task.start_week,
                 "endWeek": task.end_week,
             })
             continue
-        if actual < expected:
-            missing.append({
-                "taskId": str(task.id),
-                "courseName": task.course_name,
-                "expectedSessions": expected,
-                "scheduledSessions": actual,
-            })
-        elif actual > expected:
-            over.append({
-                "taskId": str(task.id),
-                "courseName": task.course_name,
-                "expectedSessions": expected,
-                "scheduledSessions": actual,
-            })
+        if coverage["missingContactHours"]:
+            missing.append(row)
+        if coverage["excessContactHours"] or coverage["weeklyOverloadCount"]:
+            over.append(row)
 
     conflicts = scheduling_service.conflict_report_in_session(db, batch)
     expected_sessions = sum(max(0, int(task.weekly_hours or 0)) for task in tasks)
@@ -130,6 +128,11 @@ def evaluate(db, batch, *, lock=False) -> dict:
         "scheduledTasks": len(counts),
         "expectedSessions": expected_sessions,
         "scheduledSessions": scheduled_sessions,
+        "scheduledItemCount": len(items),
+        **{key: sum(row[key] for row in coverage_rows) for key in (
+            "expectedContactHours", "scheduledContactHours", "missingContactHours",
+            "excessContactHours", "weeklyOverloadCount")},
+        "derivedTotalTaskCount": sum(row["totalHoursDerived"] for row in coverage_rows),
         "completionRate": round(len(counts) / len(tasks) * 100, 1) if tasks else 0.0,
         "invalidTaskCount": len(invalid_tasks),
         "missingTaskCount": len(missing),

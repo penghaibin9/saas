@@ -17,8 +17,10 @@ TID = 1000000000000000001
 
 
 def _hdr(client, login_name):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+    response = client.post("/api/v1/auth/mock-login?tenant=demo",
+                           json={"tenantCode": "demo", "loginName": login_name, "password": "any"})
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 

@@ -191,7 +191,7 @@ def _coordinate(db, batch, task, source, *, preload=None):
     if slot_no not in enabled_slots:
         raise AppException("VALIDATION_ERROR", f"节次 {slot_no} 未在学校作息中启用")
     if parity not in _base.PARITIES:
-        raise AppException("VALIDATION_ERROR", "单双周仅支持 ALL/ODD/EVEN")
+        raise AppException("VALIDATION_ERROR", "请选择每周、单周或双周")
     if (
         task_start < 1
         or task_end < task_start
@@ -217,6 +217,8 @@ def _coordinate(db, batch, task, source, *, preload=None):
             "VALIDATION_ERROR",
             f"排课周次必须位于教学任务的 {task_start}-{task_end} 周范围内",
         )
+    if not policy.active_weeks(start_week, end_week, parity):
+        raise AppException("VALIDATION_ERROR", "所选周次与单双周没有任何实际排课周")
     return weekday, slot_no, start_week, end_week, parity
 
 
@@ -270,20 +272,20 @@ def _ensure_task_capacity(
     db,
     batch,
     task,
-    increment=1,
     exclude_item_id=None,
     *,
     preload=None,
+    candidate,
 ):
     from app.models import AaScheduleItem
 
-    expected = int(task.weekly_hours or 0)
-    if expected <= 0:
-        raise AppException("DATA_CONFLICT", "教学任务未配置有效周学时", http_status=409)
-
-    if preload is not None and not exclude_item_id:
-        actual = preload.scheduled_count(task.id)
+    if preload is not None:
+        teaching_weeks = preload.teaching_weeks
+        rows = preload.scheduled_items(task.id)
+        if exclude_item_id:
+            rows = [row for row in rows if int(row.id) != int(exclude_item_id)]
     else:
+        _term, teaching_weeks = policy.term_bounds(db, int(batch.term_id))
         query = db.query(AaScheduleItem).filter(
             AaScheduleItem.tenant_id == _base._tid(),
             AaScheduleItem.batch_id == int(batch.id),
@@ -293,13 +295,15 @@ def _ensure_task_capacity(
         )
         if exclude_item_id:
             query = query.filter(AaScheduleItem.id != int(exclude_item_id))
-        actual = query.count()
-
-    if actual + int(increment) > expected:
+        rows = query.all()
+    coverage = policy.task_coverage(task, [*rows, candidate], teaching_weeks)
+    if coverage["invalidTask"] or coverage["invalidItemIds"]:
+        raise AppException("DATA_CONFLICT", "教学任务学时或现有排课周次无效，请先核对", details=coverage, http_status=409)
+    if coverage["excessContactHours"] or coverage["weeklyOverloadCount"]:
         raise AppException(
             "DATA_CONFLICT",
-            f"该教学任务周学时为 {expected}，当前已排 {actual} 节，继续排课将超排",
-            details={"taskId": str(task.id), "weeklyHours": expected, "scheduled": actual},
+            "继续排课将超排：超过任务计划总学时或某周学时上限",
+            details={"taskId": str(task.id), "weeklyHours": task.weekly_hours, **coverage},
             http_status=409,
         )
 
@@ -310,7 +314,9 @@ def _build_item(db, batch, task, source, *, item_source, preload=None):
     weekday, slot_no, start_week, end_week, parity = _coordinate(
         db, batch, task, source, preload=preload
     )
-    _ensure_task_capacity(db, batch, task, preload=preload)
+    _ensure_task_capacity(db, batch, task, preload=preload, candidate={
+        "weekday": weekday, "slot_no": slot_no, "start_week": start_week,
+        "end_week": end_week, "week_parity": parity})
     classroom_id, classroom_text = _classroom(
         db, task, _value(source, "classroom"), preload=preload
     )
@@ -465,6 +471,8 @@ def _preflight_result(db, batch, task, source, *, exclude_item_id=None) -> dict:
         task,
         exclude_item_id=exclude_item_id,
         preload=preload,
+        candidate={"weekday": weekday, "slot_no": slot_no, "start_week": start_week,
+                   "end_week": end_week, "week_parity": parity},
     )
     _classroom_id, classroom_text = _classroom(
         db, task, _value(source, "classroom"), preload=preload
@@ -801,6 +809,10 @@ def adjust_item(batch_id, item_id, user, weekday, slot_no, classroom, week_parit
             "classroom": classroom,
         }
         new_weekday, new_slot, start_week, end_week, parity = _coordinate(db, batch, task, source)
+        if parity != item.week_parity:
+            _ensure_task_capacity(db, batch, task, exclude_item_id=item.id, candidate={
+                "weekday": new_weekday, "slot_no": new_slot, "start_week": start_week,
+                "end_week": end_week, "week_parity": parity})
         classroom_id, classroom_text = _classroom(db, task, classroom)
         conflict = _base._detect_conflict(
             db,
@@ -863,13 +875,13 @@ def _correction_result(db, draft, source_batch_id, *, idempotent=False) -> dict:
         "batchId": str(draft.id),
         "sourceBatchId": str(source_batch_id),
         "status": draft.status,
-        "clonedItems": int(gate["scheduledSessions"]),
+        "clonedItems": int(gate["scheduledItemCount"]),
         "expectedSessions": int(gate["expectedSessions"]),
         "scheduledSessions": int(gate["scheduledSessions"]),
-        "remainingSessions": max(
-            0,
-            int(gate["expectedSessions"]) - int(gate["scheduledSessions"]),
-        ),
+        "remainingSessions": sum(max(0, row["expectedSessions"] - row["scheduledSessions"])
+                                 for row in gate["missingTasks"]),
+        **{key: gate[key] for key in ("expectedContactHours", "scheduledContactHours",
+            "missingContactHours", "excessContactHours", "weeklyOverloadCount", "scheduledItemCount")},
         "idempotent": bool(idempotent),
     }
 

@@ -51,7 +51,7 @@
             <p v-if="!canImportBatch" class="mp-note">仅具有导入权限的可编辑草稿允许导入。</p>
           </template>
           <template v-else-if="tab === 'result'">
-            <p>应排 {{ workbench.expectedHours }} 节，已排 {{ workbench.scheduledHours }} 节；此批次状态以服务端结果为准。</p>
+            <p>{{ contactSummary(workbench) }}；此批次状态以服务端结果为准。</p>
             <AppButton @click="openPublishedSchedule">查看本批次课表</AppButton>
           </template>
           <template v-else>
@@ -127,16 +127,16 @@
           <div class="aasg-repair-center">
             <div class="aasg-repair-copy">
               <span class="aasg-repair-kicker">当前正式课表不下线</span>
-              <strong>保留已排 {{ workbench.scheduledHours }} 节，只补剩余 {{ repairRemaining }} 节</strong>
+              <strong>保留 {{ contactMetrics(workbench).itemCount ?? '待核对' }} 条课位，{{ repairGapText }}</strong>
               <p>创建纠错草稿会复制当前全部有效课位。老师学生 PC 和老师学生小程序继续使用现在的正式课表；待纠错草稿补齐并通过发布门禁后，系统再一次性切换四端正式版本。</p>
             </div>
             <div class="aasg-repair-facts" aria-label="纠错草稿影响范围">
-              <div><span>应排</span><strong>{{ workbench.expectedHours }}</strong><small>节</small></div>
-              <div><span>直接保留</span><strong>{{ workbench.scheduledHours }}</strong><small>节</small></div>
-              <div class="is-gap"><span>继续补排</span><strong>{{ repairRemaining }}</strong><small>节</small></div>
+              <div><span>计划总学时</span><strong>{{ contactMetrics(workbench).expected ?? '待核对' }}</strong><small>学时</small></div>
+              <div><span>直接保留</span><strong>{{ contactMetrics(workbench).itemCount ?? '待核对' }}</strong><small>条课位</small></div>
+              <div class="is-gap"><span>待补齐</span><strong>{{ contactMetrics(workbench).missing ?? '待核对' }}</strong><small>学时</small></div>
             </div>
             <AppButton variant="primary" @click="openCorrectionDraft()">
-              创建纠错草稿（保留已排 {{ workbench.scheduledHours }} 节）
+              创建纠错草稿（保留已排 {{ contactMetrics(workbench).itemCount ?? '待核对' }} 条课位）
             </AppButton>
           </div>
         </AppSectionCard>
@@ -151,8 +151,8 @@
               <div class="mp-cell-sub">{{ row.className || '教学班待确认' }} · {{ row.teacherName || '教师待确认' }}</div>
             </template>
             <template #cell-progress="{ row }">
-              <div class="mp-cell-main">{{ row.scheduledSessions }} / {{ row.expectedSessions }} 节</div>
-              <div class="mp-cell-sub">剩余 {{ row.remainingSessions }} 节 · 总学时 {{ row.totalHours || '—' }}</div>
+              <div class="mp-cell-main">已排 {{ contactMetrics(row).scheduled ?? '待核对' }} / 计划 {{ contactMetrics(row).expected ?? '待核对' }} 学时</div>
+              <div class="mp-cell-sub">{{ contactSummary(row) }}</div>
             </template>
             <template #cell-requirement="{ row }">
               <div class="mp-cell-main">{{ weekRangeText(row) }}</div>
@@ -381,6 +381,10 @@
     <div v-else-if="tab === 'auto'" class="mp-stack">
       <AppScheduleBatchPicker v-model="autoBatchId" style="max-width:320px" @change="syncBatchQuery(autoBatchId)" />
       <AaSchedulingOptimizerPanel ref="optimizerPanel" :batch-id="String(autoBatchId || '')" :identity-key="routeContextKey()" :ctx="ctx" />
+      <AppSectionCard v-if="autoResult" title="自动初排结果">
+        <p>新增 {{ autoResult.placedSessions }} 条课位；计划覆盖仍须回到工作台核对。</p>
+        <ul v-if="autoMisses.length"><li v-for="(row, index) in autoMisses" :key="index">{{ row.courseName }}：{{ autoMissText(row) }}；{{ row.reasonLabel || '请核对排课条件' }}</li></ul>
+      </AppSectionCard>
     </div>
 
     <!-- 冲突报告：本轮保持既有能力 -->
@@ -531,8 +535,13 @@ export default {
     canImportBatch() { return this.workbench?.batchStatus === 'DRAFT' && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.schedule.import') },
     canManageRules() { return MANAGE_ROLES.has(String(this.ctx.currentRole.roleCode || '').toUpperCase()) },
     canCorrectSchedule() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.schedule.edit') },
-    repairRemaining() { return Math.max(0, Number(this.workbench?.expectedHours || 0) - Number(this.workbench?.scheduledHours || 0)) },
-    hasPublishedGap() { return this.workbench?.batchStatus === 'PUBLISHED' && this.repairRemaining > 0 },
+    repairRemaining() {
+      const row = this.workbench || {}
+      if (this.contactMetrics(row).known) return row.missingContactHours
+      return (row.missingTasks || row.missing || []).reduce((sum, task) => sum + Math.max(0, Number(task.remainingSessions) || 0), 0)
+    },
+    repairGapText() { return this.contactMetrics(this.workbench).known ? `待补齐 ${this.repairRemaining} 学时` : `计划学时待核对，已知缺排 ${this.repairRemaining} 条重复课位` },
+    hasPublishedGap() { return this.workbench?.batchStatus === 'PUBLISHED' && (this.repairRemaining > 0 || this.workbench.excessContactHours > 0 || this.workbench.weeklyOverloadCount > 0 || this.workbench.overScheduledTaskCount > 0) },
     termArchived() { return String(this.termInfo?.status || '').toUpperCase() === 'ARCHIVED' },
     canWriteRules() {
       return Boolean(
@@ -568,7 +577,7 @@ export default {
         { label: '教学任务', value: row.totalTasks, note: `已确认 ${row.confirmedTaskCount} · 已就绪 ${row.readyTaskCount}`, alert: row.notReadyTaskCount > 0 },
         { label: '已排任务', value: row.scheduledTasks, note: `任务触达率 ${row.completionRate}%` },
         { label: '未排 / 漏排', value: `${row.unplacedTaskCount} / ${row.partiallyScheduledTaskCount}`, note: `共 ${row.missingTaskCount} 个待补齐`, alert: row.missingTaskCount > 0 },
-        { label: '应排 / 已排节次', value: `${row.expectedHours} / ${row.scheduledHours}`, note: `剩余 ${Math.max(0, row.expectedHours - row.scheduledHours)} 节`, alert: row.expectedHours !== row.scheduledHours },
+        { label: '计划 / 已排学时', value: this.contactMetrics(row).known ? `${row.expectedContactHours} / ${row.scheduledContactHours}` : '待核对', note: this.contactSummary(row), alert: !this.contactMetrics(row).known || row.missingContactHours > 0 || row.excessContactHours > 0 || row.weeklyOverloadCount > 0 },
         { label: '硬 / 软冲突', value: `${row.hardConflicts} / ${row.softConflicts}`, note: '硬冲突必须清零', alert: row.hardConflicts > 0 },
         { label: '教师异议', value: row.teacherObjectionCount, note: `待处理偏好 ${row.pendingAvailabilityCount}`, alert: row.teacherObjectionCount > 0 }
       ]
@@ -595,6 +604,26 @@ export default {
   },
   beforeUnmount() { this.disposed = true; this.routeGate.invalidate(); this.workbenchGate.invalidate(); this.ruleGate.invalidate(); this.pendingAction = null },
   methods: {
+    autoMissText(row) {
+      const hours = typeof row.missingContactHours === 'number' && Number.isFinite(row.missingContactHours) && row.missingContactHours >= 0 ? `缺 ${row.missingContactHours} 学时` : '缺学时待核对'
+      const weeks = Number.isInteger(row.startWeek) && Number.isInteger(row.endWeek) && row.startWeek > 0 && row.endWeek >= row.startWeek ? `第 ${row.startWeek}—${row.endWeek} 周` : '周次待核对'
+      return `${weeks} · ${hours} · 本段已排 ${row.placedSessions ?? '待核对'} / ${row.needSessions ?? '待核对'} 条课位`
+    },
+    contactMetrics(row = {}) {
+      row = row || {}
+      const valid = key => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0
+      const keys = ['expectedContactHours', 'scheduledContactHours', 'missingContactHours', 'excessContactHours', 'weeklyOverloadCount']
+      return { known: keys.every(valid), expected: valid(keys[0]) ? row[keys[0]] : null, scheduled: valid(keys[1]) ? row[keys[1]] : null, missing: valid(keys[2]) ? row[keys[2]] : null, excess: valid(keys[3]) ? row[keys[3]] : null, overload: valid(keys[4]) ? row[keys[4]] : null, itemCount: valid('scheduledItemCount') ? row.scheduledItemCount : null }
+    },
+    contactSummary(row) {
+      const value = this.contactMetrics(row)
+      if (!value.known) {
+        const missing = (row?.missingTasks || row?.missing || []).reduce((sum, task) => sum + Math.max(0, Number(task.remainingSessions) || 0), 0)
+        const excess = (row?.overScheduledTasks || row?.over || []).reduce((sum, task) => sum + Math.max(0, (Number(task.scheduledSessions) || 0) - (Number(task.expectedSessions) || 0)), 0)
+        return `计划学时及周次覆盖待核对；已知缺排 ${missing} 条、超排 ${excess} 条重复课位`
+      }
+      return `计划 ${value.expected} 学时 · 已排 ${value.scheduled} 学时 · 缺 ${value.missing} 学时 · 超 ${value.excess} 学时 · 周超量 ${value.overload} 项`
+    },
     academicFlowOwner, academicFlowNextOwner, academicFlowCount,
     switchTab(tab) { return this.$router.push({ path: this.$route.path, query: { ...this.$route.query, tab } }) },
     routeContextKey() { return JSON.stringify([this.academicFlow?.identity() || academicIdentity(currentUserFromToken(), this.ctx), this.$route?.fullPath]) },
@@ -675,7 +704,7 @@ export default {
       this.confirmRequireReason = true
       this.confirmReasonLabel = '纠错原因（至少 5 个字）'
       this.confirmTitle = '创建漏排纠错草稿'
-      this.confirmMessage = `系统会保留已排 ${this.workbench.scheduledHours} 节，只补剩余 ${this.repairRemaining} 节。创建期间老师学生 PC 和老师学生小程序继续使用当前正式课表，不会下线。`
+      this.confirmMessage = `系统会保留 ${this.contactMetrics(this.workbench).itemCount ?? '待核对'} 条现有课位，${this.repairGapText}。创建期间老师学生 PC 和老师学生小程序继续使用当前正式课表，不会下线。`
       this.pendingAction = (reason) => this.createCorrectionDraft(reason)
       this.confirmVisible = true
     },
@@ -692,7 +721,7 @@ export default {
       }
       this.workbenchBatchId = String(response.data.batchId)
       await this.loadWorkbench()
-      toast.success(`已保留 ${response.data.scheduledSessions} 节现有课位，可继续补排剩余 ${response.data.remainingSessions} 节`)
+      toast.success(`已保留 ${this.contactMetrics(response.data).itemCount ?? '待核对'} 条现有课位；${this.contactSummary(response.data)}`)
       if (targetTask?.classId) this.openTask(targetTask)
     },
     runWorkbenchAction(code) {
@@ -912,7 +941,7 @@ export default {
       const response = await api.autoSchedule(batchId, dryRun)
       if (context !== this.commandContextKey()) return
       this.autoLoading = false
-      if (response.code === 0) { this.autoResult = response.data; toast.success(dryRun ? '试排完成（未落库）' : `已排入 ${response.data.placedSessions} 节`) }
+      if (response.code === 0) { this.autoResult = response.data; toast.success(dryRun ? '试排完成（未落库）' : `已新增 ${response.data.placedSessions} 条课位`) }
       else toast.error(response.message || '自动排课失败')
     },
     doAuto() {
@@ -929,7 +958,7 @@ export default {
         const context = this.commandContextKey()
         const response = await api.clearAuto(this.autoBatchId)
         if (context !== this.commandContextKey()) return
-        if (response.code === 0) { toast.success(`已清除 ${response.data.cleared} 节`); this.autoResult = null }
+        if (response.code === 0) { toast.success(`已清除 ${response.data.cleared} 条课位`); this.autoResult = null }
         else toast.error(response.message || '清除失败')
       }
       this.confirmVisible = true
