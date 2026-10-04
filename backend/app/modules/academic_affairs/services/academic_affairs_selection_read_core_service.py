@@ -132,7 +132,10 @@ def get_batch(user, batch_id):
         _require_batch_visible(db, int(batch.id), scoped)
         from .academic_affairs_responsibility_service import resolve_school
         result = _core._batch_dto(batch)
-        result["responsibility"] = resolve_school(db, permission_code="academicAffairs.selection.manage") if batch.status != "ARCHIVED" else None
+        # Responsibility follows the next formal command: CLOSED locks the roster;
+        # LOCKED archives through selection.manage. Archived batches remain history.
+        permission = "academicAffairs.selection.lock" if batch.status == "CLOSED" else "academicAffairs.selection.manage"
+        result["responsibility"] = resolve_school(db, permission_code=permission) if batch.status != "ARCHIVED" else None
         result["nextStep"] = {
             "DRAFT": {"code": "PUBLISHED", "label": "完成规则和课程核对后发布选课批次"},
             "PUBLISHED": {"code": "OPEN", "label": "按选课时间窗开放学生选课"},

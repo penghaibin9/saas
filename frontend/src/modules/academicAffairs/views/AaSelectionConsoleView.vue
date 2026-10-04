@@ -620,7 +620,7 @@ export default {
           await this.select(preferred)
         } else if (this.current) {
           const fresh = this.rows.find((row) => String(row.batchId) === String(this.current.batchId))
-          if (fresh) this.current = fresh
+          if (fresh) await this.select(fresh)
         }
       } else {
         if (isDeniedResult(res)) {

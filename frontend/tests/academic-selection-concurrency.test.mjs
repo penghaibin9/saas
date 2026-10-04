@@ -153,6 +153,56 @@ test('successful lifecycle releases submitting even though the status changed', 
   assert.equal(state.current.status, 'PUBLISHED'); assert.equal(state.saving, false)
 })
 
+test('list refresh keeps responsibility and next step from the formal batch detail', async () => {
+  const owner = { resolved: true, orgName: '校教务处', assigneeNames: ['责任人'] }
+  for (const [status, nextStep] of [
+    ['PUBLISHED', { code: 'OPEN', label: '按选课时间窗开放学生选课' }],
+    ['CLOSED', { code: 'LOCKED', label: '完成冲突和容量处理后锁定名单' }]
+  ]) {
+    const { state } = mount(undefined, {
+      listBatches: async () => ok({ list: [{ ...batch('A'), status }], total: 1 }),
+      getBatch: async id => ok({ ...batch(id), status, responsibility: owner, nextStep })
+    })
+    await state.select(batch('A'))
+    await state.load()
+    assert.equal(state.current.responsibility, owner)
+    assert.equal(state.current.nextStep, nextStep)
+  }
+})
+
+test('lifecycle result and list snapshot cannot replace the new formal owner or next step', async () => {
+  const owner = { resolved: true, orgName: '校教务处', assigneeNames: ['责任人'] }
+  const nextStep = { code: 'OPEN', label: '按选课时间窗开放学生选课' }
+  let published = false
+  const { state } = mount(undefined, {
+    publishBatch: async id => { published = true; return ok({ ...batch(id), status: 'PUBLISHED' }) },
+    listBatches: async () => ok({ list: [{ ...batch('A'), status: published ? 'PUBLISHED' : 'DRAFT' }], total: 1 }),
+    getBatch: async id => ok({ ...batch(id), status: published ? 'PUBLISHED' : 'DRAFT', responsibility: owner, nextStep })
+  })
+  await state.select(batch('A'))
+  await state.lifecycle('publishBatch', '发布')
+  await state.onConfirm()
+  assert.equal(state.current.status, 'PUBLISHED')
+  assert.equal(state.current.responsibility, owner)
+  assert.equal(state.current.nextStep, nextStep)
+})
+
+test('old formal detail requested by list refresh cannot restore a switched batch', async () => {
+  const old = deferred()
+  const { state } = mount(undefined, {
+    listBatches: async () => ok({ list: [batch('A')], total: 1 }),
+    getBatch: id => id === 'A' ? old.promise : Promise.resolve(ok({ ...batch(id), responsibility: { orgName: '新批次责任' } }))
+  })
+  state.current = batch('A')
+  const loading = state.load()
+  await Promise.resolve()
+  await state.select(batch('B'))
+  old.resolve(ok({ ...batch('A'), responsibility: { orgName: '旧批次责任' } }))
+  await loading
+  assert.equal(state.current.batchId, 'B')
+  assert.equal(state.current.responsibility.orgName, '新批次责任')
+})
+
 test('roster A arriving after roster B cannot contaminate the open drawer', async () => {
   const slow = deferred(); const { state } = mount(undefined, { courseRoster: id => id === 'A' ? slow.promise : Promise.resolve(ok({ list: [{ id }] })) })
   state.current = batch('batch'); const a = state.openRoster({ selectionCourseId: 'A' })
