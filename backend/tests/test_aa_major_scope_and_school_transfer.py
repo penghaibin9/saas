@@ -98,6 +98,7 @@ def _denied(call):
 def test_empty_major_can_read_and_compile_without_expanding_student_or_sibling_scope(facts):
     from app.core.affairs_security import build_affairs_context, student_directory_scope
     from app.models import SchoolClass
+    from app.modules.academic_affairs.services import academic_affairs_flow_service as flow
 
     user = facts['major_user']
     with get_sessionmaker()() as db:
@@ -123,6 +124,12 @@ def test_empty_major_can_read_and_compile_without_expanding_student_or_sibling_s
         _denied(lambda: programs.create_program(_program_body(facts[target]), user))
     assert student_directory_scope(user) == (set(), None)
     assert programs.get_program(facts['programs']['own'], user)['programName'] == '本专业已编辑方案'
+    projection = flow.flow(user)
+    assert projection['viewer']['majorIds'] == [str(facts['major'])]
+    assert projection['viewer']['collegeIds'] == []
+    assert projection['unitProgress'] == [] and projection['schoolGates'] == []
+    assert projection['stages'][2]['evidence']['programCount'] == 2
+    _denied(lambda: flow.flow(user, college_id=facts['college']))
 
 
 @pytest.mark.parametrize('invalid', ['revoked', 'expired', 'scope_deleted', 'major_deleted', 'major_disabled', 'foreign_major'])
@@ -200,6 +207,7 @@ def test_context_governance_and_flow_share_only_active_major_scope(facts, invali
 def test_named_student_scope_keeps_priority_while_empty_major_program_remains_manageable(facts):
     from app.core.affairs_security import build_affairs_context, student_directory_scope
     from app.models import RoleAssignmentScope, StudentProfile
+    from app.modules.academic_affairs.services import academic_affairs_flow_service as flow
 
     user = facts['major_user']
     with get_sessionmaker()() as db:
@@ -233,6 +241,27 @@ def test_named_student_scope_keeps_priority_while_empty_major_program_remains_ma
     assert programs.get_program(created['programId'], user)['majorId'] == str(facts['major'])
     _denied(lambda: programs.get_program(facts['programs']['sibling'], user))
     assert student_directory_scope(user) == (None, {named_id})
+    projection = flow.flow(user)
+    assert projection['viewer']['scopeType'] == 'STUDENT'
+    assert projection['viewer']['majorIds'] == [str(facts['major'])]
+    assert projection['viewer']['collegeIds'] == []
+    assert projection['unitProgress'] == [] and projection['schoolGates'] == []
+    assert projection['schoolStage'] is None
+    program_stage = projection['stages'][2]
+    assert program_stage['evidence']['majorIds'] == [str(facts['major'])]
+    assert program_stage['evidence']['programCount'] == 2
+    assert program_stage['responsibility']['assigneeUserIds'] == [user['userId']]
+    _denied(lambda: flow.flow(user, college_id=facts['college']))
+    with get_sessionmaker()() as db:
+        db.get(RoleAssignmentScope, facts['scope']).status = 'REVOKED'
+        db.commit()
+    _denied(lambda: flow.flow(user))
+    assert student_directory_scope(user) == (None, {named_id})
+    with get_sessionmaker()() as db:
+        context = build_affairs_context(user, db)
+        assert context.major_ids == set()
+        assert context.require_student(db, named_id).id == named_id
+        _denied(lambda: context.require_student(db, peer_id))
 
 
 @pytest.mark.parametrize('invalid', ['member_revoked', 'member_expired', 'member_deleted',

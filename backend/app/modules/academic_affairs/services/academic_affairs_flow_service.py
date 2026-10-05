@@ -928,8 +928,9 @@ def _teacher_stages(db, term, user, ctx):
 
 
 def _major_scope(db, user, ctx):
-    if ctx.scope_type != "CLASS":
+    if ctx.scope_type not in {"CLASS", "STUDENT"}:
         return set()
+    # 点名学生范围仍独立约束学生访问，不抹去同时有效的专业职责。
     # Consume the same current-role, active-organization authority as commands.
     # Re-reading raw scope rows would revive disabled/deleted professions.
     return set(getattr(ctx, "major_ids", set()) or set())
