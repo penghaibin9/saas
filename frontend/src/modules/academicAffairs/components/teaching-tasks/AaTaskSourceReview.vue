@@ -14,14 +14,18 @@
           <h4>比较任务{{ index + 1 }} · {{ task.courseName || '课程待核对' }}</h4>
           <dl>
             <div><dt>教学班</dt><dd>{{ task.teachingClassName || '待核对' }}</dd></div>
-            <div><dt>来源培养方案</dt><dd>{{ task.sourceProgramName || '待核对' }}</dd></div>
+            <div><dt>来源培养方案</dt><dd>{{ task.sourceProgramName || '待核对' }} · 第{{ task.sourceProgramVersion ?? '待核对' }}版</dd></div>
+            <div><dt>方案前后关系</dt><dd>{{ task.sourceRelationLabel || '版本关系待核对' }}</dd></div>
             <div><dt>形成方式</dt><dd>{{ task.formationModeLabel || '待核对' }}</dd></div>
+            <div><dt>形成方式依据</dt><dd>{{ task.formationProofLabel || '来源尚未证明' }}</dd></div>
             <div><dt>开课序号 / 学分</dt><dd>{{ task.openTermNo ?? '待核对' }} / {{ task.credit ?? '待核对' }}</dd></div>
             <div><dt>周学时 / 总学时</dt><dd>{{ task.weeklyHours ?? '待核对' }} / {{ task.totalHours ?? '待核对' }}</dd></div>
             <div><dt>授课周次</dt><dd>第 {{ task.startWeek ?? '待核对' }} 至 {{ task.endWeek ?? '待核对' }} 周</dd></div>
             <div><dt>任课教师</dt><dd>{{ task.teacherName || '待核对' }} · {{ task.teacherIdentityProven === true ? '正式身份已核对' : '正式身份待核对' }}</dd></div>
             <div><dt>名单人数</dt><dd>{{ task.rosterCount ?? '待核对' }}</dd></div>
           </dl>
+          <button v-if="task.sourceProgramCourseId" type="button" @click="openFormationProof(task)">核实形成方式依据</button>
+          <AaFormationProof v-if="proofSourceId && proofSourceId === String(task.sourceProgramCourseId)" :key="reviewKey + ':' + proofSourceId" :program-course-id="proofSourceId" :context-key="reviewKey" @close="proofSourceId = ''" @confirmed="load" />
         </article>
       </div>
       <ul class="aa-source-review__checks"><li v-for="check in result.checks" :key="check.code"><strong>{{ check.label }}：{{ check.status === 'PASS' ? '通过核对' : '存在阻断' }}</strong><p>{{ check.message }}</p></li></ul>
@@ -32,20 +36,23 @@
 
 <script>
 import { teachingTaskWorkbenchApi } from '../../api/teaching-task-workbench.api.js'
+import AaFormationProof from './AaFormationProof.vue'
 
 export default {
   name: 'AaTaskSourceReview',
+  components: { AaFormationProof },
   props: { taskId: { type: String, required: true }, termId: { type: String, default: '' }, otherTasks: { type: Array, default: () => [] }, contextKey: { type: String, required: true } },
   emits: ['close'],
-  data() { return { selectedOtherTaskId: this.otherTasks.length === 1 ? String(this.otherTasks[0].taskId) : '', result: null, state: 'select', error: '', requestSeq: 0, disposed: false } },
+  data() { return { selectedOtherTaskId: this.otherTasks.length === 1 ? String(this.otherTasks[0].taskId) : '', result: null, state: 'select', error: '', requestSeq: 0, disposed: false, proofSourceId: '' } },
   computed: { reviewKey() { return JSON.stringify([this.contextKey, this.termId, this.taskId, this.selectedOtherTaskId]) } },
   watch: { reviewKey: { immediate: true, handler() { this.load() } } },
   beforeUnmount() { this.disposed = true; this.requestSeq++; this.result = null },
   methods: {
+    openFormationProof(task) { const id = String(task?.sourceProgramCourseId || ''); this.proofSourceId = /^[1-9]\d*$/.test(id) ? id : '' },
     async load() {
       const seq = ++this.requestSeq, key = this.reviewKey
       const current = () => !this.disposed && seq === this.requestSeq && key === this.reviewKey
-      this.result = null; this.error = ''; this.state = 'select'
+      this.result = null; this.error = ''; this.state = 'select'; this.proofSourceId = ''
       if (!this.taskId || !this.selectedOtherTaskId || this.selectedOtherTaskId === this.taskId || !this.otherTasks.some(task => String(task.taskId) === this.selectedOtherTaskId)) return
       this.state = 'loading'
       try {

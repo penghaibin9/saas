@@ -212,7 +212,7 @@ def get_source_review(task_id, other_task_id, user):
             and binding.program.id == successor_program_id), "当前班级唯一适用方案为明确的后继版本。",
             "当前班级适用方案缺失、冲突或不是后继版本，须先核实方案绑定。")
         proven = [resolve_task_formation_snapshot(db, task.id, tenant_id=_tid()) for task in tasks]
-        modes = [_mode(task.formation_mode) for task in tasks]
+        modes = [item["formationMode"] for item in proven]
         add("FORMATION", "课程形成方式与原始来源", all(item["status"] == "PROVEN" for item in proven)
             and modes[0] == modes[1], "原始来源均已证明，课程形成方式一致。",
             "形成方式来源尚未证明或不一致；空值不能认定为相同，须先由责任人员核实来源依据。")
@@ -245,13 +245,18 @@ def get_source_review(task_id, other_task_id, user):
             "已检查的课表、选课、成绩、考勤、考务及正式名单消费未发现后继引用。",
             "后继任务已有正式业务引用：" + "、".join(consumed) if consumed else "来源方向未证明，无法判定哪条任务可被承接。")
         output = []
-        for task, source, program, projection in zip(tasks, sources, programs, projections):
+        for task, source, program, projection, proof in zip(tasks, sources, programs, projections, proven):
             output.append({"taskId": str(task.id), "batchId": str(task.batch_id), "courseName": task.course_name or "待核对课程",
                 "teachingClassName": task.teaching_class_name or "待核对教学班", "sourceProgramId": str(program.id) if program else "",
                 "sourceProgramName": program.program_name if program else "来源方案未证明",
+                "sourceProgramVersion": program.version if program else None,
+                "sourceRelationLabel": ("后继方案版本" if program.id == successor_program_id else "原方案版本")
+                    if program and successor_program_id else "版本关系待核对",
                 "sourceProgramCourseId": str(source.id) if source else "",
-                "formationModeLabel": _MODE_LABELS.get(_mode(task.formation_mode), "来源未证明")
-                    if source and _mode(task.formation_mode) == _mode(source.formation_mode)
+                "formationProofLabel": ("历史依据已正式确认" if proof.get("proofId") else "原方案课程明确记录")
+                    if proof["status"] == "PROVEN" else "来源尚未证明",
+                "formationModeLabel": _MODE_LABELS.get(proof["formationMode"], "来源未证明")
+                    if proof["status"] == "PROVEN"
                     else "任务：" + _MODE_LABELS.get(_mode(task.formation_mode), "来源未证明")
                         + "；方案来源：" + _MODE_LABELS.get(_mode(source.formation_mode) if source else None, "来源未证明"),
                 "credit": str(source.credit_snapshot) if source and source.credit_snapshot is not None else None,

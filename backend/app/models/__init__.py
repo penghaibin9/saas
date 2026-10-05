@@ -170,7 +170,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaGradeRecord, AaGradeTask,
                                          AaGraduationAuditBatch,
                                          AaGraduationAuditResult, AaProgram,
-                                         AaProgramBinding, AaProgramCourse,
+                                         AaProgramBinding, AaProgramCourse, AaProgramCourseFormationProof,
                                          AaProgramGraduationRequirement,
                                          AaProgramPracticeSegment,
                                          AaQualityRecord, AaQualityRectification,

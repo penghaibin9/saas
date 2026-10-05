@@ -258,8 +258,15 @@ def _guard_college_editable_batch_integrity(db, batch) -> None:
     )
 
 
-def _snapshot_program_course_formation(program_course) -> str | None:
-    """Copy only the explicit source-row formation; missing legacy truth stays NULL."""
+def _snapshot_program_course_formation(program_course, *, db=None, source_snapshot=None) -> str | None:
+    """Copy the exact source or confirmed evidence; unresolved history stays NULL."""
+    if db is not None:
+        from .academic_affairs_task_formation_provenance_service import resolve_program_course_formation_snapshot
+        snapshot = source_snapshot if source_snapshot is not None else resolve_program_course_formation_snapshot(db, program_course, tenant_id=_tid())
+        if snapshot["status"] == "CONFLICT":
+            raise AppException("DATA_CONFLICT", "方案课程形成方式依据发生冲突，请核对正式来源",
+                details={"blockers": snapshot["blockers"]}, http_status=409)
+        return snapshot["formationMode"] or None
     try:
         return normalize_formation_mode(getattr(program_course, "formation_mode", None))
     except ValueError as exc:
@@ -404,7 +411,7 @@ def generate_batch_tx(db, body, user) -> dict:
         AaProgram.tenant_id == _tid(),
         AaProgram.status.in_(sorted(program_activation.CURRENT_EFFECTIVE_PROGRAM_STATUSES)),
         AaProgram.is_deleted.is_(False),
-    )).all()
+    ).order_by(AaProgram.id).with_for_update().execution_options(populate_existing=True)).all()
     for program in programs:
         bindings = db.scalars(select(AaProgramBinding).where(
             AaProgramBinding.tenant_id == _tid(),
@@ -422,9 +429,12 @@ def generate_batch_tx(db, body, user) -> dict:
                 AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
                 AaCourse.owner_college_id == college_id,
             )
-        courses = db.scalars(course_query).all()
+        courses = db.scalars(course_query.order_by(AaProgramCourse.id).with_for_update()
+            .execution_options(populate_existing=True)).all()
         if not courses:
             continue
+        from .academic_affairs_task_formation_provenance_service import resolve_program_course_formation_snapshots
+        formation_snapshots = resolve_program_course_formation_snapshots(db, courses, tenant_id=_tid(), lock=True)
         for binding in bindings:
             if target_class is not None:
                 if binding.class_id:
@@ -505,7 +515,8 @@ def generate_batch_tx(db, body, user) -> dict:
                         ):
                             continue
                         binding_time_checked = True
-                    formation_mode = _snapshot_program_course_formation(program_course)
+                    formation_mode = _snapshot_program_course_formation(program_course, db=db,
+                        source_snapshot=formation_snapshots[program_course.id])
                     total_hours = int(course.hours_total or 0)
                     course_code = course.course_code or ""
                     course_name = course.course_name or ""

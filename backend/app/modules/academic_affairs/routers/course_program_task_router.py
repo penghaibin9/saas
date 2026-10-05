@@ -6,10 +6,10 @@ canonical service、权限、DTO、状态机、schema 均保持不变。
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Path, Query
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -61,6 +61,16 @@ class VoidDraftTaskBody(BaseModel):
     reason: str = Field(..., min_length=5, max_length=500, description="作废原因，5 至 500 字")
 
 
+class FormationProofBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    formationMode: Literal["ADMIN_FIXED", "SELECTABLE", "MERGED", "RETAKE", "LAYERED"]
+    evidenceFileId: str = Field(..., pattern=r"^[1-9]\d*$", max_length=20)
+    evidenceLocator: str = Field(..., min_length=2, max_length=300)
+    reason: str = Field(..., min_length=5, max_length=500)
+    expectedSourceFingerprint: str = Field(..., pattern=r"^[0-9a-fA-F]{64}$")
+    idempotencyKey: str = Field(..., min_length=8, max_length=120)
+
+
 # ═══════════ 培养方案 ════════════
 
 @router.post("/programs", summary="新建培养方案")
@@ -108,6 +118,19 @@ def program_course_update(
 @router.delete("/programs/courses/{programCourseId}", summary="方案课程模块：删除课程明细（编制态）")
 def program_course_delete(programCourseId: int = Path(...), user=Depends(_PROG_MANAGE)):
     return success(prog_svc.delete_course(programCourseId, user), message="已删除")
+
+
+@router.get("/programs/courses/{programCourseId}/formation-proof", summary="核实历史方案课程形成方式依据")
+def program_course_formation_proof(programCourseId: int = Path(..., gt=0), user=Depends(_PROG_VIEW)):
+    from app.modules.academic_affairs.services import academic_affairs_program_formation_proof_service as proof_svc
+    return success(proof_svc.get_formation_proof(programCourseId, user))
+
+
+@router.post("/programs/courses/{programCourseId}/formation-proof", summary="校教务责任人确认历史形成方式依据")
+def program_course_confirm_formation_proof(body: FormationProofBody,
+    programCourseId: int = Path(..., gt=0), user=Depends(_PROG_REVIEW)):
+    from app.modules.academic_affairs.services import academic_affairs_program_formation_proof_service as proof_svc
+    return success(proof_svc.confirm_formation_proof(programCourseId, body, user), message="本份来源依据已确认")
 
 
 @router.post("/programs/{programId}/submit", summary="提交方案审核（发布前校验学分达标）")

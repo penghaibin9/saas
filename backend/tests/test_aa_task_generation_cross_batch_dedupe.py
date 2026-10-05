@@ -233,6 +233,7 @@ def test_generation_class_id_preserves_large_string_and_rejects_invalid_values()
     namespace = {"BaseModel": BaseModel, "Field": Field, "Optional": Optional}
     exec(compile(ast.Module(body=[definition], type_ignores=[]), str(source), "exec"), namespace)
     model = namespace["TaskBatchGenerate"]
+    model.model_rebuild(_types_namespace=namespace)
     identity = "9007199254740993"
     assert model(termId="52", classId=identity).classId == identity
     assert model(termId="52").classId is None

@@ -9,7 +9,7 @@ import { renderToString } from 'vue/server-renderer'
 const url = new URL('../src/modules/academicAffairs/components/teaching-tasks/AaTaskSourceReview.vue', import.meta.url)
 function component(api) {
   const source = readFileSync(url, 'utf8')
-  const context = { teachingTaskWorkbenchApi: api }
+  const context = { teachingTaskWorkbenchApi: api, AaFormationProof: {} }
   vm.runInNewContext(source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'component ='), context)
   return context.component
 }
@@ -30,7 +30,7 @@ test('来源核对只调用读取接口并保真大编号，阻断结果可见�
   assert.equal(s.state, 'ready')
   const source = readFileSync(url, 'utf8')
   const render = new Function('Vue', compile(source.match(/<template>([\s\S]*?)<\/template>/)[1], { mode: 'function', prefixIdentifiers: true }).code)(Vue)
-  const html = await renderToString(Vue.createSSRApp({ render, setup: () => s }))
+  const html = await renderToString(Vue.createSSRApp({ render, components: { AaFormationProof: { render: () => null } }, setup: () => s }))
   assert.match(html, /正式任课关系不一致/)
   assert.match(html, /原培养方案/)
   assert.doesNotMatch(html, /TEACHER_DIFFERENCE|BLOCKED|1000000000000000001|确认承接<\/button>|canConfirm/)
@@ -101,4 +101,26 @@ test('不同学期或返回对象不一致时禁止显示结果，网络失败�
   await failed.load()
   assert.equal(failed.result, null)
   assert.match(failed.error, /网络暂不可用/)
+})
+
+test('同名方案按权威版本及前后关系展示，两份来源分别展开且确认后重读当前比较', async () => {
+  let reads = 0
+  const data = { ...response().data, tasks: [
+    { taskId: '1000000000000000001', sourceProgramCourseId: '1000000000000000091', sourceProgramName: '软件技术方案', sourceProgramVersion: 1, sourceRelationLabel: '原方案版本', formationProofLabel: '来源尚未证明' },
+    { taskId: '1000000000000000002', sourceProgramCourseId: '1000000000000000092', sourceProgramName: '软件技术方案', sourceProgramVersion: 2, sourceRelationLabel: '后继方案版本', formationProofLabel: '历史依据已正式确认' }
+  ] }
+  const c = component({ getSourceReview: async () => { reads++; return { code: 0, data } } }), s = state(c)
+  await s.load(); s.openFormationProof(s.result.tasks[0])
+  assert.equal(s.proofSourceId, '1000000000000000091')
+  s.openFormationProof(s.result.tasks[1])
+  assert.equal(s.proofSourceId, '1000000000000000092')
+  const text = readFileSync(url, 'utf8'), render = new Function('Vue', compile(text.match(/<template>([\s\S]*?)<\/template>/)[1], { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  let confirmation
+  const proof = { props: ['programCourseId', 'contextKey'], emits: ['confirmed'], setup(_props, { emit }) { confirmation = () => emit('confirmed'); return () => Vue.h('span', '本份来源补证') } }
+  const visible = { ...s, reviewKey: s.reviewKey, load: s.load.bind(s) }
+  const html = await renderToString(Vue.createSSRApp({ render, components: { AaFormationProof: proof }, setup: () => visible }))
+  assert.match(html, /第1版/); assert.match(html, /第2版/); assert.match(html, /原方案版本/); assert.match(html, /后继方案版本/); assert.match(html, /历史依据已正式确认/)
+  confirmation(); await Promise.resolve(); await Promise.resolve()
+  assert.equal(reads, 2)
+  assert.equal(s.proofSourceId, '')
 })
