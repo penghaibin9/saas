@@ -8,6 +8,18 @@ from app.modules.academic_affairs.services import academic_affairs_flow_service 
 
 
 @pytest.fixture
+def request_tenant_context():
+    """单元场景仍提供真实请求租户，不替换底层租户安全检查。"""
+    from app.core.context import get_tenant, set_tenant
+    previous = get_tenant()
+    set_tenant(1)
+    try:
+        yield 1
+    finally:
+        set_tenant(previous)
+
+
+@pytest.fixture
 def flow_tenant_context(db_mode):
     """真实查询及授权共用请求租户，并在测试结束后恢复，避免局部替身掩盖缺上下文。"""
     from app.core.context import get_tenant, set_tenant
@@ -64,7 +76,7 @@ def test_program_projection_preserves_historical_graduates_cohort_and_status(mon
 
 
 @pytest.mark.parametrize("status,class_name", [("ASSIGNED", "甲教学班"), ("ASSIGNED", None), ("READY", "甲教学班"), ("READY", None)])
-def test_teacher_workbench_reads_real_task_class_field(monkeypatch, status, class_name):
+def test_teacher_workbench_reads_real_task_class_field(request_tenant_context, monkeypatch, status, class_name):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
     from app.modules.academic_affairs.services import academic_affairs_teacher_today_work_service as work
     from app.modules.academic_affairs.services import academic_affairs_teacher_relation_authority as authority
@@ -76,6 +88,7 @@ def test_teacher_workbench_reads_real_task_class_field(monkeypatch, status, clas
     monkeypatch.setattr(authority, "relation_scope", lambda *args, **kwargs: {"taskIds": {10}})
     db = MagicMock()
     db.scalars.return_value.all.side_effect = [
+        [],  # No source handoff precedes the original task in this scenario.
         [AaTeachingTaskBatch(id=2, tenant_id=1, term_id=4, status="DRAFT")],
         [task], [task], [], [],
     ]
@@ -234,7 +247,9 @@ def test_school_archive_waits_for_prerequisites_without_hiding_existing_batch(mo
     assert archived["status"] == "DONE" and archived["evidence"]["checkedDomainCount"] == 1
 
 
-def test_school_gate_defers_final_reconciliation_but_retains_governance_blockers(monkeypatch):
+def test_school_gate_defers_final_reconciliation_but_retains_governance_blockers(request_tenant_context, monkeypatch):
+    from sqlalchemy import select
+    from app.models import AaTeachingTask
     from app.modules.academic_affairs.services import academic_affairs_archive_rule_evaluator as evaluator
     monkeypatch.setattr(service, "_tid", lambda: 1)
     query = MagicMock()
@@ -242,16 +257,19 @@ def test_school_gate_defers_final_reconciliation_but_retains_governance_blockers
     query.filter.return_value = query
     query.outerjoin.return_value = query
     query.count.return_value = 1
+    query.statement = select(AaTeachingTask)
     monkeypatch.setattr(service, "_query", lambda *args: query)
     expected = MagicMock(return_value=([], [{"type": "PROGRAM_UNRESOLVED"}]))
     final = MagicMock(return_value={"result": "BLOCKED", "summary": "全校课程存在重复任务", "evidence": []})
     monkeypatch.setattr(evaluator, "_expected_opening", expected)
     monkeypatch.setattr(evaluator, "evaluate_teaching_task", final)
-    blockers = service._global_gate_blockers(MagicMock(), Row(id=1), {}, run_final_reconciliation=False)
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+    blockers = service._global_gate_blockers(db, Row(id=1), {}, run_final_reconciliation=False)
     final.assert_not_called()
     assert {row["code"] for row in blockers} >= {
         "SCHOOL_OPENING_SCOPE_UNRESOLVED", "RESPONSIBILITY_UNRESOLVED", "OFFERING_UNIT_UNRESOLVED"}
-    blockers = service._global_gate_blockers(MagicMock(), Row(id=1), {})
+    blockers = service._global_gate_blockers(db, Row(id=1), {})
     final.assert_called_once()
     expected.assert_called_once()
     assert "SCHOOL_TASK_RECONCILIATION_NOT_READY" in {row["code"] for row in blockers}
@@ -639,7 +657,7 @@ def test_school_schedule_and_gate_independently_require_public_responsibility(mo
     assert not gate["ready"] and gate["readyUnitCount"] == 1
 
 
-def test_shared_schedule_tasks_intersect_canonical_mode_and_offering_scope(monkeypatch):
+def test_shared_schedule_tasks_intersect_canonical_mode_and_offering_scope(request_tenant_context, monkeypatch):
     from app.models import AaTeachingTask
     from app.modules.academic_affairs.services import academic_affairs_schedule_policy as policy
     monkeypatch.setattr(service, "_tid", lambda: 1)
@@ -649,7 +667,7 @@ def test_shared_schedule_tasks_intersect_canonical_mode_and_offering_scope(monke
         return AaTeachingTask.id > 0
     monkeypatch.setattr(policy, "task_scope_condition", scope, raising=False)
     db = MagicMock()
-    db.scalars.return_value.all.return_value = [1, 2]
+    db.scalars.return_value.all.side_effect = [[], [1, 2]]
     assert service._schedule_task_ids(db, Row(id=1), Row(college_id=None), 12, {}) == {1, 2}
     assert calls == [(None, False), (12, True)]
 
@@ -851,7 +869,7 @@ def test_mysql_major_preparation_keeps_other_majors_out_and_accounts_for_formal_
         db.rollback()
 
 
-def test_teacher_tasks_do_not_invent_schedule_or_invigilation_work(monkeypatch):
+def test_teacher_tasks_do_not_invent_schedule_or_invigilation_work(request_tenant_context, monkeypatch):
     monkeypatch.setattr(service, "_schedule_change_projection", lambda *args, **kw: None)
     from app.modules.academic_affairs.services import academic_affairs_teacher_today_work_service as work
     monkeypatch.setattr(work, "current_term_workbench", lambda *args, **kw: {"actionItems": []})
@@ -868,6 +886,7 @@ def test_teacher_tasks_do_not_invent_schedule_or_invigilation_work(monkeypatch):
     monkeypatch.setattr(exams, "project_my_invigilations", lambda *args, **kw: {"items": []})
     db = MagicMock()
     db.query.return_value.filter.return_value.all.return_value = []
+    db.scalars.return_value.all.return_value = []
     ctx = Row(permission_codes={"academicAffairs.teachingTask.view"})
     term = Row(id=1, year_code="2041-2042", term_no=1, start_date=date(2041, 9, 1))
     rows = service._teacher_stages(db, term, {}, ctx)
@@ -920,16 +939,21 @@ def test_missing_grade_task_does_not_offer_create_after_input_permission_revoked
     assert not result["responsibility"]["resolved"]
 
 
-def test_college_published_grades_do_not_hide_missing_ready_course(monkeypatch):
+def test_college_published_grades_do_not_hide_missing_ready_course(request_tenant_context, monkeypatch):
+    from sqlalchemy import select
+    from app.models import AaTeachingTask
     monkeypatch.setattr(service, "_tid", lambda: 1)
     task = Row(id=103, course_name="另一门本院开课课程")
     query = MagicMock()
+    query.filter.return_value = query
+    query.statement = select(AaTeachingTask)
     query.count.return_value = 1
     query.order_by.return_value.first.return_value = task
     monkeypatch.setattr(service, "_query", lambda *args: query)
     resolver = MagicMock(return_value={"resolved": True, "assigneeUserIds": ["21"]})
     monkeypatch.setattr(service.responsibility, "resolve_teacher", resolver)
     term, ctx, db = Row(id=91), Row(permission_codes={"academicAffairs.grade.view"}), MagicMock()
+    db.scalars.return_value.all.return_value = []
     stage = service._stage(8, term, status=service._grade_status({"PUBLISHED": 1}),
         evidence={"byStatus": {"PUBLISHED": 1}})
     result = service._with_missing_college_grade_tasks(db, term, 12, ctx, stage)

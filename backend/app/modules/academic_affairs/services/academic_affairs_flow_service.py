@@ -928,20 +928,11 @@ def _teacher_stages(db, term, user, ctx):
 
 
 def _major_scope(db, user, ctx):
-    from app.models import RoleAssignmentScope
     if ctx.scope_type != "CLASS":
         return set()
-    uid = str(ctx.user_id or "").removeprefix("db-")
-    if not uid.isdigit():
-        return set()
-    now = datetime.utcnow()
-    return set(db.scalars(select(RoleAssignmentScope.scope_id).where(
-        RoleAssignmentScope.tenant_id == _tid(), RoleAssignmentScope.user_id == int(uid),
-        RoleAssignmentScope.role_code == str(user.get("currentRoleCode") or ""),
-        RoleAssignmentScope.scope_type == "MAJOR", RoleAssignmentScope.status == "ACTIVE",
-        RoleAssignmentScope.is_deleted.is_(False), RoleAssignmentScope.effective_at <= now,
-        or_(RoleAssignmentScope.expires_at.is_(None), RoleAssignmentScope.expires_at > now),
-    )).all())
+    # Consume the same current-role, active-organization authority as commands.
+    # Re-reading raw scope rows would revive disabled/deleted professions.
+    return set(getattr(ctx, "major_ids", set()) or set())
 
 
 def _major_stages(db, term, ctx, major_ids):

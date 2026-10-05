@@ -25,7 +25,7 @@ def _scope(user, db):
     ctx = build_affairs_context(user, db)
     scope_type = str(getattr(ctx, "scope_type", None) or "NONE").upper()
     if scope_type in {"NONE", "BLOCKED"}:
-        raise no_data_scope("当前身份未配置可管理的学院或班级范围")
+        raise no_data_scope("当前身份未配置可管理的学院、专业或班级范围")
     return ctx
 
 
@@ -35,6 +35,16 @@ def _allowed_major_ids(db, scope) -> set[int]:
     if str(getattr(scope, "scope_type", "")).upper() == "TENANT_ALL":
         return set()
     major_ids = set()
+    explicit_major_ids = {int(v) for v in (getattr(scope, "major_ids", None) or []) if str(v).isdigit()}
+    if explicit_major_ids:
+        major_ids.update(
+            int(value) for (value,) in db.query(Major.id).filter(
+                Major.tenant_id == _tid(),
+                Major.id.in_(sorted(explicit_major_ids)),
+                Major.is_deleted.is_(False),
+                Major.status == "ACTIVE",
+            ).all()
+        )
     college_ids = {int(v) for v in (getattr(scope, "college_ids", None) or []) if str(v).isdigit()}
     class_ids = {int(v) for v in (getattr(scope, "class_ids", None) or []) if str(v).isdigit()}
     if college_ids:
@@ -72,7 +82,7 @@ def _ensure_program_scope(db, user, program_id: int):
         return scope, program
     allowed_major_ids = _allowed_major_ids(db, scope)
     if not program.major_id or int(program.major_id) not in allowed_major_ids:
-        raise no_data_scope("该培养方案不在当前学院或班级数据范围内")
+        raise no_data_scope("该培养方案不在当前学院、专业或班级数据范围内")
     return scope, program
 
 

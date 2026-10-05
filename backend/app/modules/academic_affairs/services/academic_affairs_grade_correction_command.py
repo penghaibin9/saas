@@ -100,6 +100,14 @@ def _college_bound_user_ids(db) -> set[int]:
             College.tenant_id == _tid(),
             College.is_deleted.is_(False),
             College.secretary_id.is_not(None),
+            # Formal secretary history supersedes the old projection, including
+            # revoked/expired assignments. Never revive an old college position.
+            ~select(StaffAssignment.id).where(
+                StaffAssignment.tenant_id == _tid(),
+                StaffAssignment.org_type == "COLLEGE",
+                StaffAssignment.org_node_id == College.id,
+                StaffAssignment.assignment_type == "SECRETARY",
+            ).exists(),
         ).all()
     }
     now = datetime.utcnow()

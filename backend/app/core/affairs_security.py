@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import or_, select
+from sqlalchemy import and_, or_, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import _db_granted, _granted, is_super_admin
@@ -94,6 +94,9 @@ class StudentAffairsSecurityContext:
     self_student_id: int | None = None
     is_scope_configured: bool = False
     scope_source: str = "NONE"
+    # Stable profession scope is retained even before that profession has classes.
+    # Student access still uses the separately projected, possibly empty class_ids.
+    major_ids: set[int] = field(default_factory=set)
 
     # ── 范围判断 ──
     def allowed_class_ids(self, db) -> set[int] | None:
@@ -271,8 +274,9 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
     try:
         keys = _derive_keys(u)
         from app.models import (
-            AffairsCounselorAssignment, College, DormBuilding,
-            RoleAssignmentScope, SchoolClass, StudentProfile, TeacherStudentScope, User,
+            AffairsCounselorAssignment, College, DormBuilding, Major,
+            Role, RoleAssignmentScope, RoleAssignmentValidity, SchoolClass,
+            StudentProfile, TeacherStudentScope, User, UserRole,
         )
         rows = db.scalars(select(TeacherStudentScope).where(
             TeacherStudentScope.tenant_id == tenant_id,
@@ -333,6 +337,34 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
             int(row.scope_id) for row in assignment_scopes
             if str(row.scope_type or "").upper() == "MAJOR"
         }
+        if major_scope_ids:
+            member_ids = set(db.scalars(select(UserRole.id)
+                .join(Role, Role.id == UserRole.role_id)
+                .join(User, User.id == UserRole.user_id)
+                .outerjoin(RoleAssignmentValidity, and_(
+                    RoleAssignmentValidity.tenant_id == tenant_id,
+                    RoleAssignmentValidity.user_role_id == UserRole.id,
+                )).where(
+                    UserRole.tenant_id == tenant_id,
+                    UserRole.user_id == scope_user_id,
+                    UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
+                    Role.tenant_id == tenant_id, Role.role_code == role,
+                    Role.status == "ACTIVE", Role.is_deleted.is_(False),
+                    User.tenant_id == tenant_id,
+                    User.status == "ACTIVE", User.is_deleted.is_(False),
+                    or_(RoleAssignmentValidity.id.is_(None), and_(
+                        RoleAssignmentValidity.status == "ACTIVE",
+                        RoleAssignmentValidity.is_deleted.is_(False),
+                        RoleAssignmentValidity.effective_at <= moment,
+                        or_(RoleAssignmentValidity.expires_at.is_(None),
+                            RoleAssignmentValidity.expires_at > moment),
+                    )),
+                )).all())
+            major_scope_ids = {
+                int(row.scope_id) for row in assignment_scopes
+                if str(row.scope_type or "").upper() == "MAJOR"
+                and row.user_role_id in member_ids
+            }
         ctx.college_ids |= {
             int(row.scope_id) for row in assignment_scopes
             if str(row.scope_type or "").upper() == "COLLEGE"
@@ -346,9 +378,15 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
             if str(row.scope_type or "").upper() == "STUDENT"
         }
         if major_scope_ids:
+            ctx.major_ids = {int(value) for value in db.scalars(select(Major.id).where(
+                Major.tenant_id == tenant_id,
+                Major.id.in_(major_scope_ids),
+                Major.is_deleted.is_(False),
+                Major.status == "ACTIVE",
+            )).all()}
             ctx.class_ids |= {int(value) for value in db.scalars(select(SchoolClass.id).where(
                 SchoolClass.tenant_id == tenant_id,
-                SchoolClass.major_id.in_(major_scope_ids),
+                SchoolClass.major_id.in_(ctx.major_ids),
                 SchoolClass.is_deleted.is_(False),
             )).all() if value}
 
@@ -418,10 +456,11 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
         ctx.scope_type = "STUDENT"
         ctx.is_scope_configured = True
         ctx.scope_source = "SCOPE_TABLE_STUDENT"
-    elif ctx.class_ids or ctx.college_ids:
+    elif ctx.class_ids or ctx.college_ids or ctx.major_ids:
         ctx.scope_type = "CLASS"
         ctx.is_scope_configured = True
-        ctx.scope_source = "SCOPE_TABLE_CLASS"
+        ctx.scope_source = ("ROLE_ASSIGNMENT_SCOPE_MAJOR" if ctx.major_ids and not ctx.class_ids
+                            else "SCOPE_TABLE_CLASS")
     else:
         ctx.scope_type = "NONE"          # fail-closed：绝不回退 TENANT_ALL
         ctx.is_scope_configured = False
