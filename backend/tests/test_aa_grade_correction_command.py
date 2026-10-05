@@ -223,15 +223,20 @@ def _grades(acad_student_id):
 
 
 def _seed_published_grade(*, usual=60, final=60, dynamic=False):
+    from datetime import date
+    from app.models import AaTerm, AaTeachingClassTeacher
+
     _activate()
     ids = _seed_initial_grade(usual=usual, final=final)
     with get_sessionmaker()() as db:
         task=db.get(AaGradeTask,ids['taskId'])
+        term = db.get(AaTerm, task.term_id)
+        term.start_date, term.end_date, term.teaching_weeks = date(2026, 9, 1), date(2027, 1, 15), 18
         course=AaCourse(tenant_id=TID,course_code='CS101',course_name='数据结构',credit=4,version=1,status='ENABLED',owner_college_id=ids['collegeId'])
         db.add(course);db.flush()
         batch=AaTeachingTaskBatch(tenant_id=TID,term_id=task.term_id,batch_name='正式成绩测试任务',status='APPROVED',college_id=ids['collegeId'])
         db.add(batch);db.flush()
-        teaching=AaTeachingTask(tenant_id=TID,batch_id=batch.id,course_id=course.id,course_code=course.course_code,course_name=course.course_name,class_id=task.class_id,teacher_key='teacher01',status='READY')
+        teaching=AaTeachingTask(tenant_id=TID,batch_id=batch.id,course_id=course.id,course_code=course.course_code,course_name=course.course_name,class_id=task.class_id,teacher_key='teacher01',weekly_hours=1,total_hours=18,start_week=1,end_week=18,status='READY')
         db.add(teaching);db.flush()
         task.course_id=course.id;task.teaching_task_id=teaching.id
         tc=AaTeachingClass(tenant_id=TID,teaching_task_id=teaching.id,term_id=task.term_id,course_id=course.id,class_code='GC-CLASS',class_name='更正教学班',status='ACTIVE')
@@ -246,6 +251,15 @@ def _seed_published_grade(*, usual=60, final=60, dynamic=False):
         if teacher is None:
             teacher=User(tenant_id=TID,login_name='teacher01',real_name='教师',password_hash='x',user_type='TEACHER',status='ACTIVE')
             db.add(teacher);db.flush()
+        teaching.teacher_id = teacher.id
+        relation = db.query(AaTeachingClassTeacher).filter_by(tenant_id=TID,
+            teaching_class_id=tc.id, teacher_key='teacher01', role_type='PRIMARY').one_or_none()
+        if relation is None:
+            relation = AaTeachingClassTeacher(tenant_id=TID, teaching_class_id=tc.id,
+                teacher_key='teacher01', role_type='PRIMARY')
+            db.add(relation)
+        relation.teacher_id, relation.teacher_name = teacher.id, teacher.real_name
+        relation.start_week, relation.end_week, relation.status = 1, 18, 'ACTIVE'
         ids.update(teachingClassId=tc.id,courseId=course.id,teacherUserId=teacher.id)
         if dynamic:
             from app.models.academic_affairs_r10 import AaGradeSchemeSnapshot,AaGradeComponentScore
@@ -284,6 +298,26 @@ def _apply(ids, *, new_final=90, reason="期末卷面登分错误，需按原卷
     else:
         body.newFinalScore = new_final
     return command.change_request(ids["taskId"], ids["recordId"], user, body, command_key=command_key)
+
+
+@pytest.mark.usefixtures("db_mode")
+@pytest.mark.parametrize("error_no", [1205, 1213])
+def test_apply_lock_conflict_returns_business_conflict_without_partial_request(monkeypatch, error_no):
+    from pymysql.err import OperationalError as DriverError
+    from sqlalchemy.exc import OperationalError
+    from app.modules.academic_affairs.services import academic_affairs_schedule_resource_guard as guard
+
+    ids = _seed_published_grade()
+    before = _state(ids)
+    def locked(*args, **kwargs):
+        raise OperationalError("isolated lock conflict", {}, DriverError(error_no, "isolated contention"))
+    monkeypatch.setattr(guard, 'lock_term', locked)
+    with pytest.raises(AppException) as conflict:
+        _apply(ids, command_key=f"isolated-correction-lock-{error_no}")
+    assert conflict.value.http_status == 409
+    assert _state(ids) == before
+    with get_sessionmaker()() as db:
+        assert db.query(AaGradeChangeRequest).filter_by(tenant_id=TID, grade_record_id=ids['recordId']).count() == 0
 
 
 @pytest.mark.usefixtures("db_mode")

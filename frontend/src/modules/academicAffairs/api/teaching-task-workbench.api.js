@@ -29,6 +29,9 @@ export const teachingTaskWorkbenchApi = {
       return fail(error)
     }
   },
+  async confirmSourceHandoff(executionTaskId, body) {
+    try { return ok(await request(`${BASE}/teaching-tasks/${encodeURIComponent(String(executionTaskId))}/source-handoff`, { method: 'POST', body, timeoutMs: 15000 })) } catch (error) { return fail(error) }
+  },
   async getBatch(batchId) {
     try {
       return ok(await request(`${BASE}/teaching-task-batches/${batchId}/workbench`))

@@ -23,6 +23,7 @@ def summary(user, batch_id):
     from app.models import AaCourse, AaScheduleBatch, AaScheduleItem, AaTeacherAvailability, AaTeachingTask, AaTeachingTaskBatch
     from . import academic_affairs_responsibility_service as responsibility
     from . import academic_affairs_schedule_policy as policy
+    from .academic_affairs_task_execution_authority import independent_task_condition
 
     with _base._base.session() as db:
         ctx = _base._base._ctx(user, db)
@@ -47,6 +48,7 @@ def summary(user, batch_id):
             AaTeachingTaskBatch.tenant_id == _base._base._tid(), AaTeachingTaskBatch.is_deleted.is_(False),
             AaTeachingTaskBatch.term_id == int(batch.term_id), AaTeachingTaskBatch.status == "APPROVED",
             policy.task_scope_condition(db, batch),
+            independent_task_condition(AaTeachingTask),
         ).group_by(AaCourse.category, AaCourse.nature).all()
         result["publicScheduleMode"] = policy.public_schedule_mode(db)
         result["courseScopeCounts"] = {"public": 0, "professional": 0}

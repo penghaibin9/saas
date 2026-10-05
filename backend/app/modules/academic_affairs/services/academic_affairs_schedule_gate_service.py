@@ -4,6 +4,7 @@ from __future__ import annotations
 from app.core.exceptions import AppException
 from app.services.db_service import _tid
 
+from .academic_affairs_task_execution_authority import load_execution_handoffs
 from . import academic_affairs_schedule_policy as policy
 from . import academic_affairs_scheduling_final_service as scheduling_service
 
@@ -19,14 +20,17 @@ def evaluate(db, batch, *, lock=False) -> dict:
         AaTeachingTaskBatch.is_deleted.is_(False),
     )
     task_batch_ids = [int(row.id) for row in task_batch_query.all()]
-    tasks = db.query(AaTeachingTask).filter(
+    task_query = db.query(AaTeachingTask).filter(
         AaTeachingTask.tenant_id == _tid(),
         AaTeachingTask.batch_id.in_(task_batch_ids or [-1]),
         AaTeachingTask.status == "READY",
         AaTeachingTask.no_auto_schedule.is_(False),
         AaTeachingTask.is_deleted.is_(False),
         policy.task_scope_condition(db, batch),
-    ).all()
+    ).order_by(AaTeachingTask.id)
+    tasks = (task_query.with_for_update().populate_existing() if lock else task_query).all()
+    handoffs = load_execution_handoffs(db, [row.id for row in tasks], lock=lock)
+    tasks = [row for row in tasks if int(row.id) not in handoffs]
     items = db.query(AaScheduleItem).filter(
         AaScheduleItem.tenant_id == _tid(),
         AaScheduleItem.batch_id == int(batch.id),
@@ -248,6 +252,8 @@ def evaluate_school_publish(db, batch, *, lock=False) -> dict:
     tasks = rows(db.query(AaTeachingTask).filter(
         AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
         AaTeachingTask.batch_id.in_([row.id for row in task_batches])), AaTeachingTask)
+    handoffs = load_execution_handoffs(db, [row.id for row in tasks], lock=lock)
+    tasks = [row for row in tasks if int(row.id) not in handoffs]
     required = {row.id for row in tasks if row.status != "MERGED" and not row.no_auto_schedule}
     blockers = []
 

@@ -2,7 +2,8 @@
 from sqlalchemy import select, func
 from app.services.db_service import session, _tid
 from app.modules.academic_affairs.optimizer.contracts import InputError
-from .schedule_optimizer_source_service import capture_source
+from .schedule_optimizer_source_service import capture_source, _scope_handoffs
+from .academic_affairs_task_execution_authority import independent_task_condition
 
 
 def readiness(user, batch_id):
@@ -14,11 +15,14 @@ def readiness(user, batch_id):
     with session() as db:
         batch = schedule._load_batch(db, int(batch_id), writable=False, lock=False)
         ids = schedule._task_batch_ids(db, batch)
-        tasks = db.scalars(select(AaTeachingTask).where(
+        task_query = select(AaTeachingTask).where(
             AaTeachingTask.tenant_id == _tid(), AaTeachingTask.batch_id.in_(ids or [-1]),
             AaTeachingTask.status == 'READY', AaTeachingTask.no_auto_schedule.is_(False),
             AaTeachingTask.is_deleted.is_(False), schedule.policy.task_scope_condition(db, batch)
-        ).order_by(AaTeachingTask.id).limit(1001)).all()
+        )
+        _scope_handoffs(db, task_query)
+        tasks = db.scalars(task_query.where(independent_task_condition(AaTeachingTask))
+            .order_by(AaTeachingTask.id).limit(1001)).all()
         blockers = []
         if len(tasks) > 1000: blockers.append({'code': 'SOURCE_READ_LIMIT'})
         roster_checks = [classes.resolve_teaching_task_roster(db, t.id) for t in tasks[:1000]]

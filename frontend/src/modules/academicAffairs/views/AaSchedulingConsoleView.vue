@@ -73,6 +73,12 @@
         </div>
       </AppSectionCard>
 
+      <section v-if="visibleHandoffReceipt" class="aasg-handoff-receipt" aria-label="正式承接办理回执" role="status">
+        <strong>正式承接已确认，并已回读核对</strong>
+        <p>{{ visibleHandoffReceipt.summary }}</p>
+        <p>承接说明：{{ visibleHandoffReceipt.reason }}</p>
+        <p>确认时间：{{ visibleHandoffReceipt.confirmedAt }}</p>
+      </section>
       <ErrorState v-if="workbenchError" :description="workbenchError" @retry="loadWorkbench" />
       <LoadingState v-else-if="workbenchLoading" />
       <template v-else-if="workbench">
@@ -172,7 +178,7 @@
           </DataTable>
         </AppSectionCard>
         <AppInlineAlert v-if="sourceReviewError" type="warning" :description="sourceReviewError" />
-        <AaTaskSourceReview v-if="sourceReview" :key="sourceReviewContext + ':' + sourceReview.taskId" :task-id="sourceReview.taskId" :other-tasks="sourceReview.otherTasks" :term-id="String(workbench.termId || termId || '')" :context-key="sourceReviewContext" @close="sourceReview = null" />
+        <AaTaskSourceReview v-if="sourceReview" :key="sourceReviewContext + ':' + sourceReview.taskId" :task-id="sourceReview.taskId" :other-tasks="sourceReview.otherTasks" :term-id="String(workbench.termId || termId || '')" :context-key="sourceReviewContext" @close="sourceReview = null" @confirmed="onSourceHandoffConfirmed" />
       </template>
       <EmptyState v-else title="请选择课表批次" description="选择批次后，系统会汇总教学任务、漏排、冲突、教师异议并给出下一步。" />
     </div>
@@ -477,7 +483,7 @@ export default {
       tab: 'workbench',
       tabs: [{ key: 'workbench', label: '排课工作台' }, { key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师不可排时间' }, { key: 'auto', label: '自动排课' }, { key: 'conflict', label: '冲突报告' }, { key: 'room', label: '教室可用时间' }, { key: 'import', label: '导入排课结果' }, { key: 'result', label: '排课结果' }, { key: 'adjust', label: '排课调整' }],
       termId: '', termInfo: null,
-      workbenchBatchId: '', workbench: null, workbenchLoading: false, workbenchError: '', sourceReview: null, sourceReviewError: '',
+      workbenchBatchId: '', workbench: null, workbenchLoading: false, workbenchError: '', sourceReview: null, sourceReviewError: '', sourceHandoffReceipt: null,
       rules: [], catalog: [], timeSlots: [],
       ruleLoading: false, catalogLoading: false, ruleError: '', catalogError: '', termError: '', slotLoadWarning: '',
       editorVisible: false, editingRuleId: '', saving: false, formError: '',
@@ -504,6 +510,7 @@ export default {
     }
   },
   computed: {
+    visibleHandoffReceipt() { return this.sourceHandoffReceipt?.scopeKey === this.handoffReceiptScopeKey() ? this.sourceHandoffReceipt : null },
     sourceReviewContext() { return JSON.stringify([this.routeContextKey(), this.termId, this.workbenchBatchId, this.workbench?.termId]) },
     pageMeta() {
       const pages = {
@@ -635,7 +642,7 @@ export default {
     routeContextKey() { return JSON.stringify([this.academicFlow?.identity() || academicIdentity(currentUserFromToken(), this.ctx), this.$route?.fullPath]) },
     commandContextKey() { return JSON.stringify([this.disposed, this.routeContextKey(), this.termId, this.workbenchBatchId, this.autoBatchId, this.conflictBatchId]) },
     async syncRoute() {
-      this.sourceReview = null; this.sourceReviewError = ''
+      this.sourceHandoffReceipt = null; this.sourceReview = null; this.sourceReviewError = ''
       if (!this.routeGate || this.disposed) return
       const current = this.routeGate.begin()
       this.workbenchGate.invalidate(); this.ruleGate.invalidate()
@@ -668,9 +675,20 @@ export default {
       if (value == null) return value
       return JSON.parse(JSON.stringify(value))
     },
+    handoffReceiptScopeKey() { return JSON.stringify([this.routeContextKey(), this.termId, this.workbenchBatchId]) },
+    async onSourceHandoffConfirmed(receipt) {
+      const pair = [this.sourceReview?.taskId, ...(this.sourceReview?.otherTasks || []).map(task => String(task.taskId))]
+      if (!receipt || typeof receipt.handoffId !== 'string' || !/^[1-9]\d*$/.test(receipt.handoffId)
+          || typeof receipt.executionTaskId !== 'string' || typeof receipt.successorTaskId !== 'string'
+          || receipt.executionTaskId === receipt.successorTaskId || !pair.includes(receipt.executionTaskId) || !pair.includes(receipt.successorTaskId)
+          || receipt.termId !== String(this.workbench?.termId || this.termId || '')
+          || typeof receipt.reason !== 'string' || typeof receipt.confirmedAt !== 'string' || !receipt.confirmedAt || typeof receipt.summary !== 'string') return
+      this.sourceHandoffReceipt = { ...receipt, scopeKey: this.handoffReceiptScopeKey() }
+      await this.loadWorkbench()
+    },
     async loadWorkbench(value) {
       this.sourceReview = null; this.sourceReviewError = ''
-      if (typeof value === 'string' || typeof value === 'number') this.workbenchBatchId = String(value)
+      if (typeof value === 'string' || typeof value === 'number') { if (String(value) !== this.workbenchBatchId) this.sourceHandoffReceipt = null; this.workbenchBatchId = String(value) }
       const batchId = this.workbenchBatchId
       const current = this.workbenchGate.begin()
       this.workbench = null; this.workbenchError = ''; this.workbenchLoading = false

@@ -32,7 +32,7 @@ _COVERAGE_MODE = "ASSIGNMENT_COVERAGE_NOT_PAYROLL"
 _AUTHORITY_POLICY = "FORMAL_TEACHER_RELATION_SCHEDULE_AND_CONFIRMED_INVIGILATION"
 
 
-def _task_conditions(term_id, class_ids):
+def _task_conditions(term_id, class_ids, *, include_handed=False):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
 
     conditions = [
@@ -49,6 +49,8 @@ def _task_conditions(term_id, class_ids):
             AaTeachingTaskBatch.is_deleted.is_(False),
         )
         conditions.append(AaTeachingTask.batch_id.in_(batch_ids))
+    if not include_handed:
+        conditions.append(base.independent_task_condition(AaTeachingTask))
     return conditions
 
 
@@ -353,6 +355,8 @@ def workload_stats(user, term_id=None, college_id=None) -> dict:
             return result
         from app.models import AaTeachingTask
 
+        base._validate_execution_handoffs(db, select(AaTeachingTask).where(
+            *_task_conditions(term_id, class_ids, include_handed=True)))
         tasks = db.scalars(select(AaTeachingTask).where(*_task_conditions(term_id, class_ids))).all()
         teaching_facts, _task_facts = relation_formal_teaching_facts(db, tasks)
 
@@ -458,6 +462,9 @@ def workload_detail(user, teacher_key, college_id=None, page=1, page_size=20, te
         if class_ids is not None and not class_ids:
             return [], 0
         q = _detail_query(db, key, class_ids, term_id)
+        base._validate_execution_handoffs(db, q)
+        from app.models import AaTeachingTask
+        q = q.where(base.independent_task_condition(AaTeachingTask))
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         tasks = db.scalars(
             q.order_by(q.selected_columns.id.desc())

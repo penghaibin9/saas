@@ -398,6 +398,8 @@ def add_exam_course(user, bid, body):
             AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False)).first()
         if not task_batch or task_batch.term_id != b.term_id or task_batch.status != "APPROVED" or tt.status != "READY":
             raise _conflict("仅可圈定本学期已经教务确认的教学任务")
+        from .academic_affairs_task_execution_authority import require_independent_task
+        tt = require_independent_task(db, tt)
         college_id = db.scalar(select(_task_offering_college_expression()).where(
             AaTeachingTask.id == tt.id, AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False)))
         if not college_id:

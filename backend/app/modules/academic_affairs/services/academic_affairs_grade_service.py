@@ -111,19 +111,20 @@ def _load_task(db, task_id: int, *, lock=False):
         AaGradeTask.tenant_id == _core._tid(),
         AaGradeTask.is_deleted.is_(False),
     )
-    if lock:
-        query = query.with_for_update()
-    task = query.first()
+    task = _core._lock_grade_task(db, task_id) if lock else query.first()
     if not task:
         raise not_found("成绩录入任务不存在")
     return task
 
 
-def _official_roster(db, task) -> dict:
+def _official_roster(db, task, *, historical=False) -> dict:
     """正常任务消费独立教学班名单；管理员历史补录只可使用显式行政班名单。"""
     from app.models import StudentProfile
 
     if task.teaching_task_id:
+        if historical:
+            from .academic_affairs_teaching_class_service import resolve_teaching_task_roster
+            return resolve_teaching_task_roster(db, int(task.teaching_task_id))
         return resolve_versioned_roster(db, int(task.teaching_task_id))
     if task.class_id:
         students = db.scalars(select(StudentProfile).where(
@@ -159,8 +160,8 @@ def _official_roster(db, task) -> dict:
     }
 
 
-def _require_ready_roster(db, task) -> dict:
-    result = _official_roster(db, task)
+def _require_ready_roster(db, task, *, historical=False) -> dict:
+    result = _official_roster(db, task, historical=historical)
     if not result.get("ready"):
         raise AppException(
             "DATA_CONFLICT",
@@ -292,7 +293,7 @@ def roster(task_id, user) -> dict:
     with _core.session() as db:
         task = _load_task(db, int(task_id))
         _core._check_course_scope(task, user)
-        data = _require_ready_roster(db, task)
+        data = _require_ready_roster(db, task, historical=True)
         return {
             "items": [{
                 "studentId": item["studentId"],
@@ -318,6 +319,7 @@ def enter_score(task_id, user, body) -> dict:
         task = _load_task(db, int(task_id), lock=True)
         guard_term_writable(db, task.term_id)
         _core._check_course_scope(task, user)
+        _core._require_independent_execution(db, task, user)
         from .academic_affairs_dynamic_grade_service import require_fixed_score_entry
         require_fixed_score_entry(db, task)
         if str(task.status or "").upper() not in _EDITABLE:
@@ -475,6 +477,7 @@ def grade_import_confirm(task_id, user, rows) -> dict:
         task = _load_task(db, int(task_id), lock=True)
         guard_term_writable(db, task.term_id)
         _core._check_course_scope(task, user)
+        _core._require_independent_execution(db, task, user)
         if str(task.status or "").upper() not in _EDITABLE:
             raise AppException("DATA_CONFLICT", "当前状态不可导入（已提交/已发布，如需修改请走成绩更正）")
         data = _require_ready_roster(db, task)
@@ -529,6 +532,7 @@ def submit_task(task_id, user, *, expected=None, command_key=None) -> dict:
         task = _load_task(db, int(task_id), lock=True)
         guard_term_writable(db, task.term_id)
         _core._check_course_scope(task, user)
+        _core._require_independent_execution(db, task, user)
         if task.status not in {"INPUTTING", "RETURNED"}:
             raise AppException("DATA_CONFLICT", "当前状态不可提交")
         was_returned = task.status == "RETURNED"
@@ -707,6 +711,7 @@ def publish_grades(task_id, user) -> dict:
         if task.status != "ACADEMIC_REVIEW":
             raise AppException("DATA_CONFLICT", "仅学院审核通过（教务终审中）的任务可发布")
         _core._require_school_review_authority(db, task, user)
+        _core._require_independent_execution(db, task, user)
         if not task.teaching_task_id:
             raise AppException("DATA_CONFLICT", "管理员特殊补录不能通过普通发布入口生成正式成绩", http_status=409)
 

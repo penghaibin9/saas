@@ -397,6 +397,10 @@ def evaluate_teaching_task(db, term_id, *, college_ids=None, major_ids=None, cac
         task_query = task_query.filter(_major_task_condition(major_ids))
     tasks = task_query.all()
 
+    from .academic_affairs_task_execution_authority import load_execution_handoffs
+    handoffs = load_execution_handoffs(db, [task.id for task in tasks])
+    tasks = [task for task in tasks if int(task.id) not in handoffs]
+
     expected, structural = _expected_opening(db, term, college_ids=college_ids, major_ids=major_ids, cache=cache)
     expected_counter = Counter(item["key"] for item in expected)
     actual_map = defaultdict(list)
@@ -608,6 +612,9 @@ def evaluate_schedule(db, term_id, previous_result: dict, *, college_ids=None) -
         task_query = task_query.filter(AaTeachingTask.id.in_(own_tasks))
     tasks = task_query.all()
     scheduled_task_ids = {int(row.task_id) for row in items if row.task_id}
+    from .academic_affairs_task_execution_authority import load_execution_handoffs
+    handoffs = load_execution_handoffs(db, [task.id for task in tasks])
+    tasks = [task for task in tasks if int(task.id) not in handoffs]
     missing = [
         {"type": "UNSCHEDULED_TASK", "taskId": str(task.id), "courseId": str(task.course_id),
          "classId": str(task.class_id or "")}
@@ -640,6 +647,7 @@ def _missing_grade_task_ids(db, term_id, college_ids=None):
     """与学期责任流一致：本学期 READY 授课任务都应有同学期成绩任务。"""
     from sqlalchemy import func, select
     from app.models import AaCourse, AaGradeTask, AaTeachingTask, AaTeachingTaskBatch
+    from .academic_affairs_task_execution_authority import independent_task_condition
 
     has_grade = select(AaGradeTask.id).where(
         AaGradeTask.tenant_id == _tid(), AaGradeTask.is_deleted.is_(False),
@@ -650,6 +658,7 @@ def _missing_grade_task_ids(db, term_id, college_ids=None):
         AaCourse.id == AaTeachingTask.course_id).where(
         AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
         AaTeachingTask.status == "READY",
+        independent_task_condition(AaTeachingTask),
         AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False),
         AaTeachingTaskBatch.term_id == int(term_id),
         AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False), ~has_grade,

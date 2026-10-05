@@ -418,6 +418,13 @@ def adjust_task_tx(db, task_id, user, body) -> dict:
         raise not_found("教学任务不存在")
     batch = _require_college_task_action(db, t, user, "adjust")
     db.refresh(t, with_for_update=True)
+    from .academic_affairs_task_execution_authority import require_independent_task
+    require_independent_task(db, t)
+    from app.models import AaTeachingTaskSourceHandoff
+    if db.scalar(select(AaTeachingTaskSourceHandoff.id).where(
+        AaTeachingTaskSourceHandoff.tenant_id == _tid(),
+        AaTeachingTaskSourceHandoff.execution_task_id == t.id).limit(1).with_for_update(read=True)) is not None:
+        raise AppException("DATA_CONFLICT", "本任务已承接后继方案来源，不能直接改写原任务计划；请沿正式任课或排课变更办理。", http_status=409)
     if t.status == "MERGED":
         raise AppException("DATA_CONFLICT", "该任务已合班并入其他教学班，请先对合班后的主任务拆班后再调整")
     scheduled = db.scalar(select(func.count()).select_from(AaScheduleItem).where(

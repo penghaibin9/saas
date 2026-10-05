@@ -197,6 +197,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaTextbookOrderItem, AaTextbookReviewBatch,
                                          AaTextbookReviewBatchItem,
                                          AaTextbookSelection, AaTimeSlot)
+from app.models.academic_affairs_task_handoff import AaTeachingTaskSourceHandoff  # noqa: F401
 from app.models.academic_affairs_registry import *  # noqa: F401,F403
 from app.models.academic_grade_effect_job import AcademicGradeEffectJob  # noqa: F401
 from app.models.academic_calendar import (AcademicCalendarGovernance,  # noqa: F401  (SYS-12 学期治理投影)

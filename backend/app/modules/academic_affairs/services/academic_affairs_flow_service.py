@@ -13,6 +13,7 @@ from app.services.db_service import _tid, session
 
 from . import academic_affairs_dashboard_readiness_service as readiness
 from . import academic_affairs_responsibility_service as responsibility
+from .academic_affairs_task_execution_authority import independent_task_condition
 
 
 STAGES = (
@@ -206,6 +207,14 @@ def _query(db, model, *conditions):
     return db.query(model).filter(model.tenant_id == _tid(), model.is_deleted.is_(False), *conditions)
 
 
+def _independent_tasks(db, query):
+    """仅在责任范围已完整构造后校验承接；不改变单对象历史读取。"""
+    from app.models import AaTeachingTask
+    from .academic_affairs_workload_stats_guard import _validate_execution_handoffs
+    _validate_execution_handoffs(db, query)
+    return query.filter(independent_task_condition(AaTeachingTask))
+
+
 def _counts(query, model):
     return {str(state or "UNKNOWN"): int(count) for state, count in
             query.with_entities(model.status, func.count()).group_by(model.status).all()}
@@ -233,6 +242,7 @@ def _task_projection(db, term, college_id, *, task_ids=None, cache=None):
     tasks = _query(db, Task, Task.batch_id.in_(select(batch_ids.c.id)), Task.status != "MERGED")
     if task_ids is not None:
         tasks = tasks.filter(Task.id.in_(task_ids or {-1}))
+    tasks = _independent_tasks(db, tasks)
     counts = _counts(tasks, Task)
     missing = tasks.filter(func.trim(func.coalesce(Task.teacher_key, "")) == "").count() if task_ids is None else 0
     summary = _summary_counts(counts, missing)
@@ -287,11 +297,12 @@ def _schedule_task_ids(db, term, batch, college_id, cache):
         if college_id and not batch.college_id:
             conditions.append(policy.task_scope_condition(db, SimpleNamespace(college_id=college_id),
                                                            include_centralized_public=True))
-        cache[key] = set(db.scalars(select(Task.id).join(TaskBatch, TaskBatch.id == Task.batch_id).where(
+        query = select(Task.id).join(TaskBatch, TaskBatch.id == Task.batch_id).where(
             Task.tenant_id == _tid(), Task.is_deleted.is_(False), Task.status == "READY",
             Task.no_auto_schedule.is_(False), TaskBatch.tenant_id == _tid(),
             TaskBatch.term_id == term.id, TaskBatch.status == "APPROVED",
-            TaskBatch.is_deleted.is_(False), *conditions)).all())
+            TaskBatch.is_deleted.is_(False), *conditions)
+        cache[key] = set(db.scalars(_independent_tasks(db, query)).all())
     return cache[key]
 
 
@@ -652,7 +663,8 @@ def _with_missing_college_grade_tasks(db, term, college_id, ctx, stage, *, cache
         AaGradeTask.tenant_id == _tid(), AaGradeTask.is_deleted.is_(False),
         AaGradeTask.term_id == term.id, AaGradeTask.teaching_task_id == AaTeachingTask.id).exists()
     missing = _query(db, AaTeachingTask, AaTeachingTask.id.in_(_college_grade_task_ids(term, college_id)),
-        AaTeachingTask.status == "READY", ~has_grade)
+        AaTeachingTask.status == "READY")
+    missing = _independent_tasks(db, missing).filter(~has_grade)
     count = missing.count()
     if not count:
         return stage
@@ -728,6 +740,8 @@ def _unit_stages(db, term, ctx, college, school_responsible, resolver_cache):
         AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == term.id,
         AaTeachingTaskBatch.is_deleted.is_(False), AaCourse.tenant_id == _tid(),
         func.coalesce(AaCourse.owner_college_id, AaTeachingTaskBatch.college_id) == cid, AaCourse.is_deleted.is_(False))
+    task_ids = _independent_tasks(db, task_ids)
+    offering_task_ids = _independent_tasks(db, offering_task_ids)
     # 学院只读本院学生/正式授课关系，批次与最终发布权仍由原业务命令裁决。
     for index, (state, blockers, evidence) in _student_unit_progress(db, term, cid, student_ids, task_ids).items():
         actor = _student_stage_responsibility(index, evidence, org, school_responsible)
@@ -850,7 +864,10 @@ def _teacher_stages(db, term, user, ctx):
         rows[0] = _stage(0, term, ctx=ctx, status="BLOCKED", blockers=[_problem("CURRENT_TERM_MISSING", "尚未设置当前学期")])
         return rows
     scope = relation_scope(db, user, term_id=int(term.id))
-    task_ids = scope["taskIds"]
+    from app.models import AaTeachingTask
+    task_ids = set(db.scalars(_independent_tasks(db, select(AaTeachingTask.id).where(
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+        AaTeachingTask.id.in_(scope["taskIds"] or {-1})))).all())
     state, blockers, evidence, task, _batch = _task_projection(db, term, None, task_ids=task_ids, cache=resolver_cache)
     actor = responsibility.resolve_teacher(db, task, cache=resolver_cache) if task else None
     rows[3] = _stage(3, term, ctx=ctx, status=state, blockers=blockers, responsible=actor, evidence=evidence)
@@ -973,6 +990,7 @@ def _global_gate_blockers(db, term, cache, *, run_final_reconciliation=True):
     rows = _query(db, AaTeachingTask, AaTeachingTask.status != "MERGED").join(AaTeachingTaskBatch,
         (AaTeachingTaskBatch.id == AaTeachingTask.batch_id) & (AaTeachingTaskBatch.tenant_id == _tid())
         & AaTeachingTaskBatch.is_deleted.is_(False)).filter(AaTeachingTaskBatch.term_id == term.id)
+    rows = _independent_tasks(db, rows)
     missing_batch = rows.filter(AaTeachingTaskBatch.college_id.is_(None)).count()
     missing_owner = rows.outerjoin(AaCourse, (AaCourse.id == AaTeachingTask.course_id)
         & (AaCourse.tenant_id == _tid()) & AaCourse.is_deleted.is_(False)).filter(AaCourse.owner_college_id.is_(None)).count()

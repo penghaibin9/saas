@@ -205,6 +205,8 @@ def add_course(user, batch_id, body) -> dict:
         ).scalar_one_or_none()
         if not task:
             raise not_found("教学任务不存在")
+        from .academic_affairs_task_execution_authority import require_independent_task
+        task = require_independent_task(db, task)
         if str(task.status or "").upper() != "READY":
             raise _conflict(
                 "教学任务未处于 READY，不可作为选课供给",
@@ -296,6 +298,8 @@ def update_course(user, course_id, body) -> dict:
         course = _lock_supply_course(db, course_id)
         batch = _lock_supply_batch(db, course.batch_id)
         _selection._guard_batch_writable(db, batch)
+        from .academic_affairs_task_execution_authority import require_independent_task
+        require_independent_task(db, course.teaching_task_id)
         if batch.status in (_core._BATCH_LOCKED, _core._BATCH_ARCHIVED):
             raise _core._invalid("批次已锁定，不可改课程容量/规则")
 
@@ -331,6 +335,8 @@ def cancel_course(user, course_id) -> dict:
         course = _lock_supply_course(db, course_id)
         batch = _lock_supply_batch(db, course.batch_id)
         _selection._guard_batch_writable(db, batch)
+        from .academic_affairs_task_execution_authority import require_independent_task
+        require_independent_task(db, course.teaching_task_id)
         if batch.status != _core._BATCH_CLOSED:
             raise _core._invalid("仅 CLOSED 批次可取消低人数课程")
         if course.status == _core._COURSE_CANCELLED:

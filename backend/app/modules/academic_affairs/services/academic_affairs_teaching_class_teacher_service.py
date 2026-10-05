@@ -329,7 +329,8 @@ def _locked_class_and_task(db, user, teaching_class_id):
     # Match teaching-task commands: task first, then class and its teacher relations.
     teaching_class = class_change._get_class(db, user, int(teaching_class_id))
     task, term = _task_term(db, teaching_class)
-    db.refresh(task, with_for_update=True)
+    from .academic_affairs_task_execution_authority import require_independent_task
+    task = require_independent_task(db, task)
     teaching_class = class_change._get_class(db, user, int(teaching_class_id), lock=True)
     return teaching_class, task, term
 

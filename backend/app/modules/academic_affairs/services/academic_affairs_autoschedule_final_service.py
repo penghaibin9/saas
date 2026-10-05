@@ -11,6 +11,7 @@ from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
 
+from .academic_affairs_task_execution_authority import load_execution_handoffs, require_independent_task
 from . import academic_affairs_schedule_policy as policy
 
 _base = importlib.import_module(
@@ -28,7 +29,7 @@ def __getattr__(name):
     return getattr(_base, name)
 
 
-def _pending_tasks_for_batch(db, schedule_batch, teaching_weeks: int) -> tuple[list, list]:
+def _pending_tasks_for_batch(db, schedule_batch, teaching_weeks: int, *, lock=False) -> tuple[list, list]:
     from app.models import AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
 
     task_batch_query = db.query(AaTeachingTaskBatch).filter(
@@ -38,14 +39,17 @@ def _pending_tasks_for_batch(db, schedule_batch, teaching_weeks: int) -> tuple[l
         AaTeachingTaskBatch.is_deleted.is_(False),
     )
     task_batch_ids = [int(row.id) for row in task_batch_query.all()]
-    tasks = db.query(AaTeachingTask).filter(
+    task_query = db.query(AaTeachingTask).filter(
         AaTeachingTask.tenant_id == _base._tid(),
         AaTeachingTask.batch_id.in_(task_batch_ids or [-1]),
         AaTeachingTask.status == "READY",
         AaTeachingTask.no_auto_schedule.is_(False),
         AaTeachingTask.is_deleted.is_(False),
         policy.task_scope_condition(db, schedule_batch),
-    ).all()
+    ).order_by(AaTeachingTask.id)
+    tasks = (task_query.with_for_update().populate_existing() if lock else task_query).all()
+    handoffs = load_execution_handoffs(db, [row.id for row in tasks], lock=lock)
+    tasks = [row for row in tasks if int(row.id) not in handoffs]
     done: dict[int, list] = {}
     for item in db.query(AaScheduleItem).filter(
         AaScheduleItem.tenant_id == _base._tid(),
@@ -118,6 +122,7 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
             db,
             batch,
             int(params["teachingWeeks"]),
+            lock=not dry_run,
         )
 
         availability = set()
@@ -216,7 +221,7 @@ def auto_schedule(user, batch_id, dry_run=False) -> dict:
         reset_pre_publish = False
         if not dry_run and new_items:
             for item in new_items:
-                task = item["task"]
+                task = require_independent_task(db, item["task"])
                 room = item["room"]
                 db.add(AaScheduleItem(
                     tenant_id=_base._tid(),
@@ -318,6 +323,8 @@ def clear_auto_items(user, batch_id) -> dict:
             AaScheduleItem.source == "AUTO",
             AaScheduleItem.is_deleted.is_(False),
         ).with_for_update().all()
+        for task_id in sorted({int(row.task_id) for row in rows if row.task_id}):
+            require_independent_task(db, task_id)
         for row in rows:
             row.is_deleted = True
         reset_pre_publish = batch.status == "PRE_PUBLISHED" and bool(rows)

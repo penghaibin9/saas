@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
+import { randomUUID } from 'node:crypto'
 import { compile } from '@vue/compiler-dom'
 import * as Vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
@@ -344,4 +345,47 @@ test('teacher week and semester views reload when switching back to self', () =>
     assert.equal(loads, 1)
     assert.equal(state.items.length, 0)
   }
+})
+
+
+test('真实父子承接回读后刷新队列，同时保持成功说明和时间可见，切上下文清回执', async () => {
+  const oldId = '1000000000000000001', newId = '1000000000000000002'
+  const receipt = { handoffId: '1000000000000000088', termId: '52', executionTaskId: oldId, successorTaskId: newId,
+    reason: '已核对正式课程来源', confirmedAt: '2026-10-05T12:00:00', summary: '原任务继续执行，后继来源已承接' }
+  let finishRefresh, refreshPromise, notifyParent, refreshes = 0, reads = 0
+  const parent = page('AaSchedulingConsoleView', { academicAffairsApi: { getScheduleSummary: () => { refreshes++; return new Promise(resolve => { finishRefresh = resolve }) } } })
+  const state = { ...parent.methods, sourceReview: { taskId: oldId, otherTasks: [{ taskId: newId }] },
+    sourceReviewContext: 'school-a:52:47', sourceHandoffReceipt: null, termId: '52', workbenchBatchId: '47', workbench: { termId: '52' },
+    routeContextKey: () => 'school-a:52:47', $route: { query: { batchId: '47' } },
+    workbenchGate: { begin: () => () => true }, academicFlow: null }
+  Object.defineProperty(state, 'visibleHandoffReceipt', { get: () => parent.computed.visibleHandoffReceipt.call(state) })
+  state.onSourceHandoffConfirmed = value => { refreshPromise = parent.methods.onSourceHandoffConfirmed.call(state, value); return refreshPromise }
+  const parentText = readFileSync(new URL('../src/modules/academicAffairs/views/AaSchedulingConsoleView.vue', import.meta.url), 'utf8')
+  const childBinding = parentText.match(/<AaTaskSourceReview\b[^>]*\/>/)[0]
+  const bindingRender = new Function('Vue', compile(childBinding, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const boundReview = { props: ['taskId', 'termId', 'otherTasks', 'contextKey'], emits: ['close', 'confirmed'],
+    setup(_props, { emit }) { notifyParent = value => emit('confirmed', value); return () => Vue.h('span', '当前核对工作区') } }
+  await renderToString(Vue.createSSRApp({ render: bindingRender, components: { AaTaskSourceReview: boundReview }, setup: () => state }))
+  const childText = readFileSync(new URL('../src/modules/academicAffairs/components/teaching-tasks/AaTaskSourceReview.vue', import.meta.url), 'utf8')
+  const checked = { termId: '52', taskIds: [oldId, newId], tasks: [], checks: [], reviewOnly: true, status: 'CHECKED',
+    handoffAction: { allowed: true, executionTaskId: oldId, successorTaskId: newId, expectedSourceFingerprint: 'a'.repeat(64) }, confirmedHandoff: null }
+  const context = { AaFormationProof: {}, AppConfirmDialog: {}, crypto: { randomUUID },
+    teachingTaskWorkbenchApi: { getSourceReview: async () => ({ code: 0, data: reads++ ? { ...checked, confirmedHandoff: receipt } : checked }), confirmSourceHandoff: async () => ({ code: 0, data: receipt }) } }
+  vm.runInNewContext(childText.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'component ='), context)
+  const child = context.component, props = { taskId: oldId, termId: '52', otherTasks: [{ taskId: newId }], contextKey: 'school-a:52:47' }
+  const c = { ...props, ...child.data.call(props), ...child.methods, $emit(name, value) { if (name === 'confirmed') notifyParent(value) } }
+  for (const [key, fn] of Object.entries(child.computed)) Object.defineProperty(c, key, { get: () => fn.call(c) })
+  await c.load(); c.reason = receipt.reason; c.openConfirmation(); await c.confirmHandoff()
+  assert.equal(reads, 2); assert.equal(refreshes, 1); assert.equal(state.sourceReview, null); assert.equal(state.workbenchLoading, true)
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaSchedulingConsoleView.vue', import.meta.url), 'utf8')
+  const template = source.match(/<section v-if="visibleHandoffReceipt"[\s\S]*?<\/section>/)[0]
+  const render = new Function('Vue', compile(template, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  async function visible() { return renderToString(Vue.createSSRApp({ render, setup: () => ({ visibleHandoffReceipt: state.visibleHandoffReceipt }) })) }
+  let html = await visible()
+  assert.match(html, /正式承接已确认/); assert.ok(html.includes(receipt.reason)); assert.ok(html.includes(receipt.confirmedAt))
+  finishRefresh({ code: 0, data: { batchId: '47', termId: '52' } }); await refreshPromise
+  assert.equal(state.workbench.batchId, '47'); html = await visible(); assert.ok(html.includes(receipt.confirmedAt))
+  state.routeContextKey = () => 'school-b:53:48'
+  assert.equal(state.visibleHandoffReceipt, null)
+  await state.syncRoute(); assert.equal(state.sourceHandoffReceipt, null)
 })

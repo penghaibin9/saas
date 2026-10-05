@@ -69,6 +69,7 @@ def _college_scope(batch) -> list[int] | None:
 
 def _eligible_query(db, batch, *, only_uncircled: bool, task_ids=None, keyword=None):
     from .academic_affairs_exam_service import _task_offering_college_expression
+    from .academic_affairs_task_execution_authority import independent_task_condition
     query = db.query(AaTeachingTask, AaTeachingTaskBatch, _task_offering_college_expression()).join(
         AaTeachingTaskBatch,
         and_(
@@ -93,6 +94,7 @@ def _eligible_query(db, batch, *, only_uncircled: bool, task_ids=None, keyword=N
         AaTeachingTaskBatch.term_id == int(batch.term_id),
         AaTeachingTaskBatch.status == "APPROVED",
         AaTeachingTask.status == "READY",
+        independent_task_condition(AaTeachingTask),
     )
     if only_uncircled:
         query = query.filter(AaExamCourse.id.is_(None))

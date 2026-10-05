@@ -11,7 +11,8 @@ def _pair(client):
     from app.db.session import get_sessionmaker
     from app.models import (AaProgram, AaProgramBinding, AaProgramCourse, AaTeachingClass,
         AaTeachingClassMember, AaTeachingClassRosterVersion, AaTeachingClassTeacher,
-        AaTeachingTask, AaTeachingTaskBatch)
+        AaTeachingTask, AaTeachingTaskBatch, StudentProfile)
+    from app.modules.academic_affairs.services.academic_affairs_teaching_class_core_service import _roster_hash
 
     facts = _facts(client)
     with get_sessionmaker()() as db:
@@ -29,7 +30,7 @@ def _pair(client):
         batch = AaTeachingTaskBatch(tenant_id=TID, term_id=facts["termId"],
             college_id=int(facts["tasks"][0]["collegeId"]), batch_name="后继来源核对批次", status="APPROVED")
         db.add_all([next_source, batch]); db.flush()
-        new = AaTeachingTask(tenant_id=TID, batch_id=batch.id, course_id=old.course_id,
+        new = AaTeachingTask(tenant_id=TID, batch_id=batch.id, course_id=old.course_id, course_name=old.course_name,
             class_id=old.class_id, source_program_course_id=next_source.id, formation_mode="ADMIN_FIXED",
             teacher_key=old.teacher_key, teacher_name=old.teacher_name, status="READY",
             weekly_hours=old.weekly_hours, total_hours=old.total_hours,
@@ -45,6 +46,10 @@ def _pair(client):
         teacher = db.query(AaTeachingClassTeacher).filter(AaTeachingClassTeacher.tenant_id == TID,
             AaTeachingClassTeacher.teaching_class_id == old_class.id).one()
         new.teacher_id = teacher.teacher_id
+        db.add_all([StudentProfile(id=student_id, tenant_id=TID,
+            student_no=f"SOURCE-REVIEW-{student_id}", real_name=f"来源核对虚构学生{student_id}",
+            class_id=old.class_id, major_id=program.major_id, college_id=batch.college_id,
+            status="ACTIVE") for student_id in (711, 712)])
         new_class = AaTeachingClass(tenant_id=TID, teaching_task_id=new.id, term_id=facts["termId"],
             course_id=old.course_id, class_code=old_class.class_code + "-NEXT", class_name=old_class.class_name,
             class_type="ADMIN", source_type="TEACHING_TASK", source_id=new.id, status="ACTIVE")
@@ -59,7 +64,7 @@ def _pair(client):
             teaching_class.roster_status = "LOCKED"
             version = AaTeachingClassRosterVersion(tenant_id=TID, teaching_class_id=teaching_class.id,
                 version_no=1, source_type="ADMIN_CLASS", source_id=task.class_id,
-                member_count=2, roster_hash="a" * 64, status="LOCKED")
+                member_count=2, roster_hash=_roster_hash((711, 712)), status="LOCKED")
             db.add(version); db.flush()
             teaching_class.current_roster_version_id = version.id
             teaching_class.current_roster_version_no = 1
@@ -108,11 +113,13 @@ def test_proven_pair_is_checked_but_not_confirmed_and_does_not_write(client, db_
     ("teacher", "TEACHER"), ("roster", "ROSTER"), ("schedule", "SUCCESSOR_CONSUMPTION"),
     ("cycle", "LINEAGE"), ("binding", "BINDING"), ("class_term", "ROSTER"),
     ("teacher_history", "SUCCESSOR_PROJECTION"),
+    ("missing_student", "ROSTER"), ("roster_hash", "ROSTER"),
 ])
 def test_real_mismatch_or_unknown_blocks_source_review(client, db_mode, change, code):
     from app.db.session import get_sessionmaker
     from app.models import (AaProgram, AaProgramBinding, AaProgramCourse, AaScheduleBatch, AaScheduleItem,
-        AaTeachingClass, AaTeachingClassMember, AaTeachingTask, AffairsAuditTrail)
+        AaTeachingClass, AaTeachingClassMember, AaTeachingClassRosterVersion,
+        AaTeachingTask, AffairsAuditTrail, StudentProfile)
     facts = _pair(client)
     with get_sessionmaker()() as db:
         new = db.get(AaTeachingTask, int(facts["newId"]))
@@ -139,6 +146,10 @@ def test_real_mismatch_or_unknown_blocks_source_review(client, db_mode, change, 
         elif change == "roster":
             member = db.query(AaTeachingClassMember).filter(AaTeachingClassMember.teaching_class_id == facts["newClassId"]).first()
             member.student_id = 713
+        elif change == "missing_student": db.get(StudentProfile, 711).is_deleted = True
+        elif change == "roster_hash":
+            clazz = db.get(AaTeachingClass, facts["newClassId"])
+            db.get(AaTeachingClassRosterVersion, clazz.current_roster_version_id).roster_hash = "0" * 64
         elif change == "schedule":
             batch = AaScheduleBatch(tenant_id=TID, term_id=facts["termId"], batch_name="后继已消费课表", status="DRAFT")
             db.add(batch); db.flush()

@@ -298,7 +298,7 @@ def class_authority(db, teaching_task_id: int, *, lock: bool = False):
         AaTeachingClass.is_deleted.is_(False),
     )
     if lock:
-        query = query.with_for_update()
+        query = query.with_for_update().populate_existing()
     row = query.first()
     if not row:
         return None
@@ -328,7 +328,7 @@ def active_relations(db, teaching_class, *, lock: bool = False, week: int | None
         AaTeachingClassTeacher.is_deleted.is_(False),
     )
     if lock:
-        query = query.with_for_update()
+        query = query.with_for_update().populate_existing()
     rows = query.order_by(AaTeachingClassTeacher.role_type, AaTeachingClassTeacher.id).all()
     resolved_week = class_authority_week(db, teaching_class) if week is None else int(week)
     bounded = [row for row in rows if row.start_week is not None or row.end_week is not None]
@@ -388,7 +388,7 @@ def require_teacher(db, teaching_task, user, *, lock: bool = False, week: int | 
         AaTeachingTask.is_deleted.is_(False),
     )
     if lock:
-        query = query.with_for_update()
+        query = query.with_for_update().populate_existing()
     current = query.first()
     if not current:
         raise AppException("DATA_CONFLICT", "教学任务已失效", http_status=409)

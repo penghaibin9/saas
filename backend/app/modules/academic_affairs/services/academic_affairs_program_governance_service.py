@@ -399,6 +399,9 @@ def opening_differences(user, term_id: int, major_id: int | None = None, grade_y
         ).all() if batch_ids else []
         if not tenant_all:
             tasks = [task for task in tasks if task.class_id and int(task.class_id) in allowed_class_ids]
+        from .academic_affairs_task_execution_authority import load_execution_handoffs
+        handoffs = load_execution_handoffs(db, [task.id for task in tasks])
+        tasks = [task for task in tasks if int(task.id) not in handoffs]
         task_map = defaultdict(list)
         for task in tasks:
             task_map[(int(task.course_id), int(task.class_id or 0))].append(task)

@@ -257,6 +257,9 @@ def create_manual_roster_version(user, teaching_class_id: int, student_ids, reas
     from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
 
     with session() as db:
+        authorized_class = _get_class(db, user, int(teaching_class_id))
+        from .academic_affairs_task_execution_authority import require_independent_task
+        require_independent_task(db, authorized_class.teaching_task_id)
         teaching_class = _get_class(db, user, int(teaching_class_id), lock=True)
         guard_term_writable(db, int(teaching_class.term_id))
         preview = _preview_in_db(db, user, teaching_class, student_ids)

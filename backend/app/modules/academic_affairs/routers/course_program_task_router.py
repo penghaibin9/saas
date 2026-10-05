@@ -71,6 +71,14 @@ class FormationProofBody(BaseModel):
     idempotencyKey: str = Field(..., min_length=8, max_length=120)
 
 
+class SourceHandoffBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    successorTaskId: str = Field(..., pattern=r"^[1-9]\d*$", max_length=20)
+    reason: str = Field(..., min_length=4, max_length=500)
+    expectedSourceFingerprint: str = Field(..., pattern=r"^[0-9a-fA-F]{64}$")
+    idempotencyKey: str = Field(..., min_length=8, max_length=120)
+
+
 # ═══════════ 培养方案 ════════════
 
 @router.post("/programs", summary="新建培养方案")
@@ -487,6 +495,16 @@ def task_source_review(
 ):
     from app.modules.academic_affairs.services.academic_affairs_task_source_review_service import get_source_review
     return success(get_source_review(taskId, otherTaskId, user))
+
+
+@router.post("/teaching-tasks/{taskId}/source-handoff", summary="校教务确认由原教学任务承接后继方案来源")
+def task_source_handoff(
+    body: SourceHandoffBody,
+    taskId: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.teachingTask.confirm")),
+):
+    from app.modules.academic_affairs.services.academic_affairs_task_source_handoff_service import confirm_source_handoff
+    return success(confirm_source_handoff(taskId, body, user), message="来源承接已确认，请回原任务继续办理")
 
 
 @router.post("/teaching-tasks/merge", summary="合班（同批次同课程 2+ 条任务合并为一条教学班任务）")

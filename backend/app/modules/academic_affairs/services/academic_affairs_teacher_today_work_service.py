@@ -157,6 +157,9 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_start_
     keys = sorted(_user_keys(user))
     relation = teacher_authority.relation_scope(db, user, term_id=int(term_id))
     formal_task_ids = sorted(int(value) for value in relation.get("taskIds") or [])
+    from .academic_affairs_task_execution_authority import load_execution_handoffs
+    handoffs = load_execution_handoffs(db, formal_task_ids)
+    formal_task_ids = [pk for pk in formal_task_ids if pk not in handoffs]
     batches = db.scalars(select(AaTeachingTaskBatch).where(
         AaTeachingTaskBatch.tenant_id == _tid(),
         AaTeachingTaskBatch.term_id == int(term_id),

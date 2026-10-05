@@ -98,8 +98,10 @@ def _task_batch_ids(db, batch) -> list[int]:
     return [int(row.id) for row in query.all()]
 
 
-def _resolve_task(db, batch, source, *, preload=None):
+def _resolve_task(db, batch, source, *, preload=None, lock=True):
     from app.models import AaTeachingTask
+    from .academic_affairs_task_execution_authority import (
+        independent_task_condition, load_execution_handoffs, require_independent_task)
 
     allowed_batches = (
         list(preload.allowed_batch_ids)
@@ -127,7 +129,7 @@ def _resolve_task(db, batch, source, *, preload=None):
                 details={"taskId": str(task_id), "termId": str(batch.term_id)},
                 http_status=409,
             )
-        return task
+        return require_independent_task(db, task, lock=lock)
 
     course_name = str(_value(source, "courseName") or "").strip()
     teacher_key = str(_value(source, "teacherKey") or "").strip()
@@ -139,7 +141,12 @@ def _resolve_task(db, batch, source, *, preload=None):
         )
 
     if preload is not None:
-        matches = preload.task_matches(course_name, teacher_key, class_id)
+        # 预载匹配原先最多取两条；必须先排除后继，再做唯一性判断。
+        matches = [row for row in preload._tasks if row.course_name == course_name
+            and (not teacher_key or row.teacher_key == teacher_key)
+            and (class_id in (None, "") or row.class_id == int(class_id))]
+        handed = load_execution_handoffs(db, [row.id for row in matches])
+        matches = [row for row in matches if int(row.id) not in handed]
     else:
         query = db.query(AaTeachingTask).filter(
             AaTeachingTask.tenant_id == _base._tid(),
@@ -147,6 +154,7 @@ def _resolve_task(db, batch, source, *, preload=None):
             AaTeachingTask.status == "READY",
             AaTeachingTask.is_deleted.is_(False),
             AaTeachingTask.course_name == course_name,
+            independent_task_condition(AaTeachingTask),
             policy.task_scope_condition(db, batch),
         )
         if teacher_key:
@@ -168,7 +176,7 @@ def _resolve_task(db, batch, source, *, preload=None):
             details={"taskIds": [str(row.id) for row in matches[:2]]},
             http_status=409,
         )
-    return matches[0]
+    return require_independent_task(db, matches[0], lock=lock)
 
 
 def _coordinate(db, batch, task, source, *, preload=None):
@@ -310,6 +318,9 @@ def _ensure_task_capacity(
 
 def _build_item(db, batch, task, source, *, item_source, preload=None):
     from app.models import AaScheduleItem
+    from .academic_affairs_task_execution_authority import require_independent_task
+
+    task = require_independent_task(db, task)
 
     weekday, slot_no, start_week, end_week, parity = _coordinate(
         db, batch, task, source, preload=preload
@@ -461,7 +472,7 @@ def _preflight_result(db, batch, task, source, *, exclude_item_id=None) -> dict:
         enabled_slots=params["enabledSlots"],
         conflict_batch_ids=[candidate.id for candidate in gate_service.school_candidate_batches(db, batch)],
     )
-    task = _resolve_task(db, batch, {"taskId": str(task.id)}, preload=preload)
+    task = _resolve_task(db, batch, {"taskId": str(task.id)}, preload=preload, lock=False)
     weekday, slot_no, start_week, end_week, parity = _coordinate(
         db, batch, task, source, preload=preload
     )
@@ -563,7 +574,7 @@ def preflight_item(batch_id, user, body) -> dict:
                 "alternatives": [],
                 "checkedBy": "SCHEDULE_BATCH_STATE",
             }
-        task = _resolve_task(db, batch, body)
+        task = _resolve_task(db, batch, body, lock=False)
         return _preflight_result(db, batch, task, body)
 
 
@@ -592,7 +603,7 @@ def preflight_move(item_id, user, body) -> dict:
                 "alternatives": [],
                 "checkedBy": "SCHEDULE_BATCH_STATE",
             }
-        task = _resolve_task(db, batch, {"taskId": item.task_id})
+        task = _resolve_task(db, batch, {"taskId": item.task_id}, lock=False)
         source = {
             "taskId": str(task.id),
             "weekday": body.weekday,
@@ -631,6 +642,21 @@ def _apply_import_rows(db, batch, items) -> tuple[int, list[dict]]:
     """
     imported = 0
     errors = []
+    if items:
+        # 文件行序不能成为任务锁序：与承接确认共同使用升序锁，避免两任务反向互等。
+        from sqlalchemy import or_
+        from app.models import AaTeachingTask
+        ids = {int(_value(row, "taskId")) for row in items if _value(row, "taskId") not in (None, "")}
+        names = {str(_value(row, "courseName") or "").strip() for row in items
+            if _value(row, "taskId") in (None, "")}
+        locked_tasks = db.query(AaTeachingTask).filter(
+            AaTeachingTask.tenant_id == _base._tid(), AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTask.batch_id.in_(_task_batch_ids(db, batch) or [-1]),
+            AaTeachingTask.status == "READY", policy.task_scope_condition(db, batch),
+            or_(AaTeachingTask.id.in_(ids or [-1]), AaTeachingTask.course_name.in_(names)),
+        ).order_by(AaTeachingTask.id).limit(1001).with_for_update().populate_existing().all()
+        if len(locked_tasks) > 1000:
+            raise AppException("DATA_CONFLICT", "导入匹配的教学任务过多，请填写精确任务编号后重新预检", http_status=409)
     preload = _build_import_preload(db, batch, items) if items else None
     for index, source in enumerate(items or [], start=1):
         try:

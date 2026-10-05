@@ -1,6 +1,10 @@
 """范围内的任务来源核对；只读证据不等于来源承接确认。"""
 from __future__ import annotations
 
+from contextlib import nullcontext
+import hashlib
+import json
+
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
@@ -60,9 +64,21 @@ def _projection(db, task, term):
         and current.source_id == task.class_id
         and current.status == "LOCKED" and current.version_no == clazz.current_roster_version_no
         and len(members) <= 10000 and len(members) == current.member_count
-        and all(member.source_type == "ADMIN_CLASS" for member in members))
+        and all(member.source_type == "ADMIN_CLASS" and member.source_id == task.class_id for member in members))
     roster = frozenset(int(member.student_id) for member in members) if valid else None
     if roster is not None and len(roster) != len(members):
+        roster = None
+    if valid and roster is not None:
+        from .academic_affairs_teaching_class_service import resolve_teaching_task_roster
+        from .academic_affairs_teaching_class_core_service import _roster_hash
+        # 比较编号不能证明名单可用于实际教学；沿同一只读权威核验有效学生主档。
+        authoritative = resolve_teaching_task_roster(db, task.id)
+        valid = bool(authoritative.get("ready")
+            and authoritative.get("teachingClassId") == str(clazz.id)
+            and authoritative.get("rosterVersionId") == str(current.id)
+            and frozenset(int(pk) for pk in authoritative.get("studentIds", [])) == roster
+            and current.roster_hash == _roster_hash(roster))
+    if not valid:
         roster = None
     version_count = db.scalar(select(func.count()).select_from(AaTeachingClassRosterVersion).where(
         AaTeachingClassRosterVersion.tenant_id == _tid(), AaTeachingClassRosterVersion.teaching_class_id == clazz.id))
@@ -141,13 +157,14 @@ def _lineage(db, first, second):
 def _consumption(db, task_id, projection):
     from app.models import (AaAttendanceSession, AaEvaluationResult, AaEvaluationTask,
         AaExamCourse, AaGradeTask, AaRosterConsumerSnapshot, AaScheduleChange, AaScheduleItem,
-        AaSelectionCourse, AaTextbookSelection)
+        AaRetakeApply, AaSelectionCourse, AaTextbookSelection)
     references = (
         (AaScheduleItem, "task_id", "课表"), (AaSelectionCourse, "teaching_task_id", "选课供给"),
         (AaGradeTask, "teaching_task_id", "成绩"), (AaScheduleChange, "task_id", "调停补课"),
         (AaExamCourse, "teaching_task_id", "考试"), (AaTextbookSelection, "task_id", "教材"),
         (AaEvaluationTask, "teaching_task_id", "评教任务"), (AaEvaluationResult, "teaching_task_id", "评教结果"),
         (AaAttendanceSession, "teaching_task_id", "课堂考勤"),
+        (AaRetakeApply, "teaching_task_ref", "重修编班"),
     )
     labels = []
     for model, column, label in references:
@@ -163,7 +180,7 @@ def _consumption(db, task_id, projection):
     return labels
 
 
-def get_source_review(task_id, other_task_id, user):
+def get_source_review(task_id, other_task_id, user, *, db=None):
     from app.models import AaProgram, AaProgramCourse, AaTeachingTaskBatch, AaTerm, SchoolClass
     from .academic_affairs_task_service import _ensure_task_visible
     from .academic_affairs_task_formation_provenance_service import resolve_task_formation_snapshot
@@ -171,7 +188,7 @@ def get_source_review(task_id, other_task_id, user):
 
     if int(task_id) == int(other_task_id):
         raise AppException("VALIDATION_ERROR", "请选择两条不同的教学任务进行核对")
-    with session() as db:
+    with (session() if db is None else nullcontext(db)) as db:
         # 先对双方独立裁决原有范围，再读取来源、名单与教师；拒绝不能泄露另一院事实。
         tasks = [_ensure_task_visible(db, int(pk), user)[0] for pk in (task_id, other_task_id)]
         batches = [db.scalar(select(AaTeachingTaskBatch).where(AaTeachingTaskBatch.tenant_id == _tid(),
@@ -188,6 +205,8 @@ def get_source_review(task_id, other_task_id, user):
         same = (batches[0].term_id == batches[1].term_id and tasks[0].course_id == tasks[1].course_id
             and tasks[0].class_id is not None and tasks[0].class_id == tasks[1].class_id)
         add("OBJECT", "学期、课程与行政班", same, "两条任务属于同一学期、课程和行政班。", "学期、课程或行政班不同，不能按重复来源承接。")
+        add("RESPONSIBILITY_SCOPE", "原任务与后继任务责任学院", batches[0].college_id == batches[1].college_id,
+            "两条任务的责任学院一致。", "责任学院不同，不能通过来源承接转移学院办理范围。")
         writable = True
         try:
             guard_term_writable(db, term.id)
@@ -226,6 +245,10 @@ def get_source_review(task_id, other_task_id, user):
             and task.start_week <= task.end_week <= int(term.teaching_weeks or 0) for task in tasks)
         add("HOURS", "计划学时与起止周", valid_hours and all(getattr(tasks[0], field) == getattr(tasks[1], field) for field in fields),
             "总学时、周学时和起止周一致。", "计划学时或起止周缺失、不合法或不一致，不能自动改写教学计划。")
+        scheduling_fields = ("no_auto_schedule", "required_room_type", "expected_students")
+        add("SCHEDULING_REQUIREMENTS", "排课参与与资源要求",
+            all(getattr(tasks[0], field) == getattr(tasks[1], field) for field in scheduling_fields),
+            "是否参与排课、教室类型和预计人数一致。", "排课参与或资源要求不同，须核实原计划，不能自动选择一份要求。")
         projections = [_projection(db, task, term) for task in tasks]
         add("TEACHER", "教师身份与正式任课关系", projections[0]["teacher"] is not None
             and projections[0]["teacher"] == projections[1]["teacher"],
@@ -244,6 +267,16 @@ def get_source_review(task_id, other_task_id, user):
         add("SUCCESSOR_CONSUMPTION", "后继任务正式业务引用", successor_index is not None and not consumed,
             "已检查的课表、选课、成绩、考勤、考务及正式名单消费未发现后继引用。",
             "后继任务已有正式业务引用：" + "、".join(consumed) if consumed else "来源方向未证明，无法判定哪条任务可被承接。")
+        from .academic_affairs_task_execution_authority import load_execution_handoffs
+        handoffs = load_execution_handoffs(db, [task.id for task in tasks])
+        add("EXECUTION_HANDOFF", "独立执行关系", not handoffs,
+            "两条任务尚未建立来源承接关系。", "任务已有承接关系，不能再次选择为新的独立承接原任务。")
+        from app.models import AaTeachingTaskSourceHandoff
+        successor_is_anchor = successor_index is not None and db.scalar(select(AaTeachingTaskSourceHandoff.id).where(
+            AaTeachingTaskSourceHandoff.tenant_id == _tid(),
+            AaTeachingTaskSourceHandoff.execution_task_id == tasks[successor_index].id).limit(1)) is not None
+        add("SUCCESSOR_EXECUTION", "后继是否已承担其他来源执行", not successor_is_anchor,
+            "后继任务未承担其他来源的教学执行。", "后继任务已是其他来源的执行原任务，不能改变已有执行链。")
         output = []
         for task, source, program, projection, proof in zip(tasks, sources, programs, projections, proven):
             output.append({"taskId": str(task.id), "batchId": str(task.batch_id), "courseName": task.course_name or "待核对课程",
@@ -265,8 +298,49 @@ def get_source_review(task_id, other_task_id, user):
                 "teacherName": task.teacher_name or "待核对教师", "teacherIdentityProven": projection["teacher"] is not None,
                 "rosterCount": projection["count"]})
         blocked = any(check["status"] != "PASS" for check in checks)
+        # 展示保留打开顺序；签核依据固定为原执行→后继，反向入口不产生假冲突。
+        fingerprint_order = ([1 - successor_index, successor_index] if successor_index is not None
+            else sorted(range(len(tasks)), key=lambda index: tasks[index].id))
+        fingerprint = hashlib.sha256(json.dumps({
+            "term": [term.id, term.status, term.teaching_weeks],
+            "tasks": [output[index] for index in fingerprint_order], "checks": checks,
+            "versions": [tasks[index].version for index in fingerprint_order],
+            "schedulingRequirements": [[getattr(tasks[index], field) for field in scheduling_fields] for index in fingerprint_order],
+            "programs": [[program.id, program.version, program.prev_version_id, program.status]
+                if (program := programs[index]) else None for index in fingerprint_order],
+            "rosters": [sorted(projections[index]["roster"]) if projections[index]["roster"] is not None else None
+                for index in fingerprint_order],
+            "teachers": [projections[index]["teacher"] for index in fingerprint_order],
+        }, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")).hexdigest()
+        execution_id = str(tasks[1 - successor_index].id) if successor_index is not None else None
+        successor_id = str(tasks[successor_index].id) if successor_index is not None else None
+        confirmed = handoffs.get(int(successor_id)) if successor_id else None
+        if confirmed and str(confirmed.execution_task_id) != execution_id:
+            confirmed = None
+        from .academic_affairs_task_source_handoff_service import _receipt, _responsible
+        responsible = False
+        try:
+            _responsible(db, user)
+            responsible = True
+        except AppException as exc:
+            if exc.http_status not in (401, 403):
+                raise
+        allowed = not blocked and responsible and confirmed is None
+        action_reason = ("已确认由原任务承接，可回读原任务继续排课。" if confirmed else
+            "请先核实所有阻断项，再由校教务责任人员确认。" if blocked else
+            "由校教务责任人员填写依据说明后确认。" if responsible else
+            "核对已完成，请交有效校教务责任人员确认承接。")
         return {"termId": str(term.id), "taskIds": [str(task.id) for task in tasks], "tasks": output, "checks": checks,
+            "sourceFingerprint": fingerprint,
+            "executionTaskId": execution_id, "successorTaskId": successor_id,
+            "handoffAction": {"allowed": allowed, "reason": action_reason,
+                "executionTaskId": execution_id, "successorTaskId": successor_id,
+                "expectedSourceFingerprint": fingerprint},
+            "confirmedHandoff": _receipt(confirmed) if confirmed else None,
             "status": "BLOCKED" if blocked else "CHECKED", "reviewOnly": True,
-            "summary": "来源核对存在待补依据，暂不能确认承接。" if blocked else "核对项一致；本次仅核对，尚未办理来源承接。",
-            "nextStep": {"label": "先核实阻断项的来源依据" if blocked else "交校教务核定来源承接",
-                "description": "核对结果不会合并或改写任务；重复来源仍须完成正式承接后才能继续排课与发布。"}}
+            "summary": _receipt(confirmed)["summary"] if confirmed else
+                "来源核对存在待补依据，暂不能确认承接。" if blocked else "核对项一致；本次仅核对，尚未办理来源承接。",
+            "nextStep": {"label": "回原教学任务继续排课与办理" if confirmed else
+                "先核实阻断项的来源依据" if blocked else "交校教务核定来源承接",
+                "description": "承接已确认，后继任务保留来源记录；正式课表、任课及历史沿原任务继续。" if confirmed else
+                    "核对结果不会合并或改写任务；重复来源仍须完成正式承接后才能继续排课与发布。"}}

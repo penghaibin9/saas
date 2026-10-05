@@ -344,6 +344,8 @@ def create_selection(user, body):
         _legacy._ctx(user, db)
         task, task_batch = _task_term(db, int(body.taskId), lock=True)
         _require_teacher_selection_scope(db, task, user)
+        from .academic_affairs_task_execution_authority import require_independent_task
+        task = require_independent_task(db, task)
         textbook = db.query(AaTextbook).filter(
             AaTextbook.id == int(body.textbookId),
             AaTextbook.tenant_id == _legacy._tid(),

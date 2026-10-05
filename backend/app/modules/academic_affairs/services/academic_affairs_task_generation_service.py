@@ -285,6 +285,7 @@ def _snapshot_program_course_formation(program_course, *, db=None, source_snapsh
 def _existing_term_task_rows(db, *, term_id: int, course_id: int, class_id: int):
     """Current-read lookup across all live batches for one tenant/term/course/class."""
     from app.models import AaTeachingTask, AaTeachingTaskBatch
+    from .academic_affairs_task_execution_authority import independent_task_condition
 
     return db.execute(
         select(AaTeachingTask.id, AaTeachingTaskBatch.id, AaTeachingTaskBatch.college_id)
@@ -294,6 +295,7 @@ def _existing_term_task_rows(db, *, term_id: int, course_id: int, class_id: int)
             AaTeachingTask.is_deleted.is_(False),
             AaTeachingTask.course_id == int(course_id),
             AaTeachingTask.class_id == int(class_id),
+            independent_task_condition(AaTeachingTask),
             AaTeachingTaskBatch.tenant_id == _tid(),
             AaTeachingTaskBatch.term_id == int(term_id),
             AaTeachingTaskBatch.is_deleted.is_(False),
