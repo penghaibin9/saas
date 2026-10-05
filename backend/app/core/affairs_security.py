@@ -338,6 +338,9 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
             if str(row.scope_type or "").upper() == "MAJOR"
         }
         if major_scope_ids:
+            # 任期沿正式授予/回收的现行时间合同；范围表仍使用上面的 UTC 窗口。
+            from app.services.role_assignment_service import _now as assignment_now
+            validity_moment = assignment_now()
             member_ids = set(db.scalars(select(UserRole.id)
                 .join(Role, Role.id == UserRole.role_id)
                 .join(User, User.id == UserRole.user_id)
@@ -355,9 +358,9 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
                     or_(RoleAssignmentValidity.id.is_(None), and_(
                         RoleAssignmentValidity.status == "ACTIVE",
                         RoleAssignmentValidity.is_deleted.is_(False),
-                        RoleAssignmentValidity.effective_at <= moment,
+                        RoleAssignmentValidity.effective_at <= validity_moment,
                         or_(RoleAssignmentValidity.expires_at.is_(None),
-                            RoleAssignmentValidity.expires_at > moment),
+                            RoleAssignmentValidity.expires_at > validity_moment),
                     )),
                 )).all())
             major_scope_ids = {

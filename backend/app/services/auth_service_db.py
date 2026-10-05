@@ -9,7 +9,7 @@ from __future__ import annotations
 from datetime import datetime
 import secrets
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, or_, select
 
 from app.core.exceptions import AppException
 from app.core.config import settings
@@ -177,15 +177,21 @@ def _public_context(role_id: int | None, role_code: str, role_name: str,
 
 
 def _role_contexts(db, user) -> list[dict]:
-    """读取用户在本租户内的有效角色，任何一层租户/状态/软删不合法均不返回。"""
+    """读取本租户有效角色及任期，不依赖到期任务先同步成员状态。"""
     from app.models import Role, UserRole
+    from app.models.role_assignment import RoleAssignmentValidity
+    from app.services.role_assignment_service import _now as assignment_now
     # 平台超管只使用控制面内建身份，不与任意学校租户角色混用。
     if (user.user_type or "").upper() == "PLATFORM_SUPER_ADMIN":
         return [_public_context(None, "PLATFORM_SUPER_ADMIN", "平台超级管理员", legacy=True)]
+    moment = assignment_now()
     stmt = (
         select(UserRole, Role)
         .join(Role, and_(Role.id == UserRole.role_id,
                          Role.tenant_id == UserRole.tenant_id))
+        .outerjoin(RoleAssignmentValidity, and_(
+            RoleAssignmentValidity.tenant_id == UserRole.tenant_id,
+            RoleAssignmentValidity.user_role_id == UserRole.id))
         .where(UserRole.tenant_id == user.tenant_id,
                UserRole.user_id == user.id,
                UserRole.status == "ACTIVE",
@@ -193,13 +199,23 @@ def _role_contexts(db, user) -> list[dict]:
                Role.tenant_id == user.tenant_id,
                Role.role_code != "PLATFORM_SUPER_ADMIN",
                Role.status.in_(("ACTIVE", "ENABLED")),
-               Role.is_deleted.is_(False))
+               Role.is_deleted.is_(False),
+               or_(RoleAssignmentValidity.id.is_(None), and_(
+                   RoleAssignmentValidity.user_id == user.id,
+                   RoleAssignmentValidity.role_code == Role.role_code,
+                   RoleAssignmentValidity.status == "ACTIVE",
+                   RoleAssignmentValidity.is_deleted.is_(False),
+                   RoleAssignmentValidity.effective_at <= moment,
+                   or_(RoleAssignmentValidity.expires_at.is_(None),
+                       RoleAssignmentValidity.expires_at > moment))))
         .order_by(UserRole.id)
     )
     contexts = [
-        _public_context(role.id, role.role_code, role.role_name,
-                        scope=_scope_from_role(role),
-                        version=max(int(role.version or 0), int(link.version or 0)))
+        {**_public_context(role.id, role.role_code, role.role_name,
+                          scope=_scope_from_role(role),
+                          version=max(int(role.version or 0), int(link.version or 0))),
+         "_roleVersion": int(role.version or 0),
+         "_memberVersion": int(link.version or 0)}
         for link, role in db.execute(stmt).all()
     ]
     if contexts:
@@ -259,7 +275,12 @@ def _ensure_tenant_login_allowed(db, user) -> None:
 
 
 def _permission_version(user, contexts: list[dict]) -> str:
-    role_part = ",".join(f"{c['roleCode']}:{c['version']}" for c in contexts)
+    # 两项独立安全版本不能取最大值，否则另一项递增会被较大的版本遮住。
+    role_part = ",".join(
+        f"{c['roleCode']}:r{c['_roleVersion']}m{c['_memberVersion']}"
+        if "_roleVersion" in c and "_memberVersion" in c
+        else f"{c['roleCode']}:{c['version']}"
+        for c in contexts)
     return f"u{int(user.version or 0)}|{role_part}"
 
 
@@ -468,7 +489,8 @@ def _login_result(db, user, context: dict, contexts: list[dict], client_type: st
         },
         "roles": [{"roleCode": c["roleCode"], "roleName": c["roleName"],
                    "contextId": c["contextId"]} for c in contexts],
-        "contexts": [{k: v for k, v in c.items() if k != "version"} for c in contexts],
+        "contexts": [{k: v for k, v in c.items()
+                      if k not in {"version", "_roleVersion", "_memberVersion"}} for c in contexts],
         "dataScope": {"scope": context["dataScope"], "scopeLabel": context["scopeLabel"]},
         "permissionActions": {
             "viewList": True,
@@ -643,8 +665,6 @@ def validate_token_subject(user_ctx: dict) -> dict:
         user = _load_token_user(db, user_ctx)
         validate_credential_epoch(user, user_ctx)
         _ensure_tenant_login_allowed(db, user)
-        if _subject_cache_matches(user_ctx):
-            return user_ctx
         contexts = _role_contexts(db, user)
         current = _pick_context(contexts,
                                 context_id=user_ctx.get("activeContextId"),
@@ -652,12 +672,16 @@ def validate_token_subject(user_ctx: dict) -> dict:
         if current is None or current["roleCode"] != user_ctx.get("currentRoleCode"):
             raise AppException("UNAUTHORIZED", "当前岗位已被回收，请重新登录")
         token_version = user_ctx.get("permissionVersion")
-        if token_version and token_version != _permission_version(user, contexts):
+        current_version = _permission_version(user, contexts)
+        if token_version and token_version != current_version:
             raise AppException("UNAUTHORIZED", "权限配置已更新，请重新登录")
+        # 允许缓存仅减少重复写入，不能跳过当前岗位、任期和权限版本的真实裁决。
+        if _subject_cache_matches(user_ctx):
+            return user_ctx
         cache_set_json(_subject_cache_key(user_ctx), {
             "active": True,
             "roleCode": current["roleCode"],
-            "permissionVersion": _permission_version(user, contexts),
+            "permissionVersion": current_version,
         }, settings.AUTH_SUBJECT_CACHE_TTL)
         return user_ctx
     finally:
@@ -687,7 +711,8 @@ def get_me(user_ctx: dict) -> dict:
                 "roleCode": active["roleCode"], "roleName": active["roleName"],
                 "dataScope": active["dataScope"], "scopeLabel": active["scopeLabel"],
             },
-            "contexts": [{k: v for k, v in c.items() if k != "version"} for c in contexts],
+            "contexts": [{k: v for k, v in c.items()
+                          if k not in {"version", "_roleVersion", "_memberVersion"}} for c in contexts],
         }
     finally:
         db.close()

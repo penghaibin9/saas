@@ -262,7 +262,8 @@ def _login_result(db, user, context: dict, contexts: list[dict], client_type: st
             "dataScope": context["dataScope"], "scopeLabel": context["scopeLabel"],
         },
         "roles": [{"roleCode": c["roleCode"], "roleName": c["roleName"], "contextId": c["contextId"]} for c in contexts],
-        "contexts": [{k: v for k, v in c.items() if k != "version"} for c in contexts],
+        "contexts": [{k: v for k, v in c.items()
+                      if k not in {"version", "_roleVersion", "_memberVersion"}} for c in contexts],
         "dataScope": {"scope": context["dataScope"], "scopeLabel": context["scopeLabel"]},
         "permissionActions": {
             "viewList": True,
