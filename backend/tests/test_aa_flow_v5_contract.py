@@ -573,8 +573,8 @@ def test_read_only_schedule_projection_never_requests_resource_locks(monkeypatch
     cache = {}
     service._schedule_batch_projection(db, Row(id=1), batch, 12, cache)
     assert len(gate_cache) == 1 and gate_cache[0] is cache
-    assert conflicts.call_args.kwargs == {"lock": False}
-    assert live.call_args.kwargs == {"lock": False}
+    assert conflicts.call_args.kwargs == {"lock": False, "replacing_batch_id": None}
+    assert live.call_args.kwargs == {"lock": False, "replacing_batch_id": None}
 
 
 def test_college_cross_schedule_matches_canonical_pairs_and_reuses_only_request_facts(monkeypatch):
@@ -600,13 +600,16 @@ def test_college_cross_schedule_matches_canonical_pairs_and_reuses_only_request_
     assert service._college_cross_schedule_count(None, term, batch, own, cache) == old_count(own) == 1
     assert service._college_cross_schedule_count(None, term, batch, own[1:], cache) == old_count(own[1:]) == 0
     assert load.call_count == live.call_count == 1
-    assert live.call_args.kwargs == {"lock": False}
+    assert live.call_args.kwargs == {"lock": False, "replacing_batch_id": None}
     service._college_cross_schedule_count(None, term, Row(id=21), own, cache)
     service._college_cross_schedule_count(None, Row(id=53), batch, own, cache)
     monkeypatch.setattr(service, "_tid", lambda: 8)
     service._college_cross_schedule_count(None, term, batch, own, cache)
     service._college_cross_schedule_count(None, term, batch, own, {})
     assert load.call_count == 5
+    service._college_cross_schedule_count(None, term, batch, own, cache, replacing_batch_id=18)
+    assert load.call_count == 6
+    assert live.call_args.kwargs == {"lock": False, "replacing_batch_id": 18}
 
 
 def test_task_confirmation_uses_college_confirm_permission_after_teacher_confirmation():
@@ -622,18 +625,22 @@ def test_task_confirmation_uses_college_confirm_permission_after_teacher_confirm
 
 def test_school_public_schedule_cannot_be_hidden_by_finished_professional_batch(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_schedule_policy as policy
+    from app.modules.academic_affairs.services import academic_affairs_schedule_truth_service as truth
     monkeypatch.setattr(service, "_tid", lambda: 1)
     monkeypatch.setattr(policy, "public_schedule_mode", lambda db: "SCHOOL_CENTRALIZED", raising=False)
     query = MagicMock()
     query.filter.return_value = query
     query.order_by.return_value = query
-    professional = Row(id=12, college_id=12, status="PUBLISHED")
-    public = Row(id=20, college_id=None, status="DRAFT")
+    professional = Row(id=12, college_id=12, status="PUBLISHED", supersedes_batch_id=None)
+    public = Row(id=20, college_id=None, status="DRAFT", supersedes_batch_id=None)
     query.all.return_value = [professional, public]
     monkeypatch.setattr(service, "_query", lambda *args: query)
     monkeypatch.setattr(service, "_schedule_task_ids", lambda db, term, batch, cid, cache: {1} if batch.college_id else {2})
+    monkeypatch.setattr(truth, "batch_truth", lambda db, batch: {
+        "truthStatus": "VERIFIED" if batch.college_id else "NOT_PUBLISHED",
+        "activeBatchId": "12" if batch.college_id else None})
     projected = []
-    def project(db, term, batch, cid, cache):
+    def project(db, term, batch, cid, cache, *, replacing_batch_id=None):
         projected.append(batch.id)
         if batch.college_id:
             return "DONE", [], {"totalTasks": 1, "scheduledTasks": 1, "responsibleOrgType": "COLLEGE"}, batch
@@ -685,6 +692,106 @@ def test_shared_schedule_tasks_intersect_canonical_mode_and_offering_scope(reque
 def test_empty_unused_schedule_is_not_a_false_blocker_but_orphan_items_are():
     assert service._empty_schedule_check({"totalTasks": 0, "scheduledTasks": 0})
     assert not service._empty_schedule_check({"totalTasks": 0, "orphanItemIds": ["1"]})
+
+
+@pytest.mark.parametrize("school_scope", [False, True])
+def test_mysql_schedule_progress_uses_formal_head_and_only_exact_unique_correction(flow_tenant_context, monkeypatch, school_scope):
+    """隔离初始事实；真实范围头、完整性与资源检查，不作为日常业务办理证据。"""
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import (AaCourse, AaTerm, AaTeachingTaskBatch, AaTeachingTask,
+        AaScheduleBatch, AaScheduleItem, AaScheduleScopeHead, College)
+    from app.modules.academic_affairs.services import academic_affairs_schedule_policy as policy
+    monkeypatch.setattr(policy, "public_schedule_mode", lambda db: "HYBRID")
+    tid = flow_tenant_context
+    with get_sessionmaker()() as db:
+        colleges = [College(tenant_id=tid, code=f"V5-TRUTH-{i}", college_name=f"正式依据学院{i}", status="ACTIVE") for i in range(2)]
+        term = AaTerm(tenant_id=tid, year_code="2044-2045", term_no=1, status="PUBLISHED",
+            start_date=datetime(2044, 9, 1), end_date=datetime(2045, 1, 20), teaching_weeks=18)
+        db.add_all([*colleges, term]); db.flush()
+        owner = None if school_scope else colleges[0].id
+        course = AaCourse(tenant_id=tid, course_code="V5-TRUTH", course_name="正式依据课程",
+            category="PUBLIC_BASIC" if school_scope else "MAJOR_CORE", owner_college_id=colleges[0].id)
+        source = AaTeachingTaskBatch(tenant_id=tid, term_id=term.id, college_id=colleges[0].id,
+            batch_name="正式教学任务", status="APPROVED")
+        formal = AaScheduleBatch(tenant_id=tid, term_id=term.id, college_id=owner,
+            batch_name="当前正式课表", status="PUBLISHED")
+        draft = AaScheduleBatch(tenant_id=tid, term_id=term.id, college_id=owner,
+            batch_name="无关联试验草稿", status="DRAFT")
+        db.add_all([course, source, formal, draft]); db.flush()
+        task = AaTeachingTask(tenant_id=tid, batch_id=source.id, course_id=course.id,
+            course_name=course.course_name, status="READY", weekly_hours=1, start_week=1, end_week=18,
+            teacher_key="v5-truth-teacher", no_auto_schedule=False)
+        db.add(task); db.flush()
+        def item(batch):
+            return AaScheduleItem(tenant_id=tid, batch_id=batch.id, task_id=task.id,
+                course_id=course.id, course_name=course.course_name, teacher_key=task.teacher_key,
+                weekday=1, slot_no=1, start_week=1, end_week=18, status="EFFECTIVE")
+        head = AaScheduleScopeHead(tenant_id=tid, term_id=term.id,
+            scope_type="SCHOOL" if school_scope else "COLLEGE", scope_id=owner or 0,
+            active_batch_id=formal.id)
+        db.add_all([item(formal), head]); db.flush()
+        def project():
+            return service._schedule_projection(db, term, owner, {})
+        result = project()
+        assert result[0] == "DONE" and result[3].id == formal.id, result
+        assert draft.status == "DRAFT" and draft.supersedes_batch_id is None
+        draft.supersedes_batch_id = formal.id
+        db.add(item(draft)); db.flush()
+        result = project()
+        assert result[0] == "ACTION_REQUIRED" and result[3].id == draft.id, result
+        assert result[2]["crossCollegeConflictCount"] == 0
+        draft.status = "PRE_PUBLISHED"; db.flush()
+        assert project()[0] == "READY"
+        # 当前正式版不能遮住新应排任务；每次请求重新读取真实候选。
+        added = AaTeachingTask(tenant_id=tid, batch_id=source.id, course_id=course.id,
+            course_name=course.course_name, status="READY", weekly_hours=1, start_week=1, end_week=18,
+            teacher_key="v5-truth-new", no_auto_schedule=False)
+        db.add(added); db.flush()
+        result = project()
+        assert result[0] == "BLOCKED" and result[2]["missingTaskCount"] == 1, result
+        added.is_deleted = True; db.flush()
+        # 只排除自身旧正式版，另一范围仍生效的资源占用必须拒绝。
+        other = AaScheduleBatch(tenant_id=tid, term_id=term.id, college_id=colleges[1].id,
+            batch_name="另一学院正式课表", status="PUBLISHED")
+        db.add(other); db.flush()
+        occupied = item(other)
+        db.add(occupied); db.flush()
+        result = project()
+        assert result[0] == "BLOCKED" and "CROSS_COLLEGE_CONFLICT" in {row["code"] for row in result[1]}, result
+        occupied.weekday = 2; db.flush()
+        assert project()[0] == "READY"
+        duplicate = AaScheduleBatch(tenant_id=tid, term_id=term.id, college_id=owner,
+            batch_name="第二个待定纠错版本", status="DRAFT", supersedes_batch_id=formal.id)
+        db.add(duplicate); db.flush()
+        result = project()
+        assert result[0] == "BLOCKED" and result[1][0]["code"] == "SCHEDULE_VERSION_AMBIGUOUS", result
+        duplicate.status = "ARCHIVED"
+        draft.supersedes_batch_id = other.id; db.flush()
+        result = project()
+        assert result[0] == "BLOCKED" and result[1][0]["code"] == "SCHEDULE_CORRECTION_SOURCE_INVALID", result
+        draft.supersedes_batch_id = formal.id
+        head.active_batch_id = other.id; db.flush()
+        result = project()
+        assert result[0] == "BLOCKED" and result[1][0]["code"] == "SCHEDULE_FORMAL_HEAD_UNRESOLVED", result
+        # 即使本范围批次已全部归档，无效非空正式头也不能降为未开始或改用学校课表。
+        formal.status = draft.status = "ARCHIVED"; db.flush()
+        result = project()
+        assert result[0] == "BLOCKED" and result[1][0]["code"] == "SCHEDULE_FORMAL_HEAD_UNRESOLVED", result
+        formal.status = "PUBLISHED"; draft.status = "PRE_PUBLISHED"
+        head.active_batch_id = None; db.flush()
+        result = project()
+        assert result[0] == "BLOCKED" and result[1][0]["code"] == "SCHEDULE_FORMAL_HEAD_UNRESOLVED", result
+        formal.status = "ARCHIVED"
+        draft.supersedes_batch_id = None
+        duplicate.status = "DRAFT"; duplicate.supersedes_batch_id = None; db.flush()
+        result = project()
+        assert result[0] == "BLOCKED" and result[1][0]["code"] == "SCHEDULE_VERSION_AMBIGUOUS", result
+        duplicate.status = "ARCHIVED"; draft.status = "DRAFT"; db.flush()
+        assert project()[0] == "ACTION_REQUIRED"
+        draft.status = "PRE_PUBLISHED"; db.flush()
+        assert project()[0] == "READY"
+        db.rollback()
 
 
 def test_mysql_school_public_missing_schedule_blocks_even_when_professional_is_published(flow_tenant_context, monkeypatch):

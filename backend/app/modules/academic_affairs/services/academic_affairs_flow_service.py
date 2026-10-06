@@ -322,14 +322,15 @@ def _schedule_task_ids(db, term, batch, college_id, cache):
     return cache[key]
 
 
-def _college_cross_schedule_count(db, term, batch, own_items, cache):
+def _college_cross_schedule_count(db, term, batch, own_items, cache, *, replacing_batch_id=None):
     """只比较本院课位与其他批次同槽位，复用本请求的真实课位查询。"""
     from . import academic_affairs_schedule_truth_service as truth
 
-    key = ("FLOW_OTHER_SCHEDULE_SLOTS", _tid(), int(term.id), int(batch.id))
+    key = ("FLOW_OTHER_SCHEDULE_SLOTS", _tid(), int(term.id), int(batch.id), replacing_batch_id)
     if key not in cache:
         buckets = {}
-        for item in truth._items(db, truth._live_batch_ids(db, term.id, batch.id, lock=False)):
+        for item in truth._items(db, truth._live_batch_ids(db, term.id, batch.id,
+                replacing_batch_id=replacing_batch_id, lock=False)):
             buckets.setdefault((item.weekday, item.slot_no), []).append(item)
         cache[key] = buckets
     own_ids = {int(row.id) for row in own_items}
@@ -346,17 +347,26 @@ def _college_cross_schedule_count(db, term, batch, own_items, cache):
     return count
 
 
-def _schedule_batch_projection(db, term, batch, college_id, cache):
-    from app.models import AaScheduleItem, AaScheduleScopeHead
+def _schedule_truth(db, term, owner, cache):
+    from . import academic_affairs_schedule_truth_service as truth
+    key = ("FLOW_SCHEDULE_TRUTH", _tid(), int(term.id), owner)
+    if key not in cache:
+        cache[key] = truth.batch_truth(db, SimpleNamespace(id=0, term_id=term.id, college_id=owner))
+    return cache[key]
+
+
+def _schedule_batch_projection(db, term, batch, college_id, cache, *, replacing_batch_id=None):
+    from app.models import AaScheduleItem
     from . import academic_affairs_schedule_gate_service as gate
     from . import academic_affairs_schedule_truth_service as truth
     key = ("SCHEDULE_GATE", int(batch.id))
     if key not in cache:
         cache[key] = gate.evaluate(db, batch, cache=cache)
     check = dict(cache[key])
-    cross_key = ("SCHEDULE_CROSS", int(batch.id))
+    cross_key = ("SCHEDULE_CROSS", int(batch.id), replacing_batch_id)
     if cross_key not in cache:
-        cache[cross_key] = len(truth.validate_school_wide_conflicts(db, batch, lock=False)["problems"])
+        cache[cross_key] = len(truth.validate_school_wide_conflicts(db, batch,
+            replacing_batch_id=replacing_batch_id, lock=False)["problems"])
     cross_count = cache[cross_key]
     if college_id and not batch.college_id:
         task_ids = _schedule_task_ids(db, term, batch, college_id, cache)
@@ -377,7 +387,8 @@ def _schedule_batch_projection(db, term, batch, college_id, cache):
         check["complete"] = bool(task_ids) and not any((missing_owner, check["invalidTasks"], check["missingTasks"],
             check["overScheduledTasks"], hard, invalid_items)) and check["scheduledTasks"] == len(task_ids)
         # 全校批次分院进度只核本院课程；其它学院的缺课不能回退本院。
-        cross_count = _college_cross_schedule_count(db, term, batch, own_items, cache)
+        cross_count = _college_cross_schedule_count(db, term, batch, own_items, cache,
+            replacing_batch_id=replacing_batch_id)
     blockers = []
     if not check["complete"]:
         blockers.append(_problem("SCHEDULE_NOT_READY", "课表仍有漏排、资源或硬冲突问题，请进入排课工作区处理"))
@@ -385,12 +396,10 @@ def _schedule_batch_projection(db, term, batch, college_id, cache):
         blockers.append(_problem("CROSS_COLLEGE_CONFLICT", f"存在 {cross_count} 项跨教学单位资源冲突，请校教务协调"))
     if check["missingOwnerCount"]:
         blockers.append(_problem("OFFERING_UNIT_UNRESOLVED", f"{check['missingOwnerCount']} 条教学任务尚未落实有效排课责任单位"))
-    state = "BLOCKED" if blockers else "READY"
+    state = "BLOCKED" if blockers else "ACTION_REQUIRED" if batch.status == "DRAFT" else "READY"
     if batch.status == "PUBLISHED" and not blockers:
-        official = db.scalar(select(AaScheduleScopeHead.id).where(
-            AaScheduleScopeHead.tenant_id == _tid(), AaScheduleScopeHead.term_id == term.id,
-            AaScheduleScopeHead.active_batch_id == batch.id, AaScheduleScopeHead.is_deleted.is_(False),
-        ).limit(1))
+        formal = _schedule_truth(db, term, batch.college_id, cache)
+        official = formal["truthStatus"] == "VERIFIED" and formal["activeBatchId"] == str(batch.id)
         state = "DONE" if official else "BLOCKED"
         if not official:
             blockers.append(_problem("SCHEDULE_FORMAL_HEAD_UNRESOLVED", "课表缺少当前正式版本依据，不能判定已完成发布"))
@@ -436,12 +445,29 @@ def _schedule_projection(db, term, college_id, cache):
     own = [row for row in batches if row.college_id == college_id] if college_id else []
     school = [row for row in batches if not row.college_id]
     # 统排模式按两套正式责任集合核验。其它模式延续学院批次优先、学校批次承接的现行规则。
+    use_own = bool(own) or bool(college_id and _schedule_truth(db, term, college_id, cache)["truthStatus"] != "NOT_PUBLISHED")
     groups = ([(college_id, own), (None, school)] if college_id and mode == "SCHOOL_CENTRALIZED"
-              else [(college_id if own else None, own or school)])
+              else [(college_id if use_own else None, own if use_own else school)])
     parts = []
     for owner, candidates in groups:
-        reference = SimpleNamespace(college_id=owner)
+        reference = SimpleNamespace(college_id=owner, term_id=term.id)
         needed = _schedule_task_ids(db, term, reference, college_id, cache) if mode == "SCHOOL_CENTRALIZED" else None
+        formal = _schedule_truth(db, term, owner, cache)
+        active = next((row for row in candidates if str(row.id) == formal["activeBatchId"]), None)
+        corrections = [row for row in candidates if row.status != "PUBLISHED" and row.supersedes_batch_id is not None]
+        issue = None
+        if formal["truthStatus"] == "INVALID" or formal["truthStatus"] == "VERIFIED" and active is None:
+            issue = _problem("SCHEDULE_FORMAL_HEAD_UNRESOLVED", "当前正式课表依据异常，请核对学期和责任范围")
+        elif formal["truthStatus"] != "VERIFIED" and any(row.status == "PUBLISHED" for row in candidates):
+            issue = _problem("SCHEDULE_FORMAL_HEAD_UNRESOLVED", "已发布课表缺少当前正式版本依据")
+        elif corrections and (formal["truthStatus"] != "VERIFIED" or any(str(row.supersedes_batch_id) != formal["activeBatchId"] for row in corrections)):
+            issue = _problem("SCHEDULE_CORRECTION_SOURCE_INVALID", "纠错课表未准确承接当前正式版本，请核对来源")
+        elif len(corrections) > 1 or formal["truthStatus"] != "VERIFIED" and len(candidates) > 1:
+            issue = _problem("SCHEDULE_VERSION_AMBIGUOUS", "同一责任范围存在多个待定课表版本，请明确办理版本")
+        if issue:
+            parts.append(("BLOCKED", [issue], {"responsibleOrgType": "COLLEGE" if owner else "SCHOOL"}, None))
+            continue
+        batch = corrections[0] if corrections else active or (candidates[0] if candidates else None)
         if needed is not None and not needed:
             # 无应排任务时仍核验已有条目是否违反现行责任模式，不能把历史误排静默算完成。
             if not candidates or college_id and owner is None:
@@ -454,8 +480,8 @@ def _schedule_projection(db, term, college_id, cache):
             else:
                 parts.append(("NOT_APPLICABLE" if college_id is None else "NOT_STARTED", [], {}, None))
             continue
-        batch = next((row for row in candidates if row.status != "PUBLISHED"), candidates[0])
-        part = _schedule_batch_projection(db, term, batch, college_id, cache)
+        part = _schedule_batch_projection(db, term, batch, college_id, cache,
+            replacing_batch_id=int(formal["activeBatchId"]) if corrections else None)
         if needed is not None and not needed and _empty_schedule_check(cache[("SCHEDULE_GATE", int(batch.id))]):
             part = ("NOT_APPLICABLE", [], {"totalTasks": 0}, None)
         parts.append(part)
