@@ -23,7 +23,9 @@ from app.models import (
     AcademicGrade,
     AcademicStudent,
     ArchiveManifest,
+    Permission,
     Role,
+    RolePermission,
     Tenant,
     User,
     UserRole,
@@ -96,6 +98,33 @@ def _ensure_reviewer(db, role: Role) -> User:
     return reviewer
 
 
+def _ensure_archive_permissions(db, role: Role) -> None:
+    for code in ("academicAffairs.archive.view", "academicAffairs.archive.manage"):
+        permission = db.scalars(select(Permission).where(
+            Permission.permission_code == code,
+            Permission.is_deleted.is_(False),
+        )).first()
+        if permission is None:
+            raise SystemExit(f"permission catalog missing required W1 permission: {code}")
+        grant = db.scalars(select(RolePermission).where(
+            RolePermission.tenant_id == TID,
+            RolePermission.role_id == role.id,
+            RolePermission.permission_id == permission.id,
+            RolePermission.is_deleted.is_(False),
+        )).first()
+        if grant is None:
+            db.add(RolePermission(
+                tenant_id=TID,
+                role_id=role.id,
+                permission_id=permission.id,
+                status="ACTIVE",
+            ))
+        else:
+            grant.status = "ACTIVE"
+            grant.is_deleted = False
+    db.flush()
+
+
 def _grade(db, suffix: int, score: int) -> AcademicGrade:
     student = AcademicStudent(
         tenant_id=TID,
@@ -149,6 +178,7 @@ def main() -> int:
         )).first()
         if creator is None or role is None:
             raise SystemExit("academic W1 creator/role foundation is missing")
+        _ensure_archive_permissions(db, role)
         reviewer = _ensure_reviewer(db, role)
 
         now = datetime.utcnow()
