@@ -102,7 +102,7 @@ def _ensure_archive_permissions(db, role: Role) -> None:
     for code in ("academicAffairs.archive.view", "academicAffairs.archive.manage"):
         permission = db.scalars(select(Permission).where(
             Permission.permission_code == code,
-            Permission.is_deleted.is_(False),
+            Permission.status == "ACTIVE",
         )).first()
         if permission is None:
             raise SystemExit(f"permission catalog missing required W1 permission: {code}")
