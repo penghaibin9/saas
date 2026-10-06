@@ -331,7 +331,7 @@ def _college_cross_schedule_count(db, term, batch, own_items, cache):
 
 
 def _schedule_batch_projection(db, term, batch, college_id, cache):
-    from app.models import AaCourse, AaScheduleItem, AaScheduleScopeHead
+    from app.models import AaScheduleItem, AaScheduleScopeHead
     from . import academic_affairs_schedule_gate_service as gate
     from . import academic_affairs_schedule_truth_service as truth
     key = ("SCHEDULE_GATE", int(batch.id))
@@ -355,7 +355,9 @@ def _schedule_batch_projection(db, term, batch, college_id, cache):
         invalid_items = any(item_ids.intersection(check[field]) for field in (
             "orphanItemIds", "invalidCoordinateItemIds", "invalidClassroomItemIds"))
         check.update(totalTasks=len(task_ids), scheduledTasks=len({row.task_id for row in own_items}),
-                     missingTaskCount=len(check["missingTasks"]), hardConflicts=len(hard))
+                     missingTaskCount=len(check["missingTasks"]), hardConflicts=len(hard),
+                     missingOwnerTaskIds=[str(value) for value in sorted(missing_owner)],
+                     missingOwnerCount=len(missing_owner))
         check["complete"] = bool(task_ids) and not any((missing_owner, check["invalidTasks"], check["missingTasks"],
             check["overScheduledTasks"], hard, invalid_items)) and check["scheduledTasks"] == len(task_ids)
         # 全校批次分院进度只核本院课程；其它学院的缺课不能回退本院。
@@ -365,12 +367,8 @@ def _schedule_batch_projection(db, term, batch, college_id, cache):
         blockers.append(_problem("SCHEDULE_NOT_READY", "课表仍有漏排、资源或硬冲突问题，请进入排课工作区处理"))
     if cross_count:
         blockers.append(_problem("CROSS_COLLEGE_CONFLICT", f"存在 {cross_count} 项跨教学单位资源冲突，请校教务协调"))
-    owner_missing = _query(db, AaScheduleItem, AaScheduleItem.batch_id == batch.id,
-                          AaScheduleItem.status == "EFFECTIVE").outerjoin(AaCourse,
-        (AaCourse.id == AaScheduleItem.course_id) & (AaCourse.tenant_id == _tid())
-        & AaCourse.is_deleted.is_(False)).filter(AaCourse.owner_college_id.is_(None)).count()
-    if owner_missing and batch.college_id:
-        blockers.append(_problem("OFFERING_UNIT_UNRESOLVED", f"{owner_missing} 条课程未配置开课单位，不能判定排课责任已落实"))
+    if check["missingOwnerCount"]:
+        blockers.append(_problem("OFFERING_UNIT_UNRESOLVED", f"{check['missingOwnerCount']} 条教学任务尚未落实有效排课责任单位"))
     state = "BLOCKED" if blockers else "READY"
     if batch.status == "PUBLISHED" and not blockers:
         official = db.scalar(select(AaScheduleScopeHead.id).where(
@@ -976,7 +974,8 @@ def _major_stages(db, term, ctx, major_ids):
 
 
 def _global_gate_blockers(db, term, cache, *, run_final_reconciliation=True):
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
+    from . import academic_affairs_schedule_gate_service as gate, academic_affairs_schedule_policy as policy
     if not term:
         return [_problem("CURRENT_TERM_MISSING", "尚未设置当前学期")]
     rows = _query(db, AaTeachingTask, AaTeachingTask.status != "MERGED").join(AaTeachingTaskBatch,
@@ -984,8 +983,11 @@ def _global_gate_blockers(db, term, cache, *, run_final_reconciliation=True):
         & AaTeachingTaskBatch.is_deleted.is_(False)).filter(AaTeachingTaskBatch.term_id == term.id)
     rows = _independent_tasks(db, rows)
     missing_batch = rows.filter(AaTeachingTaskBatch.college_id.is_(None)).count()
-    missing_owner = rows.outerjoin(AaCourse, (AaCourse.id == AaTeachingTask.course_id)
-        & (AaCourse.tenant_id == _tid()) & AaCourse.is_deleted.is_(False)).filter(AaCourse.owner_college_id.is_(None)).count()
+    approved_task_ids = [int(row.id) for row in rows.filter(AaTeachingTaskBatch.status == "APPROVED")
+                         .with_entities(AaTeachingTask.id).all()]
+    responsible_tasks = gate._responsible_task_ids(db, approved_task_ids, term.id,
+        school_public=policy.public_schedule_mode(db) in {"SCHOOL_CENTRALIZED", "HYBRID"})
+    missing_owner = len(set(approved_task_ids) - responsible_tasks)
     blockers = []
     from .academic_affairs_archive_rule_evaluator import _expected_opening, evaluate_teaching_task
     if run_final_reconciliation:
@@ -1004,7 +1006,7 @@ def _global_gate_blockers(db, term, cache, *, run_final_reconciliation=True):
     if missing_batch:
         blockers.append(_problem("RESPONSIBILITY_UNRESOLVED", f"{missing_batch} 条教学任务缺少批次责任学院"))
     if missing_owner:
-        blockers.append(_problem("OFFERING_UNIT_UNRESOLVED", f"{missing_owner} 条课程未配置正式开课单位"))
+        blockers.append(_problem("OFFERING_UNIT_UNRESOLVED", f"{missing_owner} 条教学任务尚未落实有效责任单位"))
     if any(not value["complete"] and not _empty_schedule_check(value) for key, value in cache.items() if key[0] == "SCHEDULE_GATE"):
         blockers.append(_problem("SCHOOL_GATE_NOT_READY", "课表完整性、资源或硬冲突检查尚未通过"))
     if any(value for key, value in cache.items() if key[0] == "SCHEDULE_CROSS"):

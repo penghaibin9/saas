@@ -120,9 +120,9 @@ def _assert_task_reconciliation(facts, expected_count=2):
         set_tenant(previous)
 
 
-def _candidate(client, facts, index, *, weekday=None, room=None, add_item=True, pre_publish=True, name=None):
+def _candidate(client, facts, index, *, weekday=None, room=None, add_item=True, pre_publish=True, name=None, school_scope=False):
     task = facts["tasks"][index]
-    college_id = None if facts["mode"] == "SCHOOL_CENTRALIZED" and index == 0 else task["collegeId"]
+    college_id = None if school_scope or facts["mode"] == "SCHOOL_CENTRALIZED" and index == 0 else task["collegeId"]
     response = client.post(f"{BASE}/schedule-batches", headers=facts["school"], json={
         "termId": str(facts["termId"]), "collegeId": college_id, "batchName": name or f"发布候选{index}",
     })
@@ -144,6 +144,138 @@ def _summary(client, facts, batch_id):
     response = client.get(f"{BASE}/schedule-batches/{batch_id}/summary", headers=facts["school"])
     assert response.status_code == 200, response.text
     return response.json()["data"]
+
+
+@pytest.mark.parametrize("mode", ["OFFERING_UNIT", "SCHOOL_CENTRALIZED"])
+def test_null_course_owner_uses_approved_task_or_school_public_responsibility(client, db_mode, mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask
+
+    facts = _facts(client, mode=mode)
+    with get_sessionmaker()() as db:
+        course_ids = [db.get(AaTeachingTask, int(row["taskId"])).course_id for row in facts["tasks"]]
+        for course_id in course_ids:
+            db.get(AaCourse, course_id).owner_college_id = None
+        db.commit()
+    batches = [_candidate(client, facts, index, pre_publish=False) for index in range(2)]
+    for batch_id in batches:
+        summary = _summary(client, facts, batch_id)
+        assert summary["missingOwnerCount"] == 0, summary
+        assert summary["complete"] is True, summary
+        response = client.post(f"{BASE}/schedule-batches/{batch_id}/pre-publish", headers=facts["school"])
+        assert response.status_code == 200, response.text
+    for batch_id in batches:
+        assert _summary(client, facts, batch_id)["schoolGate"]["ready"] is True
+        response = client.post(f"{BASE}/schedule-batches/{batch_id}/publish", headers=facts["school"])
+        assert response.status_code == 200, response.text
+        assert _summary(client, facts, batch_id)["batchStatus"] == "PUBLISHED"
+    with get_sessionmaker()() as db:
+        assert all(db.get(AaCourse, course_id).owner_college_id is None for course_id in course_ids)
+
+
+@pytest.mark.parametrize("public_field", ["category", "nature"])
+def test_hybrid_school_responsibility_handles_null_public_and_professional_owners(client, db_mode, public_field):
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask
+
+    facts = _facts(client, mode="HYBRID")
+    with get_sessionmaker()() as db:
+        courses = [db.get(AaCourse, db.get(AaTeachingTask, int(row["taskId"])).course_id) for row in facts["tasks"]]
+        for course in courses:
+            course.owner_college_id = None
+        setattr(courses[0], public_field, "PUBLIC_BASIC" if public_field == "category" else "PUBLIC_ELECTIVE")
+        db.commit()
+    batch_id = _candidate(client, facts, 0, school_scope=True, pre_publish=False)
+    response = _item(client, facts["school"], batch_id,
+        **{key: value for key, value in facts["tasks"][1].items() if key != "collegeId"},
+        weekday=2, classroom="发布测试教室1")
+    assert response.status_code == 200, response.text
+    assert _summary(client, facts, batch_id)["missingOwnerCount"] == 0
+    response = client.post(f"{BASE}/schedule-batches/{batch_id}/pre-publish", headers=facts["school"])
+    assert response.status_code == 200, response.text
+    assert _summary(client, facts, batch_id)["schoolGate"]["ready"] is True
+    response = client.post(f"{BASE}/schedule-batches/{batch_id}/publish", headers=facts["school"])
+    assert response.status_code == 200, response.text
+
+
+@pytest.mark.parametrize("defect", [
+    "explicit-inactive", "explicit-deleted", "explicit-foreign",
+    "fallback-inactive", "fallback-foreign", "fallback-missing",
+    "public-offering", "public-hybrid-college", "public-elective-college",
+    "course-foreign", "batch-foreign", "batch-unapproved", "batch-other-term",
+])
+def test_schedule_responsibility_rejects_invalid_owner_or_source_without_side_effects(client, db_mode, defect):
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, College
+
+    facts = _facts(client, mode="HYBRID" if "hybrid" in defect or "elective" in defect else "OFFERING_UNIT")
+    batch_id = _candidate(client, facts, 0, pre_publish=False)
+    with get_sessionmaker()() as db:
+        task = db.get(AaTeachingTask, int(facts["tasks"][0]["taskId"]))
+        course = db.get(AaCourse, task.course_id)
+        task_batch = db.get(AaTeachingTaskBatch, task.batch_id)
+        college = db.get(College, int(facts["tasks"][0]["collegeId"]))
+        if defect.startswith("fallback") or defect.startswith("public"):
+            course.owner_college_id = None
+        if defect.endswith("inactive"):
+            college.status = "DISABLED"
+        elif defect == "explicit-deleted":
+            college.is_deleted = True
+        elif defect.endswith("foreign"):
+            target = course if defect == "course-foreign" else task_batch if defect == "batch-foreign" else college
+            target.tenant_id = TID + 1
+        elif defect == "fallback-missing":
+            task_batch.college_id = None
+        elif defect == "public-elective-college":
+            course.nature = "PUBLIC_ELECTIVE"
+        elif defect.startswith("public"):
+            course.category = "PUBLIC_BASIC"
+        elif defect == "batch-unapproved":
+            task_batch.status = "DRAFT"
+        elif defect == "batch-other-term":
+            task_batch.term_id = facts["termId"] + 1
+        db.commit()
+    summary = _summary(client, facts, batch_id)
+    assert summary["complete"] is False, summary
+    if not defect.startswith("batch-") and defect != "fallback-missing":
+        assert summary["missingOwnerTaskIds"] == [facts["tasks"][0]["taskId"]], summary
+    before = _snapshot(facts)
+    response = client.post(f"{BASE}/schedule-batches/{batch_id}/pre-publish", headers=facts["school"])
+    assert response.status_code == 409, response.text
+    assert _snapshot(facts) == before
+
+
+def test_same_course_responsibility_is_checked_per_task_and_reconciliation_remains_required(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaProgramBinding, AaProgramCourse, AaTeachingTask, College
+
+    facts = _facts(client, mode="HYBRID")
+    with get_sessionmaker()() as db:
+        tasks = [db.get(AaTeachingTask, int(row["taskId"])) for row in facts["tasks"]]
+        course = db.get(AaCourse, tasks[0].course_id)
+        course.owner_college_id = None
+        source = db.get(AaProgramCourse, tasks[1].source_program_course_id)
+        source.course_id = tasks[1].course_id = course.id
+        tasks[1].course_name = source.course_name = course.course_name
+        db.get(College, int(facts["tasks"][1]["collegeId"])).status = "DISABLED"
+        db.commit()
+    batch_id = _candidate(client, facts, 0, school_scope=True, pre_publish=False)
+    response = _item(client, facts["school"], batch_id,
+        **{key: value for key, value in facts["tasks"][1].items() if key != "collegeId"},
+        weekday=2, classroom="发布测试教室1")
+    assert response.status_code == 200, response.text
+    summary = _summary(client, facts, batch_id)
+    assert summary["totalTasks"] == 2 and summary["missingOwnerTaskIds"] == [facts["tasks"][1]["taskId"]], summary
+    with get_sessionmaker()() as db:
+        db.get(College, int(facts["tasks"][1]["collegeId"])).status = "ACTIVE"
+        db.query(AaProgramBinding).filter(AaProgramBinding.tenant_id == TID,
+            AaProgramBinding.class_id == int(facts["tasks"][1]["classId"])).one().status = "REVOKED"
+        db.commit()
+    summary = _summary(client, facts, batch_id)
+    assert summary["missingOwnerCount"] == 0 and summary["complete"] is True, summary
+    response = client.post(f"{BASE}/schedule-batches/{batch_id}/pre-publish", headers=facts["school"])
+    assert response.status_code == 200, response.text
+    _assert_school_rejects(client, facts, batch_id)
 
 
 @pytest.mark.parametrize("cross_batch_college", [False, True], ids=["same-college", "different-batch-college"])

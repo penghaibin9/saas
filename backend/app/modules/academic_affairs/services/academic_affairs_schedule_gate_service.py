@@ -9,8 +9,29 @@ from . import academic_affairs_schedule_policy as policy
 from . import academic_affairs_scheduling_final_service as scheduling_service
 
 
+def _responsible_task_ids(db, task_ids, term_id, *, school_public):
+    from sqlalchemy import and_, func, or_
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, College
+
+    public = func.coalesce(or_(AaCourse.category == "PUBLIC_BASIC", AaCourse.nature == "PUBLIC_ELECTIVE"), False)
+    # V5 11.2：专业课空归属采用已批准任务批次学院；显式失效归属不得回退。
+    return {int(row.id) for row in db.query(AaTeachingTask.id).join(
+        AaCourse, AaCourse.id == AaTeachingTask.course_id,
+    ).join(AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).outerjoin(
+        College, and_(College.id == func.coalesce(AaCourse.owner_college_id, AaTeachingTaskBatch.college_id),
+            College.tenant_id == _tid(), College.is_deleted.is_(False), College.status == "ACTIVE"),
+    ).filter(
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False), AaTeachingTask.id.in_(task_ids or [-1]),
+        AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
+        AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == int(term_id),
+        AaTeachingTaskBatch.status == "APPROVED", AaTeachingTaskBatch.is_deleted.is_(False),
+        or_(and_(College.id.is_not(None), or_(AaCourse.owner_college_id.is_not(None), ~public)),
+            and_(public, AaCourse.owner_college_id.is_(None), school_public)),
+    ).all()}
+
+
 def evaluate(db, batch, *, lock=False, published_task_ids=None) -> dict:
-    from app.models import AaClassroom, AaCourse, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch, College
+    from app.models import AaClassroom, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
 
     _term, teaching_weeks = policy.term_bounds(db, int(batch.term_id))
     task_batch_query = db.query(AaTeachingTaskBatch).filter(
@@ -63,14 +84,9 @@ def evaluate(db, batch, *, lock=False, published_task_ids=None) -> dict:
                 duplicate_groups.append({**row,
                     "taskIds": [value for value in row["taskIds"] if int(value) in coverage_ids]})
     duplicate_ids = {task_id for row in duplicate_groups for task_id in row["taskIds"]}
-    owned_courses = {int(row.id) for row in db.query(AaCourse).join(
-        College, College.id == AaCourse.owner_college_id,
-    ).filter(
-        AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
-        AaCourse.id.in_([task.course_id for task in tasks] or [-1]),
-        College.tenant_id == _tid(), College.is_deleted.is_(False), College.status == "ACTIVE",
-    ).all()}
-    missing_owner = [str(task.id) for task in tasks if task.course_id not in owned_courses]
+    school_public = not batch.college_id and policy.public_schedule_mode(db) in {"SCHOOL_CENTRALIZED", "HYBRID"}
+    responsible_tasks = _responsible_task_ids(db, [task.id for task in tasks], batch.term_id, school_public=school_public)
+    missing_owner = [str(task.id) for task in tasks if task.id not in responsible_tasks]
     classroom_ids = sorted({int(item.classroom_id) for item in items if item.classroom_id})
     classroom_query = db.query(AaClassroom).filter(
         AaClassroom.tenant_id == _tid(), AaClassroom.id.in_(classroom_ids or [-1]),
@@ -203,7 +219,7 @@ def require_publishable(db, batch) -> dict:
     if result["invalidTaskCount"]:
         reasons.append(f"教学任务周次/周学时异常 {result['invalidTaskCount']} 条")
     if result["missingOwnerCount"]:
-        reasons.append(f"课程尚未配置有效开课单位 {result['missingOwnerCount']} 条")
+        reasons.append(f"教学任务尚未落实有效排课责任单位 {result['missingOwnerCount']} 条")
     if result["duplicateTaskGroupCount"]:
         reasons.append(f"同课程同班任务重复 {result['duplicateTaskGroupCount']} 组，请先核对开课来源")
     if result["missingTaskCount"]:

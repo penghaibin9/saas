@@ -257,8 +257,12 @@ def test_school_gate_defers_final_reconciliation_but_retains_governance_blockers
     query.filter.return_value = query
     query.outerjoin.return_value = query
     query.count.return_value = 1
+    query.with_entities.return_value = query
+    query.all.return_value = [Row(id=1)]
     query.statement = select(AaTeachingTask)
     monkeypatch.setattr(service, "_query", lambda *args: query)
+    from app.modules.academic_affairs.services import academic_affairs_schedule_policy as schedule_policy
+    monkeypatch.setattr(schedule_policy, "public_schedule_mode", lambda db: "HYBRID")
     expected = MagicMock(return_value=([], [{"type": "PROGRAM_UNRESOLVED"}]))
     final = MagicMock(return_value={"result": "BLOCKED", "summary": "全校课程存在重复任务", "evidence": []})
     monkeypatch.setattr(evaluator, "_expected_opening", expected)
@@ -726,10 +730,42 @@ def test_mysql_school_public_missing_schedule_blocks_even_when_professional_is_p
         db.flush()
         assert service._schedule_projection(db, term, college.id, {})[0] == "DONE"
         assert service._schedule_projection(db, term, None, {})[0] == "DONE"
+        courses[0].owner_college_id = None
         courses[1].owner_college_id = None
         db.flush()
-        # 候选学院可回退批次归属，但缺正式开课单位仍然阻断，不能被共享批次分院切片绕过。
-        assert service._schedule_projection(db, term, college.id, {})[0] == "BLOCKED"
+        # V5 专业任务归已批准批次学院，学校统筹公共课归学校；不补写目录归属。
+        assert service._schedule_projection(db, term, college.id, {})[0] == "DONE"
+        assert service._schedule_projection(db, term, None, {})[0] == "DONE"
+        assert all(course.owner_college_id is None for course in courses)
+        global_blockers = service._global_gate_blockers(db, term, {}, run_final_reconciliation=False)
+        assert "OFFERING_UNIT_UNRESOLVED" not in {row["code"] for row in global_blockers}
+        courses[0].owner_college_id = college.id
+        college.status = "DISABLED"
+        db.flush()
+        # 学校公共分量保持正确；失效专业单位在学院与全校聚合门禁中均阻断。
+        college_part = service._schedule_projection(db, term, college.id, {})
+        assert college_part[0] == "BLOCKED"
+        assert service._schedule_projection(db, term, None, {})[0] == "DONE"
+        global_blockers = service._global_gate_blockers(db, term, {}, run_final_reconciliation=False)
+        assert "OFFERING_UNIT_UNRESOLVED" in {row["code"] for row in global_blockers}
+        stages = [service._stage(index, term, status="DONE") for index in range(len(service.STAGES))]
+        stages[4] = service._stage(4, term, status=college_part[0], blockers=college_part[1])
+        school_gate = service._gate("F50_SCHEDULE", "学校排课门禁", [{"stages": stages}],
+            complete_scope=True, extra_blockers=global_blockers)
+        assert school_gate["ready"] is False
+        assert "OFFERING_UNIT_UNRESOLVED" in {row["code"] for row in school_gate["blockers"]}
+        college.status = "ACTIVE"
+        courses[0].owner_college_id = None
+        task_batch.status = "DRAFT"
+        db.flush()
+        # 未批准来源由原准入裁决，不冒充缺责任，也不能放过校级门禁。
+        global_blockers = service._global_gate_blockers(db, term, {}, run_final_reconciliation=False)
+        assert "OFFERING_UNIT_UNRESOLVED" not in {row["code"] for row in global_blockers}
+        unapproved = service._schedule_projection(db, term, college.id, {})
+        assert unapproved[0] == "BLOCKED"
+        stages[4] = service._stage(4, term, status=unapproved[0], blockers=unapproved[1])
+        assert service._gate("F50_SCHEDULE", "学校排课门禁", [{"stages": stages}],
+            complete_scope=True, extra_blockers=global_blockers)["ready"] is False
         db.rollback()
 
 
