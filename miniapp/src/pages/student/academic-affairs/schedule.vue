@@ -23,7 +23,9 @@
                 <text class="sc__meta">{{ item.classroom || '教室待定' }} · {{ item.teacherName || '教师待定' }}</text>
                 <view v-if="detailId === String(item.itemId)" class="sc__detail">
                   <text>{{ parity(item) }}</text>
-                  <text>{{ item.courseCode || '课程代码待确认' }} · {{ item.source === 'ENROLLED' ? '本人选课记录' : '培养计划课表' }}</text>
+                  <text v-if="item.courseCode">课程代码：{{ item.courseCode }}</text>
+                  <text>教学班：{{ item.teachingClassName || item.className || '待学校提供' }}</text>
+                  <text>{{ item.source === 'ENROLLED' ? '本人选课记录' : '培养计划课表' }}</text>
                   <text>上课安排以学校最新正式课表与校历为准</text>
                   <button class="btn btn-ghost" @click.stop="goAttendance(item)">查看本人考勤</button>
                 </view>
@@ -77,9 +79,9 @@
               <text class="sc__meta">{{ item.classroom || '教室待定' }} · {{ item.teacherName || '教师待定' }} · {{ parity(item) }}</text>
               <text v-if="item.source === 'ENROLLED'" class="sc__source">选课课程</text>
               <view v-if="detailId === String(item.itemId)" class="sc__detail">
-                <text>{{ item.courseCode || '课程代码待确认' }}</text>
+                <text v-if="item.courseCode">课程代码：{{ item.courseCode }}</text>
                 <text>第{{ item.startWeek || 1 }}–{{ item.endWeek || item.startWeek || 1 }}周 · {{ slotTime(item) || '作息时间待确认' }}</text>
-                <text v-if="item.teachingClassName">教学班：{{ item.teachingClassName }}</text>
+                <text>教学班：{{ item.teachingClassName || item.className || '待学校提供' }}</text>
                 <text v-if="item.changeType">已生效调整：{{ changeText(item.changeType) }}</text>
                 <button class="btn btn-ghost" @click.stop="goAttendance(item)">查看本人考勤</button>
               </view>

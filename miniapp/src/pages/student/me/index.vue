@@ -20,9 +20,9 @@
     <view v-else class="shell-pad">
       <!-- 我的全周期入口 -->
       <view class="shell-panel me__records">
-        <view v-for="m in lifecycleMenu" :key="m.route" class="shell-row" @click="go(m.route)">
-          <MobileShellIcon :name="m.icon" :tone="m.tone" :size="26" round />
-          <view class="shell-row__body"><text class="shell-row__title">{{ m.label }}</text><text class="shell-muted">{{ m.desc }}</text></view>
+        <view v-for="entry in lifecycleMenu" :key="entry.route" class="shell-row" @click="go(entry.route)">
+          <MobileShellIcon :name="entry.icon" :tone="entry.tone" :size="26" round />
+          <view class="shell-row__body"><text class="shell-row__title">{{ entry.label }}</text><text class="shell-muted">{{ entry.desc }}</text></view>
           <MobileShellIcon name="chevron-right" tone="gray" :size="20" />
         </view>
       </view>
