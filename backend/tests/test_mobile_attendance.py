@@ -768,3 +768,69 @@ def test_student_attendance_exact_source_returns_neutral_failure_for_bad_evidenc
         detail = response.json()["data"]["items"][0]["sourceDetail"]
         assert detail["verified"] is False and detail["reason"]
         assert set(detail) == {"verified", "reason"}
+
+def test_attendance_source_detail_accepts_formal_occurrence_without_single_admin_class():
+    from types import SimpleNamespace as Row
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+
+    evidence = {
+        "sourceType": "FORMAL_TEACHING",
+        "scheduleItemId": "11",
+        "activeBatchId": "22",
+        "termId": "33",
+        "teachingTaskId": "44",
+        "classId": None,
+        "weekNo": 5,
+        "weekday": 3,
+        "slotNo": 1,
+        "scopeHeadVersion": 7,
+        "sessionDate": "2026-07-15",
+        "teacherKey": "academic01",
+        "occurrenceIdentity": "22:11:2026-07-15:1",
+    }
+    attendance = Row(
+        id=55,
+        tenant_id=MAIN,
+        source_type="FORMAL_TEACHING",
+        source_evidence=json.dumps(evidence, ensure_ascii=False),
+        session_date="2026-07-15",
+        slot_no=1,
+        teaching_task_id=44,
+        class_id=0,
+        teacher_key="academic01",
+        occurrence_identity="22:11:2026-07-15:1",
+        term_code="2026-1",
+        course_name="跨行政班课",
+    )
+    item = Row(
+        id=11,
+        batch_id=22,
+        tenant_id=MAIN,
+        is_deleted=False,
+        status="EFFECTIVE",
+        task_id=44,
+        class_id=None,
+        weekday=3,
+        slot_no=1,
+        week_parity="ALL",
+        start_week=1,
+        end_week=16,
+        teacher_key="academic01",
+        teacher_name="任课教师",
+        class_name="",
+        classroom_text="A101",
+    )
+    batch = Row(
+        id=22,
+        term_id=33,
+        tenant_id=MAIN,
+        is_deleted=False,
+        status="PUBLISHED",
+    )
+
+    detail = gaps._attendance_source_detail(attendance, item, batch, tenant_id=MAIN)
+
+    assert detail["verified"] is True
+    assert detail["scheduleItemId"] == "11"
+    assert detail["batchId"] == "22"
+
