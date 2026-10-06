@@ -29,6 +29,17 @@ def _status(value) -> str:
     return str(value or "").strip().upper()
 
 
+def _require_current_school_manager(db, user):
+    """Require the current school exam manager, not merely any school-scoped account."""
+    from .academic_affairs_responsibility_service import resolve_school
+
+    context = _legacy._ctx(user, db)
+    _legacy._require_school(context)
+    permission = "academicAffairs.exam.manage"
+    owner = resolve_school(db, permission_code=permission)
+    return _legacy._require_responsible_actor(db, user, context, owner, permission)
+
+
 def _exam_params(db, batch):
     from .academic_affairs_autoexam_service import _load_params
 
@@ -761,9 +772,11 @@ def mark_room_present(user, room_id, student_id, expected_version):
 def finish_batch(user, bid):
     with _legacy.session() as db:
         db.connection(execution_options={"isolation_level": "READ COMMITTED"})
-        _legacy._require_school(_legacy._ctx(user, db))
+        _require_current_school_manager(db, user)
         batch = _legacy._get_batch(db, int(bid))
         batch, term = _lock_exam_batch(db, batch)
+        # Re-resolve after the row lock so a revoked/reassigned responsibility cannot finish the batch.
+        _require_current_school_manager(db, user)
         _require_locked_exam_term(batch, term)
         if batch.status != _legacy._B_PUBLISHED:
             raise _legacy._invalid("仅 PUBLISHED 批次可结束考试")
@@ -780,9 +793,11 @@ def finish_batch(user, bid):
 def archive_batch(user, bid):
     with _legacy.session() as db:
         db.connection(execution_options={"isolation_level": "READ COMMITTED"})
-        _legacy._require_school(_legacy._ctx(user, db))
+        _require_current_school_manager(db, user)
         batch = _legacy._get_batch(db, int(bid))
         batch, term = _lock_exam_batch(db, batch)
+        # Re-resolve after the row lock so a revoked/reassigned responsibility cannot archive the batch.
+        _require_current_school_manager(db, user)
         _require_locked_exam_term(batch, term)
         if batch.status == _legacy._B_ARCHIVED:
             return _legacy._batch_dto(batch)
