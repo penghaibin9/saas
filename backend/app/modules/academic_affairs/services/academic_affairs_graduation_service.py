@@ -16,6 +16,7 @@ from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.modules.academic_affairs.services.academic_affairs_status_service import (
     audit_status_change, change_student_status, is_enrolled)
 from app.services.db_service import _iso, _tid, session
@@ -489,8 +490,8 @@ def precheck(batch_id, user) -> dict:
             AaGraduationAuditResult.is_deleted.is_(False))).all()
         passed = abnormal = 0
         for r in rows:
-            s = db.get(StudentProfile, int(r.student_id))
-            if not s:
+            s = tenant_get(db, StudentProfile, int(r.student_id))
+            if not s or s.is_deleted:
                 continue
             items = _run_items(db, s)
             overall = _overall(items)
