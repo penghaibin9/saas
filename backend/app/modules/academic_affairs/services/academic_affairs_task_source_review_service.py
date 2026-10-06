@@ -64,7 +64,9 @@ def _projection(db, task, term):
         and current.source_id == task.class_id
         and current.status == "LOCKED" and current.version_no == clazz.current_roster_version_no
         and len(members) <= 10000 and len(members) == current.member_count
-        and all(member.source_type == "ADMIN_CLASS" and member.source_id == task.class_id for member in members))
+        # 正式行政班投影将来源编号记在锁定版本上；逐人来源映射可为空，非空矛盾仍拒绝。
+        and all(member.source_type == "ADMIN_CLASS" and (member.source_id is None
+            or member.source_id == task.class_id) for member in members))
     roster = frozenset(int(member.student_id) for member in members) if valid else None
     if roster is not None and len(roster) != len(members):
         roster = None

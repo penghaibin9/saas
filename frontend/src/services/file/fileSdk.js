@@ -55,7 +55,7 @@ function emitTo(listeners, value) {
   })
 }
 
-function showInAppPreview(url, fileName = '附件', dispose = null) {
+function showInAppPreview(url, fileName = '附件', dispose = null, plainText = null) {
   if (typeof document === 'undefined') return { url, opened: false }
   const overlay = document.createElement('div')
   overlay.className = 'school-file-preview-overlay'
@@ -83,11 +83,13 @@ function showInAppPreview(url, fileName = '附件', dispose = null) {
   close.type = 'button'
   close.textContent = '关闭预览'
   close.style.cssText = 'min-height:32px;padding:0 12px;border:1px solid #cbd8ea;border-radius:7px;background:#fff;color:#1769e0;cursor:pointer;'
-  const frame = document.createElement('iframe')
-  frame.src = url
+  const frame = document.createElement(plainText === null ? 'iframe' : 'pre')
+  if (plainText === null) frame.src = url
+  else frame.textContent = plainText
   frame.title = `${fileName || '附件'}预览`
-  frame.setAttribute('sandbox', 'allow-downloads allow-forms allow-scripts allow-same-origin')
+  if (plainText === null) frame.setAttribute('sandbox', 'allow-downloads allow-forms allow-scripts allow-same-origin')
   frame.style.cssText = 'width:100%;height:100%;border:0;background:#f8fbff;'
+  if (plainText !== null) frame.style.cssText += 'box-sizing:border-box;margin:0;padding:16px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;color:#23314a;'
   let closed = false
   const finish = () => {
     if (closed) return
@@ -108,7 +110,10 @@ function showInAppPreview(url, fileName = '附件', dispose = null) {
   return { url, opened: true, close: finish }
 }
 
-function openBlob(blob, fileName = '附件') {
+async function openBlob(blob, fileName = '附件') {
+  if (blob.type.split(';')[0].trim().toLowerCase() === 'text/plain' || String(fileName || '').toLowerCase().endsWith('.txt')) {
+    return showInAppPreview('', fileName, null, await blob.text())
+  }
   const url = URL.createObjectURL(blob)
   return showInAppPreview(url, fileName, () => URL.revokeObjectURL(url))
 }

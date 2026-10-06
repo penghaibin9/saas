@@ -10,9 +10,10 @@ from tests.test_aa_schedule import BASE, TID
 def _pair(client):
     from app.db.session import get_sessionmaker
     from app.models import (AaProgram, AaProgramBinding, AaProgramCourse, AaTeachingClass,
-        AaTeachingClassMember, AaTeachingClassRosterVersion, AaTeachingClassTeacher,
+        AaTeachingClassTeacher,
         AaTeachingTask, AaTeachingTaskBatch, StudentProfile)
-    from app.modules.academic_affairs.services.academic_affairs_teaching_class_core_service import _roster_hash
+    from app.core.context import get_tenant, set_tenant
+    from app.modules.academic_affairs.services.academic_affairs_teaching_class_service import create_roster_version
 
     facts = _facts(client)
     with get_sessionmaker()() as db:
@@ -57,21 +58,19 @@ def _pair(client):
         db.add(AaTeachingClassTeacher(tenant_id=TID, teaching_class_id=new_class.id,
             teacher_id=teacher.teacher_id, teacher_key=teacher.teacher_key,
             role_type="PRIMARY", start_week=old.start_week, end_week=old.end_week, status="ACTIVE"))
-        for task, teaching_class in ((old, old_class), (new, new_class)):
-            teaching_class.source_type = "TEACHING_TASK"
-            teaching_class.source_id = task.id
-            teaching_class.class_type = "ADMIN"
-            teaching_class.roster_status = "LOCKED"
-            version = AaTeachingClassRosterVersion(tenant_id=TID, teaching_class_id=teaching_class.id,
-                version_no=1, source_type="ADMIN_CLASS", source_id=task.class_id,
-                member_count=2, roster_hash=_roster_hash((711, 712)), status="LOCKED")
-            db.add(version); db.flush()
-            teaching_class.current_roster_version_id = version.id
-            teaching_class.current_roster_version_no = 1
-            for student_id in (711, 712):
-                db.add(AaTeachingClassMember(tenant_id=TID, teaching_class_id=teaching_class.id,
-                    roster_version_id=version.id, student_id=student_id,
-                    source_type="ADMIN_CLASS", source_id=task.class_id, status="ACTIVE"))
+        previous = get_tenant()
+        set_tenant(TID)
+        try:
+            for task, teaching_class in ((old, old_class), (new, new_class)):
+                teaching_class.source_type = "TEACHING_TASK"
+                teaching_class.source_id = task.id
+                teaching_class.class_type = "ADMIN"
+                db.flush()
+                create_roster_version(db, teaching_class, (711, 712),
+                    source_type="ADMIN_CLASS", source_id=task.class_id,
+                    reason="隔离测试：正式行政班名单初始化")
+        finally:
+            set_tenant(previous)
         facts.update(oldId=str(old.id), newId=str(new.id), newSourceId=next_source.id, newClassId=new_class.id)
         db.commit()
     return facts
@@ -114,6 +113,7 @@ def test_proven_pair_is_checked_but_not_confirmed_and_does_not_write(client, db_
     ("cycle", "LINEAGE"), ("binding", "BINDING"), ("class_term", "ROSTER"),
     ("teacher_history", "SUCCESSOR_PROJECTION"),
     ("missing_student", "ROSTER"), ("roster_hash", "ROSTER"),
+    ("member_source", "ROSTER"), ("member_source_zero", "ROSTER"), ("member_source_type", "ROSTER"),
 ])
 def test_real_mismatch_or_unknown_blocks_source_review(client, db_mode, change, code):
     from app.db.session import get_sessionmaker
@@ -146,6 +146,10 @@ def test_real_mismatch_or_unknown_blocks_source_review(client, db_mode, change, 
         elif change == "roster":
             member = db.query(AaTeachingClassMember).filter(AaTeachingClassMember.teaching_class_id == facts["newClassId"]).first()
             member.student_id = 713
+        elif change in {"member_source", "member_source_zero", "member_source_type"}:
+            member = db.query(AaTeachingClassMember).filter(AaTeachingClassMember.teaching_class_id == facts["newClassId"]).first()
+            if change == "member_source_type": member.source_type = "SELECTION_LOCK"
+            else: member.source_id = 0 if change == "member_source_zero" else new.class_id + 1
         elif change == "missing_student": db.get(StudentProfile, 711).is_deleted = True
         elif change == "roster_hash":
             clazz = db.get(AaTeachingClass, facts["newClassId"])
