@@ -357,3 +357,36 @@ def test_mysql_exam_scope_ignores_stale_student_college_and_rejects_foreign_cour
         with pytest.raises(Exception):
             service._check_course_scope(db, Row(scope_type="TENANT_ALL"), exam)
         db.rollback()
+
+@pytest.mark.parametrize("operation,status", [
+    ("finish_batch", "PUBLISHED"),
+    ("archive_batch", "FINISHED"),
+])
+def test_finish_and_archive_recheck_current_school_manager_after_lock(monkeypatch, operation, status):
+    facade = importlib.import_module("app.modules.academic_affairs.services.academic_affairs_exam_facade")
+    db = MagicMock()
+    batch = Row(id=9, status=status, term_id=91)
+    term = Row(id=91, status="ACTIVE")
+
+    @contextmanager
+    def session():
+        yield db
+
+    guard = MagicMock(side_effect=[
+        None,
+        AppException("NO_DATA_SCOPE", "当前责任已转交", http_status=403),
+    ])
+    monkeypatch.setattr(service, "session", session)
+    monkeypatch.setattr(service, "_get_batch", lambda _db, _bid: batch)
+    monkeypatch.setattr(facade, "_lock_exam_batch", lambda _db, _batch: (batch, term))
+    monkeypatch.setattr(facade, "_require_current_school_manager", guard)
+    monkeypatch.setattr(facade, "_require_locked_exam_term", lambda *_args: None)
+
+    with pytest.raises(AppException) as denied:
+        getattr(facade, operation)({"userId": "17"}, 9)
+
+    assert denied.value.code == "NO_DATA_SCOPE"
+    assert guard.call_count == 2
+    assert batch.status == status
+    db.commit.assert_not_called()
+
