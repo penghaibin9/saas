@@ -163,6 +163,41 @@ def _publish(client, hdr, pid):
     assert r.json()["data"]["status"] == "PUBLISHED"
 
 
+def test_draft_course_formation_update_survives_readback_and_keeps_review_guards(client, db_mode_programs):
+    hdr = _hdr(client, "school_admin01")
+    pid = _new_program(client, hdr, "草稿编班方式正常编辑")
+    _make_governance_ready(client, hdr, pid)
+    detail = client.get(f"{BASE}/programs/{pid}", headers=hdr).json()["data"]
+    source_id = detail["courses"][0]["programCourseId"]
+    assert detail["courses"][0]["formationMode"] is None
+    path = f"{BASE}/programs/courses/{source_id}"
+
+    invalid = client.put(path, headers=hdr, json={"formationMode": "MERGED"})
+    assert invalid.status_code == 400, invalid.text
+    assert invalid.json()["bizCode"] == "VALIDATION_ERROR"
+    result = client.put(path, headers=hdr, json={"formationMode": "SELECTABLE"})
+    assert result.status_code == 200, result.text
+    assert result.json()["data"]["formationMode"] == "SELECTABLE"
+    for body in ({"credit": 1}, {"formationMode": None}):
+        result = client.put(path, headers=hdr, json=body)
+        assert result.status_code == 200, result.text
+        assert result.json()["data"]["formationMode"] == "SELECTABLE"
+    denied = client.put(path, headers=_hdr(client, "student01"), json={"formationMode": "ADMIN_FIXED"})
+    assert denied.status_code == 403, denied.text
+
+    result = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
+    assert result.status_code == 200, result.text
+    result = client.post(f"{BASE}/programs/{pid}/review", headers=_hdr(client, "college_admin01"), json={"action": "APPROVE"})
+    assert result.status_code == 200, result.text
+    result = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
+    assert result.status_code == 200, result.text
+    result = client.put(path, headers=hdr, json={"formationMode": "ADMIN_FIXED"})
+    assert result.status_code == 409, result.text
+    readback = client.get(f"{BASE}/programs/{pid}", headers=hdr).json()["data"]
+    assert readback["status"] == "PUBLISHED"
+    assert readback["courses"][0]["formationMode"] == "SELECTABLE"
+
+
 def test_tr1_practice_segment_crud(client, db_mode_programs):
     hdr = _hdr(client, "school_admin01")
     pid = _new_program(client, hdr, "实践环节CRUD方案")

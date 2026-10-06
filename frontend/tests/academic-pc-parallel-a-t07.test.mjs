@@ -9,7 +9,7 @@ function instance(file, deps = {}, options = {}) {
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
   const imports = [...script.matchAll(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm)]
   const names = imports.flatMap(([,binding]) => binding.trim().startsWith('{') ? binding.replace(/[{}]/g,'').split(',').map(x=>x.trim()).filter(Boolean) : [binding.trim()])
-  const defaults = { ...status, ...results, matchPermission: (patterns,key)=>patterns.includes('*')||patterns.includes(key), toast: {success(){},error(){}}, courseMaterialReaderApi: {list: async()=>[],createPreviewProvider:()=>({})}, ...deps }
+  const defaults = { ...status, ...results, currentUserFromToken: () => ({}), matchPermission: (patterns,key)=>patterns.includes('*')||patterns.includes(key), toast: {success(){},error(){}}, courseMaterialReaderApi: {list: async()=>[],createPreviewProvider:()=>({})}, ...deps }
   const clean = script.replace(/^import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*$/gm,'').replace('export default','return')
   const component = new Function(...names, clean)(...names.map(name=>defaults[name] ?? {}))
   const vm = { ...component.data(), ctx: {permissionPatterns:['*']}, $route:{params:{id:'a'},query:{},fullPath:'/admin/academic-affairs/programs/a'}, $router:{push(){},replace:async()=>{}}, ...options }
@@ -154,6 +154,116 @@ test('T07 same-component program navigation reloads the requested workspace inst
   vm.tab='authoring';let reloads=0;vm.reload=async()=>{reloads++}
   await vm.__component.watch['$route.query.tab'].call(vm,'archive')
   assert.equal(vm.tab,'archive');assert.equal(reloads,1)
+})
+
+test('方案草稿编辑只提交明确选择的编班方式，未确认空值不默认补写', async () => {
+  const writes = []
+  const vm = instance('AaProgramConsoleView', { academicAffairsApi: { updateProgramCourse: async (id, body) => { writes.push({ id, body }); return ok({}) } } })
+  vm.reload = async () => {}
+  vm.openCourseForm({ programCourseId: '9007199254740993', courseName: '测试课程', formationMode: null })
+  await vm.submitCourse()
+  assert.equal(writes[0].body.formationMode, undefined)
+  vm.courseForm.formationMode = 'ADMIN_FIXED'; await vm.submitCourse()
+  assert.equal(writes[1].id, '9007199254740993'); assert.equal(writes[1].body.formationMode, 'ADMIN_FIXED')
+  vm.openCourseForm({ programCourseId: '2', courseName: '选修课程', formationMode: 'SELECTABLE' })
+  assert.equal(vm.courseForm.formationMode, 'SELECTABLE')
+})
+
+function programCreation(kind, request) {
+  const destinations = [], errors = []
+  const origin = `/admin/academic-affairs/programs/console?tab=${kind}&programId=990`
+  const vm = instance('AaProgramConsoleView', {
+    academicAffairsApi: {
+      createProgram: request, createProgramNewVersion: request, changeProgram: request,
+      getPrograms: async () => ok({ list: [{ programId: '985', status: 'ENABLED' }] })
+    },
+    toast: { success() {}, error: value => errors.push(value) }
+  }, { $route: { query: { tab: kind }, fullPath: origin }, $router: { push: value => destinations.push(value) } })
+  vm.tab = kind; vm.createVisible = true
+  vm.createForm.programName = '同一测试方案'
+  vm.openChange({ programId: '990' })
+  const submit = () => kind === 'authoring' ? vm.submitCreate()
+    : kind === 'versions' ? vm.doNewVersion({ programId: '990', status: 'ENABLED' })
+      : vm.doChange({ reason: '本日追加批准课程' })
+  return { vm, submit, destinations, errors, origin }
+}
+
+test('方案三个创建入口使用回执新标识并保留来源，不受列表首行影响', async () => {
+  for (const kind of ['authoring', 'versions', 'planChange']) {
+    const { vm, submit, destinations, origin } = programCreation(kind, async () => ok({ programId: '996', version: 3 }))
+    vm.rows = [{ programId: '985', status: 'ENABLED' }]
+    await submit()
+    assert.deepEqual(destinations, [{ path: '/admin/academic-affairs/programs/996', query: { returnTo: origin } }])
+  }
+})
+
+test('方案创建失败或回执缺少标识不会误开其他方案或自动重发', async () => {
+  for (const kind of ['authoring', 'versions', 'planChange']) {
+    for (const response of [{ code: 403001, message: '无权限' }, ok({ version: 3 })]) {
+      let writes = 0
+      const { vm, submit, destinations } = programCreation(kind, async () => { writes++; return response })
+      await submit()
+      assert.equal(writes, 1); assert.deepEqual(destinations, [])
+      if (response.code === 0) assert.match(vm.error, /已创建.*缺少.*编号/)
+    }
+  }
+})
+
+test('方案创建迟到回执不跨学校、角色、页面或已离开的组件导航', async () => {
+  for (const kind of ['authoring', 'versions', 'planChange']) {
+    for (const switchContext of [vm => { vm.ctx.ctxKey = 'another-school' }, vm => { vm.ctx.currentRole = { roleId: 'other' } }, vm => { vm.$route.fullPath = '/admin/academic-affairs/programs' }, vm => vm.__component.beforeUnmount.call(vm)]) {
+      const pending = deferred()
+      const { vm, submit, destinations } = programCreation(kind, () => pending.promise)
+      const work = submit(); switchContext(vm)
+      pending.resolve(ok({ programId: '996', version: 3 })); await work
+      assert.deepEqual(destinations, [])
+    }
+  }
+})
+
+test('方案创建导航失败保留已创建事实，并拒绝并发重复请求', async () => {
+  for (const kind of ['authoring', 'versions', 'planChange']) {
+    let writes = 0
+    const pending = deferred()
+    const { vm, submit } = programCreation(kind, () => { writes++; return pending.promise })
+    vm.$router.push = async () => { throw new Error('导航失败') }
+    const work = submit(); await submit()
+    assert.equal(writes, 1)
+    pending.resolve(ok({ programId: '996', version: 3 })); await work
+    assert.match(vm.error, /已创建.*未能打开/)
+    assert.equal(vm.saving, false)
+    await submit(); assert.equal(writes, 1)
+  }
+})
+
+test('导航失败后的创建回执随学校或角色切换清除', async () => {
+  for (const kind of ['authoring', 'versions', 'planChange']) {
+    for (const switchContext of [vm => { vm.ctx.ctxKey = 'another-school' }, vm => { vm.ctx.currentRole = { roleId: 'other' } }]) {
+      let writes = 0
+      const { vm, submit } = programCreation(kind, async () => { writes++; return ok({ programId: String(995 + writes) }) })
+      vm.$router.push = async () => { throw new Error('导航失败') }
+      await submit(); assert.equal(vm.createdProgram.programId, '996')
+      switchContext(vm); vm.__component.watch.workflowIdentity.call(vm)
+      assert.equal(vm.createdProgram, null); assert.equal(vm.error, ''); assert.equal(vm.createVisible, false)
+      vm.openChange({ programId: '990' })
+      const destinations = []; vm.$router.push = value => destinations.push(value)
+      await submit()
+      assert.equal(writes, 2); assert.equal(destinations[0].path, '/admin/academic-affairs/programs/997')
+    }
+  }
+})
+
+test('旧创建导航迟到失败不污染切换后的身份', async () => {
+  for (const kind of ['authoring', 'versions', 'planChange']) {
+    let rejectNavigation
+    const { vm, submit } = programCreation(kind, async () => ok({ programId: '996' }))
+    vm.$router.push = () => new Promise((resolve, reject) => { rejectNavigation = reject })
+    const work = submit(); await Promise.resolve()
+    assert.equal(vm.createdProgram.programId, '996')
+    vm.ctx.ctxKey = 'another-school'; vm.__component.watch.workflowIdentity.call(vm)
+    rejectNavigation(new Error('旧导航失败')); await work
+    assert.equal(vm.error, ''); assert.equal(vm.createdProgram, null)
+  }
 })
 
 test('T07 course governance consoles cap each rendered page for large course libraries',()=>{

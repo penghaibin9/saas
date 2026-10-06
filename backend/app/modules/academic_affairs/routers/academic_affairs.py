@@ -830,6 +830,7 @@ def program_add_course(body: ProgramCourseBody, programId: int = Path(...), user
 
 
 class ProgramCourseUpdate(BaseModel):
+    formationMode: Optional[str] = Field(None, pattern="^(ADMIN_FIXED|SELECTABLE)$")
     courseName: Optional[str] = None
     openTermNo: Optional[int] = None
     module: Optional[str] = None

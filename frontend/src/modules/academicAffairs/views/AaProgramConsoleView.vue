@@ -13,6 +13,9 @@
       <AppButton v-if="tab === 'changeStatus' && activeProgram && hasPermission('academicAffairs.program.manage')" variant="primary" @click="openChange(activeProgram)">发起版本变更</AppButton>
     </template>
 
+    <AppInlineAlert v-if="createdProgram" type="warning" title="方案已创建，请继续办理原单" :description="error || '请打开已创建的方案继续编制，不要重复创建。'" />
+    <AppButton v-if="createdProgram?.programId" @click="openCreatedProgram(createdProgram)">打开已创建方案</AppButton>
+
     <details class="aapc-workspace-directory"><summary>切换相关工作区</summary><div class="aapc-tabs">
       <button v-for="t in tabs" :key="t.key" :class="['aapc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
     </div></details>
@@ -150,7 +153,7 @@
           <!-- 方案版本 -->
           <template v-if="tab === 'versions'">
             <button class="mp-link" @click="$router.push(`/admin/academic-affairs/programs/${row.programId}`)">查看</button>
-            <button v-if="canNewVersion(row.status) && hasPermission('academicAffairs.program.manage')" class="mp-link" @click="doNewVersion(row)">新建版本</button>
+            <button v-if="canNewVersion(row.status) && hasPermission('academicAffairs.program.manage')" class="mp-link" :disabled="saving || !!createdProgram" @click="doNewVersion(row)">新建版本</button>
           </template>
           <!-- 计划变更（收编入口：已发布/启用计划的变更须带原因，走同一版本链机制） -->
           <template v-if="tab === 'planChange'">
@@ -239,6 +242,7 @@
         <AppFormItem label="课程模块"><AppTextInput v-model="courseForm.module" :disabled="saving" placeholder="如 专业核心/实践环节" /></AppFormItem>
         <AppFormItem label="开课学期"><AppNumberInput v-model="courseForm.openTermNo" :min="1" :max="12" :disabled="saving" /></AppFormItem>
         <AppFormItem label="学分"><AppNumberInput v-model="courseForm.credit" :min="0" :step="0.5" :precision="1" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="编班方式"><AppSelect v-model="courseForm.formationMode" :disabled="saving" :options="[{ value: '', label: '尚未确认，暂不调整' }, { value: 'ADMIN_FIXED', label: '固定行政班' }, { value: 'SELECTABLE', label: '学生自主选课' }]" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
@@ -442,9 +446,9 @@ export default {
       ],
       allPrograms: [], selectedProgramId: '', selectedProgram: null,
       creditItems: [], savingCredit: false, practiceCreditTarget: null,
-      saving: false, formError: '',
+      saving: false, formError: '', createdProgram: null,
       createVisible: false, createForm: { programName: '', majorId: '', gradeYear: '', totalCredits: null },
-      courseVisible: false, courseForm: { programCourseId: '', courseName: '', module: '', openTermNo: null, credit: null },
+      courseVisible: false, courseForm: { programCourseId: '', courseName: '', module: '', openTermNo: null, credit: null, formationMode: '' },
       creditVisible: false, creditForm: { module: '', creditTarget: 0, note: '', _editing: false, _origModule: '' },
       gradVisible: false, gradForm: { requirementId: '', category: 'ABILITY', content: '', sortOrder: 0 },
       bindVisible: false, bindIdentity: '', bindRow: null, bindForm: { gradeYear: '', classId: '' },
@@ -566,7 +570,7 @@ export default {
     }
   },
   watch: {
-    workflowIdentity() { this.bindVisible = false; this.changeDlg.visible = false; this.planChangeDlg.visible = false; this.workflowRequestRevision++; this.workflowProgram = null; this.workflowEvidence = null; this.workflowChangeLog = []; if (this.isWorkflowView) this.loadWorkflowEvidence() },
+    workflowIdentity() { if (this.createdProgram) { this.createdProgram = null; this.error = '' } this.createVisible = false; this.bindVisible = false; this.changeDlg.visible = false; this.planChangeDlg.visible = false; this.workflowRequestRevision++; this.workflowProgram = null; this.workflowEvidence = null; this.workflowChangeLog = []; if (this.isWorkflowView) this.loadWorkflowEvidence() },
     '$route.query.tab': async function (nextTab) {
       if (!nextTab || nextTab === this.tab || !this.tabs.some((item) => item.key === nextTab)) return
       this.tab = nextTab
@@ -623,7 +627,14 @@ export default {
     },
     openProgramEvidence(row) {
       if (!row?.programId) return
-      this.$router.push({ path: `/admin/academic-affairs/programs/${row.programId}`, query: { returnTo: this.$route.fullPath } })
+      return this.$router.push({ path: `/admin/academic-affairs/programs/${row.programId}`, query: { returnTo: this.$route.fullPath } })
+    },
+    async openCreatedProgram(program, identity = this.workflowIdentity, origin = this.$route.fullPath) {
+      if (this.workflowDisposed || identity !== this.workflowIdentity || origin !== this.$route.fullPath) return
+      this.createdProgram = program || {}
+      if (!program?.programId) { this.error = '方案已创建，但回执缺少方案编号。请从方案列表核对后继续，勿重复创建。'; return }
+      try { await this.openProgramEvidence(program) }
+      catch { if (!this.workflowDisposed && identity === this.workflowIdentity && origin === this.$route.fullPath) this.error = '方案已创建，但未能打开。请打开已创建方案或从方案列表核对后继续，勿重复创建。' }
     },
     async selectWorkflowRow(row, replaceRoute = true) {
       if (!row?.programId) return
@@ -800,29 +811,38 @@ export default {
       this.createVisible = true
     },
     async submitCreate() {
+      if (this.saving || this.createdProgram || this.workflowDisposed || !this.hasPermission('academicAffairs.program.manage')) return
       if (!this.createForm.programName) { this.formError = '方案名称必填'; return }
+      const identity = this.workflowIdentity, origin = this.$route.fullPath
       this.saving = true
-      const res = await academicAffairsApi.createProgram({
-        programName: this.createForm.programName,
-        majorId: this.createForm.majorId || undefined,
-        gradeYear: this.createForm.gradeYear || undefined,
-        totalCredits: this.createForm.totalCredits || undefined,
-        requirement: {}
-      })
-      this.saving = false
-      if (res.code === 0) {
-        toast.success('方案已创建')
-        this.createVisible = false
-        await this.loadAllPrograms()
-        this.reload()
-      } else this.formError = res.message
+      try {
+        const res = await academicAffairsApi.createProgram({
+          programName: this.createForm.programName,
+          majorId: this.createForm.majorId || undefined,
+          gradeYear: this.createForm.gradeYear || undefined,
+          totalCredits: this.createForm.totalCredits || undefined,
+          requirement: {}
+        })
+        if (this.workflowDisposed || identity !== this.workflowIdentity || origin !== this.$route.fullPath) return
+        if (res.code === 0) {
+          toast.success('方案已创建')
+          this.createVisible = false
+          await this.openCreatedProgram(res.data, identity, origin)
+        } else this.formError = res.message
+      } finally { this.saving = false }
     },
 
     // ── 方案版本 ──
     async doNewVersion(row) {
-      const res = await academicAffairsApi.createProgramNewVersion(row.programId)
-      if (res.code === 0) { toast.success('已新建版本 v' + res.data.version); await this.loadAllPrograms(); this.reload() }
-      else toast.error(res.message || '新建版本失败')
+      if (this.saving || this.createdProgram || this.workflowDisposed || !this.hasPermission('academicAffairs.program.manage') || !canNewVersion(row?.status)) return
+      const identity = this.workflowIdentity, origin = this.$route.fullPath
+      this.saving = true
+      try {
+        const res = await academicAffairsApi.createProgramNewVersion(row.programId)
+        if (this.workflowDisposed || identity !== this.workflowIdentity || origin !== this.$route.fullPath) return
+        if (res.code === 0) { toast.success('已建立新版本草稿'); await this.openCreatedProgram(res.data, identity, origin) }
+        else toast.error(res.message || '新建版本失败')
+      } finally { this.saving = false }
     },
 
     // ── 计划变更（收编入口：同一版本链机制 + 强制变更原因留痕） ──
@@ -831,24 +851,26 @@ export default {
       this.planChangeDlg = { visible: true, submitting: false, row, identity: this.workflowIdentity }
     },
     async doChange(payload) {
-      if (!this.planChangeDlg.visible || this.planChangeDlg.submitting || this.planChangeDlg.identity !== this.workflowIdentity || !this.hasPermission('academicAffairs.program.manage')) return
+      if (this.createdProgram || this.workflowDisposed || !this.planChangeDlg.visible || this.planChangeDlg.submitting || this.planChangeDlg.identity !== this.workflowIdentity || !this.hasPermission('academicAffairs.program.manage')) return
+      const dialog = this.planChangeDlg, identity = this.workflowIdentity, origin = this.$route.fullPath
       const reason = (payload && payload.reason) || ''
-      this.planChangeDlg.submitting = true
-      const res = await academicAffairsApi.changeProgram(this.planChangeDlg.row.programId, reason)
-      this.planChangeDlg.submitting = false
-      if (res.code === 0) {
-        this.planChangeDlg.visible = false
-        toast.success('变更已生效，已生成新版本 v' + res.data.version)
-        await this.loadAllPrograms()
-        this.reload()
-      } else toast.error(res.message || '变更失败')
+      dialog.submitting = true
+      try {
+        const res = await academicAffairsApi.changeProgram(dialog.row.programId, reason)
+        if (this.workflowDisposed || identity !== this.workflowIdentity || origin !== this.$route.fullPath) return
+        if (res.code === 0) {
+          dialog.visible = false
+          toast.success('已建立变更草稿，请继续编制与审核')
+          await this.openCreatedProgram(res.data, identity, origin)
+        } else toast.error(res.message || '变更失败')
+      } finally { dialog.submitting = false }
     },
 
     // ── 课程模块（practicePlan 复用同一套读写，presetModule 供「＋ 添加实践课程」预填模块名） ──
     openCourseForm(row, presetModule) {
       this.courseForm = row
-        ? { programCourseId: row.programCourseId, courseName: row.courseName, module: row.module, openTermNo: row.openTermNo, credit: row.credit }
-        : { programCourseId: '', courseName: '', module: presetModule || '', openTermNo: null, credit: null }
+        ? { programCourseId: row.programCourseId, courseName: row.courseName, module: row.module, openTermNo: row.openTermNo, credit: row.credit, formationMode: row.formationMode || '' }
+        : { programCourseId: '', courseName: '', module: presetModule || '', openTermNo: null, credit: null, formationMode: '' }
       this.formError = ''
       this.courseVisible = true
     },
@@ -856,7 +878,8 @@ export default {
       if (!this.courseForm.courseName) { this.formError = '课程名称必填'; return }
       this.saving = true
       const body = { courseName: this.courseForm.courseName, module: this.courseForm.module || undefined,
-        openTermNo: this.courseForm.openTermNo || undefined, credit: this.courseForm.credit != null ? this.courseForm.credit : undefined }
+        openTermNo: this.courseForm.openTermNo || undefined, credit: this.courseForm.credit != null ? this.courseForm.credit : undefined,
+        formationMode: this.courseForm.formationMode || undefined }
       const res = this.courseForm.programCourseId
         ? await academicAffairsApi.updateProgramCourse(this.courseForm.programCourseId, body)
         : await academicAffairsApi.addProgramCourse(this.selectedProgramId, body)
