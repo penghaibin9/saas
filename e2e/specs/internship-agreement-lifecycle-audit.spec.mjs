@@ -120,7 +120,7 @@ function crossCollegeReviewer() {
   return {
     tenant: 'sandbox-school',
     username: 'e2e_ix_college_b',
-    password: process.env.E2E_IX_COLLEGE_B_PASSWORD || '',
+    password: process.env.E2E_IX_COLLEGE_B_PASSWORD || 'E2eTest@2026',
   }
 }
 
