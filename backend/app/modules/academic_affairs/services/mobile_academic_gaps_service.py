@@ -355,6 +355,15 @@ def _attendance_positive_int(value):
     return int(value)
 
 
+def _attendance_optional_class_id(value):
+    """Cross-class teaching may have no single administrative class identity."""
+    if isinstance(value, bool):
+        raise ValueError("invalid class id")
+    if value in (None, "", 0, "0"):
+        return None
+    return _attendance_positive_int(value)
+
+
 def _attendance_source_evidence(attendance_session):
     """Validate immutable occurrence identity before looking up its retained source."""
     if attendance_session.source_type != "FORMAL_TEACHING":
@@ -363,9 +372,10 @@ def _attendance_source_evidence(attendance_session):
         evidence = json.loads(attendance_session.source_evidence or "{}")
         if not isinstance(evidence, dict) or evidence.get("sourceType") != "FORMAL_TEACHING":
             raise ValueError()
-        for key in ("scheduleItemId", "activeBatchId", "termId", "teachingTaskId", "classId",
+        for key in ("scheduleItemId", "activeBatchId", "termId", "teachingTaskId",
                     "weekNo", "weekday", "slotNo", "scopeHeadVersion"):
             _attendance_positive_int(evidence.get(key))
+        _attendance_optional_class_id(evidence.get("classId"))
         if _attendance_positive_int(evidence["weekday"]) > 7:
             raise ValueError()
         frozen_date = date.fromisoformat(evidence["sessionDate"])
@@ -378,7 +388,7 @@ def _attendance_source_evidence(attendance_session):
             raise ValueError()
         if int(evidence["teachingTaskId"]) != _attendance_positive_int(attendance_session.teaching_task_id):
             raise ValueError()
-        if int(evidence["classId"]) != _attendance_positive_int(attendance_session.class_id):
+        if _attendance_optional_class_id(evidence.get("classId")) != _attendance_optional_class_id(attendance_session.class_id):
             raise ValueError()
         if not evidence.get("teacherKey") or evidence["teacherKey"] != attendance_session.teacher_key:
             raise ValueError()
@@ -407,11 +417,13 @@ def _attendance_source_detail(attendance_session, item, batch, *, tenant_id):
         pairs = (
             (item.id, evidence["scheduleItemId"]), (item.batch_id, evidence["activeBatchId"]),
             (batch.id, evidence["activeBatchId"]), (batch.term_id, evidence["termId"]),
-            (item.task_id, evidence["teachingTaskId"]), (item.class_id, evidence["classId"]),
+            (item.task_id, evidence["teachingTaskId"]),
             (item.weekday, evidence["weekday"]), (item.slot_no, evidence["slotNo"]),
         )
         if any(_attendance_positive_int(left) != _attendance_positive_int(right) for left, right in pairs):
             raise ValueError("原课位与考勤保存的课次身份不一致，暂无法核实")
+        if _attendance_optional_class_id(item.class_id) != _attendance_optional_class_id(evidence.get("classId")):
+            raise ValueError("原课位与考勤保存的行政班身份不一致，暂无法核实")
         week = int(evidence["weekNo"])
         parity = str(item.week_parity or "ALL").upper()
         if item.teacher_key != evidence["teacherKey"] or not (_attendance_positive_int(item.start_week) <= week <= _attendance_positive_int(item.end_week)):
