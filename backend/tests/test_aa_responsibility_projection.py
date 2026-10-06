@@ -87,6 +87,19 @@ def test_teacher_resolver_prefers_formal_relation_and_never_revives_removed_teac
     assert not service.resolve_teacher(db, Row(id=10, teacher_key="old_teacher"))["resolved"]
 
 
+def test_teacher_resolution_supports_historical_u_id_alias(monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_grade_task_assignee_guard as guard
+    monkeypatch.setattr(service, "_tid", lambda: 1)
+    monkeypatch.setattr(guard, "_runtime_permission_holder_ids", lambda db, permission: [2])
+    person = user(2)
+    person.login_name = "teacher"
+    db = MagicMock()
+    db.scalars.return_value.all.side_effect = [[], [person]]
+    result = service.resolve_teacher(db, Row(id=10, teacher_key="u_2"))
+    assert result["assigneeUserIds"] == ["2"]
+    assert result["resolved"] is True
+
+
 def test_revoked_teacher_permission_blocks_active_account(monkeypatch):
     from app.modules.academic_affairs.services import academic_affairs_grade_task_assignee_guard as guard
     monkeypatch.setattr(service, "_tid", lambda: 1)
