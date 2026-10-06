@@ -41,9 +41,10 @@ def _responsible_task_ids(db, task_ids, term_id, *, school_public, cache=None, l
     return responsible | {int(task_id) for task_id, college_id in relations.items() if college_id is not None}
 
 
-def evaluate(db, batch, *, lock=False, published_task_ids=None) -> dict:
+def evaluate(db, batch, *, lock=False, published_task_ids=None, cache=None) -> dict:
     from app.models import AaClassroom, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
 
+    cache = None if lock else (cache if cache is not None else {})
     _term, teaching_weeks = policy.term_bounds(db, int(batch.term_id))
     task_batch_query = db.query(AaTeachingTaskBatch).filter(
         AaTeachingTaskBatch.tenant_id == _tid(),
@@ -57,7 +58,7 @@ def evaluate(db, batch, *, lock=False, published_task_ids=None) -> dict:
         AaTeachingTask.batch_id.in_(task_batch_ids or [-1]),
         AaTeachingTask.status == "READY",
         AaTeachingTask.is_deleted.is_(False),
-        policy.task_scope_condition(db, batch, lock=lock),
+        policy.task_scope_condition(db, batch, cache=cache, lock=lock),
     ).order_by(AaTeachingTask.id)
     if published_task_ids is None:
         task_query = task_query.filter(AaTeachingTask.no_auto_schedule.is_(False))
@@ -89,7 +90,7 @@ def evaluate(db, batch, *, lock=False, published_task_ids=None) -> dict:
         from .academic_affairs_archive_rule_evaluator import evaluate_teaching_task
         # 任务批次学院不等于课程开课学院，权威核对必须保留跨批次的同课程任务。
         # 全校计算只用于内部裁决，对外仍投影到本候选可见任务。
-        reconciliation = evaluate_teaching_task(db, batch.term_id, include_duplicate_groups=True)
+        reconciliation = evaluate_teaching_task(db, batch.term_id, cache=cache, include_duplicate_groups=True)
         for row in reconciliation.get("duplicateTaskGroups", []):
             if (int(row["courseId"]), int(row["classId"])) in potential_duplicates:
                 duplicate_groups.append({**row,
@@ -97,7 +98,7 @@ def evaluate(db, batch, *, lock=False, published_task_ids=None) -> dict:
     duplicate_ids = {task_id for row in duplicate_groups for task_id in row["taskIds"]}
     school_public = not batch.college_id and policy.public_schedule_mode(db) in {"SCHOOL_CENTRALIZED", "HYBRID"}
     responsible_tasks = _responsible_task_ids(db, [task.id for task in tasks], batch.term_id,
-        school_public=school_public, lock=lock)
+        school_public=school_public, cache=cache, lock=lock)
     missing_owner = [str(task.id) for task in tasks if task.id not in responsible_tasks]
     classroom_ids = sorted({int(item.classroom_id) for item in items if item.classroom_id})
     classroom_query = db.query(AaClassroom).filter(
@@ -332,7 +333,7 @@ def _opening_source_fingerprint(db, term_id, *, lock=False):
     return tuple(fingerprint)
 
 
-def evaluate_school_publish(db, batch, *, lock=False) -> dict:
+def evaluate_school_publish(db, batch, *, lock=False, cache=None) -> dict:
     """正式发布前核验全学期候选；预发布仍只办理本责任范围。"""
     from collections import Counter
     from app.models import AaClassroom, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
@@ -340,6 +341,7 @@ def evaluate_school_publish(db, batch, *, lock=False) -> dict:
     from .academic_affairs_schedule_conflict_index import iter_same_slot_pairs
     from . import academic_affairs_schedule_truth_service as truth
 
+    cache = None if lock else (cache if cache is not None else {})
     def rows(query, model):
         query = query.order_by(model.id)
         return query.with_for_update().populate_existing().all() if lock else query.all()
@@ -359,7 +361,7 @@ def evaluate_school_publish(db, batch, *, lock=False) -> dict:
     def block(code, message):
         blockers.append({"code": code, "message": message})
 
-    reconciliation = evaluate_teaching_task(db, batch.term_id)
+    reconciliation = evaluate_teaching_task(db, batch.term_id, cache=cache)
     if lock and source_before != _opening_source_fingerprint(db, batch.term_id, lock=True):
         raise AppException("DATA_CONFLICT", "应开课程来源已变化，请重新核对后发布", http_status=409)
     if reconciliation.get("result") != "PASS":
@@ -383,7 +385,7 @@ def evaluate_school_publish(db, batch, *, lock=False) -> dict:
     for candidate in checked.values():
         ids = {value for (value,) in db.query(AaTeachingTask.id).filter(
             AaTeachingTask.tenant_id == _tid(), AaTeachingTask.id.in_(required),
-            policy.task_scope_condition(db, candidate, lock=lock)).all()}
+            policy.task_scope_condition(db, candidate, cache=cache, lock=lock)).all()}
         if candidate.id != batch.id and candidate.status == "PUBLISHED":
             ids.intersection_update(actual_ids.get(candidate.id, set()))
             published_coverage[candidate.id] = ids
@@ -410,7 +412,7 @@ def evaluate_school_publish(db, batch, *, lock=False) -> dict:
     for candidate in checked.values():
         if candidate not in selected and candidate.id not in published_coverage:
             continue
-        check = evaluate(db, candidate, lock=lock, published_task_ids=published_coverage.get(candidate.id))
+        check = evaluate(db, candidate, lock=lock, published_task_ids=published_coverage.get(candidate.id), cache=cache)
         if not check["complete"]:
             block("SCHOOL_UNIT_NOT_READY", f"{candidate.batch_name or '排课批次'}仍有漏排、资源或硬冲突问题")
     objections = sum(row.objection_status == "PENDING" for row in items)

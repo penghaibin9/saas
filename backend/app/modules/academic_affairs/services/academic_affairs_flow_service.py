@@ -352,7 +352,7 @@ def _schedule_batch_projection(db, term, batch, college_id, cache):
     from . import academic_affairs_schedule_truth_service as truth
     key = ("SCHEDULE_GATE", int(batch.id))
     if key not in cache:
-        cache[key] = gate.evaluate(db, batch)
+        cache[key] = gate.evaluate(db, batch, cache=cache)
     check = dict(cache[key])
     cross_key = ("SCHEDULE_CROSS", int(batch.id))
     if cross_key not in cache:

@@ -552,7 +552,7 @@ def evaluate_teaching_task(db, term_id, *, college_ids=None, major_ids=None, cac
         summary=(
             f"应开{len(expected)}项与{len(tasks)}条教学任务一致，教师确认完成"
             if not blockers
-            else f"教学任务阻断{len(blockers)}项：漏开{len(missing)}、重复{len(duplicate)}、多开{len(extra)}、未确认{len(unconfirmed)}"
+            else f"教学任务阻断{len(blockers)}项：方案或开课依据异常{len(structural)}、漏开{len(missing)}、重复{len(duplicate)}、多开{len(extra)}、未确认{len(unconfirmed)}、未指定教师{len(no_teacher)}、批次未批准{len(unfinished_batches)}"
         ),
         evidence=evidence,
     )

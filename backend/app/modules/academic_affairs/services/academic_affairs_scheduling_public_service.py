@@ -37,8 +37,9 @@ def summary(user, batch_id):
         if ctx.scope_type != "TENANT_ALL" and (ctx.scope_type != "COLLEGE" or
                 not batch.college_id or int(batch.college_id) not in ctx.college_ids):
             raise no_data_scope("当前身份不能查看该排课批次的完整工作台")
-        result = gate_service.evaluate(db, batch)
-        result["schoolGate"] = gate_service.evaluate_school_publish(db, batch) if ctx.scope_type == "TENANT_ALL" else None
+        cache = {}
+        result = gate_service.evaluate(db, batch, cache=cache)
+        result["schoolGate"] = gate_service.evaluate_school_publish(db, batch, cache=cache) if ctx.scope_type == "TENANT_ALL" else None
         course_counts = db.query(AaCourse.category, AaCourse.nature, func.count(AaTeachingTask.id)).join(
             AaTeachingTask, AaTeachingTask.course_id == AaCourse.id).join(
             AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).filter(
@@ -47,7 +48,7 @@ def summary(user, batch_id):
             AaTeachingTask.status == "READY", AaTeachingTask.no_auto_schedule.is_(False),
             AaTeachingTaskBatch.tenant_id == _base._base._tid(), AaTeachingTaskBatch.is_deleted.is_(False),
             AaTeachingTaskBatch.term_id == int(batch.term_id), AaTeachingTaskBatch.status == "APPROVED",
-            policy.task_scope_condition(db, batch),
+            policy.task_scope_condition(db, batch, cache=cache),
             independent_task_condition(AaTeachingTask),
         ).group_by(AaCourse.category, AaCourse.nature).all()
         result["publicScheduleMode"] = policy.public_schedule_mode(db)
@@ -55,13 +56,13 @@ def summary(user, batch_id):
         for category, nature, count in course_counts:
             result["courseScopeCounts"]["public" if category == "PUBLIC_BASIC" or nature == "PUBLIC_ELECTIVE" else "professional"] += int(count)
         result["responsibility"] = None if batch.status in {"SUPERSEDED", "ARCHIVED"} else (
-            responsibility.resolve_organization(db, "COLLEGE", batch.college_id, permission_code="academicAffairs.schedule.edit")
+            responsibility.resolve_organization(db, "COLLEGE", batch.college_id, permission_code="academicAffairs.schedule.edit", cache=cache)
             if batch.college_id and batch.status == "DRAFT" else
-            responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit"))
+            responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit", cache=cache))
         if result["schoolGate"] is not None:
             from app.core.permissions import _match
             from .academic_affairs_grade_correction_command import _current_user_id
-            actor = responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit")
+            actor = responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit", cache=cache)
             if (not _match("academicAffairs.schedule.edit", ctx.permission_codes) or not actor["resolved"]
                     or str(_current_user_id(db, user)) not in actor["assigneeUserIds"]):
                 result["schoolGate"]["ready"] = False

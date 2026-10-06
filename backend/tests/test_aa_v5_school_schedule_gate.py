@@ -274,6 +274,7 @@ def test_same_course_responsibility_is_checked_per_task_and_reconciliation_remai
         db.commit()
     summary = _summary(client, facts, batch_id)
     assert summary["missingOwnerCount"] == 0 and summary["complete"] is True, summary
+    assert "方案或开课依据异常1" in summary["schoolGate"]["teachingTaskReconciliation"]["summary"], summary
     response = client.post(f"{BASE}/schedule-batches/{batch_id}/pre-publish", headers=facts["school"])
     assert response.status_code == 200, response.text
     _assert_school_rejects(client, facts, batch_id)
@@ -790,6 +791,47 @@ def test_third_layer_exact_program_relation_supports_http_pre_publish_and_school
             assert db.get(AaTeachingTaskBatch, task.batch_id).college_id is None
             if null_task_source:
                 assert task.source_program_course_id is None
+
+
+def test_readonly_gate_reuses_request_facts_but_locked_gate_refreshes(client, db_mode):
+    from sqlalchemy import event, update
+    from app.core.context import get_tenant, set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import AaProgramBinding, AaScheduleBatch
+    from app.modules.academic_affairs.services import academic_affairs_schedule_gate_service as gate
+
+    facts = _third_layer_facts(client)
+    batch_id = _candidate(client, facts, 0, pre_publish=False)
+    previous = get_tenant()
+    set_tenant(TID)
+    try:
+        with get_sessionmaker()() as db:
+            batch = db.get(AaScheduleBatch, int(batch_id))
+            statements = []
+            def record(conn, cursor, statement, parameters, context, executemany):
+                statements.append(statement)
+            event.listen(db.bind, "before_cursor_execute", record)
+            try:
+                cache = {}
+                first = gate.evaluate(db, batch, cache=cache)
+                first_count = len(statements)
+                statements.clear()
+                assert gate.evaluate(db, batch, cache=cache) == first
+                assert len(statements) < first_count
+                assert first["complete"] is True
+                with get_sessionmaker()() as writer:
+                    writer.execute(update(AaProgramBinding).where(
+                        AaProgramBinding.tenant_id == TID,
+                        AaProgramBinding.class_id == int(facts["tasks"][0]["classId"]))
+                        .values(status="REVOKED"))
+                    writer.commit()
+                fresh = gate.evaluate(db, batch, cache=cache, lock=True)
+                assert fresh["complete"] is False, fresh
+            finally:
+                event.remove(db.bind, "before_cursor_execute", record)
+                db.rollback()
+    finally:
+        set_tenant(previous)
 
 
 @pytest.mark.parametrize("defect", ["missing-exact-course", "wrong-task-source", "wrong-open-term", "future-binding"])

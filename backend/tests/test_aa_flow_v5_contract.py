@@ -554,11 +554,15 @@ def test_read_only_schedule_projection_never_requests_resource_locks(monkeypatch
         q.count.return_value = 0
         return q
     monkeypatch.setattr(service, "_query", query)
-    monkeypatch.setattr(gate, "evaluate", lambda db, b: {
+    gate_cache = []
+    def evaluate(db, b, *, cache):
+        gate_cache.append(cache)
+        return {
         "complete": False, "invalidTasks": [], "missingTasks": [], "overScheduledTasks": [],
         "hardConflictItems": [], "orphanItemIds": [], "invalidCoordinateItemIds": [],
         "invalidClassroomItemIds": [], "totalTasks": 0, "scheduledTasks": 0,
-        "missingTaskCount": 0, "hardConflicts": 0})
+        "missingTaskCount": 0, "hardConflicts": 0}
+    monkeypatch.setattr(gate, "evaluate", evaluate)
     conflicts, live = MagicMock(return_value={"problems": []}), MagicMock(return_value=[])
     monkeypatch.setattr(truth, "validate_school_wide_conflicts", conflicts)
     monkeypatch.setattr(truth, "_live_batch_ids", live)
@@ -566,7 +570,9 @@ def test_read_only_schedule_projection_never_requests_resource_locks(monkeypatch
     db = MagicMock()
     db.scalars.return_value.all.return_value = []
     monkeypatch.setattr(service, "_schedule_task_ids", lambda *args: {1})
-    service._schedule_batch_projection(db, Row(id=1), batch, 12, {})
+    cache = {}
+    service._schedule_batch_projection(db, Row(id=1), batch, 12, cache)
+    assert len(gate_cache) == 1 and gate_cache[0] is cache
     assert conflicts.call_args.kwargs == {"lock": False}
     assert live.call_args.kwargs == {"lock": False}
 
