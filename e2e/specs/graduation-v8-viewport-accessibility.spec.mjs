@@ -219,7 +219,11 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
       await page.goto(`${MINI_BASE_URL}/#/pages/student/graduation/index`)
       const materialLibrary = page.getByText('我的材料库', { exact: true })
       await expect(materialLibrary).toBeVisible()
-      await materialLibrary.click()
+      // 材料库是折叠开关：同一 hash 再次 goto 时 uni-app 复用页面实例，上一视口已展开，
+      // 盲点一次会把它收起。只在当前收起时点击，保证每个视口都处于展开状态。
+      const libraryArrow = page.locator('.gd__linkrow').filter({ hasText: '我的材料库' }).locator('.gd__arrow')
+      if ((await libraryArrow.textContent())?.trim() !== '⌄') await materialLibrary.click()
+      await expect(libraryArrow).toHaveText('⌄')
       await expect(page.getByText(/当前第 \d+ 版|尚未上传版本/).first()).toBeVisible()
       await expect(page.locator('body')).not.toContainText(/TOPIC_ATTACHMENT|NOT_SUBMITTED|真实接口不可用|登录已失效/)
       await settle(page)
