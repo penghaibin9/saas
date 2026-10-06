@@ -4,10 +4,13 @@ Run with --noconftest against a dedicated yueke_optimizer_test_* database.
 """
 import json
 from datetime import datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from alembic.config import Config
+from alembic.script import ScriptDirectory
 from sqlalchemy import select, func, text, update
 from sqlalchemy.engine import make_url
 
@@ -31,8 +34,11 @@ def scenario():
     url=make_url(settings.effective_database_url)
     assert url.host in {'127.0.0.1','localhost'} and url.database.startswith('yueke_optimizer_test_')
     assert get_engine().dialect.name=='mysql'
+    alembic_config = Config(str(Path(__file__).parents[1] / 'alembic.ini'))
+    heads = ScriptDirectory.from_config(alembic_config).get_heads()
+    assert len(heads) == 1, f'optimizer acceptance requires a single Alembic head, got {heads}'
     with get_engine().connect() as db:
-        assert db.execute(text('select version_num from alembic_version')).scalar()=='20260914_aa_opt_candidates'
+        assert db.execute(text('select version_num from alembic_version')).scalar() == heads[0]
     suffix=uuid4().hex[:10]
     tid=8000000000000000000+int(suffix,16)
     set_tenant(tid)
