@@ -66,13 +66,20 @@ class _OpeningDb:
         self.courses = courses
         self.query_counts = {}
 
-    def query(self, model):
+    def query(self, model, *_columns):
+        model = getattr(model, "class_", model)
         self.query_counts[model.__name__] = self.query_counts.get(model.__name__, 0) + 1
         if model.__name__ in {"SchoolClass", "StudentProfile"}:
             return _OpeningQuery(self.classes)
         if model.__name__ == "AaProgramCourse":
             return _OpeningQuery(self.courses)
         raise AssertionError(f"unexpected model: {model.__name__}")
+
+    def scalars(self, statement):
+        model = statement.column_descriptions[0]["entity"]
+        if model.__name__ == "AaProgramBinding":
+            return _OpeningQuery([])
+        return self.query(model)
 
 
 def test_historical_opening_projection_uses_one_canonical_program_per_class(monkeypatch):
@@ -85,7 +92,7 @@ def test_historical_opening_projection_uses_one_canonical_program_per_class(monk
         SimpleNamespace(id=1, major_id=10, grade="2024", college_id=2),
         SimpleNamespace(id=2, major_id=10, grade="2024", college_id=2),
     ]
-    courses = [SimpleNamespace(id=91, course_id=501)]
+    courses = [SimpleNamespace(id=91, program_id=70, open_term_no=4, course_id=501)]
     calls = []
 
     def resolve(_db, **kwargs):

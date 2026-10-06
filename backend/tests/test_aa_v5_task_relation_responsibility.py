@@ -220,6 +220,52 @@ def test_opening_request_reuses_exact_owners_across_colleges_and_isolates_terms(
         event.remove(db.bind, "before_cursor_execute", record)
 
 
+def test_opening_first_read_batches_program_facts_across_majors_and_cohorts(facts):
+    from app.modules.academic_affairs.services.academic_affairs_archive_rule_evaluator import _expected_opening
+
+    db, rows = facts
+    course_id, college_id = rows["course"].id, rows["college"].id
+    term = rows["term"]
+    term.year_code; term.term_no; term.end_date
+    expected = {(course_id, rows["clazz"].id)}
+    major_ids = {rows["major"].id}
+    for index in range(5):
+        grade = "2025" if index % 2 else "2026"
+        major = Major(tenant_id=TID, college_id=college_id,
+                      major_name=f"批量责任专业{index}", status="ACTIVE")
+        db.add(major); db.flush()
+        major_ids.add(major.id)
+        clazz = SchoolClass(tenant_id=TID, major_id=major.id, class_name=f"批量责任班{index}",
+                            grade=grade, status="ACTIVE", class_status="NORMAL")
+        program = AaProgram(tenant_id=TID, major_id=major.id, grade_year=grade,
+                            program_name=f"批量正式方案{index}", status="PUBLISHED")
+        db.add_all([clazz, program]); db.flush()
+        db.add_all([AaProgramBinding(tenant_id=TID, major_id=major.id, grade_year=grade,
+            program_id=program.id, bound_at=datetime(2026, 8, 1), status="ACTIVE"),
+            AaProgramCourse(tenant_id=TID, program_id=program.id, course_id=course_id,
+                open_term_no=3 if grade == "2025" else 1, formation_mode="ADMIN_FIXED")])
+        expected.add((course_id, clazz.id))
+    db.flush()
+    statements = []
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+    event.listen(db.bind, "before_cursor_execute", record)
+    try:
+        cache = {}
+        actual, structural = _expected_opening(db, term, college_ids={college_id}, major_ids=major_ids, cache=cache)
+        assert {row["key"] for row in actual} == expected
+        assert not structural
+        assert len(statements) <= 18, "首轮应开读取不能随专业和方案逐个查询"
+        statements.clear()
+        school, structural = _expected_opening(db, term, major_ids=major_ids, cache=cache)
+        assert {row["key"] for row in school} == expected
+        assert not structural and not statements
+        other, structural = _expected_opening(db, term, college_ids={college_id + 1000000}, major_ids=major_ids, cache=cache)
+        assert not other and not structural and not statements
+    finally:
+        event.remove(db.bind, "before_cursor_execute", record)
+
+
 def test_batch_resolution_has_constant_queries_and_checks_each_task_source(facts):
     db, rows = facts
     tasks = [AaTeachingTask(tenant_id=TID, batch_id=rows["batch"].id, course_id=rows["course"].id,

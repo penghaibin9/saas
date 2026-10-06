@@ -223,7 +223,8 @@ def evaluate_program(db, term=None, *, college_ids=None, cache=None) -> dict:
 
 def _expected_opening(db, term, *, college_ids=None, major_ids=None, cache=None):
     """按班级和学期结束时点解析唯一方案，再投影应开课程。"""
-    from app.models import AaCourse, AaProgramCourse, SchoolClass
+    from sqlalchemy import select, tuple_
+    from app.models import AaCourse, AaProgram, AaProgramBinding, AaProgramCourse, SchoolClass
 
     cache = cache if cache is not None else {}
     classes_key = ("OPENING_CLASSES", _tid(), tuple(sorted(major_ids)) if major_ids is not None else None)
@@ -245,6 +246,27 @@ def _expected_opening(db, term, *, college_ids=None, major_ids=None, cache=None)
     replay_as_of = getattr(term, "end_date", None)
     course_cache = cache.setdefault(("OPENING_COURSES", _tid()), {})
     owner_cache = cache.setdefault(("OPENING_OWNERS", _tid()), {})
+    class_majors = {int(clazz.major_id) for clazz in classes if clazz.major_id}
+    missing_majors = {major for major in class_majors
+                      if ("PROGRAM_SCOPE_BINDINGS", _tid(), major) not in cache}
+    if missing_majors:
+        bindings = db.scalars(select(AaProgramBinding).where(
+            AaProgramBinding.tenant_id == _tid(), AaProgramBinding.major_id.in_(missing_majors),
+            AaProgramBinding.status.in_(["ACTIVE", "SUPERSEDED"]),
+            AaProgramBinding.is_deleted.is_(False),
+        ).order_by(AaProgramBinding.id.desc())).all()
+        for major in missing_majors:
+            cache[("PROGRAM_SCOPE_BINDINGS", _tid(), major)] = tuple(
+                row for row in bindings if int(row.major_id) == major)
+    missing_programs = {int(row.program_id) for major in class_majors
+        for row in cache[("PROGRAM_SCOPE_BINDINGS", _tid(), major)]
+        if row.program_id and ("PROGRAM_OBJECT", _tid(), int(row.program_id)) not in cache}
+    if missing_programs:
+        programs = db.scalars(select(AaProgram).where(
+            AaProgram.tenant_id == _tid(), AaProgram.id.in_(missing_programs))).all()
+        cache.update({("PROGRAM_OBJECT", _tid(), value): None for value in missing_programs})
+        cache.update({("PROGRAM_OBJECT", _tid(), int(row.id)): row for row in programs})
+    resolved_scopes = []
     for clazz in classes:
         grade = str(getattr(clazz, "grade", None) or "").strip()
         scope = cohort_term_scope(term.year_code, term.term_no, grade)
@@ -277,26 +299,27 @@ def _expected_opening(db, term, *, college_ids=None, major_ids=None, cache=None)
             continue
         program = resolution.program
         plan_term = int(scope["planTerm"])
-        course_key = (int(program.id), plan_term)
-        courses = course_cache.get(course_key)
-        if courses is None:
-            courses = db.query(AaProgramCourse).filter(
-                AaProgramCourse.tenant_id == _tid(),
-                AaProgramCourse.program_id == int(program.id),
-                AaProgramCourse.open_term_no == plan_term,
-                AaProgramCourse.is_deleted.is_(False),
-            ).all()
-            course_cache[course_key] = courses
-        if allowed_colleges is not None:
-            course_ids = {int(row.course_id) for row in courses if row.course_id and int(row.course_id) not in owner_cache}
-            if course_ids:
-                # 未找到的课程也缓存为空；同一请求不为每个学院重复查缺失数据。
-                owner_cache.update({course_id: None for course_id in course_ids})
-                owners = db.query(AaCourse).filter(
-                    AaCourse.tenant_id == _tid(), AaCourse.id.in_(course_ids),
-                    AaCourse.is_deleted.is_(False),
-                ).all()
-                owner_cache.update({int(row.id): row.owner_college_id for row in owners})
+        resolved_scopes.append((clazz, program, plan_term))
+    missing_courses = {(int(program.id), plan_term) for _, program, plan_term in resolved_scopes
+                       if course_cache.get((int(program.id), plan_term)) is None}
+    if missing_courses:
+        courses = db.scalars(select(AaProgramCourse).where(
+            AaProgramCourse.tenant_id == _tid(), AaProgramCourse.is_deleted.is_(False),
+            tuple_(AaProgramCourse.program_id, AaProgramCourse.open_term_no).in_(missing_courses))).all()
+        course_cache.update({key: [] for key in missing_courses})
+        for row in courses:
+            course_cache[(int(row.program_id), int(row.open_term_no))].append(row)
+    if allowed_colleges is not None:
+        course_ids = {int(row.course_id) for _, program, plan_term in resolved_scopes
+            for row in course_cache[(int(program.id), plan_term)]
+            if row.course_id and int(row.course_id) not in owner_cache}
+        if course_ids:
+            owners = db.query(AaCourse).filter(AaCourse.tenant_id == _tid(),
+                AaCourse.id.in_(course_ids), AaCourse.is_deleted.is_(False)).all()
+            owner_cache.update({course_id: None for course_id in course_ids})
+            owner_cache.update({int(row.id): row.owner_college_id for row in owners})
+    for clazz, program, plan_term in resolved_scopes:
+        courses = course_cache[(int(program.id), plan_term)]
         for course in courses:
             if not course.course_id:
                 if allowed_colleges is not None:
@@ -322,7 +345,6 @@ def _expected_opening(db, term, *, college_ids=None, major_ids=None, cache=None)
                     continue
             expected.append(opening)
     if relation_openings:
-        from sqlalchemy import select, tuple_
         from app.models import AaTeachingTask, AaTeachingTaskBatch, College
         from .academic_affairs_responsibility_service import resolve_opening_offering_colleges
         relation_key = ("OPENING_RELATION_OWNERS", _tid(), int(term.id), tuple(sorted(
