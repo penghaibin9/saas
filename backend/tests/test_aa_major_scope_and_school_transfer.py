@@ -306,6 +306,23 @@ def test_major_scope_requires_live_role_membership_even_when_scope_is_active(fac
     assert student_directory_scope(user) == (set(), None)
 
 
+def test_major_scope_accepts_enabled_compat_role(facts):
+    from app.core.affairs_security import build_affairs_context
+    from app.models import Role, RoleAssignmentScope, UserRole
+
+    user = facts['major_user']
+    with get_sessionmaker()() as db:
+        scope = db.get(RoleAssignmentScope, facts['scope'])
+        link = db.get(UserRole, scope.user_role_id)
+        db.get(Role, link.role_id).status = 'ENABLED'
+        db.commit()
+    with get_sessionmaker()() as db:
+        context = build_affairs_context(user, db)
+        assert context.major_ids == {facts['major']}
+        assert context.scope_type == 'CLASS'
+        assert context.is_scope_configured is True
+
+
 @pytest.mark.parametrize('condition,expected', [
     ('revoked_secretary', True), ('active_secretary', False), ('active_college_leader', False),
     ('legacy_without_history', False), ('school_expired', False), ('school_permission_revoked', False),
