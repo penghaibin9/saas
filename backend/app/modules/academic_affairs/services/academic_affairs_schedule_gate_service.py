@@ -9,13 +9,13 @@ from . import academic_affairs_schedule_policy as policy
 from . import academic_affairs_scheduling_final_service as scheduling_service
 
 
-def _responsible_task_ids(db, task_ids, term_id, *, school_public):
+def _responsible_task_ids(db, task_ids, term_id, *, school_public, cache=None, lock=False):
     from sqlalchemy import and_, func, or_
     from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, College
 
     public = func.coalesce(or_(AaCourse.category == "PUBLIC_BASIC", AaCourse.nature == "PUBLIC_ELECTIVE"), False)
     # V5 11.2：专业课空归属采用已批准任务批次学院；显式失效归属不得回退。
-    return {int(row.id) for row in db.query(AaTeachingTask.id).join(
+    responsible = {int(row.id) for row in db.query(AaTeachingTask.id).join(
         AaCourse, AaCourse.id == AaTeachingTask.course_id,
     ).join(AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).outerjoin(
         College, and_(College.id == func.coalesce(AaCourse.owner_college_id, AaTeachingTaskBatch.college_id),
@@ -28,6 +28,17 @@ def _responsible_task_ids(db, task_ids, term_id, *, school_public):
         or_(and_(College.id.is_not(None), or_(AaCourse.owner_college_id.is_not(None), ~public)),
             and_(public, AaCourse.owner_college_id.is_(None), school_public)),
     ).all()}
+    from .academic_affairs_responsibility_service import resolve_task_offering_colleges
+    missing = db.query(AaTeachingTask.id).join(AaCourse, AaCourse.id == AaTeachingTask.course_id).join(
+        AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).filter(
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+        AaTeachingTask.id.in_(task_ids or [-1]), AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
+        AaCourse.owner_college_id.is_(None), ~public,
+        AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == int(term_id),
+        AaTeachingTaskBatch.status == "APPROVED", AaTeachingTaskBatch.is_deleted.is_(False),
+        AaTeachingTaskBatch.college_id.is_(None))
+    relations = resolve_task_offering_colleges(db, [row.id for row in missing.all()], cache=cache, lock=lock)
+    return responsible | {int(task_id) for task_id, college_id in relations.items() if college_id is not None}
 
 
 def evaluate(db, batch, *, lock=False, published_task_ids=None) -> dict:
@@ -46,7 +57,7 @@ def evaluate(db, batch, *, lock=False, published_task_ids=None) -> dict:
         AaTeachingTask.batch_id.in_(task_batch_ids or [-1]),
         AaTeachingTask.status == "READY",
         AaTeachingTask.is_deleted.is_(False),
-        policy.task_scope_condition(db, batch),
+        policy.task_scope_condition(db, batch, lock=lock),
     ).order_by(AaTeachingTask.id)
     if published_task_ids is None:
         task_query = task_query.filter(AaTeachingTask.no_auto_schedule.is_(False))
@@ -85,7 +96,8 @@ def evaluate(db, batch, *, lock=False, published_task_ids=None) -> dict:
                     "taskIds": [value for value in row["taskIds"] if int(value) in coverage_ids]})
     duplicate_ids = {task_id for row in duplicate_groups for task_id in row["taskIds"]}
     school_public = not batch.college_id and policy.public_schedule_mode(db) in {"SCHOOL_CENTRALIZED", "HYBRID"}
-    responsible_tasks = _responsible_task_ids(db, [task.id for task in tasks], batch.term_id, school_public=school_public)
+    responsible_tasks = _responsible_task_ids(db, [task.id for task in tasks], batch.term_id,
+        school_public=school_public, lock=lock)
     missing_owner = [str(task.id) for task in tasks if task.id not in responsible_tasks]
     classroom_ids = sorted({int(item.classroom_id) for item in items if item.classroom_id})
     classroom_query = db.query(AaClassroom).filter(
@@ -295,6 +307,31 @@ def school_candidate_batches(db, batch, *, lock=False):
     return _school_candidates_and_formal(db, batch, lock=lock)[0]
 
 
+def _opening_source_fingerprint(db, term_id, *, lock=False):
+    """标量快照与当前锁读对照，防止新增应开课程绕过已完成的对账。"""
+    from sqlalchemy import select
+    from app.models import AaProgram, AaProgramBinding, AaProgramCourse, AaTerm, SchoolClass
+
+    sources = (
+        (AaProgram, ("id", "is_deleted", "major_id", "grade_year", "status")),
+        (SchoolClass, ("id", "is_deleted", "major_id", "grade", "class_status", "status")),
+        (AaProgramBinding, ("id", "is_deleted", "program_id", "major_id", "class_id", "grade_year", "status", "bound_at")),
+        (AaProgramCourse, ("id", "is_deleted", "program_id", "course_id", "open_term_no")),
+        (AaTerm, ("id", "is_deleted", "year_code", "term_no", "end_date")),
+    )
+    fingerprint = []
+    # ponytail: 正式发布低频，锁学校完整来源范围；容量需要时再按学期/年级缩小。
+    for model, fields in sources:
+        statement = select(*(getattr(model, name) for name in fields)).where(
+            model.tenant_id == _tid()).order_by(model.id)
+        if model is AaTerm:
+            statement = statement.where(model.id == int(term_id))
+        if lock:
+            statement = statement.with_for_update()
+        fingerprint.append(tuple(tuple(row) for row in db.execute(statement)))
+    return tuple(fingerprint)
+
+
 def evaluate_school_publish(db, batch, *, lock=False) -> dict:
     """正式发布前核验全学期候选；预发布仍只办理本责任范围。"""
     from collections import Counter
@@ -307,6 +344,7 @@ def evaluate_school_publish(db, batch, *, lock=False) -> dict:
         query = query.order_by(model.id)
         return query.with_for_update().populate_existing().all() if lock else query.all()
 
+    source_before = _opening_source_fingerprint(db, batch.term_id) if lock else None
     task_batches = rows(db.query(AaTeachingTaskBatch).filter(
         AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == batch.term_id,
         AaTeachingTaskBatch.is_deleted.is_(False)), AaTeachingTaskBatch)
@@ -322,6 +360,8 @@ def evaluate_school_publish(db, batch, *, lock=False) -> dict:
         blockers.append({"code": code, "message": message})
 
     reconciliation = evaluate_teaching_task(db, batch.term_id)
+    if lock and source_before != _opening_source_fingerprint(db, batch.term_id, lock=True):
+        raise AppException("DATA_CONFLICT", "应开课程来源已变化，请重新核对后发布", http_status=409)
     if reconciliation.get("result") != "PASS":
         block("TEACHING_TASK_NOT_READY", reconciliation.get("summary") or "学期应开课程与教学任务尚未全部核对完成")
     if not required:
@@ -343,7 +383,7 @@ def evaluate_school_publish(db, batch, *, lock=False) -> dict:
     for candidate in checked.values():
         ids = {value for (value,) in db.query(AaTeachingTask.id).filter(
             AaTeachingTask.tenant_id == _tid(), AaTeachingTask.id.in_(required),
-            policy.task_scope_condition(db, candidate)).all()}
+            policy.task_scope_condition(db, candidate, lock=lock)).all()}
         if candidate.id != batch.id and candidate.status == "PUBLISHED":
             ids.intersection_update(actual_ids.get(candidate.id, set()))
             published_coverage[candidate.id] = ids

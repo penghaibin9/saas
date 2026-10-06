@@ -281,3 +281,211 @@ def viewer_assignments(db, user_id, *, now=None):
     )).all()
     return [{"orgType": row.org_type, "orgId": str(row.org_node_id),
              "assignmentType": row.assignment_type} for row in rows]
+
+
+
+def _relation_rows(db, model, ids, cache, *, lock=False):
+    """请求内按主键补齐事实；正式发布始终刷新并有序加锁。"""
+    ids = {int(value) for value in ids if value is not None}
+    key = ("OFFERING_RELATION_ROWS", _tid(), model.__tablename__)
+    rows = {} if lock else cache.setdefault(key, {})
+    missing = ids - rows.keys()
+    if missing:
+        statement = select(model).where(model.tenant_id == _tid(), model.id.in_(missing)).order_by(model.id)
+        if lock:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        loaded = db.scalars(statement).all()
+        rows.update({value: None for value in missing})
+        rows.update({int(row.id): row for row in loaded})
+    return {value: row for value, row in rows.items() if value in ids and row and not row.is_deleted
+            and int(row.tenant_id) == _tid()}
+
+
+def _relation_program_colleges(db, term, openings, courses, cache, *, lock=False):
+    """精确课程×行政班→同一当前/历史方案→本学期课程行→方案专业学院。"""
+    from app.core.exceptions import AppException
+    from app.models import AaProgram, AaProgramBinding, AaProgramCourse, College, Major, SchoolClass
+    from .academic_affairs_archive_term_scope import cohort_term_scope
+    from .academic_affairs_program_activation_service import _binding_time, _naive_utc, resolve_program_for_scope
+
+    result = {key: None for key in openings}
+    if not openings or not term or term.is_deleted or int(term.tenant_id) != _tid() or term.end_date is None:
+        return result
+    classes = _relation_rows(db, SchoolClass, [key[1] for key in openings], cache)
+    major_ids = {int(row.major_id) for row in classes.values() if row.major_id is not None}
+    scope_key = ("OFFERING_PROGRAM_FACTS", _tid(), tuple(sorted(major_ids)))
+    if lock or scope_key not in cache:
+        # 与正式绑定命令保持方案→行政班/专业→绑定锁序；不先锁绑定再回头锁方案。
+        statement = select(AaProgram).where(AaProgram.tenant_id == _tid(),
+            AaProgram.major_id.in_(major_ids)).order_by(AaProgram.id)
+        if lock:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        programs = {int(row.id): row for row in db.scalars(statement).all()}
+        if lock:
+            classes = _relation_rows(db, SchoolClass, [key[1] for key in openings], cache, lock=True)
+            if any(row.major_id is None or int(row.major_id) not in major_ids for row in classes.values()):
+                raise AppException("DATA_CONFLICT", "行政班专业关系已变化，请重新核对后发布", http_status=409)
+        majors = _relation_rows(db, Major, major_ids, cache, lock=lock)
+        statement = select(AaProgramBinding).where(AaProgramBinding.tenant_id == _tid(),
+            AaProgramBinding.major_id.in_(major_ids), AaProgramBinding.is_deleted.is_(False),
+            AaProgramBinding.status.in_(["ACTIVE", "SUPERSEDED"])).order_by(AaProgramBinding.id)
+        if lock:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        bindings = db.scalars(statement).all()
+        if lock and any(int(row.program_id) not in programs for row in bindings):
+            raise AppException("DATA_CONFLICT", "培养方案绑定关系已变化，请重新核对后发布", http_status=409)
+        for major_id in major_ids:
+            cache[("PROGRAM_SCOPE_BINDINGS", _tid(), major_id)] = tuple(
+                row for row in bindings if int(row.major_id) == major_id)
+        for row in bindings:
+            cache[("PROGRAM_OBJECT", _tid(), int(row.program_id))] = programs.get(int(row.program_id))
+        statement = select(AaProgramCourse).where(AaProgramCourse.tenant_id == _tid(),
+            AaProgramCourse.program_id.in_(programs), AaProgramCourse.is_deleted.is_(False)).order_by(AaProgramCourse.id)
+        if lock:
+            statement = statement.with_for_update().execution_options(populate_existing=True)
+        program_courses = db.scalars(statement).all()
+        colleges = _relation_rows(db, College, [row.college_id for row in majors.values()], cache, lock=lock)
+        cache[scope_key] = (majors, colleges, program_courses)
+    majors, colleges, program_courses = cache[scope_key]
+    by_course = {}
+    for row in program_courses:
+        if row.is_deleted or int(row.tenant_id) != _tid():
+            continue
+        key = (int(row.program_id), row.course_id, row.open_term_no)
+        by_course.setdefault(key, []).append(row)
+    now = datetime.utcnow()
+    for key, source_id in openings.items():
+        course_id, class_id = key
+        clazz = classes.get(class_id)
+        course = courses.get(course_id)
+        if (not clazz or clazz.status != "ACTIVE" or clazz.class_status != "NORMAL" or not course
+                or course.category == "PUBLIC_BASIC" or course.nature == "PUBLIC_ELECTIVE"):
+            continue
+        grade = str(clazz.grade or "").strip()
+        scope = cohort_term_scope(term.year_code, term.term_no, grade)
+        if scope["state"] != "IN_SCOPE":
+            continue
+        current = resolve_program_for_scope(db, tenant_id=_tid(), major_id=clazz.major_id,
+            grade_year=grade, class_id=class_id, cache=cache)
+        historical = resolve_program_for_scope(db, tenant_id=_tid(), major_id=clazz.major_id,
+            grade_year=grade, class_id=class_id, as_of=term.end_date, cache=cache)
+        if current.status != "RESOLVED" or historical.status != "RESOLVED":
+            continue
+        program, binding = current.program, current.binding
+        selected_scope = [row for row in cache[("PROGRAM_SCOPE_BINDINGS", _tid(), int(clazz.major_id))]
+                          if row.status == "ACTIVE" and not row.is_deleted and int(row.tenant_id) == _tid()
+                          and row.class_id == binding.class_id
+                          and (row.class_id is not None or str(row.grade_year or "").strip() == grade)]
+        if len(selected_scope) != 1:
+            continue
+        if (int(program.id) != int(historical.program.id) or int(binding.id) != int(historical.binding.id)
+                or program.major_id != clazz.major_id or binding.major_id != clazz.major_id
+                or str(program.grade_year or "").strip() != grade
+                or str(binding.grade_year or "").strip() != grade
+                or _binding_time(binding) is None or _binding_time(binding) > now
+                or _binding_time(binding) > _naive_utc(term.end_date)):
+            continue
+        matches = by_course.get((int(program.id), course_id, scope["planTerm"]), [])
+        if len(matches) != 1 or (source_id is not None and int(matches[0].id) != source_id):
+            continue
+        major = majors.get(int(program.major_id))
+        college = colleges.get(int(major.college_id)) if major else None
+        if (major and not major.is_deleted and int(major.tenant_id) == _tid() and major.status == "ACTIVE"
+                and college and not college.is_deleted and int(college.tenant_id) == _tid()
+                and college.status == "ACTIVE"):
+            result[key] = int(college.id)
+            cache[("OFFERING_RELATION_SOURCE", _tid(), int(term.id), *key)] = int(matches[0].id)
+    return result
+
+
+def resolve_task_offering_colleges(db, tasks, *, cache=None, lock=False):
+    """只读第三层：所有输入任务ID均返回键，无法解析为None；不授予批次调整权限。"""
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm
+
+    cache = {} if lock or cache is None else cache
+    task_ids = [int(getattr(task, "id", task)) for task in tasks]
+    tasks = _relation_rows(db, AaTeachingTask, task_ids, cache, lock=lock)
+    batches = _relation_rows(db, AaTeachingTaskBatch, [row.batch_id for row in tasks.values()], cache, lock=lock)
+    courses = _relation_rows(db, AaCourse, [row.course_id for row in tasks.values()], cache, lock=lock)
+    terms = _relation_rows(db, AaTerm, [row.term_id for row in batches.values()], cache, lock=lock)
+    result = {task_id: None for task_id in task_ids}
+    pending = {}
+    for task_id, task in tasks.items():
+        batch, course = batches.get(int(task.batch_id)), courses.get(int(task.course_id))
+        if not batch or batch.status != "APPROVED" or not course or task.status == "MERGED":
+            continue
+        if course.owner_college_id is not None or batch.college_id is not None:
+            continue  # 仅第三层；显式非空来源（包括失效来源）绝不回退。
+        if (task.class_id is None or task.is_merged or task.formation_mode == "MERGED"
+                or course.category == "PUBLIC_BASIC" or course.nature == "PUBLIC_ELECTIVE"):
+            continue
+        pending.setdefault(int(batch.term_id), []).append(task)
+    for term_id, rows in pending.items():
+        openings = {(int(row.course_id), int(row.class_id)): None for row in rows}
+        resolved = _relation_program_colleges(db, terms.get(term_id), openings, courses, cache, lock=lock)
+        for row in rows:
+            key = (int(row.course_id), int(row.class_id))
+            college_id = resolved.get(key)
+            if (row.source_program_course_id is not None and int(row.source_program_course_id) !=
+                    cache.get(("OFFERING_RELATION_SOURCE", _tid(), term_id, *key))):
+                college_id = None
+            result[int(row.id)] = college_id
+    return result
+
+
+def resolve_term_task_offering_colleges(db, term_id, *, cache=None):
+    """学院编制投影只追加已批准共享批次的第三层精确任务；缓存限本次请求。"""
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
+    from .academic_affairs_task_execution_authority import load_execution_handoffs
+
+    cache = {} if cache is None else cache
+    key = ("TERM_TASK_OFFERING_COLLEGES", _tid(), int(term_id))
+    if key not in cache:
+        tasks = db.scalars(select(AaTeachingTask).join(AaTeachingTaskBatch,
+            AaTeachingTaskBatch.id == AaTeachingTask.batch_id).where(
+            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTask.status != "MERGED",
+            AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+            AaTeachingTaskBatch.term_id == int(term_id), AaTeachingTaskBatch.college_id.is_(None),
+            AaTeachingTaskBatch.status == "APPROVED")).all()
+        handoffs = load_execution_handoffs(db, [task.id for task in tasks])
+        cache[key] = resolve_task_offering_colleges(db,
+            [task for task in tasks if int(task.id) not in handoffs], cache=cache)
+    return cache[key]
+
+
+def resolve_opening_offering_colleges(db, term, openings, *, cache=None, lock=False):
+    """只解第三层；已批准任务的非空批次学院不能被方案学院覆盖。"""
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm
+
+    cache = {} if lock or cache is None else cache
+    pairs = {}
+    for row in openings:
+        course_id = row.get("courseId", row.get("course_id"))
+        class_id = row.get("classId", row.get("class_id"))
+        if course_id is not None and class_id is not None:
+            source = row.get("programCourseId", row.get("source_program_course_id"))
+            pairs[(int(course_id), int(class_id))] = int(source) if source is not None else None
+    term_id = int(term.id)
+    term = _relation_rows(db, AaTerm, [term_id], cache, lock=lock).get(term_id)
+    courses = _relation_rows(db, AaCourse, [key[0] for key in pairs], cache, lock=lock)
+    result = {key: None for key in pairs}
+    if not pairs or term is None:
+        return result
+    statement = select(AaTeachingTask).join(AaTeachingTaskBatch,
+        AaTeachingTaskBatch.id == AaTeachingTask.batch_id).where(
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+        AaTeachingTask.status != "MERGED", AaTeachingTask.course_id.in_({key[0] for key in pairs}),
+        AaTeachingTask.class_id.in_({key[1] for key in pairs}),
+        AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+        AaTeachingTaskBatch.term_id == term_id, AaTeachingTaskBatch.status == "APPROVED")
+    if lock:
+        statement = statement.order_by(AaTeachingTask.id).with_for_update().execution_options(populate_existing=True)
+    tasks = db.scalars(statement).all()
+    batches = _relation_rows(db, AaTeachingTaskBatch, [row.batch_id for row in tasks], cache, lock=lock)
+    explicit = {(int(row.course_id), int(row.class_id)) for row in tasks
+                if batches.get(int(row.batch_id)) and batches[int(row.batch_id)].college_id is not None}
+    pending = {key: source for key, source in pairs.items()
+               if key[0] in courses and courses[key[0]].owner_college_id is None and key not in explicit}
+    result.update(_relation_program_colleges(db, term, pending, courses, cache, lock=lock))
+    return result

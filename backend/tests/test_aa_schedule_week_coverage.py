@@ -45,10 +45,13 @@ def evaluate(monkeypatch, tasks, items):
     db = Row(query=lambda model: Query(rows[model]))
     monkeypatch.setattr(gate, "_tid", lambda: 1)
     monkeypatch.setattr(gate.policy, "term_bounds", lambda *_: (Row(id=1), 18))
-    monkeypatch.setattr(gate.policy, "task_scope_condition", lambda *_: True)
+    monkeypatch.setattr(gate.policy, "task_scope_condition", lambda *_args, **_kwargs: True)
+    # 本夹具只核周次计算；承接与责任 SQL 由真实 MySQL 用例覆盖。
+    monkeypatch.setattr(gate, "load_execution_handoffs", lambda *_args, **_kwargs: {})
+    monkeypatch.setattr(gate, "_responsible_task_ids", lambda _db, ids, *_args, **_kwargs: set(ids))
     monkeypatch.setattr(gate.scheduling_service, "conflict_report_in_session", lambda *_: {
         "hardCount": 0, "softCount": 0, "hardConflicts": [], "softConflicts": []})
-    return gate.evaluate(db, Row(id=1, term_id=1, status="DRAFT"))
+    return gate.evaluate(db, Row(id=1, term_id=1, college_id=12, status="DRAFT"))
 
 
 def test_two_future_rows_do_not_cover_full_term(monkeypatch):

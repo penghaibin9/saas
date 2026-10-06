@@ -225,6 +225,7 @@ def test_schedule_responsibility_rejects_invalid_owner_or_source_without_side_ef
             target = course if defect == "course-foreign" else task_batch if defect == "batch-foreign" else college
             target.tenant_id = TID + 1
         elif defect == "fallback-missing":
+            # 本夹具绑定在2041年生效，当前尚无第三层责任事实，仍须拒绝。
             task_batch.college_id = None
         elif defect == "public-elective-college":
             course.nature = "PUBLIC_ELECTIVE"
@@ -719,4 +720,201 @@ def test_linked_correction_selection_rejects_ambiguous_versions_and_live_resourc
     assert response.status_code == 409, response.text
     expected = "多个待定课表版本" if defect == "multiple" else "关联不一致" if defect == "mismatched" else "漏排" if defect == "old-incomplete" else "正式课表"
     assert expected in response.json()["message"]
+    assert _snapshot(facts) == before
+
+
+
+def _third_layer_facts(client, *, null_task_source=False):
+    """隔离初始关系：旧任务前两层为空，正式方案绑定已经生效。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaProgramBinding, AaTeachingTask, AaTeachingTaskBatch
+
+    facts = _facts(client)
+    with get_sessionmaker()() as db:
+        for row in facts["tasks"]:
+            task = db.get(AaTeachingTask, int(row["taskId"]))
+            db.get(AaCourse, task.course_id).owner_college_id = None
+            db.get(AaTeachingTaskBatch, task.batch_id).college_id = None
+            db.query(AaProgramBinding).filter(AaProgramBinding.tenant_id == TID,
+                AaProgramBinding.class_id == int(row["classId"])).one().bound_at = datetime(2020, 1, 1)
+            if null_task_source:
+                task.source_program_course_id = None
+        db.commit()
+    _assert_task_reconciliation(facts)
+    return facts
+
+
+@pytest.mark.parametrize("null_task_source", [False, True])
+def test_third_layer_exact_program_relation_supports_http_pre_publish_and_school_publish(client, db_mode, null_task_source):
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
+
+    facts = _third_layer_facts(client, null_task_source=null_task_source)
+    batches = [_candidate(client, facts, index, pre_publish=False) for index in range(2)]
+    for index, batch_id in enumerate(batches):
+        summary = _summary(client, facts, batch_id)
+        assert summary["totalTasks"] == summary["scheduledTasks"] == 1, summary
+        assert summary["missingOwnerCount"] == 0 and summary["complete"] is True, summary
+        with get_sessionmaker()() as db:
+            items = db.query(AaScheduleItem).filter(AaScheduleItem.tenant_id == TID,
+                AaScheduleItem.batch_id == int(batch_id), AaScheduleItem.status == "EFFECTIVE").all()
+            assert {str(row.task_id) for row in items} == {facts["tasks"][index]["taskId"]}
+    before = _snapshot(facts)
+    other_task = facts["tasks"][1]
+    denied = _item(client, facts["college"], batches[0],
+        **{key: value for key, value in other_task.items() if key != "collegeId"},
+        weekday=3, classroom="发布测试教室1")
+    assert denied.status_code == 409, denied.text
+    assert _snapshot(facts) == before
+    assert _summary(client, facts, batches[0])["scheduledItemCount"] == 1
+    for batch_id in batches:
+        response = client.post(f"{BASE}/schedule-batches/{batch_id}/pre-publish", headers=facts["school"])
+        assert response.status_code == 200, response.text
+    assert all(_summary(client, facts, batch_id)["schoolGate"]["ready"] for batch_id in batches)
+    before = _snapshot(facts)
+    denied = client.post(f"{BASE}/schedule-batches/{batches[0]}/publish", headers=facts["college"])
+    assert denied.status_code == 403, denied.text
+    assert _snapshot(facts) == before
+    for batch_id in batches:
+        response = client.post(f"{BASE}/schedule-batches/{batch_id}/publish", headers=facts["school"])
+        assert response.status_code == 200, response.text
+        readback = client.get(f"{BASE}/schedule-batches/{batch_id}", headers=facts["school"])
+        assert readback.status_code == 200, readback.text
+        assert readback.json()["data"]["status"] == "PUBLISHED"
+        assert str(readback.json()["data"]["activeTruth"]["activeBatchId"]) == batch_id
+    assert {str(row[3]) for row in _snapshot(facts)["heads"]} == set(batches)
+    with get_sessionmaker()() as db:
+        for row in facts["tasks"]:
+            task = db.get(AaTeachingTask, int(row["taskId"]))
+            assert db.get(AaCourse, task.course_id).owner_college_id is None
+            assert db.get(AaTeachingTaskBatch, task.batch_id).college_id is None
+            if null_task_source:
+                assert task.source_program_course_id is None
+
+
+@pytest.mark.parametrize("defect", ["missing-exact-course", "wrong-task-source", "wrong-open-term", "future-binding"])
+def test_third_layer_relation_change_rejects_http_publish_and_preserves_formal_head(client, db_mode, defect):
+    from datetime import timedelta
+    from app.db.session import get_sessionmaker
+    from app.models import AaProgramBinding, AaProgramCourse, AaTeachingTask
+
+    facts = _third_layer_facts(client)
+    originals = [_candidate(client, facts, index) for index in range(2)]
+    for batch_id in originals:
+        response = client.post(f"{BASE}/schedule-batches/{batch_id}/publish", headers=facts["school"])
+        assert response.status_code == 200, response.text
+    response = client.post(f"{BASE}/schedule-batches/{originals[0]}/correction-draft",
+        headers=facts["school"], json={"reason": "隔离回归：正式关系改变必须保留原课表"})
+    assert response.status_code == 200, response.text
+    correction = response.json()["data"]["batchId"]
+    response = client.post(f"{BASE}/schedule-batches/{correction}/pre-publish", headers=facts["school"])
+    assert response.status_code == 200, response.text
+    assert _summary(client, facts, correction)["schoolGate"]["ready"] is True
+    with get_sessionmaker()() as db:
+        task = db.get(AaTeachingTask, int(facts["tasks"][0]["taskId"]))
+        source = db.get(AaProgramCourse, task.source_program_course_id)
+        if defect == "missing-exact-course":
+            source.is_deleted = True
+            task.source_program_course_id = None
+        elif defect == "wrong-task-source":
+            other = db.get(AaTeachingTask, int(facts["tasks"][1]["taskId"]))
+            task.source_program_course_id = other.source_program_course_id
+        elif defect == "wrong-open-term":
+            source.open_term_no = 2
+        else:
+            db.query(AaProgramBinding).filter(AaProgramBinding.tenant_id == TID,
+                AaProgramBinding.class_id == int(facts["tasks"][0]["classId"])).one().bound_at = (
+                    datetime.utcnow() + timedelta(days=30))
+        db.commit()
+    before = _snapshot(facts)
+    assert {str(row[3]) for row in before["heads"]} == set(originals)
+    response = client.post(f"{BASE}/schedule-batches/{correction}/publish", headers=facts["school"])
+    assert response.status_code == 409, response.text
+    assert _snapshot(facts) == before
+
+
+@pytest.mark.parametrize("change", ["successor-binding", "inserted-course", "restored-course"])
+def test_concurrent_opening_source_change_rejects_http_publish_and_preserves_formal_head(client, db_mode, change):
+    import re
+    from sqlalchemy import event
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaProgram, AaProgramBinding, AaProgramCourse, AaTeachingTask
+
+    facts = _third_layer_facts(client, null_task_source=True)
+    # 提前准备课程目录及隐藏来源，外部事务只写方案来源，不触碰已锁的任务/批次/学期。
+    with get_sessionmaker()() as db:
+        task = db.get(AaTeachingTask, int(facts["tasks"][0]["taskId"]))
+        binding = db.query(AaProgramBinding).filter(AaProgramBinding.tenant_id == TID,
+            AaProgramBinding.class_id == task.class_id).one()
+        original = db.get(AaProgram, binding.program_id)
+        additional = AaCourse(tenant_id=TID, course_code=f"V5-RACE-{change}",
+            course_name="并发新增本学期课程", category="MAJOR_CORE", status="ENABLED", credit=1)
+        db.add(additional); db.flush()
+        relation = {"programId": int(original.id), "bindingId": int(binding.id),
+            "majorId": int(original.major_id), "classId": int(task.class_id),
+            "gradeYear": original.grade_year, "originalCourseId": int(task.course_id),
+            "extraCourseId": int(additional.id)}
+        if change == "successor-binding":
+            successor = AaProgram(tenant_id=TID, program_name="并发待批准后继方案",
+                major_id=original.major_id, grade_year=original.grade_year,
+                series_key=original.series_key, version=original.version + 1,
+                prev_version_id=original.id, status="DRAFT")
+            db.add(successor); db.flush()
+            relation["successorId"] = int(successor.id)
+            for course_id in (task.course_id, additional.id):
+                db.add(AaProgramCourse(tenant_id=TID, program_id=successor.id,
+                    course_id=course_id, open_term_no=1, formation_mode="ADMIN_FIXED", credit_snapshot=1))
+        elif change == "restored-course":
+            hidden = AaProgramCourse(tenant_id=TID, program_id=original.id,
+                course_id=additional.id, open_term_no=1, formation_mode="ADMIN_FIXED",
+                credit_snapshot=1, is_deleted=True)
+            db.add(hidden); db.flush()
+            relation["hiddenSourceId"] = int(hidden.id)
+        db.commit()
+    originals = [_candidate(client, facts, index) for index in range(2)]
+    for batch_id in originals:
+        response = client.post(f"{BASE}/schedule-batches/{batch_id}/publish", headers=facts["school"])
+        assert response.status_code == 200, response.text
+    response = client.post(f"{BASE}/schedule-batches/{originals[0]}/correction-draft",
+        headers=facts["school"], json={"reason": "隔离并发回归：应开来源变化必须保留正式头"})
+    assert response.status_code == 200, response.text
+    correction = response.json()["data"]["batchId"]
+    response = client.post(f"{BASE}/schedule-batches/{correction}/pre-publish", headers=facts["school"])
+    assert response.status_code == 200, response.text
+    assert _summary(client, facts, correction)["schoolGate"]["ready"] is True
+    before = _snapshot(facts)
+    assert {str(row[3]) for row in before["heads"]} == set(originals)
+    changed = []
+    def change_before_source_lock(conn, cursor, statement, parameters, context, executemany):
+        sql = statement.replace("`", "")
+        if (changed or "FOR UPDATE" not in sql.upper()
+                or "t_aa_program.id, t_aa_program.is_deleted" not in sql
+                or not re.search(r"\bFROM\s+t_aa_program\b", sql, re.I)):
+            return
+        changed.append(True)
+        # 正式发布旧应开对账已读完；第一条方案来源锁读尚未执行。
+        with get_sessionmaker()() as writer:
+            if change == "successor-binding":
+                writer.get(AaProgram, relation["successorId"]).status = "PUBLISHED"
+                writer.get(AaProgramBinding, relation["bindingId"]).status = "SUPERSEDED"
+                writer.add(AaProgramBinding(tenant_id=TID, program_id=relation["successorId"],
+                    major_id=relation["majorId"], class_id=relation["classId"],
+                    grade_year=relation["gradeYear"], bound_at=datetime(2020, 1, 2), status="ACTIVE"))
+            elif change == "inserted-course":
+                writer.add(AaProgramCourse(tenant_id=TID, program_id=relation["programId"],
+                    course_id=relation["extraCourseId"], open_term_no=1,
+                    formation_mode="ADMIN_FIXED", credit_snapshot=1))
+            else:
+                writer.get(AaProgramCourse, relation["hiddenSourceId"]).is_deleted = False
+            writer.commit()
+    with get_sessionmaker()() as observer:
+        engine = observer.bind
+    event.listen(engine, "before_cursor_execute", change_before_source_lock)
+    try:
+        response = client.post(f"{BASE}/schedule-batches/{correction}/publish", headers=facts["school"])
+    finally:
+        event.remove(engine, "before_cursor_execute", change_before_source_lock)
+    assert changed == [True], "必须真实发生一次外部事务写入"
+    assert response.status_code == 409, response.text
+    assert "应开课程来源已变化" in response.json()["message"]
     assert _snapshot(facts) == before

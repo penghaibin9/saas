@@ -240,6 +240,7 @@ def _expected_opening(db, term, *, college_ids=None, major_ids=None, cache=None)
     # 按学生归属先删班级会丢失跨院授课需求，且 SchoolClass 本身没有 college_id。
     allowed_colleges = set(college_ids) if college_ids is not None else None
     expected = []
+    relation_openings = []
     structural = []
     replay_as_of = getattr(term, "end_date", None)
     course_cache = cache.setdefault(("OPENING_COURSES", _tid()), {})
@@ -261,7 +262,7 @@ def _expected_opening(db, term, *, college_ids=None, major_ids=None, cache=None)
         if resolution_key not in cache:
             cache[resolution_key] = resolve_program_for_scope(db, tenant_id=_tid(),
                 major_id=getattr(clazz, "major_id", None), grade_year=grade,
-                class_id=int(clazz.id), as_of=replay_as_of)
+                class_id=int(clazz.id), as_of=replay_as_of, cache=cache)
         resolution = cache[resolution_key]
         if resolution.status != "RESOLVED" or not resolution.program:
             if allowed_colleges is not None:
@@ -305,19 +306,43 @@ def _expected_opening(db, term, *, college_ids=None, major_ids=None, cache=None)
                     "programCourseId": str(course.id), "classId": str(clazz.id),
                 })
                 continue
-            if allowed_colleges is not None:
-                owner = owner_cache.get(int(course.course_id))
-                if owner is None:
-                    continue
-                if int(owner) not in allowed_colleges:
-                    continue
-            expected.append({
+            opening = {
                 "key": (int(course.course_id), int(clazz.id)),
                 "programId": str(program.id),
                 "programCourseId": str(course.id),
                 "courseId": str(course.course_id),
                 "classId": str(clazz.id),
-            })
+            }
+            if allowed_colleges is not None:
+                owner = owner_cache.get(int(course.course_id))
+                if owner is None:
+                    relation_openings.append(opening)
+                    continue
+                if int(owner) not in allowed_colleges:
+                    continue
+            expected.append(opening)
+    if relation_openings:
+        from sqlalchemy import select, tuple_
+        from app.models import AaTeachingTask, AaTeachingTaskBatch, College
+        from .academic_affairs_responsibility_service import resolve_opening_offering_colleges
+        owners = resolve_opening_offering_colleges(db, term, relation_openings, cache=cache)
+        pairs = [row["key"] for row in relation_openings]
+        assigned = {}
+        for course_id, class_id, college_id in db.execute(select(
+                AaTeachingTask.course_id, AaTeachingTask.class_id, AaTeachingTaskBatch.college_id).join(
+                AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).where(
+                AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+                AaTeachingTask.status != "MERGED", tuple_(AaTeachingTask.course_id, AaTeachingTask.class_id).in_(pairs),
+                AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == int(term.id),
+                AaTeachingTaskBatch.status == "APPROVED", AaTeachingTaskBatch.is_deleted.is_(False),
+                AaTeachingTaskBatch.college_id.is_not(None))):
+            assigned.setdefault((int(course_id), int(class_id)), set()).add(int(college_id))
+        active = set(db.scalars(select(College.id).where(College.tenant_id == _tid(),
+            College.id.in_({value for values in assigned.values() for value in values} or {-1}),
+            College.is_deleted.is_(False), College.status == "ACTIVE")))
+        for pair, values in assigned.items():
+            owners[pair] = next(iter(values)) if len(values) == 1 and values <= active else None
+        expected.extend(row for row in relation_openings if owners.get(row["key"]) in allowed_colleges)
     return expected, structural
 
 
@@ -379,8 +404,20 @@ def evaluate_teaching_task(db, term_id, *, college_ids=None, major_ids=None, cac
         AaTeachingTaskBatch.term_id == int(term_id),
         AaTeachingTaskBatch.is_deleted.is_(False),
     )
+    college_tasks = None
     if college_ids is not None:
-        batch_query = batch_query.filter(AaTeachingTaskBatch.college_id.in_(list(college_ids)))
+        from sqlalchemy import or_
+        from .academic_affairs_responsibility_service import resolve_term_task_offering_colleges
+        relations = resolve_term_task_offering_colleges(db, term_id, cache=cache)
+        third_ids = {task_id for task_id, owner in relations.items() if owner in college_ids} or {-1}
+        own_batches = batch_query.filter(AaTeachingTaskBatch.college_id.in_(list(college_ids)))
+        own_ids = own_batches.with_entities(AaTeachingTaskBatch.id).subquery()
+        shared_ids = select(AaTeachingTask.batch_id).where(AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.is_deleted.is_(False), AaTeachingTask.id.in_(third_ids))
+        batch_query = batch_query.filter(or_(AaTeachingTaskBatch.college_id.in_(list(college_ids)),
+                                             AaTeachingTaskBatch.id.in_(shared_ids)))
+        college_tasks = or_(AaTeachingTask.batch_id.in_(select(own_ids.c.id)),
+                            AaTeachingTask.id.in_(third_ids))
     if major_ids is not None:
         batch_query = batch_query.filter(AaTeachingTaskBatch.id.in_(select(AaTeachingTask.batch_id).where(
             AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
@@ -393,6 +430,8 @@ def evaluate_teaching_task(db, term_id, *, college_ids=None, major_ids=None, cac
         AaTeachingTask.status != "MERGED",
         AaTeachingTask.is_deleted.is_(False),
     )
+    if college_tasks is not None:
+        task_query = task_query.filter(college_tasks)
     if major_ids is not None:
         task_query = task_query.filter(_major_task_condition(major_ids))
     tasks = task_query.all()
@@ -435,9 +474,21 @@ def evaluate_teaching_task(db, term_id, *, college_ids=None, major_ids=None, cac
     if (college_ids is not None or major_ids is not None) and tasks:
         courses = db.query(AaCourse).filter(AaCourse.tenant_id == _tid(),
             AaCourse.id.in_({task.course_id for task in tasks}), AaCourse.is_deleted.is_(False)).all()
+        from app.models import College
+        from .academic_affairs_responsibility_service import resolve_task_offering_colleges
         owners = {int(row.id): row.owner_college_id for row in courses}
+        batch_colleges = {int(row.id): row.college_id for row in batches}
+        candidate_colleges = {value for value in [*owners.values(), *batch_colleges.values()] if value is not None}
+        active_colleges = set(db.scalars(select(College.id).where(College.tenant_id == _tid(),
+            College.id.in_(candidate_colleges or {-1}), College.is_deleted.is_(False), College.status == "ACTIVE")))
+        relations = resolve_task_offering_colleges(db, tasks, cache=cache)
+        active_colleges.update(value for value in relations.values() if value is not None)
+        def responsibility_id(task):
+            owner = owners.get(int(task.course_id))
+            batch_owner = batch_colleges.get(int(task.batch_id))
+            return owner if owner is not None else batch_owner if batch_owner is not None else relations.get(int(task.id))
         structural += [{"type": "OFFERING_UNIT_UNRESOLVED", "taskId": str(task.id)}
-                       for task in tasks if not owners.get(int(task.course_id))]
+                       for task in tasks if responsibility_id(task) not in active_colleges]
     for task in tasks:
         for source in [task, *members.get(int(task.id), [])]:
             if major_ids is not None and (source.class_id not in visible_classes if source.class_id
@@ -667,8 +718,12 @@ def _missing_grade_task_ids(db, term_id, college_ids=None):
         allowed = sorted({int(value) for value in college_ids})
         if not allowed:
             return 0, []
-        missing = missing.where(func.coalesce(
-            AaCourse.owner_college_id, AaTeachingTaskBatch.college_id).in_(allowed))
+        from types import SimpleNamespace
+        from sqlalchemy import or_
+        from .academic_affairs_schedule_policy import task_scope_condition
+        missing = missing.where(or_(*(task_scope_condition(db,
+            SimpleNamespace(college_id=value, term_id=term_id), include_centralized_public=True)
+            for value in allowed)))
     missing = missing.subquery()
     count = int(db.scalar(select(func.count()).select_from(missing)) or 0)
     sample = [str(value) for value in db.scalars(
@@ -687,7 +742,7 @@ def evaluate_grade(db, term_code, previous_result: dict, *, college_ids=None, te
     if college_ids is not None:
         from sqlalchemy import select
         from .academic_affairs_archive_operational_policy import college_task_ids
-        task_query = task_query.filter(AaGradeTask.teaching_task_id.in_(college_task_ids(db, college_ids)))
+        task_query = task_query.filter(AaGradeTask.teaching_task_id.in_(college_task_ids(db, college_ids, term_id=term_id)))
         own_grade_tasks = task_query.with_entities(AaGradeTask.id).subquery()
         own_grade_ids = select(AaGradeRecord.acad_grade_id).where(
             AaGradeRecord.tenant_id == _tid(), AaGradeRecord.is_deleted.is_(False),

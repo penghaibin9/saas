@@ -236,10 +236,24 @@ def _task_projection(db, term, college_id, *, task_ids=None, cache=None):
     from .academic_affairs_task_service import _summary_counts
 
     batch_query = _query(db, Batch, Batch.term_id == term.id)
+    owned_batches = None
+    college_tasks = None
     if college_id:
-        batch_query = batch_query.filter(Batch.college_id == college_id)
+        owned_batches = batch_query.filter(Batch.college_id == college_id)
+        cache = {} if cache is None else cache
+        relations = responsibility.resolve_term_task_offering_colleges(db, term.id, cache=cache)
+        third_ids = {task_id for task_id, owner in relations.items() if owner == college_id} or {-1}
+        shared_batches = select(Task.batch_id).where(Task.tenant_id == _tid(),
+            Task.is_deleted.is_(False), Task.id.in_(third_ids))
+        batch_query = batch_query.filter(or_(Batch.college_id == college_id,
+                                             Batch.id.in_(shared_batches)))
+        own_ids = owned_batches.with_entities(Batch.id).subquery()
+        # 扩展批次进度不能带入共享批次内其他学院的任务。
+        college_tasks = or_(Task.batch_id.in_(select(own_ids.c.id)), Task.id.in_(third_ids))
     batch_ids = batch_query.with_entities(Batch.id).subquery()
     tasks = _query(db, Task, Task.batch_id.in_(select(batch_ids.c.id)), Task.status != "MERGED")
+    if college_tasks is not None:
+        tasks = tasks.filter(college_tasks)
     if task_ids is not None:
         tasks = tasks.filter(Task.id.in_(task_ids or {-1}))
     tasks = _independent_tasks(db, tasks)
@@ -274,7 +288,9 @@ def _task_projection(db, term, college_id, *, task_ids=None, cache=None):
                 blockers.append(_problem(reconciliation["ruleCode"], reconciliation["summary"]))
                 state = "BLOCKED"
     task = tasks.order_by(Task.id).first()
-    batch = batch_query.order_by(Batch.id.desc()).first()
+    batch = owned_batches.order_by(Batch.id.desc()).first() if owned_batches is not None else None
+    if batch is None:
+        batch = batch_query.order_by(Batch.id.desc()).first()
     summary["batchByStatus"] = batch_counts
     return state, blockers, summary, task, batch
 
@@ -293,10 +309,10 @@ def _schedule_task_ids(db, term, batch, college_id, cache):
     from . import academic_affairs_schedule_policy as policy
     key = ("SCHEDULE_TASK_IDS", _tid(), int(term.id), batch.college_id, college_id)
     if key not in cache:
-        conditions = [policy.task_scope_condition(db, batch)]
+        conditions = [policy.task_scope_condition(db, batch, cache=cache)]
         if college_id and not batch.college_id:
-            conditions.append(policy.task_scope_condition(db, SimpleNamespace(college_id=college_id),
-                                                           include_centralized_public=True))
+            conditions.append(policy.task_scope_condition(db, SimpleNamespace(college_id=college_id, term_id=term.id),
+                                                           include_centralized_public=True, cache=cache))
         query = select(Task.id).join(TaskBatch, TaskBatch.id == Task.batch_id).where(
             Task.tenant_id == _tid(), Task.is_deleted.is_(False), Task.status == "READY",
             Task.no_auto_schedule.is_(False), TaskBatch.tenant_id == _tid(),
@@ -982,11 +998,12 @@ def _global_gate_blockers(db, term, cache, *, run_final_reconciliation=True):
         (AaTeachingTaskBatch.id == AaTeachingTask.batch_id) & (AaTeachingTaskBatch.tenant_id == _tid())
         & AaTeachingTaskBatch.is_deleted.is_(False)).filter(AaTeachingTaskBatch.term_id == term.id)
     rows = _independent_tasks(db, rows)
-    missing_batch = rows.filter(AaTeachingTaskBatch.college_id.is_(None)).count()
+    missing_batch = rows.filter(AaTeachingTaskBatch.college_id.is_(None),
+                               AaTeachingTaskBatch.status != "APPROVED").count()
     approved_task_ids = [int(row.id) for row in rows.filter(AaTeachingTaskBatch.status == "APPROVED")
                          .with_entities(AaTeachingTask.id).all()]
     responsible_tasks = gate._responsible_task_ids(db, approved_task_ids, term.id,
-        school_public=policy.public_schedule_mode(db) in {"SCHOOL_CENTRALIZED", "HYBRID"})
+        school_public=policy.public_schedule_mode(db) in {"SCHOOL_CENTRALIZED", "HYBRID"}, cache=cache)
     missing_owner = len(set(approved_task_ids) - responsible_tasks)
     blockers = []
     from .academic_affairs_archive_rule_evaluator import _expected_opening, evaluate_teaching_task

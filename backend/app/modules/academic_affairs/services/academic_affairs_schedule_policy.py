@@ -105,7 +105,7 @@ def public_schedule_mode(db):
     return mode
 
 
-def task_scope_condition(db, batch, *, include_centralized_public=False):
+def task_scope_condition(db, batch, *, include_centralized_public=False, cache=None, lock=False):
     """所有排课入口按开课单位筛任务；批次学期/审批条件仍由原入口负责。"""
     from sqlalchemy import exists, func, or_, select, true
     from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
@@ -122,6 +122,19 @@ def task_scope_condition(db, batch, *, include_centralized_public=False):
         AaTeachingTaskBatch.is_deleted.is_(False),
     ).correlate(AaTeachingTask).scalar_subquery()
     condition = func.coalesce(owner, fallback) == int(batch.college_id)
+    term_id = getattr(batch, "term_id", None)
+    if term_id:
+        from .academic_affairs_responsibility_service import resolve_task_offering_colleges
+        candidates = select(AaTeachingTask.id).join(AaTeachingTaskBatch,
+            AaTeachingTaskBatch.id == AaTeachingTask.batch_id).where(
+            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == int(term_id),
+            AaTeachingTaskBatch.status == "APPROVED", AaTeachingTaskBatch.is_deleted.is_(False),
+            owner.is_(None), fallback.is_(None), ~public)
+        relations = resolve_task_offering_colleges(db, list(db.scalars(candidates)), cache=cache, lock=lock)
+        relation_ids = [task_id for task_id, college_id in relations.items()
+                        if college_id == int(batch.college_id)]
+        condition |= owner.is_(None) & fallback.is_(None) & ~public & AaTeachingTask.id.in_(relation_ids or [-1])
     if mode == "SCHOOL_CENTRALIZED" and not include_centralized_public:
         condition &= ~public
     return condition

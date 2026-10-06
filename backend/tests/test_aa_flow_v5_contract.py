@@ -666,7 +666,7 @@ def test_shared_schedule_tasks_intersect_canonical_mode_and_offering_scope(reque
     from app.modules.academic_affairs.services import academic_affairs_schedule_policy as policy
     monkeypatch.setattr(service, "_tid", lambda: 1)
     calls = []
-    def scope(db, batch, *, include_centralized_public=False):
+    def scope(db, batch, *, include_centralized_public=False, cache=None):
         calls.append((batch.college_id, include_centralized_public))
         return AaTeachingTask.id > 0
     monkeypatch.setattr(policy, "task_scope_condition", scope, raising=False)
@@ -1253,3 +1253,61 @@ def test_mysql_college_leader_assignment_keeps_flow_in_own_college(flow_tenant_c
     assert denied.value.code == "NO_DATA_SCOPE" and denied.value.http_status == 403
     for code in ("academicAffairs.term.manage", "academicAffairs.selection.manage", "academicAffairs.grade.publish", "academicAffairs.archive.manage"):
         assert not has_permission(claims, code)
+
+
+@pytest.mark.parametrize("case", ["shared-only", "with-owned-draft", "invalid-source"])
+def test_mysql_task_projection_uses_exact_college_tasks_from_shared_approved_batch(client, flow_tenant_context, case):
+    """只验真实流程投影，不把隔离关系初始数据当作师生办理验收。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm
+    from tests.test_aa_v5_school_schedule_gate import _third_layer_facts
+
+    facts = _third_layer_facts(client)
+    with get_sessionmaker()() as db:
+        tasks = [db.get(AaTeachingTask, int(row["taskId"])) for row in facts["tasks"]]
+        shared = db.get(AaTeachingTaskBatch, tasks[0].batch_id)
+        other = db.get(AaTeachingTaskBatch, tasks[1].batch_id)
+        wrong_source = tasks[1].source_program_course_id
+        tasks[1].batch_id = shared.id
+        other.is_deleted = True
+        for task in tasks:
+            task.source_program_course_id = None
+        owned = None
+        if case == "with-owned-draft":
+            owned = AaTeachingTaskBatch(tenant_id=flow_tenant_context, term_id=facts["termId"],
+                college_id=int(facts["tasks"][0]["collegeId"]), batch_name="本院编制待指派批次", status="DRAFT")
+            db.add(owned); db.flush()
+            # 课程由另一院开设，但本院批次原有的编制责任仍须保留。
+            external = AaCourse(tenant_id=flow_tenant_context, course_code="V5-FLOW-EXTERNAL-DRAFT",
+                course_name="他院开设的本院待指派课程", owner_college_id=int(facts["tasks"][1]["collegeId"]),
+                category="MAJOR_CORE", status="ENABLED", credit=1)
+            db.add(external); db.flush()
+            db.add(AaTeachingTask(tenant_id=flow_tenant_context, batch_id=owned.id, course_id=external.id,
+                class_id=tasks[0].class_id, course_name=external.course_name, status="PENDING_ASSIGN",
+                weekly_hours=1, total_hours=18, start_week=1, end_week=18))
+        elif case == "invalid-source":
+            tasks[0].source_program_course_id = wrong_source
+        db.commit()
+        term = db.get(AaTerm, facts["termId"])
+        first = service._task_projection(db, term, int(facts["tasks"][0]["collegeId"]), cache={})
+        second = service._task_projection(db, term, int(facts["tasks"][1]["collegeId"]), cache={})
+        assert second[2]["taskTotal"] == 1, second
+        assert second[2]["unassignedCount"] == 0
+        assert second[3].id == tasks[1].id and second[4].id == shared.id
+        assert second[4].status == "APPROVED"
+        assert shared.college_id is None and shared.status == "APPROVED"
+        if case == "shared-only":
+            assert first[0] == second[0] == "READY"
+            assert first[2]["taskTotal"] == 1 and first[2]["unassignedCount"] == 0
+            assert first[2]["batchByStatus"] == {"APPROVED": 1}
+            assert first[3].id == tasks[0].id and first[4].id == shared.id
+            school = service._task_projection(db, term, None, cache={})
+            assert school[2]["taskTotal"] == 2 and school[4].status == "APPROVED"
+        elif case == "with-owned-draft":
+            assert first[0] == "BLOCKED", first
+            assert first[2]["taskTotal"] == 2 and first[2]["unassignedCount"] == 1
+            assert first[2]["batchByStatus"] == {"DRAFT": 1, "APPROVED": 1}
+            assert first[4].id == owned.id and first[4].status == "DRAFT"
+        else:
+            assert first[2]["taskTotal"] == 0, first
+            assert first[3] is None

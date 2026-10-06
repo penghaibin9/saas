@@ -26,7 +26,8 @@ def college_task_ids(db, college_ids, term_id=None):
         AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
         AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False),
         AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
-        or_(*(task_scope_condition(db, SimpleNamespace(college_id=cid), include_centralized_public=True) for cid in sorted(allowed))))
+        or_(*(task_scope_condition(db, SimpleNamespace(college_id=cid, term_id=term_id),
+                                  include_centralized_public=True) for cid in sorted(allowed))))
     if term_id:
         statement = statement.where(AaTeachingTaskBatch.term_id == int(term_id))
     return statement

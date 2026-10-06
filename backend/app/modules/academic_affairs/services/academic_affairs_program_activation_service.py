@@ -58,12 +58,14 @@ def _binding_time(binding) -> datetime | None:
     return _naive_utc(getattr(binding, "bound_at", None))
 
 
-def _program_for_binding(db, binding, *, tenant_id: int, historical: bool):
+def _program_for_binding(db, binding, *, tenant_id: int, historical: bool, cache=None):
     from app.models import AaProgram
 
     if not binding or not getattr(binding, "program_id", None):
         return None
-    program = tenant_get(db, AaProgram, int(binding.program_id), tenant_id=int(tenant_id))
+    key = ("PROGRAM_OBJECT", int(tenant_id), int(binding.program_id))
+    program = cache[key] if cache is not None and key in cache else tenant_get(
+        db, AaProgram, int(binding.program_id), tenant_id=int(tenant_id))
     if not program or program.is_deleted or int(program.tenant_id) != int(tenant_id):
         return None
     allowed = HISTORICAL_REPLAY_PROGRAM_STATUSES if historical else CURRENT_EFFECTIVE_PROGRAM_STATUSES
@@ -71,11 +73,11 @@ def _program_for_binding(db, binding, *, tenant_id: int, historical: bool):
 
 
 def _current_choice(db, rows, *, tenant_id: int, current_rule: str,
-                    conflict_rule: str, invalid_rule: str, scope_label: str):
+                    conflict_rule: str, invalid_rule: str, scope_label: str, cache=None):
     active = [row for row in rows if str(row.status or "").upper() == "ACTIVE"]
     if not active:
         return None
-    valid = [(row, _program_for_binding(db, row, tenant_id=tenant_id, historical=False)) for row in active]
+    valid = [(row, _program_for_binding(db, row, tenant_id=tenant_id, historical=False, cache=cache)) for row in active]
     valid = [(row, program) for row, program in valid if program is not None]
     if len(valid) == 1:
         row, program = valid[0]
@@ -94,7 +96,7 @@ def _current_choice(db, rows, *, tenant_id: int, current_rule: str,
 
 def _historical_choice(db, rows, *, tenant_id: int, as_of: datetime,
                        current_rule: str, history_rule: str, conflict_rule: str,
-                       invalid_rule: str, scope_label: str):
+                       invalid_rule: str, scope_label: str, cache=None):
     eligible = [
         row for row in rows
         if str(row.status or "").upper() in {"ACTIVE", "SUPERSEDED"}
@@ -105,7 +107,7 @@ def _historical_choice(db, rows, *, tenant_id: int, as_of: datetime,
         return None
     latest_at = max(_binding_time(row) for row in eligible)
     latest = [row for row in eligible if _binding_time(row) == latest_at]
-    valid = [(row, _program_for_binding(db, row, tenant_id=tenant_id, historical=True)) for row in latest]
+    valid = [(row, _program_for_binding(db, row, tenant_id=tenant_id, historical=True, cache=cache)) for row in latest]
     valid = [(row, program) for row, program in valid if program is not None]
     if len(valid) == 1 and len(latest) == 1:
         row, program = valid[0]
@@ -175,11 +177,11 @@ def resolve_program_for_scope(
                 db, scope_rows, tenant_id=int(tenant_id), as_of=historical_at,
                 current_rule=current_rule, history_rule=history_rule,
                 conflict_rule=conflict_rule, invalid_rule=invalid_rule,
-                scope_label=scope_label,
+                scope_label=scope_label, cache=cache,
             )
         return _current_choice(
             db, scope_rows, tenant_id=int(tenant_id), current_rule=current_rule,
-            conflict_rule=conflict_rule, invalid_rule=invalid_rule, scope_label=scope_label,
+            conflict_rule=conflict_rule, invalid_rule=invalid_rule, scope_label=scope_label, cache=cache,
         )
 
     deferred_invalid = None

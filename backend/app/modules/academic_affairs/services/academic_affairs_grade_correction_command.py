@@ -125,9 +125,9 @@ def _college_bound_user_ids(db) -> set[int]:
 
 
 def _task_college_id(db, task) -> int | None:
-    """成绩/调停课按课程开课单位，再按教学任务批次；不从学生行政班猜责任。"""
+    """成绩/调停课依次使用开课单位、任务批次及精确正式开课关系。"""
     from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
-    from .academic_affairs_responsibility_service import offering_college_id
+    from .academic_affairs_responsibility_service import offering_college_id, resolve_task_offering_colleges
 
     task_id = getattr(task, "teaching_task_id", None) or getattr(task, "task_id", None)
     teaching_task = tenant_get(db, AaTeachingTask, int(task_id), tenant_id=_tid()) if task_id else None
@@ -137,8 +137,11 @@ def _task_college_id(db, task) -> int | None:
     course = tenant_get(db, AaCourse, int(course_id), tenant_id=_tid()) if course_id else None
     batch_id = getattr(teaching_task, "batch_id", None)
     batch = tenant_get(db, AaTeachingTaskBatch, int(batch_id), tenant_id=_tid()) if batch_id else None
-    return offering_college_id(course if course and not course.is_deleted else None,
-                              batch if batch and not batch.is_deleted else None)
+    college_id = offering_college_id(course if course and not course.is_deleted else None,
+                                    batch if batch and not batch.is_deleted else None)
+    if college_id is not None or teaching_task is None:
+        return college_id
+    return resolve_task_offering_colleges(db, [int(teaching_task.id)]).get(int(teaching_task.id))
 
 
 def _active_user(db, user_id):
