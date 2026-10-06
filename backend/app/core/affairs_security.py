@@ -352,7 +352,7 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
                     UserRole.user_id == scope_user_id,
                     UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
                     Role.tenant_id == tenant_id, Role.role_code == role,
-                    Role.status == "ACTIVE", Role.is_deleted.is_(False),
+                    Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False),
                     User.tenant_id == tenant_id,
                     User.status == "ACTIVE", User.is_deleted.is_(False),
                     or_(RoleAssignmentValidity.id.is_(None), and_(
