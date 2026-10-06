@@ -243,7 +243,7 @@ def test_generation_class_id_preserves_large_string_and_rejects_invalid_values()
             model(termId="52", classId=invalid)
 
 
-def test_requested_generation_class_is_tenant_college_scoped_and_locked(monkeypatch):
+def test_requested_generation_class_is_tenant_scoped_and_locked_without_student_college_coupling(monkeypatch):
     row = SimpleNamespace(id=9007199254740993)
 
     class Capture:
@@ -255,7 +255,7 @@ def test_requested_generation_class_is_tenant_college_scoped_and_locked(monkeypa
 
     db = Capture()
     monkeypatch.setattr(generation, "_tid", lambda: TID)
-    assert generation._requested_generation_class(db, str(row.id), 128) is row
+    assert generation._requested_generation_class(db, str(row.id)) is row
     sql = str(db.statement.compile(dialect=mysql.dialect(), compile_kwargs={"literal_binds": True}))
     assert "t_class.id = 9007199254740993" in sql
     for table in ("t_class", "t_major", "t_college"):
@@ -263,17 +263,17 @@ def test_requested_generation_class_is_tenant_college_scoped_and_locked(monkeypa
         assert f"{table}.is_deleted IS false" in sql
         assert f"{table}.status = 'ACTIVE'" in sql
     assert "t_class.class_status = 'NORMAL'" in sql
-    assert "t_major.college_id = 128" in sql
+    assert "t_major.college_id = 128" not in sql
     assert "FOR UPDATE" in sql
-    assert generation._requested_generation_class(db, None, 128) is None
+    assert generation._requested_generation_class(db, None) is None
     db.scalars = lambda _statement: SimpleNamespace(first=lambda: None)
     from app.core.exceptions import AppException
     with pytest.raises(AppException) as rejected:
-        generation._requested_generation_class(db, "4670", 128)
+        generation._requested_generation_class(db, "4670")
     assert rejected.value.code == "NO_DATA_SCOPE"
     for invalid in ("", "0", "-1", "1.5", True, 1):
         with pytest.raises(AppException) as invalid_id:
-            generation._requested_generation_class(db, invalid, 128)
+            generation._requested_generation_class(db, invalid)
         assert invalid_id.value.code == "VALIDATION_ERROR"
 
 
@@ -381,16 +381,21 @@ def test_target_duplicates_and_unscoped_generation_still_conflict_without_writes
         assert _generation_counts(story["term"]) == (2, 2)
 
 
-def test_generation_rejects_foreign_and_other_college_classes_without_writes(client, db_mode, monkeypatch):
+def test_generation_rejects_foreign_class_but_treats_other_college_class_by_program_applicability(client, db_mode, monkeypatch):
     story = _scoped_generation_story(client, db_mode, monkeypatch)
-    for target in (story["foreign"], story["outside"]):
-        response = client.post(f"{BASE}/teaching-task-batches/generate", headers=story["header"],
-                               json={"termId": str(story["term"]), "collegeId": str(story["owner"]), "classId": str(target)})
-        assert response.status_code == 403, response.text
-        assert response.json()["bizCode"] == "NO_DATA_SCOPE"
-        assert _generation_counts(story["term"]) == (2, 2)
-    missing_binding = client.post(f"{BASE}/teaching-task-batches/generate", headers=story["header"],
-                                  json={"termId": str(story["term"]), "collegeId": str(story["owner"]), "classId": str(story["unbound"])})
-    assert missing_binding.status_code == 409, missing_binding.text
-    assert missing_binding.json()["bizCode"] == "PROGRAM_NOT_READY"
+    foreign = client.post(f"{BASE}/teaching-task-batches/generate", headers=story["header"],
+                          json={"termId": str(story["term"]), "collegeId": str(story["owner"]),
+                                "classId": str(story["foreign"])})
+    assert foreign.status_code == 403, foreign.text
+    assert foreign.json()["bizCode"] == "NO_DATA_SCOPE"
     assert _generation_counts(story["term"]) == (2, 2)
+
+    # Same-tenant classes owned by another student college are not rejected by ownership alone.
+    # They proceed to the formal program/binding + offering-course check instead.
+    for target in (story["outside"], story["unbound"]):
+        response = client.post(f"{BASE}/teaching-task-batches/generate", headers=story["header"],
+                               json={"termId": str(story["term"]), "collegeId": str(story["owner"]),
+                                     "classId": str(target)})
+        assert response.status_code == 409, response.text
+        assert response.json()["bizCode"] == "PROGRAM_NOT_READY"
+        assert _generation_counts(story["term"]) == (2, 2)
