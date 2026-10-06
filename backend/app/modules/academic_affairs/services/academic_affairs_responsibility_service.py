@@ -212,13 +212,26 @@ def resolve_teachers(db, tasks, *, permission_code="academicAffairs.teachingTask
                 if key:
                     keys_by_task[class_tasks[int(row.teaching_class_id)]].add(key)
     keys = set().union(*keys_by_task.values())
-    ids = {int(key.removeprefix("db-")) for key in keys if key.removeprefix("db-").isdigit()}
+
+    def stable_user_id(key):
+        raw = str(key or "").strip()
+        if raw.startswith("db-") and raw[3:].isdigit():
+            return int(raw[3:])
+        if raw.startswith("u_") and raw[2:].isdigit():
+            return int(raw[2:])
+        if raw.isdigit():
+            return int(raw)
+        return None
+
+    key_ids = {key: stable_user_id(key) for key in keys}
+    ids = {identity for identity in key_ids.values() if identity is not None}
     users = db.scalars(select(User).where(
         User.tenant_id == _tid(), or_(User.login_name.in_(keys), User.id.in_(ids or {-1})),
         User.status == "ACTIVE", User.is_deleted.is_(False),
     )).all() if keys else []
     holders = _permission_holders(db, permission_code, cache) if users else set()
-    matches = {key: [row for row in users if row.login_name == key or str(row.id) == key.removeprefix("db-")]
+    matches = {key: [row for row in users
+                     if row.login_name == key or (key_ids[key] is not None and int(row.id) == key_ids[key])]
                for key in keys}
     result = {}
     for task in tasks:
