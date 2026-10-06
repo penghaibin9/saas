@@ -76,7 +76,7 @@ def test_college_preflight_sees_other_college_candidate_without_edit_access(clie
     assert _snapshot(facts) == before
     assert client.get(f"{BASE}/schedule-batches/{other}", headers=facts["college"]).status_code == 403
 
-    # 同范围新候选取代旧候选；旧草稿/预发布的资源不应永久占用。
+    # 首次发布范围有多个待定版本时，不凭新编号猜测哪一份取代旧候选。
     response = client.post(f"{BASE}/schedule-batches", headers=facts["school"], json={
         "termId": str(facts["termId"]), "collegeId": facts["tasks"][1]["collegeId"], "batchName": "替换候选",
     })
@@ -87,5 +87,5 @@ def test_college_preflight_sees_other_college_candidate_without_edit_access(clie
         weekday=2, classroom="发布测试教室0")
     assert response.status_code == 200, response.text
     response = client.post(endpoint, headers=facts["college"], json=body)
-    assert response.status_code == 200, response.text
-    assert response.json()["data"]["allowed"] is True
+    assert response.status_code == 409, response.text
+    assert "多个待定课表版本" in response.json()["message"]
