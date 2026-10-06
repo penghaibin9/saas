@@ -43,7 +43,7 @@
       <template v-else>
         <div v-if="pendingOperation" class="notice amber" role="status"><div><strong>办理结果待确认，暂不重复提交</strong><p>查询不会再次提交选课或退课。</p><button class="btn small" :disabled="!!actingId" @click="confirmPending">查询本次办理结果</button></div></div>
         <div class="toolbar">
-          <select v-model="activeBatchId" aria-label="选课批次" data-workspace-filter :disabled="!!actingId || !!pendingOperation" @change="changeBatch"><option value="">{{ batchOptions.length === 1 ? batchOptions[0].batchName : '全部可办理批次' }}</option><option v-for="batch in batchOptions" :key="batch.batchId" :value="String(batch.batchId)">{{ batch.batchName || '选课批次' }}</option></select>
+          <select v-model="activeBatchId" aria-label="选课批次" data-workspace-filter :disabled="!!actingId || !!pendingOperation" @change="changeBatch"><option value="">全部可办理批次</option><option v-for="batch in batchOptions" :key="batch.batchId" :value="String(batch.batchId)">{{ batch.batchName || '选课批次' }}</option></select>
           <span class="grow"></span><small>容量采样：{{ sampledAt }} · 不是名额预留</small>
         </div>
         <nav class="tabs" :aria-label="'选课页面，已取得名额 ' + selectedRecords.length + ' 门'"><button :class="{ active: tab === 'courses' }" @click="tab = 'courses'">可办理课程</button><button :class="{ active: tab === 'mine' }" @click="tab = 'mine'">我的选课与报名</button></nav>
