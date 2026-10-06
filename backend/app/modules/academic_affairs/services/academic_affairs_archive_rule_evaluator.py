@@ -325,23 +325,28 @@ def _expected_opening(db, term, *, college_ids=None, major_ids=None, cache=None)
         from sqlalchemy import select, tuple_
         from app.models import AaTeachingTask, AaTeachingTaskBatch, College
         from .academic_affairs_responsibility_service import resolve_opening_offering_colleges
-        owners = resolve_opening_offering_colleges(db, term, relation_openings, cache=cache)
-        pairs = [row["key"] for row in relation_openings]
-        assigned = {}
-        for course_id, class_id, college_id in db.execute(select(
-                AaTeachingTask.course_id, AaTeachingTask.class_id, AaTeachingTaskBatch.college_id).join(
-                AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).where(
-                AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
-                AaTeachingTask.status != "MERGED", tuple_(AaTeachingTask.course_id, AaTeachingTask.class_id).in_(pairs),
-                AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == int(term.id),
-                AaTeachingTaskBatch.status == "APPROVED", AaTeachingTaskBatch.is_deleted.is_(False),
-                AaTeachingTaskBatch.college_id.is_not(None))):
-            assigned.setdefault((int(course_id), int(class_id)), set()).add(int(college_id))
-        active = set(db.scalars(select(College.id).where(College.tenant_id == _tid(),
-            College.id.in_({value for values in assigned.values() for value in values} or {-1}),
-            College.is_deleted.is_(False), College.status == "ACTIVE")))
-        for pair, values in assigned.items():
-            owners[pair] = next(iter(values)) if len(values) == 1 and values <= active else None
+        relation_key = ("OPENING_RELATION_OWNERS", _tid(), int(term.id), tuple(sorted(
+            (*row["key"], int(row["programCourseId"])) for row in relation_openings)))
+        if relation_key not in cache:
+            owners = resolve_opening_offering_colleges(db, term, relation_openings, cache=cache)
+            pairs = [row["key"] for row in relation_openings]
+            assigned = {}
+            for course_id, class_id, college_id in db.execute(select(
+                    AaTeachingTask.course_id, AaTeachingTask.class_id, AaTeachingTaskBatch.college_id).join(
+                    AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).where(
+                    AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+                    AaTeachingTask.status != "MERGED", tuple_(AaTeachingTask.course_id, AaTeachingTask.class_id).in_(pairs),
+                    AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == int(term.id),
+                    AaTeachingTaskBatch.status == "APPROVED", AaTeachingTaskBatch.is_deleted.is_(False),
+                    AaTeachingTaskBatch.college_id.is_not(None))):
+                assigned.setdefault((int(course_id), int(class_id)), set()).add(int(college_id))
+            active = set(db.scalars(select(College.id).where(College.tenant_id == _tid(),
+                College.id.in_({value for values in assigned.values() for value in values} or {-1}),
+                College.is_deleted.is_(False), College.status == "ACTIVE")))
+            for pair, values in assigned.items():
+                owners[pair] = next(iter(values)) if len(values) == 1 and values <= active else None
+            cache[relation_key] = owners
+        owners = cache[relation_key]
         expected.extend(row for row in relation_openings if owners.get(row["key"]) in allowed_colleges)
     return expected, structural
 

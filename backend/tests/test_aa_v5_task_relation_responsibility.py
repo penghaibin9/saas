@@ -176,6 +176,50 @@ def test_opening_cannot_override_cross_college_approved_batch(facts):
     assert service.resolve_opening_offering_colleges(db, rows["term"], _opening(rows))[key] is None
 
 
+@pytest.mark.parametrize("explicit_batch", [False, True])
+def test_opening_request_reuses_exact_owners_across_colleges_and_isolates_terms(facts, explicit_batch):
+    from app.modules.academic_affairs.services.academic_affairs_archive_rule_evaluator import _expected_opening
+
+    db, rows = facts
+    other = College(tenant_id=TID, college_name="接收开课学院", status="ACTIVE")
+    other_term = AaTerm(tenant_id=TID, year_code="2026-2027", term_no=2,
+                        end_date=datetime(2027, 6, 30), status="PUBLISHED")
+    db.add_all([other, other_term, AaProgramCourse(tenant_id=TID,
+        program_id=rows["program"].id, course_id=rows["course"].id, open_term_no=2,
+        formation_mode="ADMIN_FIXED")]); db.flush()
+    if explicit_batch:
+        rows["batch"].college_id = other.id
+    db.commit()
+    own_id, other_id = rows["college"].id, other.id
+    pair = (rows["course"].id, rows["clazz"].id)
+    statements = []
+    def record(conn, cursor, statement, parameters, context, executemany):
+        statements.append(statement)
+    event.listen(db.bind, "before_cursor_execute", record)
+    try:
+        cache = {}
+        own, _ = _expected_opening(db, rows["term"], college_ids={own_id}, cache=cache)
+        assert {row["key"] for row in own} == (set() if explicit_batch else {pair})
+        assert statements
+        statements.clear()
+        received, _ = _expected_opening(db, rows["term"], college_ids={other_id}, cache=cache)
+        assert {row["key"] for row in received} == ({pair} if explicit_batch else set())
+        assert not statements, "同一请求的其他学院应复用精确开课归属"
+        # 同年级、同课程在另一学期没有这个显式任务批次，必须重新解析归属。
+        fresh_term, _ = _expected_opening(db, other_term, college_ids={own_id}, cache=cache)
+        assert {row["key"] for row in fresh_term} == {pair}
+        assert statements
+        with get_sessionmaker()() as writer:
+            writer.execute(update(AaProgramBinding).where(
+                AaProgramBinding.id == rows["binding"].id).values(status="REVOKED"))
+            writer.commit()
+        with get_sessionmaker()() as fresh_db:
+            fresh, _ = _expected_opening(fresh_db, rows["term"], college_ids={own_id, other_id})
+        assert not fresh, "新请求不能继续使用已撤销的方案绑定"
+    finally:
+        event.remove(db.bind, "before_cursor_execute", record)
+
+
 def test_batch_resolution_has_constant_queries_and_checks_each_task_source(facts):
     db, rows = facts
     tasks = [AaTeachingTask(tenant_id=TID, batch_id=rows["batch"].id, course_id=rows["course"].id,
