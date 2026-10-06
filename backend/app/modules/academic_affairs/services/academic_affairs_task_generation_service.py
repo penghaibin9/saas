@@ -322,8 +322,8 @@ def _locked_term_statement(term_id: int):
     )
 
 
-def _requested_generation_class(db, class_id, college_id):
-    """An explicit target narrows generation; invalid targets never mean all classes."""
+def _requested_generation_class(db, class_id):
+    """Resolve an explicit active class without conflating student ownership with course ownership."""
     if class_id is None:
         return None
     if not isinstance(class_id, str) or not re.fullmatch(r"[1-9][0-9]*", class_id):
@@ -341,11 +341,10 @@ def _requested_generation_class(db, class_id, college_id):
         SchoolClass.is_deleted.is_(False), SchoolClass.status == "ACTIVE",
         SchoolClass.class_status == "NORMAL",
         Major.tenant_id == _tid(), Major.is_deleted.is_(False), Major.status == "ACTIVE",
-        Major.college_id == college_id,
         College.tenant_id == _tid(), College.is_deleted.is_(False), College.status == "ACTIVE",
     ).with_for_update()).first()
     if target is None:
-        raise AppException("NO_DATA_SCOPE", "该行政班不存在或不在当前开课学院的有效班级范围内", http_status=403)
+        raise AppException("NO_DATA_SCOPE", "该行政班不存在或已停用", http_status=403)
     return target
 
 
@@ -369,7 +368,7 @@ def generate_batch_tx(db, body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "学期不存在，无法生成教学任务")
     if str(term.status or "").upper() == "ARCHIVED":
         raise AppException("TERM_ARCHIVED", "该学期已归档封存，禁止修改", http_status=409)
-    target_class = _requested_generation_class(db, getattr(body, "classId", None), college_id)
+    target_class = _requested_generation_class(db, getattr(body, "classId", None))
     teaching_weeks, week_source = resolve_teaching_weeks(db, term_id)
     conditions = _editable_batch_conditions(AaTeachingTaskBatch, term_id, college_id)
     candidates = db.scalars(
