@@ -124,7 +124,7 @@ test('D-W1 正式归档控制台不可逆动作必须防重复提交并在窄屏
 test('D-W1 实际确认方法拒绝越权、重复及待核实动作并处理异常', async () => {
   const source = await readFile(consoleUrl, 'utf8')
   // Execute the real method body instead of treating a matching comment as a guard.
-  const match = source.match(/async onConfirm\(\)\s*\{([\s\S]*?)\n    \},/)
+  const match = source.match(/async onConfirm\(\)\s*\{([\s\S]*?)\n\s{4}\},/)
   assert.ok(match, 'archive confirmation method must remain executable')
   const errors = []
   const onConfirm = new Function('toast', `return async function () {${match[1]}}`)({
