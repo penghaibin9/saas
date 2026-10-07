@@ -101,7 +101,7 @@ def _task_batch_ids(db, batch) -> list[int]:
 def _resolve_task(db, batch, source, *, preload=None, lock=True):
     from app.models import AaTeachingTask
     from .academic_affairs_task_execution_authority import (
-        independent_task_condition, load_execution_handoffs, require_independent_task)
+        independent_task_condition, require_independent_task)
 
     allowed_batches = (
         list(preload.allowed_batch_ids)
