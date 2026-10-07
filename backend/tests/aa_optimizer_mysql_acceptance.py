@@ -18,7 +18,7 @@ from app.core.config import settings
 from app.core.context import set_tenant, set_current_user
 from app.db.session import get_sessionmaker, get_engine
 from app.models import (Tenant, PlatformConfig, Role, Permission, RolePermission, User, UserRole,
-                        AaTerm, AaTimeSlot, AaClassroom, AaCourse, AaTeachingTaskBatch, AaTeachingTask,
+                        College, AaTerm, AaTimeSlot, AaClassroom, AaCourse, AaTeachingTaskBatch, AaTeachingTask,
                         AaScheduleBatch, AaScheduleItem, AaScheduleRule, AaTeachingClass,
                         AaTeachingClassTeacher, AaTeachingClassRosterVersion, AaTeachingClassMember, StudentProfile)
 from app.modules.academic_affairs.services import schedule_optimizer_jobs_service as service
@@ -70,9 +70,13 @@ def scenario():
             db.add(AaTimeSlot(tenant_id=tid,slot_no=no,start_time=start,end_time=end,campus_code='MAIN',enabled=True,status='ENABLED'))
         room=AaClassroom(tenant_id=tid,room_name='验收实训室',building_code='A',building_name='实训楼',room_code='101',
                          room_type='LAB',capacity=30,campus_code='MAIN',status='AVAILABLE',allow_schedule=True,is_exclusive=False)
-        course=AaCourse(tenant_id=tid,course_code='OPT101',course_name='实训课',status='ENABLED')
-        db.add_all([room,course]);db.flush()
-        task_batch=AaTeachingTaskBatch(tenant_id=tid,term_id=term.id,batch_name='验收教学任务',status='APPROVED')
+        college=College(tenant_id=tid,college_name='智能排课验收学院',code='OPT-COLLEGE',status='ACTIVE')
+        db.add_all([room,college]);db.flush()
+        course=AaCourse(tenant_id=tid,course_code='OPT101',course_name='实训课',
+                        owner_college_id=college.id,status='ENABLED')
+        db.add(course);db.flush()
+        task_batch=AaTeachingTaskBatch(tenant_id=tid,term_id=term.id,college_id=college.id,
+                                       batch_name='验收教学任务',status='APPROVED')
         batch=AaScheduleBatch(tenant_id=tid,term_id=term.id,batch_name='验收课表草稿',status='DRAFT')
         db.add_all([task_batch,batch]);db.flush()
         task=AaTeachingTask(tenant_id=tid,batch_id=task_batch.id,course_id=course.id,course_name='实训课',
