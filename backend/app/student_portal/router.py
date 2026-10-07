@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Body, Depends, Query, Request
 
 from app.core.response import success
@@ -101,7 +103,7 @@ def academic_transcript_print(user=Depends(get_current_user), body: dict = Body(
 
 
 @router.get("/academic/schedule", summary="我的课表（本人·最新已发布）")
-def academic_schedule(user=Depends(get_current_user), week: int | None = Query(None, ge=1, le=99)):
+def academic_schedule(user=Depends(get_current_user), week: Annotated[int | None, Query(ge=1, le=99)] = None):
     return success(academic.schedule(user, week))
 
 

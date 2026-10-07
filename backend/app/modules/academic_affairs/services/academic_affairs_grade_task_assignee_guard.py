@@ -60,7 +60,7 @@ def _runtime_permission_holder_ids(db, permission_code: str, *, cache=None) -> l
             select(User.id, Role).join(UserRole, UserRole.user_id == User.id).join(Role, Role.id == UserRole.role_id)
             .where(User.tenant_id == tenant_id, User.status == "ACTIVE", User.is_deleted.is_(False),
                 UserRole.tenant_id == tenant_id, UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
-                Role.tenant_id == tenant_id, Role.status == "ACTIVE", Role.is_deleted.is_(False))
+                Role.tenant_id == tenant_id, Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False))
         ).all())
     pairs = current[pair_key]
     legacy_ids = {int(role.id) for _, role in pairs
@@ -128,7 +128,7 @@ def _preferred_role_candidates(db, candidates, role_code: str) -> list[int]:
                 UserRole.is_deleted.is_(False),
                 Role.tenant_id == _core._tid(),
                 Role.role_code == str(role_code or "").strip().upper(),
-                Role.status == "ACTIVE",
+                Role.status.in_(("ACTIVE", "ENABLED")),
                 Role.is_deleted.is_(False),
             )
         ).all()

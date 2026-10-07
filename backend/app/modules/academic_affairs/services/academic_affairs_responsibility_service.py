@@ -116,7 +116,7 @@ def _scoped_holders(db, users, org_type, org, permission_code, *, cache=None):
         pairs = _cached(cache, ("USER_ROLES", tuple(sorted(user_ids))), lambda: db.execute(select(UserRole.user_id, Role).join(Role, Role.id == UserRole.role_id).where(
             UserRole.tenant_id == _tid(), UserRole.user_id.in_(user_ids),
             UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
-            Role.tenant_id == _tid(), Role.status == "ACTIVE", Role.is_deleted.is_(False),
+            Role.tenant_id == _tid(), Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False),
         )).all())
     allowed = set()
     college_id = int(org.id if org_type == "COLLEGE" else org.college_id) if org_type != "SCHOOL" else None

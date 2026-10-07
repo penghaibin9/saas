@@ -630,6 +630,7 @@ def _build_import_preload(db, batch, items):
         allowed_batch_ids=allowed_batch_ids,
         teaching_weeks=teaching_weeks,
         enabled_slots=enabled_slots,
+        lock_tasks=True,
     )
 
 
@@ -641,21 +642,8 @@ def _apply_import_rows(db, batch, items) -> tuple[int, list[dict]]:
     """
     imported = 0
     errors = []
-    if items:
-        # 文件行序不能成为任务锁序：与承接确认共同使用升序锁，避免两任务反向互等。
-        from sqlalchemy import or_
-        from app.models import AaTeachingTask
-        ids = {int(_value(row, "taskId")) for row in items if _value(row, "taskId") not in (None, "")}
-        names = {str(_value(row, "courseName") or "").strip() for row in items
-            if _value(row, "taskId") in (None, "")}
-        locked_tasks = db.query(AaTeachingTask).filter(
-            AaTeachingTask.tenant_id == _base._tid(), AaTeachingTask.is_deleted.is_(False),
-            AaTeachingTask.batch_id.in_(_task_batch_ids(db, batch) or [-1]),
-            AaTeachingTask.status == "READY", policy.task_scope_condition(db, batch),
-            or_(AaTeachingTask.id.in_(ids or [-1]), AaTeachingTask.course_name.in_(names)),
-        ).order_by(AaTeachingTask.id).limit(1001).with_for_update().populate_existing().all()
-        if len(locked_tasks) > 1000:
-            raise AppException("DATA_CONFLICT", "导入匹配的教学任务过多，请填写精确任务编号后重新预检", http_status=409)
+    # The preload acquires the shared ascending task locks and returns those
+    # exact rows. A second read here duplicates queries and can mix snapshots.
     preload = _build_import_preload(db, batch, items) if items else None
     for index, source in enumerate(items or [], start=1):
         try:

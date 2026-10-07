@@ -729,6 +729,10 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
         rows = db.scalars(select(AaTeachingTask).where(*conditions).order_by(
             AaTeachingTask.batch_id.desc(), AaTeachingTask.course_id, AaTeachingTask.id,
         ).offset((current_page - 1) * current_page_size).limit(current_page_size)).all()
+        if not rows:
+            # Keep the filtered count even for a page beyond the last result;
+            # an empty page has no objects requiring batch/term/course hydration.
+            return [], total
         batch_ids = sorted({int(task.batch_id) for task in rows if task.batch_id})
         batch_status = {}
         batches = {}

@@ -161,6 +161,7 @@ def build_preload(
     teaching_weeks,
     enabled_slots,
     conflict_batch_ids=None,
+    lock_tasks=False,
 ) -> ScheduleImportPreload:
     """只预载本批输入会触达的数据，避免把全租户任务/教室 materialize 到 Python。"""
     from app.models import AaClassroom, AaScheduleItem, AaTeachingTask
@@ -216,16 +217,22 @@ def build_preload(
 
     tasks = []
     if task_conditions:
-        tasks = db.scalars(
-            select(AaTeachingTask).where(
-                AaTeachingTask.tenant_id == _base._tid(),
-                AaTeachingTask.batch_id.in_(list(allowed_batch_ids) or [-1]),
-                AaTeachingTask.status == "READY",
-                AaTeachingTask.is_deleted.is_(False),
-                or_(*task_conditions),
-                policy.task_scope_condition(db, batch),
-            )
-        ).all()
+        query = select(AaTeachingTask).where(
+            AaTeachingTask.tenant_id == _base._tid(),
+            AaTeachingTask.batch_id.in_(list(allowed_batch_ids) or [-1]),
+            AaTeachingTask.status == "READY",
+            AaTeachingTask.is_deleted.is_(False),
+            or_(*task_conditions),
+            policy.task_scope_condition(db, batch),
+        )
+        if lock_tasks:
+            # Import confirmation and dry-run share one ascending task-lock read.
+            # Reuse those fresh rows below rather than re-reading after locking.
+            query = query.order_by(AaTeachingTask.id).limit(1001).with_for_update().execution_options(populate_existing=True)
+        tasks = db.scalars(query).all()
+        if lock_tasks and len(tasks) > 1000:
+            from app.core.exceptions import AppException
+            raise AppException("DATA_CONFLICT", "导入匹配的教学任务过多，请填写精确任务编号后重新预检", http_status=409)
 
     classrooms = []
     if classroom_texts:
@@ -284,7 +291,7 @@ def build_preload(
         conflict_rows = db.scalars(query).all()
 
     from .academic_affairs_task_execution_authority import load_execution_handoffs
-    blocked_task_ids = set(load_execution_handoffs(db, [row.id for row in tasks]))
+    blocked_task_ids = set(load_execution_handoffs(db, [row.id for row in tasks], lock=lock_tasks))
 
     return ScheduleImportPreload(
         allowed_batch_ids=allowed_batch_ids,
