@@ -286,7 +286,7 @@ export default {
       tabs: [
         { key: 'facts', label: '归档事实' },
         { key: 'corrections', label: '归档后纠错' },
-        { key: 'manifest', label: '归档清单版本链' }
+        { key: 'manifest', label: 'Manifest版本链' }
       ],
       activeTab: 'facts', loading: false, verifyBusy: false, busy: false,
       corrections: [], manifest: null,
