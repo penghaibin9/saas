@@ -1,4 +1,4 @@
-# Temporary read-only source evidence for PR #278 repair. Remove before merge.
+# Temporary read-only CI evidence for PR #278 repair. Remove before merge.
 name: PR278 repair source snapshot
 
 on:
@@ -11,28 +11,66 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   source-snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
-      - uses: actions/checkout@v4
-        with:
-          persist-credentials: false
-      - name: Archive tracked source without credentials or runtime state
+      - name: Collect failed-job logs for the reviewed baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/pr278-source"
-          git rev-parse HEAD > "$RUNNER_TEMP/pr278-source/HEAD.txt"
-          git archive --format=tar --prefix=saas/ HEAD | gzip -n > "$RUNNER_TEMP/pr278-source/source.tar.gz"
-          cd "$RUNNER_TEMP/pr278-source"
-          sha256sum source.tar.gz > SHA256SUMS
+          python3 - <<'PY'
+          import concurrent.futures, json, os, pathlib, re, urllib.request
+          repo = os.environ['GH_REPO']
+          token = os.environ['GH_TOKEN']
+          root = pathlib.Path(os.environ['RUNNER_TEMP']) / 'pr278-failures'
+          root.mkdir()
+          headers = {'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github+json'}
+          class SafeRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, hdrs, newurl):
+                  nxt = super().redirect_request(req, fp, code, msg, hdrs, newurl)
+                  if nxt is not None:
+                      nxt.remove_header('Authorization')
+                  return nxt
+          opener = urllib.request.build_opener(SafeRedirect())
+          def get(path):
+              req = urllib.request.Request('https://api.github.com/repos/' + repo + path, headers=headers)
+              with opener.open(req, timeout=90) as response:
+                  return response.read()
+          runs = [37556915263,37556915353,37556915162,37556915223,37556915371,37556915279,37556915202,37556915349,37556915269,37556914846]
+          jobs = []
+          for run in runs:
+              page = 1
+              while True:
+                  rows = json.loads(get(f'/actions/runs/{run}/jobs?per_page=100&page={page}'))['jobs']
+                  jobs += [j for j in rows if j['conclusion'] in {'failure','timed_out','cancelled'}]
+                  if len(rows) < 100:
+                      break
+                  page += 1
+          (root / 'jobs.json').write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding='utf-8')
+          def collect(job):
+              raw = get(f"/actions/jobs/{job['id']}/logs").decode('utf-8-sig', errors='replace')
+              clean = re.sub(r'^\d{4}-\d\d-\d\dT\S+\s*', '', raw, flags=re.M)
+              clean = re.sub(r'\x1b\[[0-9;]*m', '', clean)
+              (root / f"{job['id']}.log").write_text(clean, encoding='utf-8')
+              lines = clean.splitlines()
+              summaries = [line for line in lines if re.search(r'^(FAILED|ERROR |E\s+)|\b\d+ failed\b|\[error\]|Error:|AssertionError',line)]
+              return {'id': job['id'], 'name': job['name'], 'run_id':job['run_id'], 'failures': summaries}
+          with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+              results = list(pool.map(collect, jobs))
+          (root / 'summary.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(f'Collected {len(results)} failed jobs; no workflow results were changed.')
+          PY
       - uses: actions/upload-artifact@v4
         with:
-          name: pr278-source-${{ github.sha }}
-          path: ${{ runner.temp }}/pr278-source/
+          name: pr278-failures-${{ github.sha }}
+          path: ${{ runner.temp }}/pr278-failures/
           retention-days: 1
-          compression-level: 0
+          compression-level: 6
           if-no-files-found: error
