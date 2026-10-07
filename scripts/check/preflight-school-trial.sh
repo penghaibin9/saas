@@ -98,8 +98,8 @@ PY
   fi
 fi
 
-# 三端生产 API 地址不得硬编码本机地址。PUBLIC_BASE_URL 是 miniapp H5 的权威构建源。
-for dir in frontend student-portal miniapp; do
+# 四个客户端生产 API 地址不得硬编码本机地址。PUBLIC_BASE_URL 是 miniapp H5 的权威构建源。
+for dir in frontend student-portal miniapp enterprise-portal; do
   if grep -RIl "localhost:8000\|127.0.0.1:8000" "$ROOT/$dir"/.env* 2>/dev/null | grep -q .; then
     fail "$dir 构建环境仍含 localhost:8000/127.0.0.1:8000"
   else
@@ -116,12 +116,15 @@ for path in \
   backend/scripts/check_production_storage.py \
   backend/scripts/check_alembic_current.py \
   student-portal/package.json \
+  enterprise-portal/package.json \
   deploy/nginx/school-lifecycle.systemd.conf.example; do
   [ -f "$ROOT/$path" ] && pass "$path" || fail "缺少 $path"
 done
 
 grep -q 'student-portal' "$ROOT/scripts/deploy/install-systemd-release.sh" \
   && pass "发布脚本已收编学生 PC" || fail "发布脚本未收编 student-portal"
+grep -q 'enterprise-portal' "$ROOT/scripts/deploy/install-systemd-release.sh" \
+  && pass "发布脚本已收编企业协同 PC" || fail "发布脚本未收编 enterprise-portal"
 grep -q 'VITE_API_BASE_URL="$PUBLIC_BASE_URL_VALUE"' "$ROOT/scripts/deploy/install-systemd-release.sh" \
   && pass "发布脚本会向 miniapp H5 注入正式 API origin" || fail "miniapp H5 未绑定 PUBLIC_BASE_URL"
 grep -q 'school-lifecycle-file-scan' "$ROOT/scripts/deploy/install-systemd-release.sh" \

@@ -78,3 +78,18 @@ def test_d_w5_r11_preflight_evidence_keeps_stage_hashes_and_raw_blockers():
         '"evidenceHash": row.get("evidenceHash") or ""',
     ):
         assert token in source
+
+
+def test_sandbox_core_flow_does_not_reopen_archived_term_exam_or_makeup_gates():
+    from app.services import sandbox_school_academic_core_flow_seed as seed
+
+    source = inspect.getsource(seed.seed_academic_core_flows)
+    assert '"incident_type": "ABSENT"' in source
+    assert '"risk_alert_sent": True' in source
+    assert '"action": "EXAM_INCIDENT_CLOSE"' in source
+    assert '"after_val": "RISK_TRANSFERRED"' in source
+    batch_start = source.index('"batch_name": "2025-2026-2 学期期末补缓考"')
+    batch_end = source.index('_put(db, c["t_acad_makeup"]', batch_start)
+    batch_source = source[batch_start:batch_end]
+    assert '"status": "FINISHED"' in batch_source
+    assert '"status": "PUBLISHED"' not in batch_source

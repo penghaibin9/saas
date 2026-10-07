@@ -30,8 +30,8 @@ def test_c_attendance_has_one_command_transaction_owner():
     assert "AaAttendanceSession(" not in public
     assert "resolve_teaching_task_roster" not in public
     assert "return relation_guard.create_session(user, body)" in public
-    assert "return relation_guard.get_session(session_id, user)" in public
-    assert "return relation_guard.mark_attendance(session_id, user, body)" in public
+    assert "return relation_guard.get_session(session_id, user" in public
+    assert "return relation_guard.mark_attendance(session_id, user, body" in public
     assert "return relation_guard.submit_session(session_id, user)" in public
     assert "return read_guard.list_sessions(" in public
     assert "return read_guard.attendance_stats(" in public

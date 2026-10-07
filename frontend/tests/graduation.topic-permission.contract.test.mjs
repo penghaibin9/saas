@@ -51,7 +51,7 @@ test('topic management separates maintenance, assignment and export actions', ()
 
 test('topic detail actually loads and no longer uses the legacy write permission string', () => {
   assert.doesNotMatch(topicDetail, /graduation:topic:write/)
-  assert.match(topicDetail, /\n {2}mounted\(\) \{\n {4}this\.load\(\)\n {2}\},\n {2}methods:/)
+  assert.match(topicDetail, /mounted\(\)\s*\{\s*this\.load\(\)\s*\},\s*methods:/)
   assert.match(topicDetail, /goEdit\(\) \{/)
   assert.match(topicDetail, /canTopicCreate/)
   assert.match(topicDetail, /canTopicAssign/)
@@ -60,6 +60,8 @@ test('topic detail actually loads and no longer uses the legacy write permission
 test('topic change list and detail require review permission for approve or reject', () => {
   for (const source of [changeList, changeDetail]) {
     assert.match(source, /canTopicReview\(\)[^{]*\{[^}]*topic\.review/)
-    assert.match(source, /if \(!this\.canTopicReview\) return/)
+    assert.match(source, /if \(!this\.canTopicReview[^)]*\) (?:\{|)?\s*(?:this\.[^\n]+\n\s*)?return/)
   }
+  assert.match(changeList, /row\.status !== 'PENDING'/)
+  assert.match(changeList, /beforeRouteLeave[\s\S]*this\.submitting[\s\S]*next\(false\)/)
 })

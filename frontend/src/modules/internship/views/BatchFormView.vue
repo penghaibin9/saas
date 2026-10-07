@@ -1,42 +1,58 @@
 <template>
   <ModulePageShell
+    class="ix-batch-form"
     :title="isEdit ? '编辑实习批次' : '新建实习批次'"
     :subtitle="pageSubtitle"
-    :role-name="roleName"
-    :data-scope-name="dataScopeName"
     watermark-purpose="实习批次管理"
   >
     <template #actions>
-      <AppButton variant="ghost" @click="goBack">← 返回批次列表</AppButton>
+      <AppButton variant="ghost" @click="goBack">{{ isEdit ? '返回批次详情' : '返回批次列表' }}</AppButton>
     </template>
 
-    <ErrorState v-if="error" :description="error" @retry="init" />
-    <LoadingState v-else-if="loading" />
+    <ErrorState v-if="contextError" :description="contextError" @retry="loadContext" />
+    <ErrorState v-else-if="error" :description="error" @retry="init" />
+    <LoadingState v-else-if="loading || contextLoading" />
     <div v-else class="mp-stack">
       <AppInlineAlert
         v-if="readonly"
         type="warning"
         title="当前批次不可编辑"
-        :description="`批次当前状态为「${detail.statusLabel}」，仅草稿（DRAFT）批次可在此编辑；本页为只读预览，提交已禁用。`"
+        :description="detail?.status !== 'DRAFT' && detail ? `当前为${detail.statusLabel}，可查看原有配置。` : '当前身份没有批次管理权限，可查看原有配置。'"
       />
 
+      <div v-if="saveError" class="bf-save-error" role="alert">
+        <strong>{{ saveError }}</strong>
+        <p v-if="versionConflict">你的输入仍保留在本页。请先查看最新批次，再决定是否重新编辑；不会直接覆盖他人的修改。</p>
+        <AppButton v-if="versionConflict" variant="secondary" @click="openLatest">查看最新批次</AppButton>
+      </div>
+      <div class="bf-layout">
+      <aside class="bf-guide">
+        <span class="bf-guide__label">填写批次安排</span>
+        <nav aria-label="批次表单分区">
+          <button v-for="section in formSections" :key="section.key" type="button"
+            :aria-current="activeSection === section.key ? 'step' : undefined" @click="focusSection(section.key)">
+            <span>{{ section.order }}</span>{{ section.label }}
+          </button>
+        </nav>
+        <p>保存为草稿后，继续选择参与班级与学生。名单预览确认后，再启用批次。</p>
+      </aside>
       <AppForm
         ref="batchForm"
         :model="form"
         :rules="formRules"
-        layout="horizontal"
-        label-width="112px"
+        class="bf-content"
+        layout="vertical"
         @submit="onSubmit"
       >
         <!-- 基本信息 -->
-        <section class="mp-card">
-          <div class="mp-card__head"><span class="mp-card__title">基本信息</span></div>
+        <section id="batch-basic" ref="basic" class="mp-card" tabindex="-1">
+          <div class="mp-card__head"><h2 class="mp-card__title">基本信息</h2></div>
           <div class="mp-card__body">
             <div class="bf-grid">
               <AppFormItem label="批次名称" prop="batchName">
                 <AppTextInput v-model="form.batchName" :disabled="readonly" placeholder="如：2026 届春季岗位实习" />
               </AppFormItem>
-              <AppFormItem label="批次编号" prop="batchNo" :hint="isEdit ? '批次编号创建后不可修改' : '租户内唯一，如：INT-2026S'">
+              <AppFormItem label="批次编号" prop="batchNo" :hint="isEdit ? '批次编号创建后不可修改' : '本校不重复的编号，如：INT-2026S'">
                 <AppTextInput v-model="form.batchNo" :disabled="isEdit || readonly" placeholder="如：INT-2026S" />
               </AppFormItem>
               <AppFormItem label="学年" prop="academicYear">
@@ -68,25 +84,23 @@
         </section>
 
         <!-- 阶段配置：表单化（BUG-007），高级模式保留原 JSON 通道 -->
-        <section class="mp-card">
+        <section id="batch-stages" ref="stages" class="mp-card" tabindex="-1">
           <div class="mp-card__head">
-            <span class="mp-card__title">阶段配置</span>
-            <span class="bf-aside">不填任何阶段时使用默认三阶段：岗前准备 / 在岗实习 / 总结考核</span>
-            <button type="button" class="bf-mode" @click="advancedJson = !advancedJson">
-              {{ advancedJson ? '← 返回表单配置' : '高级模式（JSON）' }}
+            <h2 class="mp-card__title">阶段安排</h2>
+            <button type="button" class="bf-mode" @click="toggleAdvanced">
+              {{ advancedJson ? '使用分组表单' : '高级配置' }}
             </button>
           </div>
           <div class="mp-card__body bf-json">
             <template v-if="!advancedJson">
               <div class="bf-rows">
                 <div v-for="(s, i) in stageRows" :key="i" class="bf-row">
-                  <AppTextInput v-model="s.name" :disabled="readonly" placeholder="阶段名称，如 岗前准备" />
-                  <AppTextInput v-model="s.code" :disabled="readonly" placeholder="标识，如 PREP" />
-                  <AppDatePicker v-model="s.startDate" :disabled="readonly" placeholder="开始日期" />
-                  <AppDatePicker v-model="s.endDate" :disabled="readonly" placeholder="结束日期" />
+                  <AppFormItem :label="`阶段 ${i + 1}`"><AppTextInput v-model="s.name" :disabled="readonly" placeholder="如：岗前准备" /></AppFormItem>
+                  <AppFormItem label="开始日期"><AppDatePicker v-model="s.startDate" :disabled="readonly" /></AppFormItem>
+                  <AppFormItem label="结束日期"><AppDatePicker v-model="s.endDate" :disabled="readonly" /></AppFormItem>
                   <AppButton variant="text" :disabled="readonly" @click="removeStage(i)">删除</AppButton>
                 </div>
-                <p v-if="!stageRows.length" class="bf-preview__note">未配置阶段，提交后使用默认三阶段。</p>
+                <p v-if="!stageRows.length" class="bf-preview__note">使用系统现有三个阶段：岗前准备、在岗实习、总结考核。可按本轮安排添加具体日期。</p>
                 <AppButton variant="secondary" size="sm" :disabled="readonly" @click="addStage">＋ 添加阶段</AppButton>
                 <p v-if="stageFormError" class="bf-preview__err">{{ stageFormError }}</p>
               </div>
@@ -107,7 +121,7 @@
                 placeholder='[{"code":"PREP","name":"岗前准备","startDate":"","endDate":""}]'
               />
             </AppFormItem>
-            <div class="bf-preview">
+            <div v-if="advancedJson" class="bf-preview">
               <div class="bf-preview__title">解析预览</div>
               <p v-if="advancedJson && stagesParsed.empty" class="bf-preview__note">留空提交时将使用默认三阶段：岗前准备 / 在岗实习 / 总结考核</p>
               <p v-else-if="advancedJson && stagesError" class="bf-preview__err">{{ stagesError }}</p>
@@ -117,10 +131,10 @@
         </section>
 
         <!-- 规则配置：表单化（BUG-007），6 个规则菜单在此有真正可用的配置界面 -->
-        <section class="mp-card">
+        <section id="batch-rules" ref="rules" class="mp-card" tabindex="-1">
           <div class="mp-card__head">
-            <span class="mp-card__title">规则配置</span>
-            <span class="bf-aside">打卡 / 周报 / 指导 / 评价 / 成绩 / 上岗前置</span>
+            <h2 class="mp-card__title">业务规则</h2>
+            <span class="bf-aside">采用现有配置，请按学校本轮要求核对</span>
           </div>
           <div class="mp-card__body bf-json">
             <div v-if="!advancedJson" class="bf-rules">
@@ -131,6 +145,9 @@
                 </AppFormItem>
                 <AppFormItem label="电子围栏半径（米）">
                   <AppNumberInput v-model="rulesForm.checkin.geofenceRadiusM" :min="50" :max="5000" :step="50" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="最大定位误差（米）" hint="超过该误差时转教师核验，不直接判定正常或超范围">
+                  <AppNumberInput v-model="rulesForm.checkin.maxAccuracyM" :min="20" :max="2000" :step="10" :disabled="readonly" />
                 </AppFormItem>
               </div>
 
@@ -231,13 +248,14 @@
 
         <AppSubmitBar
           :loading="submitting"
-          :disabled="readonly"
-          :submit-text="isEdit ? '保存修改' : '创建批次'"
+          :disabled="readonly || versionConflict"
+          :submit-text="isEdit ? '保存修改' : '保存并配置名单'"
           cancel-text="取消"
           @submit="onSubmit"
           @cancel="goBack"
         />
       </AppForm>
+      </div>
     </div>
   </ModulePageShell>
 </template>
@@ -260,10 +278,11 @@ import {
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { toast } from '@/utils/toast'
 import { formatDate } from '@/utils/dateUtils'
+import { withInternshipBatch, internshipBatchListReturn } from '../navigation.js'
 
 const RULE_LABELS = {
   checkin: '打卡', weeklyReport: '周报', guidance: '指导', evaluation: '评价', score: '成绩',
-  requireDaily: '每日必打卡', geofenceRadiusM: '电子围栏半径（米）', frequency: '提交频率',
+  requireDaily: '每日必打卡', geofenceRadiusM: '电子围栏半径（米）', maxAccuracyM: '最大定位误差（米）', frequency: '提交频率',
   minWordCount: '正文最少字数', deadlineWeekday: '截止（周几前）',
   minVisitsPerTerm: '每学期最少巡访次数', minCommunicationsPerMonth: '每月最少沟通次数',
   enterpriseWeight: '企业评价权重', teacherWeight: '教师评价权重', selfWeight: '学生自评权重',
@@ -279,7 +298,7 @@ const blankForm = () => ({
 
 /** 规则表单默认值（与后端 internship_service.DEFAULT_RULES 对齐；权重以百分数呈现）。 */
 const blankRulesForm = () => ({
-  checkin: { requireDaily: true, geofenceRadiusM: 500 },
+  checkin: { requireDaily: true, geofenceRadiusM: 500, maxAccuracyM: 200 },
   weeklyReport: { frequency: 'WEEKLY', minWordCount: 800, deadlineWeekday: 7 },
   guidance: { minVisitsPerTerm: 2, minCommunicationsPerMonth: 2 },
   evaluation: { enterpriseWeight: 40, teacherWeight: 40, selfWeight: 20 },
@@ -320,8 +339,13 @@ export default {
   data() {
     return {
       ctx: null,
+      contextLoading: true,
+      contextError: '',
       loading: false,
       error: '',
+      saveError: '',
+      versionConflict: false,
+      activeSection: 'basic',
       submitting: false,
       detail: null,
       form: blankForm(),
@@ -335,6 +359,11 @@ export default {
     }
   },
   computed: {
+    formSections() { return [
+      { key: 'basic', label: '基本信息', order: '01' },
+      { key: 'stages', label: '阶段安排', order: '02' },
+      { key: 'rules', label: '业务规则', order: '03' }
+    ] },
     evalWeightSum() {
       const e = this.rulesForm.evaluation
       return Number(e.enterpriseWeight || 0) + Number(e.teacherWeight || 0) + Number(e.selfWeight || 0)
@@ -364,13 +393,13 @@ export default {
       return this.ctx?.dataScope?.name || ''
     },
     readonly() {
-      return this.isEdit && !!this.detail && this.detail.status !== 'DRAFT'
+      return this.ctx?.permissionActions?.createBatch?.allowed !== true || (this.isEdit && !!this.detail && this.detail.status !== 'DRAFT')
     },
     pageSubtitle() {
       if (this.isEdit) {
         return this.detail ? `${this.detail.batchName}（${this.detail.batchNo}）` : ''
       }
-      return '先创建批次并配置业务规则，保存后继续选择参与班级与学生，预览名单无误后再启用'
+      return '填写周期和本轮规则，保存为草稿后继续配置参与名单。'
     },
     formRules() {
       const rules = {
@@ -442,25 +471,60 @@ export default {
     }
   },
   created() {
-    internshipApi.getContext().then((res) => {
-      if (res.code === 0) this.ctx = res.data
-    })
+    this.loadContext()
     this.init()
   },
   methods: {
+    async loadContext() {
+      this.contextLoading = true; this.contextError = ''; this.ctx = null
+      try {
+        const res = await internshipApi.getContext()
+        if (res.code !== 0) throw new Error(res.message || '批次权限加载失败，请重试')
+        this.ctx = res.data
+      } catch (error) {
+        this.contextError = error.message || '批次权限加载失败，请重试'
+      } finally { this.contextLoading = false }
+    },
+    focusSection(section) {
+      this.activeSection = section
+      this.$refs[section]?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      this.$refs[section]?.focus({ preventScroll: true })
+    },
+    toggleAdvanced() {
+      if (!this.advancedJson) {
+        this.form.stagesJson = JSON.stringify(this.stageRows, null, 2)
+        this.form.rulesJson = JSON.stringify(this.buildRulesFromForm(), null, 2)
+        this.advancedJson = true
+      } else {
+        if (this.stagesError || this.rulesError) return toast.error('请先修正高级配置中的格式错误')
+        this.fillStructured({ stages: this.stagesParsed.data || [], rules: this.rulesParsed.data || {} })
+        this.advancedJson = false
+      }
+    },
+    detailLocation(id, section = this.$route.query?.setup) {
+      const location = withInternshipBatch(`/admin/internship/batches/${id}`, id)
+      if (this.$route.query?.returnTo) location.query.returnTo = this.$route.query.returnTo
+      if (section) location.query.setup = section
+      return location
+    },
+    openLatest() { this.$router.push(this.detailLocation(this.detail.id)) },
     dateShort(v) {
       return formatDate(v, '')
     },
     addStage() {
+      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
       this.stageRows.push({ code: '', name: '', startDate: '', endDate: '' })
     },
     removeStage(i) {
+      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
       this.stageRows.splice(i, 1)
     },
     addComponent() {
+      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
       this.rulesForm.score.components.push({ name: '', weight: 0 })
     },
     removeComponent(i) {
+      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
       this.rulesForm.score.components.splice(i, 1)
     },
     /** 把后端返回的 stages / rules 回填到结构化表单（权重统一转百分数）。 */
@@ -497,7 +561,8 @@ export default {
       return {
         checkin: {
           requireDaily: !!f.checkin.requireDaily,
-          geofenceRadiusM: Number(f.checkin.geofenceRadiusM || 0)
+          geofenceRadiusM: Number(f.checkin.geofenceRadiusM || 0),
+          maxAccuracyM: Number(f.checkin.maxAccuracyM || 200)
         },
         weeklyReport: {
           frequency: f.weeklyReport.frequency,
@@ -530,12 +595,14 @@ export default {
       return `${Math.round((v || 0) * 100)}%`
     },
     goBack() {
-      const back = this.$router.options.history.state && this.$router.options.history.state.back
-      if (typeof back === 'string' && back.startsWith('/admin/internship/batches')) this.$router.back()
-      else this.$router.push('/admin/internship/batches')
+      this.$router.push(this.isEdit
+        ? this.detailLocation(this.$route.params.id)
+        : internshipBatchListReturn(this.$route.query, this.$route.query?.batchId))
     },
     async init() {
       this.error = ''
+      this.saveError = ''
+      this.versionConflict = false
       if (!this.isEdit) {
         this.detail = null
         this.form = blankForm()
@@ -571,6 +638,8 @@ export default {
         rulesJson: d.rules ? JSON.stringify(d.rules, null, 2) : ''
       }
       this.fillStructured(d)
+      await this.$nextTick()
+      if (this.formSections.some((section) => section.key === this.$route.query.section)) this.focusSection(this.$route.query.section)
     },
     flattenRules(obj, path = []) {
       const rows = []
@@ -603,16 +672,17 @@ export default {
       return String(v)
     },
     async onSubmit() {
-      if (this.readonly || this.submitting) return
+      if (this.readonly || this.submitting || this.versionConflict) return
+      this.saveError = ''
       const { valid } = await this.$refs.batchForm.validate()
-      if (!valid) return
+      if (!valid) { this.focusSection('basic'); return }
       if (this.advancedJson) {
         if (this.stagesError) return toast.error('阶段时间轴 JSON 配置有误，请先修正')
         if (this.rulesError) return toast.error('规则配置 JSON 配置有误，请先修正')
       } else {
-        if (this.stageFormError) return toast.error(this.stageFormError)
-        if (this.evalWeightSum !== 100) return toast.error(`评价权重合计须为 100%，当前 ${this.evalWeightSum}%`)
-        if (this.componentWeightSum !== 100) return toast.error(`成绩构成权重合计须为 100%，当前 ${this.componentWeightSum}%`)
+        if (this.stageFormError) { this.focusSection('stages'); return toast.error(this.stageFormError) }
+        if (this.evalWeightSum !== 100) { this.focusSection('rules'); return toast.error(`评价权重合计须为 100%，当前 ${this.evalWeightSum}%`) }
+        if (this.componentWeightSum !== 100) { this.focusSection('rules'); return toast.error(`成绩构成权重合计须为 100%，当前 ${this.componentWeightSum}%`) }
       }
       const f = this.form
       const body = {
@@ -657,23 +727,20 @@ export default {
           ? await internshipApi.updateBatch(this.$route.params.id, body)
           : await internshipApi.createBatch(body)
         if (res.code === 0) {
+          window.__SAAS_DIRTY_FORM_GUARD__?.markSaved()
           if (this.isEdit) {
             toast.success('已保存修改')
             this.goBack()
           } else {
             toast.success('批次已创建，请继续选择参与班级与学生')
-            this.$router.push(`/admin/internship/batches/${res.data.id}?setup=participants`)
+            this.$router.push(this.detailLocation(res.data.id, 'participants'))
           }
         } else {
-          toast.error(res.message || '保存失败')
-          // 版本冲突：只刷新 version，保留用户已填表单便于立刻再提交
-          if (this.isEdit && (Number(res.code) === 409001 || /刷新后重试|已被其他用户修改|DATA_CONFLICT/.test(String(res.message || '')))) {
-            const fres = await internshipApi.getBatchDetail(this.$route.params.id)
-            if (fres.code === 0 && fres.data && this.detail) {
-              this.detail = { ...this.detail, version: fres.data.version }
-            }
-          }
+          this.saveError = res.message || '保存失败，请重试，已填写内容仍保留。'
+          this.versionConflict = this.isEdit && (Number(res.code) === 409001 || /已被其他用户修改|DATA_CONFLICT/.test(String(res.message || '')))
         }
+      } catch (e) {
+        this.saveError = e.message || '保存失败，请重试，已填写内容仍保留。'
       } finally {
         this.submitting = false
       }
@@ -783,4 +850,27 @@ export default {
     grid-template-columns: 1fr;
   }
 }
+
+.bf-layout { display: grid; grid-template-columns: 156px minmax(0, 1fr); gap: 22px; align-items: start; }
+.bf-guide { position: sticky; top: 170px; padding-top: 8px; }
+.bf-guide__label { font-size: 12px; color: var(--t3); display: block; margin: 0 0 12px 10px; }
+.bf-guide nav { display: grid; gap: 4px; }
+.bf-guide button { display: flex; align-items: center; gap: 12px; background: transparent; border: 0; border-radius: 5px; padding: 12px 10px; text-align: left; font: inherit; font-size: 13px; color: var(--t2); cursor: pointer; }
+.bf-guide button span { color: var(--t3); font-size: 11px; }
+.bf-guide button[aria-current] { color: var(--pri); background: var(--pri-bg); font-weight: 600; }
+.bf-guide p { color: var(--t3); margin: 18px 10px; font-size: 12px; line-height: 1.8; }
+.bf-content { display: grid; gap: 18px; min-width: 0; }
+.bf-content section { scroll-margin-top: 170px; }
+.bf-content h2 { margin: 0; font-size: 15px; }
+.bf-content .bf-json { grid-template-columns: 1fr; }
+.bf-content .bf-grid { gap: 12px 24px; }
+.bf-content .bf-row { grid-template-columns: minmax(100px, 1.2fr) repeat(2, minmax(110px, 1fr)) auto; align-items: end; }
+.bf-content .bf-row--score { grid-template-columns: 1.4fr 0.8fr auto; align-items: center; }
+.bf-content .bf-rules__grp { border: 0; border-top: 1px solid var(--card-b); border-radius: 0; padding: 16px 0 0; }
+.bf-content .bf-rules { gap: 24px; }
+.bf-rules__t { font-size: 14px; color: var(--t1); }
+.bf-save-error { padding: 14px 18px; border: 1px solid var(--danger-200); background: var(--danger-50); color: var(--danger-700); font-size: 13px; line-height: 1.7; border-radius: 6px; }
+@media (max-width: 1080px) { .bf-layout { grid-template-columns: 1fr; } .bf-guide { position: static; padding: 0; } .bf-guide nav { display: flex; } .bf-guide p, .bf-guide__label { display: none; } }
+@media (max-width: 800px) { .bf-content .bf-row { grid-template-columns: 1fr; } }
+
 </style>

@@ -1,0 +1,46 @@
+version: file-capability-inventory/v1
+entries:
+  - module: platform-integrity
+    client: backend
+    route: internal://platform-integrity/frozen-evidence-package/standard-v1
+    page: backend/app/modules/platform_integrity/deterministic_package.py
+    action: generate+archive+download
+    fileCategory: FROZEN_EVIDENCE_PACKAGE
+    api: POST /api/v1/graduation/manifests/{manifest_id}/frozen-package/build
+    backendService: backend/app/modules/platform_integrity/deterministic_package.py::write_standard_v1
+    storageMode: file-center+configured-storage+ephemeral-local-zip
+    authMode: domain-adapter-authorization+tenant-scoped-worker+file-center-resolver
+    dataScope: tenant+archive-manifest+owning-domain-scope
+    versioned: true
+    scanGated: true
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '6'
+    notes: STANDARD_V1 deterministic ZIP writer for row-pinned FileVersion/FileObject bytes. Generated artifacts are registered in File Center, and download remains subject to active file status, ready scan state, exact manifest artifact identity, tenant and owning-domain scope. Source backend/app/modules/platform_integrity/deterministic_package.py
+  - module: platform-integrity
+    client: backend
+    route: /api/v1/academic-affairs/archive/batches/{bid}/export
+    page: backend/app/modules/platform_integrity/package_inventory.py
+    action: inventory-reference
+    fileCategory: NOT_A_FILE_CAPABILITY
+    api: source-ledger reference only
+    backendService: backend/app/modules/platform_integrity/package_inventory.py::PRODUCTION_PACKAGE_PATHS
+    storageMode: none
+    authMode: none-inventory-only
+    dataScope: none-inventory-only
+    versioned: false
+    scanGated: false
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: false
+    status: active
+    risk: P3
+    targetPhase: '0'
+    notes: Machine-readable PLAT-A source ledger records the existing Academic Affairs export route but never serves HTTP or file bytes. Source backend/app/modules/platform_integrity/package_inventory.py

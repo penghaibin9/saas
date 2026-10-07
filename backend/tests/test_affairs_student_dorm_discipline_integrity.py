@@ -20,7 +20,7 @@ def test_student_service_ledger_identity_is_read_only_and_versioned():
     assert 'payload["counselor"]' in text
     assert "atomic_versioned_update" in text
     assert 'StudentProfile.tenant_id == _tid()' not in text
-    assert 'build_affairs_context(get_current_user_ctx() or {}, db).require_student' in text
+    assert 'build_affairs_context(get_current_user_ctx() or {}, scope_db).require_student' in text
     assert 'CsServiceStudent.tenant_id == _tid()' in text
 
 
@@ -33,6 +33,18 @@ def test_dorm_transfer_is_node_role_and_assignee_bound():
     assert "当前节点仅目标楼栋宿管可审批" in text
     assert "StudentStageEvent" in text
     assert "DORM.TRANSFER.EXECUTED" in text
+
+
+def test_dorm_building_manager_binding_requires_real_active_dorm_manager_role():
+    text = read("backend/app/services/affairs_dorm_node_guard.py")
+    assert "_has_active_dorm_manager_role" in text
+    assert 'Role.role_code == "DORM_MANAGER"' in text
+    assert 'Role.status == "ACTIVE"' in text
+    assert 'UserRole.status == "ACTIVE"' in text
+    assert 'managerTeacherKey' in text
+    assert "请选择具有宿管角色的有效宿管" in text
+    assert "dorm._resolve_user_by_manager_key = resolve_user_by_manager_key" in text
+    assert "dorm.create_building = create_building" in text
 
 
 def test_discipline_projection_never_uses_profile_id_as_shadow_id():

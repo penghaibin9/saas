@@ -37,6 +37,20 @@ def _patch_writer_tenant(monkeypatch) -> None:
     """
     monkeypatch.setattr(svc, "_tid", lambda: TID)
     monkeypatch.setattr(archive_core, "_tid", lambda: TID)
+    from app.modules.academic_affairs.services import academic_affairs_schedule_resource_guard as resource_guard
+    monkeypatch.setattr(resource_guard, "_tid", lambda: TID)
+
+
+def _run_with_tenant_context(invoke):
+    """ThreadPool workers do not inherit request ContextVars; restore the real tenant boundary."""
+    from app.core.context import get_tenant, set_tenant
+
+    previous = get_tenant()
+    set_tenant({"tenantId": str(TID), "tenantCode": "aa-w1-primary"})
+    try:
+        return invoke()
+    finally:
+        set_tenant(previous)
 
 
 def _tenant(tenant_id: int, code: str, name: str):
@@ -179,7 +193,7 @@ def _assert_writer_waits_for_tenant_lock(monkeypatch, action: str, invoke):
     blocker = _hold_tenant_lock(TID)
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(invoke)
+            future = pool.submit(_run_with_tenant_context, invoke)
             waited = not started_mutation.wait(timeout=0.35)
             blocker.commit()
             result = future.result(timeout=8)
@@ -197,7 +211,7 @@ def _assert_future_waits_for_tenant_lock(invoke):
     blocker = _hold_tenant_lock(TID)
     try:
         with ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(invoke)
+            future = pool.submit(_run_with_tenant_context, invoke)
             sleep(0.35)
             waited = not future.done()
             blocker.commit()

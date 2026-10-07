@@ -472,27 +472,43 @@ def archive_activity(activity_id, user, expected_version=None) -> dict:
         return _row(a)
 
 
-def list_participants(activity_id, user):
+def list_participants(activity_id, user, page=1, page_size=20):
+    from app.core.affairs_security import build_affairs_context
     from app.models import AffairsActivitySignup, StudentProfile
     from app.services import affairs_activity_reliability_service as reliability
+    page = max(1, int(page or 1))
+    page_size = min(100, max(1, int(page_size or 20)))
     with session() as db:
         activity = _load(db, activity_id)
         tenant_all, class_tokens, college_tokens = reliability._teacher_scope_tokens(db, user)
         if not tenant_all and not reliability._activity_matches(activity, class_tokens, college_tokens):
             raise AppException("NO_DATA_SCOPE", "该活动不在您的数据范围内")
-        rows = db.execute(select(AffairsActivitySignup, StudentProfile).join(
+        query = select(AffairsActivitySignup, StudentProfile).join(
             StudentProfile, StudentProfile.id == AffairsActivitySignup.student_id,
         ).where(
             AffairsActivitySignup.tenant_id == _tid(), AffairsActivitySignup.activity_id == activity.id,
             AffairsActivitySignup.is_deleted.is_(False), StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
-        ).order_by(AffairsActivitySignup.id)).all()
-        return [{
+        )
+        # 可见全校活动不代表可读取全校学生名单；名单与统计使用同一范围。
+        ctx = build_affairs_context(user, db)
+        if ctx.scope_type == "STUDENT":
+            query = query.where(StudentProfile.id.in_(ctx.student_ids | ctx.psychology_student_ids or {-1}))
+        elif ctx.scope_type != "TENANT_ALL":
+            query = query.where(StudentProfile.class_id.in_(ctx.allowed_class_ids(db) or {-1}))
+        roster = query.subquery()
+        counts = dict(db.execute(select(roster.c.signup_status, func.count()).group_by(roster.c.signup_status)).all())
+        total = sum(counts.values())
+        rows = db.execute(query.order_by(AffairsActivitySignup.id).offset((page - 1) * page_size).limit(page_size)).all()
+        items = [{
             "signupId": str(signup.id), "studentId": str(signup.student_id),
             "studentNo": student.student_no or "", "realName": student.real_name or "",
             "signupStatus": signup.signup_status, "enrolledAt": _iso(signup.enrolled_at),
             "checkinAt": _iso(signup.checkin_at), "version": int(signup.version or 0),
         } for signup, student in rows]
+        return {"items": items, "total": total, "page": page, "pageSize": page_size,
+                "summary": {"total": total - counts.get("CANCELLED", 0),
+                            "checkedIn": counts.get("CHECKED_IN", 0) + counts.get("CONFIRMED", 0)}}
 
 def _resolve_student_id(db, user):
     """解析登录学生的 StudentProfile.id（与 mobile_affairs_service._me 同源）。"""

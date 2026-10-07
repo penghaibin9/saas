@@ -2,18 +2,21 @@ import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 
 test.describe('Official website P0 sales-story closure', () => {
-  test('desktop homepage leads with sales value, visible login, lifecycle, products, platform and delivery', async ({ page }) => {
+  test('desktop homepage leads with current product lines, student lifecycle, people, training and delivery', async ({ page }) => {
     await page.goto(`${config.staffBaseUrl}/`)
-    await expect(page.getByRole('heading', { level: 1, name: /把学生从入校到就业/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /选择身份，直接进入系统/ })).toBeVisible()
-    await expect(page.locator('#login .yk-login-card')).toHaveCount(3)
-    await expect(page.getByRole('heading', { name: /从迎新到就业/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /覆盖学校最重/ })).toBeVisible()
-    await expect(page.locator('#products .yk-home-product-card')).toHaveCount(4)
+    await expect(page.locator('#ykw-site')).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: /服务学生成长/ })).toBeVisible()
+    await expect(page.locator('#solutions')).toBeVisible()
+    await expect(page.locator('#solutions .suite-card')).toHaveCount(3)
+    await expect(page.locator('#students')).toBeVisible()
+    await expect(page.locator('#students [role="tab"]')).toHaveCount(4)
+    await expect(page.locator('#people')).toBeVisible()
+    await expect(page.locator('#training')).toBeVisible()
+    await expect(page.locator('#wechat')).toBeVisible()
+    await expect(page.locator('#showcase')).toBeVisible()
     await expect(page.getByRole('heading', { name: /不从一张功能清单开始/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /统一工作、协同与治理/ })).toBeVisible()
-    await expect(page.getByRole('heading', { name: /四步完成部署与落地/ })).toBeVisible()
-    await expect(page.locator('#faq details')).toHaveCount(6)
+    await expect(page.locator('#delivery')).toBeVisible()
+    await expect(page.locator('#faq details')).toHaveCount(5)
   })
 
   for (const width of [375, 390, 430]) {
@@ -22,9 +25,10 @@ test.describe('Official website P0 sales-story closure', () => {
       await page.goto(`${config.staffBaseUrl}/`)
       const metrics = await page.evaluate(() => ({ scrollWidth: document.documentElement.scrollWidth, clientWidth: document.documentElement.clientWidth }))
       expect(metrics.scrollWidth).toBeLessThanOrEqual(metrics.clientWidth + 1)
-      await expect(page.locator('#login')).toBeVisible()
-      await expect(page.locator('#lifecycle')).toBeVisible()
-      await expect(page.locator('#platform')).toBeVisible()
+      await expect(page.locator('#solutions')).toBeVisible()
+      await expect(page.locator('#students')).toBeVisible()
+      await expect(page.locator('#people')).toBeVisible()
+      await expect(page.locator('#training')).toBeVisible()
     })
   }
 

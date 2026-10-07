@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import time
 import uuid
@@ -16,8 +17,8 @@ import urllib.error
 import urllib.request
 from openpyxl import load_workbook
 
-BASE = "http://127.0.0.1:8011/api/v1"
-TENANT = "sandbox-school"
+BASE = os.getenv("E2E_API_BASE_URL", "http://127.0.0.1:8011/api/v1").rstrip("/")
+TENANT = os.getenv("E2E_TENANT_CODE", "sandbox-school")
 ADMIN = ("admin2", "123456")
 STABLE = "E2eTest@2026"
 OUT_DIR = Path(__file__).resolve().parents[1] / "tmp"

@@ -10,7 +10,7 @@ def _stu_token(real_name, tenant_id=MAIN, tid="demo"):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{real_name}", "realName": real_name, "userType": "STUDENT",
         "tid": tid, "tenantId": str(tenant_id), "activeContextId": "ctx",
-        "currentRoleCode": "STUDENT", "clientType": "MP"})}
+        "currentRoleCode": "STUDENT", "clientType": "STUDENT_MINI"})}
 
 
 def _teacher_token(tenant_id=MAIN, tid="demo", role="COUNSELOR"):
@@ -18,7 +18,7 @@ def _teacher_token(tenant_id=MAIN, tid="demo", role="COUNSELOR"):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": "u-teacher", "realName": "王辅导", "userType": "TEACHER",
         "tid": tid, "tenantId": str(tenant_id), "activeContextId": "ctx",
-        "currentRoleCode": role, "clientType": "MP"})}
+        "currentRoleCode": role, "clientType": "TEACHER_MINI"})}
 
 
 def _seed_two_students(_db_mode):
@@ -98,7 +98,7 @@ def test_tenant_isolation(client, db_mode):
     # demo-school 租户的学生 token（realName 学生甲 但 tenant=demo）→ 看不到 main 的学生甲数据
     r = client.get("/api/v1/mobile/academic/my",
                    headers=_stu_token("学生甲", tenant_id=DEMO, tid="demo-school")).json()
-    assert r["code"] == 0 and r["data"]["hasData"] is False  # 跨租户查不到
+    assert r["code"] == 404001 and r["data"] is None  # 跨租户按不存在处理
 
 
 def test_home_aggregation_and_cross_tenant_isolation(client, db_mode):
@@ -266,7 +266,7 @@ def test_teacher_student_detail_cross_tenant_not_found(client, db_mode):
 def test_teacher_domain_pages_structure(client, db_mode):
     _seed_rich(db_mode)
     from app.db.session import get_sessionmaker
-    from app.models import GraduationBatch
+    from app.models import GraduationBatch, InternshipBatch
 
     db = get_sessionmaker()()
     try:
@@ -277,12 +277,18 @@ def test_teacher_domain_pages_structure(client, db_mode):
         db.add(batch)
         db.flush()
         batch_id = int(batch.id)
+        internship_batch = InternshipBatch(tenant_id=MAIN, batch_name="移动端实习结构测试",
+                                           batch_no="MOBILE-INTERN-STRUCTURE-001", status="RUNNING")
+        db.add(internship_batch)
+        db.flush()
+        internship_batch_id = int(internship_batch.id)
         db.commit()
     finally:
         db.close()
 
     admin_headers = _teacher_token(role="SCHOOL_ADMIN")
-    it = client.get("/api/v1/mobile/teacher/internship", headers=admin_headers).json()
+    it = client.get("/api/v1/mobile/teacher/internship", headers=admin_headers,
+                    params={"batchId": internship_batch_id}).json()
     assert it["code"] == 0 and "weeklyReports" in it["data"] and "abnormalCheckins" in it["data"]
     gd = client.get(
         "/api/v1/mobile/teacher/graduation", headers=admin_headers, params={"batchId": batch_id}
@@ -340,12 +346,12 @@ def test_new_endpoints_require_login(client):
 
 # ── 波8 补测：教师·我的班级 / 我的学生（counselor_id/head_teacher_id 数值ID范围收敛）──
 
-def _teacher_token_numeric(uid, tenant_id=MAIN, tid="demo", role="COUNSELOR"):
+def _teacher_token_numeric(uid, tenant_id=MAIN, tid="demo", role="COUNSELOR", client_type="TEACHER_MINI"):
     from app.core.security import create_access_token
     return {"Authorization": "Bearer " + create_access_token({
         "userId": str(uid), "realName": "范老师", "userType": "TEACHER",
         "tid": tid, "tenantId": str(tenant_id), "activeContextId": "ctx",
-        "currentRoleCode": role, "clientType": "MP"})}
+        "currentRoleCode": role, "clientType": client_type})}
 
 
 def _seed_class_with_counselor(counselor_id, n_students=2, tenant_id=MAIN):
@@ -358,7 +364,9 @@ def _seed_class_with_counselor(counselor_id, n_students=2, tenant_id=MAIN):
         db.add(c); db.flush()
         cid = c.id
         for i in range(n_students):
-            db.add(StudentProfile(tenant_id=tenant_id, student_no=f"MC{i:04d}",
+            # 同一用例会造多个行政班，学号必须跨班唯一，不能让夹具的唯一键冲突
+            # 掩盖接口分页/聚合本身的结果。
+            db.add(StudentProfile(tenant_id=tenant_id, student_no=f"MC{cid}-{i:02d}",
                                   real_name=f"移测生{i}", class_id=cid,
                                   current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE"))
         db.commit()
@@ -402,3 +410,25 @@ def test_teacher_my_classes_cross_tenant_isolation(client, db_mode):
     hdr = _teacher_token_numeric(555003, tenant_id=MAIN, tid="demo")
     students = client.get("/api/v1/mobile/teacher/my-students", headers=hdr).json()["data"]
     assert students["total"] == 2  # 只看本租户 2 人，不是跨租户合计的 7 人
+
+
+def test_teacher_my_classes_are_server_paged_aggregated_and_mini_only(client, db_mode):
+    """51 个班级不走 N+1/全量下发；PC 教师令牌也不能进入教师小程序入口。"""
+    del db_mode
+    for index in range(51):
+        _seed_class_with_counselor(555004, n_students=index % 3)
+    teacher = _teacher_token_numeric(555004)
+    first = client.get("/api/v1/mobile/teacher/my-classes?page=1&pageSize=20", headers=teacher)
+    second = client.get("/api/v1/mobile/teacher/my-classes?page=2&pageSize=20", headers=teacher)
+    third = client.get("/api/v1/mobile/teacher/my-classes?page=3&pageSize=20", headers=teacher)
+    assert first.status_code == second.status_code == third.status_code == 200
+    pages = [response.json()["data"] for response in (first, second, third)]
+    assert [(page["page"], page["pageSize"], page["total"], page["hasMore"], len(page["items"])) for page in pages] == [
+        (1, 20, 51, True, 20), (2, 20, 51, True, 20), (3, 20, 51, False, 11),
+    ]
+    ids = [{row["classId"] for row in page["items"]} for page in pages]
+    assert ids[0].isdisjoint(ids[1]) and ids[0].isdisjoint(ids[2]) and ids[1].isdisjoint(ids[2])
+    assert all(isinstance(row["studentCount"], int) for page in pages for row in page["items"])
+    pc_teacher = _teacher_token_numeric(555004, client_type="PC")
+    assert client.get("/api/v1/mobile/teacher/my-classes", headers=pc_teacher).status_code == 403
+    assert client.get("/api/v1/mobile/teacher/my-students", headers=pc_teacher).status_code == 403

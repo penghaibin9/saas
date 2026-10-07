@@ -1,15 +1,38 @@
 <template>
   <ModulePageShell
-    title="考务管理 · 教务处控制台"
-    :subtitle="'批次：草稿→圈课→学院确认→编排→发布→结束→归档 · 共 ' + pagination.total + ' 个批次'"
+    :title="pageMeta.title"
+    :subtitle="pageMeta.subtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton variant="primary" @click="openCreate">新建考试批次</AppButton>
+      <AppButton v-if="viewMode === 'exam' && canManageExam" variant="primary" @click="openCreate">创建考试批次</AppButton>
+      <AppButton v-else size="small" variant="ghost" :disabled="loading" @click="load">刷新正式数据</AppButton>
     </template>
 
-    <div class="aaexam-layout">
+    <section v-if="teacherExamView" aria-label="本人正式监考安排">
+      <h2>我的监考安排</h2>
+      <p>按本人当前正式监考指派展示。考试时间、教室或监考人调整后，请刷新核对。</p>
+      <LoadingState v-if="loading" />
+      <ErrorState v-else-if="error" :description="error" @retry="load" />
+      <EmptyState v-else-if="!myInvigilations.length" title="暂无正式监考安排" description="展示本人正式监考安排及尚未完成到考登记的场次。" />
+      <DataTable v-else :columns="invigilationColumns" :rows="myInvigilations" row-key="invigilatorId">
+        <template #cell-course="{ row }"><strong>{{ row.courseName }}</strong><p>{{ row.batchName }}</p></template>
+        <template #cell-when="{ row }">{{ row.examDate }} {{ row.startTime }}—{{ row.endTime }}</template>
+        <template #cell-duty="{ row }">{{ row.role === 'CHIEF' ? '主监考' : row.role === 'ASSISTANT' ? '监考' : '监考职责待核对' }}</template>
+        <template #cell-state="{ row }">{{ row.workStatus === 'FINISHED' ? '考试已结束' : '待完成监考办理' }}</template>
+        <template #cell-actions="{ row }">
+          <AppButton size="small" variant="primary" @click="attendanceRoomId = row.examRoomId">到考登记</AppButton>
+          <AppButton size="small" variant="ghost" @click="myExamBatch = { batchId: row.batchId, batchName: row.batchName, status: row.batchStatus }">查看考场异常</AppButton>
+        </template>
+      </DataTable>
+      <AaExamAttendanceWorkbench v-if="attendanceRoomId" :key="identityKey + ':' + attendanceRoomId" :room-id="attendanceRoomId" />
+      <AaExamIncidentWorkbench v-if="myExamBatch" :key="myExamBatch.batchId" :batch="myExamBatch" />
+    </section>
+    <AaExamObjectBar v-else v-bind="objectBar" />
+    <AaExamStageRail v-if="!teacherExamView && (current || selectedDefer || selectedArchive)" :steps="stageSteps" :active-index="stageIndex" :aria-label="pageMeta.title + '办理阶段'" />
+
+    <div v-if="viewMode === 'exam' && !teacherExamView" class="aaexam-layout">
       <div class="aaexam-list">
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
@@ -32,32 +55,40 @@
               <div class="aaexam-title">{{ current.batchName }}</div>
               <StatusTag :type="statusType(current.status)" :label="statusLabel(current.status)" dot />
             </div>
-            <div class="aaexam-actions">
-              <AppButton v-if="current.status === 'DRAFT'" size="small" variant="ghost" @click="openAddCourse">+ 批量圈课</AppButton>
-              <AppButton v-if="current.status === 'DRAFT'" size="small" variant="primary" @click="lc('confirmBatchCourses', '推进(课程确认完成)')">推进</AppButton>
-              <AppButton v-if="['COURSE_CONFIRMED','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openPatrol">巡考安排</AppButton>
-              <AppButton v-if="current.status === 'COURSE_CONFIRMED'" size="small" variant="ghost" :loading="autoArranging" @click="openAutoPlan">自动排考</AppButton>
+            <div v-if="schoolExamScope && (canManageExam || canArrangeExam || canPublishPermission)" class="aaexam-actions">
+              <AppButton v-if="canManageExam && current.status === 'DRAFT'" size="small" variant="ghost" @click="openAddCourse">+ 批量圈课</AppButton>
+              <AppButton v-if="canManageExam && current.status === 'DRAFT'" size="small" variant="primary" @click="lc('confirmBatchCourses', '推进(课程确认完成)')">推进</AppButton>
+              <AppButton v-if="canArrangeExam && ['COURSE_CONFIRMED','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openPatrol">巡考安排</AppButton>
+              <AppButton v-if="canArrangeExam && current.status === 'COURSE_CONFIRMED'" size="small" variant="ghost" :loading="autoArranging" @click="openAutoPlan">自动排考</AppButton>
               <AppButton
-                v-if="current.status === 'COURSE_CONFIRMED'"
+                v-if="['COURSE_CONFIRMED', 'ARRANGED'].includes(current.status) && canPublishPermission"
                 size="small"
                 variant="primary"
+                :disabled="!canPublishExam || examActionBusy || saving"
                 @click="lc('publishBatch', '发布')"
               >发布</AppButton>
-              <AppButton v-if="current.status === 'PUBLISHED'" size="small" variant="warning" @click="lc('finishBatch', '结束考试')">结束</AppButton>
-              <AppButton v-if="current.status === 'FINISHED'" size="small" variant="ghost" @click="lc('archiveBatch', '归档')">归档</AppButton>
+              <AppButton v-if="canManageExam && current.status === 'PUBLISHED'" size="small" variant="warning" @click="lc('finishBatch', '结束考试')">结束</AppButton>
+              <AppButton v-if="canManageExam && current.status === 'FINISHED'" size="small" variant="ghost" @click="lc('archiveBatch', '归档')">归档</AppButton>
             </div>
           </div>
 
+          <LoadingState v-if="batchDetailLoading" />
+          <AppInlineAlert v-if="examActionError" type="danger" :description="examActionError" />
+          <AppInlineAlert v-if="publishReason" type="info" :description="publishReason" />
+          <AppInlineAlert v-if="current.status === 'ARCHIVED'" type="success" description="本考试批次已完成归档，正式办理结束；后续按权限查阅归档记录。" />
+          <AppInlineAlert v-else-if="current.status === 'FINISHED'" type="info" description="考试已结束，下一步由校教务完成归档；无需重新发布。" />
+          <AppButton v-if="readinessError || examActionError" variant="ghost" @click="refresh">重新读取当前批次</AppButton>
           <AppInlineAlert
             v-if="readinessError"
             type="danger"
-            :description="'发布就绪检查失败：' + readinessError + '；仍可尝试发布，由正式门禁最终判定'"
+            :description="'考务数据核对失败：' + readinessError + '；请重新读取后核对'"
           />
+          <AppInlineAlert v-if="!schoolExamScope" type="info" description="当前办理本学院课程确认与考场编排；批次推进、发布及全校就绪检查由教务处办理。" />
           <div v-if="readiness" class="aaexam-readiness" aria-label="考务发布就绪摘要">
             <div class="aaexam-readiness__item">
               <span>应考课程</span>
               <strong>{{ readiness.eligibleCourseCount }}</strong>
-              <small>已圈 {{ readiness.circledCourseCount }} · 待圈 {{ readiness.pendingCandidateCount }}</small>
+              <small>本批次已圈定 {{ readiness.circledCourseCount }} 门 · 同学期另有 {{ readiness.pendingCandidateCount }} 门候选</small>
             </div>
             <div class="aaexam-readiness__item">
               <span>已排</span>
@@ -82,7 +113,7 @@
             <div class="aaexam-readiness__item is-conclusion" :class="readiness.canPublish ? 'is-ready' : 'is-risk'">
               <span>就绪提示</span>
               <strong>{{ readiness.canPublish ? '就绪检查通过' : '存在待处理提示' }}</strong>
-              <small>{{ readiness.canPublish ? '仍以正式发布校验为准' : '可点击发布，由正式门禁最终判定' }}</small>
+              <small>{{ readiness.canPublish === true ? '仍以正式发布校验为准' : '请处理就绪检查中的阻断项后重新核对' }}</small>
             </div>
           </div>
 
@@ -116,15 +147,16 @@
               :description="'监考缺口 ' + autoResult.invigilatorGaps.length + ' 处：' + autoResult.invigilatorGaps.map(g => `${g.courseName} 考场${g.roomSeq}（需 ${g.needed} 实配 ${g.assigned}）`).join('；') + '，请在考场编排中手工补指'"
             />
             <AppInlineAlert
-              v-if="(!autoResult.misses || !autoResult.misses.length) && (!autoResult.invigilatorGaps || !autoResult.invigilatorGaps.length) && (!autoResult.timePlan || !autoResult.timePlan.misses || !autoResult.timePlan.misses.length)"
+              v-if="autoArrangeComplete"
               type="success"
               :description="'自动排考完成：自动定时 ' + (autoResult.timePlan ? autoResult.timePlan.assigned : 0) + ' 门，编排 ' + autoResult.arrangedCourses + ' 门，无漏排、无监考缺口'"
             />
+            <AppInlineAlert v-else type="warning" :description="readinessError || !readiness ? '本次编排已返回，完整就绪结果尚未确认，请重新读取。' : `完整批次仍有待处理项：漏排 ${readiness.missedCourseCount ?? '待确认'} 门、监考缺口 ${readiness.invigilatorGapCount ?? '待确认'} 处、教室不足 ${readiness.roomShortageCount ?? '待确认'} 处。`" />
           </template>
 
           <div class="aaexam-section-title">考试课程</div>
           <EmptyState v-if="!courses.length" title="未圈定课程" description="从已终审教学任务批量圈定应考课程" />
-          <DataTable v-else :columns="courseColumns" :rows="courses" row-key="examCourseId">
+          <DataTable v-else :columns="courseColumns" :rows="courses" row-key="examCourseId" :pagination="coursePagination" @page-change="onCoursePageChange">
             <template #cell-course="{ row }">
               <div class="mp-cell-main">{{ row.courseName }}</div>
               <div class="mp-cell-sub">{{ row.className }} · {{ row.teacherName || '未派课' }}</div>
@@ -135,8 +167,9 @@
                          :label="row.status === 'CONFIRMED' ? '已确认' : '待确认'" dot />
             </template>
             <template #cell-ops="{ row }">
-              <button v-if="row.status === 'PENDING_CONFIRM'" class="mp-link" @click="confirm(row, 'CONFIRM')">确认</button>
-              <button class="mp-link" @click="openSchedule(row)">设时间</button>
+              <button v-if="row.confirmAction?.allowed === true" class="mp-link" :disabled="examActionBusy || saving || batchDetailLoading" @click="confirm(row, 'CONFIRM')">确认</button>
+              <span v-else-if="row.status === 'PENDING_CONFIRM'" class="mp-cell-sub">{{ courseConfirmReason(row) }}</span>
+              <button v-if="canArrangeExam" class="mp-link" @click="openSchedule(row)">设时间</button>
               <button class="mp-link" @click="openArrange(row)">考场</button>
             </template>
           </DataTable>
@@ -145,6 +178,116 @@
         </template>
       </div>
     </div>
+
+    <section v-else-if="viewMode === 'defer'" class="aaexam-mode-grid">
+      <div class="aaexam-mode-main">
+        <div class="aaexam-panel-head">
+          <div>
+            <h2>当前责任队列</h2>
+            <p>只有命中真实班级、授课或学院关系的申请才会进入列表；教务处按全校范围查看。</p>
+          </div>
+          <span>共 {{ modePagination.total }} 条</span>
+        </div>
+        <ErrorState v-if="error" :description="error" @retry="load" />
+        <LoadingState v-else-if="loading" />
+        <EmptyState v-else-if="!deferRows.length" title="当前没有缓考申请" description="新的申请会从辅导员节点开始进入四级审核链" />
+        <DataTable
+          v-else
+          :columns="deferColumns"
+          :rows="deferRows"
+          row-key="deferId"
+          :pagination="modePagination"
+          @page-change="onModePageChange"
+        >
+          <template #cell-student="{ row }">
+            <div class="mp-cell-main">{{ row.studentName || '—' }}</div>
+            <div class="mp-cell-sub">学生对象 {{ row.studentId || '—' }}</div>
+          </template>
+          <template #cell-course="{ row }">
+            <div class="mp-cell-main">{{ row.courseName || '—' }}</div>
+            <div class="mp-cell-sub">考试课程 {{ row.examCourseId || '—' }}</div>
+          </template>
+          <template #cell-reason="{ row }">
+            <div>{{ row.reason || '未填写说明' }}</div>
+            <div class="mp-cell-sub">{{ row.reasonType || '未标原因类型' }}</div>
+          </template>
+          <template #cell-status="{ row }"><StatusTag :type="deferStatusType(row.status)" :label="deferStatusLabel(row.status)" dot /></template>
+          <template #cell-actions="{ row }">
+            <button class="mp-link" @click="selectDefer(row)">查看证据</button>
+            <template v-if="canReviewDefer(row)">
+              <button class="mp-link" @click="openDeferDecision(row, 'APPROVE')">通过</button>
+              <button class="mp-link" @click="openDeferDecision(row, 'RETURN')">退回</button>
+              <button class="mp-link is-danger" @click="openDeferDecision(row, 'REJECT')">驳回</button>
+            </template>
+          </template>
+        </DataTable>
+      </div>
+      <aside class="aaexam-mode-aside">
+        <h2>审核证据与流转</h2>
+        <EmptyState v-if="!selectedDefer" title="选择一条申请" description="查看申请原因、当前节点与下一责任岗位" />
+        <template v-else>
+          <dl class="aaexam-evidence">
+            <div><dt>申请人</dt><dd>{{ selectedDefer.studentName || '—' }}</dd></div>
+            <div><dt>考试课程</dt><dd>{{ selectedDefer.courseName || '—' }}</dd></div>
+            <div><dt>提交时间</dt><dd>{{ formatTime(selectedDefer.applyAt) }}</dd></div>
+            <div><dt>当前节点</dt><dd>{{ deferStatusLabel(selectedDefer.status) }}</dd></div>
+            <div><dt>为什么轮到我</dt><dd>{{ deferWhyMine(selectedDefer) }}</dd></div>
+            <div><dt>退回记录</dt><dd>{{ selectedDefer.returnReason || '无' }}</dd></div>
+          </dl>
+          <AppInlineAlert type="info" :description="'通过后流向：' + deferNextOwner(selectedDefer.status) + '。真实权限与数据范围由服务端再次校验。'" />
+        </template>
+      </aside>
+    </section>
+
+    <section v-else-if="viewMode === 'archive'" class="aaexam-mode-grid">
+      <div class="aaexam-mode-main">
+        <div class="aaexam-panel-head">
+          <div>
+            <h2>已封存考试批次</h2>
+            <p>仅列出正式进入已归档状态的批次，课程与异常摘要来自归档事实。</p>
+          </div>
+          <span>共 {{ modePagination.total }} 个</span>
+        </div>
+        <AppInlineAlert type="info" description="归档页保持只读。课程确认数、缺考与违纪数用于核验封存完整性，不提供绕过状态机的补写入口。" />
+        <ErrorState v-if="error" :description="error" @retry="load" />
+        <LoadingState v-else-if="loading" />
+        <EmptyState v-else-if="!archiveRows.length" title="暂无考务归档" description="考试结束并通过正式归档命令后显示在此" />
+        <DataTable
+          v-else
+          :columns="archiveColumns"
+          :rows="archiveRows"
+          row-key="batchId"
+          :pagination="modePagination"
+          @page-change="onModePageChange"
+        >
+          <template #cell-batch="{ row }">
+            <div class="mp-cell-main">{{ row.batchName || '未命名批次' }}</div>
+            <div class="mp-cell-sub">批次 {{ row.batchId }} · 学期 {{ row.termId || '—' }}</div>
+          </template>
+          <template #cell-status><StatusTag type="default" label="已归档" dot /></template>
+          <template #cell-completeness="{ row }">
+            <div>课程 {{ row.completenessSummary?.courseCount ?? 0 }} · 已确认 {{ row.completenessSummary?.confirmedCount ?? 0 }}</div>
+            <div class="mp-cell-sub">缺考 {{ row.completenessSummary?.absentCount ?? 0 }} · 违纪 {{ row.completenessSummary?.violationCount ?? 0 }}</div>
+          </template>
+          <template #cell-actions="{ row }"><button class="mp-link" @click="selectArchive(row)">查看封存证据</button></template>
+        </DataTable>
+      </div>
+      <aside class="aaexam-mode-aside">
+        <h2>封存证据</h2>
+        <EmptyState v-if="!selectedArchive" title="选择一个批次" description="查看归档时间与完整性摘要" />
+        <template v-else>
+          <dl class="aaexam-evidence">
+            <div><dt>考试批次</dt><dd>{{ selectedArchive.batchName || '—' }}</dd></div>
+            <div><dt>正式状态</dt><dd>已归档（ARCHIVED）</dd></div>
+            <div><dt>归档时间</dt><dd>{{ formatTime(selectedArchive.archivedAt) }}</dd></div>
+            <div><dt>课程确认</dt><dd>{{ selectedArchive.completenessSummary?.confirmedCount ?? 0 }} / {{ selectedArchive.completenessSummary?.courseCount ?? 0 }}</dd></div>
+            <div><dt>异常摘要</dt><dd>缺考 {{ selectedArchive.completenessSummary?.absentCount ?? 0 }}，违纪 {{ selectedArchive.completenessSummary?.violationCount ?? 0 }}</dd></div>
+            <div><dt>返回位置</dt><dd>考务管理 / 考务归档</dd></div>
+          </dl>
+          <AppInlineAlert :type="archiveHasRisk(selectedArchive) ? 'warning' : 'success'" :description="archiveHasRisk(selectedArchive) ? '封存记录仍含异常计数，请按审计事实核查；本页不会改写归档数据。' : '封存摘要未发现异常计数，归档事实保持只读。'" />
+        </template>
+      </aside>
+    </section>
 
     <AppDrawer :visible="createVisible" title="新建考试批次" mode="modal" size="small" @close="createVisible = false">
       <div class="aaexam-form">
@@ -235,6 +378,7 @@
           <AppNumberInput v-model="autoPlan.maxPerDayPerClass" :min="1" :max="4" :disabled="autoArranging" />
         </AppFormItem>
         <AppInlineAlert v-if="autoPlanError" type="danger" :description="autoPlanError" />
+        <AppInlineAlert v-if="autoTimeReceipt && autoTimeReceipt.batchId === current?.batchId" type="info" :description="`考试批次 ${autoTimeReceipt.batchId} 的时间安排已保存；相同方案再次办理将继续考场编排。`" />
       </div>
       <template #footer>
         <AppButton variant="ghost" :disabled="autoArranging" @click="closeAutoPlan">取消</AppButton>
@@ -257,16 +401,26 @@
     <AppDrawer :visible="arrangeVisible" :title="'考场编排 · ' + (arrangeCourse ? arrangeCourse.courseName : '')" mode="modal" size="large" @close="arrangeVisible = false">
       <div class="aaexam-form">
         <div class="aaexam-section-title">已有考场</div>
+        <AppInlineAlert v-if="!canArrangeRooms" type="info" description="请等待教务处推进至课程确认完成后，再编排考场和监考。发布后本页仅供查阅。" />
+        <AppInlineAlert v-if="arrangeError" type="danger" :description="arrangeError" />
         <EmptyState v-if="!arrangeRooms.length" title="暂无考场" description="添加考场后可指定监考" />
         <ul v-else class="aaexam-rooms">
           <li v-for="r in arrangeRooms" :key="r.examRoomId">
             <span>考场{{ r.roomSeq }} · {{ r.classroomText }}（{{ r.plannedCount }}/{{ r.capacity }}）</span>
             <button class="mp-link" @click="printSeating(r.examRoomId)">座位表/准考证/门贴</button>
+            <AppButton size="small" variant="primary" @click="attendanceRoomId = r.examRoomId">到考登记</AppButton>
+            <AaExamAttendanceWorkbench v-if="attendanceRoomId === r.examRoomId" :key="identityKey + ':' + r.examRoomId" :room-id="r.examRoomId" class="aaexam-attendance" />
+            <div v-if="canArrangeRooms" class="aaexam-room-actions">
+              <AppButton v-if="arrangeRooms.length === 1 && !r.plannedCount" size="small" :disabled="!arrangeCourse?.rosterIdentity?.studentIds?.length || saving" @click="assignFrozenSeats(r)">按冻结名单铺位</AppButton>
+              <p>监考：{{ (r.invigilators || []).map(item => item.teacherName || '教师姓名待核对').join('、') || '尚未指定' }}</p>
+              <AppTeacherPicker v-model="invigilatorForm.teacherKey" :query="teacherKeyQuery" :disabled="saving" placeholder="选择监考教师" @change="onInvigilatorPicked" />
+              <AppButton size="small" :disabled="!invigilatorForm.teacherKey || saving" @click="assignRoomInvigilator(r)">指定监考</AppButton>
+            </div>
           </li>
         </ul>
-        <AppFormItem label="新增考场"><AppClassroomPicker v-model="roomForm.classroomId" :disabled="saving" @change="onExamRoomPicked" /></AppFormItem>
-        <AppFormItem label="容量"><AppNumberInput v-model="roomForm.capacity" :min="1" :max="500" :disabled="saving" /></AppFormItem>
-        <AppButton size="small" variant="ghost" :loading="saving" @click="submitRoom">添加考场</AppButton>
+        <AppFormItem label="新增考场"><AppClassroomPicker v-model="roomForm.classroomId" :query="{ purpose: 'EXAM' }" :disabled="saving || !canArrangeRooms" @change="onExamRoomPicked" /></AppFormItem>
+        <AppFormItem label="容量"><AppNumberInput v-model="roomForm.capacity" :min="1" :max="500" :disabled="saving || !canArrangeRooms" /></AppFormItem>
+        <AppButton size="small" variant="ghost" :loading="saving" :disabled="!canArrangeRooms" @click="submitRoom">添加考场</AppButton>
       </div>
     </AppDrawer>
 
@@ -279,7 +433,7 @@
             <span>{{ p.teacherName || p.teacherKey }} · {{ p.patrolDate || '—' }} {{ p.startTime || '' }}-{{ p.endTime || '' }} · {{ p.areaScope || '全场' }}</span>
           </li>
         </ul>
-        <AppFormItem label="巡考教师" required><AppTeacherPicker v-model="patrolForm.teacherKey" :disabled="saving" @change="onPatrolTeacherPicked" /></AppFormItem>
+        <AppFormItem label="巡考教师" required><AppTeacherPicker v-model="patrolForm.teacherKey" :query="teacherKeyQuery" :disabled="saving" @change="onPatrolTeacherPicked" /></AppFormItem>
         <AppFormItem label="巡考日期"><AppDatePicker v-model="patrolForm.patrolDate" :disabled="saving" /></AppFormItem>
         <AppFormItem label="开始时间"><AppTimePicker v-model="patrolForm.startTime" :disabled="saving" /></AppFormItem>
         <AppFormItem label="结束时间"><AppTimePicker v-model="patrolForm.endTime" :disabled="saving" /></AppFormItem>
@@ -289,26 +443,52 @@
       </div>
     </AppDrawer>
 
-    <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
+    <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" :submitting="saving || examActionBusy" :confirm-disabled="pendingMethod === 'publishBatch' && !canPublishExam" @confirm="onConfirm" />
+    <AppConfirmDialog
+      v-model:visible="deferConfirmVisible"
+      :title="deferDecisionTitle"
+      :message="deferDecisionMessage"
+      :type="deferDecisionAction === 'REJECT' ? 'danger' : deferDecisionAction === 'RETURN' ? 'warning' : 'primary'"
+      :confirm-text="deferDecisionAction === 'APPROVE' ? '确认通过' : deferDecisionAction === 'RETURN' ? '确认退回' : '确认驳回'"
+      :require-reason="deferDecisionAction !== 'APPROVE'"
+      reason-label="审核意见"
+      reason-placeholder="退回或驳回请填写至少 5 个字的依据"
+      :reason-min-length="5"
+      :submitting="saving"
+      @confirm="submitDeferDecision"
+    />
   </ModulePageShell>
 </template>
 
 <script>
+import { academicFlowOwner, academicFlowNextOwner, academicFlowText } from '../config/academicFlowRegistry.js'
 /** 考务管理 · 教务处控制台：批次生命周期 + 批量圈课 + 两段式自动排考 + 发布就绪。 */
+import { matchPermission } from '@/config/navPlan'
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppCheckboxGroup, AppTermEntityPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsExamApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicAffairsExamConvenienceApi as convenienceApi } from '@/modules/academicAffairs/api/exam-convenience.api'
 import AaExamIncidentWorkbench from '@/modules/academicAffairs/components/AaExamIncidentWorkbench.vue'
+import AaExamAttendanceWorkbench from '@/modules/academicAffairs/components/AaExamAttendanceWorkbench.vue'
+import AaExamObjectBar from '@/modules/academicAffairs/components/exam/AaExamObjectBar.vue'
+import AaExamStageRail from '@/modules/academicAffairs/components/exam/AaExamStageRail.vue'
 import { toast } from '@/utils/toast'
+import { currentUserFromToken } from '@/services/http/client'
 
 const _L = { DRAFT: '草稿', COURSE_CONFIRMED: '课程已确认', ARRANGED: '已编排', PUBLISHED: '已发布', FINISHED: '已结束', ARCHIVED: '已归档' }
+const EXAM_STEPS = ['创建批次', '圈课冻结', '编排预检', '考试发布', '异常收口']
+const DEFER_STEPS = ['学生发起缓考', '当前节点审核', '后续节点审核', '缓考安排', '结果归档']
+const DEFER_LABEL = {
+  COUNSELOR_REVIEW: '辅导员审核', TEACHER_CONFIRM: '任课教师确认', COLLEGE_REVIEW: '学院审核',
+  ACADEMIC_FINAL: '教务处终审', APPROVED: '已通过', RETURNED: '已退回补材料', REJECTED: '已驳回'
+}
+const DEFER_ACTIVE = new Set(['COUNSELOR_REVIEW', 'TEACHER_CONFIRM', 'COLLEGE_REVIEW', 'ACADEMIC_FINAL'])
 
 export default {
   name: 'AaExamConsoleView',
   components: {
-    ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AaExamIncidentWorkbench,
+    ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AaExamIncidentWorkbench, AaExamAttendanceWorkbench, AaExamObjectBar, AaExamStageRail,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert,
     AppCheckboxGroup, AppTermEntityPicker, AppClassroomPicker, AppTeacherPicker, AppDatePicker, AppTimePicker
   },
@@ -316,22 +496,125 @@ export default {
     return {
       ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
       loading: true, error: '', rows: [], pagination: { page: 1, pageSize: 50, total: 0 },
-      current: null, courses: [], stats: null, readiness: null, readinessError: '',
+      myInvigilations: [], myExamBatch: null, attendanceRoomId: '',
+      invigilationColumns: [{ key: 'course', title: '课程与批次' }, { key: 'when', title: '考试时间' }, { key: 'classroom', title: '考场' }, { key: 'duty', title: '本人职责' }, { key: 'state', title: '当前状态' }, { key: 'actions', title: '办理' }],
+      modePagination: { page: 1, pageSize: 20, total: 0 },
+      deferRows: [], archiveRows: [], selectedDefer: null, selectedArchive: null,
+      current: null, courses: [], coursePagination: { page: 1, pageSize: 20, total: 0 }, stats: null, readiness: null, readinessError: '',
       createVisible: false, form: { batchName: '', termId: '' }, formError: '',
       courseVisible: false, candidateLoading: false, candidateKeyword: '', courseCandidates: [], selectedTaskIds: [], coursePreview: null, courseError: '',
       autoPlanVisible: false, autoPlanError: '', autoPlan: { dates: [''], sessions: [{ start: '', end: '' }], maxPerDayPerClass: 1 },
       schedVisible: false, schedCourse: null, sched: { examDate: '', startTime: '', endTime: '' },
-      arrangeVisible: false, arrangeCourse: null, arrangeRooms: [], roomForm: { classroomId: '', classroomText: '', capacity: 50 },
-      patrolVisible: false, patrols: [], patrolForm: { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }, patrolError: '',
+      arrangeVisible: false, arrangeCourse: null, arrangeRooms: [], arrangeError: '', invigilatorForm: { teacherKey: '', teacherName: '' }, roomForm: { classroomId: '', classroomText: '', capacity: 50 },
+      patrolVisible: false, patrols: [], patrolForm: { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }, patrolError: '', teacherKeyQuery: { valueField: 'loginName' },
       saving: false, confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
-      autoArranging: false, autoResult: null,
+      pendingMethod: '', examActionBusy: false, examActionSeq: 0, examActionError: '', alive: true,
+      deferConfirmVisible: false, deferDecisionAction: '', deferDecisionRow: null,
+      autoArranging: false, autoResult: null, autoTimeReceipt: null, autoSeq: 0, loadSeq: 0, detailSeq: 0, batchDetailLoading: false, initialized: false,
       courseColumns: [
         { key: 'course', title: '课程/班级' }, { key: 'schedule', title: '考试时间' },
         { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
+      ],
+      deferColumns: [
+        { key: 'student', title: '申请学生' }, { key: 'course', title: '考试课程' },
+        { key: 'reason', title: '申请依据' }, { key: 'status', title: '当前责任节点' }, { key: 'actions', title: '办理' }
+      ],
+      archiveColumns: [
+        { key: 'batch', title: '考试批次' }, { key: 'status', title: '封存状态' },
+        { key: 'completeness', title: '完整性摘要' }, { key: 'archivedAt', title: '归档时间' }, { key: 'actions', title: '操作' }
       ]
     }
   },
   computed: {
+    canManageExam() { return this.schoolExamScope && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.exam.manage') },
+    canArrangeExam() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.exam.arrange') },
+    canPublishPermission() { return this.schoolExamScope && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.exam.publish') },
+    viewMode() {
+      const tab = String(this.$route.query.tab || '').toLowerCase()
+      return tab === 'defer' ? 'defer' : tab === 'archive' ? 'archive' : 'exam'
+    },
+    pageMeta() {
+      if (this.teacherExamView) return { title: '我的监考安排', subtitle: '本人正式指派 → 核对时间与教室 → 监考及异常处置' }
+      if (this.viewMode === 'defer') return { title: '缓考审批', subtitle: `学生申请 → 四级审核 → 缓考安排 → 结果归档 · 共 ${this.modePagination.total} 条申请` }
+      if (this.viewMode === 'archive') return { title: '考务归档', subtitle: `只读核验已封存考试批次与异常摘要 · 共 ${this.modePagination.total} 个批次` }
+      return { title: '考务安排', subtitle: `批次 → 圈课冻结 → 编排预检 → 发布 → 异常收口 · 共 ${this.pagination.total} 个批次` }
+    },
+    stageSteps() { return this.viewMode === 'defer' ? DEFER_STEPS : EXAM_STEPS },
+    stageIndex() {
+      if (this.viewMode === 'archive') return 4
+      if (this.viewMode === 'defer') {
+        const status = this.selectedDefer?.status
+        if (status === 'COUNSELOR_REVIEW') return 1
+        if (['TEACHER_CONFIRM', 'COLLEGE_REVIEW', 'ACADEMIC_FINAL'].includes(status)) return 2
+        if (status === 'APPROVED') return 3
+        if (['RETURNED', 'REJECTED'].includes(status)) return 4
+        return 1
+      }
+      const status = this.current?.status
+      return ({ DRAFT: 0, COURSE_CONFIRMED: 1, ARRANGED: 2, PUBLISHED: 3, FINISHED: 4, ARCHIVED: 4 })[status] ?? 0
+    },
+    objectBar() {
+      if (this.viewMode === 'defer') {
+        const row = this.selectedDefer
+        return {
+          title: row ? `${row.studentName || '学生'} · ${row.courseName || '考试课程'}` : '缓考审核责任队列',
+          objectId: row ? `缓考申请 #${row.deferId}` : `${this.modePagination.total} 条正式申请`,
+          source: '考务管理 / 缓考审批', status: row ? this.deferStatusLabel(row.status) : '等待选择申请',
+          owner: row ? this.deferOwner(row.status) : (this.ctx.currentRole.roleName || '当前受理岗位'),
+          blocker: row?.returnReason || (row?.status === 'APPROVED' ? '审核链已完成' : '无已知阻断'),
+          blocked: !!row?.returnReason || row?.status === 'REJECTED', nextOwner: row ? this.deferNextOwner(row.status) : '按当前审核节点流转'
+        }
+      }
+      if (this.viewMode === 'archive') {
+        const row = this.selectedArchive
+        return {
+          title: row?.batchName || '考务归档清单', objectId: row ? `考试批次 #${row.batchId}` : `${this.modePagination.total} 个封存批次`,
+          source: '考务管理 / 考务归档', status: row ? '已归档' : '只读核验', owner: this.batchDetailLoading ? '正在读取当前批次责任' : row && !row.responsibility ? '学校已完成考务归档' : academicFlowOwner(row?.responsibility),
+          blocker: this.readinessError || (row && this.archiveHasRisk(row) ? '封存摘要含异常计数' : '无已知阻断'), blocked: !!this.readinessError || !!(row && this.archiveHasRisk(row)), nextOwner: row && !row.nextStep ? '已办结，后续按权限查阅' : academicFlowNextOwner(row?.nextStep)
+        }
+      }
+      const status = this.current?.status
+      const publishStage = ['COURSE_CONFIRMED', 'ARRANGED'].includes(status)
+      const archived = status === 'ARCHIVED'
+      const blocker = this.readinessError || (publishStage && this.readiness && !this.readiness.canPublish ? (this.readiness.blockingReasons || []).join('；') : '')
+      return {
+        title: this.current?.batchName || '考试批次责任队列', objectId: this.current ? `考试批次 #${this.current.batchId}` : `${this.pagination.total} 个批次`,
+        source: '考务管理 / 考务安排', status: this.current ? this.statusLabel(status) : '等待选择批次',
+        owner: this.batchDetailLoading ? '正在读取当前批次责任' : archived && !this.current?.responsibility ? '学校已完成考务归档' : academicFlowOwner(this.current?.responsibility),
+        blocker: blocker || (archived ? '已归档，无当前办理阻断' : status === 'FINISHED' ? '考试已结束，待完成归档' : publishStage && this.readiness?.canPublish ? '本次就绪检查通过，发布时再次校验' : (this.current ? '按当前阶段核验，尚无本次就绪结论' : '选择批次后核验')),
+        blocked: !!blocker, nextOwner: this.batchDetailLoading ? '正在读取下一责任' : archived && !this.current?.nextStep ? '已办结，后续按权限查阅' : academicFlowNextOwner(this.current?.nextStep)
+      }
+    },
+    deferDecisionTitle() {
+      if (this.deferDecisionAction === 'APPROVE') return '确认通过当前缓考节点'
+      if (this.deferDecisionAction === 'RETURN') return '退回学生补充材料'
+      return '驳回缓考申请'
+    },
+    deferDecisionMessage() {
+      const row = this.deferDecisionRow
+      const name = row ? `${row.studentName || '学生'} · ${row.courseName || '考试课程'}` : '当前申请'
+      if (this.deferDecisionAction === 'APPROVE') return `${name} 将按正式状态机流向 ${row ? this.deferNextOwner(row.status) : '下一责任岗位'}。`
+      if (this.deferDecisionAction === 'RETURN') return `${name} 将退回学生补充材料，审核意见会写入正式记录。`
+      return `${name} 将进入驳回终态，审核意见会写入正式记录。`
+    },
+    autoArrangeComplete() {
+      return !!this.autoResult && String(this.autoResult.batchId) === String(this.current?.batchId) && !this.readinessError &&
+        this.readiness?.canPublish === true && ['missedCourseCount', 'invigilatorGapCount', 'roomShortageCount'].every(key => this.readiness[key] === 0)
+    },
+    canArrangeRooms() { return this.canArrangeExam && ['COURSE_CONFIRMED', 'ARRANGED'].includes(this.current?.status) },
+    canPublishExam() {
+      return this.canPublishPermission && !this.batchDetailLoading && !this.readinessError && this.current?.publishAction?.allowed === true &&
+        this.readiness?.batchId === this.current?.batchId && this.readiness?.canPublish === true
+    },
+    publishReason() {
+      if (!this.current || !['COURSE_CONFIRMED', 'ARRANGED'].includes(this.current.status)) return ''
+      if (this.current.publishAction?.allowed !== true) return academicFlowText(this.current.publishAction?.reason, '尚未取得本批次的考试发布许可，请重新读取当前批次。')
+      if (!this.canPublishExam) return '本批次发布就绪尚未通过，请核对课程、考场及监考安排。'
+      return ''
+    },
+    schoolExamScope() { return ['SCHOOL', 'TENANT_ALL'].includes(this.ctx.dataScope?.scope) },
+    teacherExamView() { return this.viewMode === 'exam' && (this.ctx.currentRole?.roleCode || currentUserFromToken()?.currentRoleCode) === 'ACADEMIC_TEACHER' },
+    identityKey() { return JSON.stringify([currentUserFromToken(), this.ctx]) },
     candidateOptions() {
       return this.courseCandidates.map((row) => ({
         value: String(row.teachingTaskId),
@@ -342,68 +625,249 @@ export default {
       return (this.coursePreview?.items || []).filter((item) => item.status !== 'READY')
     }
   },
+  watch: {
+    'current.batchId'() { this.autoSeq++; this.autoArranging = false; this.coursePreview = null; this.autoTimeReceipt = null; this.clearExamAction(); this.coursePagination.page = 1 },
+    '$route.fullPath'() { if (this.initialized) this.resetModeAndLoad() },
+    identityKey() { if (!this.initialized) return; this.resetModeAndLoad() }
+  },
+  beforeUnmount() { this.alive = false; this.clearExamAction(); this.autoSeq++; this.detailSeq++; this.loadSeq++ },
   async created() {
     const c = await academicAffairsApi.getContext()
     if (c.code === 0) this.ctx = c.data
+    await this.$nextTick()
+    this.initialized = true
     this.load()
   },
   methods: {
+    canRunBatchAction(fn) { return fn === 'publishBatch' ? this.canPublishExam : ['confirmBatchCourses', 'finishBatch', 'archiveBatch'].includes(fn) && this.canManageExam },
+    clearExamAction() {
+      this.examActionSeq++; this.examActionBusy = false; this.examActionError = ''
+      this.confirmVisible = false; this.pendingAction = null; this.pendingMethod = ''
+    },
+    examRouteTermId() {
+      const value = this.$route.query?.termId
+      return typeof value === 'string' && /^[1-9][0-9]*$/.test(value) ? value : ''
+    },
+    courseConfirmReason(row) { return academicFlowText(row?.confirmAction?.reason, '尚未取得本课程的学院确认许可，请重新读取当前批次。') },
     onExamRoomPicked(value, items) {
       this.roomForm.classroomId = value || ''
       this.roomForm.classroomText = items?.[0]?.label || ''
-      const capacity = items?.[0]?.raw?.capacity
-      if (capacity) this.roomForm.capacity = capacity
+      const room = items?.[0]?.raw
+      this.roomForm.capacity = room?.examSeats ?? room?.capacity ?? 0
     },
     onPatrolTeacherPicked(value, items) {
       this.patrolForm.teacherKey = value || ''
       this.patrolForm.teacherName = items?.[0]?.raw?.teacherName || items?.[0]?.label || ''
     },
-    statusLabel(s) { return _L[s] || s },
+    statusLabel(s) { return _L[s] || '状态待确认' },
     statusType(s) {
       if (s === 'PUBLISHED') return 'success'
       if (s === 'FINISHED') return 'warning'
       if (s === 'ARCHIVED') return 'default'
       return 'primary'
     },
-    async load() {
-      this.loading = true; this.error = ''
-      const res = await api.listBatches({ page: 1, pageSize: 50 })
-      if (res.code === 0) { this.rows = res.data.list; this.pagination.total = res.data.total } else this.error = res.message
-      this.loading = false
+    deferStatusLabel(status) { return DEFER_LABEL[status] || '状态待确认' },
+    deferStatusType(status) {
+      if (status === 'APPROVED') return 'success'
+      if (status === 'REJECTED') return 'danger'
+      if (status === 'RETURNED') return 'warning'
+      return 'primary'
     },
-    async select(b) { this.current = b; this.autoResult = null; await this.refresh() },
+    deferOwner(status) {
+      return ({ COUNSELOR_REVIEW: '辅导员', TEACHER_CONFIRM: '任课教师', COLLEGE_REVIEW: '学院教务', ACADEMIC_FINAL: '教务处终审岗' })[status] || '流程已结束'
+    },
+    deferNextOwner(status) {
+      return ({ COUNSELOR_REVIEW: '任课教师', TEACHER_CONFIRM: '学院教务', COLLEGE_REVIEW: '教务处终审岗', ACADEMIC_FINAL: '缓考安排岗', APPROVED: '缓考安排岗', RETURNED: '申请学生', REJECTED: '流程结束' })[status] || '按正式状态机判定'
+    },
+    deferWhyMine(row) {
+      const role = this.ctx.currentRole.roleName || '当前身份'
+      return `${role}在当前数据范围内可查看该申请；能否办理仍由服务端按 ${this.deferOwner(row.status)} 节点校验。`
+    },
+    canReviewDefer(row) { return DEFER_ACTIVE.has(String(row?.status || '')) },
+    archiveHasRisk(row) {
+      const summary = row?.completenessSummary || {}
+      return Number(summary.absentCount || 0) + Number(summary.violationCount || 0) > 0
+    },
+    formatTime(value) {
+      if (!value) return '—'
+      const date = new Date(value)
+      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false })
+    },
+    resetModeAndLoad() {
+      this.clearExamAction()
+      this.autoSeq++; this.detailSeq++; this.loadSeq++
+      this.current = null; this.courses = []; this.coursePagination.page = 1; this.coursePagination.total = 0; this.stats = null; this.readiness = null; this.readinessError = ''
+      this.autoTimeReceipt = null; this.autoArranging = false; this.rows = []; this.deferRows = []; this.archiveRows = []; this.pagination.page = 1; this.pagination.total = 0
+      this.selectedDefer = null; this.selectedArchive = null; this.batchDetailLoading = false; this.modePagination.page = 1
+      this.deferConfirmVisible = false; this.deferDecisionAction = ''; this.deferDecisionRow = null
+      this.createVisible = false; this.courseVisible = false; this.autoPlanVisible = false; this.schedVisible = false; this.arrangeVisible = false; this.patrolVisible = false
+      this.arrangeCourse = null; this.arrangeRooms = []; this.attendanceRoomId = ''
+      this.load()
+    },
+    async load() {
+      const seq = ++this.loadSeq, identity = this.identityKey, routeTerm = this.$route.query?.termId
+      const current = () => seq === this.loadSeq && identity === this.identityKey && routeTerm === this.$route.query?.termId
+      this.loading = true; this.error = ''
+      this.myInvigilations = []; this.myExamBatch = null; this.attendanceRoomId = ''
+      try {
+      if (this.teacherExamView) {
+        const res = await api.getMyInvigilation()
+        if (!current()) return
+        if (res.code !== 0) this.error = res.message || '本人监考安排读取失败'
+        else this.myInvigilations = Array.isArray(res.data?.items) ? res.data.items : []
+        return
+      }
+      const termId = this.examRouteTermId()
+      if (this.viewMode === 'exam' && routeTerm !== undefined && !termId) {
+        this.clearExamAction()
+        this.rows = []; this.pagination.total = 0; this.current = null; this.courses = []; this.stats = null; this.readiness = null
+        this.createVisible = false; this.courseVisible = false; this.autoPlanVisible = false; this.schedVisible = false; this.arrangeVisible = false; this.patrolVisible = false
+        this.arrangeCourse = null; this.arrangeRooms = []
+        this.error = '学期参数无效，请从正式学期入口重新进入考务安排。'
+        return
+      }
+      const res = this.viewMode === 'defer'
+        ? await api.deferList({ page: this.modePagination.page, pageSize: this.modePagination.pageSize })
+        : this.viewMode === 'archive'
+          ? await api.listArchived({ page: this.modePagination.page, pageSize: this.modePagination.pageSize })
+          : await api.listBatches({ page: this.pagination.page, pageSize: this.pagination.pageSize, ...(termId ? { termId } : {}) })
+      if (!current()) return
+      if (res.code === 0) {
+        const list = Array.isArray(res.data?.list) ? res.data.list : []
+        if (this.viewMode === 'defer') {
+          this.deferRows = list; this.modePagination.total = Number(res.data?.total || 0)
+          this.selectedDefer = list.find(row => row.deferId === this.selectedDefer?.deferId) || list[0] || null
+        } else if (this.viewMode === 'archive') {
+          this.archiveRows = list; this.modePagination.total = Number(res.data?.total || 0)
+          await this.selectArchive(list.find(row => row.batchId === this.selectedArchive?.batchId) || list[0] || null)
+        } else { this.rows = list; this.pagination.total = Number(res.data?.total || 0) }
+      } else this.error = res.message
+      } catch (error) { if (current()) this.error = error?.message || '考试批次加载失败' }
+      finally { if (current()) this.loading = false }
+    },
+    onModePageChange(page) { this.modePagination.page = Number(page || 1); this.load() },
+    selectDefer(row) { this.selectedDefer = row },
+    async selectArchive(row) {
+      const seq = ++this.detailSeq, identity = this.identityKey
+      this.selectedArchive = row ? { ...row, responsibility: null, nextStep: null } : null
+      this.readinessError = ''; this.batchDetailLoading = !!row
+      if (!row) return
+      const current = () => seq === this.detailSeq && identity === this.identityKey && row.batchId === this.selectedArchive?.batchId
+      try {
+        const response = await api.getBatch(row.batchId)
+        if (!current()) return
+        if (response.code !== 0 || response.data?.batchId !== row.batchId) { this.readinessError = response.message || '当前归档批次详情未能读取，请重新选择'; return }
+        this.selectedArchive = { ...row, ...response.data }
+      } catch (error) { if (current()) this.readinessError = error?.message || '当前归档批次详情读取失败' }
+      finally { if (current()) this.batchDetailLoading = false }
+    },
+    openDeferDecision(row, action) {
+      if (!this.canReviewDefer(row) || this.saving) return
+      this.selectedDefer = row
+      this.deferDecisionRow = { ...row }
+      this.deferDecisionAction = action
+      this.deferConfirmVisible = true
+    },
+    async submitDeferDecision({ reason = '' } = {}) {
+      const row = this.deferDecisionRow, action = this.deferDecisionAction, identity = this.identityKey
+      if (!row || !action || this.saving) return
+      this.saving = true
+      try {
+        const res = await api.deferReview(row.deferId, action, String(reason || '').trim())
+        if (identity !== this.identityKey || this.viewMode !== 'defer') return
+        if (res.code !== 0) { toast.error(res.message || '缓考审核失败'); return }
+        toast.success(action === 'APPROVE' ? `已通过，下一岗位：${this.deferNextOwner(row.status)}` : action === 'RETURN' ? '已退回学生补充材料' : '已驳回缓考申请')
+        this.deferConfirmVisible = false; this.deferDecisionRow = null; this.deferDecisionAction = ''
+        await this.load()
+      } catch (error) { if (identity === this.identityKey) toast.error(error?.message || '办理结果未确认，请刷新正式记录') }
+      finally { if (identity === this.identityKey) this.saving = false }
+    },
+    async select(b) { this.coursePagination.page = 1; this.current = b; this.autoResult = null; this.attendanceRoomId = ''; await this.refresh() },
     async refresh() {
       if (!this.current) return
+      const seq = ++this.detailSeq, id = this.current.batchId, identity = this.identityKey
+      const current = () => this.alive && seq === this.detailSeq && id === this.current?.batchId && identity === this.identityKey
+      this.courses = []; this.stats = null; this.readiness = null; this.readinessError = ''
+      this.batchDetailLoading = true
+      this.current = { ...this.current, status: null, responsibility: null, nextStep: null, publishAction: null }
+      try {
+      const detail = await api.getBatch(id)
+      if (!current()) return
+      if (detail.code !== 0 || detail.data?.batchId !== id) {
+        this.readinessError = detail.code !== 0 ? (detail.message || '当前考试批次读取失败') : '返回的考试批次不一致，请重新选择'
+        return
+      }
+      this.current = detail.data
+      const terminal = ['FINISHED', 'ARCHIVED'].includes(detail.data.status)
       const [cs, st, ready] = await Promise.all([
-        api.listCourses(this.current.batchId, { pageSize: 200 }),
-        api.batchStats(this.current.batchId),
-        convenienceApi.getReadiness(this.current.batchId)
+        api.listCourses(id, { page: this.coursePagination.page, pageSize: this.coursePagination.pageSize }),
+        api.batchStats(id),
+        this.schoolExamScope && !terminal ? convenienceApi.getReadiness(id) : Promise.resolve({ code: 0, data: null })
       ])
+      if (!current()) return
       this.courses = cs.code === 0 ? cs.data.list : []
+      this.coursePagination.total = cs.code === 0 ? Number(cs.data?.total || 0) : 0
       this.stats = st.code === 0 ? st.data : null
       this.readiness = ready.code === 0 ? ready.data : null
-      this.readinessError = ready.code === 0 ? '' : ready.message
+      this.readinessError = cs.code !== 0 ? (cs.message || '当前课程读取失败') : st.code !== 0 ? (st.message || '当前批次统计读取失败') : ready.code !== 0 ? (ready.message || '当前批次就绪检查读取失败') : ''
+      return !this.readinessError && cs.code === 0 && st.code === 0 && ready.code === 0
+      } catch (error) { if (current()) this.readinessError = error?.message || '考试详情加载失败' }
+      finally { if (current()) this.batchDetailLoading = false }
     },
-    openCreate() { this.form = { batchName: '', termId: '' }; this.formError = ''; this.createVisible = true },
+    onCoursePageChange(page) { this.coursePagination.page = Number(page || 1); this.refresh() },
+    openCreate() { if (!this.canManageExam) return; this.form = { batchName: '', termId: this.examRouteTermId() }; this.formError = ''; this.createVisible = true },
     async submitCreate() {
+      if (!this.canManageExam || this.saving) return
+      const identity = this.identityKey
       if (!this.form.termId) { this.formError = '请选择正式学期'; return }
       if (!this.form.batchName) { this.formError = '批次名称必填'; return }
       this.saving = true
-      const res = await api.createBatch({ batchName: this.form.batchName, termId: this.form.termId })
-      this.saving = false
-      if (res.code === 0) { toast.success('已创建'); this.createVisible = false; await this.load() } else this.formError = res.message
+      try {
+        const res = await api.createBatch({ batchName: this.form.batchName, termId: this.form.termId })
+        if (identity !== this.identityKey) return
+        if (res.code === 0) { toast.success('已创建'); this.createVisible = false; await this.select(res.data); await this.load() }
+        else this.formError = res.message
+      } catch (error) {
+        if (identity === this.identityKey) this.formError = error?.message || '创建结果待核对，请先刷新批次列表'
+      } finally { if (identity === this.identityKey) this.saving = false }
     },
-    lc(fn, label) {
+    async lc(fn, label) {
+      if (!this.canRunBatchAction(fn) || !this.current || this.saving || this.examActionBusy || !this.alive) return
+      if (fn === 'publishBatch' && !this.canPublishExam) { this.examActionError = this.publishReason || '考试发布许可或就绪结论尚未确认'; return }
+      const batch = { ...this.current }, identity = this.identityKey, route = this.$route.fullPath, seq = ++this.examActionSeq
+      const current = () => this.alive && seq === this.examActionSeq && batch.batchId === this.current?.batchId && identity === this.identityKey && route === this.$route.fullPath
+      this.examActionError = ''
+      if (fn === 'publishBatch') {
+        this.examActionBusy = true
+        const loaded = await this.refresh()
+        if (!current()) return
+        this.examActionBusy = false
+        if (!loaded || !this.canPublishExam) { this.examActionError = this.readinessError || this.publishReason || '考试发布许可或就绪结论尚未确认'; return }
+      }
       this.confirmTitle = label
       this.confirmMessage = `确认对批次「${this.current.batchName}」执行「${label}」？`
+      this.pendingMethod = fn
       this.pendingAction = async () => {
-        const res = await api[fn](this.current.batchId)
-        if (res.code === 0) { toast.success(label + '成功'); this.current = res.data; await this.load(); await this.refresh() }
-        else toast.error(res.message)
+        if (!current() || !this.canRunBatchAction(fn) || this.saving) return
+        this.saving = true
+        try {
+          if (fn === 'publishBatch') {
+            const loaded = await this.refresh()
+            if (!current()) return
+            if (!loaded || !this.canPublishExam) { this.examActionError = this.readinessError || this.publishReason || '考试发布许可或就绪结论尚未确认'; return }
+          }
+          if (!this.canRunBatchAction(fn)) return
+          const res = await api[fn](batch.batchId)
+          if (!current()) return
+          if (res.code === 0) { toast.success(label + '成功'); this.current = res.data; await this.load(); await this.refresh() }
+          else toast.error(res.message)
+        } catch (error) { if (current()) toast.error(error?.message || '办理结果未确认，请核对批次') }
+        finally { if (current()) this.saving = false }
       }
       this.confirmVisible = true
     },
     async openAddCourse() {
+      if (!this.canManageExam) return
       this.courseVisible = true
       this.candidateKeyword = ''
       this.courseCandidates = []
@@ -438,6 +902,7 @@ export default {
       }
     },
     async previewCourses() {
+      if (!this.canManageExam) return
       if (!this.selectedTaskIds.length) { this.courseError = '请至少选择 1 门应考课程'; return }
       this.saving = true; this.courseError = ''
       const res = await convenienceApi.previewCourses(this.current.batchId, this.selectedTaskIds)
@@ -446,6 +911,7 @@ export default {
       else { this.coursePreview = null; this.courseError = res.message }
     },
     async confirmCourses() {
+      if (!this.canManageExam) return
       const previewToken = this.coursePreview?.previewToken
       if (!previewToken) { this.courseError = '预览已失效，请重新预览'; return }
       this.saving = true; this.courseError = ''
@@ -465,6 +931,7 @@ export default {
       this.coursePreview = null
     },
     openAutoPlan() {
+      if (!this.schoolExamScope || !this.canArrangeExam) return
       this.autoPlan = { dates: [''], sessions: [{ start: '', end: '' }], maxPerDayPerClass: 1 }
       this.autoPlanError = ''
       this.autoPlanVisible = true
@@ -479,7 +946,9 @@ export default {
     addAutoSession() { this.autoPlan.sessions.push({ start: '', end: '' }) },
     removeAutoSession(index) { if (this.autoPlan.sessions.length > 1) this.autoPlan.sessions.splice(index, 1) },
     async runAutoArrange() {
-      if (!this.current) return
+      if (!this.schoolExamScope || !this.canArrangeExam || !this.current || this.autoArranging) return
+      const batchId = this.current.batchId, identity = this.identityKey, seq = ++this.autoSeq
+      const current = () => seq === this.autoSeq && batchId === this.current?.batchId && identity === this.identityKey
       const dates = [...new Set(this.autoPlan.dates.map((value) => String(value || '').trim()).filter(Boolean))]
       const sessions = []
       const seenSessions = new Set()
@@ -500,65 +969,130 @@ export default {
 
       this.autoPlanError = ''
       this.autoArranging = true
-      const timeRes = await convenienceApi.autoTimes(this.current.batchId, {
-        dates,
-        sessions,
-        maxPerDayPerClass: Number(this.autoPlan.maxPerDayPerClass || 1)
-      })
-      if (timeRes.code !== 0) {
-        this.autoArranging = false
-        this.autoPlanError = timeRes.message
-        return
-      }
-
-      const arrangeRes = await api.autoArrange(this.current.batchId)
-      this.autoArranging = false
-      if (arrangeRes.code !== 0) {
-        this.autoPlanError = arrangeRes.message
+      const body = { dates, sessions, maxPerDayPerClass: Number(this.autoPlan.maxPerDayPerClass || 1) }
+      const key = JSON.stringify([identity, batchId, body])
+      try {
+        let timePlan = this.autoTimeReceipt?.key === key ? this.autoTimeReceipt.data : null
+        if (!timePlan) {
+          const timeRes = await convenienceApi.autoTimes(batchId, body)
+          if (!current()) return
+          if (timeRes.code !== 0) { this.autoPlanError = timeRes.message || '时间安排结果未确认，请先核对正式考试时间'; return }
+          timePlan = timeRes.data
+          this.autoTimeReceipt = { key, batchId, data: timePlan }
+        }
+        if (!current() || !this.canArrangeExam || !this.schoolExamScope) return
+        const arrangeRes = await api.autoArrange(batchId)
+        if (!current()) return
+        if (arrangeRes.code !== 0) {
+          this.autoPlanError = `时间安排已保存；考场编排未完成：${arrangeRes.message || '请核对后继续编排'}`
+          await this.refresh()
+          return
+        }
+        this.autoResult = { ...arrangeRes.data, batchId: String(batchId), timePlan }
+        this.autoPlanVisible = false
         await this.refresh()
-        return
-      }
-
-      this.autoResult = { ...arrangeRes.data, timePlan: timeRes.data }
-      this.autoPlanVisible = false
-      toast.success(`自动定时 ${timeRes.data.assigned} 门，编排 ${arrangeRes.data.arrangedCourses} 门，漏排 ${arrangeRes.data.missedCourses} 门`)
-      await this.refresh()
+        if (current() && this.autoArrangeComplete) toast.success('本批次完整就绪检查通过，仍以正式发布校验为准')
+      } catch (error) { if (current()) this.autoPlanError = (this.autoTimeReceipt ? '时间安排已保存；' : '') + (error?.message || '办理结果未确认，请核对正式记录') }
+      finally { if (seq === this.autoSeq) this.autoArranging = false }
     },
     async confirm(row, action) {
-      const res = await api.confirmCourse(row.examCourseId, action)
-      if (res.code === 0) { toast.success('已处理'); await this.refresh() } else toast.error(res.message)
+      if (!this.alive || this.examActionBusy || this.saving || this.batchDetailLoading || action !== 'CONFIRM') return
+      const courseId = row?.examCourseId, batchId = this.current?.batchId
+      if (!batchId || !courseId || !this.courses.some(item => item.examCourseId === courseId && item.confirmAction?.allowed === true)) { this.examActionError = this.courseConfirmReason(row); return }
+      const seq = ++this.examActionSeq, identity = this.identityKey, route = this.$route.fullPath
+      const current = () => this.alive && seq === this.examActionSeq && identity === this.identityKey && batchId === this.current?.batchId && route === this.$route.fullPath
+      this.examActionBusy = true; this.examActionError = ''
+      try {
+        const loaded = await this.refresh()
+        if (!current()) return
+        const fresh = this.courses.find(item => item.examCourseId === courseId)
+        if (!loaded || fresh?.confirmAction?.allowed !== true) { this.examActionError = this.readinessError || this.courseConfirmReason(fresh); return }
+        const res = await api.confirmCourse(courseId, action)
+        if (!current()) return
+        if (res.code !== 0) { this.examActionError = academicFlowText(res.message, '课程确认未完成，请重新核对当前课程'); return }
+        await this.refresh()
+        if (current()) {
+          if (this.courses.find(item => item.examCourseId === courseId)?.status === 'CONFIRMED') toast.success('课程已确认；本院课程全部完成后交由校教务处核对批次与发布。')
+          else this.examActionError = this.readinessError || '确认命令已返回，当前课程结果尚未核对，请重新读取当前批次。'
+        }
+      } catch (error) { if (current()) this.examActionError = academicFlowText(error?.message, '课程确认结果尚未核对，请重新读取当前批次。') }
+      finally { if (current()) this.examActionBusy = false }
     },
-    openSchedule(row) { this.schedCourse = row; this.sched = { examDate: row.examDate || '', startTime: row.startTime || '', endTime: row.endTime || '' }; this.schedVisible = true },
+    openSchedule(row) { if (!this.canArrangeExam) return; this.schedCourse = row; this.sched = { examDate: row.examDate || '', startTime: row.startTime || '', endTime: row.endTime || '' }; this.schedVisible = true },
     async submitSchedule() {
+      if (!this.canArrangeExam || this.saving) return
       this.saving = true
       const res = await api.setSchedule(this.schedCourse.examCourseId, this.sched)
       this.saving = false
       if (res.code === 0) { toast.success('已保存'); this.schedVisible = false; await this.refresh() } else toast.error(res.message)
     },
     async openArrange(row) {
-      this.arrangeCourse = row; this.roomForm = { classroomId: '', classroomText: '', capacity: 50 }; this.arrangeVisible = true
-      const res = await api.listRooms(row.examCourseId)
-      this.arrangeRooms = res.code === 0 ? (res.data.items || []) : []
+      this.arrangeCourse = row; this.roomForm = { classroomId: '', classroomText: '', capacity: 50 }; this.arrangeVisible = true; this.attendanceRoomId = ''
+      this.arrangeError = ''; this.invigilatorForm = { teacherKey: '', teacherName: '' }
+      await this.readArrangeRooms()
+    },
+    async readArrangeRooms() {
+      const id = this.arrangeCourse?.examCourseId, identity = this.identityKey
+      const current = () => id === this.arrangeCourse?.examCourseId && identity === this.identityKey && this.arrangeVisible
+      this.arrangeRooms = []
+      try {
+        const res = await api.listRooms(id)
+        if (!current()) return
+        if (res.code !== 0) { this.arrangeError = res.message; return }
+        const rooms = await Promise.all((res.data.items || []).map(async room => {
+          const inv = await api.listInvigilators(room.examRoomId)
+          if (inv.code !== 0) throw Error(inv.message || '监考名单读取失败')
+          return { ...room, invigilators: inv.data.items || [] }
+        }))
+        if (current()) this.arrangeRooms = rooms
+      } catch (error) { if (current()) this.arrangeError = error?.message || '考场读取失败' }
+    },
+    onInvigilatorPicked(value, items) {
+      this.invigilatorForm = { teacherKey: value || '', teacherName: items?.[0]?.raw?.teacherName || items?.[0]?.label || '' }
+    },
+    async arrangeCommand(command) {
+      if (this.saving || !this.canArrangeRooms) return
+      const id = this.arrangeCourse?.examCourseId, identity = this.identityKey
+      const current = () => id === this.arrangeCourse?.examCourseId && identity === this.identityKey && this.arrangeVisible
+      this.saving = true; this.arrangeError = ''
+      try {
+        const res = await command()
+        if (!current()) return
+        if (res.code !== 0) { this.arrangeError = res.message; return }
+        await this.readArrangeRooms()
+        if (current()) await this.refresh()
+      } catch (error) { if (current()) this.arrangeError = error?.message || '办理结果待核对，请重新打开考场确认' }
+      finally { if (identity === this.identityKey) this.saving = false }
+    },
+    async assignFrozenSeats(room) {
+      const ids = this.arrangeCourse?.rosterIdentity?.studentIds || []
+      if (this.arrangeRooms.length !== 1 || room.plannedCount || !ids.length) return
+      if (ids.length > Number(room.capacity || 0)) { this.arrangeError = '冻结名单人数超过考场容量，请先核对考场安排'; return }
+      await this.arrangeCommand(() => api.assignSeats(room.examRoomId, ids.map(String)))
+    },
+    async assignRoomInvigilator(room) {
+      if (!this.invigilatorForm.teacherKey) return
+      const body = { ...this.invigilatorForm, role: 'ASSISTANT' }
+      await this.arrangeCommand(() => api.addInvigilator(room.examRoomId, body))
     },
     async submitRoom() {
+      if (this.saving || !this.canArrangeRooms) return
       if (!this.roomForm.classroomText) { toast.error('考场名必填'); return }
-      this.saving = true
-      const res = await api.addRoom(this.arrangeCourse.examCourseId, this.roomForm)
-      this.saving = false
-      if (res.code === 0) { toast.success('已添加考场'); const r = await api.listRooms(this.arrangeCourse.examCourseId); this.arrangeRooms = r.code === 0 ? r.data.items : []; await this.refresh() }
-      else toast.error(res.message)
+      const id = this.arrangeCourse.examCourseId, body = { ...this.roomForm }
+      await this.arrangeCommand(() => api.addRoom(id, body))
     },
     printSeating(roomId) {
-      const url = this.$router.resolve({ path: '/admin/academic-affairs/exam/print/seating', query: { roomId } }).href
-      window.open(url, '_blank')
+      this.$router.push({ path: '/admin/academic-affairs/exam/print/seating', query: { roomId } })
     },
     async openPatrol() {
+      if (!this.schoolExamScope || !this.canArrangeExam) return
       this.patrolForm = { teacherKey: '', teacherName: '', patrolDate: '', startTime: '', endTime: '', areaScope: '' }
       this.patrolError = ''; this.patrolVisible = true
       const res = await api.listPatrols(this.current.batchId)
       this.patrols = res.code === 0 ? (res.data.items || []) : []
     },
     async submitPatrol() {
+      if (!this.schoolExamScope || !this.canArrangeExam || this.saving) return
       if (!this.patrolForm.teacherKey) { this.patrolError = '巡考教师工号必填'; return }
       this.saving = true
       const res = await api.addPatrol(this.current.batchId, this.patrolForm)
@@ -571,7 +1105,7 @@ export default {
         await this.refresh()
       } else this.patrolError = res.message
     },
-    onConfirm() { const a = this.pendingAction; this.pendingAction = null; if (a) a() }
+    async onConfirm() { const a = this.pendingAction; this.pendingAction = null; this.confirmVisible = false; if (a) await a() }
   }
 }
 </script>
@@ -610,14 +1144,33 @@ export default {
 .aaexam-auto-sep { color: var(--text-secondary, #64748b); }
 .aaexam-rooms, .aaexam-incidents { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
 .aaexam-rooms li, .aaexam-incidents li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 12px; background: var(--fill-light, #f8fafc); border-radius: 6px; }
+.aaexam-rooms li { flex-wrap: wrap; }
+.aaexam-attendance { flex: 1 0 100%; }
+.aaexam-room-actions { flex: 1 0 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.aaexam-room-actions p { flex-basis: 100%; margin: 0; }
+.aaexam-mode-grid { display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start; }
+.aaexam-mode-main, .aaexam-mode-aside { min-width: 0; padding: 16px; border: 1px solid #dce5f2; border-radius: 12px; background: #fff; }
+.aaexam-mode-aside { position: sticky; top: 8px; }
+.aaexam-mode-main > .app-inline-alert { margin-bottom: 12px; }
+.aaexam-panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 14px; }
+.aaexam-panel-head h2, .aaexam-mode-aside h2 { margin: 0; color: #17365f; font-size: 17px; }
+.aaexam-panel-head p { margin: 5px 0 0; color: #71839f; font-size: 12px; line-height: 1.55; }
+.aaexam-panel-head > span { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; background: #edf4ff; color: #2f66c5; font-size: 12px; }
+.aaexam-evidence { display: grid; gap: 0; margin: 12px 0; }
+.aaexam-evidence > div { padding: 10px 0; border-bottom: 1px solid #edf1f7; }
+.aaexam-evidence dt { margin-bottom: 4px; color: #71839f; font-size: 11px; }
+.aaexam-evidence dd { margin: 0; color: #17365f; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.mp-link.is-danger { color: #c2410c; }
 
 @media (max-width: 1080px) {
   .aaexam-layout { grid-template-columns: 240px minmax(0, 1fr); }
   .aaexam-readiness { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
+  .aaexam-mode-grid { grid-template-columns: minmax(0, 1fr) 280px; }
 }
 
 @media (max-width: 760px) {
-  .aaexam-layout { grid-template-columns: 1fr; }
+  .aaexam-layout, .aaexam-mode-grid { grid-template-columns: 1fr; }
+  .aaexam-mode-aside { position: static; }
   .aaexam-list { max-height: 220px; overflow: auto; }
   .aaexam-head { flex-direction: column; }
   .aaexam-actions { justify-content: flex-start; width: 100%; }

@@ -5,17 +5,16 @@
       <view class="page-pad stack" v-if="loaded">
         <template v-if="!result">
           <MobileInlineAlert type="info" title="温馨提示"
-            description="本自评仅为通用情绪/睡眠/压力自我了解，不是医学诊断。如实填写即可，结果仅供参考，不会自动下结论。" />
+            description="用于了解近期情绪、睡眠和压力，不是医学诊断。只有主动求助或达到关注条件时，才登记人工关注。" />
 
-          <view class="card stack-sm" v-for="(q, i) in questions" :key="q.key">
-            <text class="ms__q">{{ i + 1 }}. {{ q.text }}</text>
-            <view class="ms__opts">
-              <text v-for="(opt, oi) in q.options" :key="oi" class="ms__opt"
-                    :class="{ 'is-on': answers[q.key] === oi }" @click="answers[q.key] = oi">{{ opt }}</text>
+          <view class="ms__sheet">
+            <view class="ms__question" v-for="(q, i) in questions" :key="q.key">
+              <text class="ms__q">{{ i + 1 }}. {{ q.text }}</text>
+              <view class="ms__opts">
+                <text v-for="(opt, oi) in q.options" :key="oi" class="ms__opt"
+                      :class="{ 'is-on': answers[q.key] === oi }" @click="answers[q.key] = oi">{{ opt }}</text>
+              </view>
             </view>
-          </view>
-
-          <view class="card">
             <view class="ms__checkbox" @click="wantsContact = !wantsContact">
               <text class="ms__checkbox-box" :class="{ 'is-on': wantsContact }">{{ wantsContact ? '✓' : '' }}</text>
               <text class="t-md">希望近期有老师主动联系我聊聊</text>
@@ -26,14 +25,15 @@
             {{ submitting ? '提交中…' : '提交自评' }}
           </button>
 
-          <view class="section-head" v-if="history.length"><text class="section-head__title">历史记录</text></view>
-          <view class="list-group" v-if="history.length">
-            <view v-for="h in history" :key="h.submissionId" class="list-row">
+          <view class="section-head"><text class="section-head__title">我的历史</text></view>
+          <MobileGlobalState v-if="!history.length" state="empty" title="暂无自评记录" description="完成本次自评后会保存在这里。" />
+          <view class="ms__history" v-else>
+            <view v-for="h in history" :key="h.submissionId" class="ms__history-row">
               <view class="flex-1">
                 <text class="t-md">{{ (h.submittedAt || '').slice(0, 10) }}</text>
-                <text class="ms__sub">得分 {{ h.totalScore }}/{{ h.maxScore }}</text>
+                <text class="ms__sub">{{ h.wantsContact ? '已申请老师联系' : '本人自评记录' }}</text>
               </view>
-              <MobileStatusTag v-if="h.triggeredAttention" label="已登记关注" type="processing" />
+              <MobileStatusTag :label="h.triggeredAttention ? '已登记人工关注' : '已保存'" :type="h.triggeredAttention ? 'processing' : 'success'" />
             </view>
           </view>
         </template>
@@ -104,14 +104,19 @@ export default {
 </script>
 
 <style scoped>
-.ms__q { display: block; font-size: var(--font-size-base); color: var(--text-primary); font-weight: var(--font-weight-medium); }
+.ms__sheet { overflow: hidden; border-top: 1px solid var(--border-base); border-bottom: 1px solid var(--border-base); }
+.ms__question { padding: var(--space-4) 0; border-bottom: 1px solid var(--border-light); }
+.ms__question:last-of-type { border-bottom: 0; }
+.ms__q { display: block; font-size: var(--font-size-base); color: var(--text-primary); font-weight: var(--font-weight-medium); line-height: 1.55; }
 .ms__opts { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .ms__opt { padding: 8px 16px; border-radius: var(--radius-full); background: var(--bg-secondary); font-size: var(--font-size-sm); color: var(--text-secondary); border: 1px solid var(--border-base); }
 .ms__opt.is-on { background: var(--brand-primary); color: #fff; border-color: var(--brand-primary); }
-.ms__checkbox { display: flex; align-items: center; gap: var(--space-2); }
+.ms__checkbox { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-4) 0; border-top: 1px solid var(--border-light); }
 .ms__checkbox-box { width: 20px; height: 20px; border: 1px solid var(--border-base); border-radius: var(--radius-sm); display: flex; align-items: center; justify-content: center; color: #fff; flex-shrink: 0; }
 .ms__checkbox-box.is-on { background: var(--brand-primary); border-color: var(--brand-primary); }
 .ms__sub { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
+.ms__history { border-top: 1px solid var(--border-base); }
+.ms__history-row { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) 0; border-bottom: 1px solid var(--border-light); }
 .ms__result { text-align: center; }
 .ms__result-title { display: block; font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
 .ms__result-desc { display: block; font-size: var(--font-size-base); color: var(--text-secondary); line-height: 1.6; margin-top: var(--space-3); }

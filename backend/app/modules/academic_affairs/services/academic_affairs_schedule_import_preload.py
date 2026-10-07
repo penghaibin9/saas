@@ -44,8 +44,9 @@ class ScheduleImportPreload:
         teaching_weeks,
         enabled_slots,
         tasks,
+        blocked_task_ids,
         classrooms,
-        task_counts,
+        task_items,
         conflict_rows,
     ):
         self.allowed_batch_ids = tuple(int(v) for v in allowed_batch_ids)
@@ -53,21 +54,40 @@ class ScheduleImportPreload:
         self.enabled_slots = tuple(int(v) for v in enabled_slots)
         self._tasks = list(tasks)
         self._task_by_id = {int(row.id): row for row in self._tasks}
+        self._blocked_task_ids = {int(value) for value in blocked_task_ids}
         self._classrooms = list(classrooms)
         self._classroom_by_id = {int(row.id): row for row in self._classrooms}
-        self._task_counts = {int(k): int(v) for k, v in task_counts.items()}
+        self._task_items = defaultdict(list)
+        for row in task_items:
+            self._task_items[int(row.task_id)].append(row)
         buckets = defaultdict(list)
         for row in conflict_rows:
             buckets[(int(row.weekday), int(row.slot_no))].append(row)
         self._conflict_rows = buckets
 
+    def ensure_independent(self, task):
+        if task is None:
+            return None
+        task_id = int(task.id)
+        if task_id in self._blocked_task_ids:
+            from app.core.exceptions import AppException
+            raise AppException(
+                "DATA_CONFLICT",
+                "本任务已由原教学任务承接，请回读原任务后办理，不能重复执行。",
+                http_status=409,
+                details={"blocker": "TASK_EXECUTION_HANDOFF", "taskId": str(task_id)},
+            )
+        return task
+
     def task_by_id(self, task_id: int):
-        return self._task_by_id.get(int(task_id))
+        return self.ensure_independent(self._task_by_id.get(int(task_id)))
 
     def task_matches(self, course_name: str, teacher_key: str, class_id):
         matches = []
         class_id_int = int(class_id) if class_id not in (None, "") else None
         for row in self._tasks:
+            if int(row.id) in self._blocked_task_ids:
+                continue
             if row.course_name != course_name:
                 continue
             if teacher_key and row.teacher_key != teacher_key:
@@ -90,7 +110,10 @@ class ScheduleImportPreload:
         return self._classroom_by_id.get(int(classroom_id))
 
     def scheduled_count(self, task_id: int) -> int:
-        return int(self._task_counts.get(int(task_id), 0))
+        return len(self._task_items.get(int(task_id), ()))
+
+    def scheduled_items(self, task_id: int) -> list:
+        return list(self._task_items.get(int(task_id), ()))
 
     def detect_conflict(
         self,
@@ -119,12 +142,13 @@ class ScheduleImportPreload:
             class_id,
             classroom,
             exclude_id=exclude_id,
+            classroom_id=self.resolve_classroom_id(classroom),
         )
 
     def record_item(self, item) -> None:
         if item.task_id is not None:
             task_id = int(item.task_id)
-            self._task_counts[task_id] = self._task_counts.get(task_id, 0) + 1
+            self._task_items[task_id].append(item)
         self._conflict_rows[(int(item.weekday), int(item.slot_no))].append(item)
 
 
@@ -136,9 +160,12 @@ def build_preload(
     allowed_batch_ids,
     teaching_weeks,
     enabled_slots,
+    conflict_batch_ids=None,
+    lock_tasks=False,
 ) -> ScheduleImportPreload:
     """只预载本批输入会触达的数据，避免把全租户任务/教室 materialize 到 Python。"""
     from app.models import AaClassroom, AaScheduleItem, AaTeachingTask
+    from . import academic_affairs_schedule_policy as policy
 
     direct_task_ids: set[int] = set()
     match_keys: set[tuple[str, str, int | None]] = set()
@@ -190,15 +217,22 @@ def build_preload(
 
     tasks = []
     if task_conditions:
-        tasks = db.scalars(
-            select(AaTeachingTask).where(
-                AaTeachingTask.tenant_id == _base._tid(),
-                AaTeachingTask.batch_id.in_(list(allowed_batch_ids) or [-1]),
-                AaTeachingTask.status == "READY",
-                AaTeachingTask.is_deleted.is_(False),
-                or_(*task_conditions),
-            )
-        ).all()
+        query = select(AaTeachingTask).where(
+            AaTeachingTask.tenant_id == _base._tid(),
+            AaTeachingTask.batch_id.in_(list(allowed_batch_ids) or [-1]),
+            AaTeachingTask.status == "READY",
+            AaTeachingTask.is_deleted.is_(False),
+            or_(*task_conditions),
+            policy.task_scope_condition(db, batch),
+        )
+        if lock_tasks:
+            # Import confirmation and dry-run share one ascending task-lock read.
+            # Reuse those fresh rows below rather than re-reading after locking.
+            query = query.order_by(AaTeachingTask.id).limit(1001).with_for_update().execution_options(populate_existing=True)
+        tasks = db.scalars(query).all()
+        if lock_tasks and len(tasks) > 1000:
+            from app.core.exceptions import AppException
+            raise AppException("DATA_CONFLICT", "导入匹配的教学任务过多，请填写精确任务编号后重新预检", http_status=409)
 
     classrooms = []
     if classroom_texts:
@@ -219,11 +253,11 @@ def build_preload(
             )
         ).all()
 
-    task_counts = {}
+    task_items = []
     task_ids = sorted({int(row.id) for row in tasks})
     if task_ids:
-        count_rows = db.execute(
-            select(AaScheduleItem.task_id, func.count(AaScheduleItem.id))
+        task_items = db.scalars(
+            select(AaScheduleItem)
             .where(
                 AaScheduleItem.tenant_id == _base._tid(),
                 AaScheduleItem.batch_id == int(batch.id),
@@ -231,9 +265,7 @@ def build_preload(
                 AaScheduleItem.status == "EFFECTIVE",
                 AaScheduleItem.is_deleted.is_(False),
             )
-            .group_by(AaScheduleItem.task_id)
         ).all()
-        task_counts = {int(task_id): int(count) for task_id, count in count_rows}
 
     conflict_rows = []
     if coordinates:
@@ -241,22 +273,33 @@ def build_preload(
             and_(AaScheduleItem.weekday == weekday, AaScheduleItem.slot_no == slot_no)
             for weekday, slot_no in sorted(coordinates)
         ])
-        conflict_rows = db.scalars(
-            select(AaScheduleItem).where(
+        query = select(AaScheduleItem).where(
                 AaScheduleItem.tenant_id == _base._tid(),
-                AaScheduleItem.batch_id == int(batch.id),
+                AaScheduleItem.batch_id.in_(conflict_batch_ids if conflict_batch_ids is not None else [int(batch.id)]),
                 coordinate_filter,
                 AaScheduleItem.status == "EFFECTIVE",
                 AaScheduleItem.is_deleted.is_(False),
             )
-        ).all()
+        if conflict_batch_ids is not None:
+            # 预检只读当前任务共享的资源，不将全校所有课位载入内存。
+            query = query.where(or_(
+                AaScheduleItem.teacher_key.in_({row.teacher_key for row in tasks if row.teacher_key}),
+                AaScheduleItem.class_id.in_({row.class_id for row in tasks if row.class_id}),
+                AaScheduleItem.classroom_id.in_({row.id for row in classrooms}),
+                AaScheduleItem.classroom_text.in_(classroom_texts),
+            ))
+        conflict_rows = db.scalars(query).all()
+
+    from .academic_affairs_task_execution_authority import load_execution_handoffs
+    blocked_task_ids = set(load_execution_handoffs(db, [row.id for row in tasks], lock=lock_tasks))
 
     return ScheduleImportPreload(
         allowed_batch_ids=allowed_batch_ids,
         teaching_weeks=teaching_weeks,
         enabled_slots=enabled_slots,
         tasks=tasks,
+        blocked_task_ids=blocked_task_ids,
         classrooms=classrooms,
-        task_counts=task_counts,
+        task_items=task_items,
         conflict_rows=conflict_rows,
     )

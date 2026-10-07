@@ -3,8 +3,10 @@
     :title="portalTitle"
     subtitle="学工中心 · 数字迎新"
     :ctx="context"
+    :workspace-navigate="resolveOrientationDestination"
     @menu-select="onMenuSelect"
   >
+    <OrientationWorkspaceNav />
     <router-view :key="viewKey" />
   </BasePortalLayout>
 </template>
@@ -15,11 +17,14 @@
  * P6：已移除「当前角色」假切换；切身份须走真实 /auth/switch-role。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
+import OrientationWorkspaceNav from '@/modules/orientation/components/OrientationWorkspaceNav.vue'
 import { getOrientationContext } from '@/modules/orientation/api/orientation.api'
+import { orientationDestination } from '@/modules/orientation/routeContext'
 
 export default {
   name: 'AdminOrientationLayout',
-  components: { BasePortalLayout },
+  components: { BasePortalLayout, OrientationWorkspaceNav },
+  provide() { return { affairsWorkspace: true, conciseBusinessHeader: true } },
   data() {
     return { context: null, brand: null, roles: [], currentRoleId: '', dataScopeName: '' }
   },
@@ -36,6 +41,7 @@ export default {
     await this.loadContext()
   },
   methods: {
+    resolveOrientationDestination(path) { return orientationDestination(path, this.$route) },
     async loadContext() {
       const res = await getOrientationContext()
       if (res.code === 0) this.applyContext(res.data)
@@ -48,7 +54,7 @@ export default {
       this.dataScopeName = ctx.dataScope?.name || ''
     },
     onMenuSelect(item) {
-      if (item.path && item.path !== this.$route.path) this.$router.push(item.path)
+      if (item.path && item.path !== this.$route.path) this.$router.push(this.resolveOrientationDestination(item.path))
     }
   }
 }

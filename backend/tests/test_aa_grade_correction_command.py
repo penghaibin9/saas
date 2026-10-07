@@ -11,6 +11,8 @@
 """
 from __future__ import annotations
 
+import json
+
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 from types import SimpleNamespace
@@ -23,6 +25,14 @@ from app.db.session import get_sessionmaker
 from app.modules.academic_affairs.services import (
     academic_affairs_grade_correction_command as command,
 )
+
+
+from app.models import AaGradeTask, AaGradeRecord, AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTeachingClass, User
+from app.models.academic_affairs_effective_grade import AaGradeChangeRequest, AaEffectiveGradePolicy
+from app.modules.academic_affairs.services import academic_affairs_grade_change_authority_service as authority
+from app.modules.academic_affairs.services import academic_affairs_grade_change_component_service as components
+from app.modules.academic_affairs.services import academic_affairs_teaching_class_service as classes
+from app.modules.academic_affairs.services import academic_affairs_roster_consumer_service as roster
 
 TID = 1000000000000000001
 REVIEW_PERM = "academicAffairs.gradeChange.review"
@@ -62,7 +72,7 @@ def _grant(db, login_name, real_name):
     role_code = f"TEST_{login_name.upper()}"
     role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == role_code).first()
     if role is None:
-        role = Role(tenant_id=TID, role_code=role_code, role_name=role_code, status="ACTIVE")
+        role = Role(tenant_id=TID, role_code=role_code, role_name=role_code, role_type="CUSTOM", status="ACTIVE")
         db.add(role)
         db.flush()
     if db.query(UserRole).filter(UserRole.tenant_id == TID, UserRole.user_id == user.id,
@@ -77,7 +87,7 @@ def _grant(db, login_name, real_name):
     return user
 
 
-def _seed_published_grade(*, usual=60, final=60):
+def _seed_initial_grade(*, usual=60, final=60):
     """造一条已发布成绩：任务 + 明细 + 正式 AcademicGrade，并配好两个节点的受理人。"""
     from app.models import (
         AaGradeRecord, AaGradeTask, AaTerm, AcademicGrade, AcademicStudent, College, Major,
@@ -121,6 +131,18 @@ def _seed_published_grade(*, usual=60, final=60):
         db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01",
                                    teacher_name="张晓明", role_code="COLLEGE_ADMIN",
                                    scope_type="COLLEGE", ref_value=COLLEGE_NAME, status="ACTIVE"))
+        # 候选账号以真实自定义角色持权，范围必须属于同一角色，不能借另一个身份的学院范围。
+        db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01",
+                                   teacher_name="张晓明", role_code="TEST_COLLEGE_ADMIN01",
+                                   scope_type="COLLEGE", ref_value=COLLEGE_NAME, status="ACTIVE"))
+        from app.models import Role, RoleAssignmentScope, UserRole
+        from datetime import datetime
+        db.add(RoleAssignmentScope(tenant_id=TID, user_id=office_user.id,
+            user_role_id=db.query(UserRole.id).join(Role, Role.id == UserRole.role_id).filter(
+                UserRole.tenant_id == TID, UserRole.user_id == office_user.id,
+                Role.role_code == "TEST_SCHOOL_ADMIN01").scalar(),
+            role_code="TEST_SCHOOL_ADMIN01", scope_type="SCHOOL", scope_id=TID,
+            effective_at=datetime(2020, 1, 1), status="ACTIVE"))
 
         task = AaGradeTask(tenant_id=TID, term_id=term.id, term_code="2026-2027-1",
                            course_name="数据结构", class_id=klass.id, teacher_key="teacher01",
@@ -140,6 +162,8 @@ def _seed_published_grade(*, usual=60, final=60):
                               grade_task_id=task.id, grade_record_id=record.id,
                               term="2026-2027-1", nature="REQUIRED", credit_value=4,
                               score=total, pass_status=record.pass_status, exam_type="FINAL",
+                              gpa_point=round(max(0, (total - 50) / 10), 2) if total >= 60 else 0,
+                              gpa_policy_code="DEFAULT", gpa_policy_version=1,
                               record_status="ACTIVE", source="PUBLISH")
         db.add(grade)
         db.flush()
@@ -148,7 +172,7 @@ def _seed_published_grade(*, usual=60, final=60):
         return {
             "taskId": int(task.id), "recordId": int(record.id), "gradeId": int(grade.id),
             "studentId": int(student.id), "acadStudentId": int(academic.id),
-            "collegeUserId": int(college_user.id), "officeUserId": int(office_user.id),
+            "collegeUserId": int(college_user.id), "officeUserId": int(office_user.id), "collegeId": int(college.id),
         }
     finally:
         db.close()
@@ -198,12 +222,102 @@ def _grades(acad_student_id):
         db.close()
 
 
-def _apply(ids, *, new_final=90, reason="期末卷面登分错误，需按原卷更正"):
-    _activate("teacher01", "ACADEMIC_TEACHER")
-    body = SimpleNamespace(reason=reason, newUsualScore=None, newMidtermScore=None,
-                           newFinalScore=new_final)
-    return command.change_request(ids["taskId"], ids["recordId"],
-                                 _ctx("teacher01", "ACADEMIC_TEACHER"), body)
+def _seed_published_grade(*, usual=60, final=60, dynamic=False):
+    from datetime import date
+    from app.models import AaTerm, AaTeachingClassTeacher
+
+    _activate()
+    ids = _seed_initial_grade(usual=usual, final=final)
+    with get_sessionmaker()() as db:
+        task=db.get(AaGradeTask,ids['taskId'])
+        term = db.get(AaTerm, task.term_id)
+        term.start_date, term.end_date, term.teaching_weeks = date(2026, 9, 1), date(2027, 1, 15), 18
+        course=AaCourse(tenant_id=TID,course_code='CS101',course_name='数据结构',credit=4,version=1,status='ENABLED',owner_college_id=ids['collegeId'])
+        db.add(course);db.flush()
+        batch=AaTeachingTaskBatch(tenant_id=TID,term_id=task.term_id,batch_name='正式成绩测试任务',status='APPROVED',college_id=ids['collegeId'])
+        db.add(batch);db.flush()
+        teaching=AaTeachingTask(tenant_id=TID,batch_id=batch.id,course_id=course.id,course_code=course.course_code,course_name=course.course_name,class_id=task.class_id,teacher_key='teacher01',weekly_hours=1,total_hours=18,start_week=1,end_week=18,status='READY')
+        db.add(teaching);db.flush()
+        task.course_id=course.id;task.teaching_task_id=teaching.id
+        tc=AaTeachingClass(tenant_id=TID,teaching_task_id=teaching.id,term_id=task.term_id,course_id=course.id,class_code='GC-CLASS',class_name='更正教学班',status='ACTIVE')
+        db.add(tc);db.flush()
+        classes.create_roster_version(db,tc,[ids['studentId']],source_type='ADMIN_CLASS',source_id=task.class_id)
+        db.flush()
+        roster.freeze_consumer_snapshot(db,'GRADE_TASK',task.id,teaching.id)
+        if not db.query(AaEffectiveGradePolicy).filter_by(tenant_id=TID,status='ACTIVE').first():
+            db.add(AaEffectiveGradePolicy(tenant_id=TID,policy_code='GC',policy_version=1,active_scope_key='BASE',attempt_strategy='LATEST_ATTEMPT',status='ACTIVE'))
+        # A real ACTIVE teacher account is needed by workflow applicant and file ownership.
+        teacher=db.query(User).filter_by(tenant_id=TID,login_name='teacher01').first()
+        if teacher is None:
+            teacher=User(tenant_id=TID,login_name='teacher01',real_name='教师',password_hash='x',user_type='TEACHER',status='ACTIVE')
+            db.add(teacher);db.flush()
+        teaching.teacher_id = teacher.id
+        relation = db.query(AaTeachingClassTeacher).filter_by(tenant_id=TID,
+            teaching_class_id=tc.id, teacher_key='teacher01', role_type='PRIMARY').one_or_none()
+        if relation is None:
+            relation = AaTeachingClassTeacher(tenant_id=TID, teaching_class_id=tc.id,
+                teacher_key='teacher01', role_type='PRIMARY')
+            db.add(relation)
+        relation.teacher_id, relation.teacher_name = teacher.id, teacher.real_name
+        relation.start_week, relation.end_week, relation.status = 1, 18, 'ACTIVE'
+        ids.update(teachingClassId=tc.id,courseId=course.id,teacherUserId=teacher.id)
+        if dynamic:
+            from app.models.academic_affairs_r10 import AaGradeSchemeSnapshot,AaGradeComponentScore
+            scheme=[{'code':'USUAL','name':'平时','weight':30},{'code':'FINAL','name':'期末','weight':70}]
+            db.add(AaGradeSchemeSnapshot(tenant_id=TID,grade_task_id=task.id,scheme_json=json.dumps(scheme),scheme_version=1,status='LOCKED'))
+            for item in scheme:
+                db.add(AaGradeComponentScore(tenant_id=TID,grade_task_id=task.id,grade_record_id=ids['recordId'],student_id=ids['studentId'],component_code=item['code'],component_name=item['name'],weight=item['weight'],score=usual if item['code']=='USUAL' else final,weighted_score=(usual if item['code']=='USUAL' else final)*item['weight']/100,scheme_version=1))
+        db.commit()
+    return ids
+
+def _application_body(ids, **changes):
+    with get_sessionmaker()() as db:
+        task=db.get(AaGradeTask,ids['taskId']);record=db.get(AaGradeRecord,ids['recordId'])
+        dynamic = command._has_dynamic(db, task.id)
+        values=dict(reason='期末卷面登记有误，请核对原卷更正',newUsualScore=None,newMidtermScore=None,newFinalScore=None if dynamic else 90,expectedGradeVersion=record.version_no,expectedCurrentGradeId=record.acad_grade_id,expectedAuthorityHash=authority.digest(authority.source(db,task,record)),attachmentIds=[])
+        if dynamic:
+            values.update(expectedComponentHash=components.digest(components.source(db,task,record)),newComponentScores={'USUAL':60,'FINAL':90})
+        values.update(changes)
+        return SimpleNamespace(**values)
+
+def _review_identity(ids):
+    from app.models import WorkflowTask
+    with get_sessionmaker()() as db:
+        req=db.query(AaGradeChangeRequest).filter_by(tenant_id=TID,grade_record_id=ids['recordId'],status='PENDING').one()
+        task=db.get(WorkflowTask,req.current_task_id)
+        return dict(changeRequestId=req.id,expectedRequestVersion=req.version,currentTaskId=task.id,expectedTaskVersion=task.version)
+
+def _state(ids):
+    return _record_state(ids['recordId']),[(g.id,g.score,g.record_status) for g in _grades(ids['acadStudentId'])]
+
+def _apply(ids, *, new_final=90, reason="期末卷面登分错误，需按原卷更正", command_key=None):
+    user = _activate("teacher01", "ACADEMIC_TEACHER")
+    body = _application_body(ids, reason=reason)
+    if getattr(body, "newComponentScores", None) is not None:
+        body.newComponentScores["FINAL"] = new_final
+    else:
+        body.newFinalScore = new_final
+    return command.change_request(ids["taskId"], ids["recordId"], user, body, command_key=command_key)
+
+
+@pytest.mark.usefixtures("db_mode")
+@pytest.mark.parametrize("error_no", [1205, 1213])
+def test_apply_lock_conflict_returns_business_conflict_without_partial_request(monkeypatch, error_no):
+    from pymysql.err import OperationalError as DriverError
+    from sqlalchemy.exc import OperationalError
+    from app.modules.academic_affairs.services import academic_affairs_schedule_resource_guard as guard
+
+    ids = _seed_published_grade()
+    before = _state(ids)
+    def locked(*args, **kwargs):
+        raise OperationalError("isolated lock conflict", {}, DriverError(error_no, "isolated contention"))
+    monkeypatch.setattr(guard, 'lock_term', locked)
+    with pytest.raises(AppException) as conflict:
+        _apply(ids, command_key=f"isolated-correction-lock-{error_no}")
+    assert conflict.value.http_status == 409
+    assert _state(ids) == before
+    with get_sessionmaker()() as db:
+        assert db.query(AaGradeChangeRequest).filter_by(tenant_id=TID, grade_record_id=ids['recordId']).count() == 0
 
 
 @pytest.mark.usefixtures("db_mode")
@@ -231,7 +345,7 @@ def test_workflow_tasks_always_have_a_real_assignee():
     _apply(ids)
 
     _activate("college_admin01", "COLLEGE_ADMIN")
-    command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"), "APPROVE")
+    command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"), "APPROVE", identity=_review_identity(ids))
 
     db = get_sessionmaker()()
     try:
@@ -247,15 +361,19 @@ def test_workflow_tasks_always_have_a_real_assignee():
 
 
 @pytest.mark.usefixtures("db_mode")
-def test_final_approval_appends_new_version_and_supersedes_original():
+@pytest.mark.parametrize("dynamic", [False, True])
+def test_final_approval_appends_new_version_and_supersedes_original(dynamic):
     """终审通过 = 追加新版本 + 原行 SUPERSEDED，不是原地覆盖。"""
-    ids = _seed_published_grade()
+    ids = _seed_published_grade(dynamic=dynamic)
+    before = _state(ids)
     _apply(ids, new_final=90)
+    assert _state(ids) == before
     _activate("college_admin01", "COLLEGE_ADMIN")
-    command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"), "APPROVE")
+    command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"), "APPROVE", identity=_review_identity(ids))
+    assert _state(ids) == before
     _activate("school_admin01", "SCHOOL_ADMIN")
     result = command.change_academic_review(ids["recordId"], _ctx("school_admin01", "SCHOOL_ADMIN"),
-                                            "APPROVE")
+                                            "APPROVE", identity=_review_identity(ids), command_key="correction-final-key")
 
     rows = _grades(ids["acadStudentId"])
     assert len(rows) == 2
@@ -265,6 +383,8 @@ def test_final_approval_appends_new_version_and_supersedes_original():
     assert str(corrected.id) == result["correctedGradeId"]
     # 30% * 60 + 70% * 90 = 81
     assert corrected.score == 81
+    assert float(original.gpa_point) == 1.0, '旧60分版本保留已冻结绩点'
+    assert float(corrected.gpa_point) == 3.1, '更正81分不得复制旧版本的1.0绩点'
 
     state = _record_state(ids["recordId"])
     assert state["total"] == 81 and state["acadGradeId"] == corrected.id
@@ -281,6 +401,50 @@ def test_final_approval_appends_new_version_and_supersedes_original():
         db.close()
 
 
+    assert isinstance(result["warningScanOk"], bool)
+    assert result["warningScanOk"] or result["warningScanError"]
+    from app.modules.academic_affairs.services import academic_affairs_grade_command_receipt as receipts
+    receipt = receipts.read(_ctx("school_admin01", "SCHOOL_ADMIN"), "GRADE_CHANGE_REVIEW", "correction-final-key")
+    assert receipt["state"] == "SUCCESS"
+    assert receipt["result"]["correctedGradeId"] == result["correctedGradeId"]
+
+
+@pytest.mark.usefixtures("db_mode")
+def test_correction_effect_scans_only_the_changed_student_and_drains_its_notice(monkeypatch):
+    """终审不能因全校预警积压而重扫全校成绩或抢处理别人的通知。"""
+    from app.modules.academic_affairs.services import (
+        academic_affairs_warning_effective_grade_guard as warning_guard,
+    )
+    from app.services import message_event_outbox_service as outbox
+
+    ids = _seed_published_grade()
+    _apply(ids, new_final=90)
+    _college(ids)
+
+    scopes = []
+    original_fail_counts = warning_guard._fail_counts
+
+    def observe_fail_counts(db, *, academic_student_ids=None):
+        scopes.append(academic_student_ids)
+        return original_fail_counts(db, academic_student_ids=academic_student_ids)
+
+    drained = []
+    monkeypatch.setattr(warning_guard, "_fail_counts", observe_fail_counts)
+    monkeypatch.setattr(
+        outbox,
+        "try_process_pending_outbox",
+        lambda **kwargs: drained.append(kwargs),
+    )
+
+    result = _final(ids, command_key="correction-targeted-effect")
+
+    assert scopes == [{ids["acadStudentId"]}]
+    assert result["warningScanResult"]["scanScope"] == "CORRECTION_STUDENT"
+    assert len(drained) == 1
+    assert drained[0]["worker_id"] == "aa-grade-change-inline"
+    assert len(drained[0]["outbox_ids"]) == 1
+    assert int(drained[0]["outbox_ids"][0]) > 0
+
 @pytest.mark.usefixtures("db_mode")
 def test_consecutive_corrections_form_a_to_b_to_c_chain():
     """连续两次更正必须形成 A→B→C 完整链，只有最后一条是 ACTIVE。"""
@@ -288,9 +452,9 @@ def test_consecutive_corrections_form_a_to_b_to_c_chain():
     for score in (90, 75):
         _apply(ids, new_final=score)
         _activate("college_admin01", "COLLEGE_ADMIN")
-        command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"), "APPROVE")
+        command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"), "APPROVE", identity=_review_identity(ids))
         _activate("school_admin01", "SCHOOL_ADMIN")
-        command.change_academic_review(ids["recordId"], _ctx("school_admin01", "SCHOOL_ADMIN"), "APPROVE")
+        command.change_academic_review(ids["recordId"], _ctx("school_admin01", "SCHOOL_ADMIN"), "APPROVE", identity=_review_identity(ids))
 
     rows = _grades(ids["acadStudentId"])
     assert len(rows) == 3
@@ -308,7 +472,7 @@ def test_reject_changes_no_formal_fact():
     _apply(ids)
     _activate("college_admin01", "COLLEGE_ADMIN")
     command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"),
-                                  "REJECT", "卷面复核后确认原分数无误")
+                                  "REJECT", "卷面复核后确认原分数无误", identity=_review_identity(ids))
 
     assert _record_state(ids["recordId"]) == before_record
     assert [(row.id, row.score, row.record_status) for row in _grades(ids["acadStudentId"])] == before_grades
@@ -320,13 +484,16 @@ def test_failed_final_approval_rolls_back_everything(monkeypatch):
     from app.models import AffairsAuditTrail, MessageEventOutbox
     from app.models.academic_affairs_effective_grade import AaGradeChangeRequest
 
-    ids = _seed_published_grade()
+    ids = _seed_published_grade(dynamic=True)
     _apply(ids)
     _activate("college_admin01", "COLLEGE_ADMIN")
-    command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"), "APPROVE")
+    command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"), "APPROVE", identity=_review_identity(ids))
 
     before_record = _record_state(ids["recordId"])
     before_grades = [(row.id, row.score, row.record_status) for row in _grades(ids["acadStudentId"])]
+
+    with get_sessionmaker()() as snapshot_db:
+        before_components = components.source(snapshot_db, snapshot_db.get(AaGradeTask, ids["taskId"]), snapshot_db.get(AaGradeRecord, ids["recordId"]))
 
     def _boom(*_args, **_kwargs):
         raise RuntimeError("injected outbox failure")
@@ -336,7 +503,7 @@ def test_failed_final_approval_rolls_back_everything(monkeypatch):
 
     _activate("school_admin01", "SCHOOL_ADMIN")
     with pytest.raises(RuntimeError):
-        command.change_academic_review(ids["recordId"], _ctx("school_admin01", "SCHOOL_ADMIN"), "APPROVE")
+        command.change_academic_review(ids["recordId"], _ctx("school_admin01", "SCHOOL_ADMIN"), "APPROVE", identity=_review_identity(ids), command_key="rollback-final-key")
 
     assert _record_state(ids["recordId"]) == before_record
     assert [(row.id, row.score, row.record_status) for row in _grades(ids["acadStudentId"])] == before_grades
@@ -357,14 +524,20 @@ def test_failed_final_approval_rolls_back_everything(monkeypatch):
         db.close()
 
 
+    from app.models.idempotency import IdempotencyRecord
+    with get_sessionmaker()() as db:
+        assert components.source(db, db.get(AaGradeTask, ids["taskId"]), db.get(AaGradeRecord, ids["recordId"])) == before_components
+        assert db.query(IdempotencyRecord).filter(IdempotencyRecord.tenant_id == TID).count() == 0
+
 @pytest.mark.usefixtures("db_mode")
 def test_two_concurrent_final_approvals_only_one_wins():
     """两人并发终审只有一个成功，正式成绩只追加一条新版本。"""
     ids = _seed_published_grade()
     _apply(ids)
     _activate("college_admin01", "COLLEGE_ADMIN")
-    command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"), "APPROVE")
+    command.change_college_review(ids["recordId"], _ctx("college_admin01", "COLLEGE_ADMIN"), "APPROVE", identity=_review_identity(ids))
 
+    frozen_identity = _review_identity(ids)
     barrier = Barrier(2)
 
     def approve(_index):
@@ -372,7 +545,7 @@ def test_two_concurrent_final_approvals_only_one_wins():
         barrier.wait()
         try:
             command.change_academic_review(ids["recordId"], _ctx("school_admin01", "SCHOOL_ADMIN"),
-                                           "APPROVE")
+                                           "APPROVE", identity=frozen_identity, command_key=f"concurrent-final-{_index}")
             return "ok"
         except AppException as exc:
             return f"rejected:{exc.code}"
@@ -433,4 +606,82 @@ def test_reviewer_must_be_the_assigned_person():
     _activate("school_admin01", "SCHOOL_ADMIN")
     with pytest.raises(AppException):
         command.change_college_review(ids["recordId"], _ctx("school_admin01", "SCHOOL_ADMIN"),
-                                      "APPROVE")
+                                      "APPROVE", identity=_review_identity(ids))
+
+
+def _college(ids):
+    user=_activate('college_admin01','COLLEGE_ADMIN')
+    return command.change_college_review(ids['recordId'],user,'APPROVE',identity=_review_identity(ids))
+
+def _final(ids,**kwargs):
+    user=_activate('school_admin01','SCHOOL_ADMIN')
+    return command.change_academic_review(ids['recordId'],user,'APPROVE',identity=_review_identity(ids),**kwargs)
+
+
+@pytest.mark.usefixtures("db_mode")
+@pytest.mark.parametrize("mutation", ["roster", "policy", "component", "material", "version"])
+def test_source_change_blocks_final_and_preserves_formal(mutation):
+    dynamic=mutation=='component'
+    ids=_seed_published_grade(dynamic=dynamic)
+    _apply(ids);_college(ids)
+    with get_sessionmaker()() as db:
+        if mutation=='roster':
+            tc=db.get(AaTeachingClass,ids['teachingClassId'])
+            classes.create_roster_version(db,tc,[ids['studentId']],source_type='MANUAL',source_id=tc.id,reason='明确名单来源换版测试')
+        elif mutation=='policy':
+            policy=db.query(AaEffectiveGradePolicy).filter_by(tenant_id=TID,status='ACTIVE').first();policy.makeup_cap=55
+        elif mutation=='component':
+            from app.models.academic_affairs_r10 import AaGradeComponentScore
+            row=db.query(AaGradeComponentScore).filter_by(tenant_id=TID,grade_task_id=ids['taskId']).first();row.version+=1
+        elif mutation=='material':
+            # Frozen empty manifest integrity is a real invalid-evidence case; no file mocks.
+            req=db.query(AaGradeChangeRequest).filter_by(tenant_id=TID,grade_record_id=ids['recordId']).one();req.evidence_manifest_hash='0'*64
+        elif mutation=='version':
+            db.get(AaGradeRecord,ids['recordId']).version_no+=1
+        db.commit()
+    before=_state(ids)
+    with pytest.raises(AppException) as failure:_final(ids,command_key='candidate-blocked-final')
+    assert failure.value.http_status==409
+    assert _state(ids)==before
+    with get_sessionmaker()() as db:
+        req=db.query(AaGradeChangeRequest).filter_by(tenant_id=TID,grade_record_id=ids['recordId']).one()
+        assert req.status=='PENDING'
+        from app.models.idempotency import IdempotencyRecord
+        assert db.query(IdempotencyRecord).filter(IdempotencyRecord.tenant_id==TID).count()==0
+
+
+@pytest.mark.usefixtures("db_mode")
+def test_actual_bound_file_quarantined_blocks_final():
+    from app.models.file import FileObject,FileBinding
+    from app.core.context import set_current_user
+    ids=_seed_published_grade()
+    with get_sessionmaker()() as db:
+        file=FileObject(tenant_id=TID,file_key='candidate-grade-evidence',file_name='原卷.pdf',sha256='a'*64,status='AVAILABLE',scan_status='CLEAN',owner_user_id=ids['teacherUserId'],visibility='PRIVATE',biz_type='TEMP_PRIVATE')
+        db.add(file);db.commit();fid=file.id
+    user=_activate('teacher01','ACADEMIC_TEACHER');user['userId']=str(ids['teacherUserId']);set_current_user(user)
+    command.change_request(ids['taskId'],ids['recordId'],user,_application_body(ids,attachmentIds=[str(fid)]))
+    _college(ids)
+    with get_sessionmaker()() as db:
+        assert db.query(FileBinding).filter_by(tenant_id=TID,file_id=fid,status='ACTIVE').count()==1
+        file=db.get(FileObject,fid);file.status='QUARANTINED';file.scan_status='INFECTED';db.commit()
+    before=_state(ids)
+    with pytest.raises(AppException) as failure:_final(ids)
+    assert failure.value.http_status==409 and _state(ids)==before
+
+
+@pytest.mark.usefixtures("db_mode")
+def test_real_warning_scan_failure_keeps_committed_grade_and_honest_receipt(monkeypatch):
+    from app.modules.academic_affairs.services import academic_grade_effect_service as effects
+    ids=_seed_published_grade();_apply(ids);_college(ids)
+    def fail(*args,**kwargs):raise RuntimeError('injected warning scan failure')
+    # Fail only the post-commit effect runner. Grade, workflow and durable command are real MySQL.
+    monkeypatch.setattr(effects,'run_effect',fail)
+    result=_final(ids,command_key='scan-failure-final')
+    assert result['warningScanOk'] is False and result['warningScanError']
+    assert result['warningScanState']=='UNKNOWN'
+    assert [g[2] for g in _state(ids)[1]]==['SUPERSEDED','ACTIVE']
+    from app.modules.academic_affairs.services import academic_affairs_grade_command_receipt as receipts
+    persisted=receipts.read(_ctx('school_admin01','SCHOOL_ADMIN'),'GRADE_CHANGE_REVIEW','scan-failure-final')
+    assert persisted['state']=='SUCCESS'
+    assert persisted['result']['correctedGradeId']==result['correctedGradeId']
+    assert persisted['result']['warningScanOk'] is False

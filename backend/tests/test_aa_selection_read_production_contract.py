@@ -3,6 +3,10 @@ from __future__ import annotations
 
 import importlib
 import inspect
+from contextlib import nullcontext
+from types import SimpleNamespace
+
+import pytest
 
 from app.modules.academic_affairs.routers import course_selection_router
 from app.modules.academic_affairs.services import academic_affairs_selection_service as selection
@@ -100,3 +104,47 @@ def test_selection_read_layer_never_creates_second_selection_fact():
     assert "TeachingRoster" in (read.__doc__ or "")
     assert "db.add(" not in source
     assert ".update(" not in source
+
+
+@pytest.mark.parametrize("status,permission,next_code", [
+    ("DRAFT", course_selection_router._SEL_MANAGE, "PUBLISHED"),
+    ("PUBLISHED", course_selection_router._SEL_MANAGE, "OPEN"),
+    ("OPEN", course_selection_router._SEL_MANAGE, "CLOSED"),
+    ("CLOSED", course_selection_router._SEL_LOCK, "LOCKED"),
+    ("LOCKED", course_selection_router._SEL_MANAGE, "ARCHIVED"),
+    ("ARCHIVED", None, None),
+])
+def test_batch_responsibility_matches_real_lifecycle_permission(monkeypatch, status, permission, next_code):
+    core_read = importlib.import_module(
+        "app.modules.academic_affairs.services.academic_affairs_selection_read_core_service"
+    )
+    responsibility = importlib.import_module(
+        "app.modules.academic_affairs.services.academic_affairs_responsibility_service"
+    )
+    database = object()
+    batch = SimpleNamespace(id=14, status=status)
+    monkeypatch.setattr(core_read._core, "session", lambda: nullcontext(database))
+    monkeypatch.setattr(core_read._core, "_ctx", lambda _user, _db: SimpleNamespace(scope_type="TENANT_ALL"))
+    monkeypatch.setattr(core_read._core, "_get_batch", lambda _db, _id: batch)
+    monkeypatch.setattr(core_read._core, "_batch_dto", lambda row: {"batchId": str(row.id), "status": row.status})
+    monkeypatch.setattr(core_read, "_require_batch_visible", lambda _db, _id, _scope: None)
+    calls = []
+
+    def resolve_school(db, *, permission_code):
+        assert db is database
+        calls.append(permission_code)
+        # Different action permissions can resolve different normal responsibility accounts.
+        account = "72" if permission_code == course_selection_router._SEL_LOCK else "71"
+        return {"resolved": True, "assigneeUserIds": [account]}
+
+    monkeypatch.setattr(responsibility, "resolve_school", resolve_school)
+    result = core_read.get_batch({}, "14")
+    if permission is None:
+        assert calls == []
+        assert result["responsibility"] is None
+        assert result["nextStep"] is None
+    else:
+        assert calls == [permission]
+        expected_account = "72" if permission == course_selection_router._SEL_LOCK else "71"
+        assert result["responsibility"]["assigneeUserIds"] == [expected_account]
+        assert result["nextStep"]["code"] == next_code

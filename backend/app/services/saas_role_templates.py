@@ -28,7 +28,7 @@ BUILTIN_ROLE_TEMPLATES = (
           aliases=("信息中心管理员",)),
     _role("SECURITY_AUDITOR", "安全审计员", "SYSTEM", "SCHOOL", teacher=False,
           aliases=("审计员",)),
-    _role("LEADER", "校院领导", "MANAGEMENT", "SCHOOL", aliases=("校领导", "院领导")),
+    _role("LEADER", "校领导", "MANAGEMENT", "SCHOOL"),
     _role("COLLEGE_ADMIN", "学院管理员", "MANAGEMENT", "COLLEGE", aliases=("学院负责人", "学院教务员")),
     _role("ACADEMIC_ADMIN", "教务处管理员", "ACADEMIC", "SCHOOL", aliases=("教务管理员",)),
     _role("ACADEMIC_TEACHER", "任课教师", "ACADEMIC", "ASSIGNED",
@@ -71,6 +71,8 @@ def role_catalog(*, teacher_only: bool = False) -> dict:
 
 def resolve_role_code(value: object, *, teacher_only: bool = True) -> str:
     raw = str(value or "").strip()
+    if raw in {"院领导", "校院领导"}:
+        raise AppException("VALIDATION_ERROR", "请明确校级或院级身份；院领导须配置学院范围，不能自动使用校领导角色")
     code = _ALIAS_TO_CODE.get(raw.upper())
     role = ROLE_TEMPLATE_BY_CODE.get(code or "")
     if role is None or (teacher_only and not role["teacherAssignable"]):
@@ -92,4 +94,11 @@ def role_codes_from_row(row: dict, *, teacher_only: bool = True) -> list[str]:
             codes.append(code)
     if not codes:
         raise AppException("VALIDATION_ERROR", "至少选择一个预设角色")
+    position = " ".join(str(row.get(key) or "") for key in ("position", "positionName", "roleName"))
+    if "LEADER" in codes and re.search("院领导|院长", position):
+        raise AppException("VALIDATION_ERROR", "院级岗位不能通过导入分配校领导角色，请配置明确的学院身份和范围")
+    if codes[0] == "LEADER" and str(row.get("scopeType") or "").strip().upper() in {
+        "COLLEGE", "MAJOR", "CLASS", "STUDENT", "ADVISOR",
+    }:
+        raise AppException("VALIDATION_ERROR", "校领导角色不能通过导入限制为学院或下级范围，请选择对应范围的身份")
     return codes

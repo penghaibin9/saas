@@ -15,6 +15,63 @@ import pytest
 TID = 1000000000000000001
 
 
+def test_request_binding_facts_keep_class_grade_time_and_tenant_resolution_live(monkeypatch):
+    from types import SimpleNamespace as Row
+    from unittest.mock import MagicMock
+    from app.modules.academic_affairs.services import academic_affairs_program_activation_service as service
+    from app.modules.academic_affairs.services.student_program_resolution_service import resolve_student_program
+
+    programs = {1: Row(id=1, tenant_id=7, is_deleted=False, status="PUBLISHED"),
+                2: Row(id=2, tenant_id=7, is_deleted=False, status="FROZEN")}
+    bindings = [Row(id=20, program_id=2, class_id=10, grade_year="2026", status="ACTIVE", bound_at=datetime(2026, 7, 1)),
+                Row(id=19, program_id=1, class_id=None, grade_year="2026", status="ACTIVE", bound_at=datetime(2026, 1, 1))]
+    monkeypatch.setattr(service, "tenant_get", lambda db, model, pid, tenant_id: programs.get(pid))
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = bindings
+    cache = {}
+    student = Row(major_id=3, grade="2026", class_id=10)
+    first = resolve_student_program(db, student, tenant_id=7, as_of=datetime(2026, 6, 1), cache=cache)
+    second = resolve_student_program(db, student, tenant_id=7, as_of=datetime(2026, 8, 1), cache=cache)
+    assert first.program.id == 1 and second.program.id == 2
+    student.class_id = 11
+    assert resolve_student_program(db, student, tenant_id=7, cache=cache).program.id == 1
+    student.grade = "2025"
+    assert resolve_student_program(db, student, tenant_id=7, cache=cache).status != "RESOLVED"
+    assert db.scalars.call_count == 1
+    db.scalars.return_value.all.return_value = []
+    assert resolve_student_program(db, student, tenant_id=8, cache=cache).status != "RESOLVED"
+    student.major_id = 4
+    resolve_student_program(db, student, tenant_id=7, cache=cache)
+    resolve_student_program(db, student, tenant_id=7, cache={})
+    resolve_student_program(db, student, tenant_id=7)
+    resolve_student_program(db, student, tenant_id=7)
+    assert db.scalars.call_count == 6
+    failed_cache = {}
+    db.scalars.side_effect = RuntimeError("source unavailable")
+    with pytest.raises(RuntimeError):
+        resolve_student_program(db, student, tenant_id=7, cache=failed_cache)
+    assert failed_cache == {}
+
+
+def test_program_facts_recheck_current_historical_status_and_tenant(monkeypatch):
+    from types import SimpleNamespace as Row
+    from unittest.mock import MagicMock
+    from app.modules.academic_affairs.services import academic_affairs_program_activation_service as service
+
+    program = Row(id=1, tenant_id=7, is_deleted=False, status="FROZEN")
+    load = MagicMock(return_value=program)
+    monkeypatch.setattr(service, "tenant_get", load)
+    binding = Row(program_id=1)
+    assert service._program_for_binding(None, binding, tenant_id=7, historical=False) is program
+    program.status = "DISABLED"
+    assert service._program_for_binding(None, binding, tenant_id=7, historical=False) is None
+    assert service._program_for_binding(None, binding, tenant_id=7, historical=True) is program
+    assert service._program_for_binding(None, binding, tenant_id=8, historical=True) is None
+    load.side_effect = RuntimeError("source unavailable")
+    with pytest.raises(RuntimeError):
+        service._program_for_binding(None, binding, tenant_id=7, historical=True)
+
+
 def _seed_scope(*, override_status="FROZEN"):
     from app.db.session import get_sessionmaker
     from app.models import AaProgram, AaProgramBinding, Major, SchoolClass

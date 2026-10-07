@@ -4,8 +4,9 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 
-const script = new URL('./check-npm-production-audit.mjs', import.meta.url)
+const scriptPath = fileURLToPath(new URL('./check-npm-production-audit.mjs', import.meta.url))
 
 function run({ report, waivers = [], app = 'frontend' }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'npm-prod-audit-'))
@@ -13,7 +14,7 @@ function run({ report, waivers = [], app = 'frontend' }) {
   const waiverPath = path.join(dir, 'waivers.json')
   writeFileSync(reportPath, JSON.stringify(report))
   writeFileSync(waiverPath, JSON.stringify({ version: 1, waivers }))
-  return spawnSync(process.execPath, [script.pathname, reportPath, app, waiverPath], {
+  return spawnSync(process.execPath, [scriptPath, reportPath, app, waiverPath], {
     encoding: 'utf8',
   })
 }

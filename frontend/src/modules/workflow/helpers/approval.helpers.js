@@ -73,7 +73,7 @@ export function appendApprovalRecord(task, action, operator, comment = '') {
 }
 
 export function getTaskStatusText(status) {
-  return TASK_STATUS_LABELS[status] || status || '—'
+  return TASK_STATUS_LABELS[status] || (status ? '审批状态待确认' : '—')
 }
 
 /** 状态 → AppBadge type */

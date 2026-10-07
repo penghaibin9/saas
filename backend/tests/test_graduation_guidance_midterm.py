@@ -89,3 +89,54 @@ def test_midterm_rectify_flow_and_repeat_failure(graduation_client, auth_headers
 
     stats = graduation_client.get(f"{GD_MIDTERM}/stats", headers=h).json()["data"]
     assert stats["total"] >= 1
+
+
+def _set_stage_and_proposal(gid, stage, proposal_status=None):
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationProposal, GraduationStudent
+
+    db = get_sessionmaker()()
+    try:
+        stu = db.get(GraduationStudent, int(gid))
+        stu.stage = stage
+        if proposal_status:
+            db.add(GraduationProposal(
+                tenant_id=stu.tenant_id, gd_student_id=stu.id, version="v1", status=proposal_status,
+                background="背景", plan="方案",
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _stage_of(gid):
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationStudent
+
+    db = get_sessionmaker()()
+    try:
+        return db.get(GraduationStudent, int(gid)).stage
+    finally:
+        db.close()
+
+
+def test_midterm_can_start_after_proposal_approved_without_manual_advance(graduation_client, auth_headers, db_mode):
+    """回归：此前必须由管理员逐个把学生“推进”到中期阶段，教师才能做中期检查。"""
+    h = auth_headers
+    gid = _gd_student(graduation_client, h, "GU301", "自动中期生")
+    _set_stage_and_proposal(gid, "GUIDING", "APPROVED")
+
+    ck = graduation_client.post(f"{GD_MIDTERM}/{gid}/check", headers=h, json={"conclusion": "PASS", "comment": "进度正常"})
+    assert ck.json()["code"] == 0, ck.json()
+    assert ck.json()["data"]["status"] == "CHECKED_PASS"
+    assert _stage_of(gid) == "FINAL_CHECK"
+
+
+def test_midterm_blocked_before_proposal_approved(graduation_client, auth_headers, db_mode):
+    h = auth_headers
+    gid = _gd_student(graduation_client, h, "GU302", "未开题生")
+    _set_stage_and_proposal(gid, "GUIDING", "PENDING_REVIEW")
+
+    ck = graduation_client.post(f"{GD_MIDTERM}/{gid}/check", headers=h, json={"conclusion": "PASS"})
+    assert ck.json()["code"] != 0
+    assert _stage_of(gid) == "GUIDING"

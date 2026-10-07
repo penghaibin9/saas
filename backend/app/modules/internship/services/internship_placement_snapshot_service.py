@@ -8,7 +8,8 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException
-from app.models import EmpCompany, InternshipPosition
+from app.core.tenant_scoped import tenant_get
+from app.models import EmpCompany, InternshipBatch, InternshipPosition
 from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
 
 
@@ -53,6 +54,8 @@ def capture_placement_snapshot_in_tx(
     placement_seq = int(current_max or 0) + 1
     placement_at = datetime.utcnow()
     snapshot_version = 1
+    batch = tenant_get(db, InternshipBatch, record.batch_id)
+    checkin_cfg = ((batch.rules_config or {}).get("checkin") or {}) if batch else {}
     payload = {
         "recordId": str(record.id),
         "placementSeq": placement_seq,
@@ -69,6 +72,13 @@ def capture_placement_snapshot_in_tx(
         "positionCategory": position.category,
         "workLocation": position.work_location,
         "workAddress": position.work_address,
+        "checkinRule": {
+            "coordinateSystem": "GCJ02",
+            "centerLat": position.geofence_lat,
+            "centerLng": position.geofence_lng,
+            "radiusM": position.geofence_radius_m,
+            "maxAccuracyM": int(checkin_cfg.get("maxAccuracyM") or 200),
+        },
         "workContent": position.work_content,
         "majorRequirement": position.major_requirement,
         "gradeRequirement": position.grade_requirement,

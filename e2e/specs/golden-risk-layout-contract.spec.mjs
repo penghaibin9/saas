@@ -3,81 +3,24 @@ import { openGoldenStaffPage } from '../lib/golden-staff-page.mjs'
 
 const VIEWPORT = { width: 1440, height: 1000 }
 
-test('Golden risk layout contract · five metric cards stay in one desktop row', async ({ page }, testInfo) => {
+test('Golden risk layout contract · five metrics fit one compact desktop row', async ({ page }, testInfo) => {
   await page.setViewportSize(VIEWPORT)
   await openGoldenStaffPage(page, '/admin/student-affairs/risk')
-
-  const metrics = page.locator('.sa-grid--metrics')
+  const metrics = page.getByLabel('业务统计', { exact: true })
   await expect(metrics).toBeVisible()
-
-  const evidence = await metrics.evaluate((el) => {
-    const style = getComputedStyle(el)
-    const rules = []
-
-    const walkRules = (ruleList, context = '') => {
-      for (const rule of Array.from(ruleList || [])) {
-        if (rule instanceof CSSMediaRule) {
-          const active = window.matchMedia(rule.conditionText).matches
-          walkRules(rule.cssRules, `${context} @media ${rule.conditionText} active=${active}`)
-          continue
-        }
-        if (!(rule instanceof CSSStyleRule) || !rule.selectorText?.includes('sa-grid--metrics')) continue
-        try {
-          if (el.matches(rule.selectorText)) {
-            rules.push({ context, selector: rule.selectorText, cssText: rule.style.cssText })
-          }
-        } catch (_) {}
-      }
-    }
-
-    for (const sheet of Array.from(document.styleSheets)) {
-      try { walkRules(sheet.cssRules, sheet.href || 'inline') } catch (_) {}
-    }
-
-    return {
-      innerWidth: window.innerWidth,
-      outerWidth: window.outerWidth,
-      devicePixelRatio: window.devicePixelRatio,
-      media960: window.matchMedia('(max-width: 960px)').matches,
-      media1280: window.matchMedia('(max-width: 1280px)').matches,
-      display: style.display,
-      width: style.width,
-      flex: style.flex,
-      gridTemplateColumns: style.gridTemplateColumns,
-      gridAutoFlow: style.gridAutoFlow,
-      className: el.className,
-      ancestors: Array.from({ length: 6 }, (_, index) => {
-        let node = el
-        for (let i = 0; i <= index; i += 1) node = node?.parentElement
-        return node ? `${node.tagName}.${String(node.className || '').replace(/\s+/g, '.')}` : null
-      }).filter(Boolean),
-      cards: Array.from(el.children).map((card) => {
-        const cardStyle = getComputedStyle(card)
-        const rect = card.getBoundingClientRect()
-        return {
-          className: card.className,
-          width: Math.round(rect.width * 100) / 100,
-          left: Math.round(rect.left * 100) / 100,
-          top: Math.round(rect.top * 100) / 100,
-          gridColumn: cardStyle.gridColumn,
-          minWidth: cardStyle.minWidth
-        }
-      }),
-      matchingRules: rules
-    }
+  await expect(metrics.locator('dt')).toHaveText(['风险记录', '高危/危急', '未闭环', '待分派', '超时'])
+  const evidence = await metrics.evaluate((el) => ({
+    width: window.innerWidth,
+    rect: el.getBoundingClientRect().toJSON(),
+    items: Array.from(el.children).map(item => item.getBoundingClientRect().toJSON())
+  }))
+  await testInfo.attach('student-affairs-risk-layout-contract', {
+    body: Buffer.from(JSON.stringify(evidence, null, 2)), contentType: 'application/json'
   })
-
-  const body = Buffer.from(JSON.stringify(evidence, null, 2), 'utf8')
-  await testInfo.attach('student-affairs-risk-layout-contract', { body, contentType: 'application/json' })
-
-  const columns = String(evidence.gridTemplateColumns || '').trim().split(/\s+/).filter(Boolean)
-  const rowTops = new Set(evidence.cards.map((card) => card.top))
-
-  expect(evidence.innerWidth).toBe(VIEWPORT.width)
-  expect(evidence.media1280).toBe(false)
-  expect(evidence.display).toBe('grid')
-  expect(columns).toHaveLength(5)
-  expect(evidence.cards).toHaveLength(5)
-  expect(evidence.cards.every((card) => !String(card.gridColumn).includes('span 2'))).toBe(true)
-  expect(rowTops.size).toBe(1)
+  expect(evidence.items).toHaveLength(5)
+  expect(new Set(evidence.items.map(item => Math.round(item.top))).size).toBe(1)
+  expect(evidence.rect.height).toBeLessThanOrEqual(100)
+  expect(evidence.rect.left).toBeGreaterThanOrEqual(0)
+  expect(evidence.rect.right).toBeLessThanOrEqual(VIEWPORT.width)
+  await expect(page.getByRole('navigation', { name: '风险快捷队列' })).toBeVisible()
 })

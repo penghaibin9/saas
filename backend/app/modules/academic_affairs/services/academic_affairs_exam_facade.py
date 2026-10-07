@@ -9,7 +9,7 @@ import hashlib
 import json
 from datetime import datetime
 
-from sqlalchemy import func
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 
 from app.core.affairs_security import _derive_keys, no_data_scope
@@ -27,6 +27,91 @@ from .academic_affairs_roster_consumer_service import (
 
 def _status(value) -> str:
     return str(value or "").strip().upper()
+
+
+def _require_current_school_manager(db, user):
+    """Require the current school exam manager, not merely any school-scoped account."""
+    from .academic_affairs_responsibility_service import resolve_school
+
+    context = _legacy._ctx(user, db)
+    _legacy._require_school(context)
+    permission = "academicAffairs.exam.manage"
+    owner = resolve_school(db, permission_code=permission)
+    return _legacy._require_responsible_actor(db, user, context, owner, permission)
+
+
+def _exam_params(db, batch):
+    from .academic_affairs_autoexam_service import _load_params
+
+    return _load_params(db, batch)
+
+
+def _teacher_accounts(db, keys):
+    """Resolve a batch of exam teacher keys once, including historical aliases."""
+    from app.models import User
+
+    normalized = {str(key or "").strip() for key in keys if str(key or "").strip()}
+    if not normalized:
+        return {}
+    ids = {int(key[2:]) for key in normalized if key.startswith("u_") and key[2:].isdigit()}
+    ids.update(int(key[3:]) for key in normalized if key.startswith("db-") and key[3:].isdigit())
+    ids.update(int(key) for key in normalized if key.isdigit())
+    clauses = [User.login_name.in_(normalized)]
+    if ids:
+        clauses.append(User.id.in_(ids))
+    rows = db.scalars(select(User).where(User.tenant_id == _legacy._tid(), or_(*clauses))).all()
+    by_login = {str(row.login_name): row for row in rows if row.login_name}
+    by_id = {int(row.id): row for row in rows}
+    resolved = {}
+    for key in normalized:
+        candidate = by_id.get(int(key[2:])) if key.startswith("u_") and key[2:].isdigit() else None
+        if candidate is None and key.startswith("db-") and key[3:].isdigit():
+            candidate = by_id.get(int(key[3:]))
+        if candidate is None and key.isdigit():
+            candidate = by_login.get(key) or by_id.get(int(key))
+        resolved[key] = candidate if candidate and not candidate.is_deleted else by_login.get(key)
+    return resolved
+
+
+def _active_teacher(account):
+    return bool(account and not account.is_deleted and _status(account.status) == "ACTIVE"
+                and _status(account.user_type) == "TEACHER")
+
+
+def _teacher_aliases(account):
+    return {str(account.login_name).strip(), f"u_{account.id}", f"db-{account.id}", str(account.id)}
+
+
+def _patrol_account(db, key):
+    normalized = str(key or "").strip()
+    account = _teacher_accounts(db, [normalized]).get(normalized)
+    if (not account or account.is_deleted or _status(account.status) != "ACTIVE"
+            or _status(account.user_type) not in {"TEACHER", "STAFF", "ADMIN", "SCHOOL_ADMIN"}):
+        raise AppException("VALIDATION_ERROR", "巡考人员须为本校在职教职工")
+    if not str(account.login_name or "").strip():
+        raise AppException("VALIDATION_ERROR", "巡考人员账号缺少稳定工号")
+    return account
+
+
+def _same_teacher(account, key, owner_account, owner_key):
+    if account is not None and owner_account is not None:
+        return int(account.id) == int(owner_account.id)
+    return bool(key and owner_key and str(key).strip() == str(owner_key).strip())
+
+
+def _valid_invigilator_count(rows, course, accounts, *, avoid_own_course):
+    owner_key = str(course.teacher_key or "").strip()
+    owner = accounts.get(owner_key)
+    eligible_ids = set()
+    for invigilator in rows:
+        key = str(invigilator.teacher_key or "").strip()
+        teacher = accounts.get(key)
+        if not _active_teacher(teacher):
+            continue
+        if avoid_own_course and _same_teacher(teacher, key, owner, owner_key):
+            continue
+        eligible_ids.add(int(teacher.id))
+    return len(eligible_ids)
 
 
 def create_batch(user, body):
@@ -69,7 +154,7 @@ def confirm_course(user, cid, action):
     with _legacy.session() as db:
         context = _legacy._ctx(user, db)
         course = _legacy._get_course(db, int(cid))
-        _legacy._check_college_scope(context, course.college_id)
+        _legacy._require_course_confirmer(db, user, context, course)
         if course.status != "PENDING_CONFIRM":
             raise _legacy._invalid("仅待确认课程可操作")
         if action not in {"CONFIRM", "REMOVE", "REJECT"}:
@@ -98,7 +183,7 @@ def confirm_course(user, cid, action):
             f"{action} {course.course_name};rosterVersion={roster_identity['rosterVersionId'] if roster_identity else '-'}",
         )
         db.commit()
-        result = _legacy._course_dto(course)
+        result = _legacy._course_dto(course, offering_college_id=_legacy._course_college_id(db, course))
         result["expectedStudents"] = course.expected_students
         result["rosterIdentity"] = roster_identity
         return result
@@ -110,7 +195,7 @@ def set_course_schedule(user, cid, body):
     with _legacy.session() as db:
         ctx = _legacy._ctx(user, db)
         course = _legacy._get_course(db, int(cid))
-        _legacy._check_college_scope(ctx, course.college_id)
+        _legacy._check_course_scope(db, ctx, course)
         batch = _legacy._get_batch(db, course.batch_id)
         _legacy._ensure_not_archived(batch)
         if batch.status not in (_legacy._B_DRAFT, _legacy._B_CONFIRMED):
@@ -129,7 +214,7 @@ def set_course_schedule(user, cid, body):
         after = f"{course.exam_date} {course.start_time}-{course.end_time}"
         _legacy._audit(db, "EXAM_COURSE", course.id, "EXAM_COURSE_SCHEDULE", f"设时间 {after}", before, after)
         db.commit()
-        return _legacy._course_dto(course)
+        return _legacy._course_dto(course, offering_college_id=_legacy._course_college_id(db, course))
 
 
 def list_courses(user, bid, page=1, page_size=100):
@@ -145,10 +230,24 @@ def list_courses(user, bid, page=1, page_size=100):
 
 
 def _effective_room_capacity(room) -> int:
-    capacity = int(getattr(room, "capacity", 0) or 0)
-    if _status(getattr(room, "seat_mode", None)) == "SPACED":
-        return (capacity + 1) // 2
-    return capacity
+    # Capacity is the number of usable exam places, not the largest seat label.
+    return int(getattr(room, "capacity", 0) or 0)
+
+
+def _require_classroom_rules(db, classroom_id, capacity):
+    from app.models import AaClassroom
+
+    if not classroom_id:
+        return  # Preserve historical exam venues without a classroom dictionary link.
+    classroom = db.query(AaClassroom).filter(
+        AaClassroom.id == int(classroom_id), AaClassroom.tenant_id == _legacy._tid(),
+        AaClassroom.is_deleted.is_(False),
+    ).populate_existing().with_for_update().first()
+    if not classroom or classroom.status != "AVAILABLE" or not classroom.allow_exam:
+        raise AppException("DATA_CONFLICT", "所选教室当前不可用或未允许排考", http_status=409)
+    actual = int(classroom.exam_seats if classroom.exam_seats is not None else (classroom.capacity or 0))
+    if actual <= 0 or int(capacity or 0) > actual:
+        raise AppException("DATA_CONFLICT", f"考场容量超过教室实际可用考位 {actual}，请重新核对", http_status=409)
 
 
 def assign_seats(user, room_id, student_ids):
@@ -165,11 +264,12 @@ def assign_seats(user, room_id, student_ids):
         if not room:
             raise not_found("考场不存在")
         course = _legacy._get_course(db, room.exam_course_id)
-        _legacy._check_college_scope(context, course.college_id)
+        _legacy._check_course_scope(db, context, course)
         batch = _legacy._get_batch(db, course.batch_id)
         _legacy._ensure_not_archived(batch)
         if batch.status not in (_legacy._B_CONFIRMED, _legacy._B_ARRANGED):
             raise _legacy._invalid("仅课程确认/编排阶段可铺位")
+        _require_classroom_rules(db, room.classroom_id, room.capacity)
         if not course.teaching_task_id:
             raise AppException("DATA_CONFLICT", "考试课程未关联教学任务，无法核验考生名单")
 
@@ -266,10 +366,13 @@ def assign_seats(user, room_id, student_ids):
         }
 
 
-def _check_arrangement_complete(db, batch_id):
+def _check_arrangement_complete(db, batch_id, *, batch=None):
     """发布前校验时间、冻结名单、座位全集、有效容量和逐考场监考。"""
     from app.models import AaExamCourse, AaExamInvigilator, AaExamRoom, AaExamRoomStudent
 
+    batch = batch or _legacy._get_batch(db, int(batch_id))
+    params = _exam_params(db, batch)
+    required_invigilators = params["invigilatorsPerRoom"]
     courses = db.query(AaExamCourse).filter(
         AaExamCourse.batch_id == int(batch_id),
         AaExamCourse.tenant_id == _legacy._tid(),
@@ -277,8 +380,33 @@ def _check_arrangement_complete(db, batch_id):
         AaExamCourse.is_deleted.is_(False),
     ).all()
     problems = []
+    course_ids = [int(course.id) for course in courses]
+    all_rooms = db.query(AaExamRoom).filter(
+        AaExamRoom.exam_course_id.in_(course_ids or [0]),
+        AaExamRoom.tenant_id == _legacy._tid(),
+        AaExamRoom.status == "ACTIVE", AaExamRoom.is_deleted.is_(False),
+    ).all()
+    rooms_by_course = {}
+    for room in all_rooms:
+        rooms_by_course.setdefault(int(room.exam_course_id), []).append(room)
+    room_ids = [int(room.id) for room in all_rooms]
+    invigilators = db.query(AaExamInvigilator).filter(
+        AaExamInvigilator.exam_room_id.in_(room_ids or [0]),
+        AaExamInvigilator.tenant_id == _legacy._tid(),
+        AaExamInvigilator.is_deleted.is_(False),
+    ).all()
+    invigilators_by_room = {}
+    for invigilator in invigilators:
+        invigilators_by_room.setdefault(int(invigilator.exam_room_id), []).append(invigilator)
+    accounts = _teacher_accounts(
+        db, [course.teacher_key for course in courses]
+        + [invigilator.teacher_key for invigilator in invigilators],
+    )
+    offering = _legacy._course_college_ids(db, {int(course.id) for course in courses})
     for course in courses:
         label = course.course_name or f"课程{course.id}"
+        if not offering.get(int(course.id)):
+            problems.append(f"{label}：缺少有效课程或开课责任单位")
         if not course.exam_date or not course.start_time or not course.end_time:
             problems.append(f"{label}：考试日期/时间不完整")
         if not course.teaching_task_id:
@@ -300,12 +428,7 @@ def _check_arrangement_complete(db, batch_id):
         if int(course.expected_students or 0) != int(snapshot["memberCount"]):
             problems.append(f"{label}：预计考生数与冻结名单人数不一致")
 
-        rooms = db.query(AaExamRoom).filter(
-            AaExamRoom.exam_course_id == course.id,
-            AaExamRoom.tenant_id == _legacy._tid(),
-            AaExamRoom.status == "ACTIVE",
-            AaExamRoom.is_deleted.is_(False),
-        ).all()
+        rooms = rooms_by_course.get(int(course.id), [])
         if not rooms:
             problems.append(f"{label}：无考场")
             continue
@@ -330,6 +453,10 @@ def _check_arrangement_complete(db, batch_id):
         for seat in seats:
             seats_by_room.setdefault(int(seat.exam_room_id), []).append(seat)
         for room in rooms:
+            try:
+                _require_classroom_rules(db, room.classroom_id, room.capacity)
+            except AppException as exc:
+                problems.append(f"{label}：考场{room.room_seq}：{exc.message}")
             room_seats = seats_by_room.get(int(room.id), [])
             if not room_seats:
                 problems.append(f"{label}：考场{room.room_seq}无座位")
@@ -337,13 +464,15 @@ def _check_arrangement_complete(db, batch_id):
                 problems.append(f"{label}：考场{room.room_seq}超过有效容量")
             if int(room.planned_count or 0) != len(room_seats):
                 problems.append(f"{label}：考场{room.room_seq}计划人数与座位数不一致")
-            invigilator_count = db.query(AaExamInvigilator).filter(
-                AaExamInvigilator.exam_room_id == room.id,
-                AaExamInvigilator.tenant_id == _legacy._tid(),
-                AaExamInvigilator.is_deleted.is_(False),
-            ).count()
-            if not invigilator_count:
-                problems.append(f"{label}：考场{room.room_seq}无监考")
+            valid_count = _valid_invigilator_count(
+                invigilators_by_room.get(int(room.id), []), course, accounts,
+                avoid_own_course=params["avoidOwnCourse"],
+            )
+            if valid_count < required_invigilators:
+                problems.append(
+                    f"{label}：考场{room.room_seq}有效监考需 {required_invigilators} 人，"
+                    f"实配 {valid_count} 人"
+                )
     return courses, problems
 
 
@@ -352,7 +481,7 @@ def publish_batch(user, bid):
     from . import academic_affairs_exam_conflict_service as conflict_service
 
     with _legacy.session() as db:
-        _legacy._require_school(_legacy._ctx(user, db))
+        _legacy._require_school_publisher(db, user, _legacy._ctx(user, db))
         batch = _legacy._get_batch(db, int(bid))
         if batch.status not in (_legacy._B_CONFIRMED, _legacy._B_ARRANGED):
             raise _legacy._invalid(f"仅 COURSE_CONFIRMED/ARRANGED 批次可发布，当前 {batch.status}")
@@ -362,7 +491,7 @@ def publish_batch(user, bid):
         db.refresh(batch)
         if batch.status not in (_legacy._B_CONFIRMED, _legacy._B_ARRANGED):
             raise _legacy._invalid(f"批次已被并发操作推进为 {batch.status}，本次发布取消")
-        courses, problems = _check_arrangement_complete(db, batch.id)
+        courses, problems = _check_arrangement_complete(db, batch.id, batch=batch)
         if problems:
             raise _legacy._invalid(
                 "编排不完整，不可发布：" + "；".join(problems[:5]) + ("…" if len(problems) > 5 else "")
@@ -468,10 +597,187 @@ def _closure_error(issues: dict) -> AppException | None:
     )
 
 
+def _attendance_scope(db, user, room_id, *, fresh=False):
+    from app.models import AaExamInvigilator, AaExamRoom
+
+    context = _legacy._ctx(user, db)
+    room_query = db.query(AaExamRoom).filter(
+        AaExamRoom.id == int(room_id), AaExamRoom.tenant_id == _legacy._tid(),
+        AaExamRoom.is_deleted.is_(False),
+    )
+    room = (room_query.populate_existing() if fresh else room_query).first()
+    if room is None:
+        raise not_found("考场不存在")
+    course = _legacy._get_course(db, int(room.exam_course_id))
+    if fresh:
+        db.refresh(course)
+    batch = _legacy._get_batch(db, int(course.batch_id))
+    if _status((user or {}).get("userType")) == "STUDENT" or _status((user or {}).get("currentRoleCode")) == "STUDENT":
+        raise no_data_scope("学生无权查看或登记考场到考")
+    if not _legacy._is_school(context):
+        college_id = _legacy._course_college_id(db, course)
+        is_college = (context.scope_type == "COLLEGE" and college_id in (context.college_ids or set()))
+        keys = _derive_keys(user or {})
+        invigilator_query = db.query(AaExamInvigilator).filter(
+            AaExamInvigilator.tenant_id == _legacy._tid(),
+            AaExamInvigilator.exam_room_id == room.id,
+            AaExamInvigilator.teacher_key.in_(keys),
+            AaExamInvigilator.is_deleted.is_(False),
+        )
+        is_invigilator = bool(keys) and (invigilator_query.with_for_update() if fresh else invigilator_query).first() is not None
+        if not (is_college or is_invigilator):
+            raise no_data_scope("非本学院或本人该考场监考，无权查看或登记到考")
+    return room, course, batch, context
+
+
+def _can_mark_present(context):
+    from app.core.permissions import _match
+
+    return any(_match(code, context.permission_codes) for code in (
+        "academicAffairs.exam.recordAbnormal", "academicAffairs.exam.manage"))
+
+
+def _attendance_block_reason(db, room, course, batch, *, term=None):
+    from app.models import AaTerm
+
+    if room.status != "ACTIVE" or course.status != "CONFIRMED":
+        return "考场或考试课程已失效"
+    if batch.status != _legacy._B_PUBLISHED:
+        return "仅已发布考试批次可登记正常到考"
+    if not batch.term_id:
+        return "考试批次未绑定正式学期"
+    if term is None:
+        term = db.query(AaTerm).filter(
+            AaTerm.id == int(batch.term_id), AaTerm.tenant_id == _legacy._tid(),
+            AaTerm.is_deleted.is_(False),
+        ).first()
+    if term is None or term.status != "PUBLISHED":
+        return "正式学期不存在、未发布或已封存"
+    return ""
+
+
+def _attendance_item(seat, block_reason="") -> dict:
+    status = _status(seat.attendance_status)
+    reason = block_reason or ("仅未登记考生可标记正常到考" if status != "NOT_STARTED" else "")
+    return {
+        "studentId": str(seat.student_id), "studentNo": seat.student_no,
+        "studentName": seat.student_name, "seatNo": seat.seat_no,
+        "attendanceStatus": status, "version": int(seat.version or 0),
+        "markPresentAction": {"allowed": not bool(reason), "reason": reason},
+    }
+
+
+def _lock_exam_batch(db, batch):
+    """Serialize exam attendance, incident, finish and archive on one term/batch order."""
+    from app.models import AaExamBatch, AaTerm
+
+    term_id = int(batch.term_id) if batch.term_id else None
+    term = None
+    if term_id:
+        term = db.query(AaTerm).filter(
+            AaTerm.id == term_id, AaTerm.tenant_id == _legacy._tid(),
+            AaTerm.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
+    locked = db.query(AaExamBatch).filter(
+        AaExamBatch.id == batch.id, AaExamBatch.tenant_id == _legacy._tid(),
+        AaExamBatch.is_deleted.is_(False),
+    ).populate_existing().with_for_update().first()
+    if locked is None:
+        raise AppException("DATA_CONFLICT", "考试批次已变化，请刷新后重试", http_status=409)
+    if (int(locked.term_id) if locked.term_id else None) != term_id:
+        raise AppException("DATA_CONFLICT", "考试批次所属学期已变化，请刷新后重试", http_status=409)
+    return locked, term
+
+
+def _require_locked_exam_term(batch, term):
+    if batch.term_id and (term is None or term.status != "PUBLISHED"):
+        raise AppException("DATA_CONFLICT", "正式学期不存在、未发布或已封存", http_status=409)
+
+
+def room_attendance(user, room_id):
+    from app.models import AaExamRoomStudent
+
+    with _legacy.session() as db:
+        room, course, batch, context = _attendance_scope(db, user, room_id)
+        reason = _attendance_block_reason(db, room, course, batch)
+        if not _can_mark_present(context):
+            reason = reason or "当前身份只有查看权限，不能登记到考"
+        seats = db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.exam_room_id == room.id,
+            AaExamRoomStudent.exam_course_id == course.id,
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).order_by(AaExamRoomStudent.seat_no, AaExamRoomStudent.id).all()
+        return {"examRoomId": str(room.id), "batchId": str(batch.id), "batchStatus": batch.status,
+                "items": [_attendance_item(seat, reason) for seat in seats]}
+
+
+def mark_room_present(user, room_id, student_id, expected_version):
+    from app.models import AaExamRoomStudent
+    from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+
+    with _legacy.session() as db:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        room, course, batch, context = _attendance_scope(db, user, room_id)
+        if not _can_mark_present(context):
+            raise no_data_scope("当前身份没有考场到考登记权限")
+        if not batch.term_id:
+            raise AppException("DATA_CONFLICT", "考试批次未绑定正式学期", http_status=409)
+        batch, term = _lock_exam_batch(db, batch)
+        fresh_room, fresh_course, fresh_batch, fresh_context = _attendance_scope(db, user, room_id, fresh=True)
+        if (fresh_room.id, fresh_course.id, fresh_batch.id) != (room.id, course.id, batch.id):
+            raise AppException("DATA_CONFLICT", "考场归属已变化，请刷新后重试", http_status=409)
+        if not _can_mark_present(fresh_context):
+            raise no_data_scope("当前身份没有考场到考登记权限")
+        room, course = fresh_room, fresh_course
+        if term is not None:
+            guard_term_writable(db, term.id)
+        reason = _attendance_block_reason(db, room, course, batch, term=term)
+        if reason:
+            raise AppException("DATA_CONFLICT", reason, http_status=409)
+        seat = db.query(AaExamRoomStudent).filter(
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.exam_room_id == room.id,
+            AaExamRoomStudent.exam_course_id == course.id,
+            AaExamRoomStudent.student_id == int(student_id),
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
+        if seat is None:
+            raise not_found("考生不在本考场正式座位名单")
+        if _status(seat.attendance_status) != "NOT_STARTED":
+            raise AppException("DATA_CONFLICT", "该考生已有到考或异常记录，请刷新后核对", http_status=409)
+        if int(seat.version or 0) != int(expected_version):
+            raise AppException("DATA_CONFLICT", "座位登记版本已变化，请刷新后核对", http_status=409)
+        changed = db.execute(update(AaExamRoomStudent).where(
+            AaExamRoomStudent.id == seat.id,
+            AaExamRoomStudent.tenant_id == _legacy._tid(),
+            AaExamRoomStudent.exam_room_id == room.id,
+            AaExamRoomStudent.exam_course_id == course.id,
+            AaExamRoomStudent.attendance_status == "NOT_STARTED",
+            AaExamRoomStudent.version == int(expected_version),
+            AaExamRoomStudent.is_deleted.is_(False),
+        ).values(attendance_status="PRESENT", version=AaExamRoomStudent.version + 1,
+                 updated_at=datetime.utcnow()))
+        if changed.rowcount != 1:
+            raise AppException("DATA_CONFLICT", "座位登记已被并发修改，请刷新后核对", http_status=409)
+        db.refresh(seat)
+        _legacy._audit(db, "EXAM_ROOM_STUDENT", seat.id, "EXAM_ATTENDANCE_PRESENT",
+                       f"room={room.id};student={student_id}",
+                       f"NOT_STARTED;version={expected_version}", f"PRESENT;version={seat.version}")
+        db.commit()
+        return {"examRoomId": str(room.id), "batchId": str(batch.id), "batchStatus": batch.status,
+                **_attendance_item(seat)}
+
+
 def finish_batch(user, bid):
     with _legacy.session() as db:
-        _legacy._require_school(_legacy._ctx(user, db))
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        _require_current_school_manager(db, user)
         batch = _legacy._get_batch(db, int(bid))
+        batch, term = _lock_exam_batch(db, batch)
+        # Re-resolve after the row lock so a revoked/reassigned responsibility cannot finish the batch.
+        _require_current_school_manager(db, user)
+        _require_locked_exam_term(batch, term)
         if batch.status != _legacy._B_PUBLISHED:
             raise _legacy._invalid("仅 PUBLISHED 批次可结束考试")
         issues = _batch_closure_issues(db, batch.id)
@@ -486,8 +792,13 @@ def finish_batch(user, bid):
 
 def archive_batch(user, bid):
     with _legacy.session() as db:
-        _legacy._require_school(_legacy._ctx(user, db))
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        _require_current_school_manager(db, user)
         batch = _legacy._get_batch(db, int(bid))
+        batch, term = _lock_exam_batch(db, batch)
+        # Re-resolve after the row lock so a revoked/reassigned responsibility cannot archive the batch.
+        _require_current_school_manager(db, user)
+        _require_locked_exam_term(batch, term)
         if batch.status == _legacy._B_ARCHIVED:
             return _legacy._batch_dto(batch)
         if batch.status != _legacy._B_FINISHED:
@@ -521,7 +832,7 @@ def resolve_incident(user, incident_id: int, action: str, reason: str = "", disc
         batch = _legacy._get_batch(db, int(course.batch_id))
         _legacy._ensure_not_archived(batch)
         if not _legacy._is_school(context):
-            _legacy._check_college_scope(context, course.college_id)
+            _legacy._check_course_scope(db, context, course)
 
         if action == "VOID":
             if len(reason) < 5:
@@ -567,16 +878,19 @@ def record_incident(user, body):
     from app.models import AaExamIncident, AaExamRoomStudent, AffairsRiskRecord
 
     with _legacy.session() as db:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         context = _legacy._ctx(user, db)
         course = _legacy._get_course(db, int(body.examCourseId))
         if not _legacy._is_school(context):
             allowed = getattr(context, "college_ids", None) or set()
             teacher_keys = _derive_keys(user)
-            is_college = context.scope_type == "COLLEGE" and course.college_id and int(course.college_id) in allowed
+            is_college = context.scope_type == "COLLEGE" and _legacy._course_college_id(db, course) in allowed
             is_invig = _legacy._is_invigilator_of_course(db, course.id, teacher_keys)
             if not (is_college or is_invig):
                 raise no_data_scope("非本人监考场次/本学院，无权登记")
         batch = _legacy._get_batch(db, course.batch_id)
+        batch, term = _lock_exam_batch(db, batch)
+        _require_locked_exam_term(batch, term)
         _legacy._ensure_not_archived(batch)
         if batch.status not in (_legacy._B_PUBLISHED, _legacy._B_FINISHED):
             raise _legacy._invalid("仅发布/结束后可登记考场异常")
@@ -588,7 +902,7 @@ def record_incident(user, body):
             AaExamRoomStudent.student_id == student_id,
             AaExamRoomStudent.tenant_id == _legacy._tid(),
             AaExamRoomStudent.is_deleted.is_(False),
-        ).first()
+        ).populate_existing().with_for_update().first()
         if not seat:
             # 错误码沿用同类判定（merge_deferred「学生不在原考试课程冻结名单」）的 DATA_CONFLICT/409，
             # 不自造 422：本项目冻结契约的业务码表里没有 422 这一档。
@@ -621,6 +935,7 @@ def record_incident(user, body):
             )
             db.add(incident)
         seat.attendance_status = "ABSENT" if incident_type == "ABSENT" else "DISCIPLINE_VIOLATION"
+        seat.version = int(seat.version or 0) + 1
         db.flush()
 
         if incident_type == "ABSENT":
@@ -774,7 +1089,7 @@ def add_room(user, cid, body):
     with _legacy.session() as db:
         ctx = _legacy._ctx(user, db)
         course = _legacy._get_course(db, int(cid))
-        _legacy._check_college_scope(ctx, course.college_id)
+        _legacy._check_course_scope(db, ctx, course)
         batch = _legacy._get_batch(db, course.batch_id)
         _legacy._ensure_not_archived(batch)
         if batch.status != _legacy._B_CONFIRMED:
@@ -803,6 +1118,8 @@ def add_room(user, cid, body):
             classroom_id = int(room.id)
         else:
             classroom_id = _legacy._resolve_classroom_id(db, classroom_text)
+
+        _require_classroom_rules(db, classroom_id, getattr(body, "capacity", 0))
 
         # 课程行锁只保证"同一时刻只有一个事务能算这个课程的下一个室号"，但普通 MAX 查询
         # 仍然可能读到本事务开始时(通常是更早的 _ctx()调用)就已经定格的 REPEATABLE READ
@@ -837,7 +1154,8 @@ def add_room(user, cid, body):
 def assign_invigilator(user, room_id, teacher_key, teacher_name, role="ASSISTANT"):
     """指定监考——批次一旦发布，监考安排已通知本人，禁止再走这条普通指定入口；
     冲突检测在教师时间线锁下用加锁读，避免并发把同一老师排进两场同时段考试。"""
-    from app.models import AaExamInvigilator, AaExamRoom
+    from app.models import AaExamInvigilator, AaExamPatrol, AaExamRoom
+    from .academic_affairs_teaching_class_teacher_service import _teacher
 
     with _legacy.session() as db:
         ctx = _legacy._ctx(user, db)
@@ -847,7 +1165,7 @@ def assign_invigilator(user, room_id, teacher_key, teacher_name, role="ASSISTANT
         if not room:
             raise not_found("考场不存在")
         course = _legacy._get_course(db, room.exam_course_id)
-        _legacy._check_college_scope(ctx, course.college_id)
+        _legacy._check_course_scope(db, ctx, course)
         batch = _legacy._get_batch(db, course.batch_id)
         _legacy._ensure_not_archived(batch)
         if batch.status in (_legacy._B_PUBLISHED, _legacy._B_FINISHED):
@@ -857,11 +1175,20 @@ def assign_invigilator(user, room_id, teacher_key, teacher_name, role="ASSISTANT
                 http_status=409,
             )
 
-        key = str(teacher_key or "").strip()
+        teacher = _teacher(db, teacher_key)
+        key = str(teacher.login_name or "").strip()
+        if not key:
+            raise AppException("VALIDATION_ERROR", "教师账号缺少稳定工号")
+        if _exam_params(db, batch)["avoidOwnCourse"]:
+            accounts = _teacher_accounts(db, [course.teacher_key])
+            if _same_teacher(teacher, key, accounts.get(str(course.teacher_key or "").strip()), course.teacher_key):
+                raise AppException("DATA_CONFLICT", "任课教师不能监考本人课程", http_status=409)
+        name = str(teacher.real_name or teacher.login_name).strip()
         _lock_teacher_timeline(db, key)
+        aliases = _teacher_aliases(teacher)
         d0, s0, e0 = course.exam_date, course.start_time, course.end_time
         existing = _fresh_rows(db.query(AaExamInvigilator).filter(
-            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key == key,
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key.in_(aliases),
             AaExamInvigilator.is_deleted.is_(False),
         ))
         for inv in existing:
@@ -871,20 +1198,28 @@ def assign_invigilator(user, room_id, teacher_key, teacher_name, role="ASSISTANT
             other_course = _legacy._get_course(db, other_room.exam_course_id)
             if _legacy._time_overlap(d0, s0, e0, other_course.exam_date,
                                      other_course.start_time, other_course.end_time):
-                raise _legacy._conflict(f"教师 {teacher_name or key} 该时段已有监考安排（冲突）")
+                raise _legacy._conflict(f"教师 {name} 该时段已有监考安排（冲突）")
+        patrols = _fresh_rows(db.query(AaExamPatrol).filter(
+            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key.in_(aliases),
+            AaExamPatrol.is_deleted.is_(False),
+        ))
+        for patrol in patrols:
+            if _legacy._time_overlap(d0, s0, e0, patrol.patrol_date,
+                                     patrol.start_time, patrol.end_time):
+                raise _legacy._conflict(f"教师 {name} 该时段已有巡考安排（冲突）")
         dup = db.query(AaExamInvigilator).filter(
             AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.exam_room_id == room.id,
-            AaExamInvigilator.teacher_key == key, AaExamInvigilator.is_deleted.is_(False),
+            AaExamInvigilator.teacher_key.in_(aliases), AaExamInvigilator.is_deleted.is_(False),
         ).first()
         if dup:
             raise _legacy._bad("该教师已在本考场监考")
         inv = AaExamInvigilator(
             tenant_id=_legacy._tid(), exam_room_id=room.id, teacher_key=key,
-            teacher_name=teacher_name, role=role, confirm_status="ASSIGNED",
+            teacher_name=name, role=role, confirm_status="ASSIGNED",
         )
         db.add(inv)
         db.flush()
-        _legacy._audit(db, "EXAM_INVIGILATOR", inv.id, "EXAM_INVIGILATOR_ADD", f"监考 {teacher_name}")
+        _legacy._audit(db, "EXAM_INVIGILATOR", inv.id, "EXAM_INVIGILATOR_ADD", f"监考 {name}")
         db.commit()
         return {"invigilatorId": str(inv.id), "examRoomId": str(room.id), "teacherKey": key, "role": role}
 
@@ -896,7 +1231,8 @@ def change_invigilator(user, room_id, old_teacher_key, new_teacher_key, new_teac
     旧老师和新老师的时间线都要锁——旧老师释放这个时段、新老师占用这个时段是同一个
     事务里的两件事，任何一步失败整体回滚，不留半截换人。
     """
-    from app.models import AaExamInvigilator, AaExamRoom
+    from app.models import AaExamInvigilator, AaExamPatrol, AaExamRoom
+    from .academic_affairs_teaching_class_teacher_service import _teacher
 
     reason_text = str(reason or "").strip()
     if len(reason_text) < 5:
@@ -916,7 +1252,7 @@ def change_invigilator(user, room_id, old_teacher_key, new_teacher_key, new_teac
         if not room:
             raise not_found("考场不存在")
         course = _legacy._get_course(db, room.exam_course_id)
-        _legacy._check_college_scope(ctx, course.college_id)
+        _legacy._check_course_scope(db, ctx, course)
         batch = _legacy._get_batch(db, course.batch_id)
         _legacy._ensure_not_archived(batch)
 
@@ -927,12 +1263,27 @@ def change_invigilator(user, room_id, old_teacher_key, new_teacher_key, new_teac
         if not row:
             raise not_found("原监考安排不存在")
 
-        _lock_teacher_timeline(db, old_key)
-        _lock_teacher_timeline(db, new_key)
+        teacher = _teacher(db, new_key)
+        new_key = str(teacher.login_name or "").strip()
+        if not new_key:
+            raise AppException("VALIDATION_ERROR", "教师账号缺少稳定工号")
+        old_account = _teacher_accounts(db, [old_key]).get(old_key)
+        if _same_teacher(teacher, new_key, old_account, old_key):
+            raise _legacy._bad("新监考教师不能与原监考教师相同")
+        if _exam_params(db, batch)["avoidOwnCourse"]:
+            accounts = _teacher_accounts(db, [course.teacher_key])
+            if _same_teacher(teacher, new_key, accounts.get(str(course.teacher_key or "").strip()), course.teacher_key):
+                raise AppException("DATA_CONFLICT", "任课教师不能监考本人课程", http_status=409)
+        name = str(teacher.real_name or teacher.login_name).strip()
+
+        for lock_key in sorted({old_key, str(old_account.login_name or "").strip() if old_account else "", new_key}):
+            if lock_key:
+                _lock_teacher_timeline(db, lock_key)
+        aliases = _teacher_aliases(teacher)
 
         d0, s0, e0 = course.exam_date, course.start_time, course.end_time
         existing = _fresh_rows(db.query(AaExamInvigilator).filter(
-            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key == new_key,
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key.in_(aliases),
             AaExamInvigilator.is_deleted.is_(False),
         ))
         for inv in existing:
@@ -942,17 +1293,25 @@ def change_invigilator(user, room_id, old_teacher_key, new_teacher_key, new_teac
             other_course = _legacy._get_course(db, other_room.exam_course_id)
             if _legacy._time_overlap(d0, s0, e0, other_course.exam_date,
                                      other_course.start_time, other_course.end_time):
-                raise _legacy._conflict(f"教师 {new_teacher_name or new_key} 该时段已有监考安排（冲突）")
+                raise _legacy._conflict(f"教师 {name} 该时段已有监考安排（冲突）")
+        patrols = _fresh_rows(db.query(AaExamPatrol).filter(
+            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key.in_(aliases),
+            AaExamPatrol.is_deleted.is_(False),
+        ))
+        for patrol in patrols:
+            if _legacy._time_overlap(d0, s0, e0, patrol.patrol_date,
+                                     patrol.start_time, patrol.end_time):
+                raise _legacy._conflict(f"教师 {name} 该时段已有巡考安排（冲突）")
         dup = db.query(AaExamInvigilator).filter(
             AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.exam_room_id == room.id,
-            AaExamInvigilator.teacher_key == new_key, AaExamInvigilator.is_deleted.is_(False),
+            AaExamInvigilator.teacher_key.in_(aliases), AaExamInvigilator.is_deleted.is_(False),
         ).first()
         if dup:
             raise _legacy._bad("该教师已在本考场监考")
 
         before = f"{row.teacher_key}:{row.teacher_name or ''}"
         row.teacher_key = new_key
-        row.teacher_name = new_teacher_name
+        row.teacher_name = name
         row.confirm_status = "ASSIGNED"
         if new_role:
             row.role = new_role
@@ -983,18 +1342,21 @@ def assign_patrol(user, batch_id, teacher_key, teacher_name, patrol_date, start_
                 http_status=409,
             )
 
-        key = str(teacher_key or "").strip()
+        account = _patrol_account(db, teacher_key)
+        key = str(account.login_name).strip()
+        name = str(account.real_name or key).strip()
+        aliases = _teacher_aliases(account)
         _lock_teacher_timeline(db, key)
         existing = _fresh_rows(db.query(AaExamPatrol).filter(
-            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key == key,
+            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key.in_(aliases),
             AaExamPatrol.is_deleted.is_(False),
         ))
         for p in existing:
             if _legacy._time_overlap(patrol_date, start_time, end_time,
                                      p.patrol_date, p.start_time, p.end_time):
-                raise _legacy._conflict(f"教师 {teacher_name or key} 该时段已有巡考安排（冲突）")
+                raise _legacy._conflict(f"教师 {name} 该时段已有巡考安排（冲突）")
         invs = _fresh_rows(db.query(AaExamInvigilator).filter(
-            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key == key,
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key.in_(aliases),
             AaExamInvigilator.is_deleted.is_(False),
         ))
         for inv in invs:
@@ -1004,15 +1366,15 @@ def assign_patrol(user, batch_id, teacher_key, teacher_name, patrol_date, start_
             course = _legacy._get_course(db, room.exam_course_id)
             if _legacy._time_overlap(patrol_date, start_time, end_time,
                                      course.exam_date, course.start_time, course.end_time):
-                raise _legacy._conflict(f"教师 {teacher_name or key} 该时段有监考任务，不能同时巡考（冲突）")
+                raise _legacy._conflict(f"教师 {name} 该时段有监考任务，不能同时巡考（冲突）")
         row = AaExamPatrol(
-            tenant_id=_legacy._tid(), batch_id=batch.id, teacher_key=key, teacher_name=teacher_name,
+            tenant_id=_legacy._tid(), batch_id=batch.id, teacher_key=key, teacher_name=name,
             patrol_date=patrol_date, start_time=start_time, end_time=end_time,
             area_scope_json=area_scope, status="ASSIGNED",
         )
         db.add(row)
         db.flush()
-        _legacy._audit(db, "EXAM_PATROL", row.id, "EXAM_PATROL_ADD", f"巡考 {teacher_name}")
+        _legacy._audit(db, "EXAM_PATROL", row.id, "EXAM_PATROL_ADD", f"巡考 {name}")
         db.commit()
         return {"patrolId": str(row.id), "batchId": str(batch.id), "teacherKey": key}
 
@@ -1041,38 +1403,45 @@ def change_patrol(user, patrol_id, new_teacher_key, new_teacher_name, reason,
         _legacy._ensure_not_archived(batch)
 
         old_key = row.teacher_key
+        account = _patrol_account(db, new_key)
+        new_key = str(account.login_name).strip()
+        name = str(account.real_name or new_key).strip()
+        aliases = _teacher_aliases(account)
         patrol_date = new_patrol_date or row.patrol_date
         start_time = new_start_time or row.start_time
         end_time = new_end_time or row.end_time
 
-        if old_key and old_key != new_key:
-            _lock_teacher_timeline(db, old_key)
-        _lock_teacher_timeline(db, new_key)
+        old_account = _teacher_accounts(db, [old_key]).get(old_key)
+        for lock_key in sorted({str(old_key or "").strip(),
+                                str(old_account.login_name or "").strip() if old_account else "",
+                                new_key}):
+            if lock_key:
+                _lock_teacher_timeline(db, lock_key)
 
         existing = _fresh_rows(db.query(AaExamPatrol).filter(
-            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key == new_key,
+            AaExamPatrol.tenant_id == _legacy._tid(), AaExamPatrol.teacher_key.in_(aliases),
             AaExamPatrol.id != row.id, AaExamPatrol.is_deleted.is_(False),
         ))
         for p in existing:
             if _legacy._time_overlap(patrol_date, start_time, end_time,
                                      p.patrol_date, p.start_time, p.end_time):
-                raise _legacy._conflict(f"教师 {new_teacher_name or new_key} 该时段已有巡考安排（冲突）")
+                raise _legacy._conflict(f"教师 {name} 该时段已有巡考安排（冲突）")
         invs = _fresh_rows(db.query(AaExamInvigilator).filter(
-            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key == new_key,
+            AaExamInvigilator.tenant_id == _legacy._tid(), AaExamInvigilator.teacher_key.in_(aliases),
             AaExamInvigilator.is_deleted.is_(False),
         ))
         for inv in invs:
-            inv_room = db.get(AaExamRoom, int(inv.exam_room_id))
+            inv_room = db.query(AaExamRoom).filter(AaExamRoom.id == int(inv.exam_room_id), AaExamRoom.tenant_id == _legacy._tid()).first()
             if not inv_room:
                 continue
             inv_course = _legacy._get_course(db, inv_room.exam_course_id)
             if _legacy._time_overlap(patrol_date, start_time, end_time,
                                      inv_course.exam_date, inv_course.start_time, inv_course.end_time):
-                raise _legacy._conflict(f"教师 {new_teacher_name or new_key} 该时段有监考任务，不能同时巡考（冲突）")
+                raise _legacy._conflict(f"教师 {name} 该时段有监考任务，不能同时巡考（冲突）")
 
         before = f"{row.teacher_key}:{row.teacher_name or ''}:{row.patrol_date} {row.start_time}-{row.end_time}"
         row.teacher_key = new_key
-        row.teacher_name = new_teacher_name
+        row.teacher_name = name
         row.patrol_date = patrol_date
         row.start_time = start_time
         row.end_time = end_time

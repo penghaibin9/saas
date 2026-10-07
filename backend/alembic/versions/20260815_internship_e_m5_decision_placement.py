@@ -47,7 +47,14 @@ def upgrade():
     if not _trigger_exists("trg_intern_placement_snapshot_no_update"):
         op.execute("CREATE TRIGGER trg_intern_placement_snapshot_no_update BEFORE UPDATE ON t_internship_placement_snapshot FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='INTERNSHIP_PLACEMENT_SNAPSHOT_IMMUTABLE'")
     if not _trigger_exists("trg_intern_placement_snapshot_no_delete"):
-        op.execute("CREATE TRIGGER trg_intern_placement_snapshot_no_delete BEFORE DELETE ON t_internship_placement_snapshot FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='INTERNSHIP_PLACEMENT_SNAPSHOT_IMMUTABLE'")
+        op.execute("""CREATE TRIGGER trg_intern_placement_snapshot_no_delete
+            BEFORE DELETE ON t_internship_placement_snapshot FOR EACH ROW
+            BEGIN
+              IF COALESCE(@sandbox_reset_tenant_id, 0) <> OLD.tenant_id
+                 OR OLD.tenant_id <> 1000000000000000007 THEN
+                SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT='INTERNSHIP_PLACEMENT_SNAPSHOT_IMMUTABLE';
+              END IF;
+            END""")
 
 def downgrade():
     _mysql(); i=inspect(op.get_bind()); op.execute("DROP TRIGGER IF EXISTS trg_intern_placement_snapshot_no_update"); op.execute("DROP TRIGGER IF EXISTS trg_intern_placement_snapshot_no_delete")

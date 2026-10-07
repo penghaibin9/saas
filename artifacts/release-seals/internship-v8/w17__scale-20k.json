@@ -1,0 +1,301 @@
+{
+  "schema": "internship-v8-scale-evidence/1",
+  "tenantId": "1000000000000000007",
+  "batchId": "18",
+  "dataset": {
+    "internshipRecords": 20000,
+    "minimumRequired": 20000
+  },
+  "services": {
+    "staff_dashboard": {
+      "iterations": 10,
+      "queryCountMin": 9,
+      "queryCountMax": 9,
+      "p50Ms": 124.599,
+      "p95Ms": 165.955,
+      "payloadBytesMax": 1691,
+      "pythonPeakBytes": 437727,
+      "budget": {
+        "queries": 18,
+        "p95_ms": 1000,
+        "payload_bytes": 512000,
+        "peak_bytes": 64000000
+      },
+      "checks": {
+        "queryCount": true,
+        "p95": true,
+        "payload": true,
+        "memory": true
+      },
+      "passed": true
+    },
+    "weekly_queue": {
+      "iterations": 10,
+      "queryCountMin": 3,
+      "queryCountMax": 3,
+      "p50Ms": 21.867,
+      "p95Ms": 26.603,
+      "payloadBytesMax": 6,
+      "pythonPeakBytes": 219013,
+      "budget": {
+        "queries": 4,
+        "p95_ms": 800,
+        "payload_bytes": 512000,
+        "peak_bytes": 32000000
+      },
+      "checks": {
+        "queryCount": true,
+        "p95": true,
+        "payload": true,
+        "memory": true
+      },
+      "passed": true
+    },
+    "exception_queue": {
+      "iterations": 10,
+      "queryCountMin": 3,
+      "queryCountMax": 3,
+      "p50Ms": 22.027,
+      "p95Ms": 24.654,
+      "payloadBytesMax": 6,
+      "pythonPeakBytes": 229738,
+      "budget": {
+        "queries": 4,
+        "p95_ms": 800,
+        "payload_bytes": 512000,
+        "peak_bytes": 32000000
+      },
+      "checks": {
+        "queryCount": true,
+        "p95": true,
+        "payload": true,
+        "memory": true
+      },
+      "passed": true
+    },
+    "material_center": {
+      "iterations": 10,
+      "queryCountMin": 3,
+      "queryCountMax": 3,
+      "p50Ms": 157.711,
+      "p95Ms": 186.282,
+      "payloadBytesMax": 5129,
+      "pythonPeakBytes": 671114,
+      "budget": {
+        "queries": 4,
+        "p95_ms": 1000,
+        "payload_bytes": 512000,
+        "peak_bytes": 64000000
+      },
+      "checks": {
+        "queryCount": true,
+        "p95": true,
+        "payload": true,
+        "memory": true
+      },
+      "passed": true
+    },
+    "archive_ledger": {
+      "iterations": 10,
+      "queryCountMin": 3,
+      "queryCountMax": 3,
+      "p50Ms": 75.264,
+      "p95Ms": 85.072,
+      "payloadBytesMax": 7269,
+      "pythonPeakBytes": 323465,
+      "budget": {
+        "queries": 4,
+        "p95_ms": 800,
+        "payload_bytes": 512000,
+        "peak_bytes": 32000000
+      },
+      "checks": {
+        "queryCount": true,
+        "p95": true,
+        "payload": true,
+        "memory": true
+      },
+      "passed": true
+    }
+  },
+  "explain": [
+    {
+      "name": "dashboard_flow",
+      "budgetRows": 25000,
+      "rowsExamined": 19890,
+      "withinBudget": true,
+      "tables": [
+        {
+          "table": "t_internship_record",
+          "accessType": "ref",
+          "key": "uk_intern_stu_batch",
+          "rowsExaminedPerScan": 19890,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        }
+      ]
+    },
+    {
+      "name": "weekly_queue",
+      "budgetRows": 100000,
+      "rowsExamined": 19,
+      "withinBudget": true,
+      "tables": [
+        {
+          "table": "w",
+          "accessType": "ALL",
+          "key": null,
+          "rowsExaminedPerScan": 17,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "r",
+          "accessType": "eq_ref",
+          "key": "PRIMARY",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "s",
+          "accessType": "eq_ref",
+          "key": "PRIMARY",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        }
+      ]
+    },
+    {
+      "name": "exception_queue",
+      "budgetRows": 100000,
+      "rowsExamined": 3,
+      "withinBudget": true,
+      "tables": [
+        {
+          "table": "e",
+          "accessType": "ref",
+          "key": "ix_t_attendance_exception_tenant_id",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "r",
+          "accessType": "eq_ref",
+          "key": "PRIMARY",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "s",
+          "accessType": "eq_ref",
+          "key": "PRIMARY",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        }
+      ]
+    },
+    {
+      "name": "material_center",
+      "budgetRows": 200000,
+      "rowsExamined": 19897,
+      "withinBudget": true,
+      "tables": [
+        {
+          "table": "r",
+          "accessType": "ref",
+          "key": "uk_intern_stu_batch",
+          "rowsExaminedPerScan": 19890,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "s",
+          "accessType": "eq_ref",
+          "key": "PRIMARY",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "m",
+          "accessType": "ALL",
+          "key": null,
+          "rowsExaminedPerScan": 2,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "fb",
+          "accessType": "ref",
+          "key": "ix_file_binding_batch",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "fa",
+          "accessType": "eq_ref",
+          "key": "PRIMARY",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "fv",
+          "accessType": "eq_ref",
+          "key": "PRIMARY",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "fo",
+          "accessType": "eq_ref",
+          "key": "PRIMARY",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        }
+      ]
+    },
+    {
+      "name": "archive_ledger",
+      "budgetRows": 50000,
+      "rowsExamined": 400,
+      "withinBudget": true,
+      "tables": [
+        {
+          "table": "r",
+          "accessType": "index",
+          "key": "PRIMARY",
+          "rowsExaminedPerScan": 398,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "s",
+          "accessType": "eq_ref",
+          "key": "PRIMARY",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        },
+        {
+          "table": "a",
+          "accessType": "eq_ref",
+          "key": "uk_internship_archive_record",
+          "rowsExaminedPerScan": 1,
+          "usingFilesort": false,
+          "usingTemporaryTable": false
+        }
+      ]
+    }
+  ],
+  "browserEvidence": "SEPARATE_MEASURE_INTERNSHIP_V8_BROWSER_ARTIFACT_REQUIRED",
+  "passed": true
+}

@@ -18,6 +18,13 @@ test('T4 Student360 consumes dedicated real projection and has no PC placeholder
   }
 })
 
+test('T4 Student360 rejects a malformed deep link as an empty state instead of loading forever', () => {
+  const page = read('src/pages/teacher/student-detail/index.vue')
+  assert.match(page, /this\.id = String\(\(q && q\.id\) \|\| ''\)\.trim\(\)/)
+  assert.match(page, /if \(!this\.id\) this\.state = 'empty'/)
+  assert.match(page, /if \(!this\.id\) \{[\s\S]*this\.state = 'empty'[\s\S]*return Promise\.resolve\(\)/)
+})
+
 test('T4 Student360 object actions pass one student context to mature pages', () => {
   const page = read('src/pages/teacher/student-detail/index.vue')
   assert.match(page, /pages\/teacher\/family-contact\/index/)

@@ -1,12 +1,9 @@
 <template>
-  <AppPageShell title="家校回执" subtitle="家校联系记录的家长回执跟踪：待回执 → 登记回执。号码本体不呈现。按数据范围裁剪。"
+  <AppPageShell title="家校回执" subtitle="待回执与已回执记录"
     role-name="辅导员 / 学院" data-scope-name="本人带班 / 授权范围" watermark-purpose="家校回执">
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="加载中..." @retry="load"
                     @back="$router.push('/admin/student-affairs/family')">
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-      </div>
-      <AppSectionCard title="家校联系记录">
+      <section aria-label="家校联系记录">
         <div class="fr-filters" role="tablist" aria-label="回执状态筛选">
           <button
             v-for="f in statusFilters"
@@ -39,7 +36,7 @@
           </template>
         </DataTable>
         <p v-else class="sa-empty">暂无家校联系记录</p>
-      </AppSectionCard>
+      </section>
     </AppGlobalState>
 
     <!-- 家长回执：挂 sa.family.result——该词库正是家长反馈口径
@@ -59,8 +56,8 @@
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
-  AppQuickPhrases, AppSectionCard, AppStatusTag, AppTextarea
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppPageShell, AppPermissionButton,
+  AppQuickPhrases, AppStatusTag, AppTextarea
 } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
@@ -84,8 +81,8 @@ export default {
   name: 'FamilyReceiptView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppFormItem, AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton,
-    AppQuickPhrases, AppSectionCard, AppTextarea, StatusTag: AppStatusTag, DataTable
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppPageShell, AppPermissionButton,
+    AppQuickPhrases, AppTextarea, StatusTag: AppStatusTag, DataTable
   },
   data() {
     return {
@@ -96,15 +93,7 @@ export default {
     }
   },
   computed: {
-    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
-    metricCards() {
-      const count = (status) => this.statusCounts === null ? '—' : (this.statusCounts[status] || 0)
-      return [
-        { key: 't', label: '联系记录', value: this.statusCounts === null ? '—' : (this.statusCounts.ALL || 0), accent: 'primary' },
-        { key: 'p', label: '待回执', value: count('PENDING'), accent: 'warning' },
-        { key: 'r', label: '已回执', value: count('RECEIVED'), accent: 'success' }
-      ]
-    }
+    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') }
   },
   mounted() { this.load() },
   methods: {
@@ -153,19 +142,19 @@ export default {
       this.acting = ''
       if (res.code === 0) { d.visible = false; toast.success('回执已登记'); this.load() } else toast.error(res.message || '登记失败')
     },
-    typeLabel(t) { return TYPE[t] || t }
+    typeLabel(t) { return TYPE[t] || (t ? '类型待确认' : '—') }
   }
 }
 </script>
 
 <style scoped>
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
+@import '@/styles/module-page.css';
 .fr-filters { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); }
 .fr-chip { display: inline-flex; align-items: center; gap: 8px; min-height: 34px; border: 1px solid var(--border-light); background: var(--bg-card); color: var(--text-secondary); border-radius: var(--radius-full); padding: 5px 12px 5px 14px; font-size: var(--font-size-sm); font-weight: 600; cursor: pointer; transition: border-color .16s ease, background-color .16s ease, color .16s ease, box-shadow .16s ease; }
 .fr-chip strong { display: inline-grid; place-items: center; min-width: 22px; height: 22px; padding: 0 6px; border-radius: var(--radius-full); background: var(--gray-100); color: var(--text-secondary); font-size: var(--font-size-xs); font-variant-numeric: tabular-nums; }
 .fr-chip:hover:not(:disabled) { border-color: var(--primary-400, #60a5fa); color: var(--primary-700, #1d4ed8); }
-.fr-chip.is-on { background: var(--primary-600, #2563eb); color: var(--text-inverse, #fff); border-color: var(--primary-600, #2563eb); box-shadow: 0 4px 12px rgba(37, 99, 235, .2); }
-.fr-chip.is-on strong { background: rgba(255, 255, 255, .2); color: #fff; }
+.fr-chip.is-on { background: var(--pri-bg); color: var(--color-primary); border-color: var(--color-primary); }
+.fr-chip.is-on strong { background: transparent; color: inherit; }
 .fr-chip:focus-visible { outline: 3px solid var(--primary-100, #dbeafe); outline-offset: 2px; }
 .fr-chip:disabled { cursor: wait; opacity: .72; }
 .fr-filtering { color: var(--text-tertiary); font-size: var(--font-size-xs); }
@@ -173,6 +162,4 @@ export default {
 .fr-reason { color: var(--text-secondary); font-size: var(--font-size-sm); max-width: 220px; }
 .fr-note { display: block; color: var(--text-tertiary); font-size: var(--font-size-xs); font-style: normal; }
 .fr-muted { color: var(--text-tertiary); }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
-@import '@/styles/module-page.css';
 </style>

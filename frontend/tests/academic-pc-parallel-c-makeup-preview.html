@@ -1,0 +1,56 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>C组 T18 局部演练</title>
+<style>body{margin:0;font-family:system-ui;background:#f4f7fc;color:#243650}#tools{padding:14px;background:#fff2cf;display:flex;gap:12px;align-items:center;position:sticky;top:0;z-index:10}#app{max-width:1200px;margin:24px auto;padding:0 20px}</style>
+<div id="tools"><strong>隔离演练 · 全部合成数据</strong><button data-view="console">责任队列</button><button data-view="archive">材料归档</button><button data-view="student">本人申请</button><button data-view="stats">统计分析</button><label>写入响应<select id="response"><option value="normal">正常</option><option value="403">403</option><option value="409">409</option><option value="timeout">响应丢失</option></select></label></div><div id="app"></div>
+<script type="module">
+import {createApp,h,reactive} from 'vue'
+import {createPinia} from 'pinia'
+import {createRouter,createMemoryHistory} from 'vue-router'
+import '../src/styles/tokens.css'
+import '../src/styles/high-contrast-skin.css'
+import Console from '../src/modules/academicAffairs/views/AaMakeupConsoleView.vue'
+import Archive from '../src/modules/academicAffairs/views/AaExemptionArchiveView.vue'
+import Student from '../src/modules/academicAffairs/views/AaMakeupStudentView.vue'
+import Stats from '../src/modules/academicAffairs/views/AaMakeupStatsView.vue'
+import {academicAffairsMakeupApi as api,academicAffairsApi as base} from '../src/modules/academicAffairs/api/academic-affairs.api.js'
+import {gradeIdentityApi} from '../src/modules/academicAffairs/api/grade-identity.api.js'
+import fileSdk from '../src/services/file/fileSdk.js'
+const copy=x=>structuredClone(x),list=rows=>({code:0,data:{list:copy(rows),total:rows.length}})
+const candidate={gradeId:'1000000000000063602',acadStudentId:'16',courseId:'10',courseName:'演练 · 电工电子',courseCode:'DEMO-C1',courseVersion:1,attemptNo:1,score:50,identityReady:true,studentName:'演练学生甲',studentNo:'DEMO001'}
+const batches=[{batchId:'B1',batchName:'演练 · 补考批次',termCode:'2026-1',status:'PUBLISHED'},{batchId:'B2',batchName:'演练 · 待编排名单',termCode:'2026-1',status:'ARRANGED'}]
+const records=[{makeupId:'M1',acadStudentId:'16',originGradeId:candidate.gradeId,studentNo:'DEMO001',studentName:'演练学生甲',courseName:candidate.courseName,originScore:50,finalScore:null,status:'PENDING_EXAM'}]
+const retakes=[{applyId:'R1',studentName:'演练学生甲',courseName:candidate.courseName,termCode:'2026-1',status:'SUBMITTED',reason:'希望随下学期课程重新修读',retakeCount:1}]
+const exemptions=[{exemptionId:'E1',studentName:'演练学生乙',courseName:'演练 · 计算机基础',termCode:'2026-1',status:'COLLEGE_REVIEW',currentNode:'COLLEGE_REVIEW',reason:'已取得对应课程能力证明',archiveStatus:'NOT_ARCHIVED',materialFiles:[{fileId:'F1',fileName:'演练材料.pdf',sizeBytes:500}]}]
+const archiveRows=[{...exemptions[0],exemptionId:'E2',status:'APPROVED',currentNode:null}]
+const write=fn=>async(...args)=>{const mode=document.querySelector('#response').value;if(mode==='403'||mode==='409')return {code:Number(mode)};const data=fn(...args);if(mode==='timeout')throw Error('演练响应丢失');return {code:0,data:copy(data)}}
+api.listBatches=async()=>list(batches)
+api.batchRecords=api.clearanceRecords=async()=>list(records)
+api.makeupPending=async()=>list([candidate])
+api.retakeApplies=async()=>list(retakes)
+api.exemptionApplies=async()=>list(exemptions)
+api.deferredPool=async()=>list([])
+api.score=write((id,score)=>{const row=records.find(r=>r.makeupId===id);row.finalScore=score;row.status='SCORED';return row})
+api.retakeReview=write((id,action,reason)=>{const row=retakes.find(r=>r.applyId===id);row.status=action==='APPROVE'?'APPROVED':'REJECTED';row.reviewReason=reason;return row})
+api.exemptionReview=write((id,action,reason)=>{const row=exemptions.find(r=>r.exemptionId===id);if(action==='RETURN'){row.status='SUBMITTED';row.currentNode='SUBMITTED';row.returnReason=reason}else if(action==='REJECT'){row.status='REJECTED';row.currentNode=null;row.returnReason=reason}else{row.status={SUBMITTED:'TEACHER_REVIEW',TEACHER_REVIEW:'COLLEGE_REVIEW',COLLEGE_REVIEW:'ACADEMIC_REVIEW',ACADEMIC_REVIEW:'APPROVED'}[row.status];row.currentNode=row.status==='APPROVED'?null:row.status}return row})
+api.archiveList=async()=>list(archiveRows)
+api.archiveExemption=write(id=>{const row=archiveRows.find(r=>r.exemptionId===id);row.archiveStatus='ARCHIVED';return row})
+gradeIdentityApi.myMakeupOptions=async()=>({code:0,data:{retakeOptions:[copy(candidate)],exemptionOptions:[copy(candidate)],identityDebtCount:0}})
+api.retakeMy=async()=>({code:0,data:{items:copy(retakes)}})
+api.exemptionMy=async()=>({code:0,data:{items:copy(exemptions)}})
+api.retakeApply=write(body=>{const row={applyId:'R'+(retakes.length+1),courseName:candidate.courseName,reason:body.reason,status:'SUBMITTED',termCode:'2026-1'};retakes.push(row);return row})
+api.exemptionApply=write(body=>{const row={exemptionId:'E'+(exemptions.length+1),courseName:candidate.courseName,reason:body.reason,status:'TEACHER_REVIEW',currentNode:'TEACHER_REVIEW'};exemptions.push(row);return row})
+fileSdk.metadata=async id=>({fileId:id,fileName:'演练材料.pdf',readyForBusiness:true,allowedActions:['preview','download']})
+fileSdk.authorizedUrl=async()=>({delivery:'SERVER'})
+fileSdk.blob=async()=>new Blob(['仅为本地合成演练材料'],{type:'text/plain'})
+fileSdk.upload=file=>({promise:Promise.resolve({fileId:'F1',fileName:file.name}),cancel(){}})
+base.getStatsFilters=async()=>({code:0,data:{terms:[],colleges:[]}})
+api.stats=async()=>({code:0,data:{makeup:{count:2,passRate:null},retake:{count:1,passRate:0},exemption:{count:1,passRate:null},deferred:{count:0,passRate:null}}})
+api.statsDetail=async()=>list(retakes)
+api.exportStats=async()=>({code:0,data:new Blob(['演练统计'])})
+const ctx=reactive({currentRole:{roleCode:'SCHOOL_ADMIN',roleName:'演练责任岗'},dataScope:{scopeName:'本地合成数据'},permissionPatterns:['*']})
+const views={console:Console,archive:Archive,student:{...Student,computed:{...Student.computed,isStudent:()=>true}},stats:Stats}
+const state=reactive({view:'console'})
+const router=createRouter({history:createMemoryHistory(),routes:[{path:'/:view',component:Console}]})
+await router.push('/console?tab=retake');await router.isReady()
+createApp({render:()=>h(views[state.view],{ctx,key:state.view})}).use(createPinia()).use(router).mount('#app')
+for(const button of document.querySelectorAll('[data-view]'))button.onclick=()=>{state.view=button.dataset.view;router.push('/'+state.view+(state.view==='console'?'?tab=retake':''))}
+</script></html>

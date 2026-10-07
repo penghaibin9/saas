@@ -75,11 +75,13 @@ class PositionUpdate(BaseModel):
 
 
 class PositionStatusAction(BaseModel):
-    action: str = Field(..., description="SUBMIT/PUBLISH/OFFLINE/SUSPEND/ARCHIVE")
+    expectedVersion: Optional[int] = Field(None, ge=0)
+    action: str = Field(..., description="SUBMIT/RETURN/PUBLISH/OFFLINE/SUSPEND/ARCHIVE；RETURN 要求当前版本及补正意见")
     reason: Optional[str] = ""
 
 
 class PositionRiskRequest(BaseModel):
+    expectedVersion: Optional[int] = Field(None, ge=0)
     on: bool = Field(..., description="true 标记风险岗位 / false 解除")
     note: Optional[str] = ""
 

@@ -14,6 +14,9 @@ _MOBILE_REVIEW = re.compile(
     r"^/api/v1/mobile/teacher/graduation/(proposal|final)/(\d+)/review$"
 )
 _STUDENT_FILE = re.compile(r"^/api/v1/graduation/gd-archives/(\d+)/file$")
+# Single-student generate/submit use the same V2 material rule as filing, so old ORM-only
+# fixtures need their V2 evidence backfilled before those calls as well.
+_STUDENT_ARCHIVE_CHECK = re.compile(r"^/api/v1/graduation/gd-archives/(\d+)/(?:generate|submit)$")
 _FORMAL_REVIEW_ASSIGN = "/api/v1/graduation/gd-reviews/assign"
 _BATCH_ACTIONS = {
     "/api/v1/graduation/gd-archives/batch-generate",
@@ -382,6 +385,18 @@ def _explicit_graduation_review_archive_contract(request):
             single = _STUDENT_FILE.match(path)
             if single:
                 _prepare_single_archive_evidence(int(single.group(1)), kwargs)
+            checked = _STUDENT_ARCHIVE_CHECK.match(path)
+            if checked:
+                from app.core.exceptions import AppException
+
+                try:
+                    user = _claims(kwargs)
+                    if user:
+                        _ensure_legacy_final_file(int(checked.group(1)), user)
+                    _prepare_single_archive_evidence(int(checked.group(1)), kwargs)
+                except AppException:
+                    # Dirty/out-of-scope fixtures: let the real route answer fail-closed.
+                    pass
             if path in _BATCH_ACTIONS:
                 direct = _direct_batch_action(client, method, url, kwargs)
                 if direct is not None:

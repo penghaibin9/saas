@@ -180,6 +180,8 @@ def create_roster_version(db, teaching_class, student_ids, *, source_type: str, 
     from app.models import AaTeachingClassMember, AaTeachingClassRosterVersion, AaTeachingTask
 
     ids, _profiles = _member_profiles(db, student_ids)
+    from .academic_affairs_task_execution_authority import require_independent_task
+    require_independent_task(db, teaching_class.teaching_task_id)
     if not ids:
         raise AppException("DATA_CONFLICT", "正式教学班名单不能为空", http_status=409)
     current = None
@@ -264,6 +266,8 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
     from app.models import AaTeachingClass
 
     task, batch = _task_and_batch(db, task_id)
+    from .academic_affairs_task_execution_authority import require_independent_task
+    require_independent_task(db, task)
     teaching_class = db.query(AaTeachingClass).filter(
         AaTeachingClass.tenant_id == _tid(),
         AaTeachingClass.teaching_task_id == task.id,
@@ -353,11 +357,13 @@ def project_selection_batch_locked(db, batch_id: int) -> dict:
     courses = db.query(AaSelectionCourse).filter(
         AaSelectionCourse.tenant_id == _tid(), AaSelectionCourse.batch_id == int(batch_id),
         AaSelectionCourse.status == "OPEN", AaSelectionCourse.is_deleted.is_(False),
-    ).all()
+    ).order_by(AaSelectionCourse.teaching_task_id, AaSelectionCourse.id).all()
     projected = []
     for course in courses:
         if not course.teaching_task_id:
             continue
+        from .academic_affairs_task_execution_authority import require_independent_task
+        require_independent_task(db, course.teaching_task_id)
         records = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.tenant_id == _tid(),
             AaSelectionRecord.batch_id == int(batch_id),

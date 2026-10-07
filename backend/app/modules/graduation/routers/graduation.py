@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends, Query
 from app.core.exceptions import no_permission
 from app.core.response import paginate, success
 from app.core.security import get_current_user
-from app.core.permissions import has_permission, require_permission
+from app.core.permissions import permission_decisions, require_permission
 from app.modules.graduation.schemas.graduation import (AssignStudentsBody, DefenseGroupBody,  # noqa: F401
                                     ProposalSubmitBody, RemindBody, ReviewBody)
 from app.modules.graduation.materials import record_service as material_records
@@ -57,6 +57,7 @@ _ACTION_PERMISSION_MAP = {
     "manageGrade": "graduationDesign.grade.calculate",
     "reviewGrade": "graduationDesign.grade.review",
     "withdrawGrade": "graduationDesign.grade.withdraw",
+    "enterAdvisorScore": "graduationDesign.grade.advisorScore",
     "reviewGradeAppeal": "graduationDesign.grade.appealReview",
     "publishGrade": "graduationDesign.grade.publish",
 }
@@ -66,11 +67,11 @@ _ACTION_PERMISSION_MAP = {
 def get_context(user=Depends(get_current_user)):
     role = (user.get("currentRoleCode") or user.get("userType") or "").strip().upper()
     org = org_scope_status(user)
+    decisions = permission_decisions(user, _ACTION_PERMISSION_MAP.values())
     return success({
         "roleCode": role,
         "fullScope": has_full_scope(),
-        "permissionActions": {key: has_permission(user, code)
-                              for key, code in _ACTION_PERMISSION_MAP.items()},
+        "permissionActions": {key: decisions[code] for key, code in _ACTION_PERMISSION_MAP.items()},
         **org,
     })
 
@@ -98,22 +99,6 @@ def _require_full_defense_group_scope() -> None:
         raise no_permission("Only full-scope graduation managers can create or reassign defense groups")
 
 
-@router.get("/dashboard", summary="毕设看板")
-def dashboard(batchId: int | None = Query(default=None, ge=1),
-              user=Depends(get_current_user)):
-    return success(svc.get_dashboard(batch_id=batchId))
-
-
-@router.get("/students", summary="毕设学生列表")
-def students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-             keyword: Optional[str] = None, classId: Optional[str] = None,
-             stage: Optional[str] = None, riskLevel: Optional[str] = None,
-             user=Depends(get_current_user)):
-    i, t = svc.list_students(page, pageSize, keyword=keyword, class_id=classId, stage=stage,
-                             risk_level=riskLevel)
-    return _p(i, t, page, pageSize)
-
-
 @router.get("/students/{sid}", summary="毕设学生详情")
 def student_detail(sid: str, user=Depends(get_current_user)):
     return success(svc.get_student_detail(sid))
@@ -125,20 +110,6 @@ def topics(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
            user=Depends(get_current_user)):
     i, t = svc.list_topics(page, pageSize, keyword=keyword, status=status)
     return _p(i, t, page, pageSize)
-
-
-@router.get("/proposals", summary="开题材料列表")
-def proposals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-              keyword: Optional[str] = None, status: Optional[str] = None,
-              batchId: Optional[str] = None, user=Depends(get_current_user)):
-    i, t = svc.list_proposals(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
-    return _p(i, t, page, pageSize)
-
-
-@router.get("/proposals/stats", summary="开题统计（状态分布+未提交）")
-def proposal_stats(batchId: int | None = Query(default=None, ge=1),
-                   user=Depends(get_current_user)):
-    return success(svc.proposal_stats(batch_id=batchId))
 
 
 @router.get("/proposals/{pid}", summary="开题批阅详情")
@@ -161,34 +132,6 @@ def proposal_defense(pid: str, body: dict = Body(...), user=Depends(get_current_
                    message="已录入开题答辩")
 
 
-@router.get("/finals/stats", summary="成果统计（状态分布+查重超标）")
-def final_stats(batchId: int | None = Query(default=None, ge=1),
-                user=Depends(get_current_user)):
-    return success(svc.final_stats(batch_id=batchId))
-
-
-@router.post("/proposals/remind", summary="开题催交（未提交学生留痕催办）")
-def proposal_remind(body: RemindBody, user=Depends(get_current_user)):
-    return success(svc.remind_proposal(body.gdStudentId, body.channel or "站内消息"), message="已催交")
-
-
-@router.post("/proposals/export", summary="导出开题材料台账 Excel（写审计）")
-def proposal_export(status: Optional[str] = None, keyword: Optional[str] = None,
-                    batchId: Optional[str] = None, user=Depends(get_current_user)):
-    data = svc.export_proposals_xlsx(status=status, keyword=keyword, batch_id=batchId)
-    audit_log.record("导出开题材料台账", "graduation-proposal:export",
-                     detail={"rowCount": data["rowCount"], "batchId": batchId, "status": status})
-    return success(data)
-
-
-@router.get("/finals", summary="成果提交列表")
-def finals(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-           keyword: Optional[str] = None, status: Optional[str] = None,
-           batchId: Optional[str] = None, user=Depends(get_current_user)):
-    i, t = svc.list_finals(page, pageSize, keyword=keyword, status=status, batch_id=batchId)
-    return _p(i, t, page, pageSize)
-
-
 @router.post("/finals/{fid}/review", summary="批阅成果（退回原因≥5字；查重超标 GD-R09 不可直接通过）")
 def final_review(fid: str, body: ReviewBody, user=Depends(get_current_user)):
     result = material_records.review_final(
@@ -196,46 +139,6 @@ def final_review(fid: str, body: ReviewBody, user=Depends(get_current_user)):
         expected_version=body.expectedVersion, expected_file_version_id=body.fileVersionId,
     )
     return success(result, message="已批阅")
-
-
-@router.post("/finals/remind", summary="成果催交（未提交学生留痕催办）")
-def final_remind(body: RemindBody, user=Depends(get_current_user)):
-    return success(svc.remind_final(body.gdStudentId, body.channel or "站内消息"), message="已催交")
-
-
-@router.post("/finals/export", summary="导出成果提交台账 Excel（写审计）")
-def final_export(status: Optional[str] = None, keyword: Optional[str] = None,
-                 batchId: Optional[str] = None, user=Depends(get_current_user)):
-    data = svc.export_finals_xlsx(status=status, keyword=keyword, batch_id=batchId)
-    audit_log.record("导出成果提交台账", "graduation-final:export",
-                     detail={"rowCount": data["rowCount"], "batchId": batchId})
-    return success(data)
-
-
-@router.get("/defense-groups", summary="答辩安排列表")
-def defense_groups(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                   keyword: Optional[str] = None,
-                   batchId: int | None = Query(default=None, ge=1),
-                   user=Depends(get_current_user)):
-    i, t = svc.list_defense_groups(page, pageSize, keyword=keyword, batch_id=batchId)
-    return _p(i, t, page, pageSize)
-
-
-@router.post("/defense-groups", summary="新建答辩组")
-def defense_create(body: DefenseGroupBody, user=Depends(require_permission("graduationDesign.defense.groupManage"))):
-    _require_full_defense_group_scope()
-    result = svc.create_defense_group(
-        body.groupName, body.defenseDate, body.location,
-        body.chair, body.members, body.secretary, batch_id=body.batchId,
-        chair_mentor_id=body.chairMentorId, secretary_mentor_id=body.secretaryMentorId,
-        member_mentor_ids=body.memberMentorIds)
-    return success(_defense_member_contract(result), message="已创建")
-
-
-@router.get("/defense-groups/eligible-students", summary="可分配到答辩组的学生")
-def defense_eligible(gid: Optional[str] = None, keyword: Optional[str] = None,
-                     user=Depends(get_current_user)):
-    return success({"items": svc.list_defense_eligible_students(gid=gid, keyword=keyword)})
 
 
 def _defense_member_contract(result: dict) -> dict:
@@ -278,18 +181,3 @@ def defense_publish(gid: str, user=Depends(require_permission("graduationDesign.
     return success(svc.publish_defense(gid), message="已发布")
 
 
-@router.post("/defense-groups/export", summary="导出答辩安排台账 Excel（写审计）")
-def defense_export(batchId: int | None = Query(default=None, ge=1),
-                   user=Depends(get_current_user)):
-    data = svc.export_defense_xlsx(batch_id=batchId)
-    audit_log.record("导出答辩安排台账", "graduation-defense:export",
-                     detail={"rowCount": data["rowCount"], "batchId": batchId})
-    return success(data)
-
-
-@router.get("/audit-logs", summary="毕设域审计")
-def audit_logs(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-               bizType: Optional[str] = None, keyword: Optional[str] = None,
-               user=Depends(get_current_user)):
-    i, t = svc.list_audit(page, pageSize, biz_type=bizType, keyword=keyword)
-    return _p(i, t, page, pageSize)

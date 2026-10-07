@@ -39,6 +39,8 @@ def enrollment(user: dict) -> dict:
             "collegeName": getattr(stu, "_college_name", "") or "",
             "majorName": getattr(stu, "_major_name", "") or "",
             "className": getattr(stu, "_class_name", "") or "",
+            "counselorId": str(getattr(stu, "_counselor_id", "") or ""),
+            "counselorName": getattr(stu, "_counselor_name", "") or "",
             "grade": stu.grade or "",
             "enrollDate": _iso(stu.enroll_date) if stu.enroll_date else "",
             "studentStatus": stu.student_status,

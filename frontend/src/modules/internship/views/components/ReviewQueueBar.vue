@@ -4,7 +4,7 @@
     <span class="rqb__pos">
       {{ queue.title || '处理队列' }} · 第 <b>{{ index + 1 }}</b> / {{ total }} 条
     </span>
-    <span v-if="finished" class="rqb__done">本队列已全部处理完毕</span>
+    <span v-if="finished" class="rqb__done">已到当前列表末尾，可返回台账核对剩余待办</span>
     <span class="rqb__sp" />
     <button class="rqb__nav" :disabled="!prevId" @click="goPrev">‹ 上一条</button>
     <button class="rqb__nav" :disabled="!nextId" @click="goNext">下一条 ›</button>
@@ -25,7 +25,7 @@ import { toast } from '@/utils/toast'
  *                   :make-path="(id) => '/admin/internship/reports/' + id"
  *                   list-fallback="/admin/internship/reports" />
  * 页面在「通过 / 退回」等动作成功后调用 this.$refs.queueBar.advance()：
- * 有下一条 → 自动进入下一条；没有 → 提示队列完成并停留（可返回列表）。
+ * 有下一条 → 自动进入下一条；没有 → 提示已到列表末尾并停留（可返回列表）。
  * 深链直接进入（无队列上下文）时退化为仅「返回列表」。
  */
 export default {
@@ -44,7 +44,9 @@ export default {
       return !!this.queue && this.pos.index > -1
     },
     pos() {
-      return this.queue ? queuePosition(this.queue, this.currentId) : { index: -1, total: 0, prevId: '', nextId: '' }
+      const contextKeys = ['batchId', 'type', 'panel', 'page']
+      const matches = this.queue && contextKeys.every(key => String(this.queue.listQuery?.[key] || '') === String(this.$route.query?.[key] || ''))
+      return matches ? queuePosition(this.queue, this.currentId) : { index: -1, total: 0, prevId: '', nextId: '' }
     },
     index() { return this.pos.index },
     total() { return this.pos.total },
@@ -64,18 +66,18 @@ export default {
     goNext() {
       if (this.nextId) this.$router.push(this.makePath(this.nextId))
     },
-    /** 处理成功后由页面调用：进入下一条或宣告队列完成 */
+    /** 处理成功后由页面调用：进入下一条或提示当前列表末尾 */
     advance() {
       if (this.nextId) {
         this.$router.push(this.makePath(this.nextId))
         return true
       }
       this.finished = true
-      if (this.hasQueue) toast.success('本队列已全部处理完毕')
+      if (this.hasQueue) toast.success('已到当前列表末尾，可返回台账核对剩余待办')
       return false
     },
     backToList() {
-      if (this.queue && this.queue.listPath) {
+      if (this.hasQueue && this.queue.listPath) {
         this.$router.push({ path: this.queue.listPath, query: this.queue.listQuery || {} })
       } else {
         this.$router.push(this.listFallback)

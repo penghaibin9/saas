@@ -37,16 +37,13 @@ test('PR147 graduation audit batch picker loads every server page instead of sil
 test('PR147 archive console loads every server page instead of silently capping historical batches at 100', async () => {
   const source = await readFile(archiveConsoleUrl, 'utf8')
   for (const token of [
-    'const pageSize = 100',
-    'const all = []',
-    'let page = 1',
-    'let total = 0',
-    'api.listBatches({ page, pageSize })',
-    'all.push(...list)',
-    'while (all.length < total)',
-    'this.rows = all',
-    "toast.error(res.message || '归档批次加载失败')"
+    "import { readAllPages } from '../components/parallel-a/pagedRead'",
+    'identity:row=>row.batchId',
+    'pageSize:100',
+    'this.rows=res.data.list',
+    "this.listError=this.fail(e,'归档批次加载失败')"
   ]) assert.ok(source.includes(token), `missing all-page archive batch contract: ${token}`)
 
+  assert.match(source, /readAllPages\(\(page,pageSize\)=>api\.listBatches\(\{page,pageSize,\.\.\.\(termId\?\{termId\}:\{\}\)\}\)/)
   assert.doesNotMatch(source, /api\.listBatches\(\{ pageSize: 100 \}\)/)
 })

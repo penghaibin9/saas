@@ -361,7 +361,31 @@ def test_domain_import_rejects_rows_without_master_profile(db_mode, ctx):
 
 def test_domain_import_orientation_still_allows_new_candidates(db_mode, ctx):
     """迎新是例外：录取候选人本来就还没有学籍，不能被这条规则误伤。"""
+    from app.db.session import get_sessionmaker
+    from app.models import College, Major, OrientationBatch, SchoolClass
     from app.services import domain_import_service as dis
+    from app.services.orientation_flow_service import ensure_published_flow_version
 
-    res = dis.dry_run("orientation", [{"name": "新生甲", "admissionNo": "LQD0001"}])
+    db = get_sessionmaker()()
+    try:
+        college = College(tenant_id=TID, college_name="候选人学院", code="CAND-COL", status="ACTIVE")
+        db.add(college); db.flush()
+        major = Major(tenant_id=TID, college_id=college.id, major_name="候选人专业",
+                      code="CAND-MAJ", status="ACTIVE")
+        db.add(major); db.flush()
+        school_class = SchoolClass(tenant_id=TID, major_id=major.id, class_name="候选人班",
+                                   class_code="CAND-CLS", grade="2026", status="ACTIVE")
+        flow_version = ensure_published_flow_version(db, TID)
+        batch = OrientationBatch(tenant_id=TID, batch_name="候选人批次",
+                                 batch_no="CAND-ORI", year="2026", status="ACTIVE",
+                                 planned_count=1, flow_version_id=flow_version.id)
+        db.add_all([school_class, batch]); db.commit()
+    finally:
+        db.close()
+
+    res = dis.dry_run("orientation", [{
+        "name": "新生甲", "admissionNo": "LQD0001", "candidateNo": "CAND-0001",
+        "batchNo": "CAND-ORI", "collegeCode": "CAND-COL",
+        "majorCode": "CAND-MAJ", "classCode": "CAND-CLS",
+    }])
     assert res["okRows"] == 1 and res["errorRows"] == 0

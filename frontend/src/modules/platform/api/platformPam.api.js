@@ -19,6 +19,7 @@ async function real(label, path, options = {}) {
 }
 
 export const platformPamApi = Object.freeze({
+  dutyMatrix: () => real('读取平台职责解释矩阵', '/platform/access-duty-matrix'),
   listAssignments: () => real('读取平台职责', '/platform/access-assignments'),
   saveAssignment: (body) => real('保存平台职责', '/platform/access-assignments', { method: 'POST', body }),
   revokeAssignment: (id, expectedVersion, reason) => real(

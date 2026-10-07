@@ -25,6 +25,17 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _review_hdr(login_name):
+    """审批节点必须使用可被生产鉴权重新核验的真实 DB 账号令牌。"""
+    from affairs_contract_test_support import role_headers
+
+    role_code = {
+        "college_admin01": "COLLEGE_ADMIN",
+        "school_admin01": "SCHOOL_ADMIN",
+    }[login_name]
+    return role_headers(role_code, login_name=login_name)
+
+
 def _seed(db_mode):
     """调停课必须回链真实组织树；学院审批受理人由后续 READY 教学任务夹具按学院绑定。"""
     from app.db.session import get_sessionmaker
@@ -35,7 +46,7 @@ def _seed(db_mode):
     db.add(col); db.flush()
     maj = Major(tenant_id=TID, college_id=col.id, major_name="调停课软件技术", status="ACTIVE")
     db.add(maj); db.flush()
-    a = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="软件2601", grade="2026", status="ACTIVE")
+    a = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="软件2601", grade="2098", status="ACTIVE")
     db.add(a); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="SC001", real_name="课表甲", class_id=a.id,
                        current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
@@ -98,8 +109,12 @@ def _batch(client, hdr):
 def _ready_task(bid, class_id, teacher_key, teacher_name, course_name):
     """每个课位显式回链唯一 READY 教学任务；不再依赖共享 MySQL 残留或模糊匹配。"""
     from app.db.session import get_sessionmaker
-    from app.models import (AaCourse, AaScheduleBatch, AaTeachingTask, AaTeachingTaskBatch,
+    from app.models import (AaCourse, AaProgram, AaProgramBinding, AaProgramCourse,
+                            AaScheduleBatch, AaTeachingTask, AaTeachingTaskBatch, AaTerm,
                             Major, SchoolClass)
+    from app.modules.academic_affairs.services.academic_affairs_archive_term_scope import cohort_term_scope
+    from app.modules.academic_affairs.services.academic_affairs_teaching_class_service import ensure_teaching_class_for_task
+    from tests.support_academic_review_identity import seed_college_review_scope
     from tests.support_schedule_change_identity import seed_schedule_change_identity
 
     db = get_sessionmaker()()
@@ -109,16 +124,47 @@ def _ready_task(bid, class_id, teacher_key, teacher_name, course_name):
     assert cls is not None
     major = db.get(Major, int(cls.major_id)) if cls.major_id else None
     assert major is not None and major.college_id
+    term = db.get(AaTerm, int(schedule_batch.term_id))
+    assert term is not None and term.start_date
+    term_scope = cohort_term_scope(term.year_code, term.term_no, cls.grade)
+    assert term_scope["state"] == "IN_SCOPE"
     college_id = int(major.college_id)
+    seed_college_review_scope(db, college_ids=[college_id])
     seed_schedule_change_identity(db, college_ids=[college_id])
 
     seq = db.query(AaTeachingTask).filter(AaTeachingTask.tenant_id == TID).count() + 101
     course_code = f"SC{seq:03d}"
     course = AaCourse(
         tenant_id=TID, course_code=course_code, course_name=course_name,
-        nature="REQUIRED", credit=4, status="ENABLED",
+        nature="REQUIRED", credit=4, owner_college_id=college_id, status="ENABLED",
     )
     db.add(course); db.flush()
+    binding = db.query(AaProgramBinding).filter(
+        AaProgramBinding.tenant_id == TID,
+        AaProgramBinding.class_id == cls.id,
+        AaProgramBinding.status == "ACTIVE",
+        AaProgramBinding.is_deleted.is_(False),
+    ).one_or_none()
+    if binding is None:
+        program = AaProgram(
+            tenant_id=TID, major_id=major.id, grade_year=cls.grade,
+            program_name=f"调停课回归方案-{cls.id}", total_credits=4, status="PUBLISHED",
+        )
+        db.add(program); db.flush()
+        db.add(AaProgramBinding(
+            tenant_id=TID, program_id=program.id, major_id=major.id,
+            class_id=cls.id, grade_year=cls.grade, bound_at=term.start_date, status="ACTIVE",
+        ))
+    else:
+        program = db.get(AaProgram, int(binding.program_id))
+        assert program is not None and program.status == "PUBLISHED"
+        program.total_credits += 4
+    planned = AaProgramCourse(
+        tenant_id=TID, program_id=program.id, course_id=course.id,
+        course_name=course.course_name, credit_snapshot=4,
+        open_term_no=term_scope["planTerm"], formation_mode="ADMIN_FIXED",
+    )
+    db.add(planned); db.flush()
     task_batch = AaTeachingTaskBatch(
         tenant_id=TID, term_id=int(schedule_batch.term_id),
         batch_name=f"调停课回归教学任务批次-{seq}", college_id=college_id, status="APPROVED",
@@ -128,11 +174,21 @@ def _ready_task(bid, class_id, teacher_key, teacher_name, course_name):
         tenant_id=TID, batch_id=task_batch.id, course_id=course.id,
         course_code=course_code, course_name=course_name,
         class_id=int(class_id), teaching_class_name=cls.class_name,
+        source_program_course_id=planned.id, formation_mode="ADMIN_FIXED",
         teacher_key=teacher_key, teacher_name=teacher_name,
         status="READY", weekly_hours=1, total_hours=18, start_week=1, end_week=18,
     )
     db.add(task); db.flush()
     task_id = int(task.id)
+    from app.core.context import get_tenant, set_tenant
+
+    previous_tenant = get_tenant()
+    set_tenant(TID)
+    try:
+        ensure_teaching_class_for_task(db, task_id)
+    finally:
+        set_tenant(previous_tenant)
+    db.flush()
     db.commit(); db.close()
     return task_id
 
@@ -168,29 +224,157 @@ def _published_item(client, hdr, cid, **extra_items):
 
 
 def _submit(client, hdr, origin, **kw):
-    body = {"originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
-            "targetWeekday": 3, "targetSlotNo": 2, **kw}
+    body = {
+        "originItemId": str(origin), "changeType": "ADJUST", "reason": "教师因公出差需调整",
+        "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 1, "targetEndWeek": 18, **kw,
+    }
     return client.post(f"{BASE}/schedule-change", headers=hdr, json=body)
+
+
+def _approve_college(client, change_id, expected_version):
+    return client.post(
+        f"{BASE}/schedule-change/{change_id}/approve",
+        headers=_review_hdr("college_admin01"),
+        json={"action": "APPROVE", "expectedVersion": int(expected_version)},
+    )
+
+
+def _approve_academic(client, change_id, expected_version):
+    return client.post(
+        f"{BASE}/schedule-change/{change_id}/approve",
+        headers=_review_hdr("school_admin01"),
+        json={"action": "APPROVE", "expectedVersion": int(expected_version)},
+    )
+
+
+def _approve_all(client, submitted_data):
+    change_id = submitted_data["changeId"]
+    first = _approve_college(client, change_id, submitted_data["version"])
+    assert first.status_code == 200, first.text
+    second = _approve_academic(client, change_id, first.json()["data"]["version"])
+    assert second.status_code == 200, second.text
+    return first, second
 
 
 # ── C1 调课全链路 → APPLIED ──
 def test_c1_adjust_full_chain_applied(client, db_mode):
     ids = _seed(db_mode)
-    admin = _hdr(client, "school_admin01")
+    admin = _review_hdr("school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
     r = _submit(client, admin, origin)
-    assert r.status_code == 200
-    cid = r.json()["data"]["changeId"]
-    assert r.json()["data"]["status"] == "SUBMITTED"
-    r1 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
-    assert r1["data"]["status"] == "COLLEGE_REVIEW"
-    r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
+    assert r.status_code == 200, r.text
+    submitted = r.json()["data"]
+    assert submitted["canCancel"] is True
+
+    from affairs_contract_test_support import role_headers
+
+    owner = role_headers("ACADEMIC_TEACHER", login_name="academic01")
+    leader = role_headers("LEADER", login_name="schedule_readonly_leader")
+    college = _review_hdr("college_admin01")
+    for headers, expected in ((owner, True), (leader, False), (college, False)):
+        detail = client.get(f"{BASE}/schedule-change/{submitted['changeId']}", headers=headers)
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["data"]["canCancel"] is expected
+        ledger = client.get(f"{BASE}/schedule-change", headers=headers)
+        assert ledger.status_code == 200, ledger.text
+        matching = [row for row in ledger.json()["data"]["items"] if row["changeId"] == submitted["changeId"]]
+        assert len(matching) == 1
+        assert matching[0]["canCancel"] is expected
+
+    r1, r2_response = _approve_all(client, submitted)
+    assert r1.json()["data"]["status"] == "COLLEGE_REVIEW"
+    assert r1.json()["data"]["canCancel"] is False
+    r2 = r2_response.json()
     assert r2["data"]["status"] == "APPLIED"
+    assert r2["data"]["canCancel"] is False
     assert r2["data"]["newItemId"] and r2["data"]["applied"]["notified"]["channel"] == "STATUS_CHANGED"
     cv = client.get(f"{BASE}/schedule-batches/{r2['data']['batchId']}/class-view?classId={ids['class']}",
                     headers=admin).json()["data"]["items"]
     slots = {(i["weekday"], i["slotNo"]) for i in cv}
     assert (3, 2) in slots and (1, 1) not in slots
+
+    # 已生效单据仍只对归属教师开放；另一教师具备同一查看权限，也不能按编号读取详情。
+    owner_detail = client.get(f"{BASE}/schedule-change/{submitted['changeId']}", headers=owner)
+    assert owner_detail.status_code == 200, owner_detail.text
+    assert owner_detail.json()["data"]["status"] == "APPLIED"
+    assert owner_detail.json()["data"]["teacherKey"] == "academic01"
+    assert owner_detail.json()["data"]["canCancel"] is False
+
+    other_teacher = role_headers("ACADEMIC_TEACHER", login_name="schedule_other_teacher")
+    other_list = client.get(f"{BASE}/schedule-change", headers=other_teacher)
+    assert other_list.status_code == 200, other_list.text
+    assert other_list.json()["data"]["total"] == 0
+    denied = client.get(f"{BASE}/schedule-change/{submitted['changeId']}", headers=other_teacher)
+    assert denied.status_code == 403
+    assert denied.json()["bizCode"] == "NO_DATA_SCOPE"
+    assert denied.json()["data"] is None
+
+    # 原教师可以撤销自己仍在待审的申请；学院的可读范围不能替代撤销归属。
+    withdraw = _submit(client, owner, r2["data"]["newItemId"],
+                       changeType="STOP", reason="撤销能力回归测试申请",
+                       makeupPlan="撤销测试不变更正式课表",
+                       targetStartWeek=1, targetEndWeek=1)
+    assert withdraw.status_code == 200, withdraw.text
+    withdraw_data = withdraw.json()["data"]
+    assert withdraw_data["canCancel"] is True
+    for headers in (college, leader):
+        rejected_cancel = client.post(f"{BASE}/schedule-change/{withdraw_data['changeId']}/cancel",
+                                      headers=headers, json={"reason": "越权撤销回归"})
+        assert rejected_cancel.status_code == 403
+    cancelled = client.post(f"{BASE}/schedule-change/{withdraw_data['changeId']}/cancel",
+                            headers=owner, json={"reason": "本人撤销测试申请"})
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["data"]["status"] == "CANCELLED"
+    assert cancelled.json()["data"]["canCancel"] is False
+    readback = client.get(f"{BASE}/schedule-change/{withdraw_data['changeId']}", headers=owner)
+    assert readback.status_code == 200, readback.text
+    assert readback.json()["data"]["status"] == "CANCELLED"
+    assert readback.json()["data"]["canCancel"] is False
+
+
+def test_c1b_adjust_submit_preserves_target_classroom(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    response = _submit(client, admin, origin, targetClassroom="B202")
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["target"]["classroom"] == "B202"
+
+
+def test_c1_partial_week_adjust_preserves_unmoved_origin_weeks(client, db_mode):
+    """A one-week adjustment must not erase the other 17 weeks from four-end timetables."""
+    from app.db.session import get_sessionmaker
+    from app.models import AaScheduleItem
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    submitted_response = _submit(
+        client, admin, origin, targetStartWeek=3, targetEndWeek=3,
+    )
+    assert submitted_response.status_code == 200, submitted_response.text
+    submitted = submitted_response.json()["data"]
+    _, final_response = _approve_all(client, submitted)
+    assert final_response.status_code == 200, final_response.text
+    applied = final_response.json()["data"]
+    assert applied["status"] == "APPLIED"
+    assert len(applied["applied"]["residualItemIds"]) == 2
+
+    db = get_sessionmaker()()
+    created_item_ids = [
+        int(value) for value in applied["applied"]["residualItemIds"]
+    ] + [int(applied["newItemId"])]
+    items = db.query(AaScheduleItem).filter(
+        AaScheduleItem.tenant_id == TID,
+        AaScheduleItem.id.in_(created_item_ids),
+        AaScheduleItem.status == "EFFECTIVE",
+        AaScheduleItem.is_deleted.is_(False),
+    ).all()
+    db.close()
+    patterns = {(item.weekday, item.slot_no, item.start_week, item.end_week) for item in items}
+    assert (1, 1, 1, 2) in patterns
+    assert (1, 1, 4, 18) in patterns
+    assert (3, 2, 3, 3) in patterns
 
 
 def test_c2_conflict_precheck_rejected(client, db_mode):
@@ -212,7 +396,8 @@ def test_c3_stop_requires_makeup(client, db_mode):
     assert r.status_code == 400
     r2 = client.post(f"{BASE}/schedule-change", headers=admin,
                      json={"originItemId": str(origin), "changeType": "STOP",
-                           "reason": "教室设备故障停课", "makeupPlan": "顺延至第10周补齐"})
+                           "reason": "教室设备故障停课", "makeupPlan": "顺延至第10周补齐",
+                           "targetStartWeek": 1, "targetEndWeek": 1})
     assert r2.status_code == 200 and r2.json()["data"]["changeType"] == "STOP"
 
 
@@ -220,12 +405,13 @@ def test_c4_cancel_window(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]
+    first_submit = _submit(client, admin, origin).json()["data"]
+    cid = first_submit["changeId"]
     rc = client.post(f"{BASE}/schedule-change/{cid}/cancel", headers=admin, json={"reason": "自行取消"}).json()
     assert rc["data"]["status"] == "CANCELLED"
-    cid2 = _submit(client, admin, origin).json()["data"]["changeId"]
-    client.post(f"{BASE}/schedule-change/{cid2}/approve", headers=admin, json={"action": "APPROVE"})
-    client.post(f"{BASE}/schedule-change/{cid2}/approve", headers=admin, json={"action": "APPROVE"})
+    second_submit = _submit(client, admin, origin).json()["data"]
+    cid2 = second_submit["changeId"]
+    _approve_all(client, second_submit)
     r409 = client.post(f"{BASE}/schedule-change/{cid2}/cancel", headers=admin, json={"reason": "晚了"})
     assert r409.status_code == 409
 
@@ -251,20 +437,82 @@ def test_c6_course_scope_denied(client, db_mode):
     assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
 
 
+def test_teacher_with_incidental_college_scope_still_reads_own_change(client, db_mode):
+    """Teacher ownership must not be replaced by an unrelated college read scope."""
+    from app.db.session import get_sessionmaker
+    from app.models import College, TeacherStudentScope
+
+    ids = _seed(db_mode)
+    db = get_sessionmaker()()
+    other = College(tenant_id=TID, college_name="教师附加范围学院", status="ACTIVE")
+    db.add(other)
+    db.flush()
+    db.add(TeacherStudentScope(
+        tenant_id=TID,
+        teacher_key="academic01",
+        teacher_name="academic01",
+        role_code="ACADEMIC_TEACHER",
+        scope_type="COLLEGE",
+        ref_value=other.college_name,
+        status="ACTIVE",
+    ))
+    db.commit()
+    db.close()
+
+    admin = _hdr(client, "school_admin01")
+    bid = _batch(client, admin)
+    origin = _item(
+        client,
+        admin,
+        bid,
+        ids["class"],
+        teacherKey="academic01",
+        teacherName="任课教师",
+    )
+    _publish_batch(client, admin, bid)
+
+    teacher = _hdr(client, "academic01")
+    submitted = _submit(client, teacher, origin)
+    assert submitted.status_code == 200, submitted.text
+    change_id = submitted.json()["data"]["changeId"]
+
+    ledger = client.get(f"{BASE}/schedule-change", headers=teacher)
+    assert ledger.status_code == 200, ledger.text
+    assert [row["changeId"] for row in ledger.json()["data"]["items"]] == [change_id]
+    detail = client.get(f"{BASE}/schedule-change/{change_id}", headers=teacher)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["data"]["teacherKey"] == "academic01"
+    assert detail.json()["data"]["reviewNode"]["canReview"] is False
+    assert detail.json()["data"]["reviewNode"]["reason"] == "无法确认当前审批人的真实账号身份"
+
+
 def test_c7_reject_requires_reason(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]
-    short = client.post(f"{BASE}/schedule-change/{cid}/reject", headers=admin, json={"action": "REJECT", "comment": "不行"})
+    submitted = _submit(client, admin, origin).json()["data"]
+    cid = submitted["changeId"]
+    version = submitted["version"]
+    reviewer = _review_hdr("college_admin01")
+    short = client.post(
+        f"{BASE}/schedule-change/{cid}/reject",
+        headers=reviewer,
+        json={"action": "REJECT", "comment": "不行", "expectedVersion": version},
+    )
     assert short.status_code == 400
-    ok = client.post(f"{BASE}/schedule-change/{cid}/reject", headers=admin,
-                     json={"action": "REJECT", "comment": "目标时段与全校统考冲突，不予调整"}).json()
+    ok = client.post(
+        f"{BASE}/schedule-change/{cid}/reject",
+        headers=reviewer,
+        json={"action": "REJECT", "comment": "目标时段与全校统考冲突，不予调整", "expectedVersion": version},
+    ).json()
     assert ok["data"]["status"] == "REJECTED"
 
 
 def _conflict_check(client, hdr, origin, **kw):
-    body = {"originItemId": str(origin), "targetWeekday": 3, "targetSlotNo": 2, **kw}
+    body = {
+        "originItemId": str(origin), "changeType": "ADJUST",
+        "targetWeekday": 3, "targetSlotNo": 2, "targetStartWeek": 1, "targetEndWeek": 18, **kw,
+    }
     return client.post(f"{BASE}/schedule-change/conflict-check", headers=hdr, json=body)
 
 
@@ -299,6 +547,20 @@ def test_c8c_conflict_check_not_own_task_403(client, db_mode):
     assert r.status_code == 403
 
 
+def test_c8d_makeup_preflight_does_not_exclude_original_occurrence(client, db_mode):
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, origin = _published_item(client, admin, ids["class"])
+    r = _conflict_check(
+        client, admin, origin,
+        changeType="MAKEUP", targetWeekday=1, targetSlotNo=1,
+        targetStartWeek=3, targetEndWeek=3,
+    )
+    assert r.status_code == 200, r.text
+    conflict = r.json()["data"]["conflict"]
+    assert conflict and conflict["type"] in ("TEACHER", "CLASS", "CLASSROOM")
+
+
 def test_c9_stats_extended_aggregation(client, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import College, Major, SchoolClass, StudentProfile
@@ -307,7 +569,7 @@ def test_c9_stats_extended_aggregation(client, db_mode):
     db.add(col); db.flush()
     maj = Major(tenant_id=TID, college_id=col.id, major_name="软件技术", status="ACTIVE")
     db.add(maj); db.flush()
-    cls = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="软件2602", grade="2026", status="ACTIVE")
+    cls = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="软件2602", grade="2098", status="ACTIVE")
     db.add(cls); db.flush()
     stu = StudentProfile(tenant_id=TID, student_no="SC002", real_name="课表乙", class_id=cls.id,
                          current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
@@ -369,9 +631,10 @@ def test_c11_notify_precise_delivery_uses_real_user_id(client, db_mode):
     teacher_uid, student_uid = teacher_acc.id, student_acc.id
     db.commit(); db.close()
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]
-    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
-    r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
+    submitted = _submit(client, admin, origin).json()["data"]
+    cid = submitted["changeId"]
+    _, r2_response = _approve_all(client, submitted)
+    r2 = r2_response.json()
     assert r2["data"]["status"] == "APPLIED"
     assert r2["data"]["applied"]["notified"] == {"students": 1, "teacher": 1, "channel": "STATUS_CHANGED"}
     db2 = get_sessionmaker()()
@@ -394,9 +657,10 @@ def test_c12_notify_gracefully_skips_missing_accounts(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]
-    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
-    r2 = client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"}).json()
+    submitted = _submit(client, admin, origin).json()["data"]
+    cid = submitted["changeId"]
+    _, r2_response = _approve_all(client, submitted)
+    r2 = r2_response.json()
     assert r2["data"]["status"] == "APPLIED"
     assert r2["data"]["applied"]["notified"] == {"students": 0, "teacher": 0, "channel": "STATUS_CHANGED"}
     db = get_sessionmaker()()
@@ -411,9 +675,9 @@ def test_c13_detail_fields_for_notice_print(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
-    cid = _submit(client, admin, origin).json()["data"]["changeId"]
-    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
-    client.post(f"{BASE}/schedule-change/{cid}/approve", headers=admin, json={"action": "APPROVE"})
+    submitted = _submit(client, admin, origin).json()["data"]
+    cid = submitted["changeId"]
+    _approve_all(client, submitted)
     d = client.get(f"{BASE}/schedule-change/{cid}", headers=admin).json()["data"]
     assert d["status"] == "APPLIED"
     for key in ("changeId", "changeType", "changeTypeLabel", "courseName", "className",

@@ -1,5 +1,6 @@
 <template>
   <view class="map">
+    <MobilePrivacyGate />
     <view class="row-between map__hd">
       <text class="map__label">
         {{ label }}<text v-if="required" class="map__req"> *</text>
@@ -13,7 +14,7 @@
           <text class="map__name ellipsis">{{ file.fileName || '附件' }}</text>
           <text class="map__status" :class="statusClass(file)">{{ file.statusText }}</text>
         </view>
-        <text v-if="!disabled" class="map__remove" @click="remove(file)">移除</text>
+        <text v-if="!disabled && !uploading && !hydrating" class="map__remove" @click="remove(file)">移除</text>
       </view>
     </view>
 
@@ -60,10 +61,12 @@ const emit = defineEmits(['update:fileIds', 'update:ready', 'error'])
 
 const files = ref([])
 const uploading = ref(false)
+const hydrating = ref(false)
 let pollTimer = null
+let revision = 0, disposed = false
 
 const canAdd = computed(() =>
-  !props.disabled && !uploading.value && files.value.length < props.maxCount)
+  !props.disabled && !uploading.value && !hydrating.value && files.value.length < props.maxCount)
 
 const pending = computed(() =>
   files.value.filter((file) => ['PENDING', 'RUNNING'].includes(file.scanStatus)))
@@ -72,6 +75,7 @@ const rejected = computed(() =>
 
 /** 业务可提交 = 必填已满足 且 没有待扫描 且 没有被拒绝 且 每个都 readyForBusiness。 */
 const ready = computed(() => {
+  if (uploading.value || hydrating.value) return false
   if (props.required && !files.value.length) return false
   if (pending.value.length || rejected.value.length) return false
   return files.value.every((file) => file.readyForBusiness)
@@ -84,11 +88,28 @@ const blockedReason = computed(() => {
   return ''
 })
 
-watch(ready, (value) => emit('update:ready', value), { immediate: true })
+watch(ready, (value) => emit('update:ready', value), { immediate: true, flush: 'sync' })
 watch(files, (value) => {
   emit('update:fileIds', value.map((file) => file.fileId))
   schedulePoll()
 }, { deep: true })
+
+watch(() => props.fileIds, async (value) => {
+  const ids = [...new Set((value || []).map(String))]
+  if (ids.join(',') === files.value.map(x => String(x.fileId)).join(',')) return
+  const seq = ++revision
+  const known = new Map(files.value.map(x => [String(x.fileId), x]))
+  files.value = ids.map(fileId => known.get(fileId) || { fileId, fileName: '附件', readyForBusiness: false, statusText: '读取附件状态中…' })
+  hydrating.value = ids.some(id => !known.has(id))
+  if (!hydrating.value) return
+  const rows = await Promise.all(ids.map(async fileId => {
+    if (known.has(fileId)) return known.get(fileId)
+    try { return await fileSdk.metadata(fileId) }
+    catch { return { fileId, fileName: '附件', readyForBusiness: false, statusText: '无法读取附件，请移除后重新添加' } }
+  }))
+  if (disposed || seq !== revision) return
+  files.value = rows; hydrating.value = false
+}, { deep: true, immediate: true })
 
 function statusClass(file) {
   if (['INFECTED', 'ERROR'].includes(file.scanStatus)) return 'is-bad'
@@ -98,10 +119,11 @@ function statusClass(file) {
 
 async function pick() {
   if (!canAdd.value) return
+  const seq = revision
   uploading.value = true
   try {
     const chosen = await fileSdk.choose()
-    if (!chosen) return
+    if (!chosen || disposed || seq !== revision || props.disabled) return
     const size = Number(chosen.size || 0)
     if (size && size > props.maxSizeMb * 1024 * 1024) {
       emit('error', { biz: true, message: `单个附件不能超过 ${props.maxSizeMb}MB` })
@@ -109,15 +131,18 @@ async function pick() {
     }
     // bizId 留空：上传只产出 TEMP_PRIVATE 文件，正式归属由业务 command 在服务端绑定。
     const uploaded = await fileSdk.upload(chosen, { bizType: props.bizPurpose, bizId: '' })
+    if (disposed || seq !== revision) return
     files.value = [...files.value, uploaded]
   } catch (error) {
-    emit('error', error)
+    if (!disposed) emit('error', error)
   } finally {
-    uploading.value = false
+    if (!disposed) uploading.value = false
   }
 }
 
 function remove(target) {
+  if (props.disabled || uploading.value || hydrating.value) return
+  revision++
   files.value = files.value.filter((file) => file.fileId !== target.fileId)
 }
 
@@ -132,10 +157,11 @@ async function preview(file) {
 
 /** 扫描中的附件按 metadata 复核真实状态，不在客户端猜「应该扫完了」。 */
 function schedulePoll() {
-  if (pollTimer) return
+  if (pollTimer || disposed) return
   if (!pending.value.length) return
   pollTimer = setTimeout(async () => {
     pollTimer = null
+    const seq = revision
     const refreshed = await Promise.all(files.value.map(async (file) => {
       if (!['PENDING', 'RUNNING'].includes(file.scanStatus)) return file
       try {
@@ -144,11 +170,12 @@ function schedulePoll() {
         return file
       }
     }))
-    files.value = refreshed
+    if (!disposed && seq === revision) files.value = refreshed
   }, 3000)
 }
 
 onUnmounted(() => {
+  disposed = true; revision++
   if (pollTimer) clearTimeout(pollTimer)
   pollTimer = null
 })

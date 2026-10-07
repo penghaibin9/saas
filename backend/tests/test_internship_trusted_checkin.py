@@ -45,7 +45,10 @@ def _seed_geofenced_record(student_no="CHECKIN-A", advisor="mentor-a"):
 def test_geofenced_checkin_is_idempotent_and_records_distance(client, db_mode):
     _seed_geofenced_record()
     headers = _student("CHECKIN-A")
+    preflight = client.post("/api/v1/mobile/internship/checkin/preflight", headers=headers)
+    assert preflight.status_code == 200, preflight.json()
     payload = {"lat": 30.5001, "lng": 114.3001, "gpsAccuracy": 8,
+               "checkinToken": preflight.json()["data"]["token"],
                "deviceRiskFlag": "normal", "idempotencyKey": "mobile-retry-001"}
     first = client.post("/api/v1/mobile/internship/checkin", json=payload, headers=headers)
     assert first.status_code == 200
@@ -61,7 +64,10 @@ def test_geofenced_checkin_is_idempotent_and_records_distance(client, db_mode):
 def test_mock_location_exception_can_be_appealed_and_teacher_decided(client, db_mode):
     _seed_geofenced_record("CHECKIN-B", "mentor-b")
     headers = _student("CHECKIN-B")
+    preflight = client.post("/api/v1/mobile/internship/checkin/preflight", headers=headers)
+    assert preflight.status_code == 200, preflight.json()
     checked = client.post("/api/v1/mobile/internship/checkin", json={
+        "checkinToken": preflight.json()["data"]["token"],
         "lat": 30.5000, "lng": 114.3000, "deviceRiskFlag": "mock", "note": "GPS signal issue"},
         headers=headers)
     assert checked.status_code == 200 and checked.json()["data"]["result"] == "MOCK_LOCATION"

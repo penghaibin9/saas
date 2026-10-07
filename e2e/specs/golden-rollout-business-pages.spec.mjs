@@ -116,7 +116,7 @@ test.describe.serial('Golden rollout · representative business pages', () => {
     await page.goto(`${config.staffBaseUrl}/admin/student-affairs/dashboard`)
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/dashboard/)
-    await expect(page.locator('.sa-summary-strip')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '今日优先处理', exact: true })).toBeVisible()
     await expect(page.locator('.sa-grid--priority')).toBeVisible()
     await expect(page.locator('.sa-dashboard-metrics')).toBeVisible()
     await expect(page.locator('body')).not.toContainText('正在加载学工看板真实数据…')
@@ -131,8 +131,8 @@ test.describe.serial('Golden rollout · representative business pages', () => {
     await page.goto(`${config.staffBaseUrl}/admin/internship?batchId=${encodeURIComponent(internshipFixture.batchId)}`)
 
     await expect(page).toHaveURL(/\/admin\/internship/)
-    await expect(page.locator('.idb-path')).toBeVisible()
-    await expect(page.locator('#idb-batch-progress')).toBeVisible()
+    await expect(page.getByLabel('按实习流程办理', { exact: true })).toBeVisible()
+    await expect(page.getByRole('navigation', { name: '待办类型' })).toBeVisible()
     await expect(page.locator('#idb-todos')).toBeVisible()
     await expect(page.locator('body')).not.toContainText(/请先选择实习批次|存在多个进行中批次/)
 
@@ -148,8 +148,11 @@ test.describe.serial('Golden rollout · representative business pages', () => {
     await expect(page).toHaveURL(/\/admin\/graduation/)
     await expect(page.locator('.gdb-page')).toBeVisible()
     await expect(page.locator('.gdb-overview')).toBeVisible()
-    await expect(page.locator('.gdb-modstats')).toBeVisible()
+    await expect(page.locator('.gdb-work')).toBeVisible()
     await expect(page.locator('.gdb-todos')).toBeVisible()
+    await expect(page.locator('.gdb-progress-card')).toBeVisible()
+    const more = page.locator('details.gdb-more')
+    if (await more.count()) await expect(more.locator('summary')).toBeVisible()
     await expect(page.locator('body')).not.toContainText('请先选择或创建毕设批次')
 
     await capture(page, testInfo, 'rollout-graduation-c')

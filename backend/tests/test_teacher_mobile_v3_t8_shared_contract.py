@@ -25,7 +25,7 @@ def test_t8_teacher_todo_routes_live_in_the_single_shared_registry():
         "routeName": "todo-route:teacher-mini-internship-review",
         "routeParams": {"recordId": "17"},
         "query": {"recordId": "17"},
-        "path": "/pages/teacher/internship-review/index",
+        "path": "/pages/teacher-internship/internship-review/index",
         "focusMode": "NONE",
         "exact": False,
     }
@@ -33,6 +33,18 @@ def test_t8_teacher_todo_routes_live_in_the_single_shared_registry():
     assert employment and employment["path"] == "/pages/teacher/employment-follow/index"
     assert employment["exact"] is False
     assert resolve_todo_route("UNKNOWN_TYPE", 1, client="teacherMini") is None
+
+
+def test_graduation_proposal_todo_opens_the_actual_teacher_review_workspace():
+    target = resolve_todo_route("GD_PROPOSAL_REVIEW", 3895, client="teacherMini")
+    assert target == {
+        "routeName": "todo-route:teacher-mini-graduation-proposal-review",
+        "routeParams": {"recordId": "3895"},
+        "query": {"recordId": "3895", "kind": "proposal"},
+        "path": "/pages/teacher/graduation-guide/index",
+        "focusMode": "LIST_FOCUS",
+        "exact": True,
+    }
 
 
 def test_t8_grouped_todos_reuse_t2_cursor_and_t3_visibility_without_offset():
@@ -53,4 +65,4 @@ def test_t8_grouped_route_is_additive_under_existing_teacher_mobile_surface():
     assert '@router.get("/todos/grouped-continuous"' in route
     assert "teacher_mobile_todo_grouped_service as todo_grouped_svc" in route
     assert "todo_grouped_svc.list_grouped_continuous(" in route
-    assert "require_staff" in route
+    assert "require_mobile_staff" in route

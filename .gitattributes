@@ -1,0 +1,3 @@
+# Deployment executables are archived to Ubuntu and must retain POSIX line endings.
+*.sh text eol=lf
+*.pdf binary

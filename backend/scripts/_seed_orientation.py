@@ -5,8 +5,11 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
-from app.models import (GreenChannelApplication, OrientationAuditTrail, OrientationException,
-                        OrientationExceptionFollowup, OrientationMaterial, OrientationStudent)
+from app.models import (College, GreenChannelApplication, Major, OrientationAuditTrail,
+                        OrientationBatch, OrientationException, OrientationExceptionFollowup,
+                        OrientationMaterial, OrientationStudent, SchoolClass)
+from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                    ensure_student_steps)
 
 TID = 1000000000000000001
 ALL_DONE = {"ACTIVATE": "DONE", "INFO": "DONE", "MATERIAL": "DONE", "PAYMENT": "DONE",
@@ -17,14 +20,36 @@ def seed_orientation(db, tenant_id: int = TID) -> dict:
     if db.scalars(select(OrientationStudent).where(OrientationStudent.tenant_id == tenant_id)).first():
         return {"skipped": True}
     now = datetime.now()
-    colleges = ["信息工程学院", "机电学院"]
-    majors = ["软件技术", "大数据技术", "机电一体化", "工业机器人"]
-    classes = [("NCL01", "软件2601班"), ("NCL02", "大数据2601班"), ("NCL03", "机电2601班")]
+    org_rows = db.execute(
+        select(SchoolClass, Major, College)
+        .join(Major, Major.id == SchoolClass.major_id)
+        .join(College, College.id == Major.college_id)
+        .where(SchoolClass.tenant_id == tenant_id, SchoolClass.is_deleted.is_(False),
+               Major.tenant_id == tenant_id, Major.is_deleted.is_(False),
+               College.tenant_id == tenant_id, College.is_deleted.is_(False))
+        .order_by(SchoolClass.id)
+    ).all()
+    if not org_rows:
+        raise RuntimeError("迎新种子需要先维护本校学院、专业和班级 Authority")
+    batch = db.scalars(select(OrientationBatch).where(
+        OrientationBatch.tenant_id == tenant_id,
+        OrientationBatch.batch_no == "SEED-ORI-2026",
+    )).first()
+    if not batch:
+        flow_version = ensure_published_flow_version(db, tenant_id)
+        batch = OrientationBatch(
+            tenant_id=tenant_id, batch_name="2026级迎新种子批次", batch_no="SEED-ORI-2026",
+            year="2026", status="ACTIVE", planned_count=12,
+            remark="仅沙箱/测试种子；生产正式路径不得依赖此批次",
+            flow_version_id=flow_version.id,
+        )
+        db.add(batch)
+        db.flush()
     counselors = ["李辅导", "钱辅导", "周辅导"]
 
     students = []
     for i in range(12):
-        cid, cname = classes[i % 3]
+        school_class, major, college = org_rows[i % len(org_rows)]
         # 构造多样化状态
         if i < 6:
             rp, pay, mat, dorm, risk, steps, bstep, breason = ("CHECKED_IN", "PAID", "APPROVED",
@@ -38,9 +63,12 @@ def seed_orientation(db, tenant_id: int = TID) -> dict:
             steps = {**{k: "TODO" for k in ALL_DONE}, "ACTIVATE": "BLOCKED"}
             bstep, breason = "ACTIVATE", "账号未激活，报到日未到校"
         s = OrientationStudent(
-            tenant_id=tenant_id, name=f"新生{i + 1:02d}", admission_no=f"LQ2026{i + 1:06d}",
-            gender="男" if i % 2 == 0 else "女", college_name=colleges[i % 2], major_name=majors[i % 4],
-            class_id=cid, class_name=cname, grade="2026级",
+            tenant_id=tenant_id, batch_id=batch.id, name=f"新生{i + 1:02d}",
+            admission_no=f"LQ2026{i + 1:06d}",
+            student_no=f"2026YX{i + 1:04d}",
+            gender="男" if i % 2 == 0 else "女", college_id=college.id,
+            college_name=college.college_name, major_id=major.id, major_name=major.major_name,
+            class_id=school_class.id, class_name=school_class.class_name, grade="2026级",
             phone_encrypted=f"138{10000000 + i:08d}", id_card_encrypted=f"3301022008{i:08d}",
             origin=["浙江杭州", "江苏南京", "安徽合肥"][i % 3], stage="ADMITTED",
             report_status=rp, payment_status=pay, green_channel_status="NOT_APPLIED",
@@ -48,9 +76,11 @@ def seed_orientation(db, tenant_id: int = TID) -> dict:
             room=f"1-{300 + i}-{(i % 4) + 1}" if dorm != "UNASSIGNED" else None, risk_level=risk,
             counselor=counselors[i % 3], steps_json=steps, blocked_step=bstep, blocked_reason=breason,
             payable_amount=8600, paid_amount=8600 if pay == "PAID" else (5000 if i == 6 else 0),
-            checkin_time=now - timedelta(days=1) if rp == "CHECKED_IN" else None)
+            checkin_time=now - timedelta(days=1) if rp == "CHECKED_IN" else None,
+            source_type="MANUAL", source_record_id=f"LQ2026{i + 1:06d}")
         db.add(s)
         db.flush()
+        ensure_student_steps(db, s, status_source="PROCESS_FACT")
         students.append(s)
 
     # 绿色通道申请（学生 7、8 申请）

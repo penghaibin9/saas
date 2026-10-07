@@ -6,12 +6,13 @@ module is deliberately C-owned and small: it does not register routes globally o
 own schema/migrations, and it reuses the canonical grade/roster/archive primitives.
 
 The canonical grade service still owns grade state transitions. For linked teaching
-tasks, this adapter pins the live AaTeachingTask owner while delegating legacy
-operations so a concurrent teacher replacement cannot race a score write/submit.
+tasks, this adapter carries the real actor into the canonical write transaction.
+That transaction locks the execution task and then rechecks its current teacher.
 """
 from __future__ import annotations
 
 from contextlib import contextmanager
+from contextvars import ContextVar
 
 from sqlalchemy import select
 
@@ -23,6 +24,9 @@ from . import academic_affairs_grade_service as _grade
 _EDITABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
 _SUBMITTABLE = {"INPUTTING", "RETURNED"}
 _SPECIAL_FLAGS = {"NORMAL", "ABSENT", "DEFERRED", "EXEMPT", "CHEAT"}
+
+
+_WRITE_ACTOR = ContextVar("aa_grade_write_actor", default=None)
 
 
 def _is_scope_admin(user) -> bool:
@@ -42,10 +46,9 @@ def _require_live_teacher(db, task, user, *, lock_owner: bool = False):
     task row. Missing/deleted/cross-tenant teaching tasks are a data conflict,
     never a reason to fall back to the stale grade-task snapshot.
 
-    ``lock_owner`` pins the teaching-task row for the surrounding transaction.
-    The execution adapter uses it while delegating writes to the canonical grade
-    service, preventing a teacher replacement from racing between live-owner
-    validation and the canonical score/status mutation.
+    ``lock_owner`` performs a current read and refreshes the ORM object inside the
+    canonical write transaction, after its shared execution authority lock.
+    Preliminary read checks never substitute for this lock-after-wait validation.
     """
     if _is_scope_admin(user):
         return None
@@ -63,7 +66,7 @@ def _require_live_teacher(db, task, user, *, lock_owner: bool = False):
         AaTeachingTask.is_deleted.is_(False),
     )
     if lock_owner:
-        query = query.with_for_update()
+        query = query.with_for_update(read=True).populate_existing()
     teaching_task = query.first()
     if not teaching_task:
         raise AppException(
@@ -89,11 +92,11 @@ def _require_live_teacher(db, task, user, *, lock_owner: bool = False):
 def _canonical_scope_user(task, user):
     """Bridge the canonical snapshot scope *after* live ownership is proven.
 
-    The older canonical service still compares ``AaGradeTask.teacher_key``. We do
-    not rewrite that historical snapshot on teacher replacement. Instead, while
-    the live teaching-task row is pinned, delegate only the scope identity needed
-    by the canonical operation. Audit/operator identity is still read from the
-    request context, so the actual actor remains unchanged in audit trails.
+    The older canonical service still compares ``AaGradeTask.teacher_key``. Its
+    historical snapshot remains unchanged; only compatibility scope keys are
+    delegated. The private ContextVar carries the actual actor into the write
+    transaction for current teacher validation after the common task lock.
+    Audit identity remains the actual request actor.
     """
     if _is_scope_admin(user) or not getattr(task, "teaching_task_id", None):
         return user
@@ -112,11 +115,17 @@ def _canonical_scope_user(task, user):
 
 @contextmanager
 def _canonical_delegate(task_id: int, user, *, lock_owner: bool = False):
-    """Hold live-owner authority while a canonical grade operation executes."""
+    """Precheck the actor; writes revalidate it inside the canonical transaction."""
     with _core.session() as db:
         task = _grade._load_task(db, int(task_id))
-        _require_live_teacher(db, task, user, lock_owner=lock_owner)
-        yield _canonical_scope_user(task, user)
+        _require_live_teacher(db, task, user)
+        delegated = _canonical_scope_user(task, user)
+        token = _WRITE_ACTOR.set(dict(user)) if lock_owner else None
+        try:
+            yield delegated
+        finally:
+            if token is not None:
+                _WRITE_ACTOR.reset(token)
 
 
 def require_live_teacher(task_id: int, user) -> None:
@@ -140,6 +149,9 @@ def _record_map(db, task_id: int):
 
 
 def _quality_report_in_session(db, task, roster: dict) -> dict:
+    from . import academic_affairs_dynamic_grade_service as dynamic
+    if dynamic.uses_components(db, task):
+        return dynamic.quality_in_session(db, task, roster)
     roster_items = list(roster.get("items") or [])
     records = _record_map(db, int(task.id))
     roster_ids = {
@@ -257,7 +269,8 @@ def teacher_grade_quality_report(task_id: int, user) -> dict:
     with _core.session() as db:
         task = _grade._load_task(db, int(task_id))
         _require_live_teacher(db, task, user)
-        roster = _grade._require_ready_roster(db, task)
+        from . import academic_affairs_dynamic_grade_service as dynamic
+        roster = dynamic.formal_roster(db, task) if dynamic.uses_components(db, task) else _grade._require_ready_roster(db, task)
         return _quality_report_in_session(db, task, roster)
 
 
@@ -295,6 +308,8 @@ def teacher_grade_batch_save(task_id: int, user, rows: list[dict]) -> dict:
     with _core.session() as db:
         task = _grade._load_task(db, int(task_id), lock=True)
         guard_term_writable(db, task.term_id)
+        _require_live_teacher(db, task, user)
+        _core._require_independent_execution(db, task, user)
         _require_live_teacher(db, task, user, lock_owner=True)
         if str(task.status or "").upper() not in _EDITABLE:
             raise AppException("DATA_CONFLICT", "当前状态不可录入（已提交/已发布，如需修改请走成绩更正）")
@@ -376,10 +391,10 @@ def teacher_enter_score(task_id: int, user, body) -> dict:
         return _grade.enter_score(task_id, delegated_user, body)
 
 
-def teacher_submit_task(task_id: int, user) -> dict:
+def teacher_submit_task(task_id: int, user, *, expected=None, command_key=None) -> dict:
     """Canonical submit guarded by the live teaching-task owner."""
     with _canonical_delegate(task_id, user, lock_owner=True) as delegated_user:
-        return _grade.submit_task(task_id, delegated_user)
+        return _grade.submit_task(task_id, delegated_user, expected=expected, command_key=command_key)
 
 
 def teacher_roster(task_id: int, user) -> dict:

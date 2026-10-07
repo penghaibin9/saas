@@ -7,7 +7,7 @@ formal TeachingTask teacher rather than the historical AaGradeTask.teacher_key
 snapshot.
 
 The replacement receives the caller's existing DB session.  Writes therefore lock
-GradeTask and TeachingTask in the same transaction as the mature dynamic-grade
+TeachingTask before GradeTask in the same transaction as the mature dynamic-grade
 mutation; no preflight/write TOCTOU window or second grade implementation is added.
 """
 from __future__ import annotations
@@ -26,16 +26,17 @@ def _task(db, task_id, user, *, lock=False):
         AaGradeTask.tenant_id == _tid(),
         AaGradeTask.is_deleted.is_(False),
     )
-    if lock:
-        query = query.with_for_update()
-    task = query.first()
+    task = _execution._core._lock_grade_task(db, task_id) if lock else query.first()
     if not task:
         raise not_found("成绩录入任务不存在")
 
     # For linked formal teaching tasks the live TeachingTask owner is authoritative.
     # For admin supplements (no teaching_task_id), the execution helper deliberately
     # falls back to the mature canonical course/data-scope guard.
-    _execution._require_live_teacher(db, task, user, lock_owner=lock)
+    _execution._require_live_teacher(db, task, user)
+    if lock:
+        _execution._core._require_independent_execution(db, task, user)
+        _execution._require_live_teacher(db, task, user, lock_owner=True)
     return task
 
 

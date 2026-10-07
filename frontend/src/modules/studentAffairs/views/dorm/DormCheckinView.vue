@@ -1,80 +1,62 @@
 <template>
-  <AppPageShell
+  <ModulePageShell flat
     title="入住管理"
-    subtitle="按楼→房→床选定空床为学生办理入住，或办理退宿；学校可开关「学生自选宿舍」。"
+    subtitle="入住、退宿与床位核对"
     role-name="学工处 / 辅导员 / 宿管"
     data-scope-name="宿管限负责楼栋"
     watermark-purpose="宿舍入住管理"
   >
     <template #actions>
-      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" code="studentAffairs.dorm.allocation.manage" variant="secondary" :loading="actioning" @click="toggleSelfSelect">
-        {{ config.selfSelectEnabled ? '关闭学生自选' : '开放学生自选' }}
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="backToRoom">查看房态图</AppPermissionButton>
+      <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.view')" code="studentAffairs.dorm.view" variant="secondary" @click="$router.push('/admin/student-affairs/dorm/allocation')">
+        管理分配计划
       </AppPermissionButton>
     </template>
 
-    <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载..." @retry="load"
+    <nav class="checkin-tabs" aria-label="入住办理方式">
+      <button type="button" :class="{ active: workspace === 'beds' }" @click="workspace = 'beds'">按床位办理</button>
+      <button type="button" :class="{ active: workspace === 'batch' }" @click="workspace = 'batch'">批量入住</button>
+    </nav>
+    <DormBatchCheckinWorkspace v-if="workspace === 'batch'" :buildings="buildingOptions" :allowed="canBtn('studentAffairs.dorm.allocation.manage')" />
+    <AppGlobalState v-else :state="pageState" :description="errorMessage" loading-text="正在加载..." @retry="load"
                     @back="$router.push('/admin/student-affairs/dashboard')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">当前分配模式</span>
-          <h2 class="sa-summary-strip__title">{{ config.selfSelectEnabled ? '学生自选床位已开放' : '当前由辅导员 / 宿管统一分配床位' }}</h2>
-          <p class="sa-summary-strip__text">{{ config.studentNotice || '选择楼栋和房间后查看床位。空床可办理入住，已住床位可办理退宿。' }}</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" code="studentAffairs.dorm.allocation.manage" variant="secondary" :loading="actioning" @click="toggleSelfSelect">
-            {{ config.selfSelectEnabled ? '关闭学生自选' : '开放学生自选' }}
-          </AppPermissionButton>
-        </div>
-      </section>
 
-      <div class="sa-workflow-strip" aria-label="宿舍入住办理流程">
-        <div class="sa-workflow-step" data-step="1"><strong>选择楼栋</strong><br>仅展示当前角色可管理的楼栋</div>
-        <div class="sa-workflow-step" data-step="2"><strong>选择房间</strong><br>查看房间空床数量和床位清单</div>
-        <div class="sa-workflow-step" data-step="3"><strong>核对床位</strong><br>确认空床或当前入住学生</div>
-        <div class="sa-workflow-step" data-step="4"><strong>办理结果</strong><br>入住占床、退宿释放床位并刷新台账</div>
-      </div>
 
-      <AppSectionCard title="分配模式说明">
-        <div class="sa-mode-card" :class="config.selfSelectEnabled ? 'is-open' : 'is-managed'">
-          <div>
-            <span class="sa-mode-card__label">当前模式</span>
-            <strong>{{ config.selfSelectEnabled ? '学生自选' : '统一分配' }}</strong>
-          </div>
-          <p>{{ config.studentNotice || '当前模式说明暂未配置' }}</p>
-        </div>
-      </AppSectionCard>
-
-      <AppSectionCard title="选床入住 / 退宿">
-        <p class="sa-section-hint">按顺序选择楼栋和房间。床位列表会显示当前状态与入住学生，避免在不同房间间反复查找。</p>
+      <section aria-label="选床入住与退宿">
+        <div class="sa-mode-line"><span>分配模式</span><strong>{{ config.selfSelectEnabled ? '学生自选' : '统一分配' }}</strong><small>{{ config.studentNotice || '由当前分配计划控制' }}</small></div>
+        <AppInlineAlert v-if="routeNotice" type="info" :description="routeNotice" />
         <div class="sa-toolbar dorm-picker-bar">
           <AppDormBuildingPicker v-model="curBuilding" :options="buildingOptions" placeholder="选择楼栋" class="sa-pick" @change="loadRooms" />
           <AppDormRoomPicker v-model="curRoom" :options="roomOptions" :query="{ buildingId: curBuilding }" placeholder="选择房间" class="sa-pick"
                      :disabled="!curBuilding" @change="loadBeds" />
         </div>
         <template v-if="curRoom">
-          <DataTable v-if="beds.length" :columns="bedColumns" :rows="beds" row-key="bedId">
+          <DataTable v-if="beds.length" :columns="bedColumns" :rows="beds" row-key="bedId" :row-class="bedRowClass">
             <template #cell-bedNo="{ row }"><span class="mp-cell-main">{{ row.bedNo }} 号床</span></template>
-            <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'OCCUPIED' ? 'warning' : 'success'" :label="row.status === 'OCCUPIED' ? '已住' : '空床'" /></template>
-            <template #cell-occupant="{ row }"><span :class="row.occupantName ? 'dorm-occupied' : 'sa-muted'">{{ row.occupantName || '暂无学生' }}</span></template>
+            <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'VACANT' ? 'success' : 'default'" :label="bedStatusLabel(row.status)" /></template>
+            <template #cell-occupant="{ row }"><span :class="row.occupantName ? 'dorm-occupied' : 'sa-muted'">{{ row.occupantName || (row.reservedStudentName ? row.reservedStudentName + '（预留）' : '暂无学生') }}</span></template>
             <template #cell-actions="{ row }">
               <div class="sa-actions">
-                <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" v-if="row.status !== 'OCCUPIED'" code="studentAffairs.dorm.allocation.manage" size="sm" :loading="actioning" @click="checkin(row)">入住</AppPermissionButton>
-                <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" v-else code="studentAffairs.dorm.allocation.manage" size="sm" variant="secondary" :loading="actioning" @click="checkout(row)">退宿</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" v-if="['VACANT', 'LOCKED'].includes(row.status)" code="studentAffairs.dorm.allocation.manage" size="sm" :loading="actioning" @click="checkin(row)">{{ row.status === 'LOCKED' ? '核对预留入住' : '入住' }}</AppPermissionButton>
+                <AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" v-else-if="row.status === 'OCCUPIED'" code="studentAffairs.dorm.allocation.manage" size="sm" variant="secondary" :loading="actioning" @click="checkout(row)">退宿</AppPermissionButton>
+                <span v-else>状态待核查</span>
               </div>
             </template>
           </DataTable>
           <p v-else class="sa-empty">该房间暂未配置床位，请返回宿舍资源配置检查房间和床位。</p>
         </template>
         <p v-else class="sa-empty">请先选择楼栋，再选择房间；系统随后显示该房间全部床位和入住状态。</p>
-      </AppSectionCard>
+      </section>
     </AppGlobalState>
 
     <AppConfirmDialog
       v-model:visible="inDlg.visible" :title="`办理入住 · ${inDlg.bedLabel}`" type="primary"
       confirm-text="确认入住" :submitting="actioning" @confirm="submitCheckin"
     >
+      <AppInlineAlert v-if="inDlg.reserved" type="info" description="仅能为该床位分配计划中已预留的学生办理入住，系统将在提交时核验。" />
       <AppFormItem label="入住学生" required>
-        <AppStudentPicker v-model="inDlg.studentId"
+        <p v-if="inDlg.reserved && inDlg.reservedStudentName">{{ inDlg.reservedStudentName }} · {{ inDlg.reservedStudentNo }}</p>
+        <AppStudentPicker v-else v-model="inDlg.studentId"
                           placeholder="按姓名 / 学号搜索" :disabled="actioning" />
       </AppFormItem>
       <AppInlineAlert v-if="inDlg.error" type="danger" :description="inDlg.error" />
@@ -82,31 +64,34 @@
 
     <AppConfirmDialog
       v-model:visible="outDlg.visible" title="办理退宿" type="warning" confirm-text="确认退宿"
-      :description="`确认为 ${outDlg.who} 办理退宿？该床位将立即释放为空床。`"
+      :description="`为 ${outDlg.who} 发起正式退宿单；宿管确认前床位和住宿关系保持不变。`"
       :submitting="actioning" @confirm="submitCheckout"
-    />
+    >
+      <AppFormItem label="退宿类型" required>
+        <select v-model="outDlg.requestType" class="sa-native-select" :disabled="actioning">
+          <option value="GRADUATION">毕业</option><option value="LEAVE_OF_ABSENCE">休学</option>
+          <option value="WITHDRAWAL">退学</option><option value="DAY_STUDENT">转走读</option>
+          <option value="SPECIAL">特殊退宿</option>
+        </select>
+      </AppFormItem>
+      <AppFormItem label="退宿原因（5-500字）" required>
+        <AppTextarea v-model="outDlg.reason" :rows="3" :maxlength="500" :disabled="actioning" />
+      </AppFormItem>
+      <AppInlineAlert v-if="outDlg.error" type="danger" :description="outDlg.error" />
+    </AppConfirmDialog>
 
-    <AppConfirmDialog
-      v-model:visible="modeDlg.visible"
-      :title="config.selfSelectEnabled ? '关闭学生自选宿舍' : '开放学生自选宿舍'"
-      :type="config.selfSelectEnabled ? 'warning' : 'primary'"
-      :confirm-text="config.selfSelectEnabled ? '确认关闭' : '确认开放'"
-      :description="config.selfSelectEnabled
-        ? '关闭后学生端将无法自选床位，改回由辅导员/宿管统一分配。已选定的床位不受影响。'
-        : '开放后学生可在学生端自行选择空床位。该开关对全校生效。'"
-      :submitting="actioning" @confirm="submitToggle"
-    />
-  </AppPageShell>
+  </ModulePageShell>
 </template>
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-  AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPermissionButton,
+  AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker,
+  AppTextarea
 } from '@/components/common'
-import { DataTable } from '@/components/business'
+import { DataTable, ModulePageShell } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairsB.api'
-import { dormReliabilityApi } from '@/modules/studentAffairs/api/dormReliability.api'
+import DormBatchCheckinWorkspace from './DormBatchCheckinWorkspace.vue'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
 const BED_COLUMNS = [
@@ -120,17 +105,19 @@ export default {
   name: 'DormCheckinView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppPageShell, AppPermissionButton,
-    AppSectionCard, AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker, DataTable
+    DormBatchCheckinWorkspace,
+    AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, ModulePageShell, AppPermissionButton,
+    AppStatusTag, AppStudentPicker, AppDormBuildingPicker, AppDormRoomPicker,
+    AppTextarea, DataTable
   },
   data() {
     return {
+      workspace: this.$route.query.checkinJob || this.$route.query.orientationBatchId || this.$route.query.workspace === 'batch' ? 'batch' : 'beds',
       bedColumns: BED_COLUMNS,
       loading: true, actioning: false, errorMessage: '', config: {}, buildings: [], curBuilding: '',
-      rooms: [], curRoom: '', beds: [],
+      rooms: [], curRoom: '', beds: [], routeBedId: '', routeNotice: '',
       inDlg: { visible: false, bedId: '', bedLabel: '', studentId: '', error: '' },
-      outDlg: { visible: false, bedId: '', who: '', version: null },
-      modeDlg: { visible: false }
+      outDlg: { visible: false, bedId: '', who: '', version: null, requestType: 'SPECIAL', reason: '', clientRequestId: '', error: '' }
     }
   },
   computed: {
@@ -149,19 +136,55 @@ export default {
     }
   },
   mounted() { this.load() },
+  watch: { '$route.query': { handler() { this.applyRouteSelection() } } },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    bedStatusLabel(status) { return ({ VACANT: '空床', OCCUPIED: '已入住', LOCKED: '预留 / 锁定' })[status] || '状态待核查' },
+    backToRoom() { this.$router.push({ name: 'student-affairs-dorm-resource', query: { buildingId: String(this.curBuilding), roomId: String(this.curRoom), bedId: String(this.routeBedId || '') } }) },
     async load() {
       this.loading = true; this.errorMessage = ''
       try {
-        const [cfg, bs] = await Promise.all([studentAffairsApi.getDormConfig(), studentAffairsApi.listDormBuildings()])
+        const [cfg, bs] = await Promise.all([studentAffairsApi.getDormConfig(), studentAffairsApi.listAllDormBuildings()])
         this.config = cfg.data || {}; this.buildings = bs.data.items || []
+        await this.applyRouteSelection()
       } catch (e) { this.errorMessage = e.message || '加载失败' } finally { this.loading = false }
+    },
+    async applyRouteSelection() {
+      if (this.$route.query.orientationBatchId || this.$route.query.workspace === 'batch') this.workspace = 'batch'
+      this.routeNotice = ''
+      const buildingId = String(this.$route.query.buildingId || '')
+      if (!buildingId) return
+      const building = this.buildings.find((row) => String(row.buildingId) === buildingId)
+      if (!building) {
+        this.routeNotice = '目标楼栋不在当前数据范围内，请从可见楼栋重新选择。'
+        return
+      }
+      this.curBuilding = buildingId
+      await this.loadRooms()
+      const roomId = String(this.$route.query.roomId || '')
+      const room = this.rooms.find((row) => String(row.roomId) === roomId)
+      if (!room) {
+        if (roomId) this.routeNotice = '目标房间已不可用，请从当前楼栋重新选择。'
+        return
+      }
+      this.curRoom = roomId
+      await this.loadBeds()
+      const bedId = String(this.$route.query.bedId || '')
+      const bed = this.beds.find((row) => String(row.bedId) === bedId)
+      if (!bed) {
+        if (bedId) this.routeNotice = '目标床位已不可用，请核对当前房间的最新床位状态。'
+        return
+      }
+      this.routeBedId = bedId
+      this.routeNotice = `已定位 ${building.buildingName || '目标楼栋'} / ${room.roomNo || '目标房间'} / ${bed.bedNo} 号床，请核对实时状态后办理。`
+    },
+    bedRowClass(row) {
+      return String(row.bedId) === String(this.routeBedId) ? 'sa-sel' : ''
     },
     async loadRooms() {
       this.curRoom = ''; this.beds = []
       if (!this.curBuilding) { this.rooms = []; return }
-      try { this.rooms = (await studentAffairsApi.listDormRooms(this.curBuilding)).data.items || [] }
+      try { this.rooms = (await studentAffairsApi.listAllDormRooms(this.curBuilding)).data.items || [] }
       catch (e) { this.errorMessage = e.message }
     },
     async loadBeds() {
@@ -170,7 +193,9 @@ export default {
       catch (e) { this.errorMessage = e.message }
     },
     checkin(bd) {
-      this.inDlg = { visible: true, bedId: bd.bedId, bedLabel: `${bd.bedNo} 号床`, studentId: '', error: '' }
+      const building = this.buildings.find(b => String(b.buildingId) === String(this.curBuilding))
+      const room = this.rooms.find(r => String(r.roomId) === String(this.curRoom))
+      this.inDlg = { visible: true, bedId: bd.bedId, bedLabel: `${building?.buildingName || ''} / ${room?.roomNo || ''} / ${bd.bedNo} 号床`, reserved: bd.status === 'LOCKED', reservedStudentName: bd.reservedStudentName || '', reservedStudentNo: bd.reservedStudentNo || '', studentId: bd.status === 'LOCKED' ? (bd.reservedStudentId || '') : '', error: '' }
     },
     async submitCheckin() {
       const d = this.inDlg
@@ -183,33 +208,30 @@ export default {
     checkout(bd) {
       this.outDlg = {
         visible: true, bedId: bd.bedId,
-        who: bd.occupantName || `${bd.bedNo} 号床`, version: bd.version
+        who: bd.occupantName || `${bd.bedNo} 号床`, version: bd.version,
+        requestType: 'SPECIAL', reason: '', clientRequestId: `checkout:${globalThis.crypto.randomUUID()}`, error: ''
       }
     },
     async submitCheckout() {
+      const reason = (this.outDlg.reason || '').trim()
+      if (reason.length < 5 || reason.length > 500) { this.outDlg.error = '退宿原因需5-500字'; return }
       this.actioning = true; this.errorMessage = ''
       try {
-        await dormReliabilityApi.checkout(this.outDlg.bedId, this.outDlg.version)
-        await this.loadRooms2()
+        const result = await studentAffairsApi.createDormCheckout({
+          bedId: String(this.outDlg.bedId), expectedBedVersion: Number(this.outDlg.version),
+          requestType: this.outDlg.requestType, reason,
+          clientRequestId: this.outDlg.clientRequestId
+        })
         this.outDlg.visible = false
+        await this.$router.push({ path: '/admin/student-affairs/dorm/transfer', query: { tab: 'checkout', recordId: String(result.data.requestId) } })
       } catch (e) {
-        this.errorMessage = e.message || '退宿失败'
+        this.outDlg.error = e.message || '退宿单发起失败'
         await this.loadBeds().catch(() => {})
         const latest = this.beds.find((x) => String(x.bedId) === String(this.outDlg.bedId))
         if (latest) this.outDlg.version = latest.version
       } finally {
         this.actioning = false
       }
-    },
-    toggleSelfSelect() { this.modeDlg.visible = true },
-    async submitToggle() {
-      const next = !this.config.selfSelectEnabled
-      this.actioning = true; this.errorMessage = ''
-      try {
-        this.config = (await studentAffairsApi.setDormSelfSelect(next)).data
-        await this.load()
-        this.modeDlg.visible = false
-      } catch (e) { this.errorMessage = e.message } finally { this.actioning = false }
     },
     async runAction(fn) {
       this.actioning = true; this.errorMessage = ''
@@ -227,6 +249,12 @@ export default {
 </script>
 
 <style scoped>
+@import '@/styles/module-page.css';
+.checkin-tabs { display:flex; gap:24px; border-bottom:1px solid var(--border-light); margin-bottom:16px; }
+.checkin-tabs button { border:0; border-bottom:2px solid transparent; background:none; color:var(--text-secondary); padding:10px 0; cursor:pointer; }
+.checkin-tabs button.active { color:var(--primary-600); border-bottom-color:var(--primary-600); font-weight:600; }
+
+ .sa-mode-line { display:flex; align-items:center; gap:10px; margin-bottom:12px; color:var(--text-secondary); font-size:12px; }.sa-mode-line strong { color:var(--text-primary); font-size:13px; }.sa-mode-line small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .sa-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-4); }
 .sa-pick { min-width: 240px; flex: 0 1 320px; }
 .sa-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
@@ -239,6 +267,7 @@ export default {
 .dorm-picker-bar { padding: 10px 12px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-section); }
 .sa-actions { display: flex; gap: var(--space-2); }
 .dorm-occupied { color: var(--text-primary); font-weight: 600; }
+.sa-native-select { width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-primary); }
 @media (max-width: 720px) { .sa-mode-card { grid-template-columns: 1fr; } .sa-pick { width: 100%; flex-basis: 100%; } }
-@import '@/styles/module-page.css';
+
 </style>

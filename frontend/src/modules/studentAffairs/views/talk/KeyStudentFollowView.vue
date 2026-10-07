@@ -1,24 +1,26 @@
 <template>
-  <AppPageShell title="重点学生跟进" subtitle="需跟进的谈话与中高风险学生汇总，形成重点关注跟进清单。按数据范围裁剪。"
+  <AppPageShell title="重点学生跟进"
     role-name="辅导员 / 学院" data-scope-name="本人带班 / 授权范围" watermark-purpose="重点学生跟进">
+    <template #actions><AppButton variant="secondary" :loading="loading" @click="load">刷新</AppButton></template>
+    <div class="ks-queues" aria-label="跟进事项类型">
+      <button type="button" :aria-pressed="activeQueue === 'talk'" @click="setQueue('talk')">待跟进谈话</button>
+      <button type="button" :aria-pressed="activeQueue === 'risk'" @click="setQueue('risk')">高风险事项</button>
+    </div>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="加载中..." @retry="load"
                     @back="$router.push('/admin/student-affairs/talk')">
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-      </div>
-      <AppSectionCard title="待跟进谈话">
-        <DataTable v-if="followTalks.length" :columns="talkColumns" :rows="followTalks" row-key="talkId">
+      <section v-if="activeQueue === 'talk'" aria-label="待跟进谈话清单">
+        <DataTable :columns="talkColumns" :rows="items" row-key="talkId" :pagination="pagination.total ? pagination : null" @page-change="onPageChange">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || row.studentName || ('#'+row.studentId) }}</span></template>
           <template #cell-topic="{ row }"><span class="ks-topic">{{ row.topic || row.topicType || '—' }}</span></template>
           <template #cell-status="{ row }"><StatusTag type="warning" :label="row.statusLabel || row.status" dot /></template>
           <template #cell-actions="{ row }">
-            <button type="button" class="ks-link" @click="$router.push('/admin/student-affairs/talk')">去处理</button>
+            <button type="button" class="ks-link" @click="openTalk(row)">办理谈话</button>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无待跟进谈话</p>
-      </AppSectionCard>
-      <AppSectionCard title="中高风险学生">
-        <DataTable v-if="keyRisks.length" :columns="riskColumns" :rows="keyRisks" row-key="riskId">
+        <p v-if="!items.length" class="sa-empty">暂无待跟进谈话</p>
+      </section>
+      <section v-else aria-label="高风险事项清单">
+        <DataTable :columns="riskColumns" :rows="items" row-key="riskId" :pagination="pagination.total ? pagination : null" @page-change="onPageChange">
           <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.realName || ('#'+row.studentId) }}</span></template>
           <template #cell-source="{ row }">{{ sourceLabel(row.source) }}</template>
           <template #cell-level="{ row }"><StatusTag :type="row.riskLevel==='CRITICAL'?'danger':'warning'" :label="levelLabel(row.riskLevel)" dot /></template>
@@ -26,21 +28,20 @@
             <button type="button" class="ks-link" @click="$router.push('/admin/student-affairs/risk/' + row.riskId)">处置</button>
           </template>
         </DataTable>
-        <p v-else class="sa-empty">暂无中高风险学生</p>
-      </AppSectionCard>
+        <p v-if="!items.length" class="sa-empty">暂无在办高风险事项</p>
+      </section>
     </AppGlobalState>
   </AppPageShell>
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, AppStatusTag } from '@/components/common'
+import { AppGlobalState, AppPageShell, AppStatusTag } from '@/components/common'
+import { AppButton } from '@/components/ui'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
 const SRC = { LEAVE_OVERDUE: '请假逾期', ACADEMIC_WARNING: '学业预警', DORM: '宿舍', MENTAL: '心理', DISCIPLINE: '违纪', INTERNSHIP: '实习' }
 const LEVEL = { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }
-const KEY_LEVEL = ['HIGH', 'CRITICAL']
-const ACTIVE_RISK = ['NEW', 'ASSIGNED', 'PROCESSING', 'FOLLOWING', 'REOPENED']
 const TALK_COLUMNS = [
   { key: 'student', title: '学生' },
   { key: 'topic', title: '主题' },
@@ -56,42 +57,56 @@ const RISK_COLUMNS = [
 
 export default {
   name: 'KeyStudentFollowView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, StatusTag: AppStatusTag, DataTable },
-  data() { return { talkColumns: TALK_COLUMNS, riskColumns: RISK_COLUMNS, loading: true, errorMessage: '', talks: [], risks: [] } },
+  components: { AppButton, AppGlobalState, AppPageShell, StatusTag: AppStatusTag, DataTable },
+  data() { return { talkColumns: TALK_COLUMNS, riskColumns: RISK_COLUMNS, activeQueue: 'talk', loading: true, errorMessage: '', items: [], requestId: 0, pagination: { page: 1, pageSize: 20, total: 0 } } },
   computed: {
-    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
-    followTalks() { return this.talks.filter((t) => ['PLANNED', 'FOLLOW_UP'].includes(t.status)) },
-    keyRisks() { return this.risks.filter((r) => ACTIVE_RISK.includes(r.status) && KEY_LEVEL.includes(r.riskLevel)) },
-    metricCards() {
-      return [
-        { key: 't', label: '待跟进谈话', value: this.followTalks.length, accent: this.followTalks.length ? 'warning' : 'success' },
-        { key: 'r', label: '中高风险学生', value: this.keyRisks.length, accent: this.keyRisks.length ? 'risk' : 'success' },
-        { key: 's', label: '重点学生合计', value: new Set([...this.followTalks.map((t) => t.studentId), ...this.keyRisks.map((r) => r.studentId)]).size, accent: 'primary' }
-      ]
-    }
+    pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') }
   },
-  mounted() { this.load() },
+  mounted() { this.readRoute() },
+  watch: { '$route.query'() { this.readRoute() } },
+  beforeUnmount() { this.requestId++ },
   methods: {
-    async load() {
-      this.loading = true; this.errorMessage = ''
-      // 待服务端全量统计：重点名单聚合仅加载各接口单页上限。
-      const [tk, rk] = await Promise.all([studentAffairsApi.getTalks({ pageSize: 200 }), studentAffairsApi.getRisks({ pageSize: 200 })])
-      this.talks = (tk.code === 0 && tk.data) ? (tk.data.items || tk.data.list || []) : []
-      if (rk.code === 0 && rk.data) this.risks = rk.data.items || []
-      else this.errorMessage = rk.message || '加载失败'
-      this.loading = false
+    readRoute() {
+      this.activeQueue = this.$route.query.queue === 'risk' ? 'risk' : 'talk'
+      const page = Number(this.$route.query.page)
+      this.pagination.page = Number.isSafeInteger(page) && page > 0 ? page : 1
+      this.load()
     },
-    sourceLabel(s) { return SRC[s] || s || '—' },
+    setQueue(queue) { if (queue !== this.activeQueue) this.$router.replace({ query: { ...this.$route.query, queue, page: '1' } }) },
+    onPageChange(page) { this.$router.replace({ query: { ...this.$route.query, page: String(page) } }) },
+    openTalk(row) {
+      this.$router.push({ path: '/admin/student-affairs/talk', query: { studentId: String(row.studentId), talkId: String(row.talkId) } })
+    },
+    async load() {
+      const requestId = ++this.requestId
+      this.loading = true; this.errorMessage = ''
+      this.items = []; this.pagination.total = 0
+      const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
+      try {
+        const res = this.activeQueue === 'talk'
+          ? await studentAffairsApi.getTalks({ ...params, status: 'PLANNED,SCHEDULED,FOLLOW_UP' })
+          : await studentAffairsApi.getRisks({ ...params, status: 'OPEN', priority: 'HIGH_CRITICAL' })
+        if (requestId !== this.requestId) return
+        if (res.code !== 0 || !res.data) throw new Error(res.message || '加载失败')
+        this.items = res.data.items || []
+        this.pagination.total = res.data.total ?? 0
+      } catch (e) {
+        if (requestId === this.requestId) this.errorMessage = e.message || '加载失败，请重试'
+      } finally { if (requestId === this.requestId) this.loading = false }
+    },
+    sourceLabel(s) { return SRC[s] || (s ? '状态待确认' : '—') },
     levelLabel(l) { return LEVEL[l] || l || '—' }
   }
 }
 </script>
 
 <style scoped>
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
+@import '@/styles/module-page.css';
+.ks-queues { display: flex; gap: 24px; border-bottom: 1px solid var(--line, var(--border-light)); }
+.ks-queues button { border: 0; border-bottom: 2px solid transparent; padding: 10px 0; background: transparent; color: var(--text-secondary); font: inherit; cursor: pointer; }
+.ks-queues button[aria-pressed="true"] { color: var(--color-primary); border-bottom-color: var(--color-primary); font-weight: 600; }
+.ks-queues button:focus-visible, .ks-link:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }
 .ks-topic { color: var(--text-secondary); font-size: var(--font-size-sm); }
 .ks-link { border: none; background: none; color: var(--color-primary); cursor: pointer; font-size: var(--font-size-sm); }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
-@import '@/styles/module-page.css';
 </style>

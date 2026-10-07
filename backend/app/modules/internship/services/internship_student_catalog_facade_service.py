@@ -234,11 +234,20 @@ def _candidate_stats_in_tx(db, *, tenant_id: int, campaign, record) -> tuple[int
     return published, partners
 
 
-def get_catalog_context(*, user: dict) -> dict:
+def get_catalog_context(*, user: dict, batch_id=None, campaign_id=None, record_id=None) -> dict:
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
-        campaign, record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
+        try:
+            campaign, record = selection_svc._resolve_context_in_tx(
+                db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id)
+        except AppException as exc:
+            if exc.code != "DATA_NOT_FOUND" or (exc.details or {}).get("reasonCode") != "NO_OPEN_CAMPAIGN":
+                raise
+            return {
+                "catalogState": "NO_OPEN_CAMPAIGN", "canSelect": False,
+                "selectionBlockReason": "当前批次暂未开放选岗。可先查看实习准备事项，开放后再来选择岗位。",
+            }
         can_select, reason = _selection_state(campaign, record)
         published, partners = _candidate_stats_in_tx(
             db, tenant_id=tenant_id, campaign=campaign, record=record,
@@ -252,6 +261,9 @@ def get_catalog_context(*, user: dict) -> dict:
             InternshipVolunteerGroup.is_deleted.is_(False),
         ).order_by(InternshipVolunteerGroup.id.desc()))
         return {
+            "catalogState": "AVAILABLE",
+            "batchId": str(campaign.batch_id), "recordId": str(record.id),
+            "recordVersion": int(record.version or 0),
             "campaignId": str(campaign.id), "campaignName": campaign.campaign_name, "campaignStatus": campaign.status,
             "campaign": {"id": str(campaign.id), "name": campaign.campaign_name, "status": campaign.status, "studentSelectionEndAt": _iso(campaign.student_select_end_at)},
             "studentSelectionEndAt": _iso(campaign.student_select_end_at), "canSelect": bool(can_select), "selectionBlockReason": reason,
@@ -260,12 +272,13 @@ def get_catalog_context(*, user: dict) -> dict:
         }
 
 
-def list_catalog_positions(*, user: dict, params: dict) -> dict:
+def list_catalog_positions(*, user: dict, params: dict, batch_id=None, campaign_id=None, record_id=None) -> dict:
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     page = max(1, int(params.get("page") or 1)); page_size = min(100, max(1, int(params.get("pageSize") or 20)))
     with session() as db:
-        campaign, record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
+        campaign, record = selection_svc._resolve_context_in_tx(
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id)
         can_select, reason = _selection_state(campaign, record)
         if not can_select:
             return {"items": [], "total": 0, "page": page, "pageSize": page_size, "blockReason": reason}
@@ -304,10 +317,11 @@ def list_catalog_positions(*, user: dict, params: dict) -> dict:
         return {"items": rows, "total": total, "page": page, "pageSize": page_size}
 
 
-def get_catalog_position(*, user: dict, position_id: int) -> dict:
+def get_catalog_position(*, user: dict, position_id: int, batch_id=None, campaign_id=None, record_id=None) -> dict:
     tenant_id = _tid(); student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
-        campaign, record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
+        campaign, record = selection_svc._resolve_context_in_tx(
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id)
         row = db.execute(_base_query(tenant_id=tenant_id, campaign=campaign).where(InternshipPosition.id == _as_id(position_id))).first()
         if not row: raise not_found("岗位不存在、未发布或不属于当前招聘季")
         position, company = row
@@ -316,10 +330,11 @@ def get_catalog_position(*, user: dict, position_id: int) -> dict:
         return _public_row(position, company, verdict, major_matched=_major_hit(major_name, position.major_requirement or ""))
 
 
-def get_catalog_company(*, user: dict, company_id: int) -> dict:
+def get_catalog_company(*, user: dict, company_id: int, batch_id=None, campaign_id=None, record_id=None) -> dict:
     tenant_id = _tid(); student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
-        campaign, record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
+        campaign, record = selection_svc._resolve_context_in_tx(
+            db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id)
         major_name = _student_major_name(db, tenant_id=tenant_id, student_id=student_id)
         rows = _eligible_rows(
             db,

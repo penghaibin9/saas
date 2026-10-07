@@ -34,6 +34,7 @@ class _ScopedDb:
                     id=1,
                     batch_name="college-visible-oldest",
                     grade_year="2026",
+                    term_id=None,
                     major_id=None,
                     status="OPEN",
                 )
@@ -85,6 +86,7 @@ def test_college_scope_is_applied_before_count_page_and_aggregate(monkeypatch):
         {"currentRoleCode": "COLLEGE_ADMIN"},
         page=1,
         page_size=1,
+        batch_id=1,
     )
 
     assert total == 1
@@ -93,6 +95,8 @@ def test_college_scope_is_applied_before_count_page_and_aggregate(monkeypatch):
             "batchId": "1",
             "batchName": "college-visible-oldest",
             "gradeYear": "2026",
+            "termId": None,
+            "termName": None,
             "majorId": None,
             "status": "OPEN",
             "total": 1,

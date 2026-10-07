@@ -113,7 +113,7 @@ def _check_internship_completion(db, s) -> dict:
         InternshipRecord.is_deleted.is_(False),
     ).order_by(InternshipRecord.id.desc())).all()
     if not rows:
-        return _domain_result("INTERNSHIP", "UNKNOWN", "GD_MENTOR", "无岗位实习记录")
+        return _domain_result("INTERNSHIP", "UNKNOWN", "INTERN_MENTOR", "无岗位实习记录")
 
     checked = []
     for record in rows:
@@ -140,7 +140,7 @@ def _check_internship_completion(db, s) -> dict:
             return _domain_result(
                 "INTERNSHIP",
                 "PASS",
-                "GD_MENTOR",
+                "INTERN_MENTOR",
                 "实习主档已归档，最终成绩已发布且通过，合规归档证据有效",
                 ref_id=record.id,
                 sourceObjectIds={
@@ -158,7 +158,7 @@ def _check_internship_completion(db, s) -> dict:
     return _domain_result(
         "INTERNSHIP",
         "FAIL",
-        "GD_MENTOR",
+        "INTERN_MENTOR",
         "存在实习记录，但未同时满足主档归档、已发布通过成绩和有效合规归档",
         ref_id=rows[0].id,
         sourceStatuses=checked,
@@ -201,7 +201,7 @@ def _check_graduation_design_completion(db, s) -> dict:
                 "GRADUATION_DESIGN",
                 "PASS",
                 "GD_MENTOR",
-                "毕设学生已归档，正式成绩已发布且通过，FILED 归档清单有效",
+                "毕设学生已归档，正式成绩已发布且通过，已备案的归档清单有效",
                 ref_id=student.id,
                 sourceObjectIds={
                     "graduationStudentId": str(student.id),
@@ -221,7 +221,7 @@ def _check_graduation_design_completion(db, s) -> dict:
         "GRADUATION_DESIGN",
         "FAIL",
         "GD_MENTOR",
-        "存在毕设记录，但未同时满足学生归档、PUBLISHED 及格成绩和有效 FILED 归档",
+        "存在毕设记录，但未同时满足学生归档、正式成绩已发布且及格、归档清单已备案并有效",
         ref_id=rows[0].id,
         sourceStatuses=checked,
     )

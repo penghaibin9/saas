@@ -103,6 +103,17 @@ def resolve_student_internship_context(
                 InternshipBatch.id.in_(bids))).all():
             batch_map[batch.id] = batch
 
+    # Refreshing an explicit selection must retain the student's other available
+    # batches, otherwise both clients lose their batch switcher after refresh.
+    candidates = [
+        {"recordId": str(record.id), "batchId": str(record.batch_id),
+         "batchName": batch_map[record.batch_id].batch_name or "", "status": record.status}
+        for record in rows
+        if record.batch_id in batch_map
+        and not batch_map[record.batch_id].is_deleted
+        and batch_map[record.batch_id].tenant_id == _tid()
+    ]
+
     selected_batch_id = _effective_batch_id(batch_id)
     if selected_batch_id is not None and str(selected_batch_id).strip() != "":
         bid = parse_required_batch_id(selected_batch_id)
@@ -129,6 +140,7 @@ def resolve_student_internship_context(
             raise AppException("DATA_CONFLICT", "写操作只能针对进行中的实习批次")
         return StudentInternshipContext(
             student=stu, record=record, batch=batch, mode=mode,
+            candidates=candidates,
             message="" if mode == "active" else "当前为历史实习记录（只读）",
         )
 
@@ -165,7 +177,7 @@ def resolve_student_internship_context(
     if len(active) == 1:
         record, batch = active[0]
         return StudentInternshipContext(
-            student=stu, record=record, batch=batch, mode="active")
+            student=stu, record=record, batch=batch, mode="active", candidates=candidates)
 
     if for_write:
         raise AppException(

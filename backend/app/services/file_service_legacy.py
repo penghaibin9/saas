@@ -733,13 +733,10 @@ def _upload_max_size() -> int:
 
 
 def _ensure_upload_allowed() -> None:
-    try:
-        from app.services.platform_service import feature_enabled
+    from app.services.commercial_authority_read import feature_enabled
 
-        allowed = feature_enabled(int(current_tenant_id() or 0), "fileUpload")
-    except Exception:
-        allowed = True
-    if not allowed:
+    # Tenant identity precedes commerce. Authority outages must never allow a write.
+    if not feature_enabled(_require_tenant_id(), "fileUpload"):
         raise AppException(
             "MODULE_NOT_AUTHORIZED",
             f"当前学校套餐未开通「文件上传」功能，请联系{settings.support_contact_display}",

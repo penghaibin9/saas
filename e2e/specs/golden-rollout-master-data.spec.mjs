@@ -142,7 +142,7 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
       }
     })
     expect(classContract).not.toBeNull()
-    expect(classContract.headRadius).toBe('18px')
+    expect(classContract.headRadius).toBe('0px')
     expect(classContract.filterRadius).toBe('14px')
     expect(classContract.tableRadius).toBe('16px')
     expect(classContract.noteRadius).toBe('12px')
@@ -155,30 +155,17 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
     await openWithApiSession(page, adminApi, '/admin/internship/enterprises?panel=list')
 
     await expect(page).toHaveURL(/\/admin\/internship\/enterprises/)
-    await expect(page.getByRole('heading', { name: '企业岗位库', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '企业库', exact: true })).toBeVisible()
     await expect(page.locator('.af')).toBeVisible()
     await expect(page.locator('.dt')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: internshipFixture.companyName }).first()).toBeVisible()
 
-    const enterpriseContract = await page.evaluate(() => {
-      const root = document.querySelector('.mps:has(> .mp-stack > .msr + .af)')
-      const duplicateBatch = root?.querySelector(':scope > .mp-stack > .msr .msr__batch')
-      const summary = root?.querySelector(':scope > .mp-stack > .msr')
-      const filter = root?.querySelector('.af')
-      const table = root?.querySelector('.dt')
-      if (!root || !duplicateBatch || !summary || !filter || !table) return null
-      return {
-        duplicateBatchDisplay: getComputedStyle(duplicateBatch).display,
-        summaryRadius: getComputedStyle(summary).borderRadius,
-        filterRadius: getComputedStyle(filter).borderRadius,
-        tableRadius: getComputedStyle(table).borderRadius
-      }
-    })
-    expect(enterpriseContract).not.toBeNull()
-    expect(enterpriseContract.duplicateBatchDisplay).toBe('none')
-    expect(enterpriseContract.summaryRadius).toBe('14px')
-    expect(enterpriseContract.filterRadius).toBe('14px')
-    expect(enterpriseContract.tableRadius).toBe('16px')
+    const company = page.locator('.dt__tr').filter({ hasText: internshipFixture.companyName }).first()
+    await expect(company.getByRole('link', { name: internshipFixture.companyName, exact: true })).toHaveAttribute('href', /\/admin\/internship\/enterprises\//)
+    await expect(page.getByRole('button', { name: '刷新列表', exact: true })).toBeEnabled()
+    const box = await page.locator('.dt').boundingBox()
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(VIEWPORT.width)
 
     await capture(page, testInfo, 'rollout-master-internship-enterprises-b')
   })
@@ -196,24 +183,30 @@ test.describe.serial('Golden rollout · master data / core objects · Batch 7', 
     await expect(page.locator('.dt__tr').filter({ hasText: graduationFixture.title }).first()).toBeVisible()
 
     const topicContract = await page.evaluate(() => {
-      const root = document.querySelector('.mps:has(.gd-actions):has(.mp-tabs > .mp-tab:nth-child(11)):has(.af)')
+      const root = document.querySelector('.mps:has(.gd-actions):has(.gd-primary-tabs):has(.af)')
       const head = root?.querySelector(':scope > .mps__head')
-      const tabs = root?.querySelector('.mp-tabs')
-      const activeTab = root?.querySelector('.mp-tab.is-active')
+      const tabs = root?.querySelector('.gd-primary-tabs')
+      const activeTab = root?.querySelector('.gd-primary-tabs > .mp-tab.is-active')
+      const primaryTabs = root?.querySelectorAll('.gd-primary-tabs > .mp-tab')
+      const localViews = root?.querySelectorAll('.gd-local-views > button')
       const table = root?.querySelector('.dt')
-      if (!root || !head || !tabs || !activeTab || !table) return null
+      if (!root || !head || !tabs || !activeTab || !primaryTabs || !localViews || !table) return null
       return {
         headRadius: getComputedStyle(head).borderRadius,
         tabsRadius: getComputedStyle(tabs).borderRadius,
         activeTabRadius: getComputedStyle(activeTab).borderRadius,
-        tableRadius: getComputedStyle(table).borderRadius
+        tableRadius: getComputedStyle(table).borderRadius,
+        primaryTabCount: primaryTabs.length,
+        localViewCount: localViews.length
       }
     })
     expect(topicContract).not.toBeNull()
-    expect(topicContract.headRadius).toBe('17px')
+    expect(topicContract.headRadius).toBe('0px')
     expect(topicContract.tabsRadius).toBe('13px')
     expect(topicContract.activeTabRadius).toBe('9px')
-    expect(topicContract.tableRadius).toBe('16px')
+    expect(topicContract.tableRadius).toBe('15px')
+    expect(topicContract.primaryTabCount).toBe(5)
+    expect(topicContract.localViewCount).toBe(4)
 
     await capture(page, testInfo, 'rollout-master-graduation-topic-lib-b')
   })

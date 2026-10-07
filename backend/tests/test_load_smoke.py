@@ -31,9 +31,25 @@ def smoke(tmp_path_factory):
 
     from datetime import datetime
     from app.models import (AcademicStudent, AcademicWarning, CsLeave, CsServiceStudent,
-                            InternshipRecord, StudentContact, StudentProfile,
-                            TeacherStudentScope, UnifiedMessage, UnifiedTodo, WeeklyReport)
+                            InternshipRecord, PlatformConfig, StudentContact, StudentProfile,
+                            TeacherStudentScope, Tenant, UnifiedMessage, UnifiedTodo, WeeklyReport)
     db = get_sessionmaker()()
+    # W1 商业授权已不再信任“只存在业务数据/只写 packageCode”的测试租户。
+    # 负载冒烟不测试付费流程，所以使用合法 trial 商业状态；trial 对本测试涉及的
+    # 学工/教务/实习/毕设/就业等读取能力均为已授权，同时不会伪造客户付款事实。
+    for tenant_id, tenant_code, school_name in (
+        (MAIN, "demo", "负载冒烟主学校"),
+        (DEMO, "demo-school", "负载冒烟隔离学校"),
+    ):
+        db.add(Tenant(id=tenant_id, tenant_code=tenant_code, school_name=school_name, status="ACTIVE"))
+        db.add(PlatformConfig(
+            tenant_id=tenant_id,
+            config_type="TENANT_META",
+            config_key="-",
+            config_json={"status": "trial", "packageCode": "trial"},
+            enabled=True,
+        ))
+
     stu_main = None
     for i in range(1, 221):
         s = StudentProfile(tenant_id=MAIN, student_no=f"LS{i:05d}", real_name=f"冒烟学生{i}",
@@ -169,7 +185,6 @@ def test_concurrent_login_100(client, smoke):
     codes, times = _run(client, jobs)
     _report("login-100", codes, times)
     assert all(c < 500 for c in codes), f"登录出现 5xx：{codes}"
-    # 登录限流（10 次/分/IP）生效属正确行为：只允许 200 / 429
     assert set(codes) <= {200, 429}, f"登录出现异常状态：{codes}"
     assert codes.get(200, 0) >= 10
 
@@ -293,7 +308,6 @@ def test_concurrent_weekly_duplicate_20(client, db_mode):
     assert all(c < 500 for c in codes), f"周报重复提交出现 5xx：{codes}"
     assert set(codes) <= {200, 409}, f"周报重复提交异常状态：{codes}"
     assert codes.get(200, 0) <= 1, f"同周周报被写入多条：{codes}"
-    # 落库校验：第 9 周只允许 1 条
     from sqlalchemy import func, select
     from app.models import WeeklyReport
     db = get_sessionmaker()()
@@ -328,7 +342,6 @@ def test_cross_tenant_50(client, smoke):
     codes, times = _run(client, jobs)
     _report("cross-tenant-50", codes, times)
     assert set(codes) <= {403, 404}, f"跨租户访问应 403/404：{codes}"
-    # demo 租户教师的风险学生列表看不到主租户数据
     r = client.get("/api/v1/mobile/teacher/risk-students", headers=demo_tea).json()
     assert r["code"] == 0 and r["data"]["total"] == 0
 

@@ -184,7 +184,7 @@ export default {
         SCANNING: '安全扫描', PARSING: '服务端预检', VALIDATED: '预检通过',
         VALIDATION_FAILED: '预检存在失败行', CONFIRMING: '确认中', SUCCEEDED: '已完成',
         FAILED: '失败', EXPIRED: '已过期'
-      }[status] || status || '未知'
+      }[status] || (status ? '状态待确认' : '未知')
     },
     statusType(status) {
       if (['VALIDATED', 'SUCCEEDED'].includes(status)) return 'success'

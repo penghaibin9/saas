@@ -14,7 +14,7 @@ from app.services.sandbox_school_master_seed import _bulk_insert
 
 def reconcile_exam_rooms(db, tenant_id: int) -> dict:
     from app.models import (
-        AaClassroom, AaExamCourse, AaExamInvigilator, AaExamRoom,
+        AaClassroom, AaExamCourse, AaExamIncident, AaExamInvigilator, AaExamRoom,
         AaExamRoomStudent, StudentProfile, User,
     )
 
@@ -24,6 +24,13 @@ def reconcile_exam_rooms(db, tenant_id: int) -> dict:
         AaExamRoom.is_deleted.is_(False),
     )))
     if room_ids:
+        # 异常事实以 exam_course_id 为权威父级；重排考场前先解除旧 room_id，避免保留
+        # 一个已删除考场的悬空引用。新考场生成后再回链同课程的首个正式考场。
+        db.query(AaExamIncident).filter(
+            AaExamIncident.tenant_id == tenant_id,
+            AaExamIncident.exam_room_id.in_(room_ids),
+            AaExamIncident.is_deleted.is_(False),
+        ).update({AaExamIncident.exam_room_id: None}, synchronize_session=False)
         db.execute(delete(AaExamRoomStudent).where(
             AaExamRoomStudent.tenant_id == tenant_id,
             AaExamRoomStudent.exam_room_id.in_(room_ids),
@@ -143,6 +150,21 @@ def reconcile_exam_rooms(db, tenant_id: int) -> dict:
         })
     _bulk_insert(db, AaExamRoomStudent, seat_rows, chunk_size=2000)
     _bulk_insert(db, AaExamInvigilator, invigilator_rows, chunk_size=1000)
+    first_room_by_course = {
+        int(course_id): int(room_id)
+        for course_id, room_id in db.execute(select(
+            AaExamRoom.exam_course_id, func.min(AaExamRoom.id),
+        ).where(
+            AaExamRoom.tenant_id == tenant_id,
+            AaExamRoom.is_deleted.is_(False),
+        ).group_by(AaExamRoom.exam_course_id)).all()
+    }
+    incidents = list(db.scalars(select(AaExamIncident).where(
+        AaExamIncident.tenant_id == tenant_id,
+        AaExamIncident.is_deleted.is_(False),
+    )).all())
+    for incident in incidents:
+        incident.exam_room_id = first_room_by_course.get(int(incident.exam_course_id))
     db.commit()
 
     over_capacity = int(db.scalar(select(func.count()).select_from(AaExamRoom).where(

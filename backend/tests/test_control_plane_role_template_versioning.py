@@ -1,4 +1,9 @@
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
+from threading import Barrier
+from types import SimpleNamespace
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import select
@@ -120,3 +125,179 @@ def test_b5_new_version_uses_previous_template_id_not_json_pointer(db_mode):
     )
     assert second["previousTemplateId"] == first["id"]
     assert second["previousTemplateVersion"] == int(first["templateVersion"])
+
+
+def test_draft_impact_compares_published_permissions_not_another_draft(monkeypatch):
+    published = SimpleNamespace(id=1, template_code="COLLEGE_ADMIN", template_version=1,
+                                publish_status=svc.PUBLISHED, previous_template_id=None)
+    earlier_draft = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", template_version=2,
+                                    publish_status=svc.DRAFT, previous_template_id=1)
+    candidate = SimpleNamespace(id=3, template_code="COLLEGE_ADMIN", template_version=3,
+                                publish_status=svc.DRAFT, previous_template_id=2,
+                                permission_ceiling_json={"basePublishedTemplateId": 1})
+    permissions = {1: [f"p{n}" for n in range(459)],
+                   2: [f"p{n}" for n in range(9, 459)],
+                   3: [f"p{n}" for n in range(28, 459)]}
+    db = MagicMock()
+    db.scalar.return_value = published
+    db.scalars.return_value.all.return_value = []
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {1: published, 2: earlier_draft, 3: candidate}[template_id])
+    monkeypatch.setattr(svc, "_items", lambda _db, item: permissions[item.id])
+
+    result = svc.impact(3)
+    assert result["baselineTemplateId"] == "1"
+    assert len(result["removedPermissions"]) == 28
+
+
+def test_historical_published_impact_rejects_draft_predecessor(monkeypatch):
+    draft = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", publish_status=svc.DRAFT)
+    published = SimpleNamespace(id=3, template_code="COLLEGE_ADMIN", template_version=3,
+                                publish_status=svc.PUBLISHED, previous_template_id=2,
+                                permission_ceiling_json={})
+    db = MagicMock()
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {2: draft, 3: published}[template_id])
+    monkeypatch.setattr(svc, "_items", lambda _db, item: [CATALOG_VIEW])
+
+    with pytest.raises(AppException) as exc:
+        svc.impact(3)
+    assert exc.value.code == "DATA_CONFLICT"
+
+
+@pytest.mark.parametrize("source_time", [datetime(2026, 9, 27, 10), datetime(2026, 9, 27, 12)])
+def test_historical_rollback_source_cannot_prove_published_baseline(monkeypatch, source_time):
+    from app.modules.platform.services import platform_product_iam_service as product_svc
+
+    v1 = SimpleNamespace(id=1, template_code="COLLEGE_ADMIN", template_version=1,
+                         publish_status=svc.PUBLISHED, published_at=source_time)
+    v2 = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", template_version=2,
+                         publish_status=svc.PUBLISHED, published_at=datetime(2026, 9, 27, 11))
+    rollback_v3 = SimpleNamespace(id=3, template_code="COLLEGE_ADMIN", template_version=3,
+                                  publish_status=svc.PUBLISHED, previous_template_id=1,
+                                  published_at=datetime(2026, 9, 27, 12), permission_ceiling_json={})
+    db = MagicMock()
+    db.scalars.return_value.all.return_value = []
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {1: v1, 2: v2, 3: rollback_v3}[template_id])
+    monkeypatch.setattr(svc, "_items", lambda _db, row: {
+        1: [CATALOG_VIEW], 2: [CATALOG_MANAGE], 3: [CATALOG_VIEW],
+    }[row.id])
+    monkeypatch.setattr(product_svc, "_navigation_contract", lambda: {"digest": "nav", "surfaces": []})
+
+    # previousTemplateId still denotes the rollback source v1, while v2 was published at creation.
+    with pytest.raises(AppException) as exc:
+        svc.impact(3)
+    assert exc.value.code == "DATA_CONFLICT"
+
+    rollback_v3.permission_ceiling_json = {"basePublishedTemplateId": 2}
+    result = svc.impact(3)
+    assert result["baselineTemplateId"] == "2"
+    assert result["addedPermissions"] == [CATALOG_VIEW]
+
+
+def test_impact_menu_diff_uses_same_permissions_as_permission_diff(monkeypatch):
+    from app.modules.platform.services import platform_product_iam_service as product_svc
+
+    published = SimpleNamespace(id=1, template_code="COLLEGE_ADMIN", template_version=1,
+                                publish_status=svc.PUBLISHED, previous_template_id=None)
+    draft = SimpleNamespace(id=2, template_code="COLLEGE_ADMIN", template_version=2,
+                            publish_status=svc.DRAFT, previous_template_id=1,
+                            permission_ceiling_json={"basePublishedTemplateId": 1},
+                            permission_digest="candidate-digest", version=4)
+    db = MagicMock()
+    db.scalar.return_value = published
+    db.scalars.return_value.all.return_value = []
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_load", lambda _db, template_id, **_kw: {1: published, 2: draft}[template_id])
+    monkeypatch.setattr(svc, "_items", lambda _db, item: {
+        1: [CATALOG_VIEW, CATALOG_MANAGE], 2: [CATALOG_MANAGE],
+    }[item.id])
+    monkeypatch.setattr(product_svc, "_navigation_contract", lambda: {"digest": "nav", "surfaces": [
+        {"surfaceKey": "view", "permissionKey": CATALOG_VIEW, "status": "implemented"},
+        {"surfaceKey": "manage", "permissionKey": CATALOG_MANAGE, "status": "implemented"},
+    ]})
+
+    result = svc.impact(2)
+    assert result["removedPermissions"] == [CATALOG_VIEW]
+    assert result["menuRemoved"] == ["view"]
+    assert result["menuAdded"] == []
+    assert result["navigationDigest"] == "nav"
+    assert result["baselineTemplateVersion"] == 1
+
+
+def test_publish_rejects_candidate_after_published_baseline_changes(monkeypatch):
+    current = SimpleNamespace(id=4, template_code="COLLEGE_ADMIN", template_version=4,
+                              publish_status=svc.PUBLISHED)
+    candidate = SimpleNamespace(id=3, template_code="COLLEGE_ADMIN", template_version=3,
+                                publish_status=svc.DRAFT, previous_template_id=1,
+                                permission_ceiling_json={"basePublishedTemplateId": 1}, version=1,
+                                template_plane="TENANT", change_reason="初始变更原因")
+    db = MagicMock()
+    db.scalar.return_value = current
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: db)
+    monkeypatch.setattr(svc, "_publish_anchor", lambda _db, _id: ("COLLEGE_ADMIN", 1))
+    monkeypatch.setattr(svc, "_load", lambda _db, _id, **_kw: candidate)
+    monkeypatch.setattr(svc, "_items", lambda _db, _item: [CATALOG_VIEW])
+    monkeypatch.setattr(svc, "_row", lambda _db, _item: {})
+    monkeypatch.setattr(svc, "impact", lambda _id: {})
+    monkeypatch.setattr(audit_log, "record_critical_in_session", lambda *_args, **_kw: None)
+
+    with pytest.raises(AppException) as exc:
+        svc.publish_draft(3, expected_version=1, actor_user_id=9001)
+    assert exc.value.code == "DATA_CONFLICT"
+    db.commit.assert_not_called()
+
+
+def test_two_drafts_publish_serially_and_rollback_keeps_source(db_mode, monkeypatch):
+    first = svc.create_draft(template_code="COLLEGE_ADMIN", template_name="学院管理员",
+                             permission_codes=[CATALOG_VIEW, CATALOG_MANAGE, CATALOG_INVITE],
+                             change_reason="建立当前发布基线", actor_user_id=9001)
+    first = svc.publish_draft(int(first["id"]), expected_version=first["version"], actor_user_id=9001)
+    second = svc.create_draft(template_code="COLLEGE_ADMIN", template_name="学院管理员",
+                              permission_codes=[CATALOG_VIEW, CATALOG_MANAGE],
+                              change_reason="候选一收窄权限", actor_user_id=9001)
+    third = svc.create_draft(template_code="COLLEGE_ADMIN", template_name="学院管理员",
+                             permission_codes=[CATALOG_VIEW],
+                             change_reason="候选二收窄权限", actor_user_id=9001)
+    assert third["previousTemplateId"] == second["id"]
+    from app.db.session import get_sessionmaker
+    from app.models.permission_governance import RoleTemplate
+    db = get_sessionmaker()()
+    try:
+        assert db.get(RoleTemplate, int(third["id"])).permission_ceiling_json["basePublishedTemplateId"] == int(first["id"])
+    finally:
+        db.close()
+    assert set(svc.impact(int(third["id"]))["removedPermissions"]) == {CATALOG_MANAGE, CATALOG_INVITE}
+
+    original_anchor = svc._publish_anchor
+    ready = Barrier(2)
+
+    def start_together(db, template_id):
+        anchor = original_anchor(db, template_id)
+        if template_id in {int(second["id"]), int(third["id"])}:
+            ready.wait(timeout=15)
+        return anchor
+
+    monkeypatch.setattr(svc, "_publish_anchor", start_together)
+
+    def publish(row):
+        try:
+            return svc.publish_draft(int(row["id"]), expected_version=row["version"], actor_user_id=9001)
+        except AppException as exc:
+            return exc.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(publish, (second, third)))
+    assert sum(isinstance(result, dict) for result in results) == 1
+    assert results.count("DATA_CONFLICT") == 1
+
+    winner = next(result for result in results if isinstance(result, dict))
+    rollback = svc.create_rollback_draft(int(first["id"]), change_reason="恢复原发布权限",
+                                         actor_user_id=9001)
+    assert rollback["previousTemplateId"] == first["id"]
+    assert set(svc.impact(int(rollback["id"]))["addedPermissions"]) == (
+        set(first["permissions"]) - set(winner["permissions"])
+    )
+    restored = svc.publish_draft(int(rollback["id"]), expected_version=rollback["version"], actor_user_id=9001)
+    assert restored["publishStatus"] == "PUBLISHED"

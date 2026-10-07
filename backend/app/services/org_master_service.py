@@ -200,44 +200,54 @@ def save_org_node(*, node_type: str, name: str, code: str | None = "", parent_id
 
 
 def soft_delete_org_node(*, node_type: str, node_id: int, actor: dict | None = None,
-                         reason: str = "软删除") -> dict:
-    """统一软删：校验子级/学生后标记 is_deleted + DISABLED。"""
+                         reason: str = "软删除", db=None) -> dict:
+    """统一软删：校验子级/学生后标记 is_deleted + DISABLED。
+
+    db 可由业务适配层传入，使权限校验、行锁、软删和领域审计保持同一事务；
+    未传入时仍保持管理端原有的独立事务行为。
+    """
     from app.models import College, Major, SchoolClass, StudentProfile
 
     node_type = str(node_type or "").upper()
+    if node_type not in {"COLLEGE", "MAJOR", "CLASS"}:
+        raise AppException("VALIDATION_ERROR", "组织节点类型非法")
     tenant_id = _tid()
+    if not tenant_id:
+        raise AppException("VALIDATION_ERROR", "缺少租户上下文")
     model = {"COLLEGE": College, "MAJOR": Major, "CLASS": SchoolClass}[node_type]
-    db = get_sessionmaker()()
+    owns_db = db is None
+    work_db = db or get_sessionmaker()()
     try:
-        row = db.scalars(select(model).where(
-            model.id == node_id, model.tenant_id == tenant_id, model.is_deleted.is_(False))).first()
+        row = work_db.scalars(select(model).where(
+            model.id == node_id, model.tenant_id == tenant_id, model.is_deleted.is_(False))
+            .execution_options(populate_existing=True).with_for_update()).first()
         if row is None:
             raise AppException("DATA_NOT_FOUND", "组织节点不存在")
 
         if node_type == "COLLEGE":
-            child = db.scalar(select(func.count()).select_from(Major).where(
+            child = work_db.scalar(select(func.count()).select_from(Major).where(
                 Major.tenant_id == tenant_id, Major.is_deleted.is_(False),
                 Major.college_id == node_id)) or 0
             if child:
                 raise AppException("DATA_CONFLICT", f"该学院下仍有 {child} 个专业，请先处理专业")
-            students = db.scalar(select(func.count()).select_from(StudentProfile).where(
+            students = work_db.scalar(select(func.count()).select_from(StudentProfile).where(
                 StudentProfile.tenant_id == tenant_id, StudentProfile.college_id == node_id,
                 StudentProfile.is_deleted.is_(False))) or 0
             if students:
                 raise AppException("DATA_CONFLICT", f"该学院下仍有 {students} 名学生，请先处理")
         elif node_type == "MAJOR":
-            child = db.scalar(select(func.count()).select_from(SchoolClass).where(
+            child = work_db.scalar(select(func.count()).select_from(SchoolClass).where(
                 SchoolClass.tenant_id == tenant_id, SchoolClass.is_deleted.is_(False),
                 SchoolClass.major_id == node_id)) or 0
             if child:
                 raise AppException("DATA_CONFLICT", f"该专业下仍有 {child} 个班级，请先处理班级")
-            students = db.scalar(select(func.count()).select_from(StudentProfile).where(
+            students = work_db.scalar(select(func.count()).select_from(StudentProfile).where(
                 StudentProfile.tenant_id == tenant_id, StudentProfile.major_id == node_id,
                 StudentProfile.is_deleted.is_(False))) or 0
             if students:
                 raise AppException("DATA_CONFLICT", f"该专业下仍有 {students} 名学生，请先处理")
         else:
-            students = db.scalar(select(func.count()).select_from(StudentProfile).where(
+            students = work_db.scalar(select(func.count()).select_from(StudentProfile).where(
                 StudentProfile.tenant_id == tenant_id, StudentProfile.class_id == node_id,
                 StudentProfile.is_deleted.is_(False))) or 0
             if students:
@@ -248,19 +258,26 @@ def soft_delete_org_node(*, node_type: str, node_id: int, actor: dict | None = N
         if node_type == "CLASS" and hasattr(row, "class_status"):
             row.class_status = "DISBANDED"
         row.version = int(getattr(row, "version", 0) or 0) + 1
-        db.commit()
-        from app.services import audit_log
-        audit_log.record(
-            "ORG_NODE_DELETE", f"{node_type}:{node_id}",
-            detail={"reason": reason, "moduleCode": "systemAdmin",
-                    "actor": (actor or {}).get("userId")},
-        )
+
+        detail = {
+            "reason": reason,
+            "moduleCode": "systemAdmin",
+            "actor": (actor or {}).get("userId"),
+        }
+        if owns_db:
+            work_db.commit()
+            from app.services import audit_log
+            audit_log.record("ORG_NODE_DELETE", f"{node_type}:{node_id}", detail=detail)
+        else:
+            work_db.flush()
         return {"id": str(node_id), "deleted": True}
     except Exception:
-        db.rollback()
+        if owns_db:
+            work_db.rollback()
         raise
     finally:
-        db.close()
+        if owns_db:
+            work_db.close()
 
 
 def disable_org_node(*, node_type: str, node_id: int, reason: str,

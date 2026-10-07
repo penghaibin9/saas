@@ -49,6 +49,7 @@ def _role_scope_counts(db, tenant_id: int, role_code: str) -> tuple[int, int]:
 def validate_school_mentor_workload_20k(db, tenant_id: int) -> dict:
     from app.models import (
         AttendanceException,
+        GraduationBatch,
         GraduationMentor,
         GraduationStudent,
         GraduationTopic,
@@ -63,12 +64,20 @@ def validate_school_mentor_workload_20k(db, tenant_id: int) -> dict:
     )
     from app.services.sandbox_school_role_reconcile import (
         EXPECTED_ORG_SCOPES,
+        EXPECTED_ORG_SCOPE_TYPES,
         REQUIRED_ROLE_CODES,
         SECONDARY_ROLE_ASSIGNMENT_COUNTS,
     )
 
     intern_role_users, intern_scopes = _role_scope_counts(db, tenant_id, "INTERN_MENTOR")
     grad_role_users, grad_scopes = _role_scope_counts(db, tenant_id, "GD_MENTOR")
+    current_graduation_batch_id = db.scalar(select(GraduationBatch.id).where(
+        GraduationBatch.tenant_id == tenant_id,
+        GraduationBatch.batch_no == "GD-2027",
+        GraduationBatch.is_deleted.is_(False),
+    ))
+    if current_graduation_batch_id is None:
+        raise RuntimeError("007 当前毕设批次 GD-2027 不存在")
 
     intern_loads = [int(count) for (count,) in db.execute(select(func.count()).select_from(
         InternshipRecord
@@ -81,6 +90,7 @@ def validate_school_mentor_workload_20k(db, tenant_id: int) -> dict:
         GraduationStudent
     ).where(
         GraduationStudent.tenant_id == tenant_id,
+        GraduationStudent.batch_id == int(current_graduation_batch_id),
         GraduationStudent.mentor_id.is_not(None),
         GraduationStudent.is_deleted.is_(False),
     ).group_by(GraduationStudent.mentor_id)).all()]
@@ -160,6 +170,7 @@ def validate_school_mentor_workload_20k(db, tenant_id: int) -> dict:
             GraduationTopic.advisor_mentor_id, GraduationTopic.major_name,
         ).where(
             GraduationTopic.tenant_id == tenant_id,
+            GraduationTopic.batch_id == int(current_graduation_batch_id),
             GraduationTopic.is_deleted.is_(False),
         )).all()
         if not mentor_id or mentor_major.get(int(mentor_id)) != major_name
@@ -170,6 +181,7 @@ def validate_school_mentor_workload_20k(db, tenant_id: int) -> dict:
             GraduationStudent.mentor_id, GraduationStudent.major_id,
         ).where(
             GraduationStudent.tenant_id == tenant_id,
+            GraduationStudent.batch_id == int(current_graduation_batch_id),
             GraduationStudent.is_deleted.is_(False),
         )).all()
         if not mentor_id or mentor_major.get(int(mentor_id)) != major_name_by_id[int(major_id)]
@@ -204,6 +216,7 @@ def validate_school_mentor_workload_20k(db, tenant_id: int) -> dict:
         actual = int(db.scalar(select(func.count()).select_from(TeacherStudentScope).where(
             TeacherStudentScope.tenant_id == tenant_id,
             TeacherStudentScope.role_code == code,
+            TeacherStudentScope.scope_type == EXPECTED_ORG_SCOPE_TYPES[code],
             TeacherStudentScope.status == "ACTIVE",
             TeacherStudentScope.is_deleted.is_(False),
         )) or 0)

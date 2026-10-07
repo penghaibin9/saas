@@ -7,6 +7,36 @@ from types import SimpleNamespace
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_program_coverage_projects_only_needed_columns_and_keeps_people_evidence(monkeypatch):
+    from unittest.mock import MagicMock
+    from app.modules.academic_affairs.services import academic_affairs_dashboard_readiness_service as service
+    from app.modules.academic_affairs.services import student_program_resolution_service as resolution
+    rows = [SimpleNamespace(id=i, student_no=str(i), student_status="REGISTERED",
+        major_id=3, grade="2026", class_id=4) for i in range(1, 26)]
+    rows += [SimpleNamespace(id=26, student_no="26", student_status="NORMAL", major_id=5, grade="2026", class_id=6),
+             SimpleNamespace(id=27, student_no="27", student_status="GRADUATED", major_id=3, grade="2026", class_id=4)]
+    db = MagicMock()
+    query = db.query.return_value
+    query.filter.return_value = query
+    query.all.return_value = rows
+    monkeypatch.setattr(service, "_tid", lambda: 7)
+    requests = []
+    def resolve(db, student, *, tenant_id, cache):
+        requests.append(cache)
+        return SimpleNamespace(status="RESOLVED" if student.major_id == 5 else "MISSING", rule="NO_BINDING", message="未绑定")
+    monkeypatch.setattr(resolution, "resolve_student_program", resolve)
+    result = service._program_items(db, _term(), {128})
+    assert {column.key for column in db.query.call_args.args} == {
+        "id", "tenant_id", "college_id", "major_id", "class_id", "grade", "student_status", "student_no"}
+    assert result[0]["count"] == 25
+    assert len(result[0]["evidence"]) == 20
+    assert result[0]["evidence"][0]["studentId"] == "1"
+    assert result[0]["evidence"][-1]["studentId"] == "20"
+    assert len(requests) == 2 and requests[0] is requests[1]
+    service._program_items(db, _term(), {128})
+    assert requests[2] is not requests[0]
+
+
 def _term(*, status="PUBLISHED", start=date(2026, 9, 1), end=date(2027, 1, 20), exam_week=18):
     return SimpleNamespace(
         id=1,
@@ -107,28 +137,31 @@ def test_non_school_dashboard_aggregates_are_fail_closed():
 
 
 def test_dashboard_page_matches_v2_first_screen_and_removes_construction_labels():
-    source = (
+    wrapper = (
         ROOT / "frontend/src/modules/academicAffairs/views/AaDashboardView.vue"
     ).read_text(encoding="utf-8")
+    overview = (
+        ROOT / "frontend/src/modules/academicAffairs/components/AaOverviewWorkspace.vue"
+    ).read_text(encoding="utf-8")
+    source = wrapper + "\n" + overview
 
     for text in (
-        "当前阶段",
-        "阻断项",
-        "风险项",
-        "当前最需要处理",
-        "我的教务待办",
-        "今日教学运行",
+        "AaOverviewWorkspace",
+        "运行总览",
+        "待我办理",
         "即将到期",
-        "分派责任人",
-        "去处理",
-        "导出准备清单",
-        "成绩、考务和预警运行明细",
+        "学期运行检查",
+        "本学期业务接力",
+        "查看责任对象",
+        "导出运行检查",
+        "按当前身份呈现责任",
     ):
         assert text in source
-    assert "readiness.topItems" in source
-    assert "item.ownerRole" in source
-    assert "item.deadlineLabel" in source
-    assert "item.assignRoute" in source
+    assert "readinessItems" in overview
+    assert "item.ownerRole" in overview
+    assert "item.deadlineLabel" in overview
+    assert "getDashboardRoleQueue" in overview
+    assert "typedRouteTarget" in overview
     assert "LIVE=已上线" not in source
     assert "建设中=后续波次交付" not in source
     assert "moduleCards" not in source

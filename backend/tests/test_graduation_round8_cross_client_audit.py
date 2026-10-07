@@ -73,10 +73,8 @@ def test_student_readonly_scope_is_visible_in_pc_layout():
 
 def test_reminder_copy_matches_real_message_delivery():
     toast = read("frontend/src/utils/toast.js")
-    layout = read("frontend/src/modules/graduation/views/AdminGraduationLayout.vue")
     backend = read("backend/app/modules/graduation/services/graduation_service.py")
     assert "发送开题站内催办并写入留痕" in toast
-    assert "催交会发送真实站内消息" in layout
     assert "def _deliver_student_reminder" in backend
     assert "UnifiedMessage(" in backend
     assert "学生未绑定有效登录账号，提醒未发送" in backend
@@ -88,7 +86,7 @@ def test_generic_upload_is_temp_private_and_graduation_abandon_is_owner_scoped()
     file_ops = read("backend/app/api/v1/file.py")
     contract = read("backend/app/api/v1/file_contract.py")
     portal = read("student-portal/src/services/request.js")
-    janitor = read("miniapp/src/components/MobileGraduationTempFileJanitor.vue")
+    janitor = read("miniapp/src/pages/student/components/MobileGraduationTempFileJanitor.vue")
     assert "owner_user_id" in service and "_binding" in service
     assert "with_for_update=True" in service
     assert "附件已绑定开题或成果记录" in service

@@ -11,6 +11,7 @@ from app.core.exceptions import AppException, not_found
 from . import academic_affairs_schedule_gate_service as gate_service
 from . import academic_affairs_schedule_policy as policy
 from . import academic_affairs_schedule_import_preload as import_preload
+from .academic_affairs_schedule_write_scope_r3 import assert_schedule_write_scope
 
 _base = importlib.import_module(
     ".academic_affairs_schedule_service",
@@ -64,6 +65,27 @@ def _load_batch(db, batch_id, *, writable=True, lock=True):
     return batch
 
 
+def get_batch(batch_id, user) -> dict:
+    from app.models import AaScheduleBatch
+    from . import academic_affairs_schedule_truth_service as truth_service
+
+    with _base.session() as db:
+        batch = db.query(AaScheduleBatch).filter(
+            AaScheduleBatch.id == int(batch_id), AaScheduleBatch.tenant_id == _base._tid(),
+            AaScheduleBatch.is_deleted.is_(False),
+        ).first()
+        if not batch:
+            raise not_found("课表批次不存在")
+        assert_schedule_write_scope(db, user, batch)
+        return {
+            "batchId": str(batch.id), "batchName": batch.batch_name,
+            "termId": str(batch.term_id), "collegeId": str(batch.college_id) if batch.college_id else None,
+            "status": batch.status, "publishAt": _base._iso(batch.publish_at),
+            "supersedesBatchId": str(batch.supersedes_batch_id) if batch.supersedes_batch_id else None,
+            "activeTruth": truth_service.batch_truth(db, batch),
+        }
+
+
 def _task_batch_ids(db, batch) -> list[int]:
     from app.models import AaTeachingTaskBatch
 
@@ -73,13 +95,13 @@ def _task_batch_ids(db, batch) -> list[int]:
         AaTeachingTaskBatch.status == "APPROVED",
         AaTeachingTaskBatch.is_deleted.is_(False),
     )
-    if getattr(batch, "college_id", None):
-        query = query.filter(AaTeachingTaskBatch.college_id == int(batch.college_id))
     return [int(row.id) for row in query.all()]
 
 
-def _resolve_task(db, batch, source, *, preload=None):
+def _resolve_task(db, batch, source, *, preload=None, lock=True):
     from app.models import AaTeachingTask
+    from .academic_affairs_task_execution_authority import (
+        independent_task_condition, require_independent_task)
 
     allowed_batches = (
         list(preload.allowed_batch_ids)
@@ -97,6 +119,7 @@ def _resolve_task(db, batch, source, *, preload=None):
                 AaTeachingTask.status == "READY",
                 AaTeachingTask.is_deleted.is_(False),
                 AaTeachingTask.id == int(task_id),
+                policy.task_scope_condition(db, batch),
             ).first()
         )
         if not task:
@@ -106,7 +129,7 @@ def _resolve_task(db, batch, source, *, preload=None):
                 details={"taskId": str(task_id), "termId": str(batch.term_id)},
                 http_status=409,
             )
-        return task
+        return task if preload is not None else require_independent_task(db, task, lock=lock)
 
     course_name = str(_value(source, "courseName") or "").strip()
     teacher_key = str(_value(source, "teacherKey") or "").strip()
@@ -118,7 +141,11 @@ def _resolve_task(db, batch, source, *, preload=None):
         )
 
     if preload is not None:
-        matches = preload.task_matches(course_name, teacher_key, class_id)
+        # 批量导入已在预载阶段一次性核验承接关系；这里只做内存唯一匹配。
+        matches = [row for row in preload._tasks if int(row.id) not in preload._blocked_task_ids
+            and row.course_name == course_name
+            and (not teacher_key or row.teacher_key == teacher_key)
+            and (class_id in (None, "") or row.class_id == int(class_id))]
     else:
         query = db.query(AaTeachingTask).filter(
             AaTeachingTask.tenant_id == _base._tid(),
@@ -126,6 +153,8 @@ def _resolve_task(db, batch, source, *, preload=None):
             AaTeachingTask.status == "READY",
             AaTeachingTask.is_deleted.is_(False),
             AaTeachingTask.course_name == course_name,
+            independent_task_condition(AaTeachingTask),
+            policy.task_scope_condition(db, batch),
         )
         if teacher_key:
             query = query.filter(AaTeachingTask.teacher_key == teacher_key)
@@ -146,7 +175,7 @@ def _resolve_task(db, batch, source, *, preload=None):
             details={"taskIds": [str(row.id) for row in matches[:2]]},
             http_status=409,
         )
-    return matches[0]
+    return matches[0] if preload is not None else require_independent_task(db, matches[0], lock=lock)
 
 
 def _coordinate(db, batch, task, source, *, preload=None):
@@ -169,7 +198,7 @@ def _coordinate(db, batch, task, source, *, preload=None):
     if slot_no not in enabled_slots:
         raise AppException("VALIDATION_ERROR", f"节次 {slot_no} 未在学校作息中启用")
     if parity not in _base.PARITIES:
-        raise AppException("VALIDATION_ERROR", "单双周仅支持 ALL/ODD/EVEN")
+        raise AppException("VALIDATION_ERROR", "请选择每周、单周或双周")
     if (
         task_start < 1
         or task_end < task_start
@@ -195,6 +224,8 @@ def _coordinate(db, batch, task, source, *, preload=None):
             "VALIDATION_ERROR",
             f"排课周次必须位于教学任务的 {task_start}-{task_end} 周范围内",
         )
+    if not policy.active_weeks(start_week, end_week, parity):
+        raise AppException("VALIDATION_ERROR", "所选周次与单双周没有任何实际排课周")
     return weekday, slot_no, start_week, end_week, parity
 
 
@@ -216,10 +247,12 @@ def _classroom(db, task, text, *, preload=None):
                 AaClassroom.id == int(classroom_id),
                 AaClassroom.tenant_id == _base._tid(),
                 AaClassroom.is_deleted.is_(False),
-            ).first()
+            ).populate_existing().with_for_update().first()
         )
         if not room or room.status != "AVAILABLE":
             raise AppException("DATA_CONFLICT", "所选教室当前不可用", http_status=409)
+        if not room.allow_schedule:
+            raise AppException("DATA_CONFLICT", "所选教室未允许排课", http_status=409)
         if task.required_room_type and room.room_type != task.required_room_type:
             raise AppException(
                 "DATA_CONFLICT",
@@ -246,20 +279,20 @@ def _ensure_task_capacity(
     db,
     batch,
     task,
-    increment=1,
     exclude_item_id=None,
     *,
     preload=None,
+    candidate,
 ):
     from app.models import AaScheduleItem
 
-    expected = int(task.weekly_hours or 0)
-    if expected <= 0:
-        raise AppException("DATA_CONFLICT", "教学任务未配置有效周学时", http_status=409)
-
-    if preload is not None and not exclude_item_id:
-        actual = preload.scheduled_count(task.id)
+    if preload is not None:
+        teaching_weeks = preload.teaching_weeks
+        rows = preload.scheduled_items(task.id)
+        if exclude_item_id:
+            rows = [row for row in rows if int(row.id) != int(exclude_item_id)]
     else:
+        _term, teaching_weeks = policy.term_bounds(db, int(batch.term_id))
         query = db.query(AaScheduleItem).filter(
             AaScheduleItem.tenant_id == _base._tid(),
             AaScheduleItem.batch_id == int(batch.id),
@@ -269,24 +302,31 @@ def _ensure_task_capacity(
         )
         if exclude_item_id:
             query = query.filter(AaScheduleItem.id != int(exclude_item_id))
-        actual = query.count()
-
-    if actual + int(increment) > expected:
+        rows = query.all()
+    coverage = policy.task_coverage(task, [*rows, candidate], teaching_weeks)
+    if coverage["invalidTask"] or coverage["invalidItemIds"]:
+        raise AppException("DATA_CONFLICT", "教学任务学时或现有排课周次无效，请先核对", details=coverage, http_status=409)
+    if coverage["excessContactHours"] or coverage["weeklyOverloadCount"]:
         raise AppException(
             "DATA_CONFLICT",
-            f"该教学任务周学时为 {expected}，当前已排 {actual} 节，继续排课将超排",
-            details={"taskId": str(task.id), "weeklyHours": expected, "scheduled": actual},
+            "继续排课将超排：超过任务计划总学时或某周学时上限",
+            details={"taskId": str(task.id), "weeklyHours": task.weekly_hours, **coverage},
             http_status=409,
         )
 
 
 def _build_item(db, batch, task, source, *, item_source, preload=None):
     from app.models import AaScheduleItem
+    from .academic_affairs_task_execution_authority import require_independent_task
+
+    task = preload.ensure_independent(task) if preload is not None else require_independent_task(db, task)
 
     weekday, slot_no, start_week, end_week, parity = _coordinate(
         db, batch, task, source, preload=preload
     )
-    _ensure_task_capacity(db, batch, task, preload=preload)
+    _ensure_task_capacity(db, batch, task, preload=preload, candidate={
+        "weekday": weekday, "slot_no": slot_no, "start_week": start_week,
+        "end_week": end_week, "week_parity": parity})
     classroom_id, classroom_text = _classroom(
         db, task, _value(source, "classroom"), preload=preload
     )
@@ -399,6 +439,182 @@ def add_item(batch_id, user, body) -> dict:
         return {**_base._item_row(item), "prePublishReset": reset}
 
 
+def _preflight_result(db, batch, task, source, *, exclude_item_id=None) -> dict:
+    """Pure-read scheduling preflight backed by the same canonical validators as writes."""
+    params = policy.effective_params(db, int(batch.term_id), int(batch.id))
+    requested_weekday = int(_value(source, "weekday"))
+    requested_slot = int(_value(source, "slotNo"))
+    coordinates = [
+        (weekday, slot_no)
+        for weekday in params["weekdays"]
+        for slot_no in params["slots"]
+    ]
+    preload_sources = [
+        {
+            "taskId": str(task.id),
+            "weekday": weekday,
+            "slotNo": slot_no,
+            "startWeek": _value(source, "startWeek"),
+            "endWeek": _value(source, "endWeek"),
+            "weekParity": _value(source, "weekParity", "ALL"),
+            "classroom": _value(source, "classroom"),
+        }
+        # 手工排课可选自动排课偏好之外的日期和节次，也必须预载其占用。
+        for weekday, slot_no in sorted(set(coordinates) | {(requested_weekday, requested_slot)})
+    ]
+    preload = import_preload.build_preload(
+        db,
+        batch,
+        preload_sources,
+        allowed_batch_ids=_task_batch_ids(db, batch),
+        teaching_weeks=params["teachingWeeks"],
+        enabled_slots=params["enabledSlots"],
+        conflict_batch_ids=[candidate.id for candidate in gate_service.school_candidate_batches(db, batch)],
+    )
+    task = _resolve_task(db, batch, {"taskId": str(task.id)}, preload=preload, lock=False)
+    weekday, slot_no, start_week, end_week, parity = _coordinate(
+        db, batch, task, source, preload=preload
+    )
+    _ensure_task_capacity(
+        db,
+        batch,
+        task,
+        exclude_item_id=exclude_item_id,
+        preload=preload,
+        candidate={"weekday": weekday, "slot_no": slot_no, "start_week": start_week,
+                   "end_week": end_week, "week_parity": parity},
+    )
+    _classroom_id, classroom_text = _classroom(
+        db, task, _value(source, "classroom"), preload=preload
+    )
+    conflict = preload.detect_conflict(
+        batch_id=batch.id,
+        weekday=weekday,
+        slot_no=slot_no,
+        start_week=start_week,
+        end_week=end_week,
+        parity=parity,
+        teacher_key=task.teacher_key,
+        class_id=task.class_id,
+        classroom=classroom_text,
+        exclude_id=exclude_item_id,
+    )
+
+    alternatives = []
+    if conflict:
+        ordered = sorted(
+            coordinates,
+            key=lambda point: (
+                abs(point[0] - requested_weekday) * 10 + abs(point[1] - requested_slot),
+                point[0],
+                point[1],
+            ),
+        )
+        for alt_weekday, alt_slot in ordered:
+            if (alt_weekday, alt_slot) == (weekday, slot_no):
+                continue
+            alt_conflict = preload.detect_conflict(
+                batch_id=batch.id,
+                weekday=alt_weekday,
+                slot_no=alt_slot,
+                start_week=start_week,
+                end_week=end_week,
+                parity=parity,
+                teacher_key=task.teacher_key,
+                class_id=task.class_id,
+                classroom=classroom_text,
+                exclude_id=exclude_item_id,
+            )
+            if alt_conflict is None:
+                alternatives.append({
+                    "weekday": alt_weekday,
+                    "slotNo": alt_slot,
+                    "label": f"周{alt_weekday}第{alt_slot}节",
+                    "reason": "教师、班级、教室均无硬冲突",
+                })
+            if len(alternatives) >= 5:
+                break
+
+    return {
+        "allowed": conflict is None,
+        "severity": "HARD" if conflict else "NONE",
+        "candidate": {
+            "weekday": weekday,
+            "slotNo": slot_no,
+            "startWeek": start_week,
+            "endWeek": end_week,
+            "weekParity": parity,
+            "classroom": classroom_text,
+        },
+        "task": {
+            "courseName": task.course_name or "",
+            "teacherName": task.teacher_name or "",
+            "teachingClassName": task.teaching_class_name or "",
+        },
+        "conflict": conflict,
+        "blockers": [conflict["detail"]] if conflict else [],
+        "alternatives": alternatives,
+        "checkedBy": "CANONICAL_SCHEDULE_CONFLICT_V1",
+    }
+
+
+def preflight_item(batch_id, user, body) -> dict:
+    """Preflight one add candidate without locking or writing schedule facts."""
+    with _base.session() as db:
+        batch = _load_batch(db, batch_id, writable=False, lock=False)
+        assert_schedule_write_scope(db, user, batch)
+        if batch.status not in {"DRAFT", "PRE_PUBLISHED"}:
+            return {
+                "allowed": False,
+                "severity": "HARD",
+                "candidate": None,
+                "conflict": None,
+                "blockers": ["已发布课表不可直接修改，请走调停课或整批重大纠错"],
+                "alternatives": [],
+                "checkedBy": "SCHEDULE_BATCH_STATE",
+            }
+        task = _resolve_task(db, batch, body, lock=False)
+        return _preflight_result(db, batch, task, body)
+
+
+def preflight_move(item_id, user, body) -> dict:
+    """Preflight one drag target; the original item remains unchanged."""
+    from app.models import AaScheduleItem
+
+    with _base.session() as db:
+        item = db.query(AaScheduleItem).filter(
+            AaScheduleItem.id == int(item_id),
+            AaScheduleItem.tenant_id == _base._tid(),
+            AaScheduleItem.status == "EFFECTIVE",
+            AaScheduleItem.is_deleted.is_(False),
+        ).first()
+        if not item:
+            raise not_found("排课条目不存在")
+        batch = _load_batch(db, item.batch_id, writable=False, lock=False)
+        assert_schedule_write_scope(db, user, batch)
+        if batch.status not in {"DRAFT", "PRE_PUBLISHED"}:
+            return {
+                "allowed": False,
+                "severity": "HARD",
+                "candidate": None,
+                "conflict": None,
+                "blockers": ["已发布课表不可拖拽调整，请走调停课"],
+                "alternatives": [],
+                "checkedBy": "SCHEDULE_BATCH_STATE",
+            }
+        task = _resolve_task(db, batch, {"taskId": item.task_id}, lock=False)
+        source = {
+            "taskId": str(task.id),
+            "weekday": body.weekday,
+            "slotNo": body.slotNo,
+            "startWeek": item.start_week,
+            "endWeek": item.end_week,
+            "weekParity": item.week_parity,
+            "classroom": item.classroom_text,
+        }
+        return _preflight_result(db, batch, task, source, exclude_item_id=item.id)
+
+
 def _build_import_preload(db, batch, items):
     """预载失败时仅对可恢复的业务配置错误回退旧路径，保持逐行错误语义。"""
     try:
@@ -414,6 +630,7 @@ def _build_import_preload(db, batch, items):
         allowed_batch_ids=allowed_batch_ids,
         teaching_weeks=teaching_weeks,
         enabled_slots=enabled_slots,
+        lock_tasks=True,
     )
 
 
@@ -425,6 +642,8 @@ def _apply_import_rows(db, batch, items) -> tuple[int, list[dict]]:
     """
     imported = 0
     errors = []
+    # The preload acquires the shared ascending task locks and returns those
+    # exact rows. A second read here duplicates queries and can mix snapshots.
     preload = _build_import_preload(db, batch, items) if items else None
     for index, source in enumerate(items or [], start=1):
         try:
@@ -458,6 +677,7 @@ def import_dry_run(batch_id, user, items) -> dict:
     教室/班级撞时间）依然能在预检阶段发现，因为保存点内先写入的行对同一事务内后续查询可见。"""
     with _base.session() as db:
         batch = _load_batch(db, batch_id, writable=False, lock=False)
+        assert_schedule_write_scope(db, user, batch)
         db.flush()
         nested = db.begin_nested()
         try:
@@ -602,6 +822,10 @@ def adjust_item(batch_id, item_id, user, weekday, slot_no, classroom, week_parit
             "classroom": classroom,
         }
         new_weekday, new_slot, start_week, end_week, parity = _coordinate(db, batch, task, source)
+        if parity != item.week_parity:
+            _ensure_task_capacity(db, batch, task, exclude_item_id=item.id, candidate={
+                "weekday": new_weekday, "slot_no": new_slot, "start_week": start_week,
+                "end_week": end_week, "week_parity": parity})
         classroom_id, classroom_text = _classroom(db, task, classroom)
         conflict = _base._detect_conflict(
             db,
@@ -657,6 +881,127 @@ def _pending_objections(db, batch_id) -> int:
     ).count()
 
 
+def _correction_result(db, draft, source_batch_id, *, idempotent=False) -> dict:
+    """返回纠错草稿的同一套完整性口径，供工作台直接接管后续补排。"""
+    gate = gate_service.evaluate(db, draft)
+    return {
+        "batchId": str(draft.id),
+        "sourceBatchId": str(source_batch_id),
+        "status": draft.status,
+        "clonedItems": int(gate["scheduledItemCount"]),
+        "expectedSessions": int(gate["expectedSessions"]),
+        "scheduledSessions": int(gate["scheduledSessions"]),
+        "remainingSessions": sum(max(0, row["expectedSessions"] - row["scheduledSessions"])
+                                 for row in gate["missingTasks"]),
+        **{key: gate[key] for key in ("expectedContactHours", "scheduledContactHours",
+            "missingContactHours", "excessContactHours", "weeklyOverloadCount", "scheduledItemCount")},
+        "idempotent": bool(idempotent),
+    }
+
+
+def start_correction_draft(batch_id, user, reason="") -> dict:
+    """从当前正式课表创建可继续补排的纠错草稿，保持四端正式课表在线。"""
+    from app.models import AaScheduleBatch, AaScheduleItem
+    from . import academic_affairs_schedule_truth_service as truth_service
+
+    reason = str(reason or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "创建纠错草稿必须填写至少 5 个字的原因")
+
+    with _base.session() as db:
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        lock_formal_authority(db)
+        source = _load_batch(db, batch_id)
+        if source.status != "PUBLISHED":
+            raise AppException(
+                "APPROVAL_VERSION_CONFLICT",
+                "只有当前正式发布的课表可创建纠错草稿",
+                http_status=409,
+            )
+
+        scope_type, scope_id = truth_service.scope_of(source)
+        head = truth_service.lock_scope_head(db, source.term_id, scope_type, scope_id)
+        if not head or int(head.active_batch_id or 0) != int(source.id):
+            raise AppException(
+                "APPROVAL_VERSION_CONFLICT",
+                "该课表已不是四端正在使用的正式版本，请刷新后选择当前正式课表",
+                http_status=409,
+            )
+
+        # 重复点击或网络重试只返回同一个未完成草稿，避免同一正式版本派生多份纠错分支。
+        existing = db.query(AaScheduleBatch).filter(
+            AaScheduleBatch.tenant_id == _base._tid(),
+            AaScheduleBatch.supersedes_batch_id == int(source.id),
+            AaScheduleBatch.status.in_(("DRAFT", "PRE_PUBLISHED")),
+            AaScheduleBatch.is_deleted.is_(False),
+        ).order_by(AaScheduleBatch.id.desc()).with_for_update().first()
+        if existing:
+            return _correction_result(db, existing, source.id, idempotent=True)
+
+        draft = AaScheduleBatch(
+            tenant_id=_base._tid(),
+            term_id=source.term_id,
+            batch_name=f"{source.batch_name} · 纠错草稿",
+            college_id=source.college_id,
+            status="DRAFT",
+            publish_at=None,
+            supersedes_batch_id=source.id,
+        )
+        db.add(draft)
+        db.flush()
+
+        source_items = db.query(AaScheduleItem).filter(
+            AaScheduleItem.tenant_id == _base._tid(),
+            AaScheduleItem.batch_id == int(source.id),
+            AaScheduleItem.status == "EFFECTIVE",
+            AaScheduleItem.is_deleted.is_(False),
+        ).order_by(AaScheduleItem.id).all()
+        for item in source_items:
+            db.add(AaScheduleItem(
+                tenant_id=_base._tid(),
+                batch_id=draft.id,
+                task_id=item.task_id,
+                course_id=item.course_id,
+                course_name=item.course_name,
+                class_id=item.class_id,
+                class_name=item.class_name,
+                teacher_key=item.teacher_key,
+                teacher_name=item.teacher_name,
+                weekday=item.weekday,
+                slot_no=item.slot_no,
+                start_week=item.start_week,
+                end_week=item.end_week,
+                week_parity=item.week_parity,
+                classroom_id=item.classroom_id,
+                classroom_text=item.classroom_text,
+                status="EFFECTIVE",
+                # 复制结果是纠错草稿的受保护基线，后续“清除自动排课”不能误删它。
+                source="MANUAL",
+                change_id=None,
+                objection_status=None,
+                objection_reason=None,
+            ))
+        db.flush()
+
+        _base._audit(
+            db,
+            "AA_SCHEDULE_BATCH",
+            draft.id,
+            "START_CORRECTION_DRAFT",
+            f"sourceBatchId={source.id};clonedItems={len(source_items)};reason={reason}",
+        )
+        _base._audit(
+            db,
+            "AA_SCHEDULE_BATCH",
+            source.id,
+            "OPEN_CORRECTION_DRAFT",
+            f"draftBatchId={draft.id};reason={reason}",
+        )
+        result = _correction_result(db, draft, source.id)
+        db.commit()
+        return result
+
+
 def pre_publish(batch_id, user) -> dict:
     with _base.session() as db:
         batch = _load_batch(db, batch_id)
@@ -691,8 +1036,11 @@ def publish(batch_id, user) -> dict:
     from app.services.message_event_outbox_service import emit_receiver_notice
 
     from . import academic_affairs_schedule_truth_service as truth_service
+    from . import academic_affairs_schedule_resource_guard as resource_guard
 
     with _base.session() as db:
+        _base._require_school_schedule_operator(db, user)
+        resource_guard.lock_formal_authority(db)
         batch = _load_batch(db, batch_id)
         # 先锁范围头再校验：两个事务若各自只查不锁，会双双查到"无冲突"再双双发布，
         # 同一学期就出现两份 PUBLISHED，学生的正式课表变得没有答案。
@@ -717,6 +1065,7 @@ def publish(batch_id, user) -> dict:
                 "status": "PUBLISHED",
                 "notified": int(last.notified_count or 0) if last else 0,
                 "idempotent": True,
+                "activeTruth": truth_service.batch_truth(db, batch),
             }
         if batch.status != "PRE_PUBLISHED":
             raise AppException(
@@ -731,9 +1080,23 @@ def publish(batch_id, user) -> dict:
                 f"仍有 {pending_objections} 条教师异议未处理，不能发布",
                 http_status=409,
             )
+        term = resource_guard.lock_term(db, batch.term_id)
+        policy.resolve_scope(db, batch_id=batch.id, writable=True)
+        school_gate = gate_service.require_school_publishable(db, batch)
         gate = gate_service.require_publishable(db, batch)
+        effective_items = db.scalars(select(AaScheduleItem).where(
+            AaScheduleItem.tenant_id == _base._tid(), AaScheduleItem.batch_id == batch.id,
+            AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False),
+        ).order_by(AaScheduleItem.id)).all()
+        resource_guard.require_no_booking_conflict(db, term, effective_items)
         # 全校共享资源（教师/教室/班级）跨批次校验：学院级批次内部合法不等于全校合法。
-        school_wide = truth_service.require_no_school_wide_conflict(db, batch)
+        # 换版草稿会完整复制当前正式版本；只排除本范围即将被它顶替的旧版本，
+        # 其他学院/范围的正式课表仍必须参与共享资源冲突检测。
+        school_wide = truth_service.require_no_school_wide_conflict(
+            db,
+            batch,
+            replacing_batch_id=int(head.active_batch_id) if head.active_batch_id else None,
+        )
         batch.status = "PUBLISHED"
         batch.publish_at = datetime.utcnow()
         truth = truth_service.promote_to_active(db, batch, head)
@@ -799,5 +1162,6 @@ def publish(batch_id, user) -> dict:
         "status": "PUBLISHED",
         "notified": notified,
         "gate": gate,
+        "schoolGate": school_gate,
         "activeTruth": truth,
     }

@@ -77,6 +77,17 @@ def _open_batch(client, headers):
     return response.json()["data"]["batchId"]
 
 
+def test_roster_returns_real_class_name_for_paged_students(client, db_mode):
+    marker, _ids = _seed_many(db_mode, count=23)
+    response = client.get(f"{BASE}/roster", headers=_hdr(client),
+                          params={"keyword": marker, "page": 2, "pageSize": 20})
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["total"] == 23
+    assert len(data["items"]) == 3
+    assert {row["className"] for row in data["items"]} == {f"规模班-{marker}"}
+
+
 def test_d2u_large_candidate_list_pages_in_sql_and_preview_never_materializes_all_candidates(
     client, db_mode, monkeypatch
 ):

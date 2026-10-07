@@ -38,7 +38,8 @@ def _seed(db_mode):
     from uuid import uuid4
 
     from app.db.session import get_sessionmaker
-    from app.models import InternshipBatch, InternshipRecord, StudentProfile, User, WeeklyReport
+    from app.models import (InternshipBatch, InternshipRecord, StudentAccountLink,
+                            StudentProfile, User, WeeklyReport)
     db = get_sessionmaker()()
     ids = {}
     try:
@@ -50,8 +51,15 @@ def _seed(db_mode):
             s = StudentProfile(tenant_id=TID, student_no=no, real_name=name,
                                current_stage="INTERNSHIP", student_status="NORMAL", status="ACTIVE")
             db.add(s); db.flush()
-            db.add(User(tenant_id=TID, login_name=no, real_name=name, password_hash="test",
-                        user_type="STUDENT", status="ACTIVE"))
+            account = User(tenant_id=TID, login_name=no, real_name=name, password_hash="test",
+                           user_type="STUDENT", status="ACTIVE")
+            db.add(account)
+            db.flush()
+            # 消息投递必须走稳定的学籍↔账号绑定，而不是旧的 login_name 猜测。
+            db.add(StudentAccountLink(
+                tenant_id=TID, student_id=s.id, user_id=account.id,
+                link_status="ACTIVE", source="MANUAL",
+            ))
             r = InternshipRecord(tenant_id=TID, student_id=s.id, advisor_name=adv,
                                  enterprise_name="测试企业", position_name="实习生",
                                  status="ONBOARD", risk_level="NONE", batch_id=b.id)
@@ -61,6 +69,7 @@ def _seed(db_mode):
             db.add(w); db.flush()
             ids[f"rec_{key}"] = r.id
             ids[f"rep_{key}"] = w.id
+            ids[f"student_user_{key}"] = account.id
         db.commit()
         return ids
     finally:
@@ -83,6 +92,44 @@ def test_weekly_review_own_ok(client, db_mode):
                     json={"action": "APPROVE", "comment": "", "expectedVersion": 0}, headers=_mentor("刘强"))
     assert r.status_code == 200 and r.json()["code"] == 0, r.json()
     assert r.json()["data"]["status"] == "APPROVED"
+
+
+def test_weekly_review_return_emits_student_message_with_exact_report_link(client, db_mode):
+    """退回周报后，学生收到的不是泛化入口，而是可安全回到原周报的正式消息。"""
+    ids = _seed(db_mode)
+    response = client.post(
+        f"{INT}/reports/{ids['rep_a']}/review",
+        json={"action": "RETURN", "comment": "请补充本周岗位任务的具体完成情况", "expectedVersion": 0},
+        headers=_mentor("刘强"),
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["status"] == "RETURNED"
+
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipAuditTrail, MessageEventOutbox, UnifiedMessage
+    db = get_sessionmaker()()
+    try:
+        outbox = db.query(MessageEventOutbox).filter_by(
+            event_code="INTERNSHIP.WEEKLY_RETURNED", source_biz_id=ids["rep_a"],
+        ).one()
+        assert outbox.status == "SUCCEEDED"
+        message = db.query(UnifiedMessage).filter_by(
+            source_module="internship", source_biz_id=ids["rep_a"],
+        ).one()
+        assert message.receiver_user_id == ids["student_user_a"]
+        assert message.action_key == "student.internship.weekly-report"
+        assert message.action_params_json == {
+            "reportId": str(ids["rep_a"]),
+            "batchId": str(ids["batch"]),
+            "internshipId": str(ids["rec_a"]),
+            "weekNo": 3,
+        }
+        assert "具体完成情况" in (message.content or "")
+        assert db.query(InternshipAuditTrail).filter_by(
+            target_id=ids["rep_a"], target_type="REPORT", action="REVIEW_RETURN",
+        ).count() == 1
+    finally:
+        db.close()
 
 
 def test_weekly_export_and_remind_are_real(client, db_mode):

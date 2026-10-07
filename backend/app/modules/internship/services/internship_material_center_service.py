@@ -12,7 +12,7 @@ import re
 import zipfile
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 
 from app.core.exceptions import AppException, not_found
 from app.models import (
@@ -148,7 +148,7 @@ def _report_snapshot(db, report: InternshipProcessReport, record: InternshipReco
     name = f"过程报告_{report.report_type}_{report.period_key}_v{int(report.version or 0)}.txt"
     meta = file_service.store_bytes(
         content, name, biz_type="INTERNSHIP", biz_id=str(record.id), mime_type="text/plain",
-        user=user, visibility="BIZ_SCOPED", security_level="PERSONAL")
+        user=user, visibility="BIZ_SCOPED", security_level="PERSONAL", db=db)
     return str(meta["fileId"])
 
 
@@ -433,6 +433,33 @@ def _manifest_row(db, manifest: ArchiveManifest) -> dict:
     }
 
 
+def manifest_digest(manifest: ArchiveManifest, items: list[ArchiveManifestItem]) -> str:
+    """按冻结合同重算 Manifest SHA-256，任何字段漂移都必须 fail-closed。"""
+    payload = {
+        "moduleCode": manifest.module_code,
+        "archiveType": manifest.archive_type,
+        "targetType": manifest.target_type,
+        "targetId": manifest.target_id,
+        "revision": int(manifest.revision or 0),
+        "ruleVersion": manifest.rule_version,
+        "items": [{
+            "materialCode": item.material_code,
+            "assetId": str(item.asset_id),
+            "versionId": str(item.version_id),
+            "fileObjectId": str(item.file_object_id),
+            "fileName": item.file_name_snapshot,
+            "sizeBytes": item.size_snapshot,
+            "sha256": item.sha256_snapshot,
+            "reviewStatus": item.review_status,
+            "scanResult": item.scan_result,
+            "sortNo": int(item.sort_no or 0),
+        } for item in items],
+    }
+    return hashlib.sha256(json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
+
+
 def record_detail(internship_id, user=None, *, auto_sync: bool = False) -> dict:
     if auto_sync:
         synchronize(internship_id, user)
@@ -456,34 +483,83 @@ def record_detail(internship_id, user=None, *, auto_sync: bool = False) -> dict:
 
 
 def list_center(page=1, page_size=20, *, batch_id=None, keyword=None, safety_status=None, user=None):
-    from app.modules.internship.services.internship_batch_context import batch_record_ids
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     from app.modules.internship.services.internship_scope import apply_internship_record_scope
     with session() as db:
-        batch, record_ids = batch_record_ids(db, batch_id)
-        if not record_ids:
-            return [], 0
-        query = select(InternshipRecord, StudentProfile).join(
+        batch = resolve_batch(db, batch_id)
+        ready_expr = (
+            FileObject.status.in_(READY_FILE_STATUS)
+            & func.coalesce(FileObject.scan_status, "NOT_REQUIRED").in_(READY_SCAN)
+            & FileVersion.status.in_(READY_VERSION_STATUS)
+        )
+        material_stats = select(
+            FileBinding.student_id.label("student_id"),
+            func.count(FileBinding.id).label("material_count"),
+            func.sum(case((ready_expr, 1), else_=0)).label("ready_count"),
+        ).join(
+            FileAsset, FileAsset.id == FileBinding.asset_id,
+        ).join(
+            FileVersion, FileVersion.id == FileBinding.version_id,
+        ).join(
+            FileObject, FileObject.id == FileBinding.file_id,
+        ).where(
+            FileBinding.tenant_id == _tid(),
+            FileAsset.tenant_id == _tid(),
+            FileVersion.tenant_id == _tid(),
+            FileObject.tenant_id == _tid(),
+            FileBinding.module_code == MODULE_CODE,
+            FileBinding.batch_id == str(batch.id),
+            FileBinding.is_current.is_(True),
+            FileBinding.status == "ACTIVE",
+            FileBinding.is_deleted.is_(False),
+            FileAsset.lifecycle_status == "ACTIVE",
+            FileAsset.is_deleted.is_(False),
+            FileVersion.is_current.is_(True),
+            FileVersion.is_deleted.is_(False),
+            FileObject.is_deleted.is_(False),
+        ).group_by(FileBinding.student_id).subquery()
+        material_count = func.coalesce(material_stats.c.material_count, 0)
+        ready_count = func.coalesce(material_stats.c.ready_count, 0)
+        unsafe_count = material_count - ready_count
+        query = select(
+            InternshipRecord, StudentProfile,
+            material_count.label("material_count"),
+            ready_count.label("ready_count"),
+        ).join(
             StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
-            InternshipRecord.tenant_id == _tid(), InternshipRecord.id.in_(record_ids),
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.batch_id == batch.id,
             InternshipRecord.is_deleted.is_(False), StudentProfile.is_deleted.is_(False))
+        query = query.outerjoin(
+            material_stats, material_stats.c.student_id == InternshipRecord.student_id,
+        )
         query = apply_internship_record_scope(query, user)
         if keyword:
             value = f"%{keyword.strip()}%"
             query = query.where((StudentProfile.real_name.like(value)) | (StudentProfile.student_no.like(value)))
-        rows = []
-        for record, student in db.execute(query.order_by(InternshipRecord.id.desc())).all():
-            items = [_item(*row) for row in _current_rows(db, record)]
-            unsafe = sum(1 for x in items if not x["readyForBusiness"])
-            if safety_status == "READY" and unsafe: continue
-            if safety_status == "UNSAFE" and not unsafe: continue
-            rows.append({"internshipId": str(record.id), "studentId": str(record.student_id),
+        if safety_status == "READY":
+            query = query.where(material_count > 0, unsafe_count == 0)
+        elif safety_status == "UNSAFE":
+            query = query.where(unsafe_count > 0)
+        elif safety_status == "NOT_SYNCED":
+            query = query.where(material_count == 0)
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        page = max(1, int(page))
+        page_size = max(1, min(int(page_size), 200))
+        result = []
+        for record, student, count, ready in db.execute(
+            query.order_by(InternshipRecord.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all():
+            count = int(count or 0)
+            ready = int(ready or 0)
+            unsafe = count - ready
+            result.append({"internshipId": str(record.id), "studentId": str(record.student_id),
                 "studentName": student.real_name or "", "studentNo": student.student_no or "",
                 "enterpriseName": record.enterprise_name or "", "advisorName": record.advisor_name or "",
-                "batchId": str(batch.id), "materialCount": len(items),
-                "readyCount": len(items) - unsafe, "unsafeCount": unsafe,
-                "safetyStatus": "READY" if items and not unsafe else ("UNSAFE" if unsafe else "NOT_SYNCED")})
-        total = len(rows); start = (max(1, int(page)) - 1) * int(page_size)
-        return rows[start:start + int(page_size)], total
+                "batchId": str(batch.id), "materialCount": count,
+                "readyCount": ready, "unsafeCount": unsafe,
+                "safetyStatus": "READY" if count and not unsafe else ("UNSAFE" if unsafe else "NOT_SYNCED")})
+        return result, total
 
 
 def prepare_archive_manifest(internship_id, user=None, force_file_ids=None) -> dict:

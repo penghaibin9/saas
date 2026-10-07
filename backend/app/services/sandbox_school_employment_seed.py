@@ -151,6 +151,7 @@ def seed_school_employment_20k(db, tenant_id: int) -> dict:
         int(row.student_id): row
         for row in db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == tenant_id,
+            InternshipRecord.destination_type == "ASSIGNED",
             InternshipRecord.is_deleted.is_(False),
         )).all()
     }
@@ -512,6 +513,7 @@ def validate_employment_facts_20k(db, tenant_id: int) -> dict:
         int(row.student_id): row
         for row in db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == tenant_id,
+            InternshipRecord.destination_type == "ASSIGNED",
             InternshipRecord.is_deleted.is_(False),
         )).all()
     }

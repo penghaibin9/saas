@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="心理预警摘要"
-    subtitle="面向管理侧的非敏感视图：仅呈现「是否需关注 / 关注等级 / 在办危机数」等聚合与标记，绝不含任何心理明细。"
+    subtitle="风险标记与在办数量"
     role-name="学工处 / 学院 / 辅导员（仅摘要）"
     data-scope-name="学工数据范围（明细另受 PSY_STUDENT 约束）"
     watermark-purpose="心理预警摘要查看"
@@ -13,21 +13,10 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/dashboard')"
     >
-      <section class="sa-summary-strip mental-summary-privacy">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">非敏感管理视图</span>
-          <h2 class="sa-summary-strip__title">本页只回答“是否需要关注、处于什么等级、还有多少在办记录”，绝不展示咨询原文或心理明细</h2>
-          <p class="sa-summary-strip__text">管理人员可先看聚合分布，再按学生查询必要摘要。确需查看明细时必须进入心理关注名单，并通过专项权限、逐生范围和敏感查看审计。</p>
-        </div>
-      </section>
 
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="card in metricCards" :key="card.key" :title="card.label" :value="card.value" :accent="card.accent" />
-      </div>
 
       <div class="mental-summary-layout">
         <AppSectionCard title="关注等级分布（仅聚合）">
-          <p class="mental-section-hint">只显示当前数据范围内各关注等级数量，不包含学生心理明细。</p>
           <DataTable v-if="levelRows.length" :columns="levelColumns" :rows="levelRows" row-key="key">
             <template #cell-label="{ row }"><AppStatusTag :type="row.kind" :label="row.label" /></template>
             <template #cell-value="{ row }"><strong class="mental-count">{{ row.value }}</strong></template>
@@ -36,7 +25,6 @@
         </AppSectionCard>
 
         <AppSectionCard title="按学生查询必要摘要">
-          <p class="mental-section-hint">选择当前数据范围内学生，仅返回关注标记、等级和在办数量。</p>
           <div class="sa-toolbar sa-filter-bar">
             <AppStudentPicker v-model="queryStudentId" class="sa-input" placeholder="按学号 / 姓名选择学生"
               data-scope-hint="仅显示你数据范围内的学生" @change="querySummary" />
@@ -73,7 +61,6 @@
 <script>
 import {
   AppGlobalState,
-  AppMetricCard,
   AppPageShell,
   AppPermissionButton,
   AppStudentPicker,
@@ -93,7 +80,7 @@ const LEVELS = [
 
 export default {
   name: 'MentalWarningSummaryView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppPermissionButton, AppStudentPicker, AppSectionCard, AppStatusTag, DataTable },
+  components: { AppGlobalState, AppPageShell, AppPermissionButton, AppStudentPicker, AppSectionCard, AppStatusTag, DataTable },
   props: { ctx: { type: Object, default: null } },
   data() {
     return { levelColumns: LEVEL_COLUMNS, loading: true, actioning: false, errorMessage: '', stats: null, queryStudentId: '', summary: null }
@@ -158,18 +145,18 @@ export default {
 .mental-summary-privacy { border-color: var(--warning-300, #fcd34d); background: var(--warning-50, #fffbeb); }
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
 .mental-summary-layout { display: grid; grid-template-columns: minmax(280px, .75fr) minmax(0, 1.25fr); gap: var(--space-4); align-items: start; }
-.mental-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
 .sa-toolbar { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-bottom: var(--space-3); }
 .sa-input { flex: 1 1 260px; min-width: 220px; }
 .mental-count { color: var(--primary-700); font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
 .sa-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-.sa-summary__item { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-3); display: flex; flex-direction: column; gap: var(--space-2); background: var(--bg-section); }
+.sa-summary__item { border: 0; border-left: 1px solid var(--border-light); padding: 4px 12px; display: flex; flex-direction: column; gap: 3px; background: transparent; }
+.sa-summary__item:first-child { border-left: 0; padding-left: 0; }
 .sa-summary__item span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .sa-summary__item strong { font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
 .sa-warn { color: var(--warning-700); }
 .sa-ok { color: var(--success-700); }
 .sa-note { grid-column: 1 / -1; color: var(--text-tertiary); margin: 0; font-size: var(--font-size-xs); line-height: 1.6; }
-.mental-query-empty { margin: 0; padding: var(--space-5); border: 1px dashed var(--border-base); border-radius: var(--radius-md); color: var(--text-tertiary); text-align: center; }
+.mental-query-empty { margin: 0; padding: 12px 0; border-top: 1px dashed var(--border-base); color: var(--text-tertiary); text-align: center; }
 @media (max-width: 960px) { .sa-grid--metrics, .mental-summary-layout { grid-template-columns: 1fr 1fr; } .mental-summary-layout { grid-template-columns: 1fr; } }
 @media (max-width: 640px) { .sa-grid--metrics, .sa-summary { grid-template-columns: 1fr; } .sa-input { width: 100%; min-width: 0; } }
 @import '@/styles/module-page.css';

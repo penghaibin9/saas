@@ -66,8 +66,8 @@ test('U10 material notice deep-links to one authorized requirement on all consum
   //   2. 后端 Adapter 按端前缀白名单裁剪 target；
   //   3. 前端 canNavigate() 再做一次同样的 fail-closed 兜底。
   assert.match(registry, /"studentMini": "\/pages\/student\/affairs\/index"/)
-  assert.match(miniAdapter, /CLIENT_STUDENT_MINI: \("\/pages\/student\/", "\/pages\/common\/"\)/)
-  assert.match(miniRouter, /student: \['\/pages\/student\/', '\/pages\/common\/'\]/)
+  assert.match(miniAdapter, /CLIENT_STUDENT_MINI:\s*\(\s*"\/pages\/student\/",\s*"\/pages\/student-internship\/",\s*"\/pages\/common\/",?\s*\)/)
+  assert.match(miniRouter, /student: \['\/pages\/student\/', '\/pages\/student-internship\/', '\/pages\/common\/'\]/)
   assert.match(miniPage, /query\.materialRequirementId/)
   // 页面不得再自己拼业务路由或跳教师入口。
   assert.doesNotMatch(miniDetail, /pages\/teacher\//)

@@ -112,6 +112,7 @@ def test_a03_pc_and_mobile_facades_expose_the_same_current_authority_paths():
         ("/context/volunteers/submissions", frozenset({"GET"})),
         ("/context/volunteers/submissions/{submission_version}", frozenset({"GET"})),
         ("/context/volunteers/contact-consent/revoke", frozenset({"POST"})),
+        ("/volunteer-results/{group_id}", frozenset({"GET"})),
     }
     assert {(path.removeprefix("/portal/internship"), methods) for path, methods in portal} == suffixes
     assert {(path.removeprefix("/mobile/internship"), methods) for path, methods in mobile} == suffixes

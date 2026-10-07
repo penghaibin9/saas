@@ -30,6 +30,17 @@ function writeIdentity(store) {
   }
 }
 
+function discardUnverifiedIdentity() {
+  try {
+    const snapshot = readSnapshot()
+    if (!snapshot || !Object.prototype.hasOwnProperty.call(snapshot, 'identity')) return
+    delete snapshot.identity
+    uni.setStorageSync(STORAGE_KEY, JSON.stringify(snapshot))
+  } catch (e) {
+    // 无法清理时也绝不把未核验身份写回内存；后续 owner 校验将失败关闭。
+  }
+}
+
 /**
  * 教务四端对会话的增量增强。
  *
@@ -58,13 +69,15 @@ export function academicSessionPlugin({ store }) {
   store.restore = (...args) => {
     const result = baseRestore(...args)
     const snapshot = readSnapshot()
-    if (snapshot?.identity) {
+    if (store.persistedIdentityVerified && snapshot?.identity) {
       store.identity = {
         tenantId: null,
         activeContextId: null,
         ...(store.identity || {}),
         ...snapshot.identity
       }
+    } else if (snapshot?.identity) {
+      discardUnverifiedIdentity()
     }
     return result
   }

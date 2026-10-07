@@ -27,6 +27,18 @@
 
             <view class="section-head"><text class="section-head__title">题目库</text></view>
             <text class="tp__hint">从题目库选择 1~{{ activeRound.maxChoices }} 个志愿，按点选顺序确定志愿序：</text>
+            <view class="card tp__filters">
+              <input v-model="topicKeyword" class="tp__search" placeholder="搜索题目、导师或要求" confirm-type="search" @confirm="applyTopicFilters" />
+              <button class="btn btn-ghost" :disabled="topicLoading" @click="applyTopicFilters">搜索</button>
+              <scroll-view scroll-x class="tp__chips"><view class="tp__chips-row"><text v-for="category in topicCategories" :key="category" class="tp__chip" :class="{ active: topicCategory === (category === '全部' ? '' : category) }" @click="chooseCategory(category)">{{ category }}</text></view></scroll-view>
+            </view>
+            <view v-if="topicError" class="card tp__error"><text>{{ topicError }}</text><button class="btn btn-ghost" @click="loadTopics(true)">重新加载</button></view>
+            <view v-else-if="topicLoading && !topics.length" class="card tp__empty"><text>正在加载题目库…</text></view>
+            <view v-else-if="!topics.length" class="card tp__empty">
+              <text class="tp__topic-title">{{ topicKeyword || topicCategory ? '没有符合筛选条件的题目' : '当前没有可选题目' }}</text>
+              <text class="tp__hint">{{ topicKeyword || topicCategory ? '可清空关键词或切换分类后重试。' : '题目开放后会在这里显示；也可刷新核对最新状态。' }}</text>
+              <button class="btn btn-ghost" @click="clearTopicFilters">清空筛选并刷新</button>
+            </view>
             <view class="card stack-sm">
               <view v-for="t in topics" :key="t.id" class="tp__topic" @click="toggleChoice(t.id)">
                 <view class="flex-1">
@@ -35,6 +47,7 @@
                 </view>
                 <text v-if="choiceRank(t.id)" class="tp__badge">志愿{{ choiceRank(t.id) }}</text>
               </view>
+              <button v-if="topicsHasMore" class="btn btn-ghost" :disabled="topicLoading" @click="loadMoreTopics">{{ topicLoading ? '加载中…' : '加载更多题目' }}</button>
             </view>
           </template>
         </template>
@@ -48,6 +61,17 @@
             </button>
             <template v-if="showChangeForm">
               <text class="tp__hint">获批课题已锁定，更换须重新审核，请选择目标课题并说明理由：</text>
+              <view class="tp__filters">
+                <input v-model="topicKeyword" class="tp__search" placeholder="搜索目标题目或导师" confirm-type="search" @confirm="applyTopicFilters" />
+                <button class="btn btn-ghost" :disabled="topicLoading" @click="applyTopicFilters">搜索</button>
+              </view>
+              <view v-if="topicError" class="tp__error"><text>{{ topicError }}</text><button class="btn btn-ghost" @click="loadTopics(true)">重试</button></view>
+              <view v-else-if="topicLoading && !topics.length" class="tp__empty"><text>正在加载可更换题目…</text></view>
+              <view v-else-if="!topics.length" class="tp__empty">
+                <text class="tp__topic-title">{{ topicKeyword ? '没有符合搜索条件的可更换题目' : '当前没有其他可更换题目' }}</text>
+                <text class="tp__hint">{{ topicKeyword ? '清空关键词后可重新查询全部可选题目。' : '题目库有新增余量后会在这里显示；可刷新核对最新状态。' }}</text>
+                <button class="btn btn-ghost" @click="clearTopicFilters">清空搜索并刷新</button>
+              </view>
               <view v-for="t in topics" :key="t.id" class="tp__topic" @click="changeTargetTopicId = t.id">
                 <view class="flex-1">
                   <text class="tp__topic-title">{{ t.title }}</text>
@@ -55,6 +79,7 @@
                 </view>
                 <text v-if="changeTargetTopicId === t.id" class="tp__badge">已选</text>
               </view>
+              <button v-if="topicsHasMore" class="btn btn-ghost" :disabled="topicLoading" @click="loadMoreTopics">{{ topicLoading ? '加载中…' : '加载更多题目' }}</button>
               <textarea class="tp__reason" v-model="changeReason" :maxlength="200" placeholder="变更理由（至少5个字）" placeholder-class="tp__ph" />
               <button class="btn btn-primary" :disabled="!changeTargetTopicId || changeSubmitting" @click="submitChangeRequest">
                 {{ changeSubmitting ? '提交中…' : '提交变更申请' }}
@@ -66,6 +91,7 @@
                 <MobileStatusTag :label="r.statusLabel" :type="changeTag(r.status)" />
               </view>
             </view>
+            <MobileInlineAlert v-if="changeRequestError" type="warning" title="变更记录加载失败" :description="changeRequestError" />
           </view>
         </template>
       </view>
@@ -83,6 +109,7 @@
 import { studentApi } from '@/services/studentApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 
 const choiceLock = createSubmitLock(1500)
 const changeLock = createSubmitLock(1500)
@@ -95,8 +122,10 @@ export default {
     return {
       state: 'loading', loaded: false, hasTopic: false, batchId: '',
       topics: [], activeRound: null, changeRequests: [],
+      topicKeyword: '', topicCategory: '', topicsNextCursor: '', topicsHasMore: false, topicLoading: false, topicError: '',
       selectedChoices: [], choiceSubmitting: false, withdrawing: false,
-      showChangeForm: false, changeTargetTopicId: '', changeReason: '', changeSubmitting: false
+      showChangeForm: false, changeTargetTopicId: '', changeReason: '', changeSubmitting: false,
+      readEpoch: 0, topicEpoch: 0, hidden: false, topicQuery: '', changeRequestError: ''
     }
   },
   computed: {
@@ -104,32 +133,86 @@ export default {
     canWithdraw() {
       return this.activeRound && this.myChoices.some((c) => c.status === 'PENDING') &&
         !this.myChoices.some((c) => c.status === 'CONFIRMED' || c.status === 'MATCHED')
+    },
+    topicCategories() {
+      const values = [...new Set(this.topics.map((topic) => topic.category).filter(Boolean))]
+      if (this.topicCategory && !values.includes(this.topicCategory)) values.unshift(this.topicCategory)
+      return ['全部', ...values.slice(0, 8)]
     }
   },
   onLoad() { this.load() },
+  onShow() { if (this.hidden) { this.hidden = false; this.load() } },
+  onHide() { this.invalidateReads() },
+  onUnload() { this.invalidateReads() },
   methods: {
+    invalidateReads() { this.hidden = true; this.readEpoch++; this.topicEpoch++; this.topicLoading = false },
     load() {
+      const epoch = ++this.readEpoch, generation = currentSessionGeneration()
+      const current = () => !this.hidden && epoch === this.readEpoch && generation === currentSessionGeneration()
+      this.topicEpoch++; this.topicLoading = false
       this.state = 'loading'
-      studentApi.getGraduation().then((g) => {
+      return studentApi.getGraduation().then((g) => {
+        if (!current()) return null
         this.hasTopic = !!(g && g.hasTopic)
+        if (this.batchId !== (g?.batchId || '')) {
+          this.selectedChoices = []; this.changeTargetTopicId = ''; this.topics = []; this.changeRequests = []
+        }
         this.batchId = (g && g.batchId) || ''
         return studentApi.getGraduationActiveRound()
       }).then((r) => {
+        if (!current()) return
         this.activeRound = r || null
         this.loaded = true
         this.state = 'ready'
         // 选题：有轮次时拉题目；换题：有课题时用 batchId 拉题目（即使无 round）
         const topicBatchId = (r && r.batchId) || this.batchId || ''
         if (r || this.hasTopic) {
-          studentApi.getGraduationTopics(topicBatchId).then((t) => { this.topics = t || [] }).catch(() => {
-            this.topics = []
-            toast('题目列表加载失败，请下拉重试')
-          })
+          this.loadTopics(true, topicBatchId)
         }
         if (this.hasTopic) {
-          studentApi.getMyGraduationChangeRequests().then((r2) => { this.changeRequests = r2 || [] }).catch(() => {})
+          this.changeRequestError = ''
+          studentApi.getMyGraduationChangeRequests().then((r2) => { if (current()) this.changeRequests = r2 || [] })
+            .catch(() => { if (current()) this.changeRequestError = '暂时无法核对课题变更进度，请刷新重试。' })
         }
-      }).catch(() => { this.state = 'error' })
+      }).catch((error) => { if (current()) this.state = normalizeError(error).pageState || 'error' })
+    },
+    loadTopics(reset = true, explicitBatchId = '') {
+      if (this.topicLoading && !reset) return Promise.resolve()
+      const batchId = explicitBatchId || (this.activeRound && this.activeRound.batchId) || this.batchId || ''
+      const query = JSON.stringify([batchId, this.topicKeyword.trim(), this.topicCategory])
+      if (query !== this.topicQuery) reset = true
+      this.topicQuery = query
+      const epoch = ++this.topicEpoch, generation = currentSessionGeneration()
+      const current = () => !this.hidden && epoch === this.topicEpoch && generation === currentSessionGeneration()
+      if (reset) { this.topics = []; this.topicsNextCursor = ''; this.topicsHasMore = false }
+      this.topicLoading = true
+      this.topicError = ''
+      const params = {
+        batchId, keyword: this.topicKeyword.trim(), category: this.topicCategory,
+        cursor: reset ? '' : this.topicsNextCursor, pageSize: 20
+      }
+      return studentApi.getGraduationTopics(params).then((payload) => {
+        if (!current()) return
+        const data = Array.isArray(payload) ? { items: payload, hasMore: false, nextCursor: '' } : (payload || {})
+        this.topics = reset ? (data.items || []) : [...this.topics, ...(data.items || [])]
+        this.topicsNextCursor = data.nextCursor || ''
+        this.topicsHasMore = data.hasMore === true
+      }).catch((error) => {
+        if (!current()) return
+        if (reset) this.topics = []
+        this.topicError = (error && error.message) || '题目列表加载失败，请重试'
+      }).finally(() => { if (current()) this.topicLoading = false })
+    },
+    applyTopicFilters() { return this.loadTopics(true) },
+    clearTopicFilters() {
+      this.topicKeyword = ''
+      this.topicCategory = ''
+      return this.loadTopics(true)
+    },
+    loadMoreTopics() { if (this.topicsHasMore && this.topicsNextCursor) return this.loadTopics(false) },
+    chooseCategory(category) {
+      this.topicCategory = category === '全部' ? '' : category
+      this.loadTopics(true)
     },
     choiceRank(topicId) {
       const i = this.selectedChoices.indexOf(topicId)
@@ -197,4 +280,9 @@ export default {
 .tp__badge { flex-shrink: 0; font-size: var(--font-size-xs); color: #fff; background: var(--brand-primary); padding: 3px 10px; border-radius: var(--radius-full); }
 .tp__reason { width: 100%; min-height: 60px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: var(--space-2); box-sizing: border-box; margin: var(--space-2) 0; }
 .tp__ph { color: var(--text-tertiary); }
+.tp__filters { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+.tp__search { flex: 1; min-width: 190px; padding: var(--space-2); border: 1px solid var(--border-base); border-radius: var(--radius-md); background: #fff; }
+.tp__chips { width: 100%; white-space: nowrap; }.tp__chips-row { display: flex; gap: 8px; }.tp__chip { display: inline-flex; padding: 5px 10px; border-radius: var(--radius-full); background: var(--gray-100); color: var(--text-secondary); }.tp__chip.active { background: var(--brand-primary); color: #fff; }
+.tp__error { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); color: var(--danger-600, #dc2626); }
+.tp__empty { display: flex; flex-direction: column; gap: var(--space-2); align-items: flex-start; }
 </style>

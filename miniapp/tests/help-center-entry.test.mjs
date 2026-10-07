@@ -23,14 +23,14 @@ test('miniapp registers one shared help page', () => {
 
 test('student and teacher personal centers both open the shared help page', () => {
   assert.match(studentMe, /row\.key === 'help'.*pages\/common\/help\/index/s)
-  assert.match(teacherMe, /row\.key === 'help'.*pages\/common\/help\/index/s)
+  assert.match(teacherMe, /@click="go\('\/pages\/common\/help\/index'\)">[\s\S]*?帮助与反馈/)
   assert.doesNotMatch(studentMe, /help[^\n]+即将开放/)
   assert.doesNotMatch(teacherMe, /help[^\n]+即将开放/)
 })
 
 test('help center URL is deployment-configured and not hardcoded inside runtime source', () => {
   assert.match(env, /VITE_HELP_CENTER_URL/)
-  assert.match(env, /helpCenterUrl:\s*resolveDocUrl\('VITE_HELP_CENTER_URL'\)/)
+  assert.match(env, /helpCenterUrl:\s*resolveDocUrl\(BUILD_HELP_CENTER_URL\)/)
   assert.doesNotMatch(env, /https:\/\/hnyueke\.com\/admin\/help/)
   assert.doesNotMatch(helpPage, /https:\/\/hnyueke\.com/)
 })

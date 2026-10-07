@@ -1,0 +1,24 @@
+version: file-capability-inventory/v1
+entries:
+  - module: platform-document-lifecycle
+    client: backend
+    route: internal://platform-document-lifecycle/document-text-extraction
+    page: backend/app/modules/platform/document_lifecycle/safe_text_parser.py
+    action: extract+compare+archive
+    fileCategory: DOCUMENT_TEXT_EXTRACTION
+    api: credential-free DOCUMENT_EXTRACT and DOCUMENT_COMPARE FileJob worker commands
+    backendService: backend/app/modules/platform/document_lifecycle/derived_worker.py; backend/app/modules/platform/document_lifecycle/safe_text_parser.py
+    storageMode: exact-version-pinned-read+bounded-memory-docx-zip+generated-private-file-object
+    authMode: upstream-file-center-preview-authorization+exact-version-and-sha-pin+credential-free-worker
+    dataScope: tenant+exact-file-version+source-sha256+source-binding
+    versioned: true
+    scanGated: true
+    preview: false
+    download: false
+    import: false
+    export: false
+    archive: true
+    status: active
+    risk: P0
+    targetPhase: '4'
+    notes: TXT、文本层 PDF 与 DOCX 只从请求期已授权并钉住的 FileVersion/FileObject 读取；worker 重验 tenant、asset/version/object、SHA-256 与大小。DOCX 拒绝路径穿越、符号链接、重复条目、外部关系及 DTD/ENTITY，并限制源大小、条目数、单项/总解压量、XML、字符、段落和总时限；派生结果继承最高敏感级别与保留策略，不改写源文件事实。

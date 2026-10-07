@@ -1,0 +1,80 @@
+name: Academic scheduling candidate acceptance
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'backend/app/modules/academic_affairs/**'
+      - 'backend/app/models/academic_affairs_optimizer.py'
+      - 'backend/alembic/**'
+      - 'backend/requirements*'
+      - 'backend/tests/aa_optimizer_mysql_acceptance.py'
+      - 'backend/scripts/seed_scheduling_optimizer_acceptance.py'
+      - 'e2e/specs/academic-scheduling-optimizer.spec.mjs'
+      - 'frontend/src/modules/academicAffairs/**'
+      - 'frontend/tests/academic-scheduling-optimizer.test.mjs'
+      - 'tests/scheduling_kit/**'
+      - '.github/workflows/academic-scheduling-optimizer.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  candidate-mysql:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      ENV: test
+      ENVIRONMENT: test
+      DEPLOYMENT_MODE: local
+      DB_ENABLED: 'true'
+      YUEKE_OPTIMIZER_CANDIDATES_ENABLED: '1'
+      JWT_SECRET: optimizer-isolated-ci-secret-at-least-32-bytes
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/yueke_optimizer_test_ci?charset=utf8mb4
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/yueke_optimizer_test_ci?charset=utf8mb4
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: yueke_optimizer_test_ci
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - run: pip install -r backend/requirements.txt
+      - run: python tests/scheduling_kit/run.py
+      - name: Real migration and transaction acceptance without schema-creating fixtures
+        working-directory: backend
+        run: |
+          alembic upgrade head
+          python -m pytest --noconftest -o addopts= tests/aa_optimizer_mysql_acceptance.py tests/test_aa_student_schedule_merge.py --junitxml=optimizer-junit.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optimizer-mysql-${{ github.sha }}
+          path: backend/optimizer-junit.xml
+          if-no-files-found: error
+  candidate-client:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm --prefix frontend ci
+      - run: node --test frontend/tests/academic-scheduling-optimizer.test.mjs
+      - run: npm --prefix frontend run build

@@ -53,12 +53,6 @@ async function capture(page, testInfo, name) {
   await testInfo.attach(`${name}-full`, { path: fullPath, contentType: 'image/png' })
 }
 
-async function setBatchStorage(page, key, value) {
-  await page.evaluate(({ storageKey, storageValue }) => {
-    window.localStorage.setItem(storageKey, String(storageValue))
-  }, { storageKey: key, storageValue: value })
-}
-
 async function findStudent(admin, studentNo) {
   const rows = items(await admin.get('/students', { keyword: studentNo, page: 1, pageSize: 50 }))
   const student = rows.find((item) => String(item.studentNo || item.loginName || '') === studentNo)
@@ -154,66 +148,32 @@ test.describe.serial('Golden rollout · implementation / configuration · Batch 
     await openGoldenStaffPage(page, '/admin/student-affairs/counselor-assignments')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/counselor-assignments/)
-    await expect(page.locator('.sa-summary-strip')).toBeVisible()
-    await expect(page.locator('.sa-workflow-strip')).toBeVisible()
-    await expect(page.locator('.tabs')).toBeVisible()
-    await expect(page.locator('.dt')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '辅导员责任台账', exact: true })).toBeVisible()
+    await expect(page.getByRole('tablist', { name: '责任台账视图' })).toBeVisible()
     await expect(page.locator('.dt__td').first()).toBeVisible()
     expect(counselorFixture.userId).not.toBe('')
-
-    const affairsContract = await page.evaluate(() => {
-      const heroTitle = document.querySelector('.sa-summary-strip__title')
-      const workflow = document.querySelector('.sa-workflow-strip')
-      const tabs = document.querySelector('.tabs')
-      const table = document.querySelector('.dt')
-      if (!heroTitle || !workflow || !tabs || !table) return null
-      return {
-        titleColor: getComputedStyle(heroTitle).color,
-        workflowColumns: getComputedStyle(workflow).gridTemplateColumns.split(' ').filter(Boolean).length,
-        tabsWidth: tabs.getBoundingClientRect().width,
-        tableRadius: getComputedStyle(table).borderRadius
-      }
-    })
-    expect(affairsContract).not.toBeNull()
-    expect(affairsContract.titleColor).toBe('rgb(255, 255, 255)')
-    expect(affairsContract.workflowColumns).toBe(4)
-    expect(affairsContract.tabsWidth).toBeLessThan(520)
-    expect(affairsContract.tableRadius).toBe('16px')
+    await expect(page.getByRole('button', { name: '分配责任', exact: true })).toBeEnabled()
+    await expect(page.locator('.responsibility-note')).toContainText('历史记录保留')
 
     await capture(page, testInfo, 'rollout-config-affairs-counselor-b')
   })
 
   test('Internship batch configuration · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openGoldenStaffPage(page, '/admin/internship/batches?panel=list')
-    await setBatchStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
-    await page.reload()
+    await openGoldenStaffPage(page, `/admin/internship/batches?panel=list&batchId=${encodeURIComponent(internshipFixture.batchId)}&keyword=${encodeURIComponent(internshipFixture.batchName)}`)
 
     await expect(page).toHaveURL(/\/admin\/internship\/batches/)
     await expect(page.locator('.dt')).toBeVisible()
     const target = page.locator('.dt__tr').filter({ hasText: internshipFixture.batchName }).first()
     await expect(target).toBeVisible()
 
-    const internshipContract = await page.evaluate(() => {
-      const root = document.querySelector('.mps:has(> .msr + .mtb + .af)')
-      if (!root) return null
-      const duplicateBatch = root.querySelector(':scope > .msr .msr__batch')
-      const header = root.querySelector(':scope > .mps__head')
-      const filter = root.querySelector(':scope > .af')
-      const table = root.querySelector(':scope > .dt')
-      if (!duplicateBatch || !header || !filter || !table) return null
-      return {
-        duplicateBatchDisplay: getComputedStyle(duplicateBatch).display,
-        headerRadius: getComputedStyle(header).borderRadius,
-        filterShadow: getComputedStyle(filter).boxShadow,
-        tableRadius: getComputedStyle(table).borderRadius
-      }
-    })
-    expect(internshipContract).not.toBeNull()
-    expect(internshipContract.duplicateBatchDisplay).toBe('none')
-    expect(internshipContract.headerRadius).toBe('18px')
-    expect(internshipContract.filterShadow).toBe('none')
-    expect(internshipContract.tableRadius).toBe('16px')
+    await expect(page.getByRole('region', { name: '实习批次列表' })).toBeVisible()
+    const detailLink = target.getByRole('link', { name: internshipFixture.batchName, exact: true })
+    await expect(detailLink).toBeVisible()
+    await expect(detailLink).toHaveAttribute('href', /\/admin\/internship\/batches\//)
+    const box = await page.locator('.ibl-workspace').boundingBox()
+    expect(box.x).toBeGreaterThanOrEqual(0)
+    expect(box.x + box.width).toBeLessThanOrEqual(VIEWPORT.width)
 
     await capture(page, testInfo, 'rollout-config-internship-batches-b')
   })

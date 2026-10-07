@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T09:44:47.6035634Z",
+  "wave": "W11",
+  "journey": "GJ-06",
+  "status": "STATIC_AND_BUILD_VERIFIED_RUNTIME_MYSQL_PENDING",
+  "outcome": "Student applies against a canonical target position; reviewer sees current-to-target and impact; approval atomically freezes the old relationship, revalidates the target, voids prior compliance/agreement, resets the record for re-onboard, refreshes the relationship snapshot, and returns a persistent receipt.",
+  "invariants": [
+    "CHANGE_POSITION and CHANGE_ENTERPRISE require a canonical targetPositionId.",
+    "Student-submitted enterprise and position names are replaced with server-owned canonical names.",
+    "Target batch, company status, blacklist, enterprise access, labor rights and capacity are validated on apply and revalidated on approval.",
+    "Direct assignment changes remain blocked for ONBOARD and ASSESSING students.",
+    "Approved destination changes clear intern_start_date and reset status to READY or PREPARING.",
+    "Prior consent is superseded and active or in-progress agreements are voided in the same transaction.",
+    "Unassignment clears current_placement_snapshot_id; a newly assigned target captures a new relationship snapshot through the canonical assignment authority.",
+    "Check-in remains limited to ONBOARD or ASSESSING, so a changed student cannot check in before re-onboard.",
+    "Staff and Teacher Mini submit both request version and recordVersionSnapshot; conflict input is retained and never auto-submitted.",
+    "Student Mini never asks for a raw database ID and uses the batch-scoped candidate facade."
+  ],
+  "surfaces": {
+    "staffPc": "frontend/src/modules/internship/views/ChangeRequestListView.vue",
+    "teacherMini": "miniapp/src/pages/teacher/internship-change/index.vue",
+    "studentMini": "miniapp/src/pages/student/internship/change/index.vue",
+    "teacherContextApi": "backend/app/api/v1/mobile_internship_context.py",
+    "studentContextApi": "backend/app/api/v1/mobile_internship_student.py",
+    "writeAuthority": "backend/app/modules/internship/services/internship_change_service.py",
+    "candidateFacade": "backend/app/modules/internship/services/internship_student_change_context_service.py"
+  },
+  "verification": [
+    {
+      "command": "node --test tests/internship.change-reonboard.contract.test.mjs",
+      "cwd": "frontend",
+      "result": "PASS 6/6"
+    },
+    {
+      "command": "direct Python 3.12 execution of backend/tests/test_internship_atomic_change_static.py",
+      "result": "PASS 5/5; pytest collection itself requires TEST_DATABASE_URL and correctly refuses SQLite"
+    },
+    {
+      "command": "npm test",
+      "cwd": "frontend",
+      "result": "PASS full suite"
+    },
+    {
+      "command": "npm test",
+      "cwd": "miniapp",
+      "result": "PASS 210/210"
+    },
+    {
+      "command": "npm run lint",
+      "cwd": "frontend",
+      "result": "PASS 0 errors; 2 pre-existing warnings outside Internship Center"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "frontend",
+      "result": "PASS 3165 modules and 21 prerendered routes; existing project-wide CSS import-order and chunk warnings remain"
+    },
+    {
+      "command": "npm run build:h5",
+      "cwd": "miniapp",
+      "result": "PASS"
+    },
+    {
+      "command": "python -m py_compile for changed backend modules",
+      "result": "PASS"
+    }
+  ],
+  "runtimePending": {
+    "reason": "The isolated internship-v8-mysql container on 127.0.0.1:43327 still does not complete MySQL handshakes and Docker Engine returned HTTP 500 for the targeted restart. The backend test policy correctly refuses SQLite.",
+    "requiredReplay": [
+      "Approve ONBOARD change and verify READY/PREPARING plus intern_start_date null.",
+      "Verify post-change check-in returns 409 until re-onboard.",
+      "Verify a target that becomes full between apply and approve returns 409 without partial writes.",
+      "Verify old agreement, old enterprise evaluation and old mentor write access are rejected.",
+      "Replay Staff, Student Mini and Teacher Mini authenticated browser paths."
+    ]
+  }
+}

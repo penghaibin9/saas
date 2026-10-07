@@ -1,113 +1,91 @@
 <template>
-  <div class="sp-page registration-page">
-    <section class="registration-hero">
-      <div>
-        <div class="registration-hero__eyebrow">教务学业 · 学期注册</div>
-        <h1>完成本学期注册</h1>
-        <p>只展示本人当前可办理批次。资格不满足时显示真实阻断原因，不把按钮隐藏成“没有业务”。</p>
-      </div>
-      <button class="sp-btn sp-btn--ghost" type="button" :disabled="loading || !!actingId" @click="load">
-        {{ loading ? '加载中…' : '刷新状态' }}
-      </button>
-    </section>
-
+  <div data-academic-page class="sp-page academic-prototype registration-page">
+    <AcademicPrototypeHeader :title="deferBatch ? '暂缓注册申请' : '学期注册'" group="注册与安排" :object="!!deferBatch" description="核对本人注册资格，完成本学期注册。" :loading="loading || !!actingId" @refresh="load" />
     <StateBlock v-if="loading" type="loading" text="正在读取本人注册批次…" />
-    <section v-else-if="error" class="sp-card registration-error">
-      <StateBlock type="error" :text="error" />
-      <button class="sp-btn sp-btn--ghost" type="button" @click="load">重新加载</button>
-    </section>
-    <template v-else>
-      <section class="sp-card student-card">
-        <div>
-          <strong>{{ data.realName || '本人' }}</strong>
-          <span>{{ data.studentNo || '学号待绑定' }} · 学籍状态 {{ studentStatusText(data.studentStatus) }}</span>
+    <div v-else-if="error" class="card pad"><StateBlock type="error" :text="error" /><button class="btn" @click="load">重新加载</button></div>
+    <div v-else class="stack">
+      <AcademicBusinessReceipt :receipt="registrationReceipt" :tone="actionReceipt?.result === '本学期注册已完成' ? 'success' : 'waiting'" />
+      <template v-if="deferBatch">
+        <AcademicPrototypeSteps />
+        <section class="card"><header class="card-head"><h2>{{ deferBatch.batchName }} · 本人申请</h2></header><form class="card-body" @submit.prevent="submitDefer(deferBatch)">
+          <div class="form-grid"><label class="field"><span>申请期限</span><AppDatePicker v-model="deferUntil[deferBatch.batchId]" class="input" aria-label="申请期限" /></label><label class="field full"><span class="req">暂缓事由</span><textarea v-model.trim="deferReasons[deferBatch.batchId]" maxlength="300" placeholder="说明暂时无法完成注册的原因（至少 2 字）" /></label></div>
+          <div class="notice amber form-notice"><AcademicPrototypeIcon name="circle-info" /><span>提交后进入学校受理；申请日期不是自动批准的日期。</span></div>
+          <footer class="form-foot"><button class="btn" type="button" @click="deferBatchId = ''">返回注册</button><button class="btn primary" :disabled="!deferBatch.canDefer || !!actingId || !canDefer(deferBatch)">{{ actingId ? '提交中…' : '提交暂缓申请' }}</button></footer>
+        </form></section>
+      </template>
+      <template v-else>
+        <AcademicPrototypeSteps :labels="['学校建批次', '本人资格核验', '本人确认', '学校登记结果']" :active="registrationStep" />
+        <StateBlock v-if="!batches.length" type="empty" :text="data.note || '暂无开放中的注册批次'" />
+        <div v-for="batch in batches" :key="batch.batchId" class="grid2" :class="{ 'is-target': String(batch.batchId) === focusBatchId }">
+          <section class="card"><header class="card-head"><h2>{{ batch.batchName || '学期注册' }}</h2></header><div class="card-body">
+            <div class="row between"><span class="tag" :class="batch.registrationStatus === 'REGISTERED' ? 'green' : 'amber'">{{ registrationStatusText(batch.registrationStatus) }}</span><small>开放至 {{ dateText(batch.windowEnd) }}</small></div>
+            <dl class="definition"><dt>学籍身份</dt><dd>{{ studentStatusText(data.studentStatus) }} · {{ data.className || data.studentNo || '本人' }}</dd><dt>当前批次</dt><dd>{{ batch.batchName || '学校已建立的注册批次' }}</dd><dt>资格核验</dt><dd><span class="tag" :class="batch.eligibilityStatus === 'ELIGIBLE' ? 'green' : 'amber'">{{ eligibilityText(batch.eligibilityStatus) }}</span></dd><dt>提交后</dt><dd>以服务器返回的登记状态为准</dd></dl>
+            <div v-if="batch.blockReason" class="notice amber">{{ batch.blockReason }}</div>
+            <div class="form-foot"><button class="btn" :disabled="!batch.canDefer || !!actingId" @click="deferBatchId = String(batch.batchId)">申请暂缓</button><button class="btn primary" :disabled="batch.canRegister !== true || !!actingId || !!uncertainRegistrations[String(batch.batchId)]" @click="openRegisterConfirm(batch)">确认本人注册</button></div>
+          </div></section>
+          <section class="card"><header class="card-head"><h2>我发起的申请</h2></header><div class="card-body"><p class="muted">{{ batch.deferral ? deferralText(batch.deferral) : '暂无本批次暂缓申请。' }}</p><div class="divider"></div><h3>无法按期完成？</h3><p class="muted">提交暂缓事由和申请期限，由学校受理；不等于自动注册成功。</p><div class="form-notice"><RouterLink class="btn link" to="/academic/status">查看当前学籍</RouterLink></div></div></section>
         </div>
-        <StatusTag :text="summaryText" :tone="pendingCount ? 'warn' : 'success'" />
+      </template>
+    </div>
+    <div v-if="pendingRegistration" class="confirm-backdrop" @click.self="closeRegisterConfirm">
+      <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="registration-confirm-title">
+        <div class="confirm-dialog__eyebrow">注册确认</div>
+        <h2 id="registration-confirm-title">确认完成本学期注册？</h2>
+        <p>提交后将以本人身份记录注册结果，并立即刷新当前批次状态。</p>
+        <dl>
+          <div><dt>注册批次</dt><dd>{{ pendingRegistration.batchName || '当前批次' }}</dd></div>
+          <div><dt>批次编号</dt><dd>{{ pendingRegistration.batchId }}</dd></div>
+          <div><dt>注册资格</dt><dd>{{ eligibilityText(pendingRegistration.eligibilityStatus) }}</dd></div>
+        </dl>
+        <footer>
+          <button class="btn" type="button" :disabled="!!actingId" @click="closeRegisterConfirm">暂不注册</button>
+          <button class="btn primary" type="button" :disabled="!!actingId" @click="register(pendingRegistration)">
+            {{ actingId ? '注册中…' : '确认并提交注册' }}
+          </button>
+        </footer>
       </section>
-
-      <StateBlock
-        v-if="!batches.length"
-        type="empty"
-        :text="data.note || '暂无开放中的注册批次'"
-      />
-      <section v-else class="registration-list">
-        <article v-for="batch in batches" :key="batch.batchId" class="sp-card batch-card">
-          <header class="batch-card__head">
-            <div>
-              <strong>{{ batch.batchName || '注册批次' }}</strong>
-              <span>{{ batch.registerTypeLabel || '学期注册' }} · {{ dateText(batch.windowStart) }} 至 {{ dateText(batch.windowEnd) }}</span>
-            </div>
-            <StatusTag :text="registrationStatusText(batch.registrationStatus)" :tone="registrationTone(batch.registrationStatus)" />
-          </header>
-
-          <dl class="batch-card__facts">
-            <div><dt>注册资格</dt><dd>{{ eligibilityText(batch.eligibilityStatus) }}</dd></div>
-            <div><dt>办理状态</dt><dd>{{ registrationStatusText(batch.registrationStatus) }}</dd></div>
-            <div><dt>办理窗口</dt><dd>{{ windowText(batch) }}</dd></div>
-          </dl>
-
-          <div v-if="batch.blockReason" class="batch-card__block" role="status">
-            <strong>当前无法注册</strong>
-            <span>{{ batch.blockReason }}</span>
-          </div>
-          <div v-if="batch.deferral" class="batch-card__deferral">
-            <strong>暂缓申请</strong>
-            <span>{{ deferralText(batch.deferral) }}</span>
-          </div>
-
-          <div v-if="batch.canDefer" class="batch-card__defer-form">
-            <label :for="`reason-${batch.batchId}`">暂缓原因（至少 2 字）</label>
-            <textarea
-              :id="`reason-${batch.batchId}`"
-              v-model.trim="deferReasons[batch.batchId]"
-              class="sp-inp"
-              maxlength="300"
-              placeholder="说明暂时无法完成注册的原因"
-            />
-          </div>
-
-          <footer class="batch-card__actions">
-            <button
-              class="sp-btn sp-btn--ghost"
-              type="button"
-              :disabled="!batch.canDefer || !!actingId || !canDefer(batch)"
-              @click="submitDefer(batch)"
-            >
-              {{ actingId === `defer:${batch.batchId}` ? '提交中…' : '申请暂缓' }}
-            </button>
-            <button
-              class="sp-btn"
-              type="button"
-              :disabled="!batch.canRegister || !!actingId"
-              @click="register(batch)"
-            >
-              {{ actingId === `register:${batch.batchId}` ? '注册中…' : '确认完成注册' }}
-            </button>
-          </footer>
-        </article>
-      </section>
-    </template>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
+import { academicErrorKind, academicErrorMessage, markStudentAcademicFormClean } from '../../components/academic/studentAcademicUi'
 import StateBlock from '../../components/StateBlock.vue'
-import StatusTag from '../../components/StatusTag.vue'
+import AppDatePicker from '../../components/AppDatePicker.vue'
+import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
+import AcademicPrototypeIcon from '../../components/academic/AcademicPrototypeIcon.vue'
+import AcademicPrototypeSteps from '../../components/academic/AcademicPrototypeSteps.vue'
+import AcademicBusinessReceipt from '../../components/academic/AcademicBusinessReceipt.vue'
+import { createStudentAcademicCommandGuard, readStudentAcademicSnapshot, studentAcademicIdentity, studentAcademicWriteErrorKind } from '../../components/academic/studentAcademicCommandGuard'
 import { portalApi } from '../../services/portalApi'
+import { systemConfirm } from '../../services/systemDialog'
 import { localizeVisibleEnumText } from '../../services/visibleEnumLocalization'
+import { useSessionStore } from '../../stores/session'
 import { useUiStore } from '../../stores/ui'
 
 const ui = useUiStore()
+const session = useSessionStore()
+const guard = createStudentAcademicCommandGuard(() => studentAcademicIdentity(session), 'registration')
+const route = useRoute()
+const focusBatchId = computed(() => String(route.query.batchId || ''))
 const loading = ref(true)
 const error = ref('')
 const actingId = ref('')
 const data = ref({ batches: [] })
 const deferReasons = reactive({})
+const deferUntil = reactive({})
+const deferBatchId = ref('')
+const deferBatch = computed(() => batches.value.find(batch => String(batch.batchId) === deferBatchId.value))
+const registrationReceipt = computed(() => actionReceipt.value ? { title: actionReceipt.value.result, object: actionReceipt.value.batchName, status: actionReceipt.value.result, operatedAt: actionReceipt.value.operatedAt || '以学校办理记录为准', next: actionReceipt.value.next, relatedTo: '/academic/schedule', relatedLabel: '查看本学期课表' } : null)
+const pendingRegistration = ref(null)
+const actionReceipt = ref(null)
+const uncertainDeferralKeys = ref([])
+const uncertainRegistrations = ref({})
 
 const batches = computed(() => Array.isArray(data.value.batches) ? data.value.batches : [])
-const pendingCount = computed(() => batches.value.filter((batch) => batch.canRegister || batch.canDefer).length)
-const summaryText = computed(() => pendingCount.value ? `${pendingCount.value} 个批次可办理` : '当前无待办理')
+const registrationStep = computed(() => !batches.value.length ? 0 : batches.value.every(batch => batch.registrationStatus === 'REGISTERED') ? 3 : batches.value.every(batch => batch.eligibilityStatus === 'ELIGIBLE') ? 2 : 1)
 
 function dateText(value) {
   return String(value || '').slice(0, 10) || '待定'
@@ -117,24 +95,14 @@ function studentStatusText(status) {
 }
 function registrationStatusText(status) {
   const map = {
-    PENDING: '待注册', REGISTERED: '已注册', DEFERRED: '已暂缓',
+    PENDING: '待注册', PENDING_REGISTER: '待注册', UNREGISTERED: '未注册', REGISTERED: '已注册', DEFERRED: '已暂缓',
     EXEMPTED: '免注册', CLOSED: '已关闭', BLOCKED: '暂不可办'
   }
   return map[String(status || '').toUpperCase()] || status || '待确认'
 }
-function registrationTone(status) {
-  const value = String(status || '').toUpperCase()
-  if (['REGISTERED', 'EXEMPTED'].includes(value)) return 'success'
-  if (['BLOCKED', 'CLOSED'].includes(value)) return 'danger'
-  return 'warn'
-}
 function eligibilityText(status) {
   const map = { ELIGIBLE: '符合', INELIGIBLE: '不符合', PENDING: '待核验' }
   return map[String(status || '').toUpperCase()] || status || '待核验'
-}
-function windowText(batch) {
-  if (batch.canRegister || batch.canDefer) return '窗口开放中'
-  return `${dateText(batch.windowStart)} 至 ${dateText(batch.windowEnd)}`
 }
 function deferralText(deferral) {
   const status = String(deferral.status || '').toUpperCase()
@@ -142,89 +110,171 @@ function deferralText(deferral) {
   return `${map[status] || deferral.status || '待处理'}${deferral.reason ? ` · ${deferral.reason}` : ''}`
 }
 function canDefer(batch) {
-  return String(deferReasons[batch.batchId] || '').trim().length >= 2
+  return !uncertainDeferralKeys.value.includes(String(batch.batchId)) && String(deferReasons[batch.batchId] || '').trim().length >= 2
+}
+function persistentCommandCleared(reference) {
+  const pending = guard.pendingCommands()
+  return Boolean(reference?.commandKey) && reference.identity === studentAcademicIdentity(session) && !pending.persistenceError && !pending.some((item) => item.commandKey === reference.commandKey)
+}
+function reconcilePersistentCommands() {
+  const pending = guard.pendingCommands().filter((item) => ['REGISTER_TERM', 'DEFER_REGISTRATION'].includes(item.action))
+  uncertainDeferralKeys.value = pending.filter((item) => item.action === 'DEFER_REGISTRATION').map((item) => item.objectId)
+  uncertainRegistrations.value = Object.fromEntries(pending.filter((item) => item.action === 'REGISTER_TERM').map((item) => [item.objectId, { registrationId: item.ackId }]))
+  for (const reference of pending) {
+    const current = batches.value.find((item) => String(item.batchId || '') === reference.objectId)
+    const formal = reference.action === 'REGISTER_TERM'
+      ? reference.ackId && String(current?.registrationId || '') === reference.ackId && current?.registrationStatus === 'REGISTERED'
+      : reference.ackId && String(current?.deferral?.deferralId || '') === reference.ackId
+    if (formal && guard.completePersistentCommand(reference)) {
+      actionReceipt.value = { batchId: reference.objectId, batchName: current?.batchName || '原注册批次', result: reference.action === 'REGISTER_TERM' ? '本学期注册已完成' : deferralText(current.deferral), operatedAt: current?.registeredAt || current?.deferral?.createdAt || current?.deferral?.submittedAt, next: reference.action === 'REGISTER_TERM' ? '核对本学期课表与已选课程是否已经同步' : '请继续跟踪学校受理结果。' }
+    } else {
+      actionReceipt.value = { batchId: reference.objectId, batchName: current?.batchName || '原注册批次', result: reference.action === 'REGISTER_TERM' ? '原注册结果待确认' : '原暂缓申请结果待确认', next: reference.ackId ? formal ? '正式记录已读到，但本地待确认引用未能安全清理；刷新不会自动再次提交。' : '尚未读取到原回执对应的本人正式记录；刷新不会自动再次提交。' : '原提交未取得服务端回执编号；刷新不会自动再次提交。' }
+    }
+  }
+  const remaining = guard.pendingCommands().filter((item) => ['REGISTER_TERM', 'DEFER_REGISTRATION'].includes(item.action))
+  uncertainDeferralKeys.value = remaining.filter((item) => item.action === 'DEFER_REGISTRATION').map((item) => item.objectId)
+  uncertainRegistrations.value = Object.fromEntries(remaining.filter((item) => item.action === 'REGISTER_TERM').map((item) => [item.objectId, { registrationId: item.ackId }]))
 }
 async function load() {
   loading.value = true
   error.value = ''
-  try {
-    data.value = await portalApi.academicRegistration() || { batches: [] }
-    for (const batch of batches.value) {
-      if (deferReasons[batch.batchId] == null) deferReasons[batch.batchId] = ''
-    }
-  } catch (e) {
-    error.value = e?.message || '注册批次读取失败，请稍后重试'
-  } finally {
+  const read = await readStudentAcademicSnapshot(guard, () => portalApi.academicRegistration())
+  if (read.stale) return false
+  if (!read.ok) {
+    if (academicErrorKind(read.error) === 'forbidden') { clearSensitive(read.error); return false }
+    error.value = academicErrorMessage(read.error, '注册批次读取失败，请稍后重试')
     loading.value = false
+    return false
   }
+  data.value = read.value || { batches: [] }
+  reconcilePersistentCommands()
+  for (const batch of batches.value) {
+    if (deferReasons[batch.batchId] == null) deferReasons[batch.batchId] = ''
+  }
+  loading.value = false
+  return true
 }
 async function register(batch) {
-  if (!batch?.canRegister || actingId.value) return
-  const confirmed = window.confirm(`确认完成“${batch.batchName || '当前批次'}”注册？`)
-  if (!confirmed) return
-  actingId.value = `register:${batch.batchId}`
+  const command = pendingRegistration.value
+  if (!command || command !== batch || !guard.isCurrentCommand(command) || command.canRegister !== true || actingId.value || uncertainRegistrations.value[command.batchId]) return
+  const persistent = guard.preparePersistentCommand({ action: 'REGISTER_TERM', objectId: command.batchId })
+  if (!persistent) { actionReceipt.value = { batchId: command.batchId, batchName: command.batchName, result: '注册未发送', next: '浏览器无法保存待确认引用，请检查本地存储后再提交。' }; return }
+  actingId.value = `register:${command.batchId}`
+  uncertainRegistrations.value = { ...uncertainRegistrations.value, [command.batchId]: { registrationId: '' } }
   try {
-    await portalApi.academicRegistrationRegister(batch.batchId)
-    ui.notify('注册成功')
-    await load()
+    const result = await portalApi.academicRegistrationRegister(command.batchId)
+    if (!guard.isCurrentCommand(command)) return
+    const acknowledged = result?.batchId == null || String(result.batchId) === command.batchId ? guard.rememberPersistentAck(persistent, result?.registrationId) : null
+    const id = acknowledged?.ackId || ''
+    uncertainRegistrations.value[command.batchId] = { registrationId: id }
+    pendingRegistration.value = null
+    actionReceipt.value = { batchId: command.batchId, batchName: command.batchName, result: '注册结果待确认', next: '正在核对本次正式注册编号；确认前不要重复提交。' }
+    const readOk = await load()
+    if (!guard.isCurrentCommand(command) || !readOk) return
+    const current = batches.value.find(item => String(item.batchId) === command.batchId)
+    const confirmed = id && String(current?.registrationId || '') === id && current?.registrationStatus === 'REGISTERED'
+    const committed = confirmed && persistentCommandCleared(persistent)
+    if (committed) delete uncertainRegistrations.value[command.batchId]
+    actionReceipt.value = {
+      batchId: command.batchId, batchName: command.batchName,
+      result: committed ? '本学期注册已完成' : '注册结果待确认',
+      operatedAt: current?.registeredAt || '学校未提供办理时间',
+      next: committed ? '核对本学期课表与已选课程是否已经同步' : confirmed ? '正式记录已读到，但本地待确认引用未能安全清理；确认前不要重复提交。' : '请刷新当前批次核对原注册记录，确认前不要重复提交。'
+    }
+    if (committed) markStudentAcademicFormClean()
   } catch (e) {
-    ui.notify(e?.message || '注册失败')
+    if (!guard.isCurrentCommand(command)) return
+    const kind = studentAcademicWriteErrorKind(e)
+    if (!['network', 'forbidden'].includes(kind)) {
+      guard.completePersistentCommand(persistent)
+      if (persistentCommandCleared(persistent)) delete uncertainRegistrations.value[command.batchId]
+    }
+    if (kind === 'forbidden') { clearSensitive(e); return }
+    actionReceipt.value = { batchId: command.batchId, batchName: command.batchName, result: kind === 'network' ? '注册结果待确认' : '注册未完成', next: academicErrorMessage(e, '请重新核对。') }
+    if (kind === 'network' || kind === 'conflict') await load()
+    else ui.notify(academicErrorMessage(e, '注册失败'))
   } finally {
-    actingId.value = ''
+    if (guard.isCurrentCommand(command)) actingId.value = ''
   }
+}
+function openRegisterConfirm(batch) {
+  if (batch?.canRegister !== true || actingId.value || uncertainRegistrations.value[String(batch.batchId)]) return
+  pendingRegistration.value = guard.beginCommand({ batchId: String(batch.batchId), batchName: batch.batchName || '当前批次', eligibilityStatus: batch.eligibilityStatus, canRegister: true })
+}
+function closeRegisterConfirm() {
+  if (actingId.value) return
+  pendingRegistration.value = null
 }
 async function submitDefer(batch) {
   if (!batch?.canDefer || !canDefer(batch) || actingId.value) return
-  actingId.value = `defer:${batch.batchId}`
+  const command = guard.beginCommand({ batchId: String(batch.batchId), batchName: batch.batchName || '当前批次', reason: String(deferReasons[batch.batchId] || '').trim(), requestedUntil: deferUntil[batch.batchId] || '' })
+  if (!await systemConfirm({ title: '确认暂缓注册', message: `确认对“${command.batchName}”提交暂缓注册申请？`, confirmText: '提交暂缓申请' })) return
+  if (!guard.isCurrentCommand(command)) return
+  const persistent = guard.preparePersistentCommand({ action: 'DEFER_REGISTRATION', objectId: command.batchId })
+  if (!persistent) { actionReceipt.value = { batchId: command.batchId, batchName: command.batchName, result: '暂缓申请未发送', next: '浏览器无法保存待确认引用，请检查本地存储后再提交。' }; return }
+  actingId.value = `defer:${command.batchId}`
   try {
-    await portalApi.academicRegistrationDefer(batch.batchId, {
-      reason: String(deferReasons[batch.batchId] || '').trim()
+    const result = await portalApi.academicRegistrationDefer(command.batchId, {
+      reason: command.reason,
+      ...(command.requestedUntil ? { requestedUntil: command.requestedUntil } : {})
     })
-    deferReasons[batch.batchId] = ''
-    ui.notify('暂缓申请已提交')
-    await load()
+    if (!guard.isCurrentCommand(command)) return
+    const acknowledged = guard.rememberPersistentAck(persistent, result?.deferralId)
+    uncertainDeferralKeys.value = [...new Set([...uncertainDeferralKeys.value, command.batchId])]
+    actionReceipt.value = { batchId: command.batchId, batchName: command.batchName, result: '暂缓申请结果待确认', next: '正在读取本人正式暂缓申请，确认前不要重复提交。' }
+    const readOk = await load()
+    if (!guard.isCurrentCommand(command) || !readOk) return
+    const current = batches.value.find((item) => String(item.batchId) === command.batchId)
+    const formal = current?.deferral
+    // 后端契约使用 deferralId；同批次的旧同事由记录不能归因给本次暂缓申请。
+    const resultId = acknowledged?.ackId
+    const confirmed = formal && resultId && String(formal.deferralId) === String(resultId)
+    if (confirmed && persistentCommandCleared(persistent)) {
+      actionReceipt.value = { batchId: command.batchId, batchName: command.batchName, result: deferralText(formal), operatedAt: formal.createdAt || formal.submittedAt, next: '注册状态不会自动改为完成，请在本页跟踪学校受理结果。' }
+      uncertainDeferralKeys.value = uncertainDeferralKeys.value.filter(value => value !== command.batchId)
+      if (String(deferReasons[command.batchId] || '').trim() === command.reason && (deferUntil[command.batchId] || '') === command.requestedUntil) { deferReasons[command.batchId] = ''; delete deferUntil[command.batchId]; if (deferBatchId.value === command.batchId) deferBatchId.value = '' }
+      markStudentAcademicFormClean()
+    } else {
+      uncertainDeferralKeys.value = [...new Set([...uncertainDeferralKeys.value, command.batchId])]
+      actionReceipt.value = { batchId: command.batchId, batchName: command.batchName, result: '暂缓申请结果待确认', next: '尚未读取到匹配的正式暂缓申请，请刷新核对，勿重复提交。' }
+    }
   } catch (e) {
-    ui.notify(e?.message || '暂缓申请提交失败')
+    if (!guard.isCurrentCommand(command)) return
+    if (studentAcademicWriteErrorKind(e) === 'forbidden') { clearSensitive(e); return }
+    const kind = studentAcademicWriteErrorKind(e)
+    if (!['network', 'forbidden', 'conflict'].includes(kind)) guard.completePersistentCommand(persistent)
+    if (kind === 'network' || kind === 'conflict') uncertainDeferralKeys.value = [...new Set([...uncertainDeferralKeys.value, command.batchId])]
+    if (kind === 'network' || kind === 'conflict') { actionReceipt.value = { batchId: command.batchId, batchName: command.batchName, result: kind === 'network' ? '暂缓申请结果待确认' : '注册事实已变化', next: academicErrorMessage(e, '已保留申请理由，请重新核对。') }; await load() }
+    else ui.notify(academicErrorMessage(e, '暂缓申请提交失败'))
   } finally {
-    actingId.value = ''
+    if (guard.isCurrentCommand(command)) actingId.value = ''
   }
 }
 
+function clearSensitive(e) {
+  guard.invalidate()
+  data.value = { batches: [] }; pendingRegistration.value = null; Object.keys(deferReasons).forEach((key) => delete deferReasons[key])
+  actionReceipt.value = null; deferBatchId.value = ''; Object.keys(deferUntil).forEach(key => delete deferUntil[key])
+  loading.value = false; actingId.value = ''
+  error.value = academicErrorMessage(e)
+}
 onMounted(load)
+onBeforeUnmount(() => guard.dispose())
 </script>
 
+<style src="../../components/academic/studentAcademicPrototype.css"></style>
 <style scoped>
-.registration-page { max-width: 1080px; margin: 0 auto; }
-.registration-hero { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; margin-bottom: 16px; padding: 24px 26px; border: 1px solid var(--line); border-radius: 16px; background: linear-gradient(135deg, #fff, var(--pri-50)); }
-.registration-hero__eyebrow { color: var(--pri); font-size: 12px; font-weight: 700; letter-spacing: .08em; }
-.registration-hero h1 { margin: 8px 0 6px; color: var(--t1); font-size: 24px; }
-.registration-hero p { margin: 0; color: var(--t3); font-size: 13px; line-height: 1.65; }
-.registration-error { display: flex; flex-direction: column; align-items: center; gap: 12px; }
-.student-card { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
-.student-card strong, .student-card span { display: block; }
-.student-card strong { color: var(--t1); font-size: 15px; }
-.student-card span { margin-top: 4px; color: var(--t3); font-size: 12px; }
-.registration-list { display: grid; gap: 12px; }
-.batch-card { padding: 18px 20px; }
-.batch-card__head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
-.batch-card__head strong, .batch-card__head span { display: block; }
-.batch-card__head strong { color: var(--t1); font-size: 15px; }
-.batch-card__head span { margin-top: 5px; color: var(--t3); font-size: 12px; }
-.batch-card__facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 16px 0 0; }
-.batch-card__facts div { padding: 11px 12px; border-radius: 10px; background: var(--bg2); }
-.batch-card__facts dt { color: var(--t4); font-size: 11px; }
-.batch-card__facts dd { margin: 5px 0 0; color: var(--t1); font-size: 13px; font-weight: 600; }
-.batch-card__block, .batch-card__deferral { display: grid; gap: 4px; margin-top: 12px; padding: 11px 13px; border-radius: 10px; font-size: 12px; }
-.batch-card__block { background: var(--bad-bg); color: var(--bad-fg); }
-.batch-card__deferral { background: var(--warn-bg); color: var(--warn-fg); }
-.batch-card__defer-form { display: grid; gap: 6px; margin-top: 14px; }
-.batch-card__defer-form label { color: var(--t2); font-size: 12px; font-weight: 600; }
-.batch-card__defer-form textarea { min-height: 76px; resize: vertical; }
-.batch-card__actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; padding-top: 14px; border-top: 1px solid var(--line2); }
-@media (max-width: 720px) {
-  .registration-hero, .student-card, .batch-card__head { align-items: stretch; flex-direction: column; }
-  .batch-card__facts { grid-template-columns: 1fr; }
-  .batch-card__actions { flex-direction: column-reverse; }
-  .batch-card__actions .sp-btn { width: 100%; }
-}
+.definition { margin:14px 0; }
+.form-notice { margin-top:14px; }
+.confirm-backdrop { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: rgb(15 23 42 / 48%); backdrop-filter: blur(3px); }
+.confirm-dialog { width: min(520px, 100%); padding: 24px; border: 1px solid var(--line); border-radius: 18px; background: var(--surface, #fff); box-shadow: 0 24px 70px rgb(15 23 42 / 22%); }
+.confirm-dialog__eyebrow { color: var(--pri); font-size: 12px; font-weight: 800; letter-spacing: .08em; }
+.confirm-dialog h2 { margin: 8px 0; color: var(--t1); font-size: 20px; }
+.confirm-dialog > p { margin: 0; color: var(--t3); font-size: 13px; line-height: 1.65; }
+.confirm-dialog dl { display: grid; gap: 8px; margin: 18px 0; }
+.confirm-dialog dl div { display: flex; justify-content: space-between; gap: 16px; padding: 10px 12px; border-radius: 10px; background: var(--bg2); }
+.confirm-dialog dt { color: var(--t4); font-size: 12px; }
+.confirm-dialog dd { margin: 0; color: var(--t1); font-size: 13px; font-weight: 700; text-align: right; }
+.confirm-dialog footer { display: flex; justify-content: flex-end; gap: 10px; }
+
 </style>

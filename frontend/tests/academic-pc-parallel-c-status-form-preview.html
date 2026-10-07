@@ -1,0 +1,29 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><title>C组异动申请与归档演练</title><style>body{margin:0;background:#f4f7fc;font-family:system-ui;color:#243650}#tools{display:flex;gap:12px;padding:14px;background:#fff2cf;position:sticky;top:0;z-index:10}#app{max-width:1240px;padding:20px;margin:auto}</style><div id="tools"><b>隔离演练 · 合成数据</b><button data-view="form">发起异动</button><button data-view="stats">异动统计</button><button data-view="archive">归档回查</button><label>响应<select id="mode"><option value="normal">正常</option><option value="timeout">响应丢失</option><option value="403">403范围拒绝</option></select></label><span id="count">写入0次</span></div><div id="app"></div>
+<script type="module">
+import {createApp,h,reactive} from 'vue'
+import {createPinia} from 'pinia'
+import {createRouter,createMemoryHistory,RouterView} from 'vue-router'
+import '../src/styles/tokens.css'
+import '../src/styles/high-contrast-skin.css'
+import Form from '../src/modules/academicAffairs/views/AaStatusChangeFormView.vue'
+import Stats from '../src/modules/academicAffairs/views/AaStatusChangeStatsView.vue'
+import Archive from '../src/modules/academicAffairs/views/AaStatusChangeArchiveView.vue'
+import Detail from '../src/modules/academicAffairs/views/AaStatusChangeDetailView.vue'
+import {academicAffairsApi as api} from '../src/modules/academicAffairs/api/academic-affairs.api.js'
+import {statusChangeConvenienceApi as convenience} from '../src/modules/academicAffairs/api/status-change-convenience.api.js'
+const clone=v=>JSON.parse(JSON.stringify(v)),ok=data=>({code:0,data:clone(data)})
+const student={realName:'演练 · 林晓宁',studentStatus:'REGISTERED',collegeId:'CO1',collegeName:'演练智能制造学院',majorId:'M1',majorName:'演练机电技术',classId:'CL1',className:'演练机电一班'}
+const rows=[{changeId:'C0',studentId:'16',realName:student.realName,changeType:'SUSPEND',reason:'历史演练申请',status:'EFFECTIVE',fromStatus:'REGISTERED',toStatus:'SUSPENDED',decisionVersion:3,currentNode:'',currentTaskId:'',effectiveDate:'2026-09-01'}]
+let writes=0
+api.getRosterDetail=async()=>ok(student)
+api.getStatusChanges=async q=>ok({list:rows.filter(r=>(!q.status||r.status===q.status)&&(!q.changeType||r.changeType===q.changeType)),total:rows.filter(r=>(!q.status||r.status===q.status)&&(!q.changeType||r.changeType===q.changeType)).length})
+api.getStatusChange=async id=>ok(rows.find(r=>r.changeId===id))
+api.getStatusChangeStats=async()=>ok({total:rows.length,pending:rows.length-1,effective:1,byType:[{key:'SUSPEND',count:rows.length}],byStatus:[{key:'SUBMITTED',count:rows.length-1},{key:'EFFECTIVE',count:1}]})
+convenience.listMaterials=async()=>ok({items:[]})
+convenience.submit=async body=>{writes++;document.querySelector('#count').textContent=`写入${writes}次`;const mode=document.querySelector('#mode').value;if(mode==='403')return {code:403002,bizCode:'NO_DATA_SCOPE'};const row={...body,changeId:'C'+writes,realName:student.realName,status:'SUBMITTED',fromStatus:'REGISTERED',toStatus:'SUSPENDED',decisionVersion:0,currentNode:'COUNSELOR_REVIEW',currentTaskId:'T'+writes};rows.unshift(row);if(mode==='timeout')throw Error('响应丢失');return ok(row)}
+const StudentPicker={props:['modelValue'],emits:['update:modelValue','change'],render(){return h('select',{value:this.modelValue,onChange:e=>{this.$emit('update:modelValue',e.target.value);this.$emit('change',e.target.value,[{label:student.realName}])}},[h('option',{value:''},'请选择学生'),h('option',{value:'16'},student.realName)])}}
+const ctx=reactive({currentRole:{roleName:'演练申请岗',roleCode:'SCHOOL_ADMIN'},dataScope:{scopeName:'本地合成数据'},permissionPatterns:['*']})
+const router=createRouter({history:createMemoryHistory(),routes:[{path:'/form',component:{...Form,components:{...Form.components,AppStudentPicker:StudentPicker}},props:()=>({ctx})},{path:'/stats',component:Stats,props:()=>({ctx})},{path:'/archive',component:Archive,props:()=>({ctx})},{path:'/admin/academic-affairs/status-changes/:id',component:Detail,props:()=>({ctx})},{path:'/admin/academic-affairs/status-changes',redirect:'/archive'}]})
+await router.push('/form?studentId=16');await router.isReady();createApp({render:()=>h(RouterView)}).use(createPinia()).use(router).mount('#app')
+for(const button of document.querySelectorAll('[data-view]'))button.onclick=()=>router.push('/'+button.dataset.view+(button.dataset.view==='form'?'?studentId=16':''))
+</script></html>

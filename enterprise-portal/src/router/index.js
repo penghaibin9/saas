@@ -12,6 +12,7 @@ const routes = [
     children: [
       { path: '', redirect: '/home' },
       { path: 'home', name: 'enterprise-home', component: () => import('../views/EnterpriseHomeView.vue') },
+      { path: 'messages', name: 'enterprise-messages', component: () => import('../views/EnterpriseMessagesView.vue') },
       { path: 'company', name: 'company-profile', component: () => import('../views/CompanyProfileView.vue') },
       { path: 'positions', name: 'position-list', component: () => import('../views/PositionListView.vue') },
       { path: 'positions/new', name: 'position-new', component: () => import('../views/PositionFormView.vue') },

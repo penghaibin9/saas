@@ -6,100 +6,52 @@ TR2 方案变更：冻结→恢复（无绑定回 PUBLISHED / 有绑定回 ENABL
 TR3 方案归档：DISABLED 与版本链 SUPERSEDED 两类均出现在只读列表，普通 DRAFT 不出现。
 TR4 越权：学生令牌对三组新端点一律 403。
 
-用本文件专属 db_mode_programs 夹具（非全量 db_mode/db_mode_additive）：高并发 worktree 场景下
-本机与多个子智能体共用同一张 TEST_DATABASE_URL 物理库，db_mode 的全量 drop_all 会与并行会话
-持续撞车；即使不 drop 只 create_all(checkfirst=True)，只要还是遍历全量 ~250 张表，CREATE INDEX
-阶段仍可能撞见另一会话此刻正在 drop 某张不相关表（1146/1050/1051/1684 均实测出现过）。本文件
-用例均按自建方案 id 精确断言，天然不依赖"全库清空后精确计数"，故只需保证「培养方案治理相关表 +
-审计流水表」这一小撮表存在，不需要也不 drop 全量 metadata，最大限度降低碰撞面。
+显式复用共享 db_mode，在独立 MySQL 测试库串行执行。当前审核依赖已发布角色模板、
+真实组织任职与学校商业授权，不能再只建少量业务表并依赖其它用例留下的身份事实。
 """
 from __future__ import annotations
 
-import os
-import time
-
 import pytest
+
+from tests.support_academic_review_identity import ensure_college_review_scope
 
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
-# 正式 submit/bind 门禁会校验稳定课程身份、真实专业、结构化毕业要求与国家标准绑定告警，
-# 故最小表集必须覆盖这些真实读取源；不再用 phantom majorId 或“课程名占位 + 缺表”绕过生产治理。
-_PROGRAM_TABLES = [
-    "t_college", "t_major",
-    "t_aa_program", "t_aa_program_course", "t_aa_program_binding",
-    "t_aa_program_graduation_requirement", "t_aa_program_practice_segment",
-    "t_aa_course", "t_national_standard_document", "t_school_major_standard_binding",
-    "t_affairs_audit_trail",
-]
-
-
 @pytest.fixture()
-def db_mode_programs():
-    """最小化真库夹具：只 create_all(checkfirst=True) 培养方案治理相关表（真实 MySQL，
-    TEST_DATABASE_URL），不做全量 drop_all/create_all，规避与并行 worktree/子智能体共享同一物理
-    测试库时的全量 DDL 竞态（1146/1050/1051/1684）。MySQL 不可达/建表失败直接抛错，
-    不静默回落 sqlite。"""
-    from app.core.config import settings
-    from app.db.session import reset_state
-    test_url = os.environ.get("TEST_DATABASE_URL") or settings.TEST_DATABASE_URL
-    if test_url.startswith("sqlite"):
-        raise RuntimeError("db_mode_programs 仅供 MySQL 使用（拒绝 SQLite 冒充通过）")
-    old_enabled, old_url = settings.DB_ENABLED, settings.DATABASE_URL
-    settings.DB_ENABLED, settings.DATABASE_URL = True, test_url
-    reset_state()
-    from app.db.base import metadata
-    from app.db.session import get_engine
-    engine = get_engine()
-    tables = [metadata.tables[t] for t in _PROGRAM_TABLES if t in metadata.tables]
-
-    def _create():
-        metadata.create_all(bind=engine, tables=tables, checkfirst=True)
-
-    from sqlalchemy.exc import OperationalError, ProgrammingError
-    attempts, base_delay = 15, 2.0
-    for i in range(attempts):
-        try:
-            _create()
-            break
-        except (OperationalError, ProgrammingError) as e:
-            transient = any(code in str(e) for code in ("1050", "1051", "1146", "1684"))
-            if not transient or i == attempts - 1:
-                raise
-            time.sleep(base_delay)
-
-    yield
-    settings.DB_ENABLED, settings.DATABASE_URL = old_enabled, old_url
-    reset_state()
+def db_mode_programs(db_mode):
+    """本文件显式选用完整测试身份基线；不改动共享夹具或生产守卫。"""
+    return db_mode
 
 
 def _hdr(client, login_name):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+    """业务回归直接签发既有 mock 身份，避免全量 shard 的登录限流状态污染本模块。"""
+    del client
+    from app.core.config import settings
+    from app.services import mock_auth_service
+
+    user_type = "STUDENT" if login_name == "student01" else "ADMIN"
+    data = mock_auth_service.login(
+        settings.DEFAULT_TENANT_CODE,
+        login_name,
+        user_type,
+        "PC",
+    )
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
 def _ensure_real_major():
-    """最小真库夹具补齐真实学院/专业，使 Program bind 使用正式 Major 锁锚点。"""
+    """固定使用本文件专用学院/专业，避免 shard 顺序影响 Program 的学院审核 scope。"""
     from app.db.session import get_sessionmaker
     from app.models import College, Major
 
     db = get_sessionmaker()()
     try:
-        major = db.query(Major).filter(
-            Major.tenant_id == TID,
-            Major.status == "ACTIVE",
-            Major.is_deleted.is_(False),
-        ).order_by(Major.id).first()
-        if major:
-            return major.id
-
         college = db.query(College).filter(
             College.tenant_id == TID,
             College.code == "AW2TESTCOL",
-            College.is_deleted.is_(False),
         ).first()
-        if not college:
+        if college is None:
             college = College(
                 tenant_id=TID,
                 college_name="A-W2测试学院",
@@ -108,18 +60,35 @@ def _ensure_real_major():
             )
             db.add(college)
             db.flush()
+        else:
+            college.college_name = "A-W2测试学院"
+            college.status = "ACTIVE"
+            college.is_deleted = False
 
-        major = Major(
-            tenant_id=TID,
-            college_id=college.id,
-            major_name="A-W2测试专业",
-            code="AW2TESTMAJ",
-            status="ACTIVE",
-            enroll_status="ENROLLING",
-        )
-        db.add(major)
+        major = db.query(Major).filter(
+            Major.tenant_id == TID,
+            Major.code == "AW2TESTMAJ",
+        ).first()
+        if major is None:
+            major = Major(
+                tenant_id=TID,
+                college_id=college.id,
+                major_name="A-W2测试专业",
+                code="AW2TESTMAJ",
+                status="ACTIVE",
+                enroll_status="ENROLLING",
+            )
+            db.add(major)
+        else:
+            major.college_id = college.id
+            major.major_name = "A-W2测试专业"
+            major.status = "ACTIVE"
+            major.enroll_status = "ENROLLING"
+            major.is_deleted = False
+        db.flush()
+        major_id = int(major.id)
         db.commit()
-        return major.id
+        return major_id
     finally:
         db.close()
 
@@ -127,6 +96,7 @@ def _ensure_real_major():
 def _new_program(client, hdr, name):
     # 正式发布/绑定门禁要求方案必须有稳定且真实存在的专业/年级身份。
     major_id = _ensure_real_major()
+    ensure_college_review_scope(major_ids=[major_id])
     r = client.post(f"{BASE}/programs", headers=hdr, json={
         "programName": name, "majorId": str(major_id), "gradeYear": "2026"})
     assert r.status_code == 200, r.text
@@ -182,11 +152,50 @@ def _publish(client, hdr, pid):
     _make_governance_ready(client, hdr, pid)
     r = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
     assert r.status_code == 200, r.text
-    r = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
+    r = client.post(
+        f"{BASE}/programs/{pid}/review",
+        headers=_hdr(client, "college_admin01"),
+        json={"action": "APPROVE"},
+    )
     assert r.status_code == 200, r.text
     r = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
     assert r.status_code == 200, r.text
     assert r.json()["data"]["status"] == "PUBLISHED"
+
+
+def test_draft_course_formation_update_survives_readback_and_keeps_review_guards(client, db_mode_programs):
+    hdr = _hdr(client, "school_admin01")
+    pid = _new_program(client, hdr, "草稿编班方式正常编辑")
+    _make_governance_ready(client, hdr, pid)
+    detail = client.get(f"{BASE}/programs/{pid}", headers=hdr).json()["data"]
+    source_id = detail["courses"][0]["programCourseId"]
+    assert detail["courses"][0]["formationMode"] is None
+    path = f"{BASE}/programs/courses/{source_id}"
+
+    invalid = client.put(path, headers=hdr, json={"formationMode": "MERGED"})
+    assert invalid.status_code == 400, invalid.text
+    assert invalid.json()["bizCode"] == "VALIDATION_ERROR"
+    result = client.put(path, headers=hdr, json={"formationMode": "SELECTABLE"})
+    assert result.status_code == 200, result.text
+    assert result.json()["data"]["formationMode"] == "SELECTABLE"
+    for body in ({"credit": 1}, {"formationMode": None}):
+        result = client.put(path, headers=hdr, json=body)
+        assert result.status_code == 200, result.text
+        assert result.json()["data"]["formationMode"] == "SELECTABLE"
+    denied = client.put(path, headers=_hdr(client, "student01"), json={"formationMode": "ADMIN_FIXED"})
+    assert denied.status_code == 403, denied.text
+
+    result = client.post(f"{BASE}/programs/{pid}/submit", headers=hdr)
+    assert result.status_code == 200, result.text
+    result = client.post(f"{BASE}/programs/{pid}/review", headers=_hdr(client, "college_admin01"), json={"action": "APPROVE"})
+    assert result.status_code == 200, result.text
+    result = client.post(f"{BASE}/programs/{pid}/review", headers=hdr, json={"action": "APPROVE"})
+    assert result.status_code == 200, result.text
+    result = client.put(path, headers=hdr, json={"formationMode": "ADMIN_FIXED"})
+    assert result.status_code == 409, result.text
+    readback = client.get(f"{BASE}/programs/{pid}", headers=hdr).json()["data"]
+    assert readback["status"] == "PUBLISHED"
+    assert readback["courses"][0]["formationMode"] == "SELECTABLE"
 
 
 def test_tr1_practice_segment_crud(client, db_mode_programs):

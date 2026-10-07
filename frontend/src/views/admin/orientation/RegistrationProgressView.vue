@@ -157,7 +157,8 @@ export default {
       exportVisible: false,
       auditVisible: false,
       auditLogs: [],
-      reportTagType: REPORT_TAG_TYPE
+      reportTagType: REPORT_TAG_TYPE,
+      batchId: ''
     }
   },
   computed: {
@@ -229,11 +230,12 @@ export default {
     }
   },
   async created() {
+    this.batchId = String(this.$route.query.batchId || '')
     await this.init()
   },
   methods: {
     labelOf(dict, value) {
-      return this.labelMaps[dict]?.[value] || value || '—'
+      return this.labelMaps[dict]?.[value] || (value ? '待确认' : '—')
     },
     progressWidth(row) {
       const [done, all] = String(row.progress || '0/7').split('/').map(Number)
@@ -265,7 +267,7 @@ export default {
       this.error = ''
       this.selected = []
       try {
-        const res = await api.getRegistrationProgress({ ...this.filters, page: this.page, pageSize: this.pageSize })
+        const res = await api.getRegistrationProgress({ ...this.filters, batchId: this.batchId || undefined, page: this.page, pageSize: this.pageSize })
         if (res.code === 0) {
           this.rows = res.data.list
           this.total = res.data.total
@@ -352,7 +354,7 @@ export default {
       } else toast.error(res.message)
     },
     exportFn(payload) {
-      return api.createExport('progressList', payload)
+      return api.createExport('progressList', { ...payload, batchId: this.batchId })
     }
   }
 }

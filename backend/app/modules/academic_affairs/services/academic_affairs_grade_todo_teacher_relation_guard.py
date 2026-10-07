@@ -108,13 +108,6 @@ def sync_grade_entry_todos(db, task) -> bool:
 sync_grade_entry_todos._grade_todo_teacher_relation_guard = True
 
 
-def _push_grade_entry_todo(db, task) -> bool:
-    return sync_grade_entry_todos(db, task)
-
-
-_push_grade_entry_todo._grade_todo_teacher_relation_guard = True
-
-
 def _explicit_topology(db, teaching_class, task):
     """Return (explicit, active_primary, active_relations) for safe legacy sync."""
     from app.models import AaTeachingClassTeacher
@@ -124,7 +117,7 @@ def _explicit_topology(db, teaching_class, task):
         AaTeachingClassTeacher.teaching_class_id == int(teaching_class.id),
         AaTeachingClassTeacher.status == "ACTIVE",
         AaTeachingClassTeacher.is_deleted.is_(False),
-    ).order_by(AaTeachingClassTeacher.role_type, AaTeachingClassTeacher.id)).all()
+    ).order_by(AaTeachingClassTeacher.role_type, AaTeachingClassTeacher.id).with_for_update()).all()
     primaries = [row for row in active if str(row.role_type or "").upper() == "PRIMARY"]
     cos = [row for row in active if str(row.role_type or "").upper() == "CO_TEACHER"]
     if not active:
@@ -143,6 +136,24 @@ def _explicit_topology(db, teaching_class, task):
         or primary_end != task_end
     )
     return explicit, primary, active
+
+
+def sync_default_assignment_change(db, task, previous_assignment):
+    """Only an unchanged simple default topology may follow an explicit task command."""
+    from app.models import AaTeachingClass
+    teaching_class = db.scalar(select(AaTeachingClass).where(
+        AaTeachingClass.tenant_id == grade_core._tid(),
+        AaTeachingClass.teaching_task_id == int(task.id),
+        AaTeachingClass.is_deleted.is_(False)).with_for_update())
+    if teaching_class is None:
+        return
+    explicit, _primary, _active = _explicit_topology(db, teaching_class, previous_assignment)
+    if explicit:
+        if str(task.teacher_key or "") != str(previous_assignment.teacher_key or ""):
+            raise AppException("DATA_CONFLICT", "本教学班已有多教师、分周或独立任课安排，请通过正式教师关系管理办理")
+        return
+    _ORIGINAL_SYNC_PRIMARY(db, teaching_class, task)
+    db.flush()
 
 
 def _sync_primary_teacher(db, teaching_class, task) -> None:
@@ -208,7 +219,7 @@ def install() -> None:
     if not getattr(current, "_grade_todo_teacher_relation_guard", False):
         if not hasattr(grade_core, "_grade_todo_relation_original_push"):
             grade_core._grade_todo_relation_original_push = current
-        grade_core._push_grade_entry_todo = _push_grade_entry_todo
+        grade_core._push_grade_entry_todo = sync_grade_entry_todos
 
     current_sync = getattr(teaching_class_core, "_sync_primary_teacher", None)
     if not getattr(current_sync, "_grade_todo_teacher_relation_guard", False):

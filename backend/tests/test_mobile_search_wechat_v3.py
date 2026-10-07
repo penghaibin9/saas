@@ -112,6 +112,8 @@ def test_provider_exceptions_are_retryable_but_never_reported_as_sent(monkeypatc
     def boom(**kwargs):
         raise RuntimeError("network down")
 
+    original_status = wechat.provider_status
+    monkeypatch.setattr(wechat, "provider_status", lambda: {**original_status(), "providerReady": True, "authorizationReady": True})
     monkeypatch.setattr(wechat, "_call_provider", boom)
     result = wechat.send_subscribe_message(tenant_id=1, openid="o1", scene="CASE_RESULT")
     assert result["status"] == "FAILED"
@@ -133,8 +135,15 @@ def test_delivery_queue_keeps_lease_backoff_and_dead_semantics_for_wechat():
     assert "row.status='SKIPPED'" in branch
 
 
-def test_student_facing_status_never_claims_enabled_without_both_sides():
-    source = (REPO_ROOT / "backend" / "app" / "services" / "mobile_student_service.py").read_text(encoding="utf-8")
-    block = source[source.index("def wechat_subscribe_status("):source.index("_SUBSCRIBE_SCENE_LABELS = {")]
-    assert '"effective": bool(status["configured"]) and authorized' in block
-    assert '"configured"' in block and '"authorized"' in block
+def test_student_facing_status_never_claims_enabled_without_both_sides(monkeypatch):
+    from app.services import mobile_student_service as student
+    monkeypatch.setattr(student, "_require_student", lambda user: user)
+    monkeypatch.setattr(wechat, "provider_status", lambda: {
+        "configured": True, "templates": {scene: False for scene in wechat.SUBSCRIBE_SCENES},
+        "scenes": wechat.SUBSCRIBE_SCENES, "missing": [],
+    })
+    result = student.wechat_subscribe_status({"wx_openid": "bound-only"})
+    assert result["effective"] is False
+    assert result["authorized"] is False
+    assert result["configured"] is False
+    assert not any(scene["ready"] for scene in result["scenes"])

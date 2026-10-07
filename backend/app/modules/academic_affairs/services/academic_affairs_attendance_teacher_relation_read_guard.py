@@ -285,7 +285,7 @@ def list_sessions(user, page=1, page_size=20, class_id=None, term_code=None, ses
 list_sessions._attendance_teacher_relation_read_guard = True
 
 
-def _aggregate_sessions(session_rows) -> dict:
+def _aggregate_sessions(session_rows, page=None, page_size=None) -> dict:
     aggregate: dict[str, dict] = {}
     session_count = 0
     for attendance_session, _authority in session_rows:
@@ -308,6 +308,15 @@ def _aggregate_sessions(session_rows) -> dict:
                 "leave": 0,
                 "sessions": 0,
             })
+            # Legacy sessions may lack the frozen identity fields.  Keep the
+            # first available roster snapshot, then backfill only missing
+            # fields from a later formal snapshot for the same student.
+            student_no = str(roster_item.get("studentNo") or "").strip()
+            real_name = str(roster_item.get("realName") or "").strip()
+            if not row["studentNo"] and student_no:
+                row["studentNo"] = student_no
+            if not row["realName"] and real_name:
+                row["realName"] = real_name
             status = str(roster_item.get("status") or "PRESENT").upper()
             key = {"PRESENT": "present", "LATE": "late", "ABSENT": "absent", "LEAVE": "leave"}.get(status)
             if key:
@@ -318,10 +327,56 @@ def _aggregate_sessions(session_rows) -> dict:
         row["absentRate"] = round(row["absent"] / row["sessions"], 3) if row["sessions"] else 0.0
         students.append(row)
     students.sort(key=lambda row: (-row["absent"], -row["late"], row["studentNo"]))
-    return {"sessionCount": session_count, "students": students}
+    student_total = len(students)
+    absent_student_count = sum(1 for row in students if row["absent"] > 0)
+    result = {
+        "sessionCount": session_count,
+        "studentTotal": student_total,
+        "absentStudentCount": absent_student_count,
+        "students": students,
+    }
+    if page is not None or page_size is not None:
+        page_no = max(1, int(page or 1))
+        size = max(1, min(200, int(page_size or 20)))
+        start = (page_no - 1) * size
+        result.update({
+            "students": students[start:start + size],
+            "page": page_no,
+            "pageSize": size,
+        })
+    return result
 
 
-def attendance_stats(user, class_id=None, term_code=None, session_type=None):
+def _backfill_missing_student_identity(db, students: list[dict]) -> None:
+    """Fill only absent legacy snapshot fields from the current student authority."""
+    missing_ids = {
+        int(row["studentId"])
+        for row in students
+        if str(row.get("studentId") or "").isdigit()
+        and (not row.get("studentNo") or not row.get("realName"))
+    }
+    if not missing_ids:
+        return
+
+    from app.models import StudentProfile
+
+    profiles = db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == public._tid(),
+        StudentProfile.id.in_(missing_ids),
+        StudentProfile.is_deleted.is_(False),
+    )).all()
+    by_id = {str(profile.id): profile for profile in profiles}
+    for row in students:
+        profile = by_id.get(str(row.get("studentId") or ""))
+        if not profile:
+            continue
+        if not row.get("studentNo"):
+            row["studentNo"] = profile.student_no
+        if not row.get("realName"):
+            row["realName"] = profile.real_name
+
+
+def attendance_stats(user, class_id=None, term_code=None, session_type=None, page=None, page_size=None):
     """Relation-aware submitted attendance aggregate, streaming formal sessions."""
     from app.models import AaAttendanceSession
 
@@ -342,7 +397,11 @@ def attendance_stats(user, class_id=None, term_code=None, session_type=None):
                 .order_by(AaAttendanceSession.id)
                 .execution_options(yield_per=500)
             )
-            result = _aggregate_sessions((row, {}) for row in db.scalars(statement))
+            result = _aggregate_sessions(
+                ((row, {}) for row in db.scalars(statement)),
+                page,
+                page_size,
+            )
         else:
             result = _aggregate_sessions(_teacher_sessions(
                 db,
@@ -351,7 +410,8 @@ def attendance_stats(user, class_id=None, term_code=None, session_type=None):
                 term_code=term_code,
                 session_type=session_type,
                 submitted_only=True,
-            ))
+            ), page, page_size)
+        _backfill_missing_student_identity(db, result["students"])
         result.update({
             "sourceScope": _ADMIN_SPECIAL if is_special_scope else "FORMAL_TEACHING",
             "sourceScopeLabel": "管理员特殊补录" if is_special_scope else "正式课堂",

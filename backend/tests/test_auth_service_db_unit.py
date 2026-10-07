@@ -14,6 +14,9 @@ from app.services import control_plane_auth_service as p0
 
 
 class _FakeSession:
+    def refresh(self, user, *, with_for_update=False):
+        assert with_for_update is True
+
     def close(self):
         return None
 
@@ -40,6 +43,8 @@ def _user(**overrides):
         "version": 2,
         "must_change_password": False,
         "password_hash": "hash",
+        "status": "ACTIVE",
+        "is_deleted": False,
     }
     base.update(overrides)
     return SimpleNamespace(**base)
@@ -85,6 +90,64 @@ def test_permission_version_changes_with_user_or_role_version():
     c2 = _ctx(11, "GD_MENTOR")
     c2["version"] = 8
     assert svc._permission_version(user, [c1, c2]) == "u3|COUNSELOR:4,GD_MENTOR:8"
+
+
+@pytest.mark.parametrize("role_state", ["reclaimed", "changed", "old_format", "current"])
+def test_cached_allow_never_overrides_current_role_or_permission_version(monkeypatch, role_state):
+    """旧允许缓存不能恢复已回收岗位或旧权限；合法未变身份继续可用。"""
+    context = _ctx()
+    context["version"] = 2 if role_state == "changed" else 1
+    if role_state == "old_format":
+        context.update(_roleVersion=1, _memberVersion=1)
+    contexts = [] if role_state == "reclaimed" else [context]
+    subject = {"userId": "db-7", "tenantId": "1001", "activeContextId": "role:10",
+               "currentRoleCode": "COUNSELOR", "permissionVersion": "u2|COUNSELOR:1"}
+    monkeypatch.setattr(svc, "db_enabled", lambda: True)
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: _FakeSession())
+    monkeypatch.setattr(svc, "_load_token_user", lambda db, ctx: _user())
+    monkeypatch.setattr(svc, "_ensure_tenant_login_allowed", lambda db, user: None)
+    monkeypatch.setattr(svc, "_role_contexts", lambda db, user: contexts)
+    monkeypatch.setattr(svc, "_subject_cache_matches", lambda ctx: True)
+    monkeypatch.setattr(svc, "cache_set_json", lambda *a, **k: pytest.fail("不应覆盖旧允许缓存"))
+    if role_state == "current":
+        assert svc.validate_token_subject(subject) is subject
+    else:
+        with pytest.raises(AppException) as exc:
+            svc.validate_token_subject(subject)
+        assert exc.value.code == "UNAUTHORIZED"
+
+
+@pytest.mark.parametrize("before,after", [((1, 2), (2, 2)), ((2, 1), (2, 2))])
+def test_role_and_member_version_changes_cannot_mask_each_other(monkeypatch, before, after):
+    monkeypatch.setattr(svc, "_scope_from_role", lambda role: "ASSIGNED")
+
+    def fingerprint(versions):
+        role_version, member_version = versions
+        role = SimpleNamespace(id=10, role_code="COUNSELOR", role_name="辅导员", version=role_version)
+        link = SimpleNamespace(version=member_version)
+        db = SimpleNamespace(execute=lambda stmt: SimpleNamespace(all=lambda: [(link, role)]))
+        return svc._permission_version(_user(), svc._role_contexts(db, _user()))
+
+    assert max(before) == max(after)
+    assert fingerprint(before) != fingerprint(after)
+
+
+def test_current_login_and_identity_responses_hide_internal_version_sources(monkeypatch):
+    context = _ctx()
+    context.update(_roleVersion=1, _memberVersion=2)
+    monkeypatch.setattr(p0, "resolve_for_user", lambda *a: {
+        "policyRevision": "test-policy", "policySource": "TEST", "dataQuality": "TEST",
+        "accessTokenExpireMinutes": 30, "refreshTokenExpireDays": 1})
+    monkeypatch.setattr(svc, "_claims", lambda *a: {"tenantName": "隔离学校"})
+    monkeypatch.setattr(p0, "create_access_token", lambda *a, **k: "isolated-access")
+    monkeypatch.setattr(p0, "issue_refresh", lambda *a, **k: "isolated-refresh")
+    login = p0._login_result(_FakeSession(), _user(), context, [context], "PC")
+    monkeypatch.setattr(svc, "get_sessionmaker", lambda: lambda: _FakeSession())
+    monkeypatch.setattr(svc, "_load_token_user", lambda *a: _user())
+    monkeypatch.setattr(svc, "_role_contexts", lambda *a: [context])
+    identity = svc.get_me({"activeContextId": "role:10", "currentRoleCode": "COUNSELOR"})
+    for payload in (login, identity):
+        assert not {"version", "_roleVersion", "_memberVersion"}.intersection(payload["contexts"][0])
 
 
 def test_tenant_gate_rejects_suspended_tenant():
@@ -187,7 +250,14 @@ def test_change_own_password_forces_revalidation_before_commit(monkeypatch):
     user = _user()
 
     class _PasswordChangeSession(_FakeSession):
+        audit = None
+
+        def add(self, row):
+            self.audit = row
+
         def commit(self):
+            assert self.audit.action == "PASSWORD_CHANGE"
+            assert self.audit.detail_json["credentialVersion"] == 1
             calls.append("commit")
 
     fake_db = _PasswordChangeSession()
@@ -218,7 +288,9 @@ def test_change_own_password_forces_revalidation_before_commit(monkeypatch):
         "new-password",
     )
 
-    assert result == {"success": True, "reloginRequired": True}
+    assert result == {"success": True, "reloginRequired": True, "runtimeMaterialized": True,
+        "credentialVersion": 1, "cacheInvalidated": True, "cacheRecoveryRequired": False,
+        "refreshCleanupRequired": False, "warning": ""}
     assert user.version == 3
     assert user.password_hash == "new-hash"
     assert calls[:2] == [("force", "db-7", 1001), "commit"]

@@ -15,20 +15,6 @@
         <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" code="studentAffairs.club.manage" :loading="saving" @click="openForm">建社团</AppPermissionButton>
       </div>
 
-      <AppSectionCard v-if="formVisible" title="新建社团">
-        <div class="cf-grid">
-          <label class="cf-field"><span>社团名称 *</span><AppTextInput v-model="form.clubName" /></label>
-          <label class="cf-field"><span>类型</span>
-            <AppSelect v-model="form.clubType" :options="TYPE_OPTIONS" placeholder="" /></label>
-          <label class="cf-field"><span>指导教师</span><AppTextInput v-model="form.advisorName" /></label>
-        </div>
-        <p v-if="form.error" class="cf-error">{{ form.error }}</p>
-        <div class="cf-actions">
-          <button type="button" class="cf-btn" @click="formVisible = false">取消</button>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" code="studentAffairs.club.manage" :loading="saving" @click="save">提交</AppPermissionButton>
-        </div>
-      </AppSectionCard>
-
       <div class="cf-layout">
         <AppSectionCard title="社团列表" class="cf-list">
           <div class="cf-filters">
@@ -96,6 +82,19 @@
       </div>
     </AppGlobalState>
 
+    <AppDrawer v-model:visible="formVisible" title="新建社团" subtitle="保存后进入待审批状态" mode="modal" size="medium">
+      <div class="cf-grid">
+        <label class="cf-field"><span>社团名称 *</span><AppTextInput v-model="form.clubName" /></label>
+        <label class="cf-field"><span>类型</span><AppSelect v-model="form.clubType" :options="TYPE_OPTIONS" placeholder="" /></label>
+        <label class="cf-field"><span>指导教师</span><AppTextInput v-model="form.advisorName" /></label>
+      </div>
+      <p v-if="form.error" class="cf-error">{{ form.error }}</p>
+      <template #footer>
+        <AppButton variant="ghost" :disabled="saving" @click="formVisible = false">取消</AppButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" code="studentAffairs.club.manage" :loading="saving" @click="save">提交申请</AppPermissionButton>
+      </template>
+    </AppDrawer>
+
     <!-- 社团审核驳回 / 注销：无社团口径词条，不套用其他场景模板 -->
     <AppConfirmDialog
       v-model:visible="rejDlg.visible" title="驳回社团申请" type="danger" confirm-text="确认驳回"
@@ -117,6 +116,7 @@ import {
   AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
+import { AppButton, AppDrawer } from '@/components/ui'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
@@ -150,7 +150,7 @@ export default {
   name: 'ClubWorkbenchView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+    AppButton, AppConfirmDialog, AppDrawer, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
     AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {

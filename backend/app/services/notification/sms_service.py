@@ -68,7 +68,28 @@ def _template_id(template_code: str) -> str:
         "WARNING": settings.SMS_TEMPLATE_WARNING,
         "GUARDIAN_CONSENT": settings.SMS_TEMPLATE_GUARDIAN_CONSENT,
         "PASSWORD_RESET": settings.SMS_TEMPLATE_PASSWORD_RESET,
+        "BIND_PHONE": settings.SMS_TEMPLATE_BIND_PHONE,
+        "CHANGE_PHONE": settings.SMS_TEMPLATE_CHANGE_PHONE,
     }.get((template_code or "").upper(), "") or (template_code or "")
+
+
+def phone_verification_ready() -> bool:
+    if not (settings.PHONE_BINDING_ENABLED and settings.PHONE_SMS_CONSUMERS_READY and
+            settings.SMS_PHONE_DAILY_TENANT_BUDGET > 0 and settings.SMS_PHONE_DAILY_PLATFORM_BUDGET > 0 and
+            settings.SENSITIVE_SEARCH_HMAC_KEY and _sms_enabled()):
+        return False
+    name = str(_cfg("SMS_PROVIDER", "mock")).lower()
+    if name == "mock":
+        return str(settings.APP_ENV).lower() == "test" and not settings.is_prod
+    return name == "tencent" and bool(settings.SMS_ACCESS_KEY_ID and settings.SMS_ACCESS_KEY_SECRET and
+        settings.SMS_SIGN_NAME and settings.SMS_TENCENT_SDK_APP_ID and settings.SMS_TEMPLATE_BIND_PHONE and
+        settings.SMS_TEMPLATE_CHANGE_PHONE)
+
+
+def notify_phone_verification(tenant_id, phone, code, purpose, provider=None):
+    if purpose not in {"BIND_PHONE", "CHANGE_PHONE"} or not phone_verification_ready():
+        return {"status": "FAILED", "reason": "手机验证服务未就绪", "reasonCode": "SMS_UNAVAILABLE"}
+    return send_sms(tenant_id, phone, purpose, {"code": str(code)}, purpose, None, provider, sensitive_params=True)
 
 
 def _rate_ok(tenant_id: int) -> bool:

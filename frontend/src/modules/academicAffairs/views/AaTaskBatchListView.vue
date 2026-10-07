@@ -3,19 +3,22 @@
   <AaTeachingClassListView v-else-if="workspaceMode === 'classes'" :ctx="ctx" />
   <ModulePageShell
     v-else
-    title="教学任务工作台"
-    subtitle="先看阻断项，再完成教师分配、本人确认、学院核对和教务终审"
+    :title="showGen ? '教学任务生成' : '教学任务批次'"
+    :subtitle="showGen ? '幂等生成，不手工造无来源教学任务' : '先确认已发布方案和年级绑定，再生成'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <template #actions>
       <AppButton @click="openTeachingClasses">教学班与名单</AppButton>
       <AppButton :disabled="loading" @click="load">刷新</AppButton>
-      <AppButton variant="primary" @click="showGen = !showGen">＋ 生成任务批次</AppButton>
+      <AppButton v-if="canManage" variant="primary" @click="showGen = !showGen">从方案生成任务</AppButton>
     </template>
 
     <div class="mp-stack">
-      <section class="task-batch-overview">
+      <AaOperationReceipt :receipt="receipt && { title: '任务生成回执', ...receipt }" />
+      <AaTeachingTaskStageRail v-if="showGen" :current="1" current-note="生成新批次" />
+      <section v-if="!loading && !error" class="task-batch-overview">
         <article v-for="metric in metrics" :key="metric.label" class="task-batch-metric">
           <span>{{ metric.label }}</span>
           <strong>{{ metric.value }}</strong>
@@ -23,19 +26,28 @@
         </article>
       </section>
 
-      <AppSectionCard v-if="showGen" title="生成教学任务批次">
+      <AppSectionCard v-if="showGen && canManage" title="从已发布培养方案生成">
         <div class="aa-cal-form">
           <label class="aa-cal-form__item">
             学期
-            <AppTermEntityPicker v-model="gen.termId" placeholder="选择学期" />
+            <AppTermEntityPicker v-model="gen.termId" placeholder="选择学期" :disabled="generating" />
+          </label>
+          <label class="aa-cal-form__item">
+            开课责任学院
+            <AppCollegePicker v-model="gen.collegeId" placeholder="选择负责开课与学院确认的学院" :disabled="generating" data-scope-hint="按当前授权范围选择开课责任学院" />
+          </label>
+          <label class="aa-cal-form__item">
+            行政班（可选）
+            <AppClassPicker v-model="gen.classId" placeholder="选择行政班，仅补生成该班" :disabled="generating || !gen.collegeId" data-scope-hint="请选当前开课学院的行政班；留空按全院生成" />
           </label>
           <label class="aa-cal-form__item aa-cal-form__item--grow">
             批次名称
-            <input v-model.trim="gen.batchName" class="aa-input" placeholder="选填，如 2026秋教学任务" maxlength="50" />
+            <input v-model.trim="gen.batchName" class="aa-input" placeholder="选填，如 2026秋教学任务" maxlength="50" :disabled="generating" />
           </label>
-          <AppButton variant="primary" :disabled="!gen.termId" :loading="generating" @click="doGenerate">生成并检查</AppButton>
+          <AppButton variant="primary" :disabled="!gen.termId || !gen.collegeId" :loading="generating" @click="doGenerate">生成并检查</AppButton>
         </div>
-        <p class="mp-note">系统只生成当前学期应开的课程；无法解析学期序号、培养方案或年级关系时会明确返回未生成原因，不会猜测生成。</p>
+        <AppInlineAlert v-if="genError" type="danger" :description="genError" />
+        <p class="mp-note">一个批次明确一个开课责任学院，由该学院落实教师与学院确认，再交校教务终审。行政班留空按全院生成；选择班级时仅为该班补生成新任务。无法解析培养方案或年级关系时会说明未生成原因。教学周数以正式校历为准，未维护时不会猜测生成。</p>
       </AppSectionCard>
 
       <section class="task-batch-filters">
@@ -49,8 +61,9 @@
           </select>
         </label>
         <label class="task-batch-filters__search">快速搜索
-          <input v-model.trim="keyword" class="aa-input" placeholder="批次名称、下一步或阻断原因" />
+          <input v-model.trim="keyword" class="aa-input" placeholder="输入批次名称" @keyup.enter="applyFilters" />
         </label>
+        <AppButton @click="applyFilters">查询批次</AppButton>
       </section>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -59,7 +72,7 @@
       <DataTable v-else :columns="columns" :rows="filteredRows" row-key="batchId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-batch="{ row }">
           <div class="mp-cell-main">{{ row.batchName || `批次 ${row.batchId}` }}</div>
-          <div class="mp-cell-sub">学期ID {{ row.termId }} · 共 {{ row.taskTotal ?? 0 }} 条任务</div>
+          <div class="mp-cell-sub">{{ row.termLabel || '学期待核对' }} · 共 {{ row.taskTotal ?? 0 }} 条任务</div>
         </template>
         <template #cell-progress="{ row }">
           <div class="task-progress-line"><span>分配</span><strong>{{ row.assignedRate ?? 0 }}%</strong></div>
@@ -92,25 +105,32 @@
 <script>
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppTermEntityPicker } from '@/components/common'
-import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { AppSectionCard, AppStatusTag, AppTermEntityPicker, AppCollegePicker, AppClassPicker, AppInlineAlert } from '@/components/common'
+import { academicAffairsApi, academicAffairsOrgApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_BATCH_STATUS, taskBatchColor } from '@/modules/academicAffairs/constants/teaching'
-import { toast } from '@/utils/toast'
 import AaTeachingClassListView from './AaTeachingClassListView.vue'
 import AaTeachingClassDetailView from './AaTeachingClassDetailView.vue'
+import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
+import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
+import { teachingTaskWorkbenchApi } from '../api/teaching-task-workbench.api'
+import { matchPermission } from '@/config/navPlan'
+import { currentUserFromToken } from '@/services/http/client'
+import { academicIdentity } from '../academicFlowContext.js'
+import { isDeniedResult, isConflictResult } from '../components/parallel-a/resultState'
 
 export default {
   name: 'AaTaskBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppTermEntityPicker, AaTeachingClassListView, AaTeachingClassDetailView },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppTermEntityPicker, AppCollegePicker, AppClassPicker, AppInlineAlert, AaTeachingClassListView, AaTeachingClassDetailView, AaOperationReceipt, AaTeachingTaskStageRail },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true,
       error: '',
       rows: [],
+      revision: 0, receipt: null,
       showGen: false,
-      generating: false,
-      gen: { termId: '', batchName: '' },
+      generating: false, generateSeq: 0, collegeSeq: 0, genError: '',
+      gen: { termId: '', collegeId: '', classId: '', batchName: '' },
       filters: { termId: '', status: '' },
       keyword: '',
       batchStatuses: TASK_BATCH_STATUS,
@@ -126,88 +146,126 @@ export default {
     }
   },
   computed: {
+    canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.manage') },
+    generationContext() { return JSON.stringify([academicIdentity(currentUserFromToken(), this.ctx), this.ctx.currentRole, this.ctx.dataScope, this.ctx.permissionPatterns, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
     workspaceMode() {
       if (this.$route.query.view !== 'classes') return 'tasks'
       return this.$route.query.teachingClassId ? 'class-detail' : 'classes'
     },
     metrics() {
       const rows = this.rows || []
-      const totals = rows.reduce((sum, row) => sum + Number(row.taskTotal || 0), 0)
-      const blockers = rows.reduce((sum, row) => sum + Number(row.blockerCount || 0), 0)
-      const waiting = rows.reduce((sum, row) => sum + Number(row.waitingTeacherCount || 0), 0)
-      const ready = rows.reduce((sum, row) => sum + Number(row.readyCount || 0), 0)
+      const pending = rows.filter(row => ['DRAFT', 'GENERATED'].includes(row.status)).length
+      const processing = rows.filter(row => ['ASSIGNING', 'TEACHER_CONFIRMING', 'COLLEGE_CONFIRMED'].includes(row.status)).length
+      const completed = rows.filter(row => ['APPROVED', 'ARCHIVED'].includes(row.status)).length
       return [
-        { label: '当前批次', value: rows.length, note: '按当前数据范围展示' },
-        { label: '教学任务', value: totals, note: '不含已并入合班记录' },
-        { label: '待教师确认', value: waiting, note: '必须教师本人处理' },
-        { label: '总阻断项', value: blockers, note: '处理完才能进入审核' },
-        { label: '已就绪任务', value: ready, note: '可进入排课' }
+        { label: '当前范围批次', value: this.pagination.total, note: '按正式学期与权限范围读取' },
+        { label: '本页待启动', value: pending, note: '需确认来源方案与生成责任' },
+        { label: '本页进行中', value: processing, note: '逐批核对派师与确认节点' },
+        { label: '本页已完成', value: completed, note: '可回查原批次及正式任务' }
       ]
     },
-    filteredRows() {
-      const keyword = this.keyword.toLowerCase()
-      if (!keyword) return this.rows
-      return this.rows.filter((row) => {
-        const blockerText = (row.blockers || []).map((item) => item.message).join(' ')
-        return [row.batchName, row.status, row.nextAction?.label, blockerText]
-          .some((value) => String(value || '').toLowerCase().includes(keyword))
-      })
-    }
+    filteredRows() { return this.rows }
   },
   created() {
+    this.restoreFilters()
     if (this.$route?.query?.open === 'generate') this.showGen = true
     if (this.workspaceMode === 'tasks') this.load()
   },
   watch: {
+    '$route.fullPath'() { this.restoreFilters(); if (this.workspaceMode === 'tasks') this.load() },
+    generationContext() { this.revision++; this.generateSeq++; this.collegeSeq++; this.generating = false; this.genError = ''; this.rows = []; this.receipt = null; this.showGen = false; this.gen = { termId: '', collegeId: '', classId: '', batchName: '' }; if (this.workspaceMode === 'tasks') this.load() },
+    'gen.collegeId'(next, previous) { if (next !== previous) this.gen.classId = '' },
+    showGen(value) { if (value) this.prefillCollege() },
+    '$route.query.open'(value) { this.showGen = value === 'generate' },
     workspaceMode(value) {
       if (value === 'tasks' && !this.rows.length) this.load()
     }
   },
+  beforeUnmount() { this.revision++; this.generateSeq++; this.collegeSeq++; this.disposed = true },
   methods: {
     statusColor: taskBatchColor,
     openTeachingClasses() { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes' } }) },
-    applyFilters() {
-      this.pagination.page = 1
-      this.load()
+    restoreFilters() {
+      const q = this.$route.query
+      this.filters.termId = typeof q.termId === 'string' ? q.termId : ''
+      this.filters.status = typeof q.status === 'string' ? q.status : ''
+      this.keyword = typeof q.keyword === 'string' ? q.keyword : ''
+      const page = Number(q.page); this.pagination.page = Number.isInteger(page) && page > 0 && page <= 1000000 ? page : 1
     },
-    onPageChange(page) {
-      this.pagination.page = page
-      this.load()
+    applyFilters() { return this.onPageChange(1) },
+    async onPageChange(page) {
+      const before = this.$route.fullPath
+      await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, termId: this.filters.termId || undefined, status: this.filters.status || undefined, keyword: this.keyword || undefined, page: String(page) } })
+      if (before === this.$route.fullPath) { this.restoreFilters(); return this.load() }
     },
     openBatch(row) {
-      this.$router.push(`/admin/academic-affairs/teaching-tasks/${row.batchId}`)
+      this.$router.push({ path: `/admin/academic-affairs/teaching-tasks/${row.batchId}`, query: { returnTo: this.$route.fullPath } })
+    },
+    async prefillCollege() {
+      if ((this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) !== 'COLLEGE' || this.gen.collegeId || !this.canManage) return
+      const seq = ++this.collegeSeq, context = this.generationContext
+      const valid = () => !this.disposed && this.showGen && seq === this.collegeSeq && context === this.generationContext
+      try {
+        const res = await academicAffairsOrgApi.listColleges({ page: 1, pageSize: 2 })
+        if (!valid()) return
+        if (res.code !== 0 || !Array.isArray(res.data?.list)) throw res
+        if (!this.gen.collegeId && res.data.total === 1 && res.data.list.length === 1) {
+          const id = res.data.list[0].id ?? res.data.list[0].collegeId
+          if (id != null && String(id)) this.gen.collegeId = String(id)
+        }
+      } catch { if (valid()) this.genError = '责任学院读取失败，请在学院选择器中重新查询后选择。' }
     },
     async doGenerate() {
-      if (this.generating || !this.gen.termId) return
+      if (!this.canManage || this.generating) return
+      this.genError = ''
+      if (!this.gen.termId || !this.gen.collegeId) { this.genError = '请选择学期与开课责任学院'; return }
+      const classId = this.gen.classId == null ? '' : this.gen.classId
+      if (classId !== '' && (typeof classId !== 'string' || !/^[1-9]\d*$/.test(classId))) { this.genError = '请重新选择有效行政班'; return }
       this.generating = true
-      const res = await academicAffairsApi.generateTaskBatch({
-        termId: this.gen.termId,
-        batchName: this.gen.batchName || undefined
-      })
-      this.generating = false
-      if (res.code === 0) {
-        const projectionErrors = res.data?.teachingClassProjection?.errors || []
-        if (projectionErrors.length) toast.warning(`任务已生成，但有 ${projectionErrors.length} 条教学班投影欠账，请进入“教学班与名单”对账`)
-        else toast.success('教学任务批次及教学班已生成，请继续处理阻断项')
-        this.showGen = false
-        this.gen = { termId: '', batchName: '' }
-        this.load()
-      } else toast.error(res.message || '生成失败，请核对培养方案和学期配置')
+      const termId = String(this.gen.termId), collegeId = String(this.gen.collegeId), context = this.generationContext, seq = ++this.generateSeq
+      const valid = () => !this.disposed && seq === this.generateSeq && context === this.generationContext
+      this.receipt = { object: `学期 #${termId}`, status: '结果待确认', pending: true, next: '生成后查询正式批次；请勿重复提交。' }
+      try {
+        const res = await academicAffairsApi.generateTaskBatch({ termId, collegeId, batchName: this.gen.batchName || undefined, ...(classId ? { classId } : {}) })
+        if (!valid()) return
+        if (res.code !== 0) { this.handleFailure(res, '生成失败，请核对培养方案和学期配置'); return }
+        const batchId = res.data?.batchId
+        if (!batchId) return
+        const readback = await teachingTaskWorkbenchApi.getBatch(batchId)
+        if (!valid()) return
+        if (readback.code !== 0) { this.handleFailure(readback, '生成后正式批次读取失败'); return }
+        const batch = readback.data
+        const confirmed = String(batch?.termId) === termId && String(batch?.collegeId) === collegeId && String(batch?.batchId) === String(batchId)
+        this.receipt = { object: `${batch?.batchName || '教学任务批次'} · #${batchId}`, status: confirmed ? TASK_BATCH_STATUS[batch.status] || '状态待确认' : '结果待确认', pending: !confirmed, time: batch?.generatedAt, next: confirmed ? batch.nextAction?.label || '进入批次核对任务与阻断项，再分配教师。' : '返回批次列表核对，不要重复生成。' }
+        if (confirmed) { this.showGen = false; this.gen = { termId: '', collegeId: '', classId: '', batchName: '' }; await this.load() }
+      } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请查询学期正式批次，不要重复生成。') }
+      finally { if (valid()) this.generating = false }
+    },
+    handleFailure(result, fallback) {
+      this.error = result?.message || fallback
+      if (isDeniedResult(result)) { this.revision++; this.generateSeq++; this.collegeSeq++; this.generating = false; this.loading = false; this.rows = []; this.receipt = null; this.gen = { termId: '', collegeId: '', classId: '', batchName: '' }; this.showGen = false }
+      else if (isConflictResult(result)) this.receipt = { object: `学期 #${this.gen.termId}`, status: '事实已变化，保留输入', pending: true, next: '核对已发布方案和年级绑定后再生成。' }
     },
     async load() {
+      const revision = ++this.revision
       this.loading = true
       this.error = ''
+      this.rows = []; this.pagination.total = 0
+      try {
       const res = await academicAffairsApi.getTaskBatches({
         termId: this.filters.termId || undefined,
         status: this.filters.status || undefined,
+        keyword: this.keyword || undefined,
         page: this.pagination.page,
         pageSize: this.pagination.pageSize
       })
+      if (revision !== this.revision) return
       if (res.code === 0) {
         this.rows = res.data?.list || []
         this.pagination.total = Number(res.data?.total || 0)
-      } else this.error = res.message || '教学任务批次加载失败'
-      this.loading = false
+      } else this.handleFailure(res, '教学任务批次加载失败')
+      } catch (error) { if (revision === this.revision) this.handleFailure(error, '网络连接失败，请重试。') }
+      finally { if (revision === this.revision) this.loading = false }
     }
   }
 }
@@ -215,16 +273,16 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.task-batch-overview { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
-.task-batch-metric { padding: 16px; border: 1px solid var(--gray-200); border-radius: 12px; background: #fff; }
+.task-batch-overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.task-batch-metric { min-height: 92px; padding: 14px 16px; border: 1px solid var(--gray-200); border-radius: 10px; background: var(--bg-card); box-sizing: border-box; }
 .task-batch-metric span, .task-batch-metric small { display: block; color: var(--gray-500); font-size: 12px; }
-.task-batch-metric strong { display: block; margin: 8px 0 5px; color: var(--gray-900); font-size: 24px; }
+.task-batch-metric strong { display: block; margin: 7px 0 5px; color: var(--gray-900); font-size: 24px; line-height: 1.15; }
 .aa-cal-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-cal-form__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--gray-700); }
 .aa-cal-form__item--grow { flex: 1; min-width: 220px; }
-.aa-input, .aa-select { height: 36px; padding: 0 10px; border: 1px solid var(--gray-300); border-radius: 7px; background: #fff; color: var(--gray-900); font-size: 13px; box-sizing: border-box; }
-.task-batch-filters { display: flex; align-items: flex-end; gap: 14px; padding: 14px 16px; border: 1px solid var(--gray-200); border-radius: 12px; background: #fff; }
-.task-batch-filters label { display: flex; flex-direction: column; gap: 6px; color: var(--gray-600); font-size: 12px; }
+.aa-input, .aa-select { height: 36px; padding: 0 10px; border: 1px solid var(--gray-300); border-radius: 7px; background: var(--bg-card); color: var(--gray-900); font-size: 13px; box-sizing: border-box; }
+.task-batch-filters { display: flex; align-items: flex-end; gap: 10px; padding: 9px 12px; border: 1px solid var(--gray-200); border-radius: 10px; background: var(--bg-card); }
+.task-batch-filters label { display: flex; flex-direction: column; gap: 4px; color: var(--gray-600); font-size: 12px; }
 .task-batch-filters__search { flex: 1; }
 .task-batch-filters__search .aa-input { width: 100%; }
 .task-progress-line { display: flex; justify-content: space-between; color: var(--gray-700); font-size: 12px; }

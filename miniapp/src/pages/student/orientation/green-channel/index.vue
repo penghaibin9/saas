@@ -5,11 +5,11 @@
         <!-- 已提交/已处理：只读展示状态 -->
         <view v-if="o.greenChannelStatus !== 'NOT_APPLIED'" class="card gc__status">
           <MobileStatusTag :status="o.greenChannelStatus" />
-          <text class="gc__status-tx">{{ statusText }}</text>
+          <text class="gc__status-tx">{{ statusText }}<text v-if="o.greenChannel?.rejectReason">审核意见：{{ o.greenChannel.rejectReason }}</text></text>
         </view>
 
         <!-- 未申请：可提交表单 -->
-        <template v-else>
+        <template v-if="canSubmit">
           <view class="card gc__form">
             <text class="card-title">困难类型</text>
             <view class="gc__types">
@@ -52,8 +52,8 @@
       </view>
     </MobileGlobalState>
 
-    <MobileSafeAreaBar v-if="o && o.greenChannelStatus === 'NOT_APPLIED'">
-      <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交申请' }}</button>
+    <MobileSafeAreaBar v-if="o && canSubmit">
+      <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : o.greenChannelStatus === 'RETURNED' ? '补充并重新提交' : '提交申请' }}</button>
     </MobileSafeAreaBar>
   </view>
 </template>
@@ -62,6 +62,7 @@
 import { studentApi } from '@/services/studentApi'
 import { createSubmitLock, normalizeError } from '@/services/request'
 import { toast, back } from '@/utils/nav'
+import { createClientRequestId } from '@/utils/clientRequestId'
 
 const submitLock = createSubmitLock(1500)
 const TYPE_OPTIONS = ['助学贷款', '缓缴学费', '减免学费', '分期缴纳']
@@ -69,22 +70,23 @@ const STATUS_TEXT = {
   SUBMITTED: '申请已提交，等待辅导员/资助中心审核。',
   REVIEWING: '申请正在审核中，请耐心等待。',
   APPROVED: '申请已通过，缴费状态已更新为绿色通道。',
-  RETURNED: '申请被退回，请补充材料后联系辅导员重新提交。',
+  RETURNED: '申请已退回，请根据下方意见补充并重新提交。',
   REJECTED: '申请未通过，如有疑问请联系资助中心。',
   WITHDRAWN: '申请已撤回。'
 }
-
 export default {
   data() {
     return {
       o: null, state: 'loading', typeOptions: TYPE_OPTIONS,
       applyType: TYPE_OPTIONS[0], amount: '', remark: '', submitting: false,
+      clientRequestId: createClientRequestId('orientation-green'),
       // V3 §8.1：只保存 TEMP_PRIVATE fileId，正式绑定在服务端业务事务里完成。
       fileIds: [], attachmentsReady: true
     }
   },
   onLoad() { this.load() },
   computed: {
+    canSubmit() { return !!this.o?.selfService?.canSubmitMaterials && ['NOT_APPLIED', 'RETURNED', 'WITHDRAWN'].includes(this.o?.greenChannelStatus) },
     statusText() {
       return (this.o && STATUS_TEXT[this.o.greenChannelStatus]) || ''
     }
@@ -94,6 +96,7 @@ export default {
       this.state = 'loading'
       studentApi.getOrientation().then((d) => {
         this.o = d
+        if (d.greenChannel && !this.amount && !this.remark) { this.applyType = d.greenChannel.applyType; this.amount = String(d.greenChannel.applyAmount); this.remark = d.greenChannel.remark || '' }
         this.state = 'ready'
       }).catch(() => { this.state = 'error' })
     },
@@ -101,7 +104,8 @@ export default {
       toast((error && error.message) || '附件处理失败，请重试')
     },
     submit() {
-      if (this.submitting) return
+      if (this.submitting || !this.canSubmit) return
+      if (!Number.isFinite(Number(this.amount)) || Number(this.amount) <= 0) { toast('请输入大于零的申请金额'); return }
       if (!this.attachmentsReady) {
         toast('附件尚未通过安全扫描，请稍候再提交')
         return
@@ -109,7 +113,7 @@ export default {
       this.submitting = true
       submitLock.run(() => studentApi.submitOrientationGreenChannel({
         applyType: this.applyType, applyAmount: Number(this.amount) || 0, remark: this.remark.trim(),
-        fileIds: this.fileIds
+        fileIds: this.fileIds, clientRequestId: this.clientRequestId
       })).then(() => {
         uni.showToast({ title: '提交成功', icon: 'success' })
         setTimeout(() => back(), 700)

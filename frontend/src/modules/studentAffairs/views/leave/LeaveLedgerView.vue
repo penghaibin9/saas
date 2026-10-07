@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="请假台账" subtitle="全状态请假记录 · 按数据范围裁剪 · Excel 台账导出（水印 + 留痕）"
+  <ModulePageShell title="请假台账" subtitle="查找申请、回看办理记录与导出结果。"
     :role-name="roleName" :data-scope-name="scopeHint">
     <template #actions>
       <AppExportButton :export-fn="exportFn" @exported="onExported">导出 Excel 台账</AppExportButton>
@@ -8,8 +8,10 @@
     <div class="mp-stack">
       <div class="flt">
         <AppSearchBox v-model="filters.keyword" placeholder="学生姓名 / 学号" @search="search" />
-        <AppSelect v-model="filters.status" :options="statusOptions" placeholder="全部状态" @change="onStatusChange" />
-        <AppSelect v-model="filters.leaveType" :options="typeOptions" placeholder="全部类型" @change="search" />
+        <label class="sr-only" for="leave-ledger-status">请假状态</label>
+        <AppSelect id="leave-ledger-status" v-model="filters.status" :options="statusOptions" placeholder="全部状态" @change="onStatusChange" />
+        <label class="sr-only" for="leave-ledger-type">请假类型</label>
+        <AppSelect id="leave-ledger-type" v-model="filters.leaveType" :options="typeOptions" placeholder="全部类型" @change="search" />
         <AppDateRangePicker v-model="filters.range" @change="search" />
         <button type="button" class="mp-link" @click="reset">重置</button>
       </div>
@@ -41,7 +43,7 @@
           <div class="mp-cell-sub">至 {{ fmt(row.endTime) }}</div>
         </template>
         <template #cell-status="{ row }">
-          <AppStatusTag :status="row.affairsStatus" :label="row.affairsStatusLabel" dot />
+          <AppStatusTag :status="row.affairsStatus" :label="row.affairsStatusLabel" :type="row.tone" dot />
         </template>
         <template #cell-actions="{ row }">
           <button type="button" class="mp-link" @click="openDetail(row)">查看</button>
@@ -52,18 +54,21 @@
     </div>
 
     <AppDrawer v-model:visible="detailVisible" :title="detail ? '请假详情 · ' + detail.studentName : '请假详情'" mode="modal" size="medium">
-      <template v-if="detail">
+      <LoadingState v-if="detailLoading" />
+      <ErrorState v-else-if="detailError" :description="detailError" @retry="openDetail({ id: detailId })" />
+      <template v-else-if="detail">
         <AppDescriptionList :items="detailItems" :columns="1" />
+        <LeaveProgressContext :detail="detail" />
         <template v-if="detail.extensions && detail.extensions.length">
           <div class="sec-t">续假记录</div>
           <ul class="rec-list">
-            <li v-for="e in detail.extensions" :key="e.id">{{ fmt(e.oldEndTime) }} → {{ fmt(e.newEndTime) }}（+{{ e.extendDays }}天）· {{ e.status }}</li>
+            <li v-for="e in detail.extensions" :key="e.id">{{ fmt(e.oldEndTime) }} → {{ fmt(e.newEndTime) }}（+{{ e.extendDays }}天）· {{ operationStatusLabel(e.status) }}</li>
           </ul>
         </template>
         <template v-if="detail.cancelRecords && detail.cancelRecords.length">
           <div class="sec-t">销假记录</div>
           <ul class="rec-list">
-            <li v-for="c in detail.cancelRecords" :key="c.id">实际返校 {{ fmt(c.actualReturnAt) }} · {{ c.status }}<span v-if="c.confirmBy"> · {{ c.confirmBy }}</span></li>
+            <li v-for="c in detail.cancelRecords" :key="c.id">实际返校 {{ fmt(c.actualReturnAt) }} · {{ operationStatusLabel(c.status) }}<span v-if="c.confirmBy"> · {{ c.confirmBy }}</span></li>
           </ul>
         </template>
         <div class="sec-t">审批留痕</div>
@@ -82,6 +87,7 @@
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag, AppExportButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppSelect, AppDateRangePicker } from '@/components/common'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
+import LeaveProgressContext from './components/LeaveProgressContext.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
@@ -109,18 +115,19 @@ const EMPTY_FILTERS = () => ({ keyword: '', status: '', leaveType: '', range: { 
 
 export default {
   name: 'LeaveLedgerView',
-  components: {
+  components: { LeaveProgressContext,
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppExportButton,
     AppDescriptionList, AppAuditTrail, AppSearchBox, AppSelect, AppDateRangePicker, AppDrawer
   },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
+      hasActivated: false, lastRouteQuery: '',
       loading: true, error: '', rows: [], columns: COLUMNS, filters: EMPTY_FILTERS(),
       studentFilter: { studentId: '', studentNo: '', studentName: '' },
       pagination: { page: 1, pageSize: 10, total: 0 },
       statusOptions: STATUS_OPTIONS, typeOptions: TYPE_OPTIONS,
-      detailVisible: false, detail: null, exportJob: null, exportPollTimer: null
+      detailVisible: false, detail: null, detailLoading: false, detailError: '', detailId: '', detailEpoch: 0, listEpoch: 0, exportJob: null, exportPollTimer: null
     }
   },
   computed: {
@@ -144,7 +151,7 @@ export default {
     },
     exportStatusText() {
       const status = (this.exportJob && this.exportJob.status) || 'CREATED'
-      return ({ CREATED: '等待处理', RUNNING: '正在生成', SUCCEEDED: '已完成', FAILED: '生成失败', DEAD: '多次失败，需处理', EXPIRED: '已过期', REVOKED: '已撤销' })[status] || status
+      return ({ CREATED: '等待处理', RUNNING: '正在生成', SUCCEEDED: '已完成', FAILED: '生成失败', DEAD: '多次失败，需处理', EXPIRED: '已过期', REVOKED: '已撤销' })[status] || (status ? '状态待确认' : '—')
     },
     detailItems() {
       const d = this.detail || {}
@@ -159,7 +166,7 @@ export default {
     },
     auditRecords() {
       return ((this.detail && this.detail.auditTrail) || []).map((t, i) => ({
-        id: i, action: t.action, actor: t.operator, reason: t.detail, at: t.occurredAt
+        id: i, action: t.actionCode, actionLabel: t.action, actor: t.operator, reason: t.detail, at: t.occurredAt
       }))
     }
   },
@@ -168,13 +175,23 @@ export default {
     this.load()
   },
   watch: {
-    '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.load() }
+    '$route.query'(value) {
+      if (this.$route.path !== '/admin/student-affairs/leave/ledger' || JSON.stringify(value) === this.lastRouteQuery) return
+      this.applyRouteFilters(); this.pagination.page = 1; this.load()
+    }
   },
-  beforeUnmount() { this.stopExportPolling() },
+  activated() { if (this.hasActivated) { this.load(); if (this.exportJob) this.startExportPolling() } this.hasActivated = true },
+  deactivated() { this.stopExportPolling(); this.detailVisible = false; this.detailEpoch++ },
+  beforeUnmount() { this.stopExportPolling(); this.detailEpoch++; this.listEpoch++ },
   methods: {
+    operationStatusLabel(value) { return ({ PENDING: '待处理', SUBMITTED: '已提交', APPROVED: '已通过', REJECTED: '已驳回', CANCELLED: '已取消', COMPLETED: '已完成', CONFIRMED: '已确认' })[value] || (value ? '状态待确认' : '—') },
     fmt(v) { return v ? formatDateTime(v) : '' },
     applyRouteFilters() {
       const q = this.$route.query || {}
+      this.lastRouteQuery = JSON.stringify(q)
+      this.filters.classId = String(q.classId || '')
+      this.filters.leaveType = TYPE_OPTIONS.some(o => o.value === q.leaveType) ? q.leaveType : ''
+      this.filters.range = { start: String(q.dateStart || ''), end: String(q.dateEnd || '') }
       this.studentFilter = readStudentFilter(q)
       this.filters.studentId = this.studentFilter.studentId || ''
       if (!q.status) {
@@ -198,11 +215,10 @@ export default {
       this.$router.replace({ query: q }).catch(() => {})
     },
     onStatusChange() {
-      const q = { ...this.$route.query }
+      const q = { ...this.$route.query, leaveType: this.filters.leaveType, dateStart: this.filters.range.start, dateEnd: this.filters.range.end }
       if (!this.filters.status) delete q.status
       else q.status = this.filters.status
       this.$router.replace({ query: q }).catch(() => {})
-      this.search()
     },
     buildParams() {
       const f = this.filters
@@ -211,6 +227,7 @@ export default {
       if (f.status) p.status = f.status
       if (f.leaveType) p.leaveType = f.leaveType
       if (f.studentId) p.studentId = f.studentId
+      if (f.classId) p.classId = f.classId
       if (f.range && f.range.start) p.dateStart = f.range.start
       if (f.range && f.range.end) p.dateEnd = f.range.end
       return p
@@ -221,24 +238,29 @@ export default {
       this.studentFilter = { studentId: '', studentNo: '', studentName: '' }
       this.pagination.page = 1
       const q = { ...this.$route.query }
-      delete q.status; delete q.studentId; delete q.studentNo; delete q.studentName
+      delete q.status; delete q.studentId; delete q.studentNo; delete q.studentName; delete q.classId; delete q.leaveType; delete q.dateStart; delete q.dateEnd
       this.$router.replace({ query: q }).catch(() => {})
       this.load()
     },
     onPageChange(page) { this.pagination.page = page; this.load() },
     async load() {
+      const epoch = ++this.listEpoch
       this.loading = true; this.error = ''
       const res = await leaveApi.ledger(this.buildParams())
+      if (epoch !== this.listEpoch) return
       this.loading = false
       if (res.code !== 0) { this.error = res.message || '加载失败'; this.rows = []; return }
       this.rows = res.data.list
       this.pagination.total = res.data.total
     },
     async openDetail(row) {
+      const epoch = ++this.detailEpoch
+      this.detailId = row.id; this.detail = null; this.detailVisible = true; this.detailLoading = true; this.detailError = ''
       const res = await leaveApi.detail(row.id)
-      if (res.code !== 0) return toast.error(res.message || '详情加载失败')
+      if (epoch !== this.detailEpoch) return
+      this.detailLoading = false
+      if (res.code !== 0) { this.detailError = res.message || '详情加载失败'; return }
       this.detail = res.data
-      this.detailVisible = true
     },
     exportFn() {
       const p = this.buildParams()
@@ -288,6 +310,9 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .flt { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.flt :deep(.app-select){width:150px;flex:0 1 150px}
+.flt :deep(.app-search-box){width:240px;flex:0 1 240px}
+.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 .lv-export-job,
 .lv-student-filter {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);

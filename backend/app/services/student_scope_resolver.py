@@ -54,8 +54,9 @@ from app.core.exceptions import AppException
 # 新生（ADMITTED 等）还没正式注册，毕业离校（GRADUATED/ALUMNI）已不在校，都不该被批量选中。
 DEFAULT_STAGES = ("ENROLLED", "GRADUATING", "INTERN")
 
-# 学生状态：只要正常在籍的。MERGED（重复档已合并）/RECYCLED（已回收）不参与。
-DEFAULT_STUDENT_STATUSES = ("NORMAL",)
+# 与教务 is_enrolled 的在籍口径一致；正式学期注册会将 NORMAL 写为 REGISTERED。
+# 休学、保留学籍、退学及毕业等状态仍不参与默认选人。
+DEFAULT_STUDENT_STATUSES = ("NORMAL", "REGISTERED", "RETAINED")
 
 MAX_PREVIEW_ROWS = 2000
 

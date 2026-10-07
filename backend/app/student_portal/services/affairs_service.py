@@ -42,6 +42,72 @@ def funding(user: dict) -> dict:
     return aff.funding_my(user)
 
 
+def funding_detail(user: dict, application_id: str) -> dict:
+    from app.services.affairs_funding_student_service import detail
+    return detail(user, application_id)
+
+
+def work_study_posts(user: dict, keyword: str = "", page: int = 1, page_size: int = 20) -> dict:
+    """本人可申请的勤工岗位；包含本人对每个岗位的最新申请状态。"""
+    from app.services import affairs_funding_ext_service as work_study
+    return work_study.student_posts(user, keyword=keyword, page=page, page_size=page_size)
+
+
+def work_study_my(user: dict) -> dict:
+    from app.services import affairs_funding_ext_service as work_study
+    return work_study.student_records(user)
+
+
+def work_study_apply(user: dict, post_id: str, body: dict) -> dict:
+    from app.services import affairs_funding_ext_service as work_study
+    return work_study.apply_work_study_self(post_id, body or {}, user)
+
+
+def work_study_withdraw(user: dict, record_id: str, body: dict) -> dict:
+    from app.services import affairs_funding_ext_service as work_study
+    return work_study.withdraw_work_study_self(record_id, body or {}, user)
+
+
+def loans_my(user: dict) -> dict:
+    from app.services import affairs_funding_ext_service as loans
+    return loans.student_loans(user)
+
+
+def loan_submit(user: dict, body: dict) -> dict:
+    from app.services import affairs_funding_ext_service as loans
+    return loans.submit_loan_self(body or {}, user)
+
+
+def loan_resubmit(user: dict, loan_id: str, body: dict) -> dict:
+    from app.services import affairs_funding_ext_service as loans
+    return loans.resubmit_loan_self(loan_id, body or {}, user)
+
+
+def loan_withdraw(user: dict, loan_id: str, body: dict) -> dict:
+    from app.services import affairs_funding_ext_service as loans
+    return loans.withdraw_loan_self(loan_id, body or {}, user)
+
+
+def reductions_my(user: dict) -> dict:
+    from app.services import affairs_funding_ext_service as reductions
+    return reductions.student_reductions(user)
+
+
+def reduction_submit(user: dict, body: dict) -> dict:
+    from app.services import affairs_funding_ext_service as reductions
+    return reductions.submit_reduction_self(body or {}, user)
+
+
+def reduction_resubmit(user: dict, fee_id: str, body: dict) -> dict:
+    from app.services import affairs_funding_ext_service as reductions
+    return reductions.resubmit_reduction_self(fee_id, body or {}, user)
+
+
+def reduction_withdraw(user: dict, fee_id: str, body: dict) -> dict:
+    from app.services import affairs_funding_ext_service as reductions
+    return reductions.withdraw_reduction_self(fee_id, body or {}, user)
+
+
 def aid(user: dict) -> dict:
     """我的困难资助等级（本人）。"""
     return aff.aid_my(user)
@@ -124,12 +190,37 @@ def discipline_appeal(user: dict, body: dict) -> dict:
 
 # ── 奖助勤贷补申请 / 困难认定申请（PC 长表 + 材料 + 承诺书签署；强制本人） ──
 
-def funding_batches_open(user: dict) -> dict:
-    """当前开放中的奖助勤贷补批次（本人可申请；student_id 强制走 _require_student）。"""
+def funding_batches_open(user: dict, page=1, page_size=20, keyword="", project_type=None) -> dict:
+    """本人开放批次：先按有效项目、申请窗口和搜索条件过滤，再分页。"""
     _require_student(user)
+    from sqlalchemy import func, or_, select
+    from app.core.timeutil import utc_now_naive
+    from app.models import FundingBatch, FundingProject
+    from app.services.db_service import _tid
     from app.services import affairs_funding_service as funding
-    items, total = funding.list_batches(user, status="OPEN", page=1, page_size=50)
-    return {"items": items, "total": total}
+    if project_type and project_type not in funding.V1_TYPES:
+        raise AppException("VALIDATION_ERROR", "请选择奖学金或助学金")
+    now = utc_now_naive()
+    with _session() as db:
+        conditions = [FundingBatch.tenant_id == _tid(), FundingBatch.is_deleted.is_(False),
+            FundingBatch.status == "OPEN", FundingBatch.project_type.in_(funding.V1_TYPES),
+            FundingProject.tenant_id == _tid(), FundingProject.is_deleted.is_(False),
+            FundingProject.status == "ENABLED", FundingProject.project_type == FundingBatch.project_type,
+            or_(FundingBatch.apply_start.is_(None), FundingBatch.apply_start <= now),
+            or_(FundingBatch.apply_end.is_(None), FundingBatch.apply_end >= now)]
+        if project_type:
+            conditions.append(FundingBatch.project_type == project_type)
+        term = str(keyword or "").strip()
+        if term:
+            conditions.append(or_(FundingProject.project_name.contains(term, autoescape=True),
+                                  FundingBatch.year_code.contains(term, autoescape=True)))
+        query = select(FundingBatch, FundingProject.project_name).join(
+            FundingProject, FundingProject.id == FundingBatch.project_id).where(*conditions)
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        rows = db.execute(query.order_by(FundingBatch.id.desc()).offset(
+            (max(1, int(page)) - 1) * page_size).limit(page_size)).all()
+        return {"items": [{**funding._batch_row(batch), "projectName": name,
+            "batchName": f"{name} · {batch.year_code} · 批次{batch.id}"} for batch, name in rows], "total": total}
 
 
 def funding_apply(user: dict, body: dict) -> dict:
@@ -226,11 +317,11 @@ def aid_objection(user: dict, body: dict) -> dict:
     return aid_svc.submit_objection(apply_id, body, user, skip_scope_check=True)
 
 
-def aid_batches_open(user: dict) -> dict:
+def aid_batches_open(user: dict, page: int = 1, page_size: int = 20, keyword: str = "") -> dict:
     """当前开放中的困难认定批次（本人可申请）。"""
     _require_student(user)
     from app.services import affairs_aid_service as aid_svc
-    items, total = aid_svc.list_batches(user, status="OPEN", page=1, page_size=50)
+    items, total = aid_svc.list_batches(user, status="OPEN", page=page, page_size=page_size, available_only=True, keyword=keyword)
     return {"items": items, "total": total}
 
 

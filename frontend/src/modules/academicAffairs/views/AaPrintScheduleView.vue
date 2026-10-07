@@ -14,7 +14,7 @@
 </template>
 
 <script>
-/** 课表打印页（/admin/academic-affairs/print/schedule/:batchId?type=class|teacher&key=）：D7 独立打印路由。 */
+/** 课表打印页（/admin/academic-affairs/print/schedule/:batchId?type=class|teacher|student&key=）：D7 独立打印路由。 */
 import { LoadingState } from '@/components/business'
 import { AppPrintButton } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
@@ -24,12 +24,12 @@ export default {
   name: 'AaPrintScheduleView',
   components: { LoadingState, AppPrintButton, AaScheduleGrid },
   data() {
-    return { loading: true, schoolName: '职业院校', slots: [], items: [], printTime: '' }
+    return { loading: true, error: '', schoolName: '职业院校', slots: [], items: [], printTime: '' }
   },
   computed: {
     type() { return this.$route.query.type || 'class' },
     keyText() { return this.$route.query.key || '' },
-    typeLabel() { return this.type === 'teacher' ? '教师' : '班级' }
+    typeLabel() { return { teacher: '教师', student: '学生', class: '班级' }[this.type] || '班级' }
   },
   created() {
     const d = new Date()
@@ -45,7 +45,9 @@ export default {
         academicAffairsApi.getTimeSlots(),
         this.type === 'teacher'
           ? academicAffairsApi.getScheduleTeacherView(batchId, this.keyText)
-          : academicAffairsApi.getScheduleClassView(batchId, this.keyText)
+          : this.type === 'student'
+            ? academicAffairsApi.getScheduleStudentView(batchId, this.keyText)
+            : academicAffairsApi.getScheduleClassView(batchId, this.keyText)
       ])
       if (ctxRes.code === 0) this.schoolName = ctxRes.data.tenantBrandConfig.schoolName || '职业院校'
       if (slotRes.code === 0) this.slots = slotRes.data

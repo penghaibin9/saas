@@ -1,0 +1,193 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T08:18:09.624311Z",
+  "head": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "status": "RUNTIME_BASELINE_CAPTURED_FINAL_MATRIX_PENDING",
+  "browserRule": "Start from a real role home/menu/todo/message; do not type hidden final object URLs.",
+  "requiredCaptures": [
+    {
+      "name": "01-admin-menu-wide-role",
+      "status": "CAPTURED_BASELINE",
+      "evidence": "staff-internship-center-empty-state.png"
+    },
+    {
+      "name": "02-dashboard-today",
+      "status": "CAPTURED_BASELINE",
+      "evidence": "staff-intern-mentor-workbench.png"
+    },
+    {
+      "name": "03-batch-students",
+      "status": "PENDING"
+    },
+    {
+      "name": "04-enterprise-list",
+      "status": "PENDING"
+    },
+    {
+      "name": "05-match-workspace",
+      "status": "PENDING"
+    },
+    {
+      "name": "06-application-review",
+      "status": "PENDING"
+    },
+    {
+      "name": "07-attendance-ledger",
+      "status": "PENDING"
+    },
+    {
+      "name": "08-attendance-exception-detail",
+      "status": "PENDING"
+    },
+    {
+      "name": "09-leave-review",
+      "status": "PENDING"
+    },
+    {
+      "name": "10-weekly-list",
+      "status": "PENDING"
+    },
+    {
+      "name": "11-weekly-resubmit-diff",
+      "status": "PENDING"
+    },
+    {
+      "name": "12-guidance-visit",
+      "status": "PENDING"
+    },
+    {
+      "name": "13-risk-workspace",
+      "status": "PENDING"
+    },
+    {
+      "name": "14-compliance-overview",
+      "status": "PENDING"
+    },
+    {
+      "name": "15-compliance-error",
+      "status": "PENDING"
+    },
+    {
+      "name": "16-score-workspace",
+      "status": "PENDING"
+    },
+    {
+      "name": "17-score-appeal",
+      "status": "PENDING"
+    },
+    {
+      "name": "18-archive",
+      "status": "PENDING"
+    },
+    {
+      "name": "19-material-center-human",
+      "status": "PENDING"
+    },
+    {
+      "name": "20-material-evidence-expanded",
+      "status": "PENDING"
+    },
+    {
+      "name": "21-student-pc-first-screen",
+      "status": "CAPTURED_BASELINE",
+      "evidence": "student-pc-home.png"
+    },
+    {
+      "name": "22-student-current-action",
+      "status": "PENDING"
+    },
+    {
+      "name": "23-student-selection-board",
+      "status": "PENDING"
+    },
+    {
+      "name": "24-student-local-error",
+      "status": "PENDING"
+    },
+    {
+      "name": "25-student-process-group",
+      "status": "PENDING"
+    },
+    {
+      "name": "26-teacher-workbench-today-390",
+      "status": "LOGIN_SURFACE_CAPTURED_RUNTIME_BLOCKED",
+      "evidence": "teacher-mini-login.png",
+      "blocker": "The isolated MySQL server stopped completing connection handshakes after migrations and canonical seeds."
+    },
+    {
+      "name": "27-teacher-weekly-sequential",
+      "status": "PENDING"
+    },
+    {
+      "name": "28-teacher-abnormal-decision",
+      "status": "PENDING"
+    },
+    {
+      "name": "29-teacher-leave",
+      "status": "PENDING"
+    },
+    {
+      "name": "30-teacher-change",
+      "status": "PENDING"
+    },
+    {
+      "name": "31-teacher-receipt",
+      "status": "PENDING"
+    },
+    {
+      "name": "32-student-mini-home-390",
+      "status": "LOGIN_SURFACE_CAPTURED_RUNTIME_BLOCKED",
+      "evidence": "student-mini-login-runtime-blocked.png",
+      "blocker": "Authentication reached the isolated backend but timed out while MySQL was not completing connection handshakes."
+    },
+    {
+      "name": "33-student-mini-compliance-next",
+      "status": "PENDING"
+    },
+    {
+      "name": "34-student-mini-self-service-grouped",
+      "status": "PENDING"
+    },
+    {
+      "name": "35-student-mini-checkin",
+      "status": "PENDING"
+    },
+    {
+      "name": "36-student-mini-weekly",
+      "status": "PENDING"
+    },
+    {
+      "name": "37-student-mini-change-leave",
+      "status": "PENDING"
+    },
+    {
+      "name": "38-enterprise-home",
+      "status": "CAPTURED_BASELINE",
+      "evidence": "enterprise-home.png"
+    },
+    {
+      "name": "39-enterprise-position-list",
+      "status": "PENDING"
+    },
+    {
+      "name": "40-enterprise-applicant-workbench",
+      "status": "PENDING"
+    },
+    {
+      "name": "41-enterprise-applicant-detail",
+      "status": "PENDING"
+    },
+    {
+      "name": "42-enterprise-contact-policy",
+      "status": "PENDING"
+    },
+    {
+      "name": "43-enterprise-accept-intent-receipt",
+      "status": "PENDING"
+    },
+    {
+      "name": "44-enterprise-intern-students-evaluation",
+      "status": "PENDING"
+    }
+  ]
+}

@@ -103,8 +103,7 @@ def aid_apply(user: dict, body: dict) -> dict:
         batch = db.get(AidBatch, aid._req_int(batch_id, "批次"))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("认定批次不存在")
-        if batch.status != "OPEN":
-            raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+        aid.require_application_window(batch)
         # t_affairs_aid_apply 的唯一键不包含 is_deleted / status。即便旧记录已终态或软删，
         # 再 INSERT 仍会撞唯一键；必须在业务层先返回稳定 409，而不是让 MySQL 抛 500。
         duplicate = db.scalars(select(AidApply).where(
@@ -197,8 +196,7 @@ def funding_apply(user: dict, body: dict) -> dict:
         batch = db.get(FundingBatch, funding._req_int(batch_id, "批次"))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("资助批次不存在")
-        if batch.status != "OPEN":
-            raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+        project = funding.require_application_batch(db, batch)
         # t_affairs_funding_application 的唯一键是 tenant+batch+student，永久覆盖同批次历史。
         # 旧逻辑只挡非终态且忽略软删，REJECTED/CANCELLED/ARCHIVED 后会继续 INSERT，
         # 最终由数据库唯一键报错成 500。这里先按 schema 真值 fail-closed 成稳定 409。
@@ -210,9 +208,9 @@ def funding_apply(user: dict, body: dict) -> dict:
         _reject_same_batch_duplicate(duplicate, "资助申请")
 
         snapshot = (
-            funding._check_grant(db, student.id)
+            funding._check_grant(db, student.id, project)
             if batch.project_type == "GRANT"
-            else funding._check_scholarship(db, student.id)
+            else funding._check_scholarship(db, student.id, project)
         )
         if not snapshot["ok"]:
             raise AppException("DATA_CONFLICT", funding._reject_reason(snapshot))
@@ -223,8 +221,13 @@ def funding_apply(user: dict, body: dict) -> dict:
             amount=amount, statement=statement,
             check_snapshot_json=json.dumps(snapshot, ensure_ascii=False), status=first,
         )
+        from app.services.affairs_funding_authority_service import freeze_application_amount
+        amount_snapshot = freeze_application_amount(db, application)
+        snapshot = json.loads(application.check_snapshot_json)
+        amount = application.requested_amount
         db.add(application)
         db.flush()
+        funding._audit(db, application.id, "AMOUNT_RULE_FROZEN", f"project={amount_snapshot['projectId']};amount={amount_snapshot['amount']}")
         assignee = funding._assignee_for(db, first, student.id)
         workflow = funding._open_wf(
             db, application.id, batch.project_type, student.id,

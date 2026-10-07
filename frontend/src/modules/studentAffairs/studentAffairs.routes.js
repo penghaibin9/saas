@@ -12,6 +12,12 @@ const studentAffairsRoutes = [
     children: [
       { path: '', redirect: '/admin/student-affairs/dashboard' },
       {
+        path: '/admin/student-affairs/material-operations',
+        name: 'student-affairs-material-operations',
+        component: () => import('@/modules/studentAffairs/views/MaterialOperationsView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '材料与档案', requiresAuth: true, permissionKey: 'studentAffairs.dashboard.view' }
+      },
+      {
         path: 'dashboard',
         name: 'student-affairs-dashboard',
         component: () => import('@/modules/studentAffairs/views/StudentAffairsDashboardView.vue'),
@@ -330,7 +336,19 @@ const studentAffairsRoutes = [
         path: 'stats/cockpit',
         name: 'student-affairs-cockpit',
         component: () => import('@/modules/studentAffairs/views/StudentAffairsCockpitView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '统计驾驶舱', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工大屏', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+      },
+      {
+        path: 'stats/wall',
+        name: 'student-affairs-runtime-wall',
+        component: () => import('@/modules/studentAffairs/views/StudentAffairsWallView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工运行大屏', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+      },
+      {
+        path: 'stats/leader',
+        name: 'student-affairs-leader-wall',
+        component: () => import('@/modules/studentAffairs/views/StudentAffairsLeaderWallView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '学工领导大屏', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
       /* 心理关注 5 页（强敏感·PSY_STUDENT·危机接风险中枢）——对接 /student-affairs/mental/* 后端 */
       {
@@ -363,7 +381,13 @@ const studentAffairsRoutes = [
         component: () => import('@/modules/studentAffairs/views/mental/MentalStatsView.vue'),
         meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
       },
-      /* 宿舍与公寓 6 页（房源/入住/调宿退宿/检查/异常/统计）——对接 /student-affairs/dorm/* 后端，宿管 DORM_BUILDING 范围 */
+      /* 宿舍与公寓 7 页（分配/房源/入住/调宿退宿/检查/异常/统计）——对接 /student-affairs/dorm/* 后端 */
+      {
+        path: 'dorm/allocation',
+        name: 'student-affairs-dorm-allocation',
+        component: () => import('@/modules/studentAffairs/views/dorm/DormAllocationView.vue'),
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '分配计划', requiresAuth: true, permissionKey: 'studentAffairs.dorm.view' }
+      },
       {
         path: 'dorm/resource',
         name: 'student-affairs-dorm-resource',

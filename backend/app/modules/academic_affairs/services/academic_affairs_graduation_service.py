@@ -8,12 +8,15 @@
 from __future__ import annotations
 
 import json
+import math
+from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
 from sqlalchemy import and_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.modules.academic_affairs.services.academic_affairs_status_service import (
     audit_status_change, change_student_status, is_enrolled)
 from app.services.db_service import _iso, _tid, session
@@ -53,9 +56,12 @@ def _audit(db, biz_id, action, detail=""):
 # ── 跨域供数检查（三态）──
 
 def _check_status(db, s):
+    from app.modules.academic_affairs.services.academic_affairs_service import _STATUS_LABEL
+
     ok = is_enrolled(s.student_status)
+    status_label = _STATUS_LABEL.get(s.student_status, "未明确，请核对学籍档案")
     return {"item": "STATUS", "result": "PASS" if ok else "FAIL",
-            "owner": "COLLEGE_STAFF", "evidence": f"student_status={s.student_status}"}
+            "owner": "COLLEGE_STAFF", "evidence": f"学籍状态：{status_label}"}
 
 
 def _program_resolution(db, s):
@@ -108,6 +114,66 @@ def _earned_credits(db, acad, *extra_conditions) -> float:
         *extra_conditions)).all()
     return float(sum(float(r.credit_value or 0)
                      for r in effective_grade_rows(rows) if r.pass_status == "PASSED"))
+
+
+def _module_credit_target(requirement_json, aliases):
+    """Read an explicit module target from the current structure or legacy keys.
+
+    A missing target is different from an explicitly configured zero. Conflicting
+    or duplicate sources cannot be resolved by choosing an arbitrary winner.
+    """
+    if not requirement_json:
+        return None, "方案未设置模块学分要求"
+    try:
+        req = json.loads(requirement_json)
+    except (TypeError, ValueError):
+        return None, "方案模块学分要求格式无效"
+    if not isinstance(req, dict):
+        return None, "方案模块学分要求格式无效"
+
+    def valid_target(value):
+        if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+            return None
+        try:
+            number = Decimal(str(value).strip())
+        except InvalidOperation:
+            return None
+        return number if number.is_finite() and number >= 0 else None
+
+    structured = []
+    if "creditStructure" in req:
+        structure = req["creditStructure"]
+        if not isinstance(structure, list):
+            return None, "方案模块学分结构格式无效"
+        seen_modules = set()
+        for row in structure:
+            if not isinstance(row, dict):
+                return None, "方案模块学分结构格式无效"
+            module = row.get("module")
+            if not isinstance(module, str) or not module.strip():
+                return None, "方案模块名称无效"
+            module = module.strip()
+            if module in seen_modules:
+                return None, "方案模块学分目标重复或冲突"
+            seen_modules.add(module)
+            target = valid_target(row.get("creditTarget"))
+            if target is None:
+                return None, "方案模块学分目标必须为非负有限数字"
+            if module in aliases:
+                structured.append(target)
+    legacy = [valid_target(req[key]) for key in aliases if key in req]
+    if any(target is None for target in legacy):
+        return None, "方案模块学分目标必须为非负有限数字"
+    if len(structured) > 1 or len(legacy) > 1:
+        return None, "方案模块学分目标重复或冲突"
+    if structured and legacy and structured[0] != legacy[0]:
+        return None, "方案模块学分目标重复或冲突"
+    if not structured and not legacy:
+        return None, "方案未设置该模块学分目标"
+    target = float((structured or legacy)[0])
+    if not math.isfinite(target):
+        return None, "方案模块学分目标必须为非负有限数字"
+    return target, None
 
 
 def _check_credit(db, s):
@@ -169,20 +235,28 @@ def _check_course_elective(db, s):
     if not acad:
         return {"item": "COURSE_ELECTIVE", "result": "UNKNOWN", "owner": "AA_STAFF",
                 "evidence": "无学业记录", **meta}
-    earned = _earned_credits(db, acad, AcademicGrade.nature == "ELECTIVE")
-    target = None
-    if prog.requirement_json:
-        try:
-            req = json.loads(prog.requirement_json)
-            target = req.get("选修") or req.get("ELECTIVE")
-        except Exception:  # noqa: BLE001
-            target = None
-    if target is None:
+    categories = (
+        ("选修", ("选修", "ELECTIVE"), ("ELECTIVE", "LIMITED_ELECTIVE", "PUBLIC_ELECTIVE")),
+        ("专业选修", ("专业选修",), ("ELECTIVE", "LIMITED_ELECTIVE")),
+        ("公共选修", ("公共选修",), ("PUBLIC_ELECTIVE",)),
+    )
+    checks = []
+    for label, aliases, natures in categories:
+        target, error = _module_credit_target(prog.requirement_json, aliases)
+        if error == "方案未设置该模块学分目标":
+            continue
+        if error:
+            return {"item": "COURSE_ELECTIVE", "result": "UNKNOWN", "owner": "AA_STAFF",
+                    "evidence": f"{error}（{label}）", **meta}
+        earned = _earned_credits(db, acad, AcademicGrade.nature.in_(natures))
+        checks.append((label, earned, target))
+    if not checks or (len(checks) > 1 and checks[0][0] == "选修"):
         return {"item": "COURSE_ELECTIVE", "result": "UNKNOWN", "owner": "AA_STAFF",
-                "evidence": f"方案未设置选修学分要求（已修选修 {float(earned)} 学分）", **meta}
-    ok = float(earned) >= float(target)
+                "evidence": "方案选修学分目标缺失或总目标与分项并存，需明确口径", **meta}
+    ok = all(earned >= target for _, earned, target in checks)
+    evidence = "；".join(f"{label}已得 {earned}/{target} 学分" for label, earned, target in checks)
     return {"item": "COURSE_ELECTIVE", "result": "PASS" if ok else "FAIL",
-            "owner": "AA_STAFF", "evidence": f"选修已得 {float(earned)}/{float(target)} 学分", **meta}
+            "owner": "AA_STAFF", "evidence": evidence, **meta}
 
 
 def _check_practice(db, s):
@@ -194,17 +268,10 @@ def _check_practice(db, s):
     if not prog:
         return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
                 "evidence": resolution.message, **meta}
-    if not prog.requirement_json:
+    target, target_error = _module_credit_target(prog.requirement_json, ("实践", "实践环节", "PRACTICE"))
+    if target_error:
         return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
-                "evidence": "适用方案未设置模块学分要求", **meta}
-    try:
-        req = json.loads(prog.requirement_json)
-    except Exception:  # noqa: BLE001
-        req = {}
-    target = req.get("实践") or req.get("PRACTICE")
-    if target is None:
-        return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
-                "evidence": "方案未设置实践环节学分要求", **meta}
+                "evidence": f"{target_error}（实践环节）", **meta}
     acad = _acad_of(db, s)
     if not acad:
         return {"item": "PRACTICE", "result": "UNKNOWN", "owner": "AA_STAFF",
@@ -261,7 +328,7 @@ def _run_items(db, s) -> list:
     from app.models import EmpStudent, GraduationStudent, InternshipRecord
     items = [_check_status(db, s), _check_credit(db, s), _check_course_required(db, s),
              _check_course_elective(db, s), _check_practice(db, s)]
-    items.append(_check_domain_exists(db, "INTERNSHIP", InternshipRecord, "student_id", s, "GD_MENTOR"))
+    items.append(_check_domain_exists(db, "INTERNSHIP", InternshipRecord, "student_id", s, "INTERN_MENTOR"))
     items.append(_check_domain_exists(db, "GRADUATION_DESIGN", GraduationStudent, "student_id", s, "GD_MENTOR"))
     items.append(_check_discipline(db, s))
     items.append(_check_domain_exists(db, "EMPLOYMENT", EmpStudent, "student_id", s, "AA_STAFF"))
@@ -271,23 +338,24 @@ def _run_items(db, s) -> list:
 
 
 def _check_archive(db, s) -> dict:
-    """学工归档包：已归档 PASS；退回/待补 FAIL；无包或在途 UNKNOWN（暂不自动卡审）。"""
+    """学工归档包：缺失和在途仍为 UNKNOWN，由正式毕业审核决定其阻断语义。"""
     from app.models import ArchivePackage
     pkg = db.scalars(select(ArchivePackage).where(
         ArchivePackage.tenant_id == _tid(), ArchivePackage.student_id == s.id,
         ArchivePackage.is_deleted.is_(False)).order_by(ArchivePackage.id.desc())).first()
     if not pkg:
         return {"item": "ARCHIVE", "result": "UNKNOWN", "owner": "COUNSELOR",
-                "evidence": "学工归档包未生成（不阻断，人工复核）", "refId": None}
+                "evidence": "学工归档包未生成（正式毕业资格审核暂不能通过，请核对学工归档）", "refId": None}
     st = (pkg.status or "").upper()
     if st == "ARCHIVED":
         return {"item": "ARCHIVE", "result": "PASS", "owner": "COUNSELOR",
-                "evidence": f"学工归档包已归档 status={st}", "refId": str(pkg.id)}
+                "evidence": "学工归档包已归档", "refId": str(pkg.id)}
     if st in ("RETURNED", "PENDING_SUPPLEMENT"):
         return {"item": "ARCHIVE", "result": "FAIL", "owner": "COUNSELOR",
-                "evidence": f"学工归档包待补齐 status={st}", "refId": str(pkg.id)}
+                "evidence": "学工归档包待补齐（已退回）" if st == "RETURNED" else "学工归档包待补齐（待补材料）",
+                "refId": str(pkg.id)}
     return {"item": "ARCHIVE", "result": "UNKNOWN", "owner": "COUNSELOR",
-            "evidence": f"学工归档包处理中 status={st}", "refId": str(pkg.id)}
+            "evidence": "学工归档包处理中（正式毕业资格审核暂不能通过）", "refId": str(pkg.id)}
 
 
 def _check_fee(db, s) -> dict:
@@ -320,8 +388,14 @@ def _overall(items) -> str:
 def create_batch(body, user) -> dict:
     _require_review_role(user)
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditBatch
-        b = AaGraduationAuditBatch(tenant_id=_tid(), batch_name=body.batchName,
+        from .academic_affairs_graduation_term_scope import require_creation_term
+        from .academic_affairs_archive_core_service import guard_term_writable
+        term = require_creation_term(db, getattr(body, "termId", None))
+        guard_term_writable(db, term.id)
+        b = AaGraduationAuditBatch(tenant_id=_tid(), term_id=term.id, batch_name=body.batchName,
                                    grade_year=getattr(body, "gradeYear", None),
                                    major_id=(int(body.majorId) if getattr(body, "majorId", None) else None),
                                    status="DRAFT")
@@ -330,7 +404,8 @@ def create_batch(body, user) -> dict:
         _audit(db, b.id, "CREATE")
         db.commit()
         db.refresh(b)
-        return {"batchId": str(b.id), "batchName": b.batch_name, "status": b.status}
+        return {"batchId": str(b.id), "batchName": b.batch_name, "status": b.status,
+                "termId": str(term.id), "termName": term.term_name}
 
 
 def list_batches(user, status=None, page=1, page_size=50):
@@ -344,6 +419,8 @@ def list_batches(user, status=None, page=1, page_size=50):
         offset = (max(1, page) - 1) * page_size
         rows = db.scalars(select(AaGraduationAuditBatch).where(*conds)
                           .order_by(AaGraduationAuditBatch.id.desc()).offset(offset).limit(page_size)).all()
+        from .academic_affairs_graduation_term_scope import batch_term_names
+        names = batch_term_names(db, rows)
         out = []
         for b in rows:
             results = db.scalars(select(AaGraduationAuditResult).where(
@@ -351,6 +428,8 @@ def list_batches(user, status=None, page=1, page_size=50):
                 AaGraduationAuditResult.is_deleted.is_(False))).all()
             out.append({
                 "batchId": str(b.id), "batchName": b.batch_name, "gradeYear": b.grade_year,
+                "termId": str(b.term_id) if b.term_id else None,
+                "termName": names.get(b.term_id),
                 "majorId": str(b.major_id) if b.major_id else None, "status": b.status,
                 "total": len(results),
                 "passed": sum(1 for r in results if r.overall == "SYSTEM_PASSED"),
@@ -365,10 +444,11 @@ def generate(batch_id, user, student_ids=None) -> dict:
     """圈定应届生生成预审结果行（幂等）。"""
     _require_review_role(user)
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, StudentProfile
-        b = db.get(AaGraduationAuditBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
-            raise not_found("预审批次不存在")
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        b = guard_batch_term_writable(db, batch_id)
         if student_ids:
             sids = [int(x) for x in student_ids]
         else:
@@ -399,18 +479,19 @@ def precheck(batch_id, user) -> dict:
     """十一项供数三态判定（幂等，结果覆盖非追加）。"""
     _require_review_role(user)
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, StudentProfile
-        b = db.get(AaGraduationAuditBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
-            raise not_found("预审批次不存在")
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        b = guard_batch_term_writable(db, batch_id)
         rows = db.scalars(select(AaGraduationAuditResult).where(
             AaGraduationAuditResult.tenant_id == _tid(), AaGraduationAuditResult.batch_id == b.id,
             AaGraduationAuditResult.status.in_(["WAIT_PRECHECK", "SYSTEM_PASSED", "SYSTEM_ABNORMAL"]),
             AaGraduationAuditResult.is_deleted.is_(False))).all()
         passed = abnormal = 0
         for r in rows:
-            s = db.get(StudentProfile, int(r.student_id))
-            if not s:
+            s = tenant_get(db, StudentProfile, int(r.student_id))
+            if not s or s.is_deleted:
                 continue
             items = _run_items(db, s)
             overall = _overall(items)
@@ -430,15 +511,26 @@ def precheck(batch_id, user) -> dict:
 # ═══════════ 审核（学院初审→教务终审，终审写主档）═══════════
 
 def college_review(result_id, user, action, note="") -> dict:
-    role = (user.get("currentRoleCode") or "").upper()
-    if role not in ({"COLLEGE_ADMIN"} | _REVIEW_ROLES) and user.get("userType") != "PLATFORM_SUPER_ADMIN":
-        raise no_permission("仅学院教务员/教务处可执行学院初审")
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditResult
-        r = db.get(AaGraduationAuditResult, int(result_id))
-        if not r or r.is_deleted or r.tenant_id != _tid():
+        r = db.query(AaGraduationAuditResult).filter(
+            AaGraduationAuditResult.id == int(result_id),
+            AaGraduationAuditResult.tenant_id == _tid(),
+            AaGraduationAuditResult.is_deleted.is_(False),
+        ).first()
+        if not r:
             raise not_found("预审结果不存在")
         _assert_result_in_scope(db, user, r)
+        from .academic_affairs_graduation_scope_guard import assert_college_review_authority
+        assert_college_review_authority(db, user, r)
+
+        from .academic_affairs_graduation_term_scope import guard_result_term_writable
+        r = guard_result_term_writable(db, result_id)
+        # 等待业务锁期间身份或对象可能变化，锁后仍按当前事实复核。
+        _assert_result_in_scope(db, user, r)
+        assert_college_review_authority(db, user, r)
         if r.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
         if (action or "").upper() == "APPROVE":
@@ -456,7 +548,6 @@ def college_review(result_id, user, action, note="") -> dict:
 
 def academic_final(result_id, user, conclusion, confirm=False) -> dict:
     """毕业资格终审：仅学院初审通过结果；写学生终态并强制二次确认。"""
-    _require_review_role(user)
     conclusion = (conclusion or "").upper()
     if conclusion not in _CONCLUSION:
         raise AppException("BAD_REQUEST", "结论非法（GRADUATED/COMPLETED/DELAYED）")
@@ -464,10 +555,13 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
         raise AppException("DATA_CONFLICT", "毕业结论涉及学籍终态，需二次确认(confirm=true)")
     _n, _r, uid = _op()
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        from .academic_affairs_graduation_scope_guard import assert_school_review_authority
+        assert_school_review_authority(db, user)
         from app.models import AaGraduationAuditResult
-        r = db.get(AaGraduationAuditResult, int(result_id))
-        if not r or r.is_deleted or r.tenant_id != _tid():
-            raise not_found("预审结果不存在")
+        from .academic_affairs_graduation_term_scope import guard_result_term_writable
+        r = guard_result_term_writable(db, result_id)
         if r.status != "ACADEMIC_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅学院初审通过的结果可终审")
         # 系统异常允许人工审核，但毕业结论必须留下明确审核意见；避免不确定供数被无说明强行通过。
@@ -490,10 +584,11 @@ def archive_batch(batch_id, user) -> dict:
     """收敛已终审毕业/结业结果；延毕/退回留待后续批次。"""
     _require_review_role(user)
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditBatch, AaGraduationAuditResult
-        b = db.get(AaGraduationAuditBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
-            raise not_found("预审批次不存在")
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        b = guard_batch_term_writable(db, batch_id)
         if b.status == "ARCHIVED":
             raise AppException("IDEMPOTENCY_CONFLICT", "该批次已归档")
         eligible = db.scalars(select(AaGraduationAuditResult).where(
@@ -505,19 +600,25 @@ def archive_batch(batch_id, user) -> dict:
                 AaGraduationAuditResult.tenant_id == _tid(), AaGraduationAuditResult.batch_id == b.id,
                 AaGraduationAuditResult.status == "ARCHIVED",
                 AaGraduationAuditResult.is_deleted.is_(False))) or 0
-            if already:
-                raise AppException("IDEMPOTENCY_CONFLICT", "该批次已归档，暂无新增可归档结果")
-            raise AppException("BAD_REQUEST", "该批次暂无已终审的毕业/结业结果，无法归档")
+            if not already:
+                raise AppException("BAD_REQUEST", "该批次暂无已终审的毕业/结业结果，无法归档")
         for r in eligible:
             r.status = "ARCHIVED"
+        # 会话禁用自动刷新，先写入本次归档状态，再查询是否仍有未办结果。
+        db.flush()
         remaining_open = db.scalar(select(func.count()).select_from(AaGraduationAuditResult).where(
             AaGraduationAuditResult.tenant_id == _tid(), AaGraduationAuditResult.batch_id == b.id,
             AaGraduationAuditResult.status.notin_(["ARCHIVED", "DELAYED", "REJECTED"]),
             AaGraduationAuditResult.is_deleted.is_(False))) or 0
         batch_closed = remaining_open == 0
+        if not eligible and not batch_closed:
+            raise AppException("IDEMPOTENCY_CONFLICT", "该批次已归档，暂无新增可归档结果")
         if batch_closed:
             b.status = "ARCHIVED"
-        _audit(db, b.id, "ARCHIVE", f"archived={len(eligible)},batchClosed={batch_closed}")
+        detail = f"archived={len(eligible)},batchClosed={batch_closed}"
+        if not eligible:
+            detail += ";历史已归档结果批次收尾"
+        _audit(db, b.id, "ARCHIVE", detail)
         db.commit()
         return {"batchId": str(batch_id), "archived": len(eligible), "batchStatus": b.status,
                 "batchClosed": batch_closed}
@@ -525,21 +626,68 @@ def archive_batch(batch_id, user) -> dict:
 
 # ═══════════ 查询 / 名单 ═══════════
 
+def _item_results(payload) -> list[dict]:
+    """Read current list-shaped evidence and legacy item-keyed evidence maps.
+
+    Older sandbox/provisioning snapshots stored ``{itemCode: evidence}`` while the
+    current contract stores a list.  The read model must normalize both shapes so
+    an item filter never turns historical data into a 500 response.
+    """
+    try:
+        raw = json.loads(payload) if isinstance(payload, str) and payload else (payload or [])
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return []
+    if isinstance(raw, dict) and isinstance(raw.get("items"), list):
+        raw = raw["items"]
+    if isinstance(raw, dict):
+        normalized = []
+        for code, value in raw.items():
+            if isinstance(value, dict):
+                normalized.append({**value, "item": code})
+            elif isinstance(value, str):
+                normalized.append({"item": code, "result": value})
+        return normalized
+    if not isinstance(raw, list):
+        return []
+    return [item for item in raw if isinstance(item, dict)]
+
+
 def _row(r) -> dict:
+    items = []
+    for item in _item_results(r.item_results_json):
+        evidence = item.get("evidence")
+        if item.get("item") == "STATUS" and isinstance(evidence, str) and evidence.startswith("student_status="):
+            from app.modules.academic_affairs.services.academic_affairs_service import _STATUS_LABEL
+
+            status = evidence.removeprefix("student_status=").strip()
+            label = _STATUS_LABEL.get(status, "未明确，请核对学籍档案")
+            # Localize the response projection only; preserve stored evidence and its hash.
+            item = {**item, "evidence": f"学籍状态：{label}"}
+        items.append(item)
     return {"resultId": str(r.id), "batchId": str(r.batch_id), "studentId": str(r.student_id),
             "overall": r.overall, "conclusion": r.conclusion, "status": r.status,
             "rerunCount": r.rerun_count, "reviewNote": r.review_note or "",
-            "items": json.loads(r.item_results_json) if r.item_results_json else []}
+            "items": items}
 
 
 def get_result(result_id, user) -> dict:
     with session() as db:
-        from app.models import AaGraduationAuditResult
+        from app.models import AaGraduationAuditResult, StudentProfile
         r = db.get(AaGraduationAuditResult, int(result_id))
         if not r or r.is_deleted or r.tenant_id != _tid():
             raise not_found("预审结果不存在")
         _assert_result_in_scope(db, user, r)
-        return _row(r)
+        from .academic_affairs_graduation_scope_guard import result_responsibilities
+        row = _row(r)
+        row.update(result_responsibilities(db, user, [r])[r.id])
+        student = db.scalars(select(StudentProfile).where(
+            StudentProfile.id == r.student_id,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        )).first()
+        row["realName"] = student.real_name if student else ""
+        row["studentNo"] = student.student_no if student else ""
+        return row
 
 
 def list_results(batch_id, user, status=None, overall=None, item=None, item_result=None,
@@ -577,7 +725,13 @@ def list_results(batch_id, user, status=None, overall=None, item=None, item_resu
                 out_all.append(d)
             total = len(out_all)
             offset = (max(1, page) - 1) * page_size
-            return out_all[offset:offset + page_size], total
+            selected = out_all[offset:offset + page_size]
+            selected_ids = {int(row["resultId"]) for row in selected}
+            from .academic_affairs_graduation_scope_guard import result_responsibilities
+            projected = result_responsibilities(db, user, [r for r, _s in rows_all if r.id in selected_ids])
+            for row in selected:
+                row.update(projected[int(row["resultId"])] )
+            return selected, total
         total = db.scalar(select(func.count()).select_from(AaGraduationAuditResult)
                           .outerjoin(StudentProfile, join).where(*conds)) or 0
         offset = (max(1, page) - 1) * page_size
@@ -585,8 +739,11 @@ def list_results(batch_id, user, status=None, overall=None, item=None, item_resu
                           .outerjoin(StudentProfile, join).where(*conds)
                           .order_by(AaGraduationAuditResult.id.desc()).offset(offset).limit(page_size)).all()
         out = []
+        from .academic_affairs_graduation_scope_guard import result_responsibilities
+        responsibilities = result_responsibilities(db, user, [r for r, _s in rows])
         for r, s in rows:
             d = _row(r)
+            d.update(responsibilities[r.id])
             d["realName"] = s.real_name if s else ""
             d["studentNo"] = s.student_no if s else ""
             out.append(d)
@@ -629,6 +786,10 @@ def import_fee_clearance(batch_id, user, rows: list) -> dict:
         raise AppException("BAD_REQUEST", "rows 不能为空")
     updated, skipped = 0, 0
     with session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        guard_batch_term_writable(db, batch_id)
         for row in rows:
             sno = str((row or {}).get("studentNo") or "").strip()
             st = str((row or {}).get("status") or "").upper().strip()
@@ -646,11 +807,14 @@ def import_fee_clearance(batch_id, user, rows: list) -> dict:
                 AaGraduationAuditResult.tenant_id == _tid(),
                 AaGraduationAuditResult.batch_id == int(batch_id),
                 AaGraduationAuditResult.student_id == s.id,
-                AaGraduationAuditResult.is_deleted.is_(False))).first()
+                AaGraduationAuditResult.is_deleted.is_(False))
+                .with_for_update().execution_options(populate_existing=True)).first()
             if not r:
                 skipped += 1
                 continue
-            items = json.loads(r.item_results_json or "[]")
+            if r.conclusion or r.status in ("GRADUATED", "COMPLETED", "DELAYED", "ARCHIVED"):
+                raise AppException("DATA_CONFLICT", "已终审或归档的毕业结果不可普通费用回填，请使用正式纠错流程", http_status=409)
+            items = _item_results(r.item_results_json)
             fee_result = "PASS" if st == "CLEARED" else "FAIL"
             found = False
             for it in items:
@@ -724,7 +888,7 @@ def rosters(batch_id, user) -> dict:
             AaGraduationAuditResult.is_deleted.is_(False))).all()
         buckets = {"GRADUATED": [], "COMPLETED": [], "DELAYED": []}
         for r in rows:
-            s = db.get(StudentProfile, int(r.student_id))
+            s = db.query(StudentProfile).filter(StudentProfile.id == int(r.student_id), StudentProfile.tenant_id == _tid()).first()
             if scope is not None:
                 if not scope or not s or int(s.college_id or 0) not in scope:
                     continue

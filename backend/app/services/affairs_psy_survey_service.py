@@ -67,18 +67,40 @@ def submit_survey(user, answers, wants_contact=False) -> dict:
     total = sum(scores.values())
     wants_contact = bool(wants_contact)
     with session() as db:
-        from app.models import PsyReferral, PsySurveySubmission
+        from app.models import AffairsAuditTrail, PsyReferral, PsySurveySubmission, StudentProfile
         stu = _me(db, user)
+        # 同一学生的并发提交必须串行，避免一次求助在心理名单中生成多条未关闭转介。
+        stu = db.scalar(
+            select(StudentProfile)
+            .where(StudentProfile.id == stu.id, StudentProfile.tenant_id == _tid())
+            .with_for_update()
+        )
         referral_id = None
         if total >= _ALERT_THRESHOLD or wants_contact:
-            ref = PsyReferral(
-                tenant_id=_tid(), student_id=stu.id, level="GENERAL", channel="校内咨询",
-                reason_summary=("学生自评问卷主动求助" if wants_contact else "学生自评问卷得分较高，建议关注"),
-                note=f"自评算术汇总分 {total}/{_TOTAL_MAX}（非诊断，仅供参考）；系统不做自动诊断结论。",
-                referrer="学生自评（系统自动登记）", status="REFERRED")
-            db.add(ref)
-            db.flush()
+            ref = db.scalar(select(PsyReferral).where(
+                PsyReferral.tenant_id == _tid(),
+                PsyReferral.student_id == stu.id,
+                PsyReferral.referrer == "学生自评（系统自动登记）",
+                PsyReferral.status.in_(("REFERRED", "FOLLOWING", "ESCALATED")),
+                PsyReferral.is_deleted.is_(False),
+            ).order_by(PsyReferral.id.desc()).limit(1))
+            created = ref is None
+            if created:
+                ref = PsyReferral(
+                    tenant_id=_tid(), student_id=stu.id, level="GENERAL", channel="校内咨询",
+                    reason_summary=("学生自评问卷主动求助" if wants_contact else "学生自评问卷得分较高，建议关注"),
+                    note=f"自评算术汇总分 {total}/{_TOTAL_MAX}（非诊断，仅供参考）；系统不做自动诊断结论。",
+                    referrer="学生自评（系统自动登记）", status="REFERRED")
+                db.add(ref)
+                db.flush()
             referral_id = ref.id
+            db.add(AffairsAuditTrail(
+                tenant_id=_tid(), biz_type="PSY_REFERRAL", biz_id=ref.id,
+                action="SELF_SURVEY_REFER" if created else "SELF_SURVEY_REUSE",
+                operator=stu.real_name or stu.student_no, role_name="STUDENT",
+                detail="学生主动申请联系" if wants_contact else "自评触发人工关注",
+                occurred_at=datetime.utcnow(),
+            ))
         sub = PsySurveySubmission(
             tenant_id=_tid(), student_id=stu.id, answers_json=json.dumps(scores, ensure_ascii=False),
             total_score=total, wants_contact=wants_contact, triggered_referral_id=referral_id,

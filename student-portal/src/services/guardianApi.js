@@ -5,7 +5,7 @@ const API_PREFIX = '/api/v1'
 const API_BASE = (() => {
   const configuredBase = import.meta.env.VITE_API_BASE_URL
   if (configuredBase) return String(configuredBase).replace(/\/+$/, '')
-  if (import.meta.env.DEV) return 'http://localhost:8000'
+  // 与学生门户一致：开发走 Vite /api 代理，生产走 Nginx 同源反代。
   return ''
 })()
 

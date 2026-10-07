@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
 import {
@@ -38,4 +39,10 @@ test('未知业务原文不会被改写', () => {
   assert.equal(localizeVisibleEnumText('课程名 OPEN 设计基础'), '课程名 OPEN 设计基础')
   assert.equal(localizeStatusSuffixText('企业名 ACME_OPEN_HOME'), '企业名 ACME_OPEN_HOME')
   assert.equal(localizeTrailingEnumInParentheses('材料名（ACME_OPEN_HOME）'), '材料名（ACME_OPEN_HOME）')
+})
+
+test('教务办理回执状态不直接向学生显示英文枚举', () => {
+  const source = readFileSync(new URL('../src/components/academic/AcademicBusinessReceipt.vue', import.meta.url), 'utf8')
+  assert.match(source, /receiptStatusLabel\(receipt\.status\)/)
+  assert.doesNotMatch(source, /实际状态<\/span><b>\{\{ receipt\.status \}\}/)
 })

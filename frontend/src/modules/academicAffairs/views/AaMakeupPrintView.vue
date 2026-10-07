@@ -2,7 +2,7 @@
   <div class="aa-print">
     <div class="aa-print__bar">
       <span>{{ printTime }}</span>
-      <AppPrintButton v-if="!loading && !error" variant="primary" :handler="doPrint" />
+      <AppPrintButton v-if="!loading && !error && data.batchName" variant="primary" :handler="doPrint" />
     </div>
     <LoadingState v-if="loading" />
     <ErrorState v-else-if="error" :description="error" />
@@ -38,14 +38,19 @@
 import { LoadingState, ErrorState } from '@/components/business'
 import { AppPrintButton } from '@/components/common'
 import { academicAffairsApi, academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { currentUserFromToken } from '@/services/http/client'
+import { gradeError } from './parallel-c/grade-review'
 import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 
 export default {
   name: 'AaMakeupPrintView',
   components: { LoadingState, ErrorState, AppPrintButton },
   data() {
-    return { loading: true, error: '', schoolName: '职业院校', printTime: '', data: { students: [] } }
+    return { alive:true,seq:0,printing:false, loading: true, error: '', schoolName: '职业院校', printTime: '', data: { students: [] } }
   },
+  computed:{identityKey(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode])}},
+  watch:{identityKey(){this.load()},'$route.params.id'(){this.load()}},
+  beforeUnmount(){this.alive=false;this.seq++;this.data={students:[]};this.schoolName=''},
   created() {
     const d = new Date()
     this.printTime = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -53,21 +58,24 @@ export default {
   },
   methods: {
     academicStatusLabel,
-    doPrint() { window.print() },
+    async doPrint(){if(this.printing||this.loading||this.error)return;this.printing=true;const identity=this.identityKey,id=this.$route.params.id;try{const verified=await this.load();if(verified&&this.alive){await this.$nextTick();if(this.alive&&identity===this.identityKey&&id===this.$route.params.id&&!this.loading&&!this.error)window.print()}}finally{this.printing=false}},
     async load() {
-      const batchId = this.$route.params.id
-      const [ctxRes, dataRes] = await Promise.all([academicAffairsApi.getContext(), api.printData(batchId)])
-      if (ctxRes.code === 0) this.schoolName = ctxRes.data.tenantBrandConfig.schoolName || '职业院校'
-      if (dataRes.code === 0) this.data = { ...dataRes.data, students: dataRes.data.students || [] }
-      else this.error = dataRes.message || '加载失败'
-      this.loading = false
+      const id=this.$route.params.id,identity=this.identityKey,seq=++this.seq
+      const valid=()=>this.alive&&seq===this.seq&&identity===this.identityKey&&String(id)===String(this.$route.params.id)
+      this.loading=true;this.error='';this.data={students:[]};this.schoolName=''
+      try{
+        const [ctxRes,dataRes]=await Promise.all([academicAffairsApi.getContext(),api.printData(id)])
+        if(!valid())return false
+        if(ctxRes?.code!==0)throw ctxRes;if(dataRes?.code!==0)throw dataRes
+        this.schoolName=ctxRes.data?.tenantBrandConfig?.schoolName||'学校名称待核对';this.data={...dataRes.data,students:dataRes.data?.students||[]}
+        return true
+      }catch(err){if(valid())this.error=gradeError(err,'安排表读取失败，请重新打开批次。');return false}finally{if(valid())this.loading=false}
     }
   }
 }
 </script>
 
 <style scoped>
-@import '@/styles/module-page.css';
 .aa-print { padding: 24px; background: #fff; color: #000; }
 .aa-print__bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; font-size: 12px; color: #666; }
 .aa-print__title { text-align: center; font-size: 22px; margin: 0 0 4px; }

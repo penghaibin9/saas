@@ -70,8 +70,10 @@ def main() -> int:
 
         stages = row.stage_config or []
         if not any(
-            str(stage.get("code") or "") == "E2E_PREP"
+            str(stage.get("code") or "") == "STAGE1"
             and str(stage.get("name") or "") == "浏览器岗前准备"
+            and str(stage.get("startDate") or "") == os.environ["E2E_INTERNSHIP_STAGE_START"]
+            and str(stage.get("endDate") or "") == os.environ["E2E_INTERNSHIP_STAGE_END"]
             for stage in stages if isinstance(stage, dict)
         ):
             raise AssertionError(f"browser stage config missing from MySQL: {stages}")

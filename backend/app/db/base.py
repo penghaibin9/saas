@@ -43,4 +43,6 @@ from app.models import auth_risk as _auth_risk  # noqa: F401  (Control Plane P0�
 from app.models import recovery_run as _recovery_run  # noqa: F401  (Control Plane P0·机器灾备证据)
 from app.models import tenant_offboarding as _tenant_offboarding  # noqa: F401  (Control Plane P0·租户退租销毁)
 
+from app.models import website_news as _website_news  # noqa: F401
+
 metadata = Base.metadata

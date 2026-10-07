@@ -137,14 +137,7 @@ def extend_deadline(task_id: int, user, deadline_at, reason: str) -> dict:
 
     with _core.session() as db:
         task = _grade._load_task(db, int(task_id), lock=True)
-        role = str((user or {}).get("currentRoleCode") or "").upper()
-        if (user or {}).get("userType") != "PLATFORM_SUPER_ADMIN" and role not in {
-            "ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"
-        }:
-            raise AppException("NO_DATA_SCOPE", "仅教务/学院管理员可设置或延长成绩截止时间", http_status=403)
-        _core._check_course_scope(task, user)
-        if role == "COLLEGE_ADMIN":
-            _core._check_college_scope(db, task, user)
+        _core._require_management_scope(db, task, user)
         state = str(task.status or "").upper()
         if state not in _DEADLINE_MUTABLE_STATES:
             raise AppException(
@@ -209,10 +202,13 @@ def require_submit_within_deadline(task_id: int, user) -> None:
             )
 
 
-def teacher_submit_task(task_id: int, user) -> dict:
-    require_submit_within_deadline(task_id, user)
+def teacher_submit_task(task_id: int, user, *, expected=None, command_key=None) -> dict:
+    # Keyed dynamic submission checks deadline inside the canonical transaction,
+    # after replaying any original committed receipt. Legacy entry keeps its preflight.
+    if command_key is None:
+        require_submit_within_deadline(task_id, user)
     try:
-        return _grade_exec.teacher_submit_task(task_id, user)
+        return _grade_exec.teacher_submit_task(task_id, user, expected=expected, command_key=command_key)
     except DBAPIError as exc:
         # The MySQL trigger closes the preflight→submit TOCTOU window. Translate
         # its intentional SIGNAL back into the same stable business contract.

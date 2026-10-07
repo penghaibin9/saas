@@ -199,7 +199,10 @@ def test_3_integrity_error_on_uk_becomes_409(client, db_mode):
     other = IntegrityError("stmt", {}, Exception("Duplicate entry for key 'uk_other'"))
     assert core._is_grade_task_tt_uk_violation(other) is False
 
-    with patch.object(core, "_find_existing_grade_task_by_teaching_task", side_effect=[None, MagicMock(
+    with patch(
+        "app.modules.academic_affairs.services.academic_affairs_teacher_relation_authority.require_teacher",
+        return_value={"source": "TEACHING_TASK_MIGRATION_FALLBACK"},
+    ), patch.object(core, "_find_existing_grade_task_by_teaching_task", side_effect=[None, MagicMock(
             id=99, status="NOT_STARTED", is_deleted=False)]):
         mock_db = MagicMock()
         mock_tt = MagicMock()
@@ -221,10 +224,15 @@ def test_3_integrity_error_on_uk_becomes_409(client, db_mode):
             with patch.object(core, "_resolve_grade_task_term", return_value=(seed["term_id"], "2026-2027-1")):
                 with patch.object(core, "_tid", return_value=TID):
                     with patch.object(core, "_user_keys", return_value={"academic01"}):
-                        with pytest.raises(AppException) as ei2:
-                            core.create_grade_task(body, user)
-                        assert ei2.value.http_status == 409
-                        assert ei2.value.code == "DATA_CONFLICT"
+                        from app.core.context import set_tenant
+                        set_tenant({"tenantId": str(TID)})
+                        try:
+                            with pytest.raises(AppException) as ei2:
+                                core.create_grade_task(body, user)
+                            assert ei2.value.http_status == 409
+                            assert ei2.value.code == "DATA_CONFLICT"
+                        finally:
+                            set_tenant(None)
 
 
 def test_4_archived_term_without_term_id_rejected(client, db_mode):
@@ -260,8 +268,8 @@ def test_6_active_term_resolved_from_batch(client, db_mode):
     data = r.json()["data"]
     assert data.get("termId") == str(seed["term_id"])
     assert data.get("termCode") == seed["term_code"]
-    # V2 正式课程身份合同统一使用数值主键；term/teachingTask 等兼容字段仍保持字符串。
-    assert data.get("courseId") == int(seed["course_id"])
+    # 对外稳定 ID 统一按字符串返回，避免前端/跨端数值精度和类型漂移。
+    assert data.get("courseId") == str(seed["course_id"])
 
 
 def test_7_admin_supplement_term_and_role_rules(client, db_mode):
@@ -293,7 +301,7 @@ def test_7_admin_supplement_term_and_role_rules(client, db_mode):
     assert r4.status_code == 200, r4.text
     assert r4.json()["data"]["termId"] == str(seed["active_term_id"])
     assert r4.json()["data"]["termCode"] == "2026-2027-1"
-    assert r4.json()["data"]["courseId"] == int(seed["course_id"])
+    assert r4.json()["data"]["courseId"] == str(seed["course_id"])
 
     from app.core.security import create_access_token
     college_hdr = {"Authorization": "Bearer " + create_access_token({

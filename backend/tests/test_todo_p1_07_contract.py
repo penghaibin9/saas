@@ -53,16 +53,16 @@ def test_typed_todo_dto_contains_record_route_actions_and_version():
     assert dto["version"] == 7
 
 
-def test_unimplemented_detail_route_is_explicitly_non_exact_but_keeps_record_id():
+def test_pc_list_focus_route_is_exact_and_keeps_record_id():
     route = resolve_todo_route("LEAVE_APPROVAL", 55, client="pc")
     assert route == {
         "routeName": "todo-route:student-affairs-leave-queue",
         "routeParams": {"recordId": "55"},
         "query": {"status": "PENDING", "recordId": "55"},
         "path": "/admin/student-affairs/leave",
-        # V3 §4.4：PC 队列页没有对象聚焦能力，focusMode 显式为 NONE，exact 仍是 False。
-        "focusMode": "NONE",
-        "exact": False,
+        # P1-01：PC 请假队列已真实消费 recordId 并 detail-first 聚焦对象。
+        "focusMode": "LIST_FOCUS",
+        "exact": True,
     }
 
 
@@ -70,6 +70,34 @@ def test_unknown_todo_type_does_not_invent_a_route():
     assert resolve_todo_route("UNKNOWN_NEW_TODO", 1, client="pc") is None
     assert resolve_todo_route("UNKNOWN_NEW_TODO", 1, client="studentMini") is None
     assert resolve_todo_route("UNKNOWN_NEW_TODO", 1, client="studentPc") is None
+
+
+def test_teacher_grade_todo_targets_its_formal_grade_task_without_changing_other_clients():
+    grade_task_id = "90071992547409931"
+    route = resolve_todo_route("AA_GRADE_ENTRY", grade_task_id, client="teacherMini")
+    assert route["path"] == "/pages/teacher/academic-affairs/grade-entry"
+    assert route["routeParams"] == {"recordId": grade_task_id}
+    assert route["query"] == {"recordId": grade_task_id, "id": grade_task_id}
+    assert route["focusMode"] == "LIST_FOCUS"
+    assert route["exact"] is True
+    assert resolve_todo_route("AA_GRADE_ENTRY", grade_task_id, client="studentMini") is None
+    assert resolve_todo_route("AA_GRADE_ENTRY", grade_task_id, client="studentPc") is None
+
+
+def test_teacher_grade_todo_projection_keeps_exact_task_id_for_workbench_action():
+    from app.services.teacher_mobile_todo_projection_service import project_teacher_todo
+
+    grade_task_id = "90071992547409931"
+    row = SimpleNamespace(
+        id=47374, todo_type="AA_GRADE_ENTRY", title="录入成绩",
+        source_biz_type="AA_GRADE_TASK", source_biz_id=int(grade_task_id),
+        source_module="academic-affairs", due_at=None,
+        created_at=datetime(2026, 8, 8, 8, 0, 0), status="PENDING", version=1,
+    )
+    item = project_teacher_todo(_todo_dict(row, client="teacherMini"))
+    assert item["sourceBizId"] == grade_task_id
+    assert item["action"]["target"]["query"] == {"recordId": grade_task_id, "id": grade_task_id}
+    assert item["action"]["target"]["routeExact"] is True
 
 
 # ---------------------------------------------------------------------------

@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 from app.core.exceptions import AppException
-from app.modules.academic_affairs.services import mobile_academic_affairs_service as aa
+# 学生 PC 与小程序共享同一最终公开入口，避免评教/毕业进度等已收口能力
+# 被基础 facade 的历史兼容实现覆盖。
+from app.modules.academic_affairs.services import mobile_academic_affairs_public_service as aa
 from app.services.mobile_student_service import _require_student
 from app.student_portal.services import common_service as common
 
@@ -19,9 +21,9 @@ def transcript(user: dict) -> dict:
 
 # ── 我的课表 + 选课（复用教务学生自视图） ──
 
-def schedule(user: dict) -> dict:
+def schedule(user: dict, week: int | None = None) -> dict:
     """我的课表（最新已发布，按行政班推导）。"""
-    return aa.schedule_my(user)  # aa._me 收口本人+非学生403
+    return aa.schedule_my(user, week=week)  # aa._me 收口本人+非学生403
 
 
 def selection_courses(user: dict, batch_id=None) -> dict:
@@ -34,6 +36,11 @@ def selection_preflight(user: dict, body: dict) -> dict:
     """选课·纯读预检；直接代理 canonical SelectionPreflight。"""
     _require_student(user)
     return aa.selection_preflight_my(user, body or {})
+
+
+def selection_drop_preflight(user: dict, body: dict) -> dict:
+    """本人退课纯读预检，与移动端共用正式 DROP 规则。"""
+    return aa.selection_drop_preflight_my(user, body or {})
 
 
 def selection_enroll(user: dict, body: dict) -> dict:
@@ -122,9 +129,9 @@ def exam_defer_apply(user: dict, body: dict) -> dict:
     return aa.exam_defer_apply_my(user, body or {})
 
 
-def exam_defer_resubmit(user: dict, defer_id) -> dict:
+def exam_defer_resubmit(user: dict, defer_id, body=None) -> dict:
     _require_student(user)
-    return aa.exam_defer_resubmit_my(user, defer_id)
+    return aa.exam_defer_resubmit_my(user, defer_id, body or {})
 
 
 def makeup(user: dict) -> dict:
@@ -135,27 +142,32 @@ def makeup(user: dict) -> dict:
 
 def makeup_options(user: dict) -> dict:
     """重修挂科候选 + 免修未及格候选。"""
-    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
     _require_student(user)
-    return gaps.makeup_options_my(user)
+    return aa.makeup_options_my(user)
 
 
 def retake_apply(user: dict, body: dict) -> dict:
-    """本人发起重修报名（优先 gradeId；课程名须落在挂科候选）。"""
+    """本人发起重修报名（只接受本人当前有效成绩的 gradeId）。"""
     _require_student(user)
     body = body or {}
-    if not body.get("gradeId") and not str(body.get("courseName") or "").strip():
+    if not body.get("gradeId"):
         raise AppException("VALIDATION_ERROR", "请从挂科课程列表选择后再提交")
     return aa.retake_apply_my(user, body)
 
 
 def exemption_apply(user: dict, body: dict) -> dict:
-    """本人发起免修申请（课程须在未及格候选内）。"""
+    """本人发起免修申请（只接受稳定课程库 courseId）。"""
     _require_student(user)
     body = body or {}
-    if not str(body.get("courseName") or "").strip():
+    if not body.get("courseId"):
         raise AppException("VALIDATION_ERROR", "请从课程列表选择后再提交")
     return aa.exemption_apply_my(user, body)
+
+
+def exemption_resubmit(user: dict, exemption_id, body: dict) -> dict:
+    """学生仅能修改本人被退回的原免修申请。"""
+    _require_student(user)
+    return aa.exemption_resubmit_my(user, exemption_id, body or {})
 
 
 def registration(user: dict) -> dict:
@@ -178,10 +190,10 @@ def registration_defer(user: dict, batch_id, body: dict) -> dict:
         user, batch_id, body.get("reason"), body.get("requestedUntil"))
 
 
-def attendance(user: dict) -> dict:
+def attendance(user: dict, session_id: int | None = None) -> dict:
     from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
     _require_student(user)
-    return gaps.attendance_my(user)
+    return gaps.attendance_my(user, session_id=session_id)
 
 
 def calendar(user: dict) -> dict:
@@ -284,9 +296,9 @@ def credits(user: dict) -> dict:
     return aa.credits_my(user)
 
 
-def warning(user: dict) -> dict:
+def warning(user: dict, page=1, page_size=50) -> dict:
     _require_student(user)
-    return aa.warning_my(user)
+    return aa.warning_my(user, page=page, page_size=page_size)
 
 
 def recognition(user: dict) -> dict:
@@ -323,7 +335,13 @@ def schedule_print(user: dict, body: dict) -> dict:
     """课表打印留痕（PORTAL_PRINT + 水印 + 可下载正文）。"""
     _require_student(user)
     body = body or {}
-    data = schedule(user)
+    week = body.get("week")
+    if week is not None:
+        text = str(week)
+        if not text.isdecimal() or not 1 <= int(text) <= 99:
+            raise AppException("VALIDATION_ERROR", "教学周次必须在1至99周之间")
+        week = int(text)
+    data = schedule(user, week)
     reason = str(body.get("reason") or body.get("bizId") or "个人课表").strip()
     log = common.print_log(user, {"bizType": "SCHEDULE",
                                   "bizId": reason,

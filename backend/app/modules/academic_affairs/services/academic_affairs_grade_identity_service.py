@@ -82,6 +82,24 @@ def lock_grade_identity(db, acad_student_id: int, course_code: str):
             AaGradeIdentityHead.is_deleted.is_(False),
         )
 
+    if db.get_bind().dialect.name == "mysql":
+        from sqlalchemy.dialects.mysql import insert as mysql_insert
+
+        # Acquire the unique-key lock by writing first. A missing-row locking read
+        # can create competing gap locks; an InnoDB deadlock then destroys the
+        # whole transaction, including the SAVEPOINT. Never retry inside that
+        # invalid transaction or reset an existing counter to zero.
+        db.flush()
+        stmt = mysql_insert(AaGradeIdentityHead).values(
+            tenant_id=_tid(), acad_student_id=int(acad_student_id),
+            course_code=code, current_attempt_no=0,
+        )
+        db.execute(stmt.on_duplicate_key_update(id=AaGradeIdentityHead.id))
+        head = _query().populate_existing().with_for_update().first()
+        if head is None:
+            raise AppException("DATA_CONFLICT", "成绩身份头已删除，请先核对历史数据", http_status=409)
+        return head
+
     head = _query().with_for_update().first()
     if head:
         return head

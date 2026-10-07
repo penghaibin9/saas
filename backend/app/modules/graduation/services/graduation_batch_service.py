@@ -226,6 +226,9 @@ def _validate_and_merge_rules(existing: dict | None, patch: dict | None) -> dict
             merged[key] = {**merged[key], **value}
         else:
             merged[key] = value
+    for key in DEFAULT_RULES:
+        if not isinstance(merged.get(key), dict):
+            raise AppException("VALIDATION_ERROR", f"毕业设计规则 {key} 必须填写完整配置，不能使用开关或数字代替")
     score = merged.get("score") or {}
     weights = [
         float(score.get("advisorWeight") or 0),

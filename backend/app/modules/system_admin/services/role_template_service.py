@@ -32,6 +32,17 @@ def _digest(codes) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def _assert_canonical_new_writes(permissions: list[str]) -> None:
+    legacy = sorted(code for code in permissions if code.startswith("system."))
+    if legacy:
+        raise AppException(
+            "LEGACY_PERMISSION_WRITE_FORBIDDEN",
+            "新角色模板只允许 systemAdmin.* canonical 权限；system.* 仅供历史兼容读取",
+            http_status=422,
+            details={"permissionCodes": legacy[:50]},
+        )
+
+
 def _items(db, template: RoleTemplate | None) -> list[str]:
     if template is None:
         return []
@@ -118,11 +129,61 @@ def _load(db, template_id: int, *, lock: bool = False) -> RoleTemplate:
         RoleTemplate.is_deleted.is_(False),
     )
     if lock:
-        stmt = stmt.with_for_update()
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     item = db.scalar(stmt)
     if item is None:
         raise AppException("DATA_NOT_FOUND", "TENANT 角色模板不存在", http_status=404)
     return item
+
+
+def _current_published(db, template_code: str, *, lock: bool = False) -> RoleTemplate | None:
+    stmt = select(RoleTemplate).where(
+        RoleTemplate.tenant_id == PLATFORM_TENANT,
+        RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+        RoleTemplate.template_category == TEMPLATE_CATEGORY_SYSTEM_ROLE,
+        RoleTemplate.template_code == template_code,
+        RoleTemplate.publish_status == PUBLISHED,
+        RoleTemplate.status == "ACTIVE",
+        RoleTemplate.is_deleted.is_(False),
+    ).order_by(RoleTemplate.template_version.desc(), RoleTemplate.id.desc()).limit(1)
+    return db.scalar(stmt.with_for_update().execution_options(populate_existing=True) if lock else stmt)
+
+
+def _publish_anchor(db, template_id: int) -> tuple[str, int]:
+    # Read identifiers before taking locks; all publications of one code then
+    # lock the same oldest version by primary key, independent of new drafts.
+    code = db.scalar(select(RoleTemplate.template_code).where(
+        RoleTemplate.id == int(template_id),
+        RoleTemplate.tenant_id == PLATFORM_TENANT,
+        RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+        RoleTemplate.is_deleted.is_(False),
+    ))
+    if code is None:
+        raise AppException("DATA_NOT_FOUND", "TENANT 角色模板不存在", http_status=404)
+    anchor_id = db.scalar(select(RoleTemplate.id).where(
+        RoleTemplate.tenant_id == PLATFORM_TENANT,
+        RoleTemplate.template_plane == TEMPLATE_PLANE_TENANT,
+        RoleTemplate.template_code == code,
+        RoleTemplate.is_deleted.is_(False),
+    ).order_by(RoleTemplate.template_version, RoleTemplate.id).limit(1))
+    if anchor_id is None:
+        raise AppException("DATA_CONFLICT", "角色模板基线已变化，请刷新后重试", http_status=409)
+    return str(code), int(anchor_id)
+
+
+def _draft_baseline_id(db, item: RoleTemplate) -> int | None:
+    snapshot = item.permission_ceiling_json or {}
+    if "basePublishedTemplateId" in snapshot:
+        value = snapshot["basePublishedTemplateId"]
+        return int(value) if value is not None else None
+    # Older drafts did not record a separate baseline. Their predecessor is
+    # usable only when it was already published; a draft predecessor is unsafe.
+    if item.previous_template_id:
+        previous = _load(db, int(item.previous_template_id))
+        if previous.publish_status != PUBLISHED:
+            raise AppException("DATA_CONFLICT", "旧草稿无法证明发布基线，请重新建立草稿", http_status=409)
+        return int(previous.id)
+    return None
 
 
 def list_versions(template_code: str) -> list[dict]:
@@ -156,6 +217,7 @@ def create_draft(
         raise AppException("VALIDATION_ERROR", "模板新版本必须填写至少5个字符的变更原因")
     permissions = sorted({str(value or "").strip() for value in (permission_codes or []) if str(value or "").strip()})
     assert_custom_role_assignable(permissions, allow_legacy_patterns=False)
+    _assert_canonical_new_writes(permissions)
 
     db = get_sessionmaker()()
     try:
@@ -166,6 +228,7 @@ def create_draft(
             RoleTemplate.is_deleted.is_(False),
         ).order_by(RoleTemplate.template_version.desc()).limit(1))
         latest_version = int(latest.template_version or 0) if latest else 0
+        baseline = _current_published(db, code)
         previous = None
         if source_template_id is not None:
             previous = _load(db, source_template_id, lock=False)
@@ -188,7 +251,8 @@ def create_draft(
             source_commit_sha=str(source_commit_sha or "").strip() or None,
             delivered=True,
             bundle_codes_json={"items": []},
-            permission_ceiling_json={"items": permissions, "permissionDigest": _digest(permissions)},
+            permission_ceiling_json={"items": permissions, "permissionDigest": _digest(permissions),
+                                     "basePublishedTemplateId": int(baseline.id) if baseline else None},
             wildcard_json=None,
             status="ACTIVE",
             created_by=actor_user_id,
@@ -220,6 +284,7 @@ def update_draft(
         raise AppException("VALIDATION_ERROR", "模板变更必须填写至少5个字符的原因")
     permissions = sorted({str(value or "").strip() for value in (permission_codes or []) if str(value or "").strip()})
     assert_custom_role_assignable(permissions, allow_legacy_patterns=False)
+    _assert_canonical_new_writes(permissions)
     db = get_sessionmaker()()
     try:
         item = _load(db, template_id, lock=True)
@@ -243,12 +308,30 @@ def update_draft(
 
 
 def impact(template_id: int) -> dict:
+    from app.modules.platform.services import platform_product_iam_service as product_svc
+
     db = get_sessionmaker()()
     try:
+        # One database snapshot supplies both permission and menu differences.
+        db.connection(execution_options={"isolation_level": "REPEATABLE READ"})
         item = _load(db, template_id)
         current = set(_items(db, item))
-        previous = _load(db, int(item.previous_template_id)) if item.previous_template_id else None
+        snapshot = item.permission_ceiling_json or {}
+        if item.publish_status == PUBLISHED and "basePublishedTemplateId" not in snapshot:
+            raise AppException("DATA_CONFLICT", "历史已发布版本缺少明确发布基线，无法计算影响", http_status=409)
+        baseline_id = _draft_baseline_id(db, item)
+        if item.publish_status == DRAFT:
+            published = _current_published(db, item.template_code)
+            if baseline_id != (int(published.id) if published else None):
+                raise AppException("DATA_CONFLICT", "已发布模板发生变化，请重新建立草稿", http_status=409)
+        previous = _load(db, baseline_id) if baseline_id is not None else None
+        if previous is not None and previous.publish_status != PUBLISHED:
+            raise AppException("DATA_CONFLICT", "版本基线不是已发布模板，无法计算影响", http_status=409)
         before = set(_items(db, previous)) if previous is not None else set()
+        navigation = product_svc._navigation_contract()
+        surfaces = list(navigation.get("surfaces") or [])
+        current_menus = {row["surfaceKey"] for row in product_svc._menu_preview(current, surfaces)}
+        previous_menus = {row["surfaceKey"] for row in product_svc._menu_preview(before, surfaces)}
         pinned = list(db.scalars(select(CustomRoleSource).where(
             CustomRoleSource.source_template_code == item.template_code,
             CustomRoleSource.is_deleted.is_(False),
@@ -257,8 +340,14 @@ def impact(template_id: int) -> dict:
             "templateId": str(item.id),
             "templateCode": item.template_code,
             "templateVersion": int(item.template_version or 0),
+            "publishStatus": item.publish_status,
+            "baselineTemplateId": str(previous.id) if previous is not None else None,
+            "baselineTemplateVersion": int(previous.template_version or 0) if previous is not None else None,
             "addedPermissions": sorted(current - before),
             "removedPermissions": sorted(before - current),
+            "menuAdded": sorted(current_menus - previous_menus),
+            "menuRemoved": sorted(previous_menus - current_menus),
+            "navigationDigest": navigation.get("digest") or product_svc._hash(surfaces),
             "affectedPinnedCustomRoles": [
                 {
                     "tenantId": str(role.tenant_id),
@@ -281,20 +370,37 @@ def publish_draft(
     *,
     expected_version: int,
     actor_user_id: int | None,
+    change_reason: str | None = None,
     effective_at: datetime | None = None,
 ) -> dict:
     from app.services import audit_log
 
     db = get_sessionmaker()()
     try:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        code, anchor_id = _publish_anchor(db, template_id)
+        anchor = _load(db, anchor_id, lock=True)
+        if anchor.template_code != code:
+            raise AppException("DATA_CONFLICT", "角色模板基线已变化，请刷新后重试", http_status=409)
         item = _load(db, template_id, lock=True)
+        if item.template_code != code:
+            raise AppException("DATA_CONFLICT", "角色模板归属已变化，请刷新后重试", http_status=409)
         assert_school_role_template_code(item.template_code)
         if item.publish_status != DRAFT:
             raise AppException("IMMUTABLE_TEMPLATE", "只有 DRAFT 模板版本可以发布", http_status=409)
         if int(item.version or 0) != int(expected_version):
             raise AppException("DATA_CONFLICT", "模板草稿已被其他人修改，请刷新后重试", http_status=409)
+        published = _current_published(db, item.template_code, lock=True)
+        if _draft_baseline_id(db, item) != (int(published.id) if published else None):
+            raise AppException("DATA_CONFLICT", "已发布模板发生变化，请重新建立草稿", http_status=409)
+        if change_reason is not None:
+            reason = str(change_reason or "").strip()
+            if len(reason) < 5:
+                raise AppException("VALIDATION_ERROR", "发布原因至少 5 个字符", http_status=422)
+            item.change_reason = reason
         permissions = _items(db, item)
         assert_custom_role_assignable(permissions, allow_legacy_patterns=False)
+        _assert_canonical_new_writes(permissions)
         if not permissions:
             raise AppException("VALIDATION_ERROR", "角色模板至少包含一个具体 TENANT permissionCode")
         now = datetime.utcnow()

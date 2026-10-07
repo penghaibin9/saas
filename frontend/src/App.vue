@@ -1,15 +1,24 @@
 <template>
   <!-- UI-P1.5 最小应用壳：路由出口 + 全局 Toast；登录态/退出由 BasePortalLayout 顶栏承载 -->
-  <router-view />
+  <router-view v-slot="{ Component, route }">
+    <RouteAccessNotice v-if="route.meta.accessNotice" :key="route.fullPath" :notice="route.meta.accessNotice" />
+    <component :is="Component" v-else />
+  </router-view>
+  <SystemDialogHost />
   <AppToast />
 </template>
 
 <script>
 import AppToast from '@/components/common/AppToast.vue'
+import SystemDialogHost from '@/components/common/SystemDialogHost.vue'
+import { defineAsyncComponent } from 'vue'
+
+// 拒绝页仅在权限守卫裁定后加载，避免登录首屏提前拉入整个教师工作区。
+const RouteAccessNotice = defineAsyncComponent(() => import('@/views/security/RouteAccessNotice.vue'))
 
 export default {
   name: 'App',
-  components: { AppToast }
+  components: { AppToast, SystemDialogHost, RouteAccessNotice }
 }
 </script>
 

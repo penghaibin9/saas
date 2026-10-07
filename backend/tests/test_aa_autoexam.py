@@ -16,6 +16,8 @@ from __future__ import annotations
 BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
 
+from tests.test_aa_exam import _seed_exam_review_identity, _prepare_task_batch_for_exam
+
 
 def _hdr(client, login_name):
     data = client.post("/api/v1/auth/mock-login",
@@ -49,7 +51,7 @@ def _seed(db_mode, *, students=4, rooms=(), extra_class=False):
     co2 = AaCourse(tenant_id=TID, course_code="AX_ENG", course_name="大学英语", credit=3, status="ENABLED")
     db.add_all([co1, co2]); db.flush()
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=term.id, batch_name="2024秋教学任务",
-                             college_id=col.id, status="ACTIVE")
+                             college_id=col.id, status="DRAFT")
     db.add(tb); db.flush()
     tt1 = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=co1.id, course_name="高等数学",
                          class_id=klass.id, teaching_class_name="软件2401",
@@ -87,19 +89,26 @@ def _seed(db_mode, *, students=4, rooms=(), extra_class=False):
                         room_type="LECTURE", status="AVAILABLE")
         db.add(r); db.flush()
         ids["rooms"][code] = r.id
+    _seed_exam_review_identity(db, col.id)
     db.commit(); db.close()
     return ids
 
 
 def _confirmed_batch(client, admin, tt_id, *, with_time=True, name="2024秋期末", term_id=None):
     """建批次→圈课→确认→(可选)定时间。termId 是 create_batch 的硬门禁，缺了直接 400。"""
+    _prepare_task_batch_for_exam(client, admin, tt_id)
     body = {"batchName": name}
     if term_id:
         body["termId"] = str(term_id)
-    bid = client.post(f"{BASE}/exam/batches", headers=admin, json=body).json()["data"]["batchId"]
-    cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
-                      json={"teachingTaskId": str(tt_id)}).json()["data"]["examCourseId"]
-    client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+    created = client.post(f"{BASE}/exam/batches", headers=admin, json=body)
+    assert created.status_code == 200, created.text
+    bid = created.json()["data"]["batchId"]
+    added = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
+                        json={"teachingTaskId": str(tt_id)})
+    assert added.status_code == 200, added.text
+    cid = added.json()["data"]["examCourseId"]
+    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
+    assert confirmed.status_code == 200, confirmed.text
     if with_time:
         client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                    json={"examDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00",
@@ -186,13 +195,14 @@ def test_room_not_reused_same_time(client, db_mode):
     """两门课同日同时段、只有一间教室 → 第二门 ROOM_SHORT（同教室同时段不可复用）。"""
     ids = _seed(db_mode, students=2, rooms=[("C1", 30, None, False)])
     admin = _hdr(client, "school_admin01")
+    _prepare_task_batch_for_exam(client, admin, ids["tt1"])
     bid = client.post(f"{BASE}/exam/batches", headers=admin,
                       json={"batchName": "同时段批次", "termId": str(ids["term"])}).json()["data"]["batchId"]
     cids = []
     for tt in (ids["tt1"], ids["tt2"]):
         cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                           json={"teachingTaskId": str(tt)}).json()["data"]["examCourseId"]
-        client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+        client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
         client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                    json={"examDate": "2027-06-21", "startTime": "09:00", "endTime": "11:00",
                          "durationMinutes": 120})
@@ -239,13 +249,14 @@ def test_clear_auto_preserves_manual_room(client, db_mode):
     """课程A手工考场 + 课程B自动考场 → 清除后 A 保留、B 清空（连带座位与监考）。"""
     ids = _seed(db_mode, students=4, rooms=[("G1", 30, None, False)])
     admin = _hdr(client, "school_admin01")
+    _prepare_task_batch_for_exam(client, admin, ids["tt1"])
     bid = client.post(f"{BASE}/exam/batches", headers=admin,
                       json={"batchName": "混合批次", "termId": str(ids["term"])}).json()["data"]["batchId"]
     cids = []
     for i, tt in enumerate((ids["tt1"], ids["tt2"])):
         cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                           json={"teachingTaskId": str(tt)}).json()["data"]["examCourseId"]
-        client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+        client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
         client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                    json={"examDate": f"2027-06-2{i + 2}", "startTime": "09:00", "endTime": "11:00",
                          "durationMinutes": 120})
@@ -289,12 +300,13 @@ def test_assign_times_teacher_slot_overlap(client, db_mode):
     10:00 造成同教师时间冲突；修复后第二门须跳到不重叠的 14:00-16:00。"""
     ids = _seed(db_mode, students=4, rooms=[], extra_class=True)
     admin = _hdr(client, "school_admin01")
+    _prepare_task_batch_for_exam(client, admin, ids["tt1"])
     bid = client.post(f"{BASE}/exam/batches", headers=admin,
                       json={"batchName": "时段重叠回归", "termId": str(ids["term"])}).json()["data"]["batchId"]
     for tt in ("tt2", "tt3"):  # tt2=软件2401·teacher_b, tt3=空班2402·teacher_b（同教师不同班）
         cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                           json={"teachingTaskId": str(ids[tt])}).json()["data"]["examCourseId"]
-        client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+        client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
     client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
     r = client.post(f"{BASE}/exam/batches/{bid}/auto-times", headers=admin, json={
         "dates": ["2027-06-20"],

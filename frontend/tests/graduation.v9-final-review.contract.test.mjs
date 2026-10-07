@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { graduationTemplateCopy } from './graduation-template-copy.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const read = (rel) => fs.readFileSync(path.resolve(here, rel), 'utf8')
@@ -31,9 +32,10 @@ test('U3 pending review reloads the same server page before selecting the next f
   assert.match(source, /Number\.isInteger\(this\._selectIndexAfterLoad\)/)
 })
 
-test('U3 preserves the secure canonical FileVersion review gate', () => {
+test('U3 preserves the secure canonical FileVersion review gate in the actual command', () => {
   assert.match(source, /finalDetail\?\.reviewReady/)
-  assert.match(source, /expectedVersion \+ fileVersionId/)
+  assert.match(source, /expectedVersion:\s*this\.finalDetail\.materialVersion/)
+  assert.match(source, /fileVersionId:\s*this\.finalDetail\.fileVersionId/)
   assert.match(source, /canonicalFileVersionId/)
   assert.match(source, /versionConflict/)
   assert.match(workspace, /FileEvidencePanel/)
@@ -47,7 +49,55 @@ test('U3 keeps the five-second decision surface in the shared Reader workspace',
   assert.match(workspace, /gd-review-workspace__business-bar/)
   assert.match(workspace, /gd-review-workspace__conflict/)
   assert.match(workspace, /FileEvidencePanel/)
-  assert.match(workspace, /grid-template-columns:272px minmax\(0,1fr\) 340px/)
-  assert.match(workspace, /grid-template-columns:220px minmax\(0,1fr\) 290px/)
+  assert.match(workspace, /grid-template-columns:250px minmax\(0,1fr\) 318px/)
+  assert.match(workspace, /grid-template-columns:205px minmax\(0,1fr\) 280px/)
   assert.match(workspace, /gd-review-workspace\.is-narrow\{grid-template-columns:1fr\}/)
+})
+
+test('U3 displays business version and review readiness while retaining exact machine evidence', () => {
+  assert.match(source, /class="fr-selected-summary"/)
+  assert.match(source, /提交中，已锁定对象与版本/)
+  assert.match(workspace, /data-testid="review-command-contract"/)
+  assert.match(workspace, /:data-material-version="expectedVersion \?\? ''"/)
+  assert.match(workspace, /:data-file-version-id="canonicalFileVersionId \?\? ''"/)
+  assert.match(workspace, /reviewReady && !versionConflict/)
+  const copy = graduationTemplateCopy(workspace)
+  for (const label of ['提交版次', '文件核对', '批阅状态', '可以批阅', '暂不可批阅']) {
+    assert.ok(copy.text.includes(label), `teacher decision surface missing ${label}`)
+  }
+  assert.doesNotMatch(copy.text, /expectedVersion|canonical FileVersion/)
+  assert.doesNotMatch(copy.directOutputs.join(' '), /canonicalFileVersionId|fileVersionId/)
+})
+
+test('U3 locks every context-changing interaction while a canonical command is submitting', () => {
+  assert.match(source, /:disabled="submitting"[\s\S]*@click="switchTab/)
+  assert.match(source, /AppSearchBox[\s\S]*:disabled="submitting"/)
+  assert.match(source, /if \(this\.isNarrow \|\| this\.submitting\) return/)
+  assert.match(source, /switchTab\(value\) \{[\s\S]*if \(this\.submitting\) return/)
+  assert.match(source, /turnPage\(page\) \{[\s\S]*if \(this\.submitting\) return/)
+  assert.match(source, /select\(row, \{ force = false \} = \{\}\) \{[\s\S]*if \(!row \|\| \(this\.submitting && !force\)\) return/)
+  assert.match(source, /selectPreviewFile\(item\) \{[\s\S]*if \(!item \|\| this\.submitting\) return/)
+  assert.match(source, /step\(delta\) \{[\s\S]*if \(this\.submitting\) return/)
+  assert.match(source, /submitReview\(action\) \{[\s\S]*if \(this\.submitting \|\| !this\.canReview/)
+  assert.match(source, /finally \{[\s\S]*this\.submitting = false/)
+  assert.match(workspace, /function emitUnlocked\(event, payload\)[\s\S]*if \(props\.submitting\) return/)
+  assert.match(workspace, /allowDownload && !submitting/)
+  assert.match(workspace, /is-command-locked/)
+  assert.match(workspace, /is-submitting \.gd-review-workspace__queue\{pointer-events:none\}/)
+})
+
+test('U3 list, stats and detail reads are latest-wins and URL state is reloadable', () => {
+  assert.match(source, /loadToken: 0/)
+  assert.match(source, /statsToken: 0/)
+  assert.match(source, /detailToken: 0/)
+  assert.match(source, /const token = \+\+this\.loadToken/)
+  assert.match(source, /token !== this\.loadToken \|\| String\(batchId\) !== String\(this\.batchStore\.selectedBatchId\)/)
+  assert.match(source, /const token = \+\+this\.statsToken/)
+  assert.match(source, /const requestKey = `\$\{\+\+this\.detailToken\}:\$\{row\.id\}:\$\{batchId\}`/)
+  assert.match(source, /this\.detailRequestKey !== requestKey \|\| this\.rowKey\(row\) !== this\.selKey/)
+  assert.match(source, /applyInitialRouteState\(this\.\$route\.query\)/)
+  assert.match(source, /this\.filters\.keyword = this\.routeText\(query\.keyword\)/)
+  assert.match(source, /this\.page = this\.normalizePage\(query\.page\)/)
+  assert.match(source, /page: String\(this\.page\)/)
+  assert.match(source, /sel: this\.selKey \|\| undefined/)
 })

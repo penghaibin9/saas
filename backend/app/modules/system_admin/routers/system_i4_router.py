@@ -6,12 +6,12 @@ used to claim 20K single-job import Gold before normalized staging exists.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy import func, or_, select
 
 from app.core.context import current_tenant_id
 from app.core.exceptions import not_found
-from app.core.permissions import require_permission
+from app.core.permissions import require_permission, require_any_permission
 from app.core.response import paginate, success
 from app.db.session import get_sessionmaker
 from app.models import Role, User, UserRole
@@ -65,6 +65,82 @@ def role_members(
         db.close()
 
 
+@_extra.get("/system/roles/{role_id}/member-candidates", summary="可添加的角色成员候选老师")
+def role_member_candidates(
+    role_id: int,
+    keyword: str = "",
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=100),
+    user=Depends(require_permission("systemAdmin.user.assign-role")),
+):
+    _ = user
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        role = _load_role(db, tenant_id, role_id)
+        existing_member_ids = select(UserRole.user_id).where(
+            UserRole.tenant_id == tenant_id,
+            UserRole.role_id == role.id,
+            UserRole.status == "ACTIVE",
+            UserRole.is_deleted.is_(False),
+        )
+        stmt = select(User).where(
+            User.tenant_id == tenant_id,
+            User.is_deleted.is_(False),
+            User.status == "ACTIVE",
+            User.user_type != "STUDENT",
+            ~User.id.in_(existing_member_ids),
+        )
+        if keyword.strip():
+            like = f"%{keyword.strip()}%"
+            stmt = stmt.where(or_(User.login_name.like(like), User.real_name.like(like)))
+        total = int(db.scalar(select(func.count()).select_from(stmt.order_by(None).subquery())) or 0)
+        accounts = list(db.scalars(
+            stmt.order_by(User.real_name, User.login_name, User.id)
+            .offset((page - 1) * pageSize).limit(pageSize)
+        ).all())
+        items = [{
+            "id": str(account.id),
+            "loginName": account.login_name,
+            "name": account.real_name or account.login_name,
+            "userType": account.user_type,
+            "status": account.status,
+        } for account in accounts]
+        return success(paginate(items, total, page, pageSize))
+    finally:
+        db.close()
+
+
+@_extra.post("/system/roles/{role_id}/members/batch", summary="按角色批量添加老师")
+def batch_add_role_members(
+    role_id: int,
+    body: dict = Body(...),
+    user=Depends(require_permission("systemAdmin.user.assign-role")),
+):
+    tenant_id = int(current_tenant_id() or 0)
+    db = get_sessionmaker()()
+    try:
+        role = _load_role(db, tenant_id, role_id)
+        role_code = str(role.role_code or "")
+    finally:
+        db.close()
+
+    from app.services import role_assignment_service as ras
+
+    payload = body or {}
+    result = ras.batch_grant_assignments(
+        payload.get("userIds") or [],
+        role_code,
+        reason=payload.get("reason") or "",
+        effective_at=payload.get("effectiveAt"),
+        expires_at=payload.get("expiresAt"),
+        source_type="MANUAL",
+        tenant_id=tenant_id,
+        user=user,
+    )
+    return success(result, message=f"已添加 {result['addedCount']} 位角色成员")
+
+
 @_extra.get("/system/roles/{role_id}/audit", summary="角色操作留痕分页")
 def role_audit(
     role_id: int,
@@ -79,7 +155,9 @@ def role_audit(
         role = _load_role(db, tenant_id, role_id)
         predicate = or_(
             SecurityAuditLog.resource == f"role:{role.id}",
-            SecurityAuditLog.resource_id == str(role.id),
+            # Numeric IDs are shared across resource types. Match the role
+            # namespace, including role:<id>:members, never an ID alone.
+            SecurityAuditLog.resource.startswith(f"role:{role.id}:"),
         )
         total = int(db.scalar(select(func.count(SecurityAuditLog.id)).where(
             SecurityAuditLog.tenant_id == tenant_id,
@@ -125,9 +203,40 @@ def role_detail(role_id: int, user=Depends(require_permission("systemAdmin.role.
     return payload
 
 
+@_extra.post('/system/role-assignments/legacy/{user_role_id}/register', summary='补登记现有历史授权，不改变角色权限')
+def register_legacy_role_assignment(user_role_id: int, body: dict = Body(...),
+                                    user=Depends(require_any_permission('systemAdmin.user.assign', 'systemAdmin.role.config'))):
+    from app.services.role_assignment_p1_guard_service import register_legacy_assignment
+    return success(register_legacy_assignment(
+        user_role_id, reason=body.get('reason') or '', expected_version=body.get('expectedVersion'), user=user),
+        message='已补登记，原有权限保持不变；现在可复核、转交或回收')
+
+
 def _key(route) -> tuple[str, str]:
     methods = tuple(sorted(getattr(route, "methods", set()) or set()))
     return (",".join(methods), getattr(route, "path", ""))
+
+
+_P1_LATE_REPLACEMENTS = {
+    ("GET", "/system/context"),
+    ("GET", "/system/effective-config"),
+    ("PUT", "/system/config-overrides"),
+    ("GET", "/system/config-history/{config_key}"),
+    ("GET", "/system/accounts/{user_id}/effective-identity"),
+    ("POST", "/system/accounts/{user_id}/repair-binding"),
+    ("POST", "/system/accounts/{user_id}/unbind"),
+    ("POST", "/system/role-assignments"),
+    ("POST", "/system/role-assignments/{assignment_id}/revoke"),
+    ("POST", "/system/role-assignments/{assignment_id}/transfer"),
+    ("GET", "/system/org-nodes/{org_type}/{node_id}/impact"),
+    ("PUT", "/system/org-nodes/{node_id}/status"),
+}
+
+
+def _is_late_p1_replacement(route) -> bool:
+    methods = {str(value).upper() for value in (getattr(route, "methods", None) or set())}
+    path = str(getattr(route, "path", "") or "")
+    return any((method, path) in _P1_LATE_REPLACEMENTS for method in methods)
 
 
 def _compose() -> APIRouter:
@@ -135,6 +244,8 @@ def _compose() -> APIRouter:
     composed = APIRouter()
     routes = []
     for route in _base.router.routes:
+        if _is_late_p1_replacement(route):
+            continue
         routes.append(replacement.pop(_key(route), route))
     routes.extend(replacement.values())
     composed.routes = routes

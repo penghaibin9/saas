@@ -22,25 +22,26 @@ test('T5 MobileSequentialQueue is windowed and single-object only', () => {
 
 test('T5 leave queue uses canonical single-record commands and reloads truth before advancing', () => {
   const page = read('src/pages/teacher/affairs-leave/index.vue')
-  assert.match(page, /MobileSequentialQueue/)
+  assert.match(page, /MobileLeaveDetail/)
+  assert.match(page, /teacherApi\.getAffairsLeaveDetail\(id\)/)
   assert.match(page, /sequentialConflict/)
   assert.match(page, /affairsContractApi\.approveLeave\(x\.id/)
   assert.match(page, /affairsContractApi\.rejectLeave\(x\.id/)
   assert.match(page, /affairsContractApi\.returnLeave\(x\.id/)
-  assert.match(page, /return this\.load\(\)\.then\(\(\) => this\.afterSequentialSuccess/)
+  assert.match(page, /await this\.load\(\)[\s\S]*this\.afterSequentialSuccess/)
   // The conflict branch may be expressed directly (`===`) or by a complementary non-conflict
   // guard (`!==`). The production contract is behavioral: 409 never reopens stale input, while
   // a non-conflict failure preserves the typed draft and offers a retry.
   assert.match(page, /if \(n\.kind !== 'conflict'\)/)
   assert.match(page, /if \(retry\) setTimeout\(retry, 0\)/)
   assert.match(page, /this\.sequentialConflict = true/)
-  assert.match(page, /return this\.load\(\)\.catch\(\(\) => \{\}\)/)
+  assert.match(page, /await this\.load\(\)\.catch\(\(\) => \{\}\)/)
   assert.doesNotMatch(page, /approveLeave\([^\n]*\[/)
   assert.doesNotMatch(page, /rejectLeave\([^\n]*\[/)
 })
 
 test('T5 internship weekly and abnormal queues stop on conflict and never batch ids', () => {
-  const page = read('src/pages/teacher/internship-review/index.vue')
+  const page = read('src/pages/teacher-internship/internship-review/index.vue')
   assert.match(page, /MobileSequentialQueue/)
   assert.match(page, /tab === 'weekly'/)
   assert.match(page, /PENDING_REVIEW/)
@@ -73,10 +74,26 @@ test('T5 abnormal queue carries the exact read-snapshot version into the canonic
   assert.doesNotMatch(adapter, /localStorage|setStorageSync|Promise\.all|itemIds|exceptionIds/)
 })
 
+test('T5 internship todo resolves a server-authorized batch instead of rendering an empty queue', () => {
+  const page = read('src/pages/teacher-internship/internship-review/index.vue')
+  const adapter = read('src/services/teacherSequentialV3Api.js')
+
+  assert.match(page, /useInternshipContextStore/)
+  assert.match(page, /routeBatchId/)
+  assert.match(page, /focusReportId/)
+  assert.match(page, /ensureBatchContext/)
+  assert.match(page, /当前实习批次/)
+  assert.match(page, /数据恢复前不要把空列表当作已处理完成/)
+  assert.match(page, /batchId = this\.batchId/)
+  assert.match(adapter, /focusReportId/)
+  assert.match(adapter, /recordId=\$\{encodeURIComponent\(String\(focusReportId\)\.trim\(\)\)\}/)
+  assert.doesNotMatch(adapter, /setStorageSync|localStorage/)
+})
+
 test('T5 only advances after server reload and cannot auto-advance while conflict is set', () => {
   const component = read('src/components/teacher/MobileSequentialQueue.vue')
   const leave = read('src/pages/teacher/affairs-leave/index.vue')
-  const internship = read('src/pages/teacher/internship-review/index.vue')
+  const internship = read('src/pages/teacher-internship/internship-review/index.vue')
   assert.match(component, /allowManualNext:\s*\{\s*type:\s*Boolean,\s*default:\s*false\s*\}/)
   assert.doesNotMatch(leave, /:allow-manual-next="true"|allow-manual-next/)
   assert.doesNotMatch(internship, /:allow-manual-next="true"|allow-manual-next/)

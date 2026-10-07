@@ -172,7 +172,7 @@ def preview_offboarding(tenant_id: int) -> dict:
         ).order_by(TenantOffboardingJob.id.desc())).first()
         blockers = []
         if counts["legalHoldFileCount"]:
-            blockers.append({"code": "LEGAL_HOLD", "message": "存在文件 Legal Hold；允许冻结，但禁止物理销毁"})
+            blockers.append({"code": "LEGAL_HOLD", "message": "存在文件司法保全要求；允许冻结，但禁止物理销毁"})
         if not registry["complete"]:
             blockers.append({"code": "PURGE_REGISTRY_INCOMPLETE", "message": "存在未分类 tenant_id 表，禁止物理销毁", "tables": registry["unknownTables"]})
         if counts["activeFileJobCount"]:
@@ -367,7 +367,7 @@ def approve_and_purge(user: dict, job_id: int, *, expected_version: int, source_
             job.state = "BLOCKED"
             _set_step(db, job.id, "PURGE_PRECHECK", "BLOCKED", result=counts, error="LEGAL_HOLD")
             db.commit()
-            raise AppException("TENANT_PURGE_LEGAL_HOLD", "存在 Legal Hold，禁止销毁", http_status=409)
+            raise AppException("TENANT_PURGE_LEGAL_HOLD", "存在司法保全要求，禁止销毁", http_status=409)
         assert_registry_complete()
         tenant = db.get(Tenant, int(job.tenant_id), with_for_update=True)
         if tenant is None:

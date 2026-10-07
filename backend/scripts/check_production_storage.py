@@ -6,6 +6,13 @@ local 模式只确认当前后端类型，不打印路径或密钥。该脚本�
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+# The systemd unit supplies PYTHONPATH, while release acceptance invokes this
+# verifier directly from ``backend/``.  Resolve the same application package
+# in both modes so the storage probe tests the configured backend rather than
+# failing during import.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from app.services.storage.config import effective_config, test_connection
 

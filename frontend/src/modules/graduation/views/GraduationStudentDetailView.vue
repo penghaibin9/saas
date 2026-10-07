@@ -269,6 +269,12 @@ export default {
     }
   },
   computed: {
+    graduationReturnTo() {
+      if (!this.detail) return ''
+      const raw = this.$route?.query?.returnTo
+      const value = (Array.isArray(raw) ? String(raw[0] || '') : String(raw || '')).trim()
+      return /^\/admin\/academic-affairs\/graduation\/audit-console(?:[?#]|$)/.test(value) ? value : ''
+    },
     topicInfoItems() {
       if (!this.detail) return []
       const d = this.detail
@@ -296,10 +302,12 @@ export default {
       }))
     },
     toolbarActions() {
-      if (!this.detail || this.detail.stage === 'ARCHIVED') {
-        return [{ key: 'back', label: '返回列表' }]
+      if (!this.detail) return [{ key: 'back', label: '返回列表' }]
+      const returnActions = this.graduationReturnTo ? [{ key: 'backAcademic', label: '返回毕业审核' }] : []
+      if (this.detail.stage === 'ARCHIVED') {
+        return [...returnActions, { key: 'back', label: '返回列表' }]
       }
-      const actions = []
+      const actions = [...returnActions]
       if (!this.detail.topicId) actions.push({ key: 'assignTopic', label: '分配选题' })
       if (!this.detail.advisorName) actions.push({ key: 'assignAdvisor', label: '分配导师' })
       if (this.detail.stage !== 'DEFENSE' && this.detail.stage !== 'ARCHIVED') {
@@ -380,7 +388,7 @@ export default {
       L.loading = false
     },
     levelLabel(level) {
-      return { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }[level] || level
+      return { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }[level] || (level ? '等级待确认' : '—')
     },
     async load() {
       this.loading = true; this.error = ''
@@ -390,6 +398,7 @@ export default {
       this.loading = false
     },
     async onToolbar(key) {
+      if (key === 'backAcademic' && this.graduationReturnTo) { this.$router.push(this.graduationReturnTo); return }
       if (key === 'back') { this.$router.push('/admin/graduation/students'); return }
       if (key === 'assignTopic') {
         this.$router.push(`/admin/graduation/students/${this.detail.id}/assign-topic`)

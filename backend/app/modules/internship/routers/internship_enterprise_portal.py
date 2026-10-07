@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, Field
 
 from app.api.v1.file_contract import validated_local_file_response
-from app.core.exceptions import AppException
+from app.core.exceptions import AppException, not_found
 from app.core.response import success
 from app.modules.internship.dependencies.enterprise_context import (
     EnterprisePrincipal,
@@ -30,13 +30,9 @@ from app.modules.internship.services import internship_enterprise_auth_service a
 from app.modules.internship.services import internship_enterprise_application_decision_service as decision_svc
 from app.modules.internship.services import internship_enterprise_position_search_service as position_search_svc
 from app.modules.internship.services import internship_enterprise_position_service as portal_svc
-from app.modules.internship.services.internship_assignment_snapshot_authority import (
-    install_assignment_snapshot_authority,
-)
 from app.services import audit_log
+from app.services import message_center_service as message_svc
 from app.services.db_service import session
-
-install_assignment_snapshot_authority()
 
 router = APIRouter(prefix="/internship/enterprise-portal", tags=["岗位实习-企业协同端"])
 router.include_router(browser_auth.router)
@@ -110,6 +106,17 @@ def _parse_datetime(value: str | None, field: str) -> datetime | None:
         raise AppException("VALIDATION_ERROR", f"{field} 必须是 ISO-8601 日期时间") from exc
 
 
+def _enterprise_message_user(principal: EnterprisePrincipal) -> dict:
+    """Trusted self-inbox identity; company/campaign scope remains in each business deep link."""
+    return {
+        "userId": f"db-{principal.user_id}",
+        "userType": "ENTERPRISE_MENTOR",
+        "tenantId": str(principal.tenant_id),
+        "companyId": str(principal.company_id),
+        "enterpriseMemberId": str(principal.member_id),
+    }
+
+
 @router.post("/auth/invite/inspect", openapi_extra={"x-internship-auth": "public"})
 def inspect_invite(body: EnterpriseInviteInspect):
     return success(auth_svc.inspect_invite(tenant_code=body.tenantCode, token=body.token))
@@ -127,6 +134,18 @@ def login(body: EnterpriseLogin):
     result = auth_svc.login(tenant_code=body.tenantCode, login_name=body.loginName, password=body.password, member_id=body.memberId)
     audit_log.record("ENTERPRISE_LOGIN", f"enterprise-member:{result['context']['memberId']}", detail={"companyId": result["context"]["companyId"]}, tenant_id=int(result["context"]["tenantId"]))
     return success(result)
+
+
+@router.post("/auth/invite/accept-existing")
+def accept_existing_invite(
+    body: EnterpriseInviteInspect,
+    principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view")),
+):
+    result = auth_svc.accept_existing_invite(principal=principal, tenant_code=body.tenantCode, token=body.token)
+    audit_log.record("ENTERPRISE_CAMPAIGN_INVITE_ACCEPT", f"enterprise-member:{principal.member_id}",
+                     detail={"companyId": result["companyId"], "campaignId": result["campaignId"]},
+                     tenant_id=principal.tenant_id)
+    return success(result, message="本轮企业邀请已接受")
 
 
 @router.post("/auth/refresh", openapi_extra={"x-internship-auth": "public"})
@@ -152,6 +171,51 @@ def enterprise_dashboard(campaignId: int = Query(..., ge=1), principal: Enterpri
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
     with session() as db:
         return success(portal_svc.dashboard_in_tx(db, context=ctx))
+
+
+@router.get("/messages")
+def enterprise_messages(
+    readStatus: str | None = Query(default=None, pattern="^(UNREAD|READ)$"),
+    page: int = Query(default=1, ge=1),
+    pageSize: int = Query(default=20, ge=1, le=50),
+    principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view")),
+):
+    items, total = message_svc.list_messages(
+        _enterprise_message_user(principal),
+        read_status=readStatus,
+        page=page,
+        page_size=pageSize,
+    )
+    return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.get("/messages/count")
+def enterprise_message_count(
+    principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view")),
+):
+    return success(message_svc.count_messages(_enterprise_message_user(principal)))
+
+
+@router.get("/messages/{message_id}")
+def enterprise_message_detail(
+    message_id: str,
+    principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view")),
+):
+    row = message_svc.get_message(_enterprise_message_user(principal), message_id)
+    if not row:
+        raise not_found("消息不存在")
+    return success(row)
+
+
+@router.post("/messages/{message_id}/read")
+def enterprise_message_read(
+    message_id: str,
+    principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view")),
+):
+    row = message_svc.read_message(_enterprise_message_user(principal), message_id)
+    if not row:
+        raise not_found("消息不存在")
+    return success(row, message="消息已读")
 
 
 @router.get("/company")

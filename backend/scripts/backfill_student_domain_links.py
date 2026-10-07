@@ -89,6 +89,8 @@ def main() -> int:
                     totals[f"{domain}:{method}"] += 1
                     if profile is not None and args.apply:
                         row.student_id = profile.id
+                        if domain == "orientation":
+                            row.identity_status = "LINKED"
                 print(f"  {domain}: missing={len(rows)}")
             if args.apply:
                 db.commit()

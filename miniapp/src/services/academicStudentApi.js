@@ -9,7 +9,7 @@ import { realRequest } from './request'
  */
 export const academicStudentApi = {
   ...baseStudentApi,
-  getMyExamSchedule: () => realRequest('/mobile/academic/exam-v2/my'),
+  getMyExamSchedule: (params = {}) => realRequest('/mobile/academic/exam-v2/my', { data: params }),
   getMyDeferOptions: () => realRequest('/mobile/academic/exam-v2/defer-options'),
   applyDefer: (examCourseId, reasonType, reason) =>
     realRequest('/mobile/academic/exam-v2/defer/apply', {

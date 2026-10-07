@@ -21,6 +21,7 @@ export async function importEnterpriseRuntime() {
   const requestFile = new URL('../../src/services/request.js', import.meta.url)
   const contractFile = new URL('../../src/services/enterpriseContract.js', import.meta.url)
   const apiFile = new URL('../../src/services/enterpriseInternshipApi.js', import.meta.url)
+  const contextSource = await readFile(new URL('../../src/services/evaluationContext.js', import.meta.url), 'utf8')
 
   const [requestSourceRaw, contractSource, apiSourceRaw] = await Promise.all([
     readFile(requestFile, 'utf8'),
@@ -39,7 +40,7 @@ export async function importEnterpriseRuntime() {
     './enterpriseContract.js',
     contractUrl,
   )
-  const apiUrl = dataModule(apiSource, `api-${nonce}`)
+  const apiUrl = dataModule(rewriteLocalImport(apiSource, './evaluationContext.js', dataModule(contextSource, `evaluation-context-${nonce}`)), `api-${nonce}`)
 
   const [requestModule, apiModule] = await Promise.all([
     import(requestUrl),

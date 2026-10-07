@@ -5,12 +5,12 @@
         <div class="assw-title">统计快照</div>
         <p>把当前教务总览冻结为可追溯历史证据；后续实时源数据变化不会回写已冻结快照。</p>
       </div>
-      <AppButton v-if="canCreate" variant="primary" :disabled="loading" @click="openCreate">冻结当前统计</AppButton>
+      <AppButton v-if="canCreate" variant="primary" :disabled="loading || saving" @click="openCreate">冻结当前统计</AppButton>
     </div>
 
     <AppInlineAlert
       type="info"
-      description="快照 payload、payloadHash 与完整性结果全部以后端持久化事实为准；浏览器不计算、不覆盖权威哈希。"
+      description="快照保存当时的统计结果，便于期末留档和历史对照；后续数据更新不会改变已保存的快照。"
     />
 
     <div v-if="canView" class="assw-filter">
@@ -34,7 +34,7 @@
     <AppInlineAlert
       v-if="!canView"
       type="warning"
-      description="当前身份没有 academicAffairs.stats.snapshot.view 权限，统计快照保持不可见。"
+      description="当前身份没有查看统计快照的权限，请联系学校管理员。"
     />
     <ErrorState v-else-if="error" title="统计快照加载失败" :description="error" @retry="load" />
     <LoadingState v-else-if="loading && !loadedOnce" />
@@ -108,7 +108,7 @@
     <AppConfirmDialog
       v-model:visible="confirmVisible"
       title="确认冻结统计快照"
-      message="确认后将保存当前服务端统计 payload 与 payloadHash 作为不可变历史证据；后续实时统计变化不会回写。"
+      :message="confirmationMessage"
       type="warning"
       confirm-text="确认冻结"
       :submitting="saving"
@@ -165,6 +165,8 @@ import { getPermissionPatterns } from '@/security/permissionGate.js'
 import { academicStatsSnapshotApi } from '@/modules/academicAffairs/api/academic-stats-snapshot.api.js'
 import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants.js'
 import { toast } from '@/utils/toast'
+import { currentUserFromToken } from '@/services/http/client'
+import { academicIdentity } from '../academicFlowContext'
 
 export default {
   name: 'AaStatsSnapshotWorkspace',
@@ -173,10 +175,13 @@ export default {
     AppButton, AppDrawer, DataTable, EmptyState, ErrorState, LoadingState, StatusTag
   },
   props: {
+    ctx: { type: Object, default: () => ({}) },
     contextFilters: { type: Object, default: () => ({}) }
   },
   data() {
     return {
+      disposed: false, listRequestId: 0, detailRequestId: 0, commandRequestId: 0,
+      selectedSnapshotId: '', confirmedCreate: null,
       loading: false,
       loadedOnce: false,
       error: '',
@@ -208,6 +213,11 @@ export default {
     }
   },
   computed: {
+    contextSignature() { return JSON.stringify([this.ctx.ctxKey, this.ctx.permissionPatterns, this.ctx.dataScope, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
+    confirmationMessage() {
+      const body = this.confirmedCreate?.body
+      return body ? `${this.scopeLabel(body)} · ${this.filterLabel(body)}。冻结原因：${body.reason}。确认后保存当前统计，后续源数据变化不会回写。` : '请先选择并确认冻结范围。'
+    },
     permissionPatterns() { return getPermissionPatterns() || [] },
     canView() { return matchPermission(this.permissionPatterns, 'academicAffairs.stats.snapshot.view') },
     canCreate() { return matchPermission(this.permissionPatterns, 'academicAffairs.stats.snapshot.create') },
@@ -218,8 +228,20 @@ export default {
     this.listFilters.termId = this.contextFilters?.termId || ''
     if (this.canView) this.load()
   },
+  beforeUnmount() { this.disposed = true; this.invalidate() },
+  watch: {
+    contextSignature() {
+      this.invalidate(); this.rows = []; this.detail = null; this.verified = {}; this.selectedSnapshotId = ''
+      this.detailVisible = false; this.createVisible = false; this.confirmVisible = false; this.confirmedCreate = null
+      this.createError = ''; this.error = ''; this.pagination.total = 0
+      if (this.canView) this.load()
+    }
+  },
   methods: {
     academicStatusLabel,
+    identity() { return academicIdentity(currentUserFromToken(), this.ctx) },
+    current(id, identity, key) { return !this.disposed && id === this[key] && identity === this.identity() },
+    invalidate() { this.listRequestId++; this.detailRequestId++; this.commandRequestId++; this.loading = false; this.detailLoading = false; this.saving = false; this.verifying = false },
     snapshotTypeLabel(value) { return String(value || '').toUpperCase() === 'OVERVIEW' ? '教务总览' : (value || '—') },
     formatTime(value) {
       if (!value) return '—'
@@ -241,9 +263,11 @@ export default {
       return parts.length ? parts.join(' · ') : '无额外筛选'
     },
     async load() {
-      if (!this.canView || this.loading) return
+      if (!this.canView) return
+      const id = ++this.listRequestId, identity = this.identity()
       this.loading = true
       this.error = ''
+      this.rows = []; this.pagination.total = 0
       try {
         const res = await academicStatsSnapshotApi.list({
           termId: this.listFilters.termId || undefined,
@@ -251,16 +275,17 @@ export default {
           page: this.pagination.page,
           pageSize: this.pagination.pageSize
         })
-        if (res.code !== 0) throw new Error(res.message || '统计快照加载失败')
-        this.rows = Array.isArray(res.data?.list) ? res.data.list : []
-        this.pagination.total = Number(res.data?.total || 0)
+        if (!this.current(id, identity, 'listRequestId')) return
+        if (!Array.isArray(res?.list) || !Number.isSafeInteger(res.total) || res.total < 0) throw new Error('统计快照列表回执不完整，请重新读取')
+        this.rows = res.list
+        this.pagination.total = res.total
       } catch (error) {
+        if (!this.current(id, identity, 'listRequestId')) return
         this.rows = []
         this.pagination.total = 0
         this.error = error?.message || '统计快照加载失败'
       } finally {
-        this.loading = false
-        this.loadedOnce = true
+        if (this.current(id, identity, 'listRequestId')) { this.loading = false; this.loadedOnce = true }
       }
     },
     search() { this.pagination.page = 1; this.load() },
@@ -271,6 +296,8 @@ export default {
     },
     onPageChange(page) { this.pagination.page = Number(page || 1); this.load() },
     openCreate() {
+      if (!this.canCreate || this.saving) return
+      this.confirmedCreate = null
       this.createForm = {
         snapshotType: 'OVERVIEW',
         termId: this.contextFilters?.termId || this.listFilters.termId || '',
@@ -285,77 +312,97 @@ export default {
       if (this.saving) return
       this.createVisible = false
       this.confirmVisible = false
+      this.confirmedCreate = null
       this.createError = ''
     },
     confirmCreate() {
+      if (!this.canCreate || this.saving) return
       if (this.createForm.reason.trim().length < 5) {
         this.createError = '冻结原因至少 5 个字'
         return
       }
+      this.confirmedCreate = { identity: this.identity(), body: { ...this.createForm, reason: this.createForm.reason.trim() } }
       this.confirmVisible = true
     },
     async submitCreate() {
-      if (this.saving) return
+      const confirmed = this.confirmedCreate
+      if (this.saving || !this.confirmVisible || !confirmed) return
+      if (!this.canCreate || confirmed.identity !== this.identity()) { this.confirmVisible = false; this.confirmedCreate = null; this.createError = '身份或权限已变化，请重新确认冻结范围'; return }
+      const id = ++this.commandRequestId, identity = this.identity(), body = { ...confirmed.body }
       this.saving = true
       this.createError = ''
       try {
-        const res = await academicStatsSnapshotApi.create(this.createForm)
-        if (res.code !== 0) throw new Error(res.message || '统计快照冻结失败')
-        const snapshot = res.data
+        const snapshot = await academicStatsSnapshotApi.create(body)
+        if (!this.current(id, identity, 'commandRequestId')) return
+        if (!snapshot?.snapshotId) throw new Error('冻结结果尚未确认，请先查询快照列表，避免重复冻结')
         this.confirmVisible = false
         this.createVisible = false
+        this.confirmedCreate = null
         toast.success('统计快照已冻结')
-        this.listFilters.termId = this.createForm.termId || this.listFilters.termId
+        this.listFilters.termId = body.termId || ''
         this.pagination.page = 1
         await this.load()
+        if (!this.current(id, identity, 'commandRequestId')) return
         if (snapshot?.snapshotId) await this.openDetail(snapshot)
       } catch (error) {
+        if (!this.current(id, identity, 'commandRequestId')) return
         this.confirmVisible = false
-        this.createError = error?.message || '统计快照冻结失败'
+        this.confirmedCreate = null
+        this.createError = `${error?.message || '未收到冻结回执'}；重试前请先查询快照列表核对是否已生成。`
       } finally {
-        this.saving = false
+        if (this.current(id, identity, 'commandRequestId')) this.saving = false
       }
     },
     async openDetail(row) {
+      if (!this.canView || !row?.snapshotId) return
+      const snapshotId = String(row.snapshotId), id = ++this.detailRequestId, identity = this.identity()
+      this.selectedSnapshotId = snapshotId
+      this.verifying = false
       this.detailVisible = true
       this.detailLoading = true
       this.detailError = ''
       this.detail = null
       try {
-        const res = await academicStatsSnapshotApi.detail(row.snapshotId)
-        if (res.code !== 0) throw new Error(res.message || '统计快照详情读取失败')
-        this.detail = res.data
-        this.verified = { ...this.verified, [row.snapshotId]: true }
+        const res = await academicStatsSnapshotApi.detail(snapshotId)
+        if (!this.current(id, identity, 'detailRequestId')) return
+        if (String(res?.snapshotId) !== snapshotId) throw new Error('返回快照与所选对象不一致，请重新读取')
+        this.detail = res
+        // The detail endpoint verifies the persisted hash before returning this exact object.
+        this.verified = { ...this.verified, [snapshotId]: true }
       } catch (error) {
+        if (!this.current(id, identity, 'detailRequestId')) return
+        this.verified = { ...this.verified, [snapshotId]: false }
         this.detailError = error?.message || '统计快照详情读取失败'
       } finally {
-        this.detailLoading = false
+        if (this.current(id, identity, 'detailRequestId')) this.detailLoading = false
       }
     },
     reloadDetail() {
-      const id = this.detail?.snapshotId
+      const id = this.selectedSnapshotId
       if (id) this.openDetail({ snapshotId: id })
     },
     closeDetail() {
-      if (this.verifying) return
+      this.detailRequestId++; this.detailLoading = false; this.verifying = false
       this.detailVisible = false
       this.detail = null
       this.detailError = ''
     },
     async verifyDetail() {
-      if (!this.detail || this.verifying) return
+      if (!this.canManage || !this.detail || this.verifying) return
+      const snapshotId = String(this.detail.snapshotId), id = ++this.detailRequestId, identity = this.identity()
       this.verifying = true
       try {
-        const res = await academicStatsSnapshotApi.verify(this.detail.snapshotId)
-        if (res.code !== 0) throw new Error(res.message || '完整性校验失败')
-        if (res.data?.integrityValid !== true || res.data?.immutable !== true) throw new Error('后端未返回有效的不可变完整性结论')
-        this.verified = { ...this.verified, [this.detail.snapshotId]: true }
+        const res = await academicStatsSnapshotApi.verify(snapshotId)
+        if (!this.current(id, identity, 'detailRequestId')) return
+        if (res?.integrityValid !== true || res?.immutable !== true) throw new Error('后端未返回有效的不可变完整性结论')
+        this.verified = { ...this.verified, [snapshotId]: true }
         toast.success('统计快照完整性校验通过')
       } catch (error) {
-        this.verified = { ...this.verified, [this.detail.snapshotId]: false }
+        if (!this.current(id, identity, 'detailRequestId')) return
+        this.verified = { ...this.verified, [snapshotId]: false }
         this.detailError = error?.message || '完整性校验失败'
       } finally {
-        this.verifying = false
+        if (this.current(id, identity, 'detailRequestId')) this.verifying = false
       }
     }
   }

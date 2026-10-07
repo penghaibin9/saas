@@ -176,19 +176,29 @@ def program_governance_summary(user) -> dict:
         AaProgramGraduationRequirement,
         AaProgramPracticeSegment,
         NationalStandardDocument,
+        Major,
         SchoolClass,
         SchoolMajorStandardBinding,
     )
 
     with session() as db:
-        scope = governance._scope(user, db)
-        tenant_all = str(getattr(scope, "scope_type", "")).upper() == "TENANT_ALL"
-        allowed_major_ids = governance._allowed_major_ids(db, scope)
+        role_value = user.get("currentRoleCode") if isinstance(user, dict) else getattr(user, "currentRoleCode", None)
+        role = str(role_value or "").upper()
+        teacher_read = role == "ACADEMIC_TEACHER"
+        if teacher_read:
+            tenant_all = True
+            allowed_major_ids = set()
+        else:
+            scope = governance._scope(user, db)
+            tenant_all = str(getattr(scope, "scope_type", "")).upper() == "TENANT_ALL"
+            allowed_major_ids = governance._allowed_major_ids(db, scope)
 
         program_query = db.query(AaProgram).filter(
             AaProgram.tenant_id == _tid(),
             AaProgram.is_deleted.is_(False),
         )
+        if teacher_read:
+            program_query = program_query.filter(AaProgram.status.in_(sorted(governance._ACTIVE_PROGRAM_STATUSES)))
         if not tenant_all:
             if not allowed_major_ids:
                 return _empty_summary()
@@ -198,6 +208,10 @@ def program_governance_summary(user) -> dict:
             return _empty_summary()
 
         program_ids = [int(row.id) for row in programs]
+        major_ids = {row.major_id for row in programs if row.major_id}
+        major_names = {row.id: row.major_name for row in db.query(Major).filter(
+            Major.tenant_id == _tid(), Major.is_deleted.is_(False), Major.id.in_(major_ids),
+        ).all()} if major_ids else {}
         courses = db.query(AaProgramCourse).filter(
             AaProgramCourse.tenant_id == _tid(),
             AaProgramCourse.program_id.in_(program_ids),
@@ -306,6 +320,7 @@ def program_governance_summary(user) -> dict:
                 "programId": str(row.id),
                 "programName": row.program_name,
                 "majorId": str(row.major_id or ""),
+                "majorName": major_names.get(row.major_id, ""),
                 "gradeYear": row.grade_year or "",
                 "version": row.version,
                 "status": row.status,

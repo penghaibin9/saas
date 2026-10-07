@@ -1,4 +1,16 @@
 export type CampaignStatus = 'DRAFT'|'OPEN'|'FROZEN'|'CLOSED'|'ARCHIVED'
+export type EnterpriseAccessStatus = 'ACTIVE'|'MISSING'|'NOT_STARTED'|'EXPIRED'|'REVOKED'
+export interface EnterpriseCampaignChoice {
+  id:string
+  campaignId:string
+  campaignName:string
+  batchId:string
+  status:CampaignStatus
+  participationStatus:string
+  recruitmentAccessStatus:EnterpriseAccessStatus
+  recruitmentAvailable:boolean
+  collaborationAvailable:boolean
+}
 export type PositionStatus = 'DRAFT'|'PENDING'|'PUBLISHED'|'OFFLINE'|'SUSPENDED'|'FULL'|'RISK'|'ARCHIVED'
 export type EnterpriseDecisionStatus = 'PENDING'|'INTERESTED'|'INTERVIEW'|'ACCEPT_INTENT'|'REJECTED'
 export type EnterpriseDecisionWriteStatus = Exclude<EnterpriseDecisionStatus,'PENDING'>
@@ -67,6 +79,7 @@ export interface EnterprisePositionEditable {
 }
 
 export interface EnterprisePositionSummary {
+  schoolReturn?:{ id:string; reason:string; returnedAt:string }|null
   id:string|number
   title:string
   status:PositionStatus
@@ -78,6 +91,19 @@ export interface EnterprisePositionSummary {
   placementCount?:number
   riskFlag?:boolean
   updatedAt?:string
+}
+
+export interface EnterpriseMessage {
+  messageId:string
+  title:string
+  summary:string
+  content?:string
+  msgType:string
+  priority:string
+  readStatus:'UNREAD'|'READ'
+  createdAt?:string|null
+  actionKey?:'enterprise.internship.position'|null
+  actionParams?:{positionId:string;campaignId:string}|null
 }
 
 export interface ApplicantSummary {

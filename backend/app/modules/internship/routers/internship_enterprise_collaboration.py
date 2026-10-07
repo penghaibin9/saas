@@ -21,6 +21,7 @@ router = APIRouter(prefix="/internship/enterprise-portal", tags=["岗位实习-�
 
 
 class EnterpriseOnlineEvaluationBody(BaseModel):
+    expectedPlacementSnapshotId: str = Field(pattern=r"^[1-9][0-9]{0,18}$", strict=True)
     attendanceScore: int = Field(ge=0, le=100)
     skillScore: int = Field(ge=0, le=100)
     attitudeScore: int = Field(ge=0, le=100)

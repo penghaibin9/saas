@@ -138,6 +138,8 @@ def submit_proposal(user: dict, body: dict) -> dict:
         )
         file_id = int(meta["fileId"])
         _authorize_file(file_id, user)
+    submission_notice_id: int | None = None
+    result: dict | None = None
     with session() as db:
         student = db.scalars(select(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.id == student_snapshot["id"],
@@ -164,6 +166,13 @@ def submit_proposal(user: dict, body: dict) -> dict:
             raise AppException("DATA_CONFLICT", "已有待审核的开题报告")
         if any(row.status == "APPROVED" for row in existing):
             raise AppException("DATA_CONFLICT", "开题报告已通过，无需重复提交")
+        from app.modules.graduation.services import graduation_todo_helper as todo
+        # 先确认能交给明确且仍有效的导师账号，再创建业务记录。否则学生会看到
+        # “已提交”却没有任何教师待办，是不可恢复的假成功。
+        assignee_id = todo.require_mentor_assignee_id(db, student, action_label="开题报告")
+        batch_id = int(student.batch_id or 0)
+        if batch_id <= 0:
+            raise AppException("DATA_CONFLICT", "毕业设计档案缺少有效批次，暂不能提交开题报告")
         proposal = GraduationProposal(
             tenant_id=_tid(), gd_student_id=int(student.id), version=f"v{len(existing) + 1}",
             is_resubmit=bool(existing), submit_at=datetime.now(timezone.utc), background=background,
@@ -179,11 +188,39 @@ def submit_proposal(user: dict, body: dict) -> dict:
             comment="开题报告兼容入口提交",
         )
         _audit(db, "PROPOSAL", int(proposal.id), "提交开题报告", user, after="PENDING_REVIEW")
-        from app.modules.graduation.services import graduation_todo_helper as todo
-        todo.push_proposal_todo(db, proposal, student)
+        if not todo.push_proposal_todo(db, proposal, student, assignee_id=assignee_id):
+            raise AppException("ASSIGNEE_NOT_CONFIGURED", "开题待办未能交给有效指导教师账号")
+
+        from app.modules.graduation.services import graduation_review_message_event_guard as message_guard
+        from app.services.message_event_outbox_service import emit_receiver_notice
+        message_guard.install()
+        notice = emit_receiver_notice(
+            db,
+            event_code=message_guard.EVENT_PROPOSAL_SUBMITTED,
+            source_module="graduation",
+            source_biz_type="GD_PROPOSAL",
+            source_biz_id=int(proposal.id),
+            receiver_id=assignee_id,
+            receiver_as="user",
+            title=f"开题待批阅：{student.name or '学生'}",
+            content="学生已提交开题报告，请在毕业设计工作台查看材料并完成批阅。",
+            action_key=message_guard.ACTION_TEACHER_PROPOSAL_REVIEW,
+            action_params={
+                "recordId": str(int(proposal.id)),
+                "batchId": str(batch_id),
+                "kind": "proposal",
+                "gdStudentId": str(int(student.id)),
+            },
+        )
+        submission_notice_id = int(notice.id) if notice else None
+        result = {"id": str(proposal.id), "version": proposal.version, "isResubmit": bool(existing),
+                  "status": proposal.status, "material": material, "fileVersionCount": 1, "currentSafeVersions": []}
         db.commit()
-        return {"id": str(proposal.id), "version": proposal.version, "isResubmit": bool(existing),
-                "status": proposal.status, "material": material, "fileVersionCount": 1, "currentSafeVersions": []}
+    if submission_notice_id:
+        # 业务已提交后尽力送达；失败由 outbox 重试，绝不回滚已成功的状态机和审计。
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(limit=1, outbox_ids=[submission_notice_id])
+    return result or {}
 
 
 def submit_final(user: dict, body: dict) -> dict:
@@ -262,6 +299,8 @@ def review_proposal(proposal_id: int, action: str, comment: str | None, user: di
                     *, expected_version: int | None, expected_file_version_id: int | None) -> dict:
     if expected_version is None or expected_file_version_id is None:
         raise AppException("VALIDATION_ERROR", "expectedVersion 和 fileVersionId 不能为空")
+    review_notice_id: int | None = None
+    result: dict | None = None
     with session() as db:
         proposal = db.scalars(select(GraduationProposal).where(
             GraduationProposal.tenant_id == _tid(), GraduationProposal.id == int(proposal_id),
@@ -299,14 +338,35 @@ def review_proposal(proposal_id: int, action: str, comment: str | None, user: di
             if confirmed_taskbook:
                 student.stage = "GUIDING"
                 student.version = int(student.version or 0) + 1
+        # _append_feedback writes the student result event in this same transaction.
+        # Capture the just-written rows before committing so the inline drain delivers both
+        # REJECTED and APPROVED outcomes promptly while preserving outbox retry semantics.
+        from app.models import MessageEventOutbox
+        review_notice = db.scalars(select(MessageEventOutbox).where(
+            MessageEventOutbox.tenant_id == _tid(),
+            MessageEventOutbox.source_module == "graduation",
+            MessageEventOutbox.source_biz_id == int(proposal.id),
+            MessageEventOutbox.event_code.in_((
+                "GRADUATION_DESIGN.REVIEW_REJECTED",
+                "GRADUATION_DESIGN.REVIEW_APPROVED",
+            )),
+            MessageEventOutbox.is_deleted.is_(False),
+        ).order_by(MessageEventOutbox.id.desc()).limit(1)).first()
+        review_notice_id = int(review_notice.id) if review_notice else None
+        result = {"id": str(proposal.id), "status": target, "material": reviewed}
         db.commit()
-        return {"id": str(proposal.id), "status": target, "material": reviewed}
+    if review_notice_id:
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(limit=1, outbox_ids=[review_notice_id])
+    return result or {}
 
 
 def review_final(final_id: int, action: str, comment: str | None, user: dict,
                  *, expected_version: int | None, expected_file_version_id: int | None) -> dict:
     if expected_version is None or expected_file_version_id is None:
         raise AppException("VALIDATION_ERROR", "expectedVersion 和 fileVersionId 不能为空")
+    review_notice_id: int | None = None
+    result: dict | None = None
     with session() as db:
         final = db.scalars(select(GraduationFinal).where(
             GraduationFinal.tenant_id == _tid(), GraduationFinal.id == int(final_id),
@@ -346,8 +406,24 @@ def review_final(final_id: int, action: str, comment: str | None, user: dict,
         _audit(db, "FINAL", int(final.id), "审核成果", user, before=before, after=target)
         from app.modules.graduation.services import graduation_todo_helper as todo
         todo.todo_done(db, biz_id=final.id, todo_type=todo.TODO_FINAL)
+        from app.models import MessageEventOutbox
+        review_notice = db.scalars(select(MessageEventOutbox).where(
+            MessageEventOutbox.tenant_id == _tid(),
+            MessageEventOutbox.source_module == "graduation",
+            MessageEventOutbox.source_biz_id == int(final.id),
+            MessageEventOutbox.event_code.in_((
+                "GRADUATION_DESIGN.REVIEW_REJECTED",
+                "GRADUATION_DESIGN.REVIEW_APPROVED",
+            )),
+            MessageEventOutbox.is_deleted.is_(False),
+        ).order_by(MessageEventOutbox.id.desc()).limit(1)).first()
+        review_notice_id = int(review_notice.id) if review_notice else None
+        result = {"id": str(final.id), "status": target, "material": reviewed}
         db.commit()
-        return {"id": str(final.id), "status": target, "material": reviewed}
+    if review_notice_id:
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(limit=1, outbox_ids=[review_notice_id])
+    return result or {}
 
 
 __all__ = ["final_detail", "proposal_detail", "review_final", "review_proposal", "submit_final", "submit_proposal"]

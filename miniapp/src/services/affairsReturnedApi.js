@@ -1,6 +1,7 @@
 import { realRequest } from '@/services/request'
 
 export const affairsReturnedApi = {
+  getAidDetail: (applyId) => realRequest(`/mobile/affairs/aid/${encodeURIComponent(applyId)}/detail`),
   getAid: (applyId) => realRequest(`/mobile/affairs/aid/${applyId}/editable`),
   updateAid: (applyId, data) => realRequest(`/mobile/affairs/aid/${applyId}/returned`, { method: 'PUT', data }),
   resubmitAid: (applyId, version) => realRequest(`/mobile/affairs/aid/${applyId}/resubmit`, { method: 'POST', data: { version } }),

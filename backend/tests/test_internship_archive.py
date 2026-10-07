@@ -51,7 +51,7 @@ def _seed(db_mode, full_a=True):
     try:
         b = InternshipBatch(
             tenant_id=TID, batch_name="归档测试批次", batch_no=f"ARB-{uuid4().hex[:8]}",
-            status="RUNNING", planned_count=5, end_date=date.today(),
+            status="RUNNING", planned_count=5, start_date=date.today(), end_date=date.today(),
             rules_config={"compliance": {"studentConsent": {"requireGuardianConsentForMinor": False}}})
         db.add(b); db.flush()
         ids["batch"] = b.id
@@ -87,9 +87,10 @@ def _seed(db_mode, full_a=True):
             ra.eligibility_status = "QUALIFIED"
             ra.enterprise_id = company.id
             ra.position_id = position.id
-            db.add(InternshipInsurance(tenant_id=TID, internship_id=a, student_id=sa, status="VERIFIED"))
+            db.add(InternshipInsurance(tenant_id=TID, internship_id=a, student_id=sa, status="VERIFIED",
+                                      effective_date=date.today().isoformat(), expiry_date=date.today().isoformat()))
             db.add(InternshipAgreement(tenant_id=TID, internship_id=a, student_id=sa, status="EFFECTIVE"))
-            db.add(InternshipCheckin(tenant_id=TID, internship_id=a, checkin_date="2026-07-01",
+            db.add(InternshipCheckin(tenant_id=TID, internship_id=a, checkin_date=date.today().isoformat(),
                                      checkin_at=datetime.utcnow(), result="NORMAL"))
             db.add(WeeklyReport(tenant_id=TID, internship_id=a, week_number=1, word_count=800,
                                 report_version=1, submitted_at=datetime.utcnow(), status="APPROVED"))
@@ -116,12 +117,23 @@ def _find(items, name):
 
 def test_completeness_and_missing(client, db_mode):
     ids = _seed(db_mode)
-    items = client.get(f"{INT}/archive", headers=_admin(client), params={"batchId": ids["batch"]}).json()["data"]["items"]
+    headers = _admin(client)
+    items = client.get(f"{INT}/archive", headers=headers, params={"batchId": ids["batch"]}).json()["data"]["items"]
     a = _find(items, "甲")
     b = _find(items, "乙")
-    assert a["completeness"] == 100 and a["missing"] == []
+    # 规模化列表只读取已经提交的归档快照，未归档记录必须显式标记为待预检。
+    for item in (a, b):
+        assert item["completeness"] is None
+        assert item["readinessKnown"] is False
+        assert item["readinessSource"] == "PREFLIGHT_REQUIRED"
+
+    # 单记录详情仍实时执行完整预检，供归档决策使用。
+    a_detail = client.get(f"{INT}/archive/{ids['rec_a']}", headers=headers).json()["data"]
+    b_detail = client.get(f"{INT}/archive/{ids['rec_b']}", headers=headers).json()["data"]
+    assert a_detail["completeness"] == 100 and a_detail["missing"] == []
     # B 仅打卡：资格/企业/岗位/保险/协议/企业评价/学生自评/成绩 8 项合规缺失
-    assert b["completeness"] < 100 and "三方协议" in b["missing"] and "实习成绩" in b["missing"]
+    assert b_detail["completeness"] < 100
+    assert "三方协议" in b_detail["missing"] and "实习成绩" in b_detail["missing"]
 
 
 def test_archive_requires_complete_or_force(client, db_mode):
@@ -216,9 +228,25 @@ def test_detail_material_labels(client, db_mode):
 
 def test_by_enterprise_aggregate(client, db_mode):
     ids = _seed(db_mode)
-    agg = client.get(f"{INT}/archive/by-enterprise", headers=_admin(client), params={"batchId": ids["batch"]}).json()["data"]
+    headers = _admin(client)
+    agg = client.get(f"{INT}/archive/by-enterprise", headers=headers, params={"batchId": ids["batch"]}).json()["data"]
     ent = next(g for g in agg if g["group"] == "归档测试企业")
-    assert ent["total"] == 2 and ent["complete"] == 1  # 甲完整，乙不完整
+    assert ent["total"] == 2 and ent["complete"] == 0 and ent["archived"] == 0
+    assert ent["metricSource"] == "COMMITTED_ARCHIVE_SNAPSHOT"
+
+    archived = client.post(
+        f"{INT}/archive/{ids['rec_a']}/archive",
+        json={"expectedVersion": 0},
+        headers=headers,
+    )
+    assert archived.status_code == 200, archived.json()
+    refreshed = client.get(
+        f"{INT}/archive/by-enterprise",
+        headers=headers,
+        params={"batchId": ids["batch"]},
+    ).json()["data"]
+    ent = next(g for g in refreshed if g["group"] == "归档测试企业")
+    assert ent["total"] == 2 and ent["complete"] == 1 and ent["archived"] == 1
 
 
 def test_scope_and_student_forbidden(client, db_mode):

@@ -2,7 +2,7 @@
 
 > 固定施工分支：`agent/academic-c-teaching-execution`  
 > PR：`#148`  
-> Authority：`C_教务Teaching_Execution_当前代码精确施工总册_V2.1_20260816.md`  
+> Authority：`docs/03-业务模块设计/教务中心/施工包/汇总总册/C_教务Teaching_Execution_当前代码精确施工总册_V2.1_20260816.md`
 > 当前 main 基线：`7fcf4f911e5ae8827c13e532e13c61676318b343`  
 > 本轮审计原则：代码事实 > 历史日志；只认当前 PR exact HEAD 的同头门禁；禁止用旧失败重复施工。
 

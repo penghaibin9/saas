@@ -15,6 +15,9 @@ def _strict(monkeypatch) -> None:
 
 
 def _durable_captcha_contract(monkeypatch, *, failure_count: int | None) -> None:
+    from contextlib import nullcontext
+    monkeypatch.setattr(p0, "get_sessionmaker", lambda: lambda: nullcontext(None))
+    monkeypatch.setattr(p0, "_resolved_login_user", lambda *_: None)
     monkeypatch.setattr(p0, "resolve_tenant_id", lambda _tenant_code: 1001)
     monkeypatch.setattr(
         p0,

@@ -1,0 +1,18 @@
+{
+  "repository": "penghaibin9/saas",
+  "implementationBranch": "codex/system-management-ui-20260906",
+  "sourceBaseline": "6810bd6284b4d5c69a78947560f808cd7738327e",
+  "visualReference": "跃科SaaS-系统管理-19页离线预览-20260906.html",
+  "stateReference": "跃科SaaS-系统管理-16个关键交互状态-20260906.html",
+  "ledgerReference": "跃科SaaS-系统管理-审计施工台账-20260906.xlsx",
+  "firstSlice": ["module-impact-safety", "scope-error-state", "roles", "permissions", "members", "role-scope"],
+  "boundaries": [
+    "Reuse existing branch; never merge or deploy automatically",
+    "Do not change BasePortalLayout or add a second portal shell",
+    "Preserve production routes, permissions, MySQL and backend Authority",
+    "Keep prototype fixtures and scenario controls out of production code",
+    "Treat actual API/DB/browser evidence separately from specification tests"
+  ],
+  "overlapOwners": {"platformAndSharedAuthority": 261, "sharedPortalShell": 259},
+  "productValidation": "NOT_RUN"
+}

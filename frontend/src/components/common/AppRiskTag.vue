@@ -43,10 +43,10 @@ export default {
   computed: {
     normalized() {
       const raw = String(this.level).trim().toUpperCase()
-      return LEVEL_ALIAS[raw] || LEVEL_ALIAS[String(this.level).trim()] || raw
+      return LEVEL_ALIAS[raw] || LEVEL_ALIAS[String(this.level).trim()] || 'UNKNOWN'
     },
     displayLabel() {
-      return this.label || LEVEL_MAP[this.normalized] || this.level
+      return this.label || LEVEL_MAP[this.normalized] || '风险等级待确认'
     }
   }
 }

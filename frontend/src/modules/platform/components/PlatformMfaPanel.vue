@@ -1,8 +1,8 @@
 <template>
   <AppCard class="pmfa">
-    <AppSectionHeader title="平台主管 MFA 二次认证" />
+    <AppSectionHeader title="平台主管二次认证" />
 
-    <div v-if="loading" class="pmfa__muted">正在读取 MFA 状态…</div>
+    <div v-if="loading" class="pmfa__muted">正在读取二次认证状态…</div>
     <template v-else>
       <div class="pmfa__status">
         <div>
@@ -11,20 +11,20 @@
         </div>
         <StatusTag
           :type="status.enabled ? 'success' : status.status === 'PENDING' ? 'warning' : 'default'"
-          :label="status.enabled ? 'TOTP 已启用' : status.status === 'PENDING' ? '待完成绑定' : '未启用'"
+          :label="status.enabled ? '动态口令已启用' : status.status === 'PENDING' ? '待完成绑定' : '未启用'"
         />
       </div>
 
       <div v-if="status.enabled" class="pmfa__ready">
-        <b>已启用 TOTP</b>
-        <span>高危操作页会单独要求动态码并签发 10 分钟 step-up Token；不会替换你的正常登录会话。</span>
+        <b>已启用动态口令</b>
+        <span>高危操作页会单独要求动态码并签发 10 分钟临时凭证；不会替换你的正常登录会话。</span>
       </div>
 
       <template v-else>
         <div class="pmfa__notice">
           <b>{{ status.status === 'PENDING' ? '上次绑定尚未确认' : '首次绑定需要主密码复核' }}</b>
-          <span v-if="status.status === 'PENDING'">重新开始会生成新的未确认密钥并替换上一次 PENDING 密钥。</span>
-          <span v-else>密钥只在本次开始绑定响应中展示，请立即加入 Microsoft Authenticator、Google Authenticator、1Password 等 TOTP 认证器。</span>
+          <span v-if="status.status === 'PENDING'">重新开始会生成新的未确认密钥并替换上一次待确认密钥。</span>
+          <span v-else>密钥只在本次开始绑定时展示，请立即加入支持动态口令的认证器。</span>
         </div>
 
         <div class="pmfa__form">
@@ -33,7 +33,7 @@
             <input v-model="password" type="password" autocomplete="current-password" class="pmfa__input" placeholder="用于确认是本人操作" />
           </label>
           <AppButton variant="primary" :loading="starting" :disabled="!password" @click="startEnrollment">
-            {{ status.status === 'PENDING' ? '重新开始绑定' : '开始绑定 TOTP' }}
+            {{ status.status === 'PENDING' ? '重新开始绑定' : '开始绑定动态口令' }}
           </AppButton>
         </div>
       </template>
@@ -49,12 +49,12 @@
 
         <div class="pmfa__secret">
           <code>{{ enrollment.secret }}</code>
-          <AppButton variant="ghost" @click="copyText(enrollment.secret, 'TOTP 密钥')">复制密钥</AppButton>
+          <AppButton variant="ghost" @click="copyText(enrollment.secret, '动态口令密钥')">复制密钥</AppButton>
         </div>
-        <div class="pmfa__meta">算法 {{ enrollment.algorithm }} · {{ enrollment.digits }} 位 · 每 {{ enrollment.periodSeconds }} 秒更新</div>
+        <div class="pmfa__meta">标准动态口令算法 · {{ enrollment.digits }} 位 · 每 {{ enrollment.periodSeconds }} 秒更新</div>
 
         <details class="pmfa__uri">
-          <summary>高级：复制 otpauth:// 配置地址</summary>
+          <summary>高级：复制认证器配置地址</summary>
           <div class="pmfa__uri-body">
             <code>{{ enrollment.provisioningUri }}</code>
             <AppButton variant="ghost" @click="copyText(enrollment.provisioningUri, '配置地址')">复制地址</AppButton>
@@ -70,7 +70,7 @@
         </div>
         <div class="pmfa__confirm">
           <input v-model.trim="confirmCode" inputmode="numeric" maxlength="6" class="pmfa__input pmfa__input--code" placeholder="6 位动态码" @keyup.enter="confirmEnrollment" />
-          <AppButton variant="primary" :loading="confirming" :disabled="confirmCode.length !== 6" @click="confirmEnrollment">确认并启用 MFA</AppButton>
+          <AppButton variant="primary" :loading="confirming" :disabled="confirmCode.length !== 6" @click="confirmEnrollment">确认并启用二次认证</AppButton>
         </div>
       </div>
     </template>
@@ -106,7 +106,7 @@ export default {
       try {
         this.status = await platformSecurityOpsApi.getMfaStatus()
       } catch (error) {
-        toast.error(error.message || 'MFA 状态加载失败')
+        toast.error(error.message || '二次认证状态加载失败')
       } finally {
         this.loading = false
       }
@@ -119,9 +119,9 @@ export default {
         this.password = ''
         this.confirmCode = ''
         this.status = { enabled: false, status: 'PENDING', method: 'TOTP' }
-        toast.success('新的 TOTP 密钥已生成，请立即加入认证器并完成确认')
+        toast.success('新的动态口令密钥已生成，请立即加入认证器并完成确认')
       } catch (error) {
-        toast.error(error.message || 'MFA 绑定启动失败')
+        toast.error(error.message || '二次认证绑定启动失败')
       } finally {
         this.starting = false
       }
@@ -134,9 +134,9 @@ export default {
         this.enrollment = null
         this.confirmCode = ''
         await this.loadStatus()
-        toast.success('平台主管 MFA 已启用')
+        toast.success('平台主管二次认证已启用')
       } catch (error) {
-        toast.error(error.message || 'MFA 确认失败')
+        toast.error(error.message || '二次认证确认失败')
       } finally {
         this.confirming = false
       }

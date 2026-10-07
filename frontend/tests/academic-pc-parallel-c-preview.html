@@ -1,0 +1,32 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>C组 T17 局部页面演练</title>
+<style>body{margin:0;background:#f4f7fc;font-family:system-ui;color:#21344b}#tools{padding:12px 24px;background:#fff3d9;display:flex;gap:16px;align-items:center}#app{max-width:1240px;margin:24px auto;padding:0 20px}button{cursor:pointer}button:disabled{cursor:not-allowed}</style>
+<div id="tools">隔离演练 · 合成数据 · 不代表真实身份或后端验收 <button id="entry">录入页</button><button id="review">学院审核</button><label>审核回包 <select id="review-response"><option value="normal">正常</option><option value="409">409 冲突</option><option value="403">403 撤权</option></select></label></div><div id="app"></div>
+<script type="module">
+import { createApp, h, reactive } from 'vue'
+import { createPinia } from 'pinia'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import '../src/styles/tokens.css'
+import '../src/styles/high-contrast-skin.css'
+import Entry from '../src/modules/academicAffairs/views/AaGradeEntryView.vue'
+import Review from '../src/modules/academicAffairs/views/AaGradeCollegeReviewView.vue'
+import { academicAffairsApi as api } from '../src/modules/academicAffairs/api/academic-affairs.api.js'
+import { academicAffairsR10Api as dynamicApi } from '../src/modules/academicAffairs/api/academic-affairs-r10.api.js'
+dynamicApi.getGradeScheme=async()=>({code:0,data:{schemeId:'',status:'DEFAULT'}})
+const tasks = [
+ {gradeTaskId:'C-DEMO-1',courseName:'演练 · PLC应用基础',termCode:'2026-2027-1',status:'INPUTTING',usualRatio:30,midtermRatio:30,finalRatio:40,passLine:60,courseId:'DEMO-C1',teachingClassId:'DEMO-TC1',teacherNames:['演练教师'],teacherAuthorityReady:true,allowedActions:['INPUT','IMPORT','SUBMIT']},
+ {gradeTaskId:'C-DEMO-2',courseName:'演练 · 电工电子技术',termCode:'2026-2027-1',status:'SUBMITTED',usualRatio:30,midtermRatio:0,finalRatio:70,passLine:60,courseId:'DEMO-C2',teachingClassId:'DEMO-TC2',teacherNames:['演练教师'],teacherAuthorityReady:true,allowedActions:['COLLEGE_REVIEW']}
+]
+const records = [{studentId:'1',studentNo:'DEMO-001',realName:'演练学生甲',usualScore:82,midtermScore:76,finalScore:85,totalScore:81,passStatus:'PASSED',exceptionFlag:'NORMAL'},{studentId:'2',studentNo:'DEMO-002',realName:'演练学生乙',usualScore:null,midtermScore:null,finalScore:null,totalScore:null,passStatus:null,exceptionFlag:'DEFERRED'}]
+api.getGradeTasks=async(p={})=>{const list=tasks.filter(t=>(!p.taskId||p.taskId===t.gradeTaskId)&&(!p.status||p.status===t.status));return {code:0,data:{list:structuredClone(list),total:list.length}}}
+api.getGradeRecords=async()=>({code:0,data:{items:structuredClone(records)}})
+api.getGradeRoster=async()=>({code:0,data:{items:structuredClone(records),rosterVersionNo:3,memberCount:2}})
+api.enterScore=async(_id,p)=>{const r=records.find(r=>r.studentId===p.studentId);Object.assign(r,p);r.totalScore=null;r.passStatus=null;return {code:0,data:structuredClone(r)}}
+api.submitGradeTask=async id=>{const t=tasks.find(t=>t.gradeTaskId===id);t.status='SUBMITTED';t.allowedActions=['COLLEGE_REVIEW'];return {code:0,data:{status:t.status}}}
+api.collegeReviewGrade=async(id,action)=>{const response=document.querySelector('#review-response').value;if(response==='409')return {code:409,bizCode:'DATA_CONFLICT'};if(response==='403')return {code:403,bizCode:'NO_PERMISSION'};if(action!=='RETURN')throw Error('演练同样禁止无证据通过');const t=tasks.find(t=>t.gradeTaskId===id);t.status='RETURNED';t.allowedActions=['INPUT','SUBMIT'];return {code:0,data:{status:t.status}}}
+const ctx=reactive({currentRole:{roleCode:'COLLEGE_ADMIN',roleName:'演练 · 学院审核岗'},dataScope:{scopeName:'本地合成数据'}})
+const router=createRouter({history:createMemoryHistory(),routes:[{path:'/entry',component:Entry},{path:'/review',component:Review}]})
+await router.push('/review?taskId=C-DEMO-2');await router.isReady()
+createApp({render(){const component=router.currentRoute.value.path==='/entry'?Entry:Review;return h(component,{ctx,key:router.currentRoute.value.path})}}).use(createPinia()).use(router).mount('#app')
+document.querySelector('#entry').onclick=()=>{ctx.currentRole={roleCode:'ACADEMIC_TEACHER',roleName:'演练 · 任课教师'};router.push('/entry?taskId=C-DEMO-1')}
+document.querySelector('#review').onclick=()=>{ctx.currentRole={roleCode:'COLLEGE_ADMIN',roleName:'演练 · 学院审核岗'};router.push('/review?taskId=C-DEMO-2')}
+</script></html>

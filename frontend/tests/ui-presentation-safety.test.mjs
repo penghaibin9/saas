@@ -5,8 +5,21 @@ import test from 'node:test'
 import {
   normalizeUiError,
   presentAuditRecord,
-  safeEnumLabel
+  safeEnumLabel,
+  safeLocalizedText
 } from '../src/utils/presentationSafety.js'
+
+test('浏览器取数失败显示中文网络恢复提示，明确权限与服务状态优先', () => {
+  for (const message of ['Failed to fetch', 'NetworkError when attempting to fetch resource.']) {
+    const result = normalizeUiError(new TypeError(message))
+    assert.equal(result.pageState, 'offline')
+    assert.equal(result.userMessage, '网络异常，请检查网络连接后重试')
+    assert.equal(result.rawDeveloperDetail, message)
+  }
+  assert.equal(normalizeUiError({ message: 'Failed to fetch', code: 403001 }).pageState, 'forbidden')
+  assert.equal(normalizeUiError({ message: 'Failed to fetch', code: 503001 }).pageState, 'error')
+  assert.equal(normalizeUiError({ message: 'Failed to fetch', code: 503001 }).userMessage, '系统暂时无法完成该操作，请稍后重试')
+})
 
 test('SQL、路径、枚举和 JSON 错误不会进入用户文案', () => {
   for (const message of [
@@ -59,6 +72,12 @@ test('未知枚举与审计字段使用安全 fallback', () => {
     [row.displayAction, row.displayResult, row.displayRole, row.displayTarget],
     ['业务操作', '结果待确认', '业务经办人', '相关业务对象']
   )
+})
+
+test('混合来源文案保留中文业务说明但不回显英文枚举码', () => {
+  assert.equal(safeLocalizedText({ value: '学校人工登记' }), '学校人工登记')
+  assert.equal(safeLocalizedText({ value: 'NEW_BACKEND_STATUS', unknownLabel: '状态待确认' }), '状态待确认')
+  assert.equal(safeLocalizedText({ value: 'READY', dictionary: { READY: '已就绪' } }), '已就绪')
 })
 
 test('公共组件源码不再包含任意对象 JSON 或 unknown raw fallback', () => {

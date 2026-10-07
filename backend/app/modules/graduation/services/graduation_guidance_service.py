@@ -11,6 +11,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.models import (
     GraduationAuditTrail, GraduationGuidance, GraduationGuidancePlan, GraduationStudent,
 )
@@ -34,7 +35,7 @@ def _audit(db, bid, action, detail="", before="", after=""):
 
 
 def _stu(db, sid) -> GraduationStudent:
-    s = db.get(GraduationStudent, int(sid))
+    s = tenant_get(db, GraduationStudent, int(sid))
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("毕设学生不存在或不在当前数据范围内")
     return assert_student_access(db, s, "guidance")
@@ -47,26 +48,6 @@ def _row(g: GraduationGuidance, stu=None) -> dict:
             "methodLabel": METHOD_LABEL.get(g.method, g.method), "content": g.content or "",
             "issues": g.issues or "", "attachments": g.attachments_json or [],
             "createdAt": _iso(g.created_at)}
-
-
-def list_guidance(page: int, page_size: int, gd_student_id=None, keyword=None) -> tuple[list[dict], int]:
-    with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
-        q = select(GraduationGuidance).where(GraduationGuidance.tenant_id == _tid(),
-                                              GraduationGuidance.is_deleted.is_(False),
-                                              GraduationGuidance.gd_student_id.in_(scope_ids or [-1]))
-        if gd_student_id:
-            q = q.where(GraduationGuidance.gd_student_id == int(gd_student_id))
-        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
-        rows = db.scalars(q.order_by(GraduationGuidance.id.desc())
-                          .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = []
-        for g in rows:
-            stu = db.get(GraduationStudent, g.gd_student_id)
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_row(g, stu))
-        return items, total
 
 
 def create_guidance(gd_student_id, body: dict) -> dict:
@@ -95,7 +76,7 @@ def void_guidance(gid, reason: str) -> dict:
     if not reason or len(reason.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "撤销原因必填且不少于 5 字")
     with session() as db:
-        g = db.get(GraduationGuidance, int(gid))
+        g = tenant_get(db, GraduationGuidance, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("指导记录不存在")
         g.is_deleted = True
@@ -115,28 +96,14 @@ def guidance_count(gd_student_id) -> int:
 
 def guidance_stats(threshold: int = 3, batch_id=None) -> dict:
     """按学生统计指导次数，标记低于阈值（GD-R06 指导不足预警）。"""
-    with session() as db:
-        scope_ids = set(accessible_student_ids(db, _tid(), batch_id=batch_id))
-        students = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE",
-            GraduationStudent.id.in_(scope_ids or [-1]),
-            GraduationStudent.stage.notin_(("TOPIC_SELECTING", "TASKBOOK_CONFIRM")))).all()
-        students = [student for student in students if can_access_student(db, student)]
-        insufficient = []
-        total_count = 0
-        for s in students:
-            cnt = int(db.scalar(select(func.count()).select_from(GraduationGuidance).where(
-                GraduationGuidance.tenant_id == _tid(), GraduationGuidance.gd_student_id == s.id,
-                GraduationGuidance.is_deleted.is_(False))) or 0)
-            total_count += cnt
-            if cnt < threshold:
-                insufficient.append({"gdStudentId": str(s.id), "studentName": s.name,
-                                     "advisorName": s.advisor_name or "", "count": cnt})
-        return {"threshold": threshold, "studentCount": len(students),
-                "avgCount": round(total_count / len(students), 1) if students else 0,
-                "insufficientCount": len(insufficient), "insufficientStudents": insufficient[:50],
-                "batchId": str(batch_id) if batch_id else None}
+    # 仪表盘和预警页共用这一入口。统计读模型以一条分组查询保留零指导学生，
+    # 避免按学生逐条 count，批次规模扩大时不会让看板请求线性变慢。
+    from app.modules.graduation.services import graduation_guidance_stats_read_service
+
+    return graduation_guidance_stats_read_service.guidance_stats(
+        threshold=threshold,
+        batch_id=batch_id,
+    )
 
 
 # ═══════════ 指导计划 + 签到（P2 MVP） ═══════════
@@ -163,27 +130,6 @@ def _plan_row(p: GraduationGuidancePlan, stu=None) -> dict:
     }
 
 
-def list_plans(page: int, page_size: int, gd_student_id=None) -> tuple[list[dict], int]:
-    with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
-        q = select(GraduationGuidancePlan).where(
-            GraduationGuidancePlan.tenant_id == _tid(),
-            GraduationGuidancePlan.is_deleted.is_(False),
-            GraduationGuidancePlan.gd_student_id.in_(scope_ids or [-1]))
-        if gd_student_id:
-            q = q.where(GraduationGuidancePlan.gd_student_id == int(gd_student_id))
-        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
-        rows = db.scalars(
-            q.order_by(GraduationGuidancePlan.id.desc())
-            .offset((max(1, page) - 1) * page_size).limit(page_size)
-        ).all()
-        items = []
-        for p in rows:
-            stu = db.get(GraduationStudent, p.gd_student_id)
-            items.append(_plan_row(p, stu))
-        return items, total
-
-
 def create_plan(gd_student_id, body: dict) -> dict:
     title = (body.get("title") or "").strip()
     if len(title) < 2:
@@ -208,57 +154,6 @@ def create_plan(gd_student_id, body: dict) -> dict:
         _audit(db, p.id, "新增指导计划", detail=f"{stu.name}/{title}")
         db.commit()
         return _plan_row(p, stu)
-
-
-def checkin_plan(plan_id, body: dict | None = None) -> dict:
-    """学生本人或指导教师/有范围的教职工对计划条目签到。"""
-    body = body or {}
-    with session() as db:
-        p = db.get(GraduationGuidancePlan, int(plan_id))
-        if not p or p.is_deleted or p.tenant_id != _tid():
-            raise not_found("指导计划不存在")
-        stu = _stu(db, p.gd_student_id)
-        if p.status == "CANCELLED":
-            raise AppException("DATA_CONFLICT", "计划已取消，无法签到")
-        if p.status == "CHECKED_IN":
-            raise AppException("DATA_CONFLICT", "该计划已签到，不可重复签到")
-        u = get_current_user_ctx() or {}
-        role = (u.get("currentRoleCode") or "").strip().upper()
-        user_type = (u.get("userType") or "").strip().upper()
-        is_student = user_type == "STUDENT" or role == "STUDENT"
-        n, _ = _op()
-        method = (body.get("method") or "MANUAL").strip().upper()
-        if method not in METHOD_LABEL:
-            method = "MANUAL"
-        p.status = "CHECKED_IN"
-        p.checked_in_at = datetime.now(timezone.utc)
-        p.checked_in_by = n
-        p.checkin_role = "STUDENT" if is_student else ("MENTOR" if role in {"GD_MENTOR", "COUNSELOR"} else "STAFF")
-        p.checkin_note = (body.get("note") or "").strip() or None
-        p.checkin_method = method
-        _audit(db, p.id, "指导计划签到", detail=f"{stu.name}/{p.checkin_role}/{n}")
-        db.commit()
-        return _plan_row(p, stu)
-
-
-def cancel_plan(plan_id, reason: str) -> dict:
-    if not reason or len(reason.strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "取消原因必填且不少于 5 字")
-    with session() as db:
-        p = db.get(GraduationGuidancePlan, int(plan_id))
-        if not p or p.is_deleted or p.tenant_id != _tid():
-            raise not_found("指导计划不存在")
-        stu = _stu(db, p.gd_student_id)
-        if p.status == "CHECKED_IN":
-            raise AppException("DATA_CONFLICT", "已签到计划不可取消，请保留留痕")
-        if p.status == "CANCELLED":
-            raise AppException("DATA_CONFLICT", "计划已取消")
-        p.status = "CANCELLED"
-        p.void_reason = reason.strip()
-        p.is_deleted = True
-        _audit(db, p.id, "取消指导计划", reason.strip())
-        db.commit()
-        return {"id": str(p.id), "cancelled": True}
 
 
 from app.modules.graduation.services.graduation_process_consistency import (

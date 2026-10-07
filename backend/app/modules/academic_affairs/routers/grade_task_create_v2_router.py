@@ -4,6 +4,10 @@
 请求在 Pydantic 层就丢失 courseId / 被 courseName 校验提前 422，永远到不了生产 Service 的
 课程身份校验与 archived-term 写保护。该精确适配器只修请求合同，不复制成绩业务逻辑：
 仍统一调用 ``academic_affairs_grade_service.create_grade_task``。
+
+创建完成后的响应必须与 ``GET /grade-tasks`` 使用同一套服务端权限/任课关系投影。否则教师刚创建任务后
+页面拿到的是未投影 DTO，录入第一笔成绩虽然状态进入 INPUTTING，但 ``allowedActions``、
+``teacherAuthorityReady`` 等仍缺失，真实浏览器会错误隐藏“提交进入学院审核”。
 """
 from __future__ import annotations
 
@@ -15,6 +19,7 @@ from pydantic import BaseModel, Field, model_validator
 from app.core.permissions import require_permission
 from app.core.response import success
 from app.modules.academic_affairs.services import academic_affairs_grade_service as grade_svc
+from app.modules.academic_affairs.services import academic_affairs_grade_task_read_service as grade_task_read_svc
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心"])
 
@@ -42,9 +47,33 @@ class GradeTaskCreateV2(BaseModel):
         return self
 
 
+def _canonical_created_projection(item: dict, user) -> dict:
+    """Re-read the just-created task through the canonical authority projection.
+
+    Creation is already committed before this read. If a defensive read cannot find the row, return the
+    committed create DTO rather than reporting a false create failure that could cause a user retry/duplicate.
+    The list is ordered newest-first and bounded to the service maximum; exact id matching prevents races.
+    """
+    try:
+        task_id = int((item or {}).get("gradeTaskId") or 0)
+    except (TypeError, ValueError):
+        return item
+    if not task_id:
+        return item
+    rows, _total = grade_task_read_svc.list_tasks(user, page=1, page_size=200)
+    for row in rows:
+        try:
+            if int(row.get("gradeTaskId") or 0) == task_id:
+                return row
+        except (TypeError, ValueError):
+            continue
+    return item
+
+
 @router.post("/grade-tasks", summary="新建成绩录入任务（稳定课程身份 V2）")
 def grade_task_create_v2(
     body: GradeTaskCreateV2,
     user=Depends(require_permission("academicAffairs.grade.input")),
 ):
-    return success(grade_svc.create_grade_task(body, user), message="已创建")
+    item = grade_svc.create_grade_task(body, user)
+    return success(_canonical_created_projection(item, user), message="已创建")

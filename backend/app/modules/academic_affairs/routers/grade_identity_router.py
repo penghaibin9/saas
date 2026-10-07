@@ -4,9 +4,9 @@
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field, model_validator
 
 from app.core.exceptions import AppException
@@ -102,3 +102,13 @@ def retake_identity_apply(body: RetakeIdentityApplyBody, user=Depends(_student_o
 @router.post("/exemption/apply", summary="按课程库具体版本提交免修申请")
 def exemption_identity_apply(body: ExemptionIdentityApplyBody, user=Depends(_student_only)):
     return success(makeup_service.exemption_apply(user, body), message="免修申请已提交")
+
+
+@router.get("/makeup-command-receipts/{commandKey}", summary="读取原身份的补重缓免命令回执")
+def makeup_command_receipt(
+    commandKey: str = Path(..., min_length=8, max_length=128),
+    operation: Literal["MAKEUP_RETAKE_REVIEW", "MAKEUP_RETAKE_ENROLL", "MAKEUP_EXEMPTION_REVIEW", "MAKEUP_EXEMPTION_ARCHIVE"] = Query(...),
+    user=Depends(get_current_user),
+):
+    from app.modules.academic_affairs.services import academic_affairs_grade_command_receipt as receipts
+    return success(receipts.read(user, operation, commandKey))

@@ -249,6 +249,16 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p test-results/sandbox-20k
+          # 该库是一次性 CI 验收库，性能门禁用于约束生成器 CPU/RSS，不应被
+          # mysql:8.0 默认的小 redo 容量与逐事务双写 fsync 放大。生产配置不受影响。
+          mysql -h127.0.0.1 -uroot -proot -e '
+            SET GLOBAL innodb_redo_log_capacity = 1073741824;
+            SET GLOBAL innodb_flush_log_at_trx_commit = 2;
+            SET GLOBAL sync_binlog = 0;
+          '
+          test "$(mysql -h127.0.0.1 -uroot -proot -N -e '
+            SELECT CONCAT(@@innodb_redo_log_capacity, ":", @@innodb_flush_log_at_trx_commit, ":", @@sync_binlog);
+          ')" = "1073741824:2:0"
           /usr/bin/time -v python scripts/reset_sandbox_school.py --confirm --profile standard-20k \
             2>&1 | tee test-results/sandbox-20k/rebuild.log
           grep -F '[reset] 复核 demo-school 学生数：20 → 20' test-results/sandbox-20k/rebuild.log

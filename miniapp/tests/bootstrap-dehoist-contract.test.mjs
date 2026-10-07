@@ -106,7 +106,7 @@ test('S1.5-G1 仍走 performance adapter 的高频页必须先显式安装；T8 
 
   const todoSource = read('src/pages/teacher/todos/index.vue')
   assert.match(todoSource, /createNetworkPager/)
-  assert.match(todoSource, /teacherTodoT8Api\.list\(\{ group: this\.filter, cursor, pageSize \}\)/)
+  assert.match(todoSource, /teacherTodoT8Api\.list\(\{ group, cursor, pageSize \}\)/)
   assert.doesNotMatch(todoSource, /getTodosPage\(/)
   assert.doesNotMatch(todoSource, /ensureTeacherPerformanceApi\(\)/)
 })
@@ -114,9 +114,10 @@ test('S1.5-G1 仍走 performance adapter 的高频页必须先显式安装；T8 
 test('S1.5-G2 生产构建剥离 mock 数据体', () => {
   assert.match(viteConfig, /miniapp-v3-strip-mock-payload-in-production/)
   assert.match(viteConfig, /env\.command === 'build' && env\.mode !== 'development'/)
+  assert.match(viteConfig, /replace\(\/\\\\\/g, '\/'\)/, 'Windows 路径必须先统一为正斜杠，否则生产 transform 不会命中 mock 目录')
 })
 
-test('S1.5-G2 release finalize 产出机器可读三包报告并按 V3 预算判定', () => {
+test('release finalize separates advisory performance budgets from platform gates', () => {
   assert.match(finalizer, /miniapp-package-report\.json/)
   assert.match(finalizer, /V3_PACKAGE_BUDGET/)
   assert.match(finalizer, /main:\s*520 \* 1024/)
@@ -125,6 +126,8 @@ test('S1.5-G2 release finalize 产出机器可读三包报告并按 V3 预算判
   assert.match(finalizer, /budgetPass/)
   assert.match(finalizer, /duplicateAssets/)
   assert.match(finalizer, /topFiles/)
-  // 超预算必须硬失败，禁止只打印告警。
-  assert.match(finalizer, /if \(overBudget\.length\) \{\s*\n\s*fail\(/)
+  // 用户明确取消内部硬预算：如实保留超标记录，但只警告；平台超限仍失败。
+  assert.match(finalizer, /if \(overBudget\.length\) \{\s*\n\s*console\.warn\(/)
+  assert.match(finalizer, /platformPass/)
+  assert.match(finalizer, /if \(platformViolations\.length\) \{\s*\n\s*fail\(/)
 })

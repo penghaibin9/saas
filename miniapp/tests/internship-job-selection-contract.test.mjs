@@ -8,7 +8,7 @@ import {
   normalizeMobileSelectionContext
 } from '../src/modules/internshipSelectionModel.js'
 
-const pageSource = readFileSync(new URL('../src/pages/student/internship/enterprises/index.vue', import.meta.url), 'utf8')
+const pageSource = readFileSync(new URL('../src/pages/student-internship/enterprises/index.vue', import.meta.url), 'utf8')
 const apiSource = readFileSync(new URL('../src/services/internshipSelectionApi.js', import.meta.url), 'utf8')
 
 test('A03-9 preserves old enterprises route file but renames product surface to 实习选岗', () => {
@@ -19,7 +19,7 @@ test('A03-9 preserves old enterprises route file but renames product surface to 
 
 test('A03-9 forbids client full-list filtering and uses server catalog pagination', () => {
   assert.doesNotMatch(pageSource, /(?:this\.)?positions\.filter\s*\(/)
-  assert.match(pageSource, /internshipSelectionApi\.positions/)
+  assert.match(pageSource, /this\.selectionApi\.positions/)
   assert.match(pageSource, /pageSize:\s*20/)
   assert.match(pageSource, /350/)
 })
@@ -60,14 +60,18 @@ test('A03-9 mobile job card keeps only 2-3 compact tags and backend match state'
 })
 
 test('A03 production seal makes mobile authority reads latest-wins and context fail-closed', () => {
+  assert.match(apiSource, /import \{ latestRead as latestProjectionRead \} from '\.\/latestRead'/)
   assert.match(apiSource, /function latestRead\(/)
+  assert.match(apiSource, /return latestProjectionRead\(`student:internship-selection:/)
   assert.match(apiSource, /context\(\) \{ return latestRead\('context'/)
   assert.match(apiSource, /position\(positionId\) \{ return latestRead\('position'/)
   assert.match(apiSource, /company\(companyId\) \{ return latestRead\('company'/)
   assert.match(apiSource, /profile\(\) \{ return latestRead\('profile'/)
   assert.match(apiSource, /volunteers\(\) \{ return latestRead\('volunteers'/)
-  assert.match(apiSource, /canSelect: false/)
-  assert.match(apiSource, /selectionBlockReason/)
+  assert.equal(normalizeMobileSelectionContext({}).canSelect, false)
+  assert.equal(normalizeMobileSelectionContext({ campaignStatus: 'OPEN', canSelect: false }).canSelect, false)
+  assert.equal(normalizeMobileSelectionContext({ catalogState: 'NO_OPEN_CAMPAIGN', canSelect: true }).canSelect, false)
+  assert.equal(normalizeMobileSelectionContext({ selectionBlockReason: '资格未满足' }).blockReason, '资格未满足')
   assert.match(apiSource, /availableFrom: profile\?\.availableFrom/)
 })
 

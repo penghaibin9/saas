@@ -26,12 +26,15 @@ async function chooseAndUpload() {
 </script>
 
 <template>
-  <button class="mini-file-uploader" :disabled="disabled || uploading" @click="chooseAndUpload">
-    {{ uploading ? '正在上传…' : '选择并上传文件' }}
-  </button>
+  <view>
+    <MobilePrivacyGate />
+    <button class="mini-file-uploader" :class="{ 'is-disabled': disabled || uploading }" :disabled="disabled || uploading" plain @click="chooseAndUpload">
+      {{ uploading ? '正在上传…' : '选择并上传文件' }}
+    </button>
+  </view>
 </template>
 
 <style scoped>
 .mini-file-uploader { display: flex; align-items: center; justify-content: center; min-height: 76rpx; padding: 0 28rpx; border: 0; border-radius: 16rpx; background: #1769e0; color: #fff; font-size: 28rpx; }
-.mini-file-uploader[disabled] { opacity: .55; }
+.mini-file-uploader.is-disabled { opacity: .55; }
 </style>

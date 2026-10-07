@@ -1,11 +1,11 @@
 <template>
-  <view class="mobile-todo-card" :class="{ 'is-overdue': overdue }" @click="$emit('view')">
+  <view class="mobile-todo-card" :class="{ 'is-overdue': overdue }" @click="!actionDisabled && $emit('view')">
     <view class="mtc-head">
       <text class="mtc-title">{{ title }}</text>
       <MobileStatusTag v-if="status" :status="status" />
     </view>
     <view class="mtc-meta">
-      <text v-if="sourceModule" class="mtc-module">{{ sourceModule }}</text>
+      <text v-if="moduleLabel" class="mtc-module">{{ moduleLabel }}</text>
       <text v-if="studentName" class="mtc-meta-item">{{ studentName }}</text>
       <text v-if="deadline" class="mtc-meta-item" :class="{ 'is-overdue-text': overdue }">
         截止 {{ deadline }}
@@ -17,7 +17,8 @@
     </view>
     <view class="mtc-actions" @click.stop>
       <slot name="actions">
-        <button class="mtc-btn" @click="$emit('handle')">{{ actionText }}</button>
+        <text v-if="actionDisabled" class="mtc-disabled">{{ disabledReason }}</text>
+        <button v-else class="mtc-btn" @click="$emit('handle')">{{ actionText }}</button>
       </slot>
     </view>
   </view>
@@ -25,6 +26,7 @@
 
 <script>
 import MobileStatusTag from './MobileStatusTag.vue'
+import { messageModuleLabel } from '@/services/messagePresentation'
 
 /**
  * MobileTodoCard 移动端待办卡片
@@ -45,9 +47,14 @@ export default {
     status: { type: String, default: '' },
     overdue: { type: Boolean, default: false },
     returnReason: { type: String, default: '' },
-    actionText: { type: String, default: '去处理' }
+    actionText: { type: String, default: '去处理' },
+    actionDisabled: { type: Boolean, default: false },
+    disabledReason: { type: String, default: '当前事项暂不可在小程序办理' }
   },
-  emits: ['view', 'handle']
+  emits: ['view', 'handle'],
+  computed: {
+    moduleLabel() { return this.sourceModule ? messageModuleLabel(this.sourceModule) : '' }
+  }
 }
 </script>
 
@@ -94,6 +101,7 @@ export default {
 }
 .mtc-return__reason { font-size: var(--font-size-sm); color: var(--danger-700); }
 .mtc-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
+.mtc-disabled { font-size: 13px; line-height: 1.5; color: var(--text-secondary); }
 .mtc-btn {
   min-height: 36px;
   line-height: 36px;

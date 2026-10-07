@@ -10,7 +10,7 @@
     <template v-else-if="overview">
       <div class="pfo__grid">
         <AppCard class="pfo__stat"><div class="pfo__stat-num">{{ overview.tenantCount }}</div><div class="pfo__stat-label">在库租户</div></AppCard>
-        <AppCard class="pfo__stat"><div class="pfo__stat-num">{{ usedGiB }}</div><div class="pfo__stat-label">文件底座已用（GiB）</div></AppCard>
+        <AppCard class="pfo__stat"><div class="pfo__stat-num">{{ usedGiB }}</div><div class="pfo__stat-label">文件底座已用（吉字节）</div></AppCard>
         <AppCard class="pfo__stat" :class="{ 'pfo__stat--warn': foundation.scanErrors }">
           <div class="pfo__stat-num">{{ foundation.scanErrors }}</div><div class="pfo__stat-label">病毒扫描失败</div>
         </AppCard>
@@ -28,7 +28,7 @@
         <ul v-else class="pfo__list">
           <li v-for="(r, i) in overview.risks" :key="i">
             <span class="pfo__list-name">{{ r.text }}</span>
-            <StatusTag :type="r.level === 'HIGH' ? 'danger' : 'warning'" :label="r.sourceCard" />
+            <StatusTag :type="r.level === 'HIGH' ? 'danger' : 'warning'" :label="riskSourceLabel(r.sourceCard)" />
           </li>
         </ul>
       </AppCard>
@@ -88,6 +88,10 @@ export default {
     this.load()
   },
   methods: {
+    riskSourceLabel(value) {
+      const labels = { FILE_FOUNDATION: '文件底座', SERVICE_CATALOG: '服务目录', INCIDENT: '事件中心', CHANGE: '变更中心' }
+      return labels[String(value || '').toUpperCase()] || '运行风险'
+    },
     async load() {
       this.loading = true
       this.error = ''

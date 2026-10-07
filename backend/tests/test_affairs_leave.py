@@ -5,7 +5,11 @@ L6 续假改期；L7 逾期扫描幂等；L8 重复提交409；越权跨班403�
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier
+
 TID = 1000000000000000001
+TEST_LOGIN_PASSWORD = "LeaveWorkflow-Test-2026!"
 
 
 def _hdr(client, login_name):
@@ -14,8 +18,23 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _real_hdr(client, login_name, *, client_type="PC"):
+    """State-machine tests use the same database identity as workflow assignees."""
+    response = client.post("/api/v1/auth/login", json={
+        "tenantCode": "demo",
+        "loginName": login_name,
+        "password": TEST_LOGIN_PASSWORD,
+        "clientType": client_type,
+    })
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["code"] == 0, payload
+    return {"Authorization": f"Bearer {payload['data']['accessToken']}"}
+
+
 def _seed(db_mode):
     from datetime import datetime, timedelta
+    from app.core.security import hash_password
     from app.db.session import get_sessionmaker
     from app.models import (
         AffairsCounselorAssignment, College, Major, Role, SchoolClass,
@@ -23,18 +42,21 @@ def _seed(db_mode):
     )
     db = get_sessionmaker()()
 
-    def ensure_user(login_name, real_name):
+    def ensure_user(login_name, real_name, *, user_type="TEACHER"):
         row = db.query(User).filter_by(tenant_id=TID, login_name=login_name).first()
         if row is None:
             row = User(
                 tenant_id=TID, login_name=login_name, real_name=real_name,
-                password_hash="test-hash", user_type="TEACHER", status="ACTIVE",
+                password_hash=hash_password(TEST_LOGIN_PASSWORD), user_type=user_type, status="ACTIVE",
             )
             db.add(row)
             db.flush()
         else:
             row.status = "ACTIVE"
             row.is_deleted = False
+            row.user_type = user_type
+            row.password_hash = hash_password(TEST_LOGIN_PASSWORD)
+            row.must_change_password = False
         return row
 
     def ensure_role(role_code, role_name):
@@ -64,11 +86,16 @@ def _seed(db_mode):
             row.is_deleted = False
 
     counselor = ensure_user("counselor01", "王莉")
+    counselor_b = ensure_user("counselor02", "李老师")
     college_reviewer = ensure_user("leave_college01", "学院学工受理人")
     sa_reviewer = ensure_user("leave_sa01", "学工处受理人")
-    bind(counselor, ensure_role("COUNSELOR", "辅导员"))
+    school_admin = ensure_user("school_admin01", "请假测试学校管理员", user_type="SCHOOL_ADMIN")
+    counselor_role = ensure_role("COUNSELOR", "辅导员")
+    bind(counselor, counselor_role)
+    bind(counselor_b, counselor_role)
     bind(college_reviewer, ensure_role("COLLEGE_ADMIN", "学院管理员"))
     bind(sa_reviewer, ensure_role("STUDENT_AFFAIRS_ADMIN", "学工处管理员"))
+    bind(school_admin, ensure_role("SCHOOL_ADMIN", "学校管理员"))
 
     college = College(
         tenant_id=TID, college_name="请假测试学院", code="LEAVE-COLLEGE", status="ACTIVE",
@@ -87,7 +114,7 @@ def _seed(db_mode):
     )
     b = SchoolClass(
         tenant_id=TID, major_id=major.id, class_name="B班", grade="2024",
-        counselor_id=counselor.id, status="ACTIVE",
+        counselor_id=counselor_b.id, status="ACTIVE",
     )
     db.add_all([a, b])
     db.flush()
@@ -110,7 +137,7 @@ def _seed(db_mode):
             duty_type="PRIMARY", status="ACTIVE", effective_from=effective,
         ),
         AffairsCounselorAssignment(
-            tenant_id=TID, class_id=b.id, user_id=counselor.id,
+            tenant_id=TID, class_id=b.id, user_id=counselor_b.id,
             duty_type="PRIMARY", status="ACTIVE", effective_from=effective,
         ),
         TeacherStudentScope(
@@ -162,7 +189,7 @@ def _leave_action(client, hdr, lid, action, body=None):
 
 def test_l1_apply_creates_workflow(client, db_mode):
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     r = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-02").json()  # 1 天 → 单节点
     assert r["code"] == 0
     d = r["data"]
@@ -182,7 +209,7 @@ def test_l1_apply_creates_workflow(client, db_mode):
 
 def test_l2_multilevel_approve(client, db_mode):
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-06").json()["data"]["id"]  # 5 天 → LONG 两级
     r1 = _leave_action(client, hdr, lid, "approve").json()
     assert r1["data"]["affairsStatus"] == "COLLEGE_REVIEW"  # 推进到第二级
@@ -193,7 +220,7 @@ def test_l2_multilevel_approve(client, db_mode):
 
 def test_l3_short_leave_single_node(client, db_mode):
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
     r = _leave_action(client, hdr, lid, "approve").json()
     assert r["data"]["affairsStatus"] == "APPROVED"
@@ -204,7 +231,7 @@ def test_l3_short_leave_single_node(client, db_mode):
 
 def test_l4_reject_reason_required(client, db_mode):
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
     # 原因 <5 字 → 422
     assert _leave_action(client, hdr, lid, "reject", {"reason": "不行"}).status_code == 400
@@ -218,7 +245,7 @@ def test_l4_reject_reason_required(client, db_mode):
 
 def test_l5_cancel_closes_and_hits_360(client, db_mode):
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
     _leave_action(client, hdr, lid, "approve")
     _leave_action(client, hdr, lid, "cancel", {"proofNote": "已返校"})
@@ -235,7 +262,7 @@ def test_l5_cancel_closes_and_hits_360(client, db_mode):
 
 def test_l6_extension(client, db_mode):
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
     _leave_action(client, hdr, lid, "approve")
     _leave_action(client, hdr, lid, "extension", {"newEnd": "2026-03-05", "reason": "因病延后返校"})
@@ -246,7 +273,7 @@ def test_l6_extension(client, db_mode):
 
 def test_l7_overdue_scan_idempotent(client, db_mode):
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     # 结束时间在过去 → 通过后即逾期
     lid = _apply(client, hdr, ids["sa"], "2020-01-01", "2020-01-02").json()["data"]["id"]
     _leave_action(client, hdr, lid, "approve")
@@ -261,7 +288,7 @@ def test_l7_overdue_scan_idempotent(client, db_mode):
 
 def test_l8_duplicate_overlap_409(client, db_mode):
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-04")
     # 时间重叠 → 409
     assert _apply(client, hdr, ids["sa"], "2026-03-03", "2026-03-05").status_code == 409
@@ -269,13 +296,31 @@ def test_l8_duplicate_overlap_409(client, db_mode):
     assert _apply(client, hdr, ids["sa"], "2026-04-01", "2026-04-02").status_code == 200
 
 
+def test_l8_concurrent_first_apply_creates_exactly_one_leave(client, db_mode):
+    ids = _seed(db_mode)
+    hdr = _real_hdr(client, "school_admin01")
+    barrier = Barrier(2)
+
+    def submit(_index):
+        barrier.wait()
+        response = _apply(client, hdr, ids["sa"], "2026-05-10", "2026-05-11")
+        payload = response.json()
+        return response.status_code, payload.get("bizCode")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(submit, range(2)))
+
+    assert sum(status == 200 for status, _code in results) == 1, results
+    assert sum(status == 409 and code == "DATA_CONFLICT" for status, code in results) == 1, results
+
+
 def test_cross_class_leave_403(client, db_mode):
     ids = _seed(db_mode)
-    admin = _hdr(client, "school_admin01")
+    admin = _real_hdr(client, "school_admin01")
     # 学工处给 B 班学生建请假
     lid = _apply(client, admin, ids["sb"], "2026-03-01", "2026-03-02").json()["data"]["id"]
     # 辅导员(范围=A班)访问 B 班请假 → 403
-    r = client.get(f"/api/v1/student-affairs/leave/{lid}", headers=_hdr(client, "counselor01"))
+    r = client.get(f"/api/v1/student-affairs/leave/{lid}", headers=_real_hdr(client, "counselor01", client_type="TEACHER_MINI"))
     assert r.status_code == 403
     assert r.json()["bizCode"] == "NO_DATA_SCOPE"
 
@@ -284,7 +329,7 @@ def test_legacy_campus_leave_routes_retired(client, db_mode):
     """旧在校服务请假列表与审批接口已退出，只允许新学工请假链路。"""
     _seed(db_mode)
     legacy = "/api/v1/campus-service/" + "leaves"
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     assert client.get(legacy, headers=hdr).status_code == 404
     assert client.post(f"{legacy}/1/approve", headers=hdr,
                        json={"comment": "同意", "version": 0}).status_code == 404
@@ -301,7 +346,7 @@ def _approved_leave(client, hdr, sid, start="2026-03-01", end="2026-03-02"):
 def test_l9_proxy_cancel_then_return(client, db_mode):
     """代登记销假→WAIT_CANCEL_LEAVE；销假退回(RETURN)→回到 APPROVED，可重新销假。"""
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     lid = _approved_leave(client, hdr, ids["sa"])
     # 代登记销假（辅导员填实际返校时间）
     r = _leave_action(client, hdr, lid, "proxy-cancel", {"actualReturnAt": "2026-03-02 10:00:00", "note": "本人已返校"}).json()
@@ -318,7 +363,7 @@ def test_l9_proxy_cancel_then_return(client, db_mode):
 def test_l10_proxy_cancel_validations(client, db_mode):
     """代登记销假实际返校时间校验：未来时间/早于开始时间 → 400。"""
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     lid = _approved_leave(client, hdr, ids["sa"])
     # 未来时间 → 400
     assert _leave_action(client, hdr, lid, "proxy-cancel", {"actualReturnAt": "2099-01-01"}).status_code == 400
@@ -329,7 +374,7 @@ def test_l10_proxy_cancel_validations(client, db_mode):
 def test_l11_extension_reject_keeps_original(client, db_mode):
     """续假驳回(REJECT)→维持原假期与原到期日（不改 endTime）。"""
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     lid = _approved_leave(client, hdr, ids["sa"])
     _leave_action(client, hdr, lid, "extension", {"newEnd": "2026-03-05", "reason": "因病延后返校"})
     # 驳回原因<5字 → 400
@@ -342,7 +387,7 @@ def test_l11_extension_reject_keeps_original(client, db_mode):
 def test_l12_overdue_handle(client, db_mode):
     """逾期处置：CONTACT 留痕不改状态；CLOSE→CLOSED 进360。"""
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2020-01-01", "2020-01-02").json()["data"]["id"]
     _leave_action(client, hdr, lid, "approve")
     client.post("/api/v1/student-affairs/leave/scan-overdue", headers=hdr)
@@ -364,7 +409,7 @@ def test_l12_overdue_handle(client, db_mode):
 def test_l13_ledger_list_and_filters(client, db_mode):
     """请假台账：全状态列表 + 状态/关键词筛选 + followupOnly。"""
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     _approved_leave(client, hdr, ids["sa"], "2026-03-01", "2026-03-02")   # A 班 APPROVED
     _apply(client, hdr, ids["sb"], "2026-03-01", "2026-03-02")            # B 班 待审
     # 全量台账
@@ -387,11 +432,11 @@ def test_l13_ledger_list_and_filters(client, db_mode):
 def test_l14_ledger_scope_403_and_stats(client, db_mode):
     """台账数据范围裁剪：辅导员只见本班；统计 metrics + breakdown。"""
     ids = _seed(db_mode)
-    admin = _hdr(client, "school_admin01")
+    admin = _real_hdr(client, "school_admin01")
     _approved_leave(client, admin, ids["sa"])   # A 班
     _apply(client, admin, ids["sb"], "2026-03-01", "2026-03-02")  # B 班
     # 辅导员(范围=A班) 台账只见 1 条
-    couns = _hdr(client, "counselor01")
+    couns = _real_hdr(client, "counselor01", client_type="TEACHER_MINI")
     r = client.get("/api/v1/student-affairs/leave", headers=couns).json()
     assert r["data"]["total"] == 1
     # 统计 by CLASS
@@ -405,7 +450,7 @@ def test_l14_ledger_scope_403_and_stats(client, db_mode):
 def test_l15_ledger_export(client, db_mode):
     """请假大导出必须异步：请求只建任务，worker 分页生成，再用一次性票据下载。"""
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
+    hdr = _real_hdr(client, "school_admin01")
     _approved_leave(client, hdr, ids["sa"])
     response = client.post("/api/v1/student-affairs/leave/export", headers=hdr)
     assert response.status_code == 200
@@ -449,11 +494,11 @@ def test_l15_ledger_export(client, db_mode):
 def test_l16_proxy_cancel_cross_class_403(client, db_mode):
     """越权：辅导员(范围=A班)对 B 班请假代登记销假 → 403 NO_DATA_SCOPE。"""
     ids = _seed(db_mode)
-    admin = _hdr(client, "school_admin01")
+    admin = _real_hdr(client, "school_admin01")
     lid = _approved_leave(client, admin, ids["sb"])  # B 班 APPROVED
     version = _version(client, admin, lid)
     r = client.post(f"/api/v1/student-affairs/leave/{lid}/proxy-cancel",
-                    headers=_hdr(client, "counselor01"),
+                    headers=_real_hdr(client, "counselor01", client_type="TEACHER_MINI"),
                     json={"actualReturnAt": "2026-03-02", "version": version})
     assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
 
@@ -464,8 +509,8 @@ def test_l17_counselor_cannot_skip_college_review_node(client, db_mode):
     调用者班级范围内，不校验当前节点是否轮到调用者审批，导致辅导员可越级把学院/学工处环节的
     请假直接批了，跳过上级审批。"""
     ids = _seed(db_mode)
-    admin = _hdr(client, "school_admin01")
-    couns = _hdr(client, "counselor01")
+    admin = _real_hdr(client, "school_admin01")
+    couns = _real_hdr(client, "counselor01", client_type="TEACHER_MINI")
     lid = _apply(client, admin, ids["sa"], "2026-03-01", "2026-03-06").json()["data"]["id"]  # 5天→LONG两级
     r1 = _leave_action(client, couns, lid, "approve").json()
     assert r1["code"] == 0 and r1["data"]["affairsStatus"] == "COLLEGE_REVIEW"
@@ -483,7 +528,7 @@ def test_l17_counselor_cannot_skip_college_review_node(client, db_mode):
 def test_l19_apply_non_digit_student_400_not_500(client, db_mode):
     """历史欠账收口：辅导员代发起请假若 studentId 非数字，此前 int() 抛 ValueError→500，现应 400。"""
     ids = _seed(db_mode)
-    admin = _hdr(client, "school_admin01")
+    admin = _real_hdr(client, "school_admin01")
     r = client.post("/api/v1/student-affairs/leave", headers=admin, json={
         "studentId": "abc", "leaveType": "PERSONAL",
         "startTime": "2026-03-01", "endTime": "2026-03-02", "reason": "回家处理家庭事务"})
@@ -494,11 +539,35 @@ def test_l18_pending_list_hides_node_not_yours(client, db_mode):
     """待审批列表节点过滤配套：请假推进到 COLLEGE_REVIEW 后，辅导员的待办列表里不应再出现该条
     （避免误导性展示——辅导员看得到但审批不了的数据不应出现在"待我审批"队列里）。"""
     ids = _seed(db_mode)
-    admin = _hdr(client, "school_admin01")
-    couns = _hdr(client, "counselor01")
+    admin = _real_hdr(client, "school_admin01")
+    couns = _real_hdr(client, "counselor01", client_type="TEACHER_MINI")
     lid = _apply(client, admin, ids["sa"], "2026-03-01", "2026-03-06").json()["data"]["id"]  # LONG两级
     p1 = client.get("/api/v1/student-affairs/leave/pending", headers=couns).json()
     assert any(x["id"] == lid for x in p1["data"]["items"])
     _leave_action(client, couns, lid, "approve")  # 推进到 COLLEGE_REVIEW
     p2 = client.get("/api/v1/student-affairs/leave/pending", headers=couns).json()
     assert not any(x["id"] == lid for x in p2["data"]["items"])
+
+
+def test_l20_unverified_demo_identity_cannot_read_or_action_assigned_workflow(client, db_mode, monkeypatch):
+    """A non-database identity must not become an implicit assignee wildcard."""
+    from app.core.config import settings
+
+    ids = _seed(db_mode)
+    admin = _real_hdr(client, "school_admin01")
+    lid = _apply(client, admin, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
+    monkeypatch.setattr(settings, "MOCK_LOGIN_ENABLED", "true")
+    mock_login = client.post("/api/v1/auth/mock-login", json={
+        "tenantCode": "demo", "loginName": "counselor01", "password": "any",
+        "clientType": "TEACHER_MINI",
+    })
+    assert mock_login.status_code == 200, mock_login.text
+    unverified = {"Authorization": f"Bearer {mock_login.json()['data']['accessToken']}"}
+
+    pending = client.get("/api/v1/student-affairs/leave/pending", headers=unverified).json()["data"]
+    assert all(item["id"] != lid for item in pending["items"])
+    version = _version(client, admin, lid)
+    denied = client.post(f"/api/v1/student-affairs/leave/{lid}/approve", headers=unverified,
+                         json={"version": version})
+    assert denied.status_code == 403
+    assert _leave_detail(client, admin, lid)["affairsStatus"] == "COUNSELOR_REVIEW"

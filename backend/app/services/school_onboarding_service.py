@@ -146,6 +146,31 @@ def create_tenant_step(user: dict, body: dict) -> dict:
 def _validate_rows(body: dict) -> list[dict]:
     """跨实体校验，返回 [{row, entity, field, error}]。行号 1-based（对应导入表行）。"""
     errors: list[dict] = []
+    seen_phones = {}
+    def validate_phone_row(row: dict, row_no: int, entity: str) -> None:
+        forbidden = {'phoneVerified', 'verifiedAt', 'bindingStatus', 'credentialVersion', 'selfPhoneEncrypted', 'contactPhoneEncrypted'}
+        if forbidden.intersection(row):
+            errors.append({'row': row_no, 'entity': entity, 'field': 'phone', 'error': '导入不接受验证状态或服务端凭据字段'})
+        own = str((row or {}).get("phoneOwnerType") or "").strip().upper()
+        self_phone = str((row or {}).get("selfPhone") or "").strip()
+        contact_phone = str((row or {}).get("contactPhone") or "").strip()
+        if (self_phone or contact_phone) and own not in {"SELF", "GUARDIAN", "SHARED", "UNKNOWN"}:
+            errors.append({"row": row_no, "entity": entity, "field": "phoneOwnerType", "error": "有手机号时号码归属必须为 SELF/GUARDIAN/SHARED/UNKNOWN"})
+        if self_phone and own != "SELF":
+            errors.append({"row": row_no, "entity": entity, "field": "selfPhone", "error": "本人手机号仅允许号码归属为 SELF"})
+        from app.services.phone_login_service import normalize_login_phone
+        for field, value in (("selfPhone", self_phone), ("contactPhone", contact_phone)):
+            if value:
+                try:
+                    normalized = normalize_login_phone(row[field])
+                    if field == 'selfPhone':
+                        if normalized in seen_phones:
+                            errors.append({'row': row_no, 'entity': entity, 'field': field,
+                                'reasonCode': 'PHONE_DUPLICATE_IN_FILE', 'error': '同一批次本人手机号重复，请核对归属；不能按号码合并账号'})
+                        else:
+                            seen_phones[normalized] = row_no
+                except ValueError as exc:
+                    errors.append({"row": row_no, "entity": entity, "field": field, "error": str(exc)})
     colleges = body.get("colleges") or []
     majors = body.get("majors") or []
     classes = body.get("classes") or []
@@ -189,6 +214,7 @@ def _validate_rows(body: dict) -> list[dict]:
             seen_no.add(no)
         if not nm:
             errors.append({"row": row_no, "entity": "student", "field": "name", "error": "姓名必填"})
+        validate_phone_row(s or {}, row_no, "student")
     seen_login = set()
     for i, t in enumerate(teachers, 1):
         row_no = int((t or {}).get("_rowNo") or i)
@@ -202,6 +228,7 @@ def _validate_rows(body: dict) -> list[dict]:
             seen_login.add(ln)
         if not nm:
             errors.append({"row": row_no, "entity": "teacher", "field": "name", "error": "姓名必填"})
+        validate_phone_row(t or {}, row_no, "teacher")
         try:
             role_codes = role_codes_from_row(t or {})
         except AppException as exc:
@@ -225,7 +252,7 @@ def _validate_rows(body: dict) -> list[dict]:
 # ─────────── 主编排 ───────────
 
 def run_onboarding(user: dict, body: dict, dry_run: bool = True,
-                   *, identity_channel: bool = False) -> dict:
+                   *, identity_channel: bool = False, before_commit=None) -> dict:
     u = _require_operator(user)
     if not identity_channel and ((body.get("students") or []) or (body.get("teachers") or [])):
         raise AppException(
@@ -265,6 +292,9 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
     if dry_run:
         # 预演：统计将创建/跳过数量（不写库）
         _count_preview(tenant_id, body, report)
+        with _session() as db:
+            from app.services.phone_login_service import preview_import_phones
+            preview_import_phones(db, tenant_id, body, report)
         return report
 
     if errors and atomic:
@@ -277,6 +307,11 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
         from app.models import (College, Major, SchoolClass, StudentProfile, TeacherStudentScope,
                                 User)
         from app.services.saas_role_service import ensure_builtin_roles, ensure_user_roles
+
+        from app.services.phone_login_service import preview_import_phones, apply_import_phone_fields
+        preview_import_phones(db, tenant_id, body, report)
+        if report['errors']:
+            raise AppException('VALIDATION_ERROR', '号码预检存在冲突，整批未写入', details={'errors': report['errors']})
 
         role_report = ensure_builtin_roles(db, tenant_id)
         report["entities"]["roles"]["created"] = role_report["created"] + role_report["restored"]
@@ -458,6 +493,8 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             # 账号已存在但缺 STUDENT 角色 → 只补角色，不重发密码
             if binding["created"] + binding["restored"] and account_existed:
                 _bump(report, "rolesFilled")
+            apply_import_phone_fields(db, user=account, row=s, report=report,
+                source_job_id=getattr(body.get('students'), 'import_job_id', None))
         db.flush()
         # 教师账号 + 角色 + 范围
         for t in (body.get("teachers") or []):
@@ -512,6 +549,8 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
             binding = ensure_user_roles(db, tenant_id, uobj.id, role_codes)
             report["entities"]["roleBindings"]["created"] += binding["created"] + binding["restored"]
             report["entities"]["roleBindings"]["skipped"] += binding["unchanged"]
+            apply_import_phone_fields(db, user=uobj, row=t, report=report,
+                source_job_id=getattr(body.get('teachers'), 'import_job_id', None))
             # 数据范围绑定（复用 t_teacher_student_scope）
             if stype in ("CLASS", "COLLEGE", "MAJOR", "STUDENT", "ADVISOR"):
                 scope_role = role_codes[0]
@@ -537,10 +576,18 @@ def run_onboarding(user: dict, body: dict, dry_run: bool = True,
         if report["errors"] and atomic:
             raise AppException("VALIDATION_ERROR", "存在关联错误，已整批回滚（未写入任何数据）",
                                details={"errors": report["errors"]})
+        if identity_channel:
+            audit_log.record_critical_in_session(db, 'ONBOARD_IMPORT', f'tenant:{tenant_id}',
+                detail={'entities': report['entities'], 'phoneWriteSummary': report.get('phoneWriteSummary', {})},
+                tenant_id=tenant_id)
+        if before_commit is not None:
+            # Internal orchestration only; never accepted from an import DTO.
+            before_commit(db, report)
         db.commit()
 
-    audit_log.record("ONBOARD_IMPORT", f"tenant:{tenant_id}",
-                     {"entities": {k: v for k, v in report["entities"].items()}})
+    if not identity_channel:
+        audit_log.record("ONBOARD_IMPORT", f"tenant:{tenant_id}",
+                         {"entities": {k: v for k, v in report["entities"].items()}})
     return report
 
 

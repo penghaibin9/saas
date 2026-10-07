@@ -235,22 +235,19 @@ def _create_project(body, user):
     return _ORIGINALS["create_project"](body, user)
 
 
+def freeze_application_amount(db, application) -> dict:
+    """Called inside the creating transaction, before insertion and confirmation."""
+    amount, snapshot = _project_rule(db, application)
+    application.amount = amount
+    application.requested_amount = amount
+    application.approved_amount = None
+    _freeze_rule_snapshot(application, snapshot)
+    return snapshot
+
+
 def _apply(body, user):
-    # 申请端金额只可作为界面输入，不进入正式事实；旧服务收到的 amount 固定为空。
-    result = _ORIGINALS["apply"](_body_without_client_amount(body), user)
-    app_id = int(result["applicationId"])
-    with session() as db:
-        application, student = legacy._load(db, app_id)
-        amount, snapshot = _project_rule(db, application)
-        application.amount = amount
-        application.requested_amount = amount
-        application.approved_amount = None
-        _freeze_rule_snapshot(application, snapshot)
-        legacy._audit(db, application.id, "AMOUNT_RULE_FROZEN",
-                      f"project={snapshot['projectId']};version={snapshot['projectVersion']};amount={snapshot['amount']}")
-        db.commit()
-        db.refresh(application)
-        return _app_row(application, user, student)
+    # 原服务在同一事务冻结资格、金额和流程；不再先落单后另开事务补金额。
+    return _ORIGINALS["apply"](_body_without_client_amount(body), user)
 
 
 def _grant_one(db, application):

@@ -66,6 +66,8 @@ def _evaluate_domains(db, term_id, term_code, college_ids=None):
             for code, _label in _DOMAINS
         }
     results = _policy.evaluate_domains(db, term_id, term_code, college_ids)
+    if college_ids is not None:
+        return results
     schedule_operational = _operational.evaluate_schedule(db, term_id, college_ids)
     results["SCHEDULE"] = _merge_blocking_result(
         "SCHEDULE",
@@ -178,11 +180,41 @@ def _items_dto(db, batch_id):
     } for row in rows]
 
 
+def _require_read_scope(ctx):
+    if ctx.scope_type not in {"TENANT_ALL", "COLLEGE"} or (ctx.scope_type == "COLLEGE" and not ctx.college_ids):
+        from app.core.affairs_security import no_data_scope
+        raise no_data_scope("归档读取仅支持已授权学校或学院范围")
+
+
+def _scoped_batch_dto(batch, ctx, *, items=None):
+    result = _core._batch_dto(batch, items=items)
+    if ctx.scope_type == "COLLEGE":
+        result.update(items=[], missingCount=None, scopeType="COLLEGE",
+            scopeNote="学校封存材料由校教务统筹；请查看本院实时预检")
+    return result
+
+
 def get_batch(user, batch_id):
     with _core.session() as db:
-        _core._ctx(user, db)
+        ctx = _core._ctx(user, db)
+        _require_read_scope(ctx)
         batch = _core._get_batch(db, int(batch_id))
-        return _core._batch_dto(batch, items=_items_dto(db, batch.id))
+        from .academic_affairs_responsibility_service import resolve_school
+        result = _scoped_batch_dto(batch, ctx, items=_items_dto(db, batch.id) if ctx.scope_type == "TENANT_ALL" else None)
+        result["responsibility"] = resolve_school(db, permission_code="academicAffairs.archive.manage") if batch.status not in {"ARCHIVED", "CANCELLED"} else None
+        result["confirmAction"] = {"allowed": False, "reason": "仅完整性检查通过的批次可确认归档"}
+        result["correctionAction"] = {"allowed": False, "reason": "仅正式归档后可发起受控纠错"}
+        if batch.status in {"READY", "ARCHIVED"}:
+            from app.core.exceptions import AppException
+            action = "confirmAction" if batch.status == "READY" else "correctionAction"
+            try:
+                _core._require_archive_operator(db, user)
+            except AppException as error:
+                result[action]["reason"] = error.message
+            else:
+                result[action] = {"allowed": True, "reason": ""}
+        result["nextStep"] = None
+        return result
 
 
 def run_check(user, batch_id):
@@ -237,6 +269,7 @@ def precheck(user, term_id=None):
 
     with _core.session() as db:
         ctx = _core._ctx(user, db)
+        _require_read_scope(ctx)
         if term_id:
             term = db.query(AaTerm).filter(
                 AaTerm.id == int(term_id),
@@ -291,8 +324,9 @@ def precheck(user, term_id=None):
             "result": overall_result,
             "blockingCount": blocking_count,
             "blockedDomains": blocked_domains,
+            "scopeType": ctx.scope_type,
             "scopeNote": (
-                "教学任务、课表、学籍按本院范围检查；跨学院公共规则按业务归属核验"
+                "仅核验本院学生及开课业务明细；学校统筹项明确标为待学校核验，本页不能代替全校封存门禁"
                 if college_ids else None
             ),
             "domains": domains,

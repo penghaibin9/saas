@@ -4,9 +4,41 @@
 """
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from sqlalchemy import or_, select
+
 from app.services.db_service import _tid
 
 from . import academic_affairs_archive_core_service as _core
+
+
+def college_task_ids(db, college_ids, term_id=None):
+    """学院只读归档包含本院开课的学校统排公共课，不改变排课写权限。"""
+    from app.core.affairs_security import no_data_scope
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    from .academic_affairs_schedule_policy import task_scope_condition
+    allowed = {int(value) for value in college_ids}
+    if not allowed:
+        raise no_data_scope("学院归档核查缺少有效学院范围")
+    statement = select(AaTeachingTask.id).join(AaTeachingTaskBatch,
+        AaTeachingTaskBatch.id == AaTeachingTask.batch_id).join(AaCourse, AaCourse.id == AaTeachingTask.course_id).where(
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+        AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+        AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
+        or_(*(task_scope_condition(db, SimpleNamespace(college_id=cid, term_id=term_id),
+                                  include_centralized_public=True) for cid in sorted(allowed))))
+    if term_id:
+        statement = statement.where(AaTeachingTaskBatch.term_id == int(term_id))
+    return statement
+
+
+def college_schedule_batch_condition(db, college_ids, term_id):
+    from app.models import AaScheduleBatch, AaScheduleItem
+    own_items = select(AaScheduleItem.batch_id).where(
+        AaScheduleItem.tenant_id == _tid(), AaScheduleItem.is_deleted.is_(False),
+        AaScheduleItem.task_id.in_(college_task_ids(db, college_ids, term_id)))
+    return or_(AaScheduleBatch.college_id.in_(sorted(college_ids)), AaScheduleBatch.id.in_(own_items))
 
 
 def _status(value) -> str:
@@ -19,7 +51,7 @@ def schedule_gate_result(rows, voided_batch_ids=None, active_changes: int = 0):
     if not rows:
         return _core._result(0, False, "本学期没有课表批次")
 
-    published, formal_archived, voided = [], [], []
+    published, formal_archived, voided, superseded = [], [], [], []
     drafts, pre_published, unknown = [], [], []
     for row in rows:
         status = _status(getattr(row, "status", None))
@@ -30,6 +62,8 @@ def schedule_gate_result(rows, voided_batch_ids=None, active_changes: int = 0):
             (voided if row_id in voided_ids else formal_archived).append(row)
         elif status == "VOIDED":
             voided.append(row)
+        elif status == "SUPERSEDED":
+            superseded.append(row)
         elif status == "DRAFT":
             drafts.append(row)
         elif status == "PRE_PUBLISHED":
@@ -59,10 +93,13 @@ def schedule_gate_result(rows, voided_batch_ids=None, active_changes: int = 0):
             remark += f"；另有历史草稿 {len(drafts)} 个，因已有正式版本不单独阻断"
         if voided and formal:
             remark += f"；另有作废批次 {len(voided)} 个，已有替代正式版本"
+        if superseded and formal:
+            remark += f"；另有被替代批次 {len(superseded)} 个，保留审计但不再阻断"
     else:
         remark = (
             f"正式发布 {len(published)} 个、正式归档 {len(formal_archived)} 个；"
-            f"历史草稿 {len(drafts)} 个、作废批次 {len(voided)} 个不覆盖正式版本"
+            f"历史草稿 {len(drafts)} 个、作废批次 {len(voided)} 个、"
+            f"被替代批次 {len(superseded)} 个不覆盖正式版本"
         )
     return _core._result(len(rows), not blockers, remark)
 
@@ -76,8 +113,8 @@ def evaluate_schedule(db, term_id, college_ids=None):
     )
     if term_id:
         query = query.filter(AaScheduleBatch.term_id == int(term_id))
-    if college_ids:
-        query = query.filter(AaScheduleBatch.college_id.in_(list(college_ids)))
+    if college_ids is not None:
+        query = query.filter(college_schedule_batch_condition(db, college_ids, term_id))
     rows = query.all()
     batch_ids = [int(row.id) for row in rows]
     voided_ids = {
@@ -98,6 +135,8 @@ def evaluate_schedule(db, term_id, college_ids=None):
     )
     if term_id:
         changes = changes.filter(AaScheduleChange.term_id == int(term_id))
+    if college_ids is not None:
+        changes = changes.filter(AaScheduleChange.task_id.in_(college_task_ids(db, college_ids, term_id)))
     return schedule_gate_result(rows, voided_ids, int(changes.count() or 0))
 
 
@@ -137,7 +176,7 @@ def exam_gate_result(
     )
 
 
-def evaluate_exam(db, term_id):
+def evaluate_exam(db, term_id, college_ids=None):
     from app.models import (
         AaDeferredExam,
         AaExamBatch,
@@ -152,17 +191,30 @@ def evaluate_exam(db, term_id):
     )
     if term_id:
         query = query.filter(AaExamBatch.term_id == int(term_id))
+    if college_ids is not None:
+        import importlib
+        exam = importlib.import_module("app.modules.academic_affairs.services.academic_affairs_exam_service")
+        own_courses = select(AaExamCourse.batch_id).where(
+            AaExamCourse.tenant_id == _tid(), AaExamCourse.is_deleted.is_(False),
+            AaExamCourse.status != "REMOVED", exam._course_offering_college_expression().in_(college_ids))
+        query = query.filter(AaExamBatch.id.in_(own_courses))
     batches = query.all()
     batch_ids = [int(row.id) for row in batches]
     if not batch_ids:
+        if college_ids is not None:
+            from .academic_affairs_archive_domain_policy import college_school_result
+            return college_school_result("EXAM", 0, 0, "", "未发现本院可归属考务明细，批次启用与封存由学校核验")
         return exam_gate_result([])
 
-    courses = db.query(AaExamCourse).filter(
+    course_query = db.query(AaExamCourse).filter(
         AaExamCourse.tenant_id == _tid(),
         AaExamCourse.batch_id.in_(batch_ids),
         AaExamCourse.status != "REMOVED",
         AaExamCourse.is_deleted.is_(False),
-    ).all()
+    )
+    if college_ids is not None:
+        course_query = course_query.filter(exam._course_offering_college_expression().in_(college_ids))
+    courses = course_query.all()
     course_ids = [int(row.id) for row in courses]
     pending_courses = sum(1 for row in courses if _status(row.status) == "PENDING_CONFIRM")
     not_started = active_defers = unresolved = 0
@@ -193,7 +245,7 @@ def evaluate_exam(db, term_id):
             if str(getattr(incident, "discipline_case_ref", None) or "").strip():
                 continue
             unresolved += 1
-    return exam_gate_result(
+    result = exam_gate_result(
         batches,
         active_defers=int(active_defers or 0),
         pending_courses=pending_courses,
@@ -201,3 +253,10 @@ def evaluate_exam(db, term_id):
         unresolved_incidents=unresolved,
         active_course_count=len(courses),
     )
+    if college_ids is not None:
+        # 学院按本院课程/考生/异常补齐；整批结束由学校负责，不能把别院批次状态当本院缺项。
+        from .academic_affairs_archive_domain_policy import college_school_result
+        local_blockers = int(active_defers or 0) + pending_courses + int(not_started or 0) + unresolved
+        return college_school_result("EXAM", len(courses), local_blockers,
+            "本院考务仍有待确认课程、到考登记、缓考或异常未闭环", "考务批次结束与封存由学校统筹")
+    return result

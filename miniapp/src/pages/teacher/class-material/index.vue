@@ -59,6 +59,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 
@@ -92,7 +93,7 @@ export default {
         this.classes = (d && d.list) || []
         this.state = 'ready'
         if (this.classes.length) return this.loadMaterials()
-      }).catch(() => { this.state = 'error' }).finally(() => { if (done) done() })
+      }).catch((error) => { this.state = normalizeError(error).pageState || 'error' }).finally(() => { if (done) done() })
     },
     onClass(e) { this.classIndex = Number(e.detail.value); this.showAdd = false; this.loadMaterials() },
     loadMaterials() {

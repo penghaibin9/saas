@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "V6.0",
+  "status": "PASS",
+  "controlDocument": "四端大型业务模块惊艳体验AI高成功率施工标准母版暨学工中心终版-V6.0-20260830.md",
+  "sourceMain": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "mergeBase": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "branch": "codex/student-affairs-delight-20260830",
+  "productExactHead": "e6438ddf8dfcf2f71129fe54b46a1fbdd5e831ac",
+  "reality": {
+    "frontend": "Vue PC",
+    "studentPortal": "Vue student PC",
+    "miniapp": "uni-app teacher/student H5 + Weixin",
+    "backend": "FastAPI + SQLAlchemy",
+    "database": "real MySQL",
+    "ci": "GitHub Actions read-only; branch intentionally unpushed"
+  },
+  "constraints": {
+    "mainMerged": false,
+    "noSkipOrXfail": true,
+    "noPermissionRelaxation": true,
+    "noMockAsAcceptance": true,
+    "latestMainBase": true
+  }
+}

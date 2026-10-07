@@ -43,6 +43,8 @@ export async function guard(to, from, next) {
   }
   // 已完成强制改密后禁止继续停留在恢复页。
   if (forceRoute) return next({ name: 'home' })
+  // SELF authentication security remains available without a business-module subscription.
+  if (to.name === 'account-security') return next()
 
   const cfg = usePortalConfigStore()
   if (!cfg.loaded) {

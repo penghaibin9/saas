@@ -11,6 +11,24 @@ const graduationRoutes = {
       meta: { moduleCode: 'GRADUATION', title: '毕业设计中心', requiresAuth: true, permissionKey: 'graduationDesign.dashboard.view' }
     },
     {
+      path: 'my-work',
+      name: 'graduation-teacher-workbench',
+      component: () => import('@/modules/graduation/views/TeacherWorkbenchView.vue'),
+      meta: { moduleCode: 'GRADUATION', title: '我的毕设工作', requiresAuth: true, permissionKey: 'graduationDesign.dashboard.view' }
+    },
+    {
+      path: 'setup',
+      name: 'graduation-setup',
+      component: () => import('@/modules/graduation/views/GraduationSetupView.vue'),
+      meta: { moduleCode: 'GRADUATION', title: '开工检查', requiresAuth: true, permissionKey: 'graduationDesign.student.manage' }
+    },
+    {
+      path: 'midterm-by-mentor',
+      name: 'graduation-midterm-by-mentor',
+      component: () => import('@/modules/graduation/views/GraduationMidtermByMentorView.vue'),
+      meta: { moduleCode: 'GRADUATION', title: '中期检查（按导师看）', requiresAuth: true, permissionKey: 'graduationDesign.midterm.review' }
+    },
+    {
       path: 'students/create',
       name: 'graduation-student-create',
       component: () => import('@/modules/graduation/views/GraduationStudentFormView.vue'),
@@ -113,6 +131,8 @@ const graduationRoutes = {
       meta: { moduleCode: 'GRADUATION', title: '答辩与成绩兼容入口', requiresAuth: true, permissionKey: 'graduationDesign.dashboard.view' }
     },
     { path: 'plagiarism-ledger', name: 'graduation-plagiarism-ledger', component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'), meta: { moduleCode: 'GRADUATION', title: '查重台账', defaultPanel: 'plagiarism', requiresAuth: true, permissionKey: 'graduationDesign.plagiarism.view' } },
+    { path: 'material-rules', name: 'graduation-material-rules', component: () => import('@/modules/graduation/views/GraduationMaterialRuleView.vue'), meta: { moduleCode: 'GRADUATION', title: '材料规则', requiresAuth: true, permissionKey: 'graduationDesign.student.manage' } },
+    { path: 'advisor-score', name: 'graduation-advisor-score', component: () => import('@/modules/graduation/views/GraduationAdvisorScoreView.vue'), meta: { moduleCode: 'GRADUATION', title: '导师评分', requiresAuth: true, permissionKey: 'graduationDesign.grade.advisorScore' } },
     { path: 'review-assign', name: 'graduation-review-assign', component: () => import('@/modules/graduation/views/GraduationReviewAssignView.vue'), meta: { moduleCode: 'GRADUATION', title: '正式评阅分配', requiresAuth: true, permissionKey: 'graduationDesign.review.assign' } },
     { path: 'review-tasks', name: 'graduation-review-tasks', component: () => import('@/modules/graduation/views/GraduationReviewCenterView.vue'), meta: { moduleCode: 'GRADUATION', title: '统一评阅中心', requiresAuth: true, permissionKey: 'graduationDesign.review.view' } },
     { path: 'defense-scoring', name: 'graduation-defense-scoring', component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'), meta: { moduleCode: 'GRADUATION', title: '答辩评分', defaultPanel: 'defense', requiresAuth: true, permissionKey: 'graduationDesign.defense.score' } },

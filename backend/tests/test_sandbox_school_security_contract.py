@@ -52,6 +52,31 @@ def test_standard_20k_public_credentials_fail_closed(monkeypatch):
         credentials.public_account_password_hashes()
 
 
+def test_fixed_demo_credentials_need_exact_production_tenant_ack(monkeypatch):
+    from app.services import sandbox_school_credentials as credentials
+
+    monkeypatch.setattr(credentials, "hash_password", lambda value: f"HASH:{value}")
+    monkeypatch.setenv("APP_ENV", "production")
+    monkeypatch.setenv("DEPLOYMENT_MODE", "production")
+    monkeypatch.setenv("SANDBOX_ALLOW_FIXED_DEMO_CREDENTIALS", "1")
+    monkeypatch.setenv("SANDBOX_ADMIN2_PASSWORD", "demo0001")
+    monkeypatch.setenv("SANDBOX_TEACHER2_PASSWORD", "demo0001")
+    monkeypatch.setenv("SANDBOX_STUDENT2_PASSWORD", "demo0002")
+    monkeypatch.delenv("SANDBOX_FIXED_DEMO_CREDENTIALS_PRODUCTION_ACK", raising=False)
+
+    with pytest.raises(RuntimeError, match="至少需要 12 个字符"):
+        credentials.public_account_password_hashes()
+
+    monkeypatch.setenv(
+        "SANDBOX_FIXED_DEMO_CREDENTIALS_PRODUCTION_ACK", "1000000000000000007"
+    )
+    assert credentials.public_account_password_hashes() == {
+        "admin2": "HASH:demo0001",
+        "teacher2": "HASH:demo0001",
+        "student2": "HASH:demo0002",
+    }
+
+
 def test_story_reset_is_tenant_scoped_and_transaction_owned_by_route():
     service = _text("backend/app/services/sandbox_school_story_reset.py")
     route = _text("backend/app/api/v1/sandbox_story_api.py")

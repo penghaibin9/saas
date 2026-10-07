@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
@@ -44,8 +44,9 @@ def archive_batch_create(body: ArchiveBatchBody, user=Depends(require_permission
 
 @router.get("/archive/batches", summary="归档批次列表")
 def archive_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+                    termId: int | None = Query(None, gt=0),
                     user=Depends(require_permission(_ARCHIVE_VIEW))):
-    items, total = archive_svc.list_batches(user, status, page, pageSize)
+    items, total = archive_svc.list_batches(user, status, page, pageSize, term_id=termId)
     return success(paginate(items, total, page, pageSize))
 
 

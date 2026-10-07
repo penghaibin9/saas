@@ -53,7 +53,7 @@ test('A03-11 canonical APPROVED context is final even while campaign is still op
   assert.doesNotMatch(selectionConclusion(context), /可继续调整/)
 })
 
-test('A03 production seal makes context reads latest-wins and authority failures browse-only', () => {
+test('A03 production seal makes context reads latest-wins and authority failures remain rejected', () => {
   const unavailable = normalizeRecruitmentContext({
     campaignStatus: 'UNAVAILABLE',
     phaseLabel: '招聘季信息暂不可用',
@@ -64,6 +64,6 @@ test('A03 production seal makes context reads latest-wins and authority failures
   assert.match(selectionConclusion(unavailable), /暂时无法读取学校招聘季信息/)
   assert.match(apiSource, /function latestRead\(/)
   assert.match(apiSource, /context\(\) \{ return latestRead\('context'/)
-  assert.match(apiSource, /canSelect: false/)
-  assert.match(apiSource, /selectionBlockReason/)
+  assert.doesNotMatch(apiSource, /function unavailableContext/)
+  assert.match(apiSource, /throw error/)
 })

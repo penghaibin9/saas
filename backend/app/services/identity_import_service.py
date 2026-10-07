@@ -33,7 +33,7 @@ def preview_identity_import(user: dict, body: dict, *, pre_errors: list[dict] | 
     return report
 
 
-def run_identity_import(user: dict, body: dict, *, dry_run: bool) -> dict:
+def run_identity_import(user: dict, body: dict, *, dry_run: bool, before_commit=None) -> dict:
     if not dry_run and not school_onboarding_service.db_enabled():
         raise AppException("SERVER_ERROR", "数据库未启用，禁止确认创建师生账号")
     source = _expand_staging_if_needed(body or {})
@@ -49,4 +49,4 @@ def run_identity_import(user: dict, body: dict, *, dry_run: bool) -> dict:
         raise AppException("VALIDATION_ERROR", "请至少导入一名老师或学生")
     payload["atomic"] = True
     return school_onboarding_service.run_onboarding(
-        user, payload, dry_run=dry_run, identity_channel=True)
+        user, payload, dry_run=dry_run, identity_channel=True, before_commit=before_commit)

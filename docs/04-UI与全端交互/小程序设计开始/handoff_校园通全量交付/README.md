@@ -50,12 +50,12 @@
 | 设计文件 · 屏 | 角色 | 代码路径 | 一句话开发提示词 |
 | --- | --- | --- | --- |
 | 二级页方向 · 实习周报 | 学生 | 现有 `pages/student/weekly-report/index.vue` | 顶部周次切换；当前周为可填表单（工作内容/收获/问题/工时+存草稿/提交），历史周只读+导师批阅。 |
-| 二级页方向 · 实习打卡 | 学生 | 新建 `pages/student/internship/checkin` | 定位地图卡+大圆形打卡按钮（点击采集定位签到，成功变绿显示时间）+本周打卡记录（正常/迟到/缺卡）。 |
+| 二级页方向 · 实习打卡 | 学生 | 新建 `pages/student-internship/checkin` | 定位地图卡+大圆形打卡按钮（点击采集定位签到，成功变绿显示时间）+本周打卡记录（正常/迟到/缺卡）。 |
 | 二级页方向 · 教师待审批 | 教师 | 现有 `pages/teacher/approval/index.vue` | 审批卡：学生信息+字段+审批流时间轴+退回/驳回/通过，操作后即时切换结果态。 |
-| 三级模块二级页 · 申请与协议 | 学生 | 新建 `pages/student/internship/agreement` | 三方协议进度时间线+协议文件下载+实习保险状态三张卡。 |
+| 三级模块二级页 · 申请与协议 | 学生 | 新建 `pages/student-internship/agreement` | 三方协议进度时间线+协议文件下载+实习保险状态三张卡。 |
 | 三级模块二级页 · 指导巡访 | 教师 | 现有 `pages/teacher/internship-review` 扩展 | 本月巡访计划学生列表，每人「记录巡访」按钮点击后置为已巡访。 |
 | 三级模块二级页 · 就业跟进 | 教师 | 现有 `pages/teacher/employment-follow/index.vue` | 就业统计KPI+未就业/跟进中/待核验/已落实Tab+学生列表带跟进动作。 |
-| 入口补齐 · 企业岗位库 | 学生 | 新建 `pages/student/internship/enterprises` | 城市筛选chip+企业岗位卡列表（公司/岗位/薪资/城市/招聘人数）。 |
+| 入口补齐 · 企业岗位库 | 学生 | 新建 `pages/student-internship/enterprises` | 城市筛选chip+企业岗位卡列表（公司/岗位/薪资/城市/招聘人数）。 |
 
 ### 2.4 毕业设计中心
 

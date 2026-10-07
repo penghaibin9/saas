@@ -1,23 +1,22 @@
 <template>
   <ModulePageShell
-    title="申请与协议"
+    class="atl" title="协议模板库"
     :subtitle="pageSubtitle"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppExportButton :export-fn="exportFn" @exported="onExported">⬇ 导出 Excel 台账</AppExportButton>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
+      <AppExportButton :export-fn="exportFn" @exported="onExported">导出台账</AppExportButton>
+      <AppButton variant="ghost" @click="backToAgreements">返回三方协议</AppButton>
     </template>
 
-    <div class="mp-stack">
+    <section class="atl-list" aria-label="协议模板列表">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无协议模板" description="可「＋ 新建模板」创建实习三方协议 / 安全责任书等模板" />
+      <EmptyState v-else-if="!rows.length" title="暂无协议模板" description="调整筛选条件，或新建适用的协议模板。"><template #actions><AppButton variant="primary" @click="openCreate">新建模板</AppButton></template></EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-name="{ row }">
-          <div class="mp-cell-main">{{ row.name }}<span v-if="row.isDefault" class="at-default">默认</span></div>
+          <div class="mp-cell-main"><RouterLink class="atl-name" :to="detailLocation(row)">{{ row.name }}</RouterLink><span v-if="row.isDefault" class="at-default">默认</span></div>
           <div class="mp-cell-sub">{{ row.category || '未分类' }} · {{ row.version }}</div>
         </template>
         <template #cell-scope="{ row }">
@@ -27,24 +26,11 @@
           <AppStatusTag :type="row.statusTone" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="openDetail(row)">详情</button>
+          <button class="mp-link" @click="openDetail(row)">查看与配置</button>
           <button v-if="row.status !== 'ARCHIVED'" class="mp-link" style="margin-left: var(--space-2)" @click="openEdit(row)">编辑</button>
-          <button v-if="['DRAFT', 'DISABLED'].includes(row.status)" class="mp-link" style="margin-left: var(--space-2)" @click="askStatus(row, 'ENABLE')">启用</button>
-          <button v-else-if="row.status === 'ENABLED'" class="mp-link" style="margin-left: var(--space-2)" @click="askStatus(row, 'DISABLE')">停用</button>
-          <button v-if="row.status === 'ENABLED' && !row.isDefault" class="mp-link" style="margin-left: var(--space-2)" @click="askDefault(row, true)">设默认</button>
-          <button v-if="row.isDefault" class="mp-link" style="margin-left: var(--space-2)" @click="askDefault(row, false)">取消默认</button>
-          <button v-if="row.status !== 'ARCHIVED'" class="mp-link mp-link--danger" style="margin-left: var(--space-2)" @click="askStatus(row, 'ARCHIVE')">归档</button>
         </template>
       </DataTable>
-    </div>
-
-    <!-- 新建/编辑/详情已升级为独立页：/agreement-templates/new、/agreement-templates/:id/edit、/agreement-templates/:id -->
-
-    <AppConfirmDialog
-      v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
-      :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
-      :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm"
-    />
+    </section>
   </ModulePageShell>
 </template>
 
@@ -56,9 +42,9 @@
  */
 import { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag, AppExportButton } from '@/components/common'
-import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { agreementTemplateApi } from '@/modules/internship/api/agreement-template.api'
 import { toast } from '@/utils/toast'
+import { AppButton } from '@/components/ui'
 
 const STATUS_OPTS = [
   { value: 'DRAFT', label: '草稿' },
@@ -71,18 +57,17 @@ const EMPTY_FILTERS = () => ({ keyword: '', status: '', category: '' })
 
 export default {
   name: 'InternshipAgreementTemplateListView',
-  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
+  components: { ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, LoadingState, ErrorState, EmptyState, AppButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', submitting: false,
+      loading: true, error: '', loadTicket: 0, appliedFilters: EMPTY_FILTERS(),
       rows: [], total: 0, page: 1, pageSize: 10, filters: EMPTY_FILTERS(),
-      confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, row: null },
       columns: [
         { key: 'name', title: '模板 / 类型·版本' },
         { key: 'scope', title: '适用范围' },
         { key: 'status', title: '状态' },
-        { key: 'actions', title: '操作', width: '280px' }
+        { key: 'actions', title: '操作', width: '150px' }
       ]
     }
   },
@@ -95,63 +80,54 @@ export default {
       ]
     },
     toolbarActions() {
-      return [{ key: 'create', label: '＋ 新建模板', variant: 'primary' }]
+      return [{ key: 'create', label: '新建模板', variant: 'primary' }]
     },
     pageSubtitle() {
-      return `共 ${this.total} 个协议模板 · 支持适用范围 / 版本 / 默认模板 / 变量占位`
+      return '管理协议正文与适用范围，启用后供生成协议时选用。'
     }
   },
-  created() {
+  watch: { '$route.fullPath': { immediate: true, handler() {
+    const q = this.$route.query
+    this.filters = { keyword: String(q.templateKeyword || ''), status: String(q.templateStatus || ''), category: String(q.templateCategory || '') }
+    this.appliedFilters = { ...this.filters }
+    const page = Number(q.templatePage); this.page = Number.isSafeInteger(page) && page > 0 ? page : 1
     this.load()
-  },
+  } } },
+  beforeUnmount() { this.loadTicket++ },
   methods: {
+    templateQuery(filters = this.appliedFilters) { return { ...this.$route.query, templateKeyword: filters.keyword || undefined, templateStatus: filters.status || undefined, templateCategory: filters.category || undefined, templatePage: this.page > 1 ? this.page : undefined } },
+    backToAgreements() { const query = { ...this.$route.query }; for (const key of Object.keys(query)) if (key.startsWith('template')) delete query[key]; this.$router.push({ path: '/admin/internship/agreements', query }) },
+    updateLocation(filters = this.appliedFilters) { const to = { path: this.$route.path, query: this.templateQuery(filters) }; if (this.$router.resolve(to).fullPath === this.$route.fullPath) this.load(); else this.$router.replace(to) },
     async load() {
+      const ticket = ++this.loadTicket
       this.loading = true; this.error = ''
-      const p = { ...this.filters, page: this.page, pageSize: this.pageSize }
-      const res = await agreementTemplateApi.getTemplates(p)
-      if (res.code === 0) { this.rows = res.data.list; this.total = res.data.total } else this.error = res.message
-      this.loading = false
+      try {
+        const res = await agreementTemplateApi.getTemplates({ ...this.appliedFilters, page: this.page, pageSize: this.pageSize })
+        if (ticket !== this.loadTicket) return
+        if (res.code !== 0) throw new Error(res.message || '模板加载失败，请重试')
+        this.rows = res.data.list; this.total = res.data.total
+      } catch (error) {
+        if (ticket === this.loadTicket) { this.error = error.message || '模板加载失败，请重试'; this.rows = []; this.total = 0 }
+      } finally { if (ticket === this.loadTicket) this.loading = false }
     },
-    search() { this.page = 1; this.load() },
-    reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.load() },
-    turnPage(p) { this.page = p; this.load() },
-    exportFn() { return agreementTemplateApi.exportTemplates({ ...this.filters }) },
+    search() { this.page = 1; this.updateLocation({ ...this.filters, keyword: this.filters.keyword.trim() }) },
+    reset() { this.filters = EMPTY_FILTERS(); this.page = 1; this.updateLocation(this.filters) },
+    turnPage(p) { this.page = p; this.updateLocation() },
+    exportFn() { return agreementTemplateApi.exportTemplates({ ...this.appliedFilters }) },
     onExported(data) { toast.success(`已导出 ${data.rowCount} 个模板（已写审计）`) },
     onToolbar(key) {
       if (key === 'create') this.openCreate()
     },
     openCreate() {
-      this.$router.push('/admin/internship/agreement-templates/new')
+      this.$router.push({ path: '/admin/internship/agreement-templates/new', query: this.templateQuery() })
     },
     openEdit(row) {
-      this.$router.push(`/admin/internship/agreement-templates/${row.id}/edit`)
+      this.$router.push({ path: `/admin/internship/agreement-templates/${row.id}/edit`, query: this.templateQuery() })
     },
     openDetail(row) {
-      this.$router.push(`/admin/internship/agreement-templates/${row.id}`)
+      this.$router.push(this.detailLocation(row))
     },
-    askStatus(row, action) {
-      const map = {
-        ENABLE: { t: '启用模板', c: '确认启用', type: 'primary', reason: false },
-        DISABLE: { t: '停用模板', c: '确认停用', type: 'warning', reason: false },
-        ARCHIVE: { t: '归档模板', c: '确认归档', type: 'danger', reason: true }
-      }
-      const m = map[action]
-      this.confirm = { visible: true, title: m.t, message: `确认对「${row.name}」执行「${m.t}」？${action === 'ARCHIVE' ? '（归档后不可编辑、不可再启用）' : ''}`, type: m.type, confirmText: m.c, requireReason: m.reason, reasonLabel: '原因', action: 'STATUS_' + action, row }
-    },
-    askDefault(row, on) {
-      this.confirm = { visible: true, title: on ? '设为默认模板' : '取消默认', message: on ? `确认将「${row.name}」设为该类型默认协议模板？（同类型原默认会被替换）` : `确认取消「${row.name}」的默认标记？`, type: 'primary', confirmText: '确认', requireReason: false, action: on ? 'DEFAULT_ON' : 'DEFAULT_OFF', row }
-    },
-    async onConfirm({ reason } = {}) {
-      const { action, row } = this.confirm
-      this.submitting = true
-      try {
-        let res
-        if (action.startsWith('STATUS_')) res = await agreementTemplateApi.setStatus(row.id, { action: action.slice(7), reason: reason || '' })
-        else if (action === 'DEFAULT_ON') res = await agreementTemplateApi.setDefault(row.id, true)
-        else if (action === 'DEFAULT_OFF') res = await agreementTemplateApi.setDefault(row.id, false)
-        if (res && res.code === 0) { toast.success('已更新并写入留痕'); this.confirm.visible = false; this.load() } else if (res) toast.error(res.message)
-      } finally { this.submitting = false }
-    }
+    detailLocation(row) { return { path: `/admin/internship/agreement-templates/${row.id}`, query: this.templateQuery() } }
   }
 }
 </script>
@@ -160,4 +136,10 @@ export default {
 @import '@/styles/module-page.css';
 .at-default { margin-left: var(--space-2); font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--success-50, #ecfdf5); color: var(--success, #16a34a); }
 .mp-link--danger { color: var(--danger, #dc2626); }
+.atl-list { min-width: 0; background: var(--card); border: 1px solid var(--card-b); border-radius: 8px; overflow: hidden; }
+.atl-list :deep(.af), .atl-list :deep(.dt) { border: 0; box-shadow: none; border-radius: 0; margin: 0; }
+.atl-list :deep(.dt__table) { min-width: 720px; }
+.atl-name { color: var(--t1); text-decoration: none; }
+.atl-name:hover { color: var(--pri); text-decoration: underline; }
+.atl :deep(.dt__td) { padding-top: 16px; padding-bottom: 16px; }.atl :deep(.dt__td:last-child) { line-height: 2.4; }.atl :deep(.mp-cell-main) { font-weight: 600; }.atl :deep(.mp-cell-sub) { margin-top: 5px; line-height: 1.6; }
 </style>

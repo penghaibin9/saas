@@ -59,7 +59,7 @@ test('student portal F5 restores only auth me through HttpOnly refresh cookie', 
 
   assert.match(
     text,
-    /if \(auth && !_retried && path === '\/auth\/me' && !getToken\(\)\) \{\s*await refreshOnce\(\)\s*return request\(path, \{ method, body, auth, params, query, _retried: true \}\)/
+    /if \(auth && !_retried && path === '\/auth\/me' && !getToken\(\)\) \{\s*await refreshOnce\(\)\s*return request\(path, \{ method, body, auth, params, query, _retried: true, headers: extraHeaders, noAuthRetry \}\)/
   )
   assert.match(text, /if \(auth && !_retried && !path\.startsWith\('\/auth\/'\)\) \{/)
   assert.doesNotMatch(text, /path === '\/auth\/login' && !getToken\(\)[\s\S]*?await refreshOnce\(\)/)

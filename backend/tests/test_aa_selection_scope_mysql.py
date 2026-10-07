@@ -310,3 +310,74 @@ def test_college_scope_without_config_fails_closed(db_mode, monkeypatch):
         read.list_courses({}, ids["batch"], 1, 50)
     assert exc.value.code == "NO_DATA_SCOPE"
     assert exc.value.http_status == 403
+
+
+@pytest.mark.parametrize("scope_case", ["college_own", "college_other", "college_empty", "teacher_own", "teacher_other", "tenant_all", "unknown"])
+def test_public_round_list_enforces_the_installed_selection_scope(db_mode, monkeypatch, scope_case):
+    import importlib
+
+    from app.db.session import get_sessionmaker
+    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRound, AaTeachingTask
+    from app.modules.academic_affairs.services import academic_affairs_selection_round_service as rounds
+
+    ids = _seed_mixed_batch(db_mode)
+    db = get_sessionmaker()()
+    try:
+        original = db.get(AaSelectionBatch, ids["batch"])
+        other_offer = db.get(AaSelectionCourse, ids["mech_offer"])
+        other_task = db.get(AaTeachingTask, other_offer.teaching_task_id)
+        other_class_id = int(other_task.class_id)
+        other_batch = AaSelectionBatch(
+            tenant_id=TID, term_id=original.term_id, batch_name="D6外院独占轮次批次", status="OPEN",
+        )
+        db.add(other_batch)
+        db.flush()
+        db.add(AaSelectionCourse(
+            tenant_id=TID, batch_id=other_batch.id, course_id=other_offer.course_id,
+            teaching_task_id=other_offer.teaching_task_id, course_name=other_offer.course_name,
+            capacity=50, min_capacity=1, selected_count=0, status="OPEN",
+        ))
+        own_round = AaSelectionRound(
+            tenant_id=TID, batch_id=ids["batch"], round_no=1, round_name="D6混合批次轮次", status="OPEN",
+        )
+        other_round = AaSelectionRound(
+            tenant_id=TID, batch_id=other_batch.id, round_no=1, round_name="D6外院轮次", status="OPEN",
+        )
+        db.add_all([own_round, other_round])
+        db.flush()
+        other_batch_id = int(other_batch.id)
+        expected_round_id = int(own_round.id)
+        db.commit()
+    finally:
+        db.close()
+
+    if scope_case == "tenant_all":
+        ctx = _ctx("TENANT_ALL")
+    elif scope_case == "college_empty":
+        ctx = _ctx("COLLEGE")
+    elif scope_case == "unknown":
+        ctx = _ctx("NONE")
+    else:
+        ctx = _ctx("COLLEGE", class_ids=[ids["soft_class"]], college_ids=[ids["soft_college"]])
+        if scope_case.startswith("teacher_"):
+            # A coincidental class grant must not make another teacher's batch visible.
+            ctx = _ctx("COLLEGE", class_ids=[ids["soft_class"], other_class_id])
+            ctx.role_codes = {"ACADEMIC_TEACHER"}
+            ctx.user_id = "d6_soft_teacher"
+            ctx.login_name = "d6_soft_teacher"
+    _install_ctx(monkeypatch, ctx)
+    round_core = importlib.import_module(
+        "app.modules.academic_affairs.services.academic_affairs_selection_round_core_service"
+    )
+    monkeypatch.setattr(round_core, "_tid", lambda: TID)
+    monkeypatch.setattr(round_core, "_ctx", lambda _user, _db: ctx)
+    batch_id = other_batch_id if scope_case.endswith("_other") else ids["batch"]
+    if scope_case in {"college_other", "college_empty", "teacher_other", "unknown"}:
+        with pytest.raises(AppException) as exc:
+            rounds.list_rounds({}, batch_id)
+        assert exc.value.code == "NO_DATA_SCOPE"
+        assert exc.value.http_status == 403
+    else:
+        result = rounds.list_rounds({}, batch_id)
+        assert [int(row["roundId"]) for row in result] == [expected_round_id]
+        assert all(int(row["batchId"]) == batch_id for row in result)

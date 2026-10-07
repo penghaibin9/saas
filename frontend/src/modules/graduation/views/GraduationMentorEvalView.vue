@@ -27,13 +27,14 @@
       </ul>
     </template>
     <template v-if="mentor" #footer>
-      <button type="button" class="mp-btn" @click="$router.push(backTo)">返回</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">提交评价</button>
+      <AppButton @click="$router.push(backTo)">返回</AppButton>
+      <AppButton variant="primary" :disabled="submitting" @click="submit">提交评价</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { graduationMentorApi } from '@/modules/graduation/api/graduation-mentor.api'
@@ -42,7 +43,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMentorEvalView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, EmptyState, AppSelect },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, EmptyState, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

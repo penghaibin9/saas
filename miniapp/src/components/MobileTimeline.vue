@@ -31,7 +31,7 @@
  * node: { id, title, status, desc, time, deadline, current }
  */
 import MobileStatusTag from './MobileStatusTag.vue'
-const DONE = ['COMPLETED', 'APPROVED', 'PUBLISHED', 'ARCHIVED']
+const DONE = ['COMPLETED', 'APPROVED', 'PUBLISHED', 'ARCHIVED', 'DONE', 'WAIVED', 'NOT_REQUIRED']
 export default {
   name: 'MobileTimeline',
   components: { MobileStatusTag },

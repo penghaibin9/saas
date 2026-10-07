@@ -6,7 +6,7 @@ import inspect
 
 import pytest
 
-from app.core.context import set_current_user, set_tenant
+from app.core.context import get_tenant, set_current_user, set_tenant
 from app.core.exceptions import AppException
 from app.db.session import get_sessionmaker
 from app.services import tenant_effective_state_service as tenant_state
@@ -96,6 +96,70 @@ def test_expired_policy_runs_maintenance_but_not_business(monkeypatch):
     )
     assert business == []
     assert maintenance == [9002]
+
+
+def test_archive_package_job_uses_business_write_tenant_gate(monkeypatch):
+    from app.services import affairs_archive_service as archive
+    from scripts import run_scheduled_jobs as scheduler
+
+    monkeypatch.setattr(scheduler, "_candidate_tenant_ids", lambda: [9001, 9002])
+    monkeypatch.setattr(tenant_state, "background_execution_policy", lambda tenant_id: {
+        "effectiveStatus": "active" if tenant_id == 9001 else "expired",
+        "businessWriteAllowed": tenant_id == 9001,
+        "maintenanceAllowed": True,
+        "authSecurityAllowed": True,
+        "reason": "TENANT_ACTIVE_WRITABLE" if tenant_id == 9001 else "TENANT_EXPIRED_READONLY",
+    })
+    called = []
+    monkeypatch.setattr(archive, "run_pending_packages", lambda *, limit: called.append(
+        (get_tenant()["tenantId"], limit)
+    ))
+
+    scheduler.job_archive_packages()
+
+    assert called == [("9001", 2)]
+    assert get_tenant() is None
+
+
+def test_daily_scheduler_selects_delivery_and_archive_packages_without_other_jobs(monkeypatch):
+    import sys
+    from pathlib import Path
+    from app.services import module_commerce_background_guard
+    from scripts import run_scheduled_jobs as scheduler
+
+    class EndOfTick(Exception):
+        pass
+
+    called = []
+    job_names = {
+        "delivery": "job_delivery_and_outbox",
+        "archive_packages": "job_archive_packages",
+        "student_affairs": "job_student_affairs_background",
+        "file_derivatives": "job_file_derivatives",
+        "academic_effective": "job_academic_future_effective",
+        "grade_deadline": "job_grade_deadline",
+        "scheduled_messages": "job_scheduled_messages",
+        "expire_nudge": "job_expire_and_nudge",
+        "leave_overdue": "job_leave_overdue",
+        "risk_timeout": "job_risk_timeout",
+        "counselor_temp": "job_counselor_temp_expire",
+        "stats": "job_stats_reconcile",
+    }
+    for group, function_name in job_names.items():
+        monkeypatch.setattr(scheduler, function_name, lambda group=group: called.append(group))
+    monkeypatch.setattr(scheduler, "cleanup_import_batches", lambda: called.append("cleanup"))
+    monkeypatch.setattr(module_commerce_background_guard, "install", lambda: None)
+    monkeypatch.setattr(scheduler, "db_enabled", lambda: True)
+    monkeypatch.setattr(scheduler.time, "sleep", lambda _seconds: (_ for _ in ()).throw(EndOfTick))
+    monkeypatch.setattr(sys, "argv", ["run_scheduled_jobs", "--only", "delivery", "--only", "archive_packages"])
+
+    with pytest.raises(EndOfTick):
+        scheduler.main()
+
+    assert called == ["delivery", "archive_packages"]
+    root = Path(__file__).resolve().parents[2]
+    launcher = (root / "scripts" / "dev" / "start-sandbox.ps1").read_text(encoding="utf-8")
+    assert "$SchedulerArgs = '-m scripts.run_scheduled_jobs --only delivery --only archive_packages'" in launcher
 
 
 def _set_tenant_meta(tenant_id: int, status: str, *, expire_at: str | None = None) -> None:
