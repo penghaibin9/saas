@@ -173,4 +173,5 @@ def test_teacher_pc_admin_grade_supplement_uses_identity_endpoint_and_required_c
     assert "/academic-affairs/grade-tasks/identity" in api_source
     assert "gradeIdentityApi.createGradeTask(payload)" in view_source
     assert "请选择明确行政班" in view_source
-    assert "特殊补录必选" in view_source
+    assert "特殊补录请选择明确行政班" in view_source
+    assert ":class=\"{ req: isAdminRole }\"" in view_source

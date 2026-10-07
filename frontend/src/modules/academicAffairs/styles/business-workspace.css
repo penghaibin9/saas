@@ -148,7 +148,7 @@
 .aa-business-area .mps .aa-form-footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--border-base); }
 .aa-business-area .mps :is(.aa-material-reader-item, .aa-standard-row, .aa-facts > div) { border-radius: 10px; }
 .aa-business-area .mps :is(.aaexam-head, .aaev-head, .aams-head, .aalv-head, .aaar-head, .aaex-head) { flex-wrap: wrap; }
-.aa-business-area .mps :is(.aaexam-layout, .aaev-layout, .aams-layout, .aalv-layout, .aaar-layout, .aaex-layout) { grid-template-columns: minmax(200px, 25%) minmax(0, 1fr); gap: 20px; align-items: start; }
+.aa-business-area .mps :is(.aaexam-layout, .aaev-layout, .aams-layout, .aalv-layout, .aaex-layout) { grid-template-columns: minmax(200px, 25%) minmax(0, 1fr); gap: 20px; align-items: start; }
 .aa-business-area .mps :is(.aaexam-detail, .aaev-detail, .aams-detail, .aalv-detail, .aaar-detail, .aaex-detail, .aa-program-main) { min-width: 0; }
 .aa-business-area .mps :is(.aaexam-batch, .aams-batch, .aalv-exam, .aaar-item, .aaex-item) { padding: 12px; border-radius: 9px; line-height: 1.6; }
 .aa-business-area .mps :is(.aa-summary-grid, .aa-metric-grid, .aaql-grid, .aawc-metric-grid, .aamk-cards, .aaexam-readiness) { grid-template-columns: repeat(auto-fit, minmax(min(160px, 100%), 1fr)); gap: 12px; }
@@ -164,7 +164,7 @@
   .aa-business-area .mps .aa-program-nav { display: flex; flex-wrap: wrap; gap: 4px; }
   .aa-business-area .mps .aa-program-nav > button { width: auto; }
   .aa-business-area .mps :is(.aa-nav-title, .aa-nav-links) { width: 100%; }
-  .aa-business-area .mps :is(.aaexam-layout, .aaev-layout, .aams-layout, .aalv-layout, .aaar-layout, .aaex-layout) { grid-template-columns: minmax(0, 1fr); }
+  .aa-business-area .mps :is(.aaexam-layout, .aaev-layout, .aams-layout, .aalv-layout, .aaex-layout) { grid-template-columns: minmax(0, 1fr); }
   .aa-business-area .mps :is(.aaexam-list, .aaev-list-pane, .aams-list, .aalv-list, .aaar-list, .aaex-list) { max-height: 280px; overflow: auto; }
 }
 @container academic-body (max-width: 640px) {

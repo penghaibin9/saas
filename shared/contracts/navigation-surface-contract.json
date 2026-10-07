@@ -5,7 +5,7 @@
     "frontend/src/config/navPlan.js#NAV_PLAN",
     "frontend/src/config/navPlan.js#PLATFORM_PLAN"
   ],
-  "digest": "edd57680e6f08b8a4a564b79615263b268e2059bcf40edef509ff845b4d9178b",
+  "digest": "5ec440bc82d93f70afc2efcf22dd0540c00be5f122f362404c6b5c4acca76509",
   "counts": {
     "total": 578,
     "production": 578,
@@ -6933,10 +6933,14 @@
       ],
       "label": "调停课审批",
       "path": "/admin/academic-affairs/schedule-change/approval",
-      "permissionKey": "academicAffairs.scheduleChange.collegeReview",
-      "permissionAny": [],
+      "permissionKey": null,
+      "permissionAny": [
+        "academicAffairs.scheduleChange.academicReview",
+        "academicAffairs.scheduleChange.collegeReview"
+      ],
       "permissionAll": [],
       "permissionCodes": [
+        "academicAffairs.scheduleChange.academicReview",
         "academicAffairs.scheduleChange.collegeReview"
       ],
       "entryType": "CONFIG_VIEW",

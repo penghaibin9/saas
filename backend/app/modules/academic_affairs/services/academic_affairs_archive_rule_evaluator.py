@@ -61,8 +61,35 @@ def normalize_legacy_result(code: str, result: dict) -> dict:
     }
 
 
-def evaluate_program(db, term=None, *, college_ids=None) -> dict:
-    """指定学期范围内在读学生均能解析到方案，且涉及方案的BLOCKER为0。
+def _archived_term_graduate_ids(db, term, student_ids):
+    """仅恢复本期已正式毕业并归档的学生范围，不扩大到历史毕业主档。"""
+    from sqlalchemy import select
+    from app.models import (
+        AaGraduationAuditBatch, AaGraduationAuditResult,
+        GraduationDecisionFact, GraduationEvaluationRun,
+    )
+    from .academic_affairs_graduation_term_scope import batch_term_condition
+
+    result, batch = AaGraduationAuditResult, AaGraduationAuditBatch
+    decision, run = GraduationDecisionFact, GraduationEvaluationRun
+    return set(db.scalars(select(result.student_id).join(
+        batch, batch.id == result.batch_id,
+    ).join(decision, decision.result_id == result.id).join(
+        run, run.id == decision.evaluation_run_id,
+    ).where(
+        result.tenant_id == _tid(), result.is_deleted.is_(False), result.status == "ARCHIVED",
+        result.student_id.in_(student_ids),
+        result.conclusion.in_(["GRADUATED", "COMPLETED"]),
+        batch.tenant_id == _tid(), batch.status == "ARCHIVED", batch_term_condition(term),
+        decision.tenant_id == _tid(), decision.batch_id == batch.id,
+        decision.student_id == result.student_id, decision.conclusion == result.conclusion,
+        run.tenant_id == _tid(), run.batch_id == batch.id, run.result_id == result.id,
+        run.student_id == result.student_id, run.overall == "SYSTEM_PASSED",
+    )))
+
+
+def evaluate_program(db, term=None, *, college_ids=None, cache=None) -> dict:
+    """指定学期范围内学生均能解析到方案，且涉及方案的BLOCKER为0。
 
     历史归档只核当时处于1..12培养学期范围的 cohort；合法未来届/已超学制届属于
     OUT_OF_SCOPE，不应阻断该历史学期。方案绑定按学期结束时点回放，避免归档后的
@@ -71,13 +98,20 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
     from app.models import StudentProfile
     from .academic_affairs_status_service import is_enrolled
 
-    query = db.query(StudentProfile).filter(
+    query = db.query(
+        StudentProfile.id, StudentProfile.tenant_id, StudentProfile.college_id,
+        StudentProfile.major_id, StudentProfile.class_id, StudentProfile.grade,
+        StudentProfile.student_status, StudentProfile.student_no,
+    ).filter(
         StudentProfile.tenant_id == _tid(),
         StudentProfile.is_deleted.is_(False),
     )
     if college_ids:
         query = query.filter(StudentProfile.college_id.in_(list(college_ids)))
-    enrolled = [row for row in query.all() if is_enrolled(getattr(row, "student_status", None))]
+    profiles = query.all()
+    graduates = [row for row in profiles if getattr(row, "student_status", None) in {"GRADUATED", "COMPLETED"}]
+    archived_ids = _archived_term_graduate_ids(db, term, [row.id for row in graduates]) if term is not None and graduates else set()
+    enrolled = [row for row in profiles if is_enrolled(getattr(row, "student_status", None)) or row.id in archived_ids]
 
     students = []
     out_of_scope = 0
@@ -104,7 +138,7 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
     if not students:
         return rule_result(
             "PROGRAM", passed=False, rule_code="PROGRAM_NO_ENROLLED_STUDENT",
-            summary="当前学期范围没有可核验的在读学生，不能证明培养方案覆盖率",
+            summary="当前学期范围没有可核验的在读或本期已归档毕业学生，不能证明培养方案覆盖率",
             blocker_count=max(1, len(invalid_scope)),
             evidence=[*invalid_scope[:30], {"type": "OUT_OF_SCOPE_COHORTS", "students": out_of_scope}],
         )
@@ -122,7 +156,8 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
         resolution = resolution_cache.get(resolution_key)
         if resolution is None:
             resolution = resolve_student_program(
-                db, student, tenant_id=_tid(), as_of=replay_as_of
+                db, student, tenant_id=_tid(), as_of=replay_as_of,
+                **({"cache": cache} if cache is not None else {}),
             )
             resolution_cache[resolution_key] = resolution
         if resolution.status != "RESOLVED" or not resolution.program:
@@ -142,7 +177,7 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
     program_ids = sorted({int(resolution.program.id) for _student, resolution in resolved})
     validation_blockers = []
     for program_id in program_ids:
-        validation = validate_program_db(db, program_id)
+        validation = validate_program_db(db, program_id, **({"cache": cache} if cache is not None else {}))
         for issue in validation.get("issues") or []:
             if str(issue.get("level") or issue.get("severity") or "").upper() != "BLOCKER":
                 continue
@@ -160,6 +195,7 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
         {
             "type": "PROGRAM_COVERAGE",
             "enrolledStudents": len(students),
+            "archivedGraduates": sum(student.id in archived_ids for student in students),
             "resolvedStudents": len(resolved),
             "outOfScopeStudents": out_of_scope,
             "invalidScopeStudents": len(invalid_scope),
@@ -177,54 +213,82 @@ def evaluate_program(db, term=None, *, college_ids=None) -> dict:
         blocker_count=blockers,
         rule_code="PROGRAM_COVERAGE_AND_VALIDATION",
         summary=(
-            f"本学期在读学生方案覆盖率100%，{len(program_ids)}个生效方案均无BLOCKER"
+            f"本学期学生方案覆盖率100%，{len(program_ids)}个生效方案均无阻断项"
             if blockers == 0 and coverage == 100
-            else f"方案覆盖率{coverage}%，范围异常{len(invalid_scope)}人，未解析学生{len(unresolved)}人，方案BLOCKER {len(validation_blockers)}项"
+            else f"方案覆盖率{coverage}%，范围异常{len(invalid_scope)}人，未解析学生{len(unresolved)}人，方案阻断项{len(validation_blockers)}项"
         ),
         evidence=evidence,
     )
 
 
-def _expected_opening(db, term, *, college_ids=None):
+def _expected_opening(db, term, *, college_ids=None, major_ids=None, cache=None):
     """按班级和学期结束时点解析唯一方案，再投影应开课程。"""
-    from app.models import AaProgramCourse, SchoolClass
+    from sqlalchemy import select, tuple_
+    from app.models import AaCourse, AaProgram, AaProgramBinding, AaProgramCourse, SchoolClass
 
-    classes = db.query(SchoolClass).filter(
-        SchoolClass.tenant_id == _tid(),
-        SchoolClass.class_status == "NORMAL",
-        SchoolClass.is_deleted.is_(False),
-    ).all()
-    if college_ids:
-        allowed_colleges = set(college_ids)
-        classes = [
-            row for row in classes
-            if getattr(row, "college_id", None) in allowed_colleges
-        ]
-
+    cache = cache if cache is not None else {}
+    classes_key = ("OPENING_CLASSES", _tid(), tuple(sorted(major_ids)) if major_ids is not None else None)
+    if classes_key not in cache:
+        query = db.query(SchoolClass).filter(
+            SchoolClass.tenant_id == _tid(), SchoolClass.class_status == "NORMAL",
+            SchoolClass.is_deleted.is_(False),
+        )
+        if major_ids is not None:
+            query = query.filter(SchoolClass.major_id.in_(major_ids))
+        cache[classes_key] = query.all()
+    classes = cache[classes_key]
+    # 应开需求来自所有学生班级；承担教学的学院由课程开课单位确定。
+    # 按学生归属先删班级会丢失跨院授课需求，且 SchoolClass 本身没有 college_id。
+    allowed_colleges = set(college_ids) if college_ids is not None else None
     expected = []
+    relation_openings = []
     structural = []
     replay_as_of = getattr(term, "end_date", None)
-    course_cache = {}
+    course_cache = cache.setdefault(("OPENING_COURSES", _tid()), {})
+    owner_cache = cache.setdefault(("OPENING_OWNERS", _tid()), {})
+    class_majors = {int(clazz.major_id) for clazz in classes if clazz.major_id}
+    missing_majors = {major for major in class_majors
+                      if ("PROGRAM_SCOPE_BINDINGS", _tid(), major) not in cache}
+    if missing_majors:
+        bindings = db.scalars(select(AaProgramBinding).where(
+            AaProgramBinding.tenant_id == _tid(), AaProgramBinding.major_id.in_(missing_majors),
+            AaProgramBinding.status.in_(["ACTIVE", "SUPERSEDED"]),
+            AaProgramBinding.is_deleted.is_(False),
+        ).order_by(AaProgramBinding.id.desc())).all()
+        for major in missing_majors:
+            cache[("PROGRAM_SCOPE_BINDINGS", _tid(), major)] = tuple(
+                row for row in bindings if int(row.major_id) == major)
+    missing_programs = {int(row.program_id) for major in class_majors
+        for row in cache[("PROGRAM_SCOPE_BINDINGS", _tid(), major)]
+        if row.program_id and ("PROGRAM_OBJECT", _tid(), int(row.program_id)) not in cache}
+    if missing_programs:
+        programs = db.scalars(select(AaProgram).where(
+            AaProgram.tenant_id == _tid(), AaProgram.id.in_(missing_programs))).all()
+        cache.update({("PROGRAM_OBJECT", _tid(), value): None for value in missing_programs})
+        cache.update({("PROGRAM_OBJECT", _tid(), int(row.id)): row for row in programs})
+    resolved_scopes = []
     for clazz in classes:
         grade = str(getattr(clazz, "grade", None) or "").strip()
         scope = cohort_term_scope(term.year_code, term.term_no, grade)
         if scope["state"] == "OUT_OF_SCOPE":
             continue
         if scope["state"] == "INVALID":
+            if allowed_colleges is not None:
+                continue  # 无法归属开课单位的基础治理异常只进入学校门禁。
             structural.append({
                 "type": "TERM_UNRESOLVED", "reason": "INVALID_COHORT_TERM_SCOPE",
                 "classId": str(clazz.id), "gradeYear": grade,
             })
             continue
-        resolution = resolve_program_for_scope(
-            db,
-            tenant_id=_tid(),
-            major_id=getattr(clazz, "major_id", None),
-            grade_year=grade,
-            class_id=int(clazz.id),
-            as_of=replay_as_of,
-        )
+        resolution_key = ("OPENING_PROGRAM", _tid(), int(clazz.id), replay_as_of)
+        if resolution_key not in cache:
+            cache[resolution_key] = resolve_program_for_scope(db, tenant_id=_tid(),
+                major_id=getattr(clazz, "major_id", None), grade_year=grade,
+                class_id=int(clazz.id), as_of=replay_as_of, cache=cache)
+        resolution = cache[resolution_key]
         if resolution.status != "RESOLVED" or not resolution.program:
+            if allowed_colleges is not None:
+                continue
             structural.append({
                 "type": "PROGRAM_UNRESOLVED",
                 "reason": resolution.rule,
@@ -235,35 +299,118 @@ def _expected_opening(db, term, *, college_ids=None):
             continue
         program = resolution.program
         plan_term = int(scope["planTerm"])
-        course_key = (int(program.id), plan_term)
-        courses = course_cache.get(course_key)
-        if courses is None:
-            courses = db.query(AaProgramCourse).filter(
-                AaProgramCourse.tenant_id == _tid(),
-                AaProgramCourse.program_id == int(program.id),
-                AaProgramCourse.open_term_no == plan_term,
-                AaProgramCourse.is_deleted.is_(False),
-            ).all()
-            course_cache[course_key] = courses
+        resolved_scopes.append((clazz, program, plan_term))
+    missing_courses = {(int(program.id), plan_term) for _, program, plan_term in resolved_scopes
+                       if course_cache.get((int(program.id), plan_term)) is None}
+    if missing_courses:
+        courses = db.scalars(select(AaProgramCourse).where(
+            AaProgramCourse.tenant_id == _tid(), AaProgramCourse.is_deleted.is_(False),
+            tuple_(AaProgramCourse.program_id, AaProgramCourse.open_term_no).in_(missing_courses))).all()
+        course_cache.update({key: [] for key in missing_courses})
+        for row in courses:
+            course_cache[(int(row.program_id), int(row.open_term_no))].append(row)
+    if allowed_colleges is not None:
+        course_ids = {int(row.course_id) for _, program, plan_term in resolved_scopes
+            for row in course_cache[(int(program.id), plan_term)]
+            if row.course_id and int(row.course_id) not in owner_cache}
+        if course_ids:
+            owners = db.query(AaCourse).filter(AaCourse.tenant_id == _tid(),
+                AaCourse.id.in_(course_ids), AaCourse.is_deleted.is_(False)).all()
+            owner_cache.update({course_id: None for course_id in course_ids})
+            owner_cache.update({int(row.id): row.owner_college_id for row in owners})
+    for clazz, program, plan_term in resolved_scopes:
+        courses = course_cache[(int(program.id), plan_term)]
         for course in courses:
             if not course.course_id:
+                if allowed_colleges is not None:
+                    continue
                 structural.append({
                     "type": "COURSE_UNRESOLVED", "programId": str(program.id),
                     "programCourseId": str(course.id), "classId": str(clazz.id),
                 })
                 continue
-            expected.append({
+            opening = {
                 "key": (int(course.course_id), int(clazz.id)),
                 "programId": str(program.id),
                 "programCourseId": str(course.id),
                 "courseId": str(course.course_id),
                 "classId": str(clazz.id),
-            })
+            }
+            if allowed_colleges is not None:
+                owner = owner_cache.get(int(course.course_id))
+                if owner is None:
+                    relation_openings.append(opening)
+                    continue
+                if int(owner) not in allowed_colleges:
+                    continue
+            expected.append(opening)
+    if relation_openings:
+        from app.models import AaTeachingTask, AaTeachingTaskBatch, College
+        from .academic_affairs_responsibility_service import resolve_opening_offering_colleges
+        relation_key = ("OPENING_RELATION_OWNERS", _tid(), int(term.id), tuple(sorted(
+            (*row["key"], int(row["programCourseId"])) for row in relation_openings)))
+        if relation_key not in cache:
+            owners = resolve_opening_offering_colleges(db, term, relation_openings, cache=cache)
+            pairs = [row["key"] for row in relation_openings]
+            assigned = {}
+            for course_id, class_id, college_id in db.execute(select(
+                    AaTeachingTask.course_id, AaTeachingTask.class_id, AaTeachingTaskBatch.college_id).join(
+                    AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).where(
+                    AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+                    AaTeachingTask.status != "MERGED", tuple_(AaTeachingTask.course_id, AaTeachingTask.class_id).in_(pairs),
+                    AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == int(term.id),
+                    AaTeachingTaskBatch.status == "APPROVED", AaTeachingTaskBatch.is_deleted.is_(False),
+                    AaTeachingTaskBatch.college_id.is_not(None))):
+                assigned.setdefault((int(course_id), int(class_id)), set()).add(int(college_id))
+            active = set(db.scalars(select(College.id).where(College.tenant_id == _tid(),
+                College.id.in_({value for values in assigned.values() for value in values} or {-1}),
+                College.is_deleted.is_(False), College.status == "ACTIVE")))
+            for pair, values in assigned.items():
+                owners[pair] = next(iter(values)) if len(values) == 1 and values <= active else None
+            cache[relation_key] = owners
+        owners = cache[relation_key]
+        expected.extend(row for row in relation_openings if owners.get(row["key"]) in allowed_colleges)
     return expected, structural
 
 
-def evaluate_teaching_task(db, term_id, *, college_ids=None) -> dict:
-    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTerm
+def _major_scope_subqueries(major_ids):
+    from sqlalchemy import select
+    from app.models import AaProgram, AaProgramCourse, SchoolClass
+    classes = select(SchoolClass.id).where(SchoolClass.tenant_id == _tid(),
+        SchoolClass.major_id.in_(major_ids), SchoolClass.is_deleted.is_(False))
+    courses = select(AaProgramCourse.id).join(AaProgram,
+        (AaProgram.id == AaProgramCourse.program_id) & (AaProgram.tenant_id == _tid())
+        & AaProgram.is_deleted.is_(False)).where(AaProgramCourse.tenant_id == _tid(),
+        AaProgramCourse.is_deleted.is_(False), AaProgram.major_id.in_(major_ids))
+    return classes, courses
+
+
+def _major_task_condition(major_ids):
+    """行政班、独立成班来源及同批同课合班成员均可证明本专业需求。"""
+    from sqlalchemy import or_, select
+    from sqlalchemy.orm import aliased
+    from app.models import AaTeachingTask
+    classes, courses = _major_scope_subqueries(major_ids)
+    def direct(model):
+        return or_(model.class_id.in_(classes),
+            model.class_id.is_(None) & model.source_program_course_id.in_(courses))
+    member = aliased(AaTeachingTask)
+    merged_member = select(member.id).where(member.tenant_id == _tid(), member.is_deleted.is_(False),
+        member.status == "MERGED", member.merged_into_id == AaTeachingTask.id,
+        member.batch_id == AaTeachingTask.batch_id, member.course_id == AaTeachingTask.course_id,
+        direct(member)).exists()
+    return or_(direct(AaTeachingTask), merged_member)
+
+
+def _pending_teacher_count(tasks):
+    return sum(not str(task.teacher_key or "").strip()
+        or task.status in {"PENDING_ASSIGN", "ASSIGNED", "REJECTED_BY_TEACHER"} for task in tasks)
+
+
+def evaluate_teaching_task(db, term_id, *, college_ids=None, major_ids=None, cache=None,
+                           include_duplicate_groups=False) -> dict:
+    from sqlalchemy import select
+    from app.models import AaCourse, AaTeachingClass, AaTeachingTask, AaTeachingTaskBatch, AaTerm
 
     if not term_id:
         return rule_result(
@@ -284,28 +431,117 @@ def evaluate_teaching_task(db, term_id, *, college_ids=None) -> dict:
         AaTeachingTaskBatch.term_id == int(term_id),
         AaTeachingTaskBatch.is_deleted.is_(False),
     )
-    if college_ids:
-        batch_query = batch_query.filter(AaTeachingTaskBatch.college_id.in_(list(college_ids)))
+    college_tasks = None
+    if college_ids is not None:
+        from sqlalchemy import or_
+        from .academic_affairs_responsibility_service import resolve_term_task_offering_colleges
+        relations = resolve_term_task_offering_colleges(db, term_id, cache=cache)
+        third_ids = {task_id for task_id, owner in relations.items() if owner in college_ids} or {-1}
+        own_batches = batch_query.filter(AaTeachingTaskBatch.college_id.in_(list(college_ids)))
+        own_ids = own_batches.with_entities(AaTeachingTaskBatch.id).subquery()
+        shared_ids = select(AaTeachingTask.batch_id).where(AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.is_deleted.is_(False), AaTeachingTask.id.in_(third_ids))
+        batch_query = batch_query.filter(or_(AaTeachingTaskBatch.college_id.in_(list(college_ids)),
+                                             AaTeachingTaskBatch.id.in_(shared_ids)))
+        college_tasks = or_(AaTeachingTask.batch_id.in_(select(own_ids.c.id)),
+                            AaTeachingTask.id.in_(third_ids))
+    if major_ids is not None:
+        batch_query = batch_query.filter(AaTeachingTaskBatch.id.in_(select(AaTeachingTask.batch_id).where(
+            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTask.status != "MERGED", _major_task_condition(major_ids))))
     batches = batch_query.all()
     batch_ids = [int(row.id) for row in batches]
-    tasks = db.query(AaTeachingTask).filter(
+    task_query = db.query(AaTeachingTask).filter(
         AaTeachingTask.tenant_id == _tid(),
         AaTeachingTask.batch_id.in_(batch_ids or [0]),
         AaTeachingTask.status != "MERGED",
         AaTeachingTask.is_deleted.is_(False),
-    ).all()
+    )
+    if college_tasks is not None:
+        task_query = task_query.filter(college_tasks)
+    if major_ids is not None:
+        task_query = task_query.filter(_major_task_condition(major_ids))
+    tasks = task_query.all()
 
-    expected, structural = _expected_opening(db, term, college_ids=college_ids)
+    from .academic_affairs_task_execution_authority import load_execution_handoffs
+    handoffs = load_execution_handoffs(db, [task.id for task in tasks])
+    tasks = [task for task in tasks if int(task.id) not in handoffs]
+
+    expected, structural = _expected_opening(db, term, college_ids=college_ids, major_ids=major_ids, cache=cache)
     expected_counter = Counter(item["key"] for item in expected)
     actual_map = defaultdict(list)
+    members = defaultdict(list)
+    visible_classes, visible_sources = None, None
+    from sqlalchemy.orm import aliased
+    survivor = aliased(AaTeachingTask)
+    merged = db.query(AaTeachingTask).join(survivor,
+        (survivor.id == AaTeachingTask.merged_into_id) & (survivor.tenant_id == _tid())
+        & survivor.is_deleted.is_(False) & (survivor.batch_id == AaTeachingTask.batch_id)
+        & (survivor.course_id == AaTeachingTask.course_id)).filter(
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+        AaTeachingTask.status == "MERGED", survivor.id.in_([task.id for task in tasks])).all()
+    for member in merged:
+        members[int(member.merged_into_id)].append(member)
+    if major_ids is not None:
+        classes, sources = _major_scope_subqueries(major_ids)
+        visible_classes, visible_sources = set(db.scalars(classes)), set(db.scalars(sources))
+    inspect_formal = tasks if major_ids is not None else [task for task in tasks
+        if not task.class_id or members.get(int(task.id))]
+    formal_ids = set()
+    if inspect_formal:
+        formal = db.query(AaTeachingClass).filter(
+            AaTeachingClass.tenant_id == _tid(), AaTeachingClass.term_id == int(term_id),
+            AaTeachingClass.teaching_task_id.in_([task.id for task in inspect_formal]),
+            AaTeachingClass.status == "ACTIVE", AaTeachingClass.is_deleted.is_(False),
+        ).all()
+        formal_ids = {(int(row.teaching_task_id), int(row.course_id)) for row in formal}
+    if major_ids is not None:
+        structural += [{"type": "TEACHING_CLASS_UNRESOLVED", "taskId": str(task.id)}
+                       for task in tasks if (int(task.id), int(task.course_id)) not in formal_ids]
+    if (college_ids is not None or major_ids is not None) and tasks:
+        courses = db.query(AaCourse).filter(AaCourse.tenant_id == _tid(),
+            AaCourse.id.in_({task.course_id for task in tasks}), AaCourse.is_deleted.is_(False)).all()
+        from app.models import College
+        from .academic_affairs_responsibility_service import resolve_task_offering_colleges
+        owners = {int(row.id): row.owner_college_id for row in courses}
+        batch_colleges = {int(row.id): row.college_id for row in batches}
+        candidate_colleges = {value for value in [*owners.values(), *batch_colleges.values()] if value is not None}
+        active_colleges = set(db.scalars(select(College.id).where(College.tenant_id == _tid(),
+            College.id.in_(candidate_colleges or {-1}), College.is_deleted.is_(False), College.status == "ACTIVE")))
+        relations = resolve_task_offering_colleges(db, tasks, cache=cache)
+        active_colleges.update(value for value in relations.values() if value is not None)
+        def responsibility_id(task):
+            owner = owners.get(int(task.course_id))
+            batch_owner = batch_colleges.get(int(task.batch_id))
+            return owner if owner is not None else batch_owner if batch_owner is not None else relations.get(int(task.id))
+        structural += [{"type": "OFFERING_UNIT_UNRESOLVED", "taskId": str(task.id)}
+                       for task in tasks if responsibility_id(task) not in active_colleges]
     for task in tasks:
-        actual_map[(int(task.course_id), int(task.class_id or 0))].append(task)
+        for source in [task, *members.get(int(task.id), [])]:
+            if major_ids is not None and (source.class_id not in visible_classes if source.class_id
+                    else source.source_program_course_id not in visible_sources):
+                continue  # 合班承接其他专业时，不能把外专业原班级混入本专业对账。
+            if source.class_id:
+                actual_map[(int(source.course_id), int(source.class_id))].append(task)
+                continue
+            # 非行政班课程必须有正式教学班和精确方案课程来源；不得补造行政班。
+            valid = (int(task.id), int(task.course_id)) in formal_ids and source.formation_mode in {
+                "SELECTABLE", "MERGED", "RETAKE", "LAYERED"}
+            matches = [item for item in expected if item["courseId"] == str(source.course_id)
+                       and item["programCourseId"] == str(source.source_program_course_id)] if valid else []
+            if not matches:
+                structural.append({"type": "TASK_PROVENANCE_UNRESOLVED", "taskId": str(task.id),
+                    "reason": "正式教学班或方案课程来源不足，无法核验应开责任"})
+                continue
+            for item in matches:
+                actual_map[item["key"]].append(task)
 
     missing = [item for item in expected if not actual_map.get(item["key"])]
     duplicate = [
         {"type": "DUPLICATE_TASK", "courseId": str(key[0]), "classId": str(key[1]),
          "taskIds": [str(row.id) for row in rows]}
         for key, rows in actual_map.items() if len(rows) > expected_counter.get(key, 0) and expected_counter.get(key, 0) > 0
+        and any(row.class_id for row in rows)
     ]
     extra = [
         {"type": "OVER_OPENED", "courseId": str(key[0]), "classId": str(key[1]),
@@ -328,12 +564,13 @@ def evaluate_teaching_task(db, term_id, *, college_ids=None) -> dict:
 
     blockers = structural + missing + duplicate + extra + unconfirmed + no_teacher + unfinished_batches
     evidence = [
-        {"type": "TASK_RECONCILIATION", "expected": len(expected), "actual": len(tasks)},
+        {"type": "TASK_RECONCILIATION", "expected": len(expected), "actual": len(tasks),
+         "pendingTeacherCount": _pending_teacher_count(tasks)},
         *structural[:20],
         *[{"type": "MISSING_TASK", **item} for item in missing[:20]],
         *duplicate[:20], *extra[:20], *unconfirmed[:20], *no_teacher[:20], *unfinished_batches[:20],
     ]
-    return rule_result(
+    result = rule_result(
         "TEACHING_TASK",
         passed=not blockers,
         record_count=len(tasks),
@@ -342,10 +579,13 @@ def evaluate_teaching_task(db, term_id, *, college_ids=None) -> dict:
         summary=(
             f"应开{len(expected)}项与{len(tasks)}条教学任务一致，教师确认完成"
             if not blockers
-            else f"教学任务阻断{len(blockers)}项：漏开{len(missing)}、重复{len(duplicate)}、多开{len(extra)}、未确认{len(unconfirmed)}"
+            else f"教学任务阻断{len(blockers)}项：方案或开课依据异常{len(structural)}、漏开{len(missing)}、重复{len(duplicate)}、多开{len(extra)}、未确认{len(unconfirmed)}、未指定教师{len(no_teacher)}、批次未批准{len(unfinished_batches)}"
         ),
         evidence=evidence,
     )
+    result["duplicateTaskGroupCount"] = len(duplicate)
+    result["duplicateTaskGroups"] = duplicate if include_duplicate_groups else duplicate[:20]
+    return result
 
 
 def _weeks_overlap(left, right) -> bool:
@@ -403,8 +643,10 @@ def evaluate_schedule(db, term_id, previous_result: dict, *, college_ids=None) -
         AaScheduleBatch.term_id == int(term_id),
         AaScheduleBatch.is_deleted.is_(False),
     )
-    if college_ids:
-        batch_query = batch_query.filter(AaScheduleBatch.college_id.in_(list(college_ids)))
+    if college_ids is not None:
+        from .academic_affairs_archive_operational_policy import college_task_ids, college_schedule_batch_condition
+        own_tasks = college_task_ids(db, college_ids, term_id)
+        batch_query = batch_query.filter(college_schedule_batch_condition(db, college_ids, term_id))
     batches = batch_query.all()
     batch_ids = [int(row.id) for row in batches]
     voided = {
@@ -420,12 +662,15 @@ def evaluate_schedule(db, term_id, previous_result: dict, *, college_ids=None) -
         if str(row.status or "").upper() == "PUBLISHED"
         or (str(row.status or "").upper() == "ARCHIVED" and int(row.id) not in voided)
     ]
-    items = db.query(AaScheduleItem).filter(
+    item_query = db.query(AaScheduleItem).filter(
         AaScheduleItem.tenant_id == _tid(),
         AaScheduleItem.batch_id.in_(formal_ids or [0]),
         AaScheduleItem.status == "EFFECTIVE",
         AaScheduleItem.is_deleted.is_(False),
-    ).all()
+    )
+    if college_ids is not None:
+        item_query = item_query.filter(AaScheduleItem.task_id.in_(own_tasks))
+    items = item_query.all()
 
     task_batches = db.query(AaTeachingTaskBatch).filter(
         AaTeachingTaskBatch.tenant_id == _tid(),
@@ -434,14 +679,20 @@ def evaluate_schedule(db, term_id, previous_result: dict, *, college_ids=None) -
         AaTeachingTaskBatch.is_deleted.is_(False),
     ).all()
     task_batch_ids = [int(row.id) for row in task_batches]
-    tasks = db.query(AaTeachingTask).filter(
+    task_query = db.query(AaTeachingTask).filter(
         AaTeachingTask.tenant_id == _tid(),
         AaTeachingTask.batch_id.in_(task_batch_ids or [0]),
         AaTeachingTask.status == "READY",
         AaTeachingTask.no_auto_schedule.is_(False),
         AaTeachingTask.is_deleted.is_(False),
-    ).all()
+    )
+    if college_ids is not None:
+        task_query = task_query.filter(AaTeachingTask.id.in_(own_tasks))
+    tasks = task_query.all()
     scheduled_task_ids = {int(row.task_id) for row in items if row.task_id}
+    from .academic_affairs_task_execution_authority import load_execution_handoffs
+    handoffs = load_execution_handoffs(db, [task.id for task in tasks])
+    tasks = [task for task in tasks if int(task.id) not in handoffs]
     missing = [
         {"type": "UNSCHEDULED_TASK", "taskId": str(task.id), "courseId": str(task.course_id),
          "classId": str(task.class_id or "")}
@@ -470,7 +721,44 @@ def evaluate_schedule(db, term_id, previous_result: dict, *, college_ids=None) -
     )
 
 
-def evaluate_grade(db, term_code, previous_result: dict) -> dict:
+def _missing_grade_task_ids(db, term_id, college_ids=None):
+    """与学期责任流一致：本学期 READY 授课任务都应有同学期成绩任务。"""
+    from sqlalchemy import func, select
+    from app.models import AaCourse, AaGradeTask, AaTeachingTask, AaTeachingTaskBatch
+    from .academic_affairs_task_execution_authority import independent_task_condition
+
+    has_grade = select(AaGradeTask.id).where(
+        AaGradeTask.tenant_id == _tid(), AaGradeTask.is_deleted.is_(False),
+        AaGradeTask.term_id == int(term_id), AaGradeTask.teaching_task_id == AaTeachingTask.id,
+    ).exists()
+    missing = select(AaTeachingTask.id).join(AaTeachingTaskBatch,
+        AaTeachingTaskBatch.id == AaTeachingTask.batch_id).join(AaCourse,
+        AaCourse.id == AaTeachingTask.course_id).where(
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+        AaTeachingTask.status == "READY",
+        independent_task_condition(AaTeachingTask),
+        AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+        AaTeachingTaskBatch.term_id == int(term_id),
+        AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False), ~has_grade,
+    )
+    if college_ids is not None:
+        allowed = sorted({int(value) for value in college_ids})
+        if not allowed:
+            return 0, []
+        from types import SimpleNamespace
+        from sqlalchemy import or_
+        from .academic_affairs_schedule_policy import task_scope_condition
+        missing = missing.where(or_(*(task_scope_condition(db,
+            SimpleNamespace(college_id=value, term_id=term_id), include_centralized_public=True)
+            for value in allowed)))
+    missing = missing.subquery()
+    count = int(db.scalar(select(func.count()).select_from(missing)) or 0)
+    sample = [str(value) for value in db.scalars(
+        select(missing.c.id).order_by(missing.c.id).limit(50)).all()]
+    return count, sample
+
+
+def evaluate_grade(db, term_code, previous_result: dict, *, college_ids=None, term_id=None) -> dict:
     from app.models import AaGradeRecheck, AaGradeRecord, AaGradeTask, AcademicGrade, WorkflowInstance
 
     task_query = db.query(AaGradeTask).filter(
@@ -478,8 +766,17 @@ def evaluate_grade(db, term_code, previous_result: dict) -> dict:
     )
     if term_code:
         task_query = task_query.filter(AaGradeTask.term_code == term_code)
+    if college_ids is not None:
+        from sqlalchemy import select
+        from .academic_affairs_archive_operational_policy import college_task_ids
+        task_query = task_query.filter(AaGradeTask.teaching_task_id.in_(college_task_ids(db, college_ids, term_id=term_id)))
+        own_grade_tasks = task_query.with_entities(AaGradeTask.id).subquery()
+        own_grade_ids = select(AaGradeRecord.acad_grade_id).where(
+            AaGradeRecord.tenant_id == _tid(), AaGradeRecord.is_deleted.is_(False),
+            AaGradeRecord.task_id.in_(select(own_grade_tasks.c.id)))
     tasks = task_query.all()
     unfinished = [row for row in tasks if str(row.status or "").upper() not in {"PUBLISHED", "ARCHIVED"}]
+    missing_count, missing_ids = _missing_grade_task_ids(db, term_id, college_ids) if term_id else (0, [])
 
     recheck_query = db.query(AaGradeRecheck).join(
         AcademicGrade, AcademicGrade.id == AaGradeRecheck.acad_grade_id,
@@ -492,6 +789,8 @@ def evaluate_grade(db, term_code, previous_result: dict) -> dict:
     )
     if term_code:
         recheck_query = recheck_query.filter(AcademicGrade.term == term_code)
+    if college_ids is not None:
+        recheck_query = recheck_query.filter(AcademicGrade.id.in_(own_grade_ids))
     active_rechecks = int(recheck_query.count() or 0)
 
     change_query = db.query(WorkflowInstance).join(
@@ -509,19 +808,24 @@ def evaluate_grade(db, term_code, previous_result: dict) -> dict:
     )
     if term_code:
         change_query = change_query.filter(AaGradeTask.term_code == term_code)
+    if college_ids is not None:
+        change_query = change_query.filter(AaGradeTask.id.in_(select(own_grade_tasks.c.id)))
     active_changes = int(change_query.count() or 0)
 
-    blockers = len(unfinished) + active_rechecks + active_changes + (1 if not tasks else 0)
+    blockers = len(unfinished) + missing_count + active_rechecks + active_changes + (1 if not tasks and not missing_count else 0)
     base = normalize_legacy_result("GRADE", previous_result)
     evidence = [{
         "type": "GRADE_CLOSURE",
         "taskCount": len(tasks),
+        "missingGradeTaskCount": missing_count,
+        "missingGradeTaskIds": missing_ids,
         "unpublishedTaskIds": [str(row.id) for row in unfinished[:50]],
         "activeRechecks": active_rechecks,
         "activeChanges": active_changes,
         "baseSummary": base["summary"],
     }]
     rule_code = (
+        "GRADE_TASK_NOT_CREATED" if missing_count else
         "GRADE_TASK_MISSING" if not tasks else
         "GRADE_TASK_UNPUBLISHED" if unfinished else
         "GRADE_RECHECK_ACTIVE" if active_rechecks else
@@ -537,7 +841,7 @@ def evaluate_grade(db, term_code, previous_result: dict) -> dict:
         summary=(
             "应录成绩任务全部发布，且在途复查/更正为0"
             if blockers == 0
-            else f"成绩阻断{blockers}项：未发布任务{len(unfinished)}、在途复查{active_rechecks}、在途更正{active_changes}"
+            else f"成绩阻断{blockers}项：未建任务{missing_count}、未发布任务{len(unfinished)}、在途复查{active_rechecks}、在途更正{active_changes}"
         ),
         evidence=evidence,
     )
@@ -559,5 +863,5 @@ def evaluate_first_batch(db, term_id, term_code, previous: dict, *, college_ids=
     results["SCHEDULE"] = evaluate_schedule(
         db, term_id, results.get("SCHEDULE") or {}, college_ids=college_ids,
     )
-    results["GRADE"] = evaluate_grade(db, term_code, results.get("GRADE") or {})
+    results["GRADE"] = evaluate_grade(db, term_code, results.get("GRADE") or {}, term_id=term_id)
     return results

@@ -45,10 +45,10 @@
           <div class="aa-gate-head">
             <div>
               <strong>{{ gate.batch?.batchName }}</strong>
-              <p>请先处理漏排、超排和课程冲突。全部检查通过后可继续发布。</p>
+              <p>请先处理本批次漏排、超排和课程冲突。正式发布还须通过全校核验。</p>
             </div>
-            <AppStatusTag :type="gate.summary.complete ? 'success' : 'danger'" dot>
-              {{ gate.summary.complete ? '全部通过' : '存在阻断项' }}
+            <AppStatusTag :type="gate.summary.complete === true && contactGateReady ? 'success' : 'danger'" dot>
+              {{ gate.summary.complete === true && contactGateReady ? '本批次通过' : '本批次待处理' }}
             </AppStatusTag>
           </div>
           <div class="aa-gate-grid">
@@ -60,14 +60,23 @@
           <p v-if="gate.summary.pendingTeacherObjections" class="aa-gate-warning">
             教师异议待处理 {{ gate.summary.pendingTeacherObjections }} 条，建议正式发布前处理完毕。
           </p>
+          <div v-if="gate.intent !== 'pre'" class="aa-school-gate" aria-label="全校正式发布核验">
+            <div class="aa-gate-head">
+              <strong>全校正式发布核验</strong>
+              <AppStatusTag :type="schoolGateReady ? 'success' : 'warning'" dot>{{ schoolGateReady ? '全校核验通过' : '暂不可正式发布' }}</AppStatusTag>
+            </div>
+            <p v-if="schoolGateReady" class="mp-note">服务端已确认全校必需批次就绪，正式发布前仍会再次核验。</p>
+            <ul v-else class="aa-school-gate__reasons"><li v-for="(message, index) in schoolGateBlockers" :key="index">{{ message }}</li></ul>
+            <AppButton :disabled="writeBusy" @click="openGate(gate.batch, gate.intent)">重新检查发布条件</AppButton>
+          </div>
           <div class="aa-gate-actions">
             <AppButton @click="gate.visible = false">收起检查</AppButton>
-            <AppButton v-if="!gate.summary.complete" @click="openWorkbench(gate.batch)">返回排课工作台处理</AppButton>
+            <AppButton v-if="!gate.summary.complete || !contactGateReady" @click="openWorkbench(gate.batch)">返回排课工作台处理</AppButton>
             <AppButton
               v-else-if="gate.intent !== 'view'"
               variant="primary"
               :loading="gate.submitting"
-              :disabled="writeBusy"
+              :disabled="writeBusy || !gateActionReady"
               @click="confirmGateAction"
             >{{ gate.intent === 'pub' ? '确认正式发布并通知师生' : '确认进入预发布' }}</AppButton>
           </div>
@@ -144,6 +153,7 @@ import { isConflictResult, isDeniedResult } from '../components/parallel-a/resul
 import { readAllPages } from '../components/parallel-a/pagedRead'
 import { academicRouteState, createAcademicRequestGate } from '../academicFlowContext'
 import AaScheduleStageRail from '../components/AaScheduleStageRail.vue'
+import { academicFlowText } from '../config/academicFlowRegistry'
 
 export default {
   name: 'AaSchedulePublishView',
@@ -176,11 +186,24 @@ export default {
     identityKey() { return JSON.stringify([this.academicFlow?.identity?.(), this.ctx?.currentRole, this.ctx?.dataScope, this.ctx?.ctxKey, this.ctx?.permissionVersion]) },
     writeBusy() { return !!this.pendingWrite || this.gate.submitting || this.voidDlg.submitting },
     formalHead() { return scheduleTruthPresentation(this.focusBatch) },
+    schoolGateReady() { return this.gate.summary?.schoolGate?.ready === true },
+    contactGateReady() {
+      const value = this.contactMetrics(this.gate.summary)
+      return value.known && value.expected === value.scheduled && value.missing === 0 && value.excess === 0 && value.overload === 0 && !(this.gate.summary?.duplicateTaskGroupCount > 0)
+    },
+    schoolGateBlockers() { return this.schoolGateReasons(this.gate.summary) },
+    gateActionReady() {
+      return this.gate.summary?.complete === true && this.contactGateReady && (this.gate.intent === 'pre' || (this.gate.intent === 'pub' && this.schoolGateReady))
+    },
     gateChecklist() {
       const row = this.gate.summary || {}
+      const hours = this.contactMetrics(row)
       return [
         { label: '教学任务可排', ok: row.totalTasks > 0 && !row.invalidTaskCount, detail: `任务 ${row.totalTasks || 0} 个 · 配置异常 ${row.invalidTaskCount || 0} 个` },
-        { label: '应排节次完整', ok: !row.missingTaskCount && !row.overScheduledTaskCount, detail: `应排 ${row.expectedSessions || 0} 节 · 已排 ${row.scheduledSessions || 0} 节 · 漏排 ${row.missingTaskCount || 0} 个任务` },
+        { label: '开课来源无重复', ok: !(row.duplicateTaskGroupCount > 0), detail: `同课程同班任务重复 ${row.duplicateTaskGroupCount ?? '待核对'} 组；重复时先核对开课来源` },
+        { label: '教学任务计划完整', ok: !row.missingTaskCount && !row.overScheduledTaskCount, detail: `漏排 ${row.missingTaskCount || 0} 个任务 · 超排 ${row.overScheduledTaskCount || 0} 个任务；课位按周次展开核对` },
+        { label: '计划总学时完整', ok: hours.known && hours.expected === hours.scheduled && hours.missing === 0 && hours.excess === 0, detail: hours.known ? `计划 ${hours.expected} 学时 · 已排 ${hours.scheduled} 学时 · 缺 ${hours.missing} 学时 · 超 ${hours.excess} 学时` : '计划学时及周次覆盖待核对' },
+        { label: '每周学时未超量', ok: hours.known && hours.overload === 0, detail: hours.known ? `周超量 ${hours.overload} 项；总学时达到仍须核对每周上限` : '每周学时上限待核对' },
         { label: '课位关联有效', ok: !row.orphanItemCount && !row.invalidCoordinateItemCount, detail: `孤立课位 ${row.orphanItemCount || 0} · 周次坐标异常 ${row.invalidCoordinateItemCount || 0}` },
         { label: '硬冲突清零', ok: !row.hardConflicts, detail: `硬冲突 ${row.hardConflicts || 0} · 软冲突 ${row.softConflicts || 0}` }
       ]
@@ -200,6 +223,12 @@ export default {
   },
   beforeUnmount() { this.disposed = true; this.listSeq += 1; this.recSeq += 1; this.gateSeq += 1; this.focusGate.invalidate() },
   methods: {
+    contactMetrics(row = {}) {
+      row = row || {}
+      const keys = ['expectedContactHours', 'scheduledContactHours', 'missingContactHours', 'excessContactHours', 'weeklyOverloadCount']
+      const valid = key => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0
+      return { known: keys.every(valid), expected: row[keys[0]], scheduled: row[keys[1]], missing: row[keys[2]], excess: row[keys[3]], overload: row[keys[4]] }
+    },
     isPending(row, kind) { return this.pendingWrite?.batchId === row.batchId && this.pendingWrite?.kind === kind },
     clearSensitive(message) {
       this.listSeq += 1; this.recSeq += 1; this.gateSeq += 1; this.focusGate.invalidate()
@@ -357,10 +386,32 @@ export default {
     },
     async confirmGateAction() {
       if (this.writeBusy || !this.gate.summary?.complete || !this.gate.batch || this.gate.intent === 'view') return
+      if (!this.gateActionReady) {
+        this.commandError = this.gateFailureReason(this.gate.summary, this.gate.intent)
+        return
+      }
       const gate = this.gate
       gate.submitting = true
       try { await this.act(gate.batch, gate.intent) }
       finally { if (this.gate === gate) gate.submitting = false }
+    },
+    schoolGateReasons(summary) {
+      const schoolGate = summary?.schoolGate
+      if (schoolGate?.ready === true) return []
+      const messages = Array.isArray(schoolGate?.blockers)
+        ? schoolGate.blockers.map(blocker => academicFlowText(blocker?.message, '有一项全校发布条件未满足，请重新检查。'))
+        : []
+      return messages.length ? messages : [schoolGate?.ready === false
+        ? '全校发布条件尚未满足，请由校教务处核对各责任学院及必需批次。'
+        : '尚未取得全校发布核验结果，请重新检查；仅批次检查通过不能正式发布。']
+    },
+    gateFailureReason(summary, kind) {
+      if (summary?.duplicateTaskGroupCount > 0) return `存在 ${summary.duplicateTaskGroupCount} 组重复开课任务，请先到教学任务核对开课来源。`
+      if (summary?.complete !== true) return '本批次发布条件尚未全部通过，请重新核对漏排、超排和课程冲突。'
+      const hours = this.contactMetrics(summary)
+      if (!hours.known) return '尚未取得计划总学时和每周学时核验结果，请重新检查。'
+      if (hours.expected !== hours.scheduled || hours.missing > 0 || hours.excess > 0 || hours.overload > 0) return '计划学时尚未对齐或存在每周超量，请返回排课工作台处理。'
+      return kind === 'pub' ? this.schoolGateReasons(summary).join('；') : ''
     },
     async act(row, kind) {
       if (this.pendingWrite) return
@@ -373,8 +424,8 @@ export default {
       const before = await this.readFormalBatch(row.batchId)
       if (this.disposed || operationContext !== this.focusContextKey()) return
       if (isDeniedResult(before)) return this.clearSensitive(before.message)
-      if (gate.code !== 0 || !gate.data?.complete || before.code !== 0 || before.data.status !== expectedBefore) {
-        this.commandError = gate.message || '发布门禁或批次状态已变化，请重新核对'
+      if (gate.code !== 0 || gate.data?.complete !== true || this.gateFailureReason(gate.data, kind) || (kind === 'pub' && gate.data?.schoolGate?.ready !== true) || before.code !== 0 || before.data.status !== expectedBefore) {
+        this.commandError = gate.message || (gate.code === 0 && this.gateFailureReason(gate.data, kind)) || '发布门禁或批次状态已变化，请重新核对'
         this.gate.summary = gate.code === 0 ? gate.data : null
         await this.load()
         return
@@ -510,6 +561,8 @@ export default {
 .aa-gate-item.is-blocked { border-color: var(--danger-200, #fecaca); background: var(--danger-50, #fef2f2); }
 .aa-gate-item.is-blocked > span { color: var(--danger-700, #b91c1c); background: var(--danger-100, #fee2e2); }
 .aa-gate-warning { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; color: var(--warning-700, #b45309); background: var(--warning-50, #fffbeb); font-size: 13px; }
+.aa-school-gate { margin-top: 14px; padding: 14px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 8px; }
+.aa-school-gate__reasons { margin: 12px 0; padding-left: 20px; color: var(--warning-700, #b45309); line-height: 1.7; overflow-wrap: anywhere; }
 .aa-gate-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 @media (max-width: 980px) { .aa-truth-card__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .aa-gate-grid, .aa-truth-card__grid { grid-template-columns: 1fr; } .aa-gate-head, .aa-truth-card__head { flex-direction: column; } }

@@ -18,6 +18,7 @@ from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_program_core_service as _core
+from . import academic_affairs_program_governance_service as governance
 
 
 _BINDABLE_STATUSES = ("PUBLISHED", "ENABLED")
@@ -91,6 +92,7 @@ def bind_grade(program_id, user, grade_year, class_id=None) -> dict:
     with session() as db:
         from app.models import AaProgramBinding
 
+        governance._ensure_program_scope(db, user, int(program_id))
         program = _program_for_update(db, int(program_id))
         if program.status not in _BINDABLE_STATUSES:
             raise AppException("DATA_CONFLICT", "仅已发布/已启用方案可绑定年级")
@@ -164,6 +166,7 @@ def create_new_version(program_id, user, reason=None) -> dict:
             AaProgramPracticeSegment as Seg,
         )
 
+        governance._ensure_program_scope(db, user, int(program_id))
         old = _program_for_update(db, int(program_id))
         if old.status not in _VERSIONABLE_STATUSES:
             raise AppException("DATA_CONFLICT", "仅已发布/启用/冻结/停用方案可新建版本（编制/退回态直接编辑即可）")
@@ -294,6 +297,7 @@ def list_program_versions(program_id, user):
         )).first()
         if not current:
             raise not_found("培养方案不存在")
+        governance._ensure_program_scope(db, user, int(program_id))
         _core._require_teacher_program_visible(current, user)
 
         root = current

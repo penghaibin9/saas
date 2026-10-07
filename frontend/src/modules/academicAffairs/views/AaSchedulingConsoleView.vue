@@ -21,9 +21,13 @@
         :identity="contextObject.identity"
         :source="contextObject.source"
         :status="contextObject.status"
-        :owner="ctx.currentRole.roleName || '教务排课岗'"
-        next-owner="冲突核对岗 → 课表预发布 / 发布岗"
+        :owner="workbench?.batchId === workbenchBatchId ? academicFlowOwner(workbench.responsibility) : '选择具体批次后核对责任'"
+        :next-owner="workbench?.batchId === workbenchBatchId ? academicFlowNextOwner(workbench.nextStep) : '选择具体批次后核对下一责任'"
       />
+      <dl v-if="workbench?.batchId === workbenchBatchId" class="aasg-course-responsibility" aria-label="课程分类排课责任">
+        <div><dt>公共/通识课程 · {{ academicFlowCount(workbench.courseScopeCounts?.public) }} 门</dt><dd>{{ publicScheduleResponsibility }}</dd></div>
+        <div><dt>专业课程 · {{ academicFlowCount(workbench.courseScopeCounts?.professional) }} 门</dt><dd>按正式教学任务的开课学院归属办理；当前批次责任见上方。正式课表由校教务处统一发布。</dd></div>
+      </dl>
       <AaScheduleStageRail mode="scheduling" :active-index="pageMeta.stage" />
     </div>
 
@@ -47,7 +51,7 @@
             <p v-if="!canImportBatch" class="mp-note">仅具有导入权限的可编辑草稿允许导入。</p>
           </template>
           <template v-else-if="tab === 'result'">
-            <p>应排 {{ workbench.expectedHours }} 节，已排 {{ workbench.scheduledHours }} 节；此批次状态以服务端结果为准。</p>
+            <p>{{ contactSummary(workbench) }}；此批次状态以服务端结果为准。</p>
             <AppButton @click="openPublishedSchedule">查看本批次课表</AppButton>
           </template>
           <template v-else>
@@ -69,6 +73,12 @@
         </div>
       </AppSectionCard>
 
+      <section v-if="visibleHandoffReceipt" class="aasg-handoff-receipt" aria-label="正式承接办理回执" role="status">
+        <strong>正式承接已确认，并已回读核对</strong>
+        <p>{{ visibleHandoffReceipt.summary }}</p>
+        <p>承接说明：{{ visibleHandoffReceipt.reason }}</p>
+        <p>确认时间：{{ visibleHandoffReceipt.confirmedAt }}</p>
+      </section>
       <ErrorState v-if="workbenchError" :description="workbenchError" @retry="loadWorkbench" />
       <LoadingState v-else-if="workbenchLoading" />
       <template v-else-if="workbench">
@@ -123,22 +133,23 @@
           <div class="aasg-repair-center">
             <div class="aasg-repair-copy">
               <span class="aasg-repair-kicker">当前正式课表不下线</span>
-              <strong>保留已排 {{ workbench.scheduledHours }} 节，只补剩余 {{ repairRemaining }} 节</strong>
+              <strong>保留 {{ contactMetrics(workbench).itemCount ?? '待核对' }} 条课位，{{ repairGapText }}</strong>
               <p>创建纠错草稿会复制当前全部有效课位。老师学生 PC 和老师学生小程序继续使用现在的正式课表；待纠错草稿补齐并通过发布门禁后，系统再一次性切换四端正式版本。</p>
             </div>
             <div class="aasg-repair-facts" aria-label="纠错草稿影响范围">
-              <div><span>应排</span><strong>{{ workbench.expectedHours }}</strong><small>节</small></div>
-              <div><span>直接保留</span><strong>{{ workbench.scheduledHours }}</strong><small>节</small></div>
-              <div class="is-gap"><span>继续补排</span><strong>{{ repairRemaining }}</strong><small>节</small></div>
+              <div><span>计划总学时</span><strong>{{ contactMetrics(workbench).expected ?? '待核对' }}</strong><small>学时</small></div>
+              <div><span>直接保留</span><strong>{{ contactMetrics(workbench).itemCount ?? '待核对' }}</strong><small>条课位</small></div>
+              <div class="is-gap"><span>待补齐</span><strong>{{ contactMetrics(workbench).missing ?? '待核对' }}</strong><small>学时</small></div>
             </div>
             <AppButton variant="primary" @click="openCorrectionDraft()">
-              创建纠错草稿（保留已排 {{ workbench.scheduledHours }} 节）
+              创建纠错草稿（保留已排 {{ contactMetrics(workbench).itemCount ?? '待核对' }} 条课位）
             </AppButton>
           </div>
         </AppSectionCard>
 
         <AppSectionCard title="排课任务队列">
-          <p v-if="hasPublishedGap && canCorrectSchedule" class="mp-note aasg-queue-note">当前是四端正在使用的正式版本，不能直接写入。点击“创建草稿后补排”，系统会先保留现有课位，再把你带到对应班级和教学任务。<template v-if="workbench.taskQueueTotal > workbench.taskQueue.length"> 当前显示优先级最高的 {{ workbench.taskQueue.length }} / {{ workbench.taskQueueTotal }} 项。</template></p>
+          <p v-if="workbench.duplicateTaskGroupCount > 0" class="mp-note aasg-queue-note">先核对重复开课来源，再补齐未排与漏排；计划学时包含待核定任务，不能据此继续重复开课。</p>
+          <p v-else-if="hasPublishedGap && canCorrectSchedule" class="mp-note aasg-queue-note">当前是四端正在使用的正式版本，不能直接写入。点击“创建草稿后补排”，系统会先保留现有课位，再把你带到对应班级和教学任务。<template v-if="workbench.taskQueueTotal > workbench.taskQueue.length"> 当前显示优先级最高的 {{ workbench.taskQueue.length }} / {{ workbench.taskQueueTotal }} 项。</template></p>
           <p v-else class="mp-note aasg-queue-note">默认把未排、部分漏排放在前面。教务员不需要记班级 ID 或教学任务 ID，点击“去排课”即可带入对应批次、班级和任务。<template v-if="workbench.taskQueueTotal > workbench.taskQueue.length"> 当前显示优先级最高的 {{ workbench.taskQueue.length }} / {{ workbench.taskQueueTotal }} 项。</template></p>
           <EmptyState v-if="!workbench.taskQueue.length" title="当前没有待处理任务" description="教学任务已排齐；请继续检查冲突并进入预发布。" />
           <DataTable v-else :columns="taskQueueColumns" :rows="workbench.taskQueue" row-key="taskId">
@@ -147,8 +158,8 @@
               <div class="mp-cell-sub">{{ row.className || '教学班待确认' }} · {{ row.teacherName || '教师待确认' }}</div>
             </template>
             <template #cell-progress="{ row }">
-              <div class="mp-cell-main">{{ row.scheduledSessions }} / {{ row.expectedSessions }} 节</div>
-              <div class="mp-cell-sub">剩余 {{ row.remainingSessions }} 节 · 总学时 {{ row.totalHours || '—' }}</div>
+              <div class="mp-cell-main">已排 {{ contactMetrics(row).scheduled ?? '待核对' }} / 计划 {{ contactMetrics(row).expected ?? '待核对' }} 学时</div>
+              <div class="mp-cell-sub">{{ contactSummary(row) }}</div>
             </template>
             <template #cell-requirement="{ row }">
               <div class="mp-cell-main">{{ weekRangeText(row) }}</div>
@@ -158,13 +169,16 @@
               <StatusTag :type="row.issueType === 'NOT_READY' ? 'warning' : 'danger'" :label="row.issueLabel" dot />
             </template>
             <template #cell-ops="{ row }">
-              <button v-if="row.canSchedule && row.classId" class="mp-link" @click="openTask(row)">去排课</button>
+              <span v-if="row.issueType === 'SOURCE_CONFLICT'"><button class="mp-link" @click="openTeachingTasks">核对重复开课任务</button><button class="mp-link" @click="openSourceReview(row)">查看来源差异</button></span>
+              <button v-else-if="row.canSchedule && row.classId" class="mp-link" @click="openTask(row)">去排课</button>
               <button v-else-if="hasPublishedGap && canCorrectSchedule && row.classId" class="mp-link" @click="openCorrectionDraft(row)">创建草稿后补排</button>
               <button v-else-if="workbench.batchStatus === 'PUBLISHED'" class="mp-link" @click="openPublishedSchedule">查看正式课表</button>
               <button v-else class="mp-link" @click="openTeachingTasks">完善任务</button>
             </template>
           </DataTable>
         </AppSectionCard>
+        <AppInlineAlert v-if="sourceReviewError" type="warning" :description="sourceReviewError" />
+        <AaTaskSourceReview v-if="sourceReview" :key="sourceReviewContext + ':' + sourceReview.taskId" :task-id="sourceReview.taskId" :other-tasks="sourceReview.otherTasks" :term-id="String(workbench.termId || termId || '')" :context-key="sourceReviewContext" @close="sourceReview = null" @confirmed="onSourceHandoffConfirmed" />
       </template>
       <EmptyState v-else title="请选择课表批次" description="选择批次后，系统会汇总教学任务、漏排、冲突、教师异议并给出下一步。" />
     </div>
@@ -377,6 +391,10 @@
     <div v-else-if="tab === 'auto'" class="mp-stack">
       <AppScheduleBatchPicker v-model="autoBatchId" style="max-width:320px" @change="syncBatchQuery(autoBatchId)" />
       <AaSchedulingOptimizerPanel ref="optimizerPanel" :batch-id="String(autoBatchId || '')" :identity-key="routeContextKey()" :ctx="ctx" />
+      <AppSectionCard v-if="autoResult" title="自动初排结果">
+        <p>新增 {{ autoResult.placedSessions }} 条课位；计划覆盖仍须回到工作台核对。</p>
+        <ul v-if="autoMisses.length"><li v-for="(row, index) in autoMisses" :key="index">{{ row.courseName }}：{{ autoMissText(row) }}；{{ row.reasonLabel || '请核对排课条件' }}</li></ul>
+      </AppSectionCard>
     </div>
 
     <!-- 冲突报告：本轮保持既有能力 -->
@@ -429,6 +447,8 @@
 </template>
 
 <script>
+import { academicFlowOwner, academicFlowNextOwner, academicFlowCount } from '../config/academicFlowRegistry.js'
+
 import { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard } from '@/components/common'
@@ -443,6 +463,7 @@ import AaResourceOccupancyView from './AaResourceOccupancyView.vue'
 import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
 import AaScheduleStageRail from '../components/AaScheduleStageRail.vue'
 import AaSchedulingOptimizerPanel from '../components/AaSchedulingOptimizerPanel.vue'
+import AaTaskSourceReview from '../components/teaching-tasks/AaTaskSourceReview.vue'
 
 const MANAGE_ROLES = new Set(['PLATFORM_SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACADEMIC_ADMIN'])
 const DEFAULT_DAYS = [
@@ -453,7 +474,7 @@ const DEFAULT_DAYS = [
 
 export default {
   name: 'AaSchedulingConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard, AaAuthoritativeImportDrawer, AaResourceOccupancyView, AaScheduleObjectBar, AaScheduleStageRail, AaSchedulingOptimizerPanel },
+  components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard, AaAuthoritativeImportDrawer, AaResourceOccupancyView, AaScheduleObjectBar, AaScheduleStageRail, AaSchedulingOptimizerPanel, AaTaskSourceReview },
   props: { ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
   data() {
@@ -462,7 +483,7 @@ export default {
       tab: 'workbench',
       tabs: [{ key: 'workbench', label: '排课工作台' }, { key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师不可排时间' }, { key: 'auto', label: '自动排课' }, { key: 'conflict', label: '冲突报告' }, { key: 'room', label: '教室可用时间' }, { key: 'import', label: '导入排课结果' }, { key: 'result', label: '排课结果' }, { key: 'adjust', label: '排课调整' }],
       termId: '', termInfo: null,
-      workbenchBatchId: '', workbench: null, workbenchLoading: false, workbenchError: '',
+      workbenchBatchId: '', workbench: null, workbenchLoading: false, workbenchError: '', sourceReview: null, sourceReviewError: '', sourceHandoffReceipt: null,
       rules: [], catalog: [], timeSlots: [],
       ruleLoading: false, catalogLoading: false, ruleError: '', catalogError: '', termError: '', slotLoadWarning: '',
       editorVisible: false, editingRuleId: '', saving: false, formError: '',
@@ -489,6 +510,8 @@ export default {
     }
   },
   computed: {
+    visibleHandoffReceipt() { return this.sourceHandoffReceipt?.scopeKey === this.handoffReceiptScopeKey() ? this.sourceHandoffReceipt : null },
+    sourceReviewContext() { return JSON.stringify([this.routeContextKey(), this.termId, this.workbenchBatchId, this.workbench?.termId]) },
     pageMeta() {
       const pages = {
         workbench: { title: '排课工作台', subtitle: '从就绪教学任务进入编排，按真实阻断推进到正式发布。', sectionTitle: '当前批次排课进度', stage: 2 },
@@ -502,6 +525,9 @@ export default {
         adjust: { title: '排课调整', subtitle: '已发布结果不原地编辑；纠错草稿保留当前正式课表在线。', sectionTitle: '课表调整与纠错', stage: 3 }
       }
       return pages[this.tab] || pages.workbench
+    },
+    publicScheduleResponsibility() {
+      return { SCHOOL_CENTRALIZED: '校教务统排：由校教务处组织公共与通识课程编排。', OFFERING_UNIT: '开课单位编排：由课程正式开课单位完成编排并交校教务处统一发布。', HYBRID: '校院协同：校教务处与开课单位按当前任务责任协同编排。' }[this.workbench?.publicScheduleMode] || '公共与通识课程编排模式待核对，请由校教务处核对学期配置。'
     },
     contextObject() {
       if (this.workbench) return {
@@ -522,8 +548,13 @@ export default {
     canImportBatch() { return this.workbench?.batchStatus === 'DRAFT' && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.schedule.import') },
     canManageRules() { return MANAGE_ROLES.has(String(this.ctx.currentRole.roleCode || '').toUpperCase()) },
     canCorrectSchedule() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.schedule.edit') },
-    repairRemaining() { return Math.max(0, Number(this.workbench?.expectedHours || 0) - Number(this.workbench?.scheduledHours || 0)) },
-    hasPublishedGap() { return this.workbench?.batchStatus === 'PUBLISHED' && this.repairRemaining > 0 },
+    repairRemaining() {
+      const row = this.workbench || {}
+      if (this.contactMetrics(row).known) return row.missingContactHours
+      return (row.missingTasks || row.missing || []).reduce((sum, task) => sum + Math.max(0, Number(task.remainingSessions) || 0), 0)
+    },
+    repairGapText() { return this.contactMetrics(this.workbench).known ? `待补齐 ${this.repairRemaining} 学时` : `计划学时待核对，已知缺排 ${this.repairRemaining} 条重复课位` },
+    hasPublishedGap() { return this.workbench?.batchStatus === 'PUBLISHED' && (this.repairRemaining > 0 || this.workbench.excessContactHours > 0 || this.workbench.weeklyOverloadCount > 0 || this.workbench.overScheduledTaskCount > 0) },
     termArchived() { return String(this.termInfo?.status || '').toUpperCase() === 'ARCHIVED' },
     canWriteRules() {
       return Boolean(
@@ -559,7 +590,7 @@ export default {
         { label: '教学任务', value: row.totalTasks, note: `已确认 ${row.confirmedTaskCount} · 已就绪 ${row.readyTaskCount}`, alert: row.notReadyTaskCount > 0 },
         { label: '已排任务', value: row.scheduledTasks, note: `任务触达率 ${row.completionRate}%` },
         { label: '未排 / 漏排', value: `${row.unplacedTaskCount} / ${row.partiallyScheduledTaskCount}`, note: `共 ${row.missingTaskCount} 个待补齐`, alert: row.missingTaskCount > 0 },
-        { label: '应排 / 已排节次', value: `${row.expectedHours} / ${row.scheduledHours}`, note: `剩余 ${Math.max(0, row.expectedHours - row.scheduledHours)} 节`, alert: row.expectedHours !== row.scheduledHours },
+        { label: '计划 / 已排学时', value: this.contactMetrics(row).known ? `${row.expectedContactHours} / ${row.scheduledContactHours}` : '待核对', note: this.contactSummary(row), alert: !this.contactMetrics(row).known || row.missingContactHours > 0 || row.excessContactHours > 0 || row.weeklyOverloadCount > 0 },
         { label: '硬 / 软冲突', value: `${row.hardConflicts} / ${row.softConflicts}`, note: '硬冲突必须清零', alert: row.hardConflicts > 0 },
         { label: '教师异议', value: row.teacherObjectionCount, note: `待处理偏好 ${row.pendingAvailabilityCount}`, alert: row.teacherObjectionCount > 0 }
       ]
@@ -586,10 +617,32 @@ export default {
   },
   beforeUnmount() { this.disposed = true; this.routeGate.invalidate(); this.workbenchGate.invalidate(); this.ruleGate.invalidate(); this.pendingAction = null },
   methods: {
+    autoMissText(row) {
+      const hours = typeof row.missingContactHours === 'number' && Number.isFinite(row.missingContactHours) && row.missingContactHours >= 0 ? `缺 ${row.missingContactHours} 学时` : '缺学时待核对'
+      const weeks = Number.isInteger(row.startWeek) && Number.isInteger(row.endWeek) && row.startWeek > 0 && row.endWeek >= row.startWeek ? `第 ${row.startWeek}—${row.endWeek} 周` : '周次待核对'
+      return `${weeks} · ${hours} · 本段已排 ${row.placedSessions ?? '待核对'} / ${row.needSessions ?? '待核对'} 条课位`
+    },
+    contactMetrics(row = {}) {
+      row = row || {}
+      const valid = key => typeof row[key] === 'number' && Number.isFinite(row[key]) && row[key] >= 0
+      const keys = ['expectedContactHours', 'scheduledContactHours', 'missingContactHours', 'excessContactHours', 'weeklyOverloadCount']
+      return { known: keys.every(valid), expected: valid(keys[0]) ? row[keys[0]] : null, scheduled: valid(keys[1]) ? row[keys[1]] : null, missing: valid(keys[2]) ? row[keys[2]] : null, excess: valid(keys[3]) ? row[keys[3]] : null, overload: valid(keys[4]) ? row[keys[4]] : null, itemCount: valid('scheduledItemCount') ? row.scheduledItemCount : null }
+    },
+    contactSummary(row) {
+      const value = this.contactMetrics(row)
+      if (!value.known) {
+        const missing = (row?.missingTasks || row?.missing || []).reduce((sum, task) => sum + Math.max(0, Number(task.remainingSessions) || 0), 0)
+        const excess = (row?.overScheduledTasks || row?.over || []).reduce((sum, task) => sum + Math.max(0, (Number(task.scheduledSessions) || 0) - (Number(task.expectedSessions) || 0)), 0)
+        return `计划学时及周次覆盖待核对；已知缺排 ${missing} 条、超排 ${excess} 条重复课位`
+      }
+      return `计划 ${value.expected} 学时 · 已排 ${value.scheduled} 学时 · 缺 ${value.missing} 学时 · 超 ${value.excess} 学时 · 周超量 ${value.overload} 项`
+    },
+    academicFlowOwner, academicFlowNextOwner, academicFlowCount,
     switchTab(tab) { return this.$router.push({ path: this.$route.path, query: { ...this.$route.query, tab } }) },
     routeContextKey() { return JSON.stringify([this.academicFlow?.identity() || academicIdentity(currentUserFromToken(), this.ctx), this.$route?.fullPath]) },
     commandContextKey() { return JSON.stringify([this.disposed, this.routeContextKey(), this.termId, this.workbenchBatchId, this.autoBatchId, this.conflictBatchId]) },
     async syncRoute() {
+      this.sourceHandoffReceipt = null; this.sourceReview = null; this.sourceReviewError = ''
       if (!this.routeGate || this.disposed) return
       const current = this.routeGate.begin()
       this.workbenchGate.invalidate(); this.ruleGate.invalidate()
@@ -622,8 +675,20 @@ export default {
       if (value == null) return value
       return JSON.parse(JSON.stringify(value))
     },
+    handoffReceiptScopeKey() { return JSON.stringify([this.routeContextKey(), this.termId, this.workbenchBatchId]) },
+    async onSourceHandoffConfirmed(receipt) {
+      const pair = [this.sourceReview?.taskId, ...(this.sourceReview?.otherTasks || []).map(task => String(task.taskId))]
+      if (!receipt || typeof receipt.handoffId !== 'string' || !/^[1-9]\d*$/.test(receipt.handoffId)
+          || typeof receipt.executionTaskId !== 'string' || typeof receipt.successorTaskId !== 'string'
+          || receipt.executionTaskId === receipt.successorTaskId || !pair.includes(receipt.executionTaskId) || !pair.includes(receipt.successorTaskId)
+          || receipt.termId !== String(this.workbench?.termId || this.termId || '')
+          || typeof receipt.reason !== 'string' || typeof receipt.confirmedAt !== 'string' || !receipt.confirmedAt || typeof receipt.summary !== 'string') return
+      this.sourceHandoffReceipt = { ...receipt, scopeKey: this.handoffReceiptScopeKey() }
+      await this.loadWorkbench()
+    },
     async loadWorkbench(value) {
-      if (typeof value === 'string' || typeof value === 'number') this.workbenchBatchId = String(value)
+      this.sourceReview = null; this.sourceReviewError = ''
+      if (typeof value === 'string' || typeof value === 'number') { if (String(value) !== this.workbenchBatchId) this.sourceHandoffReceipt = null; this.workbenchBatchId = String(value) }
       const batchId = this.workbenchBatchId
       const current = this.workbenchGate.begin()
       this.workbench = null; this.workbenchError = ''; this.workbenchLoading = false
@@ -651,21 +716,38 @@ export default {
     },
     weekRangeText(row) { return row.startWeek && row.endWeek ? `第 ${row.startWeek}-${row.endWeek} 周` : '周次待确认' },
     roomRequirementText(value) { return value ? `教室要求：${value}` : '教室类型不限' },
-    openTeachingTasks() { this.$router.push('/admin/academic-affairs/teaching-tasks') },
+    openTeachingTasks() {
+      const termId = this.workbench?.termId || this.termId
+      this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: termId ? { termId: String(termId) } : {} })
+    },
+    openSourceReview(row) {
+      this.sourceReview = null; this.sourceReviewError = ''
+      const taskId = String(row?.taskId || '')
+      const group = this.workbench?.duplicateTaskGroups?.find(group => group.taskIds?.some(id => String(id) === taskId))
+      const ids = [...new Set((group?.taskIds || []).map(String))].filter(id => id && id !== taskId)
+      if (!taskId || !ids.length) { this.sourceReviewError = '当前重复任务来源尚未读取完整，请重新读取课表批次后核对'; return }
+      const otherTasks = ids.map((id, index) => {
+        const task = this.workbench.taskQueue?.find(task => String(task.taskId) === id)
+        return { taskId: id, label: `同课程任务${index + 1}${task?.teacherName ? ` · ${task.teacherName}` : ''}${task?.className ? ` · ${task.className}` : ''}` }
+      })
+      this.sourceReview = { taskId, otherTasks }
+    },
     openPublishedSchedule() { this.$router.push({ path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/views`, query: this.returnQuery() }) },
     openTask(row) {
+      if (row.issueType === 'SOURCE_CONFLICT') return this.openTeachingTasks()
       this.$router.push({
         path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/edit`,
         query: { classId: row.classId, className: row.className || '', taskId: row.taskId, ...this.returnQuery() }
       })
     },
     openCorrectionDraft(row = null) {
+      if (row?.issueType === 'SOURCE_CONFLICT' || this.workbench?.duplicateTaskGroupCount > 0) return this.openTeachingTasks()
       if (!this.hasPublishedGap || !this.canCorrectSchedule) return
       this.correctionTargetTask = row
       this.confirmRequireReason = true
       this.confirmReasonLabel = '纠错原因（至少 5 个字）'
       this.confirmTitle = '创建漏排纠错草稿'
-      this.confirmMessage = `系统会保留已排 ${this.workbench.scheduledHours} 节，只补剩余 ${this.repairRemaining} 节。创建期间老师学生 PC 和老师学生小程序继续使用当前正式课表，不会下线。`
+      this.confirmMessage = `系统会保留 ${this.contactMetrics(this.workbench).itemCount ?? '待核对'} 条现有课位，${this.repairGapText}。创建期间老师学生 PC 和老师学生小程序继续使用当前正式课表，不会下线。`
       this.pendingAction = (reason) => this.createCorrectionDraft(reason)
       this.confirmVisible = true
     },
@@ -682,7 +764,7 @@ export default {
       }
       this.workbenchBatchId = String(response.data.batchId)
       await this.loadWorkbench()
-      toast.success(`已保留 ${response.data.scheduledSessions} 节现有课位，可继续补排剩余 ${response.data.remainingSessions} 节`)
+      toast.success(`已保留 ${this.contactMetrics(response.data).itemCount ?? '待核对'} 条现有课位；${this.contactSummary(response.data)}`)
       if (targetTask?.classId) this.openTask(targetTask)
     },
     runWorkbenchAction(code) {
@@ -902,7 +984,7 @@ export default {
       const response = await api.autoSchedule(batchId, dryRun)
       if (context !== this.commandContextKey()) return
       this.autoLoading = false
-      if (response.code === 0) { this.autoResult = response.data; toast.success(dryRun ? '试排完成（未落库）' : `已排入 ${response.data.placedSessions} 节`) }
+      if (response.code === 0) { this.autoResult = response.data; toast.success(dryRun ? '试排完成（未落库）' : `已新增 ${response.data.placedSessions} 条课位`) }
       else toast.error(response.message || '自动排课失败')
     },
     doAuto() {
@@ -919,7 +1001,7 @@ export default {
         const context = this.commandContextKey()
         const response = await api.clearAuto(this.autoBatchId)
         if (context !== this.commandContextKey()) return
-        if (response.code === 0) { toast.success(`已清除 ${response.data.cleared} 节`); this.autoResult = null }
+        if (response.code === 0) { toast.success(`已清除 ${response.data.cleared} 条课位`); this.autoResult = null }
         else toast.error(response.message || '清除失败')
       }
       this.confirmVisible = true
@@ -936,6 +1018,8 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.aasg-course-responsibility { display:flex; flex-wrap:wrap; gap:12px; margin:0; font-size:12px; line-height:1.7; }.aasg-course-responsibility > div { flex:1 1 230px; padding:12px 14px; background:var(--bg-soft,#f8fafc); border-radius:8px; }.aasg-course-responsibility dt { font-weight:600; }.aasg-course-responsibility dd { margin:5px 0 0; overflow-wrap:anywhere; }
+
 .aasg-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); margin-bottom: 16px; }
 .aasg-tab { padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-secondary, #64748b); border-bottom: 2px solid transparent; }
 .aasg-tab.is-active { color: var(--primary-color, #2563eb); border-bottom-color: var(--primary-color, #2563eb); font-weight: 600; }

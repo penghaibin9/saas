@@ -13,6 +13,15 @@ from app.modules.academic_affairs.routers import (
 from app.modules.academic_affairs.services import academic_affairs_course_public_service as course_public_svc
 
 
+NEW_WORKFLOW_PERMISSIONS = {
+    ('GET', '/academic-affairs/programs/courses/{programCourseId}/formation-proof'): 'academicAffairs.program.view',
+    ('POST', '/academic-affairs/programs/courses/{programCourseId}/formation-proof'): 'academicAffairs.program.review',
+    ('POST', '/academic-affairs/teaching-tasks/{taskId}/void-draft'): 'academicAffairs.teachingTask.manage',
+    ('GET', '/academic-affairs/teaching-tasks/{taskId}/source-review'): 'academicAffairs.teachingTask.view',
+    ('POST', '/academic-affairs/teaching-tasks/{taskId}/source-handoff'): 'academicAffairs.teachingTask.confirm',
+}
+
+
 def _methods(route: APIRoute) -> set[str]:
     return set(route.methods or set()) - {"HEAD", "OPTIONS"}
 
@@ -77,11 +86,24 @@ def test_d4_move_only_preserves_legacy_permission_codes_and_route_contract_metad
         if not isinstance(child, APIRoute):
             continue
         for method in _methods(child):
+            if (method, child.path) in NEW_WORKFLOW_PERMISSIONS:
+                assert _permission_codes(child) == {NEW_WORKFLOW_PERMISSIONS[(method, child.path)]}
+                continue
             old = _first_in(legacy.router, child.path, method)
             assert _permission_codes(child) == _permission_codes(old), (method, child.path)
             assert child.summary == old.summary, (method, child.path)
             assert child.status_code == old.status_code, (method, child.path)
             assert child.response_model == old.response_model, (method, child.path)
+
+
+def test_new_workflow_commands_have_unique_public_owners_and_explicit_permissions():
+    router = academic_affairs_bundle.build_router()
+    for (method, path), permission in NEW_WORKFLOW_PERMISSIONS.items():
+        matches = [route for route in router.routes if isinstance(route, APIRoute)
+            and route.path == path and method in _methods(route)]
+        assert len(matches) == 1, (method, path)
+        assert matches[0].endpoint.__module__ == course_program_task_router.__name__
+        assert _permission_codes(matches[0]) == {permission}
 
 
 def test_d4_existing_program_quality_and_teaching_class_extensions_keep_owner():

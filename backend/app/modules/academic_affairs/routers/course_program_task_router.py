@@ -6,9 +6,10 @@ canonical service、权限、DTO、状态机、schema 均保持不变。
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Depends, Path, Query
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -54,6 +55,28 @@ _COURSE_APPROVE = legacy._COURSE_APPROVE
 prog_svc = legacy.prog_svc
 course_svc = course_public_svc
 task_svc = legacy.task_svc
+
+
+class VoidDraftTaskBody(BaseModel):
+    reason: str = Field(..., min_length=5, max_length=500, description="作废原因，5 至 500 字")
+
+
+class FormationProofBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    formationMode: Literal["ADMIN_FIXED", "SELECTABLE", "MERGED", "RETAKE", "LAYERED"]
+    evidenceFileId: str = Field(..., pattern=r"^[1-9]\d*$", max_length=20)
+    evidenceLocator: str = Field(..., min_length=2, max_length=300)
+    reason: str = Field(..., min_length=5, max_length=500)
+    expectedSourceFingerprint: str = Field(..., pattern=r"^[0-9a-fA-F]{64}$")
+    idempotencyKey: str = Field(..., min_length=8, max_length=120)
+
+
+class SourceHandoffBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    successorTaskId: str = Field(..., pattern=r"^[1-9]\d*$", max_length=20)
+    reason: str = Field(..., min_length=4, max_length=500)
+    expectedSourceFingerprint: str = Field(..., pattern=r"^[0-9a-fA-F]{64}$")
+    idempotencyKey: str = Field(..., min_length=8, max_length=120)
 
 
 # ═══════════ 培养方案 ════════════
@@ -103,6 +126,19 @@ def program_course_update(
 @router.delete("/programs/courses/{programCourseId}", summary="方案课程模块：删除课程明细（编制态）")
 def program_course_delete(programCourseId: int = Path(...), user=Depends(_PROG_MANAGE)):
     return success(prog_svc.delete_course(programCourseId, user), message="已删除")
+
+
+@router.get("/programs/courses/{programCourseId}/formation-proof", summary="核实历史方案课程形成方式依据")
+def program_course_formation_proof(programCourseId: int = Path(..., gt=0), user=Depends(_PROG_VIEW)):
+    from app.modules.academic_affairs.services import academic_affairs_program_formation_proof_service as proof_svc
+    return success(proof_svc.get_formation_proof(programCourseId, user))
+
+
+@router.post("/programs/courses/{programCourseId}/formation-proof", summary="校教务责任人确认历史形成方式依据")
+def program_course_confirm_formation_proof(body: FormationProofBody,
+    programCourseId: int = Path(..., gt=0), user=Depends(_PROG_REVIEW)):
+    from app.modules.academic_affairs.services import academic_affairs_program_formation_proof_service as proof_svc
+    return success(proof_svc.confirm_formation_proof(programCourseId, body, user), message="本份来源依据已确认")
 
 
 @router.post("/programs/{programId}/submit", summary="提交方案审核（发布前校验学分达标）")
@@ -384,6 +420,15 @@ def task_assign(
     return success(task_svc.assign_teacher(taskId, user, body), message="已分配")
 
 
+@router.post("/teaching-tasks/{taskId}/void-draft", summary="作废无下游引用的未分配草稿教学任务")
+def task_void_draft(
+    body: VoidDraftTaskBody,
+    taskId: int = Path(...),
+    user=Depends(require_permission("academicAffairs.teachingTask.manage")),
+):
+    return success(task_svc.void_draft_task(taskId, user, body.reason), message="草稿任务已作废")
+
+
 @router.post("/teaching-tasks/{taskId}/teacher-act", summary="教师确认/退回教学任务")
 def task_teacher_act(
     body: TeacherActBody,
@@ -440,6 +485,26 @@ def task_all_list(
         formal_mine=formalMine,
     )
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/teaching-tasks/{taskId}/source-review", summary="核对重复任务来源（只读，不确认承接）")
+def task_source_review(
+    taskId: int = Path(..., gt=0),
+    otherTaskId: int = Query(..., gt=0),
+    user=Depends(require_permission("academicAffairs.teachingTask.view")),
+):
+    from app.modules.academic_affairs.services.academic_affairs_task_source_review_service import get_source_review
+    return success(get_source_review(taskId, otherTaskId, user))
+
+
+@router.post("/teaching-tasks/{taskId}/source-handoff", summary="校教务确认由原教学任务承接后继方案来源")
+def task_source_handoff(
+    body: SourceHandoffBody,
+    taskId: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.teachingTask.confirm")),
+):
+    from app.modules.academic_affairs.services.academic_affairs_task_source_handoff_service import confirm_source_handoff
+    return success(confirm_source_handoff(taskId, body, user), message="来源承接已确认，请回原任务继续办理")
 
 
 @router.post("/teaching-tasks/merge", summary="合班（同批次同课程 2+ 条任务合并为一条教学班任务）")

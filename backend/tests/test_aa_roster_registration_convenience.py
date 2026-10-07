@@ -16,7 +16,7 @@ def _hdr(client, login_name="school_admin01"):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
-def _seed_candidates(db_mode):
+def _seed_candidates(db_mode, *, initial_status="PENDING_REGISTER", current_stage="ORIENTATION"):
     from app.models import Major, SchoolClass, StudentProfile
 
     suffix = uuid4().hex[:8]
@@ -46,8 +46,8 @@ def _seed_candidates(db_mode):
         college_id=major.college_id,
         major_id=major.id,
         class_id=cls.id,
-        current_stage="ORIENTATION",
-        student_status="PENDING_REGISTER",
+        current_stage=current_stage,
+        student_status=initial_status,
         status="ACTIVE",
     )
     ineligible = StudentProfile(
@@ -57,8 +57,8 @@ def _seed_candidates(db_mode):
         college_id=major.college_id,
         major_id=major.id,
         class_id=cls.id,
-        current_stage="ORIENTATION",
-        student_status="PENDING_REGISTER",
+        current_stage=current_stage,
+        student_status=initial_status,
         status="ACTIVE",
     )
     foreign = StudentProfile(
@@ -66,7 +66,7 @@ def _seed_candidates(db_mode):
         student_no=f"D2U-X-{suffix}",
         real_name=f"别校学生{suffix}",
         current_stage="ORIENTATION",
-        student_status="PENDING_REGISTER",
+        student_status=initial_status,
         status="ACTIVE",
     )
     db.add_all([ready, ineligible, foreign])
@@ -84,15 +84,83 @@ def _seed_candidates(db_mode):
     return out
 
 
-def _open_batch(client, headers):
+def _open_batch(client, headers, *, register_type="ENROLL"):
     suffix = uuid4().hex[:8]
     response = client.post(f"{BASE}/registration-batches", headers=headers, json={
         "batchName": f"D2U批量注册-{suffix}",
-        "registerType": "ENROLL",
+        "registerType": register_type,
         "open": True,
     })
     assert response.status_code == 200, response.text
     return response.json()["data"]["batchId"]
+
+
+def test_semester_normal_student_candidates_preview_confirm_and_readback(client, db_mode):
+    """正式正常在籍状态可续注册，入学批次仍不接纳，已完成者不再列为候选。"""
+    from app.models import AaRegistration, AaStatusChange, StudentProfile
+
+    ids = _seed_candidates(db_mode, initial_status="NORMAL")
+    headers = _hdr(client)
+    semester_id = _open_batch(client, headers, register_type="SEMESTER")
+    enroll_id = _open_batch(client, headers)
+
+    enroll_candidates = client.get(
+        f"{BASE}/registration-batches/{enroll_id}/registration-candidates",
+        headers=headers,
+    )
+    assert enroll_candidates.status_code == 200, enroll_candidates.text
+    assert str(ids["ready"]) not in {
+        row["studentId"] for row in enroll_candidates.json()["data"]["items"]
+    }
+
+    candidates = client.get(
+        f"{BASE}/registration-batches/{semester_id}/registration-candidates",
+        headers=headers,
+    )
+    assert candidates.status_code == 200, candidates.text
+    assert any(row["studentId"] == str(ids["ready"]) and row["currentStatus"] == "NORMAL"
+               for row in candidates.json()["data"]["items"])
+
+    preview = client.post(
+        f"{BASE}/registration-batches/{semester_id}/bulk-register-preview",
+        headers=headers,
+        json={"studentIds": [ids["ready"], ids["foreign"]]},
+    )
+    assert preview.status_code == 200, preview.text
+    preview_data = preview.json()["data"]
+    assert preview_data["ready"] == 1 and preview_data["blocked"] == 1
+    assert preview_data["items"][0]["status"] == "READY"
+    assert preview_data["items"][1]["code"] == "NOT_AVAILABLE"
+
+    confirm = client.post(
+        f"{BASE}/registration-batches/{semester_id}/bulk-register",
+        headers=headers,
+        json={"previewToken": preview_data["previewToken"]},
+    )
+    assert confirm.status_code == 200, confirm.text
+    assert confirm.json()["data"]["succeeded"] == 1
+
+    records = client.get(f"{BASE}/registration-batches/{semester_id}/registrations", headers=headers)
+    assert records.status_code == 200, records.text
+    assert any(row["studentId"] == str(ids["ready"]) and row["status"] == "REGISTERED"
+               for row in records.json()["data"]["items"])
+    after = client.get(
+        f"{BASE}/registration-batches/{semester_id}/registration-candidates",
+        headers=headers,
+    )
+    assert after.status_code == 200, after.text
+    assert str(ids["ready"]) not in {row["studentId"] for row in after.json()["data"]["items"]}
+
+    db = get_sessionmaker()()
+    assert db.get(StudentProfile, ids["ready"]).student_status == "REGISTERED"
+    assert db.query(AaRegistration).filter_by(
+        tenant_id=TID, batch_id=int(semester_id), student_id=ids["ready"], status="REGISTERED"
+    ).count() == 1
+    assert db.query(AaStatusChange).filter_by(
+        student_id=ids["ready"], from_status="NORMAL", to_status="REGISTERED",
+        change_type="SEMESTER_REGISTER",
+    ).count() == 1
+    db.close()
 
 
 def test_d2u_candidates_are_human_readable_and_hide_internal_org_ids(client, db_mode):
@@ -206,6 +274,59 @@ def test_d2u_preview_zero_write_cross_tenant_fail_closed_and_confirm_requires_pr
         json={"previewToken": pdata["previewToken"]},
     )
     assert reused.status_code == 409
+
+
+def test_registered_student_flows_into_internship_class_preview_and_freeze(client, db_mode):
+    """正式续注册后，实习默认班级规则仍能预览并冻结在籍学生。"""
+    from sqlalchemy import select
+    from app.models import InternshipBatch, InternshipBatchParticipant, InternshipRecord, StudentProfile
+
+    ids = _seed_candidates(db_mode, initial_status="NORMAL", current_stage="ENROLLED")
+    headers = _hdr(client)
+    registration_batch_id = _open_batch(client, headers, register_type="SEMESTER")
+    registered = client.post(
+        f"{BASE}/registration-batches/{registration_batch_id}/register",
+        headers=headers, json={"studentId": str(ids["ready"])},
+    )
+    assert registered.status_code == 200, registered.text
+    assert registered.json()["data"]["studentStatus"] == "REGISTERED"
+
+    db = get_sessionmaker()()
+    try:
+        assert db.get(StudentProfile, ids["ready"]).student_status == "REGISTERED"
+        batch = InternshipBatch(
+            tenant_id=TID, batch_name="正式续注册后实习选人", batch_no=f"REG-INT-{uuid4().hex[:8]}",
+            status="DRAFT",
+        )
+        db.add(batch)
+        db.commit()
+        internship_batch_id = int(batch.id)
+    finally:
+        db.close()
+
+    path = f"/api/v1/internship/batches/{internship_batch_id}/participants"
+    rule = {"classIds": [ids["classId"]], "studentStatuses": []}
+    preview_response = client.post(f"{path}/preview", headers=headers, json=rule)
+    assert preview_response.status_code == 200, preview_response.text
+    preview = preview_response.json()["data"]
+    assert str(ids["ready"]) in {row["studentId"] for row in preview["rows"]}
+    assert preview["rule"]["studentStatuses"] == ["NORMAL", "REGISTERED", "RETAINED"]
+    freeze_response = client.post(f"{path}/freeze", headers=headers, json={"rule": preview["rule"]})
+    assert freeze_response.status_code == 200, freeze_response.text
+    assert freeze_response.json()["data"]["batchStatus"] == "RUNNING"
+
+    db = get_sessionmaker()()
+    try:
+        participant = db.scalars(select(InternshipBatchParticipant).where(
+            InternshipBatchParticipant.tenant_id == TID,
+            InternshipBatchParticipant.batch_id == internship_batch_id,
+            InternshipBatchParticipant.student_id == ids["ready"],
+        )).one()
+        record = db.get(InternshipRecord, int(participant.internship_id))
+        assert record.tenant_id == TID and record.student_id == ids["ready"]
+        assert record.status == "PREPARING"
+    finally:
+        db.close()
 
 
 def test_d2u_legacy_single_register_remains_compatible_and_invalidates_old_preview(client, db_mode):

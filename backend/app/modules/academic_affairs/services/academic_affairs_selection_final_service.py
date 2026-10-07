@@ -826,6 +826,21 @@ def batch_preflight(user, batch_id, action: str) -> dict:
         return batch_preflight_svc.public_result(result)
 
 
+def _require_batch_independent_tasks(db, batch_id):
+    """Lock task authority before any batch lifecycle or roster write."""
+    from app.models import AaSelectionCourse
+    from .academic_affairs_task_execution_authority import require_independent_task
+    task_ids = db.scalars(select(AaSelectionCourse.teaching_task_id).where(
+        AaSelectionCourse.tenant_id == _base._core._tid(),
+        AaSelectionCourse.batch_id == int(batch_id),
+        AaSelectionCourse.is_deleted.is_(False),
+        AaSelectionCourse.status == _base._COURSE_OPEN,
+        AaSelectionCourse.teaching_task_id.is_not(None),
+    ).distinct().order_by(AaSelectionCourse.teaching_task_id)).all()
+    for task_id in task_ids:
+        require_independent_task(db, task_id)
+
+
 def open_batch(user, batch_id) -> dict:
     from app.models import AaSelectionBatch
     with _base._core.session() as db:
@@ -838,6 +853,7 @@ def open_batch(user, batch_id) -> dict:
         if not batch:
             raise not_found("选课批次不存在")
         _base._guard_batch_writable(db, batch)
+        _require_batch_independent_tasks(db, batch.id)
         batch_preflight_svc.require_batch_action(db, batch, "OPEN")
         batch.status = _base._BATCH_OPEN
         _base._core._audit(db, batch.id, "SELECTION_BATCH_OPEN", "开选；preflight=PASS")
@@ -857,6 +873,7 @@ def close_batch(user, batch_id) -> dict:
         if not batch:
             raise not_found("选课批次不存在")
         _base._guard_batch_writable(db, batch)
+        _require_batch_independent_tasks(db, batch.id)
         batch_preflight_svc.require_batch_action(db, batch, "CLOSE")
         batch.status = _base._BATCH_CLOSED
         _base._core._audit(db, batch.id, "SELECTION_BATCH_CLOSE", "截止选课；preflight=PASS")
@@ -877,6 +894,7 @@ def publish_batch(user, batch_id) -> dict:
         if not batch:
             raise not_found("选课批次不存在")
         _base._guard_batch_writable(db, batch)
+        _require_batch_independent_tasks(db, batch.id)
         batch_preflight_svc.require_batch_action(db, batch, "PUBLISH")
         if batch.status != _base._BATCH_DRAFT:
             raise _base._core._invalid(f"仅 DRAFT 批次可发布，当前 {batch.status}")
@@ -1077,6 +1095,10 @@ def _student_enroll_guarded(user, body):
                 course=course,
                 evaluated_at=selection_effective_at,
             ) from exc
+
+        from .academic_affairs_task_execution_authority import require_independent_task
+        if course.teaching_task_id:
+            require_independent_task(db, course.teaching_task_id)
 
         lottery = bool(
             batch.status == _base._BATCH_OPEN
@@ -1283,6 +1305,9 @@ def student_drop(user, body):
         if not record:
             raise not_found("选课记录不存在")
         _require_drop_record(batch, course, record)
+        from .academic_affairs_task_execution_authority import require_independent_task
+        if course.teaching_task_id:
+            require_independent_task(db, course.teaching_task_id)
 
         previous = record.status
         record.status = _base._REC_DROPPED
@@ -1317,6 +1342,7 @@ def lock_batch(user, batch_id):
         if not batch:
             raise not_found("选课批次不存在")
         _base._guard_batch_writable(db, batch)
+        _require_batch_independent_tasks(db, batch.id)
         if batch.status != _base._BATCH_CLOSED:
             raise _base._core._invalid("仅已关闭选课批次可锁定名单")
         preflight = batch_preflight_svc.require_batch_action(db, batch, "LOCK")
@@ -1384,6 +1410,8 @@ def adjust_record(user, record_id, reason):
         if not course.teaching_task_id:
             raise AppException("DATA_CONFLICT", "选课课程未绑定教学任务，无法调整正式名单", http_status=409)
 
+        from .academic_affairs_task_execution_authority import require_independent_task
+        require_independent_task(db, course.teaching_task_id)
         counts = consumer_counts(db, teaching_task_id=int(course.teaching_task_id))
         if int(counts.get("TOTAL") or 0) > 0:
             raise _base._core._invalid("该教学任务已冻结考勤、考务或成绩名单，不可直接调整正式名单")

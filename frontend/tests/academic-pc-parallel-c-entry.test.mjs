@@ -166,6 +166,130 @@ test('录入页完整 template 可编译', () => {
   assert.deepEqual(compileTemplate({ source: descriptor.template.content, filename: 'AaGradeEntryView.vue', id: 'parallel-c-entry' }).errors, [])
 })
 
+test('从正式教学任务回填学期、学分和班级名称，零学分保留且编号不丢精度', () => {
+  const vm = mount()
+  vm.onTeachingTaskChange('9007199254740993', [{ raw: {
+    taskId: '9007199254740993', courseId: '9007199254740995', courseName: '实践课程',
+    termId: '9007199254740997', termCode: '2026-2027-1', termName: '2026—2027学年第一学期',
+    credit: 0, classId: '9007199254740999', className: '实践2601班', teachingClassName: '实践课程合班'
+  } }])
+  assert.equal(vm.form.teachingTaskId, '9007199254740993')
+  assert.equal(vm.form.courseId, '9007199254740995')
+  assert.equal(vm.form.termId, '9007199254740997')
+  assert.equal(vm.form.classId, '9007199254740999')
+  assert.equal(vm.form.termName, '2026—2027学年第一学期')
+  assert.equal(vm.form.termCode, '2026-2027-1')
+  assert.equal(vm.form.credit, 0)
+  assert.equal(vm.form.className, '实践2601班')
+  assert.equal(vm.form.teachingClassName, '实践课程合班')
+})
+
+test('自定义学院岗位按服务端允许动作催录和延期，角色名称不增加或抹除权限', () => {
+  const vm = mount()
+  vm.ctx.currentRole.roleCode = 'CUSTOM_COLLEGE_CLERK'
+  vm.task = { ...task('101'), allowedActions: ['EXTEND_DEADLINE', 'REMIND'] }
+  assert.equal(vm.isAdminRole, false)
+  assert.equal(vm.canExtendDeadline, true)
+  assert.equal(vm.canRemind(vm.task), true)
+  assert.equal(vm.canSubmit, false)
+  vm.ctx.currentRole.roleCode = 'SCHOOL_ADMIN'
+  vm.task.allowedActions = []
+  assert.equal(vm.canExtendDeadline, false)
+  assert.equal(vm.canRemind(vm.task), false)
+  assert.equal(vm.canSubmit, false)
+  vm.task.allowedActions = ['SUBMIT']
+  assert.equal(vm.canSubmit, true)
+})
+
+test('切换到字段缺失的任务清除旧回填，错对象响应不能显示上一门课程学分', () => {
+  const vm = mount()
+  vm.form.usualRatio = 45; vm.form.finalRatio = 55
+  const seed = () => vm.onTeachingTaskChange('101', [{ raw: { taskId: '101', courseName: '旧课程', credit: 4,
+    termId: '20', termName: '旧学期', termCode: '2025-2026-2', classId: '30', className: '旧班级', teachingClassName: '旧教学班' } }])
+  seed()
+  vm.onTeachingTaskChange('102', [{ raw: { taskId: '102', courseName: '新课程' } }])
+  assert.equal(vm.form.courseName, '新课程')
+  assert.equal(vm.form.credit, null)
+  for (const key of ['termId', 'termCode', 'termName', 'classId', 'className', 'teachingClassName']) assert.equal(vm.form[key], '')
+  seed()
+  vm.onTeachingTaskChange('102', [{ raw: { taskId: '101', courseName: '旧课程', credit: 4 } }])
+  assert.equal(vm.form.courseName, '')
+  assert.equal(vm.form.credit, null)
+  vm.onTeachingTaskChange('', [])
+  assert.equal(vm.form.teachingTaskId, '')
+  assert.equal(vm.form.usualRatio, 45); assert.equal(vm.form.finalRatio, 55)
+  vm.onCourseChange('201', [{ raw: { credit: 2 } }])
+  vm.onCourseChange('202', [{ raw: {} }])
+  assert.equal(vm.form.credit, null)
+  vm.setupTeachingTaskId = '101'; vm.setupTeachingTaskLabel = '旧任务'; vm.showCreate = true
+  vm.denyTask({ code: 403001, message: '无权读取' })
+  assert.equal(vm.setupTeachingTaskId, ''); assert.equal(vm.setupTeachingTaskLabel, '')
+  assert.equal(vm.showCreate, false)
+})
+
+test('精确教学任务回读传入正式字段；失败或迟到响应不能保留旧创建上下文', async () => {
+  const pending = deferred(), calls = []
+  const vm = mount({ listAllTasks: params => { calls.push(params); return pending.promise } })
+  vm.currentTermId = '20'; vm.currentTermName = '当前学期'
+  vm.form.credit = 9; vm.form.termName = '旧学期'; vm.form.teachingClassName = '旧教学班'
+  const loading = vm.prepareCreateFromTeachingTask('101', () => vm.alive)
+  assert.equal(vm.form.credit, null); assert.equal(vm.form.termName, ''); assert.equal(vm.form.teachingClassName, '')
+  pending.resolve(result({ taskId: '101', status: 'READY', courseName: '正式课程', termId: '20',
+    termCode: '2026-2027-1', termName: '正式学期', credit: 2.5, classId: '30', className: '正式行政班', teachingClassName: '正式教学班' }))
+  await loading
+  assert.deepEqual(calls[0], { formalMine: true, termId: '20', taskId: '101', page: 1, pageSize: 1 })
+  assert.equal(vm.form.credit, 2.5); assert.equal(vm.form.termName, '正式学期'); assert.equal(vm.form.teachingClassName, '正式教学班')
+  assert.equal(vm.setupTeachingTaskId, '101'); assert.equal(vm.showCreate, true)
+  const rejected = mount({ listAllTasks: async () => ({ code: 403001, message: '无权读取' }) })
+  rejected.form.credit = 9
+  await assert.rejects(rejected.prepareCreateFromTeachingTask('101', () => true))
+  assert.equal(rejected.form.credit, null); assert.equal(rejected.setupTeachingTaskId, ''); assert.equal(rejected.showCreate, false)
+  const late = deferred(), stale = mount({ listAllTasks: () => late.promise })
+  stale.currentTermId = '20'
+  const staleLoad = stale.prepareCreateFromTeachingTask('101', () => stale.alive)
+  await Promise.resolve()
+  stale.alive = false
+  late.resolve(result({ taskId: '101', status: 'READY', credit: 4 }))
+  await staleLoad
+  assert.equal(stale.form.credit, null); assert.equal(stale.setupTeachingTaskId, '')
+})
+
+test('旧学校学期请求最后返回时不能覆盖新学校已回读学期', async () => {
+  const oldTerm = deferred(), newTerm = deferred()
+  let calls = 0
+  const vm = mount({ getCurrentTerm: () => ++calls === 1 ? oldTerm.promise : newTerm.promise })
+  const first = vm.ensureCurrentTerm()
+  vm.identityKey = 'new-school'; vm.invalidateTask()
+  vm.currentTermId = ''; vm.currentTermName = ''
+  const second = vm.ensureCurrentTerm()
+  newTerm.resolve({ code: 0, data: { termId: '9007199254740993', termName: '新学校正式学期' } })
+  assert.equal(await second, true)
+  oldTerm.resolve({ code: 0, data: { termId: '11', termName: '旧学校学期' } })
+  assert.equal(await first, false)
+  assert.equal(vm.currentTermId, '9007199254740993')
+  assert.equal(vm.currentTermName, '新学校正式学期')
+  assert.equal(vm.taskError, '')
+})
+
+test('同身份较旧学期请求和卸载后异常不修改学期或错误提示', async () => {
+  for (const staleKind of ['older-request', 'unmounted', 'identity-changed']) {
+    const pending = deferred()
+    let calls = 0
+    const vm = mount({ getCurrentTerm: () => ++calls === 1 ? pending.promise : Promise.resolve({ code: 0, data: { termId: '22', termName: '最新学期' } }) })
+    const first = vm.ensureCurrentTerm()
+    if (staleKind === 'older-request') assert.equal(await vm.ensureCurrentTerm(), true)
+    else if (staleKind === 'unmounted') vm.alive = false
+    else vm.identityKey = 'changed-context'
+    vm.taskError = '当前错误提示'
+    if (staleKind === 'unmounted') pending.reject(new Error('旧页面连接异常'))
+    else pending.resolve({ code: 500001, message: '旧请求失败' })
+    assert.equal(await first, false)
+    assert.equal(vm.taskError, '当前错误提示')
+    assert.equal(vm.currentTermId, staleKind === 'older-request' ? '22' : '')
+    assert.equal(vm.currentTermName, staleKind === 'older-request' ? '最新学期' : '')
+  }
+})
+
 test('深链任务不在第一页时仍精确读取，不能静默替换', async () => {
   const calls = []
   const vm = mount({ getGradeTasks: async p => { calls.push(p); return p.taskId ? result(task(p.taskId)) : result(task('first-page')) }, getGradeRecords: async () => ({ code: 0, data: { items: [] } }) })

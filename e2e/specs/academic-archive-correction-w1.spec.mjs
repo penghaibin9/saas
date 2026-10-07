@@ -62,10 +62,11 @@ async function openCorrectionTab(page) {
 async function createGradeCorrection(page, { targetRef, reason, score, suffix }) {
   await page.getByRole('button', { name: '发起归档后纠错' }).click()
   await page.getByLabel('业务类型').selectOption('GRADE')
-  await page.getByLabel('目标正式事实 ID').fill(String(targetRef))
+  await page.getByLabel('目标正式事实编号').fill(String(targetRef))
   await page.getByLabel('纠错原因').fill(reason)
-  await page.getByLabel('修正内容（JSON）').fill(JSON.stringify({ score }, null, 2))
-  await page.getByLabel('证据清单（JSON）').fill(JSON.stringify({
+  await page.getByText('实施人员使用：修正内容与证据数据编辑', { exact: true }).click()
+  await page.getByLabel('修正内容（数据文本）').fill(JSON.stringify({ score }, null, 2))
+  await page.getByLabel('证据清单（数据文本）').fill(JSON.stringify({
     kind: 'W1_BROWSER_REVIEW',
     refs: [`browser-${suffix}`],
     sha256: 'd'.repeat(64)
@@ -135,21 +136,17 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
   await expect(page.getByText('拟形成事实（非正式）', { exact: true })).toBeVisible()
   await expect(page.getByText('申请人本人执行二审会被服务端拒绝', { exact: false })).toBeVisible()
 
-  await page.getByRole('button', { name: '二审通过并生成新正式事实' }).click()
-  const creatorDialog = page.getByRole('dialog').filter({ hasText: '确认二次审批通过' }).first()
-  await expect(creatorDialog).toBeVisible()
-  const deniedPromise = page.waitForResponse(
-    (response) => response.url().includes(`/api/v1/academic-affairs/archive/corrections/${approveCaseId}/approve`) &&
-      response.request().method() === 'POST',
-    { timeout: 20_000 }
+  await expect(page.getByRole('button', { name: '二审通过并生成新正式事实' })).toBeHidden()
+  const denied = await page.request.post(
+    `${config.apiBaseUrl}/academic-affairs/archive/corrections/${approveCaseId}/approve`,
+    { headers: { Authorization: `Bearer ${creatorApi.token}` }, data: {} }
   )
-  await creatorDialog.getByRole('button', { name: '确认批准并生成新事实' }).click()
-  const denied = await deniedPromise
   expect(denied.status()).toBe(403)
   const deniedPayload = await denied.json()
   expect(deniedPayload.code).not.toBe(0)
-  await expect(creatorDialog).toBeVisible()
-  await creatorDialog.getByRole('button', { name: '取消' }).click()
+  const afterDenied = await creatorApi.get(`/academic-affairs/archive/batches/${fixture.batchId}/manifest/verify`)
+  expect(afterDenied.ok).toBeTruthy()
+  expect(afterDenied.versions).toEqual(initialManifest.versions)
   await expect(page.getByText('待二审', { exact: true }).first()).toBeVisible()
   await capture(page, testInfo, 'w1-same-requester-second-review-denied')
 
@@ -176,14 +173,19 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
     expect(approvedPayload.code).toBe(0)
     expect(approvedPayload.data.status).toBe('APPLIED')
     expect(approvedPayload.data.manifestVersion).toBe(initialLatestVersion + 1)
-    await expect(reviewerPage.getByText('新正式事实', { exact: true })).toBeVisible()
-    await expect(reviewerPage.getByText('已形成正式事实', { exact: false })).toBeVisible()
+    const appliedDetailDialog = reviewerPage.getByRole('dialog', { name: '归档后纠错详情 / 二次复核' })
+    await expect(appliedDetailDialog.getByText('新正式事实', { exact: true })).toBeVisible()
+    await expect(appliedDetailDialog.getByText(/已形成成绩正式事实，编号 \d+；新归档清单编号 \d+/)).toBeVisible()
     await capture(reviewerPage, testInfo, 'w1-second-reviewer-approved')
 
     const appliedDetail = await reviewerApi.get(`/academic-affairs/archive/corrections/${approveCaseId}`)
     expect(appliedDetail.status).toBe('APPLIED')
     expect(appliedDetail.officialFactId).toBeTruthy()
     expect(appliedDetail.resultingManifestId).toBeTruthy()
+    await expect(appliedDetailDialog.getByText(
+      `已形成成绩正式事实，编号 ${appliedDetail.officialFactId}；新归档清单编号 ${appliedDetail.resultingManifestId}。原事实和旧归档清单永久保留。`,
+      { exact: true }
+    )).toBeVisible()
     expect(appliedDetail.originalOfficialFact.factId).toBe(String(approvalTarget))
     expect(appliedDetail.resultingOfficialFact.factId).toBe(appliedDetail.officialFactId)
     expect(appliedDetail.resultingOfficialFact.sourceBizType).toBe('POST_ARCHIVE')
@@ -231,7 +233,7 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
     expect(rejectedPayload.data.resultingManifestId).toBeNull()
     const rejectedDetailDialog = reviewerPage.getByRole('dialog', { name: '归档后纠错详情 / 二次复核' })
     await expect(rejectedDetailDialog.getByText(`已驳回：${rejectDecisionReason}`, { exact: false })).toBeVisible()
-    await expect(rejectedDetailDialog.getByText('未生成正式事实，也未生成新 Manifest', { exact: false })).toBeVisible()
+    await expect(rejectedDetailDialog.getByText('未生成正式事实，也未生成新归档清单', { exact: false })).toBeVisible()
     await capture(reviewerPage, testInfo, 'w1-second-reviewer-rejected')
 
     const rejectedDetail = await reviewerApi.get(`/academic-affairs/archive/corrections/${rejectCaseId}`)
@@ -249,9 +251,9 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
 
     await rejectedDetailDialog.getByText('关闭', { exact: true }).click()
     await reviewerPage.getByRole('tab', { name: 'Manifest版本链' }).click()
-    await expect(reviewerPage.getByText('Manifest 版本链', { exact: true })).toBeVisible()
-    await expect(reviewerPage.getByText('V1', { exact: true })).toBeVisible()
-    await expect(reviewerPage.getByText(`V${initialLatestVersion + 1}`, { exact: true })).toBeVisible()
+    await expect(reviewerPage.getByText('归档清单版本链', { exact: true })).toBeVisible()
+    await expect(reviewerPage.getByText('第 1 版', { exact: true })).toBeVisible()
+    await expect(reviewerPage.getByText(`第 ${initialLatestVersion + 1} 版`, { exact: true })).toBeVisible()
     await capture(reviewerPage, testInfo, 'w1-manifest-version-chain-preserved')
   } finally {
     await reviewerContext.close()

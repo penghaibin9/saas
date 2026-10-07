@@ -377,9 +377,12 @@ def main():
 
     # graduation / textbook / archive / stats with correct paths
     admin = tok("e2e_aa_admin") or tok("admin2")
+    if not CTX.get("termId"):
+        raise RuntimeError("本轮学期前置未完成，不能创建另一学期的毕业批次")
     gb = req("POST", f"{AA}/graduation-audit-batches", admin, {
         "batchName": f"E2E教务测试毕业审核-{int(time.time())}",
         "gradeYear": "2026", "majorId": major_id or None,
+        "termId": str(CTX["termId"]),
     })
     step("C6.graduation_batch", gb.get("code") == 0, gb)
     if gb.get("code") == 0:

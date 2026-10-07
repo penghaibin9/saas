@@ -20,7 +20,7 @@ from sqlalchemy import case, func, or_, select
 
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.exceptions import AppException, not_found
-from app.core.permissions import is_super_admin
+from app.core.permissions import _match
 from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
@@ -32,7 +32,6 @@ from . import academic_affairs_teaching_class_service as teaching_class
 
 _BLOCKING_STATUSES = {"PENDING_ASSIGN", "ASSIGNED", "REJECTED_BY_TEACHER"}
 _READY_STATUSES = {"TEACHER_CONFIRMED", "READY"}
-_SCHOOL_REVIEW_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN"}
 
 
 def __getattr__(name):
@@ -53,8 +52,6 @@ class TaskManageScope:
 
 def _scope(user, db) -> TaskManageScope:
     role = str((user or {}).get("currentRoleCode") or "").upper()
-    if is_super_admin(user) or role in _SCHOOL_REVIEW_ROLES:
-        return TaskManageScope(all=True, role=role)
     context = build_affairs_context(user, db)
     if str(context.scope_type or "").upper() == "TENANT_ALL":
         return TaskManageScope(all=True, role=role)
@@ -73,6 +70,14 @@ def _scope(user, db) -> TaskManageScope:
 def _visible_task_conditions(scope: TaskManageScope, Task):
     if scope.all:
         return []
+    if scope.college_ids:
+        from app.models import AaTeachingTaskBatch
+
+        return [Task.batch_id.in_(select(AaTeachingTaskBatch.id).where(
+            AaTeachingTaskBatch.tenant_id == _tid(),
+            AaTeachingTaskBatch.college_id.in_(sorted(scope.college_ids)),
+            AaTeachingTaskBatch.is_deleted.is_(False),
+        ))]
     if scope.class_ids:
         return [Task.class_id.in_(sorted(scope.class_ids))]
     return [Task.id == -1]
@@ -118,20 +123,27 @@ def _ensure_task_visible(db, task_id: int, user):
     if not task:
         raise not_found("教学任务不存在")
     scope = _scope(user, db)
-    if not scope.all and (not task.class_id or int(task.class_id) not in scope.class_ids):
+    visible = db.scalar(select(AaTeachingTask.id).where(
+        AaTeachingTask.id == task.id, AaTeachingTask.tenant_id == _tid(),
+        AaTeachingTask.is_deleted.is_(False),
+        *_visible_task_conditions(scope, AaTeachingTask),
+    ))
+    if visible is None:
         raise no_data_scope("该教学任务不在当前数据范围内")
     return task, scope
 
 
-def _pending_count(db, batch_id: int) -> int:
-    from app.models import AaTeachingTask
-
-    return db.scalar(select(func.count()).select_from(AaTeachingTask).where(
-        AaTeachingTask.tenant_id == _tid(),
-        AaTeachingTask.batch_id == int(batch_id),
-        AaTeachingTask.status.in_(sorted(_BLOCKING_STATUSES)),
-        AaTeachingTask.is_deleted.is_(False),
-    )) or 0
+def _require_batch_ready(db, batch_id: int) -> None:
+    from app.models import AaTeachingTask as Task
+    # Commands need the current locked rows after the batch lock, not an older read snapshot.
+    rows = db.execute(select(Task.status, Task.teacher_key).where(
+        Task.tenant_id == _tid(), Task.batch_id == int(batch_id),
+        Task.is_deleted.is_(False)).order_by(Task.id).with_for_update()).all()
+    summary = _summary(rows)
+    if not summary["canAdvance"]:
+        raise AppException("DATA_CONFLICT", "教学任务尚未全部由任课教师确认，不可继续审核",
+                           details={"blockers": summary["blockers"], "taskTotal": summary["taskTotal"]},
+                           http_status=409)
 
 
 def _summary(tasks) -> dict:
@@ -164,6 +176,10 @@ def _summary_counts(by_status, missing_teacher_key=0) -> dict:
             "message": f"有 {missing_teacher_key} 条任务缺少稳定教师工号",
             "route": "/admin/academic-affairs/teaching-tasks/assign",
         })
+    unknown = sum(count for status, count in by_status.items() if status not in _BLOCKING_STATUSES | _READY_STATUSES)
+    if unknown:
+        blockers.append({"code": "TASK_STATUS_UNKNOWN", "count": unknown,
+                         "message": f"有 {unknown} 条任务状态待核对", "route": ""})
     total = sum(by_status.values())
     assigned = sum(by_status.get(status, 0) for status in ("ASSIGNED", "TEACHER_CONFIRMED", "READY"))
     confirmed = sum(by_status.get(status, 0) for status in _READY_STATUSES)
@@ -217,9 +233,11 @@ def _batch_next_action(batch, summary) -> dict:
 
 
 def _generation_programs(db, user, college_id=None):
-    from app.models import AaProgram, AaProgramBinding, Major
+    from app.models import AaProgram, AaProgramBinding, AaProgramCourse, AaCourse
 
     scope = _scope(user, db)
+    if college_id and not scope.all and int(college_id) not in scope.college_ids:
+        raise no_data_scope("该开课学院不在您的教学任务责任范围内")
     active_program_ids = {
         int(value) for (value,) in db.query(AaProgramBinding.program_id).filter(
             AaProgramBinding.tenant_id == _tid(),
@@ -229,21 +247,23 @@ def _generation_programs(db, user, college_id=None):
     }
     if not active_program_ids:
         return []
-    rows = db.query(AaProgram).filter(
+    query = db.query(AaProgram).filter(
         AaProgram.tenant_id == _tid(),
         AaProgram.id.in_(sorted(active_program_ids)),
         AaProgram.status.in_(sorted(program_activation.CURRENT_EFFECTIVE_PROGRAM_STATUSES)),
         AaProgram.is_deleted.is_(False),
-    ).all()
-    if college_id:
-        major_ids = {
-            int(value) for (value,) in db.query(Major.id).filter(
-                Major.tenant_id == _tid(), Major.college_id == int(college_id),
-                Major.is_deleted.is_(False),
-            ).all()
-        }
-        rows = [row for row in rows if row.major_id and int(row.major_id) in major_ids]
-    elif not scope.all:
+    )
+    offering_colleges = {int(college_id)} if college_id else scope.college_ids if not scope.all else set()
+    if offering_colleges:
+        query = query.filter(AaProgram.id.in_(select(AaProgramCourse.program_id).join(
+            AaCourse, AaCourse.id == AaProgramCourse.course_id,
+        ).where(
+            AaProgramCourse.tenant_id == _tid(), AaProgramCourse.is_deleted.is_(False),
+            AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
+            AaCourse.owner_college_id.in_(offering_colleges),
+        )))
+    rows = query.all()
+    if not scope.all and not offering_colleges:
         allowed_major_ids = program_governance._allowed_major_ids(db, scope)
         rows = [row for row in rows if row.major_id and int(row.major_id) in allowed_major_ids]
     return rows
@@ -338,8 +358,8 @@ def _refresh_administrative_roster(task_id: int, reason: str) -> dict:
 
 def generate_batch(body, user) -> dict:
     """教学任务、独立教学班、初始名单和审计一次提交；任一步失败全部回滚。"""
-    college_id = int(body.collegeId) if getattr(body, "collegeId", None) else None
     with session() as db:
+        college_id, _ = _generation_college(db, user, getattr(body, "collegeId", None))
         precheck = _generation_precheck(db, user, college_id)
         result = generation.generate_batch_tx(db, body, user)
         batch_id = int(result["batchId"])
@@ -354,6 +374,68 @@ def generate_batch(body, user) -> dict:
         }
         result["teachingClassProjection"] = projection
         return result
+
+
+def _generation_college(db, user, requested):
+    scope = _scope(user, db)
+    try:
+        college_id = int(requested) if requested not in (None, "") else None
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "开课责任学院参数无效，请重新选择")
+    if college_id is None and not scope.all and len(scope.college_ids) == 1:
+        college_id = next(iter(scope.college_ids))
+    if college_id is None or college_id <= 0:
+        raise AppException("VALIDATION_ERROR", "请先选择开课责任学院，再生成教学任务")
+    if not scope.all and college_id not in scope.college_ids:
+        raise no_data_scope("该开课学院不在您的教学任务责任范围内")
+    return college_id, scope
+
+
+def _require_college_task_action(db, task, user, action):
+    from app.models import AaTeachingTaskBatch
+    from .academic_affairs_responsibility_service import resolve_organization
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_archive_service import guard_term_writable
+
+    batch = tenant_get(db, AaTeachingTaskBatch, int(task.batch_id), tenant_id=_tid())
+    if not batch or batch.is_deleted:
+        raise not_found("教学任务批次不存在")
+    db.refresh(batch, with_for_update=True)
+    permission = "academicAffairs.teachingTask." + action
+    context = build_affairs_context(user, db)
+    if (context.scope_type != "COLLEGE" or batch.college_id not in context.college_ids
+            or not _match(permission, context.permission_codes)):
+        raise no_data_scope("本批次须由开课责任学院办理；学校账号可查看和终审，不能直接代办")
+    owner = resolve_organization(db, "COLLEGE", batch.college_id, permission_code=permission)
+    if not owner["resolved"] or str(_current_user_id(db, user)) not in owner["assigneeUserIds"]:
+        raise no_data_scope("您不是本批次当前有效的学院办理人，请切换到相应学院责任岗位")
+    allowed_statuses = {"DRAFT", "RETURNED", "COLLEGE_CONFIRMED", "APPROVED"} if action == "adjust" else {"DRAFT", "RETURNED"}
+    if batch.status not in allowed_statuses:
+        raise AppException("APPROVAL_VERSION_CONFLICT", "批次当前状态不允许此操作，请刷新后核对办理阶段")
+    guard_term_writable(db, batch.term_id)
+    return batch
+
+
+def _return_editable_batch(db, batch):
+    from app.models import AaTeachingTaskBatch
+    from sqlalchemy.exc import IntegrityError
+    from .academic_affairs_task_generation_service import _editable_batch_conditions
+    from .academic_affairs_task_batch_inventory_service import canonical_editable_scope_key
+
+    existing = db.scalar(select(AaTeachingTaskBatch.id).where(
+        *_editable_batch_conditions(AaTeachingTaskBatch, batch.term_id, batch.college_id),
+        AaTeachingTaskBatch.id != batch.id).limit(1))
+    if existing:
+        raise AppException("DATA_CONFLICT", "同学期、同开课学院已有另一可编辑批次，请先核对该批次后再调整")
+    batch.status = "RETURNED"
+    batch.editable_scope_key = canonical_editable_scope_key(batch.term_id, batch.college_id)
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        if "uk_aa_task_batch_editable_scope" not in str(exc.orig):
+            raise
+        raise AppException("DATA_CONFLICT", "该学院同时产生了可编辑批次，请刷新核对后重试") from exc
 
 
 def assign_teacher(task_id, user, body) -> dict:
@@ -375,9 +457,14 @@ def assign_teacher(task_id, user, body) -> dict:
 def adjust_task(task_id, user, body) -> dict:
     with session() as db:
         _ensure_task_visible(db, int(task_id), user)
-    result = _core.adjust_task(task_id, user, body)
-    result["teachingClassProjection"] = _sync_task(int(task_id))
-    return result
+        result = _core.adjust_task_tx(db, int(task_id), user, body)
+        teaching_row = teaching_class.ensure_teaching_class_for_task(db, int(task_id))
+        db.commit()
+        result["teachingClassProjection"] = {
+            "ok": True, "teachingTaskId": str(task_id), "teachingClassId": str(teaching_row.id),
+            "rosterVersionNo": int(teaching_row.current_roster_version_no or 0),
+        }
+        return result
 
 
 def merge_tasks(body, user) -> dict:
@@ -433,12 +520,19 @@ def college_confirm_batch(batch_id, user) -> dict:
         guard_term_writable(db, batch.term_id)
         scope = _scope(user, db)
         _ensure_batch_visible(db, batch, scope)
+        from .academic_affairs_responsibility_service import resolve_organization
+        from .academic_affairs_grade_correction_command import _current_user_id
+        owner = resolve_organization(db, "COLLEGE", batch.college_id,
+            permission_code="academicAffairs.teachingTask.confirm")
+        if (scope.all or batch.college_id not in scope.college_ids
+                or not _match("academicAffairs.teachingTask.confirm", build_affairs_context(user, db).permission_codes)
+                or str(_current_user_id(db, user)) not in owner["assigneeUserIds"]):
+            raise no_data_scope("教学任务学院确认须由本学院当前责任账号办理，校教务负责终审")
         if batch.status not in {"DRAFT", "RETURNED"}:
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅草稿或教务退回批次可提交学院确认")
-        pending = _pending_count(db, batch.id)
-        if pending:
-            raise AppException("DATA_CONFLICT", f"仍有 {pending} 条任务未分配、待教师确认或被教师退回，不可提交")
+        _require_batch_ready(db, batch.id)
         batch.status = "COLLEGE_CONFIRMED"
+        batch.editable_scope_key = None
         _core._audit(db, "AA_TASK_BATCH", batch.id, "COLLEGE_CONFIRM")
         db.commit()
         db.refresh(batch)
@@ -455,10 +549,15 @@ def review_batch(batch_id, user, action, reason="") -> dict:
     from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
 
     action = str(action or "").upper()
-    role = str((user or {}).get("currentRoleCode") or "").upper()
-    if not (is_super_admin(user) or role in _SCHOOL_REVIEW_ROLES):
-        raise no_data_scope("仅学校教务管理员可执行教学任务终审")
     with session() as db:
+        from .academic_affairs_responsibility_service import resolve_school
+        from .academic_affairs_grade_correction_command import _current_user_id
+        context = build_affairs_context(user, db)
+        if context.scope_type != "TENANT_ALL" or not _match("academicAffairs.teachingTask.confirm", context.permission_codes):
+            raise no_data_scope("仅当前有教学任务终审权限的学校责任岗位可办理")
+        owner = resolve_school(db, permission_code="academicAffairs.teachingTask.confirm")
+        if not owner["resolved"] or str(_current_user_id(db, user)) not in owner["assigneeUserIds"]:
+            raise no_data_scope("您不是当前有效的学校教学任务终审责任人")
         batch = db.query(AaTeachingTaskBatch).filter(
             AaTeachingTaskBatch.id == int(batch_id),
             AaTeachingTaskBatch.tenant_id == _tid(),
@@ -470,16 +569,15 @@ def review_batch(batch_id, user, action, reason="") -> dict:
         if batch.status != "COLLEGE_CONFIRMED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "该批次须先完成学院核对确认")
         if action == "APPROVE":
-            pending = _pending_count(db, batch.id)
-            if pending:
-                raise AppException("DATA_CONFLICT", f"仍有 {pending} 条任务未完成教师确认，不可终审")
+            _require_batch_ready(db, batch.id)
             rows = db.scalars(select(AaTeachingTask).where(
                 AaTeachingTask.tenant_id == _tid(),
                 AaTeachingTask.batch_id == batch.id,
                 AaTeachingTask.status == "TEACHER_CONFIRMED",
                 AaTeachingTask.is_deleted.is_(False),
-            )).all()
+            ).order_by(AaTeachingTask.id).with_for_update().execution_options(populate_existing=True)).all()
             batch.status = "APPROVED"
+            batch.editable_scope_key = None
             for task in rows:
                 task.status = "READY"
             _core._audit(db, "AA_TASK_BATCH", batch.id, "ACADEMIC_APPROVE", f"READY x{len(rows)}")
@@ -487,7 +585,7 @@ def review_batch(batch_id, user, action, reason="") -> dict:
             reason = str(reason or "").strip()
             if len(reason) < 5:
                 raise AppException("VALIDATION_ERROR", "退回原因必填且不少于5字")
-            batch.status = "RETURNED"
+            _return_editable_batch(db, batch)
             _core._audit(db, "AA_TASK_BATCH", batch.id, "ACADEMIC_RETURN", reason)
         else:
             raise AppException("VALIDATION_ERROR", "无效操作")
@@ -616,13 +714,10 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
             ])
         if mine and formal_mine:
             raise AppException("VALIDATION_ERROR", "mine 与 formalMine 不可同时使用")
-        if formal_mine:
+        if formal_mine or mine:
             from . import academic_affairs_teacher_relation_authority as teacher_authority
             formal_scope = teacher_authority.relation_scope(db, user, term_id=term_id)
             conditions.append(AaTeachingTask.id.in_(sorted(formal_scope.get("taskIds") or []) or [-1]))
-        elif mine:
-            keys = _core._user_keys(user)
-            conditions.append(AaTeachingTask.teacher_key.in_(sorted(keys) or ["__none__"]))
         else:
             scope = _scope(user, db)
             conditions.extend(_visible_task_conditions(scope, AaTeachingTask))
@@ -634,21 +729,49 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
         rows = db.scalars(select(AaTeachingTask).where(*conditions).order_by(
             AaTeachingTask.batch_id.desc(), AaTeachingTask.course_id, AaTeachingTask.id,
         ).offset((current_page - 1) * current_page_size).limit(current_page_size)).all()
+        if not rows:
+            # Keep the filtered count even for a page beyond the last result;
+            # an empty page has no objects requiring batch/term/course hydration.
+            return [], total
         batch_ids = sorted({int(task.batch_id) for task in rows if task.batch_id})
         batch_status = {}
+        batches = {}
         if batch_ids:
-            batch_status = {
-                int(batch.id): str(batch.status or "")
+            batches = {
+                int(batch.id): batch
                 for batch in db.scalars(select(AaTeachingTaskBatch).where(
                     AaTeachingTaskBatch.tenant_id == _tid(),
                     AaTeachingTaskBatch.id.in_(batch_ids),
                     AaTeachingTaskBatch.is_deleted.is_(False),
                 )).all()
             }
+            batch_status = {bid: str(batch.status or "") for bid, batch in batches.items()}
+        from app.models import AaCourse, AaTerm, SchoolClass
+        from .academic_affairs_grade_core_service import _term_code_of
+        terms = {int(term.id): term for term in db.scalars(select(AaTerm).where(
+            AaTerm.tenant_id == _tid(), AaTerm.is_deleted.is_(False),
+            AaTerm.id.in_({batch.term_id for batch in batches.values()} or {-1}),
+        )).all()}
+        courses = {int(course.id): course for course in db.scalars(select(AaCourse).where(
+            AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
+            AaCourse.id.in_({task.course_id for task in rows if task.course_id} or {-1}),
+        )).all()}
+        class_names = dict(db.execute(select(SchoolClass.id, SchoolClass.class_name).where(
+            SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False),
+            SchoolClass.id.in_({task.class_id for task in rows if task.class_id} or {-1}),
+        )).all())
         items = []
         for task in rows:
             item = _core._task_row(task)
             item["batchStatus"] = batch_status.get(int(task.batch_id or 0), "")
+            batch = batches.get(int(task.batch_id or 0))
+            term = terms.get(int(batch.term_id)) if batch and batch.term_id else None
+            course = courses.get(int(task.course_id or 0))
+            item.update(termId=str(term.id) if term else None,
+                        termCode=_term_code_of(term) if term else None,
+                        termName=term.term_name if term else None,
+                        credit=float(course.credit) if course and course.credit is not None else None,
+                        className=class_names.get(task.class_id))
             items.append(item)
         return items, total
 
@@ -668,9 +791,36 @@ def get_batch_workbench(batch_id, user) -> dict:
         _ensure_batch_visible(db, batch, scope)
         summary = _batch_summary_map(db, [int(batch.id)], scope)[int(batch.id)]
         term = tenant_get(db, AaTerm, int(batch.term_id), tenant_id=_tid()) if batch.term_id else None
-        role = str((user or {}).get("currentRoleCode") or "").upper()
-        school_review = is_super_admin(user) or role in _SCHOOL_REVIEW_ROLES
-        college_manage = scope.all or bool(scope.college_ids)
+        context = build_affairs_context(user, db)
+        can_confirm = _match("academicAffairs.teachingTask.confirm", context.permission_codes)
+        from .academic_affairs_responsibility_service import resolve_organization, resolve_school
+        from .academic_affairs_grade_correction_command import _current_user_id
+        try:
+            actor_id = str(_current_user_id(db, user))
+        except AppException as error:
+            if error.code != "NO_PERMISSION":
+                raise
+            actor_id = ""
+        responsibility_cache = {}
+        college_owner = resolve_organization(db, "COLLEGE", batch.college_id,
+            permission_code="academicAffairs.teachingTask.manage", cache=responsibility_cache)
+        def college_action(action, owner=None):
+            permission = "academicAffairs.teachingTask." + action
+            if context.scope_type != "COLLEGE" or batch.college_id not in context.college_ids or not _match(permission, context.permission_codes):
+                return False
+            owner = owner or resolve_organization(db, "COLLEGE", batch.college_id,
+                permission_code=permission, cache=responsibility_cache)
+            return owner["resolved"] and actor_id in owner["assigneeUserIds"]
+        college_manage = college_action("manage", college_owner)
+        college_confirmer = resolve_organization(db, "COLLEGE", batch.college_id,
+            permission_code="academicAffairs.teachingTask.confirm", cache=responsibility_cache)
+        school_owner = resolve_school(db, permission_code="academicAffairs.teachingTask.confirm", cache=responsibility_cache)
+        school_review = scope.all and can_confirm and actor_id in school_owner["assigneeUserIds"]
+        awaiting_school = batch.status in {"COLLEGE_CONFIRMED", "APPROVED", "ARCHIVED"}
+        next_step = ({"code": "ACADEMIC_REVIEW", "label": "校教务审核教学任务", "responsibility": school_owner}
+            if not awaiting_school else
+            {"code": "SCHEDULE", "label": "按开课单位编排课表", "route": f"/admin/academic-affairs/scheduling?termId={batch.term_id}"}
+            if batch.status == "APPROVED" else None)
         return {
             "batchId": str(batch.id), "batchName": batch.batch_name,
             "termId": str(batch.term_id),
@@ -678,11 +828,16 @@ def get_batch_workbench(batch_id, user) -> dict:
             "collegeId": str(batch.college_id or ""), "status": batch.status,
             "generatedAt": _core._iso(batch.generate_at), **summary,
             "nextAction": _batch_next_action(batch, summary),
+            "responsibility": school_owner if awaiting_school else college_confirmer if summary["canAdvance"] else college_owner,
+            "nextStep": next_step,
             "actions": {
                 "canAssign": college_manage and batch.status in {"DRAFT", "RETURNED"},
-                "canCollegeConfirm": college_manage and batch.status in {"DRAFT", "RETURNED"} and summary["canAdvance"],
+                "canCollegeConfirm": can_confirm and not scope.all and bool(scope.college_ids) and
+                    actor_id in college_confirmer["assigneeUserIds"] and
+                    batch.status in {"DRAFT", "RETURNED"} and summary["canAdvance"],
                 "canAcademicReview": school_review and batch.status == "COLLEGE_CONFIRMED" and summary["canAdvance"],
-                "canEditComposition": batch.status in {"DRAFT", "RETURNED"},
+                "canEditComposition": college_action("merge") and batch.status in {"DRAFT", "RETURNED"},
+                "canAdjust": college_action("adjust") and batch.status in {"DRAFT", "RETURNED", "COLLEGE_CONFIRMED", "APPROVED"},
             },
         }
 

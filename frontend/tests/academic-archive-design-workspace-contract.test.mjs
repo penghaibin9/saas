@@ -33,7 +33,7 @@ test('AA-261 keeps BLOCKED/UNKNOWN honest and routes the first missing domain to
     '去处理首要阻断',
     'FALLBACK_ROUTE'
   ]) assert.ok(source.includes(token), `missing archive precheck token: ${token}`)
-  assert.match(source, /termId\(\) \{ if \(!this\.syncingResolvedTerm\) this\.load\(\) \}/, 'resolved default term must not trigger a duplicate 13-domain scan')
+  assert.match(source, /termId\(\) \{ if \(!this\.syncingResolvedTerm\) this\.onTermChange\(\) \}/, 'resolved default term must not trigger a duplicate 13-domain scan or rewrite the deep link')
   assert.match(api, /archive\/precheck[^\n]+timeoutMs: 30000/, '13-domain precheck needs a bounded large-dataset read budget')
 })
 

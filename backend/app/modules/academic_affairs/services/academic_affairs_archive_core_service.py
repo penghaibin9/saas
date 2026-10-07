@@ -66,6 +66,35 @@ def _require_school(ctx):
         raise no_data_scope("仅教务处可管理教务归档")
 
 
+def _require_archive_operator(db, user):
+    """正式封存和归档后纠错共用当前学校责任人，审计兼容身份不能扩权。"""
+    from app.core.permissions import _match
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_responsibility_service import resolve_school
+
+    ctx = _ctx(user, db)
+    _require_school(ctx)
+    permission = "academicAffairs.archive.manage"
+    if not _match(permission, ctx.permission_codes):
+        raise no_data_scope("当前账号无教务归档办理权限")
+    owner = resolve_school(db, permission_code=permission)
+    try:
+        actor = _current_user_id(db, user)
+    except AppException:
+        raise no_data_scope("当前账号未绑定有效学校归档责任人") from None
+    if not owner["resolved"] or str(actor) not in owner["assigneeUserIds"]:
+        raise no_data_scope("当前账号不是有效的学校归档责任人，请核对校级任职与归档权限")
+    return actor
+
+
+def _require_historical_archive_actor(db, actor_id):
+    """旧兼容签署键不能与新账号编号直接比较来证明双人复核。"""
+    from app.models import User
+    if actor_id is None or not db.scalar(select(User.id).where(
+            User.id == actor_id, User.tenant_id == _tid())):
+        raise _invalid("历史签署账号无法核验，不能证明双人复核，请先核对历史审计身份")
+
+
 # ═══════════ 学期写保护 ═══════════
 
 def guard_term_writable(db, term_id) -> None:
@@ -109,7 +138,7 @@ def _evaluate_student_status(db, college_ids=None):
 
 
 def _evaluate_registration(db, term_id):
-    from app.models import AaRegistrationBatch, AaRegistrationException
+    from app.models import AaRegistration, AaRegistrationBatch, AaRegistrationException
     query = db.query(AaRegistrationBatch).filter(
         AaRegistrationBatch.tenant_id == _tid(), AaRegistrationBatch.is_deleted.is_(False))
     if term_id:
@@ -125,9 +154,23 @@ def _evaluate_registration(db, term_id):
         AaRegistrationException.status == "OPEN",
         AaRegistrationException.is_deleted.is_(False),
     ).count() if batch_ids else 0
-    passed = not unfinished and open_exceptions == 0
-    remark = ("注册批次已关闭且无未处理异常" if passed else
-              f"未关闭批次 {len(unfinished)} 个，未处理注册异常 {open_exceptions} 条")
+    pending_records = db.query(AaRegistration).filter(
+        AaRegistration.tenant_id == _tid(),
+        AaRegistration.batch_id.in_(batch_ids),
+        AaRegistration.is_deleted.is_(False),
+        AaRegistration.status != "REGISTERED",
+    ).count() if batch_ids else 0
+    registered_records = db.query(AaRegistration).filter(
+        AaRegistration.tenant_id == _tid(),
+        AaRegistration.batch_id.in_(batch_ids),
+        AaRegistration.is_deleted.is_(False),
+        AaRegistration.status == "REGISTERED",
+    ).count() if batch_ids else 0
+    # ponytail: 空批次不能替代真实注册；候选名单具备冻结版本后再核对全员覆盖。
+    passed = not unfinished and open_exceptions == 0 and pending_records == 0 and registered_records > 0
+    remark = ("注册批次已关闭、注册明细均已完成且无未处理异常" if passed else
+              f"未关闭批次 {len(unfinished)} 个，未完成注册明细 {pending_records} 条，"
+              f"未处理注册异常 {open_exceptions} 条，已注册学生 {registered_records} 人")
     return _result(len(rows), passed, remark)
 
 
@@ -402,7 +445,7 @@ def confirm_archive(user, batch_id, force=False):
     """仅 READY 批次可归档；兼容参数 force 不再允许整体绕过门禁。"""
     from app.models import AaTerm
     with session() as db:
-        _require_school(_ctx(user, db))
+        _require_archive_operator(db, user)
         batch = _get_batch(db, batch_id)
         if batch.status == "ARCHIVED":
             return _batch_dto(batch)
@@ -565,9 +608,15 @@ def _domain_rows(db, code, term_id, term_code):
         rows = query.filter(AaGradeTask.term_code == term_code).all() if term_code else query.all()
         return [[r.course_name, r.class_id, r.status, _iso(r.publish_at)] for r in rows]
     if code == "GRADUATION":
+        from app.models import AaTerm
+        from .academic_affairs_graduation_term_scope import batch_term_condition
+        term = db.query(AaTerm).filter(
+            AaTerm.id == term_id, AaTerm.tenant_id == tenant, AaTerm.is_deleted.is_(False),
+        ).first() if term_id else None
         rows = db.query(AaGraduationAuditBatch).filter(
             AaGraduationAuditBatch.tenant_id == tenant,
-            AaGraduationAuditBatch.is_deleted.is_(False)).all()
+            AaGraduationAuditBatch.is_deleted.is_(False),
+            batch_term_condition(term)).all()
         return [[r.batch_name, r.grade_year, r.status, _iso(r.generate_at)] for r in rows]
     return []
 
@@ -604,7 +653,7 @@ def export_batch_item(user, batch_id, category, purpose) -> tuple[bytes, str]:
     if category not in _DOMAIN_COLS:
         raise not_found(f"未知归档物料域：{category}")
     with session() as db:
-        _ctx(user, db)
+        _require_school(_ctx(user, db))
         batch = _get_batch(db, batch_id)
         if batch.status != "ARCHIVED":
             raise _invalid("批次未归档，暂不可下载归档物料")
@@ -621,7 +670,7 @@ def export_batch_all(user, batch_id, purpose) -> tuple[bytes, str]:
     from app.services.xlsx_util import build_ledger_xlsx
     purpose = _check_export_purpose(purpose)
     with session() as db:
-        _ctx(user, db)
+        _require_school(_ctx(user, db))
         batch = _get_batch(db, batch_id)
         if batch.status != "ARCHIVED":
             raise _invalid("批次未归档，暂不可下载归档物料")
@@ -646,7 +695,7 @@ def export_batch_all(user, batch_id, purpose) -> tuple[bytes, str]:
 def list_download_log(user, batch_id):
     from app.models import AffairsAuditTrail
     with session() as db:
-        _ctx(user, db)
+        _require_school(_ctx(user, db))
         _get_batch(db, batch_id)
         rows = db.query(AffairsAuditTrail).filter(
             AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "AA_ARCHIVE",

@@ -12,7 +12,7 @@ test('归档与教务主层不输出 evidence JSON、规则码或批次数据库
     read('src/modules/academicAffairs/views/AaSchedulingConsoleView.vue')
   ])
   assert.doesNotMatch(archive, /JSON\.stringify\(\(evidence/)
-  assert.match(archive, /<summary>技术依据<\/summary>/)
+  assert.match(archive, /<summary>实施人员使用：技术依据<\/summary>/)
   assert.doesNotMatch(dashboard, /<code>\{\{ item\.ruleCode \}\}<\/code>/)
   assert.doesNotMatch(term, /<code>\{\{ row\.code \}\}<\/code>/)
   assert.doesNotMatch(scheduling, /`批次 \$\{row\.batchId\}`/)

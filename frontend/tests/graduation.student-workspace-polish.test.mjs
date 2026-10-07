@@ -45,12 +45,12 @@ function page({ panel = 'roster', writeEnabled = true, batchId = '71' } = {}) {
   return { p, calls, store, api: gdStudentApi, options }
 }
 
-test('only the three approved task labels differ in the complete production script', () => {
-  // 统一按钮组件时只新增了 AppButton 的导入与注册；去掉这两处后脚本必须与原锁定版本完全一致。
+test('approved labels and safe academic-audit return chain remain source-frozen', () => {
+  // 统一按钮组件、任务标签以及受限的毕业审核 returnTo 链均已复核；其余脚本继续用摘要锁定。
   const normalized = script.replace("import { AppButton } from '@/components/ui'\n", '').replace('components: { AppButton, ', 'components: { ')
     .replace("label: '选题 / 导师 / 资格'", "label: '关系与资格'")
     .replace("label: '材料 / 答辩'", "label: '材料与答辩'").replace("label: '毕业资格 / 归档'", "label: '收口与归档'")
-  assert.equal(createHash('sha256').update(normalized).digest('hex'), '4f11fb4f9ad979f005cdaa957b5b486c93432887b323b087d81738f0c3acf5fb')
+  assert.equal(createHash('sha256').update(normalized).digest('hex'), 'ff1921b479e9b9e36fa6a37dc4cb61cea86ab45713d4139b42436a4f0046c9bd')
 })
 
 test('five task groups retain all eleven panel keys and original default destinations', () => {

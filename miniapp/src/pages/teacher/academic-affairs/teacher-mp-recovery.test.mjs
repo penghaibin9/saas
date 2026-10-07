@@ -53,6 +53,9 @@ function page(file, dependencies = {}) {
     teacherApi: {}, academicGradeEntryApi: {}, toast() {}, go() {},
     createSubmitLock: () => ({ run: (fn) => fn() }),
     normalizeError: () => ({ text: '请求失败' }),
+    currentSessionGeneration: () => 1,
+    forcePasswordChangeRequired: () => false,
+    roleKeyFromBackendRole: role => role === 'ACADEMIC_TEACHER' ? 'academic' : '',
     ...contract,
     ...approvalRecovery,
     matchCompletedStatusTask,
@@ -65,6 +68,7 @@ function page(file, dependencies = {}) {
   vm.runInNewContext(decoder + '\n' + source, sandbox)
   const options = sandbox.options
   const instance = options.data()
+  if (file === './grade-entry.vue') instance.identityReady = true
   for (const [name, method] of Object.entries(options.methods)) instance[name] = method.bind(instance)
   for (const [name, getter] of Object.entries(options.computed || {})) {
     Object.defineProperty(instance, name, { get: () => getter.call(instance) })
@@ -849,14 +853,32 @@ for (const mode of ['single', 'batch']) {
     let user = 1
     const requests = []
     const write = () => { const request = deferred(); requests.push(request); return request.promise }
+    const session = {
+      identity: { userId: '1' }, realUser: { tenantId: '1', activeContextId: '1' },
+      currentRole: 'academic', persistedIdentityVerified: true,
+      applyRealUser(data) {
+        this.identity.userId = data.userId
+        this.realUser = data
+        this.persistedIdentityVerified = true
+      }
+    }
     const instance = grade({
-      useSessionStore: () => ({ identity: { tenantId: 1, userId: user, activeContextId: user }, currentRole: 'teacher' }),
+      useSessionStore: () => session,
+      me: async () => ({ tenantId: '1', userId: String(user), activeContextId: String(user), currentRole: { roleCode: 'ACADEMIC_TEACHER' } }),
       teacherApi: { enterGradeScore: write }, academicGradeEntryApi: { batchSave: write }
     })
+    instance.identityReady = true
     instance._viewContext = instance.contextKey()
     instance.load = () => {}
     const oldSave = mode === 'single' ? instance.saveScore(instance.roster[0]) : instance.saveAll()
-    for (const identity of [2, 1]) { instance.onHide(); user = identity; instance.onShow() }
+    for (const identity of [2, 1]) {
+      instance.onHide()
+      user = identity
+      session.identity.userId = String(identity)
+      session.realUser.activeContextId = String(identity)
+      instance.onShow()
+      await flush()
+    }
     instance.active = { gradeTaskId: '8', status: 'INPUTTING' }
     instance.roster = [{ studentId: 11 }]
     instance.scores = { 11: { usualScore: '80', finalScore: '90', exceptionFlag: 'NORMAL' } }
@@ -883,10 +905,10 @@ test('schedule cancellation ignores a late acknowledgement across identity round
   })
   instance.load = () => {}
   instance._viewContext = instance.contextKey()
-  instance.changes = [{ changeId: 7, status: 'SUBMITTED' }]
+  instance.changes = [{ changeId: 7, status: 'SUBMITTED', canCancel: true }]
   instance.doCancel(instance.changes[0])
   for (const identity of [2, 1]) { instance.onHide(); user = identity; instance.onShow() }
-  instance.changes = [{ changeId: 8, status: 'SUBMITTED' }]
+  instance.changes = [{ changeId: 8, status: 'SUBMITTED', canCancel: true }]
   instance.doCancel(instance.changes[0])
   requests[0].resolve({})
   await flush()
@@ -929,6 +951,32 @@ test('attendance late submission cannot close a new identity session', async () 
   assert.equal(instance.active, null)
 })
 
+test('Tuesday-start teaching weeks display chronological dates while retaining weekday selection and lesson identity', () => {
+  const instance = page('../my-schedule/index.vue')
+  instance.termStartDate = '2026-09-01'
+  instance.currentWeek = instance.selectedWeek = 5
+  instance.todayDate = '2026-10-01'; instance.selectedDay = 1
+  instance.items = [{ itemId: '90071992547409931', weekday: 1, slotNo: 1, startWeek: 5, endWeek: 6, weekParity: 'ALL' }]
+  assert.deepEqual(Array.from(instance.weekDays, day => day.weekday), [2, 3, 4, 5, 6, 7, 1])
+  assert.deepEqual(Array.from(instance.weekDays, day => `${day.month}/${day.dateNumber}`), ['9/29', '9/30', '10/1', '10/2', '10/3', '10/4', '10/5'])
+  assert.equal(instance.selectedDay, 1)
+  assert.equal(instance.dayItems[0].itemId, '90071992547409931')
+  instance.selectedDay = 4
+  instance.todayItems = [{ scheduleItemId: 'today', weekday: 1, slotNo: 2 }]
+  assert.equal(instance.dayIsToday, true)
+  assert.equal(instance.dayItems[0].scheduleItemId, 'today')
+  instance.selectedWeek = 6
+  assert.equal(instance.selectedDay, 4)
+  assert.equal(instance.dayIsToday, false)
+  assert.equal(instance.weekDateLabel, '10月6日—12日')
+  assert.equal(instance.weekDays[6].dateNumber, 12)
+  instance.selectedDay = 1
+  assert.equal(instance.dayItems[0].itemId, '90071992547409931')
+  instance.termStartDate = ''
+  assert.deepEqual(Array.from(instance.weekDays, day => day.weekday), [1, 2, 3, 4, 5, 6, 7])
+  assert.equal(instance.weekDays[0].dateNumber, undefined)
+})
+
 test('schedule day strip uses calendar dates but today lessons remain server authoritative', () => {
   const instance = page('../my-schedule/index.vue')
   instance.todayDate = '2026-09-08'; instance.currentWeek = 2; instance.selectedWeek = 2; instance.selectedDay = 2
@@ -936,6 +984,7 @@ test('schedule day strip uses calendar dates but today lessons remain server aut
   instance.items = [{ itemId: 1, weekday: 2, slotNo: 1, startWeek: 1, endWeek: 18, weekParity: 'ALL' }]
   instance.todayItems = []
   instance.calendarSource = 'HOLIDAY'
+  assert.deepEqual(Array.from(instance.weekDays, day => day.weekday), [1, 2, 3, 4, 5, 6, 7])
   assert.equal(instance.weekDays[0].dateNumber, 7)
   assert.equal(instance.weekDays[6].dateNumber, 13)
   assert.equal(instance.dayIsToday, true)
@@ -951,8 +1000,8 @@ test('schedule day strip uses calendar dates but today lessons remain server aut
 })
 
 test('schedule rejects invalid date labels and retains selected day across same-identity refresh', async () => {
-  const data = { todayDate: '2026-09-08', currentWeek: 2, teachingWeeks: 18, items: [], todayItems: [] }
-  const instance = page('../my-schedule/index.vue', { teacherApi: { getMySchedule: async () => data } })
+  const data = { todayDate: '2026-09-08', currentWeek: 2, teachingWeeks: 18, termCode: '2026-1', items: [], todayItems: [] }
+  const instance = page('../my-schedule/index.vue', { teacherApi: { getMySchedule: async ({ week }) => ({ ...data, week: week || 2 }) } })
   await instance.load()
   assert.equal(instance.selectedDay, 2)
   instance.selectedDay = 4; instance.selectedWeek = 3
@@ -1026,7 +1075,7 @@ test('schedule submit and cancellation 5xx responses remain separately unresolve
   assert.equal(instance.hasUnknownWrite('submit', 7), true)
   await instance.doSubmit(); await flush()
   assert.equal(submissions, 1)
-  const row = { changeId: 12, status: 'SUBMITTED' }
+  const row = { changeId: 12, status: 'SUBMITTED', canCancel: true }
   instance.changes = [row]
   instance.doCancel(row); await flush()
   assert.equal(instance.hasUnknownWrite('cancel', 12), true)

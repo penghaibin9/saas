@@ -84,17 +84,17 @@
     </div>
 
     <AppDrawer v-model:visible="form.open" title="新增任职">
-      <label class="sa-label">人员 userId<span class="sa-required">*</span></label>
-      <input v-model="form.userId" class="mp-input" placeholder="教职工账号 userId" />
+      <label class="sa-label">人员账号编号<span class="sa-required">*</span></label>
+      <input v-model="form.userId" class="mp-input" placeholder="填写教职工账号编号" aria-label="人员账号编号" />
 
       <label class="sa-label">组织<span class="sa-required">*</span></label>
-      <select v-model="form.orgKey" class="mp-input">
+      <select v-model="form.orgKey" class="mp-input" aria-label="任职组织">
         <option value="">请选择组织</option>
         <option v-for="opt in orgOptions" :key="opt.key" :value="opt.key">{{ opt.label }}</option>
       </select>
 
       <label class="sa-label">岗位<span class="sa-required">*</span></label>
-      <select v-model="form.assignmentType" class="mp-input">
+      <select v-model="form.assignmentType" class="mp-input" aria-label="任职岗位">
         <option v-for="opt in assignmentTypes" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
       </select>
 
@@ -143,8 +143,10 @@ import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { currentUserFromToken } from '@/services/http/client'
 
 const ASSIGNMENT_TYPES = [
+  { value: 'ACADEMIC_REVIEWER', label: '校级教务终审负责人' },
   { value: 'COUNSELOR', label: '辅导员' },
   { value: 'HEAD_TEACHER', label: '班主任' },
   { value: 'SECRETARY', label: '教学秘书' },
@@ -170,7 +172,6 @@ export default {
       legacyRows: [],
       orgOptions: [],
       orgNameMap: {},
-      assignmentTypes: ASSIGNMENT_TYPES,
       legacyColumns: [
         { key: 'roleLabel', title: '岗位' },
         { key: 'orgName', title: '组织' },
@@ -186,13 +187,26 @@ export default {
       revoke: { open: false, id: '', expectedVersion: 0, reason: '', error: '', submitting: false }
     }
   },
+  computed: {
+    assignmentTypes() {
+      const school = this.form.orgKey.startsWith('SCHOOL:')
+      return ASSIGNMENT_TYPES.filter(x => (x.value === 'ACADEMIC_REVIEWER') === school)
+    }
+  },
+  watch: {
+    'form.orgKey'() {
+      if (!this.assignmentTypes.some(x => x.value === this.form.assignmentType)) {
+        this.form.assignmentType = this.assignmentTypes[0]?.value || ''
+      }
+    }
+  },
   created() { this.load() },
   methods: {
     fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
     assignmentLabel(t) { return (ASSIGNMENT_TYPES.find((x) => x.value === t) || {}).label || (t ? '类型待确认' : '—') },
     sourceLabel(s) { return SOURCE_LABEL[s] || (s ? '状态待确认' : '—') },
     statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '—') },
-    orgName(type, id) { return this.orgNameMap[`${type}:${id}`] || `${type}:${id}` },
+    orgName(type, id) { return this.orgNameMap[`${type}:${id}`] || '组织信息待核对' },
 
     async load() {
       this.loading = true
@@ -210,6 +224,12 @@ export default {
     buildOrgOptions(tree) {
       const options = []
       const map = {}
+      const tenantId = String(currentUserFromToken()?.tenantId || '')
+      if (/^[1-9]\d*$/.test(tenantId)) {
+        const key = `SCHOOL:${tenantId}`
+        options.push({ key, label: '本校（校级教务）' })
+        map[key] = '本校教务处'
+      }
       const walk = (nodes, prefix) => {
         (nodes || []).forEach((node) => {
           const label = prefix ? `${prefix} / ${node.name}` : node.name
@@ -238,15 +258,15 @@ export default {
     },
 
     async submitCreate() {
-      if (!this.form.userId) { this.form.error = '请填写人员 userId'; return }
+      if (!/^[1-9]\d*$/.test(this.form.userId)) { this.form.error = '请填写有效的人员账号编号'; return }
       if (!this.form.orgKey) { this.form.error = '请选择组织'; return }
       const [orgType, orgNodeId] = this.form.orgKey.split(':')
       this.form.submitting = true
       this.form.error = ''
       const res = await systemApi.createStaffAssignment({
-        userId: Number(this.form.userId),
+        userId: String(this.form.userId),
         orgType,
-        orgNodeId: Number(orgNodeId),
+        orgNodeId,
         assignmentType: this.form.assignmentType,
         effectiveAt: this.form.effectiveAt ? new Date(this.form.effectiveAt).toISOString() : null,
         expiresAt: this.form.expiresAt ? new Date(this.form.expiresAt).toISOString() : null,

@@ -8,7 +8,7 @@ from __future__ import annotations
 from typing import Optional
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
 
 from app.core.permissions import require_any_permission, require_permission
@@ -139,10 +139,15 @@ def review_create(body: ReviewBatchBody, user=Depends(require_permission(_TB_REV
 
 
 @router.get("/textbooks/review-batches", summary="审核批次列表")
-def review_batches(status: Optional[str] = None, page: int = 1, pageSize: int = 20,
+def review_batches(status: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                    user=Depends(require_permission(_TB_REVIEW))):
     items, total = textbook_read.list_review_batches(user, status, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+    data = paginate(items, total, page, pageSize)
+    with textbook_svc.session() as db:
+        ctx = textbook_svc._ctx(user, db)
+        from app.core.permissions import _match
+        data["actions"] = {"createReview": ctx.scope_type == "TENANT_ALL" and _match(_TB_REVIEW, ctx.permission_codes)}
+    return success(data)
 
 
 @router.post("/textbooks/review-batches/{bid}/advance", summary="审核推进（学院→教务→备案公示）")

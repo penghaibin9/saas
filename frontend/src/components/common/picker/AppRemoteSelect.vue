@@ -68,13 +68,13 @@
           @keydown.space.prevent.stop="pick(opt)"
         >
           <span v-if="multiple" class="app-remote-select__box">
-            <span v-if="isChecked(opt.value)" class="app-remote-select__tick">✓</span>
+            <span v-if="isChecked(opt.value)" class="app-remote-select__tick" aria-hidden="true">✓</span>
           </span>
           <span class="app-remote-select__opt-main">
             <span class="app-remote-select__opt-label">{{ opt.label }}</span>
             <span v-if="opt.desc" class="app-remote-select__opt-desc">{{ opt.desc }}</span>
           </span>
-          <span v-if="!multiple && isChecked(opt.value)" class="app-remote-select__opt-check">✓</span>
+          <span v-if="!multiple && isChecked(opt.value)" class="app-remote-select__opt-check" aria-hidden="true">✓</span>
         </li>
       </ul>
       <div v-else class="app-remote-select__state is-empty">{{ emptyHint }}</div>

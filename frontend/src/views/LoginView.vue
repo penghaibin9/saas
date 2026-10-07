@@ -158,7 +158,8 @@ export default {
         }
         toast.success(`欢迎，${data.displayName}（${data.currentRole.roleName}）`)
         const redirect = typeof this.$route.query.redirect === 'string' ? this.$route.query.redirect : ''
-        this.$router.push(isPlatformSuperAdmin() ? '/admin/platform/overview' : (redirect || '/workbench'))
+        const defaultPath = data.currentRole?.roleCode === 'COLLEGE_ADMIN' ? '/admin/academic-affairs' : '/workbench'
+        this.$router.push(isPlatformSuperAdmin() ? '/admin/platform/overview' : (redirect || defaultPath))
       } catch (e) {
         await this.requireCaptcha(e)
         this.error = e?.message || '登录失败，请稍后重试'

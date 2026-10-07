@@ -263,6 +263,7 @@ def _step_up_claims(user: dict) -> dict:
         "activeContextId": user.get("activeContextId"),
         "currentRoleCode": user.get("currentRoleCode"),
         "permissionVersion": user.get("permissionVersion"),
+        "credentialVersion": user.get("credentialVersion"),
         "clientType": "PLATFORM_PC",
         "amr": sorted({*{str(v).lower() for v in (user.get("amr") or []) if str(v)}, "totp"}),
         "acr": "urn:student-lifecycle:assurance:mfa",

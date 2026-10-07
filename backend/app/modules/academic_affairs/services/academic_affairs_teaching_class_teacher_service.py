@@ -325,6 +325,16 @@ def list_relations(user, teaching_class_id: int) -> list[dict]:
         return [_relation_dto(row) for row in _active_relations(db, teaching_class.id)]
 
 
+def _locked_class_and_task(db, user, teaching_class_id):
+    # Match teaching-task commands: task first, then class and its teacher relations.
+    teaching_class = class_change._get_class(db, user, int(teaching_class_id))
+    task, term = _task_term(db, teaching_class)
+    from .academic_affairs_task_execution_authority import require_independent_task
+    task = require_independent_task(db, task)
+    teaching_class = class_change._get_class(db, user, int(teaching_class_id), lock=True)
+    return teaching_class, task, term
+
+
 def create_relation(user, teaching_class_id: int, *, teacher_key: str, role_type: str, start_week=None, end_week=None, reason="") -> dict:
     from app.models import AaTeachingClassTeacher
     from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
@@ -334,9 +344,8 @@ def create_relation(user, teaching_class_id: int, *, teacher_key: str, role_type
     if role not in _ROLE_TYPES:
         raise AppException("VALIDATION_ERROR", "roleType 仅支持 PRIMARY/CO_TEACHER")
     with session() as db:
-        teaching_class = class_change._get_class(db, user, int(teaching_class_id), lock=True)
+        teaching_class, task, term = _locked_class_and_task(db, user, teaching_class_id)
         guard_term_writable(db, int(teaching_class.term_id))
-        task, term = _task_term(db, teaching_class)
         teacher = _teacher(db, teacher_key)
         normalized_key = str(teacher.login_name)
         start, end = _window(task, term, start_week, end_week)
@@ -390,9 +399,8 @@ def update_relation(user, teaching_class_id: int, relation_id: int, *, teacher_k
 
     reason_text = _reason(reason)
     with session() as db:
-        teaching_class = class_change._get_class(db, user, int(teaching_class_id), lock=True)
+        teaching_class, task, term = _locked_class_and_task(db, user, teaching_class_id)
         guard_term_writable(db, int(teaching_class.term_id))
-        task, term = _task_term(db, teaching_class)
         relation = db.query(AaTeachingClassTeacher).filter(
             AaTeachingClassTeacher.id == int(relation_id),
             AaTeachingClassTeacher.tenant_id == _tid(),
@@ -445,9 +453,8 @@ def deactivate_relation(user, teaching_class_id: int, relation_id: int, *, reaso
 
     reason_text = _reason(reason)
     with session() as db:
-        teaching_class = class_change._get_class(db, user, int(teaching_class_id), lock=True)
+        teaching_class, task, term = _locked_class_and_task(db, user, teaching_class_id)
         guard_term_writable(db, int(teaching_class.term_id))
-        task, term = _task_term(db, teaching_class)
         relation = db.query(AaTeachingClassTeacher).filter(
             AaTeachingClassTeacher.id == int(relation_id),
             AaTeachingClassTeacher.tenant_id == _tid(),

@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
+import pytest
+
 BASE = "/api/v1/mobile/academic"
 MAIN = 1000000000000000001
 
@@ -402,6 +404,100 @@ def test_registration_mobile_uses_server_pages_and_enforces_self_service_window(
     foreign_read = client.get(f"{BASE}/registration/my", headers=student_headers, params={"batchId": ids["foreign"]}).json()["data"]
     assert foreign_read["total"] == 0 and foreign_read["batches"] == []
     assert client.post(f"{BASE}/registration/{ids['foreign']}/register", headers=student_headers).status_code == 404
+
+
+def test_registration_mobile_self_service_rechecks_batch_status_pool(client, db_mode):
+    """本人可正常续注册，但不能借自助入口跨越入学或休学状态门禁。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaRegistration, AaRegistrationBatch, StudentProfile
+
+    now = datetime.utcnow()
+    with get_sessionmaker()() as db:
+        normal = StudentProfile(
+            tenant_id=MAIN, student_no="CR0036", real_name="学期续注册学生",
+            student_status="NORMAL", status="ACTIVE",
+        )
+        suspended = StudentProfile(
+            tenant_id=MAIN, student_no="CR0037", real_name="休学不可续注册学生",
+            student_status="SUSPENDED", status="ACTIVE",
+        )
+        enroll = AaRegistrationBatch(
+            tenant_id=MAIN, batch_name="自助入学状态门禁", register_type="ENROLL", status="OPEN",
+            window_start=now - timedelta(days=1), window_end=now + timedelta(days=1),
+        )
+        semester = AaRegistrationBatch(
+            tenant_id=MAIN, batch_name="自助学期状态门禁", register_type="SEMESTER", status="OPEN",
+            window_start=now - timedelta(days=1), window_end=now + timedelta(days=1),
+        )
+        db.add_all([normal, suspended, enroll, semester])
+        db.flush()
+        normal_id, suspended_id = normal.id, suspended.id
+        enroll_id, semester_id = enroll.id, semester.id
+        db.commit()
+
+    normal_headers = _stu_token("学期续注册学生", "CR0036")
+    suspended_headers = _stu_token("休学不可续注册学生", "CR0037")
+    assert client.post(f"{BASE}/registration/{enroll_id}/register", headers=normal_headers).status_code == 409
+    assert client.post(f"{BASE}/registration/{semester_id}/register", headers=suspended_headers).status_code == 409
+    accepted = client.post(f"{BASE}/registration/{semester_id}/register", headers=normal_headers)
+    assert accepted.status_code == 200, accepted.text
+    assert accepted.json()["data"]["studentId"] == str(normal_id)
+    with get_sessionmaker()() as db:
+        assert db.get(StudentProfile, normal_id).student_status == "REGISTERED"
+        assert db.get(StudentProfile, suspended_id).student_status == "SUSPENDED"
+        assert db.query(AaRegistration).filter_by(batch_id=enroll_id, student_id=normal_id).count() == 0
+        assert db.query(AaRegistration).filter_by(batch_id=semester_id, student_id=suspended_id).count() == 0
+        assert db.query(AaRegistration).filter_by(
+            batch_id=semester_id, student_id=normal_id, status="REGISTERED",
+        ).count() == 1
+
+
+def test_registration_self_service_rejects_another_student_id_in_write_transaction(db_mode):
+    """即使调用者给出同租户他人 ID，正式本人写入口也不得产生任何事实。"""
+    import importlib
+
+    from app.core.context import set_tenant
+    from app.core.exceptions import AppException
+    from app.db.session import get_sessionmaker
+    from app.models import AaRegistration, AaRegistrationBatch, StudentProfile
+
+    with get_sessionmaker()() as db:
+        own = StudentProfile(
+            tenant_id=MAIN, student_no="CR0038", real_name="本人注册核验甲",
+            student_status="PENDING_REGISTER", status="ACTIVE",
+        )
+        other = StudentProfile(
+            tenant_id=MAIN, student_no="CR0039", real_name="本人注册核验乙",
+            student_status="PENDING_REGISTER", status="ACTIVE",
+        )
+        batch = AaRegistrationBatch(
+            tenant_id=MAIN, batch_name="本人身份事务核验", register_type="ENROLL", status="OPEN",
+            window_start=datetime.utcnow() - timedelta(days=1),
+            window_end=datetime.utcnow() + timedelta(days=1),
+        )
+        db.add_all([own, other, batch])
+        db.flush()
+        own_id, other_id, batch_id = own.id, other.id, batch.id
+        db.commit()
+
+    svc = importlib.import_module("app.modules.academic_affairs.services.academic_affairs_service")
+    set_tenant({"tenantId": str(MAIN)})
+    try:
+        with pytest.raises(AppException) as exc:
+            svc.register_student(
+                batch_id,
+                {"userType": "STUDENT", "studentNo": "CR0038", "userId": "u-本人注册核验甲"},
+                other_id,
+                self_service=True,
+            )
+        assert exc.value.code == "NO_PERMISSION"
+    finally:
+        set_tenant(None)
+
+    with get_sessionmaker()() as db:
+        assert db.get(StudentProfile, own_id).student_status == "PENDING_REGISTER"
+        assert db.get(StudentProfile, other_id).student_status == "PENDING_REGISTER"
+        assert db.query(AaRegistration).filter_by(batch_id=batch_id).count() == 0
 
 
 def test_registration_mobile_routes_reject_teacher_and_legacy_mobile_client(client, db_mode):

@@ -137,6 +137,10 @@ jobs:
           python scripts/e2e_seed_module_commerce_sales.py > ../e2e/runtime-logs/module-commerce-sales-seed.log
           test -s ../e2e/runtime-fixtures/module-commerce-sales.json
 
+      - name: Bootstrap explicit cross-college internship reviewer
+        working-directory: backend
+        run: python scripts/e2e_bootstrap_ix011_college_b.py
+
       - name: Run non-graduation functional browser suite
         run: bash scripts/e2e/run-browser-suite.sh production-non-graduation
 

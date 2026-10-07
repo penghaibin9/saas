@@ -528,6 +528,9 @@ export const academicAffairsApi = {
   assignTeacher(taskId, body) {
     return call(() => request(`${BASE}/teaching-tasks/${taskId}/assign`, { method: 'POST', body }))
   },
+  voidDraftTeachingTask(taskId, reason) {
+    return call(() => request(`${BASE}/teaching-tasks/${taskId}/void-draft`, { method: 'POST', body: { reason } }))
+  },
   teacherActTask(taskId, action, reason) {
     return call(() => request(`${BASE}/teaching-tasks/${taskId}/teacher-act`, { method: 'POST', body: { action, reason } }))
   },
@@ -1165,6 +1168,8 @@ export const academicAffairsExamApi = {
   listRooms(cid) { return call(() => request(`${BASE}/exam/courses/${cid}/rooms`)) },
   assignSeats(roomId, studentIds) { return call(() => request(`${BASE}/exam/rooms/${roomId}/seats`, { method: 'POST', body: { studentIds } })) },
   roomSeats(roomId) { return call(() => request(`${BASE}/exam/rooms/${roomId}/seats`)) },
+  roomAttendance(roomId) { return call(() => request(`${BASE}/exam/rooms/${roomId}/attendance`)) },
+  markRoomPresent(roomId, studentId, expectedVersion) { return call(() => request(`${BASE}/exam/rooms/${roomId}/attendance/${studentId}`, { method: 'PUT', body: { expectedVersion, status: 'PRESENT' } })) },
   addInvigilator(roomId, body) { return call(() => request(`${BASE}/exam/rooms/${roomId}/invigilators`, { method: 'POST', body })) },
   listInvigilators(roomId) { return call(() => request(`${BASE}/exam/rooms/${roomId}/invigilators`)) },
   addPatrol(bid, body) { return call(() => request(`${BASE}/exam/batches/${bid}/patrols`, { method: 'POST', body })) },

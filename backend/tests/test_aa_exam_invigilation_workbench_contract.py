@@ -39,9 +39,12 @@ def _seed_assignment(
 ):
     del db_mode
     from app.db.session import get_sessionmaker
-    from app.models import AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom
+    from app.models import AaCourse, AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom, College, User
 
     db = get_sessionmaker()()
+    if not db.query(User).filter(User.tenant_id == TID, User.login_name == teacher_key).first():
+        db.add(User(tenant_id=TID, login_name=teacher_key, real_name=f"监考-{teacher_key}",
+                    user_type="TEACHER", password_hash="x", status="ACTIVE"))
     batch = AaExamBatch(
         tenant_id=TID,
         batch_name=f"C-W3监考-{teacher_key}-{batch_status}",
@@ -51,9 +54,19 @@ def _seed_assignment(
     )
     db.add(batch)
     db.flush()
+    college = College(tenant_id=TID, college_name=f"C-W3监考学院-{teacher_key}", status="ACTIVE")
+    db.add(college)
+    db.flush()
+    formal_course = AaCourse(tenant_id=TID, course_code=f"CW3-{batch.id}",
+                             course_name=f"C-W3监考课程-{teacher_key}", owner_college_id=college.id,
+                             credit=2, status="ENABLED")
+    db.add(formal_course)
+    db.flush()
     course = AaExamCourse(
         tenant_id=TID,
         batch_id=batch.id,
+        course_id=formal_course.id,
+        college_id=college.id,
         course_name=f"C-W3监考课程-{teacher_key}",
         class_name="C-W3-2801",
         exam_date=exam_date,
@@ -156,13 +169,49 @@ def test_invigilation_workbench_filters_to_self_and_only_formal_chain(db_mode):
     assert finished["items"][0]["workStatus"] == "FINISHED"
 
 
+def test_past_published_room_stays_visible_only_while_own_attendance_is_unfinished(db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaExamBatch, AaExamRoomStudent
+    from app.modules.academic_affairs.services import academic_affairs_invigilation_workbench_service as svc
+
+    ids = _seed_assignment(db_mode, "cw3_overdue_invigilator", exam_date="2029-01-12")
+    user = _set_context(_user("cw3_overdue_invigilator"))
+    with get_sessionmaker()() as db:
+        seat = AaExamRoomStudent(tenant_id=TID, exam_room_id=ids["roomId"],
+                                 exam_course_id=ids["courseId"], student_id=910012,
+                                 seat_no=1, attendance_status="NOT_STARTED")
+        db.add(seat)
+        db.commit()
+        seat_id = seat.id
+
+    pending = svc.my_invigilation_workbench(user, from_date="2029-01-13")
+    assert [row["examRoomId"] for row in pending["items"]] == [str(ids["roomId"])]
+    assert svc.my_invigilation_workbench(_set_context(_user("cw3_other_invigilator")),
+                                         from_date="2029-01-13")["items"] == []
+
+    with get_sessionmaker()() as db:
+        db.get(AaExamRoomStudent, seat_id).attendance_status = "PRESENT"
+        db.commit()
+    assert svc.my_invigilation_workbench(_set_context(user), from_date="2029-01-13")["items"] == []
+
+    with get_sessionmaker()() as db:
+        db.get(AaExamRoomStudent, seat_id).attendance_status = "NOT_STARTED"
+        db.get(AaExamBatch, ids["batchId"]).status = "FINISHED"
+        db.commit()
+    assert svc.my_invigilation_workbench(_set_context(user), from_date="2029-01-13")["items"] == []
+
+
 def test_invigilation_workbench_tracks_canonical_reassignment_without_second_assignment(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import AaExamInvigilator
+    from app.models import AaExamInvigilator, User
     from app.modules.academic_affairs.services import academic_affairs_exam_facade as exam
     from app.modules.academic_affairs.services import academic_affairs_invigilation_workbench_service as svc
 
     ids = _seed_assignment(db_mode, "cw3_old_invigilator")
+    with get_sessionmaker()() as db:
+        db.add(User(tenant_id=TID, login_name="cw3_new_invigilator", real_name="C-W3新监考",
+                    user_type="TEACHER", password_hash="x", status="ACTIVE"))
+        db.commit()
     _set_context(_user("school_admin01", role="SCHOOL_ADMIN", user_type="STAFF"))
 
     before = svc.my_invigilation_workbench(_user("cw3_old_invigilator"), from_date="2029-01-01")

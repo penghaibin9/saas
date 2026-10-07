@@ -338,10 +338,6 @@ def summary(user, batch_id):
             AaTeachingTaskBatch.term_id == int(batch.term_id),
             AaTeachingTaskBatch.is_deleted.is_(False),
         )
-        if batch.college_id:
-            task_batch_query = task_batch_query.filter(
-                AaTeachingTaskBatch.college_id == int(batch.college_id),
-            )
         task_batches = task_batch_query.all()
         task_batch_ids = [row.id for row in task_batches]
         all_tasks = db.query(AaTeachingTask).filter(
@@ -349,6 +345,7 @@ def summary(user, batch_id):
             AaTeachingTask.batch_id.in_(task_batch_ids or [-1]),
             AaTeachingTask.status != "MERGED",
             AaTeachingTask.is_deleted.is_(False),
+            policy.task_scope_condition(db, batch),
         ).all()
         tasks = [
             row for row in all_tasks

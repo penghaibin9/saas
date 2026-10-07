@@ -22,18 +22,26 @@ def _tenant_context():
 
 
 class _FakeQuery:
-    def __init__(self, *, rows=None, count=0, first=None):
+    def __init__(self, *, rows=None, count=0, first=None, model=None):
         self._rows = list(rows or [])
         self._count = count
         self._first = first
+        self._model = model
 
     def filter(self, *_args, **_kwargs):
+        if self._model is not None:
+            from sqlalchemy.orm.evaluator import _EvaluatorCompiler
+            matches = _EvaluatorCompiler(self._model).process(*_args)
+            self._rows = [row for row in self._rows if matches(row) is True]
         return self
 
     def join(self, *_args, **_kwargs):
         return self
 
     def with_for_update(self):
+        return self
+
+    def populate_existing(self):
         return self
 
     def all(self):
@@ -62,7 +70,10 @@ class _ArchiveDb:
         if name == "AaGradeRecheck":
             return _FakeQuery(count=self.active_rechecks)
         if name == "AaGraduationAuditBatch":
-            return _FakeQuery(rows=self.graduation_batches)
+            rows = [model(tenant_id=1, is_deleted=False, term_id=getattr(row, "term_id", None),
+                          status=row.status, generate_at=row.generate_at, created_at=row.created_at)
+                    for row in self.graduation_batches]
+            return _FakeQuery(rows=rows, model=model)
         if name in {"AcademicGrade", "AaGradeRecord", "WorkflowInstance"}:
             return _FakeQuery(count=0, rows=[])
         raise AssertionError(f"unexpected model: {name}")
@@ -162,6 +173,7 @@ def test_force_cannot_bypass_missing_archive_gate(monkeypatch):
     monkeypatch.setattr(core, "_ctx", lambda _user, _db: SimpleNamespace(scope_type="TENANT_ALL"))
     monkeypatch.setattr(core, "_require_school", lambda _ctx: None)
     monkeypatch.setattr(core, "_get_batch", lambda _db, _bid: batch)
+    monkeypatch.setattr(core, "_require_archive_operator", lambda *_: 9001)
 
     with pytest.raises(AppException) as exc:
         core.confirm_archive({"currentRoleCode": "ACADEMIC_ADMIN"}, 1, force=True)
@@ -178,9 +190,12 @@ def test_public_manifest_confirm_also_rejects_force_on_missing_items(monkeypatch
 
     assert public.confirm_archive is manifest.confirm_archive
 
-    batch = SimpleNamespace(id=1, status="MISSING_ITEMS", missing_count=2)
+    batch = SimpleNamespace(id=1, term_id=None, status="MISSING_ITEMS", missing_count=2)
 
     class _ManifestDb:
+        def connection(self, **_kwargs):
+            return None
+
         def query(self, _model):
             return _FakeQuery(first=batch)
 
@@ -195,6 +210,7 @@ def test_public_manifest_confirm_also_rejects_force_on_missing_items(monkeypatch
     monkeypatch.setattr(core, "_ctx", lambda _user, _db: SimpleNamespace(scope_type="TENANT_ALL"))
     monkeypatch.setattr(core, "_require_school", lambda _ctx: None)
     monkeypatch.setattr(manifest, "_actor_id", lambda _db: 9001)
+    monkeypatch.setattr(core, "_require_archive_operator", lambda *_: 9001)
 
     with pytest.raises(AppException) as exc:
         public.confirm_archive({"currentRoleCode": "ACADEMIC_ADMIN"}, 1, force=True)

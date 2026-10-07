@@ -86,7 +86,7 @@ def _batch(client, hdr, term_id=None):
 def _seed_ready_task(term_id, *, teacher_key="T1", teacher_name="王老师",
                      course_name="高数", weekly_hours=1, code_suffix=""):
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, College
 
     db = get_sessionmaker()()
     suffix = str(code_suffix or f"{teacher_key}-{course_name}")
@@ -99,10 +99,18 @@ def _seed_ready_task(term_id, *, teacher_key="T1", teacher_name="王老师",
         status="ENABLED",
     )
     db.add(course); db.flush()
+    college = College(
+        tenant_id=TID,
+        college_name=f"排课责任学院-{int(term_id)}-{safe}",
+        code=f"SC-{int(term_id)}-{safe}"[:50],
+        status="ACTIVE",
+    )
+    db.add(college); db.flush()
     tb = AaTeachingTaskBatch(
         tenant_id=TID,
         term_id=int(term_id),
         batch_name=f"{course_name}任务批次",
+        college_id=college.id,
         status="APPROVED",
     )
     db.add(tb); db.flush()
@@ -120,6 +128,8 @@ def _seed_ready_task(term_id, *, teacher_key="T1", teacher_name="王老师",
         status="READY",
     )
     db.add(task); db.flush()
+    from tests.support_schedule_authority import seed_schedule_program_source
+    seed_schedule_program_source(db, task)
     ids = {"taskBatch": tb.id, "task": task.id, "course": course.id}
     db.commit()
     db.close()
@@ -333,6 +343,11 @@ def test_11_adjust_into_real_conflict_409(client, db_mode):
 
 
 def test_13_archive_requires_published(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from tests.support_schedule_authority import seed_school_schedule_operator
+    with get_sessionmaker()() as db:
+        seed_school_schedule_operator(db)
+        db.commit()
     admin = _hdr(client, "school_admin01")
     bid = _batch(client, admin)
     r = client.post(f"{BASE}/schedule-batches/{bid}/archive", headers=admin)
@@ -340,6 +355,11 @@ def test_13_archive_requires_published(client, db_mode):
 
 
 def test_13_archive_success_and_listed(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from tests.support_schedule_authority import seed_school_schedule_operator
+    with get_sessionmaker()() as db:
+        seed_school_schedule_operator(db)
+        db.commit()
     admin = _hdr(client, "school_admin01")
     _ensure_archive_test_room()
     bid = _batch(client, admin)

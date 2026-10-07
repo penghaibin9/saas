@@ -39,7 +39,7 @@ export const portalApi = {
 
   academicTranscript: () => request('/portal/academic/transcript'),
   academicTranscriptPrint: (body) => request('/portal/academic/transcript/print', { method: 'POST', body }),
-  academicSchedule: () => request('/portal/academic/schedule'),
+  academicSchedule: (week) => request(`/portal/academic/schedule${q({ week })}`),
   academicSchedulePrint: (body) => request('/portal/academic/schedule/print', { method: 'POST', body }),
   academicCourseSelection: (batchId) => request(`/portal/academic/course-selection${q({ batchId })}`),
   academicSelectionPreflight: (body) => request('/portal/academic/course-selection/preflight', { method: 'POST', body }),
@@ -62,7 +62,7 @@ export const portalApi = {
   academicRegistration: () => request('/portal/academic/registration'),
   academicRegistrationRegister: (batchId) => request(`/portal/academic/registration/${encodeURIComponent(batchId)}/register`, { method: 'POST' }),
   academicRegistrationDefer: (batchId, body) => request(`/portal/academic/registration/${encodeURIComponent(batchId)}/defer`, { method: 'POST', body }),
-  academicAttendance: () => request('/portal/academic/attendance'),
+  academicAttendance: (params = {}) => request(`/portal/academic/attendance${q(params)}`),
   academicCalendar: () => request('/portal/academic/calendar'),
   academicClearance: () => request('/portal/academic/clearance'),
   academicExamTicketPrint: (body) => request('/portal/academic/exam/ticket/print', { method: 'POST', body }),

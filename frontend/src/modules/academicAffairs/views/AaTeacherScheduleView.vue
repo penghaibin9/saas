@@ -83,6 +83,7 @@
             <AppButton :disabled="!selectedOccurrenceWeek" @click="applyChange('MAKEUP')">申请补课</AppButton>
           </div>
           <p v-if="isSelfView && !selectedOccurrenceWeek" class="mp-note">停课/补课必须先在上方“周次”选择具体教学周；调课可在下一步选择“只调一次”或“调整周期课表”。</p>
+          <p v-else-if="isSelfView" class="mp-note">已选择第{{ selectedOccurrenceWeek }}教学周；提交申请后交学院审核，审批前不改动正式课表。</p>
           <p v-else class="mp-note">当前为管理查询视图；只有任课教师本人可从课位发起调停课。</p>
         </AppSectionCard>
       </template>

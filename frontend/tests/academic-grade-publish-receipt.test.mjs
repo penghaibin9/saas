@@ -3,9 +3,14 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
 import { buildGradePublishReceipt, gradeWarningEffectState } from '../src/modules/academicAffairs/gradePublishReceipt.js'
+import { matchPermission } from '../src/config/navPlan.js'
+import { compile } from '@vue/compiler-dom'
+import * as Vue from 'vue'
+import { renderToString } from 'vue/server-renderer'
 import * as flow from '../src/modules/academicAffairs/academicFlowContext.js'
 
 const response = data => ({ code: 0, data: { gradeTaskId: '42', status: 'PUBLISHED', projected: 40, failCount: 3, ...data } })
+const task = (extra = {}) => ({ gradeTaskId: '42', courseName: '测试课程', status: 'ACADEMIC_REVIEW', allowedActions: ['PUBLISH', 'RETURN'], ...extra })
 const defer = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
 
 test('actual adapter keeps failed student count separate from unavailable warning count', () => {
@@ -62,13 +67,15 @@ function page(api) {
     .replace(/^import (.*?) from .*$/gm, (_, binding) => `const ${binding} = dependencies`)
     .replace('export default', 'component =')
   const notices = []
-  const context = { dependencies: { ...flow, buildGradePublishReceipt, gradeWarningEffectState,
+  const context = { dependencies: { ...flow, matchPermission, buildGradePublishReceipt, gradeWarningEffectState,
     academicAffairsApi: { getGradeTasks: async () => ({ code: 0, data: { list: [], total: 0 } }), getGradePublicationEffect: async () => ({ code: 404 }), ...api },
     toast: Object.fromEntries(['success', 'warning', 'error'].map(tone => [tone, title => notices.push({ tone, title })])) } }
   vm.runInNewContext(script, context)
   const c = context.component
   const state = Object.assign(c.data(), c.methods, { $route: { fullPath: '/grade-publish', query: {}, path: '/grade-publish' },
+    ctx: { permissionPatterns: ['academicAffairs.grade.publish', 'academicAffairs.grade.return', 'academicAffairs.grade.archive'] },
     academicFlow: { identity: () => 'school:user:role', restorePosition() {} } })
+  state.rows = [task()]
   state.readGate = flow.createAcademicRequestGate(() => state.contextKey())
   return { state, notices }
 }
@@ -78,7 +85,7 @@ for (const warningScanOk of [true, false, undefined]) {
     const { state: s, notices } = page({ publishGrades: async id => {
       assert.equal(id, '42'); writes++; return response({ warningScanOk, warningScanError: 'SQL /private/internal' })
     } })
-    s.openPublish({ gradeTaskId: '42', courseName: '测试课程' }); await s.doAction()
+    s.openPublish(task()); await s.doAction()
     assert.equal(writes, 1); assert.equal(s.dlg.visible, false)
     assert.equal(s.receipt.status, 'PUBLISHED'); assert.equal(s.receipt.warningCount, null)
     assert.match(s.receipt.projectedText, /不及格人数 3/); assert.doesNotMatch(s.receipt.projectedText, /3 条预警/)
@@ -90,10 +97,10 @@ test('timeout followed by an observed published state does not claim this reques
   let writes = 0, reads = 0
   const { state: s, notices } = page({ publishGrades: async () => { writes++; throw new Error('timeout') },
     getGradeTasks: async query => { reads++; assert.equal(query.taskId, '42'); return { code: 0, data: { list: [{ gradeTaskId: '42', status: 'PUBLISHED' }] } } } })
-  s.openPublish({ gradeTaskId: '42', courseName: '测试课程' }); await s.doAction()
+  s.openPublish(task()); await s.doAction()
   assert.equal(s.receipt.primary, 'UNKNOWN'); assert.equal(notices[0].tone, 'warning')
   s.rows=[{gradeTaskId:'42',status:'ACADEMIC_REVIEW'}]
-  await s.checkReceiptStatus(); s.openPublish({ gradeTaskId: '42' }); await s.doAction()
+  await s.checkReceiptStatus(); s.openPublish(task()); await s.doAction()
   assert.equal(writes, 1); assert.equal(reads, 1); assert.equal(s.receipt.primary, 'UNKNOWN')
   assert.match(s.receipt.observedText, /不能据此认定上次发布请求成功/)
   assert.equal(s.rows[0].status,'PUBLISHED')
@@ -102,7 +109,7 @@ test('an uncertain publish locks only the same task in the same authenticated id
   let identity = 'school-a:user:role', writes = 0
   const { state: s } = page({ publishGrades: async () => { writes++; throw new Error('timeout') } })
   s.academicFlow.identity = () => identity
-  const row = { gradeTaskId: '42', courseName: '测试课程' }
+  const row = task()
   s.openPublish(row); await s.doAction()
   assert.equal(s.publishPendingVerification(row), true)
   s.openPublish(row); assert.equal(s.dlg.visible, false)
@@ -126,7 +133,7 @@ test('querying an already published task reports the formal status without inven
 })
 test('success for another task is rejected before receipt construction', async () => {
   const { state: s } = page({ publishGrades: async () => response({ gradeTaskId: '43', warningScanOk: true }) })
-  s.openPublish({ gradeTaskId: '42' }); await s.doAction()
+  s.openPublish(task()); await s.doAction()
   assert.equal(s.receipt.primary, 'UNKNOWN'); assert.equal(s.receipt.taskId, '42'); assert.equal(s.receipt.tone, 'warning')
 })
 
@@ -135,7 +142,7 @@ test('known GPA policy rejection permits manual revalidation but never retries b
   const { state: s } = page({ publishGrades: async () => {
     writes++; return { code: 500001, httpStatus: 409, bizCode: 'GPA_POLICY_INVALID' }
   } })
-  const row = { gradeTaskId: '42', courseName: '测试课程' }
+  const row = task()
   s.openPublish(row); await s.doAction()
   assert.equal(writes, 1)
   assert.equal(s.receipt.primary, 'REJECTED')
@@ -148,7 +155,7 @@ test('known GPA policy rejection permits manual revalidation but never retries b
 test('double confirmation sends once and a route change suppresses the old receipt', async () => {
   const transport = defer(); let writes = 0
   const { state: s, notices } = page({ publishGrades: () => { writes++; return transport.promise } })
-  s.openPublish({ gradeTaskId: '42' }); const pending = s.doAction(); await s.doAction()
+  s.openPublish(task()); const pending = s.doAction(); await s.doAction()
   s.$route.fullPath = '/grade-publish?taskId=43'
   transport.resolve(response({ warningScanOk: true })); await pending
   assert.equal(writes, 1); assert.equal(s.receipt, null); assert.equal(notices.length, 0)
@@ -156,9 +163,68 @@ test('double confirmation sends once and a route change suppresses the old recei
 test('archive and return keep their own receipts with no publish adapter or scan claim', async () => {
   for (const action of ['return', 'archive']) {
     const { state: s } = page({ returnGradeTask: async () => ({ code: 0, data: { status: 'RETURNED' } }), archiveGradeTask: async () => ({ code: 0, data: { status: 'ARCHIVED' } }) })
-    s[action === 'return' ? 'openReturn' : 'openArchive']({ gradeTaskId: '42', courseName: '测试课程' })
+    const row = task(action === 'archive' ? { status: 'PUBLISHED', allowedActions: ['ARCHIVE'] } : {})
+    s.rows = [row]
+    s[action === 'return' ? 'openReturn' : 'openArchive'](row)
     await s.doAction({ reason: '核对后重新办理' })
     assert.equal(s.receipt.warningRefresh, undefined); assert.doesNotMatch(s.receipt.title, /发布/)
     assert.equal(s.receipt.projectedText, '未产生新的正式成绩投影')
   }
+})
+
+
+test('成绩发布退回归档权限独立，正式动作许可与状态不可缺少或互授', async () => {
+  for (const action of ['publish', 'return', 'archive']) {
+    let writes = 0
+    const { state: s } = page({ publishGrades: async () => { writes++ }, returnGradeTask: async () => { writes++ }, archiveGradeTask: async () => { writes++ } })
+    const row = task(action === 'archive' ? { status: 'PUBLISHED', allowedActions: ['ARCHIVE'] } : {})
+    s.rows = [row]
+    s.ctx.permissionPatterns = ['academicAffairs.grade.' + action]
+    assert.equal(s.canGradeAction(row, action), true)
+    for (const other of ['publish', 'return', 'archive'].filter(value => value !== action)) assert.equal(s.canGradeAction(row, other), false)
+    for (const allowedActions of [undefined, null, [], ['VIEW'], ['publish'], 'PUBLISH']) {
+      assert.equal(s.canGradeAction({ ...row, allowedActions }, action), false)
+    }
+    assert.equal(s.canGradeAction({ ...row, status: 'ARCHIVED' }, action), false)
+    s.ctx.permissionPatterns = ['academicAffairs.grade.view']
+    s.openPublish(row); s.openReturn(row); s.openArchive(row); await s.doAction({ reason: '原填写原因' })
+    assert.equal(writes, 0); assert.equal(s.dlg.visible, false)
+  }
+})
+
+test('成绩确认开框后撤具体权限或服务端动作许可，不发送且保留原确认内容', async () => {
+  for (const action of ['publish', 'return', 'archive']) for (const revoke of ['permission', 'action', 'task']) {
+    let writes = 0
+    const { state: s } = page({ publishGrades: async () => { writes++ }, returnGradeTask: async () => { writes++ }, archiveGradeTask: async () => { writes++ } })
+    const row = task(action === 'archive' ? { status: 'PUBLISHED', allowedActions: ['ARCHIVE'] } : {})
+    s.rows = [row]
+    s[action === 'publish' ? 'openPublish' : action === 'return' ? 'openReturn' : 'openArchive'](row)
+    assert.equal(s.dlg.visible, true)
+    const title = s.dlg.title
+    if (revoke === 'permission') s.ctx.permissionPatterns = ['academicAffairs.grade.view']
+    if (revoke === 'action') s.rows = [{ ...row, allowedActions: ['VIEW'] }]
+    if (revoke === 'task') s.rows = [task({ gradeTaskId: '43' })]
+    assert.equal(s.canRunGradeCommand(), false)
+    await s.doAction({ reason: '核对后保留原填写原因' })
+    assert.equal(writes, 0); assert.equal(s.dlg.visible, true); assert.equal(s.dlg.submitting, false)
+    assert.equal(s.dlg.title, title); assert.equal(s.dlg.taskId, '42')
+  }
+})
+
+test('真实成绩页只读任务仍可核对结果，各具体管理入口按双重许可显示', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaGradePublishView.vue', import.meta.url), 'utf8')
+  const render = new Function('Vue', compile(source.match(/<footer>([\s\S]*?)<\/footer>/)[0], { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  for (const status of ['ACADEMIC_REVIEW', 'PUBLISHED']) {
+    const { state: s } = page({})
+    s.selectedTask = task({ status, allowedActions: ['PUBLISH', 'RETURN', 'ARCHIVE'] })
+    s.ctx.permissionPatterns = ['academicAffairs.grade.view']
+    const display = { ...s }; delete display.$route
+    const html = await renderToString(Vue.createSSRApp({ render, setup: () => display }))
+    assert.doesNotMatch(html, />核验并正式发布<|>退回修改<|>归档</)
+    if (status === 'PUBLISHED') assert.match(html, /查询发布后扫描/)
+  }
+  const { state: s } = page({}); s.selectedTask = task(); s.ctx.permissionPatterns = ['academicAffairs.grade.return']
+  const display = { ...s }; delete display.$route
+  const html = await renderToString(Vue.createSSRApp({ render, setup: () => display }))
+  assert.match(html, />退回修改</); assert.doesNotMatch(html, />核验并正式发布<|>归档</)
 })

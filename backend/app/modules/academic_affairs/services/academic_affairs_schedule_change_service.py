@@ -137,7 +137,7 @@ def _todo_done(db, cid):
         r.status, r.version = "DONE", r.version + 1
 
 
-def _row(x) -> dict:
+def _row(x, *, can_cancel=None) -> dict:
     return {
         "changeId": str(x.id), "changeType": x.change_type,
         "changeTypeLabel": L_CT.get(x.change_type, x.change_type),
@@ -154,6 +154,7 @@ def _row(x) -> dict:
                    "weekParity": x.target_week_parity, "classroom": x.target_classroom or ""},
         "makeupPlan": x.makeup_plan or "", "reason": x.reason or "",
         "status": x.status, "currentNode": x.current_node or "",
+        "canCancel": bool(can_cancel is not None and can_cancel(x)),
         "newItemId": str(x.new_item_id or ""), "appliedAt": _iso(x.applied_at),
         "createdAt": _iso(x.created_at), "version": x.version,
     }
@@ -169,6 +170,27 @@ def _load(db, cid):
 
 def _can_manage_all(ctx) -> bool:
     return ctx.scope_type == "TENANT_ALL"
+
+
+def _cancel_checker(user, ctx, *, keys=None):
+    """Project the existing cancel guard once per request, without per-row queries."""
+    from app.core.permissions import has_permission
+
+    permitted = has_permission(user, "academicAffairs.scheduleChange.apply")
+    all_scope = _can_manage_all(ctx)
+    actor_keys = _derive_keys(user) if keys is None else keys
+
+    def allowed(change):
+        return bool(permitted and change.status in _CANCELLABLE and (
+            all_scope or (change.teacher_key and change.teacher_key in actor_keys)
+        ))
+
+    return allowed
+
+
+def _actor_row(db, change, user, *, ctx=None):
+    context = build_affairs_context(user, db) if ctx is None else ctx
+    return _row(change, can_cancel=_cancel_checker(user, context))
 
 
 def _require_current_published_origin(db, batch, origin, *, lock_scope=False):
@@ -309,6 +331,20 @@ def _uses_college_change_scope(ctx, user) -> bool:
     """
     role = str((user or {}).get("currentRoleCode") or "").strip().upper()
     return ctx.scope_type == "COLLEGE" and role in _COLLEGE_OPERATOR_ROLES
+
+
+def _offering_college_expression():
+    """详情、台账、统计与审批按同一开课单位归属，不能从学生班级猜学院。"""
+    from app.models import AaCourse, AaScheduleChange, AaTeachingTask, AaTeachingTaskBatch
+    return select(func.coalesce(AaCourse.owner_college_id, AaTeachingTaskBatch.college_id)).select_from(
+        AaTeachingTask,
+    ).outerjoin(AaCourse, (AaCourse.id == AaTeachingTask.course_id) &
+        (AaCourse.tenant_id == _tid()) & AaCourse.is_deleted.is_(False)
+    ).outerjoin(AaTeachingTaskBatch, (AaTeachingTaskBatch.id == AaTeachingTask.batch_id) &
+        (AaTeachingTaskBatch.tenant_id == _tid()) & AaTeachingTaskBatch.is_deleted.is_(False)
+    ).where(AaTeachingTask.id == AaScheduleChange.task_id,
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False)
+    ).correlate(AaScheduleChange).scalar_subquery()
 
 
 def _teacher_key_for_origin(db, origin, user, *, lock=False):
@@ -499,7 +535,7 @@ def submit(body, user) -> dict:
         _audit(db, x.id, "SUBMIT", f"{ct} item={origin.id}")
         db.commit()
         db.refresh(x)
-        return _row(x)
+        return _actor_row(db, x, user)
 
 
 # ═══════════ 审批（学院审 → 教务处审；终审通过即改写课表）═══════════
@@ -539,7 +575,7 @@ def review(cid, user, action, comment="") -> dict:
                 outbox_ids=[outbox_id] if outbox_id else None,
             )
             db.refresh(x)
-            return _row(x)
+            return _actor_row(db, x, user)
 
         if action != "APPROVE":
             raise AppException("VALIDATION_ERROR", "无效操作")
@@ -559,7 +595,7 @@ def review(cid, user, action, comment="") -> dict:
             _audit(db, x.id, "STEP", f"->{nxt}")
             db.commit()
             db.refresh(x)
-            return _row(x)
+            return _actor_row(db, x, user)
         # 终审通过 → APPROVED，随即系统改写课表 → APPLIED
         x.status, x.version = "APPROVED", x.version + 1
         if inst:
@@ -576,7 +612,7 @@ def review(cid, user, action, comment="") -> dict:
             outbox_ids=outbox_ids,
         )
         db.refresh(x)
-        out = _row(x)
+        out = _actor_row(db, x, user)
         out["applied"] = applied
         return out
 
@@ -721,7 +757,7 @@ def cancel(cid, user, reason="") -> dict:
         _audit(db, x.id, "CANCEL", (reason or "").strip())
         db.commit()
         db.refresh(x)
-        return _row(x)
+        return _actor_row(db, x, user, ctx=ctx)
 
 
 # ═══════════ 查询（范围过滤）═══════════
@@ -729,20 +765,20 @@ def cancel(cid, user, reason="") -> dict:
 def get_change(cid, user) -> dict:
     """详情查询。修复：此前只按 id+租户加载，未做归属校验——任何持 view 权限者传任意 cid
     即可查看他人调停课单详情（含目标课位、事由等），与 list_changes/cancel 的范围收敛口径
-    不一致。此处补齐同一套范围判断（TENANT_ALL 全放行；COLLEGE 按所辖班级；其余教师仅本人）。"""
+    不一致。此处补齐同一套范围判断（TENANT_ALL 全放行；COLLEGE 按开课学院；其余教师仅本人）。"""
     with session() as db:
         x = _load(db, cid)
         ctx = build_affairs_context(user, db)
+        keys = _derive_keys(user)
         if not _can_manage_all(ctx):
             if _uses_college_change_scope(ctx, user):
-                allowed = ctx.allowed_class_ids(db)
-                if not x.class_id or int(x.class_id) not in (allowed or set()):
+                from .academic_affairs_grade_correction_command import _task_college_id
+                if _task_college_id(db, x) not in ctx.college_ids:
                     raise no_data_scope("该调停课单不在您的数据范围内")
             else:
-                keys = _derive_keys(user)
                 if not x.teacher_key or x.teacher_key not in keys:
                     raise no_data_scope("仅可查看本人发起的调停课单")
-        result = _row(x)
+        result = _row(x, can_cancel=_cancel_checker(user, ctx, keys=keys))
         result["reviewNode"] = _review_node(db, x, user)
         return result
 
@@ -791,6 +827,7 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
     from app.models import AaScheduleChange
     with session() as db:
         ctx = build_affairs_context(user, db)
+        keys = _derive_keys(user)
         conds = [AaScheduleChange.tenant_id == _tid(), AaScheduleChange.is_deleted.is_(False)]
         if change_type:
             conds.append(AaScheduleChange.change_type == change_type.upper())
@@ -806,15 +843,14 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
             conds.append(AaScheduleChange.created_at >= date_from)
         if date_to:
             conds.append(AaScheduleChange.created_at <= date_to + " 23:59:59")
-        # 范围收敛：TENANT_ALL 全量；COLLEGE 按所辖班级；其余(教师) 仅本人课位
+        # 范围收敛：TENANT_ALL 全量；COLLEGE 按开课学院；其余(教师) 仅本人课位
         if not _can_manage_all(ctx):
             if _uses_college_change_scope(ctx, user):
-                allowed = ctx.allowed_class_ids(db)
+                allowed = ctx.college_ids
                 if not allowed:
                     return [], 0
-                conds.append(AaScheduleChange.class_id.in_(list(allowed)))
+                conds.append(_offering_college_expression().in_(sorted(allowed)))
             else:
-                keys = _derive_keys(user)
                 if not keys:
                     return [], 0
                 conds.append(AaScheduleChange.teacher_key.in_(list(keys)))
@@ -824,7 +860,8 @@ def list_changes(user, change_type=None, status=None, teacher_key=None, term_id=
         offset = (max(1, page) - 1) * page_size
         rows = db.scalars(select(AaScheduleChange).where(*conds)
                           .order_by(AaScheduleChange.id.desc()).offset(offset).limit(page_size)).all()
-        return [_row(x) for x in rows], total
+        can_cancel = _cancel_checker(user, ctx, keys=keys)
+        return [_row(x, can_cancel=can_cancel) for x in rows], total
 
 
 # ═══════════ 归档（台账的终态特化视图；服务层强制排除在途态，不依赖前端默认参数）═══════════
@@ -849,12 +886,11 @@ def stats(user, term_id=None, dimension=None):
     """调停课统计：按类型/状态/学院/教师聚合（读侧，范围收敛）。`dimension` 目前不改变查询范围，
     仅供前端 Tab 切换展示同一份聚合结果的不同维度（避免切 Tab 反复请求）。
 
-    `byCollege` 通过 class_id → t_class.major_id → t_major.college_id 运行时联查解析
-    （表未冗余 college_id 列，V1 数据量级下联查可接受，见二级总包 §8 澄清）。
+    `byCollege` 按课程开课学院优先、教学任务批次回退；不使用学生学院。
     `topTeachers` 按当前查询范围（已做 COLLEGE/教师范围收敛）内的教师排名，天然满足
     "COLLEGE_ADMIN 仅见本学院内部排名，ACADEMIC_TEACHER 见全校"的隐私设计（08 卡 §10）。
     """
-    from app.models import AaScheduleChange, College, Major, SchoolClass
+    from app.models import AaScheduleChange, College
     with session() as db:
         ctx = build_affairs_context(user, db)
         conds = [AaScheduleChange.tenant_id == _tid(), AaScheduleChange.is_deleted.is_(False)]
@@ -862,18 +898,19 @@ def stats(user, term_id=None, dimension=None):
             conds.append(AaScheduleChange.term_id == int(term_id))
         if not _can_manage_all(ctx):
             if _uses_college_change_scope(ctx, user):
-                allowed = ctx.allowed_class_ids(db)
+                allowed = ctx.college_ids
                 if not allowed:
                     return dict(_EMPTY_STATS)
-                conds.append(AaScheduleChange.class_id.in_(list(allowed)))
+                conds.append(_offering_college_expression().in_(sorted(allowed)))
             else:
                 keys = _derive_keys(user)
                 if not keys:
                     return dict(_EMPTY_STATS)
                 conds.append(AaScheduleChange.teacher_key.in_(list(keys)))
-        rows = db.scalars(select(AaScheduleChange).where(*conds)).all()
+        pairs = db.execute(select(AaScheduleChange, _offering_college_expression()).where(*conds)).all()
+        rows = [row for row, _ in pairs]
+        offering_colleges = {int(row.id): college_id for row, college_id in pairs}
         by_type, by_status, by_teacher = {}, {}, {}
-        class_ids = set()
         for r in rows:
             by_type[r.change_type] = by_type.get(r.change_type, 0) + 1
             by_status[r.status] = by_status.get(r.status, 0) + 1
@@ -881,29 +918,14 @@ def stats(user, term_id=None, dimension=None):
                 t = by_teacher.setdefault(r.teacher_key, {"teacherKey": r.teacher_key,
                                           "teacherName": r.teacher_name or r.teacher_key, "count": 0})
                 t["count"] += 1
-            if r.class_id:
-                class_ids.add(int(r.class_id))
-        # class_id → college_id（两跳联查，无冗余列）
-        class_college: dict[int, int | None] = {}
-        college_names: dict[int, str] = {}
-        if class_ids:
-            cls_rows = db.execute(select(SchoolClass.id, SchoolClass.major_id).where(
-                SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(list(class_ids)))).all()
-            major_ids = {mid for _, mid in cls_rows if mid}
-            major_college: dict[int, int] = {}
-            if major_ids:
-                maj_rows = db.execute(select(Major.id, Major.college_id).where(
-                    Major.tenant_id == _tid(), Major.id.in_(list(major_ids)))).all()
-                major_college = dict(maj_rows)
-            class_college = {cid: major_college.get(mjid) for cid, mjid in cls_rows}
-            college_ids = {cid for cid in class_college.values() if cid}
-            if college_ids:
-                col_rows = db.execute(select(College.id, College.college_name).where(
-                    College.tenant_id == _tid(), College.id.in_(list(college_ids)))).all()
-                college_names = dict(col_rows)
+        college_ids = {college_id for college_id in offering_colleges.values() if college_id}
+        college_names = dict(db.execute(select(College.id, College.college_name).where(
+            College.tenant_id == _tid(), College.is_deleted.is_(False),
+            College.id.in_(college_ids or {-1}),
+        )).all())
         by_college: dict[int, dict] = {}
         for r in rows:
-            cid = class_college.get(int(r.class_id)) if r.class_id else None
+            cid = offering_colleges.get(int(r.id))
             key = cid or 0
             c = by_college.setdefault(key, {"collegeId": str(cid or ""),
                                             "collegeName": college_names.get(cid, "未归属学院") if cid else "未归属学院",

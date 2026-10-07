@@ -138,7 +138,9 @@ def test_sandbox_roles_create_unique_academic_approval_responsibilities():
     assert 'assignment_type="SECRETARY"' in roles
     assert 'assignment_type="ACADEMIC_REVIEWER"' in roles
     assert "college.secretary_id = secretary_id" in roles
-    assert 'StaffAssignment.assignment_type == "ACADEMIC_REVIEWER"' in assignee
+    assert "resolve_organization" in assignee
+    assert 'resolve_organization(db, "COLLEGE", college_id, permission_code=college_perm)' in assignee
+    assert '_unique_subject_assignee(owner["assigneeUserIds"], node, subject)' in assignee
 
 
 def test_sandbox_role_scopes_project_legacy_business_facts_to_stable_ids():

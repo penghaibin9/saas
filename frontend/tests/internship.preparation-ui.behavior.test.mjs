@@ -308,6 +308,19 @@ test('student dossier returns to the assignment ledger but rejects outside retur
   assert.deepEqual(calls[1], { path: '/admin/internship/students', query: { batchId: '7' } })
 })
 
+test('student dossier returns to its graduation review only after authorized detail loads', () => {
+  const calls = [], target = '/admin/academic-affairs/graduation/audit-console?termId=54&batchId=13&tab=internship&resultId=77'
+  const { instance: view } = component('InternshipStudentDetailView.vue', {}, {
+    $route: { query: { batchId: '49', returnTo: target } }, $router: { push: to => calls.push(to) }
+  })
+  assert.equal(view.graduationReturnTo, '')
+  view.detail = { id: '31', batchId: '49' }
+  assert.equal(view.graduationReturnTo, target)
+  view.goBack(); assert.equal(calls[0], target)
+  view.$route.query.returnTo = 'https://outside.invalid/admin/academic-affairs/graduation/audit-console'
+  view.goBack(); assert.deepEqual(calls[1], { path: '/admin/internship/students', query: { batchId: '49' } })
+})
+
 test('student dossier returns to the exact insurance record and rejects an outside or malformed policy path', () => {
   const calls = [], target = '/admin/internship/insurance/9007199254740995?batchId=7&page=3&status=ALL'
   const { instance: view } = component('InternshipStudentDetailView.vue', {}, { $route: { query: { batchId: '7', returnTo: target } }, $router: { push: to => calls.push(to) } })

@@ -57,13 +57,15 @@ export default {
     async load() {
       const seq = ++this.loadSeq, generation = currentSessionGeneration()
       const current = () => seq === this.loadSeq && generation === currentSessionGeneration()
-      this.state = 'loading'; this.services = []; this.batchName = ''
+      this.state = 'loading'; this.services = []; this.batchName = ''; this.roleLabel = ''
       try {
         const session = useSessionStore(), identity = await me()
         if (!current()) return
         session.applyRealUser(identity)
-        this.roleLabel = session.roleConfig.label
         if (!session.isTeacher) { this.state = 'forbidden'; return }
+        const role = identity?.currentRole || {}
+        const chineseText = value => typeof value === 'string' && /[\u3400-\u9fff]/u.test(value) ? value.trim() : ''
+        this.roleLabel = chineseText(role.roleName) || chineseText(role.contextName) || '当前教师身份'
         if (this._role !== session.currentRole) { this.keyword = ''; this.selectedCategory = '全部' }
         this._role = session.currentRole
         let context = null

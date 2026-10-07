@@ -59,8 +59,19 @@ def _ensure_teacher_user(db):
 
 
 def _seed_assignment(db, teacher_key: str, *, batch_status="PUBLISHED"):
-    from app.models import AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom
+    from app.models import AaCourse, College, AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom
+    from uuid import uuid4
 
+    # A persisted exam course needs a real current offering owner even when the
+    # tested command is an invigilator reassignment, not initial course setup.
+    college = College(tenant_id=TID, college_name="C-W3考务通知回归学院", status="ACTIVE")
+    db.add(college)
+    db.flush()
+    catalog = AaCourse(tenant_id=TID, course_code="CW3_" + uuid4().hex[:12],
+                       course_name="C-W3监考通知课程", owner_college_id=college.id,
+                       credit=2, status="ENABLED")
+    db.add(catalog)
+    db.flush()
     batch = AaExamBatch(
         tenant_id=TID,
         batch_name="C-W3监考发布通知",
@@ -73,6 +84,7 @@ def _seed_assignment(db, teacher_key: str, *, batch_status="PUBLISHED"):
         tenant_id=TID,
         batch_id=batch.id,
         course_name="C-W3监考通知课程",
+        course_id=catalog.id,
         exam_date="2029-01-18",
         start_time="09:00",
         end_time="11:00",

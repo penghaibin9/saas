@@ -232,3 +232,98 @@ test('teacher textbook edit normalizes the route only after the write guard is r
   assert.equal(state.selectionVisible, false)
   assert.equal(state.selectionDraftReceipt.id, '301')
 })
+
+test('teacher task deep link retries the same formal task after a read failure', async () => {
+  const queries = []
+  const { state } = page('AaTextbookConsoleView', {
+    academicAffairsApi: { listAllTasks: async query => {
+      queries.push(query)
+      if (queries.length === 1) throw new Error('Failed to fetch')
+      return { code: 0, data: { list: [{ taskId: '19', status: 'READY', expectedStudents: 30 }] } }
+    } },
+    academicAffairsTextbookApi: {
+      listSelections: async () => ({ code: 0, data: { list: [], total: 0 } }),
+      listTextbooks: async () => ({ code: 0, data: { list: [] } })
+    }
+  }, { $route: { query: { tab: 'selection', action: 'create', taskId: '19' } } })
+  state.ctx = { currentRole: { roleCode: 'ACADEMIC_TEACHER' } }
+  state.tab = 'selection'; state.currentTermId = '52'
+  await state.openSelectionFromRoute()
+  assert.equal(state.error, '教学任务读取失败，请重试')
+  assert.equal(state.selectionVisible, false)
+  await state.retryLoad()
+  assert.equal(state.error, '')
+  assert.equal(queries.length, 2)
+  assert.ok(queries.every(query => query.taskId === '19' && query.termId === '52' && query.formalMine))
+  assert.equal(state.selectionVisible, true)
+  assert.equal(state.selectionForm.taskId, '19')
+  assert.equal(state.selectionForm.expectedQty, 30)
+})
+
+test('late teacher task deep link response cannot open a different task', async () => {
+  const old = deferred()
+  const { state } = page('AaTextbookConsoleView', {
+    academicAffairsApi: { listAllTasks: () => old.promise }
+  }, { $route: { query: { tab: 'selection', action: 'create', taskId: '19' } } })
+  state.ctx = { currentRole: { roleCode: 'ACADEMIC_TEACHER' } }
+  state.tab = 'selection'; state.currentTermId = '52'
+  const pending = state.openSelectionFromRoute()
+  state.$route.query.taskId = '20'
+  old.resolve({ code: 0, data: { list: [{ taskId: '19', status: 'READY' }] } })
+  await pending
+  assert.equal(state.selectionVisible, false)
+  assert.equal(state.openedSetupTaskId, '')
+})
+
+test('returned selection deep link rereads and edits the original selection and teaching task', async () => {
+  let query, updatedId
+  const record = { selectionId: '301', taskId: '19', textbookId: '21', expectedQty: 30, remark: '教学使用教材', status: 'RETURNED', rejectReason: '请核对教材版本' }
+  const { state } = page('AaTextbookConsoleView', {
+    academicAffairsTextbookApi: {
+      listSelections: async params => { query = params; return { code: 0, data: { list: [record], total: 1 } } },
+      listTextbooks: async () => ({ code: 0, data: { list: [] } }),
+      updateSelection: async id => { updatedId = id; return { code: 0, data: { ...record, status: 'DRAFT' } } }
+    }
+  }, { $route: { path: '/admin/academic-affairs/textbooks', query: { tab: 'selection', selectionId: '301', action: 'edit' } } })
+  state.ctx = { currentRole: { roleCode: 'ACADEMIC_TEACHER' } }
+  state.tab = 'selection'; state.currentTermId = '52'
+  await state.reload()
+  assert.equal(query.selectionId, '301')
+  assert.equal(query.termId, '52')
+  assert.equal(state.activeRowKey, '301')
+  assert.equal(state.selectedObject.rejectReason, '请核对教材版本')
+  assert.equal(state.editingSelectionId, '301')
+  assert.equal(state.selectionForm.taskId, '19')
+  state.$router.replace = async target => { state.$route.query = target.query }
+  await state.submitSelection()
+  assert.equal(updatedId, '301')
+  assert.equal(state.selectionDraftReceipt.id, '301')
+})
+
+test('review buttons and creation use only server actions, and creation selects one source college', async () => {
+  let submitted
+  const { state } = page('AaTextbookConsoleView', {
+    textbookP0Api: {
+      listReviewBatches: async () => ({ code: 0, data: { list: [{ reviewBatchId: '6', status: 'DRAFT', actions: { advance: false, return: false } }], total: 1, actions: { createReview: true } } }),
+      reviewCandidates: async () => ({ code: 0, data: { items: [
+        { selectionId: '11', collegeId: '7', collegeName: '学院甲' },
+        { selectionId: '12', collegeId: '8', collegeName: '学院乙' }
+      ] } })
+    },
+    academicAffairsTextbookApi: { createReviewBatch: async body => { submitted = body; return { code: 0 } } }
+  })
+  state.tab = 'review'; state.currentTermId = '52'
+  await state.reload()
+  assert.equal(state.canAdvance(state.rows[0]), false)
+  assert.equal(state.canAdvance({ status: 'PUBLISHED', actions: { advance: true } }), true)
+  assert.equal(state.canAdvance({ status: 'DRAFT' }), false)
+  await state.createReview()
+  assert.equal(state.reviewCreateVisible, true)
+  assert.equal(state.reviewCollegeId, '')
+  await state.submitReview()
+  assert.equal(submitted, undefined)
+  state.reviewCollegeId = '8'
+  await state.submitReview()
+  assert.deepEqual(Array.from(submitted.selectionIds), ['12'])
+  assert.equal(submitted.termId, '52')
+})

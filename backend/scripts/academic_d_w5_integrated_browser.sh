@@ -118,6 +118,10 @@ mysql -h127.0.0.1 -uroot -proot -e '
   python scripts/bootstrap_control_plane_school_iam_authority.py
   python scripts/e2e_seed_playwright_tenants.py
   python scripts/e2e_seed_control_plane_school_iam.py
+  # The canonical browser runtime owns the formal current-term base through this
+  # DB-only seed. D-W0/W5 consume /terms/current and must not manufacture a term
+  # inside browser assertions.
+  python scripts/e2e_seed_academic_b_selection.py
 )
 
 BROWSER_PHASE="BACKEND_START"

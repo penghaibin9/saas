@@ -4,6 +4,7 @@ No ensure_* roster helper is called: missing projections are blockers, not seed 
 from datetime import datetime, date
 from sqlalchemy import select, or_
 from app.services.db_service import _tid
+from .academic_affairs_task_execution_authority import independent_task_condition, load_execution_handoffs
 from app.modules.academic_affairs.optimizer.contracts import InputError
 from app.modules.academic_affairs.optimizer.source_builder import source_revision
 from app.modules.academic_affairs.services import academic_affairs_autoschedule_service as auto
@@ -33,6 +34,29 @@ def _read(db, model, conditions, fields, limit=MAX_ROWS):
     if len(rows)>limit:
         raise InputError('SOURCE_READ_LIMIT',model.__tablename__)
     return [_row(row,fields) for row in rows]
+
+
+def _scope_handoffs(db, task_query, *, lock=False):
+    """过滤和限量前验证本次范围内全部承接记录；按批读取，避免隐藏坏关系。"""
+    from app.models import AaTeachingTask, AaTeachingTaskSourceHandoff
+    ids=task_query.with_only_columns(AaTeachingTask.id,maintain_column_froms=True).order_by(None).limit(None)
+    cursor=-1
+    result={}
+    while True:
+        query=select(AaTeachingTaskSourceHandoff.successor_task_id).where(
+            AaTeachingTaskSourceHandoff.tenant_id==_tid(),
+            AaTeachingTaskSourceHandoff.successor_task_id.in_(ids),
+            AaTeachingTaskSourceHandoff.successor_task_id>cursor,
+        ).order_by(AaTeachingTaskSourceHandoff.successor_task_id).limit(500)
+        if lock:
+            query=query.with_for_update(read=True)
+        related=db.scalars(query).all()
+        if not related:
+            return result
+        result.update(load_execution_handoffs(db,related,lock=lock))
+        if len(result)>MAX_ROWS:
+            raise InputError('SOURCE_READ_LIMIT',AaTeachingTaskSourceHandoff.__tablename__)
+        cursor=int(related[-1])
 
 
 def _formal_rosters(db, teaching_classes, task_ids):
@@ -90,12 +114,27 @@ def capture_source(db,user,batch_id,*,lock=False):
         raise InputError('TERM_DATES_REQUIRED','Formal term dates are missing')
     task_batch_ids=schedule._task_batch_ids(db,batch)
     task_fields='id batch_id course_id course_name class_id teaching_class_name teacher_key teacher_name expected_students weekly_hours total_hours start_week end_week required_room_type formation_mode status no_auto_schedule'
-    target=_read(db,AaTeachingTask,[AaTeachingTask.batch_id.in_(task_batch_ids or [-1]),
-        AaTeachingTask.status=='READY',AaTeachingTask.no_auto_schedule.is_(False)],task_fields,MAX_TASKS)
+    target_query=select(AaTeachingTask).where(AaTeachingTask.tenant_id==_tid(),
+        AaTeachingTask.is_deleted.is_(False), AaTeachingTask.batch_id.in_(task_batch_ids or [-1]),
+        AaTeachingTask.status=='READY', AaTeachingTask.no_auto_schedule.is_(False),
+        policy.task_scope_condition(db,batch))
+    scope_query=target_query
+    target_query=target_query.where(independent_task_condition(AaTeachingTask)).order_by(AaTeachingTask.id).limit(MAX_TASKS+1)
+    # 独占共同任务锁先于课位、名单等子对象读取；确认承接与采用候选互斥。
+    if lock:
+        target_query=target_query.with_for_update().execution_options(populate_existing=True)
+    target_rows=db.scalars(target_query).all()
+    if len(target_rows)>MAX_TASKS:
+        raise InputError('SOURCE_READ_LIMIT',AaTeachingTask.__tablename__)
+    handoffs=_scope_handoffs(db,scope_query,lock=lock)
+    target=[_row(row,task_fields) for row in target_rows if int(row.id) not in handoffs]
     active_ids=truth._live_batch_ids(db,batch.term_id,batch.id,replacing_batch_id=batch.supersedes_batch_id)
     existing=_read(db,AaScheduleItem,[AaScheduleItem.batch_id.in_([batch.id,*active_ids]),AaScheduleItem.status=='EFFECTIVE'],
         'id batch_id task_id teacher_key class_id classroom_id weekday slot_no start_week end_week week_parity source')
-    task_ids={int(t['id']) for t in target}|{int(i['task_id']) for i in existing if i['task_id']}
+    existing_task_ids={int(i['task_id']) for i in existing if i['task_id']}
+    if load_execution_handoffs(db, existing_task_ids, lock=lock):
+        raise InputError('TASK_EXECUTION_HANDOFF','既有课位引用了已承接后继任务，请核对来源')
+    task_ids={int(t['id']) for t in target}|existing_task_ids
     tasks=_read(db,AaTeachingTask,[AaTeachingTask.id.in_(task_ids or [-1])],task_fields,MAX_TASKS)
     rooms=_read(db,AaClassroom,[],
         'id campus_code room_type capacity status allow_schedule is_exclusive room_name building_name room_code')
@@ -150,6 +189,7 @@ def capture_source(db,user,batch_id,*,lock=False):
     facts={'scope':{'tenantId':str(_tid()),'termId':str(term.id),'batchId':str(batch.id)},
         'batch':_row(batch,'id term_id status college_id supersedes_batch_id'),
         'term':_row(term,'id start_date end_date teaching_weeks status'),
+        'executionHandoffs':[_row(handoffs[key], 'id term_id execution_task_id successor_task_id execution_source_id successor_source_id source_fingerprint payload_hash') for key in sorted(handoffs)],
         'targetTaskIds':sorted(str(t['id']) for t in target),'tasks':tasks,'rooms':rooms,'slots':slots,'timeBands':time_bands,
         'events':events,'existingItems':existing,'availability':availability,'bookings':bookings,
         'params':params,'ruleRows':rules,

@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Body, Depends, Query, Request
 
 from app.core.response import success
@@ -101,8 +103,8 @@ def academic_transcript_print(user=Depends(get_current_user), body: dict = Body(
 
 
 @router.get("/academic/schedule", summary="我的课表（本人·最新已发布）")
-def academic_schedule(user=Depends(get_current_user)):
-    return success(academic.schedule(user))
+def academic_schedule(user=Depends(get_current_user), week: Annotated[int | None, Query(ge=1, le=99)] = None):
+    return success(academic.schedule(user, week))
 
 
 @router.post("/academic/schedule/print", summary="课表打印留痕（本人）")
@@ -220,8 +222,8 @@ def academic_registration_defer(batch_id: str, user=Depends(get_current_user), b
 
 
 @router.get("/academic/attendance", summary="我的课堂考勤（本人·只读）")
-def academic_attendance(user=Depends(get_current_user)):
-    return success(academic.attendance(user))
+def academic_attendance(user=Depends(get_current_user), session_id: int | None = Query(None, gt=0)):
+    return success(academic.attendance(user, session_id=session_id))
 
 
 @router.get("/academic/calendar", summary="当前学期校历（本人·只读）")

@@ -18,7 +18,7 @@ from app.services.saas_role_templates import ROLE_TEMPLATE_BY_CODE
 from app.services.sandbox_school_master_seed import _bulk_insert
 
 SECONDARY_ROLE_ASSIGNMENT_COUNTS: dict[str, int] = {
-    "LEADER": 9,
+    "LEADER": 1,
     "COLLEGE_ADMIN": 24,
     "STUDENT_AFFAIRS": 32,
     "PSYCHOLOGY_TEACHER": 16,
@@ -155,7 +155,7 @@ def _assignment_plan(pools: dict[str, list]) -> dict[str, list]:
     gd = pools["graduation_mentor"]
 
     plan = {
-        "LEADER": aa[:9],                       # 1 个校级管理视角 + 8 个学院领导视角
+        "LEADER": aa[:1],                       # 仅 1 个校领导；学院负责人保留学院管理身份
         "COLLEGE_ADMIN": aa[:24],              # 每学院 3 名学院管理/教务责任人
         "STUDENT_AFFAIRS": sa[:32],            # 每学院 4 名学工老师
         "PSYCHOLOGY_TEACHER": sa[:16],         # 每学院 2 名心理工作责任人

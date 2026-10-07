@@ -332,8 +332,10 @@ def schedule_my(user, week=None) -> dict:
 
     with _legacy.session() as db:
         student = _legacy._me(db, user)
-        term, batch = _current_term_and_batch(db)
-        meta = _schedule_meta(db, term, batch)
+        term, _ = _current_term_and_batch(db)
+        batches = schedule._current_published_batches(db, term.id) if term else []
+        meta = _schedule_meta(db, term, batches[0] if batches else None)
+        meta.update(schedule._batch_identity(batches))
         today_context = _student_today_context(db, term)
         selected_week = resolve_mobile_schedule_week(
             week,
@@ -343,9 +345,9 @@ def schedule_my(user, week=None) -> dict:
         student_id = student.id
     if not term:
         return {**meta, **today_context, "week": selected_week, "items": [], "todayItems": [], "note": "学校尚未设置当前学期"}
-    if not batch:
+    if not batches:
         return {**meta, **today_context, "week": selected_week, "items": [], "todayItems": [], "note": "当前学期暂无已发布课表"}
-    data = schedule.student_view(batch.id, user, student_id)
+    data = schedule.student_view([batch.id for batch in batches], user, student_id)
     all_items = data.get("items") or []
     today_items = project_student_today_items(all_items, today_context)
     return {
@@ -368,8 +370,10 @@ def teacher_schedule_my(user, week=None) -> dict:
     if not teacher_key:
         raise no_permission("当前教师账号缺少稳定工号，请联系管理员")
     with _legacy.session() as db:
-        term, batch = _current_term_and_batch(db)
-        meta = _schedule_meta(db, term, batch)
+        term, _ = _current_term_and_batch(db)
+        batches = schedule._current_published_batches(db, term.id) if term else []
+        meta = _schedule_meta(db, term, batches[0] if batches else None)
+        meta.update(schedule._batch_identity(batches))
         today_context = _student_today_context(db, term)
         selected_week = resolve_mobile_schedule_week(
             week,
@@ -381,12 +385,12 @@ def teacher_schedule_my(user, week=None) -> dict:
             **meta, **today_context, "week": selected_week,
             "items": [], "todayItems": [], "note": "学校尚未设置当前学期",
         }
-    if not batch:
+    if not batches:
         return {
             **meta, **today_context, "week": selected_week,
             "items": [], "todayItems": [], "note": "当前学期暂无已发布课表",
         }
-    data = schedule.teacher_view(batch.id, user, teacher_key)
+    data = schedule.teacher_schedule(user, teacher_key, term_id=term.id)
     all_items = data.get("items") or []
     return {
         **meta,

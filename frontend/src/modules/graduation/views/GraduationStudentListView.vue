@@ -279,6 +279,10 @@ export default {
     showRosterEmptyActions() { return this.hasBatch && this.activePanel === 'roster' && !this.filtered },
     columns() { return COLUMN_PRESETS[this.activePanel] || COLUMN_PRESETS.default },
     selectablePanel() { return this.activePanel === 'grouping' || this.activePanel === 'archive' },
+    graduationReturnTo() {
+      const value = this.routeText(this.$route?.query?.returnTo).trim()
+      return /^\/admin\/academic-affairs\/graduation\/audit-console(?:[?#]|$)/.test(value) ? value : ''
+    },
     filterFields() {
       const groupOpts = this.groupOpts.map((group) => ({ value: group, label: group }))
       const base = [{ key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号 / 课题' }]
@@ -430,7 +434,11 @@ export default {
       return this.$router.resolve({ path: '/admin/graduation/students', query: this.buildListQuery({ panel }) }).fullPath
     },
     studentReturnQuery(panel = this.activePanel) {
-      return { returnPanel: panel, batchId: this.batchStore.selectedBatchId ? String(this.batchStore.selectedBatchId) : undefined, returnTo: this.currentListPath(panel) }
+      return {
+        returnPanel: panel,
+        batchId: this.batchStore.selectedBatchId ? String(this.batchStore.selectedBatchId) : undefined,
+        returnTo: this.graduationReturnTo || this.currentListPath(panel)
+      }
     },
     switchGroup(group) { if (group && group.key !== this.activeGroupKey) this.switchPanel(group.defaultPanel) },
     switchPanel(panel) {

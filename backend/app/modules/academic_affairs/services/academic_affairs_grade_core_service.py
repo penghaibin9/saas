@@ -132,16 +132,13 @@ def _check_course_scope(task, user):
 
 
 def _check_college_scope(db, task, user):
-    """学院教务员仅能审核本学院教学班的任务，复用学工中心已验证的 build_affairs_context/COLLEGE 解析。"""
-    role = (user.get("currentRoleCode") or "").upper()
-    if role in _REVIEW_ROLES:
-        return
+    """成绩对象范围按开课学院；学生学院仅用于学生本人服务范围。"""
     from app.core.affairs_security import build_affairs_context
+    from .academic_affairs_grade_correction_command import _task_college_id
     ctx = build_affairs_context(user, db)
-    allowed = ctx.allowed_class_ids(db)
-    if allowed is None:
+    if ctx.scope_type == "TENANT_ALL":
         return
-    if task.class_id and task.class_id not in allowed:
+    if ctx.scope_type != "COLLEGE" or _task_college_id(db, task) not in ctx.college_ids:
         raise AppException("NO_DATA_SCOPE", "该录入任务不在您的学院范围内")
 
 
@@ -208,9 +205,56 @@ def _todo_done_grade_entry(db, task_id) -> int:
 
 
 def _require_review_role(user):
-    role = (user.get("currentRoleCode") or "").upper()
-    if role not in _REVIEW_ROLES and user.get("userType") != "PLATFORM_SUPER_ADMIN":
+    from app.core.affairs_security import build_affairs_context
+    if build_affairs_context(user).scope_type != "TENANT_ALL":
         raise no_permission("仅教务处可执行该操作")
+
+
+def _require_management_scope(db, task, user):
+    from app.core.affairs_security import build_affairs_context
+    from app.core.permissions import _match
+    ctx = build_affairs_context(user, db)
+    if not (
+        (ctx.scope_type == "TENANT_ALL" and _match("academicAffairs.grade.publish", ctx.permission_codes)) or
+        (ctx.scope_type == "COLLEGE" and _match("academicAffairs.grade.collegeReview", ctx.permission_codes))
+    ):
+        raise no_permission("仅当前有成绩管理权限的校院责任岗位可办理")
+    _check_college_scope(db, task, user)
+
+
+def _require_school_review_authority(db, task, user):
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_grade_task_assignee_guard import resolve_grade_task_assignee
+    _require_review_role(user)
+    if resolve_grade_task_assignee(db, "ACADEMIC_REVIEW", task) != _current_user_id(db, user):
+        raise no_permission("当前账号不是该成绩任务的有效校教务终审责任人")
+
+
+def _finish_school_review(db, task, *, returned=False, reason=""):
+    """与成绩结果同事务关闭原审核节点，保留原受理人和历史记录。"""
+    from app.models import WorkflowInstance, WorkflowTask
+    instance = db.scalars(select(WorkflowInstance).where(
+        WorkflowInstance.id == (task.workflow_instance_id or 0),
+        WorkflowInstance.tenant_id == _tid(), WorkflowInstance.is_deleted.is_(False),
+        WorkflowInstance.source_module == "academic-affairs",
+        WorkflowInstance.source_biz_type == "AA_GRADE_TASK",
+        WorkflowInstance.source_biz_id == task.id,
+    ).with_for_update().execution_options(populate_existing=True)).first()
+    pending = db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.is_deleted.is_(False),
+        WorkflowTask.instance_id == (instance.id if instance else 0),
+        WorkflowTask.node_code == "ACADEMIC_REVIEW", WorkflowTask.status == "PENDING",
+    ).with_for_update().execution_options(populate_existing=True)).all()
+    if (not instance or instance.status != "RUNNING"
+            or instance.current_node != "ACADEMIC_REVIEW" or len(pending) != 1):
+        raise AppException("APPROVAL_VERSION_CONFLICT", "校教务审核节点已变化，请刷新核对", http_status=409)
+    node = pending[0]
+    node.status = "TRANSFERRED" if returned else "APPROVED"
+    node.action_reason = reason.strip() or None
+    node.acted_at = datetime.utcnow()
+    node.version = int(node.version or 0) + 1
+    instance.status = "RETURNED" if returned else "APPROVED"
+    instance.version = int(instance.version or 0) + 1
 
 
 def _compose_total(t, usual, mid, final):
@@ -340,6 +384,43 @@ def _resolve_grade_task_term(db, teaching_task=None, requested_term_id=None, req
     return int(term.id), derived_code
 
 
+def _lock_grade_task(db, task_id):
+    """Acquire the formal task owner before its grade child, without granting scope."""
+    from app.models import AaGradeTask, AaTeachingTask
+    query = select(AaGradeTask).where(AaGradeTask.id == int(task_id),
+        AaGradeTask.tenant_id == _tid(), AaGradeTask.is_deleted.is_(False))
+    preview = db.scalar(query)
+    if preview is None:
+        raise not_found("成绩录入任务不存在")
+    owner_id = preview.teaching_task_id
+    if owner_id:
+        owner = db.scalar(select(AaTeachingTask).where(AaTeachingTask.id == owner_id,
+            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False))
+            .with_for_update().execution_options(populate_existing=True))
+        if owner is None:
+            raise AppException("DATA_CONFLICT", "成绩任务关联的正式教学任务已失效", http_status=409)
+    current = db.scalar(query.with_for_update().execution_options(populate_existing=True))
+    if current is None or current.teaching_task_id != owner_id:
+        raise AppException("DATA_CONFLICT", "成绩任务关联已变化，请刷新后重试", http_status=409)
+    # Existing callers must still perform their own scope and handoff checks.
+    return current
+
+
+def _require_independent_execution(db, task, user=None):
+    """授权后在本次写事务锁住执行任务；历史只读不调用。"""
+    if not getattr(task, "teaching_task_id", None):
+        return
+    from .academic_affairs_task_execution_authority import require_independent_task
+    from .academic_affairs_grade_execution_service import _WRITE_ACTOR
+    actor = _WRITE_ACTOR.get()
+    if actor is not None:
+        from .academic_affairs_grade_execution_service import _require_live_teacher
+        _require_live_teacher(db, task, actor)
+    require_independent_task(db, task.teaching_task_id)
+    if actor is not None:
+        _require_live_teacher(db, task, actor, lock_owner=True)
+
+
 def create_grade_task(body, user) -> dict:
     """创建成绩任务（自带事务）。需要与课程身份绑定同事务时改调 create_grade_task_in_session()。"""
     with session() as db:
@@ -402,6 +483,11 @@ def create_grade_task_in_session(db, body, user) -> dict:
                 raise AppException("NO_DATA_SCOPE", "该教学任务不在您的学院范围内")
         if not can_with_task:
             from . import academic_affairs_teacher_relation_authority as teacher_authority
+            teacher_authority.require_teacher(db, tt, user)
+
+        from .academic_affairs_task_execution_authority import require_independent_task
+        tt = require_independent_task(db, tt)
+        if not can_with_task:
             teacher_authority.require_teacher(db, tt, user, lock=True)
 
         # 权威学期：先解析教学任务/批次学期，再归档校验（禁止用请求 termId 抢先校验）
@@ -600,6 +686,7 @@ def enter_score(task_id, user, body) -> dict:
             raise not_found("成绩录入任务不存在")
         guard_term_writable(db, t.term_id)  # 归档11卡§6.2：已归档学期的成绩不应再录入
         _check_course_scope(t, user)
+        _require_independent_execution(db, t, user)
         from .academic_affairs_dynamic_grade_service import require_fixed_score_entry
         require_fixed_score_entry(db, t)
         if t.status not in ("NOT_STARTED", "INPUTTING", "RETURNED"):
@@ -758,6 +845,7 @@ def grade_import_confirm(task_id, user, rows) -> dict:
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("成绩录入任务不存在")
         _check_course_scope(t, user)
+        _require_independent_execution(db, t, user)
         if t.status not in ("NOT_STARTED", "INPUTTING", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可导入（已提交/已发布，如需修改请走成绩更正）")
         profiles = {s.student_no: s for s in db.scalars(select(StudentProfile).where(
@@ -807,6 +895,7 @@ def submit_task(task_id, user) -> dict:
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("成绩录入任务不存在")
         _check_course_scope(t, user)
+        _require_independent_execution(db, t, user)
         if t.status not in ("INPUTTING", "RETURNED"):
             raise AppException("DATA_CONFLICT", "当前状态不可提交")
         roster_count = 0
@@ -862,15 +951,13 @@ def college_review(task_id, user, action, reason="", expected_evidence_hash=None
     action = (action or "").upper()
     with session() as db:
         from app.models import AaGradeTask, WorkflowInstance, WorkflowTask
-        t = db.scalars(select(AaGradeTask).where(
-            AaGradeTask.id == int(task_id), AaGradeTask.tenant_id == _tid(),
-            AaGradeTask.is_deleted.is_(False),
-        ).with_for_update().execution_options(populate_existing=True)).first()
+        t = _lock_grade_task(db, task_id)
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("成绩录入任务不存在")
         from . import academic_affairs_grade_review_evidence_service as review_evidence
         from .academic_affairs_archive_service import guard_term_writable
         review_evidence.require_scope(db, t, user)
+        _require_independent_execution(db, t, user)
         guard_term_writable(db, t.term_id)
         if t.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "当前状态不可学院审核", http_status=409)
@@ -916,7 +1003,8 @@ def college_review(task_id, user, action, reason="", expected_evidence_hash=None
                                     assignee_id=resolve_grade_task_assignee(db, next_node, t),
                                     status="PENDING"))
             t.college_reviewed_at = datetime.utcnow()
-            t.college_reviewer_id = int(uid) if uid.isdigit() else None
+            from .academic_affairs_grade_correction_command import _current_user_id
+            t.college_reviewer_id = _current_user_id(db, user)
             t.status = "ACADEMIC_REVIEW"
             _audit(db, "AA_GRADE_TASK", t.id, "COLLEGE_APPROVE", f"evidenceHash={evidence['evidenceHash']};reason={(reason or '').strip()}")
         else:
@@ -988,6 +1076,8 @@ def publish_grades(task_id, user) -> dict:
         t = db.get(AaGradeTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("成绩录入任务不存在")
+        _require_management_scope(db, t, user)
+        _require_independent_execution(db, t, user)
         guard_term_writable(db, t.term_id)  # 归档11卡§6.2：已归档学期的成绩不应再发布
         if t.status == "PUBLISHED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "成绩已发布")
@@ -1070,11 +1160,16 @@ def return_task(task_id, user, reason="") -> dict:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于5字")
     with session() as db:
         from app.models import AaGradeTask
-        t = db.get(AaGradeTask, int(task_id))
+        t = _lock_grade_task(db, task_id)
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("成绩录入任务不存在")
         if t.status != "ACADEMIC_REVIEW":
             raise AppException("DATA_CONFLICT", "当前状态不可退回")
+        _require_school_review_authority(db, t, user)
+        _require_independent_execution(db, t, user)
+        from .academic_affairs_archive_service import guard_term_writable
+        guard_term_writable(db, t.term_id)
+        _finish_school_review(db, t, returned=True, reason=reason)
         t.status, t.return_reason = "RETURNED", reason.strip()
         _push_grade_entry_todo(db, t)
         _audit(db, "AA_GRADE_TASK", t.id, "ACADEMIC_RETURN", reason.strip())
@@ -1095,6 +1190,8 @@ def archive_task(task_id, user) -> dict:
         t = db.get(AaGradeTask, int(task_id))
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("成绩录入任务不存在")
+        _require_management_scope(db, t, user)
+        _require_independent_execution(db, t, user)
         if t.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布任务可归档")
         t.status = "ARCHIVED"
@@ -1116,6 +1213,7 @@ def change_request(task_id, record_id, user, body) -> dict:
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("成绩录入任务不存在")
         _check_course_scope(t, user)
+        _require_independent_execution(db, t, user)
         rec = db.get(AaGradeRecord, int(record_id))
         if not rec or rec.is_deleted or rec.tenant_id != _tid() or rec.task_id != t.id:
             raise not_found("成绩明细不存在")
@@ -1178,6 +1276,12 @@ def _change_review(record_id, user, action, reason, node, next_node_or_final):
             WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == inst.id,
             WorkflowTask.node_code == node, WorkflowTask.status == "PENDING",
             WorkflowTask.is_deleted.is_(False))).first()
+        from app.models import AaGradeTask
+        grade_task = db.get(AaGradeTask, rec.task_id)
+        if not grade_task or grade_task.tenant_id != _tid() or grade_task.is_deleted:
+            raise not_found("成绩录入任务不存在")
+        _require_management_scope(db, grade_task, user)
+        _require_independent_execution(db, grade_task, user)
         if action == "REJECT":
             if not reason or len(reason.strip()) < 5:
                 raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于5字")

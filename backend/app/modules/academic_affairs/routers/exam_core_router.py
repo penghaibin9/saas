@@ -5,10 +5,10 @@ D7-S 迁出 legacy 大 Router 已有考务主链；D7-U 只叠加候选/preview/
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Literal, Optional
 
-from fastapi import APIRouter, Body, Depends, Path
-from pydantic import BaseModel
+from fastapi import APIRouter, Body, Depends, Path, Query
+from pydantic import BaseModel, Field
 
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
@@ -55,6 +55,11 @@ class PreviewConfirmBody(BaseModel):
     previewToken: str
 
 
+class ExamAttendanceBody(BaseModel):
+    expectedVersion: int = Field(ge=0)
+    status: Literal["PRESENT"]
+
+
 @router.post("/exam/batches", summary="建考试批次")
 def exam_batch_create(body: ExamBatchBody, user=Depends(require_permission(_EXAM_MANAGE))):
     return success(exam_svc.create_batch(user, body), message="已创建")
@@ -71,9 +76,10 @@ def exam_batches(
     status: Optional[str] = None,
     page: int = 1,
     pageSize: int = 20,
+    termId: int | None = Query(None, gt=0),
     user=Depends(require_permission(_EXAM_VIEW)),
 ):
-    items, total = exam_svc.list_batches(user, status, page, pageSize)
+    items, total = exam_svc.list_batches(user, status, page, pageSize, term_id=termId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -188,6 +194,19 @@ def exam_seats_assign(
 @router.get("/exam/rooms/{roomId}/seats", summary="座位表")
 def exam_seats(roomId: int = Path(...), user=Depends(require_permission(_EXAM_VIEW))):
     return success({"items": exam_svc.room_seats(user, roomId)})
+
+
+@router.get("/exam/rooms/{roomId}/attendance", summary="本考场到考名单与正常到考动作")
+def exam_room_attendance(roomId: int = Path(..., gt=0),
+                         user=Depends(require_any_permission(_EXAM_VIEW, _EXAM_ABNORMAL, _EXAM_MANAGE))):
+    return success(exam_svc.room_attendance(user, roomId))
+
+
+@router.put("/exam/rooms/{roomId}/attendance/{studentId}", summary="逐生登记正常到考")
+def exam_room_mark_present(body: ExamAttendanceBody, roomId: int = Path(..., gt=0),
+                           studentId: int = Path(..., gt=0),
+                           user=Depends(require_any_permission(_EXAM_ABNORMAL, _EXAM_MANAGE))):
+    return success(exam_svc.mark_room_present(user, roomId, studentId, body.expectedVersion), message="已登记到考")
 
 
 @router.post("/exam/rooms/{roomId}/invigilators", summary="指定监考（同时段冲突409）")

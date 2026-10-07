@@ -1,9 +1,25 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import vm from 'node:vm'
 import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 
+const permissionSource = readFileSync(new URL('../src/config/navPlan.js', import.meta.url), 'utf8')
+const matchPermission = new Function(`${permissionSource.match(/export function matchPermission\(patterns, code\) \{[\s\S]*?\n\}/)[0].replace('export ', '')}; return matchPermission`)()
+
+function attendance(api, roomId = '21001') {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/components/AaExamAttendanceWorkbench.vue', import.meta.url), 'utf8')
+  const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'component =')
+  const sandbox = { api, DataTable: {}, LoadingState: {}, ErrorState: {}, EmptyState: {}, AppButton: {}, AppInlineAlert: {} }
+  vm.runInNewContext(script, sandbox)
+  const state = { roomId, ...sandbox.component.data(), ...sandbox.component.methods }
+  return state
+}
+
 function exam(api, convenienceApi) {
-  const result = page('AaExamConsoleView', { academicAffairsExamApi: api, academicAffairsExamConvenienceApi: convenienceApi })
+  const result = page('AaExamConsoleView', { matchPermission, academicAffairsExamApi: api, academicAffairsExamConvenienceApi: convenienceApi })
+  result.state.ctx.dataScope = { scope: 'SCHOOL' }
+  result.state.ctx.permissionPatterns = ['academicAffairs.exam.arrange']
   result.state.current = { batchId: 'a' }
   result.state.autoPlan = { dates: ['2026-10-01'], sessions: [{ start: '08:00', end: '09:00' }], maxPerDayPerClass: 1 }
   result.state.refresh = async () => {}
@@ -37,10 +53,78 @@ test('teacher assignment failure clears old schedule and is not an empty success
   assert.equal(state.loading, false)
 })
 
+test('考务批次列表消费有效网址学期，无学期保持原查询，创建沿用已核学期', async () => {
+  const calls = []
+  const { state } = page('AaExamConsoleView', { matchPermission,
+    academicAffairsExamApi: { listBatches: async params => { calls.push(params); return { code: 0, data: { list: [], total: 0 } } } }
+  })
+  state.ctx.dataScope = { scope: 'SCHOOL' }; state.ctx.permissionPatterns = ['academicAffairs.exam.manage']
+  state.$route.query = { termId: '9007199254740993' }
+  await state.load()
+  assert.equal(calls[0].termId, '9007199254740993')
+  state.openCreate()
+  assert.equal(state.form.termId, '9007199254740993')
+  state.$route.query = {}
+  await state.load()
+  assert.equal(Object.hasOwn(calls[1], 'termId'), false)
+  state.openCreate()
+  assert.equal(state.form.termId, '')
+})
+
+test('考务非法或数组学期不查全量并清掉旧批次，教师本人监考范围不受影响', async () => {
+  let listCalls = 0, teacherCalls = 0
+  const { state } = page('AaExamConsoleView', {
+    academicAffairsExamApi: {
+      listBatches: async () => { listCalls++; return { code: 0, data: { list: [], total: 0 } } },
+      getMyInvigilation: async () => { teacherCalls++; return { code: 0, data: { items: [{ examRoomId: '21001' }] } } }
+    }
+  })
+  for (const bad of ['0', 'abc', ['52'], null]) {
+    state.$route.query = { termId: bad }
+    state.rows = [{ batchId: 'old' }]; state.current = { batchId: 'old' }; state.arrangeVisible = true; state.confirmVisible = true; state.attendanceRoomId = '21001'
+    await state.load()
+    assert.equal(state.rows.length, 0)
+    assert.equal(state.current, null)
+    assert.equal(state.arrangeVisible, false)
+    assert.equal(state.confirmVisible, false)
+    assert.equal(state.attendanceRoomId, '')
+    assert.match(state.error, /学期参数无效/)
+  }
+  assert.equal(listCalls, 0)
+  state.ctx.currentRole = { roleCode: 'ACADEMIC_TEACHER' }
+  await state.load()
+  assert.equal(teacherCalls, 1)
+  assert.equal(listCalls, 0)
+  assert.equal(state.myInvigilations[0].examRoomId, '21001')
+})
+
+test('切换网址学期关闭旧抽屉和到考对象，迟到的旧学期列表不覆盖新学期', async () => {
+  const old = deferred(), next = deferred()
+  const { state, definition } = page('AaExamConsoleView', {
+    academicAffairsExamApi: { listBatches: params => params.termId === '51' ? old.promise : next.promise }
+  })
+  state.initialized = true
+  state.$route.query = { termId: '51' }; state.$route.fullPath = '/admin/academic-affairs/exam?termId=51'
+  const oldLoad = state.load()
+  state.current = { batchId: '12' }; state.arrangeVisible = true; state.attendanceRoomId = '21001'; state.pagination.page = 3
+  state.$route.query = { termId: '52' }; state.$route.fullPath = '/admin/academic-affairs/exam?termId=52'
+  definition.watch['$route.fullPath'].call(state)
+  assert.equal(state.current, null)
+  assert.equal(state.arrangeVisible, false)
+  assert.equal(state.attendanceRoomId, '')
+  assert.equal(state.pagination.page, 1)
+  next.resolve({ code: 0, data: { list: [{ batchId: '14', termId: '52' }], total: 1 } })
+  await Promise.resolve()
+  old.resolve({ code: 0, data: { list: [{ batchId: '12', termId: '51' }], total: 1 } })
+  await oldLoad
+  assert.equal(state.rows[0].batchId, '14')
+  assert.equal(state.pagination.total, 1)
+})
+
 test('college confirmation reads its courses without requesting school-only readiness', async () => {
   let readinessCalls = 0
   const { state } = page('AaExamConsoleView', {
-    academicAffairsExamApi: { listCourses: async () => ({ code: 0, data: { list: [{ examCourseId: '1' }] } }), batchStats: async () => ({ code: 0, data: {} }) },
+    academicAffairsExamApi: { getBatch: async batchId => ({ code: 0, data: { batchId } }), listCourses: async () => ({ code: 0, data: { list: [{ examCourseId: '1' }] } }), batchStats: async () => ({ code: 0, data: {} }) },
     academicAffairsExamConvenienceApi: { getReadiness: async () => { readinessCalls++; return { code: 403 } } }
   })
   state.ctx.dataScope = { scope: 'COLLEGE' }
@@ -114,7 +198,7 @@ test('incremental arrangement cannot report no gaps when full readiness still ha
 test('selection watcher does not invalidate the new batch detail request', async () => {
   const old = deferred()
   const { state, definition } = page('AaExamConsoleView', {
-    academicAffairsExamApi: { listCourses: () => old.promise, batchStats: async () => ({ code: 0, data: {} }) },
+    academicAffairsExamApi: { getBatch: async batchId => ({ code: 0, data: { batchId } }), listCourses: () => old.promise, batchStats: async () => ({ code: 0, data: {} }) },
     academicAffairsExamConvenienceApi: { getReadiness: async () => ({ code: 0, data: { invigilatorGapCount: 1 } }) }
   })
   const pending = state.select({ batchId: 'b' })
@@ -131,4 +215,79 @@ test('exam lifecycle confirmation cannot follow a changed batch', async () => {
   state.current = { batchId: 'b' }
   await state.onConfirm()
   assert.equal(writes, 0)
+})
+
+test('到考登记只对正式许可行写一次，带原版本且同考场回读后才显示完成', async () => {
+  const calls = []; let present = false
+  const state = attendance({
+    roomAttendance: async roomId => {
+      calls.push(['read', roomId])
+      return { code: 0, data: { examRoomId: roomId, batchId: '14', batchStatus: 'PUBLISHED', items: [{ studentId: '9007199254740993', studentNo: '240407', studentName: '张同学', attendanceStatus: present ? 'PRESENT' : 'NOT_STARTED', version: present ? 1 : 0, markPresentAction: { allowed: !present } }] } }
+    },
+    markRoomPresent: async (roomId, studentId, version) => { calls.push(['write', roomId, studentId, version]); present = true; return { code: 0 } }
+  })
+  await state.load()
+  await state.markPresent(state.items[0])
+  assert.deepEqual(calls.map(item => Array.from(item)), [['read', '21001'], ['write', '21001', '9007199254740993', 0], ['read', '21001']])
+  assert.match(state.receipt, /已登记到考/)
+  await state.markPresent(state.items[0])
+  assert.equal(calls.length, 3)
+})
+
+test('到考登记遇版本冲突只回读不重发，撤权行也不写', async () => {
+  let writes = 0
+  const state = attendance({
+    roomAttendance: async roomId => ({ code: 0, data: { examRoomId: roomId, batchId: '14', items: [{ studentId: 's1', attendanceStatus: 'NOT_STARTED', version: 1, markPresentAction: { allowed: false, reason: '当前无办理责任' } }] } }),
+    markRoomPresent: async () => { writes++; return { code: 409, message: '版本已变化' } }
+  })
+  await state.load()
+  await state.markPresent(state.items[0])
+  assert.equal(writes, 0)
+  state.items[0].markPresentAction.allowed = true
+  await state.markPresent(state.items[0])
+  assert.equal(writes, 1)
+  assert.match(state.actionError, /版本已变化/)
+  assert.equal(state.pendingStudentId, '')
+})
+
+test('考场切换后迟到名单不能覆盖当前考场，也不能按旧行登记', async () => {
+  const first = deferred(); let writes = 0
+  const state = attendance({ roomAttendance: roomId => roomId === '21001' ? first.promise : Promise.resolve({ code: 0, data: { examRoomId: roomId, batchId: '14', items: [] } }), markRoomPresent: async () => { writes++ } })
+  const old = state.load()
+  state.roomId = '21002'
+  await state.load()
+  first.resolve({ code: 0, data: { examRoomId: '21001', batchId: '14', items: [{ studentId: 's1', attendanceStatus: 'NOT_STARTED', version: 0, markPresentAction: { allowed: true } }] } })
+  await old
+  assert.equal(state.items.length, 0)
+  assert.equal(state.batchId, '14')
+  await state.markPresent({ studentId: 's1', attendanceStatus: 'NOT_STARTED', version: 0, markPresentAction: { allowed: true } })
+  assert.equal(writes, 0)
+})
+
+test('到考写入失败后的延迟回读遇考场切换，不显示旧考场错误', async () => {
+  for (const failure of ['conflict', 'network']) {
+    const reread = deferred(), rereadStarted = deferred(); let reads = 0
+    const state = attendance({
+      roomAttendance: roomId => {
+        if (roomId === '21002') return Promise.resolve({ code: 0, data: { examRoomId: roomId, batchId: '14', items: [] } })
+        if (++reads === 1) return Promise.resolve({ code: 0, data: { examRoomId: roomId, batchId: '14', items: [{ studentId: 's1', attendanceStatus: 'NOT_STARTED', version: 0, markPresentAction: { allowed: true } }] } })
+        rereadStarted.resolve()
+        return reread.promise
+      },
+      markRoomPresent: async () => {
+        if (failure === 'network') throw Error('旧考场请求失败')
+        return { code: 409, message: '旧考场版本冲突' }
+      }
+    })
+    await state.load()
+    const marking = state.markPresent(state.items[0])
+    await rereadStarted.promise
+    state.roomId = '21002'
+    await state.load()
+    reread.resolve({ code: 0, data: { examRoomId: '21001', batchId: '14', items: [] } })
+    await marking
+    assert.equal(state.actionError, '')
+    assert.equal(state.error, '')
+    assert.equal(state.roomId, '21002')
+  }
 })

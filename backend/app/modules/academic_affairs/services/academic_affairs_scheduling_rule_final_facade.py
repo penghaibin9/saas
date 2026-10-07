@@ -380,27 +380,23 @@ def _validate_availability_target(db, term_id, weekday, slot_no):
 
 
 def _college_teacher_keys(ctx, db, term_id=None) -> set[str]:
-    from app.models import AaTeachingTask, AaTeachingTaskBatch
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    from sqlalchemy import func
 
-    allowed_classes = ctx.allowed_class_ids(db)
-    conditions = []
-    if allowed_classes:
-        conditions.append(AaTeachingTask.class_id.in_(list(allowed_classes)))
-    if ctx.college_ids:
-        conditions.append(AaTeachingTaskBatch.college_id.in_(list(ctx.college_ids)))
-    if not conditions:
+    if not ctx.college_ids:
         return set()
     query = db.query(AaTeachingTask.teacher_key).join(
         AaTeachingTaskBatch,
         AaTeachingTask.batch_id == AaTeachingTaskBatch.id,
-    ).filter(
+    ).outerjoin(AaCourse, and_(AaCourse.id == AaTeachingTask.course_id,
+        AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False))).filter(
         AaTeachingTask.tenant_id == _tid(),
         AaTeachingTaskBatch.tenant_id == _tid(),
         AaTeachingTask.teacher_key.isnot(None),
         AaTeachingTask.status.notin_(["MERGED", "CANCELLED"]),
         AaTeachingTask.is_deleted.is_(False),
         AaTeachingTaskBatch.is_deleted.is_(False),
-        or_(*conditions),
+        func.coalesce(AaCourse.owner_college_id, AaTeachingTaskBatch.college_id).in_(sorted(ctx.college_ids)),
     )
     if term_id:
         query = query.filter(AaTeachingTaskBatch.term_id == int(term_id))

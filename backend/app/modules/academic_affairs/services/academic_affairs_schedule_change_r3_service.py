@@ -185,7 +185,7 @@ def submit(body, user) -> dict:
         _legacy._audit(db, change.id, "SUBMIT", f"{ct} item={origin.id}")
         db.commit()
         db.refresh(change)
-        return _legacy._row(change)
+        return _legacy._actor_row(db, change, user)
 
 
 def _pending_task(db, change, instance_id):
@@ -259,7 +259,7 @@ def review(cid, user, action, comment="", *, expected_version=None) -> dict:
             from app.services.message_event_outbox_service import try_process_pending_outbox
             try_process_pending_outbox(worker_id="aa-sched-change-inline")
             db.refresh(change)
-            return _legacy._row(change)
+            return _legacy._actor_row(db, change, user)
 
         if action != "APPROVE":
             raise AppException("VALIDATION_ERROR", "无效操作")
@@ -283,7 +283,7 @@ def review(cid, user, action, comment="", *, expected_version=None) -> dict:
             _legacy._audit(db, change.id, "STEP", f"->{nxt}")
             db.commit()
             db.refresh(change)
-            return _legacy._row(change)
+            return _legacy._actor_row(db, change, user)
 
         # Formal writers take the same authority before Origin/ScopeHead/room.
         # Publishers never acquire Change or WorkflowTask, so those two locks
@@ -316,7 +316,7 @@ def review(cid, user, action, comment="", *, expected_version=None) -> dict:
         from app.services.message_event_outbox_service import try_process_pending_outbox
         try_process_pending_outbox(worker_id="aa-sched-change-inline")
         db.refresh(change)
-        out = _legacy._row(change)
+        out = _legacy._actor_row(db, change, user)
         out["applied"] = applied
         return out
 
@@ -370,7 +370,7 @@ def cancel(cid, user, reason="") -> dict:
         _legacy._audit(db, change.id, "CANCEL", (reason or "").strip())
         db.commit()
         db.refresh(change)
-        return _legacy._row(change)
+        return _legacy._actor_row(db, change, user, ctx=ctx)
 
 
 def pending_for_assignee(user, nodes, *, page=1, page_size=20, change_id=None) -> dict:
@@ -432,8 +432,9 @@ def pending_for_assignee(user, nodes, *, page=1, page_size=20, change_id=None) -
             return {"list": [], "total": total, "page": current_page, "pageSize": size, "hasMore": current_page * size < total}
         rows = db.scalars(select(AaScheduleChange).where(AaScheduleChange.id.in_(ids))).all()
         by_id = {int(row.id): row for row in rows}
+        can_cancel = _legacy._cancel_checker(user, _legacy.build_affairs_context(user, db))
         return {
-            "list": [_legacy._row(by_id[int(row_id)]) for row_id in ids if int(row_id) in by_id],
+            "list": [_legacy._row(by_id[int(row_id)], can_cancel=can_cancel) for row_id in ids if int(row_id) in by_id],
             "total": total,
             "page": current_page,
             "pageSize": size,

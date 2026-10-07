@@ -5,6 +5,7 @@
     :subtitle="pageSubtitle"
   >
     <template #actions>
+      <button v-if="graduationReturnTo" class="mp-btn" @click="$router.push(graduationReturnTo)">返回毕业审核</button>
       <AppExportButton v-if="canExport" :export-fn="exportFn" @exported="onExported">导出名单</AppExportButton>
       <ModuleToolbar :actions="toolbarActions" @action="onToolbar" />
     </template>
@@ -130,6 +131,7 @@ import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 
 const EMPTY_FILTERS = () => ({ keyword: '', status: '', eligibility: '', destination: '', hasPosition: '' })
+const academicReturn = value => typeof value === 'string' && /^\/admin\/academic-affairs\/graduation\/(?:audit-console|\d+\/results)(?:\?[^#]*)?$/.test(value) ? value : ''
 
 const PANEL_PRESETS = {
   roster: () => EMPTY_FILTERS(),
@@ -166,6 +168,7 @@ export default {
     }
   },
   computed: {
+    graduationReturnTo() { return academicReturn(this.$route.query.returnTo) },
     advisorUnchanged() { return !!this.advisorAssignmentUserId && String(this.advisorAssignmentUserId) === String(this.advisorRow?.advisorUserId || '') },
     pageTitle() { return ({ roster: '实习学生名单', eligibility: '实习资格审核', mentor: '导师分配', status: '在岗学生', position: '待分配岗位', destination: '去向待落实', enterprise: '已落岗学生' })[this.activePanel] },
     statusOpts() { return STUDENT_STATUS },
@@ -249,7 +252,7 @@ export default {
       this.restoreAdvisor()
     },
     updateQuery() {
-      const query = this.batchStore.withBatchQuery({ panel: this.activePanel, ...this.appliedFilters, page: String(this.page) })
+      const query = this.batchStore.withBatchQuery({ panel: this.activePanel, ...this.appliedFilters, page: String(this.page), returnTo: this.graduationReturnTo || undefined })
       const location = { path: '/admin/internship/students', query }
       if (this.$router.resolve(location).fullPath === this.$route.fullPath) this.load()
       else this.$router.replace(location)

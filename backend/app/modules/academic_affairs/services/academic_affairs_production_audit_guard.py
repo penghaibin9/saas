@@ -474,6 +474,7 @@ def install() -> None:
     """Idempotently tighten only the audited read-side functions."""
     from . import academic_affairs_service as roster_read
     from . import academic_affairs_selection_read_service as selection_read
+    from . import academic_affairs_selection_read_core_service as selection_read_core
     from . import academic_affairs_selection_final_service as selection_public
     from . import exam_convenience_service as exam_read
     from . import academic_affairs_grade_task_read_service as grade_task_read
@@ -491,6 +492,9 @@ def install() -> None:
 
     selection_read._scope_values = _selection_scope_values
     selection_read._scope_course_query = _selection_scope_course_query
+    # Copied wrapper functions still resolve these helpers in the core module globals.
+    selection_read_core._scope_values = _selection_scope_values
+    selection_read_core._scope_course_query = _selection_scope_course_query
 
     selection_read.list_batches = _wrap_page_size(selection_read.list_batches, position=4, default=20)
     selection_read.list_courses = _wrap_page_size(selection_read.list_courses, position=3, default=50)

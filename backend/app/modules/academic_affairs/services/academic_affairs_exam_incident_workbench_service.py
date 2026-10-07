@@ -115,7 +115,7 @@ def _scoped_query(db, user, *, batch_id=None):
         teacher_courses = _invigilated_course_ids(db, _derive_keys(user or {}))
         scope_terms = []
         if allowed_colleges:
-            scope_terms.append(AaExamCourse.college_id.in_(sorted(allowed_colleges)))
+            scope_terms.append(_legacy._course_offering_college_expression().in_(sorted(allowed_colleges)))
         if teacher_courses:
             scope_terms.append(AaExamCourse.id.in_(sorted(teacher_courses)))
         if not scope_terms:
@@ -190,6 +190,7 @@ def project_incident_workbench(
     for audit in audits:
         latest_audit.setdefault(int(audit.biz_id), audit)
 
+    offering = _legacy._course_college_ids(db, {int(course.id) for _incident, course, _batch, _room in rows})
     items = []
     for incident, course, batch, room in rows:
         closure_status = _closure_from_facts(incident)
@@ -207,7 +208,7 @@ def project_incident_workbench(
             "batchStatus": batch.status,
             "courseName": course.course_name or "",
             "className": course.class_name or "",
-            "collegeId": str(course.college_id) if course.college_id else None,
+            "collegeId": str(offering[course.id]) if offering.get(course.id) else None,
             "examDate": course.exam_date or "",
             "startTime": course.start_time or "",
             "endTime": course.end_time or "",

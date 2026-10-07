@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 import pytest
 from sqlalchemy import func, select
@@ -14,23 +15,77 @@ COLLEGE_USER = {
     "userId": "aa-r3-program-college-a",
     "loginName": "aa-r3-program-college-a",
     "userType": "TEACHER",
-    "currentRoleCode": "COLLEGE_ADMIN",
+    "currentRoleCode": "V5_PROGRAM_COLLEGE_REVIEWER",
 }
 SCHOOL_USER = {
     "userId": "aa-r3-program-school",
     "loginName": "aa-r3-program-school",
     "userType": "TEACHER",
-    "currentRoleCode": "ACADEMIC_ADMIN",
+    "currentRoleCode": "V5_PROGRAM_SCHOOL_REVIEWER",
 }
 
 
-def _patch_tenant(monkeypatch) -> None:
-    from app.core import affairs_security
+@pytest.fixture(autouse=True)
+def _program_tenant_context():
+    from app.core.context import get_tenant, set_tenant
+    previous = get_tenant()
+    set_tenant(TID)
+    try:
+        yield
+    finally:
+        set_tenant(previous)
 
-    monkeypatch.setattr(svc, "_tid", lambda: TID)
-    monkeypatch.setattr(svc._core, "_tid", lambda: TID)
-    monkeypatch.setattr(svc.governance, "_tid", lambda: TID)
-    monkeypatch.setattr(affairs_security, "_tid", lambda: TID)
+
+def _seed_review_identities(db, college_id):
+    from app.models import Role, RoleAssignmentScope, RolePermission, StaffAssignment, User, UserRole
+    from tests.support_academic_review_identity import _ensure_permission
+
+    for claim, scope_type, scope_id, assignment in (
+        (COLLEGE_USER, "COLLEGE", college_id, "SECRETARY"),
+        (SCHOOL_USER, "SCHOOL", 0, "ACADEMIC_REVIEWER"),
+    ):
+        user = db.scalar(select(User).where(User.tenant_id == TID, User.login_name == claim["loginName"]))
+        if user is None:
+            user = User(tenant_id=TID, login_name=claim["loginName"], real_name=claim["loginName"],
+                user_type="TEACHER", password_hash="unused-in-service-test", status="ACTIVE")
+            db.add(user); db.flush()
+        role = db.scalar(select(Role).where(Role.tenant_id == TID, Role.role_code == claim["currentRoleCode"]))
+        if role is None:
+            role = Role(tenant_id=TID, role_code=claim["currentRoleCode"], role_name="培养方案审核测试岗位",
+                role_type="CUSTOM", status="ACTIVE")
+            db.add(role); db.flush()
+        link = db.scalar(select(UserRole).where(UserRole.tenant_id == TID, UserRole.user_id == user.id, UserRole.role_id == role.id))
+        if link is None:
+            link = UserRole(tenant_id=TID, user_id=user.id, role_id=role.id, status="ACTIVE")
+            db.add(link); db.flush()
+        for code in ("academicAffairs.program.view", "academicAffairs.program.manage", "academicAffairs.program.review"):
+            permission = _ensure_permission(db, code)
+            if not db.scalar(select(RolePermission.id).where(RolePermission.tenant_id == TID,
+                    RolePermission.role_id == role.id, RolePermission.permission_id == permission.id)):
+                db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=permission.id, status="ACTIVE"))
+        if not db.scalar(select(RoleAssignmentScope.id).where(RoleAssignmentScope.tenant_id == TID,
+                RoleAssignmentScope.user_role_id == link.id, RoleAssignmentScope.scope_type == scope_type,
+                RoleAssignmentScope.scope_id == scope_id)):
+            db.add(RoleAssignmentScope(tenant_id=TID, user_role_id=link.id, user_id=user.id,
+                role_code=role.role_code, scope_type=scope_type, scope_id=scope_id, status="ACTIVE",
+                effective_at=datetime(2020, 1, 1)))
+        org_id = TID if scope_type == "SCHOOL" else college_id
+        if not db.scalar(select(StaffAssignment.id).where(StaffAssignment.tenant_id == TID,
+                StaffAssignment.user_id == user.id, StaffAssignment.org_type == scope_type,
+                StaffAssignment.org_node_id == org_id, StaffAssignment.assignment_type == assignment)):
+            db.add(StaffAssignment(tenant_id=TID, user_id=user.id, org_type=scope_type, org_node_id=org_id,
+                assignment_type=assignment, effective_at=datetime(2020, 1, 1), status="ACTIVE"))
+        claim.update(userId=str(user.id), tenantId=str(TID), activeContextId=f"role:{role.id}")
+
+
+def _review_in_thread(*args):
+    from app.core.context import get_tenant, set_tenant
+    previous = get_tenant()
+    set_tenant(TID)
+    try:
+        return svc.review_program(*args)
+    finally:
+        set_tenant(previous)
 
 
 def _seed(status="COLLEGE_REVIEW"):
@@ -90,6 +145,7 @@ def _seed(status="COLLEGE_REVIEW"):
             status="ACTIVE",
         )
         db.add_all([own, other, scope])
+        _seed_review_identities(db, int(college_a.id))
         db.commit()
         return {"own": int(own.id), "other": int(other.id)}
     finally:
@@ -112,7 +168,6 @@ def test_program_course_formation_survives_formal_write_and_read(db_mode, monkey
     from types import SimpleNamespace
 
     ids = _seed(status="DRAFT")
-    _patch_tenant(monkeypatch)
     body = SimpleNamespace(courseName="编班来源验收课程", openTermNo=1, module="专业选修", credit=2, formationMode="SELECTABLE")
     created = svc._core.add_course(ids["own"], SCHOOL_USER, body)
     assert created["formationMode"] == "SELECTABLE"
@@ -150,7 +205,6 @@ def _audit_count(program_id, action):
 
 def test_college_approves_own_program_one_node_only(db_mode, monkeypatch):
     ids = _seed()
-    _patch_tenant(monkeypatch)
 
     row = svc.review_program(ids["own"], COLLEGE_USER, "APPROVE")
 
@@ -161,7 +215,6 @@ def test_college_approves_own_program_one_node_only(db_mode, monkeypatch):
 
 def test_detail_review_node_matches_locked_command_authority(db_mode, monkeypatch):
     ids = _seed()
-    _patch_tenant(monkeypatch)
     assert svc.get_program(ids["own"], COLLEGE_USER)["reviewNode"]["canReview"] is True
     school_node = svc.get_program(ids["own"], SCHOOL_USER)["reviewNode"]
     assert school_node["canReview"] is False
@@ -178,7 +231,6 @@ def test_detail_review_node_matches_locked_command_authority(db_mode, monkeypatc
 
 def test_college_return_requires_reason_and_goes_returned(db_mode, monkeypatch):
     ids = _seed()
-    _patch_tenant(monkeypatch)
 
     with pytest.raises(AppException) as exc:
         svc.review_program(ids["own"], COLLEGE_USER, "RETURN", "短")
@@ -192,7 +244,6 @@ def test_college_return_requires_reason_and_goes_returned(db_mode, monkeypatch):
 
 def test_returned_resubmit_restarts_college_review(db_mode, monkeypatch):
     ids = _seed(status="RETURNED")
-    _patch_tenant(monkeypatch)
     monkeypatch.setattr(svc.governance, "_ensure_program_scope", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(svc.governance, "validate_program_db", lambda *_args, **_kwargs: {
         "issues": [],
@@ -209,7 +260,6 @@ def test_returned_resubmit_restarts_college_review(db_mode, monkeypatch):
 
 def test_college_cannot_approve_other_college_program(db_mode, monkeypatch):
     ids = _seed()
-    _patch_tenant(monkeypatch)
 
     with pytest.raises(AppException) as exc:
         svc.review_program(ids["other"], COLLEGE_USER, "APPROVE")
@@ -221,7 +271,6 @@ def test_college_cannot_approve_other_college_program(db_mode, monkeypatch):
 
 def test_college_cannot_immediately_cross_academic_review(db_mode, monkeypatch):
     ids = _seed()
-    _patch_tenant(monkeypatch)
     svc.review_program(ids["own"], COLLEGE_USER, "APPROVE")
 
     with pytest.raises(AppException) as exc:
@@ -234,7 +283,6 @@ def test_college_cannot_immediately_cross_academic_review(db_mode, monkeypatch):
 
 def test_tenant_all_academic_review_publishes(db_mode, monkeypatch):
     ids = _seed(status="ACADEMIC_REVIEW")
-    _patch_tenant(monkeypatch)
 
     row = svc.review_program(ids["own"], SCHOOL_USER, "APPROVE")
 
@@ -244,11 +292,10 @@ def test_tenant_all_academic_review_publishes(db_mode, monkeypatch):
 
 def test_two_same_node_reviews_produce_one_transition_and_one_audit(db_mode, monkeypatch):
     ids = _seed()
-    _patch_tenant(monkeypatch)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [
-            pool.submit(svc.review_program, ids["own"], COLLEGE_USER, "APPROVE")
+            pool.submit(_review_in_thread, ids["own"], COLLEGE_USER, "APPROVE")
             for _ in range(2)
         ]
         successes = 0

@@ -8,6 +8,8 @@
   >
     <div class="mp-stack">
       <AaOperationReceipt :receipt="receipt" />
+      <AppInlineAlert v-if="scopeReadOnlyReason" type="info" :description="scopeReadOnlyReason" />
+      <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
       <AaTeachingTaskObjectBar
         v-if="primaryRow"
         :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班'}`"
@@ -20,7 +22,7 @@
       <AaTeachingTaskStageRail :current="2" current-note="当前受控调整" />
       <AppInlineAlert
         type="info"
-        description="与「任课教师分配」不同：本页面向已过初始分配阶段（含教师已确认/已就绪）仍需更正的场景；仅调整学时/周次/人数不影响确认状态，变更教师身份会退回「已分配」要求新教师重新确认。已合班并入其他教学班或已生成课表项的任务需先在「合班拆班」/排课模块处理。"
+        description="本页处理已过初始分配阶段仍需更正的任务。仅调整姓名、学时、周次或人数不触发换人确认；变更任课教师身份后，须由新教师本人确认，已完成学院确认或学校终审的原批次还须重新院审、校审。已有正式课表的任务请走排课变更流程，已并入合班的任务须先处理合拆班。"
       />
 
       <div class="aa-filter">
@@ -51,7 +53,7 @@
           <AppStatusTag :type="taskColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <button v-if="canAdjust" class="mp-link" :disabled="adjust.submitting" @click="openAdjust(row)">核对并调整</button>
+          <button v-if="canInspectAdjustment" class="mp-link" :disabled="adjust.submitting || actionLoading" @click="openAdjust(row)">查看调整条件</button>
           <span v-else class="mp-cell-sub">当前只读</span>
         </template>
       </DataTable>
@@ -63,9 +65,11 @@
       type="primary"
       confirm-text="确认调整"
       :submitting="adjust.submitting"
+      :confirm-disabled="!canAdjust || actionLoading"
       @confirm="doAdjust"
     >
       <AaObjectContext :name="adjust.courseName" :identity="`任务 #${adjust.taskId} · 批次 #${adjust.batchId}`" :source="adjust.teachingClassName" />
+      <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
       <p class="mp-note">调整前：{{ adjust.origTeacherName || '未分配' }} · 工号 {{ adjust.origTeacherKey || '未绑定' }}。提交时服务端核对下游引用；当前没有独立影响预览接口。</p>
       <div class="aa-adjust-form">
         <label>调整任课教师<AppTeacherPicker v-model="adjust.teacherKey" :query="teacherKeyQuery" placeholder="不变可留空" @change="onTeacherPicked" /></label>
@@ -79,7 +83,7 @@
         <input v-model.trim="adjust.reason" class="aa-input" placeholder="如：原教师休产假换人代课" maxlength="500" />
       </label>
       <AppInlineAlert v-if="teacherChangedInDialog" type="warning"
-                      description="教师姓名/工号有变更：确认后任务将退回「已分配」，需新教师重新确认。" />
+                      description="任课教师身份有变更：须由新教师本人确认；已完成学院确认或学校终审的原批次，还须重新院审、校审。已有课表时须走正式排课变更。" />
     </AppConfirmDialog>
   </ModulePageShell>
 </template>
@@ -93,6 +97,7 @@ import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeacherPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { teachingTaskWorkbenchApi } from '@/modules/academicAffairs/api/teaching-task-workbench.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
 import { matchPermission } from '@/config/navPlan'
@@ -110,7 +115,7 @@ export default {
   data() {
     return {
       loading: true, error: '', all: [], filterStatus: '', teacherKeyQuery: { valueField: 'loginName' },
-      revision: 0, receipt: null,
+      revision: 0, receipt: null, actionSeq: 0, actionLoading: false, actionError: '', batchWorkbench: {},
       pagination: { page: 1, pageSize: 20, total: 0 },
       adjust: { visible: false, submitting: false, taskId: '', origTeacherName: '', origTeacherKey: '',
                teacherName: '', teacherKey: '', weeklyHours: null, totalHours: null,
@@ -127,7 +132,10 @@ export default {
   },
   computed: {
     primaryRow() { return this.rows[0] || null },
-    canAdjust() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.adjust') },
+    mutationContext() { return JSON.stringify([this.ctx.currentRole, this.ctx.dataScope, this.ctx.permissionPatterns, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
+    scopeReadOnlyReason() { return (this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) === 'COLLEGE' ? '' : '当前为只读范围。教学任务调整由开课责任学院的当前有效办理人处理，学校负责统筹与终审。' },
+    canInspectAdjustment() { return !this.scopeReadOnlyReason && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.adjust') },
+    canAdjust() { return this.canInspectAdjustment && this.batchWorkbench.actions?.canAdjust === true && String(this.batchWorkbench.batchId || '') === String(this.adjust.batchId || '') },
     statusOptions() {
       return [
         { value: '', label: '全部（不含已并入合班）' },
@@ -144,11 +152,12 @@ export default {
     },
     teacherChangedInDialog() {
       const a = this.adjust
-      return (a.teacherName || '') !== (a.origTeacherName || '') || (a.teacherKey || '') !== (a.origTeacherKey || '')
+      return (a.teacherKey || '') !== (a.origTeacherKey || '')
     }
   },
   created() { this.load() },
-  beforeUnmount() { this.revision++; this.disposed = true },
+  watch: { ctx: { deep: true, handler() { this.revision++; this.actionSeq++; this.all = []; this.receipt = null; this.batchWorkbench = {}; this.actionError = ''; this.actionLoading = false; this.adjust = { visible: false, submitting: false }; this.load() } } },
+  beforeUnmount() { this.revision++; this.actionSeq++; this.disposed = true },
   methods: {
     changeFilter() { this.pagination.page = 1; this.load() },
     onTeacherPicked(value, items) {
@@ -159,7 +168,8 @@ export default {
     statusLabel(s) { return TASK_STATUS[s] || (s ? '状态待确认' : '') },
     onPageChange(p) { this.pagination.page = p; this.load() },
     async load() {
-      const revision = ++this.revision
+      const revision = ++this.revision, context = this.mutationContext, ctx = this.ctx
+      const valid = () => !this.disposed && revision === this.revision && context === this.mutationContext && ctx === this.ctx
       this.loading = true
       this.error = ''
       this.all = []; this.pagination.total = 0
@@ -168,23 +178,42 @@ export default {
         status: this.filterStatus || undefined,
         page: this.pagination.page, pageSize: this.pagination.pageSize
       })
-      if (revision !== this.revision) return
+      if (!valid()) return
       if (res.code === 0) { this.all = res.data.list; this.pagination.total = res.data.total }
       else { this.handleFailure(res, '教学任务读取失败') }
-      } catch (error) { if (revision === this.revision) this.handleFailure(error, '网络连接失败，请重试。') }
-      finally { if (revision === this.revision) this.loading = false }
+      } catch (error) { if (valid()) this.handleFailure(error, '网络连接失败，请重试。') }
+      finally { if (valid()) this.loading = false }
     },
-    openAdjust(row) {
-      if (!this.canAdjust || this.adjust.submitting || this.loading || row.status === 'MERGED') return
+    async readAdjustmentActions(batchId) {
+      const seq = ++this.actionSeq, context = this.mutationContext, ctx = this.ctx
+      const valid = () => !this.disposed && seq === this.actionSeq && context === this.mutationContext && ctx === this.ctx
+      this.batchWorkbench = {}; this.actionLoading = true; this.actionError = ''
+      try {
+        const res = await teachingTaskWorkbenchApi.getBatch(String(batchId))
+        if (!valid()) return false
+        if (res.code !== 0) throw res
+        if (String(res.data?.batchId || '') !== String(batchId)) throw { message: '批次读取返回了不同对象，请重新核对。' }
+        this.batchWorkbench = res.data
+        if (!this.canInspectAdjustment || res.data.actions?.canAdjust !== true) { this.actionError = '本批次当前不允许调整，请由开课责任学院的有效办理人核对任职、权限及批次状态。'; return false }
+        return true
+      } catch (error) {
+        if (valid()) { this.actionError = error?.message || '批次办理条件读取失败，请重试。'; if (isDeniedResult(error)) { this.all = []; this.receipt = null; this.adjust = { visible: false, submitting: false } } }
+        return false
+      } finally { if (valid()) this.actionLoading = false }
+    },
+    async openAdjust(row) {
+      if (!this.canInspectAdjustment || this.adjust.submitting || this.actionLoading || this.loading || row.status === 'MERGED') return
       this.adjust = {
-        visible: true, submitting: false, taskId: row.taskId,
-        batchId: row.batchId, courseName: row.courseName, teachingClassName: row.teachingClassName,
+        visible: false, submitting: false, taskId: String(row.taskId),
+        batchId: String(row.batchId), courseName: row.courseName, teachingClassName: row.teachingClassName,
         origTeacherName: row.teacherName || '', origTeacherKey: row.teacherKey || '',
         teacherName: row.teacherName || '', teacherKey: row.teacherKey || '',
         weeklyHours: row.weeklyHours, totalHours: row.totalHours,
         startWeek: row.startWeek, endWeek: row.endWeek, expectedStudents: row.expectedStudents,
         reason: ''
       }
+      const form = this.adjust
+      if (await this.readAdjustmentActions(form.batchId) && this.adjust === form) form.visible = true
     },
     async doAdjust() {
       if (!this.canAdjust || this.adjust.submitting || !this.adjust.taskId) return
@@ -193,6 +222,8 @@ export default {
       if (this.adjust.startWeek && this.adjust.endWeek && this.adjust.startWeek > this.adjust.endWeek) { toast.error('开始周不能晚于结束周'); return }
       this.adjust.submitting = true
       const form = this.adjust
+      const context = this.mutationContext, ctx = this.ctx
+      const valid = () => !this.disposed && this.adjust === form && context === this.mutationContext && ctx === this.ctx
       const body = {
         teacherName: this.adjust.teacherName || undefined,
         teacherKey: this.adjust.teacherKey || undefined,
@@ -203,27 +234,28 @@ export default {
         expectedStudents: this.adjust.expectedStudents ?? undefined,
         reason: this.adjust.reason
       }
-      this.receipt = { object: `任务 #${form.taskId}`, status: '结果待确认', pending: true, next: '提交后重新读取正式任务；请勿重复调整。' }
       try {
+        if (!await this.readAdjustmentActions(form.batchId) || !valid() || !this.canAdjust) return
+        this.receipt = { object: `任务 #${form.taskId}`, status: '结果待确认', pending: true, next: '提交后重新读取正式任务；请勿重复调整。' }
         const res = await academicAffairsApi.adjustTask(form.taskId, body)
-        if (this.disposed || this.adjust !== form) return
+        if (!valid()) return
         if (res.code !== 0) { this.handleFailure(res, '调整失败'); return }
-        const readback = await readTaskPages(page => academicAffairsApi.getBatchTasks(form.batchId, page), () => !this.disposed && this.adjust === form)
-        if (this.disposed || this.adjust !== form) return
+        const readback = await readTaskPages(page => academicAffairsApi.getBatchTasks(form.batchId, page), valid)
+        if (!valid()) return
         if (readback?.code !== 0) { this.handleFailure(readback, '正式任务回读失败'); return }
         const row = readback.data.list.find(item => String(item.taskId) === String(form.taskId))
         const fields = ['teacherKey', 'weeklyHours', 'totalHours', 'startWeek', 'endWeek', 'expectedStudents']
         const confirmed = row && fields.every(key => body[key] === undefined || String(row[key]) === String(body[key]))
         form.visible = false
         await this.load()
-        if (!this.disposed && !this.error) this.receipt = { object: `任务 #${form.taskId}`, status: confirmed ? this.statusLabel(row.status) : '结果待确认', pending: !confirmed, next: confirmed ? '以当前任务状态继续办理；更换教师后由新教师本人确认。' : '尚未读到与本次调整一致的正式记录，请刷新来源批次核对。' }
-      } catch (error) { if (!this.disposed) this.handleFailure(error, '连接中断，请重新读取正式任务，勿重复调整。') }
+        if (valid() && !this.error) this.receipt = { object: `任务 #${form.taskId}`, status: confirmed ? this.statusLabel(row.status) : '结果待确认', pending: !confirmed, next: confirmed ? (this.teacherChangedInDialog ? '由新教师本人确认；已完成学院确认或学校终审的原批次须重新院审、校审。' : '以正式任务当前状态继续办理；本次未变更任课教师身份。') : '尚未读到与本次调整一致的正式记录，请刷新来源批次核对。' }
+      } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请重新读取正式任务，勿重复调整。') }
       finally { form.submitting = false }
     },
     handleFailure(result, fallback) {
       this.error = result?.message || fallback
       if (isDeniedResult(result)) { this.revision++; this.loading = false; this.all = []; this.receipt = null; this.adjust = { visible: false, submitting: false } }
-      else if (isConflictResult(result)) this.receipt = { object: `任务 #${this.adjust.taskId}`, status: '事实已变化，保留输入', pending: true, next: '重新核对当前教师、周次与下游引用。' }
+      else if (isConflictResult(result)) this.receipt = { object: `任务 #${this.adjust.taskId}`, status: '事实已变化，保留输入', pending: true, next: '核对当前正式任课关系、周次与下游引用；已有课表时从排课变更流程办理。' }
     }
   }
 }

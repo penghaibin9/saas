@@ -15,6 +15,7 @@ roster, score, workflow, audit, state-transition, or commit logic is duplicated 
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
 from contextvars import ContextVar
 
 from sqlalchemy.orm import object_session
@@ -30,6 +31,19 @@ _ACTIVE_WRITE_USER: ContextVar[dict | None] = ContextVar(
     "academic_grade_live_write_user",
     default=None,
 )
+_READ_ONLY_SCOPE = ContextVar("academic_grade_read_only_scope", default=False)
+
+
+@contextmanager
+def course_scope_read_only():
+    """Internal preflight cannot acquire formal relation locks ahead of parents."""
+    token = _READ_ONLY_SCOPE.set(True)
+    try:
+        yield
+    finally:
+        _READ_ONLY_SCOPE.reset(token)
+
+
 _ORIGINAL_CHECK_COURSE_SCOPE = None
 _INSTALLED = False
 
@@ -57,7 +71,7 @@ def _same_session_course_scope(task, user):
     # grade_teacher_relation_guard installs the formal TeachingClassTeacher authority primitive on
     # _exec._require_live_teacher before this adapter's install() runs.  Resolve it dynamically here
     # so import order cannot freeze an older authority implementation.
-    _exec._require_live_teacher(db, task, actor, lock_owner=True)
+    _exec._require_live_teacher(db, task, actor, lock_owner=not _READ_ONLY_SCOPE.get())
 
     # The canonical service deliberately retains the historical grade-task teacher snapshot.
     # Once current ownership is proven and pinned, bridge only the scope identity expected by that

@@ -36,7 +36,7 @@
             <view class="sc__row"><text class="sc__row-k">原课位</text><text class="flex-1 t-sm">周{{ (x.origin || {}).weekday }}第{{ (x.origin || {}).slotNo }}节 {{ (x.origin || {}).classroom || '' }}</text></view>
             <view class="sc__row" v-if="x.changeType !== 'STOP'"><text class="sc__row-k">目标</text><text class="flex-1 t-sm">周{{ (x.target || {}).weekday }}第{{ (x.target || {}).slotNo }}节 {{ (x.target || {}).classroom || '' }}</text></view>
             <view class="sc__row"><text class="sc__row-k">事由</text><text class="flex-1 t-sm">{{ x.reason }}</text></view>
-            <view class="sc__actions" v-if="cancellable(x.status)">
+            <view class="sc__actions" v-if="cancellable(x)">
               <button class="btn btn-ghost flex-1" :disabled="acting || hasUnknownWrite('cancel', x.changeId)" @click="doCancel(x)">{{ hasUnknownWrite('cancel', x.changeId) ? '等待核对撤销结果' : '撤销申请' }}</button>
             </view>
           </view>
@@ -84,7 +84,11 @@
             <view class="sc__row"><text class="sc__row-k">目标教室</text><input :disabled="submitting" class="sc__input" v-model="targetClassroom" placeholder="可选" @input="invalidateConflict" /></view>
           </template>
           <view class="sc__row" v-if="typeKey === 'MAKEUP'"><text class="sc__row-k">补课说明</text><input :disabled="submitting" class="sc__input" v-model="makeupPlan" placeholder="可选" /></view>
-          <view class="sc__row" v-if="typeKey === 'STOP'"><text class="sc__row-k">后续安排</text><input :disabled="submitting" class="sc__input" v-model="makeupPlan" placeholder="停课须填写后续安排" /></view>
+          <template v-if="typeKey === 'STOP'">
+            <view class="sc__row"><text class="sc__row-k">停课教学周</text><input :disabled="submitting" class="sc__input" type="number" v-model="stopWeek" placeholder="填写一次停课的教学周" aria-label="停课教学周" @input="invalidateConflict" /></view>
+            <text v-if="stopWeekError" class="sc__conflict-bad">{{ stopWeekError }}</text>
+            <view class="sc__row"><text class="sc__row-k">后续安排</text><input :disabled="submitting" class="sc__input" v-model="makeupPlan" placeholder="停课须填写后续安排" /></view>
+          </template>
           <view class="sc__row" style="border-bottom:none;"><text class="sc__row-k">事由</text><input :disabled="submitting" class="sc__input" v-model="reason" placeholder="至少 5 字" /></view>
         </view>
 
@@ -105,6 +109,7 @@
 <script>
 import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
+import { me } from '@/services/realApi'
 import { toast } from '@/utils/nav'
 import { useSessionStore } from '@/stores/session'
 import { beginPersistentWrite, clearPersistentWrite, isExplicitWriteRejection, isForbiddenResponse, listPersistentWrites, persistWriteAck, teacherWriteContext } from '../academic-affairs/write-result'
@@ -128,21 +133,25 @@ export default {
       changesHasMore: false, acting: false, changePage: 1,
       items: [], itemIndex: 0, typeIndex: 0, parityIndex: 0,
       targetWeekday: '', targetSlotNo: '', targetStartWeek: '', targetEndWeek: '', targetClassroom: '',
-      makeupPlan: '', reason: '', checking: false, submitting: false,
+      stopWeek: '', makeupPlan: '', reason: '', checking: false, submitting: false,
       conflictChecked: false, conflictResult: null, checkedFingerprint: '', receipt: null,
       requestedItemId: '', scheduleState: 'idle', scheduleError: '', unknownWrites: {}, writeStorageBlocked: false
     }
   },
   onLoad(options = {}) {
     this._pageActive = true
-    this._viewContext = this.contextKey()
-    this.syncUnknownWrites()
     this.requestedItemId = String(options.scheduleItemId || '')
+    if (this.requestedItemId) { this.tab = 'new'; this.itemIndex = -1 }
+    this._viewContext = this.contextKey()
+    if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
+    this.syncUnknownWrites()
     this.load()
-    if (this.requestedItemId) { this.tab = 'new'; this.itemIndex = -1; this.loadSchedule() }
+    if (this.requestedItemId) this.loadSchedule()
   },
   onShow() {
     this._pageActive = true
+    if (this._identityRestoring) return
+    if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
     this.syncUnknownWrites()
     const context = this.contextKey()
     if (this._viewContext !== context) {
@@ -156,6 +165,7 @@ export default {
       this.changesTotal = 0
       this.changesHasMore = false
       this.targetWeekday = ''; this.targetSlotNo = ''; this.targetStartWeek = ''; this.targetEndWeek = ''; this.targetClassroom = ''
+      this.stopWeek = ''
       this.requestedItemId = ''
       this.tab = 'list'
       this.items = []
@@ -176,6 +186,8 @@ export default {
   },
   onHide() {
     this._pageActive = false
+    this._identityEpoch = (this._identityEpoch || 0) + 1
+    this._identityRestoring = false
     this._needsRefresh = true
     this._listEpoch = (this._listEpoch || 0) + 1
     this._scheduleEpoch = (this._scheduleEpoch || 0) + 1
@@ -183,6 +195,8 @@ export default {
   },
   onUnload() {
     this._pageActive = false
+    this._identityEpoch = (this._identityEpoch || 0) + 1
+    this._identityRestoring = false
     this._listEpoch = (this._listEpoch || 0) + 1
     this._scheduleEpoch = (this._scheduleEpoch || 0) + 1
     this._conflictEpoch = (this._conflictEpoch || 0) + 1
@@ -199,11 +213,61 @@ export default {
     parityLabels() { return PARITIES.map((p) => p.label) },
     currentItemId() { const i = this.items[this.itemIndex]; return i ? i.itemId : null },
     bodyFingerprint() { return JSON.stringify(this._body()) },
+    stopWeekError() {
+      if (this.typeKey !== 'STOP') return ''
+      const raw = String(this.stopWeek).trim()
+      const week = Number(raw)
+      if (!/^\d+$/.test(raw) || !Number.isSafeInteger(week) || week < 1) return '请填写一个有效的停课教学周（正整数）'
+      const item = this.items[this.itemIndex] || {}
+      if ((Number(item.startWeek) > 0 && week < Number(item.startWeek)) || (Number(item.endWeek) > 0 && week > Number(item.endWeek))) return '停课教学周须在原课位的上课周范围内'
+      if ((item.weekParity === 'ODD' && week % 2 === 0) || (item.weekParity === 'EVEN' && week % 2 === 1)) return '所选教学周不是原课位的上课周'
+      return ''
+    },
     conflictReady() { return this.typeKey === 'STOP' || (this.conflictChecked && !this.conflictResult && this.checkedFingerprint === this.bodyFingerprint) },
-    canSubmit() { return !!this.currentItemId && this.conflictReady }
+    canSubmit() { return !!this.currentItemId && this.conflictReady && !this.stopWeekError }
   },
   onBackPress() { if (this.tab !== 'new') return false; this.backToApplications(); return true },
   methods: {
+    needsVerifiedIdentity() {
+      const session = useSessionStore()
+      return session.persistedIdentityVerified === false || !listPersistentWrites(this.contextKey()).ok
+    },
+    async restoreIdentity() {
+      if (this._identityRestoring) return
+      const before = this.contextKey()
+      const epoch = (this._identityEpoch || 0) + 1
+      this._identityEpoch = epoch
+      this._identityRestoring = true
+      this._listEpoch = (this._listEpoch || 0) + 1
+      this._scheduleEpoch = (this._scheduleEpoch || 0) + 1
+      this._conflictEpoch = (this._conflictEpoch || 0) + 1
+      this._writeEpoch = (this._writeEpoch || 0) + 1
+      this.changes = []; this.changesTotal = 0; this.changesHasMore = false
+      this.items = []; this.itemIndex = this.requestedItemId ? -1 : 0
+      this.typeIndex = 0; this.parityIndex = 0
+      this.targetWeekday = ''; this.targetSlotNo = ''; this.targetStartWeek = ''; this.targetEndWeek = ''; this.targetClassroom = ''
+      this.stopWeek = ''
+      this.reason = ''; this.makeupPlan = ''
+      this.receipt = null; this.unknownWrites = {}; this.writeStorageBlocked = true
+      this.acting = false; this.submitting = false; this.checking = false
+      this.invalidateConflict()
+      this.state = 'loading'; this.scheduleState = 'idle'; this.scheduleError = ''
+      try {
+        const identity = await me()
+        if (!this._pageActive || this._identityEpoch !== epoch || this.contextKey() !== before) return
+        const session = useSessionStore()
+        session.applyRealUser(identity)
+        if (session.currentRole !== 'academic') { this.state = 'forbidden'; return }
+        this._viewContext = this.contextKey()
+        if (!this.syncUnknownWrites().ok) { this.state = 'error'; return }
+        this.load()
+        if (this.tab === 'new') this.loadSchedule()
+      } catch (error) {
+        if (this._pageActive && this._identityEpoch === epoch && this.contextKey() === before) this.state = normalizeError(error).pageState || 'error'
+      } finally {
+        if (this._identityEpoch === epoch) this._identityRestoring = false
+      }
+    },
     backToApplications() { if (this.submitting || this.acting) { toast('正在处理，请稍候'); return false }; if (this.tab !== 'new') return true; this.tab = 'list'; return false },
     contextKey() {
       return teacherWriteContext(useSessionStore())
@@ -233,7 +297,7 @@ export default {
       })
     },
     statusTone(s) { return STATUS_TONES[s] || 'default' },
-    cancellable(s) { return CANCELLABLE.has(s) },
+    cancellable(row) { return row?.canCancel === true && CANCELLABLE.has(row.status) },
     switchTab(t) {
       if (this.submitting || this.acting) { toast('正在处理，请稍候'); return }
       this.tab = t
@@ -241,6 +305,7 @@ export default {
     },
     async load(page = 1, done) {
       if (typeof page === 'function') { done = page; page = 1 }
+      if (this.needsVerifiedIdentity()) { this.restoreIdentity(); if (done) done(); return }
       const requestedPage = Math.max(1, Number(page) || 1)
       const epoch = (this._listEpoch || 0) + 1
       this._listEpoch = epoch
@@ -264,6 +329,7 @@ export default {
       } finally { if (done) done() }
     },
     async loadSchedule() {
+      if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
       const epoch = (this._scheduleEpoch || 0) + 1
       this._scheduleEpoch = epoch
       const context = this.contextKey()
@@ -285,22 +351,32 @@ export default {
       }
     },
     invalidateConflict() { this.conflictChecked = false; this.conflictResult = null; this.checkedFingerprint = '' },
-    onItem(e) { this.itemIndex = Number(e.detail.value); this.invalidateConflict() },
-    onType(e) { this.typeIndex = Number(e.detail.value); this.invalidateConflict() },
+    onItem(e) { this.itemIndex = Number(e.detail.value); this.stopWeek = ''; this.invalidateConflict() },
+    onType(e) {
+      const wasStop = this.typeKey === 'STOP'
+      this.typeIndex = Number(e.detail.value)
+      if (wasStop !== (this.typeKey === 'STOP')) {
+        this.stopWeek = ''; this.targetStartWeek = ''; this.targetEndWeek = ''
+      }
+      this.invalidateConflict()
+    },
     onParity(e) { this.parityIndex = Number(e.detail.value); this.invalidateConflict() },
     _body() {
+      const isStop = this.typeKey === 'STOP'
+      const week = isStop && !this.stopWeekError ? Number(String(this.stopWeek).trim()) : null
       return {
         originItemId: this.currentItemId, changeType: this.typeKey, reason: this.reason.trim(),
-        targetWeekday: this.targetWeekday ? Number(this.targetWeekday) : null,
-        targetSlotNo: this.targetSlotNo ? Number(this.targetSlotNo) : null,
-        targetStartWeek: this.targetStartWeek ? Number(this.targetStartWeek) : null,
-        targetEndWeek: this.targetEndWeek ? Number(this.targetEndWeek) : null,
-        targetWeekParity: PARITIES[this.parityIndex].key,
-        targetClassroom: this.targetClassroom.trim() || null,
+        targetWeekday: !isStop && this.targetWeekday ? Number(this.targetWeekday) : null,
+        targetSlotNo: !isStop && this.targetSlotNo ? Number(this.targetSlotNo) : null,
+        targetStartWeek: isStop ? week : this.targetStartWeek ? Number(this.targetStartWeek) : null,
+        targetEndWeek: isStop ? week : this.targetEndWeek ? Number(this.targetEndWeek) : null,
+        targetWeekParity: isStop ? (this.items[this.itemIndex]?.weekParity || 'ALL') : PARITIES[this.parityIndex].key,
+        targetClassroom: isStop ? null : this.targetClassroom.trim() || null,
         makeupPlan: this.makeupPlan.trim() || null
       }
     },
     doConflictCheck() {
+      if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
       if (this.checking || !this.currentItemId) return
       if (!this.targetWeekday || !this.targetSlotNo) { toast('请先填写目标星期与节次'); return }
       const body = this._body()
@@ -322,6 +398,7 @@ export default {
         .finally(() => { if (this._conflictEpoch === epoch && this.contextKey() === context) this.checking = false })
     },
     async doSubmit() {
+      if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
       if (this.submitting || !this.canSubmit) return
       const reason = this.reason.trim()
       if (reason.length < 5) { toast('事由至少 5 个字'); return }
@@ -357,6 +434,7 @@ export default {
           toast('已提交')
           this.reason = ''; this.makeupPlan = ''; this.targetWeekday = ''; this.targetSlotNo = ''
           this.targetStartWeek = ''; this.targetEndWeek = ''; this.targetClassroom = ''
+          this.stopWeek = ''
           this.invalidateConflict()
           this.tab = 'list'; this.load(1)
         })
@@ -371,7 +449,8 @@ export default {
         .finally(() => { if (this._writeEpoch === writeEpoch && this.contextKey() === context) this.submitting = false })
     },
     doCancel(x) {
-      if (this.acting || this.submitting || !this.changes.includes(x) || !this.cancellable(x.status) || this.hasUnknownWrite('cancel', x.changeId)) return
+      if (this.needsVerifiedIdentity()) { this.restoreIdentity(); return }
+      if (this.acting || this.submitting || !this.changes.includes(x) || !this.cancellable(x) || this.hasUnknownWrite('cancel', x.changeId)) return
       const changeId = String(x.changeId || '')
       const context = this.contextKey()
       const epoch = this._listEpoch
@@ -379,7 +458,7 @@ export default {
       uni.showModal({
         title: '撤销调停课申请', editable: true, placeholderText: '可填写撤销原因（可选）', content: '',
         success: (r) => {
-          if (!r.confirm || !this._pageActive || this.acting || this.submitting || !this.changes.includes(x) || this._listEpoch !== epoch || this.contextKey() !== context || JSON.stringify(x) !== snapshot || String(x.changeId || '') !== changeId) return
+          if (!r.confirm || !this._pageActive || this.acting || this.submitting || !this.changes.includes(x) || !this.cancellable(x) || this._listEpoch !== epoch || this.contextKey() !== context || JSON.stringify(x) !== snapshot || String(x.changeId || '') !== changeId) return
           if (!this.beginWrite(context, 'cancel', changeId)) return
           const writeEpoch = (this._writeEpoch || 0) + 1
           this._writeEpoch = writeEpoch

@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="returnToBatchQueue">返回审核批次</AppButton>
+      <AppButton @click="returnToBatchQueue">{{ returnToResult ? '返回预审结果' : '返回审核批次' }}</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -20,6 +20,7 @@
           <span class="agc-eyebrow">当前毕业审核批次</span>
           <strong>{{ currentBatch ? currentBatch.batchName : '选择一个审核批次' }}</strong>
           <small>{{ currentBatch ? `来源：毕业审核批次 #${currentBatch.batchId} · 年级 ${currentBatch.gradeYear || '未指定'}` : '请先选择正式审核批次' }}</small>
+          <small v-if="currentBatch">所属学期：{{ currentBatchTermLabel }}</small>
           <AppGraduationBatchPicker
             v-model="batchId"
             :options="batchOptions"
@@ -65,8 +66,10 @@
             <div v-for="item in focusedItems" :key="item.item" class="agc-focus__item">
               <span>{{ itemLabel(item.item) }}</span>
               <AppStatusTag :type="gradItemColor(item.result)" dot>{{ itemResultLabel(item.result) }}</AppStatusTag>
-              <p>{{ evidenceText(item.evidence) }}</p>
+              <p>{{ evidenceText(item.evidence, item.item) }}</p>
               <small>证据责任：{{ ownerLabel(item.owner) }}<template v-if="item.refId"> · 来源对象 #{{ item.refId }}</template></small>
+              <small v-if="!item.refId && ['INTERNSHIP', 'GRADUATION_DESIGN'].includes(item.item)">当前尚无学生台账，须由有本业务学生管理权限的人员先建档。</small>
+              <router-link v-if="linkForItem(focusedRow, item)" class="mp-link" :to="linkForItem(focusedRow, item)">{{ sourceLinkLabel(item) }}</router-link>
             </div>
           </div>
           <footer>
@@ -101,14 +104,14 @@
             <AppStatusTag :type="gradItemColor(itemOf(row).result)" dot>{{ itemResultLabel(itemOf(row).result) }}</AppStatusTag>
           </template>
           <template #cell-evidence="{ row }">
-            <span class="agc-evidence">{{ evidenceText(itemOf(row).evidence) }}</span>
+            <span class="agc-evidence">{{ evidenceText(itemOf(row).evidence, itemOf(row).item) }}</span>
           </template>
           <template #cell-ops="{ row }">
             <template v-if="tab === 'fee'">
               <button class="mp-link" :disabled="feeBusy || !canManagePermission || !!pendingWrite" @click="markFee(row, 'CLEARED')">勾选已结清</button>
               <button class="mp-link" :disabled="feeBusy || !canManagePermission || !!pendingWrite" @click="markFee(row, 'OWED')">勾选仍欠费</button>
             </template>
-            <router-link v-else-if="linkFor(row)" class="mp-link" :to="linkFor(row)">跳转责任模块</router-link>
+            <router-link v-else-if="linkFor(row)" class="mp-link" :to="linkFor(row)">{{ sourceLinkLabel(itemOf(row)) }}</router-link>
             <button class="mp-link" @click="openDetail(row)">十一项详情</button>
           </template>
         </DataTable>
@@ -132,7 +135,7 @@
                 <AppStatusTag :type="gradItemColor(itemOf(row, 'COURSE_REQUIRED').result)" dot>{{ itemResultLabel(itemOf(row, 'COURSE_REQUIRED').result) }}</AppStatusTag>
               </template>
               <template #cell-evidence="{ row }">
-                <span class="agc-evidence">{{ evidenceText(itemOf(row, 'COURSE_REQUIRED').evidence) }}</span>
+                <span class="agc-evidence">{{ evidenceText(itemOf(row, 'COURSE_REQUIRED').evidence, 'COURSE_REQUIRED') }}</span>
               </template>
               <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十一项详情</button></template>
             </DataTable>
@@ -151,7 +154,7 @@
                 <AppStatusTag :type="gradItemColor(itemOf(row, 'COURSE_ELECTIVE').result)" dot>{{ itemResultLabel(itemOf(row, 'COURSE_ELECTIVE').result) }}</AppStatusTag>
               </template>
               <template #cell-evidence="{ row }">
-                <span class="agc-evidence">{{ evidenceText(itemOf(row, 'COURSE_ELECTIVE').evidence) }}</span>
+                <span class="agc-evidence">{{ evidenceText(itemOf(row, 'COURSE_ELECTIVE').evidence, 'COURSE_ELECTIVE') }}</span>
               </template>
               <template #cell-ops="{ row }"><button class="mp-link" @click="openDetail(row)">十一项详情</button></template>
             </DataTable>
@@ -230,7 +233,7 @@
 
       <template v-else-if="tab === 'archive'">
         <AppSectionCard title="归档操作">
-          <p class="mp-note">收敛该批次已终审的「毕业/结业」结果为已归档（ARCHIVED）；延毕滚入下一批次、退回待重初审的结果不在本次归档范围内，需重新走完流程后再归档。</p>
+          <p class="mp-note">收敛该批次已终审的「毕业/结业」结果为已归档；延毕滚入下一批次、退回待重初审的结果不在本次归档范围内，需重新走完流程后再归档。</p>
           <AppButton variant="primary" :disabled="!canManagePermission || !batchId || archiving || !!pendingWrite" :loading="archiving" @click="confirmArchive">执行归档</AppButton>
         </AppSectionCard>
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
@@ -258,10 +261,12 @@
           <div v-for="it in detail.row.items" :key="it.item" class="agc-item">
             <span class="agc-item__label">{{ itemLabel(it.item) }}</span>
             <AppStatusTag :type="gradItemColor(it.result)" dot>{{ itemResultLabel(it.result) }}</AppStatusTag>
-            <span class="agc-item__ev">{{ evidenceText(it.evidence) }}</span>
+            <span class="agc-item__ev">{{ evidenceText(it.evidence, it.item) }}</span>
+            <router-link v-if="linkForItem(detail.row, it)" class="mp-link" :to="linkForItem(detail.row, it)">{{ sourceLinkLabel(it) }}</router-link>
           </div>
         </div>
         <AppInlineAlert v-if="detail.row.reviewNote" type="info" :description="`最近处理意见：${detail.row.reviewNote}`" />
+        <AppInlineAlert v-if="!canCollegeReview(detail.row) && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(detail.row.status)" type="info" description="当前由学生所属学院的有效责任账号办理初审；学院通过后，交由校教务处终审。" />
 
         <div v-if="canCollegeReview(detail.row)" class="agc-actions">
           <div class="agc-actions__title">学院初审</div>
@@ -358,6 +363,13 @@ const LINK_ITEM = {
   GRADUATION_DESIGN: (refId) => `/admin/graduation/students/${refId}`,
   INTERNSHIP: (refId) => `/admin/internship/students/${refId}`
 }
+const RESPONSIBILITY_LINK = {
+  COURSE_REQUIRED: { path: '/admin/academic-affairs/grade-overview', permission: 'academicAffairs.grade.view' },
+  COURSE_ELECTIVE: { path: '/admin/academic-affairs/grade-overview', permission: 'academicAffairs.grade.view' },
+  PRACTICE: { path: '/admin/academic-affairs/programs', permission: 'academicAffairs.program.view' },
+  DISCIPLINE: { path: '/admin/student-affairs/discipline', permission: 'studentAffairs.discipline.view' },
+  ARCHIVE: { path: '/admin/student-affairs/archive', permission: 'studentAffairs.archive.view' }
+}
 
 const freshPagination = () => ({ page: 1, pageSize: 20, total: 0 })
 const exactId = value => typeof value === 'string' && value.trim() ? value : (typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : '')
@@ -440,12 +452,12 @@ export default {
         practice: '核对培养方案要求的实践环节完成证据',
         thesis: '读取毕业设计正式状态，缺失或未通过时返回责任模块',
         internship: '读取岗位实习正式状态，缺失或未通过时返回责任模块',
-        fee: '财务未供数时保持 UNKNOWN；人工标记必须回读正式结果',
+        fee: '财务尚未供数时显示待治理；人工标记必须回读正式结果',
         discipline: '核对未解除处分等正式阻断证据',
         final: '逐项查看十一项正式证据，锁定学生与审核结果后执行终审',
         reason: '按系统异常、学院退回和延毕分类返回责任岗位治理',
         results: '查看正式预审、学院审核与教务终审结论',
-        archive: '封存已终审结果；UNKNOWN 与未闭环对象继续留在责任队列'
+        archive: '封存已终审结果；证据待核验与未办结对象继续留在责任队列'
       }
       return copy[this.tab] || '毕业资格审核工作区'
     },
@@ -462,10 +474,12 @@ export default {
     focusedItems(){if(!this.focusedRow)return[];if(this.tab==='final')return this.focusedRow.items||[];if(this.tab==='course')return (this.focusedRow.items||[]).filter(item=>['COURSE_REQUIRED','COURSE_ELECTIVE'].includes(item.item));const item=this.itemOf(this.focusedRow);return item?.item?[item]:[]},
     showEvidenceBoard(){return ['credit','course','practice','thesis','internship','discipline','fee','final'].includes(this.tab)},
     currentOwner(){if(this.tab==='final')return '教务终审岗';if(this.tab==='archive')return '教务归档岗';if(this.tab==='results')return '教务复核岗';if(this.tab==='roster')return '学院名单核对岗';const item=this.focusedItems.find(entry=>entry.result!=='PASS')||this.focusedItems[0];return this.ownerLabel(item?.owner)},
-    responsibilityReason(){if(!this.currentBatch)return'选择批次后确定';if(this.batchAbnormal)return`有 ${this.batchAbnormal} 名学生存在阻断证据`;if(this.tab==='final')return'仅学院初审和系统预审均已通过的学生可办理终审';return'当前阶段需要核对正式证据与责任来源'},
+    responsibilityReason(){if(!this.currentBatch)return'选择批次后确定';if(this.focusedItems.some(item=>!item.refId&&['INTERNSHIP','GRADUATION_DESIGN'].includes(item.item)))return'尚无学生台账，先由本业务学生管理人员建档，再继续指导与归档';if(this.batchAbnormal)return`有 ${this.batchAbnormal} 名学生存在阻断证据`;if(this.tab==='final')return'仅学院初审和系统预审均已通过的学生可办理终审';return'当前阶段需要核对正式证据与责任来源'},
     currentBlocker(){if(!this.currentBatch)return'尚未选择批次';const item=this.focusedItems.find(entry=>entry.result!=='PASS');if(item)return`${this.itemLabel(item.item)}：${this.itemResultLabel(item.result)}`;if(this.batchAbnormal)return`${this.batchAbnormal} 名系统异常`;return'当前无已知阻断'},
     nextOwner(){if(this.tab==='final')return'证书管理岗';if(this.tab==='archive')return'受控纠错岗';if(this.batchAbnormal)return'学院审核岗';return'教务终审岗'},
     currentBatch() { return this.batches.find((b) => String(b.batchId) === String(this.batchId)) || null },
+    returnToResult() { const path=String(this.$route.query.returnTo||'');const match=path.match(/^\/admin\/academic-affairs\/graduation\/(\d+)\/results(?:\?termId=\d+)?$/);return match?.[1]===String(this.batchId)?path:'' },
+    currentBatchTermLabel(){const row=this.currentBatch;if(!row)return '选择批次后读取正式学期';if(row.termId==null)return '历史批次，所属学期待核对';return exactId(row.termId)?(row.termName||'所属学期名称待核对'):'所属学期标识待核对'},
     batchTotal() { return Number(this.currentBatch?.total || 0) },
     batchPassed() { return Number(this.currentBatch?.passed || 0) },
     batchAbnormal() { return Number(this.currentBatch?.abnormal || 0) },
@@ -550,7 +564,7 @@ export default {
   beforeUnmount(){this.alive=false;this.invalidatePrivate()},
   inject: { academicFlow: { default: null } },
   methods: {
-    returnToBatchQueue() { if(this.$route.query.returnToken && this.academicFlow) return this.academicFlow.back(this.$route.query.returnToken, '/admin/academic-affairs/graduation'); return this.$router.push('/admin/academic-affairs/graduation') },
+    returnToBatchQueue() { if(this.returnToResult)return this.$router.push(this.returnToResult);if(this.$route.query.returnToken && this.academicFlow) return this.academicFlow.back(this.$route.query.returnToken, '/admin/academic-affairs/graduation'); const termId=exactId(this.currentBatch?.termId);return this.$router.push({path:'/admin/academic-affairs/graduation',query:termId?{termId}:{}}) },
     token(kind){const seq=(this.readSeq[kind]||0)+1;this.readSeq[kind]=seq;return {kind,seq,scope:this.scope,identity:this.identity,route:this.$route.fullPath,batchId:String(this.batchId),tab:this.tab}},
     current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath&&this.readSeq[c.kind]===c.seq},
     denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
@@ -562,9 +576,23 @@ export default {
     itemResultLabel(r) { return GRAD_ITEM_RESULT[r] || r },
     overallLabel(o) { return OVERALL_LABEL[o] || o || '—' },
     statusLabel(s) { return GRAD_STATUS_LABEL[s] || (s ? '状态待确认' : '') },
-    evidenceText(value) { return String(value || '当前正式证据未提供').replace(/student_status=([A-Z_]+)/g, (_all, code) => `学籍状态：${({NORMAL:'正常在籍',GRADUATED:'已毕业',COMPLETED:'已结业',SUSPENDED:'休学',DROPPED:'退学'})[code] || '待核对'}`) },
+    evidenceText(value, item) {
+      let text = String(value || '当前正式证据未提供').replace(/student_status=([A-Z_]+)/g, (_all, code) => `学籍状态：${({NORMAL:'正常在籍',REGISTERED:'已注册',RETAINED:'留级',GRADUATED:'已毕业',COMPLETED:'已结业',SUSPENDED:'休学',DROPPED:'退学'})[code] || '待核对'}`)
+      if (item === 'GRADUATION_DESIGN') {
+        return text
+          .replace('FILED 归档清单有效', '已备案的归档清单有效')
+          .replace('PUBLISHED 及格成绩和有效 FILED 归档', '正式成绩已发布且及格、归档清单已备案并有效')
+          .replace(/\bPUBLISHED\b/g, '已发布').replace(/\bFILED\b/g, '已备案')
+      }
+      if (item === 'ARCHIVE') {
+        text = text.replace('（不阻断，人工复核）', '（正式毕业资格审核暂不能通过，请核对学工归档）')
+          .replace(/学工归档包已归档\s+status=ARCHIVED/g, '学工归档包已归档')
+        return text.replace(/\s*status=([A-Z_]+)/g, (_all, code) => `（${({ARCHIVED:'已归档',RETURNED:'已退回',PENDING_SUPPLEMENT:'待补材料'})[code] || '状态待核对'}）`)
+      }
+      return text
+    },
     conclusionLabel(c) { return CONCLUSION_LABEL[c] || c },
-    ownerLabel(owner){return {AA_STAFF:'教务审核岗',COLLEGE_STAFF:'学院审核岗',COUNSELOR:'辅导员/学工责任岗',GD_MENTOR:'毕业设计责任岗',INTERNSHIP_MENTOR:'岗位实习责任岗',FINANCE:'财务供数岗'}[owner]||'证据责任岗'},
+    ownerLabel(owner){return {AA_STAFF:'教务审核岗',COLLEGE_STAFF:'学院审核岗',COUNSELOR:'辅导员/学工责任岗',GD_MENTOR:'毕业设计责任岗',INTERN_MENTOR:'岗位实习责任岗',FINANCE:'财务供数岗'}[owner]||'证据责任岗'},
     focusResult(row){if(!row||this.pendingWrite)return;this.focusedResultId=String(row.resultId||'')},
     itemOf(row, key) {
       const target = key || (TAB_CONFIG[this.tab] && TAB_CONFIG[this.tab].item)
@@ -572,17 +600,37 @@ export default {
     },
     linkFor(row) {
       const cfg = TAB_CONFIG[this.tab]
-      if (!cfg || !cfg.item || !LINK_ITEM[cfg.item]) return null
-      const it = this.itemOf(row)
-      if (!it.refId) return null
-      return LINK_ITEM[cfg.item](it.refId)
+      return cfg?.item ? this.linkForItem(row, this.itemOf(row)) : null
+    },
+    linkForItem(row, it) {
+      if (!row || !it || (!LINK_ITEM[it.item] && !RESPONSIBILITY_LINK[it.item])) return null
+      const permission = RESPONSIBILITY_LINK[it.item]?.permission
+        || (it.item === 'INTERNSHIP' ? 'internship.student.view' : 'graduationDesign.student.view')
+      if (!matchPermission(this.ctx.permissionPatterns || [], permission)) return null
+      const returnTo = this.$router.resolve({ path: this.$route.path, query: {
+        ...this.$route.query, batchId: String(this.batchId), tab: this.tab,
+        resultId: exactId(row.resultId) || undefined,
+        termId: exactId(this.currentBatch?.termId) || undefined
+      } }).fullPath
+      if (RESPONSIBILITY_LINK[it.item]) return { path: RESPONSIBILITY_LINK[it.item].path, query: {
+        ...(it.item === 'DISCIPLINE' && /^\d+$/.test(exactId(row.studentId)) ? { studentId: exactId(row.studentId), studentNo: String(row.studentNo || '') } : {}),
+        returnTo
+      } }
+      const refId = exactId(it.refId)
+      if (/^\d+$/.test(refId)) return { path: LINK_ITEM[it.item](refId), query: { returnTo } }
+      const keyword = String(row.studentNo || '').trim()
+      if (!keyword) return null
+      return { path: it.item === 'INTERNSHIP' ? '/admin/internship/students' : '/admin/graduation/students', query: { panel: 'roster', keyword, returnTo } }
+    },
+    sourceLinkLabel(it) {
+      return RESPONSIBILITY_LINK[it.item] ? '进入责任模块，按学号核对' : (it.refId ? '核对来源对象' : '按学号进入责任名单')
     },
     canCollegeApprove(r) {
-      return Boolean(this.canCollegePermission&&!this.pendingWrite&&r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
+      return Boolean(this.canCollegePermission&&!this.pendingWrite&&r?.canCollegeReview === true && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
     },
-    canCollegeReject(r) { return Boolean(this.canCollegePermission&&!this.pendingWrite&&r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
+    canCollegeReject(r) { return Boolean(this.canCollegePermission&&!this.pendingWrite&&r?.canCollegeReview === true && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
     canCollegeReview(r) { return this.canCollegeApprove(r) || this.canCollegeReject(r) },
-    canNormalFinal(r) { return Boolean(this.canFinalPermission&&!this.pendingWrite&&r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
+    canNormalFinal(r) { return Boolean(this.canFinalPermission&&!this.pendingWrite&&r?.canAcademicFinal === true && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     resetSpecialPagination() {
       this.courseRequiredPagination = freshPagination()
       this.courseElectivePagination = freshPagination()
@@ -773,7 +821,7 @@ export default {
       const parts = []
       if (row.reviewNote) parts.push(`学院意见：${row.reviewNote}`)
       const fails = (row.items || []).filter((it) => it.result === 'FAIL')
-        .map((it) => `${this.itemLabel(it.item)}：${this.evidenceText(it.evidence)}`)
+        .map((it) => `${this.itemLabel(it.item)}：${this.evidenceText(it.evidence, it.item)}`)
       if (fails.length) parts.push(fails.join('；'))
       return parts.join('；') || '暂无明细，请点右侧「十一项详情」核对'
     },

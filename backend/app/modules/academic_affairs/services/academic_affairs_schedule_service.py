@@ -24,6 +24,26 @@ from app.services.db_service import _iso, _tid, session
 WEEKDAYS = range(1, 8)
 PARITIES = ("ALL", "ODD", "EVEN")
 
+
+def _require_school_schedule_operator(db, user, *, require_archive=False):
+    """正式课表生命周期共用实时校级权限、范围与责任任职。"""
+    from app.core.permissions import _match
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from . import academic_affairs_responsibility_service as responsibility
+
+    ctx = build_affairs_context(user, db)
+    if ctx.scope_type != "TENANT_ALL":
+        raise no_data_scope("正式课表须由校教务统筹发布、作废与归档，学院负责本单位编排与预发布核对")
+    if require_archive and not _match("academicAffairs.schedule.archive", ctx.permission_codes):
+        raise no_data_scope("当前身份没有正式课表作废与归档权限")
+    actor = responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit")
+    if (not _match("academicAffairs.schedule.edit", ctx.permission_codes)
+            or not actor["resolved"]
+            or str(_current_user_id(db, user)) not in actor["assigneeUserIds"]):
+        raise no_data_scope("当前账号不是有效的学校课表责任人，请核对校级任职与排课权限")
+    return ctx
+
+
 # ── 07号卡·自动排课预留：结果导入(Excel)通道表头（不写算法本体，仅结果落地） ──
 IMPORT_HEADERS = ["星期(1-7)", "节次", "课程名称", "教师姓名", "教师工号", "班级ID", "班级名称",
                   "教室", "起始周", "结束周", "单双周(ALL/ODD/EVEN)", "教学任务ID"]
@@ -123,8 +143,8 @@ def _weeks_overlap(s1, e1, p1, s2, e2, p2) -> bool:
 
 
 def _detect_conflict(db, batch_id, weekday, slot_no, start_week, end_week, parity,
-                     teacher_key, class_id, classroom, exclude_id=None):
-    """返回冲突描述（None=无冲突）。同批次同星期同节次，教师/班级/教室任一相同且周次相容即冲突。"""
+                     teacher_key, class_id, classroom, exclude_id=None, *, classroom_id=None):
+    """同节次且周次相容的资源冲突；默认查本批，预检可传已过滤的跨候选预载行。"""
     from app.models import AaScheduleItem
     rows = db.scalars(select(AaScheduleItem).where(
         AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == int(batch_id),
@@ -135,13 +155,23 @@ def _detect_conflict(db, batch_id, weekday, slot_no, start_week, end_week, parit
             continue
         if not _weeks_overlap(start_week, end_week, parity, r.start_week, r.end_week, r.week_parity):
             continue
+        external = int(getattr(r, "batch_id", batch_id)) != int(batch_id)
         if teacher_key and r.teacher_key and r.teacher_key == teacher_key:
+            if external:
+                return {"type": "TEACHER", "conflictWith": "当前任课教师",
+                        "detail": f"其他排课范围已占用当前教师的周{weekday}第{slot_no}节，请联系校教务协调"}
             return {"type": "TEACHER", "conflictWith": r.teacher_name or teacher_key,
                     "detail": f"教师 {r.teacher_name or teacher_key} 周{weekday}第{slot_no}节已排 {r.course_name}"}
         if class_id and r.class_id and int(r.class_id) == int(class_id):
+            if external:
+                return {"type": "CLASS", "conflictWith": "当前教学班",
+                        "detail": f"其他排课范围已占用当前班级的周{weekday}第{slot_no}节，请联系校教务协调"}
             return {"type": "CLASS", "conflictWith": r.class_name or str(class_id),
                     "detail": f"班级 {r.class_name or class_id} 周{weekday}第{slot_no}节已排 {r.course_name}"}
-        if classroom and r.classroom_text and r.classroom_text == classroom:
+        same_room = (int(r.classroom_id) == int(classroom_id)
+                     if classroom_id and getattr(r, "classroom_id", None)
+                     else classroom and r.classroom_text and r.classroom_text == classroom)
+        if same_room:
             return {"type": "CLASSROOM", "conflictWith": classroom,
                     "detail": f"教室 {classroom} 周{weekday}第{slot_no}节已被占用"}
     return None
@@ -362,8 +392,14 @@ def void_and_reissue(batch_id, user, reason="") -> dict:
     with session() as db:
         from app.models import AaScheduleBatch, AaSchedulePublish
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
-        b = db.get(AaScheduleBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        _require_school_schedule_operator(db, user, require_archive=True)
+        lock_formal_authority(db)
+        b = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.id == int(batch_id), AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True)).first()
+        if not b:
             raise not_found("课表批次不存在")
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再作废重发
         if b.status != "PUBLISHED":
@@ -384,8 +420,14 @@ def archive(batch_id, user) -> dict:
     审计事件为 ARCHIVE，不要求填写原因，归档后数据只读，供教务归档包（R7）统一打包消费。"""
     with session() as db:
         from app.models import AaScheduleBatch
-        b = db.get(AaScheduleBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        _require_school_schedule_operator(db, user, require_archive=True)
+        lock_formal_authority(db)
+        b = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.id == int(batch_id), AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True)).first()
+        if not b:
             raise not_found("课表批次不存在")
         if b.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布批次可归档")
@@ -583,6 +625,16 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20):
     from app.models import AaScheduleBatch, AaTerm
     with session() as db:
         conds = [AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.is_deleted.is_(False)]
+        # 与精确批次详情共用已配置的数据范围，并在 count/分页前收敛。
+        ctx = build_affairs_context(user or {}, db)
+        scope_type = str(ctx.scope_type or "NONE").upper()
+        if scope_type == "COLLEGE":
+            college_ids = {int(value) for value in ctx.college_ids if value is not None}
+            if not college_ids:
+                raise no_data_scope("当前账号没有课表查看数据范围")
+            conds.append(AaScheduleBatch.college_id.in_(sorted(college_ids)))
+        elif scope_type != "TENANT_ALL":
+            raise no_data_scope("当前账号没有课表查看数据范围")
         if term_id:
             conds.append(AaScheduleBatch.term_id == int(term_id))
         if status:
@@ -595,6 +647,7 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20):
             AaTerm.tenant_id == _tid(), AaTerm.id.in_([b.term_id for b in rows] or [-1]), AaTerm.is_deleted.is_(False),
         )).all()}
         out = [{"batchId": str(b.id), "batchName": b.batch_name, "termId": str(b.term_id),
+                "collegeId": str(b.college_id) if b.college_id else None,
                 "termLabel": terms.get(int(b.term_id), "学期待核对"),
                 "status": b.status, "publishAt": _iso(b.publish_at)} for b in rows]
         return out, total

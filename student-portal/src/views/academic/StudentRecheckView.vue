@@ -30,10 +30,10 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, inject, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import AcademicBusinessReceipt from '../../components/academic/AcademicBusinessReceipt.vue'
-import { academicErrorKind, academicErrorMessage, academicReceipt, markStudentAcademicFormClean } from '../../components/academic/studentAcademicUi'
+import { academicErrorKind, academicErrorMessage, academicReceipt } from '../../components/academic/studentAcademicUi'
 import StateBlock from '../../components/StateBlock.vue'
 import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
 import AcademicPrototypeIcon from '../../components/academic/AcademicPrototypeIcon.vue'
@@ -52,13 +52,20 @@ const submitting = ref(false)
 const records = ref([])
 const grades = ref([])
 const route = useRoute()
-const selectedGradeId = ref(String(route.query.gradeId || ''))
+const initialGradeId = String(route.query.gradeId || '')
+const selectedGradeId = ref(initialGradeId)
 const reason = ref('')
 const applying = ref(!!route.query.gradeId)
 const currentGrade = computed(() => grades.value.find(grade => String(grade.gradeId) === selectedGradeId.value))
 const receipt = ref(null)
 const receiptTone = ref('success')
 const uncertainGradeId = ref('')
+const hasDraft = computed(() => Boolean(
+  reason.value.length || (selectedGradeId.value && selectedGradeId.value !== initialGradeId)
+))
+const releaseWorkspaceForm = inject('registerWorkspaceForm', null)?.(
+  () => hasDraft.value, () => submitting.value
+)
 
 const inFlightGradeIds = computed(() => new Set(
   records.value
@@ -78,7 +85,25 @@ function scoreText(value, status) {
   const special = { EXEMPT: '免修', EXEMPTED: '免修', DEFERRED: '缓考', ABSENT: '缺考' }
   return special[status] || (value == null || value === '' ? '待确认' : `${value} 分`)
 }
-function dateTime(value) { return String(value || '').slice(0, 16).replace('T', ' ') || '—' }
+function dateTime(value) {
+  const source = String(value ?? '').trim()
+  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?)?$/.exec(source)
+  if (!match) return '—'
+  const [, year, month, day, hour, minute, second, zone] = match
+  const calendar = new Date(0)
+  calendar.setUTCFullYear(Number(year), Number(month) - 1, Number(day))
+  if (calendar.getUTCFullYear() !== Number(year) || calendar.getUTCMonth() !== Number(month) - 1 || calendar.getUTCDate() !== Number(day)
+    || (hour !== undefined && (Number(hour) > 23 || Number(minute) > 59 || Number(second || 0) > 59))) return '—'
+  // 学校本地日期没有时区信息，保留其原语义；只有明确的时间点才换算北京时间。
+  if (!zone) return hour === undefined ? `${year}-${month}-${day}` : `${year}-${month}-${day} ${hour}:${minute}`
+  const date = new Date(source.replace(' ', 'T'))
+  if (!Number.isFinite(date.getTime())) return '—'
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+  }).formatToParts(date).map(part => [part.type, part.value]))
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`
+}
 function statusText(status) {
   const map = { SUBMITTED: '复查中', UPHELD: '维持原成绩', ADJUSTED: '已调整', REJECTED: '不予受理' }
   return map[String(status || '').toUpperCase()] || status || '待确认'
@@ -171,7 +196,6 @@ async function submit() {
       receipt.value = academicReceipt({ title: '成绩复查申请已提交并核对', object: command.courseName, status: statusText(formal.status), operatedAt: formal.createdAt || formal.submittedAt, next: '原正式成绩保持不变，请在本页跟踪复查结果。', relatedTo: '/academic/grades', relatedLabel: '查看正式成绩' })
       if (uncertainGradeId.value === command.gradeId) uncertainGradeId.value = ''
       if ((!selectedGradeId.value || selectedGradeId.value === command.gradeId) && reason.value.trim() === command.reason) { selectedGradeId.value = ''; reason.value = ''; applying.value = false }
-      markStudentAcademicFormClean()
     } else {
       uncertainGradeId.value = command.gradeId
       receiptTone.value = 'waiting'
@@ -200,7 +224,7 @@ function clearSensitive(e) {
   error.value = academicErrorMessage(e)
 }
 onMounted(load)
-onBeforeUnmount(() => guard.dispose())
+onBeforeUnmount(() => { releaseWorkspaceForm?.(); guard.dispose() })
 </script>
 
 <style src="../../components/academic/studentAcademicPrototype.css"></style>

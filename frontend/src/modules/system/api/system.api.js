@@ -718,12 +718,13 @@ export const systemApi = {
     }
   },
 
-  async assignUserRoles(id, roleCodes, roleAssignments) {
+  async assignUserRoles(id, roleCodes, roleAssignments, options = {}) {
     try {
       return ok(await request(`/system/users/${encodeURIComponent(id)}/roles`, {
         method: 'PUT',
         body: {
           roleCodes,
+          ...(options?.expectedVersion !== undefined ? { expectedVersion: options.expectedVersion } : {}),
           ...(Array.isArray(roleAssignments) ? {
             roleAssignments: roleAssignments.map((item) => ({
               roleCode: item.roleCode,
@@ -734,7 +735,11 @@ export const systemApi = {
         }
       }))
     } catch (error) {
-      return fail(error.message || '角色分配失败')
+      return {
+        ...apiError(error),
+        bizCode: error?.bizCode || '',
+        httpStatus: error?.httpStatus
+      }
     }
   },
 

@@ -14,7 +14,7 @@
       <GraduationStageRail v-if="batch" :active="batch.status === 'ARCHIVED' ? 5 : (batch.status === 'PRECHECKED' ? 2 : 1)" />
 
       <section v-if="batch" class="grad-object" aria-label="当前毕业审核对象">
-        <div><span>当前批次</span><strong>{{ batch.batchName }}</strong><small>来源：毕业审核批次 #{{ batch.batchId }}</small></div>
+        <div><span>当前批次</span><strong>{{ batch.batchName }}</strong><small>{{ batchTermLabel(batch) }}</small><small>来源：毕业审核批次 #{{ batch.batchId }}</small></div>
         <div><span>当前状态</span><strong>{{ academicStatusLabel(batch.status) }}</strong><small>应审 {{ batch.total || 0 }} 人 · 系统异常 {{ batch.abnormal || 0 }} 人</small></div>
         <div><span>当前责任</span><strong>{{ Number(batch.abnormal || 0) ? '证据责任岗' : '学院审核岗' }}</strong><small>{{ Number(batch.abnormal || 0) ? '先治理阻断项并重新预审' : '核对十一项正式证据' }}</small></div>
         <div><span>下一岗位</span><strong>{{ Number(batch.abnormal || 0) ? '学院审核岗' : '教务终审岗' }}</strong><small>完成当前阶段后自动进入下一队列</small></div>
@@ -22,11 +22,15 @@
 
       <AppSectionCard v-if="!batch && showCreate" title="新建审核批次">
         <div class="aa-cal-form">
+          <label class="aa-cal-form__item">所属学期（必选）<AppTermEntityPicker :key="identity" :model-value="draft.termId" placeholder="选择毕业审核所属学期" :disabled="creating || !!pendingCommand" @update:model-value="selectTerm" /></label>
           <label class="aa-cal-form__item aa-cal-form__item--grow">批次名称<input v-model.trim="draft.batchName" class="aa-input" placeholder="如 2026届毕业资格审核" maxlength="60" /></label>
           <label class="aa-cal-form__item">年级<input v-model.trim="draft.gradeYear" class="aa-input aa-input--sm" placeholder="如 2023" /></label>
           <label class="aa-cal-form__item">专业<AppMajorPicker v-model="draft.majorId" placeholder="选择专业（选填）" /></label>
-          <AppButton variant="primary" :loading="creating" :disabled="!canManage || creating || !!pendingCommand || !draft.batchName" @click="createBatch">创建</AppButton>
+          <AppButton variant="primary" :loading="creating" :disabled="!canManage || creating || !!pendingCommand || termLoading || !!termError || !draft.termId || !draft.batchName" @click="createBatch">创建</AppButton>
         </div>
+        <AppInlineAlert v-if="termError" type="error" :description="termError" />
+        <AppInlineAlert v-if="pendingCommand" type="warning" description="创建结果待核实，请勿重复创建；请从正式批次队列核对已提交批次及所属学期。" />
+        <p class="mp-note">所属学期用于毕业审核与学期归档的正式关联，请核对后创建；历史批次不会自动补写学期。</p>
       </AppSectionCard>
 
       <template v-if="batch">
@@ -63,6 +67,7 @@
           :pagination="batchPagination"
           @page-change="onBatchPageChange"
         >
+          <template #cell-termName="{ row }">{{ batchTermLabel(row) }}</template>
           <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'ARCHIVED' ? 'default' : 'primary'" dot>{{ academicStatusLabel(row.status) }}</AppStatusTag></template>
           <template #cell-precheck="{ row }"><span>{{ row.total ? `通过 ${row.passed || 0} · 异常 ${row.abnormal || 0}` : '尚未预审' }}</span></template>
           <template #cell-ops="{ row }">
@@ -80,7 +85,7 @@
 /** 审核批次（/admin/academic-affairs/graduation）：建批次 + 圈定 + 预审 + 历史批次列表（进审核工作台）。 */
 import { ModulePageShell, DataTable, LoadingState, EmptyState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppInlineAlert, AppMajorPicker } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppInlineAlert, AppMajorPicker, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 import { toast } from '@/utils/toast'
@@ -95,18 +100,20 @@ const exactId = (value) => typeof value === 'string' && /^[1-9]\d*$/.test(value)
 
 export default {
   name: 'AaGraduationBatchView',
-  components: { ModulePageShell, DataTable, LoadingState, EmptyState, ErrorState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert, AppMajorPicker, GraduationStageRail },
+  components: { ModulePageShell, DataTable, LoadingState, EmptyState, ErrorState, AppButton, AppSectionCard, AppStatusTag, AppInlineAlert, AppMajorPicker, AppTermEntityPicker, GraduationStageRail },
   props: { ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
   data() {
     return {
       alive: true, scope: 0, listSeq: 0, pendingCommand: null, showCreate: false,
-      draft: { batchName: '', gradeYear: '', majorId: '' },
+      draft: { batchName: '', gradeYear: '', majorId: '', termId: '' },
+      termSeq: 0, termLoading: false, termError: '',
       creating: false, batch: null, busy: false, genInfo: '', preInfo: '',
       batches: [], loadingList: true, listError: '',
       batchPagination: { page: 1, pageSize: 20, total: 0 },
       listColumns: [
         { key: 'batchName', title: '批次名称' }, { key: 'gradeYear', title: '年级' },
+        { key: 'termName', title: '所属学期' },
         { key: 'total', title: '学生数' }, { key: 'precheck', title: '预审结论' },
         { key: 'status', title: '当前阶段' }, { key: 'ops', title: '办理入口', width: '190px' }
       ]
@@ -120,16 +127,43 @@ export default {
     pageSubtitle(){return this.isBatchList?'建立正式审核范围，跟踪十一项供数三态预审与终审进度':'从学生对象进入十一项正式证据（学籍/学分/必修/选修/实践/实习/毕设/处分/就业/学工归档/费用），先治理阻断，再依次完成学院审核与教务终审'},
     pageTotals(){return this.batches.reduce((sum,row)=>({total:sum.total+Number(row.total||0),abnormal:sum.abnormal+Number(row.abnormal||0),concluded:sum.concluded+Number(row.concluded||0)}),{total:0,abnormal:0,concluded:0})}
   },
-  watch:{identity(){this.scope++;this.listSeq++;this.batch=null;this.batches=[];this.pendingCommand=null;this.genInfo='';this.preInfo='';this.loadBatches()}},
-  created() { const page=Number(this.$route.query.page);this.batchPagination.page=Number.isSafeInteger(page)&&page>0&&page<=1000000?page:1;this.loadBatches() },
-  beforeUnmount(){this.alive=false;this.scope++;this.listSeq++},
+  watch:{
+    identity(){this.clearPrivate();this.draft={batchName:'',gradeYear:'',majorId:'',termId:''};this.creating=false;this.busy=false;this.loadDraftTerm();this.loadBatches()},
+    '$route.query.termId'(){const id=exactId(this.$route.query.termId);if(!id||id!==this.draft.termId)this.loadDraftTerm()}
+  },
+  created() { const page=Number(this.$route.query.page);this.batchPagination.page=Number.isSafeInteger(page)&&page>0&&page<=1000000?page:1;this.loadDraftTerm();this.loadBatches() },
+  beforeUnmount(){this.alive=false;this.scope++;this.listSeq++;this.termSeq++},
   methods: {
     academicStatusLabel,
+    batchTermLabel(row){if(row?.termId==null)return '历史批次，所属学期待核对';return exactId(row.termId)?(row.termName||'所属学期名称待核对'):'所属学期标识待核对'},
+    selectTerm(value){
+      if(this.creating||this.pendingCommand)return
+      this.termSeq++;this.termLoading=false;this.draft.termId=exactId(value);this.termError=this.draft.termId?'':'请选择有效的正式学期'
+      this.$router.replace({path:this.$route.path,query:{...this.$route.query,termId:this.draft.termId}})
+    },
+    async loadDraftTerm(){
+      const requested=this.$route.query.termId,hasTerm=requested!==undefined
+      const termId=exactId(requested),c={scope:this.scope,identity:this.identity,seq:++this.termSeq}
+      const valid=()=>this.current(c)&&c.seq===this.termSeq&&requested===this.$route.query.termId
+      this.draft.termId='';this.termError='';this.termLoading=false
+      if(!this.canManage)return
+      if(hasTerm&&!termId){this.termError='链接中的学期无效，请重新选择正式学期';return}
+      this.termLoading=true
+      try{
+        const res=await (hasTerm?academicAffairsApi.getTermDetail(termId):academicAffairsApi.getCurrentTerm())
+        if(!valid())return
+        const actual=exactId(res?.data?.termId)
+        if(res?.code!==0)throw res
+        if(!actual||(hasTerm&&actual!==termId))throw {message:'未能核对正式学期，请重新选择'}
+        this.draft.termId=actual
+      }catch(err){if(valid())this.termError=this.fail(err,'所属学期加载失败，请重新选择正式学期')}
+      finally{if(this.current(c)&&c.seq===this.termSeq)this.termLoading=false}
+    },
     chooseBatch(row){if(this.busy||this.pendingCommand)return;this.batch={...row};this.genInfo='';this.preInfo=''},
-    enterAudit(row,tab){const id=exactId(row?.batchId);if(!id)return;const returnToken=this.academicFlow?.captureReturn?.();this.$router.push({path:'/admin/academic-affairs/graduation/audit-console',query:{batchId:id,tab,...(returnToken?{returnToken}:{})}})},
+    enterAudit(row,tab){const id=exactId(row?.batchId);if(!id)return;const termId=exactId(row.termId),returnToken=this.academicFlow?.captureReturn?.();this.$router.push({path:'/admin/academic-affairs/graduation/audit-console',query:{batchId:id,tab,...(termId?{termId}:{}),...(returnToken?{returnToken}:{})}})},
     current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity},
     denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
-    clearPrivate(){this.scope++;this.listSeq++;this.batch=null;this.batches=[];this.pendingCommand=null;this.genInfo='';this.preInfo=''},
+    clearPrivate(){this.scope++;this.listSeq++;this.termSeq++;this.termLoading=false;this.draft.termId='';this.batch=null;this.batches=[];this.pendingCommand=null;this.genInfo='';this.preInfo=''},
     fail(err,fallback){if(this.denied(err))this.clearPrivate();return gradeError(err,fallback)},
     async loadBatches() {
       const c={scope:this.scope,identity:this.identity,seq:++this.listSeq,page:this.batchPagination.page};this.loadingList = true;this.listError='';this.batches=[]
@@ -155,19 +189,24 @@ export default {
     },
     async createBatch() {
       if (!this.canManage || this.creating || this.pendingCommand || !this.draft.batchName) return
+      const termId=exactId(this.draft.termId)
+      if(!termId||this.termLoading||this.termError){toast.error('请先核对毕业审核所属学期');return}
+      if(this.$route.query.termId!==undefined&&exactId(this.$route.query.termId)!==termId){this.termError='链接中的学期与所选学期不一致，请重新选择正式学期';return}
       const majorId=this.draft.majorId?exactId(this.draft.majorId):''
       if(this.draft.majorId&&!majorId){toast.error('所选专业标识无法准确核对，请重新选择');return}
-      const c={scope:this.scope,identity:this.identity},body={batchName:this.draft.batchName,gradeYear:this.draft.gradeYear||undefined,majorId:majorId||undefined};this.creating = true;this.pendingCommand={kind:'create'}
+      const c={scope:this.scope,identity:this.identity,termSeq:this.termSeq},body={termId,batchName:this.draft.batchName,gradeYear:this.draft.gradeYear||undefined,majorId:majorId||undefined};this.creating = true;this.pendingCommand={kind:'create',termId}
+      const queryTerm=this.$route.query.termId,valid=()=>this.current(c)&&c.termSeq===this.termSeq&&this.draft.termId===termId&&queryTerm===this.$route.query.termId
       try {
-        let res;try{res=await academicAffairsApi.createGradBatch(body)}catch(err){res=err}if(!this.current(c))return
+        let res;try{res=await academicAffairsApi.createGradBatch(body)}catch(err){res=err}if(!valid())return
         const createdId=exactId(res?.data?.batchId)
-        if(res?.code===0&&createdId){const fresh=await this.readBatch(createdId);if(!this.current(c))return;if(!fresh||fresh.batchName!==body.batchName||String(fresh.gradeYear||'')!==String(body.gradeYear||'')||String(fresh.majorId||'')!==String(body.majorId||'')){toast.error('创建结果待核实，请勿重复创建');return}
+        if(res?.code===0&&createdId){const fresh=await this.readBatch(createdId);if(!valid())return;if(!fresh||exactId(fresh.termId)!==body.termId||fresh.batchName!==body.batchName||String(fresh.gradeYear||'')!==String(body.gradeYear||'')||String(fresh.majorId||'')!==String(body.majorId||'')){toast.error('创建结果待核实，请勿重复创建');return}
           this.batch=fresh;this.pendingCommand=null;toast.success('已核对正式审核批次')
+          await this.$router.replace({path:this.$route.path,query:{...this.$route.query,termId:body.termId}})
           this.batchPagination.page = 1
           await this.loadBatches()
         } else if(this.denied(res)||/409|422|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingCommand=null;throw res}else toast.error('创建结果待核实，请勿重复创建')
       } catch (e) {
-        if(this.current(c))toast.error(this.fail(e,'创建失败'))
+        if(valid())toast.error(this.fail(e,'创建失败'))
       } finally {
         if(this.current(c))this.creating=false
       }
@@ -177,7 +216,7 @@ export default {
       this.batch = null
       this.genInfo = ''
       this.preInfo = ''
-      this.draft = { batchName: '', gradeYear: '', majorId: '' }
+      this.draft = { batchName: '', gradeYear: '', majorId: '', termId: this.draft.termId }
     },
     async generate() {
       if (!this.canManage || this.busy || this.pendingCommand || !this.batch) return

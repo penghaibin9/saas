@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/graduation')">返回批次</AppButton>
+      <AppButton @click="returnToBatch">返回批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -45,7 +45,7 @@
                 <div class="aa-item__head">
                   <span class="aa-item__label">{{ itemLabel(it.item) }}</span>
                   <AppStatusTag :type="gradItemColor(it.result)">{{ itemResult(it.result) }}</AppStatusTag>
-                  <button v-if="it.drillRoute" class="mp-link aa-item__drill" @click="drillEvidence(it)">核对来源 ›</button>
+                  <button v-if="canDrillEvidence(it, r)" class="mp-link aa-item__drill" @click="drillEvidence(it, r)">{{ ['INTERNSHIP', 'GRADUATION_DESIGN'].includes(it.item) ? (it.refId ? '核对来源 ›' : '按学号进入责任名单 ›') : '进入责任模块 ›' }}</button>
                 </div>
                 <span v-if="it.evidence" class="aa-item__ev">{{ it.evidence }}</span>
                 <div v-if="it.sourceType || it.evidenceHash" class="aa-item__lineage">
@@ -127,6 +127,18 @@ const SOURCE_LABELS = {
   ARCHIVE_PACKAGE: '学生归档包', TEXTBOOK_FEE_LEDGER: '教材费用台账', UNKNOWN: '待治理来源'
 }
 
+const EVIDENCE_TARGET = {
+  STATUS: { path: '/admin/academic-affairs/roster/status', permission: 'academicAffairs.roster.view' },
+  CREDIT: { path: '/admin/academic-affairs/graduation/audit-console', permission: 'academicAffairs.graduation.view' },
+  COURSE_REQUIRED: { path: '/admin/academic-affairs/grade-overview', permission: 'academicAffairs.grade.view' },
+  COURSE_ELECTIVE: { path: '/admin/academic-affairs/grade-overview', permission: 'academicAffairs.grade.view' },
+  PRACTICE: { path: '/admin/academic-affairs/programs', permission: 'academicAffairs.program.view' },
+  DISCIPLINE: { path: '/admin/student-affairs/discipline', permission: 'studentAffairs.discipline.view' },
+  EMPLOYMENT: { path: '/admin/employment/students', permission: 'employment.student.view' },
+  ARCHIVE: { path: '/admin/student-affairs/archive', permission: 'studentAffairs.archive.view' },
+  FEE: { path: '/admin/academic-affairs/textbooks', permission: 'academicAffairs.textbook.fee.manage', query: { tab: 'fee' } }
+}
+
 export default {
   name: 'AaGraduationResultView',
   components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppSelect, AppInlineAlert, AppPagination },
@@ -174,16 +186,44 @@ export default {
     sourceLabel(value) { return SOURCE_LABELS[value] || (value ? '待确认' : '—') },
     shortHash(value) { return value ? `${String(value).slice(0, 10)}…` : '—' },
     formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 19) : '—' },
-    drillEvidence(item) {
-      const route = String(item.drillRoute || '')
-      if (!route.startsWith('/admin/')) { toast.error('证据下钻地址无效'); return }
-      this.$router.push(route)
+    returnToBatch() {
+      const termId = exactId(this.$route.query.termId)
+      this.$router.push({ path: '/admin/academic-affairs/graduation', query: termId ? { termId } : {} })
+    },
+    canDrillEvidence(item, row) {
+      if (item.item === 'INTERNSHIP' || item.item === 'GRADUATION_DESIGN') {
+        const permission = item.item === 'INTERNSHIP' ? 'internship.student.view' : 'graduationDesign.student.view'
+        return matchPermission(this.ctx.permissionPatterns || [], permission) && Boolean(/^\d+$/.test(exactId(item.refId)) || String(row.studentNo || '').trim())
+      }
+      const target = EVIDENCE_TARGET[item.item]
+      return Boolean(target && matchPermission(this.ctx.permissionPatterns || [], target.permission))
+    },
+    drillEvidence(item, row) {
+      if (!this.canDrillEvidence(item, row)) return
+      if (item.item === 'INTERNSHIP' || item.item === 'GRADUATION_DESIGN') {
+        const base = item.item === 'INTERNSHIP' ? '/admin/internship/students' : '/admin/graduation/students'
+        const refId = /^\d+$/.test(exactId(item.refId)) ? exactId(item.refId) : ''
+        const returnTo = this.$router.resolve({ path: '/admin/academic-affairs/graduation/audit-console', query: {
+          batchId: this.batchId, termId: exactId(this.$route.query.termId) || undefined,
+          tab: item.item === 'INTERNSHIP' ? 'internship' : 'thesis', resultId: exactId(row.resultId) || undefined
+        } }).fullPath
+        this.$router.push({ path: refId ? `${base}/${refId}` : base,
+          query: refId ? { returnTo } : { panel: 'roster', keyword: String(row.studentNo).trim(), returnTo } })
+        return
+      }
+      const target = EVIDENCE_TARGET[item.item]
+      const query = item.item === 'CREDIT' ? {
+        batchId: this.batchId, resultId: exactId(row.resultId) || undefined,
+        termId: exactId(this.$route.query.termId) || undefined, tab: 'credit',
+        returnTo: this.$router.resolve({ path: this.$route.path, query: exactId(this.$route.query.termId) ? { termId: exactId(this.$route.query.termId) } : {} }).fullPath
+      } : target.query
+      this.$router.push({ path: target.path, query })
     },
     canCollegeApprove(r) {
-      return Boolean(this.canCollege && !this.pendingWrite && r && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
+      return Boolean(this.canCollege && !this.pendingWrite && r?.canCollegeReview === true && r.overall === 'SYSTEM_PASSED' && ['SYSTEM_PASSED', 'COLLEGE_REVIEW'].includes(r.status))
     },
-    canCollegeReject(r) { return Boolean(this.canCollege && !this.pendingWrite && r && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
-    canNormalFinal(r) { return Boolean(this.canFinal && !this.pendingWrite && r && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
+    canCollegeReject(r) { return Boolean(this.canCollege && !this.pendingWrite && r?.canCollegeReview === true && ['SYSTEM_PASSED', 'SYSTEM_ABNORMAL', 'COLLEGE_REVIEW'].includes(r.status)) },
+    canNormalFinal(r) { return Boolean(this.canFinal && !this.pendingWrite && r?.canAcademicFinal === true && r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED') },
     search() { this.pagination.page = 1; this.load() },
     onPaginationChange({ page }) {
       if (!page || page === this.pagination.page || this.loading) return

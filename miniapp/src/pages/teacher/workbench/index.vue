@@ -76,7 +76,7 @@ ensureTeacherPerformanceApi()
 export default {
   data() {
     return {
-      brand: tenantBrandConfig, wb: null, state: 'loading', user: {}, roleConfig: {}, gd: null,
+      brand: tenantBrandConfig, wb: null, state: 'loading', user: {}, roleConfig: {}, verifiedRoleName: '', gd: null,
       internshipContextReady: false, internshipContextError: '',
       lastLoadedAt: 0, loadedContextKey: '', loadedFreshnessVersion: -1, notices: [], noticeState: 'loading', today: teacherDateText(), greeting: teacherGreeting()
     }
@@ -102,8 +102,7 @@ export default {
       return useInternshipContextStore().selectedBatch
     },
     currentRoleTitle() {
-      const title = String(this.wb?.contextTitle || '').trim()
-      return !title || /^[A-Z][A-Z0-9_]*$/.test(title) ? (this.roleConfig.label || title || '教师') : title
+      return this.verifiedRoleName || '当前教师身份'
     },
     riskCount() { return Array.isArray(this.wb?.riskStudents) ? this.wb.riskStudents.length : 0 },
     gdTasks() { return (this.gd?.tasks || []).filter((t) => Number(t.count) > 0).slice(0, 4) }
@@ -212,6 +211,7 @@ export default {
       this._loadEpoch = epoch
       this.user = session.mockUser || {}
       this.roleConfig = session.roleConfig
+      this.verifiedRoleName = ''
       if (!this.wb || force) this.state = 'loading'
       if (this.loadedContextKey !== beforeContextKey) { this.wb = null; this.notices = []; this.state = 'loading' }
 
@@ -221,6 +221,9 @@ export default {
         session.applyRealUser(identity)
         if (!session.isTeacher) { this.state = 'forbidden'; return }
         this.user = session.mockUser || {}; this.roleConfig = session.roleConfig
+        const role = identity?.currentRole || {}
+        const chineseText = value => typeof value === 'string' && /[\u3400-\u9fff]/u.test(value) ? value.trim() : ''
+        this.verifiedRoleName = chineseText(role.roleName) || chineseText(role.contextName)
         await this.loadInternshipContext(session, force)
         if (!this._pageActive || this._loadEpoch !== epoch || generation !== currentSessionGeneration()) return
         const contextKey = this.contextKey(session)

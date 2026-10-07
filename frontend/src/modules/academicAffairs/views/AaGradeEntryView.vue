@@ -86,9 +86,10 @@
             <span class="req">正式学期</span>
             <AppTermEntityPicker v-model="form.termId" placeholder="选择正式学期" />
           </label>
-          <label v-else class="aa-field"><span>学期</span><input :value="form.termCode" type="text" class="aa-input" disabled placeholder="由教学任务所属批次带出" /></label>
-          <label class="aa-field"><span>学分</span><input v-model.number="form.credit" type="number" min="0" step="0.5" class="aa-input" disabled /></label>
-          <label class="aa-field"><span :class="{ req: isAdminRole && !form.teachingTaskId }">班级</span><AppClassPicker v-model="form.classId" placeholder="由教学任务带出；特殊补录必选" :disabled="!!form.teachingTaskId" /></label>
+          <label v-else class="aa-field"><span>学期</span><input :value="form.termName || form.termCode || '待核对'" type="text" class="aa-input" disabled aria-label="正式学期" /></label>
+          <label class="aa-field"><span>学分</span><input :value="form.credit ?? '待核对'" type="text" class="aa-input" disabled aria-label="正式课程学分" /></label>
+          <label v-if="form.teachingTaskId" class="aa-field"><span>教学班</span><input :value="form.teachingClassName || form.className || '待核对'" type="text" class="aa-input" disabled aria-label="正式教学班" /></label>
+          <label v-else class="aa-field"><span :class="{ req: isAdminRole }">行政班</span><AppClassPicker v-model="form.classId" placeholder="特殊补录请选择明确行政班" /></label>
           <label class="aa-field"><span>平时占比%</span><input v-model.number="form.usualRatio" type="number" min="0" max="100" class="aa-input" /></label>
           <label class="aa-field"><span>期中占比%</span><input v-model.number="form.midtermRatio" type="number" min="0" max="100" class="aa-input" placeholder="0=不启用期中" /></label>
           <label class="aa-field"><span>期末占比%</span><input v-model.number="form.finalRatio" type="number" min="0" max="100" class="aa-input" /></label>
@@ -374,13 +375,13 @@ export default {
     return {
       academicFileExchangeApi, academicAffairsApi,
       form: {
-        teachingTaskId: '', courseId: '', courseName: '', termId: '', termCode: '',
-        credit: null, classId: '', usualRatio: 30, midtermRatio: 0, finalRatio: 70,
+        teachingTaskId: '', courseId: '', courseName: '', termId: '', termCode: '', termName: '',
+        credit: null, classId: '', className: '', teachingClassName: '', usualRatio: 30, midtermRatio: 0, finalRatio: 70,
         passLine: 60, adminSupplementReason: ''
       },
       creating: false, task: null, myTasks: [], showCreate: false, taskLoading: false, taskError: '',
       currentTermId: '', currentTermName: '', showHistory: false, setupTeachingTaskId: '', setupTeachingTaskLabel: '',
-      taskSeq: 0, listSeq: 0, recordsSeq: 0, dynamicSeq: 0, alive: true, savingRowId: '',
+      taskSeq: 0, listSeq: 0, recordsSeq: 0, dynamicSeq: 0, termSeq: 0, alive: true, savingRowId: '',
       taskPage: 1, taskTotal: 0, rosterInfo: null, submitDialog: false, submitCommand: null, submitPending: false,
       candidateStudentId: '', loadingRoster: false, rows: [], submitting: false,
       submitReceipt: null,
@@ -445,10 +446,10 @@ export default {
       return ADMIN_ROLES.has(code) || this.ctx?.userType === 'PLATFORM_SUPER_ADMIN'
     },
     canExtendDeadline() {
-      return this.isAdminRole && Array.isArray(this.task?.allowedActions) && this.task.allowedActions.includes('EXTEND_DEADLINE')
+      return Array.isArray(this.task?.allowedActions) && this.task.allowedActions.includes('EXTEND_DEADLINE')
     },
     canSubmit() {
-      if (!this.task || this.isAdminRole || !SUBMITTABLE_STATUS.has(this.task.status)) return false
+      if (!this.task || !SUBMITTABLE_STATUS.has(this.task.status)) return false
       if (this.task.isOverdue === true || this.task.teacherAuthorityReady === false) return false
       const actions = Array.isArray(this.task.allowedActions) ? this.task.allowedActions : []
       return actions.includes('SUBMIT') && !this.submitPending && !this.dynamicCommand && !this.dynamicRecoveryError && !(this.dynamicMode && this.dynamicRows.some(row => row.draftConflict))
@@ -471,9 +472,10 @@ export default {
     identityKey() {
       this.invalidateTask(); this.myTasks = []; this.submitReceipt = null; this.submitPending = false
       this.currentTermId = ''; this.currentTermName = ''; this.showHistory = false; this.setupTeachingTaskId = ''; this.setupTeachingTaskLabel = ''
+      this.resetCreateTeachingTask()
       this.loadTasks()
     },
-    '$route.fullPath'() { this.invalidateTask(); this.loadTasks() }
+    '$route.fullPath'() { this.invalidateTask(); this.resetCreateTeachingTask(); this.loadTasks() }
   },
   beforeRouteLeave() { return this.confirmLeaveTask() },
   beforeRouteUpdate() { return this.confirmLeaveTask() },
@@ -483,7 +485,8 @@ export default {
     denyTask(err) {
       if (!/403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.httpStatus, err?.bizCode, err?.code].join(' '))) return false
       this.invalidateTask(); this.myTasks = []; this.taskTotal = 0; this.taskPage = 1; this.submitReceipt = null; this.submitPending = false; this.showCreate = false
-      this.form = { teachingTaskId: '', courseId: '', courseName: '', termId: '', termCode: '', credit: null, classId: '', usualRatio: 30, midtermRatio: 0, finalRatio: 70, passLine: 60, adminSupplementReason: '' }
+      this.resetCreateTeachingTask()
+      this.form = { teachingTaskId: '', courseId: '', courseName: '', termId: '', termCode: '', termName: '', credit: null, classId: '', className: '', teachingClassName: '', usualRatio: 30, midtermRatio: 0, finalRatio: 70, passLine: 60, adminSupplementReason: '' }
       this.taskError = gradeError(err); return true
     },
     showTaskError(err, fallback) { if (!this.denyTask(err)) this.taskError = gradeError(err, fallback) },
@@ -493,7 +496,7 @@ export default {
     captureTask() { return { taskId: this.task?.gradeTaskId, seq: this.taskSeq, identity: this.identityKey } },
     currentTask(context) { return this.alive && context.seq === this.taskSeq && context.identity === this.identityKey && String(context.taskId || '') === String(this.task?.gradeTaskId || '') },
     invalidateTask() {
-      this.taskSeq++; this.listSeq++; this.recordsSeq++; this.dynamicSeq++;
+      this.taskSeq++; this.listSeq++; this.recordsSeq++; this.dynamicSeq++; this.termSeq++;
       this.dynamicCommand = null; this.dynamicRecoveryError = ''; this.dynamicVerifying = false; this.dynamicPage = 1; this.dynamicQuality = null
       this.task = null; this.schemePending = false; this.pendingSchemeComponents = null; this.schemeDraft = []; this.candidateStudentId = ''; this.reminderTask = null; this.deadlineForm = { deadlineLocal: '', reason: '' }; this.formalSchemeMode = 'unknown'; this.rows = []; this.dynamicData = null; this.rosterInfo = null; this.taskError = ''; this.dynamicError = '';
       this.importVisible = false; this.importActions = null; this.reminderVisible = false; this.submitDialog = false; this.submitCommand = null;
@@ -534,7 +537,7 @@ export default {
       }
     },
     canRemind(row) {
-      return this.isAdminRole && Array.isArray(row?.allowedActions) && row.allowedActions.includes('REMIND')
+      return Array.isArray(row?.allowedActions) && row.allowedActions.includes('REMIND')
     },
     openReminder(row) {
       if (!this.canRemind(row)) return
@@ -610,26 +613,34 @@ export default {
       this.dynamicMode = value
       if (value) this.loadDynamic()
     },
+    resetCreateTeachingTask() {
+      this.setupTeachingTaskId = ''; this.setupTeachingTaskLabel = ''; this.showCreate = false
+      this.onTeachingTaskChange('', [])
+    },
     onTeachingTaskChange(value, items) {
-      if (!value) {
-        this.form.courseId = ''; this.form.courseName = ''; this.form.termCode = ''
-        this.form.credit = null; this.form.classId = ''
-        return
-      }
+      Object.assign(this.form, { teachingTaskId: String(value || ''), courseId: '', courseName: '',
+        termId: '', termCode: '', termName: '', credit: null, classId: '', className: '', teachingClassName: '' })
+      if (!value) return
       const item = items?.[0]
       const task = item?.raw || item || {}
-      this.form.courseId = task.courseId || ''
+      const returnedId = task.taskId || task.teachingTaskId || item?.value
+      if (returnedId != null && String(returnedId) !== String(value)) return
+      this.form.courseId = String(task.courseId || '')
       this.form.courseName = task.courseName || task.name || item?.label || ''
       if (task.credit != null) this.form.credit = task.credit
       if (task.classId != null) this.form.classId = String(task.classId)
+      this.form.className = task.className || ''
+      this.form.teachingClassName = task.teachingClassName || ''
+      this.form.termId = String(task.termId || '')
       this.form.termCode = task.termCode || ''
+      this.form.termName = task.termName || ''
     },
     onCourseChange(value, items) {
       const item = items?.[0]
       const course = item?.raw || item || {}
       this.form.courseId = value || course.courseId || course.id || ''
       this.form.courseName = course.courseName || course.name || item?.label || ''
-      if (course.credit != null) this.form.credit = course.credit
+      this.form.credit = course.credit ?? null
     },
     onStudentPicked(value, items) {
       const item = items?.[0]
@@ -640,7 +651,12 @@ export default {
     async ensureCurrentTerm() {
       if (!this.isAcademicTeacher || this.showHistory) return true
       if (this.currentTermId) return true
-      const res = await academicAffairsApi.getCurrentTerm()
+      const seq = ++this.termSeq, identity = this.identityKey
+      const valid = () => this.alive && seq === this.termSeq && identity === this.identityKey
+      let res
+      try { res = await academicAffairsApi.getCurrentTerm() }
+      catch (error) { if (!valid()) return false; throw error }
+      if (!valid()) return false
       if (res?.code !== 0 || !res.data?.termId) {
         this.taskError = res?.message || '当前学期尚未设置，无法建立教师当前学期成绩队列'
         return false
@@ -661,6 +677,7 @@ export default {
       const id = String(taskId || '').trim()
       if (!this.isAcademicTeacher || !/^[1-9]\d*$/.test(id)) return
       if (this.setupTeachingTaskId === id && this.showCreate && this.form.teachingTaskId === id) return
+      this.resetCreateTeachingTask()
       if (!(await this.ensureCurrentTerm()) || !valid()) return
       const res = await academicAffairsApi.listAllTasks({
         formalMine: true, termId: this.currentTermId, taskId: id, page: 1, pageSize: 1
@@ -1112,8 +1129,8 @@ export default {
 </script>
 
 <style scoped>
-.aa-current-term-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; padding:9px 12px; border-radius:8px; background:var(--primary-50,#f4f8ff); color:var(--text-600,#64748b); font-size:12px; }
 @import '@/styles/module-page.css';
+.aa-current-term-bar { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; padding:9px 12px; border-radius:8px; background:var(--primary-50,#f4f8ff); color:var(--text-600,#64748b); font-size:12px; }
 .aa-task-settings { border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
 .aa-task-settings summary { padding: 12px 16px; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .aa-task-settings summary span { margin-left: 12px; color: var(--text-secondary); font-size: 12px; font-weight: 400; }

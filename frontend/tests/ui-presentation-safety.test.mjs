@@ -9,6 +9,18 @@ import {
   safeLocalizedText
 } from '../src/utils/presentationSafety.js'
 
+test('浏览器取数失败显示中文网络恢复提示，明确权限与服务状态优先', () => {
+  for (const message of ['Failed to fetch', 'NetworkError when attempting to fetch resource.']) {
+    const result = normalizeUiError(new TypeError(message))
+    assert.equal(result.pageState, 'offline')
+    assert.equal(result.userMessage, '网络异常，请检查网络连接后重试')
+    assert.equal(result.rawDeveloperDetail, message)
+  }
+  assert.equal(normalizeUiError({ message: 'Failed to fetch', code: 403001 }).pageState, 'forbidden')
+  assert.equal(normalizeUiError({ message: 'Failed to fetch', code: 503001 }).pageState, 'error')
+  assert.equal(normalizeUiError({ message: 'Failed to fetch', code: 503001 }).userMessage, '系统暂时无法完成该操作，请稍后重试')
+})
+
 test('SQL、路径、枚举和 JSON 错误不会进入用户文案', () => {
   for (const message of [
     'IntegrityError: column student_id cannot be null',

@@ -63,6 +63,26 @@
         <AppDescriptionList :items="baseItems" :columns="3" bordered />
       </AppSectionCard>
 
+      <AppSectionCard title="在校服务台账">
+        <p v-if="profile.serviceLedger?.exists === true" class="profile-section-hint" role="status">
+          在校服务台账已建立，下一步请办理学工归档。
+        </p>
+        <div v-else-if="profile.serviceLedger?.exists === false" class="service-ledger-action">
+          <p class="profile-section-hint">台账仅关联学生现有学籍，不会生成处分记录。</p>
+          <AppPermissionButton
+            v-if="canCreateServiceLedger"
+            :allowed="true"
+            code="campusService.student.create"
+            :loading="creatingLedger"
+            @click="openLedgerConfirmation"
+          >
+            建立在校服务台账
+          </AppPermissionButton>
+          <span v-else class="profile-section-hint">当前身份无权建立此台账。</span>
+        </div>
+        <p v-else class="profile-section-hint" role="status">台账状态暂未确认，请刷新页面核对。</p>
+      </AppSectionCard>
+
       <div class="sa-detail-grid">
         <AppSectionCard title="请假记录摘要">
           <div class="sa-inline profile-domain-summary">
@@ -103,12 +123,21 @@
         <AppAuditTrail :records="auditLogs" compact empty-text="暂无审计记录" />
       </AppSectionCard>
     </AppGlobalState>
+    <AppConfirmDialog
+      v-model:visible="ledgerConfirmVisible"
+      title="确认建立在校服务台账"
+      :message="ledgerConfirmMessage"
+      confirm-text="确认建立"
+      :submitting="creatingLedger"
+      @confirm="createServiceLedger"
+    />
   </AppPageShell>
 </template>
 
 <script>
 import {
   AppAuditTrail,
+  AppConfirmDialog,
   AppDescriptionList,
   AppGlobalState,
   AppPageShell,
@@ -118,12 +147,14 @@ import {
 } from '@/components/common'
 import studentAffairsApi from '@/modules/studentAffairs/api/studentAffairsB.api'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
+import { toast } from '@/utils/toast'
 
 export default {
   name: 'StudentAffairsProfileDetailView',
   props: { ctx: { type: Object, default: null } },
   components: {
     AppAuditTrail,
+    AppConfirmDialog,
     AppDescriptionList,
     AppGlobalState,
     AppPageShell,
@@ -139,12 +170,31 @@ export default {
       profile: {},
       timeline: [],
       auditLogs: [],
-      showAudit: false
+      showAudit: false,
+      creatingLedger: false,
+      ledgerConfirmVisible: false,
+      loadSeq: 0,
+      ledgerActionSeq: 0
     }
   },
   computed: {
     studentId() {
       return this.$route.params.studentId
+    },
+    contextIdentity() {
+      return JSON.stringify([
+        this.ctx?.ctxKey || '', this.ctx?.currentRole?.roleCode || '',
+        this.ctx?.dataScope || null, this.ctx?.permissionPatterns || null
+      ])
+    },
+    canCreateServiceLedger() {
+      return this.canBtn('campusService.student.create')
+    },
+    ledgerConfirmMessage() {
+      const base = this.profile.baseInfo || {}
+      const name = base.realName || this.student.realName || '未命名学生'
+      const studentNo = base.studentNo || this.student.studentNo || '未提供'
+      return `学生：${name}（学号：${studentNo}）。此操作仅关联现有学籍，不会生成处分记录。`
     },
     pageState() {
       if (this.loading) return 'loading'
@@ -201,26 +251,82 @@ export default {
   created() {
     this.load()
   },
+  watch: {
+    studentId() { this.reloadForContextChange() },
+    contextIdentity() { this.reloadForContextChange() }
+  },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
+    reloadForContextChange() {
+      this.ledgerActionSeq += 1
+      this.creatingLedger = false
+      this.ledgerConfirmVisible = false
+      this.student = {}
+      this.profile = {}
+      this.timeline = []
+      this.auditLogs = []
+      this.load()
+    },
     async load() {
+      const seq = ++this.loadSeq
+      const studentId = this.studentId
+      const contextIdentity = this.contextIdentity
       this.loading = true
       this.errorMessage = ''
       try {
         const [studentRes, profileRes, timelineRes, auditRes] = await Promise.all([
-          studentAffairsApi.getStudentBasic(this.studentId).catch(() => ({ data: {} })),
-          studentAffairsApi.getProfile(this.studentId),
-          studentAffairsApi.getTimeline(this.studentId),
+          studentAffairsApi.getStudentBasic(studentId).catch(() => ({ data: {} })),
+          studentAffairsApi.getProfile(studentId),
+          studentAffairsApi.getTimeline(studentId),
           studentAffairsApi.getAuditLogs().catch(() => ({ data: [] }))
         ])
+        if (seq !== this.loadSeq || studentId !== this.studentId || contextIdentity !== this.contextIdentity) return
         this.student = studentRes.data || {}
         this.profile = profileRes.data || {}
         this.timeline = timelineRes.data?.items || []
         this.auditLogs = auditRes.data || []
-      } catch (e) {
-        this.errorMessage = e?.message || '学生画像详情加载失败'
+      } catch {
+        if (seq === this.loadSeq && studentId === this.studentId && contextIdentity === this.contextIdentity) {
+          this.errorMessage = '学生画像详情加载失败，请刷新后重试'
+        }
       } finally {
-        this.loading = false
+        if (seq === this.loadSeq) this.loading = false
+      }
+    },
+    openLedgerConfirmation() {
+      if (!this.canCreateServiceLedger || this.creatingLedger || this.profile.serviceLedger?.exists !== false) return
+      this.ledgerConfirmVisible = true
+    },
+    async createServiceLedger() {
+      if (!this.canCreateServiceLedger || this.creatingLedger || this.profile.serviceLedger?.exists !== false) return
+      const studentId = this.studentId
+      const contextIdentity = this.contextIdentity
+      if (studentId !== this.studentId || contextIdentity !== this.contextIdentity || !this.canCreateServiceLedger) return
+
+      const actionSeq = ++this.ledgerActionSeq
+      this.creatingLedger = true
+      try {
+        await studentAffairsApi.createCampusServiceLedger(studentId)
+        if (actionSeq !== this.ledgerActionSeq || studentId !== this.studentId || contextIdentity !== this.contextIdentity) return
+        this.ledgerConfirmVisible = false
+        await this.load()
+        if (actionSeq !== this.ledgerActionSeq || studentId !== this.studentId || contextIdentity !== this.contextIdentity) return
+        if (this.profile.serviceLedger?.exists === true) toast.success('在校服务台账已建立，下一步请办理学工归档。')
+        else toast.info('提交后尚未确认台账状态，请刷新学生画像核对。')
+      } catch (e) {
+        if (actionSeq !== this.ledgerActionSeq || studentId !== this.studentId || contextIdentity !== this.contextIdentity) return
+        const failureCode = String(e?.bizCode || e?.code || '')
+        if (/^409|CONFLICT|EXISTS/i.test(failureCode)) {
+          await this.load()
+          if (actionSeq !== this.ledgerActionSeq || studentId !== this.studentId || contextIdentity !== this.contextIdentity) return
+          toast.info('台账状态已变化，已刷新学生画像，请核对当前记录。')
+        } else if (/^403|FORBIDDEN|PERMISSION/i.test(failureCode)) {
+          toast.error('当前身份或数据范围不允许建立此台账，请刷新页面核对。')
+        } else {
+          toast.error('建立台账失败，请刷新学生画像后核对再试。')
+        }
+      } finally {
+        if (actionSeq === this.ledgerActionSeq) this.creatingLedger = false
       }
     },
     goRisk() {
@@ -268,6 +374,7 @@ export default {
 .profile-domain-summary span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .profile-domain-summary strong { color: var(--text-primary); font-size: var(--font-size-base); line-height: 1.55; }
 .profile-section-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
+.service-ledger-action { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
 @media (max-width: 1100px) { .profile-priority-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .profile-priority-grid, .sa-detail-grid { grid-template-columns: 1fr; } .profile-summary__risk { justify-items: start; } }
 </style>

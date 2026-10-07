@@ -75,9 +75,37 @@ def _resolve_student(db):
 
 def submit(user, body) -> dict:
     """学生本人对某门已发布成绩发起复查，只能操作自己的正式成绩。"""
-    from app.models import AaGradeRecheck, AcademicGrade, AcademicStudent, StudentProfile
+    from app.models import AaGradeRecheck, AaGradeTask, AcademicGrade, AcademicStudent, StudentProfile
+    from .academic_affairs_archive_service import guard_term_writable
+    from .academic_affairs_schedule_resource_guard import lock_term
     with session() as db:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         profile = _resolve_student(db)
+        acad_grade_id = _field(body, "acadGradeId")
+        if not acad_grade_id or not str(acad_grade_id).isdigit():
+            raise _bad("请指定要复查的成绩")
+        reason = (_field(body, "reason") or "").strip()
+        if len(reason) < 5:
+            raise _bad("复查理由必填且不少于 5 字")
+        source = db.query(AcademicGrade).join(
+            AcademicStudent, AcademicStudent.id == AcademicGrade.acad_student_id,
+        ).filter(
+            AcademicGrade.id == int(acad_grade_id), AcademicGrade.tenant_id == _tid(),
+            AcademicGrade.is_deleted.is_(False), AcademicStudent.tenant_id == _tid(),
+            AcademicStudent.student_id == profile.id, AcademicStudent.is_deleted.is_(False),
+        ).first()
+        if not source:
+            raise no_data_scope("只能复查本人成绩")
+        source_task_id = source.grade_task_id
+        term_id = db.scalar(select(AaGradeTask.term_id).where(
+            AaGradeTask.id == source_task_id, AaGradeTask.tenant_id == _tid(),
+            AaGradeTask.is_deleted.is_(False),
+        )) if source_task_id else None
+        if not term_id:
+            raise _invalid("历史成绩缺少发布任务或正式学期快照，请先完成数据治理")
+        # 与正式封存共用学期锁，再进入原学生→复查单→成绩的锁顺序。
+        lock_term(db, term_id)
+        guard_term_writable(db, term_id)
         # 首次提交前没有 AaGradeRecheck 行可锁，先锁定稳定的学生主档，再按
         # “复查单 → 成绩”顺序读取当前值。该顺序与审核侧一致，既能让首次
         # 双击串行，也避免审核更正旧成绩时，旧页面再把申请写到已退位成绩上。
@@ -88,12 +116,6 @@ def submit(user, body) -> dict:
         ).with_for_update().execution_options(populate_existing=True).first()
         if not profile:
             raise not_found("当前账号尚未绑定唯一学生档案")
-        acad_grade_id = _field(body, "acadGradeId")
-        if not acad_grade_id or not str(acad_grade_id).isdigit():
-            raise _bad("请指定要复查的成绩")
-        reason = (_field(body, "reason") or "").strip()
-        if len(reason) < 5:
-            raise _bad("复查理由必填且不少于 5 字")
         existing = db.query(AaGradeRecheck).filter(
             AaGradeRecheck.tenant_id == _tid(),
             AaGradeRecheck.student_id == profile.id,
@@ -110,8 +132,15 @@ def submit(user, body) -> dict:
         ).with_for_update().execution_options(populate_existing=True).first()
         if not grade or grade.record_status != "ACTIVE":
             raise _invalid("该成绩已更新，请刷新后重新发起复查")
+        current_term_id = db.scalar(select(AaGradeTask.term_id).where(
+            AaGradeTask.id == grade.grade_task_id, AaGradeTask.tenant_id == _tid(),
+            AaGradeTask.is_deleted.is_(False),
+        ))
+        if grade.grade_task_id != source_task_id or current_term_id != term_id:
+            raise _invalid("成绩发布任务或所属学期已变化，请刷新后重试")
         academic_student = db.get(AcademicStudent, int(grade.acad_student_id)) if grade.acad_student_id else None
-        if not academic_student or academic_student.student_id != profile.id:
+        if (not academic_student or academic_student.is_deleted or academic_student.tenant_id != _tid()
+                or academic_student.student_id != profile.id):
             raise no_data_scope("只能复查本人成绩")
         row = AaGradeRecheck(
             tenant_id=_tid(), student_id=profile.id, student_no=profile.student_no,

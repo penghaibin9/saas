@@ -52,8 +52,8 @@ def _scope(db, user, access):
     _, ctx, apply, review = access
     branches = []
     if review:
-        allowed = ctx.allowed_class_ids(db)
-        branches.append(True if allowed is None else AaGradeTask.class_id.in_(sorted(allowed)))
+        branches.append(True if ctx.scope_type == "TENANT_ALL" else
+                        task_read.college_scope_condition(ctx.college_ids if ctx.scope_type == "COLLEGE" else set()))
     if apply:
         # Reuse the installed relation-first task reader, including effective
         # teacher windows. A historical GradeTask.teacher_key is not authority.
@@ -65,9 +65,8 @@ def _scope(db, user, access):
         # text alone. Teacher task scope remains the canonical relation scope.
         role = str((user or {}).get("currentRoleCode") or "").upper()
         if role in core._REVIEW_ROLES or role == "COLLEGE_ADMIN":
-            allowed = ctx.allowed_class_ids(db)
-            if allowed is not None:
-                ids = ids.where(AaGradeTask.class_id.in_(sorted(allowed)))
+            if ctx.scope_type != "TENANT_ALL":
+                ids = ids.where(task_read.college_scope_condition(ctx.college_ids if ctx.scope_type == "COLLEGE" else set()))
         branches.append(AaGradeTask.id.in_(ids.correlate(None)))
     return or_(*branches) if branches else false()
 
@@ -129,7 +128,26 @@ def _hydrate(db, rows, user, access):
         AaGradeCorrection.source_type == "CHANGE_REQUEST",
         AaGradeCorrection.source_ref_id.in_([r.id for r, *_ in rows]), *_visible(AaGradeCorrection),
     )).all()}
-    allowed_classes = ctx.allowed_class_ids(db) if review else set()
+    scoped_task_ids = set(task_ids) if review and ctx.scope_type == "TENANT_ALL" else set(db.scalars(
+        select(AaGradeTask.id).where(*_visible(AaGradeTask), AaGradeTask.id.in_(task_ids),
+            task_read.college_scope_condition(ctx.college_ids if review and ctx.scope_type == "COLLEGE" else set())),
+    ).all())
+    from . import academic_affairs_responsibility_service as responsibility
+    from app.models import AaCourse, AaTeachingTaskBatch
+    teaching_tasks = _by_id(db, AaTeachingTask, [task.teaching_task_id for _, task, *_ in rows])
+    # 本页批量预载，归属解析不逐行查询课程/批次。
+    ownership_rows = (
+        _by_id(db, AaCourse, [task.course_id for _, task, *_ in rows] + [t.course_id for t in teaching_tasks.values()]),
+        _by_id(db, AaTeachingTaskBatch, [t.batch_id for t in teaching_tasks.values()]),
+    )
+    college_owners = {}
+    school_ids = responsibility.resolve_school(db, permission_code=REVIEW)["assigneeUserIds"] if review else []
+    prior_reviewers = {}
+    instance_ids = {task.workflow_instance_id for _, task, *_ in rows if task.workflow_instance_id}
+    for prior in db.scalars(select(WorkflowTask).where(*_visible(WorkflowTask),
+        WorkflowTask.instance_id.in_(instance_ids or {-1}), WorkflowTask.node_code == command._ACADEMIC_NODE,
+    )).all():
+        prior_reviewers.setdefault(prior.instance_id, set()).add(prior.assignee_id)
     result = []
     for request, task, record, inst, wt in rows:
         student = students.get(request.student_id)
@@ -148,12 +166,26 @@ def _hydrate(db, rows, user, access):
         chain = bool(inst and inst.status == "RUNNING" and wt and wt.status == "PENDING"
                      and inst.current_node == wt.node_code
                      and wt.node_code in (command._COLLEGE_NODE, command._ACADEMIC_NODE))
-        scoped_review = review and (allowed_classes is None or task.class_id in allowed_classes)
-        academic_role = (str((user or {}).get("currentRoleCode") or "").upper() in core._REVIEW_ROLES
-                         or (user or {}).get("userType") == "PLATFORM_SUPER_ADMIN")
+        scoped_review = review and task.id in scoped_task_ids
         can_act = bool(request.status == "PENDING" and chain and scoped_review
                        and assignee and assignee.status == "ACTIVE" and wt.assignee_id == uid
-                       and (wt.node_code != command._ACADEMIC_NODE or (ctx.scope_type == "TENANT_ALL" and academic_role)))
+                       and ctx.scope_type == ("TENANT_ALL" if wt.node_code == command._ACADEMIC_NODE else "COLLEGE"))
+        if can_act:
+            try:
+                if wt.node_code == command._ACADEMIC_NODE:
+                    current_assignee = command._school_change_assignee(school_ids, task,
+                        prior_reviewers.get(task.workflow_instance_id, ()))
+                else:
+                    college_id = command._task_college_id(db, task)
+                    if college_id not in college_owners:
+                        college_owners[college_id] = responsibility.resolve_organization(db, "COLLEGE", college_id,
+                            permission_code=REVIEW)["assigneeUserIds"]
+                    current_assignee = command._unique_assignee(college_owners[college_id], command._COLLEGE_NODE)
+                can_act = current_assignee == uid
+            except AppException as error:
+                if error.code != "DATA_CONFLICT":
+                    raise
+                can_act = False
         blockers = []
         if request.status == "PENDING":
             if not chain:

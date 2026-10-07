@@ -52,11 +52,11 @@
             <p class="aa-publish-note">发布产生正式成绩。名单、课程版本、计分方案及当前状态由正式发布命令核验；失败时按具体阻断处理。</p>
             <footer>
               <template v-if="selectedTask.status === 'ACADEMIC_REVIEW'">
-                <button class="mp-btn mp-btn--primary" :disabled="publishPendingVerification(selectedTask) || dlg.submitting" @click="openPublish(selectedTask)">核验并正式发布</button>
+                <button v-if="canGradeAction(selectedTask, 'publish')" class="mp-btn mp-btn--primary" :disabled="publishPendingVerification(selectedTask) || dlg.submitting" @click="openPublish(selectedTask)">核验并正式发布</button>
                 <button v-if="publishPendingVerification(selectedTask)" class="mp-btn" @click="showUnconfirmedReceipt(selectedTask)">核对上次发布结果</button>
-                <button class="mp-btn" :disabled="dlg.submitting" @click="openReturn(selectedTask)">退回修改</button>
+                <button v-if="canGradeAction(selectedTask, 'return')" class="mp-btn" :disabled="dlg.submitting" @click="openReturn(selectedTask)">退回修改</button>
               </template>
-              <template v-else-if="selectedTask.status === 'PUBLISHED'"><button class="mp-btn" @click="showUnconfirmedReceipt(selectedTask)">查询发布后扫描</button><button class="mp-btn" :disabled="dlg.submitting" @click="openArchive(selectedTask)">归档</button></template>
+              <template v-else-if="selectedTask.status === 'PUBLISHED'"><button class="mp-btn" @click="showUnconfirmedReceipt(selectedTask)">查询发布后扫描</button><button v-if="canGradeAction(selectedTask, 'archive')" class="mp-btn" :disabled="dlg.submitting" @click="openArchive(selectedTask)">归档</button></template>
               <span v-else>当前状态只读</span>
             </footer>
           </section>
@@ -74,6 +74,7 @@
       phrase-scene-key="aa.grade.return"
       reason-label="退回原因"
       :submitting="dlg.submitting"
+      :confirm-disabled="!canRunGradeCommand()"
       @confirm="doAction"
     >
       <p v-if="dlg.action === 'publish'">确认后提交该任务的正式成绩并更新学业汇总。预警扫描在发布提交后执行，可能失败或暂时无法确认；请按回执核对，勿重复发布。</p>
@@ -87,6 +88,7 @@ import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/compone
 import { AppStatusTag, AppConfirmDialog } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
 import { academicRouteState, academicIdentity, createAcademicRequestGate } from '../academicFlowContext.js'
 import { currentUserFromToken } from '@/services/http/client'
 import { buildGradePublishReceipt, gradeWarningEffectState } from '../gradePublishReceipt.js'
@@ -125,6 +127,17 @@ export default {
   },
   beforeUnmount() { this.readGate.invalidate(); this.dlg = { ...this.dlg, visible: false } },
   methods: {
+    canGradeAction(row, action) {
+      const codes = { publish: 'academicAffairs.grade.publish', return: 'academicAffairs.grade.return', archive: 'academicAffairs.grade.archive' }
+      const states = { publish: 'ACADEMIC_REVIEW', return: 'ACADEMIC_REVIEW', archive: 'PUBLISHED' }
+      return !!codes[action] && matchPermission(this.ctx?.permissionPatterns || [], codes[action]) &&
+        row?.status === states[action] && Array.isArray(row.allowedActions) && row.allowedActions.includes(action.toUpperCase())
+    },
+    canRunGradeCommand() {
+      const row = this.rows.find(item => String(item.gradeTaskId) === String(this.dlg.taskId))
+      return this.canGradeAction(row, this.dlg.action) &&
+        (this.dlg.action !== 'publish' || !this.publishPendingVerification(row))
+    },
     selectTask(row) {
       if (this.dlg.submitting) return
       this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, selectedTaskId: String(row.gradeTaskId) } })
@@ -153,15 +166,17 @@ export default {
       this.$router.push({ path: this.$route.path, query })
     },
     openPublish(row) {
-      if (this.publishPendingVerification(row)) return
+      if (!this.canGradeAction(row, 'publish') || this.dlg.submitting || this.publishPendingVerification(row)) return
       this.dlg = { visible: true, taskId: row.gradeTaskId, courseName: row.courseName, action: 'publish', title: `发布「${row.courseName}」成绩`, type: 'danger', confirmText: '确认发布（不可撤销）', requireReason: false, submitting: false }
       this.dlg.contextKey = this.contextKey()
     },
     openReturn(row) {
+      if (!this.canGradeAction(row, 'return') || this.dlg.submitting) return
       this.dlg = { visible: true, taskId: row.gradeTaskId, courseName: row.courseName, action: 'return', title: `退回「${row.courseName}」`, type: 'warning', confirmText: '确认退回', requireReason: true, submitting: false }
       this.dlg.contextKey = this.contextKey()
     },
     openArchive(row) {
+      if (!this.canGradeAction(row, 'archive') || this.dlg.submitting) return
       this.dlg = { visible: true, taskId: row.gradeTaskId, courseName: row.courseName, action: 'archive', title: `归档「${row.courseName}」`, type: 'warning', confirmText: '确认归档', requireReason: false, submitting: false }
       this.dlg.contextKey = this.contextKey()
     },
@@ -169,6 +184,7 @@ export default {
       const command = this.dlg
       if (command.submitting) return
       if (!command.visible || command.contextKey !== this.contextKey()) { command.visible = false; return }
+      if (!this.canRunGradeCommand()) { toast.error('当前任务没有该成绩办理权限，请重新读取任务核对。'); return }
       const reason = (payload && payload.reason) || ''
       command.submitting = true
       let res

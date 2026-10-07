@@ -16,7 +16,7 @@
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="program">
-      <AaObjectContext :name="program.programName" :identity="[program.gradeYear && (program.gradeYear + '级'), '版本 v' + program.version].filter(Boolean).join(' · ')" :status="statusLabel(program.status)" :owner="program.currentAssigneeName || program.ownerName || ''" source="当前方案的课程、绑定与版本以正式记录为准" />
+      <AaObjectContext :name="program.programName" :identity="[program.gradeYear && (program.gradeYear + '级'), '版本 v' + program.version].filter(Boolean).join(' · ')" :status="statusLabel(program.status)" :owner="programOwner" :next-step="programNextOwner" source="当前方案的课程、绑定与版本以正式记录为准" />
       <AaOperationReceipt :receipt="receipt" />
       <AppInlineAlert v-if="['ENABLED', 'PUBLISHED'].includes(program.status) && validation && !validation.canSubmit" type="warning" description="该版本已有生效记录，但按当前规则校验仍有待治理项。现行方案不会因此自动停用；请在版本与变更中按受控流程补齐要求，并核对受影响的开课与毕业审核。" />
       <div class="aa-program-layout">
@@ -194,6 +194,7 @@ import { isDeniedResult, isConflictResult } from '../components/parallel-a/resul
 import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import AaOpeningPlanDiffView from './AaOpeningPlanDiffView.vue'
+import { academicFlowOwner, academicFlowNextOwner } from '../config/academicFlowRegistry.js'
 
 export default {
   name: 'AaProgramEditorView',
@@ -217,6 +218,11 @@ export default {
     }
   },
   computed: {
+    programOwner() {
+      if (this.program?.responsibility) return academicFlowOwner(this.program.responsibility)
+      return ['ENABLED', 'FROZEN', 'DISABLED'].includes(this.program?.status) ? '本轮方案编制已结束' : academicFlowOwner(null)
+    },
+    programNextOwner() { return this.program?.nextStep ? academicFlowNextOwner(this.program.nextStep) : '' },
     programId() { return this.$route.params.id },
     isOpeningPlan() { return String(this.programId) === 'opening-plan' },
     editable() { return this.program && canSubmit(this.program.status) && this.hasPermission('academicAffairs.program.manage') },

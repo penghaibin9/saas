@@ -35,6 +35,54 @@ def _session():
     return get_sessionmaker()()
 
 
+def test_mobile_self_schedule_keeps_current_college_scopes(db_mode, monkeypatch):
+    """学生和教师自视图合并本学期正式范围，排除失效批次和他人范围。"""
+    from datetime import datetime
+    from app.models import AaTerm, AaScheduleScopeHead, StudentProfile
+    from app.modules.academic_affairs.services import mobile_academic_affairs_facade as mobile
+
+    _tenant_ctx()
+    with _session() as db:
+        term = AaTerm(tenant_id=TID, year_code="2026-2027", term_no=1,
+                      start_date=datetime(2026, 9, 1), end_date=datetime(2027, 1, 30),
+                      teaching_weeks=20, is_current=True, status="PUBLISHED")
+        db.add(term)
+        db.flush()
+        a = _batch(db, term.id, college_id=11, status="PUBLISHED")
+        b = _batch(db, term.id, college_id=12, status="PUBLISHED")
+        stale = _batch(db, term.id, college_id=11, status="SUPERSEDED")
+        old = _batch(db, term.id + 1, college_id=11, status="PUBLISHED")
+        student = db.get(StudentProfile, db_mode["student"])
+        student.class_id = 10
+        student_id = student.id
+        own_ids = {
+            str(_item(db, a, class_id=10, teacher_key="SELF_TEACHER").id),
+            str(_item(db, b, class_id=10, teacher_key="SELF_TEACHER", weekday=2).id),
+        }
+        _item(db, a, class_id=20, teacher_key="OTHER_TEACHER")
+        _item(db, stale, class_id=10, teacher_key="SELF_TEACHER")
+        _item(db, old, class_id=10, teacher_key="SELF_TEACHER")
+        db.add_all([
+            AaScheduleScopeHead(tenant_id=TID, term_id=term.id, scope_type="COLLEGE",
+                                scope_id=11, active_batch_id=a.id),
+            AaScheduleScopeHead(tenant_id=TID, term_id=term.id, scope_type="COLLEGE",
+                                scope_id=12, active_batch_id=b.id),
+        ])
+        batch_ids = {str(a.id), str(b.id)}
+        db.commit()
+
+    # 本测试隔离课表投影；正常账号绑定另由同对象接口回读验证。
+    monkeypatch.setattr(mobile._legacy, "_me", lambda db, _user: db.get(StudentProfile, student_id))
+    student_result = mobile.schedule_my({"userType": "STUDENT"}, week=1)
+    teacher_result = mobile.teacher_schedule_my({
+        "userType": "TEACHER", "currentRoleCode": "ACADEMIC_TEACHER",
+        "loginName": "SELF_TEACHER",
+    }, week=1)
+    for result in (student_result, teacher_result):
+        assert {row["itemId"] for row in result["items"]} == own_ids
+        assert set(result["batchIds"]) == batch_ids
+
+
 def _batch(db, term_id=1, *, college_id=None, name="课表批次", status="PRE_PUBLISHED"):
     from app.models import AaScheduleBatch
 

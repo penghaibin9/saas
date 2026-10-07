@@ -23,7 +23,9 @@
                 <text class="sc__meta">{{ item.classroom || '教室待定' }} · {{ item.teacherName || '教师待定' }}</text>
                 <view v-if="detailId === String(item.itemId)" class="sc__detail">
                   <text>{{ parity(item) }}</text>
-                  <text>{{ item.courseCode || '课程代码待确认' }} · {{ item.source === 'ENROLLED' ? '本人选课记录' : '培养计划课表' }}</text>
+                  <text v-if="item.courseCode">课程代码：{{ item.courseCode }}</text>
+                  <text>教学班：{{ item.teachingClassName || item.className || '待学校提供' }}</text>
+                  <text>{{ item.source === 'ENROLLED' ? '本人选课记录' : '培养计划课表' }}</text>
                   <text>上课安排以学校最新正式课表与校历为准</text>
                   <button class="btn btn-ghost" @click.stop="goAttendance(item)">查看本人考勤</button>
                 </view>
@@ -38,18 +40,28 @@
             <text class="sc__week-title">{{ currentWeekText }}</text>
             <text class="sc__week-sub">按周查看会自动处理起止周和单双周</text>
           </view>
+          <!-- #ifdef H5 -->
+          <button class="sc__week-picker" @click="pickerOpen = 'week'">{{ weekLabels[weekPickerIndex] || '当前教学周' }}⌄</button>
+          <!-- #endif -->
+          <!-- #ifndef H5 -->
           <picker mode="selector" :range="weekLabels" :value="weekPickerIndex" @change="onWeekChange">
             <view class="sc__week-picker">{{ weekLabels[weekPickerIndex] || '当前教学周' }}⌄</view>
           </picker>
+          <!-- #endif -->
         </view>
         <view class="sc__week card sc__day-filter">
           <view>
             <text class="sc__week-title">上课日</text>
             <text class="sc__week-sub">按天收窄课次，方便核对详情</text>
           </view>
+          <!-- #ifdef H5 -->
+          <button class="sc__week-picker" @click="pickerOpen = 'day'">{{ dayLabels[selectedDay] || '全部日期' }}⌄</button>
+          <!-- #endif -->
+          <!-- #ifndef H5 -->
           <picker mode="selector" :range="dayLabels" :value="selectedDay" @change="onDayChange">
             <view class="sc__week-picker">{{ dayLabels[selectedDay] || '全部日期' }}⌄</view>
           </picker>
+          <!-- #endif -->
         </view>
         <view class="sc__actions">
           <button class="sc__copy" :disabled="copying" @click="copySummary">
@@ -67,9 +79,9 @@
               <text class="sc__meta">{{ item.classroom || '教室待定' }} · {{ item.teacherName || '教师待定' }} · {{ parity(item) }}</text>
               <text v-if="item.source === 'ENROLLED'" class="sc__source">选课课程</text>
               <view v-if="detailId === String(item.itemId)" class="sc__detail">
-                <text>{{ item.courseCode || '课程代码待确认' }}</text>
+                <text v-if="item.courseCode">课程代码：{{ item.courseCode }}</text>
                 <text>第{{ item.startWeek || 1 }}–{{ item.endWeek || item.startWeek || 1 }}周 · {{ slotTime(item) || '作息时间待确认' }}</text>
-                <text v-if="item.teachingClassName">教学班：{{ item.teachingClassName }}</text>
+                <text>教学班：{{ item.teachingClassName || item.className || '待学校提供' }}</text>
                 <text v-if="item.changeType">已生效调整：{{ changeText(item.changeType) }}</text>
                 <button class="btn btn-ghost" @click.stop="goAttendance(item)">查看本人考勤</button>
               </view>
@@ -78,6 +90,18 @@
         </view>
       </view>
     </AcademicPageState>
+    <!-- #ifdef H5 -->
+    <view v-if="pickerOpen" class="sc__picker-mask" @click="pickerOpen = ''">
+      <view class="sc__picker-sheet" @click.stop>
+        <view class="sc__picker-head"><text>{{ pickerOpen === 'week' ? '选择教学周' : '选择上课日' }}</text><button class="sc__picker-close" @click="pickerOpen = ''">关闭</button></view>
+        <scroll-view class="sc__picker-options" scroll-y>
+          <button v-for="(label, index) in (pickerOpen === 'week' ? weekLabels : dayLabels)" :key="index"
+            class="sc__picker-option" :class="{ 'is-selected': pickerOpen === 'week' ? index === weekPickerIndex : index === selectedDay }"
+            @click="pickerOpen === 'week' ? chooseWeek(index + 1) : chooseDay(index)">{{ label }}</button>
+        </scroll-view>
+      </view>
+    </view>
+    <!-- #endif -->
     <MobileTabBar side="student" active="" />
   </view>
 </template>
@@ -125,7 +149,7 @@ export default {
   components: { AcademicPageNav, AcademicPageState },
   data() {
     return {
-      items: null, state: 'loading', WEEK, copying: false,
+      items: null, state: 'loading', WEEK, copying: false, pickerOpen: '',
       currentWeek: null, teachingWeeks: null, selectedWeek: 0, selectedDay: 0, termCode: '',
       todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', timeBands: [],
       detailId: '', targetWeek: 0, targetDay: 0, routeContextApplied: false, requestEpoch: 0, hidden: false, identity: currentSessionGeneration(), loadedOnce: false
@@ -137,8 +161,8 @@ export default {
     this.targetDay = safeRouteNumber(options.day, 7)
   },
   onShow() { this.load() },
-  onHide() { this.hidden = true; this.requestEpoch += 1; this.copying = false },
-  onUnload() { this.hidden = true; this.requestEpoch += 1; this.copying = false },
+  onHide() { this.hidden = true; this.requestEpoch += 1; this.copying = false; this.pickerOpen = '' },
+  onUnload() { this.hidden = true; this.requestEpoch += 1; this.copying = false; this.pickerOpen = '' },
   computed: {
     maxWeek() {
       // 学期结束后墙钟日期仍会继续增长；它只能用于提示“已不在学期内”，
@@ -218,6 +242,14 @@ export default {
       if (Number.isInteger(nextWeek) && nextWeek >= 1 && nextWeek <= this.maxWeek && nextWeek !== this.selectedWeek) return this.load(nextWeek)
     },
     onDayChange(event) { this.selectedDay = Number(event.detail.value) || 0 },
+    chooseWeek(week) {
+      this.pickerOpen = ''
+      return this.onWeekChange({ detail: { value: week - 1 } })
+    },
+    chooseDay(index) {
+      this.pickerOpen = ''
+      this.onDayChange({ detail: { value: index } })
+    },
     toggleDetail(item) {
       const id = String(item && item.itemId || '')
       this.detailId = this.detailId === id ? '' : id
@@ -240,6 +272,7 @@ export default {
     },
     load(requestedWeek = this.selectedWeek || this.targetWeek || undefined) {
       this.hidden = false
+      this.pickerOpen = ''
       const identity = currentSessionGeneration()
       if (identity !== this.identity) {
         this.identity = identity; this.clearScheduleData(); this.detailId = ''; this.targetWeek = 0; this.targetDay = 0
@@ -314,7 +347,15 @@ button, input, textarea { font-family: inherit; }
 .sc__today-empty { margin-top: var(--space-3); padding: var(--space-4); border: 1px dashed rgba(22,163,74,.25); border-radius: 12px; color: var(--text-tertiary); text-align: center; font-size: var(--font-size-xs); }
 .sc__week-title { display: block; color: var(--brand-primary); font-size: var(--font-size-lg); font-weight: 700; }
 .sc__week-sub { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
-.sc__week-picker { min-width: 88px; height: 40px; padding: 0 var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 40px; text-align: center; }
+.sc__week-picker { flex-shrink: 0; min-width: 88px; height: 40px; margin: 0; padding: 0 var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); background: var(--bg-card); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 38px; text-align: center; }
+.sc__week-picker::after, .sc__picker-close::after, .sc__picker-option::after { border: 0; }
+.sc__picker-mask { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: flex-end; justify-content: center; background: rgba(16, 24, 40, .42); }
+.sc__picker-sheet { width: 100%; max-width: 440px; padding-bottom: env(safe-area-inset-bottom); border-radius: 16px 16px 0 0; background: var(--bg-card); box-sizing: border-box; }
+.sc__picker-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; border-bottom: 1px solid var(--border-base); color: var(--text-primary); font-weight: 700; }
+.sc__picker-close { margin: 0; padding: 0 8px; background: transparent; color: var(--brand-primary); font-size: var(--font-size-sm); }
+.sc__picker-options { height: 50vh; max-height: 420px; }
+.sc__picker-option { width: 100%; min-height: 44px; margin: 0; padding: 9px 16px; border-radius: 0; background: transparent; color: var(--text-primary); font-size: var(--font-size-sm); line-height: 26px; text-align: left; }
+.sc__picker-option.is-selected { color: var(--brand-primary); font-weight: 700; background: var(--primary-50); }
 .sc__actions { margin-bottom: var(--space-3); }
 .sc__copy { background: var(--brand-primary); color: #fff; border-radius: var(--radius-full); font-size: var(--font-size-sm); }
 .sc__hint { display: block; margin-top: var(--space-2); text-align: center; color: var(--text-tertiary); font-size: var(--font-size-xs); }

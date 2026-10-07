@@ -322,6 +322,7 @@ def _browser_logout(
     tab_id = _require_browser_session_id(browser_session_id)
     _clear_refresh_cookie(response, channel, tab_id)
     user_ids: set[str] = set()
+    blocked_sessions: set[str] = set()
     try:
         if refresh_token:
             refresh_claims = consume_refresh_if_matches(
@@ -337,6 +338,7 @@ def _browser_logout(
                 user_ids.add(refresh_user)
             if refresh_session:
                 block_auth_session(refresh_session)
+                blocked_sessions.add(refresh_session)
         raw = (authorization or "")[7:].strip() if (authorization or "").startswith("Bearer ") else (authorization or "").strip()
         if raw:
             try:
@@ -350,7 +352,7 @@ def _browser_logout(
                 access_session = str(access_claims.get("authSessionId") or "")
                 if access_user:
                     user_ids.add(access_user)
-                if access_session:
+                if access_session and access_session not in blocked_sessions:
                     block_auth_session(access_session)
                 jti = str(access_claims.get("jti") or "")
                 if jti:

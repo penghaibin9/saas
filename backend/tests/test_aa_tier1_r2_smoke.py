@@ -20,12 +20,16 @@ def _hdr(client, login_name):
 
 def _seed_class(db_mode, class_name="软件2601"):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass
+    from app.models import College, Major, SchoolClass
 
     db = get_sessionmaker()()
+    college = College(tenant_id=TID, college_name=f"烟雾学院-{class_name}", status="ACTIVE")
+    db.add(college); db.flush()
+    major = Major(tenant_id=TID, college_id=college.id, major_name=f"烟雾专业-{class_name}", status="ACTIVE")
+    db.add(major); db.flush()
     row = SchoolClass(
         tenant_id=TID,
-        major_id=1,
+        major_id=major.id,
         class_name=class_name,
         grade="2026",
         status="ACTIVE",
@@ -149,10 +153,15 @@ def _seed_ready_task(
     _ensure_slot(slot_no)
     db = get_sessionmaker()()
     course = db.get(AaCourse, int(course_id))
+    from app.models import Major, SchoolClass
+    klass = db.get(SchoolClass, int(class_id))
+    major = db.get(Major, klass.major_id)
+    course.owner_college_id = major.college_id
     batch = AaTeachingTaskBatch(
         tenant_id=TID,
         term_id=int(term_id),
         batch_name=f"{course_name}教学任务批次",
+        college_id=major.college_id,
         status="APPROVED",
     )
     db.add(batch)
@@ -175,6 +184,9 @@ def _seed_ready_task(
     )
     db.add(task)
     db.flush()
+    from tests.support_schedule_authority import seed_schedule_program_source, seed_school_schedule_operator
+    seed_schedule_program_source(db, task)
+    seed_school_schedule_operator(db)
     value = int(task.id)
     db.commit()
     db.close()

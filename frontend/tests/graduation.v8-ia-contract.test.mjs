@@ -62,7 +62,8 @@ test('V6 student ledger keeps the real master, read-only academic mirror and rec
   }
   assert.match(source, /buildListQuery\(overrides = \{\}\)/)
   assert.match(source, /studentReturnQuery\(panel = this\.activePanel\)/)
-  assert.match(source, /returnTo: this\.currentListPath\(panel\)/)
+  assert.match(source, /returnTo: this\.graduationReturnTo \|\| this\.currentListPath\(panel\)/)
+  assert.match(source, /\/\^\\\/admin\\\/academic-affairs\\\/graduation\\\/audit-console/)
 
   assert.match(source, /loadToken/)
   assert.match(source, /statsToken/)

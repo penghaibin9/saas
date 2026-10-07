@@ -1,8 +1,27 @@
 <template>
   <div data-academic-page class="sp-page academic-prototype schedule-page">
-    <AcademicPrototypeHeader :title="selectedLesson ? '正式课次详情' : '我的课表'" group="注册与安排" :object="!!selectedLesson" :description="selectedLesson ? '核对本次上课地点、时间与正式来源。' : '今天去哪里上课，以正式课表为准。'" :term="schedule.termCode" :loading="loading" @refresh="load" />
-    <StateBlock v-if="loading" type="loading" text="正在读取已发布课表…" />
-    <section v-else-if="error" class="card pad"><StateBlock type="error" :text="error" /><button class="btn" @click="load">重新加载</button></section>
+    <AcademicPrototypeHeader :title="historyMode ? '考勤来源课次·历史记录' : selectedLesson ? '正式课次详情' : '我的课表'" group="注册与安排" :object="historyMode || !!selectedLesson" :description="historyMode ? '核对本人已提交考勤所依据的历史课次。' : selectedLesson ? '核对本次上课地点、时间与正式来源。' : '今天去哪里上课，以正式课表为准。'" :term="historyMode ? historyDetail?.termCode : schedule.termCode" :loading="loading" @refresh="refresh" />
+    <StateBlock v-if="loading" type="loading" :text="historyMode ? '正在核对本人考勤的历史来源…' : '正在读取已发布课表…'" />
+    <div v-else-if="historyMode" class="stack">
+      <section v-if="historyError" class="card pad"><StateBlock type="error" :text="historyError" /><button class="btn" @click="refresh">重新读取来源</button></section>
+      <template v-else-if="historyDetail">
+        <div class="notice"><AcademicPrototypeIcon name="circle-info" />这是本人已提交考勤的历史来源，不代表当前正式课表，也不会创建或修改课次。</div>
+        <section class="card"><header class="card-head"><h2>{{ historyDetail.courseName || '课程名称未保存' }}</h2></header><div class="card-body"><h3>冻结点名依据</h3><dl class="definition">
+          <dt>上课日期</dt><dd>{{ historyDetail.sessionDate }} · {{ historyActualWeekday }}</dd>
+          <dt>课表安排星期</dt><dd>{{ days.find(day => day.value === historyDetail.weekday)?.label }}</dd>
+          <dt>教学周与节次</dt><dd>第{{ historyDetail.weekNo }}周 · 第{{ historyDetail.slotNo }}节 · 上课时段未保存</dd>
+          <dt>发布版本</dt><dd>第{{ historyDetail.scopeHeadVersion }}版</dd>
+          <dt>来源说明</dt><dd>本人已提交考勤所记录的正式课次依据。</dd>
+        </dl></div></section>
+        <section class="card"><header class="card-head"><h2>保留的历史课表资料</h2></header><div class="card-body"><dl class="definition">
+          <dt>任课教师</dt><dd>{{ historyDetail.teacherName || '历史资料未保存' }}</dd>
+          <dt>教学班</dt><dd>{{ historyDetail.className || '历史资料未保存' }}</dd>
+          <dt>教室</dt><dd>{{ historyDetail.classroom || '历史资料未保存' }}</dd>
+        </dl><p class="muted">以上是原课表保留的文本资料，未在点名时冻结为快照。钟点、后续调整及通知送达不由本记录证明。</p></div></section>
+      </template>
+      <div class="row"><RouterLink class="btn primary" to="/academic/attendance">返回本人考勤</RouterLink><button class="btn" @click="closeLesson">查看当前正式课表</button></div>
+    </div>
+    <section v-else-if="error" class="card pad"><StateBlock type="error" :text="error" /><button class="btn" @click="refresh">重新加载</button></section>
     <div v-else-if="selectedLesson" class="stack">
       <div class="notice"><AcademicPrototypeIcon name="circle-info" />正式课次 · 学校课表发布后形成。当前展示不会创建新课次。</div>
       <div class="grid2">
@@ -24,16 +43,17 @@
         </section>
         <section class="card">
           <header class="card-head"><h2>接下来</h2></header>
-          <div class="card-body stack"><p class="muted">考勤由本课任课教师提交。地点疑问先核对本课正式调整记录。</p><RouterLink class="btn primary" to="/academic/attendance">{{ returnedFromAttendance ? '返回考勤记录' : '查看本人考勤' }}</RouterLink><button class="btn link" @click="selectedLessonId = ''">返回我的课表</button></div>
+          <div class="card-body stack"><p class="muted">考勤由本课任课教师提交。地点疑问先核对本课正式调整记录。</p><RouterLink class="btn primary" to="/academic/attendance">{{ returnedFromAttendance ? '返回考勤记录' : '查看本人考勤' }}</RouterLink><button class="btn link" @click="closeLesson">返回我的课表</button></div>
         </section>
       </div>
     </div>
     <div v-else class="stack">
+      <div v-if="lessonNotice" class="notice amber" role="status"><AcademicPrototypeIcon name="circle-info" />{{ lessonNotice }}<RouterLink v-if="returnedFromAttendance" class="btn link small" to="/academic/attendance">返回考勤记录</RouterLink><button class="btn link small" @click="closeLesson">查看本周课表</button></div>
       <div class="toolbar" data-workspace-filter>
         <button class="btn small" aria-label="上一周" :disabled="!selectedWeek || selectedWeek <= 1" @click="moveWeek(-1)"><AcademicPrototypeIcon name="angle-left" /></button>
         <b class="week-label">{{ selectedWeek ? '第' + selectedWeek + '周' : '全部周次' }}{{ weekRange ? ' · ' + weekRange : '' }}</b>
         <button class="btn small" aria-label="下一周" :disabled="!selectedWeek || selectedWeek >= maxWeek" @click="moveWeek(1)"><AcademicPrototypeIcon name="angle-right" /></button>
-        <button class="btn small" :disabled="!currentWeekInRange || selectedWeek === currentWeekInRange" @click="selectedWeek = currentWeekInRange">回到本周</button>
+        <button class="btn small" :disabled="!currentWeekInRange || selectedWeek === currentWeekInRange" @click="changeWeek(currentWeekInRange)">回到本周</button>
         <span class="grow"></span>
         <span v-if="items.length" class="tag green">正式版本 · 已发布</span>
         <button class="btn small" :disabled="printing || !filteredItems.length" @click="printSchedule"><AcademicPrototypeIcon name="file-arrow-down" />{{ printing ? '生成中…' : '打印本人课表' }}</button>
@@ -64,11 +84,11 @@
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
 import AcademicPrototypeIcon from '../../components/academic/AcademicPrototypeIcon.vue'
 import StateBlock from '../../components/StateBlock.vue'
-import { createStudentAcademicCommandGuard, readStudentAcademicSnapshot, studentAcademicIdentity } from '../../components/academic/studentAcademicCommandGuard'
+import { createStudentAcademicCommandGuard, exactPositiveDecimalId, readStudentAcademicSnapshot, studentAcademicIdentity } from '../../components/academic/studentAcademicCommandGuard'
 import { academicErrorKind, academicErrorMessage } from '../../components/academic/studentAcademicUi'
 import { portalApi } from '../../services/portalApi'
 import { createInAppPrintFrame } from '../../services/printInApp'
@@ -85,26 +105,39 @@ const printing = ref(false)
 const schedule = ref({ items: [], timeBands: [] })
 const weekCalendar = ref([])
 const selectedWeek = ref(null)
+const lastRequestedWeek = ref(null)
 const selectedLessonId = ref('')
 const route = useRoute()
+const router = useRouter()
+const historyDetail = ref(null)
+const historyError = ref('')
+const historyMode = computed(() => route.query.from === 'attendance' && route.query.attendanceSessionId !== undefined)
 const selectedLesson = computed(() => [...items.value, ...todayItems.value].find((item) => itemKey(item) === selectedLessonId.value))
 const returnedFromAttendance = computed(() => route.query.from === 'attendance')
+const lessonNotice = computed(() => !loading.value && !error.value && route.query.lesson && !selectedLesson.value
+  ? '该课次不在当前本人正式课表中，暂时无法核验详情。'
+  : '')
 
 const days = [
   { value: 1, label: '周一' }, { value: 2, label: '周二' }, { value: 3, label: '周三' },
   { value: 4, label: '周四' }, { value: 5, label: '周五' }, { value: 6, label: '周六' },
   { value: 7, label: '周日' }
 ]
+const historyActualWeekday = computed(() => {
+  if (!historyDetail.value) return ''
+  const weekday = new Date(`${historyDetail.value.sessionDate}T00:00:00Z`).getUTCDay() || 7
+  return days.find(day => day.value === weekday)?.label || ''
+})
 
 const items = computed(() => Array.isArray(schedule.value.items) ? schedule.value.items : [])
 const todayItems = computed(() => Array.isArray(schedule.value.todayItems) ? schedule.value.todayItems : [])
 const timeBands = computed(() => Array.isArray(schedule.value.timeBands) ? schedule.value.timeBands : [])
-const maxWeek = computed(() => Math.max(
+const maxWeek = computed(() => Math.min(99, Math.max(
   1,
   Number(schedule.value.teachingWeeks || 0),
   ...items.value.map((item) => Number(item.endWeek) || 0)
-))
-const weekOptions = computed(() => Array.from({ length: Math.min(maxWeek.value, 30) }, (_, index) => index + 1))
+)))
+const weekOptions = computed(() => Array.from({ length: maxWeek.value }, (_, index) => index + 1))
 const currentWeekInRange = computed(() => {
   const week = Number(schedule.value.currentWeek)
   return weekOptions.value.includes(week) ? week : null
@@ -112,7 +145,11 @@ const currentWeekInRange = computed(() => {
 const filteredItems = computed(() => selectedWeek.value == null
   ? items.value
   : items.value.filter((item) => occursInWeek(item, selectedWeek.value)))
-const visibleDays = computed(() => filteredItems.value.some(item => Number(item.weekday) > 5) ? days : days.slice(0, 5))
+const visibleDays = computed(() => {
+  const visible = filteredItems.value.some(item => Number(item.weekday) > 5) ? days : days.slice(0, 5)
+  if (!dateForWeekday(1)) return visible
+  return visible.slice().sort((a, b) => dateForWeekday(a.value).localeCompare(dateForWeekday(b.value)))
+})
 const slotRows = computed(() => [...new Set([...timeBands.value.map(b => Number(b.slotNo)), ...filteredItems.value.map(item => Number(item.slotNo))])].filter(n => Number.isInteger(n) && n > 0).sort((a,b) => a-b))
 function cellItems(day, slot) { return dayItems(day).filter(item => Number(item.slotNo) === slot) }
 function slotName(slot) { return bandsForSlot({ slotNo: slot })[0]?.slotName || '第' + slot + '节' }
@@ -132,7 +169,15 @@ function dayDate(day) {
   const date = dateForWeekday(day)
   return date ? date.slice(5).replace('-', '/') : ''
 }
-function moveWeek(delta) { const week = Number(selectedWeek.value) + delta; if (weekOptions.value.includes(week)) selectedWeek.value = week }
+function changeWeek(week) {
+  if (!weekOptions.value.includes(week) || week === selectedWeek.value) return
+  return router.replace({ query: { ...route.query, week: String(week) } })
+}
+function moveWeek(delta) { return changeWeek(Number(selectedWeek.value) + delta) }
+function closeLesson() {
+  selectedLessonId.value = ''
+  if (route.query.lesson !== undefined || route.query.attendanceSessionId !== undefined) return router.replace({ query: { ...route.query, lesson: undefined, attendanceSessionId: undefined } })
+}
 const todayDateText = computed(() => {
   const value = String(schedule.value.todayDate || '')
   if (!value) return '日期待确认'
@@ -211,13 +256,66 @@ function slotDetail(item) {
     .join('；')
 }
 
-async function load() {
+function routeWeek() {
+  const value = String(route.query.week ?? '')
+  const week = Number(value)
+  return /^\d+$/.test(value) && Number.isSafeInteger(week) && week >= 1 && week <= 99 ? week : null
+}
+function refresh() { return load(lastRequestedWeek.value || selectedWeek.value || routeWeek() || null) }
+async function loadHistory() {
+  const sessionId = typeof route.query.attendanceSessionId === 'string' ? exactPositiveDecimalId(route.query.attendanceSessionId) : ''
+  const lessonId = typeof route.query.lesson === 'string' ? exactPositiveDecimalId(route.query.lesson) : ''
+  historyDetail.value = null
+  historyError.value = ''
+  schedule.value = { items: [], timeBands: [] }; weekCalendar.value = []; selectedWeek.value = null; selectedLessonId.value = ''
+  loading.value = true
+  if (!sessionId || !lessonId) {
+    guard.invalidate()
+    historyError.value = '考勤来源链接无法核验，请返回本人考勤重新进入。'
+    loading.value = false
+    return false
+  }
+  const read = await readStudentAcademicSnapshot(guard, () => portalApi.academicAttendance({ session_id: sessionId }), 'academic-schedule')
+  if (read.stale) return false
+  if (route.query.from !== 'attendance' || route.query.attendanceSessionId !== sessionId || route.query.lesson !== lessonId) return false
+  if (!read.ok) {
+    const kind = Number(read.error?.httpStatus || read.error?.status) === 403 ? 'forbidden' : academicErrorKind(read.error)
+    if (kind === 'forbidden') clearSensitive(read.error)
+    historyError.value = kind === 'forbidden' ? '当前账号已无权查看这项本人考勤来源，已清除先前内容。'
+      : kind === 'network' ? academicErrorMessage(read.error) : '考勤来源读取失败，请稍后重试或返回本人考勤核对。'
+    loading.value = false
+    return false
+  }
+  const row = Array.isArray(read.value?.items) && read.value.items.length === 1 ? read.value.items[0] : null
+  const detail = row?.sourceDetail
+  const date = typeof detail?.sessionDate === 'string' ? detail.sessionDate : ''
+  const parsedDate = /^\d{4}-\d{2}-\d{2}$/.test(date) ? new Date(`${date}T00:00:00Z`) : null
+  const validDate = parsedDate && !Number.isNaN(parsedDate.getTime()) && parsedDate.toISOString().slice(0, 10) === date
+  if (row?.sessionId !== sessionId || detail?.verified !== true || detail.sessionId !== sessionId || detail.scheduleItemId !== lessonId
+      || typeof detail.batchId !== 'string' || !exactPositiveDecimalId(detail.batchId) || typeof detail.termId !== 'string' || !exactPositiveDecimalId(detail.termId)
+      || !validDate || !Number.isSafeInteger(detail.weekNo) || detail.weekNo < 1 || detail.weekNo > 99
+      || !Number.isSafeInteger(detail.weekday) || detail.weekday < 1 || detail.weekday > 7
+      || !Number.isSafeInteger(detail.slotNo) || detail.slotNo < 1 || !Number.isSafeInteger(detail.scopeHeadVersion) || detail.scopeHeadVersion < 0) {
+    historyError.value = '该考勤记录的历史来源暂时无法核验，请返回本人考勤核对。'
+    loading.value = false
+    return false
+  }
+  historyDetail.value = detail
+  loading.value = false
+  return true
+}
+async function load(requestedWeek = selectedWeek.value || routeWeek() || null) {
+  if (historyMode.value) return loadHistory()
+  historyDetail.value = null
+  historyError.value = ''
+  lastRequestedWeek.value = requestedWeek
   loading.value = true
   error.value = ''
   calendarError.value = ''
-  const read = await readStudentAcademicSnapshot(guard, () => Promise.allSettled([portalApi.academicSchedule(), portalApi.academicCalendar()]), 'academic-schedule')
+  const read = await readStudentAcademicSnapshot(guard, () => Promise.allSettled([portalApi.academicSchedule(requestedWeek), portalApi.academicCalendar()]), 'academic-schedule')
   if (read.stale) return false
   if (!read.ok) {
+    schedule.value = { items: [], timeBands: [] }; weekCalendar.value = []; selectedWeek.value = null; selectedLessonId.value = ''
     error.value = academicErrorMessage(read.error, '课表读取失败，请稍后重试')
     loading.value = false
     return false
@@ -225,21 +323,26 @@ async function load() {
   const [scheduleResult, calendarResult] = read.value
   if (scheduleResult.status === 'rejected') {
     if (academicErrorKind(scheduleResult.reason) === 'forbidden') clearSensitive(scheduleResult.reason)
-    else { error.value = academicErrorMessage(scheduleResult.reason, '课表读取失败，请稍后重试'); loading.value = false }
+    else { schedule.value = { items: [], timeBands: [] }; weekCalendar.value = []; selectedWeek.value = null; selectedLessonId.value = ''; error.value = academicErrorMessage(scheduleResult.reason, '课表读取失败，请稍后重试'); loading.value = false }
     return false
   }
   if (calendarResult.status === 'rejected' && academicErrorKind(calendarResult.reason) === 'forbidden') {
     clearSensitive(calendarResult.reason)
     return false
   }
-  schedule.value = scheduleResult.value || { items: [], timeBands: [] }
+  const formal = scheduleResult.value
+  const returnedWeek = formal?.week == null ? null : Number(formal.week)
+  if (!Array.isArray(formal?.items) || (formal.termCode && returnedWeek === null) || (returnedWeek !== null && (!Number.isSafeInteger(returnedWeek) || returnedWeek < 1 || returnedWeek > 99)) || (requestedWeek != null && returnedWeek !== requestedWeek)) {
+    schedule.value = { items: [], timeBands: [] }; weekCalendar.value = []; selectedWeek.value = null; selectedLessonId.value = ''
+    error.value = '正式课表周次无法核对，请刷新重试'; loading.value = false
+    return false
+  }
+  schedule.value = formal
+  lastRequestedWeek.value = returnedWeek
   weekCalendar.value = calendarResult.status === 'fulfilled' ? calendarResult.value?.weeks || [] : []
   calendarError.value = calendarResult.status === 'rejected' ? academicErrorMessage(calendarResult.reason, '校历周次读取失败，课表课程仍按正式课表展示。') : ''
-  const currentWeek = Number(schedule.value.currentWeek)
-  selectedWeek.value = Number.isFinite(currentWeek) && currentWeek >= 1 && currentWeek <= maxWeek.value
-    ? currentWeek
-    : null
-  applyRouteContext()
+  selectedWeek.value = returnedWeek
+  if (route.query.lesson && !selectedLessonId.value) applyRouteContext()
   loading.value = false
   return true
 }
@@ -248,7 +351,10 @@ function clearSensitive(exception) {
   guard.invalidate()
   schedule.value = { items: [], timeBands: [] }
   weekCalendar.value = []
+  selectedWeek.value = null
   selectedLessonId.value = ''
+  historyDetail.value = null
+  historyError.value = ''
   calendarError.value = ''
   printing.value = false
   loading.value = false
@@ -271,11 +377,13 @@ async function printSchedule() {
   printing.value = true
   try {
     const audit = await portalApi.academicSchedulePrint({
+      week: command.week,
       reason: command.week ? `个人课表-第${command.week}周` : '个人课表-全部周次'
     })
     if (!guard.isCurrentCommand(command)) { if (!printWindow.closed) printWindow.close(); return }
     if (!Array.isArray(audit?.document?.items)) throw new Error('学校未返回本次正式课表查询件，不能使用页面旧数据打印')
     const documentData = audit.document
+    if (command.week != null && Number(documentData.week) !== command.week) throw new Error('打印查询件周次与当前所选周次不一致，请刷新后重试')
     const documentItems = itemsForWeek(documentData.items, command.week, documentData.teachingWeeks).slice().sort((a, b) => Number(a.weekday) - Number(b.weekday) || Number(a.slotNo) - Number(b.slotNo))
     const documentBands = Array.isArray(documentData.timeBands) ? documentData.timeBands : []
     const documentSlotLabel = (item) => {
@@ -330,13 +438,18 @@ async function printSchedule() {
   }
 }
 
-onMounted(load)
+onMounted(() => load(routeWeek()))
 function applyRouteContext() {
   selectedLessonId.value = String(route.query.lesson || '')
-  const requestedWeek = Number(route.query.week)
-  if (Number.isSafeInteger(requestedWeek) && weekOptions.value.includes(requestedWeek)) selectedWeek.value = requestedWeek
 }
-watch(() => [route.query.lesson, route.query.week], applyRouteContext, { immediate: true })
+watch(() => [route.query.lesson, route.query.week, route.query.attendanceSessionId, route.query.from], (next, previous) => {
+  applyRouteContext()
+  if (previous && (next[1] !== previous[1] || next[2] !== previous[2] || next[3] !== previous[3] || (historyMode.value && next[0] !== previous[0]))) load(routeWeek())
+}, { immediate: true })
+watch(() => studentAcademicIdentity(session), () => {
+  clearSensitive()
+  historyError.value = '身份已变化，请刷新重新读取本人考勤来源。'
+})
 onBeforeUnmount(() => guard.dispose())
 </script>
 <style src="../../components/academic/studentAcademicPrototype.css"></style>

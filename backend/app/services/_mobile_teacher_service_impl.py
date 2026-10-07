@@ -1302,7 +1302,7 @@ def affairs_academic_my_tasks(
 
 
 def affairs_academic_task_act(user: dict, task_id: str, action: str, reason: str | None = None) -> dict:
-    """确认/退回教学任务（归属校验在服务层 _check_teacher_scope 完成，退回原因≥5字同 PC 口径）。"""
+    """确认/退回教学任务（正式任课关系由领域服务校验，退回原因≥5字同 PC 口径）。"""
     u = _require_teacher(user)
     if not db_enabled():
         raise AppException("VALIDATION_ERROR", "演示模式不支持真实操作")

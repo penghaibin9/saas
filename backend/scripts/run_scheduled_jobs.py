@@ -22,7 +22,7 @@ log = logging.getLogger("app.scheduler")
 # 频率（秒）
 INTERVAL_DELIVERY = 15          # 消息投递 / Outbox
 INTERVAL_FILE_JOBS = 30         # 文档派生 + 毕业冻结证据包
-INTERVAL_STUDENT_AFFAIRS = 60    # 学工补偿租约 + 异步导出 + 审批导出
+INTERVAL_STUDENT_AFFAIRS = 60    # 学工补偿租约 + 异步导出 + 审批导出 + 归档包
 INTERVAL_ACADEMIC_EFFECTIVE = 60 # Stage C1：已批准的未来生效学籍异动
 INTERVAL_SCHEDULED_MSG = 45     # 定时消息到点发布
 INTERVAL_EXPIRE_NUDGE = 120     # 失效 + 紧急确认催办
@@ -261,7 +261,6 @@ def job_expire_and_nudge() -> None:
 def job_student_affairs_background() -> None:
     """Student-affairs mutation jobs require a writable effective tenant."""
     from app.services import affairs_appeal_repair_service as repair
-    from app.services import affairs_archive_service as archive
     from app.services import affairs_funding_export_service as funding_export
     from app.services import affairs_leave_export_service as leave_export
     from app.services import approval_export_service as approval_export
@@ -278,6 +277,13 @@ def job_student_affairs_background() -> None:
     _run_for_tenants("approval_export", tenant_state.BACKGROUND_BUSINESS_WRITE,
                      lambda tenant_id: approval_export.run_pending(
                          limit=2, worker_id=f"scheduler-approval:{tenant_id}"))
+
+
+def job_archive_packages() -> None:
+    """Run archive generation independently from unrelated student-affairs jobs."""
+    from app.services import affairs_archive_service as archive
+    from app.services import tenant_effective_state_service as tenant_state
+
     _run_for_tenants("affairs_archive_package", tenant_state.BACKGROUND_BUSINESS_WRITE,
                      lambda _tid: archive.run_pending_packages(limit=2))
 
@@ -401,7 +407,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="独立调度进程")
     parser.add_argument(
         "--only",
-        choices=("delivery",),
+        choices=("delivery", "archive_packages"),
         action="append",
         default=[],
         help="只运行指定安全调度组；省略时运行完整生产调度。",
@@ -419,6 +425,7 @@ def main(argv: list[str] | None = None) -> int:
         ("delivery", _Ticker(INTERVAL_DELIVERY, now0, job_delivery_and_outbox)),
         ("file_derivatives", _Ticker(INTERVAL_FILE_JOBS, now0, job_file_derivatives)),
         ("student_affairs", _Ticker(INTERVAL_STUDENT_AFFAIRS, now0, job_student_affairs_background)),
+        ("archive_packages", _Ticker(INTERVAL_STUDENT_AFFAIRS, now0, job_archive_packages)),
         ("academic_effective", _Ticker(INTERVAL_ACADEMIC_EFFECTIVE, now0, job_academic_future_effective)),
         ("grade_deadline", _Ticker(INTERVAL_GRADE_DEADLINE, now0, job_grade_deadline)),
         ("scheduled_messages", _Ticker(INTERVAL_SCHEDULED_MSG, now0, job_scheduled_messages)),

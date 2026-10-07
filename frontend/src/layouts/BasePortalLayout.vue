@@ -157,7 +157,7 @@
           </div>
         </div>
         <button
-          v-if="ctx"
+          v-if="canReadMessages"
           type="button"
           class="bpl-bell"
           :title="messageUnreadCount ? ('未读消息：' + messageUnreadCount + ' 条') : '消息中心'"
@@ -334,6 +334,7 @@ import {
   isAcademicTeacherContext,
   projectAcademicTeacherModules
 } from '@/modules/academicAffairs/config/academicTeacherNavigation'
+import { projectAcademicCollegeModules } from '@/modules/academicAffairs/config/academicCollegeNavigation'
 import { toast } from '@/utils/toast'
 import router from '@/router'
 
@@ -457,6 +458,9 @@ export default {
     }
   },
   computed: {
+    canReadMessages() {
+      return matchPermission(this.ctx?.permissionPatterns, 'workbench.message.view')
+    },
     useWorkspace() {
       // 平台控制面不会自动套用学校工作区；只有所属布局显式传入 workspace 才启用，
       // 既允许统一公共壳，也避免登录页或其他平台入口被意外改版。
@@ -482,7 +486,7 @@ export default {
       const permissions = this.ctx?.permissionPatterns || []
       const sourceModules = getVisibleNavPlan({ includePlanned: false, permissionPatterns: permissions, ctxKey: this.ctx?.ctxKey || '' }).find(group => group.key === this.railActiveKey)?.children || []
       const modules = this.railActiveKey === 'academic-affairs'
-        ? projectAcademicTeacherModules(sourceModules, this.ctx)
+        ? projectAcademicCollegeModules(projectAcademicTeacherModules(sourceModules, this.ctx), this.ctx)
         : sourceModules
       return modules.map(mod => mod.key !== 'sa-workbench' ? mod : { ...mod, children: [...mod.children, ...WORKBENCH_PAGE_TABS.filter(page => matchPermission(permissions, page.permissionKey) && !mod.children.some(child => child.path === page.path)).map(page => ({ ...page, workspaceHidden: true }))] })
     },

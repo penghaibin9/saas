@@ -15,7 +15,7 @@ import json
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid, session
 
-from .academic_affairs_exam_service import _audit, _check_college_scope, _ctx, _get_batch, _get_course
+from .academic_affairs_exam_service import _audit, _check_course_scope, _ctx, _get_batch, _get_course
 from .academic_affairs_roster_consumer_service import get_consumer_snapshot
 
 _FORMAL_BATCH_STATES = {"PUBLISHED", "FINISHED", "ARCHIVED"}
@@ -47,7 +47,7 @@ def _formal_room_print(db, user, room_id: int, *, lock_room: bool = False) -> di
         raise not_found("考场不存在")
 
     course = _get_course(db, int(room.exam_course_id))
-    _check_college_scope(context, course.college_id)
+    _check_course_scope(db, context, course)
     batch = _get_batch(db, int(course.batch_id))
 
     if str(batch.status or "").upper() not in _FORMAL_BATCH_STATES:

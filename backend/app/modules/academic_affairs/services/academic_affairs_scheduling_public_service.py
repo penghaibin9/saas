@@ -18,10 +18,15 @@ def __getattr__(name):
 
 
 def summary(user, batch_id):
-    from app.models import AaScheduleBatch, AaScheduleItem, AaTeacherAvailability, AaTeachingTask
+    from sqlalchemy import func
+    from app.core.affairs_security import no_data_scope
+    from app.models import AaCourse, AaScheduleBatch, AaScheduleItem, AaTeacherAvailability, AaTeachingTask, AaTeachingTaskBatch
+    from . import academic_affairs_responsibility_service as responsibility
+    from . import academic_affairs_schedule_policy as policy
+    from .academic_affairs_task_execution_authority import independent_task_condition
 
     with _base._base.session() as db:
-        _base._base._ctx(user, db)
+        ctx = _base._base._ctx(user, db)
         batch = db.query(AaScheduleBatch).filter(
             AaScheduleBatch.id == int(batch_id),
             AaScheduleBatch.tenant_id == _base._base._tid(),
@@ -29,12 +34,51 @@ def summary(user, batch_id):
         ).first()
         if not batch:
             raise not_found("课表批次不存在")
-        result = gate_service.evaluate(db, batch)
+        if ctx.scope_type != "TENANT_ALL" and (ctx.scope_type != "COLLEGE" or
+                not batch.college_id or int(batch.college_id) not in ctx.college_ids):
+            raise no_data_scope("当前身份不能查看该排课批次的完整工作台")
+        cache = {}
+        result = gate_service.evaluate(db, batch, cache=cache)
+        result["schoolGate"] = gate_service.evaluate_school_publish(db, batch, cache=cache) if ctx.scope_type == "TENANT_ALL" else None
+        course_counts = db.query(AaCourse.category, AaCourse.nature, func.count(AaTeachingTask.id)).join(
+            AaTeachingTask, AaTeachingTask.course_id == AaCourse.id).join(
+            AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).filter(
+            AaCourse.tenant_id == _base._base._tid(), AaCourse.is_deleted.is_(False),
+            AaTeachingTask.tenant_id == _base._base._tid(), AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTask.status == "READY", AaTeachingTask.no_auto_schedule.is_(False),
+            AaTeachingTaskBatch.tenant_id == _base._base._tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+            AaTeachingTaskBatch.term_id == int(batch.term_id), AaTeachingTaskBatch.status == "APPROVED",
+            policy.task_scope_condition(db, batch, cache=cache),
+            independent_task_condition(AaTeachingTask),
+        ).group_by(AaCourse.category, AaCourse.nature).all()
+        result["publicScheduleMode"] = policy.public_schedule_mode(db)
+        result["courseScopeCounts"] = {"public": 0, "professional": 0}
+        for category, nature, count in course_counts:
+            result["courseScopeCounts"]["public" if category == "PUBLIC_BASIC" or nature == "PUBLIC_ELECTIVE" else "professional"] += int(count)
+        result["responsibility"] = None if batch.status in {"SUPERSEDED", "ARCHIVED"} else (
+            responsibility.resolve_organization(db, "COLLEGE", batch.college_id, permission_code="academicAffairs.schedule.edit", cache=cache)
+            if batch.college_id and batch.status == "DRAFT" else
+            responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit", cache=cache))
+        if result["schoolGate"] is not None:
+            from app.core.permissions import _match
+            from .academic_affairs_grade_correction_command import _current_user_id
+            actor = responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit", cache=cache)
+            if (not _match("academicAffairs.schedule.edit", ctx.permission_codes) or not actor["resolved"]
+                    or str(_current_user_id(db, user)) not in actor["assigneeUserIds"]):
+                result["schoolGate"]["ready"] = False
+                result["schoolGate"]["blockers"].append({"code": "SCHOOL_PUBLISHER_UNRESOLVED",
+                    "message": "当前身份不是有效的学校课表发布责任人，请核对校级任职与排课权限"})
+        result["nextStep"] = None
 
         # 只在同一个事务里为闸门结果补充前 100 个可处理任务的展示字段，
         # 避免再次执行整套冲突/漏排计算导致工作台超时。
-        queue_source = [*result.get("missingTasks", []), *result.get("invalidTasks", [])]
+        duplicate_ids = {row["taskId"] for row in result.get("duplicateTasks", [])}
+        queue_source = list({row["taskId"]: row for row in [
+            *result.get("missingTasks", []), *result.get("invalidTasks", []),
+            *result.get("duplicateTasks", []),
+        ]}.values())
         queue_source.sort(key=lambda row: (
+            0 if row["taskId"] in duplicate_ids else 1,
             0 if int(row.get("scheduledSessions") or 0) == 0 else 1,
             str(row.get("courseName") or ""),
         ))
@@ -51,6 +95,7 @@ def summary(user, batch_id):
             actual = int(source.get("scheduledSessions") or 0)
             expected = int(source.get("expectedSessions") or source.get("weeklyHours") or 0)
             invalid = source in result.get("invalidTasks", [])
+            duplicate = source["taskId"] in duplicate_ids
             task_queue.append({
                 "taskId": source["taskId"],
                 "courseCode": getattr(task, "course_code", None),
@@ -67,9 +112,12 @@ def summary(user, batch_id):
                 "expectedSessions": expected,
                 "scheduledSessions": actual,
                 "remainingSessions": max(0, expected - actual),
-                "issueType": "NOT_READY" if invalid else ("UNSCHEDULED" if actual == 0 else "PARTIAL"),
-                "issueLabel": "教学任务数据异常" if invalid else ("未排" if actual == 0 else "部分漏排"),
-                "canSchedule": not invalid and batch.status == "DRAFT",
+                **{key: source.get(key) for key in ("expectedContactHours", "scheduledContactHours",
+                    "remainingContactHours", "missingContactHours", "excessContactHours",
+                    "weeklyOverloadCount", "scheduledItemCount", "contactHourBasis")},
+                "issueType": "SOURCE_CONFLICT" if duplicate else ("NOT_READY" if invalid else ("UNSCHEDULED" if actual == 0 else "PARTIAL")),
+                "issueLabel": "同课程同班任务重复，先核对开课来源" if duplicate else ("教学任务数据异常" if invalid else ("未排" if actual == 0 else "部分漏排")),
+                "canSchedule": not invalid and not duplicate and batch.status == "DRAFT",
             })
 
         pending_availability_count = db.query(AaTeacherAvailability).filter(
@@ -87,6 +135,8 @@ def summary(user, batch_id):
         ).count()
 
         blockers = []
+        if result.get("duplicateTaskGroupCount"):
+            blockers.append(f"{result['duplicateTaskGroupCount']} 组同课程同班任务重复，请先核对开课来源")
         if result["totalTasks"] == 0:
             blockers.append("本学期还没有 READY 教学任务")
         if result["invalidTaskCount"]:
@@ -94,9 +144,11 @@ def summary(user, batch_id):
         if pending_availability_count:
             blockers.append(f"{pending_availability_count} 条教师不可排时间待处理")
         if result["missingTaskCount"]:
-            blockers.append(f"{result['missingTaskCount']} 个教学任务仍有未排节次")
+            blockers.append(f"{result['missingTaskCount']} 个教学任务共缺 {result['missingContactHours']} 计划学时")
         if result["overScheduledTaskCount"]:
             blockers.append(f"{result['overScheduledTaskCount']} 个教学任务排课超量")
+        if result["weeklyOverloadCount"]:
+            blockers.append(f"{result['weeklyOverloadCount']} 个任务教学周超过周学时上限")
         if result["orphanItemCount"]:
             blockers.append(f"{result['orphanItemCount']} 个课位无法回溯教学任务")
         if result["invalidCoordinateItemCount"]:
@@ -106,7 +158,11 @@ def summary(user, batch_id):
         if batch.status == "PRE_PUBLISHED" and teacher_objection_count:
             blockers.append(f"{teacher_objection_count} 条教师异议待处理")
 
-        if batch.status in {"PUBLISHED", "SUPERSEDED", "ARCHIVED"}:
+        if result.get("duplicateTaskGroupCount") and batch.status in {"DRAFT", "PRE_PUBLISHED", "PUBLISHED"}:
+            current_stage_key = "PREPARE"
+            next_action = {"code": "TEACHING_TASKS", "label": "核对重复开课任务",
+                "description": "先回教学任务核对新旧来源承接；不能继续补排重复任务或删除已有教学历史"}
+        elif batch.status in {"PUBLISHED", "SUPERSEDED", "ARCHIVED"}:
             current_stage_key = "PUBLISH"
             if batch.status == "PUBLISHED" and not result["complete"]:
                 next_action = {
@@ -127,6 +183,8 @@ def summary(user, batch_id):
                 "label": "处理教师异议" if teacher_objection_count else "正式发布",
                 "description": "异议清零后再正式发布" if teacher_objection_count else "发布后同步教师、学生四端课表",
             }
+            if not teacher_objection_count and not (result["schoolGate"] or {}).get("ready"):
+                next_action.update(label="核对学校发布条件", description="全校应开任务、公共课与学院课表准备完成后，由校教务正式发布")
         elif result["totalTasks"] == 0 or result["invalidTaskCount"]:
             current_stage_key = "PREPARE"
             next_action = {"code": "TEACHING_TASKS", "label": "完善教学任务", "description": "先完成教师、班级、周学时和周次确认"}
@@ -138,7 +196,7 @@ def summary(user, batch_id):
             next_action = {"code": "AUTO_DRY_RUN", "label": "执行试排预览", "description": "先预览，不写入正式课表"}
         elif result["missingTaskCount"]:
             current_stage_key = "MANUAL"
-            next_action = {"code": "TASK_QUEUE", "label": "处理未排与漏排", "description": "从任务队列逐项补齐剩余节次"}
+            next_action = {"code": "TASK_QUEUE", "label": "处理未排与漏排", "description": "从任务队列逐项补齐剩余计划学时"}
         else:
             current_stage_key = "QUALITY"
             next_action = {

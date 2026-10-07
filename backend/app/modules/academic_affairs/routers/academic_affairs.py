@@ -830,6 +830,7 @@ def program_add_course(body: ProgramCourseBody, programId: int = Path(...), user
 
 
 class ProgramCourseUpdate(BaseModel):
+    formationMode: Optional[str] = Field(None, pattern="^(ADMIN_FIXED|SELECTABLE)$")
     courseName: Optional[str] = None
     openTermNo: Optional[int] = None
     module: Optional[str] = None
@@ -1150,6 +1151,7 @@ class TaskBatchGenerate(BaseModel):
     termId: str = Field(..., min_length=1)
     collegeId: Optional[str] = None
     batchName: Optional[str] = None
+    classId: Optional[str] = Field(None, strict=True, pattern=r"^[1-9][0-9]*$")
 
 
 class AssignBody(BaseModel):
@@ -2076,6 +2078,7 @@ _GRAD_FINAL = "academicAffairs.graduation.final"
 
 class GradAuditBatchCreate(BaseModel):
     batchName: str = Field(..., min_length=1)
+    termId: str = Field(..., pattern=r"^[1-9][0-9]{0,18}$", description="所属正式学期")
     gradeYear: Optional[str] = None
     majorId: Optional[str] = None
 

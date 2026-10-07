@@ -124,6 +124,9 @@ def seed_schedule_change_identity(db, *, college_ids=()):
         if college is not None:
             college.secretary_id = int(users["college_admin01"].id)
 
+    from tests.support_academic_review_identity import seed_college_review_scope
+    seed_college_review_scope(db, college_ids=college_ids)
+
     classroom = db.query(AaClassroom).filter(
         AaClassroom.tenant_id == TID,
         AaClassroom.building_code == "SC",
