@@ -234,6 +234,14 @@ def test_admin_special_with_task_resolves_and_freezes_official_roster(monkeypatc
                 return batch
             return None
 
+        def scalar(self, query):
+            sql = str(query)
+            if "t_aa_teaching_task_source_handoff" in sql:
+                return None
+            if "t_aa_teaching_task" in sql:
+                return task
+            raise AssertionError(sql)
+
     db = _TaskDb(term=_term())
     official = {
         "source": "SELECTION_LOCKED",
