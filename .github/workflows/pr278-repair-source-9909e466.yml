@@ -1,4 +1,4 @@
-# Temporary PR278 repair utility. Remove before merge; it never changes release gates.
+# Temporary read-only verification utility for PR278. Remove before merge.
 name: PR278 repair source snapshot
 
 on:
@@ -12,85 +12,35 @@ permissions:
   contents: read
 
 jobs:
-  apply-reviewed-source:
-    if: github.repository == 'penghaibin9/saas' && github.ref == 'refs/heads/codex/academic-v5-responsibility-20260926'
-    permissions:
-      contents: write
+  locked-python-runtime:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
-      - name: Apply checksum-pinned source diff on the expected parent only
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_REPO: ${{ github.repository }}
+          persist-credentials: false
+      - name: Build isolated Python 3.12 with the repository's exact requirements
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^)" = '5fece16542ce04256574da3cce5d8a2ac8d4af9d'
-          gh api "repos/$GH_REPO/git/blobs/b79faef07ffce6b76e6a30103cc2d475b46e7376" --jq .content | base64 --decode | gzip -d > "$RUNNER_TEMP/reviewed.patch"
-          echo "e4fe5d3f71a09289311575a52b6d155d9b022cbf9081b9b5e85cc2b60b5a7aa2  $RUNNER_TEMP/reviewed.patch" | sha256sum -c -
-          git apply --check "$RUNNER_TEMP/reviewed.patch"
-          git apply "$RUNNER_TEMP/reviewed.patch"
-          python3 - <<'PY'
-          import pathlib, py_compile, subprocess
-          expected = {
-              'backend/app/modules/academic_affairs/services/academic_affairs_grade_task_assignee_guard.py',
-              'backend/app/modules/academic_affairs/services/academic_affairs_responsibility_service.py',
-              'backend/app/modules/academic_affairs/services/academic_affairs_schedule_final_service.py',
-              'backend/app/modules/academic_affairs/services/academic_affairs_schedule_import_preload.py',
-              'backend/app/modules/academic_affairs/services/academic_affairs_task_service.py',
-              'backend/app/student_portal/router.py',
-          }
-          actual = set(subprocess.check_output(['git','diff','--name-only'], text=True).splitlines())
-          assert actual == expected, (actual, expected)
-          for name in sorted(expected):
-              py_compile.compile(name, doraise=True)
-              subprocess.run(['git','add','--',name], check=True)
-          PY
-          git diff --cached --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix: align responsibility roles and serialize schedule imports without duplicate reads'
-          git push origin HEAD:refs/heads/codex/academic-v5-responsibility-20260926
-          git rev-parse HEAD
-
-  isolated-test-runtime:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Package official MySQL and Redis binaries without any database or credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/pr278-runtime/wheels"
-          docker pull mysql:8.0
-          docker run --rm --entrypoint sh mysql:8.0 -c '
-            set -eu
-            bins="/usr/sbin/mysqld /usr/bin/mysql /usr/bin/mysqladmin /usr/bin/mysqldump"
-            deps=$(ldd $bins | awk "/=> \\// {print \$3}" | sort -u | grep -Ev "/(libc|libm|libpthread|libdl|librt|libresolv)\\.so")
-            dirs=""
-            for path in /usr/share/mysql* /usr/lib64/mysql*; do
-              if [ -e "$path" ]; then dirs="$dirs $path"; fi
-            done
-            tar -chzf - $bins $deps $dirs
-          ' > "$RUNNER_TEMP/pr278-runtime/mysql-runtime.tar.gz"
-          docker pull redis:7-bookworm
-          docker run --rm --entrypoint sh redis:7-bookworm -c '
-            set -eu
-            bins="/usr/local/bin/redis-server /usr/local/bin/redis-cli"
-            deps=$(ldd $bins | awk "/=> \\// {print \$3}" | sort -u | grep -Ev "/(libc|libm|libpthread|libdl|librt|libresolv)\\.so")
-            tar -chzf - $bins $deps
-          ' > "$RUNNER_TEMP/pr278-runtime/redis-runtime.tar.gz"
-          python3 -m pip download --only-binary=:all: --no-deps --dest "$RUNNER_TEMP/pr278-runtime/wheels" PyMySQL==1.2.0 redis==6.4.0 pytest-timeout==2.4.0 APScheduler==3.11.3 tzlocal==5.4.4
-          cd "$RUNNER_TEMP/pr278-runtime"
-          sha256sum *.tar.gz wheels/* > SHA256SUMS
+          mkdir -p "$RUNNER_TEMP/pr278-python"
+          docker pull python:3.12-slim-bookworm
+          docker run --rm -v "$PWD/backend:/source:ro" -v "$RUNNER_TEMP/pr278-python:/output" python:3.12-slim-bookworm sh -ec '
+            apt-get update -qq
+            apt-get install -y --no-install-recommends gcc libc6-dev libexpat1 libffi8 libssl3 libsqlite3-0 libbz2-1.0 liblzma5 libzstd1 zlib1g
+            python -m pip install --no-cache-dir -r /source/requirements.txt
+            python -m pip check
+            python --version > /output/VERSIONS.txt
+            python -m pip freeze >> /output/VERSIONS.txt
+            deps=$(ldd /usr/local/bin/python3.12 /usr/local/lib/libpython3.12.so.1.0 /usr/local/lib/python3.12/lib-dynload/*.so | awk "/=> \\// {print \$3}" | sort -u | grep -Ev "/(libc|libm|libpthread|libdl|librt|libresolv)\\.so")
+            tar -chzf /output/python-runtime.tar.gz /usr/local $deps
+            cd /output
+            sha256sum python-runtime.tar.gz VERSIONS.txt > SHA256SUMS
+          '
       - uses: actions/upload-artifact@v4
         with:
-          name: pr278-isolated-test-runtime-${{ github.sha }}
-          path: ${{ runner.temp }}/pr278-runtime/
+          name: pr278-locked-python-${{ github.sha }}
+          path: ${{ runner.temp }}/pr278-python/
           retention-days: 1
           compression-level: 0
           if-no-files-found: error
