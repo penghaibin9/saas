@@ -15,7 +15,7 @@ from .academic_affairs_program_activation_service import (
 )
 
 
-def resolve_student_program(db, student, *, tenant_id: int, as_of=None) -> ProgramResolution:
+def resolve_student_program(db, student, *, tenant_id: int, as_of=None, cache=None) -> ProgramResolution:
     if not student or not getattr(student, "major_id", None):
         return ProgramResolution(None, None, "MISSING", "NO_MAJOR", "学生未维护专业，无法解析培养方案")
 
@@ -26,6 +26,7 @@ def resolve_student_program(db, student, *, tenant_id: int, as_of=None) -> Progr
         grade_year=str(getattr(student, "grade", None) or "").strip(),
         class_id=(int(student.class_id) if getattr(student, "class_id", None) else None),
         as_of=as_of,
+        **({"cache": cache} if cache is not None else {}),
     )
 
 

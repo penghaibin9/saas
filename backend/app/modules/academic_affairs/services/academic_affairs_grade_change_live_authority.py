@@ -61,9 +61,10 @@ def resolve_change_assignee(db, node: str, task) -> int:
 
     from app.models import WorkflowTask
 
-    candidates = _correction._permission_holder_ids(db, _correction._REVIEW_PERM)
-    college_bound = _correction._college_bound_user_ids(db)
-    school_level = {int(uid) for uid in candidates if int(uid) not in college_bound}
+    from .academic_affairs_responsibility_service import resolve_school
+    school_level = {int(uid) for uid in resolve_school(
+        db, permission_code=_correction._REVIEW_PERM,
+    )["assigneeUserIds"]}
     instance_id = int(getattr(task, "workflow_instance_id", 0) or 0)
 
     inherited: set[int] = set()
@@ -81,15 +82,7 @@ def resolve_change_assignee(db, node: str, task) -> int:
             if uid > 0 and uid in school_level and _correction._active_user(db, uid):
                 inherited.add(uid)
 
-    if len(inherited) == 1:
-        return next(iter(inherited))
-    if len(inherited) > 1:
-        raise _correction._conflict(
-            "原成绩教务终审存在多个有效责任人，无法安全继承更正终审受理人",
-            node=node,
-            candidateUserIds=[str(uid) for uid in sorted(inherited)],
-        )
-    return _canonical_resolve_change_assignee(db, node, task)
+    return _correction._school_change_assignee(school_level, task, inherited)
 
 
 resolve_change_assignee._grade_correction_review_authority = True

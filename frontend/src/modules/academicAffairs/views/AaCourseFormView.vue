@@ -24,7 +24,7 @@
         <AppSectionCard :title="`${isEdit ? '课程版本' : '课程草稿'} · 完整表单`" class="aa-course-form-card">
           <span class="aa-draft-state">{{ isEdit ? statusLabel(loadedCourseStatus) : '尚未提交' }}</span>
           <p class="aa-form-intro">先确认稳定课程身份，再核对学分学时、开课责任与适用范围。保存后从课程档案提交审核。</p>
-      <fieldset class="aa-form-group">
+      <fieldset class="aa-form-group" :disabled="submitting || saveCompleted">
         <legend>基本信息</legend>
       <div class="aa-grid">
         <AppFormItem label="课程编码" required hint="大写字母(1-4位)+数字(3-8位)，如 CS101">
@@ -44,7 +44,7 @@
         </AppFormItem>
       </div>
       </fieldset>
-      <fieldset class="aa-form-group">
+      <fieldset class="aa-form-group" :disabled="submitting || saveCompleted">
         <legend>学分、学时与考核</legend>
       <div class="aa-grid">
         <AppFormItem label="学分" required>
@@ -62,20 +62,20 @@
         </AppFormItem>
       </div>
       </fieldset>
-      <fieldset class="aa-form-group">
+      <fieldset class="aa-form-group" :disabled="submitting || saveCompleted">
         <legend>开课责任与适用范围</legend>
       <div class="aa-grid">
         <AppFormItem label="开课单位" hint="学院管理员只能选择本学院">
-          <AppCollegePicker v-model="form.ownerCollegeId" :options="collegeOptions" clearable />
+          <AppCollegePicker :disabled="submitting || saveCompleted" :inert="submitting || saveCompleted" v-model="form.ownerCollegeId" :options="collegeOptions" clearable />
         </AppFormItem>
         <AppFormItem label="课程负责人" hint="须为本校在职教师">
-          <AppTeacherPicker v-model="form.ownerTeacherId" clearable />
+          <AppTeacherPicker :disabled="submitting || saveCompleted" :inert="submitting || saveCompleted" :key="courseEpoch" v-model="form.ownerTeacherId" :resolve-by-value="ownerTeacherResolver" clearable />
         </AppFormItem>
         <AppFormItem label="先修课程编码">
           <AppTextInput v-model="prereqText" placeholder="多个用逗号分隔" />
         </AppFormItem>
         <AppFormItem label="课程简介" layout="vertical" class="aa-field--full">
-          <AppTextarea v-model="form.description" :maxlength="500" :rows="3" placeholder="选填，≤500 字，用于课程库检索与展示" />
+          <AppTextarea v-model="form.description" :readonly="saveCompleted" :maxlength="500" :rows="3" placeholder="选填，≤500 字，用于课程库检索与展示" />
         </AppFormItem>
         <AppFormItem label="核心课程" class="aa-field--check">
           <label class="aa-check"><input v-model="form.isCore" type="checkbox" /> 核心课/学位课</label>
@@ -84,7 +84,7 @@
           <label class="aa-check"><input v-model="form.isAllMajor" type="checkbox" @change="onAllMajorChange" /> 全校各专业通用</label>
         </AppFormItem>
         <AppFormItem label="适用专业" layout="vertical" class="aa-field--full" v-if="!form.isAllMajor">
-          <AppMajorPicker v-model="form.applicableMajors" multiple :options="majorOptions" />
+          <AppMajorPicker :disabled="submitting || saveCompleted" :inert="submitting || saveCompleted" v-model="form.applicableMajors" multiple :options="majorOptions" />
         </AppFormItem>
       </div>
       </fieldset>
@@ -150,14 +150,25 @@ export default {
     ModulePageShell, LoadingState, AppButton, AppSectionCard, AppFormItem, AppTextInput, AppNumberInput,
     AppSelect, AppTextarea, AppTeacherPicker, AppCollegePicker, AppMajorPicker, AppInlineAlert
   },
+  inject: { appPickerAdapters: { default: () => ({}) } },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: false, submitting: false, formError: '', prereqText: '', loadedCourseStatus: 'DRAFT', form: EMPTY(),
+      ownerTeacherOption: null, courseEpoch: 0, courseReady: true, loading: false, submitting: false, saveCompleted: false, savedCourseId: '', formError: '', prereqText: '', loadedCourseStatus: 'DRAFT', form: EMPTY(),
       collegeOptions: [], majorOptions: []
     }
   },
   computed: {
+    ownerTeacherResolver() {
+      const option = this.ownerTeacherOption, epoch = this.courseEpoch, id = this.courseId
+      const adapter = this.appPickerAdapters?.teacher
+      return async value => {
+        if (!this.isCurrentCourse(epoch, id)) return
+        if (option && String(value) === option.value) return option
+        const result = await adapter?.resolve?.(value, {})
+        if (this.isCurrentCourse(epoch, id)) return result
+      }
+    },
     canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.course.manage') },
     courseId() { return this.$route.params.id },
     isEdit() { return !!this.courseId },
@@ -185,9 +196,28 @@ export default {
   },
   created() {
     this.loadOrgOptions()
-    if (this.isEdit) this.loadCourse()
+    this.resetCourseContext()
   },
+  watch: {
+    courseId: { flush: 'sync', handler() { return this.resetCourseContext() } }
+  },
+  beforeUnmount() { this.courseEpoch++ },
   methods: {
+    resetCourseContext() {
+      this.courseEpoch++
+      this.ownerTeacherOption = null
+      this.form = EMPTY()
+      this.prereqText = ''
+      this.loadedCourseStatus = 'DRAFT'
+      this.formError = ''
+      this.saveCompleted = false
+      this.savedCourseId = ''
+      this.submitting = false
+      this.loading = false
+      this.courseReady = !this.isEdit
+      if (this.isEdit) return this.loadCourse()
+    },
+    isCurrentCourse(epoch, id) { return epoch === this.courseEpoch && id === this.courseId },
     statusLabel(value) {
       return { DRAFT: '草稿', COLLEGE_REVIEW: '学院审核中', ACADEMIC_REVIEW: '教务审核中', ENABLED: '已启用', DISABLED: '已停用' }[value] || '状态待确认'
     },
@@ -214,25 +244,43 @@ export default {
       if (this.form.isAllMajor) this.form.applicableMajors = []
     },
     async loadCourse() {
+      const epoch = this.courseEpoch, id = this.courseId
       this.loading = true
-      const res = await academicAffairsApi.getCourse(this.courseId)
-      if (res.code === 0) {
-        const d = res.data
-        this.loadedCourseStatus = d.status || 'DRAFT'
-        this.form = {
-          courseCode: d.courseCode, courseName: d.courseName, courseNameEn: d.courseNameEn,
-          category: d.category, nature: d.nature, credit: d.credit, hoursTotal: d.hoursTotal,
-          hoursTheory: d.hoursTheory, hoursPractice: d.hoursPractice, hoursExperiment: d.hoursExperiment,
-          hoursComputer: d.hoursComputer, examMode: d.examMode, ownerCollegeId: d.ownerCollegeId || '',
-          ownerTeacherId: d.ownerTeacherId || '', isCore: d.isCore, description: d.description || '',
-          isAllMajor: d.isAllMajor || false, applicableMajors: d.applicableMajors || [],
-          prerequisiteCodes: d.prerequisiteCodes || []
+      this.courseReady = false
+      try {
+        const res = await academicAffairsApi.getCourse(id)
+        if (!this.isCurrentCourse(epoch, id)) return
+        if (res.code === 0) {
+          const d = res.data
+          const teacherId = d.ownerTeacherId
+          const value = typeof teacherId === 'string' && /^[1-9]\d*$/.test(teacherId)
+            ? teacherId : Number.isSafeInteger(teacherId) && teacherId > 0 ? String(teacherId) : ''
+          this.ownerTeacherOption = value && typeof d.ownerTeacherName === 'string' && d.ownerTeacherName.trim()
+            ? { value, label: d.ownerTeacherName.trim() } : null
+          this.loadedCourseStatus = d.status || 'DRAFT'
+          this.form = {
+            courseCode: d.courseCode, courseName: d.courseName, courseNameEn: d.courseNameEn,
+            category: d.category, nature: d.nature, credit: d.credit, hoursTotal: d.hoursTotal,
+            hoursTheory: d.hoursTheory, hoursPractice: d.hoursPractice, hoursExperiment: d.hoursExperiment,
+            hoursComputer: d.hoursComputer, examMode: d.examMode, ownerCollegeId: d.ownerCollegeId || '',
+            ownerTeacherId: d.ownerTeacherId || '', isCore: d.isCore, description: d.description || '',
+            isAllMajor: d.isAllMajor || false, applicableMajors: d.applicableMajors || [],
+            prerequisiteCodes: d.prerequisiteCodes || []
+          }
+          this.prereqText = (d.prerequisiteCodes || []).join(',')
+          this.courseReady = true
+        } else {
+          this.formError = res.message || '课程读取失败，请刷新后重试'
+          toast.error(this.formError)
         }
-        this.prereqText = (d.prerequisiteCodes || []).join(',')
-      } else {
-        toast.error(res.message || '加载失败')
+      } catch {
+        if (this.isCurrentCourse(epoch, id)) {
+          this.formError = '课程读取失败，请刷新后重试'
+          toast.error(this.formError)
+        }
+      } finally {
+        if (this.isCurrentCourse(epoch, id)) this.loading = false
       }
-      this.loading = false
     },
     validate() {
       if (!this.form.courseCode) return '请填写课程编码'
@@ -242,10 +290,16 @@ export default {
       return ''
     },
     async submit() {
-      if (this.submitting || !this.canManage) return
+      if (this.submitting || this.loading || !this.canManage) return
+      if (!this.courseReady) { this.formError = '课程尚未读取成功，请刷新后重试'; return }
+      if (this.saveCompleted) {
+        await this.openSavedCourse()
+        return
+      }
       const err = this.validate()
       this.formError = err
       if (err) return
+      const epoch = this.courseEpoch, courseId = this.courseId
       this.submitting = true
       const body = {
         ...this.form,
@@ -253,17 +307,50 @@ export default {
         ownerTeacherId: this.form.ownerTeacherId || undefined,
         prerequisiteCodes: this.prereqText ? this.prereqText.split(/[,，]/).map((s) => s.trim()).filter(Boolean) : []
       }
-      const res = this.isEdit
-        ? await academicAffairsApi.updateCourse(this.courseId, body)
-        : await academicAffairsApi.createCourse(body)
-      this.submitting = false
-      if (res.code === 0) {
+      try {
+        const res = this.isEdit
+          ? await academicAffairsApi.updateCourse(courseId, body)
+          : await academicAffairsApi.createCourse(body)
+        if (!this.isCurrentCourse(epoch, courseId)) return
+        if (res.code !== 0) {
+          this.formError = res.message || '保存失败'
+          toast.error(this.formError)
+          return
+        }
+        this.saveCompleted = true
+        const id = res.data?.courseId
+        this.savedCourseId = typeof id === 'string' && /^[1-9]\d*$/.test(id)
+          ? id : Number.isSafeInteger(id) && id > 0 ? String(id) : ''
+        window.__SAAS_DIRTY_FORM_GUARD__?.markSaved?.()
         toast.success(this.isEdit ? '已保存' : '课程已创建')
-        this.$router.push(`/admin/academic-affairs/courses/${res.data.courseId}`)
-      } else {
-        this.formError = res.message || '保存失败'
-        toast.error(res.message || '保存失败')
+        // The workspace guard inspects enabled textareas; retain saved input as read-only.
+        await this.$nextTick()
+        if (this.isCurrentCourse(epoch, courseId)) await this.openSavedCourse()
+      } catch (error) {
+        if (!this.isCurrentCourse(epoch, courseId)) return
+        this.formError = error.message || '保存失败，已保留输入，请重试'
+        toast.error(this.formError)
+      } finally {
+        if (this.isCurrentCourse(epoch, courseId)) this.submitting = false
       }
+    },
+    async openSavedCourse() {
+      const epoch = this.courseEpoch, courseId = this.courseId
+      if (!this.savedCourseId) {
+        this.formError = '课程已保存，但未取得有效档案编号；请从课程库核对，勿重复创建'
+        toast.error(this.formError)
+        return
+      }
+      this.formError = ''
+      try {
+        const failure = await this.$router.push(`/admin/academic-affairs/courses/${this.savedCourseId}`)
+        if (!this.isCurrentCourse(epoch, courseId)) return
+        if (failure) this.formError = '课程已保存，但档案尚未打开；再次点击保存只重试打开同一档案'
+      } catch {
+        if (!this.isCurrentCourse(epoch, courseId)) return
+        this.formError = '课程已保存，但档案尚未打开；再次点击保存只重试打开同一档案'
+      }
+      if (this.formError) toast.error(this.formError)
     }
   }
 }

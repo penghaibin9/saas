@@ -38,7 +38,7 @@
       <p class="gd-rule-note">导师审核、答辩安排和成绩发布由学校办理；需要你操作时，按钮会在对应步骤出现。</p>
 
       <ol class="gd-steps">
-        <li v-for="step in steps" :key="step.key" class="gd-step" :class="'is-' + step.tone" :data-step-key="step.key">
+        <li v-for="step in displaySteps" :key="step.key" class="gd-step" :class="'is-' + step.tone" :data-step-key="step.key">
           <div class="gd-step__rail"><span>{{ step.order }}</span></div>
           <article>
             <header class="gd-step__head">
@@ -251,6 +251,7 @@ const busy = ref(false)
 const error = ref('')
 const expanded = ref('')
 const my = ref({})
+const journey = ref(null)
 const taskbook = ref({})
 const proposal = ref({})
 const midterm = ref({})
@@ -313,7 +314,7 @@ const finalFiles = computed(() => (final.value.items || []).flatMap((item) => it
 const defenseDetail = computed(() => {
   if (!defense.value.published) return defense.value.message || '完成资格审核后由学校统一安排。'
   const parts = [
-    `${defense.value.date || '待定'} · ${defense.value.location || '待定'} · ${defense.value.groupName || ''}`.trim(),
+    `${String(defense.value.date || '待定').replace('T', ' ')} · ${defense.value.location || '待定'} · ${defense.value.groupName || ''}`.trim(),
   ]
   if (defense.value.chair) parts.push(`组长：${defense.value.chair}`)
   if ((defense.value.members || []).length) parts.push(`评委：${(defense.value.members || []).join('、')}`)
@@ -341,7 +342,7 @@ const steps = computed(() => [
   {
     key: 'topic', order: '01', title: '组织与选题', description: '在学校开放的轮次中提交志愿，等待导师或管理员确认。',
     status: hasTopic.value ? '课题已确认' : (round.value ? '待提交志愿' : '等待开放'), tone: hasTopic.value ? 'success' : 'warn',
-    detail: hasTopic.value ? `${my.value.topicTitle}${my.value.advisorName ? ` · 指导教师：${my.value.advisorName}` : ''}` : (round.value?.remark || '学校尚未开放选题轮次。'),
+    detail: hasTopic.value ? `${my.value.topicTitle}${my.value.advisorName ? ` · 指导教师：${my.value.advisorName}` : ''}` : (round.value ? (round.value.remark || '选题轮次已开放，请选择课题并提交志愿。') : '学校尚未开放选题轮次，请等待通知。'),
     action: hasTopic.value ? '申请更换课题' : (round.value ? '选择并提交志愿' : ''),
     primary: !hasTopic.value && Boolean(round.value)
   },
@@ -401,11 +402,49 @@ const steps = computed(() => [
   }
 ])
 
+// 后端 journey 与本页步骤 key 的对应（后端第 8 步为 grade，本页为 archive）
+const JOURNEY_KEY = { grade: 'archive' }
+const JOURNEY_TONE = { success: 'success', danger: 'danger', warning: 'warn', primary: 'warn', default: 'default' }
+
+const journeyByKey = computed(() => {
+  const map = {}
+  for (const s of journey.value?.steps || []) map[JOURNEY_KEY[s.key] || s.key] = s
+  return map
+})
+
+// 步骤的状态/提示以后端统一派生为准（与小程序一致）；办理表单与按钮仍由本页各环节数据驱动。
+const displaySteps = computed(() => steps.value.map((step) => {
+  const server = journeyByKey.value[step.key]
+  if (!server) return step
+  return {
+    ...step,
+    status: server.statusText || step.status,
+    tone: JOURNEY_TONE[server.tone] || step.tone,
+    reviewComment: step.reviewComment || server.comment || ''
+  }
+}))
+
 const currentTask = computed(() => {
-  return steps.value.find((step) => step.primary)
-    || steps.value.find((step) => step.tone === 'danger')
-    || steps.value.find((step) => step.tone !== 'success')
-    || steps.value[steps.value.length - 1]
+  const serverCurrent = journey.value?.current
+  if (serverCurrent) {
+    const key = JOURNEY_KEY[serverCurrent.key] || serverCurrent.key
+    const local = displaySteps.value.find((step) => step.key === key)
+    if (local) {
+      const waiting = !['todo', 'blocked'].includes(serverCurrent.state)
+      return {
+        ...local,
+        status: serverCurrent.statusText || local.status,
+        detail: serverCurrent.detail || local.detail,
+        // 等待学校/导师处理时不给学生无意义的按钮
+        action: waiting ? '' : local.action,
+        actionHint: waiting ? '当前无需你操作，学校或导师处理后这里会自动更新。' : local.actionHint
+      }
+    }
+  }
+  return displaySteps.value.find((step) => step.primary)
+    || displaySteps.value.find((step) => step.tone === 'danger')
+    || displaySteps.value.find((step) => step.tone !== 'success')
+    || displaySteps.value[displaySteps.value.length - 1]
 })
 
 async function openCurrentTask() {
@@ -466,6 +505,7 @@ async function loadTopics(reset = true) {
 }
 
 const sections = {
+  journey: async () => { journey.value = await portalApi.graduationJourney() },
   my: async () => { my.value = await portalApi.domainMy('graduation') },
   taskbook: async () => { taskbook.value = await portalApi.graduationTaskbook() },
   proposal: async () => { proposal.value = await portalApi.graduationProposal() },
@@ -501,7 +541,9 @@ async function load() {
 }
 
 async function afterAction(keys) {
-  if (await refresh(keys).then((f) => f.length)) ui.notify('状态刷新失败，可点「刷新进度」重试')
+  // 任何办理动作后都同步刷新统一的办理进度，保证“当前要做”与小程序一致
+  const all = keys.includes('journey') ? keys : [...keys, 'journey']
+  if (await refresh(all).then((f) => f.length)) ui.notify('状态刷新失败，可点「刷新进度」重试')
 }
 
 async function handleAction(key) {

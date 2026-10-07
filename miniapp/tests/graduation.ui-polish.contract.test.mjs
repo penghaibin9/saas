@@ -50,12 +50,17 @@ test('mobile typography keeps 14–16px primary text and 12–13px supporting te
   assert.match(css, /font-size:\s*var\(--font-size-sm\) !important/)
 })
 
-test('student main remains current-task first with real timeline and PC-only large-file boundary', () => {
+test('student main is current-task first from the shared server journey, with ordered steps', () => {
   const page = read('pages/student/graduation/index.vue')
-  assert.match(page, /<MobileActionCard[\s\S]*?:title="g\.primaryAction\.title"/)
-  assert.match(page, /<MobileTimeline :nodes="g\.nodes"/)
+  // “当前要做”来自后端统一派生（与学生 PC 同源），不再按 stage 在前端写死
+  assert.match(page, /studentApi\.getGraduationJourney\(\)/)
+  assert.match(page, /<MobileActionCard[\s\S]*?:title="currentTitle"/)
+  assert.match(page, /v-for="step in journey\.steps"/)
+  assert.doesNotMatch(page, /GD_PRIMARY|g\.primaryAction/)
   assert.match(page, /title="需要重交"/)
-  assert.match(page, /大型论文、作品或源代码请到学生 PC 上传/)
+  // 论文可在手机提交；仅设计作品包、源代码等大型压缩包引导到电脑端
+  assert.match(page, /设计作品包、源代码等大型文件请到电脑端上传/)
+  assert.doesNotMatch(page, /论文定稿、作品和源代码请使用学生 PC 上传/)
 })
 
 test('teacher guide keeps continuous review and real-role handoff instead of a mini PC menu', () => {

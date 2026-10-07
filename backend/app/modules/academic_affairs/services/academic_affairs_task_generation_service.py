@@ -9,7 +9,7 @@ import math
 import re
 from datetime import datetime
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, exists, or_, select
 
 from app.core.exceptions import AppException
 from app.core.tenant_scoped import tenant_get
@@ -93,13 +93,16 @@ def resolve_teaching_weeks(db, term_id):
     )
 
 
-def _resolve_binding_for_class(db, program, binding, school_class):
+def _resolve_binding_for_class(db, program, binding, school_class, *, term_end=None):
+    scope = {
+        "tenant_id": _tid(),
+        "major_id": int(school_class.major_id) if school_class.major_id else binding.major_id,
+        "grade_year": str(school_class.grade or binding.grade_year or program.grade_year or "").strip(),
+        "class_id": int(school_class.id),
+    }
     resolution = program_activation.resolve_program_for_scope(
         db,
-        tenant_id=_tid(),
-        major_id=int(school_class.major_id) if school_class.major_id else binding.major_id,
-        grade_year=str(school_class.grade or binding.grade_year or program.grade_year or "").strip(),
-        class_id=int(school_class.id),
+        **scope,
     )
     if resolution.status != "RESOLVED":
         raise AppException(
@@ -115,10 +118,30 @@ def _resolve_binding_for_class(db, program, binding, school_class):
             },
             http_status=409,
         )
-    return (
+    selected = (
         int(resolution.program.id) == int(program.id)
         and int(resolution.binding.id) == int(binding.id)
     )
+    if not selected or term_end is None:
+        return selected
+    # Only current bindings are generated; they must also match the term-end replay.
+    historical = program_activation.resolve_program_for_scope(db, **scope, as_of=term_end)
+    if (historical.status != "RESOLVED" or not historical.program or not historical.binding
+            or int(historical.program.id) != int(program.id)
+            or int(historical.binding.id) != int(binding.id)):
+        raise AppException(
+            "DATA_CONFLICT",
+            f"班级“{school_class.class_name}”当前绑定在该学期结束时尚未生效，或期末适用的是另一方案版本，不能生成历史学期教学任务",
+            details={
+                "blocker": "PROGRAM_BINDING_NOT_EFFECTIVE_AT_TERM_END",
+                "classId": str(school_class.id),
+                "programId": str(program.id),
+                "bindingId": str(binding.id),
+                "historicalRule": historical.rule,
+            },
+            http_status=409,
+        )
+    return True
 
 
 def _editable_batch_conditions(batch_model, term_id: int, college_id: int | None):
@@ -163,16 +186,9 @@ def _choose_editable_batch(candidates, *, term_id: int, college_id: int | None):
 
 
 def _college_editable_batch_integrity_statement(batch):
-    """Return one bounded query for legacy college-batch scope contamination.
+    """责任来自批次；核对正式课程/成班来源，不把跨院学生误作责任污染。"""
+    from app.models import AaCourse, AaTeachingClass, AaTeachingTask, SchoolClass
 
-    Before A-C4 introduces an explicit formation snapshot, every task already
-    present in a college-scoped editable batch must still be provably tied to an
-    administrative class whose major belongs to that same management college.
-    Classless tasks are intentionally rejected here rather than guessed legal.
-    """
-    from app.models import AaTeachingTask, Major, SchoolClass
-
-    college_id = int(batch.college_id)
     tenant_id = _tid()
     return (
         select(AaTeachingTask.id)
@@ -185,11 +201,11 @@ def _college_editable_batch_integrity_statement(batch):
             ),
         )
         .outerjoin(
-            Major,
+            AaCourse,
             and_(
-                Major.id == SchoolClass.major_id,
-                Major.tenant_id == tenant_id,
-                Major.is_deleted.is_(False),
+                AaCourse.id == AaTeachingTask.course_id,
+                AaCourse.tenant_id == tenant_id,
+                AaCourse.is_deleted.is_(False),
             ),
         )
         .where(
@@ -197,10 +213,20 @@ def _college_editable_batch_integrity_statement(batch):
             AaTeachingTask.batch_id == int(batch.id),
             AaTeachingTask.is_deleted.is_(False),
             or_(
-                AaTeachingTask.class_id.is_(None),
-                SchoolClass.id.is_(None),
-                Major.id.is_(None),
-                Major.college_id != college_id,
+                AaCourse.id.is_(None),
+                and_(AaTeachingTask.class_id.is_not(None), SchoolClass.id.is_(None)),
+                and_(
+                    AaTeachingTask.class_id.is_(None),
+                    or_(AaTeachingTask.formation_mode.is_(None),
+                        AaTeachingTask.formation_mode.not_in(("SELECTABLE", "MERGED", "RETAKE", "LAYERED"))),
+                    ~exists(select(AaTeachingClass.id).where(
+                        AaTeachingClass.tenant_id == tenant_id,
+                        AaTeachingClass.teaching_task_id == AaTeachingTask.id,
+                        AaTeachingClass.term_id == int(batch.term_id),
+                        AaTeachingClass.course_id == AaTeachingTask.course_id,
+                        AaTeachingClass.is_deleted.is_(False),
+                    )),
+                ),
             ),
         )
         .order_by(AaTeachingTask.id.asc())
@@ -232,8 +258,15 @@ def _guard_college_editable_batch_integrity(db, batch) -> None:
     )
 
 
-def _snapshot_program_course_formation(program_course) -> str | None:
-    """Copy only the explicit source-row formation; missing legacy truth stays NULL."""
+def _snapshot_program_course_formation(program_course, *, db=None, source_snapshot=None) -> str | None:
+    """Copy the exact source or confirmed evidence; unresolved history stays NULL."""
+    if db is not None:
+        from .academic_affairs_task_formation_provenance_service import resolve_program_course_formation_snapshot
+        snapshot = source_snapshot if source_snapshot is not None else resolve_program_course_formation_snapshot(db, program_course, tenant_id=_tid())
+        if snapshot["status"] == "CONFLICT":
+            raise AppException("DATA_CONFLICT", "方案课程形成方式依据发生冲突，请核对正式来源",
+                details={"blockers": snapshot["blockers"]}, http_status=409)
+        return snapshot["formationMode"] or None
     try:
         return normalize_formation_mode(getattr(program_course, "formation_mode", None))
     except ValueError as exc:
@@ -249,50 +282,129 @@ def _snapshot_program_course_formation(program_course) -> str | None:
         ) from exc
 
 
+def _existing_term_task_rows(db, *, term_id: int, course_id: int, class_id: int):
+    """Current-read lookup across all live batches for one tenant/term/course/class."""
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
+    from .academic_affairs_task_execution_authority import independent_task_condition
+
+    return db.execute(
+        select(AaTeachingTask.id, AaTeachingTaskBatch.id, AaTeachingTaskBatch.college_id)
+        .join(AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id)
+        .where(
+            AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTask.course_id == int(course_id),
+            AaTeachingTask.class_id == int(class_id),
+            independent_task_condition(AaTeachingTask),
+            AaTeachingTaskBatch.tenant_id == _tid(),
+            AaTeachingTaskBatch.term_id == int(term_id),
+            AaTeachingTaskBatch.is_deleted.is_(False),
+        )
+        .order_by(AaTeachingTask.id.asc())
+        .limit(2)
+        .with_for_update()
+    ).all()
+
+
+def _locked_term_statement(term_id: int):
+    """Lock and refresh an already-loaded term so archive races fail closed."""
+    from app.models import AaTerm
+
+    return (
+        select(AaTerm)
+        .where(
+            AaTerm.id == int(term_id),
+            AaTerm.tenant_id == _tid(),
+            AaTerm.is_deleted.is_(False),
+        )
+        .execution_options(populate_existing=True)
+        .with_for_update()
+    )
+
+
+def _requested_generation_class(db, class_id):
+    """Resolve an explicit active class without conflating student ownership with course ownership."""
+    if class_id is None:
+        return None
+    if not isinstance(class_id, str) or not re.fullmatch(r"[1-9][0-9]*", class_id):
+        raise AppException("VALIDATION_ERROR", "行政班编号必须为正整数字符串")
+    try:
+        identity = int(class_id)
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", "行政班编号无效") from None
+    from app.models import College, Major, SchoolClass
+
+    target = db.scalars(select(SchoolClass).join(
+        Major, Major.id == SchoolClass.major_id,
+    ).join(College, College.id == Major.college_id).where(
+        SchoolClass.id == identity, SchoolClass.tenant_id == _tid(),
+        SchoolClass.is_deleted.is_(False), SchoolClass.status == "ACTIVE",
+        SchoolClass.class_status == "NORMAL",
+        Major.tenant_id == _tid(), Major.is_deleted.is_(False), Major.status == "ACTIVE",
+        College.tenant_id == _tid(), College.is_deleted.is_(False), College.status == "ACTIVE",
+    ).with_for_update()).first()
+    if target is None:
+        raise AppException("NO_DATA_SCOPE", "该行政班不存在或已停用", http_status=403)
+    return target
+
+
 def generate_batch_tx(db, body, user) -> dict:
     term_id = int(body.termId)
-    college_id = int(body.collegeId) if getattr(body, "collegeId", None) else None
 
     from app.models import (
         AaCourse, AaProgram, AaProgramBinding, AaProgramCourse, AaTeachingTask,
         AaTeachingTaskBatch, AaTerm, SchoolClass,
     )
     from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
-    from app.modules.academic_affairs.services.academic_affairs_stats_service import _resolve_scope, _validate_college_param
+    from .academic_affairs_task_service import _generation_college
+
+    college_id, scope = _generation_college(db, user, getattr(body, "collegeId", None))
 
     guard_term_writable(db, term_id)
-    term = tenant_get(db, AaTerm, term_id, tenant_id=_tid())
+    # Serializes school-wide and college-specific generation for this tenant/term.
+    # Recheck after acquiring the row lock because archive may race the first guard.
+    term = db.scalars(_locked_term_statement(term_id)).first()
     if not term or term.is_deleted or term.tenant_id != _tid():
         raise AppException("VALIDATION_ERROR", "学期不存在，无法生成教学任务")
+    if str(term.status or "").upper() == "ARCHIVED":
+        raise AppException("TERM_ARCHIVED", "该学期已归档封存，禁止修改", http_status=409)
+    target_class = _requested_generation_class(db, getattr(body, "classId", None))
     teaching_weeks, week_source = resolve_teaching_weeks(db, term_id)
-    scope = _resolve_scope(user, db)
-    _validate_college_param(scope, college_id)
-    if not scope.all and not college_id:
-        if len(scope.college_ids) == 1:
-            college_id = next(iter(scope.college_ids))
-        else:
-            raise AppException("VALIDATION_ERROR", "请指定学院后再生成教学任务")
-
     conditions = _editable_batch_conditions(AaTeachingTaskBatch, term_id, college_id)
     candidates = db.scalars(
         select(AaTeachingTaskBatch)
         .where(*conditions)
         .order_by(AaTeachingTaskBatch.id.asc())
-        .limit(2)
+        .limit(2).with_for_update()
     ).all()
     batch = _choose_editable_batch(candidates, term_id=term_id, college_id=college_id)
     if batch and college_id is not None:
         _guard_college_editable_batch_integrity(db, batch)
-    if not batch:
-        batch = AaTeachingTaskBatch(
+
+    def create_batch():
+        from .academic_affairs_task_batch_inventory_service import canonical_editable_scope_key
+        from sqlalchemy.exc import IntegrityError
+        created = AaTeachingTaskBatch(
             tenant_id=_tid(), term_id=term_id,
             batch_name=getattr(body, "batchName", None) or f"学期{term_id}教学任务",
             college_id=college_id, generate_at=datetime.utcnow(), status="DRAFT",
+            editable_scope_key=canonical_editable_scope_key(term_id, college_id),
         )
-        db.add(batch)
-        db.flush()
+        db.add(created)
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            if "uk_aa_task_batch_editable_scope" not in str(exc.orig):
+                raise
+            raise AppException("DATA_CONFLICT", "该学院同时产生了可编辑批次，请刷新后继续原批次") from exc
+        return created
 
     made = 0
+    skipped_existing = 0
+    expected_pairs = set()
+    seen_pairs = set()
+    same_scope_existing_batch_ids = set()
     unresolved_classes = 0
     unresolved_program_courses = 0
     out_of_term_courses = 0
@@ -300,7 +412,7 @@ def generate_batch_tx(db, body, user) -> dict:
         AaProgram.tenant_id == _tid(),
         AaProgram.status.in_(sorted(program_activation.CURRENT_EFFECTIVE_PROGRAM_STATUSES)),
         AaProgram.is_deleted.is_(False),
-    )).all()
+    ).order_by(AaProgram.id).with_for_update().execution_options(populate_existing=True)).all()
     for program in programs:
         bindings = db.scalars(select(AaProgramBinding).where(
             AaProgramBinding.tenant_id == _tid(),
@@ -308,13 +420,32 @@ def generate_batch_tx(db, body, user) -> dict:
             AaProgramBinding.status == "ACTIVE",
             AaProgramBinding.is_deleted.is_(False),
         )).all()
-        courses = db.scalars(select(AaProgramCourse).where(
+        course_query = select(AaProgramCourse).where(
             AaProgramCourse.tenant_id == _tid(),
             AaProgramCourse.program_id == program.id,
             AaProgramCourse.is_deleted.is_(False),
-        )).all()
+        )
+        if college_id:
+            course_query = course_query.join(AaCourse, AaCourse.id == AaProgramCourse.course_id).where(
+                AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
+                AaCourse.owner_college_id == college_id,
+            )
+        courses = db.scalars(course_query.order_by(AaProgramCourse.id).with_for_update()
+            .execution_options(populate_existing=True)).all()
+        if not courses:
+            continue
+        from .academic_affairs_task_formation_provenance_service import resolve_program_course_formation_snapshots
+        formation_snapshots = resolve_program_course_formation_snapshots(db, courses, tenant_id=_tid(), lock=True)
         for binding in bindings:
-            if binding.class_id:
+            if target_class is not None:
+                if binding.class_id:
+                    if int(binding.class_id) != int(target_class.id):
+                        continue
+                elif (int(binding.major_id or 0) != int(target_class.major_id)
+                      or str(binding.grade_year or "") != str(target_class.grade or "")):
+                    continue
+                target_classes = [target_class]
+            elif binding.class_id:
                 target_classes = [tenant_get(db, SchoolClass, int(binding.class_id), tenant_id=_tid())]
             else:
                 target_classes = db.scalars(select(SchoolClass).where(
@@ -327,12 +458,7 @@ def generate_batch_tx(db, body, user) -> dict:
             for school_class in target_classes:
                 if not school_class:
                     continue
-                if college_id:
-                    from app.models import Major
-                    major = tenant_get(db, Major, int(school_class.major_id), tenant_id=_tid()) if school_class.major_id else None
-                    if not major or major.college_id != college_id:
-                        continue
-                if not scope.all and scope.class_ids and school_class.id not in scope.class_ids:
+                if not scope.all and not scope.college_ids and scope.class_ids and school_class.id not in scope.class_ids:
                     continue
                 if not _resolve_binding_for_class(db, program, binding, school_class):
                     continue
@@ -340,6 +466,7 @@ def generate_batch_tx(db, body, user) -> dict:
                 if current_semester is None:
                     unresolved_classes += 1
                     continue
+                binding_time_checked = False
                 for program_course in courses:
                     try:
                         open_term_no = int(program_course.open_term_no)
@@ -352,24 +479,51 @@ def generate_batch_tx(db, body, user) -> dict:
                     if not program_course.course_id:
                         unresolved_program_courses += 1
                         continue
-                    existing = db.scalars(select(AaTeachingTask).where(
-                        AaTeachingTask.tenant_id == _tid(),
-                        AaTeachingTask.batch_id == batch.id,
-                        AaTeachingTask.course_id == program_course.course_id,
-                        AaTeachingTask.class_id == school_class.id,
-                        AaTeachingTask.is_deleted.is_(False),
-                    )).first()
-                    if existing:
+                    pair = (int(program_course.course_id), int(school_class.id))
+                    if pair in seen_pairs:
+                        continue
+                    seen_pairs.add(pair)
+                    expected_pairs.add(pair)
+                    existing_rows = _existing_term_task_rows(
+                        db, term_id=term_id, course_id=pair[0], class_id=pair[1],
+                    )
+                    if len(existing_rows) > 1:
+                        raise AppException(
+                            "DATA_CONFLICT",
+                            "本学期同一课程与行政班已存在多条正式任务，已停止生成，请核对现有批次",
+                            details={"blocker": "TASK_GENERATION_EXISTING_TASK_CONFLICT"},
+                            http_status=409,
+                        )
+                    if existing_rows:
+                        _task_id, existing_batch_id, existing_college_id = existing_rows[0]
+                        if existing_college_id != college_id:
+                            raise AppException(
+                                "DATA_CONFLICT",
+                                "目标课程与行政班已落入其他管理范围的正式批次，已停止生成，请由该范围责任人核对",
+                                details={"blocker": "TASK_GENERATION_SCOPE_CONFLICT"},
+                                http_status=409,
+                            )
+                        skipped_existing += 1
+                        same_scope_existing_batch_ids.add(str(existing_batch_id))
                         continue
                     course = tenant_get(db, AaCourse, int(program_course.course_id), tenant_id=_tid())
                     if not course or course.is_deleted or course.tenant_id != _tid():
                         unresolved_program_courses += 1
                         continue
-                    formation_mode = _snapshot_program_course_formation(program_course)
+                    if not binding_time_checked:
+                        if not _resolve_binding_for_class(
+                            db, program, binding, school_class, term_end=term.end_date
+                        ):
+                            continue
+                        binding_time_checked = True
+                    formation_mode = _snapshot_program_course_formation(program_course, db=db,
+                        source_snapshot=formation_snapshots[program_course.id])
                     total_hours = int(course.hours_total or 0)
                     course_code = course.course_code or ""
                     course_name = course.course_name or ""
                     weekly_hours = math.ceil(total_hours / teaching_weeks) if total_hours else None
+                    if batch is None:
+                        batch = create_batch()
                     db.add(AaTeachingTask(
                         tenant_id=_tid(), batch_id=batch.id,
                         course_id=program_course.course_id,
@@ -384,8 +538,36 @@ def generate_batch_tx(db, body, user) -> dict:
                     ))
                     made += 1
 
+    if target_class is not None and not expected_pairs:
+        raise AppException(
+            "PROGRAM_NOT_READY", "该行政班没有适用于本学期的生效方案课程，不能生成教学任务",
+            http_status=409,
+        )
+
+    if (
+        made == 0
+        and expected_pairs
+        and skipped_existing == len(expected_pairs)
+        and (batch is None or str(batch.id) not in same_scope_existing_batch_ids)
+    ):
+        visible_batch_ids = sorted(same_scope_existing_batch_ids)
+        reference = f"现有正式批次 #{visible_batch_ids[0]}" if visible_batch_ids else "现有正式批次"
+        raise AppException(
+            "DATA_CONFLICT",
+            f"本学期应开课程已存在于{reference}，未新建空批次或重复任务；请在本学院任务列表核对",
+            details={
+                "blocker": "TASK_GENERATION_ALREADY_EXISTS",
+                "existingTaskCount": skipped_existing,
+            },
+            http_status=409,
+        )
+    if batch is None:
+        # Preserve the existing diagnostic batch behavior when no target-term pair
+        # could be resolved (for example all source courses are out of term).
+        batch = create_batch()
+
     audit_detail = (
-        f"+{made};teachingWeeks={teaching_weeks};source={week_source};"
+        f"+{made};skippedExisting={skipped_existing};teachingWeeks={teaching_weeks};source={week_source};"
         f"unresolvedClasses={unresolved_classes};"
         f"unresolvedProgramCourses={unresolved_program_courses};"
         f"outOfTermSkipped={out_of_term_courses}"
@@ -393,7 +575,7 @@ def generate_batch_tx(db, body, user) -> dict:
     core._audit(db, "AA_TASK_BATCH", batch.id, "GENERATE", audit_detail)
     return {
         "batchId": str(batch.id), "batchName": batch.batch_name, "status": batch.status,
-        "tasksGenerated": made, "teachingWeeks": teaching_weeks,
+        "tasksGenerated": made, "tasksSkippedExisting": skipped_existing, "teachingWeeks": teaching_weeks,
         "teachingWeeksSource": week_source, "unresolvedClasses": unresolved_classes,
         "unresolvedProgramCourses": unresolved_program_courses,
         "outOfTermCoursesSkipped": out_of_term_courses,

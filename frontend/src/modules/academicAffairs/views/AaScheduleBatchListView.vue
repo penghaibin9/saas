@@ -74,9 +74,9 @@
         </template>
         <template #cell-actions="{ row }">
           <div class="aa-actions">
-            <button class="mp-link" @click="openBatch(row)">{{ ['PUBLISHED', 'ARCHIVED'].includes(row.status) ? '查看已发布课表' : '继续排课' }}</button>
+            <button class="mp-link" @click="openBatch(row)">{{ ['DRAFT', 'PRE_PUBLISHED'].includes(row.status) ? '继续排课' : ['PUBLISHED', 'ARCHIVED'].includes(row.status) ? '查看已发布课表' : '查看课表记录' }}</button>
             <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openWorkbench(row)">核对进度与补排</button>
-            <button v-if="!['PUBLISHED', 'ARCHIVED'].includes(row.status)" class="mp-link" @click="openBatch(row, 'views')">查看班级、教师与教室课表</button>
+            <button v-if="['DRAFT', 'PRE_PUBLISHED'].includes(row.status)" class="mp-link" @click="openBatch(row, 'views')">查看班级、教师与教室课表</button>
             <button v-if="row.status === 'DRAFT'" class="mp-link" :disabled="!!writingId" @click="act(row, 'pre')">预发布</button>
             <button v-if="row.status === 'PRE_PUBLISHED'" class="mp-link" :disabled="!!writingId" @click="act(row, 'pub')">发布</button>
             <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openChangeLedger(row)">调停课台账</button>
@@ -172,7 +172,7 @@ export default {
     },
     openBatch(row, view) {
       const returnToken = this.academicFlow?.captureReturn?.()
-      const page = view || (['PUBLISHED', 'ARCHIVED'].includes(row.status) ? 'views' : 'edit')
+      const page = ['DRAFT', 'PRE_PUBLISHED'].includes(row.status) && view !== 'views' ? 'edit' : 'views'
       this.$router.push({ path: `/admin/academic-affairs/schedule/${row.batchId}/${page}`, query: { ...(returnToken ? { returnToken } : {}) } })
     },
     openChangeLedger(row) { this.$router.push({ path: '/admin/academic-affairs/schedule-change', query: { termId: row.termId || '' } }) },

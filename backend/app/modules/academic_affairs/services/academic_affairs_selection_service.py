@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import datetime
@@ -173,17 +174,8 @@ def _counts_toward_capacity(status: str | None) -> bool:
     return status in (_REC_SELECTED, _REC_LOCKED)
 
 
-def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allow_reselect_closed=False):
-    from app.models import AaCourse, AaSelectionCourse
-    from app.modules.academic_affairs.services.academic_affairs_schedule_service import _weeks_overlap
-    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
-
-    if not is_enrolled(getattr(student, "student_status", None)):
-        raise AppException("NO_DATA_SCOPE", "当前学籍状态不可选课")
-    if batch.status != _BATCH_OPEN:
-        if not (allow_reselect_closed and batch.status == _BATCH_CLOSED):
-            raise _core._invalid("不在选课时间内")
-
+def _validate_apply_scope(batch, student):
+    """校验正式学籍事实中的学院、专业、年级与行政班组合范围。"""
     if batch.apply_scope_json:
         try:
             scope = json.loads(batch.apply_scope_json)
@@ -210,6 +202,31 @@ def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allo
             raise AppException("NO_DATA_SCOPE", "当前学生不在本轮选课专业范围内")
         if grade_years and str(getattr(student, "grade", "") or "") not in grade_years:
             raise AppException("NO_DATA_SCOPE", "当前学生不在本轮选课年级范围内")
+        if "classIds" in scope:
+            raw_class_ids = scope["classIds"]
+            if (not isinstance(raw_class_ids, list) or not raw_class_ids or
+                any(isinstance(value, bool) or not re.fullmatch(r"[1-9][0-9]*", str(value))
+                    for value in raw_class_ids)):
+                raise AppException(
+                    "DATA_CONFLICT", "选课批次适用班级范围格式错误",
+                    details={"batchId": str(getattr(batch, "id", "") or "")}, http_status=409,
+                )
+            class_id = getattr(student, "class_id", None)
+            if class_id is None or str(class_id) not in {str(value) for value in raw_class_ids}:
+                raise AppException("NO_DATA_SCOPE", "当前学生不在本轮选课班级范围内")
+
+
+def _validate_enroll(db, batch, course, student, my_records, add_credit, *, allow_reselect_closed=False):
+    from app.models import AaCourse, AaSelectionCourse
+    from app.modules.academic_affairs.services.academic_affairs_schedule_service import _weeks_overlap
+    from app.modules.academic_affairs.services.academic_affairs_status_service import is_enrolled
+
+    if not is_enrolled(getattr(student, "student_status", None)):
+        raise AppException("NO_DATA_SCOPE", "当前学籍状态不可选课")
+    if batch.status != _BATCH_OPEN:
+        if not (allow_reselect_closed and batch.status == _BATCH_CLOSED):
+            raise _core._invalid("不在选课时间内")
+    _validate_apply_scope(batch, student)
 
     selected_course_ids = {
         int(r.selection_course_id) for r in my_records

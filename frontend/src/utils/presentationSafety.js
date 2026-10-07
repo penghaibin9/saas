@@ -38,6 +38,7 @@ function errorPageState(error, status, bizCode, message) {
   if (denied || (legacy && /^(当前账号(?:没有执行此操作的权限|无权访问)|当前身份无权查看|暂无访问权限|没有权限|权限不足|不在授权范围|当前账号尚未配置可管理范围)/.test(message))) return 'forbidden'
   if (legacy && /^(登录(?:状态)?已失效|登录已过期|会话已超时)/.test(message)) return 'unauthorized'
   if (legacy && /^(网络异常|网络请求失败|网络连接失败)/.test(message)) return 'offline'
+  if (legacy && /^(?:Failed to fetch|NetworkError when attempting to fetch resource\.?)$/i.test(message)) return 'offline'
   return 'error'
 }
 

@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, time
+from datetime import datetime
 
 from sqlalchemy import func, select
 
@@ -329,21 +329,6 @@ def _apply_grade(db, batch, case, actor: int) -> dict:
     }
 
 
-def _term_bounds(db, batch):
-    if not getattr(batch, "term_id", None):
-        return None, None
-    from app.models import AaTerm
-
-    term = db.query(AaTerm).filter(
-        AaTerm.id == int(batch.term_id), AaTerm.tenant_id == _tid(), AaTerm.is_deleted.is_(False)
-    ).first()
-    if not term or not term.start_date or not term.end_date:
-        return None, None
-    start = term.start_date if isinstance(term.start_date, datetime) else datetime.combine(term.start_date, time.min)
-    end = term.end_date if isinstance(term.end_date, datetime) else datetime.combine(term.end_date, time.max)
-    return start, end
-
-
 def _decision_snapshot(row) -> dict:
     return {
         "decisionId": str(row.id),
@@ -362,6 +347,7 @@ def _apply_graduation(db, batch, case, actor: int) -> dict:
     from app.models import (
         AaGraduationAuditBatch,
         AaGraduationAuditResult,
+        AaTerm,
         GraduationDecisionFact,
         GraduationEvaluationRun,
         StudentProfile,
@@ -387,14 +373,18 @@ def _apply_graduation(db, batch, case, actor: int) -> dict:
             http_status=409,
         )
 
+    from .academic_affairs_graduation_term_scope import batch_term_condition
+    term = db.query(AaTerm).filter(
+        AaTerm.id == getattr(batch, "term_id", None),
+        AaTerm.tenant_id == _tid(), AaTerm.is_deleted.is_(False),
+    ).first()
     grad_batch = db.query(AaGraduationAuditBatch).filter(
         AaGraduationAuditBatch.id == int(previous.batch_id),
         AaGraduationAuditBatch.tenant_id == _tid(),
         AaGraduationAuditBatch.is_deleted.is_(False),
+        batch_term_condition(term),
     ).first()
-    start, end = _term_bounds(db, batch)
-    occurred = (getattr(grad_batch, "generate_at", None) or getattr(grad_batch, "created_at", None)) if grad_batch else None
-    if not grad_batch or not start or not end or not occurred or not (start <= occurred <= end):
+    if not grad_batch:
         raise AppException(
             "DATA_CONFLICT",
             "待纠错毕业决定无法证明属于该归档学期，拒绝跨学期/无边界纠错",

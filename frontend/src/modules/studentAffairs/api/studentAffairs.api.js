@@ -669,6 +669,11 @@ export const studentAffairsApi = {
     return callStrict(() => request(`/student-affairs/students/${studentId}/profile`))
   },
 
+  /** 建立在校服务台账，仅关联现有学籍。 */
+  createCampusServiceLedger(studentId) {
+    return callStrict(() => request('/campus-service/students', { method: 'POST', body: { studentId: String(studentId) } }))
+  },
+
   /** 成长时间线（360，各域进360事件倒序）。eventType 按 module 过滤（leave/aid/funding/discipline/risk/talk）。 */
   getStudentTimeline(studentId, { eventType = '', page = 1, pageSize = 50 } = {}) {
     const params = { page, pageSize }

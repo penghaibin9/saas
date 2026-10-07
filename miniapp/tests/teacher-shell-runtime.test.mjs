@@ -49,14 +49,15 @@ test('service search spans categories; late identity responses cannot replace a 
   const old = page.load(); generation++
   session.currentRole = 'academic'
   session.roleConfig = { label: '教务老师', quickActions: [{ key: 'academicTask', label: '教学任务确认' }] }
-  const latest = page.load(); pending[1].resolve({}); await latest; pending[0].resolve({}); await old
-  assert.equal(page.services.length, 1); assert.equal(page.roleLabel, '教务老师')
+  const latest = page.load(); pending[1].resolve({ currentRole: { roleCode: 'ACADEMIC_TEACHER', roleName: '任课教师' } }); await latest
+  pending[0].resolve({ currentRole: { roleCode: 'COUNSELOR', roleName: '辅导员' } }); await old
+  assert.equal(page.services.length, 1); assert.equal(page.roleLabel, '任课教师')
   page.selectedCategory = '日常事务'; page.keyword = '教学'
   assert.equal(page.groups[0].items[0].key, 'academicTask')
   page.open(page.services[0]); assert.equal(navigated[0], '/pages/teacher/academic-task/index')
   session.currentRole = 'counselor'; page.open(page.services[0]); assert.equal(navigated.length, 1)
   const failed = page.load(); pending[2].reject(new Error('offline')); await failed
-  assert.equal(page.state, 'error'); assert.equal(page.services.length, 0)
+  assert.equal(page.state, 'error'); assert.equal(page.services.length, 0); assert.equal(page.roleLabel, '')
 })
 
 function messages() {
@@ -129,7 +130,7 @@ test('returning during a workbench load starts a current request and restores re
     tenantBrandConfig: {}, teacherDateText: () => '', teacherGreeting: () => '', ensureTeacherPerformanceApi() {},
     teacherServices, teacherVisual, teacherServiceRoute, currentSessionGeneration: () => 1,
     useSessionStore: () => session, useInternshipContextStore: () => ({}), getTeacherWorkbenchVersion: () => 1,
-    me: () => deferred(identities), teacherApi: { getWorkbench: async () => ({ pendingTotal: 3, dueSoon: [] }) },
+    me: () => deferred(identities), teacherApi: { getWorkbench: async () => ({ contextTitle: '教务老师', pendingTotal: 3, dueSoon: [] }) },
     normalizeError: () => ({ pageState: 'error' }), getTeacherMessagesPage: async () => ({ items: [] }),
     deadlineText() {}, isOverdue() {}, fromNow() {}, messageModuleLabel() {}, go() {}, toast() {}
   })
@@ -138,10 +139,12 @@ test('returning during a workbench load starts a current request and restores re
   page._pageActive = true
   const latest = page.load()
   assert.equal(identities.length, 2)
-  identities[1].resolve({}); await latest
+  identities[1].resolve({ currentRole: { roleCode: 'ACADEMIC_TEACHER', roleName: '任课教师' } }); await latest
   assert.equal(page.state, 'ready'); assert.equal(page.user.name, '真实教师'); assert.equal(page.todoBadge, 3)
-  identities[0].resolve({}); await old
+  assert.equal(page.currentRoleTitle, '任课教师')
+  identities[0].resolve({ currentRole: { roleCode: 'ACADEMIC_ADMIN', roleName: '教务老师' } }); await old
   assert.equal(page.state, 'ready'); assert.equal(page.todoBadge, 3)
+  assert.equal(page.currentRoleTitle, '任课教师')
 })
 
 test('teacher shell keeps page layout outside component slots for WeChat style isolation', () => {

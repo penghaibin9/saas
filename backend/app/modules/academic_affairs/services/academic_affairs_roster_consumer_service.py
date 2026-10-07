@@ -116,6 +116,8 @@ def _lock_teaching_class_for_task(db, teaching_task_id: int, *, create_if_missin
     from app.models import AaTeachingClass
 
     task_id = int(teaching_task_id)
+    from .academic_affairs_task_execution_authority import require_independent_task
+    require_independent_task(db, task_id)
     row = db.query(AaTeachingClass).filter(
         AaTeachingClass.tenant_id == _tid(),
         AaTeachingClass.teaching_task_id == task_id,
@@ -148,6 +150,8 @@ def _same_resolved_roster(left: dict, right: dict) -> bool:
 
 def resolve_versioned_roster(db, teaching_task_id: int) -> dict:
     """确保教学任务已有独立教学班与当前LOCKED版本，再返回同一权威名单。"""
+    from .academic_affairs_task_execution_authority import require_independent_task
+    require_independent_task(db, teaching_task_id)
     teaching_class_service.ensure_teaching_class_for_task(db, int(teaching_task_id))
     roster = teaching_class_service.resolve_teaching_task_roster(db, int(teaching_task_id))
     if not roster.get("ready"):
@@ -236,6 +240,8 @@ def freeze_consumer_snapshot(
     """
     from app.models.academic_affairs_roster_consumer import AaRosterConsumerSnapshot
 
+    from .academic_affairs_task_execution_authority import require_independent_task
+    require_independent_task(db, teaching_task_id)
     kind = _kind(consumer_type)
     _lock_teaching_class_for_task(
         db,
@@ -332,6 +338,8 @@ def require_consumer_snapshot_current(
     teaching_task_id: int,
 ) -> tuple[dict, dict]:
     """要求消费者已有ACTIVE快照，且仍与教学班当前名单版本完全一致。"""
+    from .academic_affairs_task_execution_authority import require_independent_task
+    require_independent_task(db, teaching_task_id)
     kind = _kind(consumer_type)
     row = _active_row(_consumer_rows(db, kind, int(consumer_id)))
     if not row:

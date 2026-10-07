@@ -25,7 +25,7 @@ def _scope(user, db):
     ctx = build_affairs_context(user, db)
     scope_type = str(getattr(ctx, "scope_type", None) or "NONE").upper()
     if scope_type in {"NONE", "BLOCKED"}:
-        raise no_data_scope("当前身份未配置可管理的学院或班级范围")
+        raise no_data_scope("当前身份未配置可管理的学院、专业或班级范围")
     return ctx
 
 
@@ -35,6 +35,16 @@ def _allowed_major_ids(db, scope) -> set[int]:
     if str(getattr(scope, "scope_type", "")).upper() == "TENANT_ALL":
         return set()
     major_ids = set()
+    explicit_major_ids = {int(v) for v in (getattr(scope, "major_ids", None) or []) if str(v).isdigit()}
+    if explicit_major_ids:
+        major_ids.update(
+            int(value) for (value,) in db.query(Major.id).filter(
+                Major.tenant_id == _tid(),
+                Major.id.in_(sorted(explicit_major_ids)),
+                Major.is_deleted.is_(False),
+                Major.status == "ACTIVE",
+            ).all()
+        )
     college_ids = {int(v) for v in (getattr(scope, "college_ids", None) or []) if str(v).isdigit()}
     class_ids = {int(v) for v in (getattr(scope, "class_ids", None) or []) if str(v).isdigit()}
     if college_ids:
@@ -72,7 +82,7 @@ def _ensure_program_scope(db, user, program_id: int):
         return scope, program
     allowed_major_ids = _allowed_major_ids(db, scope)
     if not program.major_id or int(program.major_id) not in allowed_major_ids:
-        raise no_data_scope("该培养方案不在当前学院或班级数据范围内")
+        raise no_data_scope("该培养方案不在当前学院、专业或班级数据范围内")
     return scope, program
 
 
@@ -97,11 +107,12 @@ def _refresh_summary(result: dict) -> dict:
     return result
 
 
-def validate_program_db(db, program_id: int) -> dict:
+def validate_program_db(db, program_id: int, *, cache=None) -> dict:
     from app.models import AaProgram, AaProgramBinding, AaProgramPracticeSegment, SchoolClass
 
-    result = validator.validate_program_db(db, program_id)
-    program = db.query(AaProgram).filter(
+    result = validator.validate_program_db(db, program_id, **({"cache": cache} if cache is not None else {}))
+    facts = cache.get(("PROGRAM_VALIDATION_FACTS", _tid(), int(program_id))) if cache is not None else None
+    program = facts[0] if facts is not None else db.query(AaProgram).filter(
         AaProgram.id == int(program_id),
         AaProgram.tenant_id == _tid(),
         AaProgram.is_deleted.is_(False),
@@ -109,7 +120,7 @@ def validate_program_db(db, program_id: int) -> dict:
     if not program:
         raise not_found("培养方案不存在")
 
-    practices = db.query(AaProgramPracticeSegment).filter(
+    practices = facts[1] if facts is not None else db.query(AaProgramPracticeSegment).filter(
         AaProgramPracticeSegment.tenant_id == _tid(),
         AaProgramPracticeSegment.program_id == int(program_id),
         AaProgramPracticeSegment.status == "ACTIVE",
@@ -238,6 +249,7 @@ def validate_program(user, program_id: int) -> dict:
     with session() as db:
         role = str((user or {}).get("currentRoleCode") or "").upper()
         if role == "ACADEMIC_TEACHER":
+            _ensure_program_scope(db, user, program_id)
             from app.models import AaProgram
             program = db.query(AaProgram).filter(
                 AaProgram.id == int(program_id),
@@ -397,6 +409,9 @@ def opening_differences(user, term_id: int, major_id: int | None = None, grade_y
         ).all() if batch_ids else []
         if not tenant_all:
             tasks = [task for task in tasks if task.class_id and int(task.class_id) in allowed_class_ids]
+        from .academic_affairs_task_execution_authority import load_execution_handoffs
+        handoffs = load_execution_handoffs(db, [task.id for task in tasks])
+        tasks = [task for task in tasks if int(task.id) not in handoffs]
         task_map = defaultdict(list)
         for task in tasks:
             task_map[(int(task.course_id), int(task.class_id or 0))].append(task)

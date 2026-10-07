@@ -426,6 +426,8 @@ def create_session(user, body) -> dict:
                         week=int(occurrence["weekNo"]),
                     )
 
+            from .academic_affairs_task_execution_authority import require_independent_task
+            task = require_independent_task(db, task)
             official = public.resolve_versioned_roster(db, int(task.id))
             roster_source = _ADMIN_SPECIAL if is_admin_special else official["source"]
             roster = [{

@@ -23,6 +23,7 @@ export const SCHEDULE_BATCH_STATUS = {
   DRAFT: '编制中',
   PRE_PUBLISHED: '预发布',
   PUBLISHED: '已发布',
+  SUPERSEDED: '已被新版本替代',
   ARCHIVED: '已归档',
   VOIDED: '已作废'
 }

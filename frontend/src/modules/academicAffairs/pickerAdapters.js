@@ -15,6 +15,7 @@ import {
   academicAffairsArchiveApi
 } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicStatusLabel } from './constants/academic-display.constants.js'
+import { SCHEDULE_BATCH_STATUS } from './constants/teaching.js'
 
 function assertOk(res) {
   if (!res || res.code !== 0) throw new Error(res?.message || '选择器数据加载失败')
@@ -211,7 +212,7 @@ const scheduleBatch = searchable(
   (keyword, query) => academicAffairsApi.getScheduleBatches({ ...query, resolveValue: undefined, keyword, page: 1, pageSize: 100 }),
   {
     value: ['batchId', 'id'], label: (x) => firstDefined(x, ['batchName', 'name']),
-    desc: (x) => [x.termName, x.status].filter(Boolean).join(' · ')
+    desc: (x) => [x.termName, x.status ? (SCHEDULE_BATCH_STATUS[x.status] || '状态待确认') : ''].filter(Boolean).join(' · ')
   }
 )
 

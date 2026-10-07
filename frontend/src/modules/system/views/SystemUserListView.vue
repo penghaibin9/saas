@@ -329,7 +329,8 @@ export default {
       columnsConfig: this.ctx.fieldColumns[accountEntityKey].map((c) => ({ ...c, visible: c.defaultVisible })),
       form: {
         open: false, id: '', value: EMPTY_FORM(), errors: {}, submitting: false,
-        loading: false, scopeLoading: false, roleAssignments: [], originalRoleAssignments: []
+        loading: false, scopeLoading: false, roleAssignments: [], originalRoleAssignments: [],
+        version: null, versionConflict: false
       },
       scopeOrgTree: [],
       scopeStudentOptions: [],
@@ -549,6 +550,8 @@ export default {
         value: { userNo: row.userNo, name: row.name, phone: row.phone },
         roleAssignments: [],
         originalRoleAssignments: [],
+        version: null,
+        versionConflict: false,
         errors: {},
         submitting: false,
         loading: true,
@@ -567,6 +570,7 @@ export default {
       if (orgRes.code === 0) this.scopeOrgTree = orgRes.data || []
       else toast.error(`组织范围加载失败：${orgRes.message}`)
       const detail = detailRes.data
+      this.form.version = Number.isSafeInteger(detail.version) && detail.version >= 0 ? detail.version : null
       const assignments = (detail.roleAssignments || []).map((item) => ({
         ...item,
         scopeIds: (item.scopeIds || []).map(String)
@@ -589,6 +593,10 @@ export default {
     },
     async submitForm() {
       if (this.form.submitting || this.form.loading || this.form.scopeLoading) return
+      if (this.form.versionConflict) {
+        toast.error('账号已被其他管理员更新，已保留输入；请重新打开账号核对后再保存')
+        return
+      }
       if (!this.form.id) {
         toast.error('师生账号只能通过统一导入入口创建')
         return
@@ -604,6 +612,10 @@ export default {
         return
       }
       if (rolesChanged) {
+        if (!Number.isSafeInteger(this.form.version) || this.form.version < 0) {
+          toast.error('尚未取得有效账号版本，已保留输入；请重新打开账号核对后再保存角色')
+          return
+        }
         if (!this.form.roleAssignments.length) return toast.error('至少保留一个角色')
         const missing = this.form.roleAssignments.find((item) =>
           item.scopeMode !== 'AUTO' && item.scopeType !== 'SCHOOL' && !(item.scopeIds || []).length
@@ -613,22 +625,42 @@ export default {
       this.form.submitting = true
       try {
         if (detailsChanged) {
-          const res = await systemApi.updateUser(this.form.id, this.form.value)
+          const res = await systemApi.updateUser(this.form.id, {
+            ...this.form.value,
+            ...(Number.isSafeInteger(this.form.version) && this.form.version >= 0
+              ? { expectedVersion: this.form.version } : {})
+          })
           if (res.code !== 0) {
             this.form.submitting = false
+            if (res.bizCode === 'DATA_CONFLICT' || res.code === 409 || res.httpStatus === 409) {
+              this.form.versionConflict = true
+              toast.error('账号已被其他管理员更新，已保留输入；请重新打开账号核对后再保存')
+              return
+            }
             toast.error(res.message)
             return
           }
           // A partial retry must never replay already committed profile changes.
           this.form.originalValue = { ...this.form.value }
+          this.form.version = Number.isSafeInteger(res.data?.version) && res.data.version >= 0 ? res.data.version : null
         }
         if (rolesChanged) {
+          if (!Number.isSafeInteger(this.form.version) || this.form.version < 0) {
+            toast.error('基础信息已保存，但未取得新的账号版本；角色尚未保存，请重新打开账号核对')
+            return
+          }
           const roleCodes = this.form.roleAssignments.map((item) => item.roleCode)
-          const roleRes = await systemApi.assignUserRoles(this.form.id, roleCodes, this.form.roleAssignments)
+          const roleRes = await systemApi.assignUserRoles(this.form.id, roleCodes, this.form.roleAssignments, {
+            expectedVersion: this.form.version
+          })
           if (roleRes.code !== 0) {
             this.form.submitting = false
+            if (roleRes.bizCode === 'DATA_CONFLICT' || roleRes.code === 409 || roleRes.httpStatus === 409) {
+              this.form.versionConflict = true
+              toast.error(`${detailsChanged ? '基础信息已保存，但' : ''}角色已被其他管理员更新，已保留输入；请重新打开账号核对后再保存`)
+              return
+            }
             toast.error(`${detailsChanged ? '基础信息已保存，但' : ''}角色身份保存失败：${roleRes.message}`)
-            await this.load()
             return
           }
           this.form.originalRoleAssignments = JSON.parse(JSON.stringify(this.form.roleAssignments))
@@ -640,7 +672,10 @@ export default {
         this.form.open = false
         this.load()
       } catch (error) {
-        toast.error(error.message || '保存失败，已保留输入，请重试')
+        if (error.bizCode === 'DATA_CONFLICT' || error.code === 409 || error.httpStatus === 409) {
+          this.form.versionConflict = true
+          toast.error('账号已被其他管理员更新，已保留输入；请重新打开账号核对后再保存')
+        } else toast.error(error.message || '保存失败，已保留输入，请重试')
       } finally { this.form.submitting = false }
     },
     async openDetail(row) {

@@ -20,7 +20,7 @@ def test_student_service_ledger_identity_is_read_only_and_versioned():
     assert 'payload["counselor"]' in text
     assert "atomic_versioned_update" in text
     assert 'StudentProfile.tenant_id == _tid()' not in text
-    assert 'build_affairs_context(get_current_user_ctx() or {}, db).require_student' in text
+    assert 'build_affairs_context(get_current_user_ctx() or {}, scope_db).require_student' in text
     assert 'CsServiceStudent.tenant_id == _tid()' in text
 
 

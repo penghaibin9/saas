@@ -15,13 +15,14 @@
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template #footer>
-      <button type="button" class="mp-btn" @click="$router.push('/admin/graduation/more?panel=peer')">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">分配</button>
+      <AppButton @click="$router.push('/admin/graduation/more?panel=peer')">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting" @click="submit">分配</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { AppGraduationStudentPicker } from '@/components/common'
 import { graduationMoreApi } from '@/modules/graduation/api/graduation-more.api'
@@ -29,7 +30,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'GraduationMorePeerView',
-  components: { GraduationFormPageShell, AppGraduationStudentPicker },
+  components: { AppButton, GraduationFormPageShell, AppGraduationStudentPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

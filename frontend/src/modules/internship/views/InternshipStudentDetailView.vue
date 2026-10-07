@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell class="isd" :title="detail ? detail.name + ' · 实习档案' : '实习档案'" :subtitle="pageSubtitle">
-    <template #actions><button class="mp-btn" @click="goBack">{{ volunteerReturnTo ? '返回岗位确认' : /^\/admin\/internship\/insurance(?:\/\d+)?(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回保险材料' : /^\/admin\/internship\/assignment-logs(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回分配记录' : /^\/admin\/internship\/compliance(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回上岗核验' : '返回名单' }}</button></template>
+    <template #actions><button class="mp-btn" @click="goBack">{{ graduationReturnTo ? '返回毕业审核' : volunteerReturnTo ? '返回岗位确认' : /^\/admin\/internship\/insurance(?:\/\d+)?(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回保险材料' : /^\/admin\/internship\/assignment-logs(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回分配记录' : /^\/admin\/internship\/compliance(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回上岗核验' : '返回名单' }}</button></template>
     <LoadingState v-if="loading" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <template v-else-if="detail">
@@ -186,6 +186,10 @@ export default {
     }
   },
   computed: {
+    graduationReturnTo() {
+      const value = this.$route.query.returnTo
+      return this.detail && typeof value === 'string' && /^\/admin\/academic-affairs\/graduation\/(?:audit-console|\d+\/results)(?:\?[^#]*)?$/.test(value) ? value : ''
+    },
     agreementFollowUp() {
       if (this.onboardLoading || this.onboardError || !this.detail?.name || !this.detail?.batchId || !canCode(this.ctx, 'internship.agreement.view')) return null
       if (!(this.onboardChecklist?.evaluation?.blockers || []).some(item => item.code === 'agreement')) return null
@@ -277,6 +281,7 @@ export default {
       })
     },
     goBack() {
+      if (this.graduationReturnTo) return this.$router.push(this.graduationReturnTo)
       if (this.volunteerReturnTo) return this.$router.push(this.volunteerReturnTo)
       const target = String(this.$route.query.returnTo || '')
       if (/^\/admin\/internship\/(?:students|assignment-logs|compliance|insurance(?:\/\d+)?)(?:\?|$)/.test(target)) return this.$router.push(target)

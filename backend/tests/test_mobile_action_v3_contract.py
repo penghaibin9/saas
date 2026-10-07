@@ -151,6 +151,15 @@ def test_focus_ready_pages_all_exist():
         assert path in MINI_ROUTES, f"{path} 登记了聚焦能力但页面不存在"
 
 
+def test_teacher_grade_focus_uses_formal_task_id_and_a_real_page_contract():
+    path = "/pages/teacher/academic-affairs/grade-entry"
+    assert FOCUS_READY_PAGES[path] == "id"
+    route = resolve_todo_route("AA_GRADE_ENTRY", "90071992547409931", client="teacherMini")
+    assert route["query"]["id"] == "90071992547409931"
+    assert route["focusMode"] == FOCUS_LIST_FOCUS
+    assert is_route_exact(route["focusMode"], path) is True
+
+
 def test_route_exact_requires_real_object_focus():
     # DETAIL 天然精确
     assert is_route_exact(FOCUS_DETAIL, "/pages/common/message-detail/index") is True

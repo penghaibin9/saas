@@ -14,17 +14,18 @@
         <input v-model.trim="a.url" class="ie-in" placeholder="文件地址 / 存储路径" />
         <button type="button" class="mp-link" @click="removeAttachment(idx)">删除</button>
       </div>
-      <button type="button" class="mp-btn" style="margin-top: var(--space-3)" @click="addAttachment">＋ 添加附件</button>
+      <AppButton style="margin-top: var(--space-3)" @click="addAttachment">＋ 添加附件</AppButton>
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </div>
     <template v-if="topic" #footer>
-      <button type="button" class="mp-btn" @click="$router.push(backTo)">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">保存</button>
+      <AppButton @click="$router.push(backTo)">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting" @click="submit">保存</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
@@ -32,7 +33,7 @@ import { toast } from '@/utils/toast'
 
 export default {
   name: 'TopicLibAttachmentsView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', topic: null, attachments: [], formError: '', submitting: false }

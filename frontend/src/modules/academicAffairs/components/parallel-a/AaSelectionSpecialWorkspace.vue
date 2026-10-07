@@ -24,11 +24,11 @@
           <AppNumberInput v-model="ruleDraft.maxCredits" :min="0" :max="50" :disabled="saving || !ruleWritable" />
         </AppFormItem>
         <p class="sel-special__hint">0 表示不设置批次级学分上限。最终能否选课仍由提交前正式预检和服务端事务判断。</p>
-        <AppInlineAlert v-if="!ruleWritable" type="warning" description="当前批次已经进入开选或后续阶段，规则只读；如需调整须新建批次或走正式变更流程。" />
+        <AppInlineAlert v-if="!ruleWritable" type="warning" :description="canManageRule ? '当前批次已经进入开选或后续阶段，规则只读；如需调整须新建批次或走正式变更流程。' : '当前账号只可查阅正式规则；规则调整由有权限的选课管理岗办理。'" />
         <AppInlineAlert v-else-if="pendingRule" type="warning" description="上次保存结果尚未由正式批次确认。当前只允许查询正式规则，系统不会自动重放保存请求。" />
         <div class="sel-special__actions">
           <AppButton v-if="pendingRule" :loading="loading" @click="loadRule">查询正式规则</AppButton>
-          <AppButton variant="primary" :loading="saving" :disabled="!ruleWritable || !!pendingRule || !ruleChanged" @click="saveRule">{{ pendingRule ? '等待正式确认' : ruleChanged ? '保存本批次规则' : '规则未变化' }}</AppButton>
+          <AppButton v-if="canManageRule" variant="primary" :loading="saving" :disabled="!ruleWritable || !!pendingRule || !ruleChanged" @click="saveRule">{{ pendingRule ? '等待正式确认' : ruleChanged ? '保存本批次规则' : '规则未变化' }}</AppButton>
         </div>
       </div>
     </template>
@@ -106,6 +106,7 @@
 </template>
 
 <script>
+import { matchPermission } from '@/config/navPlan'
 import { DataTable, EmptyState, LoadingState, StatusTag } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppFormItem, AppInlineAlert, AppNumberInput, AppTextInput } from '@/components/common'
@@ -119,6 +120,7 @@ export default {
   name: 'AaSelectionSpecialWorkspace',
   components: { AaOperationReceipt, AppButton, AppFormItem, AppInlineAlert, AppNumberInput, AppTextInput, DataTable, EmptyState, LoadingState, StatusTag },
   props: {
+    ctx: { type: Object, required: true },
     mode: { type: String, required: true },
     batch: { type: Object, required: true },
     rounds: { type: Array, default: () => [] }
@@ -140,7 +142,8 @@ export default {
     description() { return { rule: '规则只绑定当前批次；切换批次后重新读取，保存后以正式批次回读为准。', reselect: '读取已截止批次中的取消课程和仍可补选课程，不从全校固定条数中猜候选。', conflict: '读取服务端记录的选课冲突；接口失败会明确提示，不显示为零冲突。' }[this.mode] || '' },
     batchStatusLabel() { return STATUS_LABEL[this.batch.status] || '状态待确认' },
     batchStatusType() { return ['LOCKED', 'ARCHIVED'].includes(this.batch.status) ? 'default' : this.batch.status === 'OPEN' ? 'success' : this.batch.status === 'CLOSED' ? 'warning' : 'primary' },
-    ruleWritable() { return ['DRAFT', 'PUBLISHED'].includes(this.batch.status) },
+    canManageRule() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.rule.manage') },
+    ruleWritable() { return this.canManageRule && ['DRAFT', 'PUBLISHED'].includes(this.batch.status) },
     scopeText() {
       const scope = this.batch.applyScope
       if (!scope) return '当前批次正式范围'
@@ -283,6 +286,7 @@ export default {
           this.$emit('batch-updated', before.data)
           return
         }
+        if (!this.canManageRule) return
         const requested = { ...before.data.rule, maxCredits: requestedMaxCredits }
         this.pendingRule = { batchId, beforeMaxCredits, requestedMaxCredits }
         let result

@@ -61,9 +61,9 @@
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" :title="emptyTitle" :description="emptyDesc">
         <template v-if="showRosterEmptyActions" #actions>
-          <button class="mp-btn mp-btn--primary" :disabled="!writeEnabled" @click="onToolbar('create')">＋ 建档</button>
-          <button class="mp-btn" :disabled="!writeEnabled" @click="onToolbar('import')">导入 Excel</button>
-          <button class="mp-btn" @click="$router.push('/admin/help?topic=gd-card-students')">怎么导入名单？</button>
+          <AppButton variant="primary" :disabled="!writeEnabled" @click="onToolbar('create')">＋ 建档</AppButton>
+          <AppButton :disabled="!writeEnabled" @click="onToolbar('import')">导入 Excel</AppButton>
+          <AppButton @click="$router.push('/admin/help?topic=gd-card-students')">怎么导入名单？</AppButton>
         </template>
       </EmptyState>
       <DataTable
@@ -150,6 +150,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 /** 毕设学生列表：真实学生主档投影；毕业资格为教务只读镜像。 */
 import {
   ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable,
@@ -252,7 +253,7 @@ function errorText(error, fallback) { return error?.message || fallback }
 
 export default {
   name: 'GraduationStudentListView',
-  components: { AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
+  components: { AppButton, AppPageGuide, ModulePageShell, ModuleToolbar, AdvancedFilter, DataTable, StatusTag, RiskTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppExcelImportDrawer, AppSensitiveText, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -278,6 +279,10 @@ export default {
     showRosterEmptyActions() { return this.hasBatch && this.activePanel === 'roster' && !this.filtered },
     columns() { return COLUMN_PRESETS[this.activePanel] || COLUMN_PRESETS.default },
     selectablePanel() { return this.activePanel === 'grouping' || this.activePanel === 'archive' },
+    graduationReturnTo() {
+      const value = this.routeText(this.$route?.query?.returnTo).trim()
+      return /^\/admin\/academic-affairs\/graduation\/audit-console(?:[?#]|$)/.test(value) ? value : ''
+    },
     filterFields() {
       const groupOpts = this.groupOpts.map((group) => ({ value: group, label: group }))
       const base = [{ key: 'keyword', label: '关键词', type: 'text', placeholder: '姓名 / 学号 / 课题' }]
@@ -429,7 +434,11 @@ export default {
       return this.$router.resolve({ path: '/admin/graduation/students', query: this.buildListQuery({ panel }) }).fullPath
     },
     studentReturnQuery(panel = this.activePanel) {
-      return { returnPanel: panel, batchId: this.batchStore.selectedBatchId ? String(this.batchStore.selectedBatchId) : undefined, returnTo: this.currentListPath(panel) }
+      return {
+        returnPanel: panel,
+        batchId: this.batchStore.selectedBatchId ? String(this.batchStore.selectedBatchId) : undefined,
+        returnTo: this.graduationReturnTo || this.currentListPath(panel)
+      }
     },
     switchGroup(group) { if (group && group.key !== this.activeGroupKey) this.switchPanel(group.defaultPanel) },
     switchPanel(panel) {

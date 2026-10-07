@@ -15,6 +15,7 @@ from . import academic_affairs as base_router
 
 
 _EXTENSION_ROUTER_MODULES = (
+    "academic_flow_router",
     "schedule_optimizer_router",
     "academic_file_exchange_router",
     "archive_correction_router",

@@ -30,13 +30,14 @@
       </div>
     </template>
     <template v-if="detail && (canTopicCreate || canTopicAssign)" #footer>
-      <button v-if="canTopicCreate" type="button" class="mp-btn mp-btn--primary" @click="goEdit">编辑课题</button>
-      <button v-if="canTopicAssign" type="button" class="mp-btn" @click="goAssign">分配学生</button>
+      <AppButton v-if="canTopicCreate" variant="primary" @click="goEdit">编辑课题</AppButton>
+      <AppButton v-if="canTopicAssign" @click="goAssign">分配学生</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { gdTopicApi } from '@/modules/graduation/api/graduation-topic.api'
@@ -44,7 +45,7 @@ import { matchPermission } from '@/config/navPlan'
 
 export default {
   name: 'TopicManageDetailView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, EmptyState },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { loading: true, error: '', detail: null, assigned: [] }

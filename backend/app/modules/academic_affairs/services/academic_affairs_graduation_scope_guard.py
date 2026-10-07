@@ -13,6 +13,36 @@ from __future__ import annotations
 from app.core.affairs_security import build_affairs_context
 
 
+def assert_college_review_authority(db, user, result):
+    """学院初审由学生所属学院的当前责任账号办理，校级不能冒充。"""
+    from sqlalchemy import select
+    from app.core.affairs_security import no_data_scope
+    from app.core.permissions import _match
+    from app.models import StudentProfile
+    from app.services.db_service import _tid
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_responsibility_service import resolve_organization
+
+    ctx = build_affairs_context(user or {}, db)
+    if (ctx.scope_type != "COLLEGE" or not ctx.college_ids
+            or not _match("academicAffairs.graduation.collegeReview", ctx.permission_codes)):
+        raise no_data_scope("学院初审须由本学院责任账号办理，校教务处负责终审")
+    student = db.scalar(select(StudentProfile).where(
+        StudentProfile.id == result.student_id, StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+    ))
+    if not student or int(student.college_id or 0) not in ctx.college_ids:
+        raise no_data_scope("该学生不在您的学院责任范围内")
+    responsibility = resolve_organization(
+        db, "COLLEGE", student.college_id,
+        permission_code="academicAffairs.graduation.collegeReview",
+    )
+    actor_id = str(_current_user_id(db, user))
+    if not responsibility["resolved"] or actor_id not in responsibility["assigneeUserIds"]:
+        raise no_data_scope("您不是该学院当前有效的初审责任人，请核对组织与任职")
+    return responsibility
+
+
 def graduation_college_scope_ids(db, user) -> set[int] | None:
     """Return None for tenant-wide, college ids for COLLEGE, or empty for unsupported scope."""
     ctx = build_affairs_context(user or {}, db)
@@ -21,6 +51,68 @@ def graduation_college_scope_ids(db, user) -> set[int] | None:
     if ctx.scope_type == "COLLEGE":
         return {int(value) for value in (ctx.college_ids or set())}
     return set()
+
+
+def assert_school_review_authority(db, user):
+    from app.core.affairs_security import no_data_scope
+    from app.core.permissions import _match
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_responsibility_service import resolve_school
+    context = build_affairs_context(user or {}, db)
+    if context.scope_type != "TENANT_ALL" or not _match("academicAffairs.graduation.final", context.permission_codes):
+        raise no_data_scope("毕业终审须由当前有终审权限的校教务责任岗位办理")
+    owner = resolve_school(db, permission_code="academicAffairs.graduation.final")
+    if not owner["resolved"] or str(_current_user_id(db, user)) not in owner["assigneeUserIds"]:
+        raise no_data_scope("您不是当前有效的校教务毕业终审责任人")
+    return owner
+
+
+def result_responsibilities(db, user, rows):
+    """列表和详情共用当前责任投影，每页预载学生并按学院复用任职解析。"""
+    from sqlalchemy import select
+    from app.core.exceptions import AppException
+    from app.models import StudentProfile
+    from app.services.db_service import _tid
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_responsibility_service import resolve_organization, resolve_school
+    if not rows:
+        return {}
+    context = build_affairs_context(user, db)
+    try:
+        actor_id = str(_current_user_id(db, user))
+    except AppException as error:
+        if error.code != "NO_PERMISSION":
+            raise
+        actor_id = ""
+    students = {row.id: row for row in db.scalars(select(StudentProfile).where(
+        StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+        StudentProfile.id.in_([row.student_id for row in rows]),
+    )).all()}
+    owners = {}
+    from app.core.permissions import _match
+    cache = {}
+    school = resolve_school(db, permission_code="academicAffairs.graduation.final", cache=cache)
+    result = {}
+    for row in rows:
+        student = students.get(row.student_id)
+        college_id = student.college_id if student else None
+        if college_id not in owners:
+            owners[college_id] = resolve_organization(db, "COLLEGE", college_id,
+                permission_code="academicAffairs.graduation.collegeReview", cache=cache)
+        owner = owners[college_id]
+        initial = row.status in {"SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"}
+        result[row.id] = {
+            "responsibility": owner if initial else school if row.status == "ACADEMIC_REVIEW" else None,
+            "canCollegeReview": bool(initial and context.scope_type == "COLLEGE"
+                and _match("academicAffairs.graduation.collegeReview", context.permission_codes)
+                and college_id in context.college_ids and owner["resolved"] and actor_id in owner["assigneeUserIds"]),
+            "canAcademicFinal": bool(row.status == "ACADEMIC_REVIEW" and context.scope_type == "TENANT_ALL"
+                and _match("academicAffairs.graduation.final", context.permission_codes)
+                and school["resolved"] and actor_id in school["assigneeUserIds"]),
+            "collegeReviewHint": "学院责任账号完成初审后，交由校教务处终审",
+            "nextStep": {"code": "ACADEMIC_REVIEW", "label": "校教务终审", "responsibility": school} if initial else None,
+        }
+    return result
 
 
 graduation_college_scope_ids._graduation_scope_guard = True
@@ -111,12 +203,16 @@ def graduation_list_batches(user, status=None, page=1, page_size=50, *, batch_id
             for row in db.execute(aggregate_query).all()
         }
 
+        from .academic_affairs_graduation_term_scope import batch_term_names
+        names = batch_term_names(db, batches)
         out = []
         for batch in batches:
             stats = aggregates.get(int(batch.id))
             out.append({
                 "batchId": str(batch.id),
                 "batchName": batch.batch_name,
+                "termId": str(batch.term_id) if batch.term_id else None,
+                "termName": names.get(batch.term_id),
                 "gradeYear": batch.grade_year,
                 "majorId": str(batch.major_id) if batch.major_id else None,
                 "status": batch.status,

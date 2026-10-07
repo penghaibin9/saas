@@ -1,7 +1,11 @@
 import json
 from pathlib import Path
 
+import pytest
+
+from app.core.exceptions import AppException
 from app.services import audit_log
+from app.modules.platform.routers import product_iam_router
 
 
 def test_product_iam_keeps_single_internship_top_level_module():
@@ -23,3 +27,38 @@ def test_product_iam_router_does_not_touch_e_authority():
     source = (root / "backend/app/modules/platform/routers/product_iam_router.py").read_text(encoding="utf-8")
     assert "app.modules.internship" not in source
     assert "enterprise-portal" not in source
+
+
+def test_template_menu_impact_uses_published_baseline_not_draft_predecessor(monkeypatch):
+    monkeypatch.setattr(product_iam_router, "_view", lambda _user: None)
+    monkeypatch.setattr(product_iam_router.template_svc, "list_versions", lambda _code: pytest.fail("second template read"))
+    monkeypatch.setattr(product_iam_router, "_template_preview", lambda _row: pytest.fail("second menu read"))
+    monkeypatch.setattr(product_iam_router.template_svc, "impact", lambda _id: {
+        "templateCode": "COLLEGE_ADMIN", "publishStatus": "DRAFT", "baselineTemplateVersion": 1,
+        "baselineTemplateId": "1", "menuAdded": [], "menuRemoved": ["a", "b"],
+        "navigationDigest": "navigation", "removedPermissions": ["p1", "p2"],
+    })
+    monkeypatch.setattr(product_iam_router.svc, "source_snapshot", lambda: {
+        "navigationDigest": "navigation", "sourceDigest": "source",
+        "roleTemplates": [{"templateCode": "COLLEGE_ADMIN", "templateVersion": 1}],
+    })
+
+    result = product_iam_router.school_role_template_impact("COLLEGE_ADMIN", 3, user={})
+    assert result["data"]["menuRemoved"] == ["a", "b"]
+    assert result["data"]["sourceDigest"] == "source"
+
+
+def test_template_impact_rejects_published_change_after_preview_read(monkeypatch):
+    monkeypatch.setattr(product_iam_router, "_view", lambda _user: None)
+    monkeypatch.setattr(product_iam_router.template_svc, "impact", lambda _id: {
+        "templateCode": "COLLEGE_ADMIN", "publishStatus": "DRAFT",
+        "baselineTemplateVersion": 1, "navigationDigest": "navigation",
+    })
+    monkeypatch.setattr(product_iam_router.svc, "source_snapshot", lambda: {
+        "navigationDigest": "navigation", "sourceDigest": "source",
+        "roleTemplates": [{"templateCode": "COLLEGE_ADMIN", "templateVersion": 2}],
+    })
+
+    with pytest.raises(AppException) as exc:
+        product_iam_router.school_role_template_impact("COLLEGE_ADMIN", 3, user={})
+    assert exc.value.code == "DATA_CONFLICT"

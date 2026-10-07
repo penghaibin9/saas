@@ -210,15 +210,17 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
 
   test('student miniapp shows human material states and a truthful retryable topic empty state at 390/375', async ({ browser }) => {
     const evidence = []
-    const context = await browser.newContext({ viewport: MOBILE_VIEWPORTS[0], locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
-    const page = await context.newPage()
-    await loginMini(page, config.student, 'student')
-
+    // uni-app retains page state across hash navigation. Each viewport must
+    // start from an independent login, not toggle the previous viewport closed.
     for (const viewport of MOBILE_VIEWPORTS) {
-      await page.setViewportSize(viewport)
+      const context = await browser.newContext({ viewport, locale: 'zh-CN', timezoneId: 'Asia/Shanghai' })
+      const page = await context.newPage()
+      await loginMini(page, config.student, 'student')
       await page.goto(`${MINI_BASE_URL}/#/pages/student/graduation/index`)
-      await expect(page.getByText('材料库', { exact: true })).toBeVisible()
-      await expect(page.getByText('尚未上传版本', { exact: false }).first()).toBeVisible()
+      const materialLibrary = page.getByText('我的材料库', { exact: true })
+      await expect(materialLibrary).toBeVisible()
+      await materialLibrary.click()
+      await expect(page.getByText(/当前第 \d+ 版|尚未上传版本/).first()).toBeVisible()
       await expect(page.locator('body')).not.toContainText(/TOPIC_ATTACHMENT|NOT_SUBMITTED|真实接口不可用|登录已失效/)
       await settle(page)
       const overviewAudit = await auditMobileFit(page, viewport)
@@ -235,8 +237,8 @@ test.describe.serial('Graduation V8 W14 exact viewport and accessibility evidenc
       const topicShot = path.join(ARTIFACT_DIR, `student-mini-topics-${viewport.width}x${viewport.height}.png`)
       await page.screenshot({ path: topicShot, fullPage: false, animations: 'disabled', caret: 'hide' })
       evidence.push({ surface: 'student-mini', viewport, overviewShot, topicShot, overviewAudit, topicAudit })
+      await context.close()
     }
-    await context.close()
     await fs.writeFile(path.join(ARTIFACT_DIR, 'student-mini-viewport-accessibility.json'), JSON.stringify(evidence, null, 2), 'utf8')
   })
 })

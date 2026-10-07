@@ -2,9 +2,28 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
+import { academicAffairsRoutes } from '../src/modules/academicAffairs/academic-affairs.routes.js'
+import { canEnterRoute, clearPermissionPatterns, setModuleEntitlements, setPermissionPatterns } from '../src/security/permissionGate.js'
 
 const root = path.resolve(import.meta.dirname, '..')
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
+
+test('调停课学院与学校审批身份均可进入现行审批页，无审批权限仍拒绝', () => {
+  const route = academicAffairsRoutes.flatMap(row => row.children || []).find(row => row.path === 'schedule-change/approval')
+  assert.ok(route)
+  try {
+    setModuleEntitlements(['ACADEMIC_AFFAIRS'])
+    for (const code of ['academicAffairs.scheduleChange.collegeReview', 'academicAffairs.scheduleChange.academicReview']) {
+      setPermissionPatterns([code, 'academicAffairs.scheduleChange.view'])
+      assert.equal(canEnterRoute(route.meta), true, code)
+    }
+    setPermissionPatterns(['academicAffairs.scheduleChange.view', 'academicAffairs.scheduleChange.apply'])
+    assert.equal(canEnterRoute(route.meta), false)
+    setPermissionPatterns(['academicAffairs.scheduleChange.academicReview'])
+    setModuleEntitlements([])
+    assert.equal(canEnterRoute(route.meta), false, '个人审批权限不能代替学校模块授权')
+  } finally { clearPermissionPatterns() }
+})
 
 test('weekly schedule query covers all five operational dimensions with searchable pickers', () => {
   const source = read('src/modules/academicAffairs/views/AaWeekScheduleView.vue')

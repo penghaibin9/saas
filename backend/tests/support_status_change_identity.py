@@ -93,12 +93,13 @@ def _ensure_account(
     role_code = f"TEST_{login_name.upper()}"
     role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == role_code).first()
     if role is None:
-        role = Role(tenant_id=TID, role_code=role_code, role_name=role_code, status="ACTIVE")
+        role = Role(tenant_id=TID, role_code=role_code, role_name=role_code, role_type="CUSTOM", status="ACTIVE")
         db.add(role)
         db.flush()
     else:
         role.status = "ACTIVE"
         role.is_deleted = False
+        role.role_type = "CUSTOM"
     link = db.query(UserRole).filter(
         UserRole.tenant_id == TID, UserRole.user_id == user.id, UserRole.role_id == role.id
     ).first()
@@ -121,6 +122,27 @@ def _ensure_account(
             role_permission.status = "ACTIVE"
             role_permission.is_deleted = False
     db.flush()
+    if login_name == "school_admin01" and OFFICE_PERM in permissions:
+        from datetime import datetime
+        from app.models import RoleAssignmentScope, StaffAssignment
+        binding = db.query(UserRole).filter(
+            UserRole.tenant_id == TID, UserRole.user_id == user.id, UserRole.role_id == role.id,
+        ).one()
+        if not db.query(RoleAssignmentScope).filter(
+            RoleAssignmentScope.tenant_id == TID, RoleAssignmentScope.user_role_id == binding.id,
+            RoleAssignmentScope.scope_type == "SCHOOL",
+        ).first():
+            db.add(RoleAssignmentScope(tenant_id=TID, user_id=user.id, user_role_id=binding.id,
+                role_code=role.role_code, scope_type="SCHOOL", scope_id=TID,
+                effective_at=datetime(2020, 1, 1), status="ACTIVE"))
+        if not db.query(StaffAssignment).filter(
+            StaffAssignment.tenant_id == TID, StaffAssignment.user_id == user.id,
+            StaffAssignment.org_type == "SCHOOL", StaffAssignment.org_node_id == TID,
+            StaffAssignment.assignment_type == "ACADEMIC_REVIEWER",
+        ).first():
+            db.add(StaffAssignment(tenant_id=TID, user_id=user.id, org_type="SCHOOL", org_node_id=TID,
+                assignment_type="ACADEMIC_REVIEWER", effective_at=datetime(2020, 1, 1), status="ACTIVE"))
+        db.flush()
     return user
 
 

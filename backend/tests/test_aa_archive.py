@@ -29,6 +29,8 @@ def _seed(db_mode, with_data=True):
     from app.db.session import get_sessionmaker
     from app.models import AaProgram, AaTerm, StudentProfile
     db = get_sessionmaker()()
+    from tests.support_archive_review_identity import seed_archive_operator
+    seed_archive_operator(db, TID, "school_admin01")
     term = AaTerm(tenant_id=TID, year_code="2024-2025", term_no=1, status="PUBLISHED", is_current=True)
     db.add(term); db.flush()
     if with_data:
@@ -150,6 +152,127 @@ def test_ar5_precheck_realtime_no_batch(client, db_mode):
     from app.modules.academic_affairs.services import academic_affairs_archive_service as archive_svc
     assert len(domains) == len(archive_svc._DOMAINS)
     assert client.get(f"{BASE}/archive/batches", headers=admin).json()["data"]["total"] == 0
+
+
+def test_school_archive_registration_checks_closed_batch_details_before_confirm(client, db_mode, monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.models import AaArchiveBatch, AaRegistration, AaRegistrationBatch, AaTerm, ArchiveManifest
+    from app.modules.academic_affairs.services import academic_affairs_archive_core_service as core
+
+    ids = _seed(db_mode)
+    monkeypatch.setattr(core, "_tid", lambda: TID)
+    with get_sessionmaker()() as db:
+        other_term = AaTerm(tenant_id=TID, year_code="2025-2026", term_no=1, status="PUBLISHED")
+        db.add(other_term)
+        db.flush()
+        current = AaRegistrationBatch(tenant_id=TID, term_id=ids["term"],
+                                      batch_name="本学期已关闭注册", status="CLOSED")
+        historical = AaRegistrationBatch(tenant_id=TID, term_id=other_term.id,
+                                         batch_name="别学期已关闭注册", status="CLOSED")
+        foreign = AaRegistrationBatch(tenant_id=TID + 1, term_id=ids["term"],
+                                      batch_name="外校已关闭注册", status="CLOSED")
+        db.add_all([current, historical, foreign])
+        db.flush()
+        empty = core._evaluate_registration(db, ids["term"])
+        assert empty["present"] is False
+        assert "已注册学生 0 人" in empty["remark"]
+        pending = AaRegistration(tenant_id=TID, batch_id=current.id,
+                                 student_id=800001, status="PENDING_REGISTER")
+        db.add_all([
+            pending,
+            AaRegistration(tenant_id=TID, batch_id=current.id,
+                           student_id=800002, status="REGISTERED"),
+            AaRegistration(tenant_id=TID, batch_id=current.id,
+                           student_id=800003, status="UNREGISTERED", is_deleted=True),
+            AaRegistration(tenant_id=TID, batch_id=historical.id,
+                           student_id=800004, status="PENDING_REGISTER"),
+            AaRegistration(tenant_id=TID + 1, batch_id=foreign.id,
+                           student_id=800005, status="PENDING_REGISTER"),
+        ])
+        db.flush()
+        pending_id = pending.id
+        db.commit()
+
+    with get_sessionmaker()() as db:
+        blocked = core._evaluate_registration(db, ids["term"])
+        assert blocked["present"] is False
+        assert "未完成注册明细 1 条" in blocked["remark"]
+        pending = db.query(AaRegistration).filter(AaRegistration.id == pending_id).one()
+        pending.status = "REGISTERED"
+        db.flush()
+        passed = core._evaluate_registration(db, ids["term"])
+        assert passed["present"] is True and passed["recordCount"] == 1
+        pending.status = "PENDING_REGISTER"
+        db.commit()
+
+    admin = _hdr(client, "school_admin01")
+    created = client.post(f"{BASE}/archive/batches", headers=admin,
+                          json={"termId": str(ids["term"])})
+    assert created.status_code == 200, created.text
+    bid = created.json()["data"]["batchId"]
+    checked = client.post(f"{BASE}/archive/batches/{bid}/check", headers=admin)
+    assert checked.status_code == 200, checked.text
+    detail = client.get(f"{BASE}/archive/batches/{bid}", headers=admin).json()["data"]
+    registration = next(item for item in detail["items"] if item["domain"] == "REGISTRATION")
+    assert registration["result"] == "BLOCKED"
+    assert "未完成注册明细 1 条" in registration["summary"]
+
+    # 模拟已保存的历史 READY 快照；正式确认仍须按实时明细重新拒绝。
+    with get_sessionmaker()() as db:
+        batch = db.query(AaArchiveBatch).filter(AaArchiveBatch.id == int(bid),
+                                                AaArchiveBatch.tenant_id == TID).one()
+        batch.status = "READY"
+        batch.missing_count = 0
+        db.commit()
+    rejected = client.post(f"{BASE}/archive/batches/{bid}/confirm", headers=admin,
+                           json={"force": False})
+    assert rejected.status_code == 409
+    with get_sessionmaker()() as db:
+        assert db.query(ArchiveManifest).filter(ArchiveManifest.tenant_id == TID,
+                                                ArchiveManifest.archive_batch_id == int(bid)).count() == 0
+        assert db.query(AaTerm).filter(AaTerm.id == ids["term"]).one().status == "PUBLISHED"
+
+
+def test_archive_batch_list_filters_term_before_count_and_page(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaArchiveBatch, AaTerm
+
+    ids = _seed(db_mode, with_data=False)
+    with get_sessionmaker()() as db:
+        later_term = AaTerm(tenant_id=TID, year_code="2025-2026", term_no=1,
+                            status="PUBLISHED", is_current=False)
+        db.add(later_term)
+        db.flush()
+        original = AaArchiveBatch(tenant_id=TID, batch_name="原学期归档",
+                                  term_id=ids["term"], term_code="2024-2025-1", status="DRAFT")
+        later = AaArchiveBatch(tenant_id=TID, batch_name="后学期归档",
+                               term_id=later_term.id, term_code="2025-2026-1", status="READY")
+        db.add_all([original, later])
+        db.flush()
+        original_id, later_id, later_term_id = str(original.id), str(later.id), later_term.id
+        db.commit()
+
+    admin = _hdr(client, "school_admin01")
+    first = client.get(f"{BASE}/archive/batches", headers=admin,
+                       params={"termId": ids["term"], "page": 1, "pageSize": 1})
+    empty_page = client.get(f"{BASE}/archive/batches", headers=admin,
+                            params={"termId": ids["term"], "page": 2, "pageSize": 1})
+    assert first.status_code == empty_page.status_code == 200
+    assert first.json()["data"]["total"] == empty_page.json()["data"]["total"] == 1
+    assert [item["batchId"] for item in first.json()["data"]["items"]] == [original_id]
+    assert empty_page.json()["data"]["items"] == []
+    later_result = client.get(f"{BASE}/archive/batches", headers=admin,
+                              params={"termId": later_term_id, "status": "READY"})
+    assert later_result.status_code == 200
+    assert later_result.json()["data"]["total"] == 1
+    assert [item["batchId"] for item in later_result.json()["data"]["items"]] == [later_id]
+    unfiltered = client.get(f"{BASE}/archive/batches", headers=admin)
+    assert unfiltered.status_code == 200 and unfiltered.json()["data"]["total"] == 2
+    for invalid in ("0", "-1", "abc"):
+        rejected = client.get(f"{BASE}/archive/batches", headers=admin, params={"termId": invalid})
+        assert rejected.status_code == 400
+        assert rejected.json()["code"] == 422001
+        assert rejected.json()["bizCode"] == "VALIDATION_ERROR"
 
 
 def test_ar6_precheck_student_forbidden(client, db_mode):

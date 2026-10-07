@@ -388,7 +388,7 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
     })
     let studentEval = rows(priorStudentEvals)
       .find((item) => String(item.internshipId || item.internId || '') === String(fixture.gj08.internshipId))
-    const workbench = await openStudentInternship(page, fixture.gj08)
+    let workbench = await openStudentInternship(page, fixture.gj08)
     await workbench.openGroupedTab('变更与结果', '实习成绩/自评')
     if (studentEval?.reviewStatus !== 'APPROVED') {
       const selfForm = page.locator('section.sp-card').filter({ hasText: '实习自评 / 鉴定' }).first()
@@ -408,21 +408,54 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
         studentEval = await responseData(await selfSubmitted, '学生提交自评')
       }
       studentEval = await request('GET', `/internship/student-evals/${studentEval.id}`, { token: mentorToken })
-      studentEval = await request('POST', `/internship/student-evals/${studentEval.id}/advisor-comment`, {
-        token: mentorToken,
-        body: {
-          advisorOpinion: '学生实习表现良好，过程事实完整，同意进入成绩核算。',
-          mentorOpinion: '企业评价与过程材料相互印证。',
-          expectedVersion: studentEval.version
-        }
-      })
-      studentEval = await request('POST', `/internship/student-evals/${studentEval.id}/review`, {
-        token: adminToken,
-        body: { action: 'APPROVE', expectedVersion: studentEval.version }
-      })
+      expect(studentEval.submitStatus).toBe('SUBMITTED')
+      expect(studentEval.reviewStatus).toBe('PENDING')
+      const advisorOpinion = '学生实习表现良好，过程事实完整，同意进入成绩核算。'
+
+      await staffLogin(page, config.mentor, /实习指导教师|INTERN_MENTOR/)
+      await page.goto(`${config.staffBaseUrl}/admin/internship/student-evals?batchId=${fixture.gj08.batchId}&view=self`)
+      const mentorRow = page.locator('button.lv-item').filter({ hasText: fixture.student.name }).first()
+      await expect(mentorRow).toBeVisible()
+      await mentorRow.click()
+      const mentorDetail = page.locator('section.lv-main')
+      await expect(mentorDetail).toContainText(fixture.student.name)
+      if (String(studentEval.advisorOpinion || '').trim() !== advisorOpinion) {
+        const commentFields = mentorDetail.locator('.cmt__fields textarea')
+        await commentFields.nth(0).fill(advisorOpinion)
+        await commentFields.nth(1).fill('企业评价与过程材料相互印证。')
+        const mentorSaved = page.waitForResponse((response) =>
+          apiPath(response) === `/api/v1/internship/student-evals/${studentEval.id}/advisor-comment`
+          && response.request().method() === 'POST')
+        await mentorDetail.getByRole('button', { name: '保存指导意见', exact: true }).click()
+        await responseData(await mentorSaved, '指导教师保存实习评价意见')
+      }
+      studentEval = await request('GET', `/internship/student-evals/${studentEval.id}`, { token: mentorToken })
+      expect(studentEval.advisorOpinion).toBe(advisorOpinion)
+      expect(studentEval.reviewStatus).toBe('PENDING')
+
+      await staffLogin(page, config.sandboxAdmin, /学校管理员|SCHOOL_ADMIN/)
+      await page.goto(`${config.staffBaseUrl}/admin/internship/student-evals?batchId=${fixture.gj08.batchId}&view=self`)
+      const reviewerRow = page.locator('button.lv-item').filter({ hasText: fixture.student.name }).first()
+      await expect(reviewerRow).toBeVisible()
+      await reviewerRow.click()
+      const reviewDetail = page.locator('section.lv-main')
+      await expect(reviewDetail.locator('.cmt__fields textarea').nth(0)).toHaveValue(studentEval.advisorOpinion)
+      await reviewDetail.locator('.lv-foot').getByRole('button', { name: '通过', exact: true }).click()
+      const approvalDialog = page.getByRole('dialog', { name: '鉴定 · 通过', exact: true })
+      await expect(approvalDialog).toBeVisible()
+      const reviewResponse = page.waitForResponse((response) =>
+        apiPath(response) === `/api/v1/internship/student-evals/${studentEval.id}/review`
+        && response.request().method() === 'POST')
+      await approvalDialog.getByRole('button', { name: '通过', exact: true }).click()
+      await responseData(await reviewResponse, '学校审核通过实习鉴定')
+      studentEval = await request('GET', `/internship/student-evals/${studentEval.id}`, { token: adminToken })
     }
     studentEvalId = String(studentEval.id)
     expect(studentEval.reviewStatus).toBe('APPROVED')
+    if (page.url().startsWith(config.staffBaseUrl)) {
+      workbench = await openStudentInternship(page, fixture.gj08)
+      await workbench.openGroupedTab('变更与结果', '实习成绩/自评')
+    }
 
     const existingScores = await request('GET', '/internship/scores', {
       token: mentorToken,

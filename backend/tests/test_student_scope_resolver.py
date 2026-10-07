@@ -146,6 +146,25 @@ def test_graduated_and_voided_never_selected(org):
     assert "SRVOID" not in _nos(res), "已作废档案不该进批次"
 
 
+def test_default_accepts_registered_and_retained_but_not_inactive_statuses(org):
+    from app.db.session import get_sessionmaker
+    from app.models import StudentProfile
+
+    db = get_sessionmaker()()
+    try:
+        for no, status in (("SR111", "REGISTERED"), ("SR112", "RETAINED"),
+                           ("SR121", "SUSPENDED"), ("SR122", "WITHDRAWN")):
+            db.get(StudentProfile, org["students"][no]).student_status = status
+        db.commit()
+    finally:
+        db.close()
+
+    rule = {"collegeIds": [org["colleges"]["信息工程学院"]]}
+    assert _nos(_resolve(rule)) == ["SR111", "SR112"]
+    # 已保存的显式旧规则不因默认更新而被静默改写。
+    assert _nos(_resolve({**rule, "studentStatuses": ["NORMAL"]})) == []
+
+
 def test_stage_can_be_widened_explicitly(org):
     """确有需要时可显式放开阶段（如毕业生回访批次），但必须显式写出来。"""
     res = _resolve({"collegeIds": [org["colleges"]["信息工程学院"]],

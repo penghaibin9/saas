@@ -40,6 +40,10 @@
             批次名称
             <input v-model.trim="draft.batchName" class="aa-input" :disabled="createBlocked" placeholder="如 2026级新生入学注册" maxlength="50" />
           </label>
+          <div class="aa-cal-form__item">
+            <span>所属学期（必选）</span>
+            <AppTermEntityPicker v-model="draft.termId" placeholder="选择正式学期" :disabled="createBlocked" />
+          </div>
           <label class="aa-cal-form__item">
             类型
             <AppSelect v-model="draft.registerType" :options="registerTypeOptions" :disabled="!!fixedType || createBlocked" />
@@ -51,7 +55,7 @@
           <label class="aa-cal-form__item aa-cal-form__check">
             <input v-model="draft.open" type="checkbox" :disabled="createBlocked" /> 创建后立即开放
           </label>
-          <AppButton variant="primary" :disabled="createBlocked || !draft.batchName.trim()" :loading="creating" @click="createBatch">
+          <AppButton variant="primary" :disabled="createBlocked || !draft.batchName.trim() || !validTermId(draft.termId)" :loading="creating" @click="createBatch">
             创建
           </AppButton>
         </div>
@@ -122,7 +126,7 @@
 /** 注册批次列表（/admin/academic-affairs/registration）：GET/POST /academic-affairs/registration-batches。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker, AppSelect, AppInlineAlert, AppStepBar } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker, AppSelect, AppInlineAlert, AppStepBar, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { matchPermission } from '@/config/navPlan'
 
@@ -131,7 +135,7 @@ const TYPE_LABEL = { ENROLL: '入学注册', ANNUAL: '学年注册', SEMESTER: '
 
 export default {
   name: 'AaRegistrationBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker, AppSelect, AppInlineAlert, AppStepBar },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppDateRangePicker, AppSelect, AppInlineAlert, AppStepBar, AppTermEntityPicker },
   props: { ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
   data() {
@@ -146,7 +150,7 @@ export default {
       createWrite: { target: null, pending: null, receipt: null, error: '', deniedIdentity: '' },
       busyId: '',
       batchWrite: { target: null, pending: null, receipt: null, error: '', checking: false, readRow: null, readError: '', deniedIdentity: '' },
-      draft: { batchName: '', registerType: 'ENROLL', windowStart: '', windowEnd: '', open: false },
+      draft: { batchName: '', registerType: 'ENROLL', termId: '', windowStart: '', windowEnd: '', open: false },
       pagination: { page: 1, pageSize: 20, total: 0 },
       confirm: { visible: false, title: '', message: '', type: 'primary' },
       pendingAction: null
@@ -189,7 +193,8 @@ export default {
       return !!target && target.identity === this.batchActionIdentity() && (!this.fixedType || target.row.registerType === this.fixedType)
     },
     canReadBatchOutcome() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.registration.view') },
-    contextKey() { return JSON.stringify([this.scopeVersion, this.ctx, this.fixedType]) },
+    contextKey() { return JSON.stringify([this.scopeVersion, this.ctx, this.fixedType, this.routeTermId]) },
+    routeTermId() { const value = this.$route?.query?.termId; return typeof value === 'string' && /^[1-9]\d*$/.test(value) ? value : '' },
     registerTypeOptions() {
       return Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }))
     },
@@ -234,16 +239,21 @@ export default {
       this.restoreListQuery()
       this.confirm.visible = false; this.pendingAction = null
       this.load()
+    },
+    '$route.query.termId'() {
+      this.showCreate = false; this.createForm = null; this.clearCreateDraft()
     }
   },
   created() {
     this.restoreListQuery()
     if (this.fixedType) this.draft.registerType = this.fixedType
+    this.draft.termId = this.routeTermId
     this.load()
   },
   beforeRouteUpdate(to, from, next) { next(!this.creating && !this.busyId) },
   beforeUnmount() { this.disposed = true; this.requestVersion++ },
   methods: {
+    validTermId(value) { return typeof value === 'string' && /^[1-9]\d*$/.test(value) },
     restoreListQuery() {
       const query = this.$route.query || {}, rawPage = Number(query.page), rawSize = Number(query.pageSize)
       const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1
@@ -386,10 +396,10 @@ export default {
       this.createForm = this.showCreate ? { identity: this.batchActionIdentity(), context: this.contextKey } : null
     },
     clearCreateDraft() {
-      this.draft = { batchName: '', registerType: this.fixedType || 'ENROLL', windowStart: '', windowEnd: '', open: false }
+      this.draft = { batchName: '', registerType: this.fixedType || 'ENROLL', termId: this.routeTermId, windowStart: '', windowEnd: '', open: false }
     },
     createDraftBody() {
-      return { batchName: this.draft.batchName.trim(), registerType: this.fixedType || this.draft.registerType,
+      return { batchName: this.draft.batchName.trim(), registerType: this.fixedType || this.draft.registerType, termId: this.draft.termId,
         windowStart: this.draft.windowStart || undefined, windowEnd: this.draft.windowEnd || undefined, open: this.draft.open }
     },
     createTargetCurrent(target) {
@@ -397,7 +407,7 @@ export default {
         target.form === this.createForm && target.draft === this.draft && JSON.stringify(target.body) === JSON.stringify(this.createDraftBody())
     },
     async createBatch() {
-      if (this.createBlocked || this.disposed || !this.showCreate || !this.draft.batchName.trim() ||
+      if (this.createBlocked || this.disposed || !this.showCreate || !this.draft.batchName.trim() || !this.validTermId(this.draft.termId) ||
         this.createForm?.identity !== this.batchActionIdentity() || this.createForm?.context !== this.contextKey) return
       const target = { identity: this.batchActionIdentity(), context: this.contextKey, form: this.createForm, draft: this.draft,
         body: Object.freeze(this.createDraftBody()) }

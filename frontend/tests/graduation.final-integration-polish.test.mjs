@@ -60,9 +60,10 @@ test('deep grade form keeps a readable type floor and a guarded completion retur
   assert.doesNotMatch(source, /this\.submitting = false\s*\n\s*await this\.\$router\.push\(snapshot\.backTo\)/)
 })
 
-test('single menu truth remains eight workspaces and twenty-four leaves', () => {
+test('single menu truth remains eight workspaces and twenty-nine leaves (overview + six stages + more)', () => {
   assert.equal(GRADUATION_WORKSPACES.length, 8)
-  assert.equal(GRADUATION_WORKSPACES.reduce((sum, workspace) => sum + workspace.children.length, 0), 24)
+  // 29 = 原 24 个 + 我的毕设工作 + 开工检查 + 中期检查（按导师）+ 导师评分 + 材料规则；老师菜单再按 menuRequiresAny 收敛为 3 个
+  assert.equal(GRADUATION_WORKSPACES.reduce((sum, workspace) => sum + workspace.children.length, 0), 29)
 })
 
 test('shortcut and formal duplicate path identities are distinguishable without new routes', () => {
@@ -71,7 +72,7 @@ test('shortcut and formal duplicate path identities are distinguishable without 
   assert.equal(byLabel('待评阅开题').path, '/admin/graduation/proposals?tab=PENDING_REVIEW')
   assert.equal(byLabel('开题报告批阅').path, '/admin/graduation/proposals?workspace=proposal-final')
   assert.equal(byLabel('待评阅成果').path, '/admin/graduation/finals?tab=PENDING_REVIEW')
-  assert.equal(byLabel('成果提交与批阅').path, '/admin/graduation/finals?workspace=proposal-final')
+  assert.equal(byLabel('论文提交与批阅').path, '/admin/graduation/finals?workspace=proposal-final')
   assert.equal(byLabel('我的答辩评分').path, '/admin/graduation/defense-scoring')
   assert.equal(byLabel('答辩评分').path, '/admin/graduation/defense-scoring?workspace=defense-grade')
   for (const leaf of leaves) assert.ok(leaf.path.startsWith('/admin/graduation'))

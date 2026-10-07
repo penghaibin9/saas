@@ -45,6 +45,47 @@ test('applied schedule-change evidence never claims notification delivery withou
   assert.match(receipt.description, /通知送达数量未随详情返回/)
 })
 
+test('cancelled schedule-change evidence ends the flow while retaining the source and historical node', () => {
+  const state = mount('components/parallel-b/ScheduleChangeEvidence.vue', {
+    CHANGE_STATUS: [{ value: 'CANCELLED', label: '已撤销' }]
+  }, { changeId: '14' })
+  for (const changeType of ['STOP', 'ADJUST']) {
+    const detail = {
+      changeId: '14', originItemId: '33103', batchId: '44', status: 'CANCELLED',
+      version: 1, currentNode: 'COLLEGE_REVIEW', changeType,
+      reason: '本次申请不再办理', origin: { weekday: 4, slotNo: 4, classroom: '101' },
+      target: { weekday: 5, slotNo: 4, classroom: '102' }
+    }
+    const before = JSON.stringify(detail)
+    state.detail = detail
+    assert.equal(state.ownerLabel, '流程已结束')
+    assert.equal(state.nextOwnerLabel, '流程结束')
+    for (let index = 1; index <= 5; index++) {
+      assert.equal(state.stageClass(index)['is-active'], false)
+      assert.equal(state.stageClass(index)['is-done'], false)
+      assert.doesNotMatch(state.stageNote(index), /当前办理|等待|已由正式状态确认/)
+    }
+    assert.match(state.stageNote(4), /已撤销.*流程结束/)
+    const node = state.evidenceCards.find(item => item.title === '当前节点与版本')
+    assert.match(node.source, /历史节点 学院审核.*版本 1/)
+    const source = state.evidenceCards.find(item => item.title === '来源对象与身份')
+    assert.match(source.description, /申请 14.*33103/)
+    const receipt = state.evidenceCards.find(item => item.title === '生效与通知回执')
+    assert.equal(receipt.status, '已撤销，未生效')
+    assert.match(receipt.description, /未改变正式课表/)
+    assert.match(receipt.description, /不再进入生效与通知办理/)
+    assert.doesNotMatch(JSON.stringify(state.evidenceCards), /等待办理|终审仍须|待补充/)
+    assert.match(state.receiptNote, /流程结束/)
+    assert.equal(JSON.stringify(detail), before)
+    state.detail = { ...detail, reason: '', target: null }
+    assert.doesNotMatch(JSON.stringify(state.evidenceCards), /等待办理|终审仍须|待补充/)
+  }
+  state.detail = { status: 'REJECTED' }
+  assert.equal(state.stageIndex, 4)
+  assert.equal(state.stageClass(4)['is-active'], true)
+  assert.equal(state.nextOwnerLabel, '修正后重新发起')
+})
+
 test('schedule-change todo focuses the exact large ID beyond the queue page and clears both supported sources', () => {
   const state = mount('views/AaScheduleChangeApprovalView.vue')
   state.$route.query = { recordId: '9007199254740993', returnToken: 'origin' }

@@ -17,7 +17,7 @@ function mount(name, api = {}, query = {}, meta = {}, browser = {}) {
   const navigations = []
   const session = browser.session || { user: { userId: 'test-student', studentNo: 'S001' }, token: 'test-token' }
   const modules = {
-    vue: { ...vue, onMounted: () => {}, onBeforeUnmount: (fn) => disposers.push(fn) },
+    vue: { ...vue, inject: (_key, fallback) => browser.registerWorkspaceForm || fallback, onMounted: () => {}, onBeforeUnmount: (fn) => disposers.push(fn) },
     'vue-router': { useRoute: () => ({ query, meta }), useRouter: () => ({ push: (to) => navigations.push(to) }) },
     '../../services/portalApi': { portalApi: api },
     '../../services/systemDialog': {
@@ -42,10 +42,84 @@ function mount(name, api = {}, query = {}, meta = {}, browser = {}) {
   return { ...component.setup({}, { expose() {} }), dispose: () => disposers.forEach((fn) => fn()), navigations }
 }
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
+
+for (const outcome of ['confirmed', 'unmatched', 'network', 'new-draft']) {
+  test(`recheck workspace protection follows the real draft after ${outcome}, including submission and owner release`, async () => {
+    const layoutSource = readFileSync(new URL('../src/layouts/PortalLayout.vue', import.meta.url), 'utf8')
+    const registryCode = layoutSource.slice(layoutSource.indexOf('const activeFormCheck ='), layoutSource.indexOf("provide('registerWorkspaceForm'"))
+    const registry = new Function('computed', 'shallowRef', 'edited', registryCode + ';return {activeFormCheck,hasEdits,registerWorkspaceForm}')(
+      vue.computed, vue.shallowRef, vue.ref(true))
+    const sent = deferred(), acknowledgement = deferred()
+    let posted = false
+    const formal = { recheckId: '5002', acadGradeId: outcome === 'unmatched' ? '9999' : '5001', status: 'SUBMITTED', reason: '请核对本人正式成绩' }
+    const page = mount('Recheck', {
+      academicTranscript: async () => ({ items: [{ gradeId: '5001', courseName: '测试课程' }] }),
+      academicGradeRecheck: async () => posted ? [formal] : [],
+      academicGradeRecheckSubmit: async () => { sent.resolve(); const result = await acknowledgement.promise; posted = true; return result }
+    }, { gradeId: '5001' }, {}, {
+      session: { user: { userId: `recheck-form-${outcome}`, studentNo: 'S001' }, token: 'test-token' },
+      registerWorkspaceForm: registry.registerWorkspaceForm
+    })
+    await page.load()
+    assert.equal(registry.hasEdits.value, false, 'the initial exact-grade link is not an unsaved edit')
+    page.reason.value = '请核对本人正式成绩'
+    assert.equal(registry.hasEdits.value, true)
+    page.applying.value = false
+    assert.equal(registry.hasEdits.value, true, 'returning to records must still protect the hidden draft')
+    assert.equal(page.reason.value, '请核对本人正式成绩')
+    page.applying.value = true
+    const running = page.submit()
+    await sent.promise
+    assert.equal(registry.activeFormCheck.value.busy(), true)
+    if (outcome === 'new-draft') page.reason.value = '提交期间另外填写的新草稿'
+    if (outcome === 'network') acknowledgement.reject(Object.assign(new Error('network unavailable'), { network: true }))
+    else acknowledgement.resolve({ recheckId: '5002' })
+    await running
+    assert.equal(registry.activeFormCheck.value.busy(), false)
+    assert.equal(registry.hasEdits.value, outcome !== 'confirmed')
+    assert.equal(page.receiptTone.value, ['confirmed', 'new-draft'].includes(outcome) ? 'success' : 'waiting')
+    if (outcome === 'new-draft') assert.equal(page.reason.value, '提交期间另外填写的新草稿')
+    registry.registerWorkspaceForm(() => false)
+    const nextOwner = registry.activeFormCheck.value
+    page.dispose()
+    assert.equal(registry.activeFormCheck.value, nextOwner, 'late cleanup cannot unregister the next page')
+  })
+}
 const course = { selectionCourseId: 'C1', courseName: '测试课程', allowedActions: ['ENROLL'], mode: 'LOTTERY' }
 const batch = (id) => [{ batch: { batchId: id, batchName: id }, courses: [course] }]
 const forbidden = () => Object.assign(new Error('禁止访问'), { status: 403 })
 const conflict = () => Object.assign(new Error('事实已变化'), { status: 409 })
+
+test('成绩复查创建时间把明确时区的时间点显示为北京时间', () => {
+  const page = mount('Recheck')
+  for (const [input, expected] of [
+    ['2026-10-03T12:11:00Z', '2026-10-03 20:11'],
+    ['2026-10-03T20:11:00+08:00', '2026-10-03 20:11'],
+    ['2026-10-03T08:11:00-04:00', '2026-10-03 20:11'],
+    ['2026-10-03T20:11:00+0800', '2026-10-03 20:11'],
+    ['2026-10-03T16:11:00Z', '2026-10-04 00:11']
+  ]) assert.equal(page.dateTime(input), expected, input)
+  page.dispose()
+})
+
+test('成绩复查不偏移无时区学校本地时间和纯日期', () => {
+  const page = mount('Recheck')
+  for (const [input, expected] of [
+    ['2026-10-03T20:11:00', '2026-10-03 20:11'],
+    ['2026-10-03 20:11', '2026-10-03 20:11'],
+    ['2026-10-03', '2026-10-03'],
+    ['2024-02-29', '2024-02-29']
+  ]) assert.equal(page.dateTime(input), expected, input)
+  page.dispose()
+})
+
+test('成绩复查非法或空日期时间显示明确占位', () => {
+  const page = mount('Recheck')
+  for (const input of [undefined, null, '', ' ', '不是日期', '2026-02-30', '2026-10-03T25:11:00Z', '2026-10-03T12:61:00Z', '2026-10-03T12:11:00+25:00']) {
+    assert.equal(page.dateTime(input), '—', String(input))
+  }
+  page.dispose()
+})
 
 for (const action of ['textbook', 'level-register', 'level-cancel', 'exam', 'recheck', 'evaluation']) {
   for (const invalidation of ['identity', 'unmount', 'cancel']) {
@@ -655,6 +729,57 @@ test('selection ignores an older batch response even when it finishes last', asy
   b.resolve(batch('B')); await second
   a.resolve(batch('A')); await first
   assert.equal(page.groups.value[0].batch.batchId, 'B')
+})
+
+test('selection keeps the string batch in navigation and restores it on refresh', async () => {
+  const batchId = '9007199254740993123'
+  const calls = []
+  const api = { academicCourseSelection: async (id) => { calls.push(id); return batch(id) }, academicSelectionRecords: async (id) => [{ recordId: '5', batchId: id }] }
+  const page = mount('Selection', api, { returnTo: '/academic' })
+  page.activeBatchId.value = batchId
+  page.changeBatch()
+  assert.deepEqual(page.navigations[0], { query: { returnTo: '/academic', batchId } })
+  const refreshed = mount('Selection', api, page.navigations[0].query)
+  await refreshed.load()
+  assert.equal(refreshed.activeBatchId.value, batchId)
+  assert.equal(calls.at(-1), batchId)
+  assert.equal(refreshed.batchOptions.value[0].batchId, batchId)
+  assert.equal(refreshed.records.value[0].batchId, batchId)
+})
+
+test('selection follows browser back batch context and clearing retains other query fields', async () => {
+  const query = vue.reactive({ batchId: '2', returnTo: '/academic' })
+  const page = mount('Selection', { academicCourseSelection: async (id) => batch(id), academicSelectionRecords: async (id) => [{ batchId: id }] }, query)
+  await page.load()
+  query.batchId = '1'
+  await vue.nextTick(); await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(page.activeBatchId.value, '1')
+  assert.equal(page.records.value[0].batchId, '1')
+  page.activeBatchId.value = ''
+  page.changeBatch()
+  assert.deepEqual(page.navigations.at(-1), { query: { returnTo: '/academic' } })
+})
+
+test('selection treats repeated batch query values as no batch and cannot publish old identity data', async () => {
+  const pending = deferred()
+  const session = { user: { userId: 'student-A' }, token: 'token-A' }
+  const page = mount('Selection', { academicCourseSelection: () => pending.promise, academicSelectionRecords: async () => [{ recordId: 'private-A' }] }, { batchId: ['1', '2'] }, {}, { session })
+  assert.equal(page.activeBatchId.value, '')
+  const loading = page.load()
+  session.user = { userId: 'student-B' }; session.token = 'token-B'
+  pending.resolve(batch('1')); await loading
+  assert.equal(page.records.value.length, 0)
+  assert.equal(page.groups.value.length, 0)
+})
+
+test('selection replaces earlier identity batch options when loading a route batch', async () => {
+  const session = { user: { userId: 'student-A' }, token: 'token-A' }
+  let visibleBatch = 'A'
+  const page = mount('Selection', { academicCourseSelection: async () => batch(visibleBatch), academicSelectionRecords: async () => [] }, { batchId: '2' }, {}, { session })
+  await page.load()
+  session.user = { userId: 'student-B' }; session.token = 'token-B'; visibleBatch = 'B'
+  await page.load()
+  assert.deepEqual(page.batchOptions.value.map(x => x.batchId), ['B'])
 })
 
 test('selection requires a fresh formal record, blocks repeat writes, and can reconcile by GET', async () => {

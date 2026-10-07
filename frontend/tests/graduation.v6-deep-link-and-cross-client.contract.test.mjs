@@ -146,12 +146,13 @@ test('teacher miniapp locks an exact batch task before previewing the same FileV
   assert.match(miniFileSdk, /realDownload\(`\$\{openPath\}\?ticket=/)
 })
 
-test('student miniapp keeps high-frequency status and hands large thesis upload to student PC', () => {
+// 产品决定（2026-09-28）：论文初稿/定稿可在手机提交（PDF/Word ≤20MB）；仅设计作品包、源代码等大型文件交给电脑端。
+test('student miniapp accepts thesis PDF/Word on phone and hands only large packages to student PC', () => {
   assert.match(studentMini, /毕业设计/)
-  assert.match(studentMini, /学生\s*PC/)
   assert.match(studentMini, /论文/)
   assert.match(studentMini, /material/)
   assert.match(studentMini, /fileSdk\.upload/)
   assert.match(studentMini, /onPullDownRefresh/)
-  assert.match(studentMini, /(?:正式|大型)论文[^\n<]*学生\s*PC/)
+  assert.match(studentMini, /设计作品包、源代码等大型文件请到电脑端上传/)
+  assert.doesNotMatch(studentMini, /(?:正式|大型)论文[^\n<]*学生\s*PC/)
 })

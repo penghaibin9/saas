@@ -556,3 +556,281 @@ def test_mobile_attendance_is_server_paged_course_filtered_and_self_scoped(clien
 
     teacher = client.get(f"{STUDENT_BASE}/attendance/my", headers=_teacher_token("越权教师"))
     assert teacher.status_code == 403
+
+
+def _seed_historical_attendance_source():
+    """Isolated MySQL read fixture: retained source replaced after a submitted rollcall."""
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import AaAttendanceSession, AaScheduleBatch, AaScheduleItem, AaScheduleScopeHead, StudentProfile
+    class_id = _seed_class(n_students=2)
+    task_id = _seed_teaching_task(class_id, "历史来源教师")
+    db = get_sessionmaker()()
+    try:
+        item = db.scalars(select(AaScheduleItem).where(
+            AaScheduleItem.tenant_id == MAIN, AaScheduleItem.task_id == task_id,
+            AaScheduleItem.weekday == 2,
+        )).one()
+        item.id = 9007199254740993
+        item.teacher_name = "保留教师名称"
+        item.class_name = "保留班级名称"
+        item.classroom_text = "保留教室名称"
+        batch = db.get(AaScheduleBatch, item.batch_id)
+        batch.status = "SUPERSEDED"
+        head = db.scalars(select(AaScheduleScopeHead).where(
+            AaScheduleScopeHead.tenant_id == MAIN, AaScheduleScopeHead.term_id == batch.term_id,
+        )).one()
+        # This source must survive a changed current head without invoking the writer resolver.
+        head.active_batch_id = None
+        student_id = db.scalars(select(StudentProfile.id).where(
+            StudentProfile.tenant_id == MAIN, StudentProfile.student_no == "AT0000",
+        )).one()
+        evidence = {
+            "sourceType": "FORMAL_TEACHING", "termId": str(batch.term_id),
+            "activeBatchId": str(batch.id), "scopeHeadVersion": 1,
+            "publishedAt": "2026-03-01T08:00:00", "scheduleItemId": str(item.id),
+            "teachingTaskId": str(task_id), "classId": str(class_id),
+            "teacherKey": item.teacher_key, "sessionDate": "2026-07-14",
+            "logicalDate": "2026-07-14", "weekNo": 20, "weekday": 2,
+            "slotNo": 1, "weekParity": "ALL",
+            "occurrenceIdentity": f"{batch.id}:{item.id}:2026-07-14:1",
+        }
+        attendance = AaAttendanceSession(
+            tenant_id=MAIN, class_id=class_id, teaching_task_id=task_id,
+            source_type="FORMAL_TEACHING", source_evidence=json.dumps(evidence),
+            occurrence_identity=evidence["occurrenceIdentity"], teacher_key=item.teacher_key,
+            course_name="保留考勤课程", term_code="2026-2027-1", session_date="2026-07-14",
+            slot_no=1, status="SUBMITTED",
+            roster_json=json.dumps([{"studentId": str(student_id), "status": "LATE"}]),
+        )
+        db.add(attendance)
+        db.flush()
+        ids = (attendance.id, item.id, batch.id, student_id)
+        db.commit()
+        return ids
+    finally:
+        db.close()
+
+
+def test_student_attendance_exact_source_reads_retained_superseded_batch(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaAttendanceSession
+    attendance_id, item_id, batch_id, student_id = _seed_historical_attendance_source()
+    db = get_sessionmaker()()
+    try:
+        target = db.get(AaAttendanceSession, attendance_id)
+        another = AaAttendanceSession(
+            tenant_id=MAIN, class_id=target.class_id, teaching_task_id=target.teaching_task_id,
+            course_name="另一已提交考勤课程", session_date="2026-07-15", slot_no=1,
+            status="SUBMITTED",
+            roster_json=json.dumps([{"studentId": str(student_id), "status": "PRESENT"}]),
+        )
+        db.add(another)
+        db.flush()
+        another_id = another.id
+        db.commit()
+    finally:
+        db.close()
+    student = _student_header("考勤生0", "AT0000")
+    response = client.get(f"{STUDENT_BASE}/attendance/my", headers=student, params={"session_id": str(attendance_id)})
+    assert response.status_code == 200, response.text
+    result = response.json()["data"]
+    assert result["total"] == 1 and len(result["items"]) == 1
+    row = result["items"][0]
+    assert row["sessionId"] == str(attendance_id) and row["status"] == "LATE"
+    assert all(row["sessionId"] != str(another_id) for row in result["items"])
+    assert result["summary"] == {"PRESENT": 0, "LATE": 1, "ABSENT": 0, "LEAVE": 0, "OTHER": 0}
+    detail = row["sourceDetail"]
+    assert detail["verified"] is True and detail["reason"] == ""
+    assert detail["scheduleItemId"] == str(item_id) == "9007199254740993"
+    assert detail["batchId"] == str(batch_id)
+    assert all(isinstance(detail[key], str) for key in ("sessionId", "scheduleItemId", "batchId", "termId"))
+    assert detail["teacherName"] == "保留教师名称"
+    assert detail["className"] == "保留班级名称" and detail["classroom"] == "保留教室名称"
+    assert detail["courseName"] == "保留考勤课程" and detail["sessionDate"] == "2026-07-14"
+    assert detail["weekNo"] == 20 and detail["weekday"] == 2 and detail["slotNo"] == 1
+    assert not ({"teacherKey", "sourceEvidence", "roster", "startTime", "endTime"} & set(detail))
+    ordinary = client.get(f"{STUDENT_BASE}/attendance/my", headers=student).json()["data"]
+    assert ordinary["total"] == 2
+    assert {row["sessionId"] for row in ordinary["items"]} == {str(attendance_id), str(another_id)}
+    assert all("sourceDetail" not in row for row in ordinary["items"])
+
+
+def test_student_attendance_exact_source_never_exposes_nonmember_other_tenant_or_draft(client, db_mode):
+    from datetime import datetime, timedelta
+    from decimal import Decimal
+    from app.db.session import get_sessionmaker
+    from app.models import (
+        AaAttendanceSession, CommercialOrderItem, PlatformOrder, StudentProfile, Tenant,
+        TenantCommercialProfile, TenantModuleState, TenantModuleSubscriptionSource,
+    )
+    attendance_id, _, _, student_id = _seed_historical_attendance_source()
+    db = get_sessionmaker()()
+    try:
+        # Reach the real self/tenant SQL boundary using an ordinary active school,
+        # rather than passing because authentication rejected a nonexistent tenant.
+        if db.get(Tenant, DEMO) is None:
+            db.add(Tenant(
+                id=DEMO, tenant_code="attendance-source-other-school",
+                school_name="考勤来源隔离测试学校", short_name="考勤隔离学校",
+                deploy_mode="SAAS", db_mode="SHARED", status="ACTIVE",
+            ))
+            db.flush()
+        # The global commercial-surface dependency precedes the attendance reader.
+        # Match the existing modular-commerce paid-source fixtures, granting only
+        # academicAffairs through the real authority tables, never a permission bypass.
+        starts_at = datetime.utcnow() - timedelta(days=1)
+        ends_at = datetime.utcnow() + timedelta(days=30)
+        order = PlatformOrder(
+            tenant_id=DEMO, order_no="AT-SOURCE-OTHER-SCHOOL", order_type="NEW",
+            amount=Decimal("100.00"), paid_amount=Decimal("100.00"), status="paid",
+        )
+        db.add(order)
+        db.flush()
+        order_item = CommercialOrderItem(
+            tenant_id=DEMO, order_id=order.id, line_no=1, module_key="academicAffairs",
+            module_generation=1, quantity=1, unit_price=Decimal("100.00"),
+            discount_amount=Decimal("0.00"), net_amount=Decimal("100.00"), currency="CNY",
+            service_start_at=starts_at, service_end_at=ends_at,
+            feature_snapshot_json={"academicAffairs": True}, quota_snapshot_json={},
+            fulfillment_status="FULFILLED", fulfilled_at=starts_at,
+        )
+        db.add(order_item)
+        db.flush()
+        db.add_all([
+            TenantCommercialProfile(
+                tenant_id=DEMO, reader_version="MODULE_V2", migration_status="NEW_MODULE_CUSTOMER",
+            ),
+            TenantModuleState(
+                tenant_id=DEMO, module_key="academicAffairs", generation=1,
+                lifecycle_version=1, data_state="AVAILABLE",
+            ),
+            TenantModuleSubscriptionSource(
+                tenant_id=DEMO, module_key="academicAffairs", module_generation=1,
+                source_type="PAID_ORDER_ITEM", source_ref=f"ORDER_ITEM:{order_item.id}",
+                order_item_id=order_item.id, feature_snapshot_json={"academicAffairs": True},
+                quota_snapshot_json={}, starts_at=starts_at, ends_at=ends_at, status="ACTIVE",
+                approval_ref="AT-SOURCE-ISOLATED-TEST", activated_at=starts_at,
+            ),
+        ])
+        db.add(StudentProfile(
+            tenant_id=DEMO, student_no="AT0000", real_name="跨校考勤生",
+            current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE",
+        ))
+        db.commit()
+    finally:
+        db.close()
+    from app.services.commercial_authority_read import effective_features
+    from app.services.module_access_service import module_access_state
+    granted = effective_features(DEMO)
+    assert {key for key, enabled in granted.items() if enabled} == {"academicAffairs"}
+    module_state = module_access_state(DEMO, "academicAffairs")
+    assert module_state["entitled"] and module_state["enabled"] and module_state["allowed"]
+    for headers in (
+        _student_header("考勤生1", "AT0001"),
+        _student_header("跨校考勤生", "AT0000", tenant_id=DEMO, tid="attendance-source-other-school"),
+    ):
+        response = client.get(f"{STUDENT_BASE}/attendance/my", headers=headers, params={
+            "session_id": str(attendance_id), "studentId": str(student_id), "tenantId": str(MAIN),
+        })
+        assert response.status_code == 200, response.text
+        assert response.json()["data"]["items"] == [] and response.json()["data"]["total"] == 0
+    db = get_sessionmaker()()
+    try:
+        db.get(AaAttendanceSession, attendance_id).status = "DRAFT"
+        db.commit()
+    finally:
+        db.close()
+    response = client.get(f"{STUDENT_BASE}/attendance/my", headers=_student_header("考勤生0", "AT0000"), params={"session_id": str(attendance_id)})
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["items"] == []
+
+
+def test_student_attendance_exact_source_returns_neutral_failure_for_bad_evidence(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaAttendanceSession
+    attendance_id, _, _, _ = _seed_historical_attendance_source()
+    for broken in ("not-json", "wrong-identity"):
+        db = get_sessionmaker()()
+        try:
+            attendance = db.get(AaAttendanceSession, attendance_id)
+            if broken == "not-json":
+                original = attendance.source_evidence
+                attendance.source_evidence = broken
+            else:
+                attendance.source_evidence = original
+                attendance.occurrence_identity = broken
+            db.commit()
+        finally:
+            db.close()
+        response = client.get(f"{STUDENT_BASE}/attendance/my", headers=_student_header("考勤生0", "AT0000"), params={"session_id": str(attendance_id)})
+        assert response.status_code == 200, response.text
+        detail = response.json()["data"]["items"][0]["sourceDetail"]
+        assert detail["verified"] is False and detail["reason"]
+        assert set(detail) == {"verified", "reason"}
+
+def test_attendance_source_detail_accepts_formal_occurrence_without_single_admin_class():
+    from types import SimpleNamespace as Row
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+
+    evidence = {
+        "sourceType": "FORMAL_TEACHING",
+        "scheduleItemId": "11",
+        "activeBatchId": "22",
+        "termId": "33",
+        "teachingTaskId": "44",
+        "classId": None,
+        "weekNo": 5,
+        "weekday": 3,
+        "slotNo": 1,
+        "scopeHeadVersion": 7,
+        "sessionDate": "2026-07-15",
+        "teacherKey": "academic01",
+        "occurrenceIdentity": "22:11:2026-07-15:1",
+    }
+    attendance = Row(
+        id=55,
+        tenant_id=MAIN,
+        source_type="FORMAL_TEACHING",
+        source_evidence=json.dumps(evidence, ensure_ascii=False),
+        session_date="2026-07-15",
+        slot_no=1,
+        teaching_task_id=44,
+        class_id=0,
+        teacher_key="academic01",
+        occurrence_identity="22:11:2026-07-15:1",
+        term_code="2026-1",
+        course_name="跨行政班课",
+    )
+    item = Row(
+        id=11,
+        batch_id=22,
+        tenant_id=MAIN,
+        is_deleted=False,
+        status="EFFECTIVE",
+        task_id=44,
+        class_id=None,
+        weekday=3,
+        slot_no=1,
+        week_parity="ALL",
+        start_week=1,
+        end_week=16,
+        teacher_key="academic01",
+        teacher_name="任课教师",
+        class_name="",
+        classroom_text="A101",
+    )
+    batch = Row(
+        id=22,
+        term_id=33,
+        tenant_id=MAIN,
+        is_deleted=False,
+        status="PUBLISHED",
+    )
+
+    detail = gaps._attendance_source_detail(attendance, item, batch, tenant_id=MAIN)
+
+    assert detail["verified"] is True
+    assert detail["scheduleItemId"] == "11"
+    assert detail["batchId"] == "22"
+

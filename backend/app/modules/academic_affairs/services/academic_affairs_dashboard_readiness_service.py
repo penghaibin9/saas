@@ -217,7 +217,11 @@ def _program_items(db, term, college_ids):
     from .academic_affairs_status_service import is_enrolled
     from .student_program_resolution_service import resolve_student_program
 
-    query = db.query(StudentProfile).filter(
+    query = db.query(
+        StudentProfile.id, StudentProfile.tenant_id, StudentProfile.college_id,
+        StudentProfile.major_id, StudentProfile.class_id, StudentProfile.grade,
+        StudentProfile.student_status, StudentProfile.student_no,
+    ).filter(
         StudentProfile.tenant_id == _tid(),
         StudentProfile.is_deleted.is_(False),
     )
@@ -240,9 +244,10 @@ def _program_items(db, term, college_ids):
 
     unresolved = []
     unresolved_count = 0
+    binding_cache = {}
     for grouped_students in grouped.values():
         sample = grouped_students[0]
-        result = resolve_student_program(db, sample, tenant_id=_tid())
+        result = resolve_student_program(db, sample, tenant_id=_tid(), cache=binding_cache)
         if result.status == "RESOLVED":
             continue
         unresolved_count += len(grouped_students)

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
+from types import SimpleNamespace
 
 from sqlalchemy import func, select
 
@@ -162,18 +163,20 @@ def generate_batch(body, user) -> dict:
 
 def assign_teacher_tx(db, task_id, user, body) -> dict:
     from app.models import AaTeachingTask
-    from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+    from .academic_affairs_task_service import _require_college_task_action
 
     t = db.query(AaTeachingTask).filter(
         AaTeachingTask.id == int(task_id),
         AaTeachingTask.tenant_id == _tid(),
         AaTeachingTask.is_deleted.is_(False),
-    ).with_for_update().first()
+    ).first()
     if not t:
         raise not_found("教学任务不存在")
-    guard_term_writable(db, _term_id_of(db, t.batch_id))
+    _require_college_task_action(db, t, user, "manage")
+    db.refresh(t, with_for_update=True)
     if t.status not in ("PENDING_ASSIGN", "REJECTED_BY_TEACHER", "ASSIGNED"):
         raise AppException("APPROVAL_VERSION_CONFLICT", "该任务当前状态不可分配")
+    previous_assignment = SimpleNamespace(teacher_key=t.teacher_key, start_week=t.start_week, end_week=t.end_week)
     t.teacher_id = int(body.teacherId) if getattr(body, "teacherId", None) else None
     t.teacher_key = getattr(body, "teacherKey", None)
     t.teacher_name = getattr(body, "teacherName", None)
@@ -184,6 +187,8 @@ def assign_teacher_tx(db, task_id, user, body) -> dict:
     if getattr(body, "isMerged", None) is not None:
         t.is_merged = bool(body.isMerged)
     t.status, t.reject_reason = "ASSIGNED", None
+    from .academic_affairs_grade_todo_teacher_relation_guard import sync_default_assignment_change
+    sync_default_assignment_change(db, t, previous_assignment)
     _audit(db, "AA_TASK", t.id, "ASSIGN", t.teacher_name or "")
     db.flush()
     return _task_row(t)
@@ -196,39 +201,21 @@ def assign_teacher(task_id, user, body) -> dict:
         return result
 
 
-_REVIEW_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}
-
-
-def _check_teacher_scope(t, user) -> None:
-    """任课教师仅能确认/退回本人 teacher_key 归属的任务。
-
-    管理角色可代管历史数据。普通教师遇到 teacher_key 未回填时必须 fail-closed；
-    旧逻辑直接放行会让任何教师确认仅有姓名、没有稳定工号的历史任务。
-    """
-    role = (user.get("currentRoleCode") or "").upper()
-    if role in _REVIEW_ROLES:
-        return
-    if not t.teacher_key:
-        raise AppException(
-            "NO_DATA_SCOPE",
-            "该教学任务尚未绑定稳定教师工号，不能由教师端确认；请联系学院教务修复任务归属",
-            http_status=403,
-        )
-    if t.teacher_key not in _user_keys(user):
-        raise AppException("NO_DATA_SCOPE", "该教学任务不在您的授课范围内", http_status=403)
-
-
 def teacher_act(task_id, user, action, reason="") -> dict:
-    """教师确认/退回教学任务（仅本人授课范围，管理角色代管不受限）。"""
+    """教师确认/退回使用正式任课关系；管理角色不能冒充教师。"""
     action = (action or "").upper()
     with session() as db:
         from app.models import AaTeachingTask
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
-        t = db.get(AaTeachingTask, int(task_id))
+        from .academic_affairs_teacher_relation_authority import require_teacher
+        t = db.query(AaTeachingTask).filter(
+            AaTeachingTask.id == int(task_id), AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.is_deleted.is_(False),
+        ).with_for_update().first()
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("教学任务不存在")
         guard_term_writable(db, _term_id_of(db, t.batch_id))
-        _check_teacher_scope(t, user)
+        require_teacher(db, t, user, lock=True)
         if t.status != "ASSIGNED":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅已分配任务可确认/退回")
         if action == "CONFIRM":
@@ -329,6 +316,7 @@ def review_batch(batch_id, user, action, reason="") -> dict:
 # ═══════════ 合班 / 拆班 ═══════════
 
 def merge_tasks(body, user) -> dict:
+    from .academic_affairs_task_service import _require_college_task_action
     task_ids = list(dict.fromkeys(int(x) for x in (getattr(body, "taskIds", None) or [])))
     if len(task_ids) < 2:
         raise AppException("VALIDATION_ERROR", "合班至少需选择 2 条教学任务")
@@ -337,13 +325,16 @@ def merge_tasks(body, user) -> dict:
         from app.models import AaTeachingTask
         rows = db.scalars(select(AaTeachingTask).where(
             AaTeachingTask.tenant_id == _tid(), AaTeachingTask.id.in_(task_ids),
-            AaTeachingTask.is_deleted.is_(False))).all()
+            AaTeachingTask.is_deleted.is_(False)).order_by(AaTeachingTask.id)).all()
         if len(rows) != len(set(task_ids)):
             raise not_found("部分教学任务不存在")
         by_id = {t.id: t for t in rows}
         ordered = [by_id[i] for i in task_ids]
         survivor, members = ordered[0], ordered[1:]
         batch_id, course_id = survivor.batch_id, survivor.course_id
+        _require_college_task_action(db, survivor, user, "merge")
+        for task in rows:
+            db.refresh(task, with_for_update=True)
         for t in ordered:
             if t.batch_id != batch_id or t.course_id != course_id:
                 raise AppException("VALIDATION_ERROR", "合班的教学任务须同批次、同课程")
@@ -374,11 +365,15 @@ def merge_tasks(body, user) -> dict:
 
 
 def split_task(task_id, user) -> dict:
+    from .academic_affairs_task_service import _require_college_task_action
     with session() as db:
         from app.models import AaTeachingTask
-        t = db.get(AaTeachingTask, int(task_id))
+        t = db.query(AaTeachingTask).filter(AaTeachingTask.id == int(task_id),
+            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False)).first()
         if not t or t.is_deleted or t.tenant_id != _tid():
             raise not_found("教学任务不存在")
+        _require_college_task_action(db, t, user, "merge")
+        db.refresh(t, with_for_update=True)
         if not t.is_merged or not t.merge_snapshot_json:
             raise AppException("DATA_CONFLICT", "该任务非合班 survivor，无法拆班")
         if t.status not in _PRE_CONFIRM_STATUSES:
@@ -387,7 +382,9 @@ def split_task(task_id, user) -> dict:
         member_ids = snap.get("memberTaskIds") or []
         members = db.scalars(select(AaTeachingTask).where(
             AaTeachingTask.tenant_id == _tid(), AaTeachingTask.id.in_(member_ids),
-            AaTeachingTask.is_deleted.is_(False))).all() if member_ids else []
+            AaTeachingTask.is_deleted.is_(False)).order_by(AaTeachingTask.id).with_for_update()).all() if member_ids else []
+        if any(m.batch_id != t.batch_id for m in members):
+            raise AppException("DATA_CONFLICT", "合班历史包含其他批次任务，不能直接拆班")
         for m in members:
             if m.merged_into_id == t.id:
                 m.status, m.merged_into_id = "PENDING_ASSIGN", None
@@ -405,57 +402,235 @@ def split_task(task_id, user) -> dict:
 
 # ═══════════ 教学任务调整 ═══════════
 
-_TEACHER_FIELDS = ("teacherId", "teacherKey", "teacherName")
+_TEACHER_FIELDS = ("teacherId", "teacherKey")
 
 
-def adjust_task(task_id, user, body) -> dict:
-    """教务管理员更正任务；已生成课表项时禁止静默改任务。"""
+def adjust_task_tx(db, task_id, user, body) -> dict:
+    """学院更正任务；任务、原批次复核与投影由调用方同事务提交。"""
     from app.models import AaScheduleItem, AaTeachingTask
-    from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
+    from .academic_affairs_task_service import _require_college_task_action
     reason = (getattr(body, "reason", None) or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "调整原因必填且不少于 5 字")
+    t = db.query(AaTeachingTask).filter(AaTeachingTask.id == int(task_id),
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False)).first()
+    if not t or t.is_deleted or t.tenant_id != _tid():
+        raise not_found("教学任务不存在")
+    batch = _require_college_task_action(db, t, user, "adjust")
+    db.refresh(t, with_for_update=True)
+    from .academic_affairs_task_execution_authority import require_independent_task
+    require_independent_task(db, t)
+    from app.models import AaTeachingTaskSourceHandoff
+    if db.scalar(select(AaTeachingTaskSourceHandoff.id).where(
+        AaTeachingTaskSourceHandoff.tenant_id == _tid(),
+        AaTeachingTaskSourceHandoff.execution_task_id == t.id).limit(1).with_for_update(read=True)) is not None:
+        raise AppException("DATA_CONFLICT", "本任务已承接后继方案来源，不能直接改写原任务计划；请沿正式任课或排课变更办理。", http_status=409)
+    if t.status == "MERGED":
+        raise AppException("DATA_CONFLICT", "该任务已合班并入其他教学班，请先对合班后的主任务拆班后再调整")
+    scheduled = db.scalar(select(func.count()).select_from(AaScheduleItem).where(
+        AaScheduleItem.tenant_id == _tid(), AaScheduleItem.task_id == t.id,
+        AaScheduleItem.is_deleted.is_(False))) or 0
+    if scheduled:
+        raise AppException("DATA_CONFLICT", "该任务已生成课表项，请先在排课管理调整/作废对应课表项后再调整教学任务")
+    previous_assignment = SimpleNamespace(teacher_key=t.teacher_key, start_week=t.start_week, end_week=t.end_week)
+    changed: list[str] = []
+
+    def _apply(field: str, attr: str, new_v) -> None:
+        if getattr(body, field, None) is None:
+            return
+        if new_v != getattr(t, attr):
+            setattr(t, attr, new_v)
+            changed.append(field)
+
+    _apply("teacherId", "teacher_id", int(body.teacherId) if getattr(body, "teacherId", None) else None)
+    _apply("teacherKey", "teacher_key", getattr(body, "teacherKey", None) or None)
+    _apply("teacherName", "teacher_name", getattr(body, "teacherName", None) or None)
+    _apply("weeklyHours", "weekly_hours", getattr(body, "weeklyHours", None))
+    _apply("totalHours", "total_hours", getattr(body, "totalHours", None))
+    _apply("startWeek", "start_week", getattr(body, "startWeek", None))
+    _apply("endWeek", "end_week", getattr(body, "endWeek", None))
+    _apply("expectedStudents", "expected_students", getattr(body, "expectedStudents", None))
+    if not changed:
+        raise AppException("VALIDATION_ERROR", "提交的字段与当前值相同，未发生实际调整")
+    if t.start_week is not None and t.end_week is not None and t.start_week > t.end_week:
+        raise AppException("VALIDATION_ERROR", "起始周不能晚于结束周")
+    if any(f in changed for f in _TEACHER_FIELDS):
+        if batch.status in {"COLLEGE_CONFIRMED", "APPROVED"}:
+            downstream = db.scalar(select(AaScheduleItem.id).join(
+                AaTeachingTask, AaTeachingTask.id == AaScheduleItem.task_id).where(
+                AaScheduleItem.tenant_id == _tid(), AaScheduleItem.is_deleted.is_(False),
+                AaTeachingTask.tenant_id == _tid(), AaTeachingTask.batch_id == batch.id,
+                AaTeachingTask.is_deleted.is_(False)).limit(1))
+            if downstream:
+                raise AppException("DATA_CONFLICT", "本批次已有课表，不能退回整批任务；请通过正式任课关系或排课变更办理")
+            previous_status = batch.status
+            from .academic_affairs_task_service import _return_editable_batch
+            _return_editable_batch(db, batch)
+            _audit(db, "AA_TASK_BATCH", batch.id, "TEACHER_ADJUST_REOPEN",
+                   f"教师调整触发重新校院复核；原状态={previous_status}；任务={t.id}；原因={reason}")
+        t.status = "ASSIGNED"
+        t.confirm_at = None
+        t.reject_reason = None
+    from .academic_affairs_grade_todo_teacher_relation_guard import sync_default_assignment_change
+    sync_default_assignment_change(db, t, previous_assignment)
+    _audit(db, "AA_TASK", t.id, "ADJUST", f"fields={changed} reason={reason}")
+    db.flush()
+    return _task_row(t)
+
+
+def adjust_task(task_id, user, body) -> dict:
     with session() as db:
-        t = db.get(AaTeachingTask, int(task_id))
-        if not t or t.is_deleted or t.tenant_id != _tid():
-            raise not_found("教学任务不存在")
-        guard_term_writable(db, _term_id_of(db, t.batch_id))
-        if t.status == "MERGED":
-            raise AppException("DATA_CONFLICT", "该任务已合班并入其他教学班，请先对合班 survivor 任务拆班后再调整")
-        scheduled = db.scalar(select(func.count()).select_from(AaScheduleItem).where(
-            AaScheduleItem.tenant_id == _tid(), AaScheduleItem.task_id == t.id,
-            AaScheduleItem.is_deleted.is_(False))) or 0
-        if scheduled:
-            raise AppException("DATA_CONFLICT", "该任务已生成课表项，请先在排课管理调整/作废对应课表项后再调整教学任务")
-        changed: list[str] = []
-
-        def _apply(field: str, attr: str, new_v) -> None:
-            if getattr(body, field, None) is None:
-                return
-            if new_v != getattr(t, attr):
-                setattr(t, attr, new_v)
-                changed.append(field)
-
-        _apply("teacherId", "teacher_id", int(body.teacherId) if getattr(body, "teacherId", None) else None)
-        _apply("teacherKey", "teacher_key", getattr(body, "teacherKey", None) or None)
-        _apply("teacherName", "teacher_name", getattr(body, "teacherName", None) or None)
-        _apply("weeklyHours", "weekly_hours", getattr(body, "weeklyHours", None))
-        _apply("totalHours", "total_hours", getattr(body, "totalHours", None))
-        _apply("startWeek", "start_week", getattr(body, "startWeek", None))
-        _apply("endWeek", "end_week", getattr(body, "endWeek", None))
-        _apply("expectedStudents", "expected_students", getattr(body, "expectedStudents", None))
-        if not changed:
-            raise AppException("VALIDATION_ERROR", "提交的字段与当前值相同，未发生实际调整")
-        if t.start_week is not None and t.end_week is not None and t.start_week > t.end_week:
-            raise AppException("VALIDATION_ERROR", "起始周不能晚于结束周")
-        if any(f in changed for f in _TEACHER_FIELDS):
-            t.status = "ASSIGNED"
-            t.confirm_at = None
-            t.reject_reason = None
-        _audit(db, "AA_TASK", t.id, "ADJUST", f"fields={changed} reason={reason}")
+        result = adjust_task_tx(db, task_id, user, body)
         db.commit()
-        db.refresh(t)
-        return _task_row(t)
+        return result
+
+
+def _validate_draft_task_voidable(task, batch, dependent_counts: dict[str, int]) -> None:
+    """只允许作废尚未分配、仍处草稿批次且没有下游引用的误生成任务。"""
+    if str(batch.status or "").upper() != "DRAFT":
+        raise AppException("DATA_CONFLICT", "仅草稿批次中的任务可以作废")
+    if (str(task.status or "").upper() != "PENDING_ASSIGN"
+            or str(getattr(task, "teacher_key", "") or "").strip()
+            or getattr(task, "teacher_id", None)):
+        raise AppException("DATA_CONFLICT", "任务已分配或已进入办理流程，不能按草稿作废")
+    if any(int(value or 0) for value in dependent_counts.values()):
+        raise AppException("DATA_CONFLICT", "任务已有业务引用，不能作废")
+
+
+def _validate_auto_draft_teaching_class(task, teaching_class, roster_versions, roster_members,
+                                        teacher_count: int, consumer_count: int) -> None:
+    """Allow only the untouched initial roster projection created with a draft task."""
+    if teaching_class is None:
+        return
+    if (teaching_class.status != "ACTIVE" or teaching_class.class_type != "ADMIN"
+            or teaching_class.source_type != "TEACHING_TASK"
+            or int(teaching_class.source_id or 0) != int(task.id)
+            or teaching_class.roster_status != "LOCKED"):
+        raise AppException("DATA_CONFLICT", "教学班不是未使用的任务自动投影，不能作废")
+    if teacher_count or consumer_count:
+        raise AppException("DATA_CONFLICT", "教学班已分配教师或已被正式业务消费，不能作废")
+    if len(roster_versions) != 1:
+        raise AppException("DATA_CONFLICT", "教学班名单已有后续版本或缺少初始版本，不能作废")
+    version = roster_versions[0]
+    if (version.is_deleted or int(version.id) != int(teaching_class.current_roster_version_id or 0)
+            or int(version.version_no or 0) != 1
+            or version.source_type != "ADMIN_CLASS"
+            or int(version.source_id or 0) != int(task.class_id or 0)
+            or version.status != "LOCKED"
+            or int(teaching_class.current_roster_version_no or 0) != 1
+            or len(roster_members) != int(version.member_count or 0)
+            or any(member.is_deleted or member.status != "ACTIVE" or member.roster_version_id != version.id
+                   or member.source_type != "ADMIN_CLASS" for member in roster_members)):
+        raise AppException("DATA_CONFLICT", "教学班名单已被调整或使用，不能作废")
+
+
+def void_draft_task(task_id, user, reason: str) -> dict:
+    """由当前开课学院责任人逻辑作废无下游依赖的误生成草稿任务。"""
+    from app.models import (AaAttendanceSession, AaEvaluationResult, AaEvaluationTask, AaExamCourse,
+                            AaGradeTask, AaRosterConsumerSnapshot, AaScheduleChange, AaScheduleItem,
+                            AaSelectionCourse, AaTeachingClass, AaTeachingClassMember,
+                            AaTeachingClassRosterVersion, AaTeachingClassTeacher, AaTeachingTask,
+                            AaTextbookSelection)
+    from .academic_affairs_task_service import _require_college_task_action
+
+    cleaned_reason = str(reason or "").strip()
+    if len(cleaned_reason) < 5 or len(cleaned_reason) > 500:
+        raise AppException("VALIDATION_ERROR", "作废原因须为 5 至 500 个字")
+    with session() as db:
+        task = db.scalar(select(AaTeachingTask).where(
+            AaTeachingTask.id == int(task_id), AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.is_deleted.is_(False),
+        ))
+        if not task:
+            raise not_found("教学任务不存在")
+        # manage scope 同时校验本院范围、当前责任人、权限、可写学期及草稿阶段。
+        batch = _require_college_task_action(db, task, user, "manage")
+        db.refresh(task, with_for_update=True)
+        if task.is_deleted or task.batch_id != batch.id:
+            raise AppException("APPROVAL_VERSION_CONFLICT", "任务已变化，请刷新后核对")
+        teaching_class = db.query(AaTeachingClass).filter(
+            AaTeachingClass.tenant_id == _tid(), AaTeachingClass.teaching_task_id == task.id,
+            AaTeachingClass.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
+        roster_versions = []
+        roster_members = []
+        class_teacher_count = 0
+        class_consumer_count = 0
+        if teaching_class:
+            roster_versions = db.scalars(select(AaTeachingClassRosterVersion).where(
+                AaTeachingClassRosterVersion.tenant_id == _tid(),
+                AaTeachingClassRosterVersion.teaching_class_id == teaching_class.id,
+            ).order_by(AaTeachingClassRosterVersion.version_no).with_for_update()).all()
+            roster_members = db.scalars(select(AaTeachingClassMember).where(
+                AaTeachingClassMember.tenant_id == _tid(),
+                AaTeachingClassMember.teaching_class_id == teaching_class.id,
+            ).order_by(AaTeachingClassMember.id)).all()
+            class_teacher_count = int(db.scalar(select(AaTeachingClassTeacher.id).where(
+                AaTeachingClassTeacher.tenant_id == _tid(),
+                AaTeachingClassTeacher.teaching_class_id == teaching_class.id,
+            ).limit(1)) is not None)
+            class_consumer_count = int(db.scalar(select(AaRosterConsumerSnapshot.id).where(
+                AaRosterConsumerSnapshot.tenant_id == _tid(),
+                AaRosterConsumerSnapshot.teaching_class_id == teaching_class.id,
+            ).limit(1)) is not None)
+        _validate_auto_draft_teaching_class(
+            task, teaching_class, roster_versions, roster_members,
+            class_teacher_count, class_consumer_count,
+        )
+        dependent_counts = {
+            "schedule": int(db.scalar(select(AaScheduleItem.id).where(
+                AaScheduleItem.tenant_id == _tid(), AaScheduleItem.task_id == task.id,
+                AaScheduleItem.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "selection": int(db.scalar(select(AaSelectionCourse.id).where(
+                AaSelectionCourse.tenant_id == _tid(), AaSelectionCourse.teaching_task_id == task.id,
+                AaSelectionCourse.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "grade": int(db.scalar(select(AaGradeTask.id).where(
+                AaGradeTask.tenant_id == _tid(), AaGradeTask.teaching_task_id == task.id,
+                AaGradeTask.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "scheduleChange": int(db.scalar(select(AaScheduleChange.id).where(
+                AaScheduleChange.tenant_id == _tid(), AaScheduleChange.task_id == task.id,
+                AaScheduleChange.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "examCourse": int(db.scalar(select(AaExamCourse.id).where(
+                AaExamCourse.tenant_id == _tid(), AaExamCourse.teaching_task_id == task.id,
+                AaExamCourse.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "textbookSelection": int(db.scalar(select(AaTextbookSelection.id).where(
+                AaTextbookSelection.tenant_id == _tid(), AaTextbookSelection.task_id == task.id,
+                AaTextbookSelection.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "evaluationTask": int(db.scalar(select(AaEvaluationTask.id).where(
+                AaEvaluationTask.tenant_id == _tid(), AaEvaluationTask.teaching_task_id == task.id,
+                AaEvaluationTask.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "evaluationResult": int(db.scalar(select(AaEvaluationResult.id).where(
+                AaEvaluationResult.tenant_id == _tid(), AaEvaluationResult.teaching_task_id == task.id,
+                AaEvaluationResult.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "attendanceSession": int(db.scalar(select(AaAttendanceSession.id).where(
+                AaAttendanceSession.tenant_id == _tid(), AaAttendanceSession.teaching_task_id == task.id,
+                AaAttendanceSession.is_deleted.is_(False),
+            ).limit(1)) is not None),
+            "rosterConsumer": int(db.scalar(select(AaRosterConsumerSnapshot.id).where(
+                AaRosterConsumerSnapshot.tenant_id == _tid(), AaRosterConsumerSnapshot.teaching_task_id == task.id,
+                AaRosterConsumerSnapshot.is_deleted.is_(False),
+            ).limit(1)) is not None),
+        }
+        _validate_draft_task_voidable(task, batch, dependent_counts)
+        if teaching_class:
+            teaching_class.status = "ARCHIVED"
+            _audit(db, "AA_TEACHING_CLASS", teaching_class.id, "ARCHIVE_AUTO_DRAFT_VOID",
+                   f"taskId={task.id};initialRosterVersionId={teaching_class.current_roster_version_id}")
+        task.is_deleted = True
+        _audit(db, "AA_TASK", task.id, "VOID_DRAFT", cleaned_reason)
+        db.flush()
+        result = {"taskId": str(task.id), "batchId": str(batch.id), "isDeleted": True,
+                  "status": "VOIDED", "reason": cleaned_reason}
+        db.commit()
+        return result
 
 
 def _term_id_of(db, batch_id) -> int:

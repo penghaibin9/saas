@@ -66,7 +66,7 @@ def test_w74_review_center_is_read_only_projection_and_writes_stay_canonical():
 
 def test_w74_formal_read_context_exposes_w7_lock_fields_and_conflict_code():
     api = text("frontend/src/modules/graduation/api/graduation-review-center.api.js")
-    overlay = text("backend/app/modules/graduation/routers/graduation_review_w7_router.py")
+    overlay = text("backend/app/modules/graduation/routers/graduation_sensitive_router.py")
     read_service = text("backend/app/modules/graduation/services/graduation_review_read_service.py")
     detail_service = text("backend/app/modules/graduation/services/graduation_review_center_detail_service.py")
 

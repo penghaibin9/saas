@@ -7,25 +7,30 @@ import uuid
 import pytest
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
+from tests.support_academic_review_identity import ensure_program_writer_identity, program_writer_context
 
 TID = 1000000000000000001
 
 
-def _patch_tenant(monkeypatch):
+@pytest.fixture()
+def program_actor(db_mode):
+    writer = ensure_program_writer_identity()
+    with program_writer_context(writer):
+        yield writer
+
+
+def _program_services():
     from app.modules.academic_affairs.services import academic_affairs_program_authority_service as authority
     from app.modules.academic_affairs.services import academic_affairs_program_core_service as core
-
-    monkeypatch.setattr(authority, "_tid", lambda: TID)
-    monkeypatch.setattr(core, "_tid", lambda: TID)
     return core, authority
 
 
 @pytest.mark.usefixtures("db_mode")
-def test_root_mints_prg_series_and_successor_inherits_locked_source(monkeypatch):
+def test_root_mints_prg_series_and_successor_inherits_locked_source(program_actor):
     from app.db.session import get_sessionmaker
     from app.models import AaProgram, AaProgramCourse
 
-    core, authority = _patch_tenant(monkeypatch)
+    core, authority = _program_services()
     body = SimpleNamespace(
         programName=f"INT稳定系列-{uuid.uuid4().hex[:8]}",
         majorId=None,
@@ -33,7 +38,7 @@ def test_root_mints_prg_series_and_successor_inherits_locked_source(monkeypatch)
         totalCredits=3,
         requirement={},
     )
-    root_result = core.create_program(body, None)
+    root_result = core.create_program(body, program_actor)
     root_id = int(root_result["programId"])
 
     db = get_sessionmaker()()
@@ -55,7 +60,7 @@ def test_root_mints_prg_series_and_successor_inherits_locked_source(monkeypatch)
     db.commit()
     db.close()
 
-    created = authority.create_new_version(root_id, None)
+    created = authority.create_new_version(root_id, program_actor)
     successor_id = int(created["programId"])
 
     db = get_sessionmaker()()
@@ -74,12 +79,12 @@ def test_root_mints_prg_series_and_successor_inherits_locked_source(monkeypatch)
 
 
 @pytest.mark.usefixtures("db_mode")
-def test_unresolved_legacy_source_fails_closed_without_creating_successor(monkeypatch):
+def test_unresolved_legacy_source_fails_closed_without_creating_successor(program_actor):
     from app.core.exceptions import AppException
     from app.db.session import get_sessionmaker
     from app.models import AaProgram
 
-    _core, authority = _patch_tenant(monkeypatch)
+    _core, authority = _program_services()
     db = get_sessionmaker()()
     source = AaProgram(
         tenant_id=TID,
@@ -96,7 +101,7 @@ def test_unresolved_legacy_source_fails_closed_without_creating_successor(monkey
     db.close()
 
     with pytest.raises(AppException) as raised:
-        authority.create_new_version(source_id, None)
+        authority.create_new_version(source_id, program_actor)
     assert getattr(raised.value, "code", None) == "PROGRAM_SERIES_UNRESOLVED"
 
     db = get_sessionmaker()()
@@ -110,11 +115,11 @@ def test_unresolved_legacy_source_fails_closed_without_creating_successor(monkey
 
 
 @pytest.mark.usefixtures("db_mode")
-def test_mysql_unique_series_version_rejects_duplicate_non_null_identity(monkeypatch):
+def test_mysql_unique_series_version_rejects_duplicate_non_null_identity(program_actor):
     from app.db.session import get_sessionmaker
     from app.models import AaProgram
 
-    _patch_tenant(monkeypatch)
+    _program_services()
     series = f"PRG-TEST-{uuid.uuid4().hex.upper()}"
     db = get_sessionmaker()()
     db.add(AaProgram(

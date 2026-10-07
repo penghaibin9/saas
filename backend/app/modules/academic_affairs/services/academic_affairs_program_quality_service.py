@@ -67,7 +67,22 @@ def _plan_term_no(year_code: str | None, term_no: int | None, grade_year: str | 
     return value if 1 <= value <= 12 else None
 
 
-def validate_program_db(db, program_id: int) -> dict:
+def _enabled_course_codes(db, *, cache=None):
+    from app.models import AaCourse
+
+    key = ("PROGRAM_ENABLED_COURSE_CODES", _tid())
+    if cache is not None and key in cache:
+        return cache[key]
+    codes = frozenset(str(code) for (code,) in db.query(AaCourse.course_code).filter(
+        AaCourse.tenant_id == _tid(), AaCourse.status == "ENABLED",
+        AaCourse.is_deleted.is_(False),
+    ).all() if code)
+    if cache is not None:
+        cache[key] = codes
+    return codes
+
+
+def validate_program_db(db, program_id: int, *, cache=None) -> dict:
     from app.models import (
         AaCourse,
         AaProgram,
@@ -104,6 +119,8 @@ def validate_program_db(db, program_id: int) -> dict:
         AaProgramPracticeSegment.status == "ACTIVE",
         AaProgramPracticeSegment.is_deleted.is_(False),
     ).all()
+    if cache is not None:
+        cache[("PROGRAM_VALIDATION_FACTS", _tid(), int(program_id))] = (program, tuple(practices))
     bindings = db.query(AaProgramBinding).filter(
         AaProgramBinding.tenant_id == _tid(),
         AaProgramBinding.program_id == program.id,
@@ -116,13 +133,7 @@ def validate_program_db(db, program_id: int) -> dict:
         AaCourse.is_deleted.is_(False),
     ).all() if course_ids else []
     catalog_by_id = {int(row.id): row for row in catalog_rows}
-    enabled_codes = {
-        str(code) for (code,) in db.query(AaCourse.course_code).filter(
-            AaCourse.tenant_id == _tid(),
-            AaCourse.status == "ENABLED",
-            AaCourse.is_deleted.is_(False),
-        ).all() if code
-    }
+    enabled_codes = _enabled_course_codes(db, cache=cache)
 
     issues = []
     fix_route = f"/admin/academic-affairs/programs/{program.id}"

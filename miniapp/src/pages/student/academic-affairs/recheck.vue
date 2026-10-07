@@ -11,7 +11,7 @@
 
         <view class="card stack-sm" v-if="showForm">
           <text class="rc__group">选择要复查的成绩</text>
-          <picker mode="selector" :range="gradeLabels" :value="Math.max(0, picked)" :disabled="submitting || !!pendingApplication" @change="onGradeChange">
+          <picker :key="gradePickerKey" mode="selector" :range="gradeLabels" :value="Math.max(0, picked)" :disabled="submitting || !!pendingApplication || gradePickerResetting" @change="onGradeChange" @cancel="onGradePickerCancel">
             <view class="rc__input rc__picker">{{ picked >= 0 ? gradeLabels[picked] : '点击选择已发布成绩' }}</view>
           </picker>
           <textarea :disabled="submitting || !!pendingApplication" class="rc__textarea" v-model="reason" :maxlength="200"
@@ -85,7 +85,7 @@ export default {
 mixins: [academicApplicationPage],
   created() { this.applicationScope = 'recheck' },
   data() {
-    return { d: null, grades: [], state: 'loading', showForm: false, submitting: false, picked: -1, reason: '', targetId: '', recheckPage: 1, academicDraftFields: ['reason', 'targetId', 'showForm'] }
+    return { d: null, grades: [], state: 'loading', showForm: false, submitting: false, picked: -1, gradePickerKey: 0, gradePickerResetting: false, reason: '', targetId: '', recheckPage: 1, academicDraftFields: ['reason', 'targetId', 'showForm'] }
   },
   computed: {
     gradeLabels() {
@@ -98,7 +98,24 @@ mixins: [academicApplicationPage],
     isPaging() { return this.state === 'loading' }
   },
   onLoad(options = {}) { this.targetId = String(options.id || ''); this.load() },
+  beforeUnmount() { this._gradePickerDisposed = true; clearTimeout(this._gradePickerResetTimer) },
   methods: {
+    onGradePickerCancel() {
+      // #ifdef H5
+      // 网页选择器取消后保留滚轮临时值；等其260ms关闭动画归还弹层后再重建，
+      // 让下次打开恢复已确认的picked，避免提前卸载导致组件的关闭回调失去根节点。
+      // 300ms只避开现行网页组件的关闭收尾，不承担业务等待或请求重试。
+      if (this._gradePickerDisposed) return
+      this.gradePickerResetting = true
+      clearTimeout(this._gradePickerResetTimer)
+      this._gradePickerResetTimer = setTimeout(() => {
+        if (this._gradePickerDisposed) return
+        this.gradePickerKey++
+        this.gradePickerResetting = false
+        this._gradePickerResetTimer = null
+      }, 300)
+      // #endif
+    },
     prepareAcademicDraft() { this.targetId = String(this.grades[this.picked]?.gradeId || this.targetId || '') },
     restorePendingDraft(pending) { this.targetId = String(pending.body.acadGradeId); this.reason = pending.body.reason; this.showForm = true },
     resetAcademicContext() { this.clearApplicationContext(); this.grades = []; this.targetId = ''; this.recheckPage = 1; this.finishApplication() },
@@ -152,7 +169,7 @@ mixins: [academicApplicationPage],
 button, input, textarea { font-family: inherit; }
 .rc__group { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); font-weight: 600; margin-top: var(--space-1); }
 .rc__input { width: 100%; height: 40px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: 0 var(--space-3); box-sizing: border-box; }
-.rc__picker { line-height: 40px; color: var(--text-primary); }
+.rc__picker { height: auto; min-height: 44px; padding: 8px var(--space-3); line-height: 24px; overflow-wrap: anywhere; color: var(--text-primary); }
 .rc__textarea { width: 100%; min-height: 60px; font-size: var(--font-size-base); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: var(--radius-md); padding: var(--space-2); box-sizing: border-box; }
 .rc__ph { color: var(--text-tertiary); }
 .rc__tip { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); }

@@ -138,6 +138,10 @@ jobs:
             tests/test_academic_d_w5_upstream_freeze.py \
             -p no:warnings
 
+      - name: Install student portal contract dependencies
+        working-directory: student-portal
+        run: npm ci
+
       - name: Test D-W5 student graduation truth source contract
         run: node --test student-portal/tests/academic-d-w5-graduation-truth.test.mjs
 

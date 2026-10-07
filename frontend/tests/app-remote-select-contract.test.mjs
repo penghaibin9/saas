@@ -20,3 +20,13 @@ test('AppRemoteSelect 选项支持鼠标与键盘选择', async () => {
   assert.match(source, /@keydown\.space\.prevent\.stop="pick\(opt\)"/)
   assert.match(source, /this\.\$emit\('update:modelValue', val\)/)
 })
+
+test('AppRemoteSelect 单选与多选的装饰勾选符号不改变选项无障碍名称', async () => {
+  const source = await readFile(componentUrl, 'utf8')
+
+  for (const className of ['app-remote-select__tick', 'app-remote-select__opt-check']) {
+    assert.match(source, new RegExp(`<span\\b[^>]*class="${className}"[^>]*aria-hidden="true"[^>]*>✓</span>`))
+  }
+  assert.match(source, /:aria-selected="isChecked\(opt\.value\)"/)
+  assert.match(source, /class="app-remote-select__opt-label">\{\{ opt\.label \}\}<\/span>/)
+})

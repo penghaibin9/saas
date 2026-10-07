@@ -111,8 +111,10 @@ function expectedStateError(error, patterns) {
 
 function fixtureIdentity(rawRun, fixtureKey = '') {
   const base = String(rawRun).replace(/\D/g, '').slice(-12) || String(Date.now()).slice(-12)
+  const attempt = String(process.env.GITHUB_RUN_ATTEMPT || '1').replace(/\D/g, '') || '1'
+  const attemptSuffix = attempt === '1' ? '' : `-a${attempt}`
   const key = String(fixtureKey || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
-  return key ? `${base}-${key}` : base
+  return key ? `${base}${attemptSuffix}-${key}` : `${base}${attemptSuffix}`
 }
 
 async function findStudentProfile(api, studentNo) {

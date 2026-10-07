@@ -8,6 +8,9 @@ import {
 } from '../src/components/academic/studentAcademicCommandGuard.js'
 
 const read = (name) => readFileSync(new URL(`../src/views/academic/${name}`, import.meta.url), 'utf8')
+// Both callback forms must dispose the guard unconditionally. Workspace form
+// release may precede disposal, but disposal outside the hook is not sufficient.
+const guardCleanupPattern = /onBeforeUnmount\(\(\)\s*=>\s*(?:guard\.dispose\(\)|\{\s*(?:releaseWorkspaceForm\?\.\(\)\s*;?\s*)?guard\.dispose\(\)\s*;?\s*\})\s*\)/
 
 const pages = [
   'StudentEvaluationView.vue',
@@ -110,6 +113,26 @@ test('positive decimal ids reject already-corrupted numbers and preserve exact s
   assert.equal(exactPositiveDecimalId('1e3'), '')
 })
 
+test('cleanup assertion accepts direct disposal and workspace release callback bodies', () => {
+  for (const source of [
+    'onBeforeUnmount(() => guard.dispose())',
+    'onBeforeUnmount(() => { guard.dispose() })',
+    'onBeforeUnmount(() => { releaseWorkspaceForm?.(); guard.dispose() })',
+    'onBeforeUnmount(() => {\n  releaseWorkspaceForm?.()\n  guard.dispose()\n})'
+  ]) assert.match(source, guardCleanupPattern)
+})
+
+test('cleanup assertion rejects missing, conditional, or out-of-hook disposal', () => {
+  for (const source of [
+    'onBeforeUnmount(() => {})',
+    'onBeforeUnmount(() => releaseWorkspaceForm?.())',
+    'onBeforeUnmount(() => { releaseWorkspaceForm?.() })\nguard.dispose()',
+    'onBeforeUnmount(() => { if (ready) guard.dispose() })',
+    'onBeforeUnmount(() => { return; guard.dispose() })',
+    'onBeforeUnmount(() => { guard.dispose })'
+  ]) assert.doesNotMatch(source, guardCleanupPattern)
+})
+
 test('seven student application pages use the executable read and command guard', () => {
   for (const page of pages) {
     const source = read(page)
@@ -117,7 +140,7 @@ test('seven student application pages use the executable read and command guard'
     assert.match(source, /systemConfirm\(/, `${page} must confirm the frozen object inside the portal`)
     assert.match(source, /readStudentAcademicSnapshot\(/, `${page} must apply reads through the tested guard`)
     assert.match(source, /guard\.isCurrentCommand\(command\)/, `${page} must reject obsolete command responses`)
-    assert.match(source, /onBeforeUnmount\(\(\) => guard\.dispose\(\)\)/, `${page} must invalidate reads and commands when left`)
+    assert.match(source, guardCleanupPattern, `${page} must invalidate reads and commands when left`)
     assert.match(source, /academicErrorKind\(.+\) === 'forbidden'/, `${page} must clear sensitive read state after 403`)
   }
 })

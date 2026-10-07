@@ -128,7 +128,13 @@ export const graduationDefenseGradeApi = {
     })
   },
 
-  getScoreList(params = {}) { return callList(SCORE, params) },
+  // 带 gdStudentId 时额外返回 panel：答辩组全部评委及各自评分状态（含未评分），供秘书看“还差谁”。
+  async getScoreList(params = {}) {
+    try {
+      const d = await request(SCORE, { params: batchParams(params) })
+      return ok({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20, panel: d.panel || null })
+    } catch (e) { return toErr(e) }
+  },
   enterScore(body) {
     return call(() => {
       requireAction('graduationDesign.defense.score')
@@ -179,6 +185,14 @@ export const graduationDefenseGradeApi = {
       requireAction('graduationDesign.grade.publish')
       return request(`${GRADE}/${gdStudentId}/publish`, {
         method: 'POST', params: batchParams(),
+      })
+    })
+  },
+  submitAdvisorScore(gdStudentId, body) {
+    return call(() => {
+      requireAction('graduationDesign.grade.advisorScore')
+      return request(`${GRADE}/${gdStudentId}/advisor-score`, {
+        method: 'POST', params: batchParams(), body,
       })
     })
   },

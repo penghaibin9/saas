@@ -68,7 +68,7 @@
         :data-material-version="expectedVersion ?? ''"
         :data-file-version-id="canonicalFileVersionId ?? ''"
       >
-        <div><span>提交版次</span><b>{{ expectedVersion != null ? `第 ${expectedVersion} 版` : '待确认' }}</b></div>
+        <div><span>提交版次</span><b>{{ Number(expectedVersion) > 0 ? `第 ${expectedVersion} 版` : '待确认' }}</b></div>
         <div><span>文件核对</span><b>{{ canonicalFileVersionId != null ? '已绑定当前文件' : '尚未绑定' }}</b></div>
         <div><span>批阅状态</span><b :class="reviewReady && !versionConflict ? 'is-ready' : 'is-blocked'">{{ reviewReady && !versionConflict ? '可以批阅' : '暂不可批阅' }}</b></div>
       </div>

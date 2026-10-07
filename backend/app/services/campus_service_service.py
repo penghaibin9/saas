@@ -233,6 +233,9 @@ def create_student(body: dict, *, db=None) -> dict:
             db, _tid(), domain_label="在校服务台账",
             student_id=body.get("studentId") or body.get("profileStudentId"),
             student_no=body.get("studentNo"))
+        from app.core.affairs_security import build_affairs_context
+
+        build_affairs_context(get_current_user_ctx() or {}, db).require_student(db, int(p.id))
         dup = db.scalars(select(CsServiceStudent).where(
             CsServiceStudent.tenant_id == _tid(), CsServiceStudent.student_id == p.id,
             CsServiceStudent.is_deleted.is_(False))).first()

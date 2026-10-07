@@ -181,6 +181,69 @@ def test_college_a_can_register_student_in_college_a(db_mode, monkeypatch):
     assert row["status"] == "REGISTERED"
     assert _registration_count(ids["a"]) == 1
     assert _profile_status(ids["a"]) == "REGISTERED"
+    with pytest.raises(AppException) as exc:
+        facade._legacy.verify_registration_eligibility(
+            ids["batch"], COLLEGE_USER, ids["a"], "INELIGIBLE", note="材料不完整"
+        )
+    assert exc.value.code == "DATA_CONFLICT"
+
+
+def test_registration_snapshot_does_not_invent_orientation_evidence(db_mode, monkeypatch):
+    ids = _seed()
+    _patch_tenant(monkeypatch)
+
+    row = facade.register_student(ids["batch"], COLLEGE_USER, ids["a"])
+
+    assert {key: row["precheck"][key] for key in ("reported", "paid", "material", "greenChannel")} == {
+        "reported": None, "paid": None, "material": None, "greenChannel": None,
+    }
+    assert "不能据此认定" in row["precheck"]["note"]
+
+
+def test_registration_snapshot_uses_student_link_and_source_status(db_mode, monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.models import OrientationStudent
+
+    ids = _seed()
+    _patch_tenant(monkeypatch)
+    with get_sessionmaker()() as db:
+        db.add(OrientationStudent(tenant_id=TID, batch_id=1, student_id=ids["b"],
+            name="注册学生A", admission_no="R3REG-OTHER", source_type="MANUAL",
+            source_record_id="R3REG-OTHER", record_status="ACTIVE",
+            report_status="NOT_REPORTED", payment_status="UNPAID",
+            material_status="NOT_UPLOADED", green_channel_status="NOT_APPLIED"))
+        db.commit()
+        unlinked = facade._legacy._precheck(db, ids["a"])
+        linked = facade._legacy._precheck(db, ids["b"])
+
+    assert unlinked["reported"] is None
+    assert {key: linked[key] for key in ("reported", "paid", "material", "greenChannel")} == {
+        "reported": False, "paid": False, "material": False, "greenChannel": False,
+    }
+
+
+def test_ineligible_student_cannot_be_registered_by_staff(db_mode, monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.models import AaRegistration
+
+    ids = _seed()
+    _patch_tenant(monkeypatch)
+    with get_sessionmaker()() as db:
+        db.add(AaRegistration(tenant_id=TID, batch_id=ids["batch"], student_id=ids["a"],
+                              status="PENDING_REGISTER", eligibility_status="INELIGIBLE",
+                              eligibility_note="原始材料待补齐"))
+        db.commit()
+
+    for actor in (COLLEGE_USER, SCHOOL_USER):
+        with pytest.raises(AppException) as exc:
+            facade.register_student(ids["batch"], actor, ids["a"])
+        assert exc.value.code == "DATA_CONFLICT"
+    assert _registration_count(ids["a"]) == 1
+    assert _profile_status(ids["a"]) == "PENDING_REGISTER"
+    with get_sessionmaker()() as db:
+        row = db.scalar(select(AaRegistration).where(AaRegistration.tenant_id == TID,
+            AaRegistration.batch_id == ids["batch"], AaRegistration.student_id == ids["a"]))
+        assert row.status == "PENDING_REGISTER"
 
 
 def test_college_a_cannot_register_student_in_college_b_and_no_side_effects(db_mode, monkeypatch):

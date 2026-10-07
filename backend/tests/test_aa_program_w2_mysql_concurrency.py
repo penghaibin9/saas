@@ -12,19 +12,23 @@ import uuid
 
 import pytest
 from sqlalchemy import select
+from tests.support_academic_review_identity import ensure_program_writer_identity, program_writer_context
 
 TID = 1000000000000000001
 
 
 def _seed_programs_for_binding():
     from app.db.session import get_sessionmaker
-    from app.models import AaProgram, Major
+    from app.models import AaProgram, College, Major
 
     db = get_sessionmaker()()
     suffix = uuid.uuid4().hex[:8]
+    college = College(tenant_id=TID, college_name=f"并发学院-{suffix}", code=f"AW2-{suffix}", status="ACTIVE")
+    db.add(college)
+    db.flush()
     major = Major(
         tenant_id=TID,
-        college_id=951001,
+        college_id=college.id,
         major_name=f"A-W2并发专业-{suffix}",
         code=f"AW2C-{suffix}",
         status="ACTIVE",
@@ -59,13 +63,14 @@ def _seed_program_for_versioning():
     from app.db.session import get_sessionmaker
     from app.models import AaProgram
 
+    major_id, _first_id, _second_id = _seed_programs_for_binding()
     db = get_sessionmaker()()
     suffix = uuid.uuid4().hex[:8]
     program = AaProgram(
         tenant_id=TID,
         series_key=f"AW2-SERIES-{suffix}",
         program_name=f"A-W2并发版本-{suffix}",
-        major_id=952001,
+        major_id=major_id,
         grade_year="2026",
         version=7,
         status="PUBLISHED",
@@ -77,13 +82,9 @@ def _seed_program_for_versioning():
     return program_id
 
 
-def _patch_writer_tenant(monkeypatch):
+def _writer_authority():
     from app.modules.academic_affairs.services import academic_affairs_program_authority_service as authority
-    from app.modules.academic_affairs.services import academic_affairs_program_core_service as core
-
-    monkeypatch.setattr(authority, "_tid", lambda: TID)
-    monkeypatch.setattr(core, "_tid", lambda: TID)
-    return authority
+    return authority, ensure_program_writer_identity()
 
 
 @pytest.mark.usefixtures("db_mode")
@@ -91,11 +92,12 @@ def test_w2_same_binding_scope_serializes_to_one_active(monkeypatch):
     from app.db.session import get_sessionmaker
     from app.models import AaProgramBinding
 
-    authority = _patch_writer_tenant(monkeypatch)
+    authority, writer = _writer_authority()
     major_id, first_id, second_id = _seed_programs_for_binding()
 
     def bind(program_id):
-        return authority.bind_grade(program_id, None, "2026")
+        with program_writer_context(writer):
+            return authority.bind_grade(program_id, writer, "2026")
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(bind, [first_id, second_id]))
@@ -131,7 +133,7 @@ def test_w2_same_class_override_scope_serializes_to_one_active(monkeypatch):
     from app.db.session import get_sessionmaker
     from app.models import AaProgramBinding, SchoolClass
 
-    authority = _patch_writer_tenant(monkeypatch)
+    authority, writer = _writer_authority()
     major_id, first_id, second_id = _seed_programs_for_binding()
 
     db = get_sessionmaker()()
@@ -150,7 +152,8 @@ def test_w2_same_class_override_scope_serializes_to_one_active(monkeypatch):
     db.close()
 
     def bind(program_id):
-        return authority.bind_grade(program_id, None, "2026", class_id)
+        with program_writer_context(writer):
+            return authority.bind_grade(program_id, writer, "2026", class_id)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(bind, [first_id, second_id]))
@@ -187,14 +190,16 @@ def test_w2_same_source_version_allows_only_one_direct_successor(monkeypatch):
     from app.db.session import get_sessionmaker
     from app.models import AaProgram
 
-    authority = _patch_writer_tenant(monkeypatch)
+    authority, writer = _writer_authority()
     source_id = _seed_program_for_versioning()
 
     def create_successor(_):
         try:
-            return ("ok", authority.create_new_version(source_id, None)["programId"])
+            with program_writer_context(writer):
+                return ("ok", authority.create_new_version(source_id, writer)["programId"])
         except AppException as exc:
-            return ("conflict", getattr(exc, "code", ""))
+            assert exc.code == "DATA_CONFLICT", exc.message
+            return ("conflict", exc.code)
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(create_successor, [1, 2]))

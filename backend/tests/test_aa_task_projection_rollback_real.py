@@ -77,7 +77,7 @@ def test_generate_batch_rolls_back_task_and_projection_facts(client, db_mode, mo
         response = client.post(
             f"{BASE}/teaching-task-batches/generate",
             headers=_hdr(client),
-            json={"termId": "1"},
+            json={"termId": "1", "collegeId": "1"},
         )
     except RuntimeError as exc:
         assert "injected teaching-class projection failure" in str(exc)

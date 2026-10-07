@@ -118,15 +118,16 @@
     </template>
 
     <template v-if="!loading && !error" #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitDisabled" @click="submit">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitDisabled" @click="submit">
         {{ submitting ? '正在提交…' : activePreset.submitLabel }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, StatusTag } from '@/components/business'
 import { AppTemplateChips } from '@/components/common'
@@ -262,7 +263,7 @@ const EMPTY_PRESET = {
 
 export default {
   name: 'GraduationDefenseGradeFormView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, StatusTag, AppTemplateChips },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, StatusTag, AppTemplateChips },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

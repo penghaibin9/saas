@@ -48,7 +48,7 @@ entries:
   - module: graduation
     client: backend
     route: /graduation/gd-taskbooks/export
-    page: backend/app/modules/graduation/routers/graduation_taskbook.py
+    page: backend/app/modules/graduation/routers/graduation_taskbook_sensitive_router.py
     action: taskbook-ledger-xlsx-export
     fileCategory: XLSX_EXPORT
     api: POST /api/v1/graduation/gd-taskbooks/export

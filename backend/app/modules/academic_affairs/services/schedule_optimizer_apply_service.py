@@ -13,6 +13,7 @@ from . import academic_affairs_schedule_resource_guard as resources
 from . import academic_affairs_schedule_truth_service as truth
 from .academic_affairs_schedule_write_scope_r3 import assert_schedule_write_scope
 from .schedule_optimizer_source_service import capture_source
+from .academic_affairs_task_execution_authority import require_independent_task
 
 
 def _conflict(message="学校数据已变化，请重新智能试排。"):
@@ -71,6 +72,10 @@ def apply_candidate(user, batch_id, job_id, expected_version):
         except InputError as exc:
             raise AppException("DATA_CONFLICT", "学校数据已变化，请重新智能试排。",
                                details={"reasonCode": exc.code}, http_status=409) from exc
+        # 明确候选编号不转发；所有任务锁先于替换课位和任何业务突变。
+        for task_id in sorted({int(binding["bindings"][activity_id + "|" + option_id]["taskId"])
+                for activity_id, option_id in choices.items()}):
+            require_independent_task(db, task_id)
         replaced = []
         if snapshot.raw['provenance']['plan'].get('replaceAuto') is True:
             from app.models import AaScheduleItem

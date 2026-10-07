@@ -4,6 +4,7 @@ const ok = (data, message = 'ok') => ({ code: 0, data, message })
 const fail = (error, fallback) => ({
   code: error?.code || 1,
   bizCode: error?.bizCode || error?.biz || '',
+  httpStatus: error?.httpStatus || 0,
   data: null,
   message: error?.message || fallback
 })
@@ -30,6 +31,12 @@ export const productIamApi = {
   createTemplateDraft: (code, body) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/drafts`, { method: 'POST', body }, '角色模板草稿创建失败'),
   updateTemplateDraft: (code, id, body) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/drafts/${encodeURIComponent(id)}`, { method: 'PUT', body }, '角色模板草稿保存失败'),
   templateImpact: (code, id) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/drafts/${encodeURIComponent(id)}/impact`, {}, '角色模板影响分析失败'),
-  publishTemplate: (code, id, body) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/drafts/${encodeURIComponent(id)}/publish`, { method: 'POST', body }, '角色模板发布失败'),
+  publishTemplate: (code, id, body, mfaAccessToken) => {
+    if (!mfaAccessToken) return Promise.resolve(fail(new Error('发布前必须完成动态码二次认证'), '角色模板发布失败'))
+    return call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/drafts/${encodeURIComponent(id)}/publish`, {
+      method: 'POST', auth: false, noAuthRetry: true,
+      headers: { Authorization: `Bearer ${mfaAccessToken}` }, body
+    }, '角色模板发布失败')
+  },
   rollbackTemplate: (code, body) => call(`/platform/product-iam/school-role-templates/${encodeURIComponent(code)}/rollback`, { method: 'POST', body }, '角色模板回滚草稿创建失败')
 }

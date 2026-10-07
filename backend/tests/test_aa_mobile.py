@@ -117,18 +117,32 @@ def _ensure_term():
     return term_id
 
 
-def _seed_ready_task(term_id, class_id, teacher_key, weekly_hours=1):
+def _seed_ready_task(term_id, class_id, teacher_key, weekly_hours=1, total_hours=None):
     """排课/成绩主链都回链同学期 READY 教学任务；不依赖共享 MySQL 残留。"""
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, College
+    from datetime import datetime
+    from app.models import (AaCourse, AaProgram, AaProgramBinding, AaProgramCourse,
+                            AaTeachingTask, AaTeachingTaskBatch, AaTerm, College, Major, SchoolClass)
 
     db = get_sessionmaker()()
-    college = College(tenant_id=TID, college_name="移动端课表回归学院", status="ACTIVE")
-    db.add(college); db.flush()
+    # 复用已配置当前学院审核任职的班级所属学院，课程与任务共享真实开课单位。
+    college = db.query(College).join(Major, Major.college_id == College.id).join(
+        SchoolClass, SchoolClass.major_id == Major.id,
+    ).filter(College.tenant_id == TID, SchoolClass.id == int(class_id)).one()
     course = AaCourse(
         tenant_id=TID, course_code="MS101", course_name="高数", credit=4,
-        nature="REQUIRED", status="ENABLED")
+        owner_college_id=college.id, nature="REQUIRED", status="ENABLED")
     db.add(course); db.flush()
+    klass, term = db.get(SchoolClass, int(class_id)), db.get(AaTerm, int(term_id))
+    program = AaProgram(tenant_id=TID, major_id=klass.major_id, grade_year=klass.grade,
+        program_name="移动端正式开课计划", total_credits=4, status="PUBLISHED")
+    db.add(program); db.flush()
+    planned = AaProgramCourse(tenant_id=TID, program_id=program.id, course_id=course.id,
+        course_name=course.course_name, credit_snapshot=4,
+        open_term_no=(int(term.year_code.split('-')[0]) - int(klass.grade)) * 2 + int(term.term_no))
+    db.add(planned); db.flush()
+    db.add(AaProgramBinding(tenant_id=TID, program_id=program.id, major_id=klass.major_id,
+        class_id=klass.id, grade_year=klass.grade, bound_at=datetime(2020, 1, 1), status="ACTIVE"))
     batch = AaTeachingTaskBatch(
         tenant_id=TID, term_id=int(term_id), batch_name="移动端课表回归教学任务批次",
         college_id=college.id, status="APPROVED")
@@ -136,8 +150,9 @@ def _seed_ready_task(term_id, class_id, teacher_key, weekly_hours=1):
     task = AaTeachingTask(
         tenant_id=TID, batch_id=batch.id, course_id=course.id, course_code="MS101", course_name="高数",
         class_id=int(class_id), teaching_class_name="软件2301",
+        source_program_course_id=planned.id, formation_mode="ADMIN_FIXED",
         teacher_key=teacher_key, teacher_name="王老师", status="READY",
-        weekly_hours=int(weekly_hours), total_hours=int(weekly_hours) * 18, start_week=1, end_week=18,
+        weekly_hours=int(weekly_hours), total_hours=int(total_hours if total_hours is not None else int(weekly_hours) * 18), start_week=1, end_week=18,
     )
     db.add(task); db.flush()
     task_id = int(task.id)
@@ -147,8 +162,18 @@ def _seed_ready_task(term_id, class_id, teacher_key, weekly_hours=1):
 
 
 def _published_schedule(client, admin, class_id, teacher_key="counselor01", extra_items=None):
+    from app.db.session import get_sessionmaker
+    from tests.test_aa_schedule import _seed_school_publish_identity
+
     term_id = _ensure_term()
-    task_id = _seed_ready_task(term_id, class_id, teacher_key, weekly_hours=1 + len(extra_items or []))
+    # Each extra item is a one-week supplementary occurrence, not 18 full weeks.
+    planned_periods = 18 + sum(int(row.get("endWeek", 2)) - int(row.get("startWeek", 2)) + 1
+                              for row in (extra_items or []))
+    task_id = _seed_ready_task(term_id, class_id, teacher_key,
+        weekly_hours=1 + len(extra_items or []), total_hours=planned_periods)
+    with get_sessionmaker()() as db:
+        _seed_school_publish_identity(db)
+        db.commit()
     # 发布课表必须落到正式教室字典；不能只传展示文本 A101。
     classroom = client.post(f"{AA}/classrooms", headers=admin, json={
         "buildingCode": "MB", "buildingName": "移动端教学楼",
@@ -231,9 +256,10 @@ def test_mb2_transcript_my(client, db_mode):
     assert score.status_code == 200, score.text
     submitted = client.post(f"{AA}/grade-tasks/{tid}/submit", headers=admin)
     assert submitted.status_code == 200, submitted.text
-    evidence = client.get(f"{AA}/grade-tasks/{tid}/review-evidence", headers=admin)
+    college = _hdr(client, "college_admin01")
+    evidence = client.get(f"{AA}/grade-tasks/{tid}/review-evidence", headers=college)
     assert evidence.status_code == 200, evidence.text
-    reviewed = client.post(f"{AA}/grade-tasks/{tid}/college-review", headers=admin,
+    reviewed = client.post(f"{AA}/grade-tasks/{tid}/college-review", headers=college,
                            json={"action": "APPROVE", "expectedEvidenceHash": evidence.json()["data"]["evidenceHash"]})
     assert reviewed.status_code == 200, reviewed.text
     published = client.post(f"{AA}/grade-tasks/{tid}/publish", headers=admin)
@@ -525,7 +551,7 @@ def test_mb4_graduation_progress_my(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     created = client.post(f"{AA}/graduation-audit-batches", headers=admin, json={
-        "batchName": "2023届", "gradeYear": "2023"})
+        "batchName": "2023届", "gradeYear": "2023", "termId": str(_ensure_term())})
     assert created.status_code == 200, created.text
     bid = created.json()["data"]["batchId"]
     generated = client.post(f"{AA}/graduation-audit-batches/{bid}/generate", headers=admin,

@@ -130,44 +130,16 @@ def test_concurrent_student_registration_deferrals_create_one_pending_record(db_
 
 
 def _seed_recheck_target():
-    from app.models import AcademicGrade, AcademicStudent, StudentProfile
-
+    from app.models import StudentProfile
+    from tests.test_aa_grade_recheck import _seed_grade
+    student_no = "CONCURRENT_RC_01"
+    grade_id = _seed_grade(student_no, "复查并发学生", "并发复查课程", 59)
     with _session() as db:
-        student = StudentProfile(
-            tenant_id=TID,
-            student_no="CONCURRENT_RC_01",
-            real_name="复查并发学生",
-            student_status="REGISTERED",
-            status="ACTIVE",
-        )
-        db.add(student)
-        db.flush()
-        academic = AcademicStudent(
-            tenant_id=TID,
-            student_id=student.id,
-            student_no=student.student_no,
-            name=student.real_name,
-        )
-        db.add(academic)
-        db.flush()
-        grade = AcademicGrade(
-            tenant_id=TID,
-            acad_student_id=academic.id,
-            course_id=991001,
-            course_code="CONCURRENT_RC",
-            course_name="并发复查课程",
-            term="2026-2027-1",
-            credit_value=2,
-            score=59,
-            pass_status="FAILED",
-            source="PUBLISH",
-            record_status="ACTIVE",
-        )
-        db.add(grade)
-        db.flush()
-        result = int(student.id), str(student.student_no), int(grade.id)
-        db.commit()
-        return result
+        student = db.scalar(select(StudentProfile).where(
+            StudentProfile.tenant_id == TID, StudentProfile.student_no == student_no,
+            StudentProfile.is_deleted.is_(False)))
+        assert student is not None
+        return int(student.id), student_no, grade_id
 
 
 def test_concurrent_student_grade_rechecks_create_one_pending_record(db_mode):

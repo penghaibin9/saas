@@ -27,15 +27,20 @@ def _rows(db, model, *conditions):
 
 def require_scope(db, task, user):
     from . import academic_affairs_grade_task_read_service as task_read
+    from app.core.affairs_security import build_affairs_context
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_grade_task_assignee_guard import resolve_grade_task_assignee
 
-    role = str((user or {}).get("currentRoleCode") or "").upper()
-    if role not in core._REVIEW_ROLES | {"COLLEGE_ADMIN"} and (user or {}).get("userType") != "PLATFORM_SUPER_ADMIN":
-        raise no_permission("当前身份不能办理学院成绩审核")
+    context = build_affairs_context(user, db)
+    if context.scope_type != "COLLEGE":
+        raise no_permission("成绩初审须由开课学院责任账号办理，校教务负责终审发布")
     visible = db.execute(task_read._base_query().where(
         *task_read._scope_conditions(db, user, task_id=task.id),
     )).first()
     if not visible:
         raise AppException("NO_DATA_SCOPE", "成绩任务不在当前审核范围", http_status=403)
+    if resolve_grade_task_assignee(db, "COLLEGE_REVIEW", task) != _current_user_id(db, user):
+        raise no_permission("当前账号不是开课学院的有效成绩审核责任人")
 
 
 def build_evidence(db, task, user):

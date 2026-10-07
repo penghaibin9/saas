@@ -61,17 +61,19 @@ def _seed_students(n=1):
 
 def _teaching_task(term_id, class_id, course_name, *, credit=3, owner="school_admin01"):
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, Major, SchoolClass
 
     db = get_sessionmaker()()
     seq = db.query(AaCourse).filter(AaCourse.tenant_id == TID).count() + 1
+    school_class = db.get(SchoolClass, int(class_id))
+    college_id = db.get(Major, school_class.major_id).college_id
     course = AaCourse(
         tenant_id=TID, course_code=f"BUG{seq:04d}", course_name=course_name,
-        credit=credit, status="ENABLED",
+        credit=credit, owner_college_id=college_id, status="ENABLED",
     )
     db.add(course); db.flush()
     batch = AaTeachingTaskBatch(
-        tenant_id=TID, term_id=int(term_id), batch_name=f"{course_name}教学任务批次", status="APPROVED",
+        tenant_id=TID, term_id=int(term_id), college_id=college_id, batch_name=f"{course_name}教学任务批次", status="APPROVED",
     )
     db.add(batch); db.flush()
     task = AaTeachingTask(

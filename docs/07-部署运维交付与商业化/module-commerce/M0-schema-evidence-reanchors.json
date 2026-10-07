@@ -102,63 +102,87 @@
     {
       "path": "backend/app/models/academic_affairs.py",
       "fromSha256": "71f1e57d20f0b65e428a0235b250d4d91c83c8e0cf9a80803cb494de2ec49d77",
-      "toSha256": "1c4a23b7495420b57612df0d1956a9cefa71e26c5314a8e4adecfc976caabba4",
-      "sourceChangeCommit": "72e3492e2167c7284612ac8dd3b979f8477568d2",
-      "lineOffset": 20,
+      "toSha256": "bf2fa49f5f881cc5619f47150831d0de6a529e4b9bfe075a29ba3f04e47f7fa7",
+      "sourceChangeCommit": "bf94d79269dce760873c2cffbb1bc760f7fa1942",
+      "lineOffset": 58,
       "changeWindows": [
+        {
+          "oldStart": 12,
+          "oldEnd": 18,
+          "newStart": 12,
+          "newEnd": 19
+        },
+        {
+          "oldStart": 230,
+          "oldEnd": 235,
+          "newStart": 231,
+          "newEnd": 269
+        },
+        {
+          "oldStart": 409,
+          "oldEnd": 414,
+          "newStart": 443,
+          "newEnd": 449
+        },
+        {
+          "oldStart": 624,
+          "oldEnd": 635,
+          "newStart": 659,
+          "newEnd": 673
+        },
         {
           "oldStart": 654,
           "oldEnd": 654,
-          "newStart": 654,
-          "newEnd": 666
+          "newStart": 692,
+          "newEnd": 704
         },
         {
           "oldStart": 664,
           "oldEnd": 664,
-          "newStart": 676,
-          "newEnd": 679
+          "newStart": 714,
+          "newEnd": 717
         },
         {
           "oldStart": 670,
           "oldEnd": 670,
-          "newStart": 685,
-          "newEnd": 688
+          "newStart": 723,
+          "newEnd": 726
         },
         {
           "oldStart": 711,
           "oldEnd": 711,
-          "newStart": 729,
-          "newEnd": 730
+          "newStart": 767,
+          "newEnd": 768
         },
         {
           "oldStart": 754,
           "oldEnd": 754,
-          "newStart": 773,
-          "newEnd": 774
+          "newStart": 811,
+          "newEnd": 812
         },
         {
           "oldStart": 1312,
           "oldEnd": 1312,
-          "newStart": 1332,
-          "newEnd": 1333
+          "newStart": 1370,
+          "newEnd": 1371
         },
         {
           "oldStart": 1317,
           "oldEnd": 1317,
-          "newStart": 1338,
-          "newEnd": 1340
+          "newStart": 1376,
+          "newEnd": 1378
         },
         {
           "oldStart": 1739,
           "oldEnd": 1739,
-          "newStart": 1762,
-          "newEnd": 1765
+          "newStart": 1800,
+          "newEnd": 1803
         },
         {
           "oldStart": 1742,
           "oldEnd": 1742,
-          "newStart": 1768,
-          "newEnd": 1769
+          "newStart": 1806,
+          "newEnd": 1807
         }
       ],
       "evidenceIds": [
@@ -169,7 +193,7 @@
         "S001": "9129558ebc9d396eda60b2c90837bb2e80fc94754a5335617776dd1f10ce908c",
         "S003": "1a43759a6fed5971fd6160f66e0c26c3abd194f11615912dd5b483c98bec85ab"
       },
-      "reason": "Re-reviewed model changes through PR #270 commit 72e3492. These evidence ranges are byte-identical to the reviewed source; all intervening edit windows are recorded. Relocation only, with no schema remediation, deletion or purge approval."
+      "reason": "Re-reviewed the complete academic_affairs.py drift from the original M0 source through PR #278 exact source bf94d792. S003 old lines 1209-1223 and S001 old lines 1270-1282 are byte-identical at current lines 1267-1281 and 1328-1340 after a verified +58 offset. All preceding and later edit windows are retained; this is relocation-only evidence and grants no deletion or purge approval."
     },
     {
       "path": "backend/app/models/academic_affairs_effective_grade.py",
@@ -196,63 +220,87 @@
     {
       "path": "backend/app/models/academic_affairs.py",
       "fromSha256": "71f1e57d20f0b65e428a0235b250d4d91c83c8e0cf9a80803cb494de2ec49d77",
-      "toSha256": "1c4a23b7495420b57612df0d1956a9cefa71e26c5314a8e4adecfc976caabba4",
-      "sourceChangeCommit": "72e3492e2167c7284612ac8dd3b979f8477568d2",
-      "lineOffset": 0,
+      "toSha256": "bf2fa49f5f881cc5619f47150831d0de6a529e4b9bfe075a29ba3f04e47f7fa7",
+      "sourceChangeCommit": "bf94d79269dce760873c2cffbb1bc760f7fa1942",
+      "lineOffset": 35,
       "changeWindows": [
+        {
+          "oldStart": 12,
+          "oldEnd": 18,
+          "newStart": 12,
+          "newEnd": 19
+        },
+        {
+          "oldStart": 230,
+          "oldEnd": 235,
+          "newStart": 231,
+          "newEnd": 269
+        },
+        {
+          "oldStart": 409,
+          "oldEnd": 414,
+          "newStart": 443,
+          "newEnd": 449
+        },
+        {
+          "oldStart": 624,
+          "oldEnd": 635,
+          "newStart": 659,
+          "newEnd": 673
+        },
         {
           "oldStart": 654,
           "oldEnd": 654,
-          "newStart": 654,
-          "newEnd": 666
+          "newStart": 692,
+          "newEnd": 704
         },
         {
           "oldStart": 664,
           "oldEnd": 664,
-          "newStart": 676,
-          "newEnd": 679
+          "newStart": 714,
+          "newEnd": 717
         },
         {
           "oldStart": 670,
           "oldEnd": 670,
-          "newStart": 685,
-          "newEnd": 688
+          "newStart": 723,
+          "newEnd": 726
         },
         {
           "oldStart": 711,
           "oldEnd": 711,
-          "newStart": 729,
-          "newEnd": 730
+          "newStart": 767,
+          "newEnd": 768
         },
         {
           "oldStart": 754,
           "oldEnd": 754,
-          "newStart": 773,
-          "newEnd": 774
+          "newStart": 811,
+          "newEnd": 812
         },
         {
           "oldStart": 1312,
           "oldEnd": 1312,
-          "newStart": 1332,
-          "newEnd": 1333
+          "newStart": 1370,
+          "newEnd": 1371
         },
         {
           "oldStart": 1317,
           "oldEnd": 1317,
-          "newStart": 1338,
-          "newEnd": 1340
+          "newStart": 1376,
+          "newEnd": 1378
         },
         {
           "oldStart": 1739,
           "oldEnd": 1739,
-          "newStart": 1762,
-          "newEnd": 1765
+          "newStart": 1800,
+          "newEnd": 1803
         },
         {
           "oldStart": 1742,
           "oldEnd": 1742,
-          "newStart": 1768,
-          "newEnd": 1769
+          "newStart": 1806,
+          "newEnd": 1807
         }
       ],
       "evidenceIds": [
@@ -261,7 +309,7 @@
       "evidenceRangeSha256": {
         "S016": "c68729d8aa6d6016878edac9f8339723693c610634c720a6edebcad4309ad5c6"
       },
-      "reason": "Re-reviewed model changes through PR #270 commit 72e3492. These evidence ranges are byte-identical to the reviewed source; all intervening edit windows are recorded. Relocation only, with no schema remediation, deletion or purge approval."
+      "reason": "Re-reviewed the complete academic_affairs.py drift from the original M0 source through PR #278 exact source bf94d792. S016 old lines 435-461 remain byte-identical at current lines 470-496 after the three preceding edit windows (+35); later windows do not affect this anchor. This is relocation-only evidence and grants no deletion or purge approval."
     }
   ]
 }

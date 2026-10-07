@@ -8,7 +8,8 @@ PUBLIC_SERVICE = ROOT / "app/modules/academic_affairs/services/academic_affairs_
 def test_workbench_extends_the_canonical_publish_gate_instead_of_replacing_it():
     source = PUBLIC_SERVICE.read_text(encoding="utf-8")
 
-    assert "gate_service.evaluate(db, batch)" in source
+    assert "gate_service.evaluate(db, batch, cache=cache)" in source
+    assert "gate_service.evaluate_school_publish(db, batch, cache=cache)" in source
     assert '"taskQueue"' in source
     assert '"workflow"' in source
     assert '"currentStageKey"' in source
@@ -28,4 +29,4 @@ def test_workbench_queue_is_bounded_and_does_not_expose_raw_ids_for_entry():
 
     assert "queue_source[:100]" in source
     assert '"taskQueueTotal": len(queue_source)' in source
-    assert '"canSchedule": not invalid and batch.status == "DRAFT"' in source
+    assert '"canSchedule": not invalid and not duplicate and batch.status == "DRAFT"' in source

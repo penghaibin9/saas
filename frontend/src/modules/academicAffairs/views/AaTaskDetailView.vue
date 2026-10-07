@@ -38,14 +38,15 @@
 
     <div class="task-workbench mp-stack">
       <AaOperationReceipt :receipt="receipt && { title: '任务办理回执', ...receipt }" />
+      <p v-if="schoolReadOnly" class="mp-note">当前为学校统筹范围。教师分配、任务调整和合拆班由开课责任学院的当前有效办理人负责；学校在学院确认后终审。</p>
       <AaTeachingTaskObjectBar
         v-if="workbench.batchId"
         :name="workbench.batchName || '教学任务批次'"
         :identity="`${workbench.termLabel || '学期待提供'} · 批次 #${workbench.batchId}`"
         source="来源：已发布培养方案、适用年级与当前学期；所有任务可返回来源批次回查。"
         :status="batchStatusLabel"
-        :owner="workbench.nextAction?.owner || '当前批次责任岗'"
-        :next-owner="workbench.nextAction?.label || '按正式批次状态流转'"
+        :owner="academicFlowOwner(workbench.responsibility)"
+        :next-owner="academicFlowNextOwner(workbench.nextStep)"
       />
       <AaTeachingTaskStageRail v-if="!selectedBatchId" :current="currentStage" current-note="当前批次办理节点" />
       <AppButton v-if="pendingResult" :disabled="acting || loading" @click="queryPendingResult">查询原办理结果（不会重提）</AppButton>
@@ -146,6 +147,12 @@
               :disabled="acting"
               @click="openAssign(row)"
             >{{ row.teacherKey ? '重新分配' : '分配教师' }}</button>
+            <button
+              v-if="canVoidDraftRow(row)"
+              class="mp-link is-danger"
+              :disabled="acting || Boolean(pendingResult)"
+              @click="openVoidDraft(row)"
+            >作废草稿任务</button>
             <span v-else-if="row.status === 'ASSIGNED'" class="mp-cell-sub">等待教师本人确认</span>
             <span v-else class="mp-cell-sub">—</span>
           </template>
@@ -174,6 +181,23 @@
     </AppConfirmDialog>
 
     <AppConfirmDialog
+      v-model:visible="voidDraft.visible"
+      title="作废未分配草稿任务"
+      type="danger"
+      confirm-text="确认作废草稿"
+      :submitting="voidDraft.submitting"
+      :confirm-disabled="Boolean(pendingResult) || voidDraft.reason.trim().length < 5"
+      @confirm="doVoidDraft"
+    >
+      <p>仅能作废草稿批次中的未分配任务；已有排课、调停课、选课、成绩、考试、教材、评价或考勤引用，或教学班已进入后续办理、名单已变更时，后台会拒绝作废。未使用的自动初始教学班会保留名单并封存，原任务保留审计记录。</p>
+      <p v-if="voidDraft.courseName">待作废：{{ voidDraft.courseName }} · {{ voidDraft.teachingClassCode }}</p>
+      <label class="task-review-reason">作废原因（至少5字）
+        <textarea v-model.trim="voidDraft.reason" rows="3" placeholder="请据实说明作废原因" />
+      </label>
+      <p v-if="voidDraft.invalid || pendingResult" class="task-dialog-note">原确认已失效，请先关闭并查询结果或重新核对；不会重发原命令。</p>
+    </AppConfirmDialog>
+
+    <AppConfirmDialog
       v-model:visible="review.visible"
       :title="review.action === 'APPROVE' ? '确认教务终审通过' : '退回学院重新处理'"
       :type="review.action === 'APPROVE' ? 'primary' : 'danger'"
@@ -192,6 +216,8 @@
 </template>
 
 <script>
+import { academicFlowOwner, academicFlowNextOwner } from '../config/academicFlowRegistry.js'
+
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppStatusTag, AppConfirmDialog, AppTeacherPicker } from '@/components/common'
@@ -224,19 +250,21 @@ export default {
       taskStatuses: TASK_STATUS,
       assign: { visible: false, submitting: false, taskId: '', teacherName: '', teacherKey: '', weeklyHours: null, expectedStudents: null },
       review: { visible: false, action: '', reason: '' },
+      voidDraft: { visible: false, submitting: false, invalid: false, taskId: '', courseName: '', teachingClassCode: '', reason: '' },
       columns: [
         { key: 'course', title: '课程' },
         { key: 'class', title: '教学班' },
         { key: 'teacher', title: '任课教师' },
         { key: 'hours', title: '周次 / 人数' },
         { key: 'status', title: '状态' },
-        { key: 'actions', title: '管理动作', width: '150px' }
+        { key: 'actions', title: '管理动作', width: '210px' }
       ]
     }
   },
   computed: {
     batchId() { return this.selectedBatchId || this.$route.params.batchId },
     batchStatusLabel() { return TASK_BATCH_STATUS[this.workbench.status] || '状态待核对' },
+    schoolReadOnly() { return ['TENANT_ALL', 'SCHOOL'].includes(this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) },
     currentStage() {
       if (['DRAFT', 'GENERATED', 'RETURNED'].includes(this.workbench.status) && this.workbench.taskTotal > 0) {
         if (this.workbench.unassignedCount > 0 || this.workbench.teacherRejectedCount > 0) return 2
@@ -269,10 +297,11 @@ export default {
   watch: {
     '$route.fullPath'() { this.load() },
     batchId: { flush: 'sync', handler() { this.changeBatch() } },
-    ctx() { this.lifecycle++; this.assign = { visible: false, submitting: false }; this.review = { visible: false, reason: '', action: '' }; this.receipt = null; this.pendingResult = null; this.pendingByBatch = {}; this.acting = false; this.load() }
+    ctx() { this.lifecycle++; this.assign = { visible: false, submitting: false }; this.review = { visible: false, reason: '', action: '' }; this.voidDraft = { visible: false, submitting: false, invalid: false, taskId: '', courseName: '', teachingClassCode: '', reason: '' }; this.receipt = null; this.pendingResult = null; this.pendingByBatch = {}; this.acting = false; this.load() }
   },
   beforeUnmount() { this.revision++; this.lifecycle++; this.disposed = true },
   methods: {
+    academicFlowOwner, academicFlowNextOwner,
     taskColor,
     openSchedule() {
       if (!this.canViewSchedule || this.workbench.nextAction?.code !== 'READY' || !this.workbench.termId) return
@@ -281,14 +310,14 @@ export default {
     },
     searchTasks() { return this.changeTaskPage(1) },
     async changeTaskPage(page) {
-      if (this.acting || this.pendingResult || this.assign.visible || this.review.visible) return
+      if (this.acting || this.pendingResult || this.assign.visible || this.review.visible || this.voidDraft.visible) return
       const before = this.$route.fullPath
       await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, page: String(page), keyword: this.keyword || undefined, status: this.statusFilter || undefined } })
       if (before === this.$route.fullPath) return this.load()
     },
     showWholeBatch() { const query = { ...this.$route.query }; delete query.teachingTaskId; this.$router.replace({ path: this.$route.path, query }) },
     changeBatch() {
-      this.lifecycle++; this.assign.visible = false; this.review.visible = false; this.acting = false
+      this.lifecycle++; this.assign.visible = false; this.review.visible = false; this.voidDraft.visible = false; this.acting = false
       this.pendingResult = this.pendingByBatch[String(this.batchId)] || null
       this.receipt = this.pendingResult ? { object: this.pendingResult.object, status: '结果待确认', pending: true, next: '该批次有未确认办理，只能查询原结果，请勿重复提交。' } : null
       return this.load()
@@ -319,6 +348,31 @@ export default {
     },
     canAssignRow(row) {
       return this.canManage && Boolean(this.workbench.actions?.canAssign) && ['PENDING_ASSIGN', 'ASSIGNED', 'REJECTED_BY_TEACHER'].includes(row.status)
+    },
+    canVoidDraftRow(row) {
+      return this.canManage && this.workbench.status === 'DRAFT' && Boolean(this.workbench.actions?.canAssign)
+        && row.status === 'PENDING_ASSIGN' && !row.teacherKey
+    },
+    openVoidDraft(row) {
+      if (!this.canVoidDraftRow(row) || this.acting || this.loading || this.pendingResult) return
+      this.voidDraft = {
+        visible: true, submitting: false, invalid: false, taskId: String(row.taskId),
+        courseName: row.courseName || '', teachingClassCode: row.teachingClassCode || '',
+        reason: ''
+      }
+    },
+    async doVoidDraft() {
+      const form = this.voidDraft
+      if (!form.visible || !this.canVoidDraftRow(this.rows.find(row => String(row.taskId) === form.taskId) || {})
+          || form.reason.trim().length < 5 || this.acting || this.pendingResult) return
+      const taskId = form.taskId, batchId = this.batchId
+      form.submitting = true
+      await this.runAction('canAssign', () => academicAffairsApi.voidDraftTeachingTask(taskId, form.reason), async () => {
+        const response = await academicAffairsApi.getBatchTasks(batchId, { taskId, page: 1, pageSize: 1 })
+        if (response.code !== 0) throw response
+        return Number(response.data?.total) === 0 ? '草稿任务已从正式列表移除' : ''
+      }, '草稿任务已逻辑作废并留审计；剩余任务仍需由任课教师本人确认。', form)
+      form.submitting = false
     },
     openAssign(row) {
       if (!this.canAssignRow(row) || this.acting || this.loading || this.pendingResult) return
@@ -355,7 +409,7 @@ export default {
     },
     async collegeConfirm() {
       const id = this.batchId
-      await this.runAction('canCollegeConfirm', () => academicAffairsApi.collegeConfirmTaskBatch(id), () => ['COLLEGE_CONFIRMED', 'APPROVED'].includes(this.workbench.status) ? TASK_BATCH_STATUS[this.workbench.status] : '', '由教务核对批次正式状态后终审。')
+      await this.runAction('canCollegeConfirm', () => academicAffairsApi.collegeConfirmTaskBatch(id), () => ['COLLEGE_CONFIRMED', 'APPROVED'].includes(this.workbench.status) ? TASK_BATCH_STATUS[this.workbench.status] : '', () => this.workbench.status === 'APPROVED' ? '正式就绪任务可进入排课；名单仍以教学班正式版本为准。' : '由教务核对批次正式状态后终审。')
     },
     openApprove() { if (!this.pendingResult && !this.acting) this.review = { visible: true, action: 'APPROVE', reason: '', invalid: false } },
     openReturn() { if (!this.pendingResult && !this.acting) this.review = { visible: true, action: 'RETURN', reason: this.review.action === 'RETURN' ? this.review.reason : '', invalid: false } },
@@ -436,7 +490,7 @@ export default {
       const status = await pending.confirmedStatus()
       if (!current() || this.pendingResult !== pending) return
       const confirmed = Boolean(pending.acknowledged && status)
-      this.receipt = { object: pending.object, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? pending.next : status ? `当前正式状态：${status}。原请求应答未确认，不能认定是本次办理结果；请联系负责学院核对，不会重提。` : '尚未读到相应正式状态。只查询原办理结果，不会重复提交；请联系负责学院核对。' }
+      this.receipt = { object: pending.object, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? (typeof pending.next === 'function' ? pending.next() : pending.next) : status ? `当前正式状态：${status}。原请求应答未确认，不能认定是本次办理结果；请联系负责学院核对，不会重提。` : '尚未读到相应正式状态。只查询原办理结果，不会重复提交；请联系负责学院核对。' }
       if (confirmed) this.clearPending()
     },
     async queryPendingResult() {
@@ -469,6 +523,7 @@ export default {
         if (taskRes?.code !== 0) { this.handleFailure(taskRes, '任务明细加载失败'); return false }
         if (!Array.isArray(taskRes.data?.list) || !Number.isInteger(taskRes.data?.total)) { this.handleFailure({ message: '任务列表未完整返回，请刷新核对。' }); return false }
         this.workbench = workbenchRes.data || {}; this.rows = taskRes.data.list; this.pagination.total = taskRes.data.total
+        if (!this.pendingResult && this.receipt && !this.receipt.pending) this.receipt = null
         return true
       } catch (error) { if (current()) this.handleFailure(error, '网络连接失败，请重试。'); return false }
       finally { if (current()) this.loading = false }

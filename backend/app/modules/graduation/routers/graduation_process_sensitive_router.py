@@ -73,15 +73,6 @@ def guidance_create(
     return success(guidance.create_guidance(gd_student_id, body.model_dump()), message="已记录")
 
 
-@router.post("/gd-guidances/records/{gid}/void")
-def guidance_void(
-    gid: str, body: GuidanceVoidRequest, batchId: int = Query(..., ge=1),
-    user=Depends(get_current_user),
-):
-    _related_guard(GraduationGuidance, gid, batchId)
-    return success(void_guidance_scoped(gid, body.reason), message="已撤销")
-
-
 @router.get("/gd-guidance-plans")
 def plan_list(
     page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),

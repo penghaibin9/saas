@@ -196,21 +196,28 @@ def _case_dto(case, *, detail: bool = False) -> dict:
 
 def confirm_archive(user, batch_id, force=False):
     """Create immutable Manifest V1 in the same transaction as ARCHIVED."""
-    from app.models import AaArchiveBatch, AaTerm, ArchiveManifest
+    from app.models import AaArchiveBatch, ArchiveManifest
+    from .academic_affairs_schedule_resource_guard import lock_term
 
     core = archive_service._core
     with core.session() as db:
-        core._require_school(core._ctx(user, db))
-        actor = _actor_id(db)
-        if actor is None:
-            raise AppException("NO_PERMISSION", "缺少可审计的操作人身份，禁止执行正式归档", http_status=403)
-        batch = db.query(AaArchiveBatch).filter(
+        # 权限预读可能先建立 RR 快照；必须在首条 SQL 前设置，确保等待学期锁后
+        # 实时门禁看到前一毕业写事务已提交的事实，而不是锁前旧快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        actor = core._require_archive_operator(db, user)
+        query = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.id == int(batch_id),
             AaArchiveBatch.tenant_id == _tid(),
             AaArchiveBatch.is_deleted.is_(False),
-        ).with_for_update().first()
+        )
+        batch = query.first()
         if not batch:
             raise not_found("归档批次不存在")
+        term_id = batch.term_id
+        term = lock_term(db, term_id) if term_id else None
+        batch = query.populate_existing().with_for_update().first()
+        if not batch or batch.term_id != term_id:
+            raise AppException("DATA_CONFLICT", "归档批次学期已变化，请重新读取后办理", http_status=409)
         if batch.status == "ARCHIVED":
             manifest = _latest_manifest(db, batch.id)
             if not manifest:
@@ -264,14 +271,8 @@ def confirm_archive(user, batch_id, force=False):
         db.flush()
         batch.status = "ARCHIVED"
         batch.archived_at = archived_at
-        if batch.term_id:
-            term = db.query(AaTerm).filter(
-                AaTerm.id == batch.term_id,
-                AaTerm.tenant_id == _tid(),
-                AaTerm.is_deleted.is_(False),
-            ).with_for_update().first()
-            if term:
-                term.status = "ARCHIVED"
+        if term:
+            term.status = "ARCHIVED"
         core._audit(
             db,
             batch.id,
@@ -454,10 +455,7 @@ def append_integrity_checkpoint(user, batch_id, *, note: str) -> dict:
 
     core = archive_service._core
     with core.session() as db:
-        core._require_school(core._ctx(user, db))
-        actor = _actor_id(db)
-        if actor is None:
-            raise AppException("NO_PERMISSION", "缺少可审计操作人，禁止追加完整性检查点", http_status=403)
+        actor = core._require_archive_operator(db, user)
         batch = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.id == int(batch_id),
             AaArchiveBatch.tenant_id == _tid(),
@@ -473,6 +471,7 @@ def append_integrity_checkpoint(user, batch_id, *, note: str) -> dict:
         if not manifests:
             raise AppException("DATA_CONFLICT", "没有可证明的原始 Manifest 链", http_status=409)
         previous = manifests[-1]
+        core._require_historical_archive_actor(db, previous.archived_by)
         if previous.archived_by is not None and int(previous.archived_by) == int(actor):
             raise AppException("NO_PERMISSION", "完整性检查点必须由不同于上一版本签署人的操作人追加", http_status=403)
         if re.search(r"INTEGRITY_CHECKPOINT:[0-9a-f]{64}", str(previous.reason or ""), re.IGNORECASE):
@@ -613,14 +612,7 @@ def create_correction_case(user, batch_id, *, business_type, target_ref, reason,
         raise AppException("VALIDATION_ERROR", "纠错证据清单不能为空")
 
     with core.session() as db:
-        core._require_school(core._ctx(user, db))
-        requester = _actor_id(db)
-        if requester is None:
-            raise AppException(
-                "NO_PERMISSION",
-                "当前操作人无法解析到租户内稳定账号，禁止发起高风险归档后纠错",
-                http_status=403,
-            )
+        requester = core._require_archive_operator(db, user)
         batch = db.query(AaArchiveBatch).filter(
             AaArchiveBatch.id == int(batch_id),
             AaArchiveBatch.tenant_id == _tid(),
@@ -667,10 +659,7 @@ def approve_correction_case(user, case_id) -> dict:
 
     core = archive_service._core
     with core.session() as db:
-        core._require_school(core._ctx(user, db))
-        actor = _actor_id(db)
-        if actor is None:
-            raise AppException("NO_PERMISSION", "当前操作人无法解析到租户内稳定账号，禁止执行高风险归档纠错", http_status=403)
+        actor = core._require_archive_operator(db, user)
         case = db.query(PostArchiveCorrectionCase).filter(
             PostArchiveCorrectionCase.id == int(case_id),
             PostArchiveCorrectionCase.tenant_id == _tid(),
@@ -686,6 +675,7 @@ def approve_correction_case(user, case_id) -> dict:
                 "该高风险纠错单缺少发起人审计身份，无法证明双人复核，禁止应用",
                 http_status=409,
             )
+        core._require_historical_archive_actor(db, case.created_by)
         if int(case.created_by) == int(actor):
             raise AppException("NO_PERMISSION", "归档后纠错必须由不同操作人二次审批", http_status=403)
 

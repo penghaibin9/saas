@@ -70,14 +70,15 @@
       </div>
     </template>
     <template v-if="detail && dtab !== 'audit'" #footer>
-      <button type="button" class="mp-btn" @click="$router.push(backTo)">返回</button>
-      <button v-if="dtab === 'stages'" type="button" class="mp-btn mp-btn--primary" :disabled="configLocked || submitting" @click="saveStages">保存阶段</button>
-      <button v-if="dtab === 'rules'" type="button" class="mp-btn mp-btn--primary" :disabled="configLocked || submitting" @click="saveRules">保存规则</button>
+      <AppButton @click="$router.push(backTo)">返回</AppButton>
+      <AppButton v-if="dtab === 'stages'" variant="primary" :disabled="configLocked || submitting" @click="saveStages">保存阶段</AppButton>
+      <AppButton v-if="dtab === 'rules'" variant="primary" :disabled="configLocked || submitting" @click="saveRules">保存规则</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState, StatusTag } from '@/components/business'
 import { AppAuditTrail } from '@/components/common'
@@ -93,7 +94,7 @@ const DEFAULT_RULES = () => ({
 
 export default {
   name: 'GraduationBatchDetailView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, StatusTag, AppDatePicker, AppAuditTrail },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, StatusTag, AppDatePicker, AppAuditTrail },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

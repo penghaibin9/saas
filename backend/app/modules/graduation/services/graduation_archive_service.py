@@ -113,35 +113,6 @@ def _check_completeness(db, stu: GraduationStudent) -> tuple[list[dict], list[st
     return checklist, missing
 
 
-def _manifest_hash(db, stu: GraduationStudent, archive_batch_no: str) -> str:
-    """Freeze the exact evidence IDs and update timestamps used for filing."""
-    from app.models import GraduationReview
-    models = (
-        GraduationTaskBook, GraduationProposal, GraduationMidterm, GraduationFinal,
-        GraduationReview, GraduationDefenseScore, GraduationGrade,
-    )
-    evidence = []
-    for model in models:
-        rows = db.scalars(select(model).where(
-            model.tenant_id == _tid(), model.gd_student_id == stu.id,
-            model.is_deleted.is_(False),
-        ).order_by(model.id)).all()
-        evidence.extend({
-            "type": model.__tablename__,
-            "id": int(row.id),
-            "status": getattr(row, "status", None),
-            "version": getattr(row, "version", None),
-            "updatedAt": _iso(getattr(row, "updated_at", None)),
-        } for row in rows)
-    payload = {
-        "tenantId": _tid(), "studentId": int(stu.id),
-        "archiveBatchNo": archive_batch_no, "evidence": evidence,
-    }
-    return hashlib.sha256(
-        json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
-    ).hexdigest()
-
-
 def _row(a: GraduationArchiveRecord, stu=None) -> dict:
     return {"id": str(a.id), "gdStudentId": str(a.gd_student_id),
             "studentName": stu.name if stu else "", "studentNo": stu.student_no if stu else "",
@@ -153,31 +124,6 @@ def _row(a: GraduationArchiveRecord, stu=None) -> dict:
             "archiveBatchNo": a.archive_batch_no or "", "rejectReason": a.reject_reason or "",
             "manifestHash": a.manifest_hash or "",
             "updatedAt": _iso(a.updated_at), "version": a.version}
-
-
-def list_archives(page: int, page_size: int, keyword=None, status=None, batch_id=None) -> tuple[list[dict], int]:
-    with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        q = select(GraduationArchiveRecord).where(GraduationArchiveRecord.tenant_id == _tid(),
-                                                   GraduationArchiveRecord.is_deleted.is_(False),
-                                                   GraduationArchiveRecord.gd_student_id.in_(scope_ids or [-1]))
-        if status:
-            q = q.where(GraduationArchiveRecord.status == status)
-        rows = db.scalars(q.order_by(GraduationArchiveRecord.id.desc())).all()
-        items = []
-        for a in rows:
-            stu = db.scalars(select(GraduationStudent).where(
-                GraduationStudent.id == int(a.gd_student_id),
-                GraduationStudent.tenant_id == _tid(),
-                GraduationStudent.is_deleted.is_(False),
-                GraduationStudent.record_status == "ACTIVE",
-            )).first()
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_row(a, stu))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
 
 
 def get_archive(gd_student_id) -> dict:
@@ -196,6 +142,15 @@ def get_archive(gd_student_id) -> dict:
         row = _row(a, stu)
         if not a.id:
             row["id"] = ""
+        if a.status != "FILED":
+            # Read-only live check with the same rule as submit/file/batch preview,
+            # so a stale "材料齐全" saved at generate time never hides a new gap.
+            try:
+                checklist, missing = _check_completeness(db, stu)
+            except AppException:
+                checklist, missing = None, None
+            if checklist is not None:
+                row["checklist"], row["missingItems"] = checklist, missing
         return row
 
 
@@ -222,6 +177,9 @@ def _count_open_risks(db, stu: GraduationStudent) -> int:
         GraduationRiskCase.is_deleted.is_(False),
         GraduationRiskCase.gd_student_id == stu.id,
         GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+        # 最近一次扫描已确认触发条件消失的风险（如开题后来通过了）不再拦归档；
+        # 页面仍会列出，管理员可顺手关闭。
+        GraduationRiskCase.condition_active.is_(True),
         GraduationRiskCase.risk_code.notin_(_ARCHIVE_NON_BLOCKING_RISK_CODES),
     )) or 0)
 
@@ -233,6 +191,10 @@ def _assert_no_open_risks(db, stu: GraduationStudent) -> None:
             "DATA_CONFLICT",
             f"该生仍有 {open_n} 条未关闭风险，不能完成归档",
         )
+
+
+def _missing_message(missing: list[str]) -> str:
+    return f"还缺 {len(missing)} 项材料，不能提交归档：" + "、".join(str(item) for item in missing)
 
 
 def submit_archive(gd_student_id) -> dict:
@@ -247,7 +209,11 @@ def submit_archive(gd_student_id) -> dict:
         checklist, missing = _check_completeness(db, stu)
         a.checklist_json, a.missing_items = checklist, missing
         if missing:
-            raise AppException("DATA_CONFLICT", f"仍缺 {len(missing)} 项材料，不能提交")
+            # Keep the refreshed checklist so the page shows exactly what is missing.
+            a.version += 1
+            _audit(db, a.id, "提交归档被拦截", detail=f"缺失 {len(missing)} 项：" + "、".join(missing)[:900])
+            db.commit()
+            raise AppException("DATA_CONFLICT", _missing_message(missing))
         a.status = "SUBMITTED"
         a.submitted_at = datetime.now(timezone.utc)
         a.version += 1
@@ -343,180 +309,6 @@ def _preview_base(batch, candidate_count, executable_count, skip_reasons: dict,
     }
 
 
-def preview_batch_generate(batch_id=None) -> dict:
-    """批量生成+提交预检查：不写业务状态。"""
-    with session() as db:
-        batch = _require_batch(db, batch_id)
-        scope_ids = set(accessible_student_ids(db, _tid(), batch_id=batch.id))
-        stus = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE",
-            GraduationStudent.id.in_(scope_ids or [-1]))).all()
-        skip_reasons: dict[str, int] = {
-            "already_submitted_or_filed": 0,
-            "missing_materials": 0,
-            "open_risks": 0,
-        }
-        executable = 0
-        colleges: set[str] = set()
-        has_abnormal = False
-        for stu in stus:
-            colleges.add(_college_label(stu))
-            a = db.scalars(select(GraduationArchiveRecord).where(
-                GraduationArchiveRecord.tenant_id == _tid(),
-                GraduationArchiveRecord.gd_student_id == stu.id,
-                GraduationArchiveRecord.is_deleted.is_(False))).first()
-            if a and a.status in ("FILED", "SUBMITTED"):
-                skip_reasons["already_submitted_or_filed"] += 1
-                continue
-            open_n = _count_open_risks(db, stu)
-            _, missing = _check_completeness(db, stu)
-            if missing:
-                skip_reasons["missing_materials"] += 1
-                has_abnormal = True
-                continue
-            if open_n > 0:
-                skip_reasons["open_risks"] += 1
-                has_abnormal = True
-                continue
-            executable += 1
-        return _preview_base(batch, len(stus), executable, skip_reasons, colleges, has_abnormal)
-
-
-def preview_batch_file(batch_id=None) -> dict:
-    """批量核验备案预检查：不写业务状态。"""
-    with session() as db:
-        batch = _require_batch(db, batch_id)
-        scope_ids = set(accessible_student_ids(db, _tid(), batch_id=batch.id))
-        subs = db.scalars(select(GraduationArchiveRecord).where(
-            GraduationArchiveRecord.tenant_id == _tid(),
-            GraduationArchiveRecord.status == "SUBMITTED",
-            GraduationArchiveRecord.is_deleted.is_(False),
-            GraduationArchiveRecord.gd_student_id.in_(scope_ids or [-1]))).all()
-        skip_reasons: dict[str, int] = {
-            "out_of_scope": 0,
-            "open_risks": 0,
-            "missing_materials": 0,
-        }
-        executable = 0
-        colleges: set[str] = set()
-        has_abnormal = False
-        for a in subs:
-            stu = db.scalars(select(GraduationStudent).where(
-                GraduationStudent.id == int(a.gd_student_id),
-                GraduationStudent.tenant_id == _tid(),
-                GraduationStudent.is_deleted.is_(False),
-                GraduationStudent.record_status == "ACTIVE",
-            )).first()
-            if not stu or not can_access_student(db, stu) or stu.batch_id != batch.id:
-                skip_reasons["out_of_scope"] += 1
-                continue
-            colleges.add(_college_label(stu))
-            if _count_open_risks(db, stu) > 0:
-                skip_reasons["open_risks"] += 1
-                has_abnormal = True
-                continue
-            _, missing = _check_completeness(db, stu)
-            if missing:
-                skip_reasons["missing_materials"] += 1
-                has_abnormal = True
-                continue
-            executable += 1
-        return _preview_base(batch, len(subs), executable, skip_reasons, colleges, has_abnormal)
-
-
-def batch_file(archive_batch_no: str = None, batch_id=None) -> dict:
-    """批量归档一键操作：对指定批次内「已提交」记录一键核验备案。"""
-    with session() as db:
-        batch = _require_batch(db, batch_id)
-        scope_ids = set(accessible_student_ids(db, _tid(), batch_id=batch.id))
-        subs = db.scalars(select(GraduationArchiveRecord).where(
-            GraduationArchiveRecord.tenant_id == _tid(),
-            GraduationArchiveRecord.status == "SUBMITTED",
-            GraduationArchiveRecord.is_deleted.is_(False),
-            GraduationArchiveRecord.gd_student_id.in_(scope_ids or [-1])).with_for_update()).all()
-        n, _ = _op()
-        batch_no = archive_batch_no or f"GDARCH-{datetime.now():%Y%m%d}"
-        filed = 0
-        skipped = 0
-        for a in subs:
-            stu = db.scalars(select(GraduationStudent).where(
-                GraduationStudent.id == a.gd_student_id,
-                GraduationStudent.tenant_id == _tid(),
-                GraduationStudent.is_deleted.is_(False),
-            ).with_for_update()).first()
-            if (not stu or not can_access_student(db, stu)
-                    or stu.batch_id != batch.id):
-                skipped += 1
-                continue
-            if _count_open_risks(db, stu) > 0:
-                skipped += 1
-                continue
-            checklist, missing = _check_completeness(db, stu)
-            a.checklist_json, a.missing_items = checklist, missing
-            if missing:
-                skipped += 1
-                continue
-            a.status = "FILED"
-            a.verified_by = n
-            a.filed_at = datetime.now(timezone.utc)
-            a.archive_batch_no = batch_no
-            a.manifest_hash = _manifest_hash(db, stu, batch_no)
-            a.version += 1
-            if stu.stage != "ARCHIVED":
-                stu.stage = "ARCHIVED"
-                stu.version += 1
-            _audit(db, a.id, "批量核验归档",
-                   detail=f"batchId={batch.id} batchName={batch.batch_name} no={batch_no}")
-            filed += 1
-        _audit(db, f"batch-file-{batch.id}", "批量核验归档汇总",
-               detail=f"batchId={batch.id} batchName={batch.batch_name} "
-                      f"filed={filed} skipped={skipped} archiveBatchNo={batch_no}")
-        db.commit()
-        return {
-            "filed": filed, "skipped": skipped, "archiveBatchNo": batch_no,
-            "batchId": str(batch.id), "batchName": batch.batch_name,
-        }
-
-
-def batch_generate_submit(batch_id=None) -> dict:
-    """批量归档一键操作：对指定批次内材料齐全的在册学生一键生成+提交。"""
-    with session() as db:
-        batch = _require_batch(db, batch_id)
-        scope_ids = set(accessible_student_ids(db, _tid(), batch_id=batch.id))
-        stus = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE",
-            GraduationStudent.id.in_(scope_ids or [-1])).with_for_update()).all()
-        stus = [stu for stu in stus if can_access_student(db, stu)]
-        submitted, skipped = 0, 0
-        for stu in stus:
-            a = _get_or_create(db, stu, for_update=True)
-            if a.status in ("FILED", "SUBMITTED"):
-                continue
-            open_n = _count_open_risks(db, stu)
-            checklist, missing = _check_completeness(db, stu)
-            a.checklist_json = checklist
-            a.missing_items = missing
-            a.generated_at = datetime.now(timezone.utc)
-            if missing or open_n > 0:
-                a.status = "PENDING_SUBMIT"
-                skipped += 1
-            else:
-                a.status = "SUBMITTED"
-                a.submitted_at = datetime.now(timezone.utc)
-                submitted += 1
-            a.version += 1
-        _audit(db, f"batch-gen-{batch.id}", "批量生成并提交归档",
-               detail=f"batchId={batch.id} batchName={batch.batch_name} "
-                      f"提交{submitted}/跳过{skipped}")
-        db.commit()
-        return {
-            "submitted": submitted, "skipped": skipped,
-            "batchId": str(batch.id), "batchName": batch.batch_name,
-        }
-
-
 def archive_stats(batch_id=None) -> dict:
     with session() as db:
         from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
@@ -596,3 +388,7 @@ from app.modules.graduation.services.graduation_archive_batch_consistency import
 def _check_completeness(db, student):
     from app.modules.graduation.services.graduation_archive_consistency import _rule_check
     return _rule_check(db, student, base_check=_base_check_completeness)
+
+
+# 列表唯一实现为 SQL 读模型（原由 services/__init__.py 导入时替换，现显式绑定）。
+from app.modules.graduation.services.graduation_archive_read_service import list_archives  # noqa: E402,F401

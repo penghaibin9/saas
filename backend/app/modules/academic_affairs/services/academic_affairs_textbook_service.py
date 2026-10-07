@@ -141,7 +141,10 @@ def create_selection(user, body):
     with session() as db:
         ctx = _ctx(user, db)
         task_id = int(body.taskId)
-        tt = db.query(AaTeachingTask).filter(AaTeachingTask.id == task_id, AaTeachingTask.tenant_id == _tid()).first()
+        tt = db.query(AaTeachingTask).filter(
+            AaTeachingTask.id == task_id, AaTeachingTask.tenant_id == _tid(),
+            AaTeachingTask.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
         if not tt:
             raise not_found("教学任务不存在")
         tb = db.query(AaTextbook).filter(AaTextbook.id == int(body.textbookId), AaTextbook.tenant_id == _tid()).first()
@@ -244,7 +247,12 @@ def list_selections(user, status=None, page=1, page_size=50, *, selection_id=Non
             ))
         elif not _is_school(ctx):
             allowed = getattr(ctx, "college_ids", None) or set()
-            conds.append(AaTextbookSelection.college_id.in_(allowed or [-1]))
+            task_ids = db.query(AaTeachingTask.id).join(AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).filter(
+                AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+                AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+                AaTeachingTaskBatch.college_id.in_(allowed or [-1]),
+            )
+            conds.append(AaTextbookSelection.task_id.in_(task_ids))
         total = int(db.query(AaTextbookSelection).filter(*conds).count())
         page = max(1, int(page))
         page_size = max(1, int(page_size))

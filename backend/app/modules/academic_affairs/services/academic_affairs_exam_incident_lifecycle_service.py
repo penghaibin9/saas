@@ -197,6 +197,7 @@ def project_incident_workbench(
     for audit in audits:
         latest_audit.setdefault(int(audit.biz_id), audit)
 
+    offering = legacy_service._course_college_ids(db, {int(course.id) for _incident, course, _batch, _room in rows})
     items = []
     for incident, course, batch, room in rows:
         audit = latest_audit.get(int(incident.id))
@@ -225,7 +226,7 @@ def project_incident_workbench(
             "batchStatus": batch.status,
             "courseName": course.course_name or "",
             "className": course.class_name or "",
-            "collegeId": str(course.college_id) if course.college_id else None,
+            "collegeId": str(offering[course.id]) if offering.get(course.id) else None,
             "examDate": course.exam_date or "",
             "startTime": course.start_time or "",
             "endTime": course.end_time or "",
@@ -310,7 +311,7 @@ def resolve_incident(user, incident_id: int, action: str, reason: str = "", disc
                 http_status=409,
             )
         if not legacy_service._is_school(context):
-            legacy_service._check_college_scope(context, course.college_id)
+            legacy_service._check_course_scope(db, context, course)
 
         existing = _latest_resolution_query(db, int(incident.id), lock=True)
         if existing:

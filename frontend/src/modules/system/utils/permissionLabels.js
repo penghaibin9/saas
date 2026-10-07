@@ -7,7 +7,7 @@ const words = {
   unregistered: '未注册学生', scan: '扫描排查', retake: '重修', correction: '更正', availability: '可用时段',
   selection: '选课', lock: '锁定', rosterView: '查看名单', officeReview: '教务处审核', term: '学期',
   catalog: '目录', fee: '费用', warning: '预警', start: '启动', notify: '通知', secondRound: '二次答辩',
-  appealReview: '申诉审核', calculate: '计算', guide: '指导', midterm: '中期检查', disputeReview: '异议审核',
+  appealReview: '申诉审核', advisorScore: '导师评分', calculate: '计算', guide: '指导', midterm: '中期检查', disputeReview: '异议审核',
   result: '结果', confirmOnBehalf: '代为确认', issue: '下发', execute: '执行', intake: '受理',
   conflict: '冲突', manual: '人工办理', peerEval: '同行评价', selfEval: '自我评价', supervisorEval: '督导评价',
   enroll: '选课报名', generate: '生成', school_confirm: '学校确认', blacklist: '黑名单', contact: '联系人',

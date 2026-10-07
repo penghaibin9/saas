@@ -1,6 +1,6 @@
 """13B-P1 教务中心：学年学期/校历/节次 + 学籍名册 + 入学/学年注册。
 
-注册结果经 change_student_status() 单一入口写主档（PENDING_REGISTER→REGISTERED）。
+注册结果经 change_student_status() 单一入口写主档（入学待注册或在籍续注册→REGISTERED）。
 学籍名册只读 t_student_profile（脱敏），不建 roster 表。注册预检只读 t_orientation_student，不复制迎新数据。
 """
 from __future__ import annotations
@@ -1723,7 +1723,7 @@ def roster_import_confirm(rows: list) -> dict:
 
 # ═══════════ 入学/学年/学期注册 ═══════════
 # 三种 register_type 共用同一批次/记录引擎（t_aa_registration_batch/t_aa_registration），不新建候选人表：
-# ENROLL=新生入学（候选池 PENDING_REGISTER）；ANNUAL/SEMESTER=在籍学生续注册（候选池 REGISTERED/RETAINED，
+# ENROLL=新生入学（候选池 PENDING_REGISTER）；ANNUAL/SEMESTER=在籍学生续注册（候选池 NORMAL/REGISTERED/RETAINED，
 # 语义参照总册 §3.3 E01「学年注册：教务处按学期开批次」——SEMESTER 即按学期粒度开批次的续注册视图，
 # 与 ANNUAL 区别仅在批次归属周期/菜单入口，候选人圈定与状态机完全一致，故 _batch_target_statuses 不需改动）。
 _REG_TYPE_LABEL = {"ENROLL": "入学注册", "ANNUAL": "学年注册", "SEMESTER": "学期注册"}
@@ -1775,18 +1775,28 @@ def list_registration_batches(user, status=None, page=1, page_size=20, register_
 
 
 def _precheck(db, student_id) -> dict:
-    """注册预检：只读迎新台账（报到/缴费/材料/绿通），不复制。无迎新数据则默认通过。"""
+    """只读同一学生的迎新事实；缺失记录不能冒充已完成报到、缴费或材料核验。"""
     from app.models import OrientationStudent, StudentProfile
     s = db.get(StudentProfile, int(student_id))
     ori = db.scalars(select(OrientationStudent).where(
         OrientationStudent.tenant_id == _tid(),
-        OrientationStudent.name == (s.real_name if s else ""),
+        OrientationStudent.student_id == s.id,
+        OrientationStudent.record_status == "ACTIVE",
         OrientationStudent.is_deleted.is_(False))).first() if s else None
+    if not ori and s and s.student_no:
+        ori = db.scalars(select(OrientationStudent).where(
+            OrientationStudent.tenant_id == _tid(),
+            OrientationStudent.student_id.is_(None),
+            OrientationStudent.student_no == s.student_no,
+            OrientationStudent.record_status == "ACTIVE",
+            OrientationStudent.is_deleted.is_(False))).first()
     if not ori:
-        return {"reported": True, "paid": True, "material": True, "greenChannel": False,
-                "note": "无迎新台账，默认通过"}
-    return {"reported": getattr(ori, "report_status", None) in (None, "REPORTED", "DONE"),
-            "paid": True, "material": True, "greenChannel": False}
+        return {"reported": None, "paid": None, "material": None, "greenChannel": None,
+                "note": "未关联本学生的迎新台账，不能据此认定报到、缴费或材料已通过"}
+    return {"reported": ori.report_status in {"CHECKED_IN", "COLLEGE_CONFIRMED"},
+            "paid": ori.payment_status == "PAID", "material": ori.material_status == "APPROVED",
+            "greenChannel": ori.green_channel_status == "APPROVED",
+            "note": "迎新台账状态快照；本学期续注册资格仍需另行核验"}
 
 
 def require_writable_registration_batch(db, batch_id):
@@ -1824,6 +1834,11 @@ def require_registration_self_service_window(batch, now=None) -> None:
         raise AppException("DATA_CONFLICT", reason, http_status=409)
 
 
+def require_registration_eligible(registration) -> None:
+    if registration and (registration.eligibility_status or "") == "INELIGIBLE":
+        raise AppException("DATA_CONFLICT", "注册资格核验未通过，请先处理注册异常并重新核验")
+
+
 def register_student(batch_id, user, student_id, *, self_service: bool = False) -> dict:
     """完成一名学生的正式注册。
 
@@ -1832,7 +1847,7 @@ def register_student(batch_id, user, student_id, *, self_service: bool = False) 
     """
     _n, _r, uid = _op()
     with session() as db:
-        from app.models import AaRegistration, AaRegistrationBatch, AaRegistrationException, StudentProfile
+        from app.models import AaRegistration, AaRegistrationException
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
         b = require_writable_registration_batch(db, batch_id)
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期不应受理新注册
@@ -1840,17 +1855,22 @@ def register_student(batch_id, user, student_id, *, self_service: bool = False) 
             raise AppException("DATA_CONFLICT", "注册批次未开放或已关闭")
         if self_service:
             require_registration_self_service_window(b)
-        s = db.get(StudentProfile, int(student_id))
-        if not s or s.is_deleted or s.tenant_id != _tid():
-            raise not_found("学生不存在")
+        if self_service:
+            from app.services.mobile_student_service import _require_student, resolve_student
+            s = resolve_student(db, _require_student(user))
+            if not s or int(s.id) != int(student_id):
+                raise no_permission("学生只能办理本人注册")
+        else:
+            s = build_affairs_context(user, db).require_student(db, student_id)
         dup = db.scalars(select(AaRegistration).where(
             AaRegistration.tenant_id == _tid(), AaRegistration.batch_id == b.id,
             AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False))).first()
         if dup and dup.status == "REGISTERED":
             raise AppException("DATA_CONFLICT", "该生已在本批次完成注册")
+        if s.student_status not in _batch_target_statuses(b):
+            raise AppException("DATA_CONFLICT", "该生当前学籍状态不符合本批次注册条件", http_status=409)
+        require_registration_eligible(dup)
         if self_service:
-            if dup and (dup.eligibility_status or "") == "INELIGIBLE":
-                raise AppException("DATA_CONFLICT", "注册资格核验未通过，请联系辅导员或教务处")
             open_exception = db.scalars(select(AaRegistrationException).where(
                 AaRegistrationException.tenant_id == _tid(),
                 AaRegistrationException.batch_id == b.id,
@@ -2048,13 +2068,13 @@ def _push_todo(db, biz_type, biz_id, todo_type, assignee_id, student_id, title) 
 # ── 批次候选学生（资格核验/未注册/扫描共用）──
 
 def _batch_target_statuses(batch) -> tuple:
-    """批次类型圈定的候选学籍状态池：ENROLL=待注册在籍生；ANNUAL=在籍待续生（含留级编入）。"""
-    return ("PENDING_REGISTER",) if batch.register_type == "ENROLL" else ("REGISTERED", "RETAINED")
+    """批次类型圈定的候选学籍状态池：入学仅待注册；续注册含正常在籍、已注册和留级。"""
+    return ("PENDING_REGISTER",) if batch.register_type == "ENROLL" else ("NORMAL", "REGISTERED", "RETAINED")
 
 
 def _batch_pending_candidates(db, batch, allowed=None) -> list:
     """本批次尚未完成注册的候选学生：命中批次目标学籍状态池，且本批次内无 REGISTERED 记录
-    （ANNUAL 候选池本身即 REGISTERED，必须以本批次注册记录而非主档状态判定是否已完成本轮）。
+    （续注册候选池包含已为 REGISTERED 的主档，必须以本批次注册记录判定是否已完成本轮）。
     allowed=None 不限范围；allowed=空集合 fail-closed 返回 []。返回 [(StudentProfile, AaRegistration|None), ...]。"""
     from app.models import AaRegistration, StudentProfile
     if allowed is not None and not allowed:
@@ -2128,7 +2148,8 @@ def verify_registration_eligibility(batch_id, user, student_id, result, note=Non
             raise AppException("VALIDATION_ERROR", "不合格需填写核验意见")
         reg = db.scalars(select(AaRegistration).where(
             AaRegistration.tenant_id == _tid(), AaRegistration.batch_id == b.id,
-            AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False))).first()
+            AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False)
+        ).with_for_update().execution_options(populate_existing=True)).first()
         if reg and reg.status == "REGISTERED":
             raise AppException("DATA_CONFLICT", "该生已完成注册，无需再核验", http_status=409)
         if not reg:
@@ -2188,7 +2209,8 @@ def create_registration_exception(batch_id, user, student_id, exception_type, de
         s = ctx.require_student(db, student_id)
         reg = db.scalars(select(AaRegistration).where(
             AaRegistration.tenant_id == _tid(), AaRegistration.batch_id == b.id,
-            AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False))).first()
+            AaRegistration.student_id == int(student_id), AaRegistration.is_deleted.is_(False)
+        ).with_for_update().execution_options(populate_existing=True)).first()
         exc = _create_exception_row(db, b, student_id, exception_type, description,
                                     registration_id=(reg.id if reg else None))
         if reg:

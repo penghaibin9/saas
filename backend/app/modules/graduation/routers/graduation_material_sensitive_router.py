@@ -67,6 +67,24 @@ def dashboard(batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
     return success(svc.get_dashboard(batch_id=require_batch_id(batchId)))
 
 
+@router.get("/teacher-workbench", summary="老师毕设工作台：按我的身份（导师/评阅/评委/秘书）汇总待办")
+def teacher_workbench(batchId: Optional[int] = Query(None, ge=1), user=Depends(get_current_user)):
+    from app.modules.graduation.services import graduation_teacher_workbench_service as workbench
+    return success(workbench.build(user, batch_id=batchId))
+
+
+@router.get("/setup-check", summary="首次使用向导：批次/学生/导师/导师账号/发布 五项自动检查（按数据范围）")
+def setup_check(batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
+    from app.modules.graduation.services import graduation_admin_progress_service as progress
+    return success(progress.setup_check(require_batch_id(batchId)))
+
+
+@router.get("/midterm-by-mentor", summary="中期检查按导师看：已检查/待检查/整改待复核（按数据范围）")
+def midterm_by_mentor(batchId: int = Query(..., ge=1), user=Depends(get_current_user)):
+    from app.modules.graduation.services import graduation_admin_progress_service as progress
+    return success(progress.midterm_by_mentor(require_batch_id(batchId)))
+
+
 @router.get("/students", summary="毕业设计学生概览（当前批次）")
 def legacy_students(
     page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),

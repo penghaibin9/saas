@@ -157,6 +157,7 @@ def test_review_native_platform_totp_reaches_signed_mfa_assurance(db_mode):
     from app.core.security import decode_token, hash_password
     from app.db.session import get_sessionmaker
     from app.models import PlatformConfig, User
+    from app.services.auth_service_db import validate_token_subject
     from app.services import platform_mfa_service as mfa
 
     db = get_sessionmaker()()
@@ -168,6 +169,7 @@ def test_review_native_platform_totp_reaches_signed_mfa_assurance(db_mode):
             password_hash=hash_password("Review-Platform-Password-123!"),
             user_type="PLATFORM_SUPER_ADMIN",
             status="ACTIVE",
+            credential_version=3,
         )
         db.add(user)
         db.commit()
@@ -187,6 +189,7 @@ def test_review_native_platform_totp_reaches_signed_mfa_assurance(db_mode):
         "activeContextId": "legacy:PLATFORM_SUPER_ADMIN",
         "currentRoleCode": "PLATFORM_SUPER_ADMIN",
         "permissionVersion": None,
+        "credentialVersion": 3,
         "authTime": now,
         "tokenIat": now,
         "amr": [],
@@ -218,6 +221,8 @@ def test_review_native_platform_totp_reaches_signed_mfa_assurance(db_mode):
     assert "totp" in claims["amr"]
     assert "mfa" in claims["acr"]
     assert int(claims["exp"]) - int(claims["iat"]) == 600
+    assert claims["credentialVersion"] == 3
+    validate_token_subject(claims)
     assert_recent_platform_auth(
         {"authTime": claims["auth_time"], "amr": claims["amr"], "acr": claims["acr"]},
         require_mfa=True,
@@ -226,6 +231,17 @@ def test_review_native_platform_totp_reaches_signed_mfa_assurance(db_mode):
     # The same TOTP time-step may not be replayed for a second elevation token.
     with pytest.raises(AppException):
         mfa.step_up(principal, code=code)
+
+    next_counter = max(counter + 1, int(time.time() // 30))
+    stepped_up = mfa.step_up(principal, code=mfa._totp_for_counter(secret, next_counter))
+    step_claims = decode_token(stepped_up["accessToken"])
+    assert step_claims["credentialVersion"] == 3
+    validate_token_subject(step_claims)
+
+    for stale_claims in ({key: value for key, value in step_claims.items() if key != "credentialVersion"},
+                         {**step_claims, "credentialVersion": 2}):
+        with pytest.raises(AppException, match="认证凭据已更新"):
+            validate_token_subject(stale_claims)
 
 
 def test_review_machine_passed_evidence_requires_sha_and_measured_objectives():

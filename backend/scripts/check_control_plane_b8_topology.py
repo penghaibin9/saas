@@ -1,7 +1,7 @@
 """B8-02 exact-head IAM topology proof over the canonical #104 standard-20k school.
 
 The canonical 20K build has two role-topology phases:
-- sandbox_school_role_reconcile freezes delivered roles, 501 secondary bindings and
+- sandbox_school_role_reconcile freezes delivered roles, 493 secondary bindings and
   organization scopes while mentors are still at the initial 96/96 allocation;
 - sandbox_school_mentor_workload then expands the final internship/graduation
   advisor pools to 224/384 and is the authority for the final post-rebuild state.

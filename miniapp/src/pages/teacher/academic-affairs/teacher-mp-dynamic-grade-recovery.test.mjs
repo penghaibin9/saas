@@ -43,6 +43,10 @@ function createPage(dependencies = {}) {
     academicGradeEntryApi: {},
     normalizeError: () => ({ text: '请求失败' }),
     toast() {},
+    relaunch() {}, forcePasswordChangeRequired: () => false, FORCE_PASSWORD_CHANGE_ROUTE: '/pages/common/change-password/index?forced=1',
+    me: async () => ({ tenantId: '1', userId: '2', activeContextId: 'A', currentRole: { roleCode: 'ACADEMIC_TEACHER' } }),
+    currentSessionGeneration: () => 1,
+    roleKeyFromBackendRole: role => role === 'ACADEMIC_TEACHER' ? 'academic' : '',
     useSessionStore: () => ({ identity: { tenantId: '1', userId: '2', activeContextId: 'A' }, currentRole: 'teacher' }),
     ...Object.fromEntries(writeImports.map(name => [name, writeContract[name]])),
     ...dependencies,
@@ -54,12 +58,13 @@ function createPage(dependencies = {}) {
   vm.runInNewContext(source, sandbox)
   const options = sandbox.options
   const instance = options.data()
+  instance.identityReady = true
   for (const [name, method] of Object.entries(options.methods)) instance[name] = method.bind(instance)
   for (const [name, getter] of Object.entries(options.computed || {})) {
     Object.defineProperty(instance, name, { get: () => getter.call(instance) })
   }
   instance._pageActive = true
-  if (options.onHide) instance.onHide = options.onHide.bind(instance)
+  for (const hook of ['onLoad', 'onShow', 'onHide', 'onUnload']) if (options[hook]) instance[hook] = options[hook].bind(instance)
   return { instance, writeContract }
 }
 
@@ -112,6 +117,304 @@ function dynamicPage(dependencies = {}, initial = roster()) {
 function flush() {
   return new Promise((resolve) => setImmediate(resolve))
 }
+
+test('cold-start grade detail verifies current teacher before reading recovery storage or grade tasks', async () => {
+  const identity = deferred()
+  let storageReads = 0, taskReads = 0
+  const storage = { getStorageSync() { storageReads++; return '' }, setStorageSync() {} }
+  const session = {
+    identity: {}, realUser: null, currentRole: 'academic', persistedIdentityVerified: false,
+    applyRealUser(data) {
+      this.realUser = data
+      this.identity = { userId: data.userId }
+      this.persistedIdentityVerified = true
+    }
+  }
+  const { instance } = createPage({
+    writeContract: loadWriteContract(storage), useSessionStore: () => session,
+    me: () => identity.promise,
+    teacherApi: { getGradeTasks: async () => { taskReads++; return { items: [] } } }
+  })
+  instance.onLoad({ id: '8747' })
+  assert.equal(storageReads, 0)
+  assert.equal(taskReads, 0)
+  assert.equal(instance.requestedTaskId, '8747')
+  identity.resolve({ tenantId: '1', userId: '2', activeContextId: 'A', currentRole: { roleCode: 'ACADEMIC_TEACHER' } })
+  await flush()
+  assert.equal(session.persistedIdentityVerified, true)
+  assert.equal(storageReads > 0, true)
+  assert.equal(taskReads, 1)
+  assert.equal(instance.writeStorageBlocked, false)
+})
+
+test('teacher todo deep link opens only the exact formal grade task string, including a large ID', async () => {
+  const gradeTaskId = '90071992547409931'
+  const opened = [], notices = []
+  const session = {
+    identity: {}, realUser: null, currentRole: 'academic', persistedIdentityVerified: false,
+    applyRealUser(data) {
+      this.realUser = data
+      this.identity = { userId: data.userId }
+      this.persistedIdentityVerified = true
+    }
+  }
+  const tasks = [{ gradeTaskId: '90071992547409932' }, { gradeTaskId }]
+  const { instance } = createPage({
+    useSessionStore: () => session,
+    toast: value => notices.push(value),
+    teacherApi: { getGradeTasks: async () => ({ items: tasks }) }
+  })
+  instance.openTask = async task => { opened.push(task.gradeTaskId) }
+  instance.onLoad({ id: gradeTaskId })
+  await flush()
+  assert.deepEqual(opened, [gradeTaskId])
+  assert.deepEqual(notices, [])
+
+  instance.requestedTaskId = '90071992547409933'
+  await instance.load()
+  assert.deepEqual(opened, [gradeTaskId], 'unknown task must not open a nearby course or task')
+  assert.match(notices.at(-1), /不存在、已失效或不在本人授课范围内/)
+})
+
+test('old identity verification cannot bind a newer login with the same cold-start context', async () => {
+  const old = deferred(), fresh = deferred()
+  let generation = 1, calls = 0, applied = 0, taskReads = 0
+  const session = {
+    identity: {}, realUser: null, currentRole: 'academic', persistedIdentityVerified: false,
+    applyRealUser(data) {
+      applied++
+      this.realUser = data
+      this.identity = { userId: data.userId }
+      this.persistedIdentityVerified = true
+    }
+  }
+  const { instance } = createPage({
+    useSessionStore: () => session, currentSessionGeneration: () => generation,
+    me: () => ++calls === 1 ? old.promise : fresh.promise,
+    teacherApi: { getGradeTasks: async () => { taskReads++; return { items: [] } } }
+  })
+  instance.onLoad({ id: '8747' })
+  generation = 2
+  old.resolve({ tenantId: '1', userId: 'old', activeContextId: 'A', currentRole: { roleCode: 'ACADEMIC_TEACHER' } })
+  await flush()
+  assert.equal(applied, 0)
+  assert.equal(taskReads, 0)
+  instance.onShow()
+  fresh.resolve({ tenantId: '1', userId: 'new', activeContextId: 'A', currentRole: { roleCode: 'ACADEMIC_TEACHER' } })
+  await flush()
+  assert.equal(session.identity.userId, 'new')
+  assert.equal(applied, 1)
+  assert.equal(taskReads, 1)
+})
+
+test('failed identity verification keeps the grade page blocked and retry preserves the deep link', async () => {
+  let calls = 0, taskReads = 0
+  const session = {
+    identity: {}, realUser: null, currentRole: 'academic', persistedIdentityVerified: false,
+    applyRealUser(data) {
+      this.realUser = data
+      this.identity = { userId: data.userId }
+      this.persistedIdentityVerified = true
+    }
+  }
+  const { instance } = createPage({
+    useSessionStore: () => session,
+    me: async () => {
+      if (++calls === 1) throw Error('身份服务暂不可用')
+      return { tenantId: '1', userId: '2', activeContextId: 'A', currentRole: { roleCode: 'ACADEMIC_TEACHER' } }
+    },
+    teacherApi: { getGradeTasks: async () => { taskReads++; return { items: [] } } }
+  })
+  instance.onLoad({ id: '8747' })
+  await flush()
+  assert.equal(instance.state, 'error')
+  assert.match(instance.identityError, /身份核验失败/)
+  assert.equal(taskReads, 0)
+  assert.equal(instance.requestedTaskId, '8747')
+  instance.retryLoad()
+  await flush()
+  assert.equal(taskReads, 1)
+})
+
+test('hidden or unloaded grade page discards a late identity response without touching recovery storage', async () => {
+  for (const hook of ['onHide', 'onUnload']) {
+    const pending = deferred()
+    let applied = 0, storageReads = 0, taskReads = 0
+    const session = {
+      identity: {}, realUser: null, currentRole: 'academic', persistedIdentityVerified: false,
+      applyRealUser() { applied++ }
+    }
+    const storage = { getStorageSync() { storageReads++; return '' }, setStorageSync() {} }
+    const { instance } = createPage({
+      writeContract: loadWriteContract(storage), useSessionStore: () => session,
+      me: () => pending.promise,
+      teacherApi: { getGradeTasks: async () => { taskReads++; return { items: [] } } }
+    })
+    instance.onLoad({ id: '8747' })
+    instance[hook]()
+    pending.resolve({ tenantId: '1', userId: '2', activeContextId: 'A', currentRole: { roleCode: 'ACADEMIC_TEACHER' } })
+    await flush()
+    assert.equal(applied, 0)
+    assert.equal(storageReads, 0)
+    assert.equal(taskReads, 0)
+  }
+})
+
+test('incomplete or wrong-role identity fails before reading the pending-write ledger', async () => {
+  for (const identity of [
+    { tenantId: '1', userId: '2', currentRole: { roleCode: 'ACADEMIC_TEACHER' } },
+    { tenantId: '1', userId: '2', activeContextId: 'A', currentRole: { roleCode: 'STUDENT' } }
+  ]) {
+    let storageReads = 0, applied = 0, taskReads = 0
+    const session = {
+      identity: {}, realUser: null, currentRole: 'academic', persistedIdentityVerified: false,
+      applyRealUser() { applied++ }
+    }
+    const storage = { getStorageSync() { storageReads++; return '' }, setStorageSync() {} }
+    const { instance } = createPage({
+      writeContract: loadWriteContract(storage), useSessionStore: () => session,
+      me: async () => identity,
+      teacherApi: { getGradeTasks: async () => { taskReads++; return { items: [] } } }
+    })
+    instance.onLoad()
+    await flush()
+    assert.equal(applied, 0)
+    assert.equal(storageReads, 0)
+    assert.equal(taskReads, 0)
+    assert.equal(instance.state, identity.activeContextId ? 'forbidden' : 'error')
+  }
+})
+
+test('verified identity with an unreadable ledger reports storage failure and sends no grade reads', async () => {
+  let taskReads = 0
+  const session = {
+    identity: {}, realUser: null, currentRole: 'academic', persistedIdentityVerified: false,
+    applyRealUser(data) {
+      this.realUser = data
+      this.identity = { userId: data.userId }
+      this.persistedIdentityVerified = true
+    }
+  }
+  const storage = { getStorageSync() { throw Error('storage unavailable') }, setStorageSync() {} }
+  const { instance } = createPage({
+    writeContract: loadWriteContract(storage), useSessionStore: () => session,
+    me: async () => ({ tenantId: '1', userId: '2', activeContextId: 'A', currentRole: { roleCode: 'ACADEMIC_TEACHER' } }),
+    teacherApi: { getGradeTasks: async () => { taskReads++; return { items: [] } } }
+  })
+  instance.onLoad()
+  await flush()
+  assert.equal(instance.identityReady, true)
+  assert.equal(instance.writeStorageBlocked, true)
+  assert.match(instance.identityError, /待核对记录.*无法读取/)
+  assert.equal(taskReads, 0)
+})
+
+test('forced password change routes to the existing password page before ledger or grades are read', async () => {
+  let storageReads = 0, taskReads = 0, target = ''
+  const session = {
+    identity: {}, realUser: null, currentRole: 'academic', persistedIdentityVerified: false,
+    applyRealUser(data) {
+      this.realUser = data
+      this.identity = { userId: data.userId }
+      this.persistedIdentityVerified = true
+      this.mustChangePassword = true
+    }
+  }
+  const storage = { getStorageSync() { storageReads++; return '' }, setStorageSync() {} }
+  const { instance } = createPage({
+    writeContract: loadWriteContract(storage), useSessionStore: () => session,
+    me: async () => ({ tenantId: '1', userId: '2', activeContextId: 'A', currentRole: { roleCode: 'ACADEMIC_TEACHER' } }),
+    relaunch: route => { target = route },
+    teacherApi: { getGradeTasks: async () => { taskReads++; return { items: [] } } }
+  })
+  instance.onLoad({ id: '8747' })
+  await flush()
+  assert.equal(target, '/pages/common/change-password/index?forced=1')
+  assert.equal(instance.identityReady, false)
+  assert.equal(storageReads, 0)
+  assert.equal(taskReads, 0)
+})
+
+for (const source of ['store', 'persistent']) {
+  test(`real me without password flag preserves existing ${source} requirement before applying identity`, async () => {
+    let applied = 0, ledgerReads = 0, taskReads = 0, target = ''
+    let persisted = source === 'persistent' ? '1' : ''
+    const gateSource = fs.readFileSync(new URL('../../../security/passwordChangeGate.js', import.meta.url), 'utf8')
+      .replace(/export function/g, 'function').replace(/export const/g, 'const')
+    const gate = { uni: { getStorageSync: () => persisted } }
+    vm.runInNewContext(`${gateSource};globalThis.required = forcePasswordChangeRequired`, gate)
+    const session = {
+      identity: {}, currentRole: 'academic', persistedIdentityVerified: false,
+      mustChangePassword: source === 'store',
+      applyRealUser(data) {
+        applied++
+        this.mustChangePassword = !!data.user?.mustChangePassword
+        persisted = ''
+      }
+    }
+    const { instance } = createPage({
+      useSessionStore: () => session,
+      forcePasswordChangeRequired: gate.required,
+      writeContract: loadWriteContract({ getStorageSync() { ledgerReads++; return '' }, setStorageSync() {} }),
+      me: async () => ({ tenantId: '1', userId: 'db-255482', activeContextId: 'role:83',
+        userType: 'TEACHER', currentRole: { roleCode: 'ACADEMIC_TEACHER', contextType: 'ACADEMIC_TEACHER' },
+        contexts: [{ contextId: 'role:83', roleCode: 'ACADEMIC_TEACHER' }] }),
+      relaunch: route => { target = route },
+      teacherApi: { getGradeTasks: async () => { taskReads++; return { items: [] } } }
+    })
+    instance.onLoad({ id: '8747' })
+    await flush()
+    assert.equal(target, '/pages/common/change-password/index?forced=1')
+    assert.equal(applied, 0)
+    assert.equal(session.mustChangePassword, source === 'store')
+    assert.equal(persisted, source === 'persistent' ? '1' : '')
+    assert.equal(instance.identityReady, false)
+    assert.equal(ledgerReads, 0)
+    assert.equal(taskReads, 0)
+  })
+}
+
+test('cold recovery clears an old busy save before reopening the verified task and ignores its late result', async () => {
+  const oldWrite = deferred()
+  let rosterReads = 0
+  const session = {
+    identity: { userId: 'old' }, realUser: { tenantId: '1', activeContextId: 'A' },
+    currentRole: 'academic', persistedIdentityVerified: true,
+    applyRealUser(data) {
+      this.identity = { userId: data.userId }
+      this.realUser = data
+      this.persistedIdentityVerified = true
+    }
+  }
+  const { instance } = dynamicPage({
+    useSessionStore: () => session,
+    me: async () => ({ tenantId: '1', userId: 'new', activeContextId: 'A', currentRole: { roleCode: 'ACADEMIC_TEACHER' } }),
+    teacherApi: { getGradeTasks: async () => ({ items: [{ gradeTaskId: '8', status: 'INPUTTING', courseName: 'PLC' }] }) },
+    academicGradeEntryApi: {
+      componentBatchSave: () => oldWrite.promise,
+      componentRoster: async () => { rosterReads++; return roster() }
+    }
+  })
+  instance.scores['11'].components.PROJECT = '81'
+  instance.markDirty('11')
+  const saving = instance.saveScore(instance.roster[0])
+  assert.equal(instance.saving, '11')
+  instance.onHide()
+  session.identity = {}
+  session.realUser = null
+  session.persistedIdentityVerified = false
+  instance.requestedTaskId = '8'
+  instance.onShow()
+  await flush()
+  assert.equal(instance.identityReady, true)
+  assert.equal(instance.saving, null)
+  assert.equal(instance.active.gradeTaskId, '8')
+  assert.equal(rosterReads > 0, true)
+  oldWrite.resolve({ gradeTaskId: '8', taskVersion: 2 })
+  await saving
+  assert.equal(instance.saving, null)
+  assert.equal(instance.active.gradeTaskId, '8')
+})
 
 test('single-row readback keeps another student draft and a newer edit on the submitted student', async () => {
   const post = deferred()

@@ -38,21 +38,34 @@ def list_textbooks(user, keyword=None, status=None, page=1, page_size=20):
 
 def list_review_batches(user, status=None, page=1, page_size=20):
     from app.models import AaTextbookReviewBatch
+    from . import academic_affairs_textbook_final_facade as final
 
     with legacy.session() as db:
-        legacy._ctx(user, db)
+        ctx = legacy._ctx(user, db)
+        sources = final._review_sources(db)
         conds = [
             AaTextbookReviewBatch.tenant_id == legacy._tid(),
             AaTextbookReviewBatch.is_deleted.is_(False),
         ]
         if status:
             conds.append(AaTextbookReviewBatch.status == status)
+        if ctx.scope_type != "TENANT_ALL":
+            if ctx.scope_type != "COLLEGE":
+                return [], 0
+            conds.extend([
+                sources.c.college_id.in_(sorted(ctx.college_ids) or [-1]),
+                sources.c.owner_count == sources.c.item_count, sources.c.college_count == 1,
+                sources.c.min_term_id == AaTextbookReviewBatch.term_id,
+                sources.c.max_term_id == AaTextbookReviewBatch.term_id,
+                or_(AaTextbookReviewBatch.college_id.is_(None), AaTextbookReviewBatch.college_id == sources.c.college_id),
+            ])
         page, page_size = _page(page, page_size)
-        total = int(db.query(func.count(AaTextbookReviewBatch.id)).filter(*conds).scalar() or 0)
-        rows = db.query(AaTextbookReviewBatch).filter(*conds).order_by(
+        query = db.query(AaTextbookReviewBatch, sources).outerjoin(sources, sources.c.batch_id == AaTextbookReviewBatch.id).filter(*conds)
+        total = query.count()
+        rows = query.order_by(
             AaTextbookReviewBatch.id.desc()
         ).offset((page - 1) * page_size).limit(page_size).all()
-        return [legacy._rb_dto(row) for row in rows], total
+        return [final._review_dto(ctx, row[0], row) for row in rows], total
 
 
 def list_order_batches(user, status=None, page=1, page_size=20):

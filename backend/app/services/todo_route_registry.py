@@ -150,7 +150,7 @@ _TEACHER_MINI: dict[str, tuple[str, str, str]] = {
     "ACAD_WARNING_HANDLE": ("todo-route:teacher-mini-academic-warning", "/pages/teacher/academic-warning/index", FOCUS_NONE),
     "AA_SCHEDULE_CHANGE_APPROVAL": ("todo-route:teacher-mini-schedule-change", "/pages/teacher/academic-affairs/schedule-change-review", FOCUS_NONE),
     "AA_STATUS_APPROVAL": ("todo-route:teacher-mini-status-change", "/pages/teacher/academic-affairs/status-change-review", FOCUS_NONE),
-    "AA_GRADE_ENTRY": ("todo-route:teacher-mini-grade-entry", "/pages/teacher/academic-affairs/grade-entry", FOCUS_NONE),
+    "AA_GRADE_ENTRY": ("todo-route:teacher-mini-grade-entry", "/pages/teacher/academic-affairs/grade-entry", FOCUS_LIST_FOCUS),
     # 开题报告不是选题志愿审核。毕业设计指导页已消费 recordId、按当前教师数据范围
     # 精确回读待审开题并打开批阅工作区，故不得再把待办误送到选题页。
     "GD_PROPOSAL_REVIEW": ("todo-route:teacher-mini-graduation-proposal-review", "/pages/teacher/graduation-guide/index", FOCUS_LIST_FOCUS),
@@ -196,6 +196,8 @@ def _mini_target(mapping: dict[str, tuple[str, str, str]], type_code: str, rid: 
         return None
     route_name, path, focus_mode = target
     query = {"recordId": rid}
+    if type_code == "AA_GRADE_ENTRY" and path == "/pages/teacher/academic-affairs/grade-entry":
+        query["id"] = rid
     if type_code == "DORM_RECTIFICATION" and path == "/pages/student/affairs/dorm":
         query = {"rectificationId": rid}
     if type_code in {"DORM_RECTIFICATION", "DORM_RECTIFICATION_RECHECK"} and path == "/pages/teacher/dorm-review/index":

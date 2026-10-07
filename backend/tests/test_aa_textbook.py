@@ -27,12 +27,14 @@ def _stu_token(real_name, student_no):
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
     from app.models import (AaTeachingTask, AaTeachingTaskBatch, AaTerm, College, Major, SchoolClass,
-                            StudentProfile)
+                            StudentProfile, TeacherStudentScope)
     db = get_sessionmaker()()
     term = AaTerm(tenant_id=TID, year_code="2024-2025", term_no=1, status="PUBLISHED", is_current=True)
     db.add(term); db.flush()
     col = College(tenant_id=TID, college_name="软件学院", status="ACTIVE")
     db.add(col); db.flush()
+    db.add(TeacherStudentScope(tenant_id=TID, teacher_key="college_admin01", role_code="COLLEGE_ADMIN",
+                              scope_type="COLLEGE", ref_value=col.college_name, status="ACTIVE"))
     major = Major(tenant_id=TID, college_id=col.id, major_name="软件技术", status="ACTIVE")
     db.add(major); db.flush()
     klass = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2401", grade="2024", status="ACTIVE")
@@ -47,7 +49,7 @@ def _seed(db_mode):
     s1 = StudentProfile(tenant_id=TID, student_no="TB2401", real_name="书甲", college_id=col.id,
                         major_id=major.id, class_id=klass.id, grade="2024", student_status="NORMAL", status="ACTIVE")
     db.add(s1); db.flush()
-    ids = {"term": term.id, "task": tt.id, "class": klass.id, "student": s1.id}
+    ids = {"term": term.id, "task": tt.id, "class": klass.id, "student": s1.id, "college": col.id}
     db.commit(); db.close()
     return ids
 
@@ -63,8 +65,8 @@ def test_t1_full_chain(client, db_mode):
     rbid = client.post(f"{BASE}/textbooks/review-batches", headers=admin,
                        json={"batchName": "2024秋审核", "termId": str(ids["term"]),
                              "selectionIds": [str(sid)]}).json()["data"]["reviewBatchId"]
-    for _ in range(4):
-        client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=admin, json={"action": "APPROVE"})
+    for headers in [_hdr(client, "college_admin01")] * 2 + [admin] * 2:
+        assert client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=headers, json={"action": "APPROVE"}).status_code == 200
     client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=admin, json={"action": "APPROVE"})
     sels = client.get(f"{BASE}/textbooks/selections", headers=admin, params={"status": "APPROVED"}).json()["data"]["items"]
     assert any(s["selectionId"] == str(sid) for s in sels)
@@ -113,8 +115,9 @@ def test_t4_review_return(client, db_mode):
     client.post(f"{BASE}/textbooks/selections/{sid}/submit", headers=admin)
     rbid = client.post(f"{BASE}/textbooks/review-batches", headers=admin,
                        json={"termId": str(ids["term"]), "selectionIds": [str(sid)]}).json()["data"]["reviewBatchId"]
-    assert client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=admin, json={"action": "RETURN", "reason": "x"}).status_code == 400
-    r = client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=admin, json={"action": "RETURN", "reason": "教材版次过旧需更新"}).json()
+    college = _hdr(client, "college_admin01")
+    assert client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=college, json={"action": "RETURN", "reason": "x"}).status_code == 400
+    r = client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=college, json={"action": "RETURN", "reason": "教材版次过旧需更新"}).json()
     assert r["code"] == 0 and r["data"]["status"] == "RETURNED"
 
 
@@ -128,8 +131,8 @@ def test_t6_partial_fee_and_stock(client, db_mode):
     client.post(f"{BASE}/textbooks/selections/{sid}/submit", headers=admin)
     rbid = client.post(f"{BASE}/textbooks/review-batches", headers=admin,
                        json={"termId": str(ids["term"]), "selectionIds": [str(sid)]}).json()["data"]["reviewBatchId"]
-    for _ in range(5):
-        client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=admin, json={"action": "APPROVE"})
+    for headers in [_hdr(client, "college_admin01")] * 2 + [admin] * 2:
+        assert client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=headers, json={"action": "APPROVE"}).status_code == 200
     obid = client.post(f"{BASE}/textbooks/order-batches", headers=admin,
                        json={"batchName": "征订", "termId": str(ids["term"])}).json()["data"]["orderBatchId"]
     client.post(f"{BASE}/textbooks/order-batches/{obid}/submit", headers=admin)
@@ -172,7 +175,7 @@ def test_t4b_returned_selection_can_be_revised_and_resubmitted(client, db_mode):
         json={"termId": str(ids["term"]), "selectionIds": [str(sid)]}
     ).json()["data"]["reviewBatchId"]
     returned = client.post(
-        f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=admin,
+        f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=_hdr(client, "college_admin01"),
         json={"action": "RETURN", "reason": "教材版次过旧需更新"}
     )
     assert returned.status_code == 200, returned.text

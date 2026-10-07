@@ -31,6 +31,7 @@ function page(file, dependencies = {}) {
     .split('<script>')[1].split('</script>')[0]
     .replace(/^import .*$/gm, '').replace('export default', 'globalThis.options =')
   const sandbox = {
+    me: dependencies.me || (async () => { throw { status: 401 } }),
     teacherApi: dependencies.teacherApi || {}, useSessionStore: () => session,
     normalizeError: (error) => ({ kind: error && (error.status === 403 || error.httpStatus === 403) ? 'forbidden' : 'unknown', text: (error && error.message) || '请求失败' }),
     createSubmitLock: () => ({ run: (fn) => fn() }), getStatusBarHeight: () => 20,
@@ -61,6 +62,78 @@ function attendanceSetup(instance) {
   instance.showForm = true
   return task
 }
+
+test('attendance cold deep link waits for verified identity before loading or enabling writes', async () => {
+  const response = deferred()
+  const session = { identity: {}, realUser: null, currentRole: 'academic', applyRealUser(identity) { this.identity = identity } }
+  const { instance } = page('./attendance.vue', { session, me: () => response.promise })
+  let lists = 0, tasks = 0
+  instance.load = () => { lists += 1 }
+  instance.loadTasks = () => { tasks += 1 }
+  instance.onLoad({ teachingTaskId: '11', sessionDate: '2026-09-08', slotNo: '2', scheduleItemId: '31' })
+  instance.onShow()
+  assert.equal(instance.writeStorageBlocked, true)
+  assert.equal(lists, 0)
+  response.resolve({ tenantId: '1', userId: '2', activeContextId: 'ctx' })
+  await flush()
+  assert.equal(instance.writeStorageBlocked, false)
+  assert.equal(lists, 1)
+  assert.equal(tasks, 1)
+  assert.equal(instance.routeSeed.teachingTaskId, '11')
+})
+
+test('attendance identity failure, wrong role, incomplete authority and late response keep writes blocked', async () => {
+  for (const mode of ['denied', 'wrongRole', 'incomplete', 'changed', 'hidden']) {
+    const response = deferred()
+    const session = { identity: {}, realUser: null, currentRole: 'academic', applyRealUser(identity) {
+      this.identity = identity
+      if (mode === 'wrongRole') this.currentRole = 'student'
+    } }
+    const { instance } = page('./attendance.vue', { session, me: () => response.promise })
+    let lists = 0
+    instance.load = () => { lists += 1 }
+    instance.onLoad({ sessionId: '7' })
+    if (mode === 'changed') session.identity = { tenantId: '9', userId: '8', activeContextId: 'other' }
+    if (mode === 'hidden') instance.onHide()
+    if (mode === 'denied') response.reject({ status: 403 })
+    else response.resolve(mode === 'incomplete' ? { userId: '2' } : { tenantId: '1', userId: '2', activeContextId: 'ctx' })
+    await flush()
+    assert.equal(instance.writeStorageBlocked, true, mode)
+    assert.equal(lists, 0, mode)
+    if (mode === 'changed') assert.equal(session.identity.tenantId, '9')
+  }
+})
+
+test('attendance verified identity cannot override unavailable persistent storage', async () => {
+  const contract = loadWriteContract({ getStorageSync() { throw new Error('storage unavailable') }, setStorageSync() {} })
+  const session = { identity: {}, currentRole: 'academic', applyRealUser(identity) { this.identity = identity } }
+  const { instance } = page('./attendance.vue', { contract, session, me: async () => ({ tenantId: '1', userId: '2', activeContextId: 'ctx' }) })
+  let lists = 0
+  instance.load = () => { lists += 1 }
+  instance.onLoad()
+  await flush()
+  assert.equal(instance.writeStorageBlocked, true)
+  assert.equal(lists, 0)
+})
+
+test('attendance retry re-verifies failed cold identity before reading the formal session', async () => {
+  let attempts = 0, lists = 0
+  const session = { identity: {}, currentRole: 'academic', applyRealUser(identity) { this.identity = identity } }
+  const { instance } = page('./attendance.vue', { session,
+    me: async () => { if (++attempts === 1) throw { status: 503 }; return { tenantId: '1', userId: '2', activeContextId: 'ctx' } },
+    teacherApi: { getAttendanceSessions: async () => { lists += 1; return { items: [], total: 0 } } }
+  })
+  instance.onLoad()
+  await flush()
+  assert.equal(instance.writeStorageBlocked, true)
+  assert.equal(lists, 0)
+  await instance.load()
+  await flush()
+  assert.equal(attempts, 2)
+  assert.equal(lists, 1)
+  assert.equal(instance.state, 'ready')
+  assert.equal(instance.writeStorageBlocked, false)
+})
 
 test('an older attendance readback cannot overwrite a newer list read', async () => {
   const response = deferred()

@@ -209,6 +209,7 @@ def test_admin_special_without_task_persists_marker_and_audit(monkeypatch):
 
 
 def test_admin_special_with_task_resolves_and_freezes_official_roster(monkeypatch):
+    from app.core.context import get_tenant, set_tenant
     from app.modules.academic_affairs.services import academic_affairs_archive_service as archive
     from app.modules.academic_affairs.services import academic_affairs_attendance_public_service as service
 
@@ -232,6 +233,14 @@ def test_admin_special_with_task_resolves_and_freezes_official_roster(monkeypatc
             if name == "AaTeachingTaskBatch" and int(identity) == 20:
                 return batch
             return None
+
+        def scalar(self, query):
+            sql = str(query)
+            if "t_aa_teaching_task_source_handoff" in sql:
+                return None
+            if "t_aa_teaching_task" in sql:
+                return task
+            raise AssertionError(sql)
 
     db = _TaskDb(term=_term())
     official = {
@@ -271,18 +280,23 @@ def test_admin_special_with_task_resolves_and_freezes_official_roster(monkeypatc
         (biz_id, action, detail)
     ))
 
-    result = service.create_session(
-        _admin(),
-        {
-            "teachingTaskId": 30,
-            "classId": 10,
-            "sessionDate": "2026-03-02",
-            "slotNo": 3,
-            "sessionType": "ADMIN_SPECIAL",
-            "specialReason": "调课异常后的人工证据补录",
-            "evidence": {"ticket": "AA-30"},
-        },
-    )
+    previous_tenant = get_tenant()
+    set_tenant({"tenantId": "1"})
+    try:
+        result = service.create_session(
+            _admin(),
+            {
+                "teachingTaskId": 30,
+                "classId": 10,
+                "sessionDate": "2026-03-02",
+                "slotNo": 3,
+                "sessionType": "ADMIN_SPECIAL",
+                "specialReason": "调课异常后的人工证据补录",
+                "evidence": {"ticket": "AA-30"},
+            },
+        )
+    finally:
+        set_tenant(previous_tenant)
 
     assert calls["resolve"] == [30]
     assert len(calls["freeze"]) == 1

@@ -107,7 +107,7 @@
                 @click="downloadTaskbookPdf"
               >下载任务书 PDF</AppPermissionButton>
               <span v-if="taskbook.status !== 'CONFIRMED'" class="gp-waiting">等待学生在学生端确认任务书</span>
-              <button v-if="taskbook.status === 'CONFIRMED' && writeEnabled" type="button" class="mp-btn" :disabled="Boolean(actionBusy)" @click="openChangeTaskbook">发起变更</button>
+              <AppButton v-if="taskbook.status === 'CONFIRMED' && writeEnabled" :disabled="Boolean(actionBusy)" @click="openChangeTaskbook">发起变更</AppButton>
             </div>
             <details v-if="taskbook.history && taskbook.history.length" class="gp-history">
               <summary>历史版本 · {{ taskbook.history.length }} 个</summary>
@@ -116,12 +116,12 @@
           </template>
           <template v-else-if="!tbLoading && !tbError">
             <EmptyState title="尚未下达任务书" description="先下达任务书，学生确认后才能继续后续环节。" />
-            <div v-if="writeEnabled" class="ie-actions"><button type="button" class="mp-btn mp-btn--primary" @click="openIssueTaskbook">下达任务书</button></div>
+            <div v-if="writeEnabled" class="ie-actions"><AppButton variant="primary" @click="openIssueTaskbook">下达任务书</AppButton></div>
           </template>
         </section>
 
         <section v-if="current && tab === 'guidance'" class="gp-panel" aria-label="指导记录">
-          <div class="gp-panel__toolbar"><div><strong>指导记录</strong><small>共 {{ guidanceList.length }} 条</small></div><button v-if="writeEnabled" type="button" class="mp-btn mp-btn--primary" @click="openGuidanceCreate">＋ 新增指导记录</button></div>
+          <div class="gp-panel__toolbar"><div><strong>指导记录</strong><small>共 {{ guidanceList.length }} 条</small></div><AppButton v-if="writeEnabled" variant="primary" @click="openGuidanceCreate">＋ 新增指导记录</AppButton></div>
           <LoadingState v-if="guidanceLoading" />
           <ErrorState v-else-if="guidanceError" :description="guidanceError" @retry="loadGuidance(true)" />
           <EmptyState v-else-if="!guidanceList.length" title="暂无指导记录" description="完成一次指导后，在这里记录问题、意见和后续要求。" />
@@ -135,7 +135,7 @@
         </section>
 
         <section v-if="current && tab === 'plan'" class="gp-panel" aria-label="指导计划">
-          <div class="gp-panel__toolbar"><div><strong>指导计划</strong><small>共 {{ planList.length }} 条</small></div><button v-if="writeEnabled" type="button" class="mp-btn mp-btn--primary" @click="openPlanCreate">＋ 新增指导计划</button></div>
+          <div class="gp-panel__toolbar"><div><strong>指导计划</strong><small>共 {{ planList.length }} 条</small></div><AppButton v-if="writeEnabled" variant="primary" @click="openPlanCreate">＋ 新增指导计划</AppButton></div>
           <LoadingState v-if="planLoading" />
           <ErrorState v-else-if="planError" :description="planError" @retry="loadPlans(true)" />
           <EmptyState v-else-if="!planList.length" title="暂无指导计划" description="创建计划后，导师或学生可在执行时签到留痕。" />
@@ -144,13 +144,13 @@
               <div class="gp-timeline-item__head"><strong>{{ p.title }}</strong><StatusTag :type="p.status === 'CHECKED_IN' ? 'success' : (p.status === 'CANCELLED' ? 'danger' : 'warn')" :label="p.statusLabel" dot /></div>
               <div class="mp-cell-sub"><AppDateDisplay :value="p.planDate" mode="datetime" /> · {{ p.content || '—' }}</div>
               <div v-if="p.status === 'CHECKED_IN'" class="mp-cell-sub">签到：{{ p.checkedInBy }}（{{ p.checkinRole }}）· <AppDateDisplay :value="p.checkedInAt" mode="datetime" /></div>
-              <div v-if="p.status === 'PLANNED' && writeEnabled" class="ie-actions ie-actions--left"><button type="button" class="mp-btn mp-btn--primary" :disabled="Boolean(actionBusy)" @click="doPlanCheckin(p)">导师签到</button></div>
+              <div v-if="p.status === 'PLANNED' && writeEnabled" class="ie-actions ie-actions--left"><AppButton variant="primary" :disabled="Boolean(actionBusy)" @click="doPlanCheckin(p)">导师签到</AppButton></div>
             </li>
           </ul>
         </section>
 
         <section v-if="current && tab === 'eval'" class="gp-panel" aria-label="导师评价">
-          <div class="gp-panel__toolbar"><div><strong>导师评价</strong><small>共 {{ evalList.length }} 条</small></div><button v-if="writeEnabled" type="button" class="mp-btn mp-btn--primary" @click="openEvalCreate">＋ 提交导师评价</button></div>
+          <div class="gp-panel__toolbar"><div><strong>导师评价</strong><small>共 {{ evalList.length }} 条</small></div><AppButton v-if="writeEnabled" variant="primary" @click="openEvalCreate">＋ 提交导师评价</AppButton></div>
           <LoadingState v-if="evalLoading" />
           <ErrorState v-else-if="evalError" :description="evalError" @retry="loadEvals(true)" />
           <EmptyState v-else-if="!evalList.length" title="暂无导师评价" description="完成阶段指导后，可提交本阶段评价。" />
@@ -173,10 +173,10 @@
             <div class="gp-kv"><span>检查时间</span><AppDateDisplay :value="midterm.checkedAt || midterm.checkAt" mode="datetime" /></div>
             <div v-if="midterm.rectifyDeadline" class="gp-kv"><span>整改截止</span><AppDateDisplay :value="midterm.rectifyDeadline" mode="deadline" /></div>
             <div v-if="writeEnabled" class="ie-actions">
-              <button v-if="['PENDING', 'RECTIFIED_PASS', 'CHECKED_FAIL'].includes(midterm.status)" type="button" class="mp-btn mp-btn--primary" :disabled="Boolean(actionBusy)" @click="openMidtermCheck">发起中期检查</button>
+              <AppButton v-if="['PENDING', 'RECTIFIED_PASS', 'CHECKED_FAIL'].includes(midterm.status)" variant="primary" :disabled="Boolean(actionBusy)" @click="openMidtermCheck">发起中期检查</AppButton>
               <span v-if="midterm.status === 'RECTIFYING'" class="gp-waiting">等待学生提交整改说明</span>
-              <button v-if="midterm.status === 'RECTIFY_SUBMITTED'" type="button" class="mp-btn mp-btn--primary" :disabled="Boolean(actionBusy)" @click="doReviewRectify('PASS')">整改复核通过</button>
-              <button v-if="midterm.status === 'RECTIFY_SUBMITTED'" type="button" class="mp-btn mp-link--danger" :disabled="Boolean(actionBusy)" @click="doReviewRectify('FAIL')">复核不通过</button>
+              <AppButton v-if="midterm.status === 'RECTIFY_SUBMITTED'" variant="primary" :disabled="Boolean(actionBusy)" @click="doReviewRectify('PASS')">整改复核通过</AppButton>
+              <AppButton v-if="midterm.status === 'RECTIFY_SUBMITTED'" variant="danger" :disabled="Boolean(actionBusy)" @click="doReviewRectify('FAIL')">复核不通过</AppButton>
             </div>
           </template>
         </section>
@@ -188,6 +188,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 /** 过程指导：按学生连续处理任务书、指导、计划、评价与中期检查；学生确认和整改由学生端完成。 */
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppDateDisplay } from '@/components/common/date'
@@ -213,7 +214,7 @@ function responseError(error, fallback) {
 
 export default {
   name: 'GraduationProcessView',
-  components: { AppPageGuide, AppPermissionButton, ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
+  components: { AppButton, AppPageGuide, AppPermissionButton, ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay },
   props: { ctx: { type: Object, required: true } },
   setup() { return { batchStore: useGraduationBatchStore() } },
   data() {

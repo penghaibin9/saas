@@ -68,13 +68,38 @@ def context(user,batch_id):
         with session() as db:
             facts,revision=capture_source(db,user,batch_id)
         pending=set(facts['targetTaskIds'])
-        from collections import Counter
+        from collections import Counter,defaultdict
         counts=Counter(str(row['task_id']) for row in facts['existingItems']
                        if str(row['batch_id'])==str(batch_id) and row.get('task_id'))
         auto_counts=Counter(str(row['task_id']) for row in facts['existingItems']
                             if str(row['batch_id'])==str(batch_id) and row.get('source')=='AUTO')
-        tasks=[{**t,'remainingPeriods':t['weekly_hours']-counts[str(t['id'])], 'autoPeriods':auto_counts[str(t['id'])]}
-               for t in facts['tasks'] if str(t['id']) in pending]
+        own_rows=defaultdict(list)
+        for row in facts['existingItems']:
+            if str(row['batch_id'])==str(batch_id) and row.get('task_id'):
+                own_rows[str(row['task_id'])].append(row)
+        from . import academic_affairs_schedule_policy as policy
+        tasks=[]
+        for task in facts['tasks']:
+            tid=str(task['id'])
+            if tid not in pending:
+                continue
+            rows=own_rows[tid]
+            coverage=policy.task_coverage(task,rows,int(facts['term']['teaching_weeks']))
+            # 现有候选编译器只支持同一整窗、同一周型；不能把分段行数当成已排满。
+            supported=all(type(task.get(key)) is int for key in ('start_week','end_week','total_hours')) and not (coverage['invalidTask'] or coverage['invalidItemIds']
+                           or coverage['weeklyOverloadCount'] or coverage['excessContactHours']) and any(
+                task['total_hours']==task['weekly_hours']*len(policy.active_weeks(task['start_week'],task['end_week'],parity))
+                and all(row['start_week']==task['start_week'] and row['end_week']==task['end_week']
+                        and row['week_parity']==parity for row in rows)
+                for parity in ('ALL','ODD','EVEN'))
+            tasks.append({**task,'remainingPeriods':max(0,int(task.get('weekly_hours') or 0)-counts[tid]),
+                          'autoPeriods':auto_counts[tid],**coverage,'optimizerSupported':supported})
+        unsupported=[t for t in tasks if not t['optimizerSupported']]
+        blockers=[] if _enabled() else [{'code':'MYSQL_AND_WORKER_ACCEPTANCE_REQUIRED'}]
+        if unsupported:
+            blockers.append({'code':'SEGMENTED_ACTIVITY_PLAN_REQUIRED',
+                'message':'当前优化器仅支持固定周次和周型；有任务需要分段或先纠正学时，请使用排课工作台的手工补排或自动初排。',
+                'taskIds':[str(t['id']) for t in unsupported]})
         return {'sourceRevision':revision,'scope':facts['scope'],'batchStatus':facts['batch']['status'],
             'summary':{'taskCount':len(tasks),'teacherCount':len({k for t in tasks for k in facts['teachers'][str(t['id'])]}),
                        'classCount':len({facts['rosters'][str(t['id'])]['teachingClassId'] for t in tasks}),
@@ -83,9 +108,9 @@ def context(user,batch_id):
                        'missingHeadcount':sum(not t.get('expected_students') for t in tasks),'missingRoster':0},
             'term':facts['term'],'tasks':tasks,
             'rooms':[{'id':str(r['id']),'campus':r['campus_code'],'capacity':r['capacity'],'roomType':r['room_type']} for r in facts['rooms']],
-            'slots':facts['slots'],'calendarEvents':facts['events'],'canGenerate':_enabled() and bool(tasks) and facts['batch']['status'] in {'DRAFT','PRE_PUBLISHED'},
+            'slots':facts['slots'],'calendarEvents':facts['events'],'canGenerate':_enabled() and bool(tasks) and not unsupported and facts['batch']['status'] in {'DRAFT','PRE_PUBLISHED'},
             'canApply':False,'previewOnly':True,
-            'blockers':[] if _enabled() else [{'code':'MYSQL_AND_WORKER_ACCEPTANCE_REQUIRED'}]}
+            'blockers':blockers}
     except InputError as exc:
         from .schedule_optimizer_readiness_service import readiness
         checked=readiness(user,batch_id)

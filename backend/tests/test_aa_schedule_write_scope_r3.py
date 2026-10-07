@@ -216,6 +216,95 @@ def test_tenant_all_keeps_schoolwide_and_cross_college_admin_capability(db_mode,
         assert row["status"] == "DRAFT"
 
 
+def test_batch_list_filters_scope_before_count_and_paging(db_mode, monkeypatch):
+    from app.db.session import get_sessionmaker
+    from app.models import AaScheduleBatch, AaTerm, TeacherStudentScope, Tenant
+
+    ids = _seed(); _patch(monkeypatch)
+    college_b_user = {
+        **COLLEGE_USER,
+        "userId": "aa-r3-schedule-college-b",
+        "loginName": "aa-r3-schedule-college-b",
+    }
+    db = get_sessionmaker()()
+    try:
+        db.add(TeacherStudentScope(
+            tenant_id=TID, teacher_key=college_b_user["loginName"],
+            teacher_name="R3 排课学院 B 教务", role_code="COLLEGE_ADMIN",
+            scope_type="COLLEGE", ref_value="R3 排课学院 B", status="ACTIVE",
+        ))
+        next_term = AaTerm(
+            tenant_id=TID, year_code="2098-2099", term_no=2,
+            term_name="R3 下一学期", status="PUBLISHED", is_current=False,
+        )
+        db.add(next_term)
+        db.flush()
+        own_next = AaScheduleBatch(
+            tenant_id=TID, term_id=next_term.id, batch_name="R3 本院下学期课表",
+            college_id=ids["college_a"], status="DRAFT",
+        )
+        own_second = AaScheduleBatch(
+            tenant_id=TID, term_id=ids["term"], batch_name="R3 本院第二批次",
+            college_id=ids["college_a"], status="DRAFT",
+        )
+        foreign_tenant = Tenant(
+            id=TID + 1, tenant_code="aa-r3-schedule-scope-foreign",
+            school_name="另一学校", short_name="另一学校", deploy_mode="SAAS",
+            db_mode="SHARED", status="ACTIVE",
+        )
+        db.add_all([own_next, own_second, foreign_tenant])
+        db.flush()
+        foreign_term = AaTerm(
+            tenant_id=foreign_tenant.id, year_code="2098-2099", term_no=1,
+            term_name="另一学校学期", status="PUBLISHED", is_current=True,
+        )
+        db.add(foreign_term)
+        db.flush()
+        foreign_batch = AaScheduleBatch(
+            tenant_id=foreign_tenant.id, term_id=foreign_term.id,
+            batch_name="另一学校批次", college_id=ids["college_a"], status="DRAFT",
+        )
+        db.add(foreign_batch)
+        db.flush()
+        own_second_id, own_next_id, foreign_batch_id = (
+            int(own_second.id), int(own_next.id), int(foreign_batch.id)
+        )
+        db.commit()
+    finally:
+        db.close()
+
+    first, own_total = svc.list_batches(COLLEGE_USER, page=1, page_size=1)
+    second, second_total = svc.list_batches(COLLEGE_USER, page=2, page_size=1)
+    assert own_total == second_total == 3
+    assert len(first) == len(second) == 1
+    assert first[0]["batchId"] != second[0]["batchId"]
+    own_term, own_term_total = svc.list_batches(COLLEGE_USER, term_id=ids["term"], page_size=1)
+    assert own_term_total == 2
+    assert len(own_term) == 1
+    own_all, _ = svc.list_batches(COLLEGE_USER)
+    assert {row["batchId"] for row in own_all} == {
+        str(ids["own"]), str(own_second_id), str(own_next_id),
+    }
+    assert {row["collegeId"] for row in own_all} == {str(ids["college_a"])}
+    college_b, college_b_total = svc.list_batches(college_b_user)
+    assert college_b_total == 1
+    assert [row["batchId"] for row in college_b] == [str(ids["other"])]
+    school, school_total = svc.list_batches(SCHOOL_USER)
+    assert school_total == 5
+    assert {row["batchId"] for row in school} == {
+        str(ids["own"]), str(ids["other"]), str(ids["school"]),
+        str(own_second_id), str(own_next_id),
+    }
+    assert {row["collegeId"] for row in school} == {str(ids["college_a"]), str(ids["college_b"]), None}
+    assert str(foreign_batch_id) not in {row["batchId"] for row in school}
+    with pytest.raises(AppException) as denied:
+        svc.list_batches({
+            "userType": "TEACHER", "currentRoleCode": "COLLEGE_ADMIN",
+            "loginName": "aa-r3-schedule-unscoped",
+        })
+    assert denied.value.code == "NO_DATA_SCOPE"
+
+
 def test_own_college_publish_still_must_pass_existing_integrity_gate(db_mode, monkeypatch):
     ids = _seed(); _patch(monkeypatch)
 

@@ -44,7 +44,7 @@ import { academicAffairsPickerAdapters } from '../pickerAdapters'
 import { request, currentUserFromToken } from '@/services/http/client'
 import { academicIdentity } from '../academicFlowContext'
 import { canEnterRoute } from '@/security/permissionGate'
-import { safeBusinessMessage } from '@/utils/presentationSafety'
+import { normalizeUiError } from '@/utils/presentationSafety'
 const scalar = v => typeof v === 'string' ? v : ''
 export default {
   name: 'AaTodayTeachingWorkspace', components: { AaOverviewPageFrame, AppButton, AppDrawer, AppClassPicker, LoadingState, ErrorState, EmptyState },
@@ -75,14 +75,14 @@ export default {
         if (this.$route.query.week !== undefined && (!scalar(this.$route.query.week) || !/^\d+$/.test(scalar(this.$route.query.week)) || Number(this.$route.query.week) < 1 || Number(this.$route.query.week) > 30)) throw new Error('教学周参数不完整，请重新选择')
         const [term, slots, classes] = await Promise.all([request('/academic-affairs/terms/current'), academicAffairsApi.getTimeSlots(), this.classId ? Promise.resolve([]) : academicAffairsPickerAdapters.class.search('')])
         if (ticket !== this.generation || identity !== this.identity) return
-        if (slots.code !== 0) throw new Error(slots.message)
+        if (slots.code !== 0) throw slots
         this.term = term || {}; this.slots = Array.isArray(slots.data) ? slots.data : slots.data?.items || []
         if (this.week > this.weekCount) throw new Error('教学周超出当前学期范围，请重新选择')
         if (!this.classId && classes.length) { this.classId = String(classes[0].value); this.className = classes[0].label }
         if (!this.$route.query.week && term?.startDate) { const elapsed = Math.floor((Date.now() - new Date(String(term.startDate).slice(0, 10) + 'T00:00:00').getTime()) / 86400000 / 7) + 1; this.week = Math.min(this.weekCount, Math.max(1, elapsed)) }
         await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, classId: this.classId || undefined, week: String(this.week) } })
         this.initialized = true; await this.load()
-      } catch (e) { if (ticket === this.generation && identity === this.identity) { this.error = safeBusinessMessage(e?.message, '正式课表初始化失败'); this.loading = false } }
+      } catch (e) { if (ticket === this.generation && identity === this.identity) { this.error = normalizeUiError(e, { fallback: '正式课表初始化失败，请重试' }).userMessage; this.loading = false } }
     },
     async load() {
       if (!this.initialized) { return this.initialize() }
@@ -94,9 +94,10 @@ export default {
         if (!classId) return
         const response = await academicAffairsApi.getClassSchedule(classId, { termId: this.term.termId || undefined, week })
         if (ticket !== this.generation || identity !== this.identity || classId !== this.classId || week !== this.week) return
-        if (response.code !== 0 || !Array.isArray(response.data?.items)) throw new Error(response.message || '课表返回不完整')
+        if (response.code !== 0) throw response
+        if (!Array.isArray(response.data?.items)) throw new Error('课表返回不完整')
         this.schedule = response.data; this.className = response.data.className || this.className
-      } catch (e) { if (ticket === this.generation && identity === this.identity) this.error = safeBusinessMessage(e?.message, '课表读取失败') }
+      } catch (e) { if (ticket === this.generation && identity === this.identity) this.error = normalizeUiError(e, { fallback: '课表读取失败，请重试' }).userMessage }
       finally { if (ticket === this.generation && identity === this.identity) this.loading = false }
     },
     changeClass(_value, options) { this.className = options?.[0]?.label || ''; this.updateRoute() },

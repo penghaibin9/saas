@@ -148,7 +148,8 @@ def test_teacher_mobile_write_routes_never_use_only_view_permission():
     )
 
     failures = []
-    for route in api_router.routes:
+    from app.core.route_introspection import iter_effective_api_routes
+    for route in iter_effective_api_routes(api_router.routes):
         path = _runtime_path(getattr(route, "path", ""))
         if not _is_teacher_mobile_path(path):
             continue
@@ -173,3 +174,33 @@ def test_mental_statistics_and_individual_detail_permissions_are_separated():
     assert contract._teacher_permissions(
         "/api/v1/mobile/teacher/mental/123", "POST",
     ) == ("studentAffairs.mental.manage",)
+
+
+@pytest.mark.parametrize("tail, method, code", [
+    ("work-study/posts", "GET", "workstudy"),
+    ("work-study/records", "GET", "workstudy"),
+    ("work-study/records/17/action", "POST", "workstudy"),
+    ("work-study/records/17/monthly", "GET", "workstudy"),
+    ("work-study/records/17/monthly", "POST", "workstudy"),
+    ("loans", "GET", "loan"),
+    ("loans/17/action", "POST", "loan"),
+    ("fee-reductions", "GET", "reduction"),
+    ("fee-reductions/17/action", "POST", "reduction"),
+])
+def test_funding_extensions_keep_exact_endpoint_permissions(tail, method, code):
+    from app.services import affairs_four_end_contract as contract
+    assert contract._teacher_permissions(
+        "/api/v1/mobile/teacher/affairs/" + tail, method,
+    ) == (f"studentAffairs.funding.{code}.manage",)
+
+
+def test_nested_teacher_route_is_not_hidden_from_startup_audit(monkeypatch):
+    from fastapi import APIRouter
+    from app.services import affairs_four_end_terminal_guard as guard
+    child = APIRouter()
+    child.add_api_route("/unregistered", lambda: {}, methods=["POST"])
+    parent = APIRouter()
+    parent.include_router(child, prefix="/mobile/teacher/affairs")
+    monkeypatch.setattr(guard, "_DIRECT_PERMISSION_CODES", {})
+    with pytest.raises(RuntimeError, match="POST /api/v1/mobile/teacher/affairs/unregistered: 未登记权限"):
+        guard._assert_teacher_routes_registered(parent)

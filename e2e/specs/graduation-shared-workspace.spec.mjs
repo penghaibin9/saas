@@ -10,7 +10,7 @@ const VIEWPORTS = [
   { width: 1440, height: 900, zoom: 1 },
   { width: 1366, height: 768, zoom: 1 },
   { width: 1280, height: 800, zoom: 1 },
-  // Matches the existing 24-page audit's CSS-scale probe, not native browser zoom.
+  // Matches the existing 29-page audit's CSS-scale probe, not native browser zoom.
   { width: 1366, height: 768, zoom: 1.25 }
 ]
 
@@ -70,7 +70,7 @@ test.describe('Graduation existing shared shell integration', () => {
 
   test.beforeAll(async () => {
     expect(GRADUATION_WORKSPACES).toHaveLength(8)
-    expect(leaves).toHaveLength(24)
+    expect(leaves).toHaveLength(29)
     fixture = await prepareGraduationFixture()
   })
 
@@ -82,7 +82,7 @@ test.describe('Graduation existing shared shell integration', () => {
     await expectSharedShell(page, fixture.batchId)
   })
 
-  test('8 workspaces / 24 leaves navigate through the real shared menus with one batch context', async ({ page }, testInfo) => {
+  test('8 workspaces / 29 leaves navigate through the real shared menus with one batch context', async ({ page }, testInfo) => {
     const visited = []
     for (const workspace of GRADUATION_WORKSPACES) {
       for (const leaf of workspace.children.filter(item => !item.hidden)) {
@@ -100,7 +100,7 @@ test.describe('Graduation existing shared shell integration', () => {
         })
       }
     }
-    expect(visited).toHaveLength(24)
+    expect(visited).toHaveLength(29)
     await testInfo.attach('shared-shell-menu-coverage', {
       body: Buffer.from(JSON.stringify({ head: process.env.E2E_EXPECTED_SHA || null, visited }, null, 2)),
       contentType: 'application/json'
@@ -116,7 +116,10 @@ test.describe('Graduation existing shared shell integration', () => {
     const pending = routeState(page)
 
     await page.getByRole('navigation', { name: '二级菜单', exact: true })
-      .getByRole('button', { name: '模板与设置', exact: true }).click()
+      .getByRole('button', { name: '更多', exact: true }).click()
+    await dismissGuide(page)
+    await page.getByRole('navigation', { name: '三级菜单', exact: true })
+      .getByRole('button', { name: '全部模板', exact: true }).click()
     await expectDestination(page, '/admin/graduation/templates', fixture.batchId)
     await expectSharedShell(page, fixture.batchId)
     await dismissGuide(page)

@@ -15,7 +15,7 @@ function dashboardInstance(response = { code: 0, data: {} }) {
   const pushes = [], requests = []
   const options = vm.runInNewContext(
     script(dashboard).replace(/^import .+\n/gm, '').replace('export default', 'globalThis.options ='),
-    { ModulePageShell: {}, ModuleToolbar: {}, RiskTag: {}, LoadingState: {}, ErrorState: {}, EmptyState: {},
+    { AppButton: {}, ModulePageShell: {}, ModuleToolbar: {}, RiskTag: {}, LoadingState: {}, ErrorState: {}, EmptyState: {},
       URLSearchParams, useGraduationBatchStore: () => store,
       graduationApi: { getDashboardSummary: async params => { requests.push(params); return response } } },
     { timeout: 1000 }

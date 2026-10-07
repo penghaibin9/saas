@@ -1,8 +1,15 @@
 <template>
   <view>
     <MobileNavBar v-bind="$attrs">
+      <!-- #ifndef MP-WEIXIN -->
       <template #right><button class="academic-directory-button" aria-label="打开教务目录" @click="open = true"><image class="academic-directory-icon" :src="catalogIcon" mode="aspectFit" /></button></template>
+      <!-- #endif -->
     </MobileNavBar>
+    <!-- #ifdef MP-WEIXIN -->
+    <view class="academic-directory-entry">
+      <view class="academic-directory-button academic-directory-button--label" role="button" aria-label="打开教务目录" @click="open = true"><image class="academic-directory-icon" :src="catalogIcon" mode="aspectFit" /><text>教务目录</text></view>
+    </view>
+    <!-- #endif -->
     <view v-if="open" class="academic-directory-mask" @click="open = false">
       <view class="academic-directory" @click.stop>
         <view class="academic-directory-head"><text>教务目录</text><button class="academic-directory-close" @click="open = false">关闭</button></view>
@@ -28,6 +35,8 @@ export default {
 </script>
 <style scoped>
 .academic-directory-button { display:flex; align-items:center; justify-content:center; padding:0; margin:0; width:44px; height:44px; background:transparent; border:0; }
+.academic-directory-entry { display:flex; justify-content:flex-end; padding:0 var(--space-3); background:var(--bg-card); }
+.academic-directory-button--label { width:auto; padding:0 8px; gap:6px; line-height:44px; font-size:14px; color:var(--brand-primary); }
 .academic-directory-icon { width:20px; height:20px; }
 .academic-directory-mask { position:fixed; inset:0; z-index:var(--z-modal, 1000); background:rgba(15,23,42,.35); display:flex; align-items:flex-end; }
 .academic-directory { width:100%; box-sizing:border-box; padding:16px 16px calc(16px + env(safe-area-inset-bottom)); border-radius:16px 16px 0 0; background:var(--bg-card); }

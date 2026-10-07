@@ -498,6 +498,8 @@ def _org_code(prefix: str, name: str, parent: str = "") -> str:
 
 
 def _role_suggestions(position: str, department: str) -> list[str]:
+    if re.search("院领导|院长", position):
+        return []
     text = f"{position} {department}"
     rules = (("辅导员|班主任", "COUNSELOR"), ("教务处|教务管理员", "ACADEMIC_ADMIN"),
              ("任课教师|专业课教师|公共课教师", "ACADEMIC_TEACHER"),
@@ -505,8 +507,8 @@ def _role_suggestions(position: str, department: str) -> list[str]:
              ("资助", "FUNDING_TEACHER"), ("宿管|宿舍管理员", "DORM_MANAGER"),
              ("团委", "YOUTH_LEAGUE"), ("人事|组织人事", "ORG_PERSONNEL"),
              ("毕设导师|毕业设计导师", "GD_MENTOR"), ("实习指导|实习导师", "INTERN_MENTOR"),
-             ("就业", "EMPLOYMENT_TEACHER"), ("学院负责人|学院教务员|院长", "COLLEGE_ADMIN"),
-             ("校领导|院领导", "LEADER"))
+             ("就业", "EMPLOYMENT_TEACHER"), ("学院负责人|学院教务员", "COLLEGE_ADMIN"),
+             ("校领导", "LEADER"))
     return [code for pattern, code in rules if re.search(pattern, text)]
 
 
@@ -651,7 +653,7 @@ def confirm_mapping(user: dict, project_id: int, body: dict) -> dict:
         role_decisions = []
         for item in config["roleSuggestions"]:
             raw = supplied.get(str(item["loginName"]), item["currentRoleCodes"] or item["suggestedRoleCodes"])
-            try: codes = role_codes_from_row({"roleCodes": raw})
+            try: codes = role_codes_from_row({"roleCodes": raw, "positionName": item.get("positionName")})
             except AppException as exc: raise AppException("VALIDATION_ERROR", f"教师 {item['loginName']} 角色未确认：{exc.message}") from exc
             role_decisions.append({"loginName": item["loginName"], "roleCodes": codes})
         config.update({"organizationDecisions": list(decisions.values()), "roleDecisions": role_decisions,

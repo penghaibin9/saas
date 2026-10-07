@@ -6,6 +6,140 @@ import json
 from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid
 
+PUBLIC_SCHEDULE_MODES = {"SCHOOL_CENTRALIZED", "OFFERING_UNIT", "HYBRID"}
+# 保留现有校级统筹、学院批次编排方式；学校可通过现有教务配置指定公共课责任。
+DEFAULT_PUBLIC_SCHEDULE_MODE = "HYBRID"
+
+
+def _field(row, name, default=None):
+    return row.get(name, default) if isinstance(row, dict) else getattr(row, name, default)
+
+
+def active_weeks(start, end, parity="ALL") -> tuple[int, ...]:
+    """按学期绝对周号展开计划；不把校历停课或实际考勤混入计划学时。"""
+    if parity not in {"ALL", "ODD", "EVEN"} or start < 1 or end < start:
+        return ()
+    return tuple(w for w in range(start, end + 1)
+                 if parity == "ALL" or w % 2 == (1 if parity == "ODD" else 0))
+
+
+def task_coverage(task, items, teaching_weeks: int) -> dict:
+    """唯一计划课时计算；周学时是周上限，总学时可不整除教学周数。"""
+    weekly = int(_field(task, "weekly_hours") or 0)
+    raw_start, raw_end = _field(task, "start_week"), _field(task, "end_week")
+    start = 1 if raw_start is None else int(raw_start)
+    end = teaching_weeks if raw_end is None else int(raw_end)
+    valid_window = 1 <= start <= end <= teaching_weeks <= 30
+    raw_total = _field(task, "total_hours")
+    derived = raw_total is None
+    expected = weekly * (end - start + 1) if derived and valid_window else int(raw_total or 0)
+    invalid_task = (weekly <= 0 or not valid_window or expected <= 0
+                    or expected > weekly * (end - start + 1))
+    counts = {week: 0 for week in range(start, end + 1)} if valid_window else {}
+    invalid_items = []
+    rows = list(items)
+    for index, row in enumerate(rows):
+        sw, ew = int(_field(row, "start_week") or 0), int(_field(row, "end_week") or 0)
+        parity = _field(row, "week_parity")
+        weeks = active_weeks(sw, ew, parity) if 1 <= sw <= ew <= teaching_weeks else ()
+        if (not valid_window or sw < start or ew > end or not weeks
+                or not 1 <= int(_field(row, "weekday") or 0) <= 7
+                or int(_field(row, "slot_no") or 0) <= 0):
+            invalid_items.append(str(_field(row, "id", f"candidate-{index}")))
+            continue
+        for week in weeks:
+            counts[week] += 1
+    scheduled = sum(counts.values())
+    overloaded = [week for week, count in counts.items() if count > weekly]
+    return {
+        "expectedContactHours": max(0, expected),
+        "scheduledContactHours": scheduled,
+        "missingContactHours": max(0, expected - scheduled),
+        "remainingContactHours": max(0, expected - scheduled),
+        "excessContactHours": max(0, scheduled - max(0, expected)),
+        # 单位为“任务—学期周”超量组合数，另保留超量任务数量。
+        "weeklyOverloadCount": len(overloaded),
+        "overloadedWeeks": overloaded,
+        "weekContactHours": counts,
+        "scheduledItemCount": len(rows),
+        "invalidTask": invalid_task,
+        "invalidItemIds": invalid_items,
+        "totalHoursDerived": derived,
+        "contactHourBasis": "旧任务按周学时和有效周窗推导" if derived else "任务计划总学时",
+    }
+
+
+def missing_week_segments(task, coverage) -> list[tuple[int, int, int]]:
+    """把真实剩余学时拆成可由现行排课器安排的连续周窗和每周数量。"""
+    if coverage["invalidTask"] or coverage["invalidItemIds"] or coverage["weeklyOverloadCount"]:
+        return []
+    counts = dict(coverage["weekContactHours"])
+    remaining = coverage["missingContactHours"]
+    weekly = int(_field(task, "weekly_hours"))
+    segments = {}
+    while remaining > 0:
+        selected = []
+        for week, count in counts.items():
+            if count < weekly and remaining:
+                selected.append(week)
+                counts[week] += 1
+                remaining -= 1
+        if not selected:
+            break
+        start = end = selected[0]
+        for week in selected[1:] + [None]:
+            if week == end + 1:
+                end = week
+                continue
+            segments[(start, end)] = segments.get((start, end), 0) + 1
+            start = end = week
+    return [(count, start, end) for (start, end), count in segments.items()]
+
+
+def public_schedule_mode(db):
+    from app.services.platform_service import _get_cfg
+    row = _get_cfg(db, _tid(), "ACAD_RULE", "PUBLIC_SCHEDULE_MODE")
+    mode = (row.config_json or {}).get("mode") if row and row.enabled else DEFAULT_PUBLIC_SCHEDULE_MODE
+    if mode not in PUBLIC_SCHEDULE_MODES:
+        _conflict("公共课排课责任配置无效，请由校教务核对")
+    return mode
+
+
+def task_scope_condition(db, batch, *, include_centralized_public=False, cache=None, lock=False):
+    """所有排课入口按开课单位筛任务；批次学期/审批条件仍由原入口负责。"""
+    from sqlalchemy import exists, func, or_, select, true
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    course_conditions = (AaCourse.id == AaTeachingTask.course_id, AaCourse.tenant_id == _tid(),
+                         AaCourse.is_deleted.is_(False))
+    mode = public_schedule_mode(db)
+    public = exists(select(AaCourse.id).where(*course_conditions,
+        or_(AaCourse.category == "PUBLIC_BASIC", AaCourse.nature == "PUBLIC_ELECTIVE")).correlate(AaTeachingTask))
+    if not getattr(batch, "college_id", None):
+        return public if mode == "SCHOOL_CENTRALIZED" else true()
+    owner = select(AaCourse.owner_college_id).where(*course_conditions).correlate(AaTeachingTask).scalar_subquery()
+    fallback = select(AaTeachingTaskBatch.college_id).where(
+        AaTeachingTaskBatch.id == AaTeachingTask.batch_id, AaTeachingTaskBatch.tenant_id == _tid(),
+        AaTeachingTaskBatch.is_deleted.is_(False),
+    ).correlate(AaTeachingTask).scalar_subquery()
+    condition = func.coalesce(owner, fallback) == int(batch.college_id)
+    term_id = getattr(batch, "term_id", None)
+    if term_id:
+        from .academic_affairs_responsibility_service import resolve_task_offering_colleges
+        candidates = select(AaTeachingTask.id).join(AaTeachingTaskBatch,
+            AaTeachingTaskBatch.id == AaTeachingTask.batch_id).where(
+            AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.term_id == int(term_id),
+            AaTeachingTaskBatch.status == "APPROVED", AaTeachingTaskBatch.is_deleted.is_(False),
+            owner.is_(None), fallback.is_(None), ~public)
+        relations = resolve_task_offering_colleges(db, list(db.scalars(candidates)), cache=cache, lock=lock)
+        relation_ids = [task_id for task_id, college_id in relations.items()
+                        if college_id == int(batch.college_id)]
+        condition |= owner.is_(None) & fallback.is_(None) & ~public & AaTeachingTask.id.in_(relation_ids or [-1])
+    if mode == "SCHOOL_CENTRALIZED" and not include_centralized_public:
+        condition &= ~public
+    return condition
+
+
 RULE_SCHEMAS = {
     "AUTO_DEFAULT_WEEKS": "WEEK_RANGE",
     "AUTO_WEEKDAYS": "WEEKDAY_LIST",

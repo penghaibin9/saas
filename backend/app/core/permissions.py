@@ -331,6 +331,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "graduationDesign.defense.view", "graduationDesign.risk.view",
         # 优秀成果导师提名 + 移动端成绩待复核队列（与 PC 动作码对齐）
         "graduationDesign.grade.view", "graduationDesign.grade.review",
+        # 导师给本人指导学生打导师分（范围由指导关系收敛）
+        "graduationDesign.grade.advisorScore",
     },
     "GD_REVIEWER": {
         *_WORKBENCH_SELF,
@@ -562,7 +564,11 @@ def assert_delegable_permission_codes(user: dict | None, permission_codes: Itera
 
 
 def get_effective_permission_patterns(user: dict, *, strict: bool = False) -> list[str]:
-    """唯一有效权限计算入口：基础权限 + 当前有效临时授权。"""
+    """唯一有效权限计算入口：基础权限 + 当前有效临时授权 + 毕设老师自动身份。
+
+    毕设老师自动身份（导师/评阅/答辩评委/秘书）由业务关系实时计算，只追加 graduationDesign.*，
+    且不进入基础权限，因此不能被再授权给他人。数据范围仍由毕设各服务按业务关系收敛。
+    """
     if is_super_admin(user):
         return ["*"]
     patterns = set(get_base_permission_patterns(user, strict=True) if strict else get_base_permission_patterns(user))
@@ -573,6 +579,12 @@ def get_effective_permission_patterns(user: dict, *, strict: bool = False) -> li
         if strict:
             raise
         pass
+    try:
+        from app.modules.graduation.services.graduation_auto_identity import auto_permission_patterns
+        patterns.update(auto_permission_patterns(user))
+    except Exception:
+        if strict:
+            raise
     return sorted(patterns)
 
 

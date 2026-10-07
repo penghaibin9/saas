@@ -144,9 +144,8 @@ def _assert_teacher_routes_registered(api_router) -> None:
 
     failures: list[str] = []
     seen_paths: set[str] = set()
-    for route in api_router.routes:
-        if not isinstance(route, APIRoute):
-            continue
+    from app.core.route_introspection import iter_effective_api_routes
+    for route in iter_effective_api_routes(api_router.routes):
         path = _runtime_path(str(route.path))
         if not _is_teacher_mobile_path(path):
             continue

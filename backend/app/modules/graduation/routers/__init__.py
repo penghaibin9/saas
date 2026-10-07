@@ -24,34 +24,6 @@ install_graduation_mentor_subject_guard()
 install_graduation_review_message_guard()
 
 
-def _install_w7_formal_review_overlay() -> None:
-    """Prepend W7 writes once while preserving the frozen path/name/permission identity."""
-    from app.modules.graduation.routers import graduation_sensitive_router
-    from app.modules.graduation.routers import graduation_review_w7_router
-
-    target = graduation_sensitive_router.router
-    marker = "_w7_formal_review_overlay_installed"
-    if getattr(target, marker, False):
-        return
-    target.routes[0:0] = list(graduation_review_w7_router.router.routes)
-    setattr(target, marker, True)
-
-
-def _install_review_center_projection() -> None:
-    """Attach the W7.3 read projection once under the existing sensitive graduation gate."""
-    from app.modules.graduation.routers import graduation_review_center
-    from app.modules.graduation.routers import graduation_sensitive_router
-
-    target = graduation_sensitive_router.router
-    marker = "_w73_review_center_projection_installed"
-    if getattr(target, marker, False):
-        return
-    target.include_router(graduation_review_center.router)
-    setattr(target, marker, True)
-
-
-_install_w7_formal_review_overlay()
-_install_review_center_projection()
 # Release hardening is intentionally installed last so legacy overlays cannot
 # replace its object-scope, concurrency, evidence and pagination guards.
 install_graduation_release_hardening()

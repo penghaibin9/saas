@@ -57,6 +57,13 @@ def test_guard_is_installed_on_public_graduation_service():
     assert service._check_domain_exists is guard.strict_domain_check
 
 
+def test_evidence_routes_use_current_student_grade_and_fee_pages():
+    assert evidence._ROUTES["STATUS"] == "/admin/academic-affairs/roster/status"
+    assert evidence._ROUTES["COURSE_ELECTIVE"] == "/admin/academic-affairs/grade-overview"
+    assert evidence._ROUTES["COURSE_REQUIRED"] == "/admin/academic-affairs/grade-overview"
+    assert evidence._ROUTES["FEE"] == "/admin/academic-affairs/textbooks?tab=fee"
+
+
 def test_generic_domain_without_authoritative_rule_never_passes():
     db = _FakeDb([_row(id=41)])
     result = guard.strict_domain_check(
@@ -76,6 +83,13 @@ def test_preparing_internship_record_is_not_graduation_complete():
     result = guard._check_internship_completion(db, _row(id=9))
     assert result["result"] == "FAIL"
     assert result["refId"] == "11"
+    assert result["owner"] == "INTERN_MENTOR"
+
+
+def test_missing_internship_evidence_points_to_internship_role():
+    result = guard._check_internship_completion(_FakeDb([]), _row(id=9))
+    assert result["result"] == "UNKNOWN"
+    assert result["owner"] == "INTERN_MENTOR"
 
 
 def test_archived_internship_requires_published_passing_score_and_valid_archive():
@@ -115,6 +129,7 @@ def test_archived_internship_with_authoritative_chain_passes():
         "finalScoreId": "21",
         "archiveId": "31",
     }
+    assert result["owner"] == "INTERN_MENTOR"
 
 
 def test_archived_graduation_student_with_draft_grade_does_not_pass():
@@ -141,6 +156,7 @@ def test_graduation_design_requires_published_pass_and_filed_manifest():
     assert result["result"] == "PASS"
     assert result["sourceManifestHash"] == "manifest-hash"
     assert result["sourceGradeHash"] == "grade-hash"
+    assert result["owner"] == "GD_MENTOR"
 
 
 @pytest.mark.parametrize(

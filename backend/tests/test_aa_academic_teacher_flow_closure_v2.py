@@ -133,7 +133,7 @@ def test_textbook_selection_deep_link_has_exact_server_filter():
     assert "AaTextbookSelection.id == int(selection_id)" in service
 
 
-def test_teacher_today_confirmation_queue_uses_assignment_owner_not_occurrence_week():
+def test_teacher_today_confirmation_queue_uses_same_formal_relation_as_command():
     work = _read("app/modules/academic_affairs/services/academic_affairs_teacher_today_work_service.py")
     start = work.index("# Teaching-task confirmation")
     end = work.index("# Grade responsibility", start)
@@ -141,9 +141,9 @@ def test_teacher_today_confirmation_queue_uses_assignment_owner_not_occurrence_w
     teacher_query_start = block.index("teacher_tasks =")
     teacher_query_end = block.index(")).all()", teacher_query_start)
     teacher_query = block[teacher_query_start:teacher_query_end]
-    assert 'AaTeachingTask.teacher_key.in_(keys or ["__none__"])' in teacher_query
+    assert 'AaTeachingTask.id.in_(formal_task_ids or [-1])' in teacher_query
     assert 'AaTeachingTask.status.in_(["ASSIGNED", "TEACHER_CONFIRMED", "REJECTED_BY_TEACHER", "READY"])' in teacher_query
-    assert "formal_task_ids" not in teacher_query
+    assert "AaTeachingTask.teacher_key.in_" not in teacher_query
 
 
 def test_teacher_v3_today_projects_action_and_waiting_from_current_term_facts():

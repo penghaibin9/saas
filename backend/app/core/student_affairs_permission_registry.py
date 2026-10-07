@@ -135,6 +135,30 @@ STUDENT_AFFAIRS_PERMISSION_CODES = frozenset(STUDENT_AFFAIRS_PERMISSION_BY_CODE)
 # 教师移动端因路径包含动态业务分支，无法只靠一个 Depends 表达的精确权限矩阵。
 # 路由安全门与审计脚本都从此处读取，禁止另建第二份权限集合。
 STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "/api/v1/mobile/teacher/affairs/work-study/posts": (
+        "studentAffairs.funding.workstudy.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/work-study/records": (
+        "studentAffairs.funding.workstudy.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/work-study/records/{record_id}/action": (
+        "studentAffairs.funding.workstudy.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/work-study/records/{record_id}/monthly": (
+        "studentAffairs.funding.workstudy.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/loans": (
+        "studentAffairs.funding.loan.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/loans/{loan_id}/action": (
+        "studentAffairs.funding.loan.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/fee-reductions": (
+        "studentAffairs.funding.reduction.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/fee-reductions/{fee_id}/action": (
+        "studentAffairs.funding.reduction.manage",
+    ),
     "/api/v1/mobile/teacher/affairs/student-candidates": (
         "studentAffairs.talk.create",
         "studentAffairs.mental.manage",

@@ -488,3 +488,62 @@ def test_mobile_resolve_prefers_latest_non_archived_gd_student(graduation_client
     blocked = graduation_client.post("/api/v1/mobile/graduation/final", headers=sh, json={"finalType": "初稿", "attachments": [_upload_pdf(graduation_client, sh)]}).json()
     assert blocked["code"] != 0
     assert ("中期" in (blocked.get("message") or "")) or ("阶段" in (blocked.get("message") or ""))
+
+
+def test_student_journey_is_identical_on_miniapp_and_student_pc(graduation_client, auth_headers, db_mode):
+    """学生 PC 与小程序的“当前要做”必须来自同一后端派生，结果完全一致。"""
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationBatch, GraduationMidterm, GraduationStudent
+
+    h = auth_headers
+    name = "同源进度生"
+    sno = "JOURNEY-01"
+    sid = graduation_client.post(STU, headers=h, json={"studentNo": sno, "realName": name, "classId": make_org_class()}).json()["data"]["id"]
+    db = get_sessionmaker()()
+    batch = GraduationBatch(
+        tenant_id=1000000000000000001, batch_name="同源进度批次",
+        batch_no="JOURNEY-B1", grade_year="2027届", planned_count=1, status="ACTIVE",
+    )
+    db.add(batch)
+    db.flush()
+    row = GraduationStudent(
+        tenant_id=1000000000000000001, student_id=int(sid), student_no=sno, name=name,
+        batch_id=batch.id, stage="MIDTERM", topic_title="同源题目",
+    )
+    db.add(row)
+    db.flush()
+    db.add(GraduationMidterm(
+        tenant_id=1000000000000000001, gd_student_id=row.id, batch_id=batch.id,
+        status="RECTIFYING", conclusion="RECTIFY", check_comment="进度滞后",
+        checked_at=datetime.utcnow(),
+    ))
+    db.commit()
+    db.close()
+    graduation_client._active_batch_id = str(batch.id)
+
+    claims = {
+        "userId": f"u-{name}", "realName": name, "userType": "STUDENT",
+        "tid": "demo", "tenantId": "1000000000000000001", "activeContextId": "ctx",
+        "currentRoleCode": "STUDENT", "studentNo": sno, "studentId": str(sid),
+    }
+    mp = {"Authorization": "Bearer " + create_access_token({**claims, "clientType": "MP"})}
+    pc = {"Authorization": "Bearer " + create_access_token({**claims, "clientType": "PORTAL"})}
+
+    mobile = graduation_client.get("/api/v1/mobile/graduation/journey", headers=mp).json()
+    assert mobile["code"] == 0, mobile
+    data = mobile["data"]
+    assert data["hasData"] is True
+    assert [s["key"] for s in data["steps"]] == [
+        "topic", "taskbook", "proposal", "guidance", "midterm", "final", "defense", "grade",
+    ]
+    assert data["current"]["key"] == "midterm"
+    assert data["current"]["state"] == "todo"
+    assert data["current"]["comment"] == "进度滞后"
+    # 阶段已越过的前置环节不再显示为“等待/未开始”
+    assert all(s["state"] == "done" for s in data["steps"][:4])
+
+    portal = graduation_client.get("/api/v1/portal/graduation/journey", headers=pc).json()
+    assert portal["code"] == 0, portal
+    assert portal["data"]["current"] == data["current"]
+    assert portal["data"]["steps"] == data["steps"]

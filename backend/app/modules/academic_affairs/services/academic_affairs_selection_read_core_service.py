@@ -130,7 +130,20 @@ def get_batch(user, batch_id):
         scoped = _scope_values(db, ctx)
         batch = _core._get_batch(db, int(batch_id))
         _require_batch_visible(db, int(batch.id), scoped)
-        return _core._batch_dto(batch)
+        from .academic_affairs_responsibility_service import resolve_school
+        result = _core._batch_dto(batch)
+        # Responsibility follows the next formal command: CLOSED locks the roster;
+        # LOCKED archives through selection.manage. Archived batches remain history.
+        permission = "academicAffairs.selection.lock" if batch.status == "CLOSED" else "academicAffairs.selection.manage"
+        result["responsibility"] = resolve_school(db, permission_code=permission) if batch.status != "ARCHIVED" else None
+        result["nextStep"] = {
+            "DRAFT": {"code": "PUBLISHED", "label": "完成规则和课程核对后发布选课批次"},
+            "PUBLISHED": {"code": "OPEN", "label": "按选课时间窗开放学生选课"},
+            "OPEN": {"code": "CLOSED", "label": "选课截止后核对选课结果"},
+            "CLOSED": {"code": "LOCKED", "label": "完成冲突和容量处理后锁定名单"},
+            "LOCKED": {"code": "ARCHIVED", "label": "名单完成交接后归档批次"},
+        }.get(batch.status)
+        return result
 
 
 def list_courses(user, batch_id, page=1, page_size=50):

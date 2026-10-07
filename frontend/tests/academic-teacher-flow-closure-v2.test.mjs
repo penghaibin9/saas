@@ -7,6 +7,13 @@ import { fileURLToPath } from 'node:url'
 const here = path.dirname(fileURLToPath(import.meta.url))
 const src = (...parts) => fs.readFileSync(path.resolve(here, '..', 'src', ...parts), 'utf8')
 
+test('grade current-term notice keeps shared CSS import before local rules', () => {
+  const source = src('modules/academicAffairs/views/AaGradeEntryView.vue')
+  const style = source.match(/<style scoped>([\s\S]*?)<\/style>/)?.[1]
+  assert.ok(style, '成绩页面缺少局部样式块')
+  assert.match(style.trimStart(), /^@import\s+['"]@\/styles\/module-page\.css['"];\s*\.aa-current-term-bar\s*\{/)
+})
+
 test('dedicated teacher today page uses one current-term authoritative workbench', () => {
   const source = src('modules/academicAffairs/views/AaTeacherTodayView.vue')
   assert.match(source, /<ModulePageShell/)

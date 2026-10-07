@@ -7,6 +7,7 @@ import { request } from '@/services/http'
 import { currentUserFromToken, getToken } from '@/services/http/client'
 import { invalidateAdminQueries, runAdminQuery } from '@/services/performance/queryCoordinator'
 import { projectModuleAccess } from '@/security/moduleEntitlement'
+import { matchPermission } from '@/config/navPlan'
 import { adaptTypedTodoPage } from '../config/todoTypedRouteBridge'
 
 /**
@@ -105,11 +106,9 @@ export async function fetchLayoutContext() {
   let readonlyTenant = false
   let readonlyReason = ''
 
-  const [brandResult, contextResult, messageResult] = await Promise.allSettled([
+  const [brandResult, contextResult] = await Promise.allSettled([
     workbenchRead('tenant-brand', '/tenant/brand', {}, 60_000),
-    workbenchRead('rbac-context', '/rbac/current-context', {}, 15_000),
-    // 普通页面壳只需要角标，不能为它重算整份待办/审批快照。
-    workbenchRead('message-count', '/admin/messages/count', {}, 5_000)
+    workbenchRead('rbac-context', '/rbac/current-context', {}, 15_000)
   ])
 
   if (brandResult.status === 'fulfilled' && brandResult.value) {
@@ -140,8 +139,14 @@ export async function fetchLayoutContext() {
     )
   }
 
-  if (messageResult.status === 'fulfilled') {
-    messageUnreadCount = Number(messageResult.value?.unread) || 0
+  if (matchPermission(permissionPatterns, 'workbench.message.view')) {
+    // 只在当前身份确有收件箱权限时读取角标；只读观察员不触发预期的 403。
+    try {
+      const count = await workbenchRead('message-count', '/admin/messages/count', {}, 5_000)
+      messageUnreadCount = Number(count?.unread) || 0
+    } catch {
+      messageUnreadCount = 0
+    }
   }
 
   const ctxKey = [
@@ -181,20 +186,14 @@ export function trackWorkbenchEvent(event, detail = {}) {
 
 export async function fetchMyScheduleToday(teacherKey) {
   const key = String(teacherKey || '').trim()
-  if (!key) return { items: [], teacherKey: '' }
-  try {
-    const data = await workbenchRead(
-      'today-schedule',
-      `/academic-affairs/schedule/teacher/${encodeURIComponent(key)}`,
-      {},
-      30_000
-    )
-    const items = Array.isArray(data?.items) ? data.items : []
-    const jsDay = new Date().getDay()
-    const weekday = jsDay === 0 ? 7 : jsDay
-    const today = items.filter((it) => Number(it.weekday || it.dayOfWeek || 0) === weekday)
-    return { items: (today.length ? today : items).slice(0, 6), teacherKey: key, weekday }
-  } catch {
-    return { items: [], teacherKey: key }
-  }
+  if (!key) throw new Error('教师身份尚未就绪，请刷新重试')
+  const data = await workbenchRead(
+    'today-schedule',
+    '/academic-affairs/teacher/today',
+    {},
+    30_000
+  )
+  if (!Array.isArray(data?.todayItems)) throw new Error('今日课表数据不完整，请刷新重试')
+  // 校历、周次和调课日均由正式今日投影裁定；无课不能回退为整周课表。
+  return { items: data.todayItems.slice(0, 6), teacherKey: key }
 }

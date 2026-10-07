@@ -1,7 +1,7 @@
-param([switch]$NoBrowser, [switch]$Restart, [switch]$PauseOnError)
+param([switch]$NoBrowser, [switch]$Restart, [switch]$PauseOnError, [ValidateRange(1024,65535)][int]$BackendPort = 8000)
 $ErrorActionPreference = 'Stop'
 try {
-    & (Join-Path $PSScriptRoot 'start-sandbox.ps1') -NoBrowser:$NoBrowser -Restart:$Restart
+    & (Join-Path $PSScriptRoot 'start-sandbox.ps1') -NoBrowser:$NoBrowser -Restart:$Restart -BackendPort $BackendPort
     exit 0
 } catch {
     Write-Host ''

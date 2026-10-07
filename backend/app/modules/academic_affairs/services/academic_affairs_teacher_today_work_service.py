@@ -157,6 +157,9 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_start_
     keys = sorted(_user_keys(user))
     relation = teacher_authority.relation_scope(db, user, term_id=int(term_id))
     formal_task_ids = sorted(int(value) for value in relation.get("taskIds") or [])
+    from .academic_affairs_task_execution_authority import load_execution_handoffs
+    handoffs = load_execution_handoffs(db, formal_task_ids)
+    formal_task_ids = [pk for pk in formal_task_ids if pk not in handoffs]
     batches = db.scalars(select(AaTeachingTaskBatch).where(
         AaTeachingTaskBatch.tenant_id == _tid(),
         AaTeachingTaskBatch.term_id == int(term_id),
@@ -168,12 +171,11 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_start_
     batch_by_id = {int(row.id): row for row in batches}
 
     # Teaching-task confirmation and its post-confirm waiting state live in one projection.
-    # Assignment ownership is teacher_key based because confirmation happens before the
-    # occurrence-week authority becomes executable.
+    # 与教师确认命令共用正式任课关系；未建立教学班投影时才回退任务工号。
     teacher_tasks = db.scalars(select(AaTeachingTask).where(
         AaTeachingTask.tenant_id == _tid(),
         AaTeachingTask.batch_id.in_(batch_ids or [-1]),
-        AaTeachingTask.teacher_key.in_(keys or ["__none__"]),
+        AaTeachingTask.id.in_(formal_task_ids or [-1]),
         AaTeachingTask.status.in_(["ASSIGNED", "TEACHER_CONFIRMED", "REJECTED_BY_TEACHER", "READY"]),
         AaTeachingTask.is_deleted.is_(False),
     ).order_by(AaTeachingTask.id)).all()
@@ -189,7 +191,7 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_start_
             actions.append({
                 "kind": "TEACHING_TASK", "id": str(row.id),
                 "title": f"确认《{row.course_name or '教学任务'}》",
-                "note": " · ".join(value for value in (row.class_name, row.teaching_class_name, "学院已分配") if value),
+                "note": " · ".join(value for value in (row.teaching_class_name, "学院已分配") if value),
                 "action": "去确认", "primary": True,
                 "path": f"/admin/academic-affairs/teaching-tasks/teacher-confirm?taskId={row.id}",
             })
@@ -276,7 +278,7 @@ def current_term_workbench(db, user, *, term_id=None, today_date="", term_start_
         actions.append({
             "kind": "GRADE_SETUP", "id": str(task.id),
             "title": f"开始《{task.course_name or '课程'}》成绩录入",
-            "note": f"{task.teaching_class_name or task.class_name or '正式教学班'} · 尚未建立成绩任务",
+            "note": f"{task.teaching_class_name or '正式教学班'} · 尚未建立成绩任务",
             "action": "开始录入",
             "path": f"/admin/academic-affairs/grade-entry?teachingTaskId={task.id}&action=create",
         })

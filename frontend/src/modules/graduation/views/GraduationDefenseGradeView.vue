@@ -105,7 +105,7 @@
             <LoadingState v-else-if="panelLoading" />
 
             <section v-else-if="tab === 'plagiarism' && canPanel('plagiarism')" class="gp-panel">
-              <div class="gp-panel__head"><div><span>正式成果版本的查重事实</span><strong>查重记录</strong></div><button class="mp-btn mp-btn--primary" :disabled="commandLocked || !canAction('submitPlagiarism')" :title="actionReason('submitPlagiarism')" @click="doSubmitPlagiarism">发起查重</button></div>
+              <div class="gp-panel__head"><div><span>正式成果版本的查重事实</span><strong>查重记录</strong></div><AppButton variant="primary" :disabled="commandLocked || !canAction('submitPlagiarism')" :title="actionReason('submitPlagiarism')" @click="doSubmitPlagiarism">发起查重</AppButton></div>
               <ul v-if="plagiarismList.length" class="gp-timeline">
                 <li v-for="p in plagiarismList" :key="p.id" class="gp-timeline-item">
                   <div class="mp-cell-main"><AppDateDisplay :value="p.submitAt" mode="datetime" /> · <StatusTag :type="p.overThreshold ? 'danger' : 'success'" :label="p.status === 'DONE' ? (p.rate || '—') : p.statusLabel" dot /></div>
@@ -120,7 +120,7 @@
             <section v-else-if="tab === 'review' && canPanel('review')" class="gp-panel">
               <div class="gp-panel__head gp-panel__head--form">
                 <div><span>独立评阅与回避关系</span><strong>教师评阅</strong></div>
-                <div class="ie-actions"><AppGraduationMentorPicker v-model="reviewerMentorId" :query="{ qualificationStatus: 'QUALIFIED', valueMode: 'id', excludeMentorId: current?.mentorId || '', excludeTeacherName: current?.advisorName || '' }" placeholder="搜索评阅教师（自动回避该生导师）" style="width: 260px" /><button class="mp-btn mp-btn--primary" :disabled="commandLocked || !canAction('assignReview')" :title="actionReason('assignReview')" @click="doAssignReview">分配评阅</button></div>
+                <div class="ie-actions"><AppGraduationMentorPicker v-model="reviewerMentorId" :query="{ qualificationStatus: 'QUALIFIED', valueMode: 'id', excludeMentorId: current?.mentorId || '', excludeTeacherName: current?.advisorName || '' }" placeholder="搜索评阅教师（自动回避该生导师）" style="width: 260px" /><AppButton variant="primary" :disabled="commandLocked || !canAction('assignReview')" :title="actionReason('assignReview')" @click="doAssignReview">分配评阅</AppButton></div>
               </div>
               <ul v-if="reviewList.length" class="gp-timeline">
                 <li v-for="r in reviewList" :key="r.id" class="gp-timeline-item"><div class="mp-cell-main">{{ r.reviewerName }} · <StatusTag :type="r.statusTone" :label="r.statusLabel" dot /></div><div v-if="r.opinion" class="mp-cell-sub">评分 {{ r.score }} · {{ r.opinion }}</div><div class="ie-actions"><button v-if="['ASSIGNED', 'REVIEWING', 'RETURNED'].includes(r.status)" class="mp-link" :disabled="commandLocked || !canAction('submitReview')" :title="actionReason('submitReview')" @click="openReviewSubmit(r)">提交评阅</button><button v-if="r.status === 'COMPLETED'" class="mp-link" :disabled="commandLocked || !canAction('returnReview')" :title="actionReason('returnReview')" @click="openReviewReturn(r)">退回重评</button></div></li>
@@ -131,15 +131,29 @@
             <section v-else-if="tab === 'defense' && canPanel('defense')" class="gp-panel">
               <div class="gp-panel__head">
                 <div><span>{{ defenseModeEyebrow }}</span><strong>{{ defenseModeTitle }}</strong></div>
-                <button v-if="canEnterScore" class="mp-btn mp-btn--primary" :disabled="commandLocked" :title="enterScoreReason" @click="openScoreEntry">录入本人评分</button>
+                <AppButton v-if="canEnterScore" variant="primary" :disabled="commandLocked" :title="enterScoreReason" @click="openScoreEntry">录入本人评分</AppButton>
               </div>
+              <div v-if="scorePanel && scorePanel.members.length" class="gd-panel-progress">
+                <div class="gd-panel-progress__head">
+                  <strong>答辩组评分进度（第{{ scorePanel.roundNo }}轮）</strong>
+                  <span>已评 {{ scorePanel.scoredCount }} / {{ scorePanel.total }} 位</span>
+                </div>
+                <p :class="['gd-panel-progress__hint', scorePanel.pendingNames.length ? 'is-pending' : 'is-done']">{{ scorePanel.pendingNames.length ? `还差 ${scorePanel.pendingNames.join('、')} 未评` : scorePanel.hint }}</p>
+                <ul class="gd-panel-progress__list">
+                  <li v-for="m in scorePanel.members" :key="(m.mentorId || m.expertId || m.name) + m.role">
+                    <span>{{ m.name }}<small>{{ m.role }}</small></span>
+                    <StatusTag :type="panelTone(m.status)" :label="m.status === 'SCORED' || m.status === 'CONFIRMED' ? `${m.statusLabel} · ${m.score}分` : m.statusLabel" dot />
+                  </li>
+                </ul>
+              </div>
+              <p v-else-if="scorePanel" class="mp-note">{{ scorePanel.hint }}</p>
               <ul v-if="scoreList.length" class="gp-timeline">
                 <li v-for="d in scoreList" :key="d.id" class="gp-timeline-item"><div class="mp-cell-main">{{ d.judgeName }}（第{{ d.roundNo }}轮）· {{ d.absent ? '缺席' : d.score }} · <StatusTag :type="d.status === 'CONFIRMED' ? 'success' : 'warning'" :label="d.statusLabel" dot /></div><div v-if="d.absent && d.absentReason" class="mp-cell-sub">缺席说明：{{ d.absentReason }}</div></li>
               </ul>
               <EmptyState v-else title="暂无评分记录" description="本轮完整性由服务端判断；页面不根据当前列表推导确认条件。" />
               <div class="ie-actions ie-actions--footer">
-                <button v-if="canConfirmScores" class="mp-btn" :disabled="commandLocked" :title="confirmScoresReason" @click="askConfirmScores">确认本轮成绩</button>
-                <button v-if="canCreateSecondDefense" class="mp-btn" :disabled="commandLocked" :title="secondDefenseReason" @click="openSecondDefense">发起二次答辩</button>
+                <AppButton v-if="canConfirmScores" :disabled="commandLocked" :title="confirmScoresReason" @click="askConfirmScores">确认本轮成绩</AppButton>
+                <AppButton v-if="canCreateSecondDefense" :disabled="commandLocked" :title="secondDefenseReason" @click="openSecondDefense">发起二次答辩</AppButton>
               </div>
               <p class="mp-note">评委只能提交本人评分；秘书只能确认服务端判定为完整的评分轮次，不能代替评委补分。</p>
             </section>
@@ -150,11 +164,11 @@
                 <div class="gp-grade-grid"><div><span>导师分</span><strong>{{ grade.advisorScore ?? '—' }}</strong></div><div><span>评阅分</span><strong>{{ grade.reviewerScore ?? '—' }}</strong></div><div><span>答辩分</span><strong>{{ grade.defenseScore ?? '—' }}</strong></div><div><span>综合分</span><strong>{{ grade.totalScore ?? '—' }}</strong><small>{{ grade.gradeLevel || '未定级' }}</small></div></div>
                 <div class="gp-kv"><span>发布时间</span><AppDateDisplay :value="grade.publishedAt" mode="datetime" /></div>
                 <div class="ie-actions ie-actions--footer">
-                  <button v-if="['DRAFT', 'WITHDRAWN'].includes(grade.status)" class="mp-btn mp-btn--primary" :disabled="commandLocked || !canManageGrade" :title="manageGradeReason" @click="openCalculate">核算成绩</button>
-                  <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="commandLocked || !canReviewGrade" :title="reviewGradeReason" @click="askGradeReview">复核通过</button>
-                  <button v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" class="mp-btn" :disabled="commandLocked || !canReviewGrade" :title="reviewGradeReason" @click="openReturnGrade">复核退回</button>
-                  <button v-if="grade.status === 'REVIEWED'" class="mp-btn mp-btn--primary" :disabled="commandLocked || !canPublishGrade" :title="publishGradeReason" @click="askPublishGrade">发布成绩</button>
-                  <button v-if="grade.status === 'PUBLISHED'" class="mp-btn mp-link--danger" :disabled="commandLocked || !canWithdrawGrade" :title="withdrawGradeReason" @click="openWithdraw">撤回</button>
+                  <AppButton v-if="['DRAFT', 'WITHDRAWN'].includes(grade.status)" variant="primary" :disabled="commandLocked || !canManageGrade" :title="manageGradeReason" @click="openCalculate">核算成绩</AppButton>
+                  <AppButton v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" :disabled="commandLocked || !canReviewGrade" :title="reviewGradeReason" @click="askGradeReview">复核通过</AppButton>
+                  <AppButton v-if="grade.status === 'CALCULATED' && !grade.reviewedAt" :disabled="commandLocked || !canReviewGrade" :title="reviewGradeReason" @click="openReturnGrade">复核退回</AppButton>
+                  <AppButton v-if="grade.status === 'REVIEWED'" variant="primary" :disabled="commandLocked || !canPublishGrade" :title="publishGradeReason" @click="askPublishGrade">发布成绩</AppButton>
+                  <AppButton v-if="grade.status === 'PUBLISHED'" variant="danger" :disabled="commandLocked || !canWithdrawGrade" :title="withdrawGradeReason" @click="openWithdraw">撤回</AppButton>
                 </div>
               </template>
               <EmptyState v-else title="暂无成绩记录" description="成绩生成、复核、发布和撤回顺序由服务端状态机控制。" />
@@ -178,6 +192,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppSearchBox, AppGraduationMentorPicker } from '@/components/common'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
@@ -188,6 +203,15 @@ import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 import { useGraduationBatchStore } from '@/stores/graduationBatch'
 
+// 教师按业务关系自动获得身份；学生队列必须按当前页面的职责取数（评委看本组学生、秘书看本组学生、评阅老师看被分配的学生），
+// 否则后端默认按“指导教师”返回，评委/秘书/评阅老师会看不到自己要处理的学生。
+// 查重记录页只列已提交过论文的学生（不再把批次内全部学生列出来）。
+const QUEUE_FINAL_STATUS = { 'graduation-plagiarism-ledger': 'SUBMITTED' }
+const QUEUE_IDENTITY_HINTS = {
+  'graduation-defense-scoring': 'GD_DEFENSE_EXPERT',
+  'graduation-defense-confirmation': 'GD_DEFENSE_SECRETARY',
+  'graduation-review-tasks': 'GD_REVIEWER',
+}
 const PANEL_ROUTES = { plagiarism: 'graduation-plagiarism-ledger', review: 'graduation-review-tasks', defense: 'graduation-defense-scoring', grade: 'graduation-grade-ledger' }
 const PANEL_PERMISSIONS = {
   plagiarism: ['graduationDesign.plagiarism.view'],
@@ -210,7 +234,7 @@ const freezeSnapshot = (value) => Object.freeze({ ...value })
 
 export default {
   name: 'GraduationDefenseGradeView',
-  components: { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppGraduationMentorPicker, AppSearchBox, AppConfirmDialog },
+  components: { AppButton, ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppDateDisplay, AppGraduationMentorPicker, AppSearchBox, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -228,6 +252,7 @@ export default {
       plagiarismList: [],
       reviewList: [],
       scoreList: [],
+      scorePanel: null,
       grade: null,
       reviewerMentorId: '',
       submitting: false,
@@ -265,7 +290,10 @@ export default {
       return `${batch}${this.workContract}`
     },
     workModeLabel() { return this.mode === 'batch' ? '服务端成绩台账' : `按学生连续处理 · ${this.tabLabel}` },
-    tabLabel() { return { plagiarism: '查重记录', review: '教师评阅', defense: '答辩评分', grade: '成绩评定' }[this.tab] || '当前业务' },
+    tabLabel() {
+      if (this.tab === 'defense' && this.$route.name === 'graduation-defense-confirmation') return '答辩确认'
+      return { plagiarism: '查重记录', review: '教师评阅', defense: '答辩评分', grade: '成绩评定' }[this.tab] || '当前业务'
+    },
     workContract() {
       if (this.mode === 'batch') return '服务端分页与缺项队列；不在当前页二次筛选。'
       if (this.tab === 'defense') return '评委只提交本人评分；秘书只确认完整轮次，二者权限严格分离。'
@@ -373,6 +401,9 @@ export default {
     }
   },
   methods: {
+    panelTone(status) {
+      return { CONFIRMED: 'success', SCORED: 'primary', ABSENT: 'warning' }[status] || 'danger'
+    },
     routeText(value) { return Array.isArray(value) ? String(value[0] || '') : String(value || '') },
     routePage(value) {
       const page = Number.parseInt(this.routeText(value), 10)
@@ -553,10 +584,16 @@ export default {
       }
       this.sideLoading = true
       try {
-        const res = await gdStudentApi.getStudents({ keyword, batchId, pageSize: 20 })
+        const identityHint = QUEUE_IDENTITY_HINTS[this.$route.name]
+        const res = await gdStudentApi.getStudents({ keyword, batchId, pageSize: 20, ...(identityHint ? { gdIdentity: identityHint } : {}), ...(QUEUE_FINAL_STATUS[this.$route.name] ? { finalStatus: QUEUE_FINAL_STATUS[this.$route.name] } : {}) })
         if (token !== this.studentLoadToken || batchId !== String(this.batchStore.selectedBatchId || '') || keyword !== this.studentKeyword) return false
         if (res.code === 0) {
           this.studentOptions = Array.isArray(res.data?.list) ? res.data.list : []
+          // 队列里只有一个学生时直接选中，省得老师再点一次学生行。
+          if (!this.current && this.mode !== 'batch' && !keyword && this.studentOptions.length === 1
+            && !this.routeText(this.$route.query.studentId)) {
+            this.selectStudent(this.studentOptions[0])
+          }
           return true
         }
         this.studentOptions = []
@@ -651,8 +688,10 @@ export default {
       try {
         const res = await graduationDefenseGradeApi.getScoreList({ gdStudentId: snapshot.studentId, batchId: snapshot.batchId, pageSize: 50 })
         if (token !== this.scoreToken || !this.isCurrentSnapshot(snapshot)) return false
-        if (res.code === 0) this.scoreList = Array.isArray(res.data?.list) ? res.data.list : []
-        else { this.scoreList = []; this.loadError = res.message || '评分记录加载失败' }
+        if (res.code === 0) {
+          this.scoreList = Array.isArray(res.data?.list) ? res.data.list : []
+          this.scorePanel = res.data?.panel || null
+        } else { this.scoreList = []; this.scorePanel = null; this.loadError = res.message || '评分记录加载失败' }
         return res.code === 0
       } finally { if (token === this.scoreToken) this.panelLoading = false }
     },
@@ -806,6 +845,15 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.gd-panel-progress { margin-bottom: var(--space-3); padding: 10px 12px; border: 1px solid var(--border-color, #e2e8f0); border-radius: 10px; background: var(--bg-card, #fff); }
+.gd-panel-progress__head { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+.gd-panel-progress__head span { color: var(--text-tertiary, #64748b); font-size: 12px; }
+.gd-panel-progress__hint { margin: 6px 0; font-size: 13px; font-weight: 600; }
+.gd-panel-progress__hint.is-pending { color: var(--danger, #dc2626); }
+.gd-panel-progress__hint.is-done { color: var(--success-600, #16a34a); }
+.gd-panel-progress__list { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.gd-panel-progress__list li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; border-top: 1px dashed var(--border-color, #e2e8f0); font-size: 13px; }
+.gd-panel-progress__list small { margin-left: 6px; color: var(--text-tertiary, #64748b); font-size: 11px; }
 .dg-command { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-4); align-items: center; margin-bottom: var(--space-3); padding: 12px 14px; border: 1px solid var(--primary-100, #dbeafe); border-radius: var(--radius-lg, 12px); background: linear-gradient(120deg, var(--primary-50, #eff6ff), var(--bg-card, #fff) 76%); }
 .dg-command > div:first-child { display: grid; min-width: 0; gap: 2px; }
 .dg-command > div:first-child > span { color: var(--primary-600, #2563eb); font-size: 10px; font-weight: 700; letter-spacing: .08em; }

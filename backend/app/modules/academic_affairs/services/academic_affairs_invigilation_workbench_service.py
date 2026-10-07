@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 from app.core.affairs_security import _derive_keys
 from app.core.exceptions import AppException, no_permission
@@ -48,11 +48,18 @@ def _as_of_date(db, value: str | None) -> str:
 
 
 def project_my_invigilations(db, user, *, from_date: str | None = None) -> dict:
-    """Project this teacher's formal current/future invigilation facts in one read query."""
-    from app.models import AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom
+    """Project formal upcoming work and published rooms with unfinished attendance."""
+    from app.models import AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom, AaExamRoomStudent
 
     keys = sorted(_require_teacher_identity(user))
     as_of = _as_of_date(db, from_date)
+    pending_attendance = select(AaExamRoomStudent.id).where(
+        AaExamRoomStudent.tenant_id == _tid(),
+        AaExamRoomStudent.exam_room_id == AaExamRoom.id,
+        AaExamRoomStudent.exam_course_id == AaExamCourse.id,
+        AaExamRoomStudent.attendance_status == "NOT_STARTED",
+        AaExamRoomStudent.is_deleted.is_(False),
+    ).exists()
     rows = db.execute(
         select(AaExamInvigilator, AaExamRoom, AaExamCourse, AaExamBatch)
         .join(AaExamRoom, AaExamRoom.id == AaExamInvigilator.exam_room_id)
@@ -68,7 +75,8 @@ def project_my_invigilations(db, user, *, from_date: str | None = None) -> dict:
             AaExamCourse.tenant_id == _tid(),
             AaExamCourse.status == "CONFIRMED",
             AaExamCourse.exam_date.is_not(None),
-            AaExamCourse.exam_date >= as_of,
+            or_(AaExamCourse.exam_date >= as_of,
+                and_(AaExamBatch.status == "PUBLISHED", pending_attendance)),
             AaExamCourse.is_deleted.is_(False),
             AaExamBatch.tenant_id == _tid(),
             AaExamBatch.status.in_(_FORMAL_BATCH_STATES),

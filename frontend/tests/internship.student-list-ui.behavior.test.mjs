@@ -36,6 +36,20 @@ test('route restoration overrides queue presets and keeps exact batch and studen
   assert.equal(target.query.returnTo, vm.$route.fullPath)
 })
 
+test('graduation handoff keeps the exact student search and safe return through list filters', () => {
+  const { vm, routes } = setup(); vm.load = () => {}
+  const returnTo = '/admin/academic-affairs/graduation/audit-console?termId=54&batchId=13&tab=internship&resultId=77'
+  vm.$route.query = { panel: 'roster', keyword: 'V52023001', returnTo }
+  vm.applyRouteFilters()
+  assert.equal(vm.appliedFilters.keyword, 'V52023001')
+  assert.equal(vm.graduationReturnTo, returnTo)
+  vm.search()
+  assert.equal(routes[0].query.keyword, 'V52023001')
+  assert.equal(routes[0].query.returnTo, returnTo)
+  vm.$route.query.returnTo = 'https://outside.invalid/steal'
+  assert.equal(vm.graduationReturnTo, '')
+})
+
 test('unsubmitted filters cannot silently change pagination, list refresh or export', async () => {
   let read, exported
   const { vm, routes } = setup({ getStudents: async p => { read = p; return ok({ list: [], total: 0 }) }, exportStudents: async p => { exported = p; return ok({}) } })

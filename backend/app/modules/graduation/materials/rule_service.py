@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from app.core.exceptions import AppException, check_version, not_found
 from app.models import GraduationBatch, GraduationStudent
@@ -62,7 +62,7 @@ def rule_item(db, batch_id: int, material_code: str, *, lock: bool = False) -> t
         stmt = stmt.with_for_update()
     item = db.scalars(stmt).first()
     if not item:
-        raise AppException("MATERIAL_NOT_IN_BATCH_RULE", "该材料不在当前批次冻结规则中")
+        raise AppException("MATERIAL_NOT_IN_BATCH_RULE", "学校还没有给本批次配置这项材料的提交规则，暂时无法提交，请联系学校管理员")
     return rule, item
 
 
@@ -246,7 +246,16 @@ def get_impact(rule_id: int, user: dict | None = None) -> dict:
         return impact_analysis(db, candidate)
 
 
+_MIGRATE_CHUNK = 1000
+
+
 def _migrate_catalog_to_candidate(db, candidate: GraduationMaterialRule, user: dict) -> dict:
+    """Move the batch catalog onto the candidate rule with set-based UPDATEs.
+
+    Same rows, same locks and same outcome as the former per-row ORM loop, but a
+    6000+ student batch now costs a handful of statements per material code
+    instead of tens of thousands of single-row UPDATEs.
+    """
     items = {row.material_code: row for row in rule_items(db, int(candidate.id), lock=True)}
     archived_student_ids = set(db.scalars(select(GraduationStudent.id).where(
         GraduationStudent.tenant_id == _tid(),
@@ -254,37 +263,60 @@ def _migrate_catalog_to_candidate(db, candidate: GraduationMaterialRule, user: d
         GraduationStudent.stage == "ARCHIVED",
         GraduationStudent.is_deleted.is_(False),
     ).with_for_update()).all())
-    rows = list(db.scalars(select(GraduationStudentMaterial).where(
+    rows = db.execute(select(
+        GraduationStudentMaterial.id, GraduationStudentMaterial.gd_student_id,
+        GraduationStudentMaterial.material_code, GraduationStudentMaterial.archive_status,
+        GraduationStudentMaterial.current_version_id,
+    ).where(
         GraduationStudentMaterial.tenant_id == _tid(),
         GraduationStudentMaterial.batch_id == int(candidate.batch_id),
         GraduationStudentMaterial.is_deleted.is_(False),
-    ).with_for_update()).all())
-    migrated = removed_empty = preserved_archived = 0
-    for material in rows:
-        if int(material.gd_student_id or 0) in archived_student_ids or material.archive_status in {"FROZEN", "ARCHIVED"}:
+    ).order_by(GraduationStudentMaterial.id).with_for_update()).all()
+    preserved_archived = 0
+    removed_ids: list[int] = []
+    migrate_ids: dict[str, list[int]] = {}
+    for material_id, gd_student_id, code, archive_status, current_version_id in rows:
+        if int(gd_student_id or 0) in archived_student_ids or archive_status in {"FROZEN", "ARCHIVED"}:
             preserved_archived += 1
             continue
-        item = items.get(material.material_code)
-        if not item:
-            if material.current_version_id:
+        if code not in items:
+            if current_version_id:
                 raise AppException(
                     "MATERIAL_RULE_REMOVAL_CONFLICT",
-                    f"材料 {material.material_code} 已有文件，不能从新规则移除",
+                    f"材料 {code} 已有文件，不能从新规则移除",
                 )
-            material.is_deleted = True
-            material.updated_by = _actor_id(user)
-            removed_empty += 1
+            removed_ids.append(int(material_id))
             continue
-        material.rule_id = int(candidate.id)
-        material.rule_version = int(candidate.rule_version)
-        material.material_name = item.material_name
-        material.biz_stage = item.biz_stage
-        material.owner_role = item.owner_role
-        material.required_status = "REQUIRED" if item.required else "OPTIONAL"
-        material.sensitivity_level = item.sensitivity_level
-        material.updated_by = _actor_id(user)
-        migrated += 1
-    return {"migrated": migrated, "removedEmpty": removed_empty, "preservedArchived": preserved_archived}
+        migrate_ids.setdefault(code, []).append(int(material_id))
+
+    actor_id = _actor_id(user)
+    def _chunked_update(ids: list[int], values: dict) -> None:
+        for start in range(0, len(ids), _MIGRATE_CHUNK):
+            db.execute(
+                update(GraduationStudentMaterial)
+                .where(
+                    GraduationStudentMaterial.tenant_id == _tid(),
+                    GraduationStudentMaterial.id.in_(ids[start:start + _MIGRATE_CHUNK]),
+                )
+                .values(**values)
+                .execution_options(synchronize_session=False)
+            )
+
+    for code, ids in migrate_ids.items():
+        item = items[code]
+        _chunked_update(ids, {
+            "rule_id": int(candidate.id), "rule_version": int(candidate.rule_version),
+            "material_name": item.material_name, "biz_stage": item.biz_stage,
+            "owner_role": item.owner_role,
+            "required_status": "REQUIRED" if item.required else "OPTIONAL",
+            "sensitivity_level": item.sensitivity_level, "updated_by": actor_id,
+        })
+    _chunked_update(removed_ids, {"is_deleted": True, "updated_by": actor_id})
+    return {
+        "migrated": sum(len(ids) for ids in migrate_ids.values()),
+        "removedEmpty": len(removed_ids),
+        "preservedArchived": preserved_archived,
+    }
 
 
 def activate_rule(
@@ -330,6 +362,9 @@ def activate_rule(
         candidate.version = int(candidate.version or 0) + 1
         from .command_service import initialize_batch_materials_in_session
 
+        # 会话未开自动 flush：不先落库，下面按“当前启用规则”查到的仍是旧规则，
+        # 新批次（还没有材料记录）就会按旧规则生成目录。
+        db.flush()
         initialized = initialize_batch_materials_in_session(db, int(candidate.batch_id), user)
         db.commit()
         return {

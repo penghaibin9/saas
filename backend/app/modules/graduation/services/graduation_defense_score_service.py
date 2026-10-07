@@ -14,6 +14,7 @@ from sqlalchemy import func, or_, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import has_permission
+from app.core.tenant_scoped import tenant_get
 from app.models import (GraduationAuditTrail, GraduationDefenseExpert, GraduationDefenseGroup,
                         GraduationDefenseScore, GraduationStudent)
 from app.services.db_service import _iso, _tid, session
@@ -90,7 +91,7 @@ def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None,
     # Proxy scoring is intentionally unavailable: experts score their own stable seat,
     # while secretaries record absence/confirm through dedicated actions.
     can_proxy = False
-    group = db.get(GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
+    group = tenant_get(db, GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
     seats = gid.judge_panel_seats(group)
     me = gid.current_user_mentor(db)
 
@@ -192,55 +193,83 @@ def list_scores(page: int, page_size: int, gd_student_id=None, judge_name=None,
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(GraduationDefenseScore.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
-        items = [_row(d, db.get(GraduationStudent, d.gd_student_id)) for d in rows]
+        items = [_row(d, tenant_get(db, GraduationStudent, d.gd_student_id)) for d in rows]
         return items, total
 
 
-def judge_pending() -> list[dict]:
-    """答辩评委（本人）·待评分学生名单（已发布分组，含本人当前轮次评分状态）。"""
+def _seat_row(rows, seat: dict):
+    """Match a score row to a panel seat by stable mentor/expert identity only."""
+    for d in rows:
+        if seat.get("mentorId") is not None and d.judge_mentor_id is not None \
+                and int(seat["mentorId"]) == int(d.judge_mentor_id):
+            return d
+        if seat.get("expertId") is not None and getattr(d, "expert_id", None) is not None \
+                and int(seat["expertId"]) == int(d.expert_id):
+            return d
+    return None
+
+
+def panel_progress(gd_student_id) -> dict | None:
+    """当前轮次答辩组每位评委的评分进度，与“确认本轮成绩”使用同一席位口径。
+
+    秘书据此看到“还差谁未评”，而不是只能看到已评分的评委。
+    学生不在当前数据范围内时返回 None（不泄露答辩组信息）。
+    """
     from app.modules.graduation.services import graduation_identity as gid
-    judge_name, _role = _op()
+
     with session() as db:
-        me = gid.current_user_mentor(db)
-        scope_ids = accessible_student_ids(db, _tid())
-        if not scope_ids:
-            return []
-        stus = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.id.in_(scope_ids),
-            GraduationStudent.defense_group_id.is_not(None),
-            GraduationStudent.is_deleted.is_(False))).all()
-        out = []
-        for stu in stus:
-            group = db.get(GraduationDefenseGroup, stu.defense_group_id)
-            if not group or group.is_deleted or not group.published:
-                continue
-            latest_round = _active_round_no(db, stu.id)
-            mine_q = select(GraduationDefenseScore).where(
-                GraduationDefenseScore.tenant_id == _tid(), GraduationDefenseScore.gd_student_id == stu.id,
-                GraduationDefenseScore.round_no == latest_round,
-                GraduationDefenseScore.is_deleted.is_(False))
-            if me:
-                mine_q = mine_q.where(or_(
-                    GraduationDefenseScore.judge_mentor_id == me.id,
-                    (
-                        GraduationDefenseScore.judge_mentor_id.is_(None)
-                        & (GraduationDefenseScore.judge_name == (me.teacher_name or judge_name))
-                    ),
-                ))
+        stu = tenant_get(db, GraduationStudent, int(gd_student_id))
+        if not stu or stu.is_deleted or stu.tenant_id != _tid():
+            return None
+        if int(stu.id) not in set(accessible_student_ids(db, _tid())):
+            return None
+        round_no = _active_round_no(db, stu.id)
+        rows = db.scalars(select(GraduationDefenseScore).where(
+            GraduationDefenseScore.tenant_id == _tid(), GraduationDefenseScore.gd_student_id == stu.id,
+            GraduationDefenseScore.round_no == round_no,
+            GraduationDefenseScore.is_deleted.is_(False),
+        ).order_by(GraduationDefenseScore.id)).all()
+        group = tenant_get(db, GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
+        seats = gid.judge_panel_seats(group)
+        members = []
+        for index, seat in enumerate(seats):
+            row = _seat_row(rows, seat)
+            covered = bool(row is not None and gid.score_row_covers_seat(row, seat))
+            if not covered:
+                status, label = "NOT_SCORED", "未评分"
+            elif row.status == "CONFIRMED":
+                status, label = "CONFIRMED", "已确认"
+            elif row.absent:
+                status, label = "ABSENT", "缺席"
             else:
-                mine_q = mine_q.where(GraduationDefenseScore.judge_name == judge_name)
-            mine = db.scalars(mine_q).first()
-            my_status = mine.status if mine else "PENDING"
-            out.append({
-                "gdStudentId": str(stu.id), "studentName": stu.name, "studentNo": stu.student_no or "",
-                "topicTitle": stu.topic_title or "（未选题）", "groupName": group.group_name,
-                "defenseDate": group.defense_date or "待定", "location": group.location or "待定",
-                "roundNo": latest_round, "myScoreId": str(mine.id) if mine else "",
-                "myScore": mine.score if mine else None, "myAbsent": bool(mine.absent) if mine else False,
-                "myComment": mine.comment if mine else "", "myStatus": my_status,
-                "myStatusLabel": STATUS_LABEL.get(my_status, "待评分"),
+                status, label = "SCORED", "已评分"
+            members.append({
+                "name": seat.get("name") or "未命名评委",
+                "role": "主席" if index == 0 and (group.chair or group.chair_mentor_id) else "评委",
+                "mentorId": str(seat["mentorId"]) if seat.get("mentorId") else None,
+                "expertId": str(seat["expertId"]) if seat.get("expertId") else None,
+                "status": status, "statusLabel": label,
+                "score": row.score if covered and not row.absent else None,
             })
-        return out
+        pending = [m["name"] for m in members if m["status"] == "NOT_SCORED"]
+        if not group:
+            hint = "该生还没有分到答辩组"
+        elif not seats:
+            hint = "答辩组还没有设置评委"
+        elif pending:
+            hint = f"还差 {len(pending)} 位评委未评分：" + "、".join(pending)
+        elif members and all(m["status"] == "CONFIRMED" for m in members):
+            hint = "本轮成绩已确认"
+        else:
+            hint = "全部评委已评分，可以确认本轮成绩"
+        return {
+            "gdStudentId": str(stu.id), "roundNo": round_no,
+            "defenseGroupId": str(group.id) if group else None,
+            "defenseGroupName": (getattr(group, "group_name", None) or "") if group else "",
+            "members": members, "total": len(members),
+            "scoredCount": len(members) - len(pending),
+            "pendingNames": pending, "hint": hint,
+        }
 
 
 @_conflict_guard
@@ -351,7 +380,7 @@ def confirm_scores(gd_student_id) -> dict:
         pending = [d for d in rows if d.status == "PENDING"]
         if pending:
             raise AppException("DATA_CONFLICT", "仍有评委未完成评分")
-        group = db.get(GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
+        group = tenant_get(db, GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
         seats = gid.judge_panel_seats(group)
         if seats:
             missing = [
@@ -418,101 +447,6 @@ def revoke_confirmation(gd_student_id, reason: str) -> dict:
             "gdStudentId": str(stu.id), "roundNo": latest_round,
             "status": "SCORED", "reason": reason.strip(),
         }
-
-
-def create_second_defense(gd_student_id, reason: str) -> dict:
-    if not reason or len(reason.strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "二次答辩原因必填且不少于 5 字")
-    with session() as db:
-        from app.modules.graduation.services import graduation_identity as gid
-        stu = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.id == int(gd_student_id),
-            GraduationStudent.tenant_id == _tid(),
-            GraduationStudent.is_deleted.is_(False),
-        ).with_for_update()).first()
-        if not stu:
-            raise not_found("毕设学生不存在")
-        defense_policy.authorize(db, stu, "secondRound")
-        existing_round_rows = db.scalars(select(GraduationDefenseScore).where(
-            GraduationDefenseScore.tenant_id == _tid(),
-            GraduationDefenseScore.gd_student_id == stu.id,
-            GraduationDefenseScore.is_deleted.is_(False),
-        ).order_by(GraduationDefenseScore.id).with_for_update()).all()
-        latest_round = max((int(row.round_no) for row in existing_round_rows), default=0)
-        if latest_round:
-            unconfirmed = db.scalars(select(GraduationDefenseScore).where(
-                GraduationDefenseScore.tenant_id == _tid(), GraduationDefenseScore.gd_student_id == stu.id,
-                GraduationDefenseScore.round_no == latest_round,
-                GraduationDefenseScore.is_deleted.is_(False),
-                GraduationDefenseScore.status != "CONFIRMED")).first()
-            if unconfirmed:
-                raise AppException("DATA_CONFLICT", "本轮评分尚未全部确认，暂不能创建二次答辩")
-        new_round = latest_round + 1
-        group = db.get(GraduationDefenseGroup, stu.defense_group_id) if stu.defense_group_id else None
-        judges: list[tuple[str, int | None, int | None]] = []
-        if group:
-            if group.chair_mentor_id or (group.chair or "").strip():
-                judges.append(((group.chair or "").strip(),
-                               int(group.chair_mentor_id) if group.chair_mentor_id else None, None))
-            for raw in (group.members_json or []):
-                item = gid.normalize_member(raw)
-                mid = int(item["mentorId"]) if item.get("mentorId") else None
-                eid = int(raw.get("expertId")) if isinstance(raw, dict) and raw.get("expertId") else None
-                name = item.get("name") or ""
-                if name or mid or eid:
-                    judges.append((name, mid, eid))
-        if not judges and latest_round:
-            prev = db.scalars(select(GraduationDefenseScore).where(
-                GraduationDefenseScore.tenant_id == _tid(),
-                GraduationDefenseScore.gd_student_id == stu.id,
-                GraduationDefenseScore.round_no == latest_round,
-                GraduationDefenseScore.is_deleted.is_(False))).all()
-            for d in prev:
-                if d.judge_name or d.judge_mentor_id:
-                    judges.append((
-                        d.judge_name,
-                        int(d.judge_mentor_id) if d.judge_mentor_id else None,
-                        int(d.expert_id) if getattr(d, "expert_id", None) else None,
-                    ))
-        # 去重：优先 mentor_id
-        seen: set[str] = set()
-        uniq: list[tuple[str, int | None, int | None]] = []
-        for name, mid, eid in judges:
-            if not mid and not eid:
-                raise AppException(
-                    "DATA_CONFLICT",
-                    f"评委「{name or '未知'}」未绑定稳定导师/专家身份，不能创建新答辩轮次",
-                )
-            key = f"MENTOR:{mid}" if mid else f"EXPERT:{eid}"
-            if key in seen or (not name and not mid and not eid):
-                continue
-            seen.add(key)
-            uniq.append((name, mid, eid))
-        if not uniq:
-            raise AppException("DATA_CONFLICT", "无法创建二次答辩：缺少答辩组评委名单")
-        from app.modules.graduation.services import graduation_todo_helper as gd_todo
-        pending_rows = []
-        for name, mid, eid in uniq:
-            row = GraduationDefenseScore(
-                tenant_id=_tid(), gd_student_id=stu.id,
-                defense_group_id=stu.defense_group_id,
-                judge_name=name or "评委", judge_mentor_id=mid,
-                expert_id=eid,
-                judge_identity=f"MENTOR:{mid}" if mid else f"EXPERT:{eid}",
-                round_no=new_round, status="PENDING",
-                score=None, absent=False,
-            )
-            db.add(row)
-            pending_rows.append(row)
-        db.flush()
-        for row in pending_rows:
-            gd_todo.push_defense_score_todo(db, row, stu)
-        _audit(db, stu.id, "创建二次答辩", reason.strip(), after=str(new_round))
-        stu.stage = "DEFENSE"
-        stu.version = int(stu.version or 0) + 1
-        db.commit()
-        return {"gdStudentId": str(stu.id), "newRound": new_round,
-                "pendingJudges": [n for n, _, _ in uniq]}
 
 
 def defense_score_stats(batch_id=None) -> dict:

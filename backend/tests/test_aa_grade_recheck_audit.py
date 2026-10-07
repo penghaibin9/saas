@@ -90,19 +90,27 @@ def _class_id():
 
 def _task(client, hdr, course_name="大学英语", owner_login="school_admin01", usual=30, final=70):
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, Major, SchoolClass
 
     term_id = _ensure_term()
     class_id = _class_id()
     db = get_sessionmaker()()
+    college_id = db.query(Major.college_id).join(
+        SchoolClass, SchoolClass.major_id == Major.id,
+    ).filter(
+        SchoolClass.id == class_id, SchoolClass.tenant_id == TID,
+        Major.tenant_id == TID,
+    ).scalar()
+    assert college_id is not None
     seq = db.query(AaCourse).filter(AaCourse.tenant_id == TID).count() + 1
     course = AaCourse(
         tenant_id=TID, course_code=f"RA{seq:04d}", course_name=course_name,
-        credit=3, status="ENABLED",
+        credit=3, status="ENABLED", owner_college_id=college_id,
     )
     db.add(course); db.flush()
     batch = AaTeachingTaskBatch(
-        tenant_id=TID, term_id=term_id, batch_name=f"{course_name}教学任务批次", status="APPROVED",
+        tenant_id=TID, term_id=term_id, batch_name=f"{course_name}教学任务批次",
+        college_id=college_id, status="APPROVED",
     )
     db.add(batch); db.flush()
     task = AaTeachingTask(
@@ -136,7 +144,8 @@ def test_ra1_records_show_source_and_change_history(client, db_mode):
     assert rec0["recordId"] and rec0["totalScore"] == 77 and rec0["source"] != "PUBLISH"
     assert rec0["prevTotalScore"] is None and rec0["changeReason"] == "" and rec0["versionNo"] == 1
 
-    assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=school_hdr).status_code == 200
+    submitted = client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=school_hdr)
+    assert submitted.status_code == 200, submitted.text
     evidence = client.get(f"{BASE}/grade-tasks/{tid}/review-evidence", headers=college_hdr)
     assert evidence.status_code == 200, evidence.text
     reviewed = client.post(
@@ -232,6 +241,37 @@ def test_ra3_teacher_sees_only_own_operator_audit_rows(client, db_mode):
     assert any(it["bizId"] == own_tid and it["action"] == "CREATE" for it in items)
     assert all(it["bizId"] != other_tid for it in items)
     assert all(it["operator"] == "赵敏" for it in items)
+
+
+def test_ra3_college_audit_fails_closed_without_college_scope(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import TeacherStudentScope
+
+    _seed(db_mode, 1)
+    college_hdr = _hdr(client, "college_admin01")
+    school_hdr = _hdr(client, "school_admin01")
+    target_id = _task(client, school_hdr, course_name="无学院范围课程", owner_login="college_admin01")
+    before = client.get(f"{BASE}/grade-views/audit", headers=college_hdr, params={"pageSize": 100})
+    assert before.status_code == 200, before.text
+    assert any(
+        item["bizType"] == "AA_GRADE_TASK" and item["bizId"] == str(target_id) and item["action"] == "CREATE"
+        for item in before.json()["data"]["items"]
+    ), before.text
+    db = get_sessionmaker()()
+    try:
+        db.query(TeacherStudentScope).filter(
+            TeacherStudentScope.tenant_id == TID,
+            TeacherStudentScope.teacher_key == "college_admin01",
+            TeacherStudentScope.scope_type == "COLLEGE",
+        ).delete(synchronize_session=False)
+        db.commit()
+    finally:
+        db.close()
+
+    response = client.get(f"{BASE}/grade-views/audit", headers=college_hdr, params={"pageSize": 100})
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["items"] == [], response.text
+    assert response.json()["data"]["total"] == 0, response.text
 
 
 def test_ra4_student_forbidden_on_audit_endpoint_403(client, db_mode):

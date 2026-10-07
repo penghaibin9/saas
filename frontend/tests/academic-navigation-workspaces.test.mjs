@@ -7,6 +7,19 @@ import { workspaceMenuItems, workspacePages } from '../src/components/workspace/
 const academic = NAV_PLAN.find((group) => group.key === 'academic-affairs')
 const projected = academic.children.flatMap((group) => group.children)
 
+test('调停课学院与学校审批菜单、搜索入口共同可见，普通教师仍不可见', () => {
+  const target = '/admin/academic-affairs/schedule-change/approval'
+  for (const permission of ['academicAffairs.scheduleChange.collegeReview', 'academicAffairs.scheduleChange.academicReview']) {
+    const visible = getVisibleNavPlan({ permissionPatterns: [permission] }).find(group => group.key === 'academic-affairs')
+    assert.ok(visible?.children.flatMap(group => group.children).some(leaf => leaf.path === target), permission)
+    assert.ok(searchNavPlan('调停课审批', [permission]).some(leaf => leaf.path === target), permission)
+  }
+  const teacherPermissions = ['academicAffairs.scheduleChange.view', 'academicAffairs.scheduleChange.apply']
+  const visible = getVisibleNavPlan({ permissionPatterns: teacherPermissions }).find(group => group.key === 'academic-affairs')
+  assert.ok(!visible?.children.flatMap(group => group.children).some(leaf => leaf.path === target))
+  assert.ok(!searchNavPlan('调停课审批', teacherPermissions).some(leaf => leaf.path === target))
+})
+
 test('the agreed 17 workspaces cover all 30 source modules', () => {
   assert.equal(academic.children.length, 17)
   assert.deepEqual(academic.children.map(group => group.key), ACADEMIC_WORKSPACES.map(([key]) => key))

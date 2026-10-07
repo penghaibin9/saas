@@ -16,26 +16,31 @@ const VIEWPORTS = [
 
 const SCREEN_META = {
   '毕设总览': { id: 'dashboard', surfaces: ['.gdb-work', '.gdb-work-empty'] },
+  '开工检查': { id: 'setup-check', surfaces: ['.gs-head', '.gs-steps', '.gs-shell'] },
+  '我的毕设工作': { id: 'teacher-workbench', surfaces: ['.tw-today', '.tw-page', '.tw-shell'] },
   '待评阅开题': { id: 'proposal-pending', surfaces: ['.pr-split'] },
   '待评阅成果': { id: 'final-pending', surfaces: ['.gd-review-workspace', '.fr-split'] },
   '我的答辩评分': { id: 'defense-mine', surfaces: ['.gp-layout', '.dg-batch'] },
-  '批次与规则': { id: 'batches', surfaces: ['.dt', 'table', '.mp-card'] },
+  '批次与时间节点': { id: 'batches', surfaces: ['.dt', 'table', '.mp-card'] },
   '学生与进度': { id: 'students', surfaces: ['.dt', 'table', '.gd-student-hero'] },
   '导师与分配': { id: 'mentors', surfaces: ['.dt', 'table', '.mp-card'] },
+  '材料规则': { id: 'material-rules', surfaces: ['.mr-page', '.mr-card', '.mr-table'] },
   '分配冲突检测': { id: 'mentor-conflicts', surfaces: ['.dt', 'table', '.mp-card'] },
   '题目库': { id: 'topic-lib', surfaces: ['.dt', 'table', '.mp-card'] },
   '选题轮次': { id: 'topic-rounds', surfaces: ['.dt', 'table', '.mp-card'] },
   '题目调整申请': { id: 'topic-changes', surfaces: ['.dt', 'table', '.mp-card'] },
   '过程指导台': { id: 'process', surfaces: ['.gp-layout'] },
   '开题报告批阅': { id: 'proposals', surfaces: ['.pr-split'] },
-  '成果提交与批阅': { id: 'finals', surfaces: ['.gd-review-workspace', '.fr-split'] },
+  '中期检查（按导师）': { id: 'midterm-by-mentor', surfaces: ['.gm-wrap', '.gm-shell', '.mp-card'] },
+  '论文提交与批阅': { id: 'finals', surfaces: ['.gd-review-workspace', '.fr-split'] },
   '毕设材料中心': { id: 'material-center', surfaces: ['.mc-table-wrap', '.mc-panel'] },
   '查重记录': { id: 'plagiarism', surfaces: ['.gp-layout', '.dg-batch'] },
   '统一评阅中心': { id: 'review-center', surfaces: ['.gd-review-workspace', '.dt', 'table'] },
   '答辩安排': { id: 'defense', surfaces: ['.dt', 'table', '.mp-card'] },
   '答辩评分': { id: 'defense-score', surfaces: ['.gp-layout', '.dg-batch'] },
   '答辩秘书确认': { id: 'defense-confirmation', surfaces: ['.gp-layout', '.dg-batch'] },
-  '成绩台账': { id: 'grade-ledger', surfaces: ['.dg-batch', '.dt', 'table'] },
+  '导师评分': { id: 'advisor-score', surfaces: ['.as-layout', '.as-card'] },
+  '成绩台账': { id: 'grade-ledger', surfaces: ['.gd-business-view[data-graduation-defense-workspace="grades"]', '.dg-command', '.gp-panel'] },
   '问题预警': { id: 'risk', surfaces: ['.rk-split', '.rk-list'] },
   '毕设材料归档': { id: 'archive', surfaces: ['.rk-split', '.rk-list'] },
   '全部模板': { id: 'templates', surfaces: ['.dt', 'table', '.mp-card'] }
@@ -55,7 +60,11 @@ const SCREENS = GRADUATION_WORKSPACES.flatMap((workspace) => workspace.children)
     }
   })
 
-const CHUNKS = Array.from({ length: 4 }, (_, index) => SCREENS.slice(index * 6, index * 6 + 6))
+const AUDIT_CHUNK_SIZE = 6
+const CHUNKS = Array.from(
+  { length: Math.ceil(SCREENS.length / AUDIT_CHUNK_SIZE) },
+  (_, index) => SCREENS.slice(index * AUDIT_CHUNK_SIZE, (index + 1) * AUDIT_CHUNK_SIZE)
+)
 const EMPTY_SELECTORS = ['.empty-state', '.mp-empty', '.ags-empty', '[data-state="empty"]']
 const ERROR_SELECTORS = ['.error-state', '.app-error-state', '[data-state="error"]', '.forbidden-state', '[data-state="forbidden"]']
 const LOADING_SELECTORS = ['.loading-state', '.app-loading-state', '[data-state="loading"]', '.skeleton', '.app-skeleton']
@@ -232,18 +241,21 @@ function collectHardFailures(row) {
   return failures
 }
 
-test.describe.serial('V6 · 24-page real-browser usability and text-density audit', () => {
+test.describe.serial('V6 · 29-page real-browser usability and text-density audit', () => {
   test.setTimeout(22 * 60_000)
   let fixture
 
   test.beforeAll(async () => {
-    expect(SCREENS, 'production graduation navigation must expose exactly 24 audit targets').toHaveLength(24)
-    expect(CHUNKS.every((chunk) => chunk.length === 6)).toBeTruthy()
+    expect(SCREENS, 'production graduation navigation must expose exactly 29 audit targets').toHaveLength(29)
+    expect(CHUNKS.flat()).toHaveLength(SCREENS.length)
+    expect(CHUNKS.slice(0, -1).every((chunk) => chunk.length === AUDIT_CHUNK_SIZE)).toBeTruthy()
+    expect(CHUNKS.at(-1)?.length).toBeGreaterThan(0)
+    expect(CHUNKS.at(-1)?.length).toBeLessThanOrEqual(AUDIT_CHUNK_SIZE)
     fixture = await prepareGraduationFixture()
   })
 
   for (const [chunkIndex, screens] of CHUNKS.entries()) {
-    test(`chunk ${chunkIndex + 1}/4 · six production menu pages`, async ({ page }, testInfo) => {
+    test(`chunk ${chunkIndex + 1}/${CHUNKS.length} · production menu pages`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width: 1760, height: 900 })
       await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
       const results = []
@@ -321,7 +333,7 @@ test.describe.serial('V6 · 24-page real-browser usability and text-density audi
       await fs.writeFile(reportPath, JSON.stringify(report, null, 2), 'utf8')
       await testInfo.attach(`graduation-v6-24page-usability-audit-chunk-${chunkIndex + 1}`, { path: reportPath, contentType: 'application/json' })
 
-      expect(report.measuredScreens, `chunk ${chunkIndex + 1} must retain evidence for all six production screens`).toHaveLength(6)
+      expect(report.measuredScreens, `chunk ${chunkIndex + 1} must retain evidence for every production screen in the chunk`).toHaveLength(screens.length)
       expect(hardFailures, `chunk ${chunkIndex + 1} must have no structural usability blocker`).toEqual([])
     })
   }

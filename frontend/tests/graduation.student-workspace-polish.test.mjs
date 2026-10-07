@@ -28,7 +28,7 @@ function page({ panel = 'roster', writeEnabled = true, batchId = '71' } = {}) {
     setStage: async (...args) => { calls.writes.push(['stage', ...args]); return { code: 0, data: {} } },
     batchArchive: async (...args) => { calls.writes.push(['archive', ...args]); return { code: 0, data: {} } }
   }
-  const components = Object.fromEntries('ModulePageShell ModuleToolbar AdvancedFilter DataTable StatusTag RiskTag LoadingState ErrorState EmptyState AppConfirmDialog AppSensitiveText AppExportButton AppPageGuide AppExcelImportDrawer'.split(' ').map(name => [name, {}]))
+  const components = Object.fromEntries('AppButton ModulePageShell ModuleToolbar AdvancedFilter DataTable StatusTag RiskTag LoadingState ErrorState EmptyState AppConfirmDialog AppSensitiveText AppExportButton AppPageGuide AppExcelImportDrawer'.split(' ').map(name => [name, {}]))
   const constants = Object.fromEntries('GD_STAGE GD_RISK_LEVEL HAS_TOPIC GD_ELIGIBILITY GD_GRAD_QUAL HAS_DEFENSE_GROUP MATERIAL_COMPLETE ARCHIVE_VIEW'.split(' ').map(name => [name, []]))
   const sandbox = { ...components, ...constants, gdStudentApi, useGraduationBatchStore: () => store,
     buildStudentQuery: queryBuilder, exportFilenameHint: (...args) => args.join('-'), toast: { success() {}, error() {} } }
@@ -45,10 +45,12 @@ function page({ panel = 'roster', writeEnabled = true, batchId = '71' } = {}) {
   return { p, calls, store, api: gdStudentApi, options }
 }
 
-test('only the three approved task labels differ in the complete production script', () => {
-  const normalized = script.replace("label: '选题 / 导师 / 资格'", "label: '关系与资格'")
+test('approved labels and safe academic-audit return chain remain source-frozen', () => {
+  // 统一按钮组件、任务标签以及受限的毕业审核 returnTo 链均已复核；其余脚本继续用摘要锁定。
+  const normalized = script.replace("import { AppButton } from '@/components/ui'\n", '').replace('components: { AppButton, ', 'components: { ')
+    .replace("label: '选题 / 导师 / 资格'", "label: '关系与资格'")
     .replace("label: '材料 / 答辩'", "label: '材料与答辩'").replace("label: '毕业资格 / 归档'", "label: '收口与归档'")
-  assert.equal(createHash('sha256').update(normalized).digest('hex'), '4f11fb4f9ad979f005cdaa957b5b486c93432887b323b087d81738f0c3acf5fb')
+  assert.equal(createHash('sha256').update(normalized).digest('hex'), 'ff1921b479e9b9e36fa6a37dc4cb61cea86ab45713d4139b42436a4f0046c9bd')
 })
 
 test('five task groups retain all eleven panel keys and original default destinations', () => {

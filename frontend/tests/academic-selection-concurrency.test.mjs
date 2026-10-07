@@ -5,6 +5,9 @@ import test from 'node:test'
 import * as flow from '../src/modules/academicAffairs/academicFlowContext.js'
 import { isDeniedResult } from '../src/modules/academicAffairs/components/parallel-a/resultState.js'
 
+const permissionSource = readFileSync(new URL('../src/config/navPlan.js', import.meta.url), 'utf8')
+const matchPermission = new Function(`${permissionSource.match(/export function matchPermission\(patterns, code\) \{[\s\S]*?\n\}/)[0].replace('export ', '')}; return matchPermission`)()
+
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
 const batch = id => ({ batchId: id, batchName: `批次${id}`, status: 'DRAFT' })
 const ok = data => ({ code: 0, data })
@@ -52,18 +55,21 @@ test('uncertain create result preserves the form and releases submitting', async
   assert.match(state.formError, /核对批次/)
 })
 function mount(file = 'AaSelectionConsoleView', overrides = {}) {
-  const source = readFileSync(new URL(`../src/modules/academicAffairs/views/${file}.vue`, import.meta.url), 'utf8')
+  const source = readFileSync(new URL(`../src/modules/academicAffairs/${file === 'AaSelectionSpecialWorkspace' ? 'components/parallel-a' : 'views'}/${file}.vue`, import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import (.*?) from .*$/gm,
     (_, binding) => `const ${binding.replace(/ as /g, ': ')} = dependencies`).replace('export default', 'component =')
   const api = { listBatches: async () => ok({ list: [], total: 0 }), listCourses: async id => ok({ list: [{ id }] }),
     batchStats: async id => ok({ batchId: id }), listRounds: async id => ok({ items: [{ id }] }),
     getBatch: async id => ok(batch(id)), batchPreflight: async () => ok({ allowed: true }), ...overrides }
   const context = { dependencies: { ...flow, academicAffairsApi: api, academicAffairsSelectionApi: api,
-    isDeniedResult, currentUserFromToken: () => ({}), toast: { success() {}, error() {} } } }
+    isDeniedResult, matchPermission, currentUserFromToken: () => ({}), toast: { success() {}, error() {} } } }
   vm.runInNewContext(script, context)
   const component = context.component
-  const state = Object.assign(component.data(), component.methods, { ctx: {}, $route: { fullPath: '/selection', query: {} },
+  const state = Object.assign(component.data(), component.methods, { ctx: { permissionPatterns: ['academicAffairs.selection.*'] }, $route: { fullPath: '/selection', query: {} },
     activeTab: 'batch', academicFlow: { identity: () => 'tenant:user:role', restorePosition() {} } })
+  for (const [key, getter] of Object.entries(component.computed || {})) {
+    if (key.startsWith('can') || ['ruleWritable', 'ruleChanged'].includes(key)) Object.defineProperty(state, key, { get: () => getter.call(state), configurable: true })
+  }
   for (const key of ['listGate', 'detailGate', 'rosterGate']) state[key] = flow.createAcademicRequestGate(() => key === 'listGate' ? state.pageContext() : state.commandContext())
   return { state, component, api }
 }
@@ -147,6 +153,56 @@ test('successful lifecycle releases submitting even though the status changed', 
   assert.equal(state.current.status, 'PUBLISHED'); assert.equal(state.saving, false)
 })
 
+test('list refresh keeps responsibility and next step from the formal batch detail', async () => {
+  const owner = { resolved: true, orgName: '校教务处', assigneeNames: ['责任人'] }
+  for (const [status, nextStep] of [
+    ['PUBLISHED', { code: 'OPEN', label: '按选课时间窗开放学生选课' }],
+    ['CLOSED', { code: 'LOCKED', label: '完成冲突和容量处理后锁定名单' }]
+  ]) {
+    const { state } = mount(undefined, {
+      listBatches: async () => ok({ list: [{ ...batch('A'), status }], total: 1 }),
+      getBatch: async id => ok({ ...batch(id), status, responsibility: owner, nextStep })
+    })
+    await state.select(batch('A'))
+    await state.load()
+    assert.equal(state.current.responsibility, owner)
+    assert.equal(state.current.nextStep, nextStep)
+  }
+})
+
+test('lifecycle result and list snapshot cannot replace the new formal owner or next step', async () => {
+  const owner = { resolved: true, orgName: '校教务处', assigneeNames: ['责任人'] }
+  const nextStep = { code: 'OPEN', label: '按选课时间窗开放学生选课' }
+  let published = false
+  const { state } = mount(undefined, {
+    publishBatch: async id => { published = true; return ok({ ...batch(id), status: 'PUBLISHED' }) },
+    listBatches: async () => ok({ list: [{ ...batch('A'), status: published ? 'PUBLISHED' : 'DRAFT' }], total: 1 }),
+    getBatch: async id => ok({ ...batch(id), status: published ? 'PUBLISHED' : 'DRAFT', responsibility: owner, nextStep })
+  })
+  await state.select(batch('A'))
+  await state.lifecycle('publishBatch', '发布')
+  await state.onConfirm()
+  assert.equal(state.current.status, 'PUBLISHED')
+  assert.equal(state.current.responsibility, owner)
+  assert.equal(state.current.nextStep, nextStep)
+})
+
+test('old formal detail requested by list refresh cannot restore a switched batch', async () => {
+  const old = deferred()
+  const { state } = mount(undefined, {
+    listBatches: async () => ok({ list: [batch('A')], total: 1 }),
+    getBatch: id => id === 'A' ? old.promise : Promise.resolve(ok({ ...batch(id), responsibility: { orgName: '新批次责任' } }))
+  })
+  state.current = batch('A')
+  const loading = state.load()
+  await Promise.resolve()
+  await state.select(batch('B'))
+  old.resolve(ok({ ...batch('A'), responsibility: { orgName: '旧批次责任' } }))
+  await loading
+  assert.equal(state.current.batchId, 'B')
+  assert.equal(state.current.responsibility.orgName, '新批次责任')
+})
+
 test('roster A arriving after roster B cannot contaminate the open drawer', async () => {
   const slow = deferred(); const { state } = mount(undefined, { courseRoster: id => id === 'A' ? slow.promise : Promise.resolve(ok({ list: [{ id }] })) })
   state.current = batch('batch'); const a = state.openRoster({ selectionCourseId: 'A' })
@@ -177,6 +233,158 @@ test('direct batchId deep link selects the requested batch instead of the defaul
   assert.equal(state.current.batchId, 'B')
 })
 
+test('selection term deep link filters batches, preselects creation term and keeps global time tick out', async () => {
+  const reads = [], writes = []; let ticks = 0
+  const { state } = mount(undefined, {
+    listBatches: async params => { reads.push(params); return ok({ list: [batch('52')], total: 1 }) },
+    createBatch: async body => { writes.push(body); return ok(batch('new')) },
+    timeTick: async () => { ticks++; return ok({ opened: 1, closed: 0 }) }
+  })
+  state.$route = { fullPath: '/selection?termId=52', query: { termId: '52' } }
+  await state.load()
+  assert.equal(reads[0].termId, '52')
+  state.openCreate()
+  assert.equal(state.form.termId, '52')
+  state.form.batchName = '本学期选课'; state.form.scopeType = 'SCHOOL'; state.form.termId = '51'
+  await state.submitCreate()
+  assert.equal(writes.length, 0)
+  assert.match(state.formError, /当前学期与链接不一致/)
+  state.form.termId = '52'
+  await state.submitCreate()
+  assert.equal(writes[0].termId, '52')
+  await state.runTimeTick()
+  assert.equal(ticks, 0)
+})
+
+test('selection invalid term fails closed and term change resets page and drops late list', async () => {
+  const old = deferred(), reads = []
+  const { state } = mount(undefined, {
+    listBatches: params => {
+      reads.push(params)
+      return params.termId === '51' ? old.promise : Promise.resolve(ok({ list: [batch('52')], total: 1 }))
+    }
+  })
+  state.$route = { fullPath: '/selection?termId=51', query: { termId: '51' } }
+  state.pagination.page = 3
+  const pending = state.load()
+  state.$route = { fullPath: '/selection?termId=52', query: { termId: '52' } }
+  await state.resetContext()
+  assert.equal(state.pagination.page, 1)
+  assert.equal(reads[1].termId, '52')
+  assert.equal(reads[1].page, 1)
+  old.resolve(ok({ list: [batch('51')], total: 1 }))
+  await pending
+  assert.equal(state.current.batchId, '52')
+  assert.equal(state.rows[0].batchId, '52')
+  state.pagination.page = 2
+  state.$route = { fullPath: '/selection?termId=52&tab=rule', query: { termId: '52', tab: 'rule' } }
+  await state.resetContext()
+  assert.equal(state.pagination.page, 2)
+  for (const invalid of ['0', 'abc', ['52'], null]) {
+    state.$route = { fullPath: `/selection?bad=${String(invalid)}`, query: { termId: invalid } }
+    await state.resetContext()
+    assert.equal(state.current, null)
+    assert.equal(state.rows.length, 0)
+    assert.match(state.error, /学期参数无效/)
+  }
+  assert.equal(reads.length, 3)
+})
+
+test('selection write returned after a term switch cannot replace the new term batch', async () => {
+  const oldWrite = deferred(), writes = []
+  const { state } = mount(undefined, {
+    listBatches: async params => ok({ list: [batch(params.termId)], total: 1 }),
+    publishBatch: id => { writes.push(id); return oldWrite.promise }
+  })
+  state.$route = { fullPath: '/selection?termId=51', query: { termId: '51' } }
+  await state.load()
+  await state.lifecycle('publishBatch', '发布')
+  const pending = state.onConfirm()
+  state.$route = { fullPath: '/selection?termId=52', query: { termId: '52' } }
+  await state.resetContext()
+  oldWrite.resolve(ok({ ...batch('51'), status: 'PUBLISHED' }))
+  await pending
+  assert.deepEqual(writes, ['51'])
+  assert.equal(state.current.batchId, '52')
+  assert.equal(state.current.status, 'DRAFT')
+  assert.equal(state.saving, false)
+})
+
+test('selection archive deep link and refresh keep the selected term; no term keeps the full list', async () => {
+  const calls = []
+  const { state } = mount('AaSelectionArchiveView', {
+    listArchivedBatches: async params => { calls.push(params); return ok({ list: [{ batchId: '13', termId: '52', batchName: '联通试用班' }], total: 1 }) },
+    archiveDetail: async () => ok({ batchId: '13', termId: '52', batchName: '联通试用班' })
+  })
+  state.$route = { path: '/admin/academic-affairs/selection/archive', fullPath: '/admin/academic-affairs/selection/archive?termId=52', query: { termId: '52' } }
+  await state.syncRoute()
+  assert.equal(state.termId, '52')
+  assert.equal(calls[0].termId, '52')
+  await state.syncRoute()
+  assert.equal(calls[1].termId, '52')
+  state.$route = { ...state.$route, fullPath: '/admin/academic-affairs/selection/archive', query: {} }
+  await state.syncRoute()
+  assert.equal(state.termId, '')
+  assert.equal(Object.hasOwn(calls[2], 'termId'), false)
+})
+
+test('selection archive term picker writes the URL and rejects invalid parameters before reading', async () => {
+  const calls = [], destinations = []
+  const { state } = mount('AaSelectionArchiveView', {
+    listArchivedBatches: async params => { calls.push(params); return ok({ list: [], total: 0 }) }
+  })
+  state.$route = { path: '/admin/academic-affairs/selection/archive', fullPath: '/admin/academic-affairs/selection/archive?termId=52', query: { termId: '52', source: 'precheck' } }
+  state.$router = { replace: async target => { destinations.push(target) } }
+  state.termId = '53'
+  await state.applyFilter()
+  assert.equal(destinations[0].query.termId, '53')
+  assert.equal(destinations[0].query.source, 'precheck')
+  assert.equal(calls.length, 0)
+  state.$route = { ...state.$route, fullPath: '/admin/academic-affairs/selection/archive?termId=53', query: destinations[0].query }
+  await state.syncRoute()
+  assert.equal(calls[0].termId, '53')
+  state.termId = ''
+  await state.applyFilter()
+  assert.equal(Object.hasOwn(destinations[1].query, 'termId'), false)
+  assert.equal(destinations[1].query.source, 'precheck')
+  for (const invalid of ['0', 'abc', ['52'], null]) {
+    state.current = { batchId: '13', termId: '52' }; state.rows = [state.current]
+    state.$route = { ...state.$route, fullPath: `/invalid-${String(invalid)}`, query: { termId: invalid } }
+    await state.syncRoute()
+    assert.equal(state.current, null)
+    assert.equal(state.rows.length, 0)
+    assert.match(state.error, /学期参数无效/)
+  }
+  assert.equal(calls.length, 1)
+})
+
+test('selection archive term switch discards late list and detail responses', async () => {
+  const oldList = deferred(), oldDetail = deferred()
+  const { state } = mount('AaSelectionArchiveView', {
+    listArchivedBatches: params => params.termId === '51' ? oldList.promise : Promise.resolve(ok({ list: [{ batchId: '13', termId: '52' }], total: 1 })),
+    archiveDetail: id => id === '12' ? oldDetail.promise : Promise.resolve(ok({ batchId: '13', termId: '52' }))
+  })
+  state.$route = { path: '/admin/academic-affairs/selection/archive', fullPath: '/archive?termId=51', query: { termId: '51' } }
+  const staleList = state.syncRoute()
+  state.$route = { ...state.$route, fullPath: '/archive?termId=52', query: { termId: '52' } }
+  await state.syncRoute()
+  oldList.resolve(ok({ list: [{ batchId: '12', termId: '51' }], total: 1 }))
+  await staleList
+  assert.equal(state.rows[0].batchId, '13')
+  const staleDetail = state.select({ batchId: '12', termId: '51' })
+  await staleDetail
+  assert.equal(state.current, null)
+  assert.match(state.detailError, /不属于当前学期/)
+  state.$route = { ...state.$route, fullPath: '/archive?termId=51', query: { termId: '51' } }
+  const pending = state.select({ batchId: '12', termId: '51' })
+  state.$route = { ...state.$route, fullPath: '/archive?termId=52', query: { termId: '52' } }
+  await state.syncRoute()
+  oldDetail.resolve(ok({ batchId: '12', termId: '51' }))
+  await pending
+  assert.equal(state.rows[0].batchId, '13')
+  assert.notEqual(state.current?.batchId, '12')
+})
+
 test('scheduling workbench uses latest batch response while previous batch is loading', async () => {
   const slow = deferred(); const { state, component } = mount('AaSchedulingConsoleView', { getScheduleSummary: id => id === 'A' ? slow.promise : Promise.resolve(ok({ batchId: id })) })
   state.$route = { fullPath: '/scheduling?batchId=A', query: { batchId: 'A' } }; state.workbenchBatchId = 'A'
@@ -185,4 +393,55 @@ test('scheduling workbench uses latest batch response while previous batch is lo
   const a = state.loadWorkbench(); state.$route = { fullPath: '/scheduling?batchId=B', query: { batchId: 'B' } }
   state.workbenchBatchId = 'B'; await state.loadWorkbench(); slow.resolve(ok({ batchId: 'A' })); await a
   assert.equal(state.workbench.batchId, 'B'); component.beforeUnmount.call(state)
+})
+
+
+test('selection readers cannot send management, round or lifecycle commands', async () => {
+  const writes = []
+  const { state } = mount(undefined, Object.fromEntries(['createBatch', 'timeTick', 'createRound', 'openRound', 'publishBatch', 'lockBatch', 'addCourse', 'cancelCourse'].map(name => [name, async () => { writes.push(name); return ok({}) }])))
+  state.ctx.permissionPatterns = ['academicAffairs.selection.view', 'academicAffairs.selection.rosterView']
+  state.current = batch('B'); state.form.batchName = '批次'; state.form.termId = '52'; state.form.classIds = ['1']
+  state.roundForm.roundName = '轮次'; state.courseForm.teachingTaskId = 'T'; state.courseForm.courseId = 'C'
+  state.openCreate(); state.openAddRound(); state.openAddCourse()
+  await state.submitCreate(); await state.runTimeTick(); await state.submitRound(); await state.submitCourse()
+  state.roundAction({ roundId: 'R' }, 'openRound', '开启'); state.cancelCourse({ selectionCourseId: 'C' })
+  await state.lifecycle('publishBatch', '发布'); await state.lifecycle('lockBatch', '锁定名单')
+  assert.equal(writes.length, 0); assert.equal(state.confirmVisible, false)
+  assert.equal(state.createVisible, false); assert.equal(state.roundVisible, false); assert.equal(state.courseVisible, false)
+  assert.equal(state.canReadRoster, true)
+})
+
+test('selection lock and rule permissions do not grant batch management', async () => {
+  const { state } = mount()
+  state.ctx.permissionPatterns = ['academicAffairs.selection.lock']
+  assert.equal(state.canLockSelection, true); assert.equal(state.canManageSelection, false); assert.equal(state.canManageRule, false)
+  state.ctx.permissionPatterns = ['academicAffairs.selection.rule.manage']
+  assert.equal(state.canLockSelection, false); assert.equal(state.canManageSelection, false); assert.equal(state.canManageRule, true)
+  state.ctx.permissionPatterns = []
+  assert.equal(state.canReadRoster, false)
+})
+
+test('selection confirmation rechecks permissions immediately before its command', async () => {
+  const writes = []
+  const { state } = mount(undefined, { publishBatch: async () => { writes.push('publish'); return ok({}) }, openRound: async () => { writes.push('round'); return ok({}) }, cancelCourse: async () => { writes.push('cancel'); return ok({}) } })
+  state.current = batch('B')
+  for (const prepare of [() => state.lifecycle('publishBatch', '发布'), () => state.roundAction({ roundId: 'R' }, 'openRound', '开启'), () => state.cancelCourse({ selectionCourseId: 'C' })]) {
+    state.ctx.permissionPatterns = ['academicAffairs.selection.*']; await prepare()
+    assert.equal(state.confirmVisible, true)
+    state.ctx.permissionPatterns = ['academicAffairs.selection.view']; await state.onConfirm()
+  }
+  assert.equal(writes.length, 0)
+})
+
+test('selection rule reader and permission revoked during formal read cannot save', async () => {
+  let writes = 0
+  const response = deferred()
+  const { state } = mount('AaSelectionSpecialWorkspace', { getBatch: () => response.promise, saveRule: async () => { writes++; return ok({}) } })
+  state.batch = { ...batch('B'), rule: { maxCredits: 1 } }; state.mode = 'rule'; state.$emit = () => {}; state.ruleDraft.maxCredits = 2
+  state.ctx.permissionPatterns = ['academicAffairs.selection.view']
+  assert.equal(state.ruleWritable, false); await state.saveRule(); assert.equal(writes, 0)
+  state.ctx.permissionPatterns = ['academicAffairs.selection.rule.manage']
+  const pending = state.saveRule(); state.ctx.permissionPatterns = ['academicAffairs.selection.view']
+  response.resolve(ok(state.batch)); await pending
+  assert.equal(writes, 0); assert.equal(state.saving, false)
 })

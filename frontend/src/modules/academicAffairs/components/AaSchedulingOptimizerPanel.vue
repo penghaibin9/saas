@@ -4,7 +4,7 @@
     <button type="button" :disabled="!batchId || loading || state.busy" @click="load">{{ loading ? text.loading : text.read }}</button>
     <p v-if="state.error" role="alert">{{ errorText }}</p>
     <p v-if="state.storageBlocked" role="alert">{{ text.storage }}</p>
-    <ul v-if="state.context?.blockers?.length"><li v-for="(block, i) in state.context.blockers" :key="i">{{ optimizerLabel(block.code) }}</li></ul>
+    <ul v-if="state.context?.blockers?.length"><li v-for="(block, i) in state.context.blockers" :key="i">{{ blockerText(block) }}</li></ul>
     <div v-if="state.context?.summary" class="optimizer-metrics"><span>待排课程 {{ state.context.sourceRevision ? tasks.length : state.context.summary.taskCount }}</span><span>教师 {{ state.context.summary.teacherCount }}</span><span>教学班 {{ state.context.summary.classCount }}</span><span>可用教室 {{ state.context.summary.roomCount }}</span><span>已有课位 {{ state.context.summary.existingCount }}</span><span>缺少连排规则 {{ state.context.sourceRevision ? tasks.filter(t => !patterns[t.id]).length : '待检查' }}</span><span>缺少人数 {{ state.context.summary.missingHeadcount }}</span><span>缺少正式名单 {{ state.context.summary.missingRoster }}</span></div>
     <template v-if="state.context?.sourceRevision">
       <p class="optimizer-warning">{{ text.confirmation }}</p>
@@ -20,7 +20,7 @@
         </label>
       </div></details>
       <table class="optimizer-table"><thead><tr><th>{{ text.course }}</th><th>{{ text.remaining }}</th><th>上课周</th><th>{{ text.pattern }}</th><th>{{ text.gap }}</th></tr></thead>
-        <tbody><tr v-for="task in visibleTasks" :key="task.id"><td>{{ task.course_name || task.id }}<small>{{ task.teaching_class_name }} · {{ task.teacher_name }}</small></td><td>{{ task.remainingPeriods }}</td>
+        <tbody><tr v-for="task in visibleTasks" :key="task.id"><td>{{ task.course_name || task.id }}<small>{{ task.teaching_class_name }} · {{ task.teacher_name }}</small></td><td>{{ taskHoursText(task) }}<small v-if="task.optimizerSupported === false">当前候选优化器不支持此分段安排，请回排课工作台处理。</small></td>
           <td><select v-model="parities[task.id]" :disabled="state.busy"><option value="ALL">每周</option><option value="ODD">单周</option><option value="EVEN">双周</option></select></td><td><input v-model="patterns[task.id]" :disabled="state.busy" :aria-label="text.pattern + task.course_name" placeholder="2+2" /></td>
           <td><input v-model.number="gaps[task.id]" type="number" min="0" max="6" :disabled="state.busy" :aria-label="text.gap + task.course_name" /></td></tr></tbody></table>
       <div class="optimizer-actions"><button :disabled="page <= 0" @click="page--">{{ text.previous }}</button><span>{{ page + 1 }} / {{ Math.max(1, Math.ceil(tasks.length / 20)) }}</span><button :disabled="(page+1)*20 >= tasks.length" @click="page++">{{ text.next }}</button></div>
@@ -74,7 +74,7 @@ const text = {
   previewWarning:'\u8fd9\u662f\u5355\u4efb\u52a1\u5019\u9009\u89c6\u56fe\uff0c\u4e0d\u662f\u6574\u4e2a\u5b66\u6821\u5df2\u53d1\u5e03\u8bfe\u8868\u3002\u8c03\u4f11\u4ee5\u5b9e\u9645\u65e5\u671f\u4e3a\u51c6\u3002',
   publishBoundary:'\u6b63\u5f0f\u5e94\u7528\u548c\u53d1\u5e03\u6682\u4e0d\u5f00\u653e\uff1b\u4ecd\u7531\u539f\u8bfe\u8868\u6743\u5a01\u4e0e\u8c03\u505c\u8bfe\u6d41\u7a0b\u7ba1\u7406\u3002'
 }
-Object.assign(text, { title:'自动排课', boundary:'检查学校数据，生成候选课表，确认后采用至原课表草稿。', read:'第一步：检查排课条件', confirmation:'请核对本次连排规则及可连续上课的时段组，已知校历和作息来自学校配置。', profile:'排课策略', balanced:'均衡排课（默认）', teacher:'教师更集中', generate:'第二步：智能试排', disabled:'当前条件尚未满足，请先处理阻断项。', previewWarning:'候选课表按实际校历日期展示，采用后仍需通过原课表发布流程。', publishBoundary:'师生只查看正式发布的课表。' })
+Object.assign(text, { title:'自动排课', remaining:'计划学时核对', boundary:'检查学校数据，生成候选课表，确认后采用至原课表草稿。', read:'第一步：检查排课条件', confirmation:'请核对本次连排规则及可连续上课的时段组，已知校历和作息来自学校配置。', profile:'排课策略', balanced:'均衡排课（默认）', teacher:'教师更集中', generate:'第二步：智能试排', disabled:'当前条件尚未满足，请先处理阻断项。', previewWarning:'候选课表按实际校历日期展示，采用后仍需通过原课表发布流程。', publishBoundary:'师生只查看正式发布的课表。' })
 export default {
   name:'AaSchedulingOptimizerPanel',components:{AaScheduleGrid},emits:['applied'],
   props:{batchId:{type:String,default:''},identityKey:{type:String,required:true},ctx:{type:Object,required:true}},
@@ -82,9 +82,9 @@ export default {
   computed:{
     visibleRows(){return this.state.rows?.filter(row=>!this.viewObject || this.rowObjects(row).some(v=>v.id===this.viewObject)) || []},
     viewObjects(){return [...new Map((this.state.rows || []).flatMap(r=>this.rowObjects(r)).map(v=>[v.id,v])).values()]},
-    tasks(){return (this.state.context?.tasks || []).map(t=>({...t,remainingPeriods:t.remainingPeriods+(this.replaceAuto?t.autoPeriods:0)})).filter(t=>t.remainingPeriods>0)},visibleTasks(){return this.tasks.slice(this.page*20,this.page*20+20)},
+    tasks(){return (this.state.context?.tasks || []).map(t=>({...t,remainingPeriods:(Number(t.remainingPeriods) || 0)+(this.replaceAuto?(Number(t.autoPeriods) || 0):0)})).filter(t=>t.remainingPeriods>0 || t.missingContactHours>0 || t.excessContactHours>0 || t.weeklyOverloadCount>0 || t.optimizerSupported===false)},visibleTasks(){return this.tasks.slice(this.page*20,this.page*20+20)},
     campuses(){return [...new Set((this.state.context?.rooms || []).map(r=>r.campus || this.defaultCampus).filter(Boolean))]},
-    canGenerate(){return this.tasks.length>0 && this.confirmed && this.reason.length>=5 && this.anchor && !this.state.busy && !this.state.storageBlocked && !!this.state.context?.canGenerate && matchPermission(this.ctx.permissionPatterns || [],'academicAffairs.schedule.rule.manage')},
+    canGenerate(){return this.tasks.length>0 && this.tasks.every(task=>task.optimizerSupported===true && this.knownTaskHours(task)) && this.confirmed && this.reason.length>=5 && this.anchor && !this.state.busy && !this.state.storageBlocked && this.state.context?.canGenerate===true && matchPermission(this.ctx.permissionPatterns || [],'academicAffairs.schedule.rule.manage')},
     isTerminal(){return this.controller?.isTerminal() || false},errorText(){return safeBusinessMessage(this.state.error,optimizerLabel(this.state.error))},
     metricLabels(){return {assignedActivities:'\u5df2\u6392\u6d3b\u52a8',scheduledPeriods:'\u5df2\u6392\u5b66\u65f6',teacherGapMinutes:'\u6559\u5e08\u7a7a\u5802\u5206\u949f',learnerGroupGapMinutes:'\u5b66\u751f\u7ec4\u7a7a\u5802\u5206\u949f',maxActorDayGapMinutes:'\u6700\u5927\u5355\u65e5\u7a7a\u5802\u5206\u949f'}},
     previewSlots(){const campus=this.state.rows[0]?.campus || this.campuses[0];return this.campusSlots(campus).map(s=>({slotNo:s.slot_no,startTime:s.start_time,endTime:s.end_time}))}
@@ -94,6 +94,9 @@ export default {
     storage:{getItem:k=>window.sessionStorage.getItem(k),setItem:(k,v)=>window.sessionStorage.setItem(k,v)},state:this.state})},
   mounted(){this.reset()},beforeUnmount(){clearTimeout(this.timer);this.controller.dispose()},
   methods:{
+    knownTaskHours(task){return ['expectedContactHours','scheduledContactHours','missingContactHours','excessContactHours','weeklyOverloadCount'].every(key=>typeof task[key]==='number' && Number.isFinite(task[key]) && task[key]>=0)},
+    taskHoursText(task){return this.knownTaskHours(task)?`计划 ${task.expectedContactHours} 学时 · 已排 ${task.scheduledContactHours} 学时 · 缺 ${task.missingContactHours} 学时 · 超 ${task.excessContactHours} 学时 · 周超量 ${task.weeklyOverloadCount} 项`:'计划学时及周次覆盖待核对'},
+    blockerText(block){return safeBusinessMessage(block.message,optimizerLabel(block.code))},
     rowObjects(row){if(this.viewBy==='teacherName')return (row.teacherKeys || []).map(id=>({id,label:row.teacherLabels?.[id] || row.teacherName || id}));return [{id:this.viewBy==='className'?row.teachingClassId:row.classroomId,label:row[this.viewBy]}]},
     reset(){clearTimeout(this.timer);this.controller.setScope(this.batchId);this.loading=false;this.confirmed=false;this.patterns={};this.gaps={};this.blocks={};this.reason='';this.page=0;this.previewTask='';this.pollCount=0},
     async load(){const identity=this.identityKey,batch=this.batchId;this.loading=true;const context=await this.controller.load();if(identity!==this.identityKey || batch!==this.batchId)return;this.loading=false;if(!context?.sourceRevision)return;

@@ -99,15 +99,16 @@
     </template>
 
     <template v-if="student" #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !defenseGroupId" @click="submit">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting || !defenseGroupId" @click="submit">
         {{ submitting ? '正在保存…' : '确认分配答辩组' }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
 import { AppDefenseGroupPicker } from '@/components/common'
@@ -118,7 +119,7 @@ const SAFE_PREFIX = '/admin/graduation/'
 
 export default {
   name: 'GraduationStudentDefenseView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, AppDefenseGroupPicker },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, AppDefenseGroupPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

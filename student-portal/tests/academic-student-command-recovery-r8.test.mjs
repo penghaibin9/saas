@@ -24,6 +24,7 @@ function mount(name, api = {}, currentSession = session()) {
   const disposers = []
   const modules = {
     vue: { ...vue, onMounted: () => {}, onBeforeUnmount: (fn) => disposers.push(fn) },
+    'vue-router': { useRoute: () => ({ query: {} }), useRouter: () => ({ push: () => {} }) },
     '../../services/portalApi': { portalApi: api },
     '../../stores/session': { useSessionStore: () => currentSession },
     '../../stores/ui': { useUiStore: () => ({ notify() {} }) },

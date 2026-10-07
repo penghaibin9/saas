@@ -125,12 +125,15 @@ def test_followup_workflows_preserve_original_results_and_require_correction_rea
     assert DefenseConfirmationRevokeRequest(reason="并发更正原因充分").reason == "并发更正原因充分"
 
     service_root = Path(__file__).parents[1] / "app" / "modules" / "graduation" / "services"
-    plagiarism_source = (service_root / "graduation_review_service.py").read_text(encoding="utf-8")
+    # 复查申请的唯一实现在 graduation_plagiarism_consistency（review_service 底部重新绑定）。
+    plagiarism_source = (service_root / "graduation_plagiarism_consistency.py").read_text(encoding="utf-8")
+    review_source = (service_root / "graduation_review_service.py").read_text(encoding="utf-8")
     defense_source = (service_root / "graduation_defense_score_service.py").read_text(encoding="utf-8")
-    assert "recheck_of_id=p.id" in plagiarism_source
+    assert "graduation_plagiarism_consistency import" in review_source
+    assert "def review_dispute" not in review_source, "review_dispute must have exactly one implementation"
+    assert "recheck_of_id=check.id" in plagiarism_source
     assert 'status="CHECKING"' in plagiarism_source
-    assert "p.rate =" not in plagiarism_source[
-        plagiarism_source.index("def review_dispute"):plagiarism_source.index("def plagiarism_stats")
-    ]
+    review_body = plagiarism_source[plagiarism_source.index("def review_dispute"):]
+    assert "check.rate =" not in review_body and "check.rate=" not in review_body
     assert "def revoke_confirmation" in defense_source
     assert 'before="CONFIRMED", after="SCORED"' in defense_source

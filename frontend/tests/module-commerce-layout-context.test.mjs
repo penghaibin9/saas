@@ -176,6 +176,15 @@ test('workbench: optional message count failure preserves authorized navigation'
   assert.deepEqual(menuKeys(ctx), ['graduation'])
 })
 
+test('workbench: account without message permission does not request the unread count', async () => {
+  const calls = configure(input([...technical, 'academicAffairs'], {
+    permissionPatterns: ['academicAffairs.*'],
+  }))
+  const ctx = await fetchLayoutContext()
+  assert.equal(ctx.messageUnreadCount, 0)
+  assert.equal(calls.includes('/admin/messages/count'), false)
+})
+
 test.after(() => {
   clearVisibleAdminMenuCache()
   resetAdminQueryCoordinatorForTest()

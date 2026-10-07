@@ -438,7 +438,7 @@ export const NAV_PLAN = [
     mod('aa-schedule-change', '调停课', '/admin/academic-affairs/schedule-change', [
       academicEntry('aa.schedule-change.schedule.change', I('调停课台账', '/admin/academic-affairs/schedule-change', 'academicAffairs.scheduleChange.view')),
       academicEntry('aa.schedule-change.schedule.change.apply', I('发起调停课（调课/停课/补课）', '/admin/academic-affairs/schedule-change/apply', 'academicAffairs.scheduleChange.apply')),
-      academicEntry('aa.schedule-change.schedule.change.approval', I('调停课审批', '/admin/academic-affairs/schedule-change/approval', 'academicAffairs.scheduleChange.collegeReview')),
+      academicEntry('aa.schedule-change.schedule.change.approval', I('调停课审批', '/admin/academic-affairs/schedule-change/approval', null, null, { permissionAny: ['academicAffairs.scheduleChange.collegeReview', 'academicAffairs.scheduleChange.academicReview'] })),
       // 调停课通知无独立列表页：APPLIED 后系统自动精确送达受影响师生（academic_affairs_schedule_change_service._apply_schedule），
       // 通知单打印为独立路由（/admin/academic-affairs/print/schedule-change/:id/notice，D7），
       // 台账「通知单」按钮/归档「详情」按钮均可到达；叶子指向宿主台账页（对齐下方冲突检测同一模式）
@@ -842,6 +842,10 @@ export function getVisibleNavPlan({ includePlanned = false, permissionPatterns =
     // 用于一个页面被多个真实后端权限码共同覆盖的场景，如学生主档 view/picker 两组角色）
     if (applyPerm && Array.isArray(leaf.permissionAny) && leaf.permissionAny.length
         && !leaf.permissionAny.some((k) => matchPermission(permissionPatterns, k))) return false
+    // menuRequiresAny：只决定“菜单里是否展示”，不参与路由权限投影（旧链接照常可进）。
+    // 用于给同一权限码下的不同人群（如毕设管理员 vs 普通老师）收敛菜单。
+    if (applyPerm && Array.isArray(leaf.menuRequiresAny) && leaf.menuRequiresAny.length
+        && !leaf.menuRequiresAny.some((k) => matchPermission(permissionPatterns, k))) return false
     return true
   }
   const keepMod = (mod2) => {

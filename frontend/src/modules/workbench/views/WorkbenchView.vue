@@ -27,6 +27,11 @@
       </ul>
     </section>
 
+    <section v-if="showGraduation" class="wb-tasks wb-panel" aria-label="毕业设计待办">
+      <header class="wb-section-head"><h2>毕业设计</h2><button class="wb-link" type="button" @click="go('/admin/graduation/my-work')">进入我的毕设工作</button></header>
+      <p class="wb-hint">指导学生、评阅论文、答辩评分、答辩确认等毕业设计待办都在「毕业设计中心 → 我的毕设工作」里，不在下面的审批待办中。</p>
+    </section>
+
     <StudentAffairsPriorityPanel
       v-if="showStudentAffairs"
       ref="priorityPanel"
@@ -337,6 +342,9 @@ export default {
   computed: {
     showStudentAffairs() {
       return matchPermission(this.ctx?.permissionPatterns || [], 'studentAffairs.dashboard.view')
+    },
+    showGraduation() {
+      return matchPermission(this.ctx?.permissionPatterns || [], 'graduationDesign.dashboard.view')
     },
     recipe() {
       return resolveRecipe(this.role)

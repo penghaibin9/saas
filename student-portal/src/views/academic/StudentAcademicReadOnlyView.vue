@@ -173,12 +173,16 @@ function pick(row, keys, fallback = '') {
   return fallback
 }
 function attendanceScheduleRoute(row) {
-  const lesson = String(row?.scheduleItemId || row?.itemId || '').trim()
+  const itemId = row?.scheduleItemId || row?.itemId
+  if (typeof itemId !== 'string') return null
+  const lesson = itemId.trim()
   if (!/^\d+$/.test(lesson) || Number(lesson) <= 0) return null
+  const sessionId = typeof row?.sessionId === 'string' && /^[1-9]\d*$/.test(row.sessionId) ? row.sessionId : ''
+  if (!sessionId) return null
   const week = Number(row?.weekNo)
   return {
     path: '/academic/schedule',
-    query: { lesson, from: 'attendance', ...(Number.isSafeInteger(week) && week > 0 ? { week: String(week) } : {}) }
+    query: { lesson, attendanceSessionId: sessionId, from: 'attendance', ...(Number.isSafeInteger(week) && week > 0 ? { week: String(week) } : {}) }
   }
 }
 function metricRows(type, value, list) {

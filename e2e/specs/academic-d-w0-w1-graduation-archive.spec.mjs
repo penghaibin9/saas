@@ -80,10 +80,14 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     const { token } = await loginAcademicAdmin(page)
     const suffix = `${String(Date.now()).slice(-7)}-r${testInfo.retry}`
 
+    const term = await expectApiOk(await browserApi(page, token, 'GET', '/academic-affairs/terms/current'), 'read D-W0 formal current term')
+    expect(term?.termId, 'D-W0 requires an existing formal current term').toMatch(/^[1-9]\d*$/)
     const batch = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/graduation-audit-batches', {
+      termId: term.termId,
       batchName: `D-W0浏览器异常终审-${suffix}`,
       gradeYear: '2024'
     }), 'create D-W0 graduation batch')
+    expect(batch.termId).toBe(term.termId)
 
     await expectApiOk(await browserApi(
       page,
@@ -117,8 +121,11 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
       `/academic-affairs/graduation-results/${abnormal.resultId}/college-review`,
       { action: 'APPROVE', note: 'D-W0真实浏览器异常终审阻断验证' }
     )
-    expect(forbiddenCollegeReview.status, JSON.stringify(forbiddenCollegeReview.json)).toBe(409)
-    expect(String(forbiddenCollegeReview.json?.message || '')).toMatch(/正式毕业评估仍异常|必需证据不完整|治理阻断项|重新预审/)
+    expect(forbiddenCollegeReview.status, JSON.stringify(forbiddenCollegeReview.json)).toBe(403)
+    expect(String(forbiddenCollegeReview.json?.message || '')).toMatch(/本学院责任账号|学院初审|权限/)
+    // This legacy fixture supplies no verified college responsibility login; the school
+    // denial is not evidence of the college's separate abnormal-precheck conflict guard.
+    testInfo.annotations.push({ type: '未覆盖', description: '本规格未验证有效学院责任账号提交异常预审时的冲突拒绝；学校账号只验证不可代办学院初审。' })
 
     const unchanged = await expectApiOk(await browserApi(
       page,
@@ -151,7 +158,8 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await expect(page.getByText('预审结果详情（十一项）', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '确认终审并写学籍' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '通过', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /退回学院/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /退回学院/ })).toHaveCount(0)
+    await expect(page.getByText('当前由学生所属学院的有效责任账号办理初审；学院通过后，交由校教务处终审。', { exact: true })).toBeVisible()
 
     await captureViewport(page, testInfo, 'academic-d-w0-abnormal-final-blocked', 1280, 720)
     await captureViewport(page, testInfo, 'academic-d-w0-abnormal-final-blocked', 1440, 900)

@@ -78,15 +78,16 @@
     </template>
 
     <template v-if="student" #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !assignTopicId" @click="submit">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting || !assignTopicId" @click="submit">
         {{ submitting ? '正在保存…' : (student.topicId ? '确认调整题目' : '确认分配题目') }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
 import { AppGraduationTopicPicker } from '@/components/common'
@@ -97,7 +98,7 @@ const SAFE_PREFIX = '/admin/graduation/'
 
 export default {
   name: 'GraduationStudentAssignTopicView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, AppGraduationTopicPicker },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, AppGraduationTopicPicker },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

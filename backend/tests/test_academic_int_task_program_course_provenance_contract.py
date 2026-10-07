@@ -44,8 +44,9 @@ def test_canonical_generation_writes_exact_program_course_id_and_same_row_format
     source = inspect.getsource(generation.generate_batch_tx)
     assert "source_program_course_id=program_course.id" in source
     assert "formation_mode=formation_mode" in source
-    assert "formation_mode = _snapshot_program_course_formation(program_course)" in source
-    assert source.index("formation_mode = _snapshot_program_course_formation(program_course)") < source.index("source_program_course_id=program_course.id")
+    assert "formation_mode = _snapshot_program_course_formation(program_course, db=db," in source
+    assert "source_snapshot=formation_snapshots[program_course.id]" in source
+    assert source.index("formation_mode = _snapshot_program_course_formation(program_course, db=db,") < source.index("source_program_course_id=program_course.id")
 
 
 def test_a_owned_consumer_never_infers_source_from_weak_runtime_facts():

@@ -1,5 +1,33 @@
 """V2-01/R7 培养方案质量与开课差异行为回归。"""
 from types import SimpleNamespace
+import pytest
+
+
+def test_enabled_course_codes_cache_is_request_local_tenant_scoped_and_fail_closed(monkeypatch):
+    from unittest.mock import MagicMock
+    import pytest
+    from app.modules.academic_affairs.services import academic_affairs_program_quality_service as service
+
+    db = MagicMock()
+    query = db.query.return_value.filter.return_value
+    query.all.side_effect = [[("A",)], [], [("B",)], [("C",)], [("D",)], RuntimeError("source unavailable"), [("E",)]]
+    monkeypatch.setattr(service, "_tid", lambda: 7)
+    cache = {}
+    assert service._enabled_course_codes(db, cache=cache) == frozenset({"A"})
+    assert service._enabled_course_codes(db, cache=cache) == frozenset({"A"})
+    assert query.all.call_count == 1
+    monkeypatch.setattr(service, "_tid", lambda: 8)
+    assert service._enabled_course_codes(db, cache=cache) == frozenset()
+    assert service._enabled_course_codes(db, cache=cache) == frozenset()
+    assert query.all.call_count == 2
+    assert service._enabled_course_codes(db, cache={}) == frozenset({"B"})
+    assert service._enabled_course_codes(db) == frozenset({"C"})
+    assert service._enabled_course_codes(db) == frozenset({"D"})
+    failed_request = {}
+    with pytest.raises(RuntimeError):
+        service._enabled_course_codes(db, cache=failed_request)
+    assert failed_request == {}
+    assert service._enabled_course_codes(db, cache=failed_request) == frozenset({"E"})
 
 
 def test_plan_term_number_uses_grade_and_academic_year():
@@ -68,7 +96,8 @@ class _QualityDb:
         return _Query([])
 
 
-def test_governance_validator_counts_practice_credit_in_total(monkeypatch):
+@pytest.mark.parametrize("cached", [False, True])
+def test_governance_validator_counts_practice_credit_in_total(monkeypatch, cached):
     from app.modules.academic_affairs.services import academic_affairs_program_governance_service as service
 
     base_result = {
@@ -83,11 +112,6 @@ def test_governance_validator_counts_practice_credit_in_total(monkeypatch):
             "suggestion": "", "fixRoute": "",
         }],
     }
-    monkeypatch.setattr(
-        service.validator,
-        "validate_program_db",
-        lambda _db, _pid: dict(base_result, issues=list(base_result["issues"])),
-    )
     monkeypatch.setattr(service, "_tid", lambda: 1)
     program = SimpleNamespace(id=1, tenant_id=1, is_deleted=False, total_credits=100)
     practice = SimpleNamespace(
@@ -95,7 +119,18 @@ def test_governance_validator_counts_practice_credit_in_total(monkeypatch):
         segment_name="顶岗实习", credit=2,
     )
 
-    result = service.validate_program_db(_QualityDb(program, [practice]), 1)
+    def validate(_db, _pid, *, cache=None):
+        if cache is not None:
+            cache[("PROGRAM_VALIDATION_FACTS", 1, 1)] = (program, (practice,))
+        return dict(base_result, issues=list(base_result["issues"]))
+    monkeypatch.setattr(service.validator, "validate_program_db", validate)
+    from unittest.mock import MagicMock
+    db = _QualityDb(program, [practice])
+    db.query = MagicMock(wraps=db.query)
+    result = service.validate_program_db(db, 1, **({"cache": {}} if cached else {}))
+    model_reads = [call.args[0].__name__ for call in db.query.call_args_list]
+    assert model_reads.count("AaProgram") == (0 if cached else 1)
+    assert model_reads.count("AaProgramPracticeSegment") == (0 if cached else 1)
 
     assert result["courseCreditSum"] == 98.0
     assert result["practiceCreditSum"] == 2.0

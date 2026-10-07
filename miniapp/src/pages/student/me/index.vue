@@ -1,11 +1,11 @@
 <template>
   <view class="student-shell">
     <MobileStudentHero title="我的">
-      <view class="me__card">
+      <view v-if="state === 'ready'" class="me__card">
         <view class="me__avatar">{{ (user.name || '同').slice(0,1) }}</view>
         <view class="flex-1">
           <view class="row" style="gap:8px;">
-            <text class="me__name">{{ user.name || '同学' }}</text>
+            <text class="me__name">{{ user.name }}</text>
             <text class="me__tag">学生</text>
           </view>
           <text v-if="user.className" class="me__sub">{{ user.className }}</text>
@@ -16,12 +16,13 @@
       <text class="me__intro">个人资料与账号管理</text>
     </MobileStudentHero>
 
-    <view class="shell-pad">
+    <MobileGlobalState v-if="state !== 'ready'" :state="state" loading-text="正在核验本人身份…" @retry="load" />
+    <view v-else class="shell-pad">
       <!-- 我的全周期入口 -->
       <view class="shell-panel me__records">
-        <view v-for="m in lifecycleMenu" :key="m.route" class="shell-row" @click="go(m.route)">
-          <MobileShellIcon :name="m.icon" :tone="m.tone" :size="26" round />
-          <view class="shell-row__body"><text class="shell-row__title">{{ m.label }}</text><text class="shell-muted">{{ m.desc }}</text></view>
+        <view v-for="entry in lifecycleMenu" :key="entry.route" class="shell-row" @click="go(entry.route)">
+          <MobileShellIcon :name="entry.icon" :tone="entry.tone" :size="26" round />
+          <view class="shell-row__body"><text class="shell-row__title">{{ entry.label }}</text><text class="shell-muted">{{ entry.desc }}</text></view>
           <MobileShellIcon name="chevron-right" tone="gray" :size="20" />
         </view>
       </view>
@@ -52,6 +53,9 @@ import { go, relaunch, toast } from '@/utils/nav'
 import { studentApi } from '@/services/studentApi'
 import { getStatusBarHeight } from '@/utils/deviceInfo'
 import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { me } from '@/services/realApi'
+import { normalizeError } from '@/services/request'
+import { FORCE_PASSWORD_CHANGE_ROUTE, forcePasswordChangeRequired } from '@/security/passwordChangeGate'
 export default {
   computed: {
     maskedStudentNo() { const value = String(this.user.studentNo || ''); return value.length > 6 ? value.slice(0, 4) + '****' + value.slice(-2) : value },
@@ -61,6 +65,7 @@ export default {
   data() {
     return {
       user: {},
+      state: 'loading', loadSeq: 0,
       exporting: false,
       statusBarHeight: 20,
       lifecycleMenu: [
@@ -76,14 +81,75 @@ export default {
   },
   onShow() {
     this._pageActive = true
-    const session = useSessionStore()
-    this.user = session.mockUser || {}
     this.statusBarHeight = getStatusBarHeight()
+    return this.load()
   },
-  onHide() { this._pageActive = false },
-  onUnload() { this._pageActive = false; this.user = {} },
+  onHide() { this._pageActive = false; this.invalidateIdentity() },
+  onUnload() { this._pageActive = false; this.invalidateIdentity() },
   methods: {
     go, toast,
+    identityContext() {
+      const session = useSessionStore(), identity = session.realUser
+      return JSON.stringify([identity?.tenantId, identity?.userId, identity?.activeContextId,
+        identity?.currentRole?.roleCode, session.currentRole])
+    },
+    invalidateIdentity() { this.loadSeq++; this.user = {}; this.state = 'loading' },
+    async load() {
+      const seq = ++this.loadSeq, generation = currentSessionGeneration(), before = this.identityContext()
+      this.state = 'loading'
+      this.user = {}
+      const stillCurrent = () => this._pageActive && seq === this.loadSeq &&
+        generation === currentSessionGeneration() && before === this.identityContext()
+      try {
+        const identity = await me()
+        if (!stillCurrent()) return
+        const role = identity?.currentRole?.roleCode
+        if (![identity?.tenantId, identity?.userId, identity?.activeContextId, role]
+          .every(value => typeof value === 'string' && value.trim())) {
+          throw new Error('本人身份返回不完整，请重试核验')
+        }
+        if (role !== 'STUDENT') { this.state = 'forbidden'; return }
+        const name = identity.displayName || identity.realName || identity.user?.realName || identity.user?.name
+        if (typeof name !== 'string' || !name.trim()) throw new Error('本人姓名未能核验，请重试')
+        const session = useSessionStore()
+        // /auth/me 不返回首次改密标记，不能让应用该回执清掉已有门禁。
+        if (session.mustChangePassword || forcePasswordChangeRequired()) {
+          this.state = 'forbidden'
+          relaunch(FORCE_PASSWORD_CHANGE_ROUTE)
+          return
+        }
+        // 本人资料接口绑定当前服务端会话；用户编号不是学籍编号，不能互相猜关联。
+        const profile = await studentApi.getProfile()
+        if (!stillCurrent()) return
+        if (session.mustChangePassword || forcePasswordChangeRequired()) {
+          this.state = 'forbidden'
+          relaunch(FORCE_PASSWORD_CHANGE_ROUTE)
+          return
+        }
+        if (profile?._real !== true || profile?._empty !== false ||
+          typeof profile._identity?.studentId !== 'string' || !/^\d+$/.test(profile._identity.studentId) ||
+          typeof profile.base?.name !== 'string' || !profile.base.name.trim() ||
+          typeof profile.base?.studentNo !== 'string' || !profile.base.studentNo.trim() ||
+          profile._identity.studentNo !== profile.base.studentNo) {
+          throw new Error('本人学生资料未能核验，请重试')
+        }
+        session.applyRealUser(identity)
+        if (session.currentRole !== 'student' || session.persistedIdentityVerified !== true) {
+          this.state = 'forbidden'; return
+        }
+        const className = typeof profile.org?.className === 'string' ? profile.org.className : ''
+        session.setStudentIdentity({ studentId: profile._identity.studentId,
+          studentNo: profile.base.studentNo, name: profile.base.name })
+        session.hydrateStudentProfile({ base: { name: profile.base.name, studentNo: profile.base.studentNo },
+          org: { className } })
+        this.user = { name: name.trim(), studentNo: profile.base.studentNo,
+          className }
+        this.state = 'ready'
+      } catch (error) {
+        if (!stillCurrent()) return
+        this.state = normalizeError(error).pageState || 'error'
+      }
+    },
     rowTone(i) { return ['tone-blue', 'tone-green', 'tone-amber', 'tone-cyan'][i % 4] },
     onListMenu(row) {
       if (row.key === 'privacy') return go('/pages/common/account-security/index')

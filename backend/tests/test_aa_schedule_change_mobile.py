@@ -136,6 +136,9 @@ def _ready_task(bid, class_id, teacher_key, teacher_name, course_name):
         status="READY", weekly_hours=1, total_hours=18, start_week=1, end_week=18,
     )
     db.add(task); db.flush()
+    from tests.support_schedule_authority import seed_schedule_program_source, seed_school_schedule_operator
+    seed_schedule_program_source(db, task)
+    seed_school_schedule_operator(db)
     task_id = int(task.id)
     db.commit(); db.close()
     return task_id

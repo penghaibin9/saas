@@ -38,12 +38,12 @@ test('PR147 archive console loads every server page instead of silently capping 
   const source = await readFile(archiveConsoleUrl, 'utf8')
   for (const token of [
     "import { readAllPages } from '../components/parallel-a/pagedRead'",
-    'readAllPages((page,pageSize)=>api.listBatches({page,pageSize})',
     'identity:row=>row.batchId',
     'pageSize:100',
     'this.rows=res.data.list',
     "this.listError=this.fail(e,'归档批次加载失败')"
   ]) assert.ok(source.includes(token), `missing all-page archive batch contract: ${token}`)
 
+  assert.match(source, /readAllPages\(\(page,pageSize\)=>api\.listBatches\(\{page,pageSize,\.\.\.\(termId\?\{termId\}:\{\}\)\}\)/)
   assert.doesNotMatch(source, /api\.listBatches\(\{ pageSize: 100 \}\)/)
 })

@@ -26,7 +26,10 @@ async function closePriorRunningDefenseFixtures(adminApi) {
   const runBase = String(process.env.GITHUB_RUN_ID || '').replace(/\D/g, '').slice(-12)
   if (!runBase) return []
 
+  const runAttempt = String(process.env.GITHUB_RUN_ATTEMPT || '1').replace(/\D/g, '') || '1'
+  const attemptSuffix = runAttempt === '1' ? '' : `-a${runAttempt}`
   const batchPrefix = `PW-E2E-${runBase}-`
+  const currentBatchNo = `PW-E2E-${runBase}${attemptSuffix}-defense-secretary-confirmation`
   const batches = items(await adminApi.get('/graduation/batches', {
     keyword: batchPrefix,
     page: 1,
@@ -37,6 +40,9 @@ async function closePriorRunningDefenseFixtures(adminApi) {
   for (const batch of batches) {
     const batchNo = String(batch.batchNo || '')
     if (!batchNo.startsWith(batchPrefix)) continue
+    // Playwright retries re-run beforeAll in the same workflow attempt. The current
+    // deterministic fixture is reusable while RUNNING and must never be closed as "prior".
+    if (batchNo === currentBatchNo) continue
     if (String(batch.status || '').toUpperCase() !== 'RUNNING') continue
 
     const students = items(await adminApi.get('/graduation/gd-students', {

@@ -58,7 +58,7 @@
         :description="'切到「全部」可以看这一类的所有' + typeLabel + '。'"
       >
         <template #actions>
-          <button class="mp-btn" :disabled="submitting" @click="switchTab('')">看全部</button>
+          <AppButton :disabled="submitting" @click="switchTab('')">看全部</AppButton>
         </template>
       </EmptyState>
       <EmptyState
@@ -67,7 +67,7 @@
         :description="emptyDesc"
       >
         <template #actions>
-          <button class="mp-btn mp-btn--primary" :disabled="!canWrite || submitting" @click="openCreate">＋ 新建{{ typeLabel }}</button>
+          <AppButton variant="primary" :disabled="!canWrite || submitting" @click="openCreate">＋ 新建{{ typeLabel }}</AppButton>
         </template>
       </EmptyState>
       <DataTable
@@ -117,6 +117,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 /** 毕设模板中心（/admin/graduation/templates?type=MATERIAL|TASKBOOK|PROPOSAL&status=&page=）。 */
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
@@ -145,7 +146,7 @@ const TYPE_EMPTY_DESC = {
 
 export default {
   name: 'GraduationTemplateView',
-  components: { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
+  components: { AppButton, ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

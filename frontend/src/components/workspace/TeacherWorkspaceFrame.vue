@@ -1,5 +1,5 @@
 <template>
-  <div class="tw-frame" :class="{ focused, 'mobile-open': mobileOpen }" :style="tokens">
+  <div class="tw-frame" :class="{ focused, 'mobile-open': mobileOpen, 'academic-workspace': activeCenter === 'academic-affairs' }" :style="tokens">
     <div class="tw-centers"><nav aria-label="一级菜单"><button v-for="center in centers" :key="center.key" :class="{ selected: center.key === activeCenter }" @click="navigate(center.path)">{{ center.label }}</button></nav><WorkspaceDeskUtilities scope-mode :scope-name="scopeName" :identity-key="identityKey" /></div>
     <div class="tw-body">
       <div class="tw-rails">
@@ -185,6 +185,8 @@ function tabKeydown(event) { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].inc
 .tw-tab button[role=tab]{display:flex;align-items:center;gap:6px;min-width:0;padding:0 6px 0 9px;font-size:12px;color:inherit}.tw-tab button[role=tab] span{overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.tw-tab button:not([role=tab]){display:flex;align-items:center;justify-content:center;width:24px;padding:4px;flex:none}
 .tw-tab-actions{align-items:center;gap:4px}.tw-tab-actions button{width:28px;height:28px;display:flex;align-items:center;justify-content:center;padding:5px;border-radius:5px}.tw-tab-actions svg{width:17px;height:17px}.tw-tab-actions button:hover{background:var(--pri-50)}.tw-tab-actions button[aria-pressed=true]{color:var(--pri);background:var(--pri-50)}.tw-tab-actions button:disabled{opacity:.35}
 .tw-main{padding-top:12px}.tw-rail nav button{min-height:38px;font-size:12px}.tw-expand{height:48px}.tw-pin{height:32px}.tw-rail nav{scrollbar-width:none}
+.academic-workspace .tw-main{padding-bottom:14px}
+.academic-workspace .tw-dock-wrap{position:relative;bottom:auto;flex:none;padding:10px 0 14px}
 .tw-recent header{display:flex;justify-content:space-between;align-items:center}.tw-recent h1{font-size:20px}.tw-recent button{background:transparent;border:0;color:var(--pri);cursor:pointer}.tw-recent-row{display:flex;width:100%;padding:16px 8px;gap:24px;border-bottom:1px solid var(--line)!important;text-align:left}.tw-recent-row span{flex:1}.tw-recent-row small{color:var(--t3)}
 .tw-rail.full{width:152px;flex-basis:152px}
 .tw-rail .full-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

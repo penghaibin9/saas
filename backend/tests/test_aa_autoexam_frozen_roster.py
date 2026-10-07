@@ -44,11 +44,11 @@ def _seed(db_mode):
                       credit=2, status="ENABLED")
     db.add(course); db.flush()
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=term.id, batch_name="2024秋教学任务",
-                             college_id=col.id, status="ACTIVE")
+                             college_id=col.id, status="APPROVED")
     db.add(tb); db.flush()
     task = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=course.id, course_name="跨班选修课",
                           class_id=class_a.id, teaching_class_name="软件2401选修班",
-                          teacher_key="teacher_x", teacher_name="选修课老师")
+                          teacher_key="teacher_x", teacher_name="选修课老师", status="READY")
     db.add(task); db.flush()
 
     a1 = StudentProfile(tenant_id=TID, student_no="FR2401", real_name="行政班A甲", college_id=col.id,
@@ -78,6 +78,8 @@ def _seed(db_mode):
     room = AaClassroom(tenant_id=TID, building_code="F", building_name="F楼", room_code="101",
                        capacity=30, is_exclusive=False, room_type="LECTURE", status="AVAILABLE")
     db.add(room); db.flush()
+    from tests.test_aa_exam import _seed_exam_review_identity
+    _seed_exam_review_identity(db, col.id)
     db.commit()
 
     # 真实流程里，选课批次锁定的同一时刻会把锁定名单投影进独立教学班版本（否则学院确认考试
@@ -104,7 +106,7 @@ def test_autoexam_consumes_selection_roster_not_administrative_class(client, db_
                       json={"batchName": "跨班选修回归批次", "termId": str(ids["term"])}).json()["data"]["batchId"]
     cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                       json={"teachingTaskId": str(ids["task"])}).json()["data"]["examCourseId"]
-    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
     assert confirmed.status_code == 200, confirmed.text
     client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
               json={"examDate": "2027-06-20", "startTime": "09:00", "endTime": "11:00",
@@ -141,7 +143,7 @@ def test_autoexam_reports_no_roster_when_snapshot_missing_students(client, db_mo
                       json={"batchName": "空选课回归批次", "termId": str(ids["term"])}).json()["data"]["batchId"]
     cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
                       json={"teachingTaskId": str(ids["task"])}).json()["data"]["examCourseId"]
-    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
     # 选课名单为空时，教学班当前正式名单也是空——学院确认阶段本身就该挡在这里，
     # 不应该出现"确认成功但自动排考时才发现没人"的情况。
     assert confirmed.status_code == 409, confirmed.text

@@ -46,7 +46,7 @@ def _seed(db_mode):
     db.add(col); db.flush()
     maj = Major(tenant_id=TID, college_id=col.id, major_name="调停课软件技术", status="ACTIVE")
     db.add(maj); db.flush()
-    a = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="软件2601", grade="2026", status="ACTIVE")
+    a = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="软件2601", grade="2098", status="ACTIVE")
     db.add(a); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="SC001", real_name="课表甲", class_id=a.id,
                        current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
@@ -109,8 +109,12 @@ def _batch(client, hdr):
 def _ready_task(bid, class_id, teacher_key, teacher_name, course_name):
     """每个课位显式回链唯一 READY 教学任务；不再依赖共享 MySQL 残留或模糊匹配。"""
     from app.db.session import get_sessionmaker
-    from app.models import (AaCourse, AaScheduleBatch, AaTeachingTask, AaTeachingTaskBatch,
+    from app.models import (AaCourse, AaProgram, AaProgramBinding, AaProgramCourse,
+                            AaScheduleBatch, AaTeachingTask, AaTeachingTaskBatch, AaTerm,
                             Major, SchoolClass)
+    from app.modules.academic_affairs.services.academic_affairs_archive_term_scope import cohort_term_scope
+    from app.modules.academic_affairs.services.academic_affairs_teaching_class_service import ensure_teaching_class_for_task
+    from tests.support_academic_review_identity import seed_college_review_scope
     from tests.support_schedule_change_identity import seed_schedule_change_identity
 
     db = get_sessionmaker()()
@@ -120,16 +124,47 @@ def _ready_task(bid, class_id, teacher_key, teacher_name, course_name):
     assert cls is not None
     major = db.get(Major, int(cls.major_id)) if cls.major_id else None
     assert major is not None and major.college_id
+    term = db.get(AaTerm, int(schedule_batch.term_id))
+    assert term is not None and term.start_date
+    term_scope = cohort_term_scope(term.year_code, term.term_no, cls.grade)
+    assert term_scope["state"] == "IN_SCOPE"
     college_id = int(major.college_id)
+    seed_college_review_scope(db, college_ids=[college_id])
     seed_schedule_change_identity(db, college_ids=[college_id])
 
     seq = db.query(AaTeachingTask).filter(AaTeachingTask.tenant_id == TID).count() + 101
     course_code = f"SC{seq:03d}"
     course = AaCourse(
         tenant_id=TID, course_code=course_code, course_name=course_name,
-        nature="REQUIRED", credit=4, status="ENABLED",
+        nature="REQUIRED", credit=4, owner_college_id=college_id, status="ENABLED",
     )
     db.add(course); db.flush()
+    binding = db.query(AaProgramBinding).filter(
+        AaProgramBinding.tenant_id == TID,
+        AaProgramBinding.class_id == cls.id,
+        AaProgramBinding.status == "ACTIVE",
+        AaProgramBinding.is_deleted.is_(False),
+    ).one_or_none()
+    if binding is None:
+        program = AaProgram(
+            tenant_id=TID, major_id=major.id, grade_year=cls.grade,
+            program_name=f"调停课回归方案-{cls.id}", total_credits=4, status="PUBLISHED",
+        )
+        db.add(program); db.flush()
+        db.add(AaProgramBinding(
+            tenant_id=TID, program_id=program.id, major_id=major.id,
+            class_id=cls.id, grade_year=cls.grade, bound_at=term.start_date, status="ACTIVE",
+        ))
+    else:
+        program = db.get(AaProgram, int(binding.program_id))
+        assert program is not None and program.status == "PUBLISHED"
+        program.total_credits += 4
+    planned = AaProgramCourse(
+        tenant_id=TID, program_id=program.id, course_id=course.id,
+        course_name=course.course_name, credit_snapshot=4,
+        open_term_no=term_scope["planTerm"], formation_mode="ADMIN_FIXED",
+    )
+    db.add(planned); db.flush()
     task_batch = AaTeachingTaskBatch(
         tenant_id=TID, term_id=int(schedule_batch.term_id),
         batch_name=f"调停课回归教学任务批次-{seq}", college_id=college_id, status="APPROVED",
@@ -139,11 +174,21 @@ def _ready_task(bid, class_id, teacher_key, teacher_name, course_name):
         tenant_id=TID, batch_id=task_batch.id, course_id=course.id,
         course_code=course_code, course_name=course_name,
         class_id=int(class_id), teaching_class_name=cls.class_name,
+        source_program_course_id=planned.id, formation_mode="ADMIN_FIXED",
         teacher_key=teacher_key, teacher_name=teacher_name,
         status="READY", weekly_hours=1, total_hours=18, start_week=1, end_week=18,
     )
     db.add(task); db.flush()
     task_id = int(task.id)
+    from app.core.context import get_tenant, set_tenant
+
+    previous_tenant = get_tenant()
+    set_tenant(TID)
+    try:
+        ensure_teaching_class_for_task(db, task_id)
+    finally:
+        set_tenant(previous_tenant)
+    db.flush()
     db.commit(); db.close()
     return task_id
 
@@ -214,20 +259,77 @@ def _approve_all(client, submitted_data):
 # ── C1 调课全链路 → APPLIED ──
 def test_c1_adjust_full_chain_applied(client, db_mode):
     ids = _seed(db_mode)
-    admin = _hdr(client, "school_admin01")
+    admin = _review_hdr("school_admin01")
     _, origin = _published_item(client, admin, ids["class"])
     r = _submit(client, admin, origin)
-    assert r.status_code == 200
+    assert r.status_code == 200, r.text
     submitted = r.json()["data"]
+    assert submitted["canCancel"] is True
+
+    from affairs_contract_test_support import role_headers
+
+    owner = role_headers("ACADEMIC_TEACHER", login_name="academic01")
+    leader = role_headers("LEADER", login_name="schedule_readonly_leader")
+    college = _review_hdr("college_admin01")
+    for headers, expected in ((owner, True), (leader, False), (college, False)):
+        detail = client.get(f"{BASE}/schedule-change/{submitted['changeId']}", headers=headers)
+        assert detail.status_code == 200, detail.text
+        assert detail.json()["data"]["canCancel"] is expected
+        ledger = client.get(f"{BASE}/schedule-change", headers=headers)
+        assert ledger.status_code == 200, ledger.text
+        matching = [row for row in ledger.json()["data"]["items"] if row["changeId"] == submitted["changeId"]]
+        assert len(matching) == 1
+        assert matching[0]["canCancel"] is expected
+
     r1, r2_response = _approve_all(client, submitted)
     assert r1.json()["data"]["status"] == "COLLEGE_REVIEW"
+    assert r1.json()["data"]["canCancel"] is False
     r2 = r2_response.json()
     assert r2["data"]["status"] == "APPLIED"
+    assert r2["data"]["canCancel"] is False
     assert r2["data"]["newItemId"] and r2["data"]["applied"]["notified"]["channel"] == "STATUS_CHANGED"
     cv = client.get(f"{BASE}/schedule-batches/{r2['data']['batchId']}/class-view?classId={ids['class']}",
                     headers=admin).json()["data"]["items"]
     slots = {(i["weekday"], i["slotNo"]) for i in cv}
     assert (3, 2) in slots and (1, 1) not in slots
+
+    # 已生效单据仍只对归属教师开放；另一教师具备同一查看权限，也不能按编号读取详情。
+    owner_detail = client.get(f"{BASE}/schedule-change/{submitted['changeId']}", headers=owner)
+    assert owner_detail.status_code == 200, owner_detail.text
+    assert owner_detail.json()["data"]["status"] == "APPLIED"
+    assert owner_detail.json()["data"]["teacherKey"] == "academic01"
+    assert owner_detail.json()["data"]["canCancel"] is False
+
+    other_teacher = role_headers("ACADEMIC_TEACHER", login_name="schedule_other_teacher")
+    other_list = client.get(f"{BASE}/schedule-change", headers=other_teacher)
+    assert other_list.status_code == 200, other_list.text
+    assert other_list.json()["data"]["total"] == 0
+    denied = client.get(f"{BASE}/schedule-change/{submitted['changeId']}", headers=other_teacher)
+    assert denied.status_code == 403
+    assert denied.json()["bizCode"] == "NO_DATA_SCOPE"
+    assert denied.json()["data"] is None
+
+    # 原教师可以撤销自己仍在待审的申请；学院的可读范围不能替代撤销归属。
+    withdraw = _submit(client, owner, r2["data"]["newItemId"],
+                       changeType="STOP", reason="撤销能力回归测试申请",
+                       makeupPlan="撤销测试不变更正式课表",
+                       targetStartWeek=1, targetEndWeek=1)
+    assert withdraw.status_code == 200, withdraw.text
+    withdraw_data = withdraw.json()["data"]
+    assert withdraw_data["canCancel"] is True
+    for headers in (college, leader):
+        rejected_cancel = client.post(f"{BASE}/schedule-change/{withdraw_data['changeId']}/cancel",
+                                      headers=headers, json={"reason": "越权撤销回归"})
+        assert rejected_cancel.status_code == 403
+    cancelled = client.post(f"{BASE}/schedule-change/{withdraw_data['changeId']}/cancel",
+                            headers=owner, json={"reason": "本人撤销测试申请"})
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["data"]["status"] == "CANCELLED"
+    assert cancelled.json()["data"]["canCancel"] is False
+    readback = client.get(f"{BASE}/schedule-change/{withdraw_data['changeId']}", headers=owner)
+    assert readback.status_code == 200, readback.text
+    assert readback.json()["data"]["status"] == "CANCELLED"
+    assert readback.json()["data"]["canCancel"] is False
 
 
 def test_c1b_adjust_submit_preserves_target_classroom(client, db_mode):
@@ -467,7 +569,7 @@ def test_c9_stats_extended_aggregation(client, db_mode):
     db.add(col); db.flush()
     maj = Major(tenant_id=TID, college_id=col.id, major_name="软件技术", status="ACTIVE")
     db.add(maj); db.flush()
-    cls = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="软件2602", grade="2026", status="ACTIVE")
+    cls = SchoolClass(tenant_id=TID, major_id=maj.id, class_name="软件2602", grade="2098", status="ACTIVE")
     db.add(cls); db.flush()
     stu = StudentProfile(tenant_id=TID, student_no="SC002", real_name="课表乙", class_id=cls.id,
                          current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")

@@ -117,8 +117,9 @@ export default {
       return start
     },
     weekDays() {
+      const firstWeekday = this.selectedWeekStart ? this.selectedWeekStart.getUTCDay() || 7 : 1
       return Array.from({ length: 7 }, (_, i) => {
-        const weekday = i + 1
+        const weekday = (firstWeekday - 1 + i) % 7 + 1
         // Teaching weeks follow the canonical term start, which need not be a Monday.
         if (!this.selectedWeekStart) return { weekday }
         const offset = (weekday - (this.selectedWeekStart.getUTCDay() || 7) + 7) % 7
@@ -276,11 +277,11 @@ export default {
         this.teachingWeeks = data && data.teachingWeeks != null ? Number(data.teachingWeeks) : null
         this.termCode = (data && data.termCode) || ''
         this.termStartDate = (data && data.termStartDate) || ''
+        this.selectedWeek = Number.isInteger(returnedWeek) ? returnedWeek : 0
         if (!this._selectionInitialized) {
-          this.selectedWeek = Number.isInteger(returnedWeek) ? returnedWeek : 0
           this.selectedDay = this.todayWeekday || 1
           this._selectionInitialized = true
-        } else if (this.selectedWeek > this.maxWeek || this.selectedWeek < 1) this.selectedWeek = Number.isInteger(returnedWeek) ? returnedWeek : 0
+        }
         if (this.targetLessonId) this.focusDeepLink()
         else if (selectedLessonId) {
           const rows = selectedLessonWasToday ? this.todayItems : this.items

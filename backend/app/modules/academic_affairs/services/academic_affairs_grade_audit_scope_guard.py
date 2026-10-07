@@ -27,6 +27,16 @@ def list_grade_audit(user, biz_type=None, page=1, page_size=50):
     with _core.session() as db:
         from .academic_affairs_grade_task_read_service import _base_query, _scope_conditions
 
+        college_context = None
+        if role == "COLLEGE_ADMIN":
+            from app.core.affairs_security import build_affairs_context
+
+            college_context = build_affairs_context(user, db)
+            if college_context.scope_type not in {"COLLEGE", "TENANT_ALL"}:
+                return [], 0
+            if college_context.scope_type == "COLLEGE" and not college_context.college_ids:
+                return [], 0
+
         task_ids = _base_query().with_only_columns(AaGradeTask.id).where(*_scope_conditions(db, user))
         record_ids = select(AaGradeRecord.id).where(
             AaGradeRecord.tenant_id == _core._tid(), AaGradeRecord.is_deleted.is_(False),
@@ -37,15 +47,14 @@ def list_grade_audit(user, biz_type=None, page=1, page_size=50):
             and_(AffairsAuditTrail.biz_type == "AA_GRADE_RECORD", AffairsAuditTrail.biz_id.in_(record_ids)),
         ]
         if role == "COLLEGE_ADMIN":
-            from app.core.affairs_security import build_affairs_context
             from app.models import StudentProfile
 
-            allowed = build_affairs_context(user, db).allowed_class_ids(db)
+            allowed = college_context.allowed_class_ids(db)
             students = select(StudentProfile.id).where(
                 StudentProfile.tenant_id == _core._tid(), StudentProfile.is_deleted.is_(False),
             )
             if allowed is not None:
-                students = students.where(StudentProfile.class_id.in_(list(allowed) or [-1]))
+                students = students.where(StudentProfile.class_id.in_(sorted(allowed) or [-1]))
             object_scope.append(and_(AffairsAuditTrail.biz_type == "AA_GRADE_TRANSCRIPT",
                                      AffairsAuditTrail.biz_id.in_(students)))
         conditions = [

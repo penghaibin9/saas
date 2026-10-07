@@ -31,7 +31,7 @@ def _compiled_integrity_probe(monkeypatch, college_id=17):
     service = _service()
     monkeypatch.setattr(service, "_tid", lambda: 1000000000000000001)
     statement = service._college_editable_batch_integrity_statement(
-        SimpleNamespace(id=8801, college_id=college_id)
+        SimpleNamespace(id=8801, college_id=college_id, term_id=202601)
     )
     return str(statement.compile(
         dialect=mysql.dialect(),
@@ -90,16 +90,17 @@ def test_generate_batch_tx_uses_exact_editable_scope_and_bounded_conflict_probe(
     assert "_draft_batch_conditions" not in source
 
 
-def test_college_editable_integrity_probe_is_one_bounded_task_class_major_query(monkeypatch):
+def test_college_editable_integrity_checks_course_and_formation_not_student_college(monkeypatch):
     sql = _compiled_integrity_probe(monkeypatch)
     assert "FROM t_aa_teaching_task" in sql
     assert "LEFT OUTER JOIN t_class" in sql
-    assert "LEFT OUTER JOIN t_major" in sql
+    assert "LEFT OUTER JOIN t_aa_course" in sql
     assert "t_aa_teaching_task.batch_id = 8801" in sql
     assert "t_aa_teaching_task.class_id IS NULL" in sql
     assert "t_class.id IS NULL" in sql
-    assert "t_major.id IS NULL" in sql
-    assert "t_major.college_id != 17" in sql
+    assert "t_aa_course.id IS NULL" in sql
+    assert "t_major" not in sql
+    assert "t_aa_teaching_class.teaching_task_id = t_aa_teaching_task.id" in sql
     assert "LIMIT 21" in sql
     assert "t_student_profile" not in sql
     assert "t_aa_teaching_class_member" not in sql
@@ -129,7 +130,7 @@ def test_college_editable_integrity_fails_closed_with_bounded_task_samples(monke
     service = _service()
     monkeypatch.setattr(service, "_tid", lambda: 1000000000000000001)
     db = _Db(range(1001, 1023))
-    batch = SimpleNamespace(id=8801, college_id=17)
+    batch = SimpleNamespace(id=8801, college_id=17, term_id=202601)
 
     with pytest.raises(AppException) as exc:
         service._guard_college_editable_batch_integrity(db, batch)
@@ -160,4 +161,4 @@ def test_generate_batch_checks_existing_college_editable_batch_before_appending(
     source = inspect.getsource(_service().generate_batch_tx)
     guard = "_guard_college_editable_batch_integrity(db, batch)"
     assert guard in source
-    assert source.index(guard) < source.index("if not batch:")
+    assert source.index(guard) < source.index("if batch is None:")

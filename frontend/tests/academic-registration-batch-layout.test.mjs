@@ -19,7 +19,7 @@ const plain = (props, { slots }) => h('span', slots.default?.())
 const components = {
   ModulePageShell: wrapper, AppSectionCard: wrapper, AppInlineAlert: plain, AppStatusTag: plain,
   AppButton: (props, { slots }) => h('button', slots.default?.()),
-  AppSelect: () => h('select'), AppConfirmDialog: () => null, AppDateRangePicker: () => null,
+  AppSelect: () => h('select'), AppTermEntityPicker: () => h('select'), AppConfirmDialog: () => null, AppDateRangePicker: () => null,
   ErrorState: { props: ['description'], render() { return h('p', this.description) } },
   LoadingState: () => h('p', '正在读取'), EmptyState: { props: ['title', 'description'], render() { return h('p', `${this.title} ${this.description}`) } },
   AppStepBar: { props: ['steps'], render() { return h('ol', this.steps.map(step => h('li', step.title))) } },

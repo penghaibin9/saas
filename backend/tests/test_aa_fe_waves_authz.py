@@ -45,4 +45,4 @@ def test_w5_grade_graduation_student_403(client, db_mode):
     assert client.post(f"{BASE}/warnings/scan", headers=hdr).status_code == 403
     assert client.get(f"{BASE}/warnings", headers=hdr).status_code == 403
     assert client.post(f"{BASE}/graduation-audit-batches", headers=hdr,
-                       json={"batchName": "X"}).status_code == 403
+                       json={"batchName": "X", "termId": "1"}).status_code == 403

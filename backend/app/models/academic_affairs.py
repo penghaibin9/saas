@@ -12,7 +12,8 @@ from sqlalchemy import (BigInteger, Boolean, CheckConstraint, DateTime, Index, I
                         Text, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
+from app.models.base import AuditTimeMixin, Base, CommonMixin, PKMixin, TenantMixin
+from app.core.timeutil import utc_now_naive
 
 
 class AaTerm(PKMixin, TenantMixin, CommonMixin, Base):
@@ -230,6 +231,39 @@ class AaProgramCourse(PKMixin, TenantMixin, CommonMixin, Base):
     )
 
 
+class AaProgramCourseFormationProof(PKMixin, TenantMixin, AuditTimeMixin, Base):
+    """已发布历史方案课程的追加证据；不覆盖原课程或教学任务快照。"""
+    __tablename__ = "t_aa_program_course_formation_proof"
+
+    program_course_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    program_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    course_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    open_term_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    credit_snapshot: Mapped[float] = mapped_column(Numeric(4, 1), nullable=False)
+    original_formation_mode: Mapped[str | None] = mapped_column(String(20))
+    formation_mode: Mapped[str] = mapped_column(String(20), nullable=False)
+    source_fingerprint: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_file_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    evidence_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    evidence_locator: Mapped[str] = mapped_column(String(300), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    confirmed_by: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    confirmed_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=utc_now_naive)
+    idempotency_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "program_course_id", name="uk_aa_formation_proof_source"),
+        UniqueConstraint("tenant_id", "idempotency_key", name="uk_aa_formation_proof_idem"),
+        CheckConstraint(
+            "formation_mode IN ('ADMIN_FIXED','SELECTABLE','MERGED','RETAKE','LAYERED')",
+            name="ck_aa_formation_proof_mode",
+        ),
+        CheckConstraint("open_term_no > 0 AND credit_snapshot >= 0", name="ck_aa_formation_proof_requirements"),
+        Index("ix_aa_formation_proof_program", "tenant_id", "program_id", "program_course_id"),
+    )
+
+
 class AaProgramBinding(PKMixin, TenantMixin, CommonMixin, Base):
     """方案-年级/班级绑定（历史年级锁旧版本）。ACTIVE/SUPERSEDED。"""
     __tablename__ = "t_aa_program_binding"
@@ -409,6 +443,7 @@ class AaTeachingTask(PKMixin, TenantMixin, CommonMixin, Base):
             "formation_mode IS NULL OR formation_mode IN ('ADMIN_FIXED','SELECTABLE','MERGED','RETAKE','LAYERED')",
             name="ck_aa_teaching_task_formation_mode",
         ),
+        Index("ix_aa_task_formation_source", "tenant_id", "source_program_course_id", "id"),
     )
 
 
@@ -624,11 +659,14 @@ class AaGraduationAuditBatch(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_aa_graduation_audit_batch"
 
     batch_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    term_id: Mapped[int | None] = mapped_column(BigInteger, comment="所属学期；历史批次未自动回填")
     grade_year: Mapped[str | None] = mapped_column(String(20), index=True, comment="毕业年级")
     major_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     scope_json: Mapped[str | None] = mapped_column(String(2000))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="DRAFT", index=True)
     generate_at: Mapped[datetime | None] = mapped_column(DateTime)
+
+    __table_args__ = (Index("ix_aa_grad_batch_tenant_term", "tenant_id", "term_id"),)
 
 
 class AaGraduationAuditResult(PKMixin, TenantMixin, CommonMixin, Base):

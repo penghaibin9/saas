@@ -1237,6 +1237,39 @@ def graduation_my(user: dict) -> dict:
                             "plagiarismRate": f.plagiarism_rate or "—"} for f in finals]}
 
 
+def graduation_journey(user: dict) -> dict:
+    """学生毕设办理进度 + 唯一“当前要做”（学生 PC 与小程序共用同一派生结果）。
+
+    各环节读取沿用本人视图函数（与 /mobile/graduation/* 同源）；单个环节读取失败时该环节按空视图处理，
+    并在 failedSections 中如实返回，不伪造状态。
+    """
+    from app.modules.graduation.services.graduation_student_journey import build_journey
+
+    my = graduation_my(user)
+    if not my.get("hasData"):
+        return build_journey(my=my)
+    parts: dict = {}
+    failed: list[str] = []
+    readers = {
+        "round_": graduation_active_round, "taskbook": graduation_taskbook,
+        "proposal": graduation_proposal, "midterm": graduation_midterm, "final": graduation_final,
+        "defense": graduation_defense, "grade": graduation_grade, "archive": graduation_archive,
+    }
+    for key, reader in readers.items():
+        try:
+            parts[key] = reader(user)
+        except AppException:
+            parts[key] = None
+            failed.append(key.rstrip("_"))
+    result = build_journey(my=my, **parts, failed=failed)
+    result["failedSections"] = failed
+    result["topicTitle"] = my.get("topicTitle") or ""
+    result["advisorName"] = my.get("advisorName") or ""
+    result["batchName"] = my.get("batchName") or ""
+    result["batchId"] = my.get("batchId") or ""
+    return result
+
+
 def _pick_latest_non_archived_gd(rows):
     """多批次边界：同一学生可有多条 t_gd_student。
 

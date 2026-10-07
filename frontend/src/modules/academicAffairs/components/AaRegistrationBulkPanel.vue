@@ -165,10 +165,10 @@
       <span>以下为正式命令的逐项回执；后续办理以重新读取的注册记录与当前状态为准。</span>
       <ul class="aa-bulk__receipt-list">
         <li v-for="item in result.items" :key="item.studentId">
-          <strong>学生 ID：{{ item.studentId }} · {{ item.ok ? '注册成功' : '未成功' }}</strong>
+          <strong>{{ receiptStudentLabel(item) }} · {{ item.ok ? '注册成功' : '未成功' }}</strong>
           <span>{{ item.message || item.reason || '回执未提供具体原因' }}</span>
-          <span v-if="item.registrationId">注册记录 ID：{{ item.registrationId }}</span>
           <span v-if="item.studentStatus">本次回执学籍状态：{{ academicStatusLabel(item.studentStatus) }}</span>
+          <details><summary>实施人员使用</summary><span>学生编号：{{ item.studentId }}</span><span v-if="item.registrationId"> · 注册记录编号：{{ item.registrationId }}</span></details>
         </li>
       </ul>
     </div>
@@ -242,6 +242,11 @@ export default {
   beforeUnmount() { this.disposed = true; this.requestVersion++; this.scopeVersion++ },
   methods: {
     academicStatusLabel,
+    receiptStudentLabel(item) {
+      const name = typeof item.realName === 'string' ? item.realName.trim() : ''
+      const no = typeof item.studentNo === 'string' ? item.studentNo.trim() : ''
+      return [name, no].filter(Boolean).join(' · ') || '学生信息待核对'
+    },
     pauseBatchWork() {
       this.scopeVersion++; this.requestVersion++; this.rows = []; this.total = 0; this.selectedIds = []
       this.preview = null; this.previewSignature = ''; this.previewing = false; this.reviewed = false; this.loading = false; this.error = ''
@@ -383,6 +388,9 @@ export default {
     async apply() {
       if (!this.canRegister || !this.previewCurrent || !this.reviewed || !this.preview.ready || this.applying || this.unknownReceipt) return
       const target = { batchId: String(this.batchId), token: this.preview.previewToken, context: this.contextKey, identity: this.identityKey, studentIds: [...this.selectedIds] }
+      const previewStudents = new Map((this.preview.items || []).map(item => [String(item.studentId), {
+        realName: item.realName, studentNo: item.studentNo
+      }]))
       this.applying = true
       this.preview = null; this.previewSignature = ''; this.reviewed = false; this.commandError = ''; this.result = null
       const res = await rosterRegistrationConvenienceApi.confirmBulkRegistration(target.batchId, target.token)
@@ -400,7 +408,7 @@ export default {
         return
       }
       if (!current) return
-      this.result = res.data
+      this.result = { ...res.data, items: res.data.items.map(item => ({ ...item, ...previewStudents.get(String(item.studentId)) })) }
       this.selectedIds = []
       if (res.data.failed) toast.info('处理完成：成功 ' + res.data.succeeded + ' 人，未成功 ' + res.data.failed + ' 人')
       else toast.success('已完成 ' + res.data.succeeded + ' 人注册')

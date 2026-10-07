@@ -8,7 +8,7 @@ import pytest
 
 def test_new_offering_gets_distinct_code_without_renaming_existing_class(client, db_mode, monkeypatch):
     from app.db.session import get_sessionmaker
-    from app.models import AaTerm, AaTeachingTaskBatch, AaTeachingTask
+    from app.models import AaTerm, AaTeachingTaskBatch, AaTeachingTask, AaProgram, AaProgramCourse, AaCourse
     from app.core.exceptions import AppException
     from app.modules.academic_affairs.services import academic_affairs_teaching_class_service as service
     from app.modules.academic_affairs.services import academic_affairs_grade_core_service as grade_core
@@ -21,9 +21,15 @@ def test_new_offering_gets_distinct_code_without_renaming_existing_class(client,
         db.add(term); db.flush()
         batch = AaTeachingTaskBatch(tenant_id=tid, term_id=term.id, batch_name='不同批次教学班编号验收')
         db.add(batch); db.flush()
-        code = f'TC{term.id}-OFFER-1'
-        tasks = [AaTeachingTask(tenant_id=tid, batch_id=batch.id, course_id=1, course_code='OFFER', class_id=1,
-                  source_program_course_id=1, teaching_class_code=code, formation_mode='ADMIN_FIXED', status='PENDING_ASSIGN') for _ in range(2)]
+        course = AaCourse(tenant_id=tid, course_code=f'OFFER-{term.id}', course_name='编号验收课程', status='ENABLED')
+        program = AaProgram(tenant_id=tid, major_id=1, grade_year='2026', program_name='编号验收方案', status='ENABLED')
+        db.add_all([course, program]); db.flush()
+        source = AaProgramCourse(tenant_id=tid, program_id=program.id, course_id=course.id,
+            course_name=course.course_name, open_term_no=1, credit_snapshot=2, formation_mode='ADMIN_FIXED')
+        db.add(source); db.flush()
+        code = f'TC{term.id}-{course.course_code}-1'
+        tasks = [AaTeachingTask(tenant_id=tid, batch_id=batch.id, course_id=course.id, course_code=course.course_code, class_id=1,
+                  source_program_course_id=source.id, teaching_class_code=code, formation_mode='ADMIN_FIXED', status='PENDING_ASSIGN') for _ in range(2)]
         db.add_all(tasks); db.flush()
         original = service.ensure_teaching_class_for_task(db, tasks[0].id, initialize_admin_roster=False)
         original_code = original.class_code

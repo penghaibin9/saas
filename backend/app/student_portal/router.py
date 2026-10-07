@@ -5,6 +5,8 @@
 """
 from __future__ import annotations
 
+from typing import Annotated
+
 from fastapi import APIRouter, Body, Depends, Query, Request
 
 from app.core.response import success
@@ -27,15 +29,16 @@ from app.student_portal.services import service_hall_service as service_hall
 router = APIRouter(prefix="/portal", tags=["学生PC门户"])
 
 
+# ── 毕业设计：办理进度与当前要做（与小程序同源派生） ──
+@router.get("/graduation/journey", summary="我的毕业设计办理进度与当前要做（本人）")
+def graduation_journey(user=Depends(get_current_user)):
+    return success(graduation.journey(user))
+
+
 # ── 毕业设计（第2期）：任务书 PC 电子确认 + 打印 ──
 @router.get("/graduation/taskbook", summary="查看本人毕设任务书（本人）")
 def graduation_taskbook(user=Depends(get_current_user)):
     return success(graduation.taskbook(user))
-
-
-@router.post("/graduation/taskbook/sign", summary="任务书电子确认（可靠留痕+置确认态）")
-def graduation_taskbook_sign(user=Depends(get_current_user), body: dict = Body(...)):
-    return success(graduation.taskbook_sign(user, body))
 
 
 @router.post("/graduation/taskbook/print", summary="任务书打印留痕（本人）")
@@ -100,8 +103,8 @@ def academic_transcript_print(user=Depends(get_current_user), body: dict = Body(
 
 
 @router.get("/academic/schedule", summary="我的课表（本人·最新已发布）")
-def academic_schedule(user=Depends(get_current_user)):
-    return success(academic.schedule(user))
+def academic_schedule(user=Depends(get_current_user), week: Annotated[int | None, Query(ge=1, le=99)] = None):
+    return success(academic.schedule(user, week))
 
 
 @router.post("/academic/schedule/print", summary="课表打印留痕（本人）")
@@ -219,8 +222,8 @@ def academic_registration_defer(batch_id: str, user=Depends(get_current_user), b
 
 
 @router.get("/academic/attendance", summary="我的课堂考勤（本人·只读）")
-def academic_attendance(user=Depends(get_current_user)):
-    return success(academic.attendance(user))
+def academic_attendance(user=Depends(get_current_user), session_id: int | None = Query(None, gt=0)):
+    return success(academic.attendance(user, session_id=session_id))
 
 
 @router.get("/academic/calendar", summary="当前学期校历（本人·只读）")

@@ -81,9 +81,13 @@ def _ensure_term():
 
 def _ensure_course():
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse
+    from app.models import AaCourse, College
 
     db = get_sessionmaker()()
+    college = db.query(College).filter(
+        College.tenant_id == TID, College.college_name == "成绩审核学院",
+        College.is_deleted.is_(False),
+    ).one()
     course = db.query(AaCourse).filter(
         AaCourse.tenant_id == TID,
         AaCourse.course_code == "RF101",
@@ -92,6 +96,7 @@ def _ensure_course():
     if not course:
         course = AaCourse(
             tenant_id=TID, course_code="RF101", course_name="大学物理",
+            owner_college_id=college.id,
             credit=3, nature="REQUIRED", category="MAJOR_CORE", status="ENABLED",
         )
         db.add(course); db.flush()
@@ -130,6 +135,7 @@ def _ensure_teaching_task():
     course = db.get(AaCourse, course_id)
     batch = AaTeachingTaskBatch(
         tenant_id=TID, term_id=term_id, batch_name="成绩审核教学任务批次", status="APPROVED",
+        college_id=course.owner_college_id,
     )
     db.add(batch); db.flush()
     task = AaTeachingTask(
@@ -166,20 +172,44 @@ def _task(client, hdr, usual=30, final=70):
 def test_rf1_return_resubmit_approve_publish(client, db_mode):
     sids = _seed(db_mode, 1)
     hdr = _hdr(client, "school_admin01")
+    college_hdr = _hdr(client, "college_admin01")
     tid = _task(client, hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
                json={"studentId": str(sids[0]), "usualScore": 70, "finalScore": 80})
     assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr).status_code == 200
-    ret = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr,
+    ret = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=college_hdr,
                       json={"action": "RETURN", "reason": "分数需复核确认"})
     assert ret.status_code == 200 and ret.json()["data"]["status"] == "RETURNED"
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
                json={"studentId": str(sids[0]), "usualScore": 75, "finalScore": 80})
     assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr).status_code == 200
-    appr = college_approve_grade_task(client, BASE, tid, hdr)
+    appr = college_approve_grade_task(client, BASE, tid, college_hdr)
     assert appr.status_code == 200 and appr.json()["data"]["status"] == "ACADEMIC_REVIEW"
+    from app.db.session import get_sessionmaker
+    from app.models import AaGradeTask, User, WorkflowInstance, WorkflowTask
+    with get_sessionmaker()() as db:
+        task = db.get(AaGradeTask, int(tid))
+        returned_instance = task.workflow_instance_id
+    school_return = client.post(f"{BASE}/grade-tasks/{tid}/return", headers=hdr,
+                                json={"reason": "教务复核需要补充说明"})
+    assert school_return.status_code == 200, school_return.text
+    with get_sessionmaker()() as db:
+        assert db.get(WorkflowInstance, returned_instance).status == "RETURNED"
+        assert db.query(WorkflowTask).filter(
+            WorkflowTask.instance_id == returned_instance, WorkflowTask.status == "PENDING",
+        ).count() == 0
+    assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr).status_code == 200
+    assert college_approve_grade_task(client, BASE, tid, college_hdr).status_code == 200
     pub = client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
     assert pub.status_code == 200 and pub.json()["data"]["status"] == "PUBLISHED"
+    with get_sessionmaker()() as db:
+        task = db.get(AaGradeTask, int(tid))
+        assert db.get(WorkflowInstance, task.workflow_instance_id).status == "APPROVED"
+        assert db.query(WorkflowTask).filter(
+            WorkflowTask.instance_id == task.workflow_instance_id, WorkflowTask.status == "PENDING",
+        ).count() == 0
+        assert task.college_reviewer_id == db.query(User.id).filter(User.tenant_id == TID, User.login_name == "college_admin01").scalar()
+        assert task.academic_reviewer_id == db.query(User.id).filter(User.tenant_id == TID, User.login_name == "school_admin01").scalar()
 
 
 def test_rf2_return_reason_too_short_422(client, db_mode):
@@ -189,7 +219,7 @@ def test_rf2_return_reason_too_short_422(client, db_mode):
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
                json={"studentId": str(sids[0]), "usualScore": 70, "finalScore": 80})
     client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
-    r = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=hdr,
+    r = client.post(f"{BASE}/grade-tasks/{tid}/college-review", headers=_hdr(client, "college_admin01"),
                     json={"action": "RETURN", "reason": "短"})
     assert r.status_code in (400, 422)
 
@@ -213,7 +243,7 @@ def test_rf4_teacher_cannot_publish_even_with_wildcard_403(client, db_mode):
                           json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 80})
     assert entered.status_code == 200, entered.text
     assert client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=admin_hdr).status_code == 200
-    appr = college_approve_grade_task(client, BASE, tid, admin_hdr)
+    appr = college_approve_grade_task(client, BASE, tid, _hdr(client, "college_admin01"))
     assert appr.status_code == 200 and appr.json()["data"]["status"] == "ACADEMIC_REVIEW"
     assert client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=teacher_hdr).status_code == 403
     assert client.post(f"{BASE}/grade-tasks/{tid}/archive", headers=teacher_hdr).status_code == 403
@@ -226,7 +256,7 @@ def test_rf5_archived_change_request_409(client, db_mode):
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=hdr,
                json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 80})
     client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=hdr)
-    college_approve_grade_task(client, BASE, tid, hdr)
+    college_approve_grade_task(client, BASE, tid, _hdr(client, "college_admin01"))
     client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/archive", headers=hdr)
     from app.db.session import get_sessionmaker
@@ -255,7 +285,7 @@ def test_rf6_change_reject_keeps_original(client, db_mode):
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=school_hdr,
                json={"studentId": str(sids[0]), "usualScore": 80, "finalScore": 80})
     client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=school_hdr)
-    college_approve_grade_task(client, BASE, tid, school_hdr)
+    college_approve_grade_task(client, BASE, tid, college_hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=school_hdr)
     from app.db.session import get_sessionmaker
     from app.models import AaGradeRecord
@@ -295,7 +325,7 @@ def test_rf7_change_two_level_approve_new_value_applied(client, db_mode):
     client.post(f"{BASE}/grade-tasks/{tid}/scores", headers=school_hdr,
                json={"studentId": str(sids[0]), "usualScore": 60, "finalScore": 60})
     client.post(f"{BASE}/grade-tasks/{tid}/submit", headers=school_hdr)
-    college_approve_grade_task(client, BASE, tid, school_hdr)
+    college_approve_grade_task(client, BASE, tid, college_hdr)
     client.post(f"{BASE}/grade-tasks/{tid}/publish", headers=school_hdr)
     from app.db.session import get_sessionmaker
     from app.models import AaGradeRecord

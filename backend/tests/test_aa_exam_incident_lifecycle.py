@@ -141,6 +141,12 @@ def _seed(db_mode):
             risk_alert_sent=False,
             status="ACTIVE",
         )
+        from app.models import College
+        from tests.test_aa_exam import _seed_exam_review_identity
+        college = College(tenant_id=TID, college_name="考务异常责任回归学院", status="ACTIVE")
+        db.add(college)
+        db.flush()
+        _seed_exam_review_identity(db, college.id)
         db.add_all([absent, discipline, other])
         db.commit()
         return {

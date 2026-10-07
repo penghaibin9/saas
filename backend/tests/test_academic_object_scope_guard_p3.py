@@ -7,13 +7,16 @@ from types import SimpleNamespace
 import pytest
 
 from app.core.exceptions import AppException
+from app.core import affairs_security
 from app.modules.academic_affairs.services import academic_affairs_object_scope_guard as guard
+from app.modules.academic_affairs.services import academic_affairs_grade_correction_command as correction
 
 
 class _Scope:
-    def __init__(self, *, classes=None, colleges=None, deny_student=False):
+    def __init__(self, *, classes=None, colleges=None, deny_student=False, scope_type="COLLEGE"):
         self._classes = classes
         self.college_ids = set(colleges or [])
+        self.scope_type = scope_type
         self.deny_student = deny_student
         self.checked_student_id = None
 
@@ -75,19 +78,20 @@ def test_transcript_rejects_invalid_student_id(student_id):
     assert getattr(exc.value, "code", None) == "VALIDATION_ERROR"
 
 
-def test_college_task_with_class_must_be_in_allowed_classes(monkeypatch):
+def test_college_task_with_class_requires_matching_offering_college(monkeypatch):
     scope = _Scope(classes={10, 11}, colleges={3})
-    monkeypatch.setattr(guard, "build_affairs_context", lambda _user, _db: scope)
+    monkeypatch.setattr(affairs_security, "build_affairs_context", lambda _user, _db: scope)
+    monkeypatch.setattr(correction, "_task_college_id", lambda _db, task: task.offering_college_id)
 
     guard.strict_check_college_scope(
         object(),
-        SimpleNamespace(class_id=10),
+        SimpleNamespace(class_id=99, offering_college_id=3),
         {"currentRoleCode": "COLLEGE_ADMIN"},
     )
     with pytest.raises(AppException) as exc:
         guard.strict_check_college_scope(
             object(),
-            SimpleNamespace(class_id=99),
+            SimpleNamespace(class_id=10, offering_college_id=4),
             {"currentRoleCode": "COLLEGE_ADMIN"},
         )
     assert getattr(exc.value, "code", None) in {"NO_DATA_SCOPE", "NO_PERMISSION"}
@@ -95,8 +99,8 @@ def test_college_task_with_class_must_be_in_allowed_classes(monkeypatch):
 
 def test_classless_task_requires_matching_stable_college(monkeypatch):
     scope = _Scope(classes={10}, colleges={3})
-    monkeypatch.setattr(guard, "build_affairs_context", lambda _user, _db: scope)
-    monkeypatch.setattr(guard, "_resolve_target_college_ids", lambda _db, _task: {3})
+    monkeypatch.setattr(affairs_security, "build_affairs_context", lambda _user, _db: scope)
+    monkeypatch.setattr(correction, "_task_college_id", lambda _db, _task: 3)
 
     guard.strict_check_college_scope(
         object(),
@@ -107,29 +111,32 @@ def test_classless_task_requires_matching_stable_college(monkeypatch):
 
 def test_classless_task_without_or_outside_college_fails_closed(monkeypatch):
     scope = _Scope(classes={10}, colleges={3})
-    monkeypatch.setattr(guard, "build_affairs_context", lambda _user, _db: scope)
+    monkeypatch.setattr(affairs_security, "build_affairs_context", lambda _user, _db: scope)
 
-    monkeypatch.setattr(guard, "_resolve_target_college_ids", lambda _db, _task: set())
-    with pytest.raises(AppException):
+    monkeypatch.setattr(correction, "_task_college_id", lambda _db, _task: None)
+    with pytest.raises(AppException) as missing:
         guard.strict_check_college_scope(
             object(), SimpleNamespace(class_id=None),
             {"currentRoleCode": "COLLEGE_ADMIN"},
         )
 
-    monkeypatch.setattr(guard, "_resolve_target_college_ids", lambda _db, _task: {4})
-    with pytest.raises(AppException):
+    assert missing.value.code == "NO_DATA_SCOPE"
+    monkeypatch.setattr(correction, "_task_college_id", lambda _db, _task: 4)
+    with pytest.raises(AppException) as outside:
         guard.strict_check_college_scope(
             object(), SimpleNamespace(class_id=None),
             {"currentRoleCode": "COLLEGE_ADMIN"},
         )
+    assert outside.value.code == "NO_DATA_SCOPE"
 
 
 def test_tenant_review_roles_keep_explicit_full_school_scope(monkeypatch):
     monkeypatch.setattr(
-        guard,
+        affairs_security,
         "build_affairs_context",
-        lambda *_args, **_kwargs: pytest.fail("full-school reviewer should not resolve college scope"),
+        lambda *_args, **_kwargs: _Scope(scope_type="TENANT_ALL"),
     )
+    monkeypatch.setattr(correction, "_task_college_id", lambda *_: pytest.fail("学校范围无需学院对象解析"))
     guard.strict_check_college_scope(
         object(), SimpleNamespace(class_id=None),
         {"currentRoleCode": "ACADEMIC_ADMIN"},

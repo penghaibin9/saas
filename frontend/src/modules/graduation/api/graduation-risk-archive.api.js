@@ -135,7 +135,7 @@ export const graduationRiskArchiveApi = {
   async previewBatchGenerate(params = {}) {
     const scoped = withBatch(params)
     try {
-      const data = await request(`${ARCHIVE}/batch-generate/preview`, { method: 'POST', params: scoped })
+      const data = await request(`${ARCHIVE}/batch-generate/preview`, { method: 'POST', params: scoped, timeoutMs: BATCH_FILE_TIMEOUT_MS })
       rememberPreview('GENERATE', scoped, data)
       return ok(data)
     } catch (e) { return toErr(e) }
@@ -145,13 +145,13 @@ export const graduationRiskArchiveApi = {
     const preview = consumePreview('GENERATE', scoped, body)
     if (!preview.previewToken) return fail('归档预览执行凭证不存在或已消费，请重新预览', 409)
     try {
-      return ok(await request(`${ARCHIVE}/batch-generate`, { method: 'POST', params: scoped, body: { ...body, previewToken: preview.previewToken } }))
+      return ok(await request(`${ARCHIVE}/batch-generate`, { method: 'POST', params: scoped, timeoutMs: BATCH_FILE_TIMEOUT_MS, body: { ...body, previewToken: preview.previewToken } }))
     } catch (e) { return toErr(e) }
   },
   async previewBatchFile(params = {}, body = {}) {
     const scoped = withBatch(params)
     try {
-      const data = await request(`${ARCHIVE}/batch-file/preview`, { method: 'POST', params: scoped, body: { archiveBatchNo: body.archiveBatchNo || undefined } })
+      const data = await request(`${ARCHIVE}/batch-file/preview`, { method: 'POST', params: scoped, timeoutMs: BATCH_FILE_TIMEOUT_MS, body: { archiveBatchNo: body.archiveBatchNo || undefined } })
       rememberPreview('FILE', scoped, data)
       return ok(data)
     } catch (e) { return toErr(e) }

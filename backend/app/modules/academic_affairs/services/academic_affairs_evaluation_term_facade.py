@@ -112,13 +112,16 @@ def generate_tasks(user, bid, teaching_task_ids, evaluator_type="STUDENT"):
         if batch.status != _legacy._B_DRAFT:
             raise _legacy._invalid("仅 DRAFT 批次可生成应评任务")
         count = 0
-        for teaching_task_id in [int(value) for value in teaching_task_ids if str(value).isdigit()]:
+        for teaching_task_id in sorted({int(value) for value in teaching_task_ids if str(value).isdigit()}):
             teaching_task = db.query(AaTeachingTask).filter(
                 AaTeachingTask.id == teaching_task_id,
                 AaTeachingTask.tenant_id == _legacy._tid(),
-            ).first()
+                AaTeachingTask.is_deleted.is_(False),
+            ).populate_existing().with_for_update().first()
             if not teaching_task:
                 continue
+            from .academic_affairs_task_execution_authority import require_independent_task
+            teaching_task = require_independent_task(db, teaching_task)
             duplicate = db.query(AaEvaluationTask).filter(
                 AaEvaluationTask.tenant_id == _legacy._tid(),
                 AaEvaluationTask.batch_id == batch.id,
@@ -157,7 +160,10 @@ def generate_role_tasks(user, bid, evaluator_type, assignments):
         if batch.status != _legacy._B_DRAFT:
             raise _legacy._invalid("仅 DRAFT 批次可生成应评任务")
         count = 0
-        for assignment in assignments or []:
+        def task_order(assignment):
+            value = assignment.get("teachingTaskId") if isinstance(assignment, dict) else getattr(assignment, "teachingTaskId", None)
+            return int(value) if str(value).isdigit() else 0
+        for assignment in sorted(assignments or [], key=task_order):
             teaching_task_id = (
                 assignment.get("teachingTaskId")
                 if isinstance(assignment, dict)
@@ -169,9 +175,12 @@ def generate_role_tasks(user, bid, evaluator_type, assignments):
             teaching_task = db.query(AaTeachingTask).filter(
                 AaTeachingTask.id == teaching_task_id,
                 AaTeachingTask.tenant_id == _legacy._tid(),
-            ).first()
+                AaTeachingTask.is_deleted.is_(False),
+            ).populate_existing().with_for_update().first()
             if not teaching_task:
                 continue
+            from .academic_affairs_task_execution_authority import require_independent_task
+            teaching_task = require_independent_task(db, teaching_task)
             evaluator_key = (
                 assignment.get("evaluatorKey")
                 if isinstance(assignment, dict)

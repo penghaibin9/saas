@@ -6,12 +6,79 @@ GraduationEvaluationRun，review_note 只做审核留痕，不能充当毕业 Ov
 """
 from __future__ import annotations
 
-import hashlib
 import json
+from datetime import datetime
+from types import SimpleNamespace
+
+import pytest
 
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 _REVIEW_NOTE = "已完成人工核验并留存学院初审意见"
+
+
+@pytest.mark.parametrize("status,result,label", [
+    ("NORMAL", "PASS", "正常"),
+    ("REGISTERED", "PASS", "在籍注册"),
+    ("RETAINED", "PASS", "留级"),
+    ("SUSPENDED", "FAIL", "休学"),
+    ("WITHDRAWN", "FAIL", "退学"),
+    ("GRADUATED", "FAIL", "毕业"),
+    ("UNRECOGNIZED_INTERNAL_STATUS", "FAIL", "未明确，请核对学籍档案"),
+    (None, "PASS", "未明确，请核对学籍档案"),
+    ("", "PASS", "未明确，请核对学籍档案"),
+])
+def test_status_evidence_uses_chinese_without_changing_decision(status, result, label):
+    from app.modules.academic_affairs.services.academic_affairs_graduation_service import _check_status
+
+    assert _check_status(None, SimpleNamespace(student_status=status)) == {
+        "item": "STATUS", "result": result, "owner": "COLLEGE_STAFF",
+        "evidence": f"学籍状态：{label}",
+    }
+
+
+@pytest.mark.parametrize("shape", ["list", "legacy_map", "wrapped_list"])
+@pytest.mark.parametrize("status,label", [
+    ("REGISTERED", "在籍注册"),
+    ("UNRECOGNIZED_INTERNAL_STATUS", "未明确，请核对学籍档案"),
+])
+def test_result_localizes_legacy_status_only_in_read_projection(shape, status, label):
+    from app.modules.academic_affairs.services.academic_affairs_graduation_service import _row
+
+    evidence = {"item": "STATUS", "result": "PASS", "owner": "COLLEGE_STAFF",
+                "evidence": f"student_status={status}", "evidenceHash": "saved-evidence-hash",
+                "checkedAt": "2026-10-02T12:00:00", "facts": {"evidence": f"student_status={status}"}}
+    if shape == "legacy_map":
+        payload = {"STATUS": {key: value for key, value in evidence.items() if key != "item"}}
+    elif shape == "wrapped_list":
+        payload = {"items": [evidence]}
+    else:
+        payload = [evidence]
+    saved = json.dumps(payload, ensure_ascii=False)
+    row = SimpleNamespace(id=1, batch_id=2, student_id=3, overall="SYSTEM_PASSED",
+                          conclusion=None, status="ACADEMIC_REVIEW", rerun_count=1,
+                          review_note="原学院初审意见", item_results_json=saved)
+
+    output = _row(row)
+
+    assert output["items"] == [{**evidence, "evidence": f"学籍状态：{label}"}]
+    assert row.item_results_json == saved
+    assert output["overall"] == "SYSTEM_PASSED"
+    assert output["status"] == "ACADEMIC_REVIEW"
+    assert output["reviewNote"] == "原学院初审意见"
+
+
+def test_result_preserves_chinese_status_and_unrelated_evidence():
+    from app.modules.academic_affairs.services.academic_affairs_graduation_service import _row
+
+    items = [{"item": "STATUS", "result": "FAIL", "evidence": "学籍状态：休学"},
+             {"item": "CREDIT", "result": "UNKNOWN", "evidence": "student_status=REGISTERED"}]
+    row = SimpleNamespace(id=1, batch_id=2, student_id=3, overall="SYSTEM_ABNORMAL",
+                          conclusion=None, status="SYSTEM_ABNORMAL", rerun_count=1,
+                          review_note=None, item_results_json=items)
+
+    assert _row(row)["items"] == items
+    assert row.item_results_json == items
 
 
 def test_legacy_item_evidence_map_is_normalized_for_list_and_filter_reads():
@@ -37,28 +104,150 @@ def _hdr(client, login_name):
 
 def _seed(db_mode, status="REGISTERED"):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile
+    from app.models import AaTerm, SchoolClass, StudentProfile
     db = get_sessionmaker()()
+    from tests.support_graduation_review_identity import seed_graduation_review_identity
+    college = seed_graduation_review_identity(db)
     a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2301", grade="2023", status="ACTIVE")
     db.add(a); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="GR001", real_name="毕业甲", class_id=a.id, grade="2023",
-                       major_id=1, current_stage="ON_CAMPUS", student_status=status, status="ACTIVE")
+                       major_id=1, college_id=college.id, current_stage="ON_CAMPUS", student_status=status, status="ACTIVE")
     db.add(s); db.flush()
-    ids = {"s": s.id}
+    term = AaTerm(tenant_id=TID, year_code="2025-2026", term_no=2,
+                  term_name="毕业审核测试学期", start_date=datetime(2026, 2, 1),
+                  end_date=datetime(2026, 7, 31), status="PUBLISHED")
+    db.add(term); db.flush()
+    ids = {"s": s.id, "term": term.id}
     db.commit()
     db.close()
     return ids
 
 
-def _batch(client, hdr):
-    return client.post(f"{BASE}/graduation-audit-batches", headers=hdr, json={
-        "batchName": "2023届毕业预审", "gradeYear": "2023"}).json()["data"]["batchId"]
+def _batch(client, hdr, term_id):
+    response = client.post(f"{BASE}/graduation-audit-batches", headers=hdr, json={
+        "batchName": "2023届毕业预审", "gradeYear": "2023", "termId": str(term_id)})
+    assert response.status_code == 200, response.text
+    return response.json()["data"]["batchId"]
 
 
 def _gen_precheck(client, hdr, bid, sid):
     client.post(f"{BASE}/graduation-audit-batches/{bid}/generate", headers=hdr,
                 json={"studentIds": [str(sid)]})
     return client.post(f"{BASE}/graduation-audit-batches/{bid}/precheck", headers=hdr).json()["data"]
+
+
+@pytest.mark.parametrize("open_status", [None, "ACADEMIC_REVIEW"])
+def test_graduation_archive_counts_flushed_results_before_closing_batch(client, db_mode, open_status):
+    """归档后立即查询须消费本事务的新状态，未办结果仍阻止关闭批次。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, AffairsAuditTrail, StudentProfile
+
+    ids = _seed(db_mode)
+    headers = _hdr(client, "school_admin01")
+    batch_id = int(_batch(client, headers, ids["term"]))
+    statuses = ["GRADUATED", "COMPLETED", "ARCHIVED", "DELAYED", "REJECTED"]
+    if open_status:
+        statuses.append(open_status)
+    with get_sessionmaker()() as db:
+        assert db.autoflush is False
+        for index, status in enumerate(statuses):
+            student = StudentProfile(
+                tenant_id=TID, student_no=f"GRARCH{index}", real_name=f"归档测试学生{index}",
+                current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE",
+            )
+            db.add(student); db.flush()
+            db.add(AaGraduationAuditResult(
+                tenant_id=TID, batch_id=batch_id, student_id=student.id, status=status,
+                overall="SYSTEM_PASSED", item_results_json="[]",
+            ))
+        db.commit()
+
+    response = client.post(f"{BASE}/graduation-audit-batches/{batch_id}/archive", headers=headers)
+    assert response.status_code == 200, response.text
+    receipt = response.json()["data"]
+    closed = open_status is None
+    assert receipt["archived"] == 2
+    assert receipt["batchClosed"] is closed
+    assert receipt["batchStatus"] == ("ARCHIVED" if closed else "DRAFT")
+    with get_sessionmaker()() as db:
+        assert db.get(AaGraduationAuditBatch, batch_id).status == receipt["batchStatus"]
+        rows = db.query(AaGraduationAuditResult).filter_by(tenant_id=TID, batch_id=batch_id).all()
+        assert sorted(row.status for row in rows) == sorted([
+            "ARCHIVED", "ARCHIVED", "ARCHIVED", "DELAYED", "REJECTED",
+        ] + ([open_status] if open_status else []))
+        assert db.query(AffairsAuditTrail).filter_by(
+            tenant_id=TID, biz_id=batch_id, biz_type="AA_GRAD_AUDIT", action="ARCHIVE",
+        ).count() == 1
+    repeated = client.post(f"{BASE}/graduation-audit-batches/{batch_id}/archive", headers=headers)
+    assert repeated.status_code == 409, repeated.text
+    with get_sessionmaker()() as db:
+        assert db.query(AffairsAuditTrail).filter_by(
+            tenant_id=TID, biz_id=batch_id, biz_type="AA_GRAD_AUDIT", action="ARCHIVE",
+        ).count() == 1
+
+
+def test_graduation_archive_without_final_results_is_rejected(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaGraduationAuditBatch, AffairsAuditTrail
+
+    ids = _seed(db_mode)
+    headers = _hdr(client, "school_admin01")
+    batch_id = int(_batch(client, headers, ids["term"]))
+    response = client.post(f"{BASE}/graduation-audit-batches/{batch_id}/archive", headers=headers)
+    assert response.status_code == 400, response.text
+    with get_sessionmaker()() as db:
+        assert db.get(AaGraduationAuditBatch, batch_id).status == "DRAFT"
+        assert db.query(AffairsAuditTrail).filter_by(
+            tenant_id=TID, biz_id=batch_id, biz_type="AA_GRAD_AUDIT", action="ARCHIVE",
+        ).count() == 0
+
+
+@pytest.mark.parametrize("open_status", [None, "ACADEMIC_REVIEW"])
+def test_graduation_archive_closes_only_fully_archived_historical_batch(client, db_mode, open_status):
+    from app.db.session import get_sessionmaker
+    from app.models import AaGraduationAuditBatch, AaGraduationAuditResult, AffairsAuditTrail
+
+    ids = _seed(db_mode)
+    headers = _hdr(client, "school_admin01")
+    batch_id = int(_batch(client, headers, ids["term"]))
+    with get_sessionmaker()() as db:
+        db.get(AaGraduationAuditBatch, batch_id).status = "PRECHECKED"
+        result = AaGraduationAuditResult(
+            tenant_id=TID, batch_id=batch_id, student_id=ids["s"], status="ARCHIVED",
+            conclusion="GRADUATED", overall="SYSTEM_PASSED", item_results_json="[]",
+        )
+        db.add(result)
+        if open_status:
+            from app.models import StudentProfile
+            student = StudentProfile(
+                tenant_id=TID, student_no="GRARCHOPEN", real_name="未办归档测试学生",
+                current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE",
+            )
+            db.add(student); db.flush()
+            db.add(AaGraduationAuditResult(
+                tenant_id=TID, batch_id=batch_id, student_id=student.id, status=open_status,
+                overall="SYSTEM_PASSED", item_results_json="[]",
+            ))
+        db.commit()
+        result_id = result.id
+    response = client.post(f"{BASE}/graduation-audit-batches/{batch_id}/archive", headers=headers)
+    assert response.status_code == (409 if open_status else 200), response.text
+    if not open_status:
+        assert response.json()["data"] == {
+            "batchId": str(batch_id), "archived": 0, "batchStatus": "ARCHIVED", "batchClosed": True,
+        }
+    with get_sessionmaker()() as db:
+        assert db.get(AaGraduationAuditBatch, batch_id).status == ("PRECHECKED" if open_status else "ARCHIVED")
+        stored = db.get(AaGraduationAuditResult, result_id)
+        assert (stored.status, stored.conclusion) == ("ARCHIVED", "GRADUATED")
+        audits = db.query(AffairsAuditTrail).filter_by(
+            tenant_id=TID, biz_id=batch_id, biz_type="AA_GRAD_AUDIT", action="ARCHIVE",
+        ).all()
+        assert len(audits) == (0 if open_status else 1)
+        if audits:
+            assert "收尾" in audits[0].detail and "archived=0" in audits[0].detail
+    repeated = client.post(f"{BASE}/graduation-audit-batches/{batch_id}/archive", headers=headers)
+    assert repeated.status_code == 409, repeated.text
 
 
 def _result_id(client, hdr, bid):
@@ -68,22 +257,23 @@ def _result_id(client, hdr, bid):
 def _approve_for_final(client, hdr, rid):
     resp = client.post(
         f"{BASE}/graduation-results/{rid}/college-review",
-        headers=hdr,
+        headers=_hdr(client, "college_admin01"),
         json={"action": "APPROVE", "note": _REVIEW_NOTE},
     )
     assert resp.status_code == 200, resp.text
     assert resp.json()["data"]["status"] == "ACADEMIC_REVIEW"
 
 
-def _append_formal_pass_fixture(rid, sid):
+def _append_formal_pass_fixture(rid, sid, monkeypatch):
     """Append a semantically consistent PASS run for tests that exercise final/read projections.
 
     The initial real precheck run remains immutable and abnormal. This helper models a later
     formal rerun after blockers were resolved by appending Run#N; it never overwrites history.
     """
     from app.db.session import get_sessionmaker
-    from app.models import AaGraduationAuditResult, GraduationEvaluationRun
+    from app.models import AaGraduationAuditResult, GraduationEvaluationRun, StudentProfile
     from app.modules.academic_affairs.services import academic_affairs_graduation_service as graduation_service
+    from app.modules.academic_affairs.services import academic_affairs_graduation_immutable_service as immutable
 
     db = get_sessionmaker()()
     try:
@@ -104,7 +294,15 @@ def _append_formal_pass_fixture(rid, sid):
             {"item": "FEE", "result": "UNKNOWN", "evidence": "财务未对接，本项不阻断"},
         ])
         payload = json.dumps(items, ensure_ascii=False, sort_keys=True)
-        marker = hashlib.sha256(f"D-W0:{rid}:{sid}:{run_no}".encode("utf-8")).hexdigest()
+        # 仅隔离跨域供数；正式身份事实解析及终审依据比较保持真实执行。
+        monkeypatch.setattr(graduation_service, "_run_items", lambda db, student: items)
+        from app.core.context import get_tenant, set_tenant
+        previous_tenant = get_tenant()
+        set_tenant(TID)
+        try:
+            evaluated = immutable.evaluate_student(db, db.get(StudentProfile, int(sid)))
+        finally:
+            set_tenant(previous_tenant)
         db.add(GraduationEvaluationRun(
             tenant_id=TID,
             batch_id=result.batch_id,
@@ -112,8 +310,8 @@ def _append_formal_pass_fixture(rid, sid):
             student_id=int(sid),
             run_no=run_no,
             program_id=previous.program_id,
-            input_snapshot_json=json.dumps({"contract": "D-W0", "resolved": True}, ensure_ascii=False),
-            input_hash=marker,
+            input_snapshot_json=json.dumps(evaluated["inputSnapshot"], ensure_ascii=False),
+            input_hash=evaluated["inputHash"],
             item_results_json=payload,
             overall="SYSTEM_PASSED",
             evaluator_version=previous.evaluator_version,
@@ -131,7 +329,7 @@ def test_gr1_precheck_passed(client, db_mode):
     """历史名称保留：验证 blocking UNKNOWN 仍进入正式异常队列。"""
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     r = _gen_precheck(client, hdr, bid, ids["s"])
     assert r["passed"] == 0 and r["abnormal"] == 1
     rid = _result_id(client, hdr, bid)
@@ -153,21 +351,22 @@ def test_gr1_precheck_passed(client, db_mode):
 def test_gr2_status_abnormal(client, db_mode):
     ids = _seed(db_mode, "SUSPENDED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     r = _gen_precheck(client, hdr, bid, ids["s"])
     assert r["abnormal"] == 1
     d = client.get(f"{BASE}/graduation-results/{_result_id(client, hdr, bid)}", headers=hdr).json()["data"]
     status_item = next(i for i in d["items"] if i["item"] == "STATUS")
     assert d["overall"] == "SYSTEM_ABNORMAL" and status_item["result"] == "FAIL"
+    assert status_item["evidence"] == "学籍状态：休学"
 
 
-def test_gr3_final_writes_status(client, db_mode):
+def test_gr3_final_writes_status(client, db_mode, monkeypatch):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
-    _append_formal_pass_fixture(rid, ids["s"])
+    _append_formal_pass_fixture(rid, ids["s"], monkeypatch)
     _approve_for_final(client, hdr, rid)
     final = client.post(f"{BASE}/graduation-results/{rid}/final", headers=hdr,
                         json={"conclusion": "GRADUATED", "confirm": True})
@@ -181,25 +380,25 @@ def test_gr3_final_writes_status(client, db_mode):
     db.close()
 
 
-def test_gr4_final_needs_confirm(client, db_mode):
+def test_gr4_final_needs_confirm(client, db_mode, monkeypatch):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
-    _append_formal_pass_fixture(rid, ids["s"])
+    _append_formal_pass_fixture(rid, ids["s"], monkeypatch)
     _approve_for_final(client, hdr, rid)
     assert client.post(f"{BASE}/graduation-results/{rid}/final", headers=hdr,
                        json={"conclusion": "GRADUATED", "confirm": False}).status_code == 409
 
 
-def test_gr5_rosters(client, db_mode):
+def test_gr5_rosters(client, db_mode, monkeypatch):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
-    _append_formal_pass_fixture(rid, ids["s"])
+    _append_formal_pass_fixture(rid, ids["s"], monkeypatch)
     _approve_for_final(client, hdr, rid)
     final = client.post(f"{BASE}/graduation-results/{rid}/final", headers=hdr,
                         json={"conclusion": "GRADUATED", "confirm": True})
@@ -211,21 +410,21 @@ def test_gr5_rosters(client, db_mode):
 def test_gr6_precheck_idempotent(client, db_mode):
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     client.post(f"{BASE}/graduation-audit-batches/{bid}/precheck", headers=hdr)
     d = client.get(f"{BASE}/graduation-results/{_result_id(client, hdr, bid)}", headers=hdr).json()["data"]
     assert d["rerunCount"] == 2
 
 
-def test_gr7_roster_org_names(client, db_mode):
+def test_gr7_roster_org_names(client, db_mode, monkeypatch):
     """毕业学生名单补全学号/学院/专业/班级，供 audit-console roster tab 使用。"""
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
-    _append_formal_pass_fixture(rid, ids["s"])
+    _append_formal_pass_fixture(rid, ids["s"], monkeypatch)
     _approve_for_final(client, hdr, rid)
     final = client.post(f"{BASE}/graduation-results/{rid}/final", headers=hdr,
                         json={"conclusion": "GRADUATED", "confirm": True})
@@ -241,13 +440,14 @@ def test_gr8_college_reject_reason_roundtrip(client, db_mode):
     """退回原因<5字→400；正式退回原因经列表与详情一致回传。"""
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     _gen_precheck(client, hdr, bid, ids["s"])
     rid = _result_id(client, hdr, bid)
-    bad = client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=hdr,
+    college_hdr = _hdr(client, "college_admin01")
+    bad = client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=college_hdr,
                       json={"action": "REJECT", "note": "太短"})
     assert bad.status_code == 400
-    ok = client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=hdr,
+    ok = client.post(f"{BASE}/graduation-results/{rid}/college-review", headers=college_hdr,
                      json={"action": "REJECT", "note": "材料不全，缺实习鉴定表"})
     assert ok.status_code == 200
     assert ok.json()["data"]["status"] == "REJECTED"
@@ -258,13 +458,28 @@ def test_gr8_college_reject_reason_roundtrip(client, db_mode):
     assert lst[0]["studentNo"] == "GR001"
     detail = client.get(f"{BASE}/graduation-results/{rid}", headers=hdr).json()["data"]
     assert detail["reviewNote"] == "材料不全，缺实习鉴定表"
+    assert detail["studentNo"] == lst[0]["studentNo"] == "GR001"
+    assert detail["realName"] == lst[0]["realName"] == "毕业甲"
+
+    from app.core.context import get_tenant, set_tenant
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services.academic_affairs_graduation_service import get_result
+    import pytest
+    previous_tenant = get_tenant()
+    try:
+        set_tenant(TID + 1)
+        with pytest.raises(AppException) as denied:
+            get_result(rid, {"tenantId": str(TID + 1), "currentRoleCode": "SCHOOL_ADMIN"})
+        assert denied.value.code == "DATA_NOT_FOUND"
+    finally:
+        set_tenant(previous_tenant)
 
 
 def test_gr9_fee_clearance_cannot_upgrade_other_unknowns(client, db_mode):
     """财务回填只解决 FEE；其它 blocking UNKNOWN 未解除时 projection 仍必须 fail-closed。"""
     ids = _seed(db_mode, "REGISTERED")
     hdr = _hdr(client, "school_admin01")
-    bid = _batch(client, hdr)
+    bid = _batch(client, hdr, ids["term"])
     precheck = _gen_precheck(client, hdr, bid, ids["s"])
     assert precheck["passed"] == 0 and precheck["abnormal"] == 1
 

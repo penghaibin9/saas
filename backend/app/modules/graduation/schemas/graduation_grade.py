@@ -12,6 +12,11 @@ class GradeCalculateRequest(BaseModel):
     defenseScore: Optional[int] = Field(None, ge=0, le=100)
 
 
+class AdvisorScoreRequest(BaseModel):
+    score: int = Field(..., ge=0, le=100, description="导师分，0-100 整数")
+    comment: Optional[str] = Field(None, max_length=500)
+
+
 class GradeReviewRequest(BaseModel):
     action: Literal["APPROVE", "RETURN"]
     comment: Optional[str] = None

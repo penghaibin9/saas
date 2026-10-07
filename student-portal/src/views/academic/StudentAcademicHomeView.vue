@@ -1,12 +1,13 @@
 <template>
   <div data-academic-page class="sp-page academic-prototype">
-    <AcademicPrototypeHeader title="学业总览" group="学业工作台" description="先处理今日需要你完成的事。" :term="todaySchedule.termCode" :loading="loading" @refresh="load" />
+    <AcademicPrototypeHeader title="学业总览" group="学业工作台" description="从具体事项核对当前进度和下一步。" :term="todaySchedule.termCode" :loading="loading" @refresh="load" />
     <StateBlock v-if="loading" type="loading" text="正在汇总教务任务…" />
     <section v-else-if="accessError" class="card pad" role="alert"><StateBlock type="error" :text="accessError" /><button class="btn" @click="load">重新核对权限</button></section>
     <div v-else class="stack">
       <div class="wide-action" :aria-label="headline">
-        <div class="row"><div class="iconbox"><AcademicPrototypeIcon name="graduation-cap" /></div><div><h2>{{ partialError ? '部分学业事项待重新核对' : tasks.length ? '今天有 ' + tasks.length + ' 类事项待办理' : '当前没有待办理的教务事项' }}</h2><p>从具体事项进入，办完后还能回到这里继续。</p></div></div>
-        <button class="btn primary" @click="go('/academic/selection')">打开网上选课</button>
+        <div class="row"><div class="iconbox"><AcademicPrototypeIcon name="graduation-cap" /></div><div><h2>{{ partialError ? '部分学业事项待重新核对' : tasks.length ? '有 ' + tasks.length + ' 类教务事项需处理' : '当前没有待办理的教务事项' }}</h2><p>从具体事项进入，办完后还能回到这里继续。</p></div></div>
+        <button v-if="tasks.length" class="btn primary" @click="go(tasks[0].route)">核对当前待办</button>
+        <button v-else-if="partialError" class="btn primary" @click="load">重新核对教务事项</button>
       </div>
       <div class="grid2">
         <section class="card">

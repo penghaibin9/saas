@@ -88,15 +88,16 @@
     </template>
 
     <template #footer>
-      <button type="button" class="mp-btn" :disabled="submitting" @click="cancel">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || loading" @click="submit">
+      <AppButton :disabled="submitting" @click="cancel">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting || loading" @click="submit">
         {{ submitting ? '保存中…' : editing ? '保存批次' : '创建批次' }}
-      </button>
+      </AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { ErrorState, LoadingState } from '@/components/business'
 import { AppDatePicker } from '@/components/common/date'
@@ -114,7 +115,7 @@ const freezeSnapshot = (value) => Object.freeze({ ...value })
 
 export default {
   name: 'GraduationBatchFormView',
-  components: { GraduationFormPageShell, AppDatePicker, ErrorState, LoadingState },
+  components: { AppButton, GraduationFormPageShell, AppDatePicker, ErrorState, LoadingState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return { editing: null, form: EMPTY_FORM(), formError: '', loading: false, loadError: '', submitting: false, commandSnapshot: null }

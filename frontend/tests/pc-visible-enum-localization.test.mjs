@@ -41,6 +41,7 @@ test('电脑端枚举标签不再以原始英文值作为字典兜底', () => {
 test('重点页面不再展示后端状态码和英文技术说明', () => {
   const checks = [
     ['modules/academicAffairs/views/ArchivePrecheckView.vue', /BLOCKED 是|UNKNOWN 是|PASS 表示|NOT_APPLICABLE 表示/],
+    ['modules/academicAffairs/views/AaSelectionArchiveView.vue', /UNKNOWN 域|LOCKED 状态|台账 Excel(?! 表格)/],
     ['modules/academicAffairs/views/AaScheduleMaintainView.vue', />\s*READY 教学任务|['"]READY 教学任务/],
     ['modules/academicAffairs/views/AaSelectionConsoleView.vue', /['"]READY 教学任务/],
     ['modules/system/views/SystemPlatformIntegrityView.vue', />\s*(?:Critical|High|Medium|Today New|7d Unresolved)\s*</],

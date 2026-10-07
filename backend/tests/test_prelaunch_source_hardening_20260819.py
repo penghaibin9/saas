@@ -11,7 +11,9 @@ from pathlib import Path
 
 from starlette.responses import Response
 
-from app.modules.graduation.routers import graduation_grade
+from app.modules.graduation.routers import graduation_sensitive_router
+from app.modules.graduation.services import graduation_grade_read_service
+from app.modules.graduation.services import graduation_grade_service
 from app.modules.internship.dependencies import enterprise_context
 from app.modules.internship.routers import internship_enterprise_browser_auth as enterprise_browser
 from app.modules.internship.routers import internship_match
@@ -94,9 +96,10 @@ def test_major_match_bulk_loads_and_indexes_eligibility_before_mutation():
 
 
 def test_graduation_public_grade_list_is_wired_to_existing_sql_reader():
-    source = inspect.getsource(graduation_grade.gd_grades)
-    assert "items, total = grade_read_svc.list_grades(" in source
-    assert "items, total = svc.list_grades(" not in source
+    # 旧 graduation_grade 路由已删除（从未生效）；唯一实现是批次安全 router 的 grade_list。
+    source = inspect.getsource(graduation_sensitive_router.grade_list)
+    assert "grade.list_grades(" in source
+    assert graduation_grade_service.list_grades is graduation_grade_read_service.list_grades
 
 
 def test_systemd_release_builds_serves_and_verifies_enterprise_portal():

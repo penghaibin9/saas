@@ -4,13 +4,15 @@ import fs from 'node:fs'
 import * as results from '../src/modules/academicAffairs/components/parallel-a/resultState.js'
 import * as tasks from '../src/modules/academicAffairs/components/parallel-a/taskFacts.js'
 import * as status from '../src/modules/academicAffairs/constants/teaching.js'
+import * as flow from '../src/modules/academicAffairs/config/academicFlowRegistry.js'
+import { academicIdentity } from '../src/modules/academicAffairs/academicFlowContext.js'
 
 function instance(file, deps = {}, options = {}) {
   const source = fs.readFileSync(new URL('../src/modules/academicAffairs/views/' + file + '.vue', import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
   const imports = [...script.matchAll(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm)]
   const names = imports.flatMap(([,binding]) => binding.trim().startsWith('{') ? binding.replace(/[{}]/g,'').split(',').map(x=>x.trim()).filter(Boolean) : [binding.trim()])
-  const defaults = { ...status, ...results, ...tasks, getPermissionPatterns:()=>['*'], matchPermission:(patterns,key)=>patterns.includes('*')||patterns.includes(key), toast:{success(){},error(){}}, ...deps, academicAffairsApi: { getCurrentTerm: async()=>({ code:0, data:{ termId:'a', termName:'当前学期' } }), ...(deps.academicAffairsApi || {}) } }
+  const defaults = { academicIdentity, currentUserFromToken:()=>({userId:"test-teacher",tenantId:"test-tenant"}), ...status, ...results, ...tasks, ...flow, getPermissionPatterns:()=>['*'], matchPermission:(patterns,key)=>patterns.includes('*')||patterns.includes(key), toast:{success(){},error(){}}, ...deps, academicAffairsApi: { getCurrentTerm: async()=>({ code:0, data:{ termId:'a', termName:'当前学期' } }), ...(deps.academicAffairsApi || {}) } }
   const clean = script.replace(/^import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*$/gm,'').replace('export default','return')
   const component = new Function(...names, clean)(...names.map(name=>defaults[name] ?? {}))
   const vm = { ...component.data(), selectedBatchId:'', ctx:{permissionPatterns:['*']}, $route:{params:{batchId:'a'},query:{teachingClassId:'a'},fullPath:'/admin/academic-affairs/teaching-tasks/a'}, $router:{push(){},replace:async()=>{}}, ...options }
@@ -37,6 +39,40 @@ test('教师确认页读取非空任务后提供可渲染的中文状态',async(
   assert.equal(vm.statusLabel('UNKNOWN'),'状态待核对')
 })
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}}
+
+test('学院确认后学校终审，刷新清除旧办理回执并显示当前就绪任务', async () => {
+  let writes = 0, formalStatus = 'DRAFT'
+  const vm = instance('AaTaskDetailView', {
+    teachingTaskWorkbenchApi: { getBatch: async () => ok({ batchId: 'a', status: formalStatus, actions: { canCollegeConfirm: formalStatus === 'DRAFT' } }) },
+    academicAffairsApi: {
+      collegeConfirmTaskBatch: async () => { writes++; formalStatus = 'COLLEGE_CONFIRMED'; return ok({}) },
+      getBatchTasks: async () => page([{ taskId: 'x', status: formalStatus === 'APPROVED' ? 'READY' : 'TEACHER_CONFIRMED' }])
+    }
+  })
+  vm.loading = false; vm.workbench = { batchId: 'a', status: 'DRAFT', actions: { canCollegeConfirm: true } }
+  await vm.collegeConfirm()
+  assert.equal(vm.receipt.pending, false); assert.match(vm.receipt.next, /终审/)
+  formalStatus = 'APPROVED'
+  await vm.load()
+  assert.equal(vm.workbench.status, 'APPROVED'); assert.equal(vm.rows[0].status, 'READY')
+  assert.equal(vm.receipt, null); assert.equal(writes, 1)
+})
+
+test('学院确认同轮回读已终审，下一步依据正式状态指向排课', async () => {
+  let writes = 0
+  const vm = instance('AaTaskDetailView', {
+    teachingTaskWorkbenchApi: { getBatch: async () => ok({ batchId: 'a', status: writes ? 'APPROVED' : 'DRAFT', actions: { canCollegeConfirm: !writes } }) },
+    academicAffairsApi: {
+      collegeConfirmTaskBatch: async () => { writes++; return ok({}) },
+      getBatchTasks: async () => page([{ taskId: 'x', status: 'READY' }])
+    }
+  })
+  vm.loading = false; vm.workbench = { batchId: 'a', status: 'DRAFT', actions: { canCollegeConfirm: true } }
+  await vm.collegeConfirm()
+  assert.equal(vm.pendingResult, null); assert.equal(vm.receipt.pending, false)
+  assert.match(vm.receipt.next, /进入排课/); assert.doesNotMatch(vm.receipt.next, /终审/)
+  assert.equal(writes, 1)
+})
 
 test('T08 identity switch during batch precheck prevents command under the new identity',async()=>{
   const response=deferred();let writes=0
@@ -276,12 +312,14 @@ test('T08 differently versioned same-name courses cannot merge',()=>{
 })
 test('T08 selected tasks no longer eligible on fresh read never issue merge POST',async()=>{
   let writes=0
-  const vm=instance('AaTaskMergeSplitView',{academicAffairsApi:{listAllTasks:async()=>page([{taskId:'1',batchId:'b',courseId:'v',status:'TEACHER_CONFIRMED'}]),mergeTasks:async()=>{writes++}}})
+  const vm=instance('AaTaskMergeSplitView',{teachingTaskWorkbenchApi:{getBatch:async()=>ok({batchId:'b',actions:{canAdjust:true,canEditComposition:true}})},academicAffairsApi:{listAllTasks:async()=>page([{taskId:'1',batchId:'b',courseId:'v',status:'TEACHER_CONFIRMED'}]),mergeTasks:async()=>{writes++}}})
+  vm.ctx={permissionPatterns:['*'],dataScope:{scope:'COLLEGE'}};vm.batchWorkbench={batchId:'b',actions:{canAdjust:true,canEditComposition:true}}
   vm.loading=false;vm.all=[{taskId:'1',batchId:'b',courseId:'v',status:'ASSIGNED'},{taskId:'2',batchId:'b',courseId:'v',status:'ASSIGNED'}];vm.selected=['1','2'];vm.mergeDialog.note='保留合班备注'
   await vm.doMerge();assert.equal(writes,0);assert.equal(vm.mergeDialog.note,'保留合班备注');assert.equal(vm.receipt.pending,true)
 })
 test('T08 adjustment readback must match submitted field values',async()=>{
-  const vm=instance('AaTaskAdjustView',{academicAffairsApi:{adjustTask:async()=>ok({}),getBatchTasks:async()=>page([{taskId:'x',teacherKey:'old',status:'READY'}]),listAllTasks:async()=>page([])}})
+  const vm=instance('AaTaskAdjustView',{teachingTaskWorkbenchApi:{getBatch:async()=>ok({batchId:'b',actions:{canAdjust:true,canEditComposition:true}})},academicAffairsApi:{adjustTask:async()=>ok({}),getBatchTasks:async()=>page([{taskId:'x',teacherKey:'old',status:'READY'}]),listAllTasks:async()=>page([])}})
+  vm.ctx={permissionPatterns:['*'],dataScope:{scope:'COLLEGE'}};vm.batchWorkbench={batchId:'b',actions:{canAdjust:true,canEditComposition:true}}
   vm.adjust={taskId:'x',batchId:'b',teacherName:'新教师',teacherKey:'new',reason:'调整教师原因不少于五字'}
   await vm.doAdjust();assert.equal(vm.receipt.pending,true)
 })
@@ -518,4 +556,31 @@ for(const change of [{reviewedAt:'2026-09-08T08:01:00Z'},{reviewedBy:'someone-el
   const vm=instance('AaWorkloadReviewView',{academicAffairsApi:{getWorkloadDeclarations:async()=>page([writes?{...formal,...change}:row]),reviewWorkloadDeclaration:async()=>{writes++;return ok(formal)}}})
   vm.loading=false;await vm.submitReview(row,'APPROVE','');await vm.submitReview(row,'APPROVE','')
   assert.equal(writes,1);assert.ok(vm.pending);assert.equal(vm.receipt.pending,true)
+})
+
+test('仅草稿批次中未分配的任务显示作废动作',()=>{
+  const vm=instance('AaTaskDetailView')
+  vm.workbench={status:'DRAFT',actions:{canAssign:true}}
+  assert.equal(vm.canVoidDraftRow({status:'PENDING_ASSIGN',teacherKey:''}),true)
+  assert.equal(vm.canVoidDraftRow({status:'ASSIGNED',teacherKey:'teacher-b'}),false)
+  vm.workbench.status='APPROVED'
+  assert.equal(vm.canVoidDraftRow({status:'PENDING_ASSIGN',teacherKey:''}),false)
+})
+
+test('作废草稿命令从正式批次回读确认任务已移除',async()=>{
+  const calls=[]
+  const vm=instance('AaTaskDetailView',{
+    teachingTaskWorkbenchApi:{getBatch:async id=>ok({batchId:id,status:'DRAFT',actions:{canAssign:true}})},
+    academicAffairsApi:{
+      voidDraftTeachingTask:async(id,reason)=>{calls.push(['VOID',id,reason]);return ok({isDeleted:true,status:'VOIDED'})},
+      getBatchTasks:async(id,params)=>{calls.push(['READ',id,params.taskId]);return page([])}
+    }
+  })
+  vm.loading=false;vm.workbench={batchId:'a',status:'DRAFT',actions:{canAssign:true}}
+  vm.rows=[{taskId:'44',status:'PENDING_ASSIGN',teacherKey:''}]
+  vm.voidDraft={visible:true,submitting:false,invalid:false,taskId:'44',courseName:'重复课程',teachingClassCode:'TC1-X-1',reason:'确认是同课程同班重复草稿'}
+  await vm.doVoidDraft()
+  assert.equal(calls[0][0],'VOID');assert.equal(calls[0][1],'44')
+  assert.equal(calls.filter(x=>x[0]==='READ').length,2)
+  assert.equal(vm.pendingResult,null);assert.equal(vm.receipt.status,'草稿任务已从正式列表移除')
 })

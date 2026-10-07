@@ -86,6 +86,7 @@
     "graduationDesign.grade.appealReview",
     "graduationDesign.grade.calculate",
     "graduationDesign.grade.withdraw",
+    "graduationDesign.grade.advisorScore",
     "graduationDesign.guidance.create",
     "graduationDesign.guidance.update",
     "graduationDesign.guide.manage",

@@ -9,8 +9,8 @@
       <div class="mp-toolbar-row">
         <input v-model.trim="keyword" class="mp-inp" placeholder="关键词（动作 / 详情）" @keyup.enter="search" />
         <input v-model.trim="bizType" class="mp-inp" placeholder="业务类型（可选）" @keyup.enter="search" />
-        <button type="button" class="mp-btn mp-btn--primary" @click="search">查询</button>
-        <button type="button" class="mp-btn" @click="reset">重置</button>
+        <AppButton variant="primary" @click="search">查询</AppButton>
+        <AppButton @click="reset">重置</AppButton>
       </div>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -28,13 +28,14 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 /** 毕设域操作日志：对接 GET /graduation/audit-logs。 */
 import { ModulePageShell, LoadingState, ErrorState, DataTable } from '@/components/business'
 import { graduationApi } from '@/modules/graduation/api/graduation.api'
 
 export default {
   name: 'GraduationAuditLogView',
-  components: { ModulePageShell, LoadingState, ErrorState, DataTable },
+  components: { AppButton, ModulePageShell, LoadingState, ErrorState, DataTable },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

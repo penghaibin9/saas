@@ -88,7 +88,7 @@ def test_legacy_task_without_explicit_formation_keeps_existing_class_compatibili
 
 def test_public_writer_checks_formation_drift_before_mutating_existing_class():
     source = inspect.getsource(_service().ensure_teaching_class_for_task)
-    guard = "_guard_existing_class_formation(task, teaching_class)"
+    guard = "_guard_existing_class_formation(task, teaching_class, formation=formation)"
     first_mutation = "teaching_class.term_id = int(batch.term_id)"
     assert guard in source
     assert first_mutation in source

@@ -21,6 +21,8 @@ on:
       - "frontend/tests/stage-d-graduation-audit-console-contract.test.mjs"
       - "frontend/tests/stage-d-evaluation-console-production-contract.test.mjs"
       - "student-portal/tests/academic-d-w5-graduation-truth.test.mjs"
+      - "student-portal/package.json"
+      - "student-portal/package-lock.json"
       - ".github/workflows/academic-d-current-main-merge-review.yml"
 
 permissions:
@@ -85,6 +87,10 @@ jobs:
 
       - name: Install frontend contract dependencies
         working-directory: frontend
+        run: npm ci
+
+      - name: Install student portal contract dependencies
+        working-directory: student-portal
         run: npm ci
 
       - name: Run focused merged-tree UI source contracts

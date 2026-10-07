@@ -12,6 +12,8 @@ R13 非已归档批次导出 409，已归档后导出成功；R14 学生令牌�
 """
 from __future__ import annotations
 
+import pytest
+
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
@@ -22,14 +24,14 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
-def _seed(db_mode):
+def _seed(db_mode, *, student_status="PENDING_REGISTER"):
     from app.db.session import get_sessionmaker
     from app.models import SchoolClass, StudentProfile
     db = get_sessionmaker()()
     a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
     db.add(a); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="AA001", real_name="新生甲", class_id=a.id,
-                       current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
+                       current_stage="ORIENTATION", student_status=student_status, status="ACTIVE")
     db.add(s); db.flush()
     ids = {"s": s.id}
     db.commit()
@@ -90,7 +92,7 @@ def test_r4_roster_enrolled_flag(client, db_mode):
 
 
 def test_r5_illegal_transition_422(client, db_mode):
-    ids = _seed(db_mode)
+    ids = _seed(db_mode, student_status="NORMAL")
     from app.core.context import set_tenant
     from app.db.session import get_sessionmaker
     from app.modules.academic_affairs.services.academic_affairs_status_service import change_student_status
@@ -118,7 +120,7 @@ def test_r6_is_enrolled():
 
 def test_r7_semester_register_type_change_type(client, db_mode):
     """学期注册（registerType=SEMESTER）：注册成功，change_type=SEMESTER_REGISTER。"""
-    ids = _seed(db_mode)
+    ids = _seed(db_mode, student_status="NORMAL")
     hdr = _hdr(client, "school_admin01")
     bid = _open_batch(client, hdr, rtype="SEMESTER")
     r = client.post(f"{BASE}/registration-batches/{bid}/register", headers=hdr,
@@ -126,9 +128,36 @@ def test_r7_semester_register_type_change_type(client, db_mode):
     assert r["data"]["studentStatus"] == "REGISTERED" and r["data"]["changeType"] == "SEMESTER_REGISTER"
 
 
+@pytest.mark.parametrize("register_type,student_status", [
+    ("ENROLL", "NORMAL"),
+    ("SEMESTER", "PENDING_REGISTER"),
+    ("SEMESTER", "SUSPENDED"),
+    ("ANNUAL", "PRESERVED"),
+    ("SEMESTER", "WITHDRAWN"),
+])
+def test_registration_batch_rejects_wrong_student_status_without_writes(
+    client, db_mode, register_type, student_status,
+):
+    from app.db.session import get_sessionmaker
+    from app.models import AaRegistration, AaStatusChange, StudentProfile
+
+    ids = _seed(db_mode, student_status=student_status)
+    hdr = _hdr(client, "school_admin01")
+    bid = _open_batch(client, hdr, rtype=register_type)
+    response = client.post(
+        f"{BASE}/registration-batches/{bid}/register", headers=hdr,
+        json={"studentId": str(ids["s"])}
+    )
+    assert response.status_code == 409, response.text
+    with get_sessionmaker()() as db:
+        assert db.get(StudentProfile, ids["s"]).student_status == student_status
+        assert db.query(AaRegistration).filter_by(batch_id=int(bid), student_id=ids["s"]).count() == 0
+        assert db.query(AaStatusChange).filter_by(student_id=ids["s"]).count() == 0
+
+
 def test_r8_semester_register_not_leaked_into_status_changes(client, db_mode):
     """三类注册 change_type 不得出现在「学籍异动」台账（list_changes 排除 ENROLL/ANNUAL/SEMESTER_REGISTER）。"""
-    ids = _seed(db_mode)
+    ids = _seed(db_mode, student_status="NORMAL")
     hdr = _hdr(client, "school_admin01")
     bid = _open_batch(client, hdr, rtype="SEMESTER")
     client.post(f"{BASE}/registration-batches/{bid}/register", headers=hdr, json={"studentId": str(ids["s"])})
