@@ -86,7 +86,7 @@ def _batch(client, hdr, term_id=None):
 def _seed_ready_task(term_id, *, teacher_key="T1", teacher_name="王老师",
                      course_name="高数", weekly_hours=1, code_suffix=""):
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, College
 
     db = get_sessionmaker()()
     suffix = str(code_suffix or f"{teacher_key}-{course_name}")
@@ -99,10 +99,18 @@ def _seed_ready_task(term_id, *, teacher_key="T1", teacher_name="王老师",
         status="ENABLED",
     )
     db.add(course); db.flush()
+    college = College(
+        tenant_id=TID,
+        college_name=f"排课责任学院-{int(term_id)}-{safe}",
+        code=f"SC-{int(term_id)}-{safe}"[:50],
+        status="ACTIVE",
+    )
+    db.add(college); db.flush()
     tb = AaTeachingTaskBatch(
         tenant_id=TID,
         term_id=int(term_id),
         batch_name=f"{course_name}任务批次",
+        college_id=college.id,
         status="APPROVED",
     )
     db.add(tb); db.flush()
