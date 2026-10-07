@@ -193,7 +193,7 @@ def test_r2_repair_cancel_and_authz(client, db_mode):
 def _seed_ready_schedule_task(term_id, slot_no):
     """按当前正式排课合同种 READY 教学任务和启用节次，禁止 free-text 绕过任务身份。"""
     from app.db.session import get_sessionmaker
-    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTimeSlot
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTimeSlot, College
 
     db = get_sessionmaker()()
     slot = db.query(AaTimeSlot).filter(
@@ -210,8 +210,16 @@ def _seed_ready_schedule_task(term_id, slot_no):
     course = AaCourse(tenant_id=TID, course_code=f"RES{term_id}{slot_no}",
                       course_name="资源冲突测试课", credit=2, status="ENABLED")
     db.add(course); db.flush()
+    college = College(
+        tenant_id=TID,
+        college_name=f"资源排课责任学院-{int(term_id)}-{int(slot_no)}",
+        code=f"RES-{int(term_id)}-{int(slot_no)}"[:50],
+        status="ACTIVE",
+    )
+    db.add(college); db.flush()
     task_batch = AaTeachingTaskBatch(tenant_id=TID, term_id=int(term_id),
-                                     batch_name=f"资源冲突任务批次{slot_no}", status="APPROVED")
+                                     batch_name=f"资源冲突任务批次{slot_no}",
+                                     college_id=college.id, status="APPROVED")
     db.add(task_batch); db.flush()
     task = AaTeachingTask(tenant_id=TID, batch_id=task_batch.id,
                           course_id=course.id, course_code=course.course_code,
