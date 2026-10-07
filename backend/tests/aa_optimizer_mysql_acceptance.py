@@ -39,6 +39,11 @@ def scenario():
     assert len(heads) == 1, f'optimizer acceptance requires a single Alembic head, got {heads}'
     with get_engine().connect() as db:
         assert db.execute(text('select version_num from alembic_version')).scalar() == heads[0]
+    from app.services import system_role_shadow_service as role_shadow
+    role_shadow.converge_published_system_templates(
+        actor_user_id=None,
+        source_commit_sha="optimizer-acceptance",
+    )
     suffix=uuid4().hex[:10]
     tid=8000000000000000000+int(suffix,16)
     set_tenant(tid)
