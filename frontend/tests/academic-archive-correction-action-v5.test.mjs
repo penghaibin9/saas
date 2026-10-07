@@ -218,5 +218,6 @@ test('真实模板无资格禁用发起、隐藏二审动作且展示原因，�
   assert.match(html, /申请人本人不能二次复核/); assert.match(html, /当前无学校纠错发起责任/)
   assert.match(html, /成绩：59/); assert.match(html, /成绩：65/); assert.match(html, /已登记 1 项证据引用/)
   assert.match(html, /<details><summary>实施人员使用/); assert.doesNotMatch(html, /<details open/)
-  assert.doesNotMatch(html, /Manifest|REJECTED|HIGH|supersedes/)
+  assert.match(html, /Manifest版本链/)
+  assert.doesNotMatch(html, /REJECTED|HIGH|supersedes/)
 })
