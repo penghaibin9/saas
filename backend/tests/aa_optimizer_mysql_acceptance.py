@@ -18,9 +18,11 @@ from app.core.config import settings
 from app.core.context import set_tenant, set_current_user
 from app.db.session import get_sessionmaker, get_engine
 from app.models import (Tenant, PlatformConfig, Role, Permission, RolePermission, User, UserRole,
-                        College, AaTerm, AaTimeSlot, AaClassroom, AaCourse, AaTeachingTaskBatch, AaTeachingTask,
-                        AaScheduleBatch, AaScheduleItem, AaScheduleRule, AaTeachingClass,
-                        AaTeachingClassTeacher, AaTeachingClassRosterVersion, AaTeachingClassMember, StudentProfile)
+                        College, Major, SchoolClass, AaTerm, AaTimeSlot, AaClassroom, AaCourse,
+                        AaProgram, AaProgramBinding, AaProgramCourse, AaProgramGraduationRequirement,
+                        AaTeachingTaskBatch, AaTeachingTask, AaScheduleBatch, AaScheduleItem, AaScheduleRule,
+                        AaTeachingClass, AaTeachingClassTeacher, AaTeachingClassRosterVersion,
+                        AaTeachingClassMember, StudentProfile)
 from app.modules.academic_affairs.services import schedule_optimizer_jobs_service as service
 from app.modules.academic_affairs.services.schedule_optimizer_apply_service import apply_candidate
 from app.modules.academic_affairs.services.schedule_optimizer_worker_service import run_pending
@@ -77,14 +79,38 @@ def scenario():
                          room_type='LAB',capacity=30,campus_code='MAIN',status='AVAILABLE',allow_schedule=True,is_exclusive=False)
         college=College(tenant_id=tid,college_name='智能排课验收学院',code='OPT-COLLEGE',status='ACTIVE')
         db.add_all([room,college]);db.flush()
+        major=Major(tenant_id=tid,college_id=college.id,major_name='智能排课验收专业',
+                    code='OPT-MAJOR',status='ACTIVE')
+        db.add(major);db.flush()
+        school_class=SchoolClass(tenant_id=tid,major_id=major.id,class_name='排课验收2601',
+                                class_code='OPT-2601',grade='2026',status='ACTIVE',class_status='NORMAL')
+        db.add(school_class);db.flush()
         course=AaCourse(tenant_id=tid,course_code='OPT101',course_name='实训课',
-                        owner_college_id=college.id,status='ENABLED')
+                        owner_college_id=college.id,credit=2,hours_total=8,hours_theory=0,
+                        hours_practice=8,hours_experiment=0,hours_computer=0,status='ENABLED')
         db.add(course);db.flush()
+        program=AaProgram(tenant_id=tid,program_name='智能排课验收培养方案',major_id=major.id,
+                          grade_year='2026',total_credits=2,
+                          requirement_json=json.dumps({'creditStructure':[{'module':'MAJOR_CORE','creditTarget':2}]},
+                                                      ensure_ascii=False),
+                          status='PUBLISHED')
+        db.add(program);db.flush()
+        source=AaProgramCourse(tenant_id=tid,program_id=program.id,course_id=course.id,
+                               course_name=course.course_name,open_term_no=1,module='MAJOR_CORE',
+                               credit_snapshot=2,formation_mode='ADMIN_FIXED')
+        binding=AaProgramBinding(tenant_id=tid,program_id=program.id,major_id=major.id,
+                                 grade_year='2026',class_id=school_class.id,
+                                 bound_at=datetime(2026,9,1),status='ACTIVE')
+        requirement=AaProgramGraduationRequirement(tenant_id=tid,program_id=program.id,
+                                                   category='ABILITY',content='完成专业课程学习',
+                                                   sort_order=1,status='ACTIVE')
+        db.add_all([source,binding,requirement]);db.flush()
         task_batch=AaTeachingTaskBatch(tenant_id=tid,term_id=term.id,college_id=college.id,
                                        batch_name='验收教学任务',status='APPROVED')
         batch=AaScheduleBatch(tenant_id=tid,term_id=term.id,batch_name='验收课表草稿',status='DRAFT')
         db.add_all([task_batch,batch]);db.flush()
         task=AaTeachingTask(tenant_id=tid,batch_id=task_batch.id,course_id=course.id,course_name='实训课',
+                            class_id=school_class.id,source_program_course_id=source.id,
                             teaching_class_name='验收教学班',teacher_key='opt-teacher',teacher_name='验收教师',
                             expected_students=2,weekly_hours=4,total_hours=8,start_week=1,end_week=2,
                             required_room_type='LAB',formation_mode='ADMIN_FIXED',status='READY',no_auto_schedule=False)
@@ -92,7 +118,9 @@ def scenario():
         tc=AaTeachingClass(tenant_id=tid,teaching_task_id=task.id,term_id=term.id,course_id=course.id,
                            class_code='OPT01',class_name='验收教学班',class_type='ADMIN',roster_status='LOCKED',status='ACTIVE')
         db.add(tc);db.flush()
-        students=[StudentProfile(tenant_id=tid,student_no=f'OPT{n}',real_name=f'验收学生{n}',status='ACTIVE') for n in [1,2]]
+        students=[StudentProfile(tenant_id=tid,student_no=f'OPT{n}',real_name=f'验收学生{n}',
+                                 college_id=college.id,major_id=major.id,class_id=school_class.id,
+                                 grade='2026',status='ACTIVE') for n in [1,2]]
         db.add_all(students);db.flush()
         from app.models import StudentAccountLink
         readers={}
