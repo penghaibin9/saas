@@ -1,0 +1,260 @@
+<template>
+  <view class="page-wrap pl">
+    <MobilePrivacyGate />
+    <MobileGlobalState :state="pageState" @retry="load">
+      <view class="page-pad stack" v-if="plan">
+        <view v-if="plans.length > 1" class="card pl__switcher">
+          <text class="pl__label">当前实习方案</text>
+          <picker mode="selector" :range="planLabels" :value="planIndex" :disabled="submitting !== false || uploading !== false" @change="onPlanChange">
+            <view class="pl__picker">{{ planLabels[planIndex] || '选择实习方案' }} <text>▾</text></view>
+          </picker>
+          <text class="pl__switch-note">每份方案独立确认、独立记录任务进度。</text>
+        </view>
+        <view class="card">
+          <text class="card-title">{{ plan.title }}</text>
+          <text class="pl__status">{{ plan.ackStatusLabel }}</text>
+          <view v-if="summary.total" class="pl__prog">
+            <text>任务完成 {{ summary.approved }}/{{ summary.total }}（{{ summary.rate }}%）</text>
+            <view class="pl__bar"><view class="pl__bar-in" :style="{ width: summary.rate + '%' }" /></view>
+          </view>
+        </view>
+        <view class="card">
+          <text class="pl__label">计划基本信息</text>
+          <view class="pl__facts">
+            <view><text>计划编号</text><b>{{ plan.planNo || '—' }}</b></view>
+            <view><text>实习类别</text><b>{{ plan.internshipTypeLabel || '—' }}</b></view>
+            <view><text>适用专业</text><b>{{ plan.majorName || '—' }}</b></view>
+            <view><text>培养层次</text><b>{{ plan.educationLevel || '—' }}</b></view>
+            <view><text>指导老师</text><b>{{ context.advisorName || '—' }}</b></view>
+            <view><text>负责人</text><b>{{ plan.responsibleName || '—' }}</b></view>
+            <view><text>开始时间</text><b>{{ plan.basicSnapshot?.startDate || '—' }}</b></view>
+            <view><text>结束时间</text><b>{{ plan.basicSnapshot?.endDate || '—' }}</b></view>
+            <view class="pl__fact-wide"><text>补贴标准</text><b>{{ plan.subsidyStandard || '—' }}</b></view>
+            <view><text>应签到</text><b>{{ plan.rulesSnapshot?.requiredCheckinDays ?? 0 }} 天</b></view>
+            <view><text>应写日报</text><b>{{ plan.rulesSnapshot?.dailyRequiredCount ?? 0 }} 篇</b></view>
+            <view><text>应写周报</text><b>{{ plan.rulesSnapshot?.weeklyRequiredCount ?? 0 }} 篇</b></view>
+            <view><text>应写月报</text><b>{{ plan.rulesSnapshot?.monthlyRequiredCount ?? 0 }} 篇</b></view>
+            <view><text>应写总结</text><b>{{ plan.rulesSnapshot?.summaryRequiredCount ?? 0 }} 篇</b></view>
+          </view>
+          <view class="pl__score" v-if="(plan.rulesSnapshot?.scoreComponents || []).length">
+            <text>考核占比</text>
+            <view class="pl__score-tags">
+              <text v-for="(item, i) in plan.rulesSnapshot.scoreComponents" :key="i">{{ item.name || '考核项' }} {{ Math.round(Number(item.weight || 0) * 100) }}%</text>
+            </view>
+          </view>
+        </view>
+        <view class="card">
+          <text class="pl__label">实习目标</text>
+          <text class="pl__text">{{ plan.objectives || '—' }}</text>
+          <text class="pl__label">计划正文</text>
+          <text class="pl__text">{{ plan.content || '—' }}</text>
+        </view>
+        <view v-if="tasks.length" class="card">
+          <text class="pl__label">实习任务清单</text>
+          <view v-for="(t, i) in tasks" :key="t.progressId || t.sortOrder || i" class="pl__task">
+            <view class="pl__task-head">
+              <text class="pl__task-no">{{ t.sortOrder || i + 1 }}</text>
+              <text class="pl__task-name">{{ t.name || t.taskName }}</text>
+              <text class="pl__task-st">{{ t.progressStatusLabel || t.statusLabel || '未开始' }}</text>
+            </view>
+            <text v-if="t.requirement" class="pl__task-req">{{ t.requirement }}</text>
+            <text v-if="t.deadline" class="pl__task-dl">截止：{{ formatDeadline(t.deadline) }}</text>
+            <text v-if="t.reviewComment" class="pl__task-reject">退回：{{ t.reviewComment }}</text>
+            <view v-if="t.evidenceFileId" class="pl__evidence">已上传任务凭证</view>
+            <view v-if="canSubmit(t)" class="pl__task-act">
+              <textarea v-model="t._note" class="pl__input" maxlength="500" :placeholder="'填写完成说明（至少' + minimumWords + '字）'" />
+              <view class="pl__file-row">
+                <button class="btn btn-secondary btn-sm" :disabled="submitting === t.sortOrder || uploading === t.sortOrder" @click="chooseEvidence(t)">
+                  {{ uploading === t.sortOrder ? '上传中…' : (t._evidenceFileId ? '重新上传凭证' : '上传完成凭证') }}
+                </button>
+                <text class="pl__file-name" v-if="t._evidenceFileName">{{ t._evidenceFileName }}</text>
+              </view>
+              <button class="btn btn-primary btn-sm pl__submit" :disabled="submitting === t.sortOrder || uploading === t.sortOrder" @click="submitTask(t)">
+                {{ t.progressStatus === 'REJECTED' ? '修改后重新提交' : '提交完成情况' }}
+              </button>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view v-else class="page-pad"><MobileGlobalState state="empty" title="暂无实习计划" description="待学院发布当前批次实习计划书" /></view>
+    </MobileGlobalState>
+    <MobileSafeAreaBar v-if="plan && plan.ackStatus === 'PENDING'">
+      <button class="btn btn-primary flex-1" :disabled="submitting !== false" @click="ack">确认已阅读当前版本计划</button>
+    </MobileSafeAreaBar>
+  </view>
+</template>
+
+<script>
+import {
+  studentInternshipPlans,
+  studentInternshipPlan,
+  studentInternshipPlanAcknowledge,
+  studentInternshipPlanTasks,
+  studentInternshipPlanTaskSubmit
+} from '@/services/internshipApi'
+import { studentApi } from '@/services/studentApi'
+import { chooseSingleFile, uploadBusinessFile } from '@/services/fileApi'
+import { toast } from '@/utils/nav'
+
+export default {
+  data() {
+    return {
+      pageState: 'loading', plan: null, plans: [], selectedPlanId: '', planIndex: 0, tasks: [],
+      context: {}, loadSeq: 0,
+      summary: { total: 0, approved: 0, rate: 0 },
+      submitting: false, uploading: false
+    }
+  },
+  computed: {
+    planLabels() {
+      return this.plans.map((item) => `${item.isPrimary ? '主方案 · ' : ''}${item.planTitle || '未命名方案'} · ${item.batchName || ''}`)
+    }
+  },
+  onLoad() { this.load() },
+  onUnload() { this.loadSeq++ },
+  methods: {
+    async load(preferredPlanId = '') {
+      const seq = ++this.loadSeq
+      this.pageState = 'loading'
+      try {
+        const [planListData, dashboard] = await Promise.all([
+          studentInternshipPlans(),
+          studentApi.getInternship()
+        ])
+        if (seq !== this.loadSeq) return
+        this.context = {
+          batchId: dashboard?.batchId || '',
+          internshipId: dashboard?.recordId || dashboard?.internshipId || '',
+          advisorName: dashboard?.advisorName || ''
+        }
+        this.plans = planListData?.items || []
+        const candidate = String(preferredPlanId || this.selectedPlanId || '')
+        const selected = this.plans.find((item) => String(item.planId) === candidate)
+          || this.plans.find((item) => item.isPrimary)
+          || this.plans[0]
+        this.selectedPlanId = selected ? String(selected.planId) : ''
+        this.planIndex = Math.max(0, this.plans.findIndex((item) => String(item.planId) === this.selectedPlanId))
+        if (!this.selectedPlanId) {
+          this.plan = null
+          this.tasks = []
+          this.pageState = 'empty'
+          return
+        }
+        const [plan, taskData] = await Promise.all([
+          studentInternshipPlan(this.selectedPlanId),
+          studentInternshipPlanTasks(this.selectedPlanId)
+        ])
+        if (seq !== this.loadSeq) return
+        this.plan = plan
+        const sourceTasks = (taskData && taskData.tasks) || (plan && plan.tasks) || []
+        this.tasks = sourceTasks.map((t) => ({
+          ...t,
+          _note: t.progressStatus === 'REJECTED' ? (t.studentNote || '') : '',
+          _evidenceFileId: t.evidenceFileId || '',
+          _evidenceFileName: t.evidenceFileId ? '已上传凭证' : ''
+        }))
+        this.summary = (taskData && taskData.summary) || (plan && plan.taskSummary) || { total: 0, approved: 0, rate: 0 }
+        this.minimumWords = Math.max(1, Number(taskData?.minimumWords || 10))
+        this.pageState = plan ? 'ready' : 'empty'
+      } catch (e) {
+        if (seq === this.loadSeq) this.pageState = 'error'
+      }
+    },
+    onPlanChange(e) {
+      const index = Number(e?.detail?.value || 0)
+      const selected = this.plans[index]
+      if (!selected || String(selected.planId) === this.selectedPlanId) return
+      this.planIndex = index
+      this.selectedPlanId = String(selected.planId)
+      this.load(this.selectedPlanId)
+    },
+    canSubmit(t) {
+      if (!this.plan || this.plan.ackStatus !== 'ACKNOWLEDGED') return false
+      return ['NOT_STARTED', 'REJECTED'].includes(t.progressStatus || t.status)
+    },
+    async ack() {
+      if (this.submitting !== false || !this.plan) return
+      this.submitting = 'ack'
+      try {
+        await studentInternshipPlanAcknowledge({
+          ...this.context,
+          planId: this.plan.id || this.plan.planId,
+          expectedVersion: this.plan.ackVersion || 0,
+          planVersion: this.plan.version || this.plan.planVersion
+        })
+        toast('已确认当前版本实习计划')
+        await this.load(this.selectedPlanId)
+      } catch (e) {
+        toast((e && e.message) || '计划确认失败，请刷新后重试')
+        if (String(e && e.code) === 'DATA_CONFLICT') await this.load()
+      } finally { this.submitting = false }
+    },
+    async chooseEvidence(t) {
+      if (this.uploading) return
+      this.uploading = t.sortOrder
+      try {
+        const file = await chooseSingleFile()
+        if (!file) return
+        if (Number(file.size || 0) > 20 * 1024 * 1024) return toast('单个凭证文件不能超过20MB')
+        const uploaded = await uploadBusinessFile(file, {
+          bizType: 'INTERNSHIP_PLAN_TASK', bizId: t.progressId || ''
+        })
+        t._evidenceFileId = uploaded.fileId
+        t._evidenceFileName = uploaded.fileName || file.name || '任务凭证'
+        toast('凭证上传成功')
+      } catch (e) {
+        toast((e && e.message) || '凭证上传失败')
+      } finally { this.uploading = false }
+    },
+    async submitTask(t) {
+      if (this.submitting !== false || this.uploading) return
+      const note = (t._note || '').trim()
+      if (note.length < this.minimumWords) return toast('完成说明至少' + this.minimumWords + '字')
+      this.submitting = t.sortOrder
+      try {
+        await studentInternshipPlanTaskSubmit(t.sortOrder, {
+          planId: this.plan.id || this.plan.planId,
+          studentNote: note,
+          evidenceFileId: t._evidenceFileId || '',
+          expectedVersion: t.progressVersion ?? t.version ?? 0
+        })
+        toast('已提交，等待教师确认')
+        await this.load(this.selectedPlanId)
+      } catch (e) {
+        toast((e && e.message) || '提交失败，请刷新后重试')
+        if (String(e && e.code) === 'DATA_CONFLICT') await this.load()
+      } finally { this.submitting = false }
+    },
+    formatDeadline(v) {
+      if (!v) return '—'
+      const s = String(v).replace('T', ' ').slice(0, 16)
+      return s.endsWith('23:59') ? s.slice(0, 10) + ' 23:59' : s
+    }
+  }
+}
+</script>
+
+<style scoped>
+.pl__switcher{display:grid;gap:8px}.pl__picker{padding:10px 12px;border:1px solid var(--border-light);border-radius:8px;background:var(--bg-card);font-size:var(--font-size-sm);color:var(--text-primary)}.pl__switch-note{font-size:11px;color:var(--text-tertiary)}.pl__status { display:block;margin-top:6px;font-size:var(--font-size-sm);color:var(--warning-600); }
+.pl__facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:8px}.pl__facts>view{display:grid;gap:3px;padding:8px;border-radius:8px;background:var(--bg-subtle,#f8fafc)}.pl__facts text{font-size:11px;color:var(--text-tertiary)}.pl__facts b{font-size:13px;color:var(--text-primary);font-weight:600;overflow-wrap:anywhere}.pl__fact-wide{grid-column:1/-1}.pl__score{margin-top:10px;font-size:12px;color:var(--text-secondary)}.pl__score-tags{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.pl__score-tags text{padding:4px 7px;border-radius:999px;background:var(--primary-50,#eff6ff);color:var(--primary-700,#1d4ed8)}
+.pl__prog { margin-top:10px;font-size:var(--font-size-sm);color:var(--text-secondary); }
+.pl__bar { height:6px;background:#e2e8f0;border-radius:3px;margin-top:6px;overflow:hidden; }
+.pl__bar-in { height:100%;background:var(--primary-500,#2563eb);border-radius:3px; }
+.pl__label { display:block;font-size:var(--font-size-sm);font-weight:var(--font-weight-medium);margin:10px 0 4px; }
+.pl__text { display:block;font-size:var(--font-size-sm);color:var(--text-secondary);line-height:1.6;white-space:pre-wrap; }
+.pl__task { margin-top:10px;padding:10px;background:var(--bg-subtle,#f8fafc);border-radius:8px; }
+.pl__task-head { display:flex;align-items:center;gap:8px;flex-wrap:wrap; }
+.pl__task-no { width:22px;height:22px;line-height:22px;text-align:center;border-radius:50%;background:var(--primary-100,#dbeafe);color:var(--primary-700,#1d4ed8);font-size:12px;font-weight:600; }
+.pl__task-name { flex:1;font-size:var(--font-size-sm);font-weight:var(--font-weight-medium); }
+.pl__task-st { font-size:11px;color:var(--warning-700,#b45309); }
+.pl__task-req,.pl__task-dl,.pl__task-reject { display:block;margin-top:6px;font-size:var(--font-size-xs);line-height:1.5; }
+.pl__task-req { color:var(--text-secondary); }
+.pl__task-dl { color:var(--warning-700,#b45309); }
+.pl__task-reject { color:var(--danger-600,#dc2626); }
+.pl__evidence { margin-top:6px;font-size:var(--font-size-xs);color:var(--success-600); }
+.pl__task-act { margin-top:8px; }
+.pl__input { width:100%;min-height:72px;padding:8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;margin-bottom:8px;box-sizing:border-box; }
+.pl__file-row { display:flex;align-items:center;gap:8px;margin-bottom:8px; }
+.pl__file-name { flex:1;font-size:11px;color:var(--text-tertiary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap; }
+.pl__submit { width:100%; }
+</style>

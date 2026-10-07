@@ -1,0 +1,501 @@
+"""实习批次参与人：用组织范围选人替代反复导 Excel 名单（阶段 E）。
+
+流程：
+
+    设规则（学院/专业/班级/年级/点名 - 排除项）
+      → 预览（现算，学生转班会跟着变）
+      → 冻结（名单落库快照 + 幂等建实习记录 + 审计 + 批次转 RUNNING）
+      → 之后只能人工增删单个学生，规则不再自动生效
+
+为什么冻结后要快照：实习名单有考核与法律意义。学生冻结后转班、改名，
+不能把人从名单里挪走或挪进来；但页面显示的姓名仍以主档为准（双读），
+快照只用于"当时属于哪个班"的追溯。
+"""
+from __future__ import annotations
+
+from datetime import datetime
+
+from sqlalchemy import func, select
+
+from app.core.context import get_current_user_ctx
+from app.core.exceptions import AppException, not_found
+from app.services import student_scope_resolver as scope
+from app.services.db_service import _iso, _tid, session
+
+# 只有草稿批次能改规则与冻结；已开跑的批次改名单必须走人工增减并留痕
+EDITABLE_BATCH_STATUS = {"DRAFT"}
+
+
+def _op_name() -> str:
+    u = get_current_user_ctx() or {}
+    return u.get("realName") or u.get("loginName") or "系统"
+
+
+def _audit(db, batch_id, action: str, detail=None) -> None:
+    """写实习域留痕。该表是 append-only 的 target_id/target_type/detail_json 结构，
+    不是通用的 biz_type/detail 文本表——写错字段会在运行时才炸。"""
+    from app.models import InternshipAuditTrail
+    u = get_current_user_ctx() or {}
+    db.add(InternshipAuditTrail(
+        tenant_id=_tid(), target_id=int(batch_id), target_type="BATCH", action=action,
+        operator_name=_op_name(),
+        detail_json={"scene": "BATCH_PARTICIPANT", "role": u.get("currentRoleCode") or "",
+                     "detail": detail},
+        occurred_at=datetime.utcnow()))
+
+
+def _get_batch(db, batch_id):
+    from app.models import InternshipBatch
+    b = db.get(InternshipBatch, int(batch_id))
+    if not b or b.is_deleted or int(b.tenant_id) != _tid():
+        raise not_found("实习批次不存在或不在当前数据范围内")
+    return b
+
+
+def _get_or_create_rule(db, batch_id):
+    from app.models import InternshipBatch, InternshipBatchScopeRule
+
+    tenant_id = _tid()
+    batch_pk = int(batch_id)
+    # 默认规则是按批次懒创建的。生产环境双 worker 会同时进入这里；如果只做
+    # SELECT -> INSERT，两个事务都可能先读到“不存在”，随后一起 INSERT，最终
+    # 一个命中 uk_intern_scope_batch 的 1062。先锁定必然存在的批次父行，把同一
+    # 批次的规则初始化/恢复串行化；不同批次仍可并行。锁定读也是 MySQL 的 current
+    # read，不依赖 REPEATABLE READ 已建立的旧快照。
+    locked_batch_id = db.scalar(select(InternshipBatch.id).where(
+        InternshipBatch.id == batch_pk,
+        InternshipBatch.tenant_id == tenant_id,
+        InternshipBatch.is_deleted.is_(False),
+    ).with_for_update())
+    if locked_batch_id is None:
+        raise not_found("实习批次不存在或不在当前数据范围内")
+
+    # 唯一键是 (tenant_id, batch_id)，不含 is_deleted。软删后不能再 INSERT，
+    # 否则真实 MySQL 会命中 uk_intern_scope_batch 产生 1062。这里同样使用锁定读，
+    # 让等待父行锁的 worker 读取到前一个事务刚提交的规则，而不是旧快照。
+    row = db.scalars(select(InternshipBatchScopeRule).where(
+        InternshipBatchScopeRule.tenant_id == tenant_id,
+        InternshipBatchScopeRule.batch_id == batch_pk).with_for_update()).first()
+    if row is None:
+        row = InternshipBatchScopeRule(tenant_id=tenant_id, batch_id=batch_pk, rule_json={})
+        db.add(row)
+        db.flush()
+    elif row.is_deleted:
+        # 旧实现把软删行视为“不存在”，因此恢复时必须保持“新规则”的语义，
+        # 不能把上一轮预览/冻结状态泄漏到重新进入的批次规则中。
+        row.is_deleted = False
+        row.rule_json = {}
+        row.last_preview_count = 0
+        row.last_preview_at = None
+        row.frozen_at = None
+        row.frozen_by = None
+        row.version = int(row.version or 0) + 1
+        db.flush()
+    return row
+
+
+# ── 规则与预览 ────────────────────────────────────────────────────────────
+
+def get_rule(batch_id) -> dict:
+    with session() as db:
+        b = _get_batch(db, batch_id)
+        rule = _get_or_create_rule(db, batch_id)
+        db.commit()
+        return {
+            "batchId": str(b.id), "batchName": b.batch_name, "batchStatus": b.status,
+            "rule": rule.rule_json or {},
+            "frozen": rule.frozen_at is not None,
+            "frozenAt": _iso(rule.frozen_at), "frozenBy": rule.frozen_by or "",
+            "lastPreviewCount": int(rule.last_preview_count or 0),
+            "lastPreviewAt": _iso(rule.last_preview_at),
+            "editable": b.status in EDITABLE_BATCH_STATUS and rule.frozen_at is None,
+        }
+
+
+def preview(batch_id, body: dict, user: dict) -> dict:
+    """按规则现算名单。不写名单，只记一次预览计数，便于页面显示"上次圈了多少人"。"""
+    with session() as db:
+        _get_batch(db, batch_id)
+        rule_row = _get_or_create_rule(db, batch_id)
+        rule = scope.parse_rule(body or {})
+        res = scope.resolve(db, _tid(), rule, user=user)
+
+        # 已在本批次名单里的人单独标出来，避免用户以为要重复添加
+        existing = _participant_student_ids(db, batch_id)
+        rows = scope.preview_rows(db, res.students, _tid())
+        for r in rows:
+            r["alreadyIn"] = int(r["studentId"]) in existing
+
+        rule_row.rule_json = rule.to_dict()
+        rule_row.last_preview_count = res.matched_count
+        rule_row.last_preview_at = datetime.utcnow()
+        rule_row.version = int(rule_row.version or 0) + 1
+        db.commit()
+        return {"rule": rule.to_dict(), "rows": rows, "alreadyInCount": sum(1 for r in rows if r["alreadyIn"]),
+                **res.summary()}
+
+
+def _participant_student_ids(db, batch_id) -> set[int]:
+    from app.models import InternshipBatchParticipant
+    return {int(x) for x in db.scalars(select(InternshipBatchParticipant.student_id).where(
+        InternshipBatchParticipant.tenant_id == _tid(),
+        InternshipBatchParticipant.batch_id == int(batch_id),
+        InternshipBatchParticipant.status == "ACTIVE",
+        InternshipBatchParticipant.is_deleted.is_(False))).all()}
+
+
+# ── 冻结 ──────────────────────────────────────────────────────────────────
+
+def freeze(batch_id, body: dict, user: dict) -> dict:
+    """把规则圈到的人固化为正式名单，并幂等创建实习记录。
+
+    幂等的两处：
+    - participant 有 (tenant, batch, student) 唯一键，重复冻结不会插第二条；
+    - InternshipRecord 有 (tenant, student, batch) 唯一键，已有记录直接复用，
+      不会因为多点一次冻结就给学生建两条实习记录。
+
+    冻结与批次启用是同一事务：名单、合规规则冻结、RUNNING 状态和 ACTIVATE 审计
+    必须一起提交，不能出现“名单已冻结但批次未按正式启用语义落地”的半状态。
+    """
+    from app.models import InternshipBatchParticipant, InternshipRecord
+
+    with session() as db:
+        b = _get_batch(db, batch_id)
+        rule_row = _get_or_create_rule(db, batch_id)
+        if rule_row.frozen_at is not None:
+            raise AppException("DATA_CONFLICT", "该批次名单已冻结，如需调整请使用单个增减")
+        if b.status not in EDITABLE_BATCH_STATUS:
+            raise AppException("DATA_CONFLICT",
+                               f"只有草稿状态的批次可以冻结名单（当前 {b.status}）")
+
+        rule = scope.parse_rule(body.get("rule") if body else rule_row.rule_json)
+        if rule.is_empty():
+            raise AppException("VALIDATION_ERROR", "选人规则为空，请先选择学院/专业/班级或指定学生")
+        res = scope.resolve(db, _tid(), rule, user=user, limit=None)
+        if not res.students:
+            raise AppException("VALIDATION_ERROR", "按当前规则没有圈到任何学生，请调整后重试")
+
+        existing = _participant_student_ids(db, batch_id)
+        created = reused = 0
+        for s in res.students:
+            if int(s.id) in existing:
+                continue
+            snap = scope.preview_rows(db, [s], _tid())[0]
+            rec = db.scalars(select(InternshipRecord).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.student_id == int(s.id),
+                InternshipRecord.batch_id == int(batch_id)).with_for_update()).first()
+            if rec is None:
+                rec = InternshipRecord(tenant_id=_tid(), student_id=int(s.id),
+                                       batch_id=int(batch_id), status="PREPARING",
+                                       eligibility_status="PENDING", destination_type="NONE")
+                db.add(rec)
+                db.flush()
+                created += 1
+            else:
+                reused += 1
+            db.add(InternshipBatchParticipant(
+                tenant_id=_tid(), batch_id=int(batch_id), student_id=int(s.id), source="SCOPE",
+                snapshot_student_no=snap["studentNo"], snapshot_name=snap["name"],
+                snapshot_class_name=snap["className"], snapshot_college_name=snap["collegeName"],
+                internship_id=int(rec.id), status="ACTIVE"))
+
+        now = datetime.utcnow()
+        rule_row.rule_json = rule.to_dict()
+        rule_row.frozen_at = now
+        rule_row.frozen_by = _op_name()
+        rule_row.version = int(rule_row.version or 0) + 1
+
+        total = len(existing) + len(res.students) - len(
+            [s for s in res.students if int(s.id) in existing])
+
+        # 与 canonical activate_batch 同口径冻结合规规则；但保留本服务同事务写名单的原子性。
+        frozen_rules = dict(b.rules_config or {})
+        if b.compliance_template_id:
+            from app.models import InternshipComplianceTemplate
+            template = db.get(InternshipComplianceTemplate, b.compliance_template_id)
+            if not template or int(template.tenant_id) != _tid():
+                raise AppException("DATA_CONFLICT", "关联合规模板不存在")
+            frozen_rules["compliance"] = template.config or frozen_rules.get("compliance", {})
+            frozen_rules["compliance_template_version"] = template.template_version
+            b.compliance_template_version = template.template_version
+        frozen_rules["_complianceFrozen"] = True
+        frozen_rules["_frozenAt"] = now.isoformat()
+        b.rules_config = frozen_rules
+
+        # planned_count 是学校在草稿阶段填写的“计划人数”，actualCount 由实习记录实时统计。
+        # 仅历史/脚本直接造出 0 计划人数时沿用旧兜底；真实已填写计划数绝不能被圈选人数覆盖。
+        if int(b.planned_count or 0) <= 0:
+            b.planned_count = total
+        b.status = "RUNNING"
+        b.previous_status = "DRAFT"
+        b.last_transition_at = now
+        b.last_transition_by = _op_name()
+        b.transition_reason = "冻结参与人名单并启用批次"
+        b.version = int(b.version or 0) + 1
+
+        _audit(db, batch_id, "冻结参与人名单",
+               {"total": total, "createdRecords": created, "reusedRecords": reused,
+                "rule": rule.to_dict()})
+        _audit(db, batch_id, "ACTIVATE",
+               {"before": "DRAFT", "after": "RUNNING", "source": "PARTICIPANT_FREEZE"})
+        db.commit()
+        return {"batchId": str(batch_id), "total": total, "createdRecords": created,
+                "reusedRecords": reused, "batchStatus": b.status, "version": int(b.version or 0)}
+
+
+def _visible_participant_student_ids(db, rows, user: dict | None = None) -> set[int]:
+    """只按当前实习数据范围裁剪已冻结名单，不重跑“新批次选人资格”。
+
+    participant 是冻结后的历史业务证据。学生后来毕业、离校或学籍状态变化，不应因此
+    从正式名单消失；但教师/学院角色仍只能看到当前实习数据范围内的记录。
+    """
+    student_ids = {int(r.student_id) for r in rows if getattr(r, "student_id", None)}
+    if not student_ids:
+        return set()
+    if user is None:
+        return student_ids
+
+    from app.models import InternshipRecord
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+    from app.modules.internship.services.internship_student_service import _current_scope
+
+    internship_ids = {int(r.internship_id) for r in rows if getattr(r, "internship_id", None)}
+    visible: set[int] = set()
+    if internship_ids:
+        q = apply_internship_record_scope(
+            select(InternshipRecord.student_id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.id.in_(internship_ids),
+                InternshipRecord.is_deleted.is_(False),
+            ),
+            user,
+        )
+        visible.update(int(value) for value in db.scalars(q).all())
+
+    # 历史脏数据若 participant 缺 internship_id，受限角色没有可靠关联可授权，必须 fail-closed；
+    # 校级租户管理员仍可为追溯/对账查看冻结快照。
+    if _current_scope(user).get("mode") != "SCOPED":
+        visible.update(
+            int(r.student_id) for r in rows
+            if getattr(r, "student_id", None) and not getattr(r, "internship_id", None)
+        )
+    return visible
+
+
+# ── 名单读写 ──────────────────────────────────────────────────────────────
+
+def list_participants(batch_id, page: int = 1, page_size: int = 20,
+                      keyword: str | None = None, include_removed: bool = False,
+                      user: dict | None = None) -> tuple[list, int]:
+    """名单列表。姓名/班级走主档双读——改了学籍这里立刻跟着变，快照只在主档缺失时兜底。"""
+    from app.models import InternshipBatchParticipant, StudentProfile
+
+    with session() as db:
+        _get_batch(db, batch_id)
+        conds = [InternshipBatchParticipant.tenant_id == _tid(),
+                 InternshipBatchParticipant.batch_id == int(batch_id),
+                 InternshipBatchParticipant.is_deleted.is_(False)]
+        if not include_removed:
+            conds.append(InternshipBatchParticipant.status == "ACTIVE")
+        rows = db.scalars(select(InternshipBatchParticipant).where(*conds)
+                          .order_by(InternshipBatchParticipant.id)).all()
+
+        allowed_ids = _visible_participant_student_ids(db, rows, user=user)
+        rows = [r for r in rows if int(r.student_id) in allowed_ids]
+        profiles = {p.id: p for p in db.scalars(select(StudentProfile).where(
+            StudentProfile.id.in_([r.student_id for r in rows] or [0]))).all()}
+        cache: dict = {}
+        items = []
+        for r in rows:
+            p = profiles.get(int(r.student_id))
+            college_name = class_name = ""
+            if p is not None:
+                college_name, _major, class_name = scope.org_names(db, p, cache)
+            items.append({
+                "id": str(r.id), "studentId": str(r.student_id),
+                "studentNo": (p.student_no if p else None) or r.snapshot_student_no or "",
+                "name": (p.real_name if p else None) or r.snapshot_name or "",
+                "className": class_name or r.snapshot_class_name or "",
+                "collegeName": college_name or r.snapshot_college_name or "",
+                "snapshotClassName": r.snapshot_class_name or "",
+                "classChanged": bool(class_name and r.snapshot_class_name
+                                     and class_name != r.snapshot_class_name),
+                "source": r.source, "status": r.status,
+                "internshipId": str(r.internship_id or ""),
+                "removeReason": r.remove_reason or "",
+                "createdAt": _iso(r.created_at), "version": int(r.version or 0),
+            })
+        if keyword:
+            kw = keyword.strip()
+            items = [x for x in items if kw in x["name"] or kw in x["studentNo"]]
+        total = len(items)
+        start = (max(1, page) - 1) * page_size
+        return items[start:start + page_size], total
+
+
+def add_participants(batch_id, student_ids, user: dict, reason: str = "") -> dict:
+    """人工补录（转专业、休学复学、漏选）。同样幂等，且要求学生在调用者数据范围内。"""
+    from app.models import InternshipBatchParticipant, InternshipRecord
+
+    ids = [int(x) for x in (student_ids or []) if x]
+    if not ids:
+        raise AppException("VALIDATION_ERROR", "请至少选择一名学生")
+
+    with session() as db:
+        batch = _get_batch(db, batch_id)
+        if batch.status != "RUNNING":
+            raise AppException("DATA_CONFLICT", "只有进行中的批次可以人工补录参与学生")
+        # 新增名单仍属于“新选人”动作，继续复用 resolver 的学籍资格 + 数据范围双重口径。
+        allowed = scope.resolve(db, _tid(), scope.parse_rule({"studentIds": ids}),
+                                user=user, limit=None)
+        allowed_ids = {int(s.id) for s in allowed.students}
+        rejected = [i for i in ids if i not in allowed_ids]
+
+        existing = _participant_student_ids(db, batch_id)
+        added = 0
+        for s in allowed.students:
+            if int(s.id) in existing:
+                continue
+            snap = scope.preview_rows(db, [s], _tid())[0]
+            rec = db.scalars(select(InternshipRecord).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.student_id == int(s.id),
+                InternshipRecord.batch_id == int(batch_id))).first()
+            if rec is None:
+                rec = InternshipRecord(tenant_id=_tid(), student_id=int(s.id),
+                                       batch_id=int(batch_id), status="PREPARING",
+                                       eligibility_status="PENDING", destination_type="NONE")
+                db.add(rec)
+                db.flush()
+            elif rec.is_deleted:
+                rec.is_deleted = False
+                rec.status = "PREPARING"
+                rec.eligibility_status = "PENDING"
+                rec.destination_type = "NONE"
+                rec.version = int(rec.version or 0) + 1
+            # 曾被移出的人重新加入：复活原行而不是插重复行（唯一键也不允许）
+            revived = db.scalars(select(InternshipBatchParticipant).where(
+                InternshipBatchParticipant.tenant_id == _tid(),
+                InternshipBatchParticipant.batch_id == int(batch_id),
+                InternshipBatchParticipant.student_id == int(s.id))).first()
+            if revived is not None:
+                revived.status = "ACTIVE"
+                revived.remove_reason = None
+                revived.internship_id = int(rec.id)
+                revived.version = int(revived.version or 0) + 1
+            else:
+                db.add(InternshipBatchParticipant(
+                    tenant_id=_tid(), batch_id=int(batch_id), student_id=int(s.id),
+                    source="MANUAL", snapshot_student_no=snap["studentNo"],
+                    snapshot_name=snap["name"], snapshot_class_name=snap["className"],
+                    snapshot_college_name=snap["collegeName"],
+                    internship_id=int(rec.id), status="ACTIVE"))
+            added += 1
+
+        _audit(db, batch_id, "补录参与人",
+               {"added": added, "studentIds": [int(x.id) for x in allowed.students],
+                "reason": reason or ""})
+        db.commit()
+        return {"added": added, "skippedExisting": len(ids) - len(rejected) - added,
+                "rejectedOutOfScope": rejected}
+
+
+def remove_participant(batch_id, participant_id, reason: str, expected_version, user: dict | None = None) -> dict:
+    """Remove from active roster without erasing legal history.
+
+    Only PREPARING, not-yet-placed students may be removed.  The participant row is retained as
+    REMOVED evidence, while its canonical InternshipRecord is soft-deleted so operational lists
+    and statistics stop counting it.  A later manual re-add revives that exact record.
+    """
+    from app.core.optimistic_lock import require_expected_version
+    from app.models import InternshipBatchParticipant, InternshipRecord
+
+    if not reason or len(reason.strip()) < 2:
+        raise AppException("VALIDATION_ERROR", "移出原因必填（不少于 2 字）")
+    expected = require_expected_version(expected_version)
+
+    with session() as db:
+        batch = _get_batch(db, batch_id)
+        if batch.status != "RUNNING":
+            raise AppException("DATA_CONFLICT", "只有进行中的批次可以调整正式参与名单")
+        row = db.scalar(select(InternshipBatchParticipant).where(
+            InternshipBatchParticipant.id == int(participant_id),
+            InternshipBatchParticipant.tenant_id == _tid(),
+            InternshipBatchParticipant.batch_id == int(batch_id),
+            InternshipBatchParticipant.is_deleted.is_(False),
+        ).with_for_update())
+        if not row:
+            raise not_found("参与人记录不存在")
+        if int(row.student_id) not in _visible_participant_student_ids(db, [row], user=user):
+            from app.core.exceptions import no_permission
+            raise no_permission("该参与人不在你的数据范围内")
+        if int(row.version or 0) != expected:
+            raise AppException("APPROVAL_VERSION_CONFLICT", "数据已被他人修改，请刷新后重试")
+        if row.status != "ACTIVE":
+            raise AppException("DATA_CONFLICT", "该学生已不在名单中")
+
+        rec = None
+        if row.internship_id:
+            rec = db.scalar(select(InternshipRecord).where(
+                InternshipRecord.id == int(row.internship_id),
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == int(batch_id),
+            ).with_for_update())
+        if rec and not rec.is_deleted:
+            if rec.status != "PREPARING":
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "该学生已进入上岗/考核流程，不能直接移出批次；请先走正式变更或退岗流程",
+                )
+            if rec.position_id or str(rec.destination_type or "NONE") not in ("", "NONE"):
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "该学生已经落实实习去向，不能直接移出批次；请先解除去向后再处理",
+                )
+            rec.is_deleted = True
+            rec.version = int(rec.version or 0) + 1
+
+        row.status = "REMOVED"
+        row.remove_reason = reason.strip()
+        row.version = int(row.version or 0) + 1
+        _audit(db, batch_id, "移出参与人", {
+            "studentId": int(row.student_id),
+            "name": row.snapshot_name or "",
+            "reason": reason.strip(),
+            "internshipId": str(row.internship_id or ""),
+            "recordSoftDeleted": bool(rec),
+        })
+        db.commit()
+        return {
+            "id": str(row.id),
+            "status": row.status,
+            "internshipId": str(row.internship_id or ""),
+            "recordSoftDeleted": bool(rec),
+        }
+
+
+def summary(batch_id, user: dict | None = None) -> dict:
+    from app.models import InternshipBatchParticipant
+
+    with session() as db:
+        b = _get_batch(db, batch_id)
+        rule = _get_or_create_rule(db, batch_id)
+        rows = db.scalars(select(InternshipBatchParticipant).where(
+            InternshipBatchParticipant.tenant_id == _tid(),
+            InternshipBatchParticipant.batch_id == int(batch_id),
+            InternshipBatchParticipant.is_deleted.is_(False))).all()
+        allowed_ids = _visible_participant_student_ids(db, rows, user=user)
+        visible = [r for r in rows if int(r.student_id) in allowed_ids]
+        active = sum(1 for r in visible if r.status == "ACTIVE")
+        removed = sum(1 for r in visible if r.status == "REMOVED")
+        from app.modules.internship.services.internship_student_service import _current_scope
+        scoped_view = bool(user is not None and _current_scope(user).get("mode") == "SCOPED")
+        # 批次 planned_count 是校级总目标，学院/教师角色不能借 summary 反推出全校规模。
+        # 对受限角色返回其可见正式名单规模，并显式告诉前端这是“当前范围人数”。
+        planned_count = len(visible) if scoped_view else int(b.planned_count or 0)
+        db.commit()
+        return {"batchId": str(b.id), "batchName": b.batch_name, "batchStatus": b.status,
+                "frozen": rule.frozen_at is not None, "frozenAt": _iso(rule.frozen_at),
+                "activeCount": active, "removedCount": removed,
+                "plannedCount": planned_count, "plannedCountScoped": scoped_view}

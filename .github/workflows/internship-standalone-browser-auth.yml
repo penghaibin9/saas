@@ -1,0 +1,84 @@
+name: Internship Standalone Browser Auth
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/backend/app/api/v1/standalone_browser_auth.py"
+      - "products/internship-platform/backend/app/api/v1/auth_recovery.py"
+      - "products/internship-platform/backend/app/services/mobile_student_service.py"
+      - "products/internship-platform/backend/app/api/v1/standalone_rbac.py"
+      - "products/internship-platform/backend/app/api/v1/standalone_student_portal.py"
+      - "products/internship-platform/backend/app/student_portal/internship_router.py"
+      - "products/internship-platform/backend/app/api/router.py"
+      - "products/internship-platform/backend/app/main.py"
+      - "products/internship-platform/backend/tests/test_standalone_browser_auth_mysql.py"
+      - ".github/workflows/internship-standalone-browser-auth.yml"
+
+jobs:
+  browser-auth:
+    name: Staff and student real MySQL browser auth
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: auth_gate_root
+          MYSQL_DATABASE: internship_auth_gate
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pauth_gate_root --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      APP_ENV: ci
+      DATABASE_URL: mysql+pymysql://root:auth_gate_root@127.0.0.1:3306/internship_auth_gate?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_KEY_PREFIX: internship-standalone:browser-auth
+      JWT_SECRET: standalone-browser-auth-ci-secret-20260929
+      EXPECTED_ALEMBIC_REVISION: ix0023
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install standalone backend
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Upgrade MySQL 8.4
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade head
+      - name: Verify browser auth is mounted
+        run: |
+          python - <<'PY'
+          from app.main import app
+          paths={(path,method.upper()) for path,ops in app.openapi()["paths"].items() for method in ops}
+          required={
+            ("/api/v1/auth/browser-login","POST"),
+            ("/api/v1/auth/browser-refresh","POST"),
+            ("/api/v1/auth/browser-logout","POST"),
+            ("/api/v1/auth/me","GET"),
+            ("/api/v1/rbac/current-context","GET"),
+            ("/api/v1/mobile/me/portal-config","GET"),
+            ("/api/v1/portal/internship/my","GET"),
+          }
+          assert required <= paths, sorted(required-paths)
+          print(sorted(required))
+          PY
+      - name: Run real MySQL staff and student browser auth acceptance
+        run: pytest -q products/internship-platform/backend/tests/test_standalone_browser_auth_mysql.py

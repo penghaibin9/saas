@@ -1,0 +1,115 @@
+{
+  "baseline": "98537bf2d1ab11f48b952c0d5a8e3f7a10be0b26",
+  "branch": "feat/internship-standalone-yiyang-v1",
+  "procurementScope": [
+    "SP06",
+    "SP07"
+  ],
+  "overall88ProcurementAccepted": false,
+  "tests": {
+    "passed": 88,
+    "failed": 0,
+    "casesByModule": {
+      "tests.test_yiyang_sp06_sp07_formal_document_mysql": 9,
+      "tests.test_yiyang_gap09_minimum_age_mysql": 6,
+      "tests.test_yiyang_gap09_minimum_age": 25,
+      "tests.test_internship_round3_compliance_unit": 27,
+      "tests.test_internship_student_compliance": 6,
+      "tests.test_internship_student_facade_review_contract": 9,
+      "tests.test_yiyang_c08_g17_formal_documents": 6
+    }
+  },
+  "database": {
+    "mysqlVersion": "8.4.11",
+    "alembic": "ix0024"
+  },
+  "browser": {
+    "documentFlow": "PASS",
+    "fullStudentResultPage": "FAIL",
+    "adminBrowser": "NOT_RUN",
+    "results": [
+      {
+        "action": "企业实习鉴定表",
+        "reused": false,
+        "id": "17",
+        "version": 1
+      },
+      {
+        "action": "学生实习证明",
+        "reused": false,
+        "id": "18",
+        "version": 1
+      },
+      {
+        "action": "企业实习鉴定表",
+        "reused": true,
+        "id": "17",
+        "version": 1
+      }
+    ],
+    "unresolvedBusinessResponses": [
+      {
+        "path": "/api/v1/portal/internship/context/reports",
+        "status": 400
+      },
+      {
+        "path": "/api/v1/portal/internship/context/self-eval",
+        "status": 400
+      },
+      {
+        "path": "/api/v1/portal/internship/context/weekly-reports",
+        "status": 400
+      },
+      {
+        "path": "/api/v1/portal/internship/insurance",
+        "status": 404
+      },
+      {
+        "path": "/api/v1/portal/internship/score/appeal",
+        "status": 404
+      }
+    ],
+    "limitation": "Existing browser runner passes document actions; visual/network review overrides any whole-page PASS interpretation."
+  },
+  "pdfVerification": [
+    {
+      "file": "enterprise-appraisal.pdf",
+      "pages": 1,
+      "missing": [],
+      "requiredTextChecks": 14
+    },
+    {
+      "file": "internship-certificate.pdf",
+      "pages": 1,
+      "missing": [],
+      "requiredTextChecks": 6
+    }
+  ],
+  "productionDeployment": false,
+  "prMerged": false,
+  "builds": {
+    "admin": {
+      "built": true,
+      "chunkSizeWarning": true
+    },
+    "student": {
+      "built": true,
+      "chunkSizeWarning": false
+    }
+  },
+  "sourceSha256": {
+    "products/internship-platform/admin-web/src/modules/internship/views/FormalDocumentWorkspaceView.vue": "c2e05263e77ebc740762c4e385732d672c1964b32e9c4f4556ef821ba3ce96ed",
+    "products/internship-platform/backend/app/modules/internship/services/internship_formal_document_service.py": "f4acb361a1e00fa6aabea402b2efd70b467e57337316536371a58b41ba561c2c",
+    "products/internship-platform/student-web/src/views/internship/InternshipView.vue": "16881b30c83cee7cc298572c7cff5bd694efe5449f5ed612e50e3a5ef82aa076",
+    "products/internship-platform/backend/tests/test_yiyang_sp06_sp07_formal_document_mysql.py": "40676c43697b8f6f48847ea396dcf290c0e975d58603a7c5fe8f1078022e7202",
+    "products/internship-platform/enterprise-web/e2e-surfaces/standalone-sp06-sp07-real.mjs": "463736dfc2a09c1e83a5e010b731ea33ac6d2c77cfd4fb41728d1d0a65a3cc97",
+    "products/internship-platform/scripts/seed_sp06_browser_evidence.py": "bd0fc58c799da6e07ab026e33ead0c011c15d1c532524d19301f86f7b76dcffe"
+  },
+  "evidenceSha256": {
+    "targeted-results-final.xml": "5c3fdd708413ada5e7463f3bc00524004dd52ddeaa5b7ea5591342ccb5768b64",
+    "browser/student-after-refresh.png": "a81d87b2f85730b6f0ac085c51a721f5dfecad01f61818a975009b7f0d2242d1",
+    "browser/enterprise-appraisal.pdf": "48bc5caa8fecba5586c13af7cfbdd12d083b9e253d31393abdb1e661e4ab179c",
+    "browser/internship-certificate.pdf": "a71ecc80a9770c33bd4a984d6930472e290aeba87649e063e6d9cb08aabab2c2",
+    "browser/browser-result.json": "3f3fbac01d75e473b61396adbaa9b4e8bf1f0b0e924564983bed564e9bc55b6a"
+  }
+}
