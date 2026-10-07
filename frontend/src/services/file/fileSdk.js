@@ -83,7 +83,9 @@ function showInAppPreview(url, fileName = '附件', dispose = null, plainText = 
   close.type = 'button'
   close.textContent = '关闭预览'
   close.style.cssText = 'min-height:32px;padding:0 12px;border:1px solid #cbd8ea;border-radius:7px;background:#fff;color:#1769e0;cursor:pointer;'
-  const frame = document.createElement(plainText === null ? 'iframe' : 'pre')
+  const frame = plainText === null
+    ? document.createElement('iframe')
+    : document.createElement('pre')
   if (plainText === null) frame.src = url
   else frame.textContent = plainText
   frame.title = `${fileName || '附件'}预览`
