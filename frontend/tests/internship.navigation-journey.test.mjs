@@ -62,7 +62,7 @@ test('all visible internship menu entries retain their identity with batch and p
 test('process report details stay under report review even with report-only permissions', () => {
   const pages = workspacePages(internshipWorkspaces({ permissionPatterns: ['internship.report.view'] }))
   for (const path of ['/admin/internship/reports/9?batchId=1', '/admin/internship/process-reports/9?batchId=1']) {
-    assert.equal(workspaceCurrentPage(pages, path).title, '报告批阅')
+    assert.equal(workspaceCurrentPage(pages, path).title, '报告与任务')
   }
 })
 
