@@ -1,0 +1,89 @@
+name: PR278 reviewed U8 baseline transfer
+
+on:
+  push:
+    branches: [codex/academic-v5-responsibility-20260926]
+    paths: [.github/workflows/pr278-reviewed-u8-baseline-transfer.yml]
+
+permissions: {}
+
+jobs:
+  transfer-reviewed-images:
+    if: github.repository == 'penghaibin9/saas' && github.ref == 'refs/heads/codex/academic-v5-responsibility-20260926'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Verify pinned evidence and create content-addressed blobs only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python3 - <<'PY'
+          import base64
+          import hashlib
+          import io
+          import json
+          import os
+          import urllib.error
+          import urllib.request
+          import zipfile
+
+          api = 'https://api.github.com/repos/penghaibin9/saas'
+          headers = {
+              'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'User-Agent': 'pr278-reviewed-baseline-transfer',
+          }
+          artifact_id = 11470860418
+          archive_sha = '692794850f37fdbe4a820979949b60977968220ad2e6370b648574ffa46b3101'
+          expected = {
+              '390x844': 'bd3de939971c540d834487e66d22d45a749d0f597b7898a973bf8e859efbc319',
+              '375x812': '00959f8efd07827d7e5b345640f02622d79c022f43249e585997555c55fb4c6e',
+          }
+
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, hdrs, newurl):
+                  return None
+
+          request = urllib.request.Request(f'{api}/actions/artifacts/{artifact_id}/zip', headers=headers)
+          try:
+              response = urllib.request.build_opener(NoRedirect()).open(request, timeout=30)
+          except urllib.error.HTTPError as exc:
+              if exc.code != 302:
+                  raise
+              location = exc.headers['Location']
+              if not location.startswith('https://'):
+                  raise RuntimeError('Artifact redirect must use HTTPS')
+              # Never forward the repository token to the artifact storage host.
+              response = urllib.request.urlopen(location, timeout=60)
+          with response:
+              archive = response.read(20_000_001)
+          if len(archive) > 20_000_000 or hashlib.sha256(archive).hexdigest() != archive_sha:
+              raise RuntimeError('Pinned archive size or SHA-256 mismatch')
+
+          result = []
+          with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+              for size, expected_sha in expected.items():
+                  logical = f'gd-U8-teacher-workbench-GoldCandidate-{size}'
+                  matches = [name for name in bundle.namelist() if name.endswith('/' + logical + '-actual.png')]
+                  if len(matches) != 1:
+                      raise RuntimeError(f'Expected one reviewed image for {size}')
+                  info = bundle.getinfo(matches[0])
+                  if info.file_size > 500_000:
+                      raise RuntimeError('Unexpected image size')
+                  image = bundle.read(info)
+                  if hashlib.sha256(image).hexdigest() != expected_sha:
+                      raise RuntimeError(f'Reviewed image SHA-256 mismatch: {size}')
+                  body = json.dumps({'encoding': 'base64', 'content': base64.b64encode(image).decode('ascii')}).encode()
+                  request = urllib.request.Request(f'{api}/git/blobs', data=body, headers={**headers, 'Content-Type': 'application/json'}, method='POST')
+                  with urllib.request.urlopen(request, timeout=30) as response:
+                      blob = json.load(response)
+                  expected_blob = hashlib.sha1(f'blob {len(image)}\0'.encode() + image).hexdigest()
+                  if blob['sha'] != expected_blob:
+                      raise RuntimeError('Git blob SHA mismatch')
+                  result.append({'frozenFile': logical + '-chromium-linux.png', 'sha256': expected_sha, 'blobSha': blob['sha']})
+          print('REVIEWED_BASELINE_BLOBS=' + json.dumps(result, sort_keys=True))
+          PY
