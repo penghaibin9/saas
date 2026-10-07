@@ -28,8 +28,10 @@ def test_teacher_command_never_grants_role_based_proxy(monkeypatch, role, key, a
     query = SimpleNamespace()
     query.filter = lambda *args: query
     query.with_for_update = lambda: query
+    query.populate_existing = lambda: query
     query.first = lambda: task
-    empty = SimpleNamespace(filter=lambda *args: empty, with_for_update=lambda: empty, first=lambda: None)
+    empty = SimpleNamespace(filter=lambda *args: empty, with_for_update=lambda: empty,
+                            populate_existing=lambda: empty, first=lambda: None)
     commits = []
     db = SimpleNamespace(query=lambda model: empty if model is AaTeachingClass else query,
                          commit=lambda: commits.append(True), refresh=lambda row: None)

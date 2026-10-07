@@ -18,6 +18,33 @@ MANAGE = 'academicAffairs.program.manage'
 DASHBOARD = 'academicAffairs.dashboard.view'
 
 
+@pytest.fixture()
+def real_subject_cache(monkeypatch, db_mode):
+    """Opt in only these cache-revocation cases to a loopback, isolated Redis DB."""
+    import os
+    from urllib.parse import urlsplit
+    from app.core.config import settings
+    from app.core import redis_client
+    url = os.environ.get("ACADEMIC_SCOPE_TEST_REDIS_URL", "")
+    parsed = urlsplit(url)
+    assert parsed.scheme == "redis" and parsed.hostname in {"127.0.0.1", "localhost"}, (
+        "ACADEMIC_SCOPE_TEST_REDIS_URL must explicitly select an isolated loopback Redis"
+    )
+    assert parsed.path == "/15", "Use dedicated Redis database 15 for academic cache tests"
+    prefix = "pytest-academic-subject-" + uuid.uuid4().hex
+    redis_client.reset_redis_client()
+    monkeypatch.setattr(settings, "REDIS_URL", url)
+    monkeypatch.setattr(settings, "REDIS_KEY_PREFIX", prefix)
+    try:
+        client = redis_client.get_redis()
+        assert client is not None and client.ping(), "Real Redis must be ready, never skipped or substituted"
+        yield client
+    finally:
+        # Only remove this test's randomly namespaced keys; never FLUSHDB/FLUSHALL.
+        redis_client.cache_delete_pattern("*")
+        redis_client.reset_redis_client()
+
+
 def _academic_module_authority(facts):
     """复用正式商品发布、分项订单支付和学校启用命令，不能用 FEATURES 开关冒充购买。"""
     from tests.test_module_commerce_m12_runtime import _sku, _pay
@@ -162,7 +189,7 @@ def _assert_public_contexts(identity):
 @pytest.mark.parametrize('change', ['member_revoked', 'validity_expired', 'validity_future',
                                     'validity_revoked', 'validity_deleted', 'scope_revoked',
                                     'scope_expired', 'manage_revoked'])
-def test_same_signed_major_session_rechecks_revocation_without_relogin(client, facts, change, record_property):
+def test_same_signed_major_session_rechecks_revocation_without_relogin(client, facts, change, record_property, real_subject_cache):
     from app.core.config import settings
     from app.models import Role, RoleAssignmentScope, UserRole
     from app.models.role_assignment import RoleAssignmentValidity

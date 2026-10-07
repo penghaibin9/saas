@@ -40,7 +40,7 @@ def test_grade_transaction_adapter_contains_no_second_grade_state_machine():
         in source
     )
     assert "object_session(task)" in source
-    assert "_exec._require_live_teacher(db, task, actor, lock_owner=True)" in source
+    assert "_exec._require_live_teacher(db, task, actor, lock_owner=not _READ_ONLY_SCOPE.get())" in source
 
     # These names belong to the canonical business implementation.  If any returns here, the
     # transaction adapter has started cloning the score/submit state machine again.

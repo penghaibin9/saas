@@ -77,7 +77,8 @@ def _seed_exam_review_identity(db, college_id):
         if not db.query(RolePermission).filter(RolePermission.tenant_id == TID, RolePermission.role_id == teacher_role.id,
                 RolePermission.permission_id == permission.id).first():
             db.add(RolePermission(tenant_id=TID, role_id=teacher_role.id, permission_id=permission.id, status="ACTIVE"))
-    for login, name in (("teacher_a", "甲老师"), ("teacher_b", "乙老师"), ("academic01", "赵敏")):
+    for login, name in (("teacher_a", "甲老师"), ("teacher_b", "乙老师"), ("academic01", "赵敏"),
+                        ("teacher_c", "丙老师"), ("teacher_x", "监考老师"), ("patrol_a", "巡考甲")):
         teacher = db.query(User).filter(User.tenant_id == TID, User.login_name == login).first()
         if teacher is None:
             teacher = User(tenant_id=TID, login_name=login, real_name=name, user_type="TEACHER", password_hash="x", status="ACTIVE")
@@ -290,8 +291,11 @@ def test_e1_full_lifecycle(client, db_mode):
     seat = client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin,
                        json={"studentIds": [str(ids["s1"]), str(ids["s2"])]}).json()
     assert seat["data"]["seatCount"] == 2
-    assert client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin,
-                       json={"teacherKey": "teacher_a", "teacherName": "甲老师", "role": "CHIEF"}).json()["code"] == 0
+    denied = client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin,
+                         json={"teacherKey": "teacher_a", "teacherName": "甲老师", "role": "CHIEF"})
+    assert denied.status_code == 409, denied.text
+    assert "任课教师不能监考本人课程" in denied.json()["message"]
+    _assign_independent_invigilators(client, admin, rid)
     assert client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin).json()["data"]["status"] == "PUBLISHED"
     _mark_remaining_seats_present(cid)
     assert client.post(f"{BASE}/exam/batches/{bid}/finish", headers=admin).json()["data"]["status"] == "FINISHED"
@@ -314,9 +318,9 @@ def test_e3_invigilator_conflict_409(client, db_mode):
     r1 = client.post(f"{BASE}/exam/courses/{cid1}/rooms", headers=admin, json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
     r2 = client.post(f"{BASE}/exam/courses/{cid2}/rooms", headers=admin, json={"classroomText": "A102", "capacity": 50}).json()["data"]["examRoomId"]
     assert client.post(f"{BASE}/exam/rooms/{r1}/invigilators", headers=admin,
-                       json={"teacherKey": "teacher_a", "teacherName": "甲老师"}).json()["code"] == 0
+                       json={"teacherKey": "teacher_c", "teacherName": "丙老师"}).json()["code"] == 0
     assert client.post(f"{BASE}/exam/rooms/{r2}/invigilators", headers=admin,
-                       json={"teacherKey": "teacher_a", "teacherName": "甲老师"}).status_code == 409
+                       json={"teacherKey": "teacher_c", "teacherName": "丙老师"}).status_code == 409
 
 
 def test_e4_seat_capacity_exceed_409(client, db_mode):
@@ -329,10 +333,17 @@ def test_e4_seat_capacity_exceed_409(client, db_mode):
                        json={"studentIds": [str(ids["s1"]), str(ids["s2"])]}).status_code == 409
 
 
+def _assign_independent_invigilators(client, admin, room_id):
+    for login, name, role in (("teacher_c", "丙老师", "CHIEF"), ("teacher_x", "监考老师", "ASSISTANT")):
+        result = client.post(f"{BASE}/exam/rooms/{room_id}/invigilators", headers=admin,
+            json={"teacherKey": login, "teacherName": name, "role": role})
+        assert result.status_code == 200, result.text
+
+
 def _fully_arrange(client, admin, cid, ids):
     rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin, json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
     client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin, json={"studentIds": [str(ids["s1"]), str(ids["s2"])]})
-    client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_x", "teacherName": "监考老师"})
+    _assign_independent_invigilators(client, admin, rid)
     return rid
 
 
@@ -416,7 +427,7 @@ def test_e11_archived_readonly_409(client, db_mode):
     bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"], term_id=ids["term"])
     rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin,
                       json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
-    client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_z", "teacherName": "Z"})
+    _assign_independent_invigilators(client, admin, rid)
     client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin,
                 json={"studentIds": [str(ids["s1"]), str(ids["s2"])]})
     pub = client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
@@ -441,7 +452,7 @@ def test_e12_archive_permission_403(client, db_mode):
     bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"], term_id=ids["term"])
     rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin,
                       json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
-    client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_z"})
+    _assign_independent_invigilators(client, admin, rid)
     client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin, json={"studentIds": [str(ids["s1"])]})
     client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
     client.post(f"{BASE}/exam/batches/{bid}/finish", headers=admin)
@@ -455,7 +466,7 @@ def test_e13_archive_list_readonly(client, db_mode):
     bid, cid = _batch_with_confirmed_course(client, admin, ids["tt1"], "待归档批次", term_id=ids["term"])
     rid = client.post(f"{BASE}/exam/courses/{cid}/rooms", headers=admin,
                       json={"classroomText": "A101", "capacity": 50}).json()["data"]["examRoomId"]
-    client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin, json={"teacherKey": "teacher_z"})
+    _assign_independent_invigilators(client, admin, rid)
     client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin,
                 json={"studentIds": [str(ids["s1"]), str(ids["s2"])]})
     pub = client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)

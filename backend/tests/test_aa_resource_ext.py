@@ -227,6 +227,9 @@ def _seed_ready_schedule_task(term_id, slot_no):
                           teacher_name="冲突检测老师", weekly_hours=1,
                           start_week=1, end_week=18, status="READY")
     db.add(task); db.flush()
+    from tests.support_schedule_authority import seed_schedule_program_source, seed_school_schedule_operator
+    seed_schedule_program_source(db, task)
+    seed_school_schedule_operator(db)
     task_id = int(task.id)
     db.commit(); db.close()
     return task_id

@@ -161,4 +161,4 @@ def test_generate_batch_checks_existing_college_editable_batch_before_appending(
     source = inspect.getsource(_service().generate_batch_tx)
     guard = "_guard_college_editable_batch_integrity(db, batch)"
     assert guard in source
-    assert source.index(guard) < source.index("if not batch:")
+    assert source.index(guard) < source.index("if batch is None:")

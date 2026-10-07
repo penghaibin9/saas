@@ -284,8 +284,8 @@ def test_mysql_exam_college_confirmation_and_school_publication_require_live_app
     rid = room.json()["data"]["examRoomId"]
     assert client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=school,
         json={"studentIds": [str(ids["s1"]), str(ids["s2"])]}).status_code == 200
-    assert client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=school,
-        json={"teacherKey": "teacher_a", "teacherName": "甲老师", "role": "CHIEF"}).status_code == 200
+    from tests.test_aa_exam import _assign_independent_invigilators
+    _assign_independent_invigilators(client, school, rid)
     before = client.get(f"{BASE}/exam/batches/{bid}", headers=school).json()["data"]["status"]
     assert publish_action(school)["allowed"] is True
     assert publish_action(college)["allowed"] is False

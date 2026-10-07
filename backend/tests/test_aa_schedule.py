@@ -205,24 +205,8 @@ def _seed_single_publishable_task(term_id: str) -> int:
 
 
 def _seed_school_publish_identity(db):
-    """复用现有账号夹具，只追加排课具体权限、学校范围与正式发布任职。"""
-    from app.models import Role, RoleAssignmentScope, RolePermission, StaffAssignment, UserRole
-    from tests.support_grade_review_identity import _ensure_account, _ensure_permission
-
-    user = _ensure_account(db, "school_admin01")
-    role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == "TEST_GRADE_SCHOOL_ADMIN01").one()
-    for code in ("academicAffairs.schedule.view", "academicAffairs.schedule.edit"):
-        permission = _ensure_permission(db, code)
-        if not db.query(RolePermission).filter(RolePermission.tenant_id == TID,
-                RolePermission.role_id == role.id, RolePermission.permission_id == permission.id).first():
-            db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=permission.id, status="ACTIVE"))
-    link = db.query(UserRole).filter(UserRole.tenant_id == TID, UserRole.user_id == user.id, UserRole.role_id == role.id).one()
-    if not db.query(RoleAssignmentScope).filter(RoleAssignmentScope.tenant_id == TID,
-            RoleAssignmentScope.user_role_id == link.id, RoleAssignmentScope.scope_type == "SCHOOL").first():
-        db.add(RoleAssignmentScope(tenant_id=TID, user_role_id=link.id, user_id=user.id, role_code=role.role_code,
-            scope_type="SCHOOL", scope_id=0, effective_at=datetime(2020, 1, 1), status="ACTIVE"))
-    db.add(StaffAssignment(tenant_id=TID, user_id=user.id, org_type="SCHOOL", org_node_id=TID,
-        assignment_type="ACADEMIC_REVIEWER", effective_at=datetime(2020, 1, 1), status="ACTIVE"))
+    from tests.support_schedule_authority import seed_school_schedule_operator
+    return seed_school_schedule_operator(db)
 
 
 def _setup_publishable(client, db_mode):

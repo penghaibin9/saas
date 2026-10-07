@@ -117,7 +117,7 @@ def _ensure_term():
     return term_id
 
 
-def _seed_ready_task(term_id, class_id, teacher_key, weekly_hours=1):
+def _seed_ready_task(term_id, class_id, teacher_key, weekly_hours=1, total_hours=None):
     """排课/成绩主链都回链同学期 READY 教学任务；不依赖共享 MySQL 残留。"""
     from app.db.session import get_sessionmaker
     from datetime import datetime
@@ -152,7 +152,7 @@ def _seed_ready_task(term_id, class_id, teacher_key, weekly_hours=1):
         class_id=int(class_id), teaching_class_name="软件2301",
         source_program_course_id=planned.id, formation_mode="ADMIN_FIXED",
         teacher_key=teacher_key, teacher_name="王老师", status="READY",
-        weekly_hours=int(weekly_hours), total_hours=int(weekly_hours) * 18, start_week=1, end_week=18,
+        weekly_hours=int(weekly_hours), total_hours=int(total_hours if total_hours is not None else int(weekly_hours) * 18), start_week=1, end_week=18,
     )
     db.add(task); db.flush()
     task_id = int(task.id)
@@ -166,7 +166,11 @@ def _published_schedule(client, admin, class_id, teacher_key="counselor01", extr
     from tests.test_aa_schedule import _seed_school_publish_identity
 
     term_id = _ensure_term()
-    task_id = _seed_ready_task(term_id, class_id, teacher_key, weekly_hours=1 + len(extra_items or []))
+    # Each extra item is a one-week supplementary occurrence, not 18 full weeks.
+    planned_periods = 18 + sum(int(row.get("endWeek", 2)) - int(row.get("startWeek", 2)) + 1
+                              for row in (extra_items or []))
+    task_id = _seed_ready_task(term_id, class_id, teacher_key,
+        weekly_hours=1 + len(extra_items or []), total_hours=planned_periods)
     with get_sessionmaker()() as db:
         _seed_school_publish_identity(db)
         db.commit()

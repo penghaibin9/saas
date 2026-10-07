@@ -397,7 +397,8 @@ def test_d_w0_system_passed_run_can_form_normal_decision(client, db_mode, monkey
 
         with get_sessionmaker()() as db:
             actor = _ensure_account(db, "school_admin01")
-            assert actor.id == 1
+            actor_id = int(actor.id)
+            assert actor_id > 0
             db.commit()
     # 隔离跨域供数；身份事实解析、快照比较、真实权限及终态命令均不替换。
     monkeypatch.setattr(legacy, "_run_items", lambda db, student: _complete_pass_items())
@@ -411,7 +412,7 @@ def test_d_w0_system_passed_run_can_form_normal_decision(client, db_mode, monkey
         from app.core.context import get_current_user_ctx, get_tenant, set_current_user, set_tenant
         from app.modules.academic_affairs.services.academic_affairs_graduation_immutable_service import academic_final
 
-        user = {"userId": "db-1", "loginName": "school_admin01", "realName": "陈校",
+        user = {"userId": f"db-{actor_id}", "loginName": "school_admin01", "realName": "陈校",
                 "userType": "SCHOOL_ADMIN", "currentRoleCode": "SCHOOL_ADMIN", "tenantId": str(TID)}
         previous_user, previous_tenant = get_current_user_ctx(), get_tenant()
         try:
@@ -435,8 +436,8 @@ def test_d_w0_system_passed_run_can_form_normal_decision(client, db_mode, monkey
     assert len(decisions) == 1
     assert decisions[0].evaluation_run_id == run_id
     if real_actor:
-        assert decisions[0].decision_by == 1
-        assert decisions[0].created_by == 1
+        assert decisions[0].decision_by == actor_id
+        assert decisions[0].created_by == actor_id
 
     from app.db.session import get_sessionmaker
     from app.models import GraduationEvaluationRun, StudentProfile

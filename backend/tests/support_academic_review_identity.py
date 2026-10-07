@@ -241,3 +241,49 @@ def ensure_college_review_scope(*, college_ids=(), major_ids=()) -> list[int]:
         return resolved
     finally:
         db.close()
+
+
+
+def ensure_program_writer_identity() -> dict:
+    """Real school-scoped writer for direct command/concurrency tests."""
+    from app.db.session import get_sessionmaker
+    from app.models import Role, RoleAssignmentScope, UserRole
+    with get_sessionmaker()() as db:
+        user = _ensure_review_account(
+            db, login_name="program_writer_regression", real_name="培养方案写入回归员",
+            role_code="TEST_PROGRAM_WRITER", permissions=(
+                "academicAffairs.program.view", "academicAffairs.program.manage",
+            ),
+        )
+        role = db.query(Role).filter(Role.tenant_id == TID,
+            Role.role_code == "TEST_PROGRAM_WRITER").one()
+        member = db.query(UserRole).filter(UserRole.tenant_id == TID,
+            UserRole.user_id == user.id, UserRole.role_id == role.id).one()
+        if not db.query(RoleAssignmentScope).filter(RoleAssignmentScope.tenant_id == TID,
+                RoleAssignmentScope.user_role_id == member.id,
+                RoleAssignmentScope.scope_type == "SCHOOL").first():
+            db.add(RoleAssignmentScope(tenant_id=TID, user_role_id=member.id,
+                user_id=user.id, role_code=role.role_code, scope_type="SCHOOL", scope_id=TID,
+                effective_at=datetime(2020, 1, 1), status="ACTIVE"))
+        result = {"userId": str(user.id), "loginName": user.login_name,
+            "realName": user.real_name, "tenantId": str(TID), "userType": user.user_type,
+            "activeContextId": f"role:{role.id}", "currentRoleCode": role.role_code}
+        db.commit()
+        return result
+
+
+from contextlib import contextmanager
+
+
+@contextmanager
+def program_writer_context(user):
+    """Each worker owns its tenant/actor; ContextVars never leak across tests."""
+    from app.core.context import get_tenant, get_current_user_ctx, set_tenant, set_current_user
+    tenant, previous = get_tenant(), get_current_user_ctx()
+    set_tenant(TID)
+    set_current_user(user)
+    try:
+        yield user
+    finally:
+        set_current_user(previous)
+        set_tenant(tenant)

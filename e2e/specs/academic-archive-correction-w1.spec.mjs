@@ -136,21 +136,17 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
   await expect(page.getByText('拟形成事实（非正式）', { exact: true })).toBeVisible()
   await expect(page.getByText('申请人本人执行二审会被服务端拒绝', { exact: false })).toBeVisible()
 
-  await page.getByRole('button', { name: '二审通过并生成新正式事实' }).click()
-  const creatorDialog = page.getByRole('dialog').filter({ hasText: '确认二次审批通过' }).first()
-  await expect(creatorDialog).toBeVisible()
-  const deniedPromise = page.waitForResponse(
-    (response) => response.url().includes(`/api/v1/academic-affairs/archive/corrections/${approveCaseId}/approve`) &&
-      response.request().method() === 'POST',
-    { timeout: 20_000 }
+  await expect(page.getByRole('button', { name: '二审通过并生成新正式事实' })).toBeHidden()
+  const denied = await page.request.post(
+    `${config.apiBaseUrl}/academic-affairs/archive/corrections/${approveCaseId}/approve`,
+    { headers: { Authorization: `Bearer ${creatorApi.token}` }, data: {} }
   )
-  await creatorDialog.getByRole('button', { name: '确认批准并生成新事实' }).click()
-  const denied = await deniedPromise
   expect(denied.status()).toBe(403)
   const deniedPayload = await denied.json()
   expect(deniedPayload.code).not.toBe(0)
-  await expect(creatorDialog).toBeVisible()
-  await creatorDialog.getByRole('button', { name: '取消' }).click()
+  const afterDenied = await creatorApi.get(`/academic-affairs/archive/batches/${fixture.batchId}/manifest/verify`)
+  expect(afterDenied.ok).toBeTruthy()
+  expect(afterDenied.versions).toEqual(initialManifest.versions)
   await expect(page.getByText('待二审', { exact: true }).first()).toBeVisible()
   await capture(page, testInfo, 'w1-same-requester-second-review-denied')
 

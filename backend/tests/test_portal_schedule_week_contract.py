@@ -18,6 +18,7 @@ def test_portal_schedule_passes_optional_week_to_canonical_projection(monkeypatc
     assert academic.schedule(user)["week"] is None
     assert academic.schedule(user, 6)["week"] == 6
     assert calls == [(user, None), (user, 6)]
+    assert portal_router.academic_schedule(user=user)["data"]["week"] is None
     assert portal_router.academic_schedule(user=user, week=6)["data"]["week"] == 6
 
 

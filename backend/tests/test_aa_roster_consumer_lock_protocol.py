@@ -52,6 +52,9 @@ def _snapshot(version_id: int):
 def test_freeze_locks_and_revalidates_before_consumer_rows(monkeypatch):
     events = []
     current = _roster(7)
+    from app.modules.academic_affairs.services import academic_affairs_task_execution_authority as authority
+    monkeypatch.setattr(authority, "require_independent_task",
+                        lambda db, task_id: events.append(("task", task_id)))
     monkeypatch.setattr(svc, "_tid", lambda: 1)
     monkeypatch.setattr(
         svc,
@@ -79,13 +82,16 @@ def test_freeze_locks_and_revalidates_before_consumer_rows(monkeypatch):
         roster=dict(current),
     )
 
-    assert events == [("lock", 30, True), ("resolve", 30), ("rows", True)]
+    assert events == [("task", 30), ("lock", 30, True), ("resolve", 30), ("rows", True)]
     assert result["rosterVersionId"] == "7"
     assert result["created"] is False
 
 
 def test_freeze_rejects_stale_preloaded_roster_before_snapshot_rows(monkeypatch):
     events = []
+    from app.modules.academic_affairs.services import academic_affairs_task_execution_authority as authority
+    monkeypatch.setattr(authority, "require_independent_task",
+                        lambda db, task_id: events.append(("task", task_id)))
     monkeypatch.setattr(svc, "_tid", lambda: 1)
     monkeypatch.setattr(
         svc,
@@ -116,7 +122,7 @@ def test_freeze_rejects_stale_preloaded_roster_before_snapshot_rows(monkeypatch)
             roster=_roster(7),
         )
 
-    assert events == [("lock", 30, True), ("resolve", 30)]
+    assert events == [("task", 30), ("lock", 30, True), ("resolve", 30)]
     assert "名单已在业务冻结前换版" in str(exc.value)
 
 

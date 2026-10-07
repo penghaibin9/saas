@@ -42,6 +42,32 @@ SCHEDULE_CHANGE_COLLEGE_PERM = "academicAffairs.scheduleChange.collegeReview"
 SCHEDULE_CHANGE_ACADEMIC_PERM = "academicAffairs.scheduleChange.academicReview"
 
 
+def _active_role_pairs_statement(tenant_id):
+    """Batch equivalent of login's live role/membership decision; never await expiry jobs."""
+    from sqlalchemy import and_, or_, select
+    from app.models import Role, RoleAssignmentValidity, User, UserRole
+    from app.services.role_assignment_service import _now as assignment_now
+
+    moment = assignment_now()
+    return (select(User.id, Role)
+        .join(UserRole, UserRole.user_id == User.id)
+        .join(Role, Role.id == UserRole.role_id)
+        .outerjoin(RoleAssignmentValidity, and_(
+            RoleAssignmentValidity.tenant_id == UserRole.tenant_id,
+            RoleAssignmentValidity.user_role_id == UserRole.id))
+        .where(User.tenant_id == tenant_id, User.status == "ACTIVE", User.is_deleted.is_(False),
+            UserRole.tenant_id == tenant_id, UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
+            Role.tenant_id == tenant_id, Role.role_code != "PLATFORM_SUPER_ADMIN",
+            Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False),
+            or_(RoleAssignmentValidity.id.is_(None), and_(
+                RoleAssignmentValidity.user_id == User.id,
+                RoleAssignmentValidity.role_code == Role.role_code,
+                RoleAssignmentValidity.status == "ACTIVE", RoleAssignmentValidity.is_deleted.is_(False),
+                RoleAssignmentValidity.effective_at <= moment,
+                or_(RoleAssignmentValidity.expires_at.is_(None),
+                    RoleAssignmentValidity.expires_at > moment)))))
+
+
 def _runtime_permission_holder_ids(db, permission_code: str, *, cache=None) -> list[int]:
     """学校发布模板与自定义角色共用当前权限真值；缓存仅由只读请求显式传入。"""
     from sqlalchemy import select
@@ -56,12 +82,7 @@ def _runtime_permission_holder_ids(db, permission_code: str, *, cache=None) -> l
         return list(current[holder_key])
     pair_key = ("active_role_pairs", tenant_id)
     if pair_key not in current:
-        current[pair_key] = list(db.execute(
-            select(User.id, Role).join(UserRole, UserRole.user_id == User.id).join(Role, Role.id == UserRole.role_id)
-            .where(User.tenant_id == tenant_id, User.status == "ACTIVE", User.is_deleted.is_(False),
-                UserRole.tenant_id == tenant_id, UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
-                Role.tenant_id == tenant_id, Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False))
-        ).all())
+        current[pair_key] = list(db.execute(_active_role_pairs_statement(tenant_id)).all())
     pairs = current[pair_key]
     legacy_ids = {int(role.id) for _, role in pairs
         if str(role.role_type or "").upper() != "SYSTEM"
@@ -116,23 +137,12 @@ def _preferred_role_candidates(db, candidates, role_code: str) -> list[int]:
     candidate_ids = {int(value) for value in candidates if int(value) > 0}
     if not candidate_ids:
         return []
-    preferred = {
-        int(value)
-        for value in db.scalars(
-            select(UserRole.user_id)
-            .join(Role, Role.id == UserRole.role_id)
-            .where(
-                UserRole.tenant_id == _core._tid(),
-                UserRole.user_id.in_(candidate_ids),
-                UserRole.status == "ACTIVE",
-                UserRole.is_deleted.is_(False),
-                Role.tenant_id == _core._tid(),
-                Role.role_code == str(role_code or "").strip().upper(),
-                Role.status.in_(("ACTIVE", "ENABLED")),
-                Role.is_deleted.is_(False),
-            )
-        ).all()
-    }
+    from app.models import User
+    preferred = {int(value) for value in db.scalars(
+        _active_role_pairs_statement(_core._tid()).with_only_columns(User.id).where(
+            User.id.in_(candidate_ids),
+            Role.role_code == str(role_code or "").strip().upper(),
+        )).all()}
     return sorted(preferred or candidate_ids)
 
 

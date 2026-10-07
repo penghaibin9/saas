@@ -2,7 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor
 from threading import Event
 
-from tests.test_aa_exam import BASE, TID, _batch_with_confirmed_course, _hdr, _seed
+from tests.test_aa_exam import BASE, TID, _assign_independent_invigilators, _batch_with_confirmed_course, _hdr, _seed
 
 
 def _published_room(client, db_mode, *, publish=True):
@@ -16,9 +16,7 @@ def _published_room(client, db_mode, *, publish=True):
     seats = client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin,
                         json={"studentIds": [str(ids["s1"]), str(ids["s2"])]})
     assert seats.status_code == 200, seats.text
-    invigilator = client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin,
-                              json={"teacherKey": "teacher_a", "teacherName": "甲老师"})
-    assert invigilator.status_code == 200, invigilator.text
+    _assign_independent_invigilators(client, admin, rid)
     if publish:
         result = client.post(f"{BASE}/exam/batches/{bid}/publish", headers=admin)
         assert result.status_code == 200, result.text
@@ -125,7 +123,7 @@ def test_exam_attendance_student_other_teacher_and_foreign_college_denied(client
         permission = _ensure_permission(db, "academicAffairs.exam.recordAbnormal")
         db.add(RolePermission(tenant_id=TID, role_id=teacher_role.id, permission_id=permission.id, status="ACTIVE"))
         db.commit()
-    teacher = _real_teacher_headers("teacher_a")
+    teacher = _real_teacher_headers("teacher_c")
     other_teacher = _real_teacher_headers("teacher_b")
     assert client.get(f"{BASE}/exam/rooms/{rid}/attendance", headers=teacher).status_code == 200
     assert client.get(f"{BASE}/exam/rooms/{rid}/attendance", headers=other_teacher).status_code == 403
