@@ -196,7 +196,8 @@ jobs:
           assert data['master']['studentAccounts'] == 20000
           assert data['master']['backgroundStaffAccounts'] == 1280
           assert data['roles']['requiredRoles'] == 24
-          assert data['roles']['secondaryRoleBindings'] == 501
+          assert data['roles']['secondaryRoleBindings'] == 493
+          assert data['roles']['secondaryRoleBindings'] == sum(data['roles']['roleAssignments'].values())
           assert data['roles']['nonMentorOrgScopeCount'] == 176
           assert data['roles']['mentorAdvisorScopes']['INTERN_MENTOR'] == 224
           assert data['roles']['mentorAdvisorScopes']['GD_MENTOR'] == 384
