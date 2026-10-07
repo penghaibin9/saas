@@ -44,6 +44,7 @@ class ScheduleImportPreload:
         teaching_weeks,
         enabled_slots,
         tasks,
+        blocked_task_ids,
         classrooms,
         task_items,
         conflict_rows,
@@ -53,6 +54,7 @@ class ScheduleImportPreload:
         self.enabled_slots = tuple(int(v) for v in enabled_slots)
         self._tasks = list(tasks)
         self._task_by_id = {int(row.id): row for row in self._tasks}
+        self._blocked_task_ids = {int(value) for value in blocked_task_ids}
         self._classrooms = list(classrooms)
         self._classroom_by_id = {int(row.id): row for row in self._classrooms}
         self._task_items = defaultdict(list)
@@ -63,13 +65,29 @@ class ScheduleImportPreload:
             buckets[(int(row.weekday), int(row.slot_no))].append(row)
         self._conflict_rows = buckets
 
+    def ensure_independent(self, task):
+        if task is None:
+            return None
+        task_id = int(task.id)
+        if task_id in self._blocked_task_ids:
+            from app.core.exceptions import AppException
+            raise AppException(
+                "DATA_CONFLICT",
+                "本任务已由原教学任务承接，请回读原任务后办理，不能重复执行。",
+                http_status=409,
+                details={"blocker": "TASK_EXECUTION_HANDOFF", "taskId": str(task_id)},
+            )
+        return task
+
     def task_by_id(self, task_id: int):
-        return self._task_by_id.get(int(task_id))
+        return self.ensure_independent(self._task_by_id.get(int(task_id)))
 
     def task_matches(self, course_name: str, teacher_key: str, class_id):
         matches = []
         class_id_int = int(class_id) if class_id not in (None, "") else None
         for row in self._tasks:
+            if int(row.id) in self._blocked_task_ids:
+                continue
             if row.course_name != course_name:
                 continue
             if teacher_key and row.teacher_key != teacher_key:
@@ -265,11 +283,15 @@ def build_preload(
             ))
         conflict_rows = db.scalars(query).all()
 
+    from .academic_affairs_task_execution_authority import load_execution_handoffs
+    blocked_task_ids = set(load_execution_handoffs(db, [row.id for row in tasks]))
+
     return ScheduleImportPreload(
         allowed_batch_ids=allowed_batch_ids,
         teaching_weeks=teaching_weeks,
         enabled_slots=enabled_slots,
         tasks=tasks,
+        blocked_task_ids=blocked_task_ids,
         classrooms=classrooms,
         task_items=task_items,
         conflict_rows=conflict_rows,
