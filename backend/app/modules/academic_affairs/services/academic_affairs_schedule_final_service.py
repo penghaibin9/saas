@@ -129,7 +129,7 @@ def _resolve_task(db, batch, source, *, preload=None, lock=True):
                 details={"taskId": str(task_id), "termId": str(batch.term_id)},
                 http_status=409,
             )
-        return require_independent_task(db, task, lock=lock)
+        return task if preload is not None else require_independent_task(db, task, lock=lock)
 
     course_name = str(_value(source, "courseName") or "").strip()
     teacher_key = str(_value(source, "teacherKey") or "").strip()
@@ -141,12 +141,11 @@ def _resolve_task(db, batch, source, *, preload=None, lock=True):
         )
 
     if preload is not None:
-        # 预载匹配原先最多取两条；必须先排除后继，再做唯一性判断。
-        matches = [row for row in preload._tasks if row.course_name == course_name
+        # 批量导入已在预载阶段一次性核验承接关系；这里只做内存唯一匹配。
+        matches = [row for row in preload._tasks if int(row.id) not in preload._blocked_task_ids
+            and row.course_name == course_name
             and (not teacher_key or row.teacher_key == teacher_key)
             and (class_id in (None, "") or row.class_id == int(class_id))]
-        handed = load_execution_handoffs(db, [row.id for row in matches])
-        matches = [row for row in matches if int(row.id) not in handed]
     else:
         query = db.query(AaTeachingTask).filter(
             AaTeachingTask.tenant_id == _base._tid(),
@@ -176,7 +175,7 @@ def _resolve_task(db, batch, source, *, preload=None, lock=True):
             details={"taskIds": [str(row.id) for row in matches[:2]]},
             http_status=409,
         )
-    return require_independent_task(db, matches[0], lock=lock)
+    return matches[0] if preload is not None else require_independent_task(db, matches[0], lock=lock)
 
 
 def _coordinate(db, batch, task, source, *, preload=None):
@@ -320,7 +319,7 @@ def _build_item(db, batch, task, source, *, item_source, preload=None):
     from app.models import AaScheduleItem
     from .academic_affairs_task_execution_authority import require_independent_task
 
-    task = require_independent_task(db, task)
+    task = preload.ensure_independent(task) if preload is not None else require_independent_task(db, task)
 
     weekday, slot_no, start_week, end_week, parity = _coordinate(
         db, batch, task, source, preload=preload
