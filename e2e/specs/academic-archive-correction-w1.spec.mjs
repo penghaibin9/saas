@@ -62,10 +62,11 @@ async function openCorrectionTab(page) {
 async function createGradeCorrection(page, { targetRef, reason, score, suffix }) {
   await page.getByRole('button', { name: '发起归档后纠错' }).click()
   await page.getByLabel('业务类型').selectOption('GRADE')
-  await page.getByLabel('目标正式事实 ID').fill(String(targetRef))
+  await page.getByLabel('目标正式事实编号').fill(String(targetRef))
   await page.getByLabel('纠错原因').fill(reason)
-  await page.getByLabel('修正内容（JSON）').fill(JSON.stringify({ score }, null, 2))
-  await page.getByLabel('证据清单（JSON）').fill(JSON.stringify({
+  await page.getByText('实施人员使用：修正内容与证据数据编辑', { exact: true }).click()
+  await page.getByLabel('修正内容（数据文本）').fill(JSON.stringify({ score }, null, 2))
+  await page.getByLabel('证据清单（数据文本）').fill(JSON.stringify({
     kind: 'W1_BROWSER_REVIEW',
     refs: [`browser-${suffix}`],
     sha256: 'd'.repeat(64)
