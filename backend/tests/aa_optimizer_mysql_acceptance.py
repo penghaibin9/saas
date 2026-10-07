@@ -291,7 +291,18 @@ def test_four_end_published_reader_same_items(scenario):
     set_current_user(s['student'])
     student=mobile.schedule_my(s['student'])
     from app.student_portal import router as portal
-    student_pc=portal.academic_schedule(s['student'])['data']
+    # Exercise FastAPI's parameter/dependency resolution instead of passing its
+    # Query(None) declaration directly into the canonical schedule service.
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+    from app.core.security import get_current_user
+    portal_app = FastAPI()
+    portal_app.add_api_route('/schedule', portal.academic_schedule, methods=['GET'])
+    portal_app.dependency_overrides[get_current_user] = lambda: s['student']
+    with TestClient(portal_app) as portal_client:
+        response = portal_client.get('/schedule')
+    assert response.status_code == 200, response.text
+    student_pc = response.json()['data']
     set_current_user(s['teacher'])
     teacher=mobile.teacher_schedule_my(s['teacher'])
     teacher_pc=canonical.teacher_schedule(s['teacher'],'opt-teacher',str(s['term']))

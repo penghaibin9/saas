@@ -1,0 +1,38 @@
+# Temporary read-only source evidence for PR #278 repair. Remove before merge.
+name: PR278 repair source snapshot
+
+on:
+  push:
+    branches:
+      - codex/academic-v5-responsibility-20260926
+    paths:
+      - .github/workflows/pr278-repair-source-9909e466.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive tracked source without credentials or runtime state
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pr278-source"
+          git rev-parse HEAD > "$RUNNER_TEMP/pr278-source/HEAD.txt"
+          git archive --format=tar --prefix=saas/ HEAD | gzip -n > "$RUNNER_TEMP/pr278-source/source.tar.gz"
+          cd "$RUNNER_TEMP/pr278-source"
+          sha256sum source.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pr278-source-${{ github.sha }}
+          path: ${{ runner.temp }}/pr278-source/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
