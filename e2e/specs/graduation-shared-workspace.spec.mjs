@@ -53,6 +53,20 @@ async function expectSharedShell(page, batchId) {
   return shell
 }
 
+async function settleOnWorkspace(page, workspace) {
+  const paths = new Set(workspace.children.filter(item => !item.hidden).map(item => new URL(item.path, config.staffBaseUrl).pathname))
+  await expect.poll(() => paths.has(new URL(page.url()).pathname)).toBe(true)
+  // 地址连续两次读取一致才算稳定（页面初始化的 replace 已完成）。
+  let previous = ''
+  await expect.poll(async () => {
+    await page.waitForTimeout(250)
+    const current = page.url()
+    const stable = current === previous
+    previous = current
+    return stable
+  }).toBe(true)
+}
+
 async function expectDestination(page, path, batchId) {
   const expected = new URL(targetUrl(path, batchId))
   await expect.poll(() => {
@@ -90,6 +104,10 @@ test.describe('Graduation existing shared shell integration', () => {
           // Re-select the workspace because equivalent shortcuts may share a route.
           await page.getByRole('navigation', { name: '二级菜单', exact: true })
             .getByRole('button', { name: workspace.label, exact: true }).click()
+          // 切换二级菜单会异步打开该工作区第一页；等它落地并完成自身地址同步后再点三级菜单，
+          // 否则首页初始化的 router.replace 会取消紧随其后的三级菜单跳转。
+          await settleOnWorkspace(page, workspace)
+          await expectSharedShell(page, fixture.batchId)
           await dismissGuide(page)
           await page.getByRole('navigation', { name: '三级菜单', exact: true })
             .getByRole('button', { name: leaf.label, exact: true }).click()
