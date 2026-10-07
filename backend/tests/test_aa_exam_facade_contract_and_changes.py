@@ -64,9 +64,14 @@ def _seed(db_mode):
                                    ("teacher_race", "抢位老师", "TEACHER"),
                                    ("teacher_p", "巡考甲", "STAFF"),
                                    ("teacher_q", "巡考乙", "STAFF")):
-        if not db.query(User).filter(User.tenant_id == TID, User.login_name == login).first():
+        user = db.query(User).filter(User.tenant_id == TID, User.login_name == login).first()
+        if user is None:
             db.add(User(tenant_id=TID, login_name=login, real_name=name,
                         user_type=user_type, password_hash="x", status="ACTIVE"))
+        else:
+            # 公共责任身份种子可能已创建账号；保留其角色，仅统一本场景的可信姓名。
+            assert user.user_type == user_type
+            user.real_name = name
     ids = {"term": term.id, "task": task.id, "s1": s1.id, "roomA": room_a.id}
     db.commit(); db.close()
     return ids
