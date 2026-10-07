@@ -44,11 +44,11 @@ def _seed(db_mode):
                       credit=2, status="ENABLED")
     db.add(course); db.flush()
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=term.id, batch_name="2024秋教学任务",
-                             college_id=col.id, status="ACTIVE")
+                             college_id=col.id, status="APPROVED")
     db.add(tb); db.flush()
     task = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=course.id, course_name="跨班选修课",
                           class_id=class_a.id, teaching_class_name="软件2401选修班",
-                          teacher_key="teacher_x", teacher_name="选修课老师")
+                          teacher_key="teacher_x", teacher_name="选修课老师", status="READY")
     db.add(task); db.flush()
 
     a1 = StudentProfile(tenant_id=TID, student_no="FR2401", real_name="行政班A甲", college_id=col.id,
