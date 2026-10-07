@@ -9,10 +9,12 @@ TID = 1000000000000000001
 
 
 def _hdr(client, login_name="school_admin01"):
-    data = client.post(
+    response = client.post(
         "/api/v1/auth/mock-login",
         json={"loginName": login_name, "password": "any"},
-    ).json()["data"]
+    )
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
@@ -47,7 +49,9 @@ def _seed(db_mode):
         Major,
         SchoolClass,
         StudentProfile,
+        User,
     )
+    from tests.test_aa_exam import _seed_exam_review_identity
 
     db = get_sessionmaker()()
     term = AaTerm(
@@ -101,7 +105,7 @@ def _seed(db_mode):
         term_id=term.id,
         batch_name="C-W3教学任务",
         college_id=college.id,
-        status="ACTIVE",
+        status="DRAFT",
     )
     db.add(task_batch)
     db.flush()
@@ -109,11 +113,12 @@ def _seed(db_mode):
         tenant_id=TID,
         batch_id=task_batch.id,
         course_id=course.id,
+        course_code=course.course_code,
         course_name=course.course_name,
         class_id=klass.id,
         teaching_class_name=klass.class_name,
-        teacher_key="cw3_teacher",
-        teacher_name="C-W3教师",
+        teacher_key="teacher_a",
+        teacher_name="甲老师",
     )
     db.add(task)
     db.flush()
@@ -130,6 +135,15 @@ def _seed(db_mode):
     )
     db.add(student)
     db.flush()
+    _seed_exam_review_identity(db, college.id)
+    for login, name in (
+        ("cw3_invigilator", "C-W3监考"),
+        ("cw3_invigilator_assistant", "C-W3副监考"),
+        ("cw3_invigilator_02", "C-W3第二监考"),
+        ("cw3_invigilator_02_assistant", "C-W3第二副监考"),
+    ):
+        db.add(User(tenant_id=TID, login_name=login, real_name=name,
+                    user_type="TEACHER", password_hash="x", status="ACTIVE"))
     ids = {
         "term": int(term.id),
         "task": int(task.id),
@@ -145,19 +159,26 @@ def _seed(db_mode):
 
 
 def _arranged_room(client, admin, ids):
-    bid = client.post(
+    from tests.test_aa_exam import _prepare_task_batch_for_exam
+
+    _prepare_task_batch_for_exam(client, admin, ids["task"])
+    created = client.post(
         f"{BASE}/exam/batches",
         headers=admin,
         json={"batchName": "C-W3正式打印批次", "termId": str(ids["term"])},
-    ).json()["data"]["batchId"]
-    cid = client.post(
+    )
+    assert created.status_code == 200, created.text
+    bid = created.json()["data"]["batchId"]
+    added = client.post(
         f"{BASE}/exam/batches/{bid}/courses",
         headers=admin,
         json={"teachingTaskId": str(ids["task"])},
-    ).json()["data"]["examCourseId"]
+    )
+    assert added.status_code == 200, added.text
+    cid = added.json()["data"]["examCourseId"]
     confirmed = client.post(
         f"{BASE}/exam/courses/{cid}/confirm",
-        headers=admin,
+        headers=_hdr(client, "college_admin01"),
         json={"action": "CONFIRM"},
     )
     assert confirmed.status_code == 200, confirmed.text
@@ -181,12 +202,13 @@ def _arranged_room(client, admin, ids):
     )
     assert room.status_code == 200, room.text
     rid = room.json()["data"]["examRoomId"]
-    inv = client.post(
-        f"{BASE}/exam/rooms/{rid}/invigilators",
-        headers=admin,
-        json={"teacherKey": "cw3_invigilator", "teacherName": "C-W3监考"},
-    )
-    assert inv.status_code == 200, inv.text
+    for teacher_key in ("cw3_invigilator", "cw3_invigilator_assistant"):
+        inv = client.post(
+            f"{BASE}/exam/rooms/{rid}/invigilators",
+            headers=admin,
+            json={"teacherKey": teacher_key},
+        )
+        assert inv.status_code == 200, inv.text
     seats = client.post(
         f"{BASE}/exam/rooms/{rid}/seats",
         headers=admin,
@@ -332,12 +354,13 @@ def test_formal_print_accepts_one_frozen_roster_split_across_multiple_rooms(clie
     )
     assert second_room.status_code == 200, second_room.text
     second_room_id = int(second_room.json()["data"]["examRoomId"])
-    second_invigilator = client.post(
-        f"{BASE}/exam/rooms/{second_room_id}/invigilators",
-        headers=admin,
-        json={"teacherKey": "cw3_invigilator_02", "teacherName": "C-W3第二监考"},
-    )
-    assert second_invigilator.status_code == 200, second_invigilator.text
+    for teacher_key in ("cw3_invigilator_02", "cw3_invigilator_02_assistant"):
+        second_invigilator = client.post(
+            f"{BASE}/exam/rooms/{second_room_id}/invigilators",
+            headers=admin,
+            json={"teacherKey": teacher_key},
+        )
+        assert second_invigilator.status_code == 200, second_invigilator.text
     second_seat = client.post(
         f"{BASE}/exam/rooms/{second_room_id}/seats",
         headers=admin,
