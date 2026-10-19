@@ -1,0 +1,77 @@
+name: Main CI shard 4 tenant context regression
+
+on:
+  push:
+    branches: [fix/main-ci-shard4-tenant-context-20261019]
+
+permissions:
+  contents: read
+
+jobs:
+  shard4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test
+      FAST_TEST_SCHEMA: "1"
+      ACADEMIC_SCOPE_TEST_REDIS_URL: redis://127.0.0.1:6379/15
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: student_lifecycle_test
+        ports: [3306:3306]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+      redis:
+        image: redis:7-alpine
+        ports: [6379:6379]
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=3s --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Freeze the original 109-file shard without reducing coverage
+        run: |
+          python ../scripts/check/selected_pytest_shards.py plan --full --count 12 --plan /tmp/full-plan.json
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          sys.path.insert(0, '../scripts/check')
+          from selected_pytest_shards import digest
+          plan = json.loads(Path('/tmp/full-plan.json').read_text())
+          shard = next(s for s in plan['shards'] if s['id'] == 4)
+          # File-set digest from run 39161510775, artifact 12149648313.
+          assert len(shard['files']) == 109
+          assert digest(shard['files']) == '8ecbfd8deb02e3c244880d20137d002a5ca72cf439c4e90e05be1129089b55b4'
+          # Explicitly a targeted plan, never a substitute for the full CI plan.
+          plan.update(files=shard['files'], shards=[shard], unionHash=digest(shard['files']))
+          Path('/tmp/shard4-plan.json').write_text(json.dumps(plan, indent=2) + '\n')
+          PY
+      - name: Run the original failed shard on MySQL
+        run: python ../scripts/check/selected_pytest_shards.py run --plan /tmp/shard4-plan.json --shard 4 --out test-results/shard4-regression --budget 3300
+      - name: Verify targeted receipt and unchanged aggregation contracts
+        if: always()
+        run: |
+          python ../scripts/check/test_selected_pytest_shards.py
+          python ../scripts/check/selected_pytest_shards.py verify --plan /tmp/shard4-plan.json --out test-results/shard4-regression
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: main-ci-shard4-regression-${{ github.sha }}
+          path: |
+            backend/test-results/shard4-regression/
+            /tmp/full-plan.json
+            /tmp/shard4-plan.json
+          if-no-files-found: error
+          retention-days: 14
