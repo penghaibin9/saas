@@ -1,20 +1,107 @@
 <template>
   <ModulePageShell
-    title="培养方案 · 控制台"
-    subtitle="方案制定 · 版本 · 课程模块 · 学分要求 · 实践环节 · 毕业要求 · 审核 · 发布 · 变更 · 归档"
+    :title="tabs.find(item => item.key === tab)?.label || '业务工作区'"
+    :subtitle="pageSubtitle"
+    show-subtitle-in-concise
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
       <AppButton @click="$router.push('/admin/academic-affairs/programs')">方案列表</AppButton>
+      <AppButton v-if="tab === 'review' && canReviewProgram(activeProgram)" variant="primary" @click="openReview(activeProgram, 'APPROVE')">审核方案</AppButton>
+      <AppButton v-if="tab === 'publish' && activeProgram && hasPermission('academicAffairs.program.publish')" variant="primary" @click="openBind(activeProgram)">核验并发布</AppButton>
+      <AppButton v-if="tab === 'changeStatus' && activeProgram && hasPermission('academicAffairs.program.manage')" variant="primary" @click="openChange(activeProgram)">发起版本变更</AppButton>
     </template>
 
-    <div class="aapc-tabs">
+    <AppInlineAlert v-if="createdProgram" type="warning" title="方案已创建，请继续办理原单" :description="error || '请打开已创建的方案继续编制，不要重复创建。'" />
+    <AppButton v-if="createdProgram?.programId" @click="openCreatedProgram(createdProgram)">打开已创建方案</AppButton>
+
+    <details class="aapc-workspace-directory"><summary>切换相关工作区</summary><div class="aapc-tabs">
       <button v-for="t in tabs" :key="t.key" :class="['aapc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
+    </div></details>
+
+    <div v-if="isWorkflowView" class="aapc-flow">
+      <ErrorState v-if="error" :description="error" @retry="reload" />
+      <LoadingState v-else-if="loading" />
+      <EmptyState v-else-if="!rows.length" :title="emptyWorkflowTitle" :description="emptyHint" />
+      <template v-else>
+        <section class="aapc-object-card">
+          <div>
+            <strong>{{ activeProgram?.programName }}</strong>
+            <p>{{ workflowObjectMeta }}</p>
+            <small>来源：当前正式方案与版本记录；本入口只办理当前阶段动作，不重复建立上游对象。</small>
+          </div>
+          <AcademicObjectResponsibility v-if="workflowProgram && !workflowEvidenceLoading && !workflowEvidenceError" :object-id="workflowProgram.programId" :responsibility="workflowProgram.responsibility" :next-step="workflowProgram.nextStep" />
+          <p v-else>{{ workflowEvidenceLoading ? '正在读取当前方案责任' : '当前方案责任待重新核对' }}</p>
+        </section>
+
+        <ol class="aapc-stage-rail" aria-label="培养方案办理阶段">
+          <li v-for="(stage, index) in workflowStages" :key="stage" :class="{ 'is-done': index < workflowStageIndex, 'is-current': index === workflowStageIndex }">
+            <span>{{ index < workflowStageIndex ? '✓' : index + 1 }}</span>
+            <div><strong>{{ stage }}</strong><small>{{ stageHint(index) }}</small></div>
+          </li>
+        </ol>
+
+        <div class="aapc-workbench">
+          <aside class="aapc-queue">
+            <h2>责任队列</h2>
+            <button v-for="row in rows" :key="row.programId" :class="{ 'is-active': String(row.programId) === String(activeProgramId) }" @click="selectWorkflowRow(row)">
+              <strong>{{ row.programName }}</strong>
+              <small>{{ row.gradeYear ? `${row.gradeYear}级` : '年级待核验' }} · v{{ row.version }}</small>
+              <span><AppStatusTag :type="reviewStatusColor(row.status)" :label="statusLabel(row.status)" /></span>
+            </button>
+          </aside>
+
+          <section v-if="tab !== 'changeStatus'" class="aapc-evidence-panel">
+            <header><div><h2>当前对象 · 审核证据</h2><span>来源版本需复验</span></div><button class="mp-link" @click="openProgramEvidence(activeProgram)">查看完整方案</button></header>
+            <LoadingState v-if="workflowEvidenceLoading" />
+            <ErrorState v-else-if="workflowEvidenceError" :description="workflowEvidenceError" @retry="loadWorkflowEvidence" />
+            <div v-else class="aapc-evidence-grid">
+              <article v-for="item in evidenceCards" :key="item.title" :class="`is-${item.tone}`">
+                <div><strong>{{ item.title }}</strong><AppStatusTag :type="item.tone" :label="item.label" /></div>
+                <p>{{ item.detail }}</p>
+                <small>正式来源：方案校验服务</small>
+              </article>
+            </div>
+          </section>
+
+          <section v-else class="aapc-version-panel">
+            <header><h2>当前对象的版本链</h2><button class="mp-link" @click="viewChangeLog(activeProgram)">查看全部变更记录</button></header>
+            <LoadingState v-if="workflowEvidenceLoading" />
+            <ErrorState v-else-if="workflowEvidenceError" :description="workflowEvidenceError" @retry="loadWorkflowEvidence" />
+            <ol v-else-if="workflowChangeLog.length" class="aapc-version-list">
+              <li v-for="(item, index) in workflowChangeLog" :key="`${item.occurredAt}-${index}`">
+                <span class="aapc-version-dot"></span>
+                <div><small>{{ item.occurredAt || '时间由服务端记录' }}</small><strong>{{ changeLogActionLabel(item.action) }}{{ item.detail ? ` · ${item.detail}` : '' }}</strong><p>{{ item.operator || '系统记录' }}{{ item.roleName ? `（${item.roleName}）` : '' }}</p></div>
+              </li>
+            </ol>
+            <EmptyState v-else title="尚无版本变更记录" description="发起变更后将从当前正式版本建立受控新版本，不覆盖历史事实" />
+          </section>
+        </div>
+
+        <section class="aapc-duty-card">
+          <div><strong>本岗位办理</strong><p>{{ dutyExplanation }}</p></div>
+          <div class="aapc-duty-card__actions">
+            <template v-if="tab === 'review' && canReviewProgram(activeProgram)">
+              <AppButton variant="primary" @click="openReview(activeProgram, 'APPROVE')">{{ activeProgram.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</AppButton>
+              <AppButton @click="openReview(activeProgram, 'RETURN')">退回补充</AppButton>
+            </template>
+            <p v-else-if="tab === 'review'" class="mp-note">{{ workflowProgram?.reviewNode?.reason || '请等待当前审核节点核验；仅对应审核岗位可以办理。' }}</p>
+            <template v-else-if="tab === 'publish'">
+              <AppButton v-if="hasPermission('academicAffairs.program.publish')" variant="primary" @click="openBind(activeProgram)">绑定适用年级</AppButton>
+              <AppButton @click="viewBindings(activeProgram)">查看绑定记录</AppButton>
+            </template>
+            <template v-else>
+              <AppButton v-if="hasPermission('academicAffairs.program.manage')" variant="primary" @click="openChange(activeProgram)">建立方案新版本</AppButton>
+              <AppButton v-for="act in hasPermission('academicAffairs.program.changeStatus') ? availableChangeActions(activeProgram.status) : []" :key="act" @click="openChangeAction(activeProgram, act)">{{ changeActionLabel(act) }}</AppButton>
+            </template>
+          </div>
+        </section>
+      </template>
     </div>
 
     <!-- 方案选择器：课程模块 / 学分要求 / 毕业要求 需先选定一个方案 -->
-    <div v-if="needsProgramPicker" class="aapc-picker">
+    <div v-if="!isWorkflowView && needsProgramPicker" class="aapc-picker">
       <span class="aapc-picker__label">当前方案</span>
       <AppProgramPicker v-model="selectedProgramId" :options="programOptions" placeholder="选择要维护的培养方案…" @change="onProgramPicked" />
       <span v-if="selectedProgram" class="aapc-picker__hint">
@@ -23,10 +110,10 @@
       </span>
     </div>
 
-    <div v-if="!needsProgramPicker" class="aapc-bar">
-      <AppButton v-if="tab === 'authoring'" variant="primary" size="small" @click="openCreate">＋ 新建方案</AppButton>
+    <div v-if="!isWorkflowView && !needsProgramPicker" class="aapc-bar">
+      <AppButton v-if="tab === 'authoring' && hasPermission('academicAffairs.program.manage')" variant="primary" size="small" @click="openCreate">＋ 新建方案</AppButton>
     </div>
-    <div v-else-if="selectedProgramId" class="aapc-bar">
+    <div v-else-if="!isWorkflowView && selectedProgramId" class="aapc-bar">
       <AppButton v-if="tab === 'courseModules' && isEditable" variant="primary" size="small" @click="openCourseForm(null)">＋ 添加课程</AppButton>
       <AppButton v-if="tab === 'practicePlan' && isEditable" variant="primary" size="small" @click="openCourseForm(null, '实践环节')">＋ 添加实践课程</AppButton>
       <AppButton v-if="tab === 'creditRequirements' && isEditable" variant="primary" size="small" @click="openCreditForm(null)">＋ 添加模块学分</AppButton>
@@ -34,14 +121,14 @@
       <AppButton v-if="tab === 'graduationRequirements' && isEditable" variant="primary" size="small" @click="openGradForm(null)">＋ 添加毕业要求</AppButton>
       <AppButton v-if="tab === 'practiceSegments' && isEditable" variant="primary" size="small" @click="openPracticeForm(null)">＋ 添加实践环节</AppButton>
     </div>
-    <div v-if="tab === 'practicePlan' && selectedProgramId && practiceCreditTarget !== null" class="aapc-picker__hint" style="margin-bottom:12px;">
+    <div v-if="!isWorkflowView && tab === 'practicePlan' && selectedProgramId && practiceCreditTarget !== null" class="aapc-picker__hint" style="margin-bottom:12px;">
       学分要求中「实践环节」目标学分：<strong>{{ practiceCreditTarget }}</strong>
       <button class="mp-link" @click="switchTab('creditRequirements')">去学分要求维护</button>
     </div>
 
-    <ErrorState v-if="error" :description="error" @retry="reload" />
-    <LoadingState v-else-if="loading" />
-    <template v-else>
+    <ErrorState v-if="!isWorkflowView && error" :description="error" @retry="reload" />
+    <LoadingState v-else-if="!isWorkflowView && loading" />
+    <template v-else-if="!isWorkflowView">
       <EmptyState v-if="needsProgramPicker && !selectedProgramId" title="请先选择方案" :description="emptyHint" />
       <EmptyState v-else-if="!rows.length" title="暂无数据" :description="emptyHint" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
@@ -66,12 +153,12 @@
           <!-- 方案版本 -->
           <template v-if="tab === 'versions'">
             <button class="mp-link" @click="$router.push(`/admin/academic-affairs/programs/${row.programId}`)">查看</button>
-            <button v-if="canNewVersion(row.status)" class="mp-link" @click="doNewVersion(row)">新建版本</button>
+            <button v-if="canNewVersion(row.status) && hasPermission('academicAffairs.program.manage')" class="mp-link" :disabled="saving || !!createdProgram" @click="doNewVersion(row)">新建版本</button>
           </template>
           <!-- 计划变更（收编入口：已发布/启用计划的变更须带原因，走同一版本链机制） -->
           <template v-if="tab === 'planChange'">
             <button class="mp-link" @click="$router.push(`/admin/academic-affairs/programs/${row.programId}`)">查看</button>
-            <button v-if="canNewVersion(row.status)" class="mp-link" @click="openChange(row)">发起变更</button>
+            <button v-if="canNewVersion(row.status) && hasPermission('academicAffairs.program.manage')" class="mp-link" @click="openChange(row)">发起变更</button>
           </template>
           <!-- 课程模块 -->
           <template v-if="tab === 'courseModules'">
@@ -109,18 +196,19 @@
             </template>
           </template>
           <!-- 方案审核 -->
-          <template v-if="tab === 'review'">
+          <template v-if="tab === 'review'"><button class="mp-link" @click="$router.push({ path: '/admin/academic-affairs/programs/' + row.programId, query: { returnTo: $route.fullPath } })">查看方案证据</button><template v-if="canReviewProgram(row)">
             <button class="mp-link" @click="openReview(row, 'APPROVE')">{{ row.status === 'COLLEGE_REVIEW' ? '学院审核通过' : '教务审核通过' }}</button>
             <button class="mp-link is-danger" @click="openReview(row, 'RETURN')">退回</button>
           </template>
+          </template>
           <!-- 方案发布 -->
           <template v-if="tab === 'publish'">
-            <button class="mp-link" @click="openBind(row)">绑定年级</button>
+            <button v-if="hasPermission('academicAffairs.program.publish')" class="mp-link" @click="openBind(row)">绑定年级</button>
             <button class="mp-link" @click="viewBindings(row)">查看绑定</button>
           </template>
           <!-- 方案变更 -->
           <template v-if="tab === 'changeStatus'">
-            <button v-for="act in availableChangeActions(row.status)" :key="act" class="mp-link"
+            <button v-for="act in hasPermission('academicAffairs.program.changeStatus') ? availableChangeActions(row.status) : []" :key="act" class="mp-link"
                     :class="{ 'is-danger': act === 'DISABLE' }" @click="openChangeAction(row, act)">{{ changeActionLabel(act) }}</button>
             <button class="mp-link" @click="viewChangeLog(row)">变更记录</button>
           </template>
@@ -154,6 +242,7 @@
         <AppFormItem label="课程模块"><AppTextInput v-model="courseForm.module" :disabled="saving" placeholder="如 专业核心/实践环节" /></AppFormItem>
         <AppFormItem label="开课学期"><AppNumberInput v-model="courseForm.openTermNo" :min="1" :max="12" :disabled="saving" /></AppFormItem>
         <AppFormItem label="学分"><AppNumberInput v-model="courseForm.credit" :min="0" :step="0.5" :precision="1" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="编班方式"><AppSelect v-model="courseForm.formationMode" :disabled="saving" :options="[{ value: '', label: '尚未确认，暂不调整' }, { value: 'ADMIN_FIXED', label: '固定行政班' }, { value: 'SELECTABLE', label: '学生自主选课' }]" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
@@ -202,7 +291,7 @@
       </div>
       <template #footer>
         <AppButton variant="ghost" @click="bindVisible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="saving" @click="submitBind">确认绑定</AppButton>
+        <AppButton v-if="hasPermission('academicAffairs.program.publish')" variant="primary" :loading="saving" @click="submitBind">确认绑定</AppButton>
       </template>
     </AppDrawer>
 
@@ -293,6 +382,9 @@
 </template>
 
 <script>
+import AcademicObjectResponsibility from '../components/AcademicObjectResponsibility.vue'
+import { currentUserFromToken } from '@/services/http/client'
+
 /** 培养方案 · 控制台（/admin/academic-affairs/programs/console?tab=xxx）：
  * 方案制定 / 方案版本 / 课程模块 / 学分要求 / 实践环节 / 毕业要求 / 方案审核 / 方案发布 / 方案变更 / 方案归档
  * 10 个三级模块共用一个工作台，深链接对齐既有「学院专业班级」「教材管理」控制台模式（navPlan `?tab=` 叶子）。
@@ -310,11 +402,13 @@ import {
   AppStatusTag, AppConfirmDialog, AppInlineAlert, AppMajorPicker, AppClassPicker, AppProgramPicker
 } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { programQualityApi } from '@/modules/academicAffairs/api/program-quality.api'
 import {
   REVIEW_STATUS, reviewStatusColor, canSubmit, canNewVersion,
   GRADUATION_REQUIREMENT_CATEGORY, PRACTICE_SEGMENT_TYPE, PRACTICE_ORG_MODE, EXAM_MODE,
   PROGRAM_CHANGE_ACTION, availableChangeActions, ARCHIVE_REASON_LABEL, isPracticeModule
 } from '@/modules/academicAffairs/constants/course-program'
+import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
 
 const _CHANGE_LOG_ACTION_LABEL = {
@@ -325,7 +419,7 @@ const _CHANGE_LOG_ACTION_LABEL = {
 export default {
   name: 'AaProgramConsoleView',
   components: {
-    ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
+    AcademicObjectResponsibility, ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
     AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppSelect, AppFormItem,
     AppStatusTag, AppConfirmDialog, AppInlineAlert, AppMajorPicker, AppClassPicker, AppProgramPicker
   },
@@ -333,6 +427,8 @@ export default {
   data() {
     return {
       tab: 'authoring', loading: true, error: '', rows: [],
+      activeProgramId: '', workflowProgram: null, workflowEvidence: null, workflowEvidenceLoading: false,
+      workflowEvidenceError: '', workflowChangeLog: [], workflowRequestRevision: 0, workflowDisposed: false,
       pagination: null,
       tabs: [
         { key: 'authoring', label: '方案制定' },
@@ -350,12 +446,12 @@ export default {
       ],
       allPrograms: [], selectedProgramId: '', selectedProgram: null,
       creditItems: [], savingCredit: false, practiceCreditTarget: null,
-      saving: false, formError: '',
+      saving: false, formError: '', createdProgram: null,
       createVisible: false, createForm: { programName: '', majorId: '', gradeYear: '', totalCredits: null },
-      courseVisible: false, courseForm: { programCourseId: '', courseName: '', module: '', openTermNo: null, credit: null },
+      courseVisible: false, courseForm: { programCourseId: '', courseName: '', module: '', openTermNo: null, credit: null, formationMode: '' },
       creditVisible: false, creditForm: { module: '', creditTarget: 0, note: '', _editing: false, _origModule: '' },
       gradVisible: false, gradForm: { requirementId: '', category: 'ABILITY', content: '', sortOrder: 0 },
-      bindVisible: false, bindRow: null, bindForm: { gradeYear: '', classId: '' },
+      bindVisible: false, bindIdentity: '', bindRow: null, bindForm: { gradeYear: '', classId: '' },
       bindingsVisible: false, bindingRows: [],
       practiceVisible: false,
       practiceForm: { segmentId: '', segmentName: '', segmentType: 'OTHER', openTermNo: null, weeks: null, credit: null, orgMode: 'CENTRALIZED', location: '', assessmentMode: 'CHECK', sortOrder: 0 },
@@ -367,8 +463,63 @@ export default {
     }
   },
   computed: {
+    isWorkflowView() { return ['review', 'publish', 'changeStatus'].includes(this.tab) },
+    pageSubtitle() {
+      return {
+        review: '审核前检查课程结构、学分与适用年级',
+        publish: '发布后版本只读，后续修改建立新版本',
+        changeStatus: '变更不重算或覆盖历史正式成绩',
+        authoring: '在同一方案版本中编制课程与毕业要求',
+        versions: '从当前正式版本建立受控新版本',
+        courseModules: '课程必须绑定稳定课程身份与版本',
+        creditRequirements: '毕业学分、模块学分和课程合计必须一致',
+        practiceSegments: '集中实践、实训和实习按正式方案版本维护',
+        graduationRequirements: '毕业要求使用结构化条目并保留版本',
+        archive: '历史方案只读追溯，正式事实不被覆盖'
+      }[this.tab] || '核对当前对象和版本，按权限办理'
+    },
+    activeProgram() { return this.rows.find((row) => String(row.programId) === String(this.activeProgramId)) || this.rows[0] || null },
+    workflowStages() { return ['创建方案', '课程编制', '学院审核', '教务发布', '年级绑定'] },
+    workflowStageIndex() {
+      if (this.tab === 'changeStatus') return 1
+      if (this.tab === 'publish') return 3
+      return this.activeProgram?.status === 'ACADEMIC_REVIEW' ? 3 : 2
+    },
+    workflowObjectMeta() {
+      if (!this.activeProgram) return ''
+      const majorLabel = this.activeProgram.majorName || (this.activeProgram.majorId ? `专业 #${this.activeProgram.majorId}` : '专业待核验')
+      return `${majorLabel} · ${this.activeProgram.gradeYear ? `${this.activeProgram.gradeYear}级` : '年级待核验'} · v${this.activeProgram.version} · ${this.statusLabel(this.activeProgram.status)}`
+    },
+    workflowIdentity() { return JSON.stringify([currentUserFromToken(), this.ctx.ctxKey, this.ctx.currentRole, this.ctx.permissionPatterns, this.ctx.dataScope, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
+    dutyExplanation() {
+      if (this.tab === 'review') return '先核对课程身份、课程结构、学分学时、专业年级、实践环节和毕业要求，再执行当前审核节点。'
+      if (this.tab === 'publish') return '发布只绑定已审核通过的正式方案版本；发布后内容只读，修改必须建立新版本。'
+      return '从当前正式方案分叉新版本并说明原因；既有教学任务、成绩和历史绑定不会被覆盖。'
+    },
+    emptyWorkflowTitle() { return this.tab === 'review' ? '暂无待审核方案' : (this.tab === 'publish' ? '暂无可发布方案' : '暂无可变更方案') },
+    evidenceCards() {
+      const program = this.activeProgram || {}
+      const validation = this.workflowEvidence
+      const issues = validation?.issues || []
+      const card = (title, fields, ok, detail) => {
+        const blockers = issues.filter((item) => item.level === 'BLOCKER' && fields.includes(item.fieldPath))
+        const warnings = issues.filter((item) => item.level === 'WARNING' && fields.some((field) => String(item.fieldPath || '').includes(field)))
+        if (!validation) return { title, tone: 'default', label: '待核验', detail }
+        if (!ok || blockers.length) return { title, tone: 'danger', label: '存在阻断', detail: blockers[0]?.message || detail }
+        if (warnings.length) return { title, tone: 'warning', label: '需要关注', detail: warnings[0]?.message || detail }
+        return { title, tone: 'success', label: '已核对', detail }
+      }
+      return [
+        card('课程身份与版本', ['courseId', 'courses'], Number(validation?.courseCount) > 0, `${validation?.courseCount ?? program.courseCount ?? 0} 门课程来自稳定课程版本。`),
+        card('课程结构', ['module', 'courseName', 'openTermNo'], Number(validation?.courseCount) > 0, `课程模块与开设学期按方案 v${program.version || '—'} 复验。`),
+        card('学分学时', ['credit', 'hoursTotal', 'totalCredits'], validation?.courseCreditSum != null && Number(validation.courseCreditSum) <= Number(program.totalCredits || validation.courseCreditSum), `课程学分 ${validation?.courseCreditSum ?? program.creditSum ?? '—'} / 毕业要求 ${program.totalCredits ?? '—'}。`),
+        card('专业年级绑定', ['majorId', 'gradeYear'], Boolean(program.majorId && program.gradeYear), `${program.majorName || (program.majorId ? `专业 #${program.majorId}` : '专业待核验')} / ${program.gradeYear ? `${program.gradeYear}级` : '年级待核验'}。`),
+        card('实践环节', ['practiceSegments', 'segmentName', 'weeks'], !issues.some((item) => item.level === 'BLOCKER' && /practice|segment/i.test(item.fieldPath || '')), `已登记 ${validation?.practiceCount ?? '—'} 个实践环节。`),
+        card('毕业要求', ['graduationRequirements', 'requirement'], !issues.some((item) => item.level === 'BLOCKER' && /graduation|requirement/i.test(item.fieldPath || '')), '毕业要求按当前方案版本读取，不使用全校统一硬编码。')
+      ]
+    },
     needsProgramPicker() { return ['courseModules', 'creditRequirements', 'graduationRequirements', 'practiceSegments', 'practicePlan'].includes(this.tab) },
-    isEditable() { return this.selectedProgram && canSubmit(this.selectedProgram.status) },
+    isEditable() { return this.selectedProgram && canSubmit(this.selectedProgram.status) && this.hasPermission('academicAffairs.program.manage') },
     programOptions() {
       return this.allPrograms.map((p) => ({ label: `${p.programName}（${p.gradeYear || '未设年级'} · v${p.version} · ${this.statusLabel(p.status)}）`, value: p.programId }))
     },
@@ -418,23 +569,123 @@ export default {
       }[this.tab] || ''
     }
   },
+  watch: {
+    workflowIdentity() { if (this.createdProgram) { this.createdProgram = null; this.error = '' } this.createVisible = false; this.bindVisible = false; this.changeDlg.visible = false; this.planChangeDlg.visible = false; this.workflowRequestRevision++; this.workflowProgram = null; this.workflowEvidence = null; this.workflowChangeLog = []; if (this.isWorkflowView) this.loadWorkflowEvidence() },
+    '$route.query.tab': async function (nextTab) {
+      if (!nextTab || nextTab === this.tab || !this.tabs.some((item) => item.key === nextTab)) return
+      this.tab = nextTab
+      this.activeProgramId = ''
+      this.workflowEvidence = null
+      this.workflowChangeLog = []
+      const routeProgramId = this.$route?.query?.programId
+      const routeProgram = this.allPrograms.find((program) => String(program.programId) === String(routeProgramId || ''))
+      if (routeProgram) {
+        this.selectedProgramId = routeProgram.programId
+        this.selectedProgram = routeProgram
+      } else if (this.needsProgramPicker) {
+        this.selectedProgramId = ''
+        this.selectedProgram = null
+      }
+      await this.reload()
+    },
+    '$route.query.programId': async function (nextProgramId) {
+      if (!nextProgramId || !this.needsProgramPicker || String(nextProgramId) === String(this.selectedProgramId || '')) return
+      const routeProgram = this.allPrograms.find((program) => String(program.programId) === String(nextProgramId))
+      if (!routeProgram) return
+      this.selectedProgramId = routeProgram.programId
+      this.selectedProgram = routeProgram
+      await this.reload()
+    }
+  },
   async created() {
     const q = this.$route && this.$route.query && this.$route.query.tab
     if (q && this.tabs.some((t) => t.key === q)) this.tab = q
     await this.loadAllPrograms()
+    const routeProgramId = this.$route?.query?.programId
+    const routeProgram = this.allPrograms.find((program) => String(program.programId) === String(routeProgramId || ''))
+    if (routeProgram) {
+      this.selectedProgramId = routeProgram.programId
+      this.selectedProgram = routeProgram
+    }
     this.reload()
   },
+  beforeUnmount() { this.workflowDisposed = true; this.workflowRequestRevision++ },
   methods: {
+    hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
     reviewStatusColor, canNewVersion, availableChangeActions,
-    statusLabel(s) { return REVIEW_STATUS[s] || s || '' },
+    statusLabel(s) { return REVIEW_STATUS[s] || (s ? '状态待确认' : '') },
     gradCategoryLabel(c) { return GRADUATION_REQUIREMENT_CATEGORY[c] || c || '' },
-    practiceSegmentTypeLabel(t) { return PRACTICE_SEGMENT_TYPE[t] || t || '' },
+    practiceSegmentTypeLabel(t) { return PRACTICE_SEGMENT_TYPE[t] || (t ? '类型待确认' : '') },
     orgModeLabel(m) { return PRACTICE_ORG_MODE[m] || m || '' },
     archiveReasonLabel(r) { return ARCHIVE_REASON_LABEL[r] || r || '' },
     changeActionLabel(a) { return PROGRAM_CHANGE_ACTION[a] || a || '' },
     changeLogActionLabel(a) { return _CHANGE_LOG_ACTION_LABEL[a] || a || '' },
+    stageHint(index) {
+      if (index < this.workflowStageIndex) return '上游事实可回查'
+      if (index === this.workflowStageIndex) return '当前设计视角'
+      return '按真实状态解锁'
+    },
+    openProgramEvidence(row) {
+      if (!row?.programId) return
+      return this.$router.push({ path: `/admin/academic-affairs/programs/${row.programId}`, query: { returnTo: this.$route.fullPath } })
+    },
+    async openCreatedProgram(program, identity = this.workflowIdentity, origin = this.$route.fullPath) {
+      if (this.workflowDisposed || identity !== this.workflowIdentity || origin !== this.$route.fullPath) return
+      this.createdProgram = program || {}
+      if (!program?.programId) { this.error = '方案已创建，但回执缺少方案编号。请从方案列表核对后继续，勿重复创建。'; return }
+      try { await this.openProgramEvidence(program) }
+      catch { if (!this.workflowDisposed && identity === this.workflowIdentity && origin === this.$route.fullPath) this.error = '方案已创建，但未能打开。请打开已创建方案或从方案列表核对后继续，勿重复创建。' }
+    },
+    async selectWorkflowRow(row, replaceRoute = true) {
+      if (!row?.programId) return
+      this.activeProgramId = row.programId
+      if (replaceRoute) this.$router.replace({ query: { ...this.$route.query, programId: row.programId } }).catch(() => {})
+      await this.loadWorkflowEvidence()
+    },
+    async syncWorkflowSelection() {
+      if (!this.rows.length) {
+        this.activeProgramId = ''
+        this.workflowEvidence = null
+        this.workflowChangeLog = []
+        return
+      }
+      const routeId = this.$route?.query?.programId
+      const selected = this.rows.find((row) => String(row.programId) === String(routeId || this.activeProgramId)) || this.rows[0]
+      await this.selectWorkflowRow(selected, String(routeId || '') !== String(selected.programId))
+    },
+    async loadWorkflowEvidence() {
+      this.workflowProgram = null
+      const programId = this.activeProgram?.programId
+      if (!programId) return
+      const revision = ++this.workflowRequestRevision, identity = this.workflowIdentity, tab = this.tab
+      const current = () => !this.workflowDisposed && revision === this.workflowRequestRevision && identity === this.workflowIdentity && tab === this.tab && programId === this.activeProgram?.programId
+      this.workflowEvidenceLoading = true
+      this.workflowEvidenceError = ''
+      this.workflowEvidence = null
+      this.workflowChangeLog = []
+      try {
+        const [validationRes, logRes, programRes] = await Promise.all([
+          programQualityApi.validate(programId),
+          this.tab === 'changeStatus' ? academicAffairsApi.getProgramChangeLog(programId) : Promise.resolve({ code: 0, data: { items: [] } }),
+          academicAffairsApi.getProgram(programId)
+        ])
+        if (!current()) return
+        if (programRes.code === 0 && programRes.data?.programId === programId) this.workflowProgram = programRes.data
+        else this.workflowEvidenceError = programRes.message || '当前方案详情未能读取，请重试'
+        if (validationRes.code === 0) this.workflowEvidence = validationRes.data
+        else this.workflowEvidenceError = validationRes.message || '方案校验读取失败，请重试'
+        if (logRes.code === 0) this.workflowChangeLog = logRes.data?.items || []
+      } catch (error) {
+        if (current()) this.workflowEvidenceError = error?.message || '方案证据读取失败，请重试'
+      } finally {
+        if (current()) this.workflowEvidenceLoading = false
+      }
+    },
     switchTab(k) {
       this.tab = k
+      this.activeProgramId = ''
+      this.workflowEvidence = null
+      this.workflowChangeLog = []
       this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => {})
       this.reload()
     },
@@ -443,7 +694,8 @@ export default {
       if (res.code === 0) this.allPrograms = res.data.list
     },
     onProgramPicked() {
-      this.selectedProgram = this.allPrograms.find((p) => p.programId === this.selectedProgramId) || null
+      this.$router.replace({ query: { ...this.$route.query, programId: this.selectedProgramId || undefined } }).catch(() => {})
+      this.selectedProgram = this.allPrograms.find((p) => String(p.programId) === String(this.selectedProgramId)) || null
       this.reload()
     },
     onPageChange(p) { if (this.pagination) { this.pagination.page = p; this.reload() } },
@@ -527,12 +779,12 @@ export default {
     },
     async loadReview() {
       const res = await academicAffairsApi.getPrograms({ statusIn: 'COLLEGE_REVIEW,ACADEMIC_REVIEW', page: 1, pageSize: 100 })
-      if (res.code === 0) this.rows = res.data.list.map((p) => ({ ...p, id: p.programId }))
+      if (res.code === 0) { this.rows = res.data.list.map((p) => ({ ...p, id: p.programId })); await this.syncWorkflowSelection() }
       else this.error = res.message
     },
     async loadPublish() {
       const res = await academicAffairsApi.getPrograms({ statusIn: 'PUBLISHED,ENABLED', page: 1, pageSize: 100 })
-      if (res.code === 0) this.rows = res.data.list.map((p) => ({ ...p, id: p.programId }))
+      if (res.code === 0) { this.rows = res.data.list.map((p) => ({ ...p, id: p.programId })); await this.syncWorkflowSelection() }
       else this.error = res.message
     },
     async loadPracticeSegments() {
@@ -543,7 +795,7 @@ export default {
     },
     async loadChangeStatus() {
       const res = await academicAffairsApi.getPrograms({ statusIn: 'PUBLISHED,ENABLED,FROZEN,DISABLED', page: 1, pageSize: 100 })
-      if (res.code === 0) this.rows = res.data.list.map((p) => ({ ...p, id: p.programId }))
+      if (res.code === 0) { this.rows = res.data.list.map((p) => ({ ...p, id: p.programId })); await this.syncWorkflowSelection() }
       else this.error = res.message
     },
     async loadArchive() {
@@ -559,53 +811,66 @@ export default {
       this.createVisible = true
     },
     async submitCreate() {
+      if (this.saving || this.createdProgram || this.workflowDisposed || !this.hasPermission('academicAffairs.program.manage')) return
       if (!this.createForm.programName) { this.formError = '方案名称必填'; return }
+      const identity = this.workflowIdentity, origin = this.$route.fullPath
       this.saving = true
-      const res = await academicAffairsApi.createProgram({
-        programName: this.createForm.programName,
-        majorId: this.createForm.majorId || undefined,
-        gradeYear: this.createForm.gradeYear || undefined,
-        totalCredits: this.createForm.totalCredits || undefined,
-        requirement: {}
-      })
-      this.saving = false
-      if (res.code === 0) {
-        toast.success('方案已创建')
-        this.createVisible = false
-        await this.loadAllPrograms()
-        this.reload()
-      } else this.formError = res.message
+      try {
+        const res = await academicAffairsApi.createProgram({
+          programName: this.createForm.programName,
+          majorId: this.createForm.majorId || undefined,
+          gradeYear: this.createForm.gradeYear || undefined,
+          totalCredits: this.createForm.totalCredits || undefined,
+          requirement: {}
+        })
+        if (this.workflowDisposed || identity !== this.workflowIdentity || origin !== this.$route.fullPath) return
+        if (res.code === 0) {
+          toast.success('方案已创建')
+          this.createVisible = false
+          await this.openCreatedProgram(res.data, identity, origin)
+        } else this.formError = res.message
+      } finally { this.saving = false }
     },
 
     // ── 方案版本 ──
     async doNewVersion(row) {
-      const res = await academicAffairsApi.createProgramNewVersion(row.programId)
-      if (res.code === 0) { toast.success('已新建版本 v' + res.data.version); await this.loadAllPrograms(); this.reload() }
-      else toast.error(res.message || '新建版本失败')
+      if (this.saving || this.createdProgram || this.workflowDisposed || !this.hasPermission('academicAffairs.program.manage') || !canNewVersion(row?.status)) return
+      const identity = this.workflowIdentity, origin = this.$route.fullPath
+      this.saving = true
+      try {
+        const res = await academicAffairsApi.createProgramNewVersion(row.programId)
+        if (this.workflowDisposed || identity !== this.workflowIdentity || origin !== this.$route.fullPath) return
+        if (res.code === 0) { toast.success('已建立新版本草稿'); await this.openCreatedProgram(res.data, identity, origin) }
+        else toast.error(res.message || '新建版本失败')
+      } finally { this.saving = false }
     },
 
     // ── 计划变更（收编入口：同一版本链机制 + 强制变更原因留痕） ──
     openChange(row) {
-      this.planChangeDlg = { visible: true, submitting: false, row }
+      if (!row || !this.hasPermission('academicAffairs.program.manage')) return
+      this.planChangeDlg = { visible: true, submitting: false, row, identity: this.workflowIdentity }
     },
     async doChange(payload) {
+      if (this.createdProgram || this.workflowDisposed || !this.planChangeDlg.visible || this.planChangeDlg.submitting || this.planChangeDlg.identity !== this.workflowIdentity || !this.hasPermission('academicAffairs.program.manage')) return
+      const dialog = this.planChangeDlg, identity = this.workflowIdentity, origin = this.$route.fullPath
       const reason = (payload && payload.reason) || ''
-      this.planChangeDlg.submitting = true
-      const res = await academicAffairsApi.changeProgram(this.planChangeDlg.row.programId, reason)
-      this.planChangeDlg.submitting = false
-      if (res.code === 0) {
-        this.planChangeDlg.visible = false
-        toast.success('变更已生效，已生成新版本 v' + res.data.version)
-        await this.loadAllPrograms()
-        this.reload()
-      } else toast.error(res.message || '变更失败')
+      dialog.submitting = true
+      try {
+        const res = await academicAffairsApi.changeProgram(dialog.row.programId, reason)
+        if (this.workflowDisposed || identity !== this.workflowIdentity || origin !== this.$route.fullPath) return
+        if (res.code === 0) {
+          dialog.visible = false
+          toast.success('已建立变更草稿，请继续编制与审核')
+          await this.openCreatedProgram(res.data, identity, origin)
+        } else toast.error(res.message || '变更失败')
+      } finally { dialog.submitting = false }
     },
 
     // ── 课程模块（practicePlan 复用同一套读写，presetModule 供「＋ 添加实践课程」预填模块名） ──
     openCourseForm(row, presetModule) {
       this.courseForm = row
-        ? { programCourseId: row.programCourseId, courseName: row.courseName, module: row.module, openTermNo: row.openTermNo, credit: row.credit }
-        : { programCourseId: '', courseName: '', module: presetModule || '', openTermNo: null, credit: null }
+        ? { programCourseId: row.programCourseId, courseName: row.courseName, module: row.module, openTermNo: row.openTermNo, credit: row.credit, formationMode: row.formationMode || '' }
+        : { programCourseId: '', courseName: '', module: presetModule || '', openTermNo: null, credit: null, formationMode: '' }
       this.formError = ''
       this.courseVisible = true
     },
@@ -613,7 +878,8 @@ export default {
       if (!this.courseForm.courseName) { this.formError = '课程名称必填'; return }
       this.saving = true
       const body = { courseName: this.courseForm.courseName, module: this.courseForm.module || undefined,
-        openTermNo: this.courseForm.openTermNo || undefined, credit: this.courseForm.credit != null ? this.courseForm.credit : undefined }
+        openTermNo: this.courseForm.openTermNo || undefined, credit: this.courseForm.credit != null ? this.courseForm.credit : undefined,
+        formationMode: this.courseForm.formationMode || undefined }
       const res = this.courseForm.programCourseId
         ? await academicAffairsApi.updateProgramCourse(this.courseForm.programCourseId, body)
         : await academicAffairsApi.addProgramCourse(this.selectedProgramId, body)
@@ -720,7 +986,13 @@ export default {
     },
 
     // ── 方案审核 ──
+    canReviewProgram(row) {
+      return !!row && !this.workflowEvidenceLoading && !this.workflowEvidenceError &&
+        String(row.programId) === String(this.workflowProgram?.programId) && row.status === this.workflowProgram?.status &&
+        this.workflowProgram?.reviewNode?.canReview === true && this.hasPermission('academicAffairs.program.review')
+    },
     openReview(row, action) {
+      if (!this.canReviewProgram(row)) return
       this.reviewDlg = {
         visible: true, action, row,
         title: action === 'APPROVE' ? `审核通过「${row.programName}」` : `退回「${row.programName}」`,
@@ -730,6 +1002,7 @@ export default {
       }
     },
     async doReview(payload) {
+      if (this.reviewDlg.submitting || !this.canReviewProgram(this.reviewDlg.row)) return
       const reason = (payload && payload.reason) || ''
       this.reviewDlg.submitting = true
       const res = await academicAffairsApi.reviewProgram(this.reviewDlg.row.programId, this.reviewDlg.action, reason)
@@ -740,12 +1013,15 @@ export default {
 
     // ── 方案发布 ──
     openBind(row) {
+      if (!row || !this.hasPermission('academicAffairs.program.publish')) return
+      this.bindIdentity = this.workflowIdentity
       this.bindRow = row
       this.bindForm = { gradeYear: '', classId: '' }
       this.formError = ''
       this.bindVisible = true
     },
     async submitBind() {
+      if (this.saving || !this.bindVisible || !this.bindRow || this.bindIdentity !== this.workflowIdentity || !this.hasPermission('academicAffairs.program.publish')) return
       if (!this.bindForm.gradeYear) { this.formError = '绑定年级必填'; return }
       this.saving = true
       const res = await academicAffairsApi.bindProgramGrade(this.bindRow.programId, this.bindForm.gradeYear, this.bindForm.classId || undefined)
@@ -762,15 +1038,17 @@ export default {
 
     // ── 方案变更（状态生命周期：冻结/恢复/停用，原因必填） ──
     openChangeAction(row, action) {
+      if (!row || !this.hasPermission('academicAffairs.program.changeStatus')) return
       const label = this.changeActionLabel(action)
       this.changeDlg = {
-        visible: true, action, row,
+        visible: true, action, row, identity: this.workflowIdentity,
         title: `${label}「${row.programName}」`,
         type: action === 'DISABLE' ? 'danger' : (action === 'FREEZE' ? 'warning' : 'primary'),
         confirmText: `确认${label}`, submitting: false
       }
     },
     async doChangeStatus(payload) {
+      if (!this.changeDlg.visible || this.changeDlg.submitting || this.changeDlg.identity !== this.workflowIdentity || !this.hasPermission('academicAffairs.program.changeStatus')) return
       const reason = (payload && payload.reason) || ''
       this.changeDlg.submitting = true
       const res = await academicAffairsApi.changeProgramStatus(this.changeDlg.row.programId, this.changeDlg.action, reason)
@@ -814,4 +1092,57 @@ export default {
 .aapc-changelog li { padding: 8px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); }
 .aapc-archive-reason { display: inline-block; margin-right: 6px; padding: 1px 8px; border-radius: 999px; font-size: 12px; background: var(--warning-50, #fff7e6); color: var(--warning-700, #ad6800); border: 1px solid var(--warning-100, #ffe7ba); }
 .mp-link.is-danger { color: var(--danger-600, #f53f3f); }
+.aapc-workspace-directory{margin-bottom:14px}.aapc-workspace-directory summary{cursor:pointer;color:var(--primary-600,#2d5cad);font-size:13px;padding:8px 0}
+.aapc-flow { display: flex; flex-direction: column; gap: 14px; }
+.aapc-object-card { display: flex; align-items: center; justify-content: space-between; gap: 22px; padding: 14px 16px; border: 1px solid var(--border-200, #dbe3ef); border-left: 3px solid var(--primary-600, #2d5cad); border-radius: 10px; background: var(--bg-white, #fff); }
+.aapc-object-card strong { color: var(--text-900, #1f2937); font-size: 16px; }
+.aapc-object-card p { margin: 5px 0; color: var(--text-600, #526079); font-size: 13px; }
+.aapc-object-card small { color: var(--text-500, #6b7280); }
+.aapc-object-card dl { display: grid; grid-template-columns: repeat(2, minmax(150px, 1fr)); gap: 18px; margin: 0; }
+.aapc-object-card dt { color: var(--text-500, #6b7280); font-size: 12px; }
+.aapc-object-card dd { margin: 4px 0 0; color: var(--text-900, #1f2937); font-size: 13px; font-weight: 600; }
+.aapc-stage-rail { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0; padding: 11px 14px; border: 1px solid var(--border-200, #dbe3ef); border-radius: 10px; background: var(--bg-white, #fff); list-style: none; }
+.aapc-stage-rail li { position: relative; display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.aapc-stage-rail li::after { position: absolute; top: 13px; right: 8px; left: 34px; height: 1px; background: var(--border-200, #dbe3ef); content: ''; }
+.aapc-stage-rail li:last-child::after { display: none; }
+.aapc-stage-rail li > span { position: relative; z-index: 1; display: grid; width: 25px; height: 25px; flex: 0 0 25px; place-items: center; border: 1px solid var(--border-300, #cbd5e1); border-radius: 50%; background: #fff; color: var(--text-500, #6b7280); font-size: 12px; }
+.aapc-stage-rail li.is-done > span { border-color: #b7dfca; background: #effaf4; color: #27815a; }
+.aapc-stage-rail li.is-current > span { border-color: var(--primary-600, #2d5cad); background: var(--primary-600, #2d5cad); color: #fff; }
+.aapc-stage-rail strong, .aapc-stage-rail small { display: block; }
+.aapc-stage-rail strong { color: var(--text-700, #3f4b5f); font-size: 13px; }
+.aapc-stage-rail .is-current strong { color: var(--primary-700, #244c91); }
+.aapc-stage-rail small { margin-top: 3px; color: var(--text-400, #8993a4); font-size: 11px; }
+.aapc-workbench { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 14px; align-items: stretch; }
+.aapc-queue, .aapc-evidence-panel, .aapc-version-panel, .aapc-duty-card { border: 1px solid var(--border-200, #dbe3ef); border-radius: 10px; background: var(--bg-white, #fff); }
+.aapc-queue { overflow: auto; max-height: 510px; }
+.aapc-queue h2, .aapc-evidence-panel header, .aapc-version-panel header { margin: 0; padding: 14px 16px; border-bottom: 1px solid var(--border-200, #dbe3ef); color: var(--text-900, #1f2937); font-size: 15px; }
+.aapc-queue > button { display: block; width: 100%; padding: 13px 14px; border: 0; border-bottom: 1px solid var(--border-100, #eef2f7); background: #fff; color: inherit; text-align: left; cursor: pointer; }
+.aapc-queue > button.is-active { box-shadow: inset 3px 0 0 var(--primary-600, #2d5cad); background: var(--primary-50, #edf4ff); }
+.aapc-queue button strong, .aapc-queue button small, .aapc-queue button span { display: block; }
+.aapc-queue button strong { overflow: hidden; color: var(--text-900, #1f2937); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.aapc-queue button small { margin: 5px 0 7px; color: var(--text-500, #6b7280); }
+.aapc-evidence-panel header, .aapc-version-panel header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.aapc-evidence-panel header h2, .aapc-version-panel header h2 { margin: 0; font-size: 15px; }
+.aapc-evidence-panel header span { display: inline-block; margin-top: 4px; padding: 2px 7px; border-radius: 4px; background: #fff7e6; color: #9a6300; font-size: 11px; }
+.aapc-evidence-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; padding: 14px; }
+.aapc-evidence-grid article { padding: 12px; border: 1px solid var(--border-200, #dbe3ef); border-radius: 8px; }
+.aapc-evidence-grid article.is-danger { border-color: #efc98f; background: #fff8eb; }
+.aapc-evidence-grid article.is-warning { border-color: #efd18e; background: #fffbef; }
+.aapc-evidence-grid article > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.aapc-evidence-grid article p { min-height: 34px; margin: 9px 0 7px; color: var(--text-600, #526079); font-size: 12px; line-height: 1.45; }
+.aapc-evidence-grid article small { color: var(--text-400, #8993a4); }
+.aapc-version-list { margin: 0; padding: 18px 22px; list-style: none; }
+.aapc-version-list li { position: relative; display: grid; grid-template-columns: 18px 1fr; gap: 8px; padding-bottom: 24px; }
+.aapc-version-list li::before { position: absolute; top: 12px; bottom: 0; left: 5px; width: 1px; background: #cddcf2; content: ''; }
+.aapc-version-list li:last-child::before { display: none; }
+.aapc-version-dot { z-index: 1; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--primary-600, #2d5cad); }
+.aapc-version-list strong, .aapc-version-list small { display: block; }
+.aapc-version-list strong { margin-top: 5px; color: var(--text-900, #1f2937); }
+.aapc-version-list small, .aapc-version-list p { color: var(--text-500, #6b7280); font-size: 12px; }
+.aapc-version-list p { margin: 5px 0 0; }
+.aapc-duty-card { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 16px; }
+.aapc-duty-card p { margin: 5px 0 0; color: var(--text-600, #526079); font-size: 13px; }
+.aapc-duty-card__actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+@media (max-width: 1050px) { .aapc-workbench { grid-template-columns: 220px minmax(0, 1fr); } .aapc-object-card { align-items: flex-start; flex-direction: column; } }
+@media (max-width: 780px) { .aapc-stage-rail { grid-template-columns: 1fr; gap: 9px; } .aapc-stage-rail li::after { display: none; } .aapc-workbench, .aapc-evidence-grid { grid-template-columns: 1fr; } .aapc-queue { max-height: 250px; } .aapc-duty-card { align-items: flex-start; flex-direction: column; } }
 </style>

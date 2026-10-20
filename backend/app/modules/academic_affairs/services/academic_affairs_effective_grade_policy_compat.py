@@ -128,6 +128,11 @@ def _chronological_resolve_active_policy(db, term_id=None, *, required=True):
             AaTerm.is_deleted.is_(False),
         ).all()
     }
+    return select_chronological_policy(rows, terms, term_id, required=required)
+
+
+def select_chronological_policy(rows, terms, term_id=None, *, required=True):
+    """Pure authority selector, also used with the review transaction's locked facts."""
     target = terms.get(int(term_id)) if term_id else None
     if term_id and target is None:
         raise AppException("DATA_CONFLICT", "成绩业务引用的正式学期不存在", http_status=409)

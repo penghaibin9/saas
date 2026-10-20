@@ -294,8 +294,10 @@ def test_mysql_disabled_parent_and_optimistic_lock(client, db_mode):
     db = get_sessionmaker()()
     row = db.get(College, col_id)
     row.status = "ACTIVE"
+    row.version = int(row.version or 0) + 1
     db.commit()
     ver = int(row.version or 0)
+    stale_version = ver - 1
     db.close()
 
     conflict = client.put(
@@ -304,7 +306,7 @@ def test_mysql_disabled_parent_and_optimistic_lock(client, db_mode):
         json={
             "collegeName": "改名冲突",
             "code": "GOV_COL_DIS",
-            "expectedVersion": ver - 1 if ver > 0 else -1,
+            "expectedVersion": stale_version,
         },
     )
     assert conflict.status_code in (400, 409, 422)

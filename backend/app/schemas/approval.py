@@ -78,6 +78,11 @@ class ApprovalTemplateVoidRequest(BaseModel):
     version: int = Field(..., ge=0)
 
 
+class ApprovalTemplateVersionRequest(BaseModel):
+    """从当前读模型拿到的乐观锁版本；不接受客户端租户或操作者字段。"""
+    version: int = Field(..., ge=0)
+
+
 class ApprovalExportRequest(BaseModel):
     scope: str = Field(..., description="TODO/DONE/RETURNED/CC/TEMPLATE")
     purpose: str = Field(..., min_length=5, max_length=200)

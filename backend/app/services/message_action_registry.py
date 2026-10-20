@@ -20,6 +20,35 @@ from app.services.mobile_focus_contract import (
 # V3 §4.4：``focus`` 声明该端目标是否真的能落到对象上（DETAIL / LIST_FOCUS / NONE）；
 # 缺省视为 NONE。``focusParam`` 指明用哪个 requiredParam 作为聚焦值，缺省用第一个必需参数。
 ACTION_REGISTRY: dict[str, dict[str, Any]] = {
+    "STUDENT_AFFAIRS_DORM_RECTIFICATION": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["rectificationId"],
+        "pc": None, "studentPc": None, "teacherMini": None,
+        "studentMini": "/pages/student/affairs/dorm",
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "label": "查看宿舍整改",
+    },
+    "student.internship.volunteer-result": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["groupId", "groupVersion"],
+        "pc": None, "studentPc": "/internship/volunteer-result",
+        "studentMini": "/pages/student-internship/volunteer-result/index", "teacherMini": None,
+        "focus": {"studentPc": FOCUS_DETAIL, "studentMini": FOCUS_DETAIL}, "focusParam": "groupId",
+        "label": "原志愿办理结果",
+    },
+    "student.internship.weekly-report": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["reportId", "batchId", "internshipId", "weekNo"],
+        "pc": None,
+        "studentPc": None,
+        "studentMini": "/pages/student/weekly-report/index",
+        "teacherMini": None,
+        # 周报页读取 reportId / weekNo，并在拿到正式列表后切到对应周；不是
+        # 仅跳到一个泛化实习大厅，故可以声明对象级 list focus。
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "focusParam": "reportId",
+        "label": "实习周报",
+    },
     "student.affairs.material": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["materialRequirementId"],
@@ -57,6 +86,23 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "studentMini": None,
         "teacherMini": "/pages/teacher/risk-students/index",
         "label": "实习风险处置",
+    },
+    "enterprise.internship.application": {
+        "roles": ["ENTERPRISE"],
+        "requiredParams": ["applicationId", "campaignId"],
+        "pc": None, "studentPc": None, "studentMini": None, "teacherMini": None,
+        "enterprise": "/applications/:applicationId",
+        "label": "学生岗位申请",
+    },
+    "enterprise.internship.position": {
+        "roles": ["ENTERPRISE"],
+        "requiredParams": ["positionId", "campaignId"],
+        "pc": None,
+        "studentPc": None,
+        "studentMini": None,
+        "teacherMini": None,
+        "enterprise": "/positions/:positionId/edit",
+        "label": "企业岗位详情",
     },
     "student.exam.detail": {
         "roles": ["STUDENT"],
@@ -134,8 +180,10 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
     "AFFAIRS_FUNDING": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["recordId"],
+        "optionalParams": ["bizType"],
         "pc": "/admin/student-affairs/funding",
-        "studentPc": None,
+        "studentPc": "/campus-service",
+        "studentPcQuery": {"tab": "funding"},
         "studentMini": "/pages/student/affairs/funding",
         "teacherMini": None,
         "focus": {"studentMini": FOCUS_LIST_FOCUS},
@@ -180,6 +228,18 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
         "teacherMini": None,
         "label": "我的办理",
     },
+    "student.campus-service.work-order": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["caseId"],
+        "pc": None,
+        "studentPc": None,
+        # 服务工单的真实学生回读页是“我的办理”；caseId 为 source:bizId 复合键，
+        # 页面已按该键精确聚焦，不能再指向泛化服务大厅。
+        "studentMini": "/pages/student/my-work/index",
+        "teacherMini": None,
+        "focus": {"studentMini": FOCUS_LIST_FOCUS},
+        "label": "服务申请办理结果",
+    },
     "student.warning.detail": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["warningId"],
@@ -208,6 +268,7 @@ def list_action_keys() -> list[dict]:
                 "studentPc": v.get("studentPc"),
                 "studentMini": v.get("studentMini"),
                 "teacherMini": v.get("teacherMini"),
+                "enterprise": v.get("enterprise"),
             },
             "focus": {
                 client: focus_mode_for(k, client=client)
@@ -241,7 +302,7 @@ def validate_action(action_key: Optional[str], action_params: Optional[dict]) ->
             details={"missing": missing, "actionKey": key},
         )
     # 只保留登记参数 + 透传已知字段
-    allowed = set(spec.get("requiredParams") or []) | {"campaignId", "ackDeadline"}
+    allowed = set(spec.get("requiredParams") or []) | set(spec.get("optionalParams") or []) | {"campaignId", "ackDeadline"}
     cleaned = {k: v for k, v in params.items() if k in allowed or k in (spec.get("requiredParams") or [])}
     for p in spec.get("requiredParams") or []:
         cleaned[p] = params[p]
@@ -269,7 +330,7 @@ def focus_param_for(action_key: str) -> str | None:
 
 
 def resolve_route(action_key: str, *, client: str) -> dict:
-    """client: pc | studentPc | studentMini | teacherMini"""
+    """client: pc | studentPc | studentMini | teacherMini | enterprise"""
     spec = ACTION_REGISTRY.get(action_key)
     if not spec:
         return {"ok": False, "message": "请前往对应端办理", "path": None}

@@ -430,12 +430,27 @@ def active_scope_key(term_id) -> str:
     return str(int(term_id)) if term_id not in (None, "") else "BASE"
 
 
+def lock_policy_authority(db, tenant_id=None):
+    """Serialize policy-set changes and review evidence on an existing tenant row.
+
+    Works with the business Session and the grade-insert listener's Connection;
+    SELECT only, and the caller retains the lock until its transaction ends.
+    """
+    from app.models.tenant import Tenant
+
+    tenant_id = int(tenant_id if tenant_id is not None else _tid())
+    row = db.execute(select(Tenant.id).where(
+        Tenant.id == tenant_id, Tenant.is_deleted.is_(False),
+    ).with_for_update()).first()
+    if row is None:
+        raise AppException("DATA_CONFLICT", "租户策略归属不存在，无法核对有效成绩策略", http_status=409)
+
+
 def activate_grade_policy(user, payload) -> dict:
     """发布一个策略版本：锁定该范围现有 ACTIVE → 置 SUPERSEDED → 落新 ACTIVE，一次事务。
 
-    并发保护有两道：范围内既有 ACTIVE 行的 ``FOR UPDATE`` 让后到者排队；范围内本来就没有
-    ACTIVE 行时（无行可锁）由 ``uk_aa_effective_grade_policy_scope`` 唯一索引兜底，
-    第二个请求插入即撞键，转成 409 而不是产生两条并存的 ACTIVE 策略。
+    先锁租户策略归属，再锁范围内既有 ACTIVE 行；首次新增生效范围也与学院审核取证互斥。
+    ``uk_aa_effective_grade_policy_scope`` 唯一索引保留为最后一道约束。
     """
     from datetime import datetime
 
@@ -451,6 +466,7 @@ def activate_grade_policy(user, payload) -> dict:
     term_id = payload.get("effectiveFromTermId")
     term_id = int(term_id) if term_id not in (None, "") else None
     with session() as db:
+        lock_policy_authority(db)
         if term_id:
             term = db.query(AaTerm).filter(
                 AaTerm.id == term_id,
@@ -464,7 +480,7 @@ def activate_grade_policy(user, payload) -> dict:
             AaEffectiveGradePolicy.effective_from_term_id == term_id,
             AaEffectiveGradePolicy.status == "ACTIVE",
             AaEffectiveGradePolicy.is_deleted.is_(False),
-        ).with_for_update().all()
+        ).with_for_update().populate_existing().all()
         code = str(payload.get("policyCode") or f"{strategy}_T{term_id or 'BASE'}").strip().upper()
         # 版本号沿同一 policy_code 的版本链递增（含已 SUPERSEDED 的历史版本），
         # 这样 V1 被替代后新版本是 V2，不会回到 V1 撞版本身份唯一键。

@@ -178,13 +178,13 @@ def test_student_portal_has_real_material_upload_versions_and_notice_deep_link()
 def test_teacher_pc_has_material_queue_review_and_failed_only_batch_retry():
     api = _read("frontend/src/modules/studentAffairs/api/operations.api.js")
     page = _read("frontend/src/modules/studentAffairs/views/MaterialOperationsView.vue")
-    routes = _read("frontend/src/router/index.js")
+    routes = _read("frontend/src/modules/studentAffairs/studentAffairs.routes.js")
 
     assert "createRequirement" in api
     assert "reviewRequirement" in api
     assert "createBatchJob" in api
     assert "retryFailed" in api
-    assert "后端先按业务权限、班级/学院范围与强敏感逐生授权过滤" in page
+    assert "家庭经济与心理材料仅限授权人员查看。" in page
     assert "row.allowedActions" in page and "row.version" in page
     assert "验收" in page and "退回" in page and "免交" in page
     assert "/admin/student-affairs/material-operations" in routes

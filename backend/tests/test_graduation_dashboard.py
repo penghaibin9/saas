@@ -16,6 +16,17 @@ def test_dashboard_structure_and_todo_hints(graduation_client, auth_headers, db_
     assert isinstance(data["stats"], list) and len(data["stats"]) >= 5
     assert isinstance(data["flow"], list) and data["flow"]
     assert isinstance(data["riskAlerts"], list)
+    assert isinstance(data["todayWorkItems"], list)
+    required = {"priority", "student", "business", "whyHere", "waitingOn", "nextActor", "dueAt", "recentChange", "primaryAction"}
+    for item in data["todayWorkItems"]:
+        assert required <= item.keys()
+        assert item["waitingOn"] and item["nextActor"]
+        assert {"label", "path", "query"} <= item["primaryAction"].keys()
+    ranks = {"CRITICAL": 0, "HIGH": 1, "OVERDUE": 2, "DUE_24H": 3,
+             "RELEASE_BLOCKER": 4, "RETURNED": 5, "WAITING_REVIEW": 6, "NORMAL": 7}
+    assert [ranks[item["priority"]] for item in data["todayWorkItems"]] == sorted(
+        ranks[item["priority"]] for item in data["todayWorkItems"]
+    )
     # 待办每项都有 hint + route（前端模板依赖 t.hint）
     assert data["todos"]
     for t in data["todos"]:

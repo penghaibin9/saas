@@ -121,7 +121,7 @@ try {
 
   await page.goto(`${baseUrl}/campus-service`, { waitUntil: 'domcontentloaded' })
   await waitStable(page)
-  await setTheme(page, 'orange')
+  await setTheme(page, 'sage')
   const leaveTab = page.locator('button.sp-tab:visible', { hasText: '请假销假' }).first()
   if (await leaveTab.count()) await leaveTab.click()
   await sleep(500)
@@ -131,12 +131,18 @@ try {
   await waitStable(page)
   await setTheme(page, 'dark')
   result.darkSidebar = await page.evaluate(() => {
-    const aside = document.querySelector('.sp-aside')
+    const aside = document.querySelector('.workspace-rail')
     const style = aside ? getComputedStyle(aside) : null
+    const channels = style?.backgroundColor.match(/[\d.]+/g)?.map(Number) || []
+    const visible = aside ? aside.getBoundingClientRect() : null
     return {
       backgroundImage: style?.backgroundImage || '',
       backgroundColor: style?.backgroundColor || '',
-      matchesV5DarkBaseline: Boolean(style?.backgroundImage?.includes('rgb(7, 12, 19)') && style?.backgroundImage?.includes('rgb(40, 59, 102)'))
+      // 紧凑壳使用实体深色双栏；旧渐变侧栏已退役。
+      matchesWorkspaceDarkTheme: document.documentElement.dataset.spTheme === 'dark'
+        && Boolean(visible?.width > 0 && visible?.height > 0)
+        && channels.length >= 3 && channels.slice(0, 3).every(channel => channel < 96)
+        && (channels[3] ?? 1) === 1
     }
   })
   result.screenshots.dark = await capture(page, outputDir, 'final-dark-sidebar')
@@ -152,13 +158,13 @@ try {
   await browser.close()
 }
 
-result.passed = result.issues.length === 0 && result.darkSidebar?.matchesV5DarkBaseline === true
+result.passed = result.issues.length === 0 && result.darkSidebar?.matchesWorkspaceDarkTheme === true
 await fs.writeFile(path.join(outputDir, 'visible-enum-results.json'), JSON.stringify(result, null, 2), 'utf8')
 console.log(JSON.stringify({
   routesChecked: result.routesChecked,
   tabsChecked: result.tabsChecked,
   visibleEnumIssues: result.issues.length,
-  darkSidebarMatchesV5: result.darkSidebar?.matchesV5DarkBaseline,
+  darkSidebarMatchesWorkspace: result.darkSidebar?.matchesWorkspaceDarkTheme,
   passed: result.passed
 }, null, 2))
 if (!result.passed) process.exitCode = 1

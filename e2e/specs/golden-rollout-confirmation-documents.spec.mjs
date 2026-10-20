@@ -95,7 +95,7 @@ test.describe.serial('Golden rollout · confirmation / document status · Batch 
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/family\/receipts/)
     await expect(page.getByRole('heading', { name: '家校回执', exact: true })).toBeVisible()
-    await expect(page.locator('.sa-grid--metrics')).toBeVisible()
+    await expect(page.getByRole('tablist', { name: '回执状态筛选' })).toBeVisible()
     await expect(page.locator('.fr-filters')).toBeVisible()
 
     const row = page.locator('.dt__tr').filter({ hasText: familyReceipt.reason }).first()
@@ -104,22 +104,13 @@ test.describe.serial('Golden rollout · confirmation / document status · Batch 
     await expect(row).toContainText('待回执')
     await expect(row.getByRole('button', { name: '登记回执', exact: true })).toBeVisible()
 
-    const visual = await page.locator('.mps:has(.sa-grid--metrics):has(.fr-filters)').evaluate((el) => {
-      const metric = el.querySelector('.app-metric-card')
-      const section = el.querySelector('.app-section-card')
-      const filters = el.querySelector('.fr-filters')
-      return {
-        metricHeight: metric?.getBoundingClientRect().height || 0,
-        metricRadius: parseFloat(getComputedStyle(metric).borderRadius) || 0,
-        sectionRadius: parseFloat(getComputedStyle(section).borderRadius) || 0,
-        filtersRadius: parseFloat(getComputedStyle(filters).borderRadius) || 0
-      }
-    })
-    expect(visual.metricHeight).toBeGreaterThanOrEqual(96)
-    expect(visual.metricHeight).toBeLessThanOrEqual(118)
-    expect(visual.metricRadius).toBeGreaterThanOrEqual(14)
-    expect(visual.sectionRadius).toBeGreaterThanOrEqual(14)
-    expect(visual.filtersRadius).toBeGreaterThanOrEqual(10)
+    await row.getByRole('button', { name: '登记回执', exact: true }).click()
+    const receipt = page.getByRole('dialog')
+    await expect(receipt).toBeVisible()
+    await expect(receipt.getByPlaceholder('记录家长的反馈与后续约定')).toBeVisible()
+    await receipt.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(receipt).toBeHidden()
+    await expect(row).toContainText('待回执')
 
     await capture(page, testInfo, 'rollout-confirmation-affairs-family-receipt-b')
   })

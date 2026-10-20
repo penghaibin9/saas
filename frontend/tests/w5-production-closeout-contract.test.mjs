@@ -41,8 +41,10 @@ test('W5 semester pilot is server-authoritative, real-data-only and six-stage', 
 
 test('W5 SLA transparency reads one backend truth, is permission-scoped, and does not invent browser due logic', () => {
   assert.match(studentLayout, /StudentAffairsSlaStrip/)
-  assert.match(studentLayout, /v-if="showSla"/)
-  assert.match(studentLayout, /kind="both"/)
+  assert.match(studentLayout, /v-if="showSla \|\| showTempExpiry"/)
+  assert.match(studentLayout, /<details v-if="showSla"/)
+  assert.match(studentLayout, /:kind="isLeaveWorkspace \? 'leave' : 'both'"/)
+  assert.doesNotMatch(studentLayout, /<details[^>]*\sopen[\s>]/)
   assert.match(studentLayout, /class="sa-context-stack"/)
   assert.doesNotMatch(studentLayout, /class="sa-ops-stack"/)
   assert.match(studentLayout, /studentAffairs\.stats\.view/)

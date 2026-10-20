@@ -40,9 +40,12 @@ def _seed_file(db_mode, name="户籍证明.pdf"):
     """造一个真实 t_file_object（证明材料附件回链目标，与 AaExemption 免修材料同款机制）。"""
     from app.db.session import get_sessionmaker
     from app.models import FileObject
+    import zlib
     db = get_sessionmaker()()
     f = FileObject(tenant_id=TID, file_key=f"test/{name}", file_name=name, ext="pdf",
-                   mime_type="application/pdf", size_bytes=1024, biz_type="ATTACHMENT", status="STORED")
+                   mime_type="application/pdf", size_bytes=1024, biz_type="TEMP_PRIVATE", visibility="PRIVATE",
+                   owner_user_id=(zlib.crc32(b"u_school_admin01") & 0x7FFFFFFF) or 1,
+                   scan_status="NOT_REQUIRED", status="STORED")
     db.add(f); db.flush()
     fid = f.id
     db.commit()
@@ -184,3 +187,72 @@ def test_c10_non_key_field_material_optional(client, db_mode):
     r = _apply(client, hdr, ids["s"], "GRADE", "2022")
     assert r.status_code == 200, r.text
     assert r.json()["data"]["materialRequired"] is False
+
+
+def test_c11_binding_is_atomic_and_reviewer_can_read_without_upload_ownership(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import FileObject
+    from app.models.file import FileBinding
+    from sqlalchemy import select
+    ids = _seed(db_mode)
+    hdr = _hdr(client, "school_admin01")
+    fid = _seed_file(db_mode)
+    result = _apply(client, hdr, ids["s"], "REAL_NAME", "材料更正测试", material=fid)
+    assert result.status_code == 200, result.text
+    cid = result.json()["data"]["correctionId"]
+    with get_sessionmaker()() as db:
+        binding = db.scalar(select(FileBinding).where(FileBinding.file_id == int(fid), FileBinding.biz_type == "AA_STUDENT_CORRECTION"))
+        assert binding and str(binding.biz_id) == cid and binding.student_id == ids["s"]
+        file = db.get(FileObject, int(fid))
+        assert file.visibility == "BIZ_SCOPED"
+        file.owner_user_id = 999999
+        db.commit()
+    response = client.get(f"/api/v1/files/{fid}", headers=hdr)
+    assert response.status_code == 200, response.text
+    denied = client.get(f"/api/v1/files/{fid}", headers=_hdr(client, "counselor01"))
+    assert denied.status_code in (403, 404), denied.text
+
+
+def test_c12_foreign_upload_cannot_bind_and_application_rolls_back(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import FileObject, AaStudentCorrection
+    from app.models.file import FileBinding
+    from sqlalchemy import select, func
+    ids = _seed(db_mode); hdr = _hdr(client, "school_admin01"); fid = _seed_file(db_mode)
+    with get_sessionmaker()() as db:
+        db.get(FileObject, int(fid)).owner_user_id = 999999
+        db.commit()
+    response = _apply(client, hdr, ids["s"], "REAL_NAME", "不应生效的更正", material=fid)
+    assert response.status_code in (403, 404), response.text
+    with get_sessionmaker()() as db:
+        assert db.scalar(select(func.count()).select_from(AaStudentCorrection).where(AaStudentCorrection.student_id == ids["s"])) == 0
+        assert db.scalar(select(func.count()).select_from(FileBinding).where(FileBinding.file_id == int(fid))) == 0
+
+
+def test_c13_unsafe_material_never_creates_a_correction(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import FileObject, AaStudentCorrection
+    from sqlalchemy import select, func
+    ids = _seed(db_mode); hdr = _hdr(client, "school_admin01"); fid = _seed_file(db_mode)
+    with get_sessionmaker()() as db:
+        db.get(FileObject, int(fid)).scan_status = "INFECTED"
+        db.commit()
+    response = _apply(client, hdr, ids["s"], "REAL_NAME", "不应提交的更正", material=fid)
+    assert response.status_code != 200
+    with get_sessionmaker()() as db:
+        assert db.scalar(select(func.count()).select_from(AaStudentCorrection).where(AaStudentCorrection.student_id == ids["s"])) == 0
+
+
+def test_c14_broken_subject_binding_denies_even_school_reviewer(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models.file import FileBinding
+    from sqlalchemy import select
+    ids = _seed(db_mode); hdr = _hdr(client, "school_admin01"); fid = _seed_file(db_mode)
+    response = _apply(client, hdr, ids["s"], "REAL_NAME", "关系校验测试", material=fid)
+    assert response.status_code == 200, response.text
+    with get_sessionmaker()() as db:
+        binding = db.scalar(select(FileBinding).where(FileBinding.file_id == int(fid)))
+        binding.subject_id = "99999999"
+        db.commit()
+    denied = client.get(f"/api/v1/files/{fid}", headers=hdr)
+    assert denied.status_code == 404, denied.text

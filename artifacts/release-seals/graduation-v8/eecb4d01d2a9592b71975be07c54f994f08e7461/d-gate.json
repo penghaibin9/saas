@@ -1,0 +1,415 @@
+{
+  "gate": "D-GATE-GD-V8",
+  "verificationHead": "a8cc0f99136d87023536d31576a8eb7fe919651b",
+  "generatedAt": "2026-08-30T18:06:49.615719+08:00",
+  "result": "45/45 PASS",
+  "passed": 45,
+  "total": 45,
+  "gates": [
+    {
+      "id": 1,
+      "name": "Menu SSOT 仍只有 graduationWorkspaces → navPlan",
+      "result": "PASS",
+      "evidence": [
+        "frontend/tests/graduation.v8-ia-contract.test.mjs",
+        "W16 frontend 633/633"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "不新增第二 Graduation sidebar",
+      "result": "PASS",
+      "evidence": [
+        "frontend/tests/graduation.v8-ia-contract.test.mjs",
+        "W16 frontend 633/633"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Admin 高曝光菜单无明显重复",
+      "result": "PASS",
+      "evidence": [
+        "frontend/tests/graduation.v8-ia-contract.test.mjs",
+        "W16 frontend 633/633"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "stages/rules menu promise 与 landing 一致",
+      "result": "PASS",
+      "evidence": [
+        "frontend/tests/graduation.v8-ia-contract.test.mjs",
+        "W16 frontend 633/633"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "StudentList >6 主视图已分组",
+      "result": "PASS",
+      "evidence": [
+        "frontend/tests/graduation.v8-ia-contract.test.mjs",
+        "W16 frontend 633/633"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "TopicLib >6 主视图已分组",
+      "result": "PASS",
+      "evidence": [
+        "frontend/tests/graduation.v8-ia-contract.test.mjs",
+        "W16 frontend 633/633"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "table row action budget",
+      "result": "PASS",
+      "evidence": [
+        "frontend/tests/graduation.v8-ia-contract.test.mjs",
+        "W16 frontend 633/633"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Dashboard concrete work",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "backend 113/113 + 8/8 L4"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "priority server-ranked",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "backend 113/113 + 8/8 L4"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "exact object landing",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "backend 113/113 + 8/8 L4"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "batch context preserved",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "backend 113/113 + 8/8 L4"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "whyHere",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "backend 113/113 + 8/8 L4"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "waitingOn",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "backend 113/113 + 8/8 L4"
+      ]
+    },
+    {
+      "id": 14,
+      "name": "nextActor",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "backend 113/113 + 8/8 L4"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "server primaryAction",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "backend 113/113 + 8/8 L4"
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Proposal ChangeCompare",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Final ChangeCompare",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Taskbook ChangeCompare",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Topic ChangeCompare",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Proposal Receipt",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Final Receipt",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Taskbook Receipt",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Topic Receipt",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Defense Receipt",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Grade Receipt",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Archive Receipt",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 27,
+      "name": "continue next",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 28,
+      "name": "queue/filter/sel preserve",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "8/8 L4 visual/action/cross-end/server/MySQL"
+      ]
+    },
+    {
+      "id": 29,
+      "name": "FileEvidence progressive disclosure",
+      "result": "PASS",
+      "evidence": [
+        "frontend/src/modules/graduation/components/FileEvidencePanel.vue",
+        "W16 frontend 633/633"
+      ]
+    },
+    {
+      "id": 30,
+      "name": "MaterialCenter no raw IDs primary",
+      "result": "PASS",
+      "evidence": [
+        "frontend/src/modules/graduation/components/FileEvidencePanel.vue",
+        "W16 frontend 633/633"
+      ]
+    },
+    {
+      "id": 31,
+      "name": "MaterialCenter human statuses",
+      "result": "PASS",
+      "evidence": [
+        "frontend/src/modules/graduation/components/FileEvidencePanel.vue",
+        "W16 frontend 633/633"
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Student PC workbench before non-actionable feedback",
+      "result": "PASS",
+      "evidence": [
+        "student-portal/tests/graduation.v8-student-experience.test.mjs",
+        "W16 student portal 105/105"
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Student PC no W7.5 jargon",
+      "result": "PASS",
+      "evidence": [
+        "student-portal/tests/graduation.v8-student-experience.test.mjs",
+        "W16 student portal 105/105"
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Student topic pagination",
+      "result": "PASS",
+      "evidence": [
+        "student-portal/tests/graduation.v8-student-experience.test.mjs",
+        "W16 student portal 105/105"
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Student topic search/filter",
+      "result": "PASS",
+      "evidence": [
+        "student-portal/tests/graduation.v8-student-experience.test.mjs",
+        "W16 student portal 105/105"
+      ]
+    },
+    {
+      "id": 36,
+      "name": "Teacher taskbook no false-empty",
+      "result": "PASS",
+      "evidence": [
+        "miniapp/tests/graduation.v8-mobile-coverage.test.mjs",
+        "W16 miniapp 213/213"
+      ]
+    },
+    {
+      "id": 37,
+      "name": "Student Mini no false-empty",
+      "result": "PASS",
+      "evidence": [
+        "miniapp/tests/graduation.v8-mobile-coverage.test.mjs",
+        "W16 miniapp 213/213"
+      ]
+    },
+    {
+      "id": 38,
+      "name": "specialist mobile role coverage explicitly decided",
+      "result": "PASS",
+      "evidence": [
+        "miniapp/tests/graduation.v8-mobile-coverage.test.mjs",
+        "W16 miniapp 213/213"
+      ]
+    },
+    {
+      "id": 39,
+      "name": "PC-only actions have explicit reason",
+      "result": "PASS",
+      "evidence": [
+        "miniapp/tests/graduation.v8-mobile-coverage.test.mjs",
+        "W16 miniapp 213/213"
+      ]
+    },
+    {
+      "id": 40,
+      "name": "409 recovery",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "recovery cases + MySQL seal"
+      ]
+    },
+    {
+      "id": 41,
+      "name": "unknown archive no blind replay",
+      "result": "PASS",
+      "evidence": [
+        "w15/golden-journeys.json",
+        "recovery cases + MySQL seal"
+      ]
+    },
+    {
+      "id": 42,
+      "name": "20K bounded",
+      "result": "PASS",
+      "evidence": [
+        "w14/scale20k.json",
+        "20K bounded gate"
+      ]
+    },
+    {
+      "id": 43,
+      "name": "four-end semantics",
+      "result": "PASS",
+      "evidence": [
+        "w14/*viewport-accessibility.json",
+        "four-end exact viewport + W15 cross-end"
+      ]
+    },
+    {
+      "id": 44,
+      "name": "capability preservation",
+      "result": "PASS",
+      "evidence": [
+        "w15/capability-preservation-after.json",
+        "15/15 PASS"
+      ]
+    },
+    {
+      "id": 45,
+      "name": "MERGE_READY_HOLD / no auto merge",
+      "result": "PASS",
+      "evidence": [
+        "w16/final-machine-verdict.json",
+        "latest main ancestor; no merge commit; autoMerge=false"
+      ]
+    }
+  ]
+}

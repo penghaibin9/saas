@@ -50,12 +50,6 @@ async function openWithApiSession(page, _api, path) {
   await openGoldenStaffPage(page, path)
 }
 
-async function setStorage(page, key, value) {
-  await page.evaluate(({ storageKey, storageValue }) => {
-    window.localStorage.setItem(storageKey, String(storageValue))
-  }, { storageKey: key, storageValue: value })
-}
-
 async function prepareCounselorEvaluation(admin) {
   const marker = runId()
   const definitions = [
@@ -162,66 +156,40 @@ test.describe.serial('Golden rollout · evaluation / scores / result analysis ·
     await openWithApiSession(page, adminApi, '/admin/student-affairs/counselor-eval')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/counselor-eval/)
-    await expect(page.locator('.sa-summary-strip')).toBeVisible()
-    await expect(page.locator('.sa-workflow-strip')).toBeVisible()
-    await expect(page.locator('.ce-indbar')).toBeVisible()
-    await expect(page.locator('.dt')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '辅导员考评', exact: true })).toBeVisible()
+    await expect(page.locator('.ce-toolbar')).toBeVisible()
     await expect(page.locator('.dt__tr').filter({ hasText: affairsFixture.periodCode }).first()).toBeVisible()
-
-    const affairsContract = await page.evaluate(() => {
-      const root = document.querySelector('.mps:has(.ce-indbar)')
-      const heroTitle = root?.querySelector('.sa-summary-strip__title')
-      const workflow = root?.querySelector('.sa-workflow-strip')
-      const indicatorBar = root?.querySelector('.ce-indbar')
-      const sectionCard = root?.querySelector('.app-section-card')
-      if (!root || !heroTitle || !workflow || !indicatorBar || !sectionCard) return null
-      return {
-        titleColor: getComputedStyle(heroTitle).color,
-        workflowColumns: getComputedStyle(workflow).gridTemplateColumns.split(' ').filter(Boolean).length,
-        indicatorBackground: getComputedStyle(indicatorBar).backgroundColor,
-        sectionRadius: getComputedStyle(sectionCard).borderRadius
-      }
-    })
-    expect(affairsContract).not.toBeNull()
-    expect(affairsContract.titleColor).toBe('rgb(255, 255, 255)')
-    expect(affairsContract.workflowColumns).toBe(4)
-    expect(affairsContract.indicatorBackground).toBe('rgb(248, 250, 252)')
-    expect(affairsContract.sectionRadius).toBe('15px')
+    await page.getByRole('button', { name: '考评指标', exact: true }).click()
+    const indicators = page.getByRole('dialog', { name: '考评指标', exact: true })
+    await expect(indicators).toBeVisible()
+    await expect(indicators.locator('input').first()).toBeVisible()
+    await indicators.getByRole('button', { name: '关闭', exact: true }).last().click()
+    await expect(indicators).toBeHidden()
+    await expect(page.locator('.dt__tr').filter({ hasText: affairsFixture.periodCode }).first()).toBeVisible()
 
     await capture(page, testInfo, 'rollout-results-affairs-counselor-eval-b')
   })
 
   test('Internship comprehensive scores · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openWithApiSession(page, adminApi, '/admin/internship/scores')
-    await setStorage(page, 'internship.selectedBatchId', internshipFixture.batchId)
-    await page.reload()
+    await openWithApiSession(page, adminApi, `/admin/internship/scores?batchId=${encodeURIComponent(internshipFixture.batchId)}`)
 
     await expect(page).toHaveURL(/\/admin\/internship\/scores/)
-    await expect(page.locator('.cfg')).toBeVisible()
+    const queues = page.getByRole('navigation', { name: '成绩工作队列' })
+    await expect(queues).toBeVisible()
     await expect(page.locator('.bar')).toBeVisible()
-    await expect(page.locator('.dt')).toBeVisible()
-    await expect(page.getByText('五项权重配置')).toBeVisible()
+    const scores = items(await adminApi.get('/internship/scores', { batchId: internshipFixture.batchId, page: 1, pageSize: 20 }))
+    const ledger = scores.length
+      ? page.locator('.dt')
+      : page.getByText('当前筛选下暂无成绩记录', { exact: true })
+    await expect(ledger).toBeVisible()
     expect(internshipScoreFixture.configId).not.toBe('')
-
-    const internshipContract = await page.evaluate(() => {
-      const root = document.querySelector('.mps:has(.cfg)')
-      const duplicateBatch = root?.querySelector('.stack > .msr .msr__batch')
-      const cfg = root?.querySelector('.cfg')
-      const table = root?.querySelector('.dt')
-      if (!root || !duplicateBatch || !cfg || !table) return null
-      return {
-        duplicateBatchDisplay: getComputedStyle(duplicateBatch).display,
-        configDisplay: getComputedStyle(cfg).display,
-        configRadius: getComputedStyle(cfg).borderRadius,
-        tableRadius: getComputedStyle(table).borderRadius
-      }
-    })
-    expect(internshipContract).not.toBeNull()
-    expect(internshipContract.duplicateBatchDisplay).toBe('none')
-    expect(internshipContract.configDisplay).toBe('grid')
-    expect(internshipContract.configRadius).toBe('14px')
-    expect(internshipContract.tableRadius).toBe('16px')
+    await queues.getByRole('button', { name: '评分规则', exact: true }).click()
+    await expect(page.getByRole('heading', { name: '当前批次评分规则', exact: true })).toBeVisible()
+    await expect(page.locator('.cfg-section')).toContainText('及格线')
+    await expect(page.locator('.cfg-section')).toContainText('权重')
+    await queues.getByRole('button', { name: '成绩台账', exact: true }).click()
+    await expect(ledger).toBeVisible()
 
     await capture(page, testInfo, 'rollout-results-internship-scores-b')
   })

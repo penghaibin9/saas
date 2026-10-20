@@ -72,6 +72,55 @@ def test_primary_teacher_key_is_deterministic():
     assert service._primary_teacher_key(user) == "T001"
 
 
+def test_attendance_statistics_backfills_missing_legacy_roster_identity():
+    from app.modules.academic_affairs.services import (
+        academic_affairs_attendance_teacher_relation_read_guard as reader,
+    )
+
+    legacy = SimpleNamespace(roster_json='[{"studentId":"7","status":"PRESENT"}]')
+    formal = SimpleNamespace(
+        roster_json=(
+            '[{"studentId":"7","studentNo":"S007",'
+            '"realName":"学生甲","status":"LATE"}]'
+        )
+    )
+
+    result = reader._aggregate_sessions([(legacy, None), (formal, None)])
+
+    assert result["students"] == [{
+        "studentId": "7",
+        "studentNo": "S007",
+        "realName": "学生甲",
+        "present": 1,
+        "late": 1,
+        "absent": 0,
+        "leave": 0,
+        "sessions": 2,
+        "absentRate": 0.0,
+    }]
+
+
+def test_attendance_statistics_backfills_empty_legacy_snapshot_from_student_authority(monkeypatch):
+    from app.modules.academic_affairs.services import (
+        academic_affairs_attendance_teacher_relation_read_guard as reader,
+    )
+
+    class FakeScalars:
+        def all(self):
+            return [SimpleNamespace(id=7, student_no="S007", real_name="学生甲")]
+
+    class FakeDb:
+        def scalars(self, _statement):
+            return FakeScalars()
+
+    monkeypatch.setattr(reader.public, "_tid", lambda: 1)
+    students = [{"studentId": "7", "studentNo": "", "realName": ""}]
+
+    reader._backfill_missing_student_identity(FakeDb(), students)
+
+    assert students == [{"studentId": "7", "studentNo": "S007", "realName": "学生甲"}]
+
+
 def test_teacher_attendance_page_clears_previous_roster_before_loading_detail():
     root = Path(__file__).resolve().parents[2]
     page = (
@@ -98,7 +147,7 @@ def test_teacher_attendance_page_serializes_row_writes_before_submit_or_back():
     assert "marking: {}" in page
     assert "hasPendingMarks()" in page
     assert "this.marking[studentId]" in page
-    assert "this.marking[studentId] = true" in page
+    assert "this.marking[studentId] = marker" in page
     assert "this.marking[studentId] = false" in page
     assert "this.hasPendingMarks" in page
     assert "仍有考勤标记正在保存" in page

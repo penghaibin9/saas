@@ -13,6 +13,23 @@ from app.modules.academic_affairs.routers import (
 )
 
 
+
+# Explicit additions after the frozen Move Only snapshot; unknown routes still fail.
+_ADDED_PERMISSIONS = {
+    ('GET', "/academic-affairs/classroom-buildings"): {"academicAffairs.classroom.view"},
+    ('POST', "/academic-affairs/classroom-buildings"): {"academicAffairs.classroom.create"},
+    ('PUT', "/academic-affairs/classroom-buildings/{buildingId}"): {"academicAffairs.classroom.update"},
+    ('POST', "/academic-affairs/classroom-batches/generate-preview"): {"academicAffairs.classroom.create"},
+    ('POST', "/academic-affairs/classroom-batches/preview"): {"academicAffairs.classroom.create"},
+    ('GET', "/academic-affairs/classroom-batches/template.xlsx"): {"academicAffairs.classroom.create"},
+    ('POST', "/academic-affairs/classroom-batches/import-preview"): {"academicAffairs.classroom.create"},
+    ('GET', "/academic-affairs/classroom-batches/{batchNo}/result.xlsx"): {"academicAffairs.classroom.create"},
+    ('GET', "/academic-affairs/classroom-batches/{batchNo}"): {"academicAffairs.classroom.create"},
+    ('POST', "/academic-affairs/classroom-batches/{batchNo}/confirm"): {"academicAffairs.classroom.create"},
+    ('PUT', "/academic-affairs/labs/{labId}/schedule-resource"): {"academicAffairs.lab.update"},
+    ('GET', "/academic-affairs/resources/command-receipts/{commandKey}"): set(),
+}
+
 def _methods(route: APIRoute) -> set[str]:
     return set(route.methods or set()) - {"HEAD", "OPTIONS"}
 
@@ -74,7 +91,7 @@ def _shapes(router) -> set[tuple[str, str]]:
 def test_d5_s3_public_shapes_are_owned_by_teaching_resource_router():
     expected = "app.modules.academic_affairs.routers.teaching_resource_router"
     children = [route for route in teaching_resource_router.router.routes if isinstance(route, APIRoute)]
-    assert len(children) == 34
+    assert len(children) == 46
     for child in children:
         for method in _methods(child):
             public = _first_route(child.path, method)
@@ -86,6 +103,10 @@ def test_d5_s3_move_only_preserves_legacy_permissions_and_route_metadata():
         if not isinstance(child, APIRoute):
             continue
         for method in _methods(child):
+            if (method, child.path) in _ADDED_PERMISSIONS:
+                assert _permission_codes(child) == _ADDED_PERMISSIONS[(method, child.path)]
+                assert child.dependant.dependencies  # authenticated receipt read included
+                continue
             old = _first_in(legacy.router, child.path, method)
             assert _permission_codes(child) == _permission_codes(old), (method, child.path)
             assert child.summary == old.summary, (method, child.path)

@@ -1,0 +1,74 @@
+{
+  "state": "W16_CANONICAL_GATES_GREEN",
+  "implementationCodeHead": "be52db6548d0babb6808be6824294beda760016e",
+  "verifiedAt": "2026-08-30T13:50:00+08:00",
+  "testSuites": {
+    "backendGraduation": {
+      "result": "PASS",
+      "tests": 113,
+      "failures": 0,
+      "evidence": "../w15/backend/group-a.xml + group-b.xml + group-c.xml"
+    },
+    "staffFrontend": {
+      "result": "PASS",
+      "tests": 633,
+      "failures": 0
+    },
+    "teacherAndStudentMini": {
+      "result": "PASS",
+      "tests": 213,
+      "failures": 0
+    },
+    "studentPortal": {
+      "result": "PASS",
+      "tests": 105,
+      "failures": 0
+    }
+  },
+  "builds": {
+    "staffFrontend": "PASS",
+    "studentPortal": "PASS",
+    "miniH5": "PASS",
+    "miniWeixin": "PASS"
+  },
+  "lint": {
+    "staffFrontend": {"result": "PASS", "errors": 0, "preexistingWarnings": 2},
+    "studentPortal": {"result": "PASS", "errors": 0, "preexistingWarnings": 5}
+  },
+  "dependencyAudit": {
+    "staffFrontend": {"result": "PASS", "vulnerabilities": 0},
+    "studentPortal": {"result": "PASS", "vulnerabilities": 0},
+    "miniapp": {"result": "PASS", "vulnerabilities": 0}
+  },
+  "migration": {
+    "result": "PASS",
+    "headCount": 1,
+    "head": "20260829_pr236_main_merge",
+    "current": "20260829_pr236_main_merge",
+    "schemaParity": "PASS",
+    "ormTables": 447,
+    "rollbackCompatibility": "PASS",
+    "changedMigrationFiles": 0,
+    "timeTravelDebt": 0,
+    "coverageAdvisory": "219 legacy create_all tables reported by the inherited advisory gate; no migration files changed in this branch"
+  },
+  "fileCenter": {
+    "result": "PASS",
+    "candidates": 588,
+    "registered": 588,
+    "uncovered": 0,
+    "graduationCapabilities": 125,
+    "fileCenterCapabilities": 20,
+    "storage": "LOCAL_TEST_READY",
+    "scanner": "NON_PRODUCTION_DISABLED_BY_CONFIG"
+  },
+  "productionGates": {
+    "graduation": "PASS",
+    "dataGovernance": "PASS",
+    "sourceClosure": "SOURCE_CLOSURE_VERIFIED",
+    "sourceClosureGapArrays": 0,
+    "securityAudit": "PASS"
+  },
+  "recovery": "S5_RECOVERY_PASS",
+  "summary": "PASS"
+}

@@ -154,7 +154,7 @@ export default {
   },
   methods: {
     statusText(s) {
-      return STATUS_TEXT[s] || s
+      return STATUS_TEXT[s] || '建设状态待确认'
     },
     go(path) {
       if (path && path !== this.$route.fullPath) this.$router.push(path)

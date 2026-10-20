@@ -14,8 +14,8 @@ test('enterprise adapter cannot choose company scope or publish/approve/assign',
   for(const status of ['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED']) assert.match(api,new RegExp(status))
 })
 
-test('portal navigation stays enterprise-only and fixed to six modules',()=>{
-  for(const label of ['首页','企业资料','我的岗位','报名学生','实习学生','评价任务']) assert.match(layout,new RegExp(label))
+test('portal navigation stays enterprise-only and exposes the seven verified work areas',()=>{
+  for(const label of ['首页','消息通知','企业资料','我的岗位','报名学生','实习学生','评价任务']) assert.match(layout,new RegExp(label))
   for(const forbidden of ['系统管理','学籍管理','学校管理后台']) assert.doesNotMatch(layout,new RegExp(forbidden))
 })
 

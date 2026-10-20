@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -35,10 +35,17 @@ from app.models.config_governance import (OVERRIDE_SCOPES,
 
 # 覆盖层优先级：数字大的赢
 _SCOPE_PRIORITY = {SCOPE_TENANT: 1, SCOPE_ORG_UNIT: 2, SCOPE_TERM: 3}
+PHONE_POLICY_KEYS = frozenset({'SEC_PHONE_LOGIN_ENABLED', 'SEC_PHONE_RECOVERY_ENABLED'})
 
 # 初始配置定义。consumer 是**代码里真实存在的读取点**，不是设想；
 # 没有 consumer 的配置在页面上必须标注"暂无消费者"，不能声称即刻生效。
 SEED_DEFINITIONS: tuple[dict[str, Any], ...] = (
+    {"config_key": "SEC_PHONE_LOGIN_ENABLED", "domain_code": "SECURITY", "config_name": "已验证手机号加密码登录（原账号始终保留）",
+     "value_type": "INT", "default_json": {"value": 0}, "platform_floor_json": {"enum": [0, 1]},
+     "school_editable": True, "risk_level": "HIGH", "consumer_json": {"items": ["phone_login_service.phone_login_enabled"]}},
+    {"config_key": "SEC_PHONE_RECOVERY_ENABLED", "domain_code": "SECURITY", "config_name": "普通账号已验证手机号找回密码（高权限独立核验）",
+     "value_type": "INT", "default_json": {"value": 0}, "platform_floor_json": {"enum": [0, 1]},
+     "school_editable": True, "risk_level": "HIGH", "consumer_json": {"items": ["password_reset_service._recovery_allowed"]}},
     {
         "config_key": "SEC_LOCK_MAX_FAIL",
         "domain_code": "SECURITY",
@@ -135,6 +142,28 @@ SEED_DEFINITIONS: tuple[dict[str, Any], ...] = (
         "risk_level": "HIGH",
         "consumer_json": {"items": ["affairs_funding_service.apply"]},
     },
+    {
+        "config_key": "DORM_PRESENCE_POLICY",
+        "domain_code": "STUDENT_AFFAIRS",
+        "config_name": "宿舍归寝 Provider 与研判规则",
+        "value_type": "JSON",
+        "default_json": {"value": {
+            "policyVersion": 1,
+            "provider": "NONE",
+            "curfewTime": "22:30",
+            "lateGraceMinutes": 15,
+            "notReturnTime": "23:30",
+            "noEventHours": 24,
+            "consecutiveAnomalyThreshold": 3,
+        }},
+        "platform_floor_json": {},
+        "school_editable": True,
+        "risk_level": "HIGH",
+        "consumer_json": {"items": [
+            "dorm_presence_service.provider_status",
+            "dorm_presence_service.evaluate_presence",
+        ]},
+    },
 )
 
 
@@ -164,7 +193,7 @@ def _actor_id() -> int | None:
     user = get_current_user_ctx() or {}
     raw = user.get("userId") or user.get("id")
     try:
-        return int(raw) if raw not in (None, "") else None
+        return int(str(raw).removeprefix('db-')) if raw not in (None, "") else None
     except (TypeError, ValueError):
         return None
 
@@ -327,8 +356,14 @@ def resolve(
             "consumers": consumers,
             # 没有消费者的配置改了也不会有任何行为变化，页面必须如实说明
             "takesEffectImmediately": bool(consumers),
+            "policyVersion": _phone_policy_version(db, tid, config_key) if config_key in PHONE_POLICY_KEYS else None,
             "resolvedAt": moment.isoformat(),
         }
+
+
+def _phone_policy_version(db, tenant_id: int, key: str) -> int:
+    return int(db.scalar(select(func.max(ConfigActivation.id)).where(
+        ConfigActivation.tenant_id == tenant_id, ConfigActivation.config_key == key)) or 0)
 
 
 def resolve_all(*, domain: str | None = None, tenant_id: int | None = None) -> dict:
@@ -400,6 +435,21 @@ def set_override(
         raise AppException("VALIDATION_ERROR", "失效时间必须晚于生效时间")
 
     with _session() as db:
+        if config_key in PHONE_POLICY_KEYS:
+            if stype != SCOPE_TENANT or scope_id or effective_at or expires_at:
+                raise AppException('VALIDATION_ERROR', '手机号安全策略仅支持学校级立即生效，不接受组织或临时覆盖')
+            if type(expected_version) is not int or expected_version < 0:
+                raise AppException('VALIDATION_ERROR', '手机号策略必须携带页面读取的版本')
+            if type(value) not in (str, int) or str(value) not in {'0', '1'}:
+                raise AppException('VALIDATION_ERROR', '手机号策略只接受 0 或 1')
+            from app.models import Tenant
+            # Serialize even first creation; a version check without a parent lock
+            # cannot protect concurrent inserts at different effective timestamps.
+            tenant = db.scalar(select(Tenant).where(Tenant.id == tid, Tenant.is_deleted.is_(False)).with_for_update())
+            if tenant is None:
+                raise not_found('学校不存在')
+            if _phone_policy_version(db, tid, config_key) != expected_version:
+                raise AppException('VERSION_CONFLICT', '手机号策略已变化，请重新读取后确认', http_status=409)
         definition = _load_definition(db, config_key)
         if not definition.school_editable:
             raise AppException("CONFIG_NOT_SCHOOL_EDITABLE", "该配置不允许学校修改", http_status=403)
@@ -419,7 +469,7 @@ def set_override(
             )
         ).first()
         if existing:
-            if expected_version is not None and int(existing.version or 0) != int(expected_version):
+            if config_key not in PHONE_POLICY_KEYS and expected_version is not None and int(existing.version or 0) != int(expected_version):
                 raise AppException("VERSION_CONFLICT", "该配置已被其他人修改，请刷新后重试", http_status=409)
             existing.value_json = {"value": typed}
             existing.expires_at = expires_at
@@ -459,10 +509,15 @@ def set_override(
                 created_by=_actor_id(),
             )
         )
+        if config_key in PHONE_POLICY_KEYS:
+            from app.services import audit_log
+            audit_log.record_critical_in_session(db, 'PHONE_POLICY_CHANGE', f'config:{config_key}',
+                detail={'reason': reason, 'before': before.get('value'), 'after': typed, 'traceId': trace_id}, tenant_id=tid)
         db.commit()
         db.refresh(row)
 
-    _audit(config_key, stype, reason, trace_id)
+    if config_key not in PHONE_POLICY_KEYS:
+        _audit(config_key, stype, reason, trace_id)
     return {
         "overrideId": str(row.id),
         "configKey": config_key,
@@ -489,6 +544,8 @@ def revoke_override(override_id: int, *, reason: str, expected_version: int, ten
         ).first()
         if not row:
             raise not_found("配置覆盖不存在")
+        if row.config_key in PHONE_POLICY_KEYS:
+            raise AppException('VALIDATION_ERROR', '手机号策略请在登录与安全策略中按当前版本设置，不允许旁路撤销')
         if int(row.version or 0) != int(expected_version):
             raise AppException("VERSION_CONFLICT", "该配置已被其他人修改，请刷新后重试", http_status=409)
         row.status = OVERRIDE_STATUS_REVOKED

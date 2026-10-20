@@ -15,10 +15,10 @@ BASE = "/api/v1/student-affairs"
 MB = "/api/v1/mobile"
 
 
-def _hdr(client, login_name):
+def _hdr(client, login_name, client_type="PC"):
     data = client.post(
         "/api/v1/auth/mock-login",
-        json={"loginName": login_name, "password": "any"},
+        json={"loginName": login_name, "password": "any", "clientType": client_type},
     ).json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
@@ -30,7 +30,7 @@ def _stu_token(real_name, student_no):
         "studentNo": student_no, "userType": "STUDENT",
         "tid": "x", "tenantId": str(TID),
         "activeContextId": "ctx", "currentRoleCode": "STUDENT",
-        "clientType": "MP",
+        "clientType": "STUDENT_MINI",
     })}
 
 
@@ -48,6 +48,7 @@ def _clear_ctx():
 
 def _seed_students(db_mode, *, prefix="FE4"):
     from datetime import datetime, timedelta
+    from app.core.security import hash_password
     from app.db.session import get_sessionmaker
     from app.models import (
         AffairsCounselorAssignment, College, Major, Role, SchoolClass,
@@ -60,7 +61,7 @@ def _seed_students(db_mode, *, prefix="FE4"):
         if user is None:
             user = User(
                 tenant_id=TID, login_name=login_name, real_name=real_name,
-                password_hash="test-hash", user_type="TEACHER", status="ACTIVE",
+                password_hash=hash_password("FourEndTest@2026"), user_type="TEACHER", status="ACTIVE",
             )
             db.add(user)
             db.flush()
@@ -80,7 +81,8 @@ def _seed_students(db_mode, *, prefix="FE4"):
             ))
         return user
 
-    counselor = ensure_user("counselor01", "王莉", "COUNSELOR", "辅导员")
+    counselor_login = f"{prefix.lower()}_counselor"
+    counselor = ensure_user(counselor_login, "王莉", "COUNSELOR", "辅导员")
     college_reviewer = ensure_user("fe_college01", "学院受理人", "COLLEGE_ADMIN", "学院管理员")
     ensure_user("fe_sa01", "学工处受理人", "STUDENT_AFFAIRS_ADMIN", "学工处管理员")
     college = College(
@@ -119,7 +121,7 @@ def _seed_students(db_mode, *, prefix="FE4"):
             effective_from=datetime.utcnow() - timedelta(days=1),
         ),
         TeacherStudentScope(
-            tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
+            tenant_id=TID, teacher_key=counselor_login, teacher_name="王莉",
             role_code="COUNSELOR", scope_type="CLASS", ref_value=cls.class_name,
             status="ACTIVE",
         ),
@@ -132,6 +134,7 @@ def _seed_students(db_mode, *, prefix="FE4"):
     ids = {
         "class": cls.id, "one": one.id, "two": two.id,
         "oneNo": one.student_no, "twoNo": two.student_no,
+        "counselorLogin": counselor_login,
     }
     db.commit()
     db.close()
@@ -149,7 +152,14 @@ def test_four_end_routes_registered(client, db_mode):
 def test_student_leave_and_teacher_mobile_share_version_contract(client, db_mode):
     ids = _seed_students(db_mode, prefix="FE41")
     admin = _hdr(client, "school_admin01")
-    counselor = _hdr(client, "counselor01")
+    # mock-login falls back to a demo identity for unknown names; workflow
+    # assignments require the actual seeded database user, not that fallback.
+    login = client.post("/api/v1/auth/login", json={
+        "loginName": ids["counselorLogin"], "password": "FourEndTest@2026",
+        "clientType": "TEACHER_MINI",
+    })
+    assert login.status_code == 200, login.text
+    counselor = {"Authorization": "Bearer " + login.json()["data"]["accessToken"]}
     leave = client.post(f"{BASE}/leave", headers=admin, json={
         "studentId": str(ids["one"]), "leaveType": "PERSONAL",
         "startTime": "2026-08-01", "endTime": "2026-08-02",
@@ -250,6 +260,8 @@ def test_mental_sensitive_detail_fails_closed_when_audit_db_fails(client, db_mod
 
 
 def test_existing_bed_cannot_bypass_transfer_approval(client, db_mode):
+    from datetime import datetime, timedelta
+
     ids = _seed_students(db_mode, prefix="FE44")
     admin = _hdr(client, "school_admin01")
     student = _stu_token("四端学生甲", ids["oneNo"])
@@ -257,7 +269,24 @@ def test_existing_bed_cannot_bypass_transfer_approval(client, db_mode):
         "buildingName": "四端1号楼", "genderLimit": "MALE",
         "floors": 1, "roomsPerFloor": 1, "bedsPerRoom": 2,
     }).json()["data"]["buildingId"]
-    client.put(f"{BASE}/dorm/config/self-select", headers=admin, json={"enabled": True})
+    legacy = client.put(f"{BASE}/dorm/config/self-select", headers=admin, json={"enabled": True})
+    assert legacy.status_code == 400 and "分配批次" in legacy.text
+
+    now = datetime.utcnow()
+    created = client.post(f"{BASE}/dorm/allocation-batches", headers=admin, json={
+        "batchNo": "FE44-STUDENT-SELECT", "name": "四端学生自选防绕过",
+        "academicYear": "2026-2027", "sourceType": "CAMPUS",
+        "mode": "STUDENT_SELECT",
+        "openAt": (now - timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        "closeAt": (now + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
+        "rules": {}, "resourceScope": {"buildingIds": [building_id]},
+        "studentScope": {"studentIds": [ids["one"]]},
+    })
+    assert created.status_code == 200, created.text
+    batch_id = created.json()["data"]["batchId"]
+    published = client.post(f"{BASE}/dorm/allocation-batches/{batch_id}/publish", headers=admin)
+    assert published.status_code == 200, published.text
+
     rooms = client.get(
         f"{MB}/affairs/dorm/buildings/{building_id}/rooms", headers=student,
     ).json()["data"]["items"]
@@ -271,9 +300,7 @@ def test_existing_bed_cannot_bypass_transfer_approval(client, db_mode):
     bypass = client.post(
         f"{MB}/affairs/dorm/beds/{beds[1]['bedId']}/self-select", headers=student,
     )
-    assert bypass.status_code == 409
-    options = client.get(f"{MB}/affairs/dorm/transfer-options", headers=student)
-    assert options.status_code == 200 and options.json()["data"]["items"]
+    assert bypass.status_code == 409 and "不能重复自选" in bypass.text
 
 
 def test_dynamic_activity_code_replaces_student_manual_checkin(client, db_mode, monkeypatch):

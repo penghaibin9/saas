@@ -26,15 +26,15 @@ def get_profile_items(*, user: dict) -> list[dict]:
     return list(profile_svc.get_my_profile(user).get("items") or [])
 
 
-def get_profile_completeness(*, user: dict) -> dict:
+def get_profile_completeness(*, user: dict, batch_id=None, campaign_id=None, record_id=None) -> dict:
     tenant_id = _tid(); student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
-        campaign, _record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
+        campaign, _record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id)
         projection = profile_svc.build_profile_projection_in_tx(db, tenant_id=tenant_id, student_id=student_id)
         readiness = material_svc.evaluate_material_readiness(projection, campaign.application_material_policy_json)
         missing = list(readiness.get("missing") or [])
         percent = 100 if readiness.get("ready") else max(0, 100 - min(90, len(missing) * 20))
-        return {"percent": percent, "blockers": missing, "readyToSubmit": bool(readiness.get("ready"))}
+        return {"campaignId": str(campaign.id), "batchId": str(campaign.batch_id), "recordId": str(_record.id), "percent": percent, "blockers": missing, "readyToSubmit": bool(readiness.get("ready"))}
 
 
 def add_profile_item(*, user: dict, body: dict) -> dict:
@@ -49,8 +49,8 @@ def delete_profile_item(*, user: dict, item_id: int) -> dict:
     return item_svc.delete_my_item(item_id, user=user)
 
 
-def get_profile_preview(*, user: dict) -> dict:
-    preview = selection_svc.get_my_material_preview(user=user)
+def get_profile_preview(*, user: dict, batch_id=None, campaign_id=None, record_id=None) -> dict:
+    preview = selection_svc.get_my_material_preview(user=user, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id)
     snapshot = dict(preview.get("profileSnapshot") or {})
     school = dict(preview.get("schoolFactSnapshot") or {}); profile = dict(snapshot.get("profile") or {})
     school_fields = [{"key": key, "label": label, "value": school.get(key) or "", "source": "SCHOOL"} for key, label in (
@@ -94,15 +94,15 @@ def _render_current_profile_pdf(preview: dict) -> bytes:
     return data
 
 
-def create_profile_pdf_preview(*, user: dict, body: dict) -> dict:
-    payload = dict(body or {}); preview = selection_svc.get_my_material_preview(user=user)
+def create_profile_pdf_preview(*, user: dict, body: dict, batch_id=None, campaign_id=None, record_id=None) -> dict:
+    payload = dict(body or {}); preview = selection_svc.get_my_material_preview(user=user, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id)
     expected_hash = str(payload.get("materialPreviewHash") or payload.get("previewHash") or "").strip()
     if not expected_hash or expected_hash != str(preview.get("previewHash") or ""):
         raise AppException("DATA_CONFLICT", "档案预览已变化，请刷新企业视角材料预览后重试", http_status=409)
     mode = material_svc.normalize_contact_sharing_policy({"mode": payload.get("contactSharingMode") or "MASKED_ONLY"})
     tenant_id = _tid(); student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:
-        campaign, _record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id)
+        campaign, _record = selection_svc._resolve_context_in_tx(db, tenant_id=tenant_id, student_id=student_id, batch_id=batch_id, campaign_id=campaign_id, record_id=record_id)
         material_svc._assert_contact_mode_allowed(mode, campaign.application_material_policy_json)
     meta = file_service.store_bytes(
         _render_current_profile_pdf(preview), f"internship-profile-preview-student-{student_id}-v{int(preview.get('profileVersion') or 0)}.pdf",

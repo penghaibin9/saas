@@ -10,6 +10,7 @@ from app.services.saas_role_templates import (BUILTIN_ROLE_TEMPLATES,
 
 
 def ensure_builtin_roles(db, tenant_id: int) -> dict:
+    """Only install missing defaults; onboarding retries must preserve school choices."""
     from app.models import Role
     codes = tuple(ROLE_TEMPLATE_BY_CODE)
     existing = db.scalars(select(Role).where(
@@ -28,17 +29,14 @@ def ensure_builtin_roles(db, tenant_id: int) -> dict:
             report["created"] += 1
             continue
         if (role.role_type or "SYSTEM").upper() == "CUSTOM":
-            raise AppException("DATA_CONFLICT", f"自定义角色占用了系统编码：{code}")
-        if role.is_deleted or role.status not in ("ACTIVE", "ENABLED"):
-            role.is_deleted = False
-            role.status = "ACTIVE"
-            role.version = int(role.version or 0) + 1
-            report["restored"] += 1
-        else:
-            report["unchanged"] += 1
-        role.role_type = "SYSTEM"
-        role.role_name = template["roleName"]
-        role.remark = marker
+            from app.modules.system_admin.services.school_role_adoption_service import has_local_adoption
+
+            if not has_local_adoption(db, role, tenant_id):
+                raise AppException("DATA_CONFLICT", f"自定义角色占用了系统编码：{code}")
+        # Called by imports and student activation as well as initial provisioning.
+        # Restoring roles here would silently undo a school's revocation decision.
+        # Keep the legacy report field "restored" at zero for existing consumers.
+        report["unchanged"] += 1
     db.flush()
     return report
 

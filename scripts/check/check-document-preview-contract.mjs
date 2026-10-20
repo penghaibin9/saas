@@ -103,6 +103,7 @@ const studentSdk = read('student-portal/src/services/fileSdk.js')
 const studentRequest = read('student-portal/src/services/request.js')
 const studentMaterials = read('student-portal/src/views/graduation/GraduationMaterialsView.vue')
 const studentWorkbench = read('student-portal/src/views/graduation/GraduationWorkbenchView.vue')
+const studentUploadStatus = read('student-portal/src/components/graduation/GraduationUploadStatus.vue')
 const peerPreviewRouter = read('backend/app/api/v1/mobile_graduation_material_center.py')
 const peerPreviewService = read('backend/app/modules/graduation/services/graduation_peer_consistency.py')
 
@@ -119,15 +120,44 @@ if (/async preview\([^)]*\)[\s\S]{0,180}?this\.download\(/.test(studentSdk)
     || /async previewFrom\([^)]*\)[\s\S]{0,180}?this\.downloadFrom\(/.test(studentSdk)) {
   throw new Error('student PC preview regressed to download side effect')
 }
-if (!studentMaterials.includes("issueGraduationMaterialTicket(file.fileId, 'preview')")
-    || !studentMaterials.includes('预览我将提交的文件')
-    || !studentMaterials.includes('查看历史版')) {
-  throw new Error('student graduation material library is missing audited current/history/pending Reader flow')
+
+// Current/history/pending are three distinct states. The pending-preview label
+// belongs to the shared upload-status component so pages do not duplicate copy.
+for (const marker of [
+  'StudentDocumentViewer',
+  'GraduationUploadStatus',
+  'openReader(material, material.currentVersion)',
+  '查看当前版',
+  '查看历史版',
+  'openPendingReader(pending[material.materialCode])',
+  'graduationUploadReady(pending[material.materialCode])',
+  "portalApi.issueGraduationMaterialTicket(file.fileId, 'preview')",
+  'fileSdk.fetchPreviewBlobFrom(ticket, options)',
+  'fileSdk.fetchPreviewBlob(file.fileId, options)'
+]) {
+  if (!studentMaterials.includes(marker)) throw new Error(`student graduation material Reader drift: missing ${marker}`)
 }
-if (!studentWorkbench.includes('查看当前版')
-    || !studentWorkbench.includes('预览我将提交的文件')
-    || !studentWorkbench.includes("issueGraduationMaterialTicket(file.fileId, 'preview')")) {
-  throw new Error('student graduation workbench is missing current-version Reader or submit preflight')
+for (const marker of [
+  "previewLabel: { type: String, default: '预览我将提交的文件' }",
+  "status.phase === 'ready' && file.canPreview",
+  "@click=\"$emit('preview')\"",
+  'fileSdk.metadata(fileId)'
+]) {
+  if (!studentUploadStatus.includes(marker)) throw new Error(`shared graduation upload Reader drift: missing ${marker}`)
+}
+for (const marker of [
+  'StudentDocumentViewer',
+  'GraduationUploadStatus',
+  'openMaterialReader(file)',
+  'openPendingReader(file)',
+  'graduationUploadReady(file)',
+  "portalApi.issueGraduationMaterialTicket(file.fileId, 'preview')",
+  'fileSdk.fetchPreviewBlobFrom(ticket, options)',
+  'fileSdk.fetchPreviewBlob(file.fileId, options)',
+  'checkedPendingFile(kind)',
+  'fileSdk.metadata(fileId)'
+]) {
+  if (!studentWorkbench.includes(marker)) throw new Error(`student graduation workbench Reader drift: missing ${marker}`)
 }
 for (const marker of [
   'openPeerReader(',

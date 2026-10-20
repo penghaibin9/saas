@@ -309,6 +309,22 @@ def accessible_student_ids(db, tenant_id: int, batch_id=None) -> list[int]:
     统计、列表、导出、看板必须复用本口径，不允许各自用角色名猜范围。
     batch_id 有值时再按批次收窄；列表 / 页签计数 / 统计 / 导出须传同一 batch_id。
     """
+    # Production callers use this legacy list contract in several dashboard
+    # services.  Keep the authorization predicate in SQL so a school-wide
+    # batch does not hydrate every student only to discard their fields after
+    # a Python scope check.  The fallback keeps lightweight test doubles and
+    # non-ORM callers on the established object-level guard.
+    from sqlalchemy.orm import Session as _OrmSession
+    if isinstance(db, _OrmSession):
+        from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+
+        return [
+            int(student_id)
+            for student_id in db.scalars(
+                student_scope_select(db, tenant_id, batch_id=batch_id)
+            ).all()
+        ]
+
     q = select(GraduationStudent).where(
         GraduationStudent.tenant_id == tenant_id,
         GraduationStudent.is_deleted.is_(False),
@@ -320,7 +336,6 @@ def accessible_student_ids(db, tenant_id: int, batch_id=None) -> list[int]:
     role, real_name = _ctx()
     # 同一次列表/统计/导出只查一次姓名歧义；禁止对每名历史学生重复查询 User（N+1）。
     prechecked_ambiguous = None
-    from sqlalchemy.orm import Session as _OrmSession
     if isinstance(db, _OrmSession) and role in {"GD_MENTOR", "COUNSELOR"} and any(
             not getattr(student, "mentor_id", None) for student in students):
         prechecked_ambiguous = _name_is_ambiguous(db, tenant_id, real_name)

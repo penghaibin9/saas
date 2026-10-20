@@ -98,57 +98,36 @@ test.describe.serial('Golden rollout · cyclical task / planning and review · B
     await target.click()
     await expect(target).toHaveClass(/is-active/)
     await expect(page.locator('.tk-detail')).toContainText(talkFixture.topic)
-    await expect(page.locator('.tk-record')).toBeVisible()
-
-    const talkVisual = await page.locator('.tk-workspace').evaluate((node) => {
-      const list = node.querySelector('.tk-list')
-      const detail = node.querySelector('.tk-detail')
-      const kv = node.querySelector('.tk-kv')
-      const textarea = node.querySelector('.tk-textarea')
-      return {
-        listRadius: parseFloat(getComputedStyle(list).borderTopLeftRadius),
-        detailRadius: parseFloat(getComputedStyle(detail).borderTopLeftRadius),
-        kvColumns: getComputedStyle(kv).gridTemplateColumns.split(' ').filter(Boolean).length,
-        textareaMinHeight: parseFloat(getComputedStyle(textarea).minHeight)
-      }
-    })
-    expect(talkVisual.listRadius).toBeGreaterThanOrEqual(15)
-    expect(talkVisual.detailRadius).toBeGreaterThanOrEqual(15)
-    expect(talkVisual.kvColumns).toBe(4)
-    expect(talkVisual.textareaMinHeight).toBeGreaterThanOrEqual(92)
+    await expect(page.locator('.tk-record-prompt')).toBeVisible()
+    await page.getByRole('button', { name: '填写记录', exact: true }).click()
+    const record = page.getByRole('dialog', { name: /填写谈话记录/ })
+    await expect(record).toBeVisible()
+    await record.getByPlaceholder('客观记录谈话过程与主要内容').fill('本次核对学生近期学习与生活情况，约定后续跟进时间。')
+    await expect(record.getByRole('button', { name: '提交记录', exact: true })).toBeEnabled()
+    await record.getByRole('button', { name: '取消', exact: true }).click()
+    await expect(record).toBeHidden()
+    await expect(page.locator('.tk-detail')).toContainText(talkFixture.topic)
 
     await capture(page, testInfo, 'rollout-cyclical-affairs-talk-planning-b')
   })
 
   test('Internship plan / task workspace · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(VIEWPORT)
-    await openStaffWorkspace(page, adminApi, '/admin/internship/plans')
+    await openStaffWorkspace(page, adminApi, `/admin/internship/plans?batchId=${encodeURIComponent(internshipFixture.batchId)}`)
 
     await expect(page).toHaveURL(/\/admin\/internship\/plans/)
-    await expect(page.getByRole('heading', { name: '实习计划书', exact: true })).toBeVisible()
-    await expect(page.locator('.layout')).toBeVisible()
+    await expect(page.getByRole('heading', { name: '计划任务', exact: true })).toBeVisible()
+    const navigation = page.getByRole('navigation', { name: '计划任务工作区' })
     await expect(page.getByRole('heading', { name: '计划编制', exact: true })).toBeVisible()
+    await expect(page.locator('.card--editor textarea').last()).toBeVisible()
+    await navigation.getByRole('button', { name: '学生确认', exact: true }).click()
     await expect(page.getByRole('heading', { name: '学生确认台账', exact: true })).toBeVisible()
-    await expect(page.locator('.card--tasks')).toBeVisible()
+    await expect(page.locator('.card--editor')).toBeHidden()
+    await navigation.getByRole('button', { name: '任务清单', exact: true }).click()
     await expect(page.getByRole('heading', { name: '实习任务清单', exact: true })).toBeVisible()
-
-    const internshipVisual = await page.locator('.grid').evaluate((node) => {
-      const firstCard = node.querySelector(':scope > .card:first-child')
-      const body = firstCard.querySelector('.app-textarea__el[rows="8"]')
-      const taskCard = document.querySelector('.card--tasks')
-      return {
-        alignItems: getComputedStyle(node).alignItems,
-        columns: getComputedStyle(node).gridTemplateColumns.split(' ').filter(Boolean).length,
-        planBodyHeight: body.getBoundingClientRect().height,
-        cardRadius: parseFloat(getComputedStyle(firstCard).borderTopLeftRadius),
-        taskRadius: parseFloat(getComputedStyle(taskCard).borderTopLeftRadius)
-      }
-    })
-    expect(internshipVisual.alignItems).toBe('start')
-    expect(internshipVisual.columns).toBe(2)
-    expect(internshipVisual.planBodyHeight).toBeLessThanOrEqual(140)
-    expect(internshipVisual.cardRadius).toBeGreaterThanOrEqual(15)
-    expect(internshipVisual.taskRadius).toBeGreaterThanOrEqual(15)
+    await expect(page.locator('.card--tasks')).toBeVisible()
+    await navigation.getByRole('button', { name: '计划编制', exact: true }).click()
+    await expect(page.locator('.card--editor')).toBeVisible()
 
     await capture(page, testInfo, 'rollout-cyclical-internship-plan-tasks-b')
   })

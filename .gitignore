@@ -20,6 +20,8 @@ yarn-debug.log*
 pnpm-debug.log*
 coverage/
 .cache/
+e2e/runtime-fixtures/
+e2e/artifacts/
 
 frontend/node_modules/
 frontend/dist/
@@ -38,6 +40,31 @@ backend/_pfull3.txt
 _pfull*.txt
 backend/scripts/_sec_verify.py
 backend/test-results/
+
+# Codex / local-agent runtime evidence is local-only.
+.codex-artifacts/
+.codex-temp/
+.worktrees/
+outputs/
+
+# Python and test caches at any depth.
+**/__pycache__/
+**/.pytest_cache/
+*.py[cod]
+
+# Local review, render and runtime output.
+tmp/
+_run/
+**/test-results/
+**/runtime/
+**/rendered/
+*.junit.xml
+
+# Generated evidence is uploaded by CI. Small checked-in release seals live
+# under artifacts/release-seals and are explicitly re-included below.
+artifacts/**
+!artifacts/release-seals/
+!artifacts/release-seals/**
 
 # 运行时产物 / 上传导出 / 打包产物（CI 会拒绝这些被跟踪）
 uploads/
@@ -71,3 +98,4 @@ venv/
 # 本地 E2E 凭据与临时产物（含明文测试口令，禁止入库）
 backend/tmp/
 **/e2e_graduation_credentials.local.json
+e2e/runtime-fixtures/

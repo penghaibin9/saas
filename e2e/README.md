@@ -63,6 +63,10 @@ python scripts/e2e_seed_internship_sandbox.py
 
 ## 失败证据
 
+智能排课专项使用已完整执行 Alembic 的 `yueke_optimizer_test_*` 隔离 MySQL，所有客户端必须指向该测试后端。设置仅供虚构账号使用的 `E2E_OPTIMIZER_PASSWORD` 后，在 `backend/` 执行 `python scripts/seed_scheduling_optimizer_acceptance.py --output <新回执路径>`；加 `--classless` 可验证仅有正式教学班名单的课程。脚本保留场景，不创建课位、不清理数据。
+
+将 `E2E_OPTIMIZER_FIXTURE` 设为该回执绝对路径，按本文配置 PC、学生 PC 和 API 地址，并设置 `E2E_MINIAPP_BASE_URL` 为同一测试后端的教师/学生 H5 入口。执行 `npm test -- specs/academic-scheduling-optimizer.spec.mjs`，依次验收候选采用、真实拖动、原发布 Gate 和四端相同正式课位回读。微信构建与微信宿主实测另行记录，H5 通过不代表微信宿主通过。
+
 每个失败测试自动保留：
 
 - 页面截图

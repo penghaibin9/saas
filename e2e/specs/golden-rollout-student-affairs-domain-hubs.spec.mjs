@@ -51,6 +51,7 @@ async function expectNoHorizontalOverflow(page) {
 test.describe.serial('Golden rollout · Student Affairs domain hubs · A/B', () => {
   let adminApi
   let dormBuildingName
+  let dormBuildingId
   let activityName
 
   test.beforeAll(async () => {
@@ -68,6 +69,7 @@ test.describe.serial('Golden rollout · Student Affairs domain hubs · A/B', () 
       bedsPerRoom: 4
     })
     expect(building?.buildingId).toBeTruthy()
+    dormBuildingId = String(building.buildingId)
 
     activityName = `Playwright 第二课堂治理 ${runId}`
     const activity = await adminApi.post('/student-affairs/activities', {
@@ -84,55 +86,43 @@ test.describe.serial('Golden rollout · Student Affairs domain hubs · A/B', () 
 
   test('Dormitory management real resource state · Screenshot B', async ({ page }, testInfo) => {
     await page.setViewportSize(DESKTOP)
-    await openStaffWorkspace(page, adminApi, '/admin/student-affairs/dormitory')
+    await openStaffWorkspace(page, adminApi, `/admin/student-affairs/dormitory?buildingId=${dormBuildingId}`)
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/dormitory/)
-    await expect(page.getByRole('heading', { name: '宿舍管理', exact: true })).toBeVisible()
-    await expect(page.getByText(dormBuildingName, { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '宿舍驾驶舱', exact: true })).toBeVisible()
+    // A Playwright retry reruns beforeAll and may leave an earlier same-run fixture.
+    // The contract is that the newly created resource is visible, not globally unique text.
+    await expect(page.getByText(dormBuildingName, { exact: true }).first()).toBeVisible()
     await expect(page.getByText('总床位', { exact: true })).toBeVisible()
-    await expect(page.getByText('16', { exact: true }).first()).toBeVisible()
-    await expect(page.getByText('房间管理', { exact: true })).toBeVisible()
-    await expect(page.getByText('床位管理 / 入住退宿', { exact: true })).toBeVisible()
-
-    const archive = page.locator('.app-desc-list').last()
-    const assignItem = archive.locator('.app-desc-list__item').first()
-    const assignValue = assignItem.locator('.app-desc-list__value')
-    await expect(assignValue).toContainText('COUNSELOR_ASSIGN')
-
-    const archiveStyle = await archive.evaluate((el) => {
-      const s = getComputedStyle(el)
-      return { borderRadius: s.borderRadius, borderTopStyle: s.borderTopStyle }
-    })
-    expect(parseFloat(archiveStyle.borderRadius)).toBeGreaterThanOrEqual(10)
-    expect(archiveStyle.borderTopStyle).not.toBe('none')
-
-    const [archiveBox, assignBox, valueBox] = await Promise.all([
-      archive.boundingBox(),
-      assignItem.boundingBox(),
-      assignValue.boundingBox()
-    ])
-    expect(assignBox?.width || 0).toBeGreaterThan((archiveBox?.width || 0) * 0.85)
-    expect(valueBox?.width || 0).toBeGreaterThanOrEqual(150)
-    const valueStyle = await assignValue.evaluate((el) => ({
-      wordBreak: getComputedStyle(el).wordBreak,
-      overflowWrap: getComputedStyle(el).overflowWrap
-    }))
-    expect(valueStyle.wordBreak).toBe('normal')
-    expect(['anywhere', 'break-word']).toContain(valueStyle.overflowWrap)
+    const selectedBuilding = page.getByRole('button').filter({ hasText: dormBuildingName }).first()
+    await expect(selectedBuilding).toHaveAttribute('aria-pressed', 'true')
+    await expect(selectedBuilding).toContainText('共 16')
+    const workspace = page.getByRole('region', { name: '楼栋房间床位联动工作区', exact: true })
+    await expect(workspace).toBeVisible()
+    await expect(page.locator('.dc-room')).toHaveCount(4)
+    await expect(page.locator('.dc-bed')).toHaveCount(4)
+    await expect(page.locator('main')).not.toContainText('BATCH_CONTROLLED')
+    const box = await workspace.boundingBox()
+    expect(box.height).toBeLessThanOrEqual(600)
+    expect(box.y + box.height).toBeLessThanOrEqual(DESKTOP.height)
     await expectNoHorizontalOverflow(page)
 
     await capture(page, testInfo, 'rollout-student-affairs-dormitory-b')
+    // The selected real bed must carry its context into the actual check-in workspace.
+    await page.getByRole('button', { name: /号床，空床，办理入住/ }).first().click()
+    await expect(page).toHaveURL(/\/admin\/student-affairs\/dorm\/checkin\?/)
+    expect(new URL(page.url()).searchParams.get('buildingId')).toBe(dormBuildingId)
+    expect(new URL(page.url()).searchParams.get('bedId')).toBeTruthy()
   })
 
-  test('Dormitory archive entry remains readable at 1024px', async ({ page }) => {
+  test('Dormitory resource selection remains usable at 1024px', async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 900 })
-    await openStaffWorkspace(page, adminApi, '/admin/student-affairs/dormitory')
-
-    const archive = page.locator('.app-desc-list').last()
-    await expect(archive).toBeVisible()
-    const columns = await archive.evaluate((el) => getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length)
-    expect(columns).toBe(1)
-    await expect(archive.locator('.app-desc-list__value').first()).toContainText('COUNSELOR_ASSIGN')
+    await openStaffWorkspace(page, adminApi, `/admin/student-affairs/dormitory?buildingId=${dormBuildingId}`)
+    await page.getByRole('searchbox', { name: '搜索楼栋' }).fill(dormBuildingName)
+    await expect(page.locator('.dc-building')).toHaveCount(1)
+    await expect(page.locator('.dc-room')).toHaveCount(4)
+    await expect(page.locator('.dc-bed')).toHaveCount(4)
+    await expect(page.getByRole('button', { name: '管理房源', exact: true })).toBeVisible()
     await expectNoHorizontalOverflow(page)
   })
 
@@ -142,8 +132,8 @@ test.describe.serial('Golden rollout · Student Affairs domain hubs · A/B', () 
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/activity/)
     await expect(page.getByRole('heading', { name: '学生活动管理', exact: true })).toBeVisible()
-    await expect(page.locator('.sa-summary-strip')).toBeVisible()
-    await expect(page.locator('.sa-workflow-strip')).toBeVisible()
+    await expect(page.getByRole('button', { name: '建活动', exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: /异常优先/ })).toBeVisible()
     const row = page.locator('tbody tr').filter({ hasText: activityName }).first()
     await expect(row).toBeVisible()
     await expect(row).toContainText('草稿')
@@ -157,10 +147,10 @@ test.describe.serial('Golden rollout · Student Affairs domain hubs · A/B', () 
     await openStaffWorkspace(page, adminApi, '/admin/student-affairs/mental')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/mental/)
-    await expect(page.getByRole('heading', { name: '心理关注名单', exact: true })).toBeVisible()
-    await expect(page.locator('.mental-privacy-summary')).toBeVisible()
-    await expect(page.locator('.sa-workflow-strip')).toBeVisible()
-    await expect(page.getByText('关注名单（明细默认遮蔽）', { exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '心理关注与处置', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '关注名单', exact: true })).toBeVisible()
+    await expect(page.getByText('明细默认脱敏；查看时需填写业务原因并记入审计。', { exact: true })).toBeVisible()
+    await expect(page.getByRole('button', { name: '登记转介', exact: true })).toBeVisible()
     await expect(page.getByText(/逐生授权|明细默认脱敏/).first()).toBeVisible()
 
     // Deliberately no sensitive mental-health fixture and no reveal action.

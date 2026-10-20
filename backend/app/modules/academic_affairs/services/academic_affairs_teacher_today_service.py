@@ -351,6 +351,24 @@ def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
     }, term
 
 
+def has_formal_teacher_relation(user) -> bool:
+    """Return true only for a current formal TeachingClassTeacher relationship.
+
+    This narrowly supports the self-only mobile timetable when a teacher has selected
+    another business role while still owning a real teaching-class relation.
+    """
+    if str((user or {}).get("userType") or "").upper() == "STUDENT":
+        return False
+    keys = {str(value).strip() for value in _derive_keys(user or {}) if str(value).strip()}
+    if not keys:
+        return False
+    with session() as db:
+        term = _current_term(db)
+        if not term:
+            return False
+        return bool(_relation_rows_for_term(db, int(term.id), keys))
+
+
 def teacher_schedule_projection(user) -> dict:
     """All current formal occurrences for the authenticated teacher, bounded and read-only."""
     with session() as db:

@@ -14,6 +14,8 @@ import {
   academicAffairsMakeupApi,
   academicAffairsArchiveApi
 } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicStatusLabel } from './constants/academic-display.constants.js'
+import { SCHEDULE_BATCH_STATUS } from './constants/teaching.js'
 
 function assertOk(res) {
   if (!res || res.code !== 0) throw new Error(res?.message || '选择器数据加载失败')
@@ -33,8 +35,8 @@ function firstDefined(row, keys, fallback = '') {
   return fallback
 }
 
-function option(row, config) {
-  const value = typeof config.value === 'function' ? config.value(row) : firstDefined(row, config.value)
+function option(row, config, query = {}) {
+  const value = typeof config.value === 'function' ? config.value(row, query) : firstDefined(row, config.value)
   const label = config.label(row)
   return { value, label, desc: config.desc ? config.desc(row) : '', raw: row }
 }
@@ -42,7 +44,7 @@ function option(row, config) {
 function searchable(loader, config) {
   const search = async (keyword = '', query = {}) => {
     const rows = listOf(await loader(keyword, query))
-    return rows.map((row) => option(row, config)).filter((item) => item.value !== '')
+    return rows.map((row) => option(row, config, query)).filter((item) => item.value !== '')
   }
   const resolve = async (value, query = {}) => {
     const values = Array.isArray(value) ? value : [value]
@@ -74,7 +76,9 @@ const student = searchable(
 const teacher = searchable(
   (keyword) => academicAffairsApi.searchCourseTeachers(keyword),
   {
-    value: ['value', 'teacherId', 'userId', 'teacherKey', 'id'],
+    value: (t, query) => query?.valueField === 'loginName'
+      ? firstDefined(t, ['loginName', 'teacherKey'])
+      : firstDefined(t, ['value', 'teacherId', 'userId', 'id']),
     label: (t) => firstDefined(t, ['label', 'teacherName', 'realName', 'name'], '教师'),
     desc: (t) => firstDefined(t, ['desc', 'teacherNo', 'teacherKey', 'employeeNo', 'collegeName'])
   }
@@ -117,7 +121,7 @@ const termEntity = searchable(
   {
     value: ['termId', 'id'],
     label: (x) => x.termName || `${x.yearCode || ''} 第${x.termNo || ''}学期`,
-    desc: (x) => [x.isCurrent ? '当前学期' : '', x.status].filter(Boolean).join(' · ')
+    desc: (x) => [x.isCurrent ? '当前学期' : '', x.status ? academicStatusLabel(x.status) : ''].filter(Boolean).join(' · ')
   }
 )
 
@@ -126,7 +130,7 @@ const termCode = searchable(
   {
     value: (x) => x.termCode || (x.yearCode && x.termNo ? `${x.yearCode}-${x.termNo}` : ''),
     label: (x) => x.termName || `${x.yearCode || ''} 第${x.termNo || ''}学期`,
-    desc: (x) => [x.isCurrent ? '当前学期' : '', x.status].filter(Boolean).join(' · ')
+    desc: (x) => [x.isCurrent ? '当前学期' : '', x.status ? academicStatusLabel(x.status) : ''].filter(Boolean).join(' · ')
   }
 )
 
@@ -160,7 +164,7 @@ const teachingClass = searchable(
 )
 
 const classroom = searchable(
-  (keyword) => academicAffairsApi.getClassroomOptions(keyword),
+  (keyword, query) => academicAffairsApi.getClassroomOptions(keyword, query?.purpose),
   {
     value: ['classroomId', 'id', 'value'],
     label: (x) => firstDefined(x, ['label', 'roomName'], `${x.buildingName || ''}${x.roomCode || ''}`),
@@ -208,7 +212,7 @@ const scheduleBatch = searchable(
   (keyword, query) => academicAffairsApi.getScheduleBatches({ ...query, resolveValue: undefined, keyword, page: 1, pageSize: 100 }),
   {
     value: ['batchId', 'id'], label: (x) => firstDefined(x, ['batchName', 'name']),
-    desc: (x) => [x.termName, x.status].filter(Boolean).join(' · ')
+    desc: (x) => [x.termName, x.status ? (SCHEDULE_BATCH_STATUS[x.status] || '状态待确认') : ''].filter(Boolean).join(' · ')
   }
 )
 
@@ -216,7 +220,7 @@ const gradeTask = searchable(
   (keyword, query) => academicAffairsApi.getGradeTasks({ ...query, resolveValue: undefined, keyword, page: 1, pageSize: 100 }),
   {
     value: ['taskId', 'gradeTaskId', 'id'], label: (x) => firstDefined(x, ['courseName', 'taskName'], '成绩任务'),
-    desc: (x) => [x.className, x.termCode, x.status].filter(Boolean).join(' · ')
+    desc: (x) => [x.className, x.termCode, x.status ? academicStatusLabel(x.status) : ''].filter(Boolean).join(' · ')
   }
 )
 

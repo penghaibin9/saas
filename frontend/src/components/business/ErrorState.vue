@@ -1,11 +1,11 @@
 <template>
   <AppGlobalState
-    state="error"
-    :title="title"
+    :state="safeError.pageState"
+    :title="safeError.pageState === 'error' ? title : ''"
     :description="safeError.userMessage"
     :error-code="errorCode || safeError.supportCode"
     @retry="$emit('retry')"
-    @back="$emit('back')"
+    @back="goBack"
   />
 </template>
 
@@ -19,12 +19,20 @@ export default {
   components: { AppGlobalState },
   props: {
     title: { type: String, default: '' },
-    description: { type: String, default: '' },
+    description: { type: [String, Object], default: '' },
+    error: { type: [String, Object], default: null },
     errorCode: { type: String, default: '' }
   },
   computed: {
     safeError() {
-      return normalizeUiError(this.description, { fallback: '页面暂时无法加载，请稍后重试' })
+      return normalizeUiError(this.error || this.description, { fallback: '页面暂时无法加载，请稍后重试' })
+    }
+  },
+  methods: {
+    goBack() {
+      if (this.$?.vnode?.props?.onBack) this.$emit('back')
+      else if (this.$router?.options?.history?.state?.back) this.$router.back()
+      else this.$router?.push('/workbench')
     }
   },
   emits: ['retry', 'back']

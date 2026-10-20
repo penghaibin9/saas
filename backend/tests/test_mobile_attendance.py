@@ -1,7 +1,10 @@
 """波5 课堂考勤（移动端首创）端到端：新建场次(按行政班圈定名单)→标记→提交→范围收敛。"""
 from __future__ import annotations
 
+import json
+
 BASE = "/api/v1/mobile/teacher/academic/attendance"
+STUDENT_BASE = "/api/v1/mobile/academic"
 MAIN = 1000000000000000001
 DEMO = 1000000000000000003
 
@@ -11,7 +14,7 @@ def _teacher_token(real_name="王老师", tenant_id=MAIN, tid="demo", role="ACAD
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{real_name}", "realName": real_name, "userType": "TEACHER",
         "tid": tid, "tenantId": str(tenant_id), "activeContextId": "ctx",
-        "currentRoleCode": role, "clientType": "MP"})}
+        "currentRoleCode": role, "clientType": "TEACHER_MINI"})}
 
 
 def _seed_class(n_students=3, tenant_id=MAIN):
@@ -159,6 +162,86 @@ def _seed_teaching_task(class_id, teacher_key, tenant_id=MAIN):
         db.close()
 
 
+def _student_header(real_name, student_no, tenant_id=MAIN, tid="demo"):
+    from app.core.security import create_access_token
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"u-{student_no}", "realName": real_name, "userType": "STUDENT",
+        "studentNo": student_no, "tid": tid, "tenantId": str(tenant_id),
+        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "STUDENT_MINI",
+    })}
+
+
+def _seed_attendance_pages():
+    """建立只读学生考勤合同：历史行政班 + 当前已转班学生 + 坏/重复旧名单。"""
+    from app.db.session import get_sessionmaker
+    from app.models import AaAttendanceSession, SchoolClass, StudentProfile
+
+    db = get_sessionmaker()()
+    try:
+        former_class = SchoolClass(
+            tenant_id=MAIN, major_id=1, class_name="考勤历史班", grade="2025", status="ACTIVE",
+        )
+        current_class = SchoolClass(
+            tenant_id=MAIN, major_id=1, class_name="考勤当前班", grade="2026", status="ACTIVE",
+        )
+        db.add_all([former_class, current_class])
+        db.flush()
+        # 甲现在已转到新班；本人历史考勤仍必须由提交名单而非当前 class_id 读取。
+        student_a = StudentProfile(
+            tenant_id=MAIN, student_no="ATPAGE-A", real_name="考勤分页甲", class_id=current_class.id,
+            current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE",
+        )
+        student_b = StudentProfile(
+            tenant_id=MAIN, student_no="ATPAGE-B", real_name="考勤分页乙", class_id=current_class.id,
+            current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE",
+        )
+        student_c = StudentProfile(
+            tenant_id=MAIN, student_no="ATPAGE-C", real_name="考勤分页丙", class_id=current_class.id,
+            current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE",
+        )
+        # 同学号放在另一学校，只用于确认 tenant 不能读到 MAIN 的场次。
+        demo_student = StudentProfile(
+            tenant_id=DEMO, student_no="ATPAGE-A", real_name="考勤分页甲",
+            current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE",
+        )
+        db.add_all([student_a, student_b, student_c, demo_student])
+        db.flush()
+        statuses = ["PRESENT"] * 5 + ["LATE"] * 4 + ["ABSENT"] * 4 + ["LEAVE"] * 4 + ["OTHER"] * 4
+        for index, status in enumerate(statuses, start=1):
+            roster = [
+                {"studentId": str(student_a.id), "status": status},
+                {"studentId": str(student_b.id), "status": "PRESENT"},
+            ]
+            if index == 1:
+                # Legacy duplicate: first roster element remains authoritative.
+                roster.insert(1, {"studentId": str(student_a.id), "status": "ABSENT"})
+            db.add(AaAttendanceSession(
+                tenant_id=MAIN, class_id=former_class.id,
+                teaching_task_id=101 if index <= 11 else 202,
+                course_name="电工基础" if index <= 11 else "语文基础",
+                session_date=f"2026-09-{index:02d}", slot_no=1,
+                roster_json=json.dumps(roster), status="SUBMITTED",
+            ))
+        # Bad historical JSON must not make the student page fail or expose a
+        # class-wide governance counter.
+        db.add(AaAttendanceSession(
+            tenant_id=MAIN, class_id=former_class.id, teaching_task_id=101,
+            course_name="电工基础", session_date="2026-09-30", slot_no=1,
+            roster_json="{bad-json", status="SUBMITTED",
+        ))
+        # 另一学校存在同名学生与同类记录；MAIN 学生查询必须仍只得到上面的 21 条。
+        db.add(AaAttendanceSession(
+            tenant_id=DEMO, class_id=1, teaching_task_id=101,
+            course_name="电工基础", session_date="2026-09-30", slot_no=1,
+            roster_json=json.dumps([{"studentId": str(demo_student.id), "status": "PRESENT"}]),
+            status="SUBMITTED",
+        ))
+        db.commit()
+        return student_a.id, student_b.id, student_c.id, demo_student.id
+    finally:
+        db.close()
+
+
 def test_attendance_full_flow(client, db_mode):
     cid = _seed_class(n_students=3)
     task_id = _seed_teaching_task(cid, "周老师")
@@ -169,20 +252,32 @@ def test_attendance_full_flow(client, db_mode):
                           "slotNo": 1}).json()
     assert r["code"] == 0, r
     sess = r["data"]
-    assert sess["totalCount"] == 3 and sess["presentCount"] == 3 and sess["status"] == "DRAFT"
+    assert sess["totalCount"] == 3 and sess["presentCount"] == 0 and sess["status"] == "DRAFT"
     sid = sess["sessionId"]
 
     detail = client.get(f"{BASE}/sessions/{sid}", headers=hdr).json()["data"]
     assert len(detail["items"]) == 3
     stu0 = detail["items"][0]
-    assert stu0["status"] == "PRESENT"
+    assert all(row["status"] == "UNMARKED" for row in detail["items"])
+    premature = client.post(f"{BASE}/sessions/{sid}/submit", headers=hdr)
+    assert premature.status_code == 409
+    assert premature.json()["details"]["unmarkedCount"] == 3
 
     marked = client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr,
                          json={"studentId": stu0["studentId"], "status": "ABSENT"}).json()["data"]
-    assert marked["absentCount"] == 1 and marked["presentCount"] == 2
+    assert marked["absentCount"] == 1 and marked["presentCount"] == 0
+    partial = client.post(f"{BASE}/sessions/{sid}/submit", headers=hdr)
+    assert partial.status_code == 409
+    assert client.get(f"{BASE}/sessions/{sid}", headers=hdr).json()["data"]["status"] == "DRAFT"
+    for student in detail["items"][1:]:
+        response = client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr,
+                               json={"studentId": student["studentId"], "status": "PRESENT"})
+        assert response.status_code == 200
 
     submitted = client.post(f"{BASE}/sessions/{sid}/submit", headers=hdr).json()["data"]
     assert submitted["status"] == "SUBMITTED"
+    assert submitted["presentCount"] == 2 and submitted["absentCount"] == 1
+    assert submitted["warningScanOk"] is True
 
     # 提交后不可再改
     blocked = client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr,
@@ -193,6 +288,29 @@ def test_attendance_full_flow(client, db_mode):
     lst = client.get(f"{BASE}/sessions", headers=hdr).json()["data"]
     assert lst["total"] >= 1
     assert any(s["sessionId"] == sid for s in lst["items"])
+
+
+def test_attendance_submit_keeps_committed_result_honest_when_warning_scan_fails(client, db_mode, monkeypatch):
+    from app.modules.academic_affairs.services import academic_affairs_warning_service as warning
+
+    cid = _seed_class(n_students=1)
+    task_id = _seed_teaching_task(cid, "预警回执老师")
+    hdr = _teacher_token("预警回执老师")
+    created = client.post(f"{BASE}/sessions", headers=hdr, json={
+        "teachingTaskId": task_id, "classId": cid, "sessionDate": "2026-07-15", "slotNo": 1,
+    }).json()["data"]
+    sid = created["sessionId"]
+    detail = client.get(f"{BASE}/sessions/{sid}", headers=hdr).json()["data"]
+    assert client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr, json={
+        "studentId": detail["items"][0]["studentId"], "status": "PRESENT",
+    }).status_code == 200
+    monkeypatch.setattr(warning, "scan_attendance_warnings", lambda _user: (_ for _ in ()).throw(RuntimeError("scan offline")))
+    response = client.post(f"{BASE}/sessions/{sid}/submit", headers=hdr)
+    assert response.status_code == 200
+    result = response.json()["data"]
+    assert result["status"] == "SUBMITTED"
+    assert result["warningScanOk"] is False
+    assert "扫描未完成" in result["warningScanError"]
 
 
 def test_attendance_other_teacher_cannot_view_or_mark(client, db_mode):
@@ -214,6 +332,92 @@ def test_attendance_other_teacher_cannot_view_or_mark(client, db_mode):
     # 另一教师自己的场次列表里也不应该出现这条
     other_list = client.get(f"{BASE}/sessions", headers=other_hdr).json()["data"]
     assert not any(s["sessionId"] == sid for s in other_list["items"])
+
+
+def test_teacher_attendance_sessions_and_roster_are_server_paged(client, db_mode):
+    """教师端不能把场次或 65 人名单一次性下发给小程序。
+
+    这条回归同时验证当前页之外仍由服务端完整状态机守住：只标第三页
+    一人以后提交仍会被 64 名未点名学生阻止。
+    """
+    from app.db.session import get_sessionmaker
+    from app.models import AaAttendanceSession
+
+    cid = _seed_class(n_students=65)
+    task_id = _seed_teaching_task(cid, "分页老师")
+    hdr = _teacher_token("分页老师")
+    created = client.post(f"{BASE}/sessions", headers=hdr, json={
+        "teachingTaskId": task_id, "classId": cid,
+        "sessionDate": "2026-07-15", "slotNo": 1,
+    })
+    assert created.status_code == 200, created.text
+    sid = created.json()["data"]["sessionId"]
+
+    # 旧场次没有正式快照时仍按稳定教师工号授权；它们用于验证列表确实是
+    # 服务端 20 条一页，而不是小程序对本地 50 条切片。
+    db = get_sessionmaker()()
+    try:
+        db.add_all([
+            AaAttendanceSession(
+                tenant_id=MAIN, class_id=cid, teacher_key="u-分页老师",
+                course_name="历史分页考勤", session_date=f"2026-08-{index:02d}",
+                slot_no=1, roster_json=json.dumps([]), total_count=0, status="DRAFT",
+            )
+            for index in range(1, 21)
+        ])
+        db.commit()
+    finally:
+        db.close()
+
+    sessions_first = client.get(f"{BASE}/sessions", headers=hdr, params={"page": 1, "pageSize": 20})
+    assert sessions_first.status_code == 200, sessions_first.text
+    first_data = sessions_first.json()["data"]
+    assert first_data["total"] == 21 and first_data["page"] == 1 and first_data["pageSize"] == 20
+    assert len(first_data["items"]) == 20 and first_data["hasMore"] is True
+    sessions_second = client.get(f"{BASE}/sessions", headers=hdr, params={"page": 2, "pageSize": 20})
+    second_data = sessions_second.json()["data"]
+    assert len(second_data["items"]) == 1 and second_data["hasMore"] is False
+    assert {row["sessionId"] for row in first_data["items"]}.isdisjoint(
+        {row["sessionId"] for row in second_data["items"]}
+    )
+
+    pages = [
+        client.get(f"{BASE}/sessions/{sid}", headers=hdr, params={"page": page, "pageSize": 30})
+        for page in (1, 2, 3)
+    ]
+    assert all(response.status_code == 200 for response in pages)
+    details = [response.json()["data"] for response in pages]
+    assert [len(detail["items"]) for detail in details] == [30, 30, 5]
+    assert all(detail["total"] == 65 and detail["totalCount"] == 65 for detail in details)
+    assert details[0]["hasMore"] is True and details[1]["hasMore"] is True and details[2]["hasMore"] is False
+    assert details[0]["summary"] == {"PRESENT": 0, "LATE": 0, "ABSENT": 0, "LEAVE": 0, "UNMARKED": 65}
+    assert details[0]["rosterIntegrity"] == "READY"
+    seen = [row["studentId"] for detail in details for row in detail["items"]]
+    assert len(seen) == 65 and len(set(seen)) == 65
+
+    third_page_student = details[2]["items"][0]
+    mark = client.post(f"{BASE}/sessions/{sid}/mark", headers=hdr, json={
+        "studentId": third_page_student["studentId"], "status": "LATE",
+    })
+    assert mark.status_code == 200, mark.text
+    receipt = mark.json()["data"]
+    assert "items" not in receipt
+    assert receipt["item"]["studentId"] == third_page_student["studentId"]
+    assert receipt["summary"]["LATE"] == 1 and receipt["unmarkedCount"] == 64
+
+    reread = client.get(f"{BASE}/sessions/{sid}", headers=hdr, params={"page": 1, "pageSize": 30}).json()["data"]
+    assert reread["summary"]["LATE"] == 1 and reread["unmarkedCount"] == 64
+    blocked = client.post(f"{BASE}/sessions/{sid}/submit", headers=hdr)
+    assert blocked.status_code == 409
+    assert blocked.json()["details"]["unmarkedCount"] == 64
+
+    other = _teacher_token("无权分页老师")
+    assert client.get(f"{BASE}/sessions/{sid}", headers=other).status_code == 403
+    # This project maps FastAPI validation errors to its Chinese 400 envelope;
+    # the important boundary is that malformed URL ids never reach int() and 500.
+    assert client.get(f"{BASE}/sessions/not-a-number", headers=hdr).status_code == 400
+    assert client.post(f"{BASE}/sessions/not-a-number/mark", headers=hdr, json={}).status_code == 400
+    assert client.post(f"{BASE}/sessions/not-a-number/submit", headers=hdr).status_code == 400
 
 
 def test_attendance_empty_class_not_found(client, db_mode):
@@ -249,7 +453,11 @@ def test_attendance_pc_stats_and_type(client, db_mode):
     absent_sid = client.get(f"{BASE}/sessions/{s1['sessionId']}", headers=hdr).json()["data"]["items"][0]["studentId"]
     client.post(f"{BASE}/sessions/{s1['sessionId']}/mark", headers=hdr,
                 json={"studentId": absent_sid, "status": "ABSENT"})
-    client.post(f"{BASE}/sessions/{s1['sessionId']}/submit", headers=hdr)
+    for student in client.get(f"{BASE}/sessions/{s1['sessionId']}", headers=hdr).json()["data"]["items"]:
+        if student["studentId"] != absent_sid:
+            client.post(f"{BASE}/sessions/{s1['sessionId']}/mark", headers=hdr,
+                        json={"studentId": student["studentId"], "status": "PRESENT"})
+    assert client.post(f"{BASE}/sessions/{s1['sessionId']}/submit", headers=hdr).status_code == 200
     # 场次2：实训类别，同一人再旷课
     s2_payload = client.post(f"{BASE}/sessions", headers=hdr, json={
         "teachingTaskId": task_id, "classId": cid, "courseName": "语文",
@@ -260,16 +468,369 @@ def test_attendance_pc_stats_and_type(client, db_mode):
     assert s2["sessionType"] == "实训"
     client.post(f"{BASE}/sessions/{s2['sessionId']}/mark", headers=hdr,
                 json={"studentId": absent_sid, "status": "ABSENT"})
-    client.post(f"{BASE}/sessions/{s2['sessionId']}/submit", headers=hdr)
+    for student in client.get(f"{BASE}/sessions/{s2['sessionId']}", headers=hdr).json()["data"]["items"]:
+        if student["studentId"] != absent_sid:
+            client.post(f"{BASE}/sessions/{s2['sessionId']}/mark", headers=hdr,
+                        json={"studentId": student["studentId"], "status": "PRESENT"})
+    assert client.post(f"{BASE}/sessions/{s2['sessionId']}/submit", headers=hdr).status_code == 200
 
     admin = _hdr_admin(client)
     stats = client.get(f"{PC}/stats", headers=admin, params={"classId": cid}).json()["data"]
     assert stats["sessionCount"] == 2
     top = stats["students"][0]  # 按旷课次数降序
     assert top["studentId"] == absent_sid and top["absent"] == 2 and top["sessions"] == 2
+    paged = client.get(
+        f"{PC}/stats", headers=admin,
+        params={"classId": cid, "page": 1, "pageSize": 1},
+    ).json()["data"]
+    assert paged["studentTotal"] == len(stats["students"])
+    assert paged["absentStudentCount"] == 1
+    assert paged["page"] == 1 and paged["pageSize"] == 1
+    assert len(paged["students"]) == 1 and paged["students"][0]["studentId"] == absent_sid
     # 点名类别过滤：只看实训 → 该生旷课 1、场次 1
     only = client.get(f"{PC}/stats", headers=admin, params={"classId": cid, "sessionType": "实训"}).json()["data"]
     assert only["sessionCount"] == 1 and only["students"][0]["absent"] == 1
     # PC 场次列表可查
     lst = client.get(f"{PC}/sessions", headers=admin, params={"classId": cid}).json()["data"]
     assert lst["total"] == 2
+
+
+def test_mobile_attendance_is_server_paged_course_filtered_and_self_scoped(client, db_mode):
+    student_a_id, _student_b_id, _student_c_id, other_school_student_id = _seed_attendance_pages()
+    student_a = _student_header("考勤分页甲", "ATPAGE-A")
+
+    first_response = client.get(f"{STUDENT_BASE}/attendance/my", headers=student_a, params={
+        "page": 1, "pageSize": 20,
+    })
+    assert first_response.status_code == 200, first_response.text
+    first = first_response.json()["data"]
+    assert len(first["items"]) == 20
+    assert first["total"] == 21 and first["page"] == 1 and first["pageSize"] == 20 and first["hasMore"] is True
+    assert first["summary"] == {"PRESENT": 5, "LATE": 4, "ABSENT": 4, "LEAVE": 4, "OTHER": 4}
+    assert all("studentId" not in row and "realName" not in row and "roster" not in row for row in first["items"])
+
+    second_response = client.get(f"{STUDENT_BASE}/attendance/my", headers=student_a, params={
+        "page": 2, "pageSize": 20,
+    })
+    assert second_response.status_code == 200, second_response.text
+    second = second_response.json()["data"]
+    assert len(second["items"]) == 1 and second["hasMore"] is False
+    assert {row["sessionId"] for row in first["items"]}.isdisjoint({row["sessionId"] for row in second["items"]})
+
+    filtered_response = client.get(f"{STUDENT_BASE}/attendance/my", headers=student_a, params={
+        "course": "电工", "page": 1, "pageSize": 20,
+    })
+    assert filtered_response.status_code == 200, filtered_response.text
+    filtered = filtered_response.json()["data"]
+    assert filtered["total"] == 11 and len(filtered["items"]) == 11
+    assert all("电工" in row["courseName"] for row in filtered["items"])
+
+    # 同名课程不靠模糊名称混合：从正式课表深链携带的教学任务 ID 是精确边界。
+    task_filtered = client.get(f"{STUDENT_BASE}/attendance/my", headers=student_a, params={
+        "course": "电工", "teachingTaskId": 101, "page": 1, "pageSize": 20,
+    })
+    assert task_filtered.status_code == 200, task_filtered.text
+    assert task_filtered.json()["data"]["total"] == 11
+
+    # Student C is in the same administrative class but never appears in a roster.
+    # A forged query studentId must not replace the token-derived student binding.
+    student_c = client.get(f"{STUDENT_BASE}/attendance/my", headers=_student_header("考勤分页丙", "ATPAGE-C"), params={
+        "studentId": str(student_a_id), "page": 1, "pageSize": 20,
+    })
+    assert student_c.status_code == 200, student_c.text
+    result_c = student_c.json()["data"]
+    assert result_c["items"] == [] and result_c["total"] == 0
+
+    # The API only exposes the caller's status projection, not the other roster member.
+    student_b = client.get(f"{STUDENT_BASE}/attendance/my", headers=_student_header("考勤分页乙", "ATPAGE-B"))
+    assert student_b.status_code == 200, student_b.text
+    assert student_b.json()["data"]["summary"]["PRESENT"] == 21
+
+    # Another school has a same-number student and one submitted session.  A URL
+    # parameter cannot replace the token tenant or make that row appear here.
+    cross_school = client.get(f"{STUDENT_BASE}/attendance/my", headers=student_a, params={
+        "studentId": str(other_school_student_id), "page": 1, "pageSize": 100,
+    })
+    assert cross_school.status_code == 200, cross_school.text
+    assert cross_school.json()["data"]["total"] == 21
+
+    teacher = client.get(f"{STUDENT_BASE}/attendance/my", headers=_teacher_token("越权教师"))
+    assert teacher.status_code == 403
+
+
+def _seed_historical_attendance_source():
+    """Isolated MySQL read fixture: retained source replaced after a submitted rollcall."""
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import AaAttendanceSession, AaScheduleBatch, AaScheduleItem, AaScheduleScopeHead, StudentProfile
+    class_id = _seed_class(n_students=2)
+    task_id = _seed_teaching_task(class_id, "历史来源教师")
+    db = get_sessionmaker()()
+    try:
+        item = db.scalars(select(AaScheduleItem).where(
+            AaScheduleItem.tenant_id == MAIN, AaScheduleItem.task_id == task_id,
+            AaScheduleItem.weekday == 2,
+        )).one()
+        item.id = 9007199254740993
+        item.teacher_name = "保留教师名称"
+        item.class_name = "保留班级名称"
+        item.classroom_text = "保留教室名称"
+        batch = db.get(AaScheduleBatch, item.batch_id)
+        batch.status = "SUPERSEDED"
+        head = db.scalars(select(AaScheduleScopeHead).where(
+            AaScheduleScopeHead.tenant_id == MAIN, AaScheduleScopeHead.term_id == batch.term_id,
+        )).one()
+        # This source must survive a changed current head without invoking the writer resolver.
+        head.active_batch_id = None
+        student_id = db.scalars(select(StudentProfile.id).where(
+            StudentProfile.tenant_id == MAIN, StudentProfile.student_no == "AT0000",
+        )).one()
+        evidence = {
+            "sourceType": "FORMAL_TEACHING", "termId": str(batch.term_id),
+            "activeBatchId": str(batch.id), "scopeHeadVersion": 1,
+            "publishedAt": "2026-03-01T08:00:00", "scheduleItemId": str(item.id),
+            "teachingTaskId": str(task_id), "classId": str(class_id),
+            "teacherKey": item.teacher_key, "sessionDate": "2026-07-14",
+            "logicalDate": "2026-07-14", "weekNo": 20, "weekday": 2,
+            "slotNo": 1, "weekParity": "ALL",
+            "occurrenceIdentity": f"{batch.id}:{item.id}:2026-07-14:1",
+        }
+        attendance = AaAttendanceSession(
+            tenant_id=MAIN, class_id=class_id, teaching_task_id=task_id,
+            source_type="FORMAL_TEACHING", source_evidence=json.dumps(evidence),
+            occurrence_identity=evidence["occurrenceIdentity"], teacher_key=item.teacher_key,
+            course_name="保留考勤课程", term_code="2026-2027-1", session_date="2026-07-14",
+            slot_no=1, status="SUBMITTED",
+            roster_json=json.dumps([{"studentId": str(student_id), "status": "LATE"}]),
+        )
+        db.add(attendance)
+        db.flush()
+        ids = (attendance.id, item.id, batch.id, student_id)
+        db.commit()
+        return ids
+    finally:
+        db.close()
+
+
+def test_student_attendance_exact_source_reads_retained_superseded_batch(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaAttendanceSession
+    attendance_id, item_id, batch_id, student_id = _seed_historical_attendance_source()
+    db = get_sessionmaker()()
+    try:
+        target = db.get(AaAttendanceSession, attendance_id)
+        another = AaAttendanceSession(
+            tenant_id=MAIN, class_id=target.class_id, teaching_task_id=target.teaching_task_id,
+            course_name="另一已提交考勤课程", session_date="2026-07-15", slot_no=1,
+            status="SUBMITTED",
+            roster_json=json.dumps([{"studentId": str(student_id), "status": "PRESENT"}]),
+        )
+        db.add(another)
+        db.flush()
+        another_id = another.id
+        db.commit()
+    finally:
+        db.close()
+    student = _student_header("考勤生0", "AT0000")
+    response = client.get(f"{STUDENT_BASE}/attendance/my", headers=student, params={"session_id": str(attendance_id)})
+    assert response.status_code == 200, response.text
+    result = response.json()["data"]
+    assert result["total"] == 1 and len(result["items"]) == 1
+    row = result["items"][0]
+    assert row["sessionId"] == str(attendance_id) and row["status"] == "LATE"
+    assert all(row["sessionId"] != str(another_id) for row in result["items"])
+    assert result["summary"] == {"PRESENT": 0, "LATE": 1, "ABSENT": 0, "LEAVE": 0, "OTHER": 0}
+    detail = row["sourceDetail"]
+    assert detail["verified"] is True and detail["reason"] == ""
+    assert detail["scheduleItemId"] == str(item_id) == "9007199254740993"
+    assert detail["batchId"] == str(batch_id)
+    assert all(isinstance(detail[key], str) for key in ("sessionId", "scheduleItemId", "batchId", "termId"))
+    assert detail["teacherName"] == "保留教师名称"
+    assert detail["className"] == "保留班级名称" and detail["classroom"] == "保留教室名称"
+    assert detail["courseName"] == "保留考勤课程" and detail["sessionDate"] == "2026-07-14"
+    assert detail["weekNo"] == 20 and detail["weekday"] == 2 and detail["slotNo"] == 1
+    assert not ({"teacherKey", "sourceEvidence", "roster", "startTime", "endTime"} & set(detail))
+    ordinary = client.get(f"{STUDENT_BASE}/attendance/my", headers=student).json()["data"]
+    assert ordinary["total"] == 2
+    assert {row["sessionId"] for row in ordinary["items"]} == {str(attendance_id), str(another_id)}
+    assert all("sourceDetail" not in row for row in ordinary["items"])
+
+
+def test_student_attendance_exact_source_never_exposes_nonmember_other_tenant_or_draft(client, db_mode):
+    from datetime import datetime, timedelta
+    from decimal import Decimal
+    from app.db.session import get_sessionmaker
+    from app.models import (
+        AaAttendanceSession, CommercialOrderItem, PlatformOrder, StudentProfile, Tenant,
+        TenantCommercialProfile, TenantModuleState, TenantModuleSubscriptionSource,
+    )
+    attendance_id, _, _, student_id = _seed_historical_attendance_source()
+    db = get_sessionmaker()()
+    try:
+        # Reach the real self/tenant SQL boundary using an ordinary active school,
+        # rather than passing because authentication rejected a nonexistent tenant.
+        if db.get(Tenant, DEMO) is None:
+            db.add(Tenant(
+                id=DEMO, tenant_code="attendance-source-other-school",
+                school_name="考勤来源隔离测试学校", short_name="考勤隔离学校",
+                deploy_mode="SAAS", db_mode="SHARED", status="ACTIVE",
+            ))
+            db.flush()
+        # The global commercial-surface dependency precedes the attendance reader.
+        # Match the existing modular-commerce paid-source fixtures, granting only
+        # academicAffairs through the real authority tables, never a permission bypass.
+        starts_at = datetime.utcnow() - timedelta(days=1)
+        ends_at = datetime.utcnow() + timedelta(days=30)
+        order = PlatformOrder(
+            tenant_id=DEMO, order_no="AT-SOURCE-OTHER-SCHOOL", order_type="NEW",
+            amount=Decimal("100.00"), paid_amount=Decimal("100.00"), status="paid",
+        )
+        db.add(order)
+        db.flush()
+        order_item = CommercialOrderItem(
+            tenant_id=DEMO, order_id=order.id, line_no=1, module_key="academicAffairs",
+            module_generation=1, quantity=1, unit_price=Decimal("100.00"),
+            discount_amount=Decimal("0.00"), net_amount=Decimal("100.00"), currency="CNY",
+            service_start_at=starts_at, service_end_at=ends_at,
+            feature_snapshot_json={"academicAffairs": True}, quota_snapshot_json={},
+            fulfillment_status="FULFILLED", fulfilled_at=starts_at,
+        )
+        db.add(order_item)
+        db.flush()
+        db.add_all([
+            TenantCommercialProfile(
+                tenant_id=DEMO, reader_version="MODULE_V2", migration_status="NEW_MODULE_CUSTOMER",
+            ),
+            TenantModuleState(
+                tenant_id=DEMO, module_key="academicAffairs", generation=1,
+                lifecycle_version=1, data_state="AVAILABLE",
+            ),
+            TenantModuleSubscriptionSource(
+                tenant_id=DEMO, module_key="academicAffairs", module_generation=1,
+                source_type="PAID_ORDER_ITEM", source_ref=f"ORDER_ITEM:{order_item.id}",
+                order_item_id=order_item.id, feature_snapshot_json={"academicAffairs": True},
+                quota_snapshot_json={}, starts_at=starts_at, ends_at=ends_at, status="ACTIVE",
+                approval_ref="AT-SOURCE-ISOLATED-TEST", activated_at=starts_at,
+            ),
+        ])
+        db.add(StudentProfile(
+            tenant_id=DEMO, student_no="AT0000", real_name="跨校考勤生",
+            current_stage="ON_CAMPUS", student_status="NORMAL", status="ACTIVE",
+        ))
+        db.commit()
+    finally:
+        db.close()
+    from app.services.commercial_authority_read import effective_features
+    from app.services.module_access_service import module_access_state
+    granted = effective_features(DEMO)
+    assert {key for key, enabled in granted.items() if enabled} == {"academicAffairs"}
+    module_state = module_access_state(DEMO, "academicAffairs")
+    assert module_state["entitled"] and module_state["enabled"] and module_state["allowed"]
+    for headers in (
+        _student_header("考勤生1", "AT0001"),
+        _student_header("跨校考勤生", "AT0000", tenant_id=DEMO, tid="attendance-source-other-school"),
+    ):
+        response = client.get(f"{STUDENT_BASE}/attendance/my", headers=headers, params={
+            "session_id": str(attendance_id), "studentId": str(student_id), "tenantId": str(MAIN),
+        })
+        assert response.status_code == 200, response.text
+        assert response.json()["data"]["items"] == [] and response.json()["data"]["total"] == 0
+    db = get_sessionmaker()()
+    try:
+        db.get(AaAttendanceSession, attendance_id).status = "DRAFT"
+        db.commit()
+    finally:
+        db.close()
+    response = client.get(f"{STUDENT_BASE}/attendance/my", headers=_student_header("考勤生0", "AT0000"), params={"session_id": str(attendance_id)})
+    assert response.status_code == 200, response.text
+    assert response.json()["data"]["items"] == []
+
+
+def test_student_attendance_exact_source_returns_neutral_failure_for_bad_evidence(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaAttendanceSession
+    attendance_id, _, _, _ = _seed_historical_attendance_source()
+    for broken in ("not-json", "wrong-identity"):
+        db = get_sessionmaker()()
+        try:
+            attendance = db.get(AaAttendanceSession, attendance_id)
+            if broken == "not-json":
+                original = attendance.source_evidence
+                attendance.source_evidence = broken
+            else:
+                attendance.source_evidence = original
+                attendance.occurrence_identity = broken
+            db.commit()
+        finally:
+            db.close()
+        response = client.get(f"{STUDENT_BASE}/attendance/my", headers=_student_header("考勤生0", "AT0000"), params={"session_id": str(attendance_id)})
+        assert response.status_code == 200, response.text
+        detail = response.json()["data"]["items"][0]["sourceDetail"]
+        assert detail["verified"] is False and detail["reason"]
+        assert set(detail) == {"verified", "reason"}
+
+def test_attendance_source_detail_accepts_formal_occurrence_without_single_admin_class():
+    from types import SimpleNamespace as Row
+    from app.modules.academic_affairs.services import mobile_academic_gaps_service as gaps
+
+    evidence = {
+        "sourceType": "FORMAL_TEACHING",
+        "scheduleItemId": "11",
+        "activeBatchId": "22",
+        "termId": "33",
+        "teachingTaskId": "44",
+        "classId": None,
+        "weekNo": 5,
+        "weekday": 3,
+        "slotNo": 1,
+        "scopeHeadVersion": 7,
+        "sessionDate": "2026-07-15",
+        "teacherKey": "academic01",
+        "occurrenceIdentity": "22:11:2026-07-15:1",
+    }
+    attendance = Row(
+        id=55,
+        tenant_id=MAIN,
+        source_type="FORMAL_TEACHING",
+        source_evidence=json.dumps(evidence, ensure_ascii=False),
+        session_date="2026-07-15",
+        slot_no=1,
+        teaching_task_id=44,
+        class_id=0,
+        teacher_key="academic01",
+        occurrence_identity="22:11:2026-07-15:1",
+        term_code="2026-1",
+        course_name="跨行政班课",
+    )
+    item = Row(
+        id=11,
+        batch_id=22,
+        tenant_id=MAIN,
+        is_deleted=False,
+        status="EFFECTIVE",
+        task_id=44,
+        class_id=None,
+        weekday=3,
+        slot_no=1,
+        week_parity="ALL",
+        start_week=1,
+        end_week=16,
+        teacher_key="academic01",
+        teacher_name="任课教师",
+        class_name="",
+        classroom_text="A101",
+    )
+    batch = Row(
+        id=22,
+        term_id=33,
+        tenant_id=MAIN,
+        is_deleted=False,
+        status="PUBLISHED",
+    )
+
+    detail = gaps._attendance_source_detail(attendance, item, batch, tenant_id=MAIN)
+
+    assert detail["verified"] is True
+    assert detail["scheduleItemId"] == "11"
+    assert detail["batchId"] == "22"
+

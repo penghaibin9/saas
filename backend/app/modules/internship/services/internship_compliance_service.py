@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from app.core.tenant_scoped import tenant_get
 
-from datetime import datetime
+from datetime import date, datetime
 from contextlib import nullcontext
 
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
+from app.core.field_crypto import decrypt_sensitive
 from app.models import (
     InternshipAgreement, InternshipBatch, InternshipComplianceExemption, InternshipConsent,
     InternshipEmergencyPlan, InternshipInsurance, InternshipPosition, InternshipRecord,
@@ -26,6 +27,63 @@ from app.modules.internship.services.internship_position_rights import evaluate_
 from app.services.db_service import _as_id, _tid, session
 
 
+_RESIDENT_ID_WEIGHTS = (7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2)
+_RESIDENT_ID_CHECK_CODES = "10X98765432"
+
+
+def _student_birth_date(student) -> date | None:
+    """Return a verified birth date without exposing the stored identity number.
+
+    Some deployments may add a dedicated ``birth_date`` column. The current
+    student master stores only an encrypted resident ID, so use that as the
+    authoritative fallback. Missing/corrupt ciphertext and malformed IDs stay
+    unknown so the guardian-consent gate remains fail-closed.
+    """
+    if student is None:
+        return None
+    direct = getattr(student, "birth_date", None)
+    if isinstance(direct, datetime):
+        direct = direct.date()
+    if isinstance(direct, date):
+        return direct
+
+    stored = getattr(student, "id_card_encrypted", None)
+    if not stored:
+        return None
+    try:
+        plain = decrypt_sensitive(stored, "id_card")
+    except Exception:  # decryption failure must not bypass guardian consent
+        return None
+    text = str(plain or "").strip().upper()
+    if len(text) == 18:
+        if not text[:17].isdigit() or text[-1] not in "0123456789X":
+            return None
+        expected = _RESIDENT_ID_CHECK_CODES[
+            sum(int(number) * weight for number, weight in zip(text[:17], _RESIDENT_ID_WEIGHTS)) % 11
+        ]
+        if text[-1] != expected:
+            return None
+        birth_text = text[6:14]
+    elif len(text) == 15 and text.isdigit():
+        birth_text = f"19{text[6:12]}"
+    else:
+        return None
+    try:
+        birth = datetime.strptime(birth_text, "%Y%m%d").date()
+    except ValueError:
+        return None
+    return birth if birth <= datetime.utcnow().date() else None
+
+
+def _is_adult(birth: date, *, today: date | None = None) -> bool:
+    today = today or datetime.utcnow().date()
+    try:
+        eighteenth_birthday = birth.replace(year=birth.year + 18)
+    except ValueError:  # February 29 becomes adult on February 28 in a non-leap year.
+        eighteenth_birthday = birth.replace(year=birth.year + 18, day=28)
+    return today >= eighteenth_birthday
+
+
 def _pick(rows, statuses):
     for row in rows:
         if row.status in statuses:
@@ -34,6 +92,39 @@ def _pick(rows, statuses):
                 continue
             return row
     return None
+
+
+def _insurance_coverage(policy, rec, batch, operation, *, today=None):
+    """Check the approved evidence against the recorded placement period."""
+    def as_date(value):
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        try:
+            return date.fromisoformat(str(value or ""))
+        except ValueError:
+            return None
+
+    start = as_date(getattr(policy, "effective_date", None))
+    end = as_date(getattr(policy, "expiry_date", None))
+    if not start or not end or start > end:
+        return "MISSING", "保险保障期限待核实，请补正保单日期后重新核验"
+    period_start = as_date(getattr(rec, "intern_start_date", None) or getattr(batch, "start_date", None))
+    period_end = as_date(getattr(rec, "intern_end_date", None) or getattr(batch, "end_date", None))
+    if not period_start or not period_end or period_start > period_end:
+        return "MISSING", "实习起止日期待核实，暂不能确认保险覆盖范围"
+    if start > period_start or end < period_end:
+        return "MISSING", "保险保障期限未覆盖实习期间，请补充覆盖完整实习期的保单并重新核验"
+    # Completed placements are assessed against their historical period; a
+    # policy expiring after completion must not prevent historical archiving.
+    if operation in ("ONBOARD", "CONTINUE"):
+        current = today or datetime.utcnow().date()
+        if end < current:
+            return "EXPIRED", "保险已到期，请续保并重新核验后办理上岗"
+        if start > current:
+            return "PENDING", "保险尚未生效，生效前不能办理上岗"
+    return "VALID", ""
 
 
 def _item(code, cfg, status, reason="", evidence=None, route="", evidence_version=None):
@@ -130,7 +221,7 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
         cfg = rules.get("guardianConsent") or {
             "label": "监护人知情确认", "required": False, "severity": "BLOCK"}
         need_guardian = bool((rules.get("studentConsent") or {}).get("requireGuardianConsentForMinor"))
-        birth = getattr(stu, "birth_date", None) if stu else None
+        birth = _student_birth_date(stu)
         if not need_guardian:
             items.append(_item("guardianConsent", cfg, "NOT_APPLICABLE", "规则未要求监护人确认"))
         elif birth is None:
@@ -140,19 +231,8 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
             status, reason, evid = apply_exemption("guardianConsent", status, reason, evid)
             items.append(_item("guardianConsent", gcfg, status, reason, evid))
         else:
-            # 简化：满 18 不适用；未满适用
-            age_years = (datetime.utcnow().date() - birth).days / 365.25 if hasattr(birth, "year") else 99
-            if hasattr(birth, "year") is False and isinstance(birth, datetime):
-                age_years = (datetime.utcnow() - birth).days / 365.25
-            elif isinstance(birth, datetime):
-                age_years = (datetime.utcnow() - birth).days / 365.25
-            else:
-                try:
-                    age_years = (datetime.utcnow().date() - birth).days / 365.25
-                except Exception:
-                    age_years = 99
             gcfg = {**cfg, "required": True}
-            if age_years >= 18:
+            if _is_adult(birth):
                 items.append(_item("guardianConsent", gcfg, "NOT_APPLICABLE", "已成年"))
             else:
                 rows = db.scalars(select(InternshipConsent).where(
@@ -190,12 +270,20 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
             InternshipInsurance.tenant_id == _tid(), InternshipInsurance.internship_id == rec.id,
             InternshipInsurance.is_deleted.is_(False),
         )).all()
-        hit = _pick(rows, ("VERIFIED",))
+        verified = [row for row in rows if row.status == "VERIFIED"]
+        evaluated = [(row, *_insurance_coverage(row, rec, batch, operation)) for row in verified]
+        hit = next((row for row, state, _ in evaluated if state == "VALID"), None)
         if not cfg.get("required"):
             items.append(_item("insurance", cfg, "NOT_APPLICABLE" if not hit else "VALID",
                                "" if hit else "规则未强制", getattr(hit, "id", None)))
         else:
-            status, reason, evid = (("VALID", "", hit.id) if hit else ("MISSING", "实习保险未核验", None))
+            if hit:
+                status, reason, evid = "VALID", "", hit.id
+            elif evaluated:
+                invalid, status, reason = evaluated[0]
+                evid = invalid.id
+            else:
+                status, reason, evid = "MISSING", "实习保险未核验", None
             status, reason, evid = apply_exemption("insurance", status, reason, evid)
             items.append(_item("insurance", cfg, status, reason, evid))
 
@@ -500,7 +588,10 @@ def batch_compliance_stats(batch_id, user=None):
                 "advisorName": rec.advisor_name or "", "recordStatus": rec.status,
                 "onboardPassed": onboard["passed"], "archivePassed": archive["passed"],
                 "blockerCodes": codes, "archiveBlockerCodes": archive_codes,
-                "blockers": onboard["blockers"], "route": f"/admin/internship/students/{rec.id}",
+                "blockers": onboard["blockers"], "archiveBlockers": archive["blockers"],
+                "sourceVersion": int(rec.version or 0),
+                "recentChange": rec.updated_at.isoformat() if rec.updated_at else "",
+                "route": f"/admin/internship/students/{rec.id}",
             }
             entries.append(entry)
             for code in set(codes + archive_codes):

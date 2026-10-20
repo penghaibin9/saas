@@ -1,0 +1,32 @@
+diff --git a/e2e/specs/golden-rollout-student-affairs-funding.spec.mjs b/e2e/specs/golden-rollout-student-affairs-funding.spec.mjs
+--- a/e2e/specs/golden-rollout-student-affairs-funding.spec.mjs
++++ b/e2e/specs/golden-rollout-student-affairs-funding.spec.mjs
+@@ -0,0 +1 @@
++import { randomUUID } from 'node:crypto'
+@@ -53 +54,2 @@
+-    projectName = `Playwright 助学金治理 ${runId}`
++    // A retried worker reruns beforeAll: use independent names, not ambiguous duplicate options.
++    projectName = `Playwright 助学金治理 ${runId}-${randomUUID().slice(0, 8)}`
+@@ -76,0 +79,6 @@
++    const applicationsLoaded = page.waitForResponse(response => {
++      const url = new URL(response.url())
++      return url.pathname.endsWith('/student-affairs/funding/applications') &&
++        url.searchParams.get('batchId') === String(batch.batchId) &&
++        response.request().method() === 'GET'
++    })
+@@ -84 +92 @@
+-    await page.getByRole('option').filter({ hasText: projectName }).click()
++    await page.getByRole('option', { name: `助学金 · ${projectName}`, exact: true }).click()
+@@ -85,0 +94,6 @@
++    // Selecting a project does not prove a selected batch. Pin the actual API-created batch.
++    await context.getByRole('combobox').nth(1).click()
++    await page.getByRole('option').filter({ hasText: '2026-2027' }).click()
++    const applicationsResponse = await applicationsLoaded
++    expect(applicationsResponse.status()).toBe(200)
++    expect((await applicationsResponse.json()).code).toBe(0)
+diff --git a/enterprise-portal/e2e/collaboration-lifecycle.spec.mjs b/enterprise-portal/e2e/collaboration-lifecycle.spec.mjs
+--- a/enterprise-portal/e2e/collaboration-lifecycle.spec.mjs
++++ b/enterprise-portal/e2e/collaboration-lifecycle.spec.mjs
+@@ -21 +21 @@
+-    if(path.endsWith('/evaluation-tasks')){state.evaluations+=1;expect(url.searchParams.get('batchId')).toBe('66');return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({items:[{id:'900',taskId:'900',internshipId:'900',studentName:'张三',positionName:'机械装配技术实习生',mentorName:'李导师',status:'PENDING',statusLabel:'待评价',deadline:'2026-12-31'},{id:'901',taskId:'901',internshipId:'901',studentName:'李四',positionName:'智能制造产线运维实习生',mentorName:'王导师',status:'COMPLETED',statusLabel:'已完成',deadline:'2026-12-31'}],total:2,page:1,pageSize:50,hasNext:false}))})}
++    if(path.endsWith('/evaluation-tasks')){state.evaluations+=1;expect(url.searchParams.get('batchId')).toBe('66');return route.fulfill({contentType:'application/json',body:JSON.stringify(ok({items:[{id:'900',taskId:'900',internshipId:'900',placementSnapshotId:'1900',studentName:'张三',positionName:'机械装配技术实习生',mentorName:'李导师',status:'PENDING',statusLabel:'待评价',deadline:'2026-12-31'},{id:'901',taskId:'901',internshipId:'901',placementSnapshotId:'1901',studentName:'李四',positionName:'智能制造产线运维实习生',mentorName:'王导师',status:'COMPLETED',statusLabel:'已完成',deadline:'2026-12-31'}],total:2,page:1,pageSize:50,hasNext:false}))})}

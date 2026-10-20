@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "wave": "W4",
+  "surface": "Staff PC navigation",
+  "sourceHead": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "status": "STATIC_CONTRACT_GREEN_BROWSER_DB_PENDING",
+  "contract": {
+    "workspaceCount": 11,
+    "wideRoleVisibleLeafCount": 33,
+    "targetRange": [32, 36],
+    "primaryCommandOwnerOnly": true,
+    "detailOrActionLeavesExposed": 0,
+    "legacyRoutesRemoved": 0,
+    "oldPanelStatusTypeStageViewDimensionDeepLinksPreserved": true,
+    "readAndWriteRiskAuthoritiesRemainSeparate": true
+  },
+  "commandOwners": {
+    "match": ["选岗 / 匹配工作台", "调岗退岗", "分配记录"],
+    "applications": ["实习申请审核", "三方协议工作台", "自主实习申请"],
+    "attendanceLeave": ["考勤工作台", "异常核验", "请假审批 / 台账"],
+    "reports": ["计划任务", "过程报告批阅"],
+    "guidance": ["指导巡访工作台", "指导计划 / 不足预警"],
+    "riskCompliance": ["风险工作台", "风险处置", "上岗 / 监管合规", "事故与应急"],
+    "evaluationScore": ["评价工作台", "成绩工作台", "成绩申诉"],
+    "archiveAnalysis": ["材料与归档", "实习统计", "就业衔接"]
+  },
+  "permissionBoundary": "Risk workbench stays visible for internship.risk.view while risk disposal requires internship.risk.handle; collapsing them would remove the counselor read-only collaboration entry.",
+  "verification": {
+    "commandOwnerContract": "2/2 PASS",
+    "menuProjectionAndRouteGate": "22/22 PASS",
+    "browser": "AUTHENTICATED_REPLAY_BLOCKED_BY_ISOLATED_MYSQL_STALL"
+  },
+  "evidence": [
+    "frontend/src/config/navPlan.js",
+    "frontend/tests/internship.command-owner-ia.contract.test.mjs",
+    "frontend/tests/navPlan.projection.test.mjs",
+    "frontend/tests/internship.routeGate.test.mjs"
+  ]
+}

@@ -52,7 +52,7 @@
               <div class="ext-card__head"><strong>{{ row.studentName }}</strong><span>{{ row.studentNo }} · {{ row.className }}</span></div>
               <p>{{ row.topicTitle || '未填写课题' }}</p>
               <div class="ext-meta"><span>导师 {{ row.advisorName || '—' }}</span><b>{{ row.totalScore }} 分 · 优秀</b></div>
-              <button v-if="row.canNominate" class="mp-btn mp-btn--primary" @click="askNominate(row)">导师提名</button>
+              <AppButton v-if="row.canNominate" variant="primary" @click="askNominate(row)">导师提名</AppButton>
               <span v-else class="ext-muted">仅该生当前指导教师可提名</span>
             </article>
           </div>
@@ -133,12 +133,12 @@
                       <button class="mp-link" @click="askReview('delay-college', row, 'APPROVE')">学院批准</button>
                       <button class="mp-link ext-danger" @click="askReview('delay-college', row, 'REJECT')">驳回</button>
                     </template>
-                    <button
+                    <AppButton
                       v-else-if="can(row, 'schedule')"
-                      class="mp-btn mp-btn--primary"
+                      variant="primary"
                       :disabled="!scheduleDraft(row).date || !scheduleDraft(row).groupId || !!supportError"
                       @click="askSchedule(row)"
-                    >确认排期</button>
+                    >确认排期</AppButton>
                     <span v-else class="ext-muted">{{ delayNextStep(row) }}</span>
                   </td>
                 </tr>
@@ -166,6 +166,7 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppPagination } from '@/components/common'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
@@ -187,7 +188,7 @@ const DELAY_STATUS = [
 
 export default {
   name: 'GraduationExtensionAdminPanel',
-  components: { ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppPagination, AppConfirmDialog },
+  components: { AppButton, ModulePageShell, StatusTag, LoadingState, ErrorState, EmptyState, AppPagination, AppConfirmDialog },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

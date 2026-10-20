@@ -16,13 +16,13 @@ test('D7-U 首屏给出发布就绪结论与关键缺口', async () => {
   }
 })
 
-test('D7-U 发布 readiness 只能提示，不能取得 canonical publish 的否决权', async () => {
+test('D7-U 发布沿正式许可与已对齐的批次就绪校验，不再鼓励绕过阻断', async () => {
   const source = await readFile(viewUrl, 'utf8')
   assert.doesNotMatch(source, /:disabled="!readiness \|\| !readiness\.canPublish"/)
   assert.match(source, /@click="lc\('publishBatch', '发布'\)"/)
   assert.match(source, /仍以正式发布校验为准/)
-  assert.match(source, /仍可尝试发布，由正式门禁最终判定/)
-  assert.match(source, /可点击发布，由正式门禁最终判定/)
+  assert.doesNotMatch(source, /仍可尝试发布/)
+  assert.match(source, /:disabled="!canPublishExam \|\| examActionBusy \|\| saving"/)
 })
 
 test('D7-U 新建考试批次必须选择正式学期并提交 termId', async () => {

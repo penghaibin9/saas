@@ -12,12 +12,12 @@
           <view v-for="row in items" :key="row.caseId" class="card stack-sm mw__card"
             :class="{ 'is-focus': isFocused(row) }" :id="'case-' + row.caseId" @click="openDetail(row)">
             <view class="row-between">
-              <text class="mw__title ellipsis flex-1">{{ row.title }}</text>
+              <text class="mw__title ellipsis flex-1">{{ receiptTitle(row.title) }}</text>
               <MobileStatusTag :label="row.statusLabel" :type="tagType(row.statusGroup)" />
             </view>
             <view class="mw__meta">
               <text class="mw__meta-item">{{ row.dept }}</text>
-              <text class="mw__meta-item">当前：{{ row.handler }}</text>
+              <text v-if="row.statusGroup !== 'done'" class="mw__meta-item">当前：{{ row.handler }}</text>
               <text class="mw__meta-item">{{ shortTime(row.updatedAt) }}</text>
             </view>
             <MobileInlineAlert v-if="row.latestOpinion" type="warning" title="需要你处理"
@@ -43,8 +43,11 @@ import { studentApi } from '@/services/studentApi'
 import { canNavigate, runAction } from '@/services/actionRouter'
 import { hasFocusRow, isFocusRow, readFocusId, scrollToFocus } from '@/utils/listFocus.mjs'
 import { createNetworkPager } from '@/utils/networkPager'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 import { go } from '@/utils/nav'
+import { receiptTitle } from './presentation.mjs'
 
 const TAG_TYPE = { pending: 'warning', processing: 'processing', returned: 'danger', done: 'success' }
 
@@ -55,7 +58,7 @@ export default {
     return {
       tabs: [], tab: 'all', items: [], state: 'loading',
       cursor: '', hasMore: false, loadingMore: false,
-      focusId: '', focusMissing: false
+      focusId: '', focusMissing: false, hidden: false, identity: currentSessionGeneration()
     }
   },
   onLoad(query) {
@@ -64,7 +67,12 @@ export default {
     this.refresh()
   },
   onPullDownRefresh() { this.refresh().finally(() => uni.stopPullDownRefresh()) },
+  onShow() { if (this.hidden) { this.hidden = false; this.refresh() } },
+  onHide() { this.invalidate() },
+  onUnload() { this.invalidate() },
   methods: {
+    receiptTitle,
+    invalidate() { this.hidden = true; this._pager?.reset(); this._pager = null; this.loadingMore = false },
     tagType(group) { return TAG_TYPE[group] || 'default' },
     shortTime(iso) { return iso ? String(iso).slice(0, 16).replace('T', ' ') : '' },
     canRun(action) { return canNavigate(action, 'student') },
@@ -85,7 +93,7 @@ export default {
       if (this._pager) this._pager.reset()
       this._pager = null
       this.items = []
-      this.refresh()
+      return this.refresh()
     },
     // V3 §11.3：分页、去重、epoch 失效与单页内存上限全部交给共享 networkPager，
     // 页面不再各自手写一套（教师端后续复用同一个工具）。
@@ -93,38 +101,53 @@ export default {
       if (!this._pager || this._pagerTab !== this.tab) {
         this._pagerTab = this.tab
         const tab = this.tab
-        this._pager = createNetworkPager(
+        const generation = currentSessionGeneration()
+        const pager = createNetworkPager(
           (cursor, pageSize) => studentApi.getCases(tab, cursor, pageSize).then((data) => {
-            this.tabs = (data && data.tabs) || this.tabs
+            if (this.isCurrent(pager, generation)) this.tabs = (data && data.tabs) || this.tabs
             return { items: (data && data.items) || [], nextCursor: (data && data.nextCursor) || '' }
           }),
           { pageSize: 20, idKey: 'caseId' }
         )
+        this._pager = pager
       }
       return this._pager
     },
+    isCurrent(pager, generation) {
+      return !this.hidden && this._pager === pager && generation === currentSessionGeneration()
+    },
     syncFromPager(state) {
-      this.items = state.items
+      // The pager mutates its plain array; publish a snapshot so Vue observes appends.
+      this.items = [...state.items]
       this.hasMore = state.hasMore
       this.loadingMore = state.loading && !state.refreshing
     },
     refresh() {
+      const generation = currentSessionGeneration()
+      if (this.identity !== generation) {
+        this.identity = generation; this.items = []; this.tabs = []; this.focusId = ''; this.tab = 'all'
+      }
+      this._pager?.reset(); this._pager = null
+      this.hasMore = false; this.loadingMore = false
+      const pager = this.pager()
       this.state = this.items.length ? this.state : 'loading'
-      return this.pager().refresh()
+      return pager.refresh()
         .then((state) => {
+          if (!this.isCurrent(pager, generation)) return
           this.syncFromPager(state)
           this.state = 'ready'
           this.applyFocus()
         })
-        .catch(() => { this.state = 'error' })
+        .catch((error) => { if (this.isCurrent(pager, generation)) this.state = normalizeError(error).pageState || 'error' })
     },
     loadMore() {
       if (this.loadingMore || !this.hasMore) return
+      const pager = this.pager(), generation = currentSessionGeneration()
       this.loadingMore = true
-      return this.pager().loadMore()
-        .then((state) => this.syncFromPager(state))
-        .catch((e) => toast((e && e.message) || '加载失败'))
-        .finally(() => { this.loadingMore = false })
+      return pager.loadMore()
+        .then((state) => { if (this.isCurrent(pager, generation)) this.syncFromPager(state) })
+        .catch((e) => { if (this.isCurrent(pager, generation)) toast((e && e.message) || '加载失败') })
+        .finally(() => { if (this.isCurrent(pager, generation)) this.loadingMore = false })
     }
   }
 }

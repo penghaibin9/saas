@@ -13,7 +13,7 @@ const manifest = JSON.parse(read('src/pages.json'))
 // V3 S1 分包契约：完整 /pages/... URL 必须由 subPackages[].root + pages[].path 还原，
 // 页面总数守恒，且主包只保留 login/common/role-switch。
 const MAIN_PACKAGE_PREFIXES = ['pages/login/', 'pages/common/', 'pages/role-switch/']
-const SUBPACKAGE_ROOTS = ['pages/student', 'pages/teacher']
+const SUBPACKAGE_ROOTS = ['pages/student', 'pages/student-internship', 'pages/teacher', 'pages/teacher-internship']
 // S1 冻结基线：分包重构当时的页面规模。V3 后续波次会新增学生页（Agenda、我的办理…），
 // 所以这里是「不得低于」的下界 + 「每个页面文件恰好注册一次」的守恒，而不是死数字——
 // 死数字既挡不住漏页，也会把正常新增页面误判成回归。
@@ -43,7 +43,7 @@ test('S1-G1 pages.json 可解析且声明了普通分包', () => {
   assert.deepEqual(
     manifest.subPackages.map((pkg) => pkg.root),
     SUBPACKAGE_ROOTS,
-    '分包 root 必须且只能是 pages/student 与 pages/teacher'
+    '分包 root 必须按学生、学生实习、教师、教师实习四个业务包登记'
   )
 })
 
@@ -58,8 +58,8 @@ test('S1-G1 页面守恒：无重复、无漏页、不低于 S1 基线', () => {
   assert.equal(routeSet.size, routes.length, '还原后的完整 URL 不允许重复')
   assert.ok(routes.length >= S1_BASELINE_TOTAL_PAGES,
     `页面总数 ${routes.length} 低于 S1 基线 ${S1_BASELINE_TOTAL_PAGES}，说明有页面在分包重构中丢失`)
-  const student = routes.filter((route) => route.startsWith('pages/student/'))
-  const teacher = routes.filter((route) => route.startsWith('pages/teacher/'))
+  const student = routes.filter((route) => route.startsWith('pages/student/') || route.startsWith('pages/student-internship/'))
+  const teacher = routes.filter((route) => route.startsWith('pages/teacher/') || route.startsWith('pages/teacher-internship/'))
   assert.ok(student.length >= S1_BASELINE_STUDENT_PAGES, `学生页 ${student.length} < ${S1_BASELINE_STUDENT_PAGES}`)
   assert.ok(teacher.length >= S1_BASELINE_TEACHER_PAGES, `教师页 ${teacher.length} < ${S1_BASELINE_TEACHER_PAGES}`)
 })
@@ -103,13 +103,10 @@ test('S1-G2 学生/教师页面必须全部进入对应分包，不得留在主�
   for (const page of manifest.pages) {
     assert.doesNotMatch(page.path, /^pages\/(student|teacher)\//)
   }
-  const studentPkg = manifest.subPackages.find((pkg) => pkg.root === 'pages/student')
-  const teacherPkg = manifest.subPackages.find((pkg) => pkg.root === 'pages/teacher')
-  for (const page of studentPkg.pages) {
-    assert.doesNotMatch(page.path, /^pages\//, '分包内 path 必须是 root 相对路径')
-  }
-  for (const page of teacherPkg.pages) {
-    assert.doesNotMatch(page.path, /^pages\//, '分包内 path 必须是 root 相对路径')
+  for (const pkg of manifest.subPackages) {
+    for (const page of pkg.pages) {
+      assert.doesNotMatch(page.path, /^pages\//, '分包内 path 必须是 root 相对路径')
+    }
   }
 })
 
@@ -161,7 +158,8 @@ test('S1-G4 不得同时预载 student 与 teacher 分包', () => {
   const rules = manifest.preloadRule || {}
   for (const [page, rule] of Object.entries(rules)) {
     const packages = rule.packages || []
-    const both = packages.includes('pages/student') && packages.includes('pages/teacher')
-    assert.ok(!both, `${page} 同时预载两个分包会抵消瘦身收益`)
+    const hasStudent = packages.some((pkg) => pkg.startsWith('pages/student'))
+    const hasTeacher = packages.some((pkg) => pkg.startsWith('pages/teacher'))
+    assert.ok(!(hasStudent && hasTeacher), `${page} 同时预载学生与教师分包会抵消瘦身收益`)
   }
 })

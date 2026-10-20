@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T10:05:32.1556699Z",
+  "wave": "W12",
+  "journey": "GJ-07",
+  "status": "STATIC_AND_BUILD_VERIFIED_RUNTIME_MYSQL_PENDING",
+  "outcome": "Staff and Teacher Mini now show canonical risk source, severity, latest event, current action and close blockers. HIGH/CRITICAL incident reporting, incident transition/close, linked high-risk closure and regulatory package generation fail closed when the audit outbox is unhealthy. Incident closure requires server-validated evidence plus investigation, rectification and responsibility facts; the closed object leads to a versioned student regulatory evidence package.",
+  "invariants": [
+    "A HIGH/CRITICAL incident-derived RiskRecord freezes source_type=INCIDENT, source_id=incident.id and source_version in the same transaction.",
+    "Risk source reads resolve the live tenant-scoped source object and verify the reverse risk_id relationship and internship ownership.",
+    "An incident-linked risk cannot close before the incident is CLOSED with investigation conclusion, rectification plan, responsibility/review conclusion and evidence files.",
+    "Incident file IDs are checked through the canonical file authority and bound to the incident in the command transaction; arbitrary client IDs cannot satisfy closure.",
+    "Complaint contact remains encrypted plus HMAC-hashed at rest and masked unless the caller has the explicit sensitive permission.",
+    "Complaint transition, to-risk and follow-up carry server versions; follow-up uses atomic CAS and conflict recovery never auto-replays a decision.",
+    "Audit outbox DEAD or more-than-one-hour stalled state returns 503 before high-risk writes; business and InternshipAuditTrail/outbox facts share one database transaction.",
+    "The student regulatory package includes complaint, risk and incident rows, their domain audit trails, attachments, source versions, hashes and missing-item truth.",
+    "Staff risk and incident surfaces retain server id/status/version receipts and lead from the exact closed incident to the student evidence package.",
+    "Teacher Mini sends expectedVersion for handle, follow and close; a 409 retains and re-prefills the draft but requires a fresh manual submit."
+  ],
+  "surfaces": {
+    "staffRisk": "frontend/src/modules/internship/views/RiskDisposalView.vue",
+    "staffIncidentEvidence": "frontend/src/modules/internship/views/InternshipComplianceView.vue",
+    "teacherMini": "miniapp/src/pages/teacher/internship-risk/index.vue",
+    "riskAuthority": "backend/app/modules/internship/services/internship_risk_service.py",
+    "incidentAuthority": "backend/app/modules/internship/services/internship_incident_service.py",
+    "complaintAuthority": "backend/app/modules/internship/services/internship_complaint_service.py",
+    "auditAuthority": "backend/app/modules/internship/services/internship_audit_service.py",
+    "evidenceAuthority": "backend/app/modules/internship/services/internship_evidence_package_service.py"
+  },
+  "verification": [
+    {
+      "command": "node --test frontend/tests/internship.risk-incident-evidence.contract.test.mjs",
+      "result": "PASS 4/4"
+    },
+    {
+      "command": "direct Python 3.12 execution of backend/tests/test_internship_risk_incident_evidence_static.py",
+      "result": "PASS 5/5; runtime pytest remains bound to real MySQL by project policy"
+    },
+    {
+      "command": "python -m py_compile for all changed W12 backend modules",
+      "result": "PASS"
+    },
+    {
+      "command": "npm test",
+      "cwd": "frontend",
+      "result": "PASS full suite"
+    },
+    {
+      "command": "npm run lint",
+      "cwd": "frontend",
+      "result": "PASS 0 errors; 2 pre-existing warnings outside Internship Center"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "frontend",
+      "result": "PASS; 21 official routes prerendered; existing project-wide CSS/chunk warnings only"
+    },
+    {
+      "command": "npm test",
+      "cwd": "miniapp",
+      "result": "PASS 210/210"
+    },
+    {
+      "command": "npm run build:h5 && npm run build:mp-weixin",
+      "cwd": "miniapp",
+      "result": "PASS both targets"
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS; line-ending notices only"
+    }
+  ],
+  "runtimePending": {
+    "reason": "The isolated internship-v8-mysql container on 127.0.0.1:43327 still does not complete MySQL handshakes and Docker Engine previously returned HTTP 500 for a targeted container restart. The backend test policy correctly refuses SQLite; unrelated Docker Desktop workloads must not be restarted.",
+    "requiredReplay": [
+      "Report one HIGH incident and verify exactly one incident, one source-identified risk and one audit outbox event chain.",
+      "Attempt incident close without evidence and verify 400/409 with no status/version/audit mutation.",
+      "Close the evidence-complete incident, close its linked risk, generate/download the student package and verify incident/risk/complaint audit entries and hashes.",
+      "Inject DEAD/stalled audit health and verify HIGH report, incident close, linked risk close and package generation return 503 with zero business writes.",
+      "Replay Staff PC and Teacher Mini through authenticated normal entry paths at PC and 390px with network/console inspection."
+    ]
+  }
+}

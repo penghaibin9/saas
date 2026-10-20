@@ -22,7 +22,7 @@ test('destructive purge uses request-scoped MFA bearer token only', () => {
 test('offboarding UI keeps the irreversible confirmation and volatile MFA boundary', () => {
   assert.match(offboarding, /永久销毁租户数据/)
   assert.match(offboarding, /confirmText === '永久销毁租户数据'/)
-  assert.match(offboarding, /beforeUnmount\(\)\s*{\s*this\.clearMfaGrant\(\)/)
+  assert.match(offboarding, /beforeUnmount\(\)\s*{\s*this\.epoch\+\+\s*this\.clearMfaGrant\(\)\s*}/)
   assert.match(offboarding, /mfaExpiryTimer/)
   assert.match(offboarding, /auth.*MFA|MFA.*二次认证/i)
   assert.doesNotMatch(offboarding, /localStorage|sessionStorage|indexedDB/i)

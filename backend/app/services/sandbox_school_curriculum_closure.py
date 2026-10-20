@@ -3,7 +3,7 @@
 这是 standard-20k 专属的数据治理层，不修改生产教务写链：
 - 把课程库扩成真实三年制职业院校规模：14 门公共课 + 每专业 23 门专业/实践课；
 - 96 套培养方案每套 37 门课程、140 学分，含学分结构、毕业要求和集中实践；
-- 2025-2026-2 补齐 2024/2025 两届真实教学闭环：1024 教学任务、1024 课表项、
+- 2025-2026-2 补齐 2024/2025 两届真实教学闭环：1024 教学任务、2048 课表项、
   1024 成绩任务、52000 成绩明细、1024 考试课程；
 - 历史成绩仍回链既有 t_acad_grade，不建立第二套成绩真值。
 """
@@ -29,7 +29,25 @@ EXPECTED_HISTORICAL_TASKS_FINAL = 1024
 EXPECTED_HISTORICAL_GRADE_RECORDS_FINAL = 52_000
 EXPECTED_HISTORICAL_EXAM_COURSES_FINAL = 1024
 EXPECTED_TOTAL_TASKS_FINAL = 1792
-EXPECTED_TOTAL_SCHEDULE_ITEMS_FINAL = 1792
+EXPECTED_HISTORICAL_SCHEDULE_ITEMS_FINAL = EXPECTED_HISTORICAL_TASKS_FINAL * 2
+EXPECTED_TOTAL_SCHEDULE_ITEMS_FINAL = EXPECTED_TOTAL_TASKS_FINAL * 2
+
+# AA-001～024 的演示成功链在基础规模合同之后运行。它会保留一套培养
+# 方案的直接后继版本及其 18 条课程快照，并通过一次真实调课同时保留旧
+# 课位和新生效课位。这里统计的是可审计的物理版本记录，不能继续拿补链
+# 前的静态基线比较，否则干净库会把合法的版本历史误判为脏数据。
+EXPECTED_FLOW_PROGRAM_VERSION_HISTORY = 1
+EXPECTED_FLOW_PROGRAM_COURSE_SNAPSHOTS = 18
+EXPECTED_FLOW_SCHEDULE_ITEM_HISTORY = 1
+EXPECTED_PROGRAMS_AFTER_FLOW_COVERAGE = (
+    EXPECTED_PROGRAMS + EXPECTED_FLOW_PROGRAM_VERSION_HISTORY
+)
+EXPECTED_PROGRAM_COURSES_AFTER_FLOW_COVERAGE = (
+    EXPECTED_PROGRAM_COURSES_FINAL + EXPECTED_FLOW_PROGRAM_COURSE_SNAPSHOTS
+)
+EXPECTED_SCHEDULE_ITEMS_AFTER_FLOW_COVERAGE = (
+    EXPECTED_TOTAL_SCHEDULE_ITEMS_FINAL + EXPECTED_FLOW_SCHEDULE_ITEM_HISTORY
+)
 
 PUBLIC_EXPANSION = (
     ("PUB005", "毛泽东思想和中国特色社会主义理论体系概论", 3.0),
@@ -40,7 +58,9 @@ PUBLIC_EXPANSION = (
     ("PUB010", "创新创业基础", 2.0),
     ("PUB011", "劳动教育", 2.0),
     ("PUB012", "军事理论", 2.0),
-    ("PUB013", "大学语文", 3.0),
+    # 历史成绩里每个学生都有「高等数学」，课程库必须有同一门稳定课程；
+    # 旧数据把 PUB013 留给了没有任何下游事实的「大学语文」，导致 13K 成绩无法回链。
+    ("PUB013", "高等数学", 3.0),
     ("PUB014", "美育与艺术素养", 2.0),
 )
 
@@ -622,26 +642,27 @@ def seed_historical_teaching_closure_20k(db, tenant_id: int) -> dict:
         for position, suffix in enumerate(suffixes):
             course = courses[f"{major.code}-{suffix}"]
             task = task_by_key[(int(cls.id), int(course.id))]
-            schedule_rows.append({
-                "tenant_id": tenant_id,
-                "batch_id": int(schedule_batch.id),
-                "task_id": int(task.id),
-                "course_id": int(course.id),
-                "course_name": course.course_name,
-                "class_id": int(cls.id),
-                "class_name": cls.class_name,
-                "teacher_key": task.teacher_key,
-                "teacher_name": task.teacher_name,
-                "weekday": 1 + position,
-                "slot_no": 1 + position * 2,
-                "start_week": 1,
-                "end_week": 18,
-                "week_parity": "ALL",
-                "classroom_id": int(room.id),
-                "classroom_text": room.room_name,
-                "status": "EFFECTIVE",
-                "source": "AUTO",
-            })
+            for offset in range(int(task.weekly_hours or 0)):
+                schedule_rows.append({
+                    "tenant_id": tenant_id,
+                    "batch_id": int(schedule_batch.id),
+                    "task_id": int(task.id),
+                    "course_id": int(course.id),
+                    "course_name": course.course_name,
+                    "class_id": int(cls.id),
+                    "class_name": cls.class_name,
+                    "teacher_key": task.teacher_key,
+                    "teacher_name": task.teacher_name,
+                    "weekday": 1 + position,
+                    "slot_no": 1 + position * 2 + offset,
+                    "start_week": 1,
+                    "end_week": 18,
+                    "week_parity": "ALL",
+                    "classroom_id": int(room.id),
+                    "classroom_text": room.room_name,
+                    "status": "EFFECTIVE",
+                    "source": "AUTO",
+                })
     _bulk_insert(db, AaScheduleItem, schedule_rows, chunk_size=1500)
     db.commit()
 
@@ -852,7 +873,7 @@ def validate_historical_teaching_closure_20k(db, tenant_id: int) -> dict:
     }
     expected = {
         "historicalTasks": EXPECTED_HISTORICAL_TASKS_FINAL,
-        "historicalScheduleItems": EXPECTED_HISTORICAL_TASKS_FINAL,
+        "historicalScheduleItems": EXPECTED_HISTORICAL_SCHEDULE_ITEMS_FINAL,
         "historicalGradeTasks": EXPECTED_HISTORICAL_TASKS_FINAL,
         "historicalGradeRecords": EXPECTED_HISTORICAL_GRADE_RECORDS_FINAL,
         "historicalExamCourses": EXPECTED_HISTORICAL_EXAM_COURSES_FINAL,
@@ -902,12 +923,12 @@ def validate_school_academic_final_20k(db, tenant_id: int) -> dict:
     }
     expected = {
         "courses": EXPECTED_COURSES_FINAL,
-        "programs": EXPECTED_PROGRAMS,
+        "programs": EXPECTED_PROGRAMS_AFTER_FLOW_COVERAGE,
         "programBindings": EXPECTED_PROGRAMS,
-        "programCourses": EXPECTED_PROGRAM_COURSES_FINAL,
+        "programCourses": EXPECTED_PROGRAM_COURSES_AFTER_FLOW_COVERAGE,
         "registrations": 33_000,
         "teachingTasks": EXPECTED_TOTAL_TASKS_FINAL,
-        "scheduleItems": EXPECTED_TOTAL_SCHEDULE_ITEMS_FINAL,
+        "scheduleItems": EXPECTED_SCHEDULE_ITEMS_AFTER_FLOW_COVERAGE,
         "gradeTasks": EXPECTED_HISTORICAL_TASKS_FINAL,
         "gradeRecords": EXPECTED_HISTORICAL_GRADE_RECORDS_FINAL,
         "examCourses": EXPECTED_HISTORICAL_EXAM_COURSES_FINAL,

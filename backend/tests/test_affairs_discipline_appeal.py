@@ -120,3 +120,20 @@ def test_non_effective_blocks(client, db_mode):
                        json={"method": "MAIL"}).json()["code"] != 0
     assert client.post(f"{BASE}/discipline/cases/{cid}/appeal", headers=hdr,
                        json={"reason": "登记态不应可申诉"}).json()["code"] != 0
+
+def test_detail_post_effect_appeal_summary_truth(client, db_mode):
+    hdr = _hdr(client, "school_admin01")
+    cid = _seed_case(db_mode["student"], "EFFECTIVE")
+    before = client.get(f"{BASE}/discipline/cases/{cid}", headers=hdr).json()["data"]
+    assert before["status"] == "EFFECTIVE" and before["deliveredAt"] is None and before["appealSummary"] is None
+    post_versioned(client, f"{BASE}/discipline/cases/{cid}/deliver", headers=hdr, json={"method": "DIRECT", "remark": "本人签收"})
+    assert client.get(f"{BASE}/discipline/cases/{cid}", headers=hdr).json()["data"]["appealSummary"] is None
+    submitted = client.post(f"{BASE}/discipline/cases/{cid}/appeal", headers=hdr, json={"reason": "对处分认定事实有异议，申请正式复核"}).json()["data"]
+    aid = submitted["appealId"]
+    detail = client.get(f"{BASE}/discipline/cases/{cid}", headers=hdr).json()["data"]
+    assert detail["status"] == "EFFECTIVE" and detail["appealSummary"] == {"appealId": aid, "status": "SUBMITTED", "statusLabel": "待复核", "result": None}
+    focused = client.get(f"{BASE}/discipline/appeals?caseId={cid}&appealId={aid}", headers=hdr).json()["data"]
+    assert focused["total"] == 1 and focused["items"][0]["appealId"] == aid
+    post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=hdr, json={"result": "UPHELD", "opinion": "经复核事实清楚证据充分，维持原处分"})
+    detail = client.get(f"{BASE}/discipline/cases/{cid}", headers=hdr).json()["data"]
+    assert detail["status"] == "EFFECTIVE" and detail["appealSummary"]["status"] == "UPHELD" and detail["appealSummary"]["result"] == "UPHELD"

@@ -62,6 +62,7 @@ def _student(student_no, tid=TID):
 def _seed(db_mode):
     """两名学生均具备正式 ASSESS 过程事实；企业评价仍通过真实 API 生成。"""
     from uuid import uuid4
+    from app.core.context import get_tenant, set_tenant
 
     from app.db.session import get_sessionmaker
     from app.models import (
@@ -79,10 +80,15 @@ def _seed(db_mode):
         StudentProfile,
         WeeklyReport,
     )
+    from app.modules.internship.services.internship_placement_snapshot_service import (
+        capture_placement_snapshot_in_tx,
+    )
 
     db = get_sessionmaker()()
     ids = {}
+    previous_tenant = get_tenant()
     try:
+        set_tenant(TID)
         today = date.today()
         batch = InternshipBatch(
             tenant_id=TID,
@@ -159,6 +165,10 @@ def _seed(db_mode):
             )
             db.add(record)
             db.flush()
+            capture_placement_snapshot_in_tx(
+                db, record=record, position=position, company=company,
+                rights={"passed": True, "ruleVersion": "SCORE-TEST-V1"},
+            )
             ids[f"rec_{key}"] = record.id
             ids[f"rec_ver_{key}"] = int(record.version or 0)
             ids[f"stu_{key}"] = student.id
@@ -167,6 +177,8 @@ def _seed(db_mode):
                     tenant_id=TID,
                     internship_id=record.id,
                     student_id=student.id,
+                    effective_date=today.isoformat(),
+                    expiry_date=today.isoformat(),
                     status="VERIFIED",
                 ),
                 InternshipAgreement(
@@ -226,12 +238,15 @@ def _seed(db_mode):
                     student_id=student.id,
                     self_summary="完整自评",
                     submit_status="SUBMITTED",
+                    advisor_opinion=f"{advisor}已完成指导评价",
+                    school_review_status="APPROVED",
                 ),
             ])
         db.commit()
         return ids
     finally:
         db.close()
+        set_tenant(previous_tenant)
 
 
 def _config(client, **overrides):
@@ -322,6 +337,24 @@ def _compute(
     )
 
 
+def _review_score(client, score, headers=None):
+    return client.post(
+        f"{INT}/scores/{score['id']}/review",
+        json={"expectedVersion": score["version"]},
+        headers=headers or _admin(client),
+    )
+
+
+def _review_and_publish(client, score, reviewer_headers=None, publisher_headers=None):
+    reviewed = _review_score(client, score, headers=reviewer_headers)
+    assert reviewed.status_code == 200, reviewed.json()
+    return client.post(
+        f"{INT}/scores/{score['id']}/publish",
+        json={"expectedVersion": reviewed.json()["data"]["version"]},
+        headers=publisher_headers or _admin(client),
+    )
+
+
 def test_config_weight_sum_and_snapshot(client, db_mode):
     ids = _seed(db_mode)
     bad = _config(client, schoolWeight=30)
@@ -367,6 +400,11 @@ def test_config_weight_sum_and_snapshot(client, db_mode):
         "school": 100,
     }
     assert detail["sourceManifest"]["facts"]["weekly"]["rows"]
+    assert detail["sourceReadiness"] == {
+        "enterpriseEvaluation": True,
+        "studentSelfEvaluation": True,
+        "advisorEvaluation": True,
+    }
 
     second = _config(
         client,
@@ -390,18 +428,33 @@ def test_compute_and_school_publish_with_versions(client, db_mode):
     assert score["isPass"] is True
     assert score["adjustmentReviewStatus"] == "NOT_REQUIRED"
 
-    mentor_publish = client.post(
+    publish_before_review = client.post(
         f"{INT}/scores/{score['id']}/publish",
+        json={"expectedVersion": score["version"]},
+        headers=_admin(client),
+    )
+    assert publish_before_review.status_code == 409
+    assert "独立复核" in publish_before_review.json()["message"]
+
+    mentor_publish = client.post(
+        f"{INT}/scores/{score['id']}/review",
         json={"expectedVersion": score["version"]},
         headers=_mentor("刘强"),
     )
     assert mentor_publish.status_code == 403
 
-    published = client.post(
-        f"{INT}/scores/{score['id']}/publish",
-        json={"expectedVersion": score["version"]},
-        headers=_admin(client),
+    reviewed = _review_score(client, score)
+    assert reviewed.status_code == 200, reviewed.json()
+    assert reviewed.json()["data"]["status"] == "PENDING_PUBLISH"
+    recompute_after_review = _compute(
+        client,
+        ids,
+        body={"expectedVersion": reviewed.json()["data"]["version"]},
     )
+    assert recompute_after_review.status_code == 409
+    assert "退回重算" in recompute_after_review.json()["message"]
+    published = client.post(f"{INT}/scores/{score['id']}/publish",
+        json={"expectedVersion": reviewed.json()["data"]["version"]}, headers=_admin(client))
     assert published.status_code == 200, published.json()
     published_data = published.json()["data"]
     assert published_data["status"] == "PUBLISHED"
@@ -410,7 +463,7 @@ def test_compute_and_school_publish_with_versions(client, db_mode):
     detail = client.get(
         f"{INT}/scores/{score['id']}", headers=_mentor("刘强"),
     ).json()["data"]
-    assert {"COMPUTE_FACT_SNAPSHOT", "COMPUTE", "PUBLISH"} <= {
+    assert {"COMPUTE_FACT_SNAPSHOT", "COMPUTE", "REVIEW", "PUBLISH"} <= {
         item["action"] for item in detail["auditTrail"]
     }
     stale = client.post(
@@ -458,7 +511,7 @@ def test_incomplete_cannot_publish(client, db_mode):
     assert score["incomplete"] is True
     assert "企业评价" in score["incompleteReason"]
     denied = client.post(
-        f"{INT}/scores/{score['id']}/publish",
+        f"{INT}/scores/{score['id']}/review",
         json={"expectedVersion": score["version"]},
         headers=_admin(client),
     )
@@ -496,11 +549,9 @@ def test_scope_student_forbidden_withdraw_and_export(client, db_mode):
         headers=_student("SC-A"),
     ).status_code == 403
 
-    published = client.post(
-        f"{INT}/scores/{score_a['id']}/publish",
-        json={"expectedVersion": score_a["version"]},
-        headers=_admin(client),
-    ).json()["data"]
+    published_response = _review_and_publish(client, score_a)
+    assert published_response.status_code == 200, published_response.json()
+    published = published_response.json()["data"]
     too_short = client.post(
         f"{INT}/scores/{score_a['id']}/withdraw",
         json={"reason": "x", "expectedVersion": published["version"]},
@@ -551,6 +602,8 @@ def test_publish_reruns_authoritative_assess_compliance(client, db_mode):
     computed = _compute(client, ids)
     assert computed.status_code == 200, computed.json()
     score = computed.json()["data"]
+    reviewed = _review_score(client, score)
+    assert reviewed.status_code == 200, reviewed.json()
 
     from app.db.session import get_sessionmaker
     from app.models import InternshipInsurance
@@ -567,7 +620,7 @@ def test_publish_reruns_authoritative_assess_compliance(client, db_mode):
         db.close()
     denied = client.post(
         f"{INT}/scores/{score['id']}/publish",
-        json={"expectedVersion": score["version"]},
+        json={"expectedVersion": reviewed.json()["data"]["version"]},
         headers=_admin(client),
     )
     assert denied.status_code == 409
@@ -578,11 +631,7 @@ def test_independent_score_archive_is_disabled(client, db_mode):
     ids = _seed(db_mode)
     _approve_enterprise_eval(client, ids["rec_a"], component_score=80)
     computed = _compute(client, ids).json()["data"]
-    published = client.post(
-        f"{INT}/scores/{computed['id']}/publish",
-        json={"expectedVersion": computed["version"]},
-        headers=_admin(client),
-    )
+    published = _review_and_publish(client, computed)
     assert published.status_code == 200, published.json()
     denied = client.post(
         f"{INT}/scores/{computed['id']}/archive",
@@ -631,7 +680,7 @@ def test_manual_adjustment_requires_evidence_and_independent_reviewer(
     assert score["adjustmentReviewStatus"] == "PENDING"
 
     same_user = client.post(
-        f"{INT}/scores/{score['id']}/publish",
+        f"{INT}/scores/{score['id']}/review",
         json={"expectedVersion": score["version"]},
         headers=adjuster,
     )
@@ -639,12 +688,19 @@ def test_manual_adjustment_requires_evidence_and_independent_reviewer(
     assert "不同用户复核" in same_user.json()["message"]
 
     reviewed = client.post(
-        f"{INT}/scores/{score['id']}/publish",
+        f"{INT}/scores/{score['id']}/review",
         json={"expectedVersion": score["version"]},
         headers=_school_admin(),
     )
     assert reviewed.status_code == 200, reviewed.json()
     assert reviewed.json()["data"]["adjustmentReviewStatus"] == "APPROVED"
+
+    published = client.post(
+        f"{INT}/scores/{score['id']}/publish",
+        json={"expectedVersion": reviewed.json()["data"]["version"]},
+        headers=_school_admin(),
+    )
+    assert published.status_code == 200, published.json()
 
     detail = client.get(
         f"{INT}/scores/{score['id']}", headers=_admin(client),
@@ -682,7 +738,7 @@ def test_source_change_requires_recompute_before_publish(client, db_mode):
         db.close()
 
     stale = client.post(
-        f"{INT}/scores/{score['id']}/publish",
+        f"{INT}/scores/{score['id']}/review",
         json={"expectedVersion": score["version"]},
         headers=_admin(client),
     )
@@ -697,11 +753,7 @@ def test_source_change_requires_recompute_before_publish(client, db_mode):
     assert recomputed.status_code == 200, recomputed.json()
     refreshed = recomputed.json()["data"]
     assert refreshed["factSourceHash"] != score["factSourceHash"]
-    published = client.post(
-        f"{INT}/scores/{score['id']}/publish",
-        json={"expectedVersion": refreshed["version"]},
-        headers=_admin(client),
-    )
+    published = _review_and_publish(client, refreshed)
     assert published.status_code == 200, published.json()
 
 
@@ -711,11 +763,7 @@ def test_total_archive_freezes_fact_snapshot_and_source_hash(client, db_mode):
     computed = _compute(client, ids)
     assert computed.status_code == 200, computed.json()
     score = computed.json()["data"]
-    published = client.post(
-        f"{INT}/scores/{score['id']}/publish",
-        json={"expectedVersion": score["version"]},
-        headers=_admin(client),
-    )
+    published = _review_and_publish(client, score)
     assert published.status_code == 200, published.json()
 
     archived = client.post(

@@ -18,7 +18,7 @@ def _mentor(name="刘强"):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{name}", "realName": name, "userType": "TEACHER",
         "tid": "x", "tenantId": str(TID), "activeContextId": "ctx",
-        "currentRoleCode": "INTERN_MENTOR", "clientType": "PC"})}
+        "currentRoleCode": "INTERN_MENTOR", "clientType": "TEACHER_MINI"})}
 
 
 def _seed(db_mode, sno="HELP-STU-01"):

@@ -76,6 +76,7 @@ def test_import_projection_is_refresh_safe_and_versioned():
         confirmed_at=None,
         operator_name="系统管理员",
         result_json=None,
+        source_snapshot_json=None,
         error_message=None,
         version=4,
         created_at=None,

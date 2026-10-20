@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-09-02",
+  "documents": [
+    {
+      "path": "docs/README.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前文档库寻路入口。"
+    },
+    {
+      "path": "docs/00-项目入口与总控/00-只看这个-项目入口.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前人工项目入口。"
+    },
+    {
+      "path": "docs/00-项目入口与总控/00-文档总导航.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前文档总导航。"
+    },
+    {
+      "path": "docs/00-项目入口与总控/project-status.json",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前代码、分支、导航和交付门禁事实源。"
+    },
+    {
+      "path": "docs/00-项目入口与总控/document-status-overrides.json",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "文档状态人工裁决源。"
+    },
+    {
+      "path": "docs/00-项目入口与总控/project-map/当前有效文档索引.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前有效文档人工索引。"
+    },
+    {
+      "path": "docs/00-项目入口与总控/project-map/模块状态总表.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "模块状态摘要，代码事实以 project-status.json 为准。"
+    },
+    {
+      "path": "docs/00-项目入口与总控/project-map/下一步施工总控.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前收敛和施工顺序。"
+    },
+    {
+      "path": "docs/00-项目入口与总控/project-map/文档归档与废弃清单.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前归档和替代关系说明。"
+    },
+    {
+      "path": "docs/00-项目入口与总控/project-map/CI工作流治理说明.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前 CI 收口治理说明。"
+    },
+    {
+      "path": "docs/02-总体架构与公共底座/00-五端产品与SaaS总体架构规划.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前总体架构与五端边界入口。"
+    },
+    {
+      "path": "docs/03-业务模块设计/系统管理中心/README.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "系统管理中心当前文档入口。"
+    },
+    {
+      "path": "docs/03-业务模块设计/系统管理中心/00-系统管理中心-权限角色模块授权与权责边界设计.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前系统管理与权限边界权威文档。"
+    },
+    {
+      "path": "docs/03-业务模块设计/学工中心/README.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "学工中心当前文档入口。"
+    },
+    {
+      "path": "docs/03-业务模块设计/教务中心/README.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "教务中心当前文档入口。"
+    },
+    {
+      "path": "docs/03-业务模块设计/数字迎新中心/README.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "数字迎新中心当前文档入口。"
+    },
+    {
+      "path": "docs/03-业务模块设计/毕业设计中心/README.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "毕业设计中心当前文档入口。"
+    },
+    {
+      "path": "docs/03-业务模块设计/岗位实习中心/README.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "岗位实习中心当前文档入口。"
+    },
+    {
+      "path": "docs/03-业务模块设计/跨模块融合/README.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前跨模块契约入口。"
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/testing/README.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前测试验收入口。"
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/testing/09-上线前验收清单.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前上线前业务验收入口。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/README.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前部署与上线唯一入口。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/上线候选版本检查.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前候选 commit 上线资格检查说明。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/生产环境变量清单.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前生产配置红线。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/生产上线runbook.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前正式发布、验收和失败处置流程。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/学校试点部署Runbook.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "第一所学校试点分阶段执行流程。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/10-2U4G非容器部署准备与执行手册.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前 2U4G Linux/systemd 现场手册。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/delivery/第一所学校试点交付清单.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "第一所学校交付物与共同准备清单。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/delivery/试点部署信息采集表.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "部署前非秘密信息采集模板。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/ops/备份恢复演练手册.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前备份恢复演练入口。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/ops/备份恢复演练报告模板.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前恢复演练证据模板。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/sales/06-当前阶段如实说明话术.md",
+      "status": "active",
+      "replacedBy": null,
+      "reason": "当前对外状态说明口径。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/01-部署总览.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/deploy/README.md",
+      "reason": "仍描述后端仅有工程壳，与当前 FastAPI/MySQL/systemd 发布事实冲突。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/02-服务器环境准备.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/deploy/10-2U4G非容器部署准备与执行手册.md",
+      "reason": "仍要求不安装后端环境。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/03-PC前端部署.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/deploy/生产上线runbook.md",
+      "reason": "静态站点单独手工发布不符合统一 release。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/04-miniapp小程序部署.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/deploy/生产上线runbook.md",
+      "reason": "仍要求保留 mock，不能用于生产。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/05-后端预留部署说明.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/deploy/生产上线runbook.md",
+      "reason": "后端已经不是预留状态。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/06-数据库冻结文档引用说明.md",
+      "status": "superseded",
+      "replacedBy": "deploy/README-data-governance.md",
+      "reason": "生产数据库现由 Alembic 与数据治理流程管理。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/07-Nginx部署说明.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/deploy/生产上线runbook.md",
+      "reason": "当前 Nginx、TLS 与四客户端验证由统一发布脚本治理。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/08-环境变量说明.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/deploy/生产环境变量清单.md",
+      "reason": "仍把后端环境变量标为预留。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/deploy/09-发布与回滚流程.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/deploy/生产上线runbook.md",
+      "reason": "手工覆盖静态文件和只切软链不能覆盖数据库与 uploads 恢复。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/delivery/03-验收测试清单.md",
+      "status": "superseded",
+      "replacedBy": "docs/06-开发施工与质量验收/testing/09-上线前验收清单.md",
+      "reason": "仍声称真实后端和数据库属于后续阶段。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/delivery/05-常见客户问题答复.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/sales/06-当前阶段如实说明话术.md",
+      "reason": "仍声称后端尚未接入。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/sales/03-不同角色演示话术.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/sales/06-当前阶段如实说明话术.md",
+      "reason": "仍使用 PostgreSQL、mock 后端等早期口径。"
+    },
+    {
+      "path": "docs/07-部署运维交付与商业化/ops/04-日志排查手册.md",
+      "status": "superseded",
+      "replacedBy": "docs/07-部署运维交付与商业化/deploy/生产上线runbook.md",
+      "reason": "仍把后端日志标为预留。"
+    }
+  ]
+}

@@ -1,6 +1,6 @@
 <template>
-  <ModulePageShell
-    title="学籍状态管理"
+  <ModulePageShell flat
+    title="学籍异动台账"
     :subtitle="'共 ' + pagination.total + ' 条变更记录 · 每次变更均需原因并留痕'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
@@ -11,6 +11,7 @@
     </template>
 
     <div class="mp-stack">
+      <p class="flat-note">查询结果 <strong>{{ pagination.total }}</strong></p>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -18,8 +19,7 @@
       <EmptyState
         v-else-if="!rows.length"
         title="暂无学籍变更记录"
-        description="可调整筛选条件，或点击右上角「发起状态变更」"
-      />
+        description="暂无已完成的学籍异动，可调整筛选条件"><template #actions><button class="mp-link" @click="reset">重置筛选</button></template></EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.studentName }}</div>
@@ -43,11 +43,7 @@
         </template>
       </DataTable>
 
-      <p class="mp-note">
-        本页为学籍异动台账（只读）：学籍状态的唯一写入口是「学籍异动」多级审批，
-        审批终审通过后状态才真正变更并在此显示。发起休学/复学/退学/保留学籍/留级/转班请前往
-        <button class="mp-link" @click="goApply">教务中心 › 学籍异动 › 发起异动</button>。
-      </p>
+      <p class="flat-note">学籍异动终审通过后记入本台账。<button class="mp-link" @click="goApply">发起学籍异动</button></p>
     </div>
 
     <!-- 发起 / 批量状态变更 -->

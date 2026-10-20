@@ -5,7 +5,10 @@ F4 助学金困难库在库→放行→GRANTED；F5 重复申请409；F6 越权�
 """
 from __future__ import annotations
 
-from affairs_contract_test_support import expire_publicity, ensure_owner_scope, ensure_workflow_assignees, post_versioned
+from affairs_contract_test_support import (
+    expire_publicity, ensure_owner_scope, ensure_role_user, ensure_workflow_assignees,
+    post_versioned, role_headers,
+)
 
 TID = 1000000000000000001
 BASE = "/api/v1/student-affairs"
@@ -19,14 +22,25 @@ def _hdr(client, login_name):
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import SchoolClass, StudentProfile, TeacherStudentScope
+    from app.models import College, Major, SchoolClass, StudentProfile, TeacherStudentScope
     db = get_sessionmaker()()
-    a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2101", grade="2021", status="ACTIVE")
-    b = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2102", grade="2021", status="ACTIVE")
+    college = College(
+        tenant_id=TID, college_name="奖助测试学院", code="FUNDING-TEST-COLLEGE", status="ACTIVE"
+    )
+    db.add(college); db.flush()
+    major = Major(
+        tenant_id=TID, college_id=college.id, major_name="奖助测试专业",
+        code="FUNDING-TEST-MAJOR", status="ACTIVE",
+    )
+    db.add(major); db.flush()
+    a = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2101", grade="2021", status="ACTIVE")
+    b = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2102", grade="2021", status="ACTIVE")
     db.add(a); db.add(b); db.flush()
     sa = StudentProfile(tenant_id=TID, student_no="A001", real_name="甲一", class_id=a.id,
+                        college_id=college.id, major_id=major.id,
                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
     sb = StudentProfile(tenant_id=TID, student_no="B001", real_name="乙一", class_id=b.id,
+                        college_id=college.id, major_id=major.id,
                         current_stage="ORIENTATION", student_status="NORMAL", status="ACTIVE")
     db.add(sa); db.add(sb); db.flush()
     db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
@@ -35,7 +49,15 @@ def _seed(db_mode):
     db.commit()
     ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id}
     db.close()
-    ensure_workflow_assignees([ids["sa"], ids["sb"]])
+    # 共享 SCHOOL_REVIEW 夹具继续保留 SCHOOL_ADMIN，供困难认定等非 Funding 流程使用；
+    # Funding 自己的校级终审必须额外存在真实学工业务受理人，禁止退回超级/系统管理员兜底。
+    ensure_workflow_assignees(
+        [ids["sa"], ids["sb"]],
+        nodes=("COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"),
+    )
+    ensure_role_user(
+        "STUDENT_AFFAIRS_ADMIN", login_name="sa_admin01", real_name="测试学工处管理员"
+    )
     return ids
 
 
@@ -70,9 +92,18 @@ def _make_difficult(client, hdr, sid):
     post_versioned(client, f"{BASE}/aid/applications/{aid_id}/publicity-confirm", headers=hdr)
 
 
-def _approve_to_publicity(client, hdr, app_id):
-    for _ in range(3):
-        post_versioned(client, f"{BASE}/funding/applications/{app_id}/review", headers=hdr, json={"action": "APPROVE"})
+def _approve_to_publicity(client, app_id):
+    actors = (
+        role_headers("COUNSELOR", login_name="counselor01", real_name="测试辅导员"),
+        role_headers("COLLEGE_ADMIN", login_name="college_admin01", real_name="测试学院管理员"),
+        role_headers("STUDENT_AFFAIRS_ADMIN", login_name="sa_admin01", real_name="测试学工处管理员"),
+    )
+    for actor in actors:
+        response = post_versioned(
+            client, f"{BASE}/funding/applications/{app_id}/review",
+            headers=actor, json={"action": "APPROVE"},
+        )
+        assert response.status_code == 200, response.text
 
 
 def test_f1_scholarship_apply_creates_workflow(client, db_mode):
@@ -100,14 +131,14 @@ def test_f1_scholarship_apply_creates_workflow(client, db_mode):
 
 def test_f2_full_flow_granted_360(client, db_mode):
     ids = _seed(db_mode)
-    hdr = _hdr(client, "school_admin01")
-    bid = _open_project_batch(client, hdr, "SCHOLARSHIP")
-    app_id = _fund_apply(client, hdr, bid, ids["sa"]).json()["data"]["applicationId"]
-    _approve_to_publicity(client, hdr, app_id)
-    d = client.get(f"{BASE}/funding/applications/{app_id}", headers=hdr).json()["data"]
+    admin = _hdr(client, "school_admin01")
+    bid = _open_project_batch(client, admin, "SCHOLARSHIP")
+    app_id = _fund_apply(client, admin, bid, ids["sa"]).json()["data"]["applicationId"]
+    _approve_to_publicity(client, app_id)
+    d = client.get(f"{BASE}/funding/applications/{app_id}", headers=admin).json()["data"]
     assert d["status"] == "PUBLICITY"
     expire_publicity("FundingApplication", app_id)
-    c = post_versioned(client, f"{BASE}/funding/applications/{app_id}/publicity-confirm", headers=hdr).json()
+    c = post_versioned(client, f"{BASE}/funding/applications/{app_id}/publicity-confirm", headers=admin).json()
     assert c["data"]["status"] == "GRANTED"
     from app.db.session import get_sessionmaker
     from app.models import StudentStageEvent
@@ -161,9 +192,8 @@ def test_f7_amount_desensitized_by_role(client, db_mode):
     assert any(float(a["amount"]) == 3000 for a in items)
 
 
-def test_f8_review_approve_without_workflow_instance_not_500(client, db_mode):
-    """历史欠账回归：无 workflow 实例的申请（如沙箱种子直接置 COUNSELOR_REVIEW，未走 apply()）
-    审核通过此前在 `instance_id=inst.id`（inst=None）处 AttributeError→500。现应正常推进状态机。"""
+def test_f8_review_without_workflow_fails_closed(client, db_mode):
+    """直接造出的评审态脏数据没有 workflow/task 时，不得绕过正式三级审批。"""
     ids = _seed(db_mode)
     from app.db.session import get_sessionmaker
     from app.models import FundingApplication, FundingBatch, FundingProject
@@ -176,12 +206,20 @@ def test_f8_review_approve_without_workflow_instance_not_500(client, db_mode):
     db.add(b); db.flush()
     x = FundingApplication(tenant_id=TID, batch_id=b.id, student_id=ids["sa"], apply_source="SELF",
                            project_type="GRANT", amount=3300, status="COUNSELOR_REVIEW",
-                           statement="家庭经济困难，申请国家助学金资助。")  # 注意：不设 workflow_instance_id
+                           statement="家庭经济困难，申请国家助学金资助。")
     db.add(x); db.commit()
     app_id = x.id
     db.close()
-    admin = _hdr(client, "school_admin01")
-    r = post_versioned(client, f"{BASE}/funding/applications/{app_id}/review", headers=admin,
-                    json={"action": "APPROVE"})
-    assert r.status_code == 200, f"无 workflow 实例的申请审核通过不应 500，实得 {r.status_code}"
-    assert r.json()["data"]["status"] == "COLLEGE_REVIEW"  # COUNSELOR_REVIEW → 下一节点
+
+    counselor = role_headers("COUNSELOR", login_name="counselor01", real_name="测试辅导员")
+    r = post_versioned(client, f"{BASE}/funding/applications/{app_id}/review", headers=counselor,
+                       json={"action": "APPROVE"})
+    assert r.status_code == 409, r.text
+    assert r.json()["bizCode"] == "DATA_CONFLICT"
+
+    db = get_sessionmaker()()
+    try:
+        row = db.get(FundingApplication, int(app_id))
+        assert row.status == "COUNSELOR_REVIEW"
+    finally:
+        db.close()

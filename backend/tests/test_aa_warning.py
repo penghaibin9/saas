@@ -60,10 +60,24 @@ def test_w2_warning_list_source(client, db_mode):
 def _seed_fail_with_counselor(db_mode, counselor_id):
     """建带辅导员的行政班 + 学生 + 2门挂科，用于验证预警→辅导员待办推送。"""
     from app.db.session import get_sessionmaker
-    from app.models import AcademicGrade, AcademicStudent, SchoolClass, StudentProfile
+    from app.models import AcademicGrade, AcademicStudent, SchoolClass, StudentProfile, User
     db = get_sessionmaker()()
+    counselor = db.get(User, int(counselor_id))
+    if counselor is None:
+        counselor = User(
+            id=int(counselor_id),
+            tenant_id=TID,
+            login_name=f"warning-counselor-{int(counselor_id)}",
+            real_name=f"预警辅导员{int(counselor_id)}",
+            password_hash="test-hash",
+            user_type="TEACHER",
+            status="ACTIVE",
+            must_change_password=False,
+        )
+        db.add(counselor)
+        db.flush()
     a = SchoolClass(tenant_id=TID, major_id=1, class_name="软件2602", grade="2026",
-                    status="ACTIVE", counselor_id=counselor_id)
+                    status="ACTIVE", counselor_id=counselor.id)
     db.add(a); db.flush()
     s = StudentProfile(tenant_id=TID, student_no="W900", real_name="预警乙", class_id=a.id,
                        current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE")
@@ -130,7 +144,11 @@ def test_w3_scan_pushes_counselor_todo_then_close_done(client, db_mode):
     _seed_fail_with_counselor(db_mode, 9527)
     hdr = _hdr(client, "school_admin01")
     r = client.post(f"{BASE}/warnings/scan", headers=hdr).json()["data"]
-    assert r["created"] == 1 and r["notified"] == 1  # 已推送责任辅导员
+    assert r["created"] == 1
+    # EffectiveGrade 流式扫描只承诺事务内创建 warning/todo/outbox；
+    # 最终消息投递由下面的 outbox 专项断言，不把“创建”冒充“已投递”。
+    assert r["notified"] is None
+    assert r["notificationState"] == "NOT_VERIFIED"
     wid = client.get(f"{BASE}/warnings?sourceCode=EXAM_FAIL",
                      headers=hdr).json()["data"]["items"][0]["warningId"]
     assert _todo_status(9527, wid) == "PENDING"

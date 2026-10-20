@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-08-30T10:47:00.0000000Z",
+  "wave": "W13",
+  "journey": "GJ-08",
+  "status": "STATIC_AND_BUILD_VERIFIED_RUNTIME_MYSQL_PENDING",
+  "outcome": "Enterprise evaluation, student self/enterprise/position evaluation, advisor evaluation, server-fact score compute, independent review, final publish, version-bound appeal, withdrawal and recompute now form one continuous 4+1 product flow. Old-placement enterprise evaluations cannot complete or score a new placement; clients cannot forge five score components; reviewed scores cannot bypass the audited return command; independent score archive has been removed from the product surface and corrected in verified help knowledge.",
+  "invariants": [
+    "Every enterprise evaluation freezes placementSnapshotId, enterpriseId and positionId from the exact current formal placement; current-task queries and score sources match all three fields.",
+    "A placement change preserves the old evaluation as historical evidence but creates a new evaluation task and rejects resubmit/review of the old placement as current truth.",
+    "School score readiness requires one SUBMITTED and APPROVED student evaluation with student enterprise/position ratings and a non-null advisor opinion; missing evaluation-chain facts leave the score incomplete.",
+    "The effective score compute command rejects checkinScore, weeklyScore, monthlyScore, enterpriseScore and schoolScore from clients. It derives suggested scores from authoritative process/evaluation facts; manual deltas require a reason and canonical evidence files.",
+    "A score moves PENDING_REVIEW to PENDING_PUBLISH through a distinct versioned review command, then PENDING_PUBLISH to PUBLISHED through a distinct final publish command.",
+    "A PENDING_PUBLISH score cannot be recomputed directly; it must first use the reasoned, versioned RETURN_RECALC command so the transition is explicit and audited.",
+    "Manual adjustment reviewer and adjuster use stable user IDs and must be different users; publish rechecks the review, source hash, evidence snapshots and ASSESS compliance.",
+    "Review, publish, withdraw and appeal decisions fail closed when the high-risk audit outbox is unhealthy, while domain trail facts are committed in the same database transaction.",
+    "A student appeal is a dedicated domain-bound work order that freezes scoreId and scoreVersion. Acceptance compares that exact published version, atomically withdraws it, and requires recompute, review and republish.",
+    "The tenant plus internship unique constraint permits only one FinalScore record; historical versions remain on that record and in immutable compute/audit snapshots.",
+    "Staff exposes missing, pending-calculate, pending-review, pending-publish and appeal queues with source-readiness indicators and persistent receipts; Student PC, both Mini surfaces and Enterprise Portal retain their server IDs and versions.",
+    "Scores have no independent archive action. The total internship archive is the only authority that freezes a published score and its source snapshot into the final Manifest."
+  ],
+  "surfaces": {
+    "staffScore": "frontend/src/modules/internship/views/ScoreView.vue",
+    "staffEnterpriseEvaluation": "frontend/src/modules/internship/views/EnterpriseEvalView.vue",
+    "staffStudentAdvisorEvaluation": "frontend/src/modules/internship/views/StudentEvalView.vue",
+    "studentPc": "student-portal/src/views/internship/InternshipView.vue",
+    "studentMini": "miniapp/src/pages/student/internship/self-eval/index.vue",
+    "teacherMini": "miniapp/src/pages/teacher/internship-score/index.vue",
+    "enterprisePortal": "enterprise-portal/src/views/EvaluationTaskListView.vue",
+    "enterpriseAuthority": "backend/app/modules/internship/services/internship_enterprise_collaboration_service.py",
+    "schoolEvaluationAuthority": "backend/app/modules/internship/services/internship_enterprise_eval_service.py and internship_student_eval_service.py",
+    "scoreAuthority": "backend/app/modules/internship/services/internship_score_fact_guard.py",
+    "appealAuthority": "backend/app/modules/internship/services/internship_score_appeal_service.py",
+    "migration": "backend/alembic/versions/20260830_internship_evaluation_placement_truth.py"
+  },
+  "verification": [
+    {
+      "command": "Python 3.12 pytest with explicit isolated TEST_DATABASE_URL, tests/test_internship_evaluation_score_appeal_static.py",
+      "cwd": "backend",
+      "result": "PASS 5/5; static test performs no database access"
+    },
+    {
+      "command": "node --test tests/internship.evaluation-score-appeal.contract.test.mjs",
+      "cwd": "frontend",
+      "result": "PASS 4/4"
+    },
+    {
+      "command": "node --test tests/internship-v8-evaluation-placement-contract.test.mjs",
+      "cwd": "enterprise-portal",
+      "result": "PASS 2/2"
+    },
+    {
+      "command": "node --test tests/internship-v8-evaluation-score-contract.test.mjs",
+      "cwd": "miniapp",
+      "result": "PASS 2/2"
+    },
+    {
+      "command": "node --test tests/internship-v8-evaluation-appeal-contract.test.mjs",
+      "cwd": "student-portal",
+      "result": "PASS 2/2"
+    },
+    {
+      "command": "npm test",
+      "cwd": "frontend",
+      "result": "PASS 662/662"
+    },
+    {
+      "command": "npm test",
+      "cwd": "enterprise-portal",
+      "result": "PASS 97/97"
+    },
+    {
+      "command": "npm test",
+      "cwd": "student-portal",
+      "result": "PASS 108/108"
+    },
+    {
+      "command": "npm test",
+      "cwd": "miniapp",
+      "result": "PASS 212/212"
+    },
+    {
+      "command": "npm run lint",
+      "cwd": "frontend, enterprise-portal and student-portal",
+      "result": "PASS 0 errors; Staff has 2 and Student Portal has 5 pre-existing warnings outside the W13 changes"
+    },
+    {
+      "command": "npm run build",
+      "cwd": "frontend, enterprise-portal and student-portal",
+      "result": "PASS all three; Staff prerendered 21 routes; existing project-wide CSS import-order and chunk warnings only"
+    },
+    {
+      "command": "npm run build:h5 and npm run build:mp-weixin",
+      "cwd": "miniapp",
+      "result": "PASS both targets"
+    },
+    {
+      "command": "python -m py_compile for all changed W13 backend modules, migration and fixtures",
+      "result": "PASS"
+    },
+    {
+      "command": "git diff --check and JSON parse",
+      "result": "PASS; line-ending notices only"
+    }
+  ],
+  "runtimePending": {
+    "reason": "The isolated internship-v8-mysql container on 127.0.0.1:43327 still does not complete MySQL handshakes and Docker Engine previously returned HTTP 500 for a targeted container restart. Backend runtime tests correctly refuse SQLite; unrelated Docker Desktop workloads must not be restarted.",
+    "requiredReplay": [
+      "Submit an enterprise evaluation for the current formal placement, change placement, and verify the old evaluation remains historical while the new placement returns a fresh pending task and cannot score from the old row.",
+      "Complete Student PC or Student Mini self/enterprise/position evaluation, add advisor opinion, approve it, and verify sourceReadiness transitions from missing to complete.",
+      "Attempt raw component-score submission and verify 400 with no score/version/audit mutation; compute from facts and verify the frozen source hash and component values in MySQL.",
+      "Attempt publish before review, recompute after review, same-user manual-adjustment review, incomplete review and stale-source publish; verify every negative is fail-closed with no partial writes.",
+      "Review to PENDING_PUBLISH, publish, submit an appeal bound to scoreId/version, accept it, and verify one FinalScore row moves to WITHDRAWN before recompute/review/republish.",
+      "Inject DEAD/stalled audit health and verify review, publish, withdraw and appeal decision return 503 with zero business writes.",
+      "Replay authenticated Staff PC, Student PC, Student Mini, Teacher Mini and Enterprise Portal normal-entry paths at PC and 390px with network/console inspection."
+    ]
+  }
+}

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
 
 const clientUrl = new URL('../src/services/http/client.js', import.meta.url)
+const e2eLoginPageUrl = new URL('../../e2e/pages/login.page.mjs', import.meta.url)
 
 // 本仓 core.autocrlf=true 且无 .gitattributes：Windows 检出把源码换成 CRLF，
 // 而下面的结构性正则按 LF 书写。不归一化则这些会话竞态守卫在 Windows 本地
@@ -10,6 +11,26 @@ const clientUrl = new URL('../src/services/http/client.js', import.meta.url)
 async function readSource(url) {
   return (await readFile(url, 'utf8')).split('\r\n').join('\n')
 }
+
+test('真实HTTP错误状态与业务码独立保留，500正文409不得冒充明确拒绝', async () => {
+  const source = await readSource(clientUrl)
+  const code = source.slice(source.indexOf('async function rawRequest('), source.indexOf('function newBrowserSessionId('))
+  let status = 500, payload = { code: 409001, bizCode: 'DATA_CONFLICT', message: 'conflict' }
+  const env = {
+    fetch: async () => ({ status, json: async () => payload }),
+    state: { token: '' }, REQUEST_TIMEOUT_MS: 500,
+    isBackendOffline: () => false, canUseMockFallback: () => false,
+    isWriteMethod: method => method !== 'GET', API_BASE_URL: '', API_PREFIX: '',
+    normalizeUiError: value => ({ userMessage: value.message }),
+    clearOfflineState() {}, markOffline() {}, transportFailure: value => value,
+  }
+  const raw = new Function(...Object.keys(env), code + '; return rawRequest')(...Object.values(env))
+  await assert.rejects(raw('/grade', { method: 'POST' }), e => e.httpStatus === 500 && e.code === 409001)
+  status = 409
+  await assert.rejects(raw('/grade', { method: 'POST' }), e => e.httpStatus === 409 && e.bizCode === 'DATA_CONFLICT')
+  status = 200; payload = { code: 0, data: { taskId: '123' } }
+  assert.deepEqual(await raw('/grade'), { taskId: '123' })
+})
 
 test('迟到的旧 refresh 不能覆盖或清空身份切换后的新会话', async () => {
   const source = await readSource(clientUrl)
@@ -75,7 +96,7 @@ test('旧 access token 的 401 不得借重新登录或切换角色后的新身�
 
 test('上传使用启动时 token，身份切换后的迟到结果必须作废', async () => {
   const source = await readSource(clientUrl)
-  const uploadBlock = source.match(/export async function requestUpload\(path, file, fieldName = 'file'\) \{([\s\S]*?)\n\}\n\nexport async function requestBlob/)
+  const uploadBlock = source.match(/export async function requestUpload\(path, file, fieldName = 'file', \{ timeoutMs = 15000 \} = \{\}\) \{([\s\S]*?)\n\}\n\nexport async function requestBlob/)
   assert.ok(uploadBlock, 'requestUpload() block must exist')
   assert.match(uploadBlock[1], /const generationAtStart = state\.sessionGeneration/)
   assert.match(uploadBlock[1], /const accessTokenAtStart = state\.token/)
@@ -106,7 +127,7 @@ test('身份切换在途时禁止旧页面新发业务请求或 refresh', async 
   assert.match(switchBlock[1], /try \{[\s\S]*?rawRequest\('\/auth\/browser-switch-role'[\s\S]*?\} finally \{\s*state\.roleSwitchInFlight = false/)
 
   const requestBlock = source.match(/export async function request\(path, options = \{\}\) \{([\s\S]*?)\n\}\n\nexport async function logoutRemote/)
-  const uploadBlock = source.match(/export async function requestUpload\(path, file, fieldName = 'file'\) \{([\s\S]*?)\n\}\n\nexport async function requestBlob/)
+  const uploadBlock = source.match(/export async function requestUpload\(path, file, fieldName = 'file', \{ timeoutMs = 15000 \} = \{\}\) \{([\s\S]*?)\n\}\n\nexport async function requestBlob/)
   const blobBlock = source.match(/export async function requestBlob\(path,[\s\S]*?\{([\s\S]*?)\n\}\n\nexport function withFallback/)
   for (const [name, block] of [['request', requestBlock], ['upload', uploadBlock], ['blob', blobBlock]]) {
     assert.ok(block, `${name} block must exist`)
@@ -129,4 +150,19 @@ test('browser refresh is bound to a nonsecret per-tab session id', async () => {
   assert.match(source, /loginWithPassword[\s\S]*?headers: browserSessionHeaders\(\)/)
   assert.match(source, /switchAuthContext[\s\S]*?headers: browserSessionHeaders\(\)/)
   assert.match(source, /logoutRemote[\s\S]*?headers: browserSessionHeaders\(\)/)
+})
+
+test('E2E staff role switch waits for the new document refresh rotation before a deep link', async () => {
+  const source = await readSource(e2eLoginPageUrl)
+  const switchBlock = source.match(/async switchRole\(rolePattern\) \{([\s\S]*?)\n {2}\}\n\}\n\nexport class StudentLoginPage/)
+  assert.ok(switchBlock, 'StaffLoginPage.switchRole() block must exist')
+
+  const capture = switchBlock[1].indexOf('const bootstrapRefreshPromise = this.page.waitForResponse(')
+  const click = switchBlock[1].indexOf('await target.click()')
+  const navigation = switchBlock[1].indexOf('await navigationPromise')
+  const settle = switchBlock[1].indexOf('const bootstrapRefresh = await bootstrapRefreshPromise')
+  assert.ok(capture >= 0 && click >= 0 && navigation >= 0 && settle >= 0)
+  assert.ok(capture < click, 'post-switch refresh must be captured before the hard navigation starts')
+  assert.ok(navigation < settle, 'the helper must first enter the new document, then finish its refresh rotation')
+  assert.match(switchBlock[1], /bootstrapRefresh\.ok\(\)/)
 })

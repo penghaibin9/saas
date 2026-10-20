@@ -1,12 +1,12 @@
 <template>
   <ModulePageShell
+    class="enterprise-detail"
     :title="detail ? detail.name : '企业详情'"
     :subtitle="detail ? (detail.creditCode || '无信用代码') + ' · ' + detail.sourceLabel : '加载中'"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <button class="mp-btn" @click="$router.push('/admin/internship/enterprises')">← 返回企业库</button>
+      <AppButton variant="ghost" @click="goBack">{{ backLocation ? '返回上一页' : '返回企业库' }}</AppButton>
+      <AppButton v-if="detail && !loading && !error && can('editEnterprise') && detail.coopStatus !== 'ARCHIVED'" variant="primary" @click="$router.push({ path: `/admin/internship/enterprises/${detail.id}/edit`, query: $route.query })">编辑资料</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
@@ -17,17 +17,21 @@
         <span v-if="detail.blacklist" class="ed-bl">黑名单 · {{ detail.blacklistReason }}</span>
         <AppStatusTag :type="detail.qualificationStatus === 'PASSED' ? 'success' : (detail.qualificationStatus === 'FAILED' ? 'danger' : 'default')">{{ detail.qualificationLabel }}</AppStatusTag>
         <div class="ed-head__spacer" />
+        <RouterLink v-if="tab !== 'coop'" :to="sectionLink('coop')" class="mp-link">{{ detail.coopStatus === 'PENDING' ? '办理资质审核' : '查看合作与资质' }}</RouterLink>
+      </div>
+
+      <nav class="ed-tabs" aria-label="企业详情分区">
+        <RouterLink v-for="t in tabs" :key="t.key" :to="sectionLink(t.key)" class="ed-tabs__item" :class="{ 'is-active': tab === t.key }" :aria-current="tab === t.key ? 'page' : undefined">{{ t.label }}</RouterLink>
+      </nav>
+
+      <div v-if="tab === 'coop'" class="ed-head">
         <AppPermissionButton v-if="detail.coopStatus === 'PENDING'" code="reviewEnterprise" variant="primary" :allowed="can('reviewEnterprise')" :reason="reason('reviewEnterprise')" @click="askReview('APPROVE')">审核通过</AppPermissionButton>
         <AppPermissionButton v-if="detail.coopStatus === 'PENDING'" code="reviewEnterprise" variant="danger" :allowed="can('reviewEnterprise')" :reason="reason('reviewEnterprise')" @click="askReview('REJECT')">审核驳回</AppPermissionButton>
-        <AppButton v-else-if="detail.coopStatus === 'ACTIVE'" variant="secondary" @click="askCoop('SUSPEND')">暂停合作</AppButton>
-        <AppButton v-else-if="detail.coopStatus === 'SUSPENDED'" variant="secondary" @click="askCoop('RESUME')">恢复合作</AppButton>
+        <AppButton v-else-if="detail.coopStatus === 'ACTIVE' && canManageCooperation" variant="secondary" @click="askCoop('SUSPEND')">暂停合作</AppButton>
+        <AppButton v-else-if="detail.coopStatus === 'SUSPENDED' && canManageCooperation" variant="secondary" @click="askCoop('RESUME')">恢复合作</AppButton>
         <AppPermissionButton v-if="!detail.blacklist && detail.coopStatus !== 'ARCHIVED'" code="blacklistEnterprise" variant="danger" :allowed="can('blacklistEnterprise')" :reason="reason('blacklistEnterprise')" @click="askBlacklist(true)">拉黑</AppPermissionButton>
         <AppPermissionButton v-if="detail.blacklist" code="blacklistEnterprise" variant="secondary" :allowed="can('blacklistEnterprise')" :reason="reason('blacklistEnterprise')" @click="askBlacklist(false)">移出黑名单</AppPermissionButton>
       </div>
-
-      <nav class="ed-tabs">
-        <button v-for="t in tabs" :key="t.key" class="ed-tabs__item" :class="{ 'is-active': tab === t.key }" @click="tab = t.key">{{ t.label }}</button>
-      </nav>
 
       <!-- 主档 -->
       <section v-show="tab === 'basic'" class="mp-card">
@@ -74,10 +78,12 @@
       <section v-show="tab === 'positions'" class="mp-card">
         <div class="mp-card__head">
           <span class="mp-card__title">企业岗位（{{ detail.positionSummary ? detail.positionSummary.total : positions.length }} 个 · 已上架 {{ detail.positionSummary ? detail.positionSummary.published : 0 }}）</span>
-          <button class="mp-btn mp-btn--primary mp-btn--sm" @click="$router.push('/admin/internship/positions')">去岗位库</button>
+          <RouterLink class="mp-btn mp-btn--primary mp-btn--sm" :to="{ path: '/admin/internship/positions', query: { batchId: $route.query.batchId, companyId: detail.id } }">当前批次岗位库</RouterLink>
         </div>
         <div class="mp-card__body">
-          <EmptyState v-if="!positions.length" title="该企业暂无岗位" description="到岗位库为该企业新增实习岗位" />
+          <LoadingState v-if="positionsLoading" />
+          <ErrorState v-else-if="positionsError" :description="positionsError" @retry="loadPositions" />
+          <EmptyState v-else-if="!positions.length" title="该企业暂无岗位" description="到岗位库为该企业新增实习岗位" />
           <table v-else class="ed-tbl">
             <thead><tr><th>岗位</th><th>专业要求</th><th>容量</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>
@@ -85,7 +91,7 @@
                 <td>{{ p.title }}</td><td>{{ p.majorRequirement || '不限' }}</td>
                 <td>{{ p.allocatedCount }}/{{ p.headcount }}</td>
                 <td><AppStatusTag :type="p.statusTone">{{ p.statusLabel }}</AppStatusTag></td>
-                <td><button class="mp-link" @click="$router.push('/admin/internship/positions/' + p.id)">详情</button></td>
+                <td><RouterLink class="mp-link" :to="{ path: '/admin/internship/positions/' + p.id, query: { batchId: p.batchId || $route.query.batchId, companyId: detail.id, returnTo: $route.fullPath } }">详情</RouterLink></td>
               </tr>
             </tbody>
           </table>
@@ -101,24 +107,23 @@
             variant="secondary" size="sm" @click="openInspectionCreate">＋ 登记考察</AppPermissionButton>
         </div>
         <div class="mp-card__body">
-          <div v-if="inspectionsError" class="ed-state is-err">{{ inspectionsError }}
+          <LoadingState v-if="inspectionsLoading" />
+          <div v-else-if="inspectionsError" class="ed-state is-err">{{ inspectionsError }}
             <button type="button" class="mp-link" @click="loadInspections">重试</button>
           </div>
           <p v-else-if="!inspections.length" class="ed-state">
-            暂无考察记录。企业准入有效期由考察审核结论写入，通过后企业才可继续接收实习生。
+            暂无考察记录。请根据本批次要求登记并提交考察，审核通过后更新企业准入有效期。
           </p>
           <table v-else class="ed-tbl">
-            <thead><tr><th>考察方式</th><th>考察日期</th><th>考察人</th><th>结论</th><th>准入有效期</th><th>状态</th><th>审核人</th><th>操作</th></tr></thead>
+            <thead><tr><th>考察记录</th><th>结论</th><th>准入有效期至</th><th>状态</th><th>操作</th></tr></thead>
             <tbody>
               <tr v-for="x in inspections" :key="x.id">
-                <td>{{ x.inspectionTypeLabel || x.inspectionType }}</td>
-                <td>{{ x.inspectionDate || '—' }}</td>
-                <td>{{ x.inspectors || '—' }}</td>
+                <td><RouterLink class="mp-link" :to="inspectionLink(x.id)">{{ x.inspectionTypeLabel || x.inspectionType }}</RouterLink><small class="ed-subline">{{ dateTime(x.inspectionDate) }} · {{ x.inspectors || '未登记人员' }}</small></td>
                 <td class="ed-cell-wrap">{{ x.conclusion || '—' }}</td>
-                <td>{{ x.validUntil || '—' }}</td>
-                <td><AppStatusTag :status="x.status">{{ x.statusLabel || x.status }}</AppStatusTag></td>
-                <td>{{ x.reviewedByName || '—' }}</td>
+                <td>{{ dateTime(x.validUntil, '未设置到期日') }}</td>
+                <td><AppStatusTag :type="inspectionTone(x.status)">{{ recordStatusLabel(x.status, x.statusLabel) }}</AppStatusTag><small v-if="x.reviewedByName" class="ed-subline">{{ x.reviewedByName }}</small></td>
                 <td class="ed-ops">
+                  <RouterLink class="mp-link" :to="inspectionLink(x.id)">{{ x.status === 'DRAFT' && canInspect ? '编辑' : '详情' }}</RouterLink>
                   <AppPermissionButton v-if="x.status === 'DRAFT'" code="internship.enterprise.inspection.manage"
                     :allowed="canInspect" variant="ghost" size="sm"
                     @click="openInspectionAction(x, 'submit')">提交审核</AppPermissionButton>
@@ -130,13 +135,17 @@
                       :allowed="canInspect" variant="ghost" size="sm" :danger="true"
                       @click="openInspectionAction(x, 'reject')">驳回</AppPermissionButton>
                   </template>
-                  <span v-if="!['DRAFT', 'SUBMITTED'].includes(x.status)" class="ed-muted">—</span>
                 </td>
               </tr>
             </tbody>
           </table>
         </div>
       </section>
+
+      <AppInlineAlert v-if="inspectionRequested && !inspectionsLoading && !inspectionsError && !inspectionForm" type="warning" title="无法打开这条考察" description="记录不属于当前企业，或你没有登记权限。请从本企业考察列表重新选择。" />
+      <EnterpriseInspectionForm v-if="inspectionForm" :key="`${detail.id}:${$route.query.inspectionId}`"
+        :company-id="String(detail.id)" :company-name="detail.name" :batch-id="String($route.query.batchId || '')"
+        :record="inspectionForm.record" :can-manage="canInspect" @close="closeInspectionForm" @saved="inspectionSaved" />
 
       <section v-show="tab === 'audit'" class="mp-card">
         <div class="mp-card__body">
@@ -190,7 +199,7 @@
       :visible="true"
       :title="inspectionDialog.title"
       :message="inspectionDialog.message"
-      :danger="inspectionDialog.danger"
+      :type="inspectionDialog.danger ? 'danger' : 'primary'"
       :confirm-text="inspectionDialog.confirmText"
       :require-reason="inspectionDialog.requireReason"
       :reason-label="inspectionDialog.reasonLabel"
@@ -199,6 +208,12 @@
       @cancel="inspectionDialog = null"
       @confirm="onInspectionConfirm"
     >
+      <AppFormItem v-if="inspectionDialog.mode === 'approve'" v-slot="{ id }" label="准入有效期至" hint="按审核结论确认；留空使用登记时的有效期">
+        <AppTextInput :id="id" v-model="inspectionValidUntil" type="datetime-local" :disabled="inspectionActing" />
+      </AppFormItem>
+      <AppFormItem v-if="inspectionDialog.mode === 'approve'" v-slot="{ id }" label="审核意见（选填）">
+        <AppTextInput :id="id" v-model="inspectionReviewComment" :disabled="inspectionActing" />
+      </AppFormItem>
       <ConflictNotice :state="conflict" />
     </AppConfirmDialog>
   </ModulePageShell>
@@ -220,6 +235,8 @@ import { canCode } from '@/modules/internship/composables/permission'
 import ConflictNotice from './components/ConflictNotice.vue'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
+import EnterpriseInspectionForm from './components/EnterpriseInspectionForm.vue'
 
 const EMPTY_CFORM = () => ({ contactType: 'CONTACT', name: '', title: '', phone: '', email: '', isPrimary: false })
 const CONTACT_TYPE_OPTIONS = [{ label: '联系人', value: 'CONTACT' }, { label: '企业导师', value: 'MENTOR' }]
@@ -229,12 +246,12 @@ export default {
   components: {
     ModulePageShell, AppStatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppButton, AppConfirmDialog,
     AppPermissionButton, AppAuditTrail, AppInlineAlert, AppDescriptionList, AppForm, AppFormItem, AppTextInput, AppSelect,
-    ConflictNotice
+    ConflictNotice, EnterpriseInspectionForm
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true, error: '', submitting: false, detail: null, tab: 'basic',
+      loading: true, error: '', submitting: false, detail: null, loadSequence: 0,
       tabs: [
         { key: 'basic', label: '主档' },
         { key: 'contacts', label: '联系人与导师' },
@@ -243,22 +260,42 @@ export default {
         { key: 'inspections', label: '考察与准入' },
         { key: 'audit', label: '审计记录' }
       ],
-      positions: [], positionsLoaded: false,
+      positions: [], positionsLoading: false, positionsError: '',
       // 企业考察：后端 create/submit/review 一直都在（含并发保护与跨租户守卫），
       // 但此前前端没有任何入口，等于建好的准入链路没人能用。
-      inspections: [], inspectionsLoaded: false, inspectionsError: '',
+      inspections: [], inspectionsLoaded: false, inspectionsLoading: false, inspectionsError: '',
       inspectionActing: false, conflict: emptyConflict(),
-      inspectionDialog: null,
+      inspectionDialog: null, inspectionValidUntil: '', inspectionReviewComment: '',
       contactDrawer: false, editingContact: null, cform: EMPTY_CFORM(), cformError: '',
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, extra: null }
     }
   },
   computed: {
+    tab() { return this.tabs.some((item) => item.key === this.$route.query.section) ? this.$route.query.section : 'basic' },
+    listQuery() {
+      const { section: _section, inspectionId: _inspectionId, returnTo: _returnTo, ...query } = this.$route.query
+      return query
+    },
+    backLocation() {
+      const ref = this.$route.query.returnTo
+      if (typeof ref !== 'string' || !/^\/admin\/internship\/(?:students|positions)(?:\/\d+)?(?:\?|$)/.test(ref)) return ''
+      const batchId = this.detail?.batchId || this.$route.query.batchId
+      const refBatchId = new URL(ref, 'https://local.invalid').searchParams.get('batchId')
+      return !batchId || !refBatchId || refBatchId === String(batchId) ? ref : ''
+    },
+    canManageCooperation() { return canCode(this.ctx, 'internship.enterprise.manage') },
     perms() { return this.ctx.permissionActions || {} },
     /** 企业考察用的是后端权限码（require_permission 同一套），
      *  与本页其它按钮走的 permissionActions 动作名不是一个体系，不能混用。 */
     canInspect() { return canCode(this.ctx, 'internship.enterprise.inspection.manage') },
-    contacts() { return this.detail ? this.detail.contacts : [] },
+    inspectionRequested() { return this.tab === 'inspections' && !!this.$route.query.inspectionId },
+    inspectionForm() {
+      if (!this.inspectionRequested || !this.detail || this.loading) return null
+      if (this.$route.query.inspectionId === 'new') return this.canInspect ? { record: null } : null
+      const record = this.inspections.find((row) => String(row.id) === String(this.$route.query.inspectionId))
+      return record ? { record } : null
+    },
+    contacts() { return this.detail?.contacts || [] },
     basicFields() {
       const d = this.detail
       return [
@@ -275,10 +312,11 @@ export default {
       const items = [
         { label: '合作状态', value: d.coopStatusLabel },
         { label: '资质核验', value: d.qualificationLabel },
+        { label: '企业准入有效期至', value: formatDateTime(d.accessValidUntil, '未设置到期日') },
         { label: '合作级别', value: d.cooperationLevel },
         { label: '累计实习生', value: String(d.internCount) },
         { label: '审核人', value: d.reviewBy },
-        { label: '审核时间', value: d.reviewAt },
+        { label: '审核时间', value: formatDateTime(d.reviewAt) },
         { key: 'reviewComment', label: '审核意见', value: d.reviewComment, span: 2 }
       ]
       if (d.blacklist) items.push({ key: 'blacklistReason', label: '黑名单原因', value: d.blacklistReason, span: 2 })
@@ -291,65 +329,107 @@ export default {
     contactTypeOptions() { return CONTACT_TYPE_OPTIONS }
   },
   created() { this.load() },
+  mounted() { this.focusHeading() },
+  beforeUnmount() { this.loadSequence++ },
   watch: {
+    '$route.params.id'() {
+      this.contactDrawer = false; this.editingContact = null; this.cform = EMPTY_CFORM(); this.cformError = ''
+      this.inspectionDialog = null; this.conflict = emptyConflict(); this.confirm.visible = false
+      this.load()
+      this.focusHeading()
+    },
     tab(next) {
       // 考察记录按企业查，切到该页签时才拉，避免每次进详情都多打一个接口
-      if (next === 'inspections' && !this.inspectionsLoaded) this.loadInspections()
+      if (next === 'inspections' && this.detail && !this.inspectionsLoaded && !this.inspectionsLoading) this.loadInspections()
     }
   },
   methods: {
+    goBack() {
+      if (this.backLocation) return this.$router.push(this.backLocation)
+      this.$router.push({ path: '/admin/internship/enterprises', query: this.listQuery })
+    },
+    focusHeading() {
+      this.$nextTick(() => {
+        const heading = this.$el?.querySelector('h1')
+        if (!heading) return
+        heading.setAttribute('tabindex', '-1')
+        heading.style.scrollMarginTop = '170px'
+        heading.focus({ preventScroll: true })
+        heading.scrollIntoView({ block: 'start', behavior: 'instant' })
+      })
+    },
+    dateTime: formatDateTime,
+    inspectionTone(status) { return ({ DRAFT: 'default', SUBMITTED: 'warning', APPROVED: 'success', REJECTED: 'danger', EXPIRED: 'warning' })[status] || 'default' },
+    inspectionLink(inspectionId) { return { path: this.$route.path, query: { ...this.$route.query, section: 'inspections', inspectionId } } },
+    closeInspectionForm() {
+      const { inspectionId: _inspectionId, ...query } = this.$route.query
+      this.$router.replace({ path: this.$route.path, query })
+    },
+    async inspectionSaved() { this.closeInspectionForm(); await this.loadInspections(); toast.success('考察草稿已保存，可继续提交审核') },
+    sectionLink(section) {
+      const { inspectionId, ...query } = this.$route.query
+      return { path: this.$route.path, query: { ...query, section, ...(section === 'inspections' && inspectionId ? { inspectionId } : {}) } }
+    },
+    recordStatusLabel(status, providedLabel = '') { return providedLabel || (status ? '状态待确认' : '—') },
     can(key) { const p = this.perms[key]; return !!(p && p.allowed) },
     async loadInspections() {
+      const sequence = this.loadSequence
+      const id = this.$route.params.id
+      this.inspectionsLoading = true
       this.inspectionsError = ''
-      const res = await complianceApi.listInspections(this.$route.params.id)
-      this.inspectionsLoaded = true
+      const res = await complianceApi.listInspections(id)
+      if (sequence !== this.loadSequence || id !== this.$route.params.id) return
+      this.inspectionsLoading = false
+      this.inspectionsLoaded = res.code === 0
       if (res.code !== 0) { this.inspectionsError = res.message || '考察记录加载失败'; return }
       this.inspections = Array.isArray(res.data) ? res.data : (res.data && res.data.list) || []
     },
     openInspectionCreate() {
-      this.conflict = emptyConflict()
-      this.inspectionDialog = {
-        mode: 'create', id: '', title: '登记企业考察',
-        message: '登记一次企业考察；提交并通过后才会写入企业准入有效期。',
-        confirmText: '登记', requireReason: true, reasonLabel: '考察结论（≥5字）', danger: false
-      }
+      if (!this.canInspect || this.loading || !this.detail) return
+      this.$router.push(this.inspectionLink('new'))
     },
     openInspectionAction(row, action) {
+      if (!this.canInspect || this.loading || !this.detail) return
       this.conflict = emptyConflict()
       const map = {
         submit: { title: '提交考察审核', message: '提交后进入审核环节，草稿不可再改。',
                   confirmText: '提交', requireReason: false, reasonLabel: '', danger: false },
-        approve: { title: '通过企业考察', message: '通过后将写入企业准入有效期，企业方可继续接收实习生。',
+        approve: { title: '通过企业考察', message: '审核通过后更新企业准入有效期；岗位发布仍须满足本批次的其他条件。未设置到期日不会自动推导为永久准入。',
                    confirmText: '通过', requireReason: false, reasonLabel: '审核意见（选填）', danger: false },
         reject: { title: '驳回企业考察', message: '驳回后企业准入不会更新，请写明原因。',
                   confirmText: '驳回', requireReason: true, reasonLabel: '驳回原因（≥5字）', danger: true }
       }[action]
-      this.inspectionDialog = { mode: action, id: row.id, ...map }
+      this.inspectionValidUntil = formatDateTime(row.validUntil, '').replace(' ', 'T')
+      this.inspectionReviewComment = ''
+      this.inspectionDialog = { mode: action, id: row.id, expectedVersion: row.version, ...map }
     },
     async onInspectionConfirm({ reason }) {
       const d = this.inspectionDialog
-      if (!d) return
+      if (!d || this.inspectionActing || !this.canInspect || this.loading || !this.detail) return
+      const sequence = this.loadSequence
       this.inspectionActing = true
       let res
       try {
-        if (d.mode === 'create') {
-          res = await complianceApi.createInspection({
-            companyId: this.$route.params.id, inspectionType: 'DOCUMENT', conclusion: reason
-          })
-        } else if (d.mode === 'submit') {
-          res = await complianceApi.submitInspection(d.id)
+        if (d.mode === 'submit') {
+          res = await complianceApi.submitInspection(d.id, { expectedVersion: d.expectedVersion })
         } else {
-          res = await complianceApi.reviewInspection(d.id, d.mode, { comment: reason || '' })
+          res = await complianceApi.reviewInspection(d.id, d.mode, {
+            expectedVersion: d.expectedVersion, comment: d.mode === 'approve' ? this.inspectionReviewComment : reason || '',
+            validUntil: d.mode === 'approve' && this.inspectionValidUntil ? new Date(this.inspectionValidUntil).toISOString() : null
+          })
         }
+      } catch (error) {
+        res = { code: -1, message: error.message || '考察办理失败，请重试' }
       } finally {
         this.inspectionActing = false
       }
+      if (sequence !== this.loadSequence) return
       if (isConflict(res)) {
         // 两个管理员同时审同一条考察时，后端条件更新让输家拿 409。
         // 弹窗不关、填的意见不动，把最新状态摆出来让他自己决定。
-        this.conflict = await captureConflict({
+        const conflict = await captureConflict({
           res,
-          kept: reason || '',
+          kept: d.mode === 'approve' ? this.inspectionReviewComment : reason || '',
           refresh: () => this.loadInspections(),
           latest: () => {
             const fresh = this.inspections.find((x) => String(x.id) === String(d.id))
@@ -361,25 +441,40 @@ export default {
             ]
           }
         })
+        if (sequence === this.loadSequence) this.conflict = conflict
         return
       }
       if (!res || res.code !== 0) return toast.error((res && res.message) || '操作失败')
       this.inspectionDialog = null
       this.conflict = emptyConflict()
       toast.success('操作成功，已写审计')
-      await this.loadInspections()
+      await this.load()
     },
     reason(key) { const p = this.perms[key]; return p && !p.allowed ? p.reason : '' },
     async load() {
-      this.loading = true; this.error = ''
-      const res = await internshipApi.getEnterpriseDetail(this.$route.params.id)
+      const sequence = ++this.loadSequence
+      const id = this.$route.params.id
+      this.loading = true; this.error = ''; this.detail = null
+      this.positions = []; this.positionsError = ''; this.positionsLoading = false
+      this.inspections = []; this.inspectionsLoaded = false; this.inspectionsLoading = false; this.inspectionsError = ''
+      const res = await internshipApi.getEnterpriseDetail(id)
+      if (sequence !== this.loadSequence || id !== this.$route.params.id) return
       if (res.code === 0) this.detail = res.data
-      else this.error = res.message
+      else this.error = res.message || '企业详情加载失败'
       this.loading = false
       if (res.code === 0) {
-        const pr = await positionApi.getPositions({ companyId: this.$route.params.id, page: 1, pageSize: 50 })
-        if (pr.code === 0) this.positions = pr.data.list
+        await Promise.all([this.loadPositions(), this.tab === 'inspections' ? this.loadInspections() : Promise.resolve()])
       }
+    },
+    async loadPositions() {
+      const sequence = this.loadSequence
+      const id = this.$route.params.id
+      this.positionsLoading = true; this.positionsError = ''
+      const res = await positionApi.getPositions({ companyId: id, page: 1, pageSize: 50 })
+      if (sequence !== this.loadSequence || id !== this.$route.params.id) return
+      this.positionsLoading = false
+      if (res.code === 0) this.positions = res.data.list || []
+      else this.positionsError = res.message || '企业岗位加载失败'
     },
     openContact(c) {
       if (!this.can('manageEnterpriseContact')) return toast.error(this.reason('manageEnterpriseContact'))
@@ -389,12 +484,15 @@ export default {
       this.contactDrawer = true
     },
     async submitContact() {
+      if (this.submitting || this.loading || !this.detail || !this.can('manageEnterpriseContact')) return
+      const sequence = this.loadSequence
       if (!this.cform.name) { this.cformError = '姓名必填'; return }
       this.submitting = true
       try {
         const res = this.editingContact
           ? await internshipApi.updateEnterpriseContact(this.detail.id, this.editingContact.id, { ...this.cform, expectedVersion: this.editingContact.version })
           : await internshipApi.addEnterpriseContact(this.detail.id, this.cform)
+        if (sequence !== this.loadSequence) return
         if (res.code === 0) { toast.success('已保存'); this.contactDrawer = false; this.load() }
         else this.cformError = res.message
       } finally { this.submitting = false }
@@ -421,6 +519,7 @@ export default {
       }
     },
     askCoop(action) {
+      if (!this.canManageCooperation) return toast.error('当前角色没有企业合作维护权限')
       const m = { SUSPEND: { t: '暂停合作', c: '确认暂停', type: 'warning' }, RESUME: { t: '恢复合作', c: '确认恢复', type: 'primary' } }[action]
       this.confirm = { visible: true, title: m.t, message: `确认执行「${m.t}」？`, type: m.type, confirmText: m.c, requireReason: false, action: 'COOP_' + action, extra: null }
     },
@@ -430,6 +529,12 @@ export default {
     },
     async onConfirm({ reason } = {}) {
       const { action, extra } = this.confirm
+      if (!action || !this.confirm.visible || this.submitting || this.loading || !this.detail) return
+      const permission = action === 'DELETE_CONTACT' ? this.can('manageEnterpriseContact')
+        : action.startsWith('REVIEW_') ? this.can('reviewEnterprise')
+          : action.startsWith('COOP_') ? this.canManageCooperation : this.can('blacklistEnterprise')
+      if (!permission) return
+      const sequence = this.loadSequence
       this.submitting = true
       try {
         let res
@@ -439,6 +544,7 @@ export default {
         else if (action.startsWith('COOP_')) res = await internshipApi.setEnterpriseCooperation(this.detail.id, { action: action.slice(5), reason: reason || '', expectedVersion: this.detail.version })
         else if (action === 'BLACKLIST_ON') res = await internshipApi.setEnterpriseBlacklist(this.detail.id, { on: true, reason: reason || '', expectedVersion: this.detail.version })
         else if (action === 'BLACKLIST_OFF') res = await internshipApi.setEnterpriseBlacklist(this.detail.id, { on: false, expectedVersion: this.detail.version })
+        if (sequence !== this.loadSequence) return
         if (res && res.code === 0) { toast.success('已更新并写入留痕'); this.confirm.visible = false; this.load() }
         else if (res) toast.error(res.message)
       } finally { this.submitting = false }
@@ -450,16 +556,18 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 
-.ed-head { display: flex; align-items: center; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
+.enterprise-detail { gap: 12px; }
+.ed-head { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .ed-head__spacer { flex: 1; }
 .ed-bl { font-size: 12px; color: var(--danger, #dc2626); }
 .ed-state { padding: var(--space-4, 16px); color: var(--t3, #64748b); font-size: 13px; }
 .ed-state.is-err { color: var(--danger-600, #dc2626); }
-.ed-cell-wrap { max-width: 260px; white-space: normal; word-break: break-all; }
+.ed-cell-wrap { max-width: 260px; white-space: normal; overflow-wrap: anywhere; }
+.ed-subline { display: block; margin-top: 5px; color: var(--text-secondary); font-size: 12px; }
 .ed-ops { display: flex; gap: 4px; flex-wrap: wrap; }
 .ed-muted { color: var(--text-disabled, #94a3b8); }
-.ed-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); margin-bottom: var(--space-3); }
-.ed-tabs__item { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
+.ed-tabs { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--line, #e2e8f0); overflow-x: auto; }
+.ed-tabs__item { padding: 10px 14px; text-decoration: none; white-space: nowrap; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--t2, #475569); border-bottom: 2px solid transparent; }
 .ed-tabs__item.is-active { color: var(--pri, #2563eb); border-bottom-color: var(--pri, #2563eb); font-weight: 600; }
 .ed-danger { color: var(--danger, #dc2626); }
 .ed-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }

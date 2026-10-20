@@ -11,7 +11,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
-from app.core.exceptions import AppException, no_permission, not_found
+from app.core.exceptions import AppException, not_found
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
 from app.modules.internship.services import internship_audit_service
 from app.services.db_service import _as_id, _tid, session
@@ -164,7 +164,7 @@ def _notify_lock_in_tx(db, *, group: InternshipVolunteerGroup, decision_id: int)
     )
 
 
-def lazy_release_expired_lock_in_tx(db, *, group: InternshipVolunteerGroup, tenant_id: int, now: datetime | None = None, user=None) -> bool:
+def lazy_release_expired_lock_in_tx(db, *, group: InternshipVolunteerGroup, tenant_id: int, now: datetime | None = None, user=None, notify: bool = True) -> bool:
     current = now or datetime.utcnow()
     if group.status != "LOCKED":
         return False
@@ -207,14 +207,14 @@ def lazy_release_expired_lock_in_tx(db, *, group: InternshipVolunteerGroup, tena
     )
     params = {"campaignId": str(group.campaign_id), "volunteerGroupId": str(group.id)}
     _message_in_tx(
-        db, tenant_id=group.tenant_id, receiver_user_id=_student_user_id_in_tx(db, group),
+        db, tenant_id=group.tenant_id, receiver_user_id=_student_user_id_in_tx(db, group) if notify else None,
         title="学校确认超时，志愿已恢复可编辑",
         content="本次企业拟接收已失效，你可以调整志愿并重新提交。",
         source_biz_id=group.locked_by_decision_id, action_key="INTERNSHIP_ACCEPT_INTENT_EXPIRED", action_params=params,
     )
     _message_in_tx(
         db, tenant_id=group.tenant_id,
-        receiver_user_id=(decision.decided_by_user_id if decision else None),
+        receiver_user_id=(decision.decided_by_user_id if decision and notify else None),
         title="学校确认超时，拟接收已释放",
         content="学校未在确认期限内完成落岗，本次拟接收已失效。",
         source_biz_id=group.locked_by_decision_id, action_key="INTERNSHIP_ACCEPT_INTENT_EXPIRED", action_params=params,
@@ -394,13 +394,14 @@ def teacher_request_revision_in_tx(
     user=None,
     now: datetime | None = None,
     release_reason_code: str = "TEACHER_REQUEST_REVISION",
+    notify: bool = True,
 ) -> None:
     text = str(reason or "").strip()
     if len(text) < 2:
         raise AppException("VALIDATION_ERROR", "解除/退回志愿锁必须填写原因")
     current = now or datetime.utcnow()
-    lazy_release_expired_lock_in_tx(db, group=group, tenant_id=group.tenant_id, now=current, user=user)
-    if group.status not in {"LOCKED", "SUBMITTED"}:
+    expired_now = lazy_release_expired_lock_in_tx(db, group=group, tenant_id=group.tenant_id, now=current, user=user, notify=notify)
+    if group.status not in {"LOCKED", "SUBMITTED"} and not expired_now:
         if group.status == "NEEDS_REVISION" and group.revision_reason == text:
             return
         raise AppException("DATA_CONFLICT", f"志愿组状态 {group.status} 不能退回修订")
@@ -408,6 +409,20 @@ def teacher_request_revision_in_tx(
     decision = _locked_decision_in_tx(db, group, lock=True) if before == "LOCKED" else None
     if decision and decision.effect_status == "ACTIVE":
         _set_effect(decision, effect_status="SUPERSEDED", reason=release_reason_code)
+    from app.models.internship_enterprise_application_decision import InternshipEnterpriseApplicationDecision
+    invalidated = []
+    for previous in db.scalars(select(InternshipEnterpriseApplicationDecision).where(
+        InternshipEnterpriseApplicationDecision.tenant_id == group.tenant_id,
+        InternshipEnterpriseApplicationDecision.volunteer_group_id == group.id,
+        InternshipEnterpriseApplicationDecision.effect_status == "ACTIVE",
+        InternshipEnterpriseApplicationDecision.is_deleted.is_(False),
+    ).order_by(InternshipEnterpriseApplicationDecision.id).with_for_update()):
+        # Sessions may disable autoflush; the SQL predicate can still match a decision
+        # already expired/superseded above. Preserve that more specific recorded effect.
+        if previous.effect_status != "ACTIVE":
+            continue
+        _set_effect(previous, effect_status="SUPERSEDED", reason=release_reason_code)
+        invalidated.append(str(previous.id))
     group.status = "NEEDS_REVISION"
     group.revision_requested_at = current
     group.revision_reason = text[:500]
@@ -434,9 +449,10 @@ def teacher_request_revision_in_tx(
             "lockedByDecisionId": str(group.locked_by_decision_id or ""),
             "releaseReason": group.release_reason,
             "decisionEffect": decision.effect_status if decision else None,
+            "otherInvalidatedDecisionIds": invalidated,
         },
     )
-    if before == "LOCKED":
+    if notify and before == "LOCKED":
         params = {"campaignId": str(group.campaign_id), "volunteerGroupId": str(group.id)}
         _message_in_tx(
             db, tenant_id=group.tenant_id, receiver_user_id=_student_user_id_in_tx(db, group),
@@ -543,35 +559,9 @@ def request_my_unlock(*, user: dict, campaign_id: int, reason: str) -> dict:
         return group_dict(group)
 
 
-def teacher_release_group_lock(*, group_id: int, campaign_id: int, reason: str, user: dict) -> dict:
-    from app.models import InternshipRecord, StudentProfile
-    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
-
-    tenant_id = _tid()
-    with session() as db:
-        group = _get_group_in_tx(db, tenant_id=tenant_id, group_id=group_id, lock=True)
-        if group.campaign_id != _as_id(campaign_id):
-            raise not_found("志愿组不属于当前招聘季")
-        record = db.scalar(select(InternshipRecord).where(
-            InternshipRecord.id == group.record_id,
-            InternshipRecord.tenant_id == tenant_id,
-            InternshipRecord.is_deleted.is_(False),
-        ))
-        student = db.scalar(select(StudentProfile).where(
-            StudentProfile.id == group.student_id,
-            StudentProfile.tenant_id == tenant_id,
-            StudentProfile.is_deleted.is_(False),
-        ))
-        if not record or not student:
-            raise not_found("志愿组关联学生实习记录不存在")
-        if not _rec_in_scope(_current_scope(user), db, record, student):
-            raise no_permission("该学生不在当前教师数据范围内")
-        teacher_request_revision_in_tx(
-            db,
-            group=group,
-            reason=reason,
-            user=user,
-            release_reason_code="TEACHER_UNLOCK_RELEASE",
-        )
-        db.commit()
-        return group_dict(group)
+def teacher_release_group_lock(*, group_id: int, campaign_id: int, reason: str, user: dict,
+                               expected_group_version=None, expected_record_version=None) -> dict:
+    """Compatibility entry; both release and return use scoped, versioned school handling."""
+    from app.modules.internship.services.internship_school_volunteer_service import return_group
+    return return_group(campaign_id=campaign_id, group_id=group_id, user=user, reason=reason,
+        expected_group_version=expected_group_version, expected_record_version=expected_record_version)

@@ -153,3 +153,27 @@ def test_grade_task_teacher_scope_survives_sql_pagination(client, db_mode):
     assert data["total"] == baseline_own + 40
     assert any(item["courseName"].startswith("U2-OWN-") for item in data["items"])
     assert not any(item["courseName"].startswith("U2-OTHER-") for item in data["items"])
+
+
+def test_grade_task_filters_apply_before_pagination_and_keep_teacher_scope(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaGradeTask
+
+    _ensure_grade_deadline_schema()
+    with get_sessionmaker()() as db:
+        for term, teacher, course in [
+            ("QUEUE-TERM", "academic01", "实践100%课程甲"),
+            ("QUEUE-TERM", "academic01", "实践100%课程乙"),
+            ("QUEUE-OTHER", "academic01", "实践100%课程丙"),
+            ("QUEUE-TERM", "other_teacher", "实践100%课程丁"),
+            ("QUEUE-TERM", "academic01", "实践100分课程"),
+        ]:
+            db.add(AaGradeTask(tenant_id=TID, term_code=term, teacher_key=teacher,
+                               course_name=course, status="INPUTTING"))
+        db.commit()
+    response = client.get(f"{BASE}/grade-tasks", headers=_hdr(client, "academic01"),
+                          params={"term": "QUEUE-TERM", "keyword": "100%", "page": 2, "pageSize": 1})
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
+    assert data["total"] == 2
+    assert [row["courseName"] for row in data["items"]] == ["实践100%课程甲"]

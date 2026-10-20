@@ -1,98 +1,36 @@
 <template>
-  <view class="page-wrap">
+  <view class="student-shell">
+    <MobileStudentHero :title="(user.name || '同学') + '，你好'" :subtitle="todayText + (home?.stageCard?.stageText ? ' ｜ ' + home.stageCard.stageText : '')" />
     <MobileGlobalState :state="state" @retry="retryLoad">
-      <view class="home__hero hero-band is-brand">
-        <view class="hero-band__orb" />
-        <view class="mnav__status" :style="{ height: statusBarHeight + 'px' }" />
-        <view class="home__greet">
-          <view class="avatar-badge">{{ (user.name || '同').slice(0,1) }}</view>
-          <view class="flex-1">
-            <text class="home__greet-name">{{ greeting }}，{{ user.name || '同学' }}<text v-if="isOrientationGuide" class="home__newtag">新生</text></text>
-            <text class="home__greet-sub">
-              <template v-if="isOrientationGuide">{{ user.className || '2026级新生' }} · 尚未完成报到</template>
-              <template v-else>{{ user.className || '在校学生' }}{{ user.studentNo ? ' · 学号 ' + user.studentNo : '' }}</template>
-            </text>
-          </view>
-          <view class="home__bell" @click="go('/pages/student/messages/index')">
-            <text class="home__bell-icon">✉</text>
-            <text v-if="home && home.metrics.unread" class="home__bell-badge">{{ home.metrics.unread }}</text>
-          </view>
+      <view class="shell-pad home__body" v-if="home">
+        <!-- 待我处理：只显示服务器下发的当前动作，不生成业务状态。 -->
+        <view v-if="home.nextAction" class="home__priority" @click="runAction(home.nextAction)">
+          <MobileShellIcon name="alert-circle" tone="amber" :size="27" round />
+          <view class="shell-row__body"><text class="shell-row__title">{{ nextActionTitle }}</text><text class="shell-muted">{{ nextActionDesc }}</text></view>
+          <button class="home__priority-button" @click.stop="runAction(home.nextAction)">{{ nextActionText }}</button>
         </view>
-        <view class="stat-strip" v-if="home && !isOrientationGuide">
-          <view class="stat-strip__item"><text class="stat-strip__val">{{ progressText }}</text><text class="stat-strip__label">阶段进度</text></view>
-          <view class="stat-strip__item"><text class="stat-strip__val">{{ home.metrics.todoCount }}</text><text class="stat-strip__label">待办事项</text></view>
-          <view class="stat-strip__item"><text class="stat-strip__val">{{ creditRateText }}</text><text class="stat-strip__label">学分完成率</text></view>
+        <view v-else-if="!isOrientationGuide" class="home__allclear">
+          <MobileShellIcon name="clipboard-check" tone="teal" :size="24" />
+          <view><text class="shell-row__title">当前暂无待办</text><text class="shell-muted">有新的办理事项会及时提醒你</text></view>
         </view>
-      </view>
-
-      <!-- 未报到新生：首屏整块为迎新引导卡，其余功能收起 -->
-      <view class="page-pad stack" v-if="isOrientationGuide">
-        <view class="home__guide">
-          <view class="home__guide-hd">
-            <view class="home__guide-ring" :style="ringStyle">
-              <view class="home__guide-ring-in">
-                <text class="home__guide-ring-num">{{ orientationDoneCount }}/{{ orientationSteps.length }}</text>
-                <text class="home__guide-ring-lb">已完成</text>
-              </view>
-            </view>
-            <view class="flex-1">
-              <text class="home__guide-title">欢迎加入！先完成入学报到</text>
-              <text v-if="orientationBatch.open" class="home__guide-count">距报到截止还有 {{ orientationBatch.daysLeft }} 天</text>
-            </view>
+        <view v-if="isOrientationGuide" class="shell-panel home__orientation">
+          <view class="shell-row">
+            <MobileShellIcon name="school" :size="28" round />
+            <view class="shell-row__body"><text class="shell-row__title">欢迎加入！先完成入学报到</text><text class="shell-muted">已完成 {{ orientationDoneCount }}/{{ orientationSteps.length }} 项</text></view>
           </view>
-          <button class="home__guide-btn" @click="go(orientationNextRoute)">继续报到 · {{ orientationNextLabel }} ›</button>
-          <view class="home__guide-steps">
-            <view v-for="s in orientationSteps" :key="s.key" class="home__guide-step" :class="s.state">
-              <view class="home__guide-step-dot">
-                <text v-if="s.state === 'done'">✓</text>
-              </view>
-              <text class="home__guide-step-name">{{ s.label }}</text>
-              <text class="home__guide-step-st">{{ s.stateLabel }}</text>
+          <button class="home__orientation-button" @click="go(orientationNextRoute)">继续报到 · {{ orientationNextLabel }}</button>
+          <text v-if="orientationBatch.open" class="home__deadline">距报到截止还有 {{ orientationBatch.daysLeft }} 天</text>
+          <view class="home__orientation-links"><text class="shell-link" @click="go('/pages/student/academic-affairs/schedule')">查看课表</text><text class="shell-link" @click="go('/pages/student/academic-affairs/selection')">网上选课</text></view>
+          <view class="home__orientation-steps">
+            <view v-for="s in orientationSteps" :key="s.key" class="home__orientation-step">
+              <MobileShellIcon :name="s.state === 'done' ? 'check' : 'clock'" :tone="s.state === 'done' ? 'teal' : s.state === 'now' ? 'amber' : 'gray'" :size="17" />
+              <text>{{ s.label }}</text><text class="shell-muted">{{ s.stateLabel }}</text>
             </view>
           </view>
         </view>
-        <view class="home__locked">
-          <text class="home__locked-icon">🔒</text>
-          <text class="home__locked-tx">完成报到后，课表、成绩、校园服务等{{ '\n' }}功能将自动解锁</text>
-        </view>
-      </view>
-
-      <view class="page-pad stack" v-else-if="home">
-        <!-- 阶段主卡 -->
-        <view class="home__stage card">
-          <view class="row-between">
-            <text class="home__stage-title">{{ home.stageCard.title }}</text>
-            <MobileStatusTag :label="home.stageCard.stageText" type="processing" />
-          </view>
-          <text class="home__stage-sub">{{ home.stageCard.subtitle }}</text>
-          <view class="home__stage-prog">
-            <MobileProgress :value="home.stageCard.progress" tone="brand" />
-          </view>
-        </view>
-
-        <!-- 下一步行动 -->
-        <view class="section-head"><text class="section-head__title">下一步该做什么</text></view>
-        <MobileActionCard
-          v-if="home.nextAction"
-          :title="nextActionTitle"
-          :description="nextActionDesc"
-          icon="→"
-          :action-text="nextActionText"
-          @action="runAction(home.nextAction)"
-          @click="runAction(home.nextAction)"
-        />
-        <MobileGlobalState v-else state="empty" title="当前暂无待办"
-          description="有新的审批、材料补交或校园事项时会显示在这里。" />
-
         <!-- 当前阻断 -->
         <template v-if="home.blockers.length">
-          <MobileInlineAlert
-            v-for="b in home.blockers"
-            :key="b.id"
-            type="warning"
-            :title="b.title"
-            :description="b.reason"
-          >
+          <MobileInlineAlert v-for="b in home.blockers" :key="b.id" type="warning" :title="b.title" :description="b.reason">
             <template #actions>
               <text v-if="canRun(b.action)" class="home__alert-btn" @click="runAction(b.action)">去处理</text>
               <text v-else class="home__alert-note">{{ disabledReason(b.action) }}</text>
@@ -100,88 +38,40 @@
           </MobileInlineAlert>
         </template>
 
-        <!-- 常用服务 -->
-        <view class="card">
-          <view class="row-between" style="margin-bottom: var(--space-2);"><text class="card-title">常用服务</text></view>
-          <view v-if="home.quickServices.length" class="icon-grid">
-            <view
-              v-for="(q, i) in home.quickServices"
-              :key="q.key"
-              class="icon-grid__item"
-              @click="runAction(q.action)"
-            >
-              <view class="icon-grid__badge" :class="gradClass(i)">{{ q.icon }}</view>
-              <text class="icon-grid__label">{{ q.label }}</text>
-            </view>
-          </view>
-          <MobileGlobalState v-else state="empty" title="暂无常用服务"
-            description="学校启用可办理服务后会显示在这里。" />
-        </view>
-
-        <!-- 今天（课程 / 考试 / 截止，来自 Agenda 纯读投影） -->
-        <view class="section-head">
-          <text class="section-head__title">今天</text>
-          <text class="section-head__more" @click="go('/pages/student/agenda/index')">查看7天 ›</text>
-        </view>
-        <view class="card stack-sm">
-          <view v-for="c in home.today" :key="c.eventId" class="home__course"
-            @click="runAction(c.action)">
-            <view class="home__course-time" :class="{ 'is-now': c.status === 'ONGOING' }">
-              <text>{{ clockOf(c.startAt) }}</text>
-              <text class="home__course-dur">{{ clockOf(c.endAt) }}</text>
-            </view>
-            <view class="home__course-line" :class="{ 'is-now': c.status === 'ONGOING' }" />
-            <view class="flex-1">
-              <text class="home__course-name">{{ c.title }}</text>
-              <text class="home__course-place">{{ [kindText(c.kind), c.location].filter(Boolean).join(' · ') }}</text>
-            </view>
+        <!-- 今日安排 / 7 天安排均消费原有 Agenda 投影。 -->
+        <view class="shell-panel">
+          <view class="shell-heading"><text class="shell-title">我的今天</text><view class="shell-link" @click="go('/pages/student/academic-affairs/schedule')">查看课表<MobileShellIcon name="chevron-right" :size="18" /></view></view>
+          <text class="shell-muted home__today-date">{{ todayText }}</text>
+          <view v-for="c in home.today" :key="c.eventId" class="home__course" @click="runAction(c.action)">
+            <view class="home__course-time"><text>{{ clockOf(c.startAt) || '待定' }}</text><text class="home__course-dur">{{ clockOf(c.endAt) }}</text></view>
+            <view class="home__course-line" />
+            <view class="shell-row__body"><text class="shell-row__title">{{ c.title }}</text><view class="home__place"><MobileShellIcon :name="c.kind === 'COURSE' ? 'map-pin' : 'file-text'" tone="gray" :size="17" /><text>{{ [kindText(c.kind), c.location].filter(Boolean).join(' · ') }}</text></view></view>
             <text v-if="c.status === 'ONGOING'" class="home__course-tag">进行中</text>
           </view>
-          <MobileGlobalState v-if="!home.today.length" state="empty" title="今天没有安排"
-            description="课程、考试与办理截止都会显示在这里。" />
+          <view v-if="!home.today.length" class="home__day-empty"><MobileShellIcon name="calendar" tone="gray" :size="26" /><view><text class="shell-row__title">今天没有安排</text><text class="shell-muted">课程、考试与办理截止会显示在这里</text></view></view>
+          <view class="home__week shell-row" @click="go('/pages/student/agenda/index')"><MobileShellIcon name="calendar" :size="25" round /><view class="shell-row__body"><text class="shell-row__title">查看7天安排</text><text class="shell-muted">掌握本周学习与活动安排</text></view><MobileShellIcon name="chevron-right" :size="20" /></view>
         </view>
 
-        <!-- 待办 -->
-        <view class="section-head">
-          <text class="section-head__title">我的待办</text>
-          <text class="section-head__more" @click="go('/pages/student/messages/index')">全部 ›</text>
-        </view>
-        <view class="stack-sm">
-          <MobileTodoCard
-            v-for="t in home.todos"
-            :key="t.id"
-            :title="t.title"
-            :source-module="t.module"
-            :deadline="fmtDeadline(t.deadline)"
-            :status="t.status"
-            :action-text="t.action && t.action.label ? '去办理' : '去办理'"
-            @handle="runAction(t.action)"
-          />
-          <MobileGlobalState v-if="!home.todos.length" state="empty" title="暂无待办"
-            description="当前没有需要你处理的事项。" />
+        <view v-if="home.todos.length" class="shell-panel">
+          <view class="shell-heading"><text class="shell-title">待我处理</text><view class="shell-link" @click="go('/pages/student/my-work/index')">我的办理<MobileShellIcon name="chevron-right" :size="18" /></view></view>
+          <view v-for="t in home.todos" :key="t.id" class="shell-row" @click="runAction(t.action)"><MobileShellIcon name="file-text" tone="amber" :size="24" round /><view class="shell-row__body"><text class="shell-row__title">{{ t.title }}</text><text class="shell-muted">{{ messageModuleLabel(t.module) }}{{ t.deadline ? ' · ' + fmtDeadline(t.deadline) : '' }}</text><MobileStatusTag :status="t.status" /></view><MobileShellIcon name="chevron-right" :size="18" /></view>
         </view>
 
-        <!-- 通知 -->
-        <view class="section-head"><text class="section-head__title">校园通知</text></view>
-        <view class="card stack-sm">
-          <view v-for="n in home.notices" :key="n.id" class="home__notice" @click="runAction(n.action)">
-            <text v-if="n.important" class="home__notice-tag">重要</text>
-            <text class="home__notice-title ellipsis flex-1">{{ n.title }}</text>
-            <text class="home__notice-src">{{ n.source }}</text>
-          </view>
-          <MobileGlobalState v-if="!home.notices.length" state="empty" title="暂无校园通知"
-            description="学校发布与你相关的通知后会显示在这里。" />
+        <HomeQuickServices :key="loadedContextKey" :defaults="home.quickServices" />
+
+        <view v-if="!isOrientationGuide" class="shell-panel home__stage">
+          <view class="shell-row"><MobileShellIcon name="home" tone="teal" :size="27" round /><view class="shell-row__body"><text class="shell-row__title">当前阶段：{{ home.stageCard.stageText || '待确认' }}</text><text class="shell-muted">{{ home.stageCard.subtitle || home.stageCard.title }}</text></view></view>
+          <view v-if="home.stageCard.progress != null" class="home__stage-progress"><view class="home__stage-progress-bar"><MobileProgress :value="home.stageCard.progress" tone="brand" /></view><text class="shell-muted">{{ progressText }}</text></view>
+        </view>
+        <view class="shell-panel">
+          <view class="shell-heading"><text class="shell-title">最近消息</text><view class="shell-link" @click="go('/pages/student/messages/index')">更多<MobileShellIcon name="chevron-right" :size="18" /></view></view>
+          <view v-for="n in home.notices" :key="n.id" class="shell-row" @click="runAction(n.action)"><MobileShellIcon name="bell" :size="23" round /><view class="shell-row__body"><text class="shell-row__title">{{ n.title }}</text><text class="shell-muted">{{ messageModuleLabel(n.source) }}</text></view><text v-if="n.important" class="home__deadline">重要</text></view>
+          <text v-if="!home.notices.length" class="shell-muted">暂无校园通知。学校发布后会显示在这里。</text>
         </view>
       </view>
     </MobileGlobalState>
-
     <MobileTabBar side="student" active="home" :badges="{ message: home ? home.metrics.unread : 0 }" />
-
-    <view v-if="emg" class="emg-banner" @click="goMessages">
-      <text class="emg-banner__tag">紧急</text>
-      <text class="emg-banner__tx ellipsis">{{ emg.title }}</text>
-      <text class="emg-banner__go">去确认 ›</text>
-    </view>
+    <view v-if="emg" class="emg-banner" @click="goMessages"><text>紧急通知</text><text class="ellipsis">{{ emg.title }}</text><text>去确认</text></view>
   </view>
 </template>
 
@@ -193,12 +83,16 @@ import { getStudentHomeVersion } from '@/utils/viewFreshness'
 import { deadlineText } from '@/utils/format'
 import { go, toast } from '@/utils/nav'
 import { canNavigate, disabledReasonOf, runAction } from '@/services/actionRouter'
+import { getStatusBarHeight } from '@/utils/deviceInfo'
+import { messageModuleLabel } from '@/services/messagePresentation'
+import { orientationStepLabel } from '@/services/orientationPresentation'
+import { serviceVisual, studentDateText } from '@/services/studentShellPresentation.mjs'
+import HomeQuickServices from './HomeQuickServices.vue'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 
 const HOME_TTL_MS = 20_000
 const GRAD_CLASSES = ['g1', 'g3', 'g7', 'g4', 'g5', 'g6', 'g2', 'g8']
 
-const STEP_LABELS = { ACTIVATE: '账号激活', INFO: '信息核对', MATERIAL: '材料上传',
-  PAYMENT: '缴费/绿色通道', DORM: '宿舍确认', CHECKIN: '现场报到', CONFIRM: '学院确认' }
 const STEP_ROUTE = {
   ACTIVATE: '/pages/student/orientation/collect/index', INFO: '/pages/student/orientation/collect/index',
   MATERIAL: '/pages/student/orientation/index', PAYMENT: '/pages/student/orientation/green-channel/index',
@@ -208,10 +102,11 @@ const STEP_ROUTE = {
 
 function sessionContextKey(session) {
   const identity = session.identity || {}
-  return [identity.userId || '', identity.studentId || '', session.currentRole || ''].join('|')
+  return [session.realUser?.tenantId || '', identity.userId || '', identity.studentId || '', session.currentRole || '', currentSessionGeneration()].join('|')
 }
 
 export default {
+  components: { HomeQuickServices },
   data() {
     return {
       brand: tenantBrandConfig, home: null, state: 'loading', user: {}, greeting: '你好',
@@ -221,23 +116,26 @@ export default {
     }
   },
   computed: {
+    todayText() { return studentDateText() },
     progressText() {
+      if (this.home?.stageCard?.progress == null) return '—'
       const value = Number(this.home?.stageCard?.progress)
       return Number.isFinite(value) ? `${value}%` : '—'
     },
     creditRateText() {
+      if (this.home?.metrics?.creditRate == null) return '—'
       const value = Number(this.home?.metrics?.creditRate)
       return Number.isFinite(value) ? `${value}%` : '—'
     },
     nextActionTitle() {
       const action = this.home?.nextAction
-      return (action && (action.label || action.sourceBizType)) || '下一步'
+      return action?.label || '查看待处理事项'
     },
     nextActionDesc() {
       const action = this.home?.nextAction
       if (!action) return ''
       if (!canNavigate(action, 'student')) return disabledReasonOf(action)
-      return action.target?.routeExact ? '直接进入该业务对象' : '进入对应办理入口'
+      return action.target?.routeExact ? '查看要求，继续办理这条事项' : '查看当前要求与办理进度'
     },
     nextActionText() {
       return canNavigate(this.home?.nextAction, 'student') ? '去办理' : '暂不可办理'
@@ -253,7 +151,7 @@ export default {
         const done = step.status === 'DONE'
         const state = done ? 'done' : (metCurrent ? 'wait' : 'now')
         if (!done) metCurrent = true
-        return { key: step.key, label: STEP_LABELS[step.key] || step.key, state,
+        return { key: step.key, label: orientationStepLabel(step), state,
           stateLabel: done ? '已完成' : (state === 'now' ? '进行中' : '待办') }
       })
     },
@@ -276,7 +174,7 @@ export default {
   },
   onLoad() {
     this._pageActive = true
-    try { this.statusBarHeight = uni.getSystemInfoSync().statusBarHeight || 20 } catch (e) {}
+    this.statusBarHeight = getStatusBarHeight()
     this.load({ force: true })
   },
   onShow() {
@@ -285,6 +183,7 @@ export default {
   },
   onHide() {
     this._pageActive = false
+    this._homePromise = null
     this._loadEpoch = (this._loadEpoch || 0) + 1
   },
   onUnload() {
@@ -296,7 +195,9 @@ export default {
   },
   methods: {
     go, toast, deadlineText,
-    fmtDeadline(value) { return deadlineText(value) },
+    serviceVisual(label) { return serviceVisual(label) },
+    messageModuleLabel,
+    fmtDeadline(value) { return value ? deadlineText(value) : '' },
     gradClass(index) { return GRAD_CLASSES[index % GRAD_CLASSES.length] },
     goMessages() { go('/pages/student/messages/index') },
     retryLoad() { return this.load({ force: true }) },
@@ -304,6 +205,7 @@ export default {
       const session = useSessionStore()
       const contextKey = sessionContextKey(session)
       const freshness = getStudentHomeVersion()
+      if (this.loadedContextKey && this.loadedContextKey !== contextKey) { this.home = null; this.user = {}; this._homePromise = null; this.lastLoadedAt = 0 }
       // V3 §5.4：客户端 20s freshness 只是网络优化。contextKey / 本地 freshness /
       // 服务端 projectionVersion 任一变化都必须立刻放弃旧结果，不能等 TTL 到期。
       const fresh = this.home &&
@@ -372,7 +274,7 @@ export default {
         })
         .catch((error) => {
           if (this._pageActive && this._loadEpoch === epoch) this.state = 'error'
-          throw error
+          return null
         })
         .finally(() => {
           if (this._homePromise === pending) this._homePromise = null
@@ -385,76 +287,36 @@ export default {
 }
 </script>
 
-<style scoped>
-.home__hero { padding-bottom: var(--space-6); }
-.mnav__status { width: 100%; }
-.home__greet { position: relative; display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-3); }
-.home__greet-name { display: block; color: #fff; font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); }
-.home__greet-sub { display: block; color: rgba(255,255,255,0.85); font-size: var(--font-size-xs); margin-top: 3px; }
-.home__bell { position: relative; width: 38px; height: 38px; border-radius: var(--radius-full); background: rgba(255,255,255,.14); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.home__bell-icon { color: #fff; font-size: 18px; }
-.home__bell-badge {
-  position: absolute; top: -4px; right: -4px; min-width: 15px; height: 15px; padding: 0 3px;
-  background: var(--danger-500); color: #fff; font-size: 10px; line-height: 15px; text-align: center; border-radius: var(--radius-full);
-}
-.home__newtag { font-size: 10px; font-weight: var(--font-weight-semibold); color: var(--orientation-700); background: #fff; padding: 2px 7px; border-radius: var(--radius-base); margin-left: 6px; vertical-align: middle; }
-.home__stage { margin-top: calc(-1 * var(--space-6) - 6px); box-shadow: var(--shadow-float); }
-.home__guide {
-  position: relative; margin-top: calc(-1 * var(--space-6) - 6px); background: var(--bg-card);
-  border-radius: var(--radius-lg); padding: var(--card-padding-mobile); box-shadow: var(--shadow-float);
-  border: 1px solid #ffe6cc;
-}
-.home__guide-hd { display: flex; align-items: center; gap: var(--space-4); }
-.home__guide-ring { width: 66px; height: 66px; border-radius: var(--radius-full); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.home__guide-ring-in { width: 52px; height: 52px; border-radius: var(--radius-full); background: var(--bg-card); display: flex; flex-direction: column; align-items: center; justify-content: center; }
-.home__guide-ring-num { font-size: var(--font-size-md); color: var(--orientation-700); font-weight: var(--font-weight-semibold); line-height: 1; }
-.home__guide-ring-lb { font-size: 9px; color: var(--text-tertiary); margin-top: 2px; }
-.home__guide-title { display: block; font-size: var(--font-size-md); color: var(--text-primary); font-weight: var(--font-weight-semibold); }
-.home__guide-count { display: block; margin-top: var(--space-2); font-size: var(--font-size-sm); color: var(--orientation-700); font-weight: var(--font-weight-medium); }
-.home__guide-btn {
-  width: 100%; margin-top: var(--space-4); height: 44px; border-radius: var(--radius-md); border: none;
-  background: var(--orientation-gradient); color: #fff; font-size: var(--font-size-md); font-weight: var(--font-weight-semibold);
-  box-shadow: 0 8px 18px -8px rgba(245,122,30,.6);
-}
-.home__guide-steps { margin-top: var(--space-4); border-top: 1px solid #f4ede2; padding-top: var(--space-3); }
-.home__guide-step { display: flex; align-items: center; gap: var(--space-2); padding: 6px 0; }
-.home__guide-step-dot { width: 18px; height: 18px; border-radius: var(--radius-full); flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: var(--gray-100); color: var(--text-tertiary); font-size: 10px; }
-.home__guide-step.done .home__guide-step-dot { background: var(--success-500); color: #fff; }
-.home__guide-step.now .home__guide-step-dot { background: var(--orientation-700); }
-.home__guide-step-name { font-size: var(--font-size-sm); color: var(--text-secondary); }
-.home__guide-step.wait .home__guide-step-name { color: var(--text-disabled); }
-.home__guide-step-st { margin-left: auto; font-size: var(--font-size-xs); font-weight: var(--font-weight-medium); color: var(--text-tertiary); }
-.home__guide-step.done .home__guide-step-st { color: var(--success-600); }
-.home__guide-step.now .home__guide-step-st { color: var(--orientation-700); }
-.home__locked { margin-top: var(--card-gap-mobile); background: var(--bg-card); border-radius: var(--radius-lg); padding: var(--space-6) var(--space-4); box-shadow: var(--shadow-card); text-align: center; }
-.home__locked-icon { display: block; font-size: 28px; }
-.home__locked-tx { display: block; margin-top: var(--space-2); font-size: var(--font-size-sm); color: var(--text-tertiary); line-height: 1.6; white-space: pre-line; }
-.home__stage-title { font-size: var(--font-size-lg); font-weight: var(--font-weight-semibold); color: var(--text-primary); }
-.home__stage-sub { display: block; font-size: var(--font-size-sm); color: var(--text-secondary); margin: var(--space-2) 0 var(--space-3); }
-.home__alert-btn { font-size: var(--font-size-sm); color: var(--warning-700); font-weight: var(--font-weight-medium); }
-.home__course { display: flex; align-items: stretch; gap: var(--space-3); }
-.home__course-time { width: 52px; display: flex; flex-direction: column; color: var(--text-secondary); font-size: var(--font-size-sm); }
-.home__course-time.is-now { color: var(--brand-primary); font-weight: var(--font-weight-semibold); }
-.home__course-dur { font-size: 11px; color: var(--text-tertiary); }
-.home__course-line { width: 3px; border-radius: 3px; background: var(--border-base); }
-.home__course-line.is-now { background: var(--brand-primary); }
-.home__course-name { font-size: var(--font-size-md); color: var(--text-primary); }
-.home__course-place { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
-.home__course-tag { align-self: center; font-size: var(--font-size-xs); color: var(--brand-primary); background: var(--primary-50); padding: 2px 8px; border-radius: var(--radius-full); }
-.home__notice { display: flex; align-items: center; gap: var(--space-2); }
-.home__notice-tag { font-size: 10px; color: #fff; background: var(--danger-500); padding: 1px 5px; border-radius: var(--radius-sm); flex-shrink: 0; }
-.home__notice-title { font-size: var(--font-size-base); color: var(--text-primary); }
-.home__notice-src { font-size: var(--font-size-xs); color: var(--text-tertiary); flex-shrink: 0; }
-.emg-banner {
-  position: fixed; left: 12px; right: 12px; bottom: calc(56px + env(safe-area-inset-bottom));
-  z-index: 50; display: flex; align-items: center; gap: 8px;
-  background: #7f1d1d; color: #fff; border-radius: 10px; padding: 10px 12px;
-  box-shadow: 0 8px 24px rgba(127, 29, 29, 0.35);
-}
-.emg-banner__tag {
-  font-size: 10px; font-weight: 600; background: #fff; color: #7f1d1d;
-  padding: 2px 6px; border-radius: 4px; flex-shrink: 0;
-}
-.emg-banner__tx { flex: 1; font-size: 13px; }
-.emg-banner__go { font-size: 12px; opacity: 0.9; flex-shrink: 0; }
+<style scoped lang="scss">
+@import '@/styles/student-shell.scss';
+.home__body { position:relative; padding-top:0; margin-top:-10px; }
+.home__priority, .home__allclear { display:flex; align-items:center; gap:12px; border-radius:16px; padding:16px; margin-bottom:14px; background:#fff8e9; }
+.home__allclear { background:#effaf6; }
+.home__priority-button { flex-shrink:0; padding:0 12px; min-height:42px; line-height:42px; border:0; border-radius:14px; background:#1671f8; color:#fff; font-size:14px; }
+.home__priority-button::after, .home__orientation-button::after { border:0; }
+.home__orientation { padding-top:6px; }
+.home__orientation-button { background:#1671f8; color:#fff; font-size:15px; border-radius:12px; line-height:44px; }
+.home__deadline { display:block; color:#b87308; font-size:12px; margin-top:8px; }
+.home__orientation-steps { margin-top:14px; }
+.home__orientation-links { display:flex; justify-content:space-between; }
+.home__orientation-step { display:flex; gap:8px; align-items:center; font-size:13px; min-height:30px; }
+.home__orientation-step .shell-muted { margin-left:auto; }
+.home__today-date { margin-top:-8px; margin-bottom:20px; }
+.home__course { display:flex; gap:14px; position:relative; padding-bottom:24px; }
+.home__course-time { width:52px; flex-shrink:0; font-size:18px; font-weight:700; line-height:1.5; }
+.home__course-dur { display:block; font-size:13px; font-weight:400; color:#65718a; }
+.home__course-line { border-left:2px solid #c9dfff; margin:6px 2px 0; }
+.home__place { display:flex; gap:4px; align-items:center; margin-top:6px; font-size:13px; color:#65718a; }
+.home__course-tag { font-size:11px; color:#00866e; }
+.home__day-empty { display:flex; gap:12px; align-items:center; padding:10px 0 24px; }
+.home__week { background:#eff6ff; padding:10px 12px; border-radius:12px; min-height:64px; }
+.home__quick { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:14px 8px; }
+.home__quick-item { display:flex; flex-direction:column; align-items:center; gap:9px; min-width:0; font-size:14px; line-height:1.5; text-align:center; }
+.home__stage .shell-row { min-height:48px; }
+.home__stage-progress { display:flex; align-items:center; gap:12px; margin-top:12px; }
+.home__stage-progress-bar { flex:1; min-width:0; }
+.home__alert-btn { color:#1671f8; min-height:44px; }
+.home__alert-note { color:#65718a; font-size:12px; }
+.emg-banner { position:fixed; bottom:calc(72px + env(safe-area-inset-bottom)); left:12px; right:12px; display:flex; gap:10px; padding:12px; background:#fff0ef; color:#bf3030; border:1px solid #ffb9b4; border-radius:12px; z-index:35; font-size:13px; }
+@media (max-width:375px) { .home__priority { gap:8px; padding:14px 12px; } .home__priority-button { padding:0 10px; font-size:13px; } }
 </style>

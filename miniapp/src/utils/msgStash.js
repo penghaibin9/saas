@@ -1,26 +1,28 @@
-/** 消息/通知详情与搜索的轻量客户端暂存（真实数据已在列表页拉取，避免为详情页/搜索页新建后端接口）。
- * 用 storage 而非路由传参：内容可能较长，且需要跨页保留完整对象。 */
+/** 当前会话的一次性列表摘要；统一消息正文仍须经过详情接口授权。 */
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { getToken } from '@/services/request'
 const DETAIL_KEY = 'gx_msg_detail_v1'
 const LIST_KEY = 'gx_msg_search_pool_v1'
-
+// 内存随小程序重启销毁，不把消息正文跨登录持久化。
+let detail = null
+let pool = null
+function scoped(value) { return { value, generation: currentSessionGeneration(), token: getToken() } }
+function current(entry) { return entry && entry.generation === currentSessionGeneration() && entry.token === getToken() }
 export function stashDetail(item) {
-  try { uni.setStorageSync(DETAIL_KEY, JSON.stringify(item || null)) } catch (e) {}
+  detail = scoped(item ? { ...item, id: String(item.messageId || item.id || '') } : null)
+  try { uni.removeStorageSync(DETAIL_KEY) } catch {}
 }
-
-export function popDetail() {
-  try {
-    const raw = uni.getStorageSync(DETAIL_KEY)
-    return raw ? JSON.parse(raw) : null
-  } catch (e) { return null }
+export function popDetail(id) {
+  const saved = detail
+  detail = null
+  try { uni.removeStorageSync(DETAIL_KEY) } catch {}
+  if (!id || !current(saved)) return null
+  const item = saved.value
+  if (id && String(id).replace(/^msg-/, '') !== String(item?.id || '').replace(/^msg-/, '')) return null
+  return item
 }
-
 export function stashSearchPool(list) {
-  try { uni.setStorageSync(LIST_KEY, JSON.stringify(list || [])) } catch (e) {}
+  pool = scoped(list || [])
+  try { uni.removeStorageSync(LIST_KEY) } catch {}
 }
-
-export function getSearchPool() {
-  try {
-    const raw = uni.getStorageSync(LIST_KEY)
-    return raw ? JSON.parse(raw) : []
-  } catch (e) { return [] }
-}
+export function getSearchPool() { return current(pool) ? pool.value : [] }

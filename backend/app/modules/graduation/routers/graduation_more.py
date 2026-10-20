@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query
 
 from app.core.permissions import require_permission
-from app.core.response import success
+from app.core.response import paginate, success
 from app.core.security import get_current_user
 from app.services import audit_log
 from app.modules.graduation.services import graduation_more_service as svc
@@ -70,9 +70,12 @@ def expert_status(eid: str, body: ExpertStatusRequest,
 
 
 # ── 成绩更正申诉 ──
-@router.get("/gd-grade-appeals", summary="成绩申诉列表")
-def appeal_list(status: Optional[str] = None, user=Depends(get_current_user)):
-    return success({"items": svc.list_appeals(status=status)})
+@router.get("/gd-grade-appeals", summary="成绩申诉列表（SQL 分页+批次范围）")
+def appeal_list(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                status: str | None = None, keyword: str | None = None, batchId: str | None = None,
+                user=Depends(require_permission("graduationDesign.grade.appealReview"))):
+    items, total = svc.list_appeals(page=page, page_size=pageSize, status=status, keyword=keyword, batch_id=batchId)
+    return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/gd-grade-appeals/{aid}/review", summary="复核申诉（受理→撤回成绩重核 / 驳回≥5字）")

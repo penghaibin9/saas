@@ -1,129 +1,54 @@
 <template>
-  <ModulePageShell
-    title="异动审批"
-    subtitle="辅导员初审 → 原学院教务转出 → 目标学院教务接收（转专业）→ 教务处终审，逐级处理"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
-  >
-    <div class="mp-stack">
-      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
+  <ModulePageShell title="异动审批" subtitle="本节点审核不代替终审生效；先核对来源、材料与当前节点" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName" show-subtitle-in-concise>
+    <div class="sc-stack">
+      <fieldset :disabled="busy"><label>状态<select v-model="status" @change="search"><option value="SUBMITTED">已提交</option><option value="IN_REVIEW">审批中</option></select></label><label>异动类型<select v-model="changeType" @change="search"><option value="">全部类型</option><option v-for="(label,value) in types" :key="value" :value="value">{{ label }}</option></select></label><button @click="load">刷新队列</button></fieldset>
       <ErrorState v-if="error" :description="error" @retry="load" />
-      <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无待审学籍异动" description="按当前节点审批范围过滤，处理后从此处移除" />
-      <DataTable v-else :columns="columns" :rows="rows" row-key="changeId"
-                 :pagination="{ page, pageSize, total }" @page-change="turnPage">
-        <template #cell-student="{ row }">
-          <div class="mp-cell-main">{{ row.realName }}</div>
-          <div class="mp-cell-sub">{{ row.fromStatus }} → {{ row.toStatus }}</div>
-        </template>
-        <template #cell-type="{ row }"><StatusTag type="primary" :label="row.changeTypeLabel" dot /></template>
-        <template #cell-node="{ row }"><span>{{ nodeLabel(row.currentNode) }}</span></template>
-        <template #cell-actions="{ row }">
-          <button class="mp-link" @click="askApprove(row)">通过</button>
-          <button class="mp-link" style="margin-left: var(--space-2)" @click="askReturn(row)">退回</button>
-          <button class="mp-link mp-link--danger" style="margin-left: var(--space-2)" @click="askReject(row)">驳回</button>
-          <button class="mp-link" style="margin-left: var(--space-2)" @click="goDetail(row)">详情</button>
-        </template>
-      </DataTable>
+      <LoadingState v-if="loading" />
+      <EmptyState v-else-if="!rows.length && !error" title="当前筛选下暂无申请" description="列表按当前数据范围查询，具体节点动作在选中申请后核对。" />
+      <div v-else class="sc-workbench">
+        <aside><h3>申请队列 <small>{{ total }} 条</small></h3><button v-for="row in rows" :key="row.changeId" :disabled="busy" :class="{selected:String(active?.changeId)===String(row.changeId)}" @click="select(row)"><b>{{ row.realName }}</b><span>{{ types[row.changeType] || '异动类型待核对' }} · {{ nodeLabel(row.currentNode) }}</span><span>{{ statusLabel(row.status) }}</span></button><div class="sc-pages"><button :disabled="busy || page<=1" @click="turnPage(page-1)">上一页</button><span>{{ page }}</span><button :disabled="busy || page*pageSize>=total" @click="turnPage(page+1)">下一页</button></div></aside>
+        <main><StatusChangeReview v-if="active" :key="active.changeId" :change="active" :ctx="ctx" @updated="updateFormal" @denied="denied" @busy="busy=$event" /><button v-if="active" class="sc-detail" :disabled="busy" @click="goDetail(active)">查看正式材料与申请详情</button></main>
+      </div>
     </div>
-
-    <AppConfirmDialog
-      v-model:visible="dlg.visible" :title="dlg.title" :message="dlg.message"
-      :type="dlg.type" :confirm-text="dlg.confirmText" :require-reason="dlg.requireReason"
-      phrase-scene-key="aa.statuschg.opinion"
-      reason-label="审批意见" :submitting="submitting" @confirm="onConfirm"
-    />
   </ModulePageShell>
 </template>
 
 <script>
-/**
- * 学籍异动审批工作台（Tier1「异动审批」，/admin/academic-affairs/status-changes/approval）。
- * 复用既有 GET /status-changes（后端已按 COUNSELOR_REVIEW/COLLEGE_REVIEW/OUT_COLLEGE_REVIEW/
- * IN_COLLEGE_REVIEW/AA_OFFICE_FINAL 节点权限与数据范围收敛，见 academic_affairs_change_service.
- * _check_node_authority）+ POST /status-changes/{id}/review（APPROVE/RETURN/REJECT 三态，与
- * 「异动详情」页内审批操作同一后端入口，不新造审批状态机）。
- */
-import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
-import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { TYPE_LABEL, STATUS_LABEL, NODE_LABEL } from '@/modules/academicAffairs/constants/status-change'
-import { toast } from '@/utils/toast'
-
-const PENDING = ['SUBMITTED', 'IN_REVIEW']
-const EMPTY = () => ({ changeType: '' })
-
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import StatusChangeReview from './parallel-c/StatusChangeReview.vue'
+import { academicAffairsApi as api } from '../api/academic-affairs.api'
+import { currentUserFromToken } from '@/services/http/client'
+import { TYPE_LABEL, NODE_LABEL, STATUS_LABEL } from '../constants/status-change'
+import { gradeError } from './parallel-c/grade-review'
 export default {
   name: 'AaStatusChangeApprovalView',
-  components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppConfirmDialog },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusChangeReview },
   props: { ctx: { type: Object, required: true } },
-  data() {
-    return {
-      loading: true, error: '', submitting: false,
-      rows: [], total: 0, page: 1, pageSize: 20, filters: EMPTY(),
-      dlg: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, action: '', row: null },
-      columns: [
-        { key: 'student', title: '学生 / 状态变化' },
-        { key: 'type', title: '类型' },
-        { key: 'node', title: '当前节点' },
-        { key: 'actions', title: '操作', width: '220px' }
-      ]
-    }
-  },
-  computed: {
-    filterFields() {
-      return [{ key: 'changeType', label: '类型', type: 'select', options: Object.keys(TYPE_LABEL).map((v) => ({ value: v, label: TYPE_LABEL[v] })) }]
-    }
-  },
-  created() { this.load() },
+  data() { return { alive:true,seq:0,loading:true,error:'',busy:false,rows:[],active:null,total:0,page:1,pageSize:20,status:'SUBMITTED',changeType:'',types:TYPE_LABEL } },
+  computed: { identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns])} },
+  watch: { identity(){this.clear();this.busy=false;this.page=1;this.load()} },
+  created(){this.load()},
+  beforeUnmount(){this.alive=false;this.clear()},
   methods: {
-    nodeLabel(n) { return n ? (NODE_LABEL[n] || n) : '—' },
-    statusLabel(s) { return STATUS_LABEL[s] || s || '' },
-    async load() {
-      this.loading = true; this.error = ''
-      const res = await academicAffairsApi.getStatusChanges({ ...this.filters, page: this.page, pageSize: this.pageSize })
-      if (res.code === 0) {
-        // 后端已按节点权限 + 数据范围过滤到「与我相关」的异动；前端再收敛为在途待处理
-        this.rows = res.data.list.filter((r) => PENDING.includes(r.status))
-        this.total = this.rows.length
-      } else this.error = res.message
-      this.loading = false
-    },
-    search() { this.page = 1; this.load() },
-    reset() { this.filters = EMPTY(); this.page = 1; this.load() },
-    turnPage(p) { this.page = p; this.load() },
-    goDetail(row) { this.$router.push(`/admin/academic-affairs/status-changes/${row.changeId}`) },
-    askApprove(row) {
-      const isFinal = !NODE_LABEL[row.currentNode] || row.currentNode === 'AA_OFFICE_FINAL'
-      this.dlg = { visible: true, title: `通过「${row.changeTypeLabel}」`, action: 'APPROVE', row,
-        type: 'primary', confirmText: '确认通过', requireReason: false,
-        message: isFinal ? '这是终审节点，通过后异动将即刻生效并写入学籍主档。' : '通过后流转到下一审批节点。' }
-    },
-    askReturn(row) {
-      this.dlg = { visible: true, title: '退回异动', action: 'RETURN', row,
-        type: 'warning', confirmText: '确认退回', requireReason: true, message: '退回给申请方修改，请填写退回原因（≥5 字）。' }
-    },
-    askReject(row) {
-      this.dlg = { visible: true, title: '驳回异动', action: 'REJECT', row,
-        type: 'danger', confirmText: '确认驳回', requireReason: true, message: '驳回后本异动终止，请填写驳回原因（≥5 字）。' }
-    },
-    async onConfirm(payload) {
-      const reason = (payload && payload.reason) || ''
-      this.submitting = true
-      try {
-        const res = await academicAffairsApi.reviewStatusChange(this.dlg.row.changeId, this.dlg.action, reason)
-        if (res.code === 0) {
-          toast.success('已处理')
-          this.dlg.visible = false
-          this.load()
-        } else toast.error(res.message || '处理失败')
-      } finally { this.submitting = false }
+    nodeLabel(v){return NODE_LABEL[v]||(v?'节点待核对':'暂无审批节点')},statusLabel(v){return STATUS_LABEL[v]||'状态待核对'},
+    clear(){this.seq++;this.rows=[];this.active=null;this.total=0;this.error='';this.loading=false},
+    denied(){this.clear();this.busy=false;this.error='当前身份无权读取此申请，请返回责任队列。'},
+    select(row){if(!this.busy)this.active={...row}},
+    updateFormal(row){if(String(this.active?.changeId)!==String(row.changeId))return;this.active={...row};const found=this.rows.find(r=>String(r.changeId)===String(row.changeId));if(found)Object.assign(found,row)},
+    goDetail(row){if(!this.busy)this.$router.push(`/admin/academic-affairs/status-changes/${encodeURIComponent(row.changeId)}`)},
+    search(){if(this.busy)return;this.page=1;this.load()},turnPage(page){if(this.busy)return;this.page=page;this.load()},
+    async load(){
+      if(this.busy)return
+      this.clear();const seq=this.seq,identity=this.identity,query={status:this.status,changeType:this.changeType||undefined,page:this.page,pageSize:this.pageSize}
+      const valid=()=>this.alive&&seq===this.seq&&identity===this.identity
+      this.loading=true
+      try{const res=await api.getStatusChanges(query);if(!valid())return;if(res?.code!==0)throw res;this.rows=res.data?.list||[];this.total=res.data?.total??this.rows.length;this.active=this.rows.length?{...this.rows[0]}:null}
+      catch(err){if(valid())this.error=gradeError(err,'待审申请读取失败，请重试。')}finally{if(valid())this.loading=false}
     }
   }
 }
 </script>
 
 <style scoped>
-@import '@/styles/module-page.css';
-.mp-link--danger { color: var(--danger-600, #f53f3f); }
+.sc-stack{display:grid;gap:16px}fieldset{display:flex;align-items:center;gap:16px;padding:14px;border:1px solid var(--border-200,#e1e7ef);border-radius:8px;background:var(--bg-white,#fff)}label{display:flex;align-items:center;gap:8px;font-size:13px}select,button{padding:8px 12px;border:1px solid var(--border-200,#d6e0ed);border-radius:7px;background:var(--bg-white,#fff);color:inherit}button{cursor:pointer}button:disabled{opacity:.5;cursor:default}.sc-workbench{display:grid;grid-template-columns:260px minmax(0,1fr);gap:16px}aside{border:1px solid var(--border-200,#e1e7ef);border-radius:9px;overflow:hidden;background:var(--bg-white,#fff)}aside h3{font-size:14px;padding:16px;margin:0}small{font-weight:400}aside>button{display:grid;gap:9px;text-align:left;width:100%;border:0;border-top:1px solid var(--border-200,#e1e7ef);border-radius:0;padding:16px}aside>button.selected{background:var(--primary-50,#edf3ff);box-shadow:inset 3px 0 var(--primary-500,#3564b4)}aside span{font-size:12px;color:var(--text-500,#607087)}main{min-width:0}.sc-pages{display:flex;gap:8px;align-items:center;justify-content:center;padding:12px}.sc-detail{margin-top:14px;color:var(--primary-600,#285aab)}@media(max-width:900px){.sc-workbench{grid-template-columns:1fr}fieldset{flex-wrap:wrap}}
 </style>

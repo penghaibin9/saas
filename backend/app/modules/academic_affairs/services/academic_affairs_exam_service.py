@@ -12,9 +12,13 @@ import json
 import random
 from datetime import datetime
 
+from sqlalchemy import case, func, or_, select
+
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.permissions import enforce_permission
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 # 批次 6 态
@@ -25,6 +29,8 @@ _D_SUBMITTED, _D_COUNSELOR, _D_TEACHER = "SUBMITTED", "COUNSELOR_REVIEW", "TEACH
 _D_COLLEGE, _D_FINAL = "COLLEGE_REVIEW", "ACADEMIC_FINAL"
 _D_APPROVED, _D_RETURNED, _D_REJECTED = "APPROVED", "RETURNED", "REJECTED"
 _DEFER_CHAIN = {_D_COUNSELOR: _D_TEACHER, _D_TEACHER: _D_COLLEGE, _D_COLLEGE: _D_FINAL, _D_FINAL: _D_APPROVED}
+_DEFER_COUNSELOR_PERMISSION = "academicAffairs.deferredExam.counselorReview"
+_DEFER_REVIEW_PERMISSION = "academicAffairs.deferredExam.review"
 
 
 def _resolve_classroom_id(db, text):
@@ -91,13 +97,217 @@ def _require_school(ctx):
         raise no_data_scope("仅教务处可执行该操作")
 
 
+def _task_offering_college_expression():
+    """课程必须真实存在；开课单位优先，任务批次责任单位仅作既有链回退。"""
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    return select(func.coalesce(AaCourse.owner_college_id, AaTeachingTaskBatch.college_id)).select_from(
+        AaCourse).join(AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).where(
+        AaCourse.id == AaTeachingTask.course_id, AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
+        AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+    ).correlate(AaTeachingTask).scalar_subquery()
+
+
+def _course_offering_college_expression():
+    from app.models import AaCourse, AaExamCourse, AaTeachingTask
+    task_owner = select(_task_offering_college_expression()).where(
+        AaTeachingTask.id == AaExamCourse.teaching_task_id, AaTeachingTask.tenant_id == _tid(),
+        AaTeachingTask.is_deleted.is_(False),
+        or_(AaExamCourse.course_id.is_(None), AaTeachingTask.course_id == AaExamCourse.course_id),
+    ).correlate(AaExamCourse).scalar_subquery()
+    owner = select(AaCourse.owner_college_id).where(AaCourse.id == AaExamCourse.course_id,
+        AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False)).correlate(AaExamCourse).scalar_subquery()
+    return case((AaExamCourse.teaching_task_id.is_(None), owner), else_=task_owner)
+
+
+def _course_college_id(db, course):
+    from app.models import AaExamCourse
+    value = db.scalar(select(_course_offering_college_expression()).where(
+        AaExamCourse.id == int(course.id), AaExamCourse.tenant_id == _tid(), AaExamCourse.is_deleted.is_(False)))
+    return int(value) if value else None
+
+
+def _course_college_ids(db, course_ids):
+    from app.models import AaExamCourse
+    if not course_ids:
+        return {}
+    return {int(course_id): int(college_id) if college_id else None for course_id, college_id in db.execute(
+        select(AaExamCourse.id, _course_offering_college_expression()).where(
+            AaExamCourse.id.in_(course_ids), AaExamCourse.tenant_id == _tid(), AaExamCourse.is_deleted.is_(False),
+        )).all()}
+
+
+def _check_course_scope(db, ctx, course):
+    college_id = _course_college_id(db, course)
+    if not college_id:
+        raise _conflict("考试课程缺少有效课程或开课责任单位，请先核对课程与教学任务")
+    _check_college_scope(ctx, college_id)
+    return college_id
+
+
+def _require_responsible_actor(db, user, ctx, owner, permission, *, cache=None):
+    from app.core.permissions import _match
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from .academic_affairs_responsibility_service import _cached
+    if not _match(permission, ctx.permission_codes):
+        raise no_data_scope("当前身份没有该考务办理权限")
+    if not isinstance(owner, dict) or owner.get("resolved") is not True:
+        raise no_data_scope((owner.get("reason") if isinstance(owner, dict) else None) or "当前考务责任岗位尚未配置或已失效")
+    try:
+        uid = _cached(cache, ("EXAM_CURRENT_ACTOR", str(user.get("userId") or ""), str(user.get("loginName") or "")),
+            lambda: _current_user_id(db, user))
+    except AppException as error:
+        if error.code != "NO_PERMISSION":
+            raise
+        raise no_data_scope("当前账号已失效，不能办理考务") from error
+    candidates = owner.get("assigneeUserIds")
+    if not isinstance(candidates, list) or str(uid) not in candidates:
+        raise no_data_scope("您不是当前有效的考务办理人，请切换到对应责任岗位")
+    return owner
+
+
+def _require_course_confirmer(db, user, ctx, course):
+    return _require_offering_confirmer(db, user, ctx, _check_course_scope(db, ctx, course))
+
+
+def _require_offering_confirmer(db, user, ctx, college_id, *, cache=None):
+    from .academic_affairs_responsibility_service import resolve_organization
+    if not college_id:
+        raise _conflict("考试课程缺少有效课程或开课责任单位，请先核对课程与教学任务")
+    _check_college_scope(ctx, college_id)
+    if ctx.scope_type != "COLLEGE":
+        raise no_data_scope("考试课程须由开课学院当前办理人确认，学校不能代办学院确认")
+    permission = "academicAffairs.exam.manage"
+    owner = resolve_organization(db, "COLLEGE", college_id, permission_code=permission,
+        **({"cache": cache} if cache is not None else {}))
+    return _require_responsible_actor(db, user, ctx, owner, permission, cache=cache)
+
+
+def _require_school_publisher(db, user, ctx, *, cache=None):
+    from .academic_affairs_responsibility_service import resolve_school
+    _require_school(ctx)
+    permission = "academicAffairs.exam.publish"
+    owner = resolve_school(db, permission_code=permission, **({"cache": cache} if cache is not None else {}))
+    return _require_responsible_actor(db, user, ctx, owner, permission, cache=cache)
+
+
+def _read_action(check):
+    try:
+        check()
+    except AppException as error:
+        if error.code not in {"NO_DATA_SCOPE", "NO_PERMISSION", "DATA_CONFLICT"}:
+            raise
+        return {"allowed": False, "reason": error.message}
+    return {"allowed": True, "reason": ""}
+
+
+def _course_confirm_actions(db, user, ctx, rows):
+    # 页内相同学院共用授权裁决，R1 与稳定账号仅使用本次只读请求缓存。
+    from .academic_affairs_responsibility_service import _cached
+    cache, result = {}, {}
+    for course, college_id in rows:
+        if course.status != "PENDING_CONFIRM":
+            result[int(course.id)] = {"allowed": False, "reason": "仅待学院确认的考试课程可以确认"}
+            continue
+        result[int(course.id)] = _cached(cache, ("EXAM_CONFIRM_ACTION", college_id), lambda: _read_action(
+            lambda: _require_offering_confirmer(db, user, ctx, college_id, cache=cache)))
+    return result
+
+
+def _batch_publish_action(db, user, ctx, batch, *, cache):
+    from .academic_affairs_responsibility_service import _cached
+    if batch.status not in {_B_CONFIRMED, _B_ARRANGED}:
+        return {"allowed": False, "reason": "仅完成课程确认或编排的考试批次可以发布"}
+    return _cached(cache, ("EXAM_PUBLISH_ACTION",), lambda: _read_action(
+        lambda: _require_school_publisher(db, user, ctx, cache=cache)))
+
+
+def _batch_visibility(ctx):
+    from sqlalchemy import true
+    from app.models import AaExamBatch, AaExamCourse
+    if _is_school(ctx):
+        return true()
+    allowed = ctx.college_ids if ctx.scope_type == "COLLEGE" else set()
+    return select(AaExamCourse.id).where(AaExamCourse.batch_id == AaExamBatch.id,
+        AaExamCourse.tenant_id == _tid(), AaExamCourse.is_deleted.is_(False),
+        AaExamCourse.status != "REMOVED", _course_offering_college_expression().in_(allowed or {-1}),
+    ).correlate(AaExamBatch).exists()
+
+
+def _require_batch_visible(db, ctx, batch):
+    from app.models import AaExamBatch
+    if not db.query(AaExamBatch.id).filter(AaExamBatch.id == batch.id,
+            AaExamBatch.tenant_id == _tid(), _batch_visibility(ctx)).first():
+        raise no_data_scope("考试批次不在当前开课责任范围内")
+
+
 # ══════════ 批次 ══════════
 
-def _batch_dto(b):
-    return {"batchId": str(b.id), "batchName": b.batch_name, "termId": str(b.term_id) if b.term_id else None,
+def _batch_dto(b, *, handoff=None, publish_action=None):
+    result = {"batchId": str(b.id), "batchName": b.batch_name, "termId": str(b.term_id) if b.term_id else None,
             "examType": b.exam_type, "examWeekStart": b.exam_week_start, "examWeekEnd": b.exam_week_end,
             "status": b.status, "publishedAt": _iso(b.published_at),
-            "collegeScope": json.loads(b.college_scope_json) if b.college_scope_json else None}
+            "collegeScope": json.loads(b.college_scope_json) if b.college_scope_json else None,
+            "publishAction": publish_action if publish_action is not None else
+                {"allowed": False, "reason": "请刷新批次以核对当前发布权限"}}
+    if handoff is not None:
+        result.update(handoff)
+    return result
+
+
+def _batch_handoffs(db, batches, ctx, *, resolver_cache=None):
+    from collections import defaultdict
+    from app.models import AaExamCourse
+    from . import academic_affairs_responsibility_service as responsibility
+    ids = [int(batch.id) for batch in batches if batch.status == _B_DRAFT]
+    pending = defaultdict(set)
+    if ids:
+        query = db.query(AaExamCourse.batch_id, _course_offering_college_expression()).filter(
+            AaExamCourse.tenant_id == _tid(), AaExamCourse.batch_id.in_(ids),
+            AaExamCourse.status == "PENDING_CONFIRM", AaExamCourse.is_deleted.is_(False))
+        # 与正式命令共用开课责任表达式；不信任历史冗余学院字段。
+        if ctx.scope_type != "TENANT_ALL":
+            query = query.filter(_course_offering_college_expression().in_(ctx.college_ids or {-1}))
+        for batch_id, college_id in query.distinct().all():
+            pending[int(batch_id)].add(int(college_id) if college_id else None)
+    cache, result = {}, {}
+    def school(permission):
+        key = ("SCHOOL", permission)
+        if key not in cache:
+            cache[key] = responsibility.resolve_school(db, permission_code="academicAffairs." + permission,
+                **({"cache": resolver_cache} if resolver_cache is not None else {}))
+        return cache[key]
+    for batch in batches:
+        actor, next_step = None, None
+        colleges = pending[int(batch.id)]
+        if batch.status == _B_DRAFT and colleges:
+            actors = []
+            for college_id in sorted(colleges, key=lambda value: value or 0):
+                key = ("COLLEGE", college_id)
+                if key not in cache:
+                    cache[key] = responsibility.resolve_organization(db, "COLLEGE", college_id,
+                        permission_code="academicAffairs.exam.manage",
+                        **({"cache": resolver_cache} if resolver_cache is not None else {}))
+                actors.append(cache[key])
+            actor = dict(actors[0])
+            if len(actors) > 1:
+                people = {uid: name for row in actors for uid, name in zip(row["assigneeUserIds"], row["assigneeNames"])}
+                actor.update(orgId=None, orgName="、".join(row["orgName"] for row in actors),
+                    assigneeUserIds=sorted(people), assigneeNames=[people[uid] for uid in sorted(people)],
+                    resolved=all(row["resolved"] for row in actors), source="COURSE_OWNER_OR_TASK_BATCH",
+                    reason="；".join(row["reason"] for row in actors if row["reason"]))
+            next_step = {"code": "COURSE_CONFIRMED", "label": "各责任学院确认课程后交校教务编排"}
+        elif batch.status in {_B_DRAFT, _B_CONFIRMED, _B_ARRANGED, _B_PUBLISHED, _B_FINISHED}:
+            permission = "exam.arrange" if batch.status == _B_CONFIRMED else "exam.publish" if batch.status == _B_ARRANGED else "exam.manage"
+            actor = school(permission)
+            next_step = {
+                _B_DRAFT: {"code": "COURSE_CONFIRMED", "label": "完成考试课程范围核对"},
+                _B_CONFIRMED: {"code": "ARRANGED", "label": "完成考场和监考编排"},
+                _B_ARRANGED: {"code": "PUBLISHED", "label": "校教务校验冲突并发布安排"},
+                _B_PUBLISHED: {"code": "FINISHED", "label": "考试结束后核对异常并结束批次"},
+                _B_FINISHED: {"code": "ARCHIVED", "label": "整理考试材料后归档"},
+            }[batch.status]
+        result[int(batch.id)] = {"responsibility": actor, "nextStep": next_step}
+    return result
 
 
 def _get_batch(db, bid):
@@ -135,22 +345,39 @@ def create_batch(user, body):
         return _batch_dto(b)
 
 
-def list_batches(user, status=None, page=1, page_size=20):
+def list_batches(user, status=None, page=1, page_size=20, *, term_id=None):
     from app.models import AaExamBatch
+    if term_id is not None:
+        try:
+            term_id = int(term_id)
+        except (TypeError, ValueError) as exc:
+            raise AppException("VALIDATION_ERROR", "termId 必须是正整数", http_status=422) from exc
+        if term_id <= 0:
+            raise AppException("VALIDATION_ERROR", "termId 必须是正整数", http_status=422)
     with session() as db:
-        _ctx(user, db)
-        q = db.query(AaExamBatch).filter(AaExamBatch.tenant_id == _tid(), AaExamBatch.is_deleted.is_(False))
+        ctx = _ctx(user, db)
+        q = db.query(AaExamBatch).filter(AaExamBatch.tenant_id == _tid(), AaExamBatch.is_deleted.is_(False), _batch_visibility(ctx))
+        if term_id is not None:
+            q = q.filter(AaExamBatch.term_id == term_id)
         if status:
             q = q.filter(AaExamBatch.status == status)
-        rows = q.order_by(AaExamBatch.id.desc()).all()
-        total = len(rows)
-        return [_batch_dto(b) for b in rows[(page - 1) * page_size: page * page_size]], total
+        total = q.count()
+        safe_page, safe_size = max(1, int(page)), min(200, max(1, int(page_size)))
+        rows = q.order_by(AaExamBatch.id.desc()).offset((safe_page - 1) * safe_size).limit(safe_size).all()
+        cache = {}
+        handoffs = _batch_handoffs(db, rows, ctx, resolver_cache=cache)
+        return [_batch_dto(b, handoff=handoffs[int(b.id)],
+            publish_action=_batch_publish_action(db, user, ctx, b, cache=cache)) for b in rows], total
 
 
 def get_batch(user, bid):
     with session() as db:
-        _ctx(user, db)
-        return _batch_dto(_get_batch(db, bid))
+        ctx = _ctx(user, db)
+        batch = _get_batch(db, bid)
+        _require_batch_visible(db, ctx, batch)
+        cache = {}
+        return _batch_dto(batch, handoff=_batch_handoffs(db, [batch], ctx, resolver_cache=cache)[int(batch.id)],
+            publish_action=_batch_publish_action(db, user, ctx, batch, cache=cache))
 
 
 def add_exam_course(user, bid, body):
@@ -163,13 +390,20 @@ def add_exam_course(user, bid, body):
         if b.status != _B_DRAFT:
             raise _invalid("仅 DRAFT 批次可圈定课程")
         tt_id = int(body.teachingTaskId)
-        tt = db.query(AaTeachingTask).filter(AaTeachingTask.id == tt_id, AaTeachingTask.tenant_id == _tid()).first()
+        tt = db.query(AaTeachingTask).filter(AaTeachingTask.id == tt_id, AaTeachingTask.tenant_id == _tid(),
+                                            AaTeachingTask.is_deleted.is_(False)).first()
         if not tt:
             raise not_found("教学任务不存在")
-        # college_id 来自教学任务批次（施工卡 D-09：范围过滤冗余落 college_id）
-        ttb = db.query(AaTeachingTaskBatch).filter(AaTeachingTaskBatch.id == tt.batch_id,
-                                                   AaTeachingTaskBatch.tenant_id == _tid()).first()
-        college_id = ttb.college_id if ttb else None
+        task_batch = db.query(AaTeachingTaskBatch).filter(AaTeachingTaskBatch.id == tt.batch_id,
+            AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False)).first()
+        if not task_batch or task_batch.term_id != b.term_id or task_batch.status != "APPROVED" or tt.status != "READY":
+            raise _conflict("仅可圈定本学期已经教务确认的教学任务")
+        from .academic_affairs_task_execution_authority import require_independent_task
+        tt = require_independent_task(db, tt)
+        college_id = db.scalar(select(_task_offering_college_expression()).where(
+            AaTeachingTask.id == tt.id, AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False)))
+        if not college_id:
+            raise _conflict("教学任务缺少有效课程或开课责任单位，不能圈定考试课程")
         dup = db.query(AaExamCourse).filter(AaExamCourse.tenant_id == _tid(), AaExamCourse.batch_id == b.id,
                                             AaExamCourse.teaching_task_id == tt_id,
                                             AaExamCourse.is_deleted.is_(False)).first()
@@ -186,17 +420,19 @@ def add_exam_course(user, bid, body):
         db.add(c); db.flush()
         _audit(db, "EXAM_COURSE", c.id, "EXAM_COURSE_ADD", f"圈定课程 {c.course_name}")
         db.commit()
-        return _course_dto(c)
+        return _course_dto(c, offering_college_id=_course_college_id(db, c))
 
 
-def _course_dto(c):
+def _course_dto(c, *, offering_college_id=None, confirm_action=None):
     return {"examCourseId": str(c.id), "batchId": str(c.batch_id),
             "teachingTaskId": str(c.teaching_task_id) if c.teaching_task_id else None,
             "courseName": c.course_name, "classId": str(c.class_id) if c.class_id else None,
-            "className": c.class_name, "collegeId": str(c.college_id) if c.college_id else None,
+            "className": c.class_name, "collegeId": str(offering_college_id) if offering_college_id else None,
             "teacherKey": c.teacher_key, "teacherName": c.teacher_name,
             "examDate": c.exam_date, "startTime": c.start_time, "endTime": c.end_time,
-            "durationMinutes": c.duration_minutes, "status": c.status}
+            "durationMinutes": c.duration_minutes, "status": c.status,
+            "confirmAction": confirm_action if confirm_action is not None else
+                {"allowed": False, "reason": "请刷新课程以核对当前确认权限"}}
 
 
 def _get_course(db, cid):
@@ -229,14 +465,15 @@ def list_courses(user, bid, page=1, page_size=100):
                 AaExamCourse.status != "REMOVED", AaExamCourse.is_deleted.is_(False)]
         if not _is_school(ctx):
             allowed = getattr(ctx, "college_ids", None) or set()
-            conds.append(AaExamCourse.college_id.in_(allowed or [-1]))
+            conds.append(_course_offering_college_expression().in_(allowed or [-1]))
         total = int(db.query(AaExamCourse).filter(*conds).count())
         page = max(1, int(page))
         page_size = max(1, int(page_size))
-        rows = db.query(AaExamCourse).filter(*conds).order_by(
+        rows = db.query(AaExamCourse, _course_offering_college_expression()).filter(*conds).order_by(
             AaExamCourse.id
         ).offset((page - 1) * page_size).limit(page_size).all()
-        return [_course_dto(c) for c in rows], total
+        actions = _course_confirm_actions(db, user, ctx, rows)
+        return [_course_dto(c, offering_college_id=offering, confirm_action=actions[int(c.id)]) for c, offering in rows], total
 
 
 def confirm_course(user, cid, action):
@@ -244,13 +481,13 @@ def confirm_course(user, cid, action):
     with session() as db:
         ctx = _ctx(user, db)
         c = _get_course(db, cid)
-        _check_college_scope(ctx, c.college_id)
+        _require_course_confirmer(db, user, ctx, c)
         if c.status != "PENDING_CONFIRM":
             raise _invalid("仅待确认课程可操作")
         c.status = "CONFIRMED" if action == "CONFIRM" else "REMOVED"
         _audit(db, "EXAM_COURSE", c.id, "EXAM_COURSE_CONFIRM", f"{action} {c.course_name}")
         db.commit()
-        return _course_dto(c)
+        return _course_dto(c, offering_college_id=_course_college_id(db, c))
 
 
 def set_course_schedule(user, cid, body):
@@ -258,14 +495,14 @@ def set_course_schedule(user, cid, body):
     with session() as db:
         ctx = _ctx(user, db)
         c = _get_course(db, cid)
-        _check_college_scope(ctx, c.college_id)
+        _check_course_scope(db, ctx, c)
         c.exam_date = getattr(body, "examDate", None) or c.exam_date
         c.start_time = getattr(body, "startTime", None) or c.start_time
         c.end_time = getattr(body, "endTime", None) or c.end_time
         c.duration_minutes = getattr(body, "durationMinutes", None) or c.duration_minutes
         _audit(db, "EXAM_COURSE", c.id, "EXAM_COURSE_SCHEDULE", f"设时间 {c.exam_date} {c.start_time}")
         db.commit()
-        return _course_dto(c)
+        return _course_dto(c, offering_college_id=_course_college_id(db, c))
 
 
 def confirm_batch_courses(user, bid):
@@ -302,7 +539,7 @@ def add_room(user, cid, body):
     with session() as db:
         ctx = _ctx(user, db)
         c = _get_course(db, cid)
-        _check_college_scope(ctx, c.college_id)
+        _check_course_scope(db, ctx, c)
         b = _get_batch(db, c.batch_id)
         _ensure_not_archived(b)
         if b.status != _B_CONFIRMED:
@@ -323,7 +560,8 @@ def add_room(user, cid, body):
 def list_rooms(user, cid):
     from app.models import AaExamRoom
     with session() as db:
-        _ctx(user, db)
+        ctx = _ctx(user, db)
+        _check_course_scope(db, ctx, _get_course(db, cid))
         rows = db.query(AaExamRoom).filter(AaExamRoom.exam_course_id == cid, AaExamRoom.tenant_id == _tid(),
                                            AaExamRoom.is_deleted.is_(False)).order_by(AaExamRoom.room_seq).all()
         return [_room_dto(r) for r in rows]
@@ -338,7 +576,7 @@ def assign_seats(user, room_id, student_ids):
         if not r:
             raise not_found("考场不存在")
         c = _get_course(db, r.exam_course_id)
-        _check_college_scope(ctx, c.college_id)
+        _check_course_scope(db, ctx, c)
         _ensure_not_archived(_get_batch(db, c.batch_id))
         sids = [int(x) for x in student_ids if str(x).isdigit()]
         if len(sids) > r.capacity:
@@ -365,11 +603,16 @@ def assign_seats(user, room_id, student_ids):
 
 
 def room_seats(user, room_id):
-    from app.models import AaExamRoomStudent
+    from app.models import AaExamRoom, AaExamRoomStudent
     with session() as db:
-        _ctx(user, db)
+        ctx = _ctx(user, db)
+        room = db.query(AaExamRoom).filter(AaExamRoom.id == int(room_id), AaExamRoom.tenant_id == _tid(),
+                                         AaExamRoom.is_deleted.is_(False)).first()
+        if not room:
+            raise not_found("考场不存在")
+        _check_course_scope(db, ctx, _get_course(db, room.exam_course_id))
         rows = db.query(AaExamRoomStudent).filter(AaExamRoomStudent.exam_room_id == room_id,
-                                                  AaExamRoomStudent.tenant_id == _tid()).order_by(AaExamRoomStudent.seat_no).all()
+            AaExamRoomStudent.tenant_id == _tid(), AaExamRoomStudent.is_deleted.is_(False)).order_by(AaExamRoomStudent.seat_no).all()
         return [{"seatNo": s.seat_no, "studentId": str(s.student_id), "studentNo": s.student_no,
                  "studentName": s.student_name, "admissionNo": s.admission_no,
                  "attendanceStatus": s.attendance_status} for s in rows]
@@ -398,7 +641,7 @@ def assign_invigilator(user, room_id, teacher_key, teacher_name, role="ASSISTANT
         if not r:
             raise not_found("考场不存在")
         c = _get_course(db, r.exam_course_id)
-        _check_college_scope(ctx, c.college_id)
+        _check_course_scope(db, ctx, c)
         _ensure_not_archived(_get_batch(db, c.batch_id))
         d0, s0, e0 = c.exam_date, c.start_time, c.end_time
         # 该教师已有的所有监考场次时间
@@ -432,9 +675,14 @@ def _course_cls():
 
 
 def list_invigilators(user, room_id):
-    from app.models import AaExamInvigilator
+    from app.models import AaExamInvigilator, AaExamRoom
     with session() as db:
-        _ctx(user, db)
+        ctx = _ctx(user, db)
+        room = db.query(AaExamRoom).filter(AaExamRoom.id == int(room_id), AaExamRoom.tenant_id == _tid(),
+                                         AaExamRoom.is_deleted.is_(False)).first()
+        if not room:
+            raise not_found("考场不存在")
+        _check_course_scope(db, ctx, _get_course(db, room.exam_course_id))
         rows = db.query(AaExamInvigilator).filter(AaExamInvigilator.exam_room_id == room_id,
                                                   AaExamInvigilator.tenant_id == _tid(),
                                                   AaExamInvigilator.is_deleted.is_(False)).all()
@@ -481,7 +729,8 @@ def assign_patrol(user, batch_id, teacher_key, teacher_name, patrol_date, start_
 def list_patrols(user, batch_id):
     from app.models import AaExamPatrol
     with session() as db:
-        _ctx(user, db)
+        ctx = _ctx(user, db)
+        _require_batch_visible(db, ctx, _get_batch(db, batch_id))
         rows = db.query(AaExamPatrol).filter(AaExamPatrol.batch_id == batch_id, AaExamPatrol.tenant_id == _tid(),
                                              AaExamPatrol.is_deleted.is_(False)).all()
         return [{"patrolId": str(p.id), "teacherKey": p.teacher_key, "teacherName": p.teacher_name,
@@ -550,7 +799,7 @@ def _notify_publish(db, batch, courses):
 def publish_batch(user, bid):
     """ARRANGED→PUBLISHED：发布前编排完整性校验（每课程有考场+座位+监考，缺则409），发布后通知考生+监考。"""
     with session() as db:
-        _require_school(_ctx(user, db))
+        _require_school_publisher(db, user, _ctx(user, db))
         b = _get_batch(db, bid)
         if b.status not in (_B_CONFIRMED, _B_ARRANGED):
             raise _invalid(f"仅 COURSE_CONFIRMED/ARRANGED 批次可发布，当前 {b.status}")
@@ -610,7 +859,7 @@ def record_incident(user, body):
         if not _is_school(ctx):
             allowed = getattr(ctx, "college_ids", None) or set()
             teacher_keys = _derive_keys(user)
-            is_college = ctx.scope_type == "COLLEGE" and c.college_id and int(c.college_id) in allowed
+            is_college = ctx.scope_type == "COLLEGE" and _course_college_id(db, c) in allowed
             is_invig = _is_invigilator_of_course(db, c.id, teacher_keys)
             if not (is_college or is_invig):
                 raise no_data_scope("非本人监考场次/本学院，无权登记")
@@ -664,11 +913,12 @@ def record_incident(user, body):
 def _is_invigilator_of_course(db, exam_course_id, teacher_keys):
     from app.models import AaExamInvigilator, AaExamRoom
     rooms = db.query(AaExamRoom.id).filter(AaExamRoom.exam_course_id == exam_course_id,
-                                           AaExamRoom.tenant_id == _tid()).all()
+            AaExamRoom.tenant_id == _tid(), AaExamRoom.status == "ACTIVE", AaExamRoom.is_deleted.is_(False)).all()
     rids = [r[0] for r in rooms]
     if not rids:
         return False
     q = db.query(AaExamInvigilator).filter(AaExamInvigilator.tenant_id == _tid(),
+                                           AaExamInvigilator.is_deleted.is_(False),
                                            AaExamInvigilator.exam_room_id.in_(rids),
                                            AaExamInvigilator.teacher_key.in_(list(teacher_keys) or [""])).first()
     return q is not None
@@ -677,18 +927,23 @@ def _is_invigilator_of_course(db, exam_course_id, teacher_keys):
 def list_incidents(user, batch_id=None, page=1, page_size=50):
     from app.models import AaExamCourse, AaExamIncident
     with session() as db:
-        _ctx(user, db)
-        q = db.query(AaExamIncident).filter(AaExamIncident.tenant_id == _tid(),
-                                            AaExamIncident.status == "ACTIVE")
+        ctx = _ctx(user, db)
+        q = db.query(AaExamIncident).join(AaExamCourse, AaExamCourse.id == AaExamIncident.exam_course_id).filter(
+            AaExamIncident.tenant_id == _tid(), AaExamIncident.status == "ACTIVE", AaExamIncident.is_deleted.is_(False),
+            AaExamCourse.tenant_id == _tid(), AaExamCourse.is_deleted.is_(False))
+        if not _is_school(ctx):
+            from .academic_affairs_exam_incident_workbench_service import _invigilated_course_ids
+            teacher_courses = _invigilated_course_ids(db, _derive_keys(user))
+            q = q.filter(or_(_course_offering_college_expression().in_(ctx.college_ids or {-1}),
+                             AaExamCourse.id.in_(teacher_courses or {-1})))
         if batch_id:
-            cids = [c[0] for c in db.query(AaExamCourse.id).filter(AaExamCourse.batch_id == int(batch_id),
-                                                                   AaExamCourse.tenant_id == _tid()).all()]
-            q = q.filter(AaExamIncident.exam_course_id.in_(cids or [0]))
-        rows = q.order_by(AaExamIncident.id.desc()).all()
-        total = len(rows)
+            q = q.filter(AaExamCourse.batch_id == int(batch_id))
+        total = q.count()
+        size = min(200, max(1, int(page_size)))
+        rows = q.order_by(AaExamIncident.id.desc()).offset((max(1, int(page)) - 1) * size).limit(size).all()
         return [{"incidentId": str(i.id), "examCourseId": str(i.exam_course_id), "studentId": str(i.student_id),
                  "studentName": i.student_name, "incidentType": i.incident_type, "description": i.description,
-                 "status": i.status} for i in rows[(page - 1) * page_size: page * page_size]], total
+                 "status": i.status} for i in rows], total
 
 
 # ══════════ 缓考（8 态四级审批） ══════════
@@ -707,14 +962,14 @@ def my_exam_schedule(user, student_id) -> dict:
             return {"hasData": False, "items": [], "note": "暂无已发布的个人考试安排"}
         items = []
         for s in seats:
-            c = db.get(AaExamCourse, s.exam_course_id)
+            c = tenant_get(db, AaExamCourse, s.exam_course_id)
             if not c or c.is_deleted or c.tenant_id != _tid():
                 continue
-            b = db.get(AaExamBatch, c.batch_id) if c.batch_id else None
+            b = tenant_get(db, AaExamBatch, c.batch_id) if c.batch_id else None
             # 仅已发布批次对学生可见（DRAFT/排考中不露）
             if b and (b.status or "") not in ("PUBLISHED", "CLOSED", "ARCHIVED"):
                 continue
-            room = db.get(AaExamRoom, s.exam_room_id)
+            room = tenant_get(db, AaExamRoom, s.exam_room_id)
             items.append({
                 "examCourseId": str(c.id),
                 "courseName": c.course_name or "",
@@ -736,6 +991,7 @@ def _defer_dto(d):
     return {"deferId": str(d.id), "studentId": str(d.student_id), "studentName": d.student_name,
             "examCourseId": str(d.exam_course_id), "courseName": d.course_name,
             "reasonType": d.reason_type, "reason": d.reason, "status": d.status,
+            "currentNode": d.current_node or "", "version": int(d.version or 0),
             "returnReason": d.return_reason, "applyAt": _iso(d.apply_at)}
 
 
@@ -829,7 +1085,7 @@ def _check_defer_scope(user, db, ctx, d):
         if role != "COLLEGE_ADMIN":
             raise no_data_scope("仅学院教务可在该节点审批")
         c = _get_course(db, d.exam_course_id)
-        _check_college_scope(ctx, c.college_id)
+        _check_course_scope(db, ctx, c)
         return
     # ACADEMIC_FINAL：仅教务处（TENANT_ALL，已在函数首行放行），其余角色一律拒绝
     raise no_data_scope("仅教务处可执行终审")
@@ -853,24 +1109,65 @@ def _visible_defer_record(user, db, ctx, d) -> bool:
     if role == "COLLEGE_ADMIN":
         c = _get_course(db, d.exam_course_id)
         try:
-            _check_college_scope(ctx, c.college_id)
+            _check_course_scope(db, ctx, c)
             return True
         except AppException:
             return False
     return False
 
 
-def defer_review(user, defer_id, action, reason=""):
+def _require_defer_version(d, expected_version) -> None:
+    """Guard every state write with the version the caller actually read.
+
+    The row lock below remains the authority for concurrent requests.  The optional
+    client version closes the stale-page path without breaking existing PC callers
+    that have not yet been upgraded to send it.
+    """
+    if expected_version in (None, ""):
+        return
+    try:
+        wanted = int(expected_version)
+    except (TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from exc
+    current = int(d.version or 0)
+    if wanted != current:
+        raise AppException(
+            "APPROVAL_VERSION_CONFLICT",
+            "该缓考申请已发生变化，请刷新后再处理",
+            details={"expectedVersion": wanted, "currentVersion": current},
+            http_status=409,
+        )
+
+
+def _require_defer_review_permission(user, status: str) -> None:
+    """Do not rely on a route alone: mobile and PC share this canonical command."""
+    permission = (
+        _DEFER_COUNSELOR_PERMISSION
+        if status == _D_COUNSELOR
+        else _DEFER_REVIEW_PERMISSION
+    )
+    enforce_permission(user, permission)
+
+
+def defer_review(user, defer_id, action, reason="", expected_version=None):
     """四级审批任一节点：APPROVE 推进/最终 APPROVED；RETURN 退回学生补材料；REJECT 驳回终态。"""
     from app.models import AaDeferredExam
     with session() as db:
         ctx = _ctx(user, db)
-        d = db.query(AaDeferredExam).filter(AaDeferredExam.id == defer_id, AaDeferredExam.tenant_id == _tid()).first()
+        d = db.query(AaDeferredExam).filter(
+            AaDeferredExam.id == defer_id,
+            AaDeferredExam.tenant_id == _tid(),
+            AaDeferredExam.is_deleted.is_(False),
+        ).with_for_update().first()
         if not d:
             raise not_found("缓考申请不存在")
         if d.status not in _DEFER_CHAIN:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请已处理，不可重复审批", http_status=409)
         _check_defer_scope(user, db, ctx, d)
+        _require_defer_review_permission(user, d.status)
+        _require_defer_version(d, expected_version)
+        action = str(action or "").strip().upper()
+        before = f"status={d.status};node={d.current_node or ''};version={int(d.version or 0)}"
         if action == "APPROVE":
             d.status = _DEFER_CHAIN[d.status]
             d.current_node = d.status
@@ -879,76 +1176,128 @@ def defer_review(user, defer_id, action, reason=""):
             if len(reason) < 5:
                 raise _bad("退回原因必填且不少于5字")
             d.status = _D_RETURNED
+            d.current_node = "STUDENT_RESUBMIT"
             d.return_reason = reason
         elif action == "REJECT":
             d.status = _D_REJECTED
+            d.current_node = _D_REJECTED
             d.return_reason = (reason or "").strip()
         else:
             raise _bad("非法审批动作")
-        _audit(db, "DEFERRED_EXAM", d.id, "DEFER_REVIEW_ACT", f"{action}->{d.status}")
+        d.version = int(d.version or 0) + 1
+        after = f"status={d.status};node={d.current_node or ''};version={int(d.version or 0)}"
+        _audit(db, "DEFERRED_EXAM", d.id, "DEFER_REVIEW_ACT", f"{action}->{d.status}", before, after)
         db.commit()
         return _defer_dto(d)
 
 
-def defer_resubmit(user, defer_id):
+def defer_resubmit(user, defer_id, expected_version=None):
     from app.models import AaDeferredExam
-    ctx = get_current_user_ctx() or {}
+    from app.services.mobile_student_service import _require_student, resolve_student
+
     with session() as db:
-        d = db.query(AaDeferredExam).filter(AaDeferredExam.id == defer_id, AaDeferredExam.tenant_id == _tid()).first()
+        # ``student_no`` is a display attribute, not a durable authorization key.  It
+        # can be corrected and (after archive) reused.  Resolve the authenticated
+        # student once and constrain this write by the stable StudentProfile id.
+        student = resolve_student(db, _require_student(user))
+        if not student:
+            raise not_found("学生档案不存在")
+        d = db.query(AaDeferredExam).filter(
+            AaDeferredExam.id == defer_id,
+            AaDeferredExam.tenant_id == _tid(),
+            AaDeferredExam.is_deleted.is_(False),
+        ).with_for_update().first()
         if not d:
             raise not_found("缓考申请不存在")
-        if str(d.student_no) != str(ctx.get("studentNo")):
+        if int(d.student_id) != int(student.id):
             raise no_data_scope("仅本人可重提")
         if d.status != _D_RETURNED:
             raise _invalid("仅退回状态可重提")
+        _require_defer_version(d, expected_version)
+        before = f"status={d.status};node={d.current_node or ''};version={int(d.version or 0)}"
         d.status = _D_COUNSELOR
         d.current_node = "COUNSELOR"
-        _audit(db, "DEFERRED_EXAM", d.id, "DEFER_RESUBMIT", "补材料重提")
+        d.version = int(d.version or 0) + 1
+        after = f"status={d.status};node={d.current_node or ''};version={int(d.version or 0)}"
+        _audit(db, "DEFERRED_EXAM", d.id, "DEFER_RESUBMIT", "补材料重提", before, after)
         db.commit()
         return _defer_dto(d)
 
 
-def defer_list(user, status=None, student_only=False, page=1, page_size=50):
+def defer_list(user, status=None, student_only=False, page=1, page_size=50, defer_id=None):
     """缓考列表。修复：非 student_only 模式下此前对 TENANT_ALL 以外角色完全不做范围收敛，
     任意持权限的辅导员/任课教师/学院教务都能看到全校缓考记录（含学生申请理由等敏感信息）。
     现按 _visible_defer_record 的真实业务关系逐条过滤（按班级/授课/学院，与记录当前处于
     哪个审批节点无关，历史/终态记录同样可见），TENANT_ALL 角色不受影响，仍返回全量。"""
     from app.models import AaDeferredExam
-    raw_ctx = get_current_user_ctx() or {}
     with session() as db:
-        affairs_ctx = _ctx(user, db)
         q = db.query(AaDeferredExam).filter(AaDeferredExam.tenant_id == _tid(), AaDeferredExam.is_deleted.is_(False))
         if student_only:
-            q = q.filter(AaDeferredExam.student_no == raw_ctx.get("studentNo"))
+            # Same durable identity rule as the write command above.  In
+            # particular, never authorize a historical record by a client token's
+            # mutable student number.
+            from app.services.mobile_student_service import _require_student, resolve_student
+
+            student = resolve_student(db, _require_student(user))
+            if not student:
+                raise not_found("学生档案不存在")
+            q = q.filter(AaDeferredExam.student_id == student.id)
+        if defer_id is not None:
+            q = q.filter(AaDeferredExam.id == defer_id)
         if status:
             q = q.filter(AaDeferredExam.status == status)
+        if student_only:
+            # Student history is a high-frequency mobile read: count/offset/limit
+            # in MySQL rather than materializing every historical application.
+            total = q.count()
+            if defer_id is not None and total == 0:
+                raise not_found("未找到可查看的缓考申请")
+            rows = q.order_by(AaDeferredExam.id.desc()).offset((page - 1) * page_size).limit(page_size).all()
+            return [_defer_dto(d) for d in rows], total
+
+        affairs_ctx = _ctx(user, db)
         rows = q.order_by(AaDeferredExam.id.desc()).all()
-        if not student_only and not _is_school(affairs_ctx):
+        if not _is_school(affairs_ctx):
             rows = [d for d in rows if _visible_defer_record(user, db, affairs_ctx, d)]
         total = len(rows)
         return [_defer_dto(d) for d in rows[(page - 1) * page_size: page * page_size]], total
 
 
-def _batch_stats_calc(db, b):
-    """批次统计核心计算（课程数/已确认数/缺考/违纪），供 batch_stats 与 12号卡归档列表 completenessSummary 复用。"""
+def _batch_stats_many(db, batch_ids, ctx):
+    """同一页面所有批次用两次聚合查询，统计范围与课程列表同源。"""
     from app.models import AaExamCourse, AaExamIncident
-    courses = db.query(AaExamCourse).filter(AaExamCourse.batch_id == b.id, AaExamCourse.tenant_id == _tid(),
-                                            AaExamCourse.status != "REMOVED").all()
-    cids = [c.id for c in courses]
-    incidents = db.query(AaExamIncident).filter(AaExamIncident.tenant_id == _tid(),
-                                                AaExamIncident.exam_course_id.in_(cids or [0]),
-                                                AaExamIncident.status == "ACTIVE").all() if cids else []
-    absent = len([i for i in incidents if i.incident_type == "ABSENT"])
-    violation = len([i for i in incidents if i.incident_type == "DISCIPLINE_VIOLATION"])
-    return {"courseCount": len(courses), "confirmedCount": len([c for c in courses if c.status == "CONFIRMED"]),
-            "absentCount": absent, "violationCount": violation}
+    result = {int(bid): {"courseCount": 0, "confirmedCount": 0, "absentCount": 0, "violationCount": 0}
+              for bid in batch_ids}
+    if not result:
+        return result
+    conditions = [AaExamCourse.batch_id.in_(batch_ids), AaExamCourse.tenant_id == _tid(),
+                  AaExamCourse.is_deleted.is_(False), AaExamCourse.status != "REMOVED"]
+    if not _is_school(ctx):
+        conditions.append(_course_offering_college_expression().in_(ctx.college_ids or {-1}))
+    for bid, status, count in db.query(AaExamCourse.batch_id, AaExamCourse.status, func.count()).filter(
+            *conditions).group_by(AaExamCourse.batch_id, AaExamCourse.status).all():
+        result[int(bid)]["courseCount"] += int(count)
+        if status == "CONFIRMED":
+            result[int(bid)]["confirmedCount"] += int(count)
+    for bid, kind, count in db.query(AaExamCourse.batch_id, AaExamIncident.incident_type, func.count()).join(
+            AaExamIncident, AaExamIncident.exam_course_id == AaExamCourse.id).filter(*conditions,
+            AaExamIncident.tenant_id == _tid(), AaExamIncident.is_deleted.is_(False), AaExamIncident.status == "ACTIVE",
+        ).group_by(AaExamCourse.batch_id, AaExamIncident.incident_type).all():
+        if kind in {"ABSENT", "DISCIPLINE_VIOLATION"}:
+            result[int(bid)]["absentCount" if kind == "ABSENT" else "violationCount"] += int(count)
+    return result
+
+
+def _batch_stats_calc(db, b, ctx):
+    return _batch_stats_many(db, [int(b.id)], ctx)[int(b.id)]
 
 
 def batch_stats(user, bid):
     with session() as db:
-        _ctx(user, db)
+        ctx = _ctx(user, db)
         b = _get_batch(db, bid)
-        return {"batchId": str(b.id), "status": b.status, **_batch_stats_calc(db, b)}
+        _require_batch_visible(db, ctx, b)
+        return {"batchId": str(b.id), "status": b.status, **_batch_stats_calc(db, b, ctx)}
 
 
 def list_archived_batches(user, term_id=None, college_id=None, page=1, page_size=20):
@@ -957,25 +1306,24 @@ def list_archived_batches(user, term_id=None, college_id=None, page=1, page_size
     with session() as db:
         ctx = _ctx(user, db)
         q = db.query(AaExamBatch).filter(AaExamBatch.tenant_id == _tid(), AaExamBatch.is_deleted.is_(False),
-                                         AaExamBatch.status == _B_ARCHIVED)
+                                         AaExamBatch.status == _B_ARCHIVED, _batch_visibility(ctx))
         if term_id:
             q = q.filter(AaExamBatch.term_id == int(term_id))
-        rows = q.order_by(AaExamBatch.id.desc()).all()
-        if not _is_school(ctx):
-            allowed = getattr(ctx, "college_ids", None) or set()
-            scoped_bids = {bid for (bid,) in db.query(AaExamCourse.batch_id).filter(
-                AaExamCourse.tenant_id == _tid(), AaExamCourse.college_id.in_(allowed or [0])).distinct().all()}
-            rows = [b for b in rows if b.id in scoped_bids]
         if college_id:
             cid_f = int(college_id)
-            scoped2 = {bid for (bid,) in db.query(AaExamCourse.batch_id).filter(
-                AaExamCourse.tenant_id == _tid(), AaExamCourse.college_id == cid_f).distinct().all()}
-            rows = [b for b in rows if b.id in scoped2]
-        total = len(rows)
+            if not _is_school(ctx) and cid_f not in ctx.college_ids:
+                raise no_data_scope("不能查看其他学院的考务归档")
+            q = q.filter(select(AaExamCourse.id).where(AaExamCourse.batch_id == AaExamBatch.id,
+                AaExamCourse.tenant_id == _tid(), AaExamCourse.is_deleted.is_(False),
+                _course_offering_college_expression() == cid_f).correlate(AaExamBatch).exists())
+        total = q.count()
+        size = min(200, max(1, int(page_size)))
+        rows = q.order_by(AaExamBatch.id.desc()).offset((max(1, int(page)) - 1) * size).limit(size).all()
+        statistics = _batch_stats_many(db, [int(b.id) for b in rows], ctx)
         out = []
-        for b in rows[(page - 1) * page_size: page * page_size]:
+        for b in rows:
             dto = _batch_dto(b)
             dto["archivedAt"] = _iso(getattr(b, "updated_at", None))
-            dto["completenessSummary"] = _batch_stats_calc(db, b)
+            dto["completenessSummary"] = statistics[int(b.id)]
             out.append(dto)
         return out, total

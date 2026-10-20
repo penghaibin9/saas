@@ -8,6 +8,7 @@
     <WorkbenchView
       v-if="ctx"
       :display-name="displayName"
+      :ctx="ctx"
     />
     <LoadingState v-else text="正在加载工作台…" />
   </BasePortalLayout>
@@ -24,7 +25,7 @@
  * 切身份：顶栏 AppUserChip → POST /auth/switch-role（真实令牌轮换后整页刷新）。
  */
 import BasePortalLayout from '@/layouts/BasePortalLayout.vue'
-import { LoadingState } from '@/components/business'
+import LoadingState from '@/components/business/LoadingState.vue'
 import WorkbenchView from '@/modules/workbench/views/WorkbenchView.vue'
 import { fetchLayoutContext } from '@/modules/workbench/api/workbench.api'
 import { getAuthContext } from '@/security/auth/auth.context'
@@ -56,6 +57,11 @@ export default {
     }
   },
   created() {
+    const role = String(this.auth.roles?.[0] || '').toUpperCase()
+    if (['INTERN_MENTOR', 'INTERNSHIP_MENTOR', 'INTERN_ADVISOR'].includes(role)) {
+      this.$router.replace('/admin/internship')
+      return
+    }
     this.loadCtx()
   },
   methods: {

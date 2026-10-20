@@ -77,46 +77,72 @@ export default {
 
 <style scoped>
 .gbs {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-2, 8px);
   flex-wrap: wrap;
-  padding: var(--space-2) var(--space-3);
-  background: var(--gray-50, #f8fafc);
+  min-width: 0;
+  max-width: 100%;
+  padding: var(--space-2, 8px) var(--space-3, 12px);
+  background: var(--bg-subtle, #f8fafc);
   border: 1px solid var(--border-light, #e2e8f0);
   border-radius: var(--radius-md, 8px);
-  font-size: var(--font-size-sm, 13px);
+  font-size: 13px;
+  line-height: 1.5;
 }
 .gbs__label {
   color: var(--text-tertiary, #64748b);
   flex: none;
 }
 .gbs__select {
-  min-width: 220px;
-  max-width: 420px;
-  padding: 4px 8px;
+  box-sizing: border-box;
+  min-width: min(220px, 100%);
+  max-width: min(420px, 100%);
+  min-height: 34px;
+  padding: 5px 8px;
   border: 1px solid var(--border-base, #cbd5e1);
   border-radius: 6px;
-  background: #fff;
-  font-size: inherit;
+  /* Consume the existing workspace theme; never force a white field in dark mode. */
+  background: var(--field-bg, var(--bg-card, #fff));
+  font-size: 13px;
   color: var(--text-primary, #0f172a);
   font-weight: 600;
 }
 .gbs__meta {
+  min-width: 0;
+  overflow-wrap: anywhere;
   color: var(--text-secondary, #475569);
 }
 .gbs__text {
+  min-width: 0;
+  flex: 1 1 220px;
+  overflow-wrap: anywhere;
   color: var(--text-secondary, #475569);
 }
 .gbs__text--err {
   color: var(--danger, #dc2626);
 }
 .mp-link {
-  border: none;
-  background: none;
-  color: var(--brand-primary, #2563eb);
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-base, #cbd5e1);
+  border-radius: 6px;
+  background: var(--bg-card, #fff);
+  color: var(--pri, #2563eb);
   cursor: pointer;
-  font-size: inherit;
-  padding: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.gbs__select:focus-visible,
+.mp-link:focus-visible {
+  outline: 2px solid var(--pri, #2563eb);
+  outline-offset: 2px;
 }
 </style>

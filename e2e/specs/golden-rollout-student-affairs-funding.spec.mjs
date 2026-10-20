@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { test, expect } from '../lib/observability.mjs'
 import { config } from '../lib/config.mjs'
 import { loginApi } from '../lib/api-fixture.mjs'
@@ -50,7 +51,8 @@ test.describe.serial('Golden rollout · Student Affairs funding workbench · Scr
     adminApi = await loginApi(config.sandboxAdmin)
     const rawRun = process.env.GITHUB_RUN_ID || `${Date.now()}`
     const runId = String(rawRun).replace(/\D/g, '').slice(-10) || String(Date.now()).slice(-10)
-    projectName = `Playwright 助学金治理 ${runId}`
+    // A retried worker reruns beforeAll: use independent names, not ambiguous duplicate options.
+    projectName = `Playwright 助学金治理 ${runId}-${randomUUID().slice(0, 8)}`
 
     // Build only real governance context through formal production APIs.
     // No applicant, amount KPI or recipient is fabricated for visual evidence.
@@ -74,18 +76,37 @@ test.describe.serial('Golden rollout · Student Affairs funding workbench · Scr
 
   test('real project and batch empty-state · Screenshot A', async ({ page }, testInfo) => {
     await page.setViewportSize(DESKTOP)
+    const applicationsLoaded = page.waitForResponse(response => {
+      const url = new URL(response.url())
+      return url.pathname.endsWith('/student-affairs/funding/applications') &&
+        url.searchParams.get('batchId') === String(batch.batchId) &&
+        response.request().method() === 'GET'
+    })
     await openStaffWorkspace(page, adminApi, '/admin/student-affairs/funding')
 
     await expect(page).toHaveURL(/\/admin\/student-affairs\/funding/)
-    await expect(page.getByRole('heading', { name: '奖助管理工作台', exact: true })).toBeVisible()
+    await expect(page.getByRole('heading', { name: '申请评审', exact: true })).toBeVisible()
     const context = page.locator('.fd-ctxbar')
     await expect(context).toBeVisible()
+    await context.getByRole('combobox').first().click()
+    await page.getByRole('option', { name: `助学金 · ${projectName}`, exact: true }).click()
     await expect(context).toContainText(projectName)
+    // Selecting a project does not prove a selected batch. Pin the actual API-created batch.
+    await context.getByRole('combobox').nth(1).click()
+    await page.getByRole('option').filter({ hasText: '2026-2027' }).click()
+    const applicationsResponse = await applicationsLoaded
+    expect(applicationsResponse.status()).toBe(200)
+    expect((await applicationsResponse.json()).code).toBe(0)
     await expect(context).toContainText('2026-2027')
     await expect(page.locator('.fd-toolbar')).toBeVisible()
     await expect(page.locator('.fd-workspace')).toBeVisible()
     await expect(page.locator('.fd-list')).toContainText('该批次暂无申请')
-    await expect(page.locator('.fd-detail')).toContainText('请从左侧选择一条申请')
+    await expect(page.locator('.fd-detail')).toHaveCount(0)
+    const [listBox, workspaceBox] = await Promise.all([
+      page.locator('.fd-list').boundingBox(), page.locator('.fd-workspace').boundingBox()
+    ])
+    expect(listBox.width).toBeGreaterThan(workspaceBox.width * 0.95)
+    await expect(context.getByRole('button', { name: '受理申请', exact: true })).toBeEnabled()
 
     await capture(page, testInfo, 'rollout-student-affairs-funding-a')
   })

@@ -8,6 +8,7 @@ from sqlalchemy import func, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import enforce_permission
+from app.core.tenant_scoped import tenant_get
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationStudent, GraduationTopic,
                         GraduationTopicChoice, GraduationTopicRound)
 from app.services.db_service import _iso, _tid, session
@@ -142,7 +143,7 @@ def create_round(body) -> dict:
         db.flush()
         _audit(db, r.id, "CREATE", r.round_name)
         db.commit()
-        batch = db.get(GraduationBatch, r.batch_id) if r.batch_id else None
+        batch = tenant_get(db, GraduationBatch, r.batch_id) if r.batch_id else None
         return _row_round(r, batch if batch and not batch.is_deleted else None)
 def open_round(rid) -> dict:
     with session() as db:
@@ -235,7 +236,7 @@ def submit_choices(round_id, gd_student_id, choices: list[dict], *, admin_import
                 raise AppException("VALIDATION_ERROR", "志愿序号须从1开始且不重复")
             orders.add(order)
             tid = int(ch.get("topicId") or ch.get("topic_id"))
-            t = db.get(GraduationTopic, tid)
+            t = tenant_get(db, GraduationTopic, tid)
             if not t or t.is_deleted or t.tenant_id != _tid():
                 raise not_found(f"题目 {tid} 不存在")
             if t.review_status != "APPROVED" or t.status != "CONFIRMED":
@@ -286,8 +287,8 @@ def get_choice_detail(choice_id) -> dict:
         if not c or c.is_deleted or c.tenant_id != _tid():
             raise not_found("志愿不存在")
         _assert_choice_decision_access(db, c, "topic.choice.detail")
-        stu = db.get(GraduationStudent, c.gd_student_id)
-        topic = db.get(GraduationTopic, c.topic_id)
+        stu = tenant_get(db, GraduationStudent, c.gd_student_id)
+        topic = tenant_get(db, GraduationTopic, c.topic_id)
         return _choice_row(c, stu, topic)
 
 
@@ -378,8 +379,8 @@ def reject_choice(choice_id, reason: str = "", operator_name: str = "") -> dict:
         _audit(db, c.round_id, "REJECT_CHOICE",
               f"{operator_name or '教师'} 驳回志愿 choiceId={choice_id}：{reason or '未说明理由'}")
         db.commit()
-        stu = db.get(GraduationStudent, c.gd_student_id)
-        topic = db.get(GraduationTopic, c.topic_id)
+        stu = tenant_get(db, GraduationStudent, c.gd_student_id)
+        topic = tenant_get(db, GraduationTopic, c.topic_id)
         return _choice_row(c, stu, topic)
 
 
@@ -429,41 +430,6 @@ def match_round(round_id) -> dict:
 
 # ═══════════ 退选重选 / 容量冲突复核 / 统计 / 归档（Batch 3） ═══════════
 
-def withdraw_choices(round_id, gd_student_id) -> dict:
-    """学生退选：撤回本轮全部待处理志愿（仅进行中轮次；已确认/已匹配的须走变更流程，不可自助退选）。
-    退选后学生可重新提交志愿（submit_choices 覆盖语义）。"""
-    with session() as db:
-        r = db.scalars(select(GraduationTopicRound).where(
-            GraduationTopicRound.id == int(round_id),
-            GraduationTopicRound.tenant_id == _tid(),
-            GraduationTopicRound.is_deleted.is_(False),
-        ).with_for_update()).first()
-        if r.status != "OPEN":
-            raise AppException("DATA_CONFLICT", "仅进行中的轮次可退选")
-        stu = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.id == int(gd_student_id),
-            GraduationStudent.tenant_id == _tid(),
-            GraduationStudent.is_deleted.is_(False),
-        ).with_for_update()).first()
-        assert_student_access(db, stu, "topic.choice.withdraw")
-        chs = db.scalars(select(GraduationTopicChoice).where(
-            GraduationTopicChoice.tenant_id == _tid(), GraduationTopicChoice.round_id == int(round_id),
-            GraduationTopicChoice.gd_student_id == int(gd_student_id),
-            GraduationTopicChoice.is_deleted.is_(False),
-            GraduationTopicChoice.status != "WITHDRAWN").with_for_update()).all()
-        if not chs:
-            raise not_found("当前没有可退选的志愿")
-        if any(c.status in ("CONFIRMED", "MATCHED") for c in chs):
-            raise AppException("DATA_CONFLICT", "已被确认/匹配的选题不可自助退选，请走「课题变更」流程")
-        for c in chs:
-            c.status = "WITHDRAWN"
-            c.is_deleted = True
-            c.submission_version = int(c.submission_version or 0) + 1
-        _audit(db, round_id, "WITHDRAW_CHOICES", f"学生 {stu.name if stu else gd_student_id} 退选 {len(chs)} 个志愿")
-        db.commit()
-        return {"withdrawn": len(chs)}
-
-
 def list_capacity_conflicts(round_id) -> list[dict]:
     """容量冲突人工复核：列出本轮「待处理志愿数 > 剩余容量」的过热题目及竞争学生，供管理员人工确认/驳回。"""
     with session() as db:
@@ -477,7 +443,7 @@ def list_capacity_conflicts(round_id) -> list[dict]:
             by_topic.setdefault(int(c.topic_id), []).append(c)
         out = []
         for tid, group in by_topic.items():
-            t = db.get(GraduationTopic, tid)
+            t = tenant_get(db, GraduationTopic, tid)
             if not t or t.is_deleted:
                 continue
             remaining = max(0, int(t.capacity or 0) - int(t.selected or 0))
@@ -485,7 +451,7 @@ def list_capacity_conflicts(round_id) -> list[dict]:
                 continue  # 不过热
             students = []
             for c in sorted(group, key=lambda x: x.choice_order):
-                s = db.get(GraduationStudent, int(c.gd_student_id))
+                s = tenant_get(db, GraduationStudent, int(c.gd_student_id))
                 students.append({"choiceId": str(c.id), "gdStudentId": str(c.gd_student_id),
                                  "studentName": s.name if s else "", "className": s.class_name if s else "",
                                  "choiceOrder": c.choice_order, "advisorName": t.advisor_name or ""})
@@ -512,7 +478,7 @@ def round_stats(round_id) -> dict:
                 topic_pending[int(c.topic_id)] = topic_pending.get(int(c.topic_id), 0) + 1
         over = 0
         for tid, cnt in topic_pending.items():
-            t = db.get(GraduationTopic, tid)
+            t = tenant_get(db, GraduationTopic, tid)
             if t and cnt > max(0, int(t.capacity or 0) - int(t.selected or 0)):
                 over += 1
         by_status = [{"status": s, "label": CHOICE_LABEL.get(s, s), "count": status_count.get(s, 0)}
@@ -816,7 +782,7 @@ def active_round(batch_id=None) -> dict | None:
         r = db.scalars(q.order_by(GraduationTopicRound.id.desc())).first()
         if not r:
             return None
-        batch = db.get(GraduationBatch, r.batch_id) if r.batch_id else None
+        batch = tenant_get(db, GraduationBatch, r.batch_id) if r.batch_id else None
         return _row_round(r, batch if batch and not batch.is_deleted else None)
 
 

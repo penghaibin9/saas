@@ -39,8 +39,16 @@ _MINI_CLIENTS = frozenset({CLIENT_STUDENT_MINI, CLIENT_TEACHER_MINI})
 
 #: 每个端只允许跳自己的分包与共享页，越界一律 fail-closed。
 _ALLOWED_PREFIXES: dict[str, tuple[str, ...]] = {
-    CLIENT_STUDENT_MINI: ("/pages/student/", "/pages/common/"),
-    CLIENT_TEACHER_MINI: ("/pages/teacher/", "/pages/common/"),
+    CLIENT_STUDENT_MINI: (
+        "/pages/student/",
+        "/pages/student-internship/",
+        "/pages/common/",
+    ),
+    CLIENT_TEACHER_MINI: (
+        "/pages/teacher/",
+        "/pages/teacher-internship/",
+        "/pages/common/",
+    ),
 }
 
 _NO_TARGET_REASON = "当前端暂无安全处理入口"
@@ -213,6 +221,8 @@ def build_message_action(
 
     try:
         key, cleaned = _messages.validate_action(key, action_params or {})
+        from app.services.affairs_funding_student_service import message_application_params
+        cleaned = message_application_params(key, cleaned)
     except AppException:
         return _blocked(
             source_biz_type=None, source_biz_id=None, record_id=None,
@@ -242,7 +252,7 @@ def build_message_action(
     query = dict(cleaned or {})
     # 目标页面登记的聚焦参数名与消息参数名不一致时补一份，例如列表页统一读 recordId。
     page_focus_key = focus_param(path)
-    if page_focus_key and record_id and query.get(page_focus_key) in (None, ""):
+    if normalize_focus_mode(route.get("focusMode")) != FOCUS_NONE and page_focus_key and record_id and query.get(page_focus_key) in (None, ""):
         query[page_focus_key] = record_id
 
     return _descriptor(

@@ -138,6 +138,8 @@ def test_d7_u_candidates_preview_confirm_and_readiness(client, auth_headers, db_
     assert after["circledCourseCount"] == 2
     assert after["pendingCandidateCount"] == 1
     assert after["canPublish"] is False
+    assert not any("尚未圈定" in reason for reason in after["blockingReasons"])
+    assert any("待学院确认" in reason for reason in after["blockingReasons"])
 
 
 def test_d7_u_course_list_batches_roster_snapshot_query(client, auth_headers, db_mode):

@@ -1,11 +1,11 @@
 import { request } from '@/services/http/client'
 
 const BASE = '/academic-affairs'
-const previewTokens = new Map()
 
 function toError(error) {
   return {
-    code: Number(error?.code || 500000),
+    code: error?.code || 500000,
+    bizCode: error?.bizCode || '',
     message: error?.message || '请求失败，请稍后重试',
     data: null
   }
@@ -33,30 +33,19 @@ export const rosterRegistrationConvenienceApi = {
   },
 
   async previewBulkRegistration(batchId, studentIds) {
-    const key = String(batchId)
-    previewTokens.delete(key)
-    const result = await call(() => request(`${BASE}/registration-batches/${batchId}/bulk-register-preview`, {
+    return call(() => request(`${BASE}/registration-batches/${batchId}/bulk-register-preview`, {
       method: 'POST',
-      body: { studentIds: (studentIds || []).map(Number) }
+      body: { studentIds: (studentIds || []).map(String) }
     }))
-    if (result.code === 0 && result.data?.previewToken) {
-      previewTokens.set(key, result.data.previewToken)
-    }
-    return result
   },
 
-  async confirmBulkRegistration(batchId) {
-    const key = String(batchId)
-    const previewToken = previewTokens.get(key)
-    if (!previewToken) {
+  async confirmBulkRegistration(batchId, previewToken) {
+    if (typeof previewToken !== 'string' || !previewToken) {
       return { code: 400001, message: '请先重新预览本次批量注册名单', data: null }
     }
-    const result = await call(() => request(`${BASE}/registration-batches/${batchId}/bulk-register`, {
+    return call(() => request(`${BASE}/registration-batches/${batchId}/bulk-register`, {
       method: 'POST',
       body: { previewToken }
     }))
-    // 一次确认尝试后即丢弃浏览器内存 token；失败也必须重新 preview，避免误用旧快照。
-    previewTokens.delete(key)
-    return result
   }
 }

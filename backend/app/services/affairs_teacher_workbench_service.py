@@ -16,6 +16,12 @@ CONTRACT_VERSION = "AFFAIRS_TEACHER_TODO_V2"
 PAGE_SIZE_MAX = 100
 
 _LABELS = {
+    "WORK_STUDY_REVIEW": "勤工申请待审核",
+    "WORK_STUDY_ONBOARD": "勤工协议待核验上岗",
+    "FEE_REDUCTION_REVIEW": "减免临补待审核",
+    "STUDENT_LOAN_REVIEW": "助学贷款待核验",
+    "STUDENT_LOAN_CONFIRM": "助学贷款待确认台账",
+    "FEE_REDUCTION_FULFILL": "减免临补待落实",
     "LEAVE_APPROVAL": "请假待审",
     "LEAVE_CANCEL": "销假待确认",
     "LEAVE_OVERDUE": "逾期未销假",

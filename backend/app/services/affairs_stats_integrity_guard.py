@@ -162,9 +162,11 @@ def install() -> None:
             conds.append(StudentProfile.class_id.in_(allowed or {-1}))
         return allowed, conds
 
-    def disbursement_stats(user):
+    def disbursement_stats(user, batch_id=None):
         with session() as db:
             _allowed, student_conds = _scoped_student_conds(db, user)
+            if batch_id is not None:
+                student_conds = [*student_conds, FundingDisbursement.batch_id == int(batch_id)]
             rows = db.execute(
                 select(
                     FundingDisbursement.bank_status,
@@ -210,12 +212,9 @@ def install() -> None:
         result["domains"] = domains
         result["domainsByKey"] = {row["key"]: row for row in domains}
 
-    def cockpit_view(user):
-        result = old_cockpit(user)
-        now = _iso(__import__("datetime").datetime.utcnow())
+    def _archive_stats(user):
         with session() as db:
             allowed, student_conds = _scoped_student_conds(db, user)
-
             package_total, scoped_batches, archive_pending = db.execute(
                 select(
                     func.count(ArchivePackage.id),
@@ -237,15 +236,11 @@ def install() -> None:
                 )) or 0)
             else:
                 archive_batches = int(scoped_batches or 0)
-            _replace_domain(result, {
-                "key": "archive", "label": "学工归档", "status": "OK",
-                "metrics": {"total": package_total, "batches": archive_batches,
-                            "pending": archive_pending},
-                "total": package_total, "highlight": archive_pending,
-                "highlightLabel": "未归档档案包", "message": "", "updatedAt": now,
-                "route": "/admin/student-affairs/archive",
-            })
+            return {"total": package_total, "batches": archive_batches, "pending": archive_pending}
 
+    def _work_study_stats(user):
+        with session() as db:
+            _allowed, student_conds = _scoped_student_conds(db, user)
             work_total, work_pending, work_onboard = db.execute(
                 select(
                     func.count(WorkStudyRecord.id),
@@ -262,14 +257,11 @@ def install() -> None:
             work_total = int(work_total or 0)
             work_pending = int(work_pending or 0)
             work_onboard = int(work_onboard or 0)
-            _replace_domain(result, {
-                "key": "workStudy", "label": "勤工助学", "status": "OK",
-                "metrics": {"total": work_total, "pending": work_pending, "onboard": work_onboard},
-                "total": work_total, "highlight": work_pending,
-                "highlightLabel": "待审核", "message": "", "updatedAt": now,
-                "route": "/admin/student-affairs/funding/work-study",
-            })
+            return {"total": work_total, "pending": work_pending, "onboard": work_onboard}
 
+    def _family_stats(user):
+        with session() as db:
+            _allowed, student_conds = _scoped_student_conds(db, user)
             family_total, pending_receipts = db.execute(
                 select(
                     func.count(FamilyContactLog.id),
@@ -283,13 +275,33 @@ def install() -> None:
             ).one()
             family_total = int(family_total or 0)
             pending_receipts = int(pending_receipts or 0)
-            _replace_domain(result, {
-                "key": "family", "label": "家校联系", "status": "OK",
-                "metrics": {"total": family_total, "pendingReceipt": pending_receipts},
-                "total": family_total, "highlight": pending_receipts,
-                "highlightLabel": "待回执", "message": "", "updatedAt": now,
-                "route": "/admin/student-affairs/family",
-            })
+            return {"total": family_total, "pendingReceipt": pending_receipts}
+
+    supplemental_stats = {
+        "archive": _archive_stats,
+        "workStudy": _work_study_stats,
+        "family": _family_stats,
+    }
+
+    def cockpit_view(user):
+        result = old_cockpit(user)
+        now = _iso(__import__("datetime").datetime.utcnow())
+        additions = (
+            safe_domain(
+                "archive", "学工归档", "/admin/student-affairs/archive", supplemental_stats["archive"], user,
+                highlight_from="pending", highlight_label="未归档档案包",
+            ),
+            safe_domain(
+                "workStudy", "勤工助学", "/admin/student-affairs/funding/work-study", supplemental_stats["workStudy"], user,
+                highlight_from="pending", highlight_label="待审核",
+            ),
+            safe_domain(
+                "family", "家校联系", "/admin/student-affairs/family", supplemental_stats["family"], user,
+                highlight_from="pendingReceipt", highlight_label="待回执",
+            ),
+        )
+        for domain in additions:
+            _replace_domain(result, domain)
         result["updatedAt"] = now
         return result
 
@@ -297,5 +309,6 @@ def install() -> None:
     activity.activity_stats = activity_stats
     funding.disbursement_stats = disbursement_stats
     cockpit._safe_domain = safe_domain
+    cockpit._supplemental_stats = supplemental_stats
     cockpit.cockpit = cockpit_view
     _INSTALLED = True

@@ -50,3 +50,42 @@ test('U2 proposal reads are latest-wins and canonical mutations own one task con
   assert.match(source, /token !== this\.loadToken \|\| String\(batchId\) !== String\(this\.batchStore\.selectedBatchId\)/)
   assert.match(source, /token !== this\.statsToken \|\| String\(batchId\) !== String\(this\.batchStore\.selectedBatchId\)/)
 })
+
+test('U2 URL contract restores queue state and narrow detail keeps a whitelisted return context', () => {
+  assert.match(source, /applyInitialRouteState\(this\.\$route\.query\)/)
+  assert.match(source, /this\.filters\.status = this\.normalizeTab\(query\.tab\)/)
+  assert.match(source, /this\.filters\.keyword = this\.routeText\(query\.keyword\)/)
+  assert.match(source, /this\.page = this\.normalizePage\(query\.page\)/)
+  assert.match(source, /this\.selKey = this\.routeText\(query\.sel\)/)
+  assert.match(source, /'\$route\.query': \{[\s\S]*onRouteQueryChanged\(query\)/)
+  assert.match(source, /buildListQuery\(overrides = \{\}\)/)
+  assert.match(source, /tab: this\.filters\.status \|\| undefined/)
+  assert.match(source, /page: String\(this\.page\)/)
+  assert.match(source, /keyword: keyword \|\| undefined/)
+  assert.match(source, /sel: this\.selKey \|\| undefined/)
+  assert.match(source, /returnTo: this\.listReturnTo\(row\)/)
+})
+
+test('U2 makes the selected review subject and submit lock visible above the canonical review card', () => {
+  assert.match(source, /class="pr-subject"/)
+  assert.match(source, /:data-selected-record="rowKey\(selectedRow\)"/)
+  assert.match(source, /当前批阅对象/)
+  assert.match(source, /正在提交，禁止切换对象/)
+  assert.match(source, /class="pr-lock" role="status"/)
+})
+
+test('U2 compact card removes duplicate queue, subject summary and auto-next chrome', () => {
+  assert.match(card, /class="prc" :class="\{ 'is-compact': compact \}"/)
+  for (const selector of [
+    'gd-review-workspace__queue',
+    'gd-review-workspace__business-bar',
+    'gd-review-workspace__auto',
+    'gd-review-workspace__summary',
+    'gd-review-workspace__dossier'
+  ]) {
+    assert.match(card, new RegExp(`prc\\.is-compact[\\s\\S]*${selector}`))
+  }
+  assert.match(card, /gd-review-workspace\.is-narrow\)\{grid-template-columns:minmax\(0,1fr\) 300px!important/)
+  assert.match(card, /max-width:1180px/)
+  assert.match(card, /gd-review-workspace__review\)\{position:sticky/)
+})

@@ -22,6 +22,14 @@ ROOT = Path(__file__).resolve().parents[2]
 VERSIONS_PREFIX = "backend/alembic/versions/"
 FORBIDDEN_CALLS = {"drop_table", "drop_column", "rename_table", "drop_constraint"}
 DESTRUCTIVE_SQL = re.compile(r"\b(DROP|TRUNCATE|RENAME)\b", re.IGNORECASE)
+DROP_TRIGGER = re.compile(
+    r"^\s*DROP\s+TRIGGER\s+(?:IF\s+EXISTS\s+)?`?(?P<name>[A-Za-z0-9_]+)`?\s*;?\s*$",
+    re.IGNORECASE,
+)
+CREATE_TRIGGER = re.compile(
+    r"\bCREATE\s+TRIGGER\s+`?(?P<name>[A-Za-z0-9_]+)`?\b",
+    re.IGNORECASE,
+)
 
 
 def git(*args: str) -> str:
@@ -57,15 +65,28 @@ def call_name(node: ast.Call) -> str | None:
     return None
 
 
+def _static_string(node: ast.AST) -> str:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    if isinstance(node, ast.JoinedStr):
+        return "".join(
+            _static_string(value) if not isinstance(value, ast.FormattedValue) else "{value}"
+            for value in node.values
+        )
+    return ""
+
+
 def constant_sql(node: ast.Call) -> str:
     values: list[str] = []
     for arg in node.args:
-        if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
-            values.append(arg.value)
+        direct = _static_string(arg)
+        if direct:
+            values.append(direct)
         elif isinstance(arg, ast.Call):
             for nested in arg.args:
-                if isinstance(nested, ast.Constant) and isinstance(nested.value, str):
-                    values.append(nested.value)
+                value = _static_string(nested)
+                if value:
+                    values.append(value)
     return "\n".join(values)
 
 
@@ -77,6 +98,17 @@ def violations(path: Path) -> list[str]:
     )
     if upgrade is None:
         return ["missing upgrade()"]
+
+    execute_sql = [
+        constant_sql(node)
+        for node in ast.walk(upgrade)
+        if isinstance(node, ast.Call) and call_name(node) in {"execute", "exec_driver_sql"}
+    ]
+    recreated_triggers = {
+        match.group("name").lower()
+        for sql in execute_sql
+        for match in CREATE_TRIGGER.finditer(sql)
+    }
 
     errors: list[str] = []
     for node in ast.walk(upgrade):
@@ -98,6 +130,12 @@ def violations(path: Path) -> list[str]:
         if name in {"execute", "exec_driver_sql"}:
             sql = constant_sql(node)
             if sql and DESTRUCTIVE_SQL.search(sql):
+                dropped_trigger = DROP_TRIGGER.fullmatch(sql)
+                # Replacing a trigger under the same name changes an executable guard, not the
+                # table contract consumed by N-1 application bytes. It is safe only when this
+                # same upgrade recreates that exact trigger; an unmatched DROP remains blocked.
+                if dropped_trigger and dropped_trigger.group("name").lower() in recreated_triggers:
+                    continue
                 errors.append(f"line {node.lineno}: destructive raw SQL in upgrade(): {sql[:80]!r}")
     return errors
 

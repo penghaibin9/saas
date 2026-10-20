@@ -6,8 +6,8 @@
     :size="fields.length > 6 ? 'large' : 'medium'"
     @update:visible="$emit('update:visible', $event)"
   >
-    <form class="ed" @submit.prevent="onSubmit">
-      <label v-for="f in fields" :key="f.key" class="ed__field">
+    <form class="ed" :class="{ 'ed--columns': fields.length > 6 }" @submit.prevent="onSubmit">
+      <label v-for="f in fields" :key="f.key" class="ed__field" :class="{ 'ed__field--wide': ['textarea', 'region'].includes(f.type) }">
         <span class="ed__label">
           {{ f.label }}<span v-if="f.required" class="ed__required">*</span>
         </span>
@@ -16,6 +16,16 @@
           v-model="form[f.key]"
           :options="f.options || []"
           :placeholder="f.placeholder || '请选择'"
+          :disabled="f.disabled"
+          :status="errors[f.key] ? 'error' : 'default'"
+        />
+        <AppRemoteSelect
+          v-else-if="f.type === 'remote'"
+          v-model="form[f.key]"
+          :options="f.options || []"
+          :remote-search="f.remoteSearch"
+          :placeholder="f.placeholder || '输入名称搜索'"
+          :search-placeholder="f.placeholder || '输入名称搜索'"
           :disabled="f.disabled"
           :status="errors[f.key] ? 'error' : 'default'"
         />
@@ -78,12 +88,13 @@
  * EditDrawer — 通用新增/编辑抽屉（模块局部组件）。
  * Props:
  *  - fields: [{ key, label, type: 'text'|'select'|'date'|'number'|'textarea'|'region', options?, required?, placeholder?, disabled? }]
- *    字段定义来自 mock/api（fieldColumns / statusOptions），不在组件内写死业务字段。
+ *    字段定义来自模块展示配置（fieldColumns / statusOptions），不在组件内写死业务字段。
  *    type='region' 渲染省市区县选择器，值为区划文本；可用 regionLevel:'city' 只到市。
  *  - model: 编辑时传入原记录（null = 新增）
  * Emits: submit(formData)
  */
 import { AppDrawer, AppButton } from '@/components/ui'
+import AppRemoteSelect from '@/components/common/picker/AppRemoteSelect.vue'
 import {
   AppDatePicker, AppSelect, AppTextInput, AppNumberInput, AppTextarea, AppChinaRegionPicker
 } from '@/components/common'
@@ -92,7 +103,7 @@ export default {
   name: 'EditDrawer',
   components: {
     AppDrawer, AppButton, AppDatePicker, AppSelect, AppTextInput, AppNumberInput, AppTextarea,
-    AppChinaRegionPicker
+    AppChinaRegionPicker, AppRemoteSelect
   },
   props: {
     visible: { type: Boolean, default: false },
@@ -139,6 +150,10 @@ export default {
   flex-direction: column;
   gap: var(--space-4);
 }
+.ed--columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; }
+.ed--columns .ed__field--wide { grid-column: 1 / -1; }
+.ed__field { min-width: 0; }
+@media (max-width: 600px) { .ed--columns { grid-template-columns: minmax(0, 1fr); } }
 .ed__field {
   display: flex;
   flex-direction: column;

@@ -20,7 +20,18 @@ def test_system_facade_exports_final_composed_router_and_preserves_frozen_surfac
     assert legacy.router is system_i4_router.router
     frozen = set(_route_keys(system_bundle.router))
     final = _route_keys(legacy.router)
-    assert frozen <= set(final)
+    late = {(path, (method,)) for method, path in system_i4_router._P1_LATE_REPLACEMENTS}
+    assert frozen - late <= set(final)
+    assert not late.intersection(final)
+    from app.api.v1.router import api_router
+    from app.api.v1 import system_p1_closure, identity_p1_closure
+    from app.core.route_introspection import iter_effective_api_routes
+    assembled = {_route_key(route): route for route in iter_effective_api_routes(api_router.routes)}
+    assert frozen <= set(assembled)
+    for key in late:
+        identity_paths = {"/system/accounts/{user_id}/repair-binding", "/system/accounts/{user_id}/unbind"}
+        owner = identity_p1_closure if key[0] in identity_paths else system_p1_closure
+        assert assembled[key].endpoint.__module__ == owner.__name__
     assert len(final) == len(set(final))
 
     assert legacy.copy_system_role is system_router.copy_system_role

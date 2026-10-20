@@ -136,6 +136,63 @@ def test_work_order_closed_loop(client, auth_headers, db_mode):
     assert det["code"] == 0 and len(det["data"]["order"]["trail"]) >= 1
 
 
+def test_mobile_work_order_paging_terminal_scope_and_notice(client, auth_headers, db_mode):
+    """同一 MySQL 工单在 PC/教师移动端互读；分页、越权、旧版本与终态均由后端兜底。"""
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import CsAuditTrail, CsServiceStudent, CsWorkOrder, MessageEventOutbox
+    from app.modules.internship.services.internship_score_appeal_service import APPEAL_KEY
+
+    ids = _seed(db_mode)
+    with get_sessionmaker()() as db:
+        student = db.get(CsServiceStudent, ids['student'])
+        student.student_id = db_mode['student']
+        extra = CsWorkOrder(tenant_id=MAIN_TID, cs_student_id=student.id, title='分页用证明申请', wo_type='CERT', status='PENDING_HANDLE')
+        foreign = CsWorkOrder(tenant_id=MAIN_TID + 99, cs_student_id=student.id, title='其他学校工单', wo_type='CERT', status='PENDING_HANDLE')
+        appeal = CsWorkOrder(tenant_id=MAIN_TID, cs_student_id=student.id, title=APPEAL_KEY, wo_type='COMPLAINT', status='PENDING_HANDLE')
+        db.add_all([extra, foreign, appeal]); db.commit()
+        extra_id, foreign_id, appeal_id = extra.id, foreign.id, appeal.id
+
+    mobile = '/api/v1/mobile/teacher/campus-service/work-orders'
+    pc = '/api/v1/campus-service/work-orders'
+    first = client.get(mobile, headers=auth_headers, params={'page': 1, 'pageSize': 1}).json()['data']
+    second = client.get(mobile, headers=auth_headers, params={'page': 2, 'pageSize': 1}).json()['data']
+    assert first['total'] == second['total'] == 3
+    assert len(first['list']) == len(second['list']) == 1
+    assert first['list'][0]['id'] != second['list'][0]['id']
+    found = client.get(pc, headers=auth_headers, params={'keyword': '分页用', 'pageSize': 1}).json()['data']
+    assert found['total'] == 1 and found['items'][0]['id'] == str(extra_id)
+    assert client.get(f'{mobile}/{foreign_id}', headers=auth_headers).status_code == 404
+    assert client.get(mobile, headers=_hdr(client, 'student01')).status_code == 403
+    assert client.get(f'{mobile}/{ids["wo"]}', headers=_hdr(client, 'counselor01')).status_code == 403
+    assert client.post(f'{mobile}/{appeal_id}/handle', headers=auth_headers,
+                       json={'version': 0, 'note': '不能绕过实习成绩流程', 'close': True}).json()['bizCode'] == 'DATA_CONFLICT'
+
+    wid = ids['wo']
+    missing_version = client.post(f'{mobile}/{wid}/handle', headers=auth_headers, json={'note': '缺失版本号不允许处理'})
+    assert missing_version.status_code == 400 and missing_version.json()['bizCode'] == 'VALIDATION_ERROR'
+    assert client.get(f'{mobile}/invalid-id', headers=auth_headers).status_code == 404
+    progress = client.post(f'{mobile}/{wid}/handle', headers=auth_headers,
+                           json={'note': '已经受理正在办理中', 'close': 'false', 'version': 0}).json()
+    assert progress['code'] == 0 and progress['data']['status'] == 'PROCESSING'
+    stale = client.post(f'{pc}/{wid}/handle', headers=auth_headers,
+                        json={'note': '旧页面不能覆盖新结果', 'close': True, 'version': 0}).json()
+    assert stale['bizCode'] == 'APPROVAL_VERSION_CONFLICT'
+    closed = client.post(f'{pc}/{wid}/handle', headers=auth_headers,
+                         json={'note': '证明已经完成交付学生', 'close': True, 'version': 1}).json()
+    assert closed['code'] == 0 and closed['data']['status'] == 'COMPLETED'
+    for endpoint, body in [('handle', {'note': '不能重复处理已办结工单', 'close': False}), ('close', {'reason': '不能再次关闭已办结工单'})]:
+        rejected = client.post(f'{mobile}/{wid}/{endpoint}', headers=auth_headers, json={**body, 'version': 2}).json()
+        assert rejected['bizCode'] == 'DATA_CONFLICT'
+    detail = client.get(f'{mobile}/{wid}', headers=auth_headers).json()['data']['order']
+    assert detail['version'] == 2 and detail['allowedActions'] == [] and len(detail['trail']) == 2
+    with get_sessionmaker()() as db:
+        audit = db.scalars(select(CsAuditTrail).where(CsAuditTrail.biz_type == 'WORKORDER', CsAuditTrail.biz_id == str(wid))).all()
+        notices = db.scalars(select(MessageEventOutbox).where(MessageEventOutbox.event_code == 'CAMPUS_SERVICE.WORKORDER_UPDATED', MessageEventOutbox.source_biz_id == wid)).all()
+        assert len(audit) == len(notices) == 2
+        assert all(n.payload_json['actionParams']['caseId'] == f'workorder:{wid}' for n in notices)
+
+
 def test_dashboard_mental_audit(client, auth_headers, db_mode):
     _seed(db_mode)
     dash = client.get("/api/v1/campus-service/dashboard", headers=auth_headers).json()

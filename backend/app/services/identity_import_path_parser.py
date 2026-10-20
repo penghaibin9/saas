@@ -31,6 +31,7 @@ from app.services.identity_import_file_service import (
     _cell_text,
     _normalize_header,
     _row_cells,
+    phone_payload,
 )
 
 CHUNK_SIZE = 1024 * 1024
@@ -154,6 +155,7 @@ def parse_identity_xlsx_path(path: str | Path, filename: str, kind: str) -> dict
                     "grade": cells["年级"],
                     "gender": cells["性别"],
                     "idCard": cells["身份证号"],
+                    **phone_payload(cells),
                 })
             else:
                 account_no, name = cells["工号"], cells["姓名"]
@@ -178,6 +180,7 @@ def parse_identity_xlsx_path(path: str | Path, filename: str, kind: str) -> dict
                     "roleCodes": cells["预设角色编码"],
                     "scopeType": cells["数据范围类型"],
                     "scopeRef": cells["数据范围引用"],
+                    **phone_payload(cells),
                 })
     finally:
         workbook.close()

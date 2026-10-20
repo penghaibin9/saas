@@ -15,7 +15,10 @@ from typing import Any
 
 TEACHER_MINI_CLIENT = "teacherMini"
 FOCUS_NONE = "NONE"
-_ALLOWED_PATH_PREFIXES = ("/pages/teacher/", "/pages/common/")
+# 教师岗位实习页面位于独立分包 /pages/teacher-internship/。遗漏该正式前缀会让
+# 已被 todo_route_registry 验证的周报/请假/异常待办在投影层被误判为跨端目标，
+# 工作台只能显示“当前端暂无安全处理入口”。
+_ALLOWED_PATH_PREFIXES = ("/pages/teacher/", "/pages/teacher-internship/", "/pages/common/")
 _ALLOWED_FOCUS_MODES = {FOCUS_NONE, "DETAIL", "LIST_FOCUS"}
 
 

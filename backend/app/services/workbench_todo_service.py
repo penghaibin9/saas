@@ -29,7 +29,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import Optional
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, or_, select, true
 
 from app.services.db_service import _iso, _tid, session
 from app.services.todo_route_registry import resolve_todo_route
@@ -37,6 +37,23 @@ from app.services.todo_route_registry import resolve_todo_route
 # 契约兼容：返回结构对齐 docs/05 §04 待办审批消息 API（前端 PC + 小程序均按此消费）
 _TODO_DONE = "DONE"
 _TODO_PENDING = "PENDING"
+
+# 统一待办的 ``assignee_id`` 只证明“该账号可以接收这条任务”，并不意味着它在当前
+# 激活身份下就能办理。毕设任务尤其如此：一名教师可同时拥有教务和毕设导师身份，若在
+# ``ACADEMIC_TEACHER`` 上下文仍展示 ``source_module=graduation`` 的待办，点击后会被
+# 毕设服务按正确的数据范围拒绝，形成“待办可见但页面不可办”的死链。
+#
+# 这里是读端投影的最小共同门：真正的对象关系、权限码和状态机仍由毕业设计域裁决；它
+# 只保证工作台不会把一个当前身份无论如何都打不开的毕设任务投给用户。按 source_module
+# 收敛而非维护零散 todo_type 名单，使以后新增的毕业设计待办默认同样安全。
+_GRADUATION_SOURCE_MODULE = "GRADUATION"
+_GRADUATION_ACTIVE_ROLE_CODES: frozenset[str] = frozenset({
+    "PLATFORM_SUPER_ADMIN", "SAAS_ADMIN", "SCHOOL_ADMIN",
+    "GRADUATION_ADMIN", "GD_ADMIN", "GD_COLLEGE_ADMIN", "GD_MAJOR_ADMIN",
+    "COLLEGE_ADMIN", "GD_GRADE_ADMIN",
+    "GD_MENTOR", "COUNSELOR", "GD_REVIEWER",
+    "GD_DEFENSE_SECRETARY", "GD_DEFENSE_EXPERT",
+})
 
 # TP-W12：generic complete（本文件 complete_todo + /todos/{id}/complete）之前对任意
 # 可见的 PENDING UnifiedTodo 都直接翻成 DONE——LEAVE_APPROVAL 这类待办可以被"标记
@@ -59,7 +76,11 @@ _COMPLETION_MODE_DOMAIN_COMMAND = "DOMAIN_COMMAND"
 _COMPLETION_MODE_ACK_ONLY = "ACK_ONLY"
 
 _DOMAIN_COMMAND_TODO_TYPES: frozenset[str] = frozenset({
-    "LEAVE_APPROVAL", "LEAVE_OVERDUE", "LEAVE_CANCEL", "LEAVE_EXTENSION",
+    "WORK_STUDY_REVIEW", "WORK_STUDY_ONBOARD",
+    "STUDENT_LOAN_REVIEW", "STUDENT_LOAN_CONFIRM", "STUDENT_LOAN_SUPPLEMENT",
+    "FEE_REDUCTION_CORRECTION",
+    "FEE_REDUCTION_REVIEW", "FEE_REDUCTION_FULFILL",
+    "LEAVE_APPROVAL", "LEAVE_STUDENT_RESUBMIT", "LEAVE_OVERDUE", "LEAVE_CANCEL", "LEAVE_EXTENSION",
     "AID_APPROVAL", "AID_ADJUST",
     "FUNDING_APPROVAL",
     "DISCIPLINE_APPROVAL", "DISCIPLINE_REMOVE",
@@ -102,6 +123,26 @@ def _uid(user: dict | None) -> int:
 
 def _is_student(user: dict | None) -> bool:
     return str((user or {}).get("userType") or "").strip().upper() == "STUDENT"
+
+
+def _active_role_code(user: dict | None) -> str:
+    """Return the authenticated active role; never infer one from another context."""
+    current = user or {}
+    return str(current.get("currentRoleCode") or current.get("userType") or "").strip().upper()
+
+
+def _role_todo_visibility_cond(user: dict | None, UnifiedTodo):
+    """SQL gate for role-bound task projections.
+
+    This predicate deliberately complements, rather than replaces, assignee/student-range
+    visibility.  It is exported for the teacher-mini keyset reader so offset and keyset
+    endpoints cannot drift into different identity-context behavior.
+    """
+    if _is_student(user) or _active_role_code(user) in _GRADUATION_ACTIVE_ROLE_CODES:
+        # ``source_module`` is non-null for newly written todos, but coalesce keeps
+        # pre-existing legacy rows visible instead of silently disappearing.
+        return true()
+    return func.upper(func.coalesce(UnifiedTodo.source_module, "")) != _GRADUATION_SOURCE_MODULE
 
 
 def _self_student_id(db, user: dict | None) -> int:
@@ -148,7 +189,9 @@ def _visibility_cond(db, user: dict):
         parts.append(and_(UnifiedTodo.assignee_id == 0,
                           UnifiedTodo.student_id.in_(stu_id_subquery)))
     # allowed == set() → 未配范围，只保留「明确指派给我的」，不放行任何池待办
-    return or_(*parts) if parts else None
+    if not parts:
+        return None
+    return and_(or_(*parts), _role_todo_visibility_cond(user, UnifiedTodo))
 
 
 def _utc_now() -> datetime:

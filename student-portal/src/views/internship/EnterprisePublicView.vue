@@ -1,7 +1,7 @@
 <template>
   <div class="enterprise-page">
     <div class="enterprise-page__topbar">
-      <button type="button" @click="router.push('/internship/selection')">← 返回实习选岗</button>
+      <button type="button" @click="router.push({ path: '/internship/selection', query: route.query })">← 返回实习选岗</button>
       <span>企业公开资料</span>
     </div>
 
@@ -40,7 +40,7 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const data = await internshipSelectionApi.company(companyId)
+    const data = await internshipSelectionApi.forScope(route.query).company(companyId)
     if (requestId !== requestSeq) return
     company.value = normalizeEnterprisePublic(data || {})
   } catch (err) {
@@ -51,7 +51,7 @@ async function load() {
   }
 }
 
-watch(() => route.params.companyId, load)
+watch(() => [route.params.companyId, route.query.batchId, route.query.campaignId, route.query.recordId], load)
 onMounted(load)
 </script>
 

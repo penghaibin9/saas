@@ -49,15 +49,20 @@
           <text class="card-title">学籍组织</text>
           <view class="divider" />
           <view class="pf__row"><text class="pf__k">学院 / 专业</text><text class="pf__v">{{ p.org.college }} · {{ p.org.major }}</text></view>
+          <view class="pf__row"><text class="pf__k">班级 / 辅导员</text><text class="pf__v">{{ p.org.className || '待分班' }} · {{ p.org.counselorName || '待分配' }}</text></view>
           <view class="pf__row"><text class="pf__k">年级 / 学制</text><text class="pf__v">{{ p.org.grade }} · {{ p.org.system }}</text></view>
           <view class="pf__row"><text class="pf__k">入学时间</text><text class="pf__v">{{ p.org.enrollDate }}</text></view>
-          <view class="pf__row"><text class="pf__k">注册状态</text><text class="pf__v">{{ p.status.enrollStatus }}</text></view>
+          <view class="pf__row"><text class="pf__k">注册状态</text><text class="pf__v">{{ enrollStatusLabel(p.status.enrollStatus) }}</text></view>
         </view>
 
         <!-- 材料证照 -->
         <view class="card">
           <text class="card-title">材料证照</text>
           <view class="divider" />
+          <view v-if="p._identity && p._identity.studentId" class="pf__materials-entry" @click="openProfileMaterials">
+            <view><text class="pf__cred-name">档案补交材料</text><text class="pf__materials-note">查看缺项、补交并跟踪验收结果</text></view>
+            <text class="pf__edit">去处理 ›</text>
+          </view>
           <view v-for="c in p.credentials" :key="c.id" class="pf__cred">
             <text class="pf__cred-name">{{ c.name }}</text>
             <MobileStatusTag :status="c.status" />
@@ -86,6 +91,9 @@ export default {
   data() { return { p: null, state: 'loading' } },
   onLoad() { this.load() },
   methods: {
+    enrollStatusLabel(value) {
+      return ({ ENROLLING: '在招', STOPPED: '停招', ENROLLED: '已注册', REGISTERED: '已注册', PENDING: '待注册', SUSPENDED: '暂缓注册', CANCELLED: '已取消' })[value] || (value ? `状态待确认（${value}）` : '状态待确认')
+    },
     load() {
       this.state = 'loading'
       studentApi.getProfile().then((d) => { this.p = d; this.state = 'ready' }).catch(() => { this.state = 'error' })
@@ -94,6 +102,11 @@ export default {
       // 走真实服务申请（信息更正工单），不做假成功
       uni.navigateTo({ url: '/pages/student/service-apply/index?name=' +
         encodeURIComponent('信息更正申请（' + field + '）') + '&dept=' + encodeURIComponent('学籍管理') })
+    },
+    openProfileMaterials() {
+      const id = this.p && this.p._identity && this.p._identity.studentId
+      if (!id) return toast('尚未建立学生档案')
+      uni.navigateTo({ url: `/pages/student/affairs/index?bizType=PROFILE&bizId=${encodeURIComponent(id)}` })
     }
   }
 }
@@ -113,4 +126,6 @@ export default {
 .pf__cred { display: flex; align-items: center; gap: var(--space-3); padding: 8px 0; }
 .pf__cred-name { flex: 1; font-size: var(--font-size-base); color: var(--text-primary); }
 .pf__cred-time { font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.pf__materials-entry { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 0 12px; }
+.pf__materials-note { display:block; margin-top:3px; font-size:var(--font-size-xs); color:var(--text-tertiary); }
 </style>

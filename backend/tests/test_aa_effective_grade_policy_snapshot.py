@@ -160,7 +160,7 @@ def test_recheck_uses_unified_identity_and_append_only_correction_chain():
     source = (ROOT / "backend/app/modules/academic_affairs/services/academic_affairs_grade_recheck_service.py").read_text(encoding="utf-8")
 
     assert "mobile_student_identity_facade import resolve_student" in source
-    assert "resolve_student(db, get_current_user_ctx() or {})" in source
+    assert "resolve_student(db, _require_student(get_current_user_ctx() or {}))" in source
     assert "profile = _resolve_student(db)" in source
     assert "corrected = AcademicGrade(" in source
     assert 'source_biz_type="RECHECK"' in source

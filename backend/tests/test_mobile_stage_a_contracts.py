@@ -46,6 +46,12 @@ def test_stage_a_routes_are_bounded_and_do_not_touch_file_center():
     assert "file_center" not in routes
 
 
+def test_teacher_internship_router_requires_the_teacher_mini_token_guard():
+    routes = _read("app/api/v1/mobile.py")
+    block = routes.split("internship_teacher_mobile = APIRouter(", 1)[1].split("\n\n\ndef _selected_internship_batch_id", 1)[0]
+    assert "Depends(require_mobile_staff)" in block
+
+
 def test_teacher_mobile_uses_authoritative_affairs_leave_service():
     source = _read("app/services/mobile_teacher_service.py")
     assert "affairs_leave_service.list_leaves" in source
@@ -66,6 +72,7 @@ def test_final_mobile_performance_routes_are_mounted_and_bounded():
         assert path in routes
     assert "pageSize" in routes
     assert "le=50" in routes
+    assert "require_mobile_staff" in routes
     assert "mobile_performance_router" in aggregator
 
 

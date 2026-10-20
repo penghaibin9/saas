@@ -4,7 +4,7 @@
     :subtitle="capability.groupLabel + ' · ' + capability.description"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
-    watermark-purpose="SaaS 平台运营"
+    watermark-purpose="平台运营"
   >
     <div class="mp-stack">
       <ModuleHero :title="capability.label" :subtitle="capability.groupDescription" :stats="heroStats" />
@@ -22,7 +22,7 @@
         <header class="mp-card__head"><span class="mp-card__title">受控操作权限</span><span class="mp-note">能力未接真实服务前不提供可执行按钮；接入后高风险动作必须二次确认、原因和审计</span></header>
         <div class="mp-card__body pcv-actions">
           <div v-for="item in capability.actions" :key="item.key" class="pcv-action">
-            <code>{{ item.key }}</code><span>{{ item.label }}</span>
+            <span>{{ item.label }}</span>
             <StatusTag :type="item.risk === 'HIGH' ? 'warning' : 'info'" :label="item.risk === 'HIGH' ? '高风险' : '常规'" />
           </div>
         </div>
@@ -57,7 +57,7 @@ export default {
     },
     heroStats() {
       return [
-        { label: '权限码', value: this.capability.permissionKey || '—', tone: 'info' },
+        { label: '权限配置', value: this.capability.permissionKey ? '已配置' : '未配置', tone: 'info' },
         { label: '操作点', value: String(this.capability.actions.length), tone: 'primary' },
         { label: '访问边界', value: '控制面', tone: 'success' }
       ]
@@ -80,8 +80,8 @@ export default {
       return [
         '平台能力只能由平台角色进入，学校角色不可见；学校业务菜单也不会向平台角色开放。',
         '订单确认 → 授权生效 → 自动开通 → 学校初始化检查为唯一交付链路，禁止人工绕过任一步。',
-        '未接真实 API 的能力仅展示合同与边界，不提供浏览器假写入、假任务或假成功。',
-        '接入真实 API 时必须复用 capability key、权限码、version/原因/影响预览与不可篡改审计，不得另建旁路入口。'
+        '未接真实后端接口的能力仅展示合同与边界，不提供浏览器假写入、假任务或假成功。',
+        '接入真实后端接口时必须复用能力标识、权限码、版本、原因、影响预览与不可篡改审计，不得另建旁路入口。'
       ]
     }
   }

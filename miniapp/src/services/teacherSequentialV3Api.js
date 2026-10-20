@@ -5,6 +5,7 @@ import { realRequest } from './request'
 // commands. Reloading the queue replaces the map, so a 409 refresh cannot accidentally reuse a
 // stale version from an older snapshot.
 const exceptionVersions = new Map()
+let queueEpoch = 0
 
 function rememberExceptionVersion(id, rawVersion) {
   const key = String(id || '')
@@ -14,9 +15,24 @@ function rememberExceptionVersion(id, rawVersion) {
   return Number.isInteger(version) && version >= 0 ? version : null
 }
 
-export async function getInternshipReviewQueue() {
-  exceptionVersions.clear()
-  const d = await realRequest('/mobile/teacher/internship')
+export async function getInternshipReviewQueue({
+  batchId = '', focusReportId = '', weeklyPage = 1, exceptionPage = 1, pageSize = 20, append = false
+} = {}) {
+  const epoch = ++queueEpoch
+  if (!append) exceptionVersions.clear()
+  const queryParts = [
+    `weeklyPage=${encodeURIComponent(weeklyPage)}`,
+    `exceptionPage=${encodeURIComponent(exceptionPage)}`,
+    `pageSize=${encodeURIComponent(pageSize)}`
+  ]
+  // 普通进入由教师已选批次驱动；统一待办只传 recordId，后端会在范围校验后
+  // 解析对应批次。小程序不从 recordId 推导或缓存任何跨学生业务上下文。
+  if (String(batchId || '').trim()) queryParts.push(`batchId=${encodeURIComponent(String(batchId).trim())}`)
+  if (String(focusReportId || '').trim()) queryParts.push(`recordId=${encodeURIComponent(String(focusReportId).trim())}`)
+  const query = queryParts.join('&')
+  const d = await realRequest(`/mobile/teacher/internship?${query}`)
+  // A late queue must not replace the lock versions used by the visible batch.
+  if (epoch !== queueEpoch) throw { code: 'STALE_READ', staleRead: true, message: '请以当前批次为准' }
   const reports = (d.weeklyReports || []).map((r) => ({
     id: String(r.id || r.reportId || ''), student: r.studentName || r.name || '',
     className: r.className || '', week: r.weekNumber ? ('第 ' + r.weekNumber + ' 周') : (r.week || ''),
@@ -32,12 +48,21 @@ export async function getInternshipReviewQueue() {
     const expectedVersion = rememberExceptionVersion(id, e.version)
     return {
       id, student: e.studentName || e.name || '',
-      time: e.exceptionDate || e.date || '', type: e.exceptionType || e.type || '异常',
+      className: e.className || '', company: e.enterpriseName || '', post: e.positionName || '',
+      internshipId: String(e.internId || e.internshipId || ''),
+      time: e.exceptionDate || e.date || '', type: e.typeLabel || e.exceptionType || e.type || '异常',
       distance: e.distance || '—', note: e.note || '', status: e.status || 'PENDING_HANDLE',
-      statusLabel: e.statusLabel || '', expectedVersion
+      accuracy: e.accuracy || '—', address: e.address || '', deviceRisk: e.deviceRisk || '—',
+      streak: e.streak || '', appealStatus: e.appealStatus || '', appealNote: e.appealNote || '',
+      statusLabel: e.statusLabel || '', expectedVersion,
+      decisionFactsComplete: e.decisionFactsComplete === true,
+      missingDecisionFacts: Array.isArray(e.missingDecisionFacts) ? e.missingDecisionFacts : []
     }
   })
-  return { reports, abnormal, _real: true }
+  return { reports, abnormal, batchId: String(d.batchId || ''), available: d.available !== false,
+    errors: Array.isArray(d.errors) ? d.errors : [], pagination: d.pagination || {
+    weeklyPage, exceptionPage, pageSize, weeklyHasMore: false, exceptionHasMore: false
+  }, _real: true }
 }
 
 export function handleCheckin(id, action, comment, riskLevel = null) {

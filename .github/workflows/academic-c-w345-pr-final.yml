@@ -147,7 +147,7 @@ jobs:
           assert '/extend-deadline' in p and 'read_grade_upload_path' in p and 'read_safe_upload(file)' not in p
           assert 'deadline_service.teacher_submit_task' in mobile and '_quality_report_with_deadline' in mobile
           assert 'return success(service.teacher_submit_task(' not in mobile
-          assert 'GRADE_DEADLINE_EXPIRED' in d and '_check_college_scope' in d and 'DBAPIError' in d
+          assert 'GRADE_DEADLINE_EXPIRED' in d and '_require_management_scope' in d and 'DBAPIError' in d
           assert '_DEADLINE_MUTABLE_STATES = {"NOT_STARTED", "INPUTTING", "RETURNED"}' in d
           assert 'if state not in _DEADLINE_MUTABLE_STATES' in d
           assert 'CREATE TRIGGER' in m and 'UTC_TIMESTAMP()' in m and 'GRADE_DEADLINE_EXPIRED' in m
@@ -215,5 +215,6 @@ jobs:
           grep -q 'v-if="canSubmit"' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
           grep -q 'task.isOverdue === true' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
           grep -q 'gradeReminderApi.extendDeadline' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
-          grep -q 'GRADE.ENTRY_REMINDED' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
+          grep -q 'gradeReminderApi.remind' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
+          grep -q '写入消息提醒' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue
           ! grep -q '当前未配置独立成绩催录消息事件模板' frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue

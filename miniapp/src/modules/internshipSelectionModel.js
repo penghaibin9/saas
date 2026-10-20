@@ -19,6 +19,7 @@ export function normalizeMobileSelectionContext(raw = {}) {
   const status = String(campaign.status || raw.campaignStatus || '').toUpperCase()
   const groupStatus = String(volunteer.status || raw.volunteerStatus || 'DRAFT').toUpperCase()
   return {
+    catalogState: raw.catalogState || 'AVAILABLE',
     campaignName: campaign.name || raw.campaignName || '当前招聘季',
     phaseLabel: raw.phaseLabel || ({ OPEN: '选岗进行中', FROZEN: '选岗已冻结', CLOSED: '本季已结束' }[status] || '阶段待确认'),
     selectionDeadline: campaign.studentSelectionEndAt || raw.studentSelectionEndAt || '',
@@ -27,7 +28,7 @@ export function normalizeMobileSelectionContext(raw = {}) {
     matchedPositions: Number(stats.matchedPositions ?? raw.matchedPositions ?? 0) || 0,
     selectedVolunteers: Number(volunteer.selectedCount ?? raw.selectedVolunteerCount ?? 0) || 0,
     groupStatus,
-    canSelect: Boolean(raw.canSelect ?? raw.selectionOpen ?? status === 'OPEN'),
+    canSelect: raw.catalogState !== 'NO_OPEN_CAMPAIGN' && Boolean(raw.canSelect ?? raw.selectionOpen ?? status === 'OPEN'),
     blockReason: raw.blockReason || raw.selectionBlockReason || ''
   }
 }

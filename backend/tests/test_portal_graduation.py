@@ -121,9 +121,17 @@ def test_print_log(client, db_mode):
 def _seed_gd_ready_for_proposal(no, name, batch_id):
     """建毕设学生（选题+任务书已确认，可提交开题）。"""
     from app.db.session import get_sessionmaker
-    from app.models import GraduationStudent, GraduationTaskBook
+    from app.models import GraduationStudent, GraduationTaskBook, GraduationMentor, User
     db = get_sessionmaker()()
+    teacher_no = f"mentor-{no}"
+    db.add(User(tenant_id=TID, login_name=teacher_no, real_name="王导师",
+                password_hash="test", user_type="TEACHER", status="ACTIVE"))
+    mentor = GraduationMentor(tenant_id=TID, teacher_no=teacher_no, teacher_name="王导师",
+                              qualification_status="QUALIFIED")
+    db.add(mentor)
+    db.flush()
     g = GraduationStudent(tenant_id=TID, batch_id=batch_id, student_no=no, name=name, advisor_name="王导师",
+                             mentor_id=mentor.id,
                              topic_id=1, topic_title="XX系统的设计与实现", stage="GUIDING",
                              risk_level="LOW", eligibility_status="PENDING",
                              grad_qual_status="PENDING", record_status="ACTIVE")

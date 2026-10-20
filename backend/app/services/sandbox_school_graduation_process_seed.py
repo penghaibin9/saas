@@ -59,7 +59,6 @@ def seed_school_graduation_process_20k(db, tenant_id: int) -> dict:
     )).first()
     if batch is None:
         raise RuntimeError("GD-2027 毕设批次不存在")
-
     batch.stage_config = [
         {"code": "TOPIC_SELECTING", "name": "选题与确认", "startDate": "2026-08-01", "endDate": "2026-09-10"},
         {"code": "GUIDING", "name": "任务书与前期指导", "startDate": "2026-08-11", "endDate": "2027-03-31"},
@@ -193,6 +192,16 @@ def validate_school_graduation_process_20k(db, tenant_id: int) -> dict:
     )).first()
     if batch is None:
         raise RuntimeError("GD-2027 毕设批次不存在")
+    current_student_ids = select(GraduationStudent.id).where(
+        GraduationStudent.tenant_id == tenant_id,
+        GraduationStudent.batch_id == batch.id,
+        GraduationStudent.is_deleted.is_(False),
+    )
+    def count_current(model, *where) -> int:
+        return int(db.scalar(select(func.count()).select_from(model).where(
+            model.tenant_id == tenant_id, model.gd_student_id.in_(current_student_ids),
+            model.is_deleted.is_(False), *where,
+        )) or 0)
     stages = {row.get("code"): row for row in (batch.stage_config or [])}
     timeline_ok = (
         (stages.get("TOPIC_SELECTING") or {}).get("startDate") == "2026-08-01"
@@ -201,24 +210,24 @@ def validate_school_graduation_process_20k(db, tenant_id: int) -> dict:
     )
 
     report = {
-        "mentorAssignments": _count(db, GraduationMentorAssignment, tenant_id, GraduationMentorAssignment.status == "ACTIVE"),
-        "taskBooks": _count(db, GraduationTaskBook, tenant_id),
-        "taskBooksConfirmed": _count(db, GraduationTaskBook, tenant_id, GraduationTaskBook.status == "CONFIRMED"),
-        "taskBooksPending": _count(db, GraduationTaskBook, tenant_id, GraduationTaskBook.status == "PENDING_CONFIRM"),
-        "proposals": _count(db, GraduationProposal, tenant_id),
-        "proposalsApproved": _count(db, GraduationProposal, tenant_id, GraduationProposal.status == "APPROVED"),
-        "proposalsPending": _count(db, GraduationProposal, tenant_id, GraduationProposal.status == "PENDING_REVIEW"),
-        "proposalsRejected": _count(db, GraduationProposal, tenant_id, GraduationProposal.status == "REJECTED"),
-        "guidanceRecords": _count(db, GraduationGuidance, tenant_id),
-        "guidingStudents": _count(db, GraduationStudent, tenant_id, GraduationStudent.stage == "GUIDING"),
+        "mentorAssignments": count_current(GraduationMentorAssignment, GraduationMentorAssignment.status == "ACTIVE"),
+        "taskBooks": count_current(GraduationTaskBook),
+        "taskBooksConfirmed": count_current(GraduationTaskBook, GraduationTaskBook.status == "CONFIRMED"),
+        "taskBooksPending": count_current(GraduationTaskBook, GraduationTaskBook.status == "PENDING_CONFIRM"),
+        "proposals": count_current(GraduationProposal),
+        "proposalsApproved": count_current(GraduationProposal, GraduationProposal.status == "APPROVED"),
+        "proposalsPending": count_current(GraduationProposal, GraduationProposal.status == "PENDING_REVIEW"),
+        "proposalsRejected": count_current(GraduationProposal, GraduationProposal.status == "REJECTED"),
+        "guidanceRecords": count_current(GraduationGuidance),
+        "guidingStudents": _count(db, GraduationStudent, tenant_id, GraduationStudent.batch_id == batch.id, GraduationStudent.stage == "GUIDING"),
         "timelineAligned": timeline_ok,
-        "midterms": _count(db, GraduationMidterm, tenant_id),
-        "finalSubmissions": _count(db, GraduationFinal, tenant_id),
-        "plagiarismChecks": _count(db, GraduationPlagiarismCheck, tenant_id),
-        "reviews": _count(db, GraduationReview, tenant_id),
-        "defenseGroups": _count(db, GraduationDefenseGroup, tenant_id),
-        "grades": _count(db, GraduationGrade, tenant_id),
-        "archives": _count(db, GraduationArchiveRecord, tenant_id),
+        "midterms": count_current(GraduationMidterm),
+        "finalSubmissions": count_current(GraduationFinal),
+        "plagiarismChecks": count_current(GraduationPlagiarismCheck),
+        "reviews": count_current(GraduationReview),
+        "defenseGroups": _count(db, GraduationDefenseGroup, tenant_id, GraduationDefenseGroup.batch_id == batch.id),
+        "grades": count_current(GraduationGrade),
+        "archives": count_current(GraduationArchiveRecord),
     }
     expected = {
         "mentorAssignments": EXPECTED_ASSIGNMENTS,
@@ -244,14 +253,11 @@ def validate_school_graduation_process_20k(db, tenant_id: int) -> dict:
     if mismatches:
         raise RuntimeError(f"20K 毕设早期过程验收失败: {mismatches}")
 
-    student_ids = {int(value) for (value,) in db.execute(select(GraduationStudent.id).where(
-        GraduationStudent.tenant_id == tenant_id,
-        GraduationStudent.is_deleted.is_(False),
-    )).all()}
+    student_ids = {int(value) for (value,) in db.execute(current_student_ids).all()}
     invalid_refs = 0
     for model in (GraduationMentorAssignment, GraduationTaskBook, GraduationProposal, GraduationGuidance):
         for value, in db.execute(select(model.gd_student_id).where(
-            model.tenant_id == tenant_id,
+            model.tenant_id == tenant_id, model.gd_student_id.in_(current_student_ids),
             model.is_deleted.is_(False),
         )).all():
             if int(value) not in student_ids:

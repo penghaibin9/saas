@@ -594,6 +594,16 @@ def activate_due_change_sets(*, now: datetime | None = None) -> dict:
     return {"activated": activated, "skipped": skipped, "checkedAt": moment.isoformat()}
 
 
+def _snapshot_item_count(snapshot) -> int | None:
+    items = snapshot.get("items") if isinstance(snapshot, dict) else None
+    if isinstance(items, list):
+        return len(items)
+    # Historical activation snapshots also stored a count instead of item detail.
+    if type(items) is int and items >= 0:
+        return items
+    return None
+
+
 def activation_history(*, limit: int = 50, tenant_id: int | None = None) -> dict:
     tid = _tenant_id(tenant_id)
     with _session() as db:
@@ -612,7 +622,7 @@ def activation_history(*, limit: int = 50, tenant_id: int | None = None) -> dict
                     "actorUserId": str(r.actor_user_id) if r.actor_user_id else None,
                     "traceId": r.trace_id,
                     "occurredAt": r.created_at.isoformat() if r.created_at else None,
-                    "itemCount": len((r.snapshot_json or {}).get("items") or []),
+                    "itemCount": _snapshot_item_count(r.snapshot_json),
                 }
                 for r in rows
             ],

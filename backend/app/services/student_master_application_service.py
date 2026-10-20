@@ -86,6 +86,7 @@ def _append_academic_identity_in_session(
         "source_type": source_type,
         "source_ref_id": int(source_ref_id) if source_ref_id is not None else None,
         "expected_student_version": int(student.version or 0),
+        "tenant_id": int(student.tenant_id),
     }
     if student_status is not None:
         kwargs["student_status"] = student_status

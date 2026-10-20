@@ -26,19 +26,19 @@ def test_returned_batch_generation_reuses_same_editable_batch(client, db_mode):
 
     assigned = client.post(
         f"{BASE}/teaching-tasks/{task_id}/assign",
-        headers=hdr,
-        json={"teacherName": "王老师", "teacherKey": "academic01", "expectedStudents": 40},
+        headers=_hdr(client, "college_admin01"),
+        json={"teacherName": "赵敏", "teacherKey": "academic01", "expectedStudents": 40},
     )
     assert assigned.status_code == 200, assigned.text
     confirmed = client.post(
         f"{BASE}/teaching-tasks/{task_id}/teacher-act",
-        headers=hdr,
+        headers=_hdr(client, "academic01"),
         json={"action": "CONFIRM"},
     )
     assert confirmed.status_code == 200, confirmed.text
     college_confirmed = client.post(
         f"{BASE}/teaching-task-batches/{batch_id}/college-confirm",
-        headers=hdr,
+        headers=_hdr(client, "college_admin01"),
     )
     assert college_confirmed.status_code == 200, college_confirmed.text
 
@@ -60,7 +60,7 @@ def test_returned_batch_generation_reuses_same_editable_batch(client, db_mode):
 
     reconfirmed = client.post(
         f"{BASE}/teaching-task-batches/{batch_id}/college-confirm",
-        headers=hdr,
+        headers=_hdr(client, "college_admin01"),
     )
     assert reconfirmed.status_code == 200, reconfirmed.text
     assert reconfirmed.json()["data"]["status"] == "COLLEGE_CONFIRMED"

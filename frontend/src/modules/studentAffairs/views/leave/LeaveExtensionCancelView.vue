@@ -1,11 +1,12 @@
 <template>
-  <ModulePageShell title="延期销假" subtitle="请假通过后的后续处理 · 续假审批 · 销假确认 · 逾期处置（连续处理双栏）"
+  <ModulePageShell title="续假与返校" subtitle="核对续假与返校事实，及时跟进逾期学生。"
     :role-name="roleName" :data-scope-name="scopeHint">
     <template #actions>
       <AppButton variant="ghost" size="sm" :loading="scanning" @click="onScan">扫描逾期未销</AppButton>
     </template>
 
     <div class="mp-stack">
+      <AppInlineAlert v-if="focusNotice" type="warning" :description="focusNotice" />
       <div class="bar">
         <AppSearchBox v-model="keyword" placeholder="按学生姓名 / 学号搜索" @search="reload" />
         <AppQuickFilterChips v-model="statusFilter" :options="statusOptions" allow-clear @change="reload" />
@@ -21,7 +22,7 @@
                   <span class="lv-item__index">{{ itemIndex(r.id) }}</span>
                   <div class="lv-item__row">
                     <span class="lv-item__name">{{ r.studentName }}</span>
-                    <AppStatusTag :status="r.affairsStatus" :label="r.affairsStatusLabel" />
+                    <AppStatusTag :status="r.affairsStatus" :label="r.affairsStatusLabel" :type="r.tone" />
                   </div>
                   <div class="lv-item__sub">{{ r.studentNo }} · {{ r.className }}</div>
                   <div class="lv-item__sub">{{ fmt(r.startTime) }} ~ {{ fmt(r.endTime) }} · {{ r.leaveTypeLabel }} · {{ r.days }}天</div>
@@ -54,11 +55,12 @@
               <div class="lv-head">
                 <span class="lv-head__name">{{ detail.data.studentName }}</span>
                 <span class="mp-note">{{ detail.data.studentNo }} · {{ detail.data.className }}</span>
-                <AppStatusTag :status="detail.data.affairsStatus" :label="detail.data.affairsStatusLabel" />
+                <AppStatusTag :status="detail.data.affairsStatus" :label="detail.data.affairsStatusLabel" :type="detail.data.tone" />
               </div>
 
               <div class="sec-t">请假信息</div>
               <AppDescriptionList :items="leaveItems" :columns="2" />
+              <LeaveProgressContext :detail="detail.data" />
 
               <template v-if="detail.data.extensions && detail.data.extensions.length">
                 <div class="sec-t">续假记录</div>
@@ -138,6 +140,7 @@ import {
 import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
+import LeaveProgressContext from './components/LeaveProgressContext.vue'
 import { leaveApi } from '@/modules/studentAffairs/api/leave.api'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
@@ -155,7 +158,7 @@ const CANCEL_LABEL = { SUBMITTED: '待确认', CONFIRMED: '已销假', RETURNED:
 
 export default {
   name: 'LeaveExtensionCancelView',
-  components: {
+  components: { LeaveProgressContext,
     ModulePageShell, EmptyState, DualPaneWorkspace, AppStatusTag, AppConfirmDialog, AppPermissionButton,
     AppDescriptionList, AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppDateTimePicker, AppSelect,
     AppTextarea, AppButton, AppGlobalState, AppPagination, AppFormItem, AppInlineAlert, AppDrawer
@@ -163,8 +166,9 @@ export default {
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
+      hasActivated: false,
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '',
-      keyword: '', statusFilter: '', statusOptions: STATUS_OPTIONS,
+      keyword: '', statusFilter: '', statusOptions: STATUS_OPTIONS, focusNotice: '',
       selectedId: '', doneHint: false, scanning: false,
       detail: { loading: false, error: '', data: null },
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, reasonPlaceholder: '', phraseSceneKey: '', submitting: false, submit: null },
@@ -209,10 +213,14 @@ export default {
     },
     auditRecords() {
       return (this.detail.data && this.detail.data.auditTrail || []).map((t, i) => ({
-        id: i, action: t.action, actor: t.operator, reason: t.detail, at: t.occurredAt
+        id: i, action: t.actionCode, actionLabel: t.action, actor: t.operator, reason: t.detail, at: t.occurredAt
       }))
     },
     actions() {
+      const mapping = { extApprove: 'APPROVE_EXTENSION', extReject: 'REJECT_EXTENSION', cancelConfirm: 'CONFIRM_CANCEL', cancelReturn: 'RETURN_CANCEL', overdueHandle: 'HANDLE_OVERDUE', proxyCancel: 'PROXY_CANCEL', applyExtension: 'SUBMIT_EXTENSION' }
+      return this.statusActions.filter(action => this.detail.data?.allowedActions?.includes(mapping[action.key]))
+    },
+    statusActions() {
       const s = this.detail.data && this.detail.data.affairsStatus
       if (s === 'EXTENSION_REVIEW') {
         return [
@@ -246,15 +254,53 @@ export default {
       return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`
     }
   },
-  created() {
-    if (this.$route.query.status) this.statusFilter = String(this.$route.query.status)
-    this.load()
+  created() { this.initRouteFocus() },
+  activated() { if (this.hasActivated) { this.load(); if (this.selectedId) this.loadDetail(this.selectedId) } this.hasActivated = true },
+  deactivated() { this.cd.visible = false; this.fm.visible = false },
+  watch: {
+    '$route.query'(value, previous) {
+      if (this.$route.path !== '/admin/student-affairs/leave/followup') return
+      const nextId = String(value?.recordId || '')
+      const prevId = String(previous?.recordId || '')
+      if (nextId !== prevId || String(value?.status || '') !== String(previous?.status || '')) this.initRouteFocus()
+    }
   },
   methods: {
+    async initRouteFocus() {
+      const valid = new Set(['EXTENSION_REVIEW', 'WAIT_CANCEL_LEAVE', 'OVERDUE', 'APPROVED'])
+      const requested = String(this.$route.query?.status || '').trim()
+      this.statusFilter = valid.has(requested) ? requested : ''
+      this.focusNotice = ''
+      const recordId = String(this.$route.query?.recordId || '').trim()
+      if (!recordId) {
+        this.selectedId = ''
+        this.detail = { loading: false, error: '', data: null }
+        await this.load()
+        return
+      }
+      await this.focusRecordFromRoute(recordId, valid)
+    },
+    async focusRecordFromRoute(recordId, validStatuses = new Set(['EXTENSION_REVIEW', 'WAIT_CANCEL_LEAVE', 'OVERDUE', 'APPROVED'])) {
+      this.loading = true; this.error = ''
+      const res = await leaveApi.detail(recordId)
+      if (res.code !== 0 || !res.data) {
+        this.loading = false; this.rows = []; this.total = 0; this.selectedId = ''
+        this.detail = { loading: false, error: '', data: null }
+        this.error = res.message || '该请假后续记录不存在、已不可见或不在当前数据范围内'
+        return
+      }
+      const detail = res.data
+      const actual = String(detail.affairsStatus || '')
+      if (validStatuses.has(actual)) this.statusFilter = actual
+      else this.focusNotice = `该待办状态已变化：当前为${detail.affairsStatusLabel || '状态待确认'}，仅展示最新事实。`
+      this.selectedId = String(recordId)
+      this.detail = { loading: false, error: '', data: detail }
+      await this.load()
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     fmt(v) { return v ? formatDateTime(v) : '' },
-    extLabel(v) { return EXT_LABEL[v] || v },
-    cancelLabel(v) { return CANCEL_LABEL[v] || v },
+    extLabel(v) { return EXT_LABEL[v] || (v ? '待确认' : '—') },
+    cancelLabel(v) { return CANCEL_LABEL[v] || (v ? '待确认' : '—') },
     itemIndex(id) {
       const index = this.rows.findIndex((row) => String(row.id) === String(id))
       return (this.page - 1) * this.pageSize + index + 1

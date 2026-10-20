@@ -10,6 +10,9 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from sqlalchemy import and_, func, select
+from sqlalchemy.exc import IntegrityError
+
 from app.core.affairs_security import build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -57,16 +60,25 @@ def _e_dto(e):
             "passLine": e.pass_line, "status": e.status}
 
 
-def _r_dto(r):
+def _r_dto(r, exam=None):
     return {"regId": str(r.id), "examId": str(r.exam_id), "studentId": str(r.student_id),
             "studentNo": r.student_no, "studentName": r.student_name, "feeStatus": r.fee_status,
-            "score": r.score, "result": r.result, "certNo": r.cert_no, "status": r.status}
+            "score": r.score, "result": r.result, "certNo": r.cert_no, "status": r.status,
+            "examName": getattr(exam, "exam_name", None),
+            "examStatus": getattr(exam, "status", None)}
 
 
-def _get_exam(db, eid):
+def _get_exam(db, eid, *, for_update=False):
     from app.models import AaLevelExam
-    e = db.get(AaLevelExam, int(eid))
-    if not e or e.is_deleted or e.tenant_id != _tid():
+    query = db.query(AaLevelExam).filter(
+        AaLevelExam.id == int(eid),
+        AaLevelExam.tenant_id == _tid(),
+        AaLevelExam.is_deleted.is_(False),
+    )
+    if for_update:
+        query = query.with_for_update()
+    e = query.first()
+    if not e:
         raise not_found("等级考试不存在")
     return e
 
@@ -95,14 +107,25 @@ def create_exam(user, body) -> dict:
 
 def list_exams(user, status=None, page=1, page_size=20):
     from app.models import AaLevelExam
+    if isinstance(page, bool) or isinstance(page_size, bool):
+        raise _bad("页码格式不正确")
+    try:
+        page, page_size = int(page), int(page_size)
+    except (TypeError, ValueError) as exc:
+        raise _bad("页码格式不正确") from exc
+    if page < 1 or page > 100000 or page_size < 1 or page_size > 200:
+        raise _bad("页码须大于等于 1，每页最多 200 条")
     with session() as db:
         build_affairs_context(user, db)
-        q = db.query(AaLevelExam).filter(AaLevelExam.tenant_id == _tid(),
-                                         AaLevelExam.is_deleted.is_(False))
+        conditions = [AaLevelExam.tenant_id == _tid(), AaLevelExam.is_deleted.is_(False)]
         if status:
-            q = q.filter(AaLevelExam.status == status)
-        rows = q.order_by(AaLevelExam.id.desc()).all()
-        return [_e_dto(e) for e in rows[(page - 1) * page_size: page * page_size]], len(rows)
+            conditions.append(AaLevelExam.status == str(status).upper())
+        total = int(db.scalar(select(func.count()).select_from(AaLevelExam).where(*conditions)) or 0)
+        rows = db.scalars(
+            select(AaLevelExam).where(*conditions).order_by(AaLevelExam.id.desc())
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        return [_e_dto(e) for e in rows], total
 
 
 def transition(user, exam_id, action) -> dict:
@@ -110,7 +133,7 @@ def transition(user, exam_id, action) -> dict:
     from app.models import AaLevelExamReg
     with session() as db:
         _require_school(user, db)
-        e = _get_exam(db, exam_id)
+        e = _get_exam(db, exam_id, for_update=True)
         act = (action or "").upper()
         legal = {"OPEN": ("DRAFT",), "CLOSE": ("OPEN",), "FINISH": ("CLOSED",)}
         if act not in legal:
@@ -144,17 +167,25 @@ def _student_profile(db):
 
 def student_register(user, exam_id) -> dict:
     """学生报名（取消后可复报，复用同行）。"""
-    from app.models import AaLevelExamReg
+    from app.models import AaLevelExamReg, StudentProfile
     with session() as db:
-        e = _get_exam(db, exam_id)
+        # 考试状态的关闭与报名必须竞争同一行锁；否则旧页面可能在 CLOSED 后继续写入。
+        # 锁顺序固定为 exam → student → registration，避免同一学生双击/重试和关考并发时
+        # 出现“报名成功但已截止”的矛盾状态。
+        e = _get_exam(db, exam_id, for_update=True)
         if e.status != "OPEN":
             raise _invalid("不在报名时间内")
         p = _student_profile(db)
+        db.query(StudentProfile).filter(
+            StudentProfile.id == p.id,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ).with_for_update().first()
         if p.student_status != "NORMAL":
             raise no_data_scope("当前学籍状态不可报名")
         r = db.query(AaLevelExamReg).filter(
             AaLevelExamReg.tenant_id == _tid(), AaLevelExamReg.exam_id == e.id,
-            AaLevelExamReg.student_id == p.id).first()
+            AaLevelExamReg.student_id == p.id).with_for_update().first()
         if r and r.status == "REGISTERED":
             raise _invalid("已报名本次考试")
         if r:
@@ -164,40 +195,95 @@ def student_register(user, exam_id) -> dict:
             r = AaLevelExamReg(tenant_id=_tid(), exam_id=e.id, student_id=p.id,
                                student_no=p.student_no, student_name=p.real_name,
                                fee_status="UNPAID", status="REGISTERED")
-            db.add(r)
+        db.add(r)
         db.flush()
         _audit(db, e.id, "LEVEL_REG", f"{p.student_no} 报名 {e.exam_name}")
-        db.commit()
-        return _r_dto(r)
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            if "uk_aa_level_reg" in str(exc.orig).lower() or "duplicate" in str(exc.orig).lower():
+                raise _invalid("本次考试已完成报名，请刷新后核对") from exc
+            raise
+        return _r_dto(r, e)
 
 
 def student_cancel(user, exam_id) -> dict:
-    from app.models import AaLevelExamReg
+    from app.models import AaLevelExamReg, StudentProfile
     with session() as db:
-        e = _get_exam(db, exam_id)
+        e = _get_exam(db, exam_id, for_update=True)
         if e.status != "OPEN":
             raise _invalid("报名已截止，不可取消")
         p = _student_profile(db)
+        db.query(StudentProfile).filter(
+            StudentProfile.id == p.id,
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False),
+        ).with_for_update().first()
         r = db.query(AaLevelExamReg).filter(
             AaLevelExamReg.tenant_id == _tid(), AaLevelExamReg.exam_id == e.id,
             AaLevelExamReg.student_id == p.id,
-            AaLevelExamReg.status == "REGISTERED").first()
+            AaLevelExamReg.status == "REGISTERED").with_for_update().first()
         if not r:
             raise not_found("无有效报名记录")
         r.status = "CANCELLED"
         _audit(db, e.id, "LEVEL_REG_CANCEL", p.student_no)
         db.commit()
-        return _r_dto(r)
+        return _r_dto(r, e)
 
 
-def my_regs(user):
-    from app.models import AaLevelExamReg
+def my_regs(user, page=None, page_size=20):
+    """本人报名：PC 旧入口可继续全量读取，移动端只可用 SQL 真分页。"""
+    from app.models import AaLevelExam, AaLevelExamReg
+    if page is not None:
+        if isinstance(page, bool) or isinstance(page_size, bool):
+            raise _bad("页码格式不正确")
+        try:
+            page, page_size = int(page), int(page_size)
+        except (TypeError, ValueError) as exc:
+            raise _bad("页码格式不正确") from exc
+        if page < 1 or page > 100000 or page_size < 1 or page_size > 50:
+            raise _bad("页码须大于等于 1，每页最多 50 条")
     with session() as db:
         p = _student_profile(db)
-        rows = db.query(AaLevelExamReg).filter(
+        conditions = (
             AaLevelExamReg.tenant_id == _tid(), AaLevelExamReg.student_id == p.id,
-            AaLevelExamReg.is_deleted.is_(False)).order_by(AaLevelExamReg.id.desc()).all()
-        return [_r_dto(r) for r in rows]
+            AaLevelExamReg.is_deleted.is_(False),
+        )
+        query = (
+            select(AaLevelExamReg, AaLevelExam)
+            .outerjoin(AaLevelExam, and_(
+                AaLevelExam.id == AaLevelExamReg.exam_id,
+                AaLevelExam.tenant_id == AaLevelExamReg.tenant_id,
+                AaLevelExam.is_deleted.is_(False),
+            ))
+            .where(*conditions)
+            .order_by(AaLevelExamReg.id.desc())
+        )
+        if page is None:
+            rows = db.execute(query).all()
+            return [_r_dto(reg, exam) for reg, exam in rows]
+        total = int(db.scalar(select(func.count()).select_from(AaLevelExamReg).where(*conditions)) or 0)
+        rows = db.execute(query.offset((page - 1) * page_size).limit(page_size)).all()
+        return [_r_dto(reg, exam) for reg, exam in rows], total
+
+
+def my_registration_statuses(user, exam_ids) -> dict[str, str]:
+    """只返回当前开放考试页对应的本人报名状态，避免整段报名历史随开放列表下发。"""
+    from app.models import AaLevelExamReg
+
+    ids = [int(value) for value in exam_ids or [] if str(value).isdigit()]
+    if not ids:
+        return {}
+    with session() as db:
+        p = _student_profile(db)
+        rows = db.execute(select(AaLevelExamReg.exam_id, AaLevelExamReg.status).where(
+            AaLevelExamReg.tenant_id == _tid(),
+            AaLevelExamReg.student_id == p.id,
+            AaLevelExamReg.exam_id.in_(ids),
+            AaLevelExamReg.is_deleted.is_(False),
+        )).all()
+        return {str(row.exam_id): str(row.status or "") for row in rows}
 
 
 def list_regs(user, exam_id, status=None, page=1, page_size=100):

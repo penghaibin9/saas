@@ -71,8 +71,12 @@ def main():
         issues.append("教务管理员异动待审为空（环境）— 审批写路径未在本轮真实执行")
 
     print("=== FEE MARK DEEP ===")
+    current_term = req("GET", "/academic-affairs/terms/current", token=adm)
+    term_id = (current_term.get("data") or {}).get("termId")
+    if current_term.get("code") != 0 or not term_id:
+        raise RuntimeError("请先准备正式学期，再创建毕业审核批次")
     cb = req("POST", "/academic-affairs/graduation-audit-batches", token=adm,
-             body={"batchName": "Round7费用冒烟批次", "gradeYear": "2026"})
+             body={"batchName": "Round7费用冒烟批次", "gradeYear": "2026", "termId": str(term_id)})
     print("create", cb.get("code"), cb.get("message"), cb.get("data"))
     bid = (cb.get("data") or {}).get("batchId")
     if not bid:

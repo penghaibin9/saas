@@ -28,6 +28,13 @@ _SCHED_TIER1_VIEW = legacy._SCHED_TIER1_VIEW
 _SCHED_ROOM_VIEW = legacy._SCHED_ROOM_VIEW
 
 
+@router.get("/schedule/my/today", summary="电脑端教师本人今日正式课次")
+def schedule_my_today(user=Depends(require_permission("academicAffairs.schedule.view"))):
+    from app.modules.academic_affairs.services.academic_affairs_teacher_today_service import teacher_today_projection
+
+    return success(teacher_today_projection(user))
+
+
 @router.post("/schedule-batches", summary="新建课表批次")
 def schedule_batch_create(
     body: ScheduleBatchCreate,
@@ -48,6 +55,14 @@ def schedule_batches(
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/schedule-batches/{batchId}", summary="课表精确批次与当前正式头（只读）")
+def schedule_batch_detail(
+    batchId: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.schedule.view")),
+):
+    return success(sched_svc.get_batch(batchId, user))
+
+
 @router.post("/schedule-batches/{batchId}/items", summary="手工排课（三重冲突检测→409）")
 def schedule_add_item(
     body: ScheduleItemBody,
@@ -55,6 +70,15 @@ def schedule_add_item(
     user=Depends(require_permission("academicAffairs.schedule.edit")),
 ):
     return success(sched_svc.add_item(batchId, user, body), message="已排课")
+
+
+@router.post("/schedule-batches/{batchId}/items/preflight", summary="手工排课前置校验（纯读）")
+def schedule_add_item_preflight(
+    body: ScheduleItemBody,
+    batchId: int = Path(...),
+    user=Depends(require_permission("academicAffairs.schedule.edit")),
+):
+    return success(sched_svc.preflight_item(batchId, user, body), message="校验完成")
 
 
 @router.post("/schedule-batches/{batchId}/import", summary="导入课表（同一冲突检测器，返回冲突清单）")
@@ -75,6 +99,15 @@ def schedule_move_item(
     return success(sched_svc.move_item(itemId, user, body), message="已调整")
 
 
+@router.post("/schedule-items/{itemId}/move-preflight", summary="拖拽调格前置校验（纯读）")
+def schedule_move_item_preflight(
+    body: ScheduleMoveBody,
+    itemId: int = Path(...),
+    user=Depends(require_permission("academicAffairs.schedule.edit")),
+):
+    return success(sched_svc.preflight_move(itemId, user, body), message="校验完成")
+
+
 @router.post("/schedule-batches/{batchId}/pre-publish", summary="课表预发布")
 def schedule_pre_publish(
     batchId: int = Path(...),
@@ -89,6 +122,18 @@ def schedule_publish(
     user=Depends(require_permission("academicAffairs.schedule.edit")),
 ):
     return success(sched_svc.publish(batchId, user), message="已发布")
+
+
+@router.post("/schedule-batches/{batchId}/correction-draft", summary="从当前正式课表创建纠错草稿（四端不停用）")
+def schedule_correction_draft(
+    body: VoidBody,
+    batchId: int = Path(...),
+    user=Depends(require_permission("academicAffairs.schedule.edit")),
+):
+    return success(
+        sched_svc.start_correction_draft(batchId, user, body.reason),
+        message="纠错草稿已创建",
+    )
 
 
 @router.post("/schedule-batches/{batchId}/void-reissue", summary="作废重发（调停课运维通道，留审计）")

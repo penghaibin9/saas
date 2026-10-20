@@ -30,6 +30,7 @@ public_stats = importlib.import_module(
     package=__package__,
 )
 from .academic_affairs_production_audit_guard import _bounded_page_size
+from .academic_affairs_task_execution_authority import independent_task_condition, load_execution_handoffs
 
 
 def _page_values(page, page_size) -> tuple[int, int]:
@@ -42,7 +43,7 @@ def _page_values(page, page_size) -> tuple[int, int]:
     return page_no, _bounded_page_size(page_size, default=20)
 
 
-def _task_conditions(term_id, class_ids, teacher_key=None):
+def _task_conditions(term_id, class_ids, teacher_key=None, *, include_handed=False):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
 
     conditions = [
@@ -63,7 +64,27 @@ def _task_conditions(term_id, class_ids, teacher_key=None):
             AaTeachingTaskBatch.is_deleted.is_(False),
         )
         conditions.append(AaTeachingTask.batch_id.in_(batch_ids))
+    if not include_handed:
+        conditions.append(independent_task_condition(AaTeachingTask))
     return conditions
+
+
+def _validate_execution_handoffs(db, task_query):
+    """在 SQL 聚合/分页之前，仅对本次授权范围内后继关系有界核验。"""
+    from app.models import AaTeachingTask, AaTeachingTaskSourceHandoff
+    statement = task_query.statement if hasattr(task_query, "statement") else task_query
+    ids = statement.with_only_columns(AaTeachingTask.id, maintain_column_froms=True).order_by(None)
+    cursor = -1
+    while True:
+        related = db.scalars(select(AaTeachingTaskSourceHandoff.successor_task_id).where(
+            AaTeachingTaskSourceHandoff.tenant_id == stats._tid(),
+            AaTeachingTaskSourceHandoff.successor_task_id.in_(ids),
+            AaTeachingTaskSourceHandoff.successor_task_id > cursor,
+        ).order_by(AaTeachingTaskSourceHandoff.successor_task_id).limit(500)).all()
+        if not related:
+            return
+        load_execution_handoffs(db, related)
+        cursor = int(related[-1])
 
 
 def _declared_facts_by_teacher(db, term_id=None) -> dict[str, dict]:
@@ -307,6 +328,8 @@ def workload_stats(user, term_id=None, college_id=None) -> dict:
                 "scope": {"blocked": scope.blocked},
             }
 
+        _validate_execution_handoffs(db, select(AaTeachingTask).where(
+            *_task_conditions(term_id, class_ids, include_handed=True)))
         task_query = select(AaTeachingTask).where(*_task_conditions(term_id, class_ids))
         tasks = db.scalars(task_query).all()
         teaching_facts, _task_facts = _formal_teaching_facts(db, tasks)
@@ -390,6 +413,8 @@ def workload_detail(user, teacher_key, college_id=None, page=1, page_size=20, te
         class_ids = stats._class_ids_scope(db, scope, college_id)
         if class_ids is not None and not class_ids:
             return [], 0
+        _validate_execution_handoffs(db, select(AaTeachingTask).where(
+            *_task_conditions(term_id, class_ids, str(teacher_key), include_handed=True)))
         q = select(AaTeachingTask).where(
             *_task_conditions(term_id, class_ids, str(teacher_key))
         )

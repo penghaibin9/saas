@@ -13,15 +13,36 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 WEEKDAYS = range(1, 8)
 PARITIES = ("ALL", "ODD", "EVEN")
+
+
+def _require_school_schedule_operator(db, user, *, require_archive=False):
+    """正式课表生命周期共用实时校级权限、范围与责任任职。"""
+    from app.core.permissions import _match
+    from .academic_affairs_grade_correction_command import _current_user_id
+    from . import academic_affairs_responsibility_service as responsibility
+
+    ctx = build_affairs_context(user, db)
+    if ctx.scope_type != "TENANT_ALL":
+        raise no_data_scope("正式课表须由校教务统筹发布、作废与归档，学院负责本单位编排与预发布核对")
+    if require_archive and not _match("academicAffairs.schedule.archive", ctx.permission_codes):
+        raise no_data_scope("当前身份没有正式课表作废与归档权限")
+    actor = responsibility.resolve_school(db, permission_code="academicAffairs.schedule.edit")
+    if (not _match("academicAffairs.schedule.edit", ctx.permission_codes)
+            or not actor["resolved"]
+            or str(_current_user_id(db, user)) not in actor["assigneeUserIds"]):
+        raise no_data_scope("当前账号不是有效的学校课表责任人，请核对校级任职与排课权限")
+    return ctx
+
 
 # ── 07号卡·自动排课预留：结果导入(Excel)通道表头（不写算法本体，仅结果落地） ──
 IMPORT_HEADERS = ["星期(1-7)", "节次", "课程名称", "教师姓名", "教师工号", "班级ID", "班级名称",
@@ -122,8 +143,8 @@ def _weeks_overlap(s1, e1, p1, s2, e2, p2) -> bool:
 
 
 def _detect_conflict(db, batch_id, weekday, slot_no, start_week, end_week, parity,
-                     teacher_key, class_id, classroom, exclude_id=None):
-    """返回冲突描述（None=无冲突）。同批次同星期同节次，教师/班级/教室任一相同且周次相容即冲突。"""
+                     teacher_key, class_id, classroom, exclude_id=None, *, classroom_id=None):
+    """同节次且周次相容的资源冲突；默认查本批，预检可传已过滤的跨候选预载行。"""
     from app.models import AaScheduleItem
     rows = db.scalars(select(AaScheduleItem).where(
         AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == int(batch_id),
@@ -134,13 +155,23 @@ def _detect_conflict(db, batch_id, weekday, slot_no, start_week, end_week, parit
             continue
         if not _weeks_overlap(start_week, end_week, parity, r.start_week, r.end_week, r.week_parity):
             continue
+        external = int(getattr(r, "batch_id", batch_id)) != int(batch_id)
         if teacher_key and r.teacher_key and r.teacher_key == teacher_key:
+            if external:
+                return {"type": "TEACHER", "conflictWith": "当前任课教师",
+                        "detail": f"其他排课范围已占用当前教师的周{weekday}第{slot_no}节，请联系校教务协调"}
             return {"type": "TEACHER", "conflictWith": r.teacher_name or teacher_key,
                     "detail": f"教师 {r.teacher_name or teacher_key} 周{weekday}第{slot_no}节已排 {r.course_name}"}
         if class_id and r.class_id and int(r.class_id) == int(class_id):
+            if external:
+                return {"type": "CLASS", "conflictWith": "当前教学班",
+                        "detail": f"其他排课范围已占用当前班级的周{weekday}第{slot_no}节，请联系校教务协调"}
             return {"type": "CLASS", "conflictWith": r.class_name or str(class_id),
                     "detail": f"班级 {r.class_name or class_id} 周{weekday}第{slot_no}节已排 {r.course_name}"}
-        if classroom and r.classroom_text and r.classroom_text == classroom:
+        same_room = (int(r.classroom_id) == int(classroom_id)
+                     if classroom_id and getattr(r, "classroom_id", None)
+                     else classroom and r.classroom_text and r.classroom_text == classroom)
+        if same_room:
             return {"type": "CLASSROOM", "conflictWith": classroom,
                     "detail": f"教室 {classroom} 周{weekday}第{slot_no}节已被占用"}
     return None
@@ -190,7 +221,10 @@ def add_item(batch_id, user, body) -> dict:
             raise not_found("课表批次不存在")
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再变更
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
-            raise AppException("DATA_CONFLICT", "已发布课表不可直接改（走作废重发）")
+            raise AppException(
+                "DATA_CONFLICT",
+                "已发布课表不可直接修改；单课位调课、停课、补课请走调停课，只有整批重大纠错才作废重发",
+            )
         it = _item_from(body)
         # 从教学任务带出 课程/班级/教师
         course_name = class_id = class_name = teacher_key = teacher_name = None
@@ -241,7 +275,7 @@ def import_items(batch_id, user, items) -> dict:
             task_id = row.get("taskId")
             course_name = class_id = teacher_key = teacher_name = None
             if task_id:
-                t = db.get(AaTeachingTask, int(task_id))
+                t = tenant_get(db, AaTeachingTask, int(task_id), tenant_id=_tid())
                 if t:
                     course_name, class_id, teacher_key, teacher_name = t.course_name, t.class_id, t.teacher_key, t.teacher_name
             class_id = row.get("classId") or class_id
@@ -358,8 +392,14 @@ def void_and_reissue(batch_id, user, reason="") -> dict:
     with session() as db:
         from app.models import AaScheduleBatch, AaSchedulePublish
         from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
-        b = db.get(AaScheduleBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        _require_school_schedule_operator(db, user, require_archive=True)
+        lock_formal_authority(db)
+        b = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.id == int(batch_id), AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True)).first()
+        if not b:
             raise not_found("课表批次不存在")
         guard_term_writable(db, b.term_id)  # 归档11卡§6.2：已归档学期的课表不应再作废重发
         if b.status != "PUBLISHED":
@@ -380,8 +420,14 @@ def archive(batch_id, user) -> dict:
     审计事件为 ARCHIVE，不要求填写原因，归档后数据只读，供教务归档包（R7）统一打包消费。"""
     with session() as db:
         from app.models import AaScheduleBatch
-        b = db.get(AaScheduleBatch, int(batch_id))
-        if not b or b.is_deleted or b.tenant_id != _tid():
+        from .academic_affairs_schedule_resource_guard import lock_formal_authority
+        _require_school_schedule_operator(db, user, require_archive=True)
+        lock_formal_authority(db)
+        b = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.id == int(batch_id), AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True)).first()
+        if not b:
             raise not_found("课表批次不存在")
         if b.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布批次可归档")
@@ -424,7 +470,7 @@ def teacher_object(batch_id, user, item_id, reason) -> dict:
             raise not_found("课表批次不存在")
         if b.status != "PRE_PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅预发布批次可提出异议")
-        it = db.get(AaScheduleItem, int(item_id))
+        it = tenant_get(db, AaScheduleItem, int(item_id), tenant_id=_tid())
         if not it or it.is_deleted or it.tenant_id != _tid() or it.batch_id != b.id:
             raise not_found("排课条目不存在")
         keys = _derive_keys(user)
@@ -462,7 +508,10 @@ def adjust_item(batch_id, item_id, user, weekday, slot_no, classroom, week_parit
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("课表批次不存在")
         if b.status not in ("DRAFT", "PRE_PUBLISHED"):
-            raise AppException("DATA_CONFLICT", "已发布课表不可直接改（走作废重发）")
+            raise AppException(
+                "DATA_CONFLICT",
+                "已发布课表不可直接修改；单课位调课、停课、补课请走调停课，只有整批重大纠错才作废重发",
+            )
         it = db.get(AaScheduleItem, int(item_id))
         if not it or it.is_deleted or it.tenant_id != _tid() or it.batch_id != b.id:
             raise not_found("排课条目不存在")
@@ -488,7 +537,10 @@ def adjust_item(batch_id, item_id, user, weekday, slot_no, classroom, week_parit
 def _item_row(x, source="CLASS_DERIVED", selection_record_id=None) -> dict:
     """source: CLASS_DERIVED(行政班课表推导，既有) / ENROLLED(选课LOCKED并入，10号卡新增值)。
     切换位沿用 `13A-13B-V1不可做与后置能力清单.md:45` 预留设计，前端按 source 区分展示。"""
-    return {"itemId": str(x.id), "courseName": x.course_name or "", "className": x.class_name or "",
+    return {"itemId": str(x.id), "batchId": str(x.batch_id),
+            "taskId": str(x.task_id) if x.task_id else None,
+            "classroomId": str(x.classroom_id) if x.classroom_id else None,
+            "courseName": x.course_name or "", "className": x.class_name or "",
             "classId": str(x.class_id or ""), "teacherName": x.teacher_name or "",
             "teacherKey": x.teacher_key or "", "weekday": x.weekday, "slotNo": x.slot_no,
             "startWeek": x.start_week, "endWeek": x.end_week, "weekParity": x.week_parity,
@@ -498,8 +550,14 @@ def _item_row(x, source="CLASS_DERIVED", selection_record_id=None) -> dict:
 
 def _view(db, batch_id, extra_conds):
     from app.models import AaScheduleItem
+    if isinstance(batch_id, (list, tuple, set)):
+        batch_ids = sorted({int(value) for value in batch_id})
+    else:
+        batch_ids = [int(batch_id)]
+    if not batch_ids:
+        return []
     rows = db.scalars(select(AaScheduleItem).where(
-        AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id == int(batch_id),
+        AaScheduleItem.tenant_id == _tid(), AaScheduleItem.batch_id.in_(batch_ids),
         AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False),
         *extra_conds).order_by(AaScheduleItem.weekday, AaScheduleItem.slot_no)).all()
     return [_item_row(x) for x in rows]
@@ -517,7 +575,7 @@ def teacher_view(batch_id, user, teacher_key):
         return {"items": _view(db, batch_id, [AaScheduleItem.teacher_key == teacher_key])}
 
 
-def _enrolled_items(db, student_id):
+def _enrolled_items(db, student_id, batch_ids=None):
     """学生本人选课结果并入课表（10号卡）：批次 LOCKED 后，选课记录关联教学任务在已发布课表中
     的排课项(EFFECTIVE)标记 source=ENROLLED；LOCKED 前不并入（避免展示未定选课结果误导学生）。"""
     from app.models import AaScheduleItem, AaSelectionCourse, AaSelectionRecord
@@ -536,9 +594,16 @@ def _enrolled_items(db, student_id):
         tt_id, rec_id = task_to_record.get(c.id, (None, None))
         if not tt_id:
             continue
-        rows = db.query(AaScheduleItem).filter(
+        conds = [
             AaScheduleItem.tenant_id == _tid(), AaScheduleItem.task_id == tt_id,
-            AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False)).all()
+            AaScheduleItem.status == "EFFECTIVE", AaScheduleItem.is_deleted.is_(False),
+        ]
+        if batch_ids is not None:
+            normalized_batch_ids = sorted({int(value) for value in batch_ids})
+            if not normalized_batch_ids:
+                continue
+            conds.append(AaScheduleItem.batch_id.in_(normalized_batch_ids))
+        rows = db.query(AaScheduleItem).filter(*conds).all()
         out.extend(_item_row(x, source="ENROLLED", selection_record_id=rec_id) for x in rows)
     return out
 
@@ -551,40 +616,113 @@ def student_view(batch_id, user, student_id):
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
         base_items = _view(db, batch_id, [AaScheduleItem.class_id == int(s.class_id)]) if s.class_id else []
-        items = base_items + _enrolled_items(db, s.id)
+        items = base_items + _enrolled_items(db, s.id, [batch_id])
         note = "" if s.class_id else "学生无行政班归属"
         return {"items": items, "note": note}
 
 
 def list_batches(user, term_id=None, status=None, page=1, page_size=20):
-    from app.models import AaScheduleBatch
+    from app.models import AaScheduleBatch, AaTerm
     with session() as db:
         conds = [AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.is_deleted.is_(False)]
+        # 与精确批次详情共用已配置的数据范围，并在 count/分页前收敛。
+        ctx = build_affairs_context(user or {}, db)
+        scope_type = str(ctx.scope_type or "NONE").upper()
+        if scope_type == "COLLEGE":
+            college_ids = {int(value) for value in ctx.college_ids if value is not None}
+            if not college_ids:
+                raise no_data_scope("当前账号没有课表查看数据范围")
+            conds.append(AaScheduleBatch.college_id.in_(sorted(college_ids)))
+        elif scope_type != "TENANT_ALL":
+            raise no_data_scope("当前账号没有课表查看数据范围")
         if term_id:
             conds.append(AaScheduleBatch.term_id == int(term_id))
         if status:
             conds.append(AaScheduleBatch.status == status)
-        rows = db.scalars(select(AaScheduleBatch).where(*conds).order_by(AaScheduleBatch.id.desc())).all()
+        size = max(1, min(int(page_size), 200))
+        start = (max(1, int(page)) - 1) * size
+        total = int(db.scalar(select(func.count()).select_from(AaScheduleBatch).where(*conds)) or 0)
+        rows = db.scalars(select(AaScheduleBatch).where(*conds).order_by(AaScheduleBatch.id.desc()).offset(start).limit(size)).all()
+        terms = {int(t.id): f"{t.year_code} 第{t.term_no}学期" for t in db.scalars(select(AaTerm).where(
+            AaTerm.tenant_id == _tid(), AaTerm.id.in_([b.term_id for b in rows] or [-1]), AaTerm.is_deleted.is_(False),
+        )).all()}
         out = [{"batchId": str(b.id), "batchName": b.batch_name, "termId": str(b.term_id),
+                "collegeId": str(b.college_id) if b.college_id else None,
+                "termLabel": terms.get(int(b.term_id), "学期待核对"),
                 "status": b.status, "publishAt": _iso(b.publish_at)} for b in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        return out, total
 
 
 # ═══════════ Tier1 R2：班级/教师/教室独立课表入口 + 发布记录 + 导出 ═══════════
 # 与既有 class_view/teacher_view/student_view（需先知道 batchId 的批次内三视图，供「课表批次/排课」页
 # 「三视图」下钻用）不同：以下入口面向导航菜单三级页，自动取「当前已发布批次」，无需先选批次。
 
-def _current_published_batch(db, term_id=None):
-    """当前已发布批次：优先按学期过滤，取最近一次发布（publish_at desc）。不存在返回 None（页面走空态）。"""
-    from app.models import AaScheduleBatch
-    conds = [AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.is_deleted.is_(False),
-             AaScheduleBatch.status == "PUBLISHED"]
-    if term_id:
-        conds.append(AaScheduleBatch.term_id == int(term_id))
-    return db.scalars(select(AaScheduleBatch).where(*conds)
-                      .order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc())).first()
+def _current_published_batches(db, term_id=None):
+    """Resolve every official schedule scope for one teaching term.
+
+    ``publish_at DESC`` across all terms is unsafe: a post-archive correction to an
+    old term is legitimately newer than the current teaching schedule.  Teacher,
+    student, class and room PC views must therefore use the same
+    ``AaScheduleScopeHead.active_batch_id`` truth as the four-end mobile projection.
+    A term can contain one SCHOOL head and several COLLEGE heads, so returning only
+    one batch silently drops legitimate college timetables.  A same-term fallback
+    keeps only the newest batch per scope for pre-ScopeHead migrated data.
+    """
+    from app.models import AaScheduleBatch, AaTerm
+    from . import academic_affairs_schedule_truth_service as truth_service
+
+    resolved_term_id = int(term_id) if term_id else None
+    if resolved_term_id is None:
+        current_term = db.scalars(select(AaTerm).where(
+            AaTerm.tenant_id == _tid(),
+            AaTerm.is_current.is_(True),
+            AaTerm.is_deleted.is_(False),
+        ).order_by(AaTerm.id.desc()).limit(1)).first()
+        resolved_term_id = int(current_term.id) if current_term else None
+
+    if resolved_term_id is None:
+        latest = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.status == "PUBLISHED",
+            AaScheduleBatch.is_deleted.is_(False),
+        ).order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc()).limit(1)).first()
+        resolved_term_id = int(latest.term_id) if latest else None
+    if resolved_term_id is None:
+        return []
+
+    active_ids = truth_service.active_batch_ids(db, [resolved_term_id])
+    if active_ids:
+        rows = db.scalars(select(AaScheduleBatch).where(
+            AaScheduleBatch.id.in_(active_ids),
+            AaScheduleBatch.tenant_id == _tid(),
+            AaScheduleBatch.term_id == resolved_term_id,
+            AaScheduleBatch.status == "PUBLISHED",
+            AaScheduleBatch.is_deleted.is_(False),
+        )).all()
+        by_id = {int(row.id): row for row in rows}
+        authoritative = [by_id[batch_id] for batch_id in active_ids if batch_id in by_id]
+        if authoritative:
+            return authoritative
+
+    legacy_rows = db.scalars(select(AaScheduleBatch).where(
+        AaScheduleBatch.tenant_id == _tid(),
+        AaScheduleBatch.term_id == resolved_term_id,
+        AaScheduleBatch.status == "PUBLISHED",
+        AaScheduleBatch.is_deleted.is_(False),
+    ).order_by(AaScheduleBatch.publish_at.desc(), AaScheduleBatch.id.desc())).all()
+    latest_by_scope = {}
+    for row in legacy_rows:
+        scope = ("COLLEGE", int(row.college_id)) if row.college_id else ("SCHOOL", 0)
+        latest_by_scope.setdefault(scope, row)
+    return [latest_by_scope[key] for key in sorted(latest_by_scope)]
+
+
+def _batch_identity(batches) -> dict:
+    batch_ids = [str(batch.id) for batch in batches]
+    return {
+        "batchId": batch_ids[0] if len(batch_ids) == 1 else None,
+        "batchIds": batch_ids,
+    }
 
 
 def _week_in_range(row: dict, week) -> bool:
@@ -610,18 +748,34 @@ def class_schedule(user, class_id, term_id=None, week=None) -> dict:
         cls = db.get(SchoolClass, int(class_id))
         if not cls or cls.is_deleted or cls.tenant_id != _tid():
             raise not_found("班级不存在")
-        ctx = build_affairs_context(user, db)
-        if ctx.scope_type != "TENANT_ALL":
-            allowed = ctx.allowed_class_ids(db)
-            if not allowed or int(class_id) not in allowed:
-                raise no_data_scope("该班级不在您的数据范围内")
-        batch = _current_published_batch(db, term_id)
-        if not batch:
-            return {"items": [], "batchId": None, "className": cls.class_name,
+        batches = _current_published_batches(db, term_id)
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        if role == "ACADEMIC_TEACHER":
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            allowed = set()
+            term_ids = {int(batch.term_id) for batch in batches if batch.term_id}
+            if not term_ids and term_id not in (None, ""):
+                term_ids = {int(term_id)}
+            if not term_ids:
+                allowed |= teacher_authority.relation_scope(db, user)["classIds"]
+            else:
+                for current_term_id in term_ids:
+                    allowed |= teacher_authority.relation_scope(db, user, term_id=current_term_id)["classIds"]
+            if int(class_id) not in allowed:
+                raise no_data_scope("仅可查看本人正式任课关系涉及的班级课表")
+        else:
+            ctx = build_affairs_context(user, db)
+            if ctx.scope_type != "TENANT_ALL":
+                allowed = ctx.allowed_class_ids(db)
+                if not allowed or int(class_id) not in allowed:
+                    raise no_data_scope("该班级不在您的数据范围内")
+        if not batches:
+            return {"items": [], "batchId": None, "batchIds": [], "className": cls.class_name,
                     "note": "该班级本学期暂无已发布课表"}
-        rows = _view(db, batch.id, [AaScheduleItem.class_id == int(class_id)])
+        identity = _batch_identity(batches)
+        rows = _view(db, [batch.id for batch in batches], [AaScheduleItem.class_id == int(class_id)])
         rows = [r for r in rows if _week_in_range(r, week)]
-        return {"items": rows, "batchId": str(batch.id), "className": cls.class_name, "note": ""}
+        return {"items": rows, **identity, "className": cls.class_name, "note": ""}
 
 
 def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
@@ -629,17 +783,39 @@ def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
     （teacherKey 与本人 _user_keys 不命中 → 403002）。weeklyHours 为 V1 近似口径：按已排课表项计数，
     单双周场景未按实际周折算（精确工作量口径以「教学任务.weeklyHours」为准，此处仅课表侧粗略参考）。"""
     role = ((user or {}).get("currentRoleCode") or "").upper()
-    if role not in _REVIEW_ROLES and teacher_key not in _user_keys(user):
+    if role == "ACADEMIC_TEACHER":
+        from . import academic_affairs_teacher_relation_authority as teacher_authority
+        if teacher_key not in teacher_authority.user_keys(user):
+            raise no_data_scope("仅能查看本人课表")
+    elif role not in _REVIEW_ROLES and teacher_key not in _user_keys(user):
         raise no_data_scope("仅能查看本人课表")
     from app.models import AaScheduleItem
     with session() as db:
-        batch = _current_published_batch(db, term_id)
-        if not batch:
-            return {"items": [], "batchId": None, "weeklyHours": 0, "note": "本学期暂无授课安排"}
-        rows = _view(db, batch.id, [AaScheduleItem.teacher_key == teacher_key])
+        batches = _current_published_batches(db, term_id)
+        if not batches:
+            return {"items": [], "batchId": None, "batchIds": [], "weeklyHours": 0,
+                    "teacherName": (user or {}).get("realName") if role == "ACADEMIC_TEACHER" else "",
+                    "note": "本学期暂无授课安排"}
+        identity = _batch_identity(batches)
+        if role == "ACADEMIC_TEACHER":
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            task_ids = set()
+            for current_term_id in {int(batch.term_id) for batch in batches if batch.term_id}:
+                task_ids |= teacher_authority.relation_scope(db, user, term_id=current_term_id)["taskIds"]
+            keys = teacher_authority.user_keys(user)
+            filters = []
+            if task_ids:
+                filters.append(AaScheduleItem.task_id.in_(sorted(task_ids)))
+            if keys:
+                filters.append(and_(AaScheduleItem.task_id.is_(None), AaScheduleItem.teacher_key.in_(sorted(keys))))
+            rows = _view(db, [batch.id for batch in batches], [or_(*filters)]) if filters else []
+        else:
+            rows = _view(db, [batch.id for batch in batches], [AaScheduleItem.teacher_key == teacher_key])
         weekly_hours = len(rows)
         rows = [r for r in rows if _week_in_range(r, week)]
-        return {"items": rows, "batchId": str(batch.id), "weeklyHours": weekly_hours, "note": ""}
+        return {"items": rows, **identity, "weeklyHours": weekly_hours,
+                "teacherName": (user or {}).get("realName") if role == "ACADEMIC_TEACHER" else "",
+                "note": ""}
 
 
 def room_schedule(user, classroom_id, term_id=None, week=None) -> dict:
@@ -655,13 +831,14 @@ def room_schedule(user, classroom_id, term_id=None, week=None) -> dict:
         candidates = {display}
         if c.room_name:
             candidates.add(c.room_name)
-        batch = _current_published_batch(db, term_id)
-        if not batch:
-            return {"items": [], "batchId": None, "classroomText": display,
+        batches = _current_published_batches(db, term_id)
+        if not batches:
+            return {"items": [], "batchId": None, "batchIds": [], "classroomText": display,
                     "note": "该教室本学期暂无已发布课表"}
-        rows = _view(db, batch.id, [AaScheduleItem.classroom_text.in_(list(candidates))])
+        identity = _batch_identity(batches)
+        rows = _view(db, [batch.id for batch in batches], [AaScheduleItem.classroom_text.in_(list(candidates))])
         rows = [r for r in rows if _week_in_range(r, week)]
-        return {"items": rows, "batchId": str(batch.id), "classroomText": display, "note": ""}
+        return {"items": rows, **identity, "classroomText": display, "note": ""}
 
 
 def student_schedule(user, student_id, term_id=None, week=None) -> dict:
@@ -680,15 +857,18 @@ def student_schedule(user, student_id, term_id=None, week=None) -> dict:
             allowed = ctx.allowed_class_ids(db) or set()
             if not s.class_id or int(s.class_id) not in allowed:
                 raise no_data_scope("该学生不在您的数据范围内")
-        batch = _current_published_batch(db, term_id)
-        if not batch:
-            return {"items": [], "batchId": None, "studentName": s.real_name, "studentNo": s.student_no,
+        batches = _current_published_batches(db, term_id)
+        if not batches:
+            return {"items": [], "batchId": None, "batchIds": [], "studentName": s.real_name,
+                    "studentNo": s.student_no,
                     "note": "该学生本学期暂无已发布课表"}
-        base_items = _view(db, batch.id, [AaScheduleItem.class_id == int(s.class_id)]) if s.class_id else []
-        items = base_items + _enrolled_items(db, s.id)
+        identity = _batch_identity(batches)
+        active_ids = [batch.id for batch in batches]
+        base_items = _view(db, active_ids, [AaScheduleItem.class_id == int(s.class_id)]) if s.class_id else []
+        items = base_items + _enrolled_items(db, s.id, active_ids)
         items = [r for r in items if _week_in_range(r, week)]
         note = "" if s.class_id else "学生无行政班归属"
-        return {"items": items, "batchId": str(batch.id), "studentName": s.real_name,
+        return {"items": items, **identity, "studentName": s.real_name,
                 "studentNo": s.student_no, "note": note}
 
 
@@ -706,22 +886,40 @@ def teaching_class_schedule(user, teaching_class_code, term_id=None, week=None) 
             AaTeachingTask.teaching_class_code == teaching_class_code)).all()
         if not tasks:
             raise not_found("教学班不存在")
-        ctx = build_affairs_context(user, db)
-        if ctx.scope_type != "TENANT_ALL":
-            allowed = ctx.allowed_class_ids(db) or set()
-            class_ids = {t.class_id for t in tasks if t.class_id}
-            if not (class_ids & allowed):
-                raise no_data_scope("该教学班不在您的数据范围内")
+        batches = _current_published_batches(db, term_id)
+        role = str((user or {}).get("currentRoleCode") or "").upper()
+        if role == "ACADEMIC_TEACHER":
+            from . import academic_affairs_teacher_relation_authority as teacher_authority
+            allowed_task_ids = set()
+            term_ids = {int(batch.term_id) for batch in batches if batch.term_id}
+            if not term_ids and term_id not in (None, ""):
+                term_ids = {int(term_id)}
+            if not term_ids:
+                allowed_task_ids |= teacher_authority.relation_scope(db, user)["taskIds"]
+            else:
+                for current_term_id in term_ids:
+                    allowed_task_ids |= teacher_authority.relation_scope(db, user, term_id=current_term_id)["taskIds"]
+            tasks = [task for task in tasks if int(task.id) in allowed_task_ids]
+            if not tasks:
+                raise no_data_scope("仅可查看本人正式任课关系中的教学班课表")
+        else:
+            ctx = build_affairs_context(user, db)
+            if ctx.scope_type != "TENANT_ALL":
+                allowed = ctx.allowed_class_ids(db) or set()
+                class_ids = {t.class_id for t in tasks if t.class_id}
+                if not (class_ids & allowed):
+                    raise no_data_scope("该教学班不在您的数据范围内")
         task_ids = [t.id for t in tasks]
         teaching_class_name = next((t.teaching_class_name for t in tasks if t.teaching_class_name),
                                    teaching_class_code)
-        batch = _current_published_batch(db, term_id)
-        if not batch:
-            return {"items": [], "batchId": None, "teachingClassName": teaching_class_name,
+        if not batches:
+            return {"items": [], "batchId": None, "batchIds": [],
+                    "teachingClassName": teaching_class_name,
                     "note": "该教学班本学期暂无已发布课表"}
-        rows = _view(db, batch.id, [AaScheduleItem.task_id.in_(task_ids)])
+        identity = _batch_identity(batches)
+        rows = _view(db, [batch.id for batch in batches], [AaScheduleItem.task_id.in_(task_ids)])
         rows = [r for r in rows if _week_in_range(r, week)]
-        return {"items": rows, "batchId": str(batch.id), "teachingClassName": teaching_class_name, "note": ""}
+        return {"items": rows, **identity, "teachingClassName": teaching_class_name, "note": ""}
 
 
 def list_publish_records(user, term_id=None, batch_id=None, page=1, page_size=20):
@@ -829,7 +1027,7 @@ def move_item(item_id, user, body) -> dict:
         it = db.get(AaScheduleItem, int(item_id))
         if not it or it.is_deleted or it.tenant_id != _tid() or it.status != "EFFECTIVE":
             raise not_found("课表项不存在")
-        b = db.get(AaScheduleBatch, int(it.batch_id))
+        b = tenant_get(db, AaScheduleBatch, int(it.batch_id), tenant_id=_tid())
         if not b or b.status not in ("DRAFT", "PRE_PUBLISHED"):
             raise AppException("DATA_CONFLICT", "已发布课表不可拖拽调整（请走调停课）", http_status=409)
         weekday, slot_no = int(body.weekday), int(body.slotNo)

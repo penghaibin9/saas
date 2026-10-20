@@ -23,7 +23,7 @@
         <EmptyState v-if="!ov.usage.topByStorage.length" text="暂无用量快照，先为学校生成快照" compact />
         <ul v-else class="pfu__list">
           <li v-for="s in ov.usage.topByStorage" :key="s.id">
-            租户 {{ s.tenantId }} · {{ (s.storageTotalBytes / 1024 / 1024 / 1024).toFixed(2) }} GiB
+            租户 {{ s.tenantId }} · {{ (s.storageTotalBytes / 1024 / 1024 / 1024).toFixed(2) }} 吉字节
           </li>
         </ul>
       </AppCard>
@@ -41,12 +41,12 @@
       <AppCard class="pfu__panel">
         <AppSectionHeader title="单校用量快照与公平使用评估" />
         <div class="pfu__form">
-          <input v-model.trim="targetTenantId" class="pfu__input" placeholder="租户ID" />
+          <input v-model.trim="targetTenantId" class="pfu__input" placeholder="租户编号" />
           <button class="mp-link" @click="captureSnapshot">生成今日快照</button>
           <button class="mp-link" @click="evaluateFairUse">评估公平使用</button>
         </div>
         <p v-if="evalResult" class="pfu__note">
-          {{ evalResult.withinLimits ? '未超出配额' : `超出配额：${evalResult.violations.map(v => v.resourceCode).join('、')}` }}
+          {{ evalResult.withinLimits ? '未超出配额' : `超出配额：${violationLabels(evalResult.violations)}` }}
         </p>
       </AppCard>
     </template>
@@ -70,6 +70,10 @@ export default {
     this.load()
   },
   methods: {
+    violationLabels(items) {
+      const labels = { AUDIT_EVENTS_PER_DAY: '每日审计事件数', FILE_UPLOAD_BYTES_PER_DAY: '每日文件上传量' }
+      return (items || []).map((item) => labels[item.resourceCode] || '其他资源用量').join('、')
+    },
     async load() {
       this.loading = true
       this.error = ''
@@ -80,7 +84,7 @@ export default {
     },
     async captureSnapshot() {
       if (!this.targetTenantId) {
-        toast.error('请填写租户ID')
+        toast.error('请填写租户编号')
         return
       }
       const res = await platformControlApi.captureTenantUsageSnapshot(this.targetTenantId)
@@ -88,7 +92,7 @@ export default {
     },
     async evaluateFairUse() {
       if (!this.targetTenantId) {
-        toast.error('请填写租户ID')
+        toast.error('请填写租户编号')
         return
       }
       const res = await platformControlApi.evaluateTenantFairUse(this.targetTenantId)

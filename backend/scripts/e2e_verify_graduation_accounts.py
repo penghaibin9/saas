@@ -60,6 +60,11 @@ def main() -> int:
         advisor["ok"] = False
         advisor["message"] = "missing INTERN_MENTOR role context"
 
+    secretary = next(item for item in results if item["loginName"] == "e2e_college_secretary")
+    if secretary["ok"] and "GD_DEFENSE_SECRETARY" not in secretary["roleCodes"]:
+        secretary["ok"] = False
+        secretary["message"] = "missing GD_DEFENSE_SECRETARY role context"
+
     print(json.dumps(results, ensure_ascii=False, indent=2))
     ok_count = sum(1 for item in results if item.get("ok"))
     print(f"ok={ok_count}/{len(results)}")

@@ -109,7 +109,11 @@ async def store_upload(
     visibility: str = "BIZ_SCOPED",
     security_level: str = "NORMAL",
 ) -> dict:
-    """普通上传在物理 persist 前绑定业务模块配额上下文。"""
+    """普通上传先锁定租户边界，再校验商业能力并进入物理写入。"""
+    # 租户隔离是所有商业能力判断的前置条件。缺失 tenant context 时必须先
+    # fail-closed 为 TENANT_CONTEXT_REQUIRED，不能拿 tenant=0 去查询商业套餐后
+    # 误报 MODULE_NOT_AUTHORIZED。
+    _legacy._require_tenant_id()
     with storage_write_scope(biz_type):
         return await _legacy_store_upload(
             file,

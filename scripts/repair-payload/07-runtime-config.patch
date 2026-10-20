@@ -1,0 +1,44 @@
+diff --git a/.github/workflows/capacity-load-gates.yml b/.github/workflows/capacity-load-gates.yml
+--- a/.github/workflows/capacity-load-gates.yml
++++ b/.github/workflows/capacity-load-gates.yml
+@@ -113,7 +113,7 @@
+             identityMode: cold
+     env:
+       APP_ENV: test
+-      DEPLOYMENT_MODE: development
++      DEPLOYMENT_MODE: local
+       DEBUG: "false"
+       DB_ENABLED: "true"
+       DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
+ diff --git a/performance/tools/ephemeral_capacity_guard.py b/performance/tools/ephemeral_capacity_guard.py
+--- a/performance/tools/ephemeral_capacity_guard.py
++++ b/performance/tools/ephemeral_capacity_guard.py
+@@ -3,8 +3,8 @@
+ 
+ 
+ def assert_ephemeral_target(env):
+-    if env.get("APP_ENV") != "test" or env.get("DEPLOYMENT_MODE") != "development":
+-        raise ValueError("capacity seed requires APP_ENV=test and DEPLOYMENT_MODE=development")
++    if env.get("APP_ENV") != "test" or env.get("DEPLOYMENT_MODE") != "local":
++        raise ValueError("capacity seed requires APP_ENV=test and DEPLOYMENT_MODE=local")
+     if env.get("CAPACITY_EPHEMERAL_ACK") != "student_lifecycle_test":
+         raise ValueError("explicit CAPACITY_EPHEMERAL_ACK=student_lifecycle_test required")
+     raw=env.get("DATABASE_URL", "")
+ diff --git a/performance/tools/test_download_repair.py b/performance/tools/test_download_repair.py
+--- a/performance/tools/test_download_repair.py
++++ b/performance/tools/test_download_repair.py
+@@ -5,12 +5,12 @@
+ 
+ class CapacityRepairTests(unittest.TestCase):
+     def setUp(self):
+-        self.env={'APP_ENV':'test','DEPLOYMENT_MODE':'development','CAPACITY_EPHEMERAL_ACK':'student_lifecycle_test',
++        self.env={'APP_ENV':'test','DEPLOYMENT_MODE':'local','CAPACITY_EPHEMERAL_ACK':'student_lifecycle_test',
+             'DATABASE_URL':'mysql+pymysql://u:p@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4',
+             'TEST_DATABASE_URL':'mysql+pymysql://u:p@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4'}
+     def test_exact_ephemeral_target_accepted(self):self.assertTrue(assert_ephemeral_target(self.env))
+     def test_production_environment_rejected(self):
+-        for key,value in [('APP_ENV','production'),('DEPLOYMENT_MODE','production'),('CAPACITY_EPHEMERAL_ACK','')]:
++        for key,value in [('APP_ENV','production'),('DEPLOYMENT_MODE','production'),('DEPLOYMENT_MODE','development'),('CAPACITY_EPHEMERAL_ACK','')]:
+             with self.subTest(key=key),self.assertRaises(ValueError):assert_ephemeral_target({**self.env,key:value})
+     def test_remote_lookalike_socket_and_alt_database_rejected(self):
+         for url in ['mysql+pymysql://u:p@example.test/student_lifecycle_test',

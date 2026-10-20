@@ -49,7 +49,7 @@
           <button class="mp-link" @click="advanceStatus">流转状态</button>
         </div>
         <div class="ppb__form">
-          <input v-model.trim="fixChangeId" class="ppb__input" placeholder="永久修复变更ID" />
+          <input v-model.trim="fixChangeId" class="ppb__input" placeholder="永久修复变更编号" />
           <button class="mp-link" @click="linkFix">链接永久修复变更</button>
         </div>
         <p v-if="selected.permanentFixChangeId" class="ppb__note">已链接变更 #{{ selected.permanentFixChangeId }}</p>

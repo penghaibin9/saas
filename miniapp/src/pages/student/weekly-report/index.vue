@@ -9,17 +9,23 @@
             :key="w.week"
             class="wr__week"
             :class="{ 'is-on': selectedWeek === w.week }"
-            @click="selectedWeek = w.week"
+            @click="selectWeek(w.week)"
           >
             <text class="wr__week-num">第{{ w.week }}周</text>
             <text class="wr__week-tag">{{ w.tagText }}</text>
           </view>
         </view>
 
+        <view v-if="receipt" class="card wr__receipt">
+          <text class="t-md t-bold">{{ receipt.actionLabel }}</text>
+          <text>#{{ receipt.id }} · v{{ receipt.version }} · {{ receipt.statusLabel }}</text>
+          <text>{{ receipt.nextStep }}</text>
+        </view>
+
         <!-- 当前可填写周 -->
         <template v-if="isEditableWeek">
           <view class="card wr__form">
-            <view class="row-between"><text class="card-title">第 {{ selectedWeek }} 周 · 填写中</text><MobileStatusTag label="填写中" type="processing" /></view>
+            <view class="row-between"><text class="card-title">第 {{ selectedWeek }} 周 · {{ selectedReport ? '修改重交' : '填写中' }}</text><MobileStatusTag :label="selectedReport ? '已退回' : '填写中'" :type="selectedReport ? 'warning' : 'processing'" /></view>
             <view class="wr__field">
               <text class="wr__label">本周工作内容 <text class="wr__req">*</text></text>
               <textarea class="wr__textarea" v-model="form.workContent" :maxlength="500" placeholder="描述本周完成的主要任务" placeholder-class="wr__ph" />
@@ -45,7 +51,7 @@
             </view>
           </view>
 
-          <MobileInlineAlert type="info" description="周报提交后由校内指导教师批阅；逾期未交会计入实习考核。" />
+          <MobileInlineAlert :type="selectedReport ? 'warning' : 'info'" :description="selectedReport ? ('教师意见：' + (selectedReport.reviewComment || '请修改后重新提交')) : '周报提交后由校内指导教师批阅；逾期未交会计入实习考核。'" />
         </template>
 
         <!-- 历史周只读 -->
@@ -67,21 +73,26 @@
             </view>
           </view>
         </template>
+
+        <view v-if="hasMore" class="wr__more">
+          <button class="btn btn-secondary" :disabled="loadingMore" @click="loadMore">
+            {{ loadingMore ? '加载中…' : '加载更多历史周报' }}
+          </button>
+        </view>
       </view>
     </MobileGlobalState>
 
     <MobileSafeAreaBar v-if="loaded && isEditableWeek">
-      <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : '提交周报' }}</button>
+      <button class="btn btn-primary flex-1" :disabled="submitting" @click="submit">{{ submitting ? '提交中…' : (selectedReport ? '重新提交周报' : '提交周报') }}</button>
     </MobileSafeAreaBar>
   </view>
 </template>
 
 <script>
 import { studentApi } from '@/services/studentApi'
-import { createSubmitLock, normalizeError } from '@/services/request'
+import { normalizeError } from '@/services/request'
 import { toast } from '@/utils/nav'
 
-const submitLock = createSubmitLock(1500)
 const STATUS_TAG = { PENDING_REVIEW: '待批阅', APPROVED: '已批阅', RETURNED: '已退回', OVERDUE: '已逾期' }
 
 export default {
@@ -91,7 +102,11 @@ export default {
       company: '', post: '', schoolMentor: '', lastFeedback: '',
       currentWeek: 1, weeklyList: [], selectedWeek: 1,
       form: { workContent: '', harvestContent: '', planContent: '' },
-      submitting: false
+      submitting: false, receipt: null, loadSequence: 0, batchId: '', internshipId: '',
+      // 来自正式消息 action 的对象聚焦。数据回读完成后才使用，避免旧列表或迟到
+      // 响应把用户送回当前周而看不到退回原因。
+      focusReportId: '', focusWeek: 0,
+      weeklyPageSize: 20, weeklyTotal: 0, loadedWeeklyPages: [], hasMore: false, loadingMore: false
     }
   },
   computed: {
@@ -106,52 +121,140 @@ export default {
       return this.weeklyList.find((r) => r.week === this.selectedWeek) || null
     },
     isEditableWeek() {
-      return this.selectedWeek === this.currentWeek && !this.selectedReport
+      return (!this.selectedReport && this.selectedWeek === this.currentWeek) || this.selectedReport?.status === 'RETURNED'
     }
   },
-  onLoad() { this.load() },
+  onLoad(options = {}) {
+    this.requestedBatchId = String(options.batchId || '')
+    this.focusReportId = String(options.reportId || '').trim()
+    this.focusWeek = Number(options.weekNo || 0) || 0
+    this.load()
+  },
+  onReachBottom() { this.loadMore() },
   methods: {
-    load() {
+    mergeWeeklyItems(items) {
+      const rows = new Map(this.weeklyList.map((row) => [String(row.id), row]))
+      for (const row of (items || [])) rows.set(String(row.id), row)
+      this.weeklyList = Array.from(rows.values()).sort((a, b) => {
+        const byWeek = Number(b.week || 0) - Number(a.week || 0)
+        return byWeek || String(b.id).localeCompare(String(a.id))
+      })
+    },
+    applyWeeklyPage(result) {
+      const page = Number(result?.page || 1)
+      this.mergeWeeklyItems(result?.items || [])
+      this.weeklyTotal = Number(result?.total || 0)
+      if (!this.loadedWeeklyPages.includes(page)) this.loadedWeeklyPages = [...this.loadedWeeklyPages, page].sort((a, b) => a - b)
+      const totalPages = Math.ceil(this.weeklyTotal / this.weeklyPageSize)
+      this.hasMore = this.loadedWeeklyPages.length < totalPages
+    },
+    async load() {
+      const sequence = ++this.loadSequence
       this.state = 'loading'
-      studentApi.getInternship().then((d) => {
+      this.loadingMore = false
+      try {
+        const d = await studentApi.getInternship(this.requestedBatchId)
+        if (sequence !== this.loadSequence) return
         this.company = d.company || ''
         this.post = d.post || ''
         this.schoolMentor = d.schoolMentor || ''
         this.lastFeedback = (d.weekly && d.weekly.lastFeedback) || ''
-        this.weeklyList = d.weeklyList || []
+        this.batchId = d.batchId || ''
+        this.internshipId = d.recordId || ''
+        const result = await studentApi.getInternshipWeeklyReports(
+          this.batchId, this.internshipId, 1, this.weeklyPageSize, this.focusReportId
+        )
+        if (sequence !== this.loadSequence) return
+        this.weeklyList = []
+        this.weeklyTotal = 0
+        this.loadedWeeklyPages = []
+        this.applyWeeklyPage(result)
+        // 深链永远先取当前首屏，确保当前周的真实状态不会被遗漏；目标不在首屏时
+        // 最多再请求目标所在的一页，而不是一次把整学期历史全部拉取。
+        const focusPage = Number(result?.focusPage || 0)
+        if (this.focusReportId && focusPage > 1) {
+          const focused = await studentApi.getInternshipWeeklyReports(
+            this.batchId, this.internshipId, focusPage, this.weeklyPageSize
+          )
+          if (sequence !== this.loadSequence) return
+          this.applyWeeklyPage(focused)
+        }
         const m = String((d.weekly && d.weekly.week) || '第 1 周').match(/\d+/)
         this.currentWeek = m ? Number(m[0]) : 1
-        this.selectedWeek = this.currentWeek
+        const focusedReport = this.weeklyList.find((row) => String(row.id) === this.focusReportId)
+        const focusedWeek = Number(focusedReport?.week || this.focusWeek || 0)
+        this.selectedWeek = focusedWeek || this.currentWeek
+        this.selectWeek(this.selectedWeek)
         this.loaded = true
         this.state = 'ready'
-      }).catch(() => { this.state = 'error' })
+      } catch (e) {
+        if (sequence === this.loadSequence) this.state = 'error'
+      }
     },
-    submit() {
+    async loadMore() {
+      if (!this.loaded || this.loadingMore || !this.hasMore) return
+      const totalPages = Math.ceil(this.weeklyTotal / this.weeklyPageSize)
+      const nextPage = Array.from({ length: totalPages }, (_, index) => index + 1)
+        .find((page) => !this.loadedWeeklyPages.includes(page))
+      if (!nextPage) {
+        this.hasMore = false
+        return
+      }
+      const sequence = this.loadSequence
+      this.loadingMore = true
+      try {
+        const result = await studentApi.getInternshipWeeklyReports(
+          this.batchId, this.internshipId, nextPage, this.weeklyPageSize
+        )
+        if (sequence !== this.loadSequence) return
+        this.applyWeeklyPage(result)
+      } catch (e) {
+        if (sequence === this.loadSequence) toast('历史周报加载失败，请检查网络后重试')
+      } finally {
+        if (sequence === this.loadSequence) this.loadingMore = false
+      }
+    },
+    selectWeek(week) {
+      if (this.submitting) return
+      this.selectedWeek = Number(week)
+      const row = this.weeklyList.find((item) => Number(item.week) === this.selectedWeek)
+      if (row?.status === 'RETURNED') {
+        this.form = { workContent: row.workContent || '', harvestContent: row.harvestContent || '', planContent: row.planContent || '' }
+      } else if (!row) {
+        this.form = { workContent: '', harvestContent: '', planContent: '' }
+      }
+    },
+    async submit() {
       if (this.submitting) return
       if (this.form.workContent.trim().length < 10 || this.form.harvestContent.trim().length < 10) {
         toast('本周工作内容与本周收获均至少 10 个字')
         return
       }
       this.submitting = true
-      submitLock.run(() => studentApi.submitWeeklyReport({
-        weekNo: this.selectedWeek,
-        workContent: this.form.workContent.trim(),
-        harvestContent: this.form.harvestContent.trim(),
-        planContent: this.form.planContent.trim()
-      })).then(() => {
-        uni.showToast({ title: '周报已提交', icon: 'success' })
-        this.load()
-      }).catch((e) => {
+      const current = this.selectedReport
+      try {
+        const result = await studentApi.submitInternshipWeeklyReport({
+          batchId: this.batchId, internshipId: this.internshipId,
+          expectedVersion: current?.version ?? 0, weekNo: this.selectedWeek,
+          workContent: this.form.workContent.trim(), harvestContent: this.form.harvestContent.trim(),
+          planContent: this.form.planContent.trim()
+        })
+        this.receipt = {
+          actionLabel: current ? '周报已重新提交' : '周报已提交', id: result.id,
+          version: result.version, statusLabel: '待批阅', nextStep: '等待指导教师批阅；退回后可继续修改。'
+        }
+        await this.load()
+      } catch (e) {
         if (e && e.code === 'LOCKED') return
         if (e && e.biz) {
-          if (String(e.code).startsWith('409')) toast('本周周报已提交，请勿重复提交')
+          if (String(e.code).startsWith('409')) toast('周报已被更新，填写内容已保留，请刷新核对')
           else toast(normalizeError(e).text)
         } else {
-          toast('网络异常，提交未成功，请稍后重试')
+          toast('网络异常，填写内容已保留，请稍后重试')
         }
-      }).finally(() => {
+      } finally {
         this.submitting = false
-      })
+      }
     }
   }
 }
@@ -159,6 +262,7 @@ export default {
 
 <style scoped>
 .wr__weeks { display: flex; gap: var(--space-2); overflow-x: auto; }
+.wr__receipt { display: flex; flex-direction: column; gap: 4px; margin-top: var(--card-gap-mobile); border-color: #86efac; background: #f0fdf4; color: #166534; font-size: var(--font-size-xs); }
 .wr__week { flex-shrink: 0; min-width: 64px; text-align: center; padding: var(--space-2) var(--space-1); border-radius: var(--radius-md); border: 1.5px solid var(--border-base); }
 .wr__week.is-on { border-color: var(--brand-primary); background: var(--primary-50); }
 .wr__week-num { display: block; font-size: var(--font-size-sm); font-weight: var(--font-weight-semibold); color: var(--text-secondary); }
@@ -179,4 +283,6 @@ export default {
 .wr__fb-row { display: flex; gap: var(--space-3); margin-top: var(--space-2); }
 .wr__fb-avatar { width: 36px; height: 36px; border-radius: var(--radius-md); background: var(--brand-gradient); color: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 .wr__fb-text { display: block; margin-top: 4px; font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.5; }
+.wr__more { margin: var(--card-gap-mobile) 0; }
+.wr__more .btn { width: 100%; }
 </style>

@@ -52,10 +52,10 @@ def _store_snapshot(db, *, payload: dict, filename: str, record, user,
         user=user,
         visibility="BIZ_SCOPED",
         security_level="PERSONAL",
+        db=db,
     )
-    # store_bytes 使用独立会话提交。结束当前只读/适配事务，使 MySQL REPEATABLE READ
-    # 后续查询能看到新 FileObject；此前同步出的 Asset/Version 一并安全持久化。
-    db.commit()
+    # FileObject、FileVersion、Manifest 与业务归档共用同一事务；归档失败时不得留下
+    # 已提交的“预备材料”或让调用方看到未知结果。
     refreshed_record = core._assert_scope(db, record.id, user, "登记系统生成实习证据")
     student = db.get(StudentProfile, refreshed_record.student_id)
     source = _generated_source(
@@ -160,184 +160,300 @@ def _ensure_archive_state_snapshot(db, record, evaluation: dict, user=None) -> d
     return item
 
 
+def prepare_archive_manifest_in_session(db, internship_id, user=None,
+                                        force_file_ids=None) -> dict:
+    """在调用方事务中准备 FileVersion Manifest，不自行提交。"""
+    record = core._assert_scope(db, internship_id, user, "准备实习归档清单")
+    synced = facade.sync_record_materials(
+        db, record, user=user, force_file_ids=force_file_ids,
+    )
+    if synced["unsafe"]:
+        raise AppException(
+            "DATA_CONFLICT",
+            "存在扫描中、扫描失败、病毒或无法解析的材料，禁止归档",
+            details={"unsafeMaterials": synced["unsafe"]},
+        )
+    evaluation = evaluate_internship_compliance(
+        record.id, "ARCHIVE", user=user, db=db,
+    )
+    # 无论有无用户附件，都冻结一份系统可信的业务状态快照；它不是上传原件，
+    # 但是真实 FileObject/FileVersion，保证 manifest 永不为空并可复核当时规则结论。
+    _ensure_archive_state_snapshot(db, record, evaluation, user=user)
+    record = core._assert_scope(db, internship_id, user, "准备实习归档清单")
+    rows = core._current_rows(db, record)
+    if not rows:
+        raise AppException("DATA_CONFLICT", "没有可追溯的文件版本，禁止生成实习归档")
+
+    active = db.scalars(select(ArchiveManifest).where(
+        ArchiveManifest.tenant_id == _tid(),
+        ArchiveManifest.module_code == core.MODULE_CODE,
+        ArchiveManifest.archive_type == core.ARCHIVE_TYPE,
+        ArchiveManifest.target_type == core.TARGET_TYPE,
+        ArchiveManifest.target_id == str(record.id),
+        ArchiveManifest.status.in_(core.ACTIVE_MANIFEST_STATUS),
+        ArchiveManifest.is_deleted.is_(False),
+    ).with_for_update()).all()
+    for old in active:
+        old.status = "SUPERSEDED"
+
+    revision = int(db.scalar(select(func.max(ArchiveManifest.revision)).where(
+        ArchiveManifest.tenant_id == _tid(),
+        ArchiveManifest.module_code == core.MODULE_CODE,
+        ArchiveManifest.archive_type == core.ARCHIVE_TYPE,
+        ArchiveManifest.target_type == core.TARGET_TYPE,
+        ArchiveManifest.target_id == str(record.id),
+    )) or 0) + 1
+
+    frozen = []
+    for order, row in enumerate(rows, start=1):
+        binding, asset, version, file_row = row
+        if not (core._file_ready(file_row) and version.status in core.READY_VERSION_STATUS):
+            raise AppException("DATA_CONFLICT", "归档材料安全状态已变化，请刷新后重试")
+        item = core._item(binding, asset, version, file_row)
+        item["sortNo"] = order
+        frozen.append(item)
+
+    digest_payload = {
+        "moduleCode": core.MODULE_CODE,
+        "archiveType": core.ARCHIVE_TYPE,
+        "targetType": core.TARGET_TYPE,
+        "targetId": str(record.id),
+        "revision": revision,
+        "ruleVersion": evaluation.get("ruleVersion"),
+        "items": [{
+            "materialCode": item["materialCode"],
+            "assetId": item["assetId"],
+            "versionId": item["versionId"],
+            "fileObjectId": item["fileId"],
+            "fileName": item["fileName"],
+            "sizeBytes": item["sizeBytes"],
+            "sha256": item["sha256"],
+            "reviewStatus": item["reviewStatus"],
+            "scanResult": item["scanStatus"],
+            "sortNo": item["sortNo"],
+        } for item in frozen],
+    }
+    manifest_hash = hashlib.sha256(json.dumps(
+        digest_payload,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")).hexdigest()
+    manifest = ArchiveManifest(
+        tenant_id=_tid(),
+        module_code=core.MODULE_CODE,
+        archive_type=core.ARCHIVE_TYPE,
+        target_type=core.TARGET_TYPE,
+        target_id=str(record.id),
+        revision=revision,
+        status="PREPARED",
+        rule_version=evaluation.get("ruleVersion"),
+        manifest_sha256=manifest_hash,
+        created_by_name=core._op_name(user),
+    )
+    db.add(manifest)
+    db.flush()
+    for item in frozen:
+        db.add(ArchiveManifestItem(
+            tenant_id=_tid(),
+            manifest_id=manifest.id,
+            material_code=item["materialCode"],
+            asset_id=int(item["assetId"]),
+            version_id=int(item["versionId"]),
+            file_object_id=int(item["fileId"]),
+            file_name_snapshot=item["fileName"],
+            size_snapshot=item["sizeBytes"],
+            sha256_snapshot=item["sha256"],
+            review_status=item["reviewStatus"],
+            scan_result=item["scanStatus"],
+            sort_no=item["sortNo"],
+        ))
+    db.flush()
+    core._trail(db, record.id, "MANIFEST_PREPARED", {
+        "manifestId": str(manifest.id),
+        "revision": revision,
+        "manifestSha256": manifest_hash,
+        "itemCount": len(frozen),
+    }, user)
+    return {
+        "manifestId": str(manifest.id),
+        "revision": revision,
+        "manifestSha256": manifest_hash,
+        "itemCount": len(frozen),
+    }
+
+
 def prepare_archive_manifest(internship_id, user=None, force_file_ids=None) -> dict:
     with session() as db:
-        record = core._assert_scope(db, internship_id, user, "准备实习归档清单")
-        synced = facade.sync_record_materials(
-            db, record, user=user, force_file_ids=force_file_ids,
+        result = prepare_archive_manifest_in_session(
+            db, internship_id, user=user, force_file_ids=force_file_ids,
         )
-        if synced["unsafe"]:
-            raise AppException(
-                "DATA_CONFLICT",
-                "存在扫描中、扫描失败、病毒或无法解析的材料，禁止归档",
-                details={"unsafeMaterials": synced["unsafe"]},
-            )
-        evaluation = evaluate_internship_compliance(
-            record.id, "ARCHIVE", user=user, db=db,
-        )
-        # 无论有无用户附件，都冻结一份系统可信的业务状态快照；它不是上传原件，
-        # 但是真实 FileObject/FileVersion，保证 manifest 永不为空并可复核当时规则结论。
-        _ensure_archive_state_snapshot(db, record, evaluation, user=user)
-        record = core._assert_scope(db, internship_id, user, "准备实习归档清单")
-        rows = core._current_rows(db, record)
-        if not rows:
-            raise AppException("DATA_CONFLICT", "没有可追溯的文件版本，禁止生成实习归档")
-
-        active = db.scalars(select(ArchiveManifest).where(
-            ArchiveManifest.tenant_id == _tid(),
-            ArchiveManifest.module_code == core.MODULE_CODE,
-            ArchiveManifest.archive_type == core.ARCHIVE_TYPE,
-            ArchiveManifest.target_type == core.TARGET_TYPE,
-            ArchiveManifest.target_id == str(record.id),
-            ArchiveManifest.status.in_(core.ACTIVE_MANIFEST_STATUS),
-            ArchiveManifest.is_deleted.is_(False),
-        ).with_for_update()).all()
-        for old in active:
-            old.status = "SUPERSEDED"
-
-        revision = int(db.scalar(select(func.max(ArchiveManifest.revision)).where(
-            ArchiveManifest.tenant_id == _tid(),
-            ArchiveManifest.module_code == core.MODULE_CODE,
-            ArchiveManifest.archive_type == core.ARCHIVE_TYPE,
-            ArchiveManifest.target_type == core.TARGET_TYPE,
-            ArchiveManifest.target_id == str(record.id),
-        )) or 0) + 1
-
-        frozen = []
-        for order, row in enumerate(rows, start=1):
-            binding, asset, version, file_row = row
-            if not (core._file_ready(file_row) and version.status in core.READY_VERSION_STATUS):
-                raise AppException("DATA_CONFLICT", "归档材料安全状态已变化，请刷新后重试")
-            item = core._item(binding, asset, version, file_row)
-            item["sortNo"] = order
-            frozen.append(item)
-
-        digest_payload = {
-            "moduleCode": core.MODULE_CODE,
-            "archiveType": core.ARCHIVE_TYPE,
-            "targetType": core.TARGET_TYPE,
-            "targetId": str(record.id),
-            "revision": revision,
-            "ruleVersion": evaluation.get("ruleVersion"),
-            "items": [{
-                "materialCode": item["materialCode"],
-                "assetId": item["assetId"],
-                "versionId": item["versionId"],
-                "fileObjectId": item["fileId"],
-                "fileName": item["fileName"],
-                "sizeBytes": item["sizeBytes"],
-                "sha256": item["sha256"],
-                "reviewStatus": item["reviewStatus"],
-                "scanResult": item["scanStatus"],
-                "sortNo": item["sortNo"],
-            } for item in frozen],
-        }
-        manifest_hash = hashlib.sha256(json.dumps(
-            digest_payload,
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")).hexdigest()
-        manifest = ArchiveManifest(
-            tenant_id=_tid(),
-            module_code=core.MODULE_CODE,
-            archive_type=core.ARCHIVE_TYPE,
-            target_type=core.TARGET_TYPE,
-            target_id=str(record.id),
-            revision=revision,
-            status="PREPARED",
-            rule_version=evaluation.get("ruleVersion"),
-            manifest_sha256=manifest_hash,
-            created_by_name=core._op_name(user),
-        )
-        db.add(manifest)
-        db.flush()
-        for item in frozen:
-            db.add(ArchiveManifestItem(
-                tenant_id=_tid(),
-                manifest_id=manifest.id,
-                material_code=item["materialCode"],
-                asset_id=int(item["assetId"]),
-                version_id=int(item["versionId"]),
-                file_object_id=int(item["fileId"]),
-                file_name_snapshot=item["fileName"],
-                size_snapshot=item["sizeBytes"],
-                sha256_snapshot=item["sha256"],
-                review_status=item["reviewStatus"],
-                scan_result=item["scanStatus"],
-                sort_no=item["sortNo"],
-            ))
-        core._trail(db, record.id, "MANIFEST_PREPARED", {
-            "manifestId": str(manifest.id),
-            "revision": revision,
-            "manifestSha256": manifest_hash,
-            "itemCount": len(frozen),
-        }, user)
         db.commit()
-        return {
-            "manifestId": str(manifest.id),
-            "revision": revision,
-            "manifestSha256": manifest_hash,
-            "itemCount": len(frozen),
-        }
+        return result
+
+
+def finalize_manifest_in_session(db, manifest_id, internship_id, user=None) -> dict:
+    """在调用方事务中冻结文件版本清单。"""
+    manifest = db.scalar(select(ArchiveManifest).where(
+        ArchiveManifest.id == _as_id(manifest_id),
+        ArchiveManifest.tenant_id == _tid(),
+        ArchiveManifest.target_id == str(_as_id(internship_id)),
+        ArchiveManifest.status == "PREPARED",
+        ArchiveManifest.is_deleted.is_(False),
+    ).with_for_update())
+    if not manifest:
+        raise AppException("DATA_CONFLICT", "归档文件版本清单不存在或状态已变化")
+    archive = db.scalar(select(InternshipArchive).where(
+        InternshipArchive.tenant_id == _tid(),
+        InternshipArchive.internship_id == _as_id(internship_id),
+        InternshipArchive.status == "ARCHIVED",
+        InternshipArchive.is_deleted.is_(False),
+    ).with_for_update())
+    if not archive:
+        raise AppException("DATA_CONFLICT", "业务归档未成功，不能冻结文件版本清单")
+    items = db.scalars(select(ArchiveManifestItem).where(
+        ArchiveManifestItem.tenant_id == _tid(),
+        ArchiveManifestItem.manifest_id == manifest.id,
+        ArchiveManifestItem.is_deleted.is_(False),
+    ).order_by(ArchiveManifestItem.sort_no, ArchiveManifestItem.id)).all()
+    if not items:
+        raise AppException("DATA_CONFLICT", "归档文件版本清单为空，禁止冻结")
+    if core.manifest_digest(manifest, items) != manifest.manifest_sha256:
+        raise AppException("DATA_CONFLICT", "归档 Manifest 哈希已漂移，禁止冻结")
+    manifest.status = "FROZEN"
+    manifest.frozen_at = datetime.utcnow()
+    snapshot = dict(archive.material_snapshot or {})
+    snapshot["fileVersionManifest"] = {
+        "schemaVersion": "INTERNSHIP_FILE_VERSION_MANIFEST_V1",
+        "manifestId": str(manifest.id),
+        "revision": manifest.revision,
+        "manifestSha256": manifest.manifest_sha256,
+        "frozenAt": manifest.frozen_at.isoformat() + "Z",
+        "items": [{
+            "materialCode": item.material_code,
+            "assetId": str(item.asset_id),
+            "versionId": str(item.version_id),
+            "fileObjectId": str(item.file_object_id),
+            "fileName": item.file_name_snapshot,
+            "sizeBytes": item.size_snapshot,
+            "sha256": item.sha256_snapshot,
+            "reviewStatus": item.review_status,
+            "scanResult": item.scan_result,
+        } for item in items],
+    }
+    archive.material_snapshot = snapshot
+    archive.snapshot_version = int(archive.snapshot_version or 0) + 1
+    # Manifest 与业务归档同一事务提交，因此无需二次递增 archive.version。
+    core._trail(db, _as_id(internship_id), "MANIFEST_FROZEN", {
+        "manifestId": str(manifest.id),
+        "manifestSha256": manifest.manifest_sha256,
+    }, user)
+    db.flush()
+    return core._manifest_row(db, manifest)
 
 
 def finalize_manifest(manifest_id, internship_id, user=None) -> dict:
-    """冻结文件版本清单，但不额外改变旧业务归档的乐观锁版本。"""
     with session() as db:
-        manifest = db.scalar(select(ArchiveManifest).where(
-            ArchiveManifest.id == _as_id(manifest_id),
-            ArchiveManifest.tenant_id == _tid(),
-            ArchiveManifest.target_id == str(_as_id(internship_id)),
-            ArchiveManifest.status == "PREPARED",
-            ArchiveManifest.is_deleted.is_(False),
-        ).with_for_update())
-        if not manifest:
-            raise AppException("DATA_CONFLICT", "归档文件版本清单不存在或状态已变化")
-        archive = db.scalar(select(InternshipArchive).where(
-            InternshipArchive.tenant_id == _tid(),
-            InternshipArchive.internship_id == _as_id(internship_id),
-            InternshipArchive.status == "ARCHIVED",
-            InternshipArchive.is_deleted.is_(False),
-        ).with_for_update())
-        if not archive:
-            raise AppException("DATA_CONFLICT", "业务归档未成功，不能冻结文件版本清单")
-        items = db.scalars(select(ArchiveManifestItem).where(
-            ArchiveManifestItem.tenant_id == _tid(),
-            ArchiveManifestItem.manifest_id == manifest.id,
-            ArchiveManifestItem.is_deleted.is_(False),
-        ).order_by(ArchiveManifestItem.sort_no, ArchiveManifestItem.id)).all()
-        manifest.status = "FROZEN"
-        manifest.frozen_at = datetime.utcnow()
-        snapshot = dict(archive.material_snapshot or {})
-        snapshot["fileVersionManifest"] = {
-            "schemaVersion": "INTERNSHIP_FILE_VERSION_MANIFEST_V1",
-            "manifestId": str(manifest.id),
-            "revision": manifest.revision,
-            "manifestSha256": manifest.manifest_sha256,
-            "frozenAt": manifest.frozen_at.isoformat() + "Z",
-            "items": [{
-                "materialCode": item.material_code,
-                "assetId": str(item.asset_id),
-                "versionId": str(item.version_id),
-                "fileObjectId": str(item.file_object_id),
-                "fileName": item.file_name_snapshot,
-                "sizeBytes": item.size_snapshot,
-                "sha256": item.sha256_snapshot,
-                "reviewStatus": item.review_status,
-                "scanResult": item.scan_result,
-            } for item in items],
-        }
-        archive.material_snapshot = snapshot
-        archive.snapshot_version = int(archive.snapshot_version or 0) + 1
-        # 不能递增 archive.version：archive_student() 已把新版本返回给客户端；
-        # Manifest 是附加证据，不应让紧接着的撤销请求误判为并发修改。
-        core._trail(db, _as_id(internship_id), "MANIFEST_FROZEN", {
-            "manifestId": str(manifest.id),
-            "manifestSha256": manifest.manifest_sha256,
-        }, user)
+        result = finalize_manifest_in_session(
+            db, manifest_id, internship_id, user=user,
+        )
         db.commit()
-        return core._manifest_row(db, manifest)
+        return result
+
+
+def revoke_manifests_in_session(db, internship_id, reason: str, user=None) -> dict:
+    record = core._assert_scope(db, internship_id, user, "撤销实习归档文件版本清单")
+    rows = db.scalars(select(ArchiveManifest).where(
+        ArchiveManifest.tenant_id == _tid(),
+        ArchiveManifest.module_code == core.MODULE_CODE,
+        ArchiveManifest.target_id == str(record.id),
+        ArchiveManifest.status.in_(core.ACTIVE_MANIFEST_STATUS),
+        ArchiveManifest.is_deleted.is_(False),
+    ).with_for_update()).all()
+    for row in rows:
+        row.status = "REVOKED"
+        row.revoked_at = datetime.utcnow()
+        row.revoked_by = core._op_name(user)
+        row.revoke_reason = (reason or "").strip()
+    core._trail(db, record.id, "MANIFEST_REVOKED", {
+        "reason": (reason or "").strip(), "manifestCount": len(rows),
+    }, user)
+    return {"revokedManifestCount": len(rows)}
+
+
+def revoke_manifests(internship_id, reason: str, user=None) -> dict:
+    with session() as db:
+        result = revoke_manifests_in_session(
+            db, internship_id, reason, user=user,
+        )
+        db.commit()
+        return result
+
+
+def archive_with_manifest(user, internship_id, *, force=False,
+                          force_reason="", evidence_file_ids=None,
+                          expected_version=None,
+                          record_expected_version=None) -> dict:
+    """原子完成材料登记、Manifest 准备、业务归档和清单冻结。"""
+    from app.modules.internship.services import internship_archive_service as archive_svc
+
+    with session() as db:
+        prepared = prepare_archive_manifest_in_session(
+            db, internship_id, user=user,
+            force_file_ids=evidence_file_ids or [],
+        )
+        result = archive_svc.archive_student_in_session(
+            db, user, internship_id, force=force,
+            force_reason=force_reason,
+            evidence_file_ids=evidence_file_ids or [],
+            expected_version=expected_version,
+            record_expected_version=record_expected_version,
+        )
+        manifest = finalize_manifest_in_session(
+            db, prepared["manifestId"], internship_id, user=user,
+        )
+        db.commit()
+        result["fileVersionManifest"] = manifest
+        result["operationReceipt"] = {
+            "action": "ARCHIVE",
+            "objectId": str(internship_id),
+            "recordVersion": result["recordVersion"],
+            "archiveVersion": result["version"],
+            "manifestId": prepared["manifestId"],
+            "manifestRevision": prepared["revision"],
+            "manifestSha256": prepared["manifestSha256"],
+            "fileVersionCount": prepared["itemCount"],
+            "status": "COMMITTED",
+        }
+        return result
+
+
+def revoke_with_manifests(user, internship_id, reason: str, *,
+                          expected_version=None,
+                          record_expected_version=None) -> dict:
+    """原子撤销业务归档、失效包与冻结 Manifest。"""
+    from app.modules.internship.services import internship_archive_service as archive_svc
+
+    with session() as db:
+        result = archive_svc.revoke_archive_in_session(
+            db, user, internship_id, reason=reason,
+            expected_version=expected_version,
+            record_expected_version=record_expected_version,
+        )
+        result.update(revoke_manifests_in_session(
+            db, internship_id, reason, user=user,
+        ))
+        db.commit()
+        result["operationReceipt"] = {
+            "action": "ARCHIVE_REVOKE",
+            "objectId": str(internship_id),
+            "recordVersion": result["recordVersion"],
+            "archiveVersion": result["version"],
+            "invalidatedPackageCount": result["invalidatedPackageCount"],
+            "revokedManifestCount": result["revokedManifestCount"],
+            "status": "COMMITTED",
+        }
+        return result
 
 
 # 其余接口继续使用已验证的阶段 4 Facade / 核心实现。
@@ -346,7 +462,30 @@ list_center = facade.list_center
 synchronize = facade.synchronize
 preflight_agreement = facade.preflight_agreement
 preflight_insurance = facade.preflight_insurance
-abort_manifest = facade.abort_manifest
 get_manifest = facade.get_manifest
 build_versioned_package = facade.build_versioned_package
-revoke_manifests = facade.revoke_manifests
+abort_manifest = facade.abort_manifest
+
+
+def build_batch_versioned_package(batch_id, user=None, *, after_id=0, limit=20) -> dict:
+    from app.modules.internship.services.internship_streaming_package_service import (
+        build_batch_versioned_package as build,
+    )
+
+    return build(batch_id, user=user, after_id=after_id, limit=limit)
+
+
+def resolve_batch_package_download(package_id, user=None):
+    from app.modules.internship.services.internship_streaming_package_service import (
+        resolve_batch_package_download as resolve,
+    )
+
+    return resolve(package_id, user=user)
+
+
+def verify_package_for_restore(package_id, user=None) -> dict:
+    from app.modules.internship.services.internship_streaming_package_service import (
+        verify_package_for_restore as verify,
+    )
+
+    return verify(package_id, user=user)

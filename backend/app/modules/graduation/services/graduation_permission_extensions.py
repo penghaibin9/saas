@@ -46,6 +46,7 @@ def register_graduation_permission_extensions() -> None:
     _register(module, "graduationDesign.grade.review", "grade_review")
     _register(module, "graduationDesign.grade.publish", "grade_publish")
     _register(module, "graduationDesign.grade.withdraw", "grade_withdraw")
+    _register(module, "graduationDesign.grade.advisorScore", "grade_advisor_score")
     _register(module, "graduationDesign.archive.preview", "archive_generate_preview", "archive_file_preview")
     _register(module, "graduationDesign.archive.file", "archive_generate_batch", "archive_file_batch")
     _register(module, "graduationDesign.student.import", "student_import_confirm")

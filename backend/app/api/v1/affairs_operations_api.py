@@ -58,11 +58,14 @@ def create_material_requirement(body: MaterialRequirementCreate, user=Depends(ge
 @router.get("/student-affairs/material-requirements", summary="教师材料缺项工作队列")
 def teacher_material_requirements(
     status: Optional[str] = Query(None),
+    requirementId: Optional[int] = Query(None, ge=1),
+    bizType: Optional[str] = Query(None, max_length=50),
+    bizId: Optional[int] = Query(None, ge=1),
     page: int = Query(1, ge=1),
     pageSize: int = Query(50, ge=1, le=100),
     user=Depends(get_current_user),
 ):
-    items, total = operations.list_teacher_requirements(user, status=status, page=page, page_size=pageSize)
+    items, total = operations.list_teacher_requirements(user, status=status, page=page, page_size=pageSize, biz_type=bizType, biz_id=bizId, requirement_id=requirementId)
     return success(paginate(items, total, page, pageSize))
 
 

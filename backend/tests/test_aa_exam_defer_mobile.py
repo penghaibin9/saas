@@ -11,9 +11,11 @@ BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
 
 
-def _hdr(client, login_name):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
+def _hdr(client, login_name, client_type="TEACHER_MINI"):
+    response = client.post("/api/v1/auth/mock-login",
+        json={"loginName": login_name, "password": "any", "clientType": client_type})
+    assert response.status_code == 200, response.text
+    data = response.json()["data"]
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
@@ -22,7 +24,7 @@ def _stu_token(real_name, student_no):
     return {"Authorization": "Bearer " + create_access_token({
         "userId": f"u-{student_no}", "realName": real_name, "studentNo": student_no,
         "userType": "STUDENT", "tid": "x", "tenantId": str(TID), "activeContextId": "ctx",
-        "currentRoleCode": "STUDENT", "clientType": "MP"})}
+        "currentRoleCode": "STUDENT", "clientType": "STUDENT_MINI"})}
 
 
 def _seed(db_mode):
@@ -43,9 +45,9 @@ def _seed(db_mode):
     co = AaCourse(tenant_id=TID, course_code="MOB_DEFER", course_name="移动缓考测试课", credit=3, status="ENABLED")
     db.add(co); db.flush()
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=term.id, batch_name="移动缓考测试任务批",
-                             college_id=col.id, status="ACTIVE")
+                             college_id=col.id, status="DRAFT")
     db.add(tb); db.flush()
-    tt = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=co.id, course_name="移动缓考测试课",
+    tt = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=co.id, course_code=co.course_code, course_name="移动缓考测试课",
                         class_id=klass.id, teaching_class_name="软件3001",
                         teacher_key="academic01", teacher_name="赵敏")
     db.add(tt); db.flush()
@@ -55,6 +57,8 @@ def _seed(db_mode):
     db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
                                role_code="COUNSELOR", scope_type="CLASS", ref_value="软件3001",
                                status="ACTIVE"))
+    from tests.test_aa_exam import _seed_exam_review_identity
+    _seed_exam_review_identity(db, col.id)
     db.commit()
     ids = {"tt": tt.id, "student": s.id, "studentNo": s.student_no, "term": term.id}
     db.close()
@@ -62,15 +66,22 @@ def _seed(db_mode):
 
 
 def _batch_with_confirmed_course(client, admin, tt_id, term_id):
+    from tests.test_aa_exam import _prepare_task_batch_for_exam
+    _prepare_task_batch_for_exam(client, admin, tt_id)
     # 建考务批次必须绑定正式学期：termId 是 create_batch 的硬门禁，缺了直接 400。
-    bid = client.post(f"{BASE}/exam/batches", headers=admin,
-                      json={"batchName": "移动缓考测试批次", "termId": str(term_id)}).json()["data"]["batchId"]
-    cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
-                      json={"teachingTaskId": str(tt_id)}).json()["data"]["examCourseId"]
-    client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
-    client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
+    created = client.post(f"{BASE}/exam/batches", headers=admin, json={"batchName": "移动缓考测试批次", "termId": str(term_id)})
+    assert created.status_code == 200, created.text
+    bid = created.json()["data"]["batchId"]
+    added = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin, json={"teachingTaskId": str(tt_id)})
+    assert added.status_code == 200, added.text
+    cid = added.json()["data"]["examCourseId"]
+    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"), json={"action": "CONFIRM"})
+    assert confirmed.status_code == 200, confirmed.text
+    scheduled = client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
                json={"examDate": "2031-06-20", "startTime": "09:00", "endTime": "11:00", "durationMinutes": 120})
-    client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    assert scheduled.status_code == 200, scheduled.text
+    advanced = client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    assert advanced.status_code == 200, advanced.text
     return bid, cid
 
 
@@ -157,3 +168,69 @@ def test_cross_node_review_403_via_mobile(client, db_mode):
     r = client.post(f"{MOB}/teacher/academic/defer/{did}/review", headers=_hdr(client, "teacher01"),
                     json={"action": "APPROVE"})
     assert r.status_code == 403
+
+
+def test_defer_mobile_requires_teacher_mini_and_serializes_stale_commands(client, db_mode):
+    """同一正式缓考单：PC/学生令牌不能进入教师端；退回、重提各只成功一次。
+
+    这里走 HTTP + MySQL，不直接改状态。它同时覆盖真实行锁、expectedVersion、状态机和
+    审计，避免双击/网络重试把一张单推进两次。
+    """
+    from app.db.session import get_sessionmaker
+    from app.models import AaExamAuditTrail
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    _, cid = _batch_with_confirmed_course(client, admin, ids["tt"], ids["term"])
+    did = _apply_defer(client, ids, cid)
+
+    pc_teacher = _hdr(client, "counselor01", "PC")
+    assert client.get(f"{MOB}/teacher/academic/defer/pending", headers=pc_teacher).status_code == 403
+    assert client.get(f"{MOB}/teacher/academic/defer/pending", headers=_stu_token("缓考甲", ids["studentNo"])).status_code == 403
+
+    teacher = _hdr(client, "counselor01")
+    pending = client.get(f"{MOB}/teacher/academic/defer/pending", headers=teacher)
+    assert pending.status_code == 200, pending.text
+    row = next(item for item in pending.json()["data"]["list"] if item["deferId"] == did)
+    assert row["version"] == 0
+
+    returned = client.post(
+        f"{MOB}/teacher/academic/defer/{did}/review", headers=teacher,
+        json={"action": "RETURN", "reason": "请补充可核验的病假材料", "expectedVersion": row["version"]},
+    )
+    assert returned.status_code == 200, returned.text
+    assert returned.json()["data"]["status"] == "RETURNED"
+    assert returned.json()["data"]["currentNode"] == "STUDENT_RESUBMIT"
+    assert returned.json()["data"]["version"] == 1
+
+    stale_review = client.post(
+        f"{MOB}/teacher/academic/defer/{did}/review", headers=teacher,
+        json={"action": "APPROVE", "expectedVersion": row["version"]},
+    )
+    assert stale_review.status_code == 409, stale_review.text
+
+    student = _stu_token("缓考甲", ids["studentNo"])
+    resubmitted = client.post(
+        f"{MOB}/academic/exam/defer/{did}/resubmit", headers=student,
+        json={"expectedVersion": 1},
+    )
+    assert resubmitted.status_code == 200, resubmitted.text
+    assert resubmitted.json()["data"]["status"] == "COUNSELOR_REVIEW"
+    assert resubmitted.json()["data"]["version"] == 2
+
+    stale_resubmit = client.post(
+        f"{MOB}/academic/exam/defer/{did}/resubmit", headers=student,
+        json={"expectedVersion": 1},
+    )
+    assert stale_resubmit.status_code == 409, stale_resubmit.text
+
+    db = get_sessionmaker()()
+    try:
+        audit_actions = [row.action for row in db.query(AaExamAuditTrail).filter(
+            AaExamAuditTrail.biz_type == "DEFERRED_EXAM",
+            AaExamAuditTrail.biz_id == int(did),
+        ).all()]
+    finally:
+        db.close()
+    assert audit_actions.count("DEFER_REVIEW_ACT") == 1
+    assert audit_actions.count("DEFER_RESUBMIT") == 1

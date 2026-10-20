@@ -11,7 +11,7 @@
         <div class="mp-card">
           <div class="mp-card__body">
             <div class="mp-kv"><span class="mp-kv__k">模板文件</span><span class="mp-kv__v">{{ template.fileName || template.name }}<template v-if="template.version">（{{ template.version }}）</template></span></div>
-            <div v-if="template.fields?.length" class="mp-kv"><span class="mp-kv__k">模板字段</span><span class="mp-kv__v">{{ template.fields.join('、') }}</span></div>
+            <div v-if="template.fields?.length" class="mp-kv"><span class="mp-kv__k">模板字段</span><span class="mp-kv__v">{{ template.fields.map(fieldLabel).join('、') }}</span></div>
           </div>
         </div>
         <ul v-if="template.rules?.length" class="imp__rules">
@@ -30,7 +30,7 @@
         </label>
         <div v-if="preview" class="imp__result">
           <div class="imp__status" :class="{ 'is-processing': preview.processing }">
-            {{ preview.statusLabel || preview.status || '等待服务端状态' }}
+            {{ previewStatusLabel(preview.status, preview.statusLabel) }}
             <span v-if="preview.pollTimedOut"> · 后台仍在处理，可稍后重新查看任务</span>
           </div>
           <div v-if="countsReady" class="imp__stat">
@@ -40,7 +40,7 @@
           <table v-if="preview.errors?.length" class="mp-audit">
             <thead><tr><th>行号</th><th>字段</th><th>错误原因</th></tr></thead>
             <tbody>
-              <tr v-for="(e, index) in preview.errors" :key="`${e.row}-${e.field}-${index}`"><td>{{ e.row ? `第 ${e.row} 行` : '全局' }}</td><td>{{ e.field }}</td><td>{{ e.message }}</td></tr>
+              <tr v-for="(e, index) in preview.errors" :key="`${e.row}-${e.field}-${index}`"><td>{{ e.row ? `第 ${e.row} 行` : '全局' }}</td><td>{{ fieldLabel(e.field) }}</td><td>{{ e.message }}</td></tr>
             </tbody>
           </table>
           <button v-if="preview.errors?.length && runDownloadErrors" class="mp-link" :disabled="downloadingErrors" @click="downloadErrors">⇩ 下载 Excel 错误回执</button>
@@ -52,8 +52,8 @@
         <div class="mp-card">
           <div class="mp-card__body">
             <div class="mp-kv"><span class="mp-kv__k">任务编号</span><span class="mp-kv__v">#{{ preview && (preview.jobId || preview.id || preview.batchNo) }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">写入范围</span><span class="mp-kv__v">仅服务器预检通过的 {{ preview && preview.valid }} 行；前端不回传 rows</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">安全门禁</span><span class="mp-kv__v">任务必须仍为 VALIDATED 且错误行为 0；提交前父级会重新 GET 校验当前版本</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">写入范围</span><span class="mp-kv__v">仅写入服务器预检通过的 {{ preview && preview.valid }} 行；页面不回传整批明细</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">安全门禁</span><span class="mp-kv__v">任务必须仍处于“校验通过”且错误行为 0；提交前会从服务端重新校验当前版本</span></div>
             <div class="mp-kv"><span class="mp-kv__k">审计留痕</span><span class="mp-kv__v">原始文件、错误回执与初始凭据回执均进入文件中心和任务历史</span></div>
           </div>
         </div>
@@ -81,6 +81,9 @@ import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { toast } from '@/utils/toast'
 import { canConfirmIdentityImport } from '@/modules/system/utils/identityImportState'
+
+const FIELD_LABELS = { studentNo: '学号', name: '姓名', realName: '姓名', gender: '性别', phone: '手机号', idCard: '身份证号', college: '学院', collegeName: '学院', major: '专业', majorName: '专业', className: '班级', grade: '年级', userNo: '工号', loginName: '登录名', email: '邮箱', roleCode: '角色' }
+const PREVIEW_STATUS_LABELS = { UPLOADING: '上传中', SCANNING: '安全检查中', WORKER_CLAIMED: '后台处理中', PARSING: '解析中', VALIDATING: '校验中', VALIDATED: '校验通过', VALIDATION_FAILED: '校验未通过', FAILED: '处理失败', EXPIRED: '已过期' }
 
 export default {
   name: 'SystemImportDialog',
@@ -127,6 +130,8 @@ export default {
     this.abortValidation()
   },
   methods: {
+    fieldLabel(value) { return FIELD_LABELS[value] || (/\p{Script=Han}/u.test(String(value || '')) ? value : (value ? '其他字段' : '—')) },
+    previewStatusLabel(status, providedLabel = '') { return providedLabel || PREVIEW_STATUS_LABELS[status] || (status ? '状态待确认' : '等待服务端状态') },
     abortValidation() {
       if (this.validationController) this.validationController.abort()
       this.validationController = null

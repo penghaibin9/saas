@@ -14,6 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
 DEMO_TID = 1000000000000000003
 SANDBOX_TID = 1000000000000000007
+STUDENT_MINI = "STUDENT_MINI"
+TEACHER_MINI = "TEACHER_MINI"
 
 
 @pytest.fixture()
@@ -37,7 +39,7 @@ def _fake_openid(monkeypatch, openid):
 
 def test_wx_login_first_time_needs_bind(client, two_tenants, monkeypatch):
     _fake_openid(monkeypatch, "openid_new_001")
-    r = client.post("/api/v1/auth/wx-login", json={"code": "any"}).json()
+    r = client.post("/api/v1/auth/wx-login", json={"code": "any", "clientType": STUDENT_MINI}).json()
     assert r["code"] == 0
     assert r["data"]["needBind"] is True
     assert r["data"]["wxToken"]
@@ -47,17 +49,17 @@ def test_wx_login_first_time_needs_bind(client, two_tenants, monkeypatch):
 def test_wx_bind_then_openid_login(client, two_tenants, monkeypatch):
     _fake_openid(monkeypatch, "openid_stu_bind")
     # 1) 一键登录 → needBind + wxToken
-    r1 = client.post("/api/v1/auth/wx-login", json={"code": "c1"}).json()
+    r1 = client.post("/api/v1/auth/wx-login", json={"code": "c1", "clientType": STUDENT_MINI}).json()
     wx_token = r1["data"]["wxToken"]
     # 2) 用学号/密码首次绑定 → 直接登录成功
     r2 = client.post("/api/v1/auth/wx-bind",
-                     json={"wxToken": wx_token, "loginName": "student", "password": "123456"}).json()
+                     json={"wxToken": wx_token, "loginName": "student", "password": "123456", "clientType": STUDENT_MINI}).json()
     assert r2["code"] == 0, r2.get("message")
     assert r2["data"]["accessToken"]
     assert r2["data"]["tenantId"] == str(DEMO_TID)
     assert r2["data"]["currentRole"]["roleCode"] == "STUDENT"
     # 3) 再次一键登录（同 openid）→ 已绑定，免密直接登录，不再 needBind
-    r3 = client.post("/api/v1/auth/wx-login", json={"code": "c2"}).json()
+    r3 = client.post("/api/v1/auth/wx-login", json={"code": "c2", "clientType": STUDENT_MINI}).json()
     assert r3["code"] == 0
     assert r3["data"].get("needBind") is None
     assert r3["data"]["accessToken"]
@@ -67,43 +69,43 @@ def test_wx_bind_then_openid_login(client, two_tenants, monkeypatch):
 
 def test_one_wechat_can_select_between_two_schools(client, two_tenants, monkeypatch):
     _fake_openid(monkeypatch, "openid_multi_school")
-    first_token = client.post("/api/v1/auth/wx-login", json={"code": "first"}).json()["data"]["wxToken"]
+    first_token = client.post("/api/v1/auth/wx-login", json={"code": "first", "clientType": STUDENT_MINI}).json()["data"]["wxToken"]
     first = client.post("/api/v1/auth/wx-bind", json={
         "wxToken": first_token, "tenantCode": "demo-school",
-        "loginName": "student", "password": "123456",
+        "loginName": "student", "password": "123456", "clientType": STUDENT_MINI,
     }).json()
     assert first["code"] == 0 and first["data"]["tenantId"] == str(DEMO_TID)
 
     another = client.post("/api/v1/auth/wx-login",
-                          json={"code": "another", "bindAnother": True}).json()["data"]
+                          json={"code": "another", "bindAnother": True, "clientType": STUDENT_MINI}).json()["data"]
     assert another["needBind"] is True
     second = client.post("/api/v1/auth/wx-bind", json={
         "wxToken": another["wxToken"], "tenantCode": "sandbox-school",
-        "loginName": "student2", "password": "123456",
+        "loginName": "student2", "password": "123456", "clientType": STUDENT_MINI,
     }).json()
     assert second["code"] == 0 and second["data"]["tenantId"] == str(SANDBOX_TID)
 
-    choices = client.post("/api/v1/auth/wx-login", json={"code": "choose"}).json()["data"]
+    choices = client.post("/api/v1/auth/wx-login", json={"code": "choose", "clientType": STUDENT_MINI}).json()["data"]
     assert choices["needSelectTenant"] is True
     assert {item["tenantCode"] for item in choices["accounts"]} == {"demo-school", "sandbox-school"}
     selected = client.post("/api/v1/auth/wx-select", json={
-        "wxToken": choices["wxToken"], "tenantCode": "demo-school",
+        "wxToken": choices["wxToken"], "tenantCode": "demo-school", "clientType": STUDENT_MINI,
     }).json()
     assert selected["code"] == 0 and selected["data"]["tenantId"] == str(DEMO_TID)
 
 
 def test_wx_bind_wrong_password(client, two_tenants, monkeypatch):
     _fake_openid(monkeypatch, "openid_wrongpw")
-    wx_token = client.post("/api/v1/auth/wx-login", json={"code": "c"}).json()["data"]["wxToken"]
+    wx_token = client.post("/api/v1/auth/wx-login", json={"code": "c", "clientType": STUDENT_MINI}).json()["data"]["wxToken"]
     r = client.post("/api/v1/auth/wx-bind",
-                    json={"wxToken": wx_token, "loginName": "student", "password": "WRONG"}).json()
+                    json={"wxToken": wx_token, "loginName": "student", "password": "WRONG", "clientType": STUDENT_MINI}).json()
     assert r["code"] == 401001
 
 
 def test_wx_bind_bad_token(client, two_tenants, monkeypatch):
     _fake_openid(monkeypatch, "openid_x")
     r = client.post("/api/v1/auth/wx-bind",
-                    json={"wxToken": "not-a-valid-token", "loginName": "student", "password": "123456"}).json()
+                    json={"wxToken": "not-a-valid-token", "loginName": "student", "password": "123456", "clientType": STUDENT_MINI}).json()
     assert r["code"] == 401001
 
 
@@ -112,9 +114,50 @@ def test_wx_login_not_configured(client, two_tenants, monkeypatch):
     from app.core.config import settings
     monkeypatch.setattr(settings, "WX_APPID", "")
     monkeypatch.setattr(settings, "WX_SECRET", "")
-    r = client.post("/api/v1/auth/wx-login", json={"code": "x"}).json()
+    r = client.post("/api/v1/auth/wx-login", json={"code": "x", "clientType": STUDENT_MINI}).json()
     assert r["code"] != 0
     assert "配置" in (r.get("message") or "")
     # 账号密码登录不受影响
     ok = client.post("/api/v1/auth/login", json={"loginName": "student", "password": "123456"}).json()
     assert ok["code"] == 0
+
+
+def test_wx_login_cannot_issue_a_student_mini_session_for_a_teacher_binding(client, two_tenants, monkeypatch):
+    _fake_openid(monkeypatch, "openid_teacher_side")
+    token = client.post("/api/v1/auth/wx-login", json={
+        "code": "teacher-bind", "clientType": TEACHER_MINI,
+    }).json()["data"]["wxToken"]
+    bound = client.post("/api/v1/auth/wx-bind", json={
+        "wxToken": token, "loginName": "teacher", "password": "123456", "clientType": TEACHER_MINI,
+    }).json()
+    assert bound["code"] == 0
+    assert bound["data"]["currentRole"]["roleCode"] in {"COUNSELOR", "TEACHER", "GD_MENTOR"}
+
+    wrong_side = client.post("/api/v1/auth/wx-login", json={
+        "code": "student-side", "clientType": STUDENT_MINI,
+    }).json()
+    assert wrong_side["code"] == 403001
+
+
+def test_wx_select_token_is_bound_to_its_original_mini_side(client, two_tenants, monkeypatch):
+    _fake_openid(monkeypatch, "openid_select_side")
+    first_token = client.post("/api/v1/auth/wx-login", json={"code": "first", "clientType": STUDENT_MINI}).json()["data"]["wxToken"]
+    assert client.post("/api/v1/auth/wx-bind", json={
+        "wxToken": first_token, "tenantCode": "demo-school", "loginName": "student", "password": "123456", "clientType": STUDENT_MINI,
+    }).json()["code"] == 0
+    second_token = client.post("/api/v1/auth/wx-login", json={
+        "code": "second", "bindAnother": True, "clientType": STUDENT_MINI,
+    }).json()["data"]["wxToken"]
+    assert client.post("/api/v1/auth/wx-bind", json={
+        "wxToken": second_token, "tenantCode": "sandbox-school", "loginName": "student2", "password": "123456", "clientType": STUDENT_MINI,
+    }).json()["code"] == 0
+    choices = client.post("/api/v1/auth/wx-login", json={"code": "choices", "clientType": STUDENT_MINI}).json()["data"]
+
+    mismatched = client.post("/api/v1/auth/wx-select", json={
+        "wxToken": choices["wxToken"], "tenantCode": "demo-school", "clientType": TEACHER_MINI,
+    }).json()
+    assert mismatched["code"] == 401001
+    selected = client.post("/api/v1/auth/wx-select", json={
+        "wxToken": choices["wxToken"], "tenantCode": "sandbox-school", "clientType": STUDENT_MINI,
+    }).json()
+    assert selected["code"] == 0 and selected["data"]["tenantId"] == str(SANDBOX_TID)

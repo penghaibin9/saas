@@ -4,6 +4,7 @@
  * 当前默认 mock；接真实后端时仅将 impl 换为 workflow.api.real.example 的实现，页面零改动。
  */
 import * as mockApi from '../api/workflow.api.mock'
+import * as templateApi from '../api/workflow.template.api'
 
 const impl = mockApi
 
@@ -11,14 +12,18 @@ export function getWorkflowOverview() {
   return impl.getWorkflowOverview()
 }
 export function getProcessTemplates(params) {
-  return impl.getProcessTemplates(params)
+  return templateApi.getProcessTemplates(params)
 }
 export function getProcessTemplateDetail(id) {
-  return impl.getProcessTemplateDetail(id)
+  return templateApi.getProcessTemplateDetail(id)
 }
 export function updateProcessTemplateStatus(id, status) {
-  return impl.updateProcessTemplateStatus(id, status)
+  return templateApi.updateProcessTemplateStatus(id, status)
 }
+export const createProcessTemplate = templateApi.createProcessTemplate
+export const updateProcessTemplate = templateApi.updateProcessTemplate
+export const createProcessTemplateDraft = templateApi.createProcessTemplateDraft
+export const publishProcessTemplateDraft = templateApi.publishProcessTemplateDraft
 export function getApprovalTasks(params) {
   return impl.getApprovalTasks(params)
 }

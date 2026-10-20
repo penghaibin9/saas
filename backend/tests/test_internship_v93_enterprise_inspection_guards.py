@@ -71,6 +71,111 @@ def _company_valid_until(company_id):
         db.close()
 
 
+def _file(db, owner=1, scan="NOT_REQUIRED", tenant=TENANT_A):
+    from app.models.file import FileObject
+    row = FileObject(tenant_id=tenant, file_key=f"inspection/{uuid.uuid4().hex}.txt", file_name="考察材料.txt",
+                     ext="txt", mime_type="text/plain", size_bytes=12, sha256="a" * 64,
+                     biz_type="TEMP_PRIVATE", owner_user_id=owner, visibility="PRIVATE", status="AVAILABLE",
+                     storage_backend="local", storage_zone="ACTIVE", upload_source="USER",
+                     scan_required=scan != "NOT_REQUIRED", scan_status=scan)
+    db.add(row); db.flush()
+    return str(row.id)
+
+
+def test_full_inspection_draft_file_binding_and_review(insp_svc):
+    from app.core.exceptions import AppException
+    from app.models.file import FileObject, FileBinding
+    from app.services.file_access_service import authorize_file_object
+    from sqlalchemy import select
+    from app.core.context import get_current_user_ctx
+
+    with _session() as db:
+        company_id = _seed_company(db, TENANT_A)
+        fid = _file(db)
+        db.commit()
+    row = insp_svc.create({"companyId": str(company_id), "inspectionType": "ONSITE", "inspectors": "学校验收人员",
+                           "inspectionDate": "2026-09-06T10:30:00+08:00", "validUntil": "2027-09-06T23:59:00+08:00",
+                           "conclusion": "现场条件已核查", "riskItems": "补充安全培训记录", "rectificationItems": "开岗前复核",
+                           "workplaceAddress": "虚构验收园区", "safetyCondition": "已核对防护设施", "fileIds": [fid]})
+    assert row["inspectionDate"] == "2026-09-06T02:30:00+00:00"
+    assert row["riskItems"] == "补充安全培训记录"
+    assert row["workplaceAddress"] == "虚构验收园区"
+    with _session() as db:
+        file_obj = db.get(FileObject, int(fid))
+        bindings = list(db.scalars(select(FileBinding).where(FileBinding.file_id == int(fid))).all())
+        assert file_obj.biz_type == "INTERNSHIP_ENTERPRISE_INSPECTION"
+        assert authorize_file_object(file_obj, bindings, get_current_user_ctx(), db=db)
+        assert not authorize_file_object(file_obj, bindings, {"userType": "STUDENT", "userId": "1", "currentRoleCode": "SCHOOL_ADMIN"}, db=db)
+    updated = insp_svc.update(row["id"], {"expectedVersion": row["version"], "conclusion": "复核后可提交"})
+    assert updated["fileIds"] == [fid]
+    with pytest.raises(AppException) as exc:
+        insp_svc.submit(row["id"], expected_version=row["version"])
+    assert exc.value.http_status == 409
+    submitted = insp_svc.submit(row["id"], expected_version=updated["version"])
+    with pytest.raises(AppException):
+        insp_svc.update(row["id"], {"expectedVersion": submitted["version"], "conclusion": "覆盖已提交材料"})
+    approved = insp_svc.review(row["id"], "APPROVE", expected_version=submitted["version"])
+    assert approved["status"] == "APPROVED"
+    assert _company_valid_until(company_id) == datetime(2027, 9, 6, 15, 59)
+
+
+@pytest.mark.parametrize("owner,scan,tenant", [(2, "NOT_REQUIRED", TENANT_A), (1, "PENDING", TENANT_A), (1, "NOT_REQUIRED", TENANT_B)])
+def test_invalid_inspection_attachment_rolls_back_entire_draft(insp_svc, owner, scan, tenant):
+    from app.core.exceptions import AppException
+    from app.models import InternshipEnterpriseInspection
+    from app.models.file import FileBinding
+    from sqlalchemy import select, func
+    with _session() as db:
+        company_id = _seed_company(db, TENANT_A)
+        fid = _file(db, owner=owner, scan=scan, tenant=tenant)
+        db.commit()
+    with pytest.raises(AppException):
+        insp_svc.create({"companyId": str(company_id), "conclusion": "附件边界验收", "fileIds": [fid]})
+    with _session() as db:
+        assert db.scalar(select(func.count()).select_from(InternshipEnterpriseInspection).where(InternshipEnterpriseInspection.company_id == company_id)) == 0
+        assert db.scalar(select(func.count()).select_from(FileBinding).where(FileBinding.file_id == int(fid))) == 0
+
+
+def test_draft_attachment_removal_revokes_business_read_without_retargeting(insp_svc):
+    from app.models.file import FileObject, FileBinding
+    from app.services.file_access_service import authorize_file_object
+    from app.core.context import get_current_user_ctx
+    from sqlalchemy import select
+    with _session() as db:
+        company_id = _seed_company(db, TENANT_A)
+        fid = _file(db)
+        db.commit()
+    row = insp_svc.create({"companyId": str(company_id), "fileIds": [fid]})
+    insp_svc.update(row["id"], {"expectedVersion": row["version"], "fileIds": []})
+    with _session() as db:
+        file_obj = db.get(FileObject, int(fid))
+        bindings = list(db.scalars(select(FileBinding).where(FileBinding.file_id == int(fid))).all())
+        assert file_obj.biz_id == row["id"]
+        assert not authorize_file_object(file_obj, bindings, get_current_user_ctx(), db=db)
+
+
+def test_inspection_field_validation_reports_business_errors(insp_svc):
+    from app.core.exceptions import AppException
+    for body in ({"inspectionDate": "bad-date"}, {"inspectionType": "UNKNOWN"}, {"fileIds": ["not-a-file"]},
+                 {"inspectionDate": "2026-09-06", "validUntil": "2026-09-05"}, {"inspectors": ["错误类型"]}):
+        with pytest.raises(AppException) as exc:
+            insp_svc._fields(body)
+        assert exc.value.http_status == 400
+
+
+def test_late_approval_of_old_inspection_does_not_overwrite_newer_admission(insp_svc):
+    with _session() as db:
+        company_id = _seed_company(db, TENANT_A)
+        db.commit()
+    older = insp_svc.create({"companyId": str(company_id), "conclusion": "旧考察", "validUntil": "2027-01-01"})
+    newer = insp_svc.create({"companyId": str(company_id), "conclusion": "新考察", "validUntil": "2028-01-01"})
+    insp_svc.submit(older["id"])
+    insp_svc.submit(newer["id"])
+    insp_svc.review(newer["id"], "APPROVE")
+    insp_svc.review(older["id"], "APPROVE")
+    assert _company_valid_until(company_id) == datetime(2028, 1, 1)
+
+
 def test_cannot_create_inspection_for_another_tenant_company(insp_svc, db_mode):
     """A 校不能给 B 校的企业建考察记录——这是跨租户写的入口，必须在这里就堵死。"""
     from app.core.exceptions import AppException

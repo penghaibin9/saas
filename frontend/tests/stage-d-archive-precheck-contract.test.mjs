@@ -27,7 +27,7 @@ test('Stage D 归档预检必须把阻断域放在通过域之前并按阻断项
 
   assert.match(source, /blockedDomainRows\(\)/)
   assert.match(source, /\['BLOCKED', 'UNKNOWN'\]\.includes\(domain\.result\)/)
-  assert.match(source, /\.sort\(\(a, b\) => Number\(b\.blockingCount \|\| 0\) - Number\(a\.blockingCount \|\| 0\)\)/)
+  assert.match(source, /\.sort\(\(a, b\) => Number\(this\.schoolCheckPending\(a\)\) - Number\(this\.schoolCheckPending\(b\)\) \|\| Number\(b\.blockingCount \|\| 0\) - Number\(a\.blockingCount \|\| 0\)\)/)
   assert.match(source, /passedDomainRows\(\)/)
   assert.match(source, /\['PASS', 'NOT_APPLICABLE'\]\.includes\(domain\.result\)/)
 
@@ -47,7 +47,7 @@ test('Stage D 归档预检保留真实证据与责任模块跳转，不改正式
     'evidencePreview',
     'domain.route || FALLBACK_ROUTE[domain.domain]',
     "GRADUATION: '/admin/academic-affairs/graduation/audit-console'",
-    "goBatch() { this.$router.push('/admin/academic-affairs/archive') }",
+    "this.$router.push({ path: '/admin/academic-affairs/archive', query })",
     '本页不写入归档事实'
   ]) assert.ok(source.includes(token), `missing archive truth token: ${token}`)
   assert.ok(!source.includes("GRADUATION: '/admin/academic-affairs/graduation-audit'"), 'legacy graduation route must not return')
@@ -108,7 +108,7 @@ test('D-W1 正式归档控制台不可逆动作必须防重复提交并在窄屏
   const source = await readFile(consoleUrl, 'utf8')
   for (const token of [
     ':submitting="actionBusy"',
-    'if (this.actionBusy || !this.pendingAction) return',
+    'if (!this.canManageArchive || this.actionBusy || !this.pendingAction) return',
     'const batchId = this.current.batchId',
     'await this.selectAfterAction(b)',
     'role="button"',
@@ -116,7 +116,45 @@ test('D-W1 正式归档控制台不可逆动作必须防重复提交并在窄屏
     '@keydown.space.prevent="select(b)"',
     '.aaar-item:focus-visible',
     '@media (max-width: 900px)',
-    '.aaar-layout { grid-template-columns: 1fr; }',
+    '.aaar-layout { display: grid; grid-template-columns: minmax(0, 1fr);',
     '@media (max-width: 600px)'
   ]) assert.ok(source.includes(token), `missing archive console production UI guard: ${token}`)
+})
+
+test('D-W1 实际确认方法拒绝越权、重复及待核实动作并处理异常', async () => {
+  const source = await readFile(consoleUrl, 'utf8')
+  // Execute the real method body instead of treating a matching comment as a guard.
+  const match = source.match(/async onConfirm\(\)\s*\{([\s\S]*?)\n\s{4}\},/)
+  assert.ok(match, 'archive confirmation method must remain executable')
+  const errors = []
+  const onConfirm = new Function('toast', `return async function () {${match[1]}}`)({
+    error: (message) => errors.push(message)
+  })
+  let calls = 0
+  const context = () => ({
+    canManageArchive: true,
+    actionBusy: false,
+    pendingCommand: null,
+    confirmKind: 'cancel',
+    canConfirmArchive: true,
+    pendingAction: async () => { calls += 1 },
+    fail: (_error, fallback) => fallback,
+    confirmReason: '无确认归档权限'
+  })
+  for (const denied of [
+    { canManageArchive: false },
+    { actionBusy: true },
+    { pendingAction: null },
+    { pendingCommand: { sent: true } },
+    { confirmKind: 'confirm', canConfirmArchive: false }
+  ]) {
+    const ctx = { ...context(), ...denied }
+    await onConfirm.call(ctx)
+    assert.equal(calls, 0, `blocked action must not execute: ${JSON.stringify(denied)}`)
+    if (denied.confirmKind === 'confirm') assert.equal(ctx.confirmError, ctx.confirmReason)
+  }
+  await onConfirm.call({ ...context(), confirmKind: 'confirm' })
+  assert.equal(calls, 1, 'authorized confirmation must still execute')
+  await onConfirm.call({ ...context(), pendingAction: async () => { throw new Error('offline') } })
+  assert.deepEqual(errors, ['操作失败'], 'action errors must be handled rather than escape')
 })

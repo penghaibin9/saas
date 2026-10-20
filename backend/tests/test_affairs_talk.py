@@ -17,6 +17,15 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _student_hdr(student_no, real_name):
+    from app.core.security import create_access_token
+    return {"Authorization": "Bearer " + create_access_token({
+        "userId": f"student-{student_no}", "realName": real_name, "userType": "STUDENT",
+        "studentNo": student_no, "tid": "leave-ui-test", "tenantId": str(TID),
+        "activeContextId": "ctx", "currentRoleCode": "STUDENT", "clientType": "MP",
+    })}
+
+
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
     from app.models import SchoolClass, StudentProfile, TeacherStudentScope
@@ -136,3 +145,49 @@ def test_t7_cross_class_403(client, db_mode):
     tid = _create_talk(client, admin, ids["sb"])
     r = client.get(f"{BASE}/talks/{tid}", headers=_hdr(client, "counselor01"))
     assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
+
+
+def test_t8_mobile_talk_to_family_uses_version_and_is_visible_to_student(client, db_mode):
+    """同一谈心单经教师移动端转家校，学生移动端回读摘要；旧版本不可重复操作。"""
+    ids = _seed(db_mode)
+    teacher = _hdr(client, "school_admin01")
+    talk_id = _create_talk(client, teacher, ids["sa"])
+    initial = client.get(f"/api/v1/mobile/teacher/talk/{talk_id}", headers=teacher).json()["data"]
+
+    recorded = client.post(
+        f"/api/v1/mobile/teacher/talk/{talk_id}/record",
+        headers=teacher,
+        json={
+            "content": _content(), "result": "需要家校协同", "needFollow": True,
+            "version": initial["version"],
+        },
+    )
+    assert recorded.status_code == 200
+    recorded_row = recorded.json()["data"]
+
+    transferred = client.post(
+        f"/api/v1/mobile/teacher/talk/{talk_id}/follow-up",
+        headers=teacher,
+        json={
+            "action": "TO_HOME_SCHOOL", "content": "已约定本周共同跟进学习作息",
+            "version": recorded_row["version"],
+        },
+    )
+    assert transferred.status_code == 200
+    contact_id = transferred.json()["data"]["relatedContactId"]
+    assert contact_id
+
+    stale = client.post(
+        f"/api/v1/mobile/teacher/talk/{talk_id}/follow-up",
+        headers=teacher,
+        json={"action": "FOLLOW", "content": "重复处理应被拒绝", "version": recorded_row["version"]},
+    )
+    assert stale.status_code == 409
+
+    contacts = client.get("/api/v1/mobile/teacher/affairs/family-contacts", headers=teacher)
+    assert any(str(row["contactId"]) == str(contact_id) for row in contacts.json()["data"]["list"])
+
+    student = client.get("/api/v1/mobile/affairs/talk/my", headers=_student_hdr("A001", "甲一"))
+    student_row = next(row for row in student.json()["data"]["items"] if str(row["talkId"]) == str(talk_id))
+    assert student_row["status"] == "FOLLOW_UP"
+    assert "content" not in student_row and "relatedContactId" not in student_row

@@ -107,12 +107,15 @@ def ensure_tenant_base_policy(connection, tenant_id: int) -> bool:
     """
     from app.models.academic_affairs_effective_grade import AaEffectiveGradePolicy
 
+    from .academic_affairs_effective_grade_policy_service import lock_policy_authority
+
+    lock_policy_authority(connection, tenant_id)
     table = AaEffectiveGradePolicy.__table__
     existing = connection.execute(select(table.c.id).where(
         table.c.tenant_id == int(tenant_id),
         table.c.status == "ACTIVE",
         table.c.is_deleted.is_(False),
-    ).limit(1)).first()
+    ).limit(1).with_for_update()).first()
     if existing:
         return False
     now = datetime.utcnow()

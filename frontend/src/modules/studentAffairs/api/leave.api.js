@@ -4,12 +4,13 @@
  * 契约见 docs/03-业务模块设计/学工中心/13A-学工中心API契约草案.md §5。
  */
 import { request } from '@/services/http/client'
+import { presentLeave, leaveError, leaveStatusText } from '../utils/leavePresentation'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
 function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
-  return fail(e?.message || '真实接口不可用', 503001)
+  if (e?.biz) return fail(leaveError(e), e.code || 1)
+  return fail(leaveError(e, '暂时无法读取请假信息，请重试'), 503001)
 }
 async function call(fn) {
   try { return ok(await fn()) } catch (e) { return toErr(e) }
@@ -17,7 +18,7 @@ async function call(fn) {
 async function callList(path, params = {}) {
   try {
     const d = await request(path, { params })
-    return ok({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 })
+    return ok({ list: (d.items || []).map(presentLeave), total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 })
   } catch (e) { return toErr(e) }
 }
 
@@ -29,9 +30,13 @@ export const leaveApi = {
   /** 初审待办队列（仅本人身份轮到审批的节点：COUNSELOR_REVIEW/COLLEGE_REVIEW/STUDENT_AFFAIRS_REVIEW） */
   pending(params = {}) { return callList(`${B}/leave/pending`, params) },
   /** 请假详情（含销假/续假记录 + 审批留痕） */
-  detail(id) { return call(() => request(`${B}/leave/${id}`)) },
+  detail(id) { return call(async () => presentLeave(await request(`${B}/leave/${id}`))) },
   /** 请假统计（groupBy=CLASS/TYPE/STATUS） */
-  stats(params = {}) { return call(() => request(`${B}/leave/stats`, { params })) },
+  stats(params = {}) { return call(async () => {
+    const data = await request(`${B}/leave/stats`, { params })
+    if (params.groupBy === 'STATUS') data.breakdown = (data.breakdown || []).map(row => ({ ...row, label: leaveStatusText(row.key) }))
+    return data
+  }) },
   /** 初审通过（多级逐节点推进，comment 可选） */
   approve(id, body) { return call(() => request(`${B}/leave/${id}/approve`, { method: 'POST', body })) },
   /** 初审驳回（终态，reason≥5字） */

@@ -74,7 +74,7 @@ def test_write_payloads_are_bounded_and_auditable():
 def test_delay_reapply_uses_real_active_key_not_latest_history_only():
     safety = read("backend/app/modules/graduation/services/graduation_extension_safety_service.py")
     portal_ui = read("student-portal/src/components/graduation/GraduationExtensionPanel.vue")
-    mini_ui = read("miniapp/src/components/MobileGraduationExtensionPanel.vue")
+    mini_ui = read("miniapp/src/pages/student/components/MobileGraduationExtensionPanel.vue")
     assert 'active_key == f"active:{student.id}"' in safety
     assert "and not active_delay_id" in safety
     assert "重新申请延期答辩" in portal_ui
@@ -86,7 +86,7 @@ def test_delay_reapply_uses_real_active_key_not_latest_history_only():
 def test_teacher_queue_is_database_paginated_by_stable_mentor():
     safety = read("backend/app/modules/graduation/services/graduation_extension_safety_service.py")
     route = read("backend/app/api/v1/mobile_graduation_extension_teacher.py")
-    ui = read("miniapp/src/components/MobileGraduationDelayQueue.vue")
+    ui = read("miniapp/src/pages/teacher/components/MobileGraduationDelayQueue.vue")
     assert "def list_advisor_delays" in safety
     assert "GraduationStudent.mentor_id == int(mentor.id)" in safety
     assert 'GraduationDefenseDelay.status == "PENDING_ADVISOR"' in safety
@@ -136,14 +136,21 @@ def test_main_workflow_precedes_low_frequency_extensions():
     portal_app = read("student-portal/src/App.vue")
     mobile_shell = read("miniapp/src/components/MobileGlobalState.vue")
     assert portal_app.index("<router-view />") < portal_app.index("<GraduationExtensionPanel")
-    assert mobile_shell.index('<slot v-if="state === \'ready\'"') < mobile_shell.index("<MobileGraduationExtensionPanel")
+    mobile_page = read("miniapp/src/pages/student/graduation/index.vue")
+    assert "<MobileGraduation" not in mobile_shell
+    assert mobile_page.rindex("</MobileGlobalState>") < mobile_page.index("<MobileGraduationExtensionPanel")
+    for component in ("MobileGraduationExtensionPanel", "MobileGraduationSectionErrors", "MobileGraduationTempFileJanitor"):
+        assert mobile_page.count("<" + component + " /") == 1
+    for page in ("graduation-guide/index", "graduation-topics/index", "graduation-taskbook/index", "defense-score/index"):
+        teacher_page = read("miniapp/src/pages/teacher/" + page + ".vue")
+        assert teacher_page.count("<MobileGraduationBatchContext /") == 1
     assert "route.name === 'graduation-workbench'" in portal_app
 
 
 def test_student_panels_have_first_screen_state_and_mobile_overflow_guards():
     portal = read("student-portal/src/components/graduation/GraduationExtensionPanel.vue")
-    mini = read("miniapp/src/components/MobileGraduationExtensionPanel.vue")
-    teacher = read("miniapp/src/components/MobileGraduationDelayQueue.vue")
+    mini = read("miniapp/src/pages/student/components/MobileGraduationExtensionPanel.vue")
+    teacher = read("miniapp/src/pages/teacher/components/MobileGraduationDelayQueue.vue")
     for source in (portal, mini):
         assert "下一步" in source
         assert "加载失败" in source or "这不是“暂无业务”" in source

@@ -68,7 +68,7 @@
       </div>
 
       <div v-if="pdfUrl" class="pdf-result">
-        <a :href="pdfUrl" target="_blank" rel="noopener noreferrer">打开岗位实习申请简历 PDF</a>
+        <a :href="pdfUrl" rel="noopener noreferrer">打开岗位实习申请简历 PDF</a>
       </div>
     </template>
   </section>

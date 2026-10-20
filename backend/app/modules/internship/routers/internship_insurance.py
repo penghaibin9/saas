@@ -33,3 +33,9 @@ def insurance_verify(insurance_id: int, body: dict = Body(...),
         expected_version=payload.get("expectedVersion"),
         user=user,
     ))
+
+
+@router.get("/insurances/{insurance_id}", summary="保险核对详情（当前批次与数据范围）")
+def insurance_detail(insurance_id: int, batchId: str = Query(...),
+                     user=Depends(require_permission(_P_VIEW))):
+    return success(svc.get_insurance(insurance_id, batch_id=batchId, user=user))

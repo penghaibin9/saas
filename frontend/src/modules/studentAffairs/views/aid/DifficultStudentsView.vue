@@ -1,9 +1,9 @@
 <template>
   <AppPageShell
     title="困难学生库"
-    subtitle="认定通过（APPROVED）的最新等级聚合，供助学金 / 绿色通道 / 临时补助前置校验引用。"
-    role-name="学工处 / 资助老师"
-    data-scope-name="按数据范围过滤（辅导员限本班）"
+    subtitle="每名学生保留当前已生效的认定等级；调整审核期间，原等级继续有效。"
+    :role-name="ctx?.currentRole?.roleName || ''"
+    :data-scope-name="ctx?.dataScope?.scopeName || ''"
     watermark-purpose="困难学生库查看"
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载困难学生库..." @retry="load"
@@ -26,6 +26,7 @@
         <DataTable v-if="items.length" :columns="difficultColumns" :rows="items" row-key="studentId">
           <template #cell-student="{ row }">
             <div class="mp-cell-main">{{ row.realName || ('学生#' + row.studentId) }}</div>
+            <small class="mp-cell-sub">{{ row.studentNo }}</small>
           </template>
           <template #cell-level="{ row }">
             <StatusTag :type="levelType(row.level)" :label="row.levelLabel || row.level || '—'" dot />
@@ -34,8 +35,9 @@
             <AppDateDisplay :value="row.identifiedAt" mode="date" empty-text="—" />
           </template>
           <template #cell-batchId="{ row }">
-            <span class="dl-batch">{{ row.batchId || '—' }}</span>
+            <span class="dl-batch">{{ row.batchName || '批次信息待核对' }}</span><small class="mp-cell-sub">{{ row.schoolYear }}</small>
           </template>
+          <template #cell-actions="{ row }"><button v-if="row.applyId" type="button" class="aid-result-link" @click="$router.push({ path: '/admin/student-affairs/aid', query: { recordId: row.applyId } })">查看认定依据</button></template>
         </DataTable>
         <p v-else class="sa-empty">当前范围与筛选下暂无困难学生</p>
         <AppPagination v-model:page="pagination.page" v-model:pageSize="pagination.pageSize"
@@ -61,16 +63,18 @@ const DIFFICULT_COLUMNS = [
   { key: 'student', title: '学生' },
   { key: 'level', title: '困难等级' },
   { key: 'identifiedAt', title: '认定时间' },
-  { key: 'batchId', title: '来源批次' }
+  { key: 'batchId', title: '来源批次' },
+  { key: 'actions', title: '操作', align: 'right' }
 ]
 
 export default {
   name: 'DifficultStudentsView',
   components: { AppDateDisplay, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppSectionCard, StatusTag: AppStatusTag, DataTable },
+  props: { ctx: { type: Object, default: null } },
   data() {
     return {
       difficultColumns: DIFFICULT_COLUMNS,
-      loading: true, errorMessage: '', items: [], total: 0, byLevel: {}, activeLevel: '', levelFilters: LEVELS,
+      loading: true, errorMessage: '', items: [], total: 0, byLevel: {}, activeLevel: '', levelFilters: LEVELS, loadSeq: 0,
       pagination: { page: 1, pageSize: 20, total: 0 }
     }
   },
@@ -88,16 +92,19 @@ export default {
   mounted() { this.load() },
   methods: {
     async load() {
+      const seq = ++this.loadSeq
       this.loading = true; this.errorMessage = ''
-      // 指标待服务端全量统计；名单按当前筛选 + 真实分页取。
-      const [all, filtered] = await Promise.all([
-        studentAffairsApi.getDifficultStudents({ pageSize: 200 }),
-        studentAffairsApi.getDifficultStudents({ level: this.activeLevel, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      try {
+      const [all, filtered, ...levels] = await Promise.all([
+        studentAffairsApi.getDifficultStudents({ pageSize: 1 }),
+        studentAffairsApi.getDifficultStudents({ level: this.activeLevel, page: this.pagination.page, pageSize: this.pagination.pageSize }),
+        ...['SPECIAL', 'DIFFICULT', 'GENERAL'].map(level => studentAffairsApi.getDifficultStudents({level, pageSize:1}))
       ])
+      if (seq !== this.loadSeq) return
       if (all.code === 0 && all.data) {
-        const allItems = all.data.items || []
-        this.total = all.data.total != null ? all.data.total : allItems.length
-        this.byLevel = allItems.reduce((m, x) => { m[x.level] = (m[x.level] || 0) + 1; return m }, {})
+        this.total = all.data.total ?? 0
+        this.byLevel = Object.fromEntries(['SPECIAL', 'DIFFICULT', 'GENERAL'].map((key, i) => [key, levels[i].code === 0 ? levels[i].data?.total ?? 0 : null]))
+        if (levels.some(res => res.code !== 0)) this.errorMessage = '等级人数暂未加载完整，请重试'
       } else {
         this.errorMessage = all.message || '困难学生库加载失败'
       }
@@ -107,7 +114,8 @@ export default {
       } else if (!this.errorMessage) {
         this.errorMessage = filtered.message || '困难学生库加载失败'
       }
-      this.loading = false
+      } catch { if (seq === this.loadSeq) this.errorMessage = '困难学生库暂未加载，请重试' }
+      finally { if (seq === this.loadSeq) this.loading = false }
     },
     setLevel(k) {
       if (this.activeLevel === k) return
@@ -121,10 +129,15 @@ export default {
 </script>
 
 <style scoped>
+.aid-result-link { appearance: none; border: 0; background: transparent; color: var(--text-link); font: inherit; font-size: 13px; cursor: pointer; padding: 6px 0; white-space: nowrap; }
+.aid-result-link:hover { text-decoration: underline; }
+.aid-result-link:focus-visible { outline: 2px solid var(--pri); outline-offset: 3px; }
+.mp-cell-sub { display: block; color: var(--text-secondary); margin-top: 3px; font-size: 12px; }
+
 .sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
 .dl-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .dl-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 4px 14px; font-size: var(--font-size-sm); cursor: pointer; }
-.dl-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
+.dl-chip.is-on { background: var(--pri-bg); color: var(--pri); border-color: var(--pri); }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
 .dl-batch { color: var(--text-tertiary); font-size: var(--font-size-sm); }
 @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }

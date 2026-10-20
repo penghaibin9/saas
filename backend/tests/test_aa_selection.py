@@ -5,8 +5,47 @@
 """
 from __future__ import annotations
 
+import json
+import importlib
+from types import SimpleNamespace
+
+import pytest
+
 BASE = "/api/v1/academic-affairs"
 TID = 1000000000000000001
+
+
+def test_selection_scope_class_ids_use_exact_authoritative_identity_and_reject_bad_config():
+    from app.core.exceptions import AppException
+    selection = importlib.import_module(
+        "app.modules.academic_affairs.services.academic_affairs_selection_service"
+    )
+
+    large_class_id = "9007199254740993"
+    student = SimpleNamespace(college_id=128, major_id=420, grade="2026", class_id=int(large_class_id))
+    batch = SimpleNamespace(id=12, apply_scope_json=json.dumps({
+        "collegeIds": ["128"], "majorIds": ["420"], "gradeYears": ["2026"],
+        "classIds": [large_class_id],
+    }))
+    selection._validate_apply_scope(batch, student)
+    for class_id in (None, 9007199254740992):
+        with pytest.raises(AppException) as denied:
+            selection._validate_apply_scope(batch, SimpleNamespace(
+                college_id=128, major_id=420, grade="2026", class_id=class_id,
+            ))
+        assert denied.value.code == "NO_DATA_SCOPE"
+        assert denied.value.http_status == 403
+    batch.apply_scope_json = json.dumps({"classIds": ["12"]})
+    with pytest.raises(AppException) as wrong_class:
+        selection._validate_apply_scope(batch, student)
+    assert wrong_class.value.code == "NO_DATA_SCOPE"
+    assert wrong_class.value.http_status == 403
+    for malformed in ("12", [""], [None], [True], []):
+        batch.apply_scope_json = json.dumps({"classIds": malformed})
+        with pytest.raises(AppException) as broken:
+            selection._validate_apply_scope(batch, student)
+        assert broken.value.code == "DATA_CONFLICT"
+        assert broken.value.http_status == 409
 
 
 def _hdr(client, login_name):
@@ -19,11 +58,11 @@ def _stu_token(real_name, student_no):
     """使用正式 DB 登录链生成 token，禁止测试自行伪造真实账号上下文。"""
     from app.services.auth_service_db import login_with_password
 
-    data = login_with_password(student_no, "Test@123456", client_type="MP")
+    data = login_with_password(student_no, "Test@123456", client_type="STUDENT_MINI")
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
-def _seed(db_mode):
+def _seed(db_mode, *, split_class_scope=False):
     from app.core.security import hash_password
     from app.db.session import get_sessionmaker
     from app.models import AaCourse, College, Major, Role, SchoolClass, StudentProfile, User, UserRole
@@ -36,6 +75,10 @@ def _seed(db_mode):
     db.add(major); db.flush()
     klass = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2401", grade="2024", status="ACTIVE")
     db.add(klass); db.flush()
+    other_class = None
+    if split_class_scope:
+        other_class = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2402", grade="2024", status="ACTIVE")
+        db.add(other_class); db.flush()
     c1 = AaCourse(tenant_id=TID, course_code="SEL001", course_name="职业素养选修", credit=2, status="ENABLED")
     c2 = AaCourse(tenant_id=TID, course_code="SEL002", course_name="人工智能导论", credit=3, status="ENABLED")
     db.add_all([c1, c2]); db.flush()
@@ -43,11 +86,11 @@ def _seed(db_mode):
                         major_id=major.id, class_id=klass.id, grade="2024",
                         student_status="NORMAL", status="ACTIVE")
     s2 = StudentProfile(tenant_id=TID, student_no="SEL2402", real_name="选乙", college_id=col.id,
-                        major_id=major.id, class_id=klass.id, grade="2024",
+                        major_id=major.id, class_id=other_class.id if other_class else klass.id, grade="2024",
                         student_status="NORMAL", status="ACTIVE")
     s3 = StudentProfile(tenant_id=TID, student_no="SEL2403", real_name="休丙", college_id=col.id,
-                        major_id=major.id, class_id=klass.id, grade="2024",
-                        student_status="SUSPENDED", status="ACTIVE")
+                        major_id=major.id, class_id=None if split_class_scope else klass.id, grade="2024",
+                        student_status="NORMAL" if split_class_scope else "SUSPENDED", status="ACTIVE")
     db.add_all([s1, s2, s3]); db.flush()
 
     student_role = db.query(Role).filter(
@@ -73,7 +116,8 @@ def _seed(db_mode):
             source="TEST_FIXTURE", login_name=student.student_no, student_no=student.student_no,
         )
     ids = {"course1": c1.id, "course2": c2.id, "s1": s1.id, "s2": s2.id, "s3": s3.id,
-           "class": klass.id, "major": major.id, "college": col.id}
+           "class": klass.id, "other_class": other_class.id if other_class else None,
+           "major": major.id, "college": col.id}
     db.commit(); db.close()
     task1_id, task2_id = _ready_tasks(ids)
     ids["task1"] = task1_id
@@ -174,18 +218,18 @@ def _ready_tasks(ids, *, with_conflict_slots=False):
     return task_ids
 
 
-def _new_batch(client, admin, name):
+def _new_batch(client, admin, name, *, apply_scope=None):
     resp = client.post(
         f"{BASE}/selection/batches", headers=admin,
-        json={"batchName": name, "termId": str(_ensure_term())},
+        json={"batchName": name, "termId": str(_ensure_term()), **({"applyScope": apply_scope} if apply_scope else {})},
     )
     assert resp.status_code == 200, resp.text
     return resp.json()["data"]["batchId"]
 
 
-def _make_open_batch(client, admin, course_id, capacity=5, name="2024秋选修", teaching_task_id=None):
+def _make_open_batch(client, admin, course_id, capacity=5, name="2024秋选修", teaching_task_id=None, apply_scope=None):
     """正式学期建批次→加课程→发布→开选，返回 (batchId, selectionCourseId)。"""
-    bid = _new_batch(client, admin, name)
+    bid = _new_batch(client, admin, name, apply_scope=apply_scope)
     assert teaching_task_id is not None, "W4 fixture must bind an explicit READY TeachingTask"
     body = {
         "courseId": str(course_id),
@@ -228,6 +272,160 @@ def test_s1_full_lifecycle(client, db_mode):
     assert client.post(f"{BASE}/selection/batches/{bid}/archive", headers=admin).json()["data"]["status"] == "ARCHIVED"
 
 
+def test_s1_class_scope_uses_current_academic_fact_for_pc_mobile_and_write(client, db_mode):
+    """同学院、专业、年级的另班和无班学生都不能借课程编号选入。"""
+    from affairs_contract_test_support import role_headers
+    from app.db.session import get_sessionmaker
+    from app.models import StudentProfile
+    from app.models.academic_affairs_student_fact import StudentAcademicFact
+
+    ids = _seed(db_mode, split_class_scope=True)
+    db = get_sessionmaker()()
+    try:
+        other = db.get(StudentProfile, int(ids["s2"]))
+        fact = db.query(StudentAcademicFact).filter(
+            StudentAcademicFact.tenant_id == TID,
+            StudentAcademicFact.student_id == int(ids["s2"]),
+            StudentAcademicFact.valid_to.is_(None),
+        ).one()
+        assert int(fact.class_id) == int(ids["other_class"])
+        # 故意让旧档案投影看似命中：正式资格仍必须消费有效学籍事实。
+        other.class_id = int(ids["class"])
+        db.commit()
+    finally:
+        db.close()
+
+    admin = role_headers("SCHOOL_ADMIN", login_name="school_admin01")
+    scope = {"collegeIds": [str(ids["college"])], "majorIds": [str(ids["major"])],
+             "gradeYears": ["2024"], "classIds": [str(ids["class"])]}
+    bid, scid = _make_open_batch(
+        client, admin, ids["course1"], teaching_task_id=ids["task1"], apply_scope=scope,
+    )
+    allowed = _stu_token("选甲", "SEL2401")
+    pc_courses = client.get(f"/api/v1/portal/academic/course-selection?batchId={bid}", headers=allowed)
+    assert pc_courses.status_code == 200, pc_courses.text
+    assert any("ENROLL" in course["allowedActions"] for group in pc_courses.json()["data"]
+               for course in group["courses"] if str(course["selectionCourseId"]) == str(scid))
+    mobile_preflight = client.post(
+        "/api/v1/mobile/academic/selection/preflight", headers=allowed,
+        json={"selectionCourseId": str(scid)},
+    )
+    assert mobile_preflight.status_code == 200 and mobile_preflight.json()["data"]["allowed"] is True
+
+    for student_no in ("SEL2402", "SEL2403"):
+        denied = _stu_token("", student_no)
+        pc_preflight = client.post(
+            "/api/v1/portal/academic/course-selection/preflight", headers=denied,
+            json={"selectionCourseId": str(scid)},
+        )
+        assert pc_preflight.status_code == 200, pc_preflight.text
+        assert pc_preflight.json()["data"]["allowed"] is False
+        mobile_courses = client.get(
+            f"/api/v1/mobile/academic/selection/courses-page?batchId={bid}&page=1&pageSize=20",
+            headers=denied,
+        )
+        assert mobile_courses.status_code == 200, mobile_courses.text
+        matching = [course for course in mobile_courses.json()["data"]["items"]
+                    if str(course["selectionCourseId"]) == str(scid)]
+        assert len(matching) == 1 and "ENROLL" not in matching[0]["allowedActions"]
+        command = client.post(
+            "/api/v1/mobile/academic/selection/enroll", headers=denied,
+            json={"selectionCourseId": str(scid), "studentId": str(ids["s1"])},
+        )
+        assert command.status_code == 403, command.text
+        mine = client.get(f"/api/v1/mobile/academic/selection/my?batch_id={bid}", headers=denied)
+        assert mine.status_code == 200 and not mine.json()["data"]
+
+    enrolled = client.post(
+        "/api/v1/portal/academic/course-selection/enroll", headers=allowed,
+        json={"selectionCourseId": str(scid)},
+    )
+    assert enrolled.status_code == 200 and enrolled.json()["data"]["status"] == "SELECTED"
+
+
+def test_mobile_selection_pages_use_server_paging_search_and_stable_self_scope(client, db_mode):
+    """Mobile must not fetch a whole batch then filter it or trust a studentId query value."""
+    from app.db.session import get_sessionmaker
+    from app.models import AaCourse, AaSelectionCourse
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, scid = _make_open_batch(
+        client, admin, ids["course1"], capacity=5,
+        name="移动端分页选课批次", teaching_task_id=ids["task1"],
+    )
+    db = get_sessionmaker()()
+    try:
+        # One formal batch with 23 courses proves both SQL LIMIT/OFFSET and server
+        # keyword filtering; no fixture reaches an end state by direct mutation.
+        for index in range(1, 23):
+            course = AaCourse(
+                tenant_id=TID, course_code=f"MPSEL{index:03d}",
+                course_name=f"移动端分页课程{index:02d}", credit=1, status="ENABLED",
+            )
+            db.add(course); db.flush()
+            db.add(AaSelectionCourse(
+                tenant_id=TID, batch_id=int(bid), course_id=int(course.id),
+                course_name=course.course_name, credit=1, capacity=30,
+                min_capacity=1, selected_count=0, status="OPEN",
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+    student_a = _stu_token("选甲", "SEL2401")
+    catalog = client.get(
+        "/api/v1/mobile/academic/selection/batches?page=1&pageSize=20",
+        headers=student_a,
+    ).json()
+    assert catalog["code"] == 0
+    assert str(bid) in {str(item["batchId"]) for item in catalog["data"]["items"]}
+
+    first = client.get(
+        f"/api/v1/mobile/academic/selection/courses-page?batchId={bid}&page=1&pageSize=20&studentId={ids['s2']}",
+        headers=student_a,
+    ).json()
+    assert first["code"] == 0
+    assert first["data"]["total"] == 23 and len(first["data"]["items"]) == 20
+    assert first["data"]["hasMore"] is True
+    assert all("courseCode" in item for item in first["data"]["items"])
+    second = client.get(
+        f"/api/v1/mobile/academic/selection/courses-page?batchId={bid}&page=2&pageSize=20",
+        headers=student_a,
+    ).json()
+    assert second["code"] == 0
+    assert second["data"]["page"] == 2 and len(second["data"]["items"]) == 3
+    searched = client.get(
+        f"/api/v1/mobile/academic/selection/courses-page?batchId={bid}&keyword=MPSEL022&page=1&pageSize=20",
+        headers=student_a,
+    ).json()
+    assert searched["code"] == 0
+    assert searched["data"]["total"] == 1
+    assert searched["data"]["items"][0]["courseCode"] == "MPSEL022"
+
+    enrolled = client.post(
+        f"{BASE}/selection/student/enroll", headers=student_a,
+        json={"selectionCourseId": str(scid)},
+    ).json()
+    assert enrolled["code"] == 0
+    records = client.get(
+        f"/api/v1/mobile/academic/selection/my-page?batchId={bid}&page=1&pageSize=20",
+        headers=student_a,
+    ).json()
+    assert records["code"] == 0 and records["data"]["total"] == 1
+    assert records["data"]["items"][0]["selectionCourseId"] == str(scid)
+    assert "DROP" in records["data"]["items"][0]["allowedActions"]
+
+    # A different student can see an open catalog but cannot read student A's
+    # record by guessing the same batch/course ids.
+    student_b = _stu_token("选乙", "SEL2402")
+    forged = client.get(
+        f"/api/v1/mobile/academic/selection/my-page?batchId={bid}&selectionCourseId={scid}&studentId={ids['s1']}",
+        headers=student_b,
+    ).json()
+    assert forged["code"] == 0 and forged["data"]["total"] == 0
+
+
 def test_s2_publish_without_course_409(client, db_mode):
     _seed(db_mode)
     admin = _hdr(client, "school_admin01")
@@ -250,6 +448,37 @@ def test_s3_enroll_when_not_open_409(client, db_mode):
     stu = _stu_token("选甲", "SEL2401")
     assert client.post(f"{BASE}/selection/student/enroll", headers=stu,
                        json={"selectionCourseId": str(scid)}).status_code == 409
+
+
+def test_s3b_expired_open_batch_rejects_student_command_without_waiting_for_tick(client, db_mode):
+    from datetime import datetime, timedelta
+    from app.db.session import get_sessionmaker
+    from app.models import AaSelectionBatch
+
+    ids = _seed(db_mode)
+    admin = _hdr(client, "school_admin01")
+    bid, scid = _make_open_batch(client, admin, ids["course1"], teaching_task_id=ids["task1"])
+    db = get_sessionmaker()()
+    try:
+        batch = db.get(AaSelectionBatch, int(bid))
+        batch.select_end_at = datetime.utcnow() - timedelta(seconds=1)
+        db.commit()
+    finally:
+        db.close()
+
+    stu = _stu_token("选甲", "SEL2401")
+    visible = client.get(f"{BASE}/selection/student/courses", headers=stu).json()
+    course = next(
+        item for group in visible["data"]["items"] for item in group["courses"]
+        if str(item["selectionCourseId"]) == str(scid)
+    )
+    assert "ENROLL" not in course["allowedActions"]
+    rejected = client.post(
+        f"{BASE}/selection/student/enroll", headers=stu,
+        json={"selectionCourseId": str(scid)},
+    )
+    assert rejected.status_code == 409
+    assert "选课窗口已截止" in rejected.text
 
 
 def test_s4_capacity_full_409(client, db_mode):

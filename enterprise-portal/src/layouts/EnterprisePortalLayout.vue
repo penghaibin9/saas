@@ -5,7 +5,7 @@ import { useEnterpriseContextStore } from '../stores/enterpriseContext'
 import { clearEnterpriseSession } from '../services/request'
 
 const nav = [
-  {to:'/home',label:'首页'}, {to:'/company',label:'企业资料'}, {to:'/positions',label:'我的岗位'},
+  {to:'/home',label:'首页'}, {to:'/messages',label:'消息通知',messageBadge:true}, {to:'/company',label:'企业资料'}, {to:'/positions',label:'我的岗位'},
   {to:'/applications',label:'报名学生',applicationPermission:true}, {to:'/students',label:'实习学生'}, {to:'/evaluations',label:'评价任务'},
 ]
 const router = useRouter()
@@ -36,7 +36,7 @@ onMounted(() => context.load())
         <div class="nav-title">招聘与实习协同</div>
         <nav class="nav-list" aria-label="企业协同中心导航">
           <template v-for="item in nav" :key="item.to">
-            <RouterLink v-if="navAllowed(item)" :to="item.to" class="nav-item" @click="mobileOpen=false"><span class="nav-dot"></span><span>{{ item.label }}</span></RouterLink>
+            <RouterLink v-if="navAllowed(item)" :to="item.to" class="nav-item" @click="mobileOpen=false"><span class="nav-dot"></span><span>{{ item.label }}</span><span v-if="item.messageBadge&&context.unreadMessages" class="nav-count" :aria-label="`${context.unreadMessages} 条未读消息`">{{ context.unreadMessages>99?'99+':context.unreadMessages }}</span></RouterLink>
             <span v-else class="nav-item nav-disabled" aria-disabled="true" title="仅企业管理员或 HR 可处理报名学生"><span class="nav-dot"></span><span>{{ item.label }}</span><small>管理员/HR</small></span>
           </template>
         </nav>
@@ -66,6 +66,7 @@ onMounted(() => context.load())
 .body{display:flex;min-height:calc(100vh - 64px)}
 .sidebar{width:224px;background:#fff;border-right:1px solid var(--line);padding:18px 14px 16px;flex:0 0 224px;display:flex;flex-direction:column}.workspace-card{padding:13px 14px 14px;margin:0 2px 16px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(145deg,#fbfcff,var(--surface-blue));display:flex;flex-direction:column;gap:4px}.workspace-card>span,.workspace-card small{font-size:11px;color:var(--t3)}.workspace-card strong{font-size:13px;color:#27344b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.workspace-card small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.nav-title{padding:0 12px 8px;color:var(--t3);font-size:11px;font-weight:600;letter-spacing:.04em}.nav-list{display:flex;flex-direction:column;gap:3px}.nav-item{display:flex;align-items:center;gap:10px;min-height:43px;padding:0 12px;border-radius:9px;color:var(--t2);text-decoration:none;position:relative;font-weight:500}.nav-dot{width:6px;height:6px;border-radius:50%;background:#c9d1dc;flex:0 0 6px}.nav-item:hover:not(.nav-disabled){background:#f8faff;color:#24324a}.nav-item.router-link-active{background:linear-gradient(90deg,var(--pri-50),#f7f9ff);color:var(--pri);font-weight:700}.nav-item.router-link-active::before{content:"";position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:3px;background:var(--pri)}.nav-item.router-link-active .nav-dot{background:var(--pri);box-shadow:0 0 0 3px var(--pri-100)}.nav-disabled{justify-content:flex-start;color:var(--t4);background:#fafbfc;cursor:not-allowed}.nav-disabled small{font-size:10px;color:var(--t4);margin-left:auto}.sidebar-foot{margin-top:auto;padding:14px 12px 4px;border-top:1px solid var(--line);font-size:10px;line-height:1.6;color:var(--t4)}
 .main{flex:1;min-width:0;padding:28px 30px 44px;background:radial-gradient(circle at 80% 0,rgba(47,107,255,.035),transparent 28%),var(--page)}.access-state{max-width:760px;margin:70px auto}.access-denied{padding:28px}.access-denied h1{font-size:22px;margin:14px 0 8px}.access-denied p{line-height:1.7}.access-denied a{display:inline-flex;align-items:center;text-decoration:none;margin-top:8px}.mobile-menu{display:none;border:0;background:transparent;font-size:20px}
+.nav-count{margin-left:auto;min-width:20px;height:20px;padding:0 6px;border-radius:999px;display:grid;place-items:center;background:var(--danger-bg);color:var(--danger-fg);font-size:10px;font-weight:800}
 @media(max-width:1100px){.account-copy{display:none}.role-badge{display:none}}
 @media(max-width:900px){.topbar{height:58px;padding:0 16px;gap:12px}.mobile-menu{display:block}.brand{min-width:0}.brand-copy>span{display:none}.sidebar{display:none;position:fixed;z-index:30;top:58px;bottom:0;left:0;box-shadow:10px 0 30px rgba(31,41,55,.12)}.sidebar.open{display:flex}.context{display:none}.account{margin-left:auto}.main{padding:18px 16px 32px}.body{min-height:calc(100vh - 58px)}}
 </style>

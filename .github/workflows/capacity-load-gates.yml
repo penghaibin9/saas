@@ -113,7 +113,7 @@ jobs:
             identityMode: cold
     env:
       APP_ENV: test
-      DEPLOYMENT_MODE: development
+      DEPLOYMENT_MODE: local
       DEBUG: "false"
       DB_ENABLED: "true"
       DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/student_lifecycle_test?charset=utf8mb4
@@ -126,6 +126,7 @@ jobs:
       MOCK_LOGIN_ENABLED: "true"
       SCHEDULER_MODE: external
       FAST_TEST_SCHEMA: "1"
+      CAPACITY_EPHEMERAL_ACK: student_lifecycle_test
       BASE_URL: http://127.0.0.1:8000
       PROFILE: ${{ matrix.profile }}
       SCENARIO: mixed
@@ -277,7 +278,7 @@ jobs:
             -e K6_STUDENT_TOKENS_FILE \
             -e K6_TEACHER_TOKENS_FILE \
             -e SUMMARY_PATH \
-            grafana/k6:0.54.0 run performance/k6/capacity.js
+            grafana/k6:0.54.0 run performance/k6/capacity.js 2>&1 | tee performance/results/k6-console.log
       - name: ${{ matrix.profile }} / ${{ matrix.identityMode }} 后就绪与指标探针
         if: always()
         run: |
@@ -414,7 +415,7 @@ jobs:
             -e K6_STUDENT_CREDENTIALS_JSON \
             -e K6_TEACHER_CREDENTIALS_JSON \
             -e SUMMARY_PATH \
-            grafana/k6:0.54.0 run performance/k6/capacity.js
+            grafana/k6:0.54.0 run performance/k6/capacity.js 2>&1 | tee performance/results/k6-console.log
       - name: 压测后就绪与指标探针
         if: always()
         run: |

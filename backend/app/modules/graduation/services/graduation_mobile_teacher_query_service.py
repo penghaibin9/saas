@@ -85,37 +85,59 @@ def midterms_page(user: dict, page=1, page_size=20) -> dict:
         return _result([], 0, page, page_size)
     from app.modules.graduation.services import graduation_midterm_service as svc
 
+    from app.modules.graduation.services import graduation_process_consistency as process
+
     page, page_size = _page(page, page_size)
     batch_id = _batch_id(user)
     tenant_id = _tid()
     with session() as db:
         scope_select = student_scope_select(db, tenant_id, batch_id=batch_id)
-        join_on = GraduationStudent.id == GraduationMidterm.gd_student_id
-        filters = [
-            GraduationMidterm.tenant_id == tenant_id,
-            GraduationMidterm.is_deleted.is_(False),
-            GraduationMidterm.status.in_(_ACTIONABLE_MIDTERM_STATUSES),
+        student_filters = [
             GraduationStudent.tenant_id == tenant_id,
             GraduationStudent.batch_id == batch_id,
             GraduationStudent.is_deleted.is_(False),
             GraduationStudent.record_status == "ACTIVE",
             GraduationStudent.id.in_(scope_select),
         ]
-        total = int(db.scalar(
-            select(func.count(func.distinct(GraduationMidterm.id)))
-            .select_from(GraduationMidterm)
-            .join(GraduationStudent, join_on)
-            .where(*filters)
-        ) or 0)
-        rows = db.execute(
-            select(GraduationMidterm, GraduationStudent)
-            .join(GraduationStudent, join_on)
-            .where(*filters)
-            .order_by(GraduationMidterm.id.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
-        ).all()
-        return _result([svc._row(row, student) for row, student in rows], total, page, page_size)
+        # 开题已通过、尚未发起中期检查的学生：中期记录只在首次检查时落库，
+        # 因此必须以“学生”为源生成待检查项，否则教师队列永远看不到待检查学生。
+        virtual_filters = [*student_filters, process._midterm_eligible_clause(), process._no_midterm_row()]
+        join_on = GraduationStudent.id == GraduationMidterm.gd_student_id
+        filters = [
+            GraduationMidterm.tenant_id == tenant_id,
+            GraduationMidterm.is_deleted.is_(False),
+            GraduationMidterm.status.in_(_ACTIONABLE_MIDTERM_STATUSES),
+            *student_filters,
+        ]
+        # 两个计数合并为一次 SELECT，保持“每页最多 2 次查询”的性能护栏
+        virtual_count = (select(func.count()).select_from(GraduationStudent)
+                         .where(*virtual_filters).scalar_subquery())
+        real_count = (select(func.count(func.distinct(GraduationMidterm.id)))
+                      .select_from(GraduationMidterm).join(GraduationStudent, join_on)
+                      .where(*filters).scalar_subquery())
+        counts = db.execute(select(virtual_count, real_count)).one()
+        virtual_total, real_total = int(counts[0] or 0), int(counts[1] or 0)
+
+        offset = (page - 1) * page_size
+        items: list[dict] = []
+        if offset < virtual_total:
+            students = db.scalars(
+                select(GraduationStudent).where(*virtual_filters)
+                .order_by(GraduationStudent.id.asc()).offset(offset).limit(page_size)
+            ).all()
+            items.extend(process._virtual_midterm_row(student) for student in students)
+        remaining = page_size - len(items)
+        if remaining > 0:
+            rows = db.execute(
+                select(GraduationMidterm, GraduationStudent)
+                .join(GraduationStudent, join_on)
+                .where(*filters)
+                .order_by(GraduationMidterm.id.desc())
+                .offset(max(0, offset - virtual_total))
+                .limit(remaining)
+            ).all()
+            items.extend(svc._row(row, student) for row, student in rows)
+        return _result(items, virtual_total + real_total, page, page_size)
 
 
 def grades_page(user: dict, page=1, page_size=20) -> dict:

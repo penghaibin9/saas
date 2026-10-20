@@ -7,6 +7,8 @@ function first(raw, ...keys) {
   return null
 }
 
+function booleanLabel(value, yes, no) { return value === true ? yes : value === false ? no : value }
+
 function emptySlot(volunteerNo) {
   return { volunteerNo, positionId: null, positionName: '', companyName: '', workLocation: '', applicationStatement: '', version: 0 }
 }
@@ -45,14 +47,14 @@ export function normalizeMobilePositionDetail(raw = {}) {
     requirements: first(raw, 'requirements', 'requirementText') || '企业暂未补充岗位要求。',
     dailyHours: first(raw, 'dailyHours') ?? rights.dailyHours ?? '待确认',
     weeklyHours: first(raw, 'weeklyHours') ?? rights.weeklyHours ?? '待确认',
-    shift: first(raw, 'shift', 'shiftType') ?? rights.shift ?? '待确认',
+    shift: ({DAY:'白班',NIGHT:'夜班',ROTATING:'轮班'})[first(raw, 'shift', 'shiftType') ?? rights.shift] || first(raw, 'shift', 'shiftType') || rights.shift || '待确认',
     nightShift: first(raw, 'nightShift') ?? rights.nightShift,
-    overtime: first(raw, 'overtime', 'overtimePolicy') ?? rights.overtime ?? '待确认',
+    overtime: booleanLabel(first(raw, 'overtime', 'overtimePolicy') ?? rights.overtime, '有加班安排', '不安排加班') ?? '待确认',
     restDays: first(raw, 'restDays', 'restDayPolicy') ?? rights.restDays ?? '待确认',
     subsidy: first(raw, 'subsidy', 'subsidyDisplay') ?? rights.subsidy ?? '待确认',
     accommodation: first(raw, 'accommodationProvided') ?? rights.accommodationProvided,
     meal: first(raw, 'mealProvided') ?? rights.mealProvided,
-    hazardous: first(raw, 'hazardous', 'hazardousExposure') ?? rights.hazardous ?? '无明确危险因素说明',
+    hazardous: booleanLabel(first(raw, 'hazardous', 'hazardousExposure') ?? rights.hazardous, '存在危险因素', '未标记危险因素') ?? '危险因素待核对',
     equipment: first(raw, 'equipment', 'protectiveEquipment') ?? rights.equipment ?? '待企业/学校确认'
   }
 }

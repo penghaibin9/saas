@@ -26,8 +26,9 @@ from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
 
 from app.core.exceptions import AppException, no_permission
-from app.core.permissions import require_permission
+from app.core.permissions import enforce_permission
 from app.core.response import success
+from app.core.security import require_mobile_staff
 from app.modules.academic_affairs.services import academic_affairs_attendance_teacher_relation_guard as attendance_relation_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_deadline_service as deadline_service
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as service
@@ -48,6 +49,14 @@ workload_relation_guard.install()
 grade_todo_relation_guard.install()
 
 router = APIRouter(prefix="/mobile/teacher/academic", tags=["教师移动端-成绩录入"])
+
+
+def _require_mobile_grade_input(user=Depends(require_mobile_staff)):
+    return enforce_permission(user, "academicAffairs.grade.input")
+
+
+def _require_mobile_grade_submit(user=Depends(require_mobile_staff)):
+    return enforce_permission(user, "academicAffairs.grade.submit")
 
 
 class MobileGradeRow(BaseModel):
@@ -81,6 +90,8 @@ def _merged_roster(task_id: int, user) -> dict:
                     "midtermScore": record.get("midtermScore"),
                     "finalScore": record.get("finalScore"),
                     "totalScore": record.get("totalScore"),
+                    "source": record.get("source"),
+                    "prevTotalScore": record.get("prevTotalScore"),
                     "passStatus": record.get("passStatus"),
                     "exceptionFlag": record.get("exceptionFlag") or "NORMAL",
                 }
@@ -146,7 +157,7 @@ _install_legacy_live_grade_compat()
 @router.get("/grade-execution/tasks", summary="教师微信·本人实时成绩任务")
 def mobile_grade_execution_tasks(
     status: Optional[str] = Query(default=None),
-    user=Depends(require_permission("academicAffairs.grade.input")),
+    user=Depends(_require_mobile_grade_input),
 ):
     items, total = read_service.list_tasks(user, status=status, page=1, page_size=100)
     return success({"items": items, "total": total})
@@ -155,7 +166,7 @@ def mobile_grade_execution_tasks(
 @router.get("/grade-execution/tasks/{task_id}/roster", summary="教师微信·实时成绩名单与已录回显")
 def mobile_grade_execution_roster(
     task_id: int = Path(..., gt=0),
-    user=Depends(require_permission("academicAffairs.grade.input")),
+    user=Depends(_require_mobile_grade_input),
 ):
     return success(_merged_roster(task_id, user))
 
@@ -164,7 +175,7 @@ def mobile_grade_execution_roster(
 def mobile_grade_execution_score(
     body: MobileGradeRow,
     task_id: int = Path(..., gt=0),
-    user=Depends(require_permission("academicAffairs.grade.input")),
+    user=Depends(_require_mobile_grade_input),
 ):
     return success(service.teacher_enter_score(task_id, user, body), message="成绩已保存")
 
@@ -173,7 +184,7 @@ def mobile_grade_execution_score(
 def mobile_grade_execution_batch_save(
     body: MobileGradeBatchSaveBody,
     task_id: int = Path(..., gt=0),
-    user=Depends(require_permission("academicAffairs.grade.input")),
+    user=Depends(_require_mobile_grade_input),
 ):
     rows = [row.model_dump() for row in body.rows]
     return success(service.teacher_grade_batch_save(task_id, user, rows), message="成绩已批量保存")
@@ -182,7 +193,7 @@ def mobile_grade_execution_batch_save(
 @router.get("/grade-execution/tasks/{task_id}/quality-report", summary="教师微信·实时提交前成绩质量报告")
 def mobile_grade_execution_quality_report(
     task_id: int = Path(..., gt=0),
-    user=Depends(require_permission("academicAffairs.grade.input")),
+    user=Depends(_require_mobile_grade_input),
 ):
     return success(_quality_report_with_deadline(task_id, user))
 
@@ -190,7 +201,7 @@ def mobile_grade_execution_quality_report(
 @router.post("/grade-execution/tasks/{task_id}/submit", summary="教师微信·实时提交成绩进入学院审核")
 def mobile_grade_execution_submit(
     task_id: int = Path(..., gt=0),
-    user=Depends(require_permission("academicAffairs.grade.submit")),
+    user=Depends(_require_mobile_grade_submit),
 ):
     report = _quality_report_with_deadline(task_id, user)
     if not report.get("canSubmit"):
@@ -207,7 +218,7 @@ def mobile_grade_execution_submit(
 def mobile_grade_batch_save(
     body: MobileGradeBatchSaveBody,
     task_id: int = Path(..., gt=0),
-    user=Depends(require_permission("academicAffairs.grade.input")),
+    user=Depends(_require_mobile_grade_input),
 ):
     rows = [row.model_dump() for row in body.rows]
     return success(service.teacher_grade_batch_save(task_id, user, rows), message="成绩已批量保存")
@@ -216,6 +227,6 @@ def mobile_grade_batch_save(
 @router.get("/grade-tasks/{task_id}/quality-report", summary="教师微信·提交前成绩质量报告")
 def mobile_grade_quality_report(
     task_id: int = Path(..., gt=0),
-    user=Depends(require_permission("academicAffairs.grade.input")),
+    user=Depends(_require_mobile_grade_input),
 ):
     return success(_quality_report_with_deadline(task_id, user))

@@ -547,9 +547,10 @@ def create_assignment(
     tid = _tenant_id(tenant_id)
     otype = str(org_type or "").upper()
     atype = str(assignment_type or "").upper()
-    if otype not in ORG_TYPES:
+    school_reviewer = otype == "SCHOOL" and atype == "ACADEMIC_REVIEWER"
+    if otype not in ORG_TYPES and not school_reviewer:
         raise AppException("VALIDATION_ERROR", f"未知组织类型：{otype}")
-    if atype not in ASSIGNMENT_TYPES:
+    if atype not in ASSIGNMENT_TYPES and not school_reviewer:
         raise AppException("VALIDATION_ERROR", f"未知任职类型：{atype}", details={"allowed": list(ASSIGNMENT_TYPES)})
     start = _floor_seconds(effective_at) or _now()
     expires_at = _floor_seconds(expires_at)
@@ -557,7 +558,19 @@ def create_assignment(
         raise AppException("VALIDATION_ERROR", "任职结束时间必须晚于开始时间")
 
     with _session() as db:
-        _load_node(db, tid, otype, int(org_node_id))  # 跨租户组织节点 404
+        if school_reviewer:
+            from app.models import User
+
+            if int(org_node_id) != tid:
+                raise AppException("VALIDATION_ERROR", "学校任职的组织编号必须为当前学校编号")
+            account = db.scalar(select(User).where(
+                User.id == int(user_id), User.tenant_id == tid,
+                User.status == "ACTIVE", User.is_deleted.is_(False),
+            ))
+            if not account:
+                raise not_found("当前学校的有效账号不存在")
+        else:
+            _load_node(db, tid, otype, int(org_node_id))  # 跨租户组织节点 404
         if is_primary:
             # 一个人同一时间只应有一个主任职
             db.query(StaffAssignment).filter(

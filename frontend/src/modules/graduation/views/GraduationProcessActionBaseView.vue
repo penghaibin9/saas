@@ -1,7 +1,7 @@
 <template>
   <GraduationFormPageShell
     :ctx="ctx"
-    :title="pageTitle"
+    :title="student?.name ? `${pageTitle} · ${student.name}` : pageTitle"
     :subtitle="student ? `${student.name}（${student.studentNo}）` : ''"
     :back-to="backTo"
   >
@@ -79,13 +79,14 @@
       <p v-if="formError" class="ie-err">{{ formError }}</p>
     </form>
     <template v-if="!loading && !error" #footer>
-      <button type="button" class="mp-btn" @click="$router.push(backTo)">取消</button>
-      <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting" @click="submit">保存</button>
+      <AppButton @click="$router.push(backTo)">取消</AppButton>
+      <AppButton variant="primary" :disabled="submitting" @click="submit">保存</AppButton>
     </template>
   </GraduationFormPageShell>
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import GraduationFormPageShell from './_shared/GraduationFormPageShell.vue'
 import { LoadingState, ErrorState } from '@/components/business'
 import { AppDateTimePicker, AppDeadlinePicker } from '@/components/common/date'
@@ -148,7 +149,7 @@ const RECTIFY_CONTENT_CHIPS = [
 
 export default {
   name: 'GraduationProcessActionView',
-  components: { GraduationFormPageShell, LoadingState, ErrorState, AppDateTimePicker, AppDeadlinePicker, AppSelect, AppTemplateChips },
+  components: { AppButton, GraduationFormPageShell, LoadingState, ErrorState, AppDateTimePicker, AppDeadlinePicker, AppSelect, AppTemplateChips },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -174,6 +175,9 @@ export default {
       return ACTION_TITLES[this.action] || '过程指导'
     },
     backTo() {
+      // 从老师工作台进入时带 returnTo：保存/取消后回到工作台，而不是过程指导台。
+      const back = String(this.$route.query.returnTo || '')
+      if (/^\/admin\/graduation(?:[/?#]|$)/.test(back) && !back.startsWith('//')) return back
       const panel = { taskbook: 'taskbook', guidance: 'guidance', plan: 'plan', eval: 'eval', midterm: 'midterm', rectify: 'midterm' }[this.action] || 'taskbook'
       return `/admin/graduation/process?panel=${panel}`
     }

@@ -16,9 +16,13 @@ def test_go_live_checks_http(client, auth_headers):
         assert isinstance(data["items"], list)
 
 
-def test_overview_board_http(client, auth_headers):
+def test_overview_board_http(db_mode, client, auth_headers):
+    # The overview reads the commercial ledger. Use the isolated paid-order/IAM
+    # baseline instead of accepting an authority outage as a successful response.
     resp = client.get("/api/v1/system/overview-board", headers=auth_headers)
-    assert resp.status_code in (200, 403)
+    assert resp.status_code == 200, resp.json()
+    assert resp.json()["code"] == 0
+    assert isinstance(resp.json()["data"], dict)
 
 
 def test_system_context_uses_effective_permissions(client, auth_headers):
@@ -50,3 +54,18 @@ def test_sync_enqueue_not_success_http(client, auth_headers):
     data = (resp.json().get("data") or resp.json())
     assert data.get("status") != "SUCCESS"
     assert data.get("status") in ("PENDING", "FAILED")
+
+
+def test_overview_board_authority_outage_remains_503(client, auth_headers, monkeypatch):
+    from app.services import commercial_entitlement_authority_service as commercial
+
+    # Only the read IO envelope is faulted. The real HTTP route, Depends and
+    # strict authority adapter must still reject; never broaden the positive test.
+    monkeypatch.setattr(commercial, "commercial_state", lambda _tid: {
+        "verified": False, "authoritySource": "MODULE_V2_UNAVAILABLE",
+        "features": {"internship": False},
+    })
+    resp = client.get("/api/v1/system/overview-board", headers=auth_headers)
+    assert resp.status_code == 503, resp.json()
+    assert resp.json()["bizCode"] == "AUTHORITY_UNAVAILABLE"
+    assert resp.json()["data"] is None

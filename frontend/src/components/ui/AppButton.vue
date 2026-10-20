@@ -51,7 +51,7 @@ export default {
 .app-button--primary {
   background: var(--btn-p-bg);
   border-color: transparent;
-  color: #fff;
+  color: var(--pri-on, #fff);
   font-weight: var(--font-weight-semibold);
   box-shadow: var(--btn-p-shadow);
 }
@@ -60,7 +60,7 @@ export default {
   box-shadow: 0 4px 14px -2px var(--glow);
 }
 .app-button--secondary {
-  background: rgba(255, 255, 255, 0.85);
+  background: var(--bg-card);
   border-color: var(--card-b);
   color: var(--t2);
 }

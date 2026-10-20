@@ -11,14 +11,15 @@
     <template v-else-if="ov">
       <AppCard class="pdr__health" :class="`pdr__health--${(ov.machineHealth?.status || 'UNKNOWN').toLowerCase()}`">
         <div>
-          <div class="pdr__health-title">生产灾备健康：{{ ov.machineHealth?.status || 'UNKNOWN' }}</div>
-          <div class="pdr__health-sub">健康权威：MACHINE_ONLY。人工备份/人工恢复记录不会把本页判成 GREEN。</div>
+          <div class="pdr__health-title">生产灾备健康：{{ platformStatusLabel(ov.machineHealth?.status) }}</div>
+          <div class="pdr__health-sub">健康权威：仅机器证据。人工备份或人工恢复记录不会把本页判定为健康。</div>
+          <div v-if="ov.machineHealth?.message" class="pdr__health-warning">{{ ov.machineHealth.message }}</div>
         </div>
         <div class="pdr__health-grid">
-          <span>机器备份：{{ ov.machineHealth?.backup?.status || 'UNKNOWN' }}</span>
-          <span>机器恢复：{{ ov.machineHealth?.restore?.status || 'UNKNOWN' }}</span>
-          <span>备份新鲜度：{{ ov.machineHealth?.backupFreshnessHours ?? '—' }}h</span>
-          <span>恢复演练窗口：{{ ov.machineHealth?.restoreFreshnessDays ?? '—' }}d</span>
+          <span>机器备份：{{ platformStatusLabel(ov.machineHealth?.backup?.status) }}</span>
+          <span>机器恢复：{{ platformStatusLabel(ov.machineHealth?.restore?.status) }}</span>
+          <span>备份新鲜度：{{ ov.machineHealth?.backupFreshnessHours ?? '—' }} 小时</span>
+          <span>恢复演练窗口：{{ ov.machineHealth?.restoreFreshnessDays ?? '—' }} 天</span>
         </div>
       </AppCard>
 
@@ -39,14 +40,14 @@
         <AppSectionHeader title="近7天失败记录" />
         <ul class="pdr__list">
           <li v-for="f in ov.recentFailuresLast7Days" :key="f.id">
-            {{ typeLabel(f.backupType) }} · {{ f.method }} · {{ f.errorMessage || '无错误说明' }}
+            {{ typeLabel(f.backupType) }} · {{ methodLabel(f.method) }} · {{ f.errorMessage || '无错误说明' }}
           </li>
         </ul>
       </AppCard>
 
       <AppCard class="pdr__panel">
-        <AppSectionHeader title="人工备份备注（不参与 GREEN）" />
-        <p class="pdr__note">用于记录云厂商工单、人工 mysqldump 等外部事实，方便审计与交接；这些记录不会改变生产灾备健康结论。真正的 GREEN 只来自部署 runner 的机器证据。</p>
+        <AppSectionHeader title="人工备份备注（不参与健康判定）" />
+        <p class="pdr__note">用于记录云厂商工单、人工数据库备份等外部事实，方便审计与交接；这些记录不会改变生产灾备健康结论。健康结论只来自自动部署程序写入的机器证据。</p>
         <div class="pdr__form">
           <select v-model="evidenceForm.backupType" class="pdr__input">
             <option value="DATABASE_DUMP">数据库备份</option>
@@ -54,7 +55,7 @@
             <option value="CLOUD_MANAGED">云厂商托管备份</option>
           </select>
           <select v-model="evidenceForm.method" class="pdr__input">
-            <option value="MYSQLDUMP">mysqldump</option>
+            <option value="MYSQLDUMP">数据库导出工具</option>
             <option value="MANUAL_CONFIRMED">人工确认</option>
             <option value="CLOUD_MANAGED">云厂商托管</option>
           </select>
@@ -62,7 +63,7 @@
             <option value="SUCCEEDED">成功</option>
             <option value="FAILED">失败</option>
           </select>
-          <input v-model.trim="evidenceForm.locationRef" class="pdr__input" placeholder="存放位置/备份ID（成功必填）" />
+          <input v-model.trim="evidenceForm.locationRef" class="pdr__input" placeholder="存放位置或备份编号（成功必填）" />
           <button class="mp-link" @click="submitEvidence">登记备注</button>
         </div>
       </AppCard>
@@ -70,6 +71,8 @@
       <AppCard class="pdr__panel">
         <AppSectionHeader title="备份备注列表" />
         <DataTable :columns="evidenceColumns" :rows="evidenceList" row-key="id">
+          <template #cell-backupType="{ row }">{{ typeLabel(row.backupType) }}</template>
+          <template #cell-method="{ row }">{{ methodLabel(row.method) }}</template>
           <template #cell-status="{ row }">
             <StatusTag :type="row.status === 'SUCCEEDED' ? 'success' : 'danger'" :label="platformStatusLabel(row.status)" />
           </template>
@@ -77,8 +80,8 @@
       </AppCard>
 
       <AppCard class="pdr__panel">
-        <AppSectionHeader title="人工恢复演练备注（不参与 GREEN）" />
-        <p class="pdr__note">人工记录保留用于复盘，但不会作为健康权威。请在隔离环境运行 deploy/backup/machine-restore-drill.sh，由恢复脚本真实校验 RPO/RTO、Alembic、表/索引/FK 与文件后自动写入机器证据。</p>
+        <AppSectionHeader title="人工恢复演练备注（不参与健康判定）" />
+        <p class="pdr__note">人工记录保留用于复盘，但不会作为健康权威。请在隔离环境运行机器恢复演练，由恢复程序真实校验恢复点目标、恢复时间目标、数据库版本、表、索引、外键与文件后自动写入机器证据。</p>
         <div class="pdr__form">
           <select v-model="drillForm.status" class="pdr__input">
             <option value="PASSED">通过</option>
@@ -125,7 +128,7 @@ export default {
         { key: 'backupType', title: '类型' },
         { key: 'method', title: '方式' },
         { key: 'status', title: '结果' },
-        { key: 'locationRef', title: '位置/备份ID' }
+        { key: 'locationRef', title: '位置或备份编号' }
       ]
     }
   },
@@ -135,7 +138,10 @@ export default {
   methods: {
     platformStatusLabel,
     typeLabel(type) {
-      return TYPE_LABELS[type] || type
+      return TYPE_LABELS[type] || '其他灾备证据'
+    },
+    methodLabel(method) {
+      return ({ MYSQLDUMP: '数据库导出工具', MANUAL_CONFIRMED: '人工确认', CLOUD_MANAGED: '云厂商托管' })[method] || '其他备份方式'
     },
     onToolbarAction(key) {
       if (key === 'schema-check') this.runSchemaCheck()
@@ -166,7 +172,7 @@ export default {
     },
     async submitEvidence() {
       if (this.evidenceForm.status === 'SUCCEEDED' && !this.evidenceForm.locationRef) {
-        toast.error('登记成功的备份必须填写存放位置/备份ID')
+        toast.error('登记成功的备份必须填写存放位置或备份编号')
         return
       }
       const res = await platformControlApi.createBackupEvidence({ ...this.evidenceForm })
@@ -202,6 +208,7 @@ export default {
 .pdr__health--unknown { border-color: var(--color-warning, #d97706); }
 .pdr__health-title { font-size: 20px; font-weight: var(--font-weight-bold); color: var(--t1); }
 .pdr__health-sub { margin-top: 4px; font-size: 12px; color: var(--text-secondary); }
+.pdr__health-warning { margin-top: var(--space-2); font-size: 13px; color: var(--color-warning, #d97706); }
 .pdr__health-grid { display: flex; flex-wrap: wrap; gap: var(--space-3); margin-top: var(--space-3); font-size: 13px; color: var(--text-secondary); }
 .pdr__grid {
   display: grid;

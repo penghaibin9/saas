@@ -11,7 +11,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
-from app.core.exceptions import AppException, no_permission
+from app.core.exceptions import AppException
 from app.services.message_event_outbox_service import emit_message_event
 
 from . import academic_affairs_grade_core_service as grade_core
@@ -20,7 +20,6 @@ from . import academic_affairs_grade_message_event_guard as message_event_guard
 from . import academic_affairs_grade_todo_teacher_relation_guard as todo_guard
 
 _REMINDABLE = {"NOT_STARTED", "INPUTTING", "RETURNED"}
-_REMIND_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}
 
 message_event_guard.install()
 
@@ -29,9 +28,6 @@ def remind_grade_entry(task_id: int, user, reason: str) -> dict:
     """Refresh canonical Todos and enqueue one real message event for current teachers."""
     from app.models import AaGradeTask, UnifiedTodo
 
-    role = str((user or {}).get("currentRoleCode") or "").upper()
-    if role not in _REMIND_ROLES and (user or {}).get("userType") != "PLATFORM_SUPER_ADMIN":
-        raise no_permission("仅学院教务员或教务处可催录成绩")
     reason_text = str(reason or "").strip()
     if len(reason_text) < 2:
         raise AppException("VALIDATION_ERROR", "催录原因/说明不少于2字")
@@ -44,8 +40,7 @@ def remind_grade_entry(task_id: int, user, reason: str) -> dict:
         ).with_for_update().first()
         if not task:
             raise AppException("NOT_FOUND", "成绩任务不存在", http_status=404)
-        if role == "COLLEGE_ADMIN":
-            grade_core._check_college_scope(db, task, user)
+        grade_core._require_management_scope(db, task, user)
         status = str(task.status or "").upper()
         if status not in _REMINDABLE:
             raise AppException(

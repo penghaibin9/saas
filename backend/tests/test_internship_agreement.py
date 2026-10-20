@@ -165,6 +165,48 @@ def test_student_reject_and_legacy_route_is_disabled(client, db_mode):
     assert result.json()["data"]["status"] == "REJECTED"
 
 
+def test_student_exact_detail_survives_multiple_active_batches(client, db_mode):
+    ids = _seed(db_mode)
+    mentor = _mentor("刘强")
+    agreement_id, version = _generate_and_issue(client, ids["rec_a"], mentor)
+
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipBatch, InternshipRecord, StudentProfile
+    db = get_sessionmaker()()
+    try:
+        student = db.query(StudentProfile).filter_by(
+            tenant_id=TID, student_no="AG-A", is_deleted=False).one()
+        second_batch = InternshipBatch(
+            tenant_id=TID, batch_name="协议并行批次", batch_no="AG-PARALLEL",
+            status="RUNNING", planned_count=1)
+        db.add(second_batch); db.flush()
+        db.add(InternshipRecord(
+            tenant_id=TID, student_id=student.id, advisor_name="刘强",
+            enterprise_name="另一企业", position_name="另一岗位",
+            status="ONBOARD", risk_level="NONE", batch_id=second_batch.id))
+        db.commit()
+    finally:
+        db.close()
+
+    owner = _student("AG-A", ids["batch"])
+    exact = client.get(f"{MOBILE}/{agreement_id}", headers=owner)
+    assert exact.status_code == 200, exact.text
+    detail = exact.json()["data"]
+    assert detail["id"] == str(agreement_id)
+    assert detail["batchId"] == str(ids["batch"])
+    assert detail["internId"] == str(ids["rec_a"])
+
+    other_student = _student("AG-B", ids["batch"])
+    assert client.get(f"{MOBILE}/{agreement_id}", headers=other_student).status_code == 403
+
+    confirmed = client.post(
+        f"{MOBILE}/{agreement_id}/confirm",
+        json={"action": "CONFIRM", "expectedVersion": version,
+              "batchId": detail["batchId"], "internshipId": detail["internId"]},
+        headers=owner)
+    assert confirmed.status_code == 200, confirmed.text
+
+
 def test_owner_scope_and_school_confirm_boundary(client, db_mode):
     ids = _seed(db_mode)
     mentor_b = _mentor("王芳")

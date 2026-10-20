@@ -111,13 +111,13 @@ def get_leave_sla() -> dict:
     }
 
 
-def risk_due_at(record) -> datetime | None:
+def risk_due_at(record, *, sla: dict | None = None) -> datetime | None:
     """按当前风险状态返回当前阶段截止时间。
 
     NEW → 分派时限；ASSIGNED → 首次处置时限；
     PROCESSING/FOLLOWING → 自最近更新起的跟进/办结时限（卡住无更新则超时升级）。
     """
-    sla = get_risk_sla(getattr(record, "risk_level", None))
+    sla = sla if sla is not None else get_risk_sla(getattr(record, "risk_level", None))
     status = getattr(record, "status", None)
     if status == "NEW" and getattr(record, "created_at", None):
         return record.created_at + timedelta(hours=sla["assignHours"])
@@ -130,11 +130,11 @@ def risk_due_at(record) -> datetime | None:
     return None
 
 
-def risk_is_overdue(record, now: datetime | None = None) -> bool:
+def risk_is_overdue(record, now: datetime | None = None, *, sla: dict | None = None) -> bool:
     """与扫描、详情和统计共用的风险超时判定。"""
     if getattr(record, "status", None) == "ESCALATED":
         return True
-    due_at = risk_due_at(record)
+    due_at = risk_due_at(record, sla=sla)
     return bool(due_at and due_at <= (now or datetime.utcnow()))
 
 

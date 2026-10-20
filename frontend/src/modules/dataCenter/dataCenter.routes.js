@@ -12,8 +12,8 @@ export const dataCenterRoutes = [
       {
         path: '',
         name: 'data-center-dashboard',
-        component: () => import('@/views/admin/dataCenter/DataCenterDashboardView.vue'),
-        meta: { moduleCode: 'DATA_CENTER', title: '数据驾驶舱', permissionKey: 'dataCenter.dashboard.view' }
+        redirect: '/admin/student-affairs/stats/cockpit',
+        meta: { title: '学工大屏' }
       },
       {
         path: 'lifecycle',

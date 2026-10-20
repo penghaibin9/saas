@@ -213,7 +213,13 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
                                                "review_comment": (comment or "").strip(),
                                                "reviewed_by_name": _op_name(user),
                                                "reviewed_at": datetime.utcnow()})
-        _trail(db, r.id, f"REVIEW_{action}", {"comment": r.review_comment})
+        _trail(
+            db,
+            r.id,
+            f"REVIEW_{action}",
+            {"comment": (comment or "").strip()},
+            operator=_op_name(user),
+        )
         db.commit()
         return {"id": str(r.id), "status": status, "statusLabel": STATUS_LABEL.get(status),
                 "version": new_ver}

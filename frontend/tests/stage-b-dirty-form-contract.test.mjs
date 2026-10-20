@@ -9,12 +9,15 @@ test('Stage B B4 installs one global dirty-form guard', () => {
   assert.match(main, /import \{ installDirtyFormGuard \} from '\.\/router\/dirtyFormGuard'/)
   assert.match(main, /installDirtyFormGuard\(router\)/)
   assert.match(guard, /router\.beforeEach/)
+  assert.match(guard, /import \{ systemConfirm \} from '\.\.\/services\/systemDialog\.js'/)
+  assert.match(guard, /await systemConfirm/)
   assert.match(guard, /beforeunload/)
-  assert.match(guard, /window\.confirm/)
+  assert.doesNotMatch(guard, /window\.confirm|window\.alert|window\.prompt/)
 })
 
 test('Stage B B4 covers internship batch/company and same-domain long forms', () => {
   for (const name of [
+    'internship-recruitment-campaign-new', 'internship-recruitment-campaign-edit',
     'internship-batch-new', 'internship-batch-edit',
     'internship-enterprise-new', 'internship-enterprise-edit',
     'internship-position-new', 'internship-position-edit',

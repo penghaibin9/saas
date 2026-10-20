@@ -11,11 +11,14 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
-from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, AttendanceException,
+from app.models import (AcademicGrade, AcademicStudent, AcademicWarning, AttendanceException, College,
                         CsLeave, CsServiceStudent, CsWorkOrder, EmpJob, EmpStudent,
-                        GraduationProposal, GraduationStudent, InternshipRecord, OrientationStudent,
-                        StudentContact, StudentProfile, TeacherStudentScope, UnifiedMessage,
+                        GraduationProposal, GraduationStudent, InternshipRecord, Major,
+                        OrientationBatch, OrientationStudent, SchoolClass, StudentContact,
+                        StudentProfile, TeacherStudentScope, UnifiedMessage,
                         UnifiedTodo, WeeklyReport, WorkflowInstance, WorkflowTask)
+from app.services.orientation_flow_service import (ensure_published_flow_version,
+                                                    ensure_student_steps)
 
 TID2 = 1000000000000000003
 DEMO_NAME = "张同学"
@@ -30,10 +33,35 @@ def seed_demo_school(db) -> dict:
                   StudentProfile.real_name == DEMO_NAME)).first():
         return {"skipped": True}
     now = datetime.now()
+    school_class = db.scalars(select(SchoolClass).where(
+        SchoolClass.tenant_id == TID2, SchoolClass.is_deleted.is_(False),
+    ).order_by(SchoolClass.id)).first()
+    if not school_class:
+        # Core and focused test seeders may invoke this module before the broader
+        # two-tenant demo seed. Bootstrap only tenant/org authority, not domain data.
+        from _seed_two_tenants import ensure_demo_tenant_org
+        ensure_demo_tenant_org(db)
+        school_class = db.scalars(select(SchoolClass).where(
+            SchoolClass.tenant_id == TID2, SchoolClass.is_deleted.is_(False),
+        ).order_by(SchoolClass.id)).first()
+    if not school_class:
+        raise RuntimeError("演示学校迎新种子无法建立稳定班级 Authority")
+    major = db.get(Major, school_class.major_id)
+    college = db.get(College, major.college_id) if major else None
+    if not major or not college:
+        raise RuntimeError("演示学校迎新种子组织链不完整")
+    flow_version = ensure_published_flow_version(db, TID2)
+    orientation_batch = OrientationBatch(
+        tenant_id=TID2, batch_name="演示学校2026迎新", batch_no="DEMO-SCHOOL-ORI-2026",
+        year="2026", status="CLOSED", planned_count=1, remark="演示学校历史批次",
+        flow_version_id=flow_version.id,
+    )
+    db.add(orientation_batch); db.flush()
 
     # ── 演示学生 张同学（新增，不动已有 演示学生1-5）──
     p = StudentProfile(tenant_id=TID2, student_no=DEMO_NO, real_name=DEMO_NAME, gender="男",
-                       grade="2026", current_stage="INTERNSHIP", student_status="NORMAL",
+                       grade="2026", college_id=college.id, major_id=major.id, class_id=school_class.id,
+                       current_stage="INTERNSHIP", student_status="NORMAL",
                        status="ACTIVE")
     db.add(p)
     db.flush()
@@ -42,14 +70,21 @@ def seed_demo_school(db) -> dict:
                           verified_status="VERIFIED"))
 
     # 迎新（已完成态，展示全流程）
-    db.add(OrientationStudent(tenant_id=TID2, name=DEMO_NAME, admission_no=f"LQ{DEMO_NO}",
-                              student_id=p.id, class_name=DEMO_CLASS, grade="2026级",
+    orientation_student = OrientationStudent(tenant_id=TID2, batch_id=orientation_batch.id,
+                              name=DEMO_NAME, admission_no=f"LQ{DEMO_NO}", student_id=p.id,
+                              identity_status="LINKED",
+                              college_id=college.id, college_name=college.college_name,
+                              major_id=major.id, major_name=major.major_name,
+                              class_id=school_class.id, class_name=school_class.class_name, grade="2026级",
                               stage="ENROLLED", report_status="CHECKED_IN", payment_status="PAID",
                               material_status="APPROVED", dorm_status="CHECKED_IN",
                               building="桂花苑2号楼", room="2-508-1", risk_level="LOW",
                               steps_json={"ACTIVATE": "DONE", "INFO": "DONE", "MATERIAL": "DONE",
                                           "PAYMENT": "DONE", "DORM": "DONE", "CHECKIN": "DONE",
-                                          "CONFIRM": "DONE"}))
+                                          "CONFIRM": "DONE"},
+                              source_type="MANUAL", source_record_id=f"LQ{DEMO_NO}")
+    db.add(orientation_student); db.flush()
+    ensure_student_steps(db, orientation_student, status_source="PROCESS_FACT")
     # 在校服务：一条已批请假 + 一条待审请假（教师可现场演示审批）+ 一条已结工单
     cs = CsServiceStudent(tenant_id=TID2, name=DEMO_NAME, student_no=DEMO_NO, student_id=p.id,
                           class_name=DEMO_CLASS, care_level="NORMAL", risk_level="LOW",

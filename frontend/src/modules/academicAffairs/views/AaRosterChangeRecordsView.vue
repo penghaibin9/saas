@@ -4,6 +4,7 @@
     subtitle="学籍管理 · 只读展示，办理请前往「学籍异动」发起与审批"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <div class="mp-stack">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
@@ -104,7 +105,7 @@ export default {
       const map = { NORMAL: '正常', PENDING_REGISTER: '待注册', REGISTERED: '在籍注册', UNREGISTERED: '未注册',
         SUSPENDED: '休学', RETAINED: '留级', WITHDRAWN: '退学', TRANSFER_SCHOOL: '转学',
         GRADUATED: '毕业', COMPLETED: '结业', INCOMPLETE: '肄业' }
-      return map[s] || s || '—'
+      return map[s] || (s ? '状态待确认' : '—')
     },
     goStudent(studentId) {
       if (studentId) this.$router.push(`/admin/academic-affairs/roster/${studentId}`)

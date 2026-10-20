@@ -24,14 +24,22 @@ def test_sha_is_stable_canonical_json():
     assert len(svc.snapshot_sha256(a)) == 64
 
 
-def test_wrapper_preserves_existing_assignment_authority_and_same_transaction_snapshot():
-    source = inspect.getsource(authority._wrapped_assign_position_in_tx)
-    assert "result = _ORIGINAL(" in source
+def test_explicit_authority_preserves_existing_assignment_and_same_transaction_snapshot():
+    source = inspect.getsource(authority.assign_position_with_snapshot_in_tx)
+    assert "result = core_assign(" in source
     assert "capture_placement_snapshot_in_tx(" in source
     assert "db.commit" not in source
     assert "decision_svc.consume_accept_intent_in_tx(decision)" in source
     assert "_approve_source_application_in_tx(" in source
     assert "teacher_mark_approved_in_tx" in source
+
+
+def test_student_service_calls_placement_authority_explicitly():
+    from app.modules.internship.services import internship_student_service as student_svc
+
+    source = inspect.getsource(student_svc.assign_position_in_tx)
+    assert "assign_position_with_snapshot_in_tx(" in source
+    assert "core_assign=_assign_position_core_in_tx" in source
 
 
 def test_campaign_source_is_scoped_to_exact_round_and_application_closeout_is_audited():

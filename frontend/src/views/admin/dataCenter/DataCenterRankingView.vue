@@ -20,7 +20,7 @@
     <EmptyState
       v-else-if="!ranking || !ranking.rows || !ranking.rows.length"
       title="当前组织维度暂无排行数据"
-      description="本页只展示 StudentProfile 服务端真实聚合，不使用浏览器补数。"
+      description="本页只展示学生主档服务端真实聚合，不使用浏览器补数。"
     />
 
     <div v-else class="mp-stack">
@@ -52,7 +52,7 @@
           </div>
           <div>
             <div class="dcr-contract__label">数据来源</div>
-            <div class="dcr-contract__value">{{ sourceNames || 'StudentProfile' }}</div>
+            <div class="dcr-contract__value">{{ sourceNames || '学生主档' }}</div>
           </div>
           <div>
             <div class="dcr-contract__label">质量提示</div>
@@ -95,7 +95,7 @@
         <div class="mp-card__body mp-stack">
           <p class="mp-note">{{ ranking.note }}</p>
           <div v-for="flag in qualityFlags" :key="flag.code" class="dcr-quality">
-            <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
+            <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="qualityFlagLabel(flag.code)" />
             <span>{{ flag.message }}</span>
           </div>
         </div>
@@ -121,10 +121,10 @@
             <div class="mp-cell-sub">{{ row.studentNo }}</div>
           </template>
           <template #cell-stage="{ row }">
-            <div class="mp-cell-main">{{ row.stage || '—' }}</div>
+            <div class="mp-cell-main">{{ stageLabel(row.stage) }}</div>
             <div class="mp-cell-sub">{{ row.collegeName || '—' }}</div>
           </template>
-          <template #cell-status="{ row }">{{ row.studentStatus || '—' }}</template>
+          <template #cell-status="{ row }">{{ studentStatusLabel(row.studentStatus) }}</template>
         </DataTable>
       </div>
     </AppDrawer>
@@ -133,10 +133,10 @@
       <div class="mp-stack">
         <div class="mp-kv"><span class="mp-kv__k">数据截至</span><span class="mp-kv__v">{{ asOfLabel }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ scopeLabel }}</span></div>
-        <div class="mp-kv"><span class="mp-kv__k">来源</span><span class="mp-kv__v">{{ sourceNames || 'StudentProfile' }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">来源</span><span class="mp-kv__v">{{ sourceNames || '学生主档' }}</span></div>
         <p class="mp-note">{{ ranking ? ranking.note : '' }}</p>
         <div v-for="flag in qualityFlags" :key="'guide-' + flag.code" class="dcr-quality">
-          <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
+          <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="qualityFlagLabel(flag.code)" />
           <span>{{ flag.message }}</span>
         </div>
       </div>
@@ -232,7 +232,8 @@ export default {
     },
     sourceNames() {
       const rows = Array.isArray(this.meta.source) ? this.meta.source : []
-      return rows.map((x) => x.module).filter(Boolean).join('、')
+      const labels = { STUDENT_PROFILE: '学生主档', ACADEMIC: '教务数据', INTERNSHIP: '岗位实习', GRADUATION: '毕业管理', EMPLOYMENT: '就业服务' }
+      return rows.map((x) => labels[String(x.module || '').toUpperCase()] || (/[\u4e00-\u9fff]/.test(String(x.module || '')) ? x.module : '其他业务数据')).filter(Boolean).join('、')
     },
     scopeLabel() {
       return (this.meta.scope && this.meta.scope.scopeName) || this.ctx.dataScope.scopeName || '—'
@@ -248,6 +249,15 @@ export default {
     if (this.viewAllowed) this.load()
   },
   methods: {
+    stageLabel(value) {
+      return ({ ADMITTED: '待入学', ORIENTATION: '迎新阶段', ENROLLED: '已入学', IN_SCHOOL: '在校', INTERNSHIP: '岗位实习', GRADUATION_DESIGN: '毕业设计', EMPLOYMENT: '就业阶段', GRADUATED: '已毕业' })[String(value || '').toUpperCase()] || (value ? '阶段待确认' : '—')
+    },
+    studentStatusLabel(value) {
+      return ({ ADMITTED: '待入学', ACTIVE: '在校', SUSPENDED: '休学', GRADUATED: '已毕业', DROPPED: '已退学', VOIDED: '已作废' })[String(value || '').toUpperCase()] || (value ? '学籍状态待确认' : '—')
+    },
+    qualityFlagLabel(value) {
+      return ({ MISSING_SOURCE: '缺少数据源', STALE_DATA: '数据更新滞后', PARTIAL_SCOPE: '统计范围不完整', INCOMPLETE_DATA: '数据不完整' })[String(value || '').toUpperCase()] || '数据质量提示'
+    },
     setLevel(value) {
       if (value === this.level) return
       this.level = value

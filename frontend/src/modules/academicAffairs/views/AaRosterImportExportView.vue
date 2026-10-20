@@ -4,6 +4,7 @@
     subtitle="服务端权威预检 · 可追踪导入 · 可过期撤销导出"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <div class="mp-stack">
       <AppSectionCard title="学籍导入" subtitle="原始 XLSX 先完成安全扫描，再由服务端预检同一不可变文件">
@@ -90,6 +91,7 @@ import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affai
 import { academicFileExchangeApi } from '@/modules/academicAffairs/api/academic-file-exchange.api'
 import { academicExchangeTypeLabel, academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 import { toast } from '@/utils/toast'
+import { systemPrompt } from '@/services/systemDialog'
 
 const STATUS_LABEL = {
   NORMAL: '正常', PENDING_REGISTER: '待注册', REGISTERED: '在籍注册', UNREGISTERED: '未注册',
@@ -271,7 +273,7 @@ export default {
       await this.loadJobs()
     },
     async revokeExportJob(item) {
-      const reason = window.prompt('请输入撤销原因（不少于 5 个字）')
+      const reason = await systemPrompt({ title:'填写撤销原因', message:'撤销原因将写入审计记录。', placeholder:'不少于 5 个字', minLength:5, confirmText:'确认撤销' })
       if (!reason) return
       const res = await academicFileExchangeApi.revokeExport(item.id, item.version, reason)
       if (res.code !== 0) {

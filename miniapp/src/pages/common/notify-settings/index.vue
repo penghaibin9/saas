@@ -20,8 +20,8 @@
           <text class="card-title">微信重要提醒</text>
           <text class="ns__hint">站内分类只影响消息中心；能否在微信里收到提醒，取决于下面的授权状态。</text>
 
-          <MobileInlineAlert v-if="!wechat.configured" type="info" title="学校尚未开通微信提醒"
-            description="该能力需要学校在微信公众平台完成配置后才可使用。" />
+          <MobileInlineAlert v-if="!wechat.configured" type="info" title="微信提醒暂不可用"
+            description="请在消息中心查看办理通知。微信提醒服务与订阅授权接入完成后才能开启。" />
           <template v-else>
             <view class="list-row">
               <view class="flex-1">
@@ -81,7 +81,7 @@ export default {
     load() {
       this.state = 'loading'
       const tasks = [this.api().getNotifyPreferences()]
-      tasks.push(this.isStudent ? wechatSubscribeStatus().catch(() => null) : Promise.resolve(null))
+      tasks.push(this.isStudent ? wechatSubscribeStatus() : Promise.resolve(null))
       Promise.all(tasks).then(([prefs, wechat]) => {
         this.items = (prefs && prefs.items) || []
         if (wechat) this.wechat = wechat
@@ -100,9 +100,10 @@ export default {
     },
     requestSubscribe() {
       // requestSubscribeMessage 只能由用户点击触发，且只在服务端已配置模板时才请求。
-      const ready = (this.wechat.scenes || []).filter((scene) => scene.ready).map((scene) => scene.key)
+      if (this.requesting) return
+      const ready = [...new Set((this.wechat.scenes || []).filter((scene) => scene.ready && scene.templateId).map((scene) => scene.templateId))].slice(0, 3)
       if (!this.wechat.configured || !ready.length) {
-        toast('学校尚未开通微信提醒')
+        toast('微信提醒暂不可用')
         return
       }
       if (typeof uni.requestSubscribeMessage !== 'function') {
@@ -112,9 +113,14 @@ export default {
       this.requesting = true
       uni.requestSubscribeMessage({
         tmplIds: ready,
+        success: (result) => {
+          const accepted = ready.filter(id => result[id] === 'accept').length
+          toast(accepted ? `本次接受 ${accepted} 项提醒，发送结果以微信为准` : '未接受本次提醒授权，可再次点击重试')
+        },
+        fail: () => toast('微信订阅授权失败，请重试'),
         complete: () => {
           this.requesting = false
-          // 授权结果以服务端复核为准：微信返回 accept 不代表 openid 已经落库。
+          // 本次微信返回值不代表可持续接收；重新读取服务端渠道状态。
           this.load()
         }
       })

@@ -8,11 +8,13 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
-from app.core.permissions import enforce_permission
+from app.core.permissions import enforce_permission, permission_decisions
+from app.core.tenant_scoped import tenant_get
 from app.models import (GraduationAuditTrail, GraduationBatch, GraduationDefenseGroup, GraduationFinal,
                         GraduationProposal, GraduationStudent, GraduationTopic, StudentAccountLink,
                         UnifiedMessage)
 from app.modules.graduation.services import graduation_student_service as gd_stu_svc
+from app.modules.graduation.services import graduation_proposal_read_service as proposal_read
 from app.modules.graduation.services.graduation_scope_service import (
     accessible_student_ids, assert_student_access, can_access_student, has_full_scope,
 )
@@ -97,7 +99,7 @@ def _deliver_student_reminder(db, stu, *, task_name: str, action_key: str, chann
     if not link:
         raise AppException("DELIVERY_FAILED", "学生未绑定有效登录账号，提醒未发送")
 
-    batch = db.get(GraduationBatch, stu.batch_id)
+    batch = tenant_get(db, GraduationBatch, stu.batch_id)
     batch_name = batch.batch_name if batch else ""
     deadline = None
     expected_stages = ("PROPOSAL",) if task_name == "开题报告" else ("SUBMISSION", "FINAL_CHECK")
@@ -213,28 +215,7 @@ def _mark_material_files(db, attachment_ids: list[str]) -> None:
 
 
 def _stu_of(db, sid):
-    return db.get(GraduationStudent, sid)
-
-
-def resolve_material_download(file_id: str):
-    """Resolve only when the file is bound to an accessible graduation proposal/final."""
-    from app.services import file_service
-    with session() as db:
-        candidates = []
-        candidates.extend(db.scalars(select(GraduationProposal).where(
-            GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False),
-        )).all())
-        candidates.extend(db.scalars(select(GraduationFinal).where(
-            GraduationFinal.tenant_id == _tid(), GraduationFinal.is_deleted.is_(False),
-        )).all())
-        for material in candidates:
-            bound = {_att_id(raw) for raw in (material.attachments_json or [])}
-            if file_id not in bound:
-                continue
-            student = db.get(GraduationStudent, material.gd_student_id)
-            assert_student_access(db, student, "graduation.material.download")
-            return file_service.resolve_download(file_id, allow_graduation_material=True)
-    return None
+    return tenant_get(db, GraduationStudent, sid)
 
 
 def _stu_row(s: GraduationStudent) -> dict:
@@ -320,45 +301,22 @@ def _match_batch(stu, batch_id) -> bool:
         return False
     return str(stu.batch_id) == str(batch_id)
 
-def list_proposals(page, ps, keyword=None, status=None, batch_id=None):
-    """开题材料列表。status=NOT_SUBMITTED 时派生"已过选题但尚未提交开题报告"的学生行（用于催交）。"""
-    with session() as db:
-        if status == "NOT_SUBMITTED":
-            return _page(_not_submitted_proposals(db, keyword, batch_id=batch_id), page, ps)
-        q = select(GraduationProposal).where(GraduationProposal.tenant_id == _tid(),
-                                             GraduationProposal.is_deleted.is_(False))
-        if status:
-            q = q.where(GraduationProposal.status == status)
-        rows = db.scalars(q.order_by(GraduationProposal.id.desc())).all()
-        items = []
-        for p in rows:
-            stu = _stu_of(db, p.gd_student_id)
-            if not stu or not can_access_student(db, stu):
-                continue
-            if not _match_batch(stu, batch_id):
-                continue
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_prop_row(p, stu))
-        # 全部页签时也把"未提交"学生并入，便于一屏监管
-        if not status:
-            items += _not_submitted_proposals(db, keyword, batch_id=batch_id)
-        return _page(items, page, ps)
-
-
 def _not_submitted_proposals(db, keyword=None, batch_id=None) -> list:
     """派生未提交开题报告的学生：已确认选题（topic_id 存在或阶段已过选题中）且无任何开题记录。"""
-    have = {r for (r,) in db.execute(select(GraduationProposal.gd_student_id).where(
-        GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False))).all()}
+    visible_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+    if not visible_ids:
+        return []
+    scope = visible_ids
+    have = set(db.scalars(select(GraduationProposal.gd_student_id).where(
+        GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False),
+        GraduationProposal.gd_student_id.in_(scope),
+    )).all())
     stus = db.scalars(select(GraduationStudent).where(
         GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-        GraduationStudent.record_status == "ACTIVE").order_by(GraduationStudent.id)).all()
+        GraduationStudent.record_status == "ACTIVE", GraduationStudent.id.in_(scope),
+    ).order_by(GraduationStudent.id)).all()
     rows = []
     for s in stus:
-        if not can_access_student(db, s):
-            continue
-        if not _match_batch(s, batch_id):
-            continue
         if s.id in have:
             continue
         confirmed_topic = bool(s.topic_id) or s.stage not in ("TOPIC_SELECTING", None, "")
@@ -372,7 +330,6 @@ def _not_submitted_proposals(db, keyword=None, batch_id=None) -> list:
                      "version": "—", "isResubmit": False, "submitAt": "", "attachments": 0,
                      "status": "NOT_SUBMITTED", "statusLabel": L_MAT["NOT_SUBMITTED"]})
     return rows
-
 
 def get_proposal_detail(pid) -> dict:
     with session() as db:
@@ -408,80 +365,6 @@ def get_proposal_detail(pid) -> dict:
                     "trail": [{"who": x.operator or "系统", "time": _iso(x.occurred_at),
                                "action": x.action, "affected": x.detail or ""} for x in logs]})
         return row
-
-
-def review_proposal(pid, action, comment=None) -> dict:
-    if action not in ("APPROVE", "REJECT"):
-        raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
-    if action == "REJECT" and (not comment or len(comment.strip()) < 5):
-        raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
-    with session() as db:
-        p = db.get(GraduationProposal, int(pid))
-        if not p or p.is_deleted or p.tenant_id != _tid():
-            raise not_found("开题材料不存在")
-        stu = _stu_of(db, p.gd_student_id)
-        assert_student_access(db, stu, "proposal.review")
-        if p.status in ("APPROVED", "REJECTED"):
-            raise AppException("DATA_CONFLICT", "该开题已批阅，请刷新")
-        before = p.status
-        n, _ = _op()
-        target = "APPROVED" if action == "APPROVE" else "REJECTED"
-        p.status = target
-        p.active_key = None
-        p.reviewer = n
-        p.review_comment = (comment or "").strip()
-        p.review_time = datetime.now(timezone.utc)
-        p.version = p.version or "v1"
-        _audit(db, "PROPOSAL", p.id, "批阅开题-" + ("通过" if action == "APPROVE" else "驳回"),
-               (comment or "").strip(), before, target)
-        from app.modules.graduation.services import graduation_todo_helper as gd_todo
-        gd_todo.todo_done(db, biz_id=p.id, todo_type=gd_todo.TODO_PROPOSAL)
-        # 开题通过仅在任务书已确认时推进到指导中，禁止跳过任务书确认
-        stu = _stu_of(db, p.gd_student_id)
-        if stu and action == "APPROVE" and stu.stage in ("TOPIC_SELECTING", "TASKBOOK_CONFIRM"):
-            from app.models import GraduationTaskBook
-            tb = db.scalars(select(GraduationTaskBook).where(
-                GraduationTaskBook.tenant_id == _tid(), GraduationTaskBook.gd_student_id == stu.id,
-                GraduationTaskBook.is_deleted.is_(False), GraduationTaskBook.status == "CONFIRMED",
-            ).limit(1)).first()
-            if tb:
-                stu.stage = "GUIDING"
-            elif stu.stage == "TOPIC_SELECTING":
-                stu.stage = "TASKBOOK_CONFIRM"
-        db.commit()
-        return {"id": str(p.id), "status": target, "statusLabel": L_MAT.get(target, target)}
-
-
-def proposal_stats(batch_id=None) -> dict:
-    """开题统计：按状态分布 + 未提交数（与列表/页签同一批次与数据范围）。"""
-    with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        base = [GraduationProposal.tenant_id == _tid(), GraduationProposal.is_deleted.is_(False),
-                GraduationProposal.gd_student_id.in_(scope_ids or [-1])]
-        total = int(db.scalar(select(func.count()).select_from(GraduationProposal).where(*base)) or 0)
-        by_status = [{"status": s, "label": L_MAT.get(s, s),
-                     "count": int(db.scalar(select(func.count()).select_from(GraduationProposal).where(
-                         *base, GraduationProposal.status == s)) or 0)}
-                     for s in ("PENDING_REVIEW", "APPROVED", "REJECTED")]
-        not_submitted = len(_not_submitted_proposals(db, batch_id=batch_id))
-        return {"total": total, "byStatus": by_status, "notSubmitted": not_submitted,
-                "batchId": str(batch_id) if batch_id else None}
-
-
-def final_stats(batch_id=None) -> dict:
-    """成果统计：按状态分布 + 查重超标数（与列表/页签同一批次与数据范围）。"""
-    with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        base = [GraduationFinal.tenant_id == _tid(), GraduationFinal.is_deleted.is_(False),
-                GraduationFinal.gd_student_id.in_(scope_ids or [-1])]
-        total = int(db.scalar(select(func.count()).select_from(GraduationFinal).where(*base)) or 0)
-        by_status = [{"status": s, "label": L_MAT.get(s, s),
-                     "count": int(db.scalar(select(func.count()).select_from(GraduationFinal).where(
-                         *base, GraduationFinal.status == s)) or 0)}
-                     for s in ("PENDING_REVIEW", "APPROVED", "REJECTED")]
-        overs = [f for f in db.scalars(select(GraduationFinal).where(*base)).all() if _rate_over(f.plagiarism_rate)]
-        return {"total": total, "byStatus": by_status, "plagiarismOver": len(overs),
-                "batchId": str(batch_id) if batch_id else None}
 
 
 @_conflict_guard
@@ -539,29 +422,6 @@ def submit_proposal(gd_student_id, background, plan, outcome, attachments=None) 
         return {"id": str(p.id), "version": version, "isResubmit": is_resubmit, "status": "PENDING_REVIEW"}
 
 
-def hold_proposal_defense(pid, result, comment=None) -> dict:
-    """开题答辩（现场环节）：录入通过/不通过 + 评语。仅书面开题已通过（APPROVED）才可进行开题答辩。"""
-    if result not in ("PASS", "FAIL"):
-        raise AppException("VALIDATION_ERROR", "开题答辩结果必须是 PASS/FAIL")
-    if result == "FAIL" and (not comment or len(comment.strip()) < 5):
-        raise AppException("VALIDATION_ERROR", "开题答辩不通过时评语必填且不少于 5 字")
-    with session() as db:
-        p = db.get(GraduationProposal, int(pid))
-        if not p or p.is_deleted or p.tenant_id != _tid():
-            raise not_found("开题材料不存在")
-        stu = _stu_of(db, p.gd_student_id)
-        assert_student_access(db, stu, "proposal.defense")
-        if p.status != "APPROVED":
-            raise AppException("DATA_CONFLICT", "仅书面开题审核通过后方可进行开题答辩")
-        p.defense_result = result
-        p.defense_comment = (comment or "").strip() or None
-        p.defense_at = datetime.now(timezone.utc)
-        _audit(db, "PROPOSAL", p.id, "开题答辩-" + ("通过" if result == "PASS" else "不通过"),
-               (comment or "").strip())
-        db.commit()
-        return {"id": str(p.id), "defenseResult": result}
-
-
 def remind_proposal(gd_student_id, channel="站内消息") -> dict:
     """开题催交（GD-R04 联动）：对已过选题但未提交开题的学生留痕催办。真实写审计，不 mock 冒充。"""
     with session() as db:
@@ -588,54 +448,6 @@ def remind_proposal(gd_student_id, channel="站内消息") -> dict:
                 "deliveryStatus": "DELIVERED", "messageId": str(message.id), "todoId": None}
 
 
-@sanitize_xlsx_export
-def export_proposals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
-    """开题材料台账 Excel 导出（含导出人/时间抬头，写导出审计）。"""
-    enforce_permission(get_current_user_ctx() or {}, "graduationDesign.proposal.export")
-    if not batch_id:
-        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
-    items, total = list_proposals(1, 100000, keyword=keyword, status=status, batch_id=batch_id)
-    headers = ["学生", "班级", "课题", "指导教师", "版本", "是否重交", "提交时间", "状态"]
-    operator, _role = _op()
-    title = f"开题材料台账　导出时间：{datetime.now():%Y-%m-%d %H:%M}　导出人：{operator}"
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "开题材料台账"
-    ws.append([title])
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
-    ws["A1"].font = Font(bold=True, color="555555", size=10)
-    ws.append(headers)
-    fill = PatternFill("solid", fgColor="DCE6F1")
-    for c in ws[2]:
-        c.font = Font(bold=True); c.fill = fill
-    for it in items:
-        ws.append([it["studentName"], it.get("className", ""), it.get("topicTitle", ""),
-                  it.get("advisorName", ""), it.get("version", ""),
-                  "是" if it.get("isResubmit") else "否", (it.get("submitAt") or "")[:19],
-                  it.get("statusLabel", "")])
-    for i in range(1, len(headers) + 1):
-        ws.column_dimensions[chr(64 + i)].width = 18
-    ws.freeze_panes = "A3"
-    import base64
-    import io
-    buf = io.BytesIO()
-    wb.save(buf)
-    content = buf.getvalue()
-    digest = hashlib.sha256(content).hexdigest()
-    with session() as db:
-        trail = _audit(
-            db, "PROPOSAL", "export", "导出开题材料台账",
-            f"共 {total} 行，状态={status or '全部'}，批次={batch_id}，sha256={digest}",
-        )
-        trail.batch_id = int(batch_id)
-        db.commit()
-    return {"filename": f"开题材料台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
-            "contentBase64": base64.b64encode(content).decode("ascii"), "rowCount": total,
-            "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
-
-
 # ═══ 成果 ═══
 
 def _final_row(f: GraduationFinal, stu=None) -> dict:
@@ -649,31 +461,6 @@ def _final_row(f: GraduationFinal, stu=None) -> dict:
 
 
 FINAL_TYPES = ("初稿", "定稿")
-
-
-def list_finals(page, ps, keyword=None, status=None, batch_id=None):
-    """成果提交列表。status=NOT_SUBMITTED 时派生"已进入指导/中期/成果阶段但未提交论文"的学生行。"""
-    with session() as db:
-        if status == "NOT_SUBMITTED":
-            return _page(_not_submitted_finals(db, keyword, batch_id=batch_id), page, ps)
-        q = select(GraduationFinal).where(GraduationFinal.tenant_id == _tid(),
-                                          GraduationFinal.is_deleted.is_(False))
-        if status:
-            q = q.where(GraduationFinal.status == status)
-        rows = db.scalars(q.order_by(GraduationFinal.id.desc())).all()
-        items = []
-        for f in rows:
-            stu = _stu_of(db, f.gd_student_id)
-            if not stu or not can_access_student(db, stu):
-                continue
-            if not _match_batch(stu, batch_id):
-                continue
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_final_row(f, stu))
-        if not status:
-            items += _not_submitted_finals(db, keyword, batch_id=batch_id)
-        return _page(items, page, ps)
 
 
 def _not_submitted_finals(db, keyword=None, batch_id=None) -> list:
@@ -708,66 +495,6 @@ def midterm_allows_final_submit(mid) -> bool:
         return False
     status = str(getattr(mid, "status", "") or "")
     return status in ("CHECKED_PASS", "RECTIFIED_PASS")
-
-
-def submit_final(gd_student_id, final_type, attachments=None) -> dict:
-    """学生提交/重交论文成果。初稿→定稿有序（定稿须初稿已通过）；有待审时不可重复提交。
-    attachments：论文/材料附件 file_id 列表（文件中心 t_file_object.id），存 attachments_json。"""
-    attachment_ids = _validate_final_attachments(attachments)
-    if final_type not in FINAL_TYPES:
-        raise AppException("VALIDATION_ERROR", "成果类型必须是 初稿/定稿")
-    with session() as db:
-        stu = _stu_of(db, int(gd_student_id))
-        if not stu or stu.is_deleted or stu.tenant_id != _tid():
-            raise not_found("毕设学生档案不存在")
-        if stu.stage not in ("FINAL_CHECK", "DEFENSE"):
-            raise AppException("DATA_CONFLICT", "当前阶段不可提交成果（须进入成果检查阶段）")
-        if not stu.topic_id:
-            raise AppException("DATA_CONFLICT", "请先完成选题确认后再提交成果")
-        elig = getattr(stu, "eligibility_status", None) or "PENDING"
-        if elig == "UNQUALIFIED":
-            raise AppException("DATA_CONFLICT", "资格不合格，不能提交成果")
-        # 中期必须已通过（与归档完整性口径一致）；缺记录/待检查/整改中/不通过均拦截
-        from app.models import GraduationMidterm
-        mid = db.scalars(select(GraduationMidterm).where(
-            GraduationMidterm.tenant_id == _tid(),
-            GraduationMidterm.gd_student_id == stu.id,
-            GraduationMidterm.is_deleted.is_(False),
-        ).order_by(GraduationMidterm.id.desc())).first()
-        if not midterm_allows_final_submit(mid):
-            raise AppException(
-                "DATA_CONFLICT",
-                "中期检查未通过或尚未完成，不能提交成果",
-            )
-        _mark_material_files(db, attachment_ids)
-        existing = db.scalars(select(GraduationFinal).where(
-            GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == stu.id,
-            GraduationFinal.is_deleted.is_(False)).order_by(
-                GraduationFinal.id.desc()).with_for_update()).all()
-        if any(f.status == "PENDING_REVIEW" for f in existing):
-            raise AppException("DATA_CONFLICT", "已有待审阅的成果，请等待指导教师批阅")
-        if final_type == "定稿":
-            has_draft_approved = any(f.final_type == "初稿" and f.status == "APPROVED" for f in existing)
-            if not has_draft_approved:
-                raise AppException("DATA_CONFLICT", "请先提交初稿并通过后再提交定稿")
-            if any(f.final_type == "定稿" and f.status == "APPROVED" for f in existing):
-                raise AppException("DATA_CONFLICT", "定稿已通过，无需重复提交")
-        same_type = [f for f in existing if f.final_type == final_type]
-        version = f"v{len(same_type) + 1}"
-        f = GraduationFinal(tenant_id=_tid(), gd_student_id=stu.id, final_type=final_type,
-                            version=version, submit_at=datetime.now(timezone.utc),
-                            plagiarism_rate=None,
-                            plagiarism_status="未检测",
-                            attachments_json=attachment_ids,
-                            status="PENDING_REVIEW", active_key=f"pending:{stu.id}")
-        db.add(f)
-        db.flush()
-        _audit(db, "FINAL", f.id, f"提交成果-{final_type}", f"{stu.name} {final_type} {version}",
-               "", "PENDING_REVIEW")
-        from app.modules.graduation.services import graduation_todo_helper as gd_todo
-        gd_todo.push_final_todo(db, f, stu)
-        db.commit()
-        return {"id": str(f.id), "finalType": final_type, "version": version, "status": "PENDING_REVIEW"}
 
 
 @_conflict_guard
@@ -822,7 +549,7 @@ def review_final(fid, action, comment=None) -> dict:
 def get_final_detail(fid) -> dict:
     """成果批阅详情：本条 + 同生历史版本 + 退回意见 + 真实附件（文件中心解析）。供教师移动端批阅前查看。"""
     with session() as db:
-        f = db.get(GraduationFinal, int(fid))
+        f = tenant_get(db, GraduationFinal, int(fid))
         if not f or f.is_deleted or f.tenant_id != _tid():
             raise not_found("成果不存在")
         stu = _stu_of(db, f.gd_student_id)
@@ -843,75 +570,6 @@ def get_final_detail(fid) -> dict:
         return row
 
 
-def remind_final(gd_student_id, channel="站内消息") -> dict:
-    """成果催交：对已进入指导/中期/成果阶段但未提交论文的学生留痕催办。"""
-    with session() as db:
-        stu = _stu_of(db, int(gd_student_id))
-        if not stu or stu.is_deleted or stu.tenant_id != _tid():
-            raise not_found("毕设学生档案不存在")
-        done = db.scalar(select(func.count()).select_from(GraduationFinal).where(
-            GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == stu.id,
-            GraduationFinal.is_deleted.is_(False))) or 0
-        if done:
-            raise AppException("DATA_CONFLICT", "该生已提交成果，无需催交")
-        message = _deliver_student_reminder(
-            db, stu, task_name="毕业设计成果", action_key="graduation.final.submit", channel=channel,
-        )
-        _audit(db, "FINAL", f"remind-{stu.id}", "成果催交",
-               f"已向学生账号 {message.receiver_user_id} 发送提醒，消息ID={message.id}")
-        db.commit()
-        return {"gdStudentId": str(stu.id), "studentName": stu.name, "reminded": True,
-                "deliveryStatus": "DELIVERED", "messageId": str(message.id), "todoId": None}
-
-
-@sanitize_xlsx_export
-def export_finals_xlsx(status=None, keyword=None, batch_id=None) -> dict:
-    """成果提交台账 Excel 导出（含导出人/时间抬头，写导出审计）。"""
-    enforce_permission(get_current_user_ctx() or {}, "graduationDesign.final.export")
-    if not batch_id:
-        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
-    items, total = list_finals(1, 100000, keyword=keyword, status=status, batch_id=batch_id)
-    headers = ["学生", "班级", "课题", "指导教师", "成果类型", "版本", "查重率", "查重状态", "提交时间", "状态"]
-    operator, _role = _op()
-    title = f"成果提交台账　导出时间：{datetime.now():%Y-%m-%d %H:%M}　导出人：{operator}"
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "成果提交台账"
-    ws.append([title])
-    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
-    ws["A1"].font = Font(bold=True, color="555555", size=10)
-    ws.append(headers)
-    fill = PatternFill("solid", fgColor="DCE6F1")
-    for c in ws[2]:
-        c.font = Font(bold=True); c.fill = fill
-    for it in items:
-        ws.append([it["studentName"], it.get("className", ""), it.get("topicTitle", ""),
-                  it.get("advisorName", ""), it.get("type", ""), it.get("version", ""),
-                  it.get("plagiarismRate", ""), it.get("plagiarismStatus", ""),
-                  (it.get("submitAt") or "")[:19], it.get("statusLabel", "")])
-    for i in range(1, len(headers) + 1):
-        ws.column_dimensions[chr(64 + i)].width = 16
-    ws.freeze_panes = "A3"
-    import base64
-    import io
-    buf = io.BytesIO()
-    wb.save(buf)
-    content = buf.getvalue()
-    digest = hashlib.sha256(content).hexdigest()
-    with session() as db:
-        trail = _audit(
-            db, "FINAL", "export", "导出成果提交台账",
-            f"共 {total} 行，状态={status or '全部'}，批次={batch_id}，sha256={digest}",
-        )
-        trail.batch_id = int(batch_id)
-        db.commit()
-    return {"filename": f"成果提交台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
-            "contentBase64": base64.b64encode(content).decode("ascii"), "rowCount": total,
-            "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}
-
-
 # ═══ 答辩 ═══
 
 def _def_row(g: GraduationDefenseGroup) -> dict:
@@ -928,7 +586,7 @@ def _def_row(g: GraduationDefenseGroup) -> dict:
             "secretaryMentorId": str(g.secretary_mentor_id) if getattr(g, "secretary_mentor_id", None) else None,
             "studentCount": g.student_count, "conflict": g.conflict or "",
             "published": g.published,
-            "publishedLabel": "已发布（学生端 P17 可见）" if g.published else "待调整后发布"}
+            "publishedLabel": "已发布（学生端可见）" if g.published else "待调整后发布"}
 
 
 def _can_access_defense_group(db, group: GraduationDefenseGroup) -> bool:
@@ -1008,7 +666,7 @@ def _recompute_defense(db, g):
 def _require_defense_batch(db, batch_id) -> GraduationBatch:
     if batch_id is None or batch_id == "":
         raise AppException("VALIDATION_ERROR", "新建答辩组必须指定毕设批次 batchId")
-    b = db.get(GraduationBatch, int(batch_id))
+    b = tenant_get(db, GraduationBatch, int(batch_id))
     if not b or b.is_deleted or b.tenant_id != _tid():
         raise not_found("毕设批次不存在")
     if b.status in ("ARCHIVED", "VOIDED"):
@@ -1044,78 +702,9 @@ def _apply_defense_people(db, g, *, chair=None, secretary=None, members=None,
     )
 
 
-def create_defense_group(group_name, defense_date=None, location=None, chair=None,
-                         members=None, secretary=None, batch_id=None,
-                         chair_mentor_id=None, secretary_mentor_id=None,
-                         member_mentor_ids=None) -> dict:
-    if not (group_name and group_name.strip()):
-        raise AppException("VALIDATION_ERROR", "答辩组名称不能为空")
-    with session() as db:
-        batch = _require_defense_batch(db, batch_id)
-        name = group_name.strip()
-        dup = db.scalar(select(func.count()).select_from(GraduationDefenseGroup).where(
-            GraduationDefenseGroup.tenant_id == _tid(),
-            GraduationDefenseGroup.batch_id == batch.id,
-            GraduationDefenseGroup.group_name == name,
-            GraduationDefenseGroup.is_deleted.is_(False))) or 0
-        if dup:
-            raise AppException("DATA_CONFLICT", "当前批次已存在同名答辩组")
-        g = GraduationDefenseGroup(
-            tenant_id=_tid(), batch_id=batch.id, group_name=name,
-            defense_date=(defense_date or "").strip() or None,
-            location=(location or "").strip() or None,
-            student_count=0, conflict="", published=False)
-        _apply_defense_people(
-            db, g, chair=chair, secretary=secretary, members=members,
-            chair_mentor_id=chair_mentor_id, secretary_mentor_id=secretary_mentor_id,
-            member_mentor_ids=member_mentor_ids)
-        db.add(g)
-        db.flush()
-        _recompute_defense(db, g)
-        _audit(db, "DEFENSE", g.id, "新建答辩组", f"{g.group_name} batch={batch.id}")
-        db.commit()
-        return get_defense_group_detail(g.id)
-
-
-def update_defense_group(gid, group_name=None, defense_date=None, location=None, chair=None,
-                         members=None, secretary=None,
-                         chair_mentor_id=None, secretary_mentor_id=None,
-                         member_mentor_ids=None) -> dict:
-    """编辑不可改 batch_id（禁止跨批迁移）。"""
-    with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
-        if not g or g.is_deleted or g.tenant_id != _tid():
-            raise not_found("答辩组不存在")
-        if group_name and group_name.strip():
-            new_name = group_name.strip()
-            if new_name != g.group_name and g.batch_id:
-                dup = db.scalar(select(func.count()).select_from(GraduationDefenseGroup).where(
-                    GraduationDefenseGroup.tenant_id == _tid(),
-                    GraduationDefenseGroup.batch_id == g.batch_id,
-                    GraduationDefenseGroup.group_name == new_name,
-                    GraduationDefenseGroup.is_deleted.is_(False),
-                    GraduationDefenseGroup.id != g.id)) or 0
-                if dup:
-                    raise AppException("DATA_CONFLICT", "当前批次已存在同名答辩组")
-            g.group_name = new_name
-        g.defense_date = (defense_date or "").strip() or None
-        g.location = (location or "").strip() or None
-        _apply_defense_people(
-            db, g, chair=chair, secretary=secretary, members=members,
-            chair_mentor_id=chair_mentor_id, secretary_mentor_id=secretary_mentor_id,
-            member_mentor_ids=member_mentor_ids, preserve_existing=True)
-        was_published = g.published
-        g.published = False  # 编辑后须重新发布，学生端重新通知
-        _recompute_defense(db, g)
-        _audit(db, "DEFENSE", g.id, "编辑答辩组" + ("（撤回已发布，需重新发布）" if was_published else ""),
-               g.group_name)
-        db.commit()
-        return get_defense_group_detail(g.id)
-
-
 def get_defense_group_detail(gid) -> dict:
     with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
+        g = tenant_get(db, GraduationDefenseGroup, int(gid))
         if not g or g.is_deleted or g.tenant_id != _tid():
             raise not_found("答辩组不存在")
         if not _can_access_defense_group(db, g):
@@ -1138,183 +727,6 @@ def get_defense_group_detail(gid) -> dict:
                 "conflict": conflict,
             })
         return row
-
-
-def list_defense_eligible_students(gid=None, keyword=None) -> list:
-    """可分配到答辩组的学生：须已进入成果检查及以后阶段，且与答辩组同批次。"""
-    with session() as db:
-        if not has_full_scope():
-            raise no_permission("Only graduation managers can list defense assignment candidates")
-        group_batch = None
-        gid_int = int(gid) if gid else None
-        if gid_int:
-            g = db.get(GraduationDefenseGroup, gid_int)
-            if not g or g.is_deleted or g.tenant_id != _tid():
-                raise not_found("答辩组不存在")
-            group_batch = g.batch_id
-        stus = db.scalars(select(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE").order_by(GraduationStudent.id)).all()
-        out = []
-        for s in stus:
-            if s.stage not in ("FINAL_CHECK", "DEFENSE", "COMPLETED"):
-                continue
-            if group_batch is not None and s.batch_id != group_batch:
-                continue
-            if not (s.topic_id or s.stage not in ("TOPIC_SELECTING", None, "")):
-                continue
-            if keyword and keyword.strip() not in (s.name or ""):
-                continue
-            out.append({"id": str(s.id), "name": s.name, "className": s.class_name or "",
-                        "topicTitle": s.topic_title or "", "advisorName": s.advisor_name or "",
-                        "currentGroup": s.defense_group or "",
-                        "assignedHere": s.defense_group_id == gid_int if gid_int else False,
-                        "assignedElsewhere": bool(s.defense_group_id) and s.defense_group_id != gid_int})
-        return out
-
-
-def assign_defense_students(gid, student_ids) -> dict:
-    with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
-        if not g or g.is_deleted or g.tenant_id != _tid():
-            raise not_found("答辩组不存在")
-        if not g.batch_id:
-            raise AppException("DATA_CONFLICT", "答辩组未绑定批次，请先迁移/重建后再分配学生")
-        current = len(_assigned_students(db, g.id))
-        add_ids = [int(x) for x in (student_ids or [])]
-        for sid in add_ids:
-            s = db.get(GraduationStudent, sid)
-            if not s or s.is_deleted or s.tenant_id != _tid():
-                raise not_found(f"学生 {sid} 不存在")
-            if s.defense_group_id == g.id:
-                continue
-            if s.batch_id != g.batch_id:
-                raise AppException(
-                    "DATA_CONFLICT",
-                    f"学生 {s.name or sid} 与答辩组不在同一毕设批次，不能跨批分配",
-                )
-            if s.stage not in ("FINAL_CHECK", "DEFENSE", "COMPLETED"):
-                raise AppException(
-                    "DATA_CONFLICT",
-                    f"学生 {s.name or sid} 须进入成果检查阶段后方可分配答辩组",
-                )
-            assert_student_access(db, s, "defense.assign")
-            current += 1
-            if current > MAX_DEFENSE_STUDENTS:
-                raise AppException("DATA_CONFLICT", f"单个答辩组学生数不得超过 {MAX_DEFENSE_STUDENTS} 人")
-            s.defense_group_id = g.id
-            s.defense_group = g.group_name
-            if s.stage == "FINAL_CHECK":
-                final_ok = db.scalars(select(GraduationFinal).where(
-                    GraduationFinal.tenant_id == _tid(), GraduationFinal.gd_student_id == s.id,
-                    GraduationFinal.is_deleted.is_(False), GraduationFinal.final_type == "定稿",
-                    GraduationFinal.status == "APPROVED",
-                ).limit(1)).first()
-                if final_ok:
-                    s.stage = "DEFENSE"
-        db.flush()
-        _recompute_defense(db, g)
-        g.published = False
-        _audit(db, "DEFENSE", g.id, "分配学生进答辩组", f"{g.group_name} +{len(add_ids)} 人")
-        db.commit()
-        return get_defense_group_detail(g.id)
-
-
-def unassign_defense_students(gid, student_ids) -> dict:
-    with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
-        if not g or g.is_deleted or g.tenant_id != _tid():
-            raise not_found("答辩组不存在")
-        for sid in [int(x) for x in (student_ids or [])]:
-            s = db.get(GraduationStudent, sid)
-            if s and s.defense_group_id == g.id:
-                s.defense_group_id = None
-                s.defense_group = None
-        db.flush()
-        _recompute_defense(db, g)
-        g.published = False
-        _audit(db, "DEFENSE", g.id, "移出答辩组学生", g.group_name)
-        db.commit()
-        return get_defense_group_detail(g.id)
-
-
-def publish_defense(gid) -> dict:
-    with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
-        if not g or g.is_deleted or g.tenant_id != _tid():
-            raise not_found("答辩组不存在")
-        _recompute_defense(db, g)  # 发布前按最新分配重算冲突/人数
-        if g.conflict:
-            raise AppException("VALIDATION_ERROR", "存在评委与导师冲突，调整评委或学生后方可发布")
-        if (g.chair or "待指定") in ("待指定", "") or (g.location or "待定") in ("待定", ""):
-            raise AppException("VALIDATION_ERROR", "评委或地点未安排完整，暂不能发布")
-        if g.student_count <= 0:
-            raise AppException("VALIDATION_ERROR", "尚未分配答辩学生，暂不能发布")
-        g.published = True
-        g.version += 1
-        _audit(db, "DEFENSE", g.id, "发布答辩安排", f"{g.group_name}（{g.student_count} 人）")
-        db.commit()
-        return {"id": str(g.id), "published": True}
-
-
-def notify_defense_group(gid, user=None) -> dict:
-    """向已发布答辩组学生投递站内信（receiver_id=StudentProfile.id）。"""
-    from app.services.message_event_outbox_service import emit_message_event, process_pending_outbox
-
-    if not gid:
-        raise AppException("VALIDATION_ERROR", "defenseGroupId 必填")
-    with session() as db:
-        g = db.get(GraduationDefenseGroup, int(gid))
-        if not g or g.is_deleted or g.tenant_id != _tid():
-            raise not_found("答辩组不存在")
-        if not _can_access_defense_group(db, g):
-            raise no_permission("Defense group is outside the current graduation-design scope")
-        if not g.published:
-            return {"notified": 0, "skipped": 0, "groupName": g.group_name or "",
-                    "message": "该答辩组未发布，暂不能通知"}
-        students = [s for s in _assigned_students(db, g.id) if can_access_student(db, s)]
-        when = (g.defense_date or "").strip() or "待通知"
-        where = (g.location or "").strip() or "待定"
-        title = f"答辩安排通知：{g.group_name or '答辩组'}"
-        notified = 0
-        skipped = 0
-        for s in students:
-            rid = int(s.student_id or 0)
-            if rid <= 0:
-                skipped += 1
-                continue
-            content = (
-                f"同学你好，你的毕业设计答辩组「{g.group_name or ''}」已发布。"
-                f"时间：{when}；地点：{where}；主席：{g.chair or '待指定'}。"
-                f"请按时参加，如有冲突请尽快联系指导教师。"
-            )
-            emit_message_event(
-                db,
-                event_code="GRADUATION_DESIGN.DEFENSE_ARRANGED",
-                source_module="graduation",
-                source_biz_type="defense_group",
-                source_biz_id=int(g.id),
-                recipient_refs=[{"studentId": rid}],
-                content=content,
-                title=title,
-                dedup_key=f"GRADUATION_DESIGN.DEFENSE_ARRANGED:{g.id}:student:{rid}",
-            )
-            notified += 1
-        _audit(db, "DEFENSE", g.id, "发送答辩通知",
-               f"{g.group_name} notified={notified} skipped={skipped}")
-        db.commit()
-        try:
-            process_pending_outbox(limit=50, worker_id="graduation-inline")
-        except Exception:  # noqa: BLE001
-            pass
-        if notified <= 0:
-            msg = "暂无可投递学生（缺学籍关联或组内无学生）"
-        else:
-            msg = f"已向 {notified} 名学生发送答辩通知"
-            if skipped:
-                msg += f"（{skipped} 人缺学籍关联已跳过）"
-        return {"notified": notified, "skipped": skipped, "groupName": g.group_name or "",
-                "message": msg}
 
 
 @sanitize_xlsx_export
@@ -1369,12 +781,12 @@ def export_defense_xlsx(batch_id=None) -> dict:
 def student_defense_view(gd_student_id) -> dict:
     """学生端查看本人答辩安排（仅已发布才展示时间/地点/评委）。"""
     with session() as db:
-        s = db.get(GraduationStudent, int(gd_student_id))
+        s = tenant_get(db, GraduationStudent, int(gd_student_id))
         if not s or s.is_deleted or s.tenant_id != _tid():
             return {"hasData": False}
         if not s.defense_group_id:
             return {"hasData": True, "assigned": False, "message": "答辩分组尚未安排"}
-        g = db.get(GraduationDefenseGroup, s.defense_group_id)
+        g = tenant_get(db, GraduationDefenseGroup, s.defense_group_id)
         if not g or g.is_deleted:
             return {"hasData": True, "assigned": False, "message": "答辩分组尚未安排"}
         if not g.published:
@@ -1415,93 +827,281 @@ def list_audit(page, ps, biz_type=None, keyword=None):
         return _page(items, page, ps)
 
 
+_DASHBOARD_PERMISSION_CODES = (
+    "graduationDesign.proposal.view",
+    "graduationDesign.final.view",
+    "graduationDesign.proposal.review",
+    "graduationDesign.final.review",
+    "graduationDesign.defense.view",
+    "graduationDesign.defense.publish",
+    "graduationDesign.proposal.remind",
+    "graduationDesign.risk.view",
+    "graduationDesign.risk.accept",
+    "graduationDesign.risk.process",
+    "graduationDesign.risk.close",
+    "graduationDesign.midterm.review",
+)
+
+
+def _midterm_todo_rows(db, scope, limit=8):
+    """中期待办：开题已通过但尚未检查的学生 + 学生已提交整改待复核的记录。"""
+    from app.modules.graduation.services.graduation_process_consistency import (
+        _midterm_eligible_clause, _no_midterm_row,
+    )
+    from app.models import GraduationMidterm
+
+    base = (GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
+            GraduationStudent.record_status == "ACTIVE", GraduationStudent.id.in_(scope))
+    to_check_q = select(GraduationStudent).where(*base, _midterm_eligible_clause(), _no_midterm_row())
+    to_check = int(db.scalar(select(func.count()).select_from(to_check_q.subquery())) or 0)
+    rectify_q = (select(GraduationMidterm, GraduationStudent)
+                 .join(GraduationStudent, GraduationStudent.id == GraduationMidterm.gd_student_id)
+                 .where(*base, GraduationMidterm.tenant_id == _tid(), GraduationMidterm.is_deleted.is_(False),
+                        GraduationMidterm.status == "RECTIFY_SUBMITTED"))
+    to_review = int(db.scalar(select(func.count()).select_from(rectify_q.subquery())) or 0)
+    rows = [("CHECK", s) for s in db.scalars(to_check_q.order_by(GraduationStudent.id.asc()).limit(limit)).all()]
+    rows += [("RECTIFY", s) for _m, s in db.execute(
+        rectify_q.order_by(GraduationMidterm.rectify_submitted_at.asc()).limit(limit)).all()]
+    return to_check, to_review, rows[:limit]
+
+
 def get_dashboard(batch_id=None) -> dict:
+    current_user = get_current_user_ctx() or {}
+    permissions = permission_decisions(current_user, _DASHBOARD_PERMISSION_CODES)
+    can_view_proposal = permissions["graduationDesign.proposal.view"]
+    can_view_final = permissions["graduationDesign.final.view"]
+    can_review_proposal = can_view_proposal and permissions["graduationDesign.proposal.review"]
+    can_review_final = can_view_final and permissions["graduationDesign.final.review"]
+    can_view_defense = permissions["graduationDesign.defense.view"]
+    can_publish_defense = can_view_defense and permissions["graduationDesign.defense.publish"]
+    can_remind_proposal = can_view_proposal and permissions["graduationDesign.proposal.remind"]
+    can_view_risk = permissions["graduationDesign.risk.view"]
+    can_accept_risk = permissions["graduationDesign.risk.accept"]
+    can_process_risk = permissions["graduationDesign.risk.process"]
+    can_close_risk = permissions["graduationDesign.risk.close"]
+    can_review_midterm = permissions["graduationDesign.midterm.review"]
+
+    def _risk_action(row):
+        status = str(row.get("status") or "").upper()
+        if status == "OPEN" and can_accept_risk:
+            return "去受理"
+        if status == "PROCESSING" and can_process_risk:
+            return "记录处理"
+        if can_close_risk and (status == "PROCESSING" or (
+                status == "OPEN" and row.get("conditionActive") is False)):
+            return "关闭风险"
+        return ""
     with session() as db:
-        visible_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
-        total = len(visible_ids)
-        scope = visible_ids or [-1]
-        pend_prop = db.scalar(select(func.count()).select_from(GraduationProposal).where(
-            GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
-            GraduationProposal.is_deleted.is_(False),
-            GraduationProposal.gd_student_id.in_(scope))) or 0
-        pend_final = db.scalar(select(func.count()).select_from(GraduationFinal).where(
-            GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
-            GraduationFinal.is_deleted.is_(False),
-            GraduationFinal.gd_student_id.in_(scope))) or 0
-        high_risk = db.scalar(select(func.count()).select_from(GraduationStudent).where(
-            GraduationStudent.tenant_id == _tid(), GraduationStudent.risk_level == "HIGH",
-            GraduationStudent.is_deleted.is_(False), GraduationStudent.id.in_(scope))) or 0
-        flow = {}
-        for s in db.scalars(select(GraduationStudent).where(
-                GraduationStudent.tenant_id == _tid(),
-                GraduationStudent.is_deleted.is_(False),
-                GraduationStudent.id.in_(scope))).all():
-            flow[s.stage] = flow.get(s.stage, 0) + 1
+        # 看板只需要聚合数字和最多 8 条对象，不能先把整个批次的学生 ID / ORM
+        # 实体读取到 Python。复用开题读模型的同一 SQL 数据范围，避免看板和列表
+        # 对学院、专业、导师等角色出现范围口径分叉。
+        scope = proposal_read.student_scope_select(db, _tid(), batch_id=batch_id)
+        total = int(db.scalar(
+            select(func.count()).select_from(GraduationStudent).where(GraduationStudent.id.in_(scope))
+        ) or 0)
+        pend_prop = 0
+        if can_review_proposal:
+            pend_prop = db.scalar(select(func.count()).select_from(GraduationProposal).where(
+                GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
+                GraduationProposal.is_deleted.is_(False),
+                GraduationProposal.gd_student_id.in_(scope))) or 0
+        pend_final = 0
+        if can_review_final:
+            pend_final = db.scalar(select(func.count()).select_from(GraduationFinal).where(
+                GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
+                GraduationFinal.is_deleted.is_(False), GraduationFinal.gd_student_id.in_(scope))) or 0
+        high_risk = 0
+        if can_view_risk:
+            high_risk = db.scalar(select(func.count()).select_from(GraduationStudent).where(
+                GraduationStudent.tenant_id == _tid(), GraduationStudent.risk_level == "HIGH",
+                GraduationStudent.is_deleted.is_(False), GraduationStudent.id.in_(scope))) or 0
+        flow = {
+            str(stage): int(count)
+            for stage, count in db.execute(
+                select(GraduationStudent.stage, func.count())
+                .where(GraduationStudent.id.in_(scope))
+                .group_by(GraduationStudent.stage)
+            ).all()
+        }
         # 答辩待发布：按答辩组自身 batch_id（与列表/导出一致）
         bid = int(batch_id) if batch_id else None
-        defense_q = select(GraduationDefenseGroup).where(
-            GraduationDefenseGroup.tenant_id == _tid(), GraduationDefenseGroup.published.is_(False),
-            GraduationDefenseGroup.is_deleted.is_(False))
-        if bid is not None:
-            defense_q = defense_q.where(GraduationDefenseGroup.batch_id == bid)
-        defense_groups = db.scalars(defense_q).all()
+        defense_groups = []
+        if can_view_defense:
+            defense_q = select(GraduationDefenseGroup).where(
+                GraduationDefenseGroup.tenant_id == _tid(), GraduationDefenseGroup.published.is_(False),
+                GraduationDefenseGroup.is_deleted.is_(False))
+            if bid is not None:
+                defense_q = defense_q.where(GraduationDefenseGroup.batch_id == bid)
+            defense_groups = db.scalars(defense_q).all()
         pend_defense = 0
         for group in defense_groups:
             if not _can_access_defense_group(db, group):
                 continue
             pend_defense += 1
         # 未提交开题：与开题列表同一批次
-        not_submitted = len(_not_submitted_proposals(db, batch_id=batch_id))
+        if can_remind_proposal:
+            # 复用真分页读模型：count 由 SQL 完成，首屏只取任务卡实际会显示的 8 条。
+            not_submitted_rows, not_submitted = proposal_read.list_proposals(
+                db, _tid(), 1, 8, status="NOT_SUBMITTED", batch_id=batch_id
+            )
+        else:
+            not_submitted_rows, not_submitted = [], 0
         # 真实风险预警（未关闭；限定当前批次）
         risk_alerts = []
-        try:
-            from app.modules.graduation.services import graduation_risk_service as risk_svc
-            items, _ = risk_svc.list_risks(1, 50, batch_id=batch_id)
-            for r in items:
-                if r.get("status") == "CLOSED":
-                    continue
-                risk_alerts.append({"id": r["id"], "code": r["riskCode"], "title": r["riskName"],
-                                    "level": r.get("level") or "MEDIUM",
-                                    "detail": f"{r.get('studentName') or '—'}"
-                                              + (f" · 指导 {r['advisorName']}" if r.get("advisorName") else "")
-                                              + f" · {r.get('statusLabel') or ''}",
-                                    "time": r.get("detectedAt") or ""})
-                if len(risk_alerts) >= 6:
-                    break
-        except Exception:  # noqa: BLE001 - 风险模块异常不应影响看板主体
-            risk_alerts = []
-        # 跨模块统计：与综合统计同一批次
-        module_stats = []
-        try:
-            from app.modules.graduation.services import graduation_stats_service as stats_svc
-            ov = stats_svc.overview_stats(batch_id=batch_id)
-            m, gu, mt = ov.get("mentor", {}), ov.get("guidance", {}), ov.get("midterm", {})
-            rv, gr, ar = ov.get("review", {}), ov.get("grade", {}), ov.get("archive", {})
+        if can_view_risk:
+            try:
+                from app.modules.graduation.services import graduation_risk_service as risk_svc
+                items, _ = risk_svc.list_risks(1, 50, batch_id=batch_id)
+                for r in items:
+                    if r.get("status") == "CLOSED":
+                        continue
+                    action_label = _risk_action(r)
+                    risk_alerts.append({"id": r["id"], "code": r["riskCode"], "title": r["riskName"],
+                                        "gdStudentId": r.get("gdStudentId"),
+                                        "studentName": r.get("studentName") or "",
+                                        "level": r.get("level") or "MEDIUM",
+                                        "detail": f"{r.get('studentName') or '—'}"
+                                                  + (f" · 指导 {r['advisorName']}" if r.get("advisorName") else "")
+                                                  + f" · {r.get('statusLabel') or ''}",
+                                        "time": r.get("detectedAt") or "",
+                                        "actionLabel": action_label or "查看",
+                                        "canHandle": bool(action_label)})
+                    if len(risk_alerts) >= 6:
+                        break
+            except Exception:  # noqa: BLE001 - 风险模块异常不应影响看板主体
+                risk_alerts = []
+        # 角色范围内的「今天具体做什么」。聚合数字留在第二层，第一层必须是可以直接
+        # 落到某个学生/业务对象的工作项，避免用数量大小冒充优先级。
+        today_work_items = []
 
-            def _done(stat, key):
-                return next((x["count"] for x in stat.get("byStatus", []) if x["status"] == key), 0)
-            module_stats = [
-                {"label": "导师已合格", "value": str(m.get("qualifiedCount", 0)),
-                 "hint": f"未分配学生 {m.get('unassignedStudents', 0)} · 满员 {m.get('fullCapacityCount', 0)}"},
-                {"label": "指导平均次数", "value": str(gu.get("avgCount", 0)),
-                 "hint": f"频次不足 {gu.get('insufficientCount', 0)} 人"},
-                {"label": "中期检查", "value": str(mt.get("total", 0)),
-                 "hint": f"待检 {_done(mt, 'PENDING')}"},
-                {"label": "教师评阅", "value": str(rv.get("total", 0)),
-                 "hint": f"已完成 {_done(rv, 'COMPLETED')}"},
-                {"label": "成绩已发布均分", "value": str(gr.get("publishedAvg") or "—"),
-                 "hint": f"优秀 {gr.get('excellentCount', 0)} 人"},
-                {"label": "归档率", "value": f"{ar.get('archiveRate', 0)}%",
-                 "hint": f"已备案 {ar.get('filedCount', 0)}/{ar.get('studentTotal', 0)}"},
-            ]
-        except Exception:  # noqa: BLE001 - 统计异常不影响看板主体
-            module_stats = []
+        def _action(label, path, **query):
+            clean = {key: str(value) for key, value in query.items() if value not in (None, "")}
+            if batch_id:
+                clean["batchId"] = str(batch_id)
+            return {"label": label, "path": path, "query": clean}
+
+        actionable_risks = [risk for risk in risk_alerts if risk.get("canHandle")]
+        for risk in actionable_risks:
+            level = str(risk.get("level") or "MEDIUM").upper()
+            today_work_items.append({
+                "id": f"risk:{risk['id']}",
+                "priority": "CRITICAL" if level == "CRITICAL" else ("HIGH" if level == "HIGH" else "NORMAL"),
+                "student": {"id": str(risk.get("gdStudentId") or ""), "name": risk.get("studentName") or "待确认学生"},
+                "business": "风险处置",
+                "whyHere": f"{risk.get('code') or '风险'} 仍未关闭，需要先确认责任人与处置方案。",
+                "waitingOn": "当前风险责任人",
+                "nextActor": "风险复核人与该生后续环节负责人",
+                "dueAt": "",
+                "recentChange": risk.get("time") or "最近一次风险扫描仍命中",
+                "primaryAction": _action(risk.get("actionLabel") or "查看风险",
+                                           "/admin/graduation/risk-archive", panel="risk", rsel=risk.get("id")),
+            })
+
+        pending_proposals = []
+        if can_review_proposal:
+            pending_proposals = db.scalars(select(GraduationProposal).where(
+                GraduationProposal.tenant_id == _tid(), GraduationProposal.status == "PENDING_REVIEW",
+                GraduationProposal.is_deleted.is_(False), GraduationProposal.gd_student_id.in_(scope),
+            ).order_by(GraduationProposal.submit_at.asc(), GraduationProposal.id.asc()).limit(8)).all()
+        pending_finals = []
+        if can_review_final:
+            pending_finals = db.scalars(select(GraduationFinal).where(
+                GraduationFinal.tenant_id == _tid(), GraduationFinal.status == "PENDING_REVIEW",
+                GraduationFinal.is_deleted.is_(False), GraduationFinal.gd_student_id.in_(scope),
+            ).order_by(GraduationFinal.submit_at.asc(), GraduationFinal.id.asc()).limit(8)).all()
+        pending_student_ids = {
+            int(row.gd_student_id) for row in (*pending_proposals, *pending_finals)
+            if row.gd_student_id is not None
+        }
+        pending_students = {
+            int(row.id): row for row in db.scalars(select(GraduationStudent).where(
+                GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.id.in_(pending_student_ids),
+                GraduationStudent.is_deleted.is_(False),
+            )).all()
+        } if pending_student_ids else {}
+        for proposal in pending_proposals:
+            student = pending_students.get(int(proposal.gd_student_id))
+            if not student:
+                continue
+            today_work_items.append({
+                "id": f"proposal:{proposal.id}", "priority": "WAITING_REVIEW",
+                "student": {"id": str(student.id), "name": student.name or "未命名学生"},
+                "business": "开题批阅", "whyHere": "学生已提交开题报告，正在等待当前职责范围内的批阅。",
+                "waitingOn": "你",
+                "nextActor": "学生（退回时）或后续检查负责人（通过时）",
+                "dueAt": "", "recentChange": _iso(proposal.submit_at) or "已提交待审",
+                "primaryAction": _action("批阅开题", "/admin/graduation/proposals", tab="PENDING_REVIEW", studentId=student.id),
+            })
+
+        for final in pending_finals:
+            student = pending_students.get(int(final.gd_student_id))
+            if not student:
+                continue
+            today_work_items.append({
+                "id": f"final:{final.id}", "priority": "WAITING_REVIEW",
+                "student": {"id": str(student.id), "name": student.name or "未命名学生"},
+                "business": "成果批阅", "whyHere": f"学生已提交{final.final_type or '成果'}，需要核对材料与评阅意见。",
+                "waitingOn": "你",
+                "nextActor": "学生（退回时）或答辩安排负责人（通过时）",
+                "dueAt": "", "recentChange": _iso(final.submit_at) or "已提交待审",
+                "primaryAction": _action("批阅成果", "/admin/graduation/finals", tab="PENDING_REVIEW", studentId=student.id),
+            })
+
+        mid_to_check, mid_to_review, mid_rows = (0, 0, [])
+        if can_review_midterm:
+            mid_to_check, mid_to_review, mid_rows = _midterm_todo_rows(db, scope)
+        for kind, student in mid_rows:
+            checking = kind == "CHECK"
+            today_work_items.append({
+                "id": f"midterm-{kind.lower()}:{student.id}", "priority": "WAITING_REVIEW",
+                "student": {"id": str(student.id), "name": student.name or "未命名学生"},
+                "business": "中期检查" if checking else "中期整改复核",
+                "whyHere": "开题已通过，可以进行中期检查。" if checking else "学生已提交整改说明，等待复核。",
+                "waitingOn": "你",
+                "nextActor": "学生（需整改时）或论文提交环节（通过时）",
+                "dueAt": "", "recentChange": "待检查" if checking else "整改已提交",
+                "primaryAction": _action("去中期检查" if checking else "复核整改",
+                                           "/admin/graduation/process", panel="midterm", studentId=student.id),
+            })
+
+        for student_row in not_submitted_rows[:8]:
+            student_id = student_row.get("gdStudentId") or student_row.get("projectId")
+            today_work_items.append({
+                "id": f"proposal-missing:{student_id}", "priority": "OVERDUE",
+                "student": {"id": str(student_id or ""), "name": student_row.get("studentName") or "未命名学生"},
+                "business": "开题催交", "whyHere": "已完成选题确认但尚未提交开题报告，后续节点可能被阻塞。",
+                "waitingOn": "学生",
+                "nextActor": "指导教师",
+                "dueAt": "", "recentChange": "当前仍未提交",
+                "primaryAction": _action("查看并催交", "/admin/graduation/proposals", tab="NOT_SUBMITTED", studentId=student_id),
+            })
+
+        if can_publish_defense:
+            for group in defense_groups[:8]:
+                today_work_items.append({
+                    "id": f"defense-group:{group.id}", "priority": "RELEASE_BLOCKER",
+                    "student": {"id": "", "name": group.group_name or "未命名答辩组"},
+                    "business": "答辩发布", "whyHere": "答辩组已创建但尚未发布，学生还看不到时间与地点。",
+                    "waitingOn": "答辩安排负责人",
+                    "nextActor": "学生与答辩专家",
+                    "dueAt": group.defense_date or "", "recentChange": "等待发布",
+                    "primaryAction": _action("检查并发布", "/admin/graduation/defense", groupId=group.id),
+                })
+
+        priority_rank = {
+            "CRITICAL": 0, "HIGH": 1, "OVERDUE": 2, "DUE_24H": 3,
+            "RELEASE_BLOCKER": 4, "RETURNED": 5, "WAITING_REVIEW": 6, "NORMAL": 7,
+        }
+        today_work_items.sort(key=lambda item: (
+            priority_rank.get(item["priority"], 99), item.get("dueAt") or "9999-12-31", item["id"],
+        ))
         # 当前批次信息：优先用请求的 batch_id；否则回落 RUNNING / 最近有效批次
         _BATCH_LABEL = {"DRAFT": "草稿", "RUNNING": "进行中", "CLOSED": "已结束",
                         "ARCHIVED": "已归档", "VOIDED": "已作废"}
         cur_batch = None
         if batch_id:
-            cur_batch = db.get(GraduationBatch, int(batch_id))
+            cur_batch = tenant_get(db, GraduationBatch, int(batch_id))
             if cur_batch and (cur_batch.tenant_id != _tid() or cur_batch.is_deleted):
                 cur_batch = None
         if not cur_batch:
@@ -1521,37 +1121,56 @@ def get_dashboard(batch_id=None) -> dict:
         else:
             batch_name, batch_range, batch_status = "暂无毕设批次", "", "未开始"
         _active_stage = _active_student_stage(cur_batch)
+        stats = [
+            {"label": "毕设学生", "value": str(total), "trend": "", "trendQuality": "neutral"},
+        ]
+        if can_review_proposal:
+            stats.append({"label": "开题待审阅", "value": str(pend_prop),
+                          "trend": f"待批 {pend_prop}", "trendQuality": "bad" if pend_prop else "good"})
+        if can_review_final:
+            stats.append({"label": "成果待审阅", "value": str(pend_final),
+                          "trend": f"待批 {pend_final}", "trendQuality": "neutral"})
+        if can_view_defense:
+            stats.append({"label": "答辩待发布", "value": str(pend_defense),
+                          "trend": f"未发布 {pend_defense} 组", "trendQuality": "neutral"})
+        if can_view_risk:
+            stats.append({"label": "高风险学生", "value": str(high_risk),
+                          "trend": "", "trendQuality": "bad" if high_risk else "good"})
+        todos = []
+        if can_review_proposal:
+            todos.append({"id": "t1", "label": "开题材料待审阅", "count": pend_prop, "tone": "danger",
+                          "route": "/admin/graduation/proposals", "hint": "指导教师批阅开题报告"})
+        if can_remind_proposal:
+            todos.append({"id": "t2", "label": "开题未提交催交", "count": not_submitted, "tone": "warning",
+                          "route": "/admin/graduation/proposals", "hint": "已确认选题但未交开题"})
+        if can_review_final:
+            todos.append({"id": "t3", "label": "成果待审阅", "count": pend_final, "tone": "warning",
+                          "route": "/admin/graduation/finals", "hint": "论文初稿/定稿批阅"})
+        if can_review_midterm:
+            todos.append({"id": "t6", "label": "中期待检查/复核", "count": mid_to_check + mid_to_review,
+                          "tone": "warning", "route": "/admin/graduation/process?panel=midterm",
+                          "hint": f"待检查 {mid_to_check} · 整改待复核 {mid_to_review}"})
+        if can_publish_defense:
+            todos.append({"id": "t4", "label": "答辩组待发布", "count": pend_defense, "tone": "warning",
+                          "route": "/admin/graduation/defense", "hint": "分组排期完成后发布"})
+        if actionable_risks:
+            todos.append({"id": "t5", "label": "未处理风险", "count": len(actionable_risks), "tone": "danger",
+                          "route": "/admin/graduation/risk-archive",
+                          "hint": "受理并处置过程风险"})
         return {"batchId": str(batch_id) if batch_id else (str(cur_batch.id) if cur_batch else None),
                 "batchName": batch_name, "batchRange": batch_range,
-                "moduleStats": module_stats,
+                # 跨模块统计由折叠区按需走 /graduation/gd-stats/overview，不能拖慢首次打开总览。
+                "moduleStats": [],
+                "moduleStatsDeferred": True,
                 "batchStatus": batch_status,
-                "stats": [
-                    {"label": "毕设学生", "value": str(total), "trend": "", "trendQuality": "neutral"},
-                    {"label": "开题待审阅", "value": str(pend_prop),
-                     "trend": f"待批 {pend_prop}", "trendQuality": "bad" if pend_prop else "good"},
-                    {"label": "成果待审阅", "value": str(pend_final),
-                     "trend": f"待批 {pend_final}", "trendQuality": "neutral"},
-                    {"label": "答辩待发布", "value": str(pend_defense),
-                     "trend": f"未发布 {pend_defense} 组", "trendQuality": "neutral"},
-                    {"label": "高风险学生", "value": str(high_risk),
-                     "trend": "", "trendQuality": "bad" if high_risk else "good"},
-                ],
+                "stats": stats,
                 # active 按当前批次阶段时间轴真实推算（此前写死 FINAL_CHECK，无论毕设走到哪
                 # 都恒亮「成果检查」）。未配阶段日期时 _active_student_stage 返回 None，不高亮。
                 "flow": [{"label": L_STAGE[k], "value": flow.get(k, 0), "active": k == _active_stage}
-                         for k in L_STAGE],
-                "todos": [
-                    {"id": "t1", "label": "开题材料待审阅", "count": pend_prop, "tone": "danger",
-                     "route": "/admin/graduation/proposals", "hint": "指导教师批阅开题报告"},
-                    {"id": "t2", "label": "开题未提交催交", "count": not_submitted, "tone": "warning",
-                     "route": "/admin/graduation/proposals", "hint": "已确认选题但未交开题"},
-                    {"id": "t3", "label": "成果待审阅", "count": pend_final, "tone": "warning",
-                     "route": "/admin/graduation/finals", "hint": "论文初稿/定稿批阅"},
-                    {"id": "t4", "label": "答辩组待发布", "count": pend_defense, "tone": "warning",
-                     "route": "/admin/graduation/defense", "hint": "分组排期完成后发布"},
-                    {"id": "t5", "label": "未处理风险", "count": len(risk_alerts), "tone": "danger",
-                     "route": "/admin/graduation/risk-archive", "hint": "受理并处置过程风险"},
-                ],
+                          for k in L_STAGE],
+                "todayWorkItems": today_work_items[:20],
+                "actionableRiskCount": len(actionable_risks),
+                "todos": todos,
                 "riskAlerts": risk_alerts}
 
 
@@ -1574,4 +1193,210 @@ from app.modules.graduation.services.graduation_material_consistency import (
 )
 from app.modules.graduation.services.graduation_material_access_consistency import (
     resolve_material_download,
+)
+
+
+# ── 开题/成果列表、统计、台账导出：唯一实现为 SQL 读模型（MySQL 侧范围/筛选/分页）──
+# 原先由 services/__init__.py 在导入时替换本模块函数，现直接定义于此，避免隐式覆盖。
+from app.modules.graduation.services import graduation_final_read_service as final_read  # noqa: E402
+
+
+def list_proposals(page, ps, keyword=None, status=None, batch_id=None):
+    with session() as db:
+        return proposal_read.list_proposals(
+            db,
+            _tid(),
+            page,
+            ps,
+            keyword=keyword,
+            status=status,
+            batch_id=batch_id,
+        )
+
+
+def proposal_stats(batch_id=None):
+    with session() as db:
+        return proposal_read.proposal_stats(db, _tid(), batch_id=batch_id)
+
+
+def _export_proposals_xlsx(status=None, keyword=None, batch_id=None):
+    enforce_permission(
+        get_current_user_ctx() or {},
+        "graduationDesign.proposal.export",
+    )
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    import base64
+    import io
+
+    headers = ["学生", "班级", "课题", "指导教师", "版本", "是否重交", "提交时间", "状态"]
+    operator, _role = _op()
+    title = f"开题材料台账　导出时间：{datetime.now():%Y-%m-%d %H:%M}　导出人：{operator}"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "开题材料台账"
+    ws.append([title])
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+    ws["A1"].font = Font(bold=True, color="555555", size=10)
+    ws.append(headers)
+    fill = PatternFill("solid", fgColor="DCE6F1")
+    for cell in ws[2]:
+        cell.font = Font(bold=True)
+        cell.fill = fill
+
+    written = 0
+    with session() as db:
+        for item in proposal_read.iter_proposals(
+            db,
+            _tid(),
+            keyword=keyword,
+            status=status,
+            batch_id=batch_id,
+            chunk_size=200,
+        ):
+            ws.append([
+                item["studentName"],
+                item.get("className", ""),
+                item.get("topicTitle", ""),
+                item.get("advisorName", ""),
+                item.get("version", ""),
+                "是" if item.get("isResubmit") else "否",
+                (item.get("submitAt") or "")[:19],
+                item.get("statusLabel", ""),
+            ])
+            written += 1
+
+    for index in range(1, len(headers) + 1):
+        ws.column_dimensions[chr(64 + index)].width = 18
+    ws.freeze_panes = "A3"
+    buf = io.BytesIO()
+    wb.save(buf)
+    content = buf.getvalue()
+    digest = hashlib.sha256(content).hexdigest()
+
+    with session() as db:
+        trail = _audit(
+            db,
+            "PROPOSAL",
+            "export",
+            "导出开题材料台账",
+            f"共 {written} 行，状态={status or '全部'}，批次={batch_id}，sha256={digest}",
+        )
+        trail.batch_id = int(batch_id)
+        db.commit()
+
+    return {
+        "filename": f"开题材料台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
+        "contentBase64": base64.b64encode(content).decode("ascii"),
+        "rowCount": written,
+        "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+
+
+def list_finals(page, ps, keyword=None, status=None, batch_id=None):
+    with session() as db:
+        return final_read.list_finals(
+            db,
+            _tid(),
+            page,
+            ps,
+            keyword=keyword,
+            status=status,
+            batch_id=batch_id,
+        )
+
+
+def final_stats(batch_id=None):
+    with session() as db:
+        return final_read.final_stats(db, _tid(), batch_id=batch_id)
+
+
+def _export_finals_xlsx(status=None, keyword=None, batch_id=None):
+    enforce_permission(
+        get_current_user_ctx() or {},
+        "graduationDesign.final.export",
+    )
+    if not batch_id:
+        raise AppException("VALIDATION_ERROR", "导出前必须选择毕业设计批次")
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    import base64
+    import io
+
+    headers = ["学生", "班级", "课题", "指导教师", "成果类型", "版本", "查重率", "查重状态", "提交时间", "状态"]
+    operator, _role = _op()
+    title = f"成果提交台账　导出时间：{datetime.now():%Y-%m-%d %H:%M}　导出人：{operator}"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "成果提交台账"
+    ws.append([title])
+    ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=len(headers))
+    ws["A1"].font = Font(bold=True, color="555555", size=10)
+    ws.append(headers)
+    fill = PatternFill("solid", fgColor="DCE6F1")
+    for cell in ws[2]:
+        cell.font = Font(bold=True)
+        cell.fill = fill
+
+    written = 0
+    with session() as db:
+        for item in final_read.iter_finals(
+            db,
+            _tid(),
+            keyword=keyword,
+            status=status,
+            batch_id=batch_id,
+            chunk_size=200,
+        ):
+            ws.append([
+                item["studentName"],
+                item.get("className", ""),
+                item.get("topicTitle", ""),
+                item.get("advisorName", ""),
+                item.get("type", ""),
+                item.get("version", ""),
+                item.get("plagiarismRate", ""),
+                item.get("plagiarismStatus", ""),
+                (item.get("submitAt") or "")[:19],
+                item.get("statusLabel", ""),
+            ])
+            written += 1
+
+    for index in range(1, len(headers) + 1):
+        ws.column_dimensions[chr(64 + index)].width = 16
+    ws.freeze_panes = "A3"
+    buf = io.BytesIO()
+    wb.save(buf)
+    content = buf.getvalue()
+    digest = hashlib.sha256(content).hexdigest()
+
+    with session() as db:
+        trail = _audit(
+            db,
+            "FINAL",
+            "export",
+            "导出成果提交台账",
+            f"共 {written} 行，状态={status or '全部'}，批次={batch_id}，sha256={digest}",
+        )
+        trail.batch_id = int(batch_id)
+        db.commit()
+
+    return {
+        "filename": f"成果提交台账_{datetime.now():%Y%m%d_%H%M}.xlsx",
+        "contentBase64": base64.b64encode(content).decode("ascii"),
+        "rowCount": written,
+        "mediaType": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    }
+
+
+export_proposals_xlsx = sanitize_xlsx_export(_export_proposals_xlsx)
+export_finals_xlsx = sanitize_xlsx_export(_export_finals_xlsx)
+
+# 答辩候选学生：SQL 读模型为唯一实现
+from app.modules.graduation.services.graduation_defense_candidate_read_service import (  # noqa: E402
+    list_defense_eligible_students,
 )

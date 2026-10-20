@@ -38,7 +38,7 @@ test('reachable current-changing A-W1 pages do not expose a SYS-12 bypass', () =
 
   assert.match(listPage, /academicAffairsApi\.getCurrentTerm\(\)/)
   assert.match(listPage, /isResolvedCurrent\(row\)/)
-  assert.match(listPage, /currentContext\?\.canDirectSwitch !== false/)
+  assert.match(listPage, /currentContext\?\.canDirectSwitch === true/)
   assert.match(listPage, /governanceManaged/)
   assert.match(listPage, /统一治理切换/)
   assert.match(listPage, /历史学期列表始终可读/)
@@ -49,8 +49,8 @@ test('reachable current-changing A-W1 pages do not expose a SYS-12 bypass', () =
   assert.match(calendarPage, /currentContext\?\.currentAuthority === 'CALENDAR_GOVERNANCE'/)
   assert.match(calendarPage, /isSelectedResolvedCurrent/)
   assert.match(calendarPage, /if \(this\.governanceManaged\) return this\.isSelectedResolvedCurrent/)
-  assert.match(calendarPage, /publishCalendar\(this\.termId\)/)
-  assert.match(calendarPage, /发布已 fail-closed/)
+  assert.match(calendarPage, /publishCalendar\(target\.termId\)/)
+  assert.match(calendarPage, /currentContext\?\.canDirectSwitch === true/)
   assert.doesNotMatch(calendarPage, /t\.isCurrent \? '（当前）'/)
 })
 
@@ -93,7 +93,8 @@ test('formal teaching-task setup never teaches an 18-week default', () => {
 
   assert.doesNotMatch(termForm, /placeholder="如 18"/)
   assert.match(termForm, /如 17 或 20/)
-  assert.match(termForm, /正式教学任务不会默认18周/)
+  assert.match(termForm, /填写校历确认的实际周数/)
+  assert.match(termForm, /teachingWeeks: null/)
   assert.match(taskPage, /不会猜测生成/)
   assert.doesNotMatch(generator, /_FALLBACK_WEEKS/)
   assert.match(generator, /TEACHING_WEEKS_UNRESOLVED/)

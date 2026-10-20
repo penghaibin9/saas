@@ -10,6 +10,20 @@ from __future__ import annotations
 BASE = "/api/v1/academic-affairs"
 
 
+def _seed_term():
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import AaTerm
+
+    with get_sessionmaker()() as db:
+        term = AaTerm(tenant_id=1000000000000000001, year_code="2025-2026", term_no=2,
+                      term_name="毕业范围测试学期", start_date=datetime(2026, 2, 1),
+                      end_date=datetime(2026, 7, 31), status="PUBLISHED")
+        db.add(term)
+        db.commit()
+        return str(term.id)
+
+
 def _login(client, login_name: str, user_type: str) -> tuple[dict[str, str], dict]:
     response = client.post(
         "/api/v1/auth/mock-login",
@@ -38,7 +52,7 @@ def test_permission_authorized_college_admin_without_scope_cannot_see_tenant_gra
     created = client.post(
         f"{BASE}/graduation-audit-batches",
         headers=school_headers,
-        json={"batchName": "D-W5-datascope-sentinel", "gradeYear": "2026"},
+        json={"batchName": "D-W5-datascope-sentinel", "gradeYear": "2026", "termId": _seed_term()},
     )
     assert created.status_code == 200, created.text
     batch_id = str(created.json()["data"]["batchId"])
@@ -66,7 +80,7 @@ def test_scope_empty_college_admin_cannot_infer_known_batch_from_results_endpoin
     created = client.post(
         f"{BASE}/graduation-audit-batches",
         headers=school_headers,
-        json={"batchName": "D-W5-datascope-detail-sentinel", "gradeYear": "2026"},
+        json={"batchName": "D-W5-datascope-detail-sentinel", "gradeYear": "2026", "termId": _seed_term()},
     )
     assert created.status_code == 200, created.text
     batch_id = str(created.json()["data"]["batchId"])

@@ -9,6 +9,7 @@ import sys
 import time
 import zipfile
 from dataclasses import replace
+from datetime import datetime, timedelta
 from pathlib import Path
 
 # Direct ``python tests/file_scan_mysql_acceptance.py`` execution puts only
@@ -126,6 +127,78 @@ def cleanup() -> None:
         db.close()
 
 
+def ensure_acceptance_tenant() -> None:
+    """Provision real commercial truth instead of relying on a context-only fake tenant.
+
+    This workflow upgrades an empty MySQL database and then runs this script directly.
+    The runtime commercial authority intentionally fails closed when a tenant row or
+    commercial lifecycle evidence is missing, so the acceptance fixture must create
+    the same minimum facts a real trial school has: an ACTIVE tenant plus an unexpired
+    trial TENANT_META record. ``trial`` explicitly includes ``fileUpload`` in the
+    canonical package matrix; no legacy FEATURES override is written here.
+    """
+    from app.db.session import get_sessionmaker
+    from app.models import PlatformConfig, Tenant
+
+    db = get_sessionmaker()()
+    try:
+        tenant = db.get(Tenant, TENANT_ID)
+        if tenant is None:
+            tenant = Tenant(
+                id=TENANT_ID,
+                tenant_code="file-stage1",
+                school_name="File Scan MySQL Acceptance School",
+                status="ACTIVE",
+            )
+            db.add(tenant)
+            db.flush()
+        else:
+            tenant.status = "ACTIVE"
+            tenant.is_deleted = False
+
+        meta = db.scalars(select(PlatformConfig).where(
+            PlatformConfig.tenant_id == TENANT_ID,
+            PlatformConfig.config_type == "TENANT_META",
+            PlatformConfig.config_key == "-",
+        ).with_for_update()).first()
+        expire_at = (datetime.now() + timedelta(days=1)).replace(microsecond=0).isoformat(timespec="seconds")
+        payload = {
+            "status": "trial",
+            "packageCode": "trial",
+            "environment": "test",
+            "trialEndAt": expire_at,
+            "expireAt": expire_at,
+        }
+        if meta is None:
+            meta = PlatformConfig(
+                tenant_id=TENANT_ID,
+                config_type="TENANT_META",
+                config_key="-",
+                config_json=payload,
+                enabled=True,
+                status="ACTIVE",
+            )
+            db.add(meta)
+        else:
+            meta.config_json = payload
+            meta.enabled = True
+            meta.status = "ACTIVE"
+            meta.is_deleted = False
+            meta.version = int(meta.version or 0) + 1
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+    # Assert the acceptance baseline itself consumes the hardened commercial
+    # authority. If this fails, stop before exercising file security so the gate
+    # cannot regress back to a permissive feature fallback.
+    from app.services.platform_service import feature_enabled
+    assert feature_enabled(TENANT_ID, "fileUpload") is True
+
+
 def run_worker_until_result(worker_id: str, *, client=None, timeout_seconds: float = 3.0) -> dict:
     """模拟常驻 worker 的真实轮询，兼容 MySQL DATETIME 秒级精度。"""
     from app.services.file_scan_service import process_next_scan_job
@@ -163,6 +236,7 @@ def main() -> None:
     set_current_user(actor)
     reset_backend()
     cleanup()
+    ensure_acceptance_tenant()
 
     try:
         infected = upload("eicar.txt", EICAR, "text/plain", "ATTACHMENT")

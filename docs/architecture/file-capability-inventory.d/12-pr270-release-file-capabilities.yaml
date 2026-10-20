@@ -1,0 +1,117 @@
+version: file-capability-inventory/v1
+entries:
+  - module: system-management
+    client: backend
+    route: /api/v1/system/phone-bindings/batch-confirm
+    page: backend/app/modules/system_admin/services/phone_governance_service.py
+    action: export-masked-phone-ledger-xlsx
+    fileCategory: PHONE_MASKED_LEDGER_XLSX
+    api: POST /api/v1/system/phone-bindings/batch-preview; POST /api/v1/system/phone-bindings/batch-confirm
+    backendService: backend/app/modules/system_admin/services/phone_governance_service.py
+    storageMode: canonical-generated-file+export-job
+    authMode: tenant-authenticated+systemAdmin.phone.view+frozen-preview
+    dataScope: tenant+preview-frozen-user-set
+    versioned: true
+    scanGated: false
+    preview: false
+    download: true
+    import: false
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: 手机号治理批量 EXPORT 在服务端生成脱敏 XLSX，经统一 generated-file/export-job 落账；确认命令只能消费当前办理人、当前租户且目标摘要未漂移的冻结预览，不导出明文手机号。
+
+  - module: website-news
+    client: backend
+    route: /api/v1/platform/website-news/packages
+    page: backend/app/services/website_news/package.py
+    action: ingest-bounded-news-package-zip
+    fileCategory: WEBSITE_NEWS_PACKAGE_ZIP
+    api: POST /api/v1/platform/website-news/packages
+    backendService: backend/app/services/website_news/package.py
+    storageMode: bounded-in-memory-zip+normalized-db-media
+    authMode: platform-root
+    dataScope: platform-content
+    versioned: true
+    scanGated: false
+    preview: false
+    download: false
+    import: true
+    export: false
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 官网新闻资源包只做有界 ZIP 内存解析；禁止路径落盘与源 URL 抓取，限制压缩包/展开体积/文件数，JSON 严格解析，图片解码后重编码再进入正式内容审核流程。
+
+  - module: website-news
+    client: backend
+    route: /api/v1/platform/website-news/packages
+    page: backend/app/api/v1/website_news.py
+    action: upload-news-package-and-export-publication-ledger
+    fileCategory: WEBSITE_NEWS_PACKAGE_AND_LEDGER
+    api: POST /api/v1/platform/website-news/packages; GET /api/v1/platform/website-news/packages/{pid}/ledger.xlsx
+    backendService: backend/app/api/v1/website_news.py
+    storageMode: bounded-upload+review-db+xlsx-stream
+    authMode: platform-root
+    dataScope: platform-content
+    versioned: true
+    scanGated: false
+    preview: true
+    download: true
+    import: true
+    export: true
+    archive: false
+    status: active
+    risk: P0
+    targetPhase: '10'
+    notes: 官网新闻 ZIP 上传在 API 层有界读取后交给严格包解析器；审核台账以服务端生成 XLSX 导出，限制文章与审计行数并做公式注入转义。
+
+  - module: academic-affairs
+    client: backend
+    route: /api/v1/academic-affairs/classroom-batches
+    page: backend/app/modules/academic_affairs/routers/teaching_resource_router.py
+    action: classroom-batch-xlsx-import-export
+    fileCategory: ACADEMIC_CLASSROOM_BATCH_XLSX
+    api: POST /api/v1/academic-affairs/classroom-batches/import-preview; GET /api/v1/academic-affairs/classroom-batches/template.xlsx; GET /api/v1/academic-affairs/classroom-batches/{batchNo}/result.xlsx
+    backendService: backend/app/modules/academic_affairs/routers/teaching_resource_router.py
+    storageMode: bounded-upload+persisted-preview+xlsx-stream
+    authMode: tenant-authenticated+academicAffairs.classroom.create
+    dataScope: tenant
+    versioned: true
+    scanGated: false
+    preview: true
+    download: true
+    import: true
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: 教室批量导入只接受不超过 5MB 的 xlsx；先预检再确认，模板与结果台账均由服务端生成。
+
+  - module: academic-affairs
+    client: backend
+    route: /api/v1/academic-affairs/classroom-batches
+    page: backend/app/modules/academic_affairs/services/academic_affairs_classroom_catalog_service.py
+    action: parse-and-generate-classroom-batch-xlsx
+    fileCategory: ACADEMIC_CLASSROOM_BATCH_XLSX
+    api: classroom batch workbook/import preview service
+    backendService: backend/app/modules/academic_affairs/services/academic_affairs_classroom_catalog_service.py
+    storageMode: in-memory-bounded-xlsx+persisted-preview
+    authMode: service-behind-permissioned-router
+    dataScope: tenant
+    versioned: true
+    scanGated: false
+    preview: true
+    download: true
+    import: true
+    export: true
+    archive: false
+    status: active
+    risk: P1
+    targetPhase: '10'
+    notes: XLSX 解析先检查 ZIP 条目数与解压体积，再使用只读 openpyxl；最多 1000 行，拒绝公式/危险文本与模板外列。
+

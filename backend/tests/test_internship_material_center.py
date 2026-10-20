@@ -40,7 +40,7 @@ def test_scanning_and_infected_files_are_blocked_before_review_or_archive():
     assert "preflight_agreement" in router
     assert "preflight_insurance" in router
     assert "preflight_process_report" in router
-    assert "prepare_archive_manifest" in router
+    assert "archive_with_manifest" in router
 
 
 def test_safety_router_precedes_legacy_routes():
@@ -85,5 +85,19 @@ def test_existing_archive_freeze_and_revoke_are_preserved():
     assert "snapshot_version" in archive
     assert "revoke_archive" in archive
     assert 'snapshot["fileVersionManifest"]' in core
-    assert "revoke_manifests" in router
-    assert "archive_svc.revoke_archive" in router
+    assert "revoke_with_manifests" in router
+    assert "archive_svc.revoke_archive" not in router
+
+
+def test_archive_manifest_and_revoke_are_single_transaction_commands():
+    compat = read("backend/app/modules/internship/services/internship_material_center_compat.py")
+    router = read("backend/app/modules/internship/routers/internship_material_center.py")
+    assert "def archive_with_manifest" in compat
+    assert "prepare_archive_manifest_in_session" in compat
+    assert "archive_svc.archive_student_in_session" in compat
+    assert "finalize_manifest_in_session" in compat
+    assert "def revoke_with_manifests" in compat
+    assert "archive_svc.revoke_archive_in_session" in compat
+    assert "revoke_manifests_in_session" in compat
+    assert "abort_manifest" not in router
+    assert 'db=db' in compat

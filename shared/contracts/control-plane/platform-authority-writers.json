@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 2,
+  "baselineCommit": "6810bd6284b4d5c69a78947560f808cd7738327e",
+  "frozenBundlePath": "backend/app/modules/platform/routers/platform_bundle.py",
+  "frozenBundleSha": "ecdc56fb30ae3a31432fa563896eb7ea0ec2d229",
+  "legacyPlatformConfigWriters": {
+    "FEATURES": [
+      "backend/app/modules/platform/routers/platform_bundle.py"
+    ],
+    "RULES": [
+      "backend/app/modules/platform/routers/platform_bundle.py",
+      "backend/app/services/platform_control_authority_service.py"
+    ],
+    "WORKFLOWS": [
+      "backend/app/modules/platform/routers/platform_bundle.py"
+    ],
+    "BRAND": [
+      "backend/app/modules/platform/routers/platform_bundle.py",
+      "backend/app/services/platform_control_authority_service.py"
+    ]
+  },
+  "runtimePolicy": {
+    "FEATURES": "frozen legacy writer is runtime-replaced; no new generic writes permitted",
+    "WORKFLOWS": "frozen legacy writer is runtime-replaced; WorkflowDefinition is the only runtime authority",
+    "RULES": "frozen legacy writer is runtime-replaced; governed writer requires expectedVersion + reason",
+    "BRAND": "frozen legacy writer is runtime-replaced; governed writer requires expectedVersion + reason"
+  },
+  "workflowDefinitionAuthorities": [
+    "backend/app/services/runtime_preset_install_service.py",
+    "backend/app/services/approval_template_service.py"
+  ],
+  "notes": [
+    "The frozen bundle remains listed because W0 inventories source writers, not runtime reachability.",
+    "W1-W4 runtime replacements live outside the frozen bundle.",
+    "Any additional production writer for these config types must update this reviewed inventory and its concurrency contract."
+  ]
+}

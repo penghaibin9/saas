@@ -22,7 +22,7 @@ export function isProdBuild() {
 
 export function allowMockFallback() {
   const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
-  return !!env.DEV
+  return !!env.DEV && env.VITE_ALLOW_MOCK_FALLBACK !== 'false'
 }
 
 export function realApiEnabled() {

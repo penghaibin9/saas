@@ -67,7 +67,7 @@ export default {
     }
   },
   methods: {
-    statusLabel(status) { return { READY: '可新增', EXISTS: '已存在', BLOCKED: '冲突' }[status] || status },
+    statusLabel(status) { return { READY: '可新增', EXISTS: '已存在', BLOCKED: '冲突' }[status] || (status ? '状态待确认' : '—') },
     statusTone(status) { return { READY: 'success', EXISTS: 'default', BLOCKED: 'danger' }[status] || 'default' },
     choose(key) {
       this.templateKey = key

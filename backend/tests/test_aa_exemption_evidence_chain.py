@@ -190,7 +190,8 @@ def test_replaced_file_content_invalidates_evidence(evidence, db_mode):
 
     with pytest.raises(AppException) as exc:
         evidence.require_valid_manifest(db, exemption)
-    assert exc.value.http_status == 409 and "EVIDENCE_INVALIDATED" in exc.value.message
+    assert exc.value.http_status == 409
+    assert exc.value.details["reasonCode"] == "EVIDENCE_INVALIDATED"
     assert any("内容已被替换" in text for text in exc.value.details["problems"])
     db.close()
 

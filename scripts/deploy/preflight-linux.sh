@@ -14,11 +14,15 @@ failure() { printf '  [FAIL] %s\n' "$1"; fail=$((fail + 1)); }
 
 printf '== 2U4G 非容器部署预检（只读）==\n'
 
+# ClamAV is a daemon dependency, not a required command-line client.  Minimal
+# server installations commonly expose only `clamd`; the authenticated PING
+# below is the actual runtime readiness check, so do not reject that layout
+# simply because a non-existent `clamav` wrapper is absent.
 for cmd in python3 nginx mysql mysqldump redis-cli curl rsync gzip sha256sum systemctl flock; do
   command -v "$cmd" >/dev/null 2>&1 && pass "$cmd 已安装" || failure "$cmd 未安装"
 done
 for cmd in node npm; do
-  command -v "$cmd" >/dev/null 2>&1 && pass "$cmd 已安装" || warning "$cmd 未安装；只能使用预先构建好的三端 dist"
+  command -v "$cmd" >/dev/null 2>&1 && pass "$cmd 已安装" || warning "$cmd 未安装；只能使用预先构建好的四个客户端 dist"
 done
 
 cpu_count="$(getconf _NPROCESSORS_ONLN 2>/dev/null || printf 0)"
@@ -146,7 +150,8 @@ for path in \
   deploy/systemd/school-lifecycle-scheduler.service \
   deploy/systemd/school-lifecycle-file-scan.service \
   deploy/nginx/school-lifecycle.systemd.conf.example \
-  student-portal/package.json; do
+  student-portal/package.json \
+  enterprise-portal/package.json; do
   [ -f "$ROOT/$path" ] && pass "$path" || failure "缺少 $path"
 done
 

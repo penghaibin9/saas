@@ -2,7 +2,8 @@
 
 Client payloads never choose company scope. The signed enterprise member context is revalidated
 against t_user/t_internship_enterprise_member on every request, then Grant/CampaignEnterprise
-are resolved server-side for campaign operations.
+are resolved server-side for campaign operations. Every protected enterprise request also passes
+the same tenant commercial module/data-state gate as school staff before business access begins.
 """
 from __future__ import annotations
 
@@ -10,7 +11,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
 
-from fastapi import Depends, Header
+from fastapi import Depends, Header, Request
 from sqlalchemy import select
 
 from app.core.context import set_current_user, set_tenant
@@ -63,7 +64,10 @@ def _bearer(authorization: Optional[str]) -> str:
     return value
 
 
-def get_enterprise_principal(authorization: Optional[str] = Header(default=None)) -> EnterprisePrincipal:
+def get_enterprise_principal(
+    request: Request,
+    authorization: Optional[str] = Header(default=None),
+) -> EnterprisePrincipal:
     claims, tenant, user, member = auth_svc.decode_and_validate_access(_bearer(authorization))
     # Browser enterprise access tokens belong to one auth-session family. Logout tombstones that
     # family so every access token issued before/after a refresh is rejected immediately. Legacy
@@ -120,6 +124,17 @@ def get_enterprise_principal(authorization: Optional[str] = Header(default=None)
         "tokenExp": claims.get("exp"),
         "authSessionId": auth_session_id or None,
     })
+
+    # Enterprise routes intentionally remain outside the school-staff dependency bundle,
+    # so this is their canonical commercial/data-state gate. It also installs the M4
+    # final commit fence on unsafe HTTP requests, preventing a request that started
+    # before freeze/cancellation from committing afterwards.
+    from app.services.module_access_service import assert_module_access
+    assert_module_access(
+        principal.tenant_id,
+        "internship",
+        write=request.method.upper() not in {"GET", "HEAD", "OPTIONS"},
+    )
     return principal
 
 

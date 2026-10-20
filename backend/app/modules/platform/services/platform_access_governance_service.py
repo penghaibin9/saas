@@ -69,6 +69,47 @@ def assert_platform_capability(user: dict, capability: str, **kwargs):
     return _legacy.assert_platform_capability(user, capability, **kwargs)
 
 
+def duty_matrix() -> list[dict]:
+    """Explain fixed workforce duties without opening arbitrary duty creation."""
+    import json
+    from pathlib import Path
+    from app.core.permission_catalog import load_permission_catalog
+
+    root = Path(__file__).resolve().parents[5]
+    surfaces = json.loads((root / "shared/contracts/navigation-surface-contract.json").read_text(encoding="utf-8")).get("surfaces") or []
+    by_code = load_permission_catalog().get("_byCode") or {}
+    result = []
+    for duty in sorted(ASSIGNABLE_DUTIES):
+        capabilities = sorted(DUTY_CAPABILITIES[duty])
+        permissions = sorted(code for code in (f"platform.{capability}" for capability in capabilities) if code in by_code)
+        permission_set = set(permissions)
+        menus = [
+            {field: item.get(field) for field in ("surfaceKey", "label", "path", "permissionKey")}
+            for item in surfaces
+            if item.get("platformOnly") and not item.get("hidden") and not item.get("disabled")
+            and str(item.get("status") or "") in {"implemented", "partial"}
+            and (
+                item.get("permissionKey") in permission_set
+                or bool(set(item.get("permissionAny") or []) & permission_set)
+                or (bool(item.get("permissionAll")) and set(item.get("permissionAll") or []) <= permission_set)
+            )
+        ]
+        high_risk = [
+            {
+                "permissionCode": code,
+                "riskLevel": by_code[code].get("riskLevel"),
+                "requiresRecentAuth": True,
+                "requiresMfa": str(by_code[code].get("riskLevel") or "").upper() == "CRITICAL",
+                "temporaryElevationOnly": False,
+            }
+            for code in permissions
+            if str(by_code[code].get("riskLevel") or "").upper() in {"HIGH", "CRITICAL"}
+        ]
+        result.append({"dutyCode": duty, "capabilities": capabilities, "permissionCodes": permissions,
+                       "menuPreview": menus, "highRiskActions": high_risk})
+    return result
+
+
 def support_session_allows(session: dict, *, user: dict, tenant_id: int, scope: str, now=None) -> bool:
     if scope not in SUPPORT_SCOPE_CATALOG:
         return False

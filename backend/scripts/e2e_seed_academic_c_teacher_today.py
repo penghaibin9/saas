@@ -35,10 +35,12 @@ from app.models import (
     AaTerm,
     College,
     Major,
+    Role,
     SchoolClass,
     StudentProfile,
     Tenant,
     User,
+    UserRole,
 )
 from app.modules.academic_affairs.services import academic_affairs_schedule_truth_service as schedule_truth
 from app.modules.academic_affairs.services.academic_affairs_roster_consumer_service import roster_hash
@@ -93,6 +95,56 @@ def _restore_current_terms(db, state: dict) -> None:
             term.is_current = True
 
 
+def _restore_fixture_roles(db, state: dict) -> None:
+    for change in state.get("academicRoleChanges") or []:
+        link = db.get(UserRole, int(change.get("id") or 0))
+        if link is None:
+            continue
+        if change.get("created"):
+            db.delete(link)
+        else:
+            link.status = str(change.get("status") or "ACTIVE")
+            link.is_deleted = bool(change.get("isDeleted"))
+
+
+def _ensure_academic_teacher_role(db, user, tenant_id: int) -> dict:
+    role = db.scalars(select(Role).where(
+        Role.tenant_id == tenant_id,
+        Role.role_code == "ACADEMIC_TEACHER",
+        Role.status.in_(("ACTIVE", "ENABLED")),
+        Role.is_deleted.is_(False),
+    )).first()
+    if role is None:
+        raise SystemExit("ACADEMIC_TEACHER role missing; run School IAM/bootstrap before C-W2 fixture")
+
+    link = db.scalars(select(UserRole).where(
+        UserRole.tenant_id == tenant_id,
+        UserRole.user_id == int(user.id),
+        UserRole.role_id == int(role.id),
+    )).first()
+    if link is None:
+        link = UserRole(
+            tenant_id=tenant_id,
+            user_id=int(user.id),
+            role_id=int(role.id),
+            status="ACTIVE",
+        )
+        db.add(link)
+        db.flush()
+        return {"id": int(link.id), "created": True}
+
+    previous = {
+        "id": int(link.id),
+        "created": False,
+        "status": str(link.status or ""),
+        "isDeleted": bool(link.is_deleted),
+    }
+    link.status = "ACTIVE"
+    link.is_deleted = False
+    db.flush()
+    return previous
+
+
 def _retire_fixture_attendance(db, state: dict) -> None:
     """Retire only attendance created from the previous C-W2 fixture teaching task.
 
@@ -125,6 +177,7 @@ def cleanup() -> int:
     try:
         _retire_fixture_attendance(db, state)
         _restore_current_terms(db, state)
+        _restore_fixture_roles(db, state)
         db.commit()
         return 0
     except Exception:
@@ -146,6 +199,7 @@ def seed() -> int:
         if previous_state:
             _retire_fixture_attendance(db, previous_state)
             _restore_current_terms(db, previous_state)
+            _restore_fixture_roles(db, previous_state)
             db.flush()
 
         tenant = _one(db, Tenant, Tenant.tenant_code == TENANT_CODE, Tenant.is_deleted.is_(False))
@@ -170,6 +224,11 @@ def seed() -> int:
         )
         if not teacher or not other_teacher:
             raise SystemExit("graduation E2E teacher accounts missing; bootstrap accounts first")
+
+        academic_role_changes = [
+            _ensure_academic_teacher_role(db, teacher, tenant_id),
+            _ensure_academic_teacher_role(db, other_teacher, tenant_id),
+        ]
 
         students = db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == tenant_id,
@@ -415,6 +474,7 @@ def seed() -> int:
             "tenantCode": TENANT_CODE,
             "termId": int(term.id),
             "previousCurrentTermIds": previous_current_ids,
+            "academicRoleChanges": academic_role_changes,
             "teacherLogin": TEACHER_LOGIN,
             "otherTeacherLogin": OTHER_TEACHER_LOGIN,
             "courseName": course.course_name,

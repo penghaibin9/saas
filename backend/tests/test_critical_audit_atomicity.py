@@ -112,7 +112,7 @@ def _atomic_user(login_prefix: str = "audit_atomic_user") -> int:
 
 
 def _atomic_role(code: str, *, role_type: str = "SYSTEM") -> int:
-    from app.models import Role
+    from app.models import CustomRoleSource, Role
     _ensure_tenant()
     with _session() as db:
         row = db.scalars(select(Role).where(
@@ -125,8 +125,24 @@ def _atomic_role(code: str, *, role_type: str = "SYSTEM") -> int:
                 role_type=role_type, status="ACTIVE",
             )
             db.add(row)
-            db.commit()
-            db.refresh(row)
+            db.flush()
+        if role_type == "CUSTOM" and db.scalars(select(CustomRoleSource).where(
+            CustomRoleSource.tenant_id == TENANT_ID,
+            CustomRoleSource.role_id == int(row.id),
+            CustomRoleSource.is_deleted.is_(False),
+        )).first() is None:
+            db.add(CustomRoleSource(
+                tenant_id=TENANT_ID,
+                role_id=int(row.id),
+                role_code=code,
+                source_template_code="SCHOOL_ADMIN",
+                source_template_version=1,
+                permission_codes_json={"items": []},
+                drift_json={"policy": "PINNED", "automaticUpgrade": False},
+                status="ACTIVE",
+            ))
+        db.commit()
+        db.refresh(row)
         return int(row.id)
 
 
@@ -180,7 +196,13 @@ def test_role_permission_save_rolls_back_when_critical_audit_insert_fails(db_mod
     with pytest.raises(AuditPersistenceError):
         save_system_role_permissions(
             role_id,
-            {"permissionCodes": [code], "visiblePermissionCodes": [code]},
+            {
+                "permissionCodes": [code],
+                "visiblePermissionCodes": [code],
+                "expectedVersion": before_version,
+                "reason": "验证关键审计失败时权限写入回滚",
+                "requestId": str(uuid.uuid4()),
+            },
             user=_atomic_actor(),
         )
 

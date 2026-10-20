@@ -40,7 +40,7 @@ def _authorize(tenant_id: int, user: dict) -> None:
 @router.get("/{tenant_id}/student-portal-config", summary="读取某租户学生门户配置（管理端）")
 def get_portal_config(tenant_id: int = Path(...), user=Depends(get_current_user)):
     _authorize(tenant_id, user)
-    return success(sp.get_config(int(tenant_id)))
+    return success(sp.get_config(int(tenant_id), strict=True))
 
 
 @router.put("/{tenant_id}/student-portal-config", summary="保存某租户学生门户配置（管理端·写审计）")

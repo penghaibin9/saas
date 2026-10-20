@@ -24,7 +24,7 @@ from app.services.sandbox_school_master_seed import _bulk_insert
 
 REFERENCE_NOW = datetime(2026, 8, 13, 9, 0)
 
-EXPECTED_TERMS = 4
+EXPECTED_TERMS = 5
 EXPECTED_TIME_SLOTS = 10
 EXPECTED_CLASSROOMS = 320
 EXPECTED_COURSES = 196             # 4 公共 + 32 专业 × 6
@@ -34,7 +34,10 @@ EXPECTED_REGISTRATIONS = 20_000
 EXPECTED_HISTORICAL_TASKS = 256    # 2025 级 128 班 × 2 门
 EXPECTED_NEXT_TASKS = 768           # 2025 级 128×4 + 2026 级 128×2
 EXPECTED_TASKS = EXPECTED_HISTORICAL_TASKS + EXPECTED_NEXT_TASKS
-EXPECTED_SCHEDULE_ITEMS = EXPECTED_TASKS
+# 一个 AaScheduleItem 表示“每周的一个节次”，不是“一门教学任务”。
+# 所有基础教学任务 weekly_hours=2，因此课位数必须是教学任务数的两倍。
+# 旧口径把一门任务只塞进一个格子，造成正式课表天然只完成 50%。
+EXPECTED_SCHEDULE_ITEMS = EXPECTED_TASKS * 2
 EXPECTED_GRADE_TASKS = EXPECTED_HISTORICAL_TASKS
 EXPECTED_GRADE_RECORDS = 13_200     # 2025 级 6,600 人 × 2 门
 EXPECTED_EXAM_COURSES = EXPECTED_HISTORICAL_TASKS
@@ -124,6 +127,12 @@ def _seed_terms_slots_resources(db, tenant_id: int) -> dict:
     from app.models import AaCalendarEvent, AaClassroom, AaTerm, AaTimeSlot
 
     term_rows = [
+        {
+            "tenant_id": tenant_id, "year_code": "2024-2025", "term_no": 1,
+            "term_name": "2024-2025学年第一学期", "start_date": datetime(2024, 9, 2),
+            "end_date": datetime(2025, 1, 17), "teaching_weeks": 18, "exam_week_start": 17,
+            "is_current": False, "status": "ARCHIVED",
+        },
         {
             "tenant_id": tenant_id, "year_code": "2024-2025", "term_no": 2,
             "term_name": "2024-2025学年第二学期", "start_date": datetime(2025, 2, 24),
@@ -461,7 +470,7 @@ def _seed_tasks_schedules_grades_exams(db, tenant_id: int, org: dict,
     from app.models import (
         AaClassroom, AaExamBatch, AaExamCourse, AaExamInvigilator, AaExamRoom,
         AaExamRoomStudent, AaGradeRecord, AaGradeTask, AaScheduleBatch,
-        AaScheduleItem, AaScheduleScopeHead, AaTeachingTask, AaTeachingTaskBatch,
+        AaScheduleItem, AaSchedulePublish, AaScheduleScopeHead, AaTeachingTask, AaTeachingTaskBatch,
         AcademicGrade,
     )
 
@@ -580,30 +589,32 @@ def _seed_tasks_schedules_grades_exams(db, tenant_id: int, org: dict,
         idx = hist_per_class[int(task.class_id)]
         hist_per_class[int(task.class_id)] += 1
         room = class_room[int(task.class_id)]
-        schedule_rows.append({
-            "tenant_id": tenant_id, "batch_id": int(hist_sched.id), "task_id": int(task.id),
-            "course_id": int(task.course_id), "course_name": task.course_name,
-            "class_id": int(task.class_id), "class_name": task.teaching_class_name,
-            "teacher_key": task.teacher_key, "teacher_name": task.teacher_name,
-            "weekday": 2 + idx, "slot_no": 1 + idx * 2,
-            "start_week": 1, "end_week": 18, "week_parity": "ALL",
-            "classroom_id": int(room.id), "classroom_text": room.room_name,
-            "status": "EFFECTIVE", "source": "AUTO",
-        })
+        for offset in range(int(task.weekly_hours or 0)):
+            schedule_rows.append({
+                "tenant_id": tenant_id, "batch_id": int(hist_sched.id), "task_id": int(task.id),
+                "course_id": int(task.course_id), "course_name": task.course_name,
+                "class_id": int(task.class_id), "class_name": task.teaching_class_name,
+                "teacher_key": task.teacher_key, "teacher_name": task.teacher_name,
+                "weekday": 2 + idx, "slot_no": 1 + idx * 2 + offset,
+                "start_week": 1, "end_week": 18, "week_parity": "ALL",
+                "classroom_id": int(room.id), "classroom_text": room.room_name,
+                "status": "EFFECTIVE", "source": "AUTO",
+            })
     for task in next_tasks:
         idx = next_per_class[int(task.class_id)]
         next_per_class[int(task.class_id)] += 1
         room = class_room[int(task.class_id)]
-        schedule_rows.append({
-            "tenant_id": tenant_id, "batch_id": int(next_sched.id), "task_id": int(task.id),
-            "course_id": int(task.course_id), "course_name": task.course_name,
-            "class_id": int(task.class_id), "class_name": task.teaching_class_name,
-            "teacher_key": task.teacher_key, "teacher_name": task.teacher_name,
-            "weekday": 1 + idx, "slot_no": 1 + idx * 2,
-            "start_week": 1, "end_week": 18, "week_parity": "ALL",
-            "classroom_id": int(room.id), "classroom_text": room.room_name,
-            "status": "EFFECTIVE", "source": "AUTO",
-        })
+        for offset in range(int(task.weekly_hours or 0)):
+            schedule_rows.append({
+                "tenant_id": tenant_id, "batch_id": int(next_sched.id), "task_id": int(task.id),
+                "course_id": int(task.course_id), "course_name": task.course_name,
+                "class_id": int(task.class_id), "class_name": task.teaching_class_name,
+                "teacher_key": task.teacher_key, "teacher_name": task.teacher_name,
+                "weekday": 1 + idx, "slot_no": 1 + idx * 2 + offset,
+                "start_week": 1, "end_week": 18, "week_parity": "ALL",
+                "classroom_id": int(room.id), "classroom_text": room.room_name,
+                "status": "EFFECTIVE", "source": "AUTO",
+            })
     _bulk_insert(db, AaScheduleItem, schedule_rows, chunk_size=1000)
     db.add(AaScheduleScopeHead(
         tenant_id=tenant_id,
@@ -612,6 +623,28 @@ def _seed_tasks_schedules_grades_exams(db, tenant_id: int, org: dict,
         active_batch_id=int(next_sched.id), version=1,
         published_at=datetime(2026, 8, 10, 9, 0),
     ))
+    # 发布是业务事实，不只是 batch.status。沙箱也必须保留与正式 service 相同的
+    # 发布流水，否则页面看似“已发布”，通知/审计/归档却找不到来源。
+    db.add_all([
+        AaSchedulePublish(
+            tenant_id=tenant_id,
+            batch_id=int(hist_sched.id),
+            term_id=term_by_code["2025-2026-2"],
+            action="PUBLISH",
+            operator_name=org["academicAdmins"][0].real_name,
+            notified_count=len({str(task.teacher_key) for task in hist_tasks if task.teacher_key}),
+            note="历史正式课表发布流水",
+        ),
+        AaSchedulePublish(
+            tenant_id=tenant_id,
+            batch_id=int(next_sched.id),
+            term_id=term_by_code["2026-2027-1"],
+            action="PUBLISH",
+            operator_name=org["academicAdmins"][0].real_name,
+            notified_count=len({str(task.teacher_key) for task in next_tasks if task.teacher_key}),
+            note="秋季正式课表发布流水",
+        ),
+    ])
 
     # 2025 级历史成绩任务：直接回链已有 t_acad_grade 真值，避免出现两套成绩互相打架。
     academic_grades = list(db.execute(select(

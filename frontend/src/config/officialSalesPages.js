@@ -29,9 +29,9 @@ export const OFFICIAL_SALES_PAGES = Object.freeze([
   },
   {
     key: 'product-academic-affairs', path: '/products/academic-affairs', type: 'product', contentUpdatedAt: updated,
-    title: '教务系统｜培养方案、排课选课、考务成绩与学籍管理', navTitle: '教务系统', eyebrow: '教学运行数字化',
-    description: '面向职业院校教务处、二级学院、任课教师与学生，贯通培养方案、教学任务、排课、选课、考务、成绩、学籍与教学质量。',
-    hero: '让教务工作从“分散办理”变成一条连续、可追踪的教学运行主线',
+    title: '职业院校教务管理系统｜排课、选课、考务、成绩、学籍、毕业审核全过程管理', navTitle: '教务系统', eyebrow: '智慧教务全过程管理',
+    description: '面向中高职院校的智慧教务全过程管理平台，覆盖培养方案、课程、教学任务、排课、选课、课堂考勤、考务、成绩、学籍异动、学业预警、教学评价、毕业资格审核、教务归档与统计，支持学校管理端、教师移动端、学生 PC 与移动端协同办理。',
+    hero: '从培养方案到毕业审核，一套系统管住教学运行全过程',
     screenshots: ['/official-site/academic.webp', '/official-site/academic-schedule.webp', '/official-site/academic-registration.webp', '/official-site/academic-quality.webp'],
     keywords: ['职业院校教务系统', '排课系统', '选课系统', '成绩管理', '学籍管理']
   },

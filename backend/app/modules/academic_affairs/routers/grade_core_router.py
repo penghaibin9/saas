@@ -17,7 +17,7 @@ from __future__ import annotations
 import io
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Path, UploadFile
+from fastapi import APIRouter, Depends, File, Path, Query, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -29,6 +29,7 @@ from app.modules.academic_affairs.services import academic_affairs_effective_gra
 from app.modules.academic_affairs.services import academic_affairs_grade_change_live_authority as grade_change_live_authority
 from app.modules.academic_affairs.services import academic_affairs_grade_deadline_service as grade_deadline_svc
 from app.modules.academic_affairs.services import academic_affairs_grade_execution_service as grade_exec_svc
+from app.modules.academic_affairs.services import academic_affairs_grade_execution_transaction_guard as grade_execution_transaction_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_recognition_read_guard as grade_recognition_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_recheck_read_guard as grade_recheck_read_guard
 from app.modules.academic_affairs.services import academic_affairs_grade_reminder_service as grade_reminder_svc
@@ -50,6 +51,7 @@ legacy_grade_write_guard.install()
 warning_effective_guard.install()
 grade_recognition_read_guard.install()
 grade_recheck_read_guard.install()
+grade_execution_transaction_guard.install()
 
 router = APIRouter(prefix="/academic-affairs", tags=["教务中心-成绩主链"])
 
@@ -75,12 +77,27 @@ class GradeDeadlineBody(BaseModel):
 @router.get("/grade-tasks", summary="成绩录入任务列表（按状态筛选，供审核/发布工作台队列）")
 def grade_tasks(
     status: Optional[str] = None,
+    taskId: Optional[int] = None,
+    termId: Optional[int] = None,
     page: int = 1,
     pageSize: int = 20,
     user=Depends(require_permission("academicAffairs.grade.view")),
+    term: Optional[str] = Query(None, max_length=50),
+    keyword: Optional[str] = Query(None, max_length=100),
 ):
-    items, total = grade_task_read_svc.list_tasks(user, status, page, pageSize)
+    items, total = grade_task_read_svc.list_tasks(
+        user, status, page, pageSize, task_id=taskId, term_id=termId, term=term, keyword=keyword,
+    )
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/grade-tasks/{taskId}/publication-effect", summary="成绩发布后扫描状态（只读，不重放发布）")
+def grade_publication_effect(
+    taskId: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.grade.view")),
+):
+    from app.modules.academic_affairs.services.academic_grade_effect_service import publication_effect
+    return success(publication_effect(user, taskId))
 
 
 @router.post("/grade-tasks/{taskId}/remind", summary="成绩催录（刷新当前正式任课教师待录待办）")
@@ -196,6 +213,15 @@ def grade_submit(
     return success(grade_deadline_svc.teacher_submit_task(taskId, user), message="已提交")
 
 
+@router.get("/grade-tasks/{taskId}/review-evidence", summary="学院成绩审核证据（精确任务，只读）")
+def grade_review_evidence(
+    taskId: int = Path(..., gt=0),
+    user=Depends(require_permission("academicAffairs.grade.collegeReview")),
+):
+    from app.modules.academic_affairs.services.academic_affairs_grade_review_evidence_service import get_evidence
+    return success(get_evidence(taskId, user))
+
+
 @router.post("/grade-tasks/{taskId}/college-review", summary="学院审核成绩（通过/退回）")
 def grade_college_review(
     body: GradeReviewBody,
@@ -203,7 +229,7 @@ def grade_college_review(
     user=Depends(require_permission("academicAffairs.grade.collegeReview")),
 ):
     return success(
-        grade_svc.college_review(taskId, user, body.action, body.reason or ""),
+        grade_svc.college_review(taskId, user, body.action, body.reason or "", body.expectedEvidenceHash),
         message="已处理",
     )
 

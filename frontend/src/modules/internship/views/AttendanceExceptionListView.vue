@@ -1,12 +1,12 @@
 <template>
   <ModulePageShell
-    title="打卡与请假"
-    :subtitle="'待核实 ' + pendingCount + ' 条 · 学生端提交的打卡异常说明会同步到这里'"
+    title="异常核验"
+    :subtitle="'本页待核实 ' + pendingCount + ' 条 · 核对定位、设备与学生说明后处理'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppExportButton :export-fn="exportFn" :has-permission="exportPermission">⬇ 导出异常记录</AppExportButton>
+      <AppExportButton :export-fn="exportFn" :has-permission="exportPermission">导出异常记录</AppExportButton>
     </template>
 
     <div class="mp-stack">
@@ -14,7 +14,7 @@
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="今日暂无待处理打卡异常" description="当前数据范围内学生打卡全部正常，可查看历史处理记录" />
+      <EmptyState v-else-if="!rows.length" title="当前筛选无异常记录" description="可调整筛选条件，或查看其他状态的处理记录。" />
       <DataTable
         v-else
         :columns="columns"
@@ -34,7 +34,7 @@
           <div class="mp-cell-sub">{{ row.className }} · {{ row.enterpriseName }}</div>
         </template>
         <template #cell-type="{ row }">
-          <AppStatusTag :type="row.type === 'MISSING' ? 'warning' : 'danger'">{{ row.typeLabel }}</AppStatusTag>
+          <AppStatusTag :type="['MISSING', 'LOW_ACCURACY', 'LOCATION_UNCERTAIN'].includes(row.type) ? 'warning' : 'danger'">{{ row.typeLabel }}</AppStatusTag>
           <div v-if="row.streak" class="mp-cell-sub" style="color: var(--danger-600)">{{ row.streak }}</div>
         </template>
         <template #cell-deviceRisk="{ row }">
@@ -68,6 +68,7 @@ import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
 import { restoreWorkContext, captureWorkContext } from '@/modules/internship/composables/workContext'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
 import { toast } from '@/utils/toast'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 const EMPTY_FILTERS = () => ({ keyword: '', type: '', status: '' })
 // U8：这一屏没有任何筛选写在 URL 上，刷新/返回必须靠工作上下文找回来
@@ -79,7 +80,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: true,
+      loading: true, loadSeq: 0,
       error: '',
       rows: [],
       selected: [],
@@ -99,6 +100,7 @@ export default {
     }
   },
   computed: {
+    batchStore() { return useInternshipBatchStore() },
     pendingCount() {
       return this.rows.filter((r) => r.status === 'PENDING_HANDLE').length
     },
@@ -128,8 +130,12 @@ export default {
     restoreWorkContext(this, WORK_FIELDS)
     this.load()
   },
+  watch: {
+    'batchStore.selectedBatchId'() { this.pagination.page = 1; this.selected = []; this.load() }
+  },
   methods: {
     goDetail(row) {
+      const query = { ...this.$route.query, batchId: this.batchStore.selectedBatchId }
       // 进入详情前保存连续核实队列：待处理记录优先，全部已处理时才用当前页全部行
       const hasStatus = this.rows.some((r) => r.status)
       const pendingRows = hasStatus ? this.rows.filter((r) => r.status === 'PENDING_HANDLE') : this.rows
@@ -137,10 +143,10 @@ export default {
         kind: 'attendance-exception',
         title: '打卡异常核实',
         listPath: this.$route.path,
-        listQuery: { ...this.$route.query },
+        listQuery: query,
         ids: (pendingRows.length ? pendingRows : this.rows).map((r) => r.id)
       })
-      this.$router.push('/admin/internship/exceptions/' + row.id)
+      this.$router.push({ path: '/admin/internship/exceptions/' + row.id, query })
     },
     onPageChange(page) {
       this.pagination.page = page
@@ -156,7 +162,7 @@ export default {
       this.load()
     },
     exportFn() {
-      return attendanceApi.exportExceptions({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      return attendanceApi.exportExceptions({ ...this.filters, batchId: this.batchStore.selectedBatchId, page: this.pagination.page, pageSize: this.pagination.pageSize })
     },
     batchMark() {
       if (this.batchHasMock || !this.selected.length || this.batchSubmitting) return
@@ -180,7 +186,7 @@ export default {
         toast.error('请先选择要导出的记录')
         return
       }
-      const res = await attendanceApi.exportExceptions({ ids: this.selected })
+      const res = await attendanceApi.exportExceptions({ ids: this.selected, batchId: this.batchStore.selectedBatchId })
       if (res.code === 0) {
         downloadXlsxFromApi(res.data, res.data.filename || '打卡异常所选台账.xlsx')
         toast.success(`已导出所选 ${this.selected.length} 条异常记录，已留痕`)
@@ -191,9 +197,13 @@ export default {
     },
     async load() {
       captureWorkContext(this, WORK_FIELDS)
+      const seq = ++this.loadSeq
+      const batchId = this.batchStore.selectedBatchId
+      this.rows = []; this.selected = []; this.pagination.total = 0
       this.loading = true
       this.error = ''
-      const res = await internshipApi.getAttendanceExceptions({ ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const res = await internshipApi.getAttendanceExceptions({ ...this.filters, batchId, page: this.pagination.page, pageSize: this.pagination.pageSize })
+      if (seq !== this.loadSeq || batchId !== this.batchStore.selectedBatchId) return
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total

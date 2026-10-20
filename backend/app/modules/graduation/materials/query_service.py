@@ -35,7 +35,8 @@ from app.modules.graduation.services.graduation_scope_service import assert_stud
 from app.services.db_service import _iso, _tid, session
 
 from .definitions import (
-    MANIFEST_ARCHIVE_TYPE, MANIFEST_TARGET_TYPE, MODULE_CODE, REVIEW_PERMISSION_BY_CODE, STAGE_GROUPS,
+    DEFAULT_MATERIAL_DEFINITIONS, MANIFEST_ARCHIVE_TYPE, MANIFEST_TARGET_TYPE, MODULE_CODE, REVIEW_PERMISSION_BY_CODE,
+    STAGE_GROUPS,
 )
 
 
@@ -132,6 +133,7 @@ def _rule_view(rule: GraduationMaterialRule, items: list[GraduationMaterialItem]
         "ruleCode": rule.rule_code,
         "ruleName": rule.rule_name,
         "ruleVersion": int(rule.rule_version or 1),
+        "version": int(rule.version or 0),
         "status": rule.status,
         "enabled": bool(rule.enabled),
         "ownerRole": rule.default_owner_role,
@@ -190,7 +192,12 @@ def list_rules(batch_id: int | None, user: dict) -> dict:
         by_rule: dict[int, list[GraduationMaterialItem]] = {}
         for item in items:
             by_rule.setdefault(int(item.rule_id), []).append(item)
-        return {"items": [_rule_view(row, by_rule.get(int(row.id), [])) for row in rules], "total": len(rules)}
+        return {
+            "items": [_rule_view(row, by_rule.get(int(row.id), [])) for row in rules], "total": len(rules),
+            # 规则编辑页用：系统标准模板 + 支持“需人工审核”的材料代码（其余材料只能设为无需审核）
+            "defaultTemplate": [dict(row) for row in DEFAULT_MATERIAL_DEFINITIONS],
+            "reviewSupportedCodes": sorted(REVIEW_PERMISSION_BY_CODE),
+        }
 
 
 def _base_students(user: dict, batch_id: int, filters: dict[str, str]):
@@ -608,13 +615,19 @@ def _rule_for_student(db, student: GraduationStudent) -> GraduationMaterialRule:
 def student_library(gd_student_id: int | None, user: dict, *, include_history: bool = True) -> dict:
     with session() as db:
         if _role(user) == "STUDENT":
+            from app.modules.graduation.services.graduation_record_resolver import resolve_current_gd_student
+
+            current = resolve_current_gd_student(db, user)
+            if not current:
+                raise not_found("毕业设计材料库不存在")
             stmt = select(GraduationStudent).where(
                 GraduationStudent.tenant_id == _tid(),
+                GraduationStudent.id == current.id,
                 GraduationStudent.record_status == "ACTIVE",
                 GraduationStudent.is_deleted.is_(False),
                 student_scope_predicate(user),
             )
-            student = db.scalars(stmt.order_by(GraduationStudent.id.desc())).first()
+            student = db.scalars(stmt).first()
             if not student or (gd_student_id and int(gd_student_id) != int(student.id)):
                 raise not_found("毕业设计材料库不存在")
         else:

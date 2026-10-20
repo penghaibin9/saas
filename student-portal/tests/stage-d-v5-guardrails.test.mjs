@@ -12,7 +12,9 @@ test('V5 家长入口必须使用独立公开 GuardianView，不得重定向学�
 
 test('V5 主题专项点击当前真实主题控件而不是已退役 selector', async () => {
   const source = await read('review/v5-full-review.mjs')
-  assert.match(source, /getByRole\(['"]group['"],\s*\{\s*name:\s*['"]切换门户主题['"]\s*\}\)/)
+  const helper = await read('review/review-lib.mjs')
+  assert.match(source, /await setTheme\(page, theme\.key\)/)
+  assert.match(helper, /getByRole\(['"]group['"],\s*\{\s*name:\s*['"]切换门户主题['"]\s*\}\)/)
   assert.match(source, /sp-theme-switch__item/)
   assert.doesNotMatch(source, /\.sp-theme__item/)
 })

@@ -105,6 +105,11 @@ def install_academic_grade_extensions() -> None:
         "tenant_id", "acad_student_id", "course_id", "attempt_no", "record_status",
     )
     _append_index(grade_table, "ix_acad_grade_course_code", "tenant_id", "course_code", "course_version")
+    _append_index(
+        grade_table, "ix_acad_grade_analysis_identity",
+        "tenant_id", "record_status", "is_deleted", "acad_student_id", "course_code",
+        "course_id", "pass_status", "effective_attempt_strategy",
+    )
     _append_index(grade_table, "ix_acad_grade_grade_task", "tenant_id", "grade_task_id")
     _append_index(grade_table, "ix_acad_grade_teaching_task", "tenant_id", "teaching_task_id")
     _append_index(grade_table, "ix_acad_grade_teaching_class", "tenant_id", "teaching_class_id")

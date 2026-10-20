@@ -1,32 +1,35 @@
 <template>
   <ModulePageShell
+    class="aa-schedule-workspace"
     title="课表三视图"
-    subtitle="班级 / 教师 / 学生三视角查看同一批次课表（只读）"
+    subtitle="按班级、教师或学生查看同一批次的课表。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">返回批次</AppButton>
-      <AppPrintButton :handler="printView" label="打印当前视图" />
+      <AppButton @click="returnToQueue">返回原队列</AppButton>
+      <AppPrintButton :handler="printView" :disabled="loading || !!error || !loadedQuery" label="打印当前视图" />
     </template>
 
     <div class="mp-stack">
       <div class="aa-tabs">
-        <button v-for="t in tabs" :key="t.key" class="aa-tab" :class="{ 'is-active': tab === t.key }" @click="tab = t.key">{{ t.label }}</button>
+        <button v-for="t in tabs" :key="t.key" class="aa-tab" :class="{ 'is-active': tab === t.key }" @click="switchTab(t.key)">{{ t.label }}</button>
       </div>
 
       <div class="aa-filter">
         <label class="aa-filter__item">
           {{ currentTab.field }}
           <AppClassPicker v-if="tab === 'class'" v-model="query" placeholder="选择班级" />
-          <AppTeacherPicker v-else-if="tab === 'teacher'" v-model="query" placeholder="选择教师" />
+          <AppTeacherPicker v-else-if="tab === 'teacher'" v-model="query" :query="teacherKeyQuery" placeholder="选择教师" />
           <AppStudentPicker v-else v-model="query" placeholder="选择学生" />
         </label>
         <AppButton @click="loadView">查看课表</AppButton>
       </div>
 
-      <LoadingState v-if="loading" />
-      <AppSectionCard v-else :title="viewTitle">
+      <ErrorState v-if="error" :description="error" @retry="loadView" />
+      <LoadingState v-else-if="loading" />
+      <EmptyState v-else-if="!loadedQuery" :title="`请先选择${currentTab.field}`" description="选择查询对象后，点击「查看课表」。" />
+      <AppSectionCard compact v-else :title="viewTitle">
         <p v-if="note" class="mp-note">{{ note }}</p>
         <AaScheduleGrid :items="items" :slots="slots" :editable="false" />
       </AppSectionCard>
@@ -36,12 +39,13 @@
 
 <script>
 /** 课表三视图（/admin/academic-affairs/schedule/:batchId/views）：class/teacher/student 三视角只读。 */
-import { ModulePageShell, LoadingState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppPrintButton, AppClassPicker, AppTeacherPicker, AppStudentPicker } from '@/components/common'
 import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import { academicRouteState } from '../academicFlowContext'
 
 const TABS = [
   { key: 'class', label: '班级课表', field: '班级' },
@@ -51,49 +55,99 @@ const TABS = [
 
 export default {
   name: 'AaScheduleViewsView',
-  components: { ModulePageShell, LoadingState, AppButton, AppSectionCard, AppPrintButton, AppClassPicker, AppTeacherPicker, AppStudentPicker, AaScheduleGrid },
+  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppPrintButton, AppClassPicker, AppTeacherPicker, AppStudentPicker, AaScheduleGrid },
   props: { ctx: { type: Object, required: true } },
+  inject: { academicFlow: { default: null } },
   data() {
-    return { tabs: TABS, tab: 'class', query: '', slots: [], items: [], note: '', loading: false }
+    return {
+      tabs: TABS, tab: 'class', query: '', slots: [], items: [], note: '', loading: false,
+      teacherKeyQuery: { valueField: 'loginName' }, error: '', loadedQuery: '', requestVersion: 0, routeSyncing: false
+    }
   },
   computed: {
     batchId() { return this.$route.params.batchId },
     currentTab() { return TABS.find((t) => t.key === this.tab) },
-    viewTitle() { return this.currentTab.label + (this.query ? ` · ${this.query}` : '') }
+    viewTitle() { return this.currentTab.label }
   },
   watch: {
-    tab() { this.items = []; this.note = ''; this.query = '' }
+    '$route.fullPath'() { this.syncRoute() },
+    ctx() { this.syncRoute() },
+    query() { if (!this.routeSyncing) this.resetView() }
   },
-  created() { this.loadSlots() },
+  created() { this.loadSlots(); this.syncRoute() },
+  beforeUnmount() { this.requestVersion += 1 },
   methods: {
+    contextKey() { return JSON.stringify([this.academicFlow?.identity(), this.$route?.fullPath, this.batchId, this.tab, this.query]) },
+    async syncRoute() {
+      this.resetView()
+      const version = this.requestVersion
+      const state = academicRouteState(this.$route, { tabs: ['class', 'teacher', 'student'], defaultTab: 'class' })
+      this.routeSyncing = true
+      this.tab = state.error ? 'class' : state.tab
+      this.query = state[{ class: 'classId', teacher: 'teacherKey', student: 'studentId' }[this.tab]]
+      this.error = state.error
+      await this.$nextTick()
+      this.routeSyncing = false
+      if (version === this.requestVersion && !this.error && this.query) await this.loadView()
+    },
+    switchTab(tab) {
+      const query = { ...this.$route.query, tab }
+      delete query.classId; delete query.teacherKey; delete query.studentId
+      this.$router.push({ path: this.$route.path, query })
+    },
+    returnToQueue() {
+      return this.academicFlow?.back(this.$route.query.returnToken, '/admin/academic-affairs/scheduling')
+        || this.$router.push('/admin/academic-affairs/scheduling')
+    },
+    resetView() {
+      this.requestVersion += 1
+      this.items = []; this.note = ''; this.error = ''; this.loadedQuery = ''; this.loading = false
+    },
     async loadSlots() {
       const res = await academicAffairsApi.getTimeSlots()
       if (res.code === 0) this.slots = res.data
     },
     async loadView() {
       if (!this.query) { toast.error(`请选择${this.currentTab.field}`); return }
+      const key = { class: 'classId', teacher: 'teacherKey', student: 'studentId' }[this.tab]
+      if (this.$route && this.$route.query[key] !== this.query) {
+        await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, tab: this.tab, [key]: this.query } })
+        return
+      }
+      const version = ++this.requestVersion
+      const context = this.contextKey()
+      const current = () => version === this.requestVersion && context === this.contextKey()
+      const query = this.query
       this.loading = true
       this.note = ''
-      let res
-      if (this.tab === 'class') res = await academicAffairsApi.getScheduleClassView(this.batchId, this.query)
-      else if (this.tab === 'teacher') res = await academicAffairsApi.getScheduleTeacherView(this.batchId, this.query)
-      else res = await academicAffairsApi.getScheduleStudentView(this.batchId, this.query)
-      if (res.code === 0) {
-        this.items = (res.data && res.data.items) || []
-        this.note = (res.data && res.data.note) || ''
-      } else {
-        toast.error(res.message || '加载失败')
+      this.error = ''
+      this.loadedQuery = ''
+      try {
+        let res
+        if (this.tab === 'class') res = await academicAffairsApi.getScheduleClassView(this.batchId, query)
+        else if (this.tab === 'teacher') res = await academicAffairsApi.getScheduleTeacherView(this.batchId, query)
+        else res = await academicAffairsApi.getScheduleStudentView(this.batchId, query)
+        if (!current()) return
+        if (res.code === 0) {
+          this.items = res.data?.items || []
+          this.note = res.data?.note || ''
+          this.loadedQuery = query
+        } else this.error = res.message || '课表读取失败，请重试'
+      } catch (exception) {
+        if (current()) this.error = exception?.message || '课表读取失败，请重试'
+      } finally {
+        if (current()) { this.loading = false; this.academicFlow?.restorePosition() }
       }
-      this.loading = false
     },
     printView() {
-      if (this.tab === 'teacher' && this.query) {
-        window.open(`/admin/academic-affairs/print/schedule/${this.batchId}?type=teacher&key=${encodeURIComponent(this.query)}`, '_blank')
-      } else if (this.query) {
-        window.open(`/admin/academic-affairs/print/schedule/${this.batchId}?type=class&key=${encodeURIComponent(this.query)}`, '_blank')
-      } else {
+      if (this.loading || this.error || !this.loadedQuery || this.loadedQuery !== this.query) {
         toast.error('请先载入某个课表再打印')
+        return
       }
+      this.$router.push({
+        path: `/admin/academic-affairs/print/schedule/${this.batchId}`,
+        query: { type: this.tab, key: this.loadedQuery }
+      })
     }
   }
 }
@@ -101,6 +155,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/schedule-workspace.css';
 .aa-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-200, #e5e6eb); }
 .aa-tab { padding: 8px 16px; border: none; background: none; cursor: pointer; font-size: 14px; color: var(--text-500, #646a73); border-bottom: 2px solid transparent; }
 .aa-tab.is-active { color: var(--primary-600, #2563eb); border-bottom-color: var(--primary-500, #3b82f6); font-weight: 500; }

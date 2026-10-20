@@ -8,7 +8,6 @@ import pytest
 from app.core.context import set_current_user, set_tenant
 from app.models import EmpCompany, InternshipPosition, InternshipRecord
 from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
-from app.modules.internship.services.internship_assignment_snapshot_authority import install_assignment_snapshot_authority
 from app.modules.internship.services import internship_student_service as student_svc
 from app.services.db_service import session as db_session
 from tests.test_internship_p1_acceptance import _credit, _mk_running_batch, _mk_student, _uniq, ENT, IST, POS, TID
@@ -27,6 +26,7 @@ def _position(client, headers, batch_id: str, company_id: str, title: str, amoun
         "restDaysPerWeek": 2, "remunerationType": "MONTHLY", "remunerationAmount": amount,
         "remunerationCycle": "MONTHLY", "accommodationProvided": True, "mealProvided": True,
         "hazardousFlag": False,
+        "geofenceLat": 23.1291, "geofenceLng": 113.2644, "geofenceRadiusM": 500,
     }).json()
     assert result["code"] == 0, result
     pid = result["data"]["id"]
@@ -38,7 +38,6 @@ def _position(client, headers, batch_id: str, company_id: str, title: str, amoun
 
 
 def test_mysql_placement_snapshot_survives_position_edit_and_switches_with_new_seq(client, auth_headers, db_mode):
-    install_assignment_snapshot_authority()
     batch_id = _mk_running_batch(client, auth_headers)
     student_id, _ = _mk_student(client, auth_headers)
     rec = client.post(IST, headers=auth_headers, json={"studentId": student_id, "batchId": batch_id}).json()

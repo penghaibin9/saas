@@ -1,6 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { parse, compileScript } from '@vue/compiler-sfc'
+import * as vue from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import * as uiHelpers from '../../student-portal/src/components/academic/studentAcademicUi.js'
+import * as commandGuard from '../../student-portal/src/components/academic/studentAcademicCommandGuard.js'
+import * as localization from '../../student-portal/src/services/visibleEnumLocalization.js'
 
 const graduationBatchUrl = new URL('../src/modules/academicAffairs/views/AaGraduationBatchView.vue', import.meta.url)
 const graduationResultUrl = new URL('../src/modules/academicAffairs/views/AaGraduationResultView.vue', import.meta.url)
@@ -75,18 +81,45 @@ test('PR147 merge review: graduation high-risk actions are single-flight, except
 })
 
 test('PR147 merge review: student graduation unknown credit requirement never renders fake 100 percent', async () => {
-  const source = await readFile(studentGraduationUrl, 'utf8')
-  for (const token of [
-    "if (raw === null || raw === undefined || raw === '') return null",
-    'return Number.isFinite(value) && value > 0 ? value : null',
-    "requiredCredits.value === null ? '待核验' : requiredCredits.value",
-    'if (requiredCredits.value === null) return null',
-    "creditPct.value === null ? '—' : creditPct.value",
-    "requiredCredits.value === null ? '学分要求待核验' : '学分达成'",
-    '<small v-if="creditPct !== null">%</small>'
-  ]) assert.ok(source.includes(token), `missing unknown-credit fail-closed UI contract: ${token}`)
-
-  assert.doesNotMatch(source, /if \(!requiredCredits\.value\) return obtainedCredits\.value \? 100 : 0/)
+  const { descriptor } = parse(await readFile(studentGraduationUrl, 'utf8'))
+  let credits
+  const modules = {
+    vue: { ...vue, onMounted() {} },
+    '../../components/academic/studentAcademicUi': uiHelpers,
+    '../../components/academic/studentAcademicCommandGuard': commandGuard,
+    '../../services/visibleEnumLocalization': localization,
+    '../../stores/session': { useSessionStore: () => ({ user: { userId: 'student-a', studentNo: 'S001', userType: 'STUDENT' } }) },
+    '../../services/portalApi': { portalApi: { academicGraduationAudit: async () => ({ credits }) } }
+  }
+  const script = compileScript(descriptor, { id: 'graduation-credit-contract' }).content
+    .replace(/^import (.+?) from ['"](.+?)['"];?$/gm, (_, binding, path) => binding.startsWith('{')
+      ? `const ${binding.replace(/\bas\b/g, ':')} = modules[${JSON.stringify(path)}]`
+      : `const ${binding} = { render: () => null }`)
+    .replace('export default', 'return')
+  const component = new Function('modules', script)(modules)
+  const page = component.setup({}, { expose() {} })
+  page.showEvidence.value = true
+  const render = () => renderToString(vue.createSSRApp({
+    template: descriptor.template.content, setup: () => ({ ...page }),
+    components: Object.fromEntries(['AcademicPrototypeHeader', 'StateBlock', 'AcademicPrototypeIcon',
+      'StatusTag', 'AcademicDecisionTraceCard', 'RouterLink'].map(name => [name, { render: () => null }]))
+  }))
+  for (const requiredCredits of [undefined, null, '', 0, -1, 'invalid']) {
+    credits = { obtainedCredits: 120, requiredCredits }
+    await page.load()
+    assert.equal(page.requiredCredits.value, null)
+    assert.equal(page.creditPct.value, null)
+    const html = await render()
+    assert.match(html, /学分要求待核验：120 \/ 待核验 学分/)
+    assert.match(html, /<span>—<\/span>/)
+    assert.doesNotMatch(html, /100%|—%/)
+  }
+  credits = { obtainedCredits: 60, requiredCredits: 120 }
+  await page.load()
+  const html = await render()
+  assert.equal(page.creditPct.value, 50)
+  assert.match(html, /学分达成：60 \/ 120 学分/)
+  assert.match(html, /<span>50%<\/span>/)
 })
 
 test('PR147 merge review: evaluation lists are keyboard reachable and server paginated', async () => {

@@ -340,6 +340,7 @@ def seed_school_academic_r11_runtime_20k(db, tenant_id: int) -> dict:
 
     _bulk_insert(db, AaAttendanceSession, [{
         "tenant_id": tenant_id,
+        "teaching_task_id": int(task.id),
         "class_id": int(task.class_id) if task.class_id else None,
         "course_name": task.course_name, "term_code": TERM_CODE,
         "teacher_key": task.teacher_key,
@@ -352,6 +353,12 @@ def seed_school_academic_r11_runtime_20k(db, tenant_id: int) -> dict:
         "total_count": len(rosters[int(task.id)]),
         "present_count": len(rosters[int(task.id)]), "absent_count": 0,
         "status": "SUBMITTED",
+        "occurrence_identity": f"TASK:{int(task.id)}:2026-03-{1 + (index % 28):02d}:S{1 + (index % 8)}",
+        # Attendance Authority consumes the semantic source enum, while the
+        # linked ScopeHead/schedule item remains frozen inside source_evidence.
+        "source_type": "FORMAL_TEACHING",
+        "source_reason": "historical runtime seed from authoritative teaching task",
+        "source_evidence": json.dumps({"teachingTaskId": str(task.id)}, separators=(",", ":")),
     } for index, task in enumerate(tasks)], chunk_size=1000)
     db.flush()
 

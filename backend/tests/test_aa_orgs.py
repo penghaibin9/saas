@@ -60,11 +60,20 @@ def test_o1_college_major_class_crud(client, db_mode):
 
 
 def test_o2_bind_secretary_audit(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import User
+    with get_sessionmaker()() as db:
+        secretary = User(tenant_id=TID, login_name="org-secretary-audit", real_name="教学秘书",
+                         password_hash="test", user_type="TEACHER", status="ACTIVE")
+        db.add(secretary)
+        db.flush()
+        secretary_id = str(secretary.id)
+        db.commit()
     hdr = _hdr(client, "school_admin01")
     col = _mk_college(client, hdr, "机电学院", "机电")
     r = client.post(f"{BASE}/colleges/{col['id']}/secretary", headers=hdr,
-                    json={"secretaryId": "88"}).json()["data"]
-    assert r["secretaryId"] == "88"
+                    json={"secretaryId": secretary_id}).json()["data"]
+    assert r["secretaryId"] == secretary_id
     # 解绑
     r2 = client.post(f"{BASE}/colleges/{col['id']}/secretary", headers=hdr,
                      json={"secretaryId": None}).json()["data"]

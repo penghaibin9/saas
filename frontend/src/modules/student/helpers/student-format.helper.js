@@ -13,7 +13,7 @@ import {
   RISK_FLAG_LABELS
 } from '../constants/student.constants'
 
-const pick = (map) => (v) => map[v] || v || '—'
+const pick = (map) => (v) => map[v] || (v ? '状态待确认' : '—')
 
 export const formatGender = pick(GENDER_LABELS)
 export const formatEducationLevel = pick(EDUCATION_LEVEL_LABELS)

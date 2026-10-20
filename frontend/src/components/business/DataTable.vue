@@ -137,7 +137,7 @@ export default {
 /* 市场对标精修（表头=A 淡渐变有分量，行体/悬浮/选中/分页=A+ 克制企业风）。
  * 全站共享，改这一处，教务/实习/毕设/学工等所有消费页一起生效。 */
 .dt {
-  background: #fff;
+  background: var(--bg-card, #fff);
   border: 1px solid var(--card-b);
   border-radius: 12px;
   box-shadow:
@@ -199,7 +199,7 @@ export default {
   font-weight: var(--font-weight-semibold);
   color: var(--t2);
   letter-spacing: 0.04em;
-  background: linear-gradient(180deg, #fbfdff, var(--bg-section));
+  background: var(--bg-section);
   border-bottom: 1px solid var(--dv);
   white-space: nowrap;
   box-shadow: 0 1px 0 rgba(15, 40, 90, 0.04);
@@ -212,7 +212,7 @@ export default {
   padding: 15px 18px;
   font-size: var(--font-size-base);
   color: var(--t2);
-  border-bottom: 1px solid #f1f4fa;
+  border-bottom: 1px solid var(--border-light);
   vertical-align: middle;
   font-variant-numeric: var(--font-numeric);
   transition: background 0.1s;
@@ -227,7 +227,7 @@ export default {
   cursor: pointer;
 }
 .dt__tr:hover .dt__td {
-  background: #f7f9fd;
+  background: var(--bg-hover);
 }
 /* 选中行：品牌淡蓝 + 左侧强调条（勾选批量 / 业务页高亮当前行时用） */
 .dt__tr.is-selected .dt__td {

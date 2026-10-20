@@ -3,6 +3,7 @@
     :title="brandTitle"
     subtitle="学工中心"
     :ctx="ctx"
+    :workspace="isCoreWorkspace"
     @menu-select="onMenuSelect"
   >
     <ErrorState
@@ -11,15 +12,22 @@
       :description="loadError"
       @retry="goLogin"
     />
-    <div v-else-if="ctx" class="student-affairs-ui-scope">
+    <div v-else-if="ctx" class="student-affairs-ui-scope" :class="{ 'sa-compact-workspace': isCoreWorkspace, 'sa-aid-workspace': isAidWorkspace }">
       <div v-if="showSla || showTempExpiry" class="sa-context-stack">
-        <StudentAffairsSlaStrip v-if="showSla" kind="both" />
+        <details v-if="showSla" class="sa-leave-sla">
+          <summary>{{ isLeaveWorkspace ? '查看请假办理时限' : '查看办理时限' }}</summary>
+          <StudentAffairsSlaStrip :kind="isLeaveWorkspace ? 'leave' : 'both'" />
+        </details>
         <CounselorTempExpiryPanel
           v-if="showTempExpiry"
           :ctx="ctx"
         />
       </div>
-      <router-view :ctx="ctx" />
+      <router-view v-slot="{ Component }">
+        <KeepAlive :include="['LeaveApprovalWorkbenchView', 'LeaveExtensionCancelView', 'LeaveLedgerView', 'LeaveStatsView']" :max="4">
+          <component :is="Component" :ctx="ctx" />
+        </KeepAlive>
+      </router-view>
     </div>
     <LoadingState v-else text="正在加载学工中心…" />
   </BasePortalLayout>
@@ -46,12 +54,17 @@ export default {
   name: 'AdminStudentAffairsLayout',
   components: { BasePortalLayout, LoadingState, ErrorState, StudentAffairsSlaStrip, CounselorTempExpiryPanel },
   provide() {
-    return { appPickerAdapters: studentAffairsPickerAdapters }
+    return { appPickerAdapters: studentAffairsPickerAdapters, conciseBusinessHeader: true, affairsWorkspace: true }
   },
   data() {
     return { ctx: null, loadError: '' }
   },
   computed: {
+    isLeaveWorkspace() { return this.$route.path.startsWith('/admin/student-affairs/leave') },
+    isAidWorkspace() { return this.$route.path === '/admin/student-affairs/aid' || this.$route.path.startsWith('/admin/student-affairs/aid/') },
+    isFundingWorkspace() { return this.$route.path === '/admin/student-affairs/funding' || this.$route.path.startsWith('/admin/student-affairs/funding/') },
+    // 本布局下所有业务、详情和编辑页统一使用新壳，不再逐页维护白名单。
+    isCoreWorkspace() { return true },
     brandTitle() {
       if (!this.ctx) return '管理端'
       return this.ctx.tenantBrandConfig.schoolName + ' · 管理端'
@@ -96,6 +109,20 @@ export default {
 
 <style src="@/modules/studentAffairs/styles/usability.css"></style>
 <style scoped>
+.sa-leave-sla { font-size: 12px; color: var(--text-secondary); }
+.sa-leave-sla summary { cursor: pointer; padding: 4px 0; width: fit-content; }
+.sa-leave-sla[open] summary { margin-bottom: 8px; }
+.sa-compact-workspace :deep(.mps__head) { min-height: auto; padding: 0 0 10px; margin: 0; border-bottom: 1px solid var(--line); background: transparent; box-shadow: none; border-radius: 0; align-items: center; }
+.sa-compact-workspace :deep(.mps__title) { font-size: 20px; }
+.sa-compact-workspace :deep(.mps__subtitle) { font-size: 12px; margin-top: 4px; }
+.sa-compact-workspace :deep(.mps) { gap: 12px; }
+.sa-compact-workspace :deep(.mp-stack) { gap: 12px; }
+.sa-compact-workspace .sa-context-stack { margin-bottom: 8px; }
+.sa-aid-workspace :deep(.app-metric-card) { padding: 12px 16px; min-height: 0; background: var(--surface); border: 1px solid var(--line); box-shadow: none; }
+.sa-aid-workspace :deep(.app-metric-card__value) { font-size: 24px; }
+.sa-aid-workspace :deep(.app-metric-card__footer:empty) { display: none; }
+.sa-aid-workspace :deep(.sa-grid--metrics) { gap: 10px; }
+.sa-aid-workspace :deep(.bf-input) { background: var(--field-bg); color: var(--t1); }
 .sa-context-stack {
   display: grid;
   width: 100%;

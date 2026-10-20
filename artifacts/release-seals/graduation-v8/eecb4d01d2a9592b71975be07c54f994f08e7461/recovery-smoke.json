@@ -1,0 +1,22 @@
+{
+  "result": "S5_RECOVERY_PASS",
+  "generatedAt": "2026-08-30T13:35:58.130872+08:00",
+  "sourceDatabase": "graduation_v8_e2e",
+  "temporaryDatabase": "graduation_v8_recovery_smoke",
+  "sourceFact": {
+    "archiveCount": 1,
+    "batchId": 2,
+    "studentCount": 2
+  },
+  "sourceSha256": "14716005551d9ea49a9aebc2616b12746e880efc7427b56df182b144552999fa",
+  "dumpSha256": "f4fd38069c156173824634abd772230ef736c91204257049f011e50b5c6311e1",
+  "dumpBytes": 2233,
+  "restoredColumns": [
+    "id",
+    "source_fact",
+    "source_sha256"
+  ],
+  "candidateOnlyTableCount": 0,
+  "durationSeconds": 4.047,
+  "temporaryDatabaseRemoved": true
+}

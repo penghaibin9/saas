@@ -10,6 +10,7 @@
 import { teacherApi } from './teacherApi'
 import { mockRequest, realFirstStrict, realRequest } from './request'
 import * as M from '@/mock'
+import { roleConfigs, roleKeyFromBackendRole } from '@/config/roles.config'
 
 const enc = (value) => encodeURIComponent(String(value ?? ''))
 
@@ -23,7 +24,11 @@ export function ensureTeacherPerformanceApi() {
   teacherApi.getWorkbench = (roleKey) =>
     realFirstStrict(
       'teacher.workbench.performance',
-      () => realRequest('/mobile/performance/teacher/workbench?pageSize=8'),
+      async () => {
+        const data = await realRequest('/mobile/performance/teacher/workbench?pageSize=8')
+        const role = data._role || data.contextTitle || roleKey
+        return { ...data, contextTitle: roleConfigs[roleKeyFromBackendRole(role) || role]?.label || '教师' }
+      },
       () => mockRequest(M.workbenchByRole[roleKey] || M.workbenchByRole.counselor)
     )
 

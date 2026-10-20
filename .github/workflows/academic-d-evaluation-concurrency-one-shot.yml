@@ -138,6 +138,10 @@ jobs:
             tests/test_academic_d_w5_upstream_freeze.py \
             -p no:warnings
 
+      - name: Install student portal contract dependencies
+        working-directory: student-portal
+        run: npm ci
+
       - name: Test D-W5 student graduation truth source contract
         run: node --test student-portal/tests/academic-d-w5-graduation-truth.test.mjs
 
@@ -275,6 +279,15 @@ jobs:
         env:
           EXACT_D_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: bash /tmp/academic_d_w5_integrated_browser.sh
+
+      - name: Upload D-W5 browser Gold diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: academic-d-w5-browser-diagnostics-${{ github.run_id }}
+          path: e2e/test-results/artifacts
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Aggregate D-W5 exact-head matrix
         if: always()

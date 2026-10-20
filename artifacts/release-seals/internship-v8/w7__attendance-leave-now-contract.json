@@ -1,0 +1,30 @@
+{
+  "schemaVersion": "internship-v8-w7-v1",
+  "wave": "W7_ATTENDANCE_LEAVE",
+  "status": "STATIC_AND_BUILD_VERIFIED_RUNTIME_MYSQL_PENDING",
+  "scope": [
+    "Staff attendance workbench",
+    "attendance exception full-detail command owner",
+    "makeup full-request review",
+    "leave approval workbench",
+    "current-version evidence acknowledgement",
+    "409 draft preservation",
+    "truthful persistent action receipts"
+  ],
+  "commandOwnership": {
+    "ATTENDANCE_EXCEPTION_DECISION": "/admin/internship/exceptions/:id",
+    "MAKEUP_REVIEW": "/admin/internship/attendance?panel=makeup-review (full-detail drawer)",
+    "LEAVE_REVIEW": "/admin/internship/leaves?panel=pending (dual-pane full detail)"
+  },
+  "truthFields": [
+    "id",
+    "status/statusLabel",
+    "version/expectedVersion",
+    "evidenceRequired",
+    "evidenceViewed",
+    "previousReviewComment",
+    "auditTrail"
+  ],
+  "receiptPolicy": "Receipts retain only server-returned id/status/version plus an explicit next step; no audit id or server timestamp is invented.",
+  "runtimeBlocker": "The isolated internship-v8 MySQL container accepts neither a fresh handshake nor a targeted safe restart; Browser/MySQL replay remains pending without substituting SQLite or restarting unrelated Docker workloads."
+}

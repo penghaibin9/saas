@@ -120,7 +120,8 @@ def test_management_pc_uses_shared_file_sdk_and_real_manifest():
     assert "requestBlob" not in api
     for token in ("fileVersionId", "assetId", "manifestSha256", "sensitivityLevel"):
         assert token in view
-    assert "心理与困难认定材料不会先拉全量" in view
+    assert "强敏感材料不会出现在无权角色的空壳列表中" in view
+    assert "listRequirements" in api
     assert "getLatestManifest" in api
 
 

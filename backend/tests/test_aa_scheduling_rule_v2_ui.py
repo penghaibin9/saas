@@ -56,8 +56,12 @@ def test_rule_page_fails_closed_when_context_catalog_or_term_state_is_unknown():
 def test_rule_page_keeps_existing_auto_schedule_and_conflict_workflows():
     source = _view_source()
 
-    assert "试排预览" in source
-    assert "一键自动排课" in source
+    assert "<AaSchedulingOptimizerPanel" in source
+    panel = (Path(__file__).resolve().parents[2] / "frontend/src/modules/academicAffairs/components/AaSchedulingOptimizerPanel.vue").read_text(encoding="utf-8")
+    assert '@click="generate"' in panel
+    assert '@click="apply"' in panel
+    assert "!state.job.canApply" in panel
+    assert "采用后仍需通过原课表发布流程" in panel
     assert "清除自动排课结果" in source
     assert "教师不可排时间" in source
     assert "冲突报告" in source

@@ -95,7 +95,7 @@
         <div class="mp-kv"><span class="mp-kv__k">数据截至</span><span class="mp-kv__v">{{ asOfLabel }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">统计口径</span><span class="mp-kv__v">{{ caliberLabel }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ scopeLabel }}</span></div>
-        <div class="mp-kv"><span class="mp-kv__k">服务端来源</span><span class="mp-kv__v">{{ sourceNames || '跨域真实 MySQL 聚合' }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">服务端来源</span><span class="mp-kv__v">{{ sourceNames || '跨业务域关系型数据库聚合' }}</span></div>
         <section v-for="m in visibleMetrics" :key="m.key" class="dcd-guide">
           <div class="dcd-guide__title">
             {{ m.label }}

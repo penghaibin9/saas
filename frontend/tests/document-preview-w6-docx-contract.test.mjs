@@ -2,13 +2,14 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
+import { fileURLToPath } from 'node:url'
 import {
   buildPreviewDescriptorFromFile,
   DOCX_PREVIEW_MAX_IMAGE_PIXELS,
   DOCX_PREVIEW_MAX_TOTAL_IMAGE_PIXELS
 } from '../src/components/file/viewer/viewer-contract.js'
 
-const root = path.resolve(new URL('..', import.meta.url).pathname)
+const root = path.resolve(fileURLToPath(new URL('..', import.meta.url)))
 const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8')
 
 const viewer = read('src/components/file/viewer/AppDocumentViewer.vue')

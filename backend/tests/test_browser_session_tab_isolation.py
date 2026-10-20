@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import inspect
 
+import pytest
+
 from fastapi import Response
 from starlette.requests import Request
 
@@ -101,6 +103,96 @@ def test_browser_logout_consumes_only_current_session_refresh(monkeypatch):
 def test_browser_logout_does_not_revoke_other_same_user_session():
     assert not hasattr(auth_browser, "_BROWSER_REVOKE_SESSION")
     assert "revoke_refresh_by_user" not in auth_browser._browser_logout.__code__.co_names
+
+
+@pytest.mark.parametrize("bound_channel,bound_tab", [("student", "tab-a"), ("staff", "tab-b")])
+def test_browser_logout_binding_mismatch_keeps_real_refresh_token(monkeypatch, bound_channel, bound_tab):
+    token_store._refresh.clear()
+    token = token_store.issue_refresh({
+        "userId": "db-1", "authSessionId": "other-session", "browserChannel": bound_channel,
+        "browserSessionIdHash": auth_browser._browser_session_hash(bound_tab),
+    })
+    monkeypatch.setattr(auth_browser, "block_auth_session", lambda *args: pytest.fail("unmatched session must remain valid"))
+    monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: pytest.fail("unmatched logout must not succeed"))
+    response = Response()
+    result = auth_browser.browser_logout(
+        _request({auth_browser._cookie_name("staff", "tab-a"): token}), response,
+        browser_session="staff", browser_session_id="tab-a", authorization=None,
+    )
+    assert response.status_code == 401 and result["code"] != 0
+    assert token in token_store._refresh
+    assert token_store.consume_refresh_if_matches(
+        token, expected_browser_channel=bound_channel,
+        expected_browser_session_hash=auth_browser._browser_session_hash(bound_tab),
+    ) is not None
+
+
+@pytest.mark.parametrize("refresh_session,access_session,expected", [
+    ("auth-a", "auth-a", ["auth-a"]),
+    ("auth-a", "auth-b", ["auth-a", "auth-b"]),
+    (None, "auth-a", ["auth-a"]),
+    ("auth-a", None, ["auth-a"]),
+])
+def test_browser_logout_persists_each_bound_session_once_and_still_blocks_access_jti(
+    monkeypatch, refresh_session, access_session, expected,
+):
+    sessions, access_jtis, audits = [], [], []
+    binding = {"userId": "db-1", "browserChannel": "staff",
+               "browserSessionIdHash": auth_browser._browser_session_hash("tab-a")}
+    monkeypatch.setattr(auth_browser, "consume_refresh_if_matches", lambda token, **kwargs:
+                        {**binding, "authSessionId": refresh_session})
+    monkeypatch.setattr(auth_browser, "decode_token", lambda token:
+                        {**binding, "authSessionId": access_session, "jti": "access-a", "exp": 2000000000})
+
+    def persist_session(session_id):
+        if session_id in sessions:
+            raise AppException("AUTH_STORE_UNAVAILABLE", "duplicate session tombstone", http_status=503)
+        sessions.append(session_id)
+        return True
+
+    monkeypatch.setattr(auth_browser, "block_auth_session", persist_session)
+    monkeypatch.setattr(auth_browser, "block_jti", lambda jti, exp: access_jtis.append((jti, exp)) or True)
+    monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs: audits.append(kwargs))
+    response = Response()
+    result = auth_browser._browser_logout(response=response, channel="staff", browser_session_id="tab-a",
+        refresh_token="refresh-a" if refresh_session else None,
+        authorization="Bearer access-a" if access_session else None)
+    assert response.status_code == 200 and result["code"] == 0
+    assert sessions == expected
+    assert access_jtis == ([("access-a", 2000000000.0)] if access_session else [])
+    assert len(audits) == 1
+
+
+def test_browser_logout_keeps_real_persistence_failure_as_failure(monkeypatch):
+    monkeypatch.setattr(auth_browser, "consume_refresh_if_matches", lambda *args, **kwargs:
+                        {"userId": "db-1", "authSessionId": "auth-a"})
+    def unavailable(session_id):
+        raise AppException("AUTH_STORE_UNAVAILABLE", "storage failure", http_status=503)
+    monkeypatch.setattr(auth_browser, "block_auth_session", unavailable)
+    monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs:
+                        pytest.fail("failed logout must not record successful revocation"))
+    response = Response()
+    result = auth_browser._browser_logout(response=response, channel="staff", browser_session_id="tab-a",
+        refresh_token="refresh-a", authorization=None)
+    assert response.status_code == 503 and result["bizCode"] == "AUTH_STORE_UNAVAILABLE"
+
+
+def test_browser_logout_still_rejects_access_from_another_tab(monkeypatch):
+    sessions, access_jtis = [], []
+    monkeypatch.setattr(auth_browser, "consume_refresh_if_matches", lambda *args, **kwargs:
+                        {"userId": "db-1", "authSessionId": "auth-a"})
+    monkeypatch.setattr(auth_browser, "decode_token", lambda token:
+                        {"userId": "db-1", "authSessionId": "auth-b", "jti": "other-access",
+                         "browserChannel": "staff", "browserSessionIdHash": auth_browser._browser_session_hash("tab-b")})
+    monkeypatch.setattr(auth_browser, "block_auth_session", lambda sid: sessions.append(sid) or True)
+    monkeypatch.setattr(auth_browser, "block_jti", lambda *args: access_jtis.append(args))
+    monkeypatch.setattr(auth_browser.audit, "record", lambda *args, **kwargs:
+                        pytest.fail("unmatched access must not record successful logout"))
+    response = Response()
+    result = auth_browser._browser_logout(response=response, channel="staff", browser_session_id="tab-a",
+        refresh_token="refresh-a", authorization="Bearer other-access")
+    assert response.status_code == 401 and result["code"] != 0
+    assert sessions == ["auth-a"] and access_jtis == []
 
 
 def test_browser_switch_role_rotates_only_current_session_slot(monkeypatch):

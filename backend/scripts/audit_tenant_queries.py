@@ -11,6 +11,7 @@ import argparse
 import ast
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
@@ -59,8 +60,17 @@ def _normalize_location(value: str) -> str:
 
 
 def _git_blob_sha(path: Path) -> str:
-    data = path.read_bytes()
-    return hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
+    """Hash the clean-filtered worktree file like Git does on every OS."""
+    try:
+        rel = path.relative_to(REPO_ROOT).as_posix()
+        return subprocess.check_output(
+            ["git", "hash-object", f"--path={rel}", str(path)],
+            cwd=REPO_ROOT,
+            text=True,
+        ).strip()
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        data = path.read_bytes()
+        return hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
 
 
 def _verified_move_aliases() -> dict[str, str]:

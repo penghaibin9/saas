@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "authority": "岗位实习中心4+1端惊艳体验AI无人值守安全重构施工总控-V8.0-20260830",
+  "stage": "W16",
+  "sealLevel": "L4",
+  "sealedAt": "2026-08-30T22:38:00+08:00",
+  "sourceHead": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "runtime": {
+    "database": "MySQL 8.4",
+    "databaseName": "internship_v8_runtime_e2e",
+    "apiBaseUrl": "http://127.0.0.1:18111/api/v1",
+    "staffBaseUrl": "http://127.0.0.1:18173",
+    "studentBaseUrl": "http://127.0.0.1:18174/portal",
+    "miniBaseUrl": "http://127.0.0.1:18175",
+    "enterpriseBaseUrl": "http://127.0.0.1:18176/enterprise"
+  },
+  "journeys": [
+    { "id": "IX-GJ-01", "status": "L4_SEALED", "evidence": "browser+server+mysql" },
+    { "id": "IX-GJ-02", "status": "L4_SEALED", "evidence": "browser+server+mysql" },
+    { "id": "IX-GJ-03", "status": "L4_SEALED", "evidence": "browser+server+mysql" },
+    { "id": "IX-GJ-04", "status": "L4_SEALED", "evidence": "browser+server+mysql" },
+    { "id": "IX-GJ-05", "status": "L4_SEALED", "evidence": "browser+server+mysql" },
+    { "id": "IX-GJ-06", "status": "L4_SEALED", "evidence": "browser+server+mysql" },
+    { "id": "IX-GJ-07", "status": "L4_SEALED", "evidence": "browser+server+mysql+S5-fail-closed-recovery" },
+    { "id": "IX-GJ-08", "status": "L4_SEALED", "evidence": "browser+server+mysql", "browserDurationSeconds": 21.9 },
+    { "id": "IX-GJ-09", "status": "L4_SEALED", "evidence": "browser+server+mysql+restore", "browserDurationSeconds": 23.3 }
+  ],
+  "gj09Truth": {
+    "internshipId": 22,
+    "recordStatus": "ARCHIVED",
+    "recordVersion": 3,
+    "archiveId": 1,
+    "archiveStatus": "ARCHIVED",
+    "archiveVersion": 1,
+    "archiveCompleteness": 100,
+    "manifest": {
+      "manifestId": 1,
+      "revision": 1,
+      "status": "PACKAGED",
+      "ruleVersion": "batch-16-rv1",
+      "sha256": "3ce44e1ca0ea108dc6549aedf308bb213ad0a8b3c907ed6ca053cd681d9bf036",
+      "fileVersionIds": [5, 4],
+      "fileObjectIds": [14, 13],
+      "itemCount": 2,
+      "scanResults": ["NOT_REQUIRED", "NOT_REQUIRED"]
+    },
+    "package": {
+      "packageId": 1,
+      "packageVersion": 1,
+      "status": "READY",
+      "fileId": 15,
+      "sha256": "d7013c5e46f53423716eef6314d8098d4f6f2f19eb925663cc229f713d84710e",
+      "sizeBytes": 1924,
+      "rowCount": 1,
+      "fileCount": 2,
+      "restoreReady": true
+    },
+    "finalScore": {
+      "scoreId": 1,
+      "status": "PUBLISHED",
+      "totalScore": 90.1,
+      "version": 10,
+      "employmentAuthority": "PUBLISHED_FINAL_SCORE_FROZEN_IN_ARCHIVE"
+    },
+    "employmentRoleAuthority": {
+      "templateId": 29,
+      "templateVersion": 3,
+      "permissionCount": 25,
+      "hasBatchView": true,
+      "hasArchiveView": true,
+      "hasEmploymentView": true,
+      "explicitStudentScope": "E2E20260001"
+    }
+  },
+  "result": "PASS"
+}

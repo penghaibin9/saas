@@ -53,11 +53,6 @@ def gd_student_groups(user=Depends(get_current_user)):
     return success(svc.list_student_groups())
 
 
-@router.get("/gd-students/stats", summary="毕设学生统计（节点/选题/高风险）")
-def gd_student_stats(user=Depends(get_current_user)):
-    return success(svc.student_stats())
-
-
 @router.post("/gd-students/import/dry-run", summary="毕设学生导入·预校验（粘贴行/高级，不写库）")
 def gd_import_dry_run(body: ExcelImportRows, user=Depends(get_current_user)):
     return success(svc.import_dry_run(body.rows))
@@ -86,13 +81,6 @@ async def gd_import_xlsx(file: UploadFile = File(...), user=Depends(get_current_
 @router.post("/gd-students/import/errors-xlsx", summary="毕设学生导入·下载错误行 Excel")
 def gd_import_errors_xlsx(body: ExcelErrorRows, user=Depends(get_current_user)):
     return success(svc.import_errors_pack(body.rows, [e.model_dump() for e in body.errors]))
-
-
-@router.post("/gd-students/import/confirm", summary="毕设学生导入·确认（整批事务，须预校验全通过）")
-def gd_import_confirm(body: ExcelImportRows, user=Depends(get_current_user)):
-    result = svc.import_confirm(body.rows, body.previewToken)
-    audit_log.record("导入毕设学生", "graduation-student:import", detail=result)
-    return success(result, message="导入完成")
 
 
 @router.post("/gd-students/export", summary="毕设学生台账导出 Excel（脱敏，写审计；筛选与列表一致）")
@@ -200,13 +188,6 @@ def student_defense_group(record_id: str, body: GdStudentDefenseGroupRequest, us
     result = svc.assign_defense_group(record_id, body.defenseGroupId, body.reason or "")
     audit_log.record("分配答辩组", f"graduation-student:{record_id}", detail={"groupId": body.defenseGroupId})
     return success(result, message="已分配")
-
-
-@router.post("/gd-students/{record_id}/grad-qual", summary="毕业资格联动状态")
-def student_grad_qual(record_id: str, body: GdStudentGradQualRequest, user=Depends(get_current_user)):
-    result = svc.set_grad_qual(record_id, body.status, body.note or "", body.reason or "")
-    audit_log.record("毕业资格联动", f"graduation-student:{record_id}", detail={"status": body.status})
-    return success(result, message="已更新")
 
 
 @router.post("/gd-students/batch-archive", summary="批量归档毕设学生")

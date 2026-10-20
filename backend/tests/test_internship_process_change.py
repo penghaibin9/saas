@@ -70,7 +70,8 @@ def _seed(db_mode):
             tenant_id=TID, student_id=s.id, batch_id=batch.id, advisor_name="刘强",
             enterprise_id=old_company.id, position_id=old_position.id,
             enterprise_name=old_company.name, position_name=old_position.title,
-            destination_type="ASSIGNED", status="ONBOARD", risk_level="NONE")
+            destination_type="ASSIGNED", status="ONBOARD", eligibility_status="QUALIFIED",
+            intern_start_date=datetime.utcnow(), risk_level="NONE")
         db.add(r)
         db.flush()
         db.commit()
@@ -131,6 +132,8 @@ def test_change_request_apply_and_review(client, db_mode):
                       json={"action": "APPROVE", "comment": "同意变更", "expectedVersion": ver},
                       headers=_mentor("刘强"))
     assert rev.status_code == 200 and rev.json()["data"]["status"] == "APPROVED", rev.json()
+    assert rev.json()["data"]["recordStatus"] == "READY"
+    assert rev.json()["data"]["requiresReonboard"] is True
 
     from app.db.session import get_sessionmaker
     from app.models import InternshipPosition, InternshipRecord
@@ -142,10 +145,20 @@ def test_change_request_apply_and_review(client, db_mode):
         assert record.position_id == ids["target_position_id"]
         assert record.enterprise_id == ids["target_company_id"]
         assert record.enterprise_name == "新企业A" and record.position_name == "新岗位B"
+        assert record.status == "READY"
+        assert record.intern_start_date is None
         assert old_position.allocated_count == 0
         assert target_position.allocated_count == 1
     finally:
         db.close()
+
+    blocked_checkin = client.post(
+        f"{MOB}/internship/checkin",
+        json={"idempotencyKey": f"change-reonboard-{cid}"},
+        headers=_student(),
+    )
+    assert blocked_checkin.status_code == 409, blocked_checkin.json()
+    assert "仅在岗或考核中" in (blocked_checkin.json().get("message") or "")
 
 
 def test_change_position_requires_target_position_id(client, db_mode):
@@ -156,6 +169,39 @@ def test_change_position_requires_target_position_id(client, db_mode):
                       headers=_student())
     assert bad.status_code == 400 or bad.json().get("code") not in (0, None)
     assert "岗位" in (bad.json().get("message") or "")
+
+
+def test_change_enterprise_requires_target_position_and_full_target_is_rejected(client, db_mode):
+    """换单位必须绑定真实岗位；满员岗位在申请阶段即拒绝，审批时还会再次校验。"""
+    ids = _seed(db_mode)
+    missing = client.post(
+        f"{MOB}/internship/change-request",
+        json={"changeType": "CHANGE_ENTERPRISE", "reason": "原企业业务调整需要换单位"},
+        headers=_student(),
+    )
+    assert missing.status_code == 400 or missing.json().get("code") not in (0, None)
+    assert "岗位" in (missing.json().get("message") or "")
+
+    from app.db.session import get_sessionmaker
+    from app.models import InternshipPosition
+    db = get_sessionmaker()()
+    try:
+        target = db.get(InternshipPosition, ids["target_position_id"])
+        target.allocated_count = target.headcount
+        target.status = "FULL"
+        db.commit()
+    finally:
+        db.close()
+    full = client.post(
+        f"{MOB}/internship/change-request",
+        json={
+            "changeType": "CHANGE_ENTERPRISE", "reason": "原企业业务调整需要换单位",
+            "targetPositionId": ids["target_position_id"],
+        },
+        headers=_student(),
+    )
+    assert full.status_code == 409, full.json()
+    assert "不可申请" in (full.json().get("message") or "")
 
 
 def test_self_eval_enterprise_rating(client, db_mode):

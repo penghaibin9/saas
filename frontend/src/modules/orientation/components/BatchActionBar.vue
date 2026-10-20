@@ -16,7 +16,7 @@
 <script>
 /**
  * BatchActionBar — 批量操作按钮组（渲染在 DataTable 的 #batch-actions 插槽内）。
- * actions 由 mock/api 的 batchActions 下发并按 permissionActions 预处理。
+ * actions 由展示配置声明，并按服务端 permissionPatterns 投影的 permissionActions 预处理。
  */
 import { AppButton } from '@/components/ui'
 

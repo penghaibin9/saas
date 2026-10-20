@@ -131,7 +131,7 @@ ROLE_CATALOG = [
     {"roleCode": "SCHOOL_ADMIN", "roleName": "学校管理员", "side": "school", "defaultScope": "SCHOOL"},
     {"roleCode": "SYS_ADMIN", "roleName": "系统管理员", "side": "school", "defaultScope": "SCHOOL"},
     {"roleCode": "PLATFORM_OP", "roleName": "平台运营人员", "side": "platform", "defaultScope": "PLATFORM"},
-    {"roleCode": "LEADER", "roleName": "校领导/院系领导", "side": "school", "defaultScope": "SCHOOL"},
+    {"roleCode": "LEADER", "roleName": "校领导", "side": "school", "defaultScope": "SCHOOL"},
 ]
 
 DATA_SCOPE_CATALOG = [

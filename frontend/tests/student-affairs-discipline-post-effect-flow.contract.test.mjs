@@ -1,0 +1,7 @@
+import test from 'node:test'
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+const read = (p) => fs.readFileSync(new URL(`../${p}`, import.meta.url), 'utf8')
+test('EFFECTIVE 后动作按送达/申诉真值排序', () => { const src = read('src/modules/studentAffairs/views/DisciplineWorkbenchView.vue'); for (const key of ['DELIVERY_REQUIRED','DELIVERED_NO_APPEAL','APPEAL_OPEN','APPEAL_CLOSED']) assert.ok(src.includes(key)); assert.ok(src.includes("['SUBMITTED', 'REVIEWING'].includes(appeal.status)")); assert.ok(src.includes("effect.key === 'APPEAL_CLOSED' ? [remove, next] : [next, remove]")); assert.ok(src.includes("path: '/admin/student-affairs/discipline/appeals'")); })
+test('处分主工作台消费 detail appealSummary', () => { const src = read('src/modules/studentAffairs/views/DisciplineWorkbenchView.vue'); assert.ok(src.includes('const appeal = row.appealSummary')); assert.ok(src.includes('getDisciplineDetail(recordId)')); })
+test('送达与申诉页按 caseId/appealId 精确过滤并 fail closed', () => { const view = read('src/modules/studentAffairs/views/discipline/DisciplineAppealView.vue'); const api = read('src/modules/studentAffairs/api/studentAffairs.api.js'); assert.ok(view.includes("this.caseFocusId = String(q.caseId || '').trim()")); assert.ok(view.includes("this.appealFocusId = String(q.appealId || '').trim()")); assert.ok(view.includes('getDisciplineDetail(this.caseFocusId)')); assert.ok(view.includes('代学生登记申诉')); assert.ok(api.includes('if (caseId) params.caseId = caseId')); assert.ok(api.includes('if (appealId) params.appealId = appealId')); })

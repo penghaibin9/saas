@@ -49,7 +49,7 @@
         <DataTable :columns="listColumns" :rows="changes" row-key="changeId" row-clickable @row-click="selectChange">
           <template #cell-scope="{ row }">
             <div class="pch__cell-main">{{ row.title }}</div>
-            <div class="pch__cell-sub">{{ changeTypeLabel(row.changeType) }} · {{ row.affectedServiceCodes.join('、') }}</div>
+            <div class="pch__cell-sub">{{ changeTypeLabel(row.changeType) }} · {{ serviceLabels(row.affectedServiceCodes) }}</div>
           </template>
           <template #cell-status="{ row }">
             <StatusTag :type="statusTone(row.status)" :label="platformStatusLabel(row.status)" dot />
@@ -58,7 +58,7 @@
       </AppCard>
 
       <AppCard v-if="selected" class="pch__panel">
-        <AppSectionHeader :title="`变更详情：${selected.title}（${selected.status}）`" />
+        <AppSectionHeader :title="`变更详情：${selected.title}（${platformStatusLabel(selected.status)}）`" />
         <div class="pch__form">
           <button v-if="selected.status === 'DRAFT'" class="mp-link" @click="doAssess">评估</button>
           <button v-if="selected.status === 'ASSESSED'" class="mp-link" @click="doApprove">审批通过</button>
@@ -94,8 +94,9 @@
 import { AppCard, AppSectionHeader } from '@/components/ui'
 import { DataTable, ErrorState, LoadingState, ModulePageShell, ModuleToolbar, StatusTag } from '@/components/business'
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
-import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
+import { platformServiceLabel, platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
+import { systemPrompt } from '@/services/systemDialog'
 
 export default {
   name: 'PlatformChangeView',
@@ -120,12 +121,13 @@ export default {
   created() { this.load() },
   methods: {
     platformStatusLabel,
-    /** 变更类型中文名；与上方下拉选项同一口径，未收录取值原样显示 */
+    serviceLabels(values) { return (values || []).map((value) => platformServiceLabel(value)).join('、') || '未指定服务' },
+    /** 变更类型中文名；与上方下拉选项同一口径。 */
     changeTypeLabel(t) {
       return ({
         CODE: '代码发布', MIGRATION: '数据库迁移', PLATFORM_CONFIG: '平台配置',
         PACKAGE: '套餐调整', COMMON_FOUNDATION: '公共底座', HOTFIX: '紧急修复'
-      })[t] || t || '—'
+      })[t] || '变更类型待确认'
     },
     statusTone(s) {
       return { DRAFT: 'default', ASSESSED: 'default', APPROVED: 'warning', SCHEDULED: 'warning', IMPLEMENTING: 'warning', VERIFIED: 'success', FAILED: 'danger', ROLLED_BACK: 'danger' }[s] || 'default'
@@ -166,7 +168,7 @@ export default {
       if (res.code === 0) { toast.success('已评估'); await this.refreshSelected() } else toast.error(res.message)
     },
     async doApprove() {
-      const reason = window.prompt('审批意见（至少5字）')
+      const reason = await systemPrompt({ title:'填写变更审批意见', message:'审批意见将写入审计记录。', minLength:5, confirmText:'确认审批' })
       if (!reason) return
       const res = await platformControlApi.approveChange(this.selected.changeId, reason)
       if (res.code === 0) { toast.success('已审批'); await this.refreshSelected() } else toast.error(res.message)
@@ -177,14 +179,15 @@ export default {
     },
     async doStartWave() {
       const waveNo = (this.selected.waves?.length || 0) + 1
-      const tenantIdsText = window.prompt('本批次租户ID，逗号分隔')
+      const tenantIdsText = await systemPrompt({ title:'填写灰度租户编号', message:'多个租户编号请用逗号分隔。', minLength:1, confirmText:'开始灰度批次' })
       if (!tenantIdsText) return
       const tenantIds = tenantIdsText.split(',').map((s) => s.trim()).filter(Boolean)
       const res = await platformControlApi.startChangeWave(this.selected.changeId, waveNo, tenantIds)
       if (res.code === 0) { toast.success('灰度批次已开始'); await this.refreshSelected() } else toast.error(res.message)
     },
     async reportWave(wave, status) {
-      const error = status === 'FAILED' ? window.prompt('失败原因') : undefined
+      const error = status === 'FAILED' ? await systemPrompt({ title:'填写灰度失败原因', message:'失败原因将写入本批次记录。', minLength:1, confirmText:'记录失败' }) : undefined
+      if (status === 'FAILED' && error === null) return
       const res = await platformControlApi.reportChangeWave(this.selected.changeId, wave.waveNo, status, error)
       if (res.code === 0) { toast.success('已记录'); await this.refreshSelected() } else toast.error(res.message)
     },
@@ -193,7 +196,7 @@ export default {
       if (res.code === 0) { toast.success('已验证通过'); await this.refreshSelected() } else toast.error(res.message)
     },
     async doRollback() {
-      const reason = window.prompt('回滚原因（至少5字）')
+      const reason = await systemPrompt({ title:'填写回滚原因', message:'回滚原因将写入审计记录。', minLength:5, confirmText:'确认回滚' })
       if (!reason) return
       const res = await platformControlApi.rollbackChange(this.selected.changeId, reason)
       if (res.code === 0) { toast.success('已回滚'); await this.refreshSelected() } else toast.error(res.message)

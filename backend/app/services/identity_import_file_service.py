@@ -40,11 +40,11 @@ REQUIRED_HEADERS = {"账号类型", "工号/学号", "姓名"}
 # 拆分理由：混合模板靠「账号类型」列区分，学生行要跳过教师列、教师行要跳过学生列，
 # 学校填表时极易串列；且两类导入的权限、结果统计、后续流程完全不同。
 # 两套模板共用本文件的归档校验、行数上限、公式注入防护、批次与回执能力，不另造框架。
-STUDENT_HEADERS = ("学号", "姓名", "所属学院", "所属专业", "班级名称", "年级", "性别", "身份证号")
+STUDENT_HEADERS = ("学号", "姓名", "所属学院", "所属专业", "班级名称", "年级", "性别", "身份证号", "本人手机号", "号码归属", "联系手机号")
 STUDENT_REQUIRED_HEADERS = {"学号", "姓名", "班级名称"}
 
 TEACHER_HEADERS = ("工号", "姓名", "所属部门", "岗位名称", "预设角色编码",
-                   "数据范围类型", "数据范围引用")
+                   "数据范围类型", "数据范围引用", "本人手机号", "号码归属", "联系手机号")
 TEACHER_REQUIRED_HEADERS = {"工号", "姓名", "预设角色编码"}
 RELATION_HEADERS = ("关系类型", "主体工号", "对象编号/学号", "业务批次编号", "备注")
 RELATION_REQUIRED_HEADERS = {"关系类型", "主体工号", "对象编号/学号"}
@@ -119,7 +119,7 @@ def _batch_entry(row) -> dict:
         "batchNo": row.batch_no,
         "tenantId": str(row.tenant_id),
         "userKey": row.operator_key,
-        "payload": row.payload_json or {},
+        "payload": open_identity_payload(row.payload_json or {}),
         "rawRows": row.raw_rows_json or [],
         "errors": row.errors_json or [],
         "report": row.report_json or {},
@@ -135,7 +135,7 @@ def _batch_entry(row) -> dict:
     }
 
 
-def _owned_row(db, user: dict, tenant_id: object, batch_no: str, *, lock: bool = False):
+def _owned_row(db, user: dict, tenant_id: object, batch_no: str, *, lock: bool = False, mutate_expiry: bool = True):
     from sqlalchemy import select
     from app.models import IdentityImportBatch
 
@@ -149,7 +149,7 @@ def _owned_row(db, user: dict, tenant_id: object, batch_no: str, *, lock: bool =
         stmt = stmt.with_for_update()
     row = db.scalar(stmt)
     if not row or row.expires_at <= datetime.utcnow() or row.status == "EXPIRED":
-        if row and row.status != "EXPIRED":
+        if mutate_expiry and row and row.status != "EXPIRED":
             row.status = "EXPIRED"
             row.claim_token = None
             row.claim_started_at = None
@@ -257,6 +257,16 @@ def _style_header(ws, headers, required, fill, widths) -> None:
     for index, width in enumerate(widths, 1):
         ws.column_dimensions[ws.cell(row=1, column=index).column_letter].width = width
     ws.freeze_panes = "A2"
+    for index, name in enumerate(headers, 1):
+        letter = ws.cell(row=1, column=index).column_letter
+        if name in {'本人手机号', '联系手机号'}:
+            ws.column_dimensions[letter].number_format = '@'
+            ws.column_dimensions[letter].width = 22
+        elif name == '号码归属':
+            ws.column_dimensions[letter].width = 22
+            owner = DataValidation(type='list', formula1='"SELF,GUARDIAN,SHARED,UNKNOWN"', allow_blank=True)
+            ws.add_data_validation(owner)
+            owner.add(f'{letter}2:{letter}20001')
 
 
 def _append_notes(wb, title: str, instructions: list) -> None:
@@ -266,6 +276,9 @@ def _append_notes(wb, title: str, instructions: list) -> None:
     for index, item in enumerate(instructions, 2):
         notes.cell(row=index, column=1, value=item)
     notes.column_dimensions["A"].width = 100
+    notes.append(['本人手机号与联系手机号请用文本格式，接受大陆 11 位号码或 +86 前缀；公式、掩码与科学计数文本禁止。'])
+    notes.append(['号码归属 SELF=本人，GUARDIAN=家长，SHARED=共用，UNKNOWN=未确认；非 SELF 只能填联系手机号。'])
+    notes.append(['导入只生成待本人验证候选，不发短信、不改原账号和密码、不合并身份；已验证号码必须由本人办理换号。'])
 
 
 def build_student_template() -> bytes:
@@ -396,15 +409,66 @@ def _open_single_sheet(content: bytes, filename: str, headers: tuple, required: 
 def _row_cells(values, headers, header_index, row_no, errors, entity):
     """取一行并做公式注入防护；返回 (cells, 是否空行)。"""
     cells = {}
+    phone_warnings = []
     for name in headers:
         index = header_index.get(name)
         value = values[index] if index is not None and index < len(values) else ""
+        if name in {'本人手机号', '联系手机号'} and value not in (None, ''):
+            from app.services.phone_login_service import normalize_login_phone
+            try:
+                if type(value) in (int, float):
+                    if not 10_000_000_000 <= value < 100_000_000_000 or int(value) != value:
+                        raise ValueError('号码数字单元格必须是完整的 11 位整数，请核对原表并改为文本')
+                    value = str(int(value))
+                    phone_warnings.append({'row': row_no, 'entity': entity, 'field': name,
+                        'warning': '数字单元格已按完整 11 位号码读取，请核对原表；推荐使用文本格式'})
+                value = normalize_login_phone(value)
+            except (TypeError, ValueError):
+                errors.append({'row': row_no, 'entity': entity, 'field': name,
+                    'error': '手机号必须为完整中国大陆号码文本；禁止公式、科学计数文本、掩码和非整数'})
+                value = ''
+            cells[name] = value
+            continue
         if isinstance(value, str) and value.lstrip().startswith(("=", "+", "-", "@")):
             errors.append({"row": row_no, "entity": entity, "field": name,
                            "error": "单元格禁止公式或可执行前缀，请改为纯文本"})
             value = ""
         cells[name] = _cell_text(value)
+    if phone_warnings:
+        cells['_phoneWarnings'] = phone_warnings
     return cells, not any(cells.values())
+
+
+def phone_payload(cells: dict) -> dict:
+    return {'selfPhone': cells.get('本人手机号', ''), 'phoneOwnerType': cells.get('号码归属', ''),
+            'contactPhone': cells.get('联系手机号', ''), '_phoneWarnings': cells.get('_phoneWarnings', [])}
+
+
+def protect_identity_payload(payload: dict) -> dict:
+    """Reuse field_crypto for sensitive staged values; never invent a cipher/envelope."""
+    from app.core.field_crypto import encrypt_field
+    protected = dict(payload)
+    for field in ('selfPhone', 'contactPhone', 'idCard'):
+        if field in protected:
+            value = protected.pop(field)
+            protected[field + 'Encrypted'] = encrypt_field(value) if value else None
+    for collection in ('students', 'teachers'):
+        if collection in protected:
+            protected[collection] = [protect_identity_payload(row) for row in protected[collection]]
+    return protected
+
+
+def open_identity_payload(payload: dict) -> dict:
+    from app.core.field_crypto import decrypt_field
+    opened = dict(payload)
+    for field in ('selfPhone', 'contactPhone', 'idCard'):
+        if field + 'Encrypted' in opened:
+            value = opened.pop(field + 'Encrypted')
+            opened[field] = decrypt_field(value, allow_legacy_plaintext=False) if value else ''
+    for collection in ('students', 'teachers'):
+        if collection in opened:
+            opened[collection] = [open_identity_payload(row) for row in opened[collection]]
+    return opened
 
 
 def parse_student_xlsx(content: bytes, filename: str) -> dict:
@@ -436,6 +500,7 @@ def parse_student_xlsx(content: bytes, filename: str) -> dict:
             "collegeName": cells["所属学院"], "majorName": cells["所属专业"],
             "className": cells["班级名称"], "grade": cells["年级"],
             "gender": cells["性别"], "idCard": cells["身份证号"],
+            **phone_payload(cells),
         })
     wb.close()
     if total == 0:
@@ -475,6 +540,7 @@ def parse_teacher_xlsx(content: bytes, filename: str) -> dict:
             "departmentName": cells["所属部门"], "positionName": cells["岗位名称"],
             "roleCodes": cells["预设角色编码"],
             "scopeType": cells["数据范围类型"], "scopeRef": cells["数据范围引用"],
+            **phone_payload(cells),
         })
     wb.close()
     if total == 0:
@@ -675,7 +741,7 @@ def create_batch(user: dict, parsed: dict, report: dict) -> dict:
             file_name=parsed["fileName"],
             file_sha256=parsed["fileSha256"],
             status="VALIDATED",
-            payload_json=payload,
+            payload_json=protect_identity_payload(payload),
             raw_rows_json=parsed["rawRows"],
             errors_json=errors,
             pre_errors_json=list(parsed.get("errors") or []),
@@ -696,6 +762,8 @@ def create_batch(user: dict, parsed: dict, report: dict) -> dict:
             for item in errors
         ],
         "roleTemplateVersion": report.get("roleTemplateVersion"),
+        "phoneSummary": report.get('phoneSummary') or {},
+        "warnings": (report.get('warnings') or [])[:200],
         "entities": report.get("entities") or {},
         "relations": {"total": len(parsed.get("relationships") or []),
                       "suggested": _relation_suggestion_count(parsed),
@@ -747,11 +815,12 @@ def claim_batch(user: dict, tenant_id: object, batch_no: str) -> tuple[dict, str
 
 
 def mark_confirmed(user: dict, tenant_id: object, batch_no: str, claim_token: str,
-                   public_result: dict) -> None:
+                   public_result: dict, *, session=None) -> None:
     _require_database()
-    session = get_sessionmaker()()
+    owns_session = session is None
+    session = session if session is not None else get_sessionmaker()()
     try:
-        row = _owned_row(session, user, tenant_id, batch_no, lock=True)
+        row = _owned_row(session, user, tenant_id, batch_no, lock=True, mutate_expiry=owns_session)
         if row.status == "IDENTITY_CONFIRMED":
             return
         if row.status != "CONFIRMING" or row.claim_token != claim_token:
@@ -765,9 +834,13 @@ def mark_confirmed(user: dict, tenant_id: object, batch_no: str, claim_token: st
         row.last_error = None
         row.expires_at = now + timedelta(seconds=CONFIRMED_BATCH_TTL_SECONDS)
         row.version = int(row.version or 0) + 1
-        session.commit()
+        if owns_session:
+            session.commit()
+        else:
+            session.flush()
     finally:
-        session.close()
+        if owns_session:
+            session.close()
 
 
 def release_claim(user: dict, tenant_id: object, batch_no: str, claim_token: str,

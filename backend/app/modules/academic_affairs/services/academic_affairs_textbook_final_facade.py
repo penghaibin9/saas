@@ -8,11 +8,12 @@ from __future__ import annotations
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import func
+from sqlalchemy import and_, case, func
 
 from app.core.exceptions import AppException, not_found
 
 from . import academic_affairs_textbook_service as _legacy
+from . import academic_affairs_teacher_relation_authority as teacher_authority
 
 _ACTIVE_ALLOCATION_STATUSES = ("PENDING", "RECEIVED", "EXCHANGED")
 _ELIGIBLE_STUDENT_STATUSES = {"NORMAL", "REGISTERED", "ON_CAMPUS"}
@@ -79,14 +80,17 @@ def _term(db, term_id):
     return row
 
 
-def _task_term(db, task_id):
+def _task_term(db, task_id, *, lock=False):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
 
-    task = db.query(AaTeachingTask).filter(
+    task_query = db.query(AaTeachingTask).filter(
         AaTeachingTask.id == int(task_id),
         AaTeachingTask.tenant_id == _legacy._tid(),
         AaTeachingTask.is_deleted.is_(False),
-    ).first()
+    ).populate_existing()
+    if lock:
+        task_query = task_query.with_for_update()
+    task = task_query.first()
     if not task:
         raise not_found("教学任务不存在")
     batch = db.query(AaTeachingTaskBatch).filter(
@@ -103,6 +107,83 @@ def _task_term(db, task_id):
 def _selection_term(db, selection):
     _task, batch = _task_term(db, selection.task_id)
     return batch
+
+
+def _require_teacher_selection_scope(db, task, user, *, lock=False):
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    if role != "ACADEMIC_TEACHER":
+        ctx = _legacy._ctx(user, db)
+        from .academic_affairs_task_service import _scope, _visible_task_conditions
+        from app.models import AaTeachingTask
+        if ctx.scope_type not in {"TENANT_ALL", "COLLEGE"} or not db.query(AaTeachingTask.id).filter(
+            AaTeachingTask.id == task.id, AaTeachingTask.tenant_id == _legacy._tid(),
+            AaTeachingTask.is_deleted.is_(False), *_visible_task_conditions(_scope(user, db), AaTeachingTask),
+        ).first():
+            raise _legacy.no_data_scope("该教材选用的教学任务不在您的学院范围内")
+        return None
+    return teacher_authority.require_teacher(db, task, user, lock=lock)
+
+
+def _review_sources(db):
+    """来源责任在数据库汇总，空/失效/混学院来源不得获得学院动作。"""
+    from app.models import (AaTextbookReviewBatchItem as Item, AaTextbookSelection as Selection,
+                            AaTeachingTask as Task, AaTeachingTaskBatch as TaskBatch, AaTerm, College)
+    tid = _legacy._tid()
+    return db.query(
+        Item.batch_id.label("batch_id"), func.count(Item.id).label("item_count"),
+        func.count(College.id).label("owner_count"),
+        func.count(func.distinct(TaskBatch.college_id)).label("college_count"),
+        func.min(TaskBatch.college_id).label("college_id"),
+        func.min(TaskBatch.term_id).label("min_term_id"), func.max(TaskBatch.term_id).label("max_term_id"),
+        func.sum(case((Selection.status == "REVIEWING", 1), else_=0)).label("reviewing_count"),
+        func.sum(case((AaTerm.status != "ARCHIVED", 1), else_=0)).label("writable_count"),
+    ).outerjoin(Selection, and_(Selection.id == Item.selection_id, Selection.tenant_id == tid, Selection.is_deleted.is_(False))).outerjoin(
+        Task, and_(Task.id == Selection.task_id, Task.tenant_id == tid, Task.is_deleted.is_(False)),
+    ).outerjoin(TaskBatch, and_(TaskBatch.id == Task.batch_id, TaskBatch.tenant_id == tid, TaskBatch.is_deleted.is_(False))).outerjoin(
+        College, and_(College.id == TaskBatch.college_id, College.tenant_id == tid, College.is_deleted.is_(False), College.status == "ACTIVE"),
+    ).outerjoin(AaTerm, and_(AaTerm.id == TaskBatch.term_id, AaTerm.tenant_id == tid, AaTerm.is_deleted.is_(False))).filter(
+        Item.tenant_id == tid, Item.is_deleted.is_(False),
+    ).group_by(Item.batch_id).subquery()
+
+
+def _review_source_valid(batch, source):
+    return bool(source and source.item_count and source.owner_count == source.item_count and
+                source.college_count == 1 and source.college_id and
+                source.min_term_id == source.max_term_id == batch.term_id and
+                (batch.college_id is None or batch.college_id == source.college_id))
+
+
+def _review_actions(ctx, batch, source):
+    from app.core.permissions import _match
+    valid = _review_source_valid(batch, source)
+    responsible = valid and (
+        (batch.status in {"DRAFT", "COLLEGE_REVIEWING"} and ctx.scope_type == "COLLEGE" and source.college_id in ctx.college_ids) or
+        (batch.status in {"COLLEGE_APPROVED", "ACADEMIC_APPROVED"} and ctx.scope_type == "TENANT_ALL")
+    )
+    allowed = bool(responsible and source.reviewing_count == source.item_count and source.writable_count == source.item_count and
+                   _match("academicAffairs.textbook.review.manage", ctx.permission_codes))
+    return {"advance": allowed, "return": allowed}
+
+
+def _review_dto(ctx, batch, source):
+    result = _legacy._rb_dto(batch)
+    result["collegeId"] = str(source.college_id) if _review_source_valid(batch, source) else None
+    result["actions"] = _review_actions(ctx, batch, source)
+    owners = {
+        "DRAFT": ("来源学院教材初审岗", "来源学院教材初审岗"),
+        "COLLEGE_REVIEWING": ("来源学院教材初审岗", "学校教务复审岗"),
+        "COLLEGE_APPROVED": ("学校教务复审岗", "学校教材备案岗"),
+        "ACADEMIC_APPROVED": ("学校教材备案岗", "学校教材征订岗"),
+        "PUBLISHED": ("学校教材征订岗", "教材到货与发放岗"),
+        "RETURNED": ("原教材选用申报人", "重新提交后进入来源学院初审"),
+    }
+    result["currentOwner"], result["nextOwner"] = owners.get(batch.status, ("责任岗位待核对", "按正式状态核对")) if _review_source_valid(batch, source) else ("来源责任尚未解析", "先核对原选用与教学任务")
+    return result
+
+
+def list_review_batches(user, status=None, page=1, page_size=20):
+    from .academic_affairs_textbook_read_service import list_review_batches as read_batches
+    return read_batches(user, status, page, page_size)
 
 
 def _get_selection(db, selection_id, *, lock=False):
@@ -156,6 +237,38 @@ def _get_order_batch(db, batch_id, *, lock=False):
 def _distribution_chain(db, record_id, *, lock=True):
     from app.models import AaTextbookDistributionBatch, AaTextbookDistributionRecord
 
+    # 所有发放、签收、退领及费用命令按征订单→发放批次→记录→费用加锁。
+    # 预览仅取归属 ID；获得父锁后重新读取当前行，不能复用 RR 快照里的状态。
+    if lock:
+        parent = db.query(AaTextbookDistributionRecord.batch_id, AaTextbookDistributionBatch.order_batch_id).join(
+            AaTextbookDistributionBatch, AaTextbookDistributionBatch.id == AaTextbookDistributionRecord.batch_id,
+        ).filter(
+            AaTextbookDistributionRecord.id == int(record_id),
+            AaTextbookDistributionRecord.tenant_id == _legacy._tid(),
+            AaTextbookDistributionRecord.is_deleted.is_(False),
+            AaTextbookDistributionBatch.tenant_id == _legacy._tid(),
+            AaTextbookDistributionBatch.is_deleted.is_(False),
+        ).first()
+        if not parent:
+            raise not_found("发放记录或所属批次不存在")
+        order = _get_order_batch(db, parent.order_batch_id, lock=True)
+        distribution = db.query(AaTextbookDistributionBatch).filter(
+            AaTextbookDistributionBatch.id == parent.batch_id,
+            AaTextbookDistributionBatch.order_batch_id == order.id,
+            AaTextbookDistributionBatch.tenant_id == _legacy._tid(),
+            AaTextbookDistributionBatch.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
+        record = db.query(AaTextbookDistributionRecord).filter(
+            AaTextbookDistributionRecord.id == int(record_id),
+            AaTextbookDistributionRecord.batch_id == parent.batch_id,
+            AaTextbookDistributionRecord.tenant_id == _legacy._tid(),
+            AaTextbookDistributionRecord.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
+        if not distribution or not record:
+            raise AppException("DATA_CONFLICT", "发放记录归属已变化，请刷新核对", http_status=409)
+        _term(db, order.term_id)
+        return record, distribution, order
+
     record_query = db.query(AaTextbookDistributionRecord).filter(
         AaTextbookDistributionRecord.id == int(record_id),
         AaTextbookDistributionRecord.tenant_id == _legacy._tid(),
@@ -198,7 +311,7 @@ def _fee_chain(db, fee_id):
         AaTextbookFeeLedger.id == int(fee_id),
         AaTextbookFeeLedger.tenant_id == _legacy._tid(),
         AaTextbookFeeLedger.is_deleted.is_(False),
-    ).with_for_update().first()
+    ).populate_existing().with_for_update().first()
     if not fee:
         raise not_found("费用记录不存在")
     return fee, record, distribution, order
@@ -207,17 +320,20 @@ def _fee_chain(db, fee_id):
 def _refresh_distribution_batch(db, distribution):
     from app.models import AaTextbookDistributionRecord
 
-    pending = db.query(AaTextbookDistributionRecord).filter(
+    # Session 禁用 autoflush，须先写出本次签收/退领，才能判断是否还有待签收。
+    db.flush()
+    pending = db.query(AaTextbookDistributionRecord.id).filter(
         AaTextbookDistributionRecord.tenant_id == _legacy._tid(),
         AaTextbookDistributionRecord.batch_id == distribution.id,
         AaTextbookDistributionRecord.status == "PENDING",
         AaTextbookDistributionRecord.is_deleted.is_(False),
-    ).count()
-    if pending == 0:
+    ).with_for_update().first()
+    if pending is None:
         distribution.status = "COMPLETED"
         distribution.completed_at = distribution.completed_at or datetime.utcnow()
     else:
         distribution.status = "DISTRIBUTING"
+        distribution.completed_at = None
 
 
 def create_selection(user, body):
@@ -226,7 +342,10 @@ def create_selection(user, body):
 
     with _legacy.session() as db:
         _legacy._ctx(user, db)
-        task, task_batch = _task_term(db, int(body.taskId))
+        task, task_batch = _task_term(db, int(body.taskId), lock=True)
+        _require_teacher_selection_scope(db, task, user)
+        from .academic_affairs_task_execution_authority import require_independent_task
+        task = require_independent_task(db, task)
         textbook = db.query(AaTextbook).filter(
             AaTextbook.id == int(body.textbookId),
             AaTextbook.tenant_id == _legacy._tid(),
@@ -237,11 +356,11 @@ def create_selection(user, body):
         active = db.query(AaTextbookSelection).filter(
             AaTextbookSelection.tenant_id == _legacy._tid(),
             AaTextbookSelection.task_id == task.id,
-            AaTextbookSelection.status.notin_(["RETURNED", "ORDERED"]),
+            AaTextbookSelection.status.notin_(["ORDERED"]),
             AaTextbookSelection.is_deleted.is_(False),
         ).first()
         if active:
-            raise _legacy._conflict("该教学任务已有未终结的教材选用")
+            raise _legacy._conflict("该教学任务已有教材选用，请修改原申报或等待当前流程结束")
         keys = _derive_keys(user)
         row = AaTextbookSelection(
             tenant_id=_legacy._tid(),
@@ -262,11 +381,58 @@ def create_selection(user, body):
         return _legacy._sel_dto(row)
 
 
+def update_selection(user, selection_id, body):
+    from app.models import AaTextbook
+
+    with _legacy.session() as db:
+        _legacy._ctx(user, db)
+        row = _get_selection(db, selection_id, lock=True)
+        task, _batch = _task_term(db, row.task_id)
+        _require_teacher_selection_scope(db, task, user, lock=True)
+        status = str(row.status or "").upper()
+        if status not in {"DRAFT", "RETURNED"}:
+            raise _legacy._conflict("仅草稿或已退回的教材选用可以修改")
+
+        textbook = db.query(AaTextbook).filter(
+            AaTextbook.id == int(body.textbookId),
+            AaTextbook.tenant_id == _legacy._tid(),
+            AaTextbook.is_deleted.is_(False),
+        ).first()
+        if not textbook:
+            raise not_found("教材不存在")
+
+        expected_qty = int(body.expectedQty)
+        remark = str(body.remark or "").strip()
+        if expected_qty <= 0:
+            raise AppException("VALIDATION_ERROR", "需求人数必须大于0")
+        if not remark:
+            raise AppException("VALIDATION_ERROR", "选用原因不能为空")
+
+        before = f"textbook={row.textbook_id};qty={row.expected_qty};status={row.status}"
+        row.textbook_id = textbook.id
+        row.textbook_name = textbook.name
+        row.expected_qty = expected_qty
+        row.remark = remark
+        if status == "RETURNED":
+            row.status = "DRAFT"
+            row.reject_reason = None
+        _legacy._audit(
+            db,
+            "AA_TEXTBOOK_SELECTION",
+            row.id,
+            "TEXTBOOK_SELECTION_UPDATE",
+            f"{before}->textbook={row.textbook_id};qty={row.expected_qty};status={row.status}",
+        )
+        db.commit()
+        return _legacy._sel_dto(row)
+
+
 def submit_selection(user, selection_id):
     with _legacy.session() as db:
         _legacy._ctx(user, db)
         row = _get_selection(db, selection_id, lock=True)
-        _selection_term(db, row)
+        task, _batch = _task_term(db, row.task_id)
+        _require_teacher_selection_scope(db, task, user, lock=True)
         if row.status not in ("DRAFT", "RETURNED"):
             raise _legacy._invalid("仅草稿/退回选用可提交")
         row.status = "SUBMITTED"
@@ -279,7 +445,8 @@ def withdraw_selection(user, selection_id):
     with _legacy.session() as db:
         _legacy._ctx(user, db)
         row = _get_selection(db, selection_id, lock=True)
-        _selection_term(db, row)
+        task, _batch = _task_term(db, row.task_id)
+        _require_teacher_selection_scope(db, task, user, lock=True)
         if row.status != "DRAFT":
             raise _legacy._invalid("仅草稿可撤回")
         row.is_deleted = True
@@ -289,10 +456,11 @@ def withdraw_selection(user, selection_id):
 
 
 def create_review_batch(user, body):
-    from app.models import AaTextbookReviewBatch, AaTextbookReviewBatchItem, AaTextbookSelection
+    from app.models import AaTextbookReviewBatch, AaTextbookReviewBatchItem, AaTextbookSelection, College
 
     with _legacy.session() as db:
-        _legacy._require_school(_legacy._ctx(user, db))
+        ctx = _legacy._ctx(user, db)
+        _legacy._require_school(ctx)
         term = _term(db, getattr(body, "termId", None))
         selection_ids = _unique_positive_ids(getattr(body, "selectionIds", None))
         if not selection_ids:
@@ -304,6 +472,7 @@ def create_review_batch(user, body):
         ).with_for_update().all()
         by_id = {int(row.id): row for row in selections}
         accepted = []
+        college_ids = set()
         for selection_id in selection_ids:
             row = by_id.get(selection_id)
             if not row:
@@ -313,11 +482,20 @@ def create_review_batch(user, body):
             task_batch = _selection_term(db, row)
             if int(task_batch.term_id) != int(term.id):
                 raise AppException("DATA_CONFLICT", "审核批次不能混入其它学期教材选用", http_status=409)
+            if not task_batch.college_id:
+                raise _legacy._conflict("教学任务缺少来源学院，无法建立教材审核责任")
+            college_ids.add(int(task_batch.college_id))
             accepted.append(row)
+        if len(college_ids) != 1:
+            raise _legacy._conflict("教材审核批次不能混入多个学院，请按来源学院分别选择选用申报")
+        if not db.query(College.id).filter(College.id.in_(college_ids), College.tenant_id == _legacy._tid(),
+            College.is_deleted.is_(False), College.status == "ACTIVE").first():
+            raise _legacy._conflict("来源学院不存在或已停用，请先核对教学任务")
         batch = AaTextbookReviewBatch(
             tenant_id=_legacy._tid(),
             batch_name=(getattr(body, "batchName", None) or "教材审核批次").strip(),
             term_id=term.id,
+            college_id=next(iter(college_ids)),
             status="DRAFT",
         )
         db.add(batch)
@@ -337,7 +515,8 @@ def create_review_batch(user, body):
             f"纳入 {len(accepted)} 条选用",
         )
         db.commit()
-        return _legacy._rb_dto(batch)
+        source = db.query(_review_sources(db)).filter_by(batch_id=batch.id).first()
+        return _review_dto(ctx, batch, source)
 
 
 def review_batch_advance(user, batch_id, action, reason=""):
@@ -345,24 +524,36 @@ def review_batch_advance(user, batch_id, action, reason=""):
 
     action = str(action or "").upper()
     with _legacy.session() as db:
-        _legacy._require_school(_legacy._ctx(user, db))
+        ctx = _legacy._ctx(user, db)
         batch = _get_review_batch(db, batch_id, lock=True)
+        selections = db.query(AaTextbookSelection).join(AaTextbookReviewBatchItem,
+            AaTextbookReviewBatchItem.selection_id == AaTextbookSelection.id,
+        ).filter(
+            AaTextbookSelection.tenant_id == _legacy._tid(), AaTextbookSelection.is_deleted.is_(False),
+            AaTextbookReviewBatchItem.tenant_id == _legacy._tid(), AaTextbookReviewBatchItem.batch_id == batch.id,
+            AaTextbookReviewBatchItem.is_deleted.is_(False),
+        ).with_for_update().all()
+        source = db.query(_review_sources(db)).filter_by(batch_id=batch.id).first()
+        if ctx.scope_type not in {"COLLEGE", "TENANT_ALL"} or (ctx.scope_type == "COLLEGE" and (
+            not _review_source_valid(batch, source) or source.college_id not in ctx.college_ids
+        )):
+            raise _legacy.no_data_scope("该教材审核批次不在您的学院范围内")
+        if not _review_source_valid(batch, source):
+            raise _legacy._conflict("教材审核来源学院或学期不完整，请核对原选用与教学任务")
         _term(db, batch.term_id)
+        if batch.status not in _legacy._RB_CHAIN or source.reviewing_count != source.item_count:
+            raise _legacy._conflict("仅未备案且原选用仍在审核中的批次可办理，已备案或已征订不能退回")
+        if action not in {"APPROVE", "RETURN"}:
+            raise _legacy._bad("非法审核动作")
+        if not _review_actions(ctx, batch, source)["advance" if action == "APPROVE" else "return"]:
+            raise _legacy.no_data_scope("当前审核阶段应由来源学院办理" if batch.status in {"DRAFT", "COLLEGE_REVIEWING"} else "当前审核阶段应由学校教务办理")
         if action == "APPROVE":
-            if batch.status not in _legacy._RB_CHAIN:
-                raise _legacy._invalid("该批次已完成审核")
             batch.status = _legacy._RB_CHAIN[batch.status]
+            if ctx.scope_type == "COLLEGE":
+                batch.college_reviewer = _legacy._op()
+            else:
+                batch.academic_reviewer = _legacy._op()
             if batch.status == "PUBLISHED":
-                items = db.query(AaTextbookReviewBatchItem).filter(
-                    AaTextbookReviewBatchItem.batch_id == batch.id,
-                    AaTextbookReviewBatchItem.tenant_id == _legacy._tid(),
-                ).all()
-                selection_ids = [int(item.selection_id) for item in items]
-                selections = db.query(AaTextbookSelection).filter(
-                    AaTextbookSelection.tenant_id == _legacy._tid(),
-                    AaTextbookSelection.id.in_(selection_ids or [0]),
-                    AaTextbookSelection.is_deleted.is_(False),
-                ).with_for_update().all()
                 for selection in selections:
                     selection.status = "APPROVED"
         elif action == "RETURN":
@@ -371,21 +562,9 @@ def review_batch_advance(user, batch_id, action, reason=""):
                 raise _legacy._bad("退回原因必填且不少于5字")
             batch.status = "RETURNED"
             batch.reject_reason = reason
-            items = db.query(AaTextbookReviewBatchItem).filter(
-                AaTextbookReviewBatchItem.batch_id == batch.id,
-                AaTextbookReviewBatchItem.tenant_id == _legacy._tid(),
-            ).all()
-            selection_ids = [int(item.selection_id) for item in items]
-            selections = db.query(AaTextbookSelection).filter(
-                AaTextbookSelection.tenant_id == _legacy._tid(),
-                AaTextbookSelection.id.in_(selection_ids or [0]),
-                AaTextbookSelection.is_deleted.is_(False),
-            ).with_for_update().all()
             for selection in selections:
                 selection.status = "RETURNED"
                 selection.reject_reason = reason
-        else:
-            raise _legacy._bad("非法审核动作")
         _legacy._audit(
             db,
             "AA_TEXTBOOK_REVIEW",
@@ -394,7 +573,8 @@ def review_batch_advance(user, batch_id, action, reason=""):
             f"{action}->{batch.status}",
         )
         db.commit()
-        return _legacy._rb_dto(batch)
+        source = db.query(_review_sources(db)).filter_by(batch_id=batch.id).first()
+        return _review_dto(ctx, batch, source)
 
 
 def create_order_batch(user, body):
@@ -648,7 +828,76 @@ def cancel_order_batch(user, batch_id, reason):
         return _legacy._ob_dto(batch)
 
 
-def generate_distribution(user, order_batch_id, class_id, student_ids):
+def _distribution_members(db, order, items, requested_ids):
+    """沿已征订选用与当前正式教学名单分配，不能用整单教材笛卡尔积代替。"""
+    from app.models import AffairsAuditTrail, AaTextbookSelection, AaTeachingTask, AaTeachingTaskBatch
+    from . import academic_affairs_teaching_class_service as teaching_classes
+
+    def conflict(message):
+        raise AppException("DATA_CONFLICT", message, http_status=409)
+
+    sources = db.query(AffairsAuditTrail).filter(
+        AffairsAuditTrail.tenant_id == _legacy._tid(),
+        AffairsAuditTrail.biz_type == "AA_TEXTBOOK_ORDER",
+        AffairsAuditTrail.biz_id == order.id,
+        AffairsAuditTrail.action == "TEXTBOOK_ORDER_SOURCE",
+    ).all()
+    selection_ids = set()
+    for source in sources:
+        prefix, separator, value = str(source.detail or "").partition("=")
+        if prefix != "selectionId" or not separator or not value.isdigit() or int(value) <= 0:
+            conflict("征订来源选用快照损坏，请先核对来源，未生成发放名单")
+        selection_ids.add(int(value))
+    if not selection_ids:
+        conflict("征订批次缺少来源选用快照，请先核对并补齐来源，未生成发放名单")
+
+    selections = db.query(AaTextbookSelection).join(
+        AaTeachingTask, AaTeachingTask.id == AaTextbookSelection.task_id,
+    ).join(
+        AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
+    ).filter(
+        AaTextbookSelection.tenant_id == _legacy._tid(),
+        AaTextbookSelection.id.in_(selection_ids),
+        AaTextbookSelection.is_deleted.is_(False),
+        AaTextbookSelection.status == "ORDERED",
+        AaTeachingTask.tenant_id == _legacy._tid(),
+        AaTeachingTask.is_deleted.is_(False),
+        AaTeachingTaskBatch.tenant_id == _legacy._tid(),
+        AaTeachingTaskBatch.term_id == order.term_id,
+        AaTeachingTaskBatch.is_deleted.is_(False),
+    ).all()
+    if {int(row.id) for row in selections} != selection_ids:
+        conflict("征订来源选用、教学任务或学期不一致，请先核对来源，未生成发放名单")
+    quantities = {}
+    for row in selections:
+        book_id = int(row.textbook_id)
+        if int(row.expected_qty or 0) <= 0:
+            conflict("征订来源选用数量无效，未生成发放名单")
+        quantities[book_id] = quantities.get(book_id, 0) + int(row.expected_qty)
+    order_quantities = {int(item.textbook_id): int(item.order_qty or 0) for item in items}
+    if len(order_quantities) != len(items) or quantities != order_quantities:
+        conflict("征订教材或数量与来源选用快照不一致，请先核对来源，未生成发放名单")
+
+    members = {book_id: set() for book_id in order_quantities}
+    rosters = {}
+    requested = set(requested_ids)
+    for selection in selections:
+        task_id = int(selection.task_id)
+        if task_id not in rosters:
+            rosters[task_id] = teaching_classes.resolve_teaching_task_roster(db, task_id)
+        roster = rosters[task_id]
+        if not roster.get("ready"):
+            conflict(f"教材选用 {selection.id} 的教学任务 {task_id} 正式名单未就绪：{roster.get('note') or '请核对名单'}；未生成发放名单")
+        members[int(selection.textbook_id)].update(
+            requested.intersection(int(value) for value in roster.get("studentIds", []))
+        )
+    unmatched = sorted(requested - set().union(*members.values()))
+    if unmatched:
+        conflict(f"所选学生不在本征订单任何教材的正式教学名单中：{unmatched[:10]}；未生成发放名单")
+    return members
+
+
+def generate_distribution(user, order_batch_id, class_id, student_ids, *, append_to_batch_id=None):
     from app.models import (
         AaTextbookDistributionBatch,
         AaTextbookDistributionRecord,
@@ -709,39 +958,58 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
             AaTextbookDistributionBatch.class_id == class_value,
             AaTextbookDistributionBatch.is_deleted.is_(False),
         ).with_for_update().first()
+        if append_to_batch_id is not None and (not existing or int(existing.id) != int(append_to_batch_id)):
+            raise _legacy._invalid("补充目标与当前征订批次、班级不一致，请从原发放批次重新进入")
+        previous_record_count = 0
         if existing:
             existing_rows = db.query(AaTextbookDistributionRecord.student_id).filter(
                 AaTextbookDistributionRecord.tenant_id == _legacy._tid(),
                 AaTextbookDistributionRecord.batch_id == existing.id,
                 AaTextbookDistributionRecord.is_deleted.is_(False),
-            ).distinct().all()
+            ).with_for_update().all()
             existing_student_ids = {int(row[0]) for row in existing_rows}
-            if existing_student_ids != set(requested_ids):
+            if append_to_batch_id is None and existing_student_ids != set(requested_ids):
                 raise AppException(
                     "DATA_CONFLICT",
-                    "该征订批次和班级已生成发放名单，且现有名单与本次请求不一致",
+                    "该征订批次和班级已生成发放名单，且现有名单与本次请求不一致；如需追加，请从原批次使用补充未发放学生",
                     http_status=409,
                 )
-            _refresh_distribution_batch(db, existing)
-            record_count = db.query(AaTextbookDistributionRecord).filter(
+            previous_record_count = len(existing_rows)
+            new_ids = set(requested_ids) - existing_student_ids
+            if append_to_batch_id is None or not new_ids:
+                _refresh_distribution_batch(db, existing)
+                db.commit()
+                return {
+                    "distributionBatchId": str(existing.id),
+                    "recordCount": previous_record_count,
+                    "addedRecordCount": 0,
+                    "addedStudentCount": 0,
+                    "idempotent": True,
+                }
+            # 原学生记录保持不变，包括已签收、已退领、已排除；这里只处理新增学生。
+            deleted = db.query(AaTextbookDistributionRecord.id).filter(
                 AaTextbookDistributionRecord.tenant_id == _legacy._tid(),
                 AaTextbookDistributionRecord.batch_id == existing.id,
-                AaTextbookDistributionRecord.is_deleted.is_(False),
-            ).count()
-            db.commit()
-            return {
-                "distributionBatchId": str(existing.id),
-                "recordCount": record_count,
-                "idempotent": True,
-            }
+                AaTextbookDistributionRecord.student_id.in_(new_ids),
+                AaTextbookDistributionRecord.is_deleted.is_(True),
+            ).with_for_update().first()
+            if deleted:
+                raise _legacy._invalid("待补充学生存在历史删除记录，请先核对原发放记录，不能重复创建")
+            requested_ids = [value for value in requested_ids if value in new_ids]
+            students = [student for student in students if int(student.id) in new_ids]
 
+        members = _distribution_members(db, order, items, requested_ids)
         eligible_students = [
             student for student in students
             if str(student.student_status or "NORMAL").upper() in _ELIGIBLE_STUDENT_STATUSES
         ]
         eligible_count = len(eligible_students)
+        eligible_ids = {int(student.id) for student in eligible_students}
         capacity_errors = []
         for item in items:
+            needed = len(members[int(item.textbook_id)] & eligible_ids)
+            if not needed:
+                continue
             allocated = db.query(
                 func.coalesce(func.sum(AaTextbookDistributionRecord.qty), 0)
             ).join(
@@ -755,12 +1023,12 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
                 AaTextbookDistributionRecord.textbook_id == item.textbook_id,
                 AaTextbookDistributionRecord.status.in_(_ACTIVE_ALLOCATION_STATUSES),
                 AaTextbookDistributionRecord.is_deleted.is_(False),
-            ).scalar() or 0
-            shortage = _distribution_shortage(item.arrived_qty, allocated, eligible_count)
+            ).with_for_update().scalar() or 0
+            shortage = _distribution_shortage(item.arrived_qty, allocated, needed)
             if shortage:
                 available = max(0, int(item.arrived_qty or 0) - int(allocated or 0))
                 capacity_errors.append(
-                    f"{item.textbook_name}可分配{available}本，本班需{eligible_count}本，缺{shortage}本"
+                    f"{item.textbook_name}可分配{available}本，本班需{needed}本，缺{shortage}本"
                 )
         if capacity_errors:
             raise AppException(
@@ -770,7 +1038,7 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
             )
 
         now = datetime.utcnow()
-        batch = AaTextbookDistributionBatch(
+        batch = existing or AaTextbookDistributionBatch(
             tenant_id=_legacy._tid(),
             order_batch_id=order.id,
             class_id=class_value,
@@ -779,12 +1047,17 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
             started_at=now,
             completed_at=now if not eligible_count else None,
         )
+        if existing and eligible_count:
+            batch.status = "DISTRIBUTING"
+            batch.completed_at = None
         db.add(batch)
         db.flush()
         record_count = 0
         for student in students:
             enrolled = str(student.student_status or "NORMAL").upper() in _ELIGIBLE_STUDENT_STATUSES
             for item in items:
+                if int(student.id) not in members[int(item.textbook_id)]:
+                    continue
                 db.add(AaTextbookDistributionRecord(
                     tenant_id=_legacy._tid(),
                     batch_id=batch.id,
@@ -800,13 +1073,15 @@ def generate_distribution(user, order_batch_id, class_id, student_ids):
             db,
             "AA_TEXTBOOK_DIST",
             batch.id,
-            "TEXTBOOK_DIST_GENERATE",
+            "TEXTBOOK_DIST_APPEND" if existing else "TEXTBOOK_DIST_GENERATE",
             f"classId={class_value};申请学生={len(students)};可发学生={eligible_count};记录={record_count}",
         )
         db.commit()
         return {
             "distributionBatchId": str(batch.id),
-            "recordCount": record_count,
+            "recordCount": previous_record_count + record_count,
+            "addedRecordCount": record_count,
+            "addedStudentCount": len(students),
             "eligibleStudentCount": eligible_count,
             "idempotent": False,
         }
@@ -818,7 +1093,7 @@ def _apply_receipt(db, record_id, note="签收"):
     record, distribution, order = _distribution_chain(db, record_id, lock=True)
     status = str(record.status or "").upper()
     if status == "EXCLUDED":
-        raise _legacy._invalid("非在籍学生不可签收")
+        raise _legacy._invalid(record.exclude_reason or "该记录不在本次领用范围，不可签收")
     if status not in {"PENDING", "RECEIVED"}:
         raise _legacy._invalid(f"当前发放状态 {status or 'UNKNOWN'} 不可签收")
     item = db.query(AaTextbookOrderItem).filter(
@@ -944,7 +1219,7 @@ def return_distribution(user, record_id, reason):
         return {"recordId": str(record.id), "status": record.status, "feeStatus": fee.status}
 
 
-def mark_fee(user, fee_id, action, amount=None, waive_reason=""):
+def mark_fee(user, fee_id, action, amount=None, waive_reason="", *, expected_paid_amount=None):
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
         fee, _record, _distribution, _order = _fee_chain(db, fee_id)
@@ -952,6 +1227,11 @@ def mark_fee(user, fee_id, action, amount=None, waive_reason=""):
         status = str(fee.status or "UNPAID").upper()
         due = Decimal(str(fee.amount or 0))
         paid = Decimal(str(fee.paid_amount or 0))
+
+        if action == "PARTIAL" and expected_paid_amount is None:
+            raise _legacy._bad("部分收款须核对原已收金额，请刷新费用台账后重新办理")
+        if expected_paid_amount is not None and Decimal(str(expected_paid_amount)) != paid:
+            raise AppException("DATA_CONFLICT", f"费用记录已变化，当前已收 {paid} 元；本次未再次入账，请先刷新核对正式收款结果", http_status=409)
 
         if status == "PAID":
             if action == "PAID":
@@ -982,11 +1262,13 @@ def mark_fee(user, fee_id, action, amount=None, waive_reason=""):
             if status not in {"UNPAID", "PARTIAL"}:
                 raise _legacy._invalid("当前费用状态不可部分收款")
             value = Decimal(str(amount or 0))
-            if value <= 0:
-                raise _legacy._bad("部分收款金额须大于0")
+            if not value.is_finite() or value <= 0:
+                raise _legacy._bad("部分收款金额须大于0，且最多两位小数")
             new_paid = paid + value
             if new_paid > due:
                 raise _legacy._bad(f"累计已收 {new_paid} 超过应收 {due}")
+            if value != value.quantize(Decimal("0.01")):
+                raise _legacy._bad("部分收款金额最多两位小数")
             fee.paid_amount = new_paid
             if new_paid == due:
                 fee.status = "PAID"
@@ -1009,7 +1291,7 @@ def mark_fee(user, fee_id, action, amount=None, waive_reason=""):
             "AA_TEXTBOOK_FEE",
             fee.id,
             "TEXTBOOK_FEE_MARK",
-            f"{status}->{fee.status};本次={amount or ''}",
+            f"{status}->{fee.status};本次={amount or ''};原已收={paid};新已收={fee.paid_amount};核对已收={expected_paid_amount}",
         )
         db.commit()
         return {

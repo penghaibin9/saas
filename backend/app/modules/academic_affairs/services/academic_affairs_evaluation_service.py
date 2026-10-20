@@ -161,7 +161,10 @@ def generate_tasks(user, bid, teaching_task_ids, evaluator_type="STUDENT"):
             raise _invalid("仅 DRAFT 批次可生成应评任务")
         cnt = 0
         for tt_id in [int(x) for x in teaching_task_ids if str(x).isdigit()]:
-            tt = db.query(AaTeachingTask).filter(AaTeachingTask.id == tt_id, AaTeachingTask.tenant_id == _tid()).first()
+            tt = db.query(AaTeachingTask).filter(
+                AaTeachingTask.id == tt_id, AaTeachingTask.tenant_id == _tid(),
+                AaTeachingTask.is_deleted.is_(False),
+            ).populate_existing().with_for_update().first()
             if not tt:
                 continue
             dup = db.query(AaEvaluationTask).filter(AaEvaluationTask.tenant_id == _tid(),
@@ -204,7 +207,10 @@ def generate_role_tasks(user, bid, evaluator_type, assignments):
             if not (tt_id and str(tt_id).isdigit()):
                 continue
             tt_id = int(tt_id)
-            tt = db.query(AaTeachingTask).filter(AaTeachingTask.id == tt_id, AaTeachingTask.tenant_id == _tid()).first()
+            tt = db.query(AaTeachingTask).filter(
+                AaTeachingTask.id == tt_id, AaTeachingTask.tenant_id == _tid(),
+                AaTeachingTask.is_deleted.is_(False),
+            ).populate_existing().with_for_update().first()
             if not tt:
                 continue
             ev_key = ((a.get("evaluatorKey") if isinstance(a, dict) else getattr(a, "evaluatorKey", None)) or "").strip()

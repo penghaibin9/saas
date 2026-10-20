@@ -42,8 +42,10 @@ export const guidanceVisitApi = {
   getGuidances(params = {}) { return callList(`${B}/guidances`, params) },
   getGuidanceDetail(id) { return call(() => request(`${B}/guidances/${id}`)) },
   createGuidance(body) { return call(() => request(`${B}/guidances`, { method: 'POST', body })) },
-  voidGuidance(id, { reason } = {}) {
-    return call(() => request(`${B}/guidances/${id}/void`, { method: 'POST', body: { reason: reason || '' } }))
+  voidGuidance(id, { reason, expectedVersion, version } = {}) {
+    return call(() => request(`${B}/guidances/${id}/void`, {
+      method: 'POST', body: { reason: reason || '', expectedVersion: expectedVersion ?? version }
+    }))
   },
   exportGuidances(params = {}) { return call(() => request(`${B}/guidances/export`, { method: 'POST', params })) },
   getGuidanceStats(threshold = 2, params = {}) {
@@ -57,8 +59,10 @@ export const guidanceVisitApi = {
   getVisits(params = {}) { return callList(`${B}/visits`, params) },
   getVisitDetail(id) { return call(() => request(`${B}/visits/${id}`)) },
   createVisit(body) { return call(() => request(`${B}/visits`, { method: 'POST', body })) },
-  rectifyVisit(id, { status, note }) {
-    return call(() => request(`${B}/visits/${id}/rectify`, { method: 'POST', body: { status, note } }))
+  rectifyVisit(id, { status, note, expectedVersion, version }) {
+    return call(() => request(`${B}/visits/${id}/rectify`, {
+      method: 'POST', body: { status, note, expectedVersion: expectedVersion ?? version }
+    }))
   },
   exportVisits(params = {}) { return call(() => request(`${B}/visits/export`, { method: 'POST', params })) },
   getVisitStats(params = {}) { return call(() => request(`${B}/visits/stats`, { params })) },

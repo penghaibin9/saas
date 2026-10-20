@@ -1,0 +1,42 @@
+{
+  "schemaVersion": "V6.0",
+  "productExactHead": "e6438ddf8dfcf2f71129fe54b46a1fbdd5e831ac",
+  "status": "PASS",
+  "flows": [
+    {
+      "flowId": "FLOW-SA-01",
+      "truth": "请假状态、审批链、逾期待办和销假均由 MySQL canonical tables 回读",
+      "evidence": "../../FLOW-SA-01/replay/mysql-truth.md"
+    },
+    {
+      "flowId": "FLOW-SA-02",
+      "truth": "申请 GRANTED、申诉维持原结论、发放 ISSUED",
+      "evidence": "../../FLOW-SA-02/replay/mysql-truth.md"
+    },
+    {
+      "flowId": "FLOW-SA-03",
+      "truth": "risk #1 CLOSED，谈话与家校关联保留",
+      "evidence": "../../FLOW-SA-03/replay/mysql-truth.md"
+    },
+    {
+      "flowId": "FLOW-SA-04",
+      "truth": "case #9 REMOVED，决议 V1 WARNING / V2 SERIOUS_WARNING，appeal #9 REVISED",
+      "evidence": "Browser + canonical API readback"
+    },
+    {
+      "flowId": "FLOW-SA-05",
+      "truth": "调宿 EXECUTED，宿舍异常已处置并关联 DORM 风险",
+      "evidence": "../../FLOW-SA-05/replay/mysql-truth.md"
+    },
+    {
+      "flowId": "FLOW-SA-06",
+      "truth": "credit appeal #8 APPROVED，SECOND_CLASS +3",
+      "evidence": "Browser + canonical API readback"
+    },
+    {
+      "flowId": "FLOW-SA-07",
+      "truth": "requirement #4 ACCEPTED；submission V1 SUPERSEDED/退回原因保留，V2 ACCEPTED/current；todo DONE",
+      "evidence": "PC + Teacher Mini + Student Mini canonical readback"
+    }
+  ]
+}

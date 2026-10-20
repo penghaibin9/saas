@@ -123,10 +123,14 @@ def attach_historical_identities(db, student_id: int, payload: dict) -> dict:
     return result
 
 
-def transcript(student_id, user) -> dict:
-    payload = _original_transcript(student_id, user)
+def transcript(student_id, user, page=None, page_size=50, *, term=None) -> dict:
+    payload = (_original_transcript(student_id, user) if page is None
+               else _original_transcript(student_id, user, page=page, page_size=page_size, term=term))
     with grade_service._core.session() as db:
-        return attach_historical_identities(db, int(student_id), payload)
+        result = attach_historical_identities(db, int(student_id), payload)
+        if page is not None:
+            result["identityCoverage"] = "PAGE"
+        return result
 
 
 def install() -> None:

@@ -1,0 +1,27 @@
+        # Website newsroom: HTML comes from the backend for readers and crawlers alike.
+        location = /news {
+            proxy_pass http://127.0.0.1:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 30s;
+        }
+        location ^~ /news/ {
+            proxy_pass http://127.0.0.1:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 30s;
+        }
+        location = /api/v1/platform/website-news/packages {
+            client_max_body_size 26m;
+            limit_conn per_ip_conn 5;
+            limit_req zone=write_limit burst=5 nodelay;
+            proxy_pass http://127.0.0.1:8000;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+            proxy_connect_timeout 5s;
+            proxy_read_timeout 90s;
+        }

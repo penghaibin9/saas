@@ -167,7 +167,7 @@ function taskRow(t = {}) {
     taskId: String(t.taskId || ''),
     instanceId: String(t.instanceId || ''),
     bizType: t.sourceBizType || 'GENERAL',
-    bizTypeLabel: BIZ_LABEL[t.sourceBizType] || t.sourceBizType || '审批',
+    bizTypeLabel: BIZ_LABEL[t.sourceBizType] || '审批事项',
     title: t.title || '',
     applicant: {
       name: t.applicantName || '—',
@@ -252,7 +252,7 @@ function templateRow(t = {}) {
     id: String(t.id || ''),
     name: t.name || '',
     bizType: t.bizType || '',
-    bizTypeLabel: BIZ_LABEL[t.bizType] || t.bizType || '审批',
+    bizTypeLabel: BIZ_LABEL[t.bizType] || '审批事项',
     version: `v${t.definitionVersion || 1}`,
     rowVersion: Number(t.rowVersion ?? 0),
     status: t.status || 'ENABLED',
@@ -403,7 +403,7 @@ export const approvalApi = {
     return {
       ...d,
       byBizType: (d.byBizType || []).map((x) => {
-        const label = BIZ_LABEL[x.bizType] || x.bizType || '审批'
+        const label = BIZ_LABEL[x.bizType] || '审批事项'
         return {
           ...x,
           label,
@@ -574,7 +574,7 @@ export const approvalApi = {
     return {
       list: (d.items || []).map((x) => ({
         ...x,
-        bizTypeLabel: BIZ_LABEL[x.sourceBizType] || x.sourceBizType || '审批',
+        bizTypeLabel: BIZ_LABEL[x.sourceBizType] || '审批事项',
         readStatusLabel: x.readStatus === 'READ' ? '已读' : '未读'
       })),
       total: Number(d.total || 0)

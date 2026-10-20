@@ -29,6 +29,28 @@ PROFILE_PEAK_VUS = {
     "p3000": 3000,
 }
 LOCAL_DIAGNOSTIC_PROFILES = {"p300", "p500"}
+REQUIRED_STUDENT = {"student_home", "student_messages", "student_agenda", "student_cases", "student_search"}
+REQUIRED_TEACHER = {"teacher_workbench", "teacher_todos", "teacher_risk_students", "teacher_my_students",
+                    "teacher_student360", "teacher_messages", "teacher_visit", "teacher_employment_verification"}
+
+
+def measured_route_failures(v3):
+    scenario = v3.get("scenario")
+    if scenario not in {"student", "teacher", "mixed"}:
+        return ["INVALID_SCENARIO"]
+    required = (REQUIRED_STUDENT if scenario == "student" else REQUIRED_TEACHER if scenario == "teacher"
+                else REQUIRED_STUDENT | REQUIRED_TEACHER)
+    evidence = v3.get("measuredRoutes") or {}
+    missing = []
+    for route in sorted(required):
+        row = evidence.get(route) or {}
+        attempts, successes = row.get("attempts"), row.get("successes")
+        if type(attempts) is not int or type(successes) is not int or not 0 < successes <= attempts:
+            missing.append(route)
+    if v3.get("measurementSchema") != 2:
+        missing.append("MEASUREMENT_SCHEMA_REQUIRED")
+    return missing
+
 
 
 def _load(path: Path) -> dict[str, Any]:
@@ -102,6 +124,10 @@ def _identity_pool_assertion(v3: dict[str, Any], *, profile: str, mode: str) -> 
         "uniqueTeacherTokens": int(_number(identity.get("uniqueTeacherTokens"), default=0)),
         "uniqueTeacherContexts": int(_number(identity.get("uniqueTeacherContexts"), default=0)),
         "teacherRoleRatios": identity.get("teacherRoleRatios") or {},
+        "uniqueStudentSubjects": int(_number(identity.get("uniqueStudentSubjects"), default=0)),
+        "uniqueTeacherSubjects": int(_number(identity.get("uniqueTeacherSubjects"), default=0)),
+        "identityClaimsComplete": identity.get("identityClaimsComplete") is True,
+        "syntheticIdentityPool": identity.get("syntheticIdentityPool") is True,
     }
     required: dict[str, Any] = {"peakVUs": peak, "scenario": scenario}
     if mode != "cold":
@@ -119,8 +145,9 @@ def _identity_pool_assertion(v3: dict[str, Any], *, profile: str, mode: str) -> 
     teacher_contexts_required = peak if teacher_needed and actual["teacherTokensAvailable"] > 0 else 0
     required["uniqueTeacherContexts"] = teacher_contexts_required
     passed = (
-        (not student_needed or actual["uniqueStudentTokens"] >= peak)
-        and (not teacher_needed or actual["uniqueTeacherTokens"] >= peak)
+        actual["identityClaimsComplete"]
+        and (not student_needed or (actual["uniqueStudentTokens"] >= peak and actual["uniqueStudentSubjects"] >= peak))
+        and (not teacher_needed or (actual["uniqueTeacherTokens"] >= peak and actual["uniqueTeacherSubjects"] >= peak))
         and (teacher_contexts_required == 0 or actual["uniqueTeacherContexts"] >= teacher_contexts_required)
     )
     return passed, actual, required
@@ -159,7 +186,7 @@ def main() -> int:
     local_high_load = target_mode == "local" and args.profile in LOCAL_DIAGNOSTIC_PROFILES
 
     artifact_identity_mode = str(((v3.get("identity") or {}).get("identityMode")) or "")
-    missing_routes = list(v3.get("missingRoutes") or []) if v3 else []
+    missing_routes = measured_route_failures(v3)
     identity_pool_passed, identity_actual, identity_limit = _identity_pool_assertion(
         v3, profile=args.profile, mode=args.identity_mode
     ) if v3 else (False, {}, {})
@@ -169,7 +196,15 @@ def main() -> int:
     else:
         verdict_mode = "local-functional" if local_high_load else "full-capacity"
 
+    measured = v3.get("measuredRoutes") or {}
+    measured_attempts = sum(_number(row.get("attempts"), default=0) for row in measured.values())
+    measured_successes = sum(_number(row.get("successes"), default=0) for row in measured.values())
+    measured_business_rate = measured_successes / measured_attempts if measured_attempts > 0 else 0
     assertions = [
+        {"key": "measuredBusinessSuccessRate", "passed": measured_business_rate > 0.995 and measured_successes <= measured_attempts,
+         "enforced": True, "actual": measured_business_rate, "limit": 0.995},
+        {"key": "measuredProfileMatches", "passed": v3.get("profile") == args.profile,
+         "enforced": True, "actual": v3.get("profile"), "limit": args.profile},
         {
             "key": "minimumRequests",
             "passed": request_count >= minimum_requests,
@@ -236,28 +271,28 @@ def main() -> int:
         {
             "key": "v3ArtifactPresent",
             "passed": bool(v3),
-            "enforced": args.v3 is not None,
+            "enforced": True,
             "actual": bool(v3),
             "limit": True,
         },
         {
             "key": "v3RoutesCovered",
             "passed": bool(v3) and not missing_routes,
-            "enforced": args.v3 is not None,
+            "enforced": True,
             "actual": missing_routes,
             "limit": [],
         },
         {
             "key": "identityModeMatches",
             "passed": bool(v3) and artifact_identity_mode == args.identity_mode,
-            "enforced": args.v3 is not None,
+            "enforced": True,
             "actual": artifact_identity_mode or None,
             "limit": args.identity_mode,
         },
         {
             "key": "coldIdentityPoolCoverage",
             "passed": identity_pool_passed,
-            "enforced": args.v3 is not None and args.identity_mode == "cold",
+            "enforced": args.identity_mode == "cold",
             "actual": identity_actual,
             "limit": identity_limit,
         },
@@ -269,6 +304,7 @@ def main() -> int:
         passed
         and identity_evidence_eligible
         and target_mode == "remote"
+        and not identity_actual.get("syntheticIdentityPool", True)
         and not local_high_load
     )
     verdict = {

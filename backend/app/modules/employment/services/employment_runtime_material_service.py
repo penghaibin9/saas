@@ -33,6 +33,7 @@ from app.modules.employment.services import employment_destination_verification_
 from app.modules.employment.services import employment_service as base
 from app.modules.employment.services.employment_runtime_service import _assert_material
 from app.services.db_service import session
+from app.services.message_identity import resolve_message_user_id
 
 
 def approve_material(mid, comment="", *, user: dict) -> dict:
@@ -63,6 +64,12 @@ def approve_material(mid, comment="", *, user: dict) -> dict:
                         verify_before, "VERIFIED")
 
         base._audit(db, "MATERIAL", material.id, "审核通过", comment, before, "APPROVED")
+        if verified_now:
+            from app.modules.platform.document_lifecycle.fact_hooks import employment_verified
+
+            employment_verified(
+                db, student=emp, actor_id=resolve_message_user_id(user or {}) or None,
+            )
         db.commit()
         return {
             "id": str(material.id),

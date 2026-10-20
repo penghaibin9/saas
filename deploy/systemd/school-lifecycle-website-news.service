@@ -1,0 +1,24 @@
+[Unit]
+Description=Yueke approved website news publication queue
+After=network-online.target school-lifecycle-backend.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=schoolapp
+Group=schoolapp
+WorkingDirectory=/opt/school-lifecycle/current/backend
+EnvironmentFile=/etc/school-lifecycle/backend.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+Environment=WEBSITE_NEWS_WORKER_ENABLED=true
+ExecStart=/opt/school-lifecycle/current/backend/.venv/bin/python -m app.website_news_worker
+Restart=always
+RestartSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

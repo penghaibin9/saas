@@ -24,15 +24,15 @@ def test_major_split_workspace_uses_real_batch_and_choice_contract():
     assert "batchId:" in source
     assert "choices" in source
     assert "optionId" in source
-    assert "priority: index + 1" in source
+    assert "choices: [...command.choices]" in source
     assert "await load()" in source
-    assert "最终仍由服务器校验" in source
+    assert "guard.isCurrentCommand(command)" in source
 
 
 def test_major_split_workspace_blocks_duplicate_choices_and_fake_result():
     source = _read("student-portal/src/views/academic/StudentMajorSplitView.vue")
 
     assert "new Set(choices).size === choices.length" in source
-    assert "志愿提交不等于录取" in source
-    assert "客户端不自行计算录取结论" in source
+    assert "志愿提交不代表录取" in source
+    assert "学校分配结果另行确认" in source
     assert "window.prompt" not in source

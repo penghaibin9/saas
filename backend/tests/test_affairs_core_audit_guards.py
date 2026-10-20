@@ -80,7 +80,8 @@ def test_volunteer_and_loan_status_contracts_are_formal_and_singular():
     assert activity.count("_VOL_LABEL = {") == 1
     assert activity.count('VOL_CATEGORY = "ZHIYUAN"') == 1
     assert funding.count("_L_LOAN = {") == 1
-    assert funding.count("_LOAN_NEXT = {") == 1
+    assert funding.count("_LOAN_STAFF_ACTIONS = {") == 1
+    assert funding.count("_LOAN_STUDENT_ACTIONS = {") == 1
     assert not (ROOT / ".github/workflows/pr39-restore-status-contracts.yml").exists()
     assert not (ROOT / ".github/workflows/pr39-sync-latest-main.yml").exists()
     assert not (ROOT / ".github/workflows/pr39-fix-revision-contract.yml").exists()

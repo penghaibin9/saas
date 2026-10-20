@@ -45,12 +45,16 @@ export async function waitStable(page) {
 }
 
 export async function setTheme(page, key) {
-  await page.evaluate((theme) => {
-    localStorage.setItem('student-portal-theme', theme)
-    document.documentElement.dataset.spTheme = theme
-    window.dispatchEvent(new CustomEvent('student-portal-theme-change', { detail: theme }))
-  }, key)
+  const labels = { blue: '雾蓝', sage: '护眼绿', plum: '石墨紫', dark: '曜石黑' }
+  const account = page.getByRole('button', { name: '打开学生账户', exact: true })
+  if (!await account.count()) return false
+  if (!labels[key]) throw new Error(`未登记的验收主题：${key}`)
+  await account.click()
+  await page.getByRole('button', { name: /外观设置/ }).click()
+  await page.getByRole('group', { name: '切换门户主题' }).getByRole('button', { name: `切换为${labels[key]}`, exact: true }).click()
+  await page.getByRole('button', { name: '关闭外观设置', exact: true }).click()
   await sleep(180)
+  return true
 }
 
 export async function analyzeLayout(page) {
@@ -69,7 +73,7 @@ export async function analyzeLayout(page) {
     }
     const shell = document.querySelector('.sp-shell')
     const tabs = document.querySelector('.sp-page > .sp-tabs')
-    const keys = [...document.querySelectorAll('.sp-header,.sp-aside,.sp-content,.sp-tabs,.sp-card,.sp-table,.sp-inp,.sp-btn,.home-hero,.home-card,.section-route,[role="dialog"],dialog,.modal,.dialog,.drawer')]
+    const keys = [...document.querySelectorAll('.workspace-header,.workspace-rails,.workspace-tabbar,.workspace-dock,.sp-content,.sp-tabs,.sp-card,.sp-table,.sp-inp,.sp-btn,.home-hero,.home-card,.section-route,[role="dialog"],dialog,.modal,.dialog,.drawer')]
     const overflow = keys.flatMap((el) => {
       if (!visible(el)) return []
       const r = el.getBoundingClientRect()
@@ -128,8 +132,8 @@ export async function analyzeLayout(page) {
       document: { scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight },
       horizontalOverflow: document.documentElement.scrollWidth > vw + 4,
       shellClasses: shell?.className || '',
-      aside: rect(document.querySelector('.sp-aside')),
-      header: rect(document.querySelector('.sp-header')),
+      aside: rect(document.querySelector('.workspace-rails')),
+      header: rect(document.querySelector('.workspace-header')),
       tabs: tabs ? { ...rect(tabs), count: tabs.querySelectorAll('.sp-tab').length } : null,
       overflow,
       dialogs,

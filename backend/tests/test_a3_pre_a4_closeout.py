@@ -14,7 +14,9 @@ def test_returned_aid_projection_is_formal_service_logic_not_runtime_patch():
     legacy_shim = _read("backend/app/services/affairs_returned_view_service.py")
 
     assert "install_returned_view_projection" not in router
-    assert '"DRAFT": "已退回待修改"' in mobile
+    from app.services.affairs_aid_service import presentation
+    assert presentation("DRAFT")["statusLabel"] == "已退回待修改"
+    assert "**presentation(x.status, pending_objection=pending)" in mobile
     assert 'x.status in {"DRAFT", "RETURNED"}' in mobile
     assert "affairs.aid_my =" not in legacy_shim
 

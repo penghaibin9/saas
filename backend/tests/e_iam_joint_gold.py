@@ -320,6 +320,7 @@ def test_mentor_cannot_access_non_owned_student_in_real_mysql(db_mode):
     from app.db.session import get_sessionmaker
     from app.models import InternshipRecord, StudentProfile
     from app.models.internship_enterprise_portal import InternshipEnterpriseMember
+    from app.models.internship_placement_snapshot import InternshipPlacementSnapshot
     from app.modules.internship.services import internship_enterprise_collaboration_service as collab_svc
 
     now = datetime.utcnow()
@@ -384,6 +385,45 @@ def test_mentor_cannot_access_non_owned_student_in_real_mysql(db_mode):
             status="ONBOARD",
         )
         db.add_all([owned_record, other_record])
+        db.flush()
+        owned_snapshot = InternshipPlacementSnapshot(
+            tenant_id=tenant_id,
+            record_id=owned_record.id,
+            placement_seq=1,
+            snapshot_version=1,
+            batch_id=batch_id,
+            company_id=company_id,
+            position_id=owned_record.position_id,
+            company_name="联合门禁测试企业",
+            position_title=owned_record.position_name,
+            position_version=0,
+            snapshot_json={"fixture": "owned-mentor-placement"},
+            snapshot_hash="1" * 64,
+            snapshot_sha256="1" * 64,
+            placement_at=now,
+            captured_at=now,
+        )
+        other_snapshot = InternshipPlacementSnapshot(
+            tenant_id=tenant_id,
+            record_id=other_record.id,
+            placement_seq=1,
+            snapshot_version=1,
+            batch_id=batch_id,
+            company_id=company_id,
+            position_id=other_record.position_id,
+            company_name="联合门禁测试企业",
+            position_title=other_record.position_name,
+            position_version=0,
+            snapshot_json={"fixture": "other-mentor-placement"},
+            snapshot_hash="2" * 64,
+            snapshot_sha256="2" * 64,
+            placement_at=now,
+            captured_at=now,
+        )
+        db.add_all([owned_snapshot, other_snapshot])
+        db.flush()
+        owned_record.current_placement_snapshot_id = owned_snapshot.id
+        other_record.current_placement_snapshot_id = other_snapshot.id
         db.commit()
         member_id = int(member.id)
         owned_record_id = int(owned_record.id)

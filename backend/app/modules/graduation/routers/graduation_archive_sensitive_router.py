@@ -66,47 +66,6 @@ def export_rows(
     return success(svc.export_archives_xlsx(status=status, keyword=keyword, batch_id=batchId))
 
 
-# 动态 /{gd_student_id} 之前注册批量固定路径，避免被误识别为学生 ID。
-@router.post("/gd-archives/batch-generate/preview")
-def batch_generate_preview(
-    batchId: int = Query(..., ge=1), user=Depends(get_current_user),
-):
-    return success(svc.preview_batch_generate(batch_id=require_batch_id(batchId)))
-
-
-@router.post("/gd-archives/batch-generate")
-def batch_generate(
-    batchId: int = Query(..., ge=1), body: dict = Body(...),
-    user=Depends(get_current_user),
-):
-    result = svc.batch_generate_submit(
-        batch_id=require_batch_id(batchId), preview_token=_preview_token(body),
-    )
-    return success(result, message=f"已提交 {result['submitted']}，跳过 {result['skipped']}")
-
-
-@router.post("/gd-archives/batch-file/preview")
-def batch_file_preview(
-    batchId: int = Query(..., ge=1), body: dict = Body(default={}),
-    user=Depends(get_current_user),
-):
-    return success(svc.preview_batch_file(
-        batch_id=require_batch_id(batchId), archive_batch_no=(body or {}).get("archiveBatchNo"),
-    ))
-
-
-@router.post("/gd-archives/batch-file")
-def batch_file(
-    batchId: int = Query(..., ge=1), body: dict = Body(...),
-    user=Depends(get_current_user),
-):
-    archive_no = str((body or {}).get("archiveBatchNo") or "").strip() or None
-    result = manifests.batch_file(
-        archive_no, require_batch_id(batchId), _preview_token(body), user,
-    )
-    return success(result, message=f"已备案 {result['filed']} 份")
-
-
 @router.get("/gd-archives/{gd_student_id}")
 def detail(
     gd_student_id: str, batchId: int = Query(..., ge=1),

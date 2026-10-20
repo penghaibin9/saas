@@ -34,7 +34,7 @@ def _stu_token(real_name, student_no):
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
     from app.models import (AaClassroom, AaCourse, AaTeachingTask, AaTeachingTaskBatch, AaTerm,
-                            College, Major, SchoolClass, StudentProfile)
+                            College, Major, Role, SchoolClass, StudentProfile, User, UserRole)
     db = get_sessionmaker()()
     term = AaTerm(tenant_id=TID, year_code="2024-2025", term_no=1, status="PUBLISHED", is_current=True)
     db.add(term); db.flush()
@@ -57,20 +57,39 @@ def _seed(db_mode):
                          room_name="A102", capacity=50, status="AVAILABLE")
     db.add_all([room_a, room_b]); db.flush()
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=term.id, batch_name="2024秋教学任务",
-                             college_id=col.id, status="ACTIVE")
+                             college_id=col.id, status="DRAFT")
     db.add(tb); db.flush()
-    task = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=course.id, course_name="高等数学",
+    task = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=course.id,
+                          course_code=course.course_code, course_name="高等数学",
                           class_id=klass.id, teaching_class_name="软件2401",
                           teacher_key="teacher_a", teacher_name="甲老师")
     # task2 同班开设：名单与 task 完全相同，用来构造「同一个学生被排两场」
-    task2 = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=course2.id, course_name="大学英语",
+    task2 = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=course2.id,
+                           course_code=course2.course_code, course_name="大学英语",
                            class_id=klass.id, teaching_class_name="软件2401",
                            teacher_key="teacher_b", teacher_name="乙老师")
     # task3 开在另一个行政班：名单与 task 不相交，用来单独构造教室/监考竞争而不掺入学生冲突
-    task3 = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=course2.id, course_name="大学英语",
+    task3 = AaTeachingTask(tenant_id=TID, batch_id=tb.id, course_id=course2.id,
+                           course_code=course2.course_code, course_name="大学英语",
                            class_id=other.id, teaching_class_name="软件2402",
                            teacher_key="teacher_c", teacher_name="丙老师")
     db.add_all([task, task2, task3]); db.flush()
+    for login, name in (("teacher_a", "甲老师"), ("teacher_b", "乙老师"),
+                        ("teacher_c", "丙老师"), ("teacher_x", "监考甲"),
+                        ("teacher_y", "监考乙"), ("teacher_z", "监考丙"),
+                        ("teacher_w", "监考丁")):
+        if not db.query(User).filter(User.tenant_id == TID, User.login_name == login).first():
+            db.add(User(tenant_id=TID, login_name=login, real_name=name,
+                        user_type="TEACHER", password_hash="x", status="ACTIVE"))
+    db.flush()
+    from tests.test_aa_exam import _seed_exam_review_identity
+    _seed_exam_review_identity(db, col.id)
+    teacher_role = db.query(Role).filter(Role.tenant_id == TID, Role.role_code == "ACADEMIC_TEACHER").one()
+    third_teacher = db.query(User).filter(User.tenant_id == TID, User.login_name == "teacher_c").one()
+    if not db.query(UserRole).filter(UserRole.tenant_id == TID, UserRole.user_id == third_teacher.id,
+                                     UserRole.role_id == teacher_role.id).first():
+        db.add(UserRole(tenant_id=TID, user_id=third_teacher.id, role_id=teacher_role.id,
+                        status="ACTIVE"))
     s1 = StudentProfile(tenant_id=TID, student_no="FG2401", real_name="考甲", college_id=col.id,
                         major_id=major.id, class_id=klass.id, grade="2024",
                         student_status="NORMAL", status="ACTIVE")
@@ -91,16 +110,23 @@ def _seed(db_mode):
 def _confirmed_course(client, admin, ids, name="2024秋期末", *, task_key="task",
                       exam_date="2027-06-20", start="09:00", end="11:00"):
     """建批次→圈课→学院确认（冻结名单）→设时间→推进 COURSE_CONFIRMED。"""
+    from tests.test_aa_exam import _prepare_task_batch_for_exam
+    _prepare_task_batch_for_exam(client, admin, ids[task_key])
     bid = client.post(f"{BASE}/exam/batches", headers=admin,
                       json={"batchName": name, "termId": str(ids["term"])}).json()["data"]["batchId"]
-    cid = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
-                      json={"teachingTaskId": str(ids[task_key])}).json()["data"]["examCourseId"]
-    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=admin, json={"action": "CONFIRM"})
+    added = client.post(f"{BASE}/exam/batches/{bid}/courses", headers=admin,
+                        json={"teachingTaskId": str(ids[task_key])})
+    assert added.status_code == 200, added.text
+    cid = added.json()["data"]["examCourseId"]
+    confirmed = client.post(f"{BASE}/exam/courses/{cid}/confirm", headers=_hdr(client, "college_admin01"),
+                            json={"action": "CONFIRM"})
     assert confirmed.status_code == 200, confirmed.text
-    client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
-               json={"examDate": exam_date, "startTime": start, "endTime": end,
-                     "durationMinutes": 120})
-    client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    scheduled = client.put(f"{BASE}/exam/courses/{cid}/schedule", headers=admin,
+                           json={"examDate": exam_date, "startTime": start, "endTime": end,
+                                 "durationMinutes": 120})
+    assert scheduled.status_code == 200, scheduled.text
+    advanced = client.post(f"{BASE}/exam/batches/{bid}/confirm-courses", headers=admin)
+    assert advanced.status_code == 200, advanced.text
     return bid, cid
 
 
@@ -110,8 +136,10 @@ def _arrange(client, admin, cid, ids, *, classroom="A101", invigilator="teacher_
                       json={"classroomText": classroom, "capacity": 50}).json()["data"]["examRoomId"]
     client.post(f"{BASE}/exam/rooms/{rid}/seats", headers=admin,
                 json={"studentIds": [str(ids[key]) for key in students]})
-    client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin,
-                json={"teacherKey": invigilator, "teacherName": "监考老师"})
+    for key in (invigilator, "teacher_z" if invigilator == "teacher_x" else "teacher_w"):
+        assigned = client.post(f"{BASE}/exam/rooms/{rid}/invigilators", headers=admin,
+                               json={"teacherKey": key, "teacherName": "监考老师"})
+        assert assigned.status_code == 200, assigned.text
     return rid
 
 
@@ -387,7 +415,8 @@ def test_d02_invigilator_conflict_across_batches_blocks_publish(client, db_mode)
     from app.models import AaExamInvigilator
     db = get_sessionmaker()()
     row = db.query(AaExamInvigilator).filter(
-        AaExamInvigilator.tenant_id == TID, AaExamInvigilator.exam_room_id == int(rid2)).first()
+        AaExamInvigilator.tenant_id == TID, AaExamInvigilator.exam_room_id == int(rid2),
+        AaExamInvigilator.teacher_key == "teacher_y").one()
     row.teacher_key = "teacher_x"
     db.commit(); db.close()
     r = client.post(f"{BASE}/exam/batches/{bid2}/publish", headers=admin)

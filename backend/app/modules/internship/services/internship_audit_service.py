@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 
 from app.models import AuditOutbox, InternshipAuditTrail
 from app.models.audit_outbox import stage_outbox_event_id
+from app.core.exceptions import AppException
 from app.services.db_service import _tid
 from app.services.db_service import session
 
@@ -158,3 +159,26 @@ def health(db) -> dict:
 def health_status() -> dict:
     with session() as db:
         return health(db)
+
+
+def assert_high_risk_write_available(db) -> dict:
+    """Fail closed before a high-risk internship mutation when audit delivery is unhealthy.
+
+    A fresh PENDING event is normal asynchronous delivery.  DEAD rows or a queue stalled for
+    more than one hour mean that another safety-critical write would create an unauditable
+    business fact, so the caller must abort the surrounding transaction.
+    """
+    status = health(db)
+    if not status["healthy"]:
+        raise AppException(
+            "AUDIT_STORE_UNAVAILABLE",
+            "审计链路异常，已阻止高风险操作；请先恢复审计队列后重试",
+            details={
+                "dead": status["dead"],
+                "backlog": status["backlog"],
+                "stalled": status["stalled"],
+                "oldestPendingAt": status["oldestPendingAt"],
+            },
+            http_status=503,
+        )
+    return status

@@ -17,7 +17,7 @@ test('student selection renders backend DecisionTrace instead of inventing remed
   const source = read('src/pages/student/academic-affairs/selection.vue')
   assert.match(source, /MobileAcademicDecisionCard/)
   assert.match(source, /decisionError/)
-  assert.match(source, /e && e\.decisionTrace/)
+  assert.match(source, /error && error\.decisionTrace/)
   assert.match(source, /实时余量/)
   assert.match(source, /规则校验/)
   assert.match(source, /办理后回读/)

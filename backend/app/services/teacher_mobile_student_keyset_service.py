@@ -16,7 +16,7 @@ import json
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import aliased
 
 from app.core.config import settings
@@ -24,8 +24,8 @@ from app.core.exceptions import AppException
 from app.services import mobile_teacher_service as teacher_guard
 from app.services.db_service import _tid, session
 from app.services.teacher_student_visibility_service import (
-    compile_teacher_student_visibility,
-    is_advisor_scope,
+    compile_teacher_mobile_student_visibility,
+    teacher_user_id,
 )
 
 _CURSOR_VERSION = 1
@@ -38,19 +38,6 @@ _SORT_CONTRACT = "studentNo:asc,id:asc"
 
 def _validation_error(message: str) -> AppException:
     return AppException("VALIDATION_ERROR", message, details={"reason": "INVALID_STUDENT_CURSOR"})
-
-
-def _uid_int(user: dict) -> int:
-    raw = str((user or {}).get("userId") or "").strip()
-    if raw.startswith("db-"):
-        raw = raw[3:]
-    elif raw.startswith("u_"):
-        raw = raw[2:]
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return 0
-    return value if value > 0 else 0
 
 
 def _normalize_class_id(value) -> int | None:
@@ -95,7 +82,7 @@ def _filter_hash(user: dict, *, class_id: int | None, keyword: str) -> str:
         "client": "teacherMini",
         "kind": _CURSOR_KIND,
         "tenantId": int(_tid() or 0),
-        "userId": _uid_int(user),
+        "userId": teacher_user_id(user),
         "classId": class_id or 0,
         "keyword": keyword,
         "sort": _SORT_CONTRACT,
@@ -160,24 +147,6 @@ def _decode_cursor(cursor: str, *, expected_filter_hash: str) -> dict[str, Any]:
     return payload
 
 
-def _class_owner_predicate(user: dict, student_alias):
-    """Preserve the existing MyClasses/MyStudents direct counselor/head-teacher relation."""
-    from app.models import SchoolClass
-
-    uid = _uid_int(user)
-    if not uid:
-        from sqlalchemy import false
-        return false()
-    return exists(
-        select(1).select_from(SchoolClass).where(
-            SchoolClass.tenant_id == _tid(),
-            SchoolClass.is_deleted.is_(False),
-            SchoolClass.id == student_alias.class_id,
-            or_(SchoolClass.counselor_id == uid, SchoolClass.head_teacher_id == uid),
-        )
-    )
-
-
 def list_continuous(
     user: dict,
     *,
@@ -208,14 +177,9 @@ def list_continuous(
     student = aliased(StudentProfile, name="visible_student")
     class_row = aliased(SchoolClass, name="student_class")
     scope = teacher_guard.resolve_teacher_scope(user)
-    canonical_visibility = compile_teacher_student_visibility(user, student.id, scope=scope)
-    if is_advisor_scope(scope):
-        # Current advisor role is relation-exclusive. Do not borrow class ownership from another
-        # role attached to the same account.
-        object_visibility = canonical_visibility
-    else:
-        class_owner_visibility = _class_owner_predicate(user, student)
-        object_visibility = or_(canonical_visibility, class_owner_visibility)
+    object_visibility = compile_teacher_mobile_student_visibility(
+        user, student.id, scope=scope,
+    )
 
     conds = [
         student.tenant_id == _tid(),

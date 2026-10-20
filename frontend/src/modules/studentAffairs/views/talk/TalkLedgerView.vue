@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="谈心谈话台账"
-    subtitle="全量谈话记录只读台账，按类型 / 状态筛选。心理类谈话原文由后端按角色脱敏。"
+    subtitle="按类型与状态查询谈话记录"
     role-name="学工处 / 学院 / 辅导员"
     data-scope-name="按数据范围（辅导员限绑定学生）"
     watermark-purpose="谈话台账查看"
@@ -28,7 +28,7 @@
           <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
           <template #cell-type="{ row }">
             {{ typeLabel(row.talkType) }}
-            <span v-if="row.psyMasked" class="tl-psy" title="心理谈话原文受限">🔒</span>
+            <span v-if="row.psyMasked" class="tl-psy" title="心理谈话原文受限">内容受限</span>
           </template>
           <template #cell-topic="{ row }"><span class="tl-topic">{{ row.topic || '—' }}</span></template>
           <template #cell-talkAt="{ row }"><AppDateDisplay :value="row.talkAt" mode="datetime" empty-text="—" /></template>
@@ -110,7 +110,7 @@ export default {
     },
     setType(k) { if (this.activeType === k) return; this.activeType = k; this.load() },
     setStatus(k) { if (this.activeStatus === k) return; this.activeStatus = k; this.load() },
-    typeLabel(t) { return TYPE_LABELS[t] || t || '—' },
+    typeLabel(t) { return TYPE_LABELS[t] || (t ? '类型待确认' : '—') },
     statusType(s) {
       if (s === 'COMPLETED' || s === 'CLOSED') return 'success'
       if (s === 'FOLLOW_UP') return 'processing'

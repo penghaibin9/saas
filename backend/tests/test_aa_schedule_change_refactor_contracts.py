@@ -75,7 +75,7 @@ def _shapes(router) -> set[tuple[str, str]]:
 def test_d5_s4_public_shapes_are_owned_by_schedule_change_router():
     expected = "app.modules.academic_affairs.routers.schedule_change_router"
     children = [route for route in schedule_change_router.router.routes if isinstance(route, APIRoute)]
-    assert len(children) == 9
+    assert len(children) == 10
     for child in children:
         for method in _methods(child):
             public = _first_route(child.path, method)
@@ -112,6 +112,7 @@ def test_d5_s4_static_get_paths_precede_dynamic_detail():
     dynamic = "/academic-affairs/schedule-change/{changeId}"
     assert get_shapes.index("/academic-affairs/schedule-change/stats") < get_shapes.index(dynamic)
     assert get_shapes.index("/academic-affairs/schedule-change/archive") < get_shapes.index(dynamic)
+    assert get_shapes.index("/academic-affairs/schedule-change/origin-items/{itemId}") < get_shapes.index(dynamic)
 
 
 def test_d5_s4_does_not_take_other_d5_or_scheduling_rule_owners():

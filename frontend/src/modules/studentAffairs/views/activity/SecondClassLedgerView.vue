@@ -28,7 +28,7 @@
           <template #cell-studentNo="{ row }">{{ row.studentNo || '—' }}</template>
           <template #cell-type="{ row }">{{ typeLabel(row.creditType) }}</template>
           <template #cell-value="{ row }">{{ row.creditValue }}</template>
-          <template #cell-category="{ row }">{{ row.categoryCode || '—' }}</template>
+          <template #cell-category="{ row }">{{ categoryLabel(row.categoryCode) }}</template>
           <template #cell-source="{ row }"><span class="cl-remark">{{ row.remark || sourceLabel(row.source) }}</span></template>
           <template #cell-grantedAt="{ row }"><AppDateDisplay :value="row.grantedAt" mode="date" empty-text="—" /></template>
         </DataTable>
@@ -43,7 +43,7 @@
           <span class="cl-weighted">加权合计 <b>{{ report.weightedTotal }}</b></span>
         </div>
         <DataTable v-if="(report.byCategoryWeighted || []).length" :columns="reportColumns" :rows="report.byCategoryWeighted" row-key="key">
-          <template #cell-category="{ row }">{{ row.key }}</template>
+          <template #cell-category="{ row }">{{ categoryLabel(row.key) }}</template>
           <template #cell-rawValue="{ row }">{{ row.rawValue }}</template>
           <template #cell-weight="{ row }">×{{ row.weight }}</template>
           <template #cell-weighted="{ row }"><b>{{ row.value }}</b></template>
@@ -86,7 +86,7 @@ export default {
   data() {
     return {
       ledgerColumns: LEDGER_COLUMNS, reportColumns: REPORT_COLUMNS,
-      loading: true, errorMessage: '', items: [], statusCounts: null, activeType: '', typeFilters: TYPE_FILTERS, report: null,
+      loading: true, errorMessage: '', items: [], statusCounts: null, categories: [], activeType: '', typeFilters: TYPE_FILTERS, report: null,
       pagination: { page: 1, pageSize: 20, total: 0 }
     }
   },
@@ -104,9 +104,10 @@ export default {
   methods: {
     async load() {
       this.loading = true; this.errorMessage = ''
-      const res = await studentAffairsApi.getSecondClassLedger({
-        creditType: this.activeType, page: this.pagination.page, pageSize: this.pagination.pageSize
-      })
+      const [res, categoryRes] = await Promise.all([
+        studentAffairsApi.getSecondClassLedger({ creditType: this.activeType, page: this.pagination.page, pageSize: this.pagination.pageSize }),
+        studentAffairsApi.getCreditCategories()
+      ])
       if (res.code === 0 && res.data) {
         this.items = res.data.items || []
         this.pagination.total = res.data.total || 0
@@ -114,6 +115,7 @@ export default {
       } else {
         this.errorMessage = res.message || '二课台账加载失败'
       }
+      if (categoryRes.code === 0 && categoryRes.data) this.categories = categoryRes.data.items || []
       this.loading = false
     },
     setType(k) { if (this.activeType === k) return; this.activeType = k; this.pagination.page = 1; this.load() },
@@ -123,8 +125,13 @@ export default {
       if (res.code === 0 && res.data) this.report = res.data
       else this.errorMessage = res.message || '成绩单加载失败'
     },
-    typeLabel(t) { return TYPE[t] || t },
-    sourceLabel(s) { return ({ ACTIVITY: '活动确认', MANUAL_ADJUST: '手工调整', VOLUNTEER_RECORD: '志愿补录' })[s] || s || '—' }
+    typeLabel(t) { return TYPE[t] || (t ? '类型待确认' : '—') },
+    categoryLabel(code) {
+      if (!code) return '—'
+      const row = this.categories.find((item) => item.categoryCode === code)
+      return row?.categoryName ? `${row.categoryName}（${code}）` : `类目编号 ${code}`
+    },
+    sourceLabel(s) { return ({ ACTIVITY: '活动确认', MANUAL_ADJUST: '手工调整', VOLUNTEER_RECORD: '志愿补录' })[s] || (s ? '状态待确认' : '—') }
   }
 }
 </script>

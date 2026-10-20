@@ -78,7 +78,7 @@ def _lifecycle_status(domain_key: str, has_data: bool, raw_status: str | None) -
         return _LIFECYCLE_NOT_STARTED
 
     if domain_key == "orientation":
-        if code in ("CHECKED_IN", "REPORTED", "DONE", "COMPLETED"):
+        if code == "COLLEGE_CONFIRMED":
             return _LIFECYCLE_COMPLETED
         if code == "BLOCKED":
             return _LIFECYCLE_BLOCKED
@@ -182,17 +182,50 @@ def _next_action(alerts: list[dict[str, Any]], todos: list[dict[str, Any]]) -> d
         module = str(todo.get("module") or "").lower()
         if module and module not in by_module:
             by_module[module] = todo
-    for alert in alerts or []:
+    # The UI titles the primary card from the first alert. Never put another
+    # business's button under it; unmatched todos remain in the actual todo list.
+    for alert in (alerts or [])[:1]:
         domain = str(alert.get("domain") or "").lower()
         matched = by_module.get(domain)
         action = matched.get("action") if matched else None
         if action and action.get("target"):
             return action
+        return None
     for todo in todos:
         action = todo.get("action")
         if action and action.get("target"):
             return action
     return None
+
+
+def _orientation_followup(base: dict, quick_services: list[dict]) -> tuple[dict | None, dict | None]:
+    """Keep unfinished orientation visible without inventing an assigned todo or write permission."""
+    orientation = base.get("orientation") or {}
+    if not orientation.get("hasData"):
+        return None, None
+    status = orientation.get("reportStatus")
+    if (status == "COLLEGE_CONFIRMED" or orientation.get("stage") in {"CANCELLED", "NO_SHOW"}
+            or (orientation.get("checkinCredential") or {}).get("status") == "FINALIZED"):
+        return None, None
+    entry = next((item for item in quick_services if item.get("key") == "orientation"), None)
+    if not entry:
+        return None, None
+    blockers = (orientation.get("qualification") or {}).get("blockers") or []
+    if orientation.get("stage") == "DEFERRED":
+        title = "已延期报到，请联系学校确认新的到校安排"
+    elif blockers:
+        title = "迎新手续尚未办齐，请查看待办缺项与审核进度"
+    elif status == "CHECKED_IN":
+        title = "已现场报到，等待学院确认入学"
+    else:
+        title = "迎新手续办理中，请查看下一步安排"
+    action = {
+        **entry["action"], "sourceBizType": "ORIENTATION",
+        "sourceBizId": orientation.get("orientationStudentId"),
+        "recordId": orientation.get("orientationStudentId"),
+        "label": "查看迎新办理进度",
+    }
+    return {"level": "MEDIUM" if blockers else "LOW", "title": title, "domain": "orientation"}, action
 
 
 def build_home_v2(user: dict) -> dict[str, Any]:
@@ -237,7 +270,13 @@ def build_home_v2(user: dict) -> dict[str, Any]:
 
     student = base.get("student")
     stage = base.get("stage")
-    alerts = base.get("alerts") or []
+    alerts = list(base.get("alerts") or [])
+    next_action = _next_action(alerts, todos)
+    orientation_alert, orientation_action = _orientation_followup(base, quick_services)
+    if orientation_alert and not alerts and not next_action:
+        alerts.append(orientation_alert)
+    if not next_action and alerts and alerts[0].get("domain") == "orientation":
+        next_action = orientation_action
     domains = base.get("domains") or []
     lifecycle = [{
         "key": d.get("key"),
@@ -268,7 +307,7 @@ def build_home_v2(user: dict) -> dict[str, Any]:
             "unreadCount": unread_count,
             "alertCount": alert_count,
         },
-        "nextAction": _next_action(alerts, todos),
+        "nextAction": next_action,
         "todos": todos,
         "notices": notices,
         "alerts": alerts,

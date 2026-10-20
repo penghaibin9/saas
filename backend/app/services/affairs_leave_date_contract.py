@@ -11,9 +11,9 @@ from __future__ import annotations
 from datetime import datetime
 
 from app.core.exceptions import AppException
+from app.core.timeutil import iso_utc, parse_api_datetime
 
 _DATE_FMT = "%Y-%m-%d"
-_DATE_TIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M")
 _INSTALLED = False
 
 
@@ -34,16 +34,18 @@ def _parse(value, *, end_of_day: bool, fallback=None):
     if value is None or value == "":
         return fallback
     if isinstance(value, datetime):
-        return value
+        return parse_api_datetime(value)
     raw = str(value).strip()
     if _date_only(raw):
         dt = datetime.strptime(raw, _DATE_FMT)
-        return dt.replace(hour=23, minute=59, second=59) if end_of_day else dt
-    for fmt in _DATE_TIME_FORMATS:
-        try:
-            return datetime.strptime(raw, fmt)
-        except ValueError:
-            continue
+        return parse_api_datetime(dt.replace(hour=23, minute=59, second=59) if end_of_day else dt)
+    try:
+        datetime.fromisoformat(raw.replace('Z', '+00:00'))
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", "请假日期时间格式不正确") from None
+    parsed = parse_api_datetime(raw)
+    if parsed is not None:
+        return parsed
     raise AppException("VALIDATION_ERROR", "请假日期时间格式不正确")
 
 
@@ -83,8 +85,8 @@ def install() -> None:
         if leave_type not in service.L_TYPE:
             raise AppException("VALIDATION_ERROR", "请假类型非法")
         # Pydantic model 与测试用 SimpleNamespace 均允许属性赋值；统一传入明确时间字符串。
-        body.startTime = start.strftime("%Y-%m-%d %H:%M:%S")
-        body.endTime = end.strftime("%Y-%m-%d %H:%M:%S")
+        body.startTime = iso_utc(start)
+        body.endTime = iso_utc(end)
         body.reason = reason
         body.leaveType = leave_type
         return original(body, user, skip_scope_check=skip_scope_check)

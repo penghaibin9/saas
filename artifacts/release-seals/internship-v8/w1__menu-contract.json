@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "frozenAt": "2026-08-30T08:18:00Z",
+  "headAtFreeze": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "authority": "岗位实习中心4+1端惊艳体验AI无人值守安全重构施工总控-V8.0-20260830.md",
+  "status": "IMPLEMENTED_TARGETED_TESTS_GREEN",
+  "contract": {
+    "workspaceCount": 11,
+    "wideRoleVisibleLeafCount": 34,
+    "targetVisibleLeafRange": [
+      32,
+      36
+    ],
+    "totalIndexedLeaves": 100,
+    "primaryCommandOwnerOnly": true,
+    "hiddenCompatibilitySearchable": false,
+    "oldRoutesDeleted": 0
+  },
+  "workspaces": [
+    {
+      "key": "in-workbench",
+      "label": "今日工作",
+      "visibleLeaves": 2
+    },
+    {
+      "key": "in-batch-rules",
+      "label": "批次与学生",
+      "visibleLeaves": 4,
+      "compatibility": "The former in-students workspace is projected here; all student routes remain registered."
+    },
+    {
+      "key": "in-enterprise-position",
+      "label": "企业岗位与招聘",
+      "visibleLeaves": 4
+    },
+    {
+      "key": "in-match-assign",
+      "label": "选岗与匹配",
+      "visibleLeaves": 3
+    },
+    {
+      "key": "in-apply-agreement",
+      "label": "申请与协议",
+      "visibleLeaves": 3
+    },
+    {
+      "key": "in-attendance-leave",
+      "label": "考勤与请假",
+      "visibleLeaves": 3
+    },
+    {
+      "key": "in-weekly-task",
+      "label": "计划与过程报告",
+      "visibleLeaves": 3
+    },
+    {
+      "key": "in-guidance-visit",
+      "label": "指导与巡访",
+      "visibleLeaves": 2
+    },
+    {
+      "key": "in-risk",
+      "label": "风险与合规",
+      "visibleLeaves": 4
+    },
+    {
+      "key": "in-eval-score",
+      "label": "评价与成绩",
+      "visibleLeaves": 3
+    },
+    {
+      "key": "in-employment-archive-stats",
+      "label": "归档与分析",
+      "visibleLeaves": 3
+    }
+  ],
+  "compatibilityRules": [
+    "No internship route definition was removed.",
+    "Historical panel, status, type, stage, view, and dimension deep links stay callable.",
+    "Secondary filters, details, and actions remain in the flattened active-route index as hidden leaves where needed.",
+    "Hidden leaves never enter the daily sidebar or global navigation search.",
+    "Role projection still uses the existing permission catalog and wildcard matcher; no second permission system was introduced.",
+    "Compliance tab deep links now select the requested server-backed tab instead of silently returning to overview."
+  ],
+  "verification": [
+    {
+      "command": "node --test tests/navPlan.projection.test.mjs tests/internship.routeGate.test.mjs",
+      "result": "22 passed, 0 failed"
+    },
+    {
+      "command": "static NAV_PLAN count",
+      "result": "11 workspaces, 34 visible leaves, 100 indexed leaves, 0 visible leaves without a path"
+    }
+  ]
+}

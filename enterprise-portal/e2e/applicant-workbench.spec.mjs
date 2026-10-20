@@ -30,8 +30,8 @@ async function installEnterpriseApi(page,{recruitmentWrite=true}={}) {
     if (path.endsWith('/internship/enterprise-portal/campaigns') && request.method()==='GET') {
       state.campaignRequests+=1
       return route.fulfill({contentType:'application/json',body:JSON.stringify(ok([
-        {id:'2027',campaignId:'2027',campaignName:'2027届春季岗位实习双选季',status:'OPEN',batchId:'2027',participationStatus:'ACCEPTED'},
-        {id:'2026',campaignId:'2026',campaignName:'2026届岗位实习双选季',status:'CLOSED',batchId:'2026',participationStatus:'ACCEPTED'},
+        {id:'2027',campaignId:'2027',campaignName:'2027届春季岗位实习双选季',status:'OPEN',batchId:'2027',participationStatus:'ACCEPTED',recruitmentAvailable:true},
+        {id:'2026',campaignId:'2026',campaignName:'2026届岗位实习双选季',status:'CLOSED',batchId:'2026',participationStatus:'ACCEPTED',recruitmentAvailable:true},
       ]))})
     }
     if (path.endsWith('/internship/enterprise-portal/context')) {
@@ -84,9 +84,9 @@ async function installEnterpriseApi(page,{recruitmentWrite=true}={}) {
 async function acceptInvite(page,token){
   await page.goto(`invite/accept?tenantCode=CSZY&token=${encodeURIComponent(token)}`)
   await expect(page.getByText('2027届春季岗位实习双选季')).toBeVisible()
-  await page.getByLabel('验证受邀手机号').fill('13800125678')
+  await page.getByLabel('受邀手机号').fill('13800125678')
   await page.getByLabel('设置密码（至少 8 位）').fill('Evidence-Only-Password')
-  await page.getByRole('button',{name:'接受邀请并进入企业协同中心'}).click()
+  await page.getByRole('button',{name:'激活账号并接受邀请'}).click()
   await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
 }
 
@@ -107,7 +107,8 @@ test('A02 normal login reads the frozen Campaign list and survives F5 through br
   await page.getByRole('button').filter({hasText:'2027届春季岗位实习双选季'}).click()
   await expect(page.getByRole('heading',{name:'企业首页'})).toBeVisible()
   expect(state.campaignRequests).toBeGreaterThanOrEqual(1)
-  expect(state.contextCampaignIds).toEqual(['2027'])
+  // Selection rechecks authorization before the destination loads its own context.
+  expect(state.contextCampaignIds).toEqual(['2027','2027'])
   expect(state.legacyRequests).toBe(0)
 
   await page.reload()

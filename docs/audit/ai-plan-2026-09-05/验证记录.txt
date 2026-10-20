@@ -1,0 +1,19 @@
+2026-09-05 AI规划审计验证
+
+基线：6810bd6284b4d5c69a78947560f808cd7738327e + 当日脏工作区。
+1. backend/app 下1460个Python文件：ast.parse通过，落盘快照物理行数365044（初次扫描365057；审计期间工作区有持续修改），HTTP路由装饰器3705个（不等于唯一有效API数）。
+2. 323个Alembic文件静态revision/down_revision图：父节点无缺失，单head=20260901_orientation_self_activate_o6。未执行upgrade、未检查在线alembic_version。
+3. 后端虚拟环境python -m pytest tests/test_stage_d_decision_trace.py -q：11 passed, 1 warning in 0.72s，exit=0。
+   子进程环境：APP_ENV=test, DEPLOYMENT_MODE=local, DB_ENABLED=false, DATABASE_URL为空, TEST_DATABASE_URL为127.0.0.1:9/ai_audit_unused_test不可用占位连接, REDIS_URL为空, SCHEDULER_MODE=external, PYTHONUTF8=1, PYTHONIOENCODING=utf-8。
+   未调用db_mode，未使用正式数据库；warning为Starlette对httpx TestClient的弃用提醒。
+   第一次结果打印遇到本地GBK编码错误，未据此宣称成功；修正UTF-8子进程输出后得到上述实际结果。
+4. 未执行：全量pytest、MySQL集成回归、迁移升级回滚、前端构建、真实浏览器验收、模型API调用、服务器压测。
+5. 文档与证据文件之外，未主动修改业务代码、权限配置、数据库或部署。
+
+6. 最终文档QA：本地链接59个全部存在；JSON示例3个可解析；代码围栏成对；C00-C11和A01-A15编号连续。
+   结构快照文件写入时间：2026-09-05T20:23:54.885473+08:00。
+   文档QA时与快照哈希不同的后端文件（本轮未主动编辑）：
+   - backend/app/modules/student_affairs/services/affairs_material_center_service.py
+   - backend/app/services/affairs_leave_date_contract.py
+   - backend/app/services/mobile_affairs_service.py
+   业务源码的持续变化未覆盖或回退；后续C00需重新核验。

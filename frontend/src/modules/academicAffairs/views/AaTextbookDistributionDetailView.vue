@@ -6,11 +6,13 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push('/admin/academic-affairs/textbooks?tab=distribution')">返回发放批次</AppButton>
+      <AppButton @click="$router.push(returnPath)">返回来源批次</AppButton>
+      <AppButton v-if="batch?.orderBatchId && batch?.classId" :disabled="loading || !!error || !!acting" @click="openAppend">补充未发放学生</AppButton>
       <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/textbooks?tab=fee')">处理费用台账</AppButton>
     </template>
 
     <div class="mp-stack">
+      <p class="aa-batch-id">发放批次：{{ batchId }}<span v-if="batch?.orderBatchId"> · 征订批次：{{ batch.orderBatchId }}</span></p>
       <div v-if="batch" class="aa-summary">
         <div><strong>{{ batch.orderBatchName }}</strong><span>征订批次</span></div>
         <div><strong>{{ batch.className || '—' }}</strong><span>发放班级</span></div>
@@ -71,6 +73,9 @@ import { AppConfirmDialog, AppInlineAlert, AppStatusTag } from '@/components/com
 import { academicAffairsTextbookApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { textbookP0Api } from '@/modules/academicAffairs/api/textbook-p0.api'
 import { toast } from '@/utils/toast'
+import { currentUserFromToken } from '@/services/http/client'
+import { systemConfirm } from '@/services/systemDialog'
+import { textbookReturnPath } from '../components/textbooks/textbookNavigation.js'
 
 export default {
   name: 'AaTextbookDistributionDetailView',
@@ -93,7 +98,7 @@ export default {
       rows: [],
       batch: null,
       acting: '',
-      pagination: { page: 1, pageSize: 100, total: 0 },
+      pagination: { page: 1, pageSize: 20, total: 0 }, loadSeq: 0, actionSeq: 0,
       returnDialog: { visible: false, recordId: '' },
       columns: [
         { key: 'student', title: '学生' },
@@ -106,22 +111,38 @@ export default {
     }
   },
   computed: {
+    returnPath() { return textbookReturnPath(this.$route.query.returnTo) },
+    identityKey() { return JSON.stringify([currentUserFromToken(), this.ctx]) },
     batchId() { return String(this.$route.params.batchId || '') },
     subtitle() {
       if (!this.batch) return '逐条登记签收、核对费用并处理未实收退领'
       return `${this.batch.orderBatchName || '教材征订'} · ${this.batch.className || '未命名班级'}`
     }
   },
+  watch: { batchId: 'resetObject', identityKey: 'resetObject' },
   created() { this.load() },
+  beforeUnmount() { this.loadSeq++; this.actionSeq++ },
   methods: {
+    openAppend() {
+      if (this.loading || this.error || this.acting || !this.batch?.orderBatchId || !this.batch?.classId) return
+      this.$router.push({ name: 'aa-textbook-distribution-new', query: { orderBatchId: String(this.batch.orderBatchId), classId: String(this.batch.classId), appendToBatchId: this.batchId, returnTo: this.returnPath } })
+    },
+    resetObject() {
+      this.loadSeq++; this.actionSeq++; this.acting = ''; this.rows = []; this.batch = null
+      this.returnDialog.visible = false; this.pagination.page = 1; this.pagination.total = 0; this.load()
+    },
     distributionStatusLabel(status) {
       return status === 'RETURNED' ? '已退领' : ''
     },
     onPageChange(page) { this.pagination.page = page; this.load() },
     async load() {
+      const seq = ++this.loadSeq, batchId = this.batchId, identity = this.identityKey, page = this.pagination.page
+      const current = () => seq === this.loadSeq && batchId === this.batchId && identity === this.identityKey && page === this.pagination.page
       this.loading = true
       this.error = ''
-      const res = await textbookP0Api.distributionRecords(this.batchId, this.pagination)
+      try {
+      const res = await textbookP0Api.distributionRecords(batchId, { ...this.pagination })
+      if (!current()) return
       if (res.code === 0) {
         this.rows = res.data.list
         this.batch = res.data.batch
@@ -129,32 +150,46 @@ export default {
       } else {
         this.error = res.message || '加载发放明细失败'
       }
-      this.loading = false
+      } catch (error) { if (current()) this.error = error?.message || '加载发放明细失败' }
+      finally { if (current()) this.loading = false }
     },
     async sign(row) {
-      if (this.acting) return
-      this.acting = row.recordId
-      const res = await api.sign(row.recordId)
-      this.acting = ''
+      if (this.acting || row.status !== 'PENDING') return
+      const id = row.recordId, batchId = this.batchId, identity = this.identityKey, seq = ++this.actionSeq
+      const current = () => seq === this.actionSeq && batchId === this.batchId && identity === this.identityKey
+      this.acting = id
+      try {
+      const accepted = await systemConfirm({ title: '确认登记教材签收', message: `${row.studentName || row.studentNo || row.studentId} · ${row.textbookName} · ${row.qty} 册\n请确认已实际发放。登记后将按征订价格快照形成应收，不代表已经收款。`, confirmText: '登记已领用' })
+      if (!accepted || !current()) return
+      const res = await api.sign(id)
+      if (!current()) return
       if (res.code === 0) {
         toast.success('已登记签收并按征订价格快照生成应收')
         this.load()
       } else toast.error(res.message || '签收失败')
+      } catch (error) { if (current()) toast.error(error?.message || '签收结果未确认，请刷新当前名单核对') }
+      finally { if (current()) this.acting = '' }
     },
     openReturn(row) {
-      this.returnDialog = { visible: true, recordId: row.recordId }
+      if (this.acting || row.status !== 'RECEIVED') return
+      this.returnDialog = { visible: true, recordId: row.recordId, batchId: this.batchId, identity: this.identityKey }
     },
     async submitReturn({ reason }) {
       const recordId = this.returnDialog.recordId
-      if (!recordId || this.acting) return
+      if (!recordId || this.acting || !this.returnDialog.visible || this.returnDialog.identity !== this.identityKey || this.returnDialog.batchId !== this.batchId) return
+      const batchId = this.batchId, identity = this.identityKey, seq = ++this.actionSeq
+      const current = () => seq === this.actionSeq && batchId === this.batchId && identity === this.identityKey
       this.acting = recordId
+      try {
       const res = await textbookP0Api.returnDistribution(recordId, reason)
-      this.acting = ''
+      if (!current()) return
       if (res.code === 0) {
         this.returnDialog.visible = false
         toast.success('教材已退领，未实收费用已收口')
         this.load()
       } else toast.error(res.message || '退领失败')
+      } catch (error) { if (current()) toast.error(error?.message || '退领结果未确认，请刷新当前名单核对') }
+      finally { if (current()) this.acting = '' }
     }
   }
 }
@@ -162,6 +197,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.aa-batch-id { margin: 0; padding: 14px 16px; border-left: 3px solid var(--primary-color, #2b5bb4); background: var(--bg-white, #fff); font-size: 13px; }
 .aa-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .aa-summary > div { padding: 14px 16px; border: 1px solid var(--border-200, #e5e7eb); border-radius: 8px; background: var(--bg-white, #fff); }
 .aa-summary strong, .aa-summary span { display: block; }

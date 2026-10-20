@@ -1,0 +1,178 @@
+name: Module commerce M3-M5 lifecycle
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - backend/app/models/commercial.py
+      - backend/app/models/platform.py
+      - backend/app/services/__init__.py
+      - backend/app/services/module_commerce_access_guard.py
+      - backend/app/services/dorm_allocation_publish_job.py
+      - backend/tests/test_module_commerce_dorm_worker_contract.py
+      - backend/tests/test_module_commerce_dorm_worker_runtime.py
+      - backend/tests/test_dorm_allocation_publish_job.py
+      - backend/app/services/module_commerce_lifecycle_service.py
+      - backend/app/services/module_commerce_m345_hardening.py
+      - backend/app/services/module_commerce_consumer_evidence.py
+      - backend/app/services/module_commerce_m45_consumer_closure.py
+      - backend/app/services/module_commerce_quota_guard.py
+      - backend/app/services/file_storage_quota_reservation_service.py
+      - backend/app/core/commercial_surface_module_gate.py
+      - backend/app/api/v1/router.py
+      - backend/app/modules/internship/dependencies/enterprise_context.py
+      - backend/app/api/v1/student_portal_graduation_guard.py
+      - backend/app/modules/platform/routers/module_commerce_router.py
+      - backend/alembic/versions/20260908_module_commerce_m345.py
+      - backend/tests/test_module_commerce_m345_runtime.py
+      - backend/tests/test_module_commerce_m45_consumer_closure.py
+      - backend/tests/test_module_commerce_quota_guard_runtime.py
+      - backend/tests/test_module_commerce_write_fence_runtime.py
+      - backend/tests/test_module_commerce_consumer_dependency_runtime.py
+      - backend/tests/test_module_commerce_enterprise_gate.py
+      - backend/tests/test_module_commerce_student_portal_gate.py
+      - backend/tests/test_commercial_surface_module_gate.py
+      - frontend/src/modules/platform/api/moduleCommerce.api.js
+      - frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue
+      - frontend/tests/module-commerce-lifecycle-workspace.test.mjs
+      - .github/workflows/module-commerce-m345.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: module-commerce-m345-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  m345-runtime:
+    name: M3-M5 migrated MySQL lifecycle and non-purge exit
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      APP_ENV: test
+      DB_ENABLED: 'true'
+      DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/module_commerce_m345
+      TEST_DATABASE_URL: mysql+pymysql://root:root@127.0.0.1:3306/module_commerce_m345
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTEST_PRESERVE_MIGRATED_SCHEMA: '1'
+      EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+      OUT: /tmp/module-commerce-m345
+    services:
+      mysql:
+        image: mysql:8.0
+        env: { MYSQL_ROOT_PASSWORD: root, MYSQL_DATABASE: module_commerce_m345 }
+        ports: ["3306:3306"]
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot --silent"
+          --health-interval=10s --health-timeout=5s --health-retries=15
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.EXPECTED_HEAD }}", fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12', cache: pip, cache-dependency-path: backend/requirements.txt }
+      - name: Install exact backend and compile changed lifecycle code
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT"; test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"; git rev-parse HEAD > "$OUT/revision.txt"
+          python -m pip install -r backend/requirements.txt
+          python -m py_compile \
+            backend/app/models/commercial.py \
+            backend/app/models/platform.py \
+            backend/app/services/module_commerce_access_guard.py \
+            backend/app/services/dorm_allocation_publish_job.py \
+            backend/tests/test_module_commerce_dorm_worker_contract.py \
+            backend/tests/test_module_commerce_dorm_worker_runtime.py \
+            backend/app/services/module_commerce_lifecycle_service.py \
+            backend/app/services/module_commerce_m345_hardening.py \
+            backend/app/services/module_commerce_consumer_evidence.py \
+            backend/app/services/module_commerce_m45_consumer_closure.py \
+            backend/app/services/module_commerce_quota_guard.py \
+            backend/app/core/commercial_surface_module_gate.py \
+            backend/app/api/v1/router.py \
+            backend/app/modules/internship/dependencies/enterprise_context.py \
+            backend/app/api/v1/student_portal_graduation_guard.py \
+            backend/app/modules/platform/routers/module_commerce_router.py \
+            backend/alembic/versions/20260908_module_commerce_m345.py \
+            backend/tests/test_module_commerce_m345_runtime.py \
+            backend/tests/test_module_commerce_m45_consumer_closure.py \
+            backend/tests/test_module_commerce_quota_guard_runtime.py \
+            backend/tests/test_module_commerce_write_fence_runtime.py \
+            backend/tests/test_module_commerce_consumer_dependency_runtime.py \
+            backend/tests/test_module_commerce_enterprise_gate.py \
+            backend/tests/test_module_commerce_student_portal_gate.py \
+            backend/tests/test_commercial_surface_module_gate.py
+      - name: Durable dorm publication generation contracts
+        run: |
+          set -euo pipefail
+          python -B backend/tests/test_module_commerce_dorm_worker_contract.py -v 2>&1 | tee "$OUT/dorm-worker-contract.log"
+      - name: Migrate fresh MySQL and run M3-M5 lifecycle contracts
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          test "$(alembic heads | wc -l | tr -d ' ')" = "1"
+          alembic upgrade head 2>&1 | tee "$OUT/migration.log"
+          alembic current | tee "$OUT/current.log"
+          pytest \
+            tests/test_module_commerce_m345_runtime.py \
+            tests/test_module_commerce_m45_consumer_closure.py \
+            tests/test_module_commerce_quota_guard_runtime.py \
+            tests/test_module_commerce_write_fence_runtime.py \
+            tests/test_module_commerce_dorm_worker_runtime.py \
+            tests/test_dorm_allocation_publish_job.py \
+            tests/test_module_commerce_consumer_dependency_runtime.py \
+            tests/test_module_commerce_enterprise_gate.py \
+            tests/test_module_commerce_student_portal_gate.py \
+            tests/test_commercial_surface_module_gate.py \
+            -q -p no:warnings --junitxml="$OUT/m345-junit.xml" 2>&1 | tee "$OUT/m345-pytest.log"
+      - name: Assert scope stops before irreversible purge
+        working-directory: backend
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          service=Path('app/services/module_commerce_lifecycle_service.py').read_text(encoding='utf-8')
+          hardening=Path('app/services/module_commerce_m345_hardening.py').read_text(encoding='utf-8')
+          evidence=Path('app/services/module_commerce_consumer_evidence.py').read_text(encoding='utf-8')
+          closure=Path('app/services/module_commerce_m45_consumer_closure.py').read_text(encoding='utf-8')
+          quota=Path('app/services/module_commerce_quota_guard.py').read_text(encoding='utf-8')
+          fence=Path('app/services/module_commerce_access_guard.py').read_text(encoding='utf-8')
+          enterprise=Path('app/modules/internship/dependencies/enterprise_context.py').read_text(encoding='utf-8')
+          student_portal=Path('app/api/v1/student_portal_graduation_guard.py').read_text(encoding='utf-8')
+          surface_gate=Path('app/core/commercial_surface_module_gate.py').read_text(encoding='utf-8')
+          assert 'physicalPurgeAuthorized": False' in service
+          for source in (service, hardening, evidence, closure, quota, fence, enterprise, student_portal, surface_gate):
+              assert 'execute_tenant_purge' not in source and '_purge_file_objects' not in source and 'tenant.status =' not in source
+          assert 'GET_LOCK' in hardening and 'ArchiveManifestItem' in hardening and 'backend.exists' in hardening
+          assert 'consumerDependencySnapshot' in hardening and 'SOURCE_BOUND_EVIDENCE_RETAIN_REQUIRED' in hardening
+          assert 'EXPLICIT_SOURCE_MODULE_OR_DOMAIN_TABLE' in evidence and 'ownershipGuessingUsed' in evidence
+          assert 'CONSUMER_DEPENDENCY_CHANGED' in closure and 'deliveryAcceptanceReady' in closure
+          assert 'physicalPurgeAuthorized' in closure
+          assert 'M6_M7_BEFORE_PURGE' in hardening and 'physicalPurgeAuthorized' in hardening
+          assert 'COMMERCIAL_MODULE_STORAGE_QUOTA_EXCEEDED' in quota and 'MODULE_NOT_AUTHORIZED' in quota
+          assert 'before_commit' in fence and 'with_for_update' in fence and 'module_write_fence' in fence
+          assert 'assert_module_access' in enterprise and '"internship"' in enterprise
+          assert 'require_module("graduation")' in student_portal
+          assert 'install_on_router' in surface_gate and 'studentAffairs' in surface_gate and 'academicAffairs' in surface_gate
+          print('M345_NON_PURGE_SCOPE_QUOTA_FINAL_COMMIT_CONSUMER_OBJECT_EVIDENCE_GATES_VERIFIED')
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with: { name: "module-commerce-m345-${{ env.EXPECTED_HEAD }}", path: /tmp/module-commerce-m345, if-no-files-found: error, retention-days: 14 }
+  m345-frontend:
+    name: M3-M5 platform workspace contract and production build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env: { EXPECTED_HEAD: "${{ github.event.pull_request.head.sha || github.sha }}" }
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: "${{ env.EXPECTED_HEAD }}", fetch-depth: 0, persist-credentials: false }
+      - uses: actions/setup-node@v4
+        with: { node-version: '22', cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - name: Exact-head workspace contract
+        working-directory: frontend
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_HEAD"
+          npm ci
+          node --test tests/module-commerce-lifecycle-workspace.test.mjs
+      - name: Production build
+        working-directory: frontend
+        run: npm run build

@@ -73,6 +73,12 @@ class _Db:
         self.query_calls += 1
         return _Query(self, models)
 
+    def scalars(self, statement):
+        from app.models import AaTeachingTaskSourceHandoff
+        assert statement.column_descriptions[0]["entity"] is AaTeachingTaskSourceHandoff
+        self.query_calls += 1
+        return SimpleNamespace(all=lambda: [])
+
 
 def _program(index: int):
     return SimpleNamespace(
@@ -110,7 +116,13 @@ def _run(monkeypatch, db, *, status=None):
     monkeypatch.setattr(service, "_tid", lambda: 1)
     monkeypatch.setattr(service, "_scope", lambda _user, _db: SimpleNamespace(scope_type="TENANT_ALL"))
     monkeypatch.setattr(service, "_allowed_major_ids", lambda _db, _scope: set())
-    return service.opening_differences(SimpleNamespace(), 9, status=status)
+    from app.core.context import get_tenant, set_tenant
+    previous = get_tenant()
+    set_tenant(1)
+    try:
+        return service.opening_differences(SimpleNamespace(), 9, status=status)
+    finally:
+        set_tenant(previous)
 
 
 def test_opening_differences_source_query_count_does_not_scale_with_program_count(monkeypatch):

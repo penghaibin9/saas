@@ -131,9 +131,11 @@ def _seed_today_panels(db_mode):
                             class_name="软件2601", teacher_key="T-DB01", teacher_name="看板教师",
                             status="SUBMITTED", current_node="COLLEGE_REVIEW", reason="看板联调用例"))
     db.add(AaGradeTask(tenant_id=TID, term_id=t.id, course_name="看板联调课", class_id=9001,
-                       teacher_key="T-DB01", status="SUBMITTED", submitted_at=datetime.utcnow()))
+                       teacher_key="T-DB01", status="SUBMITTED", submitted_at=datetime.utcnow(),
+                       deadline_at=datetime.utcnow() + timedelta(days=3)))
     db.add(AcademicWarning(tenant_id=TID, acad_student_id=1, warn_type="MULTI_FAIL", level="HIGH",
-                           reason="看板联调预警", status="PENDING_HANDLE"))
+                           reason="看板联调预警", status="PENDING_HANDLE", owner="看板辅导员",
+                           deadline=(local_today + timedelta(days=2)).date().isoformat()))
     db.commit()
     db.close()
 
@@ -178,6 +180,21 @@ def test_dashboard_today_panels_reflect_seeded_schedule(client, db_mode):
     assert by_key["gradeSubmit"]["points"][-1]["value"] >= 1
     assert by_key["warning"]["points"][-1]["value"] >= 1
 
+    # AA-DX-P1-04：待办不能只返回分类总数；每条必须能解释责任并精确落到业务对象。
+    todo_groups = {group["key"]: group for group in data["todos"]}
+    grade_item = next(item for item in todo_groups["gradeReview"]["items"]
+                      if "看板联调课" in item["title"])
+    warning_item = next(item for item in todo_groups["warningHandle"]["items"]
+                        if "看板联调预警" in item["title"])
+    required = {"businessId", "entityType", "title", "reason", "ownerRole", "deadline",
+                "recentChange", "primaryAction", "nextStep", "exactRoute"}
+    assert required.issubset(grade_item)
+    assert required.issubset(warning_item)
+    assert grade_item["exactRoute"].endswith(f"taskId={grade_item['businessId']}")
+    assert warning_item["exactRoute"].endswith(f"warningId={warning_item['businessId']}")
+    assert grade_item["deadline"] and warning_item["deadline"]
+    assert warning_item["ownerRole"] == "看板辅导员"
+
 
 def test_dashboard_reminders_student_forbidden_403(client, db_mode):
     """越权路径：学生不进 PC 管理端教务看板，/dashboard/reminders（五卡同一端点）对学生必须 403。"""
@@ -187,3 +204,67 @@ def test_dashboard_reminders_student_forbidden_403(client, db_mode):
         "tid": "x", "tenantId": str(TID), "activeContextId": "ctx", "currentRoleCode": "STUDENT",
         "clientType": "MP"})}
     assert client.get(f"{BASE}/dashboard/reminders", headers=stu_hdr).status_code == 403
+
+
+def test_dashboard_concrete_reminders_are_limited_to_allowed_classes(db_mode):
+    """学院/班级范围不能从具体待办中读到范围外的学生姓名或成绩任务。"""
+    from app.core.context import set_tenant
+    from app.db.session import get_sessionmaker
+    from app.models import AcademicStudent, AcademicWarning, AaGradeTask, SchoolClass, StudentProfile
+    from app.modules.academic_affairs.services.academic_affairs_service import (
+        _grade_progress,
+        _warning_reminders,
+    )
+
+    db = get_sessionmaker()()
+    own_class = SchoolClass(
+        tenant_id=TID, major_id=1, class_name="看板范围内2601", grade="2026", status="ACTIVE"
+    )
+    other_class = SchoolClass(
+        tenant_id=TID, major_id=1, class_name="看板范围外2602", grade="2026", status="ACTIVE"
+    )
+    db.add_all([own_class, other_class]); db.flush()
+    own_profile = StudentProfile(
+        tenant_id=TID, student_no="SCOPE-IN-001", real_name="范围内学生", class_id=own_class.id,
+        current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE",
+    )
+    other_profile = StudentProfile(
+        tenant_id=TID, student_no="SCOPE-OUT-001", real_name="范围外学生", class_id=other_class.id,
+        current_stage="ON_CAMPUS", student_status="REGISTERED", status="ACTIVE",
+    )
+    db.add_all([own_profile, other_profile]); db.flush()
+    own_acad = AcademicStudent(
+        tenant_id=TID, student_no="SCOPE-IN-001", student_id=own_profile.id,
+        name="范围内学生", class_id=str(own_class.id),
+    )
+    other_acad = AcademicStudent(
+        tenant_id=TID, student_no="SCOPE-OUT-001", student_id=other_profile.id,
+        name="范围外学生", class_id=str(other_class.id),
+    )
+    db.add_all([own_acad, other_acad]); db.flush()
+    db.add_all([
+        AaGradeTask(tenant_id=TID, teaching_task_id=980001, course_name="范围内课程",
+                    class_id=own_class.id, status="SUBMITTED"),
+        AaGradeTask(tenant_id=TID, teaching_task_id=980002, course_name="范围外课程",
+                    class_id=other_class.id, status="SUBMITTED"),
+        AcademicWarning(tenant_id=TID, acad_student_id=own_acad.id, warn_type="MULTI_FAIL",
+                        level="HIGH", reason="范围内预警", status="PENDING_HANDLE"),
+        AcademicWarning(tenant_id=TID, acad_student_id=other_acad.id, warn_type="MULTI_FAIL",
+                        level="HIGH", reason="范围外预警", status="PENDING_HANDLE"),
+    ])
+    db.commit()
+
+    set_tenant({"tenantId": str(TID)})
+    try:
+        grade = _grade_progress(db, {own_class.id})
+        warning = _warning_reminders(db, {own_class.id})
+        assert any(item["courseName"] == "范围内课程" for item in grade["reviewTasks"])
+        assert all(item["courseName"] != "范围外课程" for item in grade["reviewTasks"])
+        assert any(item["studentName"] == "范围内学生" for item in warning["items"])
+        assert all(item["studentName"] != "范围外学生" for item in warning["items"])
+
+        assert _grade_progress(db, set())["totalTasks"] == 0
+        assert _warning_reminders(db, set())["count"] == 0
+    finally:
+        set_tenant(None)
+        db.close()

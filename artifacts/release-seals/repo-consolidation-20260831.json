@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "verificationBaselineCommit": "0a0b1696d2f661d95afa6c421567d7472589a5c4",
+  "verifiedAt": "2026-08-31T18:08:42+08:00",
+  "branch": "codex/repo-consolidation-20260831",
+  "releaseGates": {
+    "repositoryHygiene": "passed",
+    "mysqlMigrations": "passed",
+    "backendMatrix": "blocked_environment",
+    "frontendApps": "passed",
+    "browserJourneys": "pending",
+    "securityAndDependencies": "partial",
+    "backupRestore": "pending",
+    "capacitySmoke": "pending"
+  },
+  "checks": {
+    "repositoryHygiene": {
+      "status": "passed",
+      "forbiddenTrackedFiles": 0,
+      "oversizedUnregisteredFiles": 0,
+      "unallowlistedExactDuplicateGroups": 0
+    },
+    "documentation": {
+      "status": "passed",
+      "brokenLinks": 0,
+      "workflowYamlFilesValidated": 106
+    },
+    "navigation": {
+      "status": "passed",
+      "tests": 23,
+      "failures": 0
+    },
+    "frontendApps": {
+      "status": "passed",
+      "adminPc": { "tests": 736, "failures": 0, "lint": "passed", "build": "passed" },
+      "studentPc": { "tests": 119, "failures": 0, "lint": "passed_with_warnings", "build": "passed" },
+      "miniapp": { "tests": 240, "failures": 0, "h5Build": "passed", "wechatBuild": "passed" },
+      "enterprisePortal": { "tests": 98, "failures": 0, "lint": "passed", "build": "passed" }
+    },
+    "mysqlMigrations": {
+      "status": "passed",
+      "freshDatabase": "passed",
+      "historicalStartRevision": "20260829_pr236_main_merge",
+      "historicalUpgrade": "passed",
+      "head": "20260831_iam_alias_backfill"
+    },
+    "backendTargeted": {
+      "status": "passed",
+      "tests": 90,
+      "failures": 0,
+      "note": "Control Plane IAM, academic main chain, academic V8.1 and student-affairs targeted suites passed before repository-only consolidation commits."
+    },
+    "backendFullMatrix": {
+      "status": "blocked_environment",
+      "shards": 4,
+      "timeoutMinutes": 50,
+      "completedShards": 0,
+      "observedTestsBeforeInfrastructureFailure": 418,
+      "observedAssertionFailures": 0,
+      "infrastructureErrors": 1,
+      "diagnosis": "The isolated local MySQL gate container stopped answering PyMySQL connections after sustained four-shard load; three remaining shards exceeded the repository CI timeout."
+    },
+    "dependencies": {
+      "status": "partial",
+      "frontendProductionAudit": { "projects": 4, "vulnerabilities": 0 },
+      "pythonInstallCheck": "passed",
+      "pythonLockCheck": "passed",
+      "pythonVulnerabilityAudit": "not_run"
+    }
+  },
+  "warnings": [
+    "The admin PC build passes with existing CSS import-order and large-chunk warnings.",
+    "The student PC lint passes with five existing warnings.",
+    "CI workflow physical deletion is deferred until protected required-check names can be read from GitHub.",
+    "Other active worktrees are intentionally untouched while two user sessions are running."
+  ],
+  "blockers": [
+    "Backend full matrix must be rerun on a healthy isolated MySQL service.",
+    "First-school browser journeys have not run on this candidate.",
+    "Python vulnerability audit, backup/restore and capacity smoke remain pending."
+  ],
+  "deliverable": false
+}

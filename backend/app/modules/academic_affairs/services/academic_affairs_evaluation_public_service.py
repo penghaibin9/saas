@@ -388,10 +388,27 @@ def submit_evaluation(user, task_id, answers, objective_score, comment=None):
 
 
 # D-W3 scale projections: public owner stays this module; helpers only change execution shape.
-def my_student_tasks(user, batch_id=None, include_closed=True) -> list[dict]:
+def my_student_tasks(
+    user,
+    batch_id=None,
+    include_closed=True,
+    *,
+    page=None,
+    page_size=20,
+    task_id=None,
+    pending_summary=False,
+):
     from . import academic_affairs_evaluation_student_read_service as _student_read
 
-    return _student_read.my_student_tasks(user, batch_id=batch_id, include_closed=include_closed)
+    return _student_read.my_student_tasks(
+        user,
+        batch_id=batch_id,
+        include_closed=include_closed,
+        page=page,
+        page_size=page_size,
+        task_id=task_id,
+        pending_summary=pending_summary,
+    )
 
 
 def list_batches(user, status=None, page=1, page_size=20):

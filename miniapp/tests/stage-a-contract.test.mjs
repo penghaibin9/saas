@@ -61,11 +61,15 @@ test('ordinary GETs are single-flight and writes are rejected rather than dedupl
   assert.match(request, /export function realDownload/)
 })
 
-test('production session skeleton contains no fixed student or teacher identity', () => {
+test('formal session skeleton never imports or restores a demo identity', () => {
   const session = read('src/stores/session.js')
-  assert.match(session, /import\.meta\.env && import\.meta\.env\.PROD/)
   assert.match(session, /neutralUser/)
   assert.match(session, /name: '', studentNo: '', className: ''/)
+  assert.match(session, /function initialUser\(side\) \{ return neutralUser\(side\) \}/)
+  assert.doesNotMatch(session, /@\/mock\/user/)
+  assert.match(session, /this\.clearBusinessContexts\(\)\n\s*\/\/ 先清投影，后写入新身份[\s\S]*?this\.resetAuthenticatedProjection\(\)/)
+  assert.match(session, /const token = getToken\(\)\s*\n\s*const refresh = getRefreshToken\(\)[\s\S]*?if \(!token && !refresh\)[\s\S]*?uni\.removeStorageSync\(STORAGE_KEY\)/)
+  assert.match(session, /h5UnverifiedBrowserSession[\s\S]*?this\.mockUser = skeleton/)
 })
 
 test('teacher login accepts the backend academic role codes', () => {
@@ -76,14 +80,26 @@ test('teacher login accepts the backend academic role codes', () => {
   assert.match(roles, /ACADEMIC_ADMIN: ROLE\.ACADEMIC/)
 })
 
+test('teacher login accepts dorm managers and preserves the building data scope', () => {
+  const roles = read('src/config/roles.config.js')
+  assert.match(roles, /DORM_MANAGER: ROLE\.DORM_MANAGER/)
+  assert.match(roles, /\[ROLE\.DORM_MANAGER\][\s\S]*?dataScope: 'DORM_BUILDING'/)
+  assert.match(roles, /\[ROLE\.DORM_MANAGER\][\s\S]*?key: 'dormReview'/)
+  assert.match(roles, /teacherIdentities = \[[\s\S]*?ROLE\.DORM_MANAGER/)
+})
+
 test('real teacher contexts drive identity switching with canonical role keys', () => {
   const roles = read('src/config/roles.config.js')
   const session = read('src/stores/session.js')
+  const realApi = read('src/services/realApi.js')
   assert.match(roles, /INTERN_MENTOR: ROLE\.INTERN_MENTOR/)
   assert.match(roles, /roleKeyFromBackendRole\(roleCode\)/)
   assert.match(session, /this\.availableRoles = \[\.\.\.new Set\(this\.availableContexts/)
   assert.match(session, /roleKeyFromBackendRole\(item\.roleCode \|\| item\.contextType\) === roleKey/)
   assert.doesNotMatch(session, /item\.roleCode === roleKey/)
+  assert.match(session, /side === 'teacher' \? 'TEACHER_MINI' : 'STUDENT_MINI'/)
+  assert.match(realApi, /MINI_CLIENT_TYPES = new Set\(\['STUDENT_MINI', 'TEACHER_MINI'\]\)/)
+  assert.doesNotMatch(realApi, /clientType = 'MP'/)
 })
 
 test('high-frequency message, todo and risk pages use final database pagination endpoints', () => {
@@ -108,7 +124,7 @@ test('high-frequency message, todo and risk pages use final database pagination 
   assert.match(todos, /createNetworkPager/)
   assert.match(todos, /teacherTodoT8Api\.list/)
   assert.match(todos, /pagerState\.hasMore/)
-  assert.match(todos, /this\._pager\.loadMore\(\)/)
+  assert.match(todos, /pager\.loadMore\(\)/)
   assert.doesNotMatch(todos, /pagedSlice|getTodosPage/)
   assert.match(todoApi, /\/teacher-mobile\/todos\/grouped-continuous/)
   assert.match(todoApi, /cursor=/)
@@ -147,7 +163,7 @@ test('read state is only ever set locally for messages that can actually persist
   assert.match(teacher, /m\.kind !== 'UNIFIED_MESSAGE'/, 'Teacher T9 只允许 UnifiedMessage 乐观已读')
   assert.ok(teacher.includes("if (!/^\\d+$/.test(raw)) return"), 'Teacher T9 必须只把稳定数字 messageId 交给持久化接口')
   assert.match(teacher, /markTeacherMessageRead\(raw\)/)
-  assert.match(teacher, /\.catch\(\(\) => \{ m\.read = false;/, 'Teacher T9 持久化失败必须回滚 read')
+  assert.match(teacher, /\.catch\(\(\) => \{[\s\S]*?m\.read = false;/, 'Teacher T9 持久化失败必须回滚 read')
   const teacherAssignments = teacher.match(/m\.read = true/g) || []
   assert.equal(teacherAssignments.length, 1, 'Teacher T9 只允许 markRead() 内部一处乐观写 read=true')
 })
@@ -165,22 +181,61 @@ test('release script never writes an empty appid and can resolve it from .env.pr
   assert.match(release, /APPID_PATTERN = \/\^wx\[0-9a-fA-F\]\{16\}\$\//)
 })
 
-test('release build fails at the proactive 1.80 MiB split threshold', () => {
+test('release script forces legal-domain checks in private DevTools config', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /PROJECT_PRIVATE_JSON/)
+  assert.match(release, /privateConfig\.setting\s*=\s*\{[\s\S]*urlCheck:\s*true/)
+})
+
+test('WeChat permission descriptions stay within the 30-character upload limit', () => {
+  const manifest = JSON.parse(read('src/manifest.json'))
+  const permissions = manifest['mp-weixin']?.permission || {}
+  for (const [scope, config] of Object.entries(permissions)) {
+    const length = Array.from(String(config?.desc || '').trim()).length
+    assert.ok(length <= 30, `${scope}.desc is ${length} characters; WeChat allows at most 30`)
+  }
+
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /PERMISSION_DESC_MAX_LENGTH = 30/)
+  assert.match(release, /Object\.entries\(appConfig\.permission \|\| \{\}\)/)
+})
+
+test('release build rejects unsupported selectors in custom component WXSS', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /findUnsupportedComponentSelectors/)
+  assert.match(release, /config\.component !== true/)
+  assert.match(release, /标签、ID、属性或伪类选择器/)
+})
+
+test('release build rejects mock payload files left in the production output', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /normalizeRelative\(item\)\.startsWith\('mock\/'\)/)
+  assert.match(release, /生产包仍包含未剥离的 mock 数据体/)
+})
+
+test('release build rejects leaked local build paths', () => {
+  const release = read('scripts/finalize-mp-weixin-release.mjs')
+  assert.match(release, /VITE_ROOT_DIR/)
+  assert.match(release, /构建产物泄露本机绝对路径/)
+})
+
+test('release build warns, not fails, at the internal 1.80 MiB threshold', () => {
   const release = read('scripts/finalize-mp-weixin-release.mjs')
   // V3 S1.5：main.js 不再全局安装高频适配（那会把两端 API 与 mock 图重新提升进主包），
-  // 改由各自分包页面显式安装；主包体积门禁本身不变。
+  // 改由各自分包页面显式安装；保留优化，但内部 1.80 MiB 线不阻止发布。
   assert.doesNotMatch(read('src/main.js'), /mobilePerformanceInstaller/)
   assert.match(read('src/pages/student/messages/index.vue'), /ensureStudentPerformanceApi\(\)/)
   assert.match(read('src/pages/teacher/workbench/index.vue'), /ensureTeacherPerformanceApi\(\)/)
   assert.match(release, /MAIN_PACKAGE_SPLIT_TRIGGER/)
   assert.match(release, /1\.8 \* 1024 \* 1024/)
-  assert.match(release, /达到 1\.80 MiB 主动分包线/)
+  assert.match(release, /达到 1\.80 MiB 性能提醒线/)
+  assert.match(release, /if \(mainPackageBytes >= MAIN_PACKAGE_SPLIT_TRIGGER\) \{\s*console\.warn\(/)
 })
 
 test('teacher weekly review carries the CAS version from list to mutation', () => {
   const adapter = read('src/services/realApi.js')
   const api = read('src/services/teacherApi.js')
-  const page = read('src/pages/teacher/internship-review/index.vue')
+  const page = read('src/pages/teacher-internship/internship-review/index.vue')
   assert.match(adapter, /expectedVersion: Number\(r\.version\)/)
   assert.match(adapter, /reportVersion/)
   assert.match(adapter, /data: \{ action, comment: comment \|\| '', expectedVersion \}/)

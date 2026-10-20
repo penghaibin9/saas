@@ -150,20 +150,26 @@ def student_scope_select(db, tenant_id: int, batch_id=None):
         else:
             expert_id = str(user.get("expertId") or "").strip()
             relation_terms = [GraduationDefenseGroup.chair_mentor_id.in_(mentor_ids)]
-            # members_json stores mentorId/expertId as strings; JSON_SEARCH is MySQL 8 authoritative.
+            # Existing panels contain both numeric and string IDs. JSON_SEARCH
+            # ignores JSON numbers; match each exact representation explicitly.
             mentor = db.scalars(select(GraduationMentor).where(
                 GraduationMentor.tenant_id == tenant_id,
                 GraduationMentor.teacher_no == login_name,
                 GraduationMentor.is_deleted.is_(False),
             ).limit(1)).first() if login_name else None
             if mentor is not None:
-                relation_terms.append(func.json_search(
-                    GraduationDefenseGroup.members_json, "one", str(mentor.id), None, "$[*].mentorId"
-                ).is_not(None))
+                member_ids = func.json_extract(GraduationDefenseGroup.members_json, "$[*].mentorId")
+                relation_terms.extend([
+                    func.json_contains(member_ids, str(int(mentor.id))) == 1,
+                    func.json_contains(member_ids, '"' + str(int(mentor.id)) + '"') == 1,
+                ])
             if expert_id:
-                relation_terms.append(func.json_search(
-                    GraduationDefenseGroup.members_json, "one", expert_id, None, "$[*].expertId"
-                ).is_not(None))
+                if expert_id.isdigit():
+                    member_ids = func.json_extract(GraduationDefenseGroup.members_json, "$[*].expertId")
+                    relation_terms.extend([
+                        func.json_contains(member_ids, str(int(expert_id))) == 1,
+                        func.json_contains(member_ids, '"' + str(int(expert_id)) + '"') == 1,
+                    ])
             relation = or_(*relation_terms)
         group_hit = exists(select(GraduationDefenseGroup.id).where(*group_base, relation))
         scope = and_(*base, group_hit)

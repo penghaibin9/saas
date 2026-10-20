@@ -21,7 +21,10 @@ from collections import deque
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-OUT = ROOT / "artifacts/internship/final-audit/source-manifest/source-closure.json"
+OUT = (ROOT / os.getenv(
+    "INTERNSHIP_S6_JSON_OUT",
+    "artifacts/internship/final-audit/source-manifest/source-closure.json",
+)).resolve()
 
 tracked = {
     line.strip()
@@ -112,12 +115,12 @@ mini = {
     if p.startswith("miniapp/src/") and (
         "internship" in p.lower()
         or p.startswith("miniapp/src/pages/student/weekly-report/")
-        or p.startswith("miniapp/src/pages/teacher/student-eval/")
-        or p.startswith("miniapp/src/pages/teacher/enterprise-eval/")
-        or p.startswith("miniapp/src/pages/teacher/insurance-verify/")
-        or p.startswith("miniapp/src/pages/teacher/agreement-confirm/")
-        or p.startswith("miniapp/src/pages/teacher/process-report-review/")
-        or p.startswith("miniapp/src/pages/teacher/plan-task-review/")
+        or p.startswith("miniapp/src/pages/teacher-internship/student-eval/")
+        or p.startswith("miniapp/src/pages/teacher-internship/enterprise-eval/")
+        or p.startswith("miniapp/src/pages/teacher-internship/insurance-verify/")
+        or p.startswith("miniapp/src/pages/teacher-internship/agreement-confirm/")
+        or p.startswith("miniapp/src/pages/teacher-internship/process-report-review/")
+        or p.startswith("miniapp/src/pages/teacher-internship/plan-task-review/")
         or p.startswith("miniapp/src/pages/teacher/workbench/")
         or p.startswith("miniapp/src/pages/teacher/todos/")
     )
@@ -303,10 +306,13 @@ for job in ("internship_audit_outbox", "internship_overdue"):
 
 # ---- Local dependency closure -------------------------------------------------
 def resolve_js(source: Path, spec: str, surface_root: Path) -> Path | None:
-    if spec.startswith("@/"):
-        base = surface_root / "src" / spec[2:]
-    elif spec.startswith("."):
-        base = source.parent / spec
+    # Vite resource queries (for example .css?raw / .html?raw) are local-file
+    # dependencies. Resolve the file path, not the loader query suffix.
+    clean_spec = spec.split("?", 1)[0].split("#", 1)[0]
+    if clean_spec.startswith("@/"):
+        base = surface_root / "src" / clean_spec[2:]
+    elif clean_spec.startswith("."):
+        base = source.parent / clean_spec
     else:
         return None
     candidates = [

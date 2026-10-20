@@ -1,12 +1,11 @@
 name: Academic D MySQL PITR One Shot
 
 on:
+  # W5 exact-head validation requires PITR evidence for every PR head.
+  # Do not path-filter a workflow that the matrix treats as mandatory.
   pull_request:
     branches:
       - main
-    paths:
-      - "deploy/backup/pitr-drill.sh"
-      - ".github/workflows/academic-d-mysql-pitr-one-shot.yml"
   workflow_dispatch:
 
 permissions:

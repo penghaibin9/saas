@@ -29,7 +29,7 @@ def _safe_class_name(task) -> str:
     return " · ".join(part for part in (course_name, administrative_name) if part) or f"教学班{task.id}"
 
 
-def _safe_task_snapshot(task, batch) -> str:
+def _safe_task_snapshot(task, batch, *, formation=None) -> str:
     return json.dumps({
         "teachingTaskId": str(task.id),
         "batchId": str(batch.id),
@@ -39,20 +39,20 @@ def _safe_task_snapshot(task, batch) -> str:
         "courseName": task.course_name or "",
         "administrativeClassId": str(task.class_id or ""),
         "administrativeClassName": str(getattr(task, "class_name", None) or ""),
-        "formationMode": _core._explicit_formation(task) or "",
+        "formationMode": formation or _core._explicit_formation(task) or "",
         "merged": bool(task.is_merged),
         "mergedIntoId": str(task.merged_into_id or ""),
     }, ensure_ascii=False, sort_keys=True)
 
 
-def _guard_existing_class_formation(task, teaching_class) -> None:
+def _guard_existing_class_formation(task, teaching_class, *, formation=None) -> None:
     """Fail closed when persisted Task formation disagrees with TeachingClass.
 
     Legacy tasks without the shared formation snapshot keep compatibility behavior.
     Once formation is explicit, ordinary production writes must not silently repair
     migration drift or overwrite B-owned SELECTION semantics.
     """
-    formation = _core._explicit_formation(task)
+    formation = formation or _core._explicit_formation(task)
     if not formation:
         return
     expected = _core.class_type_for_formation(formation)
@@ -61,7 +61,7 @@ def _guard_existing_class_formation(task, teaching_class) -> None:
         return
     raise AppException(
         "DATA_CONFLICT",
-        "教学任务形成方式与现有教学班类型不一致，禁止静默修正；请先完成 formation 对账",
+        "教学任务形成方式与现有教学班类型不一致，请先核对形成方式依据",
         details={
             "blocker": "TEACHING_CLASS_FORMATION_MISMATCH",
             "teachingTaskId": str(getattr(task, "id", None) or ""),
@@ -85,6 +85,8 @@ def create_roster_version(db, teaching_class, student_ids, *, source_type: str, 
         AaTeachingClassRosterVersion, AaTeachingTask,
     )
 
+    from .academic_affairs_task_execution_authority import require_independent_task
+    require_independent_task(db, teaching_class.teaching_task_id)
     ids, _profiles = _core._member_profiles(db, student_ids)
     if not ids:
         raise AppException("DATA_CONFLICT", "正式教学班名单不能为空", http_status=409)
@@ -164,6 +166,18 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
     from app.models import AaSelectionCourse, AaTeachingClass
 
     task, batch = _core._task_and_batch(db, int(task_id))
+    from .academic_affairs_task_execution_authority import require_independent_task
+    task = require_independent_task(db, task)
+    formation = _core._explicit_formation(task)
+    if task.source_program_course_id:
+        from .academic_affairs_task_formation_provenance_service import resolve_task_formation_snapshot
+        snapshot = resolve_task_formation_snapshot(db, task.id, tenant_id=_tid())
+        if snapshot["status"] == "CONFLICT":
+            raise AppException("DATA_CONFLICT", "教学任务形成方式依据发生冲突，请核对正式来源",
+                details={"blockers": snapshot["blockers"]}, http_status=409)
+        if snapshot["status"] == "PROVEN":
+            formation = snapshot["formationMode"]
+    class_type = _core.class_type_for_formation(formation) if formation else _core._class_type(task)
     teaching_class = db.query(AaTeachingClass).filter(
         AaTeachingClass.tenant_id == _tid(),
         AaTeachingClass.teaching_task_id == task.id,
@@ -178,24 +192,43 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
         AaTeachingClass.is_deleted.is_(False),
     ).first()
     if conflict:
+        legacy_code = f"TC{batch.term_id}-{task.course_code or 'X'}-{task.class_id}"
+        if (
+            not teaching_class and task.source_program_course_id
+            and task.status in {"PENDING_ASSIGN", "ASSIGNED"}
+            and code == legacy_code
+        ):
+            # A new offering in another batch needs its own identity. Never rename an
+            # existing projected class or reuse the older offering's roster.
+            code = f"TC-{batch.term_id}-{task.id}"
+            conflict = db.query(AaTeachingClass).filter(
+                AaTeachingClass.tenant_id == _tid(),
+                AaTeachingClass.term_id == int(batch.term_id),
+                AaTeachingClass.class_code == code,
+                AaTeachingClass.teaching_task_id != task.id,
+                AaTeachingClass.is_deleted.is_(False),
+            ).first()
+            if not conflict:
+                task.teaching_class_code = code
+    if conflict:
         raise AppException(
             "DATA_CONFLICT", f"教学班编号 {code} 已被其它教学任务占用",
             details={"conflictTeachingClassId": str(conflict.id)}, http_status=409,
         )
 
     if teaching_class:
-        _guard_existing_class_formation(task, teaching_class)
+        _guard_existing_class_formation(task, teaching_class, formation=formation)
     if not teaching_class:
         teaching_class = AaTeachingClass(
             tenant_id=_tid(), teaching_task_id=task.id,
             term_id=int(batch.term_id), course_id=int(task.course_id),
             class_code=code, class_name=_safe_class_name(task),
-            class_type=_core._class_type(task), source_type="TEACHING_TASK",
+            class_type=class_type, source_type="TEACHING_TASK",
             source_id=task.id,
             capacity=int(task.expected_students) if task.expected_students else None,
             roster_status="DRAFT",
             status="ARCHIVED" if _core._status(task.status) == "MERGED" else "ACTIVE",
-            source_snapshot_json=_safe_task_snapshot(task, batch),
+            source_snapshot_json=_safe_task_snapshot(task, batch, formation=formation),
         )
         db.add(teaching_class)
         db.flush()
@@ -205,11 +238,11 @@ def ensure_teaching_class_for_task(db, task_id: int, *, initialize_admin_roster=
         teaching_class.class_code = code
         teaching_class.class_name = _safe_class_name(task)
         if teaching_class.class_type != "SELECTION":
-            teaching_class.class_type = _core._class_type(task)
+            teaching_class.class_type = class_type
         if task.expected_students:
             teaching_class.capacity = int(task.expected_students)
         teaching_class.status = "ARCHIVED" if _core._status(task.status) == "MERGED" else "ACTIVE"
-        teaching_class.source_snapshot_json = _safe_task_snapshot(task, batch)
+        teaching_class.source_snapshot_json = _safe_task_snapshot(task, batch, formation=formation)
 
     _core._sync_primary_teacher(db, teaching_class, task)
 
@@ -276,11 +309,13 @@ def project_selection_batch_locked(db, batch_id: int) -> dict:
         AaSelectionCourse.batch_id == int(batch_id),
         AaSelectionCourse.status == "OPEN",
         AaSelectionCourse.is_deleted.is_(False),
-    ).all()
+    ).order_by(AaSelectionCourse.teaching_task_id, AaSelectionCourse.id).all()
     projected = []
     for course in courses:
         if not course.teaching_task_id:
             continue
+        from .academic_affairs_task_execution_authority import require_independent_task
+        require_independent_task(db, course.teaching_task_id)
         records = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.tenant_id == _tid(),
             AaSelectionRecord.batch_id == int(batch_id),

@@ -29,11 +29,11 @@
       </AppCard>
 
       <AppCard class="pgv__panel">
-        <AppSectionHeader title="合规证据缺口（高危操作 actor/tenant/object/reason/version/traceId 不全）" />
+        <AppSectionHeader title="合规证据缺口（高危操作的操作人、租户、对象、原因、版本或追踪编号不全）" />
         <EmptyState v-if="!ov.complianceEvidence.gaps || !ov.complianceEvidence.gaps.length" text="近期高危操作证据完整" compact />
         <ul v-else class="pgv__list">
           <li v-for="g in ov.complianceEvidence.gaps" :key="g.auditId">
-            <span class="pgv__list-name">{{ g.auditId }} · 缺 {{ (g.missing || []).join('、') }}</span>
+            <span class="pgv__list-name">审计记录 {{ g.auditId }} · 缺 {{ missingLabels(g.missing) }}</span>
           </li>
         </ul>
       </AppCard>
@@ -66,6 +66,10 @@ export default {
     this.load()
   },
   methods: {
+    missingLabels(values) {
+      const labels = { actor: '操作人', tenant: '租户', object: '业务对象', reason: '操作原因', version: '数据版本', traceId: '追踪编号' }
+      return (values || []).map((value) => labels[value] || '其他必要证据').join('、')
+    },
     async load() {
       this.loading = true
       this.error = ''

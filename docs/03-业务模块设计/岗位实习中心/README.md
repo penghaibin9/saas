@@ -19,7 +19,7 @@
 | API | `backend/app/modules/internship/routers/` |
 | 模型/服务 | `backend/app/models/internship.py`、`backend/app/modules/internship/services/` |
 | 测试 | `backend/tests/test_internship*.py` |
-| 小程序 | `miniapp/src/pages/student/internship/`、`teacher/internship-review/` |
+| 小程序 | `miniapp/src/pages/student-internship/`、`teacher/internship-review/` |
 
 ---
 

@@ -1,30 +1,16 @@
 <template>
   <ModulePageShell
     title="家校联系"
-    subtitle="家校联系记录（留痕）· 查看完整号码需原因与审计"
+    subtitle="联系记录与后续跟进"
     :role-name="roleName"
     :data-scope-name="dataScopeName"
     watermark-purpose="家校联系查阅"
   >
-    <section class="sa-summary-strip">
-      <div class="sa-summary-strip__content">
-        <span class="sa-summary-strip__eyebrow">家校沟通工作区</span>
-        <h2 class="sa-summary-strip__title">先选择学生查看历史沟通，再登记本次联系事由、反馈和约定事项</h2>
-        <p class="sa-summary-strip__text">联系记录按时间留痕。只有确需拨打或核对时才查看完整号码，查看原因会进入敏感审计。</p>
-      </div>
-    </section>
 
-    <div class="sa-workflow-strip" aria-label="家校联系流程">
-      <div class="sa-workflow-step" data-step="1"><strong>选择学生</strong><br>按姓名或学号定位当前学生</div>
-      <div class="sa-workflow-step" data-step="2"><strong>回看历史</strong><br>了解此前事由、家长反馈与约定</div>
-      <div class="sa-workflow-step" data-step="3"><strong>完成联系</strong><br>通过电话、微信、家访或短信沟通</div>
-      <div class="sa-workflow-step" data-step="4"><strong>登记留痕</strong><br>记录结果、后续安排和敏感查看审计</div>
-    </div>
 
     <div class="fc-picker sa-filter-bar">
       <div class="fc-picker__copy">
         <span class="fc-picker__label">当前学生</span>
-        <small>选择后加载该生完整家校联系时间线</small>
       </div>
       <div class="fc-picker__control">
         <AppStudentPicker v-model="studentId" placeholder="按姓名 / 学号搜索学生" @change="onPick" />
@@ -32,25 +18,25 @@
       <AppPermissionButton :allowed="canBtn('studentAffairs.homeSchool.record.create')" code="studentAffairs.homeSchool.record.create" variant="primary" size="sm" :disabled="!studentId" @click="openCreate">登记联系</AppPermissionButton>
     </div>
 
-    <EmptyState v-if="!studentId" title="请选择一名学生" description="选择后可查看该生家校联系历史，并登记新的沟通记录" />
+    <p v-if="focusNotice" class="fc-focus-note">{{ focusNotice }}</p>
+    <div v-if="!studentId" class="fc-empty"><strong>请选择一名学生</strong><span>查看联系历史或登记沟通记录</span></div>
     <LoadingState v-else-if="loading" text="正在加载联系记录…" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
-    <EmptyState v-else-if="!contacts.length" title="暂无家校联系记录" description="该生尚未建立家校沟通记录，可点击“登记联系”记录首次沟通" />
+    <div v-else-if="!contacts.length" class="fc-empty"><strong>暂无家校联系记录</strong><span>可登记首次沟通</span></div>
     <template v-else>
       <div class="fc-timeline-head">
         <div>
           <strong>家校联系时间线</strong>
-          <span>共 {{ total }} 条记录，按时间顺序查看沟通事由与结果</span>
+          <span>共 {{ total }} 条</span>
         </div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.homeSchool.record.create')" code="studentAffairs.homeSchool.record.create" variant="primary" size="sm" :disabled="!studentId" @click="openCreate">登记本次联系</AppPermissionButton>
       </div>
       <ul class="fc-list">
-        <li v-for="c in contacts" :key="c.contactId" class="fc-item">
+        <li v-for="c in contacts" :key="c.contactId" class="fc-item" :class="{ 'is-focused': String(c.contactId) === String(contactFocusId) }">
           <div class="fc-item__rail"><span></span></div>
           <div class="fc-item__content">
             <div class="fc-item__head">
               <span class="fc-item__type">{{ contactTypeLabel(c.contactType) }}</span>
-              <span v-if="c.fullPhoneViewed" class="fc-item__sensitive">🔒 已记录完整号码查看审计</span>
+              <span v-if="c.fullPhoneViewed" class="fc-item__sensitive">完整号码查看已审计</span>
               <span class="fc-item__time"><AppDateDisplay :value="c.occurredAt" mode="datetime" empty-text="" /></span>
             </div>
             <div class="fc-item__body">
@@ -106,7 +92,7 @@
  * 真实对接 /api/v1/student-affairs/students/{id}/family-contacts：联系记录(append-only) + 登记。
  * 查看完整号码需填原因(≥5字)，后端落 SENSITIVE 审计。
  */
-import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import {
   AppDateDisplay, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton,
   AppQuickPhrases, AppSelect, AppStudentPicker, AppTextInput, AppTextarea
@@ -123,14 +109,14 @@ const CONTACT_TYPE_OPTIONS = Object.entries(CONTACT_TYPE).map(([value, label]) =
 export default {
   name: 'FamilyContactView',
   components: {
-    ModulePageShell, LoadingState, ErrorState, EmptyState,
+    ModulePageShell, LoadingState, ErrorState,
     AppDateDisplay, AppDrawer, AppFormItem, AppInlineAlert, AppPagination, AppPermissionButton,
     AppQuickPhrases, AppSelect, AppStudentPicker, AppTextInput, AppTextarea
   },
   props: { ctx: { type: Object, default: null } },
   data() {
     return {
-      studentId: '', loading: false, error: '', contacts: [], acting: false,
+      studentId: '', contactFocusId: '', focusNotice: '', loading: false, error: '', contacts: [], acting: false,
       routeIntentConsumed: false,
       page: 1, pageSize: 20, total: 0,
       contactTypeOptions: CONTACT_TYPE_OPTIONS,
@@ -145,24 +131,21 @@ export default {
       return (this.ctx && this.ctx.dataScope && this.ctx.dataScope.scopeName) || ''
     }
   },
-  created() {
-    const q = this.$route.query || {}
-    if (q.studentId) {
-      this.studentId = String(q.studentId)
-      this.load()
-    }
-    this.consumeRouteIntent()
-  },
+  created() { this.applyRouteContext(); if (this.studentId) this.load(); this.consumeRouteIntent() },
   watch: {
-    '$route.query.studentId'(v) {
-      if (v) {
-        this.studentId = String(v)
-        this.page = 1
-        this.load()
-      }
+    '$route.query'(value, previous) {
+      const nextStudent = String(value?.studentId || ''), prevStudent = String(previous?.studentId || '')
+      const nextContact = String(value?.contactId || ''), prevContact = String(previous?.contactId || '')
+      if (nextStudent !== prevStudent || nextContact !== prevContact) { this.applyRouteContext(); this.page = 1; if (this.studentId) this.load() }
     }
   },
   methods: {
+    applyRouteContext() { const q = this.$route.query || {}; this.studentId = String(q.studentId || '').trim(); this.contactFocusId = String(q.contactId || '').trim(); this.focusNotice = '' },
+    applyContactFocus() {
+      if (!this.contactFocusId) { this.focusNotice = ''; return }
+      const hit = this.contacts.some((item) => String(item.contactId) === String(this.contactFocusId))
+      this.focusNotice = hit ? `已定位谈话转出的家校联系 #${this.contactFocusId}` : '该联系记录未在当前页，已定位到该生时间线；可翻页继续查看，不会跨学生搜索。'
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     consumeRouteIntent() {
       if (this.routeIntentConsumed || this.$route.query?.intent !== 'create' || !this.studentId) return
@@ -171,10 +154,12 @@ export default {
       this.openCreate()
     },
     contactTypeLabel(t) {
-      return CONTACT_TYPE[t] || t || '—'
+      return CONTACT_TYPE[t] || (t ? '类型待确认' : '—')
     },
     onPick() {
-      this.page = 1
+      this.page = 1; this.contactFocusId = ''; this.focusNotice = ''
+      const query = this.studentId ? { studentId: String(this.studentId) } : {}
+      this.$router.replace({ query }).catch(() => {})
       if (this.studentId) this.load()
     },
     async load() {
@@ -183,8 +168,8 @@ export default {
       this.error = ''
       const res = await studentAffairsApi.getFamilyContacts(this.studentId, { page: this.page, pageSize: this.pageSize })
       this.loading = false
-      if (res.code === 0 && res.data) { this.contacts = res.data.items || []; this.total = res.data.total || 0 }
-      else { this.contacts = []; this.total = 0; this.error = res.message || '加载失败' }
+      if (res.code === 0 && res.data) { this.contacts = res.data.items || []; this.total = res.data.total || 0; this.applyContactFocus() }
+      else { this.contacts = []; this.total = 0; this.focusNotice = ''; this.error = res.message || '加载失败' }
     },
     openCreate() {
       this.createModal = { visible: true, contactType: 'PHONE', reason: '', result: '', fullPhoneView: false, viewReason: '', error: '' }
@@ -234,8 +219,11 @@ export default {
 </script>
 
 <style scoped>
+.fc-focus-note { margin: 0 0 var(--space-3); padding: var(--space-2) var(--space-3); border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); }
+.fc-empty { display:grid;gap:6px;padding:56px 16px;text-align:center;color:var(--text-tertiary);font-size:var(--font-size-xs) }
+.fc-empty strong { color:var(--text-primary);font-size:var(--font-size-md) }
 .fc-picker { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-4); }
-.fc-picker__copy { display: grid; gap: 2px; min-width: 150px; }
+.fc-picker__copy { display: grid; gap: 2px; min-width: 72px; }
 .fc-picker__copy small { color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .fc-picker__label { font-size: var(--font-size-sm); color: var(--text-primary); font-weight: 600; white-space: nowrap; }
 .fc-picker__control { flex: 1 1 360px; min-width: 260px; }
@@ -249,7 +237,8 @@ export default {
 .fc-item__rail::after { content: ''; position: absolute; top: 16px; bottom: calc(-1 * var(--space-3) - 4px); width: 2px; background: var(--border-light); }
 .fc-item:last-child .fc-item__rail::after { display: none; }
 .fc-item__rail span { position: relative; z-index: 1; width: 10px; height: 10px; margin-top: 16px; border: 2px solid var(--primary-500); border-radius: 50%; background: var(--bg-card); }
-.fc-item__content { min-width: 0; padding: var(--space-3) var(--space-4); border: 1px solid var(--border-base); border-radius: var(--radius-lg); background: var(--bg-card); }
+.fc-item.is-focused .fc-item__content { border-color: var(--primary-500); box-shadow: inset 3px 0 var(--primary-500); padding-left: 12px; }
+.fc-item__content { min-width: 0; padding: 10px 0 12px; border-bottom: 1px solid var(--border-base); background: transparent; }
 .fc-item__head { display: flex; align-items: center; gap: var(--space-3); margin-bottom: var(--space-3); padding-bottom: var(--space-2); border-bottom: 1px solid var(--border-light); }
 .fc-item__type { font-weight: 700; color: var(--primary-700); }
 .fc-item__sensitive { padding: 2px 7px; border-radius: var(--radius-full); background: var(--danger-50); color: var(--danger-700, #b91c1c); font-size: var(--font-size-xs); }
@@ -258,7 +247,7 @@ export default {
 .fc-item__row { min-width: 0; font-size: var(--font-size-sm); color: var(--text-secondary); }
 .fc-item__row > span { display: block; margin-bottom: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
 .fc-item__row p { margin: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.6; }
-.fc-form-note { margin-bottom: var(--space-4); padding: 10px 12px; border: 1px solid var(--primary-100); border-radius: var(--radius-md); background: var(--primary-50); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
+.fc-form-note { margin-bottom: var(--space-4); padding-left: 10px; border-left: 3px solid var(--primary-400); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.6; }
 .fc-check { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--border-base); border-radius: var(--radius-md); color: var(--text-secondary); font-size: var(--font-size-sm); }
 .fc-check.is-on { border-color: var(--warning-300, #fcd34d); background: var(--warning-50, #fffbeb); }
 .fc-check span { display: grid; gap: 2px; }

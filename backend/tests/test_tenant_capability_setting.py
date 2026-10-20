@@ -3,14 +3,18 @@
 对应必测 SYS13-T01～T05：
 未授权不能启用 / 学校停用后后端拒绝 / 存储故障不放开 / 并发一个成功一个 409 / 依赖校验生效。
 
+商业授权测试只走真实套餐 + 已支付订单，不再用退休的 FEATURES override 伪造购买状态。
 另加四态不合并、启用期限、跨租户隔离、旧 JSON 兼容读与影响预览的回归锁。
 """
 from datetime import datetime, timedelta
+import hashlib
+import json
 
 import pytest
 
 from app.core.exceptions import AppException
 from app.services import module_access_service as access
+from app.services import platform_defaults as defaults
 from app.services import platform_service as platform
 from app.services import system_governance_service as gov
 from app.services import tenant_capability_setting_service as caps
@@ -20,9 +24,8 @@ OTHER_TENANT = 8602
 MAIN_TENANT_ID = 1000000000000000001
 
 
-def _ensure_tenant(tenant_id: int) -> None:
-    """建真实租户行 + TENANT_META：模块门禁会读租户生命周期状态，
-    没有租户行会被判成 UNRESOLVED 而整体 fail-closed（这本身是对的，别绕过它）。"""
+def _ensure_tenant_row(tenant_id: int) -> None:
+    """只建真实租户主表；正式商业状态由下面的已支付订单建立。"""
     from app.db.session import get_sessionmaker
     from app.models import Tenant
 
@@ -34,15 +37,64 @@ def _ensure_tenant(tenant_id: int) -> None:
             db.commit()
     finally:
         db.close()
-    platform.put_config_json(tenant_id, "TENANT_META", "-",
-                             {"status": "active", "packageCode": "professional",
-                              "expireAt": (datetime.now() + timedelta(days=365)).isoformat(timespec="seconds")})
+
+
+def _activate_entitlement(tenant_id: int, overrides: dict | None = None) -> str:
+    """真实商业事实：测试套餐目录 -> 订单 -> 支付 -> 激活；FEATURES 永不参与。"""
+    _ensure_tenant_row(tenant_id)
+    patch = {str(k): bool(v) for k, v in (overrides or {}).items() if k in defaults.FEATURE_KEYS}
+    features = {**defaults.DEFAULT_FEATURES, **patch}
+    digest = hashlib.sha256(json.dumps(features, sort_keys=True).encode()).hexdigest()[:10]
+    package_code = f"sys13_{tenant_id}_{digest}"[:50]
+    package = {
+        "packageCode": package_code,
+        "packageName": f"SYS13测试套餐-{digest}",
+        "price": 1,
+        "durationDays": 30,
+        "maxStudents": 10000,
+        "maxUsers": 1000,
+        "storageLimitMb": 20480,
+        "features": features,
+        "enabled": True,
+        "remark": "SYS-13 paid-order entitlement fixture",
+    }
+    platform.put_config_json(0, "PACKAGE", package_code, package)
+    platform.put_config_json(tenant_id, "TENANT_META", "-", {
+        "status": "trial",
+        "packageCode": "trial",
+        "environment": "test",
+        "expireAt": (datetime.now() + timedelta(days=30)).isoformat(timespec="seconds"),
+    })
+    created = platform.create_order({
+        "tenantId": str(tenant_id),
+        "packageCode": package_code,
+        "orderType": "NEW",
+        "durationDays": 30,
+        "amount": 1,
+        "remark": "SYS-13真实订单授权测试",
+    })
+    paid = platform.order_action(
+        created["orderNo"], "mark-paid",
+        expected_version=int(created["version"]),
+        reason="SYS13真实订单入账测试",
+    )
+    if paid.get("repairTaskRequired"):
+        paid = platform.order_action(
+            created["orderNo"], "repair-activation",
+            expected_version=int(paid["version"]),
+            reason="SYS13修复订单激活测试",
+        )
+    assert paid.get("tenantActivated") is True
+    return package_code
+
+
+def _ensure_tenant(tenant_id: int) -> None:
+    _activate_entitlement(tenant_id, {})
 
 
 def _set_features(tenant_id: int, overrides: dict) -> None:
-    """写真实平台功能开关（entitled 的权威源），不 mock。"""
-    _ensure_tenant(tenant_id)
-    platform.put_config_json(tenant_id, "FEATURES", "-", overrides)
+    """兼容旧测试函数名；实际写入的是已支付订单对应的套餐能力快照。"""
+    _activate_entitlement(tenant_id, overrides)
 
 
 def _state(key: str, tenant_id: int = TENANT) -> dict:
@@ -63,7 +115,6 @@ def test_t01_not_entitled_cannot_be_enabled(db_mode):
                             tenant_id=TENANT)
     assert caught.value.code == "VALIDATION_ERROR"
     assert "未购买" in caught.value.message
-    # 拒绝之后不得留下任何"已启用"痕迹
     assert _state("employment")["configured"] is False
 
 
@@ -141,7 +192,6 @@ def test_t03_storage_failure_fails_closed(db_mode, monkeypatch):
         caps.capability_states(TENANT)
     assert isinstance(raw.value, RuntimeError)
 
-    # 真实读取路径（数据库异常）必须变成 503，而不是空 dict＝全部启用
     monkeypatch.undo()
 
     from app.db import session as db_session
@@ -183,7 +233,6 @@ def test_t04_concurrent_update_one_conflict(db_mode):
 def test_t05_dependency_blocks_enable_and_disable(db_mode):
     assert "studentAffairs" in caps.capability_registry()["orientation"]["dependencies"]
 
-    # 依赖方平台未授权 → 被依赖者直接判定依赖不满足
     _set_features(TENANT, {"studentAffairs": False})
     st = _state("orientation")
     assert st["schoolEnabled"] is True and st["entitled"] is True
@@ -196,7 +245,6 @@ def test_t05_dependency_blocks_enable_and_disable(db_mode):
                             tenant_id=TENANT)
     assert "依赖" in enable_denied.value.message
 
-    # 反向：学校自己停用被依赖能力后，依赖方自动级联不可用（学校开关本身不被改写）
     _set_features(TENANT, {})
     assert _state("orientation")["allowed"] is True
     caps.set_capability("studentAffairs", enabled=False, reason="学工中心整体停用",
@@ -207,7 +255,6 @@ def test_t05_dependency_blocks_enable_and_disable(db_mode):
     assert cascaded["reasonCode"] == caps.REASON_DEPENDENCY_UNMET
     assert access.module_access_state(TENANT, "orientation")["enabled"] is False
 
-    # 依赖恢复后，依赖方无需重新设置即自动恢复可用
     caps.set_capability("studentAffairs", enabled=True, reason="学工中心恢复启用",
                         tenant_id=TENANT)
     assert _state("orientation")["allowed"] is True
@@ -253,7 +300,6 @@ def test_legacy_json_document_is_read_as_default(db_mode):
         assert st["configured"] is False, "旧文档不产生结构化行"
         assert st["enabled"] is False, "升级后必须沿用学校原来的停用状态"
 
-        # 结构化写入之后，结构化行永远优先
         caps.set_capability("internship", enabled=True, reason="重新启用实习模块",
                             tenant_id=TENANT)
         assert _state("internship")["enabled"] is True
@@ -262,25 +308,32 @@ def test_legacy_json_document_is_read_as_default(db_mode):
         set_tenant(None)
 
 
-# ── 旧整份保存接口仍可用，但落成单行 ────────────────────────────────────────
-def test_legacy_blob_save_writes_structured_rows(db_mode):
+# ── 旧整份写入口退役：只保留历史 JSON 读取，不再落结构化行 ────────────────────
+def test_legacy_blob_write_is_rejected(client, auth_headers, db_mode):
     from app.core.context import set_tenant
 
     _ensure_tenant(TENANT)
     set_tenant({"tenantId": str(TENANT)})
     try:
-        before = gov.get_module_features()
-        assert before["campusService"]["enabled"] is True
-        gov.save_module_features({"userId": "db-1"},
-                                 {"campusService": {"enabled": False}},
-                                 "整份提交只改一个模块")
-        after = gov.get_module_features()
-        assert after["campusService"]["enabled"] is False
-        assert after["campusService"]["version"] == 1
-        assert after["internship"]["version"] == 0, "未改动的能力不应被顶版本"
-        assert _state("campusService")["configured"] is True
+        before = _state("campusService")
+        with pytest.raises(AppException) as direct:
+            gov.save_module_features(
+                {"userId": "db-1"},
+                {"campusService": {"enabled": False}},
+                "旧整份接口不得继续写入",
+            )
+        assert direct.value.code == "CAPABILITY_AUTHORITY_MOVED"
+        assert _state("campusService")["enabled"] == before["enabled"]
     finally:
         set_tenant(None)
+
+    response = client.put(
+        "/api/v1/system/module-features",
+        headers=auth_headers,
+        json={"features": {"campusService": {"enabled": False}}, "reason": "旧整份HTTP写入应拒绝"},
+    )
+    assert response.status_code == 409
+    assert response.json()["bizCode"] == "CAPABILITY_AUTHORITY_MOVED"
 
 
 # ── 影响预览：不许拿 0 冒充"无影响" ────────────────────────────────────────

@@ -1,6 +1,7 @@
 """学生本人困难认定、奖助申请退回修改与重新提交。"""
 from __future__ import annotations
 
+from app.core.tenant_scoped import tenant_get
 import json
 from datetime import datetime
 
@@ -57,6 +58,7 @@ def _aid_payload(aid, row, student, family) -> dict:
     """学生本人编辑页可查看自己录入的家庭经济字段；不复用工作人员 reveal 权限。"""
     result = aid._apply_row(row, student, family)
     result.update({
+        "statement": row.statement or "",
         "memberCount": family.member_count if family else None,
         "annualIncome": aid.decrypt_field(family.income_encrypted) if family else None,
         "debt": aid.decrypt_field(family.debt_encrypted) if family else None,
@@ -102,6 +104,42 @@ def _confirmation(db, user, student, biz_type: str, biz_id: int, payload: dict) 
     }, student)
     record["payloadSha256"] = payload_hash
     return record
+
+
+@router.get("/mobile/affairs/aid/{apply_id}/detail", summary="本人查看困难认定详情")
+def aid_detail(apply_id: int = Path(...), user=Depends(get_current_user)):
+    from app.services.affairs_aid_workspace import detail_context
+    from app.models import AidObjection
+    from app.services import affairs_aid_service as aid
+    from app.services.db_service import _iso
+
+    with session() as db:
+        row, student = _aid(db, apply_id, user)
+        family = aid._family_of(db, row.id)
+        pending = int(row.id) in aid._pending_objection_ids(db, [row.id])
+        result = _aid_payload(aid, row, student, family)
+        result.update({
+            **aid.presentation(row.status, pending_objection=pending),
+            "statement": row.statement or "",
+            "hasPendingObjection": pending,
+            # 向本人展示与结果相关的复核结论，不泄露匿名异议人、举报理由。
+            "objectionResults": [{
+                "objectionId": str(item.id), "status": item.status,
+                "statusLabel": "待复核" if item.status == "SUBMITTED" else "已复核",
+                "resultLabel": aid._L_OBJ_RESULT.get(item.result, ""),
+                "reviewOpinion": item.review_opinion or "", "reviewedAt": _iso(item.reviewed_at),
+            } for item in db.scalars(select(AidObjection).where(
+                AidObjection.tenant_id == _tid(), AidObjection.apply_id == row.id,
+                AidObjection.student_id == student.id, AidObjection.is_deleted.is_(False),
+            ).order_by(AidObjection.id.desc())).all()],
+            "allowedActions": (["EDIT_RETURNED", "RESUBMIT"] if row.status == "DRAFT" else [])
+                + (["SUBMIT_OBJECTION"] if row.status == "PUBLICITY" and not pending else []),
+        })
+        # 家庭数据仅在本人单笔详情返回；不写入列表或浏览器持久存储。
+        result.update(detail_context(db, row, student_view=True))
+        aid._audit(db, row.id, "STUDENT_VIEW_DETAIL", "本人查看认定申请详情")
+        db.commit()
+        return success(result)
 
 
 @router.get("/mobile/affairs/aid/{apply_id}/editable", summary="本人读取退回困难认定申请")
@@ -195,7 +233,7 @@ def aid_resubmit(
         atomic_claim_version(db, row, body.get("version"))
         first = aid.AID_NODES[0]
         assignee = aid._assignee_for(db, first, row.student_id)
-        workflow = db.get(WorkflowInstance, int(row.workflow_instance_id)) if row.workflow_instance_id else None
+        workflow = tenant_get(db, WorkflowInstance, int(row.workflow_instance_id)) if row.workflow_instance_id else None
         if not workflow:
             workflow = aid._open_wf(db, row.id, row.student_id, f"{student.real_name} 困难认定", first, assignee)
             row.workflow_instance_id = workflow.id
@@ -261,7 +299,8 @@ def funding_update_returned(
                 raise AppException("VALIDATION_ERROR", "申请理由需5-1000字")
             row.statement = statement
         if "amount" in body:
-            row.amount = _optional_non_negative_decimal(body.get("amount"), "申请金额")
+            # 兼容旧客户端入参的校验，正式金额仅取项目规则或授权复核结果。
+            _optional_non_negative_decimal(body.get("amount"), "申请金额")
         row.version = int(row.version or 0) + 1
         funding._audit(db, row.id, "STUDENT_EDIT_RETURNED")
         db.commit()
@@ -275,7 +314,7 @@ def funding_update_returned(
 def funding_resubmit(
     app_id: int = Path(...), body: dict = Body(...), user=Depends(get_current_user),
 ):
-    from app.models import WorkflowInstance, WorkflowTask
+    from app.models import FundingBatch, FundingProject, WorkflowInstance, WorkflowTask
     from app.services import affairs_funding_service as funding
 
     with session() as db:
@@ -286,16 +325,32 @@ def funding_resubmit(
         statement = str(row.statement or "").strip()
         if not 5 <= len(statement) <= 1000:
             raise AppException("VALIDATION_ERROR", "申请理由需5-1000字")
+        batch = db.get(FundingBatch, int(row.batch_id)) if row.batch_id else None
+        if not batch or batch.is_deleted or batch.tenant_id != _tid():
+            raise not_found("资助批次不存在")
+        project = db.get(FundingProject, int(batch.project_id)) if batch.project_id else None
+        if not project or project.is_deleted or project.tenant_id != _tid():
+            raise not_found("资助项目不存在")
         snapshot = (
-            funding._check_grant(db, row.student_id)
+            funding._check_grant(db, row.student_id, project)
             if row.project_type == "GRANT"
-            else funding._check_scholarship(db, row.student_id)
+            else funding._check_scholarship(db, row.student_id, project)
         )
         if not snapshot["ok"]:
             raise AppException("DATA_CONFLICT", funding._reject_reason(snapshot))
+        try:
+            previous = json.loads(row.check_snapshot_json or "{}")
+        except (TypeError, ValueError):
+            previous = {}
+        amount_authority = previous.get("amountAuthority") if isinstance(previous, dict) else None
+        if row.requested_amount is None or not amount_authority:
+            from app.services.affairs_funding_authority_service import freeze_application_amount
+            amount_authority = freeze_application_amount(db, row)
+        row.amount = row.requested_amount
+        snapshot["amountAuthority"] = amount_authority
         first = funding.FUND_NODES[0]
         assignee = funding._assignee_for(db, first, row.student_id)
-        workflow = db.get(WorkflowInstance, int(row.workflow_instance_id)) if row.workflow_instance_id else None
+        workflow = tenant_get(db, WorkflowInstance, int(row.workflow_instance_id)) if row.workflow_instance_id else None
         if not workflow:
             workflow = funding._open_wf(
                 db, row.id, row.project_type, row.student_id,

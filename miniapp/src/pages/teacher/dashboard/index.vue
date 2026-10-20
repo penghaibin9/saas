@@ -27,6 +27,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 
 export default {
@@ -36,7 +37,7 @@ export default {
     load() {
       this.state = 'loading'
       teacherApi.getDashboard().then((d) => { this.d = d; this.state = 'ready' })
-        .catch(() => { this.state = 'error' })
+        .catch((error) => { this.state = normalizeError(error).pageState || 'error' })
     }
   }
 }

@@ -234,8 +234,8 @@ def _i_resource(db, scope) -> dict:
     )
 
 
-def _i_schedule_change(db, scope, term_id) -> dict:
-    from app.models import AaScheduleChange
+def _i_schedule_change(db, scope, term_id, college_id=None) -> dict:
+    from app.models import AaScheduleChange, Major, SchoolClass
 
     conditions = [
         AaScheduleChange.tenant_id == stats._tid(),
@@ -245,6 +245,12 @@ def _i_schedule_change(db, scope, term_id) -> dict:
         conditions.append(AaScheduleChange.term_id == int(term_id))
     if not scope.all:
         conditions.append(AaScheduleChange.class_id.in_(list(scope.class_ids) or [-1]))
+    if college_id:
+        college_classes = select(SchoolClass.id).join(Major, SchoolClass.major_id == Major.id).where(
+            SchoolClass.tenant_id == stats._tid(), Major.tenant_id == stats._tid(),
+            Major.college_id == int(college_id),
+        )
+        conditions.append(AaScheduleChange.class_id.in_(college_classes))
 
     grouped = db.execute(
         select(
@@ -268,8 +274,9 @@ def _i_schedule_change(db, scope, term_id) -> dict:
     )
 
 
-def _i_selection(db, scope, term_id) -> dict:
+def _i_selection(db, scope, term_id, college_id=None) -> dict:
     from app.models import AaSelectionBatch, AaSelectionCourse
+    from .academic_affairs_stats_contract_facade import _selection_scope_queries
 
     if not scope.all:
         return stats._ind(
@@ -277,12 +284,11 @@ def _i_selection(db, scope, term_id) -> dict:
             drill="selection", message="选课为全校口径，受数据范围限制不展示（仅教务处可见）",
         )
 
-    batch_conditions = [
-        AaSelectionBatch.tenant_id == stats._tid(),
-        AaSelectionBatch.is_deleted.is_(False),
-    ]
-    if term_id:
-        batch_conditions.append(AaSelectionBatch.term_id == int(term_id))
+    colleges = stats._college_ids_scope(db, scope, college_id)
+    batch_conditions, course_conditions = _selection_scope_queries(term_id, colleges)
+    if colleges is not None:
+        scoped_batch_ids = select(AaSelectionCourse.batch_id).where(*course_conditions).distinct()
+        batch_conditions.append(AaSelectionBatch.id.in_(scoped_batch_ids))
 
     grouped = db.execute(
         select(AaSelectionBatch.status, func.count(AaSelectionBatch.id))
@@ -290,16 +296,11 @@ def _i_selection(db, scope, term_id) -> dict:
         .group_by(AaSelectionBatch.status)
     ).all()
     batch_total = sum(int(count or 0) for _status, count in grouped)
-    batch_ids = select(AaSelectionBatch.id).where(*batch_conditions)
     cap, selected = db.execute(
         select(
             func.coalesce(func.sum(AaSelectionCourse.capacity), 0),
             func.coalesce(func.sum(AaSelectionCourse.selected_count), 0),
-        ).where(
-            AaSelectionCourse.tenant_id == stats._tid(),
-            AaSelectionCourse.batch_id.in_(batch_ids),
-            AaSelectionCourse.is_deleted.is_(False),
-        )
+        ).where(*course_conditions)
     ).one()
     cap, selected = int(cap or 0), int(selected or 0)
     return stats._ind(

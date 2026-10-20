@@ -5,6 +5,8 @@
 全部经 HTTP client 走真库(db_mode)。"""
 from __future__ import annotations
 
+from sqlalchemy import select
+
 from conftest import make_org_class
 
 GD_STU = "/api/v1/graduation/gd-students"
@@ -41,9 +43,28 @@ def _gd_student_with_topic(graduation_client, h, no, name, advisor="详情张老
     # 开题提交门禁：须已确认任务书（与 PC/学生端一致）
     from datetime import datetime
     from app.db.session import get_sessionmaker
-    from app.models import GraduationStudent, GraduationTaskBook
+    from app.models import GraduationMentor, GraduationStudent, GraduationTaskBook, User
     db = get_sessionmaker()()
     stu = db.get(GraduationStudent, int(gid))
+    # 开题提交必须能把待办交给真实、稳定的导师账号；测试夹具也不能再依赖
+    # “没有受理人仍提交成功”的历史旁路。
+    login_name = f"mentor-{no}"
+    mentor_user = User(
+        tenant_id=stu.tenant_id, login_name=login_name, real_name=advisor,
+        password_hash="x", user_type="TEACHER", status="ACTIVE",
+    )
+    db.add(mentor_user)
+    db.flush()
+    mentor = GraduationMentor(
+        tenant_id=stu.tenant_id, teacher_no=login_name, teacher_name=advisor,
+        qualification_status="QUALIFIED", max_capacity=30,
+    )
+    db.add(mentor)
+    db.flush()
+    # graduation_client 创建学生时已建立唯一的 ACTIVE 学生账号绑定；这里仅补
+    # 毕设导师档案与其稳定教师账号，不能再插入第二条学生绑定。
+    stu.mentor_id = mentor.id
+    stu.advisor_name = advisor
     stu.stage = "GUIDING"
     db.add(GraduationTaskBook(
         tenant_id=stu.tenant_id, gd_student_id=stu.id, taskbook_version=1,
@@ -73,6 +94,11 @@ def test_teacher_proposal_detail_real_content_and_scope(graduation_client, auth_
     assert d["studentName"] == name
     assert isinstance(d["versions"], list) and len(d["versions"]) >= 1
     assert d["status"] == "PENDING_REVIEW"
+    # 移动端操作按钮只消费材料中心锁定的版本，不得拿普通附件列表猜测可审核性。
+    assert d["reviewReady"] is True
+    assert d["materialVersion"] is not None
+    assert d["fileVersionId"] is not None
+    assert d["currentSafeVersions"]
 
     # SCOPED 教师（非本人指导）查看范围外开题 → 403
     outsider = graduation_client.get(f"{MOBILE}/teacher/graduation/proposal/{pid}", headers=_teacher_token("范围外老师"))
@@ -102,9 +128,14 @@ def test_teacher_proposal_review_approve_clears_pending_queue(graduation_client,
 
     detail = graduation_client.get(f"{MOBILE}/teacher/graduation/proposal/{pid}", headers=h).json()["data"]
     assert detail["status"] == "PENDING_REVIEW"
+    assert detail["reviewReady"] is True
 
     ok = graduation_client.post(f"{MOBILE}/teacher/graduation/proposal/{pid}/review", headers=h,
-                     json={"action": "APPROVE", "comment": ""})
+                     json={
+                         "action": "APPROVE", "comment": "",
+                         "expectedVersion": detail["materialVersion"],
+                         "fileVersionId": detail["fileVersionId"],
+                     })
     assert ok.json()["code"] == 0
     assert ok.json()["data"]["status"] == "APPROVED"
 
@@ -118,3 +149,42 @@ def test_teacher_proposal_review_approve_clears_pending_queue(graduation_client,
                          headers=_teacher_token("范围外批阅老师"),
                          json={"action": "REJECT", "comment": "这是越权驳回意见足够五字"})
     assert forbid.json()["code"] != 0
+
+
+def test_student_proposal_read_fails_closed_when_current_rule_lacks_canonical_material(
+    graduation_client, auth_headers, db_mode,
+):
+    """任何数据库规则漂移都不能再让学生先填表、点击后才收到材料规则错误。"""
+    name = "开题规则预检生"
+    gid = _gd_student_with_topic(graduation_client, auth_headers, "PR002", name)
+
+    from app.db.session import get_sessionmaker
+    from app.models import GraduationMaterialItem, GraduationMaterialRule, GraduationStudent
+
+    db = get_sessionmaker()()
+    try:
+        student = db.get(GraduationStudent, int(gid))
+        rule = db.scalars(select(GraduationMaterialRule).where(
+            GraduationMaterialRule.tenant_id == student.tenant_id,
+            GraduationMaterialRule.batch_id == student.batch_id,
+            GraduationMaterialRule.status == "ENABLED",
+            GraduationMaterialRule.enabled.is_(True),
+            GraduationMaterialRule.is_deleted.is_(False),
+        )).one()
+        proposal_item = db.scalars(select(GraduationMaterialItem).where(
+            GraduationMaterialItem.tenant_id == student.tenant_id,
+            GraduationMaterialItem.rule_id == rule.id,
+            GraduationMaterialItem.material_code == "PROPOSAL_REPORT",
+            GraduationMaterialItem.is_deleted.is_(False),
+        )).one()
+        proposal_item.enabled = False
+        db.commit()
+    finally:
+        db.close()
+
+    response = graduation_client.get(f"{MOBILE}/graduation/proposal", headers=_stu_token(name))
+    assert response.json()["code"] == 0
+    data = response.json()["data"]
+    assert data["proposalMaterialReady"] is False
+    assert data["canSubmit"] is False
+    assert "尚未配置开题报告材料" in data["reason"]

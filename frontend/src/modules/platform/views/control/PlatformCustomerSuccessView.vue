@@ -11,18 +11,18 @@
       <div class="pcs__grid">
         <AppCard class="pcs__stat"><div class="pcs__stat-num">{{ ov.tenantCount }}</div><div class="pcs__stat-label">在库租户</div></AppCard>
         <AppCard class="pcs__stat" :class="{ 'pcs__stat--warn': ov.healthDistribution.CRITICAL }">
-          <div class="pcs__stat-num">{{ ov.healthDistribution.CRITICAL }}</div><div class="pcs__stat-label">健康分 CRITICAL</div>
+          <div class="pcs__stat-num">{{ ov.healthDistribution.CRITICAL }}</div><div class="pcs__stat-label">健康分严重</div>
         </AppCard>
         <AppCard class="pcs__stat" :class="{ 'pcs__stat--warn': ov.healthDistribution.AT_RISK }">
-          <div class="pcs__stat-num">{{ ov.healthDistribution.AT_RISK }}</div><div class="pcs__stat-label">健康分 AT_RISK</div>
+          <div class="pcs__stat-num">{{ ov.healthDistribution.AT_RISK }}</div><div class="pcs__stat-label">健康分存在风险</div>
         </AppCard>
         <AppCard class="pcs__stat"><div class="pcs__stat-num">{{ ov.openTicketsTotal }}</div><div class="pcs__stat-label">未关闭工单</div></AppCard>
         <AppCard class="pcs__stat"><div class="pcs__stat-num">{{ ov.upcomingRenewals }}</div><div class="pcs__stat-label">待跟进续费</div></AppCard>
       </div>
 
       <AppCard class="pcs__panel">
-        <AppSectionHeader title="健康分 CRITICAL 的学校" />
-        <EmptyState v-if="!ov.criticalTenants.length" text="当前无 CRITICAL 学校" compact />
+        <AppSectionHeader title="健康分严重的学校" />
+        <EmptyState v-if="!ov.criticalTenants.length" text="当前无健康分严重的学校" compact />
         <ul v-else class="pcs__list">
           <li v-for="t in ov.criticalTenants" :key="t.tenantId">
             <span class="pcs__list-name">{{ t.tenantName }}</span>
@@ -35,11 +35,11 @@
         <AppCard class="pcs__panel">
           <AppSectionHeader title="创建客户工单" />
           <div class="pcs__form pcs__form--stack">
-            <input v-model.trim="ticketForm.tenantId" class="pcs__input" placeholder="租户 ID" />
+            <input v-model.trim="ticketForm.tenantId" class="pcs__input" placeholder="租户编号" />
             <input v-model.trim="ticketForm.title" class="pcs__input" placeholder="工单标题" />
             <select v-model="ticketForm.severity" class="pcs__input">
-              <option value="P0">P0</option><option value="P1">P1</option>
-              <option value="P2">P2</option><option value="P3">P3</option>
+              <option value="P0">一级（最高）</option><option value="P1">二级（高）</option>
+              <option value="P2">三级（中）</option><option value="P3">四级（低）</option>
             </select>
             <input v-model.trim="ticketForm.reporterName" class="pcs__input" placeholder="反馈人" />
             <button class="mp-link" @click="createTicket">创建工单</button>
@@ -49,7 +49,7 @@
         <AppCard class="pcs__panel">
           <AppSectionHeader title="登记培训计划" />
           <div class="pcs__form pcs__form--stack">
-            <input v-model.trim="trainingForm.tenantId" class="pcs__input" placeholder="租户 ID" />
+            <input v-model.trim="trainingForm.tenantId" class="pcs__input" placeholder="租户编号" />
             <input v-model.trim="trainingForm.topic" class="pcs__input" placeholder="培训主题" />
             <input v-model="trainingForm.scheduledAt" type="datetime-local" class="pcs__input" />
             <input v-model.trim="trainingForm.trainerName" class="pcs__input" placeholder="培训讲师" />
@@ -60,7 +60,7 @@
         <AppCard class="pcs__panel">
           <AppSectionHeader title="创建续费跟进" />
           <div class="pcs__form pcs__form--stack">
-            <input v-model.trim="renewalForm.tenantId" class="pcs__input" placeholder="租户 ID" />
+            <input v-model.trim="renewalForm.tenantId" class="pcs__input" placeholder="租户编号" />
             <input v-model="renewalForm.dueAt" type="datetime-local" class="pcs__input" />
             <input v-model.trim="renewalForm.ownerName" class="pcs__input" placeholder="跟进负责人" />
             <input v-model.trim="renewalForm.note" class="pcs__input" placeholder="跟进备注" />
@@ -72,6 +72,7 @@
       <AppCard class="pcs__panel">
         <AppSectionHeader title="工单列表" />
         <DataTable :columns="ticketColumns" :rows="tickets" row-key="id">
+          <template #cell-severity="{ row }">{{ severityLabel(row.severity) }}</template>
           <template #cell-status="{ row }">
             <StatusTag :type="row.status === 'OPEN' ? 'danger' : (row.status === 'IN_PROGRESS' ? 'warning' : 'success')" :label="platformStatusLabel(row.status)" />
           </template>
@@ -124,6 +125,7 @@ import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, Modul
 import { platformControlApi } from '@/modules/platform/api/platformControl.api'
 import { platformStatusLabel } from '@/modules/platform/constants/platform-display.constants'
 import { toast } from '@/utils/toast'
+import { systemPrompt } from '@/services/systemDialog'
 
 const toUtcIso = (value) => value ? new Date(value).toISOString() : ''
 const utcEpoch = (value) => {
@@ -161,6 +163,9 @@ export default {
   created() { this.load() },
   methods: {
     platformStatusLabel,
+    severityLabel(value) {
+      return ({ P0: '一级（最高）', P1: '二级（高）', P2: '三级（中）', P3: '四级（低）' })[value] || '优先级待确认'
+    },
     displayServerUtc(value) {
       const epoch = utcEpoch(value)
       if (epoch == null) return value || '—'
@@ -185,7 +190,7 @@ export default {
       if (renewalsRes.code === 0) this.renewals = renewalsRes.data.items || []
     },
     async createTicket() {
-      if (!this.ticketForm.tenantId || !this.ticketForm.title) return toast.error('请填写租户 ID 和标题')
+      if (!this.ticketForm.tenantId || !this.ticketForm.title) return toast.error('请填写租户编号和标题')
       const res = await platformControlApi.createSupportTicket({ ...this.ticketForm })
       if (res.code !== 0) return toast.error(res.message)
       toast.success('工单已创建')
@@ -193,7 +198,7 @@ export default {
       await this.load()
     },
     async transitionTicket(row, status) {
-      const resolutionNote = ['RESOLVED', 'CLOSED'].includes(status) ? (window.prompt('处理结论（可留空）') || '') : ''
+      const resolutionNote = ['RESOLVED', 'CLOSED'].includes(status) ? (await systemPrompt({ title:'填写工单处理结论', message:'可填写本次处理结论。', confirmText:'保存结论' }) || '') : ''
       const res = await platformControlApi.transitionSupportTicket(row.id, { status, resolutionNote, expectedVersion: row.version })
       if (res.code !== 0) return toast.error(res.message)
       toast.success('工单状态已更新')
@@ -208,11 +213,11 @@ export default {
       await this.load()
     },
     async completeTraining(row) {
-      const countText = window.prompt('实际参训人数', String(row.attendeeCount || 0))
+      const countText = await systemPrompt({ title:'填写实际参训人数', message:'请输入非负整数。', defaultValue:String(row.attendeeCount || 0), minLength:1, confirmText:'继续' })
       if (countText == null) return
       const attendeeCount = Number(countText)
       if (!Number.isInteger(attendeeCount) || attendeeCount < 0) return toast.error('参训人数必须是非负整数')
-      const note = window.prompt('培训完成备注（可留空）') || ''
+      const note = await systemPrompt({ title:'填写培训完成备注', message:'可填写本次培训完成情况。', confirmText:'确认完成' }) || ''
       const res = await platformControlApi.completeTraining(row.id, { attendeeCount, note, expectedVersion: row.version })
       if (res.code !== 0) return toast.error(res.message)
       toast.success('培训已标记完成')
@@ -227,7 +232,7 @@ export default {
       await this.load()
     },
     async transitionRenewal(row, status) {
-      const note = window.prompt('本次续费跟进备注（可留空）', row.note || '')
+      const note = await systemPrompt({ title:'填写续费跟进备注', message:'可填写本次续费跟进情况。', defaultValue:row.note || '', confirmText:'保存跟进' })
       if (note == null) return
       const res = await platformControlApi.transitionRenewalTask(row.id, { status, note, expectedVersion: row.version })
       if (res.code !== 0) return toast.error(res.message)

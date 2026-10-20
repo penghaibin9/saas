@@ -329,7 +329,14 @@ def test_teacher_work_cues_reject_unpublished_exam_and_done_grade_todo(db_mode):
         exam_date="2026-08-16",
     )
     db.close()
-    assert result == {"invigilations": [], "gradeTodos": []}
+    assert result["invigilations"] == []
+    assert result["gradeTodos"] == []
+    assert result["workbench"] == {
+        "actionItems": [],
+        "waitingItems": [],
+        "counts": {"actions": 0, "waiting": 0},
+        "termId": None,
+    }
 
 
 def test_teacher_work_cues_are_read_only_and_do_not_create_second_authority():

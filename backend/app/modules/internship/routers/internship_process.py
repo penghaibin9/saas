@@ -80,4 +80,5 @@ def change_review(change_id: int, body: dict = Body(...), user=Depends(require_p
     b = body or {}
     return success(change_svc.review_change(
         change_id, b.get("action", ""), b.get("comment", ""), user=user,
-        expected_version=b.get("expectedVersion", b.get("version"))))
+        expected_version=b.get("expectedVersion", b.get("version")),
+        record_expected_version=b.get("recordExpectedVersion")))

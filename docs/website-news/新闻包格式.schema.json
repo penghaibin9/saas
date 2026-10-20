@@ -1,0 +1,22 @@
+{
+  "schema": "yueke.news-package/1",
+  "title": "日期与主题",
+  "articles": [
+    {
+      "title": "新职业目录更新：院校可从岗位能力映射检查培养与实习衔接",
+      "summary": "9月9日央广网原创报道，人社部等部门发布11个新职业、23个新工种。院校可关注职业变化与课程、企业岗位及学生实习准备之间的衔接。",
+      "category": "internship",
+      "file": "articles/0001.md",
+      "sha256": "c4f66bc79a31ac6dc67771a6984fac8a94d8f65cd1a7ebdb102c6b479835b33d",
+      "sources": [
+        {
+          "title": "央广网记者关灵子：人力资源社会保障部等部门发布11个新职业、23个新工种",
+          "url": "https://news.cnr.cn/dj/20260909/t20260909_527808775.shtml",
+          "published_at": "2026-09-09T10:35:12+08:00"
+        }
+      ],
+      "ai_assisted": true,
+      "content_kind": "summary"
+    }
+  ]
+}

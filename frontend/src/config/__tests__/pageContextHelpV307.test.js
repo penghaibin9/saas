@@ -49,8 +49,9 @@ function resolveRoute(cards, fullPath) {
   return prefix?.card || null
 }
 
-test('V3-07 page help is wired to the in-place verified-only runtime before app mount', () => {
-  assert.match(mainSource, /import ['"]\.\/config\/helpCenterRuntime['"]/)
+test('V3-07 lazy page help still loads the verified-only runtime before exposing content', () => {
+  assert.doesNotMatch(mainSource, /import ['"]\.\/config\/helpCenterRuntime['"]/)
+  assert.match(layoutSource, /import\(['"]@\/config\/helpCenterRuntime['"]\)/)
   assert.match(runtimeSource, /replaceOrRegisterCards\(ACADEMIC_AFFAIRS_CLEAN_HELP_CARDS\)/)
   assert.match(runtimeSource, /replaceOrRegisterCards\(INTERNSHIP_CLEAN_HELP_CARDS\)/)
   assert.match(runtimeSource, /replaceOrRegisterCards\(GRADUATION_CLEAN_HELP_CARDS\)/)
@@ -58,8 +59,7 @@ test('V3-07 page help is wired to the in-place verified-only runtime before app 
   assert.match(runtimeSource, /quarantineUnverifiedKnowledge\(\)/)
   assert.ok(runtimeSource.indexOf('quarantineUnverifiedKnowledge()') < runtimeSource.indexOf('export const HELP_CARDS = BASE_HELP_CARDS'))
 
-  // BasePortalLayout keeps its stable compatibility import, while helpCenterRuntime mutates
-  // the same HELP_CARDS array before mount; no second page-help knowledge source is created.
+  // The lazy consumer still uses the same runtime after its verified-only filter executes.
   assert.match(layoutSource, /findHelpForRoute\(this\.\$route\.fullPath\)/)
   assert.match(layoutSource, /`\/admin\/help\?topic=\$\{this\.pageHelp\.id\}`/)
   assert.match(legacyBridgeSource, /export function findHelpForRoute\(fullPath\)/)

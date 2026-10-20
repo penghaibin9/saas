@@ -89,6 +89,7 @@ def test_agreement_view_loads_templates_after_real_internship_selection():
     view = (Path(__file__).parents[2] / "frontend/src/modules/internship/views/AgreementView.vue").read_text(
         encoding="utf-8"
     )
-    assert "'genForm.internshipId'() { this.refreshTemplateOptions() }" in view
+    watcher = view.split("'genForm.internshipId'", 1)[1].split("'genForm.templateId'", 1)[0]
+    assert "this.refreshTemplateOptions()" in watcher
     assert "internshipId: this.genForm.internshipId" in view
     assert "getEnabledOptions({ batchId: this.batchStore.selectedBatchId })" not in view

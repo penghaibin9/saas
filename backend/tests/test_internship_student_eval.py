@@ -73,7 +73,11 @@ def test_full_flow(client, db_mode):
                            "expectedVersion": 1}, headers=_mentor("刘强"))
     assert ac.status_code == 200
     # 学校审核通过（普通指导教师不能同时填写意见和完成学校终审，须学校管理员）
-    rv = client.post(f"{INT}/student-evals/{eid}/review", json={"action": "APPROVE"}, headers=_admin(client))
+    rv = client.post(
+        f"{INT}/student-evals/{eid}/review",
+        json={"action": "APPROVE", "expectedVersion": ac.json()["data"]["version"]},
+        headers=_admin(client),
+    )
     assert rv.status_code == 200 and rv.json()["data"]["reviewStatus"] == "APPROVED"
     # 详情含自评+意见+审计
     detail = client.get(f"{INT}/student-evals/{eid}", headers=_mentor("刘强")).json()["data"]
@@ -92,8 +96,16 @@ def test_return_and_resubmit(client, db_mode):
     client.post(M, json={"selfSummary": "实习总结初稿内容较为简单，后续会继续补充完善细节"}, headers=sa)
     eid = client.get(f"{INT}/student-evals", headers=_mentor("刘强"), params={"batchId": ids["batch"]}).json()["data"]["items"][0]["id"]
     # 退回需原因（学校审核仅限学校管理员）
-    assert client.post(f"{INT}/student-evals/{eid}/review", json={"action": "RETURN", "comment": "no"}, headers=_admin(client)).status_code == 400
-    rv = client.post(f"{INT}/student-evals/{eid}/review", json={"action": "RETURN", "comment": "总结过于简单请补充"}, headers=_admin(client))
+    assert client.post(
+        f"{INT}/student-evals/{eid}/review",
+        json={"action": "RETURN", "comment": "no", "expectedVersion": 1},
+        headers=_admin(client),
+    ).status_code == 400
+    rv = client.post(
+        f"{INT}/student-evals/{eid}/review",
+        json={"action": "RETURN", "comment": "总结过于简单请补充", "expectedVersion": 1},
+        headers=_admin(client),
+    )
     assert rv.json()["data"]["reviewStatus"] == "RETURNED"
     # 学生重交 → 回到待审
     client.post(M, json={"selfSummary": "补充后的详细实习总结内容，包含具体工作过程与心得体会",

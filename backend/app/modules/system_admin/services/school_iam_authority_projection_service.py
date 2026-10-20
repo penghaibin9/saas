@@ -28,7 +28,10 @@ from app.models.permission_governance import (
     RoleTemplate,
     RoleTemplatePermission,
 )
-from app.modules.system_admin.policies.role_template_plane import assert_school_role_template_code
+from app.modules.system_admin.policies.role_template_plane import (
+    assert_school_role_template_code,
+    is_school_role_template_code,
+)
 from app.services.system_role_shadow_service import (
     custom_role_permission_codes,
     published_system_role_permissions,
@@ -192,6 +195,11 @@ def template_catalog() -> list[dict]:
         seen = set()
         result = []
         for item in rows:
+            # Older seeds labelled platform/enterprise templates as TENANT.
+            # Discovery must exclude them; explicit access and school template
+            # permission validation below still fail closed.
+            if not is_school_role_template_code(item.template_code):
+                continue
             code = assert_school_role_template_code(item.template_code)
             if code in seen:
                 continue
@@ -395,6 +403,8 @@ def school_template_impact(template_id: int) -> dict:
         role_by_id = {int(role.id): role for role in roles}
 
         runtime_by_role: dict[int, set[str]] = defaultdict(set)
+        member_count_by_role: dict[int, int] = {}
+        affected_user_count = 0
         if role_ids:
             rows = db.execute(select(RolePermission.role_id, Permission.permission_code).join(
                 Permission, Permission.id == RolePermission.permission_id
@@ -406,6 +416,25 @@ def school_template_impact(template_id: int) -> dict:
             )).all()
             for role_id, permission_code in rows:
                 runtime_by_role[int(role_id)].add(str(permission_code))
+            member_count_by_role = {
+                int(role_id): int(member_count)
+                for role_id, member_count in db.execute(select(
+                    UserRole.role_id, func.count(func.distinct(UserRole.user_id))
+                ).where(
+                    UserRole.tenant_id == tid,
+                    UserRole.role_id.in_(role_ids),
+                    UserRole.status == "ACTIVE",
+                    UserRole.is_deleted.is_(False),
+                ).group_by(UserRole.role_id)).all()
+            }
+            affected_user_count = int(db.scalar(select(
+                func.count(func.distinct(UserRole.user_id))
+            ).where(
+                UserRole.tenant_id == tid,
+                UserRole.role_id.in_(role_ids),
+                UserRole.status == "ACTIVE",
+                UserRole.is_deleted.is_(False),
+            )) or 0)
 
         affected = []
         for source in sources:
@@ -417,6 +446,7 @@ def school_template_impact(template_id: int) -> dict:
                 "runtimeRoleId": str(role.id) if role is not None else None,
                 "runtimeRoleMissing": role is None,
                 "roleVersion": int(role.version or 0) if role is not None else None,
+                "memberCount": int(member_count_by_role.get(int(source.role_id or 0), 0)),
                 "sourceTemplateVersion": int(source.source_template_version or 0),
                 "sourceVersion": int(source.version or 0),
                 "storedDrift": dict(source.drift_json or {}),
@@ -439,6 +469,8 @@ def school_template_impact(template_id: int) -> dict:
             "isCurrentPublishedVersion": bool(latest is not None and int(latest.id) == int(template.id)),
             "permissionCount": len(target),
             "affectedPinnedCustomRoleCount": len(affected),
+            "affectedUserCount": affected_user_count,
+            "affectedUserCountAuthority": "DB_COUNT_DISTINCT_USER_ROLE",
             "automaticUpgrade": False,
             "roles": affected,
         }

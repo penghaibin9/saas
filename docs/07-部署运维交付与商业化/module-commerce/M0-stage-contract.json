@@ -1,0 +1,32 @@
+{
+  "schemaVersion": 1,
+  "artifactType": "M0_COMMERCIAL_BUILD_EXIT_CONTRACT",
+  "canonicalFeatures": {
+    "internship": "internship",
+    "graduationDesign": "graduation",
+    "studentAffairs": "studentAffairs",
+    "academicAffairs": "academicAffairs"
+  },
+  "implicitEmployment": false,
+  "implicitApiAccess": false,
+  "sharedFoundationPolicy": "PRESERVE_AND_MINIMIZE_ACCESS",
+  "unknownResourcePolicy": "FAIL_CLOSED_FOR_DELETION",
+  "consumerDiscoveryPolicy": "OPEN_WORLD_RECHECK_BEFORE_M5",
+  "retentionPolicy": {
+    "mode": "EXPLICIT_CONTRACT_OR_PUBLISHED_POLICY_REQUIRED",
+    "defaultDays": null,
+    "missingPolicyAction": "BLOCK_DESTRUCTIVE_EXIT"
+  },
+  "schoolRecipientPolicy": {
+    "namedRecipientRequired": true,
+    "receiptBoundToExportManifest": true
+  },
+  "backupDispositionPolicy": {
+    "explicitPolicyReferenceRequired": true,
+    "onlinePurgeDoesNotClaimBackupErasure": true
+  },
+  "m0Complete": true,
+  "m1EntryApproved": true,
+  "purgeScopeComplete": false,
+  "deletionAuthorized": false
+}

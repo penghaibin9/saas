@@ -3,18 +3,33 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Query
 
+from app.core.exceptions import no_permission
+from app.core.platform_principal import is_platform_principal
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import success
 from app.modules.system_admin.services import school_iam_workspace_service as svc
 
 router = APIRouter(prefix="/system/iam", tags=["15·学校IAM工作区"])
 
-_VIEW = require_any_permission(
+def _assert_school_principal(user: dict) -> dict:
+    if is_platform_principal(user):
+        raise no_permission("平台身份禁止访问学校 IAM 工作区")
+    return user
+
+
+def _school_dependency(permission_dependency):
+    def _dependency(user=Depends(permission_dependency)):
+        return _assert_school_principal(user)
+    return _dependency
+
+
+_VIEW = _school_dependency(require_any_permission(
     "systemAdmin.role.view",
     "systemAdmin.user.view",
     "systemAdmin.scope.view",
     "systemAdmin.audit.view",
-)
+))
+_ROLE_VIEW = _school_dependency(require_permission("systemAdmin.role.view"))
 
 
 @router.get("/summary", summary="学校 IAM 工作区总览")
@@ -24,13 +39,13 @@ def iam_summary(user=Depends(_VIEW)):
 
 
 @router.get("/permission-catalog", summary="学校可分配权限目录")
-def iam_permission_catalog(user=Depends(require_permission("systemAdmin.role.view"))):
+def iam_permission_catalog(user=Depends(_ROLE_VIEW)):
     _ = user
     return success(svc.assignable_catalog())
 
 
 @router.get("/role-templates", summary="学校可用已发布角色模板")
-def iam_role_templates(user=Depends(require_permission("systemAdmin.role.view"))):
+def iam_role_templates(user=Depends(_ROLE_VIEW)):
     _ = user
     return success({"items": svc.template_catalog()})
 
@@ -38,7 +53,7 @@ def iam_role_templates(user=Depends(require_permission("systemAdmin.role.view"))
 @router.get("/role-templates/{template_id}/impact", summary="角色模板对本校 pinned custom roles 的影响")
 def iam_role_template_impact(
     template_id: int,
-    user=Depends(require_permission("systemAdmin.role.view")),
+    user=Depends(_ROLE_VIEW),
 ):
     _ = user
     return success(svc.school_template_impact(template_id))
@@ -53,7 +68,7 @@ def iam_access_explain(
     scopeTargetId: str | None = Query(default=None, min_length=1, max_length=128),
     resourceType: str | None = Query(default=None, min_length=2, max_length=64),
     resourceId: str | None = Query(default=None, min_length=1, max_length=128),
-    user=Depends(require_permission("systemAdmin.role.view")),
+    user=Depends(_ROLE_VIEW),
 ):
     _ = user
     return success(svc.explain_subject_access(

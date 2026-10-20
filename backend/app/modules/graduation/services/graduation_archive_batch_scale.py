@@ -138,6 +138,62 @@ def row_block_reasons(row: dict, mode: str) -> list[str]:
     return reasons
 
 
+_SKIP_DETAIL_LIMIT = 300
+
+
+def skip_details(db, rows: list[dict], mode: str) -> dict:
+    """Per-student, plain-language skip reasons for the preview page (read-only).
+
+    Built from the very rows the signed preview counts, so the list and the
+    counters never disagree. Names come from one bounded query.
+    """
+    skipped = []
+    missing_counter: dict[str, int] = defaultdict(int)
+    open_risk_total = 0
+    for row in rows:
+        codes = row_block_reasons(row, mode)
+        if not codes:
+            continue
+        texts: list[str] = []
+        real_missing = [str(m) for m in (row.get("missing") or []) if not str(m).startswith("历史主档异常：")]
+        if "dirty_data" in codes:
+            anomaly = "、".join(row.get("anomalyReasons") or [])
+            texts.append("学生档案信息有问题（" + (anomaly or "姓名或学号缺失") + "），先修正档案")
+        if "missing_materials" in codes:
+            for name in real_missing:
+                missing_counter[name] += 1
+            texts.append("缺：" + "、".join(real_missing))
+        if "open_risks" in codes:
+            count = int(row.get("openRisks") or 0)
+            open_risk_total += count
+            texts.append(f"还有 {count} 条风险没关闭")
+        if "already_submitted" in codes:
+            texts.append("已经提交或备案过")
+        # 只因“已提交”跳过的学生不需要处理，排在后面。
+        actionable = any(code != "already_submitted" for code in codes)
+        skipped.append((0 if actionable else 1, int(row["studentId"]), texts))
+    skipped.sort(key=lambda item: (item[0], item[1]))
+    shown = skipped[:_SKIP_DETAIL_LIMIT]
+    ids = [sid for _, sid, _ in shown]
+    names = {
+        int(sid): (name or "", no or "")
+        for sid, name, no in db.execute(select(
+            GraduationStudent.id, GraduationStudent.name, GraduationStudent.student_no,
+        ).where(GraduationStudent.tenant_id == _tid(), GraduationStudent.id.in_(ids or [-1]))).all()
+    }
+    return {
+        "skippedStudents": [{
+            "gdStudentId": str(sid), "studentName": names.get(sid, ("", ""))[0],
+            "studentNo": names.get(sid, ("", ""))[1], "reasons": texts,
+        } for _, sid, texts in shown],
+        "skippedStudentsTruncated": len(skipped) > len(shown),
+        "missingSummary": [
+            {"name": name, "count": count}
+            for name, count in sorted(missing_counter.items(), key=lambda kv: (-kv[1], kv[0]))
+        ],
+        "openRiskTotal": open_risk_total,
+    }
+
 def build_snapshot(db, batch, mode: str, *, lock: bool = False) -> dict:
     """Build one signed batch snapshot with constant-query bulk prefetch."""
     tid = _tid()
@@ -200,6 +256,7 @@ def build_snapshot(db, batch, mode: str, *, lock: bool = False) -> dict:
         GraduationRiskCase.gd_student_id.in_(ids),
         GraduationRiskCase.is_deleted.is_(False),
         GraduationRiskCase.status.in_(("OPEN", "PROCESSING")),
+        GraduationRiskCase.condition_active.is_(True),
         GraduationRiskCase.risk_code.notin_(_ARCHIVE_NON_BLOCKING_RISK_CODES),
     ).order_by(GraduationRiskCase.gd_student_id, GraduationRiskCase.id), lock=lock)
     risk_counts: dict[int, int] = defaultdict(int)
@@ -382,6 +439,7 @@ def preview_batch_generate(batch_id=None) -> dict:
             "hasAbnormal": executable != len(snapshot["rows"]),
             "snapshotHash": payload["snapshotHash"], "previewToken": consistency._sign_token(payload),
             "expiresInSeconds": 600, "generatedAt": datetime.now(timezone.utc).isoformat(),
+            **skip_details(db, snapshot["rows"], "GENERATE"),
         }
 
 

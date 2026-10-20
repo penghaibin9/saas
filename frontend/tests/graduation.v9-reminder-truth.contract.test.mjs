@@ -21,7 +21,7 @@ test('proposal and final reminder copy reflects the real message write chain', (
 test('graduation layout does not rewrite child reminder copy through the DOM', () => {
   assert.doesNotMatch(layout, /normalizeReminderCopy/)
   assert.doesNotMatch(layout, /querySelectorAll\(['"]\.gd-business-view \.mp-note/)
-  assert.match(layout, /催交会发送真实站内消息/)
+  assert.doesNotMatch(layout, /催交会发送真实站内消息/)
 })
 
 test('backend reminder service retains explicit message and delivery-failure truth', () => {

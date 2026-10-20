@@ -43,7 +43,7 @@ def _assert_no_permission(response, *, label: str) -> None:
     ("method", "path", "json_body"),
     [
         ("GET", f"{BASE}/graduation-audit-batches", None),
-        ("POST", f"{BASE}/graduation-audit-batches", {"batchName": "forbidden", "gradeYear": "2026"}),
+        ("POST", f"{BASE}/graduation-audit-batches", {"batchName": "forbidden", "gradeYear": "2026", "termId": "1"}),
         ("GET", f"{BASE}/graduation-audit-batches/987654321/results?page=1&pageSize=20", None),
         ("POST", f"{BASE}/graduation-audit-batches/987654321/precheck", None),
         ("GET", f"{BASE}/graduation-results/987654321", None),

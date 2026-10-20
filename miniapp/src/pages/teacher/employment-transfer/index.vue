@@ -25,6 +25,7 @@
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
 import { toast } from '@/utils/nav'
 
@@ -41,7 +42,7 @@ export default {
       teacherApi.getEmploymentMyStudents().then((d) => {
         this.list = (d && d.list) || []
         this.state = 'ready'
-      }).catch(() => { this.state = 'error' }).finally(() => { if (done) done() })
+      }).catch((error) => { this.state = normalizeError(error).pageState || 'error' }).finally(() => { if (done) done() })
     },
     doTransfer(s) {
       if (this.acting) return

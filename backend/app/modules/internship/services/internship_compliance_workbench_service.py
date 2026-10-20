@@ -239,6 +239,15 @@ def _group_incidents(db, batch, record_map, students, user) -> list[dict]:
         InternshipIncident.batch_id == batch.id,
         InternshipIncident.is_deleted.is_(False),
     ).order_by(InternshipIncident.id.desc())).all()
+    row_ids = [row.id for row in rows]
+    trail_rows = [] if not row_ids else db.scalars(select(InternshipAuditTrail).where(
+        InternshipAuditTrail.tenant_id == _tid(),
+        InternshipAuditTrail.target_type == "INTERNSHIP_INCIDENT",
+        InternshipAuditTrail.target_id.in_(row_ids),
+    ).order_by(InternshipAuditTrail.id)).all()
+    trails_by_target: dict[int, list] = {}
+    for trail in trail_rows:
+        trails_by_target.setdefault(int(trail.target_id), []).append(trail)
     out = []
     school_level = _is_school_level(user)
     for row in rows:
@@ -250,6 +259,17 @@ def _group_incidents(db, batch, record_map, students, user) -> list[dict]:
             "studentNo": "-", "studentName": "批次/企业级事故",
             "classId": "", "advisorName": "", "recordStatus": "",
         }
+        blockers = []
+        if not row.investigation_conclusion: blockers.append("缺少调查结论")
+        if not row.rectification_plan: blockers.append("缺少整改方案")
+        if not row.responsibility_conclusion: blockers.append("缺少责任/复核结论")
+        if not row.file_ids: blockers.append("缺少事故证据附件")
+        trails = trails_by_target.get(int(row.id), [])
+        current_action = {
+            "REPORTED": "立即启动应急处置或调查", "EMERGENCY_HANDLING": "记录应急结果并转入调查",
+            "INVESTIGATING": "补齐调查结论并进入整改", "RECTIFYING": "补齐整改事实后提交复核",
+            "PENDING_REVIEW": "复核证据并关闭事故", "CLOSED": "生成学生监管证据包",
+        }.get(row.status, "核对事故状态")
         out.append({
             **meta, "id": str(row.id), "incidentNo": row.incident_no,
             "incidentType": row.incident_type, "severity": row.severity,
@@ -259,7 +279,20 @@ def _group_incidents(db, batch, record_map, students, user) -> list[dict]:
             "investigationConclusion": row.investigation_conclusion or "",
             "responsibilityConclusion": row.responsibility_conclusion or "",
             "rectificationPlan": row.rectification_plan or "",
-            "fileIds": row.file_ids or [], "version": int(row.version or 0),
+            "fileIds": row.file_ids or [], "riskId": str(row.risk_id or ""),
+            "currentAction": current_action,
+            "closeAllowed": row.status == "PENDING_REVIEW" and not blockers,
+            "closeBlockers": blockers,
+            "latestEvent": (
+                f"{trails[-1].action} · {_iso(trails[-1].occurred_at)}" if trails
+                else f"事故已上报 · {_iso(row.reported_at)}"
+            ),
+            "auditTrail": [{
+                "action": trail.action, "operator": trail.operator_name or "",
+                "detail": trail.detail_json or {}, "occurredAt": _iso(trail.occurred_at),
+            } for trail in trails],
+            "evidenceTarget": {"packageType": "STUDENT", "targetId": str(row.internship_id or "")},
+            "version": int(row.version or 0),
         })
     return out
 

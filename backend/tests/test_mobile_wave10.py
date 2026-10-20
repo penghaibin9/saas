@@ -74,6 +74,40 @@ def test_psy_survey_wants_contact_always_triggers_even_low_score(client, db_mode
     assert r["code"] == 0 and r["data"]["triggeredAttention"] is True
 
 
+def test_psy_survey_repeated_attention_reuses_open_referral(client, db_mode):
+    """同一学生重复求助保留两次自评历史，但只产生一条未关闭关注单。"""
+    _seed_student("PS0006", "重复求助生")
+    hdr = _stu_token("重复求助生", "PS0006")
+    questions = client.get(f"{BASE_ME}/psy-survey/questions", headers=hdr).json()["data"]["questions"]
+    answers = [{"qKey": x["key"], "score": 0} for x in questions]
+
+    for _ in range(2):
+        result = client.post(
+            f"{BASE_ME}/psy-survey/submit",
+            headers=hdr,
+            json={"answers": answers, "wantsContact": True},
+        ).json()
+        assert result["code"] == 0 and result["data"]["triggeredAttention"] is True
+
+    from app.db.session import get_sessionmaker
+    from app.models import PsyReferral, StudentProfile
+
+    db = get_sessionmaker()()
+    try:
+        student = db.query(StudentProfile).filter_by(tenant_id=MAIN, student_no="PS0006").one()
+        count = db.query(PsyReferral).filter_by(
+            tenant_id=MAIN, student_id=student.id,
+            referrer="学生自评（系统自动登记）", status="REFERRED",
+        ).count()
+        assert count == 1
+    finally:
+        db.close()
+
+    history = client.get(f"{BASE_ME}/psy-survey/history", headers=hdr).json()["data"]["items"]
+    assert len(history) == 2
+    assert all(item["triggeredAttention"] is True for item in history)
+
+
 def test_psy_survey_incomplete_answers_rejected(client, db_mode):
     _seed_student("PS0004", "漏答生")
     hdr = _stu_token("漏答生", "PS0004")

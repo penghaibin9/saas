@@ -3,10 +3,12 @@
   <div
     v-if="user"
     class="uchip"
-    :class="{ 'is-open': open, 'uchip--topbar': embedded }"
+    :class="{ 'is-open': open, 'uchip--topbar': embedded, 'uchip--compact': compact }"
+    @keydown.esc.stop.prevent="closeMenu"
   >
     <div class="uchip__cluster">
       <button
+        ref="accountButton"
         class="uchip__btn"
         type="button"
         :aria-expanded="open"
@@ -23,6 +25,7 @@
 
       <!-- 常显入口：避免「只显示名字」导致找不到切换 -->
       <button
+        v-if="!compact"
         class="uchip__switch"
         type="button"
         :disabled="!!switchingId"
@@ -33,11 +36,16 @@
       </button>
     </div>
 
-    <div v-if="open" class="uchip__menu" role="menu" @click.stop>
-      <div class="uchip__meta">
+    <div v-if="open" class="uchip__menu" role="region" aria-label="账户与身份" @click.stop>
+      <div v-if="compact" class="uchip__person">
+        <span class="uchip__avatar uchip__avatar--large">{{ (user.realName || '?').slice(0, 1) }}</span>
+        <div><strong>{{ user.realName }}</strong><p v-if="schoolName || tenantName">{{ schoolName || tenantName }}</p></div>
+        <button class="uchip__close" type="button" aria-label="关闭账户菜单" @click="closeMenu"><Close /></button>
+      </div>
+      <div v-else class="uchip__meta">
         <div class="uchip__meta-name">{{ user.realName }}</div>
         <div class="uchip__meta-sub">{{ roleLabel }}</div>
-        <div v-if="scopeLabel" class="uchip__meta-sub">数据范围 · {{ scopeLabel }}</div>
+        <div v-if="dataScopeName || scopeLabel" class="uchip__meta-sub">数据范围 · {{ dataScopeName || scopeLabel }}</div>
         <div v-if="tenantName" class="uchip__meta-sub">{{ tenantName }}</div>
       </div>
 
@@ -46,10 +54,10 @@
       <template v-else-if="contexts.length">
         <div class="uchip__identity-head">
           <div>
-            <strong>身份与工作台</strong>
-            <span>{{ user.realName }}共有 {{ contexts.length }} 个可用身份</span>
+            <strong>{{ compact ? '切换身份' : '身份与工作台' }}</strong>
+            <span v-if="!compact">{{ user.realName }}共有 {{ contexts.length }} 个可用身份</span>
           </div>
-          <span class="uchip__identity-count">{{ contexts.length }}</span>
+          <span class="uchip__identity-count">{{ compact ? `${contexts.length} 个可用身份` : contexts.length }}</span>
         </div>
         <button
           v-for="c in contexts"
@@ -60,27 +68,39 @@
           :disabled="!!switchingId || isActive(c)"
           @click="pickContext(c)"
         >
+          <component v-if="compact" :is="c.roleCode === 'ACADEMIC_TEACHER' ? 'Reading' : 'User'" class="uchip__icon" />
           <span class="uchip__ctx-main">
             <span class="uchip__ctx-name">{{ contextTitle(c) }}</span>
-            <span v-if="contextScope(c)" class="uchip__ctx-scope">{{ contextScope(c) }}</span>
+            <span v-if="contextScope(c) || (isActive(c) && dataScopeName)" class="uchip__ctx-scope">{{ contextScope(c) || dataScopeName }}</span>
           </span>
-          <span v-if="isActive(c)" class="uchip__badge">当前工作台</span>
+          <span v-if="isActive(c)" class="uchip__badge">{{ compact ? '当前' : '当前工作台' }}<Check v-if="compact" class="uchip__icon uchip__icon--small" /></span>
           <span v-else-if="switchingId === c.contextId" class="uchip__badge">切换中</span>
+          <ArrowRight v-else-if="compact" class="uchip__icon uchip__icon--small" />
           <span v-else class="uchip__badge is-go">进入工作台 →</span>
         </button>
-        <p v-if="contexts.length < 2" class="uchip__hint">
+        <p v-if="contexts.length < 2 && !compact" class="uchip__hint">
           本账号目前只有一个可用身份，无法切换。需要多身份请在系统管理里给该账号再挂角色。
         </p>
       </template>
       <div v-else class="uchip__hint">未获取到可用身份列表，请刷新后重试</div>
 
+      <div v-if="compact" class="uchip__settings">
+        <button class="uchip__item" type="button" @click="openAppearance"><Brush class="uchip__icon" /><span>外观设置</span><small>{{ appearanceLabel }}</small><ArrowRight class="uchip__icon uchip__icon--small" /></button>
+        <button class="uchip__item" type="button" :disabled="loading || !!switchingId" @click="openSecurity"><Lock class="uchip__icon" /><span>账号安全</span><ArrowRight class="uchip__icon uchip__icon--small" /></button>
+      </div>
+      <button v-else class="uchip__security" type="button" :disabled="loading || !!switchingId" @click="openSecurity">
+        <span>账号安全</span>
+        <small>修改登录密码</small>
+      </button>
+
       <button class="uchip__logout" type="button" :disabled="loading || !!switchingId" @click="doLogout">
+        <SwitchButton v-if="compact" class="uchip__icon" />
         {{ loading ? '正在退出…' : '退出登录' }}
       </button>
     </div>
 
     <button
-      v-if="embedded"
+      v-if="embedded && !compact"
       class="uchip__exit"
       type="button"
       :disabled="loading || !!switchingId"
@@ -89,6 +109,14 @@
     >
       {{ loading ? '退出中' : '退出' }}
     </button>
+
+    <AccountSecurityDialog
+      v-if="securityVisible"
+      :user="user"
+      :tenant-name="tenantName"
+      @close="securityVisible = false"
+      @changed="passwordChanged"
+    />
   </div>
 </template>
 
@@ -99,6 +127,7 @@
  * 切换成功后整页刷新，保证菜单/数据范围/工作台按新身份重建。
  */
 import {
+  clearAuthSession,
   currentUserFromToken,
   fetchMyAuthContexts,
   getToken,
@@ -106,6 +135,8 @@ import {
   switchAuthContext
 } from '@/services/http/client'
 import { toast } from '@/utils/toast'
+import AccountSecurityDialog from '@/components/auth/AccountSecurityDialog.vue'
+import { User, Reading, Brush, Lock, SwitchButton, ArrowRight, Check, Close } from '@element-plus/icons-vue'
 
 const ROLE_LABEL = {
   SCHOOL_ADMIN: '学校管理员',
@@ -123,6 +154,9 @@ const ROLE_LABEL = {
   YOUTH_LEAGUE: '团委老师',
   DORM_MANAGER: '宿管',
   GRADUATION_ADMIN: '毕设管理员',
+  GD_COLLEGE_ADMIN: '毕设学院管理员',
+  GD_MAJOR_ADMIN: '毕设专业管理员',
+  GD_GRADE_ADMIN: '毕设成绩管理员',
   GD_REVIEWER: '毕设评阅人',
   GD_DEFENSE_SECRETARY: '答辩秘书',
   GD_DEFENSE_EXPERT: '答辩专家',
@@ -136,8 +170,14 @@ const ROLE_LABEL = {
 
 export default {
   name: 'AppUserChip',
+  components: { AccountSecurityDialog, User, Reading, Brush, Lock, SwitchButton, ArrowRight, Check, Close },
+  emits: ['appearance'],
   props: {
-    embedded: { type: Boolean, default: false }
+    embedded: { type: Boolean, default: false },
+    compact: { type: Boolean, default: false },
+    dataScopeName: { type: String, default: '' },
+    schoolName: { type: String, default: '' },
+    appearanceLabel: { type: String, default: '' }
   },
   data() {
     return {
@@ -150,7 +190,8 @@ export default {
       contextsLoading: false,
       contextsError: '',
       switchingId: '',
-      loadedOnce: false
+      loadedOnce: false,
+      securityVisible: false
     }
   },
   computed: {
@@ -162,7 +203,7 @@ export default {
     },
     roleLabel() {
       const code = this.user?.currentRoleCode
-      return ROLE_LABEL[code] || code || ''
+      return ROLE_LABEL[code] || (code ? '其他业务角色' : '')
     },
     tenantName() {
       const tid = this.user?.tenantId
@@ -195,6 +236,14 @@ export default {
     document.removeEventListener('click', this.onOutside)
   },
   methods: {
+    openAppearance() {
+      this.closeMenu()
+      this.$emit('appearance')
+    },
+    closeMenu() {
+      this.open = false
+      this.$refs.accountButton?.focus()
+    },
     onOutside(e) {
       if (!this.$el || this.$el === e.target || this.$el.contains?.(e.target)) return
       this.open = false
@@ -232,6 +281,16 @@ export default {
       if (this.activeContextId && c.contextId === this.activeContextId) return true
       const code = this.user?.currentRoleCode
       return !!(code && (c.roleCode === code || c.contextType === code) && this.contexts.length === 1)
+    },
+    openSecurity() {
+      this.open = false
+      this.securityVisible = true
+    },
+    async passwordChanged() {
+      this.securityVisible = false
+      clearAuthSession()
+      toast.success('密码已修改，请使用新密码重新登录')
+      await this.$router.replace('/login')
     },
     async pickContext(c) {
       if (!c || !c.contextId || this.switchingId || this.isActive(c)) return
@@ -533,6 +592,36 @@ export default {
 .uchip__hint.is-err {
   color: #dc2626;
 }
+.uchip__security {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin-top: 10px;
+  padding: 9px 10px;
+  border: 1px solid #dbe7f8;
+  border-radius: 8px;
+  color: #1e4f9d;
+  background: #f5f9ff;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 650;
+  cursor: pointer;
+}
+.uchip__security small {
+  color: #6f83a3;
+  font-size: 10.5px;
+  font-weight: 500;
+}
+.uchip__security:hover:not(:disabled) {
+  border-color: #93c5fd;
+  background: #eff6ff;
+}
+.uchip__security:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 .uchip__logout {
   margin-top: 10px;
   width: 100%;
@@ -553,4 +642,34 @@ export default {
   opacity: 0.6;
   cursor: not-allowed;
 }
+</style>
+
+<style scoped>
+.uchip--compact .uchip__menu { width: 326px; max-width: calc(100vw - 32px); max-height: calc(100dvh - 100px); padding: 0; background: var(--surface, #fff); border-color: var(--line, #dce5f3); color: var(--t1); box-shadow: 0 16px 48px -16px #14294440; }
+.uchip--compact .uchip__person { display: flex; align-items: center; gap: 12px; padding: 22px 20px 19px; }
+.uchip--compact .uchip__person>div { flex: 1; min-width: 0; }
+.uchip--compact .uchip__person strong { font-size: 15px; font-weight: 650; }
+.uchip--compact .uchip__person p { margin: 6px 0 0; color: var(--t3); font-size: 12px; }
+.uchip--compact .uchip__avatar--large { width: 40px; height: 40px; font-size: 19px; background: var(--pri-50); color: var(--pri); }
+.uchip--compact .uchip__close { align-self: flex-start; width: 24px; height: 24px; padding: 4px; border: 0; background: transparent; color: var(--t3); cursor: pointer; }
+.uchip--compact .uchip__identity-head { background: transparent; border: 0; padding: 4px 20px 10px; margin: 0; }
+.uchip--compact .uchip__identity-head strong { color: var(--t3); font-weight: 400; font-size: 12px; }
+.uchip--compact .uchip__identity-count { width: auto; height: auto; flex: none; background: transparent; color: var(--t3) !important; font-size: 11px !important; font-weight: 400; }
+.uchip--compact .uchip__ctx { width: calc(100% - 22px); margin: 0 11px 5px; border: 0; padding: 14px 12px; gap: 13px; border-radius: 6px; background: transparent; color: var(--t3); }
+.uchip--compact .uchip__ctx.is-active,.uchip--compact .uchip__ctx:hover:not(:disabled) { background: var(--pri-50); color: var(--pri); }
+.uchip--compact .uchip__ctx-name { font-size: 14px; color: var(--t1); font-weight: 600; }
+.uchip--compact .uchip__ctx-scope { margin-top: 5px; color: var(--t3); line-height: 1.5; }
+.uchip--compact .uchip__badge { display: flex; align-items: center; gap: 5px; color: var(--pri); font-size: 11px; font-weight: 400; }
+.uchip--compact .uchip__icon { width: 18px; height: 18px; flex: none; }
+.uchip--compact .uchip__icon--small { width: 13px; height: 13px; }
+.uchip--compact .uchip__settings { margin-top: 18px; padding: 8px 11px; border-top: 1px solid var(--line); }
+.uchip--compact .uchip__item { display: flex; align-items: center; width: 100%; gap: 11px; padding: 14px 10px; border: 0; border-radius: 5px; background: transparent; color: var(--t3); font: inherit; cursor: pointer; }
+.uchip--compact .uchip__item>span { flex: 1; text-align: left; color: var(--t1); font-size: 13px; }
+.uchip--compact .uchip__item small { color: var(--t3); font-size: 11px; }
+.uchip--compact .uchip__item:hover,.uchip--compact .uchip__close:hover { background: var(--pri-50); }
+.uchip--compact .uchip__logout { display: flex; align-items: center; gap: 11px; margin: 0; padding: 20px 21px; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--danger, #c54f5c); text-align: left; font-size: 13px; }
+.uchip--compact .uchip__logout:hover:not(:disabled) { background: color-mix(in srgb, var(--danger, #c54f5c) 8%, transparent); }
+.uchip--compact .uchip__hint { margin: 10px 20px; color: var(--t3); }
+.uchip--compact .uchip__hint.is-err { color: var(--danger, #c54f5c); }
+.uchip--compact button:focus-visible { outline: 2px solid var(--pri); outline-offset: -2px; }
 </style>

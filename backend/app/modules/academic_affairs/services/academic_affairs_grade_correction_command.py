@@ -7,8 +7,8 @@
   终审通过才追加一条新的 ``AcademicGrade``，原行转 ``SUPERSEDED``——与成绩复查走同一套
   追加式版本链，连续两次更正形成 A→B→C 可追溯。
 - **C06 更正与工作流跨两个事务**：终审此前先 commit 正式成绩与消息，再另开会话完成工作流；
-  中间失败就留下"成绩已改、流程还在审"的分裂状态。现在锁记录 → 锁当前 ACTIVE 成绩 →
-  锁更正命令 → 原子认领 WorkflowTask → 生成新版本 → 冻结策略 → 完成工作流 → 审计 →
+  中间失败就留下"成绩已改、流程还在审"的分裂状态。现在先锁学期与教学任务，再锁成绩任务、明细与申请，
+  然后原子认领 WorkflowTask → 生成新版本 → 冻结策略 → 完成工作流 → 审计 →
   outbox，一次 commit。
 - **NEW-P1-02 assignee_id=0**：学院与教务节点都解析真实受理人，解析不到就拒绝发起，
   不再生成没人负责、谁都能抢办的待审任务。
@@ -25,6 +25,7 @@ from sqlalchemy.exc import OperationalError
 from app.core.affairs_security import build_affairs_context
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_grade_core_service as _core
@@ -75,28 +76,15 @@ def _retry_on_deadlock(func):
 # ═══════════ 受理人解析（NEW-P1-02） ═══════════
 
 def _permission_holder_ids(db, permission_code: str) -> list[int]:
-    """持有该权限的启用账号。"""
-    from app.models import Permission, Role, RolePermission, User, UserRole
+    """按 canonical School IAM 运行时权威解析启用的持权账号。
 
-    conditions = [
-        User.tenant_id == _tid(), User.status == "ACTIVE", User.is_deleted.is_(False),
-        UserRole.tenant_id == _tid(), UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
-        Role.tenant_id == _tid(), Role.status == "ACTIVE", Role.is_deleted.is_(False),
-        RolePermission.tenant_id == _tid(), RolePermission.status == "ACTIVE",
-        RolePermission.is_deleted.is_(False),
-        Permission.permission_code == permission_code,
-    ]
-    stmt = (
-        select(User.id)
-        .join(UserRole, UserRole.user_id == User.id)
-        .join(Role, Role.id == UserRole.role_id)
-        .join(RolePermission, RolePermission.role_id == Role.id)
-        .join(Permission, Permission.id == RolePermission.permission_id)
-        .where(*conditions)
-        .distinct()
-        .order_by(User.id)
-    )
-    return [int(value) for value in db.scalars(stmt).all()]
+    ``academic_affairs_grade_task_assignee_guard`` 已经把 SYSTEM 角色的已发布
+    TENANT RoleTemplate 与 CUSTOM/历史角色的 RolePermission 两个权限平面统一收口。
+    这里运行时懒导入，既复用同一权威，又避免该 guard 顶层回引本模块造成循环导入。
+    """
+    from .academic_affairs_grade_task_assignee_guard import _runtime_permission_holder_ids
+
+    return _runtime_permission_holder_ids(db, permission_code)
 
 
 def _college_bound_user_ids(db) -> set[int]:
@@ -112,6 +100,14 @@ def _college_bound_user_ids(db) -> set[int]:
             College.tenant_id == _tid(),
             College.is_deleted.is_(False),
             College.secretary_id.is_not(None),
+            # Formal secretary history supersedes the old projection, including
+            # revoked/expired assignments. Never revive an old college position.
+            ~select(StaffAssignment.id).where(
+                StaffAssignment.tenant_id == _tid(),
+                StaffAssignment.org_type == "COLLEGE",
+                StaffAssignment.org_node_id == College.id,
+                StaffAssignment.assignment_type == "SECRETARY",
+            ).exists(),
         ).all()
     }
     now = datetime.utcnow()
@@ -129,21 +125,23 @@ def _college_bound_user_ids(db) -> set[int]:
 
 
 def _task_college_id(db, task) -> int | None:
-    """成绩任务 → 开课/行政班学院。教学班优先，退回行政班的专业归属学院。"""
-    from app.models import Major, SchoolClass
+    """成绩/调停课依次使用开课单位、任务批次及精确正式开课关系。"""
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    from .academic_affairs_responsibility_service import offering_college_id, resolve_task_offering_colleges
 
-    class_id = getattr(task, "class_id", None)
-    if not class_id:
-        return None
-    school_class = db.get(SchoolClass, int(class_id))
-    if not school_class or school_class.tenant_id != _tid() or school_class.is_deleted:
-        return None
-    if not school_class.major_id:
-        return None
-    major = db.get(Major, int(school_class.major_id))
-    if not major or major.tenant_id != _tid() or major.is_deleted:
-        return None
-    return int(major.college_id) if major.college_id else None
+    task_id = getattr(task, "teaching_task_id", None) or getattr(task, "task_id", None)
+    teaching_task = tenant_get(db, AaTeachingTask, int(task_id), tenant_id=_tid()) if task_id else None
+    if teaching_task and teaching_task.is_deleted:
+        teaching_task = None
+    course_id = getattr(task, "course_id", None) or getattr(teaching_task, "course_id", None)
+    course = tenant_get(db, AaCourse, int(course_id), tenant_id=_tid()) if course_id else None
+    batch_id = getattr(teaching_task, "batch_id", None)
+    batch = tenant_get(db, AaTeachingTaskBatch, int(batch_id), tenant_id=_tid()) if batch_id else None
+    college_id = offering_college_id(course if course and not course.is_deleted else None,
+                                    batch if batch and not batch.is_deleted else None)
+    if college_id is not None or teaching_task is None:
+        return college_id
+    return resolve_task_offering_colleges(db, [int(teaching_task.id)]).get(int(teaching_task.id))
 
 
 def _active_user(db, user_id):
@@ -167,58 +165,51 @@ def _unique_assignee(candidates, node) -> int:
     return unique[0]
 
 
+def _school_change_assignee(current_ids, task, inherited_ids=()):
+    """历史受理人只在当前有效校级责任集合中保留优先权。"""
+    current = {int(value) for value in current_ids}
+    inherited = current.intersection(int(value) for value in inherited_ids if value)
+    if inherited:
+        return _unique_assignee(inherited, _ACADEMIC_NODE)
+    published = int(getattr(task, "academic_reviewer_id", 0) or 0)
+    return published if published in current else _unique_assignee(current, _ACADEMIC_NODE)
+
+
 def resolve_change_assignee(db, node: str, task) -> int:
-    """学院节点按开课学院的教学秘书/在岗负责人；教务终审收敛到校级岗位账号。解析不到即 409。
+    """学院节点按开课学院收敛；教务终审优先沿用该成绩真实发布责任人。解析不到即 409。
 
-    两个节点共用 ``gradeChange.review`` 一个权限码（现有权限模型如此），所以终审必须再按
-    校级账号身份收窄，否则学院教务也会被算成候选人，既破坏职责分离，也会因"候选人不唯一"
-    把整条更正链卡死。
+    两个节点共用 ``gradeChange.review`` 一个权限码（现有权限模型如此）。教务终审先排除
+    学院绑定账号，再优先复用成绩任务 ``academic_reviewer_id``：只有该原始发布人仍 ACTIVE、
+    仍持有当前 School IAM 的更正审核权限且仍属于校级候选时才可继续受理。发布责任人不可用时
+    不猜测账号，只允许剩余校级持权人天然唯一；否则继续 fail-closed。
     """
-    candidates = _permission_holder_ids(db, _REVIEW_PERM)
     if node != _COLLEGE_NODE:
-        college_bound = _college_bound_user_ids(db)
-        return _unique_assignee([uid for uid in candidates if uid not in college_bound], node)
-
-    from app.models import College, StaffAssignment
+        from .academic_affairs_responsibility_service import resolve_school
+        school_level = [int(uid) for uid in resolve_school(db, permission_code=_REVIEW_PERM)["assigneeUserIds"]]
+        return _school_change_assignee(school_level, task)
 
     college_id = _task_college_id(db, task)
     if not college_id:
         raise _conflict("成绩任务未绑定开课学院，无法解析学院初审受理人", node=node)
-    college = db.get(College, int(college_id))
-    if not college or college.tenant_id != _tid() or college.is_deleted:
-        raise _conflict("成绩更正的开课学院不存在或已停用", node=node)
-
-    if college.secretary_id and int(college.secretary_id) in candidates:
-        if _active_user(db, int(college.secretary_id)):
-            return int(college.secretary_id)
-
-    now = datetime.utcnow()
-    assigned = db.scalars(select(StaffAssignment.user_id).where(
-        StaffAssignment.tenant_id == _tid(),
-        StaffAssignment.org_type == "COLLEGE",
-        StaffAssignment.org_node_id == int(college_id),
-        StaffAssignment.assignment_type.in_(("SECRETARY", "LEADER")),
-        StaffAssignment.status == "ACTIVE",
-        StaffAssignment.is_deleted.is_(False),
-        StaffAssignment.effective_at <= now,
-        or_(StaffAssignment.expires_at.is_(None), StaffAssignment.expires_at > now),
-    ).order_by(StaffAssignment.is_primary.desc(), StaffAssignment.user_id)).all()
-    allowed = [int(uid) for uid in assigned if int(uid) in candidates and _active_user(db, int(uid))]
-    return _unique_assignee(allowed, node)
+    from .academic_affairs_responsibility_service import resolve_organization
+    owner = resolve_organization(db, "COLLEGE", college_id, permission_code=_REVIEW_PERM)
+    return _unique_assignee(owner["assigneeUserIds"], node)
 
 
-def _current_user_id(db) -> int:
+def _current_user_id(db, user=None) -> int:
     """审批人稳定数值 userId；演示登录的 ``u_<loginName>`` 回 t_user 解析，查不到即拒绝。"""
     from app.models import User
 
-    current = get_current_user_ctx() or {}
+    current = user if user is not None else (get_current_user_ctx() or {})
     raw = current.get("userId")
     try:
-        parsed = int(raw)
+        parsed = int(str(raw).removeprefix("db-"))
     except (TypeError, ValueError):
         parsed = 0
     if parsed > 0:
-        return parsed
+        if _active_user(db, parsed):
+            return parsed
+        raise no_permission("当前登录身份未绑定有效系统账号")
     login_name = str(current.get("loginName") or "").strip()
     text = str(raw or "").strip()
     if not login_name and text.startswith("u_"):
@@ -238,7 +229,10 @@ def _current_user_id(db) -> int:
 def _load_record(db, task_id, record_id, *, lock=False):
     from app.models import AaGradeRecord, AaGradeTask
 
-    task = db.get(AaGradeTask, int(task_id))
+    task_query = db.query(AaGradeTask).filter(
+        AaGradeTask.id == int(task_id), AaGradeTask.tenant_id == _tid(), AaGradeTask.is_deleted.is_(False),
+    )
+    task = _core._lock_grade_task(db, task_id) if lock else task_query.first()
     if not task or task.is_deleted or task.tenant_id != _tid():
         raise not_found("成绩录入任务不存在")
     query = db.query(AaGradeRecord).filter(
@@ -247,11 +241,96 @@ def _load_record(db, task_id, record_id, *, lock=False):
         AaGradeRecord.is_deleted.is_(False),
     )
     if lock:
-        query = query.with_for_update()
+        query = query.with_for_update().populate_existing()
     record = query.first()
     if not record or int(record.task_id) != int(task.id):
         raise not_found("成绩明细不存在")
     return task, record
+
+
+def _has_dynamic(db, task_id):
+    from app.models.academic_affairs_r10 import AaGradeComponentScore, AaGradeSchemeSnapshot
+
+    return any(db.scalar(select(model.id).where(
+        model.tenant_id == _tid(), model.grade_task_id == task_id,
+        model.is_deleted.is_(False),
+    ).limit(1)) is not None for model in (AaGradeSchemeSnapshot, AaGradeComponentScore))
+
+
+def _fixed_source_blockers(db, task, record, *, lock=False, allow_dynamic=False):
+    """Shared publication/source gates; dynamic mode also requires its frozen evidence."""
+    from app.models import AaTerm, AcademicGrade
+
+    blockers = []
+    if task.status != "PUBLISHED":
+        blockers.append("仅已发布成绩可申请更正")
+    if task.term_id:
+        query = select(AaTerm).where(AaTerm.id == task.term_id, AaTerm.tenant_id == _tid(), AaTerm.is_deleted.is_(False))
+        if lock:
+            query = query.with_for_update(read=True).execution_options(populate_existing=True)
+        term = db.scalar(query)
+        if not term or term.status == "ARCHIVED":
+            blockers.append("成绩学期已归档或失效")
+    if _has_dynamic(db, task.id) and not allow_dynamic:
+        blockers.append("动态分项更正缺少冻结证据，禁止使用固定三段更正")
+    if str(record.exception_flag or "NORMAL").upper() != "NORMAL":
+        blockers.append("异常成绩缺少更正依据合同，禁止按普通分数更正")
+    grade = tenant_get(db, AcademicGrade, int(record.acad_grade_id or 0))
+    if not grade or grade.is_deleted or grade.record_status != "ACTIVE":
+        blockers.append("当前正式成绩不存在或已失效")
+    return blockers
+
+
+def _require_request_source(db, task, record, request):
+    from . import academic_affairs_grade_change_material_service as materials
+    from . import academic_affairs_grade_change_component_service as components
+    from . import academic_affairs_grade_change_authority_service as authority
+    authority.validate(db, task, record, request, lock=True)
+    dynamic_snapshot = bool(request.score_snapshot_json)
+    blockers = _fixed_source_blockers(db, task, record, lock=True, allow_dynamic=dynamic_snapshot)
+    before = (request.before_usual_score, request.before_midterm_score, request.before_final_score, request.before_total_score)
+    current = (record.usual_score, record.midterm_score, record.final_score, record.total_score)
+    if (record.acad_grade_id != request.current_grade_id
+            or int(record.version_no or 1) != request.expected_grade_version or before != current
+            or record.task_id != request.grade_task_id or record.student_id != request.student_id):
+        blockers.append("申请时的正式成绩已变化，请驳回后重新发起")
+    if dynamic_snapshot:
+        components.validate(db, task, record, request, lock=True)
+    else:
+        proposed = (request.proposed_usual_score, request.proposed_midterm_score, request.proposed_final_score)
+        if (not _core._scores_complete(task, *proposed)
+                or request.proposed_total_score != _core._compose_total(task, *proposed)):
+            blockers.append("拟更正分项不完整或当前计分比例已变化")
+        expected_pass = "PASSED" if request.proposed_total_score is not None and request.proposed_total_score >= int(task.pass_line or 60) else "FAILED"
+        if request.proposed_pass_status != expected_pass:
+            blockers.append("申请后的及格线或拟更正结论已变化")
+    if blockers:
+        raise _version_conflict("；".join(blockers))
+    materials.require_valid(db, request)
+
+
+def _require_review_scope(db, task, user, node):
+    from app.core.permissions import enforce_permission
+
+    enforce_permission(user, _REVIEW_PERM)
+    ctx = build_affairs_context(user, db)
+    if node == _ACADEMIC_NODE:
+        _core._require_review_role(user)
+        if ctx.scope_type != "TENANT_ALL":
+            raise no_permission("成绩更正终审需要当前全校范围")
+    elif ctx.scope_type != "COLLEGE" or _task_college_id(db, task) not in ctx.college_ids:
+        raise no_permission("该成绩更正不在当前开课学院审核范围")
+    if resolve_change_assignee(db, node, task) != _current_user_id(db, user):
+        raise no_permission("当前账号不是该节点当前有效的审核责任人")
+
+
+def _request_result(request, instance, task=None):
+    return {
+        "changeRequestId": str(request.id), "requestVersion": int(request.version or 0),
+        "requestStatus": request.status, "currentNode": instance.current_node,
+        "currentTaskId": str(request.current_task_id) if request.current_task_id else None,
+        "currentTaskVersion": int(task.version or 0) if task else None,
+    }
 
 
 def _proposed_scores(task, record, body):
@@ -274,21 +353,82 @@ def _proposed_scores(task, record, body):
     return usual, midterm, final, total, pass_status
 
 
-def change_request(task_id, record_id, user, body) -> dict:
+def _require_apply_scope(db, task, user, *, lock=False):
+    """Explicit live applicant scope; preflight stays read-only even with adapters."""
+    from . import academic_affairs_grade_execution_service as execution
+    from . import academic_affairs_grade_execution_transaction_guard as bridge
+    from . import academic_affairs_teacher_relation_authority as teacher_authority
+    from types import SimpleNamespace
+    actor = get_current_user_ctx() or user
+    delegated = user
+    if getattr(task, "teaching_task_id", None) and not execution._is_scope_admin(actor):
+        teacher_authority.require_teacher(db, SimpleNamespace(id=int(task.teaching_task_id)), actor, lock=lock)
+        delegated = execution._canonical_scope_user(task, actor)
+    with bridge.course_scope_read_only():
+        _core._check_course_scope(task, delegated)
+
+
+@_retry_on_deadlock
+def change_request(task_id, record_id, user, body, *, command_key=None) -> dict:
     """教师发起成绩更正：写命令 + 开工作流，正式成绩保持不变。"""
     from app.models import AaGradeTask, WorkflowInstance, WorkflowTask
     from app.models.academic_affairs_effective_grade import AaGradeChangeRequest
     from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
     from app.services.runtime_preset_install_service import ensure_workflow_enabled
 
+    from . import academic_affairs_grade_command_receipt as receipts
+    actor = get_current_user_ctx() or user
+    from app.core.permissions import enforce_permission
+    from .academic_affairs_schedule_resource_guard import lock_term
+    enforce_permission(actor, "academicAffairs.gradeChange.apply")
     with session() as db:
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        receipt, cached = receipts.begin(db, actor, "GRADE_CHANGE_APPLY", command_key, {
+            "taskId": task_id, "recordId": record_id, "body": {key: getattr(body, key, None) for key in (
+                "newUsualScore", "newMidtermScore", "newFinalScore", "reason", "attachmentIds",
+                "expectedGradeVersion", "expectedCurrentGradeId", "expectedComponentHash", "newComponentScores", "expectedAuthorityHash",
+            )},
+        })
+        if cached is not None:
+            return cached
+        source_task, _ = _load_record(db, task_id, record_id)
+        _require_apply_scope(db, source_task, user)
+        term_id = source_task.term_id
+        if not term_id:
+            raise _conflict("成绩发布任务缺少正式学期，须先完成数据治理")
+        lock_term(db, term_id)
         task, record = _load_record(db, task_id, record_id, lock=True)
-        _core._check_course_scope(task, user)
+        if task.term_id != term_id:
+            raise _version_conflict("成绩所属学期已变化，请刷新后重试")
+        _require_apply_scope(db, task, user, lock=True)
         if task.status == "ARCHIVED":
             raise _conflict("已归档学期，成绩更正需线下特批（本轮暂未开放线上入口）")
         if task.status != "PUBLISHED":
             raise _conflict("仅已发布成绩可申请更正")
         guard_term_writable(db, task.term_id)
+
+        from app.core.permissions import enforce_permission
+        actor = get_current_user_ctx() or user
+        enforce_permission(actor, "academicAffairs.gradeChange.apply")
+        # The live-owner adapter delegates only snapshot keys, never the real
+        # operator or scope. Admin scope is additionally narrowed here.
+        role = str(actor.get("currentRoleCode") or "").upper()
+        if role in _core._REVIEW_ROLES or role == "COLLEGE_ADMIN":
+            context = build_affairs_context(actor, db)
+            if context.scope_type != "TENANT_ALL" and (
+                    context.scope_type != "COLLEGE" or _task_college_id(db, task) not in context.college_ids):
+                raise no_permission("该成绩不在当前申请范围")
+        _core._require_independent_execution(db, task, user)
+        from . import academic_affairs_grade_change_authority_service as authority
+        authority_snapshot = authority.source(db, task, record, lock=True)
+        if getattr(body, "expectedAuthorityHash", None) != authority.digest(authority_snapshot):
+            raise _version_conflict("确认后的正式名单、课程或策略已变化，请重新读取并确认")
+        blockers = _fixed_source_blockers(db, task, record, lock=True, allow_dynamic=True)
+        if blockers:
+            raise _conflict("；".join(blockers))
+        if (getattr(body, "expectedGradeVersion", None) != int(record.version_no or 1)
+                or getattr(body, "expectedCurrentGradeId", None) != record.acad_grade_id):
+            raise _version_conflict("原成绩或版本已变化，请重新读取精确来源并确认")
 
         reason = (getattr(body, "reason", "") or "").strip()
         if len(reason) < 5:
@@ -303,8 +443,22 @@ def change_request(task_id, record_id, user, body) -> dict:
         if running:
             raise _conflict("该成绩已有在途更正申请，不可重复发起", changeRequestId=str(running.id))
 
-        usual, midterm, final, total, pass_status = _proposed_scores(task, record, body)
-        if (usual, midterm, final) == (record.usual_score, record.midterm_score, record.final_score):
+        from . import academic_affairs_grade_change_component_service as components
+        score_snapshot = None
+        if _has_dynamic(db, task.id):
+            score_snapshot = components.create(db, task, record, body)
+            by_code = {item["code"]: item["score"] for item in score_snapshot["proposed"]["components"]}
+            usual = round(by_code["USUAL"]) if "USUAL" in by_code else record.usual_score
+            midterm = round(by_code["MIDTERM"]) if "MIDTERM" in by_code else record.midterm_score
+            final = round(by_code["FINAL"]) if "FINAL" in by_code else record.final_score
+            total, pass_status = score_snapshot["proposed"]["totalScore"], score_snapshot["proposed"]["passStatus"]
+        else:
+            if getattr(body, "newComponentScores", None):
+                raise _conflict("固定方案不能提交动态分项字段")
+            usual, midterm, final, total, pass_status = _proposed_scores(task, record, body)
+        if total is None:
+            raise AppException("VALIDATION_ERROR", "更正后的必需分项须完整，不能生成空正式成绩")
+        if score_snapshot is None and (usual, midterm, final) == (record.usual_score, record.midterm_score, record.final_score):
             raise AppException("VALIDATION_ERROR", "更正申请没有任何分项变化")
 
         assignee = resolve_change_assignee(db, _COLLEGE_NODE, task)
@@ -315,6 +469,10 @@ def change_request(task_id, record_id, user, body) -> dict:
             proposed_usual_score=usual, proposed_midterm_score=midterm,
             proposed_final_score=final, proposed_total_score=total,
             proposed_pass_status=pass_status,
+            authority_snapshot_json=json.dumps(authority_snapshot, ensure_ascii=False),
+            authority_snapshot_hash=authority.digest(authority_snapshot),
+            score_snapshot_json=json.dumps(score_snapshot, ensure_ascii=False) if score_snapshot else None,
+            score_snapshot_hash=components.digest(score_snapshot) if score_snapshot else None,
             before_usual_score=record.usual_score, before_midterm_score=record.midterm_score,
             before_final_score=record.final_score, before_total_score=record.total_score,
             current_grade_id=record.acad_grade_id,
@@ -325,11 +483,13 @@ def change_request(task_id, record_id, user, body) -> dict:
         db.flush()
 
         ensure_workflow_enabled(db, _tid(), _core._WF_CHANGE)
+        from . import academic_affairs_grade_change_material_service as materials
+        materials.freeze(db, request, actor, getattr(body, "attachmentIds", None))
         _name, _role, uid = _core._op()
         instance = WorkflowInstance(
             tenant_id=_tid(), workflow_code=_core._WF_CHANGE, source_module="academic-affairs",
             source_biz_type="AA_GRADE_CHANGE", source_biz_id=record.id,
-            applicant_id=int(uid) if str(uid).isdigit() else 0,
+            applicant_id=_current_user_id(db),
             title=f"{task.course_name or ''} 成绩更正", status="RUNNING", current_node=_COLLEGE_NODE,
         )
         db.add(instance)
@@ -342,49 +502,99 @@ def change_request(task_id, record_id, user, body) -> dict:
         request.current_task_id = wtask.id
         _core._audit(db, "AA_GRADE_RECORD", record.id, "CHANGE_APPLY",
                      f"requestId={request.id};assignee={assignee};{reason}")
-        db.commit()
-        return {
+        result = {
             "recordId": str(record.id), "changeRequestId": str(request.id),
+            "gradeTaskId": str(task.id), "expectedGradeVersion": request.expected_grade_version,
+            "expectedCurrentGradeId": str(request.current_grade_id),
             "workflowInstanceId": str(instance.id), "assigneeId": str(assignee),
             "status": "CHANGE_REVIEW",
             "proposedTotalScore": total, "currentTotalScore": record.total_score,
+            **_request_result(request, instance, wtask),
         }
+        receipts.finish(db, receipt, result)
+        db.commit()
+        return result
 
 
 # ═══════════ 审批：认领 + 决定 + 正式事实，一次事务（C06） ═══════════
 
-def _load_pending_request(db, record_id):
+def _load_pending_request(db, record_id, identity, *, lock=True):
     from app.models.academic_affairs_effective_grade import AaGradeChangeRequest
 
-    request = db.query(AaGradeChangeRequest).filter(
+    identity = identity or {}
+    if any(identity.get(key) is None for key in (
+        "changeRequestId", "expectedRequestVersion", "currentTaskId", "expectedTaskVersion",
+    )):
+        raise _version_conflict("缺少精确申请及审批任务版本，请刷新申请详情")
+    query = db.query(AaGradeChangeRequest).filter(
+        AaGradeChangeRequest.id == int(identity["changeRequestId"]),
         AaGradeChangeRequest.tenant_id == _tid(),
         AaGradeChangeRequest.grade_record_id == int(record_id),
         AaGradeChangeRequest.status == "PENDING",
         AaGradeChangeRequest.is_deleted.is_(False),
-    ).with_for_update().first()
+    )
+    request = (query.with_for_update().populate_existing() if lock else query).first()
     if not request:
-        raise _version_conflict("该成绩没有在途更正申请")
+        raise _version_conflict("该更正申请不存在、已处理或不属于指定成绩")
+    if (int(request.version or 0) != int(identity["expectedRequestVersion"])
+            or request.current_task_id != int(identity["currentTaskId"])):
+        raise _version_conflict("申请或当前审批任务已变化，请重新确认")
     return request
 
 
-def _claim_task(db, request, node):
+def _locked_review_source(db, record_id, user, node, identity):
+    """Read permission first, then Term→Task→Grade→Record→Request current locks."""
+    from app.models import AaGradeTask
+    from .academic_affairs_schedule_resource_guard import lock_term
+    preview = _load_pending_request(db, record_id, identity, lock=False)
+    links = (preview.grade_task_id, preview.grade_record_id, preview.student_id)
+    scope_task = tenant_get(db, AaGradeTask, int(links[0]))
+    if not scope_task or scope_task.is_deleted:
+        raise not_found("成绩任务不存在")
+    _require_review_scope(db, scope_task, user, node)
+    term_id = scope_task.term_id
+    if not term_id:
+        raise _conflict("成绩发布任务缺少正式学期，须先完成数据治理")
+    lock_term(db, term_id)
+    task, record = _load_record(db, links[0], links[1], lock=True)
+    if task.term_id != term_id:
+        raise _version_conflict("成绩所属学期已变化，请刷新后重试")
+    request = _load_pending_request(db, record_id, identity)
+    if ((request.grade_task_id, request.grade_record_id, request.student_id) != links
+            or record.student_id != request.student_id):
+        raise _version_conflict("更正申请与成绩关联已变化，请刷新后重试")
+    _require_review_scope(db, task, user, node)
+    _core._require_independent_execution(db, task, user)
+    return request, task, record
+
+
+def _claim_task(db, request, node, identity):
     from app.models import WorkflowInstance, WorkflowTask
 
-    instance = db.get(WorkflowInstance, int(request.workflow_instance_id or 0))
+    instance = db.scalar(select(WorkflowInstance).where(
+        WorkflowInstance.id == int(request.workflow_instance_id or 0),
+        WorkflowInstance.tenant_id == _tid(), WorkflowInstance.is_deleted.is_(False),
+    ).with_for_update().execution_options(populate_existing=True))
     if not instance or instance.tenant_id != _tid() or instance.is_deleted:
         raise _conflict("成绩更正缺少工作流实例")
-    if instance.current_node != node:
+    if (instance.current_node != node or instance.status != "RUNNING"
+            or instance.workflow_code != _core._WF_CHANGE
+            or instance.source_module != "academic-affairs" or instance.source_biz_type != "AA_GRADE_CHANGE"
+            or instance.source_biz_id != request.grade_record_id):
         raise _version_conflict("当前更正申请不在此审核节点",
                                 currentNode=str(instance.current_node or ""))
     task = db.scalars(select(WorkflowTask).where(
         WorkflowTask.tenant_id == _tid(),
+        WorkflowTask.id == request.current_task_id,
         WorkflowTask.instance_id == instance.id,
         WorkflowTask.node_code == node,
         WorkflowTask.status == "PENDING",
         WorkflowTask.is_deleted.is_(False),
-    ).with_for_update()).first()
+    ).with_for_update().execution_options(populate_existing=True)).first()
     if not task:
         raise _version_conflict("当前审批任务不存在或已被处理")
+    if int(task.version or 0) != int(identity["expectedTaskVersion"]):
+        raise _version_conflict("当前审批任务版本已变化，请重新确认")
     assignee = int(task.assignee_id or 0)
     if assignee <= 0:
         raise _conflict("该审批任务没有真实受理人，请由教务处重新指派")
@@ -398,51 +608,71 @@ def _reject(db, request, instance, task, reason):
     request.decided_by = (get_current_user_ctx() or {}).get("realName") or ""
     request.decided_at = datetime.utcnow()
     request.current_task_id = None
+    request.version = int(request.version or 0) + 1
     task.status, task.action_reason, task.acted_at = "REJECTED", reason, datetime.utcnow()
+    task.version = int(task.version or 0) + 1
     instance.status = "REJECTED"
+    instance.version = int(instance.version or 0) + 1
     _core._audit(db, "AA_GRADE_RECORD", request.grade_record_id, "CHANGE_REJECT", reason)
 
 
 @_retry_on_deadlock
-def change_college_review(record_id, user, action, reason="") -> dict:
+def change_college_review(record_id, user, action, reason="", *, identity=None, command_key=None) -> dict:
     """学院初审：通过→推进到教务终审并解析真实受理人；驳回→正式成绩本来就没动过。"""
     from app.models import AaGradeTask, WorkflowTask
 
     act = (action or "").upper()
+    from . import academic_affairs_grade_command_receipt as receipts
+    actor = get_current_user_ctx() or user
     with session() as db:
-        request = _load_pending_request(db, record_id)
-        task = db.get(AaGradeTask, int(request.grade_task_id))
-        if task:
-            _core._check_college_scope(db, task, user)
-        instance, wtask = _claim_task(db, request, _COLLEGE_NODE)
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        receipt, cached = receipts.begin(db, actor, "GRADE_CHANGE_REVIEW", command_key, {
+            "recordId": record_id, "node": _COLLEGE_NODE, "action": act, "reason": reason, "identity": identity,
+        })
+        if cached is not None:
+            return cached
+        request, task, record = _locked_review_source(db, record_id, user, _COLLEGE_NODE, identity)
+        instance, wtask = _claim_task(db, request, _COLLEGE_NODE, identity)
 
         if act == "REJECT":
             cleaned = (reason or "").strip()
             if len(cleaned) < 5:
                 raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于5字")
             _reject(db, request, instance, wtask, cleaned)
+            result = {"recordId": str(record_id), "status": "PUBLISHED", **_request_result(request, instance)}
+            result.update({"reviewNode": "COLLEGE_REVIEW", "action": act, "reviewIdentity": dict(identity or {})})
+            receipts.finish(db, receipt, result)
             db.commit()
-            return {"recordId": str(record_id), "status": "PUBLISHED"}
+            return result
         if act != "APPROVE":
             raise AppException("VALIDATION_ERROR", "无效操作")
 
+        _require_review_scope(db, task, user, _COLLEGE_NODE)
+        _require_request_source(db, task, record, request)
         wtask.status, wtask.acted_at = "APPROVED", datetime.utcnow()
+        wtask.version = int(wtask.version or 0) + 1
+        wtask.action_reason = (reason or "").strip()
         assignee = resolve_change_assignee(db, _ACADEMIC_NODE, task)
         instance.current_node = _ACADEMIC_NODE
+        instance.version = int(instance.version or 0) + 1
         next_task = WorkflowTask(tenant_id=_tid(), instance_id=instance.id,
                                  node_code=_ACADEMIC_NODE, assignee_id=assignee, status="PENDING")
         db.add(next_task)
         db.flush()
         request.current_task_id = next_task.id
+        request.version = int(request.version or 0) + 1
         _core._audit(db, "AA_GRADE_RECORD", request.grade_record_id, "CHANGE_STEP",
                      f"->{_ACADEMIC_NODE};assignee={assignee}")
+        result = {"recordId": str(record_id), "status": "CHANGE_REVIEW",
+                  "assigneeId": str(assignee), **_request_result(request, instance, next_task)}
+        result.update({"reviewNode": "COLLEGE_REVIEW", "action": act, "reviewIdentity": dict(identity or {})})
+        receipts.finish(db, receipt, result)
         db.commit()
-        return {"recordId": str(record_id), "status": "CHANGE_REVIEW",
-                "assigneeId": str(assignee)}
+        return result
 
 
 @_retry_on_deadlock
-def change_academic_review(record_id, user, action, reason="") -> dict:
+def change_academic_review(record_id, user, action, reason="", *, identity=None, command_key=None) -> dict:
     """教务终审：通过则以追加式版本生成新正式成绩，全链单事务。"""
     from app.models import AaGradeRecord, AaGradeTask, AcademicGrade, AcademicStudent
     from app.models.academic_affairs_effective_grade import AaGradeCorrection
@@ -457,41 +687,39 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
 
     act = (action or "").upper()
     _core._require_review_role(user)
+    from . import academic_affairs_grade_command_receipt as receipts
+    actor = get_current_user_ctx() or user
     with session() as db:
-        request = _load_pending_request(db, record_id)
-        instance, wtask = _claim_task(db, request, _ACADEMIC_NODE)
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        receipt, cached = receipts.begin(db, actor, "GRADE_CHANGE_REVIEW", command_key, {
+            "recordId": record_id, "node": _ACADEMIC_NODE, "action": act, "reason": reason, "identity": identity,
+        })
+        if cached is not None:
+            return cached
+        request, task, record = _locked_review_source(db, record_id, user, _ACADEMIC_NODE, identity)
+        instance, wtask = _claim_task(db, request, _ACADEMIC_NODE, identity)
 
         if act == "REJECT":
             cleaned = (reason or "").strip()
             if len(cleaned) < 5:
                 raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于5字")
             _reject(db, request, instance, wtask, cleaned)
+            result = {"recordId": str(record_id), "status": "PUBLISHED", **_request_result(request, instance)}
+            result.update({"reviewNode": "ACADEMIC_REVIEW", "action": act, "reviewIdentity": dict(identity or {})})
+            receipts.finish(db, receipt, result)
             db.commit()
-            return {"recordId": str(record_id), "status": "PUBLISHED"}
+            return result
         if act != "APPROVE":
             raise AppException("VALIDATION_ERROR", "无效操作")
 
-        record = db.query(AaGradeRecord).filter(
-            AaGradeRecord.id == int(request.grade_record_id),
-            AaGradeRecord.tenant_id == _tid(),
-            AaGradeRecord.is_deleted.is_(False),
-        ).with_for_update().first()
-        if not record:
-            raise not_found("成绩明细不存在")
-        if int(record.version_no or 1) != int(request.expected_grade_version or 1):
-            raise _version_conflict(
-                "该成绩在本次更正在途期间已被其他入口改写，请重新发起更正",
-                expectedVersion=int(request.expected_grade_version or 1),
-                currentVersion=int(record.version_no or 1),
-            )
-        task = db.query(AaGradeTask).filter(
-            AaGradeTask.id == int(request.grade_task_id),
-            AaGradeTask.tenant_id == _tid(),
-            AaGradeTask.is_deleted.is_(False),
-        ).with_for_update().first()
-        if not task:
-            raise not_found("成绩录入任务不存在")
+        _require_review_scope(db, task, user, _ACADEMIC_NODE)
         guard_term_writable(db, task.term_id)
+        if record.task_id != task.id or record.student_id != request.student_id:
+            raise _version_conflict("更正申请与正式成绩对象不匹配")
+        _require_request_source(db, task, record, request)
+        if request.score_snapshot_json:
+            from . import academic_affairs_grade_change_component_service as components
+            components.apply(db, task, record, request)
 
         original = None
         if record.acad_grade_id:
@@ -499,7 +727,7 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
                 AcademicGrade.id == int(record.acad_grade_id),
                 AcademicGrade.tenant_id == _tid(),
                 AcademicGrade.is_deleted.is_(False),
-            ).with_for_update().first()
+            ).with_for_update().populate_existing().first()
         if not original or original.record_status != "ACTIVE":
             raise _conflict("正式成绩不存在或已失效，无法在其之上追加更正版本")
 
@@ -514,6 +742,7 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
             "id", "created_at", "created_by", "updated_at", "updated_by",
             "is_deleted", "version", "score", "pass_status", "record_status",
             "void_reason", "source", "source_biz_type", "source_biz_id",
+            "gpa_point", "gpa_policy_code", "gpa_policy_version",
         }
         payload = {
             attr.key: getattr(original, attr.key)
@@ -558,7 +787,7 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
         record.change_reason = request.reason
         record.change_at = datetime.utcnow()
         _name, _role, uid = _core._op()
-        record.change_by = int(uid) if str(uid).isdigit() else None
+        record.change_by = _current_user_id(db)
         record.version_no = int(record.version_no or 1) + 1
 
         db.add(AaGradeCorrection(
@@ -589,20 +818,24 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
         )
 
         academic_student = (
-            db.get(AcademicStudent, int(corrected.acad_student_id))
+            tenant_get(db, AcademicStudent, int(corrected.acad_student_id))
             if corrected.acad_student_id else None
         )
         if academic_student:
             _refresh_aggregates(db, academic_student)
 
         wtask.status, wtask.acted_at = "APPROVED", datetime.utcnow()
+        wtask.action_reason = (reason or "").strip()
+        wtask.version = int(wtask.version or 0) + 1
         instance.status = "APPROVED"
+        instance.version = int(instance.version or 0) + 1
         request.status = "APPROVED"
+        request.version = int(request.version or 0) + 1
         request.decided_by = _name or str(uid)
         request.decided_at = datetime.utcnow()
         request.current_task_id = None
 
-        emit_receiver_notice(
+        notice = emit_receiver_notice(
             db,
             event_code="GRADE.CORRECTED",
             source_module="academic-affairs",
@@ -613,27 +846,33 @@ def change_academic_review(record_id, user, action, reason="") -> dict:
             content=f"{task.course_name or ''} 成绩已更正为 {score}",
             receiver_as="student",
         )
+        notice_id = int(notice.id) if notice is not None else None
         _core._audit(
             db, "AA_GRADE_RECORD", record.id, "CHANGE_APPROVE",
             f"requestId={request.id};{request.before_total_score}→{score};newGradeId={corrected.id}",
         )
+        from .academic_grade_effect_service import enqueue_grade_warning_scan, try_run_effect
+        effect_job_id = enqueue_grade_warning_scan(db, task.id, correction_request_id=request.id)
+        result = {
+            "recordId": str(record_id), "status": "PUBLISHED", "final": True,
+            "correctedGradeId": str(corrected.id), "totalScore": score,
+            **_request_result(request, instance), "passStatus": pass_status,
+            "warningScanJobId": str(effect_job_id), "warningScanState": "PENDING",
+            "warningScanOk": False, "warningScanError": "正式成绩已提交，后置预警扫描结果待核对。",
+            "warningScanResult": None, "notificationState": "NOT_VERIFIED",
+        }
+        result.update({"reviewNode": "ACADEMIC_REVIEW", "action": act, "reviewIdentity": dict(identity or {})})
+        receipts.finish(db, receipt, result)
         db.commit()
 
     from app.services.message_event_outbox_service import try_process_pending_outbox
-    try_process_pending_outbox(worker_id="aa-grade-change-inline")
-    warning_scan_ok = True
-    try:
-        from app.modules.academic_affairs.services.academic_affairs_warning_service import scan_warnings
-        scan_warnings(user)
-    except Exception:  # noqa: BLE001
-        import logging
-        warning_scan_ok = False
-        logging.getLogger(__name__).exception("grade change approve -> scan_warnings failed")
-    return {
-        "recordId": str(record_id), "status": "PUBLISHED", "final": True,
-        "correctedGradeId": str(corrected.id), "totalScore": score,
-        "passStatus": pass_status, "warningScanOk": warning_scan_ok,
-    }
+    if notice_id is not None:
+        try_process_pending_outbox(
+            worker_id="aa-grade-change-inline",
+            outbox_ids=[notice_id],
+        )
+    effect = try_run_effect(effect_job_id, user)
+    return receipts.record_grade_change_effect(actor, command_key, result, effect)
 
 
 change_request._grade_correction_command = True

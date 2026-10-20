@@ -29,7 +29,7 @@
           </div>
         </section>
         <section v-if="detail" class="mp-card">
-          <header class="mp-card__head"><span class="mp-card__title">{{ detail.title }}</span><a :href="detail.sourceUrl" target="_blank" rel="noopener noreferrer">教育部原始来源</a></header>
+          <header class="mp-card__head"><span class="mp-card__title">{{ detail.title }}</span><a :href="detail.sourceUrl" rel="noopener noreferrer">教育部原始来源</a></header>
           <div class="mp-card__body">
             <div class="standard-meta">{{ typeLabel(detail.documentType) }} · {{ detail.majorCode }} · {{ detail.versionLabel }} · {{ detail.pageCount }}页 · {{ detail.charCount }}字</div>
             <div class="bind-bar"><select v-model="binding.schoolMajorId"><option value="">选择本校专业（可选绑定）</option><option v-for="m in schoolMajors" :key="m.id" :value="m.id">{{ m.code || '无代码' }} · {{ m.name }}</option></select><input v-model.trim="binding.confirmText" placeholder="代码不一致时输入：确认跨专业绑定" /><button class="mp-btn mp-btn--primary" :disabled="!binding.schoolMajorId" @click="bindStandard">绑定为本校执行依据</button></div>
@@ -54,8 +54,8 @@ export default {
   computed: { heroStats() { return [{ label: '官方专业目录', value: String(this.stats.majors || 0), tone: 'primary' }, { label: '2025 教学标准', value: String(this.stats.teachingStandards || 0), tone: 'success' }, { label: '2022 专业简介', value: String(this.stats.professionalProfiles || 0), tone: 'info' }] } },
   created() { this.load() },
   methods: {
-    levelLabel(value) { return ({ SECONDARY_VOCATIONAL: '中职', HIGHER_VOCATIONAL_SPECIALIST: '高职专科', VOCATIONAL_BACHELOR: '职业本科' })[value] || value },
-    typeLabel(value) { return ({ PROFESSIONAL_TEACHING_STANDARD: '专业教学标准', PROFESSIONAL_PROFILE: '专业简介' })[value] || value },
+    levelLabel(value) { return ({ SECONDARY_VOCATIONAL: '中职', HIGHER_VOCATIONAL_SPECIALIST: '高职专科', VOCATIONAL_BACHELOR: '职业本科' })[value] || (value ? '待确认' : '—') },
+    typeLabel(value) { return ({ PROFESSIONAL_TEACHING_STANDARD: '专业教学标准', PROFESSIONAL_PROFILE: '专业简介' })[value] || (value ? '待确认' : '—') },
     flattenMajors(tree) { return (tree || []).flatMap((college) => (college.children || []).filter((x) => x.type === 'MAJOR')) },
     async load() { this.loading = true; this.error = ''; try { const [stats, result, org] = await Promise.all([standardsApi.stats(), standardsApi.documents(this.filters), systemApi.getDepartmentTree()]); this.stats = stats; this.result = result; this.schoolMajors = this.flattenMajors(org.data || org) } catch (e) { this.error = e.message || '国家标准库加载失败' } finally { this.loading = false } },
     async search() { try { this.result = await standardsApi.documents(this.filters); this.detail = null } catch (e) { toast.error(e.message || '搜索失败') } },

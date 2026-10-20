@@ -16,7 +16,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
-from app.core.exceptions import AppException, no_permission, not_found
+from app.core.exceptions import AppException, not_found
 from app.services.db_service import _tid
 
 from . import academic_affairs_graduation_service as graduation_service
@@ -65,11 +65,10 @@ def _strict_overall(items: list[dict]) -> str:
 
 
 def _actor_id() -> int | None:
-    _name, _role, raw = graduation_service._op()
-    try:
-        return int(raw) if raw not in (None, "") else None
-    except (TypeError, ValueError):
-        return None
+    from .academic_affairs_schedule_change_service import _op_uid
+
+    value = _op_uid()
+    return value if value is not None and value > 0 else None
 
 
 def _program_id(items: list[dict]) -> int | None:
@@ -190,6 +189,8 @@ def precheck(batch_id, user) -> dict:
     """Append a new formal run when the work-queue row or approved evidence basis changed."""
     graduation_service._require_review_role(user)
     with graduation_service.session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import (
             AaGraduationAuditBatch,
             AaGraduationAuditResult,
@@ -197,9 +198,8 @@ def precheck(batch_id, user) -> dict:
             StudentProfile,
         )
 
-        batch = db.get(AaGraduationAuditBatch, int(batch_id))
-        if not batch or batch.is_deleted or batch.tenant_id != _tid():
-            raise not_found("预审批次不存在")
+        from .academic_affairs_graduation_term_scope import guard_batch_term_writable
+        batch = guard_batch_term_writable(db, batch_id)
         rows = db.scalars(
             select(AaGraduationAuditResult).where(
                 AaGraduationAuditResult.tenant_id == _tid(),
@@ -283,25 +283,31 @@ def precheck(batch_id, user) -> dict:
 
 def college_review(result_id, user, action, note="") -> dict:
     """Only a complete latest formal PASS may advance into academic final review."""
-    role = (user.get("currentRoleCode") or "").upper()
-    if role not in ({"COLLEGE_ADMIN"} | graduation_service._REVIEW_ROLES) and user.get("userType") != "PLATFORM_SUPER_ADMIN":
-        raise no_permission("仅学院教务员/教务处可执行学院初审")
-
     action_code = str(action or "").strip().upper()
     if action_code not in {"APPROVE", "REJECT"}:
         raise AppException("BAD_REQUEST", "初审动作非法（APPROVE/REJECT）")
 
     with graduation_service.session() as db:
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
         from app.models import AaGraduationAuditResult, GraduationEvaluationRun
 
         result = db.query(AaGraduationAuditResult).filter(
             AaGraduationAuditResult.id == int(result_id),
             AaGraduationAuditResult.tenant_id == _tid(),
             AaGraduationAuditResult.is_deleted.is_(False),
-        ).with_for_update().first()
+        ).first()
         if not result:
             raise not_found("预审结果不存在")
         graduation_service._assert_result_in_scope(db, user, result)
+        from .academic_affairs_graduation_scope_guard import assert_college_review_authority
+        assert_college_review_authority(db, user, result)
+
+        from .academic_affairs_graduation_term_scope import guard_result_term_writable
+        result = guard_result_term_writable(db, result_id)
+        # 等待业务锁期间身份或对象可能变化，锁后仍按当前事实复核。
+        graduation_service._assert_result_in_scope(db, user, result)
+        assert_college_review_authority(db, user, result)
         if result.status not in ("SYSTEM_PASSED", "SYSTEM_ABNORMAL", "COLLEGE_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该结果当前状态不可初审")
 
@@ -345,7 +351,6 @@ def college_review(result_id, user, action, note="") -> dict:
 
 def academic_final(result_id, user, conclusion, confirm=False) -> dict:
     """Final decision must reference the exact immutable SYSTEM_PASSED run it used."""
-    graduation_service._require_review_role(user)
     conclusion = (conclusion or "").upper()
     if conclusion not in graduation_service._CONCLUSION:
         raise AppException("BAD_REQUEST", "结论非法（GRADUATED/COMPLETED/DELAYED）")
@@ -354,18 +359,16 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
 
     _name, _role, operator_raw = graduation_service._op()
     with graduation_service.session() as db:
-        from app.models import AaGraduationAuditResult, GraduationDecisionFact, GraduationEvaluationRun
+        # 等待学期/批次锁后，后续事实读取必须使用已提交的新快照。
+        db.connection(execution_options={"isolation_level": "READ COMMITTED"})
+        from .academic_affairs_graduation_scope_guard import assert_school_review_authority
+        assert_school_review_authority(db, user)
+        from app.models import GraduationDecisionFact, GraduationEvaluationRun, StudentProfile
 
-        result = db.query(AaGraduationAuditResult).filter(
-            AaGraduationAuditResult.id == int(result_id),
-            AaGraduationAuditResult.tenant_id == _tid(),
-            AaGraduationAuditResult.is_deleted.is_(False),
-        ).with_for_update().first()
-        if not result:
-            raise not_found("预审结果不存在")
+        from .academic_affairs_graduation_term_scope import guard_result_term_writable
+        result = guard_result_term_writable(db, result_id)
         if result.status != "ACADEMIC_REVIEW":
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅学院初审通过的结果可终审")
-
         run = db.scalars(select(GraduationEvaluationRun).where(
             GraduationEvaluationRun.tenant_id == _tid(),
             GraduationEvaluationRun.result_id == result.id,
@@ -400,6 +403,19 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
         )).first()
         if existing:
             raise AppException("IDEMPOTENCY_CONFLICT", "该毕业结果已形成正式决策事实")
+
+        # 与学籍事实追加命令共用学生锁，防止核验后、终态写入前身份依据变化。
+        student = db.scalars(select(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(),
+            StudentProfile.id == result.student_id,
+            StudentProfile.is_deleted.is_(False),
+        ).with_for_update()).first()
+        if not student or not _approved_run_is_current(run, result, evaluate_student(db, student)):
+            raise AppException(
+                "APPROVAL_VERSION_CONFLICT",
+                "毕业终审依据已变化，请重新预审和学院初审后再终审",
+                http_status=409,
+            )
 
         to_status = graduation_service._CONCLUSION[conclusion]
         changed = graduation_service.change_student_status(

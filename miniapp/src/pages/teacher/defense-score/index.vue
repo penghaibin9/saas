@@ -1,6 +1,13 @@
 <template>
   <view class="page-wrap">
     <MobileNavBar variant="teacher" title="答辩评分" subtitle="本人担任评委的答辩学生" show-back />
+    <view v-if="actionReceipt" class="page-pad ds__receipt">
+      <text class="ds__receipt-title">{{ actionReceipt.title }}</text>
+      <text class="ds__receipt-line">{{ actionReceipt.result }}</text>
+      <text class="ds__receipt-next">{{ actionReceipt.next }}</text>
+      <button v-if="actionReceipt.nextId" class="btn btn-primary" @click="continueNext">继续下一名：{{ actionReceipt.nextName }}</button>
+    </view>
+    <MobileGraduationBatchContext />
     <MobileGlobalState :state="state" :description="loadError" @retry="load">
       <view class="page-pad" v-if="list">
         <MobileGlobalState v-if="!list.length" state="empty" title="暂无待评分学生"
@@ -42,13 +49,18 @@
             </template>
           </view>
         </view>
+        <view class="page-pad" v-if="hasMore">
+          <button class="btn btn-secondary" :disabled="loadingMore || acting" @click="loadMore">{{ loadingMore ? '加载中…' : '加载更多答辩学生' }}</button>
+        </view>
       </view>
     </MobileGlobalState>
   </view>
 </template>
 
 <script>
+import { normalizeError } from '@/services/request'
 import { teacherApi } from '@/services/teacherApi'
+import { graduationTeacherPagingApi } from '@/services/graduationTeacherPagingApi'
 import { toast } from '@/utils/nav'
 
 function errorText(error) {
@@ -66,34 +78,48 @@ export default {
   data() {
     return {
       list: null, state: 'loading', loadError: '', expanded: null, drafts: {}, acting: false,
-      loadToken: 0
+      loadToken: 0, actionReceipt: null, page: 1, total: 0, hasMore: false, loadingMore: false
     }
   },
-  onLoad() { this.load() },
-  onUnload() { ++this.loadToken },
+  onLoad() { uni.$on('graduation:teacher-batch-ready', this.onBatchReady); this.load() },
+  onUnload() { uni.$off('graduation:teacher-batch-ready', this.onBatchReady); ++this.loadToken },
+  onReachBottom() { this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
+    onBatchReady() { this.expanded = null; this.drafts = {}; this.actionReceipt = null; this.load() },
     statusTone(s) { return s === 'CONFIRMED' ? 'success' : s === 'SCORED' ? 'warning' : 'default' },
-    load(done) {
+    load(done, append = false) {
       const token = ++this.loadToken
-      this.state = 'loading'
+      const targetPage = append ? this.page + 1 : 1
+      if (!append) { this.state = 'loading'; this.hasMore = false }
+      this.loadingMore = append
       this.loadError = ''
-      teacherApi.getGraduationDefenseScorePending()
+      return graduationTeacherPagingApi.defenseScores(targetPage)
         .then((d) => {
           if (token !== this.loadToken) return
-          this.list = Array.isArray(d) ? d : []
+          const rows = Array.isArray(d) ? d : []
+          this.list = append ? [...(this.list || []), ...rows] : rows
+          this.page = rows._pageMeta?.page ?? targetPage
+          this.total = rows._pageMeta?.total ?? this.list.length
+          this.hasMore = !!rows._pageMeta?.hasMore
           this.state = 'ready'
+          return true
         })
         .catch((e) => {
           if (token !== this.loadToken) return
-          this.list = null
           this.loadError = errorText(e)
-          this.state = 'error'
+          if (!append) { this.list = null; this.state = normalizeError(e).pageState || 'error' }
+          else toast(this.loadError)
+          return false
         })
-        .finally(() => { if (done) done() })
+        .finally(() => { if (token === this.loadToken) this.loadingMore = false; if (done) done() })
+    },
+    loadMore() {
+      if (!this.hasMore || this.loadingMore || this.acting || this.state !== 'ready') return
+      return this.load(null, true)
     },
     toggle(d) {
       if (d.myStatus === 'CONFIRMED') { toast('已确认成绩，不可再修改'); return }
@@ -106,11 +132,12 @@ export default {
           absent: !!d.myAbsent,
           absentReason: d.myAbsentReason || ''
         }
-        this.$set ? this.$set(this.drafts, d.gdStudentId, draft) : (this.drafts[d.gdStudentId] = draft)
+        this.drafts[d.gdStudentId] = draft
       }
     },
     submit(d) {
       if (this.acting) return
+      const token = this.loadToken
       const draft = this.drafts[d.gdStudentId] || {}
       const body = { comment: (draft.comment || '').trim(), absent: !!draft.absent }
       if (draft.absent) {
@@ -118,7 +145,7 @@ export default {
         body.absentReason = draft.absentReason.trim()
       } else {
         const v = draft.score
-        if (v === '' || v === null || v === undefined || Number(v) < 0 || Number(v) > 100) {
+        if (v === null || v === undefined || !String(v).trim() || !Number.isFinite(Number(v)) || Number(v) < 0 || Number(v) > 100) {
           toast('评分必须是 0-100 的数字'); return
         }
         body.score = Number(v)
@@ -126,12 +153,29 @@ export default {
       this.acting = true
       teacherApi.submitGraduationDefenseScore(d.gdStudentId, body)
         .then(() => {
-          toast('已保存')
+          if (token !== this.loadToken) return
           this.expanded = null
           delete this.drafts[d.gdStudentId]
-          this.load()
+          const readToken = this.loadToken + 1
+          return this.load().then((readBack) => {
+            if (readToken !== this.loadToken) return
+            if (!readBack) {
+              this.actionReceipt = { title: `${d.studentName || '当前学生'}的答辩评分已保存`, result: '最新队列读取失败', next: '请刷新确认结果后继续办理。' }
+              return
+            }
+            const saved = (this.list || []).find((item) => String(item.gdStudentId) === String(d.gdStudentId))
+            const next = (this.list || []).find((item) => item.myStatus === 'PENDING' && String(item.gdStudentId) !== String(d.gdStudentId))
+            this.actionReceipt = {
+              title: `${d.studentName || '当前学生'}的答辩评分已保存`,
+              result: saved ? `服务器最新状态：${saved.myStatusLabel}` : '评分已保存，已刷新当前队列。',
+              next: next ? `下一位待评分学生：${next.studentName}` : this.hasMore ? '后续还有答辩学生，请加载更多继续办理。' : '当前已加载队列没有待评分学生。',
+              nextId: next?.gdStudentId || '', nextName: next?.studentName || ''
+            }
+            toast('评分已保存，服务器状态已回读')
+          })
         })
         .catch((e) => {
+          if (token !== this.loadToken) return
           const code = String(e?.code || '')
           if (code.startsWith('409') || code === 'DATA_CONFLICT') {
             toast(e?.message || '当前状态不可修改，正在刷新')
@@ -143,6 +187,13 @@ export default {
           }
         })
         .finally(() => { this.acting = false })
+    },
+    continueNext() {
+      const id = this.actionReceipt?.nextId
+      const next = (this.list || []).find((item) => String(item.gdStudentId) === String(id))
+      if (!next) { this.actionReceipt = null; return }
+      this.actionReceipt = null
+      this.toggle(next)
     }
   }
 }
@@ -159,4 +210,5 @@ export default {
 .ds__textarea { min-height: 56px; font-size: var(--font-size-base); color: var(--text-primary); line-height: 1.6; background: var(--gray-50); border-radius: var(--radius-md); padding: var(--space-2); }
 .ds__textarea--sm { min-height: 44px; }
 .ds__ph { color: var(--text-tertiary); }
+.ds__receipt{display:flex;flex-direction:column;gap:4px;margin-top:var(--space-2);background:var(--success-50,#f0fdf4);border:1px solid var(--success-200,#bbf7d0);border-radius:var(--radius-lg);padding:var(--space-3)}.ds__receipt-title{font-weight:var(--font-weight-semibold);color:var(--success-700,#15803d)}.ds__receipt-line{font-size:var(--font-size-sm);color:var(--text-primary)}.ds__receipt-next{font-size:var(--font-size-xs);color:var(--text-tertiary)}.ds__receipt .btn{margin-top:var(--space-2)}
 </style>

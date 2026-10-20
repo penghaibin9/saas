@@ -55,7 +55,7 @@ SERVICE_ENTRIES: tuple[dict[str, Any], ...] = (
      "stages": ("ENROLLED", "GRADUATING")},
     {"key": "ORIENTATION", "label": "迎新报到", "icon": "迎", "path": "/pages/student/orientation/index",
      "stages": ("ADMITTED", "PRE_STUDENT_VERIFIED", "REGISTERED_PENDING_ENROLLMENT")},
-    {"key": "INTERNSHIP", "label": "岗位实习", "icon": "习", "path": "/pages/student/internship/index",
+    {"key": "INTERNSHIP", "label": "岗位实习", "icon": "习", "path": "/pages/student-internship/index",
      "stages": ("INTERN", "GRADUATING")},
     {"key": "GRADUATION", "label": "毕业设计", "icon": "毕", "path": "/pages/student/graduation/index",
      "stages": ("GRADUATING", "INTERN")},

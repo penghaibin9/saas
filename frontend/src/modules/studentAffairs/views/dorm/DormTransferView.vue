@@ -1,9 +1,6 @@
 <template>
   <AppPageShell
     title="调宿与退宿"
-    subtitle="调宿走「辅导员 → 宿管」两级审批；审批人必须核对原床、目标床、学生和事由。"
-    role-name="辅导员 / 宿管 / 学工处"
-    data-scope-name="宿管限负责楼栋"
     watermark-purpose="宿舍调宿审批"
   >
     <template #actions>
@@ -15,38 +12,16 @@
       >发起调宿</AppPermissionButton>
     </template>
 
+    <nav v-if="!recordId" class="dr-tabs" aria-label="住宿办理工作区">
+      <button v-for="tab in workspaceTabs" :key="tab.key" type="button" :aria-current="activeTab === tab.key ? 'page' : undefined" :class="{ active: activeTab === tab.key }" @click="switchTab(tab.key)">{{ tab.label }}</button>
+    </nav>
+    <div v-if="recordId" class="sa-student-filter"><span>{{ activeTab === 'checkout' ? '退宿单' : '调宿申请' }} #{{ recordId }}</span><button type="button" class="mp-link" @click="clearRecordFocus">返回{{ activeTab === 'checkout' ? '退宿' : '调宿' }}队列</button></div>
+    <div v-if="studentFilterLabel" class="sa-student-filter"><span>{{ studentFilterLabel }}</span><button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button></div>
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载调宿申请..." @retry="load" @back="$router.push('/admin/student-affairs/dashboard')">
-      <div class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">调宿审批工作区</span>
-          <h3 class="sa-summary-strip__title">先核对“原床 → 目标床”和申请事由，再处理当前审批节点</h3>
-          <p class="sa-summary-strip__text">审批完成前学生原床保持不变。辅导员审核学生情况，宿管审核目标楼栋与床位。</p>
-        </div>
-        <div class="sa-summary-strip__actions">
-          <AppPermissionButton
-            :allowed="canBtn('studentAffairs.dorm.transfer.create')"
-            code="studentAffairs.dorm.transfer.create"
-            variant="secondary"
-            :loading="actioning"
-            @click="openTransfer"
-          >发起调宿</AppPermissionButton>
-        </div>
-      </div>
 
-      <div class="sa-workflow-strip" aria-label="调宿审批流程">
-        <div class="sa-workflow-step" data-step="1">选择学生、目标空床并填写真实事由</div>
-        <div class="sa-workflow-step" data-step="2">辅导员核对学生情况和调宿必要性</div>
-        <div class="sa-workflow-step" data-step="3">宿管核对楼栋、房间和床位可用性</div>
-        <div class="sa-workflow-step" data-step="4">终审通过后执行床位切换</div>
-      </div>
 
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-      </div>
 
-      <AppSectionCard title="调宿申请">
-        <p class="dr-section-hint">操作前请确认学生、原床、目标床、申请事由和当前节点。床位信息不完整时页面会禁止通过。</p>
-        <div v-if="studentFilterLabel" class="sa-student-filter"><span>{{ studentFilterLabel }}</span><button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button></div>
+      <section v-if="activeTab === 'transfer'" class="dr-workspace">
         <AppInlineAlert v-if="items.some((x) => isPending(x.status) && (!x.fromBedLabel || !x.toBedLabel))" type="warning" description="部分待审批记录缺少可读床位信息，已禁止通过。请刷新或联系宿舍管理员核对房源数据。" />
 
         <DataTable v-if="items.length || pagination.total > 0" :columns="transferColumns" :rows="items" row-key="transferId" :pagination="pagination" @page-change="onPageChange">
@@ -66,7 +41,31 @@
           </template>
         </DataTable>
         <p v-else class="sa-empty">当前范围暂无调宿申请。需要办理时，可从页面右上角发起调宿。</p>
-      </AppSectionCard>
+      </section>
+
+      <section v-if="activeTab === 'checkout'" class="dr-workspace">
+        <p class="dr-section-hint">确认退宿后释放床位；有未完成调宿或住宿记录冲突的，请先处理。</p>
+        <DataTable v-if="checkoutItems.length" :columns="checkoutColumns" :rows="checkoutItems" row-key="requestId" :pagination="checkoutPagination" @page-change="onCheckoutPageChange">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.studentName || ('学生#' + row.studentId) }}</span><div class="mp-cell-sub">{{ row.studentNo }}</div></template>
+          <template #cell-bed="{ row }">{{ row.bedLabel || ('床位#' + row.bedId) }}</template>
+          <template #cell-type="{ row }">{{ checkoutTypeLabel(row.requestType) }}</template>
+          <template #cell-blockers="{ row }"><span :class="row.blockers?.length ? 'dr-blocked' : 'sa-muted'">{{ row.blockers?.length ? row.blockers.map((x) => x.message).join('；') : '无阻断' }}</span></template>
+          <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'BLOCKED' ? 'danger' : 'warning'" :label="checkoutStatusLabel(row.status)" /></template>
+          <template #cell-actions="{ row }"><AppPermissionButton :allowed="canBtn('studentAffairs.dorm.allocation.manage')" code="studentAffairs.dorm.allocation.manage" size="sm" :loading="actioning" :disabled="!row.allowedActions?.includes('CONFIRM')" @click="confirmCheckout(row)">核对并确认</AppPermissionButton></template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围暂无待确认退宿单。</p>
+      </section>
+
+      <section v-if="activeTab === 'history'" class="dr-workspace">
+        <DataTable v-if="stayItems.length" :columns="stayColumns" :rows="stayItems" row-key="stayId" :pagination="stayPagination" @page-change="onStayPageChange">
+          <template #cell-student="{ row }"><span class="mp-cell-main">{{ row.studentName || ('学生#' + row.studentId) }}</span><div class="mp-cell-sub">{{ row.studentNo }}</div></template>
+          <template #cell-bed="{ row }">{{ row.bedLabel || ('床位#' + row.bedId) }}</template>
+          <template #cell-period="{ row }">{{ row.checkinAt || '未记录' }} → {{ row.checkoutAt || '当前' }}</template>
+          <template #cell-source="{ row }">{{ staySourceLabel(row) }}</template>
+          <template #cell-status="{ row }"><AppStatusTag :type="row.status === 'ACTIVE' ? 'success' : 'info'" :label="stayStatusLabel(row.status)" /></template>
+        </DataTable>
+        <p v-else class="sa-empty">当前范围暂无住宿历史。</p>
+      </section>
     </AppGlobalState>
 
     <AppDrawer :visible="dlg.visible" title="发起调宿" mode="modal" size="large" @close="closeTransfer">
@@ -95,6 +94,23 @@
       @confirm="submitApprove"
     />
     <AppConfirmDialog
+      v-model:visible="transferSubmitDlg.visible"
+      title="确认发起调宿"
+      :message="transferSubmitDlg.message"
+      confirm-text="确认提交审批"
+      :submitting="actioning"
+      @confirm="submitTransfer"
+    />
+    <AppConfirmDialog
+      v-model:visible="checkoutConfirmDlg.visible"
+      title="确认办理退宿"
+      type="warning"
+      :message="checkoutConfirmDlg.message"
+      confirm-text="确认退宿并释放床位"
+      :submitting="actioning"
+      @confirm="submitConfirmCheckout"
+    />
+    <AppConfirmDialog
       v-model:visible="rejDlg.visible"
       title="驳回调宿申请"
       type="danger"
@@ -102,7 +118,7 @@
       require-reason
       :reason-min-length="5"
       reason-label="驳回原因（5-300字）"
-      phrase-scene-key="sa.dorm.reject"
+      reason-placeholder="请说明本次调宿未通过的具体原因，原床位保持不变"
       :submitting="actioning"
       @confirm="submitReject"
     />
@@ -111,8 +127,8 @@
 
 <script>
 import {
-  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
-  AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker,
+  AppConfirmDialog, AppFormItem, AppGlobalState, AppInlineAlert,
+  AppPageShell, AppPermissionButton, AppStatusTag, AppStudentPicker,
   AppDormBuildingPicker, AppDormRoomPicker, AppDormBedPicker, AppTextarea
 } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
@@ -130,29 +146,46 @@ const TRANSFER_COLUMNS = [
   { key: 'status', title: '状态' },
   { key: 'actions', title: '操作', align: 'right', width: '210px' }
 ]
+const CHECKOUT_COLUMNS = [
+  { key: 'student', title: '学生' }, { key: 'bed', title: '当前床位' },
+  { key: 'type', title: '退宿类型' }, { key: 'blockers', title: '阻断事项' },
+  { key: 'status', title: '状态' }, { key: 'actions', title: '操作', align: 'right', width: '130px' }
+]
+const STAY_COLUMNS = [
+  { key: 'student', title: '学生' }, { key: 'bed', title: '楼 / 房 / 床' },
+  { key: 'period', title: '入住 → 退宿' }, { key: 'source', title: '历史来源' },
+  { key: 'status', title: '状态' }
+]
 
 export default {
   name: 'DormTransferView',
   props: { ctx: { type: Object, default: null } },
   components: {
-    AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert, AppMetricCard,
-    AppPageShell, AppPermissionButton, AppSectionCard, AppStatusTag, AppStudentPicker,
+    AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppGlobalState, AppInlineAlert,
+    AppPageShell, AppPermissionButton, AppStatusTag, AppStudentPicker,
     AppDormBuildingPicker, AppDormRoomPicker, AppDormBedPicker, AppTextarea, DataTable
   },
   data() {
     return {
-      transferColumns: TRANSFER_COLUMNS,
+      transferColumns: TRANSFER_COLUMNS, checkoutColumns: CHECKOUT_COLUMNS, stayColumns: STAY_COLUMNS,
       loading: true, actioning: false, errorMessage: '', items: [], statusCounts: null,
+      checkoutItems: [], stayItems: [], stayTotal: 0, loadSerial: 0, activeTab: 'transfer',
+      workspaceTabs: [{ key: 'transfer', label: '调宿申请' }, { key: 'checkout', label: '退宿待确认' }, { key: 'history', label: '住宿历史' }],
+      checkoutPagination: { page: 1, pageSize: 20, total: 0 },
+      stayPagination: { page: 1, pageSize: 20, total: 0 },
       pagination: { page: 1, pageSize: 20, total: 0 },
       buildings: [], rooms: [], beds: [],
       studentFilter: { studentId: '', studentNo: '', studentName: '' }, statusMatch: null,
       routeIntentConsumed: false,
       dlg: { visible: false, studentId: '', buildingId: '', roomId: '', toBedId: '', reason: '', error: '' },
       approveDlg: { visible: false, transferId: '', version: null, message: '' },
+      transferSubmitDlg: { visible: false, message: '' },
+      checkoutConfirmDlg: { visible: false, requestId: '', version: null, message: '' },
       rejDlg: { visible: false, transferId: '', version: null }
     }
   },
   computed: {
+    recordId() { return String(this.$route?.query?.recordId || '') },
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     studentFilterLabel() {
       const f = this.studentFilter || {}
@@ -177,8 +210,8 @@ export default {
       return [
         { key: 'p', label: '待审批', value: pending, accent: 'warning' },
         { key: 'e', label: '已执行', value: s === null ? '—' : Number(s.EXECUTED || 0), accent: 'primary' },
-        { key: 'r', label: '已驳回', value: s === null ? '—' : Number(s.REJECTED || 0), accent: 'info' },
-        { key: 't', label: '合计', value: s === null ? '—' : Number(s.ALL || Object.values(s).reduce((a, b) => a + Number(b || 0), 0)), accent: 'info' }
+        { key: 'r', label: '已驳回', value: s === null ? '—' : Number(s.REJECTED || 0), accent: 'risk' },
+        { key: 't', label: '合计', value: s === null ? '—' : Number(s.ALL || Object.values(s).reduce((a, b) => a + Number(b || 0), 0)), accent: 'primary' }
       ]
     },
     buildingOptions() { return this.buildings.map((b) => ({ value: String(b.buildingId), label: b.buildingName || `楼栋 #${b.buildingId}` })) },
@@ -202,7 +235,7 @@ export default {
     }
   },
   mounted() { this.applyRouteFilters(); this.load(); this.loadBuildings(); this.consumeRouteIntent() },
-  watch: { '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.load() } },
+  watch: { '$route.query'() { this.applyRouteFilters(); this.pagination.page = 1; this.checkoutPagination.page = 1; this.stayPagination.page = 1; this.load() } },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
     consumeRouteIntent() {
@@ -218,28 +251,66 @@ export default {
       return [row[`${prefix}BuildingName`], row[`${prefix}RoomNo`] && `${row[`${prefix}RoomNo`]}室`, row[`${prefix}BedNo`] && `${row[`${prefix}BedNo`]}床`].filter(Boolean).join(' / ') || (row[`${prefix}BedId`] ? `床位 #${row[`${prefix}BedId`]}` : '未记录')
     },
     applyRouteFilters() {
-      const q = this.$route.query || {}; this.studentFilter = readStudentFilter(q)
+      const q = this.$route.query || {}; this.activeTab = ['checkout', 'history'].includes(q.tab) ? q.tab : 'transfer'; this.studentFilter = readStudentFilter(q)
+      if (this.recordId) { this.activeTab = q.tab === 'checkout' ? 'checkout' : 'transfer'; this.statusMatch = null; return }
       if (!q.status) { this.statusMatch = null; return }
       this.statusMatch = resolveTodoStatus('dormTransfer', q.status).matchStatuses
     },
+    clearRecordFocus() { const query = { ...this.$route.query }; delete query.recordId; this.$router.replace({ query }).catch(() => {}) },
     clearStudentFilter() {
       this.studentFilter = { studentId: '', studentNo: '', studentName: '' }
       const q = { ...this.$route.query }; delete q.studentId; delete q.studentNo; delete q.studentName
       this.$router.replace({ query: q }).catch(() => {})
     },
+    switchTab(tab) { this.$router.replace({ query: { ...this.$route.query, tab } }).catch(() => {}) },
     async load() {
+      const serial = ++this.loadSerial
       this.loading = true; this.errorMessage = ''
       try {
-        const sid = this.studentFilter && this.studentFilter.studentId
-        const res = await studentAffairsApi.listDormTransfers({ page: this.pagination.page, pageSize: this.pagination.pageSize, studentId: sid || undefined, status: this.serverStatus })
-        let rows = res.data.items || []
-        if (this.statusMatch && this.statusMatch.length && !this.serverStatus) rows = rows.filter((x) => this.statusMatch.includes(x.status) || (this.statusMatch.includes('PENDING') && this.isPending(x.status)))
-        this.items = rows
-        this.pagination.total = res.data.total != null ? res.data.total : rows.length
-        this.statusCounts = res.data.statusCounts || null
-      } catch (e) { this.errorMessage = e.message || '调宿加载失败' } finally { this.loading = false }
+        if (this.recordId && !/^[1-9]\d*$/.test(this.recordId)) throw new Error('调宿申请编号无效，请从待办重新进入')
+        const sid = this.studentFilter?.studentId || undefined
+        if (this.activeTab === 'checkout') {
+          const query = { page: this.recordId ? 1 : this.checkoutPagination.page, pageSize: this.checkoutPagination.pageSize,
+            ...(this.recordId ? { recordId: this.recordId } : { studentId: sid, status: 'PENDING' }) }
+          const res = await studentAffairsApi.listDormCheckouts(query)
+          if (serial !== this.loadSerial) return
+          this.checkoutItems = res.data.items || []; this.checkoutPagination.total = Number(res.data.total || 0)
+          if (this.recordId && !this.checkoutItems.length) throw new Error('该退宿单不存在或不在当前权限范围内')
+        } else if (this.activeTab === 'history') {
+          const res = await studentAffairsApi.listDormStays({ page: this.stayPagination.page, pageSize: this.stayPagination.pageSize, studentId: sid })
+          if (serial !== this.loadSerial) return
+          this.stayItems = res.data.items || []; this.stayTotal = Number(res.data.total || 0); this.stayPagination.total = this.stayTotal
+        } else {
+          const query = { page: this.recordId ? 1 : this.pagination.page, pageSize: this.pagination.pageSize,
+            ...(this.recordId ? { recordId: this.recordId } : { studentId: sid, status: this.serverStatus }) }
+          const res = await studentAffairsApi.listDormTransfers(query)
+          if (serial !== this.loadSerial) return
+          let rows = res.data.items || []
+          if (!this.recordId && this.statusMatch?.length && !this.serverStatus) rows = rows.filter(x => this.statusMatch.includes(x.status) || (this.statusMatch.includes('PENDING') && this.isPending(x.status)))
+          if (this.recordId && !rows.length) throw new Error('该调宿申请不存在或不在当前权限范围内')
+          this.items = rows; this.pagination.total = res.data.total ?? rows.length; this.statusCounts = res.data.statusCounts || null
+        }
+      } catch (e) { if (serial === this.loadSerial) this.errorMessage = e.message || '住宿记录加载失败' } finally { if (serial === this.loadSerial) this.loading = false }
     },
+    onCheckoutPageChange(page) { this.checkoutPagination.page = page; this.load() },
+    onStayPageChange(page) { this.stayPagination.page = page; this.load() },
     onPageChange(page) { this.pagination.page = page; this.load() },
+    stayStatusLabel(value) { return ({ RESERVED: '已预留', ACTIVE: '当前在住', ENDED: '已结束', CANCELLED: '已取消' })[value] || '待核查' },
+    staySourceLabel(row) { return ({ TRANSFER: '调宿入住', ALLOCATION: '分配入住', MANUAL: '人工办理', ORIENTATION: '迎新分配', CHECKIN: '入住办理', MIGRATION: '历史迁入' })[row.sourceType] || ({ TRANSFER: '调宿入住', CURRENT_OCCUPANCY: '入住办理', RESERVED: '床位预留' })[row.stayType] || '住宿办理' },
+    checkoutTypeLabel(value) { return ({ GRADUATION: '毕业', LEAVE_OF_ABSENCE: '休学', WITHDRAWAL: '退学', DAY_STUDENT: '转走读', SPECIAL: '特殊退宿' }[value] || (value ? '待确认' : '—')) },
+    checkoutStatusLabel(value) { return ({ PENDING_CONFIRMATION: '待宿管确认', BLOCKED: '存在阻断', CONFIRMED: '已退宿', CANCELLED: '已取消' }[value] || (value ? '待确认' : '—')) },
+    confirmCheckout(row) {
+      if (!row.allowedActions?.includes('CONFIRM')) return
+      this.checkoutConfirmDlg = {
+        visible: true, requestId: row.requestId, version: row.version,
+        message: `${row.studentName || '该学生'}\n${row.bedLabel}\n\n确认后将关闭当前住宿历史并立即释放床位。`
+      }
+    },
+    async submitConfirmCheckout() {
+      const d = this.checkoutConfirmDlg
+      const ok = await this.runAction(() => studentAffairsApi.confirmDormCheckout(d.requestId, d.version))
+      if (ok) d.visible = false
+    },
     async loadBuildings() { try { this.buildings = (await studentAffairsApi.listAllDormBuildings()).data.items || [] } catch { this.buildings = [] } },
     /**
      * 从学生画像跳进来时 URL 已带 studentId，列表也按它筛过；
@@ -270,10 +341,16 @@ export default {
       if (!d.studentId) { d.error = '请选择调宿学生'; return }
       if (!d.toBedId) { d.error = '请选择目标空床'; return }
       if (reason.length < 5 || reason.length > 300) { d.error = '调宿事由需5-300字'; return }
-      if (!window.confirm(`确认发起调宿？\n目标：${this.selectedTargetLabel}\n\n提交后进入辅导员、宿管两级审批。`)) return
       d.error = ''
+      this.transferSubmitDlg = {
+        visible: true,
+        message: `目标：${this.selectedTargetLabel}\n事由：${reason}\n\n提交后进入辅导员、宿管两级审批。`
+      }
+    },
+    async submitTransfer() {
+      const d = this.dlg; const reason = (d.reason || '').trim()
       const ok = await this.runAction(() => studentAffairsApi.submitDormTransfer({ studentId: d.studentId, toBedId: d.toBedId, reason }))
-      if (ok) d.visible = false; else d.error = this.errorMessage
+      if (ok) { d.visible = false; this.transferSubmitDlg.visible = false } else d.error = this.errorMessage
     },
     openApprove(row) {
       if (!this.canAction(row, 'APPROVE') || !row.fromBedLabel || !row.toBedLabel || !this.hasVersion(row)) return
@@ -298,14 +375,16 @@ export default {
       finally { this.actioning = false }
     },
     isPending(s) { return PENDING_STATUSES.includes(s) },
-    nodeLabel(n) { return ({ COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核' })[n] || (n || '—') },
-    statusLabel(s) { return ({ SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核', EXECUTED: '已执行', REJECTED: '已驳回', CANCELLED: '已取消' })[s] || s },
+    nodeLabel(n) { return this.statusLabel(n) },
+    statusLabel(s) { return ({ SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核', DORM_MANAGER_REVIEW: '宿管审核', DORM_REVIEW: '宿管审核', EXECUTED: '已执行', REJECTED: '已驳回', CANCELLED: '已取消' })[s] || (s ? '状态待确认' : '—') },
     statusKind(s) { if (s === 'EXECUTED') return 'success'; if (s === 'REJECTED') return 'danger'; if (this.isPending(s)) return 'warning'; return 'info' }
   }
 }
 </script>
 
 <style scoped>
+.dr-tabs{display:flex;gap:24px;border-bottom:1px solid var(--color-border,#dbe4f2);margin-bottom:16px}.dr-tabs button{border:0;border-bottom:2px solid transparent;background:transparent;color:inherit;padding:12px 2px;cursor:pointer;font:inherit}.dr-tabs button.active{color:var(--color-primary,#295bbb);border-bottom-color:currentColor;font-weight:600}.dr-tabs button:focus-visible{outline:2px solid var(--color-primary,#295bbb);outline-offset:2px}.dr-workspace{min-width:0}
+
 .dr-section-hint,
 .dr-workspace-intro { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
 .sa-student-filter { display:flex;align-items:center;justify-content:space-between;gap:var(--space-2);margin-bottom:var(--space-3);padding:var(--space-2) var(--space-3);border-radius:var(--radius-md);background:var(--warning-50,#fffbeb);border:1px solid var(--warning-200,#fde68a);font-size:var(--font-size-sm);color:var(--text-primary) }
@@ -317,6 +396,7 @@ export default {
 .dr-form { display:flex;flex-direction:column;gap:var(--space-4) }
 .dr-hint,.char-count { margin:0;color:var(--text-tertiary);font-size:var(--font-size-sm) }
 .char-count { text-align:right;margin-top:-12px }
+.dr-blocked { color:var(--danger-600,#dc2626) }
 .target-preview { padding:10px 12px;border-radius:var(--radius-md);background:var(--primary-50,#eff6ff);border:1px solid var(--primary-100,#dbeafe) }
 .target-preview span,.target-preview strong { display:block }
 .target-preview span { color:var(--text-tertiary);font-size:12px }

@@ -34,7 +34,7 @@
     </section>
     <section v-if="company.website" class="enterprise-section">
       <h2>官方网站</h2>
-      <a :href="company.website" target="_blank" rel="noopener noreferrer">{{ company.website }}</a>
+      <a :href="company.website" rel="noopener noreferrer">{{ company.website }}</a>
     </section>
   </article>
 </template>

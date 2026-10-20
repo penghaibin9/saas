@@ -13,12 +13,12 @@ def test_w4_selection_console_is_teaching_task_first():
     assert ':remote-search="searchSelectionTasks"' in source
     assert '@change="onSelectionTaskChange"' in source
 
-    # /teaching-tasks does not accept termId.  The UI first resolves the
-    # current-term task batches, then intersects READY tasks by stable batchId;
-    # backend same-term validation remains the authority on write.
-    assert "academicAffairsApi.getTaskBatches({ termId" in source
-    assert "academicAffairsApi.listAllTasks({ status: 'READY'" in source
-    assert "allowedBatchIds.has(String(row.batchId))" in source
+    # The paged task endpoint now filters the active term on the server.
+    # Keep both the term and READY-state constraints, including stale-read guard.
+    assert "const termId = this.current?.termId" in source
+    assert "academicAffairsApi.listAllTasks({\n        termId," in source
+    assert "status: 'READY'" in source
+    assert "if (!this.isCurrent(context)) return []" in source
 
     assert "raw?.courseId" in source
     assert "raw?.courseCode" in source
@@ -30,4 +30,4 @@ def test_w4_selection_console_is_teaching_task_first():
     assert "teachingTaskId: this.courseForm.teachingTaskId," in source
     assert "courseId: this.courseForm.courseId," in source
     assert "teachingTaskId: this.courseForm.teachingTaskId || undefined" not in source
-    assert "请选择当前批次学期的 READY 教学任务" in source
+    assert "请选择当前批次学期的已就绪教学任务" in source

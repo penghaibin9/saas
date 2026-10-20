@@ -69,8 +69,9 @@ export const complianceApi = {
   },
   listInspections(companyId) { return call(() => request(`${B}/inspections/${companyId}`)) },
   createInspection(body) { return call(() => request(`${B}/inspections`, { method: 'POST', body })) },
-  submitInspection(id) {
-    return call(() => request(`${B}/inspections/${id}/submit`, { method: 'POST', body: {} }))
+  updateInspection(id, body) { return call(() => request(`${B}/inspections/${id}`, { method: 'PUT', body })) },
+  submitInspection(id, body = {}) {
+    return call(() => request(`${B}/inspections/${id}/submit`, { method: 'POST', body }))
   },
   reviewInspection(id, action, body = {}) {
     return call(() => request(`${B}/inspections/${id}/${action}`, { method: 'POST', body }))

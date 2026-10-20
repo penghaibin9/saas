@@ -1,0 +1,55 @@
+name: Host security baseline
+
+on:
+  pull_request:
+    paths:
+      - "scripts/check/check-host-security.py"
+      - "scripts/check/check-docker-port-exposure.py"
+      - "scripts/check/check-dockerd-launch-flags.py"
+      - "scripts/check/check-host-release-evidence.py"
+      - "deploy/host/**"
+      - "backend/tests/test_host_security_audit.py"
+      - "backend/tests/test_host_security_baseline.py"
+      - "backend/tests/test_docker_port_exposure.py"
+      - "backend/tests/test_docker_preflight_contract.py"
+      - "backend/tests/test_docker_runtime_isolation.py"
+      - "backend/tests/test_dockerd_launch_flags.py"
+      - "backend/tests/test_host_release_evidence.py"
+      - ".github/workflows/host-security-baseline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: host-security-baseline-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile read-only host auditors
+        run: |
+          python -m py_compile scripts/check/check-host-security.py
+          python -m py_compile scripts/check/check-docker-port-exposure.py
+          python -m py_compile scripts/check/check-dockerd-launch-flags.py
+          python -m py_compile scripts/check/check-host-release-evidence.py
+      - name: Validate Docker daemon template JSON
+        run: python -m json.tool deploy/host/docker-daemon.json.example >/dev/null
+      - name: Run host security policy and artifact contracts
+        run: |
+          python -m unittest discover -s backend/tests -p test_host_security_audit.py -v
+          python -m unittest discover -s backend/tests -p test_host_security_baseline.py -v
+          python -m unittest discover -s backend/tests -p test_docker_port_exposure.py -v
+          python -m unittest discover -s backend/tests -p test_docker_preflight_contract.py -v
+          python -m unittest discover -s backend/tests -p test_docker_runtime_isolation.py -v
+          python -m unittest discover -s backend/tests -p test_dockerd_launch_flags.py -v
+          python -m unittest discover -s backend/tests -p test_host_release_evidence.py -v

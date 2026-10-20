@@ -40,6 +40,7 @@ from app.modules.internship.services.internship_version import (
 from app.services.db_service import _as_id, _iso, _tid, session
 
 _INSTALLED = False
+_PREVIOUS_ARCHIVE_IN_SESSION = None
 
 
 def _locked_record(db, internship_id) -> InternshipRecord:
@@ -295,6 +296,10 @@ def _withdraw(user, score_id, reason="", expected_version=None) -> dict:
     if len(normalized_reason) < 5:
         raise AppException("VALIDATION_ERROR", "撤回原因必填且不少于 5 字")
     with session() as db:
+        from app.modules.internship.services.internship_audit_service import (
+            assert_high_risk_write_available,
+        )
+        assert_high_risk_write_available(db)
         record, score = _locked_score(db, score_id)
         _student_and_scope(db, record, user, "只能撤回本人数据范围内的成绩")
         archive = _locked_archive(db, record.id)
@@ -364,180 +369,83 @@ def _score_freeze(db, score) -> tuple[dict, str]:
     return payload, hashlib.sha256(canonical).hexdigest()
 
 
+def _archive_student_in_session(db, user, internship_id, force=False,
+                                expected_version=None, force_reason="",
+                                evidence_file_ids=None,
+                                record_expected_version=None) -> dict:
+    """在材料/Manifest 同一事务内强制冻结当前 PUBLISHED 正式成绩。"""
+    from app.modules.internship.services.internship_audit_service import (
+        assert_high_risk_write_available,
+    )
+
+    assert_high_risk_write_available(db)
+    scope, in_scope = _archive._scope_ctx(user)
+    record = _locked_record(db, internship_id)
+    student = db.scalar(select(StudentProfile).where(
+        StudentProfile.id == record.student_id,
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+    ))
+    if not in_scope(scope, db, record, student):
+        raise no_permission("只能归档本人数据范围内的学生")
+    score = _locked_score_for_record(db, record.id)
+    if score.status != "PUBLISHED":
+        raise AppException(
+            "DATA_CONFLICT",
+            "实习总档案只能冻结当前已发布（PUBLISHED）的正式成绩",
+            details={"scoreId": str(score.id), "scoreStatus": score.status},
+        )
+    result = _PREVIOUS_ARCHIVE_IN_SESSION(
+        db, user, internship_id, force=force,
+        expected_version=expected_version, force_reason=force_reason,
+        evidence_file_ids=evidence_file_ids,
+        record_expected_version=record_expected_version,
+    )
+    archive = _locked_archive(db, record.id)
+    if not archive or archive.status != "ARCHIVED":
+        raise AppException("DATA_CONFLICT", "业务归档未形成，禁止冻结正式成绩")
+    score_snapshot, score_hash = _score_freeze(db, score)
+    snapshot = dict(archive.material_snapshot or {})
+    snapshot["finalScoreFreeze"] = score_snapshot
+    snapshot["finalScoreFreezeHash"] = score_hash
+    archive.material_snapshot = snapshot
+    archive.snapshot_version = int(archive.snapshot_version or 0) + 1
+    _archive._trail(db, record.id, "FINAL_SCORE_FROZEN", {
+        "finalScoreId": str(score.id),
+        "finalScoreVersion": int(score.version or 0),
+        "finalScoreFreezeHash": score_hash,
+    }, operator=_archive._op_name(user))
+    result.update({
+        "finalScoreId": str(score.id),
+        "finalScoreVersion": int(score.version or 0),
+        "finalScoreFreezeHash": score_hash,
+    })
+    return result
+
+
 def _archive_student(user, internship_id, force=False, expected_version=None,
                      force_reason="", evidence_file_ids=None,
                      record_expected_version=None) -> dict:
-    scope, in_scope = _archive._scope_ctx(user)
-    if force:
-        from app.core.permissions import enforce_permission, is_super_admin
-
-        enforce_permission(user or {}, "internship.archive.force")
-        role = str((user or {}).get("currentRoleCode") or
-                   (user or {}).get("userType") or "").upper()
-        if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
-            raise no_permission("仅学校管理员可执行强制归档")
-        if len(re.findall(r"[\u4e00-\u9fff]", (force_reason or "").strip())) < 10:
-            raise AppException("VALIDATION_ERROR", "强制归档原因必填且不少于10个汉字")
-        if not evidence_file_ids:
-            raise AppException("VALIDATION_ERROR", "强制归档必须提供依据文件")
-
     with session() as db:
-        record = _locked_record(db, internship_id)
-        student = db.scalar(select(StudentProfile).where(
-            StudentProfile.id == record.student_id,
-            StudentProfile.tenant_id == _tid(),
-            StudentProfile.is_deleted.is_(False),
-        ))
-        if not in_scope(scope, db, record, student):
-            raise no_permission("只能归档本人数据范围内的学生")
-        score = _locked_score_for_record(db, record.id)
-        archive = _locked_archive(db, record.id)
-        if score.status != "PUBLISHED":
-            raise AppException(
-                "DATA_CONFLICT",
-                "实习总档案只能冻结当前已发布（PUBLISHED）的正式成绩",
-                details={
-                    "scoreId": str(score.id),
-                    "scoreStatus": score.status,
-                },
-            )
-
-        materials = _archive._materials(db, record.id)
-        evaluation = evaluate_internship_compliance(
-            record.id, "ARCHIVE", user=user, db=db,
+        result = _archive_student_in_session(
+            db, user, internship_id, force=force,
+            expected_version=expected_version, force_reason=force_reason,
+            evidence_file_ids=evidence_file_ids,
+            record_expected_version=record_expected_version,
         )
-        completeness = round(float(evaluation["completeness"]["ratio"]) * 100)
-        missing = [item["label"] for item in evaluation["blockers"]]
-        if not evaluation["passed"] and not force:
-            raise AppException(
-                "DATA_CONFLICT", "归档合规检查未通过",
-                details={
-                    "blockers": evaluation["blockers"],
-                    "ruleVersion": evaluation["ruleVersion"],
-                    "quantityFacts": evaluation.get("quantityFacts"),
-                },
-            )
-        bypassed = [{
-            "code": item["code"],
-            "label": item["label"],
-            "status": item["status"],
-            "reason": item["reason"],
-        } for item in evaluation["blockers"]]
-        force_meta = {
-            "force_bypassed_items": bypassed if force else None,
-            "force_rule_version": evaluation["ruleVersion"] if force else None,
-            "force_approved_role": str((user or {}).get("currentRoleCode") or "") if force else None,
-            "force_approved_by": _archive._op_name(user) if force else None,
-        }
-        previous_status = record.status
-        if archive is None:
-            new_record_version = versioned_update(
-                db, InternshipRecord,
-                entity_id=record.id, tenant_id=_tid(),
-                expected_version=extract_expected_version(
-                    {"expectedVersion": expected_version}),
-                expected_status=record.status,
-                values={"status": "ARCHIVED"},
-            )
-            archive = InternshipArchive(
-                tenant_id=_tid(), internship_id=record.id,
-                student_id=record.student_id, batch_id=record.batch_id,
-                previous_record_status=previous_status,
-                completeness=completeness,
-                missing_items="、".join(missing) or None,
-                status="ARCHIVED",
-                archived_by_name=_archive._op_name(user),
-                archived_at=datetime.utcnow(),
-                force_reason=(force_reason or "").strip() or None,
-                force_evidence_file_ids=evidence_file_ids or None,
-            )
-            for key, value in force_meta.items():
-                setattr(archive, key, value)
-            archive.version = int(archive.version or 0) + 1
-            db.add(archive)
-            db.flush()
-            archive_version = int(archive.version or 0)
-        else:
-            new_record_version = versioned_update(
-                db, InternshipRecord,
-                entity_id=record.id, tenant_id=_tid(),
-                expected_version=extract_expected_version(
-                    {"expectedVersion": record_expected_version}),
-                expected_status=record.status,
-                values={"status": "ARCHIVED"},
-            )
-            archive_version = versioned_update(
-                db, InternshipArchive,
-                entity_id=archive.id, tenant_id=_tid(),
-                expected_version=extract_expected_version(
-                    {"expectedVersion": expected_version}),
-                expected_status=archive.status,
-                values={
-                    "completeness": completeness,
-                    "missing_items": "、".join(missing) or None,
-                    "status": "ARCHIVED",
-                    "archived_by_name": _archive._op_name(user),
-                    "archived_at": datetime.utcnow(),
-                    "previous_record_status": previous_status,
-                    "force_reason": (force_reason or "").strip() or None,
-                    "force_evidence_file_ids": evidence_file_ids or None,
-                },
-            )
-            for key, value in force_meta.items():
-                setattr(archive, key, value)
-
-        db.flush()
-        from app.modules.internship.services.internship_evidence_package_service import (
-            capture_archive_snapshot,
-        )
-
-        score_snapshot, score_hash = _score_freeze(db, score)
-        snapshot = capture_archive_snapshot(db, record, evaluation, user)
-        snapshot["legacyMaterialFlags"] = materials
-        snapshot["missingItems"] = missing
-        snapshot["forced"] = bool(force)
-        snapshot["forceReason"] = (force_reason or "").strip() or None
-        snapshot["forceEvidenceFileIds"] = evidence_file_ids or []
-        snapshot["exemptedItems"] = [
-            item for item in evaluation["items"] if item["status"] == "EXEMPTED"
-        ]
-        snapshot["finalScoreFreeze"] = score_snapshot
-        snapshot["finalScoreFreezeHash"] = score_hash
-        archive.material_snapshot = snapshot
-        archive.snapshot_version = int(archive.snapshot_version or 0) + 1
-        _archive._trail(db, record.id, "ARCHIVE", {
-            "completeness": completeness,
-            "missing": missing,
-            "force": bool(force),
-            "ruleVersion": evaluation["ruleVersion"],
-            "blockers": bypassed,
-            "forceReason": (force_reason or "").strip(),
-            "evidenceFileIds": evidence_file_ids or [],
-            "finalScoreId": str(score.id),
-            "finalScoreVersion": int(score.version or 0),
-            "finalScoreFreezeHash": score_hash,
-        }, operator=_archive._op_name(user))
         db.commit()
-        return {
-            "id": str(record.id),
-            "completeness": completeness,
-            "missing": missing,
-            "archived": True,
-            "version": archive_version,
-            "recordVersion": new_record_version,
-            "finalScoreId": str(score.id),
-            "finalScoreVersion": int(score.version or 0),
-            "finalScoreFreezeHash": score_hash,
-        }
+        return result
 
 
 def install() -> None:
-    global _INSTALLED
+    global _INSTALLED, _PREVIOUS_ARCHIVE_IN_SESSION
     if _INSTALLED:
         return
     _score.compute = _compute
     _score.publish = _publish
     _score.withdraw = _withdraw
     _score.archive = _reject_independent_score_archive
+    _PREVIOUS_ARCHIVE_IN_SESSION = _archive.archive_student_in_session
+    _archive.archive_student_in_session = _archive_student_in_session
     _archive.archive_student = _archive_student
     _INSTALLED = True

@@ -49,6 +49,7 @@ _PERMISSION_CODES = (
     "studentAffairs.discipline.view",
     "studentAffairs.dorm.allocation.manage",
     "studentAffairs.dorm.check.view",
+    "studentAffairs.dorm.export",
     "studentAffairs.dorm.exception.handle",
     "studentAffairs.dorm.inspection.manage",
     "studentAffairs.dorm.resource.manage",
@@ -79,6 +80,9 @@ _PERMISSION_CODES = (
     "studentAffairs.mental.manage",
     "studentAffairs.org.manage",
     "studentAffairs.org.view",
+    "studentAffairs.orientation.export",
+    "studentAffairs.orientation.import",
+    "studentAffairs.orientation.manage",
     "studentAffairs.orientation.view",
     "studentAffairs.risk.assign",
     "studentAffairs.risk.close",
@@ -131,6 +135,30 @@ STUDENT_AFFAIRS_PERMISSION_CODES = frozenset(STUDENT_AFFAIRS_PERMISSION_BY_CODE)
 # 教师移动端因路径包含动态业务分支，无法只靠一个 Depends 表达的精确权限矩阵。
 # 路由安全门与审计脚本都从此处读取，禁止另建第二份权限集合。
 STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
+    "/api/v1/mobile/teacher/affairs/work-study/posts": (
+        "studentAffairs.funding.workstudy.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/work-study/records": (
+        "studentAffairs.funding.workstudy.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/work-study/records/{record_id}/action": (
+        "studentAffairs.funding.workstudy.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/work-study/records/{record_id}/monthly": (
+        "studentAffairs.funding.workstudy.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/loans": (
+        "studentAffairs.funding.loan.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/loans/{loan_id}/action": (
+        "studentAffairs.funding.loan.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/fee-reductions": (
+        "studentAffairs.funding.reduction.manage",
+    ),
+    "/api/v1/mobile/teacher/affairs/fee-reductions/{fee_id}/action": (
+        "studentAffairs.funding.reduction.manage",
+    ),
     "/api/v1/mobile/teacher/affairs/student-candidates": (
         "studentAffairs.talk.create",
         "studentAffairs.mental.manage",
@@ -138,6 +166,18 @@ STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
     ),
     "/api/v1/mobile/teacher/affairs/activities/ongoing": (
         "studentAffairs.activity.publish",
+    ),
+    "/api/v1/mobile/teacher/affairs/activities": (
+        "studentAffairs.activity.view",
+    ),
+    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/participants": (
+        "studentAffairs.activity.view",
+    ),
+    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/transition": (
+        "studentAffairs.activity.publish",
+    ),
+    "/api/v1/mobile/teacher/affairs/activities/{activity_id}/confirm": (
+        "studentAffairs.activity.confirm",
     ),
     "/api/v1/mobile/teacher/affairs/activities/{activity_id}/checkin-token": (
         "studentAffairs.activity.publish",
@@ -159,6 +199,12 @@ STUDENT_AFFAIRS_MOBILE_DIRECT_PERMISSIONS: dict[str, tuple[str, ...]] = {
         "studentAffairs.funding.publicity.manage",
         "studentAffairs.discipline.appeal.review",
         "studentAffairs.activity.confirm",
+    ),
+    "/api/v1/mobile/teacher/affairs/appeals/AID_OBJECTION/{objection_id}/detail": (
+        "studentAffairs.aid.approve",
+    ),
+    "/api/v1/mobile/teacher/affairs/appeals/FUNDING_APPEAL/{appeal_id}/detail": (
+        "studentAffairs.funding.publicity.manage",
     ),
     "/api/v1/mobile/teacher/affairs/appeals/repair/metrics": (
         "studentAffairs.aid.approve",

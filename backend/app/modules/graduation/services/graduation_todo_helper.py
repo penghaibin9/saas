@@ -1,11 +1,13 @@
 """毕设域 UnifiedTodo 写入（工作台 P5 / T7 GD_MENTOR）。
 
 幂等键对齐 uk_todo_dedup：tenant + source_module + source_biz_id + todo_type + assignee_id。
-受理人优先 mentor.teacher_no → User.login_name；无法解析则跳过（不写 assignee=0 池待办）。
+受理人优先 mentor.teacher_no → User.login_name；无法解析时绝不写 assignee=0 池待办。
 """
 from __future__ import annotations
 
 from sqlalchemy import select
+
+from app.core.exceptions import AppException
 
 from app.services.db_service import _tid
 
@@ -30,6 +32,22 @@ def resolve_mentor_assignee_id(db, stu) -> int:
         if row:
             return int(row.id)
     return 0
+
+
+def require_mentor_assignee_id(db, stu, *, action_label: str) -> int:
+    """Return the stable mentor account for a student-facing handoff or fail closed.
+
+    A submission which cannot reach a concrete teacher is not a successful submission:
+    accepting it would leave the student with a pending record and no actionable todo.
+    Callers use this before inserting the business record so the whole command rolls back.
+    """
+    assignee_id = resolve_mentor_assignee_id(db, stu)
+    if assignee_id > 0:
+        return assignee_id
+    raise AppException(
+        "ASSIGNEE_NOT_CONFIGURED",
+        f"未配置可接收{action_label}待办的指导教师账号，请联系毕设管理员核对导师账号绑定",
+    )
 
 
 def resolve_judge_assignee_id(db, score_row) -> int:
@@ -98,8 +116,8 @@ def todo_done(db, *, biz_id, todo_type: str) -> int:
     return n
 
 
-def push_proposal_todo(db, proposal, stu) -> bool:
-    aid = resolve_mentor_assignee_id(db, stu)
+def push_proposal_todo(db, proposal, stu, *, assignee_id: int | None = None) -> bool:
+    aid = int(assignee_id or 0) or resolve_mentor_assignee_id(db, stu)
     name = (getattr(stu, "name", None) or getattr(stu, "real_name", None) or "学生")
     return todo_upsert(
         db, biz_type="GD_PROPOSAL", biz_id=proposal.id, todo_type=TODO_PROPOSAL,

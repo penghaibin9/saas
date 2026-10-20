@@ -23,6 +23,8 @@ DEPRECATED_BASELINE = 29
 # 这些旧入口暂时没有 canonical 替代，不标 deprecated（标了等于让人无路可走）。
 # 每从这里挪走一条，都应当是因为它的 /context/* 版本真的建好了。
 KNOWN_WITHOUT_REPLACEMENT = {
+    # 当前小程序定位凭证正式入口；尚无 /context/* 替代，不能误标废弃。
+    "/checkin/preflight",
     "/checkin", "/checkin/week", "/enterprises", "/exceptions/{exception_id}/appeal",
     "/help", "/consents/{consent_id}", "/consents/{consent_id}/confirm",
     "/consents/{consent_id}/view", "/consents/{consent_id}/reject",

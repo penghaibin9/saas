@@ -80,10 +80,14 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     const { token } = await loginAcademicAdmin(page)
     const suffix = `${String(Date.now()).slice(-7)}-r${testInfo.retry}`
 
+    const term = await expectApiOk(await browserApi(page, token, 'GET', '/academic-affairs/terms/current'), 'read D-W0 formal current term')
+    expect(term?.termId, 'D-W0 requires an existing formal current term').toMatch(/^[1-9]\d*$/)
     const batch = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/graduation-audit-batches', {
+      termId: term.termId,
       batchName: `D-W0浏览器异常终审-${suffix}`,
       gradeYear: '2024'
     }), 'create D-W0 graduation batch')
+    expect(batch.termId).toBe(term.termId)
 
     await expectApiOk(await browserApi(
       page,
@@ -117,8 +121,11 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
       `/academic-affairs/graduation-results/${abnormal.resultId}/college-review`,
       { action: 'APPROVE', note: 'D-W0真实浏览器异常终审阻断验证' }
     )
-    expect(forbiddenCollegeReview.status, JSON.stringify(forbiddenCollegeReview.json)).toBe(409)
-    expect(String(forbiddenCollegeReview.json?.message || '')).toMatch(/正式毕业评估仍异常|必需证据不完整|治理阻断项|重新预审/)
+    expect(forbiddenCollegeReview.status, JSON.stringify(forbiddenCollegeReview.json)).toBe(403)
+    expect(String(forbiddenCollegeReview.json?.message || '')).toMatch(/本学院责任账号|学院初审|权限/)
+    // This legacy fixture supplies no verified college responsibility login; the school
+    // denial is not evidence of the college's separate abnormal-precheck conflict guard.
+    testInfo.annotations.push({ type: '未覆盖', description: '本规格未验证有效学院责任账号提交异常预审时的冲突拒绝；学校账号只验证不可代办学院初审。' })
 
     const unchanged = await expectApiOk(await browserApi(
       page,
@@ -142,7 +149,7 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto(`${config.staffBaseUrl}/admin/academic-affairs/graduation/audit-console?tab=results&batchId=${batch.batchId}`)
     await dismissPageGuide(page)
-    await expect(page.getByText('审核结果', { exact: true }).first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '审核结果', level: 1 })).toBeVisible()
     const abnormalIdentity = abnormal.realName || abnormal.studentId
     const abnormalRow = page.locator('tr').filter({ hasText: abnormalIdentity }).filter({ hasText: '系统异常' }).first()
     await expect(abnormalRow).toBeVisible({ timeout: 10000 })
@@ -151,7 +158,8 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     await expect(page.getByText('预审结果详情（十一项）', { exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '确认终审并写学籍' })).toHaveCount(0)
     await expect(page.getByRole('button', { name: '通过', exact: true })).toHaveCount(0)
-    await expect(page.getByRole('button', { name: /退回学院/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /退回学院/ })).toHaveCount(0)
+    await expect(page.getByText('当前由学生所属学院的有效责任账号办理初审；学院通过后，交由校教务处终审。', { exact: true })).toBeVisible()
 
     await captureViewport(page, testInfo, 'academic-d-w0-abnormal-final-blocked', 1280, 720)
     await captureViewport(page, testInfo, 'academic-d-w0-abnormal-final-blocked', 1440, 900)
@@ -166,17 +174,19 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     const unknownBatchName = `D-W1待治理正式归档-${suffix}`
     const notApplicableBatchName = `D-W1不适用正式归档-${suffix}`
 
+    const unknownYear = 2070 + testInfo.retry * 4
+    const notApplicableYear = unknownYear + 2
     const unknownTerm = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/terms', {
-      yearCode: `U${suffix}`,
+      yearCode: `${unknownYear}-${unknownYear + 1}`,
       termNo: 1,
       termName: unknownName
     }), 'create W1 missing-date term')
     const notApplicableTerm = await expectApiOk(await browserApi(page, token, 'POST', '/academic-affairs/terms', {
-      yearCode: `N${suffix}`,
+      yearCode: `${notApplicableYear}-${notApplicableYear + 1}`,
       termNo: 2,
       termName: notApplicableName,
-      startDate: '2098-02-01',
-      endDate: '2098-07-31'
+      startDate: `${notApplicableYear}-02-01`,
+      endDate: `${notApplicableYear}-07-31`
     }), 'create W1 no-business term')
 
     const unknownPrecheck = await expectApiOk(await browserApi(
@@ -255,7 +265,7 @@ test.describe.serial('Academic D W0/W1 Graduation + Archive production closure',
     const unknownCard = page.locator('.aapc-card').filter({ hasText: '毕业资格' }).first()
     await expect(unknownCard).toContainText('待治理')
     await expect(unknownCard).toContainText('GRADUATION_TERM_DATES_UNKNOWN')
-    await expect(page.getByText(/UNKNOWN 不会被当成 PASS/)).toBeVisible()
+    await expect(page.getByText(/“待治理”表示证据不足/)).toBeVisible()
 
     await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1280, 720, unknownCard)
     await captureViewport(page, testInfo, 'academic-d-w1-archive-unknown', 1440, 900, unknownCard)

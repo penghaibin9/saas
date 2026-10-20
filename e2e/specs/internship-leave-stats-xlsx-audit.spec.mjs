@@ -112,7 +112,7 @@ test.describe('岗位实习审计：请假真实 XLSX 导出与统计一致性',
     await new StaffLoginPage(page, config.staffBaseUrl).login(config.sandboxAdmin)
     const staff = new StaffInternshipLeavePage(page, config.staffBaseUrl, fixture)
     await page.goto(staff.url({ panel: 'all' }))
-    await expect(page.getByText('请假审批').first()).toBeVisible()
+    await expect(page.getByRole('heading', { name: '请假与返岗', exact: true })).toBeVisible()
     await staff.dismissGuideIfPresent()
 
     const responsePromise = page.waitForResponse((response) =>
@@ -148,15 +148,15 @@ test.describe('岗位实习审计：请假真实 XLSX 导出与统计一致性',
     const metric = (body.data?.metrics || []).find((item) => item.key === 'leaveComplyRate')
     expect(metric, '统计接口必须返回 leaveComplyRate').toBeTruthy()
 
-    const card = page.locator('.app-metric-card').filter({ hasText: '请假合规率' }).first()
+    const card = page.locator('.indicator-panel tbody tr').filter({ hasText: '请假合规率' })
     await expect(card).toBeVisible()
-    await expect(card.locator('.app-metric-card__trend')).toContainText(
-      `${metric.numerator}/${metric.denominator}`
+    await expect(card.locator('.basis-count')).toHaveText(
+      `${metric.numerator} / ${metric.denominator}`
     )
     if (metric.rate == null) {
-      await expect(card.locator('.app-metric-card__value')).toContainText('暂无数据')
+      await expect(card.locator('.rate-cell')).toContainText('暂无数据')
     } else {
-      await expect(card.locator('.app-metric-card__value')).toContainText(`${metric.rate}%`)
+      await expect(card.locator('.rate-cell')).toContainText(`${metric.rate}%`)
     }
 
     const output = execFileSync('python', ['../backend/scripts/e2e_verify_internship_leave_stats.py',
@@ -169,9 +169,13 @@ test.describe('岗位实习审计：请假真实 XLSX 导出与统计一致性',
     console.log(output.trim())
 
     await page.reload()
-    const refreshed = page.locator('.app-metric-card').filter({ hasText: '请假合规率' }).first()
-    await expect(refreshed.locator('.app-metric-card__trend')).toContainText(
-      `${metric.numerator}/${metric.denominator}`
+    const refreshed = page.locator('.indicator-panel tbody tr').filter({ hasText: '请假合规率' })
+    await expect(refreshed.locator('.basis-count')).toHaveText(
+      `${metric.numerator} / ${metric.denominator}`
     )
+    await refreshed.getByRole('button', { name: '查看请假合规率口径' }).click()
+    await expect(page.getByRole('heading', { name: '请假合规率', exact: true })).toBeVisible()
+    await page.reload()
+    await expect(page.getByRole('heading', { name: '请假合规率', exact: true })).toBeVisible()
   })
 })

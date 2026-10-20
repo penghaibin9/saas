@@ -1,39 +1,39 @@
 <template>
   <ModulePageShell
-    title="教务归档 · 语义预检"
-    subtitle="按业务完成状态判断能否归档；阻断域优先处理，通过域作为完成证据保留"
+    title="归档缺失提醒"
+    :subtitle="isCollegeScope ? '只核对本院实时缺项；学校正式封存由校教务统筹' : '十三域逐项核对；待治理与已阻断均不能封存，不适用项必须有正式依据'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
       <AppButton variant="ghost" :loading="loading" @click="load">重新检查</AppButton>
-      <AppButton variant="primary" @click="goBatch">进入归档批次</AppButton>
+      <AppButton variant="primary" @click="goBatch">{{ isCollegeScope ? '查看学校归档进度' : '进入归档批次' }}</AppButton>
     </template>
 
     <section class="aapc-hero" :class="overallResult === 'PASS' ? 'is-pass' : 'is-blocked'">
       <div class="aapc-hero__main">
-        <span class="aapc-eyebrow">{{ termCode || '当前学期' }} · 归档前置门禁</span>
-        <h2>{{ overallResult === 'PASS' ? '当前满足归档语义门禁' : '当前仍有业务阻断，暂不可归档' }}</h2>
+        <span class="aapc-eyebrow">{{ termCode || (termId ? '所选学期' : '当前学期') }} · {{ isCollegeScope ? '本院归档预检' : '归档前置门禁' }}</span>
+        <h2>{{ precheckTitle }}</h2>
         <p>{{ overallDescription }}</p>
 
         <div class="aapc-toolbar">
           <AppFormItem label="学期">
-            <AppTermEntityPicker v-model="termId" placeholder="默认当前学期" @change="load" />
+            <AppTermEntityPicker v-model="termId" placeholder="默认当前学期" />
           </AppFormItem>
         </div>
 
-        <div v-if="scopeNote" class="aapc-scope-note">{{ scopeNote }}</div>
+        <div v-if="scopeNote" class="aapc-scope-note">{{ flowText(scopeNote, '检查范围待核对') }}</div>
       </div>
 
       <aside class="aapc-decision">
         <span>当前结论</span>
-        <strong>{{ overallResult === 'PASS' ? '可以进入归档批次' : '必须先处理阻断 / 待治理项' }}</strong>
+        <strong>{{ precheckDecision }}</strong>
         <div class="aapc-next">
           <small>建议下一动作</small>
           <b>{{ nextActionText }}</b>
         </div>
         <AppButton
-          v-if="firstBlockingDomain"
+          v-if="firstBlockingDomain && !schoolCheckPending(firstBlockingDomain)"
           size="small"
           variant="ghost"
           @click="jump(firstBlockingDomain)"
@@ -59,12 +59,12 @@
         <article :class="{ 'is-risk': blockedDomains > 0 }">
           <span>阻断 / 待治理域</span>
           <strong>{{ blockedDomains }}</strong>
-          <small>{{ blockedDomains ? 'BLOCKED 与 UNKNOWN 均不得进入正式归档' : '当前无阻断或待治理域' }}</small>
+          <small>{{ blockedDomains ? '已阻断与待治理的数据均不得进入正式归档' : '当前无阻断或待治理域' }}</small>
         </article>
         <article :class="{ 'is-risk': blockingCount > 0 }">
           <span>阻断项</span>
           <strong>{{ blockingCount }}</strong>
-          <small>来自十三域当前语义检查</small>
+          <small>{{ isCollegeScope ? '来自本院当前语义检查' : '来自十三域当前语义检查' }}</small>
         </article>
       </section>
 
@@ -73,7 +73,7 @@
           <div>
             <span class="aapc-eyebrow">优先处理</span>
             <h3>归档阻断 / 待治理域</h3>
-            <p>BLOCKED 是已知业务阻断，UNKNOWN 是证据不足待治理；两者都不得绿色放行，处理后再重新检查。</p>
+            <p>“已阻断”表示存在明确业务阻断，“待治理”表示证据不足；两者都不能放行，处理后请重新检查。</p>
           </div>
           <span class="aapc-count is-danger">{{ blockedDomainRows.length }} 个阻断 / 待治理域</span>
         </header>
@@ -92,7 +92,7 @@
               <div class="danger"><b>{{ d.blockingCount || 0 }}</b><span>阻断项</span></div>
             </div>
 
-            <p class="aapc-card-note">{{ d.summary || d.note || '未返回检查摘要' }}</p>
+            <p class="aapc-card-note">{{ flowText(d.summary || d.note, '未返回检查摘要') }}</p>
 
             <details v-if="Array.isArray(d.evidence) && d.evidence.length" class="aapc-evidence">
               <summary>查看证据（{{ d.evidence.length }}）</summary>
@@ -101,13 +101,13 @@
               </ul>
             </details>
             <details v-if="d.ruleCode" class="aapc-evidence">
-              <summary>技术依据</summary>
+              <summary>实施人员使用：技术依据</summary>
               <code>{{ d.ruleCode }}</code>
             </details>
 
             <footer class="aapc-card-actions">
-              <span>修复后重新执行语义预检</span>
-              <AppButton size="small" variant="ghost" @click="jump(d)">去处理</AppButton>
+              <span>{{ schoolCheckPending(d) ? '等待校教务核验学校统筹项' : '修复后重新执行语义预检' }}</span>
+              <AppButton v-if="!schoolCheckPending(d)" size="small" variant="ghost" @click="jump(d)">去处理</AppButton>
             </footer>
           </article>
         </div>
@@ -118,7 +118,7 @@
           <div>
             <span class="aapc-eyebrow">非阻断证据</span>
             <h3>已满足门禁的业务域</h3>
-            <p>PASS 表示已证明完成；NOT_APPLICABLE 表示本学期明确不适用。两者均非阻断，但不得混成同一个“通过”。</p>
+            <p>“已通过”表示已有完成证据，“不适用”表示本学期明确无需检查。两者均非阻断，但会分别展示。</p>
           </div>
           <span class="aapc-count">{{ passedDomainRows.length }} 个非阻断域</span>
         </header>
@@ -137,7 +137,7 @@
               <div><b>{{ d.blockingCount || 0 }}</b><span>阻断项</span></div>
             </div>
 
-            <p class="aapc-card-note">{{ d.summary || d.note || '未返回检查摘要' }}</p>
+            <p class="aapc-card-note">{{ flowText(d.summary || d.note, '未返回检查摘要') }}</p>
 
             <details v-if="Array.isArray(d.evidence) && d.evidence.length" class="aapc-evidence">
               <summary>查看证据（{{ d.evidence.length }}）</summary>
@@ -146,7 +146,7 @@
               </ul>
             </details>
             <details v-if="d.ruleCode" class="aapc-evidence">
-              <summary>技术依据</summary>
+              <summary>实施人员使用：技术依据</summary>
               <code>{{ d.ruleCode }}</code>
             </details>
 
@@ -165,8 +165,14 @@
 import { ModulePageShell, LoadingState, ErrorState, EmptyState, StatusTag } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppTermEntityPicker, AppFormItem } from '@/components/common'
-import { academicAffairsApi, academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { safeBusinessMessage, safeEnumLabel } from '@/utils/presentationSafety'
+import { currentUserFromToken } from '@/services/http/client'
+import { gradeError } from './parallel-c/grade-review'
+import { academicFlowText } from '../config/academicFlowRegistry.js'
+
+const ARCHIVE_DOMAINS = ['STUDENT_STATUS','REGISTRATION','STATUS_CHANGE','PROGRAM','TEACHING_TASK','SCHEDULE','SELECTION','EXAM','GRADE','MAKEUP','EVALUATION','TEXTBOOK','GRADUATION']
+const DOMAIN_RESULTS = new Set(['PASS','BLOCKED','UNKNOWN','NOT_APPLICABLE'])
 
 const FALLBACK_ROUTE = {
   STUDENT_STATUS: '/admin/academic-affairs/roster',
@@ -184,18 +190,23 @@ const FALLBACK_ROUTE = {
   GRADUATION: '/admin/academic-affairs/graduation/audit-console'
 }
 
+// 后端状态语义约束：UNKNOWN 不会被当成 PASS；页面只展示对应中文含义。
+// 后端归档门禁：BLOCKED 与 UNKNOWN 均不得进入正式归档。
 export default {
   name: 'ArchivePrecheckView',
   components: {
     ModulePageShell, LoadingState, ErrorState, EmptyState,
     StatusTag, AppButton, AppTermEntityPicker, AppFormItem
   },
+  props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } },
+      alive: true, scope: 0, seq: 0,
       loading: true,
       error: '',
+      syncingResolvedTerm: false,
       domains: [],
+      scopeType: '',
       scopeNote: '',
       termId: '',
       termCode: '',
@@ -205,6 +216,27 @@ export default {
     }
   },
   computed: {
+    identity() {
+      const user = currentUserFromToken() || {}
+      return JSON.stringify([user.tenantId, user.userId, user.activeContextId, user.currentRoleCode, this.ctx.currentRole, this.ctx.dataScope])
+    },
+    isCollegeScope() { return this.scopeType === 'COLLEGE' || (this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) === 'COLLEGE' },
+    routeTermError() {
+      const termId = this.$route.query?.termId
+      return termId != null && (typeof termId !== 'string' || !/^\d+$/.test(termId)) ? '学期参数无效，请从归档批次重新进入' : ''
+    },
+    precheckTitle() {
+      if (this.loading) return '正在读取所选学期的预检结果'
+      if (this.error || !this.domains.length) return '预检结果待核对'
+      if (this.isCollegeScope) return this.overallResult === 'PASS' ? '本院当前无阻断或待治理项' : '本院预检仍有阻断或待核验事项'
+      return this.overallResult === 'PASS' ? '当前满足归档语义门禁' : '当前仍有业务阻断，暂不可归档'
+    },
+    precheckDecision() {
+      if (this.loading) return '正在读取'
+      if (this.error || !this.domains.length) return '尚未取得有效结论'
+      if (this.overallResult !== 'PASS') return this.isCollegeScope ? '按各项实际责任核对，学校统筹项交校教务' : '必须先处理阻断 / 待治理项'
+      return this.isCollegeScope ? '本院已具备当前预检条件' : '可以进入归档批次'
+    },
     passedDomains() {
       return this.domains.filter((domain) => domain.result === 'PASS').length
     },
@@ -212,7 +244,7 @@ export default {
       return this.domains
         .filter((domain) => ['BLOCKED', 'UNKNOWN'].includes(domain.result))
         .slice()
-        .sort((a, b) => Number(b.blockingCount || 0) - Number(a.blockingCount || 0))
+        .sort((a, b) => Number(this.schoolCheckPending(a)) - Number(this.schoolCheckPending(b)) || Number(b.blockingCount || 0) - Number(a.blockingCount || 0))
     },
     passedDomainRows() {
       return this.domains.filter((domain) => ['PASS', 'NOT_APPLICABLE'].includes(domain.result))
@@ -221,53 +253,121 @@ export default {
       return this.blockedDomainRows[0] || null
     },
     overallDescription() {
+      if (this.loading) return '正在按当前身份、范围与学期读取正式业务事实。'
+      if (this.error || !this.domains.length) return '请重新读取预检结果；未取得结论前，不认定数据完整或可归档。'
       if (this.overallResult === 'PASS') {
+        if (this.isCollegeScope) return `共检查本院 ${this.domains.length} 个业务域，本院当前无阻断或待治理项；学校正式封存仍由校教务统一核对。`
         return `共检查 ${this.domains.length} 个业务域，当前全部满足归档语义门禁。进入归档批次后仍按正式归档状态机执行。`
       }
-      return `仍有 ${this.blockedDomains} 个阻断 / 待治理业务域、${this.blockingCount} 个阻断项需要处理；UNKNOWN 不会被当成 PASS，本页不写入归档事实。`
+      return `仍有 ${this.blockedDomains} 个阻断 / 待治理业务域、${this.blockingCount} 个阻断项需要处理；${this.isCollegeScope ? '本院事项按责任处理，学校统筹项待校教务核验；' : ''}待治理状态不会被当作已通过，本页不写入归档事实。`
     },
     nextActionText() {
+      if (this.loading || this.error || !this.domains.length) return '先取得当前学期的有效预检结果'
+      if (!this.firstBlockingDomain && this.isCollegeScope) return '由校教务统一核对学校归档条件'
       if (!this.firstBlockingDomain) return '进入归档批次继续正式归档流程'
+      if (this.schoolCheckPending(this.firstBlockingDomain)) return `请校教务核验「${this.firstBlockingDomain.domainLabel}」的学校统筹项`
       return `先处理「${this.firstBlockingDomain.domainLabel}」的 ${Number(this.firstBlockingDomain.blockingCount || 0)} 个阻断项`
     }
   },
-  async created() {
-    try {
-      const context = await academicAffairsApi.getContext()
-      if (context.code === 0 && context.data) this.ctx = context.data
-    } catch {
-      // 页面数据请求仍会走后端权限；上下文失败由父布局统一拦截。
-    }
-    this.load()
+  watch: {
+    identity() { this.syncRoute() },
+    '$route.query.termId'() { this.syncRoute() },
+    termId() { if (!this.syncingResolvedTerm) this.onTermChange() }
   },
+  created() { this.syncRoute() },
+  beforeUnmount() { this.alive = false; this.clearPrivate() },
   methods: {
+    flowText: academicFlowText,
+    capture(termId) { return { scope: this.scope, identity: this.identity, termId: String(termId || ''), routeTerm: this.$route.query?.termId } },
+    isCurrent(c) { return this.alive && c.scope === this.scope && c.identity === this.identity && c.termId === String(this.termId || '') && c.routeTerm === this.$route.query?.termId },
+    denied(err) { return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code, err?.bizCode].join(' ')) },
+    clearPrivate() {
+      this.scope += 1; this.seq += 1; this.loading = false; this.error = ''; this.domains = []
+      this.scopeType = ''; this.scopeNote = ''; this.termCode = ''; this.overallResult = 'BLOCKED'; this.blockingCount = 0; this.blockedDomains = 0
+    },
+    syncRoute() {
+      this.clearPrivate()
+      const termId = this.$route.query?.termId
+      if (this.routeTermError) {
+        this.error = this.routeTermError
+        return
+      }
+      this.syncingResolvedTerm = true
+      this.termId = termId || ''
+      this.$nextTick(() => { this.syncingResolvedTerm = false })
+      return this.load()
+    },
+    onTermChange() {
+      this.clearPrivate()
+      const termId = String(this.termId || '')
+      if (termId === String(this.$route.query?.termId || '')) return this.load()
+      const query = { ...this.$route.query }
+      if (termId) query.termId = termId
+      else delete query.termId
+      return this.$router.replace({ query })
+    },
+    fail(err, fallback) { if (this.denied(err)) this.clearPrivate(); return gradeError(err, fallback) },
+    validDomains(domains) {
+      if (!Array.isArray(domains) || domains.length !== ARCHIVE_DOMAINS.length) return false
+      const seen = new Set()
+      for (const row of domains) {
+        if (!row || !ARCHIVE_DOMAINS.includes(row.domain) || seen.has(row.domain) || !DOMAIN_RESULTS.has(row.result)) return false
+        seen.add(row.domain)
+      }
+      return ARCHIVE_DOMAINS.every((domain) => seen.has(domain))
+    },
     async load() {
+      this.clearPrivate()
+      if (this.routeTermError) { this.error = this.routeTermError; return }
+      const requestedTerm = String(this.termId || '')
+      const c = this.capture(requestedTerm)
+      const seq = ++this.seq
       this.loading = true
       this.error = ''
       try {
         const res = await api.precheck(this.termId || undefined)
-        if (res.code !== 0) throw new Error(res.message || '归档预检失败')
+        if (!this.isCurrent(c) || seq !== this.seq) return
+        if (res.code !== 0) throw res
         const data = res.data || {}
-        this.domains = Array.isArray(data.domains) ? data.domains : []
+        if (requestedTerm && String(data.termId) !== requestedTerm) throw { code: 503, message: '归档预检学期与当前选择不一致' }
+        if (!this.validDomains(data.domains)) throw { code: 503, message: '十三域预检结果不完整' }
+        const blockedRows = data.domains.filter((d) => ['BLOCKED', 'UNKNOWN'].includes(d.result))
+        const derivedResult = blockedRows.some((row) => row.result === 'BLOCKED') ? 'BLOCKED' : blockedRows.length ? 'UNKNOWN' : 'PASS'
+        if (!['PASS','BLOCKED','UNKNOWN'].includes(data.result) || data.result !== derivedResult) throw { code: 503, message: '归档预检结论与明细不一致' }
+        const fallbackBlockedDomains = blockedRows.length
+        const reportedBlockedDomains = Number(data.blockedDomains ?? fallbackBlockedDomains)
+        if (!Number.isFinite(reportedBlockedDomains) || reportedBlockedDomains !== fallbackBlockedDomains) throw { code: 503, message: '归档阻断域数量与明细不一致' }
+        this.domains = data.domains
+        this.scopeType = data.scopeType || ''
         this.scopeNote = data.scopeNote || ''
         this.termCode = data.termCode || ''
-        const states = new Set(this.domains.map((d) => d.result))
-        this.overallResult = data.result || (states.has('BLOCKED') ? 'BLOCKED' : states.has('UNKNOWN') ? 'UNKNOWN' : 'PASS')
-        this.blockingCount = Number(data.blockingCount ?? 0)
-        const fallbackBlockedDomains = this.domains.filter((d) => ['BLOCKED', 'UNKNOWN'].includes(d.result)).length
-        this.blockedDomains = Number(data.blockedDomains ?? fallbackBlockedDomains)
-        if (!this.termId && data.termId) this.termId = data.termId
+        this.overallResult = derivedResult
+        this.blockingCount = Number.isFinite(Number(data.blockingCount)) ? Number(data.blockingCount) : blockedRows.reduce((sum, row) => sum + Number(row.blockingCount || 0), 0)
+        this.blockedDomains = reportedBlockedDomains
+        if (!this.termId && data.termId) {
+          // The default-term response resolves the picker value. Do not turn that
+          // server-derived assignment into a second full 13-domain precheck.
+          this.loading = false
+          this.syncingResolvedTerm = true
+          this.termId = String(data.termId)
+          this.$nextTick(() => { this.syncingResolvedTerm = false })
+        }
       } catch (err) {
+        if (!this.isCurrent(c) || seq !== this.seq) return
         this.domains = []
-        this.error = err?.message || '归档预检失败，请稍后重试'
+        this.error = this.fail(err, '归档预检失败，请稍后重试')
       } finally {
-        this.loading = false
+        if (this.isCurrent(c) && seq === this.seq) this.loading = false
       }
     },
     tagType(domain) {
       return { PASS: 'success', BLOCKED: 'danger', UNKNOWN: 'warning', NOT_APPLICABLE: 'info' }[domain.result] || 'warning'
     },
+    schoolCheckPending(domain) {
+      return this.isCollegeScope && domain.result === 'UNKNOWN' && Array.isArray(domain.evidence) && domain.evidence.some(item => item?.type === 'COLLEGE_ARCHIVE_SCOPE' && item.schoolCheckPerformed === false && item.responsibleOrgType === 'SCHOOL')
+    },
     tagLabel(domain) {
+      if (this.schoolCheckPending(domain)) return '待学校核验'
       return { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待治理', NOT_APPLICABLE: '不适用' }[domain.result] || '待确认'
     },
     evidencePreview(evidence) {
@@ -282,11 +382,22 @@ export default {
         return parts.join(' · ') || '已记录一条待复核证据'
       })
     },
-    jump(domain) {
-      const path = domain.route || FALLBACK_ROUTE[domain.domain]
-      if (path) this.$router.push(path)
+    handoffQuery() {
+      const query = {}
+      if (typeof this.termId === 'string' && /^[1-9]\d*$/.test(this.termId)) query.termId = this.termId
+      return query
     },
-    goBatch() { this.$router.push('/admin/academic-affairs/archive') }
+    jump(domain) {
+      const route = domain.route || FALLBACK_ROUTE[domain.domain]
+      if (!route) return
+      const target = this.$router.resolve(route)
+      this.$router.push({ path: target.path, query: { ...this.handoffQuery(), ...target.query } })
+    },
+    goBatch() {
+      const query = this.handoffQuery()
+      if (this.$route.query.termId === query.termId && this.$route.query.batchId) query.batchId = this.$route.query.batchId
+      this.$router.push({ path: '/admin/academic-affairs/archive', query })
+    }
   }
 }
 </script>

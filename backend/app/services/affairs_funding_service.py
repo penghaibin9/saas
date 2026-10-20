@@ -13,7 +13,7 @@ import json
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, case, exists, func, or_, select, union_all
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
@@ -24,6 +24,7 @@ from app.services.db_service import _iso, _tid, session
 PROJECT_TYPES = {"SCHOLARSHIP", "GRANT", "WORK_STUDY", "LOAN",
                  "TUITION_REDUCTION", "TEMPORARY_AID", "GREEN_CHANNEL"}
 V1_TYPES = {"SCHOLARSHIP", "GRANT"}  # 本阶段只做这两类
+PROJECT_STATUSES = {"ENABLED", "DISABLED"}
 FUND_NODES = ["COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"]
 _TERMINAL = {"GRANTED", "REJECTED", "CANCELLED", "ARCHIVED"}
 _AMOUNT_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "FUNDING_TEACHER"}
@@ -398,9 +399,7 @@ def preflight(batch_id, student_id, user) -> dict:
         batch = db.get(FundingBatch, _req_int(batch_id, "批次"))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("资助批次不存在")
-        project = db.get(FundingProject, int(batch.project_id)) if batch.project_id else None
-        if not project or project.is_deleted or project.tenant_id != _tid():
-            raise not_found("资助项目不存在")
+        project = require_application_batch(db, batch)
         project_type = str(batch.project_type or project.project_type or "").upper()
         snap = (_check_grant(db, sid, project) if project_type == "GRANT"
                 else _check_scholarship(db, sid, project))
@@ -431,17 +430,58 @@ def _amount_view(amount, user):
     return "5000以上"
 
 
-def _project_row(p) -> dict:
+def _project_row(p, user=None, *, batch_count=0, open_batch_count=0) -> dict:
+    contract = _eligibility_rules(p.project_type, p)
+    allowed_actions = []
+    if user is not None:
+        from app.core.permissions import has_permission
+        if has_permission(user, "studentAffairs.funding.project.manage"):
+            allowed_actions = ["DISABLE" if p.status == "ENABLED" else "ENABLE"]
     return {"projectId": str(p.id), "projectType": p.project_type, "projectName": p.project_name,
             "amount": format(p.amount, ".2f") if p.amount is not None else None,
-            "amountPolicy": _amount_policy(p), "quota": p.quota, "status": p.status}
+            "amountPolicy": _amount_policy(p), "quota": p.quota, "status": p.status,
+            "eligibilityRules": contract.get("rules") or {},
+            "eligibilityRuleVersion": contract.get("version"),
+            "batchCount": int(batch_count or 0), "openBatchCount": int(open_batch_count or 0),
+            "allowedActions": allowed_actions, "version": int(p.version or 0)}
 
 
-def _batch_row(b) -> dict:
+def _batch_intake_state(b, project_status="ENABLED") -> str:
+    if b.status == "DRAFT":
+        return "DRAFT"
+    if b.status != "OPEN" or project_status != "ENABLED":
+        return "CLOSED"
+    now = datetime.utcnow()
+    if b.apply_start and b.apply_start > now:
+        return "UPCOMING"
+    if b.apply_end and b.apply_end < now:
+        return "ENDED"
+    return "OPEN"
+
+
+def _batch_row(b, project=None, user=None, *, application_count=0) -> dict:
+    project_status = str(getattr(project, "status", "") or "")
+    allowed_actions = []
+    if user is not None:
+        from app.core.permissions import has_permission
+        if has_permission(user, "studentAffairs.funding.project.manage"):
+            if b.status == "DRAFT":
+                allowed_actions.append("PUBLISH")
+            elif b.status == "OPEN":
+                allowed_actions.append("CLOSE")
     return {"batchId": str(b.id), "projectId": str(b.project_id), "projectType": b.project_type,
+            "projectName": str(getattr(project, "project_name", "") or ""),
+            "projectStatus": project_status, "projectAmount": (
+                format(project.amount, ".2f") if project is not None and project.amount is not None else None),
             "schoolYear": b.year_code, "applyStart": _iso(b.apply_start), "applyEnd": _iso(b.apply_end),
             "publicityDays": b.publicity_days if b.publicity_days is not None else 5,
-            "quota": b.quota, "status": b.status}
+            "quota": b.quota,
+            "amountBudget": format(b.amount_budget, ".2f") if b.amount_budget is not None else None,
+            "reservedQuota": int(b.reserved_quota or 0),
+            "reservedAmount": format(b.reserved_amount or 0, ".2f"),
+            "applicationCount": int(application_count or 0),
+            "status": b.status, "intakeState": _batch_intake_state(b, project_status),
+            "allowedActions": allowed_actions, "version": int(b.version or 0)}
 
 
 def _app_row(x, user, s=None, *, has_pending_appeal: bool = False) -> dict:
@@ -477,31 +517,48 @@ def _assert_no_open_appeal(db, app_id):
 # ═══════════ 项目 / 批次 ═══════════
 
 def create_project(body, user) -> dict:
-    if body.projectType not in PROJECT_TYPES:
+    project_type = str(body.projectType or "").upper()
+    project_name = str(body.projectName or "").strip()
+    if not project_name:
+        raise AppException("VALIDATION_ERROR", "项目名称不能为空")
+    if project_type not in PROJECT_TYPES:
         raise AppException("VALIDATION_ERROR", "项目类型非法")
-    if body.projectType not in V1_TYPES:
+    if project_type not in V1_TYPES:
         raise AppException("DATA_CONFLICT", "该资助类型 V1 暂未开放（仅奖学金/助学金）")
+    try:
+        amount = Decimal(str(body.amount))
+    except (InvalidOperation, TypeError, ValueError) as exc:
+        raise AppException("VALIDATION_ERROR", "请配置有效的项目标准金额") from exc
+    if amount <= 0:
+        raise AppException("VALIDATION_ERROR", "项目标准金额必须大于0")
+    quota = body.quota
+    if quota is not None and (int(quota) < 1 or int(quota) > 100000):
+        raise AppException("VALIDATION_ERROR", "项目默认名额应为1-100000")
     with session() as db:
         from app.models import FundingProject
-        p = FundingProject(tenant_id=_tid(), project_name=body.projectName, project_type=body.projectType,
-                           amount=body.amount, quota=body.quota,
+        p = FundingProject(tenant_id=_tid(), project_name=project_name, project_type=project_type,
+                           amount=amount, quota=quota,
                            condition_json=json.dumps(body.conditions or {}, ensure_ascii=False),
                            status="ENABLED")
         db.add(p)
         db.flush()
-        _audit(db, p.id, "PROJECT_CREATE", body.projectType)
+        _audit(db, p.id, "PROJECT_CREATE", project_type)
         db.commit()
         _drain_message_outbox()
         db.refresh(p)
-        return _project_row(p)
+        return _project_row(p, user)
 
 
-def list_projects(user, project_type=None, status=None, page=1, page_size=20):
+def list_projects(user, project_type=None, status=None, page=1, page_size=20, keyword=None):
     page = max(1, int(page or 1))
     page_size = max(1, min(int(page_size or 20), 200))
     with session() as db:
-        from app.models import FundingProject
-        conds = [FundingProject.tenant_id == _tid(), FundingProject.is_deleted.is_(False)]
+        from app.models import FundingBatch, FundingProject
+        base = [FundingProject.tenant_id == _tid(), FundingProject.is_deleted.is_(False)]
+        value = str(keyword or "").strip()
+        if value:
+            base.append(FundingProject.project_name.contains(value, autoescape=True))
+        conds = list(base)
         if project_type:
             conds.append(FundingProject.project_type == project_type)
         if status:
@@ -509,7 +566,57 @@ def list_projects(user, project_type=None, status=None, page=1, page_size=20):
         total = int(db.scalar(select(func.count()).select_from(FundingProject).where(*conds)) or 0)
         rows = db.scalars(select(FundingProject).where(*conds).order_by(
             FundingProject.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
-        return [_project_row(row) for row in rows], total
+        ids = {int(row.id) for row in rows}
+        batch_counts = {}
+        open_counts = {}
+        if ids:
+            for project_id, batch_status, count in db.execute(select(
+                    FundingBatch.project_id, FundingBatch.status, func.count(FundingBatch.id)).where(
+                    FundingBatch.tenant_id == _tid(), FundingBatch.project_id.in_(ids),
+                    FundingBatch.is_deleted.is_(False)).group_by(
+                    FundingBatch.project_id, FundingBatch.status)).all():
+                batch_counts[int(project_id)] = batch_counts.get(int(project_id), 0) + int(count or 0)
+                if batch_status == "OPEN":
+                    open_counts[int(project_id)] = int(count or 0)
+        status_counts = {str(key or ""): int(count or 0) for key, count in db.execute(
+            select(FundingProject.status, func.count(FundingProject.id)).where(*base).group_by(
+                FundingProject.status)).all()}
+        type_counts = {str(key or ""): int(count or 0) for key, count in db.execute(
+            select(FundingProject.project_type, func.count(FundingProject.id)).where(*base).group_by(
+                FundingProject.project_type)).all()}
+        return [
+            _project_row(row, user, batch_count=batch_counts.get(int(row.id), 0),
+                         open_batch_count=open_counts.get(int(row.id), 0))
+            for row in rows
+        ], total, {"all": sum(status_counts.values()), "byStatus": status_counts, "byType": type_counts}
+
+
+def set_project_status(project_id, target_status, expected_version, user) -> dict:
+    target = str(target_status or "").upper()
+    if target not in PROJECT_STATUSES:
+        raise AppException("VALIDATION_ERROR", "项目状态仅支持启用或停用")
+    with session() as db:
+        from app.models import FundingBatch, FundingProject
+        project = db.get(FundingProject, _req_int(project_id, "项目"))
+        if not project or project.is_deleted or project.tenant_id != _tid():
+            raise not_found("资助项目不存在")
+        check_version(project.version, expected_version)
+        if project.status == target:
+            return _project_row(project, user)
+        atomic_claim_version(db, project, expected_version)
+        project.status = target
+        project.version += 1
+        _audit(db, project.id, "PROJECT_ENABLE" if target == "ENABLED" else "PROJECT_DISABLE",
+               "启用项目" if target == "ENABLED" else "停用项目；不影响既有申请继续办理")
+        db.commit()
+        _drain_message_outbox()
+        db.refresh(project)
+        counts = db.execute(select(FundingBatch.status, func.count(FundingBatch.id)).where(
+            FundingBatch.tenant_id == _tid(), FundingBatch.project_id == project.id,
+            FundingBatch.is_deleted.is_(False)).group_by(FundingBatch.status)).all()
+        batch_count = sum(int(count or 0) for _, count in counts)
+        open_count = sum(int(count or 0) for status, count in counts if status == "OPEN")
+        return _project_row(project, user, batch_count=batch_count, open_batch_count=open_count)
 
 
 def create_batch(body, user) -> dict:
@@ -532,37 +639,149 @@ def create_batch(body, user) -> dict:
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("资助项目不存在")
         publish = bool(getattr(body, "publish", False))
+        if p.project_type not in V1_TYPES:
+            raise AppException("DATA_CONFLICT", "该项目类型尚未接入奖学金/助学金申请流程")
+        if publish and p.status != "ENABLED":
+            raise AppException("DATA_CONFLICT", "资助项目已停用，只能先保存草稿")
+        if publish and (p.amount is None or Decimal(str(p.amount)) <= 0):
+            raise AppException("DATA_CONFLICT", "发布前请先配置有效的项目标准金额")
+        batch_quota = body.quota if body.quota not in (None, "") else p.quota
+        amount_budget = (Decimal(str(p.amount)) * int(batch_quota)
+                         if p.amount is not None and batch_quota is not None else None)
         b = FundingBatch(tenant_id=_tid(), project_id=p.id, project_type=p.project_type,
                          year_code=body.schoolYear, apply_start=_parse_dt(body.applyStart),
                          apply_end=_parse_dt(body.applyEnd),
                          publicity_days=(body.publicityDays if body.publicityDays is not None else 5),
-                         quota=body.quota, status=("OPEN" if publish else "DRAFT"))
+                         quota=batch_quota, amount_budget=amount_budget,
+                         status=("OPEN" if publish else "DRAFT"))
         db.add(b)
         db.flush()
         _audit(db, b.id, "BATCH_CREATE", f"publish={publish}")
         db.commit()
         _drain_message_outbox()
         db.refresh(b)
-        return _batch_row(b)
+        return _batch_row(b, p, user)
 
 
-def list_batches(user, project_id=None, status=None, page=1, page_size=20):
+def list_batches(user, project_id=None, status=None, page=1, page_size=20, keyword=None):
     page = max(1, int(page or 1))
     page_size = max(1, min(int(page_size or 20), 200))
     with session() as db:
-        from app.models import FundingBatch
-        conds = [FundingBatch.tenant_id == _tid(), FundingBatch.is_deleted.is_(False)]
+        from app.models import FundingApplication, FundingBatch, FundingProject
+        base = [FundingBatch.tenant_id == _tid(), FundingBatch.is_deleted.is_(False),
+                FundingProject.id == FundingBatch.project_id,
+                FundingProject.tenant_id == _tid(), FundingProject.is_deleted.is_(False)]
+        value = str(keyword or "").strip()
+        if value:
+            base.append(or_(FundingProject.project_name.contains(value, autoescape=True),
+                            FundingBatch.year_code.contains(value, autoescape=True)))
+        conds = list(base)
         if project_id:
-            conds.append(FundingBatch.project_id == int(project_id))
+            conds.append(FundingBatch.project_id == _req_int(project_id, "项目"))
         if status:
             conds.append(FundingBatch.status == status)
-        total = int(db.scalar(select(func.count()).select_from(FundingBatch).where(*conds)) or 0)
-        rows = db.scalars(select(FundingBatch).where(*conds).order_by(
+        total = int(db.scalar(select(func.count()).select_from(FundingBatch).join(
+            FundingProject, FundingProject.id == FundingBatch.project_id).where(*conds)) or 0)
+        rows = db.scalars(select(FundingBatch).join(
+            FundingProject, FundingProject.id == FundingBatch.project_id).where(*conds).order_by(
             FundingBatch.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
-        return [_batch_row(row) for row in rows], total
+        project_ids = {row.project_id for row in rows}
+        projects = {p.id: p for p in db.scalars(select(FundingProject).where(
+            FundingProject.tenant_id == _tid(), FundingProject.id.in_(project_ids),
+            FundingProject.is_deleted.is_(False))).all()} if project_ids else {}
+        batch_ids = {int(row.id) for row in rows}
+        application_counts = {int(batch_id): int(count or 0) for batch_id, count in db.execute(select(
+            FundingApplication.batch_id, func.count(FundingApplication.id)).where(
+            FundingApplication.tenant_id == _tid(), FundingApplication.batch_id.in_(batch_ids or {-1}),
+            FundingApplication.is_deleted.is_(False)).group_by(FundingApplication.batch_id)).all()}
+        summary_conds = list(base)
+        if project_id:
+            summary_conds.append(FundingBatch.project_id == _req_int(project_id, "项目"))
+        status_counts = {str(key or ""): int(count or 0) for key, count in db.execute(select(
+            FundingBatch.status, func.count(FundingBatch.id)).select_from(FundingBatch).join(
+            FundingProject, FundingProject.id == FundingBatch.project_id).where(*summary_conds).group_by(
+            FundingBatch.status)).all()}
+        now = datetime.utcnow()
+        available_now = int(db.scalar(select(func.count()).select_from(FundingBatch).join(
+            FundingProject, FundingProject.id == FundingBatch.project_id).where(
+            *summary_conds, FundingBatch.status == "OPEN", FundingProject.status == "ENABLED",
+            or_(FundingBatch.apply_start.is_(None), FundingBatch.apply_start <= now),
+            or_(FundingBatch.apply_end.is_(None), FundingBatch.apply_end >= now))) or 0)
+        return [
+            _batch_row(row, projects.get(row.project_id), user,
+                       application_count=application_counts.get(int(row.id), 0))
+            for row in rows
+        ], total, {"all": sum(status_counts.values()), "byStatus": status_counts,
+                   "availableNow": available_now}
+
+
+def act_batch(batch_id, action, expected_version, user) -> dict:
+    command = str(action or "").upper()
+    if command not in {"PUBLISH", "CLOSE"}:
+        raise AppException("VALIDATION_ERROR", "批次操作仅支持发布或关闭申请")
+    with session() as db:
+        from app.models import FundingApplication, FundingBatch, FundingProject
+        batch = db.get(FundingBatch, _req_int(batch_id, "批次"))
+        if not batch or batch.is_deleted or batch.tenant_id != _tid():
+            raise not_found("资助批次不存在")
+        project = db.get(FundingProject, int(batch.project_id)) if batch.project_id else None
+        if not project or project.is_deleted or project.tenant_id != _tid():
+            raise AppException("DATA_CONFLICT", "所属资助项目不存在或已失效")
+        check_version(batch.version, expected_version)
+        if command == "PUBLISH":
+            if batch.status != "DRAFT":
+                raise AppException("DATA_CONFLICT", "仅草稿批次可以发布，请刷新核对状态")
+            if project.status != "ENABLED":
+                raise AppException("DATA_CONFLICT", "资助项目已停用，启用项目后才能发布批次")
+            if project.project_type not in V1_TYPES or batch.project_type != project.project_type:
+                raise AppException("DATA_CONFLICT", "批次与项目类型不一致或尚未开放")
+            if project.amount is None or Decimal(str(project.amount)) <= 0:
+                raise AppException("DATA_CONFLICT", "发布前请先配置有效的项目标准金额")
+            if batch.apply_end and batch.apply_end < datetime.utcnow():
+                raise AppException("DATA_CONFLICT", "申请截止时间已过，请新建正确申请窗口的批次")
+            target = "OPEN"
+        else:
+            if batch.status != "OPEN":
+                raise AppException("DATA_CONFLICT", "仅开放中的批次可以关闭申请")
+            target = "CLOSED"
+        atomic_claim_version(db, batch, expected_version)
+        if command == "PUBLISH" and batch.amount_budget is None and batch.quota is not None:
+            batch.amount_budget = Decimal(str(project.amount)) * int(batch.quota)
+        batch.status = target
+        batch.version += 1
+        _audit(db, batch.id, "BATCH_PUBLISH" if command == "PUBLISH" else "BATCH_CLOSE",
+               "发布批次并按申请窗口开放" if command == "PUBLISH" else "关闭新申请；既有申请继续办理")
+        db.commit()
+        _drain_message_outbox()
+        db.refresh(batch)
+        application_count = int(db.scalar(select(func.count()).select_from(FundingApplication).where(
+            FundingApplication.tenant_id == _tid(), FundingApplication.batch_id == batch.id,
+            FundingApplication.is_deleted.is_(False))) or 0)
+        return _batch_row(batch, project, user, application_count=application_count)
 
 
 # ═══════════ 申请（含资格硬校验）═══════════
+
+def require_application_batch(db, batch):
+    """Validate new applications; existing records retain their own state machine."""
+    from app.core.timeutil import utc_now_naive
+    from app.models import FundingProject
+    now = utc_now_naive()
+    if batch.status != "OPEN":
+        raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+    if batch.apply_start and batch.apply_start > now:
+        raise AppException("DATA_CONFLICT", "该批次尚未开始申请，请在开放后提交")
+    if batch.apply_end and batch.apply_end < now:
+        raise AppException("DATA_CONFLICT", "该批次申请已截止")
+    project = db.get(FundingProject, int(batch.project_id)) if batch.project_id else None
+    if not project or project.is_deleted or project.tenant_id != _tid():
+        raise not_found("资助项目不存在")
+    if project.status != "ENABLED":
+        raise AppException("DATA_CONFLICT", "该资助项目已停用，暂不能新建申请")
+    if batch.project_type not in V1_TYPES or batch.project_type != project.project_type:
+        raise AppException("DATA_CONFLICT", "该批次暂不支持奖学金或助学金申请，请联系学校核对项目")
+    return project
+
 
 def apply(body, user, *, skip_scope_check: bool = False) -> dict:
     student_id = _req_int(getattr(body, "studentId", None), "学生")
@@ -578,17 +797,13 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
         b = db.get(FundingBatch, _req_int(getattr(body, "batchId", None), "批次"))
         if not b or b.is_deleted or b.tenant_id != _tid():
             raise not_found("资助批次不存在")
-        if b.status != "OPEN":
-            raise AppException("DATA_CONFLICT", "批次未开放或已截止")
+        project = require_application_batch(db, b)
         # 同批次重复申请 → 409
         dup = db.scalars(select(FundingApplication).where(
             FundingApplication.tenant_id == _tid(), FundingApplication.batch_id == b.id,
             FundingApplication.student_id == student_id, FundingApplication.is_deleted.is_(False))).first()
         if dup and dup.status not in _TERMINAL:
             raise AppException("DATA_CONFLICT", "该生在本批次已有在途申请，不可重复提交")
-        project = db.get(FundingProject, int(b.project_id)) if b.project_id else None
-        if not project or project.is_deleted or project.tenant_id != _tid():
-            raise not_found("资助项目不存在")
         project_type = str(b.project_type or project.project_type or "").upper()
         # 资格硬校验链：学校有效配置 + 项目条件覆盖，并将规则版本冻结进申请快照。
         snap = (_check_grant(db, student_id, project) if project_type == "GRANT"
@@ -601,8 +816,11 @@ def apply(body, user, *, skip_scope_check: bool = False) -> dict:
                                apply_source=(body.applySource or "SELF"), project_type=project_type,
                                amount=amount, requested_amount=amount, statement=(body.statement or ""),
                                check_snapshot_json=json.dumps(snap, ensure_ascii=False), status=first)
+        from app.services.affairs_funding_authority_service import freeze_application_amount
+        amount_snapshot = freeze_application_amount(db, x)
         db.add(x)
         db.flush()
+        _audit(db, x.id, "AMOUNT_RULE_FROZEN", f"project={amount_snapshot['projectId']};amount={amount_snapshot['amount']}")
         assignee = _assignee_for(db, first, student_id)
         inst = _open_wf(db, x.id, project_type, student_id, f"{s.real_name} {project_type}", first, assignee)
         x.workflow_instance_id = inst.id
@@ -745,6 +963,15 @@ def scan_publicity() -> dict:
     return {"count": confirmed, "skippedAppeal": skipped, "invalidBatch": invalid}
 
 
+def publicity_window(application, batch, has_pending_appeal=False) -> dict:
+    valid = bool(batch and not batch.is_deleted and application.publicity_at)
+    end = (application.publicity_at + timedelta(days=max(1, int(batch.publicity_days if batch.publicity_days is not None else 5)))) if valid else None
+    ready = bool(application.status == 'PUBLICITY' and end and end <= datetime.utcnow() and not has_pending_appeal)
+    hint = ('公示批次或起始时间缺失，请核查' if not valid else
+            '申诉待复核' if has_pending_appeal else '公示期尚未结束' if end > datetime.utcnow() else '可确认获资助')
+    return {'publicityEnd': _iso(end), 'publicityReady': ready, 'publicityHint': hint}
+
+
 def confirm_publicity(app_id, user, expected_version=None) -> dict:
     with session() as db:
         x, s = _load(db, app_id)
@@ -755,9 +982,9 @@ def confirm_publicity(app_id, user, expected_version=None) -> dict:
         _assert_no_open_appeal(db, x.id)
         from app.models import FundingBatch
         batch = tenant_get(db, FundingBatch, int(x.batch_id))
-        days = batch.publicity_days if batch and batch.publicity_days is not None else 5
-        if not x.publicity_at or x.publicity_at + timedelta(days=max(1, days)) > datetime.utcnow():
-            raise AppException("DATA_CONFLICT", "公示期尚未结束，不能提前确认")
+        window = publicity_window(x, batch)
+        if not window['publicityReady']:
+            raise AppException("DATA_CONFLICT", window['publicityHint'])
         _grant_one(db, x)
         db.commit()
         _drain_message_outbox()
@@ -768,14 +995,42 @@ def confirm_publicity(app_id, user, expected_version=None) -> dict:
 
 # ═══════════ 查询 ═══════════
 
+def _pending_conditions(db, user):
+    from app.core.affairs_security import build_affairs_context
+    from app.core.permissions import has_permission
+    from app.models import FundingApplication, WorkflowTask
+    from app.services.affairs_funding_scan_guard import _REVIEW_SCOPE
+
+    if not has_permission(user, "studentAffairs.funding.approve"):
+        return [FundingApplication.id == -1]
+    scope = build_affairs_context(user, db).scope_type
+    nodes = [node for node, required_scope in _REVIEW_SCOPE.items() if required_scope == scope]
+    uid = _uid_int(user)
+    latest_owner = select(WorkflowTask.assignee_id).where(
+        WorkflowTask.tenant_id == _tid(),
+        WorkflowTask.instance_id == FundingApplication.workflow_instance_id,
+        WorkflowTask.node_code == FundingApplication.status,
+        WorkflowTask.status == "PENDING", WorkflowTask.is_deleted.is_(False),
+    ).order_by(WorkflowTask.id.desc()).limit(1).correlate(FundingApplication).scalar_subquery()
+    return [FundingApplication.status.in_(nodes), FundingApplication.workflow_instance_id > 0,
+            latest_owner == uid if uid > 0 else FundingApplication.id == -1]
+
+
 def list_applications(user, batch_id=None, project_type=None, status=None, page=1, page_size=20,
-                      student_id=None):
-    from app.models import FundingApplication, StudentProfile
+                      student_id=None, *, pending_only=False, keyword=None):
+    from app.models import FundingApplication, StudentProfile, FundingBatch
     from app.services.affairs_dashboard_service import _allowed_class_ids
     from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
         base_conds = [FundingApplication.tenant_id == _tid(), FundingApplication.is_deleted.is_(False)]
+        if pending_only:
+            base_conds.extend(_pending_conditions(db, user))
+        if keyword and str(keyword).strip():
+            from sqlalchemy import or_
+            value = str(keyword).strip()
+            base_conds.append(or_(StudentProfile.real_name.contains(value, autoescape=True),
+                                  StudentProfile.student_no.contains(value, autoescape=True)))
         if batch_id:
             base_conds.append(FundingApplication.batch_id == int(batch_id))
         if project_type:
@@ -811,45 +1066,450 @@ def list_applications(user, batch_id=None, project_type=None, status=None, page=
         students = {s.id: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.id.in_(sids))).all()} if sids else {}
         pending = _pending_appeal_ids(db, [x.id for x in rows])
+        batch_ids = {x.batch_id for x in rows if x.status == 'PUBLICITY'}
+        batches = {b.id: b for b in db.scalars(select(FundingBatch).where(
+            FundingBatch.tenant_id == _tid(), FundingBatch.id.in_(batch_ids))).all()} if batch_ids else {}
+        from app.core.permissions import has_permission
+        can_confirm = has_permission(user, 'studentAffairs.funding.publicity.manage')
+        windows = {x.id: publicity_window(x, batches.get(x.batch_id), x.id in pending)
+                   for x in rows if x.status == 'PUBLICITY'}
         return [
-            _app_row(x, user, students.get(int(x.student_id)) if x.student_id else None,
-                     has_pending_appeal=int(x.id) in pending)
+            {**_app_row(x, user, students.get(int(x.student_id)) if x.student_id else None,
+                     has_pending_appeal=int(x.id) in pending),
+             **({**windows[x.id], 'allowedActions': ['PUBLICITY_CONFIRM'] if can_confirm and windows[x.id]['publicityReady'] else []} if x.id in windows else {}),
+             **({"allowedActions": ["APPROVE", "RETURN", "REJECT"]} if pending_only else {})}
             for x in rows
         ], total, status_counts
 
 
-def funding_stats(user) -> dict:
-    """奖助统计：数据库按状态/项目类型聚合，数据范围与列表一致。"""
-    from app.models import FundingApplication, StudentProfile
+def _stats_money(value) -> str:
+    return format(Decimal(str(value or 0)).quantize(Decimal("0.01")), ".2f")
+
+
+def _stats_ratio(numerator: int, denominator: int) -> float:
+    if denominator <= 0:
+        return 0.0
+    return round(numerator / denominator, 4)
+
+
+def _mask_stats_name(value: str | None) -> str:
+    name = (value or "").strip()
+    if not name:
+        return "—"
+    if len(name) == 1:
+        return "*"
+    if len(name) == 2:
+        return name[0] + "*"
+    return name[0] + "*" * (len(name) - 2) + name[-1]
+
+
+def _mask_stats_student_no(value: str | None) -> str:
+    """统计下钻即使遇到历史短学号也不回传原值。"""
+    number = (value or "").strip()
+    if not number:
+        return "—"
+    if len(number) <= 2:
+        return "*" * len(number)
+    if len(number) <= 4:
+        return number[0] + "*" * (len(number) - 2) + number[-1]
+    from app.services.stats_service import _mask_no
+    return _mask_no(number)
+
+
+def _stats_scope(db, user):
+    from app.models import StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+
+    allowed, scope = _allowed_class_ids(db, user)
+    student_conds = [
+        StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+    ]
+    if allowed is not None:
+        student_conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+    return allowed, scope, student_conds
+
+
+def funding_stats(user) -> dict:
+    """资助统计：跨奖助、勤工、贷款与减免台账去重聚合，范围与业务列表一致。"""
+    from app.models import (
+        AidApply, FeeReduction, FundingApplication, FundingBatch, FundingDisbursement,
+        StudentLoan, StudentProfile, WorkStudyRecord,
+    )
+
     with session() as db:
-        allowed, _ = _allowed_class_ids(db, user)
-        base = [
+        _allowed, scope, student_conds = _stats_scope(db, user)
+        application_conds = [
             FundingApplication.tenant_id == _tid(),
             FundingApplication.is_deleted.is_(False),
-            StudentProfile.tenant_id == _tid(),
-            StudentProfile.is_deleted.is_(False),
+            *student_conds,
         ]
-        if allowed is not None:
-            base.append(StudentProfile.class_id.in_(allowed or {-1}))
         status_rows = db.execute(
             select(FundingApplication.status, func.count(FundingApplication.id))
             .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
-            .where(*base).group_by(FundingApplication.status)
+            .where(*application_conds)
+            .group_by(FundingApplication.status)
+            .order_by(FundingApplication.status)
         ).all()
         type_rows = db.execute(
-            select(FundingApplication.project_type, func.count(FundingApplication.id))
+            select(
+                FundingApplication.project_type,
+                func.count(FundingApplication.id),
+                func.coalesce(func.sum(case((FundingApplication.status == "GRANTED", 1), else_=0)), 0),
+                func.coalesce(func.sum(case((
+                    FundingApplication.status == "GRANTED",
+                    func.coalesce(FundingApplication.approved_amount, FundingApplication.amount, 0),
+                ), else_=0)), 0),
+            )
             .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
-            .where(*base, FundingApplication.project_type.is_not(None))
+            .where(*application_conds, FundingApplication.project_type.is_not(None))
             .group_by(FundingApplication.project_type)
+            .order_by(FundingApplication.project_type)
+        ).all()
+        year_rows = db.execute(
+            select(
+                FundingBatch.year_code,
+                func.count(FundingApplication.id),
+                func.coalesce(func.sum(case((FundingApplication.status == "GRANTED", 1), else_=0)), 0),
+            )
+            .select_from(FundingApplication)
+            .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
+            .join(FundingBatch, and_(
+                FundingBatch.id == FundingApplication.batch_id,
+                FundingBatch.tenant_id == _tid(),
+                FundingBatch.is_deleted.is_(False),
+            ))
+            .where(*application_conds)
+            .group_by(FundingBatch.year_code)
+            .order_by(FundingBatch.year_code.desc())
         ).all()
         by_status = {str(key or ""): int(count or 0) for key, count in status_rows}
-        by_type = {str(key or ""): int(count or 0) for key, count in type_rows}
+        total_applications = sum(by_status.values())
+        granted_applications = by_status.get("GRANTED", 0)
+        in_progress_statuses = {"SUBMITTED", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW", "PUBLICITY", "RETURNED"}
+        in_progress = sum(by_status.get(key, 0) for key in in_progress_statuses)
+        applicant_students = int(db.scalar(
+            select(func.count(func.distinct(FundingApplication.student_id)))
+            .select_from(FundingApplication)
+            .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
+            .where(*application_conds)
+        ) or 0)
+        granted_students = int(db.scalar(
+            select(func.count(func.distinct(FundingApplication.student_id)))
+            .select_from(FundingApplication)
+            .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
+            .where(*application_conds, FundingApplication.status == "GRANTED")
+        ) or 0)
+        visible_students = int(db.scalar(
+            select(func.count()).select_from(StudentProfile).where(*student_conds)
+        ) or 0)
+
+        latest_difficult = (
+            select(AidApply.student_id.label("student_id"), func.max(AidApply.id).label("max_id"))
+            .where(
+                AidApply.tenant_id == _tid(),
+                AidApply.is_deleted.is_(False),
+                AidApply.status.in_(("APPROVED", "ADJUST_REVIEW")),
+            )
+            .group_by(AidApply.student_id)
+            .subquery()
+        )
+        difficult_students = (
+            select(AidApply.student_id.label("student_id"))
+            .join(latest_difficult, AidApply.id == latest_difficult.c.max_id)
+            .subquery()
+        )
+        difficult_count = int(db.scalar(
+            select(func.count(func.distinct(difficult_students.c.student_id)))
+            .select_from(difficult_students)
+            .join(StudentProfile, StudentProfile.id == difficult_students.c.student_id)
+            .where(*student_conds)
+        ) or 0)
+
+        funding_beneficiaries = select(FundingApplication.student_id.label("student_id")).join(
+            StudentProfile, StudentProfile.id == FundingApplication.student_id
+        ).where(*application_conds, FundingApplication.status == "GRANTED")
+        work_beneficiaries = select(WorkStudyRecord.student_id.label("student_id")).join(
+            StudentProfile, StudentProfile.id == WorkStudyRecord.student_id
+        ).where(
+            WorkStudyRecord.tenant_id == _tid(), WorkStudyRecord.is_deleted.is_(False),
+            WorkStudyRecord.status == "ONBOARD", *student_conds,
+        )
+        loan_beneficiaries = select(StudentLoan.student_id.label("student_id")).join(
+            StudentProfile, StudentProfile.id == StudentLoan.student_id
+        ).where(
+            StudentLoan.tenant_id == _tid(), StudentLoan.is_deleted.is_(False),
+            StudentLoan.status == "CONFIRMED", *student_conds,
+        )
+        fee_beneficiaries = select(FeeReduction.student_id.label("student_id")).join(
+            StudentProfile, StudentProfile.id == FeeReduction.student_id
+        ).where(
+            FeeReduction.tenant_id == _tid(), FeeReduction.is_deleted.is_(False),
+            FeeReduction.status == "ISSUED", *student_conds,
+        )
+        beneficiary_rows = union_all(
+            funding_beneficiaries, work_beneficiaries, loan_beneficiaries, fee_beneficiaries,
+        ).subquery()
+        beneficiary_students = int(db.scalar(
+            select(func.count(func.distinct(beneficiary_rows.c.student_id))).select_from(beneficiary_rows)
+        ) or 0)
+        difficult_beneficiaries = int(db.scalar(
+            select(func.count(func.distinct(beneficiary_rows.c.student_id)))
+            .select_from(beneficiary_rows)
+            .join(difficult_students, difficult_students.c.student_id == beneficiary_rows.c.student_id)
+        ) or 0)
+
+        work_onboard, work_subsidy = db.execute(
+            select(
+                func.coalesce(func.sum(case((WorkStudyRecord.status == "ONBOARD", 1), else_=0)), 0),
+                func.coalesce(func.sum(WorkStudyRecord.subsidy_total), 0),
+            )
+            .select_from(WorkStudyRecord)
+            .join(StudentProfile, StudentProfile.id == WorkStudyRecord.student_id)
+            .where(WorkStudyRecord.tenant_id == _tid(), WorkStudyRecord.is_deleted.is_(False), *student_conds)
+        ).one()
+        loan_confirmed, loan_amount = db.execute(
+            select(
+                func.coalesce(func.sum(case((StudentLoan.status == "CONFIRMED", 1), else_=0)), 0),
+                func.coalesce(func.sum(case((StudentLoan.status == "CONFIRMED", StudentLoan.amount), else_=0)), 0),
+            )
+            .select_from(StudentLoan)
+            .join(StudentProfile, StudentProfile.id == StudentLoan.student_id)
+            .where(StudentLoan.tenant_id == _tid(), StudentLoan.is_deleted.is_(False), *student_conds)
+        ).one()
+        fee_issued, fee_amount = db.execute(
+            select(
+                func.coalesce(func.sum(case((FeeReduction.status == "ISSUED", 1), else_=0)), 0),
+                func.coalesce(func.sum(case((FeeReduction.status == "ISSUED", FeeReduction.amount), else_=0)), 0),
+            )
+            .select_from(FeeReduction)
+            .join(StudentProfile, StudentProfile.id == FeeReduction.student_id)
+            .where(FeeReduction.tenant_id == _tid(), FeeReduction.is_deleted.is_(False), *student_conds)
+        ).one()
+
+        ledger_rows = db.execute(
+            select(
+                FundingDisbursement.bank_status,
+                func.count(FundingDisbursement.id),
+                func.coalesce(func.sum(FundingDisbursement.amount), 0),
+            )
+            .select_from(FundingDisbursement)
+            .join(StudentProfile, StudentProfile.id == FundingDisbursement.student_id)
+            .where(
+                FundingDisbursement.tenant_id == _tid(),
+                FundingDisbursement.is_deleted.is_(False),
+                *student_conds,
+            )
+            .group_by(FundingDisbursement.bank_status)
+            .order_by(FundingDisbursement.bank_status)
+        ).all()
+        ledger_counts = {str(key or ""): int(count or 0) for key, count, _amount in ledger_rows}
+        ledger_amounts = {str(key or ""): Decimal(str(amount or 0)) for key, _count, amount in ledger_rows}
+        missing_ledger = int(db.scalar(
+            select(func.count(FundingApplication.id))
+            .select_from(FundingApplication)
+            .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
+            .outerjoin(FundingDisbursement, and_(
+                FundingDisbursement.tenant_id == _tid(),
+                FundingDisbursement.application_id == FundingApplication.id,
+                FundingDisbursement.is_deleted.is_(False),
+            ))
+            .where(*application_conds, FundingApplication.status == "GRANTED", FundingDisbursement.id.is_(None))
+        ) or 0)
+        approved_amount = db.scalar(
+            select(func.coalesce(func.sum(func.coalesce(
+                FundingApplication.approved_amount, FundingApplication.amount, 0,
+            )), 0))
+            .select_from(FundingApplication)
+            .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
+            .where(*application_conds, FundingApplication.status == "GRANTED")
+        ) or Decimal("0")
+        amount_visible = (user or {}).get("currentRoleCode") in _AMOUNT_ROLES
+
+        type_items = []
+        for key, count, granted, amount in type_rows:
+            item = {"key": str(key or ""), "count": int(count or 0), "granted": int(granted or 0)}
+            if amount_visible:
+                item["approvedAmount"] = _stats_money(amount)
+            type_items.append(item)
+        amount_summary = {"visible": amount_visible}
+        if amount_visible:
+            amount_summary.update({
+                "approvedAmountTotal": _stats_money(approved_amount),
+                "issuedAmountTotal": _stats_money(ledger_amounts.get("ISSUED", 0)),
+                "workStudySubsidyTotal": _stats_money(work_subsidy),
+                "confirmedLoanAmountTotal": _stats_money(loan_amount),
+                "issuedReductionAmountTotal": _stats_money(fee_amount),
+            })
         return {
-            "total": sum(by_status.values()),
-            "granted": by_status.get("GRANTED", 0),
+            # 兼容已有驾驶舱和旧页面字段。
+            "total": total_applications,
+            "granted": granted_applications,
+            "totalApplications": total_applications,
+            "applicantStudents": applicant_students,
+            "grantedApplications": granted_applications,
+            "grantedStudents": granted_students,
+            "inProgressApplications": in_progress,
+            "visibleStudents": visible_students,
+            "beneficiaryStudents": beneficiary_students,
+            "coverageRate": _stats_ratio(beneficiary_students, visible_students),
+            "difficultStudents": difficult_count,
+            "difficultBeneficiaries": difficult_beneficiaries,
+            "difficultCoverageRate": _stats_ratio(difficult_beneficiaries, difficult_count),
+            "workStudyOnboard": int(work_onboard or 0),
+            "confirmedLoans": int(loan_confirmed or 0),
+            "issuedReductions": int(fee_issued or 0),
             "byStatus": [{"key": key, "count": count} for key, count in by_status.items()],
-            "byType": [{"key": key, "count": count} for key, count in by_type.items()],
+            "byType": type_items,
+            "byYear": [
+                {"key": str(year or "未标学年"), "count": int(count or 0), "granted": int(granted or 0)}
+                for year, count, granted in year_rows
+            ],
+            "ledger": {
+                "total": sum(ledger_counts.values()),
+                "byStatus": [
+                    {"key": key, "label": _L_BANK.get(key, key), "count": count}
+                    for key, count in ledger_counts.items()
+                ],
+                "missing": missing_ledger,
+                "attention": missing_ledger + ledger_counts.get("PENDING", 0)
+                    + ledger_counts.get("FAILED", 0) + ledger_counts.get("RETURNED", 0),
+            },
+            "amounts": amount_summary,
+            "scope": {
+                "label": scope.get("scopeLabel") or "当前数据范围",
+                "configured": bool(scope.get("isScopeConfigured")),
+            },
+            "definitions": {
+                "coverage": "奖助获批、勤工在岗、贷款确认、减免或临补已落实的去重学生 / 当前可见学生",
+                "granted": "奖助申请已获批；不等同于银行已到账",
+                "loan": "助学贷款台账已确认",
+            },
+        }
+
+
+_STATS_DRILL_METRICS = {
+    "BENEFICIARY", "GRANTED", "DIFFICULT_BENEFICIARY", "WORK_STUDY_ONBOARD",
+    "LOAN_CONFIRMED", "FEE_ISSUED", "DISBURSEMENT_ATTENTION",
+}
+
+
+def funding_stats_drill(user, metric: str, page=1, page_size=20) -> tuple[list[dict], int, dict]:
+    """统计下钻只返回脱敏学生与业务来源，不授予业务写或金额明细权限。"""
+    from app.models import (
+        AidApply, FeeReduction, FundingApplication, FundingDisbursement, StudentLoan,
+        StudentProfile, WorkStudyRecord,
+    )
+    metric = (metric or "").strip().upper()
+    if metric not in _STATS_DRILL_METRICS:
+        raise AppException("VALIDATION_ERROR", "请选择有效统计指标")
+    page, page_size = normalize_page(page, page_size, default_size=20)
+    with session() as db:
+        _allowed, scope, student_conds = _stats_scope(db, user)
+        award = exists(select(FundingApplication.id).where(
+            FundingApplication.tenant_id == _tid(),
+            FundingApplication.is_deleted.is_(False),
+            FundingApplication.student_id == StudentProfile.id,
+            FundingApplication.status == "GRANTED",
+        ))
+        difficult = exists(select(AidApply.id).where(
+            AidApply.tenant_id == _tid(), AidApply.is_deleted.is_(False),
+            AidApply.student_id == StudentProfile.id,
+            AidApply.status.in_(("APPROVED", "ADJUST_REVIEW")),
+        ))
+        work = exists(select(WorkStudyRecord.id).where(
+            WorkStudyRecord.tenant_id == _tid(), WorkStudyRecord.is_deleted.is_(False),
+            WorkStudyRecord.student_id == StudentProfile.id, WorkStudyRecord.status == "ONBOARD",
+        ))
+        loan = exists(select(StudentLoan.id).where(
+            StudentLoan.tenant_id == _tid(), StudentLoan.is_deleted.is_(False),
+            StudentLoan.student_id == StudentProfile.id, StudentLoan.status == "CONFIRMED",
+        ))
+        fee = exists(select(FeeReduction.id).where(
+            FeeReduction.tenant_id == _tid(), FeeReduction.is_deleted.is_(False),
+            FeeReduction.student_id == StudentProfile.id, FeeReduction.status == "ISSUED",
+        ))
+        disbursement_attention = exists(select(FundingDisbursement.id).where(
+            FundingDisbursement.tenant_id == _tid(), FundingDisbursement.is_deleted.is_(False),
+            FundingDisbursement.student_id == StudentProfile.id,
+            FundingDisbursement.bank_status.in_(("PENDING", "FAILED", "RETURNED")),
+        ))
+        missing_disbursement = exists(select(FundingApplication.id).where(
+            FundingApplication.tenant_id == _tid(),
+            FundingApplication.is_deleted.is_(False),
+            FundingApplication.student_id == StudentProfile.id,
+            FundingApplication.status == "GRANTED",
+            ~exists(select(FundingDisbursement.id).where(
+                FundingDisbursement.tenant_id == _tid(),
+                FundingDisbursement.is_deleted.is_(False),
+                FundingDisbursement.application_id == FundingApplication.id,
+            )),
+        ))
+        beneficiary = or_(award, work, loan, fee)
+        metric_cond = {
+            "BENEFICIARY": beneficiary,
+            "GRANTED": award,
+            "DIFFICULT_BENEFICIARY": and_(beneficiary, difficult),
+            "WORK_STUDY_ONBOARD": work,
+            "LOAN_CONFIRMED": loan,
+            "FEE_ISSUED": fee,
+            "DISBURSEMENT_ATTENTION": or_(disbursement_attention, missing_disbursement),
+        }[metric]
+        total = int(db.scalar(
+            select(func.count()).select_from(StudentProfile).where(*student_conds, metric_cond)
+        ) or 0)
+        students = db.scalars(
+            select(StudentProfile).where(*student_conds, metric_cond)
+            .order_by(StudentProfile.student_no, StudentProfile.id)
+            .offset((page - 1) * page_size).limit(page_size)
+        ).all()
+        student_ids = {int(row.id) for row in students}
+
+        def source_ids(model, status_column, statuses):
+            if not student_ids:
+                return set()
+            return set(db.scalars(select(model.student_id).where(
+                model.tenant_id == _tid(), model.is_deleted.is_(False),
+                model.student_id.in_(student_ids), status_column.in_(statuses),
+            )).all())
+
+        award_ids = source_ids(FundingApplication, FundingApplication.status, ("GRANTED",))
+        work_ids = source_ids(WorkStudyRecord, WorkStudyRecord.status, ("ONBOARD",))
+        loan_ids = source_ids(StudentLoan, StudentLoan.status, ("CONFIRMED",))
+        fee_ids = source_ids(FeeReduction, FeeReduction.status, ("ISSUED",))
+        ledger_ids = source_ids(
+            FundingDisbursement, FundingDisbursement.bank_status, ("PENDING", "FAILED", "RETURNED"),
+        )
+        missing_ids = set(db.scalars(
+            select(FundingApplication.student_id)
+            .outerjoin(FundingDisbursement, and_(
+                FundingDisbursement.tenant_id == _tid(),
+                FundingDisbursement.application_id == FundingApplication.id,
+                FundingDisbursement.is_deleted.is_(False),
+            ))
+            .where(
+                FundingApplication.tenant_id == _tid(), FundingApplication.is_deleted.is_(False),
+                FundingApplication.student_id.in_(student_ids), FundingApplication.status == "GRANTED",
+                FundingDisbursement.id.is_(None),
+            )
+        ).all()) if student_ids else set()
+        labels = (
+            (award_ids, "奖助获批"), (work_ids, "勤工在岗"), (loan_ids, "贷款确认"),
+            (fee_ids, "减免/临补落实"), (missing_ids, "尚未建发放台账"), (ledger_ids, "发放待处理"),
+        )
+        items = []
+        for student in students:
+            sources = [label for ids, label in labels if int(student.id) in ids]
+            items.append({
+                "studentNo": _mask_stats_student_no(student.student_no),
+                "realName": _mask_stats_name(student.real_name),
+                "grade": student.grade or "",
+                "sources": sources,
+            })
+        return items, total, {
+            "metric": metric,
+            "masked": True,
+            "scopeLabel": scope.get("scopeLabel") or "当前数据范围",
         }
 
 def get_application(app_id, user) -> dict:
@@ -858,6 +1518,25 @@ def get_application(app_id, user) -> dict:
         _scope_or_403(db, x.student_id, user)
         d = _app_row(x, user, s, has_pending_appeal=int(x.id) in _pending_appeal_ids(db, [x.id]))
         d["checkSnapshot"] = json.loads(x.check_snapshot_json) if x.check_snapshot_json else {}
+        d["statement"] = x.statement or ""
+        from app.models import FundingDisbursement
+        payments = db.scalars(select(FundingDisbursement).where(
+            FundingDisbursement.tenant_id == _tid(), FundingDisbursement.application_id == x.id,
+            FundingDisbursement.student_id == x.student_id, FundingDisbursement.is_deleted.is_(False),
+        ).order_by(FundingDisbursement.id.desc())).all()
+        d['disbursements'] = [{'disbursementId': str(p.id), 'status': p.bank_status,
+            'statusLabel': _L_BANK.get(p.bank_status, '状态待核对'), 'amount': _amount_view(p.amount, user),
+            'issuedAt': _iso(p.issued_at), 'failReason': (p.fail_reason or '') if p.bank_status in {'FAILED', 'RETURNED'} else ''}
+            for p in payments]
+        from app.core.permissions import has_permission
+        d["allowedActions"] = []
+        if has_permission(user, "studentAffairs.funding.approve"):
+            try:
+                _check_fund_review_node(db, x, user)
+            except AppException:
+                pass
+            else:
+                d["allowedActions"] = ["APPROVE", "RETURN", "REJECT"]
         return d
 
 
@@ -1034,7 +1713,8 @@ def _appeal_row(o, s=None) -> dict:
         "status": o.status, "statusLabel": _L_APPEAL.get(o.status, o.status),
         "result": o.result or "", "resultLabel": _L_APPEAL_RESULT.get(o.result or "", ""),
         "reviewOpinion": o.review_opinion or "", "reviewer": o.reviewer or "",
-        "reviewedAt": _iso(o.reviewed_at),
+        "reviewedAt": _iso(o.reviewed_at), "version": int(o.version or 0),
+        "createdAt": _iso(o.created_at),
     }
 
 
@@ -1087,10 +1767,11 @@ def submit_appeal(app_id, body, user, *, skip_scope_check: bool = False) -> dict
         return appeal_todo.sync_after_submit("FUNDING_APPEAL_REVIEW", result_row, "appealId", "id")
 
 
-def list_appeals(user, status=None, page=1, page_size=50):
+def list_appeals(user, status=None, page=1, page_size=50, *, appeal_id=None, application_id=None):
     """资助申诉列表在数据库侧完成范围过滤、计数和分页。"""
     from app.models import FundingAppeal, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.core.permissions import has_permission
 
     page, page_size = normalize_page(page, page_size)
     with session() as db:
@@ -1103,6 +1784,10 @@ def list_appeals(user, status=None, page=1, page_size=50):
         conds = [FundingAppeal.tenant_id == _tid(), FundingAppeal.is_deleted.is_(False)]
         if status:
             conds.append(FundingAppeal.status == status)
+        if appeal_id is not None:
+            conds.append(FundingAppeal.id == int(appeal_id))
+        if application_id is not None:
+            conds.append(FundingAppeal.application_id == int(application_id))
         if allowed is not None:
             conds.append(StudentProfile.class_id.in_(allowed or {-1}))
         total = int(db.scalar(
@@ -1115,7 +1800,10 @@ def list_appeals(user, status=None, page=1, page_size=50):
             .order_by(FundingAppeal.id.desc())
             .offset((page - 1) * page_size).limit(page_size)
         ).all()
-        return [_appeal_row(appeal, student) for appeal, student in rows], total
+        can_review = has_permission(user, 'studentAffairs.funding.publicity.manage')
+        return [{**_appeal_row(appeal, student),
+                 'allowedActions': ['REVIEW'] if can_review and student and appeal.status == 'SUBMITTED' else []}
+                for appeal, student in rows], total
 
 
 def review_appeal(appeal_id, body, user) -> dict:

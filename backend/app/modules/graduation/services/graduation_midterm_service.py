@@ -68,123 +68,32 @@ def _row(m: GraduationMidterm, stu=None) -> dict:
             "reviewedAt": _iso(m.reviewed_at), "updatedAt": _iso(m.updated_at)}
 
 
-def list_midterms(page: int, page_size: int, keyword=None, status=None) -> tuple[list[dict], int]:
-    with session() as db:
-        scope_ids = accessible_student_ids(db, _tid())
-        q = select(GraduationMidterm).where(GraduationMidterm.tenant_id == _tid(),
-                                             GraduationMidterm.is_deleted.is_(False),
-                                             GraduationMidterm.gd_student_id.in_(scope_ids or [-1]))
-        if status:
-            q = q.where(GraduationMidterm.status == status)
-        rows = db.scalars(q.order_by(GraduationMidterm.id.desc())).all()
-        items = []
-        for m in rows:
-            stu = db.get(GraduationStudent, m.gd_student_id)
-            if keyword and (not stu or keyword.strip() not in (stu.name or "")):
-                continue
-            items.append(_row(m, stu))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
-
-
-def get_midterm(gd_student_id) -> dict:
-    with session() as db:
-        stu = _stu(db, gd_student_id)
-        m = _get_or_create(db, stu)
-        db.commit()
-        return _row(m, stu)
-
-
-def conduct_check(gd_student_id, conclusion: str, comment: str = None, rectify_deadline: str = None) -> dict:
-    if conclusion not in ("PASS", "RECTIFY", "FAIL"):
-        raise AppException("VALIDATION_ERROR", "conclusion 必须是 PASS/RECTIFY/FAIL")
-    with session() as db:
-        stu = _stu(db, gd_student_id)
-        if stu.stage not in ("MIDTERM", "FINAL_CHECK"):
-            raise AppException("DATA_CONFLICT", "当前阶段不可发起中期检查（须先进入中期检查阶段）")
-        m = _get_or_create(db, stu)
-        if m.status not in ("PENDING", "RECTIFIED_PASS", "CHECKED_FAIL"):
-            raise AppException("DATA_CONFLICT", "当前状态不可重新发起中期检查")
-        n, _ = _op()
-        m.conclusion = conclusion
-        m.check_comment = (comment or "").strip()
-        m.check_by = n
-        m.checked_at = datetime.now(timezone.utc)
-        stu.midterm_conclusion = CONCLUSION_LABEL[conclusion]
-        if conclusion == "PASS":
-            m.status = "CHECKED_PASS"
-            if stu.stage == "MIDTERM":
-                stu.stage = "FINAL_CHECK"
-        elif conclusion == "RECTIFY":
-            m.status = "RECTIFYING"
-            if rectify_deadline:
-                try:
-                    m.rectify_deadline = datetime.fromisoformat(str(rectify_deadline)[:19])
-                except ValueError:
-                    m.rectify_deadline = None
-        else:
-            m.status = "CHECKED_FAIL"
-            stu.risk_level = "HIGH"
-        _audit(db, m.id, "中期检查-" + CONCLUSION_LABEL[conclusion], (comment or "").strip())
-        db.commit()
-        return _row(m, stu)
-
-
-def submit_rectification(gd_student_id, content: str) -> dict:
-    with session() as db:
-        stu = _stu(db, gd_student_id)
-        m = _get_or_create(db, stu)
-        if m.status != "RECTIFYING":
-            raise AppException("DATA_CONFLICT", "当前无需提交整改")
-        m.rectify_content = content
-        m.rectify_submitted_at = datetime.now(timezone.utc)
-        m.status = "RECTIFY_SUBMITTED"
-        _audit(db, m.id, "提交整改")
-        db.commit()
-        return _row(m, stu)
-
-
-def review_rectification(gd_student_id, action: str, comment: str = None) -> dict:
-    if action not in ("PASS", "FAIL"):
-        raise AppException("VALIDATION_ERROR", "action 必须是 PASS/FAIL")
-    with session() as db:
-        stu = _stu(db, gd_student_id)
-        m = _get_or_create(db, stu)
-        if m.status != "RECTIFY_SUBMITTED":
-            raise AppException("DATA_CONFLICT", "当前无待复核的整改")
-        n, _ = _op()
-        m.review_comment = (comment or "").strip()
-        m.reviewed_by = n
-        m.reviewed_at = datetime.now(timezone.utc)
-        if action == "PASS":
-            m.status = "RECTIFIED_PASS"
-            m.conclusion = "PASS"
-            stu.midterm_conclusion = CONCLUSION_LABEL["PASS"]
-            if stu.stage == "MIDTERM":
-                stu.stage = "FINAL_CHECK"
-        else:
-            m.status = "RECTIFYING"
-            m.rectify_attempts += 1
-            stu.midterm_conclusion = CONCLUSION_LABEL["RECTIFY"]
-        _audit(db, m.id, "复核整改-" + ("通过" if action == "PASS" else "退回再整改"), (comment or "").strip())
-        db.commit()
-        return _row(m, stu)
-
-
 def midterm_stats(batch_id=None) -> dict:
     with session() as db:
-        scope_ids = accessible_student_ids(db, _tid(), batch_id=batch_id)
+        from app.modules.graduation.services.graduation_proposal_read_service import student_scope_select
+
+        scope = student_scope_select(db, _tid(), batch_id=batch_id)
         base = [GraduationMidterm.tenant_id == _tid(), GraduationMidterm.is_deleted.is_(False),
-                GraduationMidterm.gd_student_id.in_(scope_ids or [-1])]
-        total = int(db.scalar(select(func.count()).select_from(GraduationMidterm).where(*base)) or 0)
-        by_status = [{"status": s, "label": STATUS_LABEL[s],
-                      "count": int(db.scalar(select(func.count()).select_from(GraduationMidterm).where(
-                          *base, GraduationMidterm.status == s)) or 0)} for s in STATUS_LABEL]
+                GraduationMidterm.gd_student_id.in_(scope)]
+        status_counts = {
+            str(status or ""): int(count)
+            for status, count in db.execute(
+                select(GraduationMidterm.status, func.count(GraduationMidterm.id))
+                .where(*base)
+                .group_by(GraduationMidterm.status)
+            ).all()
+        }
+        total = sum(status_counts.values())
+        by_status = [{"status": status, "label": STATUS_LABEL[status],
+                      "count": status_counts.get(status, 0)} for status in STATUS_LABEL]
+        from app.modules.graduation.services.graduation_process_consistency import (
+            _midterm_eligible_clause, _no_midterm_row,
+        )
         not_started = int(db.scalar(select(func.count()).select_from(GraduationStudent).where(
             GraduationStudent.tenant_id == _tid(), GraduationStudent.is_deleted.is_(False),
-            GraduationStudent.record_status == "ACTIVE", GraduationStudent.stage == "MIDTERM",
-            GraduationStudent.id.in_(scope_ids or [-1]))) or 0)
+            # 待发起中期检查：开题已通过（或已处于中期阶段）但尚无检查记录的学生
+            GraduationStudent.record_status == "ACTIVE", _midterm_eligible_clause(), _no_midterm_row(),
+            GraduationStudent.id.in_(scope))) or 0)
         return {"total": total, "byStatus": by_status, "studentsAtMidtermStage": not_started,
                 "batchId": str(batch_id) if batch_id else None}
 

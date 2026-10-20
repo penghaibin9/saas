@@ -1,8 +1,7 @@
-"""Explicit additive wrapper for the existing assign_position_in_tx Authority.
+"""Placement evidence authority layered on the canonical capacity writer.
 
-The existing function remains the only position/capacity writer. This installer replaces that
-module binding once at API startup so every existing caller (teacher approval, direct assignment,
-formal position change) gets immutable placement evidence in the same DB transaction.
+The student service calls this function explicitly. This keeps every placement path on the same
+transactional authority without relying on router import order or runtime monkey-patching.
 """
 from __future__ import annotations
 
@@ -22,10 +21,6 @@ from app.modules.internship.services import internship_placement_snapshot_servic
 from app.modules.internship.services import internship_recruitment_window_guard as window_guard
 from app.modules.internship.services import internship_student_service as student_svc
 from app.modules.internship.services import internship_volunteer_group_service as group_svc
-
-_INSTALLED = False
-_ORIGINAL = None
-
 
 def _assert_school_confirm_window(campaign: InternshipRecruitmentCampaign, *, now: datetime) -> None:
     window_guard.assert_campaign_operation_window(campaign, "SCHOOL_CONFIRM", now=now)
@@ -121,7 +116,15 @@ def _approve_source_application_in_tx(db, *, application, record, campaign, deci
     )
 
 
-def _wrapped_assign_position_in_tx(db, record, position_id, expected_version, user=None):
+def assign_position_with_snapshot_in_tx(
+    db,
+    record,
+    position_id,
+    expected_version,
+    user=None,
+    *,
+    core_assign,
+):
     now = datetime.utcnow()
     position = db.scalar(select(InternshipPosition).where(
         InternshipPosition.id == int(position_id),
@@ -129,7 +132,7 @@ def _wrapped_assign_position_in_tx(db, record, position_id, expected_version, us
         InternshipPosition.is_deleted.is_(False),
     ))
     if not position:
-        return _ORIGINAL(db, record, position_id, expected_version, user=user)
+        return core_assign(db, record, position_id, expected_version, user=user)
     campaign, application, group, decision = _source_for_campaign_in_tx(
         db, record=record, position=position, now=now,
     )
@@ -138,7 +141,7 @@ def _wrapped_assign_position_in_tx(db, record, position_id, expected_version, us
     student = tenant_get(db, student_svc.StudentProfile, record.student_id, tenant_id=record.tenant_id)
     from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
     rights = evaluate_position_publishability(position, company, batch, student, operation="ASSIGN", db=db)
-    result = _ORIGINAL(db, record, position_id, expected_version, user=user)
+    result = core_assign(db, record, position_id, expected_version, user=user)
     db.refresh(position)
     snap = snapshot_svc.capture_placement_snapshot_in_tx(
         db,
@@ -173,17 +176,3 @@ def _wrapped_assign_position_in_tx(db, record, position_id, expected_version, us
         "enterpriseDecisionId": str(decision.id) if decision else "",
     })
     return result
-
-
-def install_assignment_snapshot_authority() -> None:
-    global _INSTALLED, _ORIGINAL
-    if _INSTALLED:
-        return
-    current = student_svc.assign_position_in_tx
-    if getattr(current, "__e_a01_placement_snapshot_wrapped__", False):
-        _INSTALLED = True
-        return
-    _ORIGINAL = current
-    _wrapped_assign_position_in_tx.__e_a01_placement_snapshot_wrapped__ = True
-    student_svc.assign_position_in_tx = _wrapped_assign_position_in_tx
-    _INSTALLED = True

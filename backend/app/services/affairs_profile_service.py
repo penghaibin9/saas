@@ -9,6 +9,7 @@ from __future__ import annotations
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
+from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
 _DISC_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "COLLEGE_ADMIN", "COUNSELOR"}
@@ -31,7 +32,7 @@ def _scope_or_403(db, student_id, user):
     from app.models import StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     allowed, _ = _allowed_class_ids(db, user)
-    s = db.get(StudentProfile, int(student_id)) if student_id else None
+    s = tenant_get(db, StudentProfile, int(student_id)) if student_id else None
     if not s or s.is_deleted or s.tenant_id != _tid():
         raise not_found("学生不存在")
     if allowed is not None and s.class_id not in allowed:
@@ -40,7 +41,7 @@ def _scope_or_403(db, student_id, user):
 
 
 def get_profile(student_id, user) -> dict:
-    from app.models import (AffairsRiskRecord, AidApply, CsLeave, DisciplineCase, DormBed,
+    from app.models import (AffairsRiskRecord, AidApply, CsLeave, CsServiceStudent, DisciplineCase, DormBed,
                             DormBuilding, DormRoom, FamilyContactLog, FundingApplication,
                             SchoolClass, StudentContact, TalkRecord)
     role = (user or {}).get("currentRoleCode")
@@ -56,11 +57,17 @@ def get_profile(student_id, user) -> dict:
         # 班级真实名称（禁止把 class_id 当 className 返回）
         class_name = ""
         if s.class_id:
-            cls = db.get(SchoolClass, int(s.class_id))
-            class_name = (cls.class_name if cls else "") or ""
+            cls = tenant_get(db, SchoolClass, int(s.class_id))
+            class_name = (cls.class_name if cls and not cls.is_deleted else "") or ""
 
         # 请假
         leave_total = _count(CsLeave)
+        service_record = db.scalars(select(CsServiceStudent.id).where(
+            CsServiceStudent.tenant_id == _tid(),
+            CsServiceStudent.student_id == sid,
+            CsServiceStudent.is_deleted.is_(False),
+            CsServiceStudent.record_status == "ACTIVE",
+        ).order_by(CsServiceStudent.id).limit(1)).first()
         # 困难认定：当前等级（困难库）
         aid = db.scalars(select(AidApply).where(
             AidApply.tenant_id == _tid(), AidApply.student_id == sid,
@@ -94,10 +101,12 @@ def get_profile(student_id, user) -> dict:
             DormBed.is_deleted.is_(False)).order_by(DormBed.id.desc())).first()
         dorm_summary = {"hasDorm": False, "text": ""}
         if bed and bed.room_id:
-            room = db.get(DormRoom, int(bed.room_id))
-            building = db.get(DormBuilding, int(room.building_id)) if room and room.building_id else None
+            room = tenant_get(db, DormRoom, int(bed.room_id))
+            if room and room.is_deleted:
+                room = None
+            building = tenant_get(db, DormBuilding, int(room.building_id)) if room and room.building_id else None
             parts = []
-            if building and building.building_name:
+            if building and not building.is_deleted and building.building_name:
                 parts.append(building.building_name)
             if room and room.room_no:
                 parts.append(str(room.room_no))
@@ -123,6 +132,8 @@ def get_profile(student_id, user) -> dict:
                          "classId": str(s.class_id or ""), "className": class_name,
                          "currentStage": s.current_stage, "studentStatus": s.student_status},
             "leaveSummary": {"total": leave_total},
+            "serviceLedger": {"exists": service_record is not None,
+                              "recordId": str(service_record) if service_record is not None else None},
             "aidSummary": {"difficultLevel": (aid.final_level if aid else None),
                            "inLibrary": bool(aid)},
             "fundingSummary": {"grantedCount": funding_granted},

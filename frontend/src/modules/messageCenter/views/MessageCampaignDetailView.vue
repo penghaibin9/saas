@@ -95,6 +95,7 @@
 
 <script>
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
+import { systemAlert, systemConfirm, systemPrompt } from '@/services/systemDialog'
 import {
   approveCampaign,
   exportCampaignRecipients,
@@ -169,7 +170,7 @@ export default {
       }
     },
     async doExport() {
-      const purpose = window.prompt('请填写导出用途（审计必填）', '催读/对账')
+      const purpose = await systemPrompt({ title:'填写导出用途', message:'导出用途为审计必填项。', defaultValue:'催读/对账', minLength:1, confirmText:'确认导出' })
       if (!purpose || purpose.trim().length < 2) return
       this.acting = true
       try {
@@ -177,7 +178,7 @@ export default {
           filter: this.recipientTitle.includes('确认') ? 'UNACKED' : 'UNREAD',
           purpose: purpose.trim()
         })
-        window.alert('导出已生成（见接口返回文件）')
+        await systemAlert({ title:'导出已生成', message:'请在接口返回文件中查看导出结果。', confirmText:'知道了' })
       } catch (e) {
         this.error = (e && e.message) || '导出失败'
       } finally {
@@ -185,7 +186,7 @@ export default {
       }
     },
     async doApprove() {
-      if (!window.confirm(`确认通过并投递？预计接收 ${this.camp.recipientCount || 0} 人。`)) return
+      if (!await systemConfirm({ title:'确认通过并投递', message:`预计接收 ${this.camp.recipientCount || 0} 人。`, confirmText:'确认投递' })) return
       this.acting = true
       try {
         const result = await approveCampaign(this.camp.campaignId, { version: this.camp.version })
@@ -198,7 +199,7 @@ export default {
       }
     },
     async doReturn() {
-      const reason = window.prompt('请输入退回原因（必填）')
+      const reason = await systemPrompt({ title:'填写退回原因', message:'退回原因将反馈给提交人。', minLength:1, confirmText:'确认退回' })
       if (!reason || reason.trim().length < 2) return
       this.acting = true
       try {
@@ -213,7 +214,7 @@ export default {
       }
     },
     async doWithdraw() {
-      const reason = window.prompt('请输入撤回原因（必填）')
+      const reason = await systemPrompt({ title:'填写撤回原因', message:'撤回原因将写入审计记录。', minLength:1, confirmText:'确认撤回' })
       if (!reason || reason.trim().length < 2) return
       this.acting = true
       try {

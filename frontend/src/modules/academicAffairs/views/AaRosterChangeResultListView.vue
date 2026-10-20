@@ -4,6 +4,7 @@
     :subtitle="pageMeta.subtitle"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
+    show-subtitle-in-concise
   >
     <div class="mp-stack">
       <p class="mp-note">
@@ -100,7 +101,7 @@ export default {
     this.load()
   },
   methods: {
-    statusLabel(s) { return STATUS_LABEL[s] || s || '' },
+    statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     statusColor,
     nodeLabel(n) { return n ? (NODE_LABEL[n] || n) : '—' },
     goApply() { this.$router.push(APPLY_PATH[this.changeType] || '/admin/academic-affairs/status-changes/new') },

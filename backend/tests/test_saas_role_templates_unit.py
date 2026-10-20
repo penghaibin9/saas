@@ -41,11 +41,12 @@ def test_every_school_permission_role_has_a_versioned_template():
 
 
 def test_all_production_login_account_constructors_match_the_frozen_allowlist():
-    """V3 adds exactly one external-enterprise pre-provisioning constructor, not a generic bypass."""
+    """Only reviewed onboarding/finalization paths may construct login accounts."""
     assert _LEGACY._user_constructor_sites() == {
         ("services/school_onboarding_service.py", "run_onboarding"),
         ("services/platform_service.py", "create_school_admin"),
         ("services/sandbox_service.py", "seed_sandbox"),
+        ("services/orientation_enrollment_finalize_service.py", "_account"),
         (
             "modules/internship/services/internship_enterprise_auth_service.py",
             "_ensure_invited_user_in_tx",

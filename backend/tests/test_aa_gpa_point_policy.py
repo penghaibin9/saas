@@ -8,6 +8,31 @@ MySQL-only（db_mode 夹具）。
 """
 from __future__ import annotations
 
+import json
+from types import SimpleNamespace
+import pytest
+
+
+@pytest.mark.parametrize('bands', [None, [], [{'min': 90, 'point': 4}], [{'minScore': 0, 'maxScore': 100, 'point': float('nan')}], [{'minScore': 0, 'maxScore': 100, 'point': 6}]])
+def test_invalid_stored_bands_block_instead_of_zero_or_server_error(bands):
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services.academic_affairs_gpa_policy_service import evaluate_policy
+    policy = SimpleNamespace(scale_type='BANDS', bands_json=json.dumps(bands))
+    with pytest.raises(AppException) as error:
+        evaluate_policy(policy, 86)
+    assert error.value.http_status == 409
+    assert error.value.code == 'GPA_POLICY_INVALID'
+
+
+def test_valid_bands_preserve_boundary_conversion():
+    from app.modules.academic_affairs.services.academic_affairs_gpa_policy_service import evaluate_policy
+    policy = SimpleNamespace(scale_type='BANDS', bands_json=json.dumps([
+        {'minScore': 90, 'maxScore': 100, 'point': 4},
+        {'minScore': 80, 'maxScore': 89, 'point': 3},
+        {'minScore': 0, 'maxScore': 79, 'point': 0},
+    ]))
+    assert [evaluate_policy(policy, score) for score in [79, 80, 86, 89, 90, 96, 100]] == [0, 3, 3, 3, 4, 4, 4]
+
 TID = 1000000000000000001
 BASE = "/api/v1/academic-affairs"
 
@@ -197,8 +222,14 @@ def test_policy_version_chain_increments(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     r1 = client.post(f"{BASE}/gpa-policies/activate", headers=hdr,
                      json={"policyCode": "CHAIN_TEST", "scaleType": "LINEAR"}).json()["data"]
-    r2 = client.post(f"{BASE}/gpa-policies/activate", headers=hdr,
-                     json={"policyCode": "CHAIN_TEST", "scaleType": "LINEAR", "linearDivisor": 8}).json()["data"]
+    invalid = client.post(f"{BASE}/gpa-policies/activate", headers=hdr,
+                          json={"policyCode": "CHAIN_TEST", "scaleType": "LINEAR", "linearDivisor": 8})
+    # 100 分会得到 6.25，拒绝发布且不能消耗策略版本。
+    assert invalid.status_code == 400
+    response = client.post(f"{BASE}/gpa-policies/activate", headers=hdr,
+                           json={"policyCode": "CHAIN_TEST", "scaleType": "LINEAR", "linearDivisor": 20})
+    assert response.status_code == 200, response.text
+    r2 = response.json()["data"]
     assert r2["policyVersion"] == r1["policyVersion"] + 1
     listing = client.get(f"{BASE}/gpa-policies", headers=hdr).json()["data"]
     statuses = {item["policyCode"]: item["status"] for item in listing if item["policyCode"] == "CHAIN_TEST"

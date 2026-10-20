@@ -19,7 +19,7 @@ import { buildHandoff } from './generate-v3-handoff.mjs'
 const here = dirname(fileURLToPath(import.meta.url))
 const MINIAPP = resolve(here, '..')
 const REPO = resolve(MINIAPP, '..')
-const HANDOFF = resolve(REPO, 'miniapp-v3-handoff.json')
+const HANDOFF = resolve(REPO, 'artifacts/release-seals/miniapp-v3-handoff.json')
 
 export const SHARED_FIELDS = Object.freeze([
   'actionSchemaVersion',
@@ -50,7 +50,7 @@ function assertAncestor(sha) {
 }
 
 export function verifyDownstreamHandoff() {
-  if (!existsSync(HANDOFF)) throw new Error('缺少 miniapp-v3-handoff.json')
+  if (!existsSync(HANDOFF)) throw new Error('缺少 artifacts/release-seals/miniapp-v3-handoff.json')
   const stored = JSON.parse(readFileSync(HANDOFF, 'utf8'))
   if (stored.schema !== 'miniapp-v3-handoff/1') throw new Error(`不支持的 handoff schema: ${stored.schema || '(empty)'}`)
   if (!/^[0-9a-f]{40}$/.test(String(stored.studentMergeSha || ''))) throw new Error('studentMergeSha 不是完整 SHA')

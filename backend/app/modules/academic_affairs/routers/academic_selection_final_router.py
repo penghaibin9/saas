@@ -71,6 +71,14 @@ def sel_student_drop(
     return base.success(selection_final.student_drop(user, body), message="退课成功")
 
 
+@router.post("/selection/student/drop-preflight", summary="学生退课预检（纯读，复用正式退课门禁）")
+def sel_student_drop_preflight(
+    body: base.EnrollBody,
+    user=Depends(base._require_student),
+):
+    return base.success(selection_final.student_drop_preflight(user, body))
+
+
 # D6-S Move Only：academic_affairs_bundle 已保证本模块整体先于 legacy 大 Router 挂载。
 # 将非 Final 的选课管理路由作为同一域 surface 追加到此预 legacy 锚点；二者路径无重叠，
 # 因而 Selection Final 四入口仍保持唯一 owner，其他 selection shape 则切到独立 Router。

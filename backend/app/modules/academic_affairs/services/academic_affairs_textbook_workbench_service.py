@@ -35,19 +35,21 @@ def _formal_term(db, term_id):
 
 def list_review_candidates(user, term_id):
     """当前学期待审核教材选用，供创建审核批次；返回termId防前端跨学期混选。"""
-    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection
+    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection, College
     from app.modules.academic_affairs.services.academic_affairs_archive_service import guard_term_writable
 
     with session() as db:
         _require_school(user, db)
         term = _formal_term(db, term_id)
         guard_term_writable(db, term.id)
-        rows = db.query(AaTextbookSelection, AaTeachingTask).join(
+        rows = db.query(AaTextbookSelection, AaTeachingTask, AaTeachingTaskBatch.college_id, College.college_name).join(
             AaTeachingTask,
             AaTeachingTask.id == AaTextbookSelection.task_id,
         ).join(
             AaTeachingTaskBatch,
             AaTeachingTaskBatch.id == AaTeachingTask.batch_id,
+        ).outerjoin(
+            College, (College.id == AaTeachingTaskBatch.college_id) & (College.tenant_id == _tid()) & College.is_deleted.is_(False),
         ).filter(
             AaTextbookSelection.tenant_id == _tid(),
             AaTextbookSelection.status == "SUBMITTED",
@@ -66,7 +68,9 @@ def list_review_candidates(user, term_id):
                 "textbookName": selection.textbook_name,
                 "expectedQty": selection.expected_qty,
                 "status": selection.status,
-            } for selection, task in rows],
+                "collegeId": str(college_id) if college_id else None,
+                "collegeName": college_name or "来源学院待核对",
+            } for selection, task, college_id, college_name in rows],
             "total": len(rows),
         }
 

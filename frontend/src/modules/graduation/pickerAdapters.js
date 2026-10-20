@@ -63,13 +63,29 @@ function mentorOption(row, query = {}) {
   }
 }
 
-const graduationMentor = adapter(
+const graduationMentorBase = adapter(
   (keyword, query) => graduationMentorApi.getMentors({
     ...query, keyword, page: 1, pageSize: 30,
     valueMode: undefined, excludeTeacherName: undefined, excludeMentorId: undefined,
   }),
   (row, query) => mentorOption(row, query)
 )
+
+// 按 ID 回显：导师有几百位，前 30 位里找不到时（例如答辩组编辑页回显组长/秘书）逐个按 ID 取详情，
+// 否则选择框会直接显示数字 ID。
+const graduationMentor = {
+  search: graduationMentorBase.search,
+  async resolve(value, query = {}) {
+    if (Array.isArray(value)) {
+      return (await Promise.all(value.map((current) => this.resolve(current, query)))).filter(Boolean)
+    }
+    const found = await graduationMentorBase.resolve(value, query)
+    if (found || query.valueMode !== 'id' || value === '' || value == null) return found
+    const detail = await graduationMentorApi.getMentorDetail(value)
+    const row = detail?.code === 0 ? (detail.data?.mentor || detail.data) : null
+    return row && row.id != null ? mentorOption(row, query) : found
+  }
+}
 
 const availableMentor = adapter(
   (keyword, query) => graduationMentorApi.getMentors({ ...query, keyword, qualificationStatus: 'QUALIFIED', hasCapacity: 'true', page: 1, pageSize: 30 }),

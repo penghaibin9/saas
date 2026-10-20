@@ -54,6 +54,8 @@ export const useSessionStore = defineStore('sp-session', {
       writeForcePasswordChange(this.mustChangePassword)
       this.user = {
         userId: u.userId, realName: u.realName, userType,
+        tenantId: data.tenantId ?? u.tenantId ?? null,
+        activeContextId: data.activeContextId ?? u.activeContextId ?? null,
         roleCode: roleCode || 'STUDENT', studentNo: u.studentNo || data.studentNo || null,
         mustChangePassword: this.mustChangePassword
       }

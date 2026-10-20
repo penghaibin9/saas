@@ -3,22 +3,16 @@
     <div class="mp-card__head bps-head">
       <div>
         <span class="mp-card__title">参与学生范围</span>
-        <p class="bps-subtitle">按班级批量圈选学生，预览无误后冻结名单并启用批次。</p>
+        <p class="bps-subtitle">{{ isDraft && !frozen ? '选择参与范围，预览名单后确认启用。' : '查看本批次冻结或补录的参与名单。实习资格请在学生名单中继续核对。' }}</p>
       </div>
       <span class="bps-state" :class="{ 'is-frozen': frozen }">{{ stateText }}</span>
     </div>
 
     <div class="mp-card__body">
       <LoadingState v-if="loading" />
+      <ErrorState v-else-if="error" title="参与名单暂时无法读取" :description="error" @retry="load" />
       <template v-else>
-        <AppInlineAlert
-          v-if="error"
-          type="danger"
-          title="参与学生范围加载失败"
-          :description="error"
-        />
-
-        <template v-if="isDraft && !frozen">
+        <template v-if="isDraft && !frozen && !readonly">
           <div class="bps-picker-grid">
             <div class="bps-field bps-field--wide">
               <label>选择班级 <em>必选</em></label>
@@ -143,7 +137,7 @@
 </template>
 
 <script>
-import { LoadingState } from '@/components/business'
+import { LoadingState, ErrorState } from '@/components/business'
 import {
   AppInlineAlert, AppConfirmDialog, AppClassPicker, AppInternshipCandidateStudentPicker
 } from '@/components/common'
@@ -160,17 +154,19 @@ const blankRule = () => ({
 export default {
   name: 'BatchParticipantScope',
   components: {
-    LoadingState, AppInlineAlert, AppConfirmDialog, AppClassPicker,
+    LoadingState, ErrorState, AppInlineAlert, AppConfirmDialog, AppClassPicker,
     AppInternshipCandidateStudentPicker, AppButton
   },
   props: {
     batchId: { type: [String, Number], required: true },
-    batchStatus: { type: String, default: '' }
+    batchStatus: { type: String, default: '' },
+    readonly: { type: Boolean, default: false }
   },
   emits: ['frozen'],
   data() {
     return {
       loading: true,
+      loadSequence: 0,
       acting: false,
       actionMode: '',
       error: '',
@@ -222,49 +218,65 @@ export default {
         this.previewTruncated = false
       }
     },
+    batchId() {
+      this.participantPage = 1
+      this.participantLoading = false
+      this.confirmVisible = false
+      this.acting = false
+      this.load()
+    },
     batchStatus() {
       this.participantPage = 1
       this.load()
     }
   },
   created() { this.load() },
+  beforeUnmount() { this.loadSequence++ },
   methods: {
     focus() { this.$refs.root?.scrollIntoView({ behavior: 'smooth', block: 'start' }) },
     async load() {
+      const sequence = ++this.loadSequence
+      const batchId = this.batchId
       this.loading = true
       this.error = ''
-      const [ruleRes, summaryRes, listRes] = await Promise.all([
-        internshipApi.getBatchParticipantRule(this.batchId),
-        internshipApi.getBatchParticipantSummary(this.batchId),
-        internshipApi.getBatchParticipants(this.batchId, { page: this.participantPage, pageSize: this.participantPageSize })
-      ])
-      this.loading = false
-      if (ruleRes.code !== 0) {
-        this.error = ruleRes.message || '名单规则加载失败'
-        return
-      }
       this.ruleReady = false
-      this.rule = { ...blankRule(), ...(ruleRes.data.rule || {}) }
-      this.frozen = !!ruleRes.data.frozen
-      this.summary = summaryRes.code === 0 ? (summaryRes.data || {}) : {}
-      if (listRes.code === 0) {
+      this.previewed = false
+      this.previewDirty = true
+      this.previewRows = []
+      this.previewTruncated = false
+      try {
+        const [ruleRes, summaryRes, listRes] = await Promise.all([
+          internshipApi.getBatchParticipantRule(batchId),
+          internshipApi.getBatchParticipantSummary(batchId),
+          internshipApi.getBatchParticipants(batchId, { page: this.participantPage, pageSize: this.participantPageSize })
+        ])
+        if (sequence !== this.loadSequence || batchId !== this.batchId) return
+        for (const [response, label] of [[ruleRes, '参与范围'], [summaryRes, '名单汇总'], [listRes, '学生名单']]) {
+          if (response.code !== 0) throw new Error(response.message || `${label}加载失败，请重试`)
+        }
+        this.rule = { ...blankRule(), ...(ruleRes.data.rule || {}) }
+        this.frozen = !!ruleRes.data.frozen
+        this.summary = summaryRes.data || {}
         this.participantRows = listRes.data?.list || []
         this.participantTotal = Number(listRes.data?.total || 0)
         this.participantPage = Number(listRes.data?.page || this.participantPage)
         this.participantPageSize = Number(listRes.data?.pageSize || this.participantPageSize)
-      } else {
-        this.participantRows = []
-        this.participantTotal = 0
+        await this.$nextTick()
+        if (sequence === this.loadSequence) this.ruleReady = true
+      } catch (e) {
+        if (sequence === this.loadSequence) this.error = e.message || '参与名单加载失败，请重试'
+      } finally {
+        if (sequence === this.loadSequence) this.loading = false
       }
-      this.previewDirty = true
-      this.previewTruncated = false
-      this.$nextTick(() => { this.ruleReady = true })
     },
     async previewParticipants() {
+      if (this.readonly) return
       if (!this.hasScope || this.acting) return
       this.acting = true
       this.actionMode = 'preview'
+      const batchId = this.batchId
       const res = await internshipApi.previewBatchParticipants(this.batchId, this.rule)
+      if (batchId !== this.batchId) return
       this.acting = false
       if (res.code !== 0) return toast.error(res.message || '名单预览失败')
       this.ruleReady = false
@@ -285,10 +297,12 @@ export default {
       const target = Math.max(1, Math.min(Number(page || 1), this.participantPageCount))
       if (target === this.participantPage || this.participantLoading) return
       this.participantLoading = true
+      const batchId = this.batchId
       const res = await internshipApi.getBatchParticipants(this.batchId, {
         page: target,
         pageSize: this.participantPageSize
       })
+      if (batchId !== this.batchId) return
       this.participantLoading = false
       if (res.code !== 0) return toast.error(res.message || '参与学生名单加载失败')
       this.participantRows = res.data?.list || []
@@ -297,10 +311,13 @@ export default {
       this.participantPageSize = Number(res.data?.pageSize || this.participantPageSize)
     },
     async freezeParticipants() {
+      if (this.readonly) return
       if (this.previewDirty || !this.previewRows.length || this.acting) return
       this.acting = true
       this.actionMode = 'freeze'
+      const batchId = this.batchId
       const res = await internshipApi.freezeBatchParticipants(this.batchId, this.rule)
+      if (batchId !== this.batchId) return
       this.acting = false
       if (res.code !== 0) return toast.error(res.message || '名单冻结失败')
       this.confirmVisible = false
@@ -331,6 +348,9 @@ export default {
 .bps-metrics > div { border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-subtle, #f8fafc); padding: 12px 14px; }
 .bps-metrics strong { display: block; color: var(--primary-700, #1d4ed8); font-size: 22px; line-height: 1.2; }
 .bps-metrics span { color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.bps-metrics--compact { display:flex; flex-wrap:wrap; gap:12px 28px; margin-bottom:16px; }
+.bps-metrics--compact > div { display:flex; align-items:baseline; gap:8px; padding:0; border:0; background:transparent; }
+.bps-metrics--compact strong { font-size:18px; }
 .bps-table-wrap { overflow: auto; border: 1px solid var(--border-light); border-radius: 10px; }
 .bps-table { width: 100%; border-collapse: collapse; font-size: var(--font-size-sm); }
 .bps-table th { background: var(--bg-subtle, #f8fafc); color: var(--text-secondary); text-align: left; font-size: var(--font-size-xs); font-weight: 600; }

@@ -14,7 +14,7 @@
 
       <dl class="wf-task-detail__kv">
         <dt>申请人</dt><dd>{{ task.initiator }}</dd>
-        <dt>业务类型</dt><dd>{{ task.businessType }}</dd>
+        <dt>业务类型</dt><dd>{{ task.bizTypeLabel || businessTypeLabel(task.businessType) }}</dd>
         <dt>业务编号</dt><dd>{{ task.businessId }}</dd>
         <dt>流程名称</dt><dd>{{ task.templateName }}</dd>
         <dt>当前节点</dt><dd>{{ task.currentNode || '—' }}</dd>
@@ -157,6 +157,13 @@ export default {
     statusText: getTaskStatusText,
     statusType: getTaskStatusType,
     moduleLabel: getModuleLabel,
+    businessTypeLabel(value) {
+      return ({
+        LEAVE: '请假审批', STUDENT_STATUS_CHANGE: '学籍变更',
+        INTERNSHIP: '岗位实习', GRADUATION: '毕业管理',
+        ORIENTATION: '数字迎新', EMPLOYMENT: '就业服务'
+      })[String(value || '').toUpperCase()] || '其他审批业务'
+    },
     startReject() {
       this.rejectMode = true
     },

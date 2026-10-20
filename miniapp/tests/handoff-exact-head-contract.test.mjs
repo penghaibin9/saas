@@ -9,7 +9,7 @@ const miniapp = resolve(here, '..')
 const repo = resolve(miniapp, '..')
 
 test('S9 seal SHA 作为不可变 Student 基线保留，Teacher downstream 不把当前 HEAD 冒充 Student seal', () => {
-  const stored = JSON.parse(readFileSync(resolve(repo, 'miniapp-v3-handoff.json'), 'utf8'))
+  const stored = JSON.parse(readFileSync(resolve(repo, 'artifacts/release-seals/miniapp-v3-handoff.json'), 'utf8'))
   assert.match(stored.studentMergeSha, /^[0-9a-f]{40}$/)
   const source = readFileSync(resolve(miniapp, 'scripts/generate-v3-handoff.mjs'), 'utf8')
   assert.match(source, /implementationSha\(\)/)

@@ -1,0 +1,49 @@
+{
+  "schemaVersion": 1,
+  "wave": "W3",
+  "surface": "Staff PC",
+  "sourceHead": "eecb4d01d2a9592b71975be07c54f994f08e7461",
+  "status": "STATIC_AND_BUILD_GREEN_RUNTIME_DB_PENDING",
+  "outcomes": {
+    "todayWorkBeforeKpi": true,
+    "boundedConcreteObjects": 8,
+    "serverRankedAuthorities": [
+      "RiskRecord",
+      "AttendanceException",
+      "WeeklyReport"
+    ],
+    "continuityFields": [
+      "whyHere",
+      "recentChange",
+      "waitingOn",
+      "nextActor",
+      "receipt",
+      "sourceVersion",
+      "resumeKey"
+    ],
+    "missingBatchRecovery": true,
+    "reviewQueueResume": [
+      "weekly-report",
+      "attendance-exception"
+    ],
+    "firstRunGuideAutoCover": false,
+    "manualGuideReplayPreserved": true,
+    "authorityExpanded": false
+  },
+  "verification": {
+    "targetedContracts": "6/6 PASS",
+    "staffFullTests": "631/631 PASS",
+    "eslint": "PASS_WITH_2_PREEXISTING_WARNINGS",
+    "productionBuild": "PASS",
+    "browser": "AUTHENTICATED_REPLAY_BLOCKED_BY_ISOLATED_MYSQL_STALL"
+  },
+  "evidence": [
+    "frontend/tests/internship.today-work.contract.test.mjs",
+    "frontend/tests/internship.staff-first-screen.contract.test.mjs",
+    "frontend/src/modules/internship/views/InternshipDashboardView.vue",
+    "frontend/src/components/common/experience/AppPageGuide.vue",
+    "frontend/src/modules/workbench/views/WorkbenchView.vue",
+    "backend/app/modules/internship/services/internship_service.py"
+  ],
+  "runtimeBlocker": "The isolated MySQL server on 127.0.0.1:43327 does not complete the connection greeting; the Staff browser is redirected to login and cannot obtain a fresh authenticated session. No SQLite substitution was used."
+}

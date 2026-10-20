@@ -9,6 +9,8 @@ const detail = readFileSync(new URL('../src/pages/common/message-detail/index.vu
 assert.match(page, /createNetworkPager/)
 assert.match(page, /maxItems:\s*100/)
 assert.match(page, /getTeacherMessageBadges/)
+assert.match(page, /syncPagerState\(pagerState\)/)
+assert.match(page, /this\.pagerState\s*=\s*\{\s*\.\.\.value,\s*items:/)
 assert.doesNotMatch(page, /listPaging|pagedSlice|teacherApi\.getMessages/)
 
 assert.match(api, /teacher\/messages-page/)

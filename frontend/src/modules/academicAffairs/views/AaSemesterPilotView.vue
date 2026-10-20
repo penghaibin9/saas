@@ -176,7 +176,7 @@ export default {
   created() { this.load() },
   methods: {
     statusLabel(status) {
-      return { PREPARING: '准备中', RUNNING: '检查中', BLOCKED: '有阻断', READY_TO_COMPLETE: '可确认完成', COMPLETED: '已完成', CANCELLED: '已取消' }[status] || status || '未知'
+      return { PREPARING: '准备中', RUNNING: '检查中', BLOCKED: '有阻断', READY_TO_COMPLETE: '可确认完成', COMPLETED: '已完成', CANCELLED: '已取消' }[status] || (status ? '状态待确认' : '未知')
     },
     statusType(status) {
       if (status === 'COMPLETED') return 'success'

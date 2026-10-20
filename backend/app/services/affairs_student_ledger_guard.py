@@ -1,6 +1,8 @@
 """学生基础服务台账安全门：主档范围、身份只读、租户批量查询和乐观锁。"""
 from __future__ import annotations
 
+from contextlib import nullcontext
+
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
@@ -53,10 +55,12 @@ def install() -> None:
         )).all()
         return {int(row.id): row for row in records}
 
-    def create_student(body: dict):
-        with session() as db:
+    def create_student(body: dict, *, db=None):
+        # Keep the request-level wrapper check; the underlying service also checks so
+        # imports and other direct callers cannot depend on router installation.
+        with (nullcontext(db) if db is not None else session()) as scope_db:
             profile = shadow.resolve_profile_for_shadow(
-                db,
+                scope_db,
                 _tid(),
                 domain_label="在校服务台账",
                 student_id=body.get("studentId") or body.get("profileStudentId"),
@@ -64,7 +68,7 @@ def install() -> None:
             )
             from app.core.affairs_security import build_affairs_context
 
-            build_affairs_context(get_current_user_ctx() or {}, db).require_student(db, int(profile.id))
+            build_affairs_context(get_current_user_ctx() or {}, scope_db).require_student(scope_db, int(profile.id))
         care = str(body.get("careLevel") or "NORMAL").upper()
         if care not in service.L_CARE:
             raise AppException("VALIDATION_ERROR", "关怀等级非法")
@@ -73,10 +77,14 @@ def install() -> None:
         payload["building"] = _text(payload.get("building"), "楼栋", 100)
         payload["room"] = _text(payload.get("room"), "房间", 100)
         payload["counselor"] = _text(payload.get("counselor"), "辅导员", 100)
-        result = old_create(payload)
-        with session() as db:
+        result = old_create(payload, db=db)
+        if db is not None:
             row = service._get_stu(db, result["id"])
             result["version"] = int(row.version or 0)
+        else:
+            with session() as read_db:
+                row = service._get_stu(read_db, result["id"])
+                result["version"] = int(row.version or 0)
         return result
 
     def update_student(student_id, body: dict):

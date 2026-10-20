@@ -1,5 +1,6 @@
 /** Teacher Miniapp V3 T9: real-only message inbox API. */
 import { realRequest } from './request'
+import { presentMessage, presentMessagePage } from './messagePresentation'
 
 function query(params = {}) {
   const parts = []
@@ -10,14 +11,14 @@ function query(params = {}) {
   return parts.length ? `?${parts.join('&')}` : ''
 }
 
-export const getTeacherMessagesPage = ({ tab = 'system', cursor = '', pageSize = 20, q = '' } = {}) =>
-  realRequest('/mobile/performance/teacher/messages-page' + query({ tab, cursor, pageSize, q }))
+export const getTeacherMessagesPage = async ({ tab = 'system', cursor = '', pageSize = 20, q = '' } = {}) =>
+  presentMessagePage(await realRequest('/mobile/performance/teacher/messages-page' + query({ tab, cursor, pageSize, q })))
 
 export const getTeacherMessageBadges = () =>
   realRequest('/mobile/performance/teacher/messages-badges')
 
-export const getTeacherMessageDetail = (messageId) =>
-  realRequest('/mobile/performance/teacher/messages/' + encodeURIComponent(String(messageId || '')))
+export const getTeacherMessageDetail = async (messageId) =>
+  presentMessage(await realRequest('/mobile/performance/teacher/messages/' + encodeURIComponent(String(messageId || ''))))
 
 export const markTeacherMessageRead = (messageId) =>
   realRequest('/mobile/teacher/messages/' + encodeURIComponent(String(messageId || '')) + '/read', { method: 'POST' })
