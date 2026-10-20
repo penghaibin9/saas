@@ -229,3 +229,16 @@ def test_document_preview_e2e_sources_are_synthetic_and_never_embed_secrets():
         assert any(marker in text for marker in markers), path
         for forbidden_marker in forbidden:
             assert forbidden_marker not in text, f"{path} persists forbidden Viewer artifact data: {forbidden_marker}"
+
+
+def test_private_academic_v5_ah_journey_is_not_misrouted_into_shared_ci():
+    """A private resume-only E2E cannot run against the shared 3306/8000 runtime."""
+    runner = read(SUITE_RUNNER)
+    production = read(PRODUCTION_WORKFLOW)
+    journey = read(ROOT / "e2e" / "specs" / "academic-v5-responsibility-journey.spec.mjs")
+
+    assert "E2E_V5_STATE" in journey and "E2E_V5_CREDENTIALS" in journey
+    assert "databasePort: 3314" in journey and "3311" in journey
+    assert "! -name 'academic-v5-responsibility-journey.spec.mjs'" in runner
+    assert "production-non-graduation" in production
+    assert "Run non-graduation functional browser suite" in production

@@ -113,7 +113,9 @@ def _transfer(assignment_id: int, *args, **kwargs):
 def test_t01_expired_assignment_dies_without_relogin(db_mode):
     _make_role("COUNSELOR")
     user_id = _make_user("ras_expire_01")
-    soon = (datetime.now().replace(microsecond=0) + timedelta(seconds=1))
+    # Use a stable future expiry for the pre-expiry assertion; expiry is simulated below.
+    # A one-second window races real MySQL/CI execution before _login_roles().
+    soon = datetime.now().replace(microsecond=0) + timedelta(days=1)
 
     granted = _grant(user_id, "COUNSELOR", reason="学期内临时代管班级",
                                    expires_at=soon.strftime("%Y-%m-%d %H:%M:%S"),

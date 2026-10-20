@@ -224,6 +224,9 @@ publish_phase_result() {
 
 case "$SUITE" in
   production-non-graduation)
+    # The private V5 A-H recovery journey requires E2E_V5_STATE/CREDENTIALS and
+    # its own MySQL ports (3311/3314), not this shared port-3306 CI runtime.
+    # Keep it executable explicitly, but do not include it in this auto-discovery.
     mapfile -t SPECS < <(
       cd "$ROOT/e2e"
       find specs -maxdepth 1 -type f -name '*.spec.mjs' \
@@ -231,6 +234,7 @@ case "$SUITE" in
         ! -name '*-visual.spec.mjs' \
         ! -name 'control-plane-role-menu-projection.spec.mjs' \
         ! -name 'academic-scheduling-optimizer.spec.mjs' \
+        ! -name 'academic-v5-responsibility-journey.spec.mjs' \
         ! -name 'internship-s1-production-runtime.spec.mjs' \
         ! -name 'internship-leave-lifecycle.spec.mjs' \
         ! -name 'internship-leave-stats-xlsx-audit.spec.mjs' \
