@@ -1,0 +1,503 @@
+<template>
+  <ModulePageShell
+    :title="pageTitle"
+    :subtitle="pageSubtitle"
+    :role-name="ctx.currentRole.roleName"
+    :data-scope-name="ctx.dataScope.scopeName"
+  >
+    <template #actions>
+      <button class="mp-link" @click="$router.push({ path: '/admin/internship/plans', query: { batchId: batchStore.selectedBatchId } })">任务与计划</button>
+      <button class="mp-link" @click="toggleObligations">{{ obligationOpen ? '返回批阅列表' : '应交/未交总览' }}</button>
+      <AppExportButton v-if="!obligationOpen" :export-fn="exportFn" :has-permission="canExport">{{ exportLabel }}</AppExportButton>
+      <AppExportButton v-else :export-fn="exportObligationsFn" :has-permission="canExport">导出应交/未交</AppExportButton>
+    </template>
+
+    <div class="mp-stack">
+      <ActionReceipt :receipt="lastReceipt" @close="lastReceipt = null" />
+
+      <section v-if="obligationOpen" class="wr-obligation">
+        <div class="wr-obligation__head">
+          <div>
+            <strong>全批次报告应交 / 实交 / 未交</strong>
+            <p>应交数来自当前批次规则；规则为 0 时显示“未配置”，不会伪造完成率。</p>
+          </div>
+          <div class="wr-obligation__filters">
+            <button type="button" class="mp-tab" :class="{ 'is-active': obligationMissingOnly }" @click="setObligationMissing(true)">仅看未交</button>
+            <button type="button" class="mp-tab" :class="{ 'is-active': !obligationMissingOnly }" @click="setObligationMissing(false)">全部学生</button>
+          </div>
+        </div>
+        <ErrorState v-if="obligationError" :description="obligationError" @retry="loadObligations" />
+        <LoadingState v-else-if="obligationLoading" />
+        <EmptyState v-else-if="!obligationRows.length" title="当前条件没有欠交学生" description="可切换为“全部学生”查看完整应交台账。" />
+        <DataTable
+          v-else
+          :columns="obligationColumns"
+          :rows="obligationRows"
+          row-key="recordId"
+          :pagination="obligationPagination"
+          @page-change="onObligationPage"
+        >
+          <template #cell-student="{ row }">
+            <div class="mp-cell-main">{{ row.studentName }}</div>
+            <div class="mp-cell-sub">{{ row.studentNo }} · {{ row.advisorName || '未分配指导教师' }}</div>
+          </template>
+          <template #cell-daily="{ row }"><span>{{ obligationMetric(row.daily) }}</span></template>
+          <template #cell-weekly="{ row }"><span>{{ obligationMetric(row.weekly) }}</span></template>
+          <template #cell-monthly="{ row }"><span>{{ obligationMetric(row.monthly) }}</span></template>
+          <template #cell-summary="{ row }"><span>{{ obligationMetric(row.summary) }}</span></template>
+          <template #cell-status="{ row }">
+            <AppStatusTag :type="row.status === 'MISSING' ? 'warning' : (row.status === 'COMPLETE' ? 'success' : 'info')">
+              {{ row.statusLabel }}
+            </AppStatusTag>
+            <div class="mp-cell-sub">{{ row.completionRate == null ? '完成率未配置' : ('完成率 ' + row.completionRate + '%') }}</div>
+          </template>
+        </DataTable>
+      </section>
+
+      <ModuleSummaryStrip v-if="!obligationOpen" :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
+      <!-- 报告类型切换（原「日报批阅 / 月报批阅 / 实习总结」独立菜单收口为页内切换） -->
+      <div v-if="!obligationOpen" class="mp-tabs wr-tabs wr-tabs--type" aria-label="报告类型">
+        <button v-for="t in typeTabs" :key="t.value" class="mp-tab" :class="{ 'is-active': reportTypeKey === t.value }" @click="switchType(t.value)">
+          {{ t.label }}
+        </button>
+      </div>
+      <div v-if="!obligationOpen" class="mp-tabs wr-tabs wr-tabs--status" aria-label="审核状态">
+        <button v-for="t in activeTabs" :key="t.value" class="mp-tab" :class="{ 'is-active': filters.status === t.value }" @click="switchTab(t.value)">
+          {{ t.label }}
+        </button>
+      </div>
+
+      <ErrorState v-if="!obligationOpen && error" :description="error" @retry="load" />
+      <LoadingState v-else-if="!obligationOpen && loading" />
+      <EmptyState v-else-if="!obligationOpen && !rows.length" :title="emptyTitle" description="可切换页签或调整筛选条件" />
+      <DataTable
+        v-else-if="!obligationOpen"
+        :columns="activeColumns"
+        :rows="rows"
+        row-key="id"
+        :selectable="!isProcessReport"
+        v-model:selected="selected"
+        :pagination="pagination"
+        @page-change="onPageChange"
+      >
+        <template v-if="!isProcessReport" #batch-actions>
+          <AppPermissionButton
+            code="internship.report.review"
+            variant="secondary"
+            size="sm"
+            :allowed="canBatchApprove"
+            :disabled="!selected.length || batchHasRisk || batchSubmitting"
+            :loading="batchSubmitting"
+            :reason="batchApproveReason"
+            @click="batchApprove"
+          >批量通过</AppPermissionButton>
+          <span class="mp-note" title="退回原因必填，需逐篇进入详情填写">批量退回不可用：退回原因必须逐篇填写</span>
+        </template>
+        <template #cell-student="{ row }">
+          <div class="mp-cell-main">{{ row.studentName }}</div>
+          <div class="mp-cell-sub">{{ [row.className, row.enterpriseName].filter((item) => item && item !== '-' && item !== 'null').join(' · ') || '未关联班级或企业' }}</div>
+        </template>
+        <template #cell-version="{ row }">
+          <AppStatusTag v-if="row.isResubmit" type="info">{{ row.reportVersion || row.version }} 重交</AppStatusTag>
+          <span v-else>{{ row.reportVersion || row.version }}</span>
+        </template>
+        <template #cell-riskFlag="{ row }">
+          <AppRiskTag v-if="row.riskFlag" :level="row.riskFlag" label="风险学生" />
+          <span v-else class="mp-note">—</span>
+        </template>
+        <template #cell-status="{ row }">
+          <AppStatusTag :status="row.status">{{ row.statusLabel }}</AppStatusTag>
+        </template>
+        <template #cell-actions="{ row }">
+          <button v-if="!isProcessReport && row.status === 'OVERDUE'" class="mp-link" @click="remind(row)">催交</button>
+          <button v-else class="mp-link" @click="goDetail(row)">
+            {{ row.status === 'PENDING_REVIEW' ? '批阅' : '查看' }}
+          </button>
+        </template>
+      </DataTable>
+    </div>
+  </ModulePageShell>
+</template>
+
+<script>
+/** 周报批阅列表（/admin/internship/reports）：P12 → T20 → PC 批阅。 */
+import {
+  ModulePageShell, DataTable,
+  LoadingState, ErrorState, EmptyState
+} from '@/components/business'
+import { AppStatusTag, AppRiskTag, AppExportButton, AppPermissionButton } from '@/components/common'
+import ModuleSummaryStrip from './components/ModuleSummaryStrip.vue'
+import ActionReceipt from './components/ActionReceipt.vue'
+import { internshipApi } from '@/modules/internship/api/internship.api'
+import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
+import { restoreWorkContext, captureWorkContext } from '@/modules/internship/composables/workContext'
+import { toast } from '@/utils/toast'
+import { useInternshipBatchStore } from '@/stores/internshipBatch'
+
+// U8：页签由 URL 的 panel 承载，这里只保持页码
+const WORK_FIELDS = ['pagination.page']
+
+const PANEL_STATUS = {
+  all: '',
+  review: 'PENDING_REVIEW',
+  approved: 'APPROVED',
+  returned: 'RETURNED',
+  overdue: 'OVERDUE'
+}
+
+const TYPE_MAP = {
+  daily: { label: '日报', reportType: 'DAILY' },
+  monthly: { label: '月报', reportType: 'MONTHLY' },
+  summary: { label: '实习总结', reportType: 'SUMMARY' }
+}
+
+const PROCESS_COLUMNS = [
+  { key: 'student', title: '学生' },
+  { key: 'periodKey', title: '周期' },
+  { key: 'submitAt', title: '提交时间' },
+  { key: 'wordCount', title: '字数' },
+  { key: 'status', title: '状态' },
+  { key: 'actions', title: '操作', width: '80px' }
+]
+
+export default {
+  name: 'WeeklyReportListView',
+  components: { ModulePageShell, DataTable, AppStatusTag, AppRiskTag, AppExportButton,
+    AppPermissionButton, LoadingState, ErrorState, EmptyState, ModuleSummaryStrip, ActionReceipt },
+  props: { ctx: { type: Object, required: true } },
+  data() {
+    return {
+      loading: true, loadSequence: 0,
+      error: '',
+      rows: [],
+      selected: [],
+      obligationOpen: false,
+      obligationLoading: false,
+      obligationError: '',
+      obligationRows: [],
+      obligationMissingOnly: true,
+      obligationPagination: { page: 1, pageSize: 20, total: 0 },
+      batchSubmitting: false,
+      lastReceipt: null,
+      workContextReady: false,
+      filters: { status: 'PENDING_REVIEW' },
+      pagination: { page: 1, pageSize: 10, total: 0 },
+      tabs: [
+        { value: 'PENDING_REVIEW', label: '待批阅' },
+        { value: 'APPROVED', label: '已通过' },
+        { value: 'RETURNED', label: '已退回' },
+        { value: 'OVERDUE', label: '逾期未交' },
+        { value: '', label: '全部' }
+      ],
+      processTabs: [
+        { value: 'PENDING_REVIEW', label: '待批阅' },
+        { value: 'APPROVED', label: '已通过' },
+        { value: 'RETURNED', label: '已退回' },
+        { value: '', label: '全部' }
+      ],
+      reportTypeKey: '',
+      obligationColumns: [
+        { key: 'student', title: '学生', width: '180px' },
+        { key: 'daily', title: '日报', width: '180px' },
+        { key: 'weekly', title: '周报', width: '180px' },
+        { key: 'monthly', title: '月报', width: '180px' },
+        { key: 'summary', title: '实习总结', width: '180px' },
+        { key: 'status', title: '总体', width: '150px' }
+      ],
+      columns: [
+        { key: 'student', title: '学生' },
+        { key: 'week', title: '周次' },
+        { key: 'submitAt', title: '提交时间' },
+        { key: 'version', title: '版本' },
+        { key: 'wordCount', title: '字数' },
+        { key: 'attachments', title: '附件' },
+        { key: 'riskFlag', title: '风险标记' },
+        { key: 'status', title: '状态' },
+        { key: 'actions', title: '操作', width: '80px' }
+      ]
+    }
+  },
+  computed: {
+    batchStore() { return useInternshipBatchStore() },
+    isProcessReport() {
+      return !!TYPE_MAP[this.reportTypeKey]
+    },
+    typeConfig() {
+      return TYPE_MAP[this.reportTypeKey] || null
+    },
+    pageTitle() {
+      return this.isProcessReport ? `${this.typeConfig.label}批阅` : '周报批阅'
+    },
+    pageSubtitle() {
+      if (this.isProcessReport) {
+        return `核对${this.typeConfig.label}内容与材料，批阅结果同步学生。`
+      }
+      return '核对周报正文与重交修改，批阅结果同步学生。'
+    },
+    typeTabs() {
+      return [
+        { value: '', label: '周报' },
+        { value: 'daily', label: '日报' },
+        { value: 'monthly', label: '月报' },
+        { value: 'summary', label: '实习总结' }
+      ]
+    },
+    summaryMetrics() {
+      if (this.loading || this.error) return []
+      const cur = this.activeTabs.find((t) => t.value === this.filters.status)
+      const label = (this.isProcessReport ? this.typeConfig.label : '周报') + (cur ? ' · ' + cur.label : '')
+      return [{ label, value: this.pagination.total, tone: this.filters.status === 'PENDING_REVIEW' && this.pagination.total ? 'warn' : undefined }]
+    },
+    exportLabel() {
+      return this.isProcessReport ? `导出${this.typeConfig.label}` : '导出周报'
+    },
+    emptyTitle() {
+      return this.isProcessReport ? `当前页签暂无${this.typeConfig.label}` : '当前页签暂无周报'
+    },
+    activeTabs() {
+      return this.isProcessReport ? this.processTabs : this.tabs
+    },
+    activeColumns() {
+      return this.isProcessReport ? PROCESS_COLUMNS : this.columns
+    },
+    batchHasRisk() {
+      return this.rows.some((r) => this.selected.includes(r.id) && r.riskFlag)
+    },
+    perm() {
+      return this.ctx.permissionActions || {}
+    },
+    canExport() {
+      const p = this.perm.exportReports
+      return !p || p.allowed
+    },
+    canBatchApprove() {
+      const p = this.perm.batchApproveReports
+      return !!p && p.allowed
+    },
+    batchApproveReason() {
+      if (this.batchHasRisk) return '所选含风险学生周报，需逐篇批阅'
+      const p = this.perm.batchApproveReports
+      if (p && !p.allowed) return p.reason || '无批量通过权限'
+      if (!this.selected.length) return '请先勾选待批阅周报'
+      return ''
+    }
+  },
+  created() {
+    // immediate watcher 会先按 URL 页签加载默认页码，但首次 load 不得覆盖已有工作上下文。
+    const restored = restoreWorkContext(this, WORK_FIELDS)
+    this.workContextReady = true
+    if (restored) this.load()
+  },
+  watch: {
+    'batchStore.selectedBatchId'() {
+      this.pagination.page = 1
+      this.obligationPagination.page = 1
+      this.selected = []
+      this.lastReceipt = null
+      this.load()
+      if (this.obligationOpen) this.loadObligations()
+    },
+    '$route.query.type': {
+      immediate: true,
+      handler(type) {
+        this.reportTypeKey = (type || '').toString()
+        if (this.isProcessReport && this.filters.status === 'OVERDUE') {
+          this.filters.status = 'PENDING_REVIEW'
+        }
+      }
+    },
+    '$route.query.panel': {
+      immediate: true,
+      handler(panel) {
+        this.applyPanel((panel || (this.isProcessReport ? 'all' : 'review')).toString())
+      }
+    }
+  },
+  methods: {
+    toggleObligations() {
+      this.obligationOpen = !this.obligationOpen
+      if (this.obligationOpen) {
+        this.obligationPagination.page = 1
+        this.loadObligations()
+      }
+    },
+    obligationMetric(metric) {
+      if (!metric?.configured) return '未配置'
+      return `应 ${metric.required} / 交 ${metric.submitted} / 通过 ${metric.approved} / 缺 ${metric.missing}`
+    },
+    setObligationMissing(value) {
+      this.obligationMissingOnly = !!value
+      this.obligationPagination.page = 1
+      this.loadObligations()
+    },
+    onObligationPage(page) {
+      this.obligationPagination.page = page
+      this.loadObligations()
+    },
+    async loadObligations() {
+      const batchId = this.batchStore.selectedBatchId
+      if (!batchId) {
+        this.obligationRows = []
+        this.obligationPagination.total = 0
+        return
+      }
+      this.obligationLoading = true
+      this.obligationError = ''
+      const res = await internshipApi.getReportObligations({
+        batchId,
+        missingOnly: this.obligationMissingOnly,
+        page: this.obligationPagination.page,
+        pageSize: this.obligationPagination.pageSize
+      })
+      this.obligationLoading = false
+      if (res.code !== 0) {
+        this.obligationError = res.message || '报告应交/未交台账加载失败'
+        return
+      }
+      this.obligationRows = res.data?.items || []
+      this.obligationPagination.total = Number(res.data?.total || 0)
+      this.obligationPagination.page = Number(res.data?.page || 1)
+      this.obligationPagination.pageSize = Number(res.data?.pageSize || 20)
+    },
+    exportObligationsFn() {
+      return internshipApi.exportReportObligations({
+        batchId: this.batchStore.selectedBatchId,
+        missingOnly: this.obligationMissingOnly
+      })
+    },
+    goDetail(row) {
+      const query = { ...this.$route.query, batchId: this.batchStore.selectedBatchId, page: String(this.pagination.page) }
+      // 进入详情前保存连续批阅队列（仅当前页真实行，不伪造全量）
+      const tab = this.activeTabs.find((t) => t.value === this.filters.status)
+      const tabLabel = tab ? tab.label : '全部'
+      saveReviewQueue({
+        kind: this.isProcessReport ? 'process-report' : 'weekly-report',
+        title: this.isProcessReport ? `${tabLabel} · ${this.typeConfig.label}` : tabLabel,
+        listPath: this.$route.path,
+        listQuery: query,
+        ids: this.rows.map((r) => r.id)
+      })
+      if (this.isProcessReport) {
+        this.$router.push({ path: `/admin/internship/process-reports/${row.id}`, query })
+      } else {
+        this.$router.push({ path: `/admin/internship/reports/${row.id}`, query })
+      }
+    },
+    applyPanel(panel) {
+      const status = Object.prototype.hasOwnProperty.call(PANEL_STATUS, panel) ? PANEL_STATUS[panel] : PANEL_STATUS.review
+      this.filters.status = status
+      this.pagination.page = Math.max(1, Number(this.$route.query.page) || 1)
+      this.selected = []
+      this.load()
+    },
+    switchType(typeKey) {
+      const query = { ...this.$route.query }
+      if (typeKey) query.type = typeKey
+      else delete query.type
+      // 切换报告类型时状态页签回到「待批阅」
+      query.panel = 'review'; query.page = '1'
+      this.$router.replace({ path: this.$route.path, query })
+      this.reportTypeKey = typeKey
+      this.applyPanel('review')
+    },
+    switchTab(v) {
+      const panel = Object.keys(PANEL_STATUS).find((k) => PANEL_STATUS[k] === v) || 'all'
+      if (this.$route.query.panel !== panel) {
+        this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, panel, page: '1' } })
+      } else {
+        this.applyPanel(panel)
+      }
+    },
+    onPageChange(page) {
+      this.pagination.page = page
+      this.load()
+    },
+    exportFn() {
+      if (this.isProcessReport) {
+        return internshipApi.exportProcessReports({
+          reportType: this.typeConfig.reportType,
+          status: this.filters.status,
+          batchId: this.batchStore.selectedBatchId
+        })
+      }
+      return internshipApi.exportWeeklyReports({ status: this.filters.status, batchId: this.batchStore.selectedBatchId })
+    },
+    remind(row) {
+      if (!row?.id) return
+      internshipApi.remindWeeklyReport(row.id).then((res) => {
+        if (res.code === 0) {
+          const d = res.data || {}
+          const tip = d.notified ? '已向学生发送站内催交通知' : '已写催办审计（学生账号未绑定，未发站内信）'
+          toast.success(`已向 ${row.studentName} 催交第 ${d.weekNumber || ''} 周周报 · ${tip}`)
+        } else {
+          toast.error(res.message || '催交失败')
+        }
+      })
+    },
+    async batchApprove() {
+      if (!this.canBatchApprove || this.batchHasRisk || !this.selected.length) return
+      this.batchSubmitting = true
+      try {
+        const items = this.selected.map((id) => {
+          const row = this.rows.find((r) => String(r.id) === String(id))
+          return { id, expectedVersion: row?.version }
+        })
+        const res = await internshipApi.batchReviewWeeklyReports(items, { action: 'APPROVE', comment: '批量通过' })
+        if (res.code === 0) {
+          const d = res.data || {}
+          this.lastReceipt = {
+            statusLabel: '批量批阅完成', actionLabel: '周报批量通过',
+            objectLabel: `服务端逐条校验 · 通过 ${d.approvedCount || 0} · 跳过 ${d.skippedCount || 0}`,
+            auditText: '每条成功记录分别提交业务更新与审批留痕',
+            nextStep: d.skippedCount ? '查看跳过项原因并逐篇处理' : '可继续当前队列下一页'
+          }
+          toast.success(`已通过 ${d.approvedCount || 0} 篇，跳过 ${d.skippedCount || 0} 篇（已写审计）`)
+          this.selected = []
+          this.load()
+        } else {
+          toast.error(res.message || '批量通过失败')
+        }
+      } finally {
+        this.batchSubmitting = false
+      }
+    },
+    async load() {
+      const sequence = ++this.loadSequence, batchId = this.batchStore.selectedBatchId
+      this.rows = []; this.selected = []; this.pagination.total = 0
+      if (this.workContextReady) captureWorkContext(this, WORK_FIELDS)
+      this.loading = true
+      this.error = ''
+      const params = { ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize, batchId: this.batchStore.selectedBatchId }
+      const res = this.isProcessReport
+        ? await internshipApi.getProcessReports({ ...params, reportType: this.typeConfig.reportType })
+        : await internshipApi.getWeeklyReports(params)
+      if (sequence !== this.loadSequence || batchId !== this.batchStore.selectedBatchId) return
+      if (res.code === 0) {
+        this.rows = res.data.list
+        this.pagination.total = res.data.total
+      } else {
+        this.error = res.message
+      }
+      this.loading = false
+    }
+  }
+}
+</script>
+
+<style scoped>
+@import '@/styles/module-page.css';
+.wr-obligation { display:grid; gap:12px; padding:16px; border:1px solid var(--card-b); border-radius:12px; background:var(--card); }
+.wr-obligation__head { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; }
+.wr-obligation__head strong { font-size:16px; color:var(--t1); }
+.wr-obligation__head p { margin:5px 0 0; font-size:12px; color:var(--t3); line-height:1.6; }
+.wr-obligation__filters { display:flex; gap:6px; flex-wrap:wrap; }
+.wr-obligation__filters .mp-tab { padding:7px 12px; border:1px solid var(--card-b); border-radius:8px; background:var(--card); color:var(--t2); cursor:pointer; }
+.wr-obligation__filters .mp-tab.is-active { border-color:var(--pri-100); background:var(--pri-bg); color:var(--pri); font-weight:600; }
+.wr-tabs { display: flex; gap: 6px; padding: 7px; border: 1px solid var(--card-b); border-radius: 12px; background: var(--card); box-shadow: var(--s1); overflow-x: auto; }
+.wr-tabs--type { background: linear-gradient(100deg, var(--pri-bg), var(--card) 52%); }
+.wr-tabs--status { margin-top: -8px; padding-left: 14px; border-top: 0; border-radius: 0 0 12px 12px; box-shadow: none; }
+.wr-tabs .mp-tab { position: relative; flex: 0 0 auto; padding: 7px 12px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--t2); font-size: 12px; transition: .16s ease; }
+.wr-tabs .mp-tab:hover { color: var(--pri); background: var(--pri-bg); }
+.wr-tabs .mp-tab.is-active { border-color: var(--pri-100); background: var(--card); color: var(--pri); font-weight: var(--font-weight-semibold); box-shadow: 0 2px 5px rgba(15, 40, 90, .07); }
+.wr-tabs--status .mp-tab.is-active { background: var(--pri-bg); box-shadow: none; }
+</style>

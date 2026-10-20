@@ -1,0 +1,37 @@
+{
+  "name": "跃科岗位实习管理平台",
+  "appid": "wxb569328a0dbf268b",
+  "description": "岗位实习学生端与教师端",
+  "versionName": "0.1.0",
+  "versionCode": "10",
+  "transformPx": false,
+  "uniStatistics": {
+    "enable": false
+  },
+  "mp-weixin": {
+    "appid": "wxb569328a0dbf268b",
+    "setting": {
+      "urlCheck": true,
+      "es6": true,
+      "minified": true
+    },
+    "usingComponents": true,
+    "__usePrivacyCheck__": true,
+    "requiredPrivateInfos": [
+      "getLocation"
+    ],
+    "permission": {
+      "scope.userLocation": {
+        "desc": "仅在实习签到时获取一次位置，用于签到范围核验和现场照片水印"
+      }
+    }
+  },
+  "h5": {
+    "title": "跃科岗位实习管理平台",
+    "router": {
+      "mode": "hash",
+      "base": "./"
+    }
+  },
+  "vueVersion": "3"
+}

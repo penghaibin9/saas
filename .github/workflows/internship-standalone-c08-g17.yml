@@ -1,0 +1,93 @@
+name: Internship Standalone C08 G17 Formal Documents
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/backend/app/models/internship_formal_document.py"
+      - "products/internship-platform/backend/app/models/__init__.py"
+      - "products/internship-platform/backend/alembic/versions/0010_yiyang_formal_documents.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_formal_document_service.py"
+      - "products/internship-platform/backend/app/modules/internship/routers/internship_formal_document.py"
+      - "products/internship-platform/backend/app/api/router.py"
+      - "products/internship-platform/backend/tests/test_yiyang_c08_g17_formal_documents.py"
+      - "products/internship-platform/admin-web/src/modules/internship/views/FormalDocumentWorkspaceView.vue"
+      - "products/internship-platform/admin-web/src/modules/internship/components/ProcessAnalyticsPanel.vue"
+      - "products/internship-platform/admin-web/src/modules/internship/api/formal-document.api.js"
+      - "products/internship-platform/admin-web/src/modules/internship/routes.js"
+      - "products/internship-platform/admin-web/src/config/navPlan.js"
+      - "products/internship-platform/admin-web/scripts/check-standalone-routes.mjs"
+      - ".github/workflows/internship-standalone-c08-g17.yml"
+
+jobs:
+  c08-g17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: c08_g17
+          MYSQL_DATABASE: internship_c08_g17
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pc08_g17"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:c08_g17@127.0.0.1:3306/internship_c08_g17?charset=utf8mb4
+      JWT_SECRET: c08-g17-actions-secret-not-for-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install standalone backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Compile G17 authority
+        run: |
+          python -m py_compile \
+            products/internship-platform/backend/app/models/internship_formal_document.py \
+            products/internship-platform/backend/app/modules/internship/services/internship_formal_document_service.py \
+            products/internship-platform/backend/app/modules/internship/routers/internship_formal_document.py
+      - name: Upgrade empty MySQL to ix0010
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade ix0010
+      - name: Verify G17 database facts
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+
+          engine = create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as db:
+              version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+              columns = set(db.execute(text(
+                  "SELECT column_name FROM information_schema.columns "
+                  "WHERE table_schema=DATABASE() AND table_name='t_internship_formal_document'"
+              )).scalars())
+          assert version == "ix0010", version
+          assert {
+              "document_type", "document_version", "source_hash",
+              "source_snapshot_json", "file_id", "file_sha256",
+          } <= columns
+          print({"version": version, "columnCount": len(columns)})
+          PY
+      - name: Run C08/G17 backend acceptance only
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_c08_g17_formal_documents.py
+      - name: Verify G17 admin entry, import closure and standalone build
+        working-directory: products/internship-platform/admin-web
+        run: |
+          npm install --no-audit --no-fund
+          npm run check:routes
+          npm run check:imports
+          npm run build

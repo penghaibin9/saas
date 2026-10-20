@@ -1,0 +1,410 @@
+<template>
+  <view class="page-wrap">
+    <MobileNavBar variant="teacher" title="实习审批" subtitle="补卡 · 请假 · 超期销假办结" show-back />
+    <view class="tabs">
+      <view v-for="item in tabOptions" :key="item.key" class="tab" :class="{ on: tab === item.key }" @click="tab = item.key">
+        {{ item.label }}<text v-if="item.count" class="badge">{{ item.count }}</text><text v-if="tab === item.key" class="underline" />
+      </view>
+    </view>
+
+    <MobileGlobalState :state="state" @retry="load">
+      <view class="page-pad stack">
+        <view v-if="batches.length" class="card batch-card">
+          <text class="muted">实习批次</text>
+          <picker mode="selector" :range="batchLabels" :value="batchIndex" :disabled="hasActiveOperation" @change="onBatch">
+            <view class="picker-value">{{ batchLabels[batchIndex] || '请选择批次' }} <text>▾</text></view>
+          </picker>
+        </view>
+
+        <MobileInlineAlert type="info" description="审批按当前批次和数据版本处理。存在证明材料时必须先真实查看并留下审计；规则要求但缺少材料时，后端拒绝通过。" />
+        <view v-if="receipt && tab === receipt.kind" class="card result-card">
+          <view class="row-between">
+            <view class="flex-1">
+              <text class="result-title">{{ receipt.actionLabel }} · {{ receipt.studentName }}</text>
+              <text class="result-meta">{{ receipt.statusLabel }} · 记录 {{ receipt.id }} · v{{ receipt.version }}</text>
+            </view>
+            <text class="result-close" @click="receipt = null">关闭</text>
+          </view>
+          <text class="result-next">{{ receipt.kind === 'overdue' ? '本次请假已办结，关联超期风险已同步；可继续处理下一条返岗记录。' : '下一步：学生端可回看结果；可继续办理当前批次下一份待办。' }}</text>
+        </view>
+        <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次" description="当前身份的数据范围内没有可办理批次。" />
+
+        <template v-else-if="tab === 'makeup'">
+          <MobileInlineAlert v-if="!canReviewMakeup" type="warning" description="当前身份仅能查看补卡申请，没有补卡审批权限；页面已隐藏可执行能力，后端也会独立校验。" />
+          <MobileGlobalState v-if="!makeups.length" state="empty" title="暂无待审补卡" description="当前批次本人指导范围内没有待审核补卡。" />
+          <InternshipApprovalCard
+            v-for="item in makeups"
+            :key="item.id"
+            :item="item"
+            kind="makeup"
+            :acting="isActing('makeup', item.id)"
+            :viewing="isViewing('makeup', item.id)"
+            :can-review="canReviewMakeup"
+            :evidence-viewed="isEvidenceViewed('makeup', item)"
+            @review="review"
+            @view-evidence="viewEvidence"
+          />
+          <view v-if="reviewDraft.visible && reviewDraft.kind === 'makeup'" class="card review-editor">
+            <text class="review-title">{{ reviewDraft.action === 'REJECT' ? '驳回补卡' : '通过并补写打卡' }}</text>
+            <text class="review-object">{{ reviewDraft.item?.studentName }} · {{ reviewDraft.item?.checkinDate }} · v{{ reviewDraft.item?.version }}</text>
+            <MobileInlineAlert v-if="reviewDraft.error" type="warning" :description="reviewDraft.error" />
+            <text class="review-label">处理意见{{ reviewDraft.action === 'REJECT' ? '（必填，不少于5字）' : '（选填）' }}</text>
+            <textarea v-model="reviewDraft.comment" class="review-textarea" maxlength="500" :disabled="reviewSubmitting" placeholder="写清核验结论；驳回时说明学生需要补充或修改什么" />
+            <text class="review-count">{{ reviewDraft.comment.length }}/500</text>
+            <view class="review-actions">
+              <button class="review-cancel flex-1" :disabled="reviewSubmitting" plain @click="closeReview">取消</button>
+              <button class="review-submit flex-1" :class="{ danger: reviewDraft.action === 'REJECT' }" :disabled="reviewSubmitting" plain @click="submitReview">{{ reviewSubmitting ? '提交中…' : '确认提交' }}</button>
+            </view>
+          </view>
+        </template>
+
+        <template v-else-if="tab === 'leave'">
+          <MobileInlineAlert v-if="!canReviewLeave" type="warning" description="当前身份仅能查看请假申请，没有实习请假审批权限；页面与后端均按权限码独立拦截。" />
+          <MobileGlobalState v-if="!leaves.length" state="empty" title="暂无待审请假" description="当前批次本人指导范围内没有待审批请假。" />
+          <InternshipApprovalCard
+            v-for="item in leaves"
+            :key="item.id"
+            :item="item"
+            kind="leave"
+            :acting="isActing('leave', item.id)"
+            :viewing="isViewing('leave', item.id)"
+            :can-review="canReviewLeave"
+            :evidence-viewed="isEvidenceViewed('leave', item)"
+            @review="review"
+            @view-evidence="viewEvidence"
+          />
+          <view v-if="reviewDraft.visible && reviewDraft.kind === 'leave'" class="card review-editor">
+            <text class="review-title">{{ reviewDraft.action === 'REJECT' ? '驳回请假' : '通过请假' }}</text>
+            <text class="review-object">{{ reviewDraft.item?.studentName }} · {{ reviewDraft.item?.startDate }}~{{ reviewDraft.item?.endDate }} · v{{ reviewDraft.item?.version }}</text>
+            <MobileInlineAlert v-if="reviewDraft.error" type="warning" :description="reviewDraft.error" />
+            <text class="review-label">审批意见{{ reviewDraft.action === 'REJECT' ? '（必填，不少于5字）' : '（选填）' }}</text>
+            <textarea v-model="reviewDraft.comment" class="review-textarea" maxlength="500" :disabled="reviewSubmitting" placeholder="写清审批结论；驳回时说明学生需要补充或修改什么" />
+            <text class="review-count">{{ reviewDraft.comment.length }}/500</text>
+            <view class="review-actions">
+              <button class="review-cancel flex-1" :disabled="reviewSubmitting" plain @click="closeReview">取消</button>
+              <button class="review-submit flex-1" :class="{ danger: reviewDraft.action === 'REJECT' }" :disabled="reviewSubmitting" plain @click="submitReview">{{ reviewSubmitting ? '提交中…' : '确认提交' }}</button>
+            </view>
+          </view>
+        </template>
+
+        <template v-else>
+          <MobileInlineAlert v-if="!canReviewLeave" type="warning" description="当前身份没有销假办结权限，仅可查看相关记录。" />
+          <MobileGlobalState v-if="!overdues.length" state="empty" title="暂无待办结销假" description="当前批次没有超期未归或已销假待关闭风险的记录。" />
+          <view v-if="returnDraft.visible" class="card review-editor">
+            <text class="review-title">确认返岗并办结</text>
+            <text class="review-object">{{ returnDraft.item?.studentName }} · {{ returnDraft.item?.startDate }}~{{ returnDraft.item?.endDate }} · v{{ returnDraft.item?.version }}</text>
+            <MobileInlineAlert v-if="returnDraft.error" type="warning" :description="returnDraft.error" />
+            <text class="review-label">返岗核实说明（必填，不少于2字）</text>
+            <textarea v-model="returnDraft.note" class="review-textarea" maxlength="500" :disabled="returnSubmitting" placeholder="如：已联系学生和企业，确认已返岗" />
+            <text class="review-count">{{ returnDraft.note.length }}/500</text>
+            <view class="review-actions">
+              <button class="review-cancel flex-1" :disabled="returnSubmitting" plain @click="closeReturn">取消</button>
+              <button class="review-submit flex-1" :disabled="returnSubmitting || returnDraft.note.trim().length < 2" plain @click="submitReturn">{{ returnSubmitting ? '办结中…' : '确认返岗并办结' }}</button>
+            </view>
+          </view>
+          <view v-for="item in overdues" :key="item.id" class="card item-card">
+            <view class="row-between">
+              <view class="flex-1">
+                <text class="title">{{ item.studentName || '—' }}</text>
+                <text class="sub">{{ item.studentNo || '' }} · {{ item.leaveTypeLabel || item.leaveType }}</text>
+              </view>
+              <MobileStatusTag :label="item.statusLabel || item.status" :type="item.status === 'OVERDUE' ? 'danger' : 'success'" />
+            </view>
+            <view class="detail"><text class="key">请假起止</text><text>{{ item.startDate || '—' }} ~ {{ item.endDate || '—' }}</text></view>
+            <view v-if="item.returnNote" class="detail"><text class="key">销假说明</text><text class="flex-1">{{ item.returnNote }}</text></view>
+            <view class="detail"><text class="key">提交时间</text><text>{{ formatTime(item.submittedAt || item.createdAt) }}</text></view>
+            <view class="detail"><text class="key">数据版本</text><text>v{{ item.version }}</text></view>
+            <button
+              class="approve"
+              :class="{ 'is-disabled': isActing('return', item.id) || !canReviewLeave }"
+              :disabled="isActing('return', item.id) || !canReviewLeave"
+              plain
+              @click="openReturn(item)"
+            >{{ isActing('return', item.id) ? '办结中…' : (canReviewLeave ? '确认返岗并同步风险' : '无办结权限') }}</button>
+          </view>
+        </template>
+      </view>
+    </MobileGlobalState>
+  </view>
+</template>
+
+<script>
+import InternshipApprovalCard from './ApprovalCard.vue'
+import { useInternshipContextStore } from '@/stores/internshipContext'
+import {
+  teacherInternshipLeaveEvidenceViewed,
+  teacherInternshipLeaves,
+  teacherInternshipLeaveReview,
+  teacherInternshipMakeupEvidenceViewed,
+  teacherInternshipMakeups,
+  teacherInternshipMakeupReview
+} from '@/services/internshipApi'
+import { openBusinessFile } from '@/services/fileApi'
+import { realRequest } from '@/services/request'
+import { toast } from '@/utils/nav'
+
+export default {
+  components: { InternshipApprovalCard },
+  data: () => ({
+    tab: 'makeup', makeups: [], leaves: [], overdues: [], state: 'loading',
+    batches: [], batchId: '', batchIndex: 0,
+    actingKeys: {}, viewingKeys: {}, viewedEvidence: {},
+    makeupPage: 1, leavePage: 1, makeupHasMore: false, leaveHasMore: false,
+    loadingMore: false, loadSeq: 0,
+    reviewSubmitting: false,
+    reviewDraft: { visible: false, kind: '', item: null, action: '', comment: '', error: '' },
+    returnSubmitting: false,
+    returnDraft: { visible: false, item: null, note: '', error: '' },
+    receipt: null
+  }),
+  computed: {
+    context() { return useInternshipContextStore() },
+    batchLabels() { return this.batches.map((item) => `${item.name} · ${item.status} · ${item.studentCount}人`) },
+    tabOptions() {
+      return [
+        { key: 'makeup', label: '补卡审批', count: this.makeups.length },
+        { key: 'leave', label: '请假审批', count: this.leaves.length },
+        { key: 'overdue', label: '销假办结', count: this.overdues.length }
+      ]
+    },
+    canReviewMakeup() { return this.context.can('internship.makeup.review') },
+    canReviewLeave() { return this.context.can('internship.leave.review') },
+    hasActiveOperation() {
+      return this.reviewSubmitting || this.returnSubmitting || Object.values(this.actingKeys).some(Boolean) || Object.values(this.viewingKeys).some(Boolean)
+    }
+  },
+  methods: {
+    open(options) {
+      if (['makeup', 'leave', 'overdue'].includes(options?.tab)) this.tab = options.tab
+      this.load()
+    },
+    recordKey(kind, id) { return `${kind}:${id}` },
+    isActing(kind, id) { return !!this.actingKeys[this.recordKey(kind, id)] },
+    isViewing(kind, id) { return !!this.viewingKeys[this.recordKey(kind, id)] },
+    isEvidenceViewed(kind, item) {
+      return !!item.evidenceViewed || !!this.viewedEvidence[this.recordKey(kind, item.id)]
+    },
+    setKey(mapName, key, value) {
+      this[mapName] = { ...this[mapName], [key]: value }
+    },
+    formatTime(value) {
+      if (!value) return '—'
+      return String(value).replace('T', ' ').slice(0, 16)
+    },
+    async load(done) {
+      const seq = ++this.loadSeq
+      this.state = 'loading'
+      this.makeupPage = 1
+      this.leavePage = 1
+      this.makeupHasMore = false
+      this.leaveHasMore = false
+      try {
+        this.context.restore()
+        await this.context.load(true)
+        this.batches = this.context.batches || []
+        this.batchId = this.context.selectedBatchId || ''
+        this.batchIndex = Math.max(0, this.batches.findIndex((item) => String(item.id) === String(this.batchId)))
+        if (!this.batchId) {
+          this.makeups = []; this.leaves = []; this.overdues = []; this.state = 'ready'; return
+        }
+        const query = `?batchId=${encodeURIComponent(this.batchId)}`
+        const [makeupData, leaveData, overdueData] = await Promise.all([
+          teacherInternshipMakeups(this.batchId),
+          teacherInternshipLeaves(this.batchId),
+          realRequest(`/mobile/teacher/internship/context/leaves/overdue${query}`)
+        ])
+        if (seq !== this.loadSeq || String(this.context.selectedBatchId || '') !== String(this.batchId)) return
+        this.makeups = makeupData?.items || makeupData?.list || []
+        this.leaves = leaveData?.items || leaveData?.list || []
+        this.makeupHasMore = !!makeupData?.hasMore
+        this.leaveHasMore = !!leaveData?.hasMore
+        this.overdues = overdueData?.list || []
+        this.state = 'ready'
+      } catch (error) {
+        if (seq !== this.loadSeq) return
+        this.state = 'error'
+        toast(error?.message || '实习审批数据加载失败')
+      } finally { done?.() }
+    },
+    async onBatch(event) {
+      if (this.hasActiveOperation) return
+      this.batchIndex = Number(event.detail.value)
+      this.context.selectBatch(this.batches[this.batchIndex]?.id)
+      this.makeups = []
+      this.leaves = []
+      this.overdues = []
+      this.closeReview()
+      this.closeReturn()
+      this.receipt = null
+      await this.load()
+    },
+    async loadMore() {
+      if (!this.batchId || this.loadingMore || this.state !== 'ready') return
+      const selectedBatch = this.batchId
+      this.loadingMore = true
+      try {
+        if (this.tab === 'makeup' && this.makeupHasMore) {
+          const page = this.makeupPage + 1
+          const data = await teacherInternshipMakeups(selectedBatch, page, 20)
+          if (selectedBatch !== this.batchId) return
+          this.makeups = [...this.makeups, ...(data?.items || [])]
+          this.makeupPage = page
+          this.makeupHasMore = !!data?.hasMore
+        } else if (this.tab === 'leave' && this.leaveHasMore) {
+          const page = this.leavePage + 1
+          const data = await teacherInternshipLeaves(selectedBatch, page, 20)
+          if (selectedBatch !== this.batchId) return
+          this.leaves = [...this.leaves, ...(data?.items || [])]
+          this.leavePage = page
+          this.leaveHasMore = !!data?.hasMore
+        }
+      } finally { this.loadingMore = false }
+    },
+    async viewEvidence({ kind, item }) {
+      const key = this.recordKey(kind, item.id)
+      if (this.isViewing(kind, item.id) || this.isActing(kind, item.id)) return
+      if (!item.evidenceFileId) return toast('该申请没有可查看的证明材料')
+      this.setKey('viewingKeys', key, true)
+      try {
+        await openBusinessFile(item.evidenceFileId)
+        if (kind === 'makeup') await teacherInternshipMakeupEvidenceViewed(item.id)
+        else await teacherInternshipLeaveEvidenceViewed(item.id)
+        this.setKey('viewedEvidence', key, true)
+        toast('材料已查看，审计留痕已写入')
+      } catch (error) {
+        toast(error?.message || '材料查看失败，未写入查看留痕')
+      } finally { this.setKey('viewingKeys', key, false) }
+    },
+    review({ kind, item, action }) {
+      const key = this.recordKey(kind, item.id)
+      const canReview = kind === 'makeup' ? this.canReviewMakeup : this.canReviewLeave
+      if (!canReview || this.state !== 'ready') return toast('当前身份没有该类审批权限或批次正在切换')
+      if (this.isActing(kind, item.id) || this.isViewing(kind, item.id)) return
+      if (action === 'APPROVE') {
+        if (item.evidenceRequired && !item.evidenceFileId) return toast('缺少规则要求的证明材料，不能通过')
+        if (item.evidenceFileId && !this.isEvidenceViewed(kind, item)) return toast('请先查看证明材料，再执行通过')
+      }
+      this.reviewDraft = { visible: true, kind, item, action, comment: '', error: '' }
+    },
+    closeReview() {
+      if (this.reviewSubmitting) return
+      this.reviewDraft = { visible: false, kind: '', item: null, action: '', comment: '', error: '' }
+    },
+    async submitReview() {
+      const draft = this.reviewDraft
+      const item = draft.item
+      if (!draft.visible || !item || this.reviewSubmitting) return
+      const comment = String(draft.comment || '').trim()
+      if (draft.action === 'REJECT' && comment.length < 5) {
+        this.reviewDraft.error = '驳回原因不少于5个字，并写清学生需要补充或修改什么。'
+        return
+      }
+      const key = this.recordKey(draft.kind, item.id)
+      const selectedBatch = this.batchId
+      this.reviewSubmitting = true
+      this.reviewDraft.error = ''
+      this.setKey('actingKeys', key, true)
+      try {
+        const body = { action: draft.action, comment, expectedVersion: item.version }
+        const result = draft.kind === 'makeup'
+          ? await teacherInternshipMakeupReview(item.id, selectedBatch, body)
+          : await teacherInternshipLeaveReview(item.id, selectedBatch, body)
+        if (selectedBatch !== this.batchId) return
+        this.receipt = {
+          kind: draft.kind, id: result?.id || item.id, version: result?.version ?? item.version,
+          statusLabel: result?.statusLabel || (draft.action === 'REJECT' ? '已驳回' : '已通过'),
+          actionLabel: draft.action === 'REJECT' ? '已驳回' : (draft.kind === 'makeup' ? '已通过并补写打卡' : '已通过'),
+          studentName: item.studentName || '学生'
+        }
+        this.reviewDraft = { visible: false, kind: '', item: null, action: '', comment: '', error: '' }
+        toast(this.receipt.actionLabel)
+        await this.load()
+      } catch (error) {
+        if (selectedBatch !== this.batchId) return
+        if (String(error?.code || '') === 'DATA_CONFLICT') {
+          const savedComment = draft.comment
+          const savedId = item.id
+          await this.load()
+          const latestRows = draft.kind === 'makeup' ? this.makeups : this.leaves
+          const latest = latestRows.find((row) => String(row.id) === String(savedId))
+          this.reviewDraft = {
+            ...draft, item: latest || item, comment: savedComment,
+            error: latest ? '记录已被更新。处理意见已保留，请核对最新版本后重新提交。' : '该待办已被处理，处理意见已保留供你核对。'
+          }
+        } else this.reviewDraft.error = error?.message || '审批失败，处理意见已保留。'
+      } finally {
+        this.reviewSubmitting = false
+        this.setKey('actingKeys', key, false)
+      }
+    },
+    openReturn(item) {
+      if (!this.canReviewLeave) return toast('当前身份没有销假办结权限')
+      if (this.isActing('return', item.id)) return
+      this.returnDraft = { visible: true, item, note: '', error: '' }
+    },
+    closeReturn() {
+      if (this.returnSubmitting) return
+      this.returnDraft = { visible: false, item: null, note: '', error: '' }
+    },
+    async submitReturn() {
+      const draft = this.returnDraft
+      const item = draft.item
+      const note = String(draft.note || '').trim()
+      if (!draft.visible || !item || this.returnSubmitting || note.length < 2) return
+      const key = this.recordKey('return', item.id)
+      const selectedBatch = this.batchId
+      this.returnSubmitting = true
+      this.returnDraft.error = ''
+      this.setKey('actingKeys', key, true)
+      try {
+        const result = await realRequest(`/mobile/teacher/internship/context/leaves/${encodeURIComponent(item.id)}/ack-return`, {
+          method: 'POST', data: { note, expectedVersion: item.version }
+        })
+        if (selectedBatch !== this.batchId) return
+        this.receipt = {
+          kind: 'overdue', id: result?.id || item.id, version: result?.version ?? item.version,
+          statusLabel: result?.statusLabel || '已销假', actionLabel: '返岗已确认',
+          studentName: item.studentName || '学生'
+        }
+        this.returnDraft = { visible: false, item: null, note: '', error: '' }
+        toast('返岗已确认，关联风险已同步处理')
+        await this.load()
+      } catch (error) {
+        if (selectedBatch !== this.batchId) return
+        if (String(error?.code || '') === 'DATA_CONFLICT') {
+          const savedNote = draft.note
+          const savedId = item.id
+          await this.load()
+          const latest = this.overdues.find((row) => String(row.id) === String(savedId))
+          this.returnDraft = {
+            visible: true, item: latest || item, note: savedNote,
+            error: latest ? '记录已更新。核实说明已保留，请确认最新版本后重新提交。' : '该记录已被其他人办结。核实说明已保留供你核对。'
+          }
+        } else this.returnDraft.error = error?.message || '销假办结失败，核实说明已保留。'
+      } finally {
+        this.returnSubmitting = false
+        this.setKey('actingKeys', key, false)
+      }
+    }
+  }
+}
+</script>
+
+<style scoped>
+.tabs { display: flex; background: var(--bg-card); border-bottom: 1px solid var(--border-light); }
+.tab { position: relative; flex: 1; padding: 14px 4px 12px; text-align: center; color: var(--text-tertiary); font-size: var(--font-size-sm); }
+.tab.on { color: var(--brand-primary); font-weight: var(--font-weight-semibold); }
+.underline { position: absolute; left: 34%; right: 34%; bottom: 0; height: 2px; border-radius: 2px; background: var(--brand-primary); }
+.badge { display: inline-flex; min-width: 16px; height: 16px; margin-left: 4px; padding: 0 4px; align-items: center; justify-content: center; border-radius: 8px; background: var(--error-500); color: #fff; font-size: 10px; box-sizing: border-box; }
+.batch-card { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.muted { color: var(--text-tertiary); font-size: var(--font-size-sm); }
+.picker-value { color: var(--brand-primary); font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); text-align: right; }
+.item-card { display: flex; flex-direction: column; gap: 10px; }
+.title { display: block; color: var(--text-primary); font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); }
+.sub { display: block; margin-top: 3px; color: var(--text-tertiary); font-size: var(--font-size-xs); }
+.detail { display: flex; gap: 12px; color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.55; }
+.key { width: 68px; flex: 0 0 68px; color: var(--text-tertiary); }
+.approve { margin: 4px 0 0; background: var(--brand-primary); color: #fff; border: 0; }
+.approve.is-disabled { background: var(--gray-300); color: var(--text-tertiary); }
+.result-card{border-color:var(--success-200,#bbf7d0);background:var(--success-50,#f0fdf4)}.result-title{display:block;color:var(--success-800,#166534);font-size:var(--font-size-md);font-weight:600}.result-meta,.result-next{display:block;margin-top:5px;color:var(--success-700,#15803d);font-size:var(--font-size-xs);line-height:1.5}.result-close{flex-shrink:0;color:var(--success-700,#15803d);font-size:var(--font-size-xs)}.review-editor{display:flex;flex-direction:column;gap:10px;border-color:var(--teacher-200,#bfdbfe);background:var(--teacher-50,#eff6ff)}.review-title{font-size:var(--font-size-md);font-weight:600;color:var(--text-primary)}.review-object{font-size:var(--font-size-xs);color:var(--text-secondary)}.review-label{margin-top:3px;font-size:var(--font-size-sm);font-weight:600;color:var(--text-secondary)}.review-textarea{box-sizing:border-box;width:100%;min-height:112px;padding:12px;border:1px solid var(--border-light);border-radius:var(--radius-md);background:var(--bg-card);font-size:var(--font-size-base);line-height:1.6}.review-count{align-self:flex-end;color:var(--text-tertiary);font-size:10px}.review-actions{display:flex;gap:10px}.review-cancel,.review-submit{min-height:44px;border-radius:var(--radius-md);font-size:var(--font-size-md)}.review-cancel{border:1px solid var(--border-base);background:var(--bg-card);color:var(--text-secondary)}.review-submit{border:0;background:var(--teacher-600);color:#fff}.review-submit.danger{background:var(--danger-600)}
+</style>

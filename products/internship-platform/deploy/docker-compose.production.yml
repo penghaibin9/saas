@@ -1,0 +1,193 @@
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --max-connections=${MYSQL_MAX_CONNECTIONS:-500}
+      - --innodb-buffer-pool-size=${MYSQL_INNODB_BUFFER_POOL_SIZE:-4G}
+      - --slow-query-log=ON
+      - --long-query-time=0.5
+      - --server-id=1
+      - --log-bin=mysql-bin
+      - --binlog-format=ROW
+      - --binlog-expire-logs-seconds=604800
+      - --sync-binlog=1
+      - --innodb-flush-log-at-trx-commit=1
+    environment:
+      MYSQL_DATABASE: ${DB_NAME:-internship_standalone}
+      MYSQL_USER: ${DB_USER:-internship_app}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD must be set}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?MYSQL_ROOT_PASSWORD must be set}
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+    networks: [internship]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command:
+      - sh
+      - -c
+      - exec redis-server --appendonly yes --appendfsync everysec --requirepass "$$REDIS_PASSWORD" --maxmemory "${REDIS_MAXMEMORY:-512mb}" --maxmemory-policy allkeys-lru
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:?REDIS_PASSWORD must be set}
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    networks: [internship]
+
+  migrate:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: "no"
+    command: ["alembic", "-c", "alembic.ini", "upgrade", "head"]
+    environment: &backend-env
+      APP_ENV: production
+      DATABASE_URL: mysql+pymysql://${DB_USER:-internship_app}:${DB_PASSWORD:?DB_PASSWORD must be set}@mysql:3306/${DB_NAME:-internship_standalone}?charset=utf8mb4
+      EXPECTED_ALEMBIC_REVISION: ${EXPECTED_ALEMBIC_REVISION:-ix0026}
+      REDIS_URL: redis://default:${REDIS_PASSWORD:?REDIS_PASSWORD must be set}@redis:6379/0
+      REDIS_KEY_PREFIX: internship-standalone:prod
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set}
+      FIELD_ENCRYPTION_KEY: ${FIELD_ENCRYPTION_KEY:?FIELD_ENCRYPTION_KEY must be set}
+      SENSITIVE_SEARCH_HMAC_KEY: ${SENSITIVE_SEARCH_HMAC_KEY:?SENSITIVE_SEARCH_HMAC_KEY must be set}
+      FILE_STORAGE_DIR: /data/files
+      FILE_SCAN_REQUIRED: "true"
+      CLAMAV_ENABLED: "true"
+      CLAMAV_HOST: clamav
+      CLAMAV_PORT: "3310"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [internship]
+
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      <<: *backend-env
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-4}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    volumes:
+      - file-data:/data/files
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import json,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8000/health/ready',timeout=3)); assert d['status']=='READY'"]
+      interval: 20s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks: [internship]
+
+  audit-worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    command: ["python", "-m", "app.audit_worker", "--interval", "5", "--batch-size", "100"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.audit_worker", "--healthcheck"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 30s
+    networks: [internship]
+
+  clamav:
+    image: clamav/clamav:1.4
+    restart: unless-stopped
+    volumes:
+      - clamav-data:/var/lib/clamav
+      - ./clamav/clamd.conf:/etc/clamav/clamd.conf:ro
+    healthcheck:
+      test: ["CMD", "clamdcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 10
+      start_period: 180s
+    networks: [internship]
+
+  file-scan-worker:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    init: true
+    command: ["python", "-m", "app.file_scan_worker"]
+    environment:
+      <<: *backend-env
+    depends_on:
+      mysql:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      clamav:
+        condition: service_healthy
+    volumes:
+      - file-data:/data/files
+    healthcheck:
+      test: ["CMD", "python", "-m", "app.file_scan_worker", "--healthcheck"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
+    stop_grace_period: 120s
+    networks: [internship]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./nginx/internship.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${TLS_CERT_FILE:-./certs/fullchain.pem}:/etc/nginx/tls/fullchain.pem:ro
+      - ${TLS_KEY_FILE:-./certs/privkey.pem}:/etc/nginx/tls/privkey.pem:ro
+      - ../admin-web/dist:/usr/share/nginx/html/admin:ro
+      - ../student-web/dist:/usr/share/nginx/html/student:ro
+      - ../enterprise-web/dist:/usr/share/nginx/html/enterprise:ro
+    networks: [internship]
+
+volumes:
+  mysql-data:
+  redis-data:
+  file-data:
+  clamav-data:
+
+networks:
+  internship:
+    driver: bridge

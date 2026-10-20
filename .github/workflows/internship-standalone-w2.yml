@@ -1,0 +1,26 @@
+name: Internship Standalone W2 Routes
+
+on:
+  workflow_dispatch:
+
+jobs:
+  staff-routes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Enforce standalone boundary
+        run: python products/internship-platform/scripts/check_forbidden_imports.py
+      - name: Check recursive staff import closure
+        run: python products/internship-platform/scripts/check_w2_import_closure.py
+      - name: Run staff route registry contracts
+        env:
+          PYTHONPATH: products/internship-platform/backend
+        run: pytest -q products/internship-platform/backend/tests/test_w2_staff_routes.py products/internship-platform/backend/tests/test_w2_score_appeal_standalone.py products/internship-platform/backend/tests/test_w2_student_routes.py products/internship-platform/backend/tests/test_w2_teacher_mobile_routes.py products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py

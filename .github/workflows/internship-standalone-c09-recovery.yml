@@ -1,0 +1,30 @@
+name: Internship Standalone C09 Recovery Drill
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/scripts/c09_recovery_drill_ci.sh"
+      - "products/internship-platform/deploy/backup/**"
+      - "products/internship-platform/deploy/docker-compose.production.yml"
+      - "products/internship-platform/backend/**"
+      - ".github/workflows/internship-standalone-c09-recovery.yml"
+
+jobs:
+  recovery-drill:
+    name: Database and local-file restore evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      C09_RECOVERY_DRILL_ACK: "YES"
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate recovery scripts
+        run: |
+          bash -n products/internship-platform/scripts/c09_recovery_drill_ci.sh
+          bash -n products/internship-platform/deploy/backup/backup.sh
+          bash -n products/internship-platform/deploy/backup/restore-drill.sh
+      - name: Execute C09 recovery drill
+        run: bash products/internship-platform/scripts/c09_recovery_drill_ci.sh

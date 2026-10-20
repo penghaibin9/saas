@@ -1,0 +1,264 @@
+name: Internship Standalone C09 G19 G20 Tooling
+
+on:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/scripts/g19_migration_bridge.py"
+      - "products/internship-platform/load/g20_internship.k6.js"
+      - "products/internship-platform/scripts/g20_validate_evidence.py"
+      - "products/internship-platform/backend/alembic/sql/0001_internship_standalone_baseline.json"
+      - "products/internship-platform/backend/app/main.py"
+      - "products/internship-platform/scripts/check_w2_import_closure.py"
+      - "products/internship-platform/backend/app/services/browser_auth_session_blocklist.py"
+      - "products/internship-platform/backend/app/services/message_center_service.py"
+      - "products/internship-platform/backend/app/config.py"
+      - "products/internship-platform/backend/Dockerfile"
+      - "products/internship-platform/deploy/**"
+      - "products/internship-platform/docs/YIYANG_C09_PRODUCTION_DELIVERY_RUNBOOK_20260929.md"
+      - ".github/workflows/internship-standalone-c09-g19-g20.yml"
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "products/internship-platform/scripts/g19_migration_bridge.py"
+      - "products/internship-platform/load/g20_internship.k6.js"
+      - "products/internship-platform/scripts/g20_validate_evidence.py"
+      - "products/internship-platform/backend/alembic/sql/0001_internship_standalone_baseline.json"
+      - "products/internship-platform/backend/app/main.py"
+      - "products/internship-platform/backend/app/config.py"
+      - "products/internship-platform/backend/Dockerfile"
+      - "products/internship-platform/deploy/**"
+      - "products/internship-platform/docs/YIYANG_C09_PRODUCTION_DELIVERY_RUNBOOK_20260929.md"
+      - ".github/workflows/internship-standalone-c09-g19-g20.yml"
+  workflow_dispatch:
+
+jobs:
+  tooling-contract:
+    name: C09 tooling contract (not 5000-VU acceptance)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install migration bridge runtime
+        run: python -m pip install "SQLAlchemy==2.0.52" "PyMySQL==1.2.0"
+      - name: Compile G19 and G20 evidence tools
+        run: |
+          python -m py_compile products/internship-platform/scripts/g19_migration_bridge.py products/internship-platform/scripts/g20_validate_evidence.py
+          node --check products/internship-platform/load/g20_internship.k6.js
+      - name: Verify frozen G19 migration contract
+        run: python products/internship-platform/scripts/g19_migration_bridge.py --self-test
+      - name: Verify G20 evidence qualification contract
+        run: python products/internship-platform/scripts/g20_validate_evidence.py --self-test
+      - name: Validate backend import closure
+        env:
+          PYTHONPATH: products/internship-platform/backend
+        run: python products/internship-platform/scripts/check_w2_import_closure.py
+      - name: Validate production readiness and ops scripts
+        run: |
+          python -m py_compile products/internship-platform/backend/app/main.py products/internship-platform/backend/app/config.py products/internship-platform/backend/app/services/browser_auth_session_blocklist.py
+          bash -n products/internship-platform/deploy/backup/backup.sh
+          bash -n products/internship-platform/deploy/backup/restore-drill.sh
+          grep -q "mysql:8.4" products/internship-platform/deploy/docker-compose.production.yml
+          grep -q "EXPECTED_ALEMBIC_REVISION=ix0023" products/internship-platform/deploy/env.production.example
+      - name: Validate production compose contract
+        working-directory: products/internship-platform/deploy
+        run: |
+          cp env.production.example .env.production
+          docker compose --env-file .env.production -f docker-compose.production.yml config --quiet
+          rm -f .env.production
+      - name: Guard against false procurement acceptance
+        run: |
+          grep -q "procurementMinimumVus: 5000" products/internship-platform/load/g20_internship.k6.js
+          grep -q "G20_REAL_RUN_ACK" products/internship-platform/load/g20_internship.k6.js
+          grep -q "SMOKE_ONLY" products/internship-platform/scripts/g20_validate_evidence.py
+          echo "Tooling contract passed, including formal-load identity-pool qualification. This job does NOT execute or claim the real 5000-VU G20 acceptance run."
+
+  runtime-readiness:
+    name: C09 MySQL 8.4 Redis readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: c09_root
+          MYSQL_DATABASE: internship_c09
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pc09_root --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s
+          --health-timeout=3s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      APP_ENV: ci
+      DATABASE_URL: mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09?charset=utf8mb4
+      EXPECTED_ALEMBIC_REVISION: ix0023
+      REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_KEY_PREFIX: internship-standalone:c09
+      JWT_SECRET: c09-ci-only-jwt-secret-with-sufficient-length-20260929
+      FILE_STORAGE_DIR: /tmp/internship-c09-files
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install standalone backend
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Upgrade empty MySQL 8.4 to current head
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade head
+      - name: Verify migration head
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine=create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+          with engine.connect() as db:
+              actual=db.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar_one()
+          assert actual == os.environ["EXPECTED_ALEMBIC_REVISION"], (actual, os.environ["EXPECTED_ALEMBIC_REVISION"])
+          print({"alembicRevision": actual})
+          PY
+      - name: Start API and prove readiness
+        run: |
+          uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/internship-c09-api.log 2>&1 &
+          echo $! > /tmp/internship-c09-api.pid
+          ready=0
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:8000/health/ready > /tmp/internship-c09-ready.json; then
+              ready=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$ready" != "1" ]; then
+            cat /tmp/internship-c09-api.log
+            exit 1
+          fi
+          cat /tmp/internship-c09-ready.json
+          python - <<'PY'
+          import json
+          payload=json.load(open("/tmp/internship-c09-ready.json", encoding="utf-8"))
+          assert payload["status"] == "READY", payload
+          assert payload["checks"]["database"] == "READY", payload
+          assert payload["checks"]["schemaRevision"] == "ix0023", payload
+          assert payload["checks"]["redis"] == "READY", payload
+          assert payload["checks"]["fileStorage"] == "READY", payload
+          PY
+      - name: Prove G19 source-to-standalone migration on MySQL 8.4
+        run: |
+          python - <<'PY'
+          from sqlalchemy import create_engine, text
+
+          admin = create_engine("mysql+pymysql://root:c09_root@127.0.0.1:3306/mysql?charset=utf8mb4")
+          with admin.begin() as db:
+              db.execute(text("DROP DATABASE IF EXISTS internship_c09_source"))
+              db.execute(text(
+                  "CREATE DATABASE internship_c09_source "
+                  "CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci"
+              ))
+          PY
+
+          DATABASE_URL='mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09_source?charset=utf8mb4'             alembic -c products/internship-platform/backend/alembic.ini upgrade head
+
+          python - <<'PY'
+          from sqlalchemy import create_engine, text
+
+          source = create_engine(
+              "mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09_source?charset=utf8mb4"
+          )
+          with source.begin() as db:
+              db.execute(text("""
+                  INSERT INTO t_tenant
+                    (id, tenant_code, school_name, deploy_mode, db_mode, status,
+                     created_at, updated_at, is_deleted, version)
+                  VALUES
+                    (777, 'G19-SMOKE-777', 'G19迁移演练学校', 'SAAS', 'SHARED', 'ACTIVE',
+                     NOW(), NOW(), 0, 0)
+              """))
+              db.execute(text("""
+                  INSERT INTO t_college
+                    (id, tenant_id, college_name, status, sort_order,
+                     created_at, updated_at, is_deleted, version)
+                  VALUES
+                    (7001, 777, '智能制造学院', 'ACTIVE', 1,
+                     NOW(), NOW(), 0, 0)
+              """))
+              db.execute(text("""
+                  INSERT INTO t_student_profile
+                    (id, tenant_id, student_no, real_name, current_stage,
+                     student_status, status, created_at, updated_at, is_deleted, version)
+                  VALUES
+                    (70001, 777, 'G190001', '迁移验收学生', 'ENROLLED',
+                     'NORMAL', 'ACTIVE', NOW(), NOW(), 0, 0)
+              """))
+          PY
+
+          python products/internship-platform/scripts/g19_migration_bridge.py             --source 'mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09_source?charset=utf8mb4'             --target "$DATABASE_URL"             --tenant-id 777             --mode copy             --report /tmp/g19-copy.json
+
+          python products/internship-platform/scripts/g19_migration_bridge.py             --source 'mysql+pymysql://root:c09_root@127.0.0.1:3306/internship_c09_source?charset=utf8mb4'             --target "$DATABASE_URL"             --tenant-id 777             --mode verify             --report /tmp/g19-verify.json
+
+          python - <<'PY'
+          import json, os
+          from sqlalchemy import create_engine, text
+
+          copy=json.load(open("/tmp/g19-copy.json", encoding="utf-8"))
+          verify=json.load(open("/tmp/g19-verify.json", encoding="utf-8"))
+          assert copy["g19Qualified"] is True, copy
+          assert verify["g19Qualified"] is True, verify
+          assert not verify["verification"]["countMismatches"], verify
+          assert not verify["verification"]["logicalOrphans"], verify
+
+          by_table={row["table"]:row for row in verify["verification"]["tableCounts"]}
+          for table in ("t_tenant", "t_college", "t_student_profile"):
+              row=by_table[table]
+              assert row["sourceRows"] == row["targetRows"] == 1, row
+              assert row["sourceFingerprintSha256"] == row["targetFingerprintSha256"], row
+
+          engine=create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+          with engine.connect() as db:
+              tenant=db.execute(text(
+                  "SELECT id,tenant_code,school_name FROM t_tenant WHERE id=777"
+              )).mappings().one()
+              college=db.execute(text(
+                  "SELECT id,tenant_id,college_name FROM t_college WHERE id=7001"
+              )).mappings().one()
+              student=db.execute(text(
+                  "SELECT id,tenant_id,student_no,real_name FROM t_student_profile WHERE id=70001"
+              )).mappings().one()
+          assert tenant["id"] == 777 and tenant["tenant_code"] == "G19-SMOKE-777"
+          assert college["tenant_id"] == 777
+          assert student["tenant_id"] == 777 and student["student_no"] == "G190001"
+          print({
+              "g19": "PASS",
+              "tenantIdPreserved": tenant["id"],
+              "fingerprints": {
+                  name: by_table[name]["targetFingerprintSha256"]
+                  for name in ("t_tenant", "t_college", "t_student_profile")
+              },
+          })
+          PY
+      - name: Stop API
+        if: always()
+        run: |
+          if [ -f /tmp/internship-c09-api.pid ]; then
+            kill "$(cat /tmp/internship-c09-api.pid)" 2>/dev/null || true
+          fi

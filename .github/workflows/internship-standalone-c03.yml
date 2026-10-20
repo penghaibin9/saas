@@ -1,0 +1,77 @@
+name: Internship Standalone C03 Materials
+
+on:
+  workflow_dispatch:
+
+jobs:
+  c03:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: c03_test
+          MYSQL_DATABASE: internship_c03
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pc03_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:c03_test@127.0.0.1:3306/internship_c03?charset=utf8mb4
+      JWT_SECRET: c03-actions-secret-not-for-production
+      FILE_STORAGE_DIR: /tmp/internship-c03-files
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+      - name: Install C03 backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Compile C03 authority
+        run: |
+          python -m py_compile             products/internship-platform/backend/app/models/internship_material_requirement.py             products/internship-platform/backend/app/modules/internship/services/internship_material_requirement_service.py             products/internship-platform/backend/app/modules/internship/services/internship_material_center_service.py             products/internship-platform/backend/app/modules/internship/routers/internship_material_center.py             products/internship-platform/backend/app/api/v1/mobile_internship_student.py             products/internship-platform/backend/app/api/v1/mobile_internship_context.py
+      - name: Upgrade empty MySQL to ix0005
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade ix0005
+      - name: Verify C03 MySQL facts only
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ["DATABASE_URL"])
+          expected = {
+              "t_internship_material_requirement",
+              "t_internship_material_template_version",
+              "t_internship_material_submission",
+              "t_internship_material_submission_file",
+          }
+          with engine.connect() as db:
+              version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+              tables = set(db.execute(text(
+                  "SELECT table_name FROM information_schema.tables WHERE table_schema=DATABASE()"
+              )).scalars())
+          assert version == "ix0005", version
+          assert expected <= tables, sorted(expected - tables)
+          print({"version": version, "c03Tables": sorted(expected)})
+          PY
+      - name: Run Yiyang G09 only
+        run: pytest -q products/internship-platform/backend/tests/test_yiyang_c03_custom_materials.py
+      - name: Verify mobile source closure
+        run: python products/internship-platform/scripts/check_mobile_import_closure.py
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: products/internship-platform/mobile/package.json
+      - name: Install standalone mobile dependencies
+        working-directory: products/internship-platform/mobile
+        run: npm install --no-audit --no-fund
+      - name: Build standalone WeChat mobile
+        working-directory: products/internship-platform/mobile
+        run: npm run build:mp-weixin

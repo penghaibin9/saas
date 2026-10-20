@@ -1,0 +1,101 @@
+name: Internship Standalone Materialize Baseline
+
+on:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/scripts/materialize_mysql_baseline.py"
+      - "products/internship-platform/backend/alembic.ini"
+      - "products/internship-platform/backend/alembic/env.py"
+      - ".github/workflows/internship-standalone-materialize-baseline.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  materialize-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: standalone_test
+          MYSQL_DATABASE: internship_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pstandalone_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:standalone_test@127.0.0.1:3306/internship_test?charset=utf8mb4
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: feat/internship-standalone-yiyang-v1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+
+      - name: Materialize frozen baseline
+        run: python products/internship-platform/scripts/materialize_mysql_baseline.py
+
+      - name: Upgrade empty MySQL
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade head
+
+      - name: Verify exact table set
+        run: |
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          from sqlalchemy import create_engine, text
+
+          meta = json.loads(Path(
+              "products/internship-platform/backend/alembic/sql/0001_internship_standalone_baseline.json"
+          ).read_text(encoding="utf-8"))
+          engine = create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as db:
+              actual = sorted(db.execute(text(
+                  "SELECT table_name FROM information_schema.tables "
+                  "WHERE table_schema = DATABASE() AND table_name <> 'alembic_version'"
+              )).scalars())
+          expected = sorted(meta["tableNames"])
+          assert actual == expected, {
+              "missing": sorted(set(expected) - set(actual)),
+              "unexpected": sorted(set(actual) - set(expected)),
+          }
+          assert len(actual) == 99, len(actual)
+          print({"tables": len(actual), "ddlSha256": meta["sha256"]})
+          PY
+
+      - name: Downgrade and re-upgrade
+        run: |
+          alembic -c products/internship-platform/backend/alembic.ini downgrade base
+          alembic -c products/internship-platform/backend/alembic.ini upgrade head
+
+      - name: Commit verified frozen baseline
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add             products/internship-platform/backend/alembic/sql/0001_internship_standalone_baseline.mysql.sql             products/internship-platform/backend/alembic/sql/0001_internship_standalone_baseline.json             products/internship-platform/backend/alembic/versions/0001_internship_standalone_baseline.py
+          if git diff --cached --quiet; then
+            echo "Baseline already materialized; nothing to commit."
+            exit 0
+          fi
+          git commit -m "feat(internship-standalone): materialize verified MySQL baseline"
+          git push origin HEAD:feat/internship-standalone-yiyang-v1

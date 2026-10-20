@@ -1,0 +1,600 @@
+"""岗位实习 · 三方协议签署实例（P2-A）。
+
+三方确认流：DRAFT →(下发) PENDING_STUDENT →(学生确认) PENDING_ENTERPRISE
+→(记录企业签署+扫描件) PENDING_SCHOOL →(学校确认) EFFECTIVE；旁支 REJECTED/VOIDED/ARCHIVED。
+无电子签章时企业确认以「上传纸质三方协议签署扫描件 file_id」为准（不伪造电子签，esign_status 预留）。
+owner：学生本人确认（mobile）；教师/管理员生成/下发/推进/作废/归档（PC，owner + 数据范围）。
+审计 target_type=AGREEMENT。
+"""
+from __future__ import annotations
+
+import re
+from datetime import datetime
+
+from sqlalchemy import func, select
+
+from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
+from app.models import (InternshipAgreement, InternshipAgreementTemplate, InternshipAuditTrail,
+                        InternshipRecord, Major, SchoolClass, StudentProfile, Tenant)
+from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
+from app.services.db_service import _as_id, _iso, _tid, session
+
+STATUS_LABEL = {"DRAFT": "草稿", "PENDING_STUDENT": "待学生确认", "PENDING_ENTERPRISE": "待企业确认",
+                "PENDING_SCHOOL": "待学校确认", "EFFECTIVE": "已生效", "REJECTED": "已驳回",
+                "VOIDED": "已作废", "ARCHIVED": "已归档"}
+CONFIRM_LABEL = {"PENDING": "待确认", "CONFIRMED": "已确认", "REJECTED": "已驳回"}
+
+
+def _op_name(user) -> str:
+    return (user or {}).get("realName") or "系统"
+
+
+def _trail(db, aid, action, detail=None, operator="系统"):
+    db.add(InternshipAuditTrail(tenant_id=_tid(), target_id=aid, target_type="AGREEMENT",
+                                action=action, operator_name=operator, detail_json=detail or {},
+                                occurred_at=datetime.utcnow()))
+
+
+def _get(db, aid) -> InternshipAgreement:
+    a = db.get(InternshipAgreement, _as_id(aid))
+    if not a or a.is_deleted or a.tenant_id != _tid():
+        raise not_found("协议不存在")
+    return a
+
+
+def _cn_date(v) -> str:
+    """正式文书日期格式（BUG-011）：2026-03-02T00:00:00 → 2026年3月2日。空值返回空串。"""
+    s = _iso(v) or ""
+    if len(s) < 10:
+        return ""
+    try:
+        y, m, d = int(s[0:4]), int(s[5:7]), int(s[8:10])
+    except ValueError:
+        return s[:10]
+    return f"{y}年{m}月{d}日"
+
+
+_ISO_DT_IN_TEXT = re.compile(r"(\d{4})-(\d{2})-(\d{2})T\d{2}:\d{2}(?::\d{2})?")
+
+
+def _normalize_body_dates(text: str | None) -> str:
+    """把正文里的 ISO 时间戳规范成中文日期（只影响展示/打印，不改写库中快照）。"""
+    if not text:
+        return ""
+    return _ISO_DT_IN_TEXT.sub(lambda m: f"{int(m.group(1))}年{int(m.group(2))}月{int(m.group(3))}日", text)
+
+
+def _scope_value_matches(scope_values, actual_value) -> bool:
+    """空范围表示全局适用；非空范围必须命中当前学生/实习的真实值。"""
+    values = scope_values or []
+    if not values:
+        return True
+    if actual_value is None:
+        return False
+    actual = str(actual_value)
+    return actual in {str(value) for value in values}
+
+
+def template_scope_matches(tpl: InternshipAgreementTemplate, rec, stu) -> bool:
+    """协议模板四维适用范围：学院、专业、年级、实习批次必须全部满足。"""
+    return all((
+        _scope_value_matches(tpl.scope_college_ids, getattr(stu, "college_id", None)),
+        _scope_value_matches(tpl.scope_major_ids, getattr(stu, "major_id", None)),
+        _scope_value_matches(tpl.scope_grades, getattr(stu, "grade", None)),
+        _scope_value_matches(tpl.scope_batch_ids, getattr(rec, "batch_id", None)),
+    ))
+
+
+def ensure_template_applicable(tpl: InternshipAgreementTemplate, rec, stu) -> None:
+    """模板用于预览/生成前的最终服务层防线，禁止停用模板或跨范围模板被绕过。"""
+    if tpl.status != "ENABLED":
+        raise AppException("STATUS_CONFLICT", "仅启用中的协议模板可用于生成协议")
+    checks = (
+        (tpl.scope_college_ids, getattr(stu, "college_id", None), "学院"),
+        (tpl.scope_major_ids, getattr(stu, "major_id", None), "专业"),
+        (tpl.scope_grades, getattr(stu, "grade", None), "年级"),
+        (tpl.scope_batch_ids, getattr(rec, "batch_id", None), "实习批次"),
+    )
+    for scope_values, actual_value, label in checks:
+        if not _scope_value_matches(scope_values, actual_value):
+            raise AppException("VALIDATION_ERROR", f"所选协议模板不适用于当前学生的{label}")
+
+
+def _render_body(db, tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> str:
+    """协议正文渲染：有模板按 {{变量}} 替换（支持模板变量预设全集，见
+    internship_agreement_template_service.VARIABLE_PRESETS）；无模板/变量缺失时用
+    结构化字段兜底，保证 rendered_body 永不为空——学生小程序确认按钮以 renderedBody
+    是否存在作为可点击前提。db 为 None（历史协议只读兜底）时班级/学院/专业/学校名留空，
+    不影响兜底文案（兜底文案不用这几个变量）。"""
+    class_name = college_name = major_name = school_name = ""
+    if db is not None:
+        if stu is not None:
+            from app.modules.internship.services.internship_service import (
+                resolve_student_class_college_names)
+            class_name, college_name = resolve_student_class_college_names(db, stu)
+            class_name = class_name or ""
+            college_name = college_name or ""
+            if getattr(stu, "major_id", None):
+                maj = db.get(Major, stu.major_id)
+                major_name = (maj.major_name if maj else "") or ""
+            elif getattr(stu, "class_id", None):
+                c = db.get(SchoolClass, stu.class_id)
+                if c and c.major_id:
+                    maj = db.get(Major, c.major_id)
+                    major_name = (maj.major_name if maj else "") or ""
+        t = db.get(Tenant, _tid())
+        school_name = (t.school_name if t else "") or ""
+    advisor_name = (rec.advisor_name if rec else "") or ""
+    ctx = {
+        "studentName": (stu.real_name if stu else "") or "",
+        "studentNo": (stu.student_no if stu else "") or "",
+        "className": class_name,
+        "collegeName": college_name,
+        "majorName": major_name,
+        "companyName": a.enterprise_name or (rec.enterprise_name if rec else "") or "",
+        "enterpriseName": a.enterprise_name or (rec.enterprise_name if rec else "") or "",
+        "positionName": a.position_name or (rec.position_name if rec else "") or "",
+        "mentorName": (rec.enterprise_mentor_name if rec else "") or "",
+        # teacherName 是模板变量预设里的对外命名，advisorName 是历史 key，两者同值同存，
+        # 正文里写哪个都能替换，避免前端变量清单 key 与渲染 key 对不上。
+        "teacherName": advisor_name,
+        "advisorName": advisor_name,
+        "internPeriod": (f"{_cn_date(rec.intern_start_date)} 至 {_cn_date(rec.intern_end_date)}"
+                         if rec and (rec.intern_start_date or rec.intern_end_date) else ""),
+        "internStartDate": _cn_date(rec.intern_start_date) if rec else "",
+        "internEndDate": _cn_date(rec.intern_end_date) if rec else "",
+        "schoolName": school_name,
+        "signDate": _cn_date(datetime.utcnow()),
+    }
+    if tpl and (tpl.body or "").strip():
+        text = tpl.body
+        for k, v in ctx.items():
+            text = text.replace("{{" + k + "}}", v).replace("{{ " + k + " }}", v)
+        return text
+    return (
+        f"三方实习协议\n\n学生：{ctx['studentName']}（学号 {ctx['studentNo']}）\n"
+        f"实习企业：{ctx['companyName']}\n岗位：{ctx['positionName']}\n"
+        f"实习期间：{ctx['internPeriod']}\n指导教师：{ctx['advisorName']}\n\n"
+        f"本协议由学生、实习企业、学校三方确认后生效，各方权利义务以学校实习管理规定为准。"
+    )
+
+
+def _ctx(db, a):
+    rec = tenant_get(db, InternshipRecord, a.internship_id)
+    stu = tenant_get(db, StudentProfile, a.student_id)
+    return rec, stu
+
+
+def _scope_ctx(user):
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+    return _current_scope(user), _rec_in_scope
+
+
+def _owner_or_403(db, a, user, msg):
+    scope, in_scope = _scope_ctx(user)
+    rec, stu = _ctx(db, a)
+    if not in_scope(scope, db, rec, stu):
+        raise no_permission(msg)
+    return rec, stu
+
+
+def _student_record(db, user, *, batch_id=None, for_write: bool = False):
+    from app.core.exceptions import no_permission
+    from app.services.mobile_student_service import _require_student, resolve_student
+    from app.modules.internship.services.internship_record_resolver import resolve_student_internship_context
+    student = resolve_student(db, _require_student(user))
+    if student is None or student.is_deleted or student.tenant_id != _tid():
+        raise no_permission("学生账号未绑定有效的本校学生档案")
+    ctx = resolve_student_internship_context(db, student=student, batch_id=batch_id, for_write=for_write)
+    return ctx.record, ctx.student
+
+
+def _template_name(db, a) -> str:
+    """读模型保留协议使用的模板身份；模板后续停用/归档也不应让协议档案显示成未知。"""
+    if not a.template_id:
+        return ""
+    tpl = db.get(InternshipAgreementTemplate, a.template_id)
+    if not tpl or tpl.tenant_id != _tid():
+        return ""
+    return tpl.name or ""
+
+
+def _row(db, a, rec, stu):
+    return {
+        "id": str(a.id), "internId": str(a.internship_id),
+        "batchId": str(rec.batch_id) if rec and rec.batch_id else "",
+        "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
+        "advisorName": rec.advisor_name if rec else "",
+        "enterpriseName": a.enterprise_name or (rec.enterprise_name if rec else ""),
+        "positionName": a.position_name or (rec.position_name if rec else ""),
+        "templateId": str(a.template_id) if a.template_id else "",
+        "templateName": _template_name(db, a),
+        "studentConfirm": a.student_confirm_status, "studentConfirmLabel": CONFIRM_LABEL.get(a.student_confirm_status),
+        "enterpriseConfirm": a.enterprise_confirm_status, "enterpriseConfirmLabel": CONFIRM_LABEL.get(a.enterprise_confirm_status),
+        "schoolConfirm": a.school_confirm_status, "schoolConfirmLabel": CONFIRM_LABEL.get(a.school_confirm_status),
+        "status": a.status, "statusLabel": STATUS_LABEL.get(a.status, a.status),
+        "version": int(a.version or 0),
+        "esignStatus": a.esign_status, "hasFile": bool(a.file_id),
+        "sourceType": a.source_type or "LEGACY_UNKNOWN",
+        "sourceLabel": {
+            "ENTERPRISE_ONLINE": "企业在线提交", "SCHOOL_RECORDED": "学校根据企业纸质材料录入",
+            "FILE_EVIDENCE": "企业盖章材料", "IMPORTED": "Excel导入",
+            "SYSTEM_GENERATED": "系统生成", "LEGACY_UNKNOWN": "历史来源未知",
+        }.get(a.source_type or "LEGACY_UNKNOWN", "历史来源未知"),
+        "createdAt": _iso(a.created_at) or "",
+        "updatedAt": _iso(a.updated_at) or "",
+        # 历史协议（本次修复前生成）rendered_body 为空时按结构化字段兜底渲染，不写库、只读时补齐
+        # BUG-011：历史快照里遗留的 ISO 时间戳（2026-03-02T00:00:00）在展示/打印时规范为中文日期
+        "renderedBody": _normalize_body_dates(a.rendered_body or _render_body(db, None, rec, stu, a)),
+    }
+
+
+def _validate_file(file_id, required=False, msg="签署扫描件"):
+    fid = (file_id or "").strip()
+    if not fid:
+        if required:
+            raise AppException("VALIDATION_ERROR", f"请先上传{msg}")
+        return None
+    from app.services import file_service
+    if not file_service.get_file_meta(fid):
+        raise AppException("VALIDATION_ERROR", f"{msg}不存在或无权访问，请重新上传")
+    return fid
+
+
+# ═══════════ 教师 / 管理员（PC，owner + 数据范围） ═══════════
+
+def generate(user, body) -> dict:
+    b = body or {}
+    iid = b.get("internshipId") or b.get("internId")
+    if not iid:
+        raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+    tpl_id = b.get("templateId")
+    scope, in_scope = _scope_ctx(user)
+    with session() as db:
+        rec = db.get(InternshipRecord, _as_id(iid))
+        if not rec or rec.is_deleted or rec.tenant_id != _tid():
+            raise not_found("实习记录不存在")
+        stu = db.get(StudentProfile, rec.student_id)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("只能为本人指导学生生成协议")
+        tpl = None
+        if tpl_id:
+            tpl = db.get(InternshipAgreementTemplate, _as_id(tpl_id))
+            if not tpl or tpl.is_deleted or tpl.tenant_id != _tid():
+                raise not_found("协议模板不存在")
+            ensure_template_applicable(tpl, rec, stu)
+        exist = db.scalars(select(InternshipAgreement).where(
+            InternshipAgreement.tenant_id == _tid(), InternshipAgreement.internship_id == rec.id,
+            InternshipAgreement.status.notin_(["VOIDED", "REJECTED"]),
+            InternshipAgreement.is_deleted.is_(False))).first()
+        if exist:
+            raise AppException("DATA_CONFLICT", "该实习记录已有进行中的协议，请勿重复生成")
+        a = InternshipAgreement(
+            tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id,
+            template_id=int(tpl_id) if tpl_id else None, batch_id=rec.batch_id,
+            enterprise_name=rec.enterprise_name, position_name=rec.position_name, status="DRAFT",
+            source_type="SYSTEM_GENERATED",
+            recorded_by_user_id=str((user or {}).get("userId") or ""),
+            recorded_by_name=_op_name(user), recorded_at=datetime.utcnow())
+        a.rendered_body = _render_body(db, tpl, rec, stu, a)
+        db.add(a); db.flush()
+        _trail(db, a.id, "GENERATE", {"templateId": str(tpl_id) if tpl_id else ""}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "status": a.status, "version": int(a.version or 0)}
+
+
+def issue(user, aid, body=None) -> dict:
+    """下发：DRAFT → PENDING_STUDENT。"""
+    with session() as db:
+        a = _get(db, aid)
+        _owner_or_403(db, a, user, "只能下发本人指导学生的协议")
+        if a.status != "DRAFT":
+            raise AppException("DATA_CONFLICT", "仅草稿协议可下发")
+        new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version(body),
+                                   expected_status="DRAFT", values={"status": "PENDING_STUDENT"})
+        _trail(db, a.id, "ISSUE", {}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "status": "PENDING_STUDENT", "statusLabel": STATUS_LABEL["PENDING_STUDENT"],
+                "version": new_ver}
+
+
+def enterprise_confirm(user, aid, body) -> dict:
+    """记录企业签署：PENDING_ENTERPRISE → PENDING_SCHOOL。要求上传纸质签署扫描件(file_id)。"""
+    b = body or {}
+    file_id = _validate_file(b.get("fileId"), required=True, msg="企业签署的三方协议扫描件")
+    with session() as db:
+        a = _get(db, aid)
+        _owner_or_403(db, a, user, "只能推进本人指导学生的协议")
+        if a.status != "PENDING_ENTERPRISE":
+            raise AppException("DATA_CONFLICT", "当前状态不可记录企业确认")
+        confirmed_at = datetime.utcnow()
+        new_ver = versioned_update(
+            db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+            expected_version=extract_expected_version(b), expected_status="PENDING_ENTERPRISE",
+            values={"enterprise_confirm_status": "CONFIRMED", "enterprise_confirm_at": confirmed_at,
+                    "enterprise_confirm_by": (b.get("confirmBy") or "").strip() or None,
+                    "file_id": file_id, "source_file_id": file_id,
+                    "source_type": "FILE_EVIDENCE",
+                    "recorded_by_user_id": str((user or {}).get("userId") or ""),
+                    "recorded_by_name": _op_name(user), "recorded_at": confirmed_at,
+                    "source_remark": (b.get("sourceRemark") or "学校根据企业签署扫描件登记").strip(),
+                    "status": "PENDING_SCHOOL"})
+        _trail(db, a.id, "ENTERPRISE_CONFIRM", {
+            "confirmBy": a.enterprise_confirm_by, "hasFile": True,
+            "sourceType": "FILE_EVIDENCE", "sourceFileId": file_id},
+               operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "status": "PENDING_SCHOOL", "statusLabel": STATUS_LABEL["PENDING_SCHOOL"],
+                "version": new_ver}
+
+
+def school_confirm(user, aid, body=None) -> dict:
+    """学校确认：PENDING_SCHOOL → EFFECTIVE。"""
+    from app.core.permissions import enforce_permission, is_super_admin
+    enforce_permission(user or {}, "internship.agreement.schoolConfirm")
+    role = ((user or {}).get("currentRoleCode") or "").upper()
+    if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
+        raise no_permission("仅学校管理员可执行学校方协议确认")
+    with session() as db:
+        a = _get(db, aid)
+        _owner_or_403(db, a, user, "只能确认本人指导学生的协议")
+        if a.status != "PENDING_SCHOOL":
+            raise AppException("DATA_CONFLICT", "仅待学校确认的协议可确认生效")
+        new_ver = versioned_update(
+            db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+            expected_version=extract_expected_version(body), expected_status="PENDING_SCHOOL",
+            values={"school_confirm_status": "CONFIRMED", "school_confirm_at": datetime.utcnow(),
+                    "school_confirm_by": _op_name(user), "status": "EFFECTIVE"})
+        _trail(db, a.id, "SCHOOL_CONFIRM", {}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "status": "EFFECTIVE", "statusLabel": STATUS_LABEL["EFFECTIVE"],
+                "version": new_ver}
+
+
+def reject(user, aid, reason="", body=None) -> dict:
+    if not (reason or "").strip() or len(reason.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
+    with session() as db:
+        a = _get(db, aid)
+        _owner_or_403(db, a, user, "只能驳回本人指导学生的协议")
+        if a.status not in ("PENDING_STUDENT", "PENDING_ENTERPRISE", "PENDING_SCHOOL"):
+            raise AppException("DATA_CONFLICT", "当前状态不可驳回")
+        new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version(body), values={
+                                       "status": "REJECTED", "reject_reason": reason.strip()},
+                                   extra_where=(InternshipAgreement.status.in_(
+                                       ("PENDING_STUDENT", "PENDING_ENTERPRISE", "PENDING_SCHOOL")),))
+        _trail(db, a.id, "REJECT", {"reason": reason.strip()}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "status": "REJECTED", "version": new_ver}
+
+
+def void(user, aid, reason="", body=None) -> dict:
+    with session() as db:
+        a = _get(db, aid)
+        _owner_or_403(db, a, user, "只能作废本人指导学生的协议")
+        if a.status in ("EFFECTIVE", "ARCHIVED", "VOIDED"):
+            raise AppException("DATA_CONFLICT", "已生效/已归档/已作废协议不可作废")
+        new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version(body), values={
+                                       "status": "VOIDED", "is_deleted": False,
+                                       "reject_reason": (reason or "").strip() or a.reject_reason},
+                                   extra_where=(InternshipAgreement.status.notin_(
+                                       ("EFFECTIVE", "ARCHIVED", "VOIDED")),))
+        _trail(db, a.id, "VOID", {"reason": (reason or "").strip()}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "status": "VOIDED", "version": new_ver}
+
+
+def archive(user, aid, body=None) -> dict:
+    with session() as db:
+        a = _get(db, aid)
+        _owner_or_403(db, a, user, "只能归档本人指导学生的协议")
+        if a.status != "EFFECTIVE":
+            raise AppException("DATA_CONFLICT", "仅已生效协议可归档")
+        new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version(body),
+                                   expected_status="EFFECTIVE", values={"status": "ARCHIVED"})
+        _trail(db, a.id, "ARCHIVE", {}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "status": "ARCHIVED", "version": new_ver}
+
+
+# ═══════════ 电子签流转（P3；三方齐签 → EFFECTIVE，无第三方签章时以平台内部签署时间线为准） ═══════════
+_ESIGN_PARTIES = ("STUDENT", "ENTERPRISE", "SCHOOL")
+
+
+def esign_start(user, aid) -> dict:
+    """Start an internal confirmation timeline; this is not a legal e-signature."""
+    with session() as db:
+        a = _get(db, aid)
+        _owner_or_403(db, a, user, "只能对本人指导学生的协议发起电子签")
+        if a.status not in ("PENDING_STUDENT", "PENDING_ENTERPRISE", "PENDING_SCHOOL"):
+            raise AppException("DATA_CONFLICT", "仅待确认流转中的协议可发起电子签")
+        a.esign_status = "PENDING"
+        a.esign_initiated_at = datetime.utcnow()
+        a.esign_initiated_by = _op_name(user)
+        a.version += 1
+        _trail(db, a.id, "ESIGN_START", {"provider": a.esign_provider}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "esignStatus": a.esign_status, "status": a.status,
+                "semantic": "INTERNAL_CONFIRMATION_TIMELINE"}
+
+
+def esign_sign(user, aid, party: str) -> dict:
+    """Record an internal student/school confirmation; enterprise evidence is a signed scan."""
+    party = (party or "").upper()
+    if party not in _ESIGN_PARTIES:
+        raise AppException("VALIDATION_ERROR", "签署方无效（STUDENT/ENTERPRISE/SCHOOL）")
+    with session() as db:
+        a = _get(db, aid)
+        if a.esign_status not in ("PENDING", "SIGNED"):
+            raise AppException("DATA_CONFLICT", "请先发起电子签")
+        if party == "STUDENT":
+            _, stu = _student_record(db, user)
+            if not stu or stu.id != a.student_id:
+                raise no_permission("只能签署本人的三方协议")
+            a.esign_student_at = datetime.utcnow()
+            a.student_confirm_status = "CONFIRMED"
+            a.student_confirm_at = a.student_confirm_at or datetime.utcnow()
+        else:
+            _owner_or_403(db, a, user, "只能签署本人指导学生的协议")
+            if party == "ENTERPRISE":
+                # 企业方电子签不可由学校教师代签；正式路径为纸质扫描件确认
+                raise AppException(
+                    "VALIDATION_ERROR",
+                    "企业方请走纸质三方协议扫描件确认，不可由教师代签企业电子签")
+            a.esign_school_at = datetime.utcnow()
+            a.school_confirm_status = "CONFIRMED"
+            a.school_confirm_at = a.school_confirm_at or datetime.utcnow()
+            a.school_confirm_by = _op_name(user)
+        all_signed = bool(
+            a.student_confirm_status == "CONFIRMED"
+            and a.enterprise_confirm_status == "CONFIRMED"
+            and a.school_confirm_status == "CONFIRMED"
+            and a.file_id
+        )
+        if all_signed:
+            a.esign_status = "INTERNAL_CONFIRMED"
+            a.status = "EFFECTIVE"
+        a.version += 1
+        _trail(db, a.id, "ESIGN_SIGN", {"party": party, "allSigned": all_signed}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(a.id), "esignStatus": a.esign_status, "status": a.status,
+                "party": party, "semantic": "INTERNAL_CONFIRMATION_TIMELINE"}
+
+
+def list_agreements(page, page_size, status=None, keyword=None, batch_id=None, user=None):
+    with session() as db:
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        from app.modules.internship.services.internship_scope import apply_internship_record_scope
+        batch = resolve_batch(db, batch_id)
+        scoped_records = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False)), user).subquery()
+        q = select(InternshipAgreement, InternshipRecord, StudentProfile).join(
+            InternshipRecord, InternshipRecord.id == InternshipAgreement.internship_id
+        ).join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+            InternshipAgreement.tenant_id == _tid(),
+            InternshipAgreement.is_deleted.is_(False),
+            InternshipAgreement.internship_id.in_(select(scoped_records.c.id)),
+            StudentProfile.is_deleted.is_(False))
+        if status:
+            q = q.where(InternshipAgreement.status == status)
+        if keyword:
+            q = q.where(StudentProfile.real_name.like(f"%{keyword.strip()}%"))
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        rows = db.execute(q.order_by(InternshipAgreement.id.desc()).offset(
+            (max(1, page) - 1) * page_size).limit(page_size)).all()
+        return [_row(db, agreement, rec, stu) for agreement, rec, stu in rows], total
+
+
+def get_agreement(aid, user=None) -> dict:
+    from app.services import file_service
+    scope, in_scope = _scope_ctx(user)
+    with session() as db:
+        a = _get(db, aid)
+        rec, stu = _ctx(db, a)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("该协议不在你的数据范围内")
+        trail = db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "AGREEMENT",
+            InternshipAuditTrail.target_id == a.id).order_by(InternshipAuditTrail.id)).all()
+        return {**_row(db, a, rec, stu), "rejectReason": a.reject_reason or "",
+                "attachment": file_service.attachment_view(a.file_id),
+                "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
+                                "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
+                               for t in trail]}
+
+
+def get_student_agreement(user, aid) -> dict:
+    """学生本人按协议 ID 查看详情。
+
+    协议 ID 已唯一确定实习记录，所有权应沿 agreement -> record -> student 校验；
+    不能再用“自动选择唯一进行中批次”，否则同一学生有多个进行中批次时会误判 403。
+    """
+    from app.services import file_service
+    with session() as db:
+        a = _get(db, aid)
+        rec, stu = _ctx(db, a)
+        if (
+            not rec
+            or not stu
+            or str(stu.student_no or "") != str((user or {}).get("studentNo") or "")
+        ):
+            raise no_permission("只能查看本人的协议")
+        trail = db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "AGREEMENT",
+            InternshipAuditTrail.target_id == a.id).order_by(InternshipAuditTrail.id)).all()
+        return {**_row(db, a, rec, stu), "rejectReason": a.reject_reason or "",
+                "attachment": file_service.attachment_view(a.file_id),
+                "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
+                                "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
+                               for t in trail]}
+
+
+def export_agreements(status=None, keyword=None, batch_id=None, user=None) -> dict:
+    from app.services import xlsx_util
+    from app.modules.internship.services.internship_export_util import require_exportable
+    _, total = list_agreements(1, 0, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    require_exportable(total)
+    items, _ = list_agreements(1, total, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    headers = ["学号", "姓名", "指导教师", "企业", "岗位", "学生确认", "企业确认", "学校确认", "协议状态"]
+    rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
+             it["positionName"], it["studentConfirmLabel"], it["enterpriseConfirmLabel"],
+             it["schoolConfirmLabel"], it["statusLabel"]] for it in items]
+    wm = f"岗位实习中心·三方协议台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
+    content = xlsx_util.build_ledger_xlsx("三方协议台账", headers, rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, "三方协议台账.xlsx", len(items))
+
+
+# ═══════════ 学生本人（移动端） ═══════════
+
+def my_agreements(user) -> list[dict]:
+    with session() as db:
+        rec, stu = _student_record(db, user)
+        if not rec:
+            return []
+        rows = db.scalars(select(InternshipAgreement).where(
+            InternshipAgreement.tenant_id == _tid(), InternshipAgreement.internship_id == rec.id,
+            InternshipAgreement.is_deleted.is_(False)).order_by(InternshipAgreement.id.desc())).all()
+        return [_row(db, a, rec, stu) for a in rows]
+
+
+def student_confirm(user, aid, action: str, reason="", body=None) -> dict:
+    """学生确认：PENDING_STUDENT →(CONFIRM) PENDING_ENTERPRISE /(REJECT) REJECTED。"""
+    if action not in ("CONFIRM", "REJECT"):
+        raise AppException("VALIDATION_ERROR", "action 必须是 CONFIRM/REJECT")
+    if action == "REJECT" and (not reason or len(reason.strip()) < 5):
+        raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
+    payload = body or {}
+    with session() as db:
+        a = _get(db, aid)
+        if payload.get("batchId") is not None or payload.get("internshipId") is not None:
+            from app.modules.internship.services.internship_student_context_guard import (
+                require_explicit_context,
+            )
+            rec, _, _batch_id = require_explicit_context(
+                db, user, payload, for_write=True)
+        else:
+            rec, _ = _student_record(db, user)
+        if not rec or a.internship_id != rec.id:
+            raise no_permission("只能确认本人的协议")
+        if a.status != "PENDING_STUDENT":
+            raise AppException("DATA_CONFLICT", "当前协议状态不可由学生确认")
+        values = ({"student_confirm_status": "CONFIRMED", "student_confirm_at": datetime.utcnow(),
+                   "status": "PENDING_ENTERPRISE"} if action == "CONFIRM" else
+                  {"student_confirm_status": "REJECTED", "status": "REJECTED",
+                   "reject_reason": reason.strip()})
+        new_ver = versioned_update(db, InternshipAgreement, entity_id=a.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version(payload),
+                                   expected_status="PENDING_STUDENT", values=values)
+        _trail(db, a.id, f"STUDENT_{action}", {"reason": (reason or "").strip()},
+               operator=(user or {}).get("realName") or "学生")
+        db.commit()
+        status = values["status"]
+        return {"id": str(a.id), "status": status, "statusLabel": STATUS_LABEL[status], "version": new_ver}

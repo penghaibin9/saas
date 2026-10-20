@@ -1,0 +1,125 @@
+name: Internship Standalone DB Head
+
+on:
+  workflow_dispatch:
+
+jobs:
+  mysql-head:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: standalone_test
+          MYSQL_DATABASE: internship_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost -pstandalone_test"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:standalone_test@127.0.0.1:3306/internship_test?charset=utf8mb4
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+
+      - name: Install backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+
+      - name: Upgrade empty MySQL to head
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade head
+
+      - name: Verify current ORM table set equals MySQL
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          from app.models.base import Base
+          import app.models  # noqa: F401
+
+          expected = sorted(Base.metadata.tables)
+          engine = create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as db:
+              actual = sorted(db.execute(text(
+                  "SELECT table_name FROM information_schema.tables "
+                  "WHERE table_schema = DATABASE() AND table_name <> 'alembic_version'"
+              )).scalars())
+              version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+          assert actual == expected, {
+              "missing": sorted(set(expected) - set(actual)),
+              "unexpected": sorted(set(actual) - set(expected)),
+          }
+          assert version == "ix0003", version
+          assert "t_internship_score_appeal" in actual
+          assert "t_internship_application" in actual
+          print({"tables": len(actual), "version": version})
+          PY
+
+      - name: Downgrade Yiyang snapshot to ix0002
+        run: alembic -c products/internship-platform/backend/alembic.ini downgrade ix0002
+
+      - name: Verify Yiyang snapshot columns removed at ix0002
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as db:
+              names = set(db.execute(text(
+                  "SELECT table_name FROM information_schema.tables "
+                  "WHERE table_schema = DATABASE()"
+              )).scalars())
+              version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+              columns = set(db.execute(text(
+                  "SELECT column_name FROM information_schema.columns "
+                  "WHERE table_schema = DATABASE() AND table_name='t_internship_application'"
+              )).scalars())
+          assert "t_internship_score_appeal" in names
+          assert version == "ix0002", version
+          assert "company_credit_code" not in columns
+          assert "registry_verification_status" not in columns
+          PY
+
+      - name: Re-upgrade to head
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade head
+
+      - name: Verify restored head
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine = create_engine(os.environ["DATABASE_URL"])
+          with engine.connect() as db:
+              exists = db.execute(text(
+                  "SELECT COUNT(*) FROM information_schema.tables "
+                  "WHERE table_schema = DATABASE() AND table_name='t_internship_score_appeal'"
+              )).scalar_one()
+              version = db.execute(text("SELECT version_num FROM alembic_version")).scalar_one()
+              columns = set(db.execute(text(
+                  "SELECT column_name FROM information_schema.columns "
+                  "WHERE table_schema = DATABASE() AND table_name='t_internship_application'"
+              )).scalars())
+          assert int(exists) == 1
+          assert version == "ix0003", version
+          required = {
+              "company_credit_code", "company_principal", "company_scale", "company_phone",
+              "company_email", "company_nature", "company_industry", "company_registered_address",
+              "company_postal_code", "company_province", "company_city", "company_district",
+              "internship_department", "work_content", "enterprise_mentor_name",
+              "enterprise_mentor_phone", "position_category", "work_country", "work_province",
+              "work_city", "work_district", "internship_start_date", "internship_end_date",
+              "internship_mode", "major_match", "agreed_salary", "agreement_file_ids",
+              "registry_verification_status", "registry_verification_provider",
+              "registry_reference", "registry_verified_at",
+          }
+          assert required <= columns, sorted(required - columns)
+          PY

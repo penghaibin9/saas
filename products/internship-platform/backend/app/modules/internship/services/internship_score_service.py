@@ -1,0 +1,562 @@
+"""岗位实习 · 实习成绩五项权重核算（P2-D，成熟商业核心）。
+
+五项：打卡 / 周报 / 月报总结 / 企业评价 / 学校(指导教师)评价，权重和须=100。
+状态机：PENDING_CALC 待核算 → PENDING_REVIEW 待复核 → PENDING_PUBLISH 待发布 → PUBLISHED 已发布 → WITHDRAWN 已撤回 → ARCHIVED 已归档。
+缺项(incomplete)不得发布。企业评价分只能读取已审核企业评价，客户端不得手工覆盖。
+owner + 数据范围复用 internship_service。审计 target_type=SCORE。
+"""
+from __future__ import annotations
+
+from datetime import datetime
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
+
+from app.core.exceptions import AppException, no_permission, not_found
+from app.core.tenant_scoped import tenant_get
+from app.models import (InternshipAuditTrail, InternshipEnterpriseEval, InternshipFinalScore,
+                        InternshipRecord, InternshipScoreConfig, StudentProfile)
+from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
+from app.services.db_service import _as_id, _iso, _tid, session
+
+STATUS_LABEL = {"PENDING_CALC": "待核算", "PENDING_REVIEW": "待复核", "PENDING_PUBLISH": "待发布", "PUBLISHED": "已发布",
+                "WITHDRAWN": "已撤回", "ARCHIVED": "已归档"}
+COMPONENTS = [("checkinScore", "checkin_score", "w_checkin", "打卡"),
+              ("weeklyScore", "weekly_score", "w_weekly", "周报"),
+              ("monthlyScore", "monthly_score", "w_monthly", "月报总结"),
+              ("enterpriseScore", "enterprise_score", "w_enterprise", "企业评价"),
+              ("schoolScore", "school_score", "w_school", "学校评价")]
+DEFAULT_CFG = dict(checkin_weight=20, weekly_weight=20, monthly_weight=10,
+                   enterprise_weight=30, school_weight=20, pass_line=60.0)
+_REVIEW_ROLES = {"SCHOOL_ADMIN", "COLLEGE_ADMIN", "INTERNSHIP_ADMIN",
+                 "INTERN_ADMIN", "COLLEGE_INTERNSHIP_ADMIN"}
+
+
+def _op_name(user) -> str:
+    return (user or {}).get("realName") or "系统"
+
+
+def _user_id(user) -> str:
+    return str((user or {}).get("userId") or "")
+
+
+def _role_code(user) -> str:
+    return str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "").upper()
+
+
+def _assert_reviewer(user, *, final=False):
+    from app.core.permissions import is_super_admin
+    if is_super_admin(user or {}):
+        return
+    role = _role_code(user)
+    if final and role != "SCHOOL_ADMIN":
+        raise no_permission("实习成绩最终发布、撤回和归档仅限学校管理员")
+    if not final and role not in _REVIEW_ROLES:
+        raise no_permission("实习成绩复核仅限学校或学院授权管理员")
+
+
+def _trail(db, sid, action, detail=None, operator="系统"):
+    db.add(InternshipAuditTrail(tenant_id=_tid(), target_id=sid, target_type="SCORE",
+                                action=action, operator_name=operator, detail_json=detail or {},
+                                occurred_at=datetime.utcnow()))
+
+
+def _get(db, sid) -> InternshipFinalScore:
+    s = tenant_get(db, InternshipFinalScore, _as_id(sid))
+    if not s or s.is_deleted:
+        raise not_found("成绩不存在")
+    return s
+
+
+def _ctx(db, s):
+    rec = tenant_get(db, InternshipRecord, s.internship_id)
+    stu = tenant_get(db, StudentProfile, s.student_id)
+    return rec, stu
+
+
+def _scope_ctx(user):
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+    return _current_scope(user), _rec_in_scope
+
+
+# ═══════════ 权重配置 ═══════════
+
+def _config_scope_key(batch_id=None) -> str:
+    return f"BATCH:{int(batch_id)}" if batch_id not in (None, "") else "TENANT_DEFAULT"
+
+
+def _active_config(db, batch_id=None, *, lock=False):
+    """Batch-specific ACTIVE config wins; tenant default is the explicit fallback."""
+    query = select(InternshipScoreConfig).where(
+        InternshipScoreConfig.tenant_id == _tid(),
+        InternshipScoreConfig.status == "ACTIVE",
+        InternshipScoreConfig.is_deleted.is_(False),
+        InternshipScoreConfig.active_scope_key == _config_scope_key(batch_id),
+    ).order_by(InternshipScoreConfig.id.desc())
+    row = db.scalars(query.with_for_update() if lock else query).first()
+    if row or batch_id in (None, ""):
+        return row
+    fallback = select(InternshipScoreConfig).where(
+        InternshipScoreConfig.tenant_id == _tid(),
+        InternshipScoreConfig.status == "ACTIVE",
+        InternshipScoreConfig.is_deleted.is_(False),
+        InternshipScoreConfig.active_scope_key == "TENANT_DEFAULT",
+    ).order_by(InternshipScoreConfig.id.desc())
+    return db.scalars(fallback.with_for_update() if lock else fallback).first()
+
+
+def get_config(user=None, batch_id=None) -> dict:
+    with session() as db:
+        requested_batch_id = int(batch_id) if batch_id not in (None, "") else None
+        if requested_batch_id is not None:
+            from app.models import InternshipBatch
+            batch = db.get(InternshipBatch, requested_batch_id)
+            if not batch or batch.is_deleted or batch.tenant_id != _tid():
+                raise not_found("实习批次不存在")
+        config = _active_config(db, batch_id=requested_batch_id)
+        if not config:
+            return {
+                "checkinWeight": 20, "weeklyWeight": 20, "monthlyWeight": 10,
+                "enterpriseWeight": 30, "schoolWeight": 20, "passLine": 60.0,
+                "isDefault": True, "configId": "", "configVersion": 0,
+                "requestedBatchId": str(requested_batch_id) if requested_batch_id else "",
+                "configBatchId": "", "scope": "BUILTIN_DEFAULT",
+            }
+        config_batch_id = int(config.batch_id) if config.batch_id is not None else None
+        return {
+            "checkinWeight": config.checkin_weight,
+            "weeklyWeight": config.weekly_weight,
+            "monthlyWeight": config.monthly_weight,
+            "enterpriseWeight": config.enterprise_weight,
+            "schoolWeight": config.school_weight,
+            "passLine": config.pass_line,
+            "isDefault": config_batch_id is None,
+            "configId": str(config.id),
+            "configVersion": int(config.version or 0),
+            "requestedBatchId": str(requested_batch_id) if requested_batch_id else "",
+            "configBatchId": str(config_batch_id) if config_batch_id else "",
+            "scope": "BATCH" if config_batch_id is not None else "TENANT_DEFAULT",
+        }
+
+
+def save_config(user, body) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.config.manage")
+    b = body or {}
+    weights = {"checkin_weight": b.get("checkinWeight"), "weekly_weight": b.get("weeklyWeight"),
+               "monthly_weight": b.get("monthlyWeight"), "enterprise_weight": b.get("enterpriseWeight"),
+               "school_weight": b.get("schoolWeight")}
+    parsed = {}
+    for k, v in weights.items():
+        try:
+            iv = int(v)
+        except (TypeError, ValueError):
+            raise AppException("VALIDATION_ERROR", "五项权重均必填且为整数")
+        if iv < 0 or iv > 100:
+            raise AppException("VALIDATION_ERROR", "权重须在 0-100 之间")
+        parsed[k] = iv
+    if sum(parsed.values()) != 100:
+        raise AppException("VALIDATION_ERROR", f"五项权重之和须为 100，当前为 {sum(parsed.values())}")
+    try:
+        pass_line = float(b.get("passLine", 60))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "及格线必须是数字")
+    if not 0 <= pass_line <= 100:
+        raise AppException("VALIDATION_ERROR", "及格线须在 0-100 之间")
+    with session() as db:
+        batch_id = b.get("batchId") or None
+        if batch_id:
+            from app.models import InternshipBatch
+            batch = db.get(InternshipBatch, _as_id(batch_id))
+            if not batch or batch.is_deleted or batch.tenant_id != _tid():
+                raise not_found("实习批次不存在")
+            if batch.status != "DRAFT":
+                raise AppException("DATA_CONFLICT", "运行中的批次不可替换评分规则，请创建新批次版本")
+        normalized_batch_id = int(batch_id) if batch_id else None
+        scope_key = _config_scope_key(normalized_batch_id)
+        old_rows = db.scalars(select(InternshipScoreConfig).where(
+            InternshipScoreConfig.tenant_id == _tid(),
+            InternshipScoreConfig.status == "ACTIVE",
+            InternshipScoreConfig.is_deleted.is_(False),
+            InternshipScoreConfig.active_scope_key == scope_key,
+        ).with_for_update()).all()
+        for old in old_rows:
+            old.status = "RETIRED"
+            old.active_scope_key = None
+        c = InternshipScoreConfig(
+            tenant_id=_tid(), batch_id=normalized_batch_id,
+            active_scope_key=scope_key, status="ACTIVE")
+        db.add(c)
+        for k, v in parsed.items():
+            setattr(c, k, v)
+        c.pass_line = pass_line
+        c.version = (c.version or 0) + 1
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            db.rollback()
+            detail = str(getattr(exc, "orig", exc))
+            if "uk_intern_score_cfg_active_scope" in detail or ("1062" in detail and "active_scope_key" in detail):
+                raise AppException(
+                    "DATA_CONFLICT",
+                    "同一评分配置范围正在被其他操作更新，请刷新后重试",
+                ) from None
+            raise
+        _trail(db, c.id, "SAVE_CONFIG", {
+            **parsed, "passLine": pass_line, "scopeKey": scope_key,
+        }, operator=_op_name(user))
+        db.commit()
+        return {"ok": True, "configId": str(c.id), "configVersion": int(c.version or 0),
+                "batchId": str(c.batch_id) if c.batch_id else ""}
+
+
+# ═══════════ 核算 / 复核 / 发布 ═══════════
+
+def _approved_enterprise_eval(db, internship_id):
+    record = db.get(InternshipRecord, _as_id(
+        internship_id.id if isinstance(internship_id, InternshipRecord) else internship_id))
+    if (
+        not record or record.is_deleted or record.tenant_id != _tid()
+        or not record.current_placement_snapshot_id
+        or not record.enterprise_id or not record.position_id
+    ):
+        return None
+    return db.scalars(select(InternshipEnterpriseEval).where(
+        InternshipEnterpriseEval.tenant_id == _tid(),
+        InternshipEnterpriseEval.internship_id == record.id,
+        InternshipEnterpriseEval.placement_snapshot_id == record.current_placement_snapshot_id,
+        InternshipEnterpriseEval.enterprise_id == record.enterprise_id,
+        InternshipEnterpriseEval.position_id == record.position_id,
+        InternshipEnterpriseEval.school_review_status == "APPROVED",
+        InternshipEnterpriseEval.is_deleted.is_(False)).order_by(
+            InternshipEnterpriseEval.id.desc())).first()
+
+
+def _enterprise_avg(e):
+    if not e:
+        return None
+    return round((e.attendance_score + e.skill_score + e.attitude_score
+                  + e.collaboration_score + e.safety_score) / 5)
+
+
+def _score_or_none(v):
+    if v is None or str(v) == "":
+        return None
+    try:
+        iv = int(v)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "各项成绩须为 0-100 的整数")
+    if not 0 <= iv <= 100:
+        raise AppException("VALIDATION_ERROR", "各项成绩须在 0-100 之间")
+    return iv
+
+
+def compute(user, body) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.manage")
+    b = body or {}
+    iid = b.get("internshipId") or b.get("internId")
+    if not iid:
+        raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+    if b.get("enterpriseScore") not in (None, ""):
+        raise AppException("VALIDATION_ERROR", "企业评价分不得手工填写，只能读取已审核企业评价")
+    comps = {"checkin_score": _score_or_none(b.get("checkinScore")),
+             "weekly_score": _score_or_none(b.get("weeklyScore")),
+             "monthly_score": _score_or_none(b.get("monthlyScore")),
+             "school_score": _score_or_none(b.get("schoolScore"))}
+    scope, in_scope = _scope_ctx(user)
+    with session() as db:
+        rec = db.scalar(select(InternshipRecord).where(
+            InternshipRecord.id == _as_id(iid),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.is_deleted.is_(False)).with_for_update())
+        if not rec or rec.is_deleted or rec.tenant_id != _tid():
+            raise not_found("实习记录不存在")
+        stu = tenant_get(db, StudentProfile, rec.student_id)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("只能核算本人指导或授权范围内学生成绩")
+        enterprise_eval = _approved_enterprise_eval(db, rec.id)
+        comps["enterprise_score"] = _enterprise_avg(enterprise_eval)
+        cfg = _active_config(db, rec.batch_id)
+        w = dict(w_checkin=(cfg.checkin_weight if cfg else DEFAULT_CFG["checkin_weight"]),
+                 w_weekly=(cfg.weekly_weight if cfg else DEFAULT_CFG["weekly_weight"]),
+                 w_monthly=(cfg.monthly_weight if cfg else DEFAULT_CFG["monthly_weight"]),
+                 w_enterprise=(cfg.enterprise_weight if cfg else DEFAULT_CFG["enterprise_weight"]),
+                 w_school=(cfg.school_weight if cfg else DEFAULT_CFG["school_weight"]))
+        pass_line = cfg.pass_line if cfg else DEFAULT_CFG["pass_line"]
+        missing = [label for jk, col, wk, label in COMPONENTS if comps[col] is None]
+        incomplete = bool(missing)
+        total = None
+        if not incomplete:
+            total = round(
+                (comps["checkin_score"] * w["w_checkin"] + comps["weekly_score"] * w["w_weekly"]
+                 + comps["monthly_score"] * w["w_monthly"] + comps["enterprise_score"] * w["w_enterprise"]
+                 + comps["school_score"] * w["w_school"]) / 100, 1)
+        s = db.scalars(select(InternshipFinalScore).where(
+            InternshipFinalScore.tenant_id == _tid(), InternshipFinalScore.internship_id == rec.id,
+            InternshipFinalScore.is_deleted.is_(False))).first()
+        if s and s.status in ("PUBLISHED", "ARCHIVED"):
+            raise AppException("DATA_CONFLICT", "成绩已发布或归档，不能直接重算")
+        new = s is None
+        values = {**comps, **w, "total_score": total, "score_config_id": cfg.id if cfg else None,
+                  "score_config_version": int(cfg.version or 0) if cfg else 0, "pass_line": pass_line,
+                  "is_pass": bool(total is not None and total >= pass_line), "incomplete": incomplete,
+                  "incomplete_reason": ("缺：" + "、".join(missing)) if missing else None,
+                  "status": "PENDING_REVIEW"}
+        if new:
+            s = InternshipFinalScore(tenant_id=_tid(), internship_id=rec.id, student_id=rec.student_id,
+                                     batch_id=rec.batch_id)
+            db.add(s)
+            for key, value in values.items():
+                setattr(s, key, value)
+            s.version = (s.version or 0) + 1
+            db.flush()
+            new_ver = s.version
+        else:
+            new_ver = versioned_update(
+                db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
+                expected_version=extract_expected_version(b), expected_status=s.status, values=values)
+        db.flush()
+        _trail(db, s.id, "COMPUTE", {
+            "total": total, "incomplete": incomplete, "missing": missing,
+            "scoreConfigId": str(cfg.id) if cfg else "",
+            "scoreConfigVersion": int(cfg.version or 0) if cfg else 0,
+            "enterpriseEvalId": str(enterprise_eval.id) if enterprise_eval else "",
+            "enterpriseEvidenceFileId": (enterprise_eval.source_file_id or enterprise_eval.file_id)
+            if enterprise_eval else "",
+            "actorUserId": _user_id(user), "actorRole": _role_code(user),
+        }, operator=_op_name(user))
+        db.commit()
+        return {"id": str(s.id), "internshipId": str(rec.id), "total": total,
+                "enterpriseScore": comps["enterprise_score"], "incomplete": incomplete,
+                "incompleteReason": values["incomplete_reason"], "isPass": values["is_pass"],
+                "status": "PENDING_REVIEW", "version": new_ver}
+
+
+def publish(user, sid, expected_version=None) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.publish")
+    _assert_reviewer(user, final=True)
+    scope, in_scope = _scope_ctx(user)
+    with session() as db:
+        s = _get(db, sid)
+        rec, stu = _ctx(db, s)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("只能发布本人数据范围内的成绩")
+        if s.status != "PENDING_REVIEW":
+            raise AppException("DATA_CONFLICT", "仅待复核成绩可发布")
+        if s.incomplete:
+            raise AppException("DATA_CONFLICT", f"成绩缺项不可发布（{s.incomplete_reason}）")
+        new_ver = versioned_update(
+            db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
+            expected_version=extract_expected_version({"expectedVersion": expected_version}),
+            expected_status="PENDING_REVIEW", values={"status": "PUBLISHED",
+                "reviewed_by_name": _op_name(user), "reviewed_at": datetime.utcnow(),
+                "published_by_name": _op_name(user), "published_at": datetime.utcnow()})
+        _trail(db, s.id, "PUBLISH", {"total": s.total_score, "isPass": s.is_pass,
+               "actorUserId": _user_id(user), "actorRole": _role_code(user)}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(s.id), "status": "PUBLISHED", "statusLabel": STATUS_LABEL["PUBLISHED"], "version": new_ver}
+
+
+def return_recalc(user, sid, reason="", expected_version=None) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.manage")
+    _assert_reviewer(user, final=False)
+    reason = (reason or "").strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
+    with session() as db:
+        s = _get(db, sid)
+        rec, stu = _ctx(db, s)
+        scope, in_scope = _scope_ctx(user)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("只能退回本人数据范围内的成绩")
+        if s.status not in ("PENDING_REVIEW", "PENDING_PUBLISH"):
+            raise AppException("DATA_CONFLICT", "仅待复核或待发布成绩可退回重算")
+        current_status = s.status
+        new_ver = versioned_update(db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version({"expectedVersion": expected_version}),
+                                   expected_status=current_status, values={"status": "PENDING_CALC"})
+        _trail(db, s.id, "RETURN_RECALC", {"reason": reason,
+               "actorUserId": _user_id(user), "actorRole": _role_code(user)}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(s.id), "status": "PENDING_CALC", "version": new_ver}
+
+
+def withdraw(user, sid, reason="", expected_version=None) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.publish")
+    _assert_reviewer(user, final=True)
+    if not (reason or "").strip() or len(reason.strip()) < 5:
+        raise AppException("VALIDATION_ERROR", "撤回原因必填且不少于 5 字")
+    with session() as db:
+        s = _get(db, sid)
+        rec, stu = _ctx(db, s)
+        scope, in_scope = _scope_ctx(user)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("只能撤回本人数据范围内的成绩")
+        if s.status != "PUBLISHED":
+            raise AppException("DATA_CONFLICT", "仅已发布成绩可撤回")
+        new_ver = versioned_update(db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version({"expectedVersion": expected_version}),
+                                   expected_status="PUBLISHED", values={"status": "WITHDRAWN"})
+        _trail(db, s.id, "WITHDRAW", {"reason": reason.strip(),
+               "actorUserId": _user_id(user), "actorRole": _role_code(user)}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(s.id), "status": "WITHDRAWN", "version": new_ver}
+
+
+def archive(user, sid, expected_version=None) -> dict:
+    from app.core.permissions import enforce_permission
+    enforce_permission(user or {}, "internship.score.manage")
+    _assert_reviewer(user, final=True)
+    with session() as db:
+        s = _get(db, sid)
+        rec, stu = _ctx(db, s)
+        scope, in_scope = _scope_ctx(user)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("只能归档本人数据范围内的成绩")
+        if s.status != "PUBLISHED":
+            raise AppException("DATA_CONFLICT", "仅已发布成绩可归档")
+        new_ver = versioned_update(db, InternshipFinalScore, entity_id=s.id, tenant_id=_tid(),
+                                   expected_version=extract_expected_version({"expectedVersion": expected_version}),
+                                   expected_status="PUBLISHED", values={"status": "ARCHIVED"})
+        _trail(db, s.id, "ARCHIVE", {"actorUserId": _user_id(user),
+               "actorRole": _role_code(user)}, operator=_op_name(user))
+        db.commit()
+        return {"id": str(s.id), "status": "ARCHIVED", "version": new_ver}
+
+
+def _grade_level(total, pass_line=60.0) -> str:
+    """百分制派生等次（展示用，权威仍以 totalScore/isPass 为准；政策阈值学校可后续配置）。"""
+    if total is None:
+        return ""
+    try:
+        t = float(total)
+    except (TypeError, ValueError):
+        return ""
+    pl = float(pass_line or 60)
+    if t < pl:
+        return "不及格"
+    if t >= 90:
+        return "优秀"
+    if t >= 80:
+        return "良好"
+    if t >= 70:
+        return "中等"
+    return "及格"
+
+
+def _row(s, rec, stu):
+    return {
+        "id": str(s.id), "internId": str(s.internship_id), "internshipId": str(s.internship_id),
+        "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
+        "advisorName": rec.advisor_name if rec else "",
+        "checkinScore": s.checkin_score, "weeklyScore": s.weekly_score, "monthlyScore": s.monthly_score,
+        "enterpriseScore": s.enterprise_score, "schoolScore": s.school_score,
+        "totalScore": s.total_score, "passLine": s.pass_line, "isPass": bool(s.is_pass),
+        "gradeLevel": _grade_level(s.total_score, s.pass_line),
+        "scoreConfigId": str(s.score_config_id) if s.score_config_id else "",
+        "scoreConfigVersion": int(s.score_config_version or 0),
+        "incomplete": bool(s.incomplete), "incompleteReason": s.incomplete_reason or "",
+        "status": s.status, "statusLabel": STATUS_LABEL.get(s.status, s.status),
+        "version": int(s.version or 0),
+        "createdAt": _iso(s.created_at) or "",
+    }
+
+
+#: 构成总评的五个分项。任一为空即算「缺项」，与前端逐行判定的口径一致。
+_SCORE_PARTS = ("checkin_score", "weekly_score", "monthly_score",
+                "enterprise_score", "school_score")
+
+
+def _incomplete_predicate():
+    """「还差分项没录」的 SQL 谓词。
+
+    原来只有前端在当前页上逐行看哪几项为空，于是老师在第 3 页勾「只看缺项」，筛的仍是
+    这 20 条——第 5 页的缺项根本进不了视野，翻完全部页才发现还有漏的。判定下推到 SQL
+    之后，COUNT 与翻页建立在同一个谓词上，「还差几个」是真数，「下一个缺项」也能跨页。
+    """
+    return or_(*[getattr(InternshipFinalScore, part).is_(None) for part in _SCORE_PARTS])
+
+
+def list_scores(page, page_size, status=None, keyword=None, batch_id=None, user=None,
+                incomplete_only=False):
+    with session() as db:
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        from app.modules.internship.services.internship_scope import apply_internship_record_scope
+        batch = resolve_batch(db, batch_id)
+        scoped_records = apply_internship_record_scope(
+            select(InternshipRecord.id).where(
+                InternshipRecord.tenant_id == _tid(),
+                InternshipRecord.batch_id == batch.id,
+                InternshipRecord.is_deleted.is_(False)), user).subquery()
+        q = select(InternshipFinalScore, InternshipRecord, StudentProfile).join(
+            InternshipRecord, InternshipRecord.id == InternshipFinalScore.internship_id
+        ).join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+            InternshipFinalScore.tenant_id == _tid(),
+            InternshipFinalScore.is_deleted.is_(False),
+            InternshipFinalScore.internship_id.in_(select(scoped_records.c.id)),
+            StudentProfile.is_deleted.is_(False))
+        if status:
+            q = q.where(InternshipFinalScore.status == status)
+        if keyword:
+            q = q.where(StudentProfile.real_name.like(f"%{keyword.strip()}%"))
+        if incomplete_only:
+            q = q.where(_incomplete_predicate())
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        rows = db.execute(q.order_by(InternshipFinalScore.id.desc()).offset(
+            (max(1, page) - 1) * page_size).limit(page_size)).all()
+        return [_row(score, rec, stu) for score, rec, stu in rows], total
+
+
+def get_score(sid, user=None) -> dict:
+    scope, in_scope = _scope_ctx(user)
+    with session() as db:
+        s = _get(db, sid)
+        rec, stu = _ctx(db, s)
+        if not in_scope(scope, db, rec, stu):
+            raise no_permission("该成绩不在你的数据范围内")
+        trail = db.scalars(select(InternshipAuditTrail).where(
+            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "SCORE",
+            InternshipAuditTrail.target_id == s.id).order_by(InternshipAuditTrail.id)).all()
+        enterprise_eval = _approved_enterprise_eval(db, s.internship_id)
+        return {**_row(s, rec, stu),
+                "weights": {"checkin": s.w_checkin, "weekly": s.w_weekly, "monthly": s.w_monthly,
+                            "enterprise": s.w_enterprise, "school": s.w_school},
+                "enterpriseSource": {
+                    "type": "APPROVED_ENTERPRISE_EVAL" if enterprise_eval else "MISSING",
+                    "sourceId": str(enterprise_eval.id) if enterprise_eval else "",
+                    "sourceFileId": (enterprise_eval.source_file_id or enterprise_eval.file_id)
+                    if enterprise_eval else "",
+                },
+                "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
+                                "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
+                               for t in trail]}
+
+
+def export_scores(status=None, keyword=None, batch_id=None, user=None,
+                  incomplete_only=False) -> dict:
+    """导出必须与老师屏幕上的筛选口径一致。
+
+    `incomplete_only` 不透传的话，老师开着「仅看缺项」看到 3 条、点导出却拿到全部，
+    然后照着导出的表去核对——成绩是要报出去的，这种不一致比慢更危险。
+    """
+    from app.services import xlsx_util
+    from app.modules.internship.services.internship_export_util import require_exportable
+    _, total = list_scores(1, 0, status=status, keyword=keyword, batch_id=batch_id, user=user,
+                           incomplete_only=incomplete_only)
+    require_exportable(total)
+    items, _ = list_scores(1, total, status=status, keyword=keyword, batch_id=batch_id, user=user,
+                           incomplete_only=incomplete_only)
+    headers = ["学号", "姓名", "指导教师", "打卡", "周报", "月报总结", "企业评价", "学校评价",
+               "总分", "及格线", "是否及格", "缺项", "状态"]
+    scope_note = "（仅缺项）" if incomplete_only else ""
+    rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["checkinScore"], it["weeklyScore"],
+             it["monthlyScore"], it["enterpriseScore"], it["schoolScore"], it["totalScore"], it["passLine"],
+             "是" if it["isPass"] else "否", it["incompleteReason"] or "无", it["statusLabel"]]
+            for it in items]
+    wm = (f"岗位实习中心·实习成绩台账{scope_note} · 导出人：{_op_name(user)}"
+          f" · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕")
+    content = xlsx_util.build_ledger_xlsx(f"实习成绩台账{scope_note}", headers, rows, watermark=wm)
+    return xlsx_util.pack_xlsx_result(content, f"实习成绩台账{scope_note}.xlsx", len(items))
