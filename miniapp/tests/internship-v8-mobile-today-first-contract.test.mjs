@@ -23,6 +23,9 @@ test('V8 Student Mini keeps currentTask first and groups all seventeen routes by
   assert.match(student, /currentStage\(\)/)
   assert.match(student, /this\.i\?\.statusText === 'ONBOARD'/)
   assert.match(student, /openSub\(n\.path\)/)
+  assert.match(student, /<MobileSafeAreaBar v-if="primaryAction">/)
+  assert.match(student, /runPrimaryAction/)
+  assert.doesNotMatch(student, /记录\s*\{\{\s*candidate\.recordId/)
 })
 
 test('V8 Student Mini honors an exact numeric batch deep link before loading server truth', () => {
@@ -45,6 +48,9 @@ test('V8 Teacher Mini puts concrete tasks and risks before common services, reta
   assert.match(teacher, /v-for="r in wb\.riskStudents"/)
   assert.match(teacher, /:services="commonServices"/)
   assert.match(read('src/components/MobileTeacherCommonServices.vue'), /go\('\/pages\/teacher\/services\/index'\)/)
+  assert.match(teacher, /internshipBatches\.length > 1/)
+  assert.match(teacher, /@change="onInternshipBatchChange"/)
+  assert.match(teacher, /context\.selectBatch\(batch\.id\)/)
 })
 
 test('V8 Teacher Mini exception decision facts match PC truth and fail closed', () => {
