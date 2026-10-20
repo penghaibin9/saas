@@ -144,18 +144,44 @@ def test_installed_school_archive_materials_reject_college_before_loading_batch(
     load.assert_called_once_with(db, 1)
 
 
-def test_mysql_archive_keeps_foreign_students_tasks_changes_and_courses_out(db_mode, monkeypatch):
+@pytest.fixture
+def archive_tenant_context():
+    """真实归属查询共享请求租户；退出时恢复，避免污染后续用例。"""
+    from app.core.context import get_tenant, set_tenant
+
+    previous = get_tenant()
+    tid = 1000000000000000001
+    set_tenant(tid)
+    try:
+        yield tid
+    finally:
+        set_tenant(previous)
+
+
+def test_archive_task_relations_reject_missing_tenant_context():
+    from app.core.context import get_tenant, set_tenant
+    from app.core.exceptions import AppException
+    from app.modules.academic_affairs.services import academic_affairs_responsibility_service as responsibility
+
+    previous = get_tenant()
+    db = MagicMock()
+    set_tenant(None)
+    try:
+        with pytest.raises(AppException) as denied:
+            responsibility.resolve_task_offering_colleges(db, [1])
+        assert denied.value.code == "TENANT_CONTEXT_REQUIRED"
+        db.scalars.assert_not_called()
+    finally:
+        set_tenant(previous)
+
+
+def test_mysql_archive_keeps_foreign_students_tasks_changes_and_courses_out(db_mode, archive_tenant_context):
     """仅主控在独立MySQL库串行执行，使用真实归属SQL与正式状态。"""
-    import importlib
     from app.db.session import get_sessionmaker
     from app.models import (AaTerm, StudentProfile, AaRegistrationBatch, AaRegistration,
         AaRegistrationException, AaCourse, AaTeachingTaskBatch, AaTeachingTask, AaGradeTask,
         AaScheduleBatch, AaScheduleItem, AaScheduleChange, AaExamBatch, AaExamCourse)
-    from app.modules.academic_affairs.services import academic_affairs_schedule_policy as schedule
-    exam = importlib.import_module("app.modules.academic_affairs.services.academic_affairs_exam_service")
-    tid = 1000000000000000001
-    for module in (policy, operational, semantic, public._core, schedule, exam):
-        monkeypatch.setattr(module, "_tid", lambda: tid)
+    tid = archive_tenant_context
     with get_sessionmaker()() as db:
         term = AaTerm(tenant_id=tid, year_code="2041-2042", term_no=1, status="PUBLISHED",
             start_date=datetime(2041, 9, 1), end_date=datetime(2042, 1, 20), teaching_weeks=18)
