@@ -28,7 +28,7 @@ jobs:
           fetch-depth: 0
       - name: Assert exact W3 head
         run: test "$(git rev-parse HEAD)" = "${{ github.sha }}"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '20'
           cache: npm
