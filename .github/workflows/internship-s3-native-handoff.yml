@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Checkout exact product SHA
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           ref: ${{ env.PRODUCT_EXACT_SHA }}
           fetch-depth: 0

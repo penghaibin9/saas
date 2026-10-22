@@ -85,7 +85,7 @@ jobs:
       E2E_PRODUCT_EXACT_SHA: 979592ef8bfe3318bf5fd12043da17e635dcad1a
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0

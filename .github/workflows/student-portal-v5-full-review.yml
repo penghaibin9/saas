@@ -56,7 +56,7 @@ jobs:
       REVIEW_TENANT: sandbox-school
       REVIEW_OUTPUT: /tmp/student-portal-v5-full-review
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 

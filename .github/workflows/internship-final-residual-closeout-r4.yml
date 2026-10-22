@@ -32,7 +32,7 @@ jobs:
           --health-timeout=5s
           --health-retries=15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: fix/internship-prelaunch-p1p2-20260828
           fetch-depth: 0
