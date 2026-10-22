@@ -1,0 +1,672 @@
+version: V6
+date: '2026-08-01'
+repository: penghaibin9/saas
+main_head: 604eb299bdaf92d81fb31ed5f150bfd583c7189f
+execution_policy:
+  unit: one_card_one_branch_one_draft_pr
+  target_single_card_success: 85-92% after all gates
+  guaranteed: false
+  requires:
+  - current_head_fact_freeze
+  - old_consumer_inventory
+  - exact_file_allowlist
+  - single_migration_owner
+  - mysql_redis_two_instance_tests
+  - compatibility_and_rollback
+  - independent_review
+  - public_file_foundation_regression
+  - external_cos_gate_when_relevant
+system_cards:
+- id: SYS-01
+  title: 学校治理总览
+  route: /admin/system/dashboard
+  migration_owner: 无迁移
+  dependencies: 聚合SYS-02～SYS-20权威服务；不得成为第二数据源
+  allowed_files:
+  - frontend/src/modules/system/views/SystemDashboardView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/app/api/v1/system.py
+  - backend/app/services/go_live_check_service.py
+  - backend/app/services/system_governance_overview_service.py
+  - backend/app/schemas/system_governance_overview.py
+  - backend/tests/test_system_governance_overview.py
+- id: SYS-02
+  title: 实施项目、开局、变更与验收
+  route: /admin/system/implementation
+  migration_owner: 优先复用现有实施表
+  dependencies: 组织、角色、学期、文件任务
+  allowed_files:
+  - backend/app/api/v1/implementation.py
+  - backend/app/services/system_implementation_service.py
+  - backend/app/services/runtime_preset_install_service.py
+  - backend/app/services/go_live_check_service.py
+  - frontend/src/modules/system/system.routes.js
+  - frontend/src/modules/system/api/system.api.js
+  - frontend/src/modules/system/views/SystemImplementationWorkspaceView.vue
+  - backend/tests/test_system_implementation_workspace_contract.py
+- id: SYS-03
+  title: 账号、身份绑定与账号异常
+  route: /admin/system/accounts
+  migration_owner: 优先复用现有账号/身份表
+  dependencies: 组织、角色、数据交换
+  allowed_files:
+  - frontend/src/modules/system/views/SystemUserListView.vue
+  - frontend/src/modules/system/views/SystemAccountExceptionView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/app/api/v1/system.py
+  - backend/app/services/auth_service_db.py
+  - backend/app/services/account_identity_resolution_service.py
+  - backend/tests/test_system_account_identity_resolution.py
+- id: SYS-04
+  title: 组织结构、任职与未来版本
+  route: /admin/system/organization
+  migration_owner: M-SYS-01单一所有者
+  dependencies: SYS-08组织安全树、SYS-12学期
+  allowed_files:
+  - frontend/src/modules/system/views/SystemOrgView.vue
+  - frontend/src/modules/system/views/SystemStaffAffiliationView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/app/api/v1/system.py
+  - backend/app/services/organization_version_service.py
+  - backend/app/models/organization_version.py
+  - backend/tests/test_organization_versioning.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_organization_version.py
+- id: SYS-05
+  title: 业务关系中心
+  route: /admin/system/business-relations
+  migration_owner: 无迁移，注册表+业务resolver
+  dependencies: 组织、角色、数据范围
+  allowed_files:
+  - backend/app/api/v1/system.py
+  - backend/app/services/business_relation_registry.py
+  - frontend/src/modules/system/system.routes.js
+  - frontend/src/modules/system/api/system.api.js
+  - frontend/src/modules/system/views/SystemBusinessRelationView.vue
+  - backend/tests/test_business_relation_registry.py
+  - docs/architecture/business-relation-registry.yaml
+- id: SYS-06
+  title: 角色目录、权限包与自定义角色
+  route: /admin/system/roles
+  migration_owner: M-RBAC-01单一所有者
+  dependencies: SYS-09安全变更；角色专项V6为详细权威
+  allowed_files:
+  - frontend/src/modules/system/views/SystemRoleListView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/app/api/v1/system.py
+  - backend/app/services/system_admin_catalog_service.py
+  - backend/app/core/permissions.py
+  - backend/app/services/permission_bundle_service.py
+  - backend/app/models/permission_governance.py
+  - backend/tests/test_role_template_and_bundles.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_permission_bundles.py
+- id: SYS-07
+  title: 角色成员、自动业务身份与有效期
+  route: /admin/system/role-assignments
+  migration_owner: M-RBAC-02单一所有者
+  dependencies: 角色、学期、业务关系
+  allowed_files:
+  - backend/app/api/v1/system.py
+  - backend/app/services/role_assignment_service.py
+  - backend/app/services/business_identity_service.py
+  - frontend/src/modules/system/system.routes.js
+  - frontend/src/modules/system/api/system.api.js
+  - frontend/src/modules/system/views/SystemRoleAssignmentView.vue
+  - backend/tests/test_role_assignment_validity.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_role_assignment_validity.py
+- id: SYS-08
+  title: 数据范围、组织安全树与显式DENY
+  route: /admin/system/data-scopes
+  migration_owner: M-RBAC-03单一所有者
+  dependencies: 组织版本、SYS-09安全激活
+  allowed_files:
+  - backend/app/services/data_scope_service.py
+  - backend/app/services/system_admin_catalog_service.py
+  - backend/app/api/v1/system.py
+  - backend/app/services/scope_policy_service.py
+  - backend/app/models/scope_policy.py
+  - frontend/src/modules/system/views/SystemDataScopeView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/tests/test_scope_policy_inheritance.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_scope_policy.py
+- id: SYS-09
+  title: 安全变更、审核、激活与回滚
+  route: /admin/system/security-changes
+  migration_owner: M-RBAC-04单一所有者
+  dependencies: SYS-06～08；统一bootstrap revision
+  allowed_files:
+  - backend/app/api/v1/system.py
+  - backend/app/core/permissions.py
+  - backend/app/services/data_scope_service.py
+  - backend/app/services/security_change_service.py
+  - backend/app/models/security_change.py
+  - backend/app/schemas/security_change.py
+  - frontend/src/security/permissionGate.js
+  - frontend/src/modules/system/views/SystemSecurityChangeView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/tests/test_security_change_activation.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_security_change.py
+- id: SYS-10
+  title: 访问解释、权限复核、职责分离与紧急访问
+  route: /admin/system/access-governance
+  migration_owner: M-RBAC-05单一所有者
+  dependencies: SYS-06～09
+  allowed_files:
+  - backend/app/core/permissions.py
+  - backend/app/services/data_scope_service.py
+  - backend/app/api/v1/rbac.py
+  - backend/app/api/v1/authz.py
+  - backend/app/services/policy_decision_service.py
+  - backend/app/services/access_review_service.py
+  - backend/app/models/access_governance.py
+  - frontend/src/modules/system/views/SystemAccessGovernanceView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/tests/test_policy_decision_explanation.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_access_governance.py
+- id: SYS-11
+  title: 登录安全、学校配置与有效值
+  route: /admin/system/effective-config
+  migration_owner: M-SYS-02单一所有者
+  dependencies: 平台安全底线、套餐默认、SYS-09激活
+  allowed_files:
+  - frontend/src/modules/system/views/SystemConfigView.vue
+  - frontend/src/modules/system/views/SystemLoginPolicyView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/app/services/system_config_service.py
+  - backend/app/services/effective_config_service.py
+  - backend/app/services/platform_defaults.py
+  - backend/app/api/v1/system.py
+  - backend/app/models/config_governance.py
+  - backend/tests/test_effective_config_inheritance.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_config_governance.py
+- id: SYS-12
+  title: 学年学期、业务日历与统一切换
+  route: /admin/system/academic-calendar
+  migration_owner: M-SYS-03单一所有者
+  dependencies: 所有业务模块注册CalendarConsumer
+  allowed_files:
+  - backend/app/api/v1/system.py
+  - backend/app/services/academic_calendar_service.py
+  - backend/app/models/academic_calendar.py
+  - frontend/src/modules/system/system.routes.js
+  - frontend/src/modules/system/api/system.api.js
+  - frontend/src/modules/system/views/SystemAcademicCalendarView.vue
+  - backend/tests/test_academic_calendar_transition.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_academic_calendar.py
+- id: SYS-13
+  title: 模块商业授权、学校启用与准备度
+  route: /admin/system/modules
+  migration_owner: M-SYS-04单一所有者
+  dependencies: 平台套餐授权、实施中心、SYS-09激活
+  allowed_files:
+  - frontend/src/modules/system/views/SystemModuleFeatureView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/app/services/module_access_service.py
+  - backend/app/services/system_governance_service.py
+  - backend/app/core/module_registry.py
+  - backend/app/services/tenant_capability_setting_service.py
+  - backend/tests/test_tenant_capability_setting.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_tenant_capability_setting.py
+  - shared/contracts/module-manifest.json
+- id: SYS-14
+  title: 流程定义、流程安全与运行异常
+  route: /admin/system/workflows
+  migration_owner: 优先复用现有workflow定义，仅条件新增动作策略扩展
+  dependencies: 角色、业务身份、安全激活
+  allowed_files:
+  - backend/app/services/system_implementation_service.py
+  - backend/app/services/runtime_preset_install_service.py
+  - backend/app/api/v1/implementation.py
+  - backend/app/api/v1/system.py
+  - backend/app/services/workflow_security_policy_service.py
+  - frontend/src/modules/system/views/SystemWorkflowGovernanceView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/tests/test_workflow_security_policy.py
+- id: SYS-15
+  title: 统一消息、待办与通知治理
+  route: /admin/system/communications
+  migration_owner: 条件迁移，优先adapter现有消息/待办表
+  dependencies: 短信供应商、四端消息中心；先事实冻结防重复
+  allowed_files:
+  - backend/app/api/v1/system.py
+  - backend/app/services/communication_registry.py
+  - backend/app/services/todo_task_service.py
+  - frontend/src/modules/system/views/SystemCommunicationGovernanceView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/tests/test_communication_governance.py
+  - docs/architecture/communication-capability-registry.yaml
+- id: SYS-16
+  title: 批处理、调度与后台任务授权
+  route: /admin/system/jobs
+  migration_owner: 先registry/adapter，必要时仅新增授权策略表
+  dependencies: '公共数据交换Job、消息任务、同步任务；不得另建总任务底座'
+  allowed_files:
+  - backend/app/api/v1/system.py
+  - backend/app/services/job_registry.py
+  - backend/app/services/job_authorization_service.py
+  - frontend/src/modules/system/views/SystemJobCenterView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/tests/test_job_authorization_and_monitoring.py
+  - docs/architecture/job-registry.yaml
+- id: SYS-17
+  title: 主数据责任与数据质量
+  route: /admin/system/master-data
+  migration_owner: M-SYS-05单一所有者
+  dependencies: 账号、组织、课程、企业等权威模块
+  allowed_files:
+  - backend/app/api/v1/system.py
+  - backend/app/services/master_data_governance_service.py
+  - backend/app/models/master_data_governance.py
+  - frontend/src/modules/system/views/SystemMasterDataView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/tests/test_master_data_governance.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_master_data_governance.py
+- id: SYS-18
+  title: 数据交换任务中心增强
+  route: /admin/system/data-exchange
+  implementation_status: existing_enhance
+  migration_owner: prefer_none
+  dependencies: ImportJob/ExportJob/FileObject/identity scan orchestrator
+  allowed_files:
+  - backend/app/api/v1/data_exchange.py
+  - backend/app/services/data_exchange_job_service.py
+  - backend/app/services/identity_import_scan_orchestrator.py
+  - backend/app/models/data_exchange.py
+  - frontend/src/modules/system/views/SystemDataExchangeView.vue
+  - frontend/src/modules/system/api/dataExchange.api.js
+  - frontend/src/modules/system/systemManagementCatalog.js
+  - backend/tests/test_data_exchange_job_center.py
+  - backend/tests/test_system_data_exchange_v6.py
+- id: SYS-19
+  title: 文件存储治理增强
+  route: /admin/system/file-storage-governance
+  implementation_status: existing_enhance
+  migration_owner: conditional_after_0154
+  dependencies: FileObject/TenantStorageQuota/RetentionPolicy/QuotaReservation
+  allowed_files:
+  - backend/app/api/v1/file_governance.py
+  - backend/app/services/file_storage_governance_service.py
+  - backend/app/services/file_storage_cleanup_service.py
+  - backend/app/services/file_storage_quota_reservation_service.py
+  - backend/app/models/file.py
+  - frontend/src/modules/system/views/SystemFileStorageGovernanceView.vue
+  - frontend/src/modules/system/api/fileStorageGovernance.api.js
+  - frontend/src/modules/system/systemManagementCatalog.js
+  - backend/tests/test_file_storage_governance.py
+  - backend/tests/test_file_storage_quota_reservation.py
+  - backend/tests/test_file_storage_governance_v6.py
+- id: SYS-20
+  title: 集成连接、同步与失败治理
+  route: /admin/system/integrations
+  migration_owner: 先adapter旧JSON，结构化迁移单独实施
+  dependencies: 平台服务目录、主数据、任务中心
+  allowed_files:
+  - backend/app/services/system_governance_service.py
+  - backend/app/api/v1/system.py
+  - backend/app/services/integration_registry.py
+  - backend/app/services/integration_security_service.py
+  - frontend/src/modules/system/views/SystemIntegrationView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/tests/test_integration_security.py
+- id: SYS-21
+  title: 安全审计、敏感操作与证据
+  route: /admin/system/audit
+  migration_owner: 优先复用现有审计表
+  dependencies: '安全变更、访问治理、公共文件中心审计、平台合规'
+  allowed_files:
+  - backend/app/api/v1/system.py
+  - backend/app/core/security.py
+  - backend/app/services/audit_evidence_service.py
+  - frontend/src/modules/system/views/SystemAuditView.vue
+  - frontend/src/modules/system/api/system.api.js
+  - backend/tests/test_audit_evidence_integrity.py
+platform_cards:
+- id: PLAT-01
+  title: 经营、客户成功与运行总览
+  route: /admin/platform/overview
+  migration_owner: 无迁移
+  dependencies: 所有平台权威服务只读聚合
+  allowed_files:
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - frontend/src/modules/platform/views/control/PlatformControlOverview.vue
+  - backend/app/api/v1/platform.py
+  - backend/app/services/platform_overview_service.py
+  - backend/tests/test_platform_overview_roles.py
+- id: PLAT-02
+  title: 租户学校、生命周期与租户360
+  route: /admin/platform/tenants/:tenantId
+  migration_owner: M-PLAT-01单一所有者
+  dependencies: 商业授权、自动开通、事件
+  allowed_files:
+  - frontend/src/modules/platform/views/control/PlatformControlTenants.vue
+  - frontend/src/modules/platform/views/control/PlatformControlTenantDetail.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/app/api/v1/platform.py
+  - backend/app/services/platform_service.py
+  - backend/app/services/tenant_effective_state_service.py
+  - backend/app/models/tenant.py
+  - backend/app/models/platform.py
+  - backend/tests/test_tenant_effective_state.py
+- id: PLAT-03
+  title: 产品、套餐、合同、授权、配额与计量对账
+  route: /admin/platform/commercial-control
+  migration_owner: M-PLAT-02单一所有者
+  dependencies: 学校模块启用、租户计量
+  allowed_files:
+  - backend/app/services/platform_defaults.py
+  - backend/app/services/platform_service.py
+  - backend/app/api/v1/platform.py
+  - backend/app/services/module_access_service.py
+  - backend/app/services/entitlement_reconciliation_service.py
+  - backend/app/models/platform_commercial.py
+  - frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_entitlement_reconciliation.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_platform_commercial.py
+- id: PLAT-04
+  title: 租户自动开通、初始化与上线验收
+  route: /admin/platform/provisioning
+  migration_owner: M-PLAT-03单一所有者
+  dependencies: 租户状态、商业授权、学校实施
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/services/platform_service.py
+  - backend/app/services/tenant_provisioning_service.py
+  - backend/app/models/tenant_provisioning.py
+  - frontend/src/modules/platform/views/control/PlatformProvisioningView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_tenant_provisioning_recovery.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_tenant_provisioning.py
+- id: PLAT-05
+  title: 客户健康、工单、培训与续费
+  route: /admin/platform/customer-success
+  migration_owner: M-PLAT-04单一所有者
+  dependencies: 学校治理总览、事件、合同
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/services/customer_health_service.py
+  - backend/app/models/customer_success.py
+  - frontend/src/modules/platform/views/control/PlatformCustomerSuccessView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_customer_health_seasonality.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_customer_success.py
+- id: PLAT-06
+  title: 公共底座运行中心
+  route: /admin/platform/foundations
+  migration_owner: 无迁移，先只读聚合
+  dependencies: '公共文件中心权威底座、服务目录'
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/services/foundation_operations_service.py
+  - frontend/src/modules/platform/views/control/PlatformFoundationOpsView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_foundation_tenant_impact.py
+- id: PLAT-07
+  title: 文件存储后端、密钥与生产环境验证
+  route: /admin/platform/file-storage
+  implementation_status: existing_requires_controlled_activation
+  migration_owner: M-PLAT-FS-01 conditional after 0154
+  dependencies: storage/config.py, COS migration, service/change/DR
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/services/storage/config.py
+  - backend/app/services/storage/production.py
+  - backend/app/commands/migrate_files_to_cos.py
+  - frontend/src/modules/platform/views/control/PlatformControlFileStorage.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_platform_file_storage_activation_v6.py
+- id: PLAT-08
+  title: 服务目录、依赖与租户影响地图
+  route: /admin/platform/services
+  migration_owner: M-PLAT-05单一所有者
+  dependencies: 公共底座、事件、变更
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/services/service_catalog_service.py
+  - backend/app/models/service_catalog.py
+  - frontend/src/modules/platform/views/control/PlatformServiceCatalogView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_service_dependency_impact.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_service_catalog.py
+- id: PLAT-09
+  title: 事件、状态页与统一学校通知
+  route: /admin/platform/incidents
+  migration_owner: M-PLAT-06单一所有者
+  dependencies: 服务目录、学校消息中心
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/services/incident_service.py
+  - backend/app/models/incident.py
+  - frontend/src/modules/platform/views/control/PlatformIncidentView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_incident_notification_scope.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_incident.py
+- id: PLAT-10
+  title: 问题管理、已知错误与事故复盘
+  route: /admin/platform/problems
+  migration_owner: M-PLAT-07单一所有者
+  dependencies: 事件、变更
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/services/problem_management_service.py
+  - backend/app/models/problem_management.py
+  - frontend/src/modules/platform/views/control/PlatformProblemView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_problem_postmortem_lifecycle.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_problem_management.py
+- id: PLAT-11
+  title: 变更、发布、兼容性、灰度与回滚
+  route: /admin/platform/changes
+  migration_owner: M-PLAT-08单一所有者
+  dependencies: 服务目录、学校日历、CI结果作为证据
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/services/change_management_service.py
+  - backend/app/models/change_management.py
+  - frontend/src/modules/platform/views/control/PlatformChangeView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_change_impact_and_rollback.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_change_management.py
+- id: PLAT-12
+  title: 备份、恢复验证与灾备
+  route: /admin/platform/disaster-recovery
+  migration_owner: M-PLAT-09，仅证据元数据
+  dependencies: '备份脚本、COS/FileObject/ArchiveManifest清单与哈希'
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/services/disaster_recovery_service.py
+  - backend/app/models/disaster_recovery.py
+  - frontend/src/modules/platform/views/control/PlatformDisasterRecoveryView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_restore_verification_workflow.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_disaster_recovery.py
+  - ops/restore-test/<NEW_ISOLATED_SCRIPTS_ONLY>
+- id: PLAT-13
+  title: 租户用量、容量、成本与公平使用
+  route: /admin/platform/fair-use
+  migration_owner: M-PLAT-10单一所有者
+  dependencies: '商业对账、服务指标、公共文件存储任务'
+  allowed_files:
+  - backend/app/services/platform_service.py
+  - backend/app/api/v1/platform.py
+  - backend/app/services/tenant_metering_service.py
+  - backend/app/services/fair_use_service.py
+  - backend/app/models/tenant_metering.py
+  - frontend/src/modules/platform/views/control/PlatformFairUseView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_fair_use_core_service_protection.py
+  - backend/alembic/versions/<NEXT_SINGLE_OWNER>_tenant_metering.py
+- id: PLAT-14
+  title: 数据治理、集成目录与合规证据
+  route: /admin/platform/governance
+  migration_owner: 优先复用各控制表
+  dependencies: '学校主数据、系统审计、服务目录、DR、公共文件中心'
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/services/platform_governance_service.py
+  - frontend/src/modules/platform/views/control/PlatformGovernanceView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_platform_governance_privacy.py
+- id: PLAT-15
+  title: 平台人员职责、临时提升与受控协助
+  route: /admin/platform/access
+  migration_owner: 条件迁移，先盘点平台账号模型
+  dependencies: 平台角色独立于学校角色
+  allowed_files:
+  - backend/app/api/v1/platform.py
+  - backend/app/core/permissions.py
+  - backend/app/services/platform_access_governance_service.py
+  - frontend/src/modules/platform/views/control/PlatformAccessView.vue
+  - frontend/src/modules/platform/api/platformControl.api.js
+  - backend/tests/test_platform_control_plane_access.py
+role_model:
+  fixed_roles:
+  - code: SCHOOL_OWNER
+    name: 学校最高管理员
+  - code: SYSTEM_ADMIN
+    name: 系统管理员
+  - code: SECURITY_AUDITOR
+    name: 安全审计员
+  - code: SCHOOL_LEADER
+    name: 校级领导
+  - code: COLLEGE_LEADER
+    name: 学院领导
+  - code: ORG_ADMIN
+    name: 组织人事管理员
+  - code: ACADEMIC_ADMIN
+    name: 教务处管理员
+  - code: REGISTRAR
+    name: 学籍管理员
+  - code: COLLEGE_ACADEMIC_SECRETARY
+    name: 学院教学秘书
+  - code: PROGRAM_DIRECTOR
+    name: 专业负责人
+  - code: COURSE_TEACHER
+    name: 任课教师
+  - code: EXAM_GRADE_ADMIN
+    name: 考务成绩管理员
+  - code: AFFAIRS_ADMIN
+    name: 学工处管理员
+  - code: COUNSELOR
+    name: 辅导员
+  - code: HEAD_TEACHER
+    name: 班主任
+  - code: FUNDING_ADMIN
+    name: 资助管理员
+  - code: DORM_ADMIN
+    name: 宿舍管理员
+  - code: PSYCHOLOGY_TEACHER
+    name: 心理老师
+  - code: ORIENTATION_ADMIN
+    name: 招生迎新管理员
+  - code: INTERNSHIP_ADMIN
+    name: 岗位实习管理员
+  - code: GRADUATION_ADMIN
+    name: 毕业设计管理员
+  - code: EMPLOYMENT_ADMIN
+    name: 就业管理员
+  business_identities:
+  - code: COURSE_INSTRUCTOR
+    name: 任课关系
+  - code: GD_SUPERVISOR
+    name: 毕设导师
+  - code: GD_REVIEWER
+    name: 毕设评阅
+  - code: GD_DEFENSE_EXPERT
+    name: 答辩专家
+  - code: GD_DEFENSE_SECRETARY
+    name: 答辩秘书
+  - code: INTERN_SUPERVISOR
+    name: 实习指导
+  governance_packages:
+  - RBAC-01 delivered_roles
+  - RBAC-02 assignments_and_validity
+  - RBAC-03 scope_inheritance_and_deny
+  - RBAC-04 workflow_action_security
+  - RBAC-05 security_activation
+  - RBAC-06 access_explanation
+  - RBAC-07 job_service_authorization
+  - RBAC-08 review_sod_emergency
+  - RBAC-09 file_and_data_exchange_permissions
+reserved_shared_files:
+- backend/app/api/v1/route_registration.py
+- backend/app/core/module_registry.py
+- frontend/src/config/navPlan.js
+- frontend/src/router/index.js
+- backend/alembic/versions/
+pr25_owned_paths:
+- backend/app/services/file_service.py
+- backend/app/services/data_exchange_confirm_service.py
+- backend/app/modules/graduation/services/graduation_material_center_service.py
+- backend/app/modules/graduation/routers/graduation_material_center.py
+- backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py
+- backend/app/modules/academic_affairs/routers/academic_affairs_bundle.py
+- backend/app/modules/academic_affairs/services/academic_file_exchange_service.py
+- frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js
+- frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue
+- docs/architecture/file-capability-inventory.yaml
+- docs/architecture/file-capability-inventory.d/
+- .github/workflows/file-capability-inventory.yml
+- .github/workflows/academic-file-exchange-center.yml
+public_file_foundation:
+  pr: 25
+  state: closed
+  merged: true
+  final_head: 87ad57b7e21c00ca93ab2e790db90f353c4387d0
+  merge_commit: 604eb299bdaf92d81fb31ed5f150bfd583c7189f
+  alembic_head_at_audit: 0154_file_storage_quota_reservation
+  status: main_baseline
+  authoritative_models:
+  - t_file_object
+  - t_file_asset
+  - t_file_version
+  - t_file_binding
+  - t_file_scan_record
+  - t_file_upload_session
+  - t_file_job
+  - t_import_job
+  - t_import_row_error
+  - t_export_job
+  - t_archive_manifest
+  - t_archive_manifest_item
+  - t_tenant_storage_quota
+  - t_file_retention_policy
+  - t_file_storage_quota_reservation
+  external_production_validation_not_proven:
+  - cos_sts_expiry_and_minimum_scope
+  - cos_cors
+  - cos_lifecycle
+  - cos_sse
+  - real_50mb_500mb_upload
+  - cross_process_resume
+  - real_cross_tenant_object_attack
+permission_migration:
+  deprecated_broad_permissions:
+  - systemAdmin.file.manage
+  - systemAdmin.user.import as universal data-exchange action
+  target_file_permissions:
+  - systemAdmin.fileGovernance.view
+  - systemAdmin.fileGovernance.quota.manage
+  - systemAdmin.fileGovernance.retention.manage
+  - systemAdmin.fileGovernance.cleanup.execute
+  - systemAdmin.fileGovernance.legalHold.manage
+  - systemAdmin.fileGovernance.scan.retry
+  target_data_exchange_permissions:
+  - systemAdmin.dataExchange.viewOwn
+  - systemAdmin.dataExchange.viewTenant
+  - systemAdmin.dataExchange.confirm
+  - systemAdmin.dataExchange.download
+  - systemAdmin.dataExchange.revoke
+  - systemAdmin.dataExchange.retry
+reserved_files:
+- backend/app/api/v1/router.py
+- backend/app/models/__init__.py
+- frontend/src/modules/platform/platform.routes.js
+- frontend/src/modules/system/system.routes.js
+- frontend/src/modules/system/systemManagementCatalog.js
+v6_first_cards:
+- SYS-18
+- SYS-19
+- RBAC-09
+- PLAT-03
+- PLAT-06
+- PLAT-07
