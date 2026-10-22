@@ -133,7 +133,7 @@ jobs:
           grep -F 'source_program_course_id' backend/app/models/academic_affairs.py
           grep -F '_guard_selection_formation(db, task_id)' backend/app/modules/academic_affairs/services/academic_affairs_selection_course_command_service.py
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip

@@ -71,7 +71,7 @@ jobs:
           matches="$(grep -R --include='*.py' -F 'down_revision = "20260816_internship_e_m8"' backend/alembic/versions || true)"
           test -z "$matches"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.12'
           cache: pip
