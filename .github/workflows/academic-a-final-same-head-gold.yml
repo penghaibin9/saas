@@ -114,7 +114,7 @@ jobs:
 
       - name: Upload Program final evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-a-program-final-${{ github.sha }}
           path: /tmp/academic-a-program-final-junit.xml
@@ -233,7 +233,7 @@ jobs:
 
       - name: Upload B sync evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-a-b-sync-${{ github.sha }}
           path: /tmp/academic-a-b-sync-junit.xml

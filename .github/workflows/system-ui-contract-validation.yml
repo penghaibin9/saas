@@ -75,14 +75,14 @@ jobs:
           cp frontend/package-lock.json "$RUNNER_TEMP/system-ui-tooling/frontend-package-lock.json"
           node --version > "$RUNNER_TEMP/system-ui-tooling/node-version.txt"
           sha256sum "$RUNNER_TEMP/system-ui-tooling/frontend-node-modules.tar.gz" > "$RUNNER_TEMP/system-ui-tooling/SHA256SUMS.txt"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: ${{ always() && contains(github.event.head_commit.message, '[system-ui-tooling]') }}
         with:
           name: system-ui-locked-tooling-${{ github.sha }}
           path: ${{ runner.temp }}/system-ui-tooling/
           retention-days: 1
           if-no-files-found: error
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: system-ui-validation-${{ github.sha }}

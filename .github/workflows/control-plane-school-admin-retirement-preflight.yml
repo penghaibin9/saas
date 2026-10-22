@@ -144,7 +144,7 @@ jobs:
 
       - name: Upload retirement preflight evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: control-plane-school-admin-retirement-preflight-${{ github.event.pull_request.head.sha || github.sha }}
           path: |

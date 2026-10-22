@@ -220,7 +220,7 @@ jobs:
 
       - name: Upload W2 browser evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-exam-incident-w2-evidence-${{ env.W2_EXPECTED_SHA }}
           path: |
@@ -232,7 +232,7 @@ jobs:
 
       - name: Upload W2 runtime logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-exam-incident-w2-logs-${{ env.W2_EXPECTED_SHA }}
           path: e2e/runtime-logs/

@@ -148,7 +148,7 @@ jobs:
 
       - name: Upload matrix evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: control-plane-critical-mutation-${{ env.CONTROL_HEAD }}
           path: artifacts/control-plane/

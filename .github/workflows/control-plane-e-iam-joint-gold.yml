@@ -330,7 +330,7 @@ jobs:
 
       - name: Upload E x IAM joint evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: control-plane-e-iam-joint-gold-${{ env.CONTROL_HEAD }}
           path: artifacts/control-plane/

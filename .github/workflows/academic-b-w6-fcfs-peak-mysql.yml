@@ -72,7 +72,7 @@ jobs:
             --junitxml=w6-fcfs-peak-junit.xml
       - name: Upload W6-1 JUnit evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: academic-b-w6-fcfs-peak-junit-${{ github.sha }}
           path: backend/w6-fcfs-peak-junit.xml
