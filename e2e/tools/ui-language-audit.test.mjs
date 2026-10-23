@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { requestAllowed, flagText, inventory, detailRoutePattern } from './ui-language-audit.mjs'
+import { requestAllowed, flagText, inventory, detailRoutePattern, captureStatus, renderReport } from './ui-language-audit.mjs'
 
 test('写请求默认拒绝，认证白名单限定方法、来源和完整路径', () => {
   const origins = ['http://127.0.0.1:8000']
@@ -35,4 +35,28 @@ test('详情只接受对应路由，不能把列表页截图当详情', () => {
   assert.ok(pattern.test('/enterprise/applications/123'))
   assert.equal(pattern.test('/enterprise/applications'), false)
   assert.equal(pattern.test('/enterprise/applications/123/delete'), false)
+})
+
+test('首页重定向、丢失筛选和移动端跳转不能记作目标页', () => {
+  const capture = { expectedUrl: 'http://localhost:5173/admin/students?status=PENDING', actualUrl: 'http://localhost:5173/admin/students?status=PENDING', httpStatus: 200, settled: true }
+  assert.equal(captureStatus(capture), '已截图，待人工通读')
+  assert.equal(captureStatus({ ...capture, actualUrl: 'http://localhost:5173/workbench' }), '页面已跳转，非目标页面')
+  assert.equal(captureStatus({ ...capture, actualUrl: 'http://localhost:5173/admin/students' }), '页面已跳转，非目标页面')
+  assert.equal(captureStatus({ ...capture, actualUrl: 'http://localhost:5173/login' }), '登录失效，非目标页面')
+  assert.equal(captureStatus({ ...capture, expectedUrl: 'http://localhost:5188/#/pages/student/profile/index', actualUrl: 'http://localhost:5188/#/pages/student/home/index' }), '页面已跳转，非目标页面')
+})
+
+test('空壳页面成功不能掩盖数据失败或未加载完成', () => {
+  const capture = { expectedUrl: 'http://localhost:5173/workbench', actualUrl: 'http://localhost:5173/workbench', httpStatus: 200, settled: true }
+  assert.equal(captureStatus({ ...capture, apiFailures: [{ status: 403 }] }), '权限受限，已留证')
+  assert.equal(captureStatus({ ...capture, apiFailures: [{ status: 500 }] }), '页面或数据加载失败，已留证')
+  assert.equal(captureStatus({ ...capture, apiFailures: [{ status: null }] }), '页面或数据加载失败，已留证')
+  assert.equal(captureStatus({ ...capture, settled: false }), '页面加载未稳定，已留证')
+})
+
+test('报告包含入口与可点击截图，并保持人工待审状态', () => {
+  const report = renderReport([{ page: '课程|列表', route: '/courses', role: '任课教师', width: 1440, status: '已截图，待人工通读', screenshot: '00001.png', flags: [], conclusion: '未人工审阅' }])
+  assert.ok(report.includes('|课程／列表|/courses|'))
+  assert.ok(report.includes('[查看截图](00001.png)'))
+  assert.ok(report.includes('未人工审阅'))
 })

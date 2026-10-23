@@ -71,6 +71,23 @@ export function detailRoutePattern(route) {
   return new RegExp('^' + route.split('/').map(part => part.startsWith(':') ? '[^/?#]+' : part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('/') + '(?:[?#]|$)')
 }
 
+export function captureStatus({ expectedUrl, actualUrl, httpStatus, apiFailures = [], settled }) {
+  const expected = new URL(expectedUrl)
+  const actual = new URL(actualUrl)
+  if (actual.pathname.includes('/login') && !expected.pathname.includes('/login')) return '登录失效，非目标页面'
+  if ([401, 403].includes(httpStatus) || apiFailures.some(item => [401, 403].includes(item.status))) return '权限受限，已留证'
+  if (httpStatus >= 400 || apiFailures.length) return '页面或数据加载失败，已留证'
+  const requestedQueryMatches = [...expected.searchParams].every(([key, value]) => actual.searchParams.get(key) === value)
+  if (actual.origin !== expected.origin || actual.pathname !== expected.pathname || actual.hash !== expected.hash || !requestedQueryMatches) return '页面已跳转，非目标页面'
+  if (!settled) return '页面加载未稳定，已留证'
+  return '已截图，待人工通读'
+}
+
+export function renderReport(records) {
+  const cell = value => String(value ?? '').replaceAll('|', '／').replaceAll('\n', ' ').replaceAll('<', '&lt;').replaceAll('>', '&gt;')
+  return '# 全页面巡检记录\n\n页面条目和角色检查次数不等于审计通过页数。\n\n|页面|入口|角色|宽度|状态|截图|自动标记|人工结论|\n|---|---|---|---|---|---|---|---|\n' + records.map(r => `|${cell(r.page)}|${cell(r.route)}|${cell(r.role)}|${r.width}|${cell(r.status)}|${r.screenshot ? `[查看截图](${r.screenshot})` : '无'}|${cell(r.flags.map(f => f.kind).join('、'))}|${cell(r.conclusion)}|`).join('\n')
+}
+
 async function openDetailFromList(page, base, route) {
   const prefix = route.split('/:')[0]
   if (!prefix || prefix === '/') throw new Error('缺少明确列表入口')
@@ -113,6 +130,10 @@ async function main() {
   }))]
   const records = []
   const allBlocked = []
+  const saveReport = async () => {
+    await fs.writeFile(path.join(out, 'report.json'), JSON.stringify({ records, blocked: allBlocked }, null, 2))
+    await fs.writeFile(path.join(out, 'report.md'), renderReport(records))
+  }
   const notRun = process.argv.includes('--not-run')
   const browser = notRun ? null : await (await import('@playwright/test')).chromium.launch()
   const newContext = async blocked => {
@@ -186,12 +207,26 @@ async function main() {
           const publicContext = item.public ? await newContext(blocked) : null
           const capturePage = publicContext ? await publicContext.newPage() : page
           capturePage.setDefaultTimeout(15000)
+          const apiFailures = []
+          const recordResponse = response => {
+            const url = new URL(response.url())
+            if (url.pathname.startsWith('/api/') && response.status() >= 400) apiFailures.push({ path: url.pathname, status: response.status() })
+          }
+          const recordFailure = request => {
+            const url = new URL(request.url())
+            if (url.pathname.startsWith('/api/')) apiFailures.push({ path: url.pathname, status: null })
+          }
+          capturePage.on('response', recordResponse)
+          capturePage.on('requestfailed', recordFailure)
           try {
             await capturePage.setViewportSize({ width, height: 1000 })
             const response = item.route.includes(':')
               ? await openDetailFromList(capturePage, bases[client], item.route)
               : await capturePage.goto(bases[client] + item.route)
-            await capturePage.waitForLoadState('networkidle', { timeout: 15000 })
+            const expectedUrl = item.route.includes(':') ? capturePage.url() : bases[client] + item.route
+            let settled = true
+            try { await capturePage.waitForLoadState('networkidle', { timeout: 15000 }) }
+            catch { settled = false }
             const text = await capturePage.locator('body').innerText()
             const id = String(records.length).padStart(5, '0')
             await capturePage.screenshot({ path: path.join(out, `${id}.png`), fullPage: true })
@@ -204,19 +239,26 @@ async function main() {
               return n.getClientRects().length && n.textContent.trim() && n.getBoundingClientRect().height > (parseFloat(style.lineHeight) || parseFloat(style.fontSize) * 1.5) * 2.1
             }).map(n => n.innerText).filter(Boolean))
             if (longNotes.length) record.flags.push({ kind: '超过两行的说明候选', matches: longNotes })
-            record.status = response?.status() >= 400 ? '页面请求失败，已留证' : /无权限|没有权限|访问受限/.test(text) ? '权限受限，已留证' : capturePage.url().includes('/login') && !item.route.includes('/login') ? '登录失效，非目标页面' : '已截图，待人工通读'
+            record.apiFailures = apiFailures
+            record.status = captureStatus({ expectedUrl, actualUrl: capturePage.url(), httpStatus: response?.status(), apiFailures, settled })
           } catch { record.status = '未完成：页面加载、详情入口或截图失败' }
-          finally { await publicContext?.close() }
-          await fs.writeFile(path.join(out, 'report.json'), JSON.stringify({ records, blocked: [...allBlocked, ...blocked] }, null, 2))
+          finally {
+            capturePage.off('response', recordResponse)
+            capturePage.off('requestfailed', recordFailure)
+            record.apiFailures = apiFailures
+            allBlocked.push(...blocked.splice(0).map(entry => ({ ...entry, role: roleLabel, client })))
+            await publicContext?.close()
+            await saveReport()
+          }
         }
         allBlocked.push(...blocked.map(entry => ({ ...entry, role: roleLabel, client })))
         await context?.close()
       }
     }
-  } finally { await browser?.close() }
-  await fs.writeFile(path.join(out, 'report.json'), JSON.stringify({ records, blocked: allBlocked }, null, 2))
-  const cell = v => String(v ?? '').replaceAll('|', '／').replaceAll('\n', ' ')
-  await fs.writeFile(path.join(out, 'report.md'), '# 全页面巡检记录\n\n页面条目和角色检查次数不等于审计通过页数。\n\n|页面|角色|宽度|状态|截图|自动标记|人工结论|\n|---|---|---|---|---|---|---|\n' + records.map(r => `|${cell(r.page)}|${r.role}|${r.width}|${r.status}|${r.screenshot || '无'}|${cell(r.flags.map(f => f.kind).join('、'))}|${r.conclusion}|`).join('\n'))
+  } finally {
+    await browser?.close()
+    await saveReport()
+  }
   console.log(JSON.stringify({ report: out, inventory: entries.length, checks: records.length, captured: records.filter(r => r.screenshot).length }))
 }
 
