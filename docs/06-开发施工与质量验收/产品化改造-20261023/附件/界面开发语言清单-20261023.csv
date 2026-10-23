@@ -7,6 +7,9 @@ D1-A 公共组件与外壳,建议改,管理/教师PC,common,frontend/src/compone
 D1-A 公共组件与外壳,建议改,管理/教师PC,common,frontend/src/components/auth/PhoneBindingPanel.vue,5,模板文字,工程术语,待核验,待核验号码：{{}},暂未获取 / 未填写
 D1-A 公共组件与外壳,建议改,管理/教师PC,common,frontend/src/components/auth/PhoneBindingPanel.vue,16,模板文字,工程术语,待核验,仅登记待核验号码,暂未获取 / 未填写
 D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/components/auth/PhoneBindingPanel.vue,27,模板文字,工程术语,缓存,安全变更已提交，部分缓存清理待恢复；不要再次变更号码。,系统
+D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/components/common/AppApprovalPanel.vue,23,模板文字,运行时代码外露,{{h.node || h.action || '—'}},{{ h.node || h.action || '—' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
+D1-A 公共组件与外壳,建议改,管理/教师PC,common,frontend/src/components/common/AppFileList.vue,95,脚本文案,运行时代码外露,|| f.type ||,const t = (f.ext || f.type || f.name || '').toLowerCase(),若用于显示：字典缺项时显示“其他事项/其他状态”
+D1-A 公共组件与外壳,建议改,管理/教师PC,common,frontend/src/components/common/AppUserChip.vue,274,脚本文案,运行时代码外露,|| c.roleCode ||,return c.contextName || c.roleName || ROLE_LABEL[c.roleCode || c.contextType] || c.roleCode || c.contextType || c.contextId,若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-A 公共组件与外壳,建议改,管理/教师PC,common,frontend/src/components/common/excel/AppExcelImportDrawer.vue,65,模板文字,工程术语,预校验,预校验,检查
 D1-A 公共组件与外壳,建议改,管理/教师PC,common,frontend/src/components/common/excel/AppExcelImportDrawer.vue,118,脚本文案,工程术语,预校验,预校验,检查
 D1-A 公共组件与外壳,可保留,管理/教师PC,common,frontend/src/components/common/excel/AppExcelImportDrawer.vue,118,脚本文案,工程术语,回执,导入回执,提交结果
@@ -42,10 +45,12 @@ D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/layouts/Ba
 D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/layouts/BasePortalLayout.vue,907,脚本文案,施工痕迹,待施工,该功能待施工，敬请期待,（上线版不应出现）
 D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/layouts/BasePortalLayout.vue,939,脚本文案,施工痕迹,待施工,该功能待施工，敬请期待,（上线版不应出现）
 D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/router/index.js,102,脚本文案,施工痕迹,待施工,规划模块（待施工）,（上线版不应出现）
+D1-A 公共组件与外壳,建议改,管理/教师PC,common,frontend/src/security/platformAccessGate.js,76,脚本文案,运行时代码外露,|| user.roleCode ||,const roleCode = String(context.roleCode || user.roleCode || user.userType || 'PLATFORM').toUpperCase(),若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/security/platformAccessGate.js,105,脚本文案,英文/代码外露,principalPlane,平台上下文 principalPlane 非 PLATFORM，拒绝进入控制面,换成中文
 D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/services/file/fileSdk.js,373,脚本文案,工程术语,服务端,服务端未返回有效文件授权路径,系统
 D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/services/http/adapters.js,4,脚本文案,工程术语,接口,ok（真实接口）,系统
 D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/services/http/adapters.js,253,脚本文案,内部ID外露,${h.assigneeId},办理人 ${h.assigneeId},用名称描述对象，ID 不上屏
+D1-A 公共组件与外壳,建议改,管理/教师PC,common,frontend/src/services/http/adapters.js,303,脚本文案,运行时代码外露,|| g.bizType ||,"label: BIZ_LABEL[g.bizType] || g.bizType || '其他',",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-A 公共组件与外壳,可保留,管理/教师PC,common,frontend/src/services/http/adapters.js,334,脚本文案,工程术语,台账,学生台账导出,记录（台账可保留在管理端）
 D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/services/http/client.js,52,脚本文案,工程术语,接口,真实接口不可用，写操作禁止 mock 成功,系统
 D1-A 公共组件与外壳,必改,管理/教师PC,common,frontend/src/services/http/client.js,52,脚本文案,施工痕迹,mock,真实接口不可用，写操作禁止 mock 成功,（上线版不应出现）
@@ -619,6 +624,7 @@ D1-B 教务PC,可保留,管理/教师PC,academicAffairs,frontend/src/modules/aca
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/AaRegistrationBulkPanel.vue,171,模板文字,内部ID外露,{{ item.studentId }},学生编号：{{ item.studentId }},用名称描述对象，ID 不上屏
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/AaRegistrationBulkPanel.vue,171,模板文字,内部ID外露,{{ item.registrationId }},· 注册记录编号：{{ item.registrationId }},用名称描述对象，ID 不上屏
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/AaRegistrationBulkPanel.vue,248,脚本文案,工程术语,待核对,学生信息待核对,暂未获取 / 未填写
+D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/AaRegistrationBulkPanel.vue,260,脚本文案,运行时代码外露,|| res.code),"return ['NO_PERMISSION', 'NO_DATA_SCOPE'].includes(res.bizCode || res.code) || [403, 403001, 403002].includes(Number(res.code))",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/AaRegistrationBulkPanel.vue,277,脚本文案,工程术语,待核验,待核验,暂未获取 / 未填写
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/AaRegistrationBulkPanel.vue,277,脚本文案,工程术语,待核验,待核验,暂未获取 / 未填写
 D1-B 教务PC,可保留,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/AaRegistrationBulkPanel.vue,406,脚本文案,工程术语,回执,未取得正式注册回执,提交结果
@@ -837,6 +843,7 @@ D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academ
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/parallel-a/AaSelectionSpecialWorkspace.vue,142,脚本文案,过度说明,以正式批次回读为准,规则只绑定当前批次；切换批次后重新读取，保存后以正式批次回读为准。,（删掉或改成一句正向提示）
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/parallel-a/AaSelectionSpecialWorkspace.vue,142,脚本文案,工程术语,服务端,读取服务端记录的选课冲突；接口失败会明确提示，不显示为零冲突。,系统
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/parallel-a/AaSelectionSpecialWorkspace.vue,150,脚本文案,工程术语,对象,${scope.length} 个范围对象,（用具体名称：课程/学生/申请）
+D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/parallel-a/AaSelectionSpecialWorkspace.vue,151,脚本文案,运行时代码外露,|| scope.type ||,return scope.scopeName || scope.name || scope.type || '当前批次正式范围',若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/parallel-a/AaSelectionSpecialWorkspace.vue,153,脚本文案,工程术语,服务端,服务端未提供,系统
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/parallel-a/AaSelectionSpecialWorkspace.vue,154,脚本文案,工程术语,服务端,服务端未提供正式轮次,系统
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/components/parallel-a/AaSelectionSpecialWorkspace.vue,209,脚本文案,工程术语,事实,补选指引的对象或分页事实未完整返回，请重新读取,记录 / 信息
@@ -1170,6 +1177,7 @@ D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academ
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaClassroomListView.vue,67,模板属性/表达式,工程术语,服务端,服务端未提供,系统
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaClassroomListView.vue,68,模板属性/表达式,工程术语,投影,例如：投影仪使用说明、教室管理注意事项,（删除或改为“更新时间”）
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaClassroomListView.vue,78,模板属性/表达式,工程术语,待核对,待核对,暂未获取 / 未填写
+D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaClassroomListView.vue,118,脚本文案,运行时代码外露,|| this.filters.status ||,"hasFilters() { return !!(this.filters.keyword || this.filters.roomType || this.filters.status || this.filters.floorNo) },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaClassroomListView.vue,137,脚本文案,工程术语,事实,事实已变化，保留输入，请重新核对。,记录 / 信息
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaClassroomListView.vue,158,脚本文案,工程术语,预检,清单修改尚未重新预检，返回后本次修改会丢失。,检查
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaClassroomListView.vue,193,脚本文案,工程术语,服务端,服务端未提供,系统
@@ -1266,6 +1274,7 @@ D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/aca
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaEvaluationConsoleView.vue,368,脚本文案,工程术语,下一责任,下一责任,待办 / 下一步由谁办理
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaEvaluationConsoleView.vue,383,脚本文案,内部ID外露,${this.batch.batchId},批次 #${this.batch.batchId} · 学期 ${this.batch.termId || '未绑定'},用名称描述对象，ID 不上屏
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaEvaluationConsoleView.vue,383,脚本文案,内部ID外露,${this.batch.termId || '未绑定'},批次 #${this.batch.batchId} · 学期 ${this.batch.termId || '未绑定'},用名称描述对象，ID 不上屏
+D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaEvaluationConsoleView.vue,388,脚本文案,运行时代码外露,|| this.batch.status),"label: this.archive ? '已归档' : (_BL[this.batch.status] || this.batch.status),",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaEvaluationConsoleView.vue,406,脚本文案,内部ID外露,${row.resultId},结果 #${row.resultId},用名称描述对象，ID 不上屏
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaEvaluationConsoleView.vue,409,脚本文案,工程术语,服务端,服务端未返回当前数据范围内的结果,系统
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaEvaluationConsoleView.vue,438,脚本文案,工程术语,事实,教师 PC 查看匿名任务完成事实；学生本人在学生端按正式名单提交。,记录 / 信息
@@ -2177,6 +2186,8 @@ D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/aca
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaQualityDashboardView.vue,255,脚本文案,工程术语,证据,检查证据与后续责任明确,材料 / 记录
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaQualityDashboardView.vue,425,脚本文案,工程术语,对象,当前身份无权读取或办理此质量对象。,（用具体名称：课程/学生/申请）
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaQualityDashboardView.vue,426,脚本文案,工程术语,对象,对象状态已经变化，请重新读取后办理。,（用具体名称：课程/学生/申请）
+D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaQualityDashboardView.vue,456,脚本文案,运行时代码外露,|| r.status),"rectStatusLabel(r) { return r.overdue && r.status !== 'CLOSED' ? '已逾期' : (_RECT_STATUS_LABEL[r.status] || r.status) },",若用于显示：字典缺项时显示“其他事项/其他状态”
+D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaQualityDashboardView.vue,463,脚本文案,运行时代码外露,|| item.action ||,"title: actionLabel[item.action] || item.action || '过程记录',",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaQualityDashboardView.vue,464,脚本文案,工程术语,待核对,操作人待核对,暂未获取 / 未填写
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaQualityDashboardView.vue,470,脚本文案,工程术语,对象,对象,（用具体名称：课程/学生/申请）
 D1-B 教务PC,可保留,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaQualityDashboardView.vue,513,脚本文案,工程术语,回执,质量指标回执不完整,提交结果
@@ -2548,6 +2559,7 @@ D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/aca
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaScheduleChangeApplyView.vue,31,模板文字,工程术语,下一责任,下一责任,待办 / 下一步由谁办理
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaScheduleChangeApplyView.vue,141,模板文字,工程术语,服务端,检测教师、班级和教室冲突；提交时仍由服务端复核。,系统
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaScheduleChangeApplyView.vue,160,模板属性/表达式,工程术语,待核对,结果待核对,暂未获取 / 未填写
+D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaScheduleChangeApplyView.vue,221,脚本文案,运行时代码外露,"|| this.ctx?.currentRole?.roleCode,","return JSON.stringify([user.tenantId, user.userId, user.activeContextId, user.currentRoleCode || this.ctx?.currentRole?.roleCode, this.form.originItemId, 'schedule-change.submit'])",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaScheduleChangeApplyView.vue,244,脚本文案,工程术语,预检,冲突预检,检查
 D1-B 教务PC,可保留,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaScheduleChangeApplyView.vue,244,脚本文案,工程术语,回执,通知回执,提交结果
 D1-B 教务PC,可保留,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaScheduleChangeApplyView.vue,496,脚本文案,工程术语,台账,提交结果未确认，请到台账核对原申请，不能重复提交,记录（台账可保留在管理端）
@@ -2750,6 +2762,7 @@ D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/aca
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaSelectionStudentView.vue,103,脚本文案,工程术语,预检,以提交预检为准,检查
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaSelectionStudentView.vue,103,脚本文案,过度说明,以提交预检为准,以提交预检为准,（删掉或改成一句正向提示）
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaSelectionStudentView.vue,106,脚本文案,过度说明,不代表,等待抽签，不代表已取得名额,（删掉或改成一句正向提示）
+D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaSelectionStudentView.vue,112,脚本文案,运行时代码外露,|| course?.status ||,"return { record, course, status: record?.status || course?.status || 'UNKNOWN' }",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaSelectionStudentView.vue,155,脚本文案,工程术语,预检,服务器预检已通过；正式提交时仍会再次校验。,检查
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaSelectionStudentView.vue,155,脚本文案,工程术语,事实,当前事实不允许办理，请刷新核对。,记录 / 信息
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaSelectionStudentView.vue,172,脚本文案,过度说明,不会自动重复,没有从服务器正式记录确认到目标状态。系统不会自动重复提交，请稍后刷新。,（删掉或改成一句正向提示）
@@ -3048,6 +3061,7 @@ D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/aca
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaTeachingWeekConfigView.vue,45,模板属性/表达式,工程术语,待核对,学期 ${termId} · ${statusLabel(current.status)} · 定义版本 ${detail?.version ?? '待核对'},暂未获取 / 未填写
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaTeachingWeekConfigView.vue,45,模板属性/表达式,内部ID外露,${termId},学期 ${termId} · ${statusLabel(current.status)} · 定义版本 ${detail?.version ?? '待核对'},用名称描述对象，ID 不上屏
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaTeachingWeekConfigView.vue,56,模板属性/表达式,工程术语,待核对,影响结论待核对,暂未获取 / 未填写
+D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaTeachingWeekConfigView.vue,57,模板文字,运行时代码外露,{{blocker.message || blocker.reason || blocker.code}},{{ blocker.message || blocker.reason || blocker.code }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaTeachingWeekConfigView.vue,64,模板文字,工程术语,权威,保存后由校历与节次管理岗位继续核对；当前学期保持原权威。,（删除“权威/稳定”）
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaTermArchiveView.vue,34,模板文字,内部ID外露,{{ row.archiveBatchId || '未建归档批次' }},{{ row.archiveBatchId || '未建归档批次' }},用名称描述对象，ID 不上屏
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaTermArchiveView.vue,41,模板文字,工程术语,证据,查看归档证据,材料 / 记录
@@ -3183,6 +3197,7 @@ D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/aca
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaWarningConsoleView.vue,14,模板文字,工程术语,对象,{{}} · 当前预警对象,（用具体名称：课程/学生/申请）
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaWarningConsoleView.vue,85,模板属性/表达式,英文/代码外露,academicAffairs,调整后立即生效于下次扫描；仅教务处可配置（academicAffairs.warning.rule.manage）。,换成中文
 D1-B 教务PC,可保留,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaWarningConsoleView.vue,211,模板属性/表达式,工程术语,台账,预警首次生成或再扫描升级等级时，系统自动通知学生本人与责任辅导员；「预警跟进」页的「提醒」按钮会追加一条人工提醒通知。以下为推送台账（站内通知，只读）。,记录（台账可保留在管理端）
+D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaWarningConsoleView.vue,224,模板文字,运行时代码外露,{{NOTIFY_SCENE[row.scene] || row.scene}},{{ NOTIFY_SCENE[row.scene] || row.scene }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaWarningConsoleView.vue,307,脚本文案,工程术语,对象,接收对象,（用具体名称：课程/学生/申请）
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaWarningConsoleView.vue,335,脚本文案,工程术语,待核实,扫描结果待核实：请读取当前名单，不要重复执行扫描。,暂未获取 / 未填写
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/AaWarningConsoleView.vue,336,脚本文案,英文/代码外露,scanResult,扫描完成：新增 ${this.scanResult.created} · 更新 ${this.scanResult.updated} · ${this.scanResult.notificationState==='VERIFIED'&&Number.isFinite(this.scanResult.notified)?,换成中文
@@ -3365,6 +3380,7 @@ D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academ
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/parallel-c/GradeReviewEvidence.vue,29,模板文字,工程术语,冻结名单,提交冻结名单,（删除或改为“更新时间”）
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/parallel-c/GradeReviewEvidence.vue,29,模板属性/表达式,工程术语,待核验,有效性待核验,暂未获取 / 未填写
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/parallel-c/GradeReviewEvidence.vue,30,模板文字,工程术语,名单版本,正式名单版本,（删除或改为“更新时间”）
+D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/parallel-c/GradeReviewEvidence.vue,33,模板文字,运行时代码外露,{{item.name || item.code || '未命名分项'}},{{ item.name || item.code || '未命名分项' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-B 教务PC,必改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/parallel-c/GradeReviewEvidence.vue,35,模板属性/表达式,工程术语,服务端,已指派办理人，身份由服务端核验,系统
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/parallel-c/GradeReviewEvidence.vue,36,模板文字,工程术语,证据,证据检查,材料 / 记录
 D1-B 教务PC,建议改,管理/教师PC,academicAffairs,frontend/src/modules/academicAffairs/views/parallel-c/GradeReviewEvidence.vue,39,模板属性/表达式,工程术语,阻断项,审核阻断项,必须先处理的问题
@@ -4667,6 +4683,7 @@ D1-C 帮助中心与配置,必改,管理/教师PC,config,frontend/src/config/hel
 D1-C 帮助中心与配置,建议改,管理/教师PC,config,frontend/src/config/help/verifiedHelpOverrides.js,156,脚本文案,工程术语,权威来源,发布前会校验评阅分和已确认答辩分的权威来源快照；如果复核后来源发生变化，必须重新核算后再复核发布。,（删除“权威/稳定”）
 D1-C 帮助中心与配置,建议改,管理/教师PC,config,frontend/src/config/help/verifiedHelpOverrides.js,158,脚本文案,工程术语,权威,不会。受理只会撤回原已发布成绩并进入重新核算流程，新的综合成绩仍必须基于权威评阅和答辩来源重新计算、复核、发布。,（删除“权威/稳定”）
 D1-C 帮助中心与配置,可保留,管理/教师PC,config,frontend/src/config/help/verifiedHelpOverrides.js,163,脚本文案,工程术语,台账,成绩台账,记录（台账可保留在管理端）
+D1-C 帮助中心与配置,建议改,管理/教师PC,config,frontend/src/config/helpCenterModel.js,162,脚本文案,运行时代码外露,|| item.category ||,const category = item.module || item.category || section.label || TYPE_LABELS[type],若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-C 帮助中心与配置,必改,管理/教师PC,config,frontend/src/config/helpCenterRuntime.js,187,脚本文案,工程术语,事实链,教务中心 · V3核心事实链,记录 / 信息
 D1-C 帮助中心与配置,建议改,管理/教师PC,config,frontend/src/config/helpContent.js,225,脚本文案,工程术语,链路,学生请假到销假的审批链路。,（删除该说明）
 D1-C 帮助中心与配置,建议改,管理/教师PC,config,frontend/src/config/helpContent.js,231,脚本文案,工程术语,闭环,返校后销假，闭环归档,（删除该说明）
@@ -4823,7 +4840,9 @@ D1-D 系统与平台PC,必改,管理/教师PC,platform,frontend/src/modules/plat
 D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/api/platform.api.js,291,脚本文案,工程术语,字段,导出字段 ${(fields || []).length} 个（敏感 ${sensitive.length} 个已脱敏）· 文件含水印,系统
 D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/api/platform.api.js,337,脚本文案,工程术语,口径,按年订阅（演示口径）,（删除或改为“统计范围”）
 D1-D 系统与平台PC,必改,管理/教师PC,platform,frontend/src/modules/platform/api/platform.api.js,363,脚本文案,内部ID外露,${row.id},套餐配置_${row.id}.json,用名称描述对象，ID 不上屏
+D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/api/platform.api.js,393,脚本文案,运行时代码外露,"|| payload.type,","typeLabel: (statusOptions.orderTypes.find((t) => t.value === payload.type) || {}).label || payload.type,",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/api/platform.api.js,460,脚本文案,工程术语,字段,导出字段 ${(fields || []).length} 个（金额脱敏为区间）· 文件含水印,系统
+D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/api/platform.api.js,504,脚本文案,运行时代码外露,"|| payload.type,","typeLabel: (filterOptions.integrationTypes.find((t) => t.value === payload.type) || {}).label || payload.type,",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-D 系统与平台PC,必改,管理/教师PC,platform,frontend/src/modules/platform/api/platform.api.js,534,脚本文案,工程术语,接口,连通性 / 认证 / 接口均正常,系统
 D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/api/platform.api.js,534,脚本文案,工程术语,字段,可连通，但存在字段映射缺失或错误率偏高,系统
 D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/api/platform.api.js,680,脚本文案,工程术语,字段,外部系统 → 字段映射 → 暂存区 → 校验 → 身份匹配 → 业务表写入 → 日志,系统
@@ -5164,6 +5183,7 @@ D1-D 系统与平台PC,必改,管理/教师PC,platform,frontend/src/modules/plat
 D1-D 系统与平台PC,必改,管理/教师PC,platform,frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue,278,脚本文案,工程术语,正式事实,教务正式事实待复审,记录 / 信息
 D1-D 系统与平台PC,必改,管理/教师PC,platform,frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue,280,脚本文案,工程术语,事实,未发现来源消费事实,记录 / 信息
 D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue,342,脚本文案,工程术语,待核验,待核验,暂未获取 / 未填写
+D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue,359,脚本文案,运行时代码外露,|| row.code ||,return (rows || []).map(row => labels[row.code] || row.code || '待处理').join(' / '),若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue,427,脚本文案,工程术语,预检,预检发现阻断项，请先处理订阅来源或整校退出冲突,检查
 D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue,427,脚本文案,工程术语,阻断项,预检发现阻断项，请先处理订阅来源或整校退出冲突,必须先处理的问题
 D1-D 系统与平台PC,建议改,管理/教师PC,platform,frontend/src/modules/platform/views/control/PlatformCommercialControlView.vue,452,脚本文案,工程术语,对象,新交付包已重新绑定，并封存当前消费者对象快照,（用具体名称：课程/学生/申请）
@@ -5303,6 +5323,7 @@ D1-D 系统与平台PC,必改,管理/教师PC,system,frontend/src/modules/system
 D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/api/system.api.js,160,脚本文案,工程术语,阻断,上线阻断,必须先处理的问题
 D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/api/system.api.js,162,脚本文案,工程术语,阻断项,需完成阻断项后验收,必须先处理的问题
 D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/api/system.api.js,162,脚本文案,工程术语,阻断项,当前无阻断项,必须先处理的问题
+D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/api/system.api.js,190,脚本文案,运行时代码外露,"|| item.action,","action: item.actionLabel || item.action,",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-D 系统与平台PC,必改,管理/教师PC,system,frontend/src/modules/system/api/system.api.js,351,脚本文案,工程术语,注册表,注册表加载失败,系统
 D1-D 系统与平台PC,可保留,管理/教师PC,system,frontend/src/modules/system/api/system.api.js,361,脚本文案,工程术语,台账,待办台账加载失败,记录（台账可保留在管理端）
 D1-D 系统与平台PC,可保留,管理/教师PC,system,frontend/src/modules/system/api/system.api.js,381,脚本文案,工程术语,台账,死信台账加载失败,记录（台账可保留在管理端）
@@ -5546,6 +5567,8 @@ D1-D 系统与平台PC,必改,管理/教师PC,system,frontend/src/modules/system
 D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/views/SystemAccessGovernanceView.vue,280,脚本文案,工程术语,权威,权限判定（权威）,（删除“权威/稳定”）
 D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/views/SystemAccessGovernanceView.vue,332,脚本文案,工程术语,阻断,阻断,必须先处理的问题
 D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/views/SystemAccessGovernanceView.vue,332,脚本文案,工程术语,阻断,阻断,必须先处理的问题
+D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/views/SystemAccessGovernanceView.vue,336,脚本文案,运行时代码外露,|| item.code),roleLabel(code) { return this.directoryRoles.find((item) => String(item.roleCode || item.code) === String(code))?.name || this.directoryRoles.find((item) => String(item.id) === String(code))?.name || (code ? '业务角色' : '—',若用于显示：字典缺项时显示“其他事项/其他状态”
+D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/views/SystemAccessGovernanceView.vue,342,脚本文案,运行时代码外露,"|| role.code,","roleOptions(rows) { return (rows || []).map((role) => ({ value: role.roleCode || role.code, label: role.name || role.roleName || '角色名称待同步', desc: role.typeLabel || '' })).filter((item) => item.value) },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-D 系统与平台PC,可保留,管理/教师PC,system,frontend/src/modules/system/views/SystemAccountExceptionView.vue,4,模板属性/表达式,工程术语,台账,锁定 / 停用 / 长期未登录 / 强制改密 · 只读排查台账,记录（台账可保留在管理端）
 D1-D 系统与平台PC,必改,管理/教师PC,system,frontend/src/modules/system/views/SystemAccountExceptionView.vue,67,模板属性/表达式,英文/代码外露,studentId,填写 studentId（学籍主键，不是学号）,换成中文
 D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/views/SystemAuditView.vue,3,模板属性/表达式,工程术语,审计证据,安全审计证据与完整性,材料 / 记录
@@ -5730,6 +5753,7 @@ D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/sys
 D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/views/SystemImplementationWorkspaceView.vue,33,脚本文案,工程术语,阻断,预览会给出待安装对象、商业授权阻断和幂等快照身份。,必须先处理的问题
 D1-D 系统与平台PC,必改,管理/教师PC,system,frontend/src/modules/system/views/SystemImplementationWorkspaceView.vue,33,脚本文案,工程术语,服务端,继续按右侧准备清单推进，直到服务端返回可验收状态并完成封板。,系统
 D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/views/SystemImplementationWorkspaceView.vue,33,脚本文案,工程术语,对象,将按快照 ${this.shortHash} 安装预设；已存在对象只跳过不覆盖，重复提交不会装第二遍。,（用具体名称：课程/学生/申请）
+D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/views/SystemImplementationWorkspaceView.vue,33,脚本文案,运行时代码外露,||this.project?.status||,"computed:{stageLabel(){return STAGE_LABELS[this.project?.status]||this.project?.status||'—'},stageTone(){return this.project?.status==='ACCEPTED'?'success':this.project?.status==='VERIFYING'?'warning':this.project?.statu",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-D 系统与平台PC,必改,管理/教师PC,system,frontend/src/modules/system/views/SystemImplementationWorkspaceView.vue,34,脚本文案,工程术语,接口,预览接口未返回可核对快照,系统
 D1-D 系统与平台PC,建议改,管理/教师PC,system,frontend/src/modules/system/views/SystemImplementationWorkspaceView.vue,34,脚本文案,工程术语,阻断项,预览存在阻断项，请先处理后再应用,必须先处理的问题
 D1-D 系统与平台PC,必改,管理/教师PC,system,frontend/src/modules/system/views/SystemIntegrationView.vue,2,模板属性/表达式,工程术语,接口,接口连接与同步,系统
@@ -5852,6 +5876,7 @@ D1-D 系统与平台PC,必改,管理/教师PC,system,frontend/src/modules/system
 D1-D 系统与平台PC,必改,管理/教师PC,system,frontend/src/modules/system/views/SystemWorkflowGovernanceView.vue,202,脚本文案,英文/代码外露,forceAction,"将审批任务 ${this.forceTaskId} 强制设为“${{ APPROVED: '已通过', REJECTED: '已驳回', CANCELLED: '已作废' }[this.forceAction] || '待确认状态'}”，不触发原审批的业务联动。",换成中文
 D1-D 系统与平台PC,必改,管理/教师PC,system,frontend/src/modules/system/views/SystemWorkflowGovernanceView.vue,246,脚本文案,工程术语,权限码,节点动作策略必须填写动作权限码,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,approval,frontend/src/modules/approval/api/approval.api.js,211,脚本文案,内部ID外露,${h.assigneeId},办理人 ${h.assigneeId},用名称描述对象，ID 不上屏
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,approval,frontend/src/modules/approval/api/approval.api.js,368,脚本文案,运行时代码外露,|| currentRole.roleCode ||,roleName: currentRole.roleName || currentRole.roleCode || '当前身份',若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,dashboard,frontend/src/modules/dashboard/adapter/dashboard.adapter.js,367,脚本文案,工程术语,台账,就业台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,dashboard,frontend/src/modules/dashboard/adapter/dashboard.adapter.js,414,脚本文案,工程术语,口径,暂无学籍修读口径,（删除或改为“统计范围”）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,dashboard,frontend/src/modules/dashboard/adapter/dashboard.adapter.js,415,脚本文案,工程术语,口径,暂无学籍修读口径,（删除或改为“统计范围”）
@@ -5898,6 +5923,8 @@ D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,employmen
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,employment,frontend/src/modules/employment/components/ImportDialog.vue,107,脚本文案,工程术语,回执,导入回执,提交结果
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/api/graduation-defense-grade.api.js,14,脚本文案,工程术语,接口,真实接口不可用,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/api/graduation-material-center.api.js,99,脚本文案,工程术语,服务端,服务端未返回有效文件授权路径,系统
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/api/graduation-material-center.api.js,118,脚本文案,运行时代码外露,"|| response.status,","throw previewError(payload?.code || response.status, payload?.message || `预览读取失败（HTTP ${response.status}）`, {",若用于显示：字典缺项时显示“其他事项/其他状态”
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/api/graduation-material-center.api.js,200,脚本文案,运行时代码外露,|| item.status ||,"return items.map((item) => normalizeFile({ ...item, statusText: item.readyForBusiness ? '安全可用' : (item.scanStatus || item.status || '暂不可使用') }))",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/api/graduation-mentor.api.js,13,脚本文案,工程术语,接口,真实接口不可用,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,graduation,frontend/src/modules/graduation/api/graduation-mentor.api.js,80,脚本文案,工程术语,台账,导师名单与工作量台账.xlsx,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/api/graduation-review-center.api.js,69,脚本文案,施工痕迹,W7,正式评阅任务缺少 W7 冻结版本或乐观锁版本，请刷新或治理历史任务,（删除内部阶段编号）
@@ -5927,6 +5954,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduatio
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/components/FileEvidencePanel.vue,18,模板文字,内部ID外露,{{ canonical.fileVersionId ?? canonical.versionId ?? '—' }},文件版本编号 {{ canonical.fileVersionId ?? canonical.versionId ?? '—' }},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/components/FileEvidencePanel.vue,18,模板文字,内部ID外露,编号 {{,文件版本编号 {{}},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/components/FileEvidencePanel.vue,19,模板文字,英文/代码外露,SHA,SHA-256 {{}},英文装饰标题，建议改中文或删除
+D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/components/FileEvidencePanel.vue,22,模板文字,运行时代码外露,{{versionStatusLabel(item.versionStatus || item.status)}},{{ versionStatusLabel(item.versionStatus || item.status) }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/routes.js,131,脚本文案,施工痕迹,兼容,答辩与成绩兼容入口,（不兼容旧模块，删除）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,graduation,frontend/src/modules/graduation/routes.js,133,脚本文案,工程术语,台账,查重台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,graduation,frontend/src/modules/graduation/routes.js,140,脚本文案,工程术语,台账,成绩台账,记录（台账可保留在管理端）
@@ -5971,9 +5999,11 @@ D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduatio
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/FinalSubmissionListView.vue,138,模板文字,施工痕迹,旧版,提交时系统会再次核对当前材料版本，版本变化时自动阻止旧版批阅。,（不兼容旧模块，删除）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/FinalSubmissionListView.vue,227,脚本文案,工程术语,对象,正在提交 ${this.selectedRow.studentName} 的成果结论；对象与版本已锁定。,（用具体名称：课程/学生/申请）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/FinalSubmissionListView.vue,280,脚本文案,工程术语,门禁,当前材料版本未通过安全门禁,（删除该说明）
+D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationAdvisorScoreView.vue,46,模板文字,运行时代码外露,{{grade ? (grade.statusLabel || grade.status) : '—'}},{{ grade ? (grade.statusLabel || grade.status) : '—' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationAuditLogView.vue,49,脚本文案,工程术语,权限码,权限码,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationBatchFormView.vue,63,模板文字,工程术语,后端,正式可见数据仍由后端数据范围裁决。,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationBatchFormView.vue,67,模板属性/表达式,工程术语,口径,记录特殊口径或交接事项,（删除或改为“统计范围”）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationBatchFormView.vue,129,脚本文案,运行时代码外露,|| this.editing.status ||,"statusText() { return this.editing ? (this.editing.statusLabel || this.editing.status || '编辑主档') : '新建主档' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationBatchFormView.vue,146,脚本文案,工程术语,回执,批次正在保存，请等待服务器回执后再离开,提交结果
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationBatchListView.vue,11,模板文字,工程术语,台账,导出台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationBatchListView.vue,219,脚本文案,工程术语,台账,毕设批次台账.xlsx,记录（台账可保留在管理端）
@@ -6065,6 +6095,8 @@ D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduatio
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationMoreView.vue,146,脚本文案,工程术语,闭环,学生互评+被评整改闭环,（删除该说明）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationProcessActionBaseView.vue,116,脚本文案,施工痕迹,原型,调研×××领域现状，设计并开发×××原型系统。,（上线版不应出现）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationProcessActionBaseView.vue,119,脚本文案,工程术语,数据库,1. 完成需求分析与系统设计；2. 完成数据库设计与后端开发；3. 完成前端界面开发；4. 编写论文并通过答辩。,系统
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationProcessView.vue,266,脚本文案,运行时代码外露,|| row.status ||,return row ? `${row.title || '指导计划'} · ${row.statusLabel || row.status || '状态待确认'}` : '尚无指导计划',若用于显示：字典缺项时显示“其他事项/其他状态”
+D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewAssignView.vue,46,模板文字,运行时代码外露,{{current.stageLabel || current.stage || '—'}},{{ current.stageLabel || current.stage || '—' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,109,模板文字,英文/代码外露,canonical,正在读取当前任务的 canonical 写入上下文…,换成中文
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,120,模板文字,内部ID外露,{{ activeTask.recordId || '—' }},记录 {{ activeTask.recordId || '—' }} · 只统,用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,124,模板文字,工程术语,阻断,当前阻断,必须先处理的问题
@@ -6072,8 +6104,10 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,f
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,128,模板文字,内部ID外露,{{ targetFileVersionId }},}}。历史版本只读；切回任务目标 FileVersion {{ targetFileVersionId }} 后才能提,用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,128,模板文字,英文/代码外露,FileVersion,当前正在阅读历史 FileVersion {{}}。历史版本只读；切回任务目标 FileVersion {{}} 后才能提交。,换成中文
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,133,模板文字,英文/代码外露,FileVersion,草稿绑定当前任务 + FileVersion,换成中文
+D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,177,模板文字,运行时代码外露,{{item.result || item.stage}},{{ item.result || item.stage }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,179,模板文字,内部ID外露,{{ item.fileVersionId || '—' }},FileVersion {{ item.fileVersionId || '—' }} · {{,用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,179,模板文字,英文/代码外露,FileVersion,FileVersion {{}} · {{}},换成中文
+D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,197,模板文字,运行时代码外露,{{dossier?.stageLabel || dossier?.stage || '—'}},{{ dossier?.stageLabel || dossier?.stage || '—' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,221,脚本文案,工程术语,阻断,有阻断,必须先处理的问题
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,251,脚本文案,工程术语,阻断项,含阻断项,必须先处理的问题
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationReviewCenterView.vue,609,脚本文案,工程术语,证据,当前版本已通过，证据已绑定,材料 / 记录
@@ -6105,6 +6139,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,graduatio
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationStudentAssignTopicView.vue,200,脚本文案,工程术语,回读,分配命令已返回，但学生档案尚未回读到目标题目；请返回名单刷新核对，勿重复提交。,已保存 / 已更新
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationStudentAssignTopicView.vue,203,脚本文案,工程术语,回读,选题关系已保存，服务器学生档案已回读,已保存 / 已更新
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationStudentDefenseView.vue,7,模板属性/表达式,工程术语,服务端,把当前学生加入一个真实答辩组；时间、地点、评委、秘书、容量和回避冲突仍由服务端及答辩发布前检查负责。,系统
+D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationStudentDefenseView.vue,35,模板文字,运行时代码外露,{{student.stageLabel || student.stage || '阶段待确认'}},{{ student.stageLabel || student.stage || '阶段待确认' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationStudentDefenseView.vue,55,模板文字,工程术语,服务端,选择器只展示当前批次候选；保存时服务端仍校验组容量、学生状态和跨批关系。,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationStudentDefenseView.vue,67,模板文字,工程术语,接口,说明会随原分配接口提交并进入可追溯记录。,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/GraduationStudentDefenseView.vue,81,模板文字,工程术语,服务端,跨批分配由服务端拒绝,系统
@@ -6162,6 +6197,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,f
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/TopicLibFormView.vue,183,脚本文案,工程术语,数据库,要求熟悉数据库原理，有 Web 开发基础,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,graduation,frontend/src/modules/graduation/views/TopicLibFormView.vue,297,脚本文案,工程术语,回执,题目正在保存，请等待服务器回执后再离开,提交结果
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/TopicLibListView.vue,111,模板文字,内部ID外露,{{ row.topicId || '—' }},ID {{ row.topicId || '—' }},用名称描述对象，ID 不上屏
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/TopicManageView.vue,161,脚本文案,运行时代码外露,|| f.status ||,return !!(f.keyword || f.status || f.dateStart || f.dateEnd),若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/TopicRoundFormView.vue,10,模板属性/表达式,施工痕迹,第一轮,如 2026届第一轮选题,（删除内部阶段编号）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,graduation,frontend/src/modules/graduation/views/_shared/ProposalReviewCard.vue,33,模板文字,工程术语,证据,技术证据,材料 / 记录
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,graduation,frontend/src/modules/graduation/views/_shared/ProposalReviewCard.vue,33,模板文字,内部ID外露,{{ carriedDraft.fromProposalId }},开题记录 {{ carriedDraft.fromProposalId }} · Fi,用名称描述对象，ID 不上屏
@@ -6239,6 +6275,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,f
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/components/command-screen/screen-renderer.mjs,168,脚本文案,工程术语,对象,<h2>大屏统计口径</h2><p>所有数值来自当前批次的原有统计与工作台接口；分母为零显示“—”，数值异常不强行截成 100%。</p><p>巡访覆盖率不是巡访任务完成率；周报覆盖率不是按应交周次计算的提交率；就业转化不是企业留用率。</p><p>地图按企业主档省域聚合，固定标记不代表企业或学生位置。校企导师是两种关联ID分别去重后相加，不是跨系统自然人去重总数。风险曲线为每日新增风险，签约曲线为当前已核验台账的签约月份分布，均不是历,（用具体名称：课程/学生/申请）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/components/command-screen/screen-renderer.mjs,168,脚本文案,工程术语,台账,<h2>大屏统计口径</h2><p>所有数值来自当前批次的原有统计与工作台接口；分母为零显示“—”，数值异常不强行截成 100%。</p><p>巡访覆盖率不是巡访任务完成率；周报覆盖率不是按应交周次计算的提交率；就业转化不是企业留用率。</p><p>地图按企业主档省域聚合，固定标记不代表企业或学生位置。校企导师是两种关联ID分别去重后相加，不是跨系统自然人去重总数。风险曲线为每日新增风险，签约曲线为当前已核验台账的签约月份分布，均不是历,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/components/command-screen/screen-renderer.mjs,168,脚本文案,过度说明,不代表,<h2>大屏统计口径</h2><p>所有数值来自当前批次的原有统计与工作台接口；分母为零显示“—”，数值异常不强行截成 100%。</p><p>巡访覆盖率不是巡访任务完成率；周报覆盖率不是按应交周次计算的提交率；就业转化不是企业留用率。</p><p>地图按企业主档省域聚合，固定标记不代表企业或学生位置。校企导师是两种关联ID分别去重后相加，不是跨系统自然人去重总数。风险曲线为每日新增风险，签约曲线为当前已核验台账的签约月份分布，均不是历,（删掉或改成一句正向提示）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/components/command-screen/screen-renderer.mjs,168,脚本文案,运行时代码外露,|| metric.state),"const content = metric ? `<h2>${e(metric.label)}</h2><div class=""ix-dialog-value"">${metricValue(metric)}</div><dl><div><dt>分子 / 分母</dt><dd>${n(metric.numerator)} / ${n(metric.denominator)}</dd></div><div><dt>状态</dt><dd>$",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/components/command-screen/screen-renderer.mjs,169,脚本文案,工程术语,口径,大屏统计口径,（删除或改为“统计范围”）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/components/command-screen/screen-renderer.mjs,177,脚本文案,工程术语,兜底,<h2>${e(row.name)}</h2><dl><div><dt>本批实习学生</dt><dd>${n(row.students)} 人</dd></div><div><dt>本批关联企业</dt><dd>${n(row.enterprises)} 家</dd></div><div><dt>聚合生成时间</dt><dd>${e(model.extra.snapshotAt)}</dd></div></dl><p>${kind===,（删除该说明）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/components/command-screen/screen-renderer.mjs,177,脚本文案,工程术语,字段,<h2>${e(row.name)}</h2><dl><div><dt>本批实习学生</dt><dd>${n(row.students)} 人</dd></div><div><dt>本批关联企业</dt><dd>${n(row.enterprises)} 家</dd></div><div><dt>聚合生成时间</dt><dd>${e(model.extra.snapshotAt)}</dd></div></dl><p>${kind===,系统
@@ -6283,6 +6320,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internshi
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/ArchiveView.vue,149,模板文字,工程术语,回执,仅当当前数据范围内全部学生已归档时生成；每片最多 20 人，逐片保留独立回执。,提交结果
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/ArchiveView.vue,158,模板文字,工程术语,预检,汇总使用已提交归档快照；待预检学生尚未计入材料完整人数。,检查
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/ArchiveView.vue,253,脚本文案,工程术语,预检,归档预检,检查
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/ArchiveView.vue,253,脚本文案,运行时代码外露,"|| t.action,","id: i, action: t.action, actionLabel: ({ ARCHIVE_PREFLIGHT: '归档预检', ARCHIVE: '完成归档', ARCHIVE_REVOKE: '撤销归档', REVOKE: '撤销归档', BUILD_PACKAGE: '生成档案包' })[t.action] || t.action, actor: t.operator,",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/ArchiveView.vue,285,脚本文案,工程术语,台账,无归档台账导出权限,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/ArchiveView.vue,360,脚本文案,工程术语,台账,无法确认该学生属于当前批次，请返回归档台账重新定位,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/ArchiveView.vue,396,脚本文案,工程术语,预检,归档预检失败,检查
@@ -6312,6 +6350,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,f
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceExceptionDetailView.vue,84,模板属性/表达式,工程术语,台账,处理意见仍保留。请返回异常台账，重新打开记录并核对最新事实后再处理。,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceExceptionDetailView.vue,85,模板文字,工程术语,台账,最新记录读取失败，请返回台账重试。,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceExceptionDetailView.vue,156,脚本文案,工程术语,闭环,生成风险单并指派责任人，进入风险闭环,（删除该说明）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceExceptionDetailView.vue,261,脚本文案,运行时代码外露,|| this.detail.status ||,"return [{ label: '最新状态', value: this.detail.statusLabel || this.detail.status || '' }]",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceExceptionListView.vue,4,模板属性/表达式,工程术语,待核实,本页待核实,暂未获取 / 未填写
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceExceptionListView.vue,118,脚本文案,工程术语,待核实,待核实,暂未获取 / 未填写
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceExceptionListView.vue,191,脚本文案,工程术语,台账,打卡异常所选台账.xlsx,记录（台账可保留在管理端）
@@ -6340,6 +6379,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,f
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,213,脚本文案,工程术语,台账,学生提交补卡后会进入本台账。,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,214,脚本文案,工程术语,证据,先读完整申请与当前版本证据，再通过补写打卡或驳回给学生修改。,材料 / 记录
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,214,脚本文案,工程术语,台账,本批次待办已清空，可到申请台账回看结果。,记录（台账可保留在管理端）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,226,脚本文案,运行时代码外露,|| d.status ||,"{ label: '当前状态', value: d.statusLabel || d.status || '-' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,227,脚本文案,工程术语,服务端,服务端版本,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,248,脚本文案,工程术语,证据,缺少必需证据,材料 / 记录
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,250,脚本文案,工程术语,待核对,待核对,暂未获取 / 未填写
@@ -6347,6 +6387,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internshi
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,262,脚本文案,工程术语,证据,请先下载并核对当前版本证据,材料 / 记录
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,405,脚本文案,工程术语,证据,证据已下载，但查看留痕失败,材料 / 记录
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,409,脚本文案,工程术语,证据,证据已下载，当前版本查看动作已留痕,材料 / 记录
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/AttendanceView.vue,447,脚本文案,运行时代码外露,|| fresh.status ||,"{ label: '最新状态', value: fresh.statusLabel || fresh.status || '' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/BatchDetailView.vue,127,脚本文案,工程术语,冻结名单,核对实习时间与规则后，选择参与班级或学生。预览名单无误，再冻结名单并启用批次。,（删除或改为“更新时间”）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/BatchDetailView.vue,229,脚本文案,工程术语,事实,当前有 ${blocked} 名学生存在结束阻断。确需结束请填写不少于 5 字原因；系统会保留本次就绪检查与强制结束事实。,记录 / 信息
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/BatchDetailView.vue,229,脚本文案,工程术语,阻断,当前有 ${blocked} 名学生存在结束阻断。确需结束请填写不少于 5 字原因；系统会保留本次就绪检查与强制结束事实。,必须先处理的问题
@@ -6356,6 +6397,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,f
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/BatchFormView.vue,424,脚本文案,工程术语,对象,数组每一项需为阶段对象（含 code / name / startDate / endDate）,（用具体名称：课程/学生/申请）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/BatchFormView.vue,424,脚本文案,英文/代码外露,startDate,数组每一项需为阶段对象（含 code / name / startDate / endDate）,换成中文
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/BatchFormView.vue,424,脚本文案,英文/代码外露,endDate,数组每一项需为阶段对象（含 code / name / startDate / endDate）,换成中文
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/BatchFormView.vue,437,脚本文案,运行时代码外露,|| s.code ||,"title: s.name || s.code || `阶段 ${i + 1}`,",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/BatchFormView.vue,454,脚本文案,工程术语,对象,规则配置需为 JSON 对象（{ ... }）,（用具体名称：课程/学生/申请）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/BatchFormView.vue,704,脚本文案,工程术语,版本号,缺少批次版本号，请刷新后重试,（删除或改为“更新时间”）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/EnterpriseEvalFormView.vue,13,模板属性/表达式,工程术语,对象,评价对象,（用具体名称：课程/学生/申请）
@@ -6364,6 +6406,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internshi
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/GuidancePlanView.vue,5,模板文字,工程术语,台账,导出批次台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/GuidanceVisitView.vue,9,模板文字,工程术语,台账,导出 Excel 台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/GuidanceVisitView.vue,485,脚本文案,工程术语,对象,可继续登记或查看其他协作对象,（用具体名称：课程/学生/申请）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/GuidanceVisitView.vue,683,脚本文案,运行时代码外露,|| d.status ||,"{ label: '最新状态', value: d.statusLabel || d.rectifyStatusLabel || d.status || '' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/GuidanceVisitView.vue,703,脚本文案,工程术语,闭环,整改已闭环，可查看完整审计记录,（删除该说明）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/GuidanceVisitView.vue,703,脚本文案,工程术语,服务端,按最新服务端状态继续下一合法动作,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InsuranceVerifyView.vue,16,脚本文案,工程术语,待核验,待核验,暂未获取 / 未填写
@@ -6372,10 +6415,12 @@ D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internshi
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InsuranceVerifyView.vue,139,模板属性/表达式,工程术语,待核对,保障期限待核对,暂未获取 / 未填写
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InsuranceVerifyView.vue,142,模板属性/表达式,工程术语,待核验,当前没有待核验保单,暂未获取 / 未填写
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipAgreementTemplateListView.vue,8,模板文字,工程术语,台账,导出台账,记录（台账可保留在管理端）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipApplicationReviewView.vue,284,脚本文案,运行时代码外露,|| fresh.status ||,"{ label: '最新状态', value: fresh.statusLabel || fresh.status || '' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipBatchListView.vue,4,模板文字,工程术语,台账,导出台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipBatchListView.vue,34,模板文字,过度说明,不代表,草稿批次可配置范围与规则；预览并冻结参与名单后启用。批次启用不代表学生已具备上岗条件。,（删掉或改成一句正向提示）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipBatchListView.vue,52,脚本文案,工程术语,台账,实习批次归档台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipBatchListView.vue,52,脚本文案,工程术语,台账,检索已归档批次，查看记录或导出台账。,记录（台账可保留在管理端）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipBatchListView.vue,79,脚本文案,运行时代码外露,|| this.appliedFilters.status),if (this.appliedFilters.keyword || this.appliedFilters.status) return '可调整关键词或状态，重新查询。',若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipComplianceView.vue,11,模板文字,工程术语,台账,返回审核台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipComplianceView.vue,14,模板文字,工程术语,台账,返回豁免台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipComplianceView.vue,23,模板文字,工程术语,台账,返回备案台账,记录（台账可保留在管理端）
@@ -6452,6 +6497,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internshi
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipDashboardView.vue,194,脚本文案,工程术语,待核实,今日待核实异常,暂未获取 / 未填写
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipEnterpriseDetailView.vue,169,模板属性/表达式,工程术语,字段,敏感字段，展示脱敏,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipEnterpriseDetailView.vue,170,模板属性/表达式,工程术语,字段,敏感字段，展示脱敏,系统
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipEnterpriseDetailView.vue,438,脚本文案,运行时代码外露,|| fresh.status ||,"{ label: '最新状态', value: fresh.statusLabel || fresh.status || '' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipEnterpriseListView.vue,10,模板属性/表达式,工程术语,台账,导出台账（不限黑名单）,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipEnterpriseListView.vue,10,模板属性/表达式,工程术语,台账,导出企业台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipMatchListView.vue,220,脚本文案,工程术语,台账,全部匹配结果台账,记录（台账可保留在管理端）
@@ -6490,19 +6536,23 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,f
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue,89,模板文字,内部ID外露,{{ item.versionId }},{{ item.versionId }},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue,129,脚本文案,内部ID外露,${this.internshipId},实习记录 #${this.internshipId},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipStudentMaterialEntryView.vue,177,脚本文案,工程术语,门禁,当前材料尚未通过安全门禁，不能预览,（删除该说明）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipVolunteerReviewView.vue,98,脚本文案,运行时代码外露,|| row.status,return labels[row.status] || row.status,若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipVolunteerReviewView.vue,225,模板文字,过度说明,以当前投递材料为准,不同投递版本的企业决定分别保留，请以当前投递材料为准。,（删掉或改成一句正向提示）
+D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/InternshipVolunteerReviewView.vue,225,模板文字,运行时代码外露,{{decisions[item.status] || item.status}},{{ decisions[item.status] || item.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/LeaveReviewView.vue,5,模板文字,工程术语,台账,导出 Excel 台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/LeaveReviewView.vue,21,模板属性/表达式,工程术语,口径,暂无统计口径,（删除或改为“统计范围”）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/LeaveReviewView.vue,30,模板文字,工程术语,当前责任,当前责任人,待办 / 下一步由谁办理
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/LeaveReviewView.vue,103,模板属性/表达式,工程术语,待核对,证明待核对,暂未获取 / 未填写
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/LeaveReviewView.vue,196,脚本文案,工程术语,台账,全部台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/LeaveReviewView.vue,248,脚本文案,工程术语,台账,按学生或状态检索完整台账，查看附件、审批结论和办理留痕。,记录（台账可保留在管理端）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/LeaveReviewView.vue,443,脚本文案,运行时代码外露,|| fresh.status ||,"{ label: '最新状态', value: fresh.statusLabel || fresh.status || '' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/LeaveReviewView.vue,464,脚本文案,工程术语,台账,本次请假流程已结束，可在全部台账查看记录,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/PositionFormView.vue,52,模板属性/表达式,工程术语,后端,仅合作企业 · 黑名单/非合作中企业上架时由后端拦截,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/PositionFormView.vue,57,模板属性/表达式,英文/代码外露,Java,如：Java开发实习生 / 市场营销实习生 / 化工工艺实习生,换成中文
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/PositionFormView.vue,95,模板文字,英文/代码外露,GCJ,学生主动打卡时仅采集一次定位 · GCJ-02,换成中文
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/PositionFormView.vue,122,模板属性/表达式,工程术语,证据,学生打卡只留时间与定位证据,材料 / 记录
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/ProcessReportDetailView.vue,37,模板属性/表达式,工程术语,台账,评语已保留，请返回台账重新打开报告，核对最新提交后再批阅。,记录（台账可保留在管理端）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/ProcessReportDetailView.vue,167,脚本文案,运行时代码外露,|| this.detail.status ||,"{ label: '最新状态', value: this.detail.statusLabel || this.detail.status || '' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/RecruitmentCampaignDetailView.vue,15,模板文字,内部ID外露,{{ detail.batchId }},所属批次 {{ detail.batchId }},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/RecruitmentCampaignDetailView.vue,49,模板文字,工程术语,服务端,本轮另含旧版材料规则，以下为原配置；以服务端核验结果为准。,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/RecruitmentCampaignDetailView.vue,49,模板文字,施工痕迹,旧版,本轮另含旧版材料规则，以下为原配置；以服务端核验结果为准。,（不兼容旧模块，删除）
@@ -6515,9 +6565,11 @@ D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internshi
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/RiskDisposalView.vue,224,脚本文案,工程术语,当前责任,当前责任人,待办 / 下一步由谁办理
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/RiskDisposalView.vue,373,脚本文案,内部ID外露,${c.studentId},学生#${c.studentId},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/RiskDisposalView.vue,491,脚本文案,工程术语,事实,记录对投诉人的真实回访结果，完成关闭前的跟进事实。,记录 / 信息
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/RiskDisposalView.vue,533,脚本文案,运行时代码外露,|| data.status ||,"status: data.status, statusLabel: data.statusLabel || data.status || '已提交',",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/RiskDisposalView.vue,534,脚本文案,工程术语,业务事实,业务事实与审计 outbox 已在同一事务提交,记录 / 信息
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/RiskDisposalView.vue,535,脚本文案,工程术语,证据包,生成监管证据包或处理下一条,材料 / 记录
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/RiskDisposalView.vue,535,脚本文案,工程术语,当前责任,继续处理当前责任链,待办 / 下一步由谁办理
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/RiskDisposalView.vue,559,脚本文案,运行时代码外露,|| d.status ||,"{ label: '最新状态', value: d.statusLabel || d.status || '' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/RiskDisposalView.vue,560,脚本文案,工程术语,当前责任,当前责任人,待办 / 下一步由谁办理
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/ScoreView.vue,6,模板文字,工程术语,台账,导出成绩台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/ScoreView.vue,13,模板文字,工程术语,台账,成绩台账,记录（台账可保留在管理端）
@@ -6530,6 +6582,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,f
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/ScoreView.vue,522,脚本文案,工程术语,台账,成绩已核算，列表刷新失败；请返回台账重试,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/ScoreView.vue,574,脚本文案,工程术语,台账,无法确认该成绩属于当前批次，请从当前批次台账重新定位,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/ScoreView.vue,593,脚本文案,工程术语,事实,核对「${r.studentName}」的来源事实与成绩快照，并提交待发布？,记录 / 信息
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/ScoreView.vue,620,脚本文案,运行时代码外露,"|| res.data.status,","version: res.data.version, statusLabel: res.data.statusLabel || res.data.status,",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/StatsView.vue,34,模板文字,工程术语,口径,指标口径,（删除或改为“统计范围”）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/StatsView.vue,46,模板属性/表达式,工程术语,口径,当前接口未提供进一步的口径说明。,（删除或改为“统计范围”）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/StatsView.vue,46,模板属性/表达式,工程术语,接口,当前接口未提供进一步的口径说明。,系统
@@ -6546,6 +6599,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,f
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/WeeklyReportDetailView.vue,52,模板文字,英文/代码外露,BEFORE,BEFORE,英文装饰标题，建议改中文或删除
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/WeeklyReportDetailView.vue,58,模板文字,英文/代码外露,AFTER,AFTER,英文装饰标题，建议改中文或删除
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/WeeklyReportDetailView.vue,99,模板属性/表达式,工程术语,台账,评语已保留，请返回台账重新打开周报，核对最新版本再办理。,记录（台账可保留在管理端）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/WeeklyReportDetailView.vue,267,脚本文案,运行时代码外露,|| this.detail.status ||,"{ label: '最新状态', value: this.detail.statusLabel || this.detail.status || '' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,internship,frontend/src/modules/internship/views/WeeklyReportListView.vue,16,模板属性/表达式,工程术语,口径,暂无统计口径,（删除或改为“统计范围”）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,internship,frontend/src/modules/internship/views/WeeklyReportListView.vue,337,脚本文案,工程术语,服务端,服务端逐条校验 · 通过 ${d.approvedCount || 0} · 跳过 ${d.skippedCount || 0},系统
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,internship,frontend/src/modules/internship/views/components/ActionReceipt.vue,7,模板文字,工程术语,回执,操作回执 · {{}},提交结果
@@ -6593,6 +6647,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,orientati
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,orientation,frontend/src/modules/orientation/components/ExportDialog.vue,34,模板文字,工程术语,字段,敏感字段脱敏导出（手机号 / 身份证 / 薪资）,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,orientation,frontend/src/modules/orientation/components/ExportDialog.vue,36,模板文字,工程术语,字段,本导出不包含手机号、身份证号或薪资等敏感明文字段。,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,orientation,frontend/src/modules/orientation/components/ExportDialog.vue,64,模板文字,内部ID外露,{{ result.taskId }},ult.watermarkText }} · 导出记录编号：{{ result.taskId }},用名称描述对象，ID 不上屏
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,orientation,frontend/src/modules/orientation/components/ExportDialog.vue,139,脚本文案,运行时代码外露,|| this.result ||,if (this.busy || this.result || !this.auditConfirmed || !this.fieldGroups.length || this.purpose.trim().length < 5) return,若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,orientation,frontend/src/modules/orientation/components/ImportDialog.vue,24,模板文字,工程术语,字段,必填字段：{{}},系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,orientation,frontend/src/modules/orientation/components/ImportDialog.vue,43,模板文字,工程术语,原子,整批预检通过，可以原子确认写入。,（删除该说明）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,orientation,frontend/src/modules/orientation/components/ImportDialog.vue,43,模板文字,工程术语,预检,整批预检通过，可以原子确认写入。,检查
@@ -6609,6 +6664,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,student,f
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,student,frontend/src/modules/student/api/student.api.js,141,脚本文案,英文/代码外露,dataScope,按当前账号 dataScope 导出全部可见学生,换成中文
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,student,frontend/src/modules/student/api/student.api.js,142,脚本文案,工程术语,服务端,需要服务端支持精确 ID 冻结后才能执行,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,student,frontend/src/modules/student/api/student.api.js,217,脚本文案,内部ID外露,${x.toClassId},班级#${x.toClassId},用名称描述对象，ID 不上屏
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,student,frontend/src/modules/student/api/student.api.js,246,脚本文案,运行时代码外露,"|| x.status,","status: x.status, statusLabel: x.statusLabel || x.status, owner: x.ownerName || '', ownerId: x.ownerId || '',",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,student,frontend/src/modules/student/api/student.api.js,265,脚本文案,工程术语,字段,敏感字段仅授权岗位可查看,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,student,frontend/src/modules/student/api/student.api.js,270,脚本文案,工程术语,台账,学籍状态写入必须走教务中心“学籍异动”审批；本页仅保留只读台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,student,frontend/src/modules/student/api/student.api.js,272,脚本文案,工程术语,服务端,学籍异动筛选导出尚未接入服务端冻结条件，禁止误导出当前范围,系统
@@ -6671,6 +6727,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAf
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/studentAffairs.routes.js,267,脚本文案,工程术语,台账,谈话台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/AidWorkbenchView.vue,379,脚本文案,内部ID外露,${id},当前学生筛选：#${id},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/AidWorkbenchView.vue,481,脚本文案,工程术语,事实,该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。,记录 / 信息
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/AidWorkbenchView.vue,481,脚本文案,运行时代码外露,|| res.data.status ||,this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`,若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/ArchiveManageView.vue,57,模板文字,工程术语,台账,查看档案包台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/ArchiveManageView.vue,77,模板文字,工程术语,预检,选择归档学生，预检后生成档案包。,检查
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/ArchiveManageView.vue,100,模板文字,内部ID外露,{{ p.exportTaskId }},水印包 #{{ p.exportTaskId }},用名称描述对象，ID 不上屏
@@ -6692,6 +6749,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffai
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/DisciplineWorkbenchView.vue,146,模板属性/表达式,工程术语,事实,客观描述违纪事实，不少于 5 字,记录 / 信息
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/DisciplineWorkbenchView.vue,238,脚本文案,内部ID外露,${id},当前学生筛选：#${id},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/DisciplineWorkbenchView.vue,337,脚本文案,工程术语,事实,该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。,记录 / 信息
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/DisciplineWorkbenchView.vue,337,脚本文案,运行时代码外露,|| res.data.status ||,this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`,若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/DisciplineWorkbenchView.vue,434,脚本文案,工程术语,投影,通过后推进到下一审批节点，末节点将生效并投影到学生处分记录。,（删除或改为“更新时间”）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/DisciplineWorkbenchView.vue,481,脚本文案,工程术语,事实,违纪事实不少于 5 字,记录 / 信息
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/DisciplineWorkbenchView.vue,493,脚本文案,工程术语,投影,投影对账：生效 ${d.effectiveCases} 条 / 投影 ${d.activeProjections} 行 · ${d.consistent ? '一致 ✓' : '不一致 ✗'},（删除或改为“更新时间”）
@@ -6715,6 +6773,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffai
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/FundingWorkbenchView.vue,259,脚本文案,工程术语,预检,预检不代替提交时的服务端硬校验。,检查
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/FundingWorkbenchView.vue,276,脚本文案,内部ID外露,${id},当前学生筛选：#${id},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/FundingWorkbenchView.vue,348,脚本文案,工程术语,事实,该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。,记录 / 信息
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/FundingWorkbenchView.vue,348,脚本文案,运行时代码外露,|| res.data.status ||,this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`,若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/FundingWorkbenchView.vue,589,脚本文案,工程术语,预检,资格预检失败,检查
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/FundingWorkbenchView.vue,594,脚本文案,工程术语,预检,资格预检失败,检查
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/FundingWorkbenchView.vue,602,脚本文案,工程术语,预检,请先通过资格预检,检查
@@ -6815,6 +6874,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffai
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/discipline/DisciplineAppealView.vue,173,模板文字,工程术语,投影,“变更处分”会真实更新处分类型、事实依据、文号（如有）及有效投影，并追加不可变决定版本；复核意见另行保留。,（删除或改为“更新时间”）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/discipline/DisciplineAppealView.vue,276,脚本文案,工程术语,后端,已锁定处分案件 #${this.caseFocusId}；所有查询仍由后端权限与数据范围重新校验。,系统
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/discipline/DisciplineAppealView.vue,276,脚本文案,内部ID外露,${this.caseFocusId},已锁定处分案件 #${this.caseFocusId}；所有查询仍由后端权限与数据范围重新校验。,用名称描述对象，ID 不上屏
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/discipline/DisciplineAppealView.vue,302,脚本文案,运行时代码外露,|| response.data.status ||,if (response.data.status !== 'EFFECTIVE') { this.effectiveCases = []; this.casePagination.total = 0; this.caseError = `该案件当前状态为${response.data.statusLabel || response.data.status || '未知状态'}，不再属于已生效送达/申诉工作区`; return },若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/discipline/DisciplineAppealView.vue,411,脚本文案,工程术语,事实,变更后的处分事实需5-1000字,记录 / 信息
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/discipline/DisciplineLedgerView.vue,3,模板属性/表达式,工程术语,台账,违纪处分台账,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/discipline/DisciplineLedgerView.vue,4,模板属性/表达式,工程术语,投影,全量处分记录只读台账 + 处分投影一致性对账（已生效案件 ↔ t_cs_discipline 生效行数）。,（删除或改为“更新时间”）
@@ -6901,6 +6961,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAf
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/dorm/DormStatsView.vue,72,脚本文案,工程术语,台账,归寝异常台账.xlsx,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/dorm/DormStatsView.vue,126,脚本文案,工程术语,台账,宿舍台账导出失败,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/dorm/DormTransferView.vue,18,模板文字,内部ID外露,{{ recordId }},heckout' ? '退宿单' : '调宿申请' }} #{{ recordId }},用名称描述对象，ID 不上屏
+D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/dorm/DormTransferView.vue,33,模板文字,运行时代码外露,{{nodeLabel(row.currentNode || row.status)}},{{ nodeLabel(row.currentNode || row.status) }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/dorm/DormTransferView.vue,52,模板属性/表达式,工程术语,阻断,无阻断,必须先处理的问题
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/dorm/DormTransferView.vue,151,脚本文案,工程术语,阻断,阻断事项,必须先处理的问题
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/dorm/DormTransferView.vue,217,脚本文案,内部ID外露,${b.buildingId},楼栋 #${b.buildingId},用名称描述对象，ID 不上屏
@@ -6927,6 +6988,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffai
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingAppealView.vue,73,模板文字,内部ID外露,#{{,申请 #{{}},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingAppealView.vue,77,模板属性/表达式,工程术语,事实,申诉成立将驳回原资助申请，请确认事实与复核意见一致。,记录 / 信息
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingBatchView.vue,63,模板属性/表达式,工程术语,待核对,学年待核对,暂未获取 / 未填写
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingBatchView.vue,269,脚本文案,运行时代码外露,|| this.filters.status),hasFilters() { return Boolean(this.filters.keyword || this.filters.projectId || this.filters.status) },若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingBatchView.vue,400,脚本文案,工程术语,待核对,所属项目待核对,暂未获取 / 未填写
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingBatchView.vue,402,脚本文案,工程术语,待核对,类型待核对,暂未获取 / 未填写
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingBatchView.vue,403,脚本文案,工程术语,待核对,状态待核对,暂未获取 / 未填写
@@ -6965,6 +7027,7 @@ D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAf
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingLedgerView.vue,7,模板属性/表达式,工程术语,台账,资助台账查看,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingLedgerView.vue,9,模板属性/表达式,工程术语,台账,正在加载资助台账...,记录（台账可保留在管理端）
 D1-E 学工/实习/毕设/就业/迎新等PC,可保留,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingLedgerView.vue,104,脚本文案,工程术语,台账,资助台账加载失败,记录（台账可保留在管理端）
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingProjectView.vue,220,脚本文案,运行时代码外露,|| this.filters.status),hasFilters() { return Boolean(this.filters.keyword || this.filters.projectType || this.filters.status) },若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingProjectView.vue,303,脚本文案,工程术语,待核对,类型待核对,暂未获取 / 未填写
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingPublicityView.vue,6,模板属性/表达式,内部ID外露,${batchId},当前批次 #${batchId},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,studentAffairs,frontend/src/modules/studentAffairs/views/funding/FundingPublicityView.vue,14,模板属性/表达式,工程术语,待核对,姓名待核对,暂未获取 / 未填写
@@ -7111,18 +7174,22 @@ D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,workbench
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,workbench,frontend/src/modules/workbench/views/WorkbenchView.vue,764,脚本文案,内部ID外露,${t.recordId || t.bizId || '待核对'},助学贷款 · 记录 ${t.recordId || t.bizId || '待核对'},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,workbench,frontend/src/modules/workbench/views/WorkbenchView.vue,765,脚本文案,工程术语,待核对,减免临补 · 申请 ${t.recordId || t.bizId || '待核对'},暂未获取 / 未填写
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,workbench,frontend/src/modules/workbench/views/WorkbenchView.vue,765,脚本文案,内部ID外露,${t.recordId || t.bizId || '待核对'},减免临补 · 申请 ${t.recordId || t.bizId || '待核对'},用名称描述对象，ID 不上屏
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,workbench,frontend/src/modules/workbench/views/WorkbenchView.vue,767,脚本文案,运行时代码外露,|| t.todoType ||,"t.moduleName || t.bizTypeLabel || t.todoTypeName || t.todoType || '业务待办',",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,workflow,frontend/src/modules/workflow/components/ApprovalTaskDetailPanel.vue,18,模板文字,内部ID外露,{{ task.businessId }},{{ task.businessId }},用名称描述对象，ID 不上屏
 D1-E 学工/实习/毕设/就业/迎新等PC,必改,管理/教师PC,workflow,frontend/src/modules/workflow/components/ApprovalTaskList.vue,18,模板文字,内部ID外露,{{ t.businessId }},{{ t.businessId }},用名称描述对象，ID 不上屏
+D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,workflow,frontend/src/modules/workflow/components/PermissionTag.vue,20,脚本文案,运行时代码外露,|| this.type,return PERMISSION_TYPE_LABELS[this.type] || this.type,若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,workflow,frontend/src/modules/workflow/constants/workflow.constants.js,172,脚本文案,工程术语,对象,被指派对象,（用具体名称：课程/学生/申请）
 D1-E 学工/实习/毕设/就业/迎新等PC,建议改,管理/教师PC,workflow,frontend/src/modules/workflow/guards/workflow.guards.js,60,脚本文案,工程术语,对象,仅可访问被指派对象,（用具体名称：课程/学生/申请）
 D1-F 移动端,必改,移动端,common,miniapp/src/components/MobileAcademicDecisionCard.vue,32,模板文字,内部ID外露,编号 {{,规则编号 {{}},用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,common,miniapp/src/components/MobileAcademicDecisionCard.vue,33,模板文字,内部ID外露,{{ trace.traceId }},支持编号 {{ trace.traceId }},用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,common,miniapp/src/components/MobileAcademicDecisionCard.vue,33,模板文字,内部ID外露,编号 {{,支持编号 {{}},用名称描述对象，ID 不上屏
+D1-F 移动端,必改,移动端,common,miniapp/src/components/MobileCompletedApprovalReceipt.vue,4,模板文字,运行时代码外露,{{task.title || task.type || '本人审批记录'}},{{ task.title || task.type || '本人审批记录' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,必改,移动端,common,miniapp/src/components/MobileCompletedApprovalReceipt.vue,5,模板文字,内部ID外露,{{ task.sourceBizId }},业务单号 {{ task.sourceBizId }} · {{,用名称描述对象，ID 不上屏
 D1-F 移动端,可保留,移动端,common,miniapp/src/components/MobileCompletedApprovalReceipt.vue,7,模板文字,工程术语,回执,这是本人审批节点的处理回执，整张申请的最新结果以业务记录为准。,提交结果
 D1-F 移动端,建议改,移动端,common,miniapp/src/components/MobileCompletedApprovalReceipt.vue,7,模板文字,过度说明,以业务记录为准,这是本人审批节点的处理回执，整张申请的最新结果以业务记录为准。,（删掉或改成一句正向提示）
 D1-F 移动端,建议改,移动端,common,miniapp/src/components/MobileFundingEvidence.vue,11,模板文字,过度说明,以各自进度为准,材料验收与奖助评审分别办理，请以各自进度为准。,（删掉或改成一句正向提示）
 D1-F 移动端,必改,移动端,common,miniapp/src/components/MobileLeaveDetail.vue,10,模板文字,内部ID外露,{{ openingFileId === String(file.fileId) ? '打开中…' : '查看' }},{{ openingFileId === String(file.fileId) ? '打开中…' : '查看' }},用名称描述对象，ID 不上屏
+D1-F 移动端,建议改,移动端,common,miniapp/src/components/MobileRiskTag.vue,23,脚本文案,运行时代码外露,|| this.level,return this.label || LEVEL_MAP[this.normalized] || this.level,若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,必改,移动端,common,miniapp/src/components/auth/PhoneBindingPanel.vue,24,模板文字,工程术语,缓存,安全变更已提交，部分缓存清理待恢复，请勿重复操作。,系统
 D1-F 移动端,必改,移动端,common,miniapp/src/components/businessForms/SchemaBusinessForm.vue,4,模板文字,英文/代码外露,FORM_CLIENT_UNSUPPORTED,FORM_CLIENT_UNSUPPORTED,换成中文状态名
 D1-F 移动端,建议改,移动端,common,miniapp/src/components/businessForms/SchemaBusinessForm.vue,5,模板文字,工程术语,字段,当前小程序不支持此表单的完整字段，请前往 PC 办理。,系统
@@ -7174,7 +7241,9 @@ D1-F 移动端,必改,移动端,student-internship/change,miniapp/src/pages/stud
 D1-F 移动端,必改,移动端,student-internship/change,miniapp/src/pages/student-internship/change/index.vue,16,模板文字,内部ID外露,{{ context.recordId }},{{ context.batchId }} · 实习记录 #{{ context.recordId }} · {{,用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,student-internship/change,miniapp/src/pages/student-internship/change/index.vue,16,模板文字,内部ID外露,#{{,批次 #{{}} · 实习记录 #{{}} · {{}},用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,student-internship/change,miniapp/src/pages/student-internship/change/index.vue,65,模板文字,内部ID外露,{{ item.id }},#{{ item.id }} · v{,用名称描述对象，ID 不上屏
+D1-F 移动端,建议改,移动端,student-internship/change,miniapp/src/pages/student-internship/change/index.vue,170,脚本文案,运行时代码外露,"|| result.status,","statusLabel: result.statusLabel || result.status, nextStep: '等待指导教师审核；审核前可在本页撤回'",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,可保留,移动端,student-internship/change,miniapp/src/pages/student-internship/change/index.vue,173,脚本文案,工程术语,回执,申请已提交并留下回执,提交结果
+D1-F 移动端,建议改,移动端,student-internship/change,miniapp/src/pages/student-internship/change/index.vue,190,脚本文案,运行时代码外露,"|| result.status,","statusLabel: result.statusLabel || result.status, nextStep: '如仍需变更，可基于当前真实关系重新提交'",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,建议改,移动端,student-internship/checkin,miniapp/src/pages/student-internship/checkin/index.vue,18,模板属性/表达式,工程术语,待核验,仅采集一次定位留痕；超范围记异常待核验，不自动认定作弊。生产包禁用演示数据。,暂未获取 / 未填写
 D1-F 移动端,必改,移动端,student-internship/checkin,miniapp/src/pages/student-internship/checkin/index.vue,18,模板属性/表达式,施工痕迹,演示数据,仅采集一次定位留痕；超范围记异常待核验，不自动认定作弊。生产包禁用演示数据。,（上线版不应出现）
 D1-F 移动端,建议改,移动端,student-internship/checkin,miniapp/src/pages/student-internship/checkin/index.vue,41,脚本文案,工程术语,待核实,边界待核实,暂未获取 / 未填写
@@ -7184,6 +7253,7 @@ D1-F 移动端,必改,移动端,student-internship/consent,miniapp/src/pages/stu
 D1-F 移动端,必改,移动端,student-internship/consent,miniapp/src/pages/student-internship/consent/index.vue,64,脚本文案,工程术语,服务端,请打开并完整阅读服务端保存的正文,系统
 D1-F 移动端,必改,移动端,student-internship/enterprises,miniapp/src/pages/student-internship/enterprises/index.vue,100,模板属性/表达式,内部ID外露,${slot.positionId},岗位 #${slot.positionId},用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,student-internship/enterprises,miniapp/src/pages/student-internship/enterprises/index.vue,103,模板文字,英文/代码外露,Profile,Profile v{{}},换成中文
+D1-F 移动端,必改,移动端,student-internship/help,miniapp/src/pages/student-internship/help/index.vue,10,模板文字,运行时代码外露,{{receipt.statusLabel || receipt.status}},{{ receipt.statusLabel || receipt.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,必改,移动端,student-internship/help,miniapp/src/pages/student-internship/help/index.vue,11,模板文字,内部ID外露,{{ receipt.id }},记录 #{{ receipt.id }}，指导教师,用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,student-internship/help,miniapp/src/pages/student-internship/help/index.vue,11,模板文字,内部ID外露,#{{,记录 #{{}}，指导教师将在风险处置台持续跟进。,用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,student-internship/index.vue,miniapp/src/pages/student-internship/index.vue,14,模板属性/表达式,内部ID外露,${candidate.batchId},批次 ${candidate.batchId},用名称描述对象，ID 不上屏
@@ -7191,6 +7261,7 @@ D1-F 移动端,必改,移动端,student-internship/index.vue,miniapp/src/pages/s
 D1-F 移动端,建议改,移动端,student-internship/index.vue,miniapp/src/pages/student-internship/index.vue,93,模板属性/表达式,工程术语,阻断,上岗阻断原因,必须先处理的问题
 D1-F 移动端,必改,移动端,student-internship/insurance,miniapp/src/pages/student-internship/insurance/index.vue,16,模板文字,工程术语,记录版本,记录版本 {{}},（删除或改为“更新时间”）
 D1-F 移动端,必改,移动端,student-internship/leave,miniapp/src/pages/student-internship/leave/index.vue,16,模板文字,内部ID外露,{{ receipt.id }},记录 {{ receipt.id }} · {{,用名称描述对象，ID 不上屏
+D1-F 移动端,必改,移动端,student-internship/leave,miniapp/src/pages/student-internship/leave/index.vue,16,模板文字,运行时代码外露,{{receipt.statusLabel || receipt.status}},{{ receipt.statusLabel || receipt.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,必改,移动端,student-internship/makeup,miniapp/src/pages/student-internship/makeup/index.vue,16,模板文字,内部ID外露,{{ receipt.id }},申请编号 {{ receipt.id }} · 数据,用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,student-internship/makeup,miniapp/src/pages/student-internship/makeup/index.vue,16,模板文字,内部ID外露,编号 {{,申请编号 {{}} · 数据版本 v{{}},用名称描述对象，ID 不上屏
 D1-F 移动端,建议改,移动端,student-internship/makeup,miniapp/src/pages/student-internship/makeup/index.vue,27,模板文字,工程术语,证据,证据材料：{{}},材料 / 记录
@@ -7200,6 +7271,7 @@ D1-F 移动端,建议改,移动端,student-internship/makeup,miniapp/src/pages/s
 D1-F 移动端,建议改,移动端,student-internship/makeup,miniapp/src/pages/student-internship/makeup/index.vue,153,脚本文案,工程术语,证据,补卡证据,材料 / 记录
 D1-F 移动端,建议改,移动端,student-internship/makeup,miniapp/src/pages/student-internship/makeup/index.vue,154,脚本文案,工程术语,证据,证据材料上传成功,材料 / 记录
 D1-F 移动端,建议改,移动端,student-internship/makeup,miniapp/src/pages/student-internship/makeup/index.vue,156,脚本文案,工程术语,证据,证据材料上传失败,材料 / 记录
+D1-F 移动端,建议改,移动端,student-internship/plan,miniapp/src/pages/student-internship/plan/index.vue,105,脚本文案,运行时代码外露,|| t.status),"return ['NOT_STARTED', 'REJECTED'].includes(t.progressStatus || t.status)",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,必改,移动端,student-internship/process-report,miniapp/src/pages/student-internship/process-report/index.vue,20,模板文字,内部ID外露,{{ receipt.id }},#{{ receipt.id }} · v{,用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,student-internship/safety,miniapp/src/pages/student-internship/safety/course.vue,3,模板属性/表达式,工程术语,服务端,服务端计时 · 教师审核,系统
 D1-F 移动端,必改,移动端,student-internship/safety,miniapp/src/pages/student-internship/safety/course.vue,37,模板属性/表达式,工程术语,服务端,本次审核未通过。点击重新学习后，服务端会重置本次时长和承诺，旧审核结果仍保留在审计记录中。,系统
@@ -7208,6 +7280,7 @@ D1-F 移动端,必改,移动端,student-internship/safety,miniapp/src/pages/stud
 D1-F 移动端,必改,移动端,student-internship/self-eval,miniapp/src/pages/student-internship/self-eval/index.vue,7,模板文字,内部ID外露,{{ receipt.id }},鉴定 #{{ receipt.id }} · {{,用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,student-internship/self-eval,miniapp/src/pages/student-internship/self-eval/index.vue,7,模板文字,内部ID外露,#{{,鉴定 #{{}} · {{}},用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,student-internship/self-eval,miniapp/src/pages/student-internship/self-eval/index.vue,15,模板文字,工程术语,记录版本,记录版本 {{}},（删除或改为“更新时间”）
+D1-F 移动端,必改,移动端,student-internship/self-eval,miniapp/src/pages/student-internship/self-eval/index.vue,33,模板文字,运行时代码外露,{{appealData.statusLabel || appealData.status}},{{ appealData.statusLabel || appealData.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,必改,移动端,student-internship/self-eval,miniapp/src/pages/student-internship/self-eval/index.vue,195,脚本文案,工程术语,自动重放,服务端鉴定版本已更新。当前输入没有丢失；请核对后手动返回并刷新，再决定是否重新提交。系统不会自动重放。,（删除，系统自动防重复）
 D1-F 移动端,必改,移动端,student-internship/self-eval,miniapp/src/pages/student-internship/self-eval/index.vue,195,脚本文案,工程术语,服务端,服务端鉴定版本已更新。当前输入没有丢失；请核对后手动返回并刷新，再决定是否重新提交。系统不会自动重放。,系统
 D1-F 移动端,建议改,移动端,student-internship/volunteer-result,miniapp/src/pages/student-internship/volunteer-result/index.vue,48,脚本文案,过度说明,不等于,企业拟接收不等于正式落岗，请等待学校最终确认。,（删掉或改成一句正向提示）
@@ -7227,6 +7300,7 @@ D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/st
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/attendance.vue,36,模板属性/表达式,工程术语,待核对,待核对,暂未获取 / 未填写
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/attendance.vue,100,脚本文案,工程术语,待核对,待核对,暂未获取 / 未填写
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/attendance.vue,105,脚本文案,工程术语,待核对,星期待核对,暂未获取 / 未填写
+D1-F 移动端,必改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/calendar.vue,25,模板文字,运行时代码外露,{{e.remark || e.title || eventType(e.eventType || e.type)}},{{ e.remark || e.title || eventType(e.eventType || e.type) }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/calendar.vue,36,模板文字,过度说明,以正式课表为准,调休、补课的实际节次以正式课表为准。,（删掉或改成一句正向提示）
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/clearance.vue,20,模板文字,过度说明,以学校发布结果为准,清考是课程补救考核，正式成绩以学校发布结果为准。,（删掉或改成一句正向提示）
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/clearance.vue,78,脚本文案,工程术语,待核对,已结束，成绩待核对,暂未获取 / 未填写
@@ -7300,6 +7374,7 @@ D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/st
 D1-F 移动端,必改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/selection.vue,118,模板文字,工程术语,自动重放,预检只核对当时条件，不占名额；按钮和余量也不承诺成功。写操作完成后，本页会重新读取本人正式记录。网络超时显示“结果待核实”，不会自动重放报名或退课。,（删除，系统自动防重复）
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/selection.vue,118,模板文字,工程术语,预检,预检只核对当时条件，不占名额；按钮和余量也不承诺成功。写操作完成后，本页会重新读取本人正式记录。网络超时显示“结果待核实”，不会自动重放报名或退课。,检查
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/selection.vue,118,模板文字,过度说明,不承诺,预检只核对当时条件，不占名额；按钮和余量也不承诺成功。写操作完成后，本页会重新读取本人正式记录。网络超时显示“结果待核实”，不会自动重放报名或退课。,（删掉或改成一句正向提示）
+D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/selection.vue,199,脚本文案,运行时代码外露,|| reason.code),return Number(reason && (reason.httpStatus || reason.statusCode || reason.code)) === 403 || /^403/.test(code) || code === 'FORBIDDEN' || code === 'NO_PERMISSION',若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/selection.vue,258,脚本文案,过度说明,以学校发布为准,办理时间以学校发布为准,（删掉或改成一句正向提示）
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/selection.vue,280,脚本文案,过度说明,以正式课表为准,时间待排 · 以正式课表为准,（删掉或改成一句正向提示）
 D1-F 移动端,建议改,移动端,student/academic-affairs,miniapp/src/pages/student/academic-affairs/selection.vue,481,脚本文案,工程术语,待核对,学校记录已读取，但本机无法安全清除待核对引用；请稍后再次核对，切勿重复提交。,暂未获取 / 未填写
@@ -7330,6 +7405,7 @@ D1-F 移动端,必改,移动端,student/affairs,miniapp/src/pages/student/affair
 D1-F 移动端,建议改,移动端,student/affairs,miniapp/src/pages/student/affairs/funding.vue,42,模板属性/表达式,工程术语,待核对,学年待核对,暂未获取 / 未填写
 D1-F 移动端,必改,移动端,student/affairs,miniapp/src/pages/student/affairs/funding.vue,42,模板文字,内部ID外露,{{ x.batchId }},· 批次 {{ x.batchId }},用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,student/affairs,miniapp/src/pages/student/affairs/funding.vue,42,模板文字,内部ID外露,{{ x.applicationId }},· 申请 {{ x.applicationId }},用名称描述对象，ID 不上屏
+D1-F 移动端,建议改,移动端,student/affairs,miniapp/src/pages/student/affairs/funding.vue,108,脚本文案,运行时代码外露,|| item.status ||,const status = item.statusLabel || item.status || '处理中',若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,建议改,移动端,student/affairs,miniapp/src/pages/student/affairs/funding.vue,112,脚本文案,过度说明,以学校发放记录为准,已获得资助资格，实际发放情况以学校发放记录为准。,（删掉或改成一句正向提示）
 D1-F 移动端,可保留,移动端,student/affairs,miniapp/src/pages/student/affairs/index.vue,30,模板文字,工程术语,回执,提交电子回执、查看核验进度,提交结果
 D1-F 移动端,可保留,移动端,student/affairs,miniapp/src/pages/student/affairs/loan.vue,3,模板属性/表达式,工程术语,回执,电子回执与核验进度,提交结果
@@ -7414,6 +7490,7 @@ D1-F 移动端,必改,移动端,teacher-internship/internship-change,miniapp/src
 D1-F 移动端,必改,移动端,teacher-internship/internship-change,miniapp/src/pages/teacher-internship/internship-change/index.vue,38,模板文字,内部ID外露,{{ c.id }},{{ c.studentNo }} · 申请 #{{ c.id }},用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,teacher-internship/internship-change,miniapp/src/pages/teacher-internship/internship-change/index.vue,38,模板文字,内部ID外露,#{{,{{}} · 申请 #{{}},用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,teacher-internship/internship-change,miniapp/src/pages/teacher-internship/internship-change/index.vue,49,模板文字,工程术语,服务端,通过后的服务端影响,系统
+D1-F 移动端,建议改,移动端,teacher-internship/internship-change,miniapp/src/pages/teacher-internship/internship-change/index.vue,145,脚本文案,运行时代码外露,"|| receipt.status,","statusLabel: receipt.statusLabel || receipt.status, version: receipt.version,",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,可保留,移动端,teacher-internship/internship-change,miniapp/src/pages/teacher-internship/internship-change/index.vue,149,脚本文案,工程术语,回执,已驳回并留下回执,提交结果
 D1-F 移动端,必改,移动端,teacher-internship/internship-change,miniapp/src/pages/teacher-internship/internship-change/index.vue,153,脚本文案,工程术语,记录版本,申请或学生主记录版本已变化,（删除或改为“更新时间”）
 D1-F 移动端,必改,移动端,teacher-internship/internship-guidance,miniapp/src/pages/teacher-internship/internship-guidance/index.vue,16,模板属性/表达式,工程术语,事实,先选择学生和指导方式，再记录本次沟通事实、发现的问题与下一步建议；需要持续关注时可设置跟进日期或转为风险。,记录 / 信息
@@ -7480,6 +7557,7 @@ D1-F 移动端,建议改,移动端,teacher/academic-affairs,miniapp/src/pages/te
 D1-F 移动端,建议改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/grade-entry.vue,291,脚本文案,工程术语,待核对,本机待核对记录暂时无法读取，请检查存储后重试,暂未获取 / 未填写
 D1-F 移动端,建议改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/grade-entry.vue,367,脚本文案,工程术语,待核对,本机待核对记录暂时无法读取，请检查存储后重试,暂未获取 / 未填写
 D1-F 移动端,建议改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/grade-entry.vue,374,脚本文案,工程术语,待核对,当前教师身份核验失败，请重试；成绩和待核对记录尚未读取,暂未获取 / 未填写
+D1-F 移动端,建议改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/grade-entry.vue,645,脚本文案,运行时代码外露,"|| task.status,","this.active = { ...task, status: data.status || task.status, courseName: data.courseName || task.courseName, passLine: data.passLine == null ? task.passLine : data.passLine }",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,建议改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/index.vue,43,模板属性/表达式,过度说明,以课表为准,时间以课表为准,（删掉或改成一句正向提示）
 D1-F 移动端,必改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/schedule-change-review.vue,6,模板文字,工程术语,原命令,原命令没有明确回执，暂不可重复提交。这里只读刷新正式待审队列。,上次提交
 D1-F 移动端,必改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/schedule-change-review.vue,6,模板文字,工程术语,只读刷新,原命令没有明确回执，暂不可重复提交。这里只读刷新正式待审队列。,刷新查看结果
@@ -7538,6 +7616,7 @@ D1-F 移动端,必改,移动端,teacher/academic-affairs,miniapp/src/pages/teach
 D1-F 移动端,建议改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/teacher-mp-preview.mjs,46,脚本文案,工程术语,证据,调停课证据核对,材料 / 记录
 D1-F 移动端,建议改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/teacher-mp-preview.mjs,47,脚本文案,工程术语,证据,异动证据核对,材料 / 记录
 D1-F 移动端,必改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/teacher-mp-preview.mjs,49,脚本文案,工程术语,接口,追加跟进记录（接口待接入）,系统
+D1-F 移动端,建议改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/teacher-mp-preview.mjs,62,脚本文案,运行时代码外露,||p.status||,"MobileStatusTag: { props:['label','status','type'], setup:p=>()=>Vue.h('span',{class:'preview-tag'},p.label||p.status||'—') },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,必改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/teacher-mp-preview.mjs,104,脚本文案,施工痕迹,占位,</select><small>测试数据 / 实际页面模板静态渲染 / 共享导航为预览占位 / 控件不发请求</small></div>,（上线版不应出现）
 D1-F 移动端,可保留,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/workload.vue,13,模板文字,工程术语,回执,本次申报未收到明确回执。已停止重复提交，请下拉刷新并核对申报记录。,提交结果
 D1-F 移动端,建议改,移动端,teacher/academic-affairs,miniapp/src/pages/teacher/academic-affairs/workload.vue,14,模板文字,工程术语,证据,当前未提供任务核算证据。本次填写申报课时，审核结果见申报记录。,材料 / 记录
@@ -7570,6 +7649,8 @@ D1-F 移动端,建议改,移动端,teacher/academic-task,miniapp/src/pages/teach
 D1-F 移动端,必改,移动端,teacher/academic-task,miniapp/src/pages/teacher/academic-task/index.vue,263,脚本文案,工程术语,原命令,任务结果待确认，请只读核对；不会自动重发原命令,上次提交
 D1-F 移动端,必改,移动端,teacher/academic-task,miniapp/src/pages/teacher/academic-task/index.vue,263,脚本文案,工程术语,只读核对,任务结果待确认，请只读核对；不会自动重发原命令,刷新查看结果
 D1-F 移动端,必改,移动端,teacher/academic-task,miniapp/src/pages/teacher/academic-task/index.vue,263,脚本文案,工程术语,自动重发,任务结果待确认，请只读核对；不会自动重发原命令,（删除，系统自动防重复）
+D1-F 移动端,必改,移动端,teacher/academic-warning,miniapp/src/pages/teacher/academic-warning/index.vue,29,模板文字,运行时代码外露,{{w.typeLabel || w.type}},{{ w.typeLabel || w.type }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
+D1-F 移动端,必改,移动端,teacher/academic-warning,miniapp/src/pages/teacher/academic-warning/index.vue,37,模板文字,运行时代码外露,{{w.statusLabel || w.status}},{{ w.statusLabel || w.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,必改,移动端,teacher/academic-warning,miniapp/src/pages/teacher/academic-warning/index.vue,40,模板文字,内部ID外露,编号 {{,预警编号 {{}},用名称描述对象，ID 不上屏
 D1-F 移动端,建议改,移动端,teacher/academic-warning,miniapp/src/pages/teacher/academic-warning/index.vue,41,模板文字,工程术语,对象,存在未取得明确回执的操作。已停止该对象继续写入，只会读取正式记录核对。,（用具体名称：课程/学生/申请）
 D1-F 移动端,可保留,移动端,teacher/academic-warning,miniapp/src/pages/teacher/academic-warning/index.vue,41,模板文字,工程术语,回执,存在未取得明确回执的操作。已停止该对象继续写入，只会读取正式记录核对。,提交结果
@@ -7592,6 +7673,7 @@ D1-F 移动端,建议改,移动端,teacher/affairs-leave,miniapp/src/pages/teach
 D1-F 移动端,必改,移动端,teacher/affairs-review,miniapp/src/pages/teacher/affairs-review/index.vue,25,模板属性/表达式,工程术语,版本号,记录缺少版本号,（删除或改为“更新时间”）
 D1-F 移动端,可保留,移动端,teacher/affairs-review,miniapp/src/pages/teacher/affairs-review/index.vue,36,模板文字,工程术语,台账,登记结果与学生端同步，实际到账请核对收款；需要登记或更正时由经办老师在 PC 发放台账办理。,记录（台账可保留在管理端）
 D1-F 移动端,必改,移动端,teacher/affairs-review,miniapp/src/pages/teacher/affairs-review/index.vue,203,脚本文案,工程术语,接口,未配置待办接口,系统
+D1-F 移动端,建议改,移动端,teacher/affairs-review,miniapp/src/pages/teacher/affairs-review/index.vue,227,脚本文案,运行时代码外露,|| d.level ||,"[d.applyLevelLabel ? '申请等级' : '当前等级', d.applyLevelLabel || d.level || d.riskLevel || d.discTypeLabel || d.discType],",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,必改,移动端,teacher/affairs-review,miniapp/src/pages/teacher/affairs-review/index.vue,254,脚本文案,工程术语,版本号,记录缺少版本号，请刷新后再处理,（删除或改为“更新时间”）
 D1-F 移动端,必改,移动端,teacher/affairs-review,miniapp/src/pages/teacher/affairs-review/index.vue,256,脚本文案,工程术语,版本号,缺少版本号,（删除或改为“更新时间”）
 D1-F 移动端,必改,移动端,teacher/affairs-review,miniapp/src/pages/teacher/affairs-review/index.vue,258,脚本文案,工程术语,记录版本,记录版本已变化,（删除或改为“更新时间”）
@@ -7599,7 +7681,11 @@ D1-F 移动端,必改,移动端,teacher/affairs-review,miniapp/src/pages/teacher
 D1-F 移动端,必改,移动端,teacher/affairs-review,miniapp/src/pages/teacher/affairs-review/index.vue,318,脚本文案,工程术语,事实,变更后的处分事实至少5字,记录 / 信息
 D1-F 移动端,可保留,移动端,teacher/affairs,miniapp/src/pages/teacher/affairs/index.vue,11,模板文字,工程术语,回执,贷款回执核验,提交结果
 D1-F 移动端,可保留,移动端,teacher/affairs,miniapp/src/pages/teacher/affairs/index.vue,11,模板文字,工程术语,台账,核验、退回与确认台账,记录（台账可保留在管理端）
+D1-F 移动端,必改,移动端,teacher/affairs,miniapp/src/pages/teacher/affairs/index.vue,34,模板文字,运行时代码外露,{{item.label || item.todoType}},{{ item.label || item.todoType }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
+D1-F 移动端,必改,移动端,teacher/affairs,miniapp/src/pages/teacher/affairs/index.vue,81,模板文字,运行时代码外露,{{item.currentSubmission.statusLabel || item.currentSubmission}},{{ item.currentSubmission.statusLabel || item.currentSubmission.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,必改,移动端,teacher/affairs,miniapp/src/pages/teacher/affairs/index.vue,88,模板文字,内部ID外露,{{ selectedMaterialIds.includes(item.requirementId) ? '✓' : '' }},{{ selectedMaterialIds.includes(item.requirementId) ? '✓' : '' }},用名称描述对象，ID 不上屏
+D1-F 移动端,必改,移动端,teacher/affairs,miniapp/src/pages/teacher/affairs/index.vue,112,模板文字,运行时代码外露,{{job.statusLabel || job.status}},{{ job.statusLabel || job.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
+D1-F 移动端,必改,移动端,teacher/affairs,miniapp/src/pages/teacher/affairs/index.vue,119,模板文字,运行时代码外露,{{activeBatch.statusLabel || activeBatch.status}},{{ activeBatch.statusLabel || activeBatch.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,必改,移动端,teacher/affairs,miniapp/src/pages/teacher/affairs/index.vue,121,模板文字,内部ID外露,编号 {{,任务项编号 {{}},用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,teacher/affairs,miniapp/src/pages/teacher/affairs/index.vue,223,脚本文案,内部ID外露,${item.studentId},学生 #${item.studentId},用名称描述对象，ID 不上屏
 D1-F 移动端,可保留,移动端,teacher/affairs,miniapp/src/pages/teacher/affairs/loan/index.vue,3,模板属性/表达式,工程术语,回执,贷款回执核验,提交结果
@@ -7642,6 +7728,7 @@ D1-F 移动端,必改,移动端,teacher/approval,miniapp/src/pages/teacher/appro
 D1-F 移动端,必改,移动端,teacher/approval,miniapp/src/pages/teacher/approval/index.vue,133,脚本文案,工程术语,服务端,办理完成后会进入这里，支持服务端真分页查询。,系统
 D1-F 移动端,必改,移动端,teacher/approval,miniapp/src/pages/teacher/approval/index.vue,230,脚本文案,工程术语,服务端,服务端审批结果与请求动作不一致,系统
 D1-F 移动端,必改,移动端,teacher/approval,miniapp/src/pages/teacher/approval/index.vue,238,脚本文案,工程术语,事实,该审批事实已变化，正在刷新,记录 / 信息
+D1-F 移动端,必改,移动端,teacher/campus-service,miniapp/src/pages/teacher/campus-service/index.vue,18,模板文字,运行时代码外露,{{x.typeLabel || x.type}},{{ x.typeLabel || x.type }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,可保留,移动端,teacher/class-material,miniapp/src/pages/teacher/class-material/index.vue,68,脚本文案,工程术语,台账,考勤台账,记录（台账可保留在管理端）
 D1-F 移动端,建议改,移动端,teacher/defense-score,miniapp/src/pages/teacher/defense-score/index.vue,69,脚本文案,工程术语,稳定评委身份,当前账号没有答辩评分权限，或尚未绑定稳定评委身份,（删除“权威/稳定”）
 D1-F 移动端,必改,移动端,teacher/defense-score,miniapp/src/pages/teacher/defense-score/index.vue,174,脚本文案,工程术语,回读,评分已保存，服务器状态已回读,已保存 / 已更新
@@ -7650,6 +7737,7 @@ D1-F 移动端,必改,移动端,teacher/dorm-review,miniapp/src/pages/teacher/do
 D1-F 移动端,必改,移动端,teacher/dorm-review,miniapp/src/pages/teacher/dorm-review/index.vue,25,模板文字,施工痕迹,预留,已预留床位,（上线版不应出现）
 D1-F 移动端,必改,移动端,teacher/dorm-review,miniapp/src/pages/teacher/dorm-review/index.vue,42,模板文字,内部ID外露,{{ x.requestId }},{{ x.bedLabel }} · 退宿单 #{{ x.requestId }},用名称描述对象，ID 不上屏
 D1-F 移动端,必改,移动端,teacher/dorm-review,miniapp/src/pages/teacher/dorm-review/index.vue,42,模板文字,内部ID外露,#{{,{{}} · 退宿单 #{{}},用名称描述对象，ID 不上屏
+D1-F 移动端,必改,移动端,teacher/dorm-review,miniapp/src/pages/teacher/dorm-review/index.vue,54,模板文字,运行时代码外露,{{nodeLabel(x.currentNode || x.status)}},{{ nodeLabel(x.currentNode || x.status) }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,建议改,移动端,teacher/dorm-review,miniapp/src/pages/teacher/dorm-review/index.vue,99,模板属性/表达式,工程术语,证据,拍照或上传现场证据,材料 / 记录
 D1-F 移动端,建议改,移动端,teacher/dorm-review,miniapp/src/pages/teacher/dorm-review/index.vue,156,脚本文案,工程术语,待核对,状态待核对,暂未获取 / 未填写
 D1-F 移动端,建议改,移动端,teacher/dorm-review,miniapp/src/pages/teacher/dorm-review/index.vue,193,脚本文案,工程术语,阻断,存在阻断,必须先处理的问题
@@ -7658,6 +7746,7 @@ D1-F 移动端,必改,移动端,teacher/dorm-review,miniapp/src/pages/teacher/do
 D1-F 移动端,建议改,移动端,teacher/dorm-review,miniapp/src/pages/teacher/dorm-review/index.vue,357,脚本文案,工程术语,待核对,上次提交结果尚待核对，请先刷新任务确认，勿重复登记,暂未获取 / 未填写
 D1-F 移动端,可保留,移动端,teacher/employment-follow,miniapp/src/pages/teacher/employment-follow/index.vue,6,模板文字,工程术语,台账,就业台账,记录（台账可保留在管理端）
 D1-F 移动端,建议改,移动端,teacher/employment-follow,miniapp/src/pages/teacher/employment-follow/index.vue,8,模板文字,工程术语,待核验,待核验,暂未获取 / 未填写
+D1-F 移动端,必改,移动端,teacher/employment-follow,miniapp/src/pages/teacher/employment-follow/index.vue,58,模板文字,运行时代码外露,{{verification.destination.jobTitle || verification.destinatio}},{{ verification.destination.jobTitle || verification.destination.type || '—' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,建议改,移动端,teacher/employment-follow,miniapp/src/pages/teacher/employment-follow/index.vue,69,模板属性/表达式,工程术语,证据,正式证据,材料 / 记录
 D1-F 移动端,建议改,移动端,teacher/employment-follow,miniapp/src/pages/teacher/employment-follow/index.vue,69,模板属性/表达式,工程术语,证据,缺正式证据,材料 / 记录
 D1-F 移动端,必改,移动端,teacher/employment-follow,miniapp/src/pages/teacher/employment-follow/index.vue,87,模板文字,英文/代码外露,TEMP_PRIVATE,上传只产生 TEMP_PRIVATE；扫描通过后由就业材料命令按当前版本创建正式 FileBinding。,换成中文状态名
@@ -7708,6 +7797,7 @@ D1-F 移动端,可保留,移动端,teacher/family-contact,miniapp/src/pages/teac
 D1-F 移动端,可保留,移动端,teacher/family-contact,miniapp/src/pages/teacher/family-contact/index.vue,154,脚本文案,工程术语,回执,回执已登记,提交结果
 D1-F 移动端,可保留,移动端,teacher/family-contact,miniapp/src/pages/teacher/family-contact/index.vue,157,脚本文案,工程术语,回执,该记录已登记回执，正在刷新,提交结果
 D1-F 移动端,必改,移动端,teacher/graduation-guide,miniapp/src/pages/teacher/graduation-guide/index.vue,172,模板文字,施工痕迹,R09,· 超标，须退回修改（GD-R09）,（删除内部阶段编号）
+D1-F 移动端,必改,移动端,teacher/graduation-guide,miniapp/src/pages/teacher/graduation-guide/index.vue,205,模板文字,运行时代码外露,{{fileReviewLabel(v.reviewStatus || v.versionStatus || v.statu}},{{ fileReviewLabel(v.reviewStatus || v.versionStatus || v.status) }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-F 移动端,必改,移动端,teacher/graduation-guide,miniapp/src/pages/teacher/graduation-guide/index.vue,210,模板文字,工程术语,服务端,原生预览已打开。返回批阅页后需重新确认当前服务端版本，确认完成前审核按钮保持锁定。,系统
 D1-F 移动端,必改,移动端,teacher/graduation-guide,miniapp/src/pages/teacher/graduation-guide/index.vue,213,模板属性/表达式,施工痕迹,旧版,预览期间材料版本已变化，已阻止旧版审核，请重新查看最新版本。,（不兼容旧模块，删除）
 D1-F 移动端,必改,移动端,teacher/graduation-guide,miniapp/src/pages/teacher/graduation-guide/index.vue,216,模板文字,施工痕迹,兼容,历史兼容附件,（不兼容旧模块，删除）
@@ -7744,14 +7834,17 @@ D1-F 移动端,可保留,移动端,teacher/workbench,miniapp/src/pages/teacher/w
 D1-F 移动端,必改,移动端,common,miniapp/src/services/actionRouterCore.mjs,19,脚本文案,工程术语,前端,当前端暂无安全处理入口,系统
 D1-F 移动端,建议改,移动端,common,miniapp/src/services/realApi.js,205,脚本文案,工程术语,待核实,报到状态待核实,暂未获取 / 未填写
 D1-F 移动端,建议改,移动端,common,miniapp/src/services/realApi.js,1021,脚本文案,过度说明,以「就业」页面为准,以「就业」页面为准,（删掉或改成一句正向提示）
+D1-F 移动端,建议改,移动端,common,miniapp/src/services/realApi.js,1038,脚本文案,运行时代码外露,|| d.stage ||,"status: { stageText: STAGE_TEXT[d.stage] || d.stage || '', statusText: d.status || '', enrollStatus: '' },",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,建议改,移动端,common,miniapp/src/services/realApi.js,1205,脚本文案,工程术语,待核验,待核验,暂未获取 / 未填写
 D1-F 移动端,必改,移动端,common,miniapp/src/services/request.js,87,脚本文案,施工痕迹,演示数据,网络不稳定，开发演示数据可能不是最新,（上线版不应出现）
 D1-F 移动端,必改,移动端,common,miniapp/src/services/request.js,427,脚本文案,工程术语,接口,接口暂不可用（HTTP ${httpStatus}），请联系管理员,系统
 D1-F 移动端,必改,移动端,common,miniapp/src/services/request.js,690,脚本文案,工程术语,接口,真实接口不可用，生产环境已禁用 mock fallback,系统
 D1-F 移动端,必改,移动端,common,miniapp/src/services/request.js,690,脚本文案,施工痕迹,mock,真实接口不可用，生产环境已禁用 mock fallback,（上线版不应出现）
 D1-F 移动端,建议改,移动端,common,miniapp/src/services/teacherSequentialV3Api.js,35,脚本文案,过度说明,以当前批次为准,请以当前批次为准,（删掉或改成一句正向提示）
+D1-F 移动端,建议改,移动端,common,miniapp/src/services/teacherSequentialV3Api.js,53,脚本文案,运行时代码外露,|| e.type ||,"time: e.exceptionDate || e.date || '', type: e.typeLabel || e.exceptionType || e.type || '异常',",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-F 移动端,必改,移动端,common,miniapp/src/stores/session.js,202,脚本文案,工程术语,服务端,服务端会话未完全撤销，请重试退出,系统
 D1-G 学生PC+企业门户,必改,企业门户,common,enterprise-portal/src/components/CampaignContextBar.vue,9,脚本文案,内部ID外露,${props.campaign.id},招聘季 #${props.campaign.id},用名称描述对象，ID 不上屏
+D1-G 学生PC+企业门户,建议改,企业门户,common,enterprise-portal/src/components/CampaignContextBar.vue,10,脚本文案,运行时代码外露,||props.campaign?.status||,const phaseLabel=computed(()=>props.campaign?.phaseLabel||props.campaign?.status||'状态待学校更新'),若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,建议改,企业门户,common,enterprise-portal/src/components/applicant/DecisionActions.vue,48,模板文字,过度说明,不等于,确认后将进入学校最终确认流程；在学校确认前，这只是企业拟接收意向，不等于正式落岗。,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,必改,企业门户,common,enterprise-portal/src/layouts/EnterprisePortalLayout.vue,14,脚本文案,内部ID外露,${context.campaign.id},招聘季 #${context.campaign.id},用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,必改,企业门户,common,enterprise-portal/src/services/authApi.js,23,脚本文案,英文/代码外露,accessToken,企业登录响应缺少 accessToken,换成中文
@@ -7781,8 +7874,11 @@ D1-G 学生PC+企业门户,建议改,企业门户,common,enterprise-portal/src/v
 D1-G 学生PC+企业门户,必改,企业门户,common,enterprise-portal/src/views/EvaluationTaskListView.vue,86,模板文字,内部ID外露,{{ receipt.id }},评价 #{{ receipt.id }} · v{,用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,必改,企业门户,common,enterprise-portal/src/views/EvaluationTaskListView.vue,86,模板文字,内部ID外露,{{ receipt.placementSnapshotId || '—' }},{{ receipt.version }} · 安置快照 #{{ receipt.placementSnapshotId || '—' }},用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,必改,企业门户,common,enterprise-portal/src/views/EvaluationTaskListView.vue,86,模板文字,内部ID外露,#{{,评价 #{{}} · v{{}} · 安置快照 #{{}},用名称描述对象，ID 不上屏
+D1-G 学生PC+企业门户,必改,企业门户,common,enterprise-portal/src/views/EvaluationTaskListView.vue,88,模板文字,运行时代码外露,{{item.status_label||item.statusLabel||item.task_status||item.}},{{ item.status_label||item.statusLabel||item.task_status||item.taskStatus||item.status||'状态未知' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
+D1-G 学生PC+企业门户,必改,企业门户,common,enterprise-portal/src/views/InternshipStudentListView.vue,34,模板文字,运行时代码外露,{{item.status_label||item.statusLabel||item.status||'正式实习'}},{{ item.status_label||item.statusLabel||item.status||'正式实习' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-G 学生PC+企业门户,建议改,企业门户,common,enterprise-portal/src/views/InviteAcceptView.vue,14,脚本文案,过度说明,以学校邀请为准,以学校邀请为准,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,建议改,企业门户,common,enterprise-portal/src/views/PositionFormView.vue,150,模板文字,过度说明,以学校审核结果为准,这里只做提交前检查；岗位最终是否发布，以学校审核结果为准。,（删掉或改成一句正向提示）
+D1-G 学生PC+企业门户,建议改,企业门户,common,enterprise-portal/src/views/PositionListView.vue,16,脚本文案,运行时代码外露,||item.status||,function statusText(item){return item.riskFlag?'风险':(statusLabels[item.status]||item.status||'状态未知')},若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,建议改,企业门户,common,enterprise-portal/src/views/PositionListView.vue,55,模板属性/表达式,过度说明,以学校核验为准,专业不限/以学校核验为准,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,建议改,学生PC,common,student-portal/src/components/AutoTable.vue,41,脚本文案,工程术语,字段,未命名字段,系统
 D1-G 学生PC+企业门户,建议改,学生PC,common,student-portal/src/components/academic/AcademicBusinessReceipt.vue,5,模板文字,工程术语,业务对象,业务对象,（用具体名称：课程/学生/申请）
@@ -7821,6 +7917,7 @@ D1-G 学生PC+企业门户,必改,学生PC,common,student-portal/src/components/
 D1-G 学生PC+企业门户,必改,学生PC,common,student-portal/src/components/recruitment/VolunteerSubmissionPanel.vue,37,模板文字,英文/代码外露,Group,Profile v{{}} / Group v{{}},换成中文
 D1-G 学生PC+企业门户,必改,学生PC,common,student-portal/src/components/recruitment/VolunteerSubmissionPanel.vue,48,模板属性/表达式,工程术语,服务端,已确认服务端版本,系统
 D1-G 学生PC+企业门户,建议改,学生PC,common,student-portal/src/modules/internshipRecruitment/contextModel.js,67,脚本文案,过度说明,以实习记录为准,学校已完成最终确认，正式落岗结果以实习记录为准,（删掉或改成一句正向提示）
+D1-G 学生PC+企业门户,建议改,学生PC,common,student-portal/src/modules/internshipRecruitment/materialPreviewModel.js,26,脚本文案,运行时代码外露,|| item?.code ||,"key: String(item?.key || item?.code || `field-${index}`),",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,必改,学生PC,common,student-portal/src/modules/internshipRecruitment/selectionContract.js,93,脚本文案,工程术语,记录版本,实习记录版本,（删除或改为“更新时间”）
 D1-G 学生PC+企业门户,建议改,学生PC,common,student-portal/src/modules/internshipRecruitment/submissionModel.js,72,脚本文案,过度说明,以实习记录为准,学校已完成最终确认，正式落岗结果以实习记录为准。,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,可保留,学生PC,common,student-portal/src/platform/workspaceNavigation.js,13,脚本文案,工程术语,回执,助学贷款回执,提交结果
@@ -7841,9 +7938,12 @@ D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/aca
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/AcademicView.vue,394,模板文字,英文/代码外露,GPA,/ 应修 {{}} · GPA {{}} · 不及格 {{}} 门,换成中文
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/AcademicView.vue,395,模板文字,工程术语,口径,说明：本页为本人学分汇总只读视图；分类占比/培养方案进度以教务处培养方案发布口径为准，移动端同口径。,（删除或改为“统计范围”）
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/AcademicView.vue,485,模板文字,内部ID外露,"{{ splitRank(b.batchId, o.majorId) }}","· 第{{ splitRank(b.batchId, o.majorId) }}志愿",用名称描述对象，ID 不上屏
+D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/AcademicView.vue,534,模板文字,运行时代码外露,{{w.name || w.category || '预警项'}},{{ w.name || w.category || '预警项' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/AcademicView.vue,631,脚本文案,工程术语,降级,降级继续修读,（删除该说明）
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/AcademicView.vue,834,脚本文案,内部ID外露,${examId},考试#${examId},用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentAcademicHomeView.vue,40,模板文字,工程术语,口径,正式成绩口径,（删除或改为“统计范围”）
+D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentAcademicHomeView.vue,97,脚本文案,运行时代码外露,|| row.status ||,return (rows || []).filter((row) => !done.has(String(row.registrationStatus || row.status || '').toUpperCase())),若用于显示：字典缺项时显示“其他事项/其他状态”
+D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentAcademicHomeView.vue,163,脚本文案,运行时代码外露,|| first.level ||,"description: `${first.levelLabel || first.level || '预警'} · ${first.responsibleTeacherName || first.teacherName || first.owner || '责任老师待确认'}`,",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentAcademicHomeView.vue,197,脚本文案,工程术语,待核对,${registration.length} 个批次待核对,暂未获取 / 未填写
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentAcademicHomeView.vue,201,脚本文案,工程术语,证据,审核证据待提供,材料 / 记录
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentAcademicReadOnlyView.vue,16,模板文字,过度说明,以正式课表为准,实际节次以正式课表为准，不能简单按自然星期推导。,（删掉或改成一句正向提示）
@@ -7922,6 +8022,7 @@ D1-G 学生PC+企业门户,可保留,学生PC,academic,student-portal/src/views/
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/StudentMajorSplitView.vue,108,脚本文案,工程术语,服务端,原提交未取得服务端回执编号,系统
 D1-G 学生PC+企业门户,可保留,学生PC,academic,student-portal/src/views/academic/StudentMajorSplitView.vue,108,脚本文案,工程术语,回执,原提交未取得服务端回执编号,提交结果
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentMajorSplitView.vue,166,脚本文案,过度说明,不代表,志愿提交不代表录取，请在本页等待学校正式分流结果。,（删掉或改成一句正向提示）
+D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentMajorSplitView.vue,166,脚本文案,运行时代码外露,|| result?.status ||,"receiptTone.value = 'success'; receipt.value = academicReceipt({ title: '专业分流志愿已提交并核对', object: command.batchName, status: formal.status || result?.status || '已提交', operatedAt: formal.submittedAt || formal.createdAt || r",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/StudentMajorSplitView.vue,179,脚本文案,工程术语,事实,批次事实已变化,记录 / 信息
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentMakeupView.vue,19,模板属性/表达式,过度说明,以学校规则为准,当前可发起申请，是否受理以学校规则为准,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/StudentMakeupView.vue,136,脚本文案,工程术语,服务端,原提交未取得服务端回执编号,系统
@@ -7949,6 +8050,7 @@ D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/aca
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentRegistrationView.vue,81,脚本文案,过度说明,以学校办理记录为准,以学校办理记录为准,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentRegistrationView.vue,104,脚本文案,工程术语,待核验,待核验,暂未获取 / 未填写
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentRegistrationView.vue,105,脚本文案,工程术语,待核验,待核验,暂未获取 / 未填写
+D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentRegistrationView.vue,110,脚本文案,运行时代码外露,|| deferral.status ||,return `${map[status] || deferral.status || '待处理'}${deferral.reason ? ` · ${deferral.reason}` : ''}`,若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,可保留,学生PC,academic,student-portal/src/views/academic/StudentRegistrationView.vue,131,脚本文案,工程术语,回执,尚未读取到原回执对应的本人正式记录；刷新不会自动再次提交。,提交结果
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/StudentRegistrationView.vue,131,脚本文案,工程术语,服务端,原提交未取得服务端回执编号；刷新不会自动再次提交。,系统
 D1-G 学生PC+企业门户,可保留,学生PC,academic,student-portal/src/views/academic/StudentRegistrationView.vue,131,脚本文案,工程术语,回执,原提交未取得服务端回执编号；刷新不会自动再次提交。,提交结果
@@ -7968,6 +8070,9 @@ D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,69,模板文字,内部ID外露,{{ record.recordId || '编号未提供' }},记录 {{ record.recordId || '编号未提供' }} · {{,用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,149,脚本文案,过度说明,以正式课表为准,时间待排，以正式课表为准,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,159,脚本文案,过度说明,以教务处设置为准,办理窗口以教务处设置为准,（删掉或改成一句正向提示）
+D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,201,脚本文案,运行时代码外露,|| course?.status ||,return course?.statusLabel || course?.status || '待确认',若用于显示：字典缺项时显示“其他事项/其他状态”
+D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,208,脚本文案,运行时代码外露,|| course?.lottery?.mode ||,function isLottery(course) { return String(course?.mode || course?.lottery?.mode || '').toUpperCase() === 'LOTTERY' },若用于显示：字典缺项时显示“其他事项/其他状态”
+D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,210,脚本文案,运行时代码外露,|| course?.lottery?.mode ||,function modeLabel(course) { return String(course?.mode || course?.lottery?.mode || '').toUpperCase() === 'FCFS' ? '先到先得' : selectionMode(course).split(' · ')[0] },若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,212,脚本文案,过度说明,以正式课表为准,时间待排，以正式课表为准,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,240,脚本文案,工程术语,对象,原选课对象,（用具体名称：课程/学生/申请）
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,379,脚本文案,工程术语,对象,原选课对象,（用具体名称：课程/学生/申请）
@@ -7987,6 +8092,7 @@ D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/aca
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,468,脚本文案,工程术语,对象,原选课对象,（用具体名称：课程/学生/申请）
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/StudentSelectionView.vue,469,脚本文案,工程术语,业务事实,业务事实已变化，已重新查询本人记录，请核对后再办理。,记录 / 信息
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentStatusView.vue,3,模板属性/表达式,过度说明,以学校正式学籍为准,以学校正式学籍为准，申请与生效结果分别查看。,（删掉或改成一句正向提示）
+D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/StudentStatusView.vue,22,模板文字,运行时代码外露,{{studentStatusText(status.studentStatus || status.status)}},{{ studentStatusText(status.studentStatus || status.status) }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/StudentStatusView.vue,23,模板文字,工程术语,事实,当前事实,记录 / 信息
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentStatusView.vue,23,模板文字,工程术语,权威,来源于学校权威学籍记录,（删除“权威/稳定”）
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/StudentStatusView.vue,143,脚本文案,工程术语,正式事实,当前学籍已按学校正式事实更新。,记录 / 信息
@@ -8006,11 +8112,13 @@ D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/aca
 D1-G 学生PC+企业门户,可保留,学生PC,academic,student-portal/src/views/academic/StudentTextbookView.vue,122,脚本文案,工程术语,回执,原提交未取得服务端回执编号,提交结果
 D1-G 学生PC+企业门户,必改,学生PC,academic,student-portal/src/views/academic/StudentTextbookView.vue,166,脚本文案,工程术语,服务端,服务端未返回可核对的签收记录编号,系统
 D1-G 学生PC+企业门户,建议改,学生PC,academic,student-portal/src/views/academic/StudentTextbookView.vue,166,脚本文案,过度说明,不代表,确认前不要重复签收；签收不代表缴费。,（删掉或改成一句正向提示）
+D1-G 学生PC+企业门户,必改,学生PC,affairs,student-portal/src/views/affairs/AffairsFourEndView.vue,65,模板文字,运行时代码外露,{{enumText(item.statusLabel || item.status)}},{{ enumText(item.statusLabel || item.status) }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-G 学生PC+企业门户,建议改,学生PC,affairs,student-portal/src/views/affairs/AffairsFourEndView.vue,87,模板属性/表达式,工程术语,待核对,学年待核对,暂未获取 / 未填写
 D1-G 学生PC+企业门户,必改,学生PC,affairs,student-portal/src/views/affairs/AffairsFourEndView.vue,87,模板文字,内部ID外露,{{ item.batchId }},· 批次 {{ item.batchId }},用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,必改,学生PC,affairs,student-portal/src/views/affairs/AffairsFourEndView.vue,87,模板文字,内部ID外露,{{ item.applicationId }},· 申请 {{ item.applicationId }},用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,必改,学生PC,affairs,student-portal/src/views/affairs/AffairsFourEndView.vue,95,模板文字,英文/代码外露,Provider,Provider,换成中文
 D1-G 学生PC+企业门户,建议改,学生PC,affairs,student-portal/src/views/affairs/AffairsFourEndView.vue,96,模板文字,过度说明,不等同,。“未知”不等同于“未归”。,（删掉或改成一句正向提示）
+D1-G 学生PC+企业门户,必改,学生PC,affairs,student-portal/src/views/affairs/AffairsFourEndView.vue,107,模板文字,运行时代码外露,{{enumText(pendingDormTransfer.statusLabel || pendingDormTrans}},{{ enumText(pendingDormTransfer.statusLabel || pendingDormTransfer.status || pendingDormTransfer.currentNode) }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-G 学生PC+企业门户,必改,学生PC,affairs,student-portal/src/views/affairs/AffairsFourEndView.vue,117,模板文字,施工痕迹,预留,确认后床位将为你预留，不能自行更换；如需调整必须走正式调宿。,（上线版不应出现）
 D1-G 学生PC+企业门户,建议改,学生PC,affairs,student-portal/src/views/affairs/AffairsFourEndView.vue,127,模板文字,工程术语,证据,整改照片证据（必填）,材料 / 记录
 D1-G 学生PC+企业门户,建议改,学生PC,affairs,student-portal/src/views/affairs/AffairsFourEndView.vue,128,模板文字,工程术语,证据,整改证据已提交，等待宿管现场复检。,材料 / 记录
@@ -8076,6 +8184,7 @@ D1-G 学生PC+企业门户,必改,学生PC,graduation,student-portal/src/views/g
 D1-G 学生PC+企业门户,必改,学生PC,graduation,student-portal/src/views/graduation/GraduationFeedbackResubmitView.vue,32,模板文字,英文/代码外露,FileVersion,FileVersion {{}} · SHA-256 {{}},换成中文
 D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/views/graduation/GraduationFeedbackResubmitView.vue,32,模板文字,英文/代码外露,SHA,FileVersion {{}} · SHA-256 {{}},英文装饰标题，建议改中文或删除
 D1-G 学生PC+企业门户,必改,学生PC,graduation,student-portal/src/views/graduation/GraduationFeedbackResubmitView.vue,52,模板文字,施工痕迹,旧版,请上传修改后的新文件。重新提交不会覆盖老师评阅过的旧版本。,（不兼容旧模块，删除）
+D1-G 学生PC+企业门户,必改,学生PC,graduation,student-portal/src/views/graduation/GraduationFeedbackResubmitView.vue,79,模板文字,运行时代码外露,{{item.resultLabel || item.result}},{{ item.resultLabel || item.result }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/views/graduation/GraduationFeedbackResubmitView.vue,87,模板属性/表达式,工程术语,证据,版本证据待确认,材料 / 记录
 D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/views/graduation/GraduationFeedbackResubmitView.vue,88,模板文字,工程术语,证据,校验证据,材料 / 记录
 D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/views/graduation/GraduationFeedbackResubmitView.vue,88,模板文字,英文/代码外露,SHA,SHA-256 {{}},英文装饰标题，建议改中文或删除
@@ -8092,8 +8201,12 @@ D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/view
 D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/views/graduation/GraduationMaterialsView.vue,50,模板文字,英文/代码外露,SHA,SHA-256 {{}},英文装饰标题，建议改中文或删除
 D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/views/graduation/GraduationStudentClosureView.vue,3,模板文字,工程术语,证据包,冻结证据包,材料 / 记录
 D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/views/graduation/GraduationWorkbenchView.vue,7,模板文字,过度说明,以学校当前批次为准,每一步对应实际提交、审核或整改结果；时间和要求以学校当前批次为准。,（删掉或改成一句正向提示）
+D1-G 学生PC+企业门户,必改,学生PC,graduation,student-portal/src/views/graduation/GraduationWorkbenchView.vue,23,模板文字,运行时代码外露,{{stageText(my.stageLabel || my.stage)}},{{ stageText(my.stageLabel || my.stage) }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
+D1-G 学生PC+企业门户,必改,学生PC,graduation,student-portal/src/views/graduation/GraduationWorkbenchView.vue,160,模板文字,运行时代码外露,{{r.statusLabel || r.status}},{{ r.statusLabel || r.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/views/graduation/GraduationWorkbenchView.vue,367,脚本文案,工程术语,证据,导师指导记录会沉淀为可追溯的过程证据。,材料 / 记录
 D1-G 学生PC+企业门户,必改,学生PC,graduation,student-portal/src/views/graduation/GraduationWorkbenchView.vue,398,脚本文案,英文/代码外露,filedAt,已由 ${archive.value.verifiedBy || '学校'} 核验归档${archive.value.filedAt ?,换成中文
+D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/views/graduation/GraduationWorkbenchView.vue,421,脚本文案,运行时代码外露,"|| step.status,","status: server.statusText || step.status,",若用于显示：字典缺项时显示“其他事项/其他状态”
+D1-G 学生PC+企业门户,建议改,学生PC,graduation,student-portal/src/views/graduation/GraduationWorkbenchView.vue,436,脚本文案,运行时代码外露,"|| local.status,","status: serverCurrent.statusText || local.status,",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,建议改,学生PC,guardian,student-portal/src/views/guardian/GuardianView.vue,59,模板文字,过度说明,不等于,必须从学校发送的一次性短信链接进入，并完成手机号验证码登录。打开正文不等于确认。,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,必改,学生PC,guardian,student-portal/src/views/guardian/GuardianView.vue,198,脚本文案,英文/代码外露,internshipStatus,当前阶段：${data.stage || '在校'}\n实习：${data.internshipEnterprise || '—'}${data.internshipStatus ?,换成中文
 D1-G 学生PC+企业门户,必改,学生PC,guardian,student-portal/src/views/guardian/GuardianView.vue,198,脚本文案,英文/代码外露,employmentCompany,: ''}\n就业：${data.employmentDestination || '待登记'}${data.employmentCompany ?,换成中文
@@ -8114,19 +8227,26 @@ D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/i
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,113,模板文字,工程术语,口径,盖章件由学校代录企业纸质签署；学生确认/驳回两端同一数据。来源口径为「学校录入」，不是企业端登录签署。,（删除或改为“统计范围”）
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,129,模板文字,过度说明,以学生小程序为准,PC 门户可登记打卡；带地理围栏的精确核验仍以学生小程序为准。无定位时记为「已记录」，不会自动认定作弊。,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,143,模板文字,内部ID外露,{{ leaveReceipt.id }},记录编号 {{ leaveReceipt.id }} · {{,用名称描述对象，ID 不上屏
+D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,143,模板文字,运行时代码外露,{{leaveReceipt.statusLabel || leaveReceipt.status}},{{ leaveReceipt.statusLabel || leaveReceipt.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,143,模板文字,内部ID外露,编号 {{,记录编号 {{}} · {{}} · 数据版本 v{{}},用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,209,模板文字,内部ID外露,{{ makeupReceipt.id }},申请编号 {{ makeupReceipt.id }} · 数据,用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,209,模板文字,内部ID外露,编号 {{,申请编号 {{}} · 数据版本 v{{}},用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,222,模板文字,工程术语,证据,证据材料 {{}},材料 / 记录
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,241,模板属性/表达式,工程术语,证据,已附证据,材料 / 记录
+D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,265,模板文字,运行时代码外露,{{intentionMeta.statusLabel || intentionMeta.status || '未填写'}},{{ intentionMeta.statusLabel || intentionMeta.status || '未填写' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
+D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,392,模板文字,运行时代码外露,{{insuranceMeta?.statusLabel || insuranceMeta?.status || '未提交'}},{{ insuranceMeta?.statusLabel || insuranceMeta?.status || '未提交' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
+D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,407,模板文字,运行时代码外露,{{planMeta.statusLabel || planMeta.status || '—'}},{{ planMeta.statusLabel || planMeta.status || '—' }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
 D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,445,模板文字,内部ID外露,{{ reportReceipt.id }},#{{ reportReceipt.id }} · v{,用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,507,模板文字,内部ID外露,{{ evalReceipt.id }},#{{ evalReceipt.id }} · v{,用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,533,模板文字,工程术语,证据,企业评价分只读取当前正式安置下已审核的企业在线评价或学校代录纸质证据；等次为百分制派生展示。,材料 / 记录
+D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,545,模板文字,运行时代码外露,{{appealMeta.statusLabel || appealMeta.status}},{{ appealMeta.statusLabel || appealMeta.status }},字典缺项时显示“其他事项/其他状态”，不显示原始代码
+D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,751,脚本文案,运行时代码外露,|| planMeta.value.status),"if (sourceStates.plan.status === 'data' && planMeta.value?.id && !['ACKNOWLEDGED', 'CONFIRMED'].includes(planMeta.value.ackStatus || planMeta.value.status)) return {",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,766,脚本文案,工程术语,服务端,打卡后形成服务端时间记录；异常只作为人工核实信号,系统
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,1051,脚本文案,工程术语,证据,单个证据文件不能超过20MB。,材料 / 记录
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,1062,脚本文案,工程术语,证据,补卡证据,材料 / 记录
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,1063,脚本文案,工程术语,证据,证据材料已上传,材料 / 记录
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,1065,脚本文案,工程术语,证据,证据材料上传失败，表单内容已保留。,材料 / 记录
+D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,1478,脚本文案,运行时代码外露,|| result?.status ||,"statusLabel: result?.statusLabel || result?.status || '待处理',",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,必改,学生PC,internship,student-portal/src/views/internship/InternshipView.vue,1479,脚本文案,内部ID外露,${result?.scoreId || '—'},学校处理时将校验成绩 #${result?.scoreId || '—'} 的 v${result?.scoreVersion ?? '—'} 快照,用名称描述对象，ID 不上屏
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipVolunteerResultView.vue,11,模板文字,过度说明,以当前状态为准,这条消息发出后，志愿已有更新。以下展示本组志愿的当前结果，请以当前状态为准。,（删掉或改成一句正向提示）
 D1-G 学生PC+企业门户,建议改,学生PC,internship,student-portal/src/views/internship/InternshipVolunteerResultView.vue,63,脚本文案,过度说明,不等于,企业拟接收不等于正式落岗，请等待学校最终确认。,（删掉或改成一句正向提示）
@@ -8146,6 +8266,7 @@ D1-G 学生PC+企业门户,必改,学生PC,orientation,student-portal/src/views/
 D1-G 学生PC+企业门户,建议改,学生PC,orientation,student-portal/src/views/orientation/OrientationView.vue,214,脚本文案,工程术语,待核实,办理情况待核实,暂未获取 / 未填写
 D1-G 学生PC+企业门户,建议改,学生PC,orientation,student-portal/src/views/orientation/OrientationView.vue,222,脚本文案,工程术语,待核验,待核验,暂未获取 / 未填写
 D1-G 学生PC+企业门户,必改,学生PC,profile,student-portal/src/views/profile/AccountSecurityView.vue,26,模板文字,工程术语,缓存,安全变更已提交，部分缓存清理待恢复，请勿重复操作。,系统
+D1-G 学生PC+企业门户,建议改,学生PC,profile,student-portal/src/views/profile/ProfileView.vue,145,脚本文案,运行时代码外露,|| item?.type ||,"const raw = readableCode(item?.name || item?.type || item?.leaveType, APPLICATION_NAME_MAP, '业务申请')",若用于显示：字典缺项时显示“其他事项/其他状态”
 D1-G 学生PC+企业门户,建议改,学生PC,template,student-portal/src/views/template/ModuleTemplateView.vue,30,脚本文案,工程术语,字段,「${registeredModule.value.title}」当前没有登记可执行的独立页面。系统已停止使用通用模板、演示按钮或猜测字段代替正式能力，请从办事大厅进入已登记事项。,系统
 D1-G 学生PC+企业门户,必改,学生PC,template,student-portal/src/views/template/ModuleTemplateView.vue,31,脚本文案,施工痕迹,演示数据,该地址未登记为学生门户正式能力。系统不会用演示数据或通用模板伪装为可用功能，请从办事大厅选择已开通事项。,（上线版不应出现）
 D1-H 后端返回文案,必改,后端返回文案,core,backend/app/api/v1/approval.py,272,后端返回文案,工程术语,幂等,批量处理完成（幂等重放）,（删除，系统自动防重复）

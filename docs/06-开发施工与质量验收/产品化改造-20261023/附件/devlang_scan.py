@@ -96,6 +96,9 @@ def emit(path, ln, src, seg):
         seen.add(k)
         rows.append([side, mod, path.lstrip('./'), ln, src, cat, word, raw[:220], sug])
 
+# 运行时代码外露：显示链最后兜底到原始代码字段（如 todo.todoType → 页面露出 RISK_HANDLE）
+RAWCODE = re.compile(r'\|\|\s*[\w.?]*\.(todoType|bizType|type|status|state|code|roleCode|action|actionType|eventType|category|kind|scene|stage|phase|level|result|mode)\s*(?:\}\}|\)|\]|,|$|\|\|)')
+
 QSTR = re.compile(r"'((?:[^'\\]|\\.)*)'|\"((?:[^\"\\]|\\.)*)\"|`((?:[^`\\]|\\.)*)`")
 
 def scan_vue(path, text):
@@ -162,6 +165,10 @@ def scan_template(path, text, a, b):
                     side, mod = side_of(path)
                     ctx = seg[max(0, mm.start()-30):mm.end()+5].strip().replace('\n', ' ')
                     rows.append([side, mod, path.lstrip('./'), line_of(i + mm.start()), '模板文字', '内部ID外露', '{{ ' + ex[:60] + ' }}', ctx[:220], '用名称描述对象，ID 不上屏'])
+            for mm in re.finditer(r'\{\{(.*?)\}\}', seg, re.S):
+                if RAWCODE.search(mm.group(1).strip()):
+                    side, mod = side_of(path)
+                    rows.append([side, mod, path.lstrip('./'), line_of(i + mm.start()), '模板文字', '运行时代码外露', '{{' + mm.group(1).strip()[:60] + '}}', mm.group(0)[:220], '字典缺项时显示“其他事项/其他状态”，不显示原始代码'])
             masked = re.sub(r'\{\{.*?\}\}', lambda m: '{{}}' + '\n' * m.group(0).count('\n'), seg, flags=re.S)
             for k, part in enumerate(masked.split('\n')):
                 ln = line_of(base) + k
@@ -187,6 +194,9 @@ def scan_script_line(path, ln, l):
     for m in QSTR.finditer(s):
         v = next(g for g in m.groups() if g is not None)
         if CN.search(v): emit(path, ln, '脚本文案', v)
+    if RAWCODE.search(s) and re.search(r'[Ll]abel|[Tt]ext|[Nn]ame|[Tt]itle|[Mm]eta|return|`', s):
+        side, mod = side_of(path)
+        rows.append([side, mod, path.lstrip('./'), ln, '脚本文案', '运行时代码外露', RAWCODE.search(s).group(0)[:60], s[:220], '若用于显示：字典缺项时显示“其他事项/其他状态”'])
 
 def scan_js(path, text):
     block['on'] = False
@@ -237,6 +247,8 @@ S1 = re.compile(r'回读|原命令|命令|只读|事实|真值|幂等|重放|重
 DOC3 = re.compile(r'ComponentDevPreview|UiPreview|PortalLegacyView|constructionMap|PlannedPlaceholder|/mocks?/|\.mock\.|AcademicLegacySafeView|PortalLayoutV5|views/Academic(Credit|Dashboard|Grade|Makeup|Student|Warning)|AdminAcademicLayout|_legacy|_compat|mock_')
 OKENG = {'DOCX','PPTX','Open','Meteo','CAD','PLC','SVG','JSON','HTTPS','HTTP','IP','OCR','QR','SMS'}
 def level(cat, word, text, path):
+    if cat == '运行时代码外露':
+        return '必改' if word.startswith('{{') else '建议改'
     if cat == '英文/代码外露':
         if word in OKENG: return None
         if word in ('GPA', 'CNY', 'SLA', 'MFA'): return '建议改'
