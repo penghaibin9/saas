@@ -43,7 +43,7 @@ const routes = [
       { path: ':module', name: 'module', component: () => import('../views/template/ModuleTemplateView.vue') }
     ]
   },
-  { path: '/:pathMatch(.*)*', redirect: '/home' }
+  { path: '/:pathMatch(.*)*', name: 'not-found', meta: { public: true }, component: () => import('../views/NotFoundView.vue') }
 ]
 
 const router = createRouter({

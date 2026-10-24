@@ -87,7 +87,7 @@ def _deny_scope(_todo: UnifiedTodo, _actor: dict, _db: Session) -> bool:
 
 
 def _default_audit(event: dict, db: Session) -> None:
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     audit.record_critical(
         event["label"], method="POST", path=event["path"], status_code=200,

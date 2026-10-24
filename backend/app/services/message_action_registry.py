@@ -243,7 +243,7 @@ ACTION_REGISTRY: dict[str, dict[str, Any]] = {
     "student.warning.detail": {
         "roles": ["STUDENT", "COUNSELOR", "STAFF"],
         "requiredParams": ["warningId"],
-        "pc": "/admin/academic/warnings",
+        "pc": "/admin/academic-affairs/warnings",
         # SP-M02：student-portal 从未有过 /warnings 路由，此前落到通配符模板页。
         # 真实学业预警信息在 /academic 的 warning 分 tab（AcademicView.vue）。
         "studentPc": "/academic",

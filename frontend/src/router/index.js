@@ -27,7 +27,6 @@ import {
 import { studentRoutes } from '@/modules/student/student.routes'
 import orientationRoutes from '@/modules/orientation/orientation.routes'
 import campusServiceRoutes from '@/modules/campusService/campusService.routes'
-import academicRoutes from '@/modules/academicAffairs/routes/academic.routes'
 import { academicAffairsRoutes } from '@/modules/academicAffairs/academic-affairs.routes'
 import internshipRoutes from '@/modules/internship/routes'
 import graduationRoutes from '@/modules/graduation/routes'
@@ -52,7 +51,6 @@ const moduleRoutes = projectNavigationRoutePermissions([
   studentRoutes,
   orientationRoutes,
   campusServiceRoutes,
-  academicRoutes,
   academicAffairsRoutes,
   internshipRoutes,
   graduationRoutes,
@@ -83,16 +81,6 @@ const router = createRouter({
       /* /admin 裸路径兜底：重定向到管理端工作台，避免白屏 */
       path: '/admin',
       redirect: '/workbench'
-    },
-    {
-      /* 旧入口兼容（PC-NAV-6MODULE-REGROUP）：/admin/system/log（单数）→ 现行日志中心，避免旧书签 404 */
-      path: '/admin/system/log',
-      redirect: '/admin/system/logs'
-    },
-    {
-      /* 旧就业企业页已下线：统一跳转岗位实习中心企业库 */
-      path: '/admin/employment/companies',
-      redirect: '/admin/internship/enterprises'
     },
     {
       /* §42 规划占位页：planned 菜单统一入口（只读展示 navPlan+施工图规划信息，无业务 API、无假按钮假数据） */

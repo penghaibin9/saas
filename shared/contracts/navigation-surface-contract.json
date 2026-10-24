@@ -5,7 +5,7 @@
     "frontend/src/config/navPlan.js#NAV_PLAN",
     "frontend/src/config/navPlan.js#PLATFORM_PLAN"
   ],
-  "digest": "cae5f7dfdfaf593f7d77b6ec95872676474b109c7701606661ed10a0361b090d",
+  "digest": "459ca59ea76388b306154d3da8ee77509c1a4a876a155227f08e2fb53ed1da71",
   "counts": {
     "total": 578,
     "production": 578,
@@ -1499,7 +1499,7 @@
       "workspaceLabel": "奖助勤贷补",
       "surfaceKey": "sa-aid-08",
       "label": "助学金管理",
-      "path": "/admin/campus-service/grants",
+      "path": "/admin/student-affairs/funding",
       "permissionKey": "studentAffairs.funding.view",
       "permissionAny": [],
       "permissionAll": [],

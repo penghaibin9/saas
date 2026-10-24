@@ -11,7 +11,6 @@
 #   - .venv/            本机 Windows 虚拟环境，体积大且平台不符，容器内会重新 pip install
 #   - .env               真实环境变量/密钥，绝不应打进镜像，运行时用 docker-compose env_file 注入
 #   - data/、uploads/     运行期数据，用 volume 挂载持久化，不打进镜像
-#   - _legacy_node_express/  已归档的旧 Node 残留，不参与 FastAPI 运行
 #   - tests/、.pytest_cache/、__pycache__/  测试与缓存，运行镜像不需要
 # =============================================================================
 
@@ -28,7 +27,7 @@ WORKDIR /app
 COPY requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 按白名单拷贝运行所需代码（不拷 .venv / .env / data / uploads / _legacy_node_express / tests）
+# 按白名单拷贝运行所需代码（不拷 .venv / .env / data / uploads / tests）
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./alembic.ini

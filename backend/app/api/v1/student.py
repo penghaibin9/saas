@@ -16,7 +16,7 @@ from app.core.permissions import has_permission, require_any_permission, require
 from app.core.response import paginate, success
 from app.core.security import require_staff
 from app.schemas.student import StudentCreateRequest, StudentRestoreRequest, StudentUpdateRequest, StudentVoidRequest
-from app.services import mock_audit_service as audit
+from app.services import operation_audit_service as audit
 from app.services import student_service as svc
 
 router = APIRouter(prefix="/students", tags=["students"])

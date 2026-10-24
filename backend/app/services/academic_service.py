@@ -736,7 +736,7 @@ def get_dashboard() -> dict:
                      "trend": "", "trendQuality": "bad" if pend_warn else "good"},
                 ],
                 "todos": [
-                    {"id": "t1", "label": "待处理预警", "value": pend_warn, "link": "/admin/academic/warnings"},
-                    {"id": "t2", "label": "待补考登记", "value": pend_mk, "link": "/admin/academic/makeup-retake"},
+                    {"id": "t1", "label": "待处理预警", "value": pend_warn, "link": "/admin/academic-affairs/warnings"},
+                    {"id": "t2", "label": "待补考登记", "value": pend_mk, "link": "/admin/academic-affairs/makeup"},
                 ],
                 "flow": [], "recentImportBatches": [], "riskAlerts": []}

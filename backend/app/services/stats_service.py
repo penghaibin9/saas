@@ -96,7 +96,7 @@ def get_overview(caliber: str = "REGISTERED") -> dict:
                  "drillLabel": "生命周期总览"},
                 {"key": "academicWarning", "label": "学业预警在办", "value": str(warn), "unit": "人",
                  "trend": "", "trendQuality": "bad" if warn else "good", "sourceModule": "学业过程",
-                 "description": "未关闭学业预警学生数（真实）", "drillRoute": "/admin/academic/warnings",
+                 "description": "未关闭学业预警学生数（真实）", "drillRoute": "/admin/academic-affairs/warnings",
                  "drillLabel": "学业预警"},
                 {"key": "pendingTodo", "label": "全校待办", "value": str(todo), "unit": "件",
                  "trend": f"待审批 {approval}", "trendQuality": "neutral", "sourceModule": "待办中心",

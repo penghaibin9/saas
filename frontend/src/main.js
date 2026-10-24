@@ -80,12 +80,13 @@ if (!router.hasRoute('internship-student-materials')) {
   })
 }
 
-// 任何失效书签、旧链接或未知 URL 都回到工作台，避免生产环境出现空白路由页。
+// 失效书签、旧链接或未知 URL 显示“页面不存在”，不再悄悄跳到工作台。
 if (!router.hasRoute('unknown-route-fallback')) {
   router.addRoute({
     path: '/:pathMatch(.*)*',
     name: 'unknown-route-fallback',
-    redirect: '/workbench'
+    component: () => import('./views/security/Error404View.vue'),
+    meta: { public: true, title: '页面不存在' }
   })
 }
 

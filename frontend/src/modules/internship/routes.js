@@ -27,16 +27,6 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.WORKBENCH, title: P.DASHBOARD, requiresAuth: true, permissionKey: 'internship.dashboard.view' }
     },
     {
-      path: 'workbench',
-      name: 'internship-workbench',
-      redirect: '/admin/internship'
-    },
-    {
-      path: 'batch-rules',
-      name: 'internship-batch-rules',
-      redirect: '/admin/internship/batches?panel=list'
-    },
-    {
       path: 'batches',
       name: 'internship-batches',
       component: () => import('@/modules/internship/views/InternshipBatchListView.vue'),
@@ -68,21 +58,6 @@ const internshipRoutes = {
     },
     { path: 'assignment-logs', name: 'internship-assignment-logs', component: () => import('@/modules/internship/views/AssignmentLogView.vue'), meta: { moduleCode: 'INTERNSHIP', navModule: M.MATCH_ASSIGN, title: '分配日志', requiresAuth: true, permissionKey: 'internship.match.log.view' } },
     {
-      path: 'enterprise-position',
-      name: 'internship-enterprise-position',
-      redirect: '/admin/internship/enterprises?panel=list'
-    },
-    {
-      path: 'match-assign',
-      name: 'internship-match-assign',
-      redirect: '/admin/internship/match?panel=intention'
-    },
-    {
-      path: 'apply-agreement',
-      name: 'internship-apply-agreement',
-      redirect: '/admin/internship/agreements'
-    },
-    {
       path: 'students/:id',
       name: 'internship-student-detail',
       component: () => import('@/modules/internship/views/InternshipStudentDetailView.vue'),
@@ -93,11 +68,6 @@ const internshipRoutes = {
       name: 'internship-attendance',
       component: () => import('@/modules/internship/views/AttendanceView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.ATTENDANCE_LEAVE, title: M.ATTENDANCE_LEAVE, requiresAuth: true, permissionKey: 'internship.attendance.view' }
-    },
-    {
-      path: 'attendance-leave',
-      name: 'internship-attendance-leave',
-      redirect: '/admin/internship/attendance'
     },
     {
       path: 'exceptions',
@@ -128,16 +98,6 @@ const internshipRoutes = {
       name: 'internship-guidance-plan',
       component: () => import('@/modules/internship/views/GuidancePlanView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.GUIDANCE_VISIT, title: '指导计划', requiresAuth: true, permissionKey: 'internship.guidance.view' }
-    },
-    {
-      path: 'weekly-task',
-      name: 'internship-weekly-task',
-      redirect: '/admin/internship/reports'
-    },
-    {
-      path: 'guidance-visit',
-      name: 'internship-guidance-visit',
-      redirect: '/admin/internship/guidance'
     },
     {
       path: 'reports',
@@ -328,11 +288,6 @@ const internshipRoutes = {
       meta: { moduleCode: 'INTERNSHIP', navModule: M.EVAL_SCORE, title: P.SCORE, requiresAuth: true, permissionKey: 'internship.score.view' }
     },
     {
-      path: 'eval-score',
-      name: 'internship-eval-score',
-      redirect: '/admin/internship/scores'
-    },
-    {
       path: 'stats',
       name: 'internship-stats',
       component: () => import('@/modules/internship/views/StatsView.vue'),
@@ -355,11 +310,6 @@ const internshipRoutes = {
       name: 'internship-compliance',
       component: () => import('@/modules/internship/views/InternshipComplianceView.vue'),
       meta: { moduleCode: 'INTERNSHIP', navModule: M.MATCH_ASSIGN, title: '上岗与监管核验', requiresAuth: true, permissionKey: 'internship.compliance.view' }
-    },
-    {
-      path: 'employment-archive-stats',
-      name: 'internship-employment-archive-stats',
-      redirect: '/admin/employment'
     },
     {
       path: 'agreement-templates/new',

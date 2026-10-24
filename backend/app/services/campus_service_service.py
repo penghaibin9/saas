@@ -827,7 +827,7 @@ def get_dashboard() -> dict:
                 ],
                 "todos": [
                     {"id": "t1", "label": "待审批请假", "value": pend_leave, "link": "/admin/student-affairs/leave"},
-                    {"id": "t2", "label": "待审核资助", "value": pend_grant, "link": "/admin/campus-service/grants"},
+                    {"id": "t2", "label": "待审核资助", "value": pend_grant, "link": "/admin/student-affairs/funding"},
                     {"id": "t3", "label": "待处理工单", "value": open_wo, "link": "/admin/campus-service/work-orders"},
                 ],
                 "flow": [], "hotServices": [], "riskAlerts": []}

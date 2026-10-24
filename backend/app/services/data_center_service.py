@@ -21,7 +21,7 @@ from app.models.data_center import DataCenterReport, DataCenterReportVersion
 from app.models.org import College, Major, SchoolClass
 from app.models.student import StudentProfile
 from app.models.tenant import Tenant, TenantBrandConfig
-from app.services import mock_audit_service as audit
+from app.services import operation_audit_service as audit
 from app.services import stats_service
 from app.services.db_service import _iso, _tid, session
 

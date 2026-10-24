@@ -258,7 +258,7 @@ export const dashboardSummary = {
     { label: '数据范围规则', value: '9', trend: '本周变更 1 条', trendQuality: 'neutral' }
   ],
   todos: [
-    { id: 'st-1', label: '待激活账号', count: 5, tone: 'warning', hint: '新导入教师账号，超 7 天未激活将自动停用', route: '/admin/system/users?status=PENDING' },
+    { id: 'st-1', label: '待激活账号', count: 5, tone: 'warning', hint: '新导入教师账号，超 7 天未激活将自动停用', route: '/admin/system/accounts/staff?status=PENDING' },
     { id: 'st-2', label: '角色权限变更待复核', count: 2, tone: 'danger', hint: '涉及「学院管理员」数据范围调整', route: '/admin/system/roles' },
     { id: 'st-3', label: '异常登录待确认', count: 3, tone: 'warning', hint: '异地 IP 登录 2 次 · 连续失败锁定 1 人', route: '/admin/system/logs?tab=login' }
   ],
@@ -474,7 +474,7 @@ export const menuTree = [
     children: [
       { id: 'menu-sys-home', code: 'sys-home', name: '管理看板', path: '/admin/system', sort: 1, status: 'ENABLED', statusLabel: '启用', buttons: [] },
       {
-        id: 'menu-sys-users', code: 'sys-users', name: '师生账号管理', path: '/admin/system/users', sort: 2, status: 'ENABLED', statusLabel: '启用',
+        id: 'menu-sys-users', code: 'sys-users', name: '师生账号管理', path: '/admin/system/accounts/staff', sort: 2, status: 'ENABLED', statusLabel: '启用',
         buttons: [
           { code: 'user:create', name: '新增用户' },
           { code: 'user:export', name: '批量导出' }, { code: 'user:reset-password', name: '重置密码' }
@@ -489,7 +489,7 @@ export const menuTree = [
         id: 'menu-sys-roles', code: 'sys-roles', name: '角色权限管理', path: '/admin/system/roles', sort: 4, status: 'ENABLED', statusLabel: '启用',
         buttons: [{ code: 'role:create', name: '新增角色' }, { code: 'role:deprecate', name: '作废角色' }]
       },
-      { id: 'menu-sys-menus', code: 'sys-menus', name: '菜单权限管理', path: '/admin/system/menus', sort: 5, status: 'ENABLED', statusLabel: '启用', buttons: [] },
+      { id: 'menu-sys-menus', code: 'sys-menus', name: '菜单权限管理', path: '/admin/system/roles?tab=permissions', sort: 5, status: 'ENABLED', statusLabel: '启用', buttons: [] },
       { id: 'menu-sys-scopes', code: 'sys-scopes', name: '数据范围管理', path: '/admin/system/scopes', sort: 6, status: 'ENABLED', statusLabel: '启用', buttons: [] },
       { id: 'menu-sys-org', code: 'sys-org', name: '组织结构管理', path: '/admin/system/org', sort: 7, status: 'ENABLED', statusLabel: '启用', buttons: [] },
       { id: 'menu-sys-config', code: 'sys-config', name: '系统与品牌配置', path: '/admin/system/config', sort: 8, status: 'ENABLED', statusLabel: '启用', buttons: [] },

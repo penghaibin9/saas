@@ -397,7 +397,7 @@ def return_for_revision(task_id: str, reason: str, user: dict | None = None,
     from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
     from app.models import WorkflowInstance, WorkflowTask
     from app.services import db_service
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     require_expected_version(version)
     with db_service.session() as db:

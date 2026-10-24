@@ -4,7 +4,7 @@
  *   import { academicAffairsRoutes } from '@/modules/academicAffairs/academic-affairs.routes'
  * meta 口径与 internship/academic 模块一致（moduleCode='ACADEMIC_AFFAIRS'）。
  *
- * 说明：本模块与同目录「学业过程」旧路由（/admin/academic，routes/academic.routes.js）并存、互不覆盖。
+ * 说明：旧「学业过程」路由（/admin/academic）已退役，本模块是唯一入口。
  * 页面均接真实后端 /api/v1/academic-affairs/*（手册 D1，无 mock）。
  * 打印页为顶层独立路由（无导航布局，A4，D7）。
  */

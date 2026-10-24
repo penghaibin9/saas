@@ -396,7 +396,7 @@ def return_for_revision(task_id, reason, *, user=None, version=None, expected_so
     from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
     from app.models import UnifiedMessage, UnifiedTodo, WorkflowInstance, WorkflowTask
     from app.services import db_service
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     require_expected_version(version)
     with db_service.session() as db:
@@ -537,7 +537,7 @@ def resubmit(instance_id, *, user=None, version=None, comment=None):
     from app.core.optimistic_lock import require_expected_version
     from app.models import UnifiedTodo, WorkflowInstance, WorkflowTask
     from app.services import db_service
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     require_expected_version(version)
     actor_id = resolve_message_user_id(_user(user))
@@ -618,7 +618,7 @@ def transfer(task_id, target_user_id, comment, *, user=None, version=None):
     from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
     from app.models import User, WorkflowInstance, WorkflowTask
     from app.services import db_service
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     require_expected_version(version)
     try:
