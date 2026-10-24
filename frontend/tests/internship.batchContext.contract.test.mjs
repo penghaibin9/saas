@@ -19,7 +19,7 @@ test('dashboard batch contract stays strict and the real dashboard supplies the 
   const context = read('backend/app/modules/internship/services/internship_batch_context.py')
   const dashboard = read('frontend/src/modules/internship/views/InternshipDashboardView.vue')
 
-  assert.match(context, /必须指定实习批次 batchId/)
+  assert.match(context, /请选择实习批次/)
   assert.match(context, /def parse_required_batch_id\(batch_id\)/)
   assert.match(dashboard, /getDashboardSummary\(\{ batchId: this\.batchStore\.selectedBatchId \}\)/)
 })

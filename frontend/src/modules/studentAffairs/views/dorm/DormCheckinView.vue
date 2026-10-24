@@ -139,7 +139,7 @@ export default {
   watch: { '$route.query': { handler() { this.applyRouteSelection() } } },
   methods: {
     canBtn(code) { return canCode(this.ctx, code) },
-    bedStatusLabel(status) { return ({ VACANT: '空床', OCCUPIED: '已入住', LOCKED: '已已预留 / 锁定' })[status] || '状态待核查' },
+    bedStatusLabel(status) { return ({ VACANT: '空床', OCCUPIED: '已入住', LOCKED: '已预留 / 锁定' })[status] || '状态待核查' },
     backToRoom() { this.$router.push({ name: 'student-affairs-dorm-resource', query: { buildingId: String(this.curBuilding), roomId: String(this.curRoom), bedId: String(this.routeBedId || '') } }) },
     async load() {
       this.loading = true; this.errorMessage = ''

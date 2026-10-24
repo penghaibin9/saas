@@ -61,7 +61,7 @@ def resolve_precheck_term_id(user, raw_term_id=None) -> int:
             AaTerm.is_deleted.is_(False),
         ).first()
         if not term:
-            raise not_found("未设置当前学期，请指定 termId")
+            raise not_found("未设置当前学期，请选择学期")
         return int(term.id)
 
 

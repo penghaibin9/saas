@@ -392,7 +392,7 @@ import { currentUserFromToken } from '@/services/http/client'
  * 实践环节（Tier1 R3）：与课程模块同构的编制态子表 CRUD，独立字段（周数/组织方式/实践地点），
  * 承载认识实习/顶岗实习/毕业设计等以周计的集中性实践教学环节。
  * 方案变更（Tier1 R3）：状态生命周期动作——冻结（PUBLISHED/ENABLED→FROZEN）/恢复（FROZEN→ENABLED|PUBLISHED，
- * 按是否存在生效绑定判定）/停用（→DISABLED 终态），原因必填，写入 AffairsAuditTrail 留痕，附变更记录只读查询。
+ * 按是否存在生效绑定判定）/停用（→DISABLED 终态），原因必填，写入 AffairsAuditTrail 留痕，附变更记录刷新查询。
  * 方案归档（Tier1 R3）：只读派生视图——已停用(DISABLED)方案 ∪ 已被新版本取代的历史版本（存在后继版本回链），
  * 不新增状态值，"归档"动作即方案变更 Tab 的"停用"，本 Tab 只做归档结果的检索与追溯。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'

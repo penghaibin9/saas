@@ -11,7 +11,7 @@
 
     <AppInlineAlert v-if="actionNotice" :type="pendingCommand ? 'warning' : 'success'" :description="actionNotice" />
     <AppInlineAlert v-if="confirmError" type="danger" :description="confirmError" />
-    <AppButton v-if="pendingCommand?.termId" @click="readPendingOriginal">只读核对原学期{{ pendingCommand.batchId ? `归档批次 ${pendingCommand.batchId}` : '归档批次列表' }}</AppButton>
+    <AppButton v-if="pendingCommand?.termId" @click="readPendingOriginal">刷新查看原学期{{ pendingCommand.batchId ? `归档批次 ${pendingCommand.batchId}` : '归档批次列表' }}</AppButton>
     <div class="aaar-layout">
       <section class="aaar-list">
         <header class="aaar-list-head"><div><h2>学期归档批次</h2><p>{{ isCollegeScope ? '查看学校归档进度；本院缺项请进入实时预检' : '选择批次查看十三域正式结论' }}</p></div><span>{{ rows.length }} 个批次</span></header>

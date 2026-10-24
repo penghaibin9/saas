@@ -34,7 +34,7 @@
         </li>
       </ol>
       <div class="material-version">
-        <span>材料版本</span><strong>Profile v{{ preview.profileVersion || '—' }} / Group v{{ group.version || 0 }}</strong>
+        <span>材料版本</span><strong>资料第 {{ preview.profileVersion || '—' }} 版 / 志愿组第 {{ group.version || 0 }} 版</strong>
       </div>
       <label class="contact-field">
         <span>联系方式策略</span>

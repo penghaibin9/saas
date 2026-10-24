@@ -47,7 +47,7 @@
       </div>
     </AppSectionCard><aside class="aamks-conditions"><h3>提交条件</h3><p>{{ isStudent ? '当前为学生本人入口' : '请使用学生本人身份办理' }}</p><p>{{ selectedOption ? '已选定正式课程对象' : '请选择本人课程' }}</p><p v-if="selectedOption && tab === 'retake'">原正式分数：{{ selectedOption.score ?? '待核对' }}</p><p v-if="tab === 'exemption'">{{ !materials.length ? '本次未附材料，请核对申请依据' : materials.every(f => f.readyForBusiness) ? '材料安全检查已就绪，提交前再次核对' : '请核对佐证材料安全状态' }}</p><p>登记申请后进入学校审批；申请回执不等于修读完成或已取得学分。</p></aside></div>
 
-    <section v-if="receipt" class="aamks-receipt" role="status"><strong>{{ receipt.verified ? '本人申请已登记' : '结果待核实' }}</strong><p>{{ receipt.courseName }} · {{ receipt.verified ? academicStatusLabel(receipt.status) : '请勿重复提交' }}</p><AppButton v-if="pending" :disabled="saving" :loading="checking" @click="verifyApply">只读核对本人申请</AppButton></section>
+    <section v-if="receipt" class="aamks-receipt" role="status"><strong>{{ receipt.verified ? '本人申请已登记' : '结果待核实' }}</strong><p>{{ receipt.courseName }} · {{ receipt.verified ? academicStatusLabel(receipt.status) : '请勿重复提交' }}</p><AppButton v-if="pending" :disabled="saving" :loading="checking" @click="verifyApply">刷新查看本人申请</AppButton></section>
     <AppInlineAlert v-if="readError" type="danger" :description="readError" />
     <AppButton v-if="readError" :disabled="saving || !!pending" @click="reload();loadOptions()">重新读取</AppButton>
     <LoadingState v-if="loading" />

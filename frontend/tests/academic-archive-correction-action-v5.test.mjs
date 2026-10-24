@@ -85,7 +85,7 @@ test('已确认写回执后正式列表、清单、同单详情全回读才报�
   }
 })
 
-test('未知写回执仅在原命令目标结果核对完成后解锁，绝不重放写', async () => {
+test('未知写回执仅在上次提交目标结果核对完成后解锁，绝不重放写', async () => {
   for (const kind of ['create', 'approve', 'reject']) {
     let writes = 0
     const fail = async () => { writes++; throw new Error('回执连接中断') }

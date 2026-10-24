@@ -11,7 +11,7 @@
       <text class="help-fallback__icon">?</text>
       <text class="help-fallback__title">帮助中心尚未配置访问地址</text>
       <text class="help-fallback__desc">
-        当前小程序已经接入统一帮助入口，但正式环境还需要配置 VITE_HELP_CENTER_URL，并在微信公众平台登记对应业务域名。
+        当前小程序已经接入统一帮助入口，但正式环境还需要配置帮助中心地址，并在微信公众平台登记对应业务域名。
       </text>
       <view class="help-fallback__facts">
         <text>帮助正文仍由 PC 帮助中心统一维护，不在小程序复制第二套内容。</text>

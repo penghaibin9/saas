@@ -3,7 +3,7 @@
     <template #actions><AppButton v-if="canScan" variant="primary" :disabled="scanning || !!pending" @click="scan">执行挂科预警扫描</AppButton><AppButton :disabled="scanning || !!pending" @click="goHandle">前往跟进控制台</AppButton></template>
     <div class="warning-page">
       <section class="warning-scope"><strong>只处理当前岗位和当前范围的对象</strong><span>由正式学业记录扫描生成，再交责任老师跟进</span></section>
-      <section v-if="receipt" class="warning-receipt" role="status"><b>{{ receipt.verified ? '扫描回执与当前名单已读取' : '扫描结果待核实' }}</b><p>{{ receipt.message }}</p><AppButton v-if="pending" :disabled="scanning || checking" @click="verify">只读核对当前预警</AppButton></section>
+      <section v-if="receipt" class="warning-receipt" role="status"><b>{{ receipt.verified ? '扫描回执与当前名单已读取' : '扫描结果待核实' }}</b><p>{{ receipt.message }}</p><AppButton v-if="pending" :disabled="scanning || checking" @click="verify">刷新查看当前预警</AppButton></section>
       <p v-if="actionError" role="alert" class="warning-error">{{ actionError }}</p>
       <section class="warning-ledger"><header><div><h2>学业预警 · 责任队列</h2><p>当前列表来自正式预警台账</p></div><span v-if="!loading && !error">共 {{ pagination.total }} 条</span></header><div class="warning-filter"><label>预警级别<AppSelect v-model="filters.level" :options="levelOptions" :disabled="scanning || !!pending" @change="search" /></label><AppButton :disabled="scanning || !!pending" @click="search">查询</AppButton></div>
       <ErrorState v-if="error" :description="error" @retry="load" /><LoadingState v-else-if="loading" /><EmptyState v-else-if="!rows.length" title="当前范围暂无预警" description="无记录不代表所有规则已扫描或全部风险已排除。" />

@@ -84,7 +84,7 @@
                   @update:ready="setEvidenceReady(m, $event)"
                   @error="attachmentError"
                 />
-                <text class="verify__sub">上传只产生 TEMP_PRIVATE；扫描通过后由就业材料命令按当前版本创建正式 FileBinding。</text>
+                <text class="verify__sub">上传的文件先临时保存，通过安全扫描后才会按当前版本正式关联到就业材料。</text>
                 <text v-if="bindingMaterialId === String(m.id)" class="verify__sub">正在绑定正式材料证据…</text>
               </view>
             </view>

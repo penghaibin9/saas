@@ -72,7 +72,7 @@
       </div>
     </div>
 
-    <section v-if="receipt" class="aams-receipt" role="status"><b>{{ receipt.verified ? '已核对正式结果' : '结果待核实' }}</b><p>{{ receipt.label }}</p><AppButton v-if="pending" :disabled="saving || checking" @click="verify">只读查询原批次结果</AppButton></section>
+    <section v-if="receipt" class="aams-receipt" role="status"><b>{{ receipt.verified ? '已核对正式结果' : '结果待核实' }}</b><p>{{ receipt.label }}</p><AppButton v-if="pending" :disabled="saving || checking" @click="verify">刷新查询原批次结果</AppButton></section>
     <AppDrawer :visible="createVisible" title="新建专业分流批次" mode="modal" size="medium" @close="createVisible = false">
       <div class="aams-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="form.batchName" placeholder="如 2024级电子信息大类分流" :disabled="saving || !!pending" /></AppFormItem>
@@ -195,10 +195,10 @@ export default {
       else if(c.kind==='option'){const res=await api.listOptions(c.bid);if(!this.valid(c))return;if(res?.code!==0)throw res;row=res.data?.items?.find(o=>String(o.optionId)===String(c.ack?.optionId));matches=!!c.ack&&!!row&&String(row.majorId)===c.body.majorId&&Number(row.capacity)===c.body.capacity;this.options=res.data?.items||[]}
       else if(c.kind==='reassign'){row=await this.findVolunteer(c);if(!this.valid(c))return;matches=!!c.ack&&String(c.ack.volunteerId)===String(c.row.volunteerId)&&!!row&&row.status==='ALLOCATED'&&String(row.resultMajorId)===c.body.majorId&&row.adjustReason===c.body.reason;if(row){const existing=this.volunteers.find(v=>String(v.volunteerId)===String(row.volunteerId));if(existing)Object.assign(existing,row)}}
       else {const expected=({open:'OPEN',close:'CLOSED',allocate:'ALLOCATED',confirm:'CONFIRMED'})[c.kind];matches=!!c.ack&&String(c.ack.batchId)===String(c.bid)&&(c.kind==='allocate'?c.ack.dryRun===false:c.ack.status===expected)&&!!batch&&batch.status===expected}
-      if(!matches){if(batch)await this.refresh();if(!this.valid(c)||this.pending!==c)return;this.error='结果待核实：当前正式状态已尽可能读取，但尚不能确认本次操作的归属，请只读查询，勿重复提交。';return}
+      if(!matches){if(batch)await this.refresh();if(!this.valid(c)||this.pending!==c)return;this.error='结果待核实：当前正式状态已尽可能读取，但尚不能确认本次操作的归属，请刷新查询，勿重复提交。';return}
       if(batch){this.current={...batch};const old=this.rows.find(r=>String(r.batchId)===String(batch.batchId));if(old)Object.assign(old,batch)}
       this.receipt={verified:true,label:c.label+'：已核对正式'+(c.kind==='reassign'?'本人分配记录':'批次结果')};this.pending=null;this.error='';this.formError='';this.optionError='';this.reassignError='';this.createVisible=false;this.optionVisible=false;this.reassignVisible=false;this.allocPreview=null;await this.refresh()
-    }catch(err){if(this.valid(c))this.fail(err,'结果待核实，请稍后只读查询。')}finally{if(this.valid(c))this.checking=false}
+    }catch(err){if(this.valid(c))this.fail(err,'结果待核实，请稍后刷新查询。')}finally{if(this.valid(c))this.checking=false}
   }
  }
 }

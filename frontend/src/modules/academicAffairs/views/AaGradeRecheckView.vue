@@ -2,7 +2,7 @@
   <ModulePageShell title="成绩复查" subtitle="核对复查申请与原成绩，按当前权限办理复审" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
     <div class="mp-stack">
       <div class="aa-filter"><label class="aa-filter-field"><span>状态</span><AppSelect v-model="status" :options="statusOptions" :disabled="busy || !!pending" @change="search" /></label><AppButton variant="ghost" :disabled="busy || !!pending" @click="search">查询</AppButton></div>
-      <section v-if="receipt" class="aa-recheck-receipt" role="status"><strong>{{ receipt.verified ? '原复查命令已由持久回执确认' : '结果待核实' }}</strong><p>{{ receipt.studentName || active?.studentName || '原申请' }} · {{ receipt.courseName || active?.courseName || '课程待重新读取' }}</p><p v-if="receipt.commandStatus">原命令结果：{{ statusLabel(receipt.commandStatus) }}</p><p v-if="receipt.status">当前正式记录：{{ statusLabel(receipt.status) }}<template v-if="receipt.commandStatus && receipt.commandStatus !== receipt.status">（已发生后续变化）</template></p><AppButton v-if="pending" :loading="checking" @click="verifyReceipt">只读核对持久回执</AppButton><p v-else>原操作成功与当前状态分别显示；当前记录后续的变化不会否认原操作成功。</p></section>
+      <section v-if="receipt" class="aa-recheck-receipt" role="status"><strong>{{ receipt.verified ? '原复查命令已由已保存的回执确认' : '结果待核实' }}</strong><p>{{ receipt.studentName || active?.studentName || '原申请' }} · {{ receipt.courseName || active?.courseName || '课程待重新读取' }}</p><p v-if="receipt.commandStatus">上次提交的结果：{{ statusLabel(receipt.commandStatus) }}</p><p v-if="receipt.status">当前正式记录：{{ statusLabel(receipt.status) }}<template v-if="receipt.commandStatus && receipt.commandStatus !== receipt.status">（已发生后续变化）</template></p><AppButton v-if="pending" :loading="checking" @click="verifyReceipt">刷新查看已保存的回执</AppButton><p v-else>原操作成功与当前状态分别显示；当前记录后续的变化不会否认原操作成功。</p></section>
       <ErrorState v-if="error" :description="error" @retry="pending ? verifyReceipt() : restoreRoute()" />
       <AppButton v-if="pending?.postFailure?.bizCode === 'TERM_ARCHIVED'" variant="ghost" :disabled="checking" @click="clearRejectedCommand(pending, pending.postFailure)">本次因学期封存未受理，保留意见返回办理</AppButton>
       <div class="aa-recheck-workspace">
@@ -203,9 +203,9 @@ export default {
           if(c.postFailure&&this.explicitFailure(c.postFailure)){await this.clearRejectedCommand(c,c.postFailure);return}
           this.error='已保存的回执尚未确认原复查操作；不会自动重复提交，请稍后重新核对。';return
         }
-        if(String(persisted.result?.recheckId)!==String(c.id))throw {code:'GRADE_COMMAND_RECEIPT_OBJECT_MISMATCH',message:'持久回执与原复查申请不一致'}
-        if(!['UPHELD','ADJUSTED','REJECTED'].includes(persisted.result.status))throw {code:'GRADE_COMMAND_RECEIPT_MISMATCH',message:'持久回执未包含有效复审结果'}
-        if(!c.recovered && (!this.sameSource(persisted.result,c.row,false) || persisted.result.status!==({UPHOLD:'UPHELD',ADJUST:'ADJUSTED',REJECT:'REJECTED'})[c.action] || String(persisted.result.reviewNote || '').trim()!==c.note || (c.action==='ADJUST' && (persisted.result.newScore==null || Number(persisted.result.newScore)!==c.newScore))))throw {code:'GRADE_COMMAND_RECEIPT_MISMATCH',message:'持久回执与已确认的复审内容不一致'}
+        if(String(persisted.result?.recheckId)!==String(c.id))throw {code:'GRADE_COMMAND_RECEIPT_OBJECT_MISMATCH',message:'已保存的回执与原复查申请不一致'}
+        if(!['UPHELD','ADJUSTED','REJECTED'].includes(persisted.result.status))throw {code:'GRADE_COMMAND_RECEIPT_MISMATCH',message:'已保存的回执未包含有效复审结果'}
+        if(!c.recovered && (!this.sameSource(persisted.result,c.row,false) || persisted.result.status!==({UPHOLD:'UPHELD',ADJUST:'ADJUSTED',REJECT:'REJECTED'})[c.action] || String(persisted.result.reviewNote || '').trim()!==c.note || (c.action==='ADJUST' && (persisted.result.newScore==null || Number(persisted.result.newScore)!==c.newScore))))throw {code:'GRADE_COMMAND_RECEIPT_MISMATCH',message:'已保存的回执与已确认的复审内容不一致'}
         updateGradeCommandReference(c.commandKey,this.recoveryIdentity,{confirmedAt:Date.now()})
         const formal=await this.readExact(c.id)
         if(!this.commandCurrent(c))return

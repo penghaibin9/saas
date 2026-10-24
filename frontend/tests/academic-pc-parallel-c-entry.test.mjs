@@ -25,7 +25,7 @@ function dynamicVm(api = {}, notices = []) {
   return vm
 }
 
-test('动态命令在POST之前持久化；超时后重建页面仅核对原命令，禁止重发', async () => {
+test('动态命令在POST之前持久化；超时后重建页面仅核对上次提交，禁止重发', async () => {
   let writes = 0
   const api = { saveDynamicGradeBatch: async () => {
     writes++; assert.ok(store.size); throw new Error('timeout')
@@ -46,7 +46,7 @@ test('动态恢复存储不可写时零POST', async () => {
   assert.equal(writes, 0); assert.ok(vm.dynamicRecoveryError)
 })
 
-test('动态保存5xx包裹409不能解除原命令锁，403读失败清敏但保留引用', async () => {
+test('动态保存5xx包裹409不能解除上次提交锁，403读失败清敏但保留引用', async () => {
   const vm = dynamicVm({ saveDynamicGradeBatch: async () => ({ code: 409001, httpStatus: 500 }),
     getDynamicGradeReceipt: async () => ({ code: 403001, httpStatus: 403 }) })
   await vm.saveDynamicRow(vm.dynamicRows[0])

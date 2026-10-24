@@ -15,7 +15,7 @@ from app.services.db_service import _as_id, _tid
 def require_context_fields(payload: dict) -> None:
     body = payload or {}
     if body.get("batchId") is None or str(body.get("batchId")).strip() == "":
-        raise AppException("VALIDATION_ERROR", "缺少当前实习批次 batchId")
+        raise AppException("VALIDATION_ERROR", "缺少当前实习批次")
     if body.get("internshipId") is None or str(body.get("internshipId")).strip() == "":
         raise AppException("VALIDATION_ERROR", "缺少当前实习记录")
 

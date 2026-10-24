@@ -51,10 +51,10 @@ def resolve_profile_for_shadow(db, tenant_id: int, *, domain_label: str,
         try:
             sid = int(student_id)
         except (TypeError, ValueError):
-            raise AppException("VALIDATION_ERROR", "studentId 须为数字")
+            raise AppException("VALIDATION_ERROR", "请选择有效的学生")
         p = db.get(StudentProfile, sid)
         if not p or p.is_deleted or int(p.tenant_id) != int(tenant_id):
-            raise AppException("VALIDATION_ERROR", "studentId 对应的学籍档案不存在或不属于本校")
+            raise AppException("VALIDATION_ERROR", "所选学生的学籍档案不存在或不属于本校")
         return p
 
     no = str(student_no or "").strip()

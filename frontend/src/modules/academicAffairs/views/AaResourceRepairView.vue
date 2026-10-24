@@ -17,7 +17,7 @@
       <template v-else>
         <div class="aarr-flow" aria-label="维修流程">
           <div><span>当前对象</span><strong>{{ pagination.total }} 张维修工单</strong></div>
-          <div><span>当前责任</span><strong>{{ canManage ? '资源维修岗' : '只读核对' }}</strong></div>
+          <div><span>当前责任</span><strong>{{ canManage ? '资源维修岗' : '刷新查看' }}</strong></div>
           <div><span>关闭条件</span><strong>工单状态与资源状态双重核对</strong></div>
         </div>
         <div class="aarr-board">

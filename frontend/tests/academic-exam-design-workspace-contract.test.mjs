@@ -68,5 +68,5 @@ test('AA-176/177/178 shared makeup page exposes source, blocker, responsibility 
 test('an already merged deferred request no longer offers another merge command', async () => {
   const view = await source('views/AaMakeupConsoleView.vue')
   assert.match(view, /canManage && !row\.nextBatchRef/)
-  assert.match(view, /只读核对/)
+  assert.match(view, /刷新查看/)
 })

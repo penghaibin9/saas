@@ -21,7 +21,7 @@
       <div><strong>{{ actionReceipt?.verified ? '已核对正式业务状态' : '操作结果待核实' }}</strong><p>{{ actionNotice }}</p></div>
       <div v-if="actionReceipt"><small>业务对象</small><b>{{ actionReceipt.objectLabel }}</b></div>
       <div v-if="actionReceipt"><small>下一责任</small><b>{{ actionReceipt.next }}</b></div>
-      <AppButton v-if="pendingWrite" variant="ghost" :disabled="recSaving || rectSaving" @click="verifyPendingWrite">只读核对原操作</AppButton>
+      <AppButton v-if="pendingWrite" variant="ghost" :disabled="recSaving || rectSaving" @click="verifyPendingWrite">刷新查看原操作</AppButton>
     </section>
 
     <!-- AA-226：运行质量看板。指标与责任队列分别取真实接口，任一读侧失败均单独说明。 -->
@@ -692,11 +692,11 @@ export default {
           }
           next = command.expectedAfter === 'CLOSED' ? '质量归档岗' : command.expectedAfter === 'SUBMITTED' ? '质量复核岗' : (res?.data?.responsibleName || '整改责任人')
         }
-        if (!verified) { this.actionNotice = res?.code === 0 ? '只读核对仍未找到与原操作一致的正式状态；请勿重复提交。' : this.failureText(res, '只读核对失败，请稍后再次核对。'); return }
-        this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${res.data?.title || command.snapshot?.title || '质量对象'} · #${command.objectId}`, next }; this.actionNotice = `已只读核对正式状态：${isRecord ? this.recStatusLabel(res.data.status) : this.rectStatusLabel(res.data)}。`; toast.success('已核对原操作，无重复提交')
+        if (!verified) { this.actionNotice = res?.code === 0 ? '刷新查看仍未找到与原操作一致的正式状态；请勿重复提交。' : this.failureText(res, '刷新查看失败，请稍后再次核对。'); return }
+        this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${res.data?.title || command.snapshot?.title || '质量对象'} · #${command.objectId}`, next }; this.actionNotice = `已刷新查看正式状态：${isRecord ? this.recStatusLabel(res.data.status) : this.rectStatusLabel(res.data)}。`; toast.success('已核对原操作，无重复提交')
         if (this.isRecordTab) await this.loadRecords()
         else if (this.isRectTab) await this.loadRectifications()
-      } catch (error) { if (this.currentWrite(command)) this.actionNotice = this.failureText(error, '只读核对失败，原操作不会自动重复提交。') }
+      } catch (error) { if (this.currentWrite(command)) this.actionNotice = this.failureText(error, '刷新查看失败，原操作不会自动重复提交。') }
       finally { if (this.alive && command.identity === this.identityKey) { this.recSaving = false; this.rectSaving = false } }
     },
     // ── AA-231/AA-232 质量整改与跟进 ──
@@ -773,7 +773,7 @@ export default {
           }
         }
         this.actionNotice = '发起结果待核实，当前读取不足以证明整改任务已经建立；请勿重复提交。'
-      } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改任务尚未确认，请保留表单并只读核对。') } }
+      } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改任务尚未确认，请保留表单并刷新查看。') } }
       finally { if (this.alive && command.identity === this.identityKey) this.rectSaving = false }
     },
     async viewRectDetail(row) {
@@ -847,7 +847,7 @@ export default {
           this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${snapshot.title} · #${id}`, next: mode === 'submit' ? '质量复核岗' : (after.data?.responsibleName || '整改责任人') }; this.actionNotice = `正式整改状态：${this.rectStatusLabel(after.data)}。`; toast.success(mode === 'submit' ? '已提交复核并重新读取状态' : '已记录进度并重新读取状态'); this.rectNoteVisible = false; await this.loadRectifications(); return
         }
         this.actionNotice = '操作结果待核实，当前读取不足以证明进度或提交复核已经入库；请勿重复提交。'
-      } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改操作尚未确认，请保留说明并只读核对。') } }
+      } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改操作尚未确认，请保留说明并刷新查看。') } }
       finally { if (this.alive && command.identity === this.identityKey) this.rectSaving = false }
     },
     openReview(row, action) { const snapshot = Object.freeze({ ...row }); this.reviewAction = action; this.reviewTargetId = String(snapshot.rectId || ''); this.reviewTargetSnapshot = snapshot; this.reviewReason = ''; this.rectFormError = ''; this.reviewVisible = true },
@@ -874,7 +874,7 @@ export default {
           this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${snapshot.title} · #${id}`, next: action === 'APPROVE' ? '质量归档岗' : (after.data?.responsibleName || '整改责任人') }; this.actionNotice = `正式整改状态：${this.rectStatusLabel(after.data)}。`; toast.success(action === 'APPROVE' ? '复核通过并已关闭' : '已驳回至整改责任人'); this.reviewVisible = false; await this.loadRectifications(); return
         }
         this.actionNotice = '复核结果待核实，当前读取不足以证明状态已经迁移；请勿重复提交。'
-      } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改复核尚未确认，请保留结论并只读核对。') } }
+      } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改复核尚未确认，请保留结论并刷新查看。') } }
       finally { if (this.alive && command.identity === this.identityKey) this.rectSaving = false }
     },
     // ── AA-233 质量归档 ──

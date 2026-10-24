@@ -80,7 +80,7 @@
           <h2>{{ curRoomNo ? `${curRoomNo} · 床位` : '床位' }}</h2>
           <p v-if="selectedRoom" class="rv-room-info">{{ selectedRoom.floorNo }} 层 · {{ roomStatusLabel(selectedRoom.status) }} · 已住 {{ roomOccupiedBeds }} · 容量 {{ selectedRoom.capacity }}</p>
           <p v-if="selectedRoom && !bedsLoading && beds.length < selectedRoom.capacity" class="rv-room-info">已配置 {{ beds.length }} 个床位，尚有 {{ selectedRoom.capacity - beds.length }} 个未建床位，不计为空床。</p>
-          <div class="rv-legend"><span>空床可入住</span><span>已住看详情</span><span>已已预留 / 锁定</span></div>
+          <div class="rv-legend"><span>空床可入住</span><span>已住看详情</span><span>已预留 / 锁定</span></div>
           <p v-if="bedsLoading" class="rv-empty" role="status">正在加载床位…</p>
           <div v-else class="rv-bed-grid">
             <button v-for="bed in beds" :key="bed.bedId" type="button" class="rv-bed"
@@ -349,7 +349,7 @@ export default {
       } catch (e) { if (request === this.bedRequest) this.selectionError = e.message || '床位加载失败，请刷新重试' }
       finally { if (request === this.bedRequest) this.bedsLoading = false }
     },
-    bedStatusLabel(status) { return ({ VACANT: '空床', OCCUPIED: '已入住', LOCKED: '已已预留 / 锁定' })[status] || '状态待核查' },
+    bedStatusLabel(status) { return ({ VACANT: '空床', OCCUPIED: '已入住', LOCKED: '已预留 / 锁定' })[status] || '状态待核查' },
     openBedAction(bed) {
       this.selectedBedId = String(bed.bedId)
       const label = `${this.curBuildingName} / ${this.curRoomNo} / ${bed.bedNo} 号床`

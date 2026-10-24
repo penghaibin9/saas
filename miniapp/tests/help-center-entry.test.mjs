@@ -59,7 +59,7 @@ test('shared help webview carries normalized role, source and scoped metric capa
 
 test('missing deployment URL fails visibly instead of opening a fake link', () => {
   assert.match(helpPage, /帮助中心尚未配置访问地址/)
-  assert.match(helpPage, /VITE_HELP_CENTER_URL/)
+  assert.match(helpPage, /还需要配置帮助中心地址/)
   assert.match(helpPage, /微信公众平台.*业务域名/)
   assert.match(helpPage, /不在小程序复制第二套内容/)
 })

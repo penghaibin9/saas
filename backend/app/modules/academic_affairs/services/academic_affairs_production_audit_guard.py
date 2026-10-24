@@ -26,7 +26,7 @@ def _bounded_page_size(value, *, default: int) -> int:
     if size < 1 or size > _MAX_PAGE_SIZE:
         raise AppException(
             "VALIDATION_ERROR",
-            f"pageSize 必须在 1-{_MAX_PAGE_SIZE} 之间",
+            f"每页条数必须在 1-{_MAX_PAGE_SIZE} 之间",
         )
     return size
 

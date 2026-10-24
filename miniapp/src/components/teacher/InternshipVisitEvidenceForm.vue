@@ -54,7 +54,7 @@
         @update:ready="evidenceReady = $event"
         @error="attachmentError"
       />
-      <text class="ve__hint">上传阶段只产生 TEMP_PRIVATE；保存巡访时由后端业务事务正式 FileBinding，客户端不能提前改绑。</text>
+      <text class="ve__hint">上传的附件先临时保存，保存巡访记录时才正式关联到本次巡访。</text>
     </view>
 
     <view class="ve__actions">

@@ -57,7 +57,7 @@ test('T7/T8 employment material evidence uses shared picker and preserves secure
   assert.match(page, /expectedVersion:\s*Number\(m\.version/)
   assert.match(page, /fileSdk\.open\(m\.file\.fileId\)/)
   assert.match(page, /legacyFileNameOnly/)
-  assert.match(page, /TEMP_PRIVATE/)
+  assert.match(page, /先临时保存，通过安全扫描后才会按当前版本正式关联到就业材料/)
   assert.doesNotMatch(page, /fileSdk\.choose|fileSdk\.upload|fileSdk\.metadata/)
   assert.doesNotMatch(page, /uni\.downloadFile|uni\.getLocation|chooseLocation/)
 })

@@ -8,7 +8,7 @@
       <AppFormItem label="正式排课场地"><AppClassroomPicker v-model="classroomId" :disabled="saving || !!pending" /></AppFormItem>
       <p>不按名称自动关联；已有批准预约的实训室不能直接改换场地。</p>
       <AppButton v-if="!pending" variant="primary" :loading="saving" :disabled="!changed || !validVersion || storageBlocked" @click="save">确认关联所选场地</AppButton>
-      <AppButton v-if="pending" :disabled="saving || checking" @click="verify">只读核对原操作</AppButton>
+      <AppButton v-if="pending" :disabled="saving || checking" @click="verify">刷新查看原操作</AppButton>
       <p v-if="receipt">{{ receipt }}</p>
     </template>
     <AppInlineAlert v-if="error" type="danger" :description="error" />
@@ -78,7 +78,7 @@ export default {
         }
         const row=await this.read(p.id);if(!this.current(p))return
         if(!p.ack){this.error='原操作的回执尚未确认；只读结果不能证明本次操作成功，请勿重复提交';return}
-        if(String(row.classroomId||'')!==p.target||Number(row.version)!==p.version+1){this.error='正式关联与原回执尚未吻合，请稍后再只读核对';return}
+        if(String(row.classroomId||'')!==p.target||Number(row.version)!==p.version+1){this.error='正式关联与原回执尚未吻合，请稍后再刷新查看';return}
         this.forget(p);this.lab=row;this.pending=null;this.receipt='场地关联已与正式资源核对一致';this.error='';this.$emit('saved')
       }catch(e){if(this.current(p))this.fail(e)}finally{if(this.current(p))this.checking=false}
     }

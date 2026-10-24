@@ -665,7 +665,7 @@ def _recompute_defense(db, g):
 
 def _require_defense_batch(db, batch_id) -> GraduationBatch:
     if batch_id is None or batch_id == "":
-        raise AppException("VALIDATION_ERROR", "新建答辩组必须指定毕设批次 batchId")
+        raise AppException("VALIDATION_ERROR", "新建答辩组必须指定毕设批次")
     b = tenant_get(db, GraduationBatch, int(batch_id))
     if not b or b.is_deleted or b.tenant_id != _tid():
         raise not_found("毕设批次不存在")

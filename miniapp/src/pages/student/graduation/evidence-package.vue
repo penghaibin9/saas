@@ -4,7 +4,7 @@
     <MobileGlobalState v-if="state !== 'ready'" :state="state" @retry="load" />
     <view v-else class="card package-card">
       <text class="label">当前状态</text><text class="status">{{ statusText }}</text>
-      <text v-if="data.manifestId" class="meta">Manifest #{{ data.manifestId }} · r{{ data.revision }}</text>
+      <text v-if="data.manifestId" class="meta">归档清单第 {{ data.revision }} 版</text>
       <button v-if="data.artifact && data.artifact.fileId" class="btn btn-primary" :disabled="busy" @click="download">{{ busy ? '下载中…' : '下载冻结证据包' }}</button>
       <text v-else class="desc">{{ data.packageStatus === 'LEGACY_UNAVAILABLE' ? '历史归档请使用原导出入口。' : data.packageStatus === 'UNAVAILABLE' ? '冻结包已失效或尚未通过安全检查，请联系管理员处理。' : '归档完成后系统会异步生成，请稍后刷新。' }}</text>
     </view>

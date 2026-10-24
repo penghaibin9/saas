@@ -9,7 +9,7 @@
       <button v-for="t in tabs" :key="t.key" :class="['aamk-tab', { 'is-active': tab === t.key }]" :disabled="saving || !!pendingWrite" @click="switchTab(t.key)">{{ t.label }}</button>
     </div>
 
-    <section v-if="writeReceipt" class="aamk-receipt" role="status"><strong>{{ writeReceipt.verified ? '已重新读取正式记录' : '结果待核实' }}</strong><p>{{ writeReceipt.label }} · {{ writeReceipt.description }}</p><p v-if="writeReceipt.objectId">业务对象：#{{ writeReceipt.objectId }} · 操作时间：{{ formatMoment(writeReceipt.occurredAt) }}</p><p v-if="writeReceipt.status">实际状态：{{ writeReceipt.statusLabel || academicStatusLabel(writeReceipt.status) }}</p><p v-if="writeReceipt.next">下一步：{{ writeReceipt.next }}</p><AppButton v-if="pendingWrite" :disabled="saving" :loading="checkingWrite" @click="verifyWrite">只读核对结果</AppButton><p v-if="pendingWrite">请勿重复提交；如详情弹窗遮挡，可先关闭弹窗再核对。</p></section>
+    <section v-if="writeReceipt" class="aamk-receipt" role="status"><strong>{{ writeReceipt.verified ? '已重新读取正式记录' : '结果待核实' }}</strong><p>{{ writeReceipt.label }} · {{ writeReceipt.description }}</p><p v-if="writeReceipt.objectId">业务对象：#{{ writeReceipt.objectId }} · 操作时间：{{ formatMoment(writeReceipt.occurredAt) }}</p><p v-if="writeReceipt.status">实际状态：{{ writeReceipt.statusLabel || academicStatusLabel(writeReceipt.status) }}</p><p v-if="writeReceipt.next">下一步：{{ writeReceipt.next }}</p><AppButton v-if="pendingWrite" :disabled="saving" :loading="checkingWrite" @click="verifyWrite">刷新查看结果</AppButton><p v-if="pendingWrite">请勿重复提交；如详情弹窗遮挡，可先关闭弹窗再核对。</p></section>
     <ErrorState v-if="error" :description="error" @retry="reload" />
     <LoadingState v-else-if="loading" />
     <template v-else>
@@ -126,7 +126,7 @@
           <template #cell-approved="{ row }">#{{ row.deferId }}<small>已批准缓考申请</small></template>
           <template #cell-target="{ row }">{{ row.nextBatchRef || '待选择补考批次' }}</template>
           <template #cell-status="{ row }"><StatusTag :type="row.nextBatchRef ? 'success' : 'warning'" :label="row.nextBatchRef ? '已合流' : '待安排'" dot /></template>
-          <template #cell-ops="{ row }"><button v-if="canManage && !row.nextBatchRef" class="mp-link" @click="openMerge(row)">并入补考批次</button><span v-else class="aamk-muted">只读核对</span></template>
+          <template #cell-ops="{ row }"><button v-if="canManage && !row.nextBatchRef" class="mp-link" @click="openMerge(row)">并入补考批次</button><span v-else class="aamk-muted">刷新查看</span></template>
         </DataTable>
       </div>
     </template>

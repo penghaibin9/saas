@@ -279,7 +279,7 @@ def consume_quota(reservation_key: str, *, file_id: int, tenant_id: int | None =
                 raise AppException("DATA_CONFLICT", "存储配额预留已被其他文件使用")
             return True
         if row.status != ACTIVE:
-            raise AppException("DATA_CONFLICT", "存储存储配额预留已失效")
+            raise AppException("DATA_CONFLICT", "存储配额预留已失效")
         row.status = "CONSUMED"
         row.consumed_file_id = int(file_id)
         row.consumed_at = datetime.utcnow()

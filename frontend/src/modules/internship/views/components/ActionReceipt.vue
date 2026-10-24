@@ -24,7 +24,7 @@
 import { AppStatusTag } from '@/components/common'
 
 /**
- * 关键写动作的页面内持久回执。
+ * 关键写动作的页面内已保存的回执。
  * 只展示服务端成功响应真实返回的 id/status/version；不伪造 auditId 或服务端时间。
  */
 export default {

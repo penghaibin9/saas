@@ -65,7 +65,7 @@
             <template #cell-status="{ row }"><StatusTag :type="paymentStatus(row).tone" :label="paymentStatus(row).label" /></template>
             <template #cell-activation="{ row }"><StatusTag :type="activationStatus(row).tone" :label="activationStatus(row).label" /></template>
             <template #cell-endAt="{ row }"><span class="pcod__date">{{ dateLabel(row.endAt) }}</span></template>
-            <template #cell-actions="{ row }"><div class="pcod__row-actions"><button v-for="action in can('platform.order.manage') ? orderActions(row) : []" :key="action" type="button" :class="{ 'pcod__row-action--quiet': action === 'cancel' }" @click="openAction(row, action)">{{ actionLabel(action) }}<span v-if="action !== 'cancel'" aria-hidden="true"> →</span></button><span v-if="!can('platform.order.manage') || !orderActions(row).length" class="pcod__muted">只读核对</span></div></template>
+            <template #cell-actions="{ row }"><div class="pcod__row-actions"><button v-for="action in can('platform.order.manage') ? orderActions(row) : []" :key="action" type="button" :class="{ 'pcod__row-action--quiet': action === 'cancel' }" @click="openAction(row, action)">{{ actionLabel(action) }}<span v-if="action !== 'cancel'" aria-hidden="true"> →</span></button><span v-if="!can('platform.order.manage') || !orderActions(row).length" class="pcod__muted">刷新查看</span></div></template>
           </DataTable>
         </div>
         <nav class="pcod__pagination" aria-label="订单分页"><span>每页 20 笔 · 共 {{ filteredRows.length }} 笔</span><button type="button" :disabled="page <= 1" @click="page--">上一页</button><b aria-live="polite">{{ page }} / {{ pageCount }}</b><button type="button" :disabled="page >= pageCount" @click="page++">下一页</button></nav>

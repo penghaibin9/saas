@@ -156,7 +156,7 @@
           <div class="dc-bed-legend" aria-label="床位状态说明">
             <span><i class="is-vacant" />空床</span>
             <span><i class="is-occupied" />已入住</span>
-            <span><i class="is-locked" />已已预留 / 锁定</span>
+            <span><i class="is-locked" />已预留 / 锁定</span>
           </div>
           <p v-if="bedsLoading" class="dc-empty" role="status">正在加载床位…</p>
           <div v-else class="dc-bed-grid">

@@ -177,7 +177,7 @@
         <label>预计人数<input v-model.number="assign.expectedStudents" type="number" min="0" class="aa-input" /></label>
       </div>
       <p class="task-dialog-note">教师工号是权限归属依据；教师姓名只用于展示。分配后必须由教师本人确认。</p>
-      <p v-if="assign.invalid || pendingResult" class="task-dialog-note">原确认已失效，请先关闭并查询结果或重新核对；不会重发原命令。</p>
+      <p v-if="assign.invalid || pendingResult" class="task-dialog-note">原确认已失效，请先关闭并查询结果或重新核对；不会自动重新提交。</p>
     </AppConfirmDialog>
 
     <AppConfirmDialog
@@ -194,7 +194,7 @@
       <label class="task-review-reason">作废原因（至少5字）
         <textarea v-model.trim="voidDraft.reason" rows="3" placeholder="请据实说明作废原因" />
       </label>
-      <p v-if="voidDraft.invalid || pendingResult" class="task-dialog-note">原确认已失效，请先关闭并查询结果或重新核对；不会重发原命令。</p>
+      <p v-if="voidDraft.invalid || pendingResult" class="task-dialog-note">原确认已失效，请先关闭并查询结果或重新核对；不会自动重新提交。</p>
     </AppConfirmDialog>
 
     <AppConfirmDialog

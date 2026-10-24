@@ -35,7 +35,7 @@ for(const kind of ['makeup','clearance']){
   await vm.submitScore(kind,record);assert.equal(vm[prefix+'Batch'],null);assert.deepEqual(vm[prefix+'Rows'],[]);assert.deepEqual(vm[prefix+'Scores'],{});assert.equal(vm.batchForm.batchName,'');assert.ok(vm.pendingWrite?.recovered);assert.equal(vm.pendingWrite.reply,undefined);assert.equal(vm.writeReceipt.verified,false);assert.match(vm.error,/无权/)
  })
 }
-test('超时保留分数草稿和未决状态，重复点击与只读核对均不重放POST',async()=>{
+test('超时保留分数草稿和未决状态，重复点击与刷新查看均不重放POST',async()=>{
  let writes=0;const vm=mount({score:async()=>{writes++;throw new Error('timeout')},batchRecords:async()=>list(record)})
  vm.mkBatch={...batch};vm.mkRows=[record];vm.mkScores.M1=75
  await vm.submitMakeupScore(record);await vm.submitMakeupScore(record);await vm.verifyWrite();assert.equal(writes,1);assert.equal(vm.mkScores.M1,75);assert.equal(vm.writeReceipt.verified,false);assert.ok(vm.pendingWrite)
@@ -80,7 +80,7 @@ test('名单和候选只请求当前分页，旧候选返回不影响新页',asy
  assert.equal(vm.mkCandidates[0].gradeId,'new');assert.equal(vm.candidatePagination.page,2);assert.ok(calls.every(p=>p.pageSize===20&&p.termCode==='2026-1'))
 })
 
-test('超时后当前评分变化仍不能证明原命令成功，保留草稿与未决引用',async()=>{
+test('超时后当前评分变化仍不能证明上次提交成功，保留草稿与未决引用',async()=>{
  let saved=false;const vm=mount({score:async()=>{throw new Error('timeout')},batchRecords:async()=>list({...record,...(saved?{status:'SCORED',finalScore:75}:{})})})
  vm.mkBatch={...batch};vm.mkRows=[{...record}];vm.mkScores.M1=75;await vm.submitMakeupScore(record);saved=true;await vm.verifyWrite()
  assert.equal(vm.mkRows[0].finalScore,null);assert.equal(vm.mkScores.M1,75);assert.equal(vm.writeReceipt.verified,false);assert.ok(vm.pendingWrite)
@@ -126,7 +126,7 @@ test('办理后重读仍保持原申请选择，并展示退回业务语义',asy
 })
 
 
-test('重修审核超时后刷新以原命令回执恢复；后续编班不冒充原审核',async()=>{
+test('重修审核超时后刷新以上次提交回执恢复；后续编班不冒充原审核',async()=>{
  const runtime=testRuntime(),before={...retakeFacts,applyId:'501',status:'SUBMITTED'},reply={...before,status:'APPROVED',applicationVersion:1}
  let writes=0,settled=false,key=''
  const api={retakeApplies:async()=>list(settled?{...reply,status:'ENROLLED',applicationVersion:2}:before),
@@ -140,7 +140,7 @@ test('重修审核超时后刷新以原命令回执恢复；后续编班不冒�
  assert.equal(writes,1);assert.equal(restored.writeReceipt.verified,true);assert.equal(restored.writeReceipt.status,'ENROLLED');assert.equal(restored.pendingWrite,null)
 })
 
-test('刷新后错误对象的原命令回执不能解锁重修操作',async()=>{
+test('刷新后错误对象的上次提交回执不能解锁重修操作',async()=>{
  const runtime=testRuntime(),before={...retakeFacts,applyId:'501',status:'SUBMITTED'}
  const first=mount({retakeApplies:async()=>list(before),retakeReview:async()=>{throw new Error('timeout')},commandReceipt:async(commandKey,operation)=>({code:0,data:{commandKey,operation,state:'UNRESOLVED',result:null}})},runtime)
  first.tab='retake';await first.processReview('retakeReview','501','APPROVE','',before)

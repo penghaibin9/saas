@@ -85,7 +85,7 @@ def _orientation_report(report_type: str, user: dict, batch_id) -> dict:
     try:
         bid = int(batch_id)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "迎新导出必须指定有效 batchId") from None
+        raise AppException("VALIDATION_ERROR", "迎新导出必须指定有效的迎新批次") from None
     from app.models import OrientationBatch
     with session() as db:
         batch = db.get(OrientationBatch, bid)

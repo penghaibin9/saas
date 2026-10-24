@@ -25,7 +25,7 @@ test('T6/T8 visit form carries exact plan/version, shared attachment contract an
   assert.match(form, /biz-purpose="INTERNSHIP_VISIT"/)
   assert.match(form, /@update:fileIds="evidenceFileIds = \$event"/)
   assert.match(form, /@update:ready="evidenceReady = \$event"/)
-  assert.match(form, /TEMP_PRIVATE/)
+  assert.match(form, /先临时保存，保存巡访记录时才正式关联到本次巡访/)
   assert.doesNotMatch(form, /fileSdk\.choose|fileSdk\.upload|fileSdk\.metadata/)
   assert.doesNotMatch(form, /uni\.getLocation|getLocation\(|chooseLocation\(|latitude|longitude|captureLocation/)
 })
@@ -36,7 +36,7 @@ test('T6/T8 file evidence is uploaded first by shared picker but formal binding 
   assert.match(picker, /fileSdk\.upload/)
   assert.match(picker, /readyForBusiness/)
   assert.match(picker, /扫描/)
-  assert.match(form, /保存巡访时由后端业务事务正式 FileBinding/)
+  assert.match(form, /保存巡访记录时才正式关联到本次巡访/)
   assert.doesNotMatch(form, /bindFile|bind_file|\/files\/.*\/bind/)
 })
 

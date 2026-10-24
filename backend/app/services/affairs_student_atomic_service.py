@@ -77,7 +77,7 @@ def aid_apply(user: dict, body: dict) -> dict:
     level = str(body.get("applyLevel") or "").strip()
     statement = str(body.get("statement") or "").strip()
     if not batch_id:
-        raise AppException("VALIDATION_ERROR", "认定批次（batchId）必填")
+        raise AppException("VALIDATION_ERROR", "请选择认定批次")
     if level not in aid.LEVELS:
         raise AppException("VALIDATION_ERROR", "申请等级非法")
     if not 10 <= len(statement) <= 500:
@@ -185,7 +185,7 @@ def funding_apply(user: dict, body: dict) -> dict:
     # 形状（只收数字 id、去重、数量上限）在这里再判一次，客户端的 maxCount 只是提示。
     file_ids = _attachment_ids(body)
     if not batch_id:
-        raise AppException("VALIDATION_ERROR", "资助批次（batchId）必填")
+        raise AppException("VALIDATION_ERROR", "请选择资助批次")
     if not 5 <= len(statement) <= 1000:
         raise AppException("VALIDATION_ERROR", "申请理由需5-1000字")
     if not bool(body.get("confirm")):

@@ -103,7 +103,7 @@ def _call_list(path, *, domain: str, user: dict, batch_id=None):
                 try:
                     orientation_batch_id = int(batch_id)
                 except (TypeError, ValueError):
-                    raise AppException("VALIDATION_ERROR", "迎新导出必须指定有效 batchId")
+                    raise AppException("VALIDATION_ERROR", "迎新导出必须指定有效的迎新批次")
                 batch = db.get(OrientationBatch, orientation_batch_id)
                 if not batch or batch.is_deleted or int(batch.tenant_id) != int(_tid()):
                     raise AppException("VALIDATION_ERROR", "迎新导出批次不存在或不属于本校")

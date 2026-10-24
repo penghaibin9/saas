@@ -29,7 +29,7 @@
           <div>
             <b>本次意见对应冻结版</b>
             <span>{{ actionable.reviewedFile.fileName }} · 文件版本 v{{ actionable.reviewedFile.versionNo }}</span>
-            <details><summary>查看该版本的校验证据</summary><small>FileVersion {{ actionable.reviewedFile.fileVersionId }} · SHA-256 {{ shortHash(actionable.reviewedFile.sha256) }}</small></details>
+            <details><summary>查看该版本的校验证据</summary><small>文件版本 {{ actionable.reviewedFile.fileVersionId }} · 校验码 {{ shortHash(actionable.reviewedFile.sha256) }}</small></details>
           </div>
           <button v-if="actionable.reviewedFile.canPreview" class="sp-btn sp-btn--ghost" :disabled="busy" @click="openReviewed(actionable.reviewedFile)">查看被评版本</button>
         </div>
@@ -85,7 +85,7 @@
             <div v-if="item.reviewedFile" class="w75__version">
               <span>冻结文件 v{{ item.reviewedFile.versionNo }} · {{ item.reviewedFile.fileName }}</span>
               <span :class="item.reviewedFile.evidenceLocked ? 'is-locked' : 'is-warning'">{{ item.reviewedFile.evidenceLocked ? '版本已固定' : '版本证据待确认' }}</span>
-              <details><summary>校验证据</summary><small>SHA-256 {{ shortHash(item.reviewedFile.sha256) }}</small></details>
+              <details><summary>校验证据</summary><small>校验码 {{ shortHash(item.reviewedFile.sha256) }}</small></details>
               <button v-if="item.reviewedFile.canPreview" class="w75__link" :disabled="busy" @click="openReviewed(item.reviewedFile)">查看该版</button>
               <button v-if="item.reviewedFile.canDownload" class="w75__link" :disabled="busy" @click="downloadReviewed(item.reviewedFile)">下载</button>
             </div>

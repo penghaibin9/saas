@@ -192,7 +192,7 @@ def list_students(page, page_size, keyword=None, class_id=None, batch_id=None, s
             try:
                 q = q.where(OrientationStudent.batch_id == int(batch_id))
             except (TypeError, ValueError):
-                raise AppException("VALIDATION_ERROR", "batchId 须为数字")
+                raise AppException("VALIDATION_ERROR", "请选择有效的批次")
         if class_id:
             try:
                 q = q.where(OrientationStudent.class_id == int(class_id))
@@ -1420,7 +1420,7 @@ def get_dashboard(user=None, batch_id=None) -> dict:
             try:
                 batch_query = batch_query.where(OrientationBatch.id == int(batch_id))
             except (TypeError, ValueError):
-                raise AppException("VALIDATION_ERROR", "batchId 须为数字") from None
+                raise AppException("VALIDATION_ERROR", "请选择有效的批次") from None
         else:
             batch_query = batch_query.order_by(
                 case((OrientationBatch.status == "ACTIVE", 0), else_=1),

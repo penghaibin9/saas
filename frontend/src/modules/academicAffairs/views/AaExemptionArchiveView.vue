@@ -39,7 +39,7 @@
       </template>
     </div>
 
-    <section v-if="receipt" class="aamk-receipt" role="status"><strong>{{ receipt.verified ? '已重新读取正式归档状态' : '归档结果待核实' }}</strong><p>免修申请编号 {{ receipt.exemptionId }} · {{ receipt.studentName }} · {{ receipt.course?.name || receipt.courseName }}</p><p>实际状态：{{ receipt.archiveStatus === 'ARCHIVED' ? '已归档' : '待核对' }} · 操作时间：{{ formatMoment(receipt.archiveOperation?.occurredAt) }}</p><p>下一步：保留原审批结论；归档后的纠错进入受控纠错流程。</p><AppButton v-if="pending" :loading="checking" :disabled="saving" @click="verifyArchive">只读核对结果</AppButton></section>
+    <section v-if="receipt" class="aamk-receipt" role="status"><strong>{{ receipt.verified ? '已重新读取正式归档状态' : '归档结果待核实' }}</strong><p>免修申请编号 {{ receipt.exemptionId }} · {{ receipt.studentName }} · {{ receipt.course?.name || receipt.courseName }}</p><p>实际状态：{{ receipt.archiveStatus === 'ARCHIVED' ? '已归档' : '待核对' }} · 操作时间：{{ formatMoment(receipt.archiveOperation?.occurredAt) }}</p><p>下一步：保留原审批结论；归档后的纠错进入受控纠错流程。</p><AppButton v-if="pending" :loading="checking" :disabled="saving" @click="verifyArchive">刷新查看结果</AppButton></section>
     <AppConfirmDialog v-model:visible="confirmVisible" title="确认标记材料归档" :message="confirmMessage" :submitting="saving" :confirm-disabled="!!pending" @confirm="markArchived" />
     <AppDrawer :visible="materialsVisible" title="免修材料" mode="modal" size="medium" @close="closeMaterials">
       <div class="aamk-object-head"><div><strong>免修申请编号 {{ materialObject?.exemptionId }}</strong><p>{{ materialObject?.studentName }} · {{ materialObject?.course?.name || materialObject?.courseName }}</p></div><StatusTag :type="stateMeta(materialObject?.evidenceState,'evidence').type" :label="stateMeta(materialObject?.evidenceState,'evidence').label" /></div>

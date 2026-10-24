@@ -15,8 +15,8 @@ test('student-facing evidence is human-first while technical evidence remains av
   assert.doesNotMatch(feedback, /W7\.5 ·/)
   for (const source of [feedback, materials]) {
     assert.match(source, /<details/)
-    assert.match(source, /FileVersion/)
-    assert.match(source, /SHA/)
+    assert.match(source, /文件版本/)
+    assert.match(source, /校验码/)
   }
 })
 

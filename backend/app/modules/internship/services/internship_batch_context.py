@@ -19,7 +19,7 @@ WRITE_FORBIDDEN_STATUSES = frozenset({"VOIDED", "ARCHIVED", "CLOSED"})
 
 def parse_required_batch_id(batch_id) -> int:
     if batch_id is None or str(batch_id).strip() == "":
-        raise AppException("VALIDATION_ERROR", "必须指定实习批次 batchId")
+        raise AppException("VALIDATION_ERROR", "请选择实习批次")
     try:
         return int(str(batch_id).strip())
     except (TypeError, ValueError):

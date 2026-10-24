@@ -138,7 +138,7 @@ export default {
           continue
         }
         // 旧版本没有命令键时无法安全推断其落单结果，继续保留“待核对”；
-        // 新版本按原命令键读取同一教师自己的正式回执，不会重新发起写操作。
+        // 新版本按上次提交键读取同一教师自己的正式回执，不会重新发起写操作。
         if (!record.requestKey || typeof teacherApi.getWorkloadCommandReceipt !== 'function') continue
         try {
           const receipt = await teacherApi.getWorkloadCommandReceipt(record.requestKey)

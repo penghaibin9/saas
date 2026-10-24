@@ -29,7 +29,7 @@ test('学生小程序五个目标页消费 id 并显示精确落点', () => {
   }
 })
 
-test('学生小程序学期注册把已完成结果作为持久回执展示', () => {
+test('学生小程序学期注册把已完成结果作为已保存的回执展示', () => {
   const registration = read('../src/pages/student/academic-affairs/registration.vue')
   assert.ok(registration.includes("b.registrationStatus === 'REGISTERED'"))
   assert.ok(registration.includes('role="status"'))

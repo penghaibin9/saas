@@ -2552,7 +2552,7 @@ def internship_my_students(user: dict, batch_id: str | None = None) -> dict:
     if not db_enabled():
         return {"list": [], "total": 0}
     if not batch_id:
-        raise AppException("VALIDATION_ERROR", "必须指定实习批次 batchId")
+        raise AppException("VALIDATION_ERROR", "请选择实习批次")
     from app.modules.internship.services import internship_student_service as student_svc
     items, total = student_svc.list_students(1, 100, batch_id=batch_id, user=u)
     return {"list": items, "total": total, "batchId": str(batch_id)}

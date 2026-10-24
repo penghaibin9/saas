@@ -4,7 +4,7 @@
     <div v-if="loading" class="state">正在读取归档包状态…</div>
     <div v-else-if="error" class="state error">{{ error }}<button type="button" @click="load">重试</button></div>
     <article v-else class="package-card">
-      <div><small>包状态</small><strong>{{ statusText }}</strong><p v-if="data.manifestId">Manifest #{{ data.manifestId }} · revision {{ data.revision }} · {{ data.digestSchemaVersion }}</p></div>
+      <div><small>包状态</small><strong>{{ statusText }}</strong><p v-if="data.manifestId">归档清单第 {{ data.revision }} 版</p></div>
       <button v-if="data.artifact?.fileId" type="button" :disabled="downloading" @click="download">{{ downloading ? '下载中…' : '通过文件中心下载' }}</button>
       <p v-else class="hint">{{ data.packageStatus === 'LEGACY_UNAVAILABLE' ? '该历史归档继续沿用原有导出入口。' : data.packageStatus === 'UNAVAILABLE' ? '冻结包已失效或尚未通过安全检查，请联系管理员处理。' : '归档完成后系统会生成冻结包，请稍后刷新。' }}</p>
     </article>

@@ -84,7 +84,7 @@ def _validate_scope_in_tx(
         if batch_id is None:
             batch_id = campaign.batch_id
         if _as_id(batch_id) != campaign.batch_id:
-            raise AppException("VALIDATION_ERROR", "Grant batchId 与招聘季批次不一致")
+            raise AppException("VALIDATION_ERROR", "授权的批次与招聘季批次不一致")
         if campaign.enterprise_access_end_at is None:
             raise AppException("DATA_CONFLICT", "招聘季未配置企业访问截止时间")
         if valid_until > campaign.enterprise_access_end_at:

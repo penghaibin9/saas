@@ -238,7 +238,7 @@ test('归档学期切换后迟到列表不能覆盖新学期，也不自动选�
   assert.equal(state.current.batchId, '14')
 })
 
-test('未知批次写入切学期后只读核对返回原学期原批次，保持禁止重发', async () => {
+test('未知批次写入切学期后刷新查看返回原学期原批次，保持禁止重发', async () => {
   let writes = 0, destination
   const { state } = page('AaArchiveConsoleView', archiveDeps({
     listBatches: async () => ({ code: 0, data: { list: [], total: 0 } }),

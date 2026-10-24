@@ -87,7 +87,7 @@ test('预发布仍只受原批次条件控制，全校未就绪不阻断公共�
   }
 })
 
-test('全校核验通过后正式发布沿原命令并回读同一正式头', async () => {
+test('全校核验通过后正式发布沿上次提交并回读同一正式头', async () => {
   let writes = 0
   const formal = () => ({ ...row, status: writes ? 'PUBLISHED' : 'PRE_PUBLISHED', activeTruth: { truthStatus: 'VERIFIED', isCurrent: true, activeBatchId: row.batchId, publishedAt: '2026-09-27 12:00:00' } })
   const { state } = instance({

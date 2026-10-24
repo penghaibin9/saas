@@ -208,7 +208,7 @@ export default {
     tabLabel() { return this.tabs.find((item) => item.key === this.activePanel)?.label || '考勤记录' },
     panelPurpose() {
       return {
-        checkins: { step: '01 · 考勤记录', title: '先看真实打卡结果', description: '按当前批次查询学生打卡时间、结果与地点；异常记录转入独立核验工作区。', actor: '指导教师 / 学校管理员只读核对', result: '确认考勤记录，异常进入核验', empty: '当前没有考勤记录', emptyHint: '学生完成打卡或补卡通过后，记录会出现在这里。' },
+        checkins: { step: '01 · 考勤记录', title: '先看真实打卡结果', description: '按当前批次查询学生打卡时间、结果与地点；异常记录转入独立核验工作区。', actor: '指导教师 / 学校管理员刷新查看', result: '确认考勤记录，异常进入核验', empty: '当前没有考勤记录', emptyHint: '学生完成打卡或补卡通过后，记录会出现在这里。' },
         exceptions: { step: '02 · 异常核验', title: '逐条核对异常证据', description: '从薄表进入完整证据页，核对定位、设备和学生说明后再定性。', actor: '有考勤核验权限的教师', result: '合理说明、确认异常或转风险', empty: '当前没有待核验异常', emptyHint: '可切换“已处理”回看历史处置记录。' },
         'makeup-apply': { step: '03 · 申请台账', title: '查看全部补卡申请', description: '按状态回看学生申请、证据和审批结果；该入口保留完整台账口径。', actor: '指导教师 / 学校管理员查询', result: '申请过程可追溯、结果可重新读取', empty: '当前没有补卡申请', emptyHint: '学生提交补卡后会进入本台账。' },
         'makeup-review': { step: '04 · 补卡审批', title: '集中办理待审补卡', description: '先读完整申请与当前版本证据，再通过补写打卡或驳回给学生修改。', actor: '有补卡审批权限的教师', result: '补写打卡或退回学生', empty: '当前没有待审补卡', emptyHint: '本批次待办已清空，可到申请台账回看结果。' }

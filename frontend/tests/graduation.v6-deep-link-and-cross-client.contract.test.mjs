@@ -121,8 +121,8 @@ test('teacher PC thesis review is bound to a real canonical FileVersion and actu
 
 test('student PC keeps the teacher-reviewed frozen version and submits a new thesis version instead of overwriting history', () => {
   assert.match(studentFeedback, /本次意见对应冻结版/)
-  assert.match(studentFeedback, /FileVersion \{\{ actionable\.reviewedFile\.fileVersionId \}\}/)
-  assert.match(studentFeedback, /SHA-256/)
+  assert.match(studentFeedback, /文件版本 \{\{ actionable\.reviewedFile\.fileVersionId \}\}/)
+  assert.match(studentFeedback, /校验码/)
   assert.match(studentFeedback, /重新提交不会覆盖老师评阅过的旧版本/)
   assert.match(studentFeedback, /graduationW75Api\.submitFinal/)
   assert.match(studentFeedback, /expectedVersion: materialVersion/)

@@ -227,7 +227,7 @@ def funding_apply(user: dict, body: dict) -> dict:
     """奖助勤贷补申请（studentId 强制为本人；需勾选承诺；成功后承诺书电子签留痕）。"""
     body = body or {}
     if not str(body.get("batchId") or "").strip():
-        raise AppException("VALIDATION_ERROR", "资助批次（batchId）必填")
+        raise AppException("VALIDATION_ERROR", "请选择资助批次")
     if not bool(body.get("confirm")):
         raise AppException("VALIDATION_ERROR", "请先阅读并勾选确认承诺书")
     sid = _resolve_self_id(user)
@@ -332,7 +332,7 @@ def aid_apply(user: dict, body: dict) -> dict:
     """
     body = body or {}
     if not str(body.get("batchId") or "").strip():
-        raise AppException("VALIDATION_ERROR", "认定批次（batchId）必填")
+        raise AppException("VALIDATION_ERROR", "请选择认定批次")
     if not str(body.get("applyLevel") or "").strip():
         raise AppException("VALIDATION_ERROR", "请选择申请等级")
     if not bool(body.get("confirm")):

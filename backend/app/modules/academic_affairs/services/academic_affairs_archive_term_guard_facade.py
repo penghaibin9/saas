@@ -25,9 +25,9 @@ def resolve_term_by_code(db, term_code, *, required: bool = True):
     ).all()
     matches = [row for row in rows if f"{row.year_code}-{row.term_no}" == code]
     if not matches:
-        raise AppException("DATA_CONFLICT", f"termCode={code} 未匹配到本校正式学期", http_status=409)
+        raise AppException("DATA_CONFLICT", f"学期编码 {code} 未匹配到本校正式学期", http_status=409)
     if len(matches) > 1:
-        raise AppException("DATA_CONFLICT", f"termCode={code} 匹配到多个学期，请先修复基础数据", http_status=409)
+        raise AppException("DATA_CONFLICT", f"学期编码 {code} 匹配到多个学期，请先修复基础数据", http_status=409)
     return matches[0]
 
 
