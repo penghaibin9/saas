@@ -40,7 +40,7 @@ export default {
     persist(p){globalThis.sessionStorage.setItem(this.storageKey(p),JSON.stringify({id:p.id,target:p.target,version:p.version,commandKey:p.commandKey}))},
     forget(p){globalThis.sessionStorage.removeItem(this.storageKey(p))},
     restore(c){const text=globalThis.sessionStorage.getItem(this.storageKey(c));if(!text)return null;const p=JSON.parse(text)
-      if(p.id!==c.id||!Number.isSafeInteger(p.version)||p.version<0||typeof p.target!=='string'||(p.target&&!/^[1-9]\d*$/.test(p.target))||!/^[A-Za-z0-9_-]{8,128}$/.test(p.commandKey))throw new Error('原场地关联命令引用不完整，不能继续发送')
+      if(p.id!==c.id||!Number.isSafeInteger(p.version)||p.version<0||typeof p.target!=='string'||(p.target&&!/^[1-9]\d*$/.test(p.target))||!/^[A-Za-z0-9_-]{8,128}$/.test(p.commandKey))throw new Error('原场地关联的操作信息不完整，不能继续提交')
       return {...p,...c,ack:false}
     },
     async load(){
@@ -77,8 +77,8 @@ export default {
           p.ack=r.state==='SUCCESS'&&String(r.result?.labId)===p.id&&String(r.result?.classroomId||'')===p.target&&Number(r.result?.version)===p.version+1
         }
         const row=await this.read(p.id);if(!this.current(p))return
-        if(!p.ack){this.error='原命令回执尚未确认；只读结果不能证明本次操作成功，请勿重复提交';return}
-        if(String(row.classroomId||'')!==p.target||Number(row.version)!==p.version+1){this.error='正式关联与原回执尚未吻合，请稍后只读核对';return}
+        if(!p.ack){this.error='原操作的回执尚未确认；只读结果不能证明本次操作成功，请勿重复提交';return}
+        if(String(row.classroomId||'')!==p.target||Number(row.version)!==p.version+1){this.error='正式关联与原回执尚未吻合，请稍后再只读核对';return}
         this.forget(p);this.lab=row;this.pending=null;this.receipt='场地关联已与正式资源核对一致';this.error='';this.$emit('saved')
       }catch(e){if(this.current(p))this.fail(e)}finally{if(this.current(p))this.checking=false}
     }

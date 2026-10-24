@@ -6,7 +6,7 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 async function validateImplementationIdentityFile(file) {
   const stored = await requestUpload(`${root}/identity-import/files`, file)
   const fileId = stored?.fileId
-  if (!fileId) throw new Error('实施导入文件未返回 fileId')
+  if (!fileId) throw new Error('实施导入文件未返回文件编号')
 
   // Production Office uploads can be quarantined for ClamAV. Keep the page API
   // contract simple: upload once, then poll the fail-closed validation endpoint;

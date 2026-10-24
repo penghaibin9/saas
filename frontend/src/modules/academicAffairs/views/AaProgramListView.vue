@@ -14,7 +14,7 @@
 
     <div class="mp-stack">
       <AppSectionCard v-if="importChooserVisible" title="培养方案 Excel 导入阶段" subtitle="同一六工作表模板，阶段由操作者明确选择；浏览器不推断写入顺序">
-        <AppInlineAlert type="info" description="先导入方案定义并确认，再按实施进度导入适用范围绑定；两个阶段分别形成独立 ImportJob 与审计证据。" />
+        <AppInlineAlert type="info" description="先导入方案定义并确认，再按实施进度导入适用范围绑定；两个阶段分别形成独立的导入任务与审计记录。" />
         <div class="aa-actions">
           <AppButton variant="primary" @click="openProgramImport('DEFINITION')">1. 方案定义</AppButton>
           <AppButton @click="openProgramImport('BINDING')">2. 适用范围绑定</AppButton>
@@ -85,7 +85,7 @@
       v-model:visible="importVisible"
       title="培养方案六工作表权威导入"
       template-name="培养方案六工作表权威导入模板.xlsx"
-      :phase-label="programImportPhase === 'DEFINITION' ? '1. 方案定义（DEFINITION）' : '2. 适用范围绑定（BINDING）'"
+      :phase-label="programImportPhase === 'DEFINITION' ? '1. 方案定义' : '2. 适用范围绑定'"
       :preview-fields="['sheetName', 'rowNo', 'programCode', 'programName', 'majorCode', 'gradeYear', 'courseCode']"
       :download-template-fn="academicFileExchangeApi.downloadProgramTemplate"
       :upload-fn="uploadProgramFile"

@@ -66,7 +66,7 @@ export const graduationReviewCenterApi = {
         throw new Error('正式评阅任务已变化或不在当前数据范围，请刷新队列')
       }
       if (row.version == null || row.fileVersionId == null) {
-        throw new Error('正式评阅任务缺少 W7 冻结版本或乐观锁版本，请刷新或治理历史任务')
+        throw new Error('正式评阅任务缺少冻结版本或并发版本，请刷新或处理历史任务')
       }
       return { kind: 'FORMAL_REVIEW', ...row }
     }

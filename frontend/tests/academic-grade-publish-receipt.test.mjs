@@ -168,7 +168,7 @@ test('archive and return keep their own receipts with no publish adapter or scan
     s[action === 'return' ? 'openReturn' : 'openArchive'](row)
     await s.doAction({ reason: '核对后重新办理' })
     assert.equal(s.receipt.warningRefresh, undefined); assert.doesNotMatch(s.receipt.title, /发布/)
-    assert.equal(s.receipt.projectedText, '未产生新的正式成绩投影')
+    assert.equal(s.receipt.projectedText, '未产生新的正式成绩汇总')
   }
 })
 

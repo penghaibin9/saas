@@ -10,7 +10,6 @@ const teacher = read('../src/pages/teacher/dorm-review/index.vue')
 test('D3 miniapp selects only from server-provided batch resources', () => {
   assert.match(api, /\/mobile\/affairs\/dorm\/select-options/)
   assert.match(api, /\/mobile\/affairs\/dorm\/beds\/\$\{bedId\}\/self-select/)
-  assert.match(student, /确认后床位将为你预留，变更须走正式调宿/)
   assert.match(student, /正式调宿须审批/)
   assert.doesNotMatch(student, /入住成功|已正式入住/)
 })

@@ -396,7 +396,7 @@ def batch_repair(items: list[dict], *, reason: str, tenant_id: int | None = None
         sid = str((raw or {}).get("studentId") or "").strip()
         if not uid.isdigit() or not sid.isdigit():
             results.append({"userId": uid, "studentId": sid, "status": "FAILED",
-                            "message": "userId/studentId 必须是数字主键"})
+                            "message": "账号编号和学生编号必须是数字"})
             continue
         try:
             repair_binding(int(uid), student_id=int(sid), reason=reason,

@@ -6,12 +6,12 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="aa-state-layout"><div class="mp-stack">
-      <AppSectionCard title="当前权威事实">
+      <AppSectionCard title="当前正式记录">
         <p v-if="currentError" class="mp-note">{{ currentError }}</p>
         <p v-else-if="!currentContext" class="mp-note">当前学期结论待核对。</p>
         <div v-else class="aa-state-facts">
           <span>当前学期<strong>{{ currentContext.termId ? `${currentContext.yearCode} 第 ${currentContext.termNo} 学期` : '尚未设置' }}</strong></span>
-          <span>权威来源<strong>{{ currentContext.currentAuthority === 'CALENDAR_GOVERNANCE' ? '全校学期治理' : currentContext.canDirectSwitch === true ? '教务学期兼容管理' : '待核对' }}</strong></span>
+          <span>权威来源<strong>{{ currentContext.currentAuthority === 'CALENDAR_GOVERNANCE' ? '全校学期治理' : currentContext.canDirectSwitch === true ? '教务学期管理' : '待核对' }}</strong></span>
           <span>教务侧直接切换<strong>{{ currentContext.currentAuthority === 'CALENDAR_GOVERNANCE' ? '不允许，由治理岗位统一激活' : currentContext.canDirectSwitch === true ? '按当前学期页面权限办理' : '当前结论不可直接切换' }}</strong></span>
           <span>学期定义状态<strong>{{ statusLabel(currentContext.status) || '待核对' }} · 定义与激活分开</strong></span>
         </div>
@@ -186,7 +186,7 @@ export default {
         visible: true,
         submitting: false,
         row: { ...row }, context: this.contextKey(),
-        message: `确认冻结「${row.yearCode} 第 ${row.termNo} 学期」（${row.termId}）？冻结后排课/选课/考试等结构性变更将受限，恢复办理需填写解冻原因。`
+        message: `确认冻结「${row.yearCode} 第 ${row.termNo} 学期」？冻结后排课、选课、考试等结构性变更将受限，恢复办理需填写解冻原因。`
       }
     },
     async doFreeze() {

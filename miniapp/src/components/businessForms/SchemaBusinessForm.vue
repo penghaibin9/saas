@@ -1,7 +1,7 @@
 <template>
   <view class="schema-form">
     <view v-if="unsupported" class="unsupported">
-      <text>FORM_CLIENT_UNSUPPORTED</text>
+      <text>该表单暂不支持当前端，请前往电脑端办理</text>
       <text>当前小程序不支持此表单的完整字段，请前往 PC 办理。</text>
     </view>
     <template v-else>
@@ -55,7 +55,7 @@ function selectLabel(field) {
 function submit() {
   if (unsupported.value) {
     emit('unsupported', {
-      code: 'FORM_CLIENT_UNSUPPORTED',
+      code: '该表单暂不支持当前端，请前往电脑端办理',
       clientType: props.clientType,
       unsupportedFields: unsupportedFields.value.map(field => field.code),
       fallback: 'PC',

@@ -227,11 +227,11 @@ def issue_refresh(claims: dict, *, expires_in: int | None = None) -> str:
             except Exception:
                 pass
             if must_persist:
-                raise AppException("AUTH_STORE_UNAVAILABLE", "无法签发刷新令牌：认证存储写入失败", http_status=503) from exc
+                raise AppException("AUTH_STORE_UNAVAILABLE", "无法签发登录凭证：认证存储写入失败", http_status=503) from exc
         finally:
             db.close()
     if must_persist:
-        raise AppException("AUTH_STORE_UNAVAILABLE", "无法签发刷新令牌：认证存储不可用", http_status=503)
+        raise AppException("AUTH_STORE_UNAVAILABLE", "无法签发登录凭证：认证存储不可用", http_status=503)
     token_store._refresh[token] = {"claims": dict(claims or {}), "exp": token_store._now() + ttl}
     return token
 
@@ -384,7 +384,7 @@ def refresh(refresh_token: str) -> dict:
 
     claims = consume_refresh(refresh_token)
     if not claims:
-        raise unauthorized("refreshToken 无效或已使用，请重新登录")
+        raise unauthorized("登录凭证无效或已使用，请重新登录")
     auth_service_db.validate_token_subject(claims)
     policy = resolve_for_claims(claims)
     claims = dict(claims)
@@ -463,13 +463,13 @@ def wx_bind(wx_token: str, login_name: str, password: str, tenant_code: str | No
             *, binding_approval_token: str | None = None,
             client_type: str = "STUDENT_MINI") -> dict:
     if not db_enabled():
-        raise AppException("UNAUTHORIZED", "微信登录需启用数据库（DB_ENABLED=true）")
+        raise AppException("UNAUTHORIZED", "微信登录需启用数据库")
     try:
         claims = decode_token(wx_token)
     except Exception:
-        raise AppException("UNAUTHORIZED", "微信绑定令牌无效或已过期，请重新发起微信登录")
+        raise AppException("UNAUTHORIZED", "微信绑定凭证无效或已过期，请重新发起微信登录")
     if claims.get("purpose") != "wx_bind" or not claims.get("wxOpenid"):
-        raise AppException("UNAUTHORIZED", "微信绑定令牌无效")
+        raise AppException("UNAUTHORIZED", "微信绑定凭证无效")
     from app.services.wx_auth_service import normalize_mini_client_type
     client_type = normalize_mini_client_type(client_type)
     if str(claims.get("clientType") or "").upper() != client_type:

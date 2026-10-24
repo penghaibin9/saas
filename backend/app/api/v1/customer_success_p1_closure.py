@@ -24,9 +24,9 @@ def support_ticket_create(
     try:
         tenant_id = int((body or {}).get("tenantId") or 0)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "tenantId 必须是正整数") from None
+        raise AppException("VALIDATION_ERROR", "学校编号必须是正整数") from None
     if tenant_id <= 0:
-        raise AppException("VALIDATION_ERROR", "必须指定 tenantId")
+        raise AppException("VALIDATION_ERROR", "必须指定学校")
     _ensure_tenant(tenant_id)
     return success(guard.create_ticket(
         tenant_id=tenant_id,
@@ -65,9 +65,9 @@ def training_create(
     try:
         tenant_id = int((body or {}).get("tenantId") or 0)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "tenantId 必须是正整数") from None
+        raise AppException("VALIDATION_ERROR", "学校编号必须是正整数") from None
     if tenant_id <= 0:
-        raise AppException("VALIDATION_ERROR", "必须指定 tenantId")
+        raise AppException("VALIDATION_ERROR", "必须指定学校")
     _ensure_tenant(tenant_id)
     return success(guard.create_training(
         tenant_id=tenant_id,
@@ -105,9 +105,9 @@ def renewal_create(
     try:
         tenant_id = int((body or {}).get("tenantId") or 0)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "tenantId 必须是正整数") from None
+        raise AppException("VALIDATION_ERROR", "学校编号必须是正整数") from None
     if tenant_id <= 0:
-        raise AppException("VALIDATION_ERROR", "必须指定 tenantId")
+        raise AppException("VALIDATION_ERROR", "必须指定学校")
     _ensure_tenant(tenant_id)
     return success(guard.create_renewal_task(
         tenant_id=tenant_id,

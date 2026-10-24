@@ -73,10 +73,10 @@ def _review_scope(payload: dict) -> dict:
         config_types = sorted(_REVIEW_TYPES)
     else:
         if not isinstance(raw_types, list) or not raw_types:
-            raise AppException("ACCESS_REVIEW_SCOPE_INVALID", "scope.configTypes 必须是非空列表", http_status=422)
+            raise AppException("ACCESS_REVIEW_SCOPE_INVALID", "范围内的配置类型不能为空", http_status=422)
         normalized_types = [str(value or "").strip() for value in raw_types]
         if any(not value for value in normalized_types) or len(set(normalized_types)) != len(normalized_types):
-            raise AppException("ACCESS_REVIEW_SCOPE_INVALID", "scope.configTypes 不能为空或重复", http_status=422)
+            raise AppException("ACCESS_REVIEW_SCOPE_INVALID", "范围内的配置类型不能为空或重复", http_status=422)
         unknown_types = sorted(set(normalized_types) - _REVIEW_TYPES)
         if unknown_types:
             raise AppException(
@@ -91,13 +91,13 @@ def _review_scope(payload: dict) -> dict:
     tenant_ids: list[int] = []
     if raw_tenants is not None:
         if not isinstance(raw_tenants, list) or not raw_tenants:
-            raise AppException("ACCESS_REVIEW_SCOPE_INVALID", "scope.tenantIds 必须是非空正整数列表", http_status=422)
+            raise AppException("ACCESS_REVIEW_SCOPE_INVALID", "范围内的学校必须是非空的正整数列表", http_status=422)
         try:
             tenant_ids = [int(value) for value in raw_tenants]
         except (TypeError, ValueError):
-            raise AppException("ACCESS_REVIEW_SCOPE_INVALID", "scope.tenantIds 必须是正整数", http_status=422) from None
+            raise AppException("ACCESS_REVIEW_SCOPE_INVALID", "范围内的学校必须是正整数", http_status=422) from None
         if any(value <= 0 for value in tenant_ids) or len(set(tenant_ids)) != len(tenant_ids):
-            raise AppException("ACCESS_REVIEW_SCOPE_INVALID", "scope.tenantIds 只能包含不重复的正整数", http_status=422)
+            raise AppException("ACCESS_REVIEW_SCOPE_INVALID", "范围内的学校只能包含不重复的正整数", http_status=422)
         tenant_ids.sort()
 
     return {"configTypes": config_types, "tenantIds": tenant_ids}
@@ -214,9 +214,9 @@ def _review_decisions(payload: dict) -> list[dict]:
         raise AppException("VALIDATION_ERROR", "复核决定必须是逐项列表", http_status=422)
     keys = [str(item.get("itemKey") or "").strip() for item in raw if isinstance(item, dict)]
     if len(keys) != len(raw) or any(not key for key in keys):
-        raise AppException("VALIDATION_ERROR", "每条复核决定都必须包含 itemKey", http_status=422)
+        raise AppException("VALIDATION_ERROR", "每条复核决定都必须包含条目标识", http_status=422)
     if len(set(keys)) != len(keys):
-        raise AppException("VALIDATION_ERROR", "复核决定存在重复 itemKey", http_status=422)
+        raise AppException("VALIDATION_ERROR", "复核决定存在重复的条目标识", http_status=422)
     invalid = [
         item for item in raw
         if str(item.get("decision") or "").upper() not in {"KEEP", "REVOKE"}

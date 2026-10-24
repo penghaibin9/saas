@@ -120,7 +120,7 @@ def apply(user: dict, body: dict) -> dict:
     payload = body or {}
     change_type = str(payload.get("changeType") or "").upper()
     if change_type not in legacy.TYPE_LABEL:
-        raise AppException("VALIDATION_ERROR", "changeType 无效")
+        raise AppException("VALIDATION_ERROR", "变更类型无效")
     reason = str(payload.get("reason") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "变更原因必填且不少于 5 字")

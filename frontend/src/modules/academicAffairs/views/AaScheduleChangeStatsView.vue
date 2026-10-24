@@ -36,7 +36,7 @@
             unit="单"
           />
           <AppRankingChart
-            title="教师调停课频率 TOP10"
+            title="教师调停课频率前 10 名"
             subtitle="用于识别异常高频调课的教师/课程，非绩效评价结论"
             :data="stat.topTeachers"
             label-field="teacherName"

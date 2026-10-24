@@ -139,7 +139,7 @@ def school_role_template_impact(template_code: str, template_id: int, user=Depen
         raise AppException("DATA_NOT_FOUND", "角色模板版本不存在", http_status=404)
     source = svc.source_snapshot()
     if source["navigationDigest"] != base["navigationDigest"]:
-        raise AppException("PRODUCT_IAM_SOURCE_DRIFT", "导航真值已变化，请刷新影响预览", http_status=409)
+        raise AppException("PRODUCT_IAM_SOURCE_DRIFT", "导航数据已变化，请刷新影响预览", http_status=409)
     if base["publishStatus"] == template_svc.DRAFT:
         published = next((row for row in source.get("roleTemplates") or [] if row["templateCode"] == code), None)
         current_version = int(published["templateVersion"]) if published else None
@@ -163,9 +163,9 @@ def school_role_template_publish(template_code: str, template_id: int, body: dic
     source = svc.source_snapshot()
     deployed = source.get("provenance", {}).get("deployedCommitSha")
     if not deployed or current.get("sourceCommitSha") != deployed:
-        raise AppException("PRODUCT_IAM_SOURCE_COMMIT_DRIFT", "模板草稿部署提交与当前服务端部署提交不一致", http_status=409)
+        raise AppException("PRODUCT_IAM_SOURCE_COMMIT_DRIFT", "模板草稿部署提交与当前部署提交不一致", http_status=409)
     if body.get("sourceDigest") != source.get("sourceDigest") or body.get("navigationDigest") != source.get("navigationDigest"):
-        raise AppException("PRODUCT_IAM_SOURCE_DRIFT", "权限或导航真值已变化，必须刷新 impact", http_status=409)
+        raise AppException("PRODUCT_IAM_SOURCE_DRIFT", "权限或导航数据已变化，请刷新影响预览", http_status=409)
     if body.get("permissionDigest") != current.get("permissionDigest"):
         raise AppException("PRODUCT_IAM_TEMPLATE_DRIFT", "模板权限摘要已变化", http_status=409)
     return success(template_svc.publish_draft(

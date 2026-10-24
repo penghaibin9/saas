@@ -5,7 +5,7 @@
       <view class="entry-option student" @click="choose('student')"><view class="entry-option__mark">学</view><view><text class="entry-option__title">我是学生</text><text class="entry-option__desc">办事务、交材料、查结果、看进度</text></view><text class="entry-option__arrow">›</text></view>
       <view class="entry-option teacher" @click="choose('teacher')"><view class="entry-option__mark">教</view><view><text class="entry-option__title">我是教师 / 管理人员</text><text class="entry-option__desc">移动审批、扫码核验、实习指导与风险处置</text></view><text class="entry-option__arrow">›</text></view>
     </view>
-    <text class="entry-tip">退出登录、会话过期或旧版入口访问时，可在此重新选择身份。</text>
+    <text class="entry-tip">退出登录或会话过期后，可在此重新选择身份。</text>
     <view class="entry-footer"><text>技术支持：湖南跃科信息工程有限公司</text><text>湘ICP备2026031107号</text></view>
   </view>
 </template>

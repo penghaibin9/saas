@@ -31,7 +31,7 @@ export function createConnector({request,can,identity=()=>'',onInvalidate=()=>{}
         return domain('OK',data);
       }catch(err){
         if(authError(err)){invalidate();return domain('RESTRICTED');}
-        return domain(denied(err)?'RESTRICTED':'ERROR',null,denied(err)?'当前角色/范围不可见':'统计接口暂不可用');
+        return domain(denied(err)?'RESTRICTED':'ERROR',null,denied(err)?'当前角色/范围不可见':'统计暂不可用');
       }
     }
     const [term,brand]=await Promise.all([read('term'),read('brand')]);

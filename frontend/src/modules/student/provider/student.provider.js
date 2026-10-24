@@ -20,7 +20,7 @@ export const rejectStudentIdentity = (id, payload) => studentApi.reviewIdentityR
 export const getStudentGuardians = () => unsupported('监护人旧 provider 尚未接入真实学生关系服务')
 export const saveStudentGuardians = () => unsupported('监护人旧 provider 尚未接入真实学生关系服务')
 export const changeStudentStatus = (id, payload) => studentApi.changeStatus(id, payload)
-export const getStudentTimeline = () => unsupported('成长时间线请使用学生360正式详情接口')
+export const getStudentTimeline = () => unsupported('成长时间线请使用学生全景档案的正式详情')
 export const getStudentOptions = () => studentApi.getContext()
 export const validateStudentImport = (payload) => studentApi.validateImport(payload)
 export const exportStudents = (payload) => studentApi.createExport(payload)

@@ -23,7 +23,7 @@ function fail(message, code = 1) {
 }
 function toErr(e) {
   if (e?.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message, bizCode: e.bizCode, details: e.details, httpStatus: e.httpStatus, traceId: e.traceId })
-  return fail(e?.message || '真实接口不可用', 503001)
+  return fail(e?.message || '暂时无法连接，请稍后重试', 503001)
 }
 async function call(fn) {
   try {
@@ -53,7 +53,7 @@ export const academicAffairsApi = {
     let schoolName = '管理端'
     let roleName = '教务管理员'
     let roleCode = u.currentRoleCode || ''
-    const scopeName = '本校教务数据（按后端数据范围）'
+    const scopeName = '本校教务数据（按数据范围）'
     let dataScope = { scope: '', scopeName, name: scopeName }
     let permissionPatterns = null
     try {

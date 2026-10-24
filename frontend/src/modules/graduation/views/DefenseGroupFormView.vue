@@ -4,7 +4,7 @@
     :title="groupId ? '编辑答辩组' : '新增答辩组'"
     :subtitle="groupId ? '核对排期、人员与学生分组，保存后回到答辩安排继续发布前检查。' : '先建立答辩组和人员安排，创建后再分配符合条件的学生。'"
     eyebrow="答辩与成绩"
-    purpose="答辩组必须同时具备时间、地点、组长、秘书、评委和学生；本页做明显缺口预检，最终发布仍由服务端状态机裁决。"
+    purpose="答辩组必须同时具备时间、地点、组长、秘书、评委和学生；本页做明显缺口的预检查，最终发布仍由系统裁决。"
     :status-text="statusText"
     :status-tone="obviousReady ? 'success' : 'warning'"
     back-label="返回答辩安排"
@@ -61,7 +61,7 @@
             <div>
               <span>02 · 答辩职责</span>
               <strong>绑定组长、秘书和评委的真实教师身份</strong>
-              <small>姓名快照只用于兼容历史数据；新配置优先绑定工号身份，回避冲突由服务端最终校验。</small>
+              <small>姓名仅用于历史数据；新配置优先绑定工号，回避冲突由系统最终校验。</small>
             </div>
           </header>
 
@@ -90,7 +90,7 @@
           <div>
             <span>03 · 学生分配</span>
             <strong>把已进入成果检查及以后阶段的学生分入本组</strong>
-            <small>同批次、阶段准入、容量与师生回避关系均以服务端返回为准。</small>
+            <small>同批次、阶段准入、容量与师生回避关系均以系统返回为准。</small>
           </div>
           <div class="student-assignment__stats">
             <b>{{ assigned.length }}</b><span>已分配</span>
@@ -179,12 +179,12 @@
       <section class="gd-form-aside-card">
         <span>职责分离</span>
         <strong>评委评分与秘书确认不能互相代替</strong>
-        <p>发布后，评委只能提交本人评分；秘书只能确认服务端判定为完整的评分轮次。</p>
+        <p>发布后，评委只能提交本人评分；秘书只能确认系统判定为完整的评分轮次。</p>
       </section>
       <section class="gd-form-aside-card">
         <span>正式发布</span>
         <strong>保存编排不等于学生已收到通知</strong>
-        <p>返回“答辩安排”后还要执行服务端发布前检查，再由授权角色发布并发送通知。</p>
+        <p>返回“答辩安排”后还要执行发布前检查，再由授权角色发布并发送通知。</p>
       </section>
     </template>
 
@@ -516,7 +516,7 @@ export default {
         this.assigned = Array.isArray(response.data?.students) ? response.data.students : []
         this.picked = []
         await this.loadEligible()
-        toast.success('所选学生已分配，服务器最新分组已回读')
+        toast.success('所选学生已分配，已重新读取最新分组')
       } catch (error) {
         toast.error(error?.message || '学生分配失败')
       } finally {
@@ -537,7 +537,7 @@ export default {
         }
         this.assigned = Array.isArray(response.data?.students) ? response.data.students : []
         await this.loadEligible()
-        toast.success('学生已移出本组，服务器最新分组已回读')
+        toast.success('学生已移出本组，已重新读取最新分组')
       } catch (error) {
         toast.error(error?.message || '移出失败')
       } finally {

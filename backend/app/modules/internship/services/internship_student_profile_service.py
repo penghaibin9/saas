@@ -253,7 +253,7 @@ def save_my_profile(body: dict | None, user: dict | None = None) -> dict[str, An
         if "availableUntil" in body:
             values["available_until"] = _parse_date(body.get("availableUntil"), "availableUntil")
         if values.get("available_from") and values.get("available_until") and values["available_from"] > values["available_until"]:
-            raise AppException("VALIDATION_ERROR", "availableFrom 不能晚于 availableUntil")
+            raise AppException("VALIDATION_ERROR", "可用开始时间不能晚于结束时间")
         if "expectedLocations" in body:
             values["expected_locations_json"] = _clean_string_list(body.get("expectedLocations"), "expectedLocations", max_items=20)
         if "skillTags" in body:
@@ -278,7 +278,7 @@ def add_my_item(body: dict | None, user: dict | None = None) -> dict[str, Any]:
     tenant_id = _tid()
     item_type = str(body.get("itemType") or "").upper()
     if item_type not in _ITEM_TYPES:
-        raise AppException("VALIDATION_ERROR", "itemType 非法")
+        raise AppException("VALIDATION_ERROR", "条目类型不合法")
     title = str(body.get("title") or "").strip()
     if not title or len(title) > 200:
         raise AppException("VALIDATION_ERROR", "title 必填且最多 200 字")
@@ -312,7 +312,7 @@ def add_my_item(body: dict | None, user: dict | None = None) -> dict[str, Any]:
             sort_order=max(0, int(body.get("sortOrder") or 0)),
         )
         if item.start_date and item.end_date and item.start_date > item.end_date:
-            raise AppException("VALIDATION_ERROR", "startDate 不能晚于 endDate")
+            raise AppException("VALIDATION_ERROR", "开始日期不能晚于结束日期")
         db.add(item)
         db.flush()
         actor = user or get_current_user_ctx() or {}

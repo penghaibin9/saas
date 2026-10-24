@@ -1,6 +1,6 @@
 <template>
   <section v-if="receipt" class="aa-a-receipt" :class="{ 'is-pending': receipt.pending }" role="status" aria-live="polite">
-    <strong>{{ receipt.title }}</strong><dl><div><dt>业务对象</dt><dd>{{ receipt.object }}</dd></div><div><dt>实际状态</dt><dd>{{ receipt.status }}</dd></div><div><dt>办理时间</dt><dd>{{ receipt.time || '服务端未提供办理时间' }}</dd></div></dl>
+    <strong>{{ receipt.title }}</strong><dl><div><dt>业务对象</dt><dd>{{ receipt.object }}</dd></div><div><dt>实际状态</dt><dd>{{ receipt.status }}</dd></div><div><dt>办理时间</dt><dd>{{ receipt.time || '系统未提供办理时间' }}</dd></div></dl>
     <p>{{ receipt.next }}</p><slot />
   </section>
 </template>

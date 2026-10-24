@@ -156,7 +156,7 @@ def find_identity_job_by_batch(batch_no: str, *, user: dict) -> dict:
     """Legacy confirm adapter: resolve old batchNo to the canonical ImportJob."""
     batch = str(batch_no or "").strip()
     if not batch:
-        raise AppException("VALIDATION_ERROR", "缺少 batchNo/jobId")
+        raise AppException("VALIDATION_ERROR", "缺少批次号或任务编号")
     tenant_id = jobs._tenant_id()  # noqa: SLF001
     db = get_sessionmaker()()
     try:

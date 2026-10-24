@@ -172,7 +172,7 @@ export default {
         this.error = `${message}；已清除先前内容。`
       } else {
         this.error = message
-        if (isConflictResult(result)) this.receipt = { title: '重新核对派师', object: `任务 #${this.assign.taskId}`, status: '事实已变化，保留输入', pending: true, next: '请刷新来源批次后重新核对，不会自动重提。' }
+        if (isConflictResult(result)) this.receipt = { title: '重新核对派师', object: `任务 #${this.assign.taskId}`, status: '数据已变化，保留输入', pending: true, next: '请刷新来源批次后重新核对，不会自动重提。' }
       }
     },
     async doAssign() {
@@ -199,7 +199,7 @@ export default {
         if (!current()) return
         if (readback?.code !== 0) {
           this.receipt = { object, status: '结果待确认', pending: true, next: '未能完整读取正式任务，请刷新来源批次核对，不要重复分配。' }
-          this.handleFailure(readback, '正式任务回读失败'); return
+          this.handleFailure(readback, '正式任务读取失败'); return
         }
         const row = readback.data.list.find(item => String(item.taskId) === String(form.taskId))
         const confirmed = row?.teacherKey === teacherKey && ['ASSIGNED', 'TEACHER_CONFIRMED', 'READY'].includes(row.status)

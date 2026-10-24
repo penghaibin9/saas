@@ -62,7 +62,7 @@ async function openCorrectionTab(page) {
 async function createGradeCorrection(page, { targetRef, reason, score, suffix }) {
   await page.getByRole('button', { name: '发起归档后纠错' }).click()
   await page.getByLabel('业务类型').selectOption('GRADE')
-  await page.getByLabel('目标正式事实编号').fill(String(targetRef))
+  await page.getByLabel('目标记录编号').fill(String(targetRef))
   await page.getByLabel('纠错原因').fill(reason)
   await page.getByText('实施人员使用：修正内容与证据数据编辑', { exact: true }).click()
   await page.getByLabel('修正内容（数据文本）').fill(JSON.stringify({ score }, null, 2))
@@ -93,9 +93,9 @@ async function openCorrectionDetail(page, targetRef, reason) {
     .first()
   await expect(row).toBeVisible()
   await row.getByRole('button', { name: '查看 / 复核' }).click()
-  const detail = page.getByRole('dialog').filter({ hasText: '原事实与新事实对比' }).first()
+  const detail = page.getByRole('dialog').filter({ hasText: '原记录与新记录对比' }).first()
   await expect(detail).toBeVisible()
-  await expect(detail.getByText('原事实与新事实对比', { exact: true })).toBeVisible()
+  await expect(detail.getByText('原记录与新记录对比', { exact: true })).toBeVisible()
   await expect(detail.getByText(reason, { exact: true })).toBeVisible()
 }
 
@@ -133,10 +133,10 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
   })
   const approveCaseId = created.caseId
   await openCorrectionDetail(page, approvalTarget, approveReason)
-  await expect(page.getByText('拟形成事实（非正式）', { exact: true })).toBeVisible()
+  await expect(page.getByText('拟形成的记录（非正式）', { exact: true })).toBeVisible()
   await expect(page.getByText('申请人本人执行二审会被服务端拒绝', { exact: false })).toBeVisible()
 
-  await expect(page.getByRole('button', { name: '二审通过并生成新正式事实' })).toBeHidden()
+  await expect(page.getByRole('button', { name: '二审通过并生成新正式记录' })).toBeHidden()
   const denied = await page.request.post(
     `${config.apiBaseUrl}/academic-affairs/archive/corrections/${approveCaseId}/approve`,
     { headers: { Authorization: `Bearer ${creatorApi.token}` }, data: {} }
@@ -158,7 +158,7 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
     await openCorrectionTab(reviewerPage)
     await openCorrectionDetail(reviewerPage, approvalTarget, approveReason)
 
-    await reviewerPage.getByRole('button', { name: '二审通过并生成新正式事实' }).click()
+    await reviewerPage.getByRole('button', { name: '二审通过并生成新正式记录' }).click()
     const approveDialog = reviewerPage.getByRole('dialog').filter({ hasText: '确认二次审批通过' }).first()
     await expect(approveDialog).toBeVisible()
     const approvePromise = reviewerPage.waitForResponse(
@@ -166,7 +166,7 @@ test('W1 ARCHIVED correction: two-person approve appends Manifest, reject stays 
         response.request().method() === 'POST',
       { timeout: 20_000 }
     )
-    await approveDialog.getByRole('button', { name: '确认批准并生成新事实' }).click()
+    await approveDialog.getByRole('button', { name: '确认批准并生成新记录' }).click()
     const approvedResponse = await approvePromise
     expect(approvedResponse.status()).toBe(200)
     const approvedPayload = await approvedResponse.json()

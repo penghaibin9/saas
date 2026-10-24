@@ -62,7 +62,7 @@ export const OFFICIAL_SALES_PAGES = Object.freeze([
   {
     key: 'solution-lifecycle', path: '/solutions/student-lifecycle', type: 'solution', contentUpdatedAt: updated,
     title: '学生全生命周期解决方案｜入校到毕业就业的统一学生业务平台', navTitle: '学生全生命周期', eyebrow: '跨生命周期协同',
-    description: '以统一学生身份、状态、权限与业务事实连接迎新、在校成长、教学运行、岗位实习、毕业设计与就业衔接，减少跨模块重复录入和状态割裂。',
+    description: '以统一的学生身份、状态、权限与业务数据连接迎新、在校成长、教学运行、岗位实习、毕业设计与就业衔接，减少跨模块重复录入和状态割裂。',
     hero: '不是堆模块，而是让学生从入校到毕业就业始终处在同一条业务主线上',
     screenshots: ['/official-site/workbench.webp', '/official-site/student-portal.webp', '/official-site/leadership-cockpit.webp'],
     keywords: ['学生全生命周期管理', '职业院校学生管理平台', '学生数字化管理']

@@ -388,7 +388,7 @@ export const SHOWCASE = {
         [
           "internship-attendance",
           "打卡异常处理",
-          "结合打卡事实、异常原因与补充材料，核对学生在岗情况。"
+          "结合打卡记录、异常原因与补充材料，核对学生在岗情况。"
         ],
         [
           "internship-weekly",

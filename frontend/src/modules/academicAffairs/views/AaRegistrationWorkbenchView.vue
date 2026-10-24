@@ -47,7 +47,7 @@
                       :type="registrationWrite.receipt.commandConfirmed ? 'success' : 'warning'">
         {{ registrationWrite.receipt.commandConfirmed ? '已收到办理回执并核对正式记录' : '已核对当前记录，本次请求回执仍待确认' }}。
         {{ registrationWrite.receipt.label }}，对象 {{ registrationWrite.receipt.objectId }}，学生 {{ registrationWrite.receipt.studentId }}；
-        回读状态：{{ registrationActionStatus(registrationWrite.receipt.domain, registrationWrite.receipt.status) }}。后续状态以正式队列为准。
+        最新状态：\1。后续状态以正式队列为准。
       </AppInlineAlert>
     </div>
 
@@ -217,7 +217,7 @@
       <p v-if="unreg.rows.length && !unregisteredRows.length" class="mp-note">本页没有匹配学生；这不代表其它页没有记录。</p>
       </AppSectionCard>
       <p class="mp-note">
-        「未注册」表示本批次记录已标记 UNREGISTERED；学年/学期记录不代表学籍主档退回未注册。「逾期待扫描」表示本批次已截止且尚未完成注册，仍须由正式扫描判定。
+        「未注册」表示本批次记录已标记为未注册；学年、学期记录不代表学籍主档退回未注册。「逾期待扫描」表示本批次已截止且尚未完成注册，仍须由正式扫描判定。
       </p>
     </div>
 
@@ -273,7 +273,7 @@
       </AppInlineAlert>
       <AppInlineAlert v-if="excCreateReceipt && exceptionCreateIdentity() === excCreateReceipt.identityKey && String(batchId) === excCreateReceipt.batchId" type="success">
         已创建注册异常 {{ excCreateReceipt.exceptionId }}，学生 {{ excCreateReceipt.studentId }}。
-        创建后核对状态：{{ excCreateReceipt.status === 'OPEN' ? '待处理（OPEN）' : '已处理（RESOLVED）' }}。后续状态以异常列表为准。
+        创建后核对状态：{{ excCreateReceipt.status === 'OPEN' ? '待处理' : '已处理' }}。后续状态以异常列表为准。
       </AppInlineAlert>
       <ErrorState v-if="exc.error" :description="exc.error" @retry="loadExceptions" />
       <LoadingState v-else-if="exc.loading" />
@@ -621,7 +621,7 @@ export default {
         { title: '当前名单版本', type: 'warning', label: '待核实',
           fact: `当前筛选共 ${this.elig.pagination.total} 人，第 ${this.elig.pagination.page} 页。`,
           note: '当前名单未提供版本信息，候选人数不能证明名单已冻结。' },
-        { title: '材料与事实依据', type: 'warning', label: '材料待核实',
+        { title: '材料与依据', type: 'warning', label: '材料待核实',
           fact: row.eligibilityNote ? `核验说明：${row.eligibilityNote}` : '尚无核验说明。',
           note: '本页尚无可核对的材料清单；核验说明不能代替材料原件。' },
         { title: '当前办理节点', type: 'default', label: '资格核验',
@@ -630,7 +630,7 @@ export default {
         { title: '状态与可用动作', type: this.eligStatusType(row.eligibilityStatus), label: this.eligStatusLabel(row.eligibilityStatus),
           fact: this.objectBlockText(row),
           note: `${this.objectOutcomeText(row)}；${this.canVerifyEligibility ? this.objectActionText(row) : '当前身份或批次不允许核验。'}` },
-        { title: '证据新鲜度', type: 'warning', label: '待核实',
+        { title: '数据时效', type: 'warning', label: '待核实',
           fact: row.eligibilityCheckedAt ? `最近核验时间：${formatDateTime(row.eligibilityCheckedAt, '时间待核实')}（本地时间）` : '尚无核验记录。',
           note: '最近核验时间不代表材料、名单在本次提交前未发生变化。' }
       ]

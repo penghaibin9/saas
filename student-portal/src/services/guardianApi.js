@@ -88,7 +88,7 @@ export const guardianApi = {
       method: 'POST', auth: false, body: { phone, code }
     })
     const token = data?.accessToken || data?.token || ''
-    if (!token) throw new Error('家长登录响应缺少访问令牌')
+    if (!token) throw new Error('家长登录失败，请重试')
     setGuardianToken(token)
     return data
   },

@@ -221,7 +221,7 @@ def ensure_destination_document_in_tx(db, emp: EmpStudent) -> FileObject:
     )
     raw_file_id = str(meta.get("fileId") or "")
     if not raw_file_id.isdigit():
-        raise AppException("DATA_CONFLICT", "文件中心未返回有效的就业去向登记表 fileId", http_status=409)
+        raise AppException("DATA_CONFLICT", "文件中心未返回有效的就业去向登记表", http_status=409)
     file_id = int(raw_file_id)
     upsert_file_binding(
         raw_file_id, biz_type=DOC_BIZ_TYPE, biz_id=str(emp.id),

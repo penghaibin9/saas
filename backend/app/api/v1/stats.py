@@ -74,7 +74,7 @@ def risk(user=Depends(require_staff)):
                                       "GraduationStudent", "EmpStudent"],
         quality_flags=[{
             "code": "INTERNSHIP_RISK_NOT_UNIFIED", "severity": "INFO",
-            "message": "实习域独立风险处置表尚未并入本聚合，接口不以 0 或演示数据补齐。",
+            "message": "实习域独立的风险处置表尚未并入本汇总，不用 0 或演示数据补齐。",
         }],
     ))
 
@@ -111,7 +111,7 @@ def risk_board(user=Depends(require_staff)):
     flags = [
         {
             "code": "RISK_STATUS_CALIBER_PARTIAL", "severity": "INFO",
-            "message": "跨域风险处理进度口径尚未统一，byStatus 为空时代表未配置，不代表 0。",
+            "message": "跨域风险处理进度的口径尚未统一，状态分布为空时代表未配置，不代表 0。",
         },
         {
             "code": "RISK_TREND_NOT_CONFIGURED", "severity": "INFO",
@@ -138,7 +138,7 @@ def rankings(level: str = Query("COLLEGE"), collegeId: str | None = Query(None),
         sources=["StudentProfile"],
         quality_flags=[{
             "code": "RANKING_PROXY_CALIBER", "severity": "INFO",
-            "message": "completionRate 为生命周期阶段加权推进度；employmentRate 为毕业/校友代理口径，页面必须展示该说明。",
+            "message": "完成率为生命周期各阶段的加权推进度；就业率为毕业/校友的代理口径，页面必须显示该说明。",
         }],
     ))
 

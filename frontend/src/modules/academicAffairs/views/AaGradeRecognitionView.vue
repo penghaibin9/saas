@@ -22,10 +22,10 @@
       <EmptyState v-else-if="!rows.length && !active" title="暂无认定申请" description="学生自助提交或教务代录后在此审核" />
       <div v-else class="aarn-review">
         <aside class="aarn-queue"><h3>责任队列</h3><button v-for="row in rows" :key="row.recognitionId" :class="['aarn-object',{selected:active?.recognitionId===row.recognitionId}]" :disabled="saving || writeBlocked" @click="selectRecord(row)"><strong>{{ row.studentName }}</strong><span>{{ row.sourceCourseName }} → {{ row.targetCourseName }}</span><StatusTag :label="statusLabel(row.status)" /></button><div class="aarn-pages"><AppButton :disabled="pagination.page <= 1 || saving || writeBlocked" @click="changePage(pagination.page-1)">上一页</AppButton><span>第{{ pagination.page }}页</span><AppButton :disabled="pagination.page * pagination.pageSize >= pagination.total || saving || writeBlocked" @click="changePage(pagination.page+1)">下一页</AppButton></div></aside>
-        <section class="aarn-evidence"><EmptyState v-if="!active" title="选择认定申请" description="核对原课程、目标课程和佐证材料" /><template v-else><header><h3>{{ active.studentName }} · {{ active.studentNo }}</h3><StatusTag :label="statusLabel(active.status)" /></header><div class="aarn-facts"><article><strong>原修课程</strong><p>{{ active.sourceCourseName }}</p><p>{{ active.sourceScore ?? '待核对' }} 分 · {{ active.sourceCredit == null ? '学分未提供' : `${active.sourceCredit} 学分` }}</p><p>{{ active.sourceOrigin || '来源说明未提供' }}</p></article><article><strong>替代目标课程</strong><p>{{ active.targetCourseName }}</p><p>课程版本与培养计划适用性由服务器在审核时重新核对。</p></article><article><strong>申请依据</strong><p>{{ active.reason || '未填写申请理由' }}</p><p>当前记录含 {{ (active.attachmentFileIds || []).length }} 份绑定材料。</p><AppButton :disabled="evidenceLoading || saving || writeBlocked" @click="loadEvidence">核对材料元数据</AppButton><ul><li v-for="file in evidenceFiles" :key="file.fileId">{{ file.fileName || '材料' }} · {{ file.readyForBusiness ? '安全可用' : '暂不可用于办理' }} <button :disabled="evidenceLoading || saving || writeBlocked" @click="previewEvidence(file)">核对并查看</button></li></ul></article><article><strong>当前正式结论</strong><p>{{ statusLabel(active.status) }}</p><p>{{ active.reviewReason || '暂无审核意见' }}</p><p v-if="active.reviewedBy">办理人：{{ active.reviewedBy }} · {{ (active.reviewedAt || '').replace('T',' ').slice(0,16) }}</p><p v-else>办理人与时间尚未返回</p></article></div><footer><AppButton v-if="canManage && active.status === 'SUBMITTED'" :disabled="saving || writeBlocked" @click="approve(active)">确认通过认定</AppButton><AppButton v-if="canManage && active.status === 'SUBMITTED'" :disabled="saving || writeBlocked" variant="danger" @click="openReject(active)">驳回</AppButton><AppButton variant="ghost" :disabled="saving || writeBlocked" @click="closeRecord">返回原列表位置</AppButton><span>申请结论由回读确认；课程正式成绩请到学生成绩单核对。</span></footer></template></section>
+        <section class="aarn-evidence"><EmptyState v-if="!active" title="选择认定申请" description="核对原课程、目标课程和佐证材料" /><template v-else><header><h3>{{ active.studentName }} · {{ active.studentNo }}</h3><StatusTag :label="statusLabel(active.status)" /></header><div class="aarn-facts"><article><strong>原修课程</strong><p>{{ active.sourceCourseName }}</p><p>{{ active.sourceScore ?? '待核对' }} 分 · {{ active.sourceCredit == null ? '学分未提供' : `${active.sourceCredit} 学分` }}</p><p>{{ active.sourceOrigin || '来源说明未提供' }}</p></article><article><strong>替代目标课程</strong><p>{{ active.targetCourseName }}</p><p>课程版本与培养计划适用性由服务器在审核时重新核对。</p></article><article><strong>申请依据</strong><p>{{ active.reason || '未填写申请理由' }}</p><p>当前记录含 {{ (active.attachmentFileIds || []).length }} 份绑定材料。</p><AppButton :disabled="evidenceLoading || saving || writeBlocked" @click="loadEvidence">核对材料元数据</AppButton><ul><li v-for="file in evidenceFiles" :key="file.fileId">{{ file.fileName || '材料' }} · {{ file.readyForBusiness ? '安全可用' : '暂不可用于办理' }} <button :disabled="evidenceLoading || saving || writeBlocked" @click="previewEvidence(file)">核对并查看</button></li></ul></article><article><strong>当前正式结论</strong><p>{{ statusLabel(active.status) }}</p><p>{{ active.reviewReason || '暂无审核意见' }}</p><p v-if="active.reviewedBy">办理人：{{ active.reviewedBy }} · {{ (active.reviewedAt || '').replace('T',' ').slice(0,16) }}</p><p v-else>办理人与时间尚未返回</p></article></div><footer><AppButton v-if="canManage && active.status === 'SUBMITTED'" :disabled="saving || writeBlocked" @click="approve(active)">确认通过认定</AppButton><AppButton v-if="canManage && active.status === 'SUBMITTED'" :disabled="saving || writeBlocked" variant="danger" @click="openReject(active)">驳回</AppButton><AppButton variant="ghost" :disabled="saving || writeBlocked" @click="closeRecord">返回原列表位置</AppButton><span>申请结论以重新读取的结果为准；课程正式成绩请到学生成绩单核对。</span></footer></template></section>
       </div>
     </template>
-    <section v-if="receipt" class="aarn-receipt" role="status"><strong>{{ receipt.verified ? '原认定命令已由持久回执确认' : '结果待核实' }}</strong><p>{{ receipt.description }}</p><p v-if="receipt.commandStatus">原命令结果：{{ statusLabel(receipt.commandStatus) }}</p><p v-if="receipt.status">当前正式记录：{{ statusLabel(receipt.status) }}<template v-if="receipt.commandStatus && receipt.commandStatus !== receipt.status">（已发生后续变化）</template></p><p v-if="!receipt.verified">只读核对不会重放提交，也不会根据当前对象状态推断原命令成功。</p><div class="aarn-receipt-actions"><AppButton v-if="pending" :disabled="saving" :loading="checking" @click="verifyCommand">只读核对持久回执</AppButton><AppButton v-if="pending?.ack" data-testid="return-queue-with-lock" variant="ghost" :disabled="saving || checking" @click="returnToQueueWithLock">返回责任队列（保持写入锁定）</AppButton></div></section>
+    <section v-if="receipt" class="aarn-receipt" role="status"><strong>{{ receipt.verified ? '原认定命令已由持久回执确认' : '结果待核实' }}</strong><p>{{ receipt.description }}</p><p v-if="receipt.commandStatus">原命令结果：{{ statusLabel(receipt.commandStatus) }}</p><p v-if="receipt.status">当前正式记录：{{ statusLabel(receipt.status) }}<template v-if="receipt.commandStatus && receipt.commandStatus !== receipt.status">（已发生后续变化）</template></p><p v-if="!receipt.verified">重新核对不会重复提交，也不会根据当前对象状态推断原操作成功。</p><div class="aarn-receipt-actions"><AppButton v-if="pending" :disabled="saving" :loading="checking" @click="verifyCommand">只读核对持久回执</AppButton><AppButton v-if="pending?.ack" data-testid="return-queue-with-lock" variant="ghost" :disabled="saving || checking" @click="returnToQueueWithLock">返回责任队列（保持写入锁定）</AppButton></div></section>
 
     <AppDrawer :visible="createVisible" title="代录成绩认定申请" mode="modal" size="large" @close="closeCreate">
       <div class="aarn-form">
@@ -131,8 +131,8 @@ export default {
       if(!found.entry){this.restoreRoute();return}
       const entry=found.entry,kind=entry.operation==='RECOGNITION_SUBMIT'?'create':'review';this.pagination.page=entry.page||1;this.statusFilter=entry.status||''
       this.pending={...this.capture(),id:entry.objectId,commandKey:entry.commandKey,operation:entry.operation,kind,page:entry.page,status:entry.status,recovered:true,description:kind==='create'?'原认定申请':'原认定审核'}
-      this.receipt={description:this.pending.description,verified:false};this.error='检测到原身份的认定命令引用，正在只读核对持久回执。'
-      if(kind==='review'&&!entry.objectId){this.error='恢复引用缺少认定申请编号，写入保持锁定且不会自动重放。';return}
+      this.receipt={description:this.pending.description,verified:false};this.error='检测到原身份的认定操作，正在核对已保存的回执。'
+      if(kind==='review'&&!entry.objectId){this.error='恢复信息缺少认定申请编号，写入保持锁定，不会自动重复提交。';return}
       this.verifyCommand()
     },
     resetForRoute(){
@@ -142,7 +142,7 @@ export default {
         this.pending={...pending,route:this.routeKey,seq:this.scopeSeq};this.receipt=receipt;this.active=this.$route.query.recognitionId?active:null;this.rows=rows;this.form=form
         this.rejectReason=rejectReason;this.pagination={...pagination,page:pending.page||pagination.page||1};this.statusFilter=pending.status||''
         this.createVisible=pending.kind==='create'&&!pending.recovered&&!pending.queueOnly
-        this.error='原认定请求仍待核实；当前保留原申请，请只读核对其结果。'
+        this.error='原认定请求仍待核实；当前保留原申请，请重新核对其结果。'
         return
       }
       this.restoreRoute()
@@ -222,12 +222,12 @@ export default {
         const saved=createGradeCommandReference({identityRef:this.recoveryIdentity,operation:'RECOGNITION_SUBMIT',objectId:null,page:this.pagination.page,status:this.statusFilter})
         if(!saved.ok){this.formError=`无法保存刷新恢复引用，本次未发送：${saved.error}`;return}
         this.pending={...command,commandKey:saved.entry.commandKey,operation:'RECOGNITION_SUBMIT'};const c=this.pending;this.receipt={description:c.description,verified:false}
-        if(saved.existing){c.recovered=true;this.formError='已有认定申请命令在途，本次未重复发送；正在只读核对。';await this.verifyCommand();return}
+        if(saved.existing){c.recovered=true;this.formError='已有认定申请操作在处理中，本次未重复提交；正在核对。';await this.verifyCommand();return}
         let res;try{res=await api.submitRecognition(body,c.commandKey)}catch(err){res=err}
         if(!this.current(c)||this.pending!==c)return
         c.id=this.exactId(res?.code===0?res.data?.recognitionId:'');if(c.id)updateGradeCommandReference(c.commandKey,this.recoveryIdentity,{objectId:c.id})
         c.postFailure=res?.code===0?null:res;await this.verifyCommand()
-      }catch(err){if(this.current(command))this.fail(err,this.pending?'结果待核实，请只读核对。':'申请尚未提交；填写内容与材料已保留，请核对。')}finally{if(this.current(command))this.saving=false}
+      }catch(err){if(this.current(command))this.fail(err,this.pending?'结果待核实，请重新核对。':'申请尚未提交；填写内容与材料已保留，请核对。')}finally{if(this.current(command))this.saving=false}
     },
     approve(row){
       if(!this.canManage||this.saving||this.writeBlocked||row.status!=='SUBMITTED')return
@@ -247,11 +247,11 @@ export default {
         const saved=createGradeCommandReference({identityRef:this.recoveryIdentity,operation:'RECOGNITION_REVIEW',objectId:command.id,page,status})
         if(!saved.ok){this.error=`无法保存刷新恢复引用，本次未发送：${saved.error}`;this.rejectError=this.error;return}
         this.pending={...command,commandKey:saved.entry.commandKey,operation:'RECOGNITION_REVIEW'};const c=this.pending;this.receipt={description:c.description,verified:false}
-        if(saved.existing){c.recovered=true;this.error='同一认定申请已有审核命令在途，本次未重复发送；正在只读核对。';await this.verifyCommand();return}
+        if(saved.existing){c.recovered=true;this.error='同一认定申请已有审核操作在处理中，本次未重复提交；正在核对。';await this.verifyCommand();return}
         let res;try{res=await api.reviewRecognition(c.id,action,reason,c.commandKey)}catch(err){res=err}
         if(!this.current(c)||this.pending!==c)return
         c.postFailure=res?.code===0?null:res;await this.verifyCommand()
-      }catch(err){if(this.current(command)){this.confirmVisible=false;this.fail(err,this.pending?'结果待核实，请只读核对原申请。':this.conflict(err)?'申请、材料或版本已变化；输入已保留，请重新确认。':'本次尚未办理，请核对最新申请。')}}finally{if(this.current(command))this.saving=false}
+      }catch(err){if(this.current(command)){this.confirmVisible=false;this.fail(err,this.pending?'结果待核实，请重新核对原申请。':this.conflict(err)?'申请、材料或版本已变化；输入已保留，请重新确认。':'本次尚未办理，请核对最新申请。')}}finally{if(this.current(command))this.saving=false}
     },
     async readPersistentReceipt(c){
       const res=await api.getGradeCommandReceipt(c.commandKey,c.operation);if(res?.code!==0)throw res
@@ -277,7 +277,7 @@ export default {
         if(!this.current(c)||this.pending!==c)return
         if(persisted.state==='UNRESOLVED'){
           if(c.postFailure&&this.explicitFailure(c.postFailure)){await this.clearRejectedCommand(c,c.postFailure);return}
-          const message='持久回执尚未确认原认定命令；不会自动重发，请稍后只读核对。';this.error=message;this.formError=message;this.rejectError=message;return
+          const message='已保存的回执尚未确认原认定操作；不会自动重复提交，请稍后重新核对。';this.error=message;this.formError=message;this.rejectError=message;return
         }
         const id=this.exactId(persisted.result?.recognitionId)
         if(!id||(c.id&&String(c.id)!==id))throw {code:'GRADE_COMMAND_RECEIPT_OBJECT_MISMATCH',message:'持久回执与原认定申请不一致'}
@@ -296,7 +296,7 @@ export default {
         const sameDecision=c.kind!=='review'||expectedStatus!=='REJECTED'||(!!expectedReason&&String(row.reviewReason||'').trim()===expectedReason)
         const statusConsistent=c.kind==='create'?['SUBMITTED','APPROVED','REJECTED'].includes(row.status):row.status===expectedStatus
         if(!statusConsistent||!sameObject||!sameDecision){
-          const message=`持久回执已确认“${this.statusLabel(persisted.result.status)}”，但原申请 #${id} 的正式记录尚未形成同一结果；不会自动重发。`
+          const message=`已保存的回执确认“${this.statusLabel(persisted.result.status)}”，但原申请 #${id} 的正式记录尚未形成同一结果；不会自动重复提交。`
           this.receipt={id,description:c.description,commandStatus:persisted.result.status,status:row.status,acknowledged:true,verified:false}
           this.error=message;this.formError=message;this.rejectError=message
           return
@@ -305,13 +305,13 @@ export default {
         if(!marked.ok)throw {code:'GRADE_COMMAND_RECOVERY_UPDATE_FAILED',message:`持久回执已确认，但本地恢复引用更新失败：${marked.error}`}
         this.receipt={id,description:c.description,commandStatus:persisted.result.status,status:row.status,acknowledged:true,verified:true}
         const removed=removeGradeCommandReference(c.commandKey,this.recoveryIdentity)
-        if(!removed.ok){const message=`原命令和正式记录已确认，但本地恢复标记无法清除：${removed.error}`;this.error=message;this.formError=message;this.rejectError=message;return}
+        if(!removed.ok){const message=`原操作和正式记录已确认，但本地恢复标记无法清除：${removed.error}`;this.error=message;this.formError=message;this.rejectError=message;return}
         this.pending=null;this.confirmVisible=false;this.pendingAction=null;this.error='';this.formError='';this.rejectError=''
         if(c.kind==='create'){this.createVisible=false;this.form=this.emptyForm()}else this.rejectVisible=false
         await this.navigate({status:this.routeStatus(),page:String(this.pagination.page),recognitionId:id})
       }catch(err){
         if(!this.current(c)||this.pending!==c)return
-        this.fail(err,'原认定命令结果待核实，请稍后只读核对；不会自动重发。')
+        this.fail(err,'原认定操作结果待核实，请稍后重新核对；不会自动重复提交。')
       }finally{if(this.current(c)&&(!this.pending||this.pending===c))this.checking=false}
     },
     async onConfirm(){if(this.saving||this.writeBlocked)return;const action=this.pendingAction;if(action)await action()}

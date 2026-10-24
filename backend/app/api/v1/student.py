@@ -139,7 +139,7 @@ def _class_name(class_id: Optional[str], explicit_name: Optional[str]) -> Option
     if not raw:
         return None
     if not raw.isdigit():
-        raise AppException("VALIDATION_ERROR", "classId 必须是数字 ID")
+        raise AppException("VALIDATION_ERROR", "班级编号必须是数字")
     from sqlalchemy import select
     from app.models import SchoolClass
     from app.services.db_service import _tid, session
@@ -234,7 +234,7 @@ def identity_records(
         "page": page,
         "pageSize": pageSize,
         "capabilityStatus": "NOT_CONFIGURED",
-        "notice": "身份核验依赖第三方实名/人脸核验服务，当前服务端未配置；新生人工信息核验请到“数字迎新 › 信息核验”。",
+        "notice": "身份核验依赖第三方实名或人脸核验服务，当前尚未配置；新生人工信息核验请到“数字迎新 › 信息核验”。",
     })
 
 
@@ -270,7 +270,7 @@ def create_student(
         user, "student-create", idempotency_key, payload, require_store=True
     ) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="建档成功（幂等重放）")
+            return success(guard.cached, message="建档成功（重复提交，未重复建档）")
         row = svc.create_student(body)
         audit.record(
             "学生补录", method="POST", path="/api/v1/students", status_code=200,
@@ -291,7 +291,7 @@ def restore_student(
         user, "student-restore", idempotency_key, payload, require_store=True
     ) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="学生主档已恢复（幂等重放）")
+            return success(guard.cached, message="学生主档已恢复（重复提交，未重复处理）")
         row = svc.restore_student(body)
         audit.record_critical(
             "恢复作废学生主档", method="POST", path="/api/v1/students/restore", status_code=200,
@@ -318,7 +318,7 @@ def update_student(
         user, "student-update", idempotency_key, payload, require_store=True
     ) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已保存（幂等重放）")
+            return success(guard.cached, message="已保存（重复提交，未重复保存）")
         row = svc.update_student(student_id, body)
         audit.record(
             "更新学生", method="PUT", path=f"/api/v1/students/{student_id}", status_code=200,

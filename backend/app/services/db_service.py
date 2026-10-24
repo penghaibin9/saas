@@ -28,7 +28,7 @@ def _tid() -> int:
     except (TypeError, ValueError):
         tid = 0
     if not tid:
-        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝数据库写入")
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少学校信息，拒绝写入数据")
     return tid
 
 

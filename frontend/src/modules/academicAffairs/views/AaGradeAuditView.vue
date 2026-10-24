@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="成绩操作审计"
-    subtitle="按时间核对成绩操作；可见范围由当前身份与服务端权限决定"
+    subtitle="按时间核对成绩操作；可见范围由当前身份与权限决定"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -18,7 +18,7 @@
           <li v-for="row in rows" :key="row.id" class="aa-audit-event">
             <time>{{ formatTime(row.occurredAt) }}</time>
             <div><strong>{{ actionLabel(row.action) }}</strong><p>{{ bizTypeLabel(row.bizType) }} · {{ row.operator || '操作人待核对' }} · {{ row.roleName || '角色待核对' }}</p>
-              <details><summary>查看操作证据</summary><p>业务对象：{{ row.bizId || '未记录' }}</p><p>{{ row.detail || '暂无操作说明' }}</p><div class="aa-audit-values"><article><strong>变更前</strong><small>{{ evidenceKind(row.beforeValue) }}</small><pre>{{ evidenceText(row.beforeValue) }}</pre></article><article><strong>变更后</strong><small>{{ evidenceKind(row.afterValue) }}</small><pre>{{ evidenceText(row.afterValue) }}</pre></article></div><p class="mp-note">这里只展示正式审计表保存的原始值；无法解析的历史文本不会标为已结构核验。当前接口没有正式请求标识，页面不生成替代值。</p></details>
+              <details><summary>查看操作证据</summary><p>业务对象：{{ row.bizId || '未记录' }}</p><p>{{ row.detail || '暂无操作说明' }}</p><div class="aa-audit-values"><article><strong>变更前</strong><small>{{ evidenceKind(row.beforeValue) }}</small><pre>{{ evidenceText(row.beforeValue) }}</pre></article><article><strong>变更后</strong><small>{{ evidenceKind(row.afterValue) }}</small><pre>{{ evidenceText(row.afterValue) }}</pre></article></div><p class="mp-note">这里只显示正式审计表保存的原始值；无法解析的历史文本不会标为已核验。当前没有正式的请求标识，页面不生成替代值。</p></details>
             </div>
           </li>
         </ol>

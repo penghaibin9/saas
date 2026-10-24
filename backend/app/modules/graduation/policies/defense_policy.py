@@ -113,7 +113,7 @@ def authorize(db, student, action="view"):
         return result
 
     if str(student.stage or "").upper() != "DEFENSE":
-        raise AppException("DATA_CONFLICT", "学生尚未进入答辩阶段，禁止写入答辩事实")
+        raise AppException("DATA_CONFLICT", "学生尚未进入答辩阶段，不能录入答辩记录")
     if not student.batch_id:
         raise AppException("DATA_CONFLICT", "学生未绑定有效毕设批次")
 
@@ -136,5 +136,5 @@ def authorize(db, student, action="view"):
     if not group:
         raise AppException("DATA_CONFLICT", "学生答辩组不存在或与批次不一致")
     if not bool(group.published):
-        raise AppException("DATA_CONFLICT", "答辩组尚未发布，禁止写入答辩事实")
+        raise AppException("DATA_CONFLICT", "答辩组尚未发布，不能录入答辩记录")
     return result

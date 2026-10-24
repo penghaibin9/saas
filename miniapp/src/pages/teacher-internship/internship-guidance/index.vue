@@ -13,7 +13,7 @@
           </picker>
         </view>
 
-        <MobileInlineAlert type="info" description="先选择学生和指导方式，再记录本次沟通事实、发现的问题与下一步建议；需要持续关注时可设置跟进日期或转为风险。" />
+        <MobileInlineAlert type="info" description="先选择学生和指导方式，再记录本次沟通情况、发现的问题与下一步建议；需要持续关注时可设置跟进日期或转为风险。" />
 
         <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次"
           description="当前身份的数据范围内没有可办理的实习批次。" />
@@ -91,7 +91,7 @@
             </view>
           </view>
 
-          <MobileInlineAlert v-if="toRisk" type="warning" description="本次记录会同步生成风险单，请确保指导内容和风险事实描述完整。" />
+          <MobileInlineAlert v-if="toRisk" type="warning" description="本次记录会同步生成风险单，请确保指导内容和风险描述完整。" />
         </template>
       </view>
     </MobileGlobalState>

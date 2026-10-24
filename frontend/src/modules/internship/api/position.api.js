@@ -14,7 +14,7 @@ function fail(message, code = 1) {
 
 function toErr(e) {
   if (e?.biz) return fail(e.message, e.code || 1)
-  return fail(e?.message || '真实接口不可用', 503001)
+  return fail(e?.message || '暂时无法连接，请稍后重试', 503001)
 }
 
 async function call(fn) {

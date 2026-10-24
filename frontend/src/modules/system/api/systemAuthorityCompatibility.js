@@ -113,7 +113,7 @@ async function settleCommittedReceipt(result, { label, recover, reconcile } = {}
   const recovery = await recover()
   if (recovery.code === 0 && recovery.data?.cacheRecoveryRequired !== true && recovery.data?.cacheInvalidated !== false) {
     if (typeof reconcile === 'function') reconcile(recovery.data)
-    toast.warning(`${label}已提交；权限缓存曾刷新失败，现已执行缓存恢复。原业务操作没有重放。`)
+    toast.warning(`${label}已提交；权限缓存曾刷新失败，现已恢复。原业务操作没有重复执行。`)
     return {
       ...result,
       data: {
@@ -126,14 +126,14 @@ async function settleCommittedReceipt(result, { label, recover, reconcile } = {}
     }
   }
 
-  toast.error(`${label}已提交，但权限缓存恢复仍失败。请不要重复提交原操作，刷新后从系统治理入口继续处理缓存。`)
+  toast.error(`${label}已提交，但权限缓存恢复仍失败。请不要重复提交原操作，刷新后从系统治理入口继续处理。`)
   return {
     ...result,
     data: {
       ...result.data,
       cacheRecoveryRequired: true,
       cacheRecoveryAttempted: true,
-      cacheRecoveryError: recovery.message || '缓存恢复失败'
+      cacheRecoveryError: recovery.message || '权限权限缓存恢复失败'
     }
   }
 }

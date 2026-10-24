@@ -200,7 +200,7 @@ def _validate_task_course(db, body):
     if not course:
         raise not_found("选择的课程版本不存在")
     if not str(course.course_code or "").strip() or not int(course.version or 0):
-        raise AppException("DATA_CONFLICT", "课程缺少稳定课程代码或版本号，不能建立成绩任务", http_status=409)
+        raise AppException("DATA_CONFLICT", "课程缺少稳定的课程代码或版本号，不能建立成绩任务", http_status=409)
     if teaching_task and int(teaching_task.course_id or 0) != int(course.id):
         raise AppException("DATA_CONFLICT", "教学任务课程与请求课程版本不一致", http_status=409)
     return course
@@ -759,7 +759,7 @@ def publish_grades(task_id, user) -> dict:
             AcademicGrade.is_deleted.is_(False),
         )).first()
         if duplicate is not None:
-            raise AppException("APPROVAL_VERSION_CONFLICT", "成绩明细已存在正式投影，禁止重复发布", http_status=409)
+            raise AppException("APPROVAL_VERSION_CONFLICT", "成绩明细已存在正式记录，禁止重复发布", http_status=409)
 
         claimed = db.query(AaGradeTask).filter(
             AaGradeTask.id == task.id,

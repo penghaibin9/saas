@@ -64,7 +64,7 @@ def _get_for_update(db, rec_id) -> InternshipRecord:
 
 def _require_record_version(r: InternshipRecord, expected_version) -> None:
     if expected_version is None:
-        raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（实习记录乐观锁），请刷新后重试")
+        raise AppException("VALIDATION_ERROR", "必须提供数据版本（实习记录），请刷新后重试")
     if int(expected_version) != int(r.version or 0):
         raise AppException("DATA_CONFLICT", "实习记录已被其他用户修改，请刷新后重试")
 
@@ -745,7 +745,7 @@ def set_eligibility(rec_id, status: str, reason: str = "", user=None, expected_v
 def set_destination(rec_id, destination: str, reason: str = "", user=None, expected_version=None) -> dict:
     """自主实习 / 免实习 / 未落实。已分配岗位(ASSIGNED)请走退岗，不在此改。"""
     if destination not in ("SELF_ARRANGED", "EXEMPTED", "NONE"):
-        raise AppException("VALIDATION_ERROR", "非法去向（分配岗位请用分配接口）")
+        raise AppException("VALIDATION_ERROR", "去向不合法（分配岗位请使用分配功能）")
     with session() as db:
         r = _get_for_update(db, rec_id)
         _assert_write_scope(db, r, user)

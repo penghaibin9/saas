@@ -1,7 +1,7 @@
 const GRADE_STATES = Object.freeze({
   RESOLVED: { label: '来源已核对', type: 'success' },
   NOT_GENERATED: { label: '尚未生成正式成绩', type: 'default' },
-  SOURCE_GRADE_UNRESOLVED: { label: '来源成绩待治理', type: 'warning' },
+  SOURCE_GRADE_UNRESOLVED: { label: '来源成绩待处理', type: 'warning' },
   CHAIN_INVALID: { label: '成绩版本链异常', type: 'danger' },
   NOT_EFFECTIVE_FAILED: { label: '已不再是有效挂科成绩', type: 'danger' }
 })
@@ -51,7 +51,7 @@ export function gradeIdentity(grade) {
 }
 
 export function gradeResult(grade) {
-  if (!grade?.gradeId) return '正式成绩事实待核对'
+  if (!grade?.gradeId) return '正式成绩待核对'
   const score = grade.score == null ? '无数值分' : `${grade.score}分`
   return `${score} · ${grade.passStatus || '通过状态待核对'} · ${grade.recordStatus || '记录状态待核对'}`
 }

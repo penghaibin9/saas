@@ -154,10 +154,10 @@ def reserve_quota(
     tenant_id = _tenant_id(tenant_id)
     requested = max(0, int(size_bytes or 0))
     if requested <= 0:
-        raise AppException("VALIDATION_ERROR", "预留文件大小必须大于 0")
+        raise AppException("VALIDATION_ERROR", "预留的文件大小必须大于 0")
     key = str(reservation_key or "").strip()
     if not key or len(key) > 160:
-        raise AppException("VALIDATION_ERROR", "配额预留键无效")
+        raise AppException("VALIDATION_ERROR", "存储配额预留标识无效")
     module = str(module_code or "SHARED").upper()
     now = datetime.utcnow()
     owns = db is None
@@ -182,7 +182,7 @@ def reserve_quota(
         if existing:
             if existing.status == ACTIVE:
                 if int(existing.reserved_bytes or 0) != requested:
-                    raise AppException("DATA_CONFLICT", "同一配额预留键的文件大小不一致")
+                    raise AppException("DATA_CONFLICT", "同一预留标识的文件大小不一致")
                 existing.expires_at = max(
                     existing.expires_at,
                     now + timedelta(seconds=max(60, int(ttl_seconds or DEFAULT_TTL_SECONDS))),
@@ -195,7 +195,7 @@ def reserve_quota(
                 return existing
             if existing.status == "CONSUMED":
                 return existing
-            raise AppException("DATA_CONFLICT", "配额预留键已释放或过期，不能重复使用")
+            raise AppException("DATA_CONFLICT", "存储配额预留已释放或过期，不能重复使用")
 
         actual = _actual_usage(working, tenant_id)
         held = _held_usage(working, tenant_id, now)
@@ -276,10 +276,10 @@ def consume_quota(reservation_key: str, *, file_id: int, tenant_id: int | None =
             return False
         if row.status == "CONSUMED":
             if row.consumed_file_id and int(row.consumed_file_id) != int(file_id):
-                raise AppException("DATA_CONFLICT", "配额预留已被其他文件消费")
+                raise AppException("DATA_CONFLICT", "存储配额预留已被其他文件使用")
             return True
         if row.status != ACTIVE:
-            raise AppException("DATA_CONFLICT", "配额预留已失效")
+            raise AppException("DATA_CONFLICT", "存储存储配额预留已失效")
         row.status = "CONSUMED"
         row.consumed_file_id = int(file_id)
         row.consumed_at = datetime.utcnow()

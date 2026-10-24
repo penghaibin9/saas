@@ -135,7 +135,7 @@
               <AppPermissionButton :allowed="canReview" :reason="reviewReason" variant="warning" :loading="submitting" @click="submitReview('REJECT')">↩ 退回当前版本</AppPermissionButton>
             </div>
             <p class="mp-note">系统只处理当前提交版本；学生重交后，已批阅版本保留为只读记录。</p>
-            <details class="mp-note"><summary>版本一致性说明</summary>提交时系统会再次核对当前材料版本，版本变化时自动阻止旧版批阅。</details>
+            <details class="mp-note"><summary>版本一致性说明</summary>提交时系统会再次核对当前材料版本，版本变化时自动阻止基于旧版的批阅。</details>
           </template>
           <template v-else>
             <div class="mp-kv"><span class="mp-kv__k">批阅结果</span><span class="mp-kv__v">{{ selectedRow?.statusLabel || '—' }}</span></div>
@@ -277,7 +277,7 @@ export default {
       if (this.detailLoading) return '正在核验当前文件版本'
       if (this.detailError) return '成果安全版本详情加载失败'
       if (this.finalDetail?.migrationRequired) return '历史材料尚未完成公共版本回填'
-      if (!this.finalDetail?.reviewReady) return '当前材料版本未通过安全门禁'
+      if (!this.finalDetail?.reviewReady) return '当前材料版本未通过安全检查'
       if (this.versionConflict) return '学生已提交新版本，请切换最新提交版本后重新核验'
       if (this.activePreviewFile?.isCurrent === false) return '当前正在阅读历史版本，历史版本只读不可批阅'
       return ''

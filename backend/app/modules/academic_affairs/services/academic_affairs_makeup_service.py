@@ -785,7 +785,7 @@ def _deferred_identity(db, row):
         raise AppException("DATA_CONFLICT", "缓考后续考试缺少精确来源回链", http_status=409)
     if not all((row.course_id, row.course_code, row.course_version, row.attempt_no,
                 row.teaching_task_id, row.teaching_class_id, row.roster_version_id)):
-        raise AppException("DATA_CONFLICT", "缓考后续考试缺少课程或名单版本身份", http_status=409)
+        raise AppException("DATA_CONFLICT", "缓考后续考试缺少课程或名单版本信息", http_status=409)
     course = db.query(AaCourse).filter(
         AaCourse.id == int(row.course_id),
         AaCourse.tenant_id == _core._tid(),
@@ -1631,9 +1631,9 @@ def merge_deferred(user, defer_id, batch_id):
             raise AppException("DATA_CONFLICT", "缓考对应课程缺少稳定身份", http_status=409)
         exam_roster = get_consumer_snapshot(db, "EXAM_COURSE", int(exam_course.id))
         if not exam_roster:
-            raise AppException("DATA_CONFLICT", "缓考原考试课程缺少冻结名单版本，禁止按当前行政班猜测", http_status=409)
+            raise AppException("DATA_CONFLICT", "缓考原考试课程缺少锁定的名单版本，禁止按当前行政班猜测", http_status=409)
         if int(deferred.student_id) not in {int(value) for value in exam_roster.get("studentIds") or []}:
-            raise AppException("DATA_CONFLICT", "缓考学生不在原考试课程冻结名单中", http_status=409)
+            raise AppException("DATA_CONFLICT", "缓考学生不在原考试课程的锁定名单中", http_status=409)
         academic_student = _academic_student_for_profile(db, deferred.student_id)
         if not academic_student:
             raise not_found("缓考学生学业档案不存在")

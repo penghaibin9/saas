@@ -124,7 +124,7 @@ export default {
     },
     nextStep() {
       const messages = {
-        DRAFT: '核对实习时间与规则后，选择参与班级或学生。预览名单无误，再冻结名单并启用批次。',
+        DRAFT: '核对实习时间与规则后，选择参与班级或学生。预览名单无误，再锁定名单并启用批次。',
         RUNNING: '本批次已启用。请继续核对学生参与资格与待安置情况；学生满足各项上岗条件后再进入实习过程。',
         CLOSED: '本批次已结束。核对结项材料和学生结果，满足归档条件后完成归档。',
         ARCHIVED: '本批次已归档，历史名单、规则与处理记录可在授权范围内查看。',
@@ -226,7 +226,7 @@ export default {
         const blocked = Number(this.closeReadiness?.blocked || 0)
         return {
           title: '强制结束批次',
-          message: `当前有 ${blocked} 名学生存在结束阻断。确需结束请填写不少于 5 字原因；系统会保留本次就绪检查与强制结束事实。`,
+          message: `当前有 ${blocked} 名学生存在结束阻断。确需结束请填写不少于 5 字的原因；系统会保留本次就绪检查与强制结束记录。`,
           type: 'danger', confirmText: '确认强制结束', requireReason: true,
           reasonLabel: '强制结束原因（≥5 字）'
         }

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="主数据责任与数据质量"
-    subtitle="数据域责任人 · 质量规则 · 问题闭环 · 合并预览（系统管理不代业务部门确认业务事实）"
+    subtitle="数据域责任人 · 质量规则 · 问题闭环 · 合并预览（系统管理不代业务部门确认业务数据）"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -25,7 +25,7 @@
             </div>
             <div class="md-stat">
               <span class="md-stat__num">{{ issueSummary.p0Open || 0 }}</span>
-              <span class="md-stat__label">P0 待处理</span>
+              <span class="md-stat__label">最高优先级待处理</span>
             </div>
             <div class="md-stat">
               <span class="md-stat__num">{{ issueSummary.overdue || 0 }}</span>
@@ -42,7 +42,7 @@
           </div>
           <div v-if="domainsWithoutOwner.length" class="mp-card__body">
             <p class="md-warn">
-              以下数据域还没有责任人，P0 规则无法运行：{{ domainsWithoutOwner.join('、') }}
+              以下数据域还没有责任人，最高优先级规则无法运行：\1
             </p>
           </div>
         </section>
@@ -219,7 +219,7 @@ export default {
         return '例外必须有到期日与审批人；到期后下一次扫描会自动打回待处理。'
       }
       if (this.pendingAction === 'owner') {
-        return '没有责任人的数据域不能运行 P0 规则。'
+        return '没有责任人的数据域不能运行最高优先级规则。'
       }
       return ''
     }

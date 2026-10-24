@@ -558,7 +558,7 @@ async function deprecate({ reason }) {
     })
     if (request !== sequence) return
     if (result?.status !== 'DISABLED' || String(result.id) !== String(node.id))
-      throw new Error('提交结果未确认，请回读组织状态后重新检查')
+      throw new Error('提交结果未确认，请重新读取组织状态后检查')
     confirmOpen.value = false
     impactOpen.value = false
     selectedKey.value = ''
@@ -571,7 +571,7 @@ async function deprecate({ reason }) {
   } catch (error) {
     if (request === sequence) {
       confirmOpen.value = false
-      impactError.value = error.message || '作废结果未确认，请回读组织状态后重新检查'
+      impactError.value = error.message || '作废结果未确认，请重新读取组织状态后检查'
       emit('refresh')
     }
   } finally {

@@ -35,7 +35,7 @@ def normalize_assignment_item(item: dict) -> dict:
     mentor_id = str(item.get("mentorId") or "").strip()
     external_id = str(item.get("externalAdvisorId") or "").strip()
     if not student_id or not student_id.isdigit() or int(student_id) <= 0:
-        raise AppException("VALIDATION_ERROR", "gdStudentId 必须是有效的稳定主体 ID")
+        raise AppException("VALIDATION_ERROR", "毕设学生标识无效")
     if bool(mentor_id) == bool(external_id):
         raise AppException(
             "VALIDATION_ERROR",

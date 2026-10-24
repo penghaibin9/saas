@@ -55,7 +55,7 @@ import { SYSTEM_MANAGEMENT_ITEM_MAP } from '@/modules/system/systemManagementCat
 
 const FALLBACK = {
   key: 'unknown', label: '系统管理能力', groupLabel: '系统管理',
-  description: '学校级系统治理能力。', groupDescription: '统一由权限目录、路由和后端权限码共同约束。', actions: []
+  description: '学校级系统治理能力。', groupDescription: '统一由权限目录、路由和系统权限共同约束。', actions: []
 }
 
 export default {
@@ -68,7 +68,7 @@ export default {
     },
     heroStats() {
       return [
-        { label: '权限码', value: this.capability.permissionKey || '—', tone: 'info' },
+        { label: '权限', value: this.capability.permissionKey || '—', tone: 'info' },
         { label: '操作点', value: String(this.capability.actions.length), tone: 'primary' },
         { label: '数据边界', value: '本校租户', tone: 'success' }
       ]
@@ -91,12 +91,12 @@ export default {
       if (this.capability.key === 'sys-delegations') return '临时授权必须设置生效与到期时间；到期自动回收，提前撤销和所有使用记录均须审计。'
       if (this.capability.key === 'sys-dictionaries-fields') return '扩展字段采用受控元数据，不允许学校直接创建数据库列或改变核心字段语义。'
       if (this.capability.key === 'sys-numbering-rules') return '规则变更必须先预览和冲突校验；已经生成的历史编号不可重写。'
-      return '权限判断由后端执行：模块授权、角色、菜单、操作、数据范围、业务关系和敏感字段均需同时通过。'
+      return '权限判断由系统执行：模块授权、角色、菜单、操作、数据范围、业务关系和敏感字段均需同时通过。'
     },
     implementationRules() {
       return [
-        '前端菜单只负责导航体验，后端接口必须使用同一权限码进行最终校验。',
-        '涉及账号、权限、范围、导出、流程干预和接口凭证的变更必须记录操作原因与前后值。',
+        '页面菜单只负责导航体验，最终由系统使用同一权限校验。',
+        '涉及账号、权限、范围、导出、流程干预和接口凭证的变更，必须记录操作原因与前后值。',
         '本页面后续接入真实服务时，只能扩展该能力的 API，不得新增绕过统一权限目录的独立入口。'
       ]
     }

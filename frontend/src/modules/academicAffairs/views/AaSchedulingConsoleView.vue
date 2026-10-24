@@ -51,7 +51,7 @@
             <p v-if="!canImportBatch" class="mp-note">仅具有导入权限的可编辑草稿允许导入。</p>
           </template>
           <template v-else-if="tab === 'result'">
-            <p>{{ contactSummary(workbench) }}；此批次状态以服务端结果为准。</p>
+            <p>\1；此批次状态以系统结果为准。</p>
             <AppButton @click="openPublishedSchedule">查看本批次课表</AppButton>
           </template>
           <template v-else>
@@ -74,7 +74,7 @@
       </AppSectionCard>
 
       <section v-if="visibleHandoffReceipt" class="aasg-handoff-receipt" aria-label="正式承接办理回执" role="status">
-        <strong>正式承接已确认，并已回读核对</strong>
+        <strong>正式承接已确认，并已重新核对</strong>
         <p>{{ visibleHandoffReceipt.summary }}</p>
         <p>承接说明：{{ visibleHandoffReceipt.reason }}</p>
         <p>确认时间：{{ visibleHandoffReceipt.confirmedAt }}</p>
@@ -134,7 +134,7 @@
             <div class="aasg-repair-copy">
               <span class="aasg-repair-kicker">当前正式课表不下线</span>
               <strong>保留 {{ contactMetrics(workbench).itemCount ?? '待核对' }} 条课位，{{ repairGapText }}</strong>
-              <p>创建纠错草稿会复制当前全部有效课位。老师学生 PC 和老师学生小程序继续使用现在的正式课表；待纠错草稿补齐并通过发布门禁后，系统再一次性切换四端正式版本。</p>
+              <p>创建纠错草稿会复制当前全部有效课位。老师、学生的电脑端和小程序继续使用现在的正式课表；待纠错草稿补齐并通过发布检查后，系统再一次性切换四端的正式版本。</p>
             </div>
             <div class="aasg-repair-facts" aria-label="纠错草稿影响范围">
               <div><span>计划总学时</span><strong>{{ contactMetrics(workbench).expected ?? '待核对' }}</strong><small>学时</small></div>
@@ -194,7 +194,7 @@
       <AppInlineAlert
         v-if="!canManageRules"
         type="warning"
-        title="当前角色为只读查看"
+        title="当前角色仅可查看"
         description="学院和任课教师可以查看学校排课口径，但只有教务处或学校管理员可以修改。"
       />
       <AppInlineAlert
@@ -405,12 +405,12 @@
       </div>
       <template v-if="conflict">
         <div class="aasg-summary">
-          <span :class="{ 'is-bad': conflict.hardCount }">HARD 物理冲突 {{ conflict.hardCount }}</span>
-          <span :class="{ 'is-warn': conflict.softCount }">SOFT 软冲突 {{ conflict.softCount }}</span>
-          <span :class="conflict.canPrePublish ? 'is-ok' : 'is-bad'">{{ conflict.canPrePublish ? '可预发布' : '存在HARD冲突，禁止预发布' }}</span>
+          <span :class="{ 'is-bad': conflict.hardCount }">严重冲突（物理冲突）\1</span>
+          <span :class="{ 'is-warn': conflict.softCount }">一般冲突（软冲突）\1</span>
+          <span :class="conflict.canPrePublish ? 'is-ok' : 'is-bad'">{{ conflict.canPrePublish ? '可预发布' : '存在严重冲突，禁止预发布' }}</span>
         </div>
         <div v-if="conflict.hardConflicts.length" class="aasg-section">
-          <div class="aasg-section-title">HARD 冲突（必须清零）</div>
+          <div class="aasg-section-title">严重冲突（必须清零）</div>
           <ul class="aasg-conflicts">
             <li v-for="(item, index) in conflict.hardConflicts" :key="`hard-${index}`">
               <span class="aasg-tag is-hard">{{ dimLabel(item.dimension) }}</span>
@@ -419,7 +419,7 @@
           </ul>
         </div>
         <div v-if="conflict.softConflicts.length" class="aasg-section">
-          <div class="aasg-section-title">SOFT 冲突（教师不可排时间）</div>
+          <div class="aasg-section-title">一般冲突（教师不可排时间）</div>
           <ul class="aasg-conflicts">
             <li v-for="(item, index) in conflict.softConflicts" :key="`soft-${index}`">
               <span class="aasg-tag is-soft">{{ item.item.teacherName }}</span>
@@ -427,7 +427,7 @@
             </li>
           </ul>
         </div>
-        <EmptyState v-if="!conflict.hardCount && !conflict.softCount" title="无冲突" description="该批次课表无 HARD/SOFT 冲突，可预发布" />
+        <EmptyState v-if="!conflict.hardCount && !conflict.softCount" title="无冲突" description="该批次课表没有严重或一般冲突，可预发布" />
       </template>
     </div>
 
@@ -517,9 +517,9 @@ export default {
         workbench: { title: '排课工作台', subtitle: '从就绪教学任务进入编排，按真实阻断推进到正式发布。', sectionTitle: '当前批次排课进度', stage: 2 },
         rules: { title: this.$route?.query?.tab === 'constraint' ? '排课约束' : '排课规则', subtitle: '规则与排课引擎同源，保留版本、作用范围和优先级。', sectionTitle: '规则与适用范围', stage: 1 },
         availability: { title: '教师可用时间', subtitle: '教师时间偏好作为排课约束输入，不直接改写正式课表。', sectionTitle: '教师可用时段', stage: 1 },
-        auto: { title: '自动排课', subtitle: '保留已有课位，先试排并处理冲突，再进入发布门禁。', sectionTitle: '自动排课工作区', stage: 2 },
+        auto: { title: '自动排课', subtitle: '保留已有课位，先试排并处理冲突，再进入发布检查。', sectionTitle: '自动排课工作区', stage: 2 },
         conflict: { title: '冲突报告', subtitle: '硬冲突直达具体任务与课位，软提醒保留规则依据。', sectionTitle: '冲突与可解决路径', stage: 3 },
-        room: { title: '教室可用时间', subtitle: '区分正式课表、预约和维修占用，排课仍由服务端最终校验。', sectionTitle: '资源占用', stage: 1 },
+        room: { title: '教室可用时间', subtitle: '区分正式课表、预约和维修占用，排课仍由系统最终校验。', sectionTitle: '资源占用', stage: 1 },
         import: { title: '导入排课结果', subtitle: '上传后先预校验，再按原始行号确认正式导入结果。', sectionTitle: '准备与预校验', stage: 2 },
         result: { title: '排课结果', subtitle: '读取指定批次和正式版本，不按列表顺序猜测当前课表。', sectionTitle: '指定批次排课结果', stage: 3 },
         adjust: { title: '排课调整', subtitle: '已发布结果不原地编辑；纠错草稿保留当前正式课表在线。', sectionTitle: '课表调整与纠错', stage: 3 }

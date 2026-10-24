@@ -4,7 +4,7 @@
   <ModulePageShell
     v-else
     :title="showGen ? '教学任务生成' : '教学任务批次'"
-    :subtitle="showGen ? '幂等生成，不手工造无来源教学任务' : '先确认已发布方案和年级绑定，再生成'"
+    :subtitle="showGen ? '重复生成不会产生重复任务，不要手工建立没有来源的教学任务' : '先确认已发布方案和年级绑定，再生成'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
     show-subtitle-in-concise
@@ -244,7 +244,7 @@ export default {
     handleFailure(result, fallback) {
       this.error = result?.message || fallback
       if (isDeniedResult(result)) { this.revision++; this.generateSeq++; this.collegeSeq++; this.generating = false; this.loading = false; this.rows = []; this.receipt = null; this.gen = { termId: '', collegeId: '', classId: '', batchName: '' }; this.showGen = false }
-      else if (isConflictResult(result)) this.receipt = { object: `学期 #${this.gen.termId}`, status: '事实已变化，保留输入', pending: true, next: '核对已发布方案和年级绑定后再生成。' }
+      else if (isConflictResult(result)) this.receipt = { object: `学期 #${this.gen.termId}`, status: '数据已变化，保留输入', pending: true, next: '核对已发布方案和年级绑定后再生成。' }
     },
     async load() {
       const revision = ++this.revision

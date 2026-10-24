@@ -402,7 +402,7 @@ def academic_final(result_id, user, conclusion, confirm=False) -> dict:
             GraduationDecisionFact.result_id == result.id,
         )).first()
         if existing:
-            raise AppException("IDEMPOTENCY_CONFLICT", "该毕业结果已形成正式决策事实")
+            raise AppException("IDEMPOTENCY_CONFLICT", "该毕业结果已形成正式决定")
 
         # 与学籍事实追加命令共用学生锁，防止核验后、终态写入前身份依据变化。
         student = db.scalars(select(StudentProfile).where(

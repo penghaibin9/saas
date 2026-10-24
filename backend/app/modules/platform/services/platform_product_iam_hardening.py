@@ -66,7 +66,7 @@ def _assert_expected_commit(expected: str, deployed: str) -> None:
     if not value:
         return
     if not _SHA_RE.fullmatch(value):
-        raise AppException("VALIDATION_ERROR", "sourceCommitSha 必须是 40 位 Git SHA", http_status=422)
+        raise AppException("VALIDATION_ERROR", "来源提交码必须是 40 位", http_status=422)
     if value != deployed:
         raise AppException(
             "PRODUCT_IAM_SOURCE_COMMIT_MISMATCH",

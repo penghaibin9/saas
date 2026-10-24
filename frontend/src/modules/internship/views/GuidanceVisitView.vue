@@ -700,7 +700,7 @@ export default {
         actionLabel: p.kind === 'plan-transition' ? `巡访计划${this.cd.confirmText}` : p.kind === 'void' ? '撤销指导记录' : '完成巡访整改',
         objectLabel: p.objectLabel,
         auditText: '状态更新与操作留痕已同事务提交',
-        nextStep: p.kind === 'rectify' ? '整改已闭环，可查看完整审计记录' : '按最新服务端状态继续下一合法动作'
+        nextStep: p.kind === 'rectify' ? '整改已闭环，可查看完整审计记录' : '按最新状态继续下一个合法操作'
       }
       toast.success('操作成功，已写审计')
       this.loadStats(); this.load()

@@ -51,7 +51,7 @@ def create_pending(body, user=None):
     b = body or {}
     typ = (b.get("consentType") or "STUDENT").upper()
     if typ not in ("STUDENT", "GUARDIAN"):
-        raise AppException("VALIDATION_ERROR", "consentType 必须为 STUDENT/GUARDIAN")
+        raise AppException("VALIDATION_ERROR", "同意类型必须为学生或监护人")
     snapshot = str(b.get("contentSnapshot") or "").strip()
     version = str(b.get("contentVersion") or "").strip()
     if not snapshot or not version:
@@ -190,7 +190,7 @@ def confirm(cid, body, user=None, client_ip=None):
         if b.get("contentVersion") != x.content_version or b.get("contentHash") != x.content_hash:
             raise AppException("DATA_CONFLICT", "正文版本或哈希不一致，请重新阅读")
         if x.viewed_at is None:
-            raise AppException("DATA_CONFLICT", "请先打开并阅读服务端保存的正文")
+            raise AppException("DATA_CONFLICT", "请先打开并阅读系统保存的正文")
         if x.status != "PENDING":
             raise AppException("DATA_CONFLICT", "当前状态不可确认")
         x.confirmation_method = "STUDENT_AUTHENTICATED"

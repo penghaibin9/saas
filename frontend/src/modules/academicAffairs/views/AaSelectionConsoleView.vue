@@ -322,7 +322,7 @@ const _NEXT = {
   OPEN: '关注容量并按时截止',
   CLOSED: '处置低人数并锁定名单',
   LOCKED: '复核名单并归档',
-  ARCHIVED: '查阅归档事实'
+  ARCHIVED: '查阅归档记录'
 }
 
 export default {
@@ -367,15 +367,15 @@ export default {
     canLockSelection() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.lock') },
     canReadRoster() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.rosterView') },
     pageTitle() { return { batch: '选课批次', rule: '选课规则', reselect: '补选管理', conflict: '冲突检测' }[this.activeTab] || '选课管理' },
-    pageSubtitle() { return { batch: '规则、轮次、课程与名单在同一批次办理', rule: '切批次必须重新读取，确认锁定原对象', reselect: '只处理当前窗口和当前范围的对象', conflict: '接口失败不当成零冲突' }[this.activeTab] || '' },
+    pageSubtitle() { return { batch: '规则、轮次、课程与名单在同一批次办理', rule: '切批次必须重新读取，确认锁定原对象', reselect: '只处理当前窗口和当前范围的对象', conflict: '读取失败时不当作零冲突' }[this.activeTab] || '' },
     activeTab() {
       const tab = String(this.$route?.query?.tab || 'batch')
       return this.workspaceTabs.some(item => item.key === tab) ? tab : 'batch'
     },
     lifecycleSteps() {
       return [
-        { key: 'create', label: '创建批次', note: '上游事实可回查' },
-        { key: 'rules', label: '课程与规则', note: '上游事实可回查' },
+        { key: 'create', label: '创建批次', note: '来源数据可追溯' },
+        { key: 'rules', label: '课程与规则', note: '来源数据可追溯' },
         { key: 'open', label: '开放选课', note: '按真实状态解锁' },
         { key: 'reselect', label: '补选关口', note: '按真实状态解锁' },
         { key: 'lock', label: '锁定名单', note: '按真实状态解锁' }
@@ -422,11 +422,11 @@ export default {
       if (this.detailError) return '当前详情读取失败，请重试后核对课程、容量与轮次。'
       if (this.current?.windowNotice) return this.current.windowNotice
       if (!this.stats) return '正在读取课程供给、容量与选课统计。'
-      if (this.current?.status === 'ARCHIVED') return '批次已经归档，当前页面仅用于查阅事实。'
+      if (this.current?.status === 'ARCHIVED') return '批次已经归档，当前页面仅用于查阅。'
       if (this.current?.status === 'LOCKED') return '正式名单已经锁定；后续只进行复核与归档。'
       if (Number(this.stats.courseCount || 0) === 0) return '当前批次还没有课程供给；发布前至少添加一门课程。'
       if (['OPEN', 'CLOSED'].includes(this.current?.status) && Number(this.stats.lowEnrollCount || 0) > 0) return `当前有 ${this.stats.lowEnrollCount} 门课程低于开课人数下限，请在锁定名单前核对处置。`
-      if (this.current?.status === 'OPEN') return '当前批次处于开选状态；容量与余量使用后端实时统计。'
+      if (this.current?.status === 'OPEN') return '当前批次处于开选状态；容量与余量为实时统计。'
       if (this.current?.status === 'CLOSED') return '选课已经截止；下一步应核对低人数课程并形成正式名单。'
       return '当前页面未发现由课程供给或低人数统计暴露的显式风险。'
     },
@@ -437,7 +437,7 @@ export default {
         PUBLISHED: '批次已经发布，核对真实选课时间窗后进入开选。',
         OPEN: '学生正在办理选退课；重点关注容量、余量与当前轮次。',
         CLOSED: '学生选退已经停止，进入低人数课程处置和正式名单确认。',
-        LOCKED: '名单事实已经锁定，不再进行普通选退课变更。',
+        LOCKED: '名单已经锁定，不再进行普通的选课、退课变更。',
         ARCHIVED: '批次生命周期已经结束，保留历史课程、名单和统计供查阅。'
       }
       return map[status] || '按批次状态机管理课程供给、轮次、容量与名单。'

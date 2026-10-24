@@ -148,7 +148,7 @@ export default {
       const reason = this.viewReason.trim(); if (reason.length < 5 || reason.length > 200) return
       teacherApi.getMentalDetail(this.active.referralId, reason).then((d) => { this.active = d }).catch((e) => this.showError(e, '查看失败'))
     },
-    version() { if (this.active.version === undefined || this.active.version === null) { toast('记录缺少版本号，请重新打开详情'); return null }; return this.active.version },
+    version() { if (this.active.version === undefined || this.active.version === null) { toast('记录信息不完整，请重新打开详情'); return null }; return this.active.version },
     doFollow() {
       const content = this.actionContent.trim(); if (this.acting || !this.canAct('FOLLOW') || content.length < 5) return
       const version = this.version(); if (version === null) return

@@ -74,7 +74,7 @@ def _normalize_item(raw: dict[str, Any], sort_no: int) -> dict[str, Any]:
     extensions = sorted({str(value).lower().lstrip(".") for value in (raw.get("allowedExtensions") or []) if str(value).strip()})
     max_size = int(raw.get("maxSizeBytes") or 0)
     if not code or not name or not stage or not owner:
-        raise AppException("VALIDATION_ERROR", f"材料规则第 {sort_no} 项缺少 code/name/stage/ownerRole")
+        raise AppException("VALIDATION_ERROR", f"材料规则第 {sort_no} 项缺少编码、名称、阶段或责任角色")
     if not extensions or max_size <= 0:
         raise AppException("VALIDATION_ERROR", f"材料 {code} 缺少允许扩展名或大小限制")
     review_required = bool(raw.get("reviewRequired", True))
@@ -179,7 +179,7 @@ def create_rule(body: dict, user: dict) -> dict:
         if body.get("useDefaultTemplate") is True:
             items = [dict(row) for row in DEFAULT_MATERIAL_DEFINITIONS]
         else:
-            raise AppException("VALIDATION_ERROR", "规则必须提供完整 items；默认模板需显式 useDefaultTemplate=true")
+            raise AppException("VALIDATION_ERROR", "规则必须提供完整的材料项；使用默认模板需明确选择")
     with session() as db:
         row = _create_rule_in_session(
             db, batch_id=int(batch_id), name=str(body.get("ruleName") or "毕业设计材料规则"),

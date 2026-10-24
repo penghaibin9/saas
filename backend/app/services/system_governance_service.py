@@ -327,7 +327,7 @@ def save_integration(user: dict, body: dict) -> dict:
         if hit is None:
             raise AppException("DATA_NOT_FOUND", "接口连接不存在")
         if expected is not None and int(expected) != int(hit.get("version") or 0):
-            raise AppException("DATA_CONFLICT", "接口配置版本冲突，请刷新后重试")
+            raise AppException("DATA_CONFLICT", "接口配置已被他人修改，请刷新后重试")
         hit.update({"name": name, "endpoint": endpoint, "authType": body.get("authType") or "TOKEN",
                     "updatedAt": _now(), "version": int(hit.get("version") or 0) + 1,
                     "status": "CONFIGURED", "statusLabel": "已登记"})

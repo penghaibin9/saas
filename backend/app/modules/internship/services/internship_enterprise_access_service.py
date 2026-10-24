@@ -77,7 +77,7 @@ def _validate_scope_in_tx(
     tenant_id = member.tenant_id
     if grant_type == "RECRUITMENT":
         if campaign_id is None:
-            raise AppException("VALIDATION_ERROR", "RECRUITMENT Grant 必须绑定 campaignId")
+            raise AppException("VALIDATION_ERROR", "招聘授权必须绑定招聘季")
         campaign = _get_campaign(db, campaign_id, tenant_id=tenant_id, lock=True)
         if campaign.status in {"CLOSED", "ARCHIVED"}:
             raise AppException("DATA_CONFLICT", "招聘季已关闭，不能发放 RECRUITMENT Grant")
@@ -86,7 +86,7 @@ def _validate_scope_in_tx(
         if _as_id(batch_id) != campaign.batch_id:
             raise AppException("VALIDATION_ERROR", "Grant batchId 与招聘季批次不一致")
         if campaign.enterprise_access_end_at is None:
-            raise AppException("DATA_CONFLICT", "招聘季未配置 enterpriseAccessEndAt")
+            raise AppException("DATA_CONFLICT", "招聘季未配置企业访问截止时间")
         if valid_until > campaign.enterprise_access_end_at:
             raise AppException("VALIDATION_ERROR", "RECRUITMENT Grant 不得超过招聘季企业访问截止时间")
         participation = db.scalar(
@@ -103,7 +103,7 @@ def _validate_scope_in_tx(
         return campaign.id, campaign.batch_id
 
     if batch_id is None:
-        raise AppException("VALIDATION_ERROR", "INTERNSHIP_COLLAB Grant 必须绑定 batchId")
+        raise AppException("VALIDATION_ERROR", "实习协同授权必须绑定批次")
     batch = db.scalar(
         select(InternshipBatch).where(
             InternshipBatch.id == _as_id(batch_id),
@@ -116,7 +116,7 @@ def _validate_scope_in_tx(
     if campaign_id is not None:
         campaign = _get_campaign(db, campaign_id, tenant_id=tenant_id)
         if campaign.batch_id != batch.id:
-            raise AppException("VALIDATION_ERROR", "campaignId 与 batchId 不属于同一实习批次")
+            raise AppException("VALIDATION_ERROR", "招聘季与批次不属于同一实习批次")
     return _as_id(campaign_id) if campaign_id is not None else None, batch.id
 
 
@@ -139,13 +139,13 @@ def issue_grant_in_tx(
     scope_tenant_id = int(tenant_id) if tenant_id is not None else _tid()
     kind = (grant_type or "").upper()
     if kind not in ENTERPRISE_GRANT_TYPES:
-        raise AppException("VALIDATION_ERROR", "grantType 必须是 RECRUITMENT/INTERNSHIP_COLLAB")
+        raise AppException("VALIDATION_ERROR", "授权类型必须是招聘或实习协同")
     if not isinstance(valid_from, datetime) or not isinstance(valid_until, datetime):
-        raise AppException("VALIDATION_ERROR", "validFrom/validUntil 必须是 datetime")
+        raise AppException("VALIDATION_ERROR", "有效期起止必须是日期时间")
     valid_from = _storage_datetime(valid_from)
     valid_until = _storage_datetime(valid_until)
     if valid_from >= valid_until:
-        raise AppException("VALIDATION_ERROR", "validFrom 必须早于 validUntil")
+        raise AppException("VALIDATION_ERROR", "有效期开始必须早于结束")
 
     member = _get_member(db, member_id, tenant_id=scope_tenant_id, lock=True)
     if member.status != "ACTIVE":
@@ -226,7 +226,7 @@ def resolve_active_grant_in_tx(
     scope_tenant_id = int(tenant_id) if tenant_id is not None else _tid()
     kind = (grant_type or "").upper()
     if kind not in ENTERPRISE_GRANT_TYPES:
-        raise AppException("VALIDATION_ERROR", "grantType 非法")
+        raise AppException("VALIDATION_ERROR", "授权类型不合法")
     member = _get_member(db, member_id, tenant_id=scope_tenant_id)
     if member.status != "ACTIVE":
         raise AppException("NO_PERMISSION", "企业成员已停用")

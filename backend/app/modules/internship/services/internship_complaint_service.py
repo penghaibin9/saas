@@ -262,7 +262,7 @@ def create_complaint(body, user=None):
             student_id, batch_id = rec.student_id, rec.batch_id
         elif student_id:
             if not batch_id:
-                raise AppException("VALIDATION_ERROR", "关联学生投诉必须明确 internshipId 或 batchId")
+                raise AppException("VALIDATION_ERROR", "关联学生投诉必须明确实习记录或批次")
             rec = db.scalar(select(InternshipRecord).where(
                 InternshipRecord.tenant_id == _tid(),
                 InternshipRecord.student_id == student_id,

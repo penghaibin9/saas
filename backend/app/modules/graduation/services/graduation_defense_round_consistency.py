@@ -61,7 +61,7 @@ def create_second_defense(gd_student_id, reason: str) -> dict:
             raise AppException("DATA_CONFLICT", "尚未完成首次答辩评分，不能创建二次答辩")
         rounds = {int(row.round_no or 1) for row in all_rows}
         if any(round_no >= 2 for round_no in rounds):
-            raise AppException("DATA_CONFLICT", "该生已存在二次答辩，不能重复创建或生成第三轮")
+            raise AppException("DATA_CONFLICT", "该生已存在二次答辩，不能重复创建或再生成第三轮")
         first_round = [row for row in all_rows if int(row.round_no or 1) == 1]
         if not first_round or any(row.status != "CONFIRMED" for row in first_round):
             raise AppException("DATA_CONFLICT", "首次答辩评分尚未全部确认，不能创建二次答辩")

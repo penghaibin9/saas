@@ -23,7 +23,7 @@ function readAll() {
   const value = JSON.parse(store().getItem(STORAGE_KEY) || '[]')
   if (!Array.isArray(value)) throw new Error('恢复记录格式无效')
   const entries = value.map(clean)
-  if (entries.some(entry => !entry)) throw new Error('恢复记录不完整，不能跳过原命令继续提交')
+  if (entries.some(entry => !entry)) throw new Error('恢复记录不完整，不能跳过原操作继续提交')
   return entries.sort((a, b) => a.createdAt - b.createdAt)
 }
 
@@ -53,7 +53,7 @@ export function createGradeCommandReference({ identityRef, operation, objectId =
     const entries = readAll(), normalizedObjectId = objectId == null || objectId === '' ? null : String(objectId)
     const duplicate = entries.find(entry => entry.identityRef === identityRef && entry.operation === operation && entry.objectId === normalizedObjectId)
     if (duplicate) return { ok: true, entry: duplicate, existing: true }
-    if (entries.length >= 40) throw new Error('待恢复命令较多，请先核对原命令；不会删除旧引用以发送新请求')
+    if (entries.length >= 40) throw new Error('待恢复的操作较多，请先核对原操作；不会删除旧记录来提交新请求')
     const entry = clean({ commandKey: globalThis.crypto.randomUUID(), identityRef, operation, objectId: normalizedObjectId, rosterVersionId, page, status, createdAt: Date.now() })
     if (!entry) throw new Error('命令恢复引用无效')
     entries.push(entry); writeAll(entries)

@@ -1016,7 +1016,7 @@ def _schedule_occurrences_on_date(db, date_str, *, resource_kind=None):
         except AppException as error:
             if error.message in no_class:
                 continue
-            raise AppException("DATA_CONFLICT", "校历事实无法确定资源占用，请先核对正式校历",
+            raise AppException("DATA_CONFLICT", "校历无法确定资源占用，请先核对正式校历",
                                details={"termId": str(term.id), "reason": error.message}, http_status=409) from error
         rows = db.scalars(select(AaScheduleItem).where(
             AaScheduleItem.tenant_id == _tid(), AaScheduleItem.is_deleted.is_(False),

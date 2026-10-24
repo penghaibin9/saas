@@ -19,7 +19,7 @@
     <div v-if="overview.byModule?.length" class="module-strip"><span v-for="module in overview.byModule" :key="module.moduleCode">{{ moduleLabel(module.moduleCode) }} {{ module.count }}</span></div>
     <div v-if="notice" class="state notice">{{ notice }}</div>
     <div v-if="error" class="state error">{{ error }}</div>
-    <div v-else-if="loading" class="state">正在读取异常投影…</div>
+    <div v-else-if="loading" class="state">正在读取异常记录…</div>
     <div v-else-if="!items.length" class="state">当前筛选下没有完整性异常。</div>
     <article v-for="item in items" v-else :key="item.id" class="integrity-row">
       <div class="integrity-main">
@@ -94,7 +94,7 @@ async function transition(item, status) {
 async function recheck(item) {
   try {
     const result = await platformIntegrityApi.recheck(item.id, { version: item.version, timeoutMs: 2000 })
-    const message = result.probeStatus === 'CONCLUSIVE' ? '复检完成，异常投影已刷新。' : `复检未得出结论：${result.error || '探测器不可用'}`
+    const message = result.probeStatus === 'CONCLUSIVE' ? '复检完成，异常记录已刷新。' : `复检未得出结论：${result.error || '探测器不可用'}`
     await reload()
     notice.value = message
   } catch (e) { error.value = e?.message || '复检失败' }

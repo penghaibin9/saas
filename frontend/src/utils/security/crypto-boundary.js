@@ -27,7 +27,7 @@ export function hasServerPublicKey() {
 export function encryptWithServerPublicKey(plaintext) {
   void plaintext
   if (!serverPublicKey) {
-    throw new Error('[crypto-boundary] 服务端公钥未下发：字段加密必须由后端提供公钥并在服务端解密，前端禁止自造密钥')
+    throw new Error('[加密] 未下发加密公钥：字段加密必须由系统提供公钥并在系统端解密，页面禁止自造密钥')
   }
-  throw new Error('[crypto-boundary] 加密实现未接入：待后端确定算法（RSA-OAEP/SM2）后启用，禁止在前端硬编码算法密钥')
+  throw new Error('[加密] 加密功能未接入：待系统确定算法后启用，禁止在页面中硬编码密钥')
 }

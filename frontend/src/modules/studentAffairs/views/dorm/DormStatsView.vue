@@ -41,7 +41,7 @@
 
     <AppDrawer :visible="exportVisible" title="导出宿舍生产台账" mode="modal" size="medium" @close="exportVisible = false">
       <div class="dorm-export-form">
-        <p>文件固定按当前账号楼栋范围生成，并记录用途、操作人、水印、ExportTask 与审计。</p>
+        <p>文件固定按当前账号的楼栋范围生成，并记录用途、操作人、水印、导出任务与审计。</p>
         <AppFormItem label="台账类型" required><AppSelect v-model="exportType" :options="EXPORT_TYPES" /></AppFormItem>
         <AppFormItem label="导出用途" required><AppTextInput v-model="exportPurpose" placeholder="例如：2026年秋季宿舍台账核对" /></AppFormItem>
       </div>

@@ -11,7 +11,7 @@ def test_channel_hints_preserve_fixed_limits_and_delivery_states(monkeypatch):
     result = service.channel_settings({"userType": "TEACHER"})
     assert result["preferences"] == [{"key": "SYSTEM", "enabled": False}]
     assert {c["key"]: c["status"] for c in result["channels"]} == {
-        "IN_APP": "FORCE_ON", "MINIAPP_POPUP": "READY", "SMS": "NOT_CONFIGURED", "WECHAT": "NOT_CONFIGURED",
+        "IN_APP": "FORCE_ON", "MINIAPP_POPUP": "READY", "SMS": "未配置", "WECHAT": "未配置",
     }
     assert result["quietHours"]["start"] == "22:00"
     assert result["quietHours"]["end"] == "07:00"
@@ -40,4 +40,4 @@ def test_statistics_explain_repeated_recipients_without_exposing_field_names(mon
     assert "按每次发布累计" in result["denominatorNote"]
     assert "recipientCount" not in result["denominatorNote"]
     assert len(result["denominatorNote"]) <= 40
-    assert result["channels"][1] == {"channel": "SMS", "status": "NOT_CONFIGURED", "label": "短信"}
+    assert result["channels"][1] == {"channel": "SMS", "status": "未配置", "label": "短信"}

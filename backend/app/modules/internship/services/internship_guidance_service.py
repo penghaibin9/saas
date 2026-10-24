@@ -101,7 +101,7 @@ def create(user, body) -> dict:
     b = body or {}
     iid = b.get("internshipId") or b.get("internId")
     if not iid:
-        raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+        raise AppException("VALIDATION_ERROR", "缺少实习记录")
     if not (b.get("content") or "").strip():
         raise AppException("VALIDATION_ERROR", "指导内容必填")
     file_id = _validate_file(b.get("fileId"))

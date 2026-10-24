@@ -156,7 +156,7 @@ def submit_status_change_my(user, body) -> dict:
     change_type = str(_g("changeType") or "").strip()
     reason = str(_g("reason") or "").strip()
     if not change_type:
-        raise AppException("VALIDATION_ERROR", "异动类型（changeType）必填")
+        raise AppException("VALIDATION_ERROR", "请选择异动类型")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "异动事由至少 5 个字")
     if change_type == "TRANSFER_MAJOR" and not _g("toMajorId"):
@@ -622,7 +622,7 @@ def selection_preflight_my(user, body) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
     _require_student(user)
     if not (body or {}).get("selectionCourseId"):
-        raise AppException("VALIDATION_ERROR", "selectionCourseId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择选课课程")
     return sel.student_preflight(user, _ns(body))
 
 
@@ -633,10 +633,10 @@ def selection_drop_preflight_my(user, body) -> dict:
     _require_student(user)
     course_id = (body or {}).get("selectionCourseId")
     if isinstance(course_id, bool) or not isinstance(course_id, (int, str)):
-        raise AppException("VALIDATION_ERROR", "selectionCourseId 必须是正整数")
+        raise AppException("VALIDATION_ERROR", "选课课程不正确")
     value = str(course_id)
     if not value.isascii() or not value.isdecimal() or int(value) <= 0:
-        raise AppException("VALIDATION_ERROR", "selectionCourseId 必须是正整数")
+        raise AppException("VALIDATION_ERROR", "选课课程不正确")
     return selection.student_drop_preflight(user, _ns({"selectionCourseId": value}))
 
 
@@ -644,7 +644,7 @@ def selection_enroll_my(user, body) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
     _require_student(user)
     if not (body or {}).get("selectionCourseId"):
-        raise AppException("VALIDATION_ERROR", "selectionCourseId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择选课课程")
     return sel.student_enroll(user, _ns(body))
 
 
@@ -652,7 +652,7 @@ def selection_drop_my(user, body) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_selection_service as sel
     _require_student(user)
     if not (body or {}).get("selectionCourseId"):
-        raise AppException("VALIDATION_ERROR", "selectionCourseId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择选课课程")
     return sel.student_drop(user, _ns(body))
 
 
@@ -1088,13 +1088,13 @@ def evaluation_submit_my(user, body) -> dict:
         raise AppException("VALIDATION_ERROR", "taskId 必填")
     score = (body or {}).get("objectiveScore")
     if score is None:
-        raise AppException("VALIDATION_ERROR", "objectiveScore 必填")
+        raise AppException("VALIDATION_ERROR", "请填写客观分")
     try:
         score_f = float(score)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "objectiveScore 须为数字") from exc
+        raise AppException("VALIDATION_ERROR", "客观分须为数字") from exc
     if score_f < 0 or score_f > 100:
-        raise AppException("VALIDATION_ERROR", "objectiveScore 须在 0-100")
+        raise AppException("VALIDATION_ERROR", "客观分须在 0-100 之间")
     # 确认学生身份+本班任务，再交给域服务（匿名不落学生身份）
     with session() as db:
         stu = _me(db, user)

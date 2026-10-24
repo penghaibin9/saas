@@ -75,7 +75,7 @@ def submit_status_change(user: dict, body: dict) -> dict:
     change_type = str(body.get("changeType") or "").strip()
     reason = str(body.get("reason") or "").strip()
     if not change_type:
-        raise AppException("VALIDATION_ERROR", "异动类型（changeType）必填")
+        raise AppException("VALIDATION_ERROR", "请选择异动类型")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "异动事由至少 5 个字")
     if change_type == "TRANSFER_MAJOR" and not body.get("toMajorId"):
@@ -245,7 +245,7 @@ def grade_recheck_submit(user: dict, body: dict) -> dict:
     _require_student(user)
     body = body or {}
     if not body.get("acadGradeId"):
-        raise AppException("VALIDATION_ERROR", "acadGradeId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择年级")
     if len(str(body.get("reason") or "").strip()) < 5:
         raise AppException("VALIDATION_ERROR", "复查事由至少 5 个字")
     return aa.grade_recheck_submit_my(user, body)

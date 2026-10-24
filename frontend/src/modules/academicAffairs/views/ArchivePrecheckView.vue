@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="归档缺失提醒"
-    :subtitle="isCollegeScope ? '只核对本院实时缺项；学校正式封存由校教务统筹' : '十三域逐项核对；待治理与已阻断均不能封存，不适用项必须有正式依据'"
+    :subtitle="isCollegeScope ? '只核对本院实时缺项；学校正式封存由校教务统筹' : '十三个数据域逐项核对；待处理与已阻断均不能封存，不适用项必须有正式依据'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -12,7 +12,7 @@
 
     <section class="aapc-hero" :class="overallResult === 'PASS' ? 'is-pass' : 'is-blocked'">
       <div class="aapc-hero__main">
-        <span class="aapc-eyebrow">{{ termCode || (termId ? '所选学期' : '当前学期') }} · {{ isCollegeScope ? '本院归档预检' : '归档前置门禁' }}</span>
+        <span class="aapc-eyebrow">{{ termCode || (termId ? '所选学期' : '当前学期') }} · {{ isCollegeScope ? '本院归档预检' : '归档前置检查' }}</span>
         <h2>{{ precheckTitle }}</h2>
         <p>{{ overallDescription }}</p>
 
@@ -57,9 +57,9 @@
           <small>当前无需处理</small>
         </article>
         <article :class="{ 'is-risk': blockedDomains > 0 }">
-          <span>阻断 / 待治理域</span>
+          <span>阻断 / 待处理数据域</span>
           <strong>{{ blockedDomains }}</strong>
-          <small>{{ blockedDomains ? '已阻断与待治理的数据均不得进入正式归档' : '当前无阻断或待治理域' }}</small>
+          <small>{{ blockedDomains ? '已阻断与待处理的数据均不得进入正式归档' : '当前没有阻断或待处理的数据域' }}</small>
         </article>
         <article :class="{ 'is-risk': blockingCount > 0 }">
           <span>阻断项</span>
@@ -72,10 +72,10 @@
         <header class="aapc-section-head">
           <div>
             <span class="aapc-eyebrow">优先处理</span>
-            <h3>归档阻断 / 待治理域</h3>
-            <p>“已阻断”表示存在明确业务阻断，“待治理”表示证据不足；两者都不能放行，处理后请重新检查。</p>
+            <h3>归档阻断 / 待处理数据域</h3>
+            <p>“已阻断”表示存在明确的业务阻断，“待处理”表示依据不足；两者都不能放行，处理后请重新检查。</p>
           </div>
-          <span class="aapc-count is-danger">{{ blockedDomainRows.length }} 个阻断 / 待治理域</span>
+          <span class="aapc-count is-danger">\1 个阻断 / 待处理数据域</span>
         </header>
         <div class="aapc-grid">
           <article v-for="d in blockedDomainRows" :key="d.domain" class="aapc-card is-missing">
@@ -117,7 +117,7 @@
         <header class="aapc-section-head">
           <div>
             <span class="aapc-eyebrow">非阻断证据</span>
-            <h3>已满足门禁的业务域</h3>
+            <h3>已通过检查的业务域</h3>
             <p>“已通过”表示已有完成证据，“不适用”表示本学期明确无需检查。两者均非阻断，但会分别展示。</p>
           </div>
           <span class="aapc-count">{{ passedDomainRows.length }} 个非阻断域</span>
@@ -228,13 +228,13 @@ export default {
     precheckTitle() {
       if (this.loading) return '正在读取所选学期的预检结果'
       if (this.error || !this.domains.length) return '预检结果待核对'
-      if (this.isCollegeScope) return this.overallResult === 'PASS' ? '本院当前无阻断或待治理项' : '本院预检仍有阻断或待核验事项'
-      return this.overallResult === 'PASS' ? '当前满足归档语义门禁' : '当前仍有业务阻断，暂不可归档'
+      if (this.isCollegeScope) return this.overallResult === 'PASS' ? '本学院当前没有阻断或待处理事项' : '本院预检仍有阻断或待核验事项'
+      return this.overallResult === 'PASS' ? '当前满足归档检查要求' : '当前仍有业务阻断，暂不可归档'
     },
     precheckDecision() {
       if (this.loading) return '正在读取'
       if (this.error || !this.domains.length) return '尚未取得有效结论'
-      if (this.overallResult !== 'PASS') return this.isCollegeScope ? '按各项实际责任核对，学校统筹项交校教务' : '必须先处理阻断 / 待治理项'
+      if (this.overallResult !== 'PASS') return this.isCollegeScope ? '按各项实际责任核对，学校统筹项交校教务' : '必须先处理阻断 / 待处理事项'
       return this.isCollegeScope ? '本院已具备当前预检条件' : '可以进入归档批次'
     },
     passedDomains() {
@@ -253,13 +253,13 @@ export default {
       return this.blockedDomainRows[0] || null
     },
     overallDescription() {
-      if (this.loading) return '正在按当前身份、范围与学期读取正式业务事实。'
+      if (this.loading) return '正在按当前身份、范围与学期读取正式业务数据。'
       if (this.error || !this.domains.length) return '请重新读取预检结果；未取得结论前，不认定数据完整或可归档。'
       if (this.overallResult === 'PASS') {
-        if (this.isCollegeScope) return `共检查本院 ${this.domains.length} 个业务域，本院当前无阻断或待治理项；学校正式封存仍由校教务统一核对。`
-        return `共检查 ${this.domains.length} 个业务域，当前全部满足归档语义门禁。进入归档批次后仍按正式归档状态机执行。`
+        if (this.isCollegeScope) return `共检查本学院 ${this.domains.length} 个业务域，本学院当前没有阻断或待处理事项；学校正式封存仍由校教务统一核对。`
+        return `共检查 ${this.domains.length} 个业务域，当前全部满足归档检查要求。进入归档批次后仍按正式归档流程执行。`
       }
-      return `仍有 ${this.blockedDomains} 个阻断 / 待治理业务域、${this.blockingCount} 个阻断项需要处理；${this.isCollegeScope ? '本院事项按责任处理，学校统筹项待校教务核验；' : ''}待治理状态不会被当作已通过，本页不写入归档事实。`
+      return `仍有 ${this.blockedDomains} 个阻断 / 待处理业务域、${this.blockingCount} 个阻断项需要处理；${this.isCollegeScope ? '本院事项按责任处理，学校统筹项待校教务核验；' : ''}待处理状态不会被当作已通过，本页不写入归档事实。`
     },
     nextActionText() {
       if (this.loading || this.error || !this.domains.length) return '先取得当前学期的有效预检结果'
@@ -368,7 +368,7 @@ export default {
     },
     tagLabel(domain) {
       if (this.schoolCheckPending(domain)) return '待学校核验'
-      return { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待治理', NOT_APPLICABLE: '不适用' }[domain.result] || '待确认'
+      return { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待处理', NOT_APPLICABLE: '不适用' }[domain.result] || '待确认'
     },
     evidencePreview(evidence) {
       return (evidence || []).slice(0, 5).map((item) => {

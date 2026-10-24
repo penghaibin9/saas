@@ -506,7 +506,7 @@ def _validate_auto_draft_teaching_class(task, teaching_class, roster_versions, r
             or teaching_class.source_type != "TEACHING_TASK"
             or int(teaching_class.source_id or 0) != int(task.id)
             or teaching_class.roster_status != "LOCKED"):
-        raise AppException("DATA_CONFLICT", "教学班不是未使用的任务自动投影，不能作废")
+        raise AppException("DATA_CONFLICT", "教学班不是未使用的任务自动生成的，不能作废")
     if teacher_count or consumer_count:
         raise AppException("DATA_CONFLICT", "教学班已分配教师或已被正式业务消费，不能作废")
     if len(roster_versions) != 1:

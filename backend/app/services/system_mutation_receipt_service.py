@@ -36,7 +36,7 @@ def _optional_version(value, *, current: int, label: str) -> tuple[int, bool]:
     try:
         expected = int(value)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", f"{label} expectedVersion 必须是整数", http_status=422) from None
+        raise AppException("VALIDATION_ERROR", f"{label}的数据版本必须是整数", http_status=422) from None
     if expected != int(current):
         raise AppException(
             "DATA_CONFLICT", f"{label}已被其他管理员更新，请刷新后重试", http_status=409,

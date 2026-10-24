@@ -94,7 +94,7 @@ def decode_token(token: str) -> dict:
     except jwt.ExpiredSignatureError:
         raise unauthorized("登录已过期，请重新登录")
     except jwt.PyJWTError:
-        raise unauthorized("认证令牌无效")
+        raise unauthorized("登录凭证无效")
 
 
 def _extract_bearer(authorization: Optional[str]) -> Optional[str]:
@@ -111,9 +111,9 @@ def _optional_positive_int_claim(claims: dict, key: str) -> int | None:
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        raise unauthorized("认证令牌中的学生身份无效")
+        raise unauthorized("登录凭证中的学生身份无效")
     if value <= 0:
-        raise unauthorized("认证令牌中的学生身份无效")
+        raise unauthorized("登录凭证中的学生身份无效")
     return value
 
 
@@ -121,7 +121,7 @@ def get_current_user(request: Request, authorization: Optional[str] = Header(def
     """FastAPI 依赖：要求登录，逐请求复核真实账号并执行首次改密强门禁。"""
     token = _extract_bearer(authorization)
     if not token:
-        raise unauthorized("未提供认证令牌")
+        raise unauthorized("未提供登录凭证")
     claims = decode_token(token)
     from app.core.token_store import jti_blocked
     if jti_blocked(claims.get("jti")):

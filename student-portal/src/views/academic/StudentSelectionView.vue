@@ -30,7 +30,7 @@
           </div></section>
           <section class="card"><header class="card-head"><h2>本人办理条件</h2></header><div class="card-body">
             <div class="taskline"><AcademicPrototypeIcon :name="hasAction(detailCourse, 'ENROLL') ? 'circle-check' : 'triangle-exclamation'" /><span>{{ courseStatusText(detailCourse) }}</span></div>
-            <div class="taskline"><AcademicPrototypeIcon name="circle-info" /><span>{{ detailCourse.reason || '请提交前核对资格，当前快照不预留名额。' }}</span></div>
+            <div class="taskline"><AcademicPrototypeIcon name="circle-info" /><span>{{ detailCourse.reason || '请提交前核对资格，当前不预留名额。' }}</span></div>
             <div class="notice amber detail-notice"><AcademicPrototypeIcon name="circle-info" /><span>{{ isLottery(detailCourse) ? '本次只登记抽签意向。中签后再形成有效选课结果。' : '提交时服务器重新检查容量、时间和学籍资格。' }}</span></div>
             <p v-if="detailCourse.howToResolve" class="muted">{{ detailCourse.howToResolve }}</p>
             <button v-if="hasAction(detailCourse, 'ENROLL')" class="btn primary" :disabled="!!actingId || !!pendingOperation || !!coursesError || !!recordsError" @click="enroll(detailCourse)">{{ actingId ? '正在核验并办理…' : '核对并提交' }}</button>
@@ -376,7 +376,7 @@ function setFormalReceipt(course, record, action = 'enroll') {
 }
 function setPendingReceipt(course, observed, reference) {
   receiptTone.value = 'waiting'
-  receipt.value = academicReceipt({ title: '本次办理结果待确认', object: course?.courseName || observed?.courseName || '原选课对象', status: observed ? recordStatusText(observed.status) : reference?.ackId ? '尚未读取到原回执对应的本人记录' : '原提交未取得服务端回执编号', next: reference?.ackId ? '请继续只查询本人正式记录，确认前不要重复提交。' : '当前记录不能归因于原提交；刷新不会自动再次提交。' })
+  receipt.value = academicReceipt({ title: '本次办理结果待确认', object: course?.courseName || observed?.courseName || '原选课对象', status: observed ? recordStatusText(observed.status) : reference?.ackId ? '尚未读取到原回执对应的本人记录' : '原提交未取得回执编号', next: reference?.ackId ? '请继续只查询本人正式记录，确认前不要重复提交。' : '当前记录不能归因于原提交；刷新不会自动再次提交。' })
 }
 async function enroll(course) {
   const id = stableCommandId(course?.selectionCourseId)
@@ -413,8 +413,8 @@ async function enroll(course) {
       pendingOperation.value = null
       await refreshRecords(operation)
       if (operation.version === requestVersion && operation.identity === studentAcademicIdentity(session)) {
-        receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '选课事实已变化', object: operation.course.courseName || '原选课对象', status: '本次办理未确认完成', next: '已保留当前页面，请根据本人正式记录重新核对。' })
-        decisionError.value = { message: '业务事实已变化，已重新查询本人记录，请核对后再办理。', decisionTrace: e?.decisionTrace }
+        receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '选课情况已变化', object: operation.course.courseName || '原选课对象', status: '本次办理未确认完成', next: '已保留当前页面，请根据本人正式记录重新核对。' })
+        decisionError.value = { message: '业务情况已变化，已重新查询本人记录，请核对后再办理。', decisionTrace: e?.decisionTrace }
       }
     } else {
       if (persistent && !guard.completePersistentCommand(persistent)) keepPendingAfterDeleteFailure({ ...operation, persistent })
@@ -465,8 +465,8 @@ async function drop(course) {
       pendingOperation.value = null
       await refreshRecords(operation)
       if (operation.version === requestVersion && operation.identity === studentAcademicIdentity(session)) {
-        receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '退课事实已变化', object: operation.course.courseName || '原选课对象', status: '本次办理未确认完成', next: '已保留当前页面，请根据本人正式记录重新核对。' })
-        decisionError.value = { message: '业务事实已变化，已重新查询本人记录，请核对后再办理。', decisionTrace: e?.decisionTrace }
+        receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '退课情况已变化', object: operation.course.courseName || '原选课对象', status: '本次办理未确认完成', next: '已保留当前页面，请根据本人正式记录重新核对。' })
+        decisionError.value = { message: '业务情况已变化，已重新查询本人记录，请核对后再办理。', decisionTrace: e?.decisionTrace }
       }
     } else {
       if (persistent && !guard.completePersistentCommand(persistent)) keepPendingAfterDeleteFailure({ ...operation, persistent })

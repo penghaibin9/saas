@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="数据范围规则" subtitle="先选一条规则，再核对引用角色、受影响成员和显式限制；最终访问结论始终由后端按具体业务对象判定" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
+  <ModulePageShell title="数据范围规则" subtitle="先选一条规则，再核对引用的角色、受影响的成员和明确的限制；最终访问结论始终由系统按具体业务对象判定" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
     <template #actions><ModuleToolbar :actions="toolbarActions" @action="onToolbar" /></template>
     <div class="mp-stack">
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="load" @reset="reset" />
@@ -7,7 +7,7 @@
       <EmptyState v-else-if="!rows.length" title="没有符合条件的数据范围规则" description="可调整筛选条件；若要新增规则，请使用页面右上角的新增入口" />
       <template v-else>
         <section class="su-metrics" aria-label="当前筛选结果摘要">
-          <div class="su-metric"><span>当前筛选规则</span><strong>{{ rows.length }}</strong><small>仅统计本次服务端返回结果</small></div>
+          <div class="su-metric"><span>当前筛选规则</span><strong>{{ rows.length }}</strong><small>仅统计本次返回的结果</small></div>
           <div class="su-metric"><span>启用中</span><strong>{{ enabledRuleCount }}</strong><small>当前筛选结果口径</small></div>
           <div class="su-metric"><span>当前规则引用角色</span><strong>{{ selectedRule ? selectedRule.appliedRoles.length : 0 }}</strong><small>角色引用关系，不等于实际访问人数</small></div>
           <div class="su-metric" :class="{ 'is-warning': selectedRule && selectedRule.affectedUsers == null }"><span>历史匹配人数</span><strong>{{ affectedCountText }}</strong><small>未取得时明确显示，不补 0</small></div>
@@ -22,7 +22,7 @@
           <div v-if="selectedRule" class="ds-main">
             <header class="ds-main__head"><div><span class="ds-kicker">当前规则</span><h2>{{ selectedRule.name }}</h2><p>结构化范围类型 {{ selectedRule.scopeLabel }}<span v-if="selectedRule.scopeCode"> · {{ selectedRule.scopeCode }}</span><span v-if="selectedRule.updatedAt"> · 最近更新 {{ selectedRule.updatedAt }}</span></p></div>
               <div class="ds-actions"><AppButton variant="ghost" :disabled="!can('editScopeRule')" :title="reason('editScopeRule')" @click="openEdit(selectedRule)">编辑规则</AppButton><AppButton v-if="selectedRule.status === 'ENABLED'" variant="warning" :disabled="!can('deprecateScopeRule')" :title="reason('deprecateScopeRule')" @click="askDeprecate(selectedRule)">作废规则</AppButton></div></header>
-            <div class="su-notice"><b>角色权限通过，不代表可以读取任意业务对象。</b><p>显式 DENY、敏感专项、业务关系和具体对象范围仍由后端最终判定；本页只呈现规则与引用事实。</p></div>
+            <div class="su-notice"><b>角色权限通过，不代表可以读取任意业务对象。</b><p>明确禁止、敏感专项、业务关系和具体对象范围仍由系统最终判定；本页只显示规则与引用情况。</p></div>
             <div class="ds-facts"><div><span>范围类型</span><strong>{{ selectedRule.scopeLabel }}</strong></div><div><span>引用角色</span><strong>{{ selectedRule.appliedRoles.length }}</strong></div><div><span>历史匹配人数</span><strong>{{ selectedRule.affectedUsers == null ? '未取得' : selectedRule.affectedUsers + ' 人*' }}</strong></div><div><span>当前状态</span><strong>{{ selectedRule.statusLabel }}</strong></div></div>
             <section class="ds-section"><div class="ds-section__head"><div><h3>引用该规则的角色</h3><p>这里只说明角色默认范围引用，不自动替成员创建任职或指导关系。</p></div></div><div v-if="selectedRule.appliedRoles.length" class="ds-role-list"><span v-for="role in selectedRule.appliedRoles" :key="role" class="ds-role-chip">{{ role }}</span></div><p v-else class="ds-empty-line">当前没有角色引用这条规则。</p></section>
             <section class="ds-section">
@@ -31,8 +31,8 @@
               <template v-else-if="affected.loadedFor === selectedRule.id"><EmptyState v-if="!affected.list.length" title="当前历史匹配口径未返回记录" description="这是受限预览，不能据此证明所有结构化权限都没有影响" /><div v-else class="ds-affected-list"><div v-for="(u,index) in affected.list" :key="`${u.id}:${u.roleName}:${index}`" class="ds-person-row"><span><b>{{ u.name }}</b><small>{{ u.roleName || '—' }}</small></span><span>{{ u.orgName || u.userNo || '—' }}</span></div></div><p class="ds-footnote">* 仅展示姓名与组织，不展示联系方式等敏感字段；服务端限制最多 200 条。</p></template>
               <p v-else class="ds-empty-line">尚未读取影响预览；未读取不等于 0 人。</p>
             </section>
-            <section class="ds-section ds-section--deny"><div class="ds-section__head"><div><h3>显式禁止与特殊限制</h3><p>DENY 优先于 ALLOW。规则列表没有 DENY 记录，不代表某个具体业务对象一定允许访问。</p></div><button type="button" class="mp-link" @click="denyPanel.open = !denyPanel.open">{{ denyPanel.open ? '收起策略' : '展开策略' }}</button></div>
-              <template v-if="denyPanel.open"><LoadingState v-if="denyPanel.loading" /><ErrorState v-else-if="denyPanel.error" :description="denyPanel.error" @retry="loadDenyPolicies" /><div v-else-if="denyPanel.items.length" class="ds-deny-list"><div v-for="policy in denyPanel.items" :key="policy.policyId" class="ds-deny-row"><span><b>{{ roleLabel(policy.roleCode) }}</b><small>{{ policy.targetType }}:{{ policy.targetId }}</small></span><StatusTag :type="policy.effect === 'DENY' ? 'danger' : 'success'" :label="policy.effect === 'DENY' ? '拒绝' : policy.effect === 'ALLOW' ? '允许' : '状态待核对'" /><span>{{ policy.includeChildren ? '包含下级' : '仅当前节点' }}</span><span>{{ fmtTime(policy.effectiveAt) }} ~ {{ policy.expiresAt ? fmtTime(policy.expiresAt) : '长期' }}</span><span>{{ policy.reason || '—' }}</span></div></div><EmptyState v-else title="服务端未返回显式策略" description="这里只能说明本次读取没有记录，最终访问仍需结合具体对象由后端判定" /><p class="ds-footnote">判定顺序：直接拒绝 → 继承拒绝 → 敏感专项 → 业务关系 → 直接允许 → 继承允许 → 默认拒绝。</p></template>
+            <section class="ds-section ds-section--deny"><div class="ds-section__head"><div><h3>显式禁止与特殊限制</h3><p>“禁止”优先于“允许”。规则列表没有禁止记录，不代表某个具体业务对象一定允许访问。</p></div><button type="button" class="mp-link" @click="denyPanel.open = !denyPanel.open">{{ denyPanel.open ? '收起策略' : '展开策略' }}</button></div>
+              <template v-if="denyPanel.open"><LoadingState v-if="denyPanel.loading" /><ErrorState v-else-if="denyPanel.error" :description="denyPanel.error" @retry="loadDenyPolicies" /><div v-else-if="denyPanel.items.length" class="ds-deny-list"><div v-for="policy in denyPanel.items" :key="policy.policyId" class="ds-deny-row"><span><b>{{ roleLabel(policy.roleCode) }}</b><small>{{ policy.targetType }}:{{ policy.targetId }}</small></span><StatusTag :type="policy.effect === 'DENY' ? 'danger' : 'success'" :label="policy.effect === 'DENY' ? '拒绝' : policy.effect === 'ALLOW' ? '允许' : '状态待核对'" /><span>{{ policy.includeChildren ? '包含下级' : '仅当前节点' }}</span><span>{{ fmtTime(policy.effectiveAt) }} ~ {{ policy.expiresAt ? fmtTime(policy.expiresAt) : '长期' }}</span><span>{{ policy.reason || '—' }}</span></div></div><EmptyState v-else title="系统未返回明确的策略" description="这里只能说明本次读取没有记录，最终访问仍需结合具体对象由系统判定" /><p class="ds-footnote">判定顺序：直接拒绝 → 继承拒绝 → 敏感专项 → 业务关系 → 直接允许 → 继承允许 → 默认拒绝。</p></template>
             </section>
             <p v-if="selectedRule.remark" class="ds-remark">规则说明：{{ selectedRule.remark }}</p>
           </div>

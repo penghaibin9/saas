@@ -204,7 +204,7 @@ def publish_template_asset(
     raw = (body or {}).get("fileId")
     file_id = int(raw) if str(raw or "").isdigit() else None
     if not file_id:
-        raise AppException("VALIDATION_ERROR", "模板 fileId 不能为空")
+        raise AppException("VALIDATION_ERROR", "模板文件不能为空")
     return success(commands.publish_template_policy(template_id, file_id, body or {}, user), message="模板资产版本已发布")
 
 
@@ -213,7 +213,7 @@ def update_template_status(policy_id: int, body: dict = Body(...), user=Depends(
     enabled = bool((body or {}).get("enabled"))
     expected = (body or {}).get("expectedVersion")
     if not str(expected or "").isdigit():
-        raise AppException("VALIDATION_ERROR", "expectedVersion 不能为空")
+        raise AppException("VALIDATION_ERROR", "数据版本不能为空")
     return success(commands.update_template_policy_status(
         policy_id, enabled, int(expected), user,
     ), message="模板状态已更新")

@@ -109,5 +109,5 @@ def create_profile_pdf_preview(*, user: dict, body: dict, batch_id=None, campaig
         "INTERNSHIP", "application/pdf", biz_id=str(student_id), user=user, visibility="PRIVATE", security_level="NORMAL",
     )
     file_id = str(meta.get("fileId") or "")
-    if not file_id: raise AppException("DATA_CONFLICT", "文件中心未返回档案 PDF fileId", http_status=409)
+    if not file_id: raise AppException("DATA_CONFLICT", "文件中心未返回档案 PDF", http_status=409)
     return {"fileId": file_id, "previewHash": preview.get("previewHash"), "profileVersion": int(preview.get("profileVersion") or 0), "contactSharingMode": mode["mode"]}

@@ -831,7 +831,7 @@ def create_batch_job(user: dict, payload: dict) -> dict:
         raise AppException("NO_PERMISSION", "仅开放低风险批量材料提醒，审批/发放/处分等必须逐条处理")
     key = str(payload.get("idempotencyKey") or "").strip()
     if not 8 <= len(key) <= 128 or not re.fullmatch(r"[A-Za-z0-9._:-]+", key):
-        raise AppException("VALIDATION_ERROR", "幂等键需8-128位字母、数字或 ._:-")
+        raise AppException("VALIDATION_ERROR", "重复提交标识需 8-128 位字母、数字或 ._:-")
     raw_items = payload.get("items") or []
     if not 1 <= len(raw_items) <= 200:
         raise AppException("VALIDATION_ERROR", "每个批次需1-200条记录")
@@ -871,7 +871,7 @@ def create_batch_job(user: dict, payload: dict) -> dict:
             )).first()
             if existed:
                 return _batch_job_dict(db, existed)
-            raise AppException("IDEMPOTENCY_CONFLICT", "批次幂等键冲突，请刷新") from exc
+            raise AppException("IDEMPOTENCY_CONFLICT", "批次重复提交标识冲突，请刷新") from exc
     return run_batch_job(int(job.id), user)
 
 

@@ -71,7 +71,7 @@ class BusinessFormDefinitionService:
     def create_definition(self, *, form_code: str, form_name: str, domain_code: str, description: str = ""):
         code = str(form_code or "").strip().upper()
         if not code or not str(form_name or "").strip() or not str(domain_code or "").strip():
-            raise AppException("VALIDATION_ERROR", "formCode/formName/domainCode 必填")
+            raise AppException("VALIDATION_ERROR", "表单编码、表单名称、业务域必填")
         exists = self.db.scalars(select(BusinessFormDefinition).where(
             BusinessFormDefinition.tenant_id == self.tenant_id,
             BusinessFormDefinition.form_code == code,

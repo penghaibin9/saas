@@ -234,7 +234,7 @@
             <div><dt>为什么轮到我</dt><dd>{{ deferWhyMine(selectedDefer) }}</dd></div>
             <div><dt>退回记录</dt><dd>{{ selectedDefer.returnReason || '无' }}</dd></div>
           </dl>
-          <AppInlineAlert type="info" :description="'通过后流向：' + deferNextOwner(selectedDefer.status) + '。真实权限与数据范围由服务端再次校验。'" />
+          <AppInlineAlert type="info" :description="'通过后流向：' + deferNextOwner(selectedDefer.status) + '。真实权限与数据范围由系统再次校验。'" />
         </template>
       </aside>
     </section>
@@ -244,7 +244,7 @@
         <div class="aaexam-panel-head">
           <div>
             <h2>已封存考试批次</h2>
-            <p>仅列出正式进入已归档状态的批次，课程与异常摘要来自归档事实。</p>
+            <p>仅列出已正式归档的批次，课程与异常摘要来自归档记录。</p>
           </div>
           <span>共 {{ modePagination.total }} 个</span>
         </div>
@@ -278,13 +278,13 @@
         <template v-else>
           <dl class="aaexam-evidence">
             <div><dt>考试批次</dt><dd>{{ selectedArchive.batchName || '—' }}</dd></div>
-            <div><dt>正式状态</dt><dd>已归档（ARCHIVED）</dd></div>
+            <div><dt>正式状态</dt><dd>已归档</dd></div>
             <div><dt>归档时间</dt><dd>{{ formatTime(selectedArchive.archivedAt) }}</dd></div>
             <div><dt>课程确认</dt><dd>{{ selectedArchive.completenessSummary?.confirmedCount ?? 0 }} / {{ selectedArchive.completenessSummary?.courseCount ?? 0 }}</dd></div>
             <div><dt>异常摘要</dt><dd>缺考 {{ selectedArchive.completenessSummary?.absentCount ?? 0 }}，违纪 {{ selectedArchive.completenessSummary?.violationCount ?? 0 }}</dd></div>
             <div><dt>返回位置</dt><dd>考务管理 / 考务归档</dd></div>
           </dl>
-          <AppInlineAlert :type="archiveHasRisk(selectedArchive) ? 'warning' : 'success'" :description="archiveHasRisk(selectedArchive) ? '封存记录仍含异常计数，请按审计事实核查；本页不会改写归档数据。' : '封存摘要未发现异常计数，归档事实保持只读。'" />
+          <AppInlineAlert :type="archiveHasRisk(selectedArchive) ? 'warning' : 'success'" :description="archiveHasRisk(selectedArchive) ? '封存记录仍含异常计数，请按审计记录核查；本页不会改写归档数据。' : '封存摘要未发现异常计数，归档记录保持只读。'" />
         </template>
       </aside>
     </section>
@@ -329,7 +329,7 @@
           <AppInlineAlert
             v-if="coursePreview.previewToken"
             type="success"
-            description="预览为零写入；确认时系统会重新校验名单与任务状态，再逐门进入正式圈课写链。"
+            description="预览不会保存任何数据；确认时系统会重新校验名单与任务状态，再逐门进入正式圈课。"
           />
         </div>
         <AppInlineAlert v-if="courseError" type="danger" :description="courseError" />
@@ -411,7 +411,7 @@
             <AppButton size="small" variant="primary" @click="attendanceRoomId = r.examRoomId">到考登记</AppButton>
             <AaExamAttendanceWorkbench v-if="attendanceRoomId === r.examRoomId" :key="identityKey + ':' + r.examRoomId" :room-id="r.examRoomId" class="aaexam-attendance" />
             <div v-if="canArrangeRooms" class="aaexam-room-actions">
-              <AppButton v-if="arrangeRooms.length === 1 && !r.plannedCount" size="small" :disabled="!arrangeCourse?.rosterIdentity?.studentIds?.length || saving" @click="assignFrozenSeats(r)">按冻结名单铺位</AppButton>
+              <AppButton v-if="arrangeRooms.length === 1 && !r.plannedCount" size="small" :disabled="!arrangeCourse?.rosterIdentity?.studentIds?.length || saving" @click="assignFrozenSeats(r)">按锁定名单铺座位</AppButton>
               <p>监考：{{ (r.invigilators || []).map(item => item.teacherName || '教师姓名待核对').join('、') || '尚未指定' }}</p>
               <AppTeacherPicker v-model="invigilatorForm.teacherKey" :query="teacherKeyQuery" :disabled="saving" placeholder="选择监考教师" @change="onInvigilatorPicked" />
               <AppButton size="small" :disabled="!invigilatorForm.teacherKey || saving" @click="assignRoomInvigilator(r)">指定监考</AppButton>
@@ -681,7 +681,7 @@ export default {
     },
     deferWhyMine(row) {
       const role = this.ctx.currentRole.roleName || '当前身份'
-      return `${role}在当前数据范围内可查看该申请；能否办理仍由服务端按 ${this.deferOwner(row.status)} 节点校验。`
+      return `${role}在当前数据范围内可查看该申请；能否办理，仍由系统按 ${this.deferOwner(row.status)} 环节校验。`
     },
     canReviewDefer(row) { return DEFER_ACTIVE.has(String(row?.status || '')) },
     archiveHasRisk(row) {
@@ -1067,7 +1067,7 @@ export default {
     async assignFrozenSeats(room) {
       const ids = this.arrangeCourse?.rosterIdentity?.studentIds || []
       if (this.arrangeRooms.length !== 1 || room.plannedCount || !ids.length) return
-      if (ids.length > Number(room.capacity || 0)) { this.arrangeError = '冻结名单人数超过考场容量，请先核对考场安排'; return }
+      if (ids.length > Number(room.capacity || 0)) { this.arrangeError = '锁定名单人数超过考场容量，请先核对考场安排'; return }
       await this.arrangeCommand(() => api.assignSeats(room.examRoomId, ids.map(String)))
     },
     async assignRoomInvigilator(room) {

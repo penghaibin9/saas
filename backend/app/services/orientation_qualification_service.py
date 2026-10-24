@@ -546,7 +546,7 @@ def sync_payment(student_id, body: dict, *, user=None) -> dict:
         paid = Decimal(str((body or {}).get("paidAmount", 0)))
         expected = int((body or {}).get("expectedVersion"))
     except (TypeError, ValueError, ArithmeticError):
-        raise AppException("VALIDATION_ERROR", "金额或 expectedVersion 不合法")
+        raise AppException("VALIDATION_ERROR", "金额或数据版本不合法")
     if payable < 0 or paid < 0 or (status == "PAID" and paid < payable):
         raise AppException("VALIDATION_ERROR", "缴费金额与状态不一致")
     source_type = str((body or {}).get("sourceType") or "MANUAL_VERIFIED").upper()
@@ -554,7 +554,7 @@ def sync_payment(student_id, body: dict, *, user=None) -> dict:
         raise AppException("VALIDATION_ERROR", "缴费来源不合法")
     source_biz_id = str((body or {}).get("sourceBizId") or "").strip()
     if len(source_biz_id) < 3:
-        raise AppException("VALIDATION_ERROR", "sourceBizId 必填")
+        raise AppException("VALIDATION_ERROR", "请填写来源业务编号")
     with session() as db:
         student = db.scalars(select(OrientationStudent).where(
             OrientationStudent.tenant_id == _tid(), OrientationStudent.id == int(student_id),

@@ -10,7 +10,7 @@ export const ACADEMIC_STATUS_LABELS = Object.freeze({
   RUNNING: '处理中',
   UPLOADED: '已上传',
   SCANNING: '安全扫描中',
-  PARSING: '服务端预检中',
+  PARSING: '预检查中',
   VALIDATED: '预检通过',
   VALIDATION_FAILED: '预检未通过',
   CONFIRMING: '确认中',

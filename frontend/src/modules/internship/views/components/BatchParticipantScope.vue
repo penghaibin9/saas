@@ -46,7 +46,7 @@
               variant="primary"
               :disabled="acting || previewDirty || !previewRows.length"
               @click="confirmVisible = true"
-            >冻结名单并启用批次</AppButton>
+            >锁定名单并启用批次</AppButton>
             <span v-if="!hasScope" class="bps-hint">请先选择至少一个班级或指定学生。</span>
             <span v-else-if="previewDirty" class="bps-hint">范围已变化，请重新预览后再冻结。</span>
           </div>
@@ -62,7 +62,7 @@
               v-if="previewTruncated"
               type="warning"
               title="预览名单已截断"
-              :description="`当前页面仅返回前 ${previewRows.length} 名用于核对，但规则实际命中 ${previewSummary.matchedCount} 名。确认冻结时，后端会按完整规则固化 ${previewSummary.matchedCount} 名学生，而不是只固化当前显示的预览行。`"
+              :description="`当前页面仅显示前 ${previewRows.length} 名用于核对，但规则实际命中 ${previewSummary.matchedCount} 名。确认锁定时，系统会按完整规则固化 ${previewSummary.matchedCount} 名学生，而不是只固化当前显示的预览行。`"
             />
             <p v-if="!previewRows.length" class="bps-empty">当前范围没有符合条件的学生，请调整班级后重试。</p>
             <div v-else class="bps-table-wrap">
@@ -78,7 +78,7 @@
                 </tbody>
               </table>
               <p v-if="previewTruncated" class="bps-more is-warning">
-                当前仅展示服务端返回的前 {{ previewRows.length }} 名中的前 {{ shownPreviewRows.length }} 名；完整规则实际命中 {{ previewSummary.matchedCount }} 名。
+                当前仅显示系统返回的前 \1 名中的前 \2 名；完整规则实际命中 \3 名。
               </p>
               <p v-else-if="previewRows.length > shownPreviewRows.length" class="bps-more">
                 当前展示前 {{ shownPreviewRows.length }} 人，冻结时将按完整规则加入 {{ previewSummary.matchedCount }} 人。

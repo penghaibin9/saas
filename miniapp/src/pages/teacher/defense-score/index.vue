@@ -171,7 +171,7 @@ export default {
               next: next ? `下一位待评分学生：${next.studentName}` : this.hasMore ? '后续还有答辩学生，请加载更多继续办理。' : '当前已加载队列没有待评分学生。',
               nextId: next?.gdStudentId || '', nextName: next?.studentName || ''
             }
-            toast('评分已保存，服务器状态已回读')
+            toast('评分已保存，已重新读取最新状态')
           })
         })
         .catch((e) => {

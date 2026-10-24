@@ -18,7 +18,7 @@
     <div v-else-if="program">
       <AaObjectContext :name="program.programName" :identity="[program.gradeYear && (program.gradeYear + '级'), '版本 v' + program.version].filter(Boolean).join(' · ')" :status="statusLabel(program.status)" :owner="programOwner" :next-step="programNextOwner" source="当前方案的课程、绑定与版本以正式记录为准" />
       <AaOperationReceipt :receipt="receipt" />
-      <AppInlineAlert v-if="['ENABLED', 'PUBLISHED'].includes(program.status) && validation && !validation.canSubmit" type="warning" description="该版本已有生效记录，但按当前规则校验仍有待治理项。现行方案不会因此自动停用；请在版本与变更中按受控流程补齐要求，并核对受影响的开课与毕业审核。" />
+      <AppInlineAlert v-if="['ENABLED', 'PUBLISHED'].includes(program.status) && validation && !validation.canSubmit" type="warning" description="该版本已有生效记录，但按当前规则校验仍有待处理项。现行方案不会因此自动停用；请在版本与变更中按受控流程补齐要求，并核对受影响的开课与毕业审核。" />
       <div class="aa-program-layout">
       <aside class="aa-program-nav">
         <div class="aa-nav-title">编制步骤</div>
@@ -239,7 +239,7 @@ export default {
     returnToSource() { const to = this.$route.query.returnTo; this.$router.push(typeof to === 'string' && /^\/admin\/academic-affairs\/(programs|courses)(\/|\?|$)/.test(to) ? to : '/admin/academic-affairs/programs') },
     handleActionError(res, fallback) {
       if (isDeniedResult(res)) { this.requestRevision++; this.program = null; this.validation = null; this.showEdit = false; this.showAdd = false; this.dlg.visible = false; this.receipt = null; this.error = '当前操作权限或数据范围已变化，已清除先前对象内容。'; return }
-      this.receipt = { title: isConflictResult(res) ? '业务事实已变化' : '本次办理未确认', object: this.program?.programName || '当前对象', status: isConflictResult(res) ? '请保留输入并重新核对' : '未确认完成', pending: true, next: res.message || fallback }
+      this.receipt = { title: isConflictResult(res) ? '业务数据已变化' : '本次办理未确认', object: this.program?.programName || '当前对象', status: isConflictResult(res) ? '请保留输入并重新核对' : '未确认完成', pending: true, next: res.message || fallback }
       toast.error(res.message || fallback)
     },
     hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
@@ -347,7 +347,7 @@ export default {
       this.dlg.submitting = true
       const res = await academicAffairsApi.reviewProgram(this.programId, this.dlg.action, reason)
       this.dlg.submitting = false
-      if (res.code === 0) { this.dlg.visible = false; await this.load(); this.setReceipt('审核请求已处理', '请核对正式状态；发布后继续设置适用年级，旧版本仍保留。') }
+      if (res.code === 0) { this.dlg.visible = false; await this.load(); this.setReceipt('审核请求已处理', '请核对正式状态；发布后继续设置适用年级，历史版本仍保留。') }
       else this.handleActionError(res, '处理失败')
     },
     async doBind() {

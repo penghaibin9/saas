@@ -24,7 +24,7 @@ def detail(*, batch_id: int, case_type: str, record_id: int,
            reviewer_mentor_id: int | None = None) -> dict:
     case_type = str(case_type).upper()
     if case_type not in q.CASE_TYPES:
-        raise AppException("VALIDATION_ERROR", "caseType 不支持")
+        raise AppException("VALIDATION_ERROR", "不支持的案例类型")
     if reviewer_mentor_id is not None and case_type != "FORMAL_REVIEW":
         raise not_found("评阅任务不存在或不在当前数据范围内")
 

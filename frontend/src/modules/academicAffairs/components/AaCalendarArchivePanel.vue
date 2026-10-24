@@ -5,7 +5,7 @@
       <StatusTag :status="term.status || term.termStatus" />
       <AppButton v-if="canViewArchive" variant="primary" :disabled="loading || evidenceLoading || !!error" @click="loadEvidence">查看归档证据</AppButton>
     </section>
-    <AppInlineAlert type="info" description="已封存事实只读。缺失或待治理的证据不能视为通过；更正必须由归档责任岗按正式纠错流程追加版本，保留原封存记录。" />
+    <AppInlineAlert type="info" description="已封存的记录只读。缺失或待处理的依据不能视为通过；更正必须由归档责任岗按正式纠错流程追加版本，保留原封存记录。" />
     <AppSectionCard title="校历归档视图 · 原记录与正式凭证">
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -23,7 +23,7 @@
       <LoadingState v-if="evidenceLoading" />
       <ErrorState v-else-if="evidenceError" :description="evidenceError" @retry="loadEvidence" />
       <template v-else>
-        <p class="mp-note">{{ sealed ? `批次 ${batch.batchId}，封存于 ${formatTime(batch.archivedAt)}。以下读取已保存的批次摘要。` : '以下为当前学期的实时检查结果，仅供核对；没有创建批次、执行封存或改变学期状态。' }}</p>
+        <p class="mp-note">{{ sealed ? `批次 ${batch.batchId}，封存于 ${formatTime(batch.archivedAt)}。以下为已保存的批次摘要。` : '以下为当前学期的实时检查结果，仅供核对；没有创建批次、执行封存或改变学期状态。' }}</p>
         <AppInlineAlert v-if="manifest" :type="manifest.ok === true ? 'success' : 'warning'" :description="manifest.ok === true ? `封存版本链校验通过，共 ${manifest.versions?.length || 0} 个版本。` : `封存版本链待核：${manifest.reason || '未取得通过结论'}`" />
         <AppInlineAlert v-if="manifestError" type="warning" :description="`封存版本链读取失败：${manifestError}`" />
         <EmptyState v-if="!domains.length" title="尚无完整检查结果" description="没有返回数据域证据，不视为检查通过。" />
@@ -70,7 +70,7 @@ export default {
   methods: {
     formatTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '未提供' },
     batchLabel(status) { return { DRAFT: '草稿', CHECKING: '检查中', READY: '预检通过待封存', MISSING_ITEMS: '有阻断', ARCHIVED: '已封存', CANCELLED: '已取消' }[status] || (status ? '状态待核' : '') },
-    resultLabel(result) { return { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待治理', NOT_APPLICABLE: '不适用' }[result] || '待核 · 未知' },
+    resultLabel(result) { return { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待处理', NOT_APPLICABLE: '不适用' }[result] || '待核 · 未知' },
     resultType(result) { return { PASS: 'success', BLOCKED: 'danger', UNKNOWN: 'warning', NOT_APPLICABLE: 'info' }[result] || 'warning' },
     async load() {
       const version = ++this.loadVersion, context = this.contextKey, termId = String(this.term.termId)

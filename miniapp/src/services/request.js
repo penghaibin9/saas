@@ -84,7 +84,7 @@ function markOffline() {
   if (!state.warned) {
     state.warned = true
     safeToast(ENV.allowMockFallback
-      ? '网络不稳定，开发演示数据可能不是最新'
+      ? '网络不稳定，显示的演示内容可能不是最新'
       : '网络不稳定，请检查网络后重试', 'none')
   }
 }
@@ -424,7 +424,7 @@ function httpResponseError(status) {
   const httpStatus = Number(status)
   if (!Number.isFinite(httpStatus) || httpStatus < 300) return null
   const message = httpStatus === 404 || httpStatus === 405
-    ? `接口暂不可用（HTTP ${httpStatus}），请联系管理员`
+    ? `服务暂不可用（HTTP ${httpStatus}），请联系管理员`
     : '服务暂时不可用，请稍后重试'
   return { code: 'HTTP_ERROR', message, httpStatus }
 }
@@ -687,7 +687,7 @@ export function realDownload(path, { auth = true, _retried = false, _expectedGen
 export function realFirst(label, realFn, mockFn) {
   if (!shouldTryReal()) {
     if (ENV.allowMockFallback && mockFn) return mockFn()
-    return Promise.reject({ code: 'NETWORK', message: '真实接口不可用，生产环境已禁用 mock fallback' })
+    return Promise.reject({ code: 'NETWORK', message: '服务不可用，请稍后重试' })
   }
   return realFn().catch((e) => {
     if (e && e.biz) throw e

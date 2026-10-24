@@ -205,12 +205,12 @@ def create_batch(body: dict, user) -> dict:
             try:
                 orientation_id = int(orientation_id)
             except (TypeError, ValueError):
-                raise AppException("VALIDATION_ERROR", "orientationBatchId 必须为稳定数字 ID")
+                raise AppException("VALIDATION_ERROR", "迎新批次必须为有效编号")
             ori = db.get(OrientationBatch, orientation_id)
             if not ori or ori.is_deleted or int(ori.tenant_id) != int(_tid()):
                 raise AppException("VALIDATION_ERROR", "关联迎新批次不存在")
         elif str(body.get("sourceType") or "ORIENTATION").upper() == "ORIENTATION":
-            raise AppException("VALIDATION_ERROR", "迎新来源分配批次必须关联 orientationBatchId")
+            raise AppException("VALIDATION_ERROR", "迎新来源的分配批次必须关联迎新批次")
         resources = _resource_rows(db, resource, user)
         normalized_resource = {
             "buildingIds": sorted({int(b.id) for _bed, _room, b in resources}),
@@ -499,7 +499,7 @@ def _lock_unassigned_student(db, student_id: int) -> None:
         DormBed.status == "OCCUPIED", DormBed.is_deleted.is_(False),
     ).limit(1))
     if active_stay or occupied_bed:
-        raise AppException("DATA_CONFLICT", "该学生已有生效或预留床位，不能重复分配")
+        raise AppException("DATA_CONFLICT", "该学生已有生效或预留的床位，不能重复分配")
 
 
 def _reserve(db, batch, item, user):

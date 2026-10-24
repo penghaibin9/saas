@@ -29,7 +29,7 @@
     </view>
 
     <view class="sq__foot">
-      <text class="sq__hint">单对象处理完成并回读成功后才进入下一条</text>
+      <text class="sq__hint">单个对象处理完成并核对成功后才进入下一条</text>
       <button
         v-if="actionLabel"
         class="btn btn-primary"

@@ -87,7 +87,7 @@ def _sessionize_result(result: dict, tab_id: str) -> tuple[dict, str]:
         raise unauthorized("企业浏览器会话签发失败，请重新登录")
     claims = consume_refresh(refresh_token)
     if not claims:
-        raise unauthorized("企业浏览器刷新令牌签发失败，请重新登录")
+        raise unauthorized("企业登录凭证刷新失败，请重新登录")
     claims["authSessionId"] = str(claims.get("authSessionId") or secrets.token_urlsafe(24))
     claims["browserChannel"] = _BROWSER_CHANNEL
     claims["browserSessionIdHash"] = _tab_hash(tab_id)

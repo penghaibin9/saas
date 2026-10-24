@@ -24,7 +24,7 @@ def _expected(raw, current: int) -> None:
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        raise AppException("DATA_CONFLICT", "缺少有效请假记录版本，请刷新后重试")
+        raise AppException("DATA_CONFLICT", "缺少有效的请假记录版本，请刷新后重试")
     if value != int(current or 0):
         raise AppException("DATA_CONFLICT", "请假记录已被其他用户处理，请刷新后重试")
 

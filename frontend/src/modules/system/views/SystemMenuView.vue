@@ -82,7 +82,7 @@
       </section>
 
       <p class="mp-note">
-        说明：前端隐藏菜单/按钮只是体验层，后端接口仍会按权限码二次校验；菜单停用为逻辑操作，配置保留可随时恢复，全部变更写入审计日志。
+        说明：页面隐藏菜单或按钮只是体验层，系统仍会按权限二次校验；菜单停用为逻辑操作，配置保留可随时恢复，全部变更写入审计日志。
       </p>
     </div>
 
@@ -99,11 +99,11 @@
     <AppDrawer v-model:visible="btns.open" :title="'按钮权限点 · ' + btns.menuName" mode="modal" size="large">
       <div v-for="(b, i) in btns.list" :key="i" class="mn-btnrow">
         <AppTextInput v-model="b.name" size="compact" placeholder="按钮名称，如 批量导出" />
-        <AppTextInput v-model="b.code" size="compact" placeholder="权限码，如 user:export" />
+        <AppTextInput v-model="b.code" size="compact" placeholder="权限编码，如 user:export" />
         <button class="mp-link mn-danger" @click="btns.list.splice(i, 1)">移除</button>
       </div>
       <button class="mp-link" @click="btns.list.push({ name: '', code: '' })">＋ 添加按钮权限点</button>
-      <p class="mp-note" style="margin-top: var(--space-3)">权限码规范：模块:资源:动作（如 intern:weekly-report:review）；移除权限点不会删除历史授权记录。</p>
+      <p class="mp-note" style="margin-top: var(--space-3)">权限编码规范：模块:资源:动作（如 intern:weekly-report:review）；移除权限点不会删除历史授权记录。</p>
       <template #footer>
         <AppButton variant="ghost" @click="btns.open = false">取消</AppButton>
         <AppButton variant="primary" :loading="btns.submitting" @click="submitButtons">保存并留痕</AppButton>
@@ -245,7 +245,7 @@ export default {
     async submitButtons() {
       const invalid = this.btns.list.some((b) => !b.name || !b.code)
       if (invalid) {
-        toast.error('按钮名称与权限码均为必填')
+        toast.error('按钮名称与权限编码均为必填')
         return
       }
       this.btns.submitting = true

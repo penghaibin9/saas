@@ -4,7 +4,7 @@
     :title="student ? `分配答辩组 · ${student.name}` : '分配答辩组'"
     :subtitle="student ? `${student.studentNo} · ${student.className || '班级待确认'}` : '正在读取学生主档'"
     eyebrow="答辩与成绩 · 学生编排"
-    purpose="把当前学生加入一个真实答辩组；时间、地点、评委、秘书、容量和回避冲突仍由服务端及答辩发布前检查负责。"
+    purpose="把当前学生加入一个真实的答辩组；时间、地点、评委、秘书、容量和回避冲突仍由系统及答辩发布前检查负责。"
     :status-text="submitting ? '保存中' : (student?.defenseGroupId ? '调整分组' : '待分配')"
     status-tone="warning"
     :back-to="backTo"
@@ -52,7 +52,7 @@
               :disabled="submitting"
               placeholder="按组名 / 日期 / 地点搜索答辩组"
             />
-            <p class="ie-hint">选择器只展示当前批次候选；保存时服务端仍校验组容量、学生状态和跨批关系。</p>
+            <p class="ie-hint">选择器只显示当前批次的候选；保存时系统仍会校验组容量、学生状态和跨批次关系。</p>
           </div>
           <label class="ie-fld ie-fld--full">
             <span class="ie-lbl">分配说明</span>
@@ -64,7 +64,7 @@
               placeholder="可填写调整分组、特殊安排或线下沟通说明。"
               @input="formError = ''"
             ></textarea>
-            <p class="ie-hint">说明会随原分配接口提交并进入可追溯记录。</p>
+            <p class="ie-hint">说明会随原分配一起提交，并进入可追溯记录。</p>
           </label>
         </div>
       </section>
@@ -78,14 +78,14 @@
         <ul>
           <li class="done"><b>✓</b><div><strong>学生主档已读取</strong><small>{{ student.studentNo }}</small></div></li>
           <li :class="{ done: Boolean(defenseGroupId) }"><b>{{ defenseGroupId ? '✓' : '2' }}</b><div><strong>已选择目标答辩组</strong><small>必填</small></div></li>
-          <li :class="{ done: Boolean(batchLabel) }"><b>{{ batchLabel ? '✓' : '3' }}</b><div><strong>批次上下文已保留</strong><small>跨批分配由服务端拒绝</small></div></li>
+          <li :class="{ done: Boolean(batchLabel) }"><b>{{ batchLabel ? '✓' : '3' }}</b><div><strong>批次上下文已保留</strong><small>跨批次分配会被系统拒绝</small></div></li>
         </ul>
       </section>
 
       <section class="sdg-aside-card is-next">
         <span>保存后的真实流转</span>
         <ol>
-          <li>服务端更新学生—答辩组关系和组内人数</li>
+          <li>系统更新学生与答辩组的关系和组内人数</li>
           <li>重新读取学生档案确认分组结果</li>
           <li>回到答辩安排核验时间、地点和角色</li>
           <li>满足发布前检查后正式通知学生与教师</li>
@@ -226,10 +226,10 @@ export default {
         }
         const latest = await gdStudentApi.getStudentDetail(target.studentId)
         if (latest.code !== 0 || String(latest.data?.defenseGroupId || '') !== target.defenseGroupId) {
-          this.formError = '分配命令已返回，但学生档案尚未回读到目标答辩组；请返回台账刷新核对，勿重复提交。'
+          this.formError = '分配已提交，但学生档案尚未读到目标答辩组；请返回台账刷新核对，勿重复提交。'
           return
         }
-        toast.success('答辩组关系已保存，服务器学生档案已回读')
+        toast.success('答辩组关系已保存，已重新读取学生档案')
         this.$router.push(target.backTo)
       } catch (error) {
         this.formError = error?.message || '答辩组分配失败，请稍后重试'

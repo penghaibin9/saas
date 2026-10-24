@@ -5,7 +5,7 @@
         <div class="aeiw-title">异常处置</div>
         <div class="aeiw-subtitle">移交、关闭或作废均保留原始异常和正式处置记录，办理后重新核对结果。</div>
       </div>
-      <AppButton size="small" variant="ghost" :loading="loading" @click="load">刷新服务端状态</AppButton>
+      <AppButton size="small" variant="ghost" :loading="loading" @click="load">刷新最新状态</AppButton>
     </div>
 
     <div class="aeiw-kpis">
@@ -50,7 +50,7 @@
     <AppInlineAlert
       v-if="!canResolve"
       type="info"
-      description="当前身份仅可查看考务异常；处置按钮由 academicAffairs.exam.recordAbnormal 权限控制，后端仍会再次校验权限与数据范围。"
+      description="当前身份仅可查看考务异常；处置按钮由“考务异常处置”权限控制，系统仍会再次校验权限与数据范围。"
     />
     <AppInlineAlert
       v-else-if="batch.status === 'ARCHIVED'"
@@ -121,7 +121,7 @@
         </div>
 
         <div class="aeiw-block">
-          <span>异常事实描述</span>
+          <span>异常情况描述</span>
           <p>{{ detail.description || '未填写' }}</p>
         </div>
 
@@ -139,7 +139,7 @@
           </div>
           <AppInlineAlert
             :type="detail.closureEvidenceConsistent ? 'success' : 'danger'"
-            :description="detail.closureEvidenceConsistent ? '处置审计与当前正式事实一致。' : '处置审计与当前事实不一致，禁止继续写入，请联系系统管理员核查。'"
+            :description="detail.closureEvidenceConsistent ? '处置审计与当前正式记录一致。' : '处置审计与当前记录不一致，禁止继续写入，请联系系统管理员核查。'"
           />
         </template>
 
@@ -147,7 +147,7 @@
           <AppInlineAlert
             v-if="detail.incidentType === 'ABSENT' && detail.riskAlertSent"
             type="info"
-            description="风险通知已送达，但这不等于考务正式关闭；仍需有权限的第二步 CLOSE 形成处置事实。"
+            description="风险通知已送达，但这不等于考务正式关闭；仍需有权限的人执行第二步“关闭”，形成处置记录。"
           />
           <label v-if="detail.incidentType !== 'ABSENT' && canWriteCurrent" class="aeiw-field handoff-ref">
             <span>处分 / 后续处理线索编号（移交时必填）</span>

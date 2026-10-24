@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="安全策略" subtitle="登录锁定 / 密码与验证码策略 / 凭证时长 / 限流 / 跨域 / 平台高危操作二次认证，越界值将被后端拒绝（不允许不设防）" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
+  <ModulePageShell title="安全策略" subtitle="登录锁定 / 密码与验证码策略 / 凭证时长 / 限流 / 跨域 / 平台高危操作二次认证，越界值将被拒绝（不允许不设防）" role-name="平台超级管理员" data-scope-name="全平台（跨租户）">
     <PlatformMfaPanel />
 
     <LoadingState v-if="loading" text="正在加载安全参数…" />
@@ -15,7 +15,7 @@
       </div>
       <div class="pcs__ops">
         <AppButton variant="primary" :loading="saving" @click="save">保存安全参数</AppButton>
-        <span class="pcs__tip">保存即生效；密码、验证码、锁定和凭证参数会直接进入登录流程，越界值由后端拒绝。</span>
+        <span class="pcs__tip">保存即生效；密码、验证码、锁定和凭证参数会直接进入登录流程，越界值会被拒绝。</span>
       </div>
     </AppCard>
   </ModulePageShell>

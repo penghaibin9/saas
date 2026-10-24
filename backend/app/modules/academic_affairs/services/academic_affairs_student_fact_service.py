@@ -29,9 +29,9 @@ def _resolved_tenant_id(tenant_id: int | None = None) -> int:
         try:
             value = int(tenant_id)
         except (TypeError, ValueError) as exc:
-            raise AppException("TENANT_CONTEXT_REQUIRED", "租户标识非法，拒绝访问学籍事实") from exc
+            raise AppException("TENANT_CONTEXT_REQUIRED", "学校标识非法，拒绝访问学籍记录") from exc
         if value <= 0:
-            raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝访问学籍事实")
+            raise AppException("TENANT_CONTEXT_REQUIRED", "缺少学校信息，拒绝访问学籍记录")
         return value
     return _tid()
 
@@ -59,7 +59,7 @@ def _resolved_command_tenant_id(db, student_id: int, tenant_id: int | None = Non
 
     loaded = db.identity_map.get(identity_key(StudentProfile, int(student_id)))
     if loaded is None or int(getattr(loaded, "tenant_id", 0) or 0) <= 0:
-        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少租户上下文，拒绝写入学籍事实")
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少学校信息，拒绝写入学籍记录")
     return int(loaded.tenant_id)
 
 
@@ -133,7 +133,7 @@ def create_baseline_student_academic_fact(
 
     resolved_tid = _resolved_tenant_id(tenant_id)
     if int(student.tenant_id) != resolved_tid:
-        raise AppException("TENANT_CONTEXT_REQUIRED", "学生主档不属于当前租户，拒绝创建学籍事实")
+        raise AppException("TENANT_CONTEXT_REQUIRED", "学生主档不属于当前学校，拒绝创建学籍记录")
     quality = (source_quality or "").upper()
     if quality not in _VALID_QUALITY:
         raise AppException("VALIDATION_ERROR", f"非法事实来源质量：{source_quality}")
@@ -283,7 +283,7 @@ def append_student_academic_fact(
         target["student_status"] or "NORMAL",
         target["college_id"], target["major_id"], target["class_id"], target["grade"],
     ):
-        raise AppException("DATA_CONFLICT", "学籍事实没有发生变化，无需追加新版本", http_status=409)
+        raise AppException("DATA_CONFLICT", "学籍记录没有发生变化，无需追加新版本", http_status=409)
 
     overlap = _fact_query(db, student_id, tenant_id=resolved_tid).filter(
         StudentAcademicFact.id != current.id,
@@ -353,7 +353,7 @@ def append_student_academic_fact(
         synchronize_session=False,
     )
     if not changed:
-        raise AppException("APPROVAL_VERSION_CONFLICT", "学生主档已被并发改写，本次事实切换未生效", http_status=409)
+        raise AppException("APPROVAL_VERSION_CONFLICT", "学生主档已被并发修改，本次切换未生效", http_status=409)
     db.flush()
     db.refresh(student)
     db.refresh(next_fact)

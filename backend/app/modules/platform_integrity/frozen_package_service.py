@@ -91,7 +91,7 @@ def _validate_source(path: Path, item: ArchiveManifestItem, file_obj: FileObject
     if size != expected_size or digest.hexdigest() != expected_sha:
         raise AppException("FROZEN_MANIFEST_ITEM_DRIFT", f"冻结材料字节与清单不一致：{item.material_code}", http_status=409)
     if int(file_obj.size_bytes or 0) != expected_size or str(file_obj.sha256 or "").lower() != expected_sha:
-        raise AppException("FROZEN_MANIFEST_ITEM_DRIFT", f"冻结材料投影与清单不一致：{item.material_code}", http_status=409)
+        raise AppException("FROZEN_MANIFEST_ITEM_DRIFT", f"冻结材料与清单不一致：{item.material_code}", http_status=409)
 
 
 def _validate_artifact(path: Path, file_obj: FileObject) -> None:
@@ -107,7 +107,7 @@ def _validate_artifact(path: Path, file_obj: FileObject) -> None:
             size += len(chunk)
             digest.update(chunk)
     if size != int(file_obj.size_bytes or 0) or digest.hexdigest() != str(file_obj.sha256 or "").lower():
-        raise AppException("PACKAGE_ARTIFACT_MISMATCH", "冻结证据包字节与 FileObject 投影不一致", http_status=409)
+        raise AppException("PACKAGE_ARTIFACT_MISMATCH", "冻结证据包内容与文件记录不一致", http_status=409)
 
 
 def _entry_path(item: ArchiveManifestItem) -> str:
@@ -136,7 +136,7 @@ def _build_frozen_package(
 ) -> FrozenPackageResult:
     profile = str(profile_code or "").strip().upper()
     if profile != STANDARD_PROFILE_V1:
-        raise AppException("PACKAGE_PROFILE_UNSUPPORTED", "仅支持 STANDARD_V1 冻结包规范", http_status=422)
+        raise AppException("PACKAGE_PROFILE_UNSUPPORTED", "仅支持标准冻结包规范", http_status=422)
     tenant_id = _tid()
     with session() as db:
         manifest = db.scalars(select(ArchiveManifest).where(

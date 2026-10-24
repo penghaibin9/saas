@@ -152,7 +152,7 @@
           {{ form.effectiveMode === 'SCHEDULED' ? '提交计划生效异动' : '提交异动' }}
         </AppButton>
       </div>
-    </AppSectionCard><aside class="aa-conditions"><h3>启动条件</h3><dl><div><dt>来源学生</dt><dd>{{ factsReady ? '当前学籍已读取' : '待选择并读取' }}</dd></div><div><dt>当前岗位</dt><dd>{{ canApply ? '有申请权限，范围由服务器核对' : '无申请权限' }}</dd></div><div><dt>申请材料</dt><dd>{{ materialUploadBusy ? '正在上传或核对' : hasPendingMaterial ? '有材料尚未安全可用' : materialFiles.length ? '已附材料，提交前再次核对' : '未附材料（选填）' }}</dd></div><div><dt>审批与生效</dt><dd>提交后进入正式审批；终审结果与实际生效分开核对。</dd></div></dl><h3>后续办理</h3><p>发起申请 → 当前审批节点 → 终审决定 → 正式生效与档案回写</p><p>回读受理记录后，可进入申请详情查询材料和办理结果。</p></aside></div>
+    </AppSectionCard><aside class="aa-conditions"><h3>启动条件</h3><dl><div><dt>来源学生</dt><dd>{{ factsReady ? '当前学籍已读取' : '待选择并读取' }}</dd></div><div><dt>当前岗位</dt><dd>{{ canApply ? '有申请权限，范围由服务器核对' : '无申请权限' }}</dd></div><div><dt>申请材料</dt><dd>{{ materialUploadBusy ? '正在上传或核对' : hasPendingMaterial ? '有材料尚未安全可用' : materialFiles.length ? '已附材料，提交前再次核对' : '未附材料（选填）' }}</dd></div><div><dt>审批与生效</dt><dd>提交后进入正式审批；终审结果与实际生效分开核对。</dd></div></dl><h3>后续办理</h3><p>发起申请 → 当前审批节点 → 终审决定 → 正式生效与档案回写</p><p>读取受理记录后，可进入申请详情查询材料和办理结果。</p></aside></div>
     <AppConfirmDialog v-model:visible="confirmVisible" title="确认提交学籍异动申请" confirm-text="确认提交申请" :message="confirmMessage" :submitting="submitting" @confirm="submit" />
   </ModulePageShell>
 </template>

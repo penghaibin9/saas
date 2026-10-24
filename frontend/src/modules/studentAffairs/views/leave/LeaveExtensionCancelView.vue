@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="续假与返校" subtitle="核对续假与返校事实，及时跟进逾期学生。"
+  <ModulePageShell title="续假与返校" subtitle="核对续假与返校情况，及时跟进逾期学生。"
     :role-name="roleName" :data-scope-name="scopeHint">
     <template #actions>
       <AppButton variant="ghost" size="sm" :loading="scanning" @click="onScan">扫描逾期未销</AppButton>
@@ -292,7 +292,7 @@ export default {
       const detail = res.data
       const actual = String(detail.affairsStatus || '')
       if (validStatuses.has(actual)) this.statusFilter = actual
-      else this.focusNotice = `该待办状态已变化：当前为${detail.affairsStatusLabel || '状态待确认'}，仅展示最新事实。`
+      else this.focusNotice = `该待办状态已变化：当前为${detail.affairsStatusLabel || '状态待确认'}，仅显示最新情况。`
       this.selectedId = String(recordId)
       this.detail = { loading: false, error: '', data: detail }
       await this.load()

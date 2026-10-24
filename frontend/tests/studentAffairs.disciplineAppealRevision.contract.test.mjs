@@ -9,10 +9,10 @@ test('discipline REVISED appeal collects and sends authoritative revised facts',
   const api = read('src/modules/studentAffairs/api/disciplineIntegrity.api.js')
   const backend = read('../backend/app/api/v1/affairs_discipline_integrity_api.py')
 
-  assert.match(view, /变更后的处分事实（5-1000字）/)
+  assert.match(view, /变更后的处分情况（5-1000字）/)
   assert.match(view, /v-model="revDlg\.revisedReason"/)
   assert.match(view, /v-model="revDlg\.revisedDocNo"/)
-  assert.match(view, /变更后的处分事实需5-1000字/)
+  assert.match(view, /变更后的处分情况需5-1000字/)
   assert.match(view, /revisedReason:\s*\(dialog\.revisedReason \|\| ''\)\.trim\(\)/)
   assert.match(view, /revisedDocNo:\s*\(dialog\.revisedDocNo \|\| ''\)\.trim\(\)/)
 

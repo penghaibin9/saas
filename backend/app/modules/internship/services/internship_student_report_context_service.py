@@ -65,9 +65,9 @@ def submit(user: dict, body: dict) -> dict:
     if report_type == "SUMMARY":
         period_key = "FINAL"
     if not period_key:
-        raise AppException("VALIDATION_ERROR", "periodKey 必填")
+        raise AppException("VALIDATION_ERROR", "请选择报告周期")
     if len(period_key) > 20:
-        raise AppException("VALIDATION_ERROR", "periodKey 最多 20 个字符")
+        raise AppException("VALIDATION_ERROR", "周期标识最多 20 个字符")
 
     with session() as db:
         record, student, _batch_id = require_explicit_context(

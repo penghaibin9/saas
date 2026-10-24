@@ -44,7 +44,7 @@ def record_versions(record_type, record_id, *, student_mode=False, user=None):
 
 def review_proposal(proposal_id, action, comment, user, *, expected_version=None, file_version_id=None):
     if expected_version is None or file_version_id is None:
-        raise AppException("VALIDATION_ERROR", "旧审核调用必须补充 expectedVersion 和 fileVersionId")
+        raise AppException("VALIDATION_ERROR", "旧审核方式必须补充数据版本和文件版本")
     return record_service.review_proposal(
         proposal_id, action, comment, user,
         expected_version=expected_version, expected_file_version_id=file_version_id,
@@ -53,7 +53,7 @@ def review_proposal(proposal_id, action, comment, user, *, expected_version=None
 
 def review_final(final_id, action, comment, user, *, expected_version=None, file_version_id=None):
     if expected_version is None or file_version_id is None:
-        raise AppException("VALIDATION_ERROR", "旧审核调用必须补充 expectedVersion 和 fileVersionId")
+        raise AppException("VALIDATION_ERROR", "旧审核方式必须补充数据版本和文件版本")
     return record_service.review_final(
         final_id, action, comment, user,
         expected_version=expected_version, expected_file_version_id=file_version_id,

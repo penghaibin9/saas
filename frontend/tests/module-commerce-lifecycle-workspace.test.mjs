@@ -54,7 +54,7 @@ test('M4 M5 UI exposes object-level consumer evidence without ownership guessing
   for (const label of ['审批实例', '统一待办', '消息事件队列', '文件绑定', '学工档案包', '正式成绩']) {
     assert.match(view, new RegExp(label))
   }
-  assert.match(view, /跨域消费者与正式事实/)
+  assert.match(view, /跨模块使用方与正式记录/)
   assert.match(view, /当前只允许办理冻结与交付/)
 })
 

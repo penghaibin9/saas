@@ -372,7 +372,7 @@ def apply_transition(
                 try:
                     expire_at = datetime.fromisoformat(str(data["expireAt"])).replace(tzinfo=None)
                 except ValueError as exc:
-                    raise AppException("VALIDATION_ERROR", "订单 expireAt 格式无效") from exc
+                    raise AppException("VALIDATION_ERROR", "订单到期时间格式无效") from exc
                 if expire_at <= now:
                     raise AppException("DATA_CONFLICT", "订单服务截止时间必须晚于当前时间", http_status=409)
             tenant.status = "ACTIVE"
@@ -388,7 +388,7 @@ def apply_transition(
             code = str(data.get("packageCode") or "")
             package = platform_service.get_package(code)
             if package.get("packageCode") != code:
-                raise AppException("VALIDATION_ERROR", "packageCode 不存在")
+                raise AppException("VALIDATION_ERROR", "套餐不存在")
             meta["packageCode"] = code
         elif normalized == "quota":
             for key in ("maxStudents", "maxUsers", "storageLimitMb"):

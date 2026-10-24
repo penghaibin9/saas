@@ -21,16 +21,16 @@ def _expected_application_versions(value) -> dict[int, int]:
     if value in (None, ""):
         return {}
     if not isinstance(value, dict):
-        raise AppException("VALIDATION_ERROR", "expectedApplicationVersions 必须是对象")
+        raise AppException("VALIDATION_ERROR", "志愿版本信息格式不正确")
     result: dict[int, int] = {}
     for raw_slot, raw_version in value.items():
         try:
             slot = int(raw_slot)
             version = int(raw_version)
         except (TypeError, ValueError) as exc:
-            raise AppException("VALIDATION_ERROR", "expectedApplicationVersions 必须使用整数槽位和版本") from exc
+            raise AppException("VALIDATION_ERROR", "志愿版本信息必须使用整数序号和版本") from exc
         if slot not in (1, 2, 3) or version < 0:
-            raise AppException("VALIDATION_ERROR", "expectedApplicationVersions 槽位必须为 1/2/3 且版本非负")
+            raise AppException("VALIDATION_ERROR", "志愿序号必须为 1/2/3 且版本非负")
         result[slot] = version
     return result
 
@@ -44,7 +44,7 @@ def _parse_consent_at(value) -> datetime | None:
     try:
         parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise AppException("VALIDATION_ERROR", "consentAt 必须是 ISO-8601 日期时间") from exc
+        raise AppException("VALIDATION_ERROR", "同意时间必须是有效的日期时间") from exc
     if parsed.tzinfo is not None:
         parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
     return parsed
@@ -102,7 +102,7 @@ def save_or_submit_in_tx(
         raise AppException("VALIDATION_ERROR", "志愿必须为 1-3 个")
     slots = [int(v.get("volunteerNo") or 0) for v in volunteers]
     if slots != list(range(1, len(volunteers) + 1)):
-        raise AppException("VALIDATION_ERROR", "volunteerNo 必须连续固定为 1/2/3")
+        raise AppException("VALIDATION_ERROR", "志愿序号必须连续为 1/2/3")
     position_ids = [int(v.get("positionId") or 0) for v in volunteers]
     if len(set(position_ids)) != len(position_ids) or any(x <= 0 for x in position_ids):
         raise AppException("VALIDATION_ERROR", "三个志愿岗位不得重复且必须有效")
@@ -110,7 +110,7 @@ def save_or_submit_in_tx(
         expected_record = int(expected_record_version)
         expected_group = int(expected_group_version)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "必须提供有效的 expectedRecordVersion/expectedGroupVersion") from exc
+        raise AppException("VALIDATION_ERROR", "必须提供有效的记录版本和志愿组版本") from exc
     expected_apps = _expected_application_versions(expected_application_versions)
 
     record = db.scalar(select(InternshipRecord).where(
@@ -160,7 +160,7 @@ def save_or_submit_in_tx(
     by_slot = {int(row.volunteer_no): row for row in existing}
     for slot, row in by_slot.items():
         if slot not in expected_apps:
-            raise AppException("VALIDATION_ERROR", f"缺少第{slot}志愿 expectedApplicationVersion")
+            raise AppException("VALIDATION_ERROR", f"缺少第{slot}志愿的版本信息")
         if int(row.version or 0) != expected_apps[slot]:
             raise AppException("DATA_CONFLICT", f"第{slot}志愿版本已变化，请刷新后重试", http_status=409)
 
@@ -192,7 +192,7 @@ def save_or_submit_in_tx(
         row = by_slot.get(slot)
         if row is None:
             if expected_apps.get(slot, 0) not in (0,):
-                raise AppException("DATA_CONFLICT", f"第{slot}志愿尚未创建，expectedApplicationVersion 应为 0")
+                raise AppException("DATA_CONFLICT", f"第{slot}志愿尚未创建，版本应为 0")
             row = InternshipApplication(
                 tenant_id=tenant_id, record_id=record.id, student_id=student_id,
                 batch_id=campaign.batch_id, campaign_id=campaign.id,

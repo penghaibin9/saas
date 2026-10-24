@@ -73,11 +73,11 @@ def material_is_formal_evidence(db, material) -> bool:
 def assert_expected_version(emp, expected: Any) -> None:
     """去向核验的乐观锁；与 #183 教师端同一语义。"""
     if expected is None:
-        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，去向核验必须携带版本号")
+        raise AppException("VALIDATION_ERROR", "缺少数据版本，去向核验必须携带最新版本")
     try:
         expected_int = int(expected)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须为整数")
+        raise AppException("VALIDATION_ERROR", "数据版本必须为整数")
     if int(emp.version or 0) != expected_int:
         raise AppException("DATA_CONFLICT", "去向核验数据已变化，请刷新后重试", http_status=409)
 

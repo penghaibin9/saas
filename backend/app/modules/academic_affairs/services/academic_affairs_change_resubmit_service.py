@@ -46,7 +46,7 @@ def _require_version(row, body) -> None:
     try:
         wanted = int(expected)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from exc
+        raise AppException("VALIDATION_ERROR", "版本必须是整数") from exc
     current = int(row.version or 0)
     if wanted != current:
         raise AppException(
@@ -151,7 +151,7 @@ def resubmit_my(user, change_id, body=None) -> dict:
     try:
         cid = int(change_id)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "changeId 非法") from exc
+        raise AppException("VALIDATION_ERROR", "变更编号非法") from exc
 
     from app.models import AaStatusChange, WorkflowInstance, WorkflowTask
 

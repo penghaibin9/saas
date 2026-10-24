@@ -93,11 +93,11 @@ class BusinessFormRuntimeValidator:
         except (TypeError, ValueError) as exc:
             raise AppException(
                 "FORM_CLIENT_UNSUPPORTED",
-                "当前端不支持此表单，请前往 PC 办理",
+                "当前端不支持此表单，请前往电脑端办理",
                 http_status=409,
             ) from exc
         if normalized_client not in version.supported_clients:
-            raise AppException("FORM_CLIENT_UNSUPPORTED", "当前端不支持此表单，请前往 PC 办理", http_status=409)
+            raise AppException("FORM_CLIENT_UNSUPPORTED", "当前端不支持此表单，请前往电脑端办理", http_status=409)
         if not isinstance(submitted_values, dict):
             raise AppException("FORM_VALUE_INVALID", "表单 values 必须是对象")
         by_code = {field.code: field for field in version.fields}

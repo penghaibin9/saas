@@ -35,7 +35,7 @@
             class="exd__purpose"
             rows="3"
             maxlength="200"
-            placeholder="请填写真实工作用途，不少于 5 个字；将写入服务端审计与文件水印"
+            placeholder="请填写真实的工作用途，不少于 5 个字；将写入审计与文件水印"
           />
           <p class="exd__hint">用途与操作者、时间、数据范围共同写入审计记录。</p>
         </section>
@@ -60,7 +60,7 @@
         <div v-if="result" class="exd__result">
           已生成导出文件：<b>{{ result.fileName }}</b>
           <div class="exd__result-meta">
-            {{ result.watermarkText || result.securityNotice || '服务端已启用水印与审计' }}
+            {{ result.watermarkText || result.securityNotice || '已启用水印与审计' }}
             <template v-if="result.auditId || result.taskId"> · 审计/任务编号：{{ result.auditId || result.taskId }}</template>
           </div>
         </div>

@@ -119,7 +119,7 @@ export default {
       try {
         const res = await workflowProvider.updateRolePermissions(roleId, { permissionKeys, dataScope })
         if (res.code === 0) {
-          toast.success('角色权限演示数据已更新，操作已写入审计')
+          toast.success('角色权限已更新，操作已写入审计')
           this.activeRole = res.data
           await this.load()
         } else {

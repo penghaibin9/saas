@@ -26,7 +26,7 @@ test('学院复核与教务发布均保留可核验动作回执', () => {
   assert.ok(review.includes('教务处终审发布'))
   assert.ok(review.includes('任课教师修改后重新提交'))
   assert.ok(publish.includes('buildGradePublishReceipt'))
-  assert.ok(publish.includes('未产生新的正式成绩投影'))
+  assert.ok(publish.includes('未产生新的正式成绩汇总'))
   assert.ok(publish.includes('result.projectedCount'))
   assert.ok(publish.includes('不及格人数'))
   assert.ok(publish.includes('预警条数：未提供'))

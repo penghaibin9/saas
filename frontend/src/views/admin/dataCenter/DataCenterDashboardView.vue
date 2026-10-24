@@ -20,13 +20,13 @@
     <EmptyState
       v-else-if="!overview"
       title="暂无可证明的概览数据"
-      description="当前服务端没有返回正式概览；页面不会用浏览器演示数据补齐。"
+      description="当前没有返回正式概览；页面不会用演示数据补齐。"
     />
 
     <div v-else class="mp-stack">
       <ModuleHero
         :title="ctx.tenantBrandConfig.schoolName + ' · 全景数据驾驶舱'"
-        :subtitle="caliberLabel + ' · ' + scopeLabel + ' · 服务端实时聚合'"
+        :subtitle="caliberLabel + ' · ' + scopeLabel + '  · 实时汇总'"
         :chips="heroChips"
         :stats="heroStats"
         :flow="overview.stageFlow"
@@ -86,7 +86,7 @@
       </section>
 
       <p class="mp-note">
-        当前 A4 仅开放已由服务端真实查询实现的在册口径。未实现的自然口径、导出任务等能力不会以切换标签、假 taskId 或演示数据冒充成功。
+        当前仅开放系统已实现的在册口径。未实现的口径、导出任务等能力，不会用切换标签、假任务编号或演示数据冒充成功。
       </p>
     </div>
 
@@ -95,7 +95,7 @@
         <div class="mp-kv"><span class="mp-kv__k">数据截至</span><span class="mp-kv__v">{{ asOfLabel }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">统计口径</span><span class="mp-kv__v">{{ caliberLabel }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ scopeLabel }}</span></div>
-        <div class="mp-kv"><span class="mp-kv__k">服务端来源</span><span class="mp-kv__v">{{ sourceNames || '跨业务域关系型数据库聚合' }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">数据来源</span><span class="mp-kv__v">{{ sourceNames || '跨业务域汇总' }}</span></div>
         <section v-for="m in visibleMetrics" :key="m.key" class="dcd-guide">
           <div class="dcd-guide__title">
             {{ m.label }}

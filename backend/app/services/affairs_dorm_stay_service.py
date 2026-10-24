@@ -247,7 +247,7 @@ def create_checkout_request(*, bed_id: int, expected_bed_version, request_type: 
     if not 5 <= len(reason) <= 500:
         raise AppException("VALIDATION_ERROR", "退宿原因需5-500字")
     if not 8 <= len(client_request_id) <= 100:
-        raise AppException("VALIDATION_ERROR", "clientRequestId 需8-100字")
+        raise AppException("VALIDATION_ERROR", "请求标识需 8-100 个字符")
     if source_type == "GRADUATION_BATCH" and not str(source_biz_id or "").strip():
         raise AppException("VALIDATION_ERROR", "毕业批量退宿必须提供稳定来源键")
 
@@ -266,7 +266,7 @@ def create_checkout_request(*, bed_id: int, expected_bed_version, request_type: 
                 and (existing.source_biz_id or "") == (str(source_biz_id or ""))
             )
             if not same:
-                raise AppException("IDEMPOTENCY_CONFLICT", "clientRequestId 已用于另一退宿请求")
+                raise AppException("IDEMPOTENCY_CONFLICT", "该请求标识已用于另一退宿请求")
             return _checkout_row(existing)
 
         bed = db.scalars(select(DormBed).where(

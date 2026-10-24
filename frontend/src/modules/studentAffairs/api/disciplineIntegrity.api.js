@@ -13,7 +13,7 @@ function toError(error) {
     code: error?.code || 503001,
     bizCode: error?.bizCode || '',
     data: null,
-    message: error?.message || '真实接口不可用'
+    message: error?.message || '暂时无法连接，请稍后重试'
   }
 }
 

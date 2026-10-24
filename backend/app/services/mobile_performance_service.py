@@ -22,13 +22,13 @@ FILTERS = (
 
 def _require_teacher(user):
     if str((user or {}).get("userType") or "").upper() == "STUDENT":
-        raise AppException("NO_PERMISSION", "该接口仅教师端可用")
+        raise AppException("NO_PERMISSION", "该功能仅教师端可用")
     return user or {}
 
 
 def _require_student(user):
     if str((user or {}).get("userType") or "").upper() != "STUDENT":
-        raise AppException("NO_PERMISSION", "该接口仅学生本人可用")
+        raise AppException("NO_PERMISSION", "该功能仅学生本人可用")
     return user or {}
 
 

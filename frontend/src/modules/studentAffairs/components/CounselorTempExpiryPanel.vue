@@ -2,7 +2,7 @@
   <section class="temp-expiry" aria-label="临时代班到期治理">
     <div class="temp-expiry__copy">
       <strong>临时代班到期治理</strong>
-      <span>生产环境由定时任务自动结束到期 TEMP；这里提供人工立即同步兜底，服务端幂等并保留 TEMP_EXPIRE 审计。</span>
+      <span>生产环境由定时任务自动结束到期的临时授权；这里提供人工立即同步作为兜底，重复同步不会产生重复记录，并保留审计。</span>
     </div>
     <div class="temp-expiry__actions">
       <span v-if="result" class="temp-expiry__result">{{ result }}</span>

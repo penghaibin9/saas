@@ -155,7 +155,7 @@
 </div>
             <AppPagination v-if="!studentsList.error && studentsList.total" :total="studentsList.total" :page="studentsList.page" :page-size="studentsList.pageSize" :disabled="studentsList.loading" @change="pageStudents" />
           </template>
-          <p class="mp-note">本页仅只读查看，手机号脱敏展示；批量组织调整请使用「班级调整」页签。</p>
+          <p class="mp-note">本页仅供查看，手机号脱敏显示；批量组织调整请使用「班级调整」页签。</p>
         </div>
       </section>
 

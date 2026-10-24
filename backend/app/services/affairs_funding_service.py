@@ -524,7 +524,7 @@ def create_project(body, user) -> dict:
     if project_type not in PROJECT_TYPES:
         raise AppException("VALIDATION_ERROR", "项目类型非法")
     if project_type not in V1_TYPES:
-        raise AppException("DATA_CONFLICT", "该资助类型 V1 暂未开放（仅奖学金/助学金）")
+        raise AppException("DATA_CONFLICT", "该资助类型暂未开放（仅奖学金 / 助学金）")
     try:
         amount = Decimal(str(body.amount))
     except (InvalidOperation, TypeError, ValueError) as exc:

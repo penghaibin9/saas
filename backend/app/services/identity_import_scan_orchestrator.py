@@ -323,7 +323,7 @@ def _finalize_staged_job(
             "batchNo": batch_no,
             "stagingAuthority": True,
         }
-        row.error_message = "" if not errors else "服务端预检存在错误，请下载错误回执"
+        row.error_message = "" if not errors else "系统预检存在错误，请下载错误回执"
         row.version = int(row.version or 0) + 1
         db.commit()
         db.refresh(row)

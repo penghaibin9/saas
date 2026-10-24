@@ -9,7 +9,7 @@
         <AcademicPrototypeSteps />
         <section class="card"><header class="card-head"><h2>{{ selectedExam.examName || selectedExam.name }} · 本人报名</h2></header><form class="card-body" @submit.prevent="confirmed && register(selectedExam)">
           <div class="form-grid"><label class="field"><span>考试项目</span><input class="input" :value="selectedExam.examName || selectedExam.name" readonly /></label><label class="field"><span>考试安排</span><input class="input" :value="dateTime(selectedExam.examDate || selectedExam.startAt)" readonly /></label><label class="field full"><span><input v-model="confirmed" class="check" type="checkbox" /> 已核对本人资格和时间安排</span></label></div>
-          <div class="notice amber form-notice"><AcademicPrototypeIcon name="circle-info" /><span>{{ actionHint(selectedExam) }} 费用：{{ feeText(selectedExam.fee ?? selectedExam.registrationFee) }}。实际报名与取消由学校状态和服务端结果裁决。</span></div>
+          <div class="notice amber form-notice"><AcademicPrototypeIcon name="circle-info" /><span>\1 费用：\2。实际报名与取消以学校状态和办理结果为准。</span></div>
           <footer class="form-foot"><button class="btn" type="button" @click="selectedExamId = ''; confirmed = false">返回等级考试</button><button class="btn primary" :disabled="!confirmed || !!actingId || !canRegister(selectedExam)">{{ actingId ? '提交中…' : '确认本人报名' }}</button></footer>
         </form></section>
       </template>
@@ -172,7 +172,7 @@ function reconcilePersistentCommands() {
       }
     } else {
       receiptTone.value = 'waiting'
-      receipt.value = academicReceipt({ title: '原等级考试办理结果待确认', object: current?.examName || current?.name || '原等级考试', status: reference.ackId ? '尚未读取到原回执对应的本人报名' : '原提交未取得服务端报名编号', next: '本页只会刷新本人正式报名，不会自动再次报名或取消；报名不代表缴费或取得证书。' })
+      receipt.value = academicReceipt({ title: '原等级考试办理结果待确认', object: current?.examName || current?.name || '原等级考试', status: reference.ackId ? '尚未读取到原回执对应的本人报名' : '原提交未取得报名编号', next: '本页只会刷新本人正式报名，不会自动再次报名或取消；报名不代表缴费或取得证书。' })
     }
   }
   pendingExamIds.value = [...new Set([...guard.pendingCommands().filter((item) => ['REGISTER_LEVEL_EXAM', 'CANCEL_LEVEL_EXAM'].includes(item.action)).map((item) => item.objectId), ...blockedExamIds.value])]
@@ -215,7 +215,7 @@ async function register(exam) {
     const result = await portalApi.academicLevelRegister(id)
     if (!guard.isCurrentCommand(command)) return
     const acknowledged = result?.examId == null || String(result.examId) === command.examId ? guard.rememberPersistentAck(persistent, result?.regId || result?.registrationId) : null
-    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '等级考试报名结果待确认', object: command.object, status: acknowledged ? '正在读取本人正式报名' : '服务端未返回可核对的报名编号', next: '确认前不要重复报名；报名不代表缴费。' })
+    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '等级考试报名结果待确认', object: command.object, status: acknowledged ? '正在读取本人正式报名' : '未返回可核对的报名编号', next: '确认前不要重复报名；报名不代表缴费。' })
     await load()
   } catch (e) {
     if (!guard.isCurrentCommand(command)) return
@@ -239,7 +239,7 @@ async function cancel(exam) {
     const result = await portalApi.academicLevelCancel(id)
     if (!guard.isCurrentCommand(command)) return
     const acknowledged = result?.examId == null || String(result.examId) === command.examId ? guard.rememberPersistentAck(persistent, result?.regId || result?.registrationId) : null
-    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '取消报名结果待确认', object: command.object, status: acknowledged ? '正在读取本人正式报名' : '服务端未返回可核对的报名编号', next: '确认前不要重复取消。' })
+    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '取消报名结果待确认', object: command.object, status: acknowledged ? '正在读取本人正式报名' : '未返回可核对的报名编号', next: '确认前不要重复取消。' })
     await load()
   } catch (e) {
     if (!guard.isCurrentCommand(command)) return
@@ -267,7 +267,7 @@ async function handleActionError(e, command, persistent, action) {
     blockedExamIds.value = blockedExamIds.value.filter((value) => value !== command.examId)
     pendingExamIds.value = pendingExamIds.value.filter((value) => value !== command.examId)
   }
-  if (kind === 'network' || kind === 'conflict') { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'network' ? `${action}结果待确认` : '报名事实已变化', object: command.object, status: kind === 'network' ? '待服务器记录确认' : '本次办理未确认完成', next: academicErrorMessage(e, '请重新核对。') }); await load() }
+  if (kind === 'network' || kind === 'conflict') { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'network' ? `${action}结果待确认` : '报名情况已变化', object: command.object, status: kind === 'network' ? '待服务器记录确认' : '本次办理未确认完成', next: academicErrorMessage(e, '请重新核对。') }); await load() }
   else ui.notify(academicErrorMessage(e, `${action}失败`))
 }
 

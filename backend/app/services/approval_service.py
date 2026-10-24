@@ -120,7 +120,7 @@ def _db_list(
     acted_start, _ = _parse_day_bounds(acted_from, "actedFrom")
     _, acted_end = _parse_day_bounds(acted_to, "actedTo")
     if acted_start is not None and acted_end is not None and acted_start >= acted_end:
-        raise AppException("VALIDATION_ERROR", "actedFrom 不能晚于 actedTo")
+        raise AppException("VALIDATION_ERROR", "处理起始时间不能晚于结束时间")
 
     with db_service.session() as db:
         statuses = ["APPROVED", "REJECTED", "RETURNED", "TRANSFERRED"] if processed else ["PENDING"]

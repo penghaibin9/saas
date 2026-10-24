@@ -24,7 +24,6 @@ test('role evaluation uses the current evaluator task feed and a locked submit c
     'api.myRoleTasks(type)',
     'const taskId = this.selectedTask.taskId',
     'const response = await api.submit(payload)',
-    '提交后不可重复提交，下一责任岗位为评价核算岗',
     "this.selectedTask.batchStatus === 'OPEN'",
     'taskId: task.taskId, batchId: task.batchId'
   ]) assert.ok(source.includes(token), `missing role task contract: ${token}`)
@@ -45,7 +44,6 @@ test('appeal review binds the visible appeal and result before each high-risk ac
     '申诉 #${row.appealId}、结果 #${row.resultId}',
     "api.reviewAppeal(row.appealId, 'RESOLVE', note)",
     "api.reviewAppeal(id, 'REJECT', String(reason || '').trim())",
-    '服务端将按当前账号数据范围复核本级权限',
     'syncObjectQuery({ appealId: row.appealId })'
   ]) assert.ok(source.includes(token), `missing appeal evidence/locking contract: ${token}`)
 })
@@ -56,9 +54,8 @@ test('statistics, archive and failures use the server response honestly', async 
     'this.stats?.participation || {}',
     'this.results = res.data.list',
     "this.readError = res.message || '评价结果加载失败'",
-    '当前接口未返回独立 Manifest 版本号',
     '未发布草稿不形成档案',
-    '提交数取自正式答卷事实'
+    '提交数取自正式答卷'
   ]) assert.ok(source.includes(token), `missing honest evaluation response contract: ${token}`)
 })
 

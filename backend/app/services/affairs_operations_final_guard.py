@@ -215,7 +215,7 @@ def _install_batch_reliability_guard(operations) -> None:
     def _assert_same_request(job, requested_ids: list[int]) -> None:
         stored = [int(value) for value in ((job.request_json or {}).get("requirementIds") or [])]
         if stored != requested_ids:
-            raise AppException("IDEMPOTENCY_CONFLICT", "同一幂等键不能用于不同的批次记录")
+            raise AppException("IDEMPOTENCY_CONFLICT", "同一重复提交标识不能用于不同的批次记录")
 
     def create_batch_job(user: dict, payload: dict) -> dict:
         requested_ids = _request_ids(payload)

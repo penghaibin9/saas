@@ -32,7 +32,7 @@ export_router = APIRouter(tags=["S10·简化-导入导出"])
 
 def _deny_placeholder():
     if settings.is_prod:
-        raise not_found("接口不存在")
+        raise not_found("文件不存在")
 
 
 @import_router.post("/validate-placeholder", summary="导入校验占位（仅非生产）")
@@ -58,7 +58,7 @@ def create_placeholder(body: ExportCreateRequest, user=Depends(require_staff)):
         "taskId": task_id, "status": "READY", "fileFormat": body.fileFormat,
         "downloadUrl": f"/api/v1/export/tasks/{task_id}/download",
         "expiresIn": 900,
-        "notice": "占位实现：未生成真实文件；请改用 POST /export/students 或 /export/domain/{domain}",
+        "notice": "占位实现：未生成真实文件；请改用学生导出或业务域导出",
     })
 
 
@@ -70,7 +70,7 @@ def confirm_placeholder(user=Depends(require_staff)):
                      status_code=200, target_type="import", target_id=batch_id)
     return success({
         "batchId": batch_id, "status": "CONFIRMED",
-        "notice": "占位实现：未真正写库。学生请用「系统管理 › 学生导入与账号开通」，教务学籍请用「教务中心 › 学籍导入」。",
+        "notice": "占位实现：未真正写入数据。学生请用「系统管理 › 学生导入与账号开通」，教务学籍请用「教务中心 › 学籍导入」。",
     }, message="导入已确认（占位）")
 
 
@@ -259,7 +259,7 @@ def import_domain_confirm(body: dict = Body(...), user=Depends(require_staff),
     cached, handle = idempotency_begin(user, "domain-import-confirm", idempotency_key,
                                        {"batchNo": batch_no})
     if cached is not None:
-        return success(cached, message="导入完成（幂等重放）")
+        return success(cached, message="导入完成（重复提交，未重复处理）")
     _limit_operation(user, "import-confirm", user_limit=10, tenant_limit=30)
     result = domain_import_service.confirm(batch_no)
     audit_log.record("IMPORT", "domain-confirm",
@@ -284,7 +284,7 @@ def export_domain(domain: str, body: dict = Body(default={}), user=Depends(requi
          "reportType": str(report_type or "")},
     )
     if cached is not None:
-        return success(cached, message="导出完成（幂等重放）")
+        return success(cached, message="导出完成（重复提交，未重复处理）")
     _limit_operation(user, "export", user_limit=5, tenant_limit=20)
     task = domain_export_service.export_domain(
         auth.domain,
@@ -312,7 +312,7 @@ def export_students(body: ExportStudentsRequest,
     cached, handle = idempotency_begin(user, "student-export", idempotency_key,
                                        {"purpose": body.purpose})
     if cached is not None:
-        return success(cached, message="导出完成（幂等重放）")
+        return success(cached, message="导出完成（重复提交，未重复处理）")
     _limit_operation(user, "export", user_limit=5, tenant_limit=20)
     task = ie.create_students_export(body.purpose, user=user)
     audit_log.record("EXPORT", "students-xlsx",

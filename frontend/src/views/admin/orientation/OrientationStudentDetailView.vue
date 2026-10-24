@@ -162,7 +162,7 @@
                 class="ori-act ori-act--primary"
                 :disabled="submitting || isDenied('orientation.dorm.confirm')"
                 @click="confirmDorm"
-              >查看预留床位</button>
+              >查看预留的床位</button>
               <button
                 v-if="['ASSIGNED', 'CHECKED_IN'].includes(detail.student.dormStatus)"
                 type="button"

@@ -46,7 +46,7 @@
             <div><strong>{{ dataStateLabel(mod.dataState) }}</strong><span>数据状态</span></div>
             <div><strong>{{ mod.currentSourceCount }}</strong><span>当前来源</span></div>
             <div><strong>{{ bytes(mod.logicalFileBytes) }}</strong><span>逻辑文件</span></div>
-            <div><strong>{{ bytes(mod.heldReservationBytes) }}</strong><span>占用预留</span></div>
+            <div><strong>{{ bytes(mod.heldReservationBytes) }}</strong><span>占用额度</span></div>
           </div>
           <footer>
             <span>{{ mod.deliveryAcceptance ? '交付已验收' : (mod.staleDeliveryAcceptance ? '合同来源已变化，需重新验收' : '待交付验收') }}</span>
@@ -119,7 +119,7 @@
               <div v-if="preview.consumerDependencies" class="consumer-evidence">
                 <div class="consumer-head">
                   <div>
-                    <strong>跨域消费者与正式事实</strong>
+                    <strong>跨模块使用方与正式记录</strong>
                     <small>{{ dispositionLabel(preview.consumerDependencies.disposition) }}</small>
                   </div>
                   <span class="pill" :class="preview.consumerDependencies.objectEvidence?.hasUnsettledSharedObjects ? 'warn' : 'muted'">
@@ -274,10 +274,10 @@ const DISPOSITION_LABEL = {
   SOURCE_BOUND_EVIDENCE_RETAIN_REQUIRED: '正式证据需长期保留',
   SOURCE_PROCESS_UNRESOLVED: '业务过程尚未闭环',
   SHARED_CONSUMER_EVIDENCE_RETAIN_REQUIRED: '共享消费者证据需保留',
-  FORMAL_ACADEMIC_FACTS_RETAIN_REQUIRED: '正式教务事实需长期保留',
-  FORMAL_ACADEMIC_FACTS_RETAIN_REVIEW_REQUIRED: '教务正式事实待复审',
+  FORMAL_ACADEMIC_FACTS_RETAIN_REQUIRED: '正式教务记录需长期保留',
+  FORMAL_ACADEMIC_FACTS_RETAIN_REVIEW_REQUIRED: '教务正式记录待复审',
   MODULE_RESOURCE_REVIEW_REQUIRED: '模块资源待复审',
-  NO_SOURCE_CONSUMER_FACTS_FOUND: '未发现来源消费事实'
+  NO_SOURCE_CONSUMER_FACTS_FOUND: '未发现来源使用记录'
 }
 
 const EVIDENCE_LABEL = {
@@ -449,7 +449,7 @@ export default {
       const wasBound = this.job.state === 'WAIT_EXPORT_ACCEPT'
       await this.run(async () => {
         this.job = await moduleCommerceApi.bindExport(this.job.jobId, { exportJobId: candidate.exportJobId, manifestId: candidate.manifestId, scopeHash: this.job.scopeHash, expectedVersion: this.job.version })
-        this.notify(wasBound ? '新交付包已重新绑定，并封存当前消费者对象快照' : '服务端已核验的交付包绑定成功，并封存当前消费者对象快照')
+        this.notify(wasBound ? '新交付包已重新绑定，并封存当前消费者对象快照' : '已核验的交付包绑定成功，并封存当前使用方的对象快照')
       })
     },
     async acceptExport () {

@@ -195,7 +195,7 @@ def ensure_snapshot_profile_pdf_in_tx(db, snapshot: InternshipApplicationMateria
     )
     raw_file_id = str(meta.get("fileId") or "")
     if not raw_file_id.isdigit():
-        raise AppException("DATA_CONFLICT", "文件中心未返回有效的实习档案 PDF fileId", http_status=409)
+        raise AppException("DATA_CONFLICT", "文件中心未返回有效的实习档案 PDF", http_status=409)
     file_id = int(raw_file_id)
     upsert_file_binding(
         raw_file_id,

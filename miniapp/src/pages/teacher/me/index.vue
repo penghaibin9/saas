@@ -26,7 +26,7 @@ import { normalizeError } from '@/services/request'
 export default {
   computed: {
     // 仅演示（mock）模式标注"演示环境"；真实后端/生产构建只显示版本号，避免误导真实用户
-    versionText() { return ENV.useMock ? '版本 v1.0.0 · 演示环境（mock 数据）' : '版本 v1.0.0' },
+    versionText() { return ENV.useMock ? '版本 v1.0.0 · 演示环境' : '版本 v1.0.0' },
   },
   data() {
     return {

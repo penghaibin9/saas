@@ -414,7 +414,7 @@ def _validate_export_contract(db, job, *, export_job_id: int, manifest_id: int, 
     from app.models.file import ArchiveManifest, FileObject
     from app.services.file_content_security import is_downloadable_status
     from app.services.file_scan_constants import READY_SCAN_STATES
-    if str(scope_hash or "") != str(job.scope_hash): raise AppException("DATA_CONFLICT", "导出范围指纹与退出计划不一致", http_status=409)
+    if str(scope_hash or "") != str(job.scope_hash): raise AppException("DATA_CONFLICT", "导出范围校验码与退出计划不一致", http_status=409)
     export = db.scalars(select(ExportJob).where(ExportJob.id == int(export_job_id), ExportJob.tenant_id == int(job.tenant_id), ExportJob.is_deleted.is_(False)).with_for_update()).first()
     if export is None: raise AppException("DATA_NOT_FOUND", "导出任务不存在", http_status=404)
     if export.status != "SUCCEEDED" or export.revoked_at is not None: raise AppException("DATA_CONFLICT", "导出任务尚未成功或已撤销", http_status=409)
@@ -435,7 +435,7 @@ def _validate_export_contract(db, job, *, export_job_id: int, manifest_id: int, 
     if manifest.status not in {"FROZEN", "PACKAGED"}: raise AppException("DATA_CONFLICT", "Manifest尚未冻结或打包", http_status=409)
     if int(manifest.package_file_id or 0) != int(file_row.id): raise AppException("DATA_CONFLICT", "Manifest与导出文件不是同一交付包", http_status=409)
     if not manifest.manifest_sha256 or str(result.get("manifestSha256") or "") != str(manifest.manifest_sha256): raise AppException("DATA_CONFLICT", "Manifest摘要与导出回执不一致", http_status=409)
-    if str(result.get("scopeHash") or "") != job.scope_hash: raise AppException("DATA_CONFLICT", "导出结果范围指纹不一致", http_status=409)
+    if str(result.get("scopeHash") or "") != job.scope_hash: raise AppException("DATA_CONFLICT", "导出结果范围校验码不一致", http_status=409)
     if int(result.get("moduleGeneration") or 0) != int(job.module_generation): raise AppException("DATA_CONFLICT", "导出结果模块代次不一致", http_status=409)
     object_count = result.get("objectCount"); attachment_count = result.get("attachmentCount")
     if type(object_count) is not int or object_count < 0 or int(export.row_count or 0) != object_count: raise AppException("DATA_CONFLICT", "导出对象数与任务行数不一致", http_status=409)
@@ -468,7 +468,7 @@ def accept_module_export(user: dict, job_id: int, *, acceptance_ref: str, expect
         job = db.scalars(select(TenantModuleOffboardingJob).where(TenantModuleOffboardingJob.id == int(job_id), TenantModuleOffboardingJob.is_deleted.is_(False)).with_for_update()).first()
         if job is None: raise AppException("DATA_NOT_FOUND", "模块退出任务不存在", http_status=404)
         if int(job.version or 0) != int(expected_version): raise AppException("DATA_CONFLICT", "退出任务已变化，请刷新后重试", http_status=409)
-        if job.state != "WAIT_EXPORT_ACCEPT" or not job.export_job_id or not job.manifest_id: raise AppException("DATA_CONFLICT", "最终导出尚未完成服务端核验", http_status=409)
+        if job.state != "WAIT_EXPORT_ACCEPT" or not job.export_job_id or not job.manifest_id: raise AppException("DATA_CONFLICT", "最终导出尚未完成系统核验", http_status=409)
         _validate_export_contract(db, job, export_job_id=int(job.export_job_id), manifest_id=int(job.manifest_id), scope_hash=job.scope_hash)
         state = _module_state(db, int(job.tenant_id), job.module_key, lock=True)
         if state is None or int(state.generation) != int(job.module_generation): raise AppException("DATA_CONFLICT", "模块代次已变化，禁止接收旧交付包", http_status=409)

@@ -82,7 +82,7 @@ def validate(db, task, record, request, *, lock=False):
         raise conflict("申请缺少完整的名单与策略冻结证据，请驳回后重新申请")
     current = source(db, task, record, lock=lock)
     if frozen != current:
-        raise conflict("申请后的正式名单、课程或生效策略已变化，请重新核对后申请")
+        raise conflict("申请后正式名单、课程或生效规则已变化，请重新核对后申请")
     return current
 
 

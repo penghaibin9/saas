@@ -15,7 +15,7 @@
       <template v-else>
         <section class="mp-card">
           <header class="mp-card__head">
-            <span class="mp-card__title">关系注册表</span>
+            <span class="mp-card__title">关系登记表</span>
             <span class="mp-note">{{ summary }}</span>
           </header>
           <div class="mp-card__body">

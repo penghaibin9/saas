@@ -70,7 +70,7 @@
       title="新增学业预警（人工上报）"
       :fields="createFields"
       :submitting="createForm.submitting"
-      note="规则引擎（ACAD-R 系列）会自动生成大部分预警；人工上报用于教师/辅导员主动发现的学业风险。"
+      note="预警规则会自动生成大部分预警；人工上报用于教师、辅导员主动发现的学业风险。"
       @submit="submitCreate"
     />
 

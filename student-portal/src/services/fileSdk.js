@@ -76,7 +76,7 @@ export const fileSdk = {
   },
   async fetchPreviewBlobFrom(ticket, options = {}) {
     const path = typeof ticket === 'string' ? ticket : authorizedPath(ticket)
-    if (!path || !String(path).startsWith('/')) throw new Error('服务端未返回有效文件预览授权路径')
+    if (!path || !String(path).startsWith('/')) throw new Error('系统未返回有效的文件预览地址')
     return fetchFileBlob(path, options)
   },
   async fetchPeerPreviewBlob(peerId, fileId, options = {}) {
@@ -88,7 +88,7 @@ export const fileSdk = {
   },
   async downloadFrom(ticket, fileName = '附件') {
     const path = typeof ticket === 'string' ? ticket : authorizedPath(ticket)
-    if (!path || !String(path).startsWith('/')) throw new Error('服务端未返回有效文件授权路径')
+    if (!path || !String(path).startsWith('/')) throw new Error('系统未返回有效的文件访问路径')
     return downloadFile(path, fileName)
   },
   async preview(fileId, fileName = '附件', options = {}) {

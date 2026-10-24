@@ -99,7 +99,7 @@ const router = createRouter({
       path: '/admin/planned/:groupKey/:modKey/:leafIdx?',
       name: 'planned-placeholder',
       component: () => import('../views/admin/planned/PlannedPlaceholderView.vue'),
-      meta: { title: '规划模块（待施工）' }
+      meta: { title: '规划模块' }
     },
     {
       /* 登录页（账号密码走浏览器 HttpOnly refresh transport；业务认证真值仍在后端） */

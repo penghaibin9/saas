@@ -20,12 +20,12 @@
       <div>
         <span>当前编排结论</span>
         <strong>{{ conclusion }}</strong>
-        <small>发布前检查时间、地点、评委、秘书、回避冲突与学生数；正式结果只认服务端回执。</small>
+        <small>发布前检查时间、地点、评委、秘书、回避冲突与学生数；正式结果只认系统回执。</small>
       </div>
       <div class="ds-command__facts">
         <div><b>{{ rows.length }}</b><span>答辩组</span></div>
         <div><b>{{ totalStudents }}</b><span>已入组学生</span></div>
-        <div><b>{{ publishReadyCount }}</b><span>前端预检通过</span></div>
+        <div><b>{{ publishReadyCount }}</b><span>页面预检查通过</span></div>
         <div><b>{{ conflictCount }}</b><span>回避冲突</span></div>
       </div>
     </section>
@@ -109,7 +109,7 @@
           <button v-if="row.published" class="mp-link" :disabled="contextLocked" @click="notify(row)">{{ actionBusy === `notify:${row.id}` ? '通知中…' : '通知' }}</button>
         </template>
       </DataTable>
-      <p class="mp-note">页面预检覆盖六类明显缺口，但不能替代服务端权限、数据范围、回避规则和发布状态机；发布与通知均锁定当前组，等待服务器回执后才释放。</p>
+      <p class="mp-note">页面预检查覆盖六类明显缺口，但不能替代系统的权限、数据范围、回避规则和发布流程；发布与通知均会锁定当前组，等待系统回执后才释放。</p>
     </div>
 
     <AppConfirmDialog
@@ -193,7 +193,7 @@ export default {
     conflictCount() { return this.rows.filter((row) => Boolean(row.conflict)).length },
     conclusion() {
       if (!this.hasBatch) return '先选择批次，再读取答辩编排。'
-      if (this.loading) return '正在读取服务端答辩组。'
+      if (this.loading) return '正在读取答辩组。'
       if (this.error) return '答辩编排暂不可用，请按错误信息重试。'
       if (!this.rows.length) return '当前批次还没有答辩组，先建立分组。'
       const pending = this.rows.filter((row) => !row.published).length
@@ -393,7 +393,7 @@ export default {
       this.confirm = {
         visible: true,
         title: '发布答辩安排',
-        message: `页面预检：${preflight.summary}。确认发布「${row.groupName}」？正式权限、数据范围与状态机仍由服务端裁决。`,
+        message: `页面预检查：${preflight.summary}。确认发布「${row.groupName}」？正式权限、数据范围与发布流程仍由系统裁决。`,
         row: { ...row }
       }
       void this.syncUrl({ groupId: snapshot.groupId })
@@ -415,9 +415,9 @@ export default {
           this.actionReceipt = {
             title: `${snapshot.groupName} 已发布`,
             result: `服务器最新状态：${latest?.published ? '已发布' : '状态仍需核对'}；编排对象 ${snapshot.studentCount} 名学生。`,
-            next: latest?.published ? '下一步发送答辩通知；发送结果仍只认服务器回执。' : '不要重复发布，先刷新或核对服务端状态。'
+            next: latest?.published ? '下一步发送答辩通知；发送结果仍只认服务器回执。' : '不要重复发布，先刷新或核对当前状态。'
           }
-          toast.success(`${snapshot.groupName} 已发布，服务器最新状态已回读`)
+          toast.success(`${snapshot.groupName} 已发布，已重新读取最新状态`)
         } else {
           this.confirm = EMPTY_CONFIRM()
           toast.error(res.message || '答辩发布失败')

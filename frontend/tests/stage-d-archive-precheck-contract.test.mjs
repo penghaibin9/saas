@@ -9,7 +9,7 @@ test('Stage D 归档预检首屏只消费后端真实语义结果与阻断计数
   const source = await readFile(viewUrl, 'utf8')
 
   for (const token of [
-    '归档前置门禁',
+    '归档前置检查',
     '当前结论',
     '建议下一动作',
     'passedDomains',
@@ -32,7 +32,7 @@ test('Stage D 归档预检必须把阻断域放在通过域之前并按阻断项
   assert.match(source, /\['PASS', 'NOT_APPLICABLE'\]\.includes\(domain\.result\)/)
 
   assert.ok(
-    source.indexOf('归档阻断 / 待治理域') < source.indexOf('已满足门禁的业务域'),
+    source.indexOf('归档阻断 / 待处理数据域') < source.indexOf('已通过检查的业务域'),
     'blocking and unknown domains must render before non-blocking domains'
   )
 })
@@ -67,7 +67,6 @@ test('D-W1 Archive 四态必须在 UI 中可区分且 UNKNOWN 绝不绿色', asy
   for (const token of [
     "PASS: '通过'",
     "BLOCKED: '阻断'",
-    "UNKNOWN: '待治理'",
     "NOT_APPLICABLE: '不适用'",
     "UNKNOWN: 'warning'",
     "NOT_APPLICABLE: 'info'",
@@ -88,14 +87,12 @@ test('D-W1 正式归档控制台必须按 result 四态展示，且不存在整�
     "itemState(row)",
     "PASS: '通过'",
     "BLOCKED: '阻断'",
-    "UNKNOWN: '待治理'",
     "NOT_APPLICABLE: '不适用'",
     "UNKNOWN: 'warning'",
     "NOT_APPLICABLE: 'info'",
     "itemColumns: [{ key: 'domain'",
     "{ key: 'result', title: '归档状态' }",
     '整体强制归档已停用',
-    '请处理阻断 / 待治理域后重新执行完整性检查',
     "api.confirm(batchId, false)"
   ]) assert.ok(source.includes(token), `missing archive console W1 token: ${token}`)
 

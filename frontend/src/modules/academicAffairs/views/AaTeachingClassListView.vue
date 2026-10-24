@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="教学班与名单版本"
-    subtitle="统一查看教学班、主讲教师、当前正式名单和历史版本；旧教学任务字段继续保留兼容"
+    subtitle="统一查看教学班、主讲教师、当前正式名单和历史版本"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -15,8 +15,8 @@
       <AaOperationReceipt :receipt="receipt" />
       <AppInlineAlert
         type="info"
-        title="名单版本是正式成员事实"
-        description="选课未锁定时下游业务仍会阻断；选课锁定后生成新版本，旧版本仅标记为历史，不删除。"
+        title="名单版本是正式的成员记录"
+        description="选课未锁定时下游业务仍会阻断；选课锁定后生成新版本，历史版本仅标记为历史，不删除。"
       />
 
       <AppSectionCard title="查询范围">
@@ -60,7 +60,7 @@
 
       <ErrorState v-if="error" :description="error" @retry="retryLoad" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无教学班投影" description="先生成教学任务，再运行存量对账；系统不会在数据库迁移中自动猜测名单" />
+      <EmptyState v-else-if="!rows.length" title="暂无教学班" description="先生成教学任务，再运行存量核对；系统不会在升级时自动猜测名单" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="teachingClassId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-class="{ row }">
           <div class="mp-cell-main">{{ row.className }}</div>
@@ -79,7 +79,7 @@
 
     <AppConfirmDialog
       v-model:visible="confirmVisible"
-      title="执行教学班与名单版本回填"
+      title="执行教学班与名单版本补建"
       type="warning"
       confirm-text="确认回填"
       require-reason
@@ -134,7 +134,7 @@ export default {
       const blocked = Number(this.backfillReport?.blockedCount ?? Math.max(total - ready, 0))
       if (!total) return '当前范围没有可回填的教学任务，不会写入空批次。'
       if (blocked) return `共 ${total} 条教学任务，${ready} 条名单就绪、${blocked} 条阻断；必须全部处理完才能正式回填。`
-      return `共 ${total} 条教学任务，名单全部就绪；正式回填将一次性生成教学班和名单版本并写入审计。`
+      return `共 ${total} 条教学任务，名单全部就绪；正式补建将一次性生成教学班和名单版本并写入审计。`
     }
   },
   created() { this.initialize() },
@@ -215,7 +215,7 @@ export default {
       if (this.disposed || termId !== this.filters.termId) return
       if (check.code !== 0) { this.handleFailure(check, '回填前核对失败，尚未提交。'); return }
       this.backfillReport = check.data; this.checkedTermId = termId
-      if (!this.canExecuteBackfill) { this.error = '当前对账事实已变化，请核对后重新提交。'; return }
+      if (!this.canExecuteBackfill) { this.error = '当前核对结果已变化，请核对后重新提交。'; return }
       const res = await teachingClassApi.backfill(termId, false, reason.trim())
       if (this.disposed || termId !== this.filters.termId) return
       if (res.code === 0) {
@@ -232,7 +232,7 @@ export default {
     handleFailure(result, fallback) {
       this.error = result?.message || fallback; this.backfillReport = null; this.checkedTermId = ''
       if (isDeniedResult(result)) { this.revision++; this.loading = false; this.rows = []; this.confirmVisible = false; this.receipt = null }
-      else if (isConflictResult(result)) this.receipt = { object: `学期 #${this.filters.termId}`, status: '事实已变化，保留输入', pending: true, next: '重新执行存量对账，再核对回填范围。' }
+      else if (isConflictResult(result)) this.receipt = { object: `学期 #${this.filters.termId}`, status: '数据已变化，保留输入', pending: true, next: '重新执行存量对账，再核对回填范围。' }
     }
   }
 }

@@ -30,7 +30,7 @@
       <template v-else-if="model === 'warning'">
         <div v-if="warningPageReady" class="row between"><span>第 {{ warningPage }} 页 · 共 {{ warningTotal }} 条</span><div class="row"><button class="btn small" :disabled="warningPage <= 1" @click="changeWarningPage(warningPage - 1)">上一页</button><button class="btn small" :disabled="!data.hasMore" @click="changeWarningPage(warningPage + 1)">下一页</button></div></div>
         <div v-if="focusRecordId && !rows.some((row,index) => rowKey(row,index) === focusRecordId)" class="notice amber">当前页尚未定位原预警，请翻页核对；这不表示该预警已处理或不存在。</div>
-        <div v-if="warningIsPartial" class="notice amber" role="status"><AcademicPrototypeIcon name="circle-info" /><span>当前接口返回 {{ rows.length }} 条，本人正式记录共 {{ warningTotal }} 条。请联系教务老师查询其余记录；本页不会把当前列表当作全部数据。</span></div>
+        <div v-if="warningIsPartial" class="notice amber" role="status"><AcademicPrototypeIcon name="circle-info" /><span>当前返回 \1 条，本人正式记录共 \2 条。请联系教务老师查询其余记录；本页不会把当前列表当作全部数据。</span></div>
         <StateBlock v-if="!rows.length" type="empty" :text="warningTotal ? '当前页没有预警记录，请返回上一页核对' : '当前没有学业预警'" />
         <section v-for="(row,index) in rows" :key="rowKey(row,index)" class="card" :class="{ 'is-target': rowKey(row,index) === focusRecordId }"><header class="card-head"><h2>有一项学业事项需要关注</h2></header><div class="card-body"><div class="row between"><h2>{{ primaryText(row) }}</h2><span class="tag" :class="tagColor(row)">{{ statusText(row) }}</span></div><dl class="definition"><dt>相关课程</dt><dd>{{ row.courseName || '以预警事项为准' }}</dd><dt>判定来源</dt><dd>{{ row.reason || row.triggerReason || '未提供' }}</dd><dt>责任老师</dt><dd>{{ row.responsibleTeacherName || row.teacherName || row.owner || '待学校提供' }}</dd><dt>当前建议</dt><dd>{{ row.requirement || row.handleRequirement || row.note || '请向学校责任老师核对处理要求' }}</dd></dl><footer class="form-foot"><RouterLink class="btn" to="/academic/grades">查看原成绩</RouterLink><RouterLink class="btn primary" to="/academic/makeup">打开补考重修</RouterLink></footer></div></section>
         <div class="notice"><AcademicPrototypeIcon name="circle-info" /><span>{{ config.note }}</span></div>
@@ -262,7 +262,7 @@ async function load() {
   loading.value = true
   error.value = ''
   const read = await readStudentAcademicSnapshot(guard, async () => {
-    if (!loader) throw new Error('当前路由未绑定允许的教务读取接口')
+    if (!loader) throw new Error('当前页面暂无可读取的教务数据')
     const result = await loader()
     if (readModel === 'warning') {
       if (!result || !Array.isArray(result.items)) throw new Error('预警记录无法核对')

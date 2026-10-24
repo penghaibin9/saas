@@ -60,8 +60,8 @@
                 </view>
                 <view v-if="followAck" class="aw__receipt">
                   <text>已收到跟进编号 {{ followAck.interventionId }}</text>
-                  <text>正在等待详情返回该编号；只读核对不会重复提交。</text>
-                  <button class="btn btn-ghost" :disabled="detailState === 'loading'" @click="verifyFollowup">只读核对记录</button>
+                  <text>正在等待详情返回该编号；核对不会重复提交。</text>
+                  <button class="btn btn-ghost" :disabled="detailState === 'loading'" @click="verifyFollowup">核对记录</button>
                 </view>
                 <template v-if="canWriteWarning('FOLLOW_UP')">
                   <picker mode="selector" :range="wayLabels" :value="followWayIndex" :disabled="followSubmitting || !!followAck || hasAnyUnknownWrite(w)" @change="onWayChange">
@@ -309,7 +309,7 @@ export default {
       if (!detail || !this.followAck || this.followAck.warningId !== ack.warningId || this.followAck.interventionId !== ack.interventionId) return false
       if (this.warningId(detail.warning) !== ack.warningId) return false
       const found = ((detail && detail.interventions) || []).some((item) => String(item.id || item.interventionId || '') === ack.interventionId)
-      if (!found) { toast('正式详情暂未返回该跟进编号，请稍后只读核对'); return false }
+      if (!found) { toast('正式详情暂未返回该跟进记录，请稍后核对'); return false }
       if (!this.clearWrite(this.contextKey(), 'FOLLOWUP', ack.warningId)) { toast('正式记录已核对，但本地待办清理失败'); return false }
       this.followAck = null
       this.followWayIndex = 0
@@ -338,7 +338,7 @@ export default {
         if (ackId && ackParentId === id) this.ackWrite(context, 'FOLLOWUP', id, { ackId, parentId: ackParentId })
         if (!this._pageActive || this._writeEpoch !== writeEpoch || this.contextKey() !== context || this.detailId !== id || this._detailEpoch !== detailEpoch) return
         if (!ackId || ackParentId !== id) {
-          toast('跟进结果未确认，已停止重复提交；请只读核对正式记录')
+          toast('跟进结果未确认，已停止重复提交；请核对正式记录')
           await this.loadDetail(id)
           return
         }
@@ -351,7 +351,7 @@ export default {
         } else if (isExplicitWriteRejection(error)) this.clearWrite(context, 'FOLLOWUP', id)
         if (!this._pageActive || this._writeEpoch !== writeEpoch || this.contextKey() !== context || this.detailId !== id) return
         if (isExplicitWriteRejection(error)) toast((error && error.message) || '跟进未受理，请修改后重试')
-        else { toast('跟进结果未确认，已停止重复提交；请只读核对正式记录'); await this.loadDetail(id) }
+        else { toast('跟进结果未确认，已停止重复提交；请核对正式记录'); await this.loadDetail(id) }
       } finally {
         if (this._writeEpoch === writeEpoch && this.contextKey() === context) this.followSubmitting = false
       }
@@ -361,7 +361,7 @@ export default {
       if (!detail || this.warningId(detail.warning) !== id) return false
       const status = String(detail.warning.status || '').toUpperCase()
       const matched = action === 'CLOSE' ? status === 'CLOSED' : ['ESCALATED', 'HIGH_RISK'].includes(status)
-      if (!matched) { toast('正式详情暂未返回处理结果，请稍后只读核对'); return false }
+      if (!matched) { toast('正式详情暂未返回处理结果，请稍后核对'); return false }
       return this.clearWrite(this.contextKey(), action, id)
     },
     handle(w, action) {

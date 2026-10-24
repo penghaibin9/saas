@@ -31,7 +31,7 @@
 
 
         <view class="gr__section-head">
-          <view><text class="gr__section-kicker">毕业条件清单</text><text class="gr__section-title">逐项核对真实业务事实</text></view>
+          <view><text class="gr__section-kicker">毕业条件清单</text><text class="gr__section-title">逐项核对实际业务情况</text></view>
           <text class="gr__section-count">{{ items.length }}项</text>
         </view>
 
@@ -141,7 +141,7 @@ export default {
       }
     },
     safeDecisionTrace() { return { domain: 'GRADUATION', decision: this.overallPassed ? 'ALLOWED' : 'BLOCKED' } },
-    safeNote() { return studentSafeText(this.data && this.data.note, '刷新页面不会创建新的正式毕业预审记录；最终毕业结论以学校正式审核形成的事实为准。') }
+    safeNote() { return studentSafeText(this.data && this.data.note, '刷新页面不会创建新的正式毕业预审记录；最终毕业结论以学校正式审核为准。') }
   },
   onLoad() { this.load() },
   onShow() { if (this.hidden || this.identity !== currentSessionGeneration()) { this.hidden = false; this.load() } },
@@ -154,7 +154,7 @@ export default {
     concText(c) { return CONC[c] || '请查看学校审核通知' },
     badge(r) { return r === 'PASS' ? 'is-ok' : r === 'FAIL' ? 'is-bad' : 'is-wait' },
     evidenceFallback(it) {
-      return it.result === 'PASS' ? '学校业务系统已记录满足该项条件的有效事实。' : '当前正式数据还不足以确认该项通过，请按上方建议处理后重新核验。'
+      return it.result === 'PASS' ? '学校业务系统已记录满足该项条件。' : '当前正式数据还不足以确认该项通过，请按上方建议处理后重新核验。'
     },
     studentEvidence(it) { return studentSafeText(it && it.evidence, this.evidenceFallback(it || {})) },
     clearGraduationData() { this.data = null; this.expandedItem = '' },

@@ -126,7 +126,7 @@ def save_config(payload: dict) -> dict:
     prev = _stored()
     backend = (payload.get("backend") or "local").strip().lower()
     if backend not in ("local", "cos"):
-        raise AppException("VALIDATION_ERROR", "存储后端只能是 local 或 cos")
+        raise AppException("VALIDATION_ERROR", "存储方式只能是本地或对象存储")
 
     region = (payload.get("cosRegion") or "").strip()
     bucket = (payload.get("cosBucket") or "").strip()
@@ -169,7 +169,7 @@ def test_connection() -> dict:
     """用生效配置试连 COS：写一个探针对象再删。返回 {ok, message}。"""
     e = effective_config()
     if e["backend"] != "cos":
-        return {"ok": False, "message": "当前后端是「本地磁盘」，无需连接对象存储。切到 COS 并保存后再测试。"}
+        return {"ok": False, "message": "当前存储方式是“本地磁盘”，无需连接对象存储。切换到对象存储并保存后再测试。"}
     try:
         from qcloud_cos import CosConfig, CosS3Client
     except ImportError:

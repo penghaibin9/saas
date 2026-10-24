@@ -131,13 +131,13 @@ export default {
         if (response.code !== 0) {
           this.confirmVisible = false
           if (response.httpStatus === 409 || response.code === 'DATA_CONFLICT') { this.needsReload = true; this.pendingCommand = null; this.handoffError = `${response.message || '来源或执行条件已变化'}；已保留说明，请重新读取核对后再确认` }
-          else this.handoffError = `${response.message || '确认结果暂不明确'}；已保留原请求，请先回读核对，重试沿用同一请求标识`
+          else this.handoffError = `${response.message || '确认结果暂不明确'}；已保留原请求，请先重新查询核对，重试沿用同一请求标识`
           return
         }
         if (!this.validReceipt(response.data) || response.data.executionTaskId !== executionTaskId || response.data.successorTaskId !== body.successorTaskId || response.data.reason !== body.reason) { this.needsReload = true; this.confirmVisible = false; this.handoffError = '确认返回的对象不一致，不能报完成；请重新读取正式结果'; return }
         this.submittedReceipt = response.data; this.confirmVisible = false; this.receipt = '确认请求已返回，正在重新读取正式回执。'
         await this.load()
-      } catch (error) { if (current()) { this.confirmVisible = false; this.handoffError = `${error?.message || '网络暂不可用'}；已保留原请求，请先回读核对，重试沿用同一请求标识` } }
+      } catch (error) { if (current()) { this.confirmVisible = false; this.handoffError = `${error?.message || '网络暂不可用'}；已保留原请求，请先重新查询核对，重试沿用同一请求标识` } }
       finally { if (!this.disposed && key === this.reviewKey) this.saving = false }
     }
   }

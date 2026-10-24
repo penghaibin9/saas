@@ -410,7 +410,7 @@ def _dry_run_student_affairs(rows, *, namespace=None, user=None):
             continue
         if not natural_key:
             errors.append({"rowIndex": index, "field": "historyNo", "rawValue": "",
-                           "message": "历史编号必填（用于导入幂等与对账）"})
+                           "message": "历史编号必填（用于导入防重复和对账）"})
             continue
         if f"historyNo={natural_key}" in imported:
             errors.append({"rowIndex": index, "field": "historyNo", "rawValue": natural_key,

@@ -425,7 +425,7 @@ def conflict_check(body, user) -> dict:
     from app.models import AaScheduleBatch, AaScheduleItem
     origin_id = getattr(body, "originItemId", None)
     if not origin_id:
-        raise AppException("VALIDATION_ERROR", "originItemId 必填")
+        raise AppException("VALIDATION_ERROR", "原课表项必填")
     ct = str(getattr(body, "changeType", "ADJUST") or "ADJUST").upper()
     if ct not in {"ADJUST", "MAKEUP"}:
         raise AppException("VALIDATION_ERROR", "冲突预检类型仅支持 ADJUST/MAKEUP")

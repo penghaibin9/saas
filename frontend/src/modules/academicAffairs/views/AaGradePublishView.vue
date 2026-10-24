@@ -10,7 +10,7 @@
       <section v-if="receipt" class="aa-review-receipt" :class="{ 'is-warning': receipt.tone === 'warning' }" role="status">
         <div><strong>{{ receipt.tone === 'warning' ? '!' : '✓' }} {{ receipt.title }}</strong><span>{{ receipt.courseName }} · 任务 {{ receipt.taskId }}</span></div>
         <div><small>当前结果</small><b>{{ receipt.primary === 'REJECTED' ? '本次未发布' : statusLabel(receipt.status) }}</b></div>
-        <div><small>正式投影</small><b>{{ receipt.projectedText }}</b></div>
+        <div><small>正式汇总</small><b>{{ receipt.projectedText }}</b></div>
         <div v-if="receipt.action === 'publish'" class="aa-review-receipt__followup">
           <p>预警扫描：{{ scanStatusLabel(receipt.warningRefresh) }}；预警条数：未提供。通知结果待核对。</p>
           <p v-if="receipt.warningScanJobId">扫描任务 {{ receipt.warningScanJobId }}</p>
@@ -41,7 +41,7 @@
           </aside>
           <section v-if="selectedTask" class="aa-publish-evidence" aria-label="发布前核对">
             <h3>正式任务与发布核对</h3>
-            <table><thead><tr><th>核验对象</th><th>当前正式事实</th><th>核对说明</th></tr></thead><tbody>
+            <table><thead><tr><th>核验对象</th><th>当前正式记录</th><th>核对说明</th></tr></thead><tbody>
               <tr><th>课程身份</th><td>{{ selectedTask.courseName }} · {{ selectedTask.courseId || '课程版本未关联' }}</td><td>以任务绑定的课程版本为准</td></tr>
               <tr><th>正式教学班</th><td>{{ selectedTask.teachingClassName || '待核对' }}</td><td>{{ selectedTask.teachingClassId || '教学班身份未返回' }}</td></tr>
               <tr><th>任课教师</th><td>{{ selectedTask.teacherAuthorityReady && selectedTask.teacherNames?.length ? selectedTask.teacherNames.join('、') : '正式任课关系待核对' }}</td><td>以正式教学任务的任课关系为准</td></tr>
@@ -214,14 +214,14 @@ export default {
         this.receipt = {
           taskId: this.dlg.taskId, courseName: this.dlg.courseName, status: res.data.status,
           title: action === 'return' ? '成绩已退回任课教师' : '成绩任务已归档',
-          projectedText: '未产生新的正式成绩投影'
+          projectedText: '未产生新的正式成绩汇总'
         }
         this.dlg.visible = false
         toast.success('已处理')
         this.load()
       } else toast.error(res.message || '操作失败')
     },
-    scanStatusLabel(status) { return ({ NOT_STARTED: '本次未启动', SUCCEEDED: '已完成', FAILED: '刷新失败', PENDING: '等待扫描', RUNNING: '正在扫描', RETRY: '等待恢复', NOT_RECORDED: '没有持久化记录', UNKNOWN: '状态未知' })[status] || '状态未知' },
+    scanStatusLabel(status) { return ({ NOT_STARTED: '本次未启动', SUCCEEDED: '已完成', FAILED: '刷新失败', PENDING: '等待扫描', RUNNING: '正在扫描', RETRY: '等待恢复', NOT_RECORDED: '没有保存记录', UNKNOWN: '状态未知' })[status] || '状态未知' },
     showUnconfirmedReceipt(row) {
       this.receipt = { ...buildGradePublishReceipt(null), action: 'publish', taskId: row.gradeTaskId, courseName: row.courseName,
         status: null, projectedText: '正式成绩条数与不及格人数待核对', checking: false, observedText: '',
@@ -250,7 +250,7 @@ export default {
         if (sameEffect) {
           receipt.warningRefresh = gradeWarningEffectState(effect.data)
           receipt.warningScanJobId = effect.data.warningScanJobId || null
-          receipt.nextStep = '以上为持久化扫描任务的当前状态；扫描完成不代表已通知或已处置，不要重复发布成绩。'
+          receipt.nextStep = '以上为已保存的扫描任务的当前状态；扫描完成不代表已通知或已处置，不要重复发布成绩。'
         }
         receipt.observedText = `当前任务状态：${this.statusLabel(status)}。${receipt.primary === 'UNKNOWN' && !receipt.observingOnly ? '这是当前正式状态，不能据此认定上次发布请求成功。' : ''}${sameEffect ? '' : '扫描任务状态暂时无法读取，请稍后查询。'}`
       } catch {

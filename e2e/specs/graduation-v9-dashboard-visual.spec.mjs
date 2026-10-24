@@ -108,7 +108,7 @@ test.describe.serial('V9.2 U1 Dashboard Gold evidence', () => {
     await expect(page.locator('.gdb-kpis .gdb-kpi')).toHaveCount(5)
     await expect(page.locator('.gdb-todos')).toBeVisible()
     await expectProjectedWorkItems(page, todayWorkItems)
-    await expect(page.locator('body')).not.toContainText(/正在加载毕业设计中心|真实接口不可用|权限上下文加载失败/)
+    await expect(page.locator('body')).not.toContainText(/正在加载毕业设计中心|暂时无法连接，请稍后重试|权限上下文加载失败/)
 
     const firstPageSection = await page.locator('.gdb-page > section').first().getAttribute('class')
     expect(firstPageSection).toContain('gdb-overview')

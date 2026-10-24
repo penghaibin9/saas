@@ -477,7 +477,7 @@ def ensure_completion(body, user=None):
     """学校端分配课程；课程升级时复用唯一完成记录并重置为未开始。"""
     b = body or {}
     if not b.get("internshipId") or not b.get("courseId"):
-        raise AppException("VALIDATION_ERROR", "internshipId 与 courseId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择实习记录和课程")
     with session() as db:
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
         record = assert_internship_record_scope(db, b["internshipId"], user, "创建安全教育记录", lock=True)

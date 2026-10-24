@@ -3,7 +3,7 @@
     title="谈话转介与回访"
     subtitle="转介、回访与关闭"
     role-name="心理老师 / 授权辅导员"
-    data-scope-name="PSY_STUDENT 逐生授权范围"
+    data-scope-name="心理逐生授权范围"
     watermark-purpose="心理转介回访处理"
   >
     <template #actions>

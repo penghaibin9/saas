@@ -301,7 +301,7 @@ def create_task(body: Any, user: dict) -> dict:
     planned_at = _parse_datetime(payload.get("plannedAt"), field="计划检查时间")
     client_request_id = _text(payload.get("clientRequestId")) or None
     if client_request_id and not 8 <= len(client_request_id) <= 100:
-        raise AppException("VALIDATION_ERROR", "clientRequestId 长度须为8-100")
+        raise AppException("VALIDATION_ERROR", "请求标识长度须为 8-100")
     actor_id = _actor_user_id(user)
     checker_id_raw = _text(payload.get("checkerUserId"))
     checker_id = int(checker_id_raw) if checker_id_raw.isdigit() else actor_id
@@ -337,7 +337,7 @@ def create_task(body: Any, user: dict) -> dict:
                     or existing.template_key != template["key"] or int(existing.template_version or 0) != template["version"]
                     or list(existing.floor_scope_json or []) != floors
                 ):
-                    raise AppException("IDEMPOTENCY_CONFLICT", "同一 clientRequestId 已用于不同检查任务")
+                    raise AppException("IDEMPOTENCY_CONFLICT", "该请求标识已用于不同的检查任务")
                 return _task_row(existing, building=building)
         task = DormCheckTask(
             tenant_id=_tid(), task_name=task_name, building_id=building_id,
@@ -406,9 +406,9 @@ def _normalize_file_ids(raw: Any, *, required: bool = False, label: str = "照�
     elif isinstance(raw, list):
         values = list(dict.fromkeys(_text(value) for value in raw if _text(value)))
     else:
-        raise AppException("VALIDATION_ERROR", "fileIds 必须是数组")
+        raise AppException("VALIDATION_ERROR", "文件列表格式不正确")
     if len(values) > 9 or any(not value.isdigit() for value in values):
-        raise AppException("VALIDATION_ERROR", "fileIds 最多9个且必须是数字文件ID")
+        raise AppException("VALIDATION_ERROR", "文件最多 9 个且必须是有效的文件编号")
     if required and not values:
         raise AppException("VALIDATION_ERROR", f"{label}必填")
     return values
@@ -422,7 +422,7 @@ def _normalize_item_results(template: dict, raw: Any, *, legacy_allowed: bool, r
         return ([{"itemCode": "LEGACY_RESULT", "status": "PASS" if result_hint == "NORMAL" else "FAIL",
                   "score": None, "note": "兼容旧端提交"}], result_hint, Decimal("100") if result_hint == "NORMAL" else Decimal("0"), severity)
     if not isinstance(raw, list):
-        raise AppException("VALIDATION_ERROR", "itemResults 必须是数组")
+        raise AppException("VALIDATION_ERROR", "检查项结果格式不正确")
     definitions = {item["code"]: item for item in template["items"]}
     normalized = []
     seen = set()
@@ -619,7 +619,7 @@ def submit_record(task_id: int, body: Any, user: dict) -> dict:
     room_id = int(room_raw)
     client_request_id = _text(payload.get("clientRequestId")) or None
     if client_request_id and not 8 <= len(client_request_id) <= 100:
-        raise AppException("VALIDATION_ERROR", "clientRequestId 长度须为8-100")
+        raise AppException("VALIDATION_ERROR", "请求标识长度须为 8-100")
     actor_id = _actor_user_id(user)
     with session() as db:
         from app.models import (CsDormException, DormCheckRecord, DormCheckTask,
@@ -647,7 +647,7 @@ def submit_record(task_id: int, body: Any, user: dict) -> dict:
             ).with_for_update()).first()
             if existing:
                 if int(existing.room_id or 0) != room_id:
-                    raise AppException("IDEMPOTENCY_CONFLICT", "同一 clientRequestId 已用于其他房间")
+                    raise AppException("IDEMPOTENCY_CONFLICT", "该请求标识已用于其他房间")
                 return _record_row(db, existing)
         snapshot = task.template_snapshot_json or {}
         template = {
@@ -935,7 +935,7 @@ def submit_rectification(rectification_id: int, body: Any, user: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "整改说明需5-1000字")
     request_id = _text(payload.get("clientRequestId"))
     if not 8 <= len(request_id) <= 100:
-        raise AppException("VALIDATION_ERROR", "clientRequestId 长度须为8-100")
+        raise AppException("VALIDATION_ERROR", "请求标识长度须为 8-100")
     file_ids = _normalize_file_ids(payload.get("fileIds"), required=True, label="整改照片证据")
     digest = hashlib.sha256(json.dumps({"note": note, "fileIds": sorted(file_ids)}, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
     from app.models import DormRectification, DormRoom, StudentProfile
@@ -950,7 +950,7 @@ def submit_rectification(rectification_id: int, body: Any, user: dict) -> dict:
         student_actor = _assert_rect_access(db, rect, user, staff_permission="studentAffairs.dorm.inspection.manage")
         if rect.last_client_request_id == request_id:
             if rect.last_submission_hash != digest:
-                raise AppException("IDEMPOTENCY_CONFLICT", "同一 clientRequestId 的整改内容发生变化")
+                raise AppException("IDEMPOTENCY_CONFLICT", "同一请求标识的整改内容发生变化")
             return _rect_row(db, rect, user=user)
         reused = db.scalars(select(DormRectification).where(
             DormRectification.tenant_id == _tid(),
@@ -959,7 +959,7 @@ def submit_rectification(rectification_id: int, body: Any, user: dict) -> dict:
             DormRectification.is_deleted.is_(False),
         )).first()
         if reused:
-            raise AppException("IDEMPOTENCY_CONFLICT", "clientRequestId 已用于其他整改记录")
+            raise AppException("IDEMPOTENCY_CONFLICT", "该请求标识已用于其他整改记录")
         if rect.status not in {"OPEN", "RECTIFYING"}:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该整改当前不可提交")
         expected = payload.get("expectedVersion")

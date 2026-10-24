@@ -43,7 +43,7 @@ def teacher_gc_review(gid: str, body: dict = Body(...), user=Depends(get_current
     comment = str(body.get("comment") or body.get("reason") or "").strip()
     expected_version = body.get("expectedVersion")
     if expected_version is None:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必填")
+        raise AppException("VALIDATION_ERROR", "版本信息必填")
     if action in ("REJECT", "RETURN") and len(comment) < 5:
         raise AppException("VALIDATION_ERROR", "驳回/退回原因不少于 5 个字")
     if action == "APPROVE":

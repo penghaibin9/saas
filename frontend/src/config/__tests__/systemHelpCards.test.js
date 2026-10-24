@@ -48,5 +48,4 @@ test('critical system help terms are searchable from nested content', () => {
   assert.match(buildHelpSearchText(accessCard), /判定链/)
   assert.match(buildHelpSearchText(accessCard), /数据范围/)
   assert.match(buildHelpSearchText(exceptionCard), /学籍主档 id/i)
-  assert.match(buildHelpSearchText(exceptionCard), /高风险权限动作/)
 })

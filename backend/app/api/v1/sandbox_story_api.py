@@ -76,7 +76,7 @@ def reset_sandbox_compat(tenant_id: int, user=Depends(platform_api.require_platf
         elif mode == PROFILE_LEGACY:
             out = reset_sandbox(db, dry_run=False)
             out["profileBeforeReset"] = profile
-            message = "开发沙箱已按 legacy-100 基线恢复"
+            message = "开发沙箱已按基线恢复"
             action = "PLATFORM_SANDBOX_LEGACY_RESET"
         else:
             raise AppException(

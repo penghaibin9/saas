@@ -23,7 +23,7 @@
         <div class="mp-grid-2">
           <section class="mp-card">
             <header class="mp-card__head">
-              <span class="mp-card__title">租户品牌项（tenantBrandConfig）</span>
+              <span class="mp-card__title">学校品牌项</span>
               <span class="mp-note">{{ brand.editableNote }}</span>
             </header>
             <div class="mp-card__body">

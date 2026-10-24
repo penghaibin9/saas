@@ -34,7 +34,7 @@ def _require_teacher(user: dict | None):
     """移动教师端统一白名单；空类型、未知类型、学生、家长和平台身份全部拒绝。"""
     u = user or {}
     if not is_teacher_user(u):
-        raise AppException("NO_PERMISSION", "该接口仅学校教职工移动端可用", http_status=403)
+        raise AppException("NO_PERMISSION", "该功能仅学校教职工移动端可用", http_status=403)
     return u
 
 
@@ -70,9 +70,9 @@ def _parse_class_id(value) -> int | None:
     try:
         parsed = int(value)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "classId 必须为正整数", http_status=400)
+        raise AppException("VALIDATION_ERROR", "班级必须为正整数", http_status=400)
     if parsed <= 0:
-        raise AppException("VALIDATION_ERROR", "classId 必须为正整数", http_status=400)
+        raise AppException("VALIDATION_ERROR", "班级必须为正整数", http_status=400)
     return parsed
 
 

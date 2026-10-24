@@ -330,7 +330,7 @@ def execute_cleanup_preview(
             raise AppException("CLEANUP_PREVIEW_INVALID", "清理预演不存在", http_status=409)
         payload = dict(row.payload_json or {})
         if payload.get("consumedAt") or row.status == "CONSUMED":
-            raise AppException("CLEANUP_PREVIEW_CONSUMED", "清理预演已使用，禁止重放", http_status=409)
+            raise AppException("CLEANUP_PREVIEW_CONSUMED", "清理预演已使用，不能重复执行", http_status=409)
         expires = datetime.fromisoformat(str(payload.get("expiresAt")))
         if expires <= now:
             raise AppException("CLEANUP_PREVIEW_EXPIRED", "清理预演已过期，请重新预演", http_status=409)

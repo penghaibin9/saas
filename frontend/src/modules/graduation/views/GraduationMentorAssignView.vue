@@ -4,7 +4,7 @@
     :title="form.mode === 'change' ? '调整指导教师' : '分配指导教师'"
     :subtitle="student ? `${student.name}（${student.studentNo}）· ${student.className || '班级待确认'}` : '正在读取学生主档'"
     eyebrow="批次实施 · 指导关系"
-    purpose="为当前学生建立一条真实、可追溯的导师分配关系；导师资格、容量和数据范围仍由服务端最终校验。"
+    purpose="为当前学生建立一条真实、可追溯的导师分配关系；导师资格、容量和数据范围仍由系统最终校验。"
     :status-text="submitting ? '保存中' : (form.mode === 'change' ? '待调整' : '待分配')"
     status-tone="warning"
     :back-to="backTo"
@@ -52,7 +52,7 @@
               :disabled="submitting"
               placeholder="按姓名 / 工号搜索已认证且未满员导师"
             />
-            <p class="ie-hint">可见候选不代表可以绕过服务端容量、停用状态、跨学院或数据范围规则。</p>
+            <p class="ie-hint">能看到候选人，不代表可以绕过系统对容量、停用状态、跨学院或数据范围的限制。</p>
           </div>
           <label class="ie-fld ie-fld--full">
             <span class="ie-lbl">{{ form.mode === 'change' ? '调整原因' : '分配说明' }} <i v-if="form.mode === 'change'">*</i></span>
@@ -84,8 +84,8 @@
       <section class="gma-aside-card is-next">
         <span>保存后的真实流转</span>
         <ol>
-          <li>服务端校验导师资格、容量和学生范围</li>
-          <li>建立新的 ACTIVE 分配记录</li>
+          <li>系统校验导师资格、容量和学生范围</li>
+          <li>建立新的有效分配记录</li>
           <li>重新读取学生档案确认指导教师</li>
           <li>返回原导师分配队列继续处理</li>
         </ol>
@@ -247,10 +247,10 @@ export default {
         const expectedMentorName = String(response.data?.mentorName || '')
         const latest = await gdStudentApi.getStudentDetail(target.studentId)
         if (latest.code !== 0 || !latest.data?.advisorName || (expectedMentorName && latest.data.advisorName !== expectedMentorName)) {
-          this.formError = '分配命令已返回，但学生档案尚未回读到目标导师；请返回台账刷新核对，勿重复提交。'
+          this.formError = '分配已提交，但学生档案尚未读到目标导师；请返回台账刷新核对，勿重复提交。'
           return
         }
-        toast.success('导师关系已保存，服务器学生档案已回读')
+        toast.success('导师关系已保存，已重新读取学生档案')
         this.$router.push(target.backTo)
       } catch (error) {
         this.formError = error?.message || '导师关系保存失败，请稍后重试'

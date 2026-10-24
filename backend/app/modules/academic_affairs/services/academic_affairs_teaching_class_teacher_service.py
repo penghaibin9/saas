@@ -51,7 +51,7 @@ def _teacher(db, teacher_key: str):
 
     key = str(teacher_key or "").strip()
     if not key:
-        raise AppException("VALIDATION_ERROR", "teacherKey 必填")
+        raise AppException("VALIDATION_ERROR", "请选择教师")
     row = None
     if key.startswith("u_") and key[2:].isdigit():
         candidate = db.get(User, int(key[2:]))
@@ -342,7 +342,7 @@ def create_relation(user, teaching_class_id: int, *, teacher_key: str, role_type
     reason_text = _reason(reason)
     role = str(role_type or "CO_TEACHER").upper()
     if role not in _ROLE_TYPES:
-        raise AppException("VALIDATION_ERROR", "roleType 仅支持 PRIMARY/CO_TEACHER")
+        raise AppException("VALIDATION_ERROR", "教师角色仅支持“主讲”或“协同”")
     with session() as db:
         teaching_class, task, term = _locked_class_and_task(db, user, teaching_class_id)
         guard_term_writable(db, int(teaching_class.term_id))

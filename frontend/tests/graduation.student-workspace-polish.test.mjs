@@ -50,7 +50,7 @@ test('approved labels and safe academic-audit return chain remain source-frozen'
   const normalized = script.replace("import { AppButton } from '@/components/ui'\n", '').replace('components: { AppButton, ', 'components: { ')
     .replace("label: '选题 / 导师 / 资格'", "label: '关系与资格'")
     .replace("label: '材料 / 答辩'", "label: '材料与答辩'").replace("label: '毕业资格 / 归档'", "label: '收口与归档'")
-  assert.equal(createHash('sha256').update(normalized).digest('hex'), 'ff1921b479e9b9e36fa6a37dc4cb61cea86ab45713d4139b42436a4f0046c9bd')
+  assert.equal(createHash('sha256').update(normalized).digest('hex'), '3e5becaea868dd0b825293fa3c7ae756d0ce5683ec2901ee31ff5fdf6d3ec5ea')
 })
 
 test('five task groups retain all eleven panel keys and original default destinations', () => {

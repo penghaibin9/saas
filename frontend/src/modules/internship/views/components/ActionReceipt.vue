@@ -11,7 +11,7 @@
       </div>
       <dl class="acr__facts">
         <div><dt>对象编号</dt><dd>{{ receipt.id || '—' }}</dd></div>
-        <div><dt>服务端版本</dt><dd>{{ receipt.version == null ? '—' : '第 ' + receipt.version + ' 版' }}</dd></div>
+        <div><dt>系统版本</dt><dd>{{ receipt.version == null ? '—' : '第 ' + receipt.version + ' 版' }}</dd></div>
         <div><dt>审计结果</dt><dd>{{ receipt.auditText || '动作与业务更新已提交' }}</dd></div>
         <div><dt>下一步</dt><dd>{{ receipt.nextStep || '可继续处理下一条' }}</dd></div>
       </dl>

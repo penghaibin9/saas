@@ -1,7 +1,7 @@
 <template>
   <AppPageShell
     title="资助发放台账"
-    subtitle="全量资助申请只读台账，按项目类型 / 状态筛选。金额按当前角色脱敏由后端裁定。"
+    subtitle="全部资助申请只读台账，按项目类型 / 状态筛选。金额按当前角色脱敏显示。"
     role-name="学工处 / 资助老师"
     data-scope-name="资助范围（辅导员限本班）"
     watermark-purpose="资助台账查看"

@@ -62,7 +62,7 @@ class NonePresenceProvider(DormPresenceProvider):
         return {"healthStatus": "DISABLED", "lastSyncAt": None}
 
     def normalize_event(self, raw: dict) -> dict:
-        raise AppException("PROVIDER_DISABLED", "门禁 Provider 未配置")
+        raise AppException("PROVIDER_DISABLED", "门禁服务未配置")
 
 
 class DatabasePresenceProvider(DormPresenceProvider):
@@ -108,9 +108,9 @@ class DatabasePresenceProvider(DormPresenceProvider):
             try:
                 event_time = datetime.fromisoformat(event_time.replace("Z", "+00:00"))
             except ValueError as exc:
-                raise AppException("VALIDATION_ERROR", "eventTime 格式非法") from exc
+                raise AppException("VALIDATION_ERROR", "事件时间格式不正确") from exc
         if not isinstance(event_time, datetime):
-            raise AppException("VALIDATION_ERROR", "eventTime 必填")
+            raise AppException("VALIDATION_ERROR", "请填写事件时间")
         event_time = to_utc_naive(event_time)
         return {
             "provider": self.code, "provider_event_id": provider_event_id,

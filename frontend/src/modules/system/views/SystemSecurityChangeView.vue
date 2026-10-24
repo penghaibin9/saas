@@ -12,10 +12,10 @@
       <template v-else>
         <section class="mp-card sc-hero">
           <div>
-            <span class="sc-hero__label">当前安全版本号</span>
+            <span class="sc-hero__label">当前安全版本</span>
             <strong class="sc-hero__value">{{ currentRevision }}</strong>
             <p class="sc-hero__hint">
-              每次激活或回滚都会让它 +1。版本号只进不退——回滚也产生新版本，
+              每次激活或回滚都会让它加 1。版本号只进不退——回滚也会产生新版本，
               这样任何时刻都能解释清楚"当时到底是什么状态"。
             </p>
           </div>
@@ -229,7 +229,7 @@ const ACTION_TIP = {
   APPROVED: '批准同样不改变权限——只有激活才生效。',
   REJECTED: '驳回后可退回草稿继续修改。',
   SCHEDULED: '排期后到点自动激活；生效前权限保持原样。',
-  ACTIVATED: '激活会在同一个事务里应用全部改动并产生新的安全版本号；失败则整体回滚，不会改一半。',
+  ACTIVATED: '激活会在同一个事务里应用全部改动并产生新的安全版本；失败则整体回滚，不会改一半。',
   ROLLED_BACK: '回滚按激活时保存的快照还原，并产生一个新的版本号（而不是把版本号退回去）。',
   DRAFT: '退回草稿以便继续调整改动内容。'
 }

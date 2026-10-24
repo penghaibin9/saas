@@ -2,7 +2,7 @@
   <section class="ops-workspace" aria-label="商业售后与持续治理">
     <header class="ops-head">
       <div><span class="eyebrow">CUSTOMER SUCCESS GOVERNANCE</span><h3>售后、SLA 与实际服务成本</h3><p>工单继续使用现有客户成功中心；这里只汇总退款后授权复核、SLA 观察、培训/续费/交付信号和真实成本。</p></div>
-      <button :disabled="loading||!tenantId" @click="loadAll">刷新治理事实</button>
+      <button :disabled="loading||!tenantId" @click="loadAll">刷新治理数据</button>
     </header>
     <div v-if="!tenantId" class="empty">先选择学校。</div>
     <template v-else>
@@ -12,12 +12,12 @@
         <article :class="{warn:overview.openRefundAfterSalesTickets}"><strong>{{ overview.openRefundAfterSalesTickets }}</strong><span>退款售后工单处理中</span></article>
         <article><strong>{{ overview.scheduledTrainings }}</strong><span>待执行培训</span></article>
         <article><strong>{{ overview.openRenewalTasks }}</strong><span>续费跟进中</span></article>
-        <article><strong>{{ overview.moduleDeliveryAcceptanceFacts }}</strong><span>模块交付验收事实</span></article>
+        <article><strong>{{ overview.moduleDeliveryAcceptanceFacts }}</strong><span>模块交付验收情况</span></article>
       </div>
 
       <section class="panel sla-panel">
         <div class="section-head">
-          <div><h4>商业 SLA 政策</h4><p>只有合同或正式服务政策明确后才填写。P0–P3 四级目标必须全部明确；系统不会补默认小时数。</p></div>
+          <div><h4>商业 SLA 政策</h4><p>只有合同或正式服务政策明确后才填写。四级目标必须全部明确；系统不会补默认小时数。</p></div>
           <span v-if="slaEditor?.effective?.configured" class="policy-badge">当前生效：{{ slaEditor.effective.version }} · {{ slaEditor.effective.source==='TENANT'?'学校覆盖':'平台默认' }}</span>
           <span v-else class="policy-badge muted">当前未评估</span>
         </div>
@@ -49,7 +49,7 @@
 
       <section class="panel cost-panel">
         <div class="section-head"><div><h4>登记实际服务成本</h4><p>只登记已实际发生的支持、交付、培训、退款手续费等成本；不同币种永不自动换算或合计。</p></div></div>
-        <div v-if="costPending" class="pending"><strong>上次成本登记结果仍需核对</strong><p>原请求与幂等键已保留，请重试原请求。</p><button class="primary" :disabled="savingCost||!canManage" @click="submitCost">重试原请求</button></div>
+        <div v-if="costPending" class="pending"><strong>上次成本登记结果仍需核对</strong><p>原请求已保留，请重试原请求。</p><button class="primary" :disabled="savingCost||!canManage" @click="submitCost">重试原请求</button></div>
         <fieldset :disabled="savingCost||locked||!canManage||!!costPending">
           <div class="form-grid"><label>成本类型<select v-model="costForm.costType"><option value="">请选择</option><option value="SUPPORT">支持</option><option value="DELIVERY">交付</option><option value="TRAINING">培训</option><option value="REFUND_FEE">退款手续费</option><option value="OTHER">其他</option></select></label><label>金额<input v-model.trim="costForm.amount" inputmode="decimal" placeholder="0.00"></label><label>币种<input v-model.trim="costForm.currency" maxlength="3" placeholder="如 CNY"></label><label>发生时间（北京时间）<input v-model="costForm.occurredAt" type="datetime-local" step="1"></label></div>
           <div class="form-grid refs"><label>关联售后工单<select v-model="costForm.afterSalesLink" @change="useAfterSales"><option value="">不从退款售后工单带入</option><option v-for="row in afterSales" :key="row.linkId" :value="row.linkId">工单 #{{ row.supportTicketId }} · 退款 #{{ row.refundCaseId }}</option></select></label><label>订单 ID<input v-model.trim="costForm.orderId" inputmode="numeric" placeholder="至少关联订单/退款/工单一个对象"></label><label>退款记录 ID<input v-model.trim="costForm.refundCaseId" inputmode="numeric"></label><label>工单 ID<input v-model.trim="costForm.supportTicketId" inputmode="numeric"></label></div>
@@ -60,7 +60,7 @@
         <div class="table-scroll"><table><thead><tr><th>发生时间</th><th>类型</th><th>金额</th><th>关联</th><th>凭据 / 说明</th></tr></thead><tbody><tr v-for="row in costs" :key="row.costId"><td>{{ showTime(row.occurredAt) }}</td><td>{{ costTypeLabel(row.costType) }}</td><td>{{ row.currency }} {{ row.amount }}</td><td>订单 {{ row.orderId||'—' }}<small>退款 {{ row.refundCaseId||'—' }} · 工单 {{ row.supportTicketId||'—' }}</small></td><td>{{ row.externalRef||'—' }}<small>{{ row.note||'' }}</small></td></tr><tr v-if="!costs.length&&!loading"><td colspan="5">暂无实际服务成本记录。</td></tr></tbody></table></div>
         <div class="pager"><button :disabled="costPage===1||loading" @click="loadCosts(costPage-1)">上一页</button><span>共 {{ costTotal }} 条</span><button :disabled="costPage*20>=costTotal||loading" @click="loadCosts(costPage+1)">下一页</button></div>
       </section>
-      <p v-if="!canManage" class="notice">当前职责没有 order.manage，只能查看售后与成本事实。</p>
+      <p v-if="!canManage" class="notice">当前职责只能查看售后与成本情况。</p>
     </template>
   </section>
 </template>

@@ -55,7 +55,6 @@ test('D3-U pending-effective detail shows approval complete without reopening re
   assert.match(html, /终审已通过，当前学籍尚未改变/)
   assert.doesNotMatch(html, /通过本节点|退回补充|驳回申请|本异动已正式生效/)
   const source = await readFile(detailUrl, 'utf8')
-  assert.match(source, /路径顺序不代表历史节点已全部审核通过/)
 
   const pending = await detailState({ ...baseChange, status: 'APPROVED_PENDING_EFFECTIVE', effectiveDate: '2099-09-01T00:00:00' })
   assert.deepEqual(pending.flowNodes.map((_, index) => pending.nodeStateText(index)), pending.flowNodes.map(() => '流程已结束·节点供参考'))

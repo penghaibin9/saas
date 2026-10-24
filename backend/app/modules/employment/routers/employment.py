@@ -67,7 +67,7 @@ def student_create(body: StudentCreate,
     payload = body.model_dump()
     with _idem(user, "employment-student-create", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已新增（幂等重放）")
+            return success(guard.cached, message="已新增（重复提交，未重复处理）")
         result = svc.create_student(payload, user=user)
         guard.success(result)
         return success(result, message="已新增")
@@ -80,7 +80,7 @@ def student_update(sid: str, body: StudentUpdate,
     payload = {"sid": sid, **body.model_dump()}
     with _idem(user, "employment-student-update", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已保存（幂等重放）")
+            return success(guard.cached, message="已保存（重复提交，未重复保存）")
         result = svc.update_student(sid, body.model_dump(), user=user)
         guard.success(result)
         return success(result, message="已保存")
@@ -93,7 +93,7 @@ def student_void(sid: str, body: ReasonBody,
     payload = {"sid": sid, "reason": body.reason}
     with _idem(user, "employment-student-void", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已作废（幂等重放）")
+            return success(guard.cached, message="已作废（重复提交，未重复处理）")
         result = svc.void_student(sid, body.reason, user=user)
         guard.success(result)
         return success(result, message="已作废")
@@ -106,7 +106,7 @@ def mark_destination(body: MarkDestBody,
     payload = body.model_dump()
     with _idem(user, "employment-mark-destination", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已标记（幂等重放）")
+            return success(guard.cached, message="已标记（重复提交，未重复处理）")
         result = svc.batch_mark_destination(body.ids, body.destinationType, user=user)
         guard.success(result)
         return success(result, message="已标记")
@@ -129,7 +129,7 @@ def destination_verification_review(sid: str, body: DestinationVerifyBody,
                "expectedVersion": body.expectedVersion}
     with _idem(user, "employment-destination-verification", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已处理（幂等重放）")
+            return success(guard.cached, message="已处理（重复提交，未重复处理）")
         result = svc.review_destination_verification(sid, payload, user=user)
         guard.success(result)
         return success(result, message="去向已核验" if body.action == "VERIFY" else "已退回补正")
@@ -157,7 +157,7 @@ def material_approve(mid: str, body: CommentBody = CommentBody(),
     payload = {"mid": mid, "comment": body.comment or ""}
     with _idem(user, "employment-material-approve", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已通过（幂等重放）")
+            return success(guard.cached, message="已通过（重复提交，未重复处理）")
         result = material_runtime.approve_material(mid, body.comment, user=user)
         guard.success(result)
         return success(result, message="已通过")
@@ -170,7 +170,7 @@ def material_return(mid: str, body: ReasonBody,
     payload = {"mid": mid, "reason": body.reason}
     with _idem(user, "employment-material-return", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已退回（幂等重放）")
+            return success(guard.cached, message="已退回（重复提交，未重复处理）")
         result = svc.return_material(mid, body.reason, user=user)
         guard.success(result)
         return success(result, message="已退回")
@@ -194,7 +194,7 @@ def unemployed_employed(body: IdsBody,
     payload = body.model_dump()
     with _idem(user, "employment-mark-employed", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已标记（幂等重放）")
+            return success(guard.cached, message="已标记（重复提交，未重复处理）")
         result = svc.mark_employed(body.ids, user=user)
         guard.success(result)
         return success(result, message="已标记")
@@ -207,7 +207,7 @@ def unemployed_key_help(body: IdsBody,
     payload = body.model_dump()
     with _idem(user, "employment-mark-key-help", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已标记（幂等重放）")
+            return success(guard.cached, message="已标记（重复提交，未重复处理）")
         result = svc.mark_key_help(body.ids, user=user)
         guard.success(result)
         return success(result, message="已标记")
@@ -220,7 +220,7 @@ def unemployed_assign(body: AssignTeacherBody,
     payload = body.model_dump()
     with _idem(user, "employment-assign-teacher", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已分配（幂等重放）")
+            return success(guard.cached, message="已分配（重复提交，未重复处理）")
         result = svc.assign_teacher(body.ids, body.teacher, user=user)
         guard.success(result)
         return success(result, message="已分配")
@@ -242,7 +242,7 @@ def followup_create(body: FollowUpCreate,
     payload = body.model_dump()
     with _idem(user, "employment-followup-create", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已记录（幂等重放）")
+            return success(guard.cached, message="已记录（重复提交，未重复处理）")
         result = svc.create_followup(payload, user=user)
         guard.success(result)
         return success(result, message="已记录")
@@ -255,7 +255,7 @@ def followup_void(fid: str, body: ReasonBody,
     payload = {"fid": fid, "reason": body.reason}
     with _idem(user, "employment-followup-void", idempotency_key, payload) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="已作废（幂等重放）")
+            return success(guard.cached, message="已作废（重复提交，未重复处理）")
         result = svc.void_followup(fid, body.reason, user=user)
         guard.success(result)
         return success(result, message="已作废")

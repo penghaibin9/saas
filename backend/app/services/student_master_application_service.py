@@ -687,7 +687,7 @@ def update_identity_in_session(
 
     expected = cmd.expected_version
     if expected is None:
-        raise AppException(ERR_VALIDATION, "缺少 expectedVersion，无法安全更新（并发保护）")
+        raise AppException(ERR_VALIDATION, "缺少数据版本，无法安全更新（并发保护）")
     current_version = int(s.version or 0)
     if int(expected) != current_version:
         raise AppException(

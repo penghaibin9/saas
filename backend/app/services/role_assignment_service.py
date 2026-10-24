@@ -318,7 +318,7 @@ def batch_grant_assignments(user_ids: list[Any], role_code: str, *, reason: str,
     for raw in user_ids or []:
         value = str(raw or "").strip()
         if not value.isdigit() or int(value) <= 0:
-            raise AppException("VALIDATION_ERROR", "userIds 必须全部是有效账号主键")
+            raise AppException("VALIDATION_ERROR", "账号必须全部有效")
         uid = int(value)
         if uid not in normalized_ids:
             normalized_ids.append(uid)
@@ -444,7 +444,7 @@ def _require_expected_version(expected_version: int | None, *, operation: str) -
     try:
         return int(expected_version)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", f"{operation}的 expectedVersion 必须为整数", http_status=422) from None
+        raise AppException("VALIDATION_ERROR", f"{operation}的数据版本必须为整数", http_status=422) from None
 
 
 def _revoke_assignment_in_db(

@@ -217,7 +217,7 @@ def grant_exemption(body, user=None):
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "豁免原因不少于 5 字")
     if not payload.get("checkCode") or not payload.get("internshipId"):
-        raise AppException("VALIDATION_ERROR", "缺少 internshipId/checkCode")
+        raise AppException("VALIDATION_ERROR", "缺少实习记录或检查项")
     if not payload.get("validUntil"):
         raise AppException("VALIDATION_ERROR", "豁免必须设置有效期")
     ids = _file_ids(payload.get("evidenceFileIds") or payload.get("fileIds"))

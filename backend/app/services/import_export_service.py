@@ -155,7 +155,7 @@ def create_students_export(purpose: str, user: dict | None = None) -> dict:
             db.close()
     else:
         target.unlink(missing_ok=True)
-        raise AppException("SERVER_ERROR", "学生导出必须启用MySQL数据库")
+        raise AppException("SERVER_ERROR", "学生导出必须启用数据库")
     return task
 
 

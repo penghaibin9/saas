@@ -8,7 +8,7 @@
   >
     <div class="mp-stack">
       <AaOperationReceipt :receipt="receipt" />
-      <AppButton v-if="pending" :disabled="submitting || loading" @click="queryPending">查询原审核结果（不会重提）</AppButton>
+      <AppButton v-if="pending" :disabled="submitting || loading" @click="queryPending">查询原审核结果（不会重复提交）</AppButton>
       <AaTeachingTaskObjectBar
         v-if="primaryRow"
         :name="`${primaryRow.teacherName || primaryRow.teacherKey || '教师'} · ${primaryRow.categoryLabel || '工作量申报'}`"
@@ -62,7 +62,7 @@
       <AaObjectContext :name="approveTarget?.teacherName" :identity="`申报 #${approveTarget?.declarationId} · ${approveTarget?.termCode || '学期未提供'}`" :status="statusLabel(approveTarget?.status)" />
       <p>{{ approveTarget?.categoryLabel }} · {{ approveTarget?.hours }} 课时</p>
       <p>{{ approveTarget?.description || '未提供申报说明' }}</p>
-      <p class="aa-note-sm">当前接口未提供关联教学任务与名单版本证据。通过仅表示申报审核状态，不代表正式授课关系、名单或薪酬核算已验证。</p>
+      <p class="aa-note-sm">当前未提供关联的教学任务与名单版本依据。通过仅表示申报的审核状态，不代表正式授课关系、名单或薪酬核算已验证。</p>
     </AppConfirmDialog>
   </ModulePageShell>
 </template>
@@ -97,7 +97,7 @@ export default {
       loading: true, error: '', status: '', termCode: '', rows: [], rejecting: null, rejectNote: '', submitting: false,
       revision: 0, lifecycle: 0, receipt: null, approveTarget: null, pending: null, invalid: false, pagination: { page: 1, pageSize: 20, total: 0 },
       workloadSteps: [
-        { label: '正式事实', note: '按真实状态解锁' },
+        { label: '正式记录', note: '按真实状态解锁' },
         { label: '范围与学期', note: '按真实状态解锁' },
         { label: '统计口径', note: '按真实状态解锁' },
         { label: '明细下钻', note: '按真实状态解锁' },
@@ -192,7 +192,7 @@ export default {
       const confirmed = Boolean(pending.acknowledged && matches && commandMatches)
       await this.load()
       if (!current() || pending !== this.pending || this.error) return
-      this.receipt = { object: pending.redacted ? `申报 #${pending.row.declarationId} · 原办理信息已清除` : `申报 #${pending.row.declarationId} · ${pending.row.teacherName || pending.row.teacherKey} · ${pending.row.termCode || '学期未提供'}`, status: confirmed ? this.statusLabel(row.status) : '结果待确认', pending: !confirmed, time: confirmed ? row.reviewedAt : undefined, next: confirmed ? '正式审核状态已回读；统计按正式学期与授课关系核算。' : '原审核尚未确认。当前记录不能证明本次办理结果，只查询不重提，请联系教务核对。' }
+      this.receipt = { object: pending.redacted ? `申报 #${pending.row.declarationId} · 原办理信息已清除` : `申报 #${pending.row.declarationId} · ${pending.row.teacherName || pending.row.teacherKey} · ${pending.row.termCode || '学期未提供'}`, status: confirmed ? this.statusLabel(row.status) : '结果待确认', pending: !confirmed, time: confirmed ? row.reviewedAt : undefined, next: confirmed ? '正式审核状态已重新读取；统计按正式学期与授课关系核算。' : '原审核尚未确认。当前记录不能证明本次办理结果，只查询不重提，请联系教务核对。' }
       if (confirmed) { this.pending = null; this.approveTarget = null; this.rejecting = null; this.rejectNote = '' }
     },
     async queryPending() {
@@ -252,7 +252,7 @@ export default {
         this.pending = this.pending ? { row: { declarationId: this.pending.row.declarationId }, acknowledged: false, redacted: true } : null
         this.revision++; this.loading = false; this.rows = []; this.pagination.total = 0; this.rejecting = null; this.approveTarget = null; this.rejectNote = ''; this.receipt = null
       }
-      else { this.invalid = true; this.receipt = { status: isConflictResult(result) ? '事实已变化，保留输入' : '结果需重新核对', pending: true, next: '重新读取申报台账并重新打开确认；不会自动重提。' } }
+      else { this.invalid = true; this.receipt = { status: isConflictResult(result) ? '数据已变化，保留输入' : '结果需重新核对', pending: true, next: '重新读取申报台账并重新打开确认；不会自动重提。' } }
     }
   }
 }

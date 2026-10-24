@@ -80,7 +80,7 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
     await expect(page.getByText('批阅', { exact: false }).first()).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText('中期', { exact: false }).first()).toBeVisible()
     await expect(page.getByText('成绩', { exact: false }).first()).toBeVisible()
-    await expect(page.locator('body')).not.toContainText(/真实接口不可用|网络不稳定，开发演示数据/)
+    await expect(page.locator('body')).not.toContainText(/暂时无法连接，请稍后重试|网络不稳定，开发演示数据/)
 
     const guideMasks = dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle])
     await capture(page, testInfo, 'gd-U8-teacher-workbench-B', 390, 844, guideMasks, visualErrors)
@@ -93,7 +93,7 @@ test.describe.serial('V9.2 U8 · teacher miniapp graduation Gold evidence', () =
     expect(taskbookBatchId, 'guide/taskbook must use the same selected batch').toBe(guideBatchId)
     await expect(page.getByText('毕设任务书', { exact: true })).toBeVisible({ timeout: 10_000 })
     await expect(page.getByText(/任务书列表/).first()).toBeVisible()
-    await expect(page.locator('body')).not.toContainText(/真实接口不可用|网络不稳定，开发演示数据/)
+    await expect(page.locator('body')).not.toContainText(/暂时无法连接，请稍后重试|网络不稳定，开发演示数据/)
 
     const taskbookMasks = dynamicTextMasks(page, [fixture.runId, fixture.batchName, fixture.topicTitle])
     await capture(page, testInfo, 'gd-U8-taskbook-B', 390, 844, taskbookMasks, visualErrors)

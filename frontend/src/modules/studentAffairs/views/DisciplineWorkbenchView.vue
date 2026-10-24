@@ -80,7 +80,7 @@
             <div><dt>文号</dt><dd>{{ selected.docNo || '—' }}</dd></div>
             <div><dt>生效时间</dt><dd><AppDateDisplay :value="selected.effectiveAt" mode="datetime" empty-text="—" /></dd></div>
             <div><dt>解除时间</dt><dd><AppDateDisplay :value="selected.removedAt" mode="datetime" empty-text="—" /></dd></div>
-            <div class="dp-kv--full"><dt>违纪事实</dt><dd>{{ selected.reason || '—' }}</dd></div>
+            <div class="dp-kv--full"><dt>违纪情况</dt><dd>{{ selected.reason || '—' }}</dd></div>
           </dl>
 
           <section v-if="postEffectState" class="dp-post-effect">
@@ -93,7 +93,7 @@
             <dl>
               <div><dt>案件 ID</dt><dd>{{ selected.caseId || '—' }}</dd></div>
               <div><dt>学生 ID</dt><dd>{{ selected.studentId || '—' }}</dd></div>
-              <div><dt>处分投影 ID</dt><dd>{{ selected.csDisciplineId || '—' }}</dd></div>
+              <div><dt>处分记录编号</dt><dd>{{ selected.csDisciplineId || '—' }}</dd></div>
               <div><dt>当前版本</dt><dd>{{ selected.version ?? '—' }}</dd></div>
             </dl>
           </details>
@@ -141,9 +141,9 @@
         <AppFormItem label="处分类型" required>
           <AppSelect v-model="registerModal.discType" :options="discTypes" :disabled="acting" />
         </AppFormItem>
-        <AppFormItem label="违纪事实（≥5字）" required>
+        <AppFormItem label="违纪情况（至少 5 字）" required>
           <AppQuickPhrases scene-key="sa.discipline.fact" @pick="onPickFact" />
-          <AppTextarea ref="factTa" v-model="registerModal.reason" :rows="3" placeholder="客观描述违纪事实，不少于 5 字" :disabled="acting" />
+          <AppTextarea ref="factTa" v-model="registerModal.reason" :rows="3" placeholder="客观描述违纪情况，不少于 5 字" :disabled="acting" />
         </AppFormItem>
         <AppFormItem label="文号">
           <AppTextInput v-model="registerModal.docNo" placeholder="选填，如「校学字〔2026〕12号」" :disabled="acting" />
@@ -334,7 +334,7 @@ export default {
       }
       this.selected = res.data
       if (this.statusMatch?.length && !this.statusMatch.includes(res.data.status)) {
-        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`
+        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新情况显示。`
       }
       await this.loadList()
     },
@@ -431,7 +431,7 @@ export default {
       const map = {
         submit: { action: 'submit', title: '提交学院初审', message: '提交后进入学院初审，登记信息不可再改。', type: 'primary', confirmText: '提交初审', requireReason: false },
         cancel: { action: 'cancel', title: '撤销登记', message: '撤销后该处分作废。', type: 'warning', confirmText: '撤销登记', requireReason: false },
-        approve: { action: 'approve', title: '审批通过', message: '通过后推进到下一审批节点，末节点将生效并投影到学生处分记录。', type: 'primary', confirmText: '审批通过', requireReason: false },
+        approve: { action: 'approve', title: '审批通过', message: '通过后推进到下一审批环节，最后一个环节将生效并写入学生处分记录。', type: 'primary', confirmText: '审批通过', requireReason: false },
         return: { action: 'return', title: '退回重登', message: '退回后回到登记，可修改后重新提交。', type: 'warning', confirmText: '退回重登', requireReason: true, reasonLabel: '退回原因（≥5字）', reasonPlaceholder: '请说明退回原因，不少于 5 字' },
         reject: { action: 'reject', title: '驳回处分', message: '驳回为终态，不予立案。', type: 'danger', confirmText: '驳回处分', requireReason: true, reasonLabel: '驳回原因（≥5字）', reasonPlaceholder: '请说明驳回原因，不少于 5 字' },
         remove: { action: 'remove', title: '发起处分解除', message: '发起解除申请，进入辅导员→学院→学工处三级解除审批。', type: 'primary', confirmText: '发起解除', requireReason: true, reasonLabel: '解除理由（≥5字）', reasonPlaceholder: '请说明解除理由，不少于 5 字' },
@@ -478,7 +478,7 @@ export default {
       const reason = (m.reason || '').trim()
       const docNo = (m.docNo || '').trim()
       if (!m.studentId) { m.error = '请选择学生'; return }
-      if (reason.length < 5) { m.error = '违纪事实不少于 5 字'; return }
+      if (reason.length < 5) { m.error = '违纪情况不少于 5 字'; return }
       const body = { studentId: String(m.studentId), discType: m.discType, reason, docNo }
       const ok = await this.runAction(() => studentAffairsApi.registerDiscipline(body), '处分已登记')
       if (ok) this.registerModal.visible = false

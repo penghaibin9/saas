@@ -93,7 +93,7 @@
           <view v-else-if="recordsState === 'loading' && !visibleRecords.length" class="sl__local-state"><text>正在读取本人正式记录…</text></view>
           <view v-if="recordsStale" class="sl__stale"><text>以下为上次已确认记录，最新状态尚未取回。</text></view>
           <AcademicPageState v-if="recordsState !== 'loading' && recordsState !== 'error' && !visibleRecords.length" state="empty"
-            :title="receipt && receipt.status === 'RESULT_UNKNOWN' ? '本次回读暂未查到记录' : '本批次暂无选课记录'" :description="receipt && receipt.status === 'RESULT_UNKNOWN' ? '本次操作仍待核实，请勿重复提交。稍后再核对本人记录。' : '这里会保留待抽签、已获名额、未中签、已退课与课程取消等正式状态。'" />
+            :title="receipt && receipt.status === 'RESULT_UNKNOWN' ? '暂未查到记录' : '本批次暂无选课记录'" :description="receipt && receipt.status === 'RESULT_UNKNOWN' ? '本次操作仍待核实，请勿重复提交。稍后再核对本人记录。' : '这里会保留待抽签、已获名额、未中签、已退课与课程取消等正式状态。'" />
           <view v-for="record in visibleRecords" :key="record.recordId || record.selectionCourseId" class="sl__record">
             <view class="sl__record-head">
               <view class="flex-1">
@@ -114,8 +114,8 @@
         </template>
 
         <view class="sl__rule-note">
-          <text class="sl__rule-title">规则校验 · 办理后回读</text>
-          <text>预检只核对当时条件，不占名额；按钮和余量也不承诺成功。写操作完成后，本页会重新读取本人正式记录。网络超时显示“结果待核实”，不会自动重放报名或退课。</text>
+          <text class="sl__rule-title">规则校验 · 办理后重新核对</text>
+          <text>预检只核对当时条件，不占名额；按钮和余量也不承诺成功。办理完成后，本页会重新读取本人正式记录。网络超时显示“结果待核实”，不会自动重复报名或退课。</text>
         </view>
       </view>
     </AcademicPageState>

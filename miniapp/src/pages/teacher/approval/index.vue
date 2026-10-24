@@ -32,7 +32,7 @@
           state="empty"
           @back="goBack"
           :title="emptyTitle"
-          :description="keyword ? '当前关键词没有匹配到真实服务端记录，可换姓名、学号或单号重试。' : emptyDescription"
+          :description="keyword ? '当前关键词没有匹配到记录，可换姓名、学号或单号重试。' : emptyDescription"
         />
         <template v-else>
           <view class="ap__chips">
@@ -128,9 +128,9 @@ export default {
     emptyTitle() { return { pending: '暂无待审批', done: '暂无已审批记录', mine: '暂无我发起的审批' }[this.sub] },
     emptyDescription() {
       return this.sub === 'pending'
-        ? '这里只展示服务端当前分配给你的真实待办。'
+        ? '这里只展示当前分配给你的待办。'
         : this.sub === 'done'
-          ? '办理完成后会进入这里，支持服务端真分页查询。'
+          ? '办理完成后会进入这里，支持分页查询。'
           : '你作为申请人发起的真实审批实例会进入这里。'
     }
   },
@@ -227,7 +227,7 @@ export default {
             const result = await actApproval(task, action, reason)
             const expectedStatus = { APPROVE: 'APPROVED', RETURN: 'RETURNED', REJECT: 'REJECTED' }[action]
             if (!result || String(result.status || '').toUpperCase() !== expectedStatus) {
-              throw { code: 'BAD_RESPONSE', message: '服务端审批结果与请求动作不一致' }
+              throw { code: 'BAD_RESPONSE', message: '审批结果与请求的操作不一致' }
             }
             toast(action === 'RETURN' ? '已退回修改，申请人可修改后重提' : action === 'REJECT' ? '已驳回终止原流程' : '审批已通过')
             // 连续工作队列：动作成功后重新读取真实第一页，下一条自然顶上来；不在本地伪造终态。
@@ -235,7 +235,7 @@ export default {
           } catch (e) {
             const err = normalizeError(e)
             if (err.kind === 'conflict') {
-              toast('该审批事实已变化，正在刷新')
+              toast('该审批情况已变化，正在刷新')
               await this.load(true)
             } else {
               toast(err.text || `${label}失败，请重试`)

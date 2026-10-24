@@ -43,7 +43,7 @@ def sign(user: dict, body: dict) -> dict:
     confirm = bool(body.get("confirm"))
     provider = _resolve_provider(body.get("provider"))
     if not biz_type:
-        raise AppException("VALIDATION_ERROR", "bizType 必填")
+        raise AppException("VALIDATION_ERROR", "请选择业务类型")
     if not content:
         raise AppException("VALIDATION_ERROR", "签署内容为空")
     if not confirm:
@@ -106,7 +106,7 @@ def print_log(user: dict, body: dict) -> dict:
     biz_id = str(body.get("bizId") or "").strip()
     doc_name = str(body.get("docName") or "").strip()
     if not biz_type:
-        raise AppException("VALIDATION_ERROR", "bizType 必填")
+        raise AppException("VALIDATION_ERROR", "请选择业务类型")
     audit_log.record("PORTAL_PRINT", f"{biz_type}:{biz_id}",
                      {"studentNo": u.get("studentNo"), "docName": doc_name})
     return {"watermark": _watermark(u), "loggedAt": _iso(datetime.utcnow())}
@@ -120,7 +120,7 @@ def export_log(user: dict, body: dict) -> dict:
     biz_id = str(body.get("bizId") or "").strip()
     doc_name = str(body.get("docName") or "").strip()
     if not biz_type:
-        raise AppException("VALIDATION_ERROR", "bizType 必填")
+        raise AppException("VALIDATION_ERROR", "请选择业务类型")
     audit_log.record("PORTAL_EXPORT", f"{biz_type}:{biz_id}",
                      {"studentNo": u.get("studentNo"), "docName": doc_name})
     return {"watermark": _watermark(u), "loggedAt": _iso(datetime.utcnow())}

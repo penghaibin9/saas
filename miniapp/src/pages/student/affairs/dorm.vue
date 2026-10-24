@@ -112,7 +112,7 @@
         <text class="dm__dialog-title">{{ cfg.hasBed ? '确认提交调宿' : '确认床位' }}</text>
         <text class="dm__dialog-line" v-if="cfg.hasBed">当前：{{ confirmDlg.current }}</text>
         <text class="dm__dialog-line">目标：{{ selectedBedLabel }}</text>
-        <text class="dm__dialog-note">{{ cfg.hasBed ? '审批完成前原床不变。' : '确认后床位将为你预留，变更须走正式调宿。' }}</text>
+        <text class="dm__dialog-note">{{ cfg.hasBed ? '审批完成前原床不变。' : '确认后将为你预留床位，变更须走正式调宿。' }}</text>
         <view class="dm__dialog-actions"><button class="dm__dialog-cancel" @click="confirmDlg.visible = false">取消</button><button class="dm__dialog-ok" @click="confirmSubmit">{{ cfg.hasBed ? '提交申请' : '确认床位' }}</button></view>
       </view>
     </view>

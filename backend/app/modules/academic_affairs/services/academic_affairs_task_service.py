@@ -713,7 +713,7 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
                 AaTeachingTask.merged_into_id.is_(None),
             ])
         if mine and formal_mine:
-            raise AppException("VALIDATION_ERROR", "mine 与 formalMine 不可同时使用")
+            raise AppException("VALIDATION_ERROR", "“我的”与“正式我的”不可同时使用")
         if formal_mine or mine:
             from . import academic_affairs_teacher_relation_authority as teacher_authority
             formal_scope = teacher_authority.relation_scope(db, user, term_id=term_id)

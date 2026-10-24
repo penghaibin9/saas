@@ -38,7 +38,7 @@ def login(body: dict) -> dict:
 def _require_guardian(user: dict | None) -> dict:
     u = user or {}
     if (u.get("userType") or "").strip().upper() != "GUARDIAN":
-        raise AppException("NO_PERMISSION", "该接口仅家长端可用")
+        raise AppException("NO_PERMISSION", "该功能仅家长端可用")
     return u
 
 

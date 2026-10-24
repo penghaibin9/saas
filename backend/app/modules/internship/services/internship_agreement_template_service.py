@@ -226,7 +226,7 @@ def enabled_options(batch_id=None, *, internship_id=None, user=None) -> list[dic
 def preview_template(template_id: str, internship_id, user=None) -> dict:
     """按真实实习记录渲染模板预览，不写协议实例、不写审计业务结果。"""
     if not internship_id:
-        raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+        raise AppException("VALIDATION_ERROR", "缺少实习记录")
     # 懒导入，避免模板配置服务与协议实例服务初始化时形成循环依赖。
     from app.modules.internship.services import internship_agreement_service as agreement_svc
     scope, in_scope = agreement_svc._scope_ctx(user)

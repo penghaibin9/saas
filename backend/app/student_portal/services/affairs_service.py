@@ -172,7 +172,7 @@ def discipline_appeal(user: dict, body: dict) -> dict:
     case_id = str(body.get("caseId") or "").strip()
     reason = str(body.get("reason") or body.get("content") or "").strip()
     if not case_id:
-        raise AppException("VALIDATION_ERROR", "处分案件（caseId）必填")
+        raise AppException("VALIDATION_ERROR", "请选择处分案件")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "申辩内容至少 5 个字")
     sid = _resolve_self_id(user)
@@ -250,7 +250,7 @@ def funding_appeal(user: dict, body: dict) -> dict:
     app_id = str(body.get("applicationId") or body.get("appId") or "").strip()
     reason = str(body.get("reason") or "").strip()
     if not app_id:
-        raise AppException("VALIDATION_ERROR", "资助申请（applicationId）必填")
+        raise AppException("VALIDATION_ERROR", "请选择资助申请")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "申诉理由至少 5 字")
     sid = _resolve_self_id(user)
@@ -303,7 +303,7 @@ def aid_objection(user: dict, body: dict) -> dict:
     apply_id = str(body.get("applyId") or body.get("applicationId") or "").strip()
     reason = str(body.get("reason") or "").strip()
     if not apply_id:
-        raise AppException("VALIDATION_ERROR", "认定申请（applyId）必填")
+        raise AppException("VALIDATION_ERROR", "请选择认定申请")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "异议理由至少 5 字")
     sid = _resolve_self_id(user)
@@ -334,7 +334,7 @@ def aid_apply(user: dict, body: dict) -> dict:
     if not str(body.get("batchId") or "").strip():
         raise AppException("VALIDATION_ERROR", "认定批次（batchId）必填")
     if not str(body.get("applyLevel") or "").strip():
-        raise AppException("VALIDATION_ERROR", "申请等级（applyLevel）必填")
+        raise AppException("VALIDATION_ERROR", "请选择申请等级")
     if not bool(body.get("confirm")):
         raise AppException("VALIDATION_ERROR", "请先阅读并勾选确认承诺书")
     sid = _resolve_self_id(user)

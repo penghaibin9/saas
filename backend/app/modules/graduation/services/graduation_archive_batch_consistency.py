@@ -17,7 +17,7 @@ from app.services.db_service import session
 def _archive_no(value) -> str:
     text = str(value or f"GDARCH-{datetime.now(timezone.utc):%Y%m%d}").strip().upper()
     if not re.fullmatch(r"[A-Z0-9][A-Z0-9_-]{2,99}", text):
-        raise AppException("VALIDATION_ERROR", "archiveBatchNo 格式不正确")
+        raise AppException("VALIDATION_ERROR", "归档批次号格式不正确")
     return text
 
 

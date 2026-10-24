@@ -45,7 +45,7 @@ def enqueue_frozen_package(db, *, manifest_id: int, profile_code: str = STANDARD
     tenant_id = _tid()
     profile = str(profile_code or "").strip().upper()
     if profile != STANDARD_PROFILE_V1:
-        raise AppException("PACKAGE_PROFILE_UNSUPPORTED", "仅支持 STANDARD_V1 冻结包规范", http_status=422)
+        raise AppException("PACKAGE_PROFILE_UNSUPPORTED", "仅支持标准冻结包规范", http_status=422)
     manifest = db.scalars(select(ArchiveManifest).where(
         ArchiveManifest.tenant_id == tenant_id,
         ArchiveManifest.id == int(manifest_id),

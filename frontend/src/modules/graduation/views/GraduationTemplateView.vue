@@ -13,7 +13,7 @@
       <div>
         <span>当前工作区</span>
         <strong>{{ typeLabel }} · {{ currentStatusLabel }}</strong>
-        <small>共 {{ pagination.total }} 条；归档模板永久只读，启停与默认唯一性由服务端状态机校验。</small>
+        <small>共 \1 条；归档模板永久只读，启停与默认模板的唯一性由系统校验。</small>
       </div>
       <div class="gt-command__facts">
         <span><b>{{ rows.length }}</b> 当前页</span>
@@ -322,7 +322,7 @@ export default {
       this.confirm = {
         visible: true,
         title: '设为默认',
-        message: `将「${row.name}」设为${this.typeLabel}默认模板？原默认由服务端自动取消。`,
+        message: `将「${row.name}」设为${this.typeLabel}默认模板？原默认模板将自动取消。`,
         type: 'primary',
         confirmText: '设默认',
         action: 'DEFAULT',
@@ -349,7 +349,7 @@ export default {
           ? await graduationTemplateApi.setDefault(snapshot.rowId)
           : await graduationTemplateApi.setStatus(snapshot.rowId, snapshot.action)
         if (res.code === 0) {
-          toast.success('操作成功，已回读模板台账')
+          toast.success('操作成功，已刷新模板台账')
           this.confirm.visible = false
           await this.load()
         } else {

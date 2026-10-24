@@ -134,7 +134,7 @@ function reconcilePersistentCommands() {
       receipt.value = academicReceipt({ title: `原缓考申请${applying ? '' : '重新'}提交已通过正式记录确认`, object: formal.courseName || formal.examName || '原考试', status: deferStatusText(formal.status), operatedAt: formal.updatedAt || formal.createdAt || formal.submittedAt, next: '请继续在申请记录中跟踪学校受理结果。' })
     } else {
       receiptTone.value = 'waiting'
-      receipt.value = academicReceipt({ title: '原缓考申请结果待确认', object: formal?.courseName || formal?.examName || '原考试', status: reference.ackId ? (confirmed ? '正式记录已读到，但本地待确认引用未能安全清理' : formal ? '原申请仍待重新提交确认' : '尚未读取到原回执对应的本人记录') : '原提交未取得服务端回执编号', next: '本页只会刷新本人正式记录，不会自动再次提交。' })
+      receipt.value = academicReceipt({ title: '原缓考申请结果待确认', object: formal?.courseName || formal?.examName || '原考试', status: reference.ackId ? (confirmed ? '正式记录已读到，但本地待确认引用未能安全清理' : formal ? '原申请仍待重新提交确认' : '尚未读取到原回执对应的本人记录') : '原提交未取得回执编号', next: '本页只会刷新本人正式记录，不会自动再次提交。' })
     }
   }
   uncertainKeys.value = guard.pendingCommands().filter((item) => ['APPLY_DEFER', 'RESUBMIT_DEFER'].includes(item.action)).map((item) => `${item.action === 'APPLY_DEFER' ? 'apply' : 'resubmit'}:${item.objectId}`)
@@ -279,7 +279,7 @@ async function handleActionError(e, command, action, persistent) {
   const kind = studentAcademicWriteErrorKind(e)
   if (!['network', 'forbidden', 'conflict'].includes(kind)) guard.completePersistentCommand(persistent)
   if (kind === 'network' || kind === 'conflict') uncertainKeys.value = [...new Set([...uncertainKeys.value, command.key])]
-  if (kind === 'network' || kind === 'conflict') { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'network' ? `${action}结果待确认` : '考试事实已变化', object: command.object, status: '待服务器记录确认', next: academicErrorMessage(e, '请重新核对。') }); await load() }
+  if (kind === 'network' || kind === 'conflict') { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'network' ? `${action}结果待确认` : '考试情况已变化', object: command.object, status: '待服务器记录确认', next: academicErrorMessage(e, '请重新核对。') }); await load() }
   else ui.notify(academicErrorMessage(e, `${action}失败`))
 }
 

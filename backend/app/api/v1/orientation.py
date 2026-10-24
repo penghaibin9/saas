@@ -97,7 +97,7 @@ def payments(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200)
 @router.put("/payments/{sid}", summary="同步/人工核验缴费事实（CAS）")
 def payment_sync(sid: str, body: PaymentSyncBody, user=Depends(require_staff)):
     from app.services.orientation_qualification_service import sync_payment
-    return success(sync_payment(sid, body.model_dump(), user=user), message="缴费事实已更新")
+    return success(sync_payment(sid, body.model_dump(), user=user), message="缴费情况已更新")
 
 
 @router.get("/green-channels", summary="绿色通道列表")

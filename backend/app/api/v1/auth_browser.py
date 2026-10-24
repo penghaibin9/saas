@@ -168,7 +168,7 @@ def _sessionize_payload(
     refresh_token = str(data.get("refreshToken") or "")
     access_token = str(data.get("accessToken") or "")
     if not refresh_token or not access_token:
-        raise unauthorized("刷新令牌签发失败，请重新登录")
+        raise unauthorized("登录凭证签发失败，请重新登录")
     try:
         access_claims = decode_token(access_token)
     except AppException:
@@ -177,7 +177,7 @@ def _sessionize_payload(
         return payload
     claims = consume_refresh(refresh_token)
     if not claims:
-        raise unauthorized("刷新令牌签发失败，请重新登录")
+        raise unauthorized("登录凭证签发失败，请重新登录")
     tab_id = _require_browser_session_id(browser_session_id)
     channel = _normalize_channel(browser_channel)
     sid = str(session_id or claims.get("authSessionId") or secrets.token_urlsafe(24))
@@ -203,7 +203,7 @@ def _extract_refresh(
     refresh_token = str(data.pop("refreshToken", "") or "")
     access_token = str(data.get("accessToken") or "")
     if not refresh_token or not access_token:
-        raise unauthorized("刷新令牌签发失败，请重新登录")
+        raise unauthorized("登录凭证签发失败，请重新登录")
     channel = _normalize_channel(expected_channel)
     tab_id = _require_browser_session_id(browser_session_id)
     if _channel_from_access_token(access_token) != channel:

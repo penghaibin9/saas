@@ -5,7 +5,7 @@ export const tenantBrandConfig = {
 }
 
 export const currentRole = { userId: '', userName: '', roleCode: '', roleName: '实习管理员' }
-export const dataScope = { scopeCode: '', scopeName: '按服务端授权范围' }
+export const dataScope = { scopeCode: '', scopeName: '按授权范围' }
 
 const deny = (reason) => ({ visible: true, allowed: false, reason })
 const allow = { visible: true, allowed: true, reason: '' }
@@ -92,10 +92,10 @@ export const ACTION_DENY_REASONS = {
 export const statusOptions = {
   internshipStatus: ['PREPARING:准备中', 'READY:待上岗', 'ONBOARD:在岗中', 'ASSESSING:考核中', 'ARCHIVED:已归档'],
   riskLevel: ['LOW:低风险', 'MEDIUM:中风险', 'HIGH:高风险'],
-  exceptionType: ['OUT_OF_RANGE:超范围', 'LOW_ACCURACY:定位精度不足', 'LOCATION_UNCERTAIN:围栏边界待核实', 'MOCK_LOCATION:疑似定位异常', 'MISSING:缺卡'],
-  reportStatus: ['PENDING_REVIEW:待批阅', 'APPROVED:已通过', 'RETURNED:已退回', 'OVERDUE:逾期未交'],
+  exceptionType: ['超范围', '定位精度不足', '围栏边界待核实', '疑似定位异常', 'MISSING:缺卡'],
+  reportStatus: ['待批阅', 'APPROVED:已通过', 'RETURNED:已退回', 'OVERDUE:逾期未交'],
   coopStatus: ['PENDING:待审核', 'ACTIVE:合作中', 'REJECTED:已驳回', 'SUSPENDED:已暂停', 'BLACKLIST:黑名单', 'ARCHIVED:已归档'],
-  enterpriseSource: ['SELF_BUILT:自建', 'SCHOOL_ENTERPRISE:校企合作', 'STUDENT_SELF:学生自主', 'RECOMMENDED:推荐'],
+  enterpriseSource: ['自建', '校企合作', '学生自主', 'RECOMMENDED:推荐'],
   enterpriseIndustry: ['软件:软件', '智能制造:智能制造', '电子商务:电子商务', '现代物流:现代物流'],
   batchStatus: ['DRAFT:草稿', 'RUNNING:进行中', 'CLOSED:已结束', 'ARCHIVED:已归档', 'VOIDED:已作废']
 }

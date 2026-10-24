@@ -353,7 +353,7 @@ test.describe.serial('V6 · formal archive generation, filing and ARCHIVED readb
     await page.goto(url.toString())
     await dismissGraduationGuide(page)
 
-    await expect(page.locator('body')).not.toContainText(/真实接口不可用|权限上下文加载失败/)
+    await expect(page.locator('body')).not.toContainText(/暂时无法连接，请稍后重试|权限上下文加载失败/)
     await expect(page.getByRole('button', { name: '批量生成提交', exact: true })).toBeVisible()
     await expect(page.getByRole('button', { name: '一键核验备案', exact: true })).toBeVisible()
 

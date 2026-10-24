@@ -3,7 +3,7 @@
     title="心理关注与处置"
     subtitle="关注、回访与危机升级"
     role-name="心理老师 / 授权辅导员 / 学工处(专项授权)"
-    data-scope-name="PSY_STUDENT 逐生授权范围"
+    data-scope-name="心理逐生授权范围"
     watermark-purpose="心理关注名单查看"
   >
     <template #actions>
@@ -253,11 +253,11 @@ export default {
       try {
         const res = await studentAffairsApi.getMentalReferral(row.referralId, reason.trim())
         if (res.data.noteMasked) {
-          this.revDlg.error = '您对该生的心理明细无查看授权（需 PSY_STUDENT 专项授权），仅可见摘要。本次查看请求已留痕。'
+          this.revDlg.error = '您对该生的心理明细没有查看授权（需要心理专项授权），仅可看到摘要。本次查看请求已留痕。'
         } else {
           Object.assign(row, res.data)
           this.revDlg.visible = false
-          toast.success('已展开心理明细，查看原因已写入安全审计（SENSITIVE_VIEW）。')
+          toast.success('已展开心理明细，查看原因已写入安全审计。')
         }
       } catch (e) {
         this.revDlg.error = e.message || '查看明细失败'

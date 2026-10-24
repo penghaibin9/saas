@@ -231,7 +231,7 @@ def scan_frozen_manifest_page(
                     FROZEN_MANIFEST_ITEM_DRIFT,
                     manifest,
                     item=item,
-                    message="清单固定的文件大小或摘要与 FileObject 投影不一致",
+                    message="清单固定的文件大小或摘要与文件记录不一致",
                 ))
                 continue
             storage_key = str(file_obj.object_key or file_obj.file_key)

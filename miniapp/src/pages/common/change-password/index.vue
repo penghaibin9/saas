@@ -3,11 +3,11 @@
     <MobileNavBar variant="default" title="修改密码" :show-back="!forced" />
     <view class="page-pad">
       <MobileInlineAlert v-if="isDemo" type="warning" title="当前账号不支持修改密码"
-        description="当前登录不是学校真实数据库账号。请退出后使用学校正式账号密码登录。" />
+        description="当前登录不是学校正式账号。请退出后使用学校正式账号密码登录。" />
 
       <template v-else>
         <MobileInlineAlert v-if="forced" type="warning" title="首次登录必须先修改初始密码"
-          description="完成改密前，服务端不会开放任何业务操作；修改成功后需要使用新密码重新登录。" />
+          description="完成改密前，系统不会开放任何业务操作；修改成功后需要使用新密码重新登录。" />
         <view class="card stack-sm">
           <view class="cp__field">
             <text class="cp__label">原密码</text>

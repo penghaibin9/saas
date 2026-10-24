@@ -97,7 +97,7 @@ test('未选班保持全院合同，选班仅发送原样字符串，冲突保�
   await state.doGenerate()
   assert.equal(writes[1].classId, '9007199254740993')
   assert.equal(state.gen.classId, '9007199254740993')
-  assert.equal(state.receipt.status, '事实已变化，保留输入')
+  assert.equal(state.receipt.status, '数据已变化，保留输入')
 })
 
 test('仅真实单院范围且正式分页确认唯一学院时回填，不从不完整候选猜归属', async () => {

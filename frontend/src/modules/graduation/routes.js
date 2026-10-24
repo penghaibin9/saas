@@ -128,7 +128,7 @@ const graduationRoutes = {
         const route = panel === 'review' ? 'graduation-review-tasks' : panel === 'grade' ? 'graduation-grade-ledger' : panel === 'defense' ? 'graduation-defense-scoring' : 'graduation-plagiarism-ledger'
         return { name: route, query: { ...to.query, panel: undefined } }
       },
-      meta: { moduleCode: 'GRADUATION', title: '答辩与成绩兼容入口', requiresAuth: true, permissionKey: 'graduationDesign.dashboard.view' }
+      meta: { moduleCode: 'GRADUATION', title: '答辩与成绩入口', requiresAuth: true, permissionKey: 'graduationDesign.dashboard.view' }
     },
     { path: 'plagiarism-ledger', name: 'graduation-plagiarism-ledger', component: () => import('@/modules/graduation/views/GraduationDefenseGradeView.vue'), meta: { moduleCode: 'GRADUATION', title: '查重台账', defaultPanel: 'plagiarism', requiresAuth: true, permissionKey: 'graduationDesign.plagiarism.view' } },
     { path: 'material-rules', name: 'graduation-material-rules', component: () => import('@/modules/graduation/views/GraduationMaterialRuleView.vue'), meta: { moduleCode: 'GRADUATION', title: '材料规则', requiresAuth: true, permissionKey: 'graduationDesign.student.manage' } },

@@ -21,7 +21,7 @@
     </section>
 
     <div v-if="drawer.visible" class="rd-mask" @click.self="closeDrawer"><section class="sp-card rd-dialog" role="dialog" aria-modal="true" aria-labelledby="rd-form-title">
-      <header><div><strong id="rd-form-title">{{ drawer.item ? '补正减免或临补申请' : '申请减免或临时补助' }}</strong><span>困难事实、金额和证明材料须相互对应</span></div><button type="button" aria-label="关闭" @click="closeDrawer">×</button></header>
+      <header><div><strong id="rd-form-title">{{ drawer.item ? '补正减免或临补申请' : '申请减免或临时补助' }}</strong><span>困难情况、金额和证明材料须相互对应</span></div><button type="button" aria-label="关闭" @click="closeDrawer">×</button></header>
       <div class="rd-form">
         <label><span>申请类型</span><select v-model="form.itemType" class="sp-inp" :disabled="!!busy" @change="form.reasonCategory='OTHER'"><option value="REDUCTION">学费减免</option><option value="TEMP_AID">临时困难补助</option></select></label>
         <label><span>申请学年</span><input v-model.trim="form.yearCode" class="sp-inp" maxlength="9" placeholder="2026-2027" :disabled="!!busy" /></label>

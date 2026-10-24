@@ -44,11 +44,11 @@ def _audit(action: str, resource: str, detail: dict | None = None, *, tenant_id:
 def _expected_version(body: dict, *, operation: str) -> int:
     value = body.get("expectedVersion")
     if value is None:
-        raise AppException("VALIDATION_ERROR", f"{operation}必须提供 expectedVersion")
+        raise AppException("VALIDATION_ERROR", f"{operation}必须提供数据版本")
     try:
         return int(value)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", f"{operation}的 expectedVersion 必须为整数") from None
+        raise AppException("VALIDATION_ERROR", f"{operation}的数据版本必须为整数") from None
 
 
 # ── §二 总览 ──
@@ -188,10 +188,10 @@ def tenant_quota(tenant_id: int, body: dict = Body(...), user=Depends(require_pl
 @router.post("/tenants/{tenant_id}/reset-demo-data", summary="重置演示数据（仅 demo-school）")
 def tenant_reset_demo(tenant_id: int, user=Depends(require_platform_super_admin)):
     if tenant_id != svc.DEMO_TID:
-        raise AppException("NO_PERMISSION", "仅演示租户 demo-school 支持重置演示数据")
+        raise AppException("NO_PERMISSION", "仅演示学校支持重置演示数据")
     out = svc.reset_demo_data()
     _audit("PLATFORM_DEMO_RESET", str(tenant_id), out, tenant_id=tenant_id)
-    return success(out, message="演示数据已重置为基线（5 名学生）")
+    return success(out, message="演示数据已重置为初始状态（5 名学生）")
 
 
 @router.post("/tenants/{tenant_id}/reset-sandbox-data", summary="恢复真实演示沙箱")
@@ -240,9 +240,9 @@ def packages(user=Depends(require_platform_super_admin)):
 def package_update(package_code: str, body: dict = Body(...),
                    user=Depends(require_platform_super_admin)):
     if package_code not in D.DEFAULT_PACKAGES:
-        raise AppException("VALIDATION_ERROR", "packageCode 不存在")
+        raise AppException("VALIDATION_ERROR", "套餐不存在")
     if body.get("expectedVersion") is None or len(str(body.get("reason") or "").strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "套餐变更必须提供 expectedVersion 和至少5个字符的原因")
+        raise AppException("VALIDATION_ERROR", "套餐变更必须提供数据版本和至少 5 个字符的原因")
     cur = svc.get_package(package_code)
     allow = {"packageName", "price", "durationDays", "maxStudents", "maxUsers",
              "storageLimitMb", "features", "enabled", "remark"}
@@ -324,13 +324,13 @@ def workflow_put(tenant_id: int, workflow_code: str, body: dict = Body(...),
                  user=Depends(require_platform_super_admin)):
     svc.get_tenant(tenant_id)
     if workflow_code not in D.DEFAULT_WORKFLOWS:
-        raise AppException("VALIDATION_ERROR", "workflowCode 不存在")
+        raise AppException("VALIDATION_ERROR", "流程不存在")
     allow = {"enabled", "needApproval", "approverRoleCodes", "ccRoleCodes", "timeoutHours",
              "allowTransfer", "allowReject", "allowWithdraw"}
     patch = {k: v for k, v in body.items() if k in allow}
     if "timeoutHours" in patch and (not isinstance(patch["timeoutHours"], int)
                                     or not 1 <= patch["timeoutHours"] <= 720):
-        raise AppException("VALIDATION_ERROR", "timeoutHours 需在 1~720 之间")
+        raise AppException("VALIDATION_ERROR", "超时小时数需在 1~720 之间")
     cur = svc.get_config_json(tenant_id, "WORKFLOWS") or {}
     cur.setdefault(workflow_code, {}).update(patch)
     svc.put_config_json(tenant_id, "WORKFLOWS", "-", cur)
@@ -355,7 +355,7 @@ def dicts_get(tenantId: Optional[int] = Query(default=None),
 @router.put("/dictionaries/{dict_code}", summary="修改字典（tenantId=0 全平台默认，否则租户覆盖）")
 def dicts_put(dict_code: str, body: dict = Body(...), user=Depends(require_platform_super_admin)):
     if dict_code not in D.DEFAULT_DICTIONARIES:
-        raise AppException("VALIDATION_ERROR", "dictCode 不存在")
+        raise AppException("VALIDATION_ERROR", "字典不存在")
     items = body.get("items")
     if not isinstance(items, list) or not items:
         raise AppException("VALIDATION_ERROR", "items 必须是非空数组")
@@ -409,7 +409,7 @@ def users_create(tenant_id: int, body: dict = Body(...), user=Depends(require_pl
     login_name = str(body.get("loginName") or "").strip()
     real_name = str(body.get("realName") or "").strip()
     if not login_name or not real_name:
-        raise AppException("VALIDATION_ERROR", "loginName / realName 必填")
+        raise AppException("VALIDATION_ERROR", "登录名和姓名必填")
     out = svc.create_school_admin(tenant_id, login_name, real_name)
     # 审计不落初始密码
     _audit("PLATFORM_USER_CREATE", f"{tenant_id}:{login_name}",
@@ -1057,7 +1057,7 @@ def support_tickets_create(body: dict = Body(...), user=Depends(require_platform
     from app.services import customer_health_service as cs
     tenant_id = body.get("tenantId")
     if not tenant_id:
-        raise AppException("VALIDATION_ERROR", "必须指定 tenantId")
+        raise AppException("VALIDATION_ERROR", "必须指定学校")
     out = cs.create_ticket(tenant_id=int(tenant_id), title=body.get("title") or "",
                            description=body.get("description") or "",
                            severity=body.get("severity") or "P2",
@@ -1093,11 +1093,11 @@ def trainings_create(body: dict = Body(...), user=Depends(require_platform_super
     tenant_id = body.get("tenantId")
     scheduled_at = body.get("scheduledAt")
     if not tenant_id or not scheduled_at:
-        raise AppException("VALIDATION_ERROR", "必须指定 tenantId 与 scheduledAt")
+        raise AppException("VALIDATION_ERROR", "必须指定学校和计划时间")
     try:
         scheduled_dt = _dt.fromisoformat(str(scheduled_at))
     except ValueError:
-        raise AppException("VALIDATION_ERROR", "scheduledAt 必须是 ISO8601 时间") from None
+        raise AppException("VALIDATION_ERROR", "计划时间必须是有效的日期时间") from None
     out = cs.create_training(tenant_id=int(tenant_id), topic=body.get("topic") or "",
                              scheduled_at=scheduled_dt, trainer_name=body.get("trainerName") or "")
     _audit("PLATFORM_TRAINING_CREATE", out["id"], out, tenant_id=int(tenant_id))
@@ -1132,11 +1132,11 @@ def renewal_tasks_create(body: dict = Body(...), user=Depends(require_platform_s
     tenant_id = body.get("tenantId")
     due_at = body.get("dueAt")
     if not tenant_id or not due_at:
-        raise AppException("VALIDATION_ERROR", "必须指定 tenantId 与 dueAt")
+        raise AppException("VALIDATION_ERROR", "必须指定学校和截止时间")
     try:
         due_dt = _dt.fromisoformat(str(due_at))
     except ValueError:
-        raise AppException("VALIDATION_ERROR", "dueAt 必须是 ISO8601 时间") from None
+        raise AppException("VALIDATION_ERROR", "截止时间必须是有效的日期时间") from None
     out = cs.create_renewal_task(tenant_id=int(tenant_id), due_at=due_dt,
                                  owner_name=body.get("ownerName") or "", note=body.get("note") or "")
     _audit("PLATFORM_RENEWAL_TASK_CREATE", out["id"], out, tenant_id=int(tenant_id))
@@ -1214,7 +1214,7 @@ def problems_link_fix(problem_id: int, body: dict = Body(...),
     from app.services import problem_management_service as prob
     change_id = body.get("changeId")
     if not change_id:
-        raise AppException("VALIDATION_ERROR", "必须指定 changeId")
+        raise AppException("VALIDATION_ERROR", "必须指定变更记录")
     out = prob.link_permanent_fix(problem_id, change_id=int(change_id),
                                   expected_version=_expected_version(body, operation="链接永久修复"))
     _audit("PLATFORM_PROBLEM_PERMANENT_FIX_LINK", str(problem_id), out)

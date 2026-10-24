@@ -18,7 +18,7 @@
         <div class="pdr__health-grid">
           <span>机器备份：{{ platformStatusLabel(ov.machineHealth?.backup?.status) }}</span>
           <span>机器恢复：{{ platformStatusLabel(ov.machineHealth?.restore?.status) }}</span>
-          <span>备份新鲜度：{{ ov.machineHealth?.backupFreshnessHours ?? '—' }} 小时</span>
+          <span>备份时效：\1 小时</span>
           <span>恢复演练窗口：{{ ov.machineHealth?.restoreFreshnessDays ?? '—' }} 天</span>
         </div>
       </AppCard>

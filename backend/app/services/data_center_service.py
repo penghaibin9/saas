@@ -440,7 +440,7 @@ def _snapshot_metrics(caliber: str) -> tuple[list[dict], dict | None, list[dict]
         })
     quality = [{
         "code": "TREND_SERIES_NOT_CONFIGURED", "severity": "INFO",
-        "message": "当前报表尚未配置历史统计快照序列；趋势图不以 0 或演示数据填充。",
+        "message": "当前报表尚未配置历史统计快照序列；趋势图不会用 0 或演示数据填充。",
     }]
     return metrics, None, [{"module": x, "mode": "REALTIME_MYSQL"} for x in sources], quality
 

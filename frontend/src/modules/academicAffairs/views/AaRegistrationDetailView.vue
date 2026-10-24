@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="注册名单"
-    subtitle="先核对本批次候选与资格，再预览注册；正式记录按真实状态回读。"
+    subtitle="先核对本批次候选与资格，再预览注册；正式记录以真实状态为准。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -23,7 +23,7 @@
       <AppSectionCard title="注册记录与当前状态">
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="本批次暂无注册记录" description="资格核验与正式注册的记录在此回读，以每条记录的当前状态为准" />
+        <EmptyState v-else-if="!rows.length" title="本批次暂无注册记录" description="资格核验与正式注册的记录在此显示，以每条记录的当前状态为准" />
         <DataTable
           v-else
           :columns="columns"

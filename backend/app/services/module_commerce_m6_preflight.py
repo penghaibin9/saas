@@ -48,7 +48,7 @@ _SHARED_FOUNDATION_PRESERVE = (
 
 def _require_db() -> None:
     if not db_enabled():
-        raise AppException("SERVER_ERROR", "M6只读销毁预演需要数据库", http_status=500)
+        raise AppException("SERVER_ERROR", "只读销毁预演需要数据库", http_status=500)
 
 
 def _digest(value: object) -> str:

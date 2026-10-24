@@ -61,7 +61,7 @@ def _formal_room_print(db, user, room_id: int, *, lock_room: bool = False) -> di
 
     snapshot = get_consumer_snapshot(db, "EXAM_COURSE", int(course.id))
     if not snapshot:
-        _conflict("考试课程缺少冻结名单证据，禁止生成正式打印件", examCourseId=str(course.id))
+        _conflict("考试课程缺少锁定名单依据，禁止生成正式打印件", examCourseId=str(course.id))
 
     seats = db.query(AaExamRoomStudent).filter(
         AaExamRoomStudent.tenant_id == _tid(),

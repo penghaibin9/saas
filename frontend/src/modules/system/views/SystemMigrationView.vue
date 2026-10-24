@@ -15,7 +15,7 @@
       <section class="mp-card">
         <header class="mp-card__head">
           <span class="mp-card__title">迁移域（按依赖顺序执行）</span>
-          <span class="mp-note">灰色域表示前置依赖未完成；确认只提交统一 jobId 与服务器任务版本</span>
+          <span class="mp-note">灰色域表示前置依赖未完成；确认只提交统一的任务编号与任务版本</span>
         </header>
         <div class="mp-card__body smv-domains">
           <div

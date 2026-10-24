@@ -403,7 +403,7 @@ workload_stats._workload_formal_source_reconciliation = True
 def workload_detail(user, teacher_key, college_id=None, page=1, page_size=20, term_id=None):
     """单教师授课任务明细，同时给出当前正式课次来源状态。"""
     if not str(teacher_key or "").strip():
-        raise AppException("VALIDATION_ERROR", "teacherKey 必填")
+        raise AppException("VALIDATION_ERROR", "请选择教师")
     page_no, size = _page_values(page, page_size)
     from app.models import AaTeachingTask
 

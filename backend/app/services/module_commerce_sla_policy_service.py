@@ -27,13 +27,13 @@ def _require_db() -> None:
 
 def _expected(value) -> int:
     if isinstance(value, bool):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是非负整数", http_status=422)
+        raise AppException("VALIDATION_ERROR", "数据版本必须是非负整数", http_status=422)
     try:
         parsed = int(value)
     except (TypeError, ValueError, OverflowError):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是非负整数", http_status=422) from None
+        raise AppException("VALIDATION_ERROR", "数据版本必须是非负整数", http_status=422) from None
     if parsed < 0 or str(value).strip() != str(parsed):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是非负整数", http_status=422)
+        raise AppException("VALIDATION_ERROR", "数据版本必须是非负整数", http_status=422)
     return parsed
 
 
@@ -47,10 +47,10 @@ def _reason(value) -> str:
 def _payload(body: dict) -> dict:
     version = str(body.get("policyVersion") or body.get("version") or "").strip()
     if not 3 <= len(version) <= 64:
-        raise AppException("VALIDATION_ERROR", "policyVersion 长度必须为3~64字符", http_status=422)
+        raise AppException("VALIDATION_ERROR", "政策版本长度必须为 3~64 字符", http_status=422)
     raw = body.get("targetsHours")
     if not isinstance(raw, dict):
-        raise AppException("VALIDATION_ERROR", "targetsHours 必须完整提供 P0/P1/P2/P3", http_status=422)
+        raise AppException("VALIDATION_ERROR", "各级响应时限必须完整提供 P0/P1/P2/P3", http_status=422)
     targets = {}
     for severity in _SEVERITIES:
         if severity not in raw:

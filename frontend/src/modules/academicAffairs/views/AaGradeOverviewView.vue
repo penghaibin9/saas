@@ -19,7 +19,7 @@
         <AppButton variant="ghost" @click="clearTaskFilters">清除筛选</AppButton>
       </form>
       <section class="aa-overview-summary" aria-label="当前成绩任务范围">
-        <article><small>当前查询</small><strong>{{ tasksLoading || taskError ? '—' : taskTotal }}</strong><span>服务端分页任务总数</span></article>
+        <article><small>当前查询</small><strong>{{ tasksLoading || taskError ? '—' : taskTotal }}</strong><span>系统分页统计的任务总数</span></article>
         <article><small>本页已发布 / 归档</small><strong>{{ tasksLoading || taskError ? '—' : taskSummary.finished }}</strong><span>以正式任务状态为准</span></article>
         <article><small>本页可办理</small><strong>{{ tasksLoading || taskError ? '—' : taskSummary.actionable }}</strong><span>按当前身份允许动作</span></article>
         <article><small>本页来源待核对</small><strong>{{ tasksLoading || taskError ? '—' : taskSummary.unresolved }}</strong><span>课程或任课关系未就绪</span></article>

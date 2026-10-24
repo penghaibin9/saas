@@ -25,7 +25,7 @@ test('only enabled vacant beds open ordinary check-in; reserved and occupied bed
   view.openBedAction({ bedId: '1', bedNo: '1', status: 'LOCKED' })
   assert.equal(view.inDlg.visible, false)
   assert.equal(view.bedDlg.visible, true)
-  assert.equal(view.bedStatusLabel('LOCKED'), '预留 / 锁定')
+  assert.equal(view.bedStatusLabel('LOCKED'), '已已预留 / 锁定')
   view.openBedAction({ bedId: '2', bedNo: '2', status: 'VACANT' })
   assert.equal(view.inDlg.bedId, '2')
   assert.equal(view.inDlg.visible, true)

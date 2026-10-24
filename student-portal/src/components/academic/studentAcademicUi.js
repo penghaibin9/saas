@@ -12,7 +12,7 @@ export function academicErrorKind(error) {
 export function academicErrorMessage(error, fallback = '读取失败，请稍后重试') {
   const kind = academicErrorKind(error)
   if (kind === 'forbidden') return '当前账号已无权查看这项本人教务数据，页面已清除先前内容。'
-  if (kind === 'conflict') return `${error?.message || '业务事实已变化'}；已保留当前填写内容，请重新核对最新状态后办理。`
+  if (kind === 'conflict') return `${error?.message || '业务情况已变化'}；已保留当前填写内容，请重新核对最新状态后办理。`
   if (kind === 'network') return '网络连接失败，未把本次结果当作“暂无数据”。请恢复网络后重新核对。'
   return error?.message || fallback
 }

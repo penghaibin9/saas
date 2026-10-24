@@ -513,7 +513,7 @@ def _compute(user, body) -> dict:
     data = body or {}
     internship_id = data.get("internshipId") or data.get("internId")
     if not internship_id:
-        raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+        raise AppException("VALIDATION_ERROR", "缺少实习记录")
     direct = [
         field for field in _LEGACY_DIRECT_FIELDS
         if data.get(field) not in (None, "")
@@ -534,7 +534,7 @@ def _compute(user, body) -> dict:
         if not evidence_file_ids:
             raise AppException("VALIDATION_ERROR", "人工调分必须绑定依据文件")
         if not _score._user_id(user):
-            raise AppException("VALIDATION_ERROR", "人工调分缺少稳定操作人 userId")
+            raise AppException("VALIDATION_ERROR", "人工调分缺少操作人信息")
     elif evidence_file_ids:
         raise AppException("VALIDATION_ERROR", "未发生人工调分时不得提交调分依据文件")
 
@@ -743,7 +743,7 @@ def _publish(user, score_id, expected_version=None) -> dict:
         snapshot = _latest_snapshot(db, score.id)
         if not snapshot:
             raise AppException(
-                "DATA_CONFLICT", "成绩缺少正式过程事实快照，请重新核算",
+                "DATA_CONFLICT", "成绩缺少正式过程记录，请重新核算",
             )
         detail = snapshot.detail_json or {}
         current_facts = _fact_snapshot(db, record)
@@ -840,11 +840,11 @@ def _review(user, score_id, expected_version=None) -> dict:
             raise AppException("DATA_CONFLICT", f"成绩缺项不可复核（{score.incomplete_reason}）")
         snapshot = _latest_snapshot(db, score.id)
         if not snapshot:
-            raise AppException("DATA_CONFLICT", "成绩缺少正式过程事实快照，请重新核算")
+            raise AppException("DATA_CONFLICT", "成绩缺少正式过程记录，请重新核算")
         detail = snapshot.detail_json or {}
         current_facts = _fact_snapshot(db, record)
         if current_facts["factSourceHash"] != detail.get("factSourceHash"):
-            raise AppException("DATA_CONFLICT", "成绩来源事实已变化，请重新核算后再复核")
+            raise AppException("DATA_CONFLICT", "成绩来源记录已变化，请重新核算后再复核")
         evidence = ((detail.get("sourceManifest") or {}).get("manualAdjustmentEvidence") or [])
         _verify_evidence_snapshot(db, score, evidence)
         adjustments = detail.get("manualAdjustments") or {}
@@ -853,7 +853,7 @@ def _review(user, score_id, expected_version=None) -> dict:
         if has_adjustment:
             adjuster_id = str((detail.get("adjustment") or {}).get("actorUserId") or "")
             if not reviewer_id or not adjuster_id:
-                raise AppException("DATA_CONFLICT", "人工调分缺少稳定调整人或复核人 userId")
+                raise AppException("DATA_CONFLICT", "人工调分缺少调整人或复核人信息")
             if reviewer_id == adjuster_id:
                 raise AppException("DATA_CONFLICT", "人工调分必须由不同用户复核，调整人不得自行复核")
             db.add(InternshipAuditTrail(

@@ -14,8 +14,8 @@ export const IDENTITY_IMPORT_TERMINAL_STATUSES = new Set([
 
 const STATUS_LABELS = {
   SCANNING: '文件安全扫描中',
-  WORKER_CLAIMED: '服务端已领取任务',
-  PARSING: '服务端正在解析并预检',
+  WORKER_CLAIMED: '系统已领取任务',
+  PARSING: '系统正在解析并预检查',
   VALIDATED: '预检完成',
   VALIDATION_FAILED: '预检未通过',
   FAILED: '处理失败',
@@ -29,7 +29,7 @@ export function identityImportStatus(job) {
 
 export function identityImportStatusLabel(job) {
   const status = identityImportStatus(job)
-  return STATUS_LABELS[status] || status || '等待服务端状态'
+  return STATUS_LABELS[status] || status || '等待系统状态'
 }
 
 export function isIdentityImportProcessing(job) {

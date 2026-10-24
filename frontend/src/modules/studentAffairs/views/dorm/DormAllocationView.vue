@@ -29,7 +29,7 @@
     <div v-if="publishJob || publishJobError" class="publish-job" role="status" aria-live="polite">
       <template v-if="publishJob">
         <strong>{{ ({ PENDING: '等待发布', RUNNING: '正在发布', SUCCESS: '发布完成', FAILED: '发布未完成' })[publishJob.status] }}</strong>
-        <span v-if="['PENDING', 'RUNNING'].includes(publishJob.status)">后台核验与预留床位中，可以离开页面。</span>
+        <span v-if="['PENDING', 'RUNNING'].includes(publishJob.status)">正在后台核验并预留床位，可以离开页面。</span>
         <span v-else-if="publishJob.status === 'SUCCESS'">床位安排已生效，到校后核验办理入住。</span>
         <span v-else>{{ publishJob.error }}</span>
       </template>
@@ -128,7 +128,7 @@ export default {
     pagedItems() { return this.filteredItems.slice((this.page - 1) * 30, this.page * 30) },
     allocationBuildings() { const ids = this.detail?.batch.resourceScope?.buildingIds || []; return this.buildings.filter(b => !ids.length || ids.map(String).includes(String(b.buildingId))) },
     publishReady() { if (!this.detail || this.detail.batch.status !== 'DRAFT' || this.detailLoading || this.publishJobError || ['PENDING', 'RUNNING'].includes(this.publishJob?.status)) return false; if (this.detail.batch.mode === 'STUDENT_SELECT') return !!this.detail.candidates?.length; return this.proposedCount > 0 && (this.detail.batch.mode === 'ADMIN_MANUAL' || !!this.drySummary) },
-    publishMessage() { return this.detail?.batch.mode === 'STUDENT_SELECT' ? `将向 ${this.detail?.candidates?.length || 0} 名学生开放选床，${this.detail?.missingIdentityCount || 0} 名未关联档案的新生暂不参加。发布后学生范围与精确床位资源池将冻结；选床后仅预留床位，需另行办理入住。` : `本次发布 ${this.proposedCount} 个床位安排，${this.unresolvedCount} 项尚未解决，不会在本次分配床位。发布后学生范围与精确床位资源池将冻结，并预留已分配床位；需另行办理入住。` },
+    publishMessage() { return this.detail?.batch.mode === 'STUDENT_SELECT' ? `将向 ${this.detail?.candidates?.length || 0} 名学生开放选床，${this.detail?.missingIdentityCount || 0} 名未关联档案的新生暂不参加。发布后学生范围与精确床位范围将冻结；选床后仅预留床位，需另行办理入住。` : `本次发布 ${this.proposedCount} 个床位安排，${this.unresolvedCount} 项尚未解决，不会在本次分配床位。发布后学生范围与精确床位范围将冻结，并预留已分配的床位；需另行办理入住。` },
     canView() { return canCode(this.ctx, 'studentAffairs.dorm.view') },
     canManage() { return canCode(this.ctx, 'studentAffairs.dorm.allocation.manage') },
     createValid() { return !!(this.form.batchNo && this.form.name && this.form.academicYear && this.form.orientationBatchId && this.form.openAt && this.form.closeAt && this.form.openAt < this.form.closeAt && this.form.buildingIds.length) }

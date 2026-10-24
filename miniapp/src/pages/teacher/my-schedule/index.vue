@@ -171,7 +171,7 @@ export default {
       if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
       if (this.calendarSource === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
       if (this.calendarSource === 'OUT_OF_TERM') return '今天不在当前学期教学日期范围内。'
-      return this.todayItems.length ? '来自同一份正式课表、正式名单与校历课次投影。' : '已核对学校校历和本人最新正式课表。'
+      return this.todayItems.length ? '来自同一份正式课表、正式名单与校历课次。' : '已核对学校校历和本人最新正式课表。'
     }
   },
   methods: {

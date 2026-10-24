@@ -28,9 +28,9 @@ def _expected_group_version(body: dict) -> int:
     try:
         value = int(raw)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "必须提供有效的 expectedGroupVersion") from exc
+        raise AppException("VALIDATION_ERROR", "必须提供有效的志愿组版本") from exc
     if value < 0:
-        raise AppException("VALIDATION_ERROR", "expectedGroupVersion 必须为非负整数")
+        raise AppException("VALIDATION_ERROR", "志愿组版本必须为非负整数")
     return value
 
 
@@ -256,9 +256,9 @@ def get_my_submission(*, user: dict, submission_version: int, batch_id=None, cam
     try:
         version = int(submission_version)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "submissionVersion 必须为正整数") from exc
+        raise AppException("VALIDATION_ERROR", "投递次数必须为正整数") from exc
     if version < 1:
-        raise AppException("VALIDATION_ERROR", "submissionVersion 必须为正整数")
+        raise AppException("VALIDATION_ERROR", "投递次数必须为正整数")
     tenant_id = _tid()
     student_id = profile_svc.resolve_my_student_id(user)
     with session() as db:

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="异动台账"
-    subtitle="一张申请追踪审核、计划生效和历史事实"
+    subtitle="一张申请追踪审核、计划生效和历史记录"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
     show-subtitle-in-concise

@@ -526,7 +526,7 @@ def create_pilot(user, *, term_id, pilot_name, purpose, real_data_confirmed) -> 
     if len(purpose_text) < 5:
         raise AppException("VALIDATION_ERROR", "试点用途不少于5字")
     if not real_data_confirmed:
-        raise AppException("VALIDATION_ERROR", "必须明确确认当前租户使用真实学校数据；测试或mock数据不得创建真实试点")
+        raise AppException("VALIDATION_ERROR", "必须明确确认当前学校使用真实数据；测试或演示数据不得创建真实试点")
 
     from app.models.academic_affairs_r11 import AaSemesterPilot
     with session() as db:
@@ -661,7 +661,7 @@ def list_pilots(user, *, status=None, page=1, page_size=50) -> tuple[list[dict],
 def complete_pilot(user, pilot_id, *, confirm_text, completion_note) -> dict:
     _require_admin(user)
     if str(confirm_text or "").strip() != "CONFIRM_REAL_SEMESTER_COMPLETED":
-        raise AppException("VALIDATION_ERROR", "请输入完整确认口令 CONFIRM_REAL_SEMESTER_COMPLETED")
+        raise AppException("VALIDATION_ERROR", "请输入完整的确认口令")
     note = str(completion_note or "").strip()
     if len(note) < 5:
         raise AppException("VALIDATION_ERROR", "完成说明不少于5字")

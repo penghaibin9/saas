@@ -207,13 +207,13 @@
               </view>
               <text v-if="!detail.reviewReady" class="rv__warn">文件仍在扫描、已隔离或版本已变化，当前不能审核通过</text>
               <view v-if="previewReturnPending" class="rv__preview-confirm">
-                <text class="rv__warn">原生预览已打开。返回批阅页后需重新确认当前服务端版本，确认完成前审核按钮保持锁定。</text>
+                <text class="rv__warn">预览已打开。返回批阅页后需重新确认当前版本，确认完成前审核按钮保持锁定。</text>
                 <button class="rv__confirm" :disabled="acting" @click.stop="revalidatePreviewContext()">确认当前版本</button>
               </view>
               <text v-if="previewVersionConflict" class="rv__warn rv__preview-conflict">{{ previewVersionMessage || '预览期间材料版本已变化，已阻止旧版审核，请重新查看最新版本。' }}</text>
             </view>
             <view v-else-if="detail.attachmentsList && detail.attachmentsList.length" class="rv__block">
-              <text class="rv__label">历史兼容附件</text>
+              <text class="rv__label">历史附件</text>
               <view v-for="a in detail.attachmentsList" :key="a.fileId" class="rv__att" @click="openVersion(a)"><text class="rv__att-name">📎 {{ a.fileName }}</text><text class="rv__att-dl">安全预览</text></view>
             </view>
           </view>
@@ -628,7 +628,7 @@ export default {
           .catch((e) => {
             if (String(e && e.code).startsWith('409')) {
               this.previewVersionConflict = true
-              this.previewVersionMessage = '材料版本已变化，旧版审核已被服务端阻止，请重新查看最新版本。'
+              this.previewVersionMessage = '材料版本已变化，旧版审核已被阻止，请重新查看最新版本。'
               toast(this.previewVersionMessage)
             } else toast(normalizeError(e).text)
           }).finally(() => { this.acting = false })
@@ -705,7 +705,7 @@ export default {
         }
       } catch (e) {
         this.previewVersionConflict = true
-        this.previewVersionMessage = '预览返回后未能确认当前服务端版本，审核保持锁定，请重试确认。'
+        this.previewVersionMessage = '预览返回后未能确认当前版本，审核保持锁定，请重试确认。'
         toast(this.previewVersionMessage)
       } finally {
         this.previewReturnPending = false

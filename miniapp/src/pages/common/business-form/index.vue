@@ -1,7 +1,7 @@
 <template>
   <view class="page-shell">
     <MobilePrivacyGate />
-    <view class="head"><text class="eyebrow">PLAT-B</text><text class="title">{{ title }}</text><text class="hint">版本与规则来自服务端，提交进入原业务流程。</text></view>
+    <view class="head"><text class="eyebrow">PLAT-B</text><text class="title">{{ title }}</text><text class="hint">版本与规则由系统提供，提交进入原业务流程。</text></view>
     <view v-if="state === 'loading'" class="state">正在加载表单…</view>
     <view v-else-if="state === 'error'" class="state error"><text>{{ error }}</text><button size="mini" @click="load">重试</button></view>
     <template v-else>
@@ -66,14 +66,14 @@ export default {
   onLoad(options) { this.options = options || {}; this.load() },
   methods: {
     async load() {
-      if (!this.options.formCode || !Number(this.options.versionId)) { this.state = 'error'; this.error = '表单 action 缺少 exact formCode/versionId'; return }
+      if (!this.options.formCode || !Number(this.options.versionId)) { this.state = 'error'; this.error = '表单信息不完整，无法提交'; return }
       this.state = 'loading'; this.error = ''
       try {
         const data = await businessFormApi.load({ formCode: this.options.formCode, versionId: Number(this.options.versionId), client: this.clientType, context: this.context, complianceRequests: this.complianceRequests })
         this.formVersion = data.formVersion; this.initialData = data.initialData || {}; this.compliance = data.complianceSummary || []; this.state = 'ready'
       } catch (e) { this.error = normalizeError(e).text; this.state = 'error' }
     },
-    unsupported() { this.error = 'FORM_CLIENT_UNSUPPORTED：请前往 PC 办理完整表单。'; this.state = 'error' },
+    unsupported() { this.error = '该表单暂不支持当前端，请前往电脑端办理完整表单。'; this.state = 'error' },
     async pickFile(field) {
       if (this.uploading) return
       this.uploading = true

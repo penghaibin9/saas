@@ -87,7 +87,7 @@
           <h2>时间段关系</h2>
           <section><strong>节次与钟点</strong><p>节次编号连接课表课位；开始、结束时间按正式作息记录核对。</p></section>
           <section><strong>校区与生效日期</strong><p>夏令、冬令等作息在「上课时间段」按校区和生效范围维护。</p></section>
-          <section><strong>变更后</strong><p>已有正式引用时，改号、停用或删除由服务端阻止。请核对受影响课表与资源时间安排。</p></section>
+          <section><strong>变更后</strong><p>已有正式引用时，改号、停用或删除会被系统阻止。请核对受影响的课表与资源时间安排。</p></section>
         </aside></div>
       </template>
 

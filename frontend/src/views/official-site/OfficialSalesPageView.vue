@@ -11,7 +11,7 @@
       <section class="yk-sales-hero"><div class="yk-shell yk-sales-hero-grid">
         <div class="yk-sales-copy"><p class="yk-kicker">{{ page.eyebrow }}</p><h1>{{ page.hero }}</h1><p class="yk-sales-lead">{{ page.description }}</p>
           <div class="yk-hero-actions"><router-link v-if="page.path !== '/contact'" class="yk-button yk-button-primary" to="/contact">预约产品演示</router-link><a class="yk-button yk-button-ghost" :href="contact.phoneHref">电话咨询 {{ contact.phone }}</a><router-link class="yk-button yk-button-ghost" to="/">返回官网</router-link></div>
-          <div class="yk-sales-trust-row"><span>产品运行界面</span><span>演示数据不含真实学生信息</span><span>支持 SaaS 与私有化方案</span><span>内容更新 {{ page.contentUpdatedAt }}</span></div>
+          <div class="yk-sales-trust-row"><span>产品运行界面</span><span>演示数据不含真实学生信息</span><span>支持云端部署与私有化方案</span><span>内容更新 {{ page.contentUpdatedAt }}</span></div>
         </div>
         <figure v-if="page.screenshots?.[0]" class="yk-sales-hero-shot"><OfficialImageZoom :src="page.screenshots[0]" :alt="`${page.navTitle}产品运行界面`" loading="eager" :caption="`${page.navTitle}产品运行界面`" /><figcaption>产品运行界面 · 页面内容为演示数据</figcaption></figure>
       </div></section>
@@ -64,7 +64,7 @@ import '@/styles/official-site-story.css'
 const DEFAULT_POINTS = Object.freeze([
   { mark: '1', title: '先解决真实工作', desc: '页面只讲现有业务闭环、角色和证据，不用抽象概念替代老师每天真正要处理的事情。' },
   { mark: '2', title: '状态与责任可追踪', desc: '关键业务以状态、责任人、下一动作和过程留痕组织，减少线下口头确认与重复沟通。' },
-  { mark: '3', title: '多端共享业务事实', desc: '管理 PC、教师端、学生端与企业协同端共享同一业务状态，不让不同端各自维护一套真值。' },
+  { mark: '3', title: '多端共享业务数据', desc: '管理电脑端、教师端、学生端与企业协同端共享同一业务状态，不让不同端各自维护一套数据。' },
   { mark: '4', title: '安全边界先于便利', desc: '多租户、权限、数据范围和审计继续作为生产底座，官网展示不改变系统已有安全边界。' }
 ])
 const TYPE_COPY = Object.freeze({ solution: { title: '把分散功能收敛成可持续运行的学校工作方式', lead: '解决方案页面重点说明角色怎么协同、业务怎么连续、异常怎么处理，而不是重新罗列菜单。' }, service: { title: '功能上线之后，还要能稳定交付和持续维护', lead: '从学校开通、初始化、数据到运行支持和升级，交付过程同样需要标准化和可追踪。' }, contact: { title: '把需求说清楚，比先选一堆功能更重要', lead: '可以直接从学校当前最难推进的一条流程开始，先判断角色、状态、数据和部署边界，再讨论产品组合。' } })

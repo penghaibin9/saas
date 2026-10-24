@@ -40,7 +40,7 @@ def _require_teacher(user: dict | None, *, permission: str = "workbench.message.
     """
     u = user or {}
     if not u.get("userId") or str(u.get("userType") or "").strip().upper() not in MOBILE_STAFF_USER_TYPES:
-        raise AppException("NO_PERMISSION", "该接口仅学校教职工移动端可用", http_status=403)
+        raise AppException("NO_PERMISSION", "该功能仅学校教职工移动端可用", http_status=403)
     enforce_permission(u, permission)
     return u
 
@@ -258,7 +258,7 @@ def get_message(user: dict, message_id: str) -> dict:
     try:
         mid = int(message_id)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "messageId 不合法") from exc
+        raise AppException("VALIDATION_ERROR", "消息不合法") from exc
     vis = message_center.visibility_condition(u)
     if vis is None:
         raise AppException("NOT_FOUND", "消息不存在或无权访问", http_status=404)

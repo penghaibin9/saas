@@ -34,10 +34,10 @@
           <AppTextarea :id="id" v-model="form[field.key]" :rows="2" :placeholder="field.hint" />
         </AppFormItem>
         <AppFormItem v-slot="{ id }" class="inspection-full" label="考察结论" hint="可先保存草稿；提交审核前需填写结论">
-          <AppTextarea :id="id" v-model="form.conclusion" :rows="3" placeholder="概述考察事实和结论" />
+          <AppTextarea :id="id" v-model="form.conclusion" :rows="3" placeholder="概述考察情况和结论" />
         </AppFormItem>
         <AppFormItem v-slot="{ id }" label="发现的风险">
-          <AppTextarea :id="id" v-model="form.riskItems" :rows="3" placeholder="如有风险，记录具体事实" />
+          <AppTextarea :id="id" v-model="form.riskItems" :rows="3" placeholder="如有风险，记录具体情况" />
         </AppFormItem>
         <AppFormItem v-slot="{ id }" label="整改要求">
           <AppTextarea :id="id" v-model="form.rectificationItems" :rows="3" placeholder="记录整改事项和跟进要求" />

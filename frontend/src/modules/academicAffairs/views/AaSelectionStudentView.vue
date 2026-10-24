@@ -2,7 +2,7 @@
   <ModulePageShell title="本人选课" subtitle="学生自助只允许自己的报名与退课，办理结果以服务器正式记录为准">
     <template #actions><AppButton variant="primary" :disabled="busy" @click="load">刷新正式状态</AppButton></template>
     <div class="mp-stack aasels-page">
-      <AppInlineAlert type="info" title="学生自助视角" description="课程按钮来自服务端 allowedActions；提交前重新预检，提交后重新读取本人选课记录。" />
+      <AppInlineAlert type="info" title="学生自助视角" description="课程按钮由系统返回的可用操作决定；提交前重新预检查，提交后重新读取本人选课记录。" />
       <AppInlineAlert v-if="notice" :type="notice.type" :title="notice.title" :description="notice.description" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -152,7 +152,7 @@ export default {
       this.confirm.loading = false
       this.confirm.preflight = {
         ready: allowed,
-        message: allowed ? '服务器预检已通过；正式提交时仍会再次校验。' : (result.data?.reason || result.data?.howToResolve || result.message || '当前事实不允许办理，请刷新核对。')
+        message: allowed ? '服务器预检已通过；正式提交时仍会再次校验。' : (result.data?.reason || result.data?.howToResolve || result.message || '当前状态不允许办理，请刷新核对。')
       }
     },
     async rereadOutcome(frozen, commandResult, action, allowConfirmation = true) {
@@ -186,7 +186,7 @@ export default {
       }
       const allowed = this.preflightAllowed(fresh, action, frozen.selectionCourseId)
       this.confirm.loading = false
-      this.confirm.preflight = { ready: allowed, message: allowed ? '提交前正式预检已通过。' : (fresh.data?.reason || fresh.data?.howToResolve || fresh.message || '当前事实不允许办理，请刷新核对。') }
+      this.confirm.preflight = { ready: allowed, message: allowed ? '提交前正式预检已通过。' : (fresh.data?.reason || fresh.data?.howToResolve || fresh.message || '当前状态不允许办理，请刷新核对。') }
       if (!allowed) { this.busy = false; return }
       this.requestSeq += 1
       this.pendingCommand = { selectionCourseId: frozen.selectionCourseId, batchId: frozen.batchId, action, courseName: frozen.courseName }
@@ -197,13 +197,13 @@ export default {
       }
       if (isConflictResult(result)) {
         this.pendingCommand = null
-        this.notice = { type: 'warning', title: '事实已变化', description: result.message || '已保留当前课程对象，请重新核对最新状态。' }
+        this.notice = { type: 'warning', title: '数据已变化', description: result.message || '已保留当前课程对象，请重新核对最新状态。' }
         await this.rereadOutcome(frozen, result, action, false); this.busy = false; return
       }
       const knownRejected = result.code !== 0 && Number(result.code) !== 503001 && !!result.bizCode
       if (knownRejected) this.pendingCommand = null
       await this.rereadOutcome(frozen, result, action, !knownRejected)
-      if (knownRejected) this.notice = { type: 'warning', title: '本次办理未提交', description: result.message || '服务器拒绝了本次请求，请核对最新事实后再办理。' }
+      if (knownRejected) this.notice = { type: 'warning', title: '本次办理未提交', description: result.message || '系统拒绝了本次请求，请核对最新情况后再办理。' }
       else if (result.code !== 0 && !this.notice) this.notice = { type: 'warning', title: '结果待确认', description: '请求未取得确定结果，已查询本人记录且不会自动再次提交。' }
       this.busy = false
     }

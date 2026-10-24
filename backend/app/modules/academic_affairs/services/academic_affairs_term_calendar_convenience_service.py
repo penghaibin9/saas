@@ -212,7 +212,7 @@ def time_slot_template_preview(template_key: str, user) -> dict:
     """标准作息模板与当前真实节次做只读冲突预览。"""
     template_key = (template_key or "").strip().upper()
     if template_key not in _TEMPLATES:
-        raise AppException("VALIDATION_ERROR", "作息模板不存在（仅支持 STANDARD_8 / STANDARD_10）")
+        raise AppException("VALIDATION_ERROR", "作息模板不存在（仅支持标准 8 节 / 10 节）")
 
     from app.models import AaTimeSlot
 

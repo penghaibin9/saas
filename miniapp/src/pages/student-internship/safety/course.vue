@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar title="安全教育课程" subtitle="服务端计时 · 教师审核" show-back />
+    <MobileNavBar title="安全教育课程" subtitle="系统计时 · 教师审核" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack" v-if="state === 'ready' && course">
         <view class="card sc__head">
@@ -34,10 +34,10 @@
         </view>
 
         <MobileInlineAlert v-if="completionStatus === 'PENDING_REVIEW'" type="info" description="学习结果已提交，等待指导教师审核。审核完成后会在此显示结果。" />
-        <MobileInlineAlert v-if="completionStatus === 'FAILED'" type="warning" description="本次审核未通过。点击重新学习后，服务端会重置本次时长和承诺，旧审核结果仍保留在审计记录中。" />
+        <MobileInlineAlert v-if="completionStatus === 'FAILED'" type="warning" description="本次审核未通过。点击重新学习后，系统会重置本次时长和承诺，旧审核结果仍保留在审计记录中。" />
         <MobileInlineAlert v-if="completionStatus === 'PASSED'" type="success" description="本课程已通过。只有当前批次全部必修课程通过后，上岗安全教育才算完成。" />
         <MobileInlineAlert v-if="completionStatus === 'IN_PROGRESS' && trustedMinutes < Number(course.requiredMinutes || 0)" type="warning"
-          :description="`服务端可信学习时长尚差 ${Number(course.requiredMinutes || 0) - trustedMinutes} 分钟；切换页面或修改本机时间不会绕过服务端计时。`" />
+          :description="`系统记录的学习时长尚差 ${Number(course.requiredMinutes || 0) - trustedMinutes} 分钟；切换页面或修改本机时间不会绕过系统计时。`" />
       </view>
     </MobileGlobalState>
 

@@ -11,15 +11,15 @@
       <li class="is-done"><b>✓</b><span><strong>建立批次</strong><small>归档对象已建立</small></span></li>
       <li class="is-done"><b>✓</b><span><strong>十三域预检</strong><small>正式检查已完成</small></span></li>
       <li class="is-done"><b>✓</b><span><strong>补齐缺失</strong><small>阻断已处理</small></span></li>
-      <li class="is-current"><b>4</b><span><strong>正式封存</strong><small>从封存事实申请导出</small></span></li>
-      <li><b>5</b><span><strong>双人纠错</strong><small>不通过导出改写事实</small></span></li>
+      <li class="is-current"><b>4</b><span><strong>正式封存</strong><small>从封存记录申请导出</small></span></li>
+      <li><b>5</b><span><strong>双人纠错</strong><small>不通过导出改写记录</small></span></li>
     </ol>
 
     <section v-if="current" class="aaex-object-card">
       <div>
         <small>当前业务对象 · 学期归档批次 #{{ current.batchId }}</small>
         <h2>{{ current.batchName }}</h2>
-        <p>{{ isCollegeScope ? '来源：学校已封存学期批次进度；本页不提供学校物料和下载记录' : '来源：已封存学期归档事实 · 为什么轮到我：当前岗位拥有归档导出权限' }}</p>
+        <p>{{ isCollegeScope ? '来源：学校已封存学期批次进度；本页不提供学校物料和下载记录' : '来源：已封存的学期归档 · 为什么轮到我：当前岗位拥有归档导出权限' }}</p>
       </div>
       <dl>
         <div><dt>当前状态</dt><dd><StatusTag type="success" label="已归档" dot /></dd></div>
@@ -31,7 +31,7 @@
 
     <section v-if="current && !isCollegeScope" class="aaex-request-grid">
       <div class="aaex-request-card">
-        <header><div><h3>导出范围与用途</h3><p>范围由当前归档批次和服务端授权共同确定</p></div></header>
+        <header><div><h3>导出范围与用途</h3><p>范围由当前归档批次和授权共同确定</p></div></header>
         <div class="aaex-request-fields">
           <AppFormItem label="学期归档批次"><AppTextInput :model-value="`${current.batchName}（#${current.batchId}）`" disabled /></AppFormItem>
           <AppFormItem label="数据范围"><AppTextInput model-value="当前批次全部十三域（按正式记录数导出）" disabled /></AppFormItem>
@@ -40,14 +40,14 @@
           </AppFormItem>
           <AppInlineAlert v-if="exportError" type="danger" :description="exportError" />
         </div>
-        <footer><span>完整导出由服务端生成水印文件并写下载审计。</span><AppButton variant="primary" :disabled="!!pendingExport" :loading="exporting && pendingCategory === null" @click="quickExport">申请归档导出</AppButton></footer>
+        <footer><span>完整导出由系统生成带水印的文件，并写入下载审计。</span><AppButton variant="primary" :disabled="!!pendingExport" :loading="exporting && pendingCategory === null" @click="quickExport">申请归档导出</AppButton></footer>
       </div>
       <aside class="aaex-scope-card">
         <h3>三种范围不要混淆</h3>
         <ul>
           <li><b>本页记录</b><span>当前表格可见的数据域</span></li>
           <li><b>已选记录</b><span>使用单域“下载”动作</span></li>
-          <li><b>当前筛选全部</b><span>由服务端按当前批次与权限完成</span></li>
+          <li><b>当前筛选全部</b><span>由系统按当前批次与权限完成</span></li>
         </ul>
       </aside>
     </section>

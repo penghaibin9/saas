@@ -40,7 +40,7 @@
         <AppFormItem label="困难类别" required><AppSelect v-model="registerDrawer.form.reasonCategory" :options="categoryOptions(registerDrawer.form.itemType)" :disabled="saving" /></AppFormItem>
         <AppFormItem label="申请金额（元）" required><AppNumberInput v-model="registerDrawer.form.amount" :min="0.01" :precision="2" :disabled="saving" /></AppFormItem>
         <AppFormItem label="证明材料" hint="选填；上传件须通过安全检查后才能提交。"><FileUploader biz-type="REDUCTION" :disabled="saving" button-text="选择材料" @uploaded="onUploaded" @error="onUploadError" /><div v-if="registerDrawer.form.evidence" class="fr-uploaded"><span>{{ registerDrawer.form.evidence.fileName }}</span><button v-if="!registerDrawer.form.evidence.readyForBusiness" type="button" @click="refreshUploaded">检查状态</button></div></AppFormItem>
-        <AppFormItem class="fr-span2" label="申请理由" required hint="写清困难事实、发生时间和申请依据。"><AppTextarea v-model="registerDrawer.form.reason" :rows="4" :maxlength="1000" placeholder="至少10字" :disabled="saving" /></AppFormItem>
+        <AppFormItem class="fr-span2" label="申请理由" required hint="写清困难情况、发生时间和申请依据。"><AppTextarea v-model="registerDrawer.form.reason" :rows="4" :maxlength="1000" placeholder="至少10字" :disabled="saving" /></AppFormItem>
       </div><AppInlineAlert v-if="registerDrawer.errorMessage" type="danger" :description="registerDrawer.errorMessage" /></div>
       <template #footer><button type="button" class="fr-secondary" :disabled="saving" @click="registerDrawer.visible = false">取消</button><AppPermissionButton code="studentAffairs.funding.reduction.manage" :allowed="canBtn('studentAffairs.funding.reduction.manage')" :loading="saving" @click="submitRegister">提交待审核</AppPermissionButton></template>
     </AppDrawer>

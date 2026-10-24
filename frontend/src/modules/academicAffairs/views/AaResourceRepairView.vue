@@ -18,7 +18,7 @@
         <div class="aarr-flow" aria-label="维修流程">
           <div><span>当前对象</span><strong>{{ pagination.total }} 张维修工单</strong></div>
           <div><span>当前责任</span><strong>{{ canManage ? '资源维修岗' : '只读核对' }}</strong></div>
-          <div><span>关闭条件</span><strong>工单状态与资源状态双重回读</strong></div>
+          <div><span>关闭条件</span><strong>工单状态与资源状态双重核对</strong></div>
         </div>
         <div class="aarr-board">
           <section v-for="group in repairGroups" :key="group.key" class="aarr-column">
@@ -48,7 +48,7 @@
               <div v-if="timelineIssue(row)" class="aarr-data-warning">{{ timelineIssue(row) }}</div>
               <div v-if="canManage && ['REPORTED', 'IN_REPAIR'].includes(row.status)" class="aarr-card-actions">
                 <button v-if="row.status === 'REPORTED'" class="mp-link" :disabled="saving || noteDialog.submitting || Boolean(pendingResult)" @click="start(row.repairId)">领取维修</button>
-                <button class="mp-link" :disabled="saving || noteDialog.submitting || Boolean(pendingResult)" @click="complete(row.repairId)">完成并回读</button>
+                <button class="mp-link" :disabled="saving || noteDialog.submitting || Boolean(pendingResult)" @click="complete(row.repairId)">完成并刷新</button>
                 <button class="mp-link is-danger" :disabled="saving || noteDialog.submitting || Boolean(pendingResult)" @click="cancel(row.repairId)">取消</button>
               </div>
             </article>
@@ -151,7 +151,7 @@ export default {
     repairGroups() {
       return [
         { key: 'reported', title: '待领取', hint: '等待维修岗确认责任', rows: this.rows.filter(row => row.status === 'REPORTED') },
-        { key: 'repairing', title: '处理中', hint: '维修完成后回读资源状态', rows: this.rows.filter(row => row.status === 'IN_REPAIR') },
+        { key: 'repairing', title: '处理中', hint: '维修完成后重新读取资源状态', rows: this.rows.filter(row => row.status === 'IN_REPAIR') },
         { key: 'closed', title: '已关闭', hint: '已完成或已取消', rows: this.rows.filter(row => ['DONE', 'CANCELLED'].includes(row.status)) }
       ]
     }
@@ -175,9 +175,9 @@ export default {
     clearPrivate() { this.revision++; this.rows = []; this.pagination.total = 0; this.form = { resourceKind: 'CLASSROOM', resourceId: '', faultDesc: '' }; this.reportVisible = false; this.noteDialog = { visible: false, note: '', submitting: false, row: null }; this.receipt = null; this.pendingResult = null; this.saving = false },
     failure(e, field = 'error') {
       if (isDeniedResult(e)) { this.clearPrivate(); this.loading = false; this.error = (e.message || '无权访问') + '；已清除先前维修记录。'; return }
-      const message = (isConflictResult(e) ? '事实已变化，保留输入，请重新核对。' : '') + (e?.message || '连接失败，请重试。')
+      const message = (isConflictResult(e) ? '数据已变化，保留输入，请重新核对。' : '') + (e?.message || '连接失败，请重试。')
       if (field === 'note') this.noteDialog.error = message; else this[field] = message
-      if (isConflictResult(e)) this.receipt = { title: '维修办理回执', status: '事实已变化', pending: true, next: message }
+      if (isConflictResult(e)) this.receipt = { title: '维修办理回执', status: '数据已变化', pending: true, next: message }
     },
     async load() {
       const revision = ++this.revision, context = this.ctx, current = () => !this.disposed && revision === this.revision && context === this.ctx

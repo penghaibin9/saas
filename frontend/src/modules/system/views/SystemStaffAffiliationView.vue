@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="教职工任职"
-    subtitle="任职有起止时间，到期自动失效；下方保留旧归属投影用于对账"
+    subtitle="任职有起止时间，到期自动失效；下方保留旧归属记录用于对账"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -61,14 +61,14 @@
             <EmptyState
               v-if="!assignments.length"
               title="暂无正式任职"
-              description="点右上角新增；旧的辅导员/班主任/教学秘书字段已在升级时回填为投影任职"
+              description="点右上角新增；旧的辅导员、班主任、教学秘书字段已在升级时回填为任职记录"
             />
           </div>
         </section>
 
         <section class="mp-card">
           <header class="mp-card__head">
-            <span class="mp-card__title">旧归属投影（只读对账）</span>
+            <span class="mp-card__title">旧归属记录（只读对账）</span>
             <span class="mp-note">来自班级辅导员/班主任、学院教学秘书和教师范围字段，退役前保留</span>
           </header>
           <div class="mp-card__body" style="padding-top: 0">

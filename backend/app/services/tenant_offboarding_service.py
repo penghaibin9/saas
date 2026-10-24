@@ -266,7 +266,7 @@ def confirm_final_export(user: dict, job_id: int, *, sha256: str) -> dict:
 
     digest = str(sha256 or "").strip().lower()
     if not re.fullmatch(r"[0-9a-f]{64}", digest):
-        raise AppException("VALIDATION_ERROR", "finalExportSha256 必须是64位 SHA256")
+        raise AppException("VALIDATION_ERROR", "最终导出校验码必须是 64 位")
     db = _session()
     try:
         job = db.scalars(select(TenantOffboardingJob).where(

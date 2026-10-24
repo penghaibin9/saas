@@ -40,7 +40,7 @@ def _as_of_date(db, value: str | None) -> str:
         try:
             return date.fromisoformat(text).isoformat()
         except ValueError as exc:
-            raise AppException("VALIDATION_ERROR", "fromDate 必须为 YYYY-MM-DD") from exc
+            raise AppException("VALIDATION_ERROR", "起始日期必须为 年-月-日 格式") from exc
     from .student_exam_read_service import _tenant_timezone
 
     zone, _zone_name = _tenant_timezone(db)

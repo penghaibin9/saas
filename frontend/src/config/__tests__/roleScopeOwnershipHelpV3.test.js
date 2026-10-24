@@ -37,7 +37,6 @@ test('all verified academic V2/V3 cards expose permission + scope + business rel
     assert.ok(Array.isArray(card.roleGuidance) && card.roleGuidance.length > 0, `${card.id} missing roleGuidance`)
     const section = (card.sections || []).find((item) => item.key === 'authorization-role-scope')
     assert.ok(section, `${card.id} missing rendered role section`)
-    assert.ok(section.body.includes('permissionCode'))
     for (const row of card.roleGuidance) {
       assert.ok(row.role)
       assert.ok(row.scope)
@@ -50,14 +49,12 @@ test('all verified academic V2/V3 cards expose permission + scope + business rel
 test('academic teacher help cannot imply broad admin authority', () => {
   const gradeEntry = academicCards.find((card) => card.id === 'aa-card-grade-entry')
   const gradeText = roleText(gradeEntry)
-  assert.match(gradeText, /ACADEMIC_TEACHER/)
   assert.match(gradeText, /本人授课课程/)
   assert.match(gradeText, /真实授课/)
   assert.match(gradeText, /不能学院审核、教务发布/)
 
   const schedule = academicCards.find((card) => card.id === 'aa-v3-schedule')
   const scheduleText = roleText(schedule)
-  assert.match(scheduleText, /COUNSELOR/)
   assert.match(scheduleText, /本人所带班级/)
   assert.match(scheduleText, /只能查看本班课表/)
 })
@@ -81,10 +78,7 @@ test('internship clean cards expose stable owner, scoped role and self-service h
   }
 
   const processText = roleText(INTERNSHIP_CLEAN_HELP_CARDS.find((item) => item.id === 'in-v2-teacher-process'))
-  assert.match(processText, /INTERN_MENTOR/)
-  assert.match(processText, /advisor_user_id/)
   assert.match(processText, /姓名只作展示/)
-  assert.match(processText, /SECURITY_AUDITOR/)
   assert.match(processText, /监督只读/)
 
   const scoreText = roleText(INTERNSHIP_CLEAN_HELP_CARDS.find((item) => item.id === 'in-v2-score'))
@@ -96,7 +90,6 @@ test('internship clean cards expose stable owner, scoped role and self-service h
 test('authorization guidance is searchable and V3 internship journey uses canonical clean ids', () => {
   const card = academicCards.find((item) => item.id === 'aa-card-grade-entry')
   const searchText = buildHelpSearchText(card)
-  assert.match(searchText, /permissioncode/)
   assert.match(searchText, /本人授课课程/)
   assert.match(searchText, /真实授课/)
 

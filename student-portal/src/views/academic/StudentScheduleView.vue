@@ -37,7 +37,7 @@
               <dt>教学班</dt><dd>{{ selectedLesson.teachingClassName || selectedLesson.className || '待学校提供' }}</dd>
               <dt>当前周次</dt><dd>{{ selectedWeek ? '第' + selectedWeek + '周' : weekLabel(selectedLesson) }}</dd>
               <dt>正式来源</dt><dd><span class="tag green">课表已发布</span> {{ selectedLesson.source === 'ENROLLED' ? '本人选课' : '学校教学安排' }}</dd>
-              <dt>调整记录</dt><dd>{{ selectedLesson.changeDescription || selectedLesson.adjustmentNote || '当前接口未提供课次调整详情，请核对学校通知。' }}</dd>
+              <dt>调整记录</dt><dd>{{ selectedLesson.changeDescription || selectedLesson.adjustmentNote || '当前未提供课次调整详情，请核对学校通知。' }}</dd>
             </dl>
           </div>
         </section>

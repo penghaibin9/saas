@@ -125,7 +125,7 @@
           </li>
         </ol>
 
-        <section class="aa-grade-metrics" aria-label="成绩任务关键事实">
+        <section class="aa-grade-metrics" aria-label="成绩任务关键信息">
           <article><small>{{ readOnlyResult && !dynamicMode ? '成绩记录' : '学生名单' }}</small><strong>{{ readOnlyResult && !dynamicMode ? `${rows.length} 条` : rosterMetric }}</strong><span v-if="!dynamicMode && !readOnlyResult">当前录入表 {{ rows.length }} 人，含待保存行</span></article>
           <article><small>成绩项</small><strong>{{ gradeItemMetric }}</strong></article>
           <article><small>录入模式</small><strong>{{ formalSchemeMode === 'unknown' ? '待核对' : dynamicMode ? '动态分项' : hasMidterm ? '固定三段' : '固定两段' }}</strong><span v-if="formalSchemeMode === 'dynamic'">须按已设置的成绩项录入</span></article>

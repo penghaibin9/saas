@@ -14,7 +14,7 @@
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <template v-else>
-        <AppSectionCard v-if="coverage" compact title="占用事实来源">
+        <AppSectionCard v-if="coverage" compact title="占用来源">
           <div class="aaro-evidence">
             <div><span>教室课表</span><strong>正式范围头 + 校历换算</strong></div>
             <div><span>实训室课表</span><strong>按明确关联的正式场地核对</strong></div>
@@ -28,7 +28,7 @@
           <AppInlineAlert
             v-if="coverage.unmappedScheduleItems"
             type="warning"
-            :description="`${coverage.unmappedScheduleItems} 条正式课位缺少稳定 resourceId，无法归属具体场地，未参与资源冲突关联。`"
+            :description="`${coverage.unmappedScheduleItems} 条正式课位缺少教室信息，无法归属到具体场地，未参与资源冲突关联。`"
           />
         </AppSectionCard>
 
@@ -38,7 +38,7 @@
           <template #cell-resourceKind="{ row }">{{ row.resourceKind === 'LAB' ? '实训室' : '教室' }}</template>
           <template #cell-resourceLabel="{ row }">
             <div class="mp-cell-main">{{ row.resourceLabel || '资源名称待确认' }}</div>
-            <div class="mp-cell-sub">{{ row.resourceId ? `资源 ID ${row.resourceId}` : '缺少稳定 resourceId' }} · {{ row.classroomId ? `正式场地 #${row.classroomId}` : '正式场地待核实' }}</div>
+            <div class="mp-cell-sub">{{ row.resourceId ? `资源 ID ${row.resourceId}` : '缺少教室信息' }} · {{ row.classroomId ? `正式场地 #${row.classroomId}` : '正式场地待核实' }}</div>
           </template>
           <template #cell-slotNo="{ row }">第{{ row.slotNo }}节</template>
           <template #cell-source="{ row }">
@@ -59,7 +59,7 @@
         </DataTable>
 
         <p v-if="loaded" class="mp-note">
-          「预约」仅来自已批准申请；「正式课表」只来自覆盖所选日期的有效正式范围头，并按 HOLIDAY / SWAP、教学周、星期与单双周换算。
+          「预约」仅来自已批准的申请；「正式课表」只来自覆盖所选日期的有效正式范围，并按节假日、调休、教学周、星期与单双周换算。
           空结果和未映射记录都不构成可预约许可，本页不会放开或代替任何审批。
         </p>
       </template>
@@ -238,7 +238,7 @@ export default {
         const res = await academicAffairsResourceApi.occupancy(requestedDate, this.resourceKind)
         if (!current()) return
         if (res.code !== 0) throw res
-        if (res.data?.date !== requestedDate) throw new Error('服务端返回了不同日期的占用事实，已拒绝展示。')
+        if (res.data?.date !== requestedDate) throw new Error('系统返回了不同日期的占用结果，已拒绝显示。')
         const coverage = this.normalizeCoverage(res.data?.coverage)
         const rows = this.normalizeRows(res.data?.items, requestedDate)
         this.coverage = coverage; this.rows = rows; this.pagination.total = rows.length; this.resultDate = requestedDate; this.loaded = true

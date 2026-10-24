@@ -4,7 +4,7 @@
       <select v-model="orientationBatchId" aria-label="迎新批次" :disabled="busy || selecting" @change="changeBatch"><option value="">全部迎新批次</option><option v-if="orientationBatchId && !filterOptions.batches.some(item => item.value === orientationBatchId)" :value="orientationBatchId">当前批次 #{{ orientationBatchId }}</option><option v-for="item in filterOptions.batches" :key="item.value" :value="item.value">{{ item.label }}</option></select>
       <select v-model="classId" aria-label="班级" :disabled="busy || selecting" @change="filter"><option value="">全部班级</option><option v-if="classId && !filterOptions.classes.some(item => item.value === classId)" :value="classId">当前班级 #{{ classId }}</option><option v-for="item in filterOptions.classes" :key="item.value" :value="item.value">{{ item.label }}</option></select>
       <AppDormBuildingPicker v-model="buildingId" :disabled="busy || selecting" :options="buildings" placeholder="全部楼栋" @change="filter" />
-      <input v-model="keyword" :disabled="busy || selecting" aria-label="搜索预留学生" placeholder="姓名 / 学号" @keyup.enter="filter">
+      <input v-model="keyword" :disabled="busy || selecting" aria-label="搜索已预留床位的学生" placeholder="姓名 / 学号" @keyup.enter="filter">
       <button type="button" :disabled="busy" @click="filter">查询</button>
       <button type="button" :disabled="busy" @click="showHistory">办理记录</button>
       <AppPermissionButton :allowed="allowed" code="studentAffairs.dorm.allocation.manage" :disabled="!selection.length || busy || selecting" @click="openConfirm">
@@ -54,7 +54,7 @@
     </AppGlobalState>
 
     <AppConfirmDialog v-model:visible="confirmVisible" title="核验到场并办理入住" confirm-text="确认入住" :submitting="busy" @confirm="create">
-      <p>本次为 {{ selection.length }} 名学生办理实际入住，沿用各自已预留床位。</p>
+      <p>本次为 \1 名学生办理实际入住，沿用各自已预留的床位。</p>
       <label class="arrival-check"><input v-model="arrivalConfirmed" type="checkbox"> 已逐人核验本人到场及预留床位</label>
       <AppInlineAlert v-if="confirmError" type="danger" :description="confirmError" />
     </AppConfirmDialog>

@@ -237,5 +237,4 @@ test('status success requires the exact acknowledged change id and 409 preserves
   Object.assign(conflictPage.form, { changeType: 'RETAIN', reason: '本人申请办理留级' })
   await conflictPage.submit()
   assert.equal(conflictPage.form.reason, '本人申请办理留级')
-  assert.match(conflictPage.receipt.value.title, /事实已变化/)
 })

@@ -216,7 +216,7 @@ def validate_exam_batch_conflicts(db, batch, *, term_id=None) -> dict:
     """
     term_id = term_id if term_id is not None else batch.term_id
     if not term_id:
-        raise AppException("DATA_CONFLICT", "考务批次未绑定正式学期，无法执行发布冲突门禁", http_status=409)
+        raise AppException("DATA_CONFLICT", "考务批次未绑定正式学期，无法执行发布冲突检查", http_status=409)
 
     own, missing_identity = _collect_occupancy(db, [int(batch.id)])
     problems = []

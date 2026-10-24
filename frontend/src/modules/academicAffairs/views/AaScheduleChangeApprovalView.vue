@@ -33,7 +33,7 @@
       </div>
       <template v-else>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
-      <p class="sc-stage-note">待审状态由服务端合并筛选后分页，也可按审核节点单独查看。</p>
+      <p class="sc-stage-note">待审状态由系统合并筛选后分页，也可按审核环节单独查看。</p>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" title="暂无待审调停课" description="学院审/教务处审通过或驳回后从此处移除" />
@@ -220,7 +220,7 @@ export default {
             next: status === 'APPLIED'
               ? (row.changeType === 'STOP' ? '停课已生效，请核对正式课表及通知回执' : res.data.applied?.notified?.students != null
                 ? `通知记录：${Number(res.data.applied?.notified?.students)} 名学生；新课位进入考勤，送达情况请核对通知回执`
-                : '新课位进入考勤；接口未提供通知人数，请核对通知回执')
+                : '新课位进入考勤；系统未提供通知人数，请核对通知回执')
               : (status === 'REJECTED' ? '任课教师查看原因后重新发起' : '教务处终审')
           }
           toast.success(action === 'approve' ? (res.data.status === 'APPLIED' ? '已终审通过，课表已改写' : '已通过，转教务处') : '已驳回')

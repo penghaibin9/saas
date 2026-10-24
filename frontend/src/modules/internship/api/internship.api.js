@@ -32,7 +32,7 @@ function fail(message, code = 1) {
 
 function toErr(e) {
   if (e?.biz) return fail(e.message, e.code || 1)
-  return fail(e?.message || '真实接口不可用', 503001)
+  return fail(e?.message || '暂时无法连接，请稍后重试', 503001)
 }
 
 async function call(fn) {
@@ -64,7 +64,7 @@ export const internshipApi = {
     const u = currentUserFromToken()
     const isTeacher = !!(u && u.userType === 'TEACHER')
     let roleName = isTeacher ? '实习指导教师' : '实习管理员'
-    const scopeName = isTeacher ? '本人指导的实习学生' : '本校实习数据（按后端数据范围）'
+    const scopeName = isTeacher ? '本人指导的实习学生' : '本校实习数据（按数据范围）'
     const brand = { ...tenantBrandConfig }
     // permissionPatterns：当前身份的权限码模式集，来自后端 /rbac/current-context（与 enforce_permission 同一套码）。
     // 角色菜单投影(getVisibleNavPlan/canSeeLeaf)与按钮态(permissionActions)据此收敛；取不到时降级（离线/兼容）。

@@ -2,7 +2,7 @@
   <AaOverviewPageFrame title="今日教学运行" subtitle="今日课次只读正式课表，不手工造课次">
     <template #actions><AppButton @click="openOverview">返回运行总览</AppButton><AppButton variant="primary" :loading="loading" @click="load">刷新正式课表</AppButton></template>
     <section class="m02-object">
-      <div><strong>{{ className || '请选择班级' }} · 正式课表</strong><p>{{ term.termName || term.termCode || '当前学期待核对' }} · 第 {{ week }} 周<span v-if="schedule.batchIds?.length"> · 发布批次 {{ schedule.batchIds.join('、') }}</span></p><small>来源：当前班级已发布课表；此入口只读查看。<span class="m02-tag">{{ loading ? '正在核对' : schedule.batchId || schedule.batchIds?.length ? '已发布' : '待核对来源' }}</span></small></div>
+      <div><strong>{{ className || '请选择班级' }} · 正式课表</strong><p>{{ term.termName || term.termCode || '当前学期待核对' }} · 第 {{ week }} 周<span v-if="schedule.batchIds?.length"> · 发布批次 {{ schedule.batchIds.join('、') }}</span></p><small>来源：当前班级已发布的课表；此入口仅供查看。<span class="m02-tag">{{ loading ? '正在核对' : schedule.batchId || schedule.batchIds?.length ? '已发布' : '待核对来源' }}</span></small></div>
       <dl><div><dt>当前责任</dt><dd>{{ ctx.currentRole?.roleName || '当前岗位' }}</dd></div><div><dt>下一责任</dt><dd>课程任课教师 · 调整须走调停课审批</dd></div></dl>
     </section>
     <section class="m02-card">

@@ -76,7 +76,7 @@ def login(body: LoginBody):
     user = get_user_by_login(body.loginName)
     if not user:
         audit_log.record("LOGIN", f"user:{body.loginName}", {"reason": "用户不存在"}, result="FAIL")
-        raise AppException("UNAUTHORIZED", "用户名或密码错误（mock 账号：student01 / teacher01 / admin01）")
+        raise AppException("UNAUTHORIZED", "用户名或密码错误")
     tenant_code = (body.tenantCode if body.tenantCode and get_mock_tenant(body.tenantCode)
                    else settings.DEFAULT_TENANT_CODE)
     ctx = get_active_context(user)
@@ -106,7 +106,7 @@ def logout(user=Depends(get_current_user)):
 def refresh_token(body: RefreshBody):
     claims = consume_refresh(body.refreshToken)
     if not claims:
-        raise unauthorized("refreshToken 无效或已使用，请重新登录")
+        raise unauthorized("登录凭证无效或已使用，请重新登录")
     if str(claims.get("userId") or "").startswith("db-"):
         auth_service_db.validate_token_subject(claims)
         return success({

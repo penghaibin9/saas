@@ -4,7 +4,7 @@ import { canConfirmIdentityImport, isIdentityImportProcessing } from './identity
 export const IMPORT_TYPES = { teachers: 'IDENTITY_TEACHER', students: 'IDENTITY_STUDENT' }
 const COUNT_STATES = new Set(['VALIDATED', 'VALIDATION_FAILED', 'CONFIRMING', 'SUCCEEDED'])
 const LABELS = {
-  SCANNING: '安全扫描中', WORKER_CLAIMED: '后台已领取', PARSING: '服务端预检中',
+  SCANNING: '安全扫描中', WORKER_CLAIMED: '后台已领取', PARSING: '预检查中',
   VALIDATED: '预检通过 · 尚未导入', VALIDATION_FAILED: '预检未通过',
   CONFIRMING: '正在确认导入', SUCCEEDED: '导入已完成', FAILED: '处理失败',
   CANCELLED: '任务已取消', EXPIRED: '任务已过期'
@@ -152,7 +152,7 @@ export function createImportController({ state, api, kind, canUpload, canConfirm
         const job = identityJob(await api.getImport(jobId), kind, jobId)
         if (!current()) return
         apply(job)
-        if (!confirmableJob(job)) { state.note = '服务端预检状态已变化，请按最新结果处理。'; await finish(current); return }
+        if (!confirmableJob(job)) { state.note = '预检查状态已变化，请按最新结果处理。'; await finish(current); return }
         state.review = reviewFingerprint(job); state.note = ''
       } catch (error) { if (current()) state.error = message(error) }
       finally { if (current()) state.busy = '' }
@@ -181,7 +181,7 @@ export function createImportController({ state, api, kind, canUpload, canConfirm
         const saved = await api.getImport(jobId)
         if (!currentRequest()) return
         apply(identityJob(saved, kind, jobId)); await finish(currentRequest)
-        state.note = state.readback ? '已从服务端重新读取完成结果。初始凭据仅在任务中心受控下载。'
+        state.note = state.readback ? '已重新读取完成结果。初始密码仅在任务中心受控下载。'
           : '确认请求已受理，最终状态仍需核对。请重新读取，不要再次确认。'
       } catch (error) {
         if (!currentRequest()) return

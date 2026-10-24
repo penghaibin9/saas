@@ -104,7 +104,7 @@ def settle_refund(
             int(tenant_id), int(case_id), expected_version=_required_int(body, "expectedVersion"),
             settlement_ref=str(body.get("settlementRef") or ""), actor_id=_actor(user),
         ),
-        message="外部退款凭据已登记；订单支付真值和模块授权未被自动修改",
+        message="外部退款凭据已登记；订单支付状态和模块授权未被自动修改",
     )
 
 
@@ -157,7 +157,7 @@ def void_invoice(
     return success(finance.void_invoice(
         int(tenant_id), int(invoice_case_id), expected_version=_required_int(body, "expectedVersion"),
         reason=str(body.get("reason") or ""), actor_id=_actor(user),
-    ), message="发票作废事实已登记；系统未执行外部作废动作")
+    ), message="发票作废记录已登记；系统未执行外部作废动作")
 
 
 def install_into_platform_router(target: APIRouter) -> int:

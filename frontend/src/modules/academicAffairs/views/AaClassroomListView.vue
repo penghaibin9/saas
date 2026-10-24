@@ -62,9 +62,9 @@
             <AppFormItem v-slot="{ id }" data-field="cr-room-type" label="教室类型"><AppSelect :id="id" v-model="form.roomType" :options="typeOptions.slice(1)" placeholder="" :disabled="saving" /></AppFormItem>
             <AppFormItem v-slot="{ id }" data-field="cr-capacity" label="容量（座位）" hint="填写实际可用座位数，范围 0–1000。" :error="fieldErrors.capacity"><AppNumberInput :id="id" v-model="form.capacity" :min="0" :max="1000" :precision="0" :disabled="saving" :status="fieldErrors.capacity ? 'error' : 'default'" /></AppFormItem>
             <AppFormItem v-slot="{ id }" data-field="cr-exam-seats" label="考试座位" hint="按实际考位填写；0 表示没有考位。留空保持未设置，排考时按正式合同沿用教学座位，不做折半。" :error="fieldErrors.examSeats"><AppNumberInput :id="id" v-model="form.examSeats" :min="0" :max="1000" :precision="0" :disabled="saving" :status="fieldErrors.examSeats ? 'error' : 'default'" /></AppFormItem><label class="cr-exclusive"><input v-model="form.isExclusive" type="checkbox" :disabled="saving">专用教室（自动排课跳过）</label>
-            <AppFormItem data-field="cr-allow-schedule" label="允许排课" required hint="决定该教室能否进入排课候选；仍须通过时段、容量和状态门禁。" :error="fieldErrors.allowSchedule"><AppSelect :model-value="ruleValue(form.allowSchedule)" @update:model-value="form.allowSchedule = $event === 'true'" :options="booleanOptions" placeholder="服务端未提供" :disabled="saving" :status="fieldErrors.allowSchedule ? 'error' : 'default'" /></AppFormItem>
-            <AppFormItem data-field="cr-allow-exam" label="允许排考" required hint="与考试座位数分别维护；允许排考不代表当前时段可用。" :error="fieldErrors.allowExam"><AppSelect :model-value="ruleValue(form.allowExam)" @update:model-value="form.allowExam = $event === 'true'" :options="booleanOptions" placeholder="服务端未提供" :disabled="saving" :status="fieldErrors.allowExam ? 'error' : 'default'" /></AppFormItem>
-            <AppFormItem data-field="cr-allow-borrow" label="开放借用" required hint="只控制借用入口，审批时仍核对占用、维修和停用状态。" :error="fieldErrors.allowBorrow"><AppSelect :model-value="ruleValue(form.allowBorrow)" @update:model-value="form.allowBorrow = $event === 'true'" :options="booleanOptions" placeholder="服务端未提供" :disabled="saving" :status="fieldErrors.allowBorrow ? 'error' : 'default'" /></AppFormItem>
+            <AppFormItem data-field="cr-allow-schedule" label="允许排课" required hint="决定该教室能否进入排课候选；仍须通过时段、容量和状态检查。" :error="fieldErrors.allowSchedule"><AppSelect :model-value="ruleValue(form.allowSchedule)" @update:model-value="form.allowSchedule = $event === 'true'" :options="booleanOptions" placeholder="系统未提供" :disabled="saving" :status="fieldErrors.allowSchedule ? 'error' : 'default'" /></AppFormItem>
+            <AppFormItem data-field="cr-allow-exam" label="允许排考" required hint="与考试座位数分别维护；允许排考不代表当前时段可用。" :error="fieldErrors.allowExam"><AppSelect :model-value="ruleValue(form.allowExam)" @update:model-value="form.allowExam = $event === 'true'" :options="booleanOptions" placeholder="系统未提供" :disabled="saving" :status="fieldErrors.allowExam ? 'error' : 'default'" /></AppFormItem>
+            <AppFormItem data-field="cr-allow-borrow" label="开放借用" required hint="只控制借用入口，审批时仍核对占用、维修和停用状态。" :error="fieldErrors.allowBorrow"><AppSelect :model-value="ruleValue(form.allowBorrow)" @update:model-value="form.allowBorrow = $event === 'true'" :options="booleanOptions" placeholder="系统未提供" :disabled="saving" :status="fieldErrors.allowBorrow ? 'error' : 'default'" /></AppFormItem>
             <AppFormItem v-slot="{ id }" data-field="cr-remark" label="备注" class="cr-wide"><AppTextarea :id="id" ref="remarkInput" v-model="form.remark" :maxlength="500" :rows="3" placeholder="例如：投影仪使用说明、教室管理注意事项" :disabled="saving" /><AppQuickPhrases v-if="!saving" scene-key="aa.remark" @pick="onPickRemark" /></AppFormItem>
           </div><details class="cr-extra" :open="!!form.campusCode"><summary>补充校区信息（选填）</summary><AppFormItem v-slot="{ id }" data-field="cr-campus-code" label="校区编码"><AppTextInput :id="id" v-model="form.campusCode" :maxlength="50" placeholder="学校已有校区编码" :disabled="saving || !!form.buildingId" /></AppFormItem></details></section>
         </div>
@@ -134,7 +134,7 @@ export default {
         this.rows = []; this.buildings = []; this.selectedBuilding = null; this.buildingForm = null; this.batchMode = ''; this.form = EMPTY_FORM(); this.formVisible = false; this.detail = null; this.detailVisible = false; this.pendingAction = null; this.confirmVisible = false; this.receipt = null
         this.loading = false; this.buildingsLoading = false; this.saving = false; this.acting = false; this.buildingSaving = false; this.detailLoading = false; this.pagination.total = 0; this.buildingTotal = 0
         this.error = `${errorMessage(error, fallback)}；已清除先前教室与楼栋内容。`
-      } else this[field] = (isConflictResult(error) ? '事实已变化，保留输入，请重新核对。' : '') + errorMessage(error, fallback)
+      } else this[field] = (isConflictResult(error) ? '数据已变化，保留输入，请重新核对。' : '') + errorMessage(error, fallback)
     },
     async loadBuildings(page = 1) {
       const rev = ++this.buildingRevision; this.buildingsLoading = true; this.buildingsError = ''
@@ -190,7 +190,7 @@ export default {
     },
     statusType(status) { return status === 'AVAILABLE' ? 'success' : status === 'MAINTENANCE' ? 'warning' : 'default' },
     examSeatText(value) { return value === null || value === undefined || value === '' ? '考试座位未设置（沿用教学座位）' : `${value} 考试座位` },
-    ruleText(value) { return typeof value === 'boolean' ? (value ? '允许' : '禁止') : '服务端未提供' },
+    ruleText(value) { return typeof value === 'boolean' ? (value ? '允许' : '禁止') : '系统未提供' },
     ruleValue(value) { return typeof value === 'boolean' ? String(value) : '' },
     ruleShort(value, label) { return typeof value === 'boolean' ? `${label}${value ? '允许' : '禁止'}` : `${label}未提供` },
     focusField(id) { this.$nextTick(() => this.$el.querySelector(`[data-field="${id}"] input, [data-field="${id}"] textarea, [data-field="${id}"] select`)?.focus()) },

@@ -43,7 +43,7 @@
               <div><span>{{ selectedMetric.definition?.denominatorLabel || '分母' }}</span><strong>{{ selectedMetric.denominator ?? '—' }}</strong></div>
             </div>
             <div class="definition">
-              <h3>如何计算</h3><p>{{ selectedMetric.note || selectedMetric.definition?.note || '当前接口未提供进一步的口径说明。' }}</p>
+              <h3>如何计算</h3><p>{{ selectedMetric.note || selectedMetric.definition?.note || '当前未提供进一步的口径说明。' }}</p>
               <p>比率 = 分子 ÷ 分母 × 100%；无统计对象时不计算比率。</p>
               <p v-if="selectedMetric.anomaly" class="warning-text">分子大于分母，当前口径存在异常，请核对统计来源。</p>
               <p v-else-if="selectedMetric.rate == null">当前范围暂无可计算的数据，不计为达标或未达标。</p>

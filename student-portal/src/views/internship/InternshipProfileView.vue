@@ -191,7 +191,7 @@ async function generatePdfPreview() {
     }))
     if (!alive || api !== selectionApi.value || previewSequence !== previewRequestSeq) return
     pdfUrl.value = String(data?.url || data?.fileUrl || data?.previewUrl || '')
-    if (!pdfUrl.value) previewError.value = 'PDF 已生成，但服务端未返回可预览地址'
+    if (!pdfUrl.value) previewError.value = 'PDF 已生成，但未返回可预览地址'
   } catch (err) {
     if (alive && api === selectionApi.value && previewSequence === previewRequestSeq) previewError.value = err?.message || 'PDF 生成失败'
   } finally {

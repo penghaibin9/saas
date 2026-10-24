@@ -1,7 +1,7 @@
 <template>
   <section class="aa-a-object" aria-label="当前业务对象">
     <div class="aa-a-object__identity"><strong>{{ name }}</strong><p>{{ identity }}</p><small v-if="source">{{ source }}</small></div>
-    <dl><div><dt>当前状态</dt><dd>{{ status || '状态待核对' }}</dd></div><div><dt>当前责任</dt><dd>{{ owner || '服务端未提供具体受理人' }}</dd></div><div v-if="nextStep"><dt>下一步</dt><dd>{{ nextStep }}</dd></div></dl>
+    <dl><div><dt>当前状态</dt><dd>{{ status || '状态待核对' }}</dd></div><div><dt>当前责任</dt><dd>{{ owner || '系统未提供具体受理人' }}</dd></div><div v-if="nextStep"><dt>下一步</dt><dd>{{ nextStep }}</dd></div></dl>
     <slot />
   </section>
 </template>

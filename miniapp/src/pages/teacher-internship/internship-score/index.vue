@@ -43,7 +43,7 @@
           </view>
         </view>
 
-        <MobileInlineAlert type="info" description="企业评价分只读取当前正式安置的已审核评价；教师端触发系统事实核算，复核与最终发布由学校管理端分步完成。" />
+        <MobileInlineAlert type="info" description="企业评价分只读取当前正式安置的已审核评价；教师端触发核算，复核与最终发布由学校管理端分步完成。" />
         <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次"
           description="当前身份的数据范围内没有可查看的实习批次。" />
         <MobileGlobalState v-else-if="!list || !list.length" state="empty" title="当前批次尚未核算成绩"
@@ -111,7 +111,7 @@
           </picker>
         </view>
 
-        <MobileInlineAlert type="info" description="所有分项由系统读取权威过程事实，不能手工提交裸分。已有未发布成绩再次核算会携带当前版本，防止覆盖他人修改。" />
+        <MobileInlineAlert type="info" description="所有分项由系统读取正式过程记录，不能手工提交分数。已有未发布成绩再次核算会基于当前版本，防止覆盖他人修改。" />
         <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次"
           description="当前身份的数据范围内没有可核算的实习批次。" />
         <MobileGlobalState v-else-if="!students.length" state="empty" title="暂无可核算学生"
@@ -146,7 +146,7 @@
               <view><text class="is__section-title">核对权威来源</text><text class="is__section-hint">小程序不提交裸分，也不覆盖企业评价</text></view>
             </view>
             <view class="is__truth-list">
-              <text>打卡、周报、月报：系统按有效过程事实与批次规则计算</text>
+              <text>打卡、周报、月报：系统按有效过程记录与批次规则计算</text>
               <text>企业评价：只读取当前正式安置且学校已审核的企业评价</text>
               <text>学校评价：学生自评/企业岗位评价、导师意见与学校审核齐全后生成</text>
             </view>
@@ -154,7 +154,7 @@
 
           <view class="card is__source-note">
             <text class="is__source-title">系统自动参与核算</text>
-            <text class="is__source-text">提交后服务端冻结来源 hash；来源发生变化会要求重新核算。人工调分须在 PC 端上传依据并由不同人员复核。</text>
+            <text class="is__source-text">提交后系统会冻结来源数据；来源发生变化会要求重新核算。人工调分须在电脑端上传依据并由不同人员复核。</text>
           </view>
         </template>
 
@@ -308,7 +308,7 @@ export default {
       if (existing) body.expectedVersion = existing.version
       submitLock.run(() => teacherApi.computeInternshipScore(body)).then((result) => {
         uni.showToast({ title: result && result.incomplete ? `已保存，缺：${result.incompleteReason}` : `核算完成，总分 ${result.total}`, icon: 'none' })
-        this.receipt = { actionLabel: '系统事实核算完成', id: result.id, version: result.version,
+        this.receipt = { actionLabel: '核算完成', id: result.id, version: result.version,
           statusLabel: result.incomplete ? '缺项待补齐' : '待复核',
           nextStep: result.incomplete ? (result.incompleteReason || '补齐来源后重算') : '等待授权管理员独立复核' }
         this.tab = 'list'; this.load()

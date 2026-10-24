@@ -453,7 +453,7 @@ def workload_detail(user, teacher_key, college_id=None, page=1, page_size=20, te
     """Teacher detail includes co-teaching/week-split task coverage, SQL-paged."""
     key = str(teacher_key or "").strip()
     if not key:
-        raise AppException("VALIDATION_ERROR", "teacherKey 必填")
+        raise AppException("VALIDATION_ERROR", "请选择教师")
     page_no, size = base._page_values(page, page_size)
     with base.stats.session() as db:
         scope = base.stats._resolve_scope(user, db)

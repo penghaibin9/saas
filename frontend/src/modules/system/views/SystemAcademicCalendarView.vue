@@ -130,7 +130,7 @@
         <section class="mp-card">
           <header class="mp-card__head">
             <span class="mp-card__title">切换影响的模块</span>
-            <span class="mp-note">未接入的模块仍按各自口径取值，需在后续施工卡收口</span>
+            <span class="mp-note">未接入的模块仍按各自口径取值，后续统一收口</span>
           </header>
           <div class="mp-card__body" style="padding-top: 0">
             <table class="mp-audit">

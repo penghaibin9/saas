@@ -27,7 +27,7 @@
           <div v-else-if="impactState === 'error'" class="sw-alert sw-alert--error" role="alert" data-testid="impact-error"><b>停用影响未取得，不能继续确认</b><p>{{ impactError }}</p><button type="button" class="sw-btn sw-space" @click="loadImpact">重试影响查询</button></div>
           <template v-else-if="impact">
             <div class="sw-form"><div v-for="(label, key) in countLabels" :key="key"><small>{{ label }}</small><h2>{{ countLabel(impact.counts?.[key]) }}</h2></div></div>
-            <p class="sw-alert sw-alert--warning">{{ impact.countsExact === true ? '按服务端返回口径统计。' : '这是非精确统计，历史来源标识不完整可能少计；未知不是零。' }} {{ impact.note }}</p>
+            <p class="sw-alert sw-alert--warning">{{ impact.countsExact === true ? '按系统返回的口径统计。' : '这是非精确统计，历史来源标识不完整可能少计；未知不是零。' }} {{ impact.note }}</p>
             <p v-if="impact.cascadeDisabled?.length">连带不可用：{{ impact.cascadeDisabled.map(row => row.label).join('、') }}</p>
             <details><summary>展开菜单、接口与涉及角色</summary><p class="sw-code">菜单：{{ (impact.menus || []).join('、') || '未返回' }}</p><p class="sw-code">接口：{{ (impact.apis || []).join('、') || '未返回' }}</p><p class="sw-code">角色：{{ (impact.affectedRoles || []).join('、') || '未返回' }}</p></details>
           </template>

@@ -109,7 +109,7 @@
     <div class="aa-bulk__actions">
       <div>
         <strong>已选择 {{ selectedIds.length }} 人</strong>
-        <span>预览不会写库；只有确认后才逐人进入正式注册写链。</span>
+        <span>预览不会保存；只有确认后才逐人进入正式注册。</span>
       </div>
       <AppButton variant="primary" :disabled="!canRegister || previewing || applying || unknownReceipt || !selectedIds.length" @click="makePreview">
         {{ previewing ? '预览中…' : '预览批量注册' }}

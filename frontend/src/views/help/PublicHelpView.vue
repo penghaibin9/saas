@@ -2,7 +2,7 @@
   <main class="public-help">
     <header class="ph-hero">
       <div class="ph-hero__inner">
-        <p class="ph-eyebrow">跃科 SaaS · 自助服务</p>
+        <p class="ph-eyebrow">跃科 · 自助服务</p>
         <h1>帮助中心</h1>
         <p>按你的角色和问题查操作步骤。这里是只读帮助页，不需要管理端登录，也不会绕过任何业务权限。</p>
       </div>

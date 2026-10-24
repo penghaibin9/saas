@@ -496,7 +496,7 @@ def summary(user, batch_id):
             next_action = {
                 "code": "CONFLICTS" if conflicts["hardCount"] else "PRE_PUBLISH",
                 "label": "处理硬冲突" if conflicts["hardCount"] else "进入预发布检查",
-                "description": "硬冲突必须清零" if conflicts["hardCount"] else "排课完整，可执行预发布闸门",
+                "description": "硬冲突必须清零" if conflicts["hardCount"] else "排课完整，可执行预发布检查",
             }
 
         stage_order = [

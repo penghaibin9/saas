@@ -161,7 +161,7 @@ def _filtered(q, params: dict):
         try:
             q = q.where(InternshipPosition.publish_at >= datetime.fromisoformat(published_from))
         except ValueError as exc:
-            raise AppException("VALIDATION_ERROR", "publishedFrom 必须是 ISO-8601 日期时间") from exc
+            raise AppException("VALIDATION_ERROR", "发布起始时间必须是有效的日期时间") from exc
     return q
 
 

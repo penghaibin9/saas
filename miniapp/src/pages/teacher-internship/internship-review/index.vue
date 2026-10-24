@@ -112,7 +112,7 @@
                 <view class="flex-1 ir__identity"><view class="row" style="gap:6px;"><text class="t-md t-bold">{{ w.student }}</text><text class="ir__week">{{ w.week }}</text></view><text class="ir__company">{{ w.company }}{{ w.post ? ' · ' + w.post : '' }}</text></view>
                 <MobileStatusTag :status="w.status" :label="w.statusLabel" />
               </view>
-              <MobileInlineAlert v-if="w.overdue" type="danger" description="本周周报逾期未提交，可发送真实站内催交；5 分钟内重复发送会被服务端拒绝。" />
+              <MobileInlineAlert v-if="w.overdue" type="danger" description="本周周报逾期未提交，可发送站内催交；5 分钟内重复发送会被系统拒绝。" />
               <template v-else>
                 <view class="ir__meta">
                   <view><text>正文长度</text><text>{{ w.wordCount || 0 }} 字</text></view>
@@ -182,7 +182,7 @@
                 <view v-if="c.appealStatus || c.appealNote" class="ir__ck-row"><text class="ir__label">学生申诉</text><text class="ir__text flex-1">{{ c.appealNote || c.appealStatus }}</text></view>
               </view>
               <MobileInlineAlert v-if="!canDecideException(c)" type="danger" title="移动端证据不足，已禁止终态处理" :description="decisionFactMessage(c)" />
-              <view class="ir__next is-warning"><text class="ir__next-label">处理原则</text><text class="ir__next-text">超范围不直接认定作弊；转风险会形成 canonical INT-R07 高风险单，必须填写原因。</text></view>
+              <view class="ir__next is-warning"><text class="ir__next-label">处理原则</text><text class="ir__next-text">超范围不直接认定作弊；转风险会形成高风险单，必须填写原因。</text></view>
               <view class="ir__actions is-three" v-if="c.status === 'PENDING_HANDLE'">
                 <button class="btn btn-ghost flex-1" :disabled="acting || !canDecideException(c)" @click="ck(c, 'reject')">异常计入</button>
                 <button class="ir__pass flex-1" :disabled="acting || !canDecideException(c)" @click="ck(c, 'ok')">认定有效</button>
@@ -249,7 +249,7 @@ export default {
     },
     tabHelpText() {
       if (this.tab === 'weekly') return '逾期催交进入真实站内消息 outbox；待批周报仍先展开正文再逐条批阅。'
-      if (this.tab === 'visit') return '巡访记录联系人、工作状态、企业反馈、事实、问题与跟进；教师位置采集默认关闭。'
+      if (this.tab === 'visit') return '巡访记录联系人、工作状态、企业反馈、情况、问题与跟进；教师位置采集默认关闭。'
       return '定位超范围或失败不等于作弊；转风险必须写明原因，并走同一条异常状态机。'
     },
     sequentialItems() {
@@ -359,7 +359,7 @@ export default {
     decisionFactMessage(item) {
       const missing = Array.isArray(item?.missingDecisionFacts) ? item.missingDecisionFacts.filter(Boolean) : []
       if (!Number.isInteger(item?.expectedVersion) || item.expectedVersion < 0) missing.push('对象版本')
-      return `缺少${missing.length ? missing.join('、') : '完整定位或设备'}事实。请刷新；仍不完整时改在 PC 端核对完整证据。`
+      return `缺少${missing.length ? missing.join('、') : '完整定位或设备'}信息。请刷新；仍不完整时改在电脑端核对完整证据。`
     },
     nextSequential() { if (!this.sequentialConflict && !this.acting && this.sequentialIndex < this.sequentialItems.length - 1) this.sequentialIndex += 1 },
     load(done) {

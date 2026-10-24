@@ -338,7 +338,7 @@ def resolve_route(action_key: str, *, client: str) -> dict:
     if not path:
         return {
             "ok": False,
-            "message": "当前端暂无对应页面，请前往教师 PC / 学生 PC 办理",
+            "message": "当前端暂无对应页面，请前往教师电脑端或学生电脑端办理",
             "path": None,
             "label": spec.get("label"),
         }

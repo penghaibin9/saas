@@ -25,7 +25,7 @@
       <template v-else-if="step === 1">
         <label class="imp__upload">
           <input ref="fileInput" type="file" class="imp__file-input" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" @change="selectFile" />
-          <span class="mp-note">仅支持标准 .xlsx；上传后进入文件安全检查并执行服务端预检，不会直接写入数据库</span>
+          <span class="mp-note">仅支持标准 .xlsx；上传后进入文件安全检查并执行预检查，不会直接写入数据库</span>
           <span v-if="file" class="imp__filename">已选择：{{ file.name }}</span>
         </label>
         <div v-if="preview" class="imp__result">
@@ -36,7 +36,7 @@
           <div v-if="countsReady" class="imp__stat">
             共 <b>{{ preview.total }}</b> 行 · 校验通过 <b class="is-ok">{{ preview.valid }}</b> · 存在错误 <b class="is-err">{{ preview.invalid }}</b>
           </div>
-          <p v-else class="mp-note">服务端尚未形成预检结果；此阶段不会把缺失计数当作 0，也不能进入确认。</p>
+          <p v-else class="mp-note">尚未形成预检查结果；此阶段不会把缺失的计数当作 0，也不能进入确认。</p>
           <table v-if="preview.errors?.length" class="mp-audit">
             <thead><tr><th>行号</th><th>字段</th><th>错误原因</th></tr></thead>
             <tbody>
@@ -53,7 +53,7 @@
           <div class="mp-card__body">
             <div class="mp-kv"><span class="mp-kv__k">任务编号</span><span class="mp-kv__v">#{{ preview && (preview.jobId || preview.id || preview.batchNo) }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">写入范围</span><span class="mp-kv__v">仅写入服务器预检通过的 {{ preview && preview.valid }} 行；页面不回传整批明细</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">安全门禁</span><span class="mp-kv__v">任务必须仍处于“校验通过”且错误行为 0；提交前会从服务端重新校验当前版本</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">安全检查</span><span class="mp-kv__v">任务必须仍处于“校验通过”且错误行为 0；提交前会重新校验当前版本</span></div>
             <div class="mp-kv"><span class="mp-kv__k">审计留痕</span><span class="mp-kv__v">原始文件、错误回执与初始凭据回执均进入文件中心和任务历史</span></div>
           </div>
         </div>
@@ -131,7 +131,7 @@ export default {
   },
   methods: {
     fieldLabel(value) { return FIELD_LABELS[value] || (/\p{Script=Han}/u.test(String(value || '')) ? value : (value ? '其他字段' : '—')) },
-    previewStatusLabel(status, providedLabel = '') { return providedLabel || PREVIEW_STATUS_LABELS[status] || (status ? '状态待确认' : '等待服务端状态') },
+    previewStatusLabel(status, providedLabel = '') { return providedLabel || PREVIEW_STATUS_LABELS[status] || (status ? '状态待确认' : '等待系统状态') },
     abortValidation() {
       if (this.validationController) this.validationController.abort()
       this.validationController = null
@@ -191,7 +191,7 @@ export default {
     },
     async confirmImport() {
       if (!this.canProceed) {
-        toast.error('服务端预检尚未满足确认条件，请重新检查任务状态')
+        toast.error('预检查尚未满足确认条件，请重新检查任务状态')
         return
       }
       this.submitting = true

@@ -49,7 +49,7 @@
             </DataTable>
           </section>
           <aside class="aaql-panel aaql-indicators">
-            <header><h3>授权范围质量指标</h3><span>每项指标保留服务端筛选口径</span></header>
+            <header><h3>授权范围质量指标</h3><span>每项指标保留各自的筛选口径</span></header>
             <div v-for="i in indicators" :key="i.key" class="aaql-indicator-row"><span>{{ i.label }}</span><b>{{ i.value }}{{ i.unit }}</b><small v-if="i.numerator != null">{{ i.numerator }} / {{ i.denominator }}</small></div>
           </aside>
         </div>
@@ -60,7 +60,7 @@
     <!-- AA-227～AA-230：按业务字段呈现的质量记录表单；历史对象仍可继续办理。 -->
     <div v-else-if="isRecordTab" class="mp-stack">
       <AppInlineAlert v-if="tab === 'incident'" type="warning"
-        description="教学事故等级与处理由学校现行制度认定。本页登记事实与处置意见，不自动生成处罚结论。" />
+        description="教学事故等级与处理由学校现行制度认定。本页登记情况与处置意见，不自动生成处罚结论。" />
       <ol class="aaql-stage-rail" aria-label="质量闭环阶段"><li v-for="(step,index) in qualityStages" :key="step" :class="{ 'is-done': index < recordStage, 'is-current': index === recordStage }"><span>{{ index < recordStage ? '✓' : index + 1 }}</span><div><strong>{{ step }}</strong><small>{{ index === recordStage ? '当前环节' : index < recordStage ? '已有正式事实' : '等待前序完成' }}</small></div></li></ol>
       <ErrorState v-if="panelError" :description="panelError" @retry="loadRecords" />
       <LoadingState v-else-if="recLoading" />
@@ -237,10 +237,10 @@ import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
 
 const _REC_TYPE_META = {
-  supervision: { type: 'SUPERVISION', label: '督导听课', primaryLabel: '新增听课记录', titleLabel: '课次', titlePlaceholder: '填写正式课次', teacherLabel: '教师', courseLabel: '课程', occurredLabel: '听课时间', descriptionLabel: '观察事实', descriptionPlaceholder: '如实记录课堂观察事实', conclusionLabel: '改进意见', conclusionPlaceholder: '填写具体改进意见', showTeacher: true, showCourse: true, showCollege: false, showLocation: true, showCategory: false },
-  patrol: { type: 'PATROL', label: '巡课记录', primaryLabel: '新增巡课记录', titleLabel: '课次', titlePlaceholder: '填写巡查课次', teacherLabel: '巡查人', occurredLabel: '巡课日期', descriptionLabel: '问题事实', descriptionPlaceholder: '如实记录巡查发现', conclusionLabel: '处置建议', conclusionPlaceholder: '填写处置建议', showTeacher: true, showCourse: false, showCollege: false, showLocation: true, showCategory: false },
-  inspection: { type: 'INSPECTION', label: '教学检查', primaryLabel: '发起检查记录', titleLabel: '检查范围', titlePlaceholder: '填写检查范围', teacherLabel: '涉及教师', courseLabel: '涉及课程', occurredLabel: '检查时间', categoryLabel: '检查项目', categoryPlaceholder: '填写检查项目', descriptionLabel: '发现事实', descriptionPlaceholder: '填写检查证据与发现事实', conclusionLabel: '结论', conclusionPlaceholder: '填写检查结论', showTeacher: false, showCourse: false, showCollege: true, showLocation: false, showCategory: true },
-  incident: { type: 'INCIDENT', label: '教学事故', primaryLabel: '登记事故事实', titleLabel: '事故事实摘要', titlePlaceholder: '填写事故摘要', teacherLabel: '涉及教师', courseLabel: '课程', occurredLabel: '发生时间', categoryLabel: '事故类型 / 等级', categoryPlaceholder: '按学校现行制度填写，不由系统推定', descriptionLabel: '事实材料说明', descriptionPlaceholder: '如实说明事实与材料来源', conclusionLabel: '当前处理状态', conclusionPlaceholder: '填写当前处理状态', showTeacher: true, showCourse: true, showCollege: false, showLocation: true, showCategory: true }
+  supervision: { type: 'SUPERVISION', label: '督导听课', primaryLabel: '新增听课记录', titleLabel: '课次', titlePlaceholder: '填写正式课次', teacherLabel: '教师', courseLabel: '课程', occurredLabel: '听课时间', descriptionLabel: '观察情况', descriptionPlaceholder: '如实记录课堂观察情况', conclusionLabel: '改进意见', conclusionPlaceholder: '填写具体改进意见', showTeacher: true, showCourse: true, showCollege: false, showLocation: true, showCategory: false },
+  patrol: { type: 'PATROL', label: '巡课记录', primaryLabel: '新增巡课记录', titleLabel: '课次', titlePlaceholder: '填写巡查课次', teacherLabel: '巡查人', occurredLabel: '巡课日期', descriptionLabel: '问题情况', descriptionPlaceholder: '如实记录巡查发现', conclusionLabel: '处置建议', conclusionPlaceholder: '填写处置建议', showTeacher: true, showCourse: false, showCollege: false, showLocation: true, showCategory: false },
+  inspection: { type: 'INSPECTION', label: '教学检查', primaryLabel: '发起检查记录', titleLabel: '检查范围', titlePlaceholder: '填写检查范围', teacherLabel: '涉及教师', courseLabel: '涉及课程', occurredLabel: '检查时间', categoryLabel: '检查项目', categoryPlaceholder: '填写检查项目', descriptionLabel: '发现情况', descriptionPlaceholder: '填写检查依据与发现情况', conclusionLabel: '结论', conclusionPlaceholder: '填写检查结论', showTeacher: false, showCourse: false, showCollege: true, showLocation: false, showCategory: true },
+  incident: { type: 'INCIDENT', label: '教学事故', primaryLabel: '登记事故情况', titleLabel: '事故情况摘要', titlePlaceholder: '填写事故摘要', teacherLabel: '涉及教师', courseLabel: '课程', occurredLabel: '发生时间', categoryLabel: '事故类型 / 等级', categoryPlaceholder: '按学校现行制度填写，不由系统推定', descriptionLabel: '情况材料说明', descriptionPlaceholder: '如实说明情况与材料来源', conclusionLabel: '当前处理状态', conclusionPlaceholder: '填写当前处理状态', showTeacher: true, showCourse: true, showCollege: false, showLocation: true, showCategory: true }
 }
 const _REC_TYPE_KEYS = Object.keys(_REC_TYPE_META)
 const _REC_STATUS_LABEL = { SUBMITTED: '待确认', CONFIRMED: '已确认', CLOSED: '已关闭' }
@@ -250,7 +250,7 @@ const _RECT_STATUS_TYPE = { PENDING: 'primary', IN_PROGRESS: 'warning', SUBMITTE
 const _QUALITY_STAGES = ['记录问题', '指派整改', '执行跟进', '提交复核', '关闭归档']
 const _PAGE_META = {
   dashboard: { title: '质量看板', subtitle: '从发现问题接续整改闭环' },
-  supervision: { title: '督导听课', subtitle: '从真实课次记录，不用评价分替代事实' },
+  supervision: { title: '督导听课', subtitle: '从真实课次记录，不用评价分代替实际情况' },
   patrol: { title: '巡课记录', subtitle: '问题可进入整改，但登记不等于已整改' },
   inspection: { title: '教学检查', subtitle: '检查证据与后续责任明确' },
   incident: { title: '教学事故', subtitle: '等级与处理由现行制度决定，不由页面硬编码处罚' },
@@ -588,10 +588,10 @@ export default {
           const fresh = await api.getRecord(command.objectId)
           if (!this.currentWrite(command)) return
           if (fresh?.code === 0 && String(fresh.data?.recordId) === command.objectId && fresh.data?.recordType === body.recordType && fresh.data?.title === body.title) {
-            this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${this.recMeta.label} #${command.objectId}`, next: body.needRectify ? '质量责任岗确认后指派整改' : '质量责任岗确认记录' }; this.actionNotice = `正式记录状态：${this.recStatusLabel(fresh.data.status)}。`; toast.success('已回读正式质量记录'); this.resetRecForm(); await this.loadRecords(); return
+            this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${this.recMeta.label} #${command.objectId}`, next: body.needRectify ? '质量责任岗确认后指派整改' : '质量责任岗确认记录' }; this.actionNotice = `正式记录状态：${this.recStatusLabel(fresh.data.status)}。`; toast.success('已重新读取正式质量记录'); this.resetRecForm(); await this.loadRecords(); return
           }
         }
-        this.actionNotice = '提交结果待核实，当前回读不足以证明正式记录已经建立；请勿重复提交。'
+        this.actionNotice = '提交结果待核实，当前读取不足以证明正式记录已经建立；请勿重复提交。'
       } catch (error) { if (this.currentWrite(command) || !this.pendingWrite) this.recFormError = this.failureText(error, '记录尚未确认，请保留表单并重试读取。') }
       finally { if (this.alive && command.identity === this.identityKey) this.recSaving = false }
     },
@@ -655,7 +655,7 @@ export default {
         const after = await api.getRecord(id)
         if (!this.currentWrite(command)) return false
         if (result?.code === 0 && after?.code === 0 && String(after.data?.recordId) === id && after.data?.status === afterStatus) {
-          this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${snapshot.title} · #${id}`, next: afterStatus === 'CONFIRMED' ? (snapshot.needRectify ? '指派整改责任人' : '质量责任岗关闭记录') : '质量归档' }; this.actionNotice = `正式状态：${this.recStatusLabel(afterStatus)}。`; toast.success('已回读正式质量记录'); await this.loadRecords(); return true
+          this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${snapshot.title} · #${id}`, next: afterStatus === 'CONFIRMED' ? (snapshot.needRectify ? '指派整改责任人' : '质量责任岗关闭记录') : '质量归档' }; this.actionNotice = `正式状态：${this.recStatusLabel(afterStatus)}。`; toast.success('已重新读取正式质量记录'); await this.loadRecords(); return true
         }
         this.actionNotice = '操作结果待核实，当前读取不足以证明本次命令完成；请勿重复操作。'; return false
       } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; if (this.denied(error)) this.recRows = []; toast.error(this.failureText(error, '本次操作未确认。')) } return false }
@@ -668,12 +668,12 @@ export default {
       const command = this.pendingWrite
       if (!command || this.recSaving || this.rectSaving) return
       if (!command.objectId) {
-        this.actionNotice = '服务端未返回可核对的业务对象编号，当前不能证明命令完成，也不会自动重放。请保留来源对象并由业务审计记录核对。'
+        this.actionNotice = '系统未返回可核对的业务对象编号，当前不能证明操作完成，也不会自动重复提交。请保留来源对象并由业务审计记录核对。'
         return
       }
       const isRecord = command.kind.startsWith('record-')
       if (command.kind === 'record-cancel') {
-        this.actionNotice = '撤销命令没有可安全区分“已撤销”和“当前不可读”的只读回执，系统不会自动重放；请从原队列或审计记录核对。'
+        this.actionNotice = '撤销操作没有可安全区分“已撤销”和“当前不可读”的只读回执，系统不会自动重复提交；请从原队列或审计记录核对。'
         return
       }
       this.recSaving = isRecord; this.rectSaving = !isRecord
@@ -692,11 +692,11 @@ export default {
           }
           next = command.expectedAfter === 'CLOSED' ? '质量归档岗' : command.expectedAfter === 'SUBMITTED' ? '质量复核岗' : (res?.data?.responsibleName || '整改责任人')
         }
-        if (!verified) { this.actionNotice = res?.code === 0 ? '只读核对仍未找到与原命令一致的正式状态；请勿重复提交。' : this.failureText(res, '只读核对失败，请稍后再次核对。'); return }
+        if (!verified) { this.actionNotice = res?.code === 0 ? '只读核对仍未找到与原操作一致的正式状态；请勿重复提交。' : this.failureText(res, '只读核对失败，请稍后再次核对。'); return }
         this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${res.data?.title || command.snapshot?.title || '质量对象'} · #${command.objectId}`, next }; this.actionNotice = `已只读核对正式状态：${isRecord ? this.recStatusLabel(res.data.status) : this.rectStatusLabel(res.data)}。`; toast.success('已核对原操作，无重复提交')
         if (this.isRecordTab) await this.loadRecords()
         else if (this.isRectTab) await this.loadRectifications()
-      } catch (error) { if (this.currentWrite(command)) this.actionNotice = this.failureText(error, '只读核对失败，原命令不会自动重放。') }
+      } catch (error) { if (this.currentWrite(command)) this.actionNotice = this.failureText(error, '只读核对失败，原操作不会自动重复提交。') }
       finally { if (this.alive && command.identity === this.identityKey) { this.recSaving = false; this.rectSaving = false } }
     },
     // ── AA-231/AA-232 质量整改与跟进 ──
@@ -769,10 +769,10 @@ export default {
           const fresh = await api.getRectification(command.objectId)
           if (!this.currentWrite(command)) return
           if (fresh?.code === 0 && String(fresh.data?.rectId) === command.objectId && String(fresh.data?.sourceRecordId) === sourceId && fresh.data?.title === body.title) {
-            this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${body.title} · #${command.objectId}`, next: fresh.data?.responsibleName || '整改责任人' }; this.actionNotice = `正式整改状态：${this.rectStatusLabel(fresh.data)}。`; toast.success('已回读正式整改任务'); this.rectCreateVisible = false; await this.loadRectifications(); return
+            this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${body.title} · #${command.objectId}`, next: fresh.data?.responsibleName || '整改责任人' }; this.actionNotice = `正式整改状态：${this.rectStatusLabel(fresh.data)}。`; toast.success('已重新读取正式整改任务'); this.rectCreateVisible = false; await this.loadRectifications(); return
           }
         }
-        this.actionNotice = '发起结果待核实，当前回读不足以证明整改任务已经建立；请勿重复提交。'
+        this.actionNotice = '发起结果待核实，当前读取不足以证明整改任务已经建立；请勿重复提交。'
       } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改任务尚未确认，请保留表单并只读核对。') } }
       finally { if (this.alive && command.identity === this.identityKey) this.rectSaving = false }
     },
@@ -844,7 +844,7 @@ export default {
         const action = mode === 'progress' ? 'PROGRESS' : 'SUBMIT'
         const matchedLog = log.some(item => item.action === action && String(item.note || '').trim() === note)
         if (res?.code === 0 && after?.code === 0 && String(after.data?.rectId) === id && after.data?.status === expectedAfter && matchedLog) {
-          this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${snapshot.title} · #${id}`, next: mode === 'submit' ? '质量复核岗' : (after.data?.responsibleName || '整改责任人') }; this.actionNotice = `正式整改状态：${this.rectStatusLabel(after.data)}。`; toast.success(mode === 'submit' ? '已提交复核并回读状态' : '已记录进度并回读状态'); this.rectNoteVisible = false; await this.loadRectifications(); return
+          this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${snapshot.title} · #${id}`, next: mode === 'submit' ? '质量复核岗' : (after.data?.responsibleName || '整改责任人') }; this.actionNotice = `正式整改状态：${this.rectStatusLabel(after.data)}。`; toast.success(mode === 'submit' ? '已提交复核并重新读取状态' : '已记录进度并重新读取状态'); this.rectNoteVisible = false; await this.loadRectifications(); return
         }
         this.actionNotice = '操作结果待核实，当前读取不足以证明进度或提交复核已经入库；请勿重复提交。'
       } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改操作尚未确认，请保留说明并只读核对。') } }

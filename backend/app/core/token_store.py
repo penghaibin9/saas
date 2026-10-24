@@ -44,7 +44,7 @@ def _db(*, required: bool = False):
         from app.db.session import db_enabled, get_sessionmaker
         if not db_enabled():
             if required and settings.is_prod:
-                raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储不可用（生产必须启用数据库）",
+                raise AppException("AUTH_STORE_UNAVAILABLE", "认证存储不可用（生产环境必须启用数据库）",
                                    http_status=503)
             return None
         return get_sessionmaker()()
@@ -82,12 +82,12 @@ def issue_refresh(claims: dict) -> str:
             except Exception:
                 pass
             if must_persist:
-                raise AppException("AUTH_STORE_UNAVAILABLE", "无法签发刷新令牌：认证存储写入失败",
+                raise AppException("AUTH_STORE_UNAVAILABLE", "无法签发登录凭证：认证存储写入失败",
                                    http_status=503) from e
         finally:
             db.close()
     if must_persist:
-        raise AppException("AUTH_STORE_UNAVAILABLE", "无法签发刷新令牌：认证存储不可用", http_status=503)
+        raise AppException("AUTH_STORE_UNAVAILABLE", "无法签发登录凭证：认证存储不可用", http_status=503)
     _refresh[token] = {"claims": dict(claims), "exp": _now() + REFRESH_TTL}
     return token
 

@@ -1,14 +1,14 @@
 <template>
   <div data-academic-page class="sp-page academic-prototype graduation-page">
     <AcademicPrototypeHeader :title="hasFormalConclusion ? '毕业审核结果' : showEvidence ? '毕业自查证据' : '毕业资格自查'" group="培养与毕业" :object="showEvidence" :description="hasFormalConclusion ? '学校已形成正式结论，实时自查另作补充说明。' : '实时自查与正式审核分开，逐项核对缺口和补正路径。'" :loading="loading" @refresh="refreshAudit" />
-    <StateBlock v-if="loading" type="loading" text="正在读取毕业资格、学分和预警事实…" />
+    <StateBlock v-if="loading" type="loading" text="正在读取毕业资格、学分和预警情况…" />
     <div v-else-if="error" class="card pad"><StateBlock type="error" :text="error" /><button class="btn" @click="refreshAudit">重新加载</button></div>
     <div v-else class="stack">
-      <div v-if="hasFormalConclusion" class="notice"><AcademicPrototypeIcon name="circle-info" /><span>学校已形成正式毕业或结业结论。毕业后的实时自查不撤销正式结论；如发现事实差异，请联系教务老师核对。</span></div>
+      <div v-if="hasFormalConclusion" class="notice"><AcademicPrototypeIcon name="circle-info" /><span>学校已形成正式毕业或结业结论。毕业后的实时自查不撤销正式结论；如发现差异，请联系教务老师核对。</span></div>
       <div v-else class="notice amber"><AcademicPrototypeIcon name="circle-info" /><span>实时自查只读计算，不创建正式审核记录。正式毕业结论另列。</span></div>
       <section v-if="hasFormalConclusion" class="card pad"><small>学校正式审核结论</small><h2 class="summary-title">{{ formalStatusText }}</h2><p class="muted">{{ heroDescription }}</p><button class="btn" @click="showEvidence = !showEvidence">{{ showEvidence ? '收起实时自查补充说明' : '查看实时自查补充说明' }}</button></section>
       <div v-else class="grid-equal">
-        <section class="card pad"><small>当前实时自查</small><h2 class="summary-title">{{ !progressItems.length ? '当前事实待核对' : overallPassed ? '当前实时核验已通过' : '尚有条件需要补齐' }}</h2><p class="muted">根据当前正式业务事实计算</p><small>{{ passedCount }} 项通过 · {{ blockingPendingCount }} 项待处理 · {{ advisoryPendingCount }} 项提示</small></section>
+        <section class="card pad"><small>当前实时自查</small><h2 class="summary-title">{{ !progressItems.length ? '当前情况待核对' : overallPassed ? '当前实时核验已通过' : '尚有条件需要补齐' }}</h2><p class="muted">根据当前正式业务记录计算</p><small>{{ passedCount }} 项通过 · {{ blockingPendingCount }} 项待处理 · {{ advisoryPendingCount }} 项提示</small></section>
         <section class="card pad"><small>最近正式审核</small><h2 class="summary-title">{{ formalStatusText }}</h2><p class="muted">不能把实时通过显示成已批准毕业</p></section>
       </div>
       <section v-if="!hasFormalConclusion || showEvidence" class="card"><header class="card-head"><h2>{{ hasFormalConclusion ? '实时自查补充说明' : showEvidence ? '当前证据与补正路径' : '需要关注的证据' }}</h2></header><div class="card-body">
@@ -126,7 +126,7 @@ const formalStatusText = computed(() => {
 })
 const heroDescription = computed(() => {
   if (hasFormalConclusion.value) return '正式结论以学校审核记录为准。实时自查按当前规则计算，仅作补充核对，不要求重新补齐毕业条件。'
-  if (overallPassed.value) return '当前实时核验未发现毕业资格阻断项。你仍可逐项核对学分、实习、毕业设计等事实；最终结论以学校正式审核为准。'
+  if (overallPassed.value) return '当前实时核验未发现毕业资格阻断项。你仍可逐项核对学分、实习、毕业设计等情况；最终结论以学校正式审核为准。'
   return '系统已经按学校现有毕业规则完成实时核验。先看最上方规则解释，再逐项处理未通过或待核验条件。'
 })
 
@@ -139,7 +139,7 @@ function itemLabel(code) { return ITEM_LABELS[String(code || '').toUpperCase()] 
 function itemTone(item) { return itemResult(item) === 'PASS' ? 'is-pass' : 'is-pending' }
 function itemEvidenceFallback(item) {
   if (hasFormalConclusion.value && itemResult(item) !== 'PASS') return '当前实时规则尚不能确认该项通过；这是补充核对结果，不改变已形成的正式结论。'
-  return itemResult(item) === 'PASS' ? '学校业务系统已经记录满足该项条件的有效事实。' : '当前正式数据还不足以确认该项通过，请按上方建议处理后重新核验。'
+  return itemResult(item) === 'PASS' ? '学校业务系统已记录满足该项条件。' : '当前正式数据还不足以确认该项通过，请按上方建议处理后重新核验。'
 }
 function itemEvidenceText(item) {
   const raw = String(item?.evidence || '').trim()

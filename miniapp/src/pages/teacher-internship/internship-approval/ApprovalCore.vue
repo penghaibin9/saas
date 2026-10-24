@@ -16,7 +16,7 @@
           </picker>
         </view>
 
-        <MobileInlineAlert type="info" description="审批按当前批次和数据版本处理。存在证明材料时必须先真实查看并留下审计；规则要求但缺少材料时，后端拒绝通过。" />
+        <MobileInlineAlert type="info" description="审批按当前批次和最新数据处理。存在证明材料时必须先查看并留下审计；规则要求但缺少材料时，系统拒绝通过。" />
         <view v-if="receipt && tab === receipt.kind" class="card result-card">
           <view class="row-between">
             <view class="flex-1">
@@ -30,7 +30,7 @@
         <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次" description="当前身份的数据范围内没有可办理批次。" />
 
         <template v-else-if="tab === 'makeup'">
-          <MobileInlineAlert v-if="!canReviewMakeup" type="warning" description="当前身份仅能查看补卡申请，没有补卡审批权限；页面已隐藏可执行能力，后端也会独立校验。" />
+          <MobileInlineAlert v-if="!canReviewMakeup" type="warning" description="当前身份仅能查看补卡申请，没有补卡审批权限；页面已隐藏可执行操作，系统也会独立校验。" />
           <MobileGlobalState v-if="!makeups.length" state="empty" title="暂无待审补卡" description="当前批次本人指导范围内没有待审核补卡。" />
           <InternshipApprovalCard
             v-for="item in makeups"
@@ -59,7 +59,7 @@
         </template>
 
         <template v-else-if="tab === 'leave'">
-          <MobileInlineAlert v-if="!canReviewLeave" type="warning" description="当前身份仅能查看请假申请，没有实习请假审批权限；页面与后端均按权限码独立拦截。" />
+          <MobileInlineAlert v-if="!canReviewLeave" type="warning" description="当前身份仅能查看请假申请，没有实习请假审批权限；页面与系统均按权限独立拦截。" />
           <MobileGlobalState v-if="!leaves.length" state="empty" title="暂无待审请假" description="当前批次本人指导范围内没有待审批请假。" />
           <InternshipApprovalCard
             v-for="item in leaves"

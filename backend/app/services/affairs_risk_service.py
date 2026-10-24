@@ -456,7 +456,7 @@ def create_risk(body, user) -> dict:
         if body.source != "MANUAL" and ref is not None and str(ref).strip() != "":
             rs = str(ref).strip()
             if not rs.isdigit():
-                raise AppException("VALIDATION_ERROR", "sourceRefId 非法：须为来源单据的数字ID")
+                raise AppException("VALIDATION_ERROR", "来源单据编号不合法，须为数字")
             ref_int = int(rs)
         # (source, source_ref_id) 唯一防重复建单 → 409（来源幂等）
         if ref_int is not None:

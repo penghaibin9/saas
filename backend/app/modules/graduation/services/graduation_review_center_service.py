@@ -533,7 +533,7 @@ def _validate_case_type(value: str | None) -> str | None:
         return None
     normalized = str(value).strip().upper()
     if normalized not in CASE_TYPES:
-        raise AppException("VALIDATION_ERROR", "caseType 不支持")
+        raise AppException("VALIDATION_ERROR", "不支持的案例类型")
     return normalized
 
 
@@ -542,7 +542,7 @@ def _validate_status_group(value: str | None) -> str | None:
         return None
     normalized = str(value).strip().upper()
     if normalized not in STATUS_GROUPS:
-        raise AppException("VALIDATION_ERROR", "statusGroup 不支持")
+        raise AppException("VALIDATION_ERROR", "不支持的状态分组")
     return normalized
 
 

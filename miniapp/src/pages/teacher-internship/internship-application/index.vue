@@ -1,6 +1,6 @@
 <template>
   <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="实习申请审核" subtitle="核对去向、材料与学生记录版本" show-back />
+    <MobileNavBar variant="teacher" title="实习申请审核" subtitle="核对去向、材料与学生记录" show-back />
 
     <view class="page-pad ap__context">
       <button v-if="canViewVolunteers" @click="openVolunteers">办理招聘季正式志愿</button>
@@ -27,7 +27,7 @@
         </view>
       </view>
 
-      <MobileInlineAlert type="warning" description="通过会落实岗位或自主实习去向。请先核对企业、岗位、联系人、证明材料及学生记录版本，再执行审批。" />
+      <MobileInlineAlert type="warning" description="通过会落实岗位或自主实习去向。请先核对企业、岗位、联系人、证明材料及学生记录，再执行审批。" />
     </view>
 
     <MobileGlobalState :state="state" @retry="load">
@@ -135,7 +135,7 @@ export default {
     },
     nextStepText(a) {
       if (a.applicationType === 'SELF_ARRANGED' && !a.evidenceFileId) return '驳回学生补充自主实习证明材料。'
-      if (a.recordVersion == null || a.version == null) return '刷新页面获取最新申请与学生记录版本。'
+      if (a.recordVersion == null || a.version == null) return '刷新页面获取最新的申请与学生记录。'
       return a.applicationType === 'SELF_ARRANGED' ? '查看证明材料，核实企业信息后确认自主实习。' : '核对企业与岗位信息后，通过并落实岗位。'
     },
     async load(done) {
@@ -195,7 +195,7 @@ export default {
       if (action === 'APPROVE' && !this.canApprove(a)) {
         toast(a.applicationType === 'SELF_ARRANGED' && !a.evidenceFileId
           ? '自主实习证明材料缺失，不能通过'
-          : '申请或学生记录版本缺失，请刷新后再试')
+          : '申请或学生记录缺失，请刷新后再试')
         return
       }
       const reject = action === 'REJECT'

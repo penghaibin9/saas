@@ -251,7 +251,7 @@ def activate_paid_order_items(order_no: str, *, expected_version: int, reason: s
             from app.services.commercial_catalog_contract import Snapshot, canonical
             snap = Snapshot(canonical(item.sku_snapshot_json))
             if snap.content_hash != str(item.sku_content_hash or ""):
-                raise AppException("DATA_CONFLICT", "订单项商品快照指纹不一致", http_status=409)
+                raise AppException("DATA_CONFLICT", "订单项商品快照校验码不一致", http_status=409)
             state = db.scalars(select(TenantModuleState).where(
                 TenantModuleState.tenant_id == int(order.tenant_id),
                 TenantModuleState.module_key == item.module_key,

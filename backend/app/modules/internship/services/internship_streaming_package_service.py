@@ -269,7 +269,7 @@ def _verify_single_package_for_restore(package_id, user=None) -> dict:
             raise AppException("DATA_CONFLICT", "归档包字节不存在，恢复校验失败")
         package_hash, package_size = sha256_path(source)
         if package_hash != str(package.package_sha256 or file_row.sha256 or ""):
-            raise AppException("DATA_CONFLICT", "归档包 SHA-256 与数据库回执不一致")
+            raise AppException("DATA_CONFLICT", "归档包校验码与数据库回执不一致")
         if int(package_size) != int(package.package_size_bytes or file_row.size_bytes or -1):
             raise AppException("DATA_CONFLICT", "归档包大小与数据库回执不一致")
 
@@ -343,7 +343,7 @@ def _verify_single_package_for_restore(package_id, user=None) -> dict:
                     raise AppException("DATA_CONFLICT", "恢复文件大小或 SHA-256 校验失败")
 
         if int(package.row_count or 0) != 1 or int(package.file_count or 0) != len(manifest_items):
-            raise AppException("DATA_CONFLICT", "数据库恢复计数与归档包不一致")
+            raise AppException("DATA_CONFLICT", "数据库恢复数量与归档包不一致")
         core._trail(db, record.id, "ARCHIVE_RESTORE_VERIFIED", {
             "packageId": str(package.id),
             "packageVersion": package.package_version,
@@ -768,7 +768,7 @@ def _verify_batch_package_for_restore(package_id, user=None) -> dict:
                         raise AppException("DATA_CONFLICT", "批次归档恢复文件大小或哈希失败")
                     verified_files += 1
             if len(infos) != verified_files + 1 or verified_files != int(package.file_count or 0):
-                raise AppException("DATA_CONFLICT", "批次归档 ZIP 条目数与数据库计数不一致")
+                raise AppException("DATA_CONFLICT", "批次归档压缩包条目数与数据库数量不一致")
 
         db.add(InternshipAuditTrail(
             tenant_id=_tid(), target_id=package.target_id, target_type="ARCHIVE_BATCH",

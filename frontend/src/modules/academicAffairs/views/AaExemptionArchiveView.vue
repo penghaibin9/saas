@@ -39,7 +39,7 @@
       </template>
     </div>
 
-    <section v-if="receipt" class="aamk-receipt" role="status"><strong>{{ receipt.verified ? '已回读正式归档状态' : '归档结果待核实' }}</strong><p>免修申请 #{{ receipt.exemptionId }} · {{ receipt.studentName }} · {{ receipt.course?.name || receipt.courseName }}</p><p>实际状态：{{ receipt.archiveStatus === 'ARCHIVED' ? '已归档' : '待核对' }} · 操作时间：{{ formatMoment(receipt.archiveOperation?.occurredAt) }}</p><p>下一步：保留原审批结论；归档后的事实纠错进入受控纠错流程。</p><AppButton v-if="pending" :loading="checking" :disabled="saving" @click="verifyArchive">只读核对结果</AppButton></section>
+    <section v-if="receipt" class="aamk-receipt" role="status"><strong>{{ receipt.verified ? '已重新读取正式归档状态' : '归档结果待核实' }}</strong><p>免修申请 #{{ receipt.exemptionId }} · {{ receipt.studentName }} · {{ receipt.course?.name || receipt.courseName }}</p><p>实际状态：{{ receipt.archiveStatus === 'ARCHIVED' ? '已归档' : '待核对' }} · 操作时间：{{ formatMoment(receipt.archiveOperation?.occurredAt) }}</p><p>下一步：保留原审批结论；归档后的纠错进入受控纠错流程。</p><AppButton v-if="pending" :loading="checking" :disabled="saving" @click="verifyArchive">只读核对结果</AppButton></section>
     <AppConfirmDialog v-model:visible="confirmVisible" title="确认标记材料归档" :message="confirmMessage" :submitting="saving" :confirm-disabled="!!pending" @confirm="markArchived" />
     <AppDrawer :visible="materialsVisible" title="免修材料" mode="modal" size="medium" @close="closeMaterials">
       <div class="aamk-object-head"><div><strong>免修申请 #{{ materialObject?.exemptionId }}</strong><p>{{ materialObject?.studentName }} · {{ materialObject?.course?.name || materialObject?.courseName }}</p></div><StatusTag :type="stateMeta(materialObject?.evidenceState,'evidence').type" :label="stateMeta(materialObject?.evidenceState,'evidence').label" /></div>
@@ -181,7 +181,7 @@ export default {
         this.pending.acknowledged=res?.code===0&&String(res.data?.exemptionId)===String(c.row.exemptionId)&&res.data?.archiveStatus==='ARCHIVED'&&rowRevision(res.data,'exemption')===identity.expectedVersion+1
         this.pending.replyVersion=rowRevision(res.data,'exemption')
         await this.verifyArchive()
-      }catch(err){if(this.current(c))this.fail(err,'归档结果待核实，请只读核对，不要重复提交。')}finally{if(this.current(c))this.saving=false}
+      }catch(err){if(this.current(c))this.fail(err,'归档结果待核实，请重新核对，不要重复提交。')}finally{if(this.current(c))this.saving=false}
     },
     async verifyArchive(){
       const c=this.pending;if(!c||this.checking||!this.current(c))return
@@ -196,12 +196,12 @@ export default {
           if(c.acknowledged)c.replyVersion=rowRevision(r.result,'exemption')
         }
         const row=await this.readArchive(c);if(!this.current(c))return
-        if(!c.acknowledged){this.error='已回读当前正式归档状态，但本次命令回执尚未确认；不能据此认定本次操作成功，请勿重复提交。';return}
-        if((c.recovered?['exemptionId','status']:['exemptionId','studentId','courseName','termCode','status']).some(key=>String(row?.[key]??'')!==String(c.row[key]??''))||String(row?.evidenceManifestHash||'')!==String(c.row.evidenceManifestHash||'')||String(row?.course?.id||'')!==String(c.row.course?.id||'')){this.error='归档记录与原确认对象不一致，请只读核对。';return}
+        if(!c.acknowledged){this.error='已重新读取当前正式归档状态，但本次操作的回执尚未确认；不能据此认定本次操作成功，请勿重复提交。';return}
+        if((c.recovered?['exemptionId','status']:['exemptionId','studentId','courseName','termCode','status']).some(key=>String(row?.[key]??'')!==String(c.row[key]??''))||String(row?.evidenceManifestHash||'')!==String(c.row.evidenceManifestHash||'')||String(row?.course?.id||'')!==String(c.row.course?.id||'')){this.error='归档记录与原确认对象不一致，请重新核对。';return}
         if(row?.archiveStatus!=='ARCHIVED'||rowRevision(row,'exemption')!==c.replyVersion){this.error='归档结果待核实，当前读取尚未确认原申请的归档版本。';return}
         this.forgetArchive(c);this.receipt={...row,verified:true};this.pending=null;this.confirmVisible=false;this.command=null;this.error=''
         const visible=this.rows.find(r=>String(r.exemptionId)===String(c.row.exemptionId));if(visible)Object.assign(visible,row)
-      }catch(err){if(this.current(c))this.fail(err,'归档结果待核实，请稍后只读核对。')}finally{if(this.current(c))this.checking=false}
+      }catch(err){if(this.current(c))this.fail(err,'归档结果待核实，请稍后重新核对。')}finally{if(this.current(c))this.checking=false}
     }
   }
 }

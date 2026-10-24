@@ -16,7 +16,7 @@
     <ErrorState v-if="routeError || detailError" :description="routeError || detailError" @retry="syncRoute" />
     <ScheduleChangeEvidence v-else-if="selectedId" :key="detailKey" :change-id="selectedId" :ctx="ctx" @loaded="checkDetailTerm" @close="closeDetail" @notice="goNotice" />
     <div v-else class="mp-stack">
-      <section class="sc-ledger-head"><div><h2>调停课申请 · 台账</h2><p>申请课程、原课位、目标课位、影响周次和办理状态保持同一行核对。</p></div><span>共 {{ loading || error ? '待核对' : total }} 条 · 正式服务端分页</span></section>
+      <section class="sc-ledger-head"><div><h2>调停课申请 · 台账</h2><p>申请课程、原课位、目标课位、影响周次和办理状态保持同一行核对。</p></div><span>共 \1 条</span></section>
       <div v-if="isAcademicTeacher && !showHistory" class="sc-term-current">当前学期：<strong>{{ currentTermName || currentTermId || '待确认' }}</strong></div>
       <label v-else class="sc-term">学期<AppTermEntityPicker :model-value="filters.termId" placeholder="全部学期" @update:model-value="selectTerm" /></label>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />

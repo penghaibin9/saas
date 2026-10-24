@@ -88,7 +88,7 @@ def approve_post_archive_correction(
 ):
     return success(
         archive_service.approve_correction_case(user, case_id),
-        message="归档后纠错已应用并生成新的正式事实与 Manifest 版本",
+        message="归档后纠错已应用，并生成新的正式记录与材料清单版本",
     )
 
 
@@ -100,5 +100,5 @@ def reject_post_archive_correction(
 ):
     return success(
         review_service.reject_correction_case(user, case_id, reason=body.reason),
-        message="归档后纠错已驳回，未生成正式事实或新的 Manifest 版本",
+        message="归档后纠错已驳回，未生成正式记录或新的材料清单版本",
     )

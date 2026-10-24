@@ -38,9 +38,9 @@ def _target_id(value) -> int:
     try:
         parsed = int(str(value or "").strip())
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "归档后纠错 targetRef 必须是正式事实 ID") from exc
+        raise AppException("VALIDATION_ERROR", "归档后纠错的目标必须是正式记录编号") from exc
     if parsed <= 0:
-        raise AppException("VALIDATION_ERROR", "归档后纠错 targetRef 必须是正整数正式事实 ID")
+        raise AppException("VALIDATION_ERROR", "归档后纠错的目标必须是正整数的正式记录编号")
     return parsed
 
 
@@ -131,7 +131,7 @@ def _pass_line(db, grade, correction: dict) -> int:
             http_status=409,
         ) from exc
     if not 0 <= value <= 100:
-        raise AppException("VALIDATION_ERROR", "passLine 必须在 0-100")
+        raise AppException("VALIDATION_ERROR", "及格线必须在 0-100 之间")
     return value
 
 
@@ -218,7 +218,7 @@ def _apply_grade(db, batch, case, actor: int) -> dict:
     before = _grade_snapshot(original)
     if int(original.score) == score if original.score is not None else False:
         if str(original.pass_status or "").upper() == pass_status:
-            raise AppException("DATA_CONFLICT", "归档后成绩纠错没有产生正式事实变化", http_status=409)
+            raise AppException("DATA_CONFLICT", "归档后成绩纠错没有产生正式记录变化", http_status=409)
 
     corrected = AcademicGrade(
         tenant_id=_tid(),
@@ -403,7 +403,7 @@ def _apply_graduation(db, batch, case, actor: int) -> dict:
         StudentProfile.is_deleted.is_(False),
     ).with_for_update().first()
     if not result or not student:
-        raise AppException("DATA_CONFLICT", "毕业纠错缺少结果投影或学生主档，拒绝产生半成功事实", http_status=409)
+        raise AppException("DATA_CONFLICT", "毕业纠错缺少结果记录或学生主档，拒绝产生做到一半的记录", http_status=409)
 
     correction = _correction(case)
     conclusion = str(correction.get("conclusion") or "").strip().upper()

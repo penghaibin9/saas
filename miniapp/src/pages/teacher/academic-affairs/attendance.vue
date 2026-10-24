@@ -108,7 +108,7 @@
             <button class="btn btn-ghost" :disabled="!rosterHasMore" @click="openSession(active, rosterPage + 1)">下一页</button>
           </view>
           <text v-if="active.status !== 'DRAFT'" class="at__source-note">本场考勤已提交，名单仅供查看，不能再修改。</text>
-          <text v-else-if="rosterTotal > items.length" class="at__source-note">名单按页加载；请逐页完成点名，提交时由服务端核对全班正式名单。</text>
+          <text v-else-if="rosterTotal > items.length" class="at__source-note">名单按页加载；请逐页完成点名，提交时由系统核对全班正式名单。</text>
         </template>
 
         <MobileSafeAreaBar v-if="!detailLoading && active.status === 'DRAFT' && rosterTotal">
@@ -628,7 +628,7 @@ export default {
       teacherApi.createAttendanceSession(body).then(async (ack) => {
         const sessionId = this.exactCreateReceipt(ack, body)
         if (!sessionId) {
-          if (this._pageActive && this._writeEpoch === writeEpoch && this.contextKey() === context) { toast('创建结果未确认，已停止重复提交；请只读核对场次列表'); this.load() }
+          if (this._pageActive && this._writeEpoch === writeEpoch && this.contextKey() === context) { toast('创建结果未确认，已停止重复提交；请核对场次列表'); this.load() }
           return
         }
         this.ackWrite(context, 'create', requestKey, { ackId: sessionId, parentId: requestKey })
@@ -778,7 +778,7 @@ export default {
         const ackId = String(ack && (ack.sessionId || ack.id) || '')
         if (!this.exactSubmitReceipt(ack, sessionId)) {
           if (this._pageActive && this._writeEpoch === writeEpoch && this.contextKey() === context && String(this.active && this.active.sessionId || '') === sessionId) {
-            toast('提交结果未确认，已停止重复提交；请只读核对本场状态')
+            toast('提交结果未确认，已停止重复提交；请核对本场状态')
             this.load()
           }
           return

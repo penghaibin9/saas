@@ -14,8 +14,8 @@
     <AppInlineAlert
       v-if="workbenchSource && workbenchSource !== 'CURRENT_TERM_FORMAL_TEACHER_FACTS'"
       type="warning"
-      title="工作台事实来源待核对"
-      description="正式教学事实来源暂未确认，请刷新后核对；不要据此重复办理。"
+      title="工作台数据来源待核对"
+      description="正式教学数据的来源暂未确认，请刷新后核对；不要据此重复办理。"
     />
 
     <section v-if="isAcademicTeacher" class="aat-responsibility" aria-label="我的学期责任">
@@ -58,7 +58,7 @@
           </article>
         </div>
         <EmptyState v-else title="今天没有授课安排" :description="todayNote" />
-        <p class="aat-footnote">PC 与教师移动端共用同一课堂考勤场次、正式名单、提交状态和预警写链，不再存在第二套点名事实。</p>
+        <p class="aat-footnote">电脑端与教师手机端共用同一课堂考勤场次、正式名单、提交状态和预警，不存在第二套点名记录。</p>
       </AppSectionCard>
 
       <AppSectionCard title="我的待办">
@@ -135,7 +135,7 @@ export default {
       if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
       if (this.calendarSource === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
       if (this.calendarSource === 'OUT_OF_TERM') return '今天不在当前学期教学日期范围内。'
-      return this.todayItems.length ? '来自本人正式课表、正式任课关系与校历课次投影。' : '已核对校历与本人正式课表。'
+      return this.todayItems.length ? '来自本人正式课表、正式任课关系与校历课次。' : '已核对校历与本人正式课表。'
     },
     metrics() {
       const c = this.workbench?.counts || {}

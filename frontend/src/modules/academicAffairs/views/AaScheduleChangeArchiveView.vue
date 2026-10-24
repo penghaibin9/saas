@@ -8,7 +8,7 @@
     <template #actions><AppButton variant="primary" @click="$router.push('/admin/academic-affairs/schedule-change')">查看调停课台账</AppButton></template>
     <div class="mp-stack">
       <ol class="sc-archive-rail" aria-label="调停课归档责任链"><li v-for="(stage, index) in stages" :key="stage" :class="{ 'is-done': index < 4, 'is-active': index === 4 }"><b>{{ index + 1 }}</b><span>{{ stage }}</span><small>{{ index === 4 ? '当前归档核对' : '由正式状态确认' }}</small></li></ol>
-      <AppInlineAlert type="info" title="已封存事实只读；UNKNOWN 域会阻断新的封存" description="原审批和课位历史不在本页覆盖。需要纠错时应走受控纠错版本，并由独立责任岗位复核。" />
+      <AppInlineAlert type="info" title="已封存的记录只读；状态未知的数据域会阻断新的封存" description="原审批和课位历史不在本页覆盖。需要纠错时应走受控纠错版本，并由独立责任岗位复核。" />
       <ScheduleChangeEvidence v-if="selectedId" :change-id="selectedId" :ctx="ctx" @close="closeDetail" @notice="goNotice" />
       <template v-else>
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />

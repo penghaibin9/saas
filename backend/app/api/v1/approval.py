@@ -269,7 +269,7 @@ def batch_process(
         require_store=True,
     ) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="批量处理完成（幂等重放）")
+            return success(guard.cached, message="批量处理完成（重复提交，未重复处理）")
         result = runtime.batch_process(
             [x.model_dump() for x in body.items],
             body.action,
@@ -297,7 +297,7 @@ def create_export(
         require_store=True,
     ) as guard:
         if guard.cached is not None:
-            return success(guard.cached, message="导出任务已存在（幂等重放）")
+            return success(guard.cached, message="导出任务已存在（重复提交，未重复创建）")
         result = exportsvc.create_job(body.scope, body.purpose, user=user)
         guard.success(result)
         return success(result, message="导出任务已创建")

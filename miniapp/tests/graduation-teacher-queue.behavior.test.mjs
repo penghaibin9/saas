@@ -109,7 +109,7 @@ test('defense scoring reaches student 21 and failed readback never claims comple
   await new Promise(resolve => setImmediate(resolve))
   assert.equal(vm.state, 'error')
   assert.equal(vm.actionReceipt.result, '最新队列读取失败')
-  assert.ok(!notices.includes('评分已保存，服务器状态已回读'))
+  assert.ok(!notices.includes('评分已保存，已重新读取最新状态'))
 })
 
 test('invalid and blank defense scores cannot be submitted as zero or NaN', () => {

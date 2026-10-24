@@ -1,7 +1,7 @@
 <template>
   <section class="forms-page">
     <header class="page-head">
-      <div><p class="eyebrow">PLAT-B</p><h1>合规与业务表单</h1><p>发布版本不可变；提交只调用原业务 canonical command。</p></div>
+      <div><p class="eyebrow">PLAT-B</p><h1>合规与业务表单</h1><p>发布版本不可变；提交只调用原业务的正式提交。</p></div>
       <button type="button" :disabled="loading" @click="loadDefinitions">刷新</button>
     </header>
 
@@ -105,7 +105,7 @@ async function impactVersion(item) {
 async function publishVersion(item) {
   try {
     const analysis = await businessFormsApi.impact(item.versionId)
-    const ack = !(analysis.resolveActivePolicyRefs || []).length || await systemConfirm({ title:'确认发布表单版本', message:'该版本引用 RESOLVE_ACTIVE 策略，请确认已审阅影响分析。', confirmText:'确认发布' })
+    const ack = !(analysis.resolveActivePolicyRefs || []).length || await systemConfirm({ title:'确认发布表单版本', message:'该版本引用了“使用当前生效版本”的策略，请确认已审阅影响分析。', confirmText:'确认发布' })
     if (!ack) return
     await businessFormsApi.publish(item.versionId, { expectedVersion: item.version, resolveActiveImpactAck: true })
     notice.value = '版本已发布。'; await selectDefinition(selected.value)

@@ -47,7 +47,7 @@ PRESET_CATALOG = (
     {"code": "PILOT_FAST", "name": "试点快速版", "version": "2026.1", "schoolLevel": "ANY",
      "deliveryDays": 2, "description": "先开学工、教务和实习核心闭环，验收后再按版本扩容。"},
     {"code": "DEMO", "name": "演示版", "version": "2026.1", "schoolLevel": "ANY",
-     "deliveryDays": 1, "description": "全模块展示但限制容量，不把演示数据伪装成学校正式数据。"},
+     "deliveryDays": 1, "description": "全模块展示但限制容量，不把演示内容伪装成学校正式数据。"},
     {"code": "PRIVATE", "name": "私有化版", "version": "2026.1", "schoolLevel": "ANY",
      "deliveryDays": 7, "description": "增加部署、域名、备份、监控、接口和等保责任确认。"},
 )
@@ -271,7 +271,7 @@ def save_section(user: dict, project_id: int, code: str, body: dict) -> dict:
     if code not in SECTION_CODES: raise AppException("VALIDATION_ERROR", "未知配置类别")
     config = body.get("config")
     if not isinstance(config, dict) or _contains_secret(config):
-        raise AppException("VALIDATION_ERROR", "配置必须是对象，且不得包含凭证、令牌或证件字段")
+        raise AppException("VALIDATION_ERROR", "配置必须是对象，且不得包含登录凭证或证件信息")
     for question in SECTION_QUESTIONS.get(code, []):
         key, value = question["key"], config.get(question["key"])
         if question.get("required") and value in (None, "", []):
@@ -699,7 +699,7 @@ def apply_mapping(user: dict, project_id: int, body: dict) -> dict:
         if config.get("status") != "CONFIRMED": raise AppException("DATA_CONFLICT", "匹配决定尚未全部确认")
         entry = get_batch(user, tenant_id, config["batchNo"])
         if entry["fileSha256"] != config["fileSha256"]:
-            raise AppException("IDEMPOTENCY_CONFLICT", "导入文件指纹与候选版本不一致")
+            raise AppException("IDEMPOTENCY_CONFLICT", "导入文件校验码与候选版本不一致")
         candidates = {x["candidateId"]: x for x in config["candidates"]}; actor = _actor(user)
         created = {"colleges": 0, "majors": 0, "classes": 0}
         resolved_colleges = {}; resolved_majors = {}

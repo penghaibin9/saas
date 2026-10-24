@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="mp-stack">
-      <p class="mp-note">以下为当前批次、当前数据范围内的汇总（时间筛选待后端统一接入后开放）。</p>
+      <p class="mp-note">以下为当前批次、当前数据范围内的汇总（时间筛选暂未开放）。</p>
       <EmptyState v-if="!hasBatch" title="请先选择或创建毕设批次" description="顶部批次条选择当前工作批次后，再查看统计。" />
       <LoadingState v-else-if="loading" />
       <div v-else class="mp-stack">

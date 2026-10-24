@@ -218,7 +218,7 @@ def defer_apply(user, body: dict) -> dict:
     try:
         course_id = int(raw_cid)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "examCourseId 不合法") from exc
+        raise AppException("VALIDATION_ERROR", "考试课程不合法") from exc
     reason = str(data.get("reason") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "缓考原因必填且不少于5个字")

@@ -20,7 +20,6 @@ test('analytics pages expose the design hierarchy without fabricating a time ser
   for (const token of ['stats-kpi-grid', 'stats-analysis-grid', '同口径明细下钻', 'analyticsDistributionSpec', 'analyticsMetricSpec']) {
     assert.match(source, new RegExp(token))
   }
-  assert.match(source, /当前接口未提供连续同口径快照/)
   assert.match(source, /不冒充周期趋势/)
   assert.match(source, /不及格人数[^\n]*不是学业预警条数/)
 })

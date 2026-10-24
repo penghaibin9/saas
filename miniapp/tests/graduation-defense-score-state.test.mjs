@@ -18,6 +18,6 @@ test('defense score refresh drops stale local draft after canonical write or con
   const deletes = source.match(/delete this\.drafts\[d\.gdStudentId\]/g) || []
   assert.equal(deletes.length, 2)
   assert.match(source, /then\(\(\) => \{[\s\S]*delete this\.drafts\[d\.gdStudentId\][\s\S]*return this\.load\(\)\.then/)
-  assert.match(source, /toast\('评分已保存，服务器状态已回读'\)/)
+  assert.match(source, /toast\('评分已保存，已重新读取最新状态'\)/)
   assert.match(source, /DATA_CONFLICT[\s\S]*delete this\.drafts\[d\.gdStudentId\][\s\S]*this\.load\(\)/)
 })

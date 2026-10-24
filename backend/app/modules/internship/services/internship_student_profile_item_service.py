@@ -36,7 +36,7 @@ def _owned_item_in_tx(db, *, tenant_id: int, student_id: int, item_id: int, lock
         raise not_found("实习档案条目不存在或不属于本人")
     item, profile = row
     if item.source_type != "STUDENT_ENTERED":
-        raise AppException("NO_PERMISSION", "学校事实投影条目不可由学生修改")
+        raise AppException("NO_PERMISSION", "学校登记的条目不可由学生修改")
     return item, profile
 
 
@@ -55,7 +55,7 @@ def update_my_item(item_id: int, body: dict | None, user: dict | None = None):
         if "itemType" in body:
             item_type = str(body.get("itemType") or "").upper()
             if item_type not in profile_svc._ITEM_TYPES:
-                raise AppException("VALIDATION_ERROR", "itemType 非法")
+                raise AppException("VALIDATION_ERROR", "条目类型不合法")
             item.item_type = item_type
         if "title" in body:
             title = str(body.get("title") or "").strip()
@@ -70,7 +70,7 @@ def update_my_item(item_id: int, body: dict | None, user: dict | None = None):
         if "endDate" in body:
             item.end_date = profile_svc._parse_date(body.get("endDate"), "endDate")
         if item.start_date and item.end_date and item.start_date > item.end_date:
-            raise AppException("VALIDATION_ERROR", "startDate 不能晚于 endDate")
+            raise AppException("VALIDATION_ERROR", "开始日期不能晚于结束日期")
         if "sortOrder" in body:
             item.sort_order = max(0, int(body.get("sortOrder") or 0))
         # Student edits never upgrade verification or convert the row into SCHOOL_FACT.

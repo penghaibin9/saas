@@ -127,7 +127,7 @@ export default {
       if (!d) return []
       return [
         { label: '协议类型', value: d.category || '未分类' },
-        { label: '版本号', value: d.version || '—' },
+        { label: '版本', value: d.version || '—' },
         { label: '适用范围', value: d.scopeSummary || '—' },
         { label: '备注', value: d.remark || '—' }
       ]

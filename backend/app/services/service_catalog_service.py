@@ -79,13 +79,13 @@ def list_services() -> list[dict]:
 def upsert_service(payload: dict, *, expected_version: int | None = None) -> dict:
     code = str(payload.get("serviceCode") or "").strip()
     if not code:
-        raise AppException("VALIDATION_ERROR", "serviceCode 不能为空", http_status=422)
+        raise AppException("VALIDATION_ERROR", "请填写服务编码", http_status=422)
     name = str(payload.get("serviceName") or "").strip()
     if not name:
-        raise AppException("VALIDATION_ERROR", "serviceName 不能为空", http_status=422)
+        raise AppException("VALIDATION_ERROR", "请填写服务名称", http_status=422)
     tier = str(payload.get("tier") or "P2").upper()
     if tier not in ("P0", "P1", "P2", "P3"):
-        raise AppException("VALIDATION_ERROR", "tier 必须是 P0/P1/P2/P3", http_status=422)
+        raise AppException("VALIDATION_ERROR", "服务等级必须是 P0/P1/P2/P3", http_status=422)
 
     with _session() as db:
         row = db.scalars(select(PlatformService).where(

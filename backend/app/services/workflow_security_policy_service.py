@@ -140,7 +140,7 @@ def save_draft(workflow_code: str, *, node_code: str = WORKFLOW_LEVEL_NODE,
     if policy_type not in POLICY_TYPES:
         raise AppException("VALIDATION_ERROR", f"未知策略类型：{policy_type}")
     if policy_type == POLICY_NODE_ACTION and not str(action_permission_code or "").strip():
-        raise AppException("VALIDATION_ERROR", "节点动作策略必须指定 actionPermissionCode")
+        raise AppException("VALIDATION_ERROR", "节点动作策略必须指定动作权限")
     if policy_type == POLICY_VERSION_STRATEGY and version_strategy not in VERSION_STRATEGIES:
         raise AppException("VALIDATION_ERROR", f"版本策略必须是 {VERSION_STRATEGIES} 之一")
     if len(str(reason or "").strip()) < 5:

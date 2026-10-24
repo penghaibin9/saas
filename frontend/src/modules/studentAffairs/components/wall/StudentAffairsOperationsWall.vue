@@ -94,11 +94,11 @@
         </aside>
       </section>
 
-      <footer class="rw-footer"><span>学生成长 · 学校发展 · 社会进步</span><span><i />数据更新 {{ updatedLabel }} · 真实聚合接口</span><span>F 全屏 · Esc 退出</span></footer>
+      <footer class="rw-footer"><span>学生成长 · 学校发展 · 社会进步</span><span><i />数据更新 \1</span><span>F 全屏 · Esc 退出</span></footer>
     </main>
 
     <div v-if="detail" class="rw-modal" role="dialog" aria-modal="true" aria-labelledby="runtime-metric-title" @click.self="detail = null"><article><button class="rw-close" aria-label="关闭" @click="detail = null">×</button><span>指标口径</span><h2 id="runtime-metric-title">{{ detail.label }}</h2><strong>{{ value(detail.id, detail.unit === '%' ? 1 : 0) }} {{ detail.status === 'OK' ? detail.unit : '' }}</strong><p>{{ detail.note }}</p><dl><div><dt>当前状态</dt><dd>{{ statusText(detail.status) }}</dd></div><div><dt>数据范围</dt><dd>{{ snapshot.scope }}</dd></div></dl><button v-if="canDrill(detail.id)" class="rw-primary" @click="go(detail)">进入业务台账</button></article></div>
-    <div v-if="showContracts" class="rw-modal" role="dialog" aria-modal="true" aria-labelledby="runtime-contract-title" @click.self="showContracts = false"><article class="rw-contract"><button class="rw-close" aria-label="关闭" @click="showContracts = false">×</button><span>数据说明</span><h2 id="runtime-contract-title">学工大屏指标口径</h2><p>所有数字来自当前登录身份、当前学校与当前数据范围下的聚合接口。接口失败、字段缺失、无权限与真实零值分别展示。</p><div><b>人数</b><span>学生主档、未结风险学生等按学生口径统计。</span><b>记录数</b><span>风险、请假、认定、奖助等按业务记录统计。</span><b>住宿</b><span>统计床位台账状态，不代表学生实时在寝。</span><b>隐私</b><span>心理业务不在大屏展示个人和敏感内容。</span></div></article></div>
+    <div v-if="showContracts" class="rw-modal" role="dialog" aria-modal="true" aria-labelledby="runtime-contract-title" @click.self="showContracts = false"><article class="rw-contract"><button class="rw-close" aria-label="关闭" @click="showContracts = false">×</button><span>数据说明</span><h2 id="runtime-contract-title">学工大屏指标口径</h2><p>所有数字来自当前登录身份、当前学校与当前数据范围下的汇总。读取失败、缺少字段、无权限与真实的零值分别显示。</p><div><b>人数</b><span>学生主档、未结风险学生等按学生口径统计。</span><b>记录数</b><span>风险、请假、认定、奖助等按业务记录统计。</span><b>住宿</b><span>统计床位台账状态，不代表学生实时在寝。</span><b>隐私</b><span>心理业务不在大屏展示个人和敏感内容。</span></div></article></div>
   </div>
 </template>
 

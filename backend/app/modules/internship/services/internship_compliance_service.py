@@ -148,7 +148,7 @@ def evaluate_internship_compliance(internship_id, operation="ONBOARD", user=None
     operation = str(operation or "").upper()
     allowed = {"ONBOARD", "CONTINUE", "ASSESS", "ARCHIVE", "BATCH_CLOSE"}
     if operation not in allowed:
-        raise AppException("VALIDATION_ERROR", "operation 必须为 ONBOARD/CONTINUE/ASSESS/ARCHIVE/BATCH_CLOSE")
+        raise AppException("VALIDATION_ERROR", "操作必须为 上岗 / 继续 / 考核 / 归档 / 批次关闭")
     with (session() if db is None else nullcontext(db)) as db:
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
         rec = assert_internship_record_scope(db, internship_id, user, "合规评估")
@@ -483,7 +483,7 @@ def grant_exemption(body, user=None):
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "豁免原因不少于 5 字")
     if not b.get("checkCode") or not b.get("internshipId"):
-        raise AppException("VALIDATION_ERROR", "缺少 internshipId/checkCode")
+        raise AppException("VALIDATION_ERROR", "缺少实习记录或检查项")
     from app.modules.internship.services.internship_version import extract_expected_version
     if not b.get("validUntil"):
         raise AppException("VALIDATION_ERROR", "豁免必须设置有效期")

@@ -30,7 +30,7 @@ def _expected(payload: dict, current: int, *, required: bool) -> int:
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数")
+        raise AppException("VALIDATION_ERROR", "版本必须是整数")
     if value != int(current or 0):
         raise AppException("DATA_CONFLICT", "实习申请已被其他用户修改，请刷新后重试")
     return value

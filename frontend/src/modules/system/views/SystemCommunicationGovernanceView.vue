@@ -26,7 +26,7 @@
             </div>
             <div class="cg-stat">
               <span class="cg-stat__num">{{ overview.todoBacklog || 0 }}</span>
-              <span class="cg-stat__label">积压待办（PENDING）</span>
+              <span class="cg-stat__label">积压待办</span>
             </div>
             <div class="cg-stat" :class="{ 'cg-stat--warn': overview.todoOverdue }">
               <span class="cg-stat__num">{{ overview.todoOverdue || 0 }}</span>
@@ -43,10 +43,10 @@
             </span>
           </div>
           <div v-if="(overview.exceptionQueue?.unownedTodoTypes || []).length" class="mp-card__body">
-            <p class="cg-warn">无责任人待办类型（未在注册表登记 ownerModule）：{{ overview.exceptionQueue.unownedTodoTypes.join('、') }}</p>
+            <p class="cg-warn">无责任人的待办类型（未登记所属模块）：\1</p>
           </div>
           <div v-if="(overview.exceptionQueue?.unregisteredEventCodesInCode || []).length" class="mp-card__body">
-            <p class="cg-warn">代码已支持但治理注册表未登记的事件码：{{ overview.exceptionQueue.unregisteredEventCodesInCode.join('、') }}</p>
+            <p class="cg-warn">系统已支持但治理登记表未登记的事件：\1</p>
           </div>
         </section>
 
@@ -75,7 +75,7 @@
         <section class="mp-card">
           <header class="mp-card__head">
             <span class="mp-card__title">死信事件</span>
-            <span class="mp-note">重试只重新入队，不重复触发业务动作（复用 dedupeKey）</span>
+            <span class="mp-note">重试只重新排队，不会重复触发业务操作</span>
           </header>
           <div class="mp-card__body">
             <EmptyState v-if="!deadOutbox.length" title="暂无死信事件" description="" />
@@ -92,9 +92,9 @@
         </section>
 
         <section class="mp-card">
-          <header class="mp-card__head"><span class="mp-card__title">注册表（事件 / 待办类型 / 渠道）</span></header>
+          <header class="mp-card__head"><span class="mp-card__title">登记表（事件 / 待办类型 / 渠道）</span></header>
           <div class="mp-card__body">
-            <p class="mp-note">事件码合法性以代码 _EVENT_TEMPLATES 为准；本注册表只登记谁负责与治理元数据。</p>
+            <p class="mp-note">事件是否合法以系统为准；本登记表只登记谁负责与治理信息。</p>
             <ul class="cg-reg-list">
               <li v-for="e in registry.events || []" :key="e.eventCode">{{ e.eventCode }} — {{ e.ownerModule }}（{{ e.description }}）</li>
             </ul>

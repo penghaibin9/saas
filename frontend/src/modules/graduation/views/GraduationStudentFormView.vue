@@ -36,7 +36,7 @@
               :disabled="submitting"
               placeholder="按学号 / 姓名搜索尚未建档的学生"
             />
-            <p class="ie-hint">候选列表来自学校真实学生主档；已在当前范围建档的学生由服务端拒绝重复创建。</p>
+            <p class="ie-hint">候选名单来自学校真实的学生主档；已在当前范围建档的学生，系统会拒绝重复创建。</p>
           </div>
         </div>
       </section>
@@ -68,7 +68,7 @@
               clearable
               placeholder="可暂不分配"
             />
-            <p class="ie-hint">可以建档后再从“导师与分配”工作区处理；服务端会校验导师资格与容量。</p>
+            <p class="ie-hint">可以先建档，再从“导师与分配”工作区处理；系统会校验导师资格与容量。</p>
           </div>
         </div>
       </section>

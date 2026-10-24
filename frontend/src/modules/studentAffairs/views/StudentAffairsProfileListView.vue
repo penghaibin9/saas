@@ -2,7 +2,7 @@
   <AppPageShell
     title="学生画像"
     subtitle="按当前学工身份的数据范围查看学生主档摘要、风险标签、请假与宿舍摘要入口。"
-    data-scope-name="后端按当前身份返回"
+    data-scope-name="系统按当前身份返回"
     watermark-purpose="学生画像列表查看"
   >
     <template #actions>

@@ -5,14 +5,14 @@
       <strong>{{ statusLabel(task.status) }}</strong>
     </header>
     <ol v-if="!compact">
-      <li :aria-current="task.status === 'RETURNED' ? 'step' : undefined">{{ task.status === 'RETURNED' ? '任课教师修改重提' : '提交冻结名单' }}</li>
+      <li :aria-current="task.status === 'RETURNED' ? 'step' : undefined">{{ task.status === 'RETURNED' ? '任课教师修改重提' : '提交锁定名单' }}</li>
       <li :aria-current="['SUBMITTED', 'COLLEGE_REVIEW'].includes(task.status) ? 'step' : undefined">学院审核</li>
       <li :aria-current="task.status === 'ACADEMIC_REVIEW' ? 'step' : undefined">教务发布</li>
       <li>后置扫描</li><li>更正留痕</li>
     </ol>
 
     <div class="grade-evidence__title">
-      <div><h3>审核证据与新鲜度</h3><p>请核对正式名单、成绩完整性与审核阻断；提交时将再次核验证据。</p></div>
+      <div><h3>审核依据与时效</h3><p>请核对正式名单、成绩完整性与审核阻断；提交时将再次核验证据。</p></div>
       <span :class="['grade-evidence__state', { 'is-ready': evidenceReady }]">{{ evidenceReady ? '证据可确认' : '证据待核验' }}</span>
     </div>
     <p v-if="loading" class="note">正在读取正式审核证据…</p>
@@ -22,17 +22,17 @@
         <div v-for="item in countItems" :key="item.key"><small>{{ item.label }}</small><strong>{{ fact(item.value) }}</strong></div>
       </div>
       <table>
-        <thead><tr><th>核验对象</th><th>当前正式事实</th><th>来源 / 核验结果</th></tr></thead>
+        <thead><tr><th>核验对象</th><th>当前正式记录</th><th>来源 / 核验结果</th></tr></thead>
         <tbody>
           <tr><th>课程与任务</th><td>{{ task.courseId || '未关联课程' }} · {{ evidence.gradeTaskId || '未提供任务 ID' }}</td><td>{{ statusLabel(evidence.status) }}</td></tr>
           <tr><th>正式教学班</th><td>{{ task.teachingClassId || '未提供' }}</td><td>{{ task.teacherNames?.filter(Boolean).join('、') || '任课教师姓名未提供' }}</td></tr>
-          <tr><th>提交冻结名单</th><td>第 {{ fact(roster.snapshotVersion) }} 版快照</td><td>{{ businessLabel(roster.source) }} · {{ roster.current === true ? '当前有效' : roster.current === false ? '已不是当前版本' : '有效性待核验' }}</td></tr>
+          <tr><th>提交锁定名单</th><td>第 {{ fact(roster.snapshotVersion) }} 版快照</td><td>{{ businessLabel(roster.source) }} · {{ roster.current === true ? '当前有效' : roster.current === false ? '已不是当前版本' : '有效性待核验' }}</td></tr>
           <tr><th>正式名单版本</th><td>第 {{ fact(roster.rosterVersionNo) }} 版 · {{ fact(roster.memberCount) }} 人</td><td>{{ roster.rosterHash ? '已取得正式名单校验摘要' : '校验摘要未提供' }}</td></tr>
           <tr><th>异常标记</th><td colspan="2"><span v-for="item in exceptionItems" :key="item.key" class="grade-evidence__chip">{{ item.label }} {{ fact(item.value) }}</span></td></tr>
           <tr><th>计分方案</th><td>{{ schemeLabel }}<span v-if="scheme.version"> · 第 {{ scheme.version }} 版</span></td><td>{{ businessLabel(scheme.status) }}</td></tr>
           <tr><th>方案分项</th><td colspan="2"><span v-if="!schemeComponents.length">分项未提供</span><span v-for="item in schemeComponents" :key="item.code" class="grade-evidence__chip">{{ item.name || item.code || '未命名分项' }} {{ fact(item.weight) }}%</span></td></tr>
           <tr><th>成绩策略</th><td>{{ businessLabel(policy.policyCode) }} · 第 {{ fact(policy.policyVersion) }} 版</td><td>{{ businessLabel(policy.attemptStrategy) }}</td></tr>
-          <tr><th>审核责任节点</th><td>{{ businessLabel(workflow.currentNode) }}</td><td>{{ workflow.assigneeId ? '已指派办理人，身份由服务端核验' : '具体办理人未提供' }}</td></tr>
+          <tr><th>审核责任节点</th><td>{{ businessLabel(workflow.currentNode) }}</td><td>{{ workflow.assigneeId ? '已指派办理人，身份由系统核验' : '具体办理人未提供' }}</td></tr>
           <tr><th>证据检查</th><td>{{ evidence.evidenceHash ? '已取得正式校验摘要' : '校验摘要未提供' }}</td><td>{{ evidence.checkedAt ? '检查于 ' + evidence.checkedAt.replace('T', ' ') : '检查时间未提供' }}</td></tr>
         </tbody>
       </table>
@@ -40,7 +40,7 @@
         <h4>审核阻断</h4>
         <p v-if="!blockersProvided" class="note--danger">阻断清单未提供</p>
         <p v-else-if="!blockers.length" class="grade-evidence__pass">未发现阻断项</p>
-        <ul v-else><li v-for="(item, index) in blockers" :key="`${item.code || 'BLOCKER'}-${index}`"><strong>需处理 {{ index + 1 }}</strong><span>{{ item.message || '服务端未提供具体说明' }}</span></li></ul>
+        <ul v-else><li v-for="(item, index) in blockers" :key="`${item.code || 'BLOCKER'}-${index}`"><strong>需处理 {{ index + 1 }}</strong><span>{{ item.message || '系统未提供具体说明' }}</span></li></ul>
       </section>
       <p class="note">当前可办理：{{ allowedActions.length ? allowedActions.map(businessLabel).join('、') : '暂无可用动作' }}。提交时再次核验正式事实。</p>
       <details class="note"><summary>实施人员使用：校验编号与摘要</summary><p>名单快照 {{ fact(roster.snapshotId) }} · 名单版本 {{ fact(roster.rosterVersionId) }}</p><p class="mono">名单摘要：{{ roster.rosterHash || '未提供' }}</p><p class="mono">证据摘要：{{ evidence.evidenceHash || '未提供' }}</p></details>

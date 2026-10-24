@@ -4,7 +4,7 @@
       <div class="mark">盾</div>
       <p class="eyebrow">ACCOUNT SECURITY</p>
       <h1 id="student-force-title">首次登录，请先修改初始密码</h1>
-      <p class="intro">完成改密前，服务端不会开放成绩、课表、申请、实习、毕设等学生业务。直接输入业务地址也不能绕过。</p>
+      <p class="intro">完成改密前，系统不会开放成绩、课表、申请、实习、毕设等学生业务。直接输入业务地址也不能绕过。</p>
 
       <form @submit.prevent="submit">
         <label for="sp-old-password">当前密码</label>

@@ -256,7 +256,7 @@ export default {
       return this.applyModal.preflight?.eligible ? '当前资格预检通过' : '当前暂不满足资格'
     },
     preflightText() {
-      if (!this.applyModal.studentId) return '预检不代替提交时的服务端硬校验。'
+      if (!this.applyModal.studentId) return '预检查不代替提交时的系统校验。'
       return this.applyModal.preflight?.message || '请稍候'
     },
     studentFilterLabel() {
@@ -345,7 +345,7 @@ export default {
       this.batchId = String(res.data.batchId || '')
       if (!this.batchId) { this.listError = '该资助申请缺少真实批次上下文，无法安全定位'; return }
       if (this.statusMatch?.length && !this.statusMatch.includes(res.data.status)) {
-        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`
+        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新情况显示。`
       }
       await this.loadProjects()
     },

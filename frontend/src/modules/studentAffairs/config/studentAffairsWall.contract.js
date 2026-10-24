@@ -40,7 +40,7 @@ export const WALL_METRICS = Object.freeze([
   domain('riskTotal', '风险记录总量', '条', 'risk', 'total', 'risk', '当前范围风险记录存量，包括已关闭记录'),
   domain('riskOpen', '未关闭风险', '条', 'risk', 'open', 'riskOpen', '状态未关闭的风险记录数'),
   domain('riskHigh', '高危 / 危急记录', '条', 'risk', 'highCritical', 'risk', '风险记录数，不等于高危学生人数'),
-  domain('riskLate', '处置超时', '条', 'risk', 'overdue', 'risk', '按后端现行处置时限计算'),
+  domain('riskLate', '处置超时', '条', 'risk', 'overdue', 'risk', '按现行处置时限计算'),
   domain('riskUnassigned', '未分派记录', '条', 'risk', 'unassigned', 'risk', '责任人为空的风险记录'),
   domain('beds', '总床位', '床', 'dorm', 'totalBeds', 'dorm', '当前宿舍资源范围的床位总量'),
   domain('occupied', '已入住床位', '床', 'dorm', 'occupiedBeds', 'dorm', '床位台账占用状态，不是实时在寝人数'),

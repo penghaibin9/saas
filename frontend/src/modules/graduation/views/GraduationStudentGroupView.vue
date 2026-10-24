@@ -97,7 +97,7 @@
       <section class="sg-aside-card is-next">
         <span>保存后的真实流转</span>
         <ol>
-          <li>服务端按当前数据范围更新过程分组</li>
+          <li>系统按当前数据范围更新过程分组</li>
           <li>{{ batchMode ? '回执显示实际更新人数' : '重新读取学生档案确认分组' }}</li>
           <li>返回学生与进度的过程分组视图</li>
         </ol>
@@ -263,10 +263,10 @@ export default {
         } else {
           const latest = await gdStudentApi.getStudentDetail(target.studentId)
           if (latest.code !== 0 || String(latest.data?.studentGroup || '') !== target.groupName) {
-            this.formError = '分组命令已返回，但学生档案尚未回读到目标分组；请返回名单刷新核对，勿重复提交。'
+            this.formError = '分组已提交，但学生档案尚未读到目标分组；请返回名单刷新核对，勿重复提交。'
             return
           }
-          toast.success('过程分组已保存，服务器学生档案已回读')
+          toast.success('过程分组已保存，已重新读取学生档案')
         }
         this.$router.push(target.backTo)
       } catch (error) {

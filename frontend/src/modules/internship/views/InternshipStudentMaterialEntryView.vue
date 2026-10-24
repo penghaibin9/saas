@@ -29,7 +29,7 @@
       <section v-if="activePreviewFile" class="ism-card ism-reader-card">
         <header>
           <div>
-            <h3>站内材料 Reader</h3>
+            <h3>站内材料阅读器</h3>
             <p>{{ activePreviewFile.categoryLabel || activePreviewFile.title }} · 当前 v{{ activePreviewFile.versionNo }} · FileVersion {{ activePreviewFile.versionId }}</p>
           </div>
           <AppStatusTag type="success">只读当前安全版本</AppStatusTag>
@@ -76,7 +76,7 @@
         <header>
           <div>
             <h3>真实版本与归档证据</h3>
-            <p>下载与归档只认安全扫描通过的真实 versionId，不使用临时路径。</p>
+            <p>下载与归档只认安全扫描通过的真实版本，不使用临时路径。</p>
           </div>
         </header>
         <div class="ism-table-wrap">
@@ -174,7 +174,7 @@ export default {
     },
     preview(item) {
       if (!item?.fileId || !item?.canPreview || !item?.readyForBusiness) {
-        toast.warning('当前材料尚未通过安全门禁，不能预览')
+        toast.warning('当前材料尚未通过安全检查，不能预览')
         return
       }
       this.activePreviewFileId = String(item.fileId)

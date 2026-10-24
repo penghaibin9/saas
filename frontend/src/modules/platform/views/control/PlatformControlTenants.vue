@@ -100,7 +100,7 @@ export default {
       ]
     },
     roleName() { return platformRoleLabel(toPlatformUiContext()?.currentRole?.roleCode || 'PLATFORM') },
-    pickerHint() { return ({ features: '选择学校，查看商业授权事实。此处不直接修改授权。', rules: '选择学校，进入该校规则工作区。', workflows: '选择学校，查看实际运行的审批流程。', brand: '选择学校，查看学校品牌配置。', brands: '选择学校，查看学校品牌配置。', users: '选择学校，进入该校账号工作区。' })[this.targetTab] || '' },
+    pickerHint() { return ({ features: '选择学校，查看商业授权情况。此处不直接修改授权。', rules: '选择学校，进入该校规则工作区。', workflows: '选择学校，查看实际运行的审批流程。', brand: '选择学校，查看学校品牌配置。', brands: '选择学校，查看学校品牌配置。', users: '选择学校，进入该校账号工作区。' })[this.targetTab] || '' },
     pageCount() { return Math.max(1, Math.ceil(this.rows.length / this.pageSize)) },
     visibleRows() { return this.rows.slice((this.page - 1) * this.pageSize, this.page * this.pageSize) },
     rangeStart() { return this.rows.length ? (this.page - 1) * this.pageSize + 1 : 0 },

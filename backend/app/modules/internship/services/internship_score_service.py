@@ -256,7 +256,7 @@ def compute(user, body) -> dict:
     b = body or {}
     iid = b.get("internshipId") or b.get("internId")
     if not iid:
-        raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+        raise AppException("VALIDATION_ERROR", "缺少实习记录")
     if b.get("enterpriseScore") not in (None, ""):
         raise AppException("VALIDATION_ERROR", "企业评价分不得手工填写，只能读取已审核企业评价")
     comps = {"checkin_score": _score_or_none(b.get("checkinScore")),

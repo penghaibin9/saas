@@ -49,7 +49,7 @@
                   <div v-if="state.errors.total !== null && !state.errors.error" class="sw-pager"><span>共 {{ state.errors.total }} 条错误 · 第 {{ state.errors.page }} 页</span><div class="sw-row"><button type="button" class="sw-btn" :disabled="state.errors.loading || state.errors.page <= 1" @click="controller.loadErrors(state.errors.page - 1)">上一页错误</button><button type="button" class="sw-btn" :disabled="state.errors.loading || state.errors.page * state.errors.pageSize >= state.errors.total" @click="controller.loadErrors(state.errors.page + 1)">下一页错误</button></div></div>
                 </section>
                 <section class="sw-stack" data-testid="related-receipts"><h3>本任务的回执文件</h3>
-                  <p v-if="!state.detail.item.receiptJobs" class="sw-muted">本接口尚未返回关联回执清单，请在导出任务中核对；不能把文件编号当作下载任务编号。</p>
+                  <p v-if="!state.detail.item.receiptJobs" class="sw-muted">当前没有返回关联的回执清单，请在导出任务中核对；不能把文件编号当作下载任务编号。</p>
                   <template v-else>
                     <p v-if="!state.detail.item.receiptJobs.list.length" class="sw-muted">当前授权视图未返回关联回执。</p>
                     <div v-for="receipt in state.detail.item.receiptJobs.list" :key="taskKey(receipt)" class="dx-receipt-row"><div><b>{{ taskLabel(receipt) }}</b><p class="sw-muted">导出 #{{ receipt.id }} · {{ taskStatus(receipt) }}</p></div><button type="button" class="sw-btn" :disabled="locked" @click="openDetail(receipt)">核对并下载</button></div>
@@ -121,7 +121,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() { return { state: createExchangeState(), controller: null, linkError: '', statuses: TASK_STATUSES,
     viewLabels: { OWN: '本人任务', MODULE: '模块任务', TENANT: '全校任务' }, actionLabels: ACTION_LABELS,
-    actionDescriptions: { confirm: '仅提交服务端保存的预检任务与版本，不重新发送名单。', retry: '仅重新执行允许重试的安全扫描与解析，不重放已完成的导入。', cancel: '取消后不再执行此任务；历史记录和原因仍保留。', download: '重新校验版本，再申请短时一次性票据。实际下载权限由后端检查。', revoke: '撤销后现有下载票据失效，任务及审计记录仍保留。' },
+    actionDescriptions: { confirm: '仅提交已保存的预检查任务与版本，不重新发送名单。', retry: '仅重新执行允许重试的安全扫描与解析，不重复执行已完成的导入。', cancel: '取消后不再执行此任务；历史记录和原因仍保留。', download: '重新校验版本，再申请短时一次性的下载凭证。实际下载权限由系统检查。', revoke: '撤销后现有下载票据失效，任务及审计记录仍保留。' },
     metrics: [{ key: 'total', label: '全部任务', note: '' }, { key: 'pending', label: '待处理', note: '待确认或生成中' }, { key: 'failed', label: '异常任务', note: '预检或执行失败' }, { key: 'receipts', label: '有效导出文件', note: '不代表当前身份有下载权限' }],
     countLabels: { totalRows: '文件行数', validRows: '有效行', invalidRows: '需修正行' } } },
   computed: {

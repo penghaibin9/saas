@@ -246,7 +246,7 @@ def student_apply(rec, stu, body) -> dict:
     b = body or {}
     ctype = (b.get("changeType") or "").upper()
     if ctype not in TYPE_LABEL:
-        raise AppException("VALIDATION_ERROR", "changeType 无效")
+        raise AppException("VALIDATION_ERROR", "变更类型无效")
     reason = (b.get("reason") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "变更原因必填且不少于 5 字")

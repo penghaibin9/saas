@@ -150,11 +150,11 @@ def _get_campaign(db, campaign_id: int, *, tenant_id: int, lock: bool = False):
 def _require_expected_version(campaign: InternshipRecruitmentCampaign, body: dict[str, Any]) -> int:
     raw = body.get("expectedVersion", body.get("version"))
     if raw is None:
-        raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（乐观锁）")
+        raise AppException("VALIDATION_ERROR", "必须提供数据版本")
     try:
         expected = int(raw)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from exc
+        raise AppException("VALIDATION_ERROR", "版本必须是整数") from exc
     current = int(campaign.version or 0)
     if expected != current:
         raise AppException("DATA_CONFLICT", "数据已被其他用户修改，请刷新后重试")
@@ -227,24 +227,24 @@ def _body_values(body: dict[str, Any]) -> dict[str, Any]:
 
 def _validate_identity(values: dict[str, Any]) -> None:
     if "campaign_code" in values and not (values["campaign_code"] or "").strip():
-        raise AppException("VALIDATION_ERROR", "campaignCode 不能为空")
+        raise AppException("VALIDATION_ERROR", "招聘季编码不能为空")
     if "campaign_name" in values and not (values["campaign_name"] or "").strip():
-        raise AppException("VALIDATION_ERROR", "campaignName 不能为空")
+        raise AppException("VALIDATION_ERROR", "招聘季名称不能为空")
     if "round_no" in values:
         try:
             round_no = int(values["round_no"])
         except (TypeError, ValueError) as exc:
-            raise AppException("VALIDATION_ERROR", "roundNo 必须是正整数") from exc
+            raise AppException("VALIDATION_ERROR", "轮次必须是正整数") from exc
         if round_no < 1:
-            raise AppException("VALIDATION_ERROR", "roundNo 必须从 1 开始")
+            raise AppException("VALIDATION_ERROR", "轮次必须从 1 开始")
         values["round_no"] = round_no
     if "teacher_confirm_sla_hours" in values:
         try:
             hours = int(values["teacher_confirm_sla_hours"])
         except (TypeError, ValueError) as exc:
-            raise AppException("VALIDATION_ERROR", "teacherConfirmSlaHours 必须是整数") from exc
+            raise AppException("VALIDATION_ERROR", "教师确认时限必须是整数") from exc
         if hours < 1 or hours > 168:
-            raise AppException("VALIDATION_ERROR", "teacherConfirmSlaHours 必须在 1-168 小时")
+            raise AppException("VALIDATION_ERROR", "教师确认时限必须在 1-168 小时之间")
         values["teacher_confirm_sla_hours"] = hours
 
 
@@ -269,7 +269,7 @@ def create_campaign(body: dict[str, Any] | None, user=None):
     values = _body_values(body)
     _validate_identity(values)
     if not values.get("campaign_code") or not values.get("campaign_name"):
-        raise AppException("VALIDATION_ERROR", "campaignCode/campaignName 不能为空")
+        raise AppException("VALIDATION_ERROR", "招聘季编码和名称不能为空")
     values.setdefault("round_no", 1)
     values.setdefault("teacher_confirm_sla_hours", 48)
     _validate_windows(values)

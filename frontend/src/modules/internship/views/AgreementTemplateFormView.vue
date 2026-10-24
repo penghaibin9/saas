@@ -42,7 +42,7 @@
               <AppFormItem label="协议类型" prop="category">
                 <AppSelect v-model="form.category" :options="categoryOptions" placeholder="" :disabled="readonly || submitting" />
               </AppFormItem>
-              <AppFormItem label="版本号" prop="version">
+              <AppFormItem label="版本" prop="version">
                 <AppTextInput v-model="form.version" :disabled="readonly || submitting" placeholder="v1.0" />
               </AppFormItem>
               <AppFormItem label="适用学院" prop="scopeCollegeIds">

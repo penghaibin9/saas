@@ -28,7 +28,7 @@
           <LoadingState v-if="loadingRefs" /><ErrorState v-else-if="referencesError" :description="referencesError" @retry="loadReferences" />
           <p v-else-if="!references?.length" class="mp-note">当前未查询到培养方案引用；不代表其它业务均无引用。</p>
           <div v-else class="aa-refs"><div v-for="r in references" :key="r.programId"><button class="mp-link" @click="$router.push('/admin/academic-affairs/programs/' + r.programId)">{{ r.programName }}</button><p>版本 {{ r.version ?? '未提供' }} · {{ statusLabel(r.status) }}</p></div></div>
-          <p class="mp-note">当前接口提供培养方案引用。教学任务和正式成绩引用证据尚未提供。</p>
+          <p class="mp-note">当前只提供培养方案引用。教学任务和正式成绩的引用情况暂未提供。</p>
         </AppSectionCard>
       </div>
       <AppSectionCard title="审核办理">
@@ -171,7 +171,7 @@ export default {
     reviewStatusColor, inReview, canSubmit,
     handleActionError(res, fallback) {
       if (isDeniedResult(res)) { this.revision++; this.course = null; this.materials = []; this.references = null; this.dlg.visible = false; this.receipt = null; this.error = '当前操作权限或数据范围已变化，已清除先前对象内容。'; return }
-      this.receipt = { title: isConflictResult(res) ? '业务事实已变化' : '本次办理未确认', object: this.course?.courseName || '当前对象', status: isConflictResult(res) ? '请保留输入并重新核对' : '未确认完成', pending: true, next: res.message || fallback }
+      this.receipt = { title: isConflictResult(res) ? '业务数据已变化' : '本次办理未确认', object: this.course?.courseName || '当前对象', status: isConflictResult(res) ? '请保留输入并重新核对' : '未确认完成', pending: true, next: res.message || fallback }
       toast.error(res.message || fallback)
     },
     hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },

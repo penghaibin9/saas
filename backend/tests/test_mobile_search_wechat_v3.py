@@ -75,7 +75,7 @@ def test_missing_provider_config_is_skipped_not_retried(monkeypatch):
     monkeypatch.setattr(settings, "WX_SECRET", "", raising=False)
     result = wechat.send_subscribe_message(tenant_id=1, openid="o1", scene="CASE_RESULT")
     assert result["status"] == "SKIPPED"
-    assert result["reasonCode"] == "WECHAT_NOT_CONFIGURED"
+    assert result["reasonCode"] == "WECHAT_未配置"
     assert result["retryable"] is False, "配置缺失重试多少次都一样，不该消耗重试预算"
 
     status = wechat.provider_status()
@@ -99,7 +99,7 @@ def test_missing_template_is_reported_per_scene(monkeypatch):
     monkeypatch.setattr(settings, "WX_APPID", "wx0000000000000000", raising=False)
     monkeypatch.setattr(settings, "WX_SECRET", "secret", raising=False)
     result = wechat.send_subscribe_message(tenant_id=1, openid="o1", scene="EXAM_UPCOMING")
-    assert result["reasonCode"] == "TEMPLATE_NOT_CONFIGURED"
+    assert result["reasonCode"] == "TEMPLATE_未配置"
     assert result["retryable"] is False
 
 

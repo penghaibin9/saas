@@ -144,7 +144,7 @@ def migration_confirm(body: dict = Body(...),
     audit_log.record("IMPORT_CONFIRM", f"migration:{result['domain']}",
                      detail={"batchNo": batch_no, "rows": result["insertedRows"],
                              "legacyCompatibility": True})
-    return success(result, message="导入完成；学校页面已迁移到统一 jobId 确认")
+    return success(result, message="导入完成；学校页面已迁移到统一的任务确认")
 
 
 @platform_router.get("/overview", summary="全部租户迁移进度（平台运营只读聚合）")

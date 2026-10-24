@@ -249,7 +249,7 @@ def list_sessions(user, page=1, page_size=20, class_id=None, term_code=None, ses
         page_no = max(1, int(page or 1))
         size = max(1, min(int(page_size or 20), _MAX_PAGE_SIZE))
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "page/pageSize 必须为整数") from exc
+        raise AppException("VALIDATION_ERROR", "页码与每页条数必须为整数") from exc
 
     role = public._role(user)
     with public.session() as db:

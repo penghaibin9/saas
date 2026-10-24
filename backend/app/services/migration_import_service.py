@@ -43,7 +43,7 @@ def _tid() -> int:
 
 def _require_db():
     if not db_enabled():
-        raise AppException("VALIDATION_ERROR", "数据迁移仅在真实数据库模式下可用（MySQL）")
+        raise AppException("VALIDATION_ERROR", "数据迁移仅在使用正式数据库时可用")
 
 
 # ═══════════ 通用取值/解析 ═══════════

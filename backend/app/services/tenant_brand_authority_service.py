@@ -17,13 +17,13 @@ def _required_version(value) -> int:
     from app.core.exceptions import AppException
 
     if value in (None, ""):
-        raise AppException("VALIDATION_ERROR", "品牌变更必须提供 expectedVersion", http_status=422)
+        raise AppException("VALIDATION_ERROR", "品牌变更必须提供数据版本", http_status=422)
     try:
         version = int(value)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "品牌 expectedVersion 必须为整数", http_status=422) from None
+        raise AppException("VALIDATION_ERROR", "品牌数据版本必须为整数", http_status=422) from None
     if version < 0:
-        raise AppException("VALIDATION_ERROR", "品牌 expectedVersion 不能为负数", http_status=422)
+        raise AppException("VALIDATION_ERROR", "品牌数据版本不能为负数", http_status=422)
     return version
 
 

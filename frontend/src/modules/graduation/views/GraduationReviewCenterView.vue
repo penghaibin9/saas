@@ -106,7 +106,7 @@
       </template>
 
       <template #review>
-        <div v-if="loadingDetail" class="w74-review-loading">正在读取当前任务的 canonical 写入上下文…</div>
+        <div v-if="loadingDetail" class="w74-review-loading">正在读取当前任务的写入信息…</div>
         <template v-else-if="activeTask && detail">
           <div class="w74-case-head">
             <span class="w74-case-type">{{ caseLabel(activeTask.caseType) }}</span>
@@ -125,12 +125,12 @@
             <ul><li v-for="item in activeTask.blockingReasons" :key="item.code">{{ item.message }}</li></ul>
           </div>
           <div v-if="activeVersionId && targetFileVersionId && String(activeVersionId) !== String(targetFileVersionId)" class="w74-history-lock">
-            当前正在阅读历史 FileVersion {{ activeVersionId }}。历史版本只读；切回任务目标 FileVersion {{ targetFileVersionId }} 后才能提交。
+            当前正在阅读历史版本 \1。历史版本只读；切回任务目标版本 \2 后才能提交。
           </div>
           <p v-if="formError" class="w74-form-error">{{ formError }}</p>
 
           <section v-if="canShowWriteForm" class="w74-write-form">
-            <div class="w74-section-title"><strong>本次结构化反馈</strong><span>草稿绑定当前任务 + FileVersion</span></div>
+            <div class="w74-section-title"><strong>本次结构化反馈</strong><span>草稿绑定当前任务与文件版本</span></div>
             <div class="w74-category-list">
               <button
                 v-for="item in categoryOptions"
@@ -176,7 +176,7 @@
               <article v-for="item in feedbackHistory" :key="item.id || `${item.stage}-${item.roundNo}`">
                 <div><b>{{ item.result || item.stage }}</b><span>第 {{ item.roundNo || '—' }} 轮</span></div>
                 <p>{{ item.summary || '未填写文字意见' }}</p>
-                <small>FileVersion {{ item.fileVersionId || '—' }} · {{ item.createdAt || '' }}</small>
+                <small>文件版本 \1 · \2</small>
               </article>
             </div>
           </details>
@@ -643,7 +643,7 @@ export default {
         const task = this.activeTask
         await this.reloadCurrent({ preserveDraft: true, force: true })
         if (this.activeTask?.caseKey === task?.caseKey) {
-          this.formError = '任务或 FileVersion 已变化，系统已刷新 canonical 事实；草稿仍保留，请重新核验后提交。'
+          this.formError = '任务或文件版本已变化，系统已刷新最新记录；草稿仍保留，请重新核验后提交。'
         }
       } else this.formError = errorMessage(error)
     },

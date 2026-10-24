@@ -207,10 +207,10 @@ def issue_company_invite(
     tenant_id = _tid()
     role = (member_role or "").upper()
     if role not in {"COMPANY_ADMIN", "HR", "MENTOR"}:
-        raise AppException("VALIDATION_ERROR", "memberRole 非法")
+        raise AppException("VALIDATION_ERROR", "成员角色不合法")
     source = (invite_source or "MANUAL").upper()
     if source not in {"MANUAL", "REUSE", "PUBLIC_REQUEST"}:
-        raise AppException("VALIDATION_ERROR", "inviteSource 非法")
+        raise AppException("VALIDATION_ERROR", "邀请来源不合法")
 
     db = get_sessionmaker()()
     try:
@@ -573,14 +573,14 @@ def login(*, tenant_code: str, login_name: str, password: str, member_id: int | 
 
 def validate_enterprise_claims(claims: dict) -> tuple[object, User, InternshipEnterpriseMember]:
     if (claims.get("userType") or "").upper() != "ENTERPRISE_MENTOR":
-        raise unauthorized("企业认证令牌无效")
+        raise unauthorized("企业登录凭证无效")
     if jti_blocked(claims.get("jti")):
-        raise unauthorized("令牌已登出失效，请重新登录")
+        raise unauthorized("登录凭证已登出失效，请重新登录")
     raw_user_id = str(claims.get("userId") or "")
     raw_tenant_id = str(claims.get("tenantId") or "")
     raw_member_id = str(claims.get("enterpriseMemberId") or "")
     if not raw_user_id.startswith("db-") or not raw_user_id[3:].isdigit() or not raw_tenant_id.isdigit() or not raw_member_id.isdigit():
-        raise unauthorized("企业认证令牌无效")
+        raise unauthorized("企业登录凭证无效")
     db = get_sessionmaker()()
     try:
         tenant = db.scalar(
@@ -628,7 +628,7 @@ def validate_enterprise_claims(claims: dict) -> tuple[object, User, InternshipEn
 def refresh(*, refresh_token: str):
     claims = consume_refresh(refresh_token)
     if not claims:
-        raise unauthorized("refreshToken 无效或已使用，请重新登录")
+        raise unauthorized("登录凭证无效或已使用，请重新登录")
     tenant, user, member = validate_enterprise_claims(claims)
     return _token_result(tenant=tenant, user=user, member=member)
 

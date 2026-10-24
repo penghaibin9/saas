@@ -74,7 +74,7 @@ test.describe.serial('V9.2 U7 · archive workbench production evidence', () => {
     await page.goto(url.toString())
     await dismissGuide(page, { waitForArrival: true })
 
-    await expect(page.locator('body')).not.toContainText(/真实接口不可用|权限上下文加载失败/)
+    await expect(page.locator('body')).not.toContainText(/暂时无法连接，请稍后重试|权限上下文加载失败/)
     await expect(page.getByText(fixture.studentNo, { exact: true }).first()).toBeVisible()
     await page.getByText(fixture.studentNo, { exact: true }).first().click()
     await expect(page.getByText('归档核验', { exact: false }).first()).toBeVisible()

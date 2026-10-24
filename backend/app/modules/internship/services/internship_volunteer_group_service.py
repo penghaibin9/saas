@@ -238,7 +238,7 @@ def assert_student_editable_in_tx(db, *, group: InternshipVolunteerGroup, tenant
 def mark_submitted_in_tx(db, *, group: InternshipVolunteerGroup, material_snapshot_id: int, submission_version: int, now: datetime | None = None) -> None:
     assert_student_editable_in_tx(db, group=group, tenant_id=group.tenant_id, now=now)
     if int(submission_version) != int(group.submission_version or 0) + 1:
-        raise AppException("DATA_CONFLICT", "submissionVersion 必须严格递增")
+        raise AppException("DATA_CONFLICT", "投递次数必须严格递增")
     group.status = "SUBMITTED"
     group.submission_version = int(submission_version)
     group.current_material_snapshot_id = _as_id(material_snapshot_id)
@@ -279,7 +279,7 @@ def lock_for_accept_intent_in_tx(
         )
     hours = int(teacher_confirm_sla_hours or _DEFAULT_TEACHER_CONFIRM_SLA_HOURS)
     if hours < 1 or hours > 168:
-        raise AppException("VALIDATION_ERROR", "teacherConfirmSlaHours 必须在 1-168 小时")
+        raise AppException("VALIDATION_ERROR", "教师确认时限必须在 1-168 小时之间")
     before = group.status
     group.status = "LOCKED"
     group.locked_at = current

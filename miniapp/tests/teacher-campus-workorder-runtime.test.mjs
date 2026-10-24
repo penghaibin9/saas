@@ -47,7 +47,7 @@ test('double tap issues one mutation and account switch prevents follow-up reads
 
 test('failed or conflicted mutation preserves note and does not fetch a new version for replay', async () => {
   let reads = 0
-  const { vm } = mount({ handleCampusWorkOrder: async () => { throw Error('记录版本已变化') }, getCampusWorkOrderDetail: () => { reads++ } })
+  const { vm } = mount({ handleCampusWorkOrder: async () => { throw Error('记录已变化') }, getCampusWorkOrderDetail: () => { reads++ } })
   vm.selected = { order: { id: '12', version: 4, allowedActions: ['handle', 'complete'] } }; vm.actionNote = '本次填写的办理意见'
   await vm.submitWorkOrder(true)
   assert.equal(reads, 0); assert.equal(vm.actionNote, '本次填写的办理意见'); assert.equal(vm.submitting, false)

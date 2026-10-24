@@ -129,7 +129,7 @@ def create_communication(body, user=None):
         raise AppException("VALIDATION_ERROR", "必须关联企业")
     if not body.get("internshipId"):
         # 列表按批次 internship_id 过滤；无关联记录会登记成功却永不进批次台账
-        raise AppException("VALIDATION_ERROR", "必须关联实习学生记录 internshipId")
+        raise AppException("VALIDATION_ERROR", "必须关联实习学生记录")
     summary = (body.get("summary") or "").strip()
     if len(summary) < 2:
         raise AppException("VALIDATION_ERROR", "沟通摘要不少于 2 个字符")

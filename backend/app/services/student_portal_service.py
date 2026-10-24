@@ -158,12 +158,12 @@ def _validate_url(v) -> str:
         return DEFAULT_PORTAL_URL
     low = s.lower()
     if any(d in low for d in _DANGEROUS):
-        raise AppException("VALIDATION_ERROR", "portalUrl 含非法字符")
+        raise AppException("VALIDATION_ERROR", "门户地址含非法字符")
     if s.startswith("/"):
         return s[:300]
     if any(low.startswith(p) for p in _URL_WHITELIST_PREFIXES):
         return s[:300]
-    raise AppException("VALIDATION_ERROR", "portalUrl 只允许相对路径(/...)或白名单域名(https://)")
+    raise AppException("VALIDATION_ERROR", "门户地址只允许站内路径或白名单域名")
 
 
 def _bool_map(src, keys, defaults) -> dict:
@@ -192,7 +192,7 @@ def update_config(tenant_id: int, body: dict, operator: dict | None = None) -> d
     """校验并写入租户门户覆盖配置，返回合并后的最新配置。写审计。"""
     tid = int(tenant_id or 0)
     if not tid:
-        raise AppException("VALIDATION_ERROR", "缺少 tenantId")
+        raise AppException("VALIDATION_ERROR", "缺少学校信息")
     if not db_enabled():
         raise AppException("SERVER_ERROR", "配置写入需启用数据库")
 

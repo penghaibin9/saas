@@ -130,7 +130,7 @@ test('unchanged readback stays blocked; a new version is displayed without repla
   const s = setup({ confirmImport: async () => { throw Error('timeout') } }); await review(s); await s.controller.perform()
   await s.controller.openDetail(imp()); assert.ok(s.state.unresolved['IMPORT:41'])
   s.jobs.IMPORT = imp({ status: 'SUCCEEDED', version: 2 }); await s.controller.openDetail(imp())
-  assert.equal(s.state.unresolved['IMPORT:41'], undefined); assert.match(s.state.receipt, /没有重放/)
+  assert.equal(s.state.unresolved['IMPORT:41'], undefined); assert.match(s.state.receipt, /没有重复执行/)
 })
 test('successful POST but failed readback does not claim confirmed completion', async () => {
   const s = setup(); await review(s); let reads = 0; s.api.getImport = async () => { if (++reads > 1) throw Error('read failed'); return imp() }

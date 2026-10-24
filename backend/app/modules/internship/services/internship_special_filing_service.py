@@ -76,7 +76,7 @@ def create(body, user=None):
     b = body or {}
     internship_id = b.get("internshipId")
     if not internship_id:
-        raise AppException("VALIDATION_ERROR", "internshipId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择实习记录")
     filing_type = str(b.get("filingType") or "OTHER").upper()
     if filing_type not in _FILING_TYPES:
         raise AppException("VALIDATION_ERROR", "特殊备案类型无效")

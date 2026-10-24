@@ -557,7 +557,7 @@ export default {
       if (!(import.meta.env && import.meta.env.DEV)) return ''
       return this.devPlannerView
         ? '当前显示全部 planned 菜单；点击关闭'
-        : '当前仅显示已实现菜单；点击开启 planned 施工地图'
+        : '当前仅显示已实现的菜单'
     },
     schoolName() {
       if (this.isPlatformMode) return ''

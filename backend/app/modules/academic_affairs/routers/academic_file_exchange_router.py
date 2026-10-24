@@ -202,7 +202,7 @@ async def create_schedule_import_job(
 ):
     mode = str(importMode or "ATOMIC").strip().upper()
     if mode not in {"ATOMIC", "PARTIAL"}:
-        raise AppException("VALIDATION_ERROR", "importMode 仅支持 ATOMIC/PARTIAL")
+        raise AppException("VALIDATION_ERROR", "导入方式仅支持“整批”或“部分”")
     item = await _store_import_job(
         file=file,
         biz_type="ACADEMIC_SCHEDULE_IMPORT_SOURCE",

@@ -970,7 +970,7 @@ def build_grade_quality_report(
             "studentNo": record.get("studentNo") or "",
             "realName": record.get("realName") or record.get("studentName") or "",
             "code": "OUTSIDE_ROSTER",
-            "message": "存在名单外成绩记录，请联系教务处核对名单版本",
+            "message": "存在名单外成绩记录，请联系教务处核对名单",
         })
 
     roster_count = len(roster)

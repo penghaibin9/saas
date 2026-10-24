@@ -25,7 +25,7 @@ test('frontend wires all isolated M8 finance endpoints without altering M1-M5 pa
 
 test('receivable UI keeps PlatformOrder authority and never guesses currency', () => {
   assert.match(workspace, /没有第二张“应收余额表”/)
-  assert.match(workspace, /订单实时资金投影/)
+  assert.match(workspace, /订单实时资金情况/)
   assert.match(workspace, /未收应收/)
   assert.match(workspace, /availableFinanceCapacity/)
   assert.match(workspace, /币种待核/)
@@ -47,7 +47,6 @@ test('refund and invoice creation preserve one pending idempotent command per sc
 
 test('refund settlement never claims to mutate payment truth or entitlement', () => {
   assert.match(workspace, /系统未执行资金退款，也未改变模块授权/)
-  assert.match(workspace, /订单支付真值未自动修改/)
   assert.match(workspace, /仍存在有效模块来源/)
   assert.match(workspace, /不得把退款等同于停权/)
   assert.doesNotMatch(workspace, /自动停权|自动取消授权/)
@@ -56,7 +55,6 @@ test('refund settlement never claims to mutate payment truth or entitlement', ()
 test('invoice workflow records external evidence without asking operators for database file ids', () => {
   assert.match(workspace, /系统不会调用税控或第三方开票服务/)
   assert.match(workspace, /外部发票凭据/)
-  assert.match(workspace, /不要求手填数据库文件 ID/)
   assert.doesNotMatch(workspace, /invoiceFileId|文件 ID<input|数据库文件ID/)
 })
 

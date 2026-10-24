@@ -259,7 +259,7 @@ export default {
         ])
         if (records.code === 0) { this.rows = records.data.list; this.total = records.data.total } else { this.rows = []; this.total = 0; this.error = records.message }
         if (candidates.code === 0) this.candidates = candidates.data.list
-        else { this.candidates = []; this.supportError = candidates.message || '候选接口不可用' }
+        else { this.candidates = []; this.supportError = candidates.message || '候选名单暂不可用' }
       } else {
         const [records, groups] = await Promise.all([
           graduationMoreApi.getDefenseDelays(params),
@@ -267,7 +267,7 @@ export default {
         ])
         if (records.code === 0) { this.rows = records.data.list; this.total = records.data.total; this.primeSchedules(this.rows) } else { this.rows = []; this.total = 0; this.error = records.message }
         if (groups.code === 0) this.groups = groups.data.list
-        else { this.groups = []; this.supportError = groups.message || '答辩组接口不可用' }
+        else { this.groups = []; this.supportError = groups.message || '答辩组暂不可用' }
       }
       this.loading = false
     },

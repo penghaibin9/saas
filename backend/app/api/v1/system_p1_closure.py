@@ -143,7 +143,7 @@ def set_config_override(
     from app.services import effective_config_service as svc
     config_key = str((body or {}).get("configKey") or "").strip()
     if not config_key:
-        raise AppException("VALIDATION_ERROR", "缺少 configKey")
+        raise AppException("VALIDATION_ERROR", "缺少配置项")
     if config_key.startswith('SEC_PHONE_'):
         from app.modules.system_admin.routers.phone_governance_router import PhonePolicy
         from app.modules.system_admin.services.phone_governance_service import set_policy
@@ -274,7 +274,7 @@ def restore_effective_config_inheritance(
     reason = str((body or {}).get("reason") or "").strip()
     requested = (body or {}).get("overrides") or []
     if not config_key:
-        raise AppException("VALIDATION_ERROR", "缺少 configKey")
+        raise AppException("VALIDATION_ERROR", "缺少配置项")
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "恢复继承原因不少于 5 个字")
     if not isinstance(requested, list) or not requested:
@@ -285,9 +285,9 @@ def restore_effective_config_inheritance(
             override_id = int(item["overrideId"])
             expected_versions[override_id] = int(item["expectedVersion"])
     except (KeyError, TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "overrides 必须包含 overrideId 与 expectedVersion") from None
+        raise AppException("VALIDATION_ERROR", "覆盖项必须包含覆盖编号与版本") from None
     if len(expected_versions) != len(requested):
-        raise AppException("VALIDATION_ERROR", "覆盖链包含重复 overrideId")
+        raise AppException("VALIDATION_ERROR", "覆盖链包含重复的覆盖编号")
 
     now = datetime.utcnow().replace(microsecond=0)
     db = get_sessionmaker()()
@@ -343,7 +343,7 @@ def restore_effective_config_inheritance(
         "configKey": config_key,
         "revokedCount": len(expected_versions),
         "effective": svc.resolve(config_key, tenant_id=tenant_id),
-    }, message="学校层覆盖已原子撤销并恢复继承")
+    }, message="学校层覆盖已同时撤销并恢复继承")
 
 
 # ── Stable identity: the exception-view role may inspect, write still needs bind/manage. ──
@@ -367,7 +367,7 @@ def grant_role_assignment(
     from app.services import role_assignment_p1_guard_service as guard
     raw_user_id = str((body or {}).get("userId") or "").strip()
     if not raw_user_id.isdigit():
-        raise AppException("VALIDATION_ERROR", "userId 必须是账号主键")
+        raise AppException("VALIDATION_ERROR", "账号编号必须是账号主键")
     return success(guard.grant_assignment(
         int(raw_user_id), str((body or {}).get("roleCode") or ""),
         reason=str((body or {}).get("reason") or ""),
@@ -397,7 +397,7 @@ def transfer_role_assignment(
     from app.services import role_assignment_p1_guard_service as guard
     raw_target = str((body or {}).get("toUserId") or "").strip()
     if not raw_target.isdigit():
-        raise AppException("VALIDATION_ERROR", "toUserId 必须是账号主键")
+        raise AppException("VALIDATION_ERROR", "目标账号编号必须是账号主键")
     return success(guard.transfer_assignment(
         assignment_id, to_user_id=int(raw_target), reason=str((body or {}).get("reason") or ""),
         expires_at=(body or {}).get("expiresAt"), expected_version=(body or {}).get("expectedVersion"),
@@ -547,7 +547,7 @@ def set_org_node_status(
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "组织状态变更原因不少于 5 个字")
     if "expectedVersion" not in (body or {}):
-        raise AppException("VALIDATION_ERROR", "组织状态变更必须提供 expectedVersion")
+        raise AppException("VALIDATION_ERROR", "组织状态变更必须提供最新版本")
     expected_version = int((body or {}).get("expectedVersion"))
     code, model = _org_model(node_type)
     preview_payload = None

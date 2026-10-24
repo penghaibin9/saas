@@ -40,7 +40,7 @@
             </section>
             <section ref="materials" tabindex="-1" class="cf-section">
               <header><h2>投递材料</h2><p>这些要求会在学生正式投递时核验。</p></header>
-              <AppInlineAlert v-if="legacyPolicy" type="warning" title="保留现有材料规则" description="本轮包含旧版规则，此处仅查阅原配置。保存其他设置不会覆盖这些规则。" />
+              <AppInlineAlert v-if="legacyPolicy" type="warning" title="保留现有材料规则" description="本轮包含历史版本的规则，此处仅查阅原配置。保存其他设置不会覆盖这些规则。" />
               <pre v-if="legacyPolicy" class="cf-legacy">{{ JSON.stringify(detail.applicationMaterialPolicy, null, 2) }}</pre>
               <template v-else>
                 <label class="cf-check cf-rule"><input v-model="form.applicationMaterialPolicy.profileRequired" type="checkbox" /><span><strong>提交前须建立个人资料</strong><small>学生需先保存个人实习资料。</small></span></label>

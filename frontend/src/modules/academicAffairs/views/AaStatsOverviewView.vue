@@ -74,7 +74,7 @@
             </section>
             <section class="stats-analysis-panel">
               <header><h2>当期周期变化</h2></header>
-              <EmptyState title="当前统计未提供同期趋势" description="当前接口返回时点指标。需要相同学期、相同范围的连续时点数据后，才能展示周期变化。" />
+              <EmptyState title="当前统计未提供同期趋势" description="当前只返回某个时点的指标。需要相同学期、相同范围的连续时点数据后，才能显示周期变化。" />
               <p class="stats-analysis-caption">数据截至 {{ sourceAsOf || '尚未提供' }}<br>历史快照按各自冻结范围留存，不直接拼接为同口径趋势。</p>
               <AppButton v-if="canViewSnapshot" variant="ghost" @click="switchTab('snapshot')">查看历史统计快照</AppButton>
             </section>
@@ -106,15 +106,15 @@
         <template v-else-if="isMetricTab">
           <div class="stats-analysis-grid">
             <section class="stats-analysis-panel">
-              <header><div><h2>{{ statsPage.title }} · 分布</h2><p>仅使用当前接口返回的分组与计数</p></div></header>
+              <header><div><h2>{{ statsPage.title }} · 分布</h2><p>仅使用当前返回的分组与计数</p></div></header>
               <AppG2Chart v-if="analyticsDistribution.length" :spec="analyticsDistributionSpec" :height="240" />
               <EmptyState v-else title="当前口径没有分组数据" description="保留正式汇总结果，不根据明细页或样例数据推算分布。" />
             </section>
             <section class="stats-analysis-panel">
-              <header><div><h2>当前指标构成</h2><p>{{ sourceAsOf ? `数据截至 ${sourceAsOf}` : '当前接口未返回独立数据时间' }}</p></div></header>
+              <header><div><h2>当前指标构成</h2><p>{{ sourceAsOf ? `数据截至 ${sourceAsOf}` : '当前未返回独立的数据时间' }}</p></div></header>
               <AppG2Chart v-if="analyticsMetricSeries.length" :spec="analyticsMetricSpec" :height="240" />
               <EmptyState v-else title="暂无可绘制指标" description="当前范围没有可用于图表的数值。" />
-              <p class="stats-analysis-caption">当前接口未提供连续同口径快照，本图展示本次查询的指标构成，不冒充周期趋势。</p>
+              <p class="stats-analysis-caption">当前没有连续同口径的快照，本图显示本次查询的指标构成，不冒充周期趋势。</p>
             </section>
           </div>
           <section class="stats-analysis-panel stats-indicator-ledger">
@@ -143,8 +143,8 @@
         <!-- ══ 导出报表（15）══ -->
         <template v-else-if="tab === 'export'">
           <ol class="stats-stage-rail" aria-label="统计导出流程">
-            <li class="is-done"><b>✓</b><span><strong>正式事实</strong><small>读取统计口径</small></span></li>
-            <li class="is-done"><b>✓</b><span><strong>范围与学期</strong><small>由服务端裁定</small></span></li>
+            <li class="is-done"><b>✓</b><span><strong>正式记录</strong><small>读取统计口径</small></span></li>
+            <li class="is-done"><b>✓</b><span><strong>范围与学期</strong><small>由系统裁定</small></span></li>
             <li class="is-current"><b>3</b><span><strong>统计口径</strong><small>当前选择</small></span></li>
             <li><b>4</b><span><strong>用途审计</strong><small>用途至少 5 字</small></span></li>
             <li><b>5</b><span><strong>下载文件</strong><small>按本次状态导出</small></span></li>
@@ -166,14 +166,14 @@
                   <textarea v-model="exp.purpose" rows="4" maxlength="500" placeholder="如：教务处月度汇报" />
                 </label>
               </div>
-              <footer><span>完整导出由服务端按当前权限与筛选生成，不放大列表 pageSize。</span><AppButton :loading="exp.downloading" @click="doExport">生成并下载 Excel</AppButton></footer>
+              <footer><span>完整导出由系统按当前权限与筛选生成，不放大列表每页条数。</span><AppButton :loading="exp.downloading" @click="doExport">生成并下载 Excel</AppButton></footer>
             </section>
             <aside class="stats-export-card stats-export-rules">
               <header><h2>三种范围不要混淆</h2></header>
               <dl>
                 <div><dt>本页记录</dt><dd>当前页面已经展示的汇总结果</dd></div>
                 <div><dt>已选记录</dt><dd>显式选择的业务对象集合</dd></div>
-                <div><dt>当前筛选全部</dt><dd>由服务端按权限与筛选生成</dd></div>
+                <div><dt>当前筛选全部</dt><dd>由系统按权限与筛选生成</dd></div>
               </dl>
             </aside>
           </div>
@@ -288,9 +288,9 @@ function metricCards(tab, summary, scopeLabel, updatedAt) {
   const time = { label: '数据状态', value: updatedAt || '读取中', note: '显示本次成功查询时间' }
   const pending = (total, done) => Math.max(0, finite(total) - finite(done))
   const maps = {
-    statusChange: [scope, { label: '已生效异动', value: finite(summary.total), note: '只计正式生效结果' }, { label: '异动类型', value: (summary.byType || []).length, note: '接口返回的正式分类数' }, time],
+    statusChange: [scope, { label: '已生效异动', value: finite(summary.total), note: '只计正式生效结果' }, { label: '异动类型', value: (summary.byType || []).length, note: '正式分类数' }, time],
     registration: [scope, { label: '应注册', value: finite(summary.expected), note: '当前口径内应注册学生' }, { label: '未注册', value: pending(summary.expected, summary.registered), note: '应注册减已注册', tone: 'warning' }, { label: '完成比例', value: percent(summary.rate), note: `${finite(summary.registered)} / ${finite(summary.expected)}` }],
-    course: [scope, { label: '启用课程', value: finite(summary.total), note: '当前范围启用课程' }, { label: '课程类别', value: (summary.byCategory || []).length, note: '接口返回的正式类别' }, { label: '覆盖学院', value: (summary.byCollege || []).length, note: '当前口径有课程的学院' }],
+    course: [scope, { label: '启用课程', value: finite(summary.total), note: '当前范围启用课程' }, { label: '课程类别', value: (summary.byCategory || []).length, note: '正式类别' }, { label: '覆盖学院', value: (summary.byCollege || []).length, note: '当前口径有课程的学院' }],
     teachingTask: [scope, { label: '教学任务', value: finite(summary.expected), note: '当前范围任务总量' }, { label: '未确认', value: pending(summary.expected, summary.confirmed), note: '总任务减已确认任务', tone: 'warning' }, { label: '确认比例', value: percent(summary.rate), note: `${finite(summary.confirmed)} / ${finite(summary.expected)}` }],
     schedule: [scope, { label: '课表批次', value: finite(summary.totalBatches), note: '当前范围批次总量' }, { label: '未解决冲突', value: finite(summary.unresolvedConflicts), note: '正式冲突检测结果', tone: 'warning' }, { label: '发布覆盖', value: percent(summary.publishedRate), note: `${finite(summary.published)} / ${finite(summary.totalBatches)}` }],
     courseSelection: [scope, { label: '容量', value: finite(summary.totalCapacity ?? summary.capacity), note: '当前批次供给容量' }, { label: '低人数课程', value: finite(summary.lowEnrollCount), note: '低于正式开课下限', tone: 'warning' }, { label: '填充比例', value: percent(summary.fillRate), note: `${finite(summary.totalSelected ?? summary.selected)} / ${finite(summary.totalCapacity ?? summary.capacity)}` }],
@@ -298,7 +298,7 @@ function metricCards(tab, summary, scopeLabel, updatedAt) {
     grade: [scope, { label: '有效成绩', value: finite(summary.failDenominator), note: '正式有效成绩统计基数' }, { label: '不及格人数', value: finite(summary.failNumerator), note: '不是学业预警条数', tone: 'warning' }, { label: '成绩发布', value: percent(summary.entryPublishRate), note: `${finite(summary.publishNumerator)} / ${finite(summary.publishDenominator)}` }],
     warning: [scope, { label: '未闭环预警', value: finite(summary.total), note: '排除已关闭预警' }, { label: '风险等级', value: (summary.byLevel || []).length, note: '正式预警等级分布', tone: 'warning' }, { label: '预警来源', value: (summary.bySource || []).length, note: '真实规则命中来源' }],
     graduation: [scope, { label: '应审人数', value: finite(summary.expected), note: '当前批次毕业审核对象' }, { label: '待核或异常', value: pending(summary.expected, summary.passed), note: '应审减已通过', tone: 'warning' }, { label: '通过比例', value: percent(summary.passRate), note: `${finite(summary.passed)} / ${finite(summary.expected)}` }],
-    resource: [scope, { label: '可用教室', value: finite(summary.availableRooms ?? summary.classroomTotal), note: '按资源正式状态统计' }, { label: '待审预约', value: finite(summary.pendingBookings ?? summary.bookingTotal), note: '需要资源管理员处理', tone: 'warning' }, { label: '资源类型', value: (summary.byRoomType || summary.byType || summary.byStatus || []).length, note: '接口返回的资源分类' }]
+    resource: [scope, { label: '可用教室', value: finite(summary.availableRooms ?? summary.classroomTotal), note: '按资源正式状态统计' }, { label: '待审预约', value: finite(summary.pendingBookings ?? summary.bookingTotal), note: '需要资源管理员处理', tone: 'warning' }, { label: '资源类型', value: (summary.byRoomType || summary.byType || summary.byStatus || []).length, note: '资源分类' }]
   }
   return maps[tab] || []
 }
@@ -495,7 +495,7 @@ export default {
         const available = this.indicators.filter(item => item.status !== 'MODULE_NOT_ENABLED')
         return [
           { label: '当前统计范围', value: this.appliedScopeLabel, note: '筛选与当前账号权限共同限定' },
-          { label: '正式指标', value: this.indicators.length, note: '后端本次返回的指标总数' },
+          { label: '正式指标', value: this.indicators.length, note: '本次返回的指标总数' },
           { label: '可下钻指标', value: available.filter(item => this.drillable(item)).length, note: '可进入同口径正式明细' },
           { label: '数据状态', value: this.updatedAt || '读取中', note: '显示本次成功查询时间' }
         ]
@@ -580,7 +580,7 @@ export default {
         value: row.value,
         scope: this.appliedScopeLabel,
         time: this.sourceAsOf || this.updatedAt || '—',
-        note: this.analyticsHasServerGroups ? '接口返回的正式分组结果' : '由本次正式汇总值构成，不跨口径推算'
+        note: this.analyticsHasServerGroups ? '正式分组结果' : '由本次正式汇总值构成，不跨口径推算'
       }))
     },
     overviewRows() { return this.overviewSections.flatMap(section => section.items.map(item => ({ ...item, sectionLabel: section.label }))) },

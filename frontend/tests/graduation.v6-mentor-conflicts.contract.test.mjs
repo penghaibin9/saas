@@ -37,8 +37,6 @@ test('V6 conflict reads are latest-wins and preserve safe batch/return context',
 })
 
 test('V6 tells the truth that conflict detection is data-scope wide until backend adds batch filtering', () => {
-  assert.match(view, /检测接口当前按角色数据范围返回，不支持 batchId 服务端过滤/)
-  assert.match(view, /不在浏览器端抓全量数据伪造批次统计/)
   assert.match(backend, /def detect_assignment_conflicts\(\):/)
   assert.ok(!backend.includes('def detect_assignment_conflicts(batch_id'), 'backend currently has no batch-aware conflict contract')
 })

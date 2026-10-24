@@ -58,7 +58,7 @@ class InternshipSpecialFilingDataAdapter:
     def load_initial(self, *, context: dict, user: dict) -> dict:
         internship_id = context.get("internshipId")
         if not internship_id:
-            raise AppException("FORM_CONTEXT_INVALID", "缺少 internshipId")
+            raise AppException("FORM_CONTEXT_INVALID", "缺少实习记录")
         if self._compliance_evaluator is None:
             from app.modules.internship.services.internship_compliance_authoritative_service import (
                 evaluate_internship_compliance,
@@ -96,9 +96,9 @@ class InternshipSpecialFilingCommandAdapter:
         del user
         action = str(context.get("action") or "CREATE").upper()
         if action == "CREATE" and not context.get("internshipId"):
-            raise AppException("FORM_CONTEXT_INVALID", "缺少 internshipId")
+            raise AppException("FORM_CONTEXT_INVALID", "缺少实习记录")
         if action == "SUBMIT" and not context.get("filingId"):
-            raise AppException("FORM_CONTEXT_INVALID", "缺少 filingId")
+            raise AppException("FORM_CONTEXT_INVALID", "缺少备案记录")
         if action not in {"CREATE", "SUBMIT"}:
             raise AppException("FORM_CONTEXT_INVALID", "特殊备案表单 action 仅支持 CREATE/SUBMIT")
 
@@ -121,7 +121,7 @@ class InternshipSpecialFilingCommandAdapter:
             result = command(body, user)
         else:
             if expected_business_version is None:
-                raise AppException("FORM_EXPECTED_VERSION_REQUIRED", "提交特殊备案必须提供 expectedBusinessVersion", http_status=409)
+                raise AppException("FORM_EXPECTED_VERSION_REQUIRED", "提交特殊备案必须提供业务版本", http_status=409)
             from app.modules.internship.services import internship_special_filing_service as canonical
             command = self._submit_command or canonical.submit
             result = command(

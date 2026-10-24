@@ -19,7 +19,7 @@
         <button class="mp-btn mp-btn--ghost" @click="$router.push('/admin/academic-affairs/teacher/today?work=waiting')">返回今日教学</button>
         <button v-if="primaryRow?.status === 'READY'" class="mp-btn mp-btn--ghost" @click="$router.push('/admin/academic-affairs/schedule/teacher')">查看个人课表</button>
       </div>
-      <button v-if="pendingCommand" class="mp-btn mp-btn--ghost" :disabled="loading || Boolean(acting)" @click="queryPending">查询原办理结果（不会重提）</button>
+      <button v-if="pendingCommand" class="mp-btn mp-btn--ghost" :disabled="loading || Boolean(acting)" @click="queryPending">查询原办理结果（不会重复提交）</button>
       <AaTeachingTaskObjectBar
         v-if="primaryRow"
         :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班'}`"
@@ -360,7 +360,7 @@ export default {
         this.error = `${message}；已清除先前任务内容。`
       } else if (isConflictResult(result)) {
         this.confirmDialog.invalid = true; this.rejectDialog.invalid = true
-        this.receipt = { title: '请重新核对任务', status: '事实已变化，保留输入', pending: true, next: `${message} 刷新后重新核对；不会自动重提。` }
+        this.receipt = { title: '请重新核对任务', status: '数据已变化，保留输入', pending: true, next: `${message} 刷新后重新核对；不会自动重提。` }
       } else { this.error = message }
     },
     async submitAction(dialog, action, reason) {
@@ -377,7 +377,7 @@ export default {
         const object = `${task.courseName || '教学任务'} · ${task.teachingClassName || ''} · #${taskId}`
         this.pendingCommand = { taskId, action, reason, evidence: dialog.evidence, object }
         dialog.invalid = true
-        this.receipt = { object, title: '办理回执', status: '结果待确认', pending: true, next: '正在查询原命令结果，请勿重复提交。' }
+        this.receipt = { object, title: '办理回执', status: '结果待确认', pending: true, next: '正在查询原操作的结果，请勿重复提交。' }
         const result = await academicAffairsApi.teacherActTask(taskId, action, reason)
         if (!sameContext()) return
         if (result.code !== 0) {
@@ -403,7 +403,7 @@ export default {
       const row = this.rows.find(item => String(item.taskId) === String(pending.taskId))
       const evidenceMatches = row && taskConfirmationEvidence(row) === pending.evidence
       const confirmed = evidenceMatches && (pending.action === 'CONFIRM' ? ['TEACHER_CONFIRMED', 'READY'].includes(row.status) : row.status === 'REJECTED_BY_TEACHER' && String(row.rejectReason || '') === pending.reason)
-      this.receipt = { object: pending.object, title: '办理回执', status: confirmed ? TASK_STATUS[row.status] : '结果待确认', pending: !confirmed, next: confirmed ? pending.action === 'CONFIRM' ? '由学院和教务继续核对；正式就绪后进入排课。' : '学院将查看异议并重新分配。' : '尚未读到与原办理一致的正式状态。只查询原命令，不会再次发送；请联系学院核对。' }
+      this.receipt = { object: pending.object, title: '办理回执', status: confirmed ? TASK_STATUS[row.status] : '结果待确认', pending: !confirmed, next: confirmed ? pending.action === 'CONFIRM' ? '由学院和教务继续核对；正式就绪后进入排课。' : '学院将查看异议并重新分配。' : '尚未读到与原办理一致的正式状态。只查询原操作，不会再次提交；请联系学院核对。' }
       if (confirmed) this.pendingCommand = null
     },
     async queryPending() {

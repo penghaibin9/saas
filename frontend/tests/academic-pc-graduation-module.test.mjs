@@ -33,7 +33,7 @@ test('费用 UNKNOWN 不伪造通过，证书发放与作废锁对象并回读�
   const [audit, cert] = await Promise.all([view('AaGraduationAuditConsoleView'), view('AaCertificateView')])
   assert.match(audit, /费用结清默认 UNKNOWN（不阻断）/)
   assert.match(audit, /不得显示为已自动通过/)
-  for (const token of ['readCertificate(snapshot)', 'signature(before)!==this.signature(snapshot)', 'pendingCommand', 'issueCertificate', 'voidCertificate', '已回读正式证书台账']) {
+  for (const token of ['readCertificate(snapshot)', 'signature(before)!==this.signature(snapshot)', 'pendingCommand', 'issueCertificate', 'voidCertificate', '已重新读取正式证书台账']) {
     assert.ok(cert.includes(token), `missing certificate guard ${token}`)
   }
   assert.match(cert, /:pagination="pagination"/)

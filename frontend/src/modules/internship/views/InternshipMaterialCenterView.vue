@@ -141,7 +141,7 @@
                 <div><dt>清单版本</dt><dd>第 {{ selected.manifest.revision }} 次修订</dd></div>
                 <div><dt>清单编号</dt><dd class="mono">{{ selected.manifest.id }}</dd></div>
                 <div><dt>文件版本数</dt><dd>{{ selected.manifest.items.length }}</dd></div>
-                <div><dt>清单文件摘要（SHA-256）</dt><dd class="mono" :title="selected.manifest.manifestSha256">{{ selected.manifest.manifestSha256 }}</dd></div>
+                <div><dt>清单文件摘要</dt><dd class="mono" :title="selected.manifest.manifestSha256">{{ selected.manifest.manifestSha256 }}</dd></div>
               </dl>
               <div class="manifest-list">
                 <div v-for="item in selected.manifest.items" :key="`${item.versionId}-${item.materialCode}`">
@@ -292,7 +292,7 @@ export default {
     },
     previewFile(candidate) {
       const item = this.previewFiles.find(file => String(file.fileId) === String(candidate?.fileId))
-      if (!item || this.syncing || !this.canView) { toast.warning('当前材料尚未通过安全门禁，不能预览'); return }
+      if (!item || this.syncing || !this.canView) { toast.warning('当前材料尚未通过安全检查，不能预览'); return }
       this.activePreviewFileId = String(item.fileId)
       this.navigate({ file: this.activePreviewFileId })
     },

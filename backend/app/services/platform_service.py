@@ -20,7 +20,7 @@ DEMO_TID = 1000000000000000003
 
 def _require_db():
     if not db_enabled():
-        raise AppException("SERVER_ERROR", "平台总控需要 DB_ENABLED=true")
+        raise AppException("SERVER_ERROR", "平台总控需要启用数据库")
 
 
 def session():
@@ -210,7 +210,7 @@ def validate_security(payload: dict) -> dict:
         if not isinstance(v, (int, float)) or not (lo <= v <= hi):
             raise AppException("VALIDATION_ERROR", f"安全参数 {k} 必须在 {lo}~{hi} 之间，拒绝保存")
     if not str(merged.get("corsAllowedOrigins", "")).strip():
-        raise AppException("VALIDATION_ERROR", "corsAllowedOrigins 不允许为空（禁止放开跨域限制）")
+        raise AppException("VALIDATION_ERROR", "允许的跨域来源不能为空（禁止放开跨域限制）")
     return merged
 
 
@@ -406,7 +406,7 @@ def create_tenant(body: dict) -> dict:
     code = str(body.get("tenantCode", "")).strip()
     name = str(body.get("tenantName", "")).strip()
     if not code or not name:
-        raise AppException("VALIDATION_ERROR", "tenantCode 与 tenantName 必填")
+        raise AppException("VALIDATION_ERROR", "学校编码和学校名称必填")
     requested_package = str(body.get("packageCode") or "trial").strip()
     if requested_package != "trial":
         raise AppException(
@@ -422,7 +422,7 @@ def create_tenant(body: dict) -> dict:
         dup = db.scalars(select(Tenant).where(Tenant.tenant_code == code,
                                               Tenant.is_deleted.is_(False))).first()
         if dup:
-            raise AppException("DATA_CONFLICT", f"tenantCode「{code}」已存在")
+            raise AppException("DATA_CONFLICT", f"学校编码「{code}」已存在")
         # 主键=时间戳+随机，同秒同随机会撞主键；生成后逐个预检存在性，避免落 DB 500。
         base = int(datetime.now().strftime("%y%m%d%H%M%S")) * 1000
         tid = None
@@ -781,7 +781,7 @@ def create_order(body: dict) -> dict:
     package_code = str(body.get("packageCode") or "basic").strip()
     pkg = get_package(package_code)
     if str(pkg.get("packageCode") or "") != package_code or package_code == "trial":
-        raise AppException("VALIDATION_ERROR", "订单 packageCode 必须是有效的正式套餐")
+        raise AppException("VALIDATION_ERROR", "订单套餐必须是有效的正式套餐")
     try:
         days = int(body.get("durationDays") or pkg["durationDays"])
     except (TypeError, ValueError) as exc:

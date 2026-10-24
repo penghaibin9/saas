@@ -44,7 +44,7 @@
           <AppInlineAlert v-if="genInfo" type="success" :message="genInfo" />
           <AppInlineAlert v-if="preInfo" type="success" :message="preInfo" />
           <AppInlineAlert v-if="pendingCommand" type="warning" description="上一次写操作结果待核实，请勿重复执行；可从审核工作台读取当前正式结果。" />
-          <p class="mp-note">十一项含学籍/学分/必修/选修/实践/实习/毕设/处分/就业/学工归档/费用。必需项处于“待治理”时会形成系统异常，须先治理并重新预审；只有最新一次完整正式检查达到“系统预审通过”，才能由学院通过并进入教务终审。</p>
+          <p class="mp-note">十一项包括学籍、学分、必修、选修、实践、实习、毕设、处分、就业、学工归档、费用。必需项处于“待处理”时会形成系统异常，须先处理并重新预审；只有最新一次完整的正式检查达到“系统预审通过”，才能由学院通过并进入教务终审。</p>
         </AppSectionCard>
       </template>
 
@@ -224,7 +224,7 @@ export default {
       const c={scope:this.scope,identity:this.identity,batchId};this.busy = true;this.pendingCommand={kind:'generate',batchId:c.batchId}
       try {
         let res;try{res=await academicAffairsApi.generateGradStudents(c.batchId,null)}catch(err){res=err}if(!this.current(c)||String(this.batch?.batchId)!==c.batchId)return
-        if(res?.code===0&&Number.isFinite(res.data?.generated)){const fresh=await this.readBatch(c.batchId);if(!this.current(c))return;if(!fresh){toast.error('圈定结果待核实，请勿重复执行');return}this.batch=fresh;this.pendingCommand=null;this.genInfo=`正式回执圈定 ${res.data.generated} 人，已回读当前批次`;toast.success('已读取当前批次')
+        if(res?.code===0&&Number.isFinite(res.data?.generated)){const fresh=await this.readBatch(c.batchId);if(!this.current(c))return;if(!fresh){toast.error('圈定结果待核实，请勿重复执行');return}this.batch=fresh;this.pendingCommand=null;this.genInfo=`正式回执圈定 ${res.data.generated} 人，已重新读取当前批次`;toast.success('已读取当前批次')
           await this.loadBatches()
         } else if(this.denied(res)||/409|422|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingCommand=null;throw res}else toast.error('圈定结果待核实，请勿重复执行')
       } catch (e) {
@@ -239,7 +239,7 @@ export default {
       const c={scope:this.scope,identity:this.identity,batchId};this.busy = true;this.pendingCommand={kind:'precheck',batchId:c.batchId}
       try {
         let res;try{res=await academicAffairsApi.precheckGrad(c.batchId)}catch(err){res=err}if(!this.current(c)||String(this.batch?.batchId)!==c.batchId)return
-        if(res?.code===0&&Number.isFinite(res.data?.passed)&&Number.isFinite(res.data?.abnormal)){const fresh=await this.readBatch(c.batchId);if(!this.current(c))return;if(!fresh){toast.error('预审结果待核实，请勿重复执行');return}this.batch=fresh;this.pendingCommand=null;this.preInfo=`正式回执：通过 ${res.data.passed} · 异常 ${res.data.abnormal}；已回读当前批次`;toast.success('已读取当前预审批次')
+        if(res?.code===0&&Number.isFinite(res.data?.passed)&&Number.isFinite(res.data?.abnormal)){const fresh=await this.readBatch(c.batchId);if(!this.current(c))return;if(!fresh){toast.error('预审结果待核实，请勿重复执行');return}this.batch=fresh;this.pendingCommand=null;this.preInfo=`正式回执：通过 ${res.data.passed} · 异常 ${res.data.abnormal}；已重新读取当前批次`;toast.success('已读取当前预审批次')
           await this.loadBatches()
         } else if(this.denied(res)||/409|422|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingCommand=null;throw res}else toast.error('预审结果待核实，请勿重复执行')
       } catch (e) {

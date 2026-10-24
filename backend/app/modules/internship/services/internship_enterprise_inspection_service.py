@@ -126,7 +126,7 @@ def _own_batch_id(db, batch_id):
 
 def create(body,user=None):
     b=body or {}
-    if not b.get("companyId"): raise AppException("VALIDATION_ERROR","companyId 必填")
+    if not b.get("companyId"): raise AppException("VALIDATION_ERROR","请选择企业")
     with session() as db:
         company=_own_company(db,b["companyId"])
         batch_id=_own_batch_id(db,b.get("batchId"))

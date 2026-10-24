@@ -77,7 +77,7 @@ async function refreshOnce(){
       const error=new Error(`刷新登录响应结构异常（HTTP ${response.status}）`);error.status=response.status;throw error
     }
     if(payload.code!==0)throw businessError(payload,response)
-    if(!payload.data?.accessToken)throw invalidateEnterpriseAuth('刷新登录响应缺少 accessToken，请重新登录')
+    if(!payload.data?.accessToken)throw invalidateEnterpriseAuth('登录状态刷新失败，请重新登录')
     setAuthTokens(payload.data)
     return accessToken
   })().finally(()=>{refreshing=null})
@@ -117,7 +117,7 @@ export async function request(path,{method='GET',body,params,auth=true,_retried=
   try{
     response=await fetch(`${API_BASE}${API_PREFIX}${path}${suffix}`,{method,headers,credentials:'include',body:body===undefined?undefined:JSON.stringify(body)})
   }catch{
-    const error=new Error('网络不可达，请检查企业协同后端服务');error.network=true;throw error
+    const error=new Error('网络不可达，请检查企业协同服务');error.network=true;throw error
   }
   const payload=await readPayload(response)
   if(!payload||typeof payload.code!=='number'){
@@ -193,6 +193,6 @@ export async function uploadTemporaryFile(file,{bizType='INTERNSHIP_ENTERPRISE_P
     throw invalidateEnterpriseAuth(payload.message)
   }
   if(payload.code!==0)throw businessError(payload,response)
-  if(!payload.data?.fileId)throw new Error('文件中心未返回 fileId')
+  if(!payload.data?.fileId)throw new Error('文件中心未返回文件')
   return payload.data
 }

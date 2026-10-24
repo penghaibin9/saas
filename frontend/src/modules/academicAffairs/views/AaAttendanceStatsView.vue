@@ -15,7 +15,7 @@
         <AppButton variant="ghost" @click="search">查询</AppButton>
         <AppButton v-if="canScan && sessionType !== 'ADMIN_SPECIAL'" variant="secondary" :loading="scanning" @click="scanAbsent">旷课预警扫描</AppButton>
       </div>
-      <AppInlineAlert type="info" :title="panel === 'sessions' ? 'PC 与移动端共用正式考勤场次' : '点名必须属于正式课次和当前授课关系'" :description="panel === 'sessions' ? '普通任课教师可在 PC 继续逐生点名并提交；所有写入仍走与移动端相同的正式名单、任课关系和提交门禁。' : '特殊补录与正式课堂分口径统计；正式课堂提交后自动进入统计和授权预警。'" />
+      <AppInlineAlert type="info" :title="panel === 'sessions' ? 'PC 与移动端共用正式考勤场次' : '点名必须属于正式课次和当前授课关系'" :description="panel === 'sessions' ? '普通任课教师可在电脑端继续逐个学生点名并提交；所有写入仍使用与手机端相同的正式名单、任课关系和提交检查。' : '特殊补录与正式课堂分口径统计；正式课堂提交后自动进入统计和授权预警。'" />
 
       <AppSectionCard v-if="selectedSessionId" title="课次名单与考勤记录">
         <AppButton variant="ghost" @click="closeSession">返回场次列表</AppButton>
@@ -37,7 +37,7 @@
             <AppButton variant="primary" :loading="submittingSession" :disabled="Boolean(markingStudentId) || unmarkedCount > 0" @click="submitAttendance">提交本场考勤</AppButton>
           </div>
           <div v-else-if="sessionDetail.status === 'SUBMITTED'" class="aa-submit-receipt">
-            <div><strong>本场考勤已提交</strong><span>正式状态已回读；后续统计与预警继续使用同一考勤事实。</span></div>
+            <div><strong>本场考勤已提交</strong><span>正式状态已重新读取；后续统计与预警继续使用同一份考勤记录。</span></div>
             <AppButton variant="ghost" @click="$router.push('/admin/academic-affairs/teacher/today')">返回今日教学</AppButton>
             <AppButton @click="$router.push('/admin/academic-affairs/attendance-stats')">查看考勤统计</AppButton>
           </div>

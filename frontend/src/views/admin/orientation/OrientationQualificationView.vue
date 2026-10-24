@@ -37,7 +37,7 @@
         </template>
       </DataTable>
 
-      <AppConfirmDialog v-model:visible="dispositionVisible" title="调整报到安排" :message="dispositionRow ? `学生：${dispositionRow.name}。未到校或取消入学会释放预留床位；延期保留床位。` : ''" :submitting="disposing" :confirm-disabled="dispositionReason.trim().length < 5" @confirm="onDisposition"><div class="oq-finalize-field"><label for="disposition-status">处理结果</label><select id="disposition-status" v-model="dispositionStatus"><option value="NO_SHOW">未到校</option><option value="DEFERRED">延期报到</option><option value="CANCELLED">取消入学</option><option value="RESUME">恢复报到</option></select><label for="disposition-reason">原因</label><textarea id="disposition-reason" v-model="dispositionReason" placeholder="填写核实情况，至少 5 个字" /></div></AppConfirmDialog>
+      <AppConfirmDialog v-model:visible="dispositionVisible" title="调整报到安排" :message="dispositionRow ? `学生：${dispositionRow.name}。未到校或取消入学会释放预留的床位；延期则保留床位。` : ''" :submitting="disposing" :confirm-disabled="dispositionReason.trim().length < 5" @confirm="onDisposition"><div class="oq-finalize-field"><label for="disposition-status">处理结果</label><select id="disposition-status" v-model="dispositionStatus"><option value="NO_SHOW">未到校</option><option value="DEFERRED">延期报到</option><option value="CANCELLED">取消入学</option><option value="RESUME">恢复报到</option></select><label for="disposition-reason">原因</label><textarea id="disposition-reason" v-model="dispositionReason" placeholder="填写核实情况，至少 5 个字" /></div></AppConfirmDialog>
       <AppConfirmDialog
         v-model:visible="confirmVisible"
         title="重新计算报到资格"
@@ -77,7 +77,7 @@
         <div class="oq-finalize-field">
           <label>正式学号</label>
           <AppTextInput v-model="finalizeStudentNo" placeholder="请输入学校正式学号" />
-          <small>已绑定主档时保持原学号；未绑定时将按此学号幂等创建主档与账号。</small>
+          <small>已绑定主档时保持原学号；未绑定时将按此学号创建主档与账号，重复提交不会产生重复记录。</small>
         </div>
       </AppConfirmDialog>
 
@@ -230,7 +230,7 @@ export default {
     blockerText(row) {
       if (row.stage === 'CANCELLED') return '已取消入学，后续手续已停止；如需继续请先恢复报到。'
       if (row.stage === 'NO_SHOW') return '已登记未到校；确认继续入学后，请先恢复报到。'
-      if (row.stage === 'DEFERRED') return '已延期报到，已有预留床位保留；确认到校计划后恢复办理。'
+      if (row.stage === 'DEFERRED') return '已延期报到，已有预留的床位保留；确认到校计划后恢复办理。'
       return row.blockers?.length ? row.blockers.map((item) => item.message).join('；') : '—'
     },
     rowActions(row) {

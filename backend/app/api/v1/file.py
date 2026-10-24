@@ -45,7 +45,7 @@ class UploadSessionComplete(BaseModel):
 @placeholder_router.post("/upload-placeholder", summary="文件上传占位（仅非生产；不落盘）")
 async def upload_placeholder(file: UploadFile = File(...), user=Depends(get_current_user)):
     if settings.is_prod:
-        raise not_found("接口不存在")
+        raise not_found("文件不存在")
     ext = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
     if ext not in ALLOWED_EXT:
         raise AppException("FILE_TYPE_NOT_ALLOWED", f"文件类型不允许：.{ext or '未知'}", details={"allowed": sorted(ALLOWED_EXT)})
@@ -62,7 +62,7 @@ async def upload_placeholder(file: UploadFile = File(...), user=Depends(get_curr
         "size": size,
         "mimeType": file.content_type,
         "hash": sha.hexdigest(),
-        "notice": "非生产占位：未落盘；请改用正式文件上传接口",
+        "notice": "非生产环境占位：未保存文件；请改用正式的文件上传",
     }
     audit_log.record("FILE_UPLOAD", f"file:{file_id}", {"fileName": file.filename, "size": size, "placeholder": True})
     return success(meta)

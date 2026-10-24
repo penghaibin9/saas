@@ -59,7 +59,7 @@ def normalize_contact_sharing_policy(value: dict | None) -> dict:
     raw_mode = str(policy.get("mode") or "MASKED_ONLY").upper()
     mode = _LEGACY_CONTACT_MODE_ALIASES.get(raw_mode, raw_mode)
     if mode not in _CONTACT_MODES:
-        raise AppException("VALIDATION_ERROR", "contactSharingPolicy.mode 非法")
+        raise AppException("VALIDATION_ERROR", "联系方式共享设置不合法")
     policy["mode"] = mode
     policy["sharePhone"] = bool(policy.get("sharePhone"))
     policy["shareEmail"] = bool(policy.get("shareEmail"))
@@ -154,10 +154,10 @@ def create_material_snapshot_in_tx(
     contact_sharing_policy: dict | None,
 ) -> InternshipApplicationMaterialSnapshot:
     if int(submission_version) < 1:
-        raise AppException("VALIDATION_ERROR", "submissionVersion 必须从 1 开始")
+        raise AppException("VALIDATION_ERROR", "投递次数必须从 1 开始")
     consent_version = str(consent_version or "").strip()
     if not consent_version or not isinstance(consent_at, datetime):
-        raise AppException("VALIDATION_ERROR", "材料投递必须记录 consentVersion/consentAt")
+        raise AppException("VALIDATION_ERROR", "材料投递必须记录同意版本和同意时间")
     campaign = db.scalar(
         select(InternshipRecruitmentCampaign).where(
             InternshipRecruitmentCampaign.id == _as_id(campaign_id),
@@ -212,7 +212,7 @@ def create_material_snapshot_in_tx(
     )
     if existing:
         if existing.snapshot_hash != digest:
-            raise AppException("DATA_CONFLICT", "同一 submissionVersion 已存在不同材料快照")
+            raise AppException("DATA_CONFLICT", "同一投递次数已存在不同的材料快照")
         return existing
     snapshot = InternshipApplicationMaterialSnapshot(
         tenant_id=tenant_id,

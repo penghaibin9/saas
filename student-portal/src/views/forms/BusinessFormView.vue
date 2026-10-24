@@ -1,6 +1,6 @@
 <template>
   <section class="business-form-page">
-    <header><p class="eyebrow">PLAT-B</p><h1>{{ title }}</h1><p>表单版本与校验规则来自服务端；提交将进入原业务流程。</p></header>
+    <header><p class="eyebrow">PLAT-B</p><h1>{{ title }}</h1><p>表单版本与校验规则由系统提供；提交将进入原业务流程。</p></header>
     <p v-if="loading" class="state">正在加载表单…</p>
     <p v-else-if="error" class="state error">{{ error }}</p>
     <template v-else-if="formVersion">
@@ -86,7 +86,7 @@ async function load() {
   } catch (e) { error.value = e?.message || '表单加载失败' }
   finally { loading.value = false }
 }
-function unsupported() { error.value = 'FORM_CLIENT_UNSUPPORTED：该版本不支持学生 PC，请返回原业务入口。' }
+function unsupported() { error.value = '该表单暂不支持学生电脑端，请返回原业务入口。' }
 function pickFile(field) { pendingFileField.value = field; fileInput.value?.click() }
 async function uploadSelected(event) {
   const file = event.target.files?.[0]

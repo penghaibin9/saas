@@ -36,7 +36,7 @@
       <section class="sat-section ie-fld--full">
         <header>
           <span>02</span>
-          <div><strong>选择目标题目</strong><small>候选题目来自真实题目库，容量和确认状态由服务端最终校验。</small></div>
+          <div><strong>选择目标题目</strong><small>候选题目来自真实题目库，容量和确认状态由系统最终校验。</small></div>
         </header>
         <div class="sat-section__body">
           <div class="ie-fld ie-fld--full">
@@ -60,7 +60,7 @@
         <ul>
           <li class="done"><b>✓</b><div><strong>真实学生主档已读取</strong><small>{{ student.studentNo }}</small></div></li>
           <li :class="{ done: Boolean(assignTopicId) }"><b>{{ assignTopicId ? '✓' : '2' }}</b><div><strong>已选择目标题目</strong><small>必填</small></div></li>
-          <li :class="{ done: Boolean(batchLabel) }"><b>{{ batchLabel ? '✓' : '3' }}</b><div><strong>批次上下文已保留</strong><small>跨批写入由服务端拒绝</small></div></li>
+          <li :class="{ done: Boolean(batchLabel) }"><b>{{ batchLabel ? '✓' : '3' }}</b><div><strong>批次上下文已保留</strong><small>跨批次写入会被系统拒绝</small></div></li>
         </ul>
       </section>
       <section class="sat-aside-card is-next">
@@ -197,10 +197,10 @@ export default {
         const latest = await gdStudentApi.getStudentDetail(target.studentId)
         const latestTopicId = String(latest.data?.topicId || '')
         if (latest.code !== 0 || latestTopicId !== target.topicId) {
-          this.formError = '分配命令已返回，但学生档案尚未回读到目标题目；请返回名单刷新核对，勿重复提交。'
+          this.formError = '分配已提交，但学生档案尚未读到目标题目；请返回名单刷新核对，勿重复提交。'
           return
         }
-        toast.success('选题关系已保存，服务器学生档案已回读')
+        toast.success('选题关系已保存，已重新读取学生档案')
         this.$router.push(target.backTo)
       } catch (error) {
         this.formError = error?.message || '选题分配失败，请稍后重试'

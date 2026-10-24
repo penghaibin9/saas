@@ -309,7 +309,7 @@ def _resolve_records(db, typ, target_id, user):
             InternshipRecord.is_deleted.is_(False))
         batch_id = None
     else:
-        raise AppException("VALIDATION_ERROR", "packageType 必须为 STUDENT/BATCH/ENTERPRISE")
+        raise AppException("VALIDATION_ERROR", "材料包类型必须为学生 / 批次 / 企业")
     scoped = apply_internship_record_scope(query, user)
     total = int(db.scalar(select(func.count()).select_from(scoped.subquery())) or 0)
     if total > MAX_STUDENTS:

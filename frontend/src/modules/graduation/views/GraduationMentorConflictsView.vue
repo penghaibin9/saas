@@ -9,7 +9,7 @@
       <div>
         <span>检测结论</span>
         <strong>{{ conclusion }}</strong>
-        <small>这里只展示服务端返回的三类真实冲突，并提供精确修复入口；页面不会自动改导师分配。</small>
+        <small>这里只显示系统返回的三类真实冲突，并提供精确的修复入口；页面不会自动改导师分配。</small>
       </div>
       <div class="mc-summary__facts">
         <div><b>{{ conflictCount('overCapacity') }}</b><span>导师超容量</span></div>
@@ -20,7 +20,7 @@
     </section>
 
     <p class="mc-scope-note">
-      检测接口当前按角色数据范围返回，不支持 batchId 服务端过滤；顶部批次仅作为修复深链与返回上下文保留，页面不在浏览器端抓全量数据伪造批次统计。
+      检测按角色数据范围返回，不支持按批次筛选；顶部批次仅作为修复入口与返回上下文保留，页面不会在浏览器端抓取全量数据来伪造批次统计。
     </p>
 
     <LoadingState v-if="loading" />
@@ -28,7 +28,7 @@
     <EmptyState
       v-else-if="!conflicts || conflicts.total === 0"
       title="当前数据范围未检出导师分配冲突"
-      description="本次结果来自服务端冲突检测；后续分配或导师资格变化后可重新检测。"
+      description="本次结果来自系统的冲突检测；后续分配或导师资格变化后可重新检测。"
     />
     <div v-else class="mc-grid">
       <section class="mc-card is-danger" aria-label="导师超容量冲突">
@@ -36,7 +36,7 @@
           <div><span>冲突 01</span><strong>导师超容量</strong></div>
           <b>{{ conflicts.overCapacity.length }}</b>
         </div>
-        <p>服务端按有效分配数与导师容量比较。这里只跳转详情，容量或分配调整仍由原页面和服务端校验。</p>
+        <p>系统按有效分配数与导师容量比较。这里只跳转详情，容量或分配调整仍由原页面和系统校验。</p>
         <EmptyState v-if="!conflicts.overCapacity.length" title="无超容量导师" />
         <ul v-else class="mc-list">
           <li v-for="mentor in conflicts.overCapacity" :key="mentor.mentorId">
@@ -54,7 +54,7 @@
           <div><span>冲突 02</span><strong>进入指导阶段却无导师</strong></div>
           <b>{{ conflicts.advancedNoMentor.length }}</b>
         </div>
-        <p>学生已经进入指导及后续阶段，但服务端主档没有有效导师关系。进入原分配页后再选择合格导师。</p>
+        <p>学生已经进入指导及后续阶段，但学生主档没有有效的导师关系。进入原分配页后再选择合格导师。</p>
         <EmptyState v-if="!conflicts.advancedNoMentor.length" title="无此类学生" />
         <ul v-else class="mc-list">
           <li v-for="student in conflicts.advancedNoMentor" :key="student.gdStudentId">
@@ -72,7 +72,7 @@
           <div><span>冲突 03</span><strong>学生导师不是“已认证”</strong></div>
           <b>{{ conflicts.unqualifiedMentor.length }}</b>
         </div>
-        <p>学生已有导师关系，但导师资格不满足分配条件。进入原分配页处理，前端不自动换导师。</p>
+        <p>学生已有导师关系，但导师资格不满足分配条件。进入原分配页处理，页面不会自动换导师。</p>
         <EmptyState v-if="!conflicts.unqualifiedMentor.length" title="无此类学生" />
         <ul v-else class="mc-list">
           <li v-for="student in conflicts.unqualifiedMentor" :key="student.gdStudentId">
@@ -128,7 +128,7 @@ export default {
     },
     conclusion() {
       const total = Number(this.conflicts?.total) || 0
-      if (this.loading) return '正在读取服务端冲突检测结果。'
+      if (this.loading) return '正在读取冲突检测结果。'
       if (this.error) return '检测暂不可用，请按错误信息重试。'
       return total ? `共检出 ${total} 项真实分配冲突，先处理超容量和进阶段无导师。` : '当前数据范围未检出三类导师分配冲突。'
     }

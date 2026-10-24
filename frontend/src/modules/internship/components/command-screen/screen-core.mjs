@@ -75,14 +75,14 @@ export function workRoute(item, context) {
 }
 export function metricOf(list, key) {
   const raw = Array.isArray(list) ? list.find(m => m?.key === key) : null
-  if (!raw) return { key, label: METRIC_LABELS[key] || key, rate: null, numerator: null, denominator: null, state: 'missing', note: '接口未返回此指标' }
+  if (!raw) return { key, label: METRIC_LABELS[key] || key, rate: null, numerator: null, denominator: null, state: 'missing', note: '暂无此指标' }
   const numerator = count(raw.numerator), denominator = count(raw.denominator), r = finite(raw.rate)
   const invalid = raw.anomaly === true || numerator === null || denominator === null || numerator > denominator ||
     (r !== null && (r < 0 || r > 100 || (denominator > 0 && Math.abs(r - numerator / denominator * 100) > 0.11)))
   const empty = denominator === 0
   const state = invalid ? 'anomaly' : empty ? 'empty' : r === null ? 'missing' : 'ok'
   const note = ['enterpriseEvalRate', 'studentEvalRate'].includes(key)
-    ? '当前基线的指标字典与 service 分母描述不一致。本屏照接口分子、分母展示，不能作为已核定监管报表；见审计 A03。'
+    ? '当前指标说明与系统分母描述不一致。本屏按系统返回的分子、分母显示，不能作为已核定的监管报表。'
     : (raw.note || raw.definition?.note || '沿用实习统计服务口径')
   return { key, label: METRIC_LABELS[key] || String(raw.label || key), numerator, denominator,
     rate: state === 'ok' ? r : null, state, note,
@@ -128,7 +128,7 @@ export function project(overview, dashboard, trends, context, issues = [], exten
   const extra = normalizeExtension(extension, total)
   return { extra, metrics, total, onboard, riskStudents: counter(overview, 'riskStudents'),
     states: coherent ? states : [], stateCoherent: coherent,
-    stateIssue: states.length && !coherent ? '跨接口快照计数不同，请刷新核对' : '',
+    stateIssue: states.length && !coherent ? '不同来源的统计数不一致，请刷新核对' : '',
     distribution, series, work, workTotal: count(dashboard?.workItemTotal),
     dashboardAvailable: dashboard !== null, trendsAvailable: trends !== null,
     batchId: String(context.batchId), batchName: String(overview.batchName || context.batchName || ''),
@@ -161,7 +161,7 @@ export async function readSnapshot(loaders, context) {
   if (errors.some(isAccessError)) return { status: 'denied', message: '登录或权限已变化，已清除大屏数据；请退出并重新核验身份' }
   if (!data[0]) return { status: 'error', message: errors.find(e => e.index === 0)?.message || '统计数据加载失败' }
   try { return { status: 'ready', model: project(data[0], data[1], data[2], context, errors.map(e => `${names[e.index]}：${e.message}`), data[3]) } }
-  catch { return { status: 'error', message: '统计响应结构不符合已冻结契约，请核查当前服务版本' } }
+  catch { return { status: 'error', message: '统计结果的结构不符合约定，请核查当前系统版本' } }
 }
 /** Generation guard: a late response may not replace data after a batch/identity change. */
 export function createCoordinator(load, commit) {

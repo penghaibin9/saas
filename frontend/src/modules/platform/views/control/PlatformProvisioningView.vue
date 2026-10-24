@@ -119,7 +119,7 @@ export default {
     stepStatusTone(s) { return { SUCCEEDED: 'success', FAILED: 'danger', RUNNING: 'warning', NEEDS_MANUAL_REVIEW: 'danger', COMPENSATED: 'default', PENDING: 'default' }[s] || 'default' },
     onToolbarAction(action) { if (action === 'create') this.openCreate(); if (action === 'refresh') this.load() },
     async submitCreate() {
-      if (!this.form.idempotencyKey || !this.form.tenantCode || !this.form.tenantName) return toast.error('幂等键、租户代码、学校名称必填')
+      if (!this.form.idempotencyKey || !this.form.tenantCode || !this.form.tenantName) return toast.error('请求标识、租户代码、学校名称必填')
       const res = await platformControlApi.startProvisioningJob({ ...this.form })
       if (res.code === 0) {
         toast.success(res.data.provisioningState === 'BOOTSTRAP_READY' ? '基础开户已完成；学校实施与验收仍需继续' : '开通任务已受理：' + platformStatusLabel(res.data.status))

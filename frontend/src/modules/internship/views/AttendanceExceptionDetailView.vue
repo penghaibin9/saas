@@ -81,7 +81,7 @@
           <div class="mp-card__head"><span class="mp-card__title">核实处理</span></div>
           <div class="mp-card__body">
             <!-- 同上：这条被别人核实完之后整块表单会消失，提示条必须在外层 -->
-            <AppInlineAlert v-if="conflict.active" type="warning" title="记录已更新，本次处理已暂停" description="处理意见仍保留。请返回异常台账，重新打开记录并核对最新事实后再处理。">
+            <AppInlineAlert v-if="conflict.active" type="warning" title="记录已更新，本次处理已暂停" description="处理意见仍保留。请返回异常台账，重新打开记录并核对最新情况后再处理。">
               <p v-if="conflict.stale">最新记录读取失败，请返回台账重试。</p>
             </AppInlineAlert>
             <template v-if="detail.status !== 'COMPLETED'">

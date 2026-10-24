@@ -1128,7 +1128,7 @@ def _require_defer_version(d, expected_version) -> None:
     try:
         wanted = int(expected_version)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from exc
+        raise AppException("VALIDATION_ERROR", "版本必须是整数") from exc
     current = int(d.version or 0)
     if wanted != current:
         raise AppException(

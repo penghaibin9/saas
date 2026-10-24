@@ -20,7 +20,7 @@
     <EmptyState
       v-else-if="!lifecycle || !lifecycle.funnel || !lifecycle.funnel.stages.length"
       title="当前全校口径暂无生命周期数据"
-      description="本页只展示服务端可证明的全校实时聚合，不使用浏览器估算或演示数据补齐。"
+      description="本页只显示系统可证明的全校实时汇总，不使用估算或演示数据补齐。"
     />
 
     <div v-else class="mp-stack">
@@ -36,7 +36,7 @@
           </div>
           <div>
             <div class="dclc-contract__label">数据来源</div>
-            <div class="dclc-contract__value">{{ sourceNames || '服务端真实聚合' }}</div>
+            <div class="dclc-contract__value">{{ sourceNames || '真实汇总' }}</div>
           </div>
           <div>
             <div class="dclc-contract__label">质量提示</div>
@@ -87,7 +87,7 @@
             </div>
             <p class="mp-note" style="margin-top: var(--space-3)">{{ activeStage.note }}</p>
             <p class="dclc-boundary">
-              阶段重点学生名单尚未形成跨域统一服务端口径。本页不返回“全校学生”冒充命中名单；明细处置请进入对应业务模块。
+              阶段重点学生名单尚未形成跨业务域的统一口径。本页不会用“全校学生”冒充命中名单；明细处置请进入对应业务模块。
             </p>
           </div>
         </section>
@@ -109,9 +109,9 @@
         <div class="mp-kv"><span class="mp-kv__k">数据截至</span><span class="mp-kv__v">{{ asOfLabel }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">统计口径</span><span class="mp-kv__v">{{ caliberLabel }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ scopeLabel }}</span></div>
-        <div class="mp-kv"><span class="mp-kv__k">来源</span><span class="mp-kv__v">{{ sourceNames || '服务端真实聚合' }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">来源</span><span class="mp-kv__v">{{ sourceNames || '真实汇总' }}</span></div>
         <p class="mp-note">
-          当前 A4 只开放后端已实现的全校实时口径。学院、专业、班级、年级、时间范围筛选以及阶段命中名单未服务端化前不展示，防止浏览器估算被误认为正式事实。
+          当前只开放系统已实现的全校实时口径。学院、专业、班级、年级、时间范围筛选及阶段命中名单，在系统支持前不显示，防止估算数据被误认为正式记录。
         </p>
         <div v-for="flag in qualityFlags" :key="'drawer-' + flag.code" class="dclc-quality">
           <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
@@ -192,7 +192,7 @@ export default {
       return (this.meta.scope && this.meta.scope.scopeName) || this.lifecycle.scopeLabel || this.ctx.dataScope.scopeName || '—'
     },
     caliberLabel() {
-      return this.meta.caliberLabel || '服务端在册口径'
+      return this.meta.caliberLabel || '在册口径'
     },
     asOfLabel() {
       return this.meta.asOf || (this.lifecycle && this.lifecycle.funnel && this.lifecycle.funnel.updatedAt) || '—'

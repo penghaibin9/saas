@@ -50,7 +50,7 @@ def _validate_file_ids(values) -> tuple[str, ...]:
     for raw in values or []:
         value = str(raw or "").strip()
         if not value.isdigit() or int(value) <= 0:
-            raise AppException("VALIDATION_ERROR", "材料 fileId 非法")
+            raise AppException("VALIDATION_ERROR", "材料文件不合法")
         if value in seen:
             continue
         seen.add(value)

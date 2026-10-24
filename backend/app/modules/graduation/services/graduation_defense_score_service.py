@@ -115,7 +115,7 @@ def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None,
         if not mid:
             context_expert_id = u.get("expertId")
             if context_expert_id in (None, ""):
-                raise AppException("VALIDATION_ERROR", "校外专家评分必须提供稳定 expertId")
+                raise AppException("VALIDATION_ERROR", "校外专家评分必须指定专家")
             if expert_id not in (None, "") and int(expert_id) != int(context_expert_id):
                 raise no_permission("校外专家只能以本人稳定身份评分")
             expert = db.scalars(select(GraduationDefenseExpert).where(
@@ -134,7 +134,7 @@ def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None,
     if not judge_name:
         raise AppException("VALIDATION_ERROR", "评委姓名必填")
     if judge_mentor_id in (None, "") and expert_id in (None, ""):
-        raise AppException("VALIDATION_ERROR", "管理员代录必须提供 judgeMentorId 或 expertId")
+        raise AppException("VALIDATION_ERROR", "管理员代录必须指定评委导师或校外专家")
     requested_mid = int(judge_mentor_id) if judge_mentor_id not in (None, "") else None
     requested_eid = int(expert_id) if expert_id not in (None, "") else None
     matched = None
@@ -151,7 +151,7 @@ def _resolve_entry_judge(db, stu: GraduationStudent, requested: str | None,
     if mid:
         return matched.get("name") or judge_name, mid, None
     if expert_id in (None, ""):
-        raise AppException("VALIDATION_ERROR", "校外专家评分必须提供稳定 expertId")
+        raise AppException("VALIDATION_ERROR", "校外专家评分必须指定专家")
     expert = db.scalars(select(GraduationDefenseExpert).where(
         GraduationDefenseExpert.id == int(expert_id),
         GraduationDefenseExpert.tenant_id == _tid(),

@@ -87,7 +87,7 @@
         <AppInlineAlert
           v-if="tab === 'fee'"
           type="warning"
-          description="费用结清默认显示“待治理”（不阻断）。财务未对接前，可由教务处人工标记为“已结清”或“欠费”，不得显示为已自动通过。"
+          description="费用结清默认显示“待处理”（不阻断）。财务未对接前，可由教务处人工标记为“已结清”或“欠费”，不得显示为已自动通过。"
         />
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
@@ -169,7 +169,7 @@
         />
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="暂无待终审名单" description="需学院初审通过（ACADEMIC_REVIEW）后才进入本队列" />
+        <EmptyState v-else-if="!rows.length" title="暂无待终审名单" description="需学院初审通过后才进入本队列" />
         <DataTable v-else :columns="finalColumns" :rows="rows" row-key="resultId" :pagination="pagination" @page-change="onPageChange">
           <template #cell-overall="{ row }"><AppStatusTag :type="overallColor(row.overall)" dot>{{ overallLabel(row.overall) }}</AppStatusTag></template>
           <template #cell-ops="{ row }">
@@ -249,7 +249,7 @@
       <template v-if="detail.row">
         <div class="agc-detail-head">
           <div>
-            <span class="agc-eyebrow">学生审核事实</span>
+            <span class="agc-eyebrow">学生审核情况</span>
             <div class="agc-detail-name">{{ detail.row.realName || ('学生 ' + detail.row.studentId) }}</div>
           </div>
           <div class="agc-detail-tags">
@@ -287,7 +287,7 @@
         <AppInlineAlert
           v-else-if="detail.row.status === 'ACADEMIC_REVIEW' && detail.row.overall === 'SYSTEM_ABNORMAL'"
           type="warning"
-          description="系统预审仍为异常：普通教务终审不可用审核备注覆盖评估结论。请先下钻阻断证据、完成治理并重新预审；正式例外必须走独立 Override 流程。"
+          description="系统预审仍为异常：普通教务终审不能用审核备注覆盖评估结论。请先查看阻断依据、处理完毕并重新预审；正式例外必须走独立的例外审批流程。"
         />
         <p v-if="detail.row.conclusion" class="mp-note">终审结论：{{ conclusionLabel(detail.row.conclusion) }}（涉学籍终态，不可在本页撤销）</p>
       </template>
@@ -452,7 +452,7 @@ export default {
         practice: '核对培养方案要求的实践环节完成证据',
         thesis: '读取毕业设计正式状态，缺失或未通过时返回责任模块',
         internship: '读取岗位实习正式状态，缺失或未通过时返回责任模块',
-        fee: '财务尚未供数时显示待治理；人工标记必须回读正式结果',
+        fee: '财务尚未提供数据时显示待处理；人工标记后必须重新读取确认正式结果',
         discipline: '核对未解除处分等正式阻断证据',
         final: '逐项查看十一项正式证据，锁定学生与审核结果后执行终审',
         reason: '按系统异常、学院退回和延毕分类返回责任岗位治理',
@@ -646,7 +646,7 @@ export default {
       if (!await systemConfirm({ title:'确认费用状态', message:`确认将 ${row.realName || row.studentNo || row.studentId} 费用状态勾选为「${label}」？`, confirmText:`确认${label}` })) return
       const batchId=String(this.batchId),payload={studentNo:row.studentNo,studentId:row.studentId,status,evidence:`人工勾选过渡（${label}）`},expected=status==='CLEARED'?'PASS':'FAIL';this.feeBusy=true
       const ok=await this.performResultWrite('fee',row,()=>academicAffairsApi.markFeeClearance(batchId,payload),fresh=>(fresh.items||[]).some(item=>item.item==='FEE'&&item.result===expected),{title:'已核对正式费用证据',result:`费用状态：${label}`,next:'费用证据变化后应重新执行完整十一项预审'})
-      this.feeBusy=false;if(ok){toast.success('已回读费用证据');await this.loadTab()}
+      this.feeBusy=false;if(ok){toast.success('已重新读取费用依据');await this.loadTab()}
     },
     switchTab(k) {
       if (this.loading || this.detailBusy || this.finalDlg.submitting || this.archiving || this.pendingWrite) return
@@ -874,14 +874,14 @@ export default {
       const command=this.collegeRejectDlg.command
       if(!this.sameDecision(command)||!this.canCollegeReject(command.row)){this.collegeRejectDlg.visible=false;toast.error('审核对象已变化，请重新核对');return}
       const row=command.row
-      const ok=await this.performResultWrite('college-reject',row,()=>academicAffairsApi.collegeReviewGrad(row.resultId,'REJECT',note),fresh=>fresh.status==='REJECTED'&&String(fresh.reviewNote||'')===note,{title:'学院审核已退回',result:'正式退回原因已回读',next:'本批次不支持再次提交；需要时并入下一批次'})
-      if(ok){toast.success('已回读学院退回结果');this.collegeRejectDlg.visible=false;this.detail.visible=false;await this.loadTab()}
+      const ok=await this.performResultWrite('college-reject',row,()=>academicAffairsApi.collegeReviewGrad(row.resultId,'REJECT',note),fresh=>fresh.status==='REJECTED'&&String(fresh.reviewNote||'')===note,{title:'学院审核已退回',result:'正式退回原因已重新读取',next:'本批次不支持再次提交；需要时并入下一批次'})
+      if(ok){toast.success('已重新读取学院退回结果');this.collegeRejectDlg.visible=false;this.detail.visible=false;await this.loadTab()}
     },
     async doCollegeReview(action) {
       if (this.detailBusy || action !== 'APPROVE' || !this.canCollegeApprove(this.detail.row)) return
       const row=this.detail.row
       const ok=await this.performResultWrite('college-approve',row,()=>academicAffairsApi.collegeReviewGrad(row.resultId,'APPROVE',''),fresh=>fresh.status==='ACADEMIC_REVIEW'&&fresh.overall==='SYSTEM_PASSED',{title:'学院审核已通过',result:'当前进入教务终审队列',next:'教务处继续核对十一项正式证据'})
-      if(ok){toast.success('已回读学院通过结果');this.detail.visible=false;await this.loadTab()}
+      if(ok){toast.success('已重新读取学院通过结果');this.detail.visible=false;await this.loadTab()}
     },
     confirmFinal() {
       if (this.finalDlg.submitting || !this.canNormalFinal(this.detail.row)) {
@@ -917,7 +917,7 @@ export default {
         const after=await academicAffairsApi.getGradResult(resultId)
         if(!this.current(c))return
         if(after?.code!==0)throw after
-        if(res?.code===0&&after?.code===0&&exactId(after.data?.resultId)===exactId(resultId)&&String(after.data?.batchId)===batchId&&after.data.status===this.finalConclusion&&after.data.conclusion===this.finalConclusion){this.pendingWrite=null;this.detail.row=after.data;this.recordActionReceipt(after.data,'毕业资格终审完成',CONCLUSION_LABEL[this.finalConclusion]||this.finalConclusion,'终审结论已写入学籍；可继续证书与批次归档',true);toast.success('已回读正式终审结论');this.finalDlg.visible=false;this.detail.visible=false;await this.loadBatches();await this.loadTab()}
+        if(res?.code===0&&after?.code===0&&exactId(after.data?.resultId)===exactId(resultId)&&String(after.data?.batchId)===batchId&&after.data.status===this.finalConclusion&&after.data.conclusion===this.finalConclusion){this.pendingWrite=null;this.detail.row=after.data;this.recordActionReceipt(after.data,'毕业资格终审完成',CONCLUSION_LABEL[this.finalConclusion]||this.finalConclusion,'终审结论已写入学籍；可继续证书与批次归档',true);toast.success('已重新读取正式终审结论');this.finalDlg.visible=false;this.detail.visible=false;await this.loadBatches();await this.loadTab()}
         else this.recordActionReceipt(row,'结果待核实','已读取当前正式结果，但不能证明本次终审完成','请勿重复终审，由有权限人员核对正式决定记录',false)
       }catch(err){if(this.current(c))toast.error(this.fail(err,'终审前核对未完成，请重新读取。'))}
       finally{if(this.current(c)){this.finalDlg.submitting=false;this.detailBusy=false}}
@@ -941,7 +941,7 @@ export default {
         if(res?.code!==0&&/403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingWrite=null;throw res}
         const after=await this.readGradBatch(batchId);if(!this.current(c))return
         if(res?.code===0&&Number.isFinite(res.data?.archived)&&after?.status==='ARCHIVED'){
-          this.pendingWrite=null;this.recordActionReceipt({realName:batch?.batchName},'毕业审核批次已归档',`正式回执归档 ${res.data.archived} 条结果`,'后续变更必须走正式纠错链；此处不代表十三域学期归档完成',true);toast.success('已回读批次归档状态');this.archiveDlg.visible=false;await this.loadBatches();await this.loadTab()
+          this.pendingWrite=null;this.recordActionReceipt({realName:batch?.batchName},'毕业审核批次已归档',`正式回执归档 ${res.data.archived} 条结果`,'后续变更必须走正式纠错链；此处不代表十三域学期归档完成',true);toast.success('已重新读取批次归档状态');this.archiveDlg.visible=false;await this.loadBatches();await this.loadTab()
         } else this.recordActionReceipt({realName:batch?.batchName},'归档结果待核实','已读取当前批次，但不能确认本次命令完成','请勿重复归档，由有权限人员核对正式批次',false)
       } catch (e) {
         if(this.current(c))toast.error(this.fail(e,'归档前核对未完成'))

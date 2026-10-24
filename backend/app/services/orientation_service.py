@@ -197,7 +197,7 @@ def list_students(page, page_size, keyword=None, class_id=None, batch_id=None, s
             try:
                 q = q.where(OrientationStudent.class_id == int(class_id))
             except (TypeError, ValueError):
-                raise AppException("VALIDATION_ERROR", "classId 须为数字")
+                raise AppException("VALIDATION_ERROR", "班级须为数字")
         if keyword:
             kw = f"%{keyword.strip()}%"
             q = q.where(or_(OrientationStudent.name.like(kw),
@@ -609,7 +609,7 @@ def update_blocked(sid, blocked_step=None, blocked_reason=None) -> dict:
         if blocked_step is not None:
             step_key = blocked_step or None
             if step_key is None and s.blocked_step:
-                raise AppException("INVALID_STATE", "清除卡点须走业务事实完成或人工豁免")
+                raise AppException("INVALID_STATE", "清除卡点须通过业务记录完成或人工豁免")
             s.blocked_step = step_key
             if step_key:
                 set_student_step_status(
@@ -2014,7 +2014,7 @@ def update_flow_config(fid, body):
         if not f or f.is_deleted or f.tenant_id != _tid():
             raise not_found("流程环节不存在")
         if body.get("enabled") is True and f.step_key in {"IDENTITY", "FINANCE"}:
-            raise AppException("INVALID_STATE", "该环节是历史兼容定义，不能重新启用；请使用对应的标准环节")
+            raise AppException("INVALID_STATE", "该环节是历史定义，不能重新启用；请使用对应的标准环节")
         if body.get("enabled") is not None:
             f.enabled = bool(body["enabled"])
         if body.get("required") is not None:

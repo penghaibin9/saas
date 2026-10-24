@@ -48,7 +48,7 @@ export default {
     version() { return decisionVersion(this.change) },
     canReview() { if (!['SUBMITTED', 'IN_REVIEW'].includes(this.change?.status)) return false; const p = nodePermission(this.change); return !!p && matchPermission(this.ctx.permissionPatterns || [], `academicAffairs.statusChange.${p}`) },
     confirmTitle() { return ({ APPROVE: '确认通过本节点', RETURN: '确认退回补充', REJECT: '确认驳回申请' })[this.command?.action] || '确认办理' },
-    confirmMessage() { return `${this.command?.row.realName || ''} · ${this.typeLabel(this.command?.row.changeType)}。本节点通过不等于学籍已变更，正式结果以回读为准。` },
+    confirmMessage() { return `${this.command?.row.realName || ''} · ${this.typeLabel(this.command?.row.changeType)}。本环节通过不等于学籍已变更，正式结果以重新读取的状态为准。` },
     evidenceText() { return this.evidence ? `已读取当前决定版本 ${this.evidence.decisionVersion} 的正式材料：${this.materialReceipt(this.evidence)}。` : '尚未读取正式材料；选择审批动作时将重新读取同一申请与其正式绑定材料。' },
     effectText() { if (this.change?.status === 'APPROVED_PENDING_EFFECTIVE') return '终审已通过，当前学籍尚未改变；到期后仍需核对正式生效结果。'; if (this.change?.status === 'EFFECTIVE') return '本异动已正式生效；当前学籍可进入学生档案核对。'; return '终审可能进入待生效或正式生效，以服务器实际结果为准。' }
   },

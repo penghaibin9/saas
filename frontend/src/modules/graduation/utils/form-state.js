@@ -17,7 +17,7 @@ function rawBackendMessage(response = {}) {
 function appendBackendMessage(base, response) {
   const raw = rawBackendMessage(response)
   if (!raw || raw.length > 160 || isTechnicalUiMessage(raw) || base.includes(raw)) return base
-  return `${base}（服务端：${raw}）`
+  return `${base}（系统提示：${raw}）`
 }
 
 export function isGraduationConflictResponse(response = {}) {

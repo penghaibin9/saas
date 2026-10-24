@@ -35,7 +35,7 @@ def _tid(value) -> int:
             raise ValueError
         return result
     except (TypeError, ValueError, OverflowError):
-        raise AppException("VALIDATION_ERROR", "tenantId 无效", http_status=422) from None
+        raise AppException("VALIDATION_ERROR", "学校无效", http_status=422) from None
 
 
 def _positive_id(value, field: str) -> int:
@@ -277,7 +277,7 @@ def list_finance_orders(tenant_id, *, page=1, page_size=20) -> dict[str, Any]:
     tid = _tid(tenant_id)
     page = _positive_id(page, "page"); page_size = _positive_id(page_size, "pageSize")
     if page_size > 100:
-        raise AppException("VALIDATION_ERROR", "pageSize 最大100", http_status=422)
+        raise AppException("VALIDATION_ERROR", "每页最多 100 条", http_status=422)
     with get_sessionmaker()() as db:
         total = int(db.scalar(select(func.count(PlatformOrder.id)).where(
             PlatformOrder.tenant_id == tid, PlatformOrder.is_deleted.is_(False),
@@ -335,7 +335,7 @@ def list_refunds(tenant_id, *, status="", page=1, page_size=20) -> dict[str, Any
     from app.models import CommercialRefundCase
 
     tid = _tid(tenant_id); page = _positive_id(page, "page"); page_size = _positive_id(page_size, "pageSize")
-    if page_size > 100: raise AppException("VALIDATION_ERROR", "pageSize 最大100", http_status=422)
+    if page_size > 100: raise AppException("VALIDATION_ERROR", "每页最多 100 条", http_status=422)
     filters = [CommercialRefundCase.tenant_id == tid, CommercialRefundCase.is_deleted.is_(False)]
     if status:
         value = str(status).upper()
@@ -354,7 +354,7 @@ def list_invoices(tenant_id, *, status="", page=1, page_size=20) -> dict[str, An
     from app.models import CommercialInvoiceCase
 
     tid = _tid(tenant_id); page = _positive_id(page, "page"); page_size = _positive_id(page_size, "pageSize")
-    if page_size > 100: raise AppException("VALIDATION_ERROR", "pageSize 最大100", http_status=422)
+    if page_size > 100: raise AppException("VALIDATION_ERROR", "每页最多 100 条", http_status=422)
     filters = [CommercialInvoiceCase.tenant_id == tid, CommercialInvoiceCase.is_deleted.is_(False)]
     if status:
         value = str(status).upper()
@@ -488,7 +488,7 @@ def settle_refund(tenant_id, case_id, *, expected_version: int, settlement_ref: 
         paid = _require_paid_open_finance_order(order, "登记退款结算")
         totals = _case_totals(db, tid, int(row.order_id), exclude_refund_id=cid)
         if totals["refundSettled"] + totals["refundApproved"] + _decimal(row.amount) + totals["invoiceIssued"] + totals["invoiceRequested"] > paid:
-            raise AppException("DATA_CONFLICT", "订单财务事实已变化，当前退款结算会超过已收款可用范围", http_status=409)
+            raise AppException("DATA_CONFLICT", "订单财务记录已变化，当前退款结算会超过已收款可用范围", http_status=409)
         impact = _entitlement_impact(db, tid, int(row.order_id))
         row.status = "SETTLED"; row.settled_by = _actor_id(actor_id); row.settled_at = datetime.utcnow(); row.settlement_ref = ref; row.version = int(row.version or 0) + 1
         audit_log.record_critical_in_session(db, "COMMERCIAL_REFUND_SETTLE", f"commercial-refund:{row.id}", detail={"tenantId": str(tid), "orderId": str(row.order_id), "settlementRef": ref, "amount": format(_decimal(row.amount), ".2f"), "orderStatusChanged": False, "entitlementChangeApplied": False, "activeEntitlementSourceCount": impact["activeEntitlementSourceCount"]}, tenant_id=tid, resource_id=str(row.id))
@@ -555,7 +555,7 @@ def issue_invoice(tenant_id, invoice_case_id, *, expected_version: int, external
         paid = _require_paid_open_finance_order(order, "登记已开票")
         totals = _case_totals(db, tid, int(row.order_id), exclude_invoice_id=cid)
         capacity = max(paid - totals["refundSettled"] - totals["refundApproved"] - totals["invoiceIssued"] - totals["invoiceRequested"], Decimal("0.00"))
-        if _decimal(row.amount) > capacity: raise AppException("DATA_CONFLICT", "开票前财务事实已变化，申请金额超过当前可开票余额", details={"availableAmount": format(capacity, ".2f")}, http_status=409)
+        if _decimal(row.amount) > capacity: raise AppException("DATA_CONFLICT", "开票前财务记录已变化，申请金额超过当前可开票余额", details={"availableAmount": format(capacity, ".2f")}, http_status=409)
         file_id = None
         if invoice_file_id not in (None, ""):
             from app.models.file import FileObject

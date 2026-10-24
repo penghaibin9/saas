@@ -226,7 +226,7 @@ export default {
         if (!result || String(result.id) !== this.roleId || !Number.isInteger(result.version)) throw new Error('回执不完整，请读取角色详情确认结果')
         this.receipt = { kind: result.cacheInvalidated === true ? 'success' : 'warning',
           title: result.cacheInvalidated === true ? '角色权限已保存' : '权限已提交，缓存刷新需核对',
-          message: result.cacheInvalidated === true ? '已收到服务端保存回执，正在重新读取角色配置。' : '权限事实已提交。请核对成员会话刷新；不要为刷新缓存再次保存同一变更。',
+          message: result.cacheInvalidated === true ? '已收到保存回执，正在重新读取角色配置。' : '权限已提交。请核对成员的会话是否已刷新；不要为刷新缓存再次保存同一变更。',
           requestId: args.requestId, version: result.version }
         this.base = JSON.parse(JSON.stringify(this.draft)); this.reviewOpen = false; this.reconcileNote = ''
         this.$emit('saved', result); saved = true

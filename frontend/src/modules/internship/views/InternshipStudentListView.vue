@@ -68,7 +68,7 @@
             :disabled="submitting"
             placeholder="输入姓名或学号搜索学生"
             search-placeholder="按姓名 / 学号搜索"
-            data-scope-hint="仅显示你数据范围内的学生 · 已建档学生提交时由后端拦截重复"
+            data-scope-hint="仅显示你数据范围内的学生 · 已建档的学生提交时会被系统拦截重复"
           />
         </div>
         <div class="ie-fld"><span class="ie-lbl">校内指导教师</span><AppInternshipAdvisorPicker v-model="cform.advisorUserId" :disabled="submitting" clearable placeholder="暂不分配" /></div>

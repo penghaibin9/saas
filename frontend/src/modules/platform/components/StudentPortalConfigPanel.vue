@@ -11,7 +11,7 @@
       <button type="button" class="spcfg__btn" :disabled="saving" @click="load">重新读取配置</button>
     </div>
     <div v-if="uncertain" role="alert" class="spcfg__msg--warn">
-      <p>保存结果尚未确认，请勿重复提交。重新读取只查询，不重放保存。</p>
+      <p>保存结果尚未确认，请勿重复提交。重新读取只查询，不会重复保存。</p>
       <button type="button" class="spcfg__btn" :disabled="loading || saving" @click="load">只读取当前配置</button>
       <button v-if="inspected && ready" type="button" class="spcfg__btn" :disabled="loading || saving" @click="finishVerification">已核对，结束本次记录</button>
     </div>

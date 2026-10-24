@@ -212,7 +212,7 @@ const FORM_PRESETS = {
   },
   scoreEntry: {
     title: '录入本人答辩评分', eyebrow: '答辩与成绩', roleLabel: '答辩评委职责',
-    purpose: '当前登录评委只提交本人对该学生本轮答辩的评分或缺席事实。', command: '提交本人评分',
+    purpose: '当前登录评委只提交本人对该学生本轮答辩的评分或缺席情况。', command: '提交本人评分',
     contract: '评分人来自认证身份；秘书确认与评委评分严格分离。', riskLabel: '仅本人评分', sectionTitle: '本轮评分', submitLabel: '提交本人评分',
     fields: [
       { key: 'absent', label: '本人缺席', type: 'checkbox', hint: '缺席时必须填写原因，评分留空。' },
@@ -220,7 +220,7 @@ const FORM_PRESETS = {
       { key: 'score', label: '答辩评分（0–100）', inputType: 'number', inputMode: 'decimal', min: 0, max: 100, hint: '非缺席时必填。' },
       { key: 'comment', label: '答辩评语', type: 'textarea', chips: DEFENSE_COMMENT_CHIPS, placeholder: '写明答辩表现和改进建议。' }
     ],
-    nextSteps: ['保存本人评分或缺席事实', '等待其他评委完成', '秘书在完整后确认本轮']
+    nextSteps: ['保存本人评分或缺席情况', '等待其他评委完成', '秘书在完整后确认本轮']
   },
   secondDefense: {
     title: '发起二次答辩', eyebrow: '答辩与成绩', roleLabel: '答辩管理职责',
@@ -258,7 +258,7 @@ const FORM_PRESETS = {
 
 const EMPTY_PRESET = {
   title: '毕业设计操作', eyebrow: '毕业设计', roleLabel: '当前角色职责', purpose: '处理当前学生的毕业设计业务。',
-  command: '提交当前操作', contract: '以服务端状态机为准。', riskLabel: '待确认', sectionTitle: '业务内容', submitLabel: '提交', fields: [], nextSteps: []
+  command: '提交当前操作', contract: '以系统流程为准。', riskLabel: '待确认', sectionTitle: '业务内容', submitLabel: '提交', fields: [], nextSteps: []
 }
 
 export default {

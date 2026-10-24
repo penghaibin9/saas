@@ -16,8 +16,8 @@ test('teacher mini discipline REVISED sends complete authoritative facts', () =>
   assert.match(view, /!this\.visibleAppealActions\(x\)\.some/)
 
   assert.match(view, /reviewAppeal\(x, action, previous = '', revisedDiscType = '', revisedReason = '', revisedDocNo = null\)/)
-  assert.match(view, /title: '变更后的处分事实'/)
-  assert.match(view, /变更后的处分事实至少5字/)
+  assert.match(view, /title: '变更后的处分情况'/)
+  assert.match(view, /变更后的处分情况至少 5 字/)
   assert.match(view, /title: '变更后的文号'/)
   assert.match(view, /revisedDiscType, revisedReason, revisedDocNo: revisedDocNo \|\| ''/)
   assert.match(view, /this\.reviewAppeal\(x, action, opinion, revisedDiscType, revisedReason, revisedDocNo\)/)

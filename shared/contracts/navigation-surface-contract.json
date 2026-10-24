@@ -5,7 +5,7 @@
     "frontend/src/config/navPlan.js#NAV_PLAN",
     "frontend/src/config/navPlan.js#PLATFORM_PLAN"
   ],
-  "digest": "5ec440bc82d93f70afc2efcf22dd0540c00be5f122f362404c6b5c4acca76509",
+  "digest": "cae5f7dfdfaf593f7d77b6ec95872676474b109c7701606661ed10a0361b090d",
   "counts": {
     "total": 578,
     "production": 578,
@@ -1624,7 +1624,7 @@
       "workspaceKey": "sa-discipline",
       "workspaceLabel": "违纪处分",
       "surfaceKey": "sa-discipline-03",
-      "label": "违纪台账（含投影对账）",
+      "label": "违纪台账（含对账）",
       "path": "/admin/student-affairs/discipline/ledger",
       "permissionKey": "studentAffairs.discipline.view",
       "permissionAny": [],

@@ -4,7 +4,7 @@
       <slot>
         <div class="app-qrcode__placeholder">
           <span class="app-qrcode__ico">▦</span>
-          <span class="app-qrcode__hint">二维码占位</span>
+          <span class="app-qrcode__hint">二维码</span>
         </div>
       </slot>
     </div>
@@ -15,7 +15,7 @@
 
 <script>
 /**
- * AppQRCode —（partial 部分完成）二维码占位组件。
+ * AppQRCode —（partial 部分完成）二维码组件。
  *
  * ⚠️ 现状：为避免引入较重的二维码库，本组件默认只渲染占位框 + 文案 + 原始值展示，
  *    不生成真实二维码图形。真实二维码有两种正规接入方式：

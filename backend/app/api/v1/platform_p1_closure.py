@@ -95,11 +95,11 @@ def _profile_payload(tenant: Tenant, row: PlatformConfig | None, *, can_edit: bo
 def _normalize_profile_patch(body: dict) -> tuple[dict, int, str]:
     body = body or {}
     if "expectedVersion" not in body:
-        raise AppException("VALIDATION_ERROR", "基础资料保存必须提供 expectedVersion")
+        raise AppException("VALIDATION_ERROR", "基础资料保存必须提供最新版本")
     try:
         expected = int(body.get("expectedVersion"))
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from None
+        raise AppException("VALIDATION_ERROR", "版本必须是整数") from None
     reason = str(body.get("reason") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "基础资料变更原因不少于 5 个字")
@@ -276,9 +276,9 @@ def support_ticket_create(
     try:
         tenant_id = int((body or {}).get("tenantId") or 0)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "tenantId 必须是正整数") from None
+        raise AppException("VALIDATION_ERROR", "学校编号必须是正整数") from None
     if tenant_id <= 0:
-        raise AppException("VALIDATION_ERROR", "必须指定 tenantId")
+        raise AppException("VALIDATION_ERROR", "必须指定学校")
     _ensure_tenant(tenant_id)
     out = cs.create_ticket(
         tenant_id=tenant_id,
@@ -339,7 +339,7 @@ def training_create(
     from app.services import customer_health_service as cs
     tenant_id = int((body or {}).get("tenantId") or 0)
     if tenant_id <= 0:
-        raise AppException("VALIDATION_ERROR", "必须指定 tenantId")
+        raise AppException("VALIDATION_ERROR", "必须指定学校")
     _ensure_tenant(tenant_id)
     scheduled = _utc_naive((body or {}).get("scheduledAt"), "scheduledAt")
     out = cs.create_training(
@@ -398,7 +398,7 @@ def renewal_create(
     from app.services import customer_health_service as cs
     tenant_id = int((body or {}).get("tenantId") or 0)
     if tenant_id <= 0:
-        raise AppException("VALIDATION_ERROR", "必须指定 tenantId")
+        raise AppException("VALIDATION_ERROR", "必须指定学校")
     _ensure_tenant(tenant_id)
     due_at = _utc_naive((body or {}).get("dueAt"), "dueAt")
     out = cs.create_renewal_task(

@@ -20,7 +20,7 @@ export const enterpriseAuthApi={
     inviteSequence++
     validatedInvite=null
     const data=await request(`${ROOT}/auth/browser-login`,{method:'POST',auth:false,body:{tenantCode,loginName,password,...(memberId?{memberId}:{})}})
-    if(!data?.accessToken)throw new Error('企业登录响应缺少 accessToken')
+    if(!data?.accessToken)throw new Error('企业登录失败，请重试')
     return captureAuth(data,tenantCode)
   },
   inspectInvite: async ({tenantCode,token}) => {
@@ -29,7 +29,7 @@ export const enterpriseAuthApi={
     const data=await request(`${ROOT}/auth/invite/inspect`,{method:'POST',auth:false,body:{tenantCode,token}})
     if(sequence!==inviteSequence)throw new Error('邀请已切换，请重新核对当前链接')
     const campaignId=inviteKey(data?.campaignId)
-    if(!campaignId)throw new Error('企业邀请校验响应缺少 campaignId')
+    if(!campaignId)throw new Error('企业邀请校验失败，请重试')
     validatedInvite={tenantCode:inviteKey(tenantCode),token:inviteKey(token),campaignId}
     return data
   },
@@ -42,7 +42,7 @@ export const enterpriseAuthApi={
     const campaignId=validatedInvite.campaignId
     const data=await request(`${ROOT}/auth/browser-invite/accept`,{method:'POST',auth:false,body:{tenantCode,token,phone,password}})
     if(validatedInvite!==captured)throw new Error('邀请已切换，请重新核对当前链接')
-    if(!data?.accessToken)throw new Error('企业邀请激活响应缺少 accessToken')
+    if(!data?.accessToken)throw new Error('企业邀请激活失败，请重试')
     validatedInvite=null
     return captureAuth(data,tenantCode,campaignId)
   },

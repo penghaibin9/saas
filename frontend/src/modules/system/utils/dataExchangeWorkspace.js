@@ -19,7 +19,7 @@ export function exchangeRights(has) {
   }
 }
 export const TASK_STATUSES = Object.freeze({
-  SCANNING: '安全扫描中', WORKER_CLAIMED: '后台已领取', PARSING: '服务端预检中',
+  SCANNING: '安全扫描中', WORKER_CLAIMED: '后台已领取', PARSING: '预检查中',
   VALIDATED: '预检通过 · 待确认', VALIDATION_FAILED: '预检未通过', CONFIRMING: '正在确认',
   CREATED: '等待生成', RUNNING: '正在生成', SUCCEEDED: '已完成', FAILED: '处理失败',
   CANCELLED: '已取消', EXPIRED: '已过期', REVOKED: '已撤销'
@@ -185,7 +185,7 @@ export function createExchangeController({ state, api, rights }) {
         const pending = state.unresolved[taskKey(item)]
         if (pending && item.version > pending.version) {
           delete state.unresolved[taskKey(item)]
-          state.receipt = `已重新读取任务 #${item.id}，当前为「${taskStatus(item)}」，版本 ${item.version}。没有重放上次操作。`
+          state.receipt = `已重新读取任务 #${item.id}，当前为「${taskStatus(item)}」，版本 ${item.version}。没有重复执行上次操作。`
         }
         return true
       } catch (error) { if (current()) state.detail.error = errorText(error); return false }
@@ -249,7 +249,7 @@ export function createExchangeController({ state, api, rights }) {
         if (saved.version <= fresh.version) throw new Error('请求已返回，但尚未读取到新版本，请继续核对，勿重复操作')
         delete state.unresolved[key]
         state.receipt = p.type === 'download'
-          ? `已将文件交给浏览器下载，并回读任务版本 ${saved.version}。请核对浏览器下载结果；票据未保存在页面。`
+          ? `已将文件交给浏览器下载，并重新读取任务版本 ${saved.version}。请核对浏览器下载结果；下载凭证未保存在页面。`
           : `已重新读取任务 #${saved.id}：${taskStatus(saved)} · 版本 ${saved.version}。`
       } catch (error) {
         if (!current()) return

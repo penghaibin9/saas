@@ -72,7 +72,7 @@
       <p class="mp-note">将把选中的 {{ selected.length }} 条教学任务合并为一个教学班（人数相加），
         以最早一条为主任务；如需还原请在合班后使用「拆班」。</p>
       <ul><li v-for="row in selectedRows" :key="row.taskId">{{ row.courseName }} · {{ row.teachingClassName }} · 任务 #{{ row.taskId }} · 课程版本身份 #{{ row.courseId }}</li></ul>
-      <p class="mp-note">提交前重新读取候选。正式名单与下游影响由服务端核对；当前没有独立合拆班影响预览接口。</p>
+      <p class="mp-note">提交前重新读取候选。正式名单与下游影响由系统核对；当前没有独立的合班拆班影响预览。</p>
       <label class="aa-note-label">合班备注（选填）
         <input ref="noteInput" v-model.trim="mergeDialog.note" class="aa-input" placeholder="如：小班合并授课" maxlength="200" />
       </label>
@@ -81,7 +81,7 @@
     <AppConfirmDialog :visible="Boolean(splitRow)" title="确认拆回原任务" confirm-text="确认拆班" :submitting="merging" :confirm-disabled="!canSplit(splitRow) || actionLoading" @update:visible="value => { if (!value) splitRow = null }" @confirm="doSplit(splitRow)">
       <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
       <p>{{ splitRow?.courseName }} · {{ splitRow?.teachingClassName }} · 任务 #{{ splitRow?.taskId }}</p>
-      <p>按服务端保留的合班快照恢复；已确认任务和下游引用限制以服务端核对结果为准。</p>
+      <p>按系统保留的合班快照恢复；已确认任务和下游引用的限制以系统核对结果为准。</p>
     </AppConfirmDialog>
   </ModulePageShell>
 </template>
@@ -228,7 +228,7 @@ export default {
         const rows = ids.map(id => this.all.find(row => String(row.taskId) === String(id)))
         const survivor = rows.find(row => row?.isMerged)
         const confirmed = survivor && rows.every(row => row && (row === survivor || (row.status === 'MERGED' && String(row.mergedIntoId) === String(survivor.taskId))))
-        this.receipt = { object: `任务 ${ids.join('、')}`, status: confirmed ? '已合班，正式任务已回读' : '结果待确认', pending: !confirmed, next: confirmed ? '核对合班教学班的正式名单及教师，再交教师本人确认。' : '请重新读取正式任务；不要重复合班。' }
+        this.receipt = { object: `任务 ${ids.join('、')}`, status: confirmed ? '已合班，已重新读取正式任务' : '结果待确认', pending: !confirmed, next: confirmed ? '核对合班教学班的正式名单及教师，再交教师本人确认。' : '请重新读取正式任务；不要重复合班。' }
         this.mergeDialog.visible = false
         if (confirmed) this.selected = []
       } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请查询正式任务，勿重复合班。') }
@@ -249,7 +249,7 @@ export default {
         if (!await this.load() || !valid()) return
         const current = this.all.find(item => String(item.taskId) === String(id))
         const confirmed = current && !current.isMerged && !this.all.some(item => String(item.mergedIntoId) === String(id))
-        this.receipt = { object: `任务 #${id}`, status: confirmed ? '已拆班，正式任务已回读' : '结果待确认', pending: !confirmed, next: '核对恢复的教学班及正式名单，再继续派师和确认。' }
+        this.receipt = { object: `任务 #${id}`, status: confirmed ? '已拆班，已重新读取正式任务' : '结果待确认', pending: !confirmed, next: '核对恢复的教学班及正式名单，再继续派师和确认。' }
         this.splitRow = null
       } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请查询正式任务，勿重复拆班。') }
       finally { if (!this.disposed && operation === this.operationSeq && context === this.mutationContext && ctx === this.ctx) this.merging = false }
@@ -257,7 +257,7 @@ export default {
     handleFailure(result, fallback) {
       this.error = result?.message || fallback
       if (isDeniedResult(result)) { this.revision++; this.loading = false; this.all = []; this.selected = []; this.receipt = null; this.mergeDialog = { visible: false, note: '' }; this.splitRow = null }
-      else this.receipt = { title: '合拆班办理回执', status: isConflictResult(result) ? '事实已变化，保留输入' : '办理结果需核对', pending: true, next: '重新核对来源任务及正式名单后继续。' }
+      else this.receipt = { title: '合拆班办理回执', status: isConflictResult(result) ? '数据已变化，保留输入' : '办理结果需核对', pending: true, next: '重新核对来源任务及正式名单后继续。' }
     }
   }
 }

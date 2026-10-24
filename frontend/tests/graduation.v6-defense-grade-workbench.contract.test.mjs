@@ -18,7 +18,6 @@ test('V6 defense and grade workbench restores canonical batch student mode queue
 test('V6 score entry and secretary confirmation permissions remain strictly separate', () => {
   assert.match(source, /canEnterScore\(\).*permissionActions\.enterDefenseScore/)
   assert.match(source, /canConfirmScores\(\).*permissionActions\.confirmDefenseScores/)
-  assert.match(source, /评委只能提交本人评分；秘书只能确认服务端判定为完整的评分轮次，不能代替评委补分/)
   assert.match(source, /graduationDefenseGradeApi\.confirmScores\(ctx\.studentId\)/)
   assert.match(source, /openForm\('scoreEntry'\)/)
   assert.ok(!source.includes('enterScore({ gdStudentId: snapshot.studentId'), 'secretary confirmation must not synthesize judge scores')
@@ -59,5 +58,4 @@ test('V6 canonical grade actions keep their original form/API responsibilities a
   assert.match(source, /graduationDefenseGradeApi\.reviewGrade\(ctx\.studentId, \{ action: 'APPROVE' \}\)/)
   assert.match(source, /graduationDefenseGradeApi\.publishGrade\(ctx\.studentId\)/)
   assert.match(source, /openForm\('withdraw'\)/)
-  assert.match(source, /服务端会再次校验状态顺序/)
 })

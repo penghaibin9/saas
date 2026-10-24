@@ -1,6 +1,6 @@
 <template>
   <form class="student-schema-form" @submit.prevent="submit">
-    <div v-if="unsupported" class="unsupported">FORM_CLIENT_UNSUPPORTED：该表单请前往支持的 PC 入口。</div>
+    <div v-if="unsupported" class="unsupported">该表单暂不支持当前端，请前往电脑端办理。</div>
     <template v-else>
       <label v-for="entry in visibleFields" :key="entry.field.code">
         <span>{{ entry.field.label }}<b v-if="entry.state.required">*</b></span>
@@ -10,7 +10,7 @@
           <option v-for="option in entry.field.options || []" :key="String(option.value)" :value="option.value">{{ option.label }}</option>
         </select>
         <button v-else-if="entry.field.type === 'file'" type="button" :disabled="entry.state.readonly" @click="$emit('request-file-center', entry.field)">从文件中心选择</button>
-        <button v-else-if="entry.field.type === 'student-picker'" type="button" disabled>学生身份由服务端上下文确定</button>
+        <button v-else-if="entry.field.type === 'student-picker'" type="button" disabled>学生身份由系统自动确定</button>
         <input v-else :type="entry.field.type === 'number' ? 'number' : entry.field.type === 'datetime' ? 'datetime-local' : entry.field.type" :disabled="entry.state.readonly" :value="values[entry.field.code] ?? ''" @input="set(entry.field.code, entry.field.type === 'number' && $event.target.value !== '' ? Number($event.target.value) : $event.target.value)" />
         <small v-if="serverErrors[entry.field.code]" class="field-error">{{ serverErrors[entry.field.code] }}</small>
       </label>

@@ -199,12 +199,12 @@ def record_event(*, event_type: str, article_id: str = "", query: str = "",
         resource_id = None
     elif kind == "ARTICLE_VIEW":
         if not article:
-            raise AppException("VALIDATION_ERROR", "文章浏览指标缺少 helpId")
+            raise AppException("VALIDATION_ERROR", "文章浏览记录缺少文章编号")
         action = HELP_METRIC_ACTIONS["ARTICLE_VIEW"]
         resource_id = article
     elif kind in {"HELPFUL", "NOT_HELPFUL"}:
         if not article:
-            raise AppException("VALIDATION_ERROR", "文章反馈指标缺少 helpId")
+            raise AppException("VALIDATION_ERROR", "文章反馈记录缺少文章编号")
         action = HELP_METRIC_ACTIONS[kind]
         resource_id = article
     else:

@@ -20,7 +20,7 @@
     <section v-else-if="step === 1" class="cb-card cb-import"><h3>用现有 Excel 台账一次导入</h3><p>先建立教学楼，再填写楼栋编码、楼层、教室编号及容量。编号列使用文本格式，保留 0101 等前导零。</p><AppButton :disabled="busy" @click="downloadTemplate">下载 xlsx 模板</AppButton><label class="cb-upload">选择教室台账<input type="file" accept=".xlsx" :disabled="busy" @change="upload"><span>{{ busy ? '正在读取并预检…' : '支持 .xlsx，最多 1,000 行、5 MB；上传只预检，不直接入库。' }}</span></label></section>
     <template v-else-if="step === 2 && preview">
       <div class="cb-preview-head"><div><h3>核对本批 {{ preview.total }} 行教室</h3><p><b>{{ preview.createCount }}</b> 间待建 · {{ preview.keepCount }} 间保留 · <strong :class="{ 'cb-error': preview.errorCount }">{{ preview.errorCount }} 行需修正</strong></p></div><div><AppButton :disabled="busy" @click="downloadResult">下载核对清单</AppButton><AppButton :disabled="busy" @click="step = 1">返回修改{{ mode === 'generate' ? '规则' : '文件' }}</AppButton></div></div>
-      <p class="cb-note">可取消不需要的行，并直接修正楼层、编号、类型、实际座位和三项用途规则。修改后须重新预检。KEEP 行展示正式原值且不可修改。</p>
+      <p class="cb-note">可取消不需要的行，并直接修正楼层、编号、类型、实际座位和三项用途规则。修改后须重新预检查。“保留”行显示正式原值且不可修改。</p>
       <div class="cb-table-wrap"><table><thead><tr><th>纳入</th><th>楼栋 / 楼层</th><th>教室编号 / 名称</th><th>类型</th><th>教学 / 考试座位</th><th>用途规则</th><th>预检结果</th></tr></thead><tbody><tr v-for="item in visibleItems" :key="item.line" :class="{ 'cb-keep': item.action === 'KEEP' }">
         <td><input v-model="item.selected" type="checkbox" :aria-label="`纳入第${item.line}行`" :disabled="busy || item.action === 'KEEP'" @change="dirty = true"></td>
         <td><span>{{ item.edit.buildingCode }}</span><input v-model="item.edit.floorNo" type="number" min="1" max="100" :aria-label="`第${item.line}行楼层`" :disabled="busy || item.action === 'KEEP'" @input="dirty = true"></td>
@@ -31,7 +31,7 @@
       <div class="cb-pager"><span>每页 20 行 · 第 {{ page }} / {{ pages }} 页</span><AppButton :disabled="page === 1" @click="page--">上一页</AppButton><AppButton :disabled="page >= pages" @click="page++">下一页</AppButton></div>
       <footer class="cb-footer"><span>{{ dirty ? '清单已修改，请重新预检后再入库。' : '确认后创建待建教室，已有资料原样保留。' }}</span><AppButton v-if="dirty || preview.errorCount" variant="primary" :disabled="busy || Boolean(pendingBatch)" @click="recheck">{{ busy ? '正在预检…' : '重新预检所选教室' }}</AppButton><AppButton v-else variant="primary" :disabled="busy || Boolean(pendingBatch) || !preview.createCount || invalidBatch" @click="confirm">{{ busy ? '正在整批入库…' : `确认创建 ${preview.createCount} 间教室` }}</AppButton></footer>
     </template>
-    <section v-else-if="step === 3 && result" class="cb-card cb-result" role="status"><CircleCheck /><h3>{{ result.createdCount }} 间教室已入库</h3><p>保留已有 {{ result.keptCount }} 间。现在可以查看楼层教室及其排课、排考、借用规则。</p><small>批次 {{ result.batchNo }}</small><small>办理时间：{{ result.completedAt || '服务端未提供' }}</small><div><AppButton @click="downloadResult">下载入库结果</AppButton><AppButton variant="primary" @click="$emit('complete')">查看教室资源</AppButton></div></section>
+    <section v-else-if="step === 3 && result" class="cb-card cb-result" role="status"><CircleCheck /><h3>{{ result.createdCount }} 间教室已入库</h3><p>保留已有 {{ result.keptCount }} 间。现在可以查看楼层教室及其排课、排考、借用规则。</p><small>批次 {{ result.batchNo }}</small><small>办理时间：{{ result.completedAt || '系统未提供' }}</small><div><AppButton @click="downloadResult">下载入库结果</AppButton><AppButton variant="primary" @click="$emit('complete')">查看教室资源</AppButton></div></section>
   </section>
 </template>
 <script setup>
@@ -113,7 +113,7 @@ function upload(event) {
 function queryResult() {
   const id = pendingBatch.value || preview.value?.batchNo
   if (!id) return
-  return run(async current => { const saved = await api.batch(id); if (current() && !acceptResult(saved, id)) error.value = '尚未读到正式入库结果，请稍后再次查询。不会自动重发确认。' })
+  return run(async current => { const saved = await api.batch(id); if (current() && !acceptResult(saved, id)) error.value = '尚未读到正式入库结果，请稍后再次查询。系统不会自动重复提交确认。' })
 }
 function confirm() {
   if (pendingBatch.value) return queryResult()

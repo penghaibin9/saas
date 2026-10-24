@@ -1,5 +1,5 @@
 <template>
-  <AaOverviewPageFrame title="学业过程" subtitle="先核对正式学业事实，再进入学生证据">
+  <AaOverviewPageFrame title="学业过程" subtitle="先核对正式的学业记录，再查看学生材料">
     <template #actions><AppButton @click="go('/admin/academic-affairs/roster')">查看学生名册</AppButton><AppButton variant="primary" :loading="loading" @click="load">更新学业记录</AppButton></template>
     <div class="m02-metrics">
       <article><span>当前对象</span><strong>{{ loading || error ? '—' : total }}</strong><small>当前查询范围内的学生</small></article>
@@ -11,7 +11,7 @@
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <template v-else>
       <section class="m02-card">
-        <header><h2>学生学业事实 · 进度与责任</h2><span class="m02-secondary">本页前 {{ progressRows.length }} 位学生</span></header>
+        <header><h2>学生学业记录 · 进度与责任</h2><span class="m02-secondary">本页前 {{ progressRows.length }} 位学生</span></header>
         <div class="m02-progress-list">
           <EmptyState v-if="!rows.length" title="当前查询暂无学业记录" description="调整查询条件，或到学业台账核对学生来源。" />
           <article v-for="row in progressRows" :key="row.id" class="m02-progress-row">
@@ -23,7 +23,7 @@
       </section>
       <section class="m02-card">
         <header><h2>办理队列</h2></header>
-        <form class="m02-toolbar" @submit.prevent="search"><input v-model="keyword" placeholder="搜索学生姓名、学号" maxlength="100" aria-label="搜索学生学业事实" /><AppButton @click="search">查询</AppButton><AppButton variant="ghost" @click="clearSearch">清空</AppButton><small>共 {{ total }} 条 · 正式学业台账</small></form>
+        <form class="m02-toolbar" @submit.prevent="search"><input v-model="keyword" placeholder="搜索学生姓名、学号" maxlength="100" aria-label="搜索学生学业记录" /><AppButton @click="search">查询</AppButton><AppButton variant="ghost" @click="clearSearch">清空</AppButton><small>共 {{ total }} 条 · 正式学业台账</small></form>
         <div class="m02-scroll"><table class="m02-table"><thead><tr><th>学生</th><th>专业年级</th><th>已获学分</th><th>有效 GPA</th><th>风险结论</th><th>办理入口</th></tr></thead><tbody>
           <tr v-for="row in rows" :key="row.id"><td><strong>{{ row.name }}</strong><span class="m02-secondary">{{ row.studentNo }} · {{ row.className || '班级待核对' }}</span></td><td>{{ row.majorName || '专业待核对' }} · {{ row.grade || '年级待核对' }}</td><td>{{ numeric(row.obtainedCredits) ? row.obtainedCredits : '待核对' }}</td><td>{{ numeric(row.gpa) ? Number(row.gpa).toFixed(2) : '待核对' }}</td><td><span class="m02-tag" :class="{ 'is-alert': hasRisk(row) }">{{ row.warningLabel || '待核对' }}</span><span class="m02-secondary">{{ row.academicStatusLabel || '' }}</span></td><td><button v-if="canOpen(studentRoute(row))" class="m02-link" @click="go(studentRoute(row))">打开</button><span v-else>无入口权限</span></td></tr>
           <tr v-if="!rows.length"><td colspan="6">暂无符合条件的学生</td></tr>

@@ -16,7 +16,7 @@ export const ALLOWED_PREFIXES = {
   teacher: ['/pages/teacher/', '/pages/teacher-internship/', '/pages/common/']
 }
 
-export const DEFAULT_DISABLED_REASON = '当前端暂无安全处理入口'
+export const DEFAULT_DISABLED_REASON = '当前端暂无安全的处理入口'
 
 function targetOf(action) {
   return action && typeof action === 'object' ? action.target : null

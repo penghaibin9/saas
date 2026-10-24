@@ -80,7 +80,7 @@ export default {
         const loaded = await this.load()
         if (!this.alive || this.roomId !== roomId) return
         if (loaded && this.items.find(item => item.studentId === studentId)?.attendanceStatus === 'PRESENT') this.receipt = `${row.studentName || row.studentNo || '该考生'}已登记到考，考场名单已重新核对。`
-        else this.actionError = '登记命令已返回，但同一考场尚未回读到到考结果，请再次刷新核对。'
+        else this.actionError = '登记已提交，但同一考场尚未读到到考结果，请再次刷新核对。'
       } catch (error) {
         if (this.alive && this.roomId === roomId) {
           await this.load()

@@ -30,7 +30,7 @@
         <p class="flow-note">依据当前授权专业的正式培养方案与应开教学任务核对；教师分配和学院确认由开课责任学院办理。</p>
         <div class="flow-responsibilities"><article v-for="stage in majorStages" :key="stage.stageCode">
           <header><strong>{{ stageLabel(stage) }}</strong><StatusTag :label="status(stage.status).label" :type="status(stage.status).type" /></header>
-          <p>{{ text(stage.evidence?.summary, '当前专业事实摘要待核对') }}</p>
+          <p>{{ text(stage.evidence?.summary, '当前专业情况摘要待核对') }}</p>
           <dl class="flow-major-counts">
             <template v-if="stage.stageCode === 'F30_PROGRAM_COURSE'"><dt>培养方案数</dt><dd>{{ count(stage.evidence?.programCount) }}</dd></template>
             <template v-else>

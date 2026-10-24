@@ -48,7 +48,7 @@
             <EmptyState
               v-if="!detail.metrics.length"
               title="当前没有已发布指标快照"
-              description="草稿或已撤回报表不会伪造指标；发布时才由服务端读取真实统计并冻结可追溯版本。"
+              description="草稿或已撤回的报表不会伪造指标；发布时才读取真实统计并冻结可追溯的版本。"
             />
             <DataTable v-else :columns="metricColumns" :rows="detail.metrics" row-key="id">
               <template #cell-metric="{ row }">
@@ -113,7 +113,7 @@
             <EmptyState
               v-else-if="!versions.length"
               title="尚无发布版本"
-              description="服务端查询成功，当前报表还没有冻结发布版本。"
+              description="查询成功，当前报表还没有冻结的发布版本。"
             />
             <table v-else class="mp-audit">
               <thead><tr><th>版本</th><th>发布时间</th><th>发布人</th><th>口径</th></tr></thead>
@@ -132,7 +132,7 @@
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">该报表的审计记录</span>
-            <span class="mp-note">真实 SecurityAuditLog</span>
+            <span class="mp-note">真实安全审计记录</span>
           </div>
           <div class="mp-card__body">
             <ErrorState v-if="auditError" :description="auditError" @retry="loadAudits" />
@@ -140,7 +140,7 @@
             <EmptyState
               v-else-if="!audits.length"
               title="暂无审计记录"
-              description="服务端查询成功，但当前报表尚无审计事件。"
+              description="查询成功，但当前报表尚无审计事件。"
             />
             <table v-else class="mp-audit">
               <thead><tr><th>操作人</th><th>时间</th><th>动作</th><th>说明</th></tr></thead>
@@ -260,7 +260,7 @@ export default {
       if (!this.detail) return ''
       return this.stateAction.key === 'withdrawReport'
         ? `撤回「${this.detail.name}」后，已发布版本仍永久保留；当前入口不再展示冻结指标，撤回后可继续编辑工作副本。`
-        : `发布「${this.detail.name}」将由服务端读取当前真实统计并冻结一个只追加、不可覆盖的版本。任一上游失败则整次发布失败。`
+        : `发布「${this.detail.name}」将读取当前真实统计，并冻结一个只追加、不可覆盖的版本。任一上游失败则整次发布失败。`
     }
   },
   watch: {
@@ -324,7 +324,7 @@ export default {
       this.stateAction.submitting = false
       if (res.code === 0) {
         this.stateAction.visible = false
-        toast.success(this.stateAction.key === 'withdrawReport' ? '报表已撤回，冻结历史版本继续保留' : '报表已发布并冻结服务端指标版本')
+        toast.success(this.stateAction.key === 'withdrawReport' ? '报表已撤回，冻结历史版本继续保留' : '报表已发布并冻结指标版本')
         await this.load()
       } else {
         toast.error(res.message)

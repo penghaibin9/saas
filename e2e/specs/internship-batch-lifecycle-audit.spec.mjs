@@ -206,12 +206,12 @@ test.describe('岗位实习审计：批次创建、规则、唯一性与状态�
     expect(Number(previewed.data?.matchedCount || 0)).toBeGreaterThanOrEqual(1)
     await expect(participantCard.getByText(fixture.studentNo).first()).toBeVisible()
 
-    await expect(participantCard.getByRole('button', { name: '冻结名单并启用批次' })).toBeEnabled()
+    await expect(participantCard.getByRole('button', { name: '锁定名单并启用批次' })).toBeEnabled()
     const freezeResponsePromise = page.waitForResponse((response) =>
       apiPath(response) === `/api/v1/internship/batches/${batchId}/participants/freeze`
       && response.request().method() === 'POST'
     )
-    await participantCard.getByRole('button', { name: '冻结名单并启用批次' }).click()
+    await participantCard.getByRole('button', { name: '锁定名单并启用批次' }).click()
     const activateDialog = page.getByRole('dialog')
     await expect(activateDialog).toContainText('冻结参与学生名单')
     await activateDialog.getByRole('button', { name: '确认冻结并启用' }).click()

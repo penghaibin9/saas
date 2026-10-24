@@ -3,7 +3,7 @@
     <div class="aaesp-page-head no-print">
       <div>
         <h1>考务打印</h1>
-        <p>选择正式考场 → 核验冻结名单与座位全集 → 预览门贴 / 座位表 / 准考证 → 记录打印审计</p>
+        <p>选择正式考场 → 核验锁定名单与座位 → 预览门贴 / 座位表 / 准考证 → 记录打印审计</p>
       </div>
       <button type="button" class="aaesp-back" @click="$router.push('/admin/academic-affairs/exam')">返回考务安排</button>
     </div>
@@ -78,7 +78,7 @@
     <EmptyState
       v-else
       title="输入考场 ID 载入正式打印数据"
-      description="系统会先核验考试已发布、课程已确认、考场有效、冻结名单与座位全集一致；任一条件不满足都不会降级打印草稿数据。"
+      description="系统会先核验考试已发布、课程已确认、考场有效、锁定名单与座位一致；任一条件不满足，都不会改用草稿数据打印。"
     />
 
     <AppConfirmDialog
@@ -95,7 +95,7 @@
         <AppInlineAlert
           type="info"
           title="正式打印会写入考务审计"
-          :description="printRequest.studentNo ? `本次仅补打 ${printRequest.studentName || printRequest.studentNo} 的准考证。` : '首次打印原因可留空；同一正式证据重复打印时，后端会强制要求不少于5字的补打原因。'"
+          :description="printRequest.studentNo ? `本次仅补打 ${printRequest.studentName || printRequest.studentNo} 的准考证。` : '首次打印原因可留空；同一份正式材料重复打印时，系统会强制要求不少于 5 字的补打原因。'"
         />
         <label>打印 / 补打原因
           <textarea
@@ -236,7 +236,7 @@ export default {
         const data = await api.formalRoomPrint(id)
         if (!current()) return
         if (!data || data.documentStatus !== 'OFFICIAL') {
-          throw new Error('后端未返回正式打印证据，已阻止打印')
+          throw new Error('系统未返回正式的打印依据，已阻止打印')
         }
         if (String(data.examRoomId) !== id || !data.printIdentity) {
           throw new Error('正式打印对象不一致或证据缺失，已阻止打印')

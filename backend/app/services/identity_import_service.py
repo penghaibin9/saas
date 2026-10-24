@@ -35,7 +35,7 @@ def preview_identity_import(user: dict, body: dict, *, pre_errors: list[dict] | 
 
 def run_identity_import(user: dict, body: dict, *, dry_run: bool, before_commit=None) -> dict:
     if not dry_run and not school_onboarding_service.db_enabled():
-        raise AppException("SERVER_ERROR", "数据库未启用，禁止确认创建师生账号")
+        raise AppException("SERVER_ERROR", "数据库未启用，不能确认创建师生账号")
     source = _expand_staging_if_needed(body or {})
     unknown = sorted(set(source) - _ALLOWED_KEYS)
     if unknown:

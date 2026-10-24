@@ -24,7 +24,7 @@ def component_roster(task_id, user, *, page=None, page_size=30, expected_roster_
         if page is not None and (page < 1 or page_size < 1 or page_size > 100):
             raise dynamic._conflict("名单分页参数无效")
         if page is not None and page > 1 and expected_roster_version_id is None:
-            raise dynamic._conflict("后续页必须携带首屏正式名单版本")
+            raise dynamic._conflict("后续页必须携带首屏的正式名单版本")
         profiles = sorted(roster.get("items") or [], key=lambda row: int(row["studentId"]))
         total = len(profiles)
         term_writable = True

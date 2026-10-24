@@ -218,7 +218,7 @@ class OrientationEnrollmentFinalizeService:
         _actor_id(actor)
         request_id = str((body or {}).get("clientRequestId") or "").strip()
         if len(request_id) < 12 or len(request_id) > 100:
-            raise AppException("VALIDATION_ERROR", "clientRequestId 长度须为 12-100 个字符")
+            raise AppException("VALIDATION_ERROR", "请求标识长度须为 12-100 个字符")
         with session() as db:
             student = db.scalars(select(OrientationStudent).where(
                 OrientationStudent.id == int(orientation_student_id),
@@ -290,7 +290,7 @@ class OrientationEnrollmentFinalizeService:
         actor_id = _actor_id(actor)
         request_id = str((body or {}).get("clientRequestId") or "").strip()
         if len(request_id) < 12 or len(request_id) > 100:
-            raise AppException("VALIDATION_ERROR", "clientRequestId 长度须为 12-100 个字符")
+            raise AppException("VALIDATION_ERROR", "请求标识长度须为 12-100 个字符")
         with session() as db:
             student = db.scalars(select(OrientationStudent).where(
                 OrientationStudent.id == int(orientation_student_id),
@@ -313,7 +313,7 @@ class OrientationEnrollmentFinalizeService:
                 OrientationEnrollmentFinalize.is_deleted.is_(False),
             )).first()
             if reused_request:
-                raise AppException("IDEMPOTENCY_CONFLICT", "clientRequestId 已用于其他新生确认")
+                raise AppException("IDEMPOTENCY_CONFLICT", "该请求标识已用于其他新生确认")
             check_version(student.version, (body or {}).get("expectedVersion"))
             checkin = db.scalars(select(OrientationCheckinRecord).where(
                 OrientationCheckinRecord.tenant_id == _tid(),

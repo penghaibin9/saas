@@ -25,7 +25,7 @@
       <section id="capabilities" class="yk-section yk-detail-capability-section"><div class="yk-shell">
         <div class="yk-section-heading yk-section-heading-left"><p class="yk-kicker">{{ marketing.capabilityKicker || '客户先看懂解决什么问题' }}</p><h2>{{ marketing.capabilityTitle || `${product.name}不是菜单集合，而是一条连续业务链` }}</h2><p>{{ marketing.capabilityLead || '从学校角色、流程状态与下一步动作出发，理解产品如何进入日常工作。' }}</p></div>
         <div class="yk-detail-highlight-grid"><article v-for="item in product.highlights" :key="item.title"><span class="yk-highlight-index">0{{ product.highlights.indexOf(item) + 1 }}</span><h3>{{ item.title }}</h3><p>{{ item.desc }}</p></article></div>
-        <div class="yk-workflow-band"><div class="yk-workflow-band-copy"><p class="yk-kicker">一条业务主线</p><h3>{{ marketing.workflowTitle || '从前置准备到最终结果，阶段之间持续传递同一业务事实' }}</h3></div><ol><li v-for="(step, index) in product.workflow" :key="step"><span>{{ index + 1 }}</span><strong>{{ step }}</strong></li></ol><p v-if="marketing.workflowSummary" class="yk-workflow-summary">{{ marketing.workflowSummary }}</p></div>
+        <div class="yk-workflow-band"><div class="yk-workflow-band-copy"><p class="yk-kicker">一条业务主线</p><h3>{{ marketing.workflowTitle || '从前置准备到最终结果，阶段之间持续传递同一份业务数据' }}</h3></div><ol><li v-for="(step, index) in product.workflow" :key="step"><span>{{ index + 1 }}</span><strong>{{ step }}</strong></li></ol><p v-if="marketing.workflowSummary" class="yk-workflow-summary">{{ marketing.workflowSummary }}</p></div>
         <p v-if="story?.fact" class="yk-story-fact"><strong>业务范围：</strong>{{ story.fact }} <template v-if="product.relationMap">还可以查看完整业务地图。</template></p>
       </div></section>
 

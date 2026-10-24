@@ -40,7 +40,7 @@
         plain
         @click="$emit('view-evidence', { kind, item })"
       >{{ viewing ? '正在打开…' : (evidenceViewed ? '再次查看材料' : '查看材料并留痕') }}</button>
-      <text v-else-if="evidenceRequired" class="block-reason">缺少规则要求的材料，后端将拒绝通过。</text>
+      <text v-else-if="evidenceRequired" class="block-reason">缺少规则要求的材料，系统将拒绝通过。</text>
     </view>
 
     <view class="detail"><text class="key">数据版本</text><text>v{{ item.version }}</text></view>

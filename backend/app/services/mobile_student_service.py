@@ -2005,7 +2005,7 @@ def _attachment_ids(body: dict) -> list[str]:
     """
     raw = (body or {}).get("fileIds") or []
     if not isinstance(raw, (list, tuple)):
-        raise AppException("VALIDATION_ERROR", "fileIds 必须是数组")
+        raise AppException("VALIDATION_ERROR", "文件列表格式不正确")
     ids: list[str] = []
     for item in raw:
         value = str(item or "").strip()
@@ -2025,7 +2025,7 @@ def campus_service_apply(user: dict, body: dict) -> dict:
     service_key = str(body.get("serviceKey") or body.get("serviceType") or "").strip()
     content = str(body.get("reason") or body.get("content") or "").strip()
     if not service_key:
-        raise AppException("VALIDATION_ERROR", "服务类型（serviceKey）必填")
+        raise AppException("VALIDATION_ERROR", "请选择服务类型")
     if len(content) < 5:
         raise AppException("VALIDATION_ERROR", "申请事由至少 5 个字")
     if not db_enabled():

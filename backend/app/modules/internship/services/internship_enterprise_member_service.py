@@ -99,7 +99,7 @@ def create_member(
     tenant_id = _tid()
     role = (member_role or "").upper()
     if role not in ENTERPRISE_MEMBER_ROLES:
-        raise AppException("VALIDATION_ERROR", "memberRole 必须是 COMPANY_ADMIN/HR/MENTOR")
+        raise AppException("VALIDATION_ERROR", "成员角色必须是企业管理员 / 人事 / 企业导师")
     initial_status = (status or "INVITED").upper()
     if initial_status not in {"INVITED", "ACTIVE"}:
         raise AppException("VALIDATION_ERROR", "新成员初始状态只能是 INVITED/ACTIVE")
@@ -108,7 +108,7 @@ def create_member(
         _get_company(db, company_id, tenant_id=tenant_id)
         user = _get_user(db, user_id, tenant_id=tenant_id)
         if user.user_type != "ENTERPRISE_MENTOR":
-            raise AppException("DATA_CONFLICT", "企业成员必须复用 ENTERPRISE_MENTOR 类型 t_user")
+            raise AppException("DATA_CONFLICT", "企业成员必须使用企业导师类型的账号")
         if contact_id is not None:
             _get_contact(db, contact_id, tenant_id=tenant_id, company_id=_as_id(company_id))
 
@@ -158,7 +158,7 @@ def resolve_member_for_user(*, user_id: int, company_id: int | None = None, requ
         if not rows:
             raise AppException("NO_PERMISSION", "当前账号没有有效企业成员身份")
         if company_id is None and len(rows) != 1:
-            raise AppException("DATA_CONFLICT", "当前账号关联多个企业，必须由服务端上下文明确企业范围")
+            raise AppException("DATA_CONFLICT", "当前账号关联多个企业，必须明确企业范围")
         member = rows[0]
         return _row(member, user)
 

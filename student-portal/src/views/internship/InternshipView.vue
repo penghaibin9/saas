@@ -763,7 +763,7 @@ const currentAction = computed(() => {
     tab: 'checkin', title: '完成今日打卡', action: '去打卡',
     reason: '今天尚未留下出勤记录。PC 可登记打卡，精确地理围栏核验仍在学生小程序完成。',
     recentChange: `累计出勤 ${my.value.todayCheckin?.totalDays ?? 0} 天`,
-    nextActor: '打卡后形成服务端时间记录；异常只作为人工核实信号'
+    nextActor: '打卡后形成系统时间记录；异常只作为人工核实信号'
   }
   if (my.value.status === 'ASSESSING') return {
     tab: 'eval', title: '完成实习自评', action: '填写自评',

@@ -49,7 +49,7 @@
         :next-owner="academicFlowNextOwner(workbench.nextStep)"
       />
       <AaTeachingTaskStageRail v-if="!selectedBatchId" :current="currentStage" current-note="当前批次办理节点" />
-      <AppButton v-if="pendingResult" :disabled="acting || loading" @click="queryPendingResult">查询原办理结果（不会重提）</AppButton>
+      <AppButton v-if="pendingResult" :disabled="acting || loading" @click="queryPendingResult">查询原办理结果（不会重复提交）</AppButton>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <template v-else>
@@ -433,7 +433,7 @@ export default {
         this.error = message
         if (isConflictResult(result)) {
           this.assign.invalid = true; this.review.invalid = true
-          this.receipt = { object: `批次 #${this.batchId}`, status: '事实已变化，保留输入', pending: true, next: '请重新读取批次及阻断证据后，重新打开办理确认；不会自动重提。' }
+          this.receipt = { object: `批次 #${this.batchId}`, status: '数据已变化，保留输入', pending: true, next: '请重新读取批次及阻断证据后，重新打开办理确认；不会自动重提。' }
         }
       }
     },
@@ -490,7 +490,7 @@ export default {
       const status = await pending.confirmedStatus()
       if (!current() || this.pendingResult !== pending) return
       const confirmed = Boolean(pending.acknowledged && status)
-      this.receipt = { object: pending.object, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? (typeof pending.next === 'function' ? pending.next() : pending.next) : status ? `当前正式状态：${status}。原请求应答未确认，不能认定是本次办理结果；请联系负责学院核对，不会重提。` : '尚未读到相应正式状态。只查询原办理结果，不会重复提交；请联系负责学院核对。' }
+      this.receipt = { object: pending.object, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? (typeof pending.next === 'function' ? pending.next() : pending.next) : status ? `当前正式状态：${status}。原请求的应答未确认，不能认定是本次办理结果；请联系负责学院核对，不会重复提交。` : '尚未读到相应正式状态。只查询原办理结果，不会重复提交；请联系负责学院核对。' }
       if (confirmed) this.clearPending()
     },
     async queryPendingResult() {

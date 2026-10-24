@@ -116,7 +116,7 @@ def _normalize_rows(rows: list[dict]) -> list[dict]:
                 raise AppException("VALIDATION_ERROR", "处分类型非法")
             reason = _safe_string(row.get("reason") or row.get("remark"), "违纪事实", 500)
             if len(reason) < 5:
-                raise AppException("VALIDATION_ERROR", "历史处分违纪事实不少于5字")
+                raise AppException("VALIDATION_ERROR", "历史处分违纪情况不少于 5 个字")
             clean.update({
                 "discType": disc_type,
                 "reason": reason,
@@ -173,11 +173,11 @@ def _validate_references(rows: list[dict]) -> None:
             elif row["bizType"] == "DORM":
                 bed = db.get(DormBed, row["bedId"])
                 if not bed or bed.is_deleted or bed.tenant_id != tenant_id:
-                    raise AppException("DATA_CONFLICT", f"床位{row['bedId']}不存在或跨租户")
+                    raise AppException("DATA_CONFLICT", f"床位{row['bedId']}不存在或不属于本校")
             elif row["bizType"] == "ORG_CADRE":
                 org = db.get(AffairsStudentOrg, row["orgId"])
                 if not org or org.is_deleted or org.tenant_id != tenant_id:
-                    raise AppException("DATA_CONFLICT", f"组织{row['orgId']}不存在或跨租户")
+                    raise AppException("DATA_CONFLICT", f"组织{row['orgId']}不存在或不属于本校")
     finally:
         db.close()
 

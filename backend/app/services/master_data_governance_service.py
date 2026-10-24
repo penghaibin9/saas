@@ -41,7 +41,7 @@ DOMAIN_ACCOUNT = "ACCOUNT"
 DEFAULT_DOMAINS = (
     {"domainCode": DOMAIN_STUDENT, "domainName": "学生主档", "ownerModule": "studentAffairs",
      "authoritativeTable": "t_student_profile",
-     "description": "学籍主体，全平台唯一学生身份；系统管理不代业务部门确认学生事实。"},
+     "description": "学籍主体，全平台唯一的学生身份；系统管理不代业务部门确认学生信息。"},
     {"domainCode": DOMAIN_ORG, "domainName": "组织主数据", "ownerModule": "systemAdmin",
      "authoritativeTable": "t_college / t_major / t_school_class",
      "description": "学院、专业、班级；四大业务中心共用。"},

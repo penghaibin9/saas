@@ -223,7 +223,7 @@ def _validate_target(db, tenant_id: int, target_type: str, target_id: str, after
             raise not_found(f"自定义角色不存在：{target_id}")
         codes = after.get("permissionCodes")
         if not isinstance(codes, list):
-            raise AppException("VALIDATION_ERROR", "自定义角色变更必须提供 permissionCodes 列表")
+            raise AppException("VALIDATION_ERROR", "自定义角色变更必须提供权限列表")
         # 复用 SYS-06 的模板上限校验，避免安全变更成为绕过上限的后门
         from app.services import permission_bundle_service as pbs
 

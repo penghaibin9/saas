@@ -478,7 +478,7 @@ export default {
       this.batchId = String(res.data.batchId || '')
       if (!this.batchId) { this.listError = '该申请缺少真实批次上下文，无法安全定位'; return }
       if (this.statusMatch?.length && !this.statusMatch.includes(res.data.status)) {
-        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新事实展示。`
+        this.focusNotice = `该待办状态已变化：当前为${res.data.statusLabel || res.data.status || '未知状态'}，已按最新情况显示。`
       }
       await this.loadBatches()
     },

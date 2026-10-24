@@ -234,7 +234,7 @@ def create(user, body, *, expected_batch_id=None) -> dict:
     payload = body or {}
     internship_id = payload.get("internshipId") or payload.get("internId")
     if not internship_id:
-        raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+        raise AppException("VALIDATION_ERROR", "缺少实习记录")
     values = _editable_values(payload)
     scope, in_scope = _scope_ctx(user)
     with session() as db:

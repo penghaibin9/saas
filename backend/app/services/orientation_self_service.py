@@ -465,7 +465,7 @@ def submit_material(user: dict, body: dict) -> dict:
     file_id = _text((body or {}).get("fileId"), 30)
     client_id = _text((body or {}).get("clientSubmissionId"), 100)
     if not file_id.isdigit() or len(client_id) < 8:
-        raise AppException("VALIDATION_ERROR", "fileId 与 clientSubmissionId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择文件并提供提交标识")
     with session() as db:
         profile, orientation, _batch = _own_context(db, user, lock=True, allow_materials=True)
         prior = db.scalars(select(OrientationMaterial).where(
@@ -482,7 +482,7 @@ def submit_material(user: dict, body: dict) -> dict:
                     "IDEMPOTENCY_CONFLICT",
                     "clientSubmissionId 的 fileId 与首次提交不一致",
                 )
-            raise AppException("IDEMPOTENCY_CONFLICT", "clientSubmissionId 已用于其他材料")
+            raise AppException("IDEMPOTENCY_CONFLICT", "该提交标识已用于其他材料")
         current = db.scalars(select(OrientationMaterial).where(
             OrientationMaterial.tenant_id == _tid(),
             OrientationMaterial.ori_student_id == orientation.id,

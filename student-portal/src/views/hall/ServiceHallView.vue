@@ -42,7 +42,7 @@
 
       <section class="sp-card">
         <div class="sp-panel__head">入口说明</div>
-        <p class="sp-muted hall-note">这里仅展示服务端返回的“本校已开通模块”。事项数量、热门入口和目标地址不再由浏览器硬编码；未登记或未开通的能力不会伪装成可办事项。</p>
+        <p class="sp-muted hall-note">这里仅展示“本校已开通的模块”。事项数量、热门入口和目标地址不再硬编码；未登记或未开通的能力不会伪装成可办事项。</p>
       </section>
     </template>
 

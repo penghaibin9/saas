@@ -63,7 +63,7 @@
           <div>
             <span>02 · 指导与适用范围</span>
             <strong>明确谁负责、适合哪些学生、最多可接收多少人</strong>
-            <small>导师资格、容量和最终分配仍由服务端校验，本页不会用前端计数绕过规则。</small>
+            <small>导师资格、容量和最终分配仍由系统校验，本页不会用页面计数绕过规则。</small>
           </div>
         </header>
 
@@ -90,7 +90,7 @@
         <label class="ie-fld">
           <span class="ie-lbl">学生容量</span>
           <input v-model.number="form.capacity" type="number" min="1" max="99" class="ie-in" inputmode="numeric" />
-          <small class="ie-hint">服务端仍会结合导师容量、选题轮次和已分配人数判断。</small>
+          <small class="ie-hint">系统仍会结合导师容量、选题轮次和已分配人数判断。</small>
         </label>
       </section>
 
@@ -154,7 +154,7 @@
       </section>
       <section class="gd-form-aside-card">
         <span>跨端可见性</span>
-        <strong>教师 PC、学生 PC 与微信端读取同一题目事实</strong>
+        <strong>教师电脑端、学生电脑端与微信端读取同一份题目</strong>
         <p>本页只写入题目主档，不在浏览器端伪造审核通过、容量或学生分配结果。</p>
       </section>
     </template>

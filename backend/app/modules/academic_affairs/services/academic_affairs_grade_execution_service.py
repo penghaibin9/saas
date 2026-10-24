@@ -222,7 +222,7 @@ def _quality_report_in_session(db, task, roster: dict) -> dict:
                 "studentNo": "",
                 "realName": "",
                 "code": "OUTSIDE_ROSTER",
-                "message": "存在正式名单外成绩记录，请联系教务处核对名单版本",
+                "message": "存在正式名单外的成绩记录，请联系教务处核对名单版本",
                 "recordId": str(row.id),
             }
         )

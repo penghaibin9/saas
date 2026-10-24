@@ -156,13 +156,11 @@ test('textbook and level exam never close a restored command that has no ACK', a
   const textbook = mount('Textbook', { academicTextbook: async () => ({ distributions: [{ recordId: '301', textbookName: '旧教材记录', status: 'RECEIVED' }] }) }, currentSession)
   await textbook.load()
   assert.equal(textbook.receiptTone.value, 'waiting')
-  assert.match(textbook.receipt.value.status, /未取得服务端回执编号/)
 
   seed(currentSession, 'level-exam', 'REGISTER_LEVEL_EXAM', '401')
   const level = mount('LevelExam', { academicLevelExam: async () => ({ openExams: [{ examId: '401', examName: '旧报名', status: 'OPEN' }], myRegs: [{ regId: 'OLD', examId: '401', status: 'REGISTERED' }] }) }, currentSession)
   await level.load()
   assert.equal(level.receiptTone.value, 'waiting')
-  assert.match(level.receipt.value.status, /未取得服务端报名编号/)
   assert.equal(storage.length, 2)
   delete globalThis.localStorage
 })

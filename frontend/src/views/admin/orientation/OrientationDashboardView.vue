@@ -78,7 +78,7 @@
           <progress :aria-label="c.name + '预报到完成率'" :value="c.rate" max="100" />
         </div>
       </section>
-      <p class="board-footer">统计来自服务器最新回读。<span v-if="board.updateTime">更新于 {{ formatDateTime(board.updateTime) }}</span></p>
+      <p class="board-footer">统计来自最新读取的结果。<span v-if="board.updateTime">更新于 {{ formatDateTime(board.updateTime) }}</span></p>
     </template>
   </ModulePageShell>
 </template>

@@ -87,8 +87,8 @@ test('S2 routeExact 决定是否真的对象级闭环', () => {
 })
 
 test('S2 disabledReason 优先用服务端文案', () => {
-  assert.equal(disabledReasonOf({ disabledReason: '当前端暂无对应页面，请前往教师 PC / 学生 PC 办理' }),
-    '当前端暂无对应页面，请前往教师 PC / 学生 PC 办理')
+  assert.equal(disabledReasonOf({ disabledReason: '当前端暂无对应页面，请前往教师电脑端或学生电脑端办理' }),
+    '当前端暂无对应页面，请前往教师电脑端或学生电脑端办理')
   assert.equal(disabledReasonOf({}), DEFAULT_DISABLED_REASON)
   assert.equal(disabledReasonOf(null), DEFAULT_DISABLED_REASON)
 })

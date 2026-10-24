@@ -83,7 +83,7 @@ async def legacy_mixed_validate_file(
 
     uploaded = await implementation_identity.upload(file, user=user)
     result = implementation_identity.validate(str(uploaded.get("fileId") or ""), user=user)
-    return success(result, message="实施中心兼容预检已通过统一文件安全入口")
+    return success(result, message="实施中心预检已通过统一的文件安全检查")
 
 
 @router.post("/system/identity-import/students/validate-file", summary="兼容入口：学生文件转 Data Exchange")

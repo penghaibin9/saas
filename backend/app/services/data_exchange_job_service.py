@@ -168,7 +168,7 @@ def _resolve_visibility_request(
         if not module and len(allowed_modules) == 1:
             module = allowed_modules[0]
         if not module:
-            raise AppException("VALIDATION_ERROR", "MODULE 视图必须指定 moduleCode")
+            raise AppException("VALIDATION_ERROR", "按模块查看必须指定模块")
         if module not in allowed_modules:
             raise no_permission("无权查看该模块的数据交换任务")
     return normalized, module
@@ -638,7 +638,7 @@ def register_legacy_import_adapter(
         raise AppException("VALIDATION_ERROR", "不支持的导入 adapter")
     ref = str(adapter_ref or "").strip()
     if not ref:
-        raise AppException("VALIDATION_ERROR", "adapterRef 不能为空")
+        raise AppException("VALIDATION_ERROR", "适配器不能为空")
     db = get_sessionmaker()()
     try:
         row = db.scalars(select(ImportJob).where(
@@ -703,7 +703,7 @@ def confirm_identity_import_job(
     try:
         row = _owned_import(db, job_id, user, lock=True)
         if row.adapter_type != IMPORT_ADAPTER_IDENTITY:
-            raise AppException("DATA_CONFLICT", "该任务不是身份账号导入，不能使用此确认接口")
+            raise AppException("DATA_CONFLICT", "该任务不是身份账号导入，不能使用此确认功能")
         if row.status == "SUCCEEDED":
             return _import_row(row)
         if row.expires_at and row.expires_at <= _now():
@@ -893,7 +893,7 @@ def list_jobs(
     page_size = min(100, max(1, int(page_size or 20)))
     wanted = str(job_type or "").upper()
     if wanted not in {"", "IMPORT", "EXPORT"}:
-        raise AppException("VALIDATION_ERROR", "jobType 仅支持 IMPORT 或 EXPORT")
+        raise AppException("VALIDATION_ERROR", "任务类型仅支持导入或导出")
     keyword = str(keyword or "").strip()
     visibility, module_code = _resolve_visibility_request(user, visibility, module_code)
     db = get_sessionmaker()()

@@ -106,7 +106,7 @@ def cancel_offboarding(job_id: int, body: dict = Body(...), user=Depends(require
 @router.post("/commercial/module-offboarding/{job_id}/export", summary="绑定并核验最终模块导出")
 def bind_export(job_id: int, body: dict = Body(...), user=Depends(require_platform_capability("commercial.manage"))):
     from app.services import module_commerce_lifecycle_service as lifecycle
-    return success(lifecycle.bind_module_export(user, int(job_id), export_job_id=_required_int(body, "exportJobId"), manifest_id=_required_int(body, "manifestId"), scope_hash=str(body.get("scopeHash") or ""), expected_version=_required_int(body, "expectedVersion")), message="最终导出已通过服务端任务、Manifest与文件对象核验，等待校方接收")
+    return success(lifecycle.bind_module_export(user, int(job_id), export_job_id=_required_int(body, "exportJobId"), manifest_id=_required_int(body, "manifestId"), scope_hash=str(body.get("scopeHash") or ""), expected_version=_required_int(body, "expectedVersion")), message="最终导出已通过系统核验，等待校方接收")
 
 
 @router.post("/commercial/module-offboarding/{job_id}/export-acceptance", summary="校方确认接收并进入保留期")
@@ -144,7 +144,7 @@ def sales_context(tenant_id: int, user=Depends(require_platform_capability("comm
 @router.post("/commercial/sales-order-preview", summary="分项新购续费金额与代次预检（不写入）")
 def sales_order_preview(body: dict = Body(...), user=Depends(require_platform_capability("order.manage"))):
     from app.services import module_commerce_sales_service as sales
-    return success(sales.preview_sales_order(body), message="预检未收款、未授权、未预留额度；提交时重新核验")
+    return success(sales.preview_sales_order(body), message="预检未收款、未授权、未预留额度；提交时会重新核验")
 
 
 @router.post("/commercial/sales-orders", summary="创建已核对代次的未支付销售订单")

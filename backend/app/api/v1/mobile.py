@@ -1090,7 +1090,7 @@ def teacher_affairs_work_study_action(
     from app.core.exceptions import AppException
     from app.services import affairs_funding_ext_service as work_study
     if (body or {}).get("version") is None:
-        raise AppException("VALIDATION_ERROR", "版本号必填")
+        raise AppException("VALIDATION_ERROR", "版本必填")
     return success(work_study.act_work_study(
         record_id, (body or {}).get("action"), user, (body or {}).get("reason") or "",
         expected_version=(body or {}).get("version"),
@@ -1137,7 +1137,7 @@ def teacher_affairs_loan_action(
     from app.core.exceptions import AppException
     from app.services import affairs_funding_ext_service as loans
     if (body or {}).get("version") is None:
-        raise AppException("VALIDATION_ERROR", "版本号必填")
+        raise AppException("VALIDATION_ERROR", "版本必填")
     return success(loans.loan_action(loan_id, body or {}, user), message="贷款记录已更新")
 
 
@@ -1164,7 +1164,7 @@ def teacher_affairs_fee_reduction_action(
     from app.core.exceptions import AppException
     from app.services import affairs_funding_ext_service as reductions
     if (body or {}).get("version") is None:
-        raise AppException("VALIDATION_ERROR", "版本号必填")
+        raise AppException("VALIDATION_ERROR", "版本必填")
     return success(reductions.fee_action(fee_id, body or {}, user), message="申请已更新")
 
 
@@ -1183,7 +1183,7 @@ def teacher_affairs_discipline_review(case_id: str, body: dict = Body(default={}
                                       user=Depends(get_current_user)):
     from app.core.exceptions import AppException
     if (body or {}).get("version") is None:
-        raise AppException("VALIDATION_ERROR", "版本号必填")
+        raise AppException("VALIDATION_ERROR", "版本必填")
     return success(tea.affairs_discipline_review(
         user, case_id, str((body or {}).get("action") or "APPROVE"),
         reason=str((body or {}).get("reason") or ""),

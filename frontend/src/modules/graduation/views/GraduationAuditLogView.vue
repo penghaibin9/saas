@@ -46,7 +46,7 @@ export default {
         { key: 'operator', title: '操作人', width: '100px' },
         { key: 'operatorAccount', title: '操作账号', width: '100px' },
         { key: 'roleName', title: '角色', width: '100px' },
-        { key: 'permissionCode', title: '权限码', width: '220px' },
+        { key: 'permissionCode', title: '权限', width: '220px' },
         { key: 'batchId', title: '批次', width: '80px' },
         { key: 'traceId', title: 'TraceId', width: '150px' },
         { key: 'dataScope', title: '数据范围', width: '180px' },

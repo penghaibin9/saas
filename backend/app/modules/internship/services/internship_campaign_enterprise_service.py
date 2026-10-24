@@ -79,11 +79,11 @@ def _get_participation(
 def _expected_version(row: InternshipCampaignEnterprise, body: dict) -> int:
     raw = body.get("expectedVersion", body.get("version"))
     if raw is None:
-        raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（乐观锁）")
+        raise AppException("VALIDATION_ERROR", "必须提供数据版本")
     try:
         expected = int(raw)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from exc
+        raise AppException("VALIDATION_ERROR", "版本必须是整数") from exc
     current = int(row.version or 0)
     if expected != current:
         raise AppException("DATA_CONFLICT", "数据已被其他用户修改，请刷新后重试")
@@ -117,7 +117,7 @@ def invite_company(
 ):
     source = (invite_source or "MANUAL").upper()
     if source not in CAMPAIGN_ENTERPRISE_INVITE_SOURCES:
-        raise AppException("VALIDATION_ERROR", "inviteSource 非法")
+        raise AppException("VALIDATION_ERROR", "邀请来源不合法")
     tenant_id = _tid()
     with session() as db:
         campaign = _get_campaign(db, campaign_id, tenant_id=tenant_id, lock=True)

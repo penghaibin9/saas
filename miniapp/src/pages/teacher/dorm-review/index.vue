@@ -296,7 +296,7 @@ export default {
       } catch (e) { if (!current()) return; this.needsLogin = normalizeError(e).kind === 'auth'; this.state = normalizeError(e).pageState || 'error'; this.loadError = normalizeError(e).text || '宿舍现场工作台加载失败'; this.showError(e, this.loadError) }
     },
     showError(e, fallback) { const n = normalizeError(e); toast(n.text || (e && e.message) || fallback); if (n.kind === 'conflict') this.load(); return n },
-    versionOf(x) { if (x.version === undefined || x.version === null || x.version === '') { toast('记录缺少版本号，请刷新后重试'); this.load(); return null }; return x.version },
+    versionOf(x) { if (x.version === undefined || x.version === null || x.version === '') { toast('记录信息不完整，请刷新后重试'); this.load(); return null }; return x.version },
     async selectTask(task) {
       if (this.acting) return
       this.inspection = { task, roomId: '', items: (task.templateItems || []).map((item) => ({ itemCode: item.code, itemName: item.name, maxScore: item.maxScore, severity: item.severity, status: 'PASS', score: item.maxScore })), detail: '', studentId: '', file: null, clientRequestId: '' }; this.rooms = []; this.occupants = []

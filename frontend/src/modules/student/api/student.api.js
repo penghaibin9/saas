@@ -138,8 +138,8 @@ const FIELD_COLUMNS = {
 
 const EXPORT_OPTIONS = {
   scopes: [
-    { value: 'CURRENT_SCOPE', label: '当前数据范围', desc: '按当前账号 dataScope 导出全部可见学生' },
-    { value: 'SELECTED', label: '仅导出所选', desc: '需要服务端支持精确 ID 冻结后才能执行' }
+    { value: 'CURRENT_SCOPE', label: '当前数据范围', desc: '按当前账号数据范围导出全部可见学生' },
+    { value: 'SELECTED', label: '仅导出所选', desc: '需要系统支持按学生精确冻结后才能执行' }
   ],
   fieldGroups: [
     {
@@ -269,7 +269,7 @@ function permissionActions(patterns = []) {
     columnSettings: action(view, view, '无学生主档查看权限'),
     changeStatus: action(false, false, '学籍状态写入必须走教务中心“学籍异动”审批；本页仅保留只读台账'),
     batchChangeStatus: action(false, false, '学籍异动必须逐人走教务审批，不提供批量直改'),
-    exportStatusRecords: action(false, false, '学籍异动筛选导出尚未接入服务端冻结条件，禁止误导出当前范围'),
+    exportStatusRecords: action(false, false, '学籍异动筛选导出尚未支持，禁止误导出当前范围'),
     batchAssignClass: action(false, false, '班级变更必须走教务中心“学籍异动”审批'),
     batchAssignCounselor: action(false, false, '辅导员责任按班级维护，请到学工中心“辅导员责任关系”办理'),
     batchRemind: action(false, false, '学生批量提醒尚未接入真实通知投递链路'),
@@ -383,13 +383,13 @@ export const studentApi = {
 
   async updateStudent(studentId, payload = {}) {
     if (payload.classId || payload.collegeId || payload.majorId) {
-      return fail('学院/专业/班级属于学籍事实，必须走 教务中心 › 学籍异动，不允许在主档编辑页直接改写。', 'ACADEMIC_STATUS_CHANGE_REQUIRED')
+      return fail('学院、专业、班级属于学籍信息，必须走「教务中心 › 学籍异动」，不允许在主档编辑页直接改写。', 'ACADEMIC_STATUS_CHANGE_REQUIRED')
     }
     if (Object.prototype.hasOwnProperty.call(payload, 'idCard')) {
       return fail('身份证更正必须走学生信息更正审核链，不能在普通主档编辑中直接覆盖。', 'PROFILE_CORRECTION_REQUIRED')
     }
     if (payload.expectedVersion === undefined || payload.expectedVersion === null) {
-      return fail('缺少主档版本号，请刷新后重试。', 'VERSION_REQUIRED')
+      return fail('缺少主档版本，请刷新后重试。', 'VERSION_REQUIRED')
     }
     return safe(async () => {
       const body = {
@@ -422,7 +422,7 @@ export const studentApi = {
   },
 
   batchAssignClass() {
-    return fail('批量分班已从学生主档下线：班级变更必须逐人走 教务中心 › 学籍异动，保留历史事实与审批轨迹。', 'ACADEMIC_STATUS_CHANGE_REQUIRED')
+    return fail('批量分班已从学生主档下线：班级变更必须逐人走「教务中心 › 学籍异动」，保留历史记录与审批轨迹。', 'ACADEMIC_STATUS_CHANGE_REQUIRED')
   },
   batchAssignCounselor() {
     return fail('辅导员责任关系按班级维护，请到 学工中心 › 辅导员责任关系 办理。', 'COUNSELOR_ASSIGNMENT_REQUIRED')
@@ -445,7 +445,7 @@ export const studentApi = {
     return fail('学籍状态只能由 教务中心 › 学籍异动 的多级审批终审生效，本页不提供直接写入。', 'ACADEMIC_STATUS_CHANGE_REQUIRED')
   },
   batchChangeStatus() {
-    return fail('批量直改学籍状态已禁用；每名学生必须保留独立异动申请、审批与历史事实。', 'ACADEMIC_STATUS_CHANGE_REQUIRED')
+    return fail('批量直接修改学籍状态已禁用；每名学生必须保留独立的异动申请、审批与历史记录。', 'ACADEMIC_STATUS_CHANGE_REQUIRED')
   },
 
   async getIdentityRecords(params = {}) {
@@ -571,7 +571,7 @@ export const studentApi = {
     if (!fieldKeys.length) return fail('请至少选择一个导出字段', 'VALIDATION_ERROR')
     if (!purposeDef) return fail('导出用途必选（用于审计留痕）', 'VALIDATION_ERROR')
     if (scope === 'SELECTED') {
-      return fail('“仅导出所选”尚未有服务端冻结 ID 集合的正式接口，已禁止把当前范围导出伪装成所选导出。', 'SELECTED_EXPORT_NOT_SUPPORTED')
+      return fail('“仅导出所选”尚不支持，已禁止把当前范围的导出伪装成所选导出。', 'SELECTED_EXPORT_NOT_SUPPORTED')
     }
     return safe(async () => {
       const purposeText = `${purposeDef.label}${remark ? `：${remark}` : ''}`

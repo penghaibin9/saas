@@ -291,7 +291,7 @@ def _teacher_schedule_in_session(db, user) -> tuple[dict, object | None]:
                     "teachingTaskId": str(task.id),
                     "scheduleItemId": str(schedule_item_id),
                     "status": "CONFLICT",
-                    "message": "正式课次投影对应的 ScheduleItem 已失效，请刷新",
+                    "message": "该课次对应的课表项已失效，请刷新",
                 })
                 continue
             items.append({

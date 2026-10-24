@@ -179,5 +179,5 @@ def dynamic_grade_command_receipt(task_id: int, command_key: str,
         service._task(db, task_id, user)
     result = receipts.read(user, operation, command_key)
     if result.get("result") and str(result["result"].get("gradeTaskId")) != str(task_id):
-        raise service._conflict("原命令不属于当前成绩任务")
+        raise service._conflict("原操作不属于当前成绩任务")
     return success(result)

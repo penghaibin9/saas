@@ -74,13 +74,13 @@ class IdentityIdentifierRequest(BaseModel):
         modern = str(self.identifier or "").strip()
         if typed or modern:
             if not typed or not modern or legacy:
-                raise AppException("VALIDATION_ERROR", "identifierType 与 identifier 必须同时提供，且不能与 loginName 混用", http_status=422)
+                raise AppException("VALIDATION_ERROR", "标识类型与标识必须同时提供，且不能与登录名混用", http_status=422)
             if typed == "PHONE":
                 from app.services.phone_login_service import require_phone_identifier
                 return typed, require_phone_identifier(self.tenantCode, modern)
             if typed == "ACCOUNT":
                 return typed, modern
-            raise AppException("VALIDATION_ERROR", "identifierType 仅支持 ACCOUNT 或 PHONE", http_status=422)
+            raise AppException("VALIDATION_ERROR", "标识类型仅支持“账号”或“手机号”", http_status=422)
         if not legacy:
             raise AppException("VALIDATION_ERROR", "请输入账号或手机号", http_status=422)
         return "ACCOUNT", legacy
@@ -369,7 +369,7 @@ class RefreshRequest(BaseModel):
 def refresh(body: RefreshRequest):
     claims = consume_refresh(body.refreshToken)
     if not claims:
-        raise unauthorized("refreshToken 无效或已使用，请重新登录")
+        raise unauthorized("登录凭证无效或已使用，请重新登录")
     from app.services.browser_auth_session_blocklist import auth_session_blocked
     if auth_session_blocked(claims.get("authSessionId")):
         raise unauthorized("当前会话已退出，请重新登录")
@@ -435,5 +435,5 @@ def logout(body: LogoutRequest | None = None, user=Depends(get_current_user), au
         return success({
             "loggedOut": True, "tokenInvalidated": False, "partial": True,
             "errors": errors,
-        }, message="登出未完全生效，请稍后重试或清除本地令牌")
-    return success({"loggedOut": True, "tokenInvalidated": True}, message="已登出，令牌已失效")
+        }, message="登出未完全生效，请稍后重试或清除本地登录信息")
+    return success({"loggedOut": True, "tokenInvalidated": True}, message="已登出，登录凭证已失效")

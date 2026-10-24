@@ -40,7 +40,7 @@ def require_independent_task(db, task, *, tenant_id=None, lock=True):
     if lock:
         relation = relation.with_for_update()
     if db.scalar(relation.limit(1)) is not None:
-        raise AppException("DATA_CONFLICT", "本任务已由原教学任务承接，请回读原任务后办理，不能重复执行。",
+        raise AppException("DATA_CONFLICT", "本任务已由原教学任务承接，请重新读取原任务后办理，不能重复执行。",
             http_status=409, details={"blocker": "TASK_EXECUTION_HANDOFF", "taskId": str(task_id)})
     return current
 

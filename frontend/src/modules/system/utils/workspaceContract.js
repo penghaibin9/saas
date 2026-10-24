@@ -32,7 +32,7 @@ export function createRequestFence() {
 
 export function unwrap(result) {
   if (!result || result.code !== 0) {
-    const error = new Error(result?.message || '未取得服务端结果，请重新读取后核对')
+    const error = new Error(result?.message || '未取得结果，请重新读取后核对')
     error.bizCode = result?.bizCode || ''
     error.details = result?.details
     error.traceId = result?.traceId || ''
@@ -133,7 +133,7 @@ export function permissionSaveArgs(draft, reason, requestId) {
   const codes = [...new Set([...menuKeys, ...buttonKeys])]
   const editable = new Set(draft.groups.flatMap(group => group.rows.map(node => node.key)))
   if (codes.some(code => !editable.has(code) || code.includes('*') || /^(system\.|platform\.|enterprise\.)/.test(code))) {
-    throw new Error('包含不可编辑权限，必须重新取得服务端权限目录')
+    throw new Error('包含不可编辑的权限，必须重新取得权限目录')
   }
   if (!Number.isInteger(draft.version) || draft.version < 0) throw new Error('角色版本无效')
   if (typeof draft.scopeCode !== 'string' || !draft.scopeCode) throw new Error('未取得默认数据范围')

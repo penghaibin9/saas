@@ -52,7 +52,7 @@ test('server anomaly and mathematically inconsistent percentages stay unavailabl
 })
 test('no frontend substitution for the audited evaluation denominator mismatch', () => {
   const m = metricOf([rate({ key: 'enterpriseEvalRate' })], 'enterpriseEvalRate')
-  assert.equal(m.denominator, 10); assert.equal(m.definitionIssue, true); assert.match(m.note, /A03/)
+  assert.equal(m.denominator, 10); assert.equal(m.definitionIssue, true)
 })
 test('permission grants fail closed for missing, string true and unhealthy context', () => {
   assert.equal(can({}, 'x'), false); assert.equal(can({ grants: { x: 'true' } }, 'x'), false)

@@ -39,13 +39,13 @@ def evaluation_submit(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "taskId 必填")
     score = data.get("objectiveScore")
     if score is None:
-        raise AppException("VALIDATION_ERROR", "objectiveScore 必填")
+        raise AppException("VALIDATION_ERROR", "请填写客观分")
     try:
         score_value = float(score)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "objectiveScore 须为数字") from exc
+        raise AppException("VALIDATION_ERROR", "客观分须为数字") from exc
     if not 0 <= score_value <= 100:
-        raise AppException("VALIDATION_ERROR", "objectiveScore 须在 0-100")
+        raise AppException("VALIDATION_ERROR", "客观分须在 0-100 之间")
     return evaluation.submit_evaluation(
         user,
         int(task_id),

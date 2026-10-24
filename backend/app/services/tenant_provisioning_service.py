@@ -130,7 +130,7 @@ def start_provisioning_job(user: dict, body: dict) -> dict:
     idempotency_key = str(body.get("idempotencyKey") or "").strip()
     tenant_code = str(body.get("tenantCode") or "").strip()
     if not idempotency_key or not tenant_code:
-        raise AppException("VALIDATION_ERROR", "idempotencyKey 与 tenantCode 必填", http_status=422)
+        raise AppException("VALIDATION_ERROR", "请求标识和学校编码必填", http_status=422)
 
     with _session() as db:
         existing = db.scalars(select(ProvisioningJob).where(

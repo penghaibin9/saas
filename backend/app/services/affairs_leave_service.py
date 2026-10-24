@@ -1033,7 +1033,7 @@ def handle_overdue(leave_id, user, handle_type, note="", expected_version=None) 
     """逾期处置登记：CONTACT/TO_HOME_SCHOOL 留痕不改状态；CLOSE→CLOSED 进360。契约 #25 / 状态机 §1 OVERDUE 分支。"""
     handle_type = (handle_type or "").upper()
     if handle_type not in OVERDUE_HANDLE_TYPES:
-        raise AppException("VALIDATION_ERROR", "handleType 仅支持 CONTACT / TO_HOME_SCHOOL / CLOSE")
+        raise AppException("VALIDATION_ERROR", "处理方式仅支持 联系 / 通知家校 / 关闭")
     if not note or len(note.strip()) < 5:
         raise AppException("VALIDATION_ERROR", "处置说明必填且不少于 5 字")
     message_outbox_id = None

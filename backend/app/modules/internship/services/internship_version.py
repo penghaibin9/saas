@@ -19,7 +19,7 @@ def extract_expected_version(body: Any, *, required: bool = True) -> int | None:
             raw = getattr(body, "version", None)
     if raw is None:
         if required:
-            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（乐观锁），请刷新后重试")
+            raise AppException("VALIDATION_ERROR", "必须提供数据版本，请刷新后重试")
         return None
     return require_expected_version(raw)
 

@@ -332,13 +332,13 @@ def submit_my_saved_volunteers(*, user: dict, body: dict, batch_id=None) -> dict
     expected_profile_raw = payload.get("expectedProfileVersion")
     preview_hash = str(payload.get("confirmMaterialPreviewHash") or payload.get("previewHash") or "").strip()
     if expected_profile_raw in (None, "") or not preview_hash:
-        raise AppException("VALIDATION_ERROR", "提交志愿必须提供 expectedProfileVersion + previewHash")
+        raise AppException("VALIDATION_ERROR", "提交志愿必须提供资料版本和预览校验码")
     try:
         expected_profile = int(expected_profile_raw)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "expectedProfileVersion 必须为非负整数") from exc
+        raise AppException("VALIDATION_ERROR", "资料版本必须为非负整数") from exc
     if expected_profile < 0:
-        raise AppException("VALIDATION_ERROR", "expectedProfileVersion 必须为非负整数")
+        raise AppException("VALIDATION_ERROR", "资料版本必须为非负整数")
 
     with session() as db:
         def _operation():
@@ -370,7 +370,7 @@ def submit_my_saved_volunteers(*, user: dict, body: dict, batch_id=None) -> dict
             try:
                 expected_group = int(payload.get("expectedGroupVersion"))
             except (TypeError, ValueError) as exc:
-                raise AppException("VALIDATION_ERROR", "必须提供有效的 expectedGroupVersion") from exc
+                raise AppException("VALIDATION_ERROR", "必须提供有效的志愿组版本") from exc
             if int(group.version or 0) != expected_group:
                 raise AppException("DATA_CONFLICT", "志愿组版本已变化，请刷新后重试", http_status=409)
 

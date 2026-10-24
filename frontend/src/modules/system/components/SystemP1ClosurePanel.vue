@@ -25,7 +25,7 @@
           <label class="p1-wide"><span>授权原因</span><input v-model.trim="roleForm.reason" placeholder="至少 5 个字；写入授权来源与审计" /></label>
           <div class="p1-actions"><AppButton variant="primary" :loading="saving" @click="grantRole">新增正式角色授权</AppButton></div>
         </div>
-        <p class="p1-note">服务端会拒绝停用角色、学生/教职工角色串用、重复覆盖授权与未来时间提前生效；新增记录继续在下方台账复核、转交、回收。</p>
+        <p class="p1-note">系统会拒绝停用的角色、学生与教职工角色串用、重复覆盖授权和未来时间提前生效；新增记录继续在下方台账复核、转交、回收。</p>
       </template>
       <p v-else class="p1-note">当前角色只有查看权限；新增正式授权需要“用户分配”或“角色配置”权限。</p>
     </template>
@@ -49,7 +49,7 @@
       <div v-if="selectedOverride && canRestoreConfig" class="p1-confirm">
         <div>
           <b>撤销 {{ selectedOverride.configName }} 的全部学校层覆盖？</b>
-          <p>服务端会锁住并校验 {{ selectedOverride.overrideCount }} 条当前或计划覆盖的完整链与每条版本，单事务撤销并写高危审计；任何并发变化都会整笔拒绝。</p>
+          <p>系统会锁定并校验 \1 条当前或计划中的覆盖及每条的版本，在一个事务内撤销并写入高危审计；任何并发变化都会整笔拒绝。</p>
         </div>
         <input v-model.trim="overrideReason" placeholder="撤销原因，至少 5 个字" />
         <div class="p1-actions">
@@ -133,9 +133,9 @@ export default {
     },
     subtitle() {
       return {
-        role: '在既有角色治理页创建带来源、到期与审计原因的正式授权；高危边界由服务端强制。',
-        config: '撤销学校层当前与计划覆盖后恢复后端 Resolver 继承，不手填“默认值”。',
-        identity: '按稳定 userId/studentId 解释账号是谁；有写权限时可留痕解除错误绑定。'
+        role: '在既有角色治理页创建带来源、到期时间和审计原因的正式授权；高危边界由系统强制。',
+        config: '撤销学校层当前和计划中的覆盖后，恢复继承上级设置，不需要手填“默认值”。',
+        identity: '按稳定的账号编号和学号解释账号是谁；有写权限时可留痕解除错误的绑定。'
       }[this.mode] || ''
     },
     permissionPatterns() {
@@ -187,7 +187,7 @@ export default {
     },
     async grantRole() {
       if (!this.canGrantRole) return toast.error('当前角色没有正式授权写权限')
-      if (!/^\d+$/.test(this.roleForm.userId)) return toast.error('userId 必须是数字主键')
+      if (!/^\d+$/.test(this.roleForm.userId)) return toast.error('账号编号必须是数字')
       if (!this.roleForm.roleCode) return toast.error('请选择角色')
       if (this.roleForm.reason.trim().length < 5) return toast.error('授权原因不少于 5 个字')
       if (this.roleForm.expiresAt && new Date(this.roleForm.expiresAt).getTime() <= Date.now()) return toast.error('到期时间必须晚于当前时间')
@@ -220,13 +220,13 @@ export default {
         return toast.error(`恢复继承失败：${error.message || '并发版本冲突，请刷新重试'}`)
       }
       this.saving = false
-      toast.success(`已原子撤销 ${selected.overrideCount} 条学校层覆盖，当前值恢复继承`)
+      toast.success(`已同时撤销 ${selected.overrideCount} 条学校层覆盖，当前值恢复继承`)
       this.selectedOverride = null
       await this.load()
       this.$emit('refresh-child')
     },
     async resolveIdentity() {
-      if (!/^\d+$/.test(this.identityUserId)) return toast.error('请输入数字 userId')
+      if (!/^\d+$/.test(this.identityUserId)) return toast.error('请输入数字账号编号')
       this.loading = true
       const res = await systemApi.getEffectiveIdentity(this.identityUserId)
       this.loading = false

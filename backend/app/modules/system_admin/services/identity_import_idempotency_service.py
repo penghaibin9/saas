@@ -179,7 +179,7 @@ def complete_request(*, session_key: str, source_file_id: int, user: dict) -> No
             FileObject.is_deleted.is_(False),
         ))
         if file_obj is None:
-            raise AppException("FILE_NOT_FOUND", "身份导入源文件与幂等会话不匹配", http_status=409)
+            raise AppException("FILE_NOT_FOUND", "身份导入源文件与重复提交保护记录不匹配", http_status=409)
         if row.file_id and int(row.file_id) != int(source_file_id):
             raise AppException("IDEMPOTENCY_CONFLICT", "同一 Idempotency-Key 已绑定其他文件", http_status=409)
         row.file_id = int(source_file_id)

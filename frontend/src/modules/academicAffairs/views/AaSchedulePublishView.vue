@@ -250,7 +250,7 @@ export default {
     },
     async requestResult(request) {
       try { return await request() }
-      catch (error) { return { code: 'REQUEST_ERROR', status: error?.response?.status, message: error?.message || '网络连接中断，请只读核对结果' } }
+      catch (error) { return { code: 'REQUEST_ERROR', status: error?.response?.status, message: error?.message || '网络连接中断，请重新核对结果' } }
     },
     async readBatches() {
       return readAllPages(

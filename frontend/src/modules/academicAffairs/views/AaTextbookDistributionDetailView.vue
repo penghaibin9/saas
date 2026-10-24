@@ -21,7 +21,7 @@
       <AppInlineAlert
         type="info"
         title="退领规则"
-        description="未实收教材可退领并减免应收；已发生实收时必须先完成正式退款/冲正，系统不会直接改写财务事实。"
+        description="未实收的教材可退领并减免应收；已发生实收时必须先完成正式退款或冲正，系统不会直接改写财务记录。"
       />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />

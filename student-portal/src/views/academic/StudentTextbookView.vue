@@ -119,7 +119,7 @@ function reconcilePersistentCommands() {
     } else {
       const original = records.value.find((item) => recordIdOf(item) === reference.objectId)
       receiptTone.value = 'waiting'
-      receipt.value = academicReceipt({ title: '原教材签收结果待确认', object: original?.textbookName || original?.bookName || '原教材发放记录', status: reference.ackId ? '尚未读取到原回执对应的本人记录' : '原提交未取得服务端回执编号', next: '本页只会刷新本人正式记录，不会自动再次签收；费用状态不会随签收推断为已付。' })
+      receipt.value = academicReceipt({ title: '原教材签收结果待确认', object: original?.textbookName || original?.bookName || '原教材发放记录', status: reference.ackId ? '尚未读取到原回执对应的本人记录' : '原提交未取得回执编号', next: '本页只会刷新本人正式记录，不会自动再次签收；费用状态不会随签收推断为已付。' })
     }
   }
   pendingRecordIds.value = [...new Set([...guard.pendingCommands().filter((item) => item.action === 'SIGN_TEXTBOOK').map((item) => item.objectId), ...blockedRecordIds.value])]
@@ -163,7 +163,7 @@ async function sign(record) {
     const result = await portalApi.academicTextbookSign(id)
     if (!guard.isCurrentCommand(command)) return
     const acknowledged = guard.rememberPersistentAck(persistent, result?.recordId)
-    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '教材签收结果待确认', object: command.object, status: acknowledged ? '正在读取本人正式发放记录' : '服务端未返回可核对的签收记录编号', next: '确认前不要重复签收；签收不代表缴费。' })
+    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '教材签收结果待确认', object: command.object, status: acknowledged ? '正在读取本人正式发放记录' : '未返回可核对的签收记录编号', next: '确认前不要重复签收；签收不代表缴费。' })
     await load()
   } catch (e) {
     if (!guard.isCurrentCommand(command)) return

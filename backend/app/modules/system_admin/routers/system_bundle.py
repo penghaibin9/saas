@@ -75,7 +75,7 @@ def _check_account_version(account, expected_version) -> None:
     try:
         expected = int(expected_version)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from None
+        raise AppException("VALIDATION_ERROR", "版本必须是整数") from None
     if expected != int(account.version or 0):
         raise AppException("DATA_CONFLICT", "账号已被他人更新，请刷新后重试")
 
@@ -983,7 +983,7 @@ def api_set_master_data_owner(domain_code: str, body: dict = Body(...),
     payload = body or {}
     owner_id = str(payload.get("ownerUserId") or "").strip()
     if not owner_id.isdigit():
-        raise AppException("VALIDATION_ERROR", "ownerUserId 必须是账号主键")
+        raise AppException("VALIDATION_ERROR", "负责人必须是有效账号")
     return success(md.set_domain_owner(
         domain_code, owner_user_id=int(owner_id), reason=payload.get("reason") or "",
         owner_role_code=payload.get("ownerRoleCode"),
@@ -1027,7 +1027,7 @@ def api_master_data_assign(issue_id: int, body: dict = Body(...),
     payload = body or {}
     owner_id = str(payload.get("ownerUserId") or "").strip()
     if not owner_id.isdigit():
-        raise AppException("VALIDATION_ERROR", "ownerUserId 必须是账号主键")
+        raise AppException("VALIDATION_ERROR", "负责人必须是有效账号")
     return success(md.assign_issue(issue_id, owner_user_id=int(owner_id),
                                    reason=payload.get("reason") or "",
                                    expected_version=payload.get("expectedVersion"),
@@ -1060,7 +1060,7 @@ def api_master_data_except(issue_id: int, body: dict = Body(...),
     payload = body or {}
     approver = str(payload.get("approvedBy") or "").strip()
     if not approver.isdigit():
-        raise AppException("VALIDATION_ERROR", "例外必须记录审批人 approvedBy")
+        raise AppException("VALIDATION_ERROR", "例外必须记录审批人")
     return success(md.except_issue(issue_id, reason=payload.get("reason") or "",
                                    until=payload.get("until") or "",
                                    approved_by=int(approver),
@@ -1078,7 +1078,7 @@ def api_master_data_merge_preview(body: dict = Body(...),
     primary = str(payload.get("primaryObjectId") or "").strip()
     merged = str(payload.get("mergedObjectId") or "").strip()
     if not domain_code or not primary or not merged:
-        raise AppException("VALIDATION_ERROR", "domainCode / primaryObjectId / mergedObjectId 必填")
+        raise AppException("VALIDATION_ERROR", "业务域、主对象、被合并对象必填")
     return success(md.merge_preview(domain_code, primary_object_id=primary,
                                     merged_object_id=merged,
                                     reason=payload.get("reason") or "", user=user),
@@ -1112,7 +1112,7 @@ def api_grant_role_assignment(body: dict = Body(...),
     payload = body or {}
     user_id = str(payload.get("userId") or "").strip()
     if not user_id.isdigit():
-        raise AppException("VALIDATION_ERROR", "userId 必须是账号主键")
+        raise AppException("VALIDATION_ERROR", "账号编号必须是账号主键")
     return success(ras.grant_assignment(
         int(user_id), payload.get("roleCode") or "", reason=payload.get("reason") or "",
         effective_at=payload.get("effectiveAt"), expires_at=payload.get("expiresAt"),
@@ -1139,7 +1139,7 @@ def api_transfer_role_assignment(assignment_id: int, body: dict = Body(...),
     payload = body or {}
     to_user = str(payload.get("toUserId") or "").strip()
     if not to_user.isdigit():
-        raise AppException("VALIDATION_ERROR", "toUserId 必须是账号主键")
+        raise AppException("VALIDATION_ERROR", "目标账号编号必须是账号主键")
     return success(ras.transfer_assignment(
         assignment_id, to_user_id=int(to_user), reason=payload.get("reason") or "",
         expires_at=payload.get("expiresAt"),
@@ -1183,7 +1183,7 @@ def api_request_business_identity(body: dict = Body(...),
     payload = body or {}
     user_id = str(payload.get("userId") or "").strip()
     if not user_id.isdigit():
-        raise AppException("VALIDATION_ERROR", "userId 必须是账号主键")
+        raise AppException("VALIDATION_ERROR", "账号编号必须是账号主键")
     return success(bis.request_manual_identity(
         identity_type=payload.get("identityType") or "", user_id=int(user_id),
         reason=payload.get("reason") or "", expires_at=payload.get("expiresAt"),
@@ -1627,7 +1627,7 @@ def save_system_role_permissions(role_id: int, body: dict = Body(...),
     tenant_id = current_tenant_id()
     raw_codes = body.get("permissionCodes") or []
     if not isinstance(raw_codes, list):
-        raise AppException("VALIDATION_ERROR", "permissionCodes 必须为数组")
+        raise AppException("VALIDATION_ERROR", "权限必须为列表")
     codes = expand_permission_patterns({str(code).strip() for code in raw_codes if str(code).strip()})
     codes = {c for c in codes if c != "*" and not c.endswith(".*") and not c.startswith("*.") and not c.startswith("platform.")}
     if len(codes) > 500:
@@ -3071,7 +3071,7 @@ def transition_academic_calendar(
 
     target = str(body.get("targetStatus") or "").upper()
     if "expectedVersion" not in body:
-        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+        raise AppException("VALIDATION_ERROR", "缺少数据版本，无法保证并发安全")
     return success(
         svc.transition(
             term_id,
@@ -3168,7 +3168,7 @@ def transition_org_version(
     from app.services import organization_version_service as svc
 
     if "expectedVersion" not in body:
-        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+        raise AppException("VALIDATION_ERROR", "缺少数据版本，无法保证并发安全")
     target = str(body.get("targetStatus") or "").upper()
     return success(
         svc.transition_version(
@@ -3235,7 +3235,7 @@ def revoke_staff_assignment(
     from app.services import organization_version_service as svc
 
     if "expectedVersion" not in body:
-        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+        raise AppException("VALIDATION_ERROR", "缺少数据版本，无法保证并发安全")
     return success(
         svc.revoke_assignment(
             assignment_id, reason=str(body.get("reason") or ""), expected_version=int(body.get("expectedVersion"))
@@ -3281,7 +3281,7 @@ def set_config_override(
 
     config_key = str(body.get("configKey") or "")
     if not config_key:
-        raise AppException("VALIDATION_ERROR", "缺少 configKey")
+        raise AppException("VALIDATION_ERROR", "缺少配置项")
     svc.ensure_definitions()
     return success(
         svc.set_override(
@@ -3306,7 +3306,7 @@ def revoke_config_override(
     from app.services import effective_config_service as svc
 
     if "expectedVersion" not in body:
-        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+        raise AppException("VALIDATION_ERROR", "缺少数据版本，无法保证并发安全")
     return success(
         svc.revoke_override(
             override_id, reason=str(body.get("reason") or ""), expected_version=int(body.get("expectedVersion"))
@@ -3373,7 +3373,7 @@ def clone_custom_role(body: dict = Body(...), user=Depends(require_permission("s
     template_code = str(body.get("templateCode") or "")
     new_role_code = str(body.get("roleCode") or "")
     if not template_code or not new_role_code:
-        raise AppException("VALIDATION_ERROR", "缺少 templateCode 或 roleCode")
+        raise AppException("VALIDATION_ERROR", "缺少模板或角色")
     return success(
         svc.clone_template(
             template_code, new_role_code=new_role_code, permission_codes=body.get("permissionCodes")
@@ -3390,7 +3390,7 @@ def update_custom_role(
     from app.services import permission_bundle_service as svc
 
     if "expectedVersion" not in body:
-        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+        raise AppException("VALIDATION_ERROR", "缺少数据版本，无法保证并发安全")
     return success(
         svc.update_custom_role(
             role_code,
@@ -3430,7 +3430,7 @@ def set_scope_policy(body: dict = Body(...), user=Depends(require_permission("sy
 
     role_code = str(body.get("roleCode") or "")
     if not role_code:
-        raise AppException("VALIDATION_ERROR", "缺少 roleCode")
+        raise AppException("VALIDATION_ERROR", "缺少角色")
     return success(
         svc.set_policy(
             role_code,
@@ -3456,7 +3456,7 @@ def revoke_scope_policy(
     from app.services import scope_policy_service as svc
 
     if "expectedVersion" not in body:
-        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+        raise AppException("VALIDATION_ERROR", "缺少数据版本，无法保证并发安全")
     return success(
         svc.revoke_policy(
             policy_id, reason=str(body.get("reason") or ""), expected_version=int(body.get("expectedVersion"))
@@ -3475,7 +3475,7 @@ def simulate_scope_policy(
 
     role_code = str(body.get("roleCode") or "")
     if not role_code:
-        raise AppException("VALIDATION_ERROR", "缺少 roleCode")
+        raise AppException("VALIDATION_ERROR", "缺少角色")
     return success(
         svc.decide(
             role_code,
@@ -3563,7 +3563,7 @@ def transition_security_change(
     from app.services import security_change_service as svc
 
     if "expectedVersion" not in body:
-        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法保证并发安全")
+        raise AppException("VALIDATION_ERROR", "缺少数据版本，无法保证并发安全")
     target = str(body.get("targetStatus") or "").upper()
     return success(
         svc.transition(
@@ -3600,7 +3600,7 @@ def create_access_explanation(
 
     action_code = str(body.get("actionCode") or "")
     if not action_code:
-        raise AppException("VALIDATION_ERROR", "缺少 actionCode")
+        raise AppException("VALIDATION_ERROR", "缺少操作")
     # 默认解释当前登录者；解释他人需要更高权限，避免变成探测工具
     subject = body.get("subject") or user
     return success(

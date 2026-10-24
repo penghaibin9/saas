@@ -30,7 +30,7 @@
       <template v-else>
         <section class="rk-command" aria-label="风险扫描结论">
           <div class="rk-command__headline">
-            <span>最近扫描事实</span>
+            <span>最近扫描情况</span>
             <strong>{{ riskConclusion }}</strong>
             <small>{{ batchStore.selectedBatchName || batchStore.selectedBatchId }} · 风险由系统按统一规则扫描得出。</small>
           </div>
@@ -151,7 +151,7 @@
                   <AppButton v-if="canRiskClose && (selectedRisk.status === 'PROCESSING' || (selectedRisk.status === 'OPEN' && selectedRisk.conditionActive === false))" :disabled="contextLocked" @click="askRiskAction('close', selectedRisk)">关闭风险</AppButton>
                   <span v-if="selectedRisk.status === 'CLOSED'" class="mp-note">该风险已关闭</span>
                 </div>
-                <p class="mp-note">受理、处理、关闭均按 permission + status 调用原接口并写入审计；页面不会自动修改风险。</p>
+                <p class="mp-note">受理、处理、关闭均按权限和状态办理并写入审计；页面不会自动修改风险。</p>
               </div>
             </section>
           </section>
@@ -212,7 +212,7 @@
         />
         <ErrorState v-if="archiveError" :description="archiveError" @retry="loadArchives" />
         <LoadingState v-else-if="archiveLoading" />
-        <EmptyState v-else-if="!archiveRows.length" title="当前筛选下暂无归档记录" description="可调整状态或关键词；完整性以后端归档清单为准。" />
+        <EmptyState v-else-if="!archiveRows.length" title="当前筛选下暂无归档记录" description="可调整状态或关键词；完整性以归档清单为准。" />
         <div v-else class="rk-split" :class="{ 'is-command-locked': contextLocked }" :aria-busy="contextLocked">
           <aside class="rk-list" aria-label="归档办理队列">
             <div class="rk-list__head">

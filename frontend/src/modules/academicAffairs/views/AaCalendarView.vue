@@ -155,7 +155,7 @@
             </aside>
             <div class="mp-stack">
               <AppSectionCard title="当前对象 · 发布核验依据">
-                <div class="aa-publish-refresh"><span>正式提交时由服务端再次核验</span><AppButton :disabled="busy || publishLoading" :loading="publishLoading" @click="loadPublishEvidence">刷新核验依据</AppButton></div>
+                <div class="aa-publish-refresh"><span>正式提交时由系统再次核验</span><AppButton :disabled="busy || publishLoading" :loading="publishLoading" @click="loadPublishEvidence">刷新核验依据</AppButton></div>
                 <LoadingState v-if="publishLoading" />
                 <ErrorState v-else-if="publishReadError" :description="publishReadError" @retry="loadPublishEvidence" />
                 <div v-else class="aa-publish-evidence">
@@ -367,9 +367,9 @@ export default {
         { title: '来源对象与版本', ready: String(term.termId) === String(this.termId), description: `学期 ${term.termId} · ${this.calendarDate(term.startDate)} 至 ${this.calendarDate(term.endDate)} · 版本 ${term.version ?? '未提供'}`, path: `/admin/academic-affairs/terms/${term.termId}`, permission: 'academicAffairs.term.view' },
         { title: '正式节次', ready: slots.length > 0, description: `全校已启用 ${slots.length} 个节次。发布要求至少一个启用节次；时段与引用影响请在作息时间中核对。`, path: '/admin/academic-affairs/time-slots', permission: 'academicAffairs.timeslot.view' },
         { title: '校历事件与调休配对', ready: !unpaired.length, description: `本学期 ${evidence.events.length} 项事件，调休 ${swaps.length} 项；${unpaired.length ? `未配对 ${unpaired.length} 项，事件 ${unpaired.map(event => event.eventId).join('、')}` : '未发现缺少补课日期的记录'}。`, path: '/admin/academic-affairs/calendar', tab: 'makeup', permission: 'academicAffairs.calendar.view' },
-        { title: '全校当前学期', ready: authorityReady, description: this.currentError || (this.governanceManaged ? `学校统一治理，当前学期 ${this.currentContext?.termId || '未解析'}。${this.isSelectedResolvedCurrent ? '所选学期一致。' : '所选学期不一致，请先由学校统一切换。'}` : this.currentContext?.canDirectSwitch === true ? '教务兼容方式：本次发布同时切换当前学期。' : '当前学期尚未解析，不能确认切换方式。'), path: '/admin/academic-affairs/terms/current', permission: 'academicAffairs.term.view' },
+        { title: '全校当前学期', ready: authorityReady, description: this.currentError || (this.governanceManaged ? `学校统一治理，当前学期 ${this.currentContext?.termId || '未解析'}。${this.isSelectedResolvedCurrent ? '所选学期一致。' : '所选学期不一致，请先由学校统一切换。'}` : this.currentContext?.canDirectSwitch === true ? '本次发布同时切换当前学期。' : '当前学期尚未解析，不能确认切换方式。'), path: '/admin/academic-affairs/terms/current', permission: 'academicAffairs.term.view' },
         { title: '状态与办理权限', ready: term.status === 'DRAFT' && this.canManageCalendar, readOnly: ['PUBLISHED', 'FROZEN', 'ARCHIVED'].includes(term.status), description: `当前状态：${this.statusLabel(term.status)}。${this.canManageCalendar ? '具备全校校历发布权限。' : '当前身份或范围不支持发布。'}` },
-        { title: '证据新鲜度', ready: String(term.termId) === String(this.termId), description: '本次读取学期、事件、节次与当前学期结论。来源不是同一事务快照；提交时服务端重新锁定学期并核验状态、节次和调休配对。' }
+        { title: '数据时效', ready: String(term.termId) === String(this.termId), description: '本次读取了学期、事件、节次与当前学期结论，来源不是同一时刻的快照；提交时系统会重新锁定学期并核验状态、节次和调休配对。' }
       ]
     },
     publishBlockers() { return this.isLocked ? [] : this.publishChecks.filter(check => !check.ready).map(check => check.description) },
@@ -739,7 +739,7 @@ export default {
         const rejected = res.code !== 0 && ['NO_PERMISSION', 'NO_DATA_SCOPE', 'DATA_CONFLICT', 'VALIDATION_ERROR', 'DATA_NOT_FOUND'].includes(res.bizCode)
         this.storePublishReceipt(target.termId, {
           kind: committed ? 'COMMITTED' : rejected ? 'REJECTED' : 'UNKNOWN',
-          message: prefix + (committed ? '正式接口已确认校历发布，事件已锁定。请由开课与排课责任岗继续办理。'
+          message: prefix + (committed ? '校历已确认发布，事件已锁定。请由开课与排课责任岗继续办理。'
             : rejected ? `发布被拒绝，${res.message || '请核对办理条件'}。刷新依据后再处理。`
               : '发布结果尚未确认。请刷新正式状态并核对操作记录，本页暂停重复发布；查询到已发布也不能据此认定是本次请求完成。')
         })

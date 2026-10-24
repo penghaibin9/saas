@@ -4,7 +4,7 @@
       <header class="aai-head">
         <div>
           <h3>{{ title }}</h3>
-          <p>原文件进入 FileObject 安全扫描，浏览器只展示服务端预检；正式确认只发送 jobId + expectedVersion。</p>
+          <p>原文件会先进入安全扫描，页面只显示系统的预检查结果；正式确认只提交导入任务编号和版本。</p>
         </div>
         <button type="button" aria-label="关闭" class="aai-close" @click="close">×</button>
       </header>
@@ -13,7 +13,7 @@
         <AppInlineAlert
           type="info"
           title="服务器权威导入"
-          description="失败行、冲突、任务版本和最终写入结果全部以后端为准；浏览器 rows 不参与正式写库。"
+          description="失败行、冲突、任务版本和最终写入结果全部以系统为准；页面上的行数据不参与正式写入。"
         />
 
         <div v-if="phaseLabel" class="aai-phase">当前阶段：<strong>{{ phaseLabel }}</strong></div>
@@ -22,16 +22,16 @@
           <div class="aai-label">导入策略</div>
           <label>
             <input v-model="importMode" type="radio" value="ATOMIC" :disabled="busy || !!job" />
-            <span><strong>整批原子导入（推荐）</strong><small>任一行失败，整批不写入。</small></span>
+            <span><strong>整批导入（推荐）</strong><small>任一行失败，整批不写入。</small></span>
           </label>
           <label>
             <input v-model="importMode" type="radio" value="PARTIAL" :disabled="busy || !!job" />
-            <span><strong>合法行优先导入</strong><small>只提交服务端判定可写的合法行；失败行保留到服务器错误清单。</small></span>
+            <span><strong>合法行优先导入</strong><small>只提交系统判定可写入的合法行；失败行保留到错误清单。</small></span>
           </label>
           <AppInlineAlert
             v-if="importMode === 'PARTIAL'"
             type="warning"
-            description="PARTIAL 会形成部分成功的正式事实。确认前请核对合法/失败数量，并下载服务器错误清单留档。"
+            description="“部分成功”会形成部分正式记录。确认前请核对合法与失败的数量，并下载错误清单留档。"
           />
         </div>
 
@@ -49,11 +49,11 @@
             <input ref="fileInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" :disabled="busy || !!job" @change="onFile" />
             <p v-if="file">{{ file.name }} · {{ fileSize(file.size) }}</p>
           </div>
-          <AppButton variant="primary" :loading="busy && !job" :disabled="!file || busy || !!job" @click="upload">上传并服务端预检</AppButton>
+          <AppButton variant="primary" :loading="busy && !job" :disabled="!file || busy || !!job" @click="upload">上传并预检查</AppButton>
         </div>
 
         <div v-if="job" class="aai-job">
-          <div class="aai-label">3. ImportJob 权威状态</div>
+          <div class="aai-label">3. 导入任务状态</div>
           <dl>
             <div><dt>任务号</dt><dd>#{{ job.id }}</dd></div>
             <div><dt>状态</dt><dd><AppStatusTag :type="statusType(job.status)" :label="statusLabel(job.status)" dot /></dd></div>
@@ -63,11 +63,11 @@
             <div><dt>失败</dt><dd>{{ preview.invalidRows }}</dd></div>
           </dl>
           <p v-if="job.errorMessage" class="aai-error">{{ job.errorMessage }}</p>
-          <p v-if="polling" class="aai-note">安全扫描 / 服务端预检进行中，扫描通过前不会开放确认。</p>
+          <p v-if="polling" class="aai-note">安全扫描和预检查进行中，扫描通过前不能确认。</p>
         </div>
 
         <div v-if="job && preview.rows.length" class="aai-preview">
-          <div class="aai-label">4. 服务端预检只读结果</div>
+          <div class="aai-label">4. 预检查结果（只读）</div>
           <AppImportPreviewTable :rows="preview.rows" :errors="preview.errors" :preview-fields="previewFields" />
         </div>
 
@@ -79,7 +79,7 @@
             :downloading="errorBusy"
             @download-errors="downloadServerErrors"
           />
-          <p class="aai-note">错误清单由服务器保存的 ImportRowError 生成，不使用浏览器 rows/errors 拼文件。</p>
+          <p class="aai-note">错误清单由系统保存的错误行生成，不使用页面上的数据拼文件。</p>
         </div>
 
         <AppInlineAlert v-if="message" :type="messageType" :description="message" />
@@ -181,7 +181,7 @@ export default {
     },
     statusLabel(status) {
       return {
-        SCANNING: '安全扫描', PARSING: '服务端预检', VALIDATED: '预检通过',
+        SCANNING: '安全扫描', PARSING: '预检查', VALIDATED: '预检通过',
         VALIDATION_FAILED: '预检存在失败行', CONFIRMING: '确认中', SUCCEEDED: '已完成',
         FAILED: '失败', EXPIRED: '已过期'
       }[status] || (status ? '状态待确认' : '未知')
@@ -238,11 +238,11 @@ export default {
         if (!TERMINAL.has(this.job.status)) await this.pollUntilTerminal()
         this.messageType = this.canConfirm ? 'success' : (this.preview.invalidRows ? 'warning' : 'info')
         this.message = this.canConfirm
-          ? '服务端权威预检完成，可确认导入。'
-          : (this.job?.errorMessage || '当前任务不可确认，请根据服务端结果处理后重新上传。')
+          ? '预检查完成，可确认导入。'
+          : (this.job?.errorMessage || '当前任务不可确认，请根据检查结果处理后重新上传。')
       } catch (error) {
         this.messageType = 'danger'
-        this.message = error?.message || '服务端预检失败'
+        this.message = error?.message || '预检查失败'
       } finally {
         this.uploadBusy = false
       }
@@ -272,7 +272,7 @@ export default {
         if (result.code !== 0) throw new Error(result.message || '确认导入失败')
         this.syncJob(result.data)
         this.messageType = 'success'
-        this.message = '导入已由服务器确认完成，页面将回读正式数据。'
+        this.message = '导入已确认完成，页面将重新读取正式数据。'
         this.$emit('imported', result.data)
       } catch (error) {
         this.messageType = 'danger'

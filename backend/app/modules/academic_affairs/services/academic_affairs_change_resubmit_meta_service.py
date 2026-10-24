@@ -26,7 +26,7 @@ def get_my(user, change_id) -> dict:
     try:
         cid = int(change_id)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "changeId 非法") from exc
+        raise AppException("VALIDATION_ERROR", "变更编号非法") from exc
 
     from app.models import AaStatusChange
 

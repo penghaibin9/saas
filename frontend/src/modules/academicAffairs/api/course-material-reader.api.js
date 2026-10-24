@@ -59,7 +59,7 @@ export const courseMaterialReaderApi = {
     return {
       async fetchBytes(descriptor, { signal } = {}) {
         if (signal?.aborted) throw abortError()
-        if (!descriptor?.materialId) throw new Error('课程材料缺少 materialId，拒绝越过业务关系预览')
+        if (!descriptor?.materialId) throw new Error('课程材料缺少编号，无法预览')
         const ticket = await raceAbort(
           courseMaterialReaderApi.issueTicket(courseId, descriptor.materialId, 'preview'),
           signal
@@ -71,7 +71,7 @@ export const courseMaterialReaderApi = {
   },
 
   async download(courseId, material = {}) {
-    if (!material?.materialId) throw new Error('课程材料缺少 materialId，拒绝越过业务关系下载')
+    if (!material?.materialId) throw new Error('课程材料缺少编号，无法下载')
     const ticket = await this.issueTicket(courseId, material.materialId, 'download')
     return fileSdk.downloadFrom(ticketPath(ticket), material.fileName || '课程材料')
   }

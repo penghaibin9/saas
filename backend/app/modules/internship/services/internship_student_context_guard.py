@@ -17,7 +17,7 @@ def require_context_fields(payload: dict) -> None:
     if body.get("batchId") is None or str(body.get("batchId")).strip() == "":
         raise AppException("VALIDATION_ERROR", "缺少当前实习批次 batchId")
     if body.get("internshipId") is None or str(body.get("internshipId")).strip() == "":
-        raise AppException("VALIDATION_ERROR", "缺少当前实习记录 internshipId")
+        raise AppException("VALIDATION_ERROR", "缺少当前实习记录")
 
 
 def require_explicit_context(db, user: dict, payload: dict, *, for_write: bool):
@@ -29,7 +29,7 @@ def require_explicit_context(db, user: dict, payload: dict, *, for_write: bool):
     try:
         internship_id = _as_id(body.get("internshipId"))
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "internshipId 格式非法") from None
+        raise AppException("VALIDATION_ERROR", "实习记录格式不合法") from None
 
     ctx = resolve_student_internship_context(
         db,

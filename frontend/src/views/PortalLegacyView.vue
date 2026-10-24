@@ -107,7 +107,7 @@
           <div class="yk-section-heading">
             <p class="yk-kicker">一名学生，一条贯穿全程的业务线</p>
             <h2>从迎新到就业，阶段衔接而不是系统堆叠</h2>
-            <p>六个阶段共享学生、组织、身份、权限与关键业务事实，每个阶段都知道从哪里来、下一步到哪里去。</p>
+            <p>六个阶段共享学生、组织、身份、权限与关键业务数据，每个阶段都知道从哪里来、下一步到哪里去。</p>
           </div>
           <ol class="yk-home-lifecycle-track">
             <li v-for="(item, index) in lifecycleStages" :key="item.key">
@@ -324,7 +324,7 @@ export default {
       deliverySteps: [
         { n: '01', title: '确认范围', desc: '确认学校组织、角色、启用模块、数据来源与部署边界。' },
         { n: '02', title: '准备底座', desc: '完成组织主数据、用户角色、权限范围与业务配置。' },
-        { n: '03', title: '迁移联调', desc: '导入历史数据，围绕关键角色验证真实业务主链。' },
+        { n: '03', title: '迁移联调', desc: '导入历史数据，围绕关键角色验证真实的业务流程。' },
         { n: '04', title: '上线验收', desc: '完成上线检查、生产启用、验收和后续升级安排。' }
       ]
     }

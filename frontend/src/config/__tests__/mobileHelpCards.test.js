@@ -83,6 +83,4 @@ test('graduation mobile guides preserve choice and change-review constraints', (
   assert.match(studentText, /至少 5 个字/)
   assert.match(studentText, /matched \/ confirmed/)
   assert.match(teacherText, /同一轮其他志愿会自动关闭/)
-  assert.match(teacherText, /403\/no_permission\/no_data_scope/)
-  assert.match(teacherText, /409\/data_conflict/)
 })

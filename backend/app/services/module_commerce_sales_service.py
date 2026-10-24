@@ -185,7 +185,7 @@ def validate_sales_context(compiled, order_type, context):
         if order_type == "RENEW":
             end = context["paidThrough"].get(module)
             if not end:
-                raise AppException("DATA_CONFLICT", f"{MODULE_LABELS[module]}没有当前代次的已付分项来源，不能冒充续费", http_status=409)
+                raise AppException("DATA_CONFLICT", f"{MODULE_LABELS[module]}没有当前周期的已付分项来源，不能冒充续费", http_status=409)
             if instant(line["startAt"], "startAt") < instant(end, "paidThrough"):
                 raise AppException("DATA_CONFLICT", "续费起点早于已付服务截止，请避免重复计费区间", http_status=409)
 

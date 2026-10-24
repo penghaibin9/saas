@@ -48,7 +48,7 @@ def teacher_academic_status_change_review(
 ):
     expected_version = (body or {}).get("expectedDecisionVersion")
     if expected_version is not None and (type(expected_version) is not int or expected_version < 0):
-        raise AppException("VALIDATION_ERROR", "expectedDecisionVersion 必须为非负整数", http_status=400)
+        raise AppException("VALIDATION_ERROR", "决定版本必须为非负整数", http_status=400)
     return success(
         tea.affairs_academic_status_change_review(
             user,

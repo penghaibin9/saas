@@ -42,7 +42,7 @@
         <section class="adp-process" aria-label="学业过程关注事项">
           <button v-for="step in progressSteps" :key="step.panel" @click="switchPanel(step.panel)"><span>{{ step.label }}</span><strong>{{ step.value ?? '—' }}<small>{{ step.unit }}</small></strong><p>{{ step.description }}</p><span class="adp-process-link">查看明细 →</span></button>
         </section>
-        <AppSectionCard title="需要跟进的学业事项" subtitle="展示服务端提供的待办摘要；进入事项后按原流程办理。">
+        <AppSectionCard title="需要跟进的学业事项" subtitle="显示系统提供的待办摘要；进入事项后按原流程办理。">
           <EmptyState v-if="!todoRows.length" title="暂无可展示的学业待办明细" description="可从上方成绩、异动、预警和毕业入口查看各业务的当前情况。" />
           <div v-else class="adp-rows"><article v-for="row in todoRows" :key="`${row.categoryKey}-${row.businessId}`"><div><span class="adp-kicker">{{ row.categoryLabel }}</span><h3>{{ row.title }}</h3><p>{{ row.reason }}</p></div><AppButton v-if="canOpen(row.exactRoute)" @click="go(row.exactRoute)">{{ row.primaryAction || '去处理' }}</AppButton></article></div>
         </AppSectionCard>

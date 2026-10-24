@@ -89,7 +89,7 @@ def teaching_class_backfill(body: TeachingClassBackfillBody, user=Depends(_MANAG
     result = admin_service.backfill_teaching_classes(
         user, body.termId, body.dryRun, body.reason or "",
     )
-    return success(result, message="对账完成" if body.dryRun else "教学班与名单版本回填完成")
+    return success(result, message="对账完成" if body.dryRun else "教学班与名单版本补建完成")
 
 
 @router.post("/{teaching_class_id}/roster/impact", summary="名单变更影响预览")

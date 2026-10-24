@@ -18,7 +18,7 @@ async function call(path, options, fallback) {
 }
 
 export const productIamApi = {
-  source: () => call('/platform/product-iam/source', {}, '产品身份与权限真值加载失败'),
+  source: () => call('/platform/product-iam/source', {}, '产品身份与权限信息加载失败'),
   releases: () => call('/platform/product-iam/releases', {}, '产品身份与权限发布记录加载失败'),
   createRelease: (body) => call('/platform/product-iam/releases', { method: 'POST', body }, '产品身份与权限草稿创建失败'),
   impact: (id) => call(`/platform/product-iam/releases/${encodeURIComponent(id)}/impact`, {}, '产品身份与权限影响分析失败'),

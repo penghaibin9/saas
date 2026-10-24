@@ -43,7 +43,7 @@
             <div class="aaar-object-main">
               <small>当前业务对象 · 学期归档批次 #{{ current.batchId }}</small>
               <div class="aaar-title">{{ current.batchName }}</div>
-              <p>{{ isCollegeScope ? '来源：学校归档批次正式进度；本院实时缺项以预检结果为准' : '来源：学期正式事实与十三域聚合检查；责任以当前批次回读结果为准' }}</p>
+              <p>{{ isCollegeScope ? '来源：学校归档批次正式进度；本院实时缺项以预检结果为准' : '来源：学期正式记录与十三个数据域的汇总检查；责任以当前批次最新结果为准' }}</p>
             </div>
             <dl>
               <div><dt>当前状态</dt><dd><StatusTag :type="sType(current.status)" :label="sLabel(current.status)" dot /></dd></div>
@@ -65,7 +65,7 @@
             <li :class="{ 'is-done': current.status === 'ARCHIVED' }"><b>{{ current.status === 'ARCHIVED' ? '✓' : '5' }}</b><span><strong>受控纠错</strong><small>{{ current.status === 'ARCHIVED' ? '普通解冻关闭' : '封存后启用' }}</small></span></li>
           </ol>
           <div v-if="canManageArchive" class="aaar-head">
-            <div><strong>当前主动作</strong><small>先检查完整性；只有十三域无已阻断或待治理事项才可确认归档</small></div>
+            <div><strong>当前主动作</strong><small>先检查完整性；只有十三个数据域都没有已阻断或待处理事项，才可确认归档</small></div>
             <div class="aaar-actions">
               <AppButton v-if="['DRAFT','MISSING_ITEMS','READY'].includes(current.status)" size="small" variant="ghost" :disabled="!!pendingCommand" :loading="actionBusy" @click="doCheck">完整性检查</AppButton>
               <AppButton v-if="current.status === 'READY'" size="small" variant="primary" :disabled="actionBusy || !!pendingCommand || !canConfirmArchive" @click="doConfirm">确认归档</AppButton>
@@ -76,17 +76,17 @@
           <AppButton v-if="!isCollegeScope && current.status === 'READY' && !canConfirmArchive" size="small" :disabled="actionBusy || !!pendingCommand" @click="refreshCurrentFromServer">重新核对归档权限</AppButton>
           <div v-if="!isCollegeScope || current.archivedAt" class="aaar-summary">
             <span v-if="!isCollegeScope" :class="{ 'is-bad': Number(current.missingCount) > 0 }">{{ batchMissingLabel(current) }}</span>
-            <span v-if="current.archivedAt">归档于 {{ fmt(current.archivedAt) }}（历史事实已封存）</span>
+            <span v-if="current.archivedAt">归档于 \1（历史记录已封存）</span>
           </div>
           <AppInlineAlert
             v-if="!isCollegeScope && current.status === 'MISSING_ITEMS'"
             type="warning"
-            description="当前仍有已阻断或待治理的数据域，整体强制归档已停用。请处理阻断 / 待治理域后重新执行完整性检查。"
+            description="当前仍有已阻断或待处理的数据域，整体强制归档已停用。请处理阻断或待处理的数据域后重新执行完整性检查。"
           />
           <AppInlineAlert
             v-if="current.status === 'ARCHIVED'"
             type="info"
-            :description="isCollegeScope ? '学校已完成该学期正式封存；封存材料由校教务统筹，如本院发现错误请按责任岗位反馈。' : '该学期已经形成正式归档事实，普通解冻入口已关闭。后续发现错误时必须走归档后纠错，保留原归档版本、纠错原因和新版本审计链。'"
+            :description="isCollegeScope ? '学校已完成该学期正式封存；封存材料由校教务统筹，如本院发现错误请按责任岗位反馈。' : '该学期已经形成正式归档，普通解冻入口已关闭。后续发现错误时必须走归档后纠错，保留原归档版本、纠错原因和新版本审计记录。'"
           />
 
           <AaArchiveCorrectionWorkspace
@@ -110,7 +110,7 @@
     <AppDrawer :visible="createVisible && canManageArchive" title="新建归档批次" mode="modal" size="small" @close="createVisible = false">
       <div class="aaar-form">
         <AppFormItem label="学期" required><AppTermEntityPicker v-model="form.termId" placeholder="选择要归档的学期（一学期一批次）" :disabled="saving" /></AppFormItem>
-        <AppInlineAlert type="warning" description="确认归档后该学期将成为不可普通回退的历史事实，教务写操作会被拦截；如后续发现错误，必须走归档后纠错并保留原版本。" />
+        <AppInlineAlert type="warning" description="确认归档后该学期将成为不可普通回退的历史记录，教务写操作会被拦截；如后续发现错误，必须走归档后纠错并保留原版本。" />
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
@@ -146,7 +146,7 @@ import { gradeError } from './parallel-c/grade-review'
 import { readAllPages } from '../components/parallel-a/pagedRead'
 
 const _SL = { DRAFT: '草稿', CHECKING: '检查中', READY: '完整可归档', MISSING_ITEMS: '有阻断', ARCHIVED: '已归档', CANCELLED: '已取消' }
-const _IL = { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待治理', NOT_APPLICABLE: '不适用' }
+const _IL = { PASS: '通过', BLOCKED: '阻断', UNKNOWN: '待处理', NOT_APPLICABLE: '不适用' }
 const _IT = { PASS: 'success', BLOCKED: 'danger', UNKNOWN: 'warning', NOT_APPLICABLE: 'info' }
 const ARCHIVE_DOMAINS=['STUDENT_STATUS','REGISTRATION','STATUS_CHANGE','PROGRAM','TEACHING_TASK','SCHEDULE','SELECTION','EXAM','GRADE','MAKEUP','EVALUATION','TEXTBOOK','GRADUATION']
 
@@ -167,7 +167,7 @@ export default {
   computed:{
     identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,u.permissionVersion,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionVersion,this.ctx.permissionPatterns])},
     pageTitle(){return this.$route.query?.entry==='batch'?'批量归档':'归档与封存'},
-    pageSubtitle(){return this.isCollegeScope?'查看学校归档进度，按本院实时预检处理本院缺项':!this.canManageArchive?'查阅学校归档进度；建立批次、处理缺项和正式封存由校教务负责':this.$route.query?.entry==='batch'?'复用正式学期归档批次；不另建旁路归档引擎':'十三个教务数据域先检查、处理缺失，再形成不可普通回退的学期归档事实'},
+    pageSubtitle(){return this.isCollegeScope?'查看学校归档进度，按本院实时预检处理本院缺项':!this.canManageArchive?'查阅学校归档进度；建立批次、处理缺项和正式封存由校教务负责':this.$route.query?.entry==='batch'?'复用正式学期归档批次；不另建旁路归档引擎':'十三个教务数据域先检查、处理缺失，再形成不可普通回退的学期归档'},
     isCollegeScope(){return this.current?.scopeType==='COLLEGE'||(this.ctx.dataScope?.scopeType||this.ctx.dataScope?.scope)==='COLLEGE'||this.rows.some(row=>row.scopeType==='COLLEGE')},
     archiveScopeNote(){return academicFlowText(this.current?.scopeNote,'学校封存材料由校教务统筹，本院缺项请查看本院实时预检。')},
     archiveOwner(){
@@ -327,7 +327,7 @@ export default {
       const batchName = this.current.batchName
       this.confirmKind = 'confirm'
       this.confirmTitle = '确认归档'
-      this.confirmMessage = `确认归档「${batchName}」？归档后该学期将形成不可普通回退的历史事实，教务写操作受限。`
+      this.confirmMessage = `确认归档「${batchName}」？归档后该学期将形成不可普通回退的历史记录，教务写操作受限。`
       this.pendingAction = async () => {
         if(!this.canManageArchive)return
         const ok=await this.runBatchWrite('confirm',batchId,before=>before.confirmAction?.allowed===true&&before.status==='READY'&&this.validItems(before.items)&&!before.items.some(item=>['BLOCKED','UNKNOWN'].includes(this.itemState(item))),()=>api.confirm(batchId, false),fresh=>fresh.status==='ARCHIVED'&&this.validItems(fresh.items),'已核对正式十三域归档状态。')

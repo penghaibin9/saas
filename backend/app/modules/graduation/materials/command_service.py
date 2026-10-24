@@ -457,7 +457,7 @@ def submit_material(user: dict, material_code: str, file_id: int, *, gd_student_
                     comment: str | None = None) -> dict:
     """Append a submission using the enabled rule and public file authorization."""
     if expected_version is None:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 不能为空")
+        raise AppException("VALIDATION_ERROR", "数据版本不能为空")
     # Central resolver validates tenant, file ownership/binding and current scan state.
     require_file_access(str(file_id), user=user, action="bind")
     assert_file_ready_for_business(str(file_id), user=user)
@@ -593,7 +593,7 @@ def review_material(material_id: int, expected_file_version_id: int, action: str
     if action not in {"APPROVE", "REJECT"}:
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/REJECT")
     if expected_version is None:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 不能为空")
+        raise AppException("VALIDATION_ERROR", "数据版本不能为空")
     if action == "REJECT" and len(str(comment or "").strip()) < 5:
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 个字")
     with session() as db:
@@ -753,7 +753,7 @@ def register_generated_snapshot(
 ) -> dict:
     """Register one generated snapshot through the same immutable version writer."""
     if not re_full_sha256(source_data_hash):
-        raise AppException("VALIDATION_ERROR", "sourceDataHash 格式不正确")
+        raise AppException("VALIDATION_ERROR", "来源数据校验码格式不正确")
     require_file_access(str(file_id), user=user, action="bind")
     assert_file_ready_for_business(str(file_id), user=user)
     with session() as db:

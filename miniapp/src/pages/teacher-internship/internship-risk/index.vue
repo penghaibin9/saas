@@ -16,7 +16,7 @@
           </view>
         </view>
 
-        <MobileInlineAlert type="warning" description="优先受理高风险和学生主动求助事项；处理中风险应持续记录跟进事实，确认问题解决后再办结关闭。" />
+        <MobileInlineAlert type="warning" description="优先受理高风险和学生主动求助事项；处理中风险应持续记录跟进情况，确认问题解决后再办结关闭。" />
         <MobileInlineAlert v-if="conflictText" type="warning" :description="conflictText" />
 
         <view v-if="lastReceipt" class="card ir__receipt">
@@ -48,7 +48,7 @@
 
             <view class="ir__detail">
               <text class="ir__detail-label">来源 · {{ sourceText(r) }}</text>
-              <text class="ir__detail-text">{{ r.latestEvent || r.lastFollowNote || '暂无跟进说明，请受理后补充处置事实。' }}</text>
+              <text class="ir__detail-text">{{ r.latestEvent || r.lastFollowNote || '暂无跟进说明，请受理后补充处置情况。' }}</text>
             </view>
 
             <view class="ir__next" :class="{ 'is-danger': r.status === 'PENDING_HANDLE' }">
@@ -130,7 +130,7 @@ export default {
       const code = String((error && (error.code || error.statusCode)) || '')
       if (code.includes('409') || code === 'DATA_CONFLICT') {
         this.drafts[r.id] = { kind, text }
-        this.conflictText = `“${text}”已保留；风险事实或版本已变化，已刷新最新状态，请核对后手动重新提交。`
+        this.conflictText = `“${text}”已保留；风险情况或版本已变化，已刷新最新状态，请核对后手动重新提交。`
         this.load()
       }
       toast((error && error.message) || '操作失败')

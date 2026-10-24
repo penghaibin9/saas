@@ -63,7 +63,7 @@ def canonical_evidence(payload: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "RecoveryRun authority 只接受 MACHINE 证据")
     run_id = str(payload.get("runId") or "").strip()
     if not run_id:
-        raise AppException("VALIDATION_ERROR", "runId 必填")
+        raise AppException("VALIDATION_ERROR", "请填写运行编号")
     assertions = dict(payload.get("assertions") or {})
     detail = dict(payload.get("detail") or {})
     result = {
@@ -221,7 +221,7 @@ def _schema_missing_health() -> dict:
         "manualEvidenceHealthEligible": False,
         "schemaReady": False,
         "reasonCode": "RECOVERY_EVIDENCE_SCHEMA_MISSING",
-        "message": "机器灾备证据表尚未完成数据库迁移，当前健康状态不可判定",
+        "message": "灾备记录表尚未完成数据库升级，当前健康状态无法判定",
         "backup": dict(unavailable),
         "restore": dict(unavailable),
         "pitr": dict(unavailable),

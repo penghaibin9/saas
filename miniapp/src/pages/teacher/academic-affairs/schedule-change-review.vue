@@ -3,8 +3,8 @@
     <MobileNavBar variant="teacher" title="调停课审批" :subtitle="completedTasks.length ? '本人审批记录' : '待我审批'" :before-back="backToQueue" show-back />
     <view v-if="unresolvedCount" class="card ed__pending" role="status">
       <text class="t-md t-bold">有 {{ unresolvedCount }} 笔审批结果待确认</text>
-      <text class="t-sm">原命令没有明确回执，暂不可重复提交。这里只读刷新正式待审队列。</text>
-      <button class="btn btn-ghost" :disabled="state === 'loading' || acting" @click="load()">只读核对队列</button>
+      <text class="t-sm">原操作没有明确回执，暂不可重复提交。这里仅刷新正式待审队列。</text>
+      <button class="btn btn-ghost" :disabled="state === 'loading' || acting" @click="load()">核对队列</button>
     </view>
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad">
@@ -98,10 +98,10 @@ export default {
     reviewKey(changeId, context = this.contextKey()) { return JSON.stringify([context, String(changeId)]) },
     reviewLocked(row) { return this.recoveryStorageBlocked || !!this.reviewAttempts[this.reviewKey(row.changeId)] },
     reviewObservation(row) {
-      if (this.recoveryStorageBlocked) return '本机待核对记录暂时无法读取，已停止发送新命令；请恢复存储后只读刷新。'
+      if (this.recoveryStorageBlocked) return '本机待核对记录暂时无法读取，已停止发送新操作；请恢复存储后刷新。'
       const attempt = this.reviewAttempts[this.reviewKey(row.changeId)]
       if (!attempt) return ''
-      return attempt.observation || (attempt.state === 'SENDING' ? '提交仍在处理，请等待原命令回执。' : '未取得明确审批回执；请只读核对，不要重复提交。')
+      return attempt.observation || (attempt.state === 'SENDING' ? '提交仍在处理，请等待原操作回执。' : '未取得明确审批回执；请核对结果，不要重复提交。')
     },
     clearPrivateReview() {
       this._loadEpoch = (this._loadEpoch || 0) + 1
@@ -249,7 +249,7 @@ export default {
                 const saved = approvalContextKey.persistReceipt(RECOVERY_SCOPE, storedAttempt, receipt)
                 if (this.reviewAttempts[key] && this.reviewAttempts[key].epoch === writeEpoch) this.reviewAttempts[key].state = 'UNKNOWN'
                 if (!saved && this.contextKey() === context) this.recoveryStorageBlocked = true
-                if (this._pageActive && this._writeEpoch === writeEpoch && this.contextKey() === context) { toast('审批结果待确认，请只读核对；不会自动重发原命令'); this.load() }
+                if (this._pageActive && this._writeEpoch === writeEpoch && this.contextKey() === context) { toast('审批结果待确认，请核对结果；不会自动重新提交'); this.load() }
                 return
               }
               if (!approvalContextKey.clearAttempt(RECOVERY_SCOPE, context, changeId, storedAttempt)) {
@@ -279,7 +279,7 @@ export default {
               if (!saved && this.contextKey() === context) this.recoveryStorageBlocked = true
               if (!this._pageActive || this._writeEpoch !== writeEpoch || this.contextKey() !== context) return
               if (isApprovalForbidden(e)) this.clearPrivateReview()
-              toast('审批结果待确认，请只读核对；不会自动重发原命令')
+              toast('审批结果待确认，请核对结果；不会自动重新提交')
             })
             .finally(() => { if (this._writeEpoch === writeEpoch && this.contextKey() === context) this.acting = false })
         }

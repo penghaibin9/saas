@@ -370,7 +370,7 @@ export const fileSdk = {
   },
   async blobFrom(authorizedPath) {
     if (!authorizedPath || typeof authorizedPath !== 'string' || !authorizedPath.startsWith('/')) {
-      const error = new Error('服务端未返回有效文件授权路径')
+      const error = new Error('系统未返回有效的文件访问路径')
       error.code = 'INVALID_AUTHORIZED_FILE_PATH'
       throw error
     }

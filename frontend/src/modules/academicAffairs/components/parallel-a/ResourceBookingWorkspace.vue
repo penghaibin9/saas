@@ -17,7 +17,7 @@
     </div>
     <div v-if="!isAcademicTeacher || workspaceTab === 'find'" class="booking-toolbar"><label>预约日期<AppDatePicker v-model="date" @change="changeDate" /></label><span>单节预约按正式节次保存；未发现占用不代表已取得使用资格。</span></div>
     <AppInlineAlert v-if="canReview && kind === 'LAB'" type="warning" title="审核通过待核验" description="未关联正式排课场地的实训室不能通过预约；请先到实训室资源核对关联，再返回原队列。" />
-    <AppInlineAlert v-else-if="canReview" type="info" title="以服务端最终判定为准" description="审核通过时，服务端将在同一事务内重新核对教室状态、开放借用规则、维修、已批准预约和正式课表。" />
+    <AppInlineAlert v-else-if="canReview" type="info" title="以系统最终判定为准" description="审核通过时，系统将在同一事务内重新核对教室状态、开放借用规则、维修、已批准预约和正式课表。" />
     <ErrorState v-if="error" :description="error" @retry="load" /><LoadingState v-else-if="loading" />
     <div v-else class="booking-stack">
       <section v-if="!isAcademicTeacher || workspaceTab === 'find'" class="booking-card">
@@ -234,7 +234,7 @@ export default {
             !Number.isInteger(saved.row?.slotNo) || saved.row.slotNo < 1 || saved.row.slotNo > 12 ||
             !['BOOK', 'APPROVE', 'REJECT'].includes(saved.action) ||
             saved.expected !== ({ BOOK: 'PENDING', APPROVE: 'APPROVED', REJECT: 'REJECTED' })[saved.action] ||
-            (saved.id && !/^[1-9]\d*$/.test(saved.id)) || (saved.action !== 'BOOK' && !saved.id))) throw new Error('预约恢复引用不完整，不能忽略原命令继续发送')
+            (saved.id && !/^[1-9]\d*$/.test(saved.id)) || (saved.action !== 'BOOK' && !saved.id))) throw new Error('预约恢复信息不完整，不能忽略原操作继续提交')
         this.recoveryError = ''
         if (!saved) return
       } catch (error) {
@@ -255,8 +255,8 @@ export default {
         status: '存在未完成的结果确认',
         pending: true,
         next: saved.id
-          ? '可继续精确查询正式预约记录；本页不会再次发送原命令。'
-          : '可读取原命令回执恢复正式预约编号；本页不会再次发送原命令。'
+          ? '可继续精确查询正式预约记录；本页不会再次提交原操作。'
+          : '可读取原操作的回执，恢复正式预约编号；本页不会再次提交原操作。'
       }
     },
     clearPrivate() {
@@ -279,15 +279,15 @@ export default {
       if (isDeniedResult(e)) {
         this.clearPrivate()
         this.loading = false
-        this.error = (e.message || '无权读取') + '；已清除先前页面数据，原命令引用保留供原身份核对。'
+        this.error = (e.message || '无权读取') + '；已清除先前的页面数据，原操作信息保留供原身份核对。'
         return
       }
-      const message = (isConflictResult(e) ? '事实已变化，保留输入，请重新核对。' : '') +
+      const message = (isConflictResult(e) ? '数据已变化，保留输入，请重新核对。' : '') +
         (e?.message || '连接失败，请重试。')
       if (field === 'review') this.review.error = message
       else this[field] = message
       if (isConflictResult(e) && this.receipt) {
-        this.receipt = { ...this.receipt, status: '事实已变化，需重新核对', pending: true, next: message }
+        this.receipt = { ...this.receipt, status: '数据已变化，需重新核对', pending: true, next: message }
       }
     },
     async load() {
@@ -578,7 +578,7 @@ export default {
         const row = await this.readRecord(intent.row.bookingId, intent.row, current)
         if (!current()) return
         if (row) this.review.row = this.freezeRow(row)
-        this.review.error = '事实已变化，已重新读取当前预约。' + (error?.message || '')
+        this.review.error = '数据已变化，已重新读取当前预约。' + (error?.message || '')
         this.receipt = {
           title: '预约审核未生效',
           object: '预约 #' + intent.row.bookingId,
@@ -678,7 +678,7 @@ export default {
           ...this.receipt,
           status: '未办理',
           pending: false,
-          next: error?.message || '服务端拒绝了本次命令，请核对后重新办理。'
+          next: error?.message || '系统拒绝了本次操作，请核对后重新办理。'
         }
         this.clearPending(operation)
         this.failure(error, field)
@@ -713,7 +713,7 @@ export default {
           const result = receipt.result
           const id = operation.id || String(result?.bookingId || '')
           if (!/^[1-9]\d*$/.test(id) || !this.recordMatches(result, operation.row, id) || result.status !== operation.expected) {
-            throw new Error('原命令回执与冻结的预约对象不一致')
+            throw new Error('原操作的回执与已冻结的预约对象不一致')
           }
           if (operation.recovered && operation.action === 'REJECT') operation.reason = String(result.reviewReason || '')
           operation.id = id
@@ -753,7 +753,7 @@ export default {
         if (advanced) next = '原申请命令已确认；预约随后已进入' + this.statusLabel(row.status) + '，后续审核不归属于本次申请。'
       } else if (row && readMatches && operation.postState !== 'SUCCESS') {
         status = '正式记录为' + this.statusLabel(row.status) + '，本次请求仍待确认'
-        next = '请求结果未知，当前状态不能证明由本次命令产生；请联系资源管理员，本页不会再次发送命令。'
+        next = '请求结果未知，当前状态不能证明由本次操作产生；请联系资源管理员，本页不会再次提交。'
       } else if (operation.postState === 'SUCCESS' && !operation.postMatches) {
         next = '命令响应与冻结的预约对象或预期状态不一致，已停止确认；请联系资源管理员。'
       }

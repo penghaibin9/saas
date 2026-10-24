@@ -2074,7 +2074,7 @@ finally:
         const drawer = school.getByRole('dialog', { name: `考场编排 · ${course.courseName}`, exact: true })
         await beforeWrite(`H-selection-exam-seats-${roomId}`)
         const assigned = responseFor(school, seatsPath, 'POST')
-        await drawer.getByRole('button', { name: '按冻结名单铺位', exact: true }).click()
+        await drawer.getByRole('button', { name: '按锁定名单铺座位', exact: true }).click()
         assert.equal((await read(await assigned)).seatCount, expectedStudents.length)
       }
       seats = await readOnly('school', seatsPath)

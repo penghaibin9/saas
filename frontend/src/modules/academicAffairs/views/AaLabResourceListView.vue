@@ -47,7 +47,7 @@
       </DataTable>
 
       <p class="mp-note">
-        实训室按管理责任人负责制维护（可指定专兼职责任人）；预约选择器仅列出可用（AVAILABLE）实训室。
+        实训室按管理责任人负责制维护（可指定专兼职责任人）；预约选择器仅列出可用的实训室。
         删除为逻辑删除，历史预约与维修记录不受影响。
       </p>
     </div>
@@ -262,8 +262,8 @@ export default {
     clearPrivate() { this.revision++; this.rows = []; this.pagination.total = 0; this.form = EMPTY_FORM(); this.formVisible = false; this.confirmVisible = false; this.pendingAction = null; this.pendingResult = null; this.receipt = null; this.saving = false; this.acting = false },
     failure(e, field) {
       if (isDeniedResult(e)) { this.clearPrivate(); this.loading = false; this.error = (e.message || '无权访问') + '；已清除旧资源内容。'; return }
-      this[field] = (isConflictResult(e) ? '事实已变化，保留填写内容，请重新核对。' : '') + (e?.message || '读取失败，请重试。')
-      if (isConflictResult(e)) this.receipt = { title: '办理回执', status: '事实已变化', pending: true, next: this[field] }
+      this[field] = (isConflictResult(e) ? '数据已变化，保留填写内容，请重新核对。' : '') + (e?.message || '读取失败，请重试。')
+      if (isConflictResult(e)) this.receipt = { title: '办理回执', status: '数据已变化', pending: true, next: this[field] }
     },
     async execute(command, id, expected, field) {
       const context = this.ctx, current = () => !this.disposed && context === this.ctx

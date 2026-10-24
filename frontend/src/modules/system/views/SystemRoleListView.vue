@@ -86,7 +86,7 @@
                   <button v-if="can('copyRole')" type="button" class="sw-btn" :disabled="busy || mutationBlocked" @click="prepareMutation('copy')">复制为自定义角色</button>
                   <button v-if="can('exportRoleConfig')" type="button" class="sw-btn" :disabled="busy" @click="exportRole">导出角色配置</button>
                   <button v-if="detail.type === 'CUSTOM' && detail.status === 'ENABLED' && can('deprecateRole')" type="button" class="sw-btn sw-btn--danger" :disabled="busy || mutationBlocked" @click="prepareMutation('disable')">停用角色</button></div>
-                <p class="sw-muted">停用前必须先改派现有成员；历史记录保留，后端会再次核对。</p>
+                <p class="sw-muted">停用前必须先改派现有成员；历史记录保留，系统会再次核对。</p>
               </template>
             </section>
           </template>

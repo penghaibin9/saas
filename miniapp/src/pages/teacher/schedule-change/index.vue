@@ -425,7 +425,7 @@ export default {
           const changeId = String(d && d.changeId || '')
           this.ackWrite(context, 'submit', originItemId, { ackId: changeId, parentId: originItemId })
           if (!this._pageActive || this._writeEpoch !== writeEpoch || this.contextKey() !== context || String(this.currentItemId || '') !== originItemId) return
-          if (!changeId) { toast('提交响应缺少单据编号，已停止重复提交；请只读核对申请列表'); this.load(); return }
+          if (!changeId) { toast('提交后未返回单据编号，已停止重复提交；请核对申请列表'); this.load(); return }
           this.receipt = {
             title: '调停课申请已提交', changeId,
             courseName: d.courseName || item.courseName || '课程', result: '待学院审核',

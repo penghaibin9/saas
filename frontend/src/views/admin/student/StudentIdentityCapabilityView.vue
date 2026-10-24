@@ -13,11 +13,11 @@
       <div v-if="state === 'LOADING'" class="sic-card">
         <div class="sic-spinner" aria-hidden="true"></div>
         <h3>正在确认身份核验能力</h3>
-        <p>正在读取服务端能力状态，不使用空数组代替配置状态。</p>
+        <p>正在读取能力状态，不用空列表代替配置状态。</p>
       </div>
 
-      <div v-else-if="state === 'NOT_CONFIGURED'" class="sic-card is-info">
-        <span class="sic-badge">NOT_CONFIGURED</span>
+      <div v-else-if="state === '未配置'" class="sic-card is-info">
+        <span class="sic-badge">未配置</span>
         <h3>学校尚未配置第三方身份核验服务</h3>
         <p>{{ notice || '当前没有可读取的实名/人脸核验记录，这不是“暂无数据”。' }}</p>
         <div class="sic-actions">
@@ -29,7 +29,7 @@
       <div v-else-if="state === 'EMPTY'" class="sic-card is-empty">
         <span class="sic-badge">EMPTY</span>
         <h3>核验服务已可用，当前暂无核验记录</h3>
-        <p>服务能力正常，但当前筛选范围内没有记录。新产生的核验事实会在这里显示。</p>
+        <p>服务能力正常，但当前筛选范围内没有记录。新产生的核验记录会在这里显示。</p>
         <AppButton variant="ghost" @click="load">刷新</AppButton>
       </div>
 
@@ -43,7 +43,7 @@
       <div v-else class="sic-card is-danger">
         <span class="sic-badge">ERROR</span>
         <h3>身份核验服务读取失败</h3>
-        <p>{{ notice || '服务端返回异常，未把故障伪装成“暂无记录”。' }}</p>
+        <p>{{ notice || '系统返回异常，未把故障伪装成“暂无记录”。' }}</p>
         <AppButton variant="primary" @click="load">重试</AppButton>
       </div>
     </div>
@@ -70,7 +70,7 @@ function normalizeCapability(result) {
   }
 
   const capability = String(data.capabilityStatus || '').toUpperCase()
-  if (capability === 'NOT_CONFIGURED') return { state: 'NOT_CONFIGURED', notice: data.notice || message }
+  if (capability === '未配置') return { state: '未配置', notice: data.notice || message }
   if (capability === 'FORBIDDEN') return { state: 'FORBIDDEN', notice: data.notice || message }
   if (capability === 'ERROR') return { state: 'ERROR', notice: data.notice || message }
   if (Number(data.total || 0) === 0) return { state: 'EMPTY', notice: data.notice || '' }
@@ -87,9 +87,9 @@ export default {
   computed: {
     subtitle() {
       return {
-        LOADING: '正在读取服务端能力状态',
-        NOT_CONFIGURED: '能力未配置，与“暂无记录”明确区分',
-        EMPTY: '能力正常，当前没有核验事实',
+        LOADING: '正在读取能力状态',
+        未配置: '能力未配置，与“暂无记录”明确区分',
+        EMPTY: '能力正常，当前没有核验记录',
         FORBIDDEN: '当前账号没有核验记录查看权限',
         ERROR: '服务异常，未降级为空数据'
       }[this.state] || '身份核验能力状态'

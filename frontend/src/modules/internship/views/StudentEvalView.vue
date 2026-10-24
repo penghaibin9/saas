@@ -392,7 +392,7 @@ export default {
       if (res.code !== 0) {
         if (isConflict(res)) {
           this.conflict = { ...emptyConflict(), active: true, kept: reason || '' }
-          const conflict = await captureConflict({ res, kept: reason || '', refresh: async () => { await this.loadDetail(pending.id); if (this.detail.error || !this.detail.data) throw new Error('回读失败') }, latest: () => this.reviewItems })
+          const conflict = await captureConflict({ res, kept: reason || '', refresh: async () => { await this.loadDetail(pending.id); if (this.detail.error || !this.detail.data) throw new Error('读取失败') }, latest: () => this.reviewItems })
           if (this.pending === pending && this.cd === dialog) this.conflict = conflict
           return
         }

@@ -52,9 +52,9 @@ const ACTION_PERMISSION = Object.freeze({
 
 // 后端尚无精确能力的动作保持可见但禁用；不再用 501 伪装成已接通。
 const UNSUPPORTED_ACTIONS = Object.freeze({
-  'orientation.student.batchRemind': '当前后端尚未提供迎新批量提醒正式能力',
-  'orientation.student.batchAssign': '当前后端尚未提供迎新批量分配辅导员正式能力',
-  'orientation.followup.edit': '当前后端尚未提供异常跟进编辑正式能力'
+  'orientation.student.batchRemind': '暂不支持迎新批量提醒',
+  'orientation.student.batchAssign': '暂不支持迎新批量分配辅导员',
+  'orientation.followup.edit': '暂不支持编辑异常跟进'
 })
 
 function buildPermissionActions(patterns, readonlyTenant = false, readonlyReason = '') {
@@ -78,7 +78,7 @@ async function callData(fn) {
   try {
     return envelope(await fn())
   } catch (e) {
-    return fail(e.message || '真实接口不可用', e.code || 503001)
+    return fail(e.message || '暂时无法连接，请稍后重试', e.code || 503001)
   }
 }
 
@@ -87,7 +87,7 @@ async function callList(path, params = {}) {
     const d = await request(path, { params })
     return envelope({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 })
   } catch (e) {
-    return fail(e.message || '真实接口不可用', e.code || 503001)
+    return fail(e.message || '暂时无法连接，请稍后重试', e.code || 503001)
   }
 }
 
@@ -447,7 +447,7 @@ export async function createExport(listKey, payload = {}) {
     return {
       ...data,
       downloadUrl: `/api/v1/export/tasks/${data.taskId}/download`,
-      watermarkText: '服务端首行水印（学校、操作人、时间、用途）',
+      watermarkText: '首行水印（学校、操作人、时间、用途）',
       auditId: data.taskId
     }
   })

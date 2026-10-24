@@ -2,7 +2,7 @@
 
 M1 转介→回访→关闭闭环；M2 危机升级接风险中枢+幂等；M3 列表仅摘要（明细遮蔽）；
 M4 明细须原因+SENSITIVE_VIEW 审计；M5 SEC-1 mental-records 权限门禁(403/401)；
-M6 SEC-2 学工处管理员无专项授权→拒绝；M7 PSY_STUDENT 逐生授权范围；M8 无自动诊断(事由人工必填)。
+M6 SEC-2 学工处管理员无专项授权→拒绝；M7 心理逐生授权范围；M8 无自动诊断(事由人工必填)。
 """
 from __future__ import annotations
 

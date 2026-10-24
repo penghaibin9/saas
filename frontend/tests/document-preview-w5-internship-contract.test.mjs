@@ -36,7 +36,7 @@ for (const [label, source] of [['material center', center], ['student material p
     assert.match(source, /previewProvider: internshipMaterialCenterApi\.createPreviewProvider\(\)/)
     assert.match(source, /this\.activePreviewFileId = String\(item\.fileId\)/)
     assert.match(source, /internshipMaterialCenterApi\.downloadMaterial\(item\)/)
-    assert.match(source, /当前材料尚未通过安全门禁，不能预览/)
+    assert.match(source, /当前材料尚未通过安全检查，不能预览/)
     assert.doesNotMatch(source, /fileSdk\.preview\(/)
     assert.doesNotMatch(source, /window\.open\(/)
   })

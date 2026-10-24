@@ -9,13 +9,13 @@
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">模板名称 <i>*</i></span>
         <input v-model.trim="form.name" class="ie-in" :placeholder="'如 2026届' + typeLabel" />
       </label>
-      <label class="ie-fld"><span class="ie-lbl">版本号</span><input v-model.trim="form.version" class="ie-in" placeholder="v1" /></label>
+      <label class="ie-fld"><span class="ie-lbl">版本</span><input v-model.trim="form.version" class="ie-in" placeholder="v1" /></label>
       <label class="ie-fld"><span class="ie-lbl">适用范围说明</span><input v-model.trim="form.applicableNote" class="ie-in" placeholder="如 软件学院/全校" /></label>
       <label class="ie-fld ie-fld--full"><span class="ie-lbl">模板正文</span>
-        <textarea v-model="form.content" class="ie-in" rows="6" :placeholder="'可用占位变量：' + varHint"></textarea>
+        <textarea v-model="form.content" class="ie-in" rows="6" :placeholder="'可用的占位变量：' + varHint"></textarea>
       </label>
       <div v-if="variables.length" class="ie-fld ie-fld--full">
-        <span class="ie-lbl">可用占位变量</span>
+        <span class="ie-lbl">可用的占位变量</span>
         <div class="tpl-vars">
           <button type="button" v-for="v in variables" :key="v" class="tpl-var" @click="insertVar(v)">{{ '{' + v + '}' }}</button>
         </div>

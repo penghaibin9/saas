@@ -243,7 +243,7 @@ export default {
     askSaveDraft() {
       if (!this.newWorkflowCode) return toast.error('请填写流程编码')
       if (this.newPolicyType === 'NODE_ACTION' && !this.newActionPermission) {
-        return toast.error('节点动作策略必须填写动作权限码')
+        return toast.error('节点动作策略必须填写动作权限')
       }
       this.pendingAction = 'draft'
       this.pendingRow = null

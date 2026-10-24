@@ -14,7 +14,7 @@
       <dl><div><dt>当前责任</dt><dd>选课管理岗</dd></div><div><dt>下一责任</dt><dd>归档查阅人</dd></div></dl>
     </section>
 
-    <div class="aasar-notice"><strong>已封存事实只读；待核验业务域会阻断新的封存</strong><span>原始名单不可修改；受控纠错必须建立新版本并保留操作凭证。</span></div>
+    <div class="aasar-notice"><strong>已封存的记录只读；待核验的业务域会阻断新的封存</strong><span>原始名单不可修改；受控纠错必须建立新版本并保留操作凭证。</span></div>
 
     <div class="aasar-layout">
       <div class="aasar-list">

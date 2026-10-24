@@ -48,7 +48,7 @@ def _require_student(user: dict) -> None:
 def _expected(body: dict) -> int:
     value = (body or {}).get("expectedVersion")
     if not str(value if value is not None else "").isdigit():
-        raise AppException("VALIDATION_ERROR", "expectedVersion 不能为空")
+        raise AppException("VALIDATION_ERROR", "数据版本不能为空")
     return int(value)
 
 
@@ -61,7 +61,7 @@ def _one_attachment(body: dict, *, required: bool) -> int | None:
             ids.append(int(value))
     ids = list(dict.fromkeys(ids))
     if len(ids) > 1:
-        raise AppException("VALIDATION_ERROR", "兼容提交一次仅接收一个主文档；其他成果请按材料代码分别提交")
+        raise AppException("VALIDATION_ERROR", "一次仅接收一个主文档；其他成果请按材料类型分别提交")
     if required and not ids:
         raise AppException("VALIDATION_ERROR", "成果主文档附件不能为空")
     return ids[0] if ids else None
@@ -298,7 +298,7 @@ def _record_material(db, student_id: int, material_code: str, record_type: str, 
 def review_proposal(proposal_id: int, action: str, comment: str | None, user: dict,
                     *, expected_version: int | None, expected_file_version_id: int | None) -> dict:
     if expected_version is None or expected_file_version_id is None:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 和 fileVersionId 不能为空")
+        raise AppException("VALIDATION_ERROR", "数据版本和文件版本不能为空")
     review_notice_id: int | None = None
     result: dict | None = None
     with session() as db:
@@ -364,7 +364,7 @@ def review_proposal(proposal_id: int, action: str, comment: str | None, user: di
 def review_final(final_id: int, action: str, comment: str | None, user: dict,
                  *, expected_version: int | None, expected_file_version_id: int | None) -> dict:
     if expected_version is None or expected_file_version_id is None:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 和 fileVersionId 不能为空")
+        raise AppException("VALIDATION_ERROR", "数据版本和文件版本不能为空")
     review_notice_id: int | None = None
     result: dict | None = None
     with session() as db:

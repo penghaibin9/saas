@@ -174,7 +174,7 @@ export default {
     isEdit() { return !!this.courseId },
     workflowSteps() {
       return [
-        { title: '课程草稿', note: '上游事实可回查' },
+        { title: '课程草稿', note: '来源数据可追溯' },
         { title: '课程审核', note: '按权限与状态办理' },
         { title: '版本启用', note: '通过后形成稳定版本' },
         { title: '方案引用', note: '按正式状态解锁' }
@@ -187,7 +187,7 @@ export default {
       return [
         { label: '正式来源对象已选定', value: this.isEdit ? '已确认' : '保存时生成', tone: this.isEdit ? 'pass' : 'pending' },
         { label: '当前身份和范围有明确依据', value: this.canManage ? '已确认' : '无权限', tone: this.canManage ? 'pass' : 'blocked' },
-        { label: '版本、状态和材料经过服务端复验', value: this.isEdit ? this.statusLabel(this.loadedCourseStatus) : '提交时复验', tone: 'pending' }
+        { label: '版本、状态和材料已经系统复核', value: this.isEdit ? this.statusLabel(this.loadedCourseStatus) : '提交时复验', tone: 'pending' }
       ]
     },
     categoryOptions() { return Object.keys(COURSE_CATEGORY).map((k) => ({ label: COURSE_CATEGORY[k], value: k })) },

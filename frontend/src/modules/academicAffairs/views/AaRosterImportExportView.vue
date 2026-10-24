@@ -1,13 +1,13 @@
 <template>
   <ModulePageShell
     title="学籍导入导出"
-    subtitle="服务端权威预检 · 可追踪导入 · 可过期撤销导出"
+    subtitle="系统预检查 · 可追踪导入 · 可过期撤销导出"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
     show-subtitle-in-concise
   >
     <div class="mp-stack">
-      <AppSectionCard title="学籍导入" subtitle="原始 XLSX 先完成安全扫描，再由服务端预检同一不可变文件">
+      <AppSectionCard title="学籍导入" subtitle="原始 Excel 先完成安全扫描，再由系统对同一份文件预检查">
         <p class="mp-note">
           学号、姓名、班级必填，班级须为已存在的行政班。前端只展示服务端预检结果，不再把 rows 回传作为写库依据；
           扫描或解析未完成时不能确认，确认请求仅包含任务编号和任务版本。
@@ -15,7 +15,7 @@
         <AppButton variant="primary" @click="importVisible = true">打开批量导入</AppButton>
       </AppSectionCard>
 
-      <AppSectionCard title="学籍导出" subtitle="生成 FileObject + ExportJob，不再同步直出 Blob">
+      <AppSectionCard title="学籍导出" subtitle="生成导出文件和导出任务，不再直接下载">
         <div class="aa-export-row">
           <label class="aa-filter__item">
             关键字
@@ -43,7 +43,7 @@
               <strong>{{ item.jobType === 'IMPORT' ? '导入' : '导出' }} · {{ academicExchangeTypeLabel(item.importType || item.exportType) }}</strong>
               <p class="mp-note">状态 {{ academicStatusLabel(item.status) }} · 任务 #{{ item.id }} · {{ item.createdAt || '-' }}</p>
               <p v-if="item.status === 'SCANNING'" class="mp-note">安全扫描进行中，文件不会被提前解析。</p>
-              <p v-else-if="item.status === 'PARSING'" class="mp-note">安全扫描已通过，服务端正在预检。</p>
+              <p v-else-if="item.status === 'PARSING'" class="mp-note">安全扫描已通过，正在预检查。</p>
               <p v-if="item.errorMessage" class="aa-task-error">{{ item.errorMessage }}</p>
             </div>
             <div class="aa-task-actions">
@@ -118,7 +118,7 @@ function previewResponse(item, message) {
   const validated = item.status === 'VALIDATED'
   return {
     code: validated || item.status === 'VALIDATION_FAILED' ? 0 : 1,
-    message: message || item.errorMessage || '导入任务尚未完成安全扫描与服务端预检',
+    message: message || item.errorMessage || '导入任务尚未完成安全扫描与预检查',
     data: {
       total: preview.totalRows ?? item.totalRows ?? 0,
       validRows: preview.validRows ?? item.validRows ?? 0,
@@ -176,7 +176,7 @@ export default {
           message: '文件仍在后台安全扫描，请稍后在任务中心刷新；扫描完成前不会开放确认'
         }
       }
-      return { code: 0, data: item, message: item.errorMessage || '服务端预检已完成' }
+      return { code: 0, data: item, message: item.errorMessage || '预检查已完成' }
     },
     async uploadAuthoritative(file) {
       const res = await academicFileExchangeApi.uploadRosterImport(file)
@@ -204,7 +204,7 @@ export default {
           status: detail.data.status
         }
         if (detail.data.status !== 'VALIDATED') {
-          return { code: 1, message: '安全扫描或服务端预检尚未通过，禁止确认导入' }
+          return { code: 1, message: '安全扫描或预检查尚未通过，禁止确认导入' }
         }
       }
       const res = await academicFileExchangeApi.confirmImport(

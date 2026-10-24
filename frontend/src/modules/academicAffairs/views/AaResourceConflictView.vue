@@ -28,7 +28,7 @@
           <AppInlineAlert
             v-if="coverage.unmappedScheduleItems"
             type="warning"
-            :description="`${coverage.unmappedScheduleItems} 条正式课位缺少 resourceId，未参与冲突关联；请先治理课位资源映射。`"
+            :description="`${coverage.unmappedScheduleItems} 条正式课位缺少教室信息，未参与冲突关联；请先补齐课位的教室对应关系。`"
           />
         </AppSectionCard>
 
@@ -58,7 +58,7 @@
         </DataTable>
 
         <p v-if="loaded" class="mp-note">
-          本页只关联同一稳定 classroom resourceId、同一日期和同一节次的“已批准预约”与“正式课表”。
+          本页只关联同一教室、同一日期和同一节次的“已批准预约”与“正式课表”。
           正式课表按覆盖日期的所有有效范围头和校历换算读取，草稿、被替代版本、同名资源猜测均不进入冲突结论；本页只读，不提供删除课表或批准预约动作。
         </p>
       </template>
@@ -225,7 +225,7 @@ export default {
         if (!current()) return
         if (res.code !== 0) throw res
         const expectedTo = to || from
-        if (res.data?.dateFrom !== from || res.data?.dateTo !== expectedTo) throw new Error('服务端返回了不同日期范围的冲突事实，已拒绝展示。')
+        if (res.data?.dateFrom !== from || res.data?.dateTo !== expectedTo) throw new Error('系统返回了不同日期范围的冲突结果，已拒绝显示。')
         const coverage = this.normalizeCoverage(res.data?.coverage)
         const rows = this.normalizeRows(res.data?.items)
         this.coverage = coverage; this.rows = rows; this.pagination.total = rows.length; this.resultRange = { from, to: expectedTo }; this.loaded = true

@@ -18,7 +18,7 @@ import {TYPE_LABEL,STATUS_LABEL,statusColor} from '../constants/status-change'
 import {gradeError} from './parallel-c/grade-review'
 export default {
  name:'AaStatusChangeArchiveView',components:{ModulePageShell,DataTable,StatusTag,LoadingState,ErrorState,EmptyState,AppButton},props:{ctx:{type:Object,required:true}},
- data(){return {alive:true,seq:0,loading:true,error:'',rows:[],total:0,page:1,pageSize:20,status:'EFFECTIVE',columns:[{key:'student',title:'学生'},{key:'type',title:'异动类型'},{key:'status',title:'原申请结果'},{key:'date',title:'计划生效日期'},{key:'archive',title:'归档事实'},{key:'material',title:'材料版本'},{key:'action',title:'回查入口'}]}},
+ data(){return {alive:true,seq:0,loading:true,error:'',rows:[],total:0,page:1,pageSize:20,status:'EFFECTIVE',columns:[{key:'student',title:'学生'},{key:'type',title:'异动类型'},{key:'status',title:'原申请结果'},{key:'date',title:'计划生效日期'},{key:'archive',title:'归档记录'},{key:'material',title:'材料版本'},{key:'action',title:'回查入口'}]}},
  computed:{identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns])}},
  watch:{identity(){this.clear();this.page=1;this.load()}},created(){this.load()},beforeUnmount(){this.alive=false;this.clear()},
  methods:{

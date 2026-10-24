@@ -158,7 +158,7 @@ test('qualification evidence does not infer materials, roster revision or freshn
   state.elig.rows[0].eligibilityCheckedAt = '2026-09-08T07:44:59Z'
   state.selectedEligRow = state.elig.rows[0]
   const evidence = state.registrationEvidence
-  for (const title of ['当前名单版本', '材料与事实依据', '证据新鲜度']) {
+  for (const title of ['当前名单版本', '材料与依据', '数据时效']) {
     assert.equal(evidence.find(item => item.title === title).type, 'warning')
   }
   assert.equal(state.registrationSteps[3].complete, false)

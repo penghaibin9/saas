@@ -30,7 +30,7 @@ def _expected(raw, current: int) -> None:
     try:
         value = int(raw)
     except (TypeError, ValueError):
-        raise AppException("DATA_CONFLICT", "缺少有效补卡记录版本，请刷新后重试")
+        raise AppException("DATA_CONFLICT", "缺少有效的补卡记录版本，请刷新后重试")
     if value != int(current or 0):
         raise AppException("DATA_CONFLICT", "补卡申请已被其他用户处理，请刷新后重试")
 

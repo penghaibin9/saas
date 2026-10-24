@@ -131,7 +131,7 @@ def test_expired_processing_channel_delivery_is_reclaimed(db_mode):
         camp=MessageCampaign(tenant_id=tid,title='lease',content_plain='x',category='ANNOUNCEMENT',priority='NORMAL',status='PUBLISHED',source_kind='HUMAN',content_mode='SHARED',sender_user_id=1,publish_mode='IMMEDIATE',created_by=1); db.add(camp); db.flush()
         row=MessageChannelDelivery(tenant_id=tid,campaign_id=camp.id,channel='WECHAT',receiver_user_id=123,status='PROCESSING',attempt_count=1,locked_by='dead',locked_at=svc._now()-timedelta(minutes=5),lease_expires_at=svc._now()-timedelta(seconds=1),created_by=1); db.add(row); db.commit(); rid=row.id
         assert svc.claim_and_process_channel_deliveries(limit=1,worker_id='reclaimer')==1
-        db.expire_all(); row=db.get(MessageChannelDelivery,rid); assert row.status=='SKIPPED' and row.last_error_code=='NOT_CONFIGURED' and row.attempt_count==2
+        db.expire_all(); row=db.get(MessageChannelDelivery,rid); assert row.status=='SKIPPED' and row.last_error_code=='未配置' and row.attempt_count==2
     finally: db.close(); set_tenant(None)
 
 

@@ -198,7 +198,7 @@ try {
     await noOverflow(); await screenshot('detail-brand-390')
   })
   await check('empty school tabs show exact contextual titles with working recovery', async () => {
-    for (const [tab, title] of [['features', '接口未返回可展示的授权项'], ['workflows', '当前学校暂无运行流程定义'], ['users', '该学校暂无账号']]) {
+    for (const [tab, title] of [['features', '系统未返回可显示的授权项'], ['workflows', '当前学校暂无运行流程定义'], ['users', '该学校暂无账号']]) {
       await open('detail', `&tab=${tab}&case=empty`)
       await expect(page.getByText(title, { exact: true })).toBeVisible()
       await expect(page.getByRole('button', { name: '返回', exact: true })).toHaveCount(0)

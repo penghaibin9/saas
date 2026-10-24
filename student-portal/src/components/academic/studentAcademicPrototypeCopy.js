@@ -125,7 +125,7 @@ export const academicPrototypeCopy = {
     "group": "培养与毕业"
   },
   "重修或免修申请": {
-    "description": "不同类型按当前正式接口分别办理。",
+    "description": "不同类型按当前正式流程分别办理。",
     "group": "成绩与考试"
   },
   "等级考试报名确认": {

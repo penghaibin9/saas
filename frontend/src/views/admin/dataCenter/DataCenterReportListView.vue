@@ -24,7 +24,7 @@
       <EmptyState
         v-else-if="!rows.length"
         title="没有符合条件的报表"
-        description="当前服务端查询无结果；可调整筛选条件或新增报表草稿。"
+        description="当前查询无结果；可调整筛选条件或新增报表草稿。"
       />
       <DataTable
         v-else
@@ -69,7 +69,7 @@
       <section class="mp-card">
         <div class="mp-card__head">
           <span class="mp-card__title">审计留痕摘要</span>
-          <span class="mp-note">配置变更 / 发布 / 撤回 / 作废均由服务端留痕</span>
+          <span class="mp-note">配置变更 / 发布 / 撤回 / 作废均会留痕</span>
         </div>
         <div class="mp-card__body">
           <ErrorState v-if="auditError" :description="auditError" @retry="loadAudits" />
@@ -77,7 +77,7 @@
           <EmptyState
             v-else-if="!audits.length"
             title="暂无审计记录"
-            description="服务端查询成功，但当前范围内尚无数据中心报表审计记录。"
+            description="查询成功，但当前范围内尚无数据中心报表的审计记录。"
           />
           <table v-else class="mp-audit">
             <thead><tr><th>操作人</th><th>时间</th><th>动作</th><th>对象</th><th>说明</th></tr></thead>
@@ -128,7 +128,7 @@
           <textarea v-model="form.data.description" class="mp-textarea" placeholder="说明报表用途、指标口径与共享范围，便于审计与交接"></textarea>
         </label>
         <p v-if="form.error" class="mp-form-err">{{ form.error }}</p>
-        <p class="mp-note">草稿可编辑；发布后服务端冻结指标版本，必须先撤回才可继续修改工作副本。</p>
+        <p class="mp-note">草稿可编辑；发布后冻结指标版本，必须先撤回才可继续修改工作副本。</p>
       </div>
       <template #footer>
         <AppButton variant="primary" :loading="form.submitting" @click="submitForm">
@@ -315,7 +315,7 @@ export default {
       this.form.submitting = false
       if (res.code === 0) {
         this.form.visible = false
-        toast.success(this.form.mode === 'create' ? '报表草稿已创建并写入服务端审计' : '报表工作副本已更新并写入服务端审计')
+        toast.success(this.form.mode === 'create' ? '报表草稿已创建并写入审计' : '报表工作副本已更新并写入审计')
         await Promise.all([this.load(), this.loadAudits()])
       } else {
         this.form.error = res.message

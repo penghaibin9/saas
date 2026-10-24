@@ -43,7 +43,7 @@
     <div class="help-shell">
       <header class="help-hero">
         <div>
-          <p class="help-eyebrow">跃科 SaaS · 免培训自助服务</p>
+          <p class="help-eyebrow">跃科 · 免培训自助服务</p>
           <h1>自助办理与问题解决中心</h1>
           <p>不用先读说明书。直接告诉系统“我要办什么”或“哪里做不了”，也可以沿核心业务流程看现在在哪一步、下一步谁处理。</p>
         </div>
@@ -295,7 +295,7 @@
 
         <footer class="help-article__footer">
           <span>文章编号：{{ currentEntry.id }}</span>
-          <span v-if="!currentEntry.quality.isComplete">该条目仍有元数据待治理，不影响当前阅读。</span>
+          <span v-if="!currentEntry.quality.isComplete">该条目仍有信息待完善，不影响当前阅读。</span>
         </footer>
       </article>
 
@@ -322,7 +322,7 @@
           </div>
           <div v-else class="help-empty-state">
             <h3>没有找到已经核验的答案</h3>
-            <p>可以换成更具体的业务动作或错误现象，例如“成绩提交”“退回”“数据范围”“409”。没有通过 verified-only 发布门的旧知识不会为了凑答案重新展示。</p>
+            <p>可以换成更具体的业务动作或错误现象，例如“成绩提交”“退回”“数据范围”“数据已变化”。尚未重新核实的旧知识不会为了凑答案重新展示。</p>
             <button type="button" @click="clearFilters">返回自助服务首页</button>
           </div>
         </section>
@@ -410,7 +410,7 @@
                 <p class="help-eyebrow">核心业务流程</p>
                 <h2>看现在在哪一步，下一步该做什么</h2>
               </div>
-              <p>当前只展示已经通过 verified-only 发布门的流程节点；尚未重新验真的历史节点不会混进来。</p>
+              <p>当前只显示已通过核实的流程环节；尚未重新核实的历史环节不会混进来。</p>
             </div>
             <div class="help-journey-grid">
               <article v-for="journey in v3Home.journeys" :key="journey.key" class="help-journey">

@@ -186,20 +186,20 @@ def create_visit_evidence(user: dict, internship_id: Any, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "教师巡访默认不采集位置，location 必须为空")
     visit_type = str(b.get("visitType") or "").upper().strip()
     if visit_type not in _ALLOWED_VISIT_TYPES:
-        raise AppException("VALIDATION_ERROR", "visitType 不合法")
+        raise AppException("VALIDATION_ERROR", "巡访类型不合法")
     facts = str(b.get("facts") or "").strip()
     contact = str(b.get("contactPerson") or "").strip()
     work_status = str(b.get("workStatus") or "").strip()
     enterprise_feedback = str(b.get("enterpriseFeedback") or "").strip()
     if len(contact) < 2 or len(work_status) < 2 or len(enterprise_feedback) < 2 or len(facts) < 10:
-        raise AppException("VALIDATION_ERROR", "联系人、工作状态、企业反馈必填，事实记录不少于 10 字")
+        raise AppException("VALIDATION_ERROR", "联系人、工作状态、企业反馈必填，情况记录不少于 10 字")
 
     need_risk = bool(b.get("needRisk"))
     risk_level = str(b.get("riskLevel") or "").upper().strip()
     risk_reason = str(b.get("riskReason") or "").strip()
     if need_risk:
         if risk_level not in {"LOW", "MEDIUM", "HIGH"}:
-            raise AppException("VALIDATION_ERROR", "转风险时 riskLevel 须为 LOW/MEDIUM/HIGH")
+            raise AppException("VALIDATION_ERROR", "转风险时风险等级须为低 / 中 / 高")
         if len(risk_reason) < 5:
             raise AppException("VALIDATION_ERROR", "转风险原因不少于 5 字")
     elif risk_level or risk_reason:
@@ -207,7 +207,7 @@ def create_visit_evidence(user: dict, internship_id: Any, body: dict) -> dict:
 
     expected = b.get("expectedVersion")
     if not isinstance(expected, int) or expected < 0:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是非负整数")
+        raise AppException("VALIDATION_ERROR", "数据版本必须是非负整数")
 
     with session() as db:
         rec = db.scalar(select(InternshipRecord).where(

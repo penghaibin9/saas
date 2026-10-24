@@ -27,7 +27,7 @@
         :description="teachingClass.rosterStatus === 'LOCKED' ? '考勤、考务和成绩读取当前版本；名单变化必须创建新版本，不能覆盖历史成员。' : '返回教学班列表运行存量对账，或完成选课名单锁定。'"
       />
 
-      <AppSectionCard title="教学班事实">
+      <AppSectionCard title="教学班情况">
         <div class="aa-facts">
           <div><span>教学班编号</span><b>{{ teachingClass.classCode }}</b></div>
           <div><span>状态</span><b><AppStatusTag :type="teachingClass.status === 'ACTIVE' ? 'success' : 'info'" :label="classStatusLabel(teachingClass.status)" /></b></div>
@@ -164,7 +164,7 @@
           <input v-model.number="teacherEditor.endWeek" type="number" min="1" max="60" class="aa-input" placeholder="默认教学任务结束周" />
         </label>
         <label class="is-wide">变更原因
-          <textarea v-model.trim="teacherEditor.reason" class="aa-textarea" maxlength="500" placeholder="不少于5字；冲突与周次覆盖由服务端最终校验" />
+          <textarea v-model.trim="teacherEditor.reason" class="aa-textarea" maxlength="500" placeholder="不少于 5 字；冲突与周次覆盖由系统最终校验" />
         </label>
       </div>
     </AppConfirmDialog>
@@ -326,7 +326,7 @@ export default {
         this.error = `${message}；已清除先前教学班内容。`
       } else {
         this.error = message
-        if (isConflictResult(result)) this.receipt = { object: `教学班 #${this.teachingClassId}`, status: '事实已变化，保留输入', pending: true, next: '重新读取正式名单并预览影响后再提交。' }
+        if (isConflictResult(result)) this.receipt = { object: `教学班 #${this.teachingClassId}`, status: '数据已变化，保留输入', pending: true, next: '重新读取正式名单并预览影响后再提交。' }
       }
     },
     openCreateTeacher() {
@@ -389,7 +389,7 @@ export default {
         const relation = relationId && this.teachingClass.teachers.find(row => String(row.teacherRelationId) === String(relationId))
         const confirmed = relation && matches(relation)
         form.visible = false
-        this.receipt = { object: `教学班 #${id} · 教师关系 #${relationId || '未返回'}`, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? '后续授课权限由服务端按正式关系和有效周次裁决；历史关系保留。' : '请重新查询正式教师关系，不要重复提交。' }
+        this.receipt = { object: `教学班 #${id} · 教师关系 #${relationId || '未返回'}`, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? '后续授课权限由系统按正式关系和有效周次裁定；历史关系保留。' : '请重新查询正式教师关系，不要重复提交。' }
       } catch (error) { if (current()) this.handleFailure(error, '连接中断，请重新查询正式教师关系。') }
       finally { form.submitting = false }
     },

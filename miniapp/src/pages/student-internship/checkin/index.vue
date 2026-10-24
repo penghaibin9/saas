@@ -15,7 +15,7 @@
           <text v-else class="ci__circle-num">{{ checkingIn ? '…' : '打卡' }}</text>
           <text class="ci__circle-lb">{{ i.checkin.done ? '今日已打卡' : (checkingIn ? '定位中' : '点击打卡') }}</text>
         </view>
-        <text class="ci__note t-xs t-tertiary">{{ lastResultNote || i.checkin.note || '仅采集一次定位留痕；超范围记异常待核验，不自动认定作弊。生产包禁用演示数据。' }}</text>
+        <text class="ci__note t-xs t-tertiary">{{ lastResultNote || i.checkin.note || '仅采集一次定位留痕；超范围记为异常待核验，不自动认定作弊。' }}</text>
 
         <view class="section-head"><text class="section-head__title">本周打卡记录</text></view>
         <view class="card stack-sm" v-if="days.length">

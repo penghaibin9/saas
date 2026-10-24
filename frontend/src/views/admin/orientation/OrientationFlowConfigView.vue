@@ -24,7 +24,7 @@
           <StatusTag :type="row.required ? 'primary' : 'default'" :label="row.required ? '必办' : '选办'" />
         </template>
         <template #cell-kind="{ row }">
-          <StatusTag :type="isLegacy(row) ? 'warning' : 'success'" :label="isLegacy(row) ? '历史兼容' : '标准环节'" />
+          <StatusTag :type="isLegacy(row) ? 'warning' : 'success'" :label="isLegacy(row) ? '历史环节' : '标准环节'" />
         </template>
         <template #cell-actions="{ row }">
           <TableActionColumn :actions="rowActions(row)" @action="(key) => onRowAction(key, row)" />
@@ -33,7 +33,7 @@
       <AppConfirmDialog
         v-model:visible="restoreVisible"
         title="补齐标准报到环节"
-        :message="`将新增或恢复：${missingStandardNames.join('、')}；同时停用与标准流程重叠的历史兼容环节。已绑定批次和学生办理记录均保持不变。`"
+        :message="`将新增或恢复：${missingStandardNames.join('、')}；同时停用与标准流程重叠的历史环节。已绑定批次和学生办理记录均保持不变。`"
         confirm-text="确认补齐标准环节"
         :submitting="restoreSubmitting"
         @confirm="completeStandard"
@@ -89,7 +89,7 @@ export default {
     rowActions(row) {
       const permission = this.perms['orientation.student.edit']
       const legacy = this.isLegacy(row)
-      return [{ key: 'toggleEnabled', label: row.enabled ? '停用' : '启用' }, { key: 'toggleRequired', label: row.required ? '设为选办' : '设为必办' }].map(action => ({ ...action, disabled: legacy || this.submitting || !permission?.allowed, disabledReason: legacy ? '历史兼容环节已冻结，请使用对应标准环节' : this.submitting ? '正在保存，请稍候' : permission?.reason || '当前身份不可调整流程' }))
+      return [{ key: 'toggleEnabled', label: row.enabled ? '停用' : '启用' }, { key: 'toggleRequired', label: row.required ? '设为选办' : '设为必办' }].map(action => ({ ...action, disabled: legacy || this.submitting || !permission?.allowed, disabledReason: legacy ? '历史环节已冻结，请使用对应的标准环节' : this.submitting ? '正在保存，请稍候' : permission?.reason || '当前身份不可调整流程' }))
     },
     isLegacy(row) { return ['IDENTITY', 'FINANCE'].includes(row?.stepKey) },
     async completeStandard() {

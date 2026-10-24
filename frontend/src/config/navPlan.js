@@ -168,7 +168,7 @@ export const NAV_PLAN = [
     mod('sa-discipline', '违纪处分', null, [
       I('处分工作台（登记/审批/生效/解除）', '/admin/student-affairs/discipline', 'studentAffairs.discipline.view'),
       I('送达与申诉复核', '/admin/student-affairs/discipline/appeals', 'studentAffairs.discipline.view'),
-      I('违纪台账（含投影对账）', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view'),
+      I('违纪台账（含对账）', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view'),
       I('处分统计', '/admin/student-affairs/discipline/stats', 'studentAffairs.stats.view')
     ]),
     // 谈心家校

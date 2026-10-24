@@ -348,7 +348,7 @@ export const systemApi = {
     try {
       return ok(await request('/system/communication-governance/registry'))
     } catch (error) {
-      return fail(error.message || '注册表加载失败')
+      return fail(error.message || '加载失败')
     }
   },
 
@@ -631,7 +631,7 @@ export const systemApi = {
     try {
       return ok(await request('/system/business-relations/types'))
     } catch (error) {
-      return fail(error.message || '业务关系注册表加载失败')
+      return fail(error.message || '业务关系加载失败')
     }
   },
 
@@ -772,9 +772,9 @@ export const systemApi = {
   /** 旧 mock 导入入口：禁止写成功，引导到 identityImport APIs */
   importUsers({ confirm = false } = {}) {
     if (!confirm) {
-      return fail('请使用统一导入：downloadIdentityImportTemplate / validateIdentityImportFile')
+      return fail('请使用统一导入：先下载导入模板，再上传校验')
     }
-    return fail('请使用 confirmIdentityImportBatch 完成师生账号导入，禁止 mock 写入')
+    return fail('请使用统一导入确认完成师生账号导入，禁止临时写入')
   },
 
   /** 师生账号唯一导入入口：真实 xlsx 上传，不允许写操作回退 mock。 */
@@ -1927,7 +1927,7 @@ export const systemApi = {
     try {
       return ok(await request('/system/security-revision'))
     } catch (error) {
-      return fail(error.message || '安全版本号加载失败')
+      return fail(error.message || '安全版本加载失败')
     }
   },
 

@@ -62,7 +62,7 @@ test('Teacher and Student miniapp share one safe renderer and fail closed to PC'
   const form = source('miniForm')
   assert.match(form, /TEACHER_MINIAPP/)
   assert.match(form, /STUDENT_MINIAPP/)
-  assert.match(form, /FORM_CLIENT_UNSUPPORTED/)
+  assert.match(form, /该表单暂不支持当前端，请前往电脑端办理/)
   assert.match(form, /fallback:\s*'PC'/)
   assert.match(form, /formVersionId/)
   assert.match(form, /schemaHash/)

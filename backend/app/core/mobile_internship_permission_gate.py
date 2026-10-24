@@ -150,11 +150,11 @@ def _preflight_user(authorization: Optional[str]) -> dict:
     if token.startswith("Bearer "):
         token = token[7:]
     if not token:
-        raise unauthorized("未提供认证令牌")
+        raise unauthorized("未提供登录凭证")
     claims = decode_token(token)
     from app.core.token_store import jti_blocked
     if jti_blocked(claims.get("jti")):
-        raise unauthorized("令牌已登出失效，请重新登录")
+        raise unauthorized("登录凭证已登出失效，请重新登录")
     user = {
         "userId": claims.get("userId"), "loginName": claims.get("loginName") or claims.get("username"),
         "realName": claims.get("realName"), "userType": claims.get("userType"),

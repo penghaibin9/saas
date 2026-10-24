@@ -114,12 +114,12 @@ def _send(consent_id, token: str, user=None) -> dict:
         if not confirm_link:
             result = {
                 "status": "SKIPPED",
-                "reason": "GUARDIAN_PORTAL_BASE_URL 未配置",
+                "reason": "监护人入口地址未配置",
             }
         elif not str(settings.SMS_TEMPLATE_GUARDIAN_CONSENT or "").strip():
             result = {
                 "status": "SKIPPED",
-                "reason": "SMS_TEMPLATE_GUARDIAN_CONSENT 未配置",
+                "reason": "监护人同意短信模板未配置",
             }
         else:
             result = sms_service.notify_guardian_consent(

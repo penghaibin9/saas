@@ -84,7 +84,7 @@
             <div class="sp-panel__head">正文与办理</div>
             <StateBlock v-if="!selectedConsent" type="empty" text="请选择知情确认任务" />
             <template v-else-if="selectedConsent.consentType === 'GUARDIAN'">
-              <p class="sp-muted">监护人任务仅展示进度，完整联系方式、确认令牌和身份校验信息不会向学生门户暴露。</p>
+              <p class="sp-muted">监护人任务仅展示进度，完整联系方式、确认凭证和身份校验信息不会向学生门户显示。</p>
               <dl class="kv"><div><dt>关系</dt><dd>{{ selectedConsent.participantRelation || '监护人' }}</dd></div><div><dt>联系方式</dt><dd>{{ selectedConsent.contactMasked || '已脱敏' }}</dd></div><div><dt>状态</dt><dd>{{ consentStatus(selectedConsent.status) }}</dd></div></dl>
             </template>
             <template v-else-if="consentDetail">

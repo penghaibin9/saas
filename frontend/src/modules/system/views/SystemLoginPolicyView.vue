@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="登录与安全策略"
-    subtitle="SEC_* 配置真实生效于登录锁定与密码校验；每个值都能看到来自哪一层、平台底线是多少"
+    subtitle="安全配置真实生效于登录锁定与密码校验；每个值都能看到来自哪一层、平台底线是多少"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -11,7 +11,7 @@
       <template v-else>
         <section class="mp-card">
           <header class="mp-card__head">
-            <span class="mp-card__title">安全策略（SEC_*）</span>
+            <span class="mp-card__title">安全策略</span>
             <span class="mp-note">变更需填写原因并写入审计；越过平台底线会被拒绝</span>
           </header>
           <div class="mp-card__body" style="padding-top: 0">
@@ -78,7 +78,7 @@
 
     <AppDrawer v-model:visible="edit.open" :title="'编辑 · ' + edit.name" mode="modal" size="medium">
       <p class="lp-tip">
-        平台允许范围 {{ floorText(edit.floor) }}；超出会被后端拒绝，不会被悄悄改成边界值。
+        平台允许范围 \1；超出会被拒绝，不会被悄悄改成边界值。
       </p>
       <label class="lp-label">配置值<span class="lp-required">*</span></label>
       <input v-model="edit.value" class="mp-input" />

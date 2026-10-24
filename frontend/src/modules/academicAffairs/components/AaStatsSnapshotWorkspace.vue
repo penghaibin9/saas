@@ -62,7 +62,7 @@
       <template #cell-integrity="{ row }">
         <StatusTag
           :type="verified[row.snapshotId] ? 'success' : 'default'"
-          :label="verified[row.snapshotId] ? '服务端校验通过' : '待本次复核'"
+          :label="verified[row.snapshotId] ? '系统校验通过' : '待本次复核'"
           dot
         />
       </template>
@@ -145,7 +145,7 @@
         <AppInlineAlert
           v-if="verified[detail.snapshotId]"
           type="success"
-          description="后端已重新计算并确认 payload 与持久化 payloadHash 一致；本次复核未修改快照。"
+          description="系统已重新计算并确认快照内容与保存的校验码一致；本次复核未修改快照。"
         />
       </template>
       <template #footer>
@@ -254,7 +254,7 @@ export default {
     },
     scopeLabel(row) {
       if (row.collegeId) return `学院 #${row.collegeId}`
-      return '全校 / 当前服务端授权范围'
+      return '全校 / 当前账号授权范围'
     },
     filterLabel(row) {
       const parts = []
@@ -394,7 +394,7 @@ export default {
       try {
         const res = await academicStatsSnapshotApi.verify(snapshotId)
         if (!this.current(id, identity, 'detailRequestId')) return
-        if (res?.integrityValid !== true || res?.immutable !== true) throw new Error('后端未返回有效的不可变完整性结论')
+        if (res?.integrityValid !== true || res?.immutable !== true) throw new Error('系统未返回有效的完整性结论')
         this.verified = { ...this.verified, [snapshotId]: true }
         toast.success('统计快照完整性校验通过')
       } catch (error) {

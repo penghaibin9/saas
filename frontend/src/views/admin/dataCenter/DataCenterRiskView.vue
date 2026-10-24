@@ -36,7 +36,7 @@
           </div>
           <div>
             <div class="dcrk-contract__label">数据来源</div>
-            <div class="dcrk-contract__value">{{ sourceNames || '服务端真实聚合' }}</div>
+            <div class="dcrk-contract__value">{{ sourceNames || '真实汇总' }}</div>
           </div>
           <div>
             <div class="dcrk-contract__label">质量提示</div>
@@ -95,7 +95,7 @@
             <EmptyState
               v-else
               title="处理进度口径尚未统一"
-              description="跨业务域的待处理/跟进中/已关闭状态还没有统一服务端合同；空白代表未配置，不代表 0。"
+              description="跨业务域的待处理、跟进中、已关闭状态还没有统一的口径；空白代表未配置，不代表 0。"
             />
           </div>
         </section>
@@ -122,7 +122,7 @@
         <div class="mp-card__head"><span class="mp-card__title">明细能力边界</span></div>
         <div class="mp-card__body">
           <p class="dcrk-boundary">
-            跨域“风险学生名单”尚未形成统一服务端命中口径，批量提醒和风险导出也尚未接入正式任务链，因此本页不提供这些入口。风险处置请进入对应业务模块，以各域权威记录和权限规则为准。
+            跨域“风险学生名单”尚未形成统一的命中口径，批量提醒和风险导出也尚未接入正式任务，因此本页不提供这些入口。风险处置请进入对应业务模块，以各业务的正式记录和权限规则为准。
           </p>
         </div>
       </section>
@@ -143,8 +143,8 @@
         <div class="mp-kv"><span class="mp-kv__k">数据截至</span><span class="mp-kv__v">{{ asOfLabel }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">统计口径</span><span class="mp-kv__v">{{ caliberLabel }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">数据范围</span><span class="mp-kv__v">{{ scopeLabel }}</span></div>
-        <div class="mp-kv"><span class="mp-kv__k">来源</span><span class="mp-kv__v">{{ sourceNames || '服务端真实聚合' }}</span></div>
-        <p class="mp-note">空数组表示服务端尚未形成对应统一口径，而不是业务事实为 0。</p>
+        <div class="mp-kv"><span class="mp-kv__k">来源</span><span class="mp-kv__v">{{ sourceNames || '真实汇总' }}</span></div>
+        <p class="mp-note">空白表示尚未形成对应的统一口径，而不是数量为 0。</p>
         <div v-for="flag in qualityFlags" :key="'drawer-' + flag.code" class="dcrk-quality">
           <StatusTag :type="flag.severity === 'ERROR' ? 'danger' : 'info'" :label="flag.code" />
           <span>{{ flag.message }}</span>
@@ -216,7 +216,7 @@ export default {
       return (this.meta.scope && this.meta.scope.scopeName) || this.ctx.dataScope.scopeName || '—'
     },
     caliberLabel() {
-      return this.meta.caliberLabel || '服务端实时风险口径'
+      return this.meta.caliberLabel || '实时风险口径'
     },
     asOfLabel() {
       return this.meta.asOf || (this.risk && this.risk.updatedAt) || '—'

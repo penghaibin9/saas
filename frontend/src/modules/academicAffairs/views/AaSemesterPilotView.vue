@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="真实学期验收"
-    subtitle="R11 只读取真实学校正式事实并冻结六阶段证据；不会生成学生、课程、考勤、考试或成绩数据"
+    subtitle="只读取真实学校的正式数据并冻结六阶段依据；不会生成学生、课程、考勤、考试或成绩数据"
   >
     <template #actions>
       <AppButton variant="primary" :disabled="busy" @click="createVisible = true">新建真实学期验收</AppButton>
@@ -11,7 +11,7 @@
       <AppInlineAlert
         type="danger"
         title="生产验收专用"
-        description="仅用于真实学校上线/阶段验收。禁止在 mock、测试租户或未确认真实数据时勾选“真实数据已确认”；后端会再次校验生产部署、DB 与 mock-login 状态。"
+        description="仅用于真实学校的上线或阶段验收。禁止在演示、测试学校或未确认真实数据时勾选“真实数据已确认”；系统会再次校验生产部署和数据库状态。"
       />
 
       <section class="sp-filter">
@@ -105,7 +105,7 @@
         <label>正式学期<AppTermEntityPicker v-model="createForm.termId" placeholder="选择真实学校正式学期" :disabled="busy" /></label>
         <label>验收名称<input v-model.trim="createForm.pilotName" maxlength="160" placeholder="如：2026秋季学期上线验收" /></label>
         <label>验收用途<textarea v-model.trim="createForm.purpose" rows="3" maxlength="500" placeholder="说明本次真实学期验收用途（至少5字）" /></label>
-        <label class="sp-check"><input v-model="createForm.realDataConfirmed" type="checkbox" /><span>我确认当前租户使用真实学校正式数据，不是 mock / 演示 / 测试数据。</span></label>
+        <label class="sp-check"><input v-model="createForm.realDataConfirmed" type="checkbox" /><span>我确认当前学校使用的是真实的正式数据，不是演示或测试数据。</span></label>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
@@ -116,7 +116,7 @@
 
     <AppDrawer :visible="completeVisible" title="确认真实学校完整学期完成" mode="modal" size="large" @close="completeVisible = false">
       <div class="sp-form">
-        <AppInlineAlert type="danger" description="这是生产验收终态。只有最新六阶段全部通过、零阻断且后端证据哈希一致时才能完成。" />
+        <AppInlineAlert type="danger" description="这是生产验收的最终环节。只有最新六个阶段全部通过、零阻断且校验码一致时才能完成。" />
         <label>确认口令<input v-model.trim="completeForm.confirmText" autocomplete="off" placeholder="CONFIRM_REAL_SEMESTER_COMPLETED" /></label>
         <label>完成说明<textarea v-model.trim="completeForm.completionNote" rows="4" maxlength="500" placeholder="记录学校、学期与验收结论（至少5字）" /></label>
         <AppInlineAlert v-if="actionError" type="danger" :description="actionError" />

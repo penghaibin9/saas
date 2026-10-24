@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="产品身份与权限"
-    subtitle="统一发布模块、权限、导航与学校角色模板真值；招聘季仍属于岗位实习，不新增第二套顶层模块"
+    subtitle="统一发布模块、权限、导航与学校角色模板；招聘季仍属于岗位实习，不新增第二套顶层模块"
     role-name="平台负责人 / 安全审计"
     data-scope-name="平台控制面"
   >
@@ -9,10 +9,10 @@
       <section class="hero card">
         <div>
           <p class="eyebrow">全局标准 · 产品身份与权限</p>
-          <h3>控制“发布哪一版真值”，不在页面里另造权限目录</h3>
+          <h3>控制“发布哪一版”，不在页面里另造权限目录</h3>
           <p class="muted">源数据来自代码审查后的模块清单、权限目录与已发布角色模板。发布前强制执行影响分析、版本锁定和近期登录复核及二次认证。</p>
         </div>
-        <AppButton :loading="loading" @click="load">刷新真值</AppButton>
+        <AppButton :loading="loading" @click="load">刷新</AppButton>
       </section>
 
       <div v-if="error" class="error card">{{ error }}</div>
@@ -32,7 +32,7 @@
 
         <section class="card">
           <header class="section-head">
-            <div><h3>代码真值</h3><p class="muted">部署提交：{{ source.provenance?.deployedCommitSha || '当前环境未提供' }} · 导航摘要：{{ source.navigationDigest || '—' }} · 源数据摘要：{{ source.sourceDigest || '—' }}</p></div>
+            <div><h3>当前代码版本</h3><p class="muted">部署提交：{{ source.provenance?.deployedCommitSha || '当前环境未提供' }} · 导航摘要：{{ source.navigationDigest || '—' }} · 源数据摘要：{{ source.sourceDigest || '—' }}</p></div>
             <div class="tabs">
               <button :class="{ active: tab === 'modules' }" @click="tab = 'modules'">模块 / 导航</button>
               <button :class="{ active: tab === 'permissions' }" @click="tab = 'permissions'">权限目录</button>
@@ -88,7 +88,7 @@
         </section>
 
         <section v-if="selectedTemplate" class="card">
-          <header class="section-head"><div><h3>{{ selectedTemplate.templateCode }} · 第 {{ selectedTemplate.templateVersion }} 版</h3><p class="muted">菜单由权限集合自动投影，不存在第二套菜单访问控制表。</p></div><div><button class="link" :disabled="publishCheckRequired" @click="startTemplateDraft(selectedTemplate)">创建新版本草稿</button><button class="link" :disabled="publishCheckRequired" @click="closeSelectedTemplate">关闭</button></div></header>
+          <header class="section-head"><div><h3>{{ selectedTemplate.templateCode }} · 第 {{ selectedTemplate.templateVersion }} 版</h3><p class="muted">菜单由权限集合自动生成，不存在第二套菜单访问控制表。</p></div><div><button class="link" :disabled="publishCheckRequired" @click="startTemplateDraft(selectedTemplate)">创建新版本草稿</button><button class="link" :disabled="publishCheckRequired" @click="closeSelectedTemplate">关闭</button></div></header>
           <div class="preview-grid">
             <div><strong>权限配置</strong><code v-for="code in selectedTemplate.permissionCodes || []" :key="code">{{ code }}</code></div>
             <div><strong>生产菜单预览</strong><span v-for="item in selectedTemplate.menuPreview || []" :key="item.surfaceKey">{{ item.label }}<small>{{ item.path }}</small></span></div>
@@ -104,12 +104,12 @@
           <label class="editor-reason">变更 / 发布原因<textarea v-model.trim="templateDraft.reason" rows="3" minlength="5" placeholder="至少 5 个字符" :disabled="Boolean(saving) || publishCheckRequired" @input="invalidateTemplateImpact" /></label>
           <div v-if="templateDraft.impact" class="impact-grid"><div><strong>新增权限</strong><p>{{ join(templateDraft.impact.addedPermissions) }}</p></div><div><strong>移除权限</strong><p>{{ join(templateDraft.impact.removedPermissions) }}</p></div><div><strong>新增菜单</strong><p>{{ join(templateDraft.impact.menuAdded) }}</p></div><div><strong>移除菜单</strong><p>{{ join(templateDraft.impact.menuRemoved) }}</p></div></div>
           <label v-if="templateDraft.id && templateDraft.impact && !publishCheckRequired" class="mfa-field">认证器 6 位动态码<input v-model.trim="templateMfaCode" type="password" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" placeholder="仅用于这一次模板发布" /></label>
-          <p v-if="publishCheckRequired" class="error-inline">发布结果需要回读核对；核对完成前不能再次提交。</p>
+          <p v-if="publishCheckRequired" class="error-inline">发布结果需要重新读取核对；核对完成前不能再次提交。</p>
           <div class="actions"><AppButton variant="primary" :loading="saving === 'template'" :disabled="Boolean(saving) || publishCheckRequired" @click="saveTemplateDraft">{{ templateDraft.id ? '保存草稿' : '创建草稿' }}</AppButton><AppButton v-if="templateDraft.id" :loading="saving === 'template-impact'" :disabled="Boolean(saving) || publishCheckRequired" @click="loadTemplateDraftImpact">影响分析</AppButton><AppButton v-if="templateDraft.id && templateDraft.impact && !publishCheckRequired" variant="danger" :loading="saving === 'template-publish'" :disabled="Boolean(saving) || !/^\d{6}$/.test(templateMfaCode)" @click="publishTemplateDraft">验证动态码并发布</AppButton><AppButton v-if="publishCheckRequired" :loading="saving === 'template-check'" :disabled="Boolean(saving)" @click="checkTemplatePublishResult">核对发布结果</AppButton></div>
         </section>
 
         <section class="card">
-          <header class="section-head"><div><h3>创建发布草稿</h3><p class="muted">草稿会锁定当前源数据摘要；源真值变化后旧草稿将自动拒绝发布。</p></div></header>
+          <header class="section-head"><div><h3>创建发布草稿</h3><p class="muted">草稿会锁定当前源数据摘要；源数据变化后，旧草稿将自动拒绝发布。</p></div></header>
           <form class="release-form" @submit.prevent="createRelease">
             <label>部署提交（服务端真值）<input :value="source.provenance?.deployedCommitSha || '当前环境未提供'" readonly /></label>
             <label>发布原因<input v-model.trim="draft.reason" required minlength="5" placeholder="说明本次模块/权限/模板变更目的" /></label>
@@ -307,7 +307,7 @@ export default {
       if (this.templatePublishEpoch !== epoch || this.templateDraft !== draft || versions.code !== 0) return 'unknown'
       const row = (versions.data?.items || []).find((item) => String(item.id) === String(draft.id))
       if (row?.publishStatus === 'PUBLISHED') {
-        toast.success('回读确认：标准角色模板已发布')
+        toast.success('已确认：标准角色模板已发布')
         this.resetTemplatePublish()
         this.templateDraft = null
         await this.load()
@@ -328,7 +328,7 @@ export default {
       const epoch = this.templatePublishEpoch
       try {
         const state = await this.readTemplatePublishResult(draft, epoch, true)
-        if (state === 'draft') toast.success('回读确认草稿尚未发布；请重新输入动态码')
+        if (state === 'draft') toast.success('已确认草稿尚未发布；请重新输入动态码')
         if (state === 'unknown') toast.warning('暂未核实发布状态，请稍后刷新核对')
       } finally {
         if (this.templatePublishEpoch === epoch) this.saving = ''
@@ -349,7 +349,7 @@ export default {
       const res = await productIamApi.createRelease({ ...this.draft, requestId })
       this.saving = ''
       if (res.code !== 0) return toast.error(res.message)
-      toast.success('产品身份与权限草稿已冻结当前代码真值')
+      toast.success('产品身份与权限草稿已冻结当前代码版本')
       this.draft = { reason: '' }
       await this.load()
     },

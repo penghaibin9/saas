@@ -1,7 +1,7 @@
 <template>
   <AppPageShell flat
     title="违纪处分台账"
-    subtitle="全量处分记录只读台账 + 处分投影一致性对账（已生效案件 ↔ t_cs_discipline 生效行数）。"
+    subtitle="全量处分记录只读台账 + 处分记录一致性对账（已生效案件与生效记录数）。"
     role-name="学工处 / 学院"
     data-scope-name="学院本院 / 学工处全校"
     watermark-purpose="违纪处分台账查看"

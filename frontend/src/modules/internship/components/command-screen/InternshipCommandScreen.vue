@@ -26,7 +26,7 @@ function context() {
   return {
     ctxKey: ctx.ctxKey || '', batchId: batch.selectedBatchId, batchName: batch.selectedBatchName,
     batchError: batch.batchError || '', schoolName: ctx.tenantBrandConfig?.schoolName || '',
-    scopeName: ctx.dataScope?.scopeName || '按后端数据范围', accessHealthy: healthy,
+    scopeName: ctx.dataScope?.scopeName || '按数据范围', accessHealthy: healthy,
     batches: batch.availableBatches.map(b => ({ id: String(b.id), batchName: b.batchName })),
     grants: Object.fromEntries(REQUIRED_PERMISSIONS.map(code => [code,
       healthy && known && allowByPatterns(ctx.permissionPatterns, code)]))

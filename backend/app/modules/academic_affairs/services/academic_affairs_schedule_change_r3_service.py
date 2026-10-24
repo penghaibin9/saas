@@ -59,7 +59,7 @@ def submit(body, user) -> dict:
 
         origin_id = getattr(body, "originItemId", None)
         if not origin_id:
-            raise AppException("VALIDATION_ERROR", "originItemId 必填")
+            raise AppException("VALIDATION_ERROR", "原课表项必填")
         origin = db.query(AaScheduleItem).filter(
             AaScheduleItem.id == int(origin_id),
             AaScheduleItem.tenant_id == _legacy._tid(),
@@ -213,9 +213,9 @@ def review(cid, user, action, comment="", *, expected_version=None) -> dict:
     try:
         expected = int(expected_version)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必填且须为非负整数")
+        raise AppException("VALIDATION_ERROR", "版本必填且须为非负整数")
     if expected < 0:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必填且须为非负整数")
+        raise AppException("VALIDATION_ERROR", "版本必填且须为非负整数")
 
     action = (action or "").upper()
     with _legacy.session() as db:

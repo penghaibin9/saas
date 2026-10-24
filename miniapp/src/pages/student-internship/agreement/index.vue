@@ -117,7 +117,7 @@ export default {
     submitError(e, fallback) {
       const code = String(e?.code || e?.status || '')
       if (code.includes('409') || code.includes('CONFLICT')) {
-        toast('协议已被其他操作更新，当前页面已保留；请重新打开核对，系统不会自动重放')
+        toast('协议已被其他操作更新，当前页面已保留；请重新打开核对，系统不会自动重复提交')
         return
       }
       toast((e && e.message) || fallback)

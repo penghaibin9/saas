@@ -8,7 +8,7 @@
     <div class="mp-stack">
       <div v-if="focusTaskId" class="aa-focus-note">已从教务待办精确定位成绩任务 {{ focusTaskId }} <button class="mp-btn" :disabled="busy" @click="returnQueue">返回责任队列</button></div>
       <section v-if="receipt && (!selectedId || String(receipt.taskId) === selectedId)" class="aa-review-receipt" role="status">
-        <div><strong>{{ receipt.verified ? '已回读正式任务' : '结果待核实' }}</strong><span>{{ receipt.courseName }} · 任务 {{ receipt.taskId }}</span></div>
+        <div><strong>{{ receipt.verified ? '已重新读取正式任务' : '结果待核实' }}</strong><span>{{ receipt.courseName }} · 任务 {{ receipt.taskId }}</span></div>
         <div><small>当前结果</small><b>{{ statusLabel(receipt.status) }}</b></div>
         <div><small>下一步</small><b>{{ receipt.next }}</b></div>
         <button v-if="!receipt.verified" class="mp-btn" :disabled="checking" @click="verifyReceipt">核对正式状态</button>
@@ -40,7 +40,7 @@
         </aside>
         <div class="aa-review-detail">
           <section v-if="current" class="aa-review-metrics" aria-label="正式成绩审核摘要">
-            <article><small>应录 / 已录</small><strong>{{ fact(evidence?.counts?.expected) }} / {{ fact(evidence?.counts?.entered) }}</strong><span>提交冻结名单口径</span></article>
+            <article><small>应录 / 已录</small><strong>{{ fact(evidence?.counts?.expected) }} / {{ fact(evidence?.counts?.entered) }}</strong><span>提交锁定名单口径</span></article>
             <article><small>名单外</small><strong>{{ fact(evidence?.counts?.outside) }}</strong><span>按正式名单逐人核对</span></article>
             <article><small>异常标记</small><strong>{{ exceptionTotal }}</strong><span>不含正常成绩记录</span></article>
             <article><small>审核阻断</small><strong>{{ blockerCount }}</strong><span>{{ evidence?.evidenceHash ? '已取得正式证据' : '证据待读取' }}</span></article>
@@ -102,7 +102,7 @@ export default {
     routeKey() { return String(this.$route?.fullPath || '') },
     canReview() { return this.current?.status === 'SUBMITTED' && this.current.allowedActions?.includes('COLLEGE_REVIEW') },
     canReturn() { return this.canReview },
-    reviewSteps() { return [this.current?.status === 'RETURNED' ? '教师修改重提' : '提交冻结名单', '学院审核', '教务发布', '后置扫描', '更正留痕'] },
+    reviewSteps() { return [this.current?.status === 'RETURNED' ? '教师修改重提' : '提交锁定名单', '学院审核', '教务发布', '后置扫描', '更正留痕'] },
     reviewStage() {
       const status = this.current?.status
       if (['NOT_STARTED', 'INPUTTING', 'RETURNED'].includes(status)) return 0
@@ -182,8 +182,8 @@ export default {
         if (actionAllowed) {
           this.dlg = { ...this.dlg, evidenceHash: command.action === 'APPROVE' ? evidence.evidenceHash : null }
           this.reviewConflict = false
-          this.reviewMessage = '正式事实已重新读取，审核意见已保留；请核对新证据后再次点击确认。'
-        } else this.reviewMessage = '当前正式事实已不允许该动作，意见已保留，请取消确认并查看任务。'
+          this.reviewMessage = '正式数据已重新读取，审核意见已保留；请核对新依据后再次点击确认。'
+        } else this.reviewMessage = '当前正式状态已不允许该操作，意见已保留，请取消确认并查看任务。'
       } catch (err) { if (valid()) { if (this.isDenied(err)) this.clearDenied(err); else this.reviewMessage = gradeError(err) } }
       finally { if (valid()) this.checking = false }
     },
@@ -286,7 +286,7 @@ export default {
           this.pending = null; this.receipt = null; this.reviewConflict = true
           this.reviewMessage = res.message?.trim()
             ? `${gradeError(res)}。本次未受理，意见已保留；请按上述原因处理后重新核对。`
-            : '任务或审核证据已变化，本次未受理。意见已保留，请先重新核对正式事实。'
+            : '任务或审核依据已变化，本次未受理。意见已保留，请先重新核对正式记录。'
           return
         }
         this.dlg.visible = false

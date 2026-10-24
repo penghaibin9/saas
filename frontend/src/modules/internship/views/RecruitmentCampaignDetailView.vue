@@ -46,7 +46,7 @@
           <div><dt>可选联系方式共享方式</dt><dd>{{ policyLabels(materialPolicy.allowedContactSharingModes, contactModes, '未开放，学生无法正式投递') }}</dd></div>
           <div><dt>企业录用意向</dt><dd>{{ detail.enterpriseConfirmRequired ? '学校确认前必须具备' : '未设为学校确认的必要条件' }}</dd></div>
           <div><dt>教师确认时限</dt><dd>{{ detail.teacherConfirmSlaHours ?? 48 }} 小时（录用意向锁定后）</dd></div>
-        </dl><template v-if="legacyPolicy"><p class="rc-aside">本轮另含旧版材料规则，以下为原配置；以服务端核验结果为准。</p><pre class="rc-legacy-policy">{{ JSON.stringify(detail.applicationMaterialPolicy, null, 2) }}</pre></template></div>
+        </dl><template v-if="legacyPolicy"><p class="rc-aside">本轮另含历史版本的材料规则，以下为原配置；以系统核验结果为准。</p><pre class="rc-legacy-policy">{{ JSON.stringify(detail.applicationMaterialPolicy, null, 2) }}</pre></template></div>
       </section>
 
       <AppInlineAlert
@@ -174,7 +174,7 @@
             <AppCopyableText :text="inviteResult.acceptUrl" />
           </div>
           <div class="rc-invite-result__row">
-            <span class="rc-invite-result__label">邀请令牌</span>
+            <span class="rc-invite-result__label">邀请码</span>
             <AppCopyableText :text="inviteResult.inviteToken" />
           </div>
           <div class="rc-invite-result__row">

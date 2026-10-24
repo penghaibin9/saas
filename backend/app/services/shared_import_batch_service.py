@@ -130,7 +130,7 @@ def claim(tenant_id: int, namespace: str, batch_no: str, *, required_status: str
                 type(row).request_id == request_id, type(row).batch_no != batch_no,
                 type(row).is_deleted.is_(False)))
             if conflict:
-                raise AppException("IDEMPOTENCY_CONFLICT", "相同 requestId 提交了不同批次")
+                raise AppException("IDEMPOTENCY_CONFLICT", "相同请求标识提交了不同批次")
         token = secrets.token_hex(24)
         row.status = "CONFIRMING"
         row.request_id = request_id or row.request_id

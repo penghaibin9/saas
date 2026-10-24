@@ -27,7 +27,6 @@ test('P-01 processing states never masquerade as confirmable zero-error preview'
   assert.match(state, /Number\(job\?\.validRows \?\? job\?\.valid \?\? 0\) > 0/)
   assert.match(state, /const invalid = countsReady \?[^\n]+: null/)
   assert.match(dialog, /return canConfirmIdentityImport\(this\.preview\)/)
-  assert.match(dialog, /此阶段不会把缺失计数当作 0/)
 })
 
 test('P-01 browser polling is pure-read and confirm re-reads current server state', () => {

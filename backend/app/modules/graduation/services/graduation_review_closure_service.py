@@ -99,7 +99,7 @@ def _canonical_evidence(db, student: GraduationStudent) -> tuple[GraduationFinal
         or str(file_object.status or "").upper() != "AVAILABLE"
         or str(file_object.scan_status or "").upper() not in READY_SCAN_STATES
     ):
-        raise AppException("FILE_NOT_READY", "正式评阅文件未通过公共文件中心安全门禁")
+        raise AppException("FILE_NOT_READY", "正式评阅文件未通过文件中心的安全检查")
     if not str(file_object.sha256 or "").strip():
         raise AppException("FILE_HASH_MISSING", "正式评阅文件缺少 SHA-256 证据")
     return final, material, version, file_object
@@ -212,7 +212,7 @@ def submit_review(rid, score: int, opinion: str, *, expected_version: int | None
                   file_version_id: int | None, categories=None, issues=None,
                   idempotency_key: str | None = None) -> dict:
     if expected_version is None or file_version_id is None:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 和 fileVersionId 不能为空")
+        raise AppException("VALIDATION_ERROR", "数据版本和文件版本不能为空")
     with session() as db:
         review = db.scalars(select(GraduationReview).where(
             GraduationReview.id == int(rid), GraduationReview.tenant_id == _tid(),
@@ -245,7 +245,7 @@ def submit_review(rid, score: int, opinion: str, *, expected_version: int | None
                 issues=issues,
             ):
                 return _row(db, review, student)
-            raise AppException("DATA_CONFLICT", "idempotencyKey 已被其他评阅证据占用，请重新载入任务")
+            raise AppException("DATA_CONFLICT", "该提交标识已被其他评阅记录占用，请重新载入任务")
 
         if int(review.version or 0) != int(expected_version):
             raise AppException("APPROVAL_VERSION_CONFLICT", "评阅任务版本已变化，请重新载入后继续")

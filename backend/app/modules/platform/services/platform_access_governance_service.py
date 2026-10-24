@@ -44,7 +44,7 @@ def _digest(payload: dict) -> str:
 def _idempotent_key(prefix: str, request_id: str) -> str:
     raw = str(request_id or "").strip()
     if len(raw) < 8:
-        raise AppException("IDEMPOTENCY_KEY_REQUIRED", "高危平台主管创建操作必须提供至少8位 requestId", http_status=422)
+        raise AppException("IDEMPOTENCY_KEY_REQUIRED", "高危平台主管创建操作必须提供至少 8 位的请求标识", http_status=422)
     return f"{prefix}-{hashlib.sha256(raw.encode()).hexdigest()[:32]}"
 
 
@@ -153,7 +153,7 @@ def _save_atomic(
             current = dict(row.config_json or {})
             if current.get("requestDigest") == digest:
                 return _row_to_dict(row)
-            raise AppException("IDEMPOTENCY_CONFLICT", "相同 requestId 已用于不同请求内容", http_status=409)
+            raise AppException("IDEMPOTENCY_CONFLICT", "相同请求标识已用于不同的请求内容", http_status=409)
         if row is not None:
             if expected_version is None or int(expected_version) != _version(row.version):
                 raise AppException("DATA_CONFLICT", "平台访问记录已更新，请刷新后重试", http_status=409)
@@ -258,7 +258,7 @@ def _validate_incident_binding(tenant_id: int, incident_id: object) -> dict:
     try:
         iid = int(str(incident_id or ""))
     except (TypeError, ValueError):
-        raise AppException("SUPPORT_INCIDENT_REQUIRED", "当前系统只有 Incident 具备可验证权威绑定；请提供有效 incidentId", http_status=422) from None
+        raise AppException("SUPPORT_INCIDENT_REQUIRED", "请提供有效的事件编号", http_status=422) from None
     from app.services import incident_service
     incident = incident_service.get_incident(iid, include_internal=False)
     if str(incident.get("status") or "").upper() == "RESOLVED":
@@ -288,7 +288,7 @@ def create_support_session(payload: dict, *, actor: dict | None = None) -> dict:
     assurance = assert_recent_platform_auth(actor or {}, require_mfa=require_mfa)
     incident = _validate_incident_binding(tenant_id, payload.get("incidentId"))
     if payload.get("ticketId") and not payload.get("incidentId"):
-        raise AppException("SUPPORT_TICKET_AUTHORITY_UNAVAILABLE", "当前仓库没有可验证的 Support Ticket Authority，禁止仅凭浏览器 ticketId 授权", http_status=409)
+        raise AppException("SUPPORT_TICKET_AUTHORITY_UNAVAILABLE", "当前没有可验证的工单依据，不能仅凭页面提交的工单号授权", http_status=409)
     duration = int(payload.get("durationMinutes") or 0)
     if duration <= 0 or duration > 120:
         raise AppException("VALIDATION_ERROR", "受控协助必须在1-120分钟内")

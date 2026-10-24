@@ -133,7 +133,7 @@
       require-reason
       :reason-min-length="5"
       reason-label="申诉理由（5-1000字）"
-      message="申诉将进入正式复核流程。一案仅允许提交一次，请确认理由完整、事实明确。"
+      message="申诉将进入正式复核流程。一案仅允许提交一次，请确认理由完整、情况明确。"
       :submitting="acting === apDlg.caseId"
       @confirm="submitAppeal"
     />
@@ -147,7 +147,7 @@
       :reason-min-length="5"
       reason-label="复核意见（5-1000字）"
       phrase-scene-key="common.reviewOpinion"
-      message="复核结论会同步更新原处分、处分投影、学生成长时间线和结果通知。"
+      message="复核结论会同步更新原处分、处分记录、学生成长时间线和结果通知。"
       :submitting="acting === revDlg.appealId"
       @confirm="submitReview"
     >
@@ -158,19 +158,19 @@
         <AppFormItem label="变更后的处分类型" required>
           <AppSelect v-model="revDlg.revisedDiscType" :options="DISC_OPTIONS" />
         </AppFormItem>
-        <AppFormItem label="变更后的处分事实（5-1000字）" required>
+        <AppFormItem label="变更后的处分情况（5-1000字）" required>
           <AppTextarea
             v-model="revDlg.revisedReason"
             :rows="3"
             maxlength="1000"
-            placeholder="请填写变更决定采用的完整事实依据，不得用复核意见代替"
+            placeholder="请填写变更决定采用的完整依据，不得用复核意见代替"
           />
         </AppFormItem>
         <AppFormItem label="变更后的文号">
           <AppTextInput v-model="revDlg.revisedDocNo" placeholder="选填；如文号不变可保留原文号" />
         </AppFormItem>
         <p class="ap-hint">
-          “变更处分”会真实更新处分类型、事实依据、文号（如有）及有效投影，并追加不可变决定版本；复核意见另行保留。
+          “变更处分”会真实更新处分类型、依据、文号（如有）及有效记录，并追加不可修改的决定版本；复核意见另行保留。
         </p>
       </template>
     </AppConfirmDialog>
@@ -408,7 +408,7 @@ export default {
         }
         const revisedReason = (dialog.revisedReason || '').trim()
         if (revisedReason.length < 5 || revisedReason.length > 1000) {
-          toast.error('变更后的处分事实需5-1000字')
+          toast.error('变更后的处分情况需5-1000字')
           return
         }
       }

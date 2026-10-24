@@ -3,7 +3,7 @@
     <div class="academic-context__head">
       <span>当前模块</span>
       <strong>教务学业</strong>
-      <p>按真实路由切换，不改变原业务页面、接口或状态。</p>
+      <p>按实际页面切换，不改变原业务页面或状态。</p>
     </div>
 
     <label class="academic-context__search">
@@ -82,7 +82,7 @@ const groups = [
     ]
   },
   {
-    label: '兼容入口',
+    label: '旧入口',
     items: [{ path: '/academic/all', label: '全部旧功能', tag: '低频' }]
   }
 ]

@@ -540,7 +540,7 @@ def _locked_login_audit_tenant_id(login_name: str, tenant_code: str | None) -> i
 def login_with_password(login_name: str, password: str, tenant_code: str | None = None,
                         client_type: str = "PC") -> dict:
     if not db_enabled():
-        raise AppException("UNAUTHORIZED", "账号密码登录需启用数据库（DB_ENABLED=true）；演示可用 mock-login")
+        raise AppException("UNAUTHORIZED", "账号密码登录需启用数据库")
     login_name = (login_name or "").strip()
     tenant_code = (tenant_code or "").strip() or None
     lock_key = login_guard_key(tenant_code, login_name)
@@ -618,12 +618,12 @@ def _load_token_user(db, user_ctx: dict):
     raw_id = str((user_ctx or {}).get("userId") or "")
     tenant_id = str((user_ctx or {}).get("tenantId") or "")
     if not raw_id.startswith("db-") or not raw_id[3:].isdigit() or not tenant_id.isdigit():
-        raise AppException("UNAUTHORIZED", "真实账号令牌无效，请重新登录")
+        raise AppException("UNAUTHORIZED", "登录凭证无效，请重新登录")
     user = db.scalars(select(User).where(
         User.id == int(raw_id[3:]), User.tenant_id == int(tenant_id),
         User.is_deleted.is_(False), User.status == "ACTIVE")).first()
     if user is None:
-        raise AppException("UNAUTHORIZED", "账号已停用或令牌已失效，请重新登录")
+        raise AppException("UNAUTHORIZED", "账号已停用或登录凭证已失效，请重新登录")
     return user
 
 

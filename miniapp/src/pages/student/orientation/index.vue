@@ -174,7 +174,7 @@ export default {
   computed: {
     arrivalHold() {
       return ({
-        DEFERRED: { title: '已延期报到', description: '请与学校确认新的到校时间。已有预留床位继续保留，实际安排以住宿信息为准。' },
+        DEFERRED: { title: '已延期报到', description: '请与学校确认新的到校时间。已预留的床位继续保留，实际安排以住宿信息为准。' },
         NO_SHOW: { title: '已登记未到校', description: '原预留床位已释放。如仍需入学，请联系学校恢复报到并重新安排住宿。' },
         CANCELLED: { title: '已取消入学', description: '本次迎新办理已停止，原预留床位已释放。如登记有误，请联系学校核实。' },
       })[this.o?.stage] || null
@@ -239,7 +239,7 @@ export default {
         }
         if (step.key === 'PAYMENT') {
           const green = this.o?.greenChannelStatus
-          task.statusText = ({ PAID: '已缴清', WAIVED: '已减免', DEFERRED: '已批准缓缴', GREEN_CHANNEL: '绿色通道已通过', PARTIAL: '部分缴费，需继续办理', UNPAID: '待缴费', MISSING: '学校尚未登记缴费事实', UNAVAILABLE: '缴费结果待核实' })[this.o?.payStatus] || task.statusText
+          task.statusText = ({ PAID: '已缴清', WAIVED: '已减免', DEFERRED: '已批准缓缴', GREEN_CHANNEL: '绿色通道已通过', PARTIAL: '部分缴费，需继续办理', UNPAID: '待缴费', MISSING: '学校尚未登记缴费情况', UNAVAILABLE: '缴费结果待核实' })[this.o?.payStatus] || task.statusText
           if (['SUBMITTED', 'REVIEWING'].includes(green)) task.statusText = '绿色通道待审核'
           task.returned = green === 'RETURNED'
           task.reason = this.o?.greenChannel?.rejectReason || (!done ? '按学校通知缴费；有困难可申请绿色通道。缴费到账后由学校核验。' : '')

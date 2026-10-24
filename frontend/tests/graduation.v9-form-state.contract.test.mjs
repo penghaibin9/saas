@@ -16,7 +16,6 @@ test('U9 graduation conflict contract keeps draft, refreshes truth and requires 
   assert.match(helper, /已刷新最新数据/)
   assert.match(helper, /填写的内容已保留/)
   assert.match(helper, /重新确认提交/)
-  assert.match(helper, /服务端：/)
 })
 
 test('U9 proposal review refreshes a 409 without clearing teacher input or replaying the command', () => {

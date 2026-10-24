@@ -32,7 +32,7 @@ const anchors = {
     "directives": "3f141158e08d2f08c3353830dc4f7da1eb5236b893f180fce62baba613bd29b8"
   },
   "components/workspace/RolePermissionPanel.vue": {
-    "script": "5e5c4318f4ac3fdff6714fae62db8a163965e8cdb78beabc4965c54521b4e5f9",
+    "script": "64f6823e74e9e4b941519f06f0a089051022bfc040a4d3bb9987a889273071f4",
     "directives": "0c63c5c99399e30843ecb669f5cf694ca7f4bf128cc093f1867bf5ca4cc8e61b"
   },
   "components/workspace/RoleMembersPanel.vue": {

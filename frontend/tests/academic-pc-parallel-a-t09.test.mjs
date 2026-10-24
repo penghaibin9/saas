@@ -67,7 +67,7 @@ test('T09 changed formal booking status preserves rejection reason and prevents 
   let writes = 0
   const vm = booking({ academicAffairsClassroomBookingApi: { list: async () => ok({ list: [record({ status: 'APPROVED' })], total: 1 }), review: async () => { writes++ } } })
   vm.load = async () => {}; vm.openReview(record(), 'REJECT'); vm.review.reason = '当前资源安排冲突'; await vm.submitReview()
-  assert.equal(writes, 0); assert.equal(vm.review.reason, '当前资源安排冲突'); assert.match(vm.review.error, /事实已变化/)
+  assert.equal(writes, 0); assert.equal(vm.review.reason, '当前资源安排冲突'); assert.match(vm.review.error, /数据已变化/)
 })
 test('T09 403 booking read clears resource, draft and receipt', () => {
   const vm = booking(); vm.resources = [{ classroomId: 'secret' }]; vm.form = { purpose: 'private' }; vm.receipt = {}; vm.failure({ status: 403, message: '无权访问' })

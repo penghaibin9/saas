@@ -63,7 +63,7 @@ def _resolve_target_tenant(user: dict, body: dict) -> int:
     if target and own and target != own and not _is_platform(user):
         raise AppException("NO_PERMISSION", "禁止跨租户写入：只能操作本校租户")
     if not target:
-        raise AppException("VALIDATION_ERROR", "缺少目标租户（tenantId）")
+        raise AppException("VALIDATION_ERROR", "缺少目标学校")
     return target
 
 

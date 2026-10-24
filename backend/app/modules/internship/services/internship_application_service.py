@@ -178,7 +178,7 @@ def save_my(user: dict, body: dict) -> dict:
     body = body or {}
     app_type = (body.get("applicationType") or "").upper()
     if app_type not in TYPE_LABEL:
-        raise AppException("VALIDATION_ERROR", "applicationType 必须是 POSITION 或 SELF_ARRANGED")
+        raise AppException("VALIDATION_ERROR", "申请类型必须是“岗位投递”或“自主安排”")
     app_id = body.get("id")
     with session() as db:
         rec, stu = _record_for_student(db, user.get("studentNo"))

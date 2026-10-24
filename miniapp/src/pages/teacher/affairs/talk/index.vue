@@ -181,7 +181,7 @@ export default {
     },
     submitRecord() {
       const content = this.recordForm.content.trim(); if (this.recording || content.length < 20 || content.length > 500) return
-      if (this.active.version === undefined || this.active.version === null) return toast('记录缺少版本号，请重新打开详情')
+      if (this.active.version === undefined || this.active.version === null) return toast('记录信息不完整，请重新打开详情')
       this.recording = true
       affairsContractApi.recordTalk(this.active.talkId, { content, result: this.recordForm.result.trim(), needFollow: this.recordForm.needFollow }, this.active.version)
         .then((d) => { toast('已保存'); this.active = d; this.recordForm = { content: '', result: '', needFollow: false } })
@@ -190,7 +190,7 @@ export default {
     doFollowUp(action) {
       const content = this.followContent.trim()
       if (this.acting || !this.canAct(action) || content.length < 5 || content.length > 300) return toast('处理说明需5-300字')
-      if (this.active.version === undefined || this.active.version === null) return toast('记录缺少版本号，请重新打开详情')
+      if (this.active.version === undefined || this.active.version === null) return toast('记录信息不完整，请重新打开详情')
       const run = () => {
         this.acting = true
         affairsContractApi.followTalk(this.active.talkId, action, content, this.active.version).then((d) => { toast('处理完成'); this.active = d; this.followContent = '' }).catch((e) => this.showError(e, '处理失败')).finally(() => { this.acting = false })

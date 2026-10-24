@@ -153,7 +153,7 @@ export default {
       return !!(pa && pa.visible && pa.allowed && this.detail?.reviewReady && !this.versionConflict && this.activePreviewFile && this.activePreviewFile.isCurrent !== false)
     },
     reviewReason() {
-      if (this.detail && !this.detail.reviewReady) return this.detail.migrationRequired ? '历史材料尚未完成公共版本回填' : '当前材料版本未通过安全门禁'
+      if (this.detail && !this.detail.reviewReady) return this.detail.migrationRequired ? '历史材料尚未完成公共版本回填' : '当前材料版本未通过安全检查'
       const pa = this.ctx.permissionActions.reviewProposal
       if (pa && !pa.allowed) return pa.reason || '当前角色无开题批阅权限'
       if (this.versionConflict) return '学生已重交新版本，请切换最新 canonical version 后重新核验'
@@ -249,7 +249,7 @@ export default {
       if (!this.hasCarriedDraft) return
       this.comment = this.carriedDraft.comment
       this.saveDraft()
-      this.formError = '已带入上一版本草稿；该意见最初记录于旧版本，请确认适用于当前版本后再提交。'
+      this.formError = '已带入上一版本的草稿；该意见最初记录于历史版本，请确认适用于当前版本后再提交。'
       this.clearConflictCarry()
     },
     discardCarriedDraft() { this.clearConflictCarry() },

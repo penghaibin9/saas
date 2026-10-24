@@ -334,7 +334,7 @@ export default {
           const d = res.data || {}
           this.lastReceipt = {
             statusLabel: '批量批阅完成', actionLabel: '周报批量通过',
-            objectLabel: `服务端逐条校验 · 通过 ${d.approvedCount || 0} · 跳过 ${d.skippedCount || 0}`,
+            objectLabel: `系统逐条校验 · 通过 ${d.approvedCount || 0} · 跳过 ${d.skippedCount || 0}`,
             auditText: '每条成功记录分别提交业务更新与审批留痕',
             nextStep: d.skippedCount ? '查看跳过项原因并逐篇处理' : '可继续当前队列下一页'
           }

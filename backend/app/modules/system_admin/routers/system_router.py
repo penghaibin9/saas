@@ -1012,7 +1012,7 @@ def adopt_system_role(
     try:
         uuid.UUID(str(body.get("requestId") or ""))
     except (ValueError, TypeError, AttributeError):
-        raise AppException("VALIDATION_ERROR", "requestId 必须是 UUID", http_status=422)
+        raise AppException("VALIDATION_ERROR", "请求标识格式不正确", http_status=422)
     tenant_id = int(current_tenant_id() or 0)
     if tenant_id <= 0:
         raise AppException("NO_PERMISSION", "请在本校身份下操作", http_status=403)
@@ -1057,7 +1057,7 @@ def save_system_role_permissions(
 
     raw_codes = body.get("permissionCodes") or []
     if not isinstance(raw_codes, list):
-        raise AppException("VALIDATION_ERROR", "permissionCodes 必须为数组")
+        raise AppException("VALIDATION_ERROR", "权限必须为列表")
     raw_code_set = {str(code).strip() for code in raw_codes if str(code).strip()}
     legacy_writes = sorted(code for code in raw_code_set if code.startswith("system."))
     if legacy_writes:
@@ -1075,7 +1075,7 @@ def save_system_role_permissions(
     assert_delegable_permission_codes(user, codes)
     _assert_custom_role_catalog_policy(codes)
     if body.get("expectedVersion") is None:
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必填", http_status=422)
+        raise AppException("VALIDATION_ERROR", "版本信息必填", http_status=422)
     reason = str(body.get("reason") or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "权限变更原因至少 5 个字符", http_status=422)
@@ -1083,7 +1083,7 @@ def save_system_role_permissions(
     try:
         uuid.UUID(request_id)
     except (ValueError, TypeError, AttributeError):
-        raise AppException("VALIDATION_ERROR", "requestId 必须是 UUID", http_status=422)
+        raise AppException("VALIDATION_ERROR", "请求标识格式不正确", http_status=422)
     visible = visible_codes_from_tree(build_permission_tree(user))
     if not codes <= visible:
         raise AppException(

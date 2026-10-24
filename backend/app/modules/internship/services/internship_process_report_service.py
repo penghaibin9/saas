@@ -146,7 +146,7 @@ def get_report(rid, user=None):
 def student_submit(rec, report_type: str, period_key: str, content: str) -> dict:
     rt = (report_type or "").upper()
     if rt not in TYPE_LABEL:
-        raise AppException("VALIDATION_ERROR", "reportType 必须是 DAILY/MONTHLY/SUMMARY")
+        raise AppException("VALIDATION_ERROR", "报告类型必须是日报 / 月报 / 总结")
     text = (content or "").strip()
     min_w = MIN_WORDS.get(rt, 30)
     if len(text) < min_w:
@@ -155,7 +155,7 @@ def student_submit(rec, report_type: str, period_key: str, content: str) -> dict
     if rt == "SUMMARY":
         pk = "FINAL"
     if not pk:
-        raise AppException("VALIDATION_ERROR", "periodKey 必填")
+        raise AppException("VALIDATION_ERROR", "请选择报告周期")
     with session() as db:
         dup = db.scalars(select(InternshipProcessReport).where(
             InternshipProcessReport.tenant_id == _tid(), InternshipProcessReport.internship_id == rec.id,

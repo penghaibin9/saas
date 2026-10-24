@@ -3,7 +3,7 @@
     <MobileNavBar title="知情确认" subtitle="当前所选实习批次" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack" v-if="state === 'ready'">
-        <MobileInlineAlert type="info" description="学生确认必须阅读正文；监护人确认仅展示进度，完整联系方式和确认令牌不会向学生端暴露。" />
+        <MobileInlineAlert type="info" description="学生确认必须阅读正文；监护人确认仅展示进度，完整联系方式和确认凭证不会向学生端显示。" />
         <MobileGlobalState v-if="!items.length" state="empty" title="暂无知情确认任务"
           description="当前所选批次没有待办理或历史知情确认任务。" />
         <view v-for="item in items" :key="item.id" class="card cs" @click="open(item)">
@@ -61,7 +61,7 @@ export default {
       return 'warning'
     },
     hint(item) {
-      if (item.status === 'PENDING') return item.consentType === 'GUARDIAN' ? '等待已绑定监护人完成确认' : '请打开并完整阅读服务端保存的正文'
+      if (item.status === 'PENDING') return item.consentType === 'GUARDIAN' ? '等待已绑定监护人完成确认' : '请打开并完整阅读系统保存的正文'
       if (item.status === 'VALID') return item.confirmedAt ? `确认时间：${item.confirmedAt}` : '已完成确认'
       if (item.status === 'SUPERSEDED') return '正文已更新，请办理最新版本'
       if (item.status === 'REJECTED') return '已拒绝，请联系指导教师处理'

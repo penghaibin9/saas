@@ -11,17 +11,17 @@
 
       <AppGlobalState :state="providerLoading ? 'loading' : providerError ? 'error' : 'ready'" :description="providerError" loading-text="正在加载归寝数据来源…" @retry="loadProvider">
       <section class="presence-provider" :class="{ 'is-disabled': !provider.configured }">
-        <div><span>门禁 Provider</span><strong>{{ provider.providerLabel || '未配置' }}</strong></div>
+        <div><span>门禁系统</span><strong>{{ provider.providerLabel || '未配置' }}</strong></div>
         <div><span>最后同步</span><strong>{{ provider.lastSyncAt ? provider.lastSyncAt.slice(0, 16).replace('T', ' ') : '—' }}</strong></div>
         <div><span>健康状态</span><strong>{{ providerHealthLabel(provider.healthStatus) }}</strong></div>
-        <p>{{ provider.notice || '未接入归寝数据' }}。“归寝未知”表示缺少可靠事实，不等同于未归。</p>
+        <p>\1。“归寝未知”表示缺少可靠记录，不等同于未归。</p>
       </section>
       </AppGlobalState>
 
       <AppSectionCard title="今日归寝状态">
         <AppGlobalState :state="presenceLoading ? 'loading' : presenceError ? 'error' : 'ready'" :description="presenceError" loading-text="正在加载归寝状态…" @retry="loadPresence">
-        <p class="dorm-exception-hint">仅依据批准请假和已标准化的 Provider 事件研判；无数据时保持“未知”，不会生成“未归”结论。</p>
-        <p v-if="!providerLoading && !provider.configured" class="sa-empty">门禁 Provider 未配置，暂不加载全量在住名单。</p>
+        <p class="dorm-exception-hint">仅依据批准的请假和已标准化的门禁事件研判；无数据时保持“未知”，不会生成“未归”结论。</p>
+        <p v-if="!providerLoading && !provider.configured" class="sa-empty">门禁系统未配置，暂不加载全部在住名单。</p>
         <DataTable v-else-if="presenceItems.length || presencePagination.total" :columns="presenceColumns" :rows="presenceItems" row-key="studentId" :pagination="presencePagination" @page-change="onPresencePageChange">
           <template #cell-student="{ row }"><strong>{{ row.studentName }}</strong><br><span class="sa-muted">{{ row.studentNo }}</span></template>
           <template #cell-room="{ row }">{{ row.buildingName }} · {{ row.roomNo }}室 · {{ row.bedNo }}床</template>

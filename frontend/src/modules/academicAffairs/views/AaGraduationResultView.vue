@@ -124,7 +124,7 @@ const SOURCE_LABELS = {
   STUDENT_PROFILE: '学生主档', ACADEMIC_GRADE: '正式成绩主账', PROGRAM_AND_GRADE: '培养方案与正式成绩',
   INTERNSHIP_RECORD: '岗位实习台账', GRADUATION_STUDENT: '毕业设计台账',
   DISCIPLINE_RECORD: '处分台账', EMPLOYMENT_STUDENT: '就业去向台账',
-  ARCHIVE_PACKAGE: '学生归档包', TEXTBOOK_FEE_LEDGER: '教材费用台账', UNKNOWN: '待治理来源'
+  ARCHIVE_PACKAGE: '学生归档包', TEXTBOOK_FEE_LEDGER: '教材费用台账', UNKNOWN: '待处理来源'
 }
 
 const EVIDENCE_TARGET = {

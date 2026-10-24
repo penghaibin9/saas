@@ -76,7 +76,7 @@
       <template v-if="tab === 'stats'">
         <section class="aatb-analytics">
           <article class="aatb-panel">
-            <header><h2>教材闭环 · 当前正式数量</h2><span>数据来自教材统计接口</span></header>
+            <header><h2>教材闭环 · 当前正式数量</h2><span>数据来自教材统计</span></header>
             <div class="aatb-bars">
               <div v-for="item in statsBars" :key="item.label">
                 <span>{{ item.label }}</span><i><b :style="{ width: `${item.percent}%` }" /></i><strong>{{ item.value }}</strong>
@@ -89,7 +89,7 @@
               <div><dt>选用与备案</dt><dd>{{ stats.selectionApproved || 0 }} / {{ stats.selectionTotal || 0 }}</dd></div>
               <div><dt>征订与到货</dt><dd>{{ stats.arrivedQty || 0 }} / {{ stats.orderQty || 0 }}</dd></div>
               <div><dt>未结费用</dt><dd>¥{{ money(stats.unpaidAmount) }}</dd></div>
-              <div><dt>周期趋势</dt><dd>服务端未提供按周序列</dd></div>
+              <div><dt>周期趋势</dt><dd>系统未提供按周的数据</dd></div>
             </dl>
           </article>
         </section>
@@ -102,13 +102,13 @@
       <section v-else class="aatb-table-card">
         <header>
           <div><h2>{{ pageSpec.tableTitle }}</h2><p>{{ pageSpec.tableNote }}</p></div>
-          <span>共 {{ total }} 条 · 正式数据接入服务端分页</span>
+          <span>共 \1 条</span>
         </header>
         <div class="aatb-toolbar">
           <AppTextInput v-model="keyword" :placeholder="`搜索${pageSpec.title}`" :disabled="saving" @keyup.enter="search" />
           <AppButton size="small" :disabled="saving" @click="search">查询</AppButton>
           <button class="aatb-clear" :disabled="saving" @click="clearSearch">清空</button>
-          <small v-if="tab !== 'catalog' && keyword">当前接口未提供关键词参数，仅筛选本页已读取记录</small>
+          <small v-if="tab !== 'catalog' && keyword">当前不支持关键词查询，仅筛选本页已读取的记录</small>
         </div>
         <EmptyState v-if="!filteredRows.length" title="暂无数据" :description="emptyHint" />
         <DataTable
@@ -238,14 +238,14 @@ const LABELS = {
 }
 
 const PAGE_SPEC = {
-  catalog: { title: '教材目录', subtitle: '教材版本与课程选用分开维护', object: '教材目录', primary: '新建教材', role: '教材目录管理岗', nextRole: '任课教师 / 课程负责人选用', source: '教材目录管理岗正式建立', sourceNote: '目录只维护教材版本事实；选用、征订、发放和费用继续使用各自正式业务记录。', whyMe: '维护可供正式选用的教材版本', stage: 0, tableTitle: '教材目录 · 数量与来源', tableNote: 'ISBN、版本、出版社和适用课程来自正式教材目录' },
+  catalog: { title: '教材目录', subtitle: '教材版本与课程选用分开维护', object: '教材目录', primary: '新建教材', role: '教材目录管理岗', nextRole: '任课教师 / 课程负责人选用', source: '教材目录管理岗正式建立', sourceNote: '目录只维护教材版本；选用、征订、发放和费用继续使用各自的正式业务记录。', whyMe: '维护可供正式选用的教材版本', stage: 0, tableTitle: '教材目录 · 数量与来源', tableNote: 'ISBN、版本、出版社和适用课程来自正式教材目录' },
   selection: { title: '教材选用', subtitle: '使用教学任务和名单测算，不手工造学生名单', object: '教材选用申报', primary: '从教学任务申报', role: '任课教师 / 课程负责人', nextRole: '教材选用审核岗', source: '正式教学任务', sourceNote: '选用必须绑定正式教学任务和教材目录；需求人数由课程负责人申报，提交后进入审核。', whyMe: '当前教学任务需要确定教材版本和需求数量', stage: 0, tableTitle: '教材选用申报 · 候选与正式结果', tableNote: '教学任务、教材、需求人数、申报人和审核状态同屏核对' },
   review: { title: '审核备案', subtitle: '审核后才能进入征订流程', object: '教材审核批次', primary: '审核选用申报', role: '教材选用审核岗', nextRole: '征订管理岗', source: '已提交教材选用', sourceNote: '审核批次只纳入当前学期已提交选用；推进前显示批次编号和当前正式状态。', whyMe: '选用申报已提交并进入本岗位审核队列', stage: 1, tableTitle: '责任队列', tableNote: '打开批次查看来源，确认对象后推进或退回' },
   order: { title: '征订到货', subtitle: '到货后继续进入发放和签收，不止于采购', object: '教材征订批次', primary: '生成征订 / 补订', role: '教材征订 / 到货岗', nextRole: '教材发放签收岗', source: '已备案教材选用', sourceNote: '征订批次汇总已备案选用；到货按教材明细累计登记，不能超过征订量。', whyMe: '教材选用已备案并等待征订或到货验收', stage: 2, tableTitle: '征订与到货 · 数量与来源', tableNote: '批次状态、到货明细和发放入口按正式记录衔接' },
   distribution: { title: '发放签收', subtitle: '按班级名单逐条登记签收并形成费用', object: '教材发放批次', primary: '', role: '教材发放签收岗', nextRole: '教材费用核对岗', source: '已到货教材征订批次', sourceNote: '发放名单来自正式班级和学生；签收后按征订价格快照生成费用。', whyMe: '教材已到货并已生成班级发放名单', stage: 3, tableTitle: '发放签收批次', tableNote: '待签收、已签收、退领和未结费用分别显示' },
-  fee: { title: '费用台账', subtitle: '费用来源于发放事实，不直接覆盖库存', object: '教材费用', primary: '核对费用流水', role: '教材费用核对岗', nextRole: '费用复核与授权查阅', source: '教材发放签收记录', sourceNote: '费用按发放记录与征订价格快照形成；收款和减免不会直接改写库存事实。', whyMe: '签收已形成应收或存在未结费用', stage: 4, tableTitle: '教材费用', tableNote: '学生标识、教材、应收、实收和费用状态同口径核对' },
+  fee: { title: '费用台账', subtitle: '费用来源于发放记录，不直接覆盖库存', object: '教材费用', primary: '核对费用流水', role: '教材费用核对岗', nextRole: '费用复核与授权查阅', source: '教材发放签收记录', sourceNote: '费用按发放记录与征订价格形成；收款和减免不会直接改写库存。', whyMe: '签收已形成应收或存在未结费用', stage: 4, tableTitle: '教材费用', tableNote: '学生标识、教材、应收、实收和费用状态同口径核对' },
   stock: { title: '教材库存', subtitle: '库存不足和历史保留分别处理', object: '教材库存', primary: '刷新库存流水', role: '教材库存管理岗', nextRole: '发放 / 退补换责任岗', source: '到货、发放占用与正式签收数量', sourceNote: '可用库存为到货量减已签收及待签收占用量；历史记录不因目录变更被覆盖。', whyMe: '需要核对到货、发放与当前可用库存', stage: 4, tableTitle: '教材库存 · 数量与来源', tableNote: '到货、待签收占用、已签收和可用库存分别呈现' },
-  stats: { title: '教材统计', subtitle: '到货、发放、签收不是同一个数量', object: '教材统计', primary: '查看关联办理', role: '教材管理岗', nextRole: '教材选用审核 → 征订到货 → 发放签收岗', source: '教材闭环统计投影', sourceNote: '统计只消费正式业务事实；服务端未提供的周期趋势不使用演示值补齐。', whyMe: '需要从闭环统计定位待处理环节', stage: 4, tableTitle: '同口径明细下钻', tableNote: '从统计返回选用、征订、到货和费用办理' }
+  stats: { title: '教材统计', subtitle: '到货、发放、签收不是同一个数量', object: '教材统计', primary: '查看关联办理', role: '教材管理岗', nextRole: '教材选用审核 → 征订到货 → 发放签收岗', source: '教材闭环统计', sourceNote: '统计只使用正式业务记录；系统未提供的周期趋势，不使用演示数据补齐。', whyMe: '需要从闭环统计定位待处理环节', stage: 4, tableTitle: '同口径明细下钻', tableNote: '从统计返回选用、征订、到货和费用办理' }
 }
 
 export default {
@@ -312,7 +312,7 @@ export default {
       if (this.tab === 'selection') return [{ label: '选用总数', value: this.total, note: '当前数据范围' }, { label: '本页草稿', value: count('DRAFT'), note: '待申报人提交' }, { label: '本页审核中', value: count('SUBMITTED') + count('REVIEWING'), note: '等待审核岗位' }, { label: '本页已备案', value: count('APPROVED') + count('ORDERED'), note: '可进入征订' }]
       if (this.tab === 'review') return [{ label: '审核批次', value: this.total, note: '正式批次总数' }, { label: '本页待办', value: this.rows.filter(row => this.canAdvance(row)).length, note: '当前节点可推进', warning: true }, { label: '本页已备案', value: count('PUBLISHED'), note: '可进入征订' }, { label: '本页已退回', value: count('RETURNED'), note: '返回申报人修订' }]
       if (this.tab === 'order') return [{ label: '征订批次', value: this.total, note: '正式批次总数' }, { label: '本页待提交', value: count('DRAFT'), note: '需提交征订' }, { label: '本页到货中', value: count('ORDERED') + count('PARTIALLY_ARRIVED'), note: '等待到货验收', warning: true }, { label: '本页已到货', value: count('ARRIVED') + count('ARCHIVED'), note: '可进入发放' }]
-      if (this.tab === 'distribution') return [{ label: '发放批次', value: this.total, note: '正式批次总数' }, { label: '本页待签收', value: sum('pendingCount'), note: '学生发放记录', warning: true }, { label: '本页已签收', value: sum('receivedCount'), note: '已形成发放事实' }, { label: '本页未结费用', value: sum('unsettledFeeCount'), note: '转费用岗位处理' }]
+      if (this.tab === 'distribution') return [{ label: '发放批次', value: this.total, note: '正式批次总数' }, { label: '本页待签收', value: sum('pendingCount'), note: '学生发放记录', warning: true }, { label: '本页已签收', value: sum('receivedCount'), note: '已形成发放记录' }, { label: '本页未结费用', value: sum('unsettledFeeCount'), note: '转费用岗位处理' }]
       if (this.tab === 'fee') return [{ label: '费用记录', value: this.total, note: '当前数据范围' }, { label: '本页应收', value: `¥${this.money(this.rows.filter(row => row.status !== 'WAIVED').reduce((total, row) => total + Number(row.amount || 0), 0))}`, note: '已减免金额不计入' }, { label: '本页已收', value: `¥${this.money(sum('paidAmount'))}`, note: '正式收款记录' }, { label: '本页待核对', value: count('UNPAID') + count('PARTIAL'), note: '未收或部分收款', warning: true }]
       if (this.tab === 'stock') return [{ label: '库存品种', value: this.total, note: '有到货或发放记录的教材' }, { label: '账面到货', value: sum('arrivedQty'), note: '以到货流水为准' }, { label: '已签收', value: sum('distributedQty'), note: '正式签收数量' }, { label: '可用库存', value: sum('stockQty'), note: '到货减已签收及待签收占用' }]
       return [{ label: '统计范围', value: '本校全部学期', note: '包含历史记录' }, { label: '选用总数', value: this.stats.selectionTotal || 0, note: '正式选用记录' }, { label: '待处理费用', value: `¥${this.money(this.stats.unpaidAmount)}`, note: '未结不等于欠费结论', warning: true }, { label: '到货率', value: `${Math.round(Number(this.stats.arrivalRate || 0) * 100)}%`, note: `${this.stats.arrivedQty || 0} / ${this.stats.orderQty || 0}` }]

@@ -402,7 +402,7 @@ def publish_draft(
         assert_custom_role_assignable(permissions, allow_legacy_patterns=False)
         _assert_canonical_new_writes(permissions)
         if not permissions:
-            raise AppException("VALIDATION_ERROR", "角色模板至少包含一个具体 TENANT permissionCode")
+            raise AppException("VALIDATION_ERROR", "角色模板至少包含一个具体的学校级权限")
         now = datetime.utcnow()
         digest = _digest(permissions)
         item.publish_status = PUBLISHED

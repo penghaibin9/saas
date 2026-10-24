@@ -1,5 +1,5 @@
 <template>
-  <SystemWorkspaceFrame title="访问排查" subtitle="选择老师、功能与具体对象，查看服务端给出的拒绝原因和判定证据。" :ctx="ctx">
+  <SystemWorkspaceFrame title="访问排查" subtitle="选择老师、功能与具体对象，查看系统给出的拒绝原因和判定依据。" :ctx="ctx">
     <template #actions><button type="button" class="sw-btn" @click="$router.push('/admin/system/iam?surface=diagnostics')">治理概览与高级排查</button></template>
     <div class="sw-inspector-grid">
       <section class="sw-card sw-pad sw-stack">
@@ -39,7 +39,7 @@
             <div class="sw-between"><b>{{ role.roleName }}</b><span class="sw-tag" :class="role.decision?.allowed === true ? 'sw-tag--green' : 'sw-tag--orange'">{{ role.decision?.allowed === true ? '通过' : '未通过' }}</span></div>
             <p>身份权限：{{ role.decision?.iamAllowed === true ? '通过' : '未通过' }} · 数据范围：{{ role.decision?.dataScope || '未取得' }}</p>
             <p class="sw-code">{{ role.decision?.reasonCode }}</p>
-            <details><summary>展开服务端判定证据</summary><pre class="sw-evidence">{{ evidence(role.decision) }}</pre></details>
+            <details><summary>展开判定依据</summary><pre class="sw-evidence">{{ evidence(role.decision) }}</pre></details>
             <button type="button" class="sw-link" @click="$router.push({ path: '/admin/system/roles', query: { roleId: String(role.roleId), tab: 'permissions' } })">核对这个角色的权限 →</button>
           </div>
         </template>
@@ -119,7 +119,7 @@ export default {
       const fingerprint = this.queryKey; const current = this.fence.start('explain')
       const payload = { moduleKey: this.permission.moduleKey, permissionCode: this.permissionCode, scopeTargetType: this.target.type, scopeTargetId: this.target.id, resourceType: this.resource.type, resourceId: this.resource.id }
       this.querying = true; this.result = null; this.queryError = ''; this.stale = false
-      try { const data = wc.unwrap(await schoolIamApi.accessExplain(this.actor.id, payload)); if (!current() || fingerprint !== this.queryKey) return; if (!data || !['ALLOW', 'DENY'].includes(data.finalDecision) || typeof data.allowed !== 'boolean' || (data.allowed !== (data.finalDecision === 'ALLOW'))) throw new Error('服务端判定结果不完整或相互矛盾'); this.result = data }
+      try { const data = wc.unwrap(await schoolIamApi.accessExplain(this.actor.id, payload)); if (!current() || fingerprint !== this.queryKey) return; if (!data || !['ALLOW', 'DENY'].includes(data.finalDecision) || typeof data.allowed !== 'boolean' || (data.allowed !== (data.finalDecision === 'ALLOW'))) throw new Error('判定结果不完整或相互矛盾'); this.result = data }
       catch (error) { if (current()) this.queryError = error.message || '排查失败' }
       finally { if (current()) this.querying = false }
     }

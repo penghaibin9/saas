@@ -1,5 +1,5 @@
 <template>
-  <SystemWorkspaceFrame :title="title" subtitle="下载模板 → 安全扫描 → 核对预检 → 确认导入，结果可回读。"
+  <SystemWorkspaceFrame :title="title" subtitle="下载模板 → 安全扫描 → 核对预检 → 确认导入，结果可重新读取。"
     :ctx="ctx" :watermark="true" :watermark-purpose="title">
     <template #actions>
       <button type="button" class="sw-btn" :disabled="writing" @click="openTasks">数据交换任务</button>
@@ -18,7 +18,7 @@
       <div class="iw-layout">
         <section class="sw-card sw-pad sw-stack" data-testid="identity-import-workspace" :aria-busy="!!state.busy">
           <div class="sw-between"><div><h2>{{ state.review ? '核对本次导入' : state.job ? '当前导入任务' : '准备' + personLabel + '名单' }}</h2>
-            <p class="sw-muted">{{ state.job ? '本页只处理当前身份类型的任务；任务状态以服务端为准。' : '师生名单分开上传，不在浏览器解析或改写表格内容。' }}</p></div>
+            <p class="sw-muted">{{ state.job ? '本页只处理当前身份类型的任务；任务状态以系统为准。' : '师生名单分开上传，不在浏览器解析或改写表格内容。' }}</p></div>
             <span class="sw-tag sw-tag--blue">{{ personLabel }}身份</span>
           </div>
           <div v-if="state.error" class="sw-alert sw-alert--error" role="alert" data-testid="identity-error">
@@ -29,7 +29,7 @@
           <template v-if="!state.job && !routeJobId">
             <div v-if="canUpload" class="iw-dropzone">
               <span class="sw-symbol" aria-hidden="true">↑</span><h3>选择标准 Excel 名单</h3>
-              <p class="sw-muted">使用本页下载的模板。文件登记成功后，还需等待安全扫描和服务端预检。</p>
+              <p class="sw-muted">使用本页下载的模板。文件登记成功后，还需等待安全扫描和预检查。</p>
               <label for="identity-workbook" class="iw-file-label">选择 .xlsx 文件</label>
               <input id="identity-workbook" ref="fileInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 :disabled="!!state.busy" aria-label="选择身份导入文件" @change="selectFile" />
@@ -70,13 +70,13 @@
               <div v-if="!state.errors.loading && !state.errors.error" class="sw-pager"><span>共 {{ state.errors.total }} 条错误 · 第 {{ state.errors.page }} 页</span><div class="sw-row"><button type="button" class="sw-btn" :disabled="state.errors.loading || state.errors.page <= 1" @click="controller.loadErrors(state.errors.page - 1)">上一页错误</button><button type="button" class="sw-btn" :disabled="state.errors.loading || state.errors.page * state.errors.pageSize >= state.errors.total" @click="controller.loadErrors(state.errors.page + 1)">下一页错误</button></div></div>
             </template>
             <section v-if="state.review" class="iw-review sw-stack" data-testid="identity-review">
-              <h3>本次只提交服务端已预检的名单</h3>
+              <h3>本次只提交已预检查的名单</h3>
               <div class="sw-form"><div><small class="sw-muted">任务编号</small><p>#{{ state.job.id }}</p></div><div><small class="sw-muted">核对版本</small><p>{{ state.job.version }}</p></div><div><small class="sw-muted">确认数量</small><p>{{ counts.validRows }} 行 · {{ personLabel }}</p></div><div><small class="sw-muted">错误行</small><p>{{ counts.invalidRows }} 行</p></div></div>
               <p class="sw-muted">提交前再次读取任务。版本、状态或数量变化时，本次确认会暂停，不覆盖他人处理结果。</p>
               <label class="iw-ack"><input v-model="state.acknowledged" type="checkbox" class="sw-check" :disabled="writing" aria-label="我已核对本次导入名单与数量" />我已核对本次名单、身份类型与数量</label>
             </section>
             <section v-if="state.job.status === 'SUCCEEDED'" class="sw-stack" data-testid="identity-receipt">
-              <div class="sw-alert" :class="state.readback ? 'sw-alert--success' : 'sw-alert--warning'"><b>{{ state.readback ? '导入完成，已重新读取服务端结果' : '服务端返回完成，回读仍需核对' }}</b><p>初始凭据不在本页展示、存储或自动下载；请按任务中心的独立下载权限办理。</p></div>
+              <div class="sw-alert" :class="state.readback ? 'sw-alert--success' : 'sw-alert--warning'"><b>{{ state.readback ? '导入完成，已重新读取结果' : '系统返回已完成，仍需重新读取核对' }}</b><p>初始凭据不在本页展示、存储或自动下载；请按任务中心的独立下载权限办理。</p></div>
               <div class="iw-receipt-counts"><div v-for="item in receiptCounts" :key="item.label"><small class="sw-muted">{{ item.label }}</small><h3>{{ countText(item.value) }}</h3></div></div>
             </section>
             <div class="sw-savebar">
@@ -91,7 +91,7 @@
         <aside class="sw-card sw-pad iw-guide">
           <span class="sw-kicker">导入前确认</span><h2>先把问题留在预检阶段</h2>
           <div class="iw-guide-item"><span>1</span><div><h3>使用正确模板</h3><p>{{ kind === 'students' ? '学号、姓名、学院、专业、班级与年级按学生模板填写。学生账号不能用于分配教职工权限。' : '工号、姓名、部门、预设角色与数据范围按教职工模板填写，多个角色的分隔规则以模板为准。' }}</p></div></div>
-          <div class="iw-guide-item"><span>2</span><div><h3>{{ kind === 'students' ? '核对主档与组织冲突' : '核对角色与岗位范围' }}</h3><p>{{ kind === 'students' ? '已有学生主档按后端规则复用；身份或组织冲突先处理，不强行覆盖学籍事实。' : '角色来源与学院、班级范围分别校验。不能凭页面成功提示推断所有业务关系已配置。' }}</p></div></div>
+          <div class="iw-guide-item"><span>2</span><div><h3>{{ kind === 'students' ? '核对主档与组织冲突' : '核对角色与岗位范围' }}</h3><p>{{ kind === 'students' ? '已有的学生主档按规则复用；身份或组织冲突先处理，不强行覆盖学籍信息。' : '角色来源与学院、班级范围分别校验。不能凭页面成功提示推断所有业务关系已配置。' }}</p></div></div>
           <div class="iw-guide-item"><span>3</span><div><h3>凭据单独受控下载</h3><p>原文件、错误与初始凭据回执保留在任务中心。任务可见不等于有权下载凭据。</p></div></div>
           <div class="iw-guide-foot"><b>任务可以继续办理</b><p>登记成功后本页链接会保留任务编号。刷新或重新打开链接，只读取该任务，不自动重新上传或确认。</p></div>
         </aside>
@@ -132,7 +132,7 @@ export default {
     confirmable() { return confirmableJob(this.state.job) },
     receiptCounts() { return importReceiptCounts(this.state.job, this.kind) },
     phoneCounts() { return importPhoneCounts(this.state.job) },
-    steps() { return ['准备文件', '安全扫描', '服务端预检', '确认导入', '结果回执'] },
+    steps() { return ['准备文件', '安全扫描', '预检查', '确认导入', '结果回执'] },
     stage() { const status = this.state.job?.status; return status === 'SUCCEEDED' ? 4 : this.state.review || status === 'CONFIRMING' ? 3 : ['SCANNING', 'WORKER_CLAIMED'].includes(status) ? 1 : status ? 2 : 0 }
   },
   watch: {

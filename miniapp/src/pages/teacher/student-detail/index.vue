@@ -65,7 +65,7 @@
           <view class="sd__sensitive">
             <view class="flex-1">
               <text class="t-md">处分记录</text>
-              <text class="sd__section-summary">{{ s.sensitive.discipline.exists ? statusText(s.sensitive.discipline.status) : '暂无生效处分投影' }} · 不展示事由与文书正文</text>
+              <text class="sd__section-summary">{{ s.sensitive.discipline.exists ? statusText(s.sensitive.discipline.status) : '暂无生效的处分记录' }} · 不展示事由与文书正文</text>
             </view>
           </view>
         </view>

@@ -13,7 +13,7 @@
       <div>
         <span>当前工作区</span>
         <strong>{{ batchStore.selectedBatchName || '请先选择毕设批次' }} · {{ currentStatusLabel }}</strong>
-        <small>共 {{ total }} 条申请；通过后由服务端迁移真实选题关系，驳回必须保留理由。</small>
+        <small>共 \1 条申请；通过后由系统迁移真实的选题关系，驳回必须保留理由。</small>
       </div>
       <div class="tc-command__next">
         <span>下一步</span>
@@ -39,7 +39,7 @@
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="当前视图暂无变更申请" description="学生获批题目后如需换题，须发起课题信息变更申请；审核通过后才由服务端迁移真实选题关系。" />
+      <EmptyState v-else-if="!rows.length" title="当前视图暂无变更申请" description="学生获批题目后如需换题，须发起课题信息变更申请；审核通过后才由系统迁移真实的选题关系。" />
       <DataTable
         v-else
         :columns="columns"
@@ -323,7 +323,7 @@ export default {
       this.confirm = {
         visible: true,
         title: '通过变更申请',
-        message: `确认通过「${row.studentName}」由「${row.oldTopicTitle}」变更至「${row.newTopicTitle}」？服务端将迁移真实选题关系并写入审计。`,
+        message: `确认通过「${row.studentName}」由「${row.oldTopicTitle}」变更至「${row.newTopicTitle}」？系统将迁移真实的选题关系并写入审计。`,
         type: 'primary',
         confirmText: '通过',
         requireReason: false,
@@ -379,12 +379,12 @@ export default {
         this.actionReceipt = {
           title: `${snapshot.studentName} · ${statusLabel}`,
           result: snapshot.action === 'APPROVE'
-            ? `服务器已重新读取申请状态；选题由「${snapshot.oldTopicTitle}」迁移至「${snapshot.newTopicTitle}」的结果以服务端真实关系为准。`
+            ? `已重新读取申请状态；选题由「${snapshot.oldTopicTitle}」迁移至「${snapshot.newTopicTitle}」的结果，以系统中的真实关系为准。`
             : `服务器已保留原选题关系；驳回理由：${snapshot.reason}`,
           next: snapshot.action === 'APPROVE' ? '下一步可进入题目库或学生档案核对最新选题关系。' : '下一步由学生按驳回原因调整后重新申请。'
         }
         this.confirm.visible = false
-        toast.success('已处理并完成服务器回读')
+        toast.success('已处理并重新读取结果')
       } catch (error) {
         toast.error(error?.message || '题目调整审核失败')
       } finally {

@@ -32,7 +32,7 @@ function toErr(e) {
   // e.biz=true 表示后端返回的业务错误码（403/409/422 等），透出其 message；否则归为接口不可用。
   // bizCode（如 APPROVAL_VERSION_CONFLICT）一并透出，供页面识别版本冲突并刷新。
   if (e?.biz) return { code: e.code || 1, bizCode: e.bizCode || '', data: null, message: e.message }
-  return { code: e?.code || 503001, bizCode: e?.bizCode || '', data: null, message: e?.message || '真实接口不可用' }
+  return { code: e?.code || 503001, bizCode: e?.bizCode || '', data: null, message: e?.message || '暂时无法连接，请稍后重试' }
 }
 
 async function callStrict(fn) {

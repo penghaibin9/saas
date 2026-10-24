@@ -194,7 +194,7 @@ function createRequestId(prefix) {
 const greenRequestId = ref(createRequestId('orientation-green'))
 
 const arrivalHold = computed(() => ({
-  DEFERRED: { title: '已延期报到', description: '请与学校确认新的到校时间。已有预留床位继续保留，实际安排以住宿信息为准。' },
+  DEFERRED: { title: '已延期报到', description: '请与学校确认新的到校时间。已预留的床位继续保留，实际安排以住宿信息为准。' },
   NO_SHOW: { title: '已登记未到校', description: '原预留床位已释放。如仍需入学，请联系学校恢复报到并重新安排住宿。' },
   CANCELLED: { title: '已取消入学', description: '本次迎新办理已停止，原预留床位已释放。如登记有误，请联系学校核实。' },
 })[my.value.stage] || null)

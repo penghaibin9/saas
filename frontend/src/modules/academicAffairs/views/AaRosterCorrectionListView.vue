@@ -31,13 +31,13 @@
         </section>
 
         <ol class="aa-stage-rail" aria-label="学籍信息更正办理阶段">
-          <li class="is-complete"><span>✓</span><div><strong>权威学生主档</strong><small>上游事实可回查</small></div></li>
-          <li class="is-complete"><span>✓</span><div><strong>注册与异动</strong><small>历史事实可回查</small></div></li>
+          <li class="is-complete"><span>✓</span><div><strong>权威学生主档</strong><small>来源数据可追溯</small></div></li>
+          <li class="is-complete"><span>✓</span><div><strong>注册与异动</strong><small>历史记录可回查</small></div></li>
           <li class="is-current"><span>3</span><div><strong>正式身份</strong><small>当前设计视角</small></div></li>
           <li><span>4</span><div><strong>历史档案</strong><small>按真实状态解锁</small></div></li>
         </ol>
 
-        <AppInlineAlert type="info" description="申请只记录拟更正内容，不先改正式事实；按当前审核节点处理，已归档场景进入受控纠错。" />
+        <AppInlineAlert type="info" description="申请只记录拟更正的内容，不先改正式记录；按当前审核环节处理，已归档的情况进入受控纠错。" />
 
         <div class="aa-correction-layout">
           <aside class="aa-responsibility-queue" aria-label="学籍信息更正责任队列">
@@ -86,7 +86,7 @@
                 </template>
                 <AppButton variant="ghost" @click="goRoster(selectedRow)">查看学籍档案</AppButton>
               </div>
-              <p class="mp-note">审核命令返回后重新读取正式更正记录；最终事实以学生主档为准。</p>
+              <p class="mp-note">审核后会重新读取正式更正记录；最终结果以学生主档为准。</p>
             </section>
           </main>
         </div>

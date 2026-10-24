@@ -132,7 +132,7 @@
         <div class="review-head">
           <div>
             <h3>受控协助工作区 · 工单 #{{ supportWorkspace.session.ticketId }}</h3>
-            <p class="hint">仅展示本次会话批准的只读数据；会话到期或终止后后端立即拒绝访问。</p>
+            <p class="hint">仅显示本次会话批准的只读数据；会话到期或终止后，系统立即拒绝访问。</p>
           </div>
           <AppButton @click="closeSupportWorkspace">关闭工作区</AppButton>
         </div>
@@ -148,7 +148,7 @@
 
           <div v-if="supportHasScope('tenant.audit.read')" class="support-audit">
             <div class="support-audit__head">
-              <div><h3>学校审计摘要</h3><p class="hint">属于更敏感的支持数据，必须使用短时二次认证凭证；凭证只保存在本页内存并按服务端有效期主动清除。</p></div>
+              <div><h3>学校审计摘要</h3><p class="hint">属于更敏感的支持数据，必须使用短时二次认证凭证；凭证只保存在本页内存中，并按有效期主动清除。</p></div>
               <div v-if="!supportWorkspace.mfaToken" class="support-mfa">
                 <input v-model.trim="supportWorkspace.mfaCode" inputmode="numeric" maxlength="6" placeholder="6 位动态码" />
                 <AppButton variant="primary" :loading="saving === 'support-mfa'" @click="stepUpAndLoadAudit">二次认证并读取</AppButton>
@@ -173,7 +173,7 @@
         <h3>访问复核</h3>
         <div v-if="selectedReview" class="review-editor">
           <div class="review-head">
-            <div><strong>{{ selectedReview.name || selectedReview.id }}</strong><p class="hint">每个冻结项必须明确保留或撤销；缺项或多项后端都会拒绝关闭。</p></div>
+            <div><strong>{{ selectedReview.name || selectedReview.id }}</strong><p class="hint">每个冻结项必须明确保留或撤销；缺项或多项，系统都会拒绝关闭。</p></div>
             <AppButton @click="selectedReview = null">收起</AppButton>
           </div>
           <div v-for="item in selectedReview.items || []" :key="item.itemKey" class="review-item">
@@ -399,7 +399,7 @@ export default {
       const res = await platformPamApi.closeReview(this.selectedReview.id, this.selectedReview.version, this.reviewCloseReason, decisions)
       this.saving = ''
       if (res.code !== 0) return toast.error(res.message)
-      this.selectedReview = null; await this.load(); toast.success('访问复核已关闭并原子执行决定')
+      this.selectedReview = null; await this.load(); toast.success('访问复核已关闭，决定已同时执行')
     }
   }
 }

@@ -850,7 +850,7 @@ def mark_fee_clearance_one(batch_id, user, student_no=None, student_id=None,
                 raise not_found("学生不存在")
             sno = s.student_no or ""
     if not sno:
-        raise AppException("BAD_REQUEST", "studentNo 或 studentId 必填")
+        raise AppException("BAD_REQUEST", "学号或学生编号必填")
     note = (evidence or "").strip() or "人工勾选过渡（财务系统未对接）"
     return import_fee_clearance(batch_id, user, [
         {"studentNo": sno, "status": st, "evidence": note[:200]}

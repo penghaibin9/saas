@@ -127,7 +127,7 @@ test.describe.serial('V9.2 U4 · process WorkContext production evidence', () =>
     await page.goto(url.toString())
     await expectProcessContext(page, target, fixture.batchId)
     await dismissGuide(page, { waitForArrival: true })
-    await expect(page.locator('body')).not.toContainText(/真实接口不可用|权限上下文加载失败/)
+    await expect(page.locator('body')).not.toContainText(/暂时无法连接，请稍后重试|权限上下文加载失败/)
 
     // M3 E4: deep-link target #127 must survive a real browser refresh exactly.
     await page.reload()

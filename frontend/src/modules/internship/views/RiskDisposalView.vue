@@ -488,7 +488,7 @@ export default {
         RESOLVE: { title: '办结投诉', content: '填写办结结论（不少于 5 字）。', danger: false, confirmText: '办结', reasonLabel: '结论（≥5字）', requireReason: true },
         REJECT: { title: '判定不成立', content: '填写不成立理由（不少于 5 字）。', danger: true, confirmText: '不成立', reasonLabel: '理由（≥5字）', requireReason: true },
         CLOSE: { title: '关闭归档', content: '关闭该投诉并归档。', danger: false, confirmText: '关闭', reasonLabel: '', requireReason: false },
-        FOLLOWUP: { title: '投诉回访', content: '记录对投诉人的真实回访结果，完成关闭前的跟进事实。', danger: false, confirmText: '保存回访', reasonLabel: '回访结果', requireReason: true },
+        FOLLOWUP: { title: '投诉回访', content: '记录对投诉人的真实回访结果，完成关闭前的跟进情况。', danger: false, confirmText: '保存回访', reasonLabel: '回访结果', requireReason: true },
         TO_RISK: { title: '转风险单', content: '将本投诉转为实习风险单，保留双向链接。', danger: true, confirmText: '转风险', reasonLabel: '', requireReason: false }
       }[action]
       this.pending = { id: d.id, kind: action, mode: 'complaint', expectedVersion: d.version }
@@ -531,7 +531,7 @@ export default {
         actionLabel: this.cd.confirmText || '处置完成',
         objectLabel: p.mode === 'complaint' ? `投诉 ${this.detail?.complaintNo || p.id}` : `风险 ${this.detail?.riskCode || p.id}`,
         status: data.status, statusLabel: data.statusLabel || data.status || '已提交',
-        auditText: '业务事实与审计 outbox 已在同一事务提交',
+        auditText: '业务记录与审计记录已在同一事务提交',
         nextStep: data.nextStep || (data.status === 'CLOSED' ? '生成监管证据包或处理下一条' : '继续处理当前责任链')
       }
       toast.success('操作成功，已写审计')

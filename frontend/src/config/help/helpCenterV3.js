@@ -43,7 +43,7 @@ export const HELP_V3_QUICK_QUESTIONS = Object.freeze([
 export const HELP_V3_CORE_JOURNEYS = Object.freeze([
   {
     key: 'academic',
-    title: '教务完整事实链',
+    title: '教务完整流程',
     description: '按正式数据依赖从学籍一路走到毕业资格：学籍 → 培养方案/课程 → 教学任务 → 排课 → 选课 → 考务 → 成绩 → 学分/GPA → 补考重修 → 毕业资格。每个节点同时解释角色权限模板、数据范围和必要业务关系。',
     helpIds: [
       'aa-card-status-change', 'aa-v3-program-course', 'aa-v3-teaching-task', 'aa-v3-schedule',
@@ -54,7 +54,7 @@ export const HELP_V3_CORE_JOURNEYS = Object.freeze([
   {
     key: 'internship',
     title: '岗位实习完整办理链',
-    description: '按正式实习事实推进：批次 → 学生申请/正式去向 → 三方协议 → 岗前合规 → 周报/指导巡访 → 风险与事故 → 调岗退岗 → 企业评价 → 学生鉴定 → 综合成绩 → 实习归档。每个节点同时解释 permissionCode、数据范围、稳定指导关系/本人关系和当前状态。',
+    description: '按正式实习记录推进：批次 → 学生申请或正式去向 → 三方协议 → 岗前合规 → 周报与指导巡访 → 风险与事故 → 调岗退岗 → 企业评价 → 学生鉴定 → 综合成绩 → 实习归档。每个环节同时说明所需权限、数据范围、指导关系或本人关系，以及当前状态。',
     helpIds: [
       'in-v3-batch-lifecycle', 'in-v2-student-application', 'in-v2-agreement', 'in-v3-onboard-compliance',
       'in-v2-teacher-process', 'in-v3-risk-incident', 'in-v2-student-change', 'in-v2-enterprise-eval',
@@ -63,8 +63,8 @@ export const HELP_V3_CORE_JOURNEYS = Object.freeze([
   },
   {
     key: 'graduation',
-    title: '毕业设计完整事实链',
-    description: '按真实毕设证据推进：批次/规则 → 学生与导师 → 选题 → 任务书 → 开题 → 指导/中期整改 → 成果定稿 → 查重 → 独立评阅 → 答辩 → 成绩/申诉 → 归档。每个节点同时解释 permissionCode、学院/专业数据范围、稳定导师/评阅/答辩席位关系和当前状态；备案后证据进入不可变终态。',
+    title: '毕业设计完整流程',
+    description: '按真实毕设材料推进：批次与规则 → 学生与导师 → 选题 → 任务书 → 开题 → 指导与中期整改 → 成果定稿 → 查重 → 独立评阅 → 答辩 → 成绩与申诉 → 归档。每个环节同时说明所需权限、学院和专业数据范围、导师、评阅、答辩席位关系以及当前状态；备案后材料不可再修改。',
     helpIds: [
       'gd-v3-batch-setup', 'gd-v3-student-mentor', 'gd-v2-topic-selection', 'gd-v3-taskbook',
       'gd-v2-proposal', 'gd-v3-guidance-midterm', 'gd-v3-final-submission', 'gd-v3-plagiarism',

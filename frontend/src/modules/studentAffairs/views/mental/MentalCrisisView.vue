@@ -3,7 +3,7 @@
     title="心理危机升级"
     subtitle="危机升级与风险转办"
     role-name="心理老师 / 授权辅导员 / 学工处(专项授权)"
-    data-scope-name="PSY_STUDENT 逐生授权范围"
+    data-scope-name="心理逐生授权范围"
     watermark-purpose="心理危机升级处理"
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载心理危机记录..." @retry="load" @back="$router.push('/admin/student-affairs/dashboard')">

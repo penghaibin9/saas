@@ -82,7 +82,7 @@
       <ErrorState v-if="rulesError" :description="rulesError" @retry="loadRules" />
       <LoadingState v-else-if="rulesLoading" />
       <template v-else>
-        <AppInlineAlert type="info" description="调整后立即生效于下次扫描；仅教务处可配置（academicAffairs.warning.rule.manage）。" />
+        <AppInlineAlert type="info" description="调整后立即在下次扫描时生效；仅教务处可配置。" />
         <div v-for="r in rules" :key="r.key" class="aawc-rule-row">
           <div class="aawc-rule-info">
             <div class="aawc-rule-label">{{ r.label }}</div>
@@ -536,32 +536,32 @@ export default {
       if (!this.assignForm.ownerId || !this.assignForm.ownerName) { toast.error('请选择跟进教师'); return }
       const frozen={ownerId:String(this.assignForm.ownerId),ownerName:this.assignForm.ownerName}
       const ok=await this.performWarningAction('assign',()=>api.assign(this.detailId,frozen.ownerId,frozen.ownerName),fresh=>fresh.warning.owner===frozen.ownerName,{title:'跟进责任已指派',result:frozen.ownerName,next:'跟进人记录干预并填写下一步计划'})
-      if(ok){toast.success('已回读当前跟进人');this.assignVisible=false;this.assignForm={ownerId:'',ownerName:''};this.loadFollowList()}
+      if(ok){toast.success('已重新读取当前跟进人');this.assignVisible=false;this.assignForm={ownerId:'',ownerName:''};this.loadFollowList()}
     },
     async submitFollowup() {
       if (!this.followForm.content || this.followForm.content.trim().length < 5) { toast.error('跟进内容不少于5字'); return }
       const frozen={way:this.followForm.way,content:this.followForm.content.trim(),result:this.followForm.result||'',nextPlan:this.followForm.nextPlan||''};let interventionId=''
       const ok=await this.performWarningAction('followup',async()=>{const res=await api.addIntervention(this.detailId,frozen);interventionId=String(res?.data?.interventionId||'');return res},fresh=>!!interventionId&&fresh.interventions.some(item=>String(item.id)===interventionId&&item.way===frozen.way&&item.content===frozen.content&&String(item.result||'')===frozen.result&&String(item.nextPlan||'')===frozen.nextPlan),{title:'预警跟进已记录',result:this.wayLabel(frozen.way),next:frozen.nextPlan||'继续观察证据变化并按计划复查'})
-      if(ok){toast.success('已回读正式跟进记录');this.followVisible=false;this.followForm={way:'TALK',content:'',result:'',nextPlan:''};this.loadFollowList()}
+      if(ok){toast.success('已重新读取正式跟进记录');this.followVisible=false;this.followForm={way:'TALK',content:'',result:'',nextPlan:''};this.loadFollowList()}
     },
     async remind() {
       const before=Number(this.detail?.warning?.remindCount);let notified=null
       const ok=await this.performWarningAction('remind',async()=>{const res=await api.remind(this.detailId);notified=Number.isFinite(Number(res?.data?.notified))?Number(res.data.notified):null;return res},fresh=>Number.isFinite(before)&&Number(fresh.warning.remindCount)>before,{title:'预警提醒已发送',result:notified==null?'通知对象数量待核对':`${notified} 个通知对象`,next:'通知送达和阅读状态请在通知台账继续核对'})
-      if(ok){toast.success('已回读提醒计数');this.loadFollowList()}
+      if(ok){toast.success('已重新读取提醒次数');this.loadFollowList()}
     },
     async submitEscalate({ reason }) {
       const ok=await this.performWarningAction('escalate',()=>api.escalate(this.detailId,reason),fresh=>fresh.warning.status==='ESCALATED'&&fresh.warning.level==='HIGH',{title:'预警已升级',result:'当前状态：已升级',next:'升级原因需在审计记录中继续核对'})
-      if(ok){toast.success('已回读升级状态');this.escalateVisible=false;this.loadFollowList()}
+      if(ok){toast.success('已重新读取升级状态');this.escalateVisible=false;this.loadFollowList()}
     },
     async submitClose({ reason }) {
       const frozen=String(reason||'')
-      const ok=await this.performWarningAction('close',()=>api.close(this.detailId,frozen),fresh=>fresh.warning.status==='CLOSED'&&String(fresh.warning.closeResult||'')===frozen,{title:'预警已关闭',result:'当前状态：已关闭',next:'关闭说明已按本次内容回读'})
-      if(ok){toast.success('已回读关闭状态');this.closeVisible=false;this.loadFollowList()}
+      const ok=await this.performWarningAction('close',()=>api.close(this.detailId,frozen),fresh=>fresh.warning.status==='CLOSED'&&String(fresh.warning.closeResult||'')===frozen,{title:'预警已关闭',result:'当前状态：已关闭',next:'关闭说明已按本次内容重新读取'})
+      if(ok){toast.success('已重新读取关闭状态');this.closeVisible=false;this.loadFollowList()}
     },
     async submitVoid({ reason }) {
       const frozen=String(reason||'')
-      const ok=await this.performWarningAction('void',()=>api.void(this.detailId,frozen),fresh=>fresh.warning.recordStatus==='VOIDED'&&String(fresh.warning.voidReason||'')===frozen,{title:'误报预警已作废',result:'当前记录：已作废',next:'误报说明已按本次内容回读'})
-      if(ok){toast.success('已回读作废状态');this.voidVisible=false;this.loadFollowList()}
+      const ok=await this.performWarningAction('void',()=>api.void(this.detailId,frozen),fresh=>fresh.warning.recordStatus==='VOIDED'&&String(fresh.warning.voidReason||'')===frozen,{title:'误报预警已作废',result:'当前记录：已作废',next:'误报说明已按本次内容重新读取'})
+      if(ok){toast.success('已重新读取作废状态');this.voidVisible=false;this.loadFollowList()}
     }
   }
 }

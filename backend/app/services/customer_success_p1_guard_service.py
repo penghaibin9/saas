@@ -58,11 +58,11 @@ def _lock_row(db, model, row_id: int, label: str):
 
 def _require_version(row, expected_version) -> int:
     if expected_version is None:
-        raise AppException("VALIDATION_ERROR", "状态变更必须提供 expectedVersion")
+        raise AppException("VALIDATION_ERROR", "状态变更必须提供数据版本")
     try:
         expected = int(expected_version)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from None
+        raise AppException("VALIDATION_ERROR", "版本必须是整数") from None
     current = int(row.version or 0)
     if current != expected:
         raise AppException(

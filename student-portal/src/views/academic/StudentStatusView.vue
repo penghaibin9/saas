@@ -20,7 +20,7 @@
         <div class="grid2">
           <section class="card"><header class="card-head"><h2>本人当前学籍</h2></header><div class="card-body">
             <div class="row"><div class="student-avatar">{{ (status.realName || status.studentName || '本').slice(0,1) }}</div><div><h2>{{ status.realName || status.studentName || '本人' }}</h2><small>学号 {{ status.studentNo || '未提供' }}</small></div><span class="grow"></span><span class="tag" :class="studentStatusTone(status.studentStatus || status.status) === 'success' ? 'green' : 'amber'">{{ studentStatusText(status.studentStatus || status.status) }}</span></div>
-            <dl class="definition"><dt>学院</dt><dd>{{ status.collegeName || '未提供' }}</dd><dt>专业</dt><dd>{{ status.majorName || '未提供' }}</dd><dt>行政班</dt><dd>{{ status.className || '未提供' }}</dd><dt>入学年级</dt><dd>{{ status.grade || status.enrollmentYear || '未提供' }}</dd><dt>当前事实</dt><dd>来源于学校权威学籍记录</dd></dl>
+            <dl class="definition"><dt>学院</dt><dd>{{ status.collegeName || '未提供' }}</dd><dt>专业</dt><dd>{{ status.majorName || '未提供' }}</dd><dt>行政班</dt><dd>{{ status.className || '未提供' }}</dd><dt>入学年级</dt><dd>{{ status.grade || status.enrollmentYear || '未提供' }}</dd><dt>当前情况</dt><dd>来源于学校权威学籍记录</dd></dl>
             <footer class="form-foot"><button class="btn primary" :disabled="!!status.activeChange" @click="applying = true">发起学籍异动</button></footer>
           </div></section>
           <section class="card"><header class="card-head"><h2>历史与在途申请</h2></header><div class="card-body">
@@ -140,7 +140,7 @@ function syncReceiptFromFormal() {
   const formal = records.value.find(row => exactPositiveDecimalId(row.changeId || row.id) === receiptChangeId.value)
   if (!formal) return false
   receiptTone.value = ['REJECTED', 'CANCELLED'].includes(String(formal.status || '').toUpperCase()) ? 'danger' : 'success'
-  receipt.value = academicReceipt({ title: '学籍异动正式状态已更新', object: changeTypeText(formal.changeType), status: changeStatusText(formal.status), operatedAt: formal.effectiveDate || formal.createdAt || formal.submittedAt, next: formal.status === 'EFFECTIVE' ? '当前学籍已按学校正式事实更新。' : '请继续在本页跟踪学校办理结果。', relatedTo: '/academic/registration', relatedLabel: '查看学期注册' })
+  receipt.value = academicReceipt({ title: '学籍异动正式状态已更新', object: changeTypeText(formal.changeType), status: changeStatusText(formal.status), operatedAt: formal.effectiveDate || formal.createdAt || formal.submittedAt, next: formal.status === 'EFFECTIVE' ? '当前学籍已按学校正式记录更新。' : '请继续在本页跟踪学校办理结果。', relatedTo: '/academic/registration', relatedLabel: '查看学期注册' })
   return true
 }
 function resolvePendingStatus() {
@@ -195,7 +195,7 @@ async function submit() {
     if (kind === 'forbidden') { clearSensitive(e); return }
     if (kind !== 'network') { pendingStatusReference.value = null; uncertainCommandKey.value = '' }
     receiptTone.value = 'waiting'
-    receipt.value = academicReceipt({ title: kind === 'conflict' ? '学籍事实已变化' : kind === 'network' ? '申请结果待确认' : '申请未提交', object: command.object, status: kind === 'network' ? '待服务器记录确认' : '未完成', next: academicErrorMessage(e, kind === 'conflict' ? '已保留填写内容，请重新核对当前事实。' : '请核对填写内容后重试。') })
+    receipt.value = academicReceipt({ title: kind === 'conflict' ? '学籍情况已变化' : kind === 'network' ? '申请结果待确认' : '申请未提交', object: command.object, status: kind === 'network' ? '待服务器记录确认' : '未完成', next: academicErrorMessage(e, kind === 'conflict' ? '已保留填写内容，请重新核对当前情况。' : '请核对填写内容后重试。') })
 
     if (kind === 'network' || kind === 'conflict') {
       await load()

@@ -133,7 +133,7 @@ function reconcilePersistentCommands() {
       receipt.value = academicReceipt({ title: `原${type === 'retake' ? '重修报名' : '免修申请'}已通过正式记录确认`, object: formal.courseName || '原课程', status: recordStatusText(formal), operatedAt: formal.createdAt || formal.submittedAt, next: '请继续核对学校后续处理。' })
     } else {
       receiptTone.value = 'waiting'
-      receipt.value = academicReceipt({ title: `原${type === 'retake' ? '重修报名' : '免修申请'}结果待确认`, object: formal?.courseName || '原课程', status: !reference.ackId ? '原提交未取得服务端回执编号' : formal && formalSource === reference.objectId ? '正式记录已读到，但本地待确认引用未能安全清理' : formal ? '正式记录缺少原课程对象，暂不能完成归因' : '尚未读取到原回执对应的本人记录', next: '本页只会刷新本人正式记录，不会自动再次提交。' })
+      receipt.value = academicReceipt({ title: `原${type === 'retake' ? '重修报名' : '免修申请'}结果待确认`, object: formal?.courseName || '原课程', status: !reference.ackId ? '原提交未取得回执编号' : formal && formalSource === reference.objectId ? '正式记录已读到，但本地待确认引用未能安全清理' : formal ? '正式记录缺少原课程对象，暂不能完成归因' : '尚未读取到原回执对应的本人记录', next: '本页只会刷新本人正式记录，不会自动再次提交。' })
     }
   }
   uncertainKeys.value = guard.pendingCommands().filter((item) => ['APPLY_RETAKE', 'APPLY_EXEMPTION'].includes(item.action)).map((item) => `${item.action === 'APPLY_RETAKE' ? 'retake' : 'exemption'}:${item.objectId}`)
@@ -252,7 +252,7 @@ async function handleActionError(e, command, action, persistent) {
   const kind = studentAcademicWriteErrorKind(e)
   if (!['network', 'forbidden', 'conflict'].includes(kind)) guard.completePersistentCommand(persistent)
   if (kind === 'network' || kind === 'conflict') uncertainKeys.value = [...new Set([...uncertainKeys.value, command.key])]
-  if (kind === 'network' || kind === 'conflict') { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'network' ? `${action}结果待确认` : '课程事实已变化', object: command.object || command.courseName, status: '待服务器记录确认', next: academicErrorMessage(e, '请重新核对。') }); await load() }
+  if (kind === 'network' || kind === 'conflict') { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'network' ? `${action}结果待确认` : '课程情况已变化', object: command.object || command.courseName, status: '待服务器记录确认', next: academicErrorMessage(e, '请重新核对。') }); await load() }
   else ui.notify(academicErrorMessage(e, `${action}失败`))
 }
 

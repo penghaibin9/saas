@@ -49,7 +49,7 @@
                   disabled-reason="编辑岗位时不可更换所属企业"
                   placeholder="输入企业名称搜索"
                   search-placeholder="按企业名称搜索"
-                  data-scope-hint="仅合作企业 · 黑名单/非合作中企业上架时由后端拦截"
+                  data-scope-hint="仅合作企业 · 黑名单、非合作中的企业上架时会被系统拦截"
                   @update:model-value="onCompanyChange"
                 />
               </AppFormItem>
@@ -92,7 +92,7 @@
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">打卡地点与电子围栏</span>
-            <span class="pf-aside">学生主动打卡时仅采集一次定位 · GCJ-02</span>
+            <span class="pf-aside">学生主动打卡时仅采集一次定位</span>
           </div>
           <div class="mp-card__body">
             <AppInlineAlert

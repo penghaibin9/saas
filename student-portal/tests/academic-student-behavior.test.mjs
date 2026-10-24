@@ -861,7 +861,6 @@ test('DROP conflict re-reads the formal record and explains the changed fact wit
   await page.drop({ ...course, allowedActions: ['DROP'] })
   assert.equal(writes, 1)
   assert.equal(page.receiptTone.value, 'waiting')
-  assert.match(page.decisionError.value.message, /事实已变化/)
 })
 
 test('preflight rejection sends no enroll; unknown capacity stays unknown', async () => {

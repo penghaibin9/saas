@@ -217,7 +217,7 @@ export default {
     doReturn(x, initial = '') { this.promptText({ title: '退回申请人修改', placeholder: '请明确填写需要修改的内容（≥5字）', initial, required: true, submit: (reason) => this.run(() => affairsContractApi.returnLeave(x.id, reason, x.version), '已退回申请人修改', '退回', () => this.doReturn(x, reason), x.id) }) },
     doCancelConfirm(x, initial = '') {
       this.promptText({ title: '确认销假', placeholder: '可填写备注（可选）', initial, submit: (note) => {
-        uni.showModal({ title: '确认学生已返校', content: `${x.studentName || '该学生'}的销假将被确认并办结，请确认返校事实已核实。`, confirmText: '确认销假', success: (r) => { if (r.confirm) this.run(() => affairsContractApi.confirmCancelLeave(x.id, 'CONFIRM', { note }, x.version), '已确认销假', '销假确认', () => this.doCancelConfirm(x, note)) } })
+        uni.showModal({ title: '确认学生已返校', content: `${x.studentName || '该学生'}的销假将被确认并办结，请确认返校情况已核实。`, confirmText: '确认销假', success: (r) => { if (r.confirm) this.run(() => affairsContractApi.confirmCancelLeave(x.id, 'CONFIRM', { note }, x.version), '已确认销假', '销假确认', () => this.doCancelConfirm(x, note)) } })
       } })
     },
     doCancelReturn(x, initial = '') { this.promptText({ title: '销假退回', placeholder: '请填写退回原因（≥5字）', initial, required: true, submit: (reason) => this.run(() => affairsContractApi.confirmCancelLeave(x.id, 'RETURN', { reason }, x.version), '销假申请已退回', '销假退回', () => this.doCancelReturn(x, reason)) }) },

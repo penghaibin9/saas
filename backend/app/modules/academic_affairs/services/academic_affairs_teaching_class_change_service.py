@@ -276,7 +276,7 @@ def create_manual_roster_version(user, teaching_class_id: int, student_ids, reas
             source_type="MANUAL", source_id=None, reason=reason_text,
         )
         if not created:
-            raise AppException("DATA_CONFLICT", "当前正式名单版本未发生变化", http_status=409)
+            raise AppException("DATA_CONFLICT", "当前正式名单没有变化", http_status=409)
 
         context = get_current_user_ctx() or {}
         db.add(AffairsAuditTrail(

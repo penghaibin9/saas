@@ -192,7 +192,7 @@ export default {
         await this.load()
       } catch (e) {
         if (String(e?.code || '').includes('409') || e?.code === 'DATA_CONFLICT') {
-          this.conflictText = '服务端鉴定版本已更新。当前输入没有丢失；请核对后手动返回并刷新，再决定是否重新提交。系统不会自动重放。'
+          this.conflictText = '鉴定版本已更新。当前输入没有丢失；请核对后手动返回并刷新，再决定是否重新提交。系统不会自动重复提交。'
           toast('版本已变化，当前草稿已保留')
         } else toast(e?.message || '提交失败，请稍后重试')
       } finally { this.submitting = false }

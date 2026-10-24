@@ -138,7 +138,7 @@
             </AppButton>
             <p v-if="conflictError" class="sc-conflict__bad" role="alert">{{ conflictError }}</p>
             <p v-else-if="conflictResult === undefined" class="sc-conflict__hint">
-              检测教师、班级和教室冲突；提交时仍由服务端复核。
+              检测教师、班级和教室冲突；提交时仍由系统复核。
             </p>
             <p v-else-if="conflictResult === null" class="sc-conflict__ok">✓ 目标课位暂无冲突</p>
             <p v-else-if="conflictResult" class="sc-conflict__bad">

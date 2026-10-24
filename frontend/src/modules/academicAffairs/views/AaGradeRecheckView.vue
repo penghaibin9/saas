@@ -2,7 +2,7 @@
   <ModulePageShell title="成绩复查" subtitle="核对复查申请与原成绩，按当前权限办理复审" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
     <div class="mp-stack">
       <div class="aa-filter"><label class="aa-filter-field"><span>状态</span><AppSelect v-model="status" :options="statusOptions" :disabled="busy || !!pending" @change="search" /></label><AppButton variant="ghost" :disabled="busy || !!pending" @click="search">查询</AppButton></div>
-      <section v-if="receipt" class="aa-recheck-receipt" role="status"><strong>{{ receipt.verified ? '原复查命令已由持久回执确认' : '结果待核实' }}</strong><p>{{ receipt.studentName || active?.studentName || '原申请' }} · {{ receipt.courseName || active?.courseName || '课程待回读' }}</p><p v-if="receipt.commandStatus">原命令结果：{{ statusLabel(receipt.commandStatus) }}</p><p v-if="receipt.status">当前正式记录：{{ statusLabel(receipt.status) }}<template v-if="receipt.commandStatus && receipt.commandStatus !== receipt.status">（已发生后续变化）</template></p><AppButton v-if="pending" :loading="checking" @click="verifyReceipt">只读核对持久回执</AppButton><p v-else>原命令成功与当前状态分别展示；当前记录后续变化不会否认原命令成功。</p></section>
+      <section v-if="receipt" class="aa-recheck-receipt" role="status"><strong>{{ receipt.verified ? '原复查命令已由持久回执确认' : '结果待核实' }}</strong><p>{{ receipt.studentName || active?.studentName || '原申请' }} · {{ receipt.courseName || active?.courseName || '课程待重新读取' }}</p><p v-if="receipt.commandStatus">原命令结果：{{ statusLabel(receipt.commandStatus) }}</p><p v-if="receipt.status">当前正式记录：{{ statusLabel(receipt.status) }}<template v-if="receipt.commandStatus && receipt.commandStatus !== receipt.status">（已发生后续变化）</template></p><AppButton v-if="pending" :loading="checking" @click="verifyReceipt">只读核对持久回执</AppButton><p v-else>原操作成功与当前状态分别显示；当前记录后续的变化不会否认原操作成功。</p></section>
       <ErrorState v-if="error" :description="error" @retry="pending ? verifyReceipt() : restoreRoute()" />
       <AppButton v-if="pending?.postFailure?.bizCode === 'TERM_ARCHIVED'" variant="ghost" :disabled="checking" @click="clearRejectedCommand(pending, pending.postFailure)">本次因学期封存未受理，保留意见返回办理</AppButton>
       <div class="aa-recheck-workspace">
@@ -15,7 +15,7 @@
         <div v-if="active" class="mp-stack">
           <AppSectionCard :title="`${active.studentName} · ${active.courseName}`">
             <dl class="aa-facts"><div><dt>学号 / 学期</dt><dd>{{ active.studentNo }} / {{ active.term || '待核对' }}</dd></div><div><dt>原正式成绩</dt><dd>{{ active.originalScore ?? '待核对' }}</dd></div><div><dt>复查理由</dt><dd>{{ active.reason || '待核对' }}</dd></div><div><dt>正式受理状态</dt><dd>{{ statusLabel(active.status) }}</dd></div><div><dt>复审意见</dt><dd>{{ active.reviewNote || '暂无' }}</dd></div><div><dt>复审后成绩</dt><dd>{{ active.newScore ?? '暂无调整记录' }}</dd></div></dl>
-            <p class="mp-note">名单版本、策略版本与源成绩新鲜度未在当前读接口中提供，页面不将其标为已核验。</p>
+            <p class="mp-note">名单版本、策略版本与源成绩时效，当前读取中未提供，页面不将其标为已核验。</p>
           </AppSectionCard>
           <AppSectionCard v-if="active.status === 'SUBMITTED'" title="本岗位办理">
             <p v-if="!canReview" class="mp-note">当前身份可查看申请，没有成绩复审办理权限。</p>
@@ -82,8 +82,8 @@ export default {
       if(!found.entry){this.restoreRoute();return}
       const entry=found.entry;this.status=entry.status||'';this.pagination.page=entry.page
       this.pending={...this.capture(entry.objectId),commandKey:entry.commandKey,operation:entry.operation,page:entry.page,status:entry.status,recovered:true}
-      const pending=this.pending;this.receipt={verified:false};this.error='检测到原身份的复查命令引用，正在只读核对持久回执。'
-      if(!pending.id){this.error='恢复引用缺少复查申请编号，写入保持锁定且不会自动重放。';return}
+      const pending=this.pending;this.receipt={verified:false};this.error='检测到原身份的复查操作，正在核对已保存的回执。'
+      if(!pending.id){this.error='恢复信息缺少复查申请编号，写入保持锁定，不会自动重复提交。';return}
       this.verifyReceipt()
     },
     exactId(value) { if(!['string','number'].includes(typeof value))return ''; const id=String(value ?? '').trim(); return /^[1-9]\d*$/.test(id) ? id : '' },
@@ -93,7 +93,7 @@ export default {
       if(pending?.identity===this.identityKey){
         this.pending={...pending,route:this.routeKey,seq:this.objectSeq};this.active=active;this.form=form
         this.receipt=receipt;this.pagination.page=pending.page;this.status=pending.status
-        this.error='原复查请求仍待核实；当前保留原申请，请只读核对其结果。'
+        this.error='原复查请求仍待核实；当前保留原申请，请重新核对其结果。'
         return
       }
       this.restoreRoute()
@@ -167,7 +167,7 @@ export default {
         const saved=createGradeCommandReference({identityRef:this.recoveryIdentity,operation:'RECHECK_REVIEW',objectId:c.id,page:c.page,status:c.status})
         if(!saved.ok){this.confirmVisible=false;this.error=`无法保存刷新恢复引用，本次未发送：${saved.error}`;return}
         this.pending={...c,commandKey:saved.entry.commandKey,operation:'RECHECK_REVIEW'};const pending=this.pending;this.receipt={...pending,verified:false}
-        if(saved.existing){pending.recovered=true;this.confirmVisible=false;this.error='同一复查申请已有命令在途，本次未重复发送；正在只读核对。';await this.verifyReceipt();return}
+        if(saved.existing){pending.recovered=true;this.confirmVisible=false;this.error='同一复查申请已有操作在处理中，本次未重复提交；正在核对。';await this.verifyReceipt();return}
         let res
         try { res=await academicAffairsApi.reviewGradeRecheck(c.id,{action:c.action,note:c.note || undefined,newScore:c.newScore},pending.commandKey) } catch(err) { res=err }
         if(!this.commandCurrent(pending))return
@@ -201,7 +201,7 @@ export default {
         if(!this.commandCurrent(c))return
         if(persisted.state==='UNRESOLVED'){
           if(c.postFailure&&this.explicitFailure(c.postFailure)){await this.clearRejectedCommand(c,c.postFailure);return}
-          this.error='持久回执尚未确认原复查命令；不会自动重发，请稍后只读核对。';return
+          this.error='已保存的回执尚未确认原复查操作；不会自动重复提交，请稍后重新核对。';return
         }
         if(String(persisted.result?.recheckId)!==String(c.id))throw {code:'GRADE_COMMAND_RECEIPT_OBJECT_MISMATCH',message:'持久回执与原复查申请不一致'}
         if(!['UPHELD','ADJUSTED','REJECTED'].includes(persisted.result.status))throw {code:'GRADE_COMMAND_RECEIPT_MISMATCH',message:'持久回执未包含有效复审结果'}
@@ -212,11 +212,11 @@ export default {
         this.replaceFormal(formal)
         this.receipt={studentName:formal.studentName,courseName:formal.courseName,commandStatus:persisted.result.status,status:formal.status,verified:true}
         const removed=removeGradeCommandReference(c.commandKey,this.recoveryIdentity)
-        if(!removed.ok){this.error=`原命令和正式记录已确认，但本地恢复标记无法清除：${removed.error}`;return}
+        if(!removed.ok){this.error=`原操作和正式记录已确认，但本地恢复标记无法清除：${removed.error}`;return}
         this.pending=null;this.command=null;this.error=''
       } catch(err) {
         if(!this.commandCurrent(c))return
-        if(!this.denied(err))this.error=gradeError(err,'原复查命令结果待核实，请稍后只读核对；不会自动重发。')
+        if(!this.denied(err))this.error=gradeError(err,'原复查操作结果待核实，请稍后重新核对；不会自动重复提交。')
       } finally { if(this.valid(c) && (!this.pending || this.pending===c))this.checking=false }
     }
   }

@@ -222,7 +222,7 @@ def update_enterprise(company_id, body) -> dict:
             raise not_found("企业不存在或不在当前数据范围内")
         expected = getattr(body, "expectedVersion", None)
         if expected is None:
-            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+            raise AppException("VALIDATION_ERROR", "必须提供数据版本（企业信息），请刷新后重试")
         if int(expected) != int(c.version or 0):
             raise AppException("DATA_CONFLICT", "企业信息已被其他用户修改，请刷新后重试")
         if c.coop_status == "ARCHIVED":
@@ -284,7 +284,7 @@ def review_enterprise(company_id, action: str, comment: str = "", expected_versi
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
         if expected_version is None:
-            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+            raise AppException("VALIDATION_ERROR", "必须提供数据版本（企业信息），请刷新后重试")
         if int(expected_version) != int(c.version or 0):
             raise AppException("DATA_CONFLICT", "企业资质状态已变化，请刷新后重试")
         if c.coop_status != "PENDING":
@@ -311,7 +311,7 @@ def set_cooperation(company_id, action: str, reason: str = "", expected_version=
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
         if expected_version is None:
-            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+            raise AppException("VALIDATION_ERROR", "必须提供数据版本（企业信息），请刷新后重试")
         if int(expected_version) != int(c.version or 0):
             raise AppException("DATA_CONFLICT", "企业合作状态已变化，请刷新后重试")
         if action == "SUSPEND":
@@ -348,7 +348,7 @@ def set_blacklist(company_id, on: bool, reason: str = "", expected_version=None)
         if not c:
             raise not_found("企业不存在或不在当前数据范围内")
         if expected_version is None:
-            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（企业乐观锁），请刷新后重试")
+            raise AppException("VALIDATION_ERROR", "必须提供数据版本（企业信息），请刷新后重试")
         if int(expected_version) != int(c.version or 0):
             raise AppException("DATA_CONFLICT", "企业黑名单状态已变化，请刷新后重试")
         if on:
@@ -452,7 +452,7 @@ def update_contact(company_id, contact_id, body) -> dict:
             raise not_found("联系人不存在")
         expected = getattr(body, "expectedVersion", None)
         if expected is None:
-            raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（联系人乐观锁），请刷新后重试")
+            raise AppException("VALIDATION_ERROR", "必须提供数据版本（联系人信息），请刷新后重试")
         if int(expected) != int(t.version or 0):
             raise AppException("DATA_CONFLICT", "联系人已被其他用户修改，请刷新后重试")
         old_contact_type = t.contact_type

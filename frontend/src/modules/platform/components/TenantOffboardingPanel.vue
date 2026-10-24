@@ -6,7 +6,7 @@
     <template v-else>
       <div v-if="uncertain" class="top__danger-box" role="alert">
         <b>上次操作结果尚未确认，请勿重复提交</b>
-        <p>先重新读取当前学校与任务状态；读取成功不代表上次操作一定成功，也不会重放命令。</p>
+        <p>先重新读取当前学校与任务状态；读取成功不代表上次操作一定成功，也不会重复提交操作。</p>
         <AppButton :disabled="busy" @click="load">只读取当前状态</AppButton>
         <AppButton v-if="inspected" :disabled="busy" @click="uncertain = false; inspected = false">已核对，结束本次记录</AppButton>
       </div>
@@ -83,10 +83,10 @@
         </AppCard>
 
         <AppCard v-if="['FROZEN_READONLY', 'FINAL_EXPORT_READY'].includes(job.state)" class="top__panel">
-          <AppSectionHeader title="3 · 确认最终数据导出 SHA-256" />
-          <p class="top__note">完成最终数据交付后，把导出物的 64 位 SHA-256 摘要填入。后端确认后租户进入保留期并进一步收紧登录。</p>
+          <AppSectionHeader title="3 · 确认最终数据导出校验码" />
+          <p class="top__note">完成最终数据交付后，把导出文件的 64 位校验码填入。确认后租户进入保留期并进一步收紧登录。</p>
           <div class="top__inline">
-            <input v-model.trim="finalExportSha" class="top__input top__input--hash" maxlength="64" placeholder="64 位 SHA-256" />
+            <input v-model.trim="finalExportSha" class="top__input top__input--hash" maxlength="64" placeholder="64 位校验码" />
             <AppButton variant="primary" :loading="working" :disabled="busy || uncertain || !validSha" @click="confirmFinalExport">确认最终导出</AppButton>
           </div>
         </AppCard>
@@ -101,9 +101,9 @@
         </AppCard>
 
         <AppCard v-if="purgeStageVisible" class="top__panel top__panel--danger">
-          <AppSectionHeader title="4 · 永久销毁前最终门禁" />
+          <AppSectionHeader title="4 · 永久销毁前最终检查" />
           <div class="top__gates">
-            <div :class="job.finalExportSha256 ? 'is-ok' : 'is-bad'"><b>最终导出</b><span>{{ job.finalExportSha256 ? '已确认 SHA-256' : '未确认' }}</span></div>
+            <div :class="job.finalExportSha256 ? 'is-ok' : 'is-bad'"><b>最终导出</b><span>{{ job.finalExportSha256 ? '已确认校验码' : '未确认' }}</span></div>
             <div :class="retentionExpired ? 'is-ok' : 'is-warn'"><b>保留期</b><span>{{ retentionExpired ? '已结束' : `截止 ${fmt(job.retentionUntil)}` }}</span></div>
             <div :class="legalHoldClear ? 'is-ok' : 'is-bad'"><b>司法保全</b><span>{{ legalHoldClear ? '无阻断' : '存在保全或证据未取得，禁止销毁' }}</span></div>
             <div :class="preview?.registry?.complete ? 'is-ok' : 'is-bad'"><b>销毁登记表</b><span>{{ preview?.registry?.complete ? '完整' : '不完整' }}</span></div>
@@ -143,7 +143,7 @@
 
           <div v-else class="top__purged">
             <b>租户数据已完成物理销毁</b>
-            <span>销毁证据 SHA-256：{{ job.purgeEvidenceSha256 }}</span>
+            <span>销毁凭证校验码：\1</span>
           </div>
         </AppCard>
       </template>
@@ -345,7 +345,7 @@ export default {
     },
     async confirmFinalExport() {
       if (!this.canMutate() || !['FROZEN_READONLY', 'FINAL_EXPORT_READY'].includes(this.job?.state)) return
-      if (!this.validSha) return toast.error('请输入 64 位 SHA-256')
+      if (!this.validSha) return toast.error('请输入 64 位校验码')
       const id = String(this.tenantId), dialogEpoch = this.epoch, jobId = this.job.jobId, sha = this.finalExportSha.toLowerCase()
       if (!await systemConfirm({ title: '确认最终导出物', message: '确认该 SHA-256 对应已经交付并封存的最终数据导出物？确认后进入数据保留期。', confirmText: '确认并进入保留期', type: 'danger' })) return
       if (!this.current(dialogEpoch, id) || !this.canMutate() || !['FROZEN_READONLY', 'FINAL_EXPORT_READY'].includes(this.job?.state) || this.job.jobId !== jobId || this.finalExportSha.toLowerCase() !== sha) return
@@ -413,7 +413,7 @@ export default {
     },
     async approvePurge() {
       if (!this.canMutate()) return
-      if (!this.canExecutePurge) return toast.error('销毁门禁尚未全部满足')
+      if (!this.canExecutePurge) return toast.error('销毁前检查尚未全部满足')
       const id = String(this.tenantId), dialogEpoch = this.epoch, jobId = this.job.jobId, token = this.mfaGrant.accessToken
       const expectedVersion = Number(this.job.tenantVersion ?? this.expectedTenantVersion), confirmText = this.confirmText
       if (!await systemConfirm({ title: '永久销毁最终确认', message: `将永久销毁“${this.preview?.tenantName || this.tenant?.tenantName || this.tenantId}”的数据。该操作不可撤销。`, confirmText: '确认永久销毁', type: 'danger' })) return

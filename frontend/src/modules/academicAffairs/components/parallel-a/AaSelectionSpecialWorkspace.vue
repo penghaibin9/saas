@@ -23,9 +23,9 @@
         <AppFormItem label="累计选课学分上限" required>
           <AppNumberInput v-model="ruleDraft.maxCredits" :min="0" :max="50" :disabled="saving || !ruleWritable" />
         </AppFormItem>
-        <p class="sel-special__hint">0 表示不设置批次级学分上限。最终能否选课仍由提交前正式预检和服务端事务判断。</p>
+        <p class="sel-special__hint">0 表示不设置批次级学分上限。最终能否选课，仍由提交前的正式预检查和系统校验决定。</p>
         <AppInlineAlert v-if="!ruleWritable" type="warning" :description="canManageRule ? '当前批次已经进入开选或后续阶段，规则只读；如需调整须新建批次或走正式变更流程。' : '当前账号只可查阅正式规则；规则调整由有权限的选课管理岗办理。'" />
-        <AppInlineAlert v-else-if="pendingRule" type="warning" description="上次保存结果尚未由正式批次确认。当前只允许查询正式规则，系统不会自动重放保存请求。" />
+        <AppInlineAlert v-else-if="pendingRule" type="warning" description="上次保存结果尚未由正式批次确认。当前只允许查询正式规则，系统不会自动重复提交保存请求。" />
         <div class="sel-special__actions">
           <AppButton v-if="pendingRule" :loading="loading" @click="loadRule">查询正式规则</AppButton>
           <AppButton v-if="canManageRule" variant="primary" :loading="saving" :disabled="!ruleWritable || !!pendingRule || !ruleChanged" @click="saveRule">{{ pendingRule ? '等待正式确认' : ruleChanged ? '保存本批次规则' : '规则未变化' }}</AppButton>
@@ -37,7 +37,7 @@
       <AppInlineAlert
         v-if="batch.status !== 'CLOSED'"
         type="warning"
-        description="补选指引只在批次截止后生成；当前批次尚未进入 CLOSED。"
+        description="补选指引只在批次截止后生成；当前批次尚未截止。"
       />
       <template v-else-if="reselectGuide">
         <div class="sel-special__facts">
@@ -133,13 +133,13 @@ export default {
       affectedColumns: [{ key: 'student', title: '受影响学生' }, { key: 'courseName', title: '原选课程' }, { key: 'state', title: '正式状态 / 处理结果' }, { key: 'next', title: '下一责任 / 核对事项' }],
       courseColumns: [{ key: 'course', title: '课程' }, { key: 'teacherName', title: '授课教师' }, { key: 'capacity', title: '已选 / 容量' }, { key: 'state', title: '状态' }],
       summaryColumns: [{ key: 'courseName', title: '课程' }, { key: 'conflictRejectCount', title: '冲突拒绝次数' }],
-      conflictColumns: [{ key: 'occurredAt', title: '发生时间' }, { key: 'courseName', title: '候选课程' }, { key: 'detail', title: '冲突事实' }]
+      conflictColumns: [{ key: 'occurredAt', title: '发生时间' }, { key: 'courseName', title: '候选课程' }, { key: 'detail', title: '冲突情况' }]
     }
   },
   computed: {
     eyebrow() { return { rule: '选课规则', reselect: '补选收口', conflict: '冲突检测' }[this.mode] || '选课管理' },
     title() { return { rule: '规则与适用范围', reselect: '取消课程与补选 · 责任队列', conflict: '冲突与可解决路径' }[this.mode] || '选课管理' },
-    description() { return { rule: '规则只绑定当前批次；切换批次后重新读取，保存后以正式批次回读为准。', reselect: '读取已截止批次中的取消课程和仍可补选课程，不从全校固定条数中猜候选。', conflict: '读取服务端记录的选课冲突；接口失败会明确提示，不显示为零冲突。' }[this.mode] || '' },
+    description() { return { rule: '规则只绑定当前批次；切换批次后重新读取，保存后以正式批次的结果为准。', reselect: '读取已截止批次中的取消课程和仍可补选课程，不从全校固定条数中猜候选。', conflict: '读取系统记录的选课冲突；读取失败会明确提示，不会显示为零冲突。' }[this.mode] || '' },
     batchStatusLabel() { return STATUS_LABEL[this.batch.status] || '状态待确认' },
     batchStatusType() { return ['LOCKED', 'ARCHIVED'].includes(this.batch.status) ? 'default' : this.batch.status === 'OPEN' ? 'success' : this.batch.status === 'CLOSED' ? 'warning' : 'primary' },
     canManageRule() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.rule.manage') },
@@ -150,8 +150,8 @@ export default {
       if (Array.isArray(scope)) return `${scope.length} 个范围对象`
       return scope.scopeName || scope.name || scope.type || '当前批次正式范围'
     },
-    ruleVersion() { return this.batch.rule?.version ? `v${this.batch.rule.version}` : '服务端未提供' },
-    roundText() { const active = this.rounds.find(row => row.status === 'OPEN'); return active ? `第${active.roundNo}轮 · ${active.roundName}` : this.rounds.length ? `${this.rounds.length} 个轮次，当前无开放轮次` : '服务端未提供正式轮次' },
+    ruleVersion() { return this.batch.rule?.version ? `v${this.batch.rule.version}` : '系统未提供' },
+    roundText() { const active = this.rounds.find(row => row.status === 'OPEN'); return active ? `第${active.roundNo}轮 · ${active.roundName}` : this.rounds.length ? `${this.rounds.length} 个轮次，当前无开放轮次` : '系统未提供正式轮次' },
     ruleChanged() { return Number(this.ruleDraft.maxCredits || 0) !== Number(this.batch.rule?.maxCredits || 0) },
     cancelledCourses() { return this.reselectGuide?.cancelledCourses || [] },
     availableCourses() { return this.reselectGuide?.availableCourses || [] },
@@ -206,13 +206,13 @@ export default {
           if (mode === 'reselect') {
             const affected = result.data?.affectedRecords
             if (String(result.data?.batchId) !== String(batchId) || !Array.isArray(affected?.items) || !Number.isSafeInteger(affected?.total) || affected.total < 0 || affected.page !== this.affectedPage) {
-              this.error = '补选指引的对象或分页事实未完整返回，请重新读取'; return
+              this.error = '补选指引的对象或分页信息未完整返回，请重新读取'; return
             }
             this.reselectGuide = result.data
           }
           else {
             if (String(result.data?.batchId) !== String(batchId) || !Array.isArray(result.data?.items) || !Number.isSafeInteger(result.data?.total) || result.data.total < 0) {
-              this.error = '冲突报告的批次或分页事实未匹配，请重新查询'; return
+              this.error = '冲突报告的批次或分页信息不匹配，请重新查询'; return
             }
             this.conflictReport = result.data
           }
@@ -251,7 +251,7 @@ export default {
           this.receipt = { title: '规则保存结果已通过正式批次确认', object: `${formal.data.batchName}（${batchId}）`, status: `学分上限 ${formalMax || '不限制'}`, time: formal.data.updatedAt || '', next: '下一步：核对正式轮次和课程供给，再按批次状态进入发布或开选。' }
           this.pendingRule = null; this.ruleDraft.maxCredits = formalMax
         } else {
-          this.error = '正式规则仍未匹配上次请求；系统不会自动重放保存，请稍后继续查询。'
+          this.error = '正式规则仍未匹配上次请求；系统不会自动重复保存，请稍后继续查询。'
         }
       } catch (exception) {
         if (!this.requestCurrent(seq, batchId, mode)) return
@@ -295,7 +295,7 @@ export default {
         if (!this.requestCurrent(seq, batchId, mode)) return
         let formal
         try { formal = await api.getBatch(batchId) }
-        catch (exception) { formal = this.exceptionResult(exception, '正式规则回读失败') }
+        catch (exception) { formal = this.exceptionResult(exception, '正式规则读取失败') }
         if (!this.requestCurrent(seq, batchId, mode)) return
         if (isDeniedResult(result) || isDeniedResult(formal)) return this.clearDenied(result.message || formal.message)
         const exactFormal = formal.code === 0 && String(formal.data?.batchId) === String(batchId)
@@ -310,12 +310,12 @@ export default {
         if (knownRejected) {
           this.pendingRule = null
           if (exactFormal) this.$emit('batch-updated', formal.data)
-          this.error = `${result.message || '批次事实已变化'}；输入已保留，请重新核对后再提交。`
-          this.receipt = { pending: true, title: '规则未保存', object: `${this.batch.batchName}（${batchId}）`, status: exactFormal ? `当前正式学分上限 ${formalMax || '不限制'}` : '正式规则读取失败', time: '', next: '请核对当前批次；系统没有自动重放保存请求。' }
+          this.error = `${result.message || '批次数据已变化'}；输入已保留，请重新核对后再提交。`
+          this.receipt = { pending: true, title: '规则未保存', object: `${this.batch.batchName}（${batchId}）`, status: exactFormal ? `当前正式学分上限 ${formalMax || '不限制'}` : '正式规则读取失败', time: '', next: '请核对当前批次；系统没有自动重复提交保存请求。' }
           return
         }
         this.error = formal.message || result.message || '规则保存结果待确认'
-        this.receipt = { pending: true, title: '规则保存结果待确认', object: `${this.batch.batchName}（${batchId}）`, status: exactFormal ? `当前正式学分上限 ${formalMax || '不限制'}` : '尚未获得匹配的正式规则事实', time: '', next: '当前只允许查询正式规则；确认前不要重复提交。' }
+        this.receipt = { pending: true, title: '规则保存结果待确认', object: `${this.batch.batchName}（${batchId}）`, status: exactFormal ? `当前正式学分上限 ${formalMax || '不限制'}` : '尚未获得匹配的正式规则', time: '', next: '当前只允许查询正式规则；确认前不要重复提交。' }
       } finally {
         if (this.requestCurrent(seq, batchId, mode)) this.saving = false
       }

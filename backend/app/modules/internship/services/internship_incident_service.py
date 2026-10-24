@@ -146,11 +146,11 @@ def report_incident(body, user=None):
     b = dict(body or {})
     key = str(b.get("idempotencyKey") or "").strip()
     if not key:
-        raise AppException("VALIDATION_ERROR", "idempotencyKey 必填")
+        raise AppException("VALIDATION_ERROR", "请求标识必填")
     if not str(b.get("summary") or "").strip():
         raise AppException("VALIDATION_ERROR", "事故情况摘要必填")
     if not b.get("internshipId"):
-        raise AppException("VALIDATION_ERROR", "学生事故上报必须关联 internshipId")
+        raise AppException("VALIDATION_ERROR", "学生事故上报必须关联实习记录")
     with session() as db:
         from app.modules.internship.services.internship_scope import assert_internship_record_scope
         from app.services import file_service

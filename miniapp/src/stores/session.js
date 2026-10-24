@@ -199,7 +199,7 @@ export const useSessionStore = defineStore('session', {
       // #ifndef H5
       if (getToken() || getRefreshToken()) {
         const result = await realRequest('/auth/logout?scope=current', { method: 'POST', data: { refreshToken: getRefreshToken() || undefined } })
-        if (!result?.tokenInvalidated) throw { message: '服务端会话未完全撤销，请重试退出' }
+        if (!result?.tokenInvalidated) throw { message: '登录状态未完全退出，请重试退出' }
       }
       // #endif
       this.logout()

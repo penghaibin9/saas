@@ -12,7 +12,7 @@
     <div class="mp-stack">
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无同步任务" description="可登记手工同步或等待接口自动入队" />
+      <EmptyState v-else-if="!rows.length" title="暂无同步任务" description="可登记手工同步或等待接口自动排队" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="id">
         <template #cell-status="{ row }">
           <StatusTag

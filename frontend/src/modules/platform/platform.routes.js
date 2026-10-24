@@ -213,19 +213,19 @@ const platformRoutes = {
     },
     {
       path: 'tenant-transitions', name: 'platform-tenant-transitions', redirect: '/admin/platform/tenants',
-      meta: { moduleCode: 'PLATFORM', title: '开通、停用与归档（兼容入口）', requiresAuth: true, permissionKey: 'platform.tenant.lifecycle.manage', legacyCapabilityRedirect: true }
+      meta: { moduleCode: 'PLATFORM', title: '开通、停用与归档', requiresAuth: true, permissionKey: 'platform.tenant.lifecycle.manage', legacyCapabilityRedirect: true }
     },
     {
       path: 'tenant-contacts', name: 'platform-tenant-contacts', redirect: '/admin/platform/tenants',
-      meta: { moduleCode: 'PLATFORM', title: '学校联系人与平台主管理员（兼容入口）', requiresAuth: true, permissionKey: 'platform.tenant.contact.manage', legacyCapabilityRedirect: true }
+      meta: { moduleCode: 'PLATFORM', title: '学校联系人与平台主管理员', requiresAuth: true, permissionKey: 'platform.tenant.contact.manage', legacyCapabilityRedirect: true }
     },
     {
       path: 'products', name: 'platform-products', redirect: '/admin/platform/packages',
-      meta: { moduleCode: 'PLATFORM', title: '产品与增值能力（兼容入口）', requiresAuth: true, permissionKey: 'platform.product.view', legacyCapabilityRedirect: true }
+      meta: { moduleCode: 'PLATFORM', title: '产品与增值能力', requiresAuth: true, permissionKey: 'platform.product.view', legacyCapabilityRedirect: true }
     },
     {
       path: 'init-templates', name: 'platform-init-templates', redirect: '/admin/platform/provisioning',
-      meta: { moduleCode: 'PLATFORM', title: '初始化模板（兼容入口）', requiresAuth: true, permissionKey: 'platform.provision.template.manage', legacyCapabilityRedirect: true }
+      meta: { moduleCode: 'PLATFORM', title: '初始化模板', requiresAuth: true, permissionKey: 'platform.provision.template.manage', legacyCapabilityRedirect: true }
     },
     {
       // PLAT-04：真实实现
@@ -238,11 +238,11 @@ const platformRoutes = {
     },
     {
       path: 'role-templates', name: 'platform-role-templates', redirect: '/admin/platform/product-iam',
-      meta: { moduleCode: 'PLATFORM', title: '平台主管角色模板（兼容入口）', requiresAuth: true, permissionKey: 'platform.productIam.view', legacyCapabilityRedirect: true }
+      meta: { moduleCode: 'PLATFORM', title: '平台主管角色模板', requiresAuth: true, permissionKey: 'platform.productIam.view', legacyCapabilityRedirect: true }
     },
     {
       path: 'releases', name: 'platform-releases', redirect: '/admin/platform/changes',
-      meta: { moduleCode: 'PLATFORM', title: '版本发布与灰度开关（兼容入口）', requiresAuth: true, permissionKey: 'platform.release.manage', legacyCapabilityRedirect: true }
+      meta: { moduleCode: 'PLATFORM', title: '版本发布与灰度开关', requiresAuth: true, permissionKey: 'platform.release.manage', legacyCapabilityRedirect: true }
     },
     {
       // PLAT-10：问题管理、已知错误与事故复盘
@@ -270,15 +270,15 @@ const platformRoutes = {
     },
     {
       path: 'support-tickets', name: 'platform-support-tickets', redirect: '/admin/platform/customer-success',
-      meta: { moduleCode: 'PLATFORM', title: '工单与服务请求（兼容入口）', requiresAuth: true, permissionKey: 'platform.support.ticket.manage', legacyCapabilityRedirect: true }
+      meta: { moduleCode: 'PLATFORM', title: '工单与服务请求', requiresAuth: true, permissionKey: 'platform.support.ticket.manage', legacyCapabilityRedirect: true }
     },
     {
       path: 'support-sessions', name: 'platform-support-sessions', redirect: '/admin/platform/access',
-      meta: { moduleCode: 'PLATFORM', title: '受控远程协助（兼容入口）', requiresAuth: true, permissionKey: 'platform.support.session.manage', legacyCapabilityRedirect: true }
+      meta: { moduleCode: 'PLATFORM', title: '受控远程协助', requiresAuth: true, permissionKey: 'platform.support.session.manage', legacyCapabilityRedirect: true }
     },
     {
       path: 'tenant-health', name: 'platform-tenant-health', redirect: '/admin/platform/customer-success',
-      meta: { moduleCode: 'PLATFORM', title: '租户健康度与客户沟通（兼容入口）', requiresAuth: true, permissionKey: 'platform.customer-health.view', legacyCapabilityRedirect: true }
+      meta: { moduleCode: 'PLATFORM', title: '租户健康度与客户沟通', requiresAuth: true, permissionKey: 'platform.customer-health.view', legacyCapabilityRedirect: true }
     },
     {
       path: 'operator-access', name: 'platform-operator-access', redirect: '/admin/platform/access',

@@ -183,11 +183,11 @@ def save_dictionary(tenant_id: int, dict_code: str, *, items, expected_version) 
     if dict_code not in SCHOOL_EDITABLE_DICTIONARIES:
         raise AppException("VALIDATION_ERROR", "该字典不允许由学校维护")
     if expected_version is None:
-        raise AppException("VALIDATION_ERROR", "缺少 expectedVersion，无法防止覆盖他人修改")
+        raise AppException("VALIDATION_ERROR", "缺少数据版本，无法防止覆盖他人修改")
     try:
         expected = int(expected_version)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须为整数") from None
+        raise AppException("VALIDATION_ERROR", "数据版本必须为整数") from None
     cleaned = _clean_items(items)
 
     db = get_sessionmaker()()

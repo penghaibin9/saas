@@ -39,7 +39,7 @@
               <div><span>当前阶段</span><strong>{{ sel.currentStageLabel }}</strong><StatusTag :type="statusType(sel.status)" :label="sel.statusLabel" dot /></div>
             </div>
             <div class="lg-subhead">
-              <div><strong>阶段时间线</strong><small>只能推进到后端允许的下一阶段</small></div>
+              <div><strong>阶段时间线</strong><small>只能推进到系统允许的下一阶段</small></div>
               <div v-if="sel.status==='ONGOING'" class="lg-adv">
                 <AppSelect v-model="advStage" class="lg-advpick" :options="nextStageOptions" placeholder="推进到…" />
                 <AppPermissionButton :allowed="canBtn('studentAffairs.league.manage')" code="studentAffairs.league.manage" size="sm" :disabled="!advStage" @click="advance">推进</AppPermissionButton>

@@ -122,12 +122,12 @@
               </template>
             </div>
             <p v-if="!panel.data.archived" class="hint">归档后可生成档案包，留存冻结的材料清单与扫描件。</p>
-            <p v-else class="hint">“恢复校验”只核对包内行数、文件数与 SHA-256，不会覆盖当前业务数据。</p>
+            <p v-else class="hint">“恢复校验”只核对包内行数、文件数与校验码，不会覆盖当前业务数据。</p>
 
             <details v-if="panel.data.latestPackage || pkgFile" class="tech-details">
               <summary>展开技术证据</summary>
               <dl>
-                <div><dt>Package ID</dt><dd>{{ (pkgFile || panel.data.latestPackage).packageId }}</dd></div>
+                <div><dt>归档包编号</dt><dd>{{ (pkgFile || panel.data.latestPackage).packageId }}</dd></div>
                 <div><dt>文件数 / 行数</dt><dd>{{ (pkgFile || panel.data.latestPackage).fileCount }} / {{ (pkgFile || panel.data.latestPackage).rowCount }}</dd></div>
                 <div><dt>SHA-256</dt><dd>{{ (pkgFile || panel.data.latestPackage).sha256 }}</dd></div>
               </dl>
@@ -407,7 +407,7 @@ export default {
         status: data.preflightReceipt?.status,
         statusLabel: data.canArchive ? '预检通过' : '预检阻断',
         auditText: `规则 ${data.ruleVersion} · FileVersion ${data.fileVersionSafety?.ready || 0}/${data.fileVersionSafety?.total || 0} 安全可用`,
-        nextStep: data.canArchive ? '确认后提交归档；服务端会再次核验' : '按“去哪补”逐项处理后重新预检'
+        nextStep: data.canArchive ? '确认后提交归档；系统会再次核验' : '按“去哪补”逐项处理后重新预检'
       }
       return data
     },
@@ -464,18 +464,18 @@ export default {
         this.actionConflict = true; this.actionError = res.message || '操作结果待核对，请勿重复提交'
         this.lastReceipt = {
           actionLabel: p.kind === 'archive' ? '归档未提交' : '撤销未提交',
-          objectLabel: '服务端未确认写入成功', id: p.id, status: 'UNKNOWN',
+          objectLabel: '系统未确认写入成功', id: p.id, status: 'UNKNOWN',
           statusLabel: '请核对当前状态', auditText: res.message || '请求失败',
-          nextStep: '已保留确认内容并重新读取服务端；请勿盲目重复提交'
+          nextStep: '已保留确认内容并重新读取；请勿盲目重复提交'
         }
-        toast.error(res.message || '操作失败；已重新读取服务端状态')
+        toast.error(res.message || '操作失败；已重新读取最新状态')
         await this.openDetailById(p.id)
         return
       }
       const receipt = res.data?.operationReceipt || {}
       this.lastReceipt = {
         actionLabel: p.kind === 'archive' ? '归档完成' : '撤销归档完成',
-        objectLabel: p.kind === 'archive' ? '业务归档与 Manifest 已原子提交' : '归档、Manifest 与档案包已原子失效',
+        objectLabel: p.kind === 'archive' ? '业务归档与材料清单已同时提交' : '归档、材料清单与档案包已同时失效',
         id: p.id, version: receipt.recordVersion ?? res.data?.recordVersion,
         status: receipt.status || 'COMMITTED', statusLabel: '已提交',
         auditText: p.kind === 'archive'

@@ -1,7 +1,7 @@
 <template>
   <AppPageShell flat
     title="违纪处分统计"
-    subtitle="按处分类型与状态聚合，含投影一致性对账。数据范围与处分台账一致。"
+    subtitle="按处分类型与状态汇总，含一致性对账。数据范围与处分台账一致。"
     role-name="学工处 / 学院"
     data-scope-name="按数据范围聚合"
     watermark-purpose="违纪处分统计"

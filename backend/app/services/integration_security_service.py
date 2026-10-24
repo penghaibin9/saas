@@ -71,7 +71,7 @@ def validate_endpoint_ssrf_safe(endpoint: str) -> dict:
     """保存/入队时的前置校验：scheme 合法、域名可解析且全部落在公网。"""
     parsed = urlparse(str(endpoint or "").strip())
     if parsed.scheme not in ("https", "http"):
-        raise AppException("VALIDATION_ERROR", "接口地址必须是 http/https URL", http_status=422)
+        raise AppException("VALIDATION_ERROR", "接口地址必须是 http/https 开头的网址", http_status=422)
     hostname = parsed.hostname or ""
     if not hostname:
         raise AppException("VALIDATION_ERROR", "接口地址缺少主机名", http_status=422)

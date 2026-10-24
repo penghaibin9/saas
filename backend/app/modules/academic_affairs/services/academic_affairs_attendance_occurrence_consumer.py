@@ -69,7 +69,7 @@ def _calendar_logical_date(db, term, requested: date, *, lock: bool) -> tuple[da
     if len(swap_targets) > 1:
         _conflict("同一补课日存在多个 SWAP 映射，无法确定正式课次")
     if holidays and swap_targets:
-        _conflict("补课日同时被标记为节假日，校历事实冲突")
+        _conflict("补课日同时被标记为节假日，校历记录冲突")
     if swap_sources:
         _conflict("该日期为校历调休停课日，不能创建普通课堂考勤")
     if holidays:
@@ -232,7 +232,7 @@ def _validate_linked_change(change, item, task) -> dict:
     if change_type not in {"ADJUST", "MAKEUP"}:
         _conflict("EFFECTIVE 课表项回链了非调课/补课生效单，数据冲突")
     if int(getattr(change, "new_item_id", 0) or 0) != int(item.id):
-        _conflict("调停课生效单 newItemId 与正式课次不一致")
+        _conflict("调停课生效单的新课表项与正式课次不一致")
     if int(getattr(change, "task_id", 0) or 0) != int(task.id):
         _conflict("调停课生效单教学任务与正式课次不一致")
     if int(getattr(change, "batch_id", 0) or 0) != int(item.batch_id):
@@ -504,9 +504,9 @@ def resolve_formal_occurrence(
         try:
             expected_item_id = int(expected_schedule_item_id)
         except (TypeError, ValueError) as exc:
-            raise AppException("VALIDATION_ERROR", "scheduleItemId 须为有效数字") from exc
+            raise AppException("VALIDATION_ERROR", "课表项编号须为有效数字") from exc
         if expected_item_id <= 0:
-            raise AppException("VALIDATION_ERROR", "scheduleItemId 须为有效数字")
+            raise AppException("VALIDATION_ERROR", "课表项编号须为有效数字")
 
     requested = _parse_date(session_date)
     logical_date, calendar_source, calendar_event_id = _calendar_logical_date(

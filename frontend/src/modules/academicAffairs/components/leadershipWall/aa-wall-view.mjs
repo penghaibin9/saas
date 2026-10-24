@@ -16,7 +16,7 @@ export function donut(segments,label,value,small=false){
 function legend(rows,unit=''){return `<div class="legend">${rows.map((x,i)=>`<div class="legend-row"><i style="--dot:${x.color||COLORS[i%COLORS.length]}"></i><span class="name">${E(x.label)}</span><b>${fmt(x.value)}<small>${E(unit)}</small></b></div>`).join('')}</div>`;}
 function track(value,denominator=100){const good=typeof value==='number'&&typeof denominator==='number'&&denominator>0&&value>=0&&value<=denominator;return `<div class="progress-track"><div class="progress-fill" style="width:${good?(value/denominator*100).toFixed(3):0}%"></div></div>`;}
 function trendChart(series){
- if(!series.length)return noData('趋势暂不可用','不把接口失败填为连续零值。');
+ if(!series.length)return noData('趋势暂不可用','统计获取失败时不显示为连续的零。');
  const s=['gradeSubmit','scheduleChange','warning'].map(k=>series.find(x=>x.key===k)).filter(Boolean);
  if(!s.length||!s[0].points.length)return noData('暂无业务趋势');
  const width=650,height=139,l=31,r=12,t=10,b=25;const keys=s[0].points.map(x=>x.date);const n=keys.length;

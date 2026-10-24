@@ -72,7 +72,7 @@ def material_file_ticket(
 ):
     raw_version_id = str((body or {}).get("fileVersionId") or "").strip()
     if not raw_version_id.isdigit():
-        raise AppException("VALIDATION_ERROR", "fileVersionId 不能为空")
+        raise AppException("VALIDATION_ERROR", "文件版本不能为空")
     action = str((body or {}).get("action") or "preview")
     return success(material_tickets.issue_ticket(file_id, int(raw_version_id), action, user))
 

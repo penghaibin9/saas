@@ -60,7 +60,7 @@
         <div class="ie-fld ie-fld--full">
           <label class="ie-lbl" for="gd-college-scope">适用范围</label>
           <input id="gd-college-scope" v-model.trim="form.collegeScope" class="ie-in" aria-describedby="gd-college-scope-hint" placeholder="学院 / 专业范围；留空表示全校" autocomplete="off" />
-          <small id="gd-college-scope-hint" class="ie-hint">正式可见数据仍由后端数据范围裁决。</small>
+          <small id="gd-college-scope-hint" class="ie-hint">正式可见的数据仍由数据范围裁定。</small>
         </div>
         <div class="ie-fld ie-fld--full">
           <label class="ie-lbl" for="gd-batch-remark">实施备注</label>

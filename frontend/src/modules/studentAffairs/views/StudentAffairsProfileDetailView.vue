@@ -2,7 +2,7 @@
   <AppPageShell
     title="学生画像详情"
     subtitle="学生主档摘要、请假记录摘要、宿舍信息摘要、风险标签、处分摘要和成长时间线。"
-    data-scope-name="后端按当前身份校验"
+    data-scope-name="系统按当前身份校验"
     watermark-purpose="学生画像详情查看"
   >
     <template #actions>

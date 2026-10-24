@@ -369,7 +369,7 @@ def update_workflow(user: dict, project_id: int, workflow_code: str, body: dict)
                 WorkflowNodeDefinition.is_deleted.is_(False))).all()}
             for index, item in enumerate(nodes, 1):
                 node = existing.get(str(item.get("nodeCode") or ""))
-                if not node: raise AppException("VALIDATION_ERROR", "不得通过修改接口新增未知流程节点")
+                if not node: raise AppException("VALIDATION_ERROR", "不得通过修改功能新增未知流程节点")
                 role_code = str(item.get("approverRoleCode") or node.approver_role_code).strip().upper()
                 role = db.scalars(select(Role).where(Role.tenant_id == tenant_id,
                     Role.role_code == role_code, Role.is_deleted.is_(False))).first()
@@ -383,7 +383,7 @@ def update_workflow(user: dict, project_id: int, workflow_code: str, body: dict)
         if body.get("status") == "DISABLED":
             row.status = "DISABLED"
         elif body.get("status") not in (None, ""):
-            raise AppException("VALIDATION_ERROR", "启用流程必须走学校政策确认，修改接口只允许停用")
+            raise AppException("VALIDATION_ERROR", "启用流程必须走学校政策确认，修改功能只允许停用")
         if changed_policy:
             # SYS-14：结构性改动前先看这条流程有没有在途实例、按 SYS-14 的版本策略决定放行/拒绝/留痕。
             # 同一 db 会话内调用，SNAPSHOT 拒绝时抛的异常会被下面 except 统一回滚，不产生半截改动。

@@ -97,7 +97,7 @@ def _assert_version(row, expected: Any, label: str) -> None:
     try:
         actual_expected = int(expected)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", f"{label} expectedVersion 非法")
+        raise AppException("VALIDATION_ERROR", f"{label}的数据版本不合法")
     if int(row.version or 0) != actual_expected:
         raise AppException(
             "DATA_CONFLICT",
@@ -185,7 +185,7 @@ def create_recommendation(user: dict, emp_student_id: Any, body: dict) -> dict:
     try:
         job_id = int(body.get("jobId"))
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "jobId 非法")
+        raise AppException("VALIDATION_ERROR", "任务编号不合法")
 
     with session() as db:
         emp, _profile = _scope_emp(db, emp_student_id, user, lock=True)
@@ -390,7 +390,7 @@ def bind_material_evidence(user: dict, material_id: Any, body: dict) -> dict:
         raise not_found("就业材料不存在或不在当前数据范围内")
     file_id = str(body.get("fileId") or "").strip()
     if not file_id.isdigit():
-        raise AppException("VALIDATION_ERROR", "fileId 非法")
+        raise AppException("VALIDATION_ERROR", "文件不合法")
 
     with session() as db:
         material = db.scalar(select(EmpMaterial).where(

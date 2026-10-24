@@ -9,7 +9,7 @@
       <button v-for="t in tabs" :key="t.key" :class="['aamk-tab', { 'is-active': tab === t.key }]" :disabled="saving || !!pendingWrite" @click="switchTab(t.key)">{{ t.label }}</button>
     </div>
 
-    <section v-if="writeReceipt" class="aamk-receipt" role="status"><strong>{{ writeReceipt.verified ? '已回读正式记录' : '结果待核实' }}</strong><p>{{ writeReceipt.label }} · {{ writeReceipt.description }}</p><p v-if="writeReceipt.objectId">业务对象：#{{ writeReceipt.objectId }} · 操作时间：{{ formatMoment(writeReceipt.occurredAt) }}</p><p v-if="writeReceipt.status">实际状态：{{ writeReceipt.statusLabel || academicStatusLabel(writeReceipt.status) }}</p><p v-if="writeReceipt.next">下一步：{{ writeReceipt.next }}</p><AppButton v-if="pendingWrite" :disabled="saving" :loading="checkingWrite" @click="verifyWrite">只读核对结果</AppButton><p v-if="pendingWrite">请勿重复提交；如详情弹窗遮挡，可先关闭弹窗再核对。</p></section>
+    <section v-if="writeReceipt" class="aamk-receipt" role="status"><strong>{{ writeReceipt.verified ? '已重新读取正式记录' : '结果待核实' }}</strong><p>{{ writeReceipt.label }} · {{ writeReceipt.description }}</p><p v-if="writeReceipt.objectId">业务对象：#{{ writeReceipt.objectId }} · 操作时间：{{ formatMoment(writeReceipt.occurredAt) }}</p><p v-if="writeReceipt.status">实际状态：{{ writeReceipt.statusLabel || academicStatusLabel(writeReceipt.status) }}</p><p v-if="writeReceipt.next">下一步：{{ writeReceipt.next }}</p><AppButton v-if="pendingWrite" :disabled="saving" :loading="checkingWrite" @click="verifyWrite">只读核对结果</AppButton><p v-if="pendingWrite">请勿重复提交；如详情弹窗遮挡，可先关闭弹窗再核对。</p></section>
     <ErrorState v-if="error" :description="error" @retry="reload" />
     <LoadingState v-else-if="loading" />
     <template v-else>
@@ -76,7 +76,7 @@
             <div class="aamk-facts">
               <article><div class="aamk-fact-title"><strong>来源对象与身份</strong><StatusTag type="success" label="精确申请" /></div><p>{{ objectTitle(activeApplication) }}</p><p>{{ courseIdentity(activeApplication) }}</p><p>提交：{{ formatMoment(activeApplication.appliedAt) }}</p><p class="aamk-muted">{{ activeApplication.reason || '未填写申请理由' }}</p></article>
               <article v-if="tab === 'retake'"><div class="aamk-fact-title"><strong>原正式成绩</strong><StatusTag :type="stateMeta(activeApplication.sourceGradeState).type" :label="stateMeta(activeApplication.sourceGradeState).label" /></div><p>{{ gradeIdentity(activeApplication.originGrade) }}</p><p>{{ gradeResult(activeApplication.originGrade) }}</p><p class="aamk-muted">{{ gradeSource(activeApplication.originGrade) }}</p><p class="aamk-muted">来源证据 {{ shortHash(activeApplication.sourceEvidenceHash) }}</p></article>
-              <article v-if="tab === 'retake'"><div class="aamk-fact-title"><strong>当前成绩事实</strong><StatusTag :type="stateMeta(activeApplication.sourceGradeState).type" :label="activeApplication.currentGrade?.gradeId ? '当前版本已定位' : '当前版本待核对'" /></div><p>{{ gradeIdentity(activeApplication.currentGrade) }}</p><p>{{ gradeResult(activeApplication.currentGrade) }}</p><p class="aamk-muted">{{ gradeSource(activeApplication.currentGrade) }}</p></article>
+              <article v-if="tab === 'retake'"><div class="aamk-fact-title"><strong>当前成绩情况</strong><StatusTag :type="stateMeta(activeApplication.sourceGradeState).type" :label="activeApplication.currentGrade?.gradeId ? '当前版本已定位' : '当前版本待核对'" /></div><p>{{ gradeIdentity(activeApplication.currentGrade) }}</p><p>{{ gradeResult(activeApplication.currentGrade) }}</p><p class="aamk-muted">{{ gradeSource(activeApplication.currentGrade) }}</p></article>
               <article v-else><div class="aamk-fact-title"><strong>课程与认定依据</strong><StatusTag :type="stateMeta(activeApplication.evidenceState,'evidence').type" :label="stateMeta(activeApplication.evidenceState,'evidence').label" /></div><p>{{ courseIdentity(activeApplication) }}</p><p>证据 {{ activeApplication.evidenceCount == null ? '数量待核对' : `${activeApplication.evidenceCount} 份` }} · 清单 {{ shortHash(activeApplication.evidenceManifestHash) }}</p><p v-if="evidenceProblems(activeApplication).length" class="aamk-danger">{{ evidenceProblems(activeApplication).join('；') }}</p><p v-else class="aamk-muted">证据有效不等于当前文件访问已授权，打开前仍由文件中心复核。</p></article>
               <article v-if="tab === 'exemption'"><div class="aamk-fact-title"><strong>终审成绩结果</strong><StatusTag :type="stateMeta(activeApplication.resultGradeState).type" :label="stateMeta(activeApplication.resultGradeState).label" /></div><p>{{ gradeIdentity(activeApplication.resultGrade) }}</p><p>{{ gradeResult(activeApplication.resultGrade) }}</p><p class="aamk-muted">{{ gradeSource(activeApplication.resultGrade) }}</p><p class="aamk-muted">当前有效：{{ gradeIdentity(activeApplication.currentGrade) }} · {{ gradeResult(activeApplication.currentGrade) }}</p></article>
               <article><div class="aamk-fact-title"><strong>当前节点与可办动作</strong><StatusTag :type="rtType(activeApplication.status)" :label="applicationStatus(activeApplication)" /></div><p>{{ tab === 'retake' ? '补重修责任岗' : nodeLabel(activeApplication.currentNode) }}</p><p>{{ actionText(activeApplication) }}</p><p v-if="blockers(activeApplication).length" class="aamk-danger">{{ blockers(activeApplication).join('；') }}</p><p v-else class="aamk-muted">{{ activeApplication.returnReason || activeApplication.reviewReason || '暂无办理意见' }}</p></article>
@@ -89,7 +89,7 @@
             <footer class="aamk-bar">
               <template v-if="tab === 'retake' && canReviewRetake"><button v-if="applicationCan(activeApplication,'APPROVE')" class="mp-link" @click="review('retakeReview',activeApplication.applyId,'APPROVE')">确认审核重修申请</button><button v-if="applicationCan(activeApplication,'REJECT')" class="mp-link is-danger" @click="reject('retakeReview',activeApplication.applyId)">驳回</button><button v-if="applicationCan(activeApplication,'ENROLL')" class="mp-link" @click="enrollRetake(activeApplication.applyId)">选择教学任务并编班</button></template>
               <template v-if="tab === 'exemption' && canReviewExemption"><button v-if="applicationCan(activeApplication,'APPROVE')" class="mp-link" @click="review('exemptionReview',activeApplication.exemptionId,'APPROVE')">确认本节点审核</button><button v-if="applicationCan(activeApplication,'RETURN')" class="mp-link" @click="returnEx(activeApplication.exemptionId)">退回补充材料</button><button v-if="applicationCan(activeApplication,'REJECT')" class="mp-link is-danger" @click="reject('exemptionReview',activeApplication.exemptionId)">驳回</button></template>
-              <span v-if="!formalActions(activeApplication).length" class="aamk-muted">服务端未授权当前动作，仅可核对。</span>
+              <span v-if="!formalActions(activeApplication).length" class="aamk-muted">当前操作未获授权，仅可核对。</span>
             </footer>
           </template>
         </section>
@@ -256,7 +256,7 @@
     <AppDrawer :visible="retakeVisible" title="重修编入跟班" mode="modal" size="medium" @close="retakeVisible = false">
       <div class="aamk-form"><p>{{ retakeRow?.studentName }} · {{ retakeRow?.courseName }} · {{ retakeRow?.termCode }}</p>
         <AppFormItem label="目标教学任务" required><AppTeachingTaskPicker v-model="teachingTaskRef" :disabled="saving || !!pendingWrite" /></AppFormItem>
-        <AppInlineAlert type="info" description="确认所选教学任务后提交。服务器核对学期、课程和名单版本；办理后回读申请编班状态。目标任务与名单版本详情仍需学校核对。" />
+        <AppInlineAlert type="info" description="确认所选教学任务后提交。系统核对学期、课程和名单版本；办理后重新读取申请的编班状态。目标任务与名单版本详情仍需学校核对。" />
       </div><template #footer><AppButton :disabled="!teachingTaskRef || saving || !!pendingWrite" :loading="saving" @click="submitRetake">确认编入所选教学任务</AppButton></template>
     </AppDrawer>
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" :submitting="saving" :confirm-disabled="!!pendingWrite" @confirm="onConfirm" />
@@ -392,13 +392,13 @@ export default {
     actionText(row) {
       const labels={APPROVE:'通过本节点',REJECT:'驳回',RETURN:'退回补充材料',ENROLL:'编入正式教学任务'}
       const actions=this.formalActions(row)
-      return actions.length?`服务端允许：${actions.map(action=>labels[action]||action).join('、')}`:'服务端未授权当前动作'
+      return actions.length?`系统允许：${actions.map(action=>labels[action]||action).join('、')}`:'当前操作未获授权'
     },
-    enrollmentLabel(row) { return row?.enrollment?.rosterCoverage==='FROZEN_AT_ENROLLMENT'?'编班版本已冻结':row?.status==='ENROLLED'?'编班来源待治理':'尚未编班' },
+    enrollmentLabel(row) { return row?.enrollment?.rosterCoverage==='FROZEN_AT_ENROLLMENT'?'编班版本已冻结':row?.status==='ENROLLED'?'编班来源待处理':'尚未编班' },
     rosterIdentity(row) {
       const enrollment=row?.enrollment||{}
       if(enrollment.rosterVersionId)return `名单版本 #${enrollment.rosterVersionId}${enrollment.rosterVersionNo==null?'':` · V${enrollment.rosterVersionNo}`}`
-      return enrollment.rosterCoverage==='UNRESOLVED'?'当时名单版本无法证明':'完成编班后由服务端返回当时冻结名单版本'
+      return enrollment.rosterCoverage==='UNRESOLVED'?'无法证明当时的名单版本':'完成编班后，系统会返回当时锁定的名单版本'
     },
     hasEvidenceContract(row) {
       if(!row)return false
@@ -462,12 +462,12 @@ export default {
       try{const raw=globalThis.sessionStorage.getItem(this.recoveryKey(c));if(!raw)return
         const saved=JSON.parse(raw),ref=saved.reference
         if(saved.tab!==c.tab||(ref&&(!['MAKEUP_RETAKE_REVIEW','MAKEUP_RETAKE_ENROLL','MAKEUP_EXEMPTION_REVIEW'].includes(ref.operation)||
-          !/^[1-9]\d*$/.test(ref.id)||!Number.isSafeInteger(ref.version)||ref.version<0||!/^[A-Za-z0-9_-]{8,128}$/.test(saved.commandKey))))throw new Error('原命令恢复引用不完整')
+          !/^[1-9]\d*$/.test(ref.id)||!Number.isSafeInteger(ref.version)||ref.version<0||!/^[A-Za-z0-9_-]{8,128}$/.test(saved.commandKey))))throw new Error('原操作的恢复信息不完整')
         const key=c.tab==='retake'?'applyId':'exemptionId'
-        this.pendingWrite={...c,...saved,readReady:true,acknowledged:false,recovered:true,label:'原业务命令',description:'正在核对原命令与当前正式记录',
+        this.pendingWrite={...c,...saved,readReady:true,acknowledged:false,recovered:true,label:'原业务命令',description:'正在核对原操作与当前正式记录',
           read:()=>ref?this.findFormal(c.tab,key,ref.id,1):null,
           accept:(row,reply)=>rowRevision(row,c.tab)>=rowRevision(reply,c.tab)}
-        this.writeReceipt={label:'原业务命令',description:'存在未决命令，请先只读核对',verified:false}
+        this.writeReceipt={label:'原业务命令',description:'存在未完成的操作，请先重新核对',verified:false}
       }catch(err){this.pendingWrite={...c,readReady:true,recovered:true};this.writeReceipt={label:'原业务命令',description:'恢复引用暂不可读取，已阻止新命令',verified:false};this.error=err.message}
     },
     receiptMatches(p,reply){
@@ -497,7 +497,7 @@ export default {
       } catch(err) {
         if(!this.currentScope(c))return null
         if(!sent || /403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test(String(err?.bizCode||err?.code||''))) {if(sent)this.forgetWrite(this.pendingWrite);this.pendingWrite=null;this.writeReceipt=null}
-        this.readError(err,sent?'结果待核实，请只读核对，不要重复操作。':'对象已变化或无法核对，本次未提交。')
+        this.readError(err,sent?'结果待核实，请重新核对，不要重复操作。':'对象已变化或无法核对，本次未提交。')
         return null
       } finally {if(this.currentScope(c))this.saving=false}
     },
@@ -509,24 +509,24 @@ export default {
         if(!p.acknowledged&&p.commandKey&&p.reference){
           const res=await api.commandReceipt(p.commandKey,p.reference.operation);if(!this.currentScope(p))return null
           if(res?.code!==0)throw res
-          if(res.data?.commandKey!==p.commandKey||res.data.operation!==p.reference.operation||!['SUCCESS','UNRESOLVED'].includes(res.data.state))throw new Error('原命令回执标识不一致')
+          if(res.data?.commandKey!==p.commandKey||res.data.operation!==p.reference.operation||!['SUCCESS','UNRESOLVED'].includes(res.data.state))throw new Error('原操作回执标识不一致')
           if(res.data.state==='SUCCESS'){
-            if(!this.receiptMatches(p,res.data.result))throw new Error('原命令回执与冻结申请或节点不一致')
+            if(!this.receiptMatches(p,res.data.result))throw new Error('原操作回执与已冻结的申请或环节不一致')
             p.reply=res.data.result;p.acknowledged=true
           }
         }
-        if(!p.read){this.error='原命令恢复引用无法读取，不能继续发送';return null}
+        if(!p.read){this.error='原操作的恢复信息无法读取，不能继续提交';return null}
         const formal=await p.read(p.reply)
         if(!this.currentScope(p))return null
-        if(!p.acknowledged){this.error='已回读当前正式记录，但尚未取得本次命令回执，不能据此认定本次办理成功；请勿重复提交。';return null}
-        if(['batchId','applyId','exemptionId','makeupId','deferId'].some(key=>p.reply?.[key]!=null&&String(p.reply[key])!==String(formal?.[key]??''))){this.error='正式记录与命令回执对象不一致，请只读核对原对象。';return null}
+        if(!p.acknowledged){this.error='已重新读取当前正式记录，但尚未取得本次操作的回执，不能据此认定本次办理成功；请勿重复提交。';return null}
+        if(['batchId','applyId','exemptionId','makeupId','deferId'].some(key=>p.reply?.[key]!=null&&String(p.reply[key])!==String(formal?.[key]??''))){this.error='正式记录与操作回执的对象不一致，请重新核对原对象。';return null}
         if(!p.accept(formal,p.reply)){this.error='结果待核实：正式记录尚未反映本次办理结果，请勿重复提交。';return null}
         this.forgetWrite(p)
         this.syncFormal(formal)
         const objectId=formal?.applyId||formal?.exemptionId||formal?.makeupId||formal?.batchId||formal?.deferId
         this.writeReceipt={label:p.label,description:p.description,objectId,occurredAt:formal?.updatedAt,status:formal?.status,statusLabel:this.applicationStatus(formal),next:['retake','exemption'].includes(this.tab)?this.nextStep(formal):'',verified:true};this.pendingWrite=null;this.error=''
         return formal
-      } catch(err){if(this.currentScope(p))this.readError(err,'结果待核实，请稍后只读核对。');return null}
+      } catch(err){if(this.currentScope(p))this.readError(err,'结果待核实，请稍后重新核对。');return null}
       finally{if(this.currentScope(p))this.checkingWrite=false}
     },
 
@@ -603,7 +603,7 @@ export default {
     review(fn,id,action) {
       if(this.saving||this.pendingWrite)return
       const key=fn==='retakeReview'?'applyId':'exemptionId',row=this.rows.find(r=>String(r[key])===String(id));if(!row)return
-      if(!this.applicationCan(row,action)){this.error='服务端未授权当前动作，请重新读取责任队列。';return}
+      if(!this.applicationCan(row,action)){this.error='当前操作未获授权，请重新读取责任队列。';return}
       const c=this.captureScope(),snapshot=this.freezeApplication(row)
       this.confirmTitle=action==='APPROVE'?'确认本节点通过':'确认办理';this.confirmMessage=`${row.studentName} · ${row.courseName} · ${academicStatusLabel(row.status)}。本节点通过不等于全部流程完成。`
       this.pendingAction=()=>this.currentScope(c)?this.processReview(fn,id,action,'',snapshot):null;this.confirmVisible=true
@@ -624,7 +624,7 @@ export default {
     async processReview(fn,id,action,reason,snapshot) {
       if(fn==='retakeReview'?!this.canReviewRetake:!this.canReviewExemption)return null
       const tab=fn==='retakeReview'?'retake':'exemption',key=tab==='retake'?'applyId':'exemptionId',page=this.pagination.page
-      if(!this.applicationCan(snapshot,action)){this.error='服务端未授权当前动作，请重新读取责任队列。';return null}
+      if(!this.applicationCan(snapshot,action)){this.error='当前操作未获授权，请重新读取责任队列。';return null}
       const identity=this.commandIdentity(tab,snapshot,action)
       if(!identity){this.error=tab==='retake'?'来源成绩版本证据未返回，不能提交当前动作。':'申请版本未返回，不能提交当前动作。';return null}
       const beforeNode=snapshot.currentNode,beforeStatus=snapshot.status
@@ -638,14 +638,14 @@ export default {
     reject(fn,id) {
       if(this.saving||this.pendingWrite)return
       const key=fn==='retakeReview'?'applyId':'exemptionId',row=this.rows.find(r=>String(r[key])===String(id));if(!row)return
-      if(!this.applicationCan(row,'REJECT')){this.error='服务端未授权驳回，请重新读取责任队列。';return}
+      if(!this.applicationCan(row,'REJECT')){this.error='驳回未获授权，请重新读取责任队列。';return}
       const c=this.captureScope(),snapshot=this.freezeApplication(row)
       this.reasonDialog={visible:true,title:`驳回：${row.studentName} · ${row.courseName}`,reason:'',sceneKey:'aa.makeup.reject',submitting:false,action:reason=>this.currentScope(c)?this.processReview(fn,id,'REJECT',reason,snapshot):null}
     },
     returnEx(id) {
       if(this.saving||this.pendingWrite)return
       const row=this.rows.find(r=>String(r.exemptionId)===String(id));if(!row)return
-      if(!this.applicationCan(row,'RETURN')){this.error='服务端未授权退回，请重新读取责任队列。';return}
+      if(!this.applicationCan(row,'RETURN')){this.error='退回未获授权，请重新读取责任队列。';return}
       const c=this.captureScope(),snapshot=this.freezeApplication(row)
       this.reasonDialog={visible:true,title:`退回补材料：${row.studentName} · ${row.courseName}`,reason:'',sceneKey:'aa.makeup.supplement',submitting:false,action:reason=>this.currentScope(c)?this.processReview('exemptionReview',id,'RETURN',reason,snapshot):null}
     },
@@ -659,7 +659,7 @@ export default {
     enrollRetake(id) {
       if(!this.canReviewRetake||this.saving||this.pendingWrite)return
       const row=this.rows.find(r=>String(r.applyId)===String(id));if(row?.status!=='APPROVED')return
-      if(!this.applicationCan(row,'ENROLL')){this.error='服务端未授权编班，请重新读取责任队列。';return}
+      if(!this.applicationCan(row,'ENROLL')){this.error='编班未获授权，请重新读取责任队列。';return}
       this.retakeRow=this.freezeApplication(row);this.teachingTaskRef='';this.retakeVisible=true
     },
     async submitRetake() {

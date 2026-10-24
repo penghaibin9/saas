@@ -334,7 +334,7 @@ def upsert_policy(data: dict, *, user: dict, expected_version: int | None = None
     tenant_id = _tenant_id()
     code = str(data.get("policyCode") or "").strip().upper()
     if not code:
-        raise AppException("VALIDATION_ERROR", "policyCode 必填")
+        raise AppException("VALIDATION_ERROR", "请填写策略编码")
     days = int(data.get("retentionDays") or 0)
     if days < 0 or days > 36500:
         raise AppException("VALIDATION_ERROR", "保留天数必须为 0-36500")

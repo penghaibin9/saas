@@ -531,7 +531,7 @@ export const platformApi = {
     const row = integrationList.find((i) => i.id === id)
     if (!row) return fail('集成不存在')
     audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'TEST', actionLabel: '测试连接', target: `集成「${row.name}」`, summary: `健康检查：${row.healthLabel}` })
-    return ok({ id, health: row.health, healthLabel: row.healthLabel, message: row.health === 'HEALTHY' ? '连通性 / 认证 / 接口均正常' : row.health === 'WARNING' ? '可连通，但存在字段映射缺失或错误率偏高' : '连接失败，请检查地址与凭证' })
+    return ok({ id, health: row.health, healthLabel: row.healthLabel, message: row.health === 'HEALTHY' ? '连接、认证、服务均正常' : row.health === 'WARNING' ? '可连通，但存在字段映射缺失或错误率偏高' : '连接失败，请检查地址与凭证' })
   },
 
   exportIntegrations() {
@@ -696,7 +696,7 @@ export const platformApi = {
     row.statusLabel = '运行中'
     row.lastResult = `重试成功 ${failed} 行 · 失败 0`
     row.lastRunAt = now()
-    audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'UPDATE', actionLabel: '重试任务', target: `同步任务「${row.name}」（${row.tenantName}）`, summary: `仅重试失败行 ${failed} 行（幂等），全部成功` })
+    audit({ module: 'INTEGRATION', moduleLabel: '集成开放', action: 'UPDATE', actionLabel: '重试任务', target: `同步任务「${row.name}」（${row.tenantName}）`, summary: `仅重试失败的 ${failed} 行，全部成功` })
     return ok({ id, retried: failed })
   },
 

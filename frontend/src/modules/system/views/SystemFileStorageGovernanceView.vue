@@ -21,7 +21,7 @@
         <article><strong>{{ usage.usagePercent == null ? '—' : `${usage.usagePercent}%` }}</strong><span>配额使用率</span></article>
         <article><strong>{{ formatGiB(usage.estimatedNext30DaysGrowthBytes) }}</strong><span>近 30 天增长</span></article>
         <article><strong>{{ usage.totalFiles || 0 }}</strong><span>文件对象</span></article>
-        <article><strong>{{ anomalyTotal }}</strong><span>待治理异常</span></article>
+        <article><strong>{{ anomalyTotal }}</strong><span>待处理异常</span></article>
       </section>
 
       <div v-if="error" class="state error-state">

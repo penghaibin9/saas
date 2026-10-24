@@ -153,7 +153,7 @@ def _normalize_assignment_item(item: dict) -> dict:
     mentor_id = str(item.get("mentorId") or "").strip()
     external_id = str(item.get("externalAdvisorId") or "").strip()
     if not student_id:
-        raise AppException("VALIDATION_ERROR", "gdStudentId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择毕设学生")
     if bool(mentor_id) == bool(external_id):
         raise AppException(
             "VALIDATION_ERROR",
@@ -176,7 +176,7 @@ def _enter_score(*args, **kwargs):
     positional_group_id = args[6] if len(args) > 6 else None
     requested_group_id = kwargs.get("defense_group_id")
     if positional_group_id not in (None, "") or requested_group_id not in (None, ""):
-        raise AppException("VALIDATION_ERROR", "defenseGroupId 由服务端权威解析，禁止请求指定")
+        raise AppException("VALIDATION_ERROR", "答辩组由系统自动确定，不能手动指定")
     if len(args) > 6:
         mutable = list(args)
         mutable[6] = None
@@ -230,7 +230,7 @@ def _canonical_v2_manifest_hash(session: Session, archive: GraduationArchiveReco
         ArchiveManifest.is_deleted.is_(False),
     ).order_by(ArchiveManifest.revision.desc(), ArchiveManifest.id.desc()).with_for_update()).all())
     if len(active) > 1:
-        raise AppException("DATA_CONFLICT", "同一毕设归档存在多个当前 V2 冻结清单")
+        raise AppException("DATA_CONFLICT", "同一毕设归档存在多个当前冻结清单")
     if not active:
         return None
     value = str(active[0].manifest_sha256 or "").strip()
@@ -238,7 +238,7 @@ def _canonical_v2_manifest_hash(session: Session, archive: GraduationArchiveReco
         len(value) == 64
         and all(ch in "0123456789abcdefABCDEF" for ch in value)
     ):
-        raise AppException("DATA_CONFLICT", "V2 归档清单 manifest_sha256 无效")
+        raise AppException("DATA_CONFLICT", "归档冻结清单的校验码无效")
     return value
 
 

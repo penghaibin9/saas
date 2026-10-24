@@ -60,7 +60,7 @@ def _bearer(authorization: Optional[str]) -> str:
     if value.startswith("Bearer "):
         value = value[7:].strip()
     if not value:
-        raise unauthorized("未提供企业认证令牌")
+        raise unauthorized("未提供企业登录凭证")
     return value
 
 

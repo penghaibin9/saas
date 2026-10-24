@@ -70,7 +70,7 @@ function reconcilePersistentCommand() {
     uncertainCommandKey.value = ''
   } else {
     receiptTone.value = 'waiting'
-    receipt.value = academicReceipt({ title: '原成绩认定申请结果待确认', object: '原目标课程', status: reference.ackId ? formal ? '正式记录已读到，但本地待确认引用未能安全清理' : '尚未读取到原回执对应的本人记录' : '原提交未取得服务端回执编号', next: '本页只会刷新本人正式记录，不会自动再次提交。' })
+    receipt.value = academicReceipt({ title: '原成绩认定申请结果待确认', object: '原目标课程', status: reference.ackId ? formal ? '正式记录已读到，但本地待确认引用未能安全清理' : '尚未读取到原回执对应的本人记录' : '原提交未取得回执编号', next: '本页只会刷新本人正式记录，不会自动再次提交。' })
   }
 }
 async function loadCourses(page = 1) {
@@ -158,7 +158,7 @@ async function submit() {
     const kind = studentAcademicWriteErrorKind(e)
     if (!['network', 'forbidden', 'conflict'].includes(kind)) guard.completePersistentCommand(persistent)
     if (kind === 'network' || kind === 'conflict') uncertainCommandKey.value = command.key
-    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'conflict' ? '业务事实已变化' : kind === 'network' ? '提交结果待确认' : '申请未提交', object: command.object, status: kind === 'network' ? '待服务器记录确认' : '未完成', next: academicErrorMessage(e, '请核对填写内容后重试。') })
+    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'conflict' ? '业务数据已变化' : kind === 'network' ? '提交结果待确认' : '申请未提交', object: command.object, status: kind === 'network' ? '待服务器记录确认' : '未完成', next: academicErrorMessage(e, '请核对填写内容后重试。') })
 
     if (kind === 'network' || kind === 'conflict') {
       try {

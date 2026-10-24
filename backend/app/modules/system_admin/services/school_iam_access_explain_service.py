@@ -101,7 +101,7 @@ def _domain_guard_for_role(
             "reasonCode": _RESOURCE_CONTEXT_REQUIRED,
             "details": {
                 "authority": "SCOPE_POLICY_SERVICE",
-                "message": "必须提供 scopeTargetType/scopeTargetId 才能形成业务最终访问结论",
+                "message": "必须选择数据范围类型和对象才能得出业务访问结论",
             },
         }
 

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     :title="isCreate ? '新增学生主档' : '编辑学生信息' + (form.name ? ' · ' + form.name : '')"
-    :subtitle="isCreate ? '建档后形成真实学生主档；身份核验能力按服务端状态显示，不预设成功或待核验' : '仅提交本次实际修改的字段，全程审计留痕'"
+    :subtitle="isCreate ? '建档后形成真实的学生主档；身份核验能力按系统状态显示，不预设成功或待核验' : '仅提交本次实际修改的字段，全程审计留痕'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
     watermark-purpose="学生主档维护"
@@ -216,7 +216,7 @@ export default {
       }
       this.submitting = false
       if (res.code === 0) {
-        toast.success(this.isCreate ? '建档成功（已留痕；身份核验服务状态以服务端事实为准）' : '学生信息已更新（已留痕）')
+        toast.success(this.isCreate ? '建档成功（已留痕；身份核验服务状态以系统为准）' : '学生信息已更新（已留痕）')
         this.backToList()
       } else if (this.isCreate && this.isVoidedConflict(res)) {
         this.restoreDialog.visible = true

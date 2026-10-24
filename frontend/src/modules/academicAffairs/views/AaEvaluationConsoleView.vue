@@ -38,7 +38,7 @@
       <!-- AA-234 评价批次 -->
       <div v-if="queryTab === 'batches'" class="mp-stack">
         <div class="aaev-toolbar">
-          <span>应评任务只从正式教学任务生成；生命周期动作以服务端复查结果为准。</span>
+          <span>应评任务只从正式教学任务生成；各步骤动作以系统复查结果为准。</span>
           <AppButton v-if="canManage" variant="primary" size="small" @click="openCreate">创建评价批次</AppButton>
         </div>
         <div class="aaev-metrics">
@@ -83,7 +83,7 @@
                 <AppButton v-if="current.status === 'RESULT_READY'" size="small" variant="ghost" @click="lc('archive', '归档批次')">归档批次</AppButton>
               </div>
               <section class="aaev-card">
-                <div class="aaev-card-title"><span>应评任务</span><small>提交数取自正式答卷事实</small></div>
+                <div class="aaev-card-title"><span>应评任务</span><small>提交数取自正式答卷</small></div>
                 <EmptyState v-if="!tasks.length" title="未生成应评任务" description="草稿阶段从正式教学任务生成；非学生评价须指定真实评价人" />
                 <DataTable v-else :columns="taskColumns" :rows="visibleTasks" row-key="taskId" :pagination="taskPagination" @page-change="onTaskPageChange">
                   <template #cell-evaluatorType="{ row }">{{ evaluatorLabel(row.evaluatorType) }}</template>
@@ -129,13 +129,13 @@
                 :next-role="appealNextRole"
               />
               <div class="aaev-evidence-grid">
-                <Evidence title="来源对象与身份" status="服务端范围已核验" type="success">
-                  申诉 #{{ selectedAppeal.appealId }} 关联结果 #{{ selectedAppeal.resultId }}，教师标识 {{ selectedAppeal.teacherKey || '接口未返回' }}。
+                <Evidence title="来源对象与身份" status="范围已经系统核验" type="success">
+                  申诉 #{{ selectedAppeal.appealId }} 关联结果 #{{ selectedAppeal.resultId }}，教师标识 {{ selectedAppeal.teacherKey || '未返回' }}。
                 </Evidence>
-                <Evidence title="当前结果版本" status="以 resultId 锁定" type="warning">
-                  当前接口未提供展示版本号；审核命令严格锁定结果 #{{ selectedAppeal.resultId }}，不以列表位置代替对象。
+                <Evidence title="当前结果版本" status="以结果编号锁定" type="warning">
+                  当前未提供展示版本号；审核严格锁定结果 #{{ selectedAppeal.resultId }}，不以列表位置代替对象。位置代替对象。
                 </Evidence>
-                <Evidence title="材料与事实依据" status="申诉原文" type="success" wide>{{ selectedAppeal.reason || '申诉人未提供理由' }}</Evidence>
+                <Evidence title="材料与依据" status="申诉原文" type="success" wide>{{ selectedAppeal.reason || '申诉人未提供理由' }}</Evidence>
                 <Evidence title="既有审核意见" :status="selectedAppeal.reviewReason ? '已有留痕' : '暂无留痕'" :type="selectedAppeal.reviewReason ? 'success' : 'default'" wide>
                   {{ selectedAppeal.reviewReason || '当前节点尚未形成正式审核意见。' }}
                 </Evidence>
@@ -202,7 +202,7 @@
             </ul>
           </section>
           <section class="aaev-detail">
-            <EmptyState v-if="!selectedTask" :title="'选择' + typeViewLabel + '任务'" description="每次提交只锁定当前 taskId，提交后重新读取本人任务状态" />
+            <EmptyState v-if="!selectedTask" :title="'选择' + typeViewLabel + '任务'" description="每次提交只针对当前任务，提交后重新读取本人任务状态" />
             <template v-else>
               <ObjectCard
                 :title="selectedTask.courseName + ' · ' + typeViewLabel"
@@ -238,7 +238,7 @@
 
       <!-- AA-240 评价统计 -->
       <div v-else-if="queryTab === 'evalStats'" class="mp-stack">
-        <AppInlineAlert type="info" description="统计结果按当前账号数据范围由服务端裁定；学生匿名小样本保护及结果可见性不由前端推断。" />
+        <AppInlineAlert type="info" description="统计结果按当前账号的数据范围由系统裁定；学生匿名的小样本保护及结果是否可见，不由页面推断。" />
         <div class="aaev-layout">
           <section class="aaev-list-pane aaev-card">
             <div class="aaev-card-title">统计批次</div>
@@ -252,7 +252,7 @@
             <template v-else-if="stats">
               <ObjectCard :title="current.batchName + ' · 评价统计'" :meta="`批次 #${current.batchId} · 当前授权范围`" :status="bLabel(current.status)" :status-type="bType(current.status)" current-role="评价统计岗" next-role="结果发布 / 质量整改" />
               <div class="aaev-metrics is-three">
-                <Metric label="范围内结果" :value="stats.resultCount ?? 0" hint="与下钻结果同一服务端范围" />
+                <Metric label="范围内结果" :value="stats.resultCount ?? 0" hint="与下钻结果同一范围" />
                 <Metric label="学生均分均值" :value="stats.overallAvg ?? '—'" hint="无可见结果时不显示伪百分比" />
                 <Metric label="待完成任务" :value="statsPendingCount" hint="各来源应评减已评" warning />
               </div>
@@ -274,7 +274,7 @@
 
       <!-- AA-241 评价归档 -->
       <div v-else-if="queryTab === 'archive'" class="mp-stack">
-        <AppInlineAlert type="info" description="归档批次与评价结果只读。归档前由服务端确认结果就绪且没有在途申诉；未发布草稿不会下发为档案。" />
+        <AppInlineAlert type="info" description="归档批次与评价结果只读。归档前由系统确认结果就绪且没有在途申诉；未发布的草稿不会下发为档案。" />
         <EmptyState v-if="!archivedRows.length" title="暂无已归档批次" description="结果就绪且申诉已完成的批次归档后会出现在此" />
         <div v-else class="aaev-layout">
           <section class="aaev-list-pane aaev-card">
@@ -288,7 +288,7 @@
             <EmptyState v-if="!current" title="选择评价档案" description="查看批次原记录、正式结果和发布时间" />
             <template v-else>
               <ObjectCard :title="current.batchName" :meta="`档案批次 #${current.batchId} · 学期 ${current.termId || '未绑定'}`" status="已归档" status-type="default" current-role="档案查阅岗" :next-role="'结果发布时间：' + formatDateTime(current.resultPublishedAt)" />
-              <div class="aaev-notice"><strong>只读封存</strong><span>当前接口未返回独立 Manifest 版本号；本页使用批次 ID 与结果 ID 作为正式对象标识，任何纠错必须另走受控流程。</span></div>
+              <div class="aaev-notice"><strong>只读封存</strong><span>当前未返回独立的清单版本号；本页使用批次编号与结果编号标识正式对象，任何纠错必须另走受控流程。</span></div>
               <ResultTable :rows="results" :columns="archiveResultColumns" :pagination="resultPagination" title="评价档案 · 原记录与正式凭证" empty-title="无可见归档结果" archive @page-change="onResultPageChange" />
             </template>
           </section>
@@ -300,7 +300,7 @@
       <div class="aaev-form">
         <AppFormItem label="批次名称" required><AppTextInput v-model="form.batchName" placeholder="如 2026秋第1批教学评价" :disabled="saving" /></AppFormItem>
         <AppFormItem label="正式学期" required><AppTermEntityPicker v-model="form.termId" placeholder="选择正式学期" :disabled="saving" /></AppFormItem>
-        <AppInlineAlert type="info" description="学生评教强制匿名；问卷模板与学期在服务端再次校验。创建成功仅形成草稿，不代表已经发布。" />
+        <AppInlineAlert type="info" description="学生评教强制匿名；问卷模板与学期会再次校验。创建成功仅形成草稿，不代表已经发布。" />
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer><AppButton variant="ghost" :disabled="saving" @click="createVisible = false">取消</AppButton><AppButton variant="primary" :loading="saving" @click="submitCreate">创建批次</AppButton></template>
@@ -406,7 +406,7 @@ const ResultTable = {
     if (this.archive) slots['cell-proof'] = ({ row }) => `结果 #${row.resultId}`
     return h('section', { class: 'aaev-card' }, [
       h('div', { class: 'aaev-card-title' }, this.title),
-      !this.rows?.length ? h(EmptyState, { title: this.emptyTitle, description: '服务端未返回当前数据范围内的结果' }) : h(DataTable, { columns: this.columns, rows: this.rows, rowKey: 'resultId', pagination: this.pagination, onPageChange: (page) => this.$emit('page-change', page) }, slots)
+      !this.rows?.length ? h(EmptyState, { title: this.emptyTitle, description: '系统未返回当前数据范围内的结果' }) : h(DataTable, { columns: this.columns, rows: this.rows, rowKey: 'resultId', pagination: this.pagination, onPageChange: (page) => this.$emit('page-change', page) }, slots)
     ])
   }
 }
@@ -435,12 +435,12 @@ export default {
       pageMeta: {
         batches: ['评价批次', '应评任务从正式教学任务产生', '创建批次、生成任务、开放窗口、核算发布并交接申诉归档。'],
         appeals: ['申诉审核', '结果发布、申诉与复核版本分开', '先核验来源结果和当前节点，再由学院初审、教务终审形成正式意见。'],
-        studentEval: ['学生评教', '匿名任务完成情况', '教师 PC 查看匿名任务完成事实；学生本人在学生端按正式名单提交。'],
+        studentEval: ['学生评教', '匿名任务完成情况', '教师电脑端查看匿名任务的完成情况；学生本人在学生端按正式名单提交。'],
         selfEval: ['教师自评', '自评任务来自本人正式教学任务', '本人只办理分配给当前账号的自评任务，提交后交评价核算岗。'],
-        peerEval: ['同行评价', '同行范围与自评范围分开', '指定同行依据听课事实评价当前教学任务，不替代教师自评。'],
-        supervisorEval: ['督导评价', '评价与质量整改分开办理', '督导记录观察事实并提交评价；需要整改时由质量整改流程承接。'],
-        evalStats: ['评价统计', '授权结果与参评口径', '按服务端数据范围查看等级、参评率与同口径结果下钻。'],
-        archive: ['评价归档', '未发布草稿不形成档案', '只读查看已归档批次和正式结果标识，受控纠错另走流程。']
+        peerEval: ['同行评价', '同行范围与自评范围分开', '指定同行依据听课情况评价当前教学任务，不替代教师自评。'],
+        supervisorEval: ['督导评价', '评价与质量整改分开办理', '督导记录观察情况并提交评价；需要整改时由质量整改流程承接。'],
+        evalStats: ['评价统计', '授权结果与参评口径', '按数据范围查看等级、参评率与同口径结果下钻。'],
+        archive: ['评价归档', '未发布草稿不形成档案', '只读查看已归档批次和正式结果编号，受控纠错另走流程。']
       },
       lifecycleStages: ['创建批次', '生成任务', '评价提交', '核算发布', '申诉归档'],
       lifecycleHints: ['上游任务可回查', '绑定任务和评价人', '按任务身份提交', '按真实答卷核算', '申诉完成后封存'],
@@ -487,7 +487,7 @@ export default {
         { label: '一般', value: 2 }, { label: '需改进', value: 1 }
       ],
       questionnaireItems: [
-        { key: 'preparation', label: '教学准备充分', hint: '备课、资源与课堂准备事实' },
+        { key: 'preparation', label: '教学准备充分', hint: '备课、资源与课堂准备情况' },
         { key: 'objective', label: '教学目标清晰', hint: '目标与正式课程任务的一致性' },
         { key: 'organization', label: '课堂组织有序', hint: '教学组织与课堂节奏' },
         { key: 'feedback', label: '反馈及时有效', hint: '指导、答疑与学习反馈' },
@@ -536,10 +536,10 @@ export default {
     whyMine() { return this.canManage ? '当前账号具备批次管理权限，且对象在当前数据范围内' : '对象在当前账号可查看的数据范围内' },
     currentBlocker() {
       if (!this.current) return '未选择对象'
-      if (this.current.status === 'DRAFT' && !this.current.termId) return '未绑定正式学期，服务端将拒绝后续写入'
+      if (this.current.status === 'DRAFT' && !this.current.termId) return '未绑定正式学期，系统将拒绝后续写入'
       if (this.current.status === 'DRAFT' && !this.tasks.length) return '尚未生成正式应评任务'
       if (this.current.status === 'RESULT_READY') return '归档前必须完成在途申诉'
-      return '服务端未返回当前阻断'
+      return '系统未返回当前阻断项'
     },
     appealCurrentRole() {
       return this.selectedAppeal?.status === 'SUBMITTED' ? '所属学院评价复核岗'
@@ -576,22 +576,22 @@ export default {
     canSubmitRoleTask() {
       return Boolean(this.selectedTask && this.selectedTask.status !== 'SUBMITTED' && this.selectedTask.batchStatus === 'OPEN' && !this.saving && !this.confirmSubmitting)
     },
-    roleEvidenceLabel() { return this.typeFilter === 'PEER' ? '听课证据' : this.typeFilter === 'SUPERVISOR' ? '观察事实' : '自评依据' },
+    roleEvidenceLabel() { return this.typeFilter === 'PEER' ? '听课证据' : this.typeFilter === 'SUPERVISOR' ? '观察情况' : '自评依据' },
     roleEvidencePlaceholder() {
-      return this.typeFilter === 'PEER' ? '填写听课时间、课堂与可核验事实'
-        : this.typeFilter === 'SUPERVISOR' ? '填写课堂观察事实，避免只写结论' : '填写本学期教学任务、材料或改进依据'
+      return this.typeFilter === 'PEER' ? '填写听课时间、课堂与可核验的情况'
+        : this.typeFilter === 'SUPERVISOR' ? '填写课堂观察情况，避免只写结论' : '填写本学期教学任务、材料或改进依据'
     },
     roleCommentLabel() { return this.typeFilter === 'SUPERVISOR' ? '整改建议（选填）' : '评价说明（选填）' },
     roleCommentPlaceholder() { return this.typeFilter === 'SUPERVISOR' ? '写明问题和建议；正式整改仍需另建质量整改任务' : '补充与评分有关的具体说明' },
-    rolePrivacyNotice() { return `当前只读取登录账号的${this.typeViewLabel}任务；任务身份来自服务端 evaluatorKey 校验，列表不会混入其他评价人的任务。` },
+    rolePrivacyNotice() { return `当前只读取登录账号的${this.typeViewLabel}任务；任务归属由系统校验，列表不会混入其他评价人的任务。` },
     rolePrivacyDetail() {
       return this.typeFilter === 'SELF' ? '本人身份仅用于核验自评任务归属；结果由核算岗按既定权重处理。'
         : '评价人身份用于任务归属和审计，被评教师只在结果正式发布后按授权范围查看结果。'
     },
     genTaskHint() {
-      if (this.genType === 'STUDENT') return '学生任务强制匿名，提交资格由正式教学班名单版本裁定。'
+      if (this.genType === 'STUDENT') return '学生任务强制匿名，提交资格由正式教学班名单裁定。'
       if (this.genType === 'SELF') return '自评任务自动使用教学任务中的授课教师标识作为评价人。'
-      return '同行或督导任务必须指定真实评价人标识，提交时服务端会核验登录身份。'
+      return '同行或督导任务必须指定真实的评价人，提交时系统会核验登录身份。'
     }
   },
   watch: {
@@ -648,7 +648,7 @@ export default {
     batchStatusCount(status) { return this.rows.filter((row) => row.status === status).length },
     stageClass(index) { return index < this.lifecycleIndex ? 'is-done' : index === this.lifecycleIndex ? 'is-current' : '' },
     formatDateTime(value) {
-      if (!value) return '接口未返回'
+      if (!value) return '未返回'
       const date = new Date(value)
       return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false })
     },
@@ -869,7 +869,7 @@ export default {
       this.confirmReasonLabel = ''
       this.confirmTitle = `提交${this.typeViewLabel}`
       this.confirmText = `确认提交${this.typeViewLabel}`
-      this.confirmMessage = `确认提交任务 #${taskId}「${taskName}」？提交后不可重复提交，下一责任岗位为评价核算岗。`
+      this.confirmMessage = `确认提交任务 #${taskId}「${taskName}」？提交后不可重复提交，下一步由评价核算岗处理。`
       this.pendingAction = async () => {
         const response = await api.submit(payload)
         if (response.code !== 0) { toast.error(response.message || `${this.typeViewLabel}提交失败`); return false }
@@ -951,7 +951,7 @@ export default {
       this.confirmReasonLabel = ''
       this.confirmTitle = label
       this.confirmText = `确认${label}`
-      this.confirmMessage = `确认对批次 #${batchId}「${batchName}」执行“${label}”？当前状态 ${this.bLabel(expectedStatus)}，服务端将重新校验对象状态与权限。`
+      this.confirmMessage = `确认对批次 #${batchId}「${batchName}」执行“${label}”？当前状态 ${this.bLabel(expectedStatus)}，系统将重新校验对象状态与权限。`
       this.pendingAction = async () => {
         const response = await api[fn](batchId)
         if (response.code !== 0) { toast.error(response.message || `${label}失败`); return false }
@@ -975,7 +975,7 @@ export default {
       this.confirmReasonLabel = `${stageLabel}意见（≥5 字）`
       this.confirmTitle = `${stageLabel}通过`
       this.confirmText = `确认${stageLabel}通过`
-      this.confirmMessage = `确认对申诉 #${row.appealId}、结果 #${row.resultId} 执行${stageLabel}通过？服务端将按当前账号数据范围复核本级权限。`
+      this.confirmMessage = `确认对申诉 #${row.appealId}、结果 #${row.resultId} 执行${stageLabel}通过？系统将按当前账号数据范围复核本级权限。`
       this.pendingAction = async (reason) => {
         const note = String(reason || '').trim()
         const res = await api.reviewAppeal(row.appealId, 'RESOLVE', note)

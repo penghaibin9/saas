@@ -36,8 +36,8 @@
           <label><span>应缴金额（元）</span><input v-model.number="paymentEdit.payableAmount" type="number" min="0" step="0.01" /></label>
           <label><span>已缴金额（元）</span><input v-model.number="paymentEdit.paidAmount" type="number" min="0" step="0.01" /></label>
           <label><span>缴费状态</span><select v-model="paymentEdit.status"><option value="UNPAID">未缴费</option><option value="PARTIAL">部分缴费</option><option value="PAID">已缴清</option><option value="WAIVED">已减免</option><option value="DEFERRED">已批准缓缴</option></select></label>
-          <label><span>财务/核验流水号</span><input v-model.trim="paymentEdit.sourceBizId" maxlength="160" placeholder="用于幂等和审计，不可留空" /></label>
-          <div class="ori-inline-note">保存后将按当前缴费事实自动重算该生报到资格。</div>
+          <label><span>财务/核验流水号</span><input v-model.trim="paymentEdit.sourceBizId" maxlength="160" placeholder="用于防止重复提交和审计，不可留空" /></label>
+          <div class="ori-inline-note">保存后将按当前缴费情况自动重算该生的报到资格。</div>
         </div>
         <template #footer><div class="ori-issue-footer"><AppButton variant="secondary" @click="paymentVisible = false">取消</AppButton><AppButton variant="primary" :loading="submitting" @click="savePayment">保存并重算资格</AppButton></div></template>
       </AppDrawer>

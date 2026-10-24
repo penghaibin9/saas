@@ -22,7 +22,7 @@ def _page_values(page, page_size) -> tuple[int, int]:
         page_no = max(1, int(page or 1))
         size = int(page_size if page_size is not None else 20)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "page/pageSize 必须为整数") from None
+        raise AppException("VALIDATION_ERROR", "页码与每页条数必须为整数") from None
     if size < 1 or size > _MAX_PAGE_SIZE:
         raise AppException("VALIDATION_ERROR", f"pageSize 必须在 1-{_MAX_PAGE_SIZE} 之间")
     return page_no, size

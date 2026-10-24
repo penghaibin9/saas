@@ -701,7 +701,7 @@ export default {
         // 后端 update_batch 强制乐观锁；版本来自进入编辑页时的详情
         const ver = this.detail?.version
         if (ver === undefined || ver === null || ver === '') {
-          toast.error('缺少批次版本号，请刷新后重试')
+          toast.error('缺少批次版本，请刷新后重试')
           return
         }
         body.expectedVersion = Number(ver)

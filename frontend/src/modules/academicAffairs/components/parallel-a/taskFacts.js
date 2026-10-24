@@ -15,7 +15,7 @@ export async function readTaskPages(readPage, isCurrent = () => true) {
     const list = result.data?.list
     const count = Number(result.data?.total)
     if (!Array.isArray(list) || !Number.isInteger(count) || count < 0 || (total !== undefined && count !== total)) {
-      return { code: 409001, message: '任务列表事实已变化或未完整返回，请刷新核对。' }
+      return { code: 409001, message: '任务列表数据已变化或未完整返回，请刷新核对。' }
     }
     total = count
     for (const row of list) {

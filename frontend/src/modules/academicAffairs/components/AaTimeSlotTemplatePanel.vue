@@ -8,7 +8,7 @@
       <AppButton variant="primary" :loading="loading" @click="loadPreview">检查当前作息</AppButton>
     </div>
 
-    <p class="aa-template-note">模板只负责给出候选，不覆盖现有节次；确认时仅创建「可新增」项，每一项继续经过服务端节次序号与时间重叠校验。</p>
+    <p class="aa-template-note">模板只提供候选，不覆盖现有节次；确认时仅创建“可新增”项，每一项仍会经过节次序号与时间重叠校验。</p>
     <AppInlineAlert v-if="error" type="danger" :description="error" />
 
     <template v-if="preview">
@@ -96,7 +96,7 @@ export default {
         if (row.status !== 'READY') continue
         const res = await academicAffairsApi.createTimeSlot(row.desired)
         if (res.code !== 0) {
-          this.error = `已成功创建 ${applied} 项；后续节次被服务端拒绝：${res.message || '发生冲突'}。已保留模板选择，请刷新权威预览后再确认。`
+          this.error = `已成功创建 ${applied} 项；后续节次被系统拒绝：${res.message || '发生冲突'}。已保留模板选择，请刷新预览后再确认。`
           this.applying = false
           this.$emit('applied', { applied, partial: true })
           await this.loadPreview()

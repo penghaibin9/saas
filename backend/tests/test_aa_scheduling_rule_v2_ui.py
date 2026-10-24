@@ -49,7 +49,7 @@ def test_rule_page_fails_closed_when_context_catalog_or_term_state_is_unknown():
     assert "!this.catalogError" in source
     assert "!this.termError" in source
     assert "学期状态加载失败，已禁止修改排课规则" in source
-    assert "当前角色为只读查看" in source
+    assert "当前角色仅可查看" in source
     assert "该学期已经归档" in source
 
 

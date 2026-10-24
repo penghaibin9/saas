@@ -45,7 +45,7 @@
           <option value="IMMEDIATE">立即允许查看</option>
         </select>
       </label>
-      <div class="preview-hash">企业视角预览：{{ preview.previewHash ? '已确认服务端版本' : '尚未生成' }}</div>
+      <div class="preview-hash">企业视角预览：{{ preview.previewHash ? '已确认当前版本' : '尚未生成' }}</div>
       <label class="consent">
         <input :checked="confirmed" type="checkbox" :disabled="busy" @change="$emit('update:confirmed', $event.target.checked)" />
         <span>我确认以上 1–3 志愿、材料版本与联系方式共享范围，并同意整组投递。</span>

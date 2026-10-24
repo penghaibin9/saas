@@ -40,7 +40,7 @@
             <b class="is-good">{{ validation.validCount }}</b> 行 · 失败
             <b class="is-bad">{{ validation.errorCount }}</b> 行。
             <span v-if="validation.errorCount">请修正全部错误后重新上传，系统不会跳过错误行写入。</span>
-            <span v-else>整批预检通过，可以原子确认写入。</span>
+            <span v-else>整批预检查通过，可以确认写入。</span>
           </div>
           <AppButton v-if="validation.errorCount && validation.errorWorkbookUrl" variant="secondary" @click="downloadErrors">
             下载迎新导入错误行.xlsx

@@ -37,7 +37,7 @@ async function capture(page, journey, phase) {
 }
 
 async function assertHealthyPage(page) {
-  await expect(page.locator('body')).not.toContainText(/真实接口不可用|权限上下文加载失败|登录已失效|数据加载出现问题/)
+  await expect(page.locator('body')).not.toContainText(/暂时无法连接，请稍后重试|权限上下文加载失败|登录已失效|数据加载出现问题/)
   const fit = await page.evaluate(() => ({ width: window.innerWidth, scrollWidth: document.documentElement.scrollWidth }))
   expect(fit.scrollWidth, JSON.stringify(fit)).toBeLessThanOrEqual(fit.width + 1)
 }

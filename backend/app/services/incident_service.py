@@ -74,7 +74,7 @@ def create_incident(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "事件标题必填", http_status=422)
     severity = str(body.get("severity") or "P2").upper()
     if severity not in ("P0", "P1", "P2", "P3"):
-        raise AppException("VALIDATION_ERROR", "severity 必须是 P0/P1/P2/P3", http_status=422)
+        raise AppException("VALIDATION_ERROR", "严重程度必须是 P0/P1/P2/P3", http_status=422)
     service_codes = [str(c).strip() for c in (body.get("affectedServiceCodes") or []) if str(c).strip()]
     if not service_codes:
         raise AppException("VALIDATION_ERROR", "至少登记一个受影响服务", http_status=422)

@@ -4,12 +4,12 @@
  */
 export const INTERNSHIP_ROLE_GUIDANCE = Object.freeze({
   'in-v3-batch-lifecycle': [
-    { role: '学校管理员', roleCode: 'SCHOOL_ADMIN', permission: 'internship.batch.manage', scope: '本校全量 / ADMIN_TENANT', relation: '批次是全校级作业，当前上下文必须解析为 ADMIN_TENANT', canDo: '新建、编辑、启用、结束、归档和作废批次；仍必须遵守状态机、版本与 readiness。' },
+    { role: '学校管理员', roleCode: 'SCHOOL_ADMIN', permission: 'internship.batch.manage', scope: '本校全部范围', relation: '批次是全校级操作，当前账号必须是校级管理员', canDo: '新建、编辑、启用、结束、归档和作废批次；仍必须遵守状态机、版本与 readiness。' },
     { role: '学院管理员', roleCode: 'COLLEGE_ADMIN', permission: '角色模板虽含 internship.batch.manage', scope: '本学院 / SCOPED', relation: 'service 的 assert_admin_tenant 会继续拒绝全校级批次写操作', canDo: '可参与本院实习业务，但不能因为模板里有 batch.manage 就执行校级批次状态变更。' }
   ],
   'in-v2-student-application': [
     { role: '学生', roleCode: 'STUDENT', permission: '学生本人端点', scope: '仅本人', relation: '账号必须解析到本人实习记录', canDo: '保存、提交、撤回本人申请；不能审核他人申请。' },
-    { role: '实习指导教师', roleCode: 'INTERN_MENTOR', permission: 'internship.application.view / review', scope: '本人指导学生', relation: 'InternshipRecord.advisor_user_id 必须稳定等于当前 userId', canDo: '审核本人指导学生申请；姓名相同不构成授权。' },
+    { role: '实习指导教师', roleCode: 'INTERN_MENTOR', permission: 'internship.application.view / review', scope: '本人指导学生', relation: '实习记录里的指导教师必须就是当前登录账号', canDo: '审核本人指导学生申请；姓名相同不构成授权。' },
     { role: '学院管理员', roleCode: 'COLLEGE_ADMIN', permission: 'internship.application.view / review（来自学院实习权限集）', scope: '本学院', relation: '学生/实习记录必须在本学院范围', canDo: '办理本院申请审核；不能跨学院。' },
     { role: '学校管理员', roleCode: 'SCHOOL_ADMIN', permission: '*', scope: '本校全量', relation: '仍须满足申请状态、岗位容量和批次规则', canDo: '可处理本校范围管理动作，但不能绕过状态机和容量校验。' }
   ],
@@ -41,7 +41,7 @@ export const INTERNSHIP_ROLE_GUIDANCE = Object.freeze({
   'in-v2-student-change': [
     { role: '学生', roleCode: 'STUDENT', permission: '学生本人变更端点', scope: '仅本人', relation: '只能对本人当前正式实习去向发起变更', canDo: '申请换岗、换单位、转自主或退岗，并撤回本人 PENDING 申请。' },
     { role: '实习指导教师', roleCode: 'INTERN_MENTOR', permission: 'internship.change.view / review', scope: '本人指导学生', relation: '稳定指导关系 + 当前变更处于本人可审核节点', canDo: '审核本人指导学生变更；不能处理无指导关系学生。' },
-    { role: '学院管理员', roleCode: 'COLLEGE_ADMIN', permission: 'internship.change.view / review', scope: '本学院', relation: '学生与目标事实需在本院职责范围', canDo: '办理本院变更审核；跨学院/校级规则仍以后端为准。' }
+    { role: '学院管理员', roleCode: 'COLLEGE_ADMIN', permission: 'internship.change.view / review', scope: '本学院', relation: '学生与目标对象需在本学院职责范围内', canDo: '办理本学院的变更审核；跨学院、校级规则仍以系统为准。' }
   ],
   'in-v2-enterprise-eval': [
     { role: '实习指导教师', roleCode: 'INTERN_MENTOR', permission: 'internship.eval.enterprise.view / manage / review', scope: '本人指导学生', relation: '必须是本人指导学生，评价证据属于该实习记录', canDo: '依据真实企业评价材料代录本人学生企业评价；最终审核仍需满足录审分离和审核角色规则。' },
@@ -56,7 +56,7 @@ export const INTERNSHIP_ROLE_GUIDANCE = Object.freeze({
   ],
   'in-v2-score': [
     { role: '实习指导教师', roleCode: 'INTERN_MENTOR', permission: 'internship.score.view / manage', scope: '本人指导学生', relation: '稳定指导关系且成绩记录在本人范围', canDo: '核算本人指导学生成绩；没有 internship.score.publish，不能做最终发布/撤回。' },
-    { role: '学院管理员', roleCode: 'COLLEGE_ADMIN', permission: 'internship.score.view / manage', scope: '本学院', relation: '成绩属于本院学生且处于 PENDING_REVIEW', canDo: '执行授权复核/退回重算；最终发布、撤回、归档仍不是学院权限。' },
+    { role: '学院管理员', roleCode: 'COLLEGE_ADMIN', permission: 'internship.score.view / manage', scope: '本学院', relation: '成绩属于本学院学生，且处于“待审核”状态', canDo: '执行授权复核/退回重算；最终发布、撤回、归档仍不是学院权限。' },
     { role: '学校管理员', roleCode: 'SCHOOL_ADMIN', permission: '* + score publish 所需权限', scope: '本校全量', relation: '必须通过缺项、状态、版本和数据范围校验', canDo: '唯一普通学校角色可最终发布、撤回和归档实习成绩。' },
     { role: '安全审计员', roleCode: 'SECURITY_AUDITOR', permission: 'internship.stats.score.view 等只读', scope: '监督只读', relation: '不参与成绩正式化审批', canDo: '用于监督和统计，不得核算/发布成绩。' }
   ],

@@ -211,7 +211,7 @@ def bind_school_major(user: dict, body: dict) -> dict:
     try:
         school_major_id = int(body.get("schoolMajorId")); document_id = int(body.get("documentId"))
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "schoolMajorId 和 documentId 必填") from exc
+        raise AppException("VALIDATION_ERROR", "请选择学校专业和文档") from exc
     db = get_sessionmaker()()
     try:
         school_major = db.scalars(select(Major).where(

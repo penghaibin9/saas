@@ -58,7 +58,7 @@ def test_legacy_student_provider_delegates_to_real_facade():
 def test_student_frontend_never_fills_verified_bound_or_fixed_90_when_backend_fact_missing():
     source = read("frontend/src/modules/student/api/student.api.js")
 
-    assert "identityVerifyStatus: row.identityVerifyStatus || 'NOT_CONFIGURED'" in source
+    assert "identityVerifyStatus: row.identityVerifyStatus || '未配置'" in source
     assert "accountBindStatus: row.accountBindStatus || 'UNKNOWN'" in source
     assert "dataCompleteness: 90" not in source
     assert "identityVerifyStatus: 'VERIFIED'" not in source
@@ -74,7 +74,7 @@ def test_student_backend_is_db_fail_closed_and_computes_authoritative_facts():
     assert "StudentAccountLink" in source
     assert 'link_status[sid] = "BOUND"' in source
     assert 'link_status.get(sid, "UNBOUND")' in source
-    assert 'IDENTITY_CAPABILITY_STATUS = "NOT_CONFIGURED"' in source
+    assert 'IDENTITY_CAPABILITY_STATUS = "未配置"' in source
     assert '"dataCompleteness": completeness' in source
     assert '"missingFields": missing' in source
     assert '"supportedActions": actions' in source
@@ -118,7 +118,7 @@ def test_identity_filter_is_server_side_and_never_page_local():
 
     assert "identityVerifyStatus: params.identityVerifyStatus" in frontend
     assert "rows.filter((row) => row.identityVerifyStatus" not in frontend
-    assert 'requested_identity != "NOT_CONFIGURED"' in api
+    assert 'requested_identity != "未配置"' in api
     assert "paginate([], 0, page, pageSize)" in api
 
 

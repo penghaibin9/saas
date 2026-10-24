@@ -7,10 +7,10 @@
           {{ group.label }} / {{ mod.label }}<template v-if="leaf"> / {{ leaf.label }}</template>
         </div>
         <div class="pp-hero">
-          <span class="pp-badge">规划中 · 待施工</span>
+          <span class="pp-badge">规划中</span>
           <h1 class="pp-title">{{ leaf ? leaf.label : mod.label }}</h1>
           <p class="pp-desc">
-            该功能已列入总施工图，尚未开始施工。本页为规划占位页，仅展示规划信息，不含任何业务数据。
+            该功能已列入规划，尚未开始建设。本页仅显示规划信息，不含任何业务数据。
           </p>
           <p v-if="info && info.why" class="pp-why">{{ info.why }}</p>
         </div>
@@ -39,10 +39,10 @@
           <div v-if="!mod.children.length" class="pp-empty">该模块为单页模块，无三级子项</div>
         </div>
 
-        <!-- 施工卡仅开发构建可见；生产构建会在 created 阶段直接退出此页面。 -->
+        <!-- 规划说明仅开发构建可见；生产构建会在 created 阶段直接退出此页面。 -->
         <div v-if="canSeeConstruction && info" class="pp-card pp-card--dev">
           <div class="pp-card__head">
-            施工卡
+            规划说明
             <span v-if="info.ord" class="pp-chip">顺序 {{ info.ord }}</span>
             <span v-if="info.pkg" class="pp-chip">{{ info.pkg }}</span>
           </div>

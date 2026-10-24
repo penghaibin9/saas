@@ -267,7 +267,7 @@ async function refreshOnce() {
         credentials: 'include'
       })
     } catch {
-      const e = new Error('网络不可达，请检查后端服务')
+      const e = new Error('网络不可达，请检查网络后重试')
       e.network = true
       throw e
     }
@@ -338,7 +338,7 @@ export async function request(path, {
       credentials: 'include'
     })
   } catch {
-    const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
+    const e = new Error('网络不可达，请检查网络后重试'); e.network = true; throw e
   }
   const payload = await responseJson(res)
   if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
@@ -390,7 +390,7 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
       method: 'POST', headers, body: form, credentials: 'include'
     })
   } catch {
-    const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
+    const e = new Error('网络不可达，请检查网络后重试'); e.network = true; throw e
   }
   const payload = await responseJson(res)
   if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
@@ -430,7 +430,7 @@ export async function fetchFileBlob(path, { auth = true, _retried = false, signa
     res = await fetch(`${API_BASE}${API_PREFIX}${path}`, { headers, credentials: 'include', signal })
   } catch (error) {
     if (error?.name === 'AbortError') throw error
-    const e = new Error('网络不可达，请检查后端服务'); e.network = true; throw e
+    const e = new Error('网络不可达，请检查网络后重试'); e.network = true; throw e
   }
   if (auth && sessionGeneration !== generationAtStart) throw staleSessionError()
   if (res.status === 401) {

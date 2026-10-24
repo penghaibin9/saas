@@ -127,7 +127,7 @@ def _compute(user, body) -> dict:
     b = body or {}
     internship_id = b.get("internshipId") or b.get("internId")
     if not internship_id:
-        raise AppException("VALIDATION_ERROR", "缺少实习记录 internshipId")
+        raise AppException("VALIDATION_ERROR", "缺少实习记录")
     if b.get("enterpriseScore") not in (None, ""):
         raise AppException("VALIDATION_ERROR", "企业评价分不得手工填写，只能读取已审核企业评价")
     components = {

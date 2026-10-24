@@ -37,7 +37,7 @@
       <div class="sw-row sw-space"><button type="button" class="sw-btn" :disabled="busy || governanceLoading" @click="loadGovernance">重新读取</button><button v-if="canBootstrap" type="button" class="sw-btn" :disabled="busy || bootstrapBlocked" @click="confirmOpen = true">初始化权限治理目录</button></div>
       <p v-if="bootstrapMessage" class="sw-alert sw-space" role="status">{{ bootstrapMessage }}</p>
     </details>
-    <AppConfirmDialog :visible="confirmOpen" title="初始化学校权限治理目录" message="沿用现有治理初始化接口；不修改当前角色的成员分配。请确认本次维护。" confirm-text="确认初始化" :submitting="busy" :confirm-disabled="!canBootstrap || bootstrapBlocked" @update:visible="closeConfirm" @confirm="bootstrap" />
+    <AppConfirmDialog :visible="confirmOpen" title="初始化学校权限治理目录" message="沿用现有治理初始化；不修改当前角色的成员分配。请确认本次维护。" confirm-text="确认初始化" :submitting="busy" :confirm-disabled="!canBootstrap || bootstrapBlocked" @update:visible="closeConfirm" @confirm="bootstrap" />
   </div>
 </template>
 <script>

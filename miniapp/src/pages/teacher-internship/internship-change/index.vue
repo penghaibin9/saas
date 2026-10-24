@@ -25,7 +25,7 @@
         <view><text class="tc__eyebrow">待审核变更</text><text class="tc__count">{{ list.length }}<text class="tc__count-unit"> 条</text></text></view>
         <text class="tc__summary-note">审批通过会冻结旧关系、作废旧协议，并回退为待重新上岗。</text>
       </view>
-      <MobileInlineAlert type="info" description="所有审批都携带申请版本与学生主记录快照；发生冲突会刷新真值并保留你的意见，不会自动重放。" />
+      <MobileInlineAlert type="info" description="所有审批都基于最新的申请与学生记录；发生冲突会刷新数据并保留你的意见，不会自动重复提交。" />
     </view>
 
     <MobileGlobalState :state="state" @retry="load">
@@ -46,7 +46,7 @@
             </view>
             <view class="tc__reason"><text>申请原因</text><text>{{ c.reason }}</text></view>
             <view class="tc__impact">
-              <text class="tc__impact-title">通过后的服务端影响</text>
+              <text class="tc__impact-title">通过后的影响</text>
               <view v-for="item in c.impactItems || []" :key="item.label"><text class="t-bold">{{ item.label }}</text><text>{{ item.detail }}</text></view>
             </view>
             <view v-if="canReview" class="tc__actions">
@@ -150,7 +150,7 @@ export default {
             await this.load()
           } catch (e) {
             if (conflictCode(e)) {
-              const message = (e && e.message) || '申请或学生主记录版本已变化'
+              const message = (e && e.message) || '申请或学生记录已变化'
               await this.load()
               const latest = (this.list || []).find((item) => String(item.id) === String(c.id))
               this.conflictReceipt = { message, comment }

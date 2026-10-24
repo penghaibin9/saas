@@ -8,7 +8,7 @@
       <text class="ve__close" @click="$emit('cancel')">关闭</text>
     </view>
 
-    <MobileInlineAlert type="info" description="只记录本次实际巡访/沟通事实与业务证据；不申请、不读取、不上传教师定位。" />
+    <MobileInlineAlert type="info" description="只记录本次实际巡访或沟通情况与业务证据；不申请、不读取、不上传教师定位。" />
     <MobileInlineAlert v-if="contextState === 'error'" type="warning" description="巡访计划或实习版本读取失败，请关闭后刷新列表再试。" />
 
     <view class="ve__field" v-if="planOptions.length > 1">
@@ -26,8 +26,8 @@
     <view class="ve__field"><text class="ve__label">企业联系人 *</text><input v-model="form.contactPerson" class="ve__input" maxlength="100" placeholder="如：企业导师王老师" /></view>
     <view class="ve__field"><text class="ve__label">学生当前工作状态 *</text><textarea v-model="form.workStatus" class="ve__textarea is-short" maxlength="300" placeholder="岗位任务、出勤、适应情况等" /></view>
     <view class="ve__field"><text class="ve__label">企业反馈 *</text><textarea v-model="form.enterpriseFeedback" class="ve__textarea" maxlength="1000" placeholder="企业对学生表现、技能、纪律等真实反馈" /></view>
-    <view class="ve__field"><text class="ve__label">事实记录 *</text><textarea v-model="form.facts" class="ve__textarea" maxlength="1600" placeholder="至少 10 字，只记录本次实际沟通/巡访事实" /></view>
-    <view class="ve__field"><text class="ve__label">发现问题</text><textarea v-model="form.issues" class="ve__textarea is-short" maxlength="500" placeholder="没有可留空；只写本次发现的问题事实" /></view>
+    <view class="ve__field"><text class="ve__label">情况记录 *</text><textarea v-model="form.facts" class="ve__textarea" maxlength="1600" placeholder="至少 10 字，只记录本次实际沟通或巡访情况" /></view>
+    <view class="ve__field"><text class="ve__label">发现问题</text><textarea v-model="form.issues" class="ve__textarea is-short" maxlength="500" placeholder="没有可留空；只写本次发现的问题" /></view>
     <view class="ve__field"><text class="ve__label">处理建议</text><textarea v-model="form.advice" class="ve__textarea is-short" maxlength="500" placeholder="给学生/企业的明确建议" /></view>
 
     <view class="ve__toggle"><view><text class="ve__label">需要后续跟进</text><text class="ve__hint">形成巡访整改待办</text></view><switch :checked="form.needFollow" @change="form.needFollow = !!$event.detail.value" /></view>
@@ -39,7 +39,7 @@
           <view class="ve__picker">{{ riskLabels[riskIndex] }} ›</view>
         </picker>
       </view>
-      <view class="ve__field"><text class="ve__label">转风险原因 *</text><textarea v-model="form.riskReason" class="ve__textarea is-short" maxlength="500" placeholder="至少 5 字，写明需跟进的风险事实" /></view>
+      <view class="ve__field"><text class="ve__label">转风险原因 *</text><textarea v-model="form.riskReason" class="ve__textarea is-short" maxlength="500" placeholder="至少 5 字，写明需跟进的风险情况" /></view>
     </template>
 
     <view class="ve__field">
@@ -140,7 +140,7 @@ export default {
       if (f.contactPerson.trim().length < 2) return toast('企业联系人至少 2 字')
       if (f.workStatus.trim().length < 2) return toast('请填写学生当前工作状态')
       if (f.enterpriseFeedback.trim().length < 2) return toast('请填写企业反馈')
-      if (f.facts.trim().length < 10) return toast('事实记录至少 10 字')
+      if (f.facts.trim().length < 10) return toast('情况记录至少 10 字')
       if (f.needRisk && f.riskReason.trim().length < 5) return toast('转风险原因至少 5 字')
       this.$emit('submit', {
         planId: Number(p.planId),

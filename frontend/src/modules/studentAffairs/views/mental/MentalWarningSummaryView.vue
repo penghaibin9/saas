@@ -3,7 +3,7 @@
     title="心理预警摘要"
     subtitle="风险标记与在办数量"
     role-name="学工处 / 学院 / 辅导员（仅摘要）"
-    data-scope-name="学工数据范围（明细另受 PSY_STUDENT 约束）"
+    data-scope-name="学工数据范围（明细另受心理专项授权约束）"
     watermark-purpose="心理预警摘要查看"
   >
     <AppGlobalState

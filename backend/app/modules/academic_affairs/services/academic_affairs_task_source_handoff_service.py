@@ -121,7 +121,7 @@ def confirm_source_handoff(execution_task_id, body, user):
                 AaTeachingTaskSourceHandoff.idempotency_key == idem))
             if previous:
                 if previous.payload_hash != payload_hash:
-                    raise _conflict("同一请求标识已用于其他承接内容，请回读原结果")
+                    raise _conflict("同一请求标识已用于其他承接内容，请重新读取原结果")
                 return _receipt(previous)
             guard_term_writable(db, term_id)
             require_independent_task(db, current[original_id])
@@ -152,8 +152,8 @@ def confirm_source_handoff(execution_task_id, body, user):
             db.commit()
             return _receipt(row)
     except IntegrityError as exc:
-        raise _conflict("承接关系已由其他请求确认，请回读原任务结果") from exc
+        raise _conflict("承接关系已由其他请求确认，请重新读取原任务结果") from exc
     except OperationalError as exc:
         if getattr(exc.orig, "args", (None,))[0] in (1205, 1213):
-            raise _conflict("教学任务正在由其他责任人办理，请回读后再核对") from exc
+            raise _conflict("教学任务正在由其他责任人办理，请重新读取后再核对") from exc
         raise

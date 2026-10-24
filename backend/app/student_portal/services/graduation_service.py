@@ -104,7 +104,7 @@ def submit_final(user: dict, body: dict) -> dict:
     body = body or {}
     final_type = str(body.get("finalType") or "初稿").strip()
     if final_type not in ("初稿", "定稿"):
-        raise AppException("VALIDATION_ERROR", "finalType 必须是 初稿 或 定稿")
+        raise AppException("VALIDATION_ERROR", "类型必须是初稿或定稿")
     attachments = body.get("attachments") or []
     if not isinstance(attachments, list) or not attachments:
         raise AppException("VALIDATION_ERROR", "请先上传论文/成果附件再提交")

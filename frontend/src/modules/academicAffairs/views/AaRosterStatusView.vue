@@ -32,7 +32,7 @@
           </div>
         </AppSectionCard>
 
-        <AppSectionCard title="学籍状态迁移说明" subtitle="受控扩展枚举（t_student_profile.student_status），仅四类受控入口可变更">
+        <AppSectionCard title="学籍状态迁移说明" subtitle="受控的学籍状态，仅四类受控入口可变更">
           <p class="mp-note">
             学籍状态不可在页面直改，只能由「入学/学年注册确认」「学籍异动生效（休学/复学/退学/留级/转专业）」
             「毕业审核发布」三类受控入口驱动流转，全部写入 change_student_status() 单一入口并留痕 360 时间线。

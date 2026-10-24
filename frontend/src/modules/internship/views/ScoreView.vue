@@ -152,7 +152,7 @@
             <div v-if="panel.data.adjustmentReason" class="adjustment-evidence"><h3>上次调分依据</h3><p class="kept-reason">{{ panel.data.adjustmentReason }}</p><AppButton v-for="(id, index) in panel.data.adjustmentEvidenceFileIds || []" :key="id" variant="ghost" size="sm" :disabled="!!previewingFile" @click="previewEvidence(id)">查看依据 {{ index + 1 }}</AppButton></div>
           </template>
           <template v-if="panel.mode === 'detail' && panel.data">
-            <p v-if="hasSavedAdjustment" class="hint">人工调分须由其他授权人员复核；复核与发布时会再次核对来源事实。</p>
+            <p v-if="hasSavedAdjustment" class="hint">人工调分须由其他授权人员复核；复核与发布时会再次核对来源。</p>
             <div class="wsp__ops">
               <AppButton v-if="canAct(panelRow, 'review')" variant="primary" :disabled="actionConflict" @click="confirmAct(panelRow, 'review')">复核通过</AppButton>
               <AppButton v-if="canAct(panelRow, 'publish')" variant="primary" :disabled="actionConflict" @click="confirmAct(panelRow, 'publish')">发布成绩</AppButton>
@@ -164,7 +164,7 @@
             <div class="sec-t">处理记录</div><AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无记录" />
           </template>
           <template v-else-if="panel.mode !== 'detail'">
-          <p class="hint">核算时重新读取当前过程和评价事实。需要人工调分时填写增减分，并提供原因与依据。</p>
+          <p class="hint">核算时重新读取当前的过程和评价记录。需要人工调分时填写增减分，并提供原因与依据。</p>
           <fieldset class="compute-fields" :disabled="!canCompute || panel.submitting || cForm.uploading">
           <AppFormItem v-if="panel.mode === 'create'" label="实习学生" required>
             <AppInternshipStudentPicker
@@ -295,7 +295,7 @@ export default {
     canCompute() { return !!this.batchStore.selectedBatchId && this.canBtn('internship.score.manage') && !this.panel.loading && !this.panel.error && !this.computeConflict && (this.panel.mode === 'create' || (this.panel.mode === 'edit' && this.panel.data && this.canRecalc(this.panel.data))) },
     computeDirty() { return this.panel.visible && ['edit', 'create'].includes(this.panel.mode) && !!this.computeInitial && this.computeSnapshot() !== this.computeInitial },
     hasSavedAdjustment() { return Object.values(this.panel.data?.manualAdjustments || {}).some(value => Number(value) !== 0) },
-    scoreNextStep() { const d = this.panel.data; if (!d) return ''; if (d.incomplete) return d.incompleteReason || '补齐来源事实后重新核算'; if (this.panel.mode === 'edit' && this.canRecalc(d)) return '核对调整后重新核算，成功后交由授权人员复核'; return ({ PENDING_CALC: '按当前来源事实重新核算', WITHDRAWN: '成绩已撤回，需重新核算、复核与发布', PENDING_REVIEW: '等待授权人员核对来源与成绩，完成独立复核', PENDING_PUBLISH: '复核已完成，等待学校管理员发布', PUBLISHED: '已发布，学生可查询正式成绩', ARCHIVED: '已归档；异议按档案更正流程办理' })[d.status] || '请核对当前状态' },
+    scoreNextStep() { const d = this.panel.data; if (!d) return ''; if (d.incomplete) return d.incompleteReason || '补齐来源后重新核算'; if (this.panel.mode === 'edit' && this.canRecalc(d)) return '核对调整后重新核算，成功后交由授权人员复核'; return ({ PENDING_CALC: '按当前来源重新核算', WITHDRAWN: '成绩已撤回，需重新核算、复核与发布', PENDING_REVIEW: '等待授权人员核对来源与成绩，完成独立复核', PENDING_PUBLISH: '复核已完成，等待学校管理员发布', PUBLISHED: '已发布，学生可查询正式成绩', ARCHIVED: '已归档；异议按档案更正流程办理' })[d.status] || '请核对当前状态' },
     panelTitle() {
       if (this.panel.mode === 'create') return '核算成绩（选择学生）'
       const name = (this.panel.data && this.panel.data.studentName) || (this.panelRow && this.panelRow.studentName) || ''
@@ -590,7 +590,7 @@ export default {
       if (!this.canAct(r, kind) || this.cd.submitting || this.actionConflict) return
       this.panelError = ''
       const map = {
-        review: { title: '复核成绩', content: `核对「${r.studentName}」的来源事实与成绩快照，并提交待发布？`, danger: false, confirmText: '复核通过', requireReason: false },
+        review: { title: '复核成绩', content: `核对「${r.studentName}」的来源与成绩快照，并提交待发布？`, danger: false, confirmText: '复核通过', requireReason: false },
         publish: { title: '发布成绩', content: `发布「${r.studentName}」的实习成绩（总分 ${r.totalScore}）？发布后学生可见。`, danger: false, confirmText: '发布', requireReason: false },
         return: { title: '退回重算', content: `退回「${r.studentName}」的成绩到待核算？请写清需补充或修正的内容。`, danger: false, confirmText: '退回', requireReason: true },
         withdraw: { title: '撤回成绩', content: `撤回「${r.studentName}」的已发布成绩，原因将写审计。`, danger: true, confirmText: '撤回', requireReason: true }

@@ -260,10 +260,10 @@ def test_school_bi_dto_exposes_asof_caliber_scope_source_and_quality(client, db_
     lifecycle = client.get("/api/v1/stats/lifecycle-board?caliber=REGISTERED", headers=headers)
     assert lifecycle.status_code == 200
     lifecycle_meta = lifecycle.json()["data"]["meta"]
-    assert any(x["code"] == "TREND_SERIES_NOT_CONFIGURED" for x in lifecycle_meta["qualityFlags"])
+    assert any(x["code"] == "TREND_SERIES_未配置" for x in lifecycle_meta["qualityFlags"])
 
     risk = client.get("/api/v1/stats/risk-board", headers=headers)
     assert risk.status_code == 200
     risk_meta = risk.json()["data"]["meta"]
     risk_codes = {x["code"] for x in risk_meta["qualityFlags"]}
-    assert {"RISK_STATUS_CALIBER_PARTIAL", "RISK_TREND_NOT_CONFIGURED", "INTERNSHIP_RISK_NOT_UNIFIED"} <= risk_codes
+    assert {"RISK_STATUS_CALIBER_PARTIAL", "RISK_TREND_未配置", "INTERNSHIP_RISK_NOT_UNIFIED"} <= risk_codes

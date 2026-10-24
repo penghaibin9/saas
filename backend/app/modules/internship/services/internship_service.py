@@ -867,9 +867,9 @@ def batch_review_weekly_reports(body, user=None) -> dict:
         ids = b.get("ids") or []
         versions = b.get("versions") or b.get("expectedVersions") or []
         if ids and not versions:
-            raise AppException("VALIDATION_ERROR", "批量批阅必须为每条提供 expectedVersion")
+            raise AppException("VALIDATION_ERROR", "批量批阅必须为每条提供数据版本")
         if len(versions) != len(ids):
-            raise AppException("VALIDATION_ERROR", "ids 与 expectedVersion 数量不一致")
+            raise AppException("VALIDATION_ERROR", "记录与数据版本数量不一致")
         items = [{"id": i, "expectedVersion": v} for i, v in zip(ids, versions)]
     if not items:
         raise AppException("VALIDATION_ERROR", "请选择要批阅的周报")

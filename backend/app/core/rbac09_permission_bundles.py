@@ -245,13 +245,13 @@ def authorize_service_job(
     if str(ctx.get("subjectType") or "").upper() != "SERVICE" or not ctx.get("serviceId"):
         raise AppException("SERVICE_POLICY_DENIED", "后台任务必须使用服务身份", http_status=403)
     if ctx.get("userId") or ctx.get("actorUserId"):
-        raise AppException("SERVICE_POLICY_DENIED", "后台任务不得继承人工账号令牌", http_status=403)
+        raise AppException("SERVICE_POLICY_DENIED", "后台任务不得继承人工账号的登录凭证", http_status=403)
     scoped_tenant = ctx.get("tenantId")
     if scoped_tenant in (None, "", "*") or int(scoped_tenant) != int(tenant_id):
         raise AppException("SERVICE_POLICY_DENIED", "服务身份租户范围不匹配", http_status=403)
     ttl = int(ctx.get("tokenTtlSeconds") or 0)
     if ttl <= 0 or ttl > 900:
-        raise AppException("SERVICE_POLICY_DENIED", "服务令牌必须短时有效（不超过15分钟）", http_status=403)
+        raise AppException("SERVICE_POLICY_DENIED", "服务凭证必须短时有效（不超过15分钟）", http_status=403)
     fields = {str(value) for value in payload_fields}
     unknown = fields - set(policy["allowedFields"])
     if unknown:

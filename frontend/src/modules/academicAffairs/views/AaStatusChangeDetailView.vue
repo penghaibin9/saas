@@ -7,7 +7,7 @@
       <StatusChangeReview :key="change.changeId" :change="change" :ctx="ctx" @updated="updateFormal" @denied="denied" @busy="busy=$event"><template #materials><button :disabled="materialsLoading || busy" @click="loadMaterials">{{ materialsLoading ? '正在读取…' : '读取正式绑定材料' }}</button></template></StatusChangeReview>
       <AppInlineAlert v-if="isPendingEffective" type="info" :message="pendingEffectiveMessage" />
       <section v-if="materialsOpened" class="sc-materials"><h3>正式申请材料</h3><p v-if="materialsError" role="alert">{{ materialsError }}</p><p v-if="materialsLoading">正在读取材料…</p><p v-else-if="!materials.length && !materialsError">当前正式申请没有绑定材料。</p><div v-else class="sc-material-list"><FilePreviewer v-for="file in materials" :key="file.bindingId || file.fileId" :file="file" @error="onFileError" /></div><p>每次打开都由公共文件中心重新核对权限与安全状态。</p></section>
-      <section class="sc-materials"><h3>审批路径参考</h3><ol class="sc-flow"><li v-for="(node,index) in flowNodes" :key="node" :class="nodeState(index)"><b>{{ nodeLabel(node) }}</b><span>{{ nodeStateText(index) }}</span></li></ol><p>{{ reviewHint }}</p><p>路径顺序不代表历史节点已全部审核通过，办理事实以正式审批任务和最终状态为准。</p></section>
+      <section class="sc-materials"><h3>审批路径参考</h3><ol class="sc-flow"><li v-for="(node,index) in flowNodes" :key="node" :class="nodeState(index)"><b>{{ nodeLabel(node) }}</b><span>{{ nodeStateText(index) }}</span></li></ol><p>{{ reviewHint }}</p><p>路径顺序不代表历史环节已全部审核通过，办理情况以正式审批任务和最终状态为准。</p></section>
     </div>
   </ModulePageShell>
 </template>

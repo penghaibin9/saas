@@ -96,7 +96,7 @@ async function readBoundedPreviewBlob(response, descriptor, signal) {
 
 async function fetchPreviewBlob(path, descriptor, signal, retried = false) {
   if (!path || typeof path !== 'string' || !path.startsWith('/')) {
-    throw previewError('INVALID_AUTHORIZED_FILE_PATH', '服务端未返回有效文件授权路径')
+    throw previewError('INVALID_AUTHORIZED_FILE_PATH', '系统未返回有效的文件访问路径')
   }
   if (signal?.aborted) throw abortError()
   const fetchScope = createPreviewFetchScope(signal)

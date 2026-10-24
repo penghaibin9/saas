@@ -394,7 +394,7 @@ def _preview_in_session(db, term, proposed) -> dict:
     elif conflict_count:
         blockers.append({
             "code": "TERM_CHANGE_LINKED_CONFLICTS",
-            "message": f"拟调整方案与 {conflict_count} 条现有业务事实冲突。",
+            "message": f"拟调整方案与 {conflict_count} 条现有业务记录冲突。",
         })
         conclusion = f"拟调整时间轴与 {conflict_count} 条现有业务事实冲突，请先处理。"
         can_save = False

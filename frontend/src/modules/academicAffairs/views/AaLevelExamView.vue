@@ -88,7 +88,7 @@
       <div class="aalv-form">
         <AppFormItem label="考试名称" required><AppTextInput v-model="form.examName" placeholder="如 大学英语四级(2025-06)" :disabled="saving" /></AppFormItem>
         <AppFormItem label="类别" required>
-          <AppSelect v-model="form.category" :options="[{ label: '大学英语等级(CET)', value: 'CET' }, { label: '普通话水平', value: 'PUTONGHUA' }, { label: '职业技能等级证书', value: 'SKILL' }, { label: '其他', value: 'OTHER' }]" :disabled="saving" />
+          <AppSelect v-model="form.category" :options="[{ label: '大学英语等级考试', value: 'CET' }, { label: '普通话水平', value: 'PUTONGHUA' }, { label: '职业技能等级证书', value: 'SKILL' }, { label: '其他', value: 'OTHER' }]" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="等级"><AppTextInput v-model="form.level" placeholder="如 四级 / 二甲 / 中级" :disabled="saving" /></AppFormItem>
         <AppFormItem label="考试日期"><AppDatePicker v-model="form.examDate" :disabled="saving" /></AppFormItem>

@@ -531,7 +531,7 @@ test.describe('岗位实习 V8 advanced golden journeys：GJ05–GJ08', () => {
     if (appealDetail.status === 'PENDING') {
       appealDetail = await request('POST', `/internship/score-appeals/${appealId}/approve`, {
         token: adminToken,
-        body: { reason: '申诉材料成立，撤回原成绩并按当前来源事实重新核算', expectedVersion: appealDetail.version }
+        body: { reason: '申诉材料成立，撤回原成绩并按当前来源重新核算', expectedVersion: appealDetail.version }
       })
     }
     expect(['APPROVED_RECALCULATING', 'CLOSED']).toContain(appealDetail.status)

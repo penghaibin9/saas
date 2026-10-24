@@ -32,7 +32,7 @@
               :disabled="!classId || submitting"
               :query="{ classId }"
               placeholder="选择本班学生"
-              data-scope-hint="后端将逐人校验学生属于所选班级"
+              data-scope-hint="系统将逐人校验学生是否属于所选班级"
             />
           </AppFormItem>
         </div>
@@ -129,7 +129,7 @@ export default {
         return
       }
       const batchId = res.data?.distributionBatchId
-      if (!batchId) { this.error = '接口未返回发放批次，请回征订页核对，勿重复生成'; return }
+      if (!batchId) { this.error = '系统未返回发放批次，请回征订页核对，勿重复生成'; return }
       toast.success(res.data?.idempotent ? '名单已存在，已打开原批次' : appendToBatchId ? `已补充 ${res.data.addedRecordCount} 条教材记录` : '发放名单已生成')
       if (body.classId === String(this.classId) && JSON.stringify(body.studentIds) === JSON.stringify(this.studentIds.map(String))) this.$router.push({ name: 'aa-textbook-distribution-detail', params: { batchId }, query: { returnTo } })
       else this.error = `原选择的发放名单已生成（批次 ${batchId}），当前新选择已保留。请从发放批次核对。`

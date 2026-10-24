@@ -72,10 +72,10 @@
             <ol v-else-if="workflowChangeLog.length" class="aapc-version-list">
               <li v-for="(item, index) in workflowChangeLog" :key="`${item.occurredAt}-${index}`">
                 <span class="aapc-version-dot"></span>
-                <div><small>{{ item.occurredAt || '时间由服务端记录' }}</small><strong>{{ changeLogActionLabel(item.action) }}{{ item.detail ? ` · ${item.detail}` : '' }}</strong><p>{{ item.operator || '系统记录' }}{{ item.roleName ? `（${item.roleName}）` : '' }}</p></div>
+                <div><small>{{ item.occurredAt || '时间由系统记录' }}</small><strong>{{ changeLogActionLabel(item.action) }}{{ item.detail ? ` · ${item.detail}` : '' }}</strong><p>{{ item.operator || '系统记录' }}{{ item.roleName ? `（${item.roleName}）` : '' }}</p></div>
               </li>
             </ol>
-            <EmptyState v-else title="尚无版本变更记录" description="发起变更后将从当前正式版本建立受控新版本，不覆盖历史事实" />
+            <EmptyState v-else title="尚无版本变更记录" description="发起变更后将从当前正式版本建立受控的新版本，不覆盖历史记录" />
           </section>
         </div>
 
@@ -475,7 +475,7 @@ export default {
         creditRequirements: '毕业学分、模块学分和课程合计必须一致',
         practiceSegments: '集中实践、实训和实习按正式方案版本维护',
         graduationRequirements: '毕业要求使用结构化条目并保留版本',
-        archive: '历史方案只读追溯，正式事实不被覆盖'
+        archive: '历史方案只读追溯，正式记录不被覆盖'
       }[this.tab] || '核对当前对象和版本，按权限办理'
     },
     activeProgram() { return this.rows.find((row) => String(row.programId) === String(this.activeProgramId)) || this.rows[0] || null },
@@ -621,7 +621,7 @@ export default {
     changeActionLabel(a) { return PROGRAM_CHANGE_ACTION[a] || a || '' },
     changeLogActionLabel(a) { return _CHANGE_LOG_ACTION_LABEL[a] || a || '' },
     stageHint(index) {
-      if (index < this.workflowStageIndex) return '上游事实可回查'
+      if (index < this.workflowStageIndex) return '来源数据可追溯'
       if (index === this.workflowStageIndex) return '当前设计视角'
       return '按真实状态解锁'
     },

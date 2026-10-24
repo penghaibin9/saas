@@ -4,7 +4,7 @@
       <div><h3 id="rules-workspace-title">学校规则变更</h3><p>{{ tenant.tenantName }} · {{ tenant.tenantCode }} <span v-if="base">· 覆盖版本 {{ base.overrideVersion }}</span></p></div>
       <span class="trw__badge">{{ phaseLabel }}</span>
     </header>
-    <p v-if="!mayWrite()" class="trw__notice">当前身份只读；规则写入仍由后端平台超级管理员权限控制。</p>
+    <p v-if="!mayWrite()" class="trw__notice">当前身份只读；规则写入仍由平台超级管理员权限控制。</p>
     <p v-if="error" class="trw__error" role="alert">{{ error }}</p>
     <template v-if="base">
       <template v-if="phase === 'edit'">
@@ -40,7 +40,7 @@
           <h4>{{ phase === 'review' ? '核对本次规则修改' : '本次提交记录' }}</h4>
           <p>{{ tenant.tenantName }} · 学校编码 {{ tenant.tenantCode }} · 基于版本 {{ prepared.expectedVersion }}</p>
           <p>原因：{{ prepared.reason }}</p>
-          <p class="trw__notice">只提交下列变化；其余规则保留原来的继承或覆盖关系。这是提交内容核对，不是后端影响预演。</p>
+          <p class="trw__notice">只提交下列变化；其余规则保留原来的继承或覆盖关系。这是提交内容的核对，不是影响预演。</p>
           <div class="trw__table"><table><caption class="trw__sr-only">本次规则变更前后对照</caption><thead><tr><th scope="col">规则</th><th scope="col">修改前</th><th scope="col">本次修改</th><th v-if="latest" scope="col">重新读取的值</th></tr></thead><tbody><tr v-for="item in readbackRows" :key="item.group + '.' + item.key"><th scope="row">{{ fieldLabel(item.key) }}<small>{{ groupLabel(item.group) }}</small></th><td>{{ ruleValueLabel(item.before) }}</td><td>{{ ruleValueLabel(item.after) }}</td><td v-if="latest">{{ ruleValueLabel(item.current) }}<small>{{ item.matches ? '与本次内容一致' : '与本次内容不同' }}</small></td></tr></tbody></table></div>
         </div>
         <div v-if="phase === 'review'" class="trw__actions"><button type="button" class="trw__primary" :disabled="!mayWrite() || busy" @click="submit">确认保存规则</button><button type="button" :disabled="busy" @click="phase = 'edit'; prepared = null">返回修改</button></div>
@@ -48,7 +48,7 @@
         <div v-if="phase === 'saved'" class="trw__success" role="status"><strong>规则保存成功，服务器回执已核对</strong><p>覆盖版本 {{ base.overrideVersion }} · 共 {{ prepared.changes.length }} 项。此回执不代表已经验证所有业务端的运行效果。</p><button type="button" @click="beginNext">完成本次变更</button></div>
         <div v-if="phase === 'conflict' || phase === 'uncertain'" class="trw__notice" role="alert">
           <strong>{{ phase === 'conflict' ? '版本冲突，已停止提交' : '保存结果尚未确认，请勿重复提交' }}</strong>
-          <p>{{ phase === 'conflict' ? '保留了本页修改记录。先读取当前版本，再决定是否重新编辑；不会自动合并或覆盖。' : '请求可能已在服务器生效。下面只能重新读取，不能重放本次写入；读到相同值也不代表取得了本次审计回执。' }}</p>
+          <p>{{ phase === 'conflict' ? '保留了本页修改记录。先读取当前版本，再决定是否重新编辑；不会自动合并或覆盖。' : '请求可能已经生效。下面只能重新读取，不能重复提交本次写入；读到相同的值也不代表取得了本次审计回执。' }}</p>
           <p v-if="latest">已重新读取覆盖版本 {{ latest.overrideVersion }}，请对照上表核验。</p>
           <div class="trw__actions"><button type="button" :disabled="busy" @click="inspectCurrent">{{ busy ? '正在读取…' : '重新读取当前配置（不写入）' }}</button><button v-if="phase === 'conflict' && latest" type="button" :disabled="busy || !mayWrite()" @click="acceptLatest">放弃旧草稿，按当前版本重新编辑</button></div>
         </div>

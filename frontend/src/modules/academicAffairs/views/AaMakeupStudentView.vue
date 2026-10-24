@@ -170,7 +170,7 @@ export default {
         const key=c.tab==='retake'?'applyId':'exemptionId',formal=c.replyId&&rows.find(r=>String(r[key])===String(c.replyId))
         if(!formal||String(formal.reason||'').trim()!==c.body.reason){this.formError='结果待核实：未能从本人记录准确关联本次申请，请勿重复提交。';return}
         this.receipt={courseName:c.option.courseName,status:formal.status,verified:true};this.pending=null;this.confirmVisible=false;this.command=null;this.formError='';this.form={gradeId:'',courseId:'',reason:'',materialFileIds:[]};this.materials=[]
-      }catch(err){if(this.current(c))this.fail(err,'结果待核实，请稍后只读核对。')}finally{if(this.current(c))this.checking=false}
+      }catch(err){if(this.current(c))this.fail(err,'结果待核实，请稍后重新核对。')}finally{if(this.current(c))this.checking=false}
     }
   }
 }

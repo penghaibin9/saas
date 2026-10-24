@@ -7,7 +7,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="aa-authority-layout"><div class="mp-stack">
-      <AppSectionCard title="当前权威事实">
+      <AppSectionCard title="当前正式记录">
         <LoadingState v-if="loadingCurrent" />
         <ErrorState v-else-if="currentError" :description="currentError" @retry="loadCurrent" />
         <EmptyState
@@ -28,7 +28,7 @@
             <AppStatusTag :type="statusType(current.status)" dot>{{ statusLabel(current.status) }}</AppStatusTag>
           </div>
           <dl class="aa-authority-facts">
-            <div><dt>权威来源</dt><dd>{{ governanceManaged ? '全校学期治理' : current.canDirectSwitch === true ? '教务学期兼容管理' : '待核对' }}</dd></div>
+            <div><dt>权威来源</dt><dd>{{ governanceManaged ? '全校学期治理' : current.canDirectSwitch === true ? '教务学期管理' : '待核对' }}</dd></div>
             <div><dt>教务侧直接切换</dt><dd>{{ directSwitchAllowed ? '当前身份可按正式命令切换' : governanceManaged ? '由治理岗位统一激活' : '当前身份不可直接切换' }}</dd></div>
             <div><dt>生效时间</dt><dd>{{ latestActivation?.occurredAt ? formatTime(latestActivation.occurredAt) : '尚无可核对的切换流水' }}</dd></div>
             <div><dt>最近切换记录</dt><dd>{{ latestActivation ? `${latestActivation.operator || '系统'} · ${latestActivation.sourceLabel}` : '未记录' }}</dd></div>

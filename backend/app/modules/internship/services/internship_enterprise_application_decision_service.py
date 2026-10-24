@@ -157,7 +157,7 @@ def list_owned_applications_in_tx(
         elif target in _ALLOWED:
             query = query.where(InternshipEnterpriseApplicationDecision.decision_status == target)
         else:
-            raise AppException("VALIDATION_ERROR", "decisionStatus 非法")
+            raise AppException("VALIDATION_ERROR", "决定状态不合法")
 
     total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
     rows = db.execute(
@@ -393,7 +393,7 @@ def set_decision_in_tx(
     now = datetime.utcnow()
     expire_effect_if_needed_in_tx(decision, now=now)
     if decision.effect_status != "ACTIVE":
-        raise AppException("DATA_CONFLICT", "该企业决定已失效、替代或消费，不能覆盖历史事实")
+        raise AppException("DATA_CONFLICT", "该企业决定已失效、被替代或已使用，不能覆盖历史记录")
     current = decision.decision_status
     if target == current:
         return decision
@@ -408,7 +408,7 @@ def set_decision_in_tx(
     if current == "ACCEPT_INTENT" and target == "REJECTED" and len(text) < 2:
         raise AppException("VALIDATION_ERROR", "撤回拟接收必须填写原因")
     if target == "INTERVIEW" and interview_at is None:
-        raise AppException("VALIDATION_ERROR", "记录面试必须填写 interviewAt")
+        raise AppException("VALIDATION_ERROR", "记录面试必须填写面试时间")
 
     before_status = current
     action = f"ENTERPRISE_APPLICATION_{target}"

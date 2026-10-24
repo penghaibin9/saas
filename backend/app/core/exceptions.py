@@ -73,7 +73,7 @@ class AppException(Exception):
 
 
 # 常用快捷构造
-def unauthorized(msg: str = "未登录或令牌失效"):
+def unauthorized(msg: str = "未登录或登录已过期"):
     return AppException("UNAUTHORIZED", msg)
 
 

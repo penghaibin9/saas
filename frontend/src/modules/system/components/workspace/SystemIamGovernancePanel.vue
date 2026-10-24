@@ -20,7 +20,7 @@
 
         <section v-if="summary.customRoleMissingProvenanceCount" class="warning card">
           <strong>存在自定义角色来源缺口</strong>
-          <span>这些角色仍以角色权限为运行时真值，但无法证明来自哪个角色模板版本；发布或回滚前必须先修复来源登记。</span>
+          <span>这些角色仍以角色权限为准，但无法证明来自哪个角色模板版本；发布或回滚前必须先修复来源登记。</span>
         </section>
 
         <section class="card boundary-note">
@@ -147,7 +147,7 @@
         </section>
 
         <section id="access-explain" class="card explain-card">
-          <header class="section-head"><div><h3>访问解释</h3><p class="muted">解释“某个学校成员为什么能或不能访问具体对象”。身份权限通过不等于业务最终允许；数据范围目标与业务对象上下文会交给权威业务守卫裁决，缺失上下文时后端将继续按拒绝处理。</p></div></header>
+          <header class="section-head"><div><h3>访问解释</h3><p class="muted">解释“某个学校成员为什么能或不能访问具体对象”。身份权限通过不等于业务最终允许；数据范围目标与业务对象上下文会交给业务规则裁决，缺失上下文时将继续按拒绝处理。</p></div></header>
           <form class="explain-form" @submit.prevent="explainAccess">
             <label>学校成员编号<input v-model.trim="explain.userId" required inputmode="numeric" placeholder="例如 1024" /></label>
             <label>模块<input v-model.trim="explain.moduleKey" required /></label>
@@ -202,7 +202,7 @@
 
         <section v-if="roleEvidence" class="card evidence-card">
           <header class="section-head">
-            <div><h3>{{ roleEvidence.title }}</h3><p class="muted">服务端真实分页：每页 {{ roleEvidence.pageSize }} 条，总数 {{ roleEvidence.total }}。不会把前 50 条预览数据当作完整结果。</p></div>
+            <div><h3>{{ roleEvidence.title }}</h3><p class="muted">按页读取：每页 \1 条，总数 \2。不会把前 50 条预览数据当作完整结果。</p></div>
             <button class="link" @click="roleEvidence = null">关闭</button>
           </header>
           <div class="table-wrap">

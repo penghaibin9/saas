@@ -20,9 +20,9 @@ export const METRICS = [
  ['teacherCount','排课涉及教师','人','reminders','todayTeaching.teacherCount','按 teacher_key 去重的排课教师，不代表到课人数。','teaching'],
  ['classCount','排课涉及班级','个','reminders','todayTeaching.classCount','今日课表 class_id 去重；不代表上课学生数。','teaching'],
  ['occupiedRooms','今日占用教室','间','reminders','resourceOccupancy.occupiedToday','今日排课/已通过预约匹配 AVAILABLE 教室字典；不是当前实时占用。','resource'],
- ['gradeSubmittedRate','成绩提交率','%','reminders','gradeProgress.submittedRate','(SUBMITTED+ACADEMIC_REVIEW+PUBLISHED)/totalTasks；累计任务口径，已归档不自动并入。','grade'],
- ['pendingChanges','在途调停课','单','reminders','scheduleChangeReminders.count','SUBMITTED/COLLEGE_REVIEW/ACADEMIC_REVIEW 全量计数；不是今日次数。','changes'],
- ['warningCount','待处置学业预警','条','reminders','warningReminders.count','ACTIVE 且 PENDING_HANDLE 的记录数，不是学生去重人数。','warning'],
+ ['gradeSubmittedRate','成绩提交率','%','reminders','gradeProgress.submittedRate','（已提交 + 教务审核 + 已发布）÷ 任务总数；按累计任务计算，已归档不自动计入。','grade'],
+ ['pendingChanges','在途调停课','单','reminders','scheduleChangeReminders.count','已提交、学院审核、教务审核的全部数量；不是今日次数。','changes'],
+ ['warningCount','待处置学业预警','条','reminders','warningReminders.count','有效且待处理的记录数，不是学生去重人数。','warning'],
  ['notStarted','未开始','课次','reminders','todayTeaching.notStarted','按课程开始时间判定；不代表到课。','teaching'],
  ['inProgress','按课表进行中','课次','reminders','todayTeaching.inProgress','按节次时刻判定，不是考勤或实际执行证明。','teaching'],
  ['ended','按课表已结束','课次','reminders','todayTeaching.ended','按节次结束时刻判定。','teaching'],
@@ -31,25 +31,25 @@ export const METRICS = [
  ['examToday','今日考试','项','reminders','todayTeaching.examCount','已确认考试课程数，批次 ARRANGED/PUBLISHED。','exams'],
  ['roomTexts','排课教室文本','项','reminders','todayTeaching.roomCount','classroom_text 去重，不用于计算教室占用率。','resource'],
  ['roomTotal','可用教室字典','间','reminders','resourceOccupancy.totalRooms','AaClassroom.status=AVAILABLE 的字典教室数，不是学校所有物理教室。','resource'],
- ['roomRate','今日占用比例','%','reminders','resourceOccupancy.occupancyRate','后端值范围0–100；分母为0显示暂无口径；比例越界拒绝展示。','resource'],
+ ['roomRate','今日占用比例','%','reminders','resourceOccupancy.occupancyRate','取值范围 0–100；分母为 0 显示“暂无数据”；比例超出范围不予展示。','resource'],
  ['unmatchedRooms','未匹配教室文本','项','reminders','resourceOccupancy.unmatchedCount','无法匹配教室字典的不同文本；不解释为真实空闲。','resource'],
- ['gradeTotal','成绩任务总数','项','reminders','gradeProgress.totalTasks','当前学校范围内累计成绩任务；接口没有 termId 入参。','grade'],
+ ['gradeTotal','成绩任务总数','项','reminders','gradeProgress.totalTasks','当前学校范围内累计的成绩任务；该统计不按学期区分。','grade'],
  ['gradeSubmitted','已提交/审核/发布','项','reminders','derived: counts.SUBMITTED+ACADEMIC_REVIEW+PUBLISHED','与提交率同一稀疏状态计数；不以预览行数充当总量。','grade'],
  ['gradePublished','成绩已发布','项','reminders','gradeProgress.counts.PUBLISHED','当前状态已发布的成绩任务。','grade'],
  ['gradeInputting','成绩录入中','项','reminders','gradeProgress.counts.INPUTTING','当前状态录入中的成绩任务。','grade'],
  ['gradeNotStarted','成绩未开始','项','reminders','gradeProgress.counts.NOT_STARTED','当前状态未开始的成绩任务。','grade'],
  ['gradeReturned','成绩已退回','项','reminders','gradeProgress.counts.RETURNED','当前状态已退回的成绩任务。','grade'],
- ['gradeArchived','成绩已归档','项','reminders','gradeProgress.counts.ARCHIVED','与已发布分开展示，不添加到原后端 submittedRate。','grade'],
- ['examUpcoming','近期考试课程','项','reminders','examReminders.count','未来 windowDays 窗口内已确认考试课程，明细最多10项。','exams'],
+ ['gradeArchived','成绩已归档','项','reminders','gradeProgress.counts.ARCHIVED','与已发布分开展示，不计入原来的提交率。','grade'],
+ ['examUpcoming','近期考试课程','项','reminders','examReminders.count','未来统计天数内已确认的考试课程，明细最多 10 项。','exams'],
  ['blockers','运行检查阻断','项','readiness','blockerCount','多规则命中数量的汇总；不作为去重事故/人数。','readiness'],
  ['readinessRisks','运行检查风险','项','readiness','riskCount','多规则命中数量汇总；不同规则可能涉及同一对象。','readiness'],
  ['ruleItems','需关注规则','条','readiness','itemCount','规则结果条数，与各规则 count 的合计不同。','readiness'],
  ['failRate','成绩记录挂科率','%','quality','indicators[key=failRate].value','累计台账成绩口径；无可靠学期映射，不标注本学期。','quality'],
  ['programRate','培养方案发布率','%','quality','indicators[key=programPublishRate].value','累计方案口径；PUBLISHED/ENABLED 占全部方案。','quality'],
  ['taskRate','教学任务确认率','%','quality','indicators[key=taskCompleteRate].value','累计教学任务确认口径，不是排课执行率。','quality'],
- ['qualityGradeRate','成绩任务发布率','%','quality','indicators[key=gradePublishRate].value','质量接口累计任务口径，与成绩提交率概念不同。','quality'],
+ ['qualityGradeRate','成绩任务发布率','%','quality','indicators[key=gradePublishRate].value','质量统计按累计任务计算，与成绩提交率的含义不同。','quality'],
  ['enabledCourses','启用课程','门','quality','indicators[key=courseEnabled].value','ENABLED 课程数，不能改名今日开课门数。','quality'],
- ['qualityWarnings','在办学业预警','条','quality','indicators[key=warningCount].value','质量接口 status!=CLOSED；不同于待处置 PENDING_HANDLE，不能混算。','quality']
+ ['qualityWarnings','在办学业预警','条','quality','indicators[key=warningCount].value','质量统计中“未关闭”的数量；不同于“待处置”，不能混算。','quality']
 ].map(([id,label,unit,endpoint,path,definition,route])=>({id,label,unit,endpoint,path,definition,route}));
 export const record = x => x !== null && typeof x === 'object' && !Array.isArray(x);
 export function num(x,{integer=false,max=Infinity}={}) {
@@ -147,7 +147,7 @@ export function buildViewModel(input={}) {
   const gradeIntegrity=validCounts&&total!==null&&sumCounts===total;
   for(const s of METRICS.filter(s=>s.path.startsWith('gradeProgress.counts.'))) {
     const k=s.path.split('.').at(-1);
-    put(s,gradeIntegrity?(counts[k]??0):null, sources.reminders.state==='OK'&&!gradeIntegrity?'INVALID':undefined,'累计任务状态，接口稀疏字典缺项=0；必须先通过总量对账');
+    put(s,gradeIntegrity?(counts[k]??0):null, sources.reminders.state==='OK'&&!gradeIntegrity?'INVALID':undefined,'累计任务状态，缺项按 0 计；必须先通过总量核对');
   }
   const submitted=gradeIntegrity?['SUBMITTED','ACADEMIC_REVIEW','PUBLISHED'].reduce((a,k)=>a+(counts[k]??0),0):null;
   put(spec('gradeSubmitted'),submitted,sources.reminders.state==='OK'&&!gradeIntegrity?'INVALID':undefined);

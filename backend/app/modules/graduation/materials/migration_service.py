@@ -107,11 +107,11 @@ def backfill_legacy(
     model_name = str(cursor_model or "PROPOSAL").upper()
     model = _MODELS.get(model_name)
     if not model:
-        raise AppException("VALIDATION_ERROR", "cursorModel 仅支持 PROPOSAL/FINAL/GUIDANCE/TOPIC")
+        raise AppException("VALIDATION_ERROR", "游标类型仅支持开题 / 终稿 / 指导 / 选题")
     size = min(1000, max(1, int(page_size or 200)))
     fmt = str(output_format or "JSON").upper()
     if fmt not in {"JSON", "XLSX"}:
-        raise AppException("VALIDATION_ERROR", "outputFormat 仅支持 JSON/XLSX")
+        raise AppException("VALIDATION_ERROR", "导出格式仅支持 JSON / XLSX")
     with session() as db:
         checkpoint = db.scalars(select(GraduationMaterialBackfillCheckpoint).where(
             GraduationMaterialBackfillCheckpoint.tenant_id == _tid(),

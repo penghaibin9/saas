@@ -31,7 +31,7 @@ test('stats host mounts snapshot as a tab and does not create a second route/men
 test('snapshot workspace exposes freeze history, detail and server verify semantics', () => {
   for (const text of [
     '冻结当前统计', '后续实时源数据变化不会回写已冻结快照', 'payloadHash',
-    '冻结原因', '冻结 payload', '重新校验完整性', '服务端校验通过'
+    '冻结原因', '冻结 payload', '重新校验完整性', '系统校验通过'
   ]) assert.match(workspace, new RegExp(text))
   assert.match(workspace, /academicAffairs\.stats\.snapshot\.view/)
   assert.match(workspace, /academicAffairs\.stats\.snapshot\.create/)

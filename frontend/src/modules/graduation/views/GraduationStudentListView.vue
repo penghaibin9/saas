@@ -332,7 +332,7 @@ export default {
       if (this.statsError) return `当前查看「${this.activePanelLabel}」${this.total} 人；全量统计暂未读取。`
       const map = {
         roster: `当前批次共 ${stats.total ?? this.total} 名学生，名单是后续选题、导师、材料和答辩的唯一入口。`,
-        progress: `当前进度视图 ${this.total} 人；按服务端节点筛选处理，不用当前页推导全量。`,
+        progress: `当前进度视图共 ${this.total} 人；按环节筛选处理，不用当前页推算全部。`,
         risk: `当前批次高风险 ${stats.highRisk ?? this.total} 人，优先进入真实风险处置。`,
         topic: `当前批次未选题 ${stats.withoutTopic ?? this.total} 人，应先建立真实选题关系。`,
         mentor: `当前查看已选题学生与导师关系 ${this.total} 人。`,
@@ -340,14 +340,14 @@ export default {
         grouping: `当前查看过程分组 ${this.total} 人，可选择后批量分组。`,
         materials: `当前材料缺口队列 ${this.total} 人，逐人进入详情核验。`,
         defense: `当前批次未分答辩组 ${stats.withoutDefenseGroup ?? this.total} 人。`,
-        'grad-qual': '毕业资格只读展示教务预审真值，本页不写入、不维护第二套主档。',
+        'grad-qual': '毕业资格只显示教务预审结果，本页不写入、不维护第二套主档。',
         archive: `当前查看归档队列 ${this.total} 人；归档仍受材料备案和未关闭风险校验。`
       }
       return map[this.activePanel] || `当前查看 ${this.total} 人。`
     },
     workHint() {
       if (this.activePanel === 'grad-qual') return '刷新只会重新读取教务镜像；结果更正必须回到教务资格流程。'
-      return `${PANEL_HINTS[this.activePanel] || '处理当前学生队列'}；列表数据来自服务端分页。`
+      return `${PANEL_HINTS[this.activePanel] || '处理当前学生队列'}；列表数据按页读取。`
     },
     emptyTitle() {
       if (!this.hasBatch) return '请先选择或创建毕设批次'

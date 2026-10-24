@@ -54,11 +54,11 @@
           <div class="ptd__switches">
             <label v-for="k in featureKeys" :key="k" class="ptd__switch"><input :checked="Boolean(features[k])" type="checkbox" disabled /><span>{{ featureLabels[k] || '待命名功能' }}</span></label>
           </div>
-          <EmptyState v-if="!featureKeys.length" title="接口未返回可展示的授权项" description="请先核对当前学校的合同订单与套餐证据，不在此处直接授予商业权限。"><template #actions><button type="button" class="pw-button" @click="switchTab('info')">返回学校概况</button></template></EmptyState>
+          <EmptyState v-if="!featureKeys.length" title="系统未返回可显示的授权项" description="请先核对当前学校的合同订单与套餐证据，不在此处直接授予商业权限。"><template #actions><button type="button" class="pw-button" @click="switchTab('info')">返回学校概况</button></template></EmptyState>
         </AppCard>
 
         <AppCard v-else-if="tab === 'studentPortal'" class="ptd__panel">
-          <AppSectionHeader title="学生电脑门户配置（保存后写审计；关闭的模块或功能，学生端菜单隐藏且后端拒绝访问）" />
+          <AppSectionHeader title="学生电脑门户配置（保存后写审计；关闭的模块或功能，学生端菜单隐藏且系统拒绝访问）" />
           <StudentPortalConfigPanel ref="portalWorkspace" :key="tid" :tenant-id="tid" />
         </AppCard>
 
@@ -94,7 +94,7 @@
             <template #cell-lastLoginAt="{ row }">{{ fmt(row.lastLoginAt) || '从未登录' }}</template>
             <template #cell-actions="{ row }"><div class="ptd__ops ptd__ops--row"><AppButton v-if="row.status !== 'ACTIVE'" variant="ghost" :disabled="saving" @click="userAct(row, 'enable')">启用</AppButton><AppButton v-else variant="danger" :disabled="saving" @click="userAct(row, 'disable')">停用</AppButton><AppButton variant="warning" :disabled="saving" @click="userAct(row, 'reset-password')">重置密码</AppButton></div></template>
           </DataTable>
-          <EmptyState v-if="!users.length" title="该学校暂无账号" description="当前接口已返回空清单；已有账号不受本页面筛选影响。"><template #actions><button type="button" class="pw-button" @click="switchTab('info')">返回学校概况</button></template></EmptyState>
+          <EmptyState v-if="!users.length" title="该学校暂无账号" description="当前返回的是空清单；已有账号不受本页面筛选影响。"><template #actions><button type="button" class="pw-button" @click="switchTab('info')">返回学校概况</button></template></EmptyState>
         </AppCard>
         <TenantOffboardingPanel v-else-if="tab === 'offboarding'" ref="offboardingWorkspace" :key="tid" :tenant-id="tid" :tenant="tenant" :tenant360="tenant360" @changed="load" />
       </template>

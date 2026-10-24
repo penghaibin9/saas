@@ -4,7 +4,7 @@
       <div>
         <p class="eyebrow">提交前必看</p>
         <h2>企业将看到以下资料</h2>
-        <p>以下内容来自服务端材料预览。正式投递时会冻结为不可变材料快照。</p>
+        <p>以下内容来自材料预览。正式投递时会冻结为不可变的材料快照。</p>
       </div>
       <span class="policy">隐私策略 {{ preview.consentPolicyVersion || '待加载' }}</span>
     </div>
@@ -33,7 +33,7 @@
       </div>
 
       <div v-if="preview.sharedFields.length" class="shared-list">
-        <div class="group-title"><strong>其他共享资料</strong><span>服务端裁剪后字段</span></div>
+        <div class="group-title"><strong>其他共享资料</strong><span>系统裁剪后的字段</span></div>
         <div class="shared-grid">
           <div v-for="field in preview.sharedFields" :key="field.key" class="preview-field">
             <span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong>
@@ -60,7 +60,7 @@
       <div class="pdf-panel">
         <div>
           <strong>《岗位实习申请简历》</strong>
-          <p>PDF 由服务端材料快照派生；公共 PDF 不包含你投递的其它志愿。</p>
+          <p>PDF 由材料快照生成；公开 PDF 不包含你投递的其它志愿。</p>
         </div>
         <button type="button" :disabled="pdfBusy || !preview.previewHash" @click="$emit('pdf-preview')">
           {{ pdfBusy ? '生成中…' : '生成 / 预览 PDF' }}

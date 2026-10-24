@@ -153,7 +153,7 @@ test.describe.serial('V6 · defense secretary confirmation writes the complete r
 
     await expect(page.locator('.gp-context')).toContainText(scoringFixture.studentNo)
     await expect(page.getByText('完整评分轮次确认', { exact: true })).toBeVisible()
-    await expect(page.getByText('评委只能提交本人评分；秘书只能确认服务端判定为完整的评分轮次，不能代替评委补分。', { exact: true })).toBeVisible()
+    await expect(page.getByText('评委只能提交本人评分；秘书只能确认系统判定为完整的评分轮次，不能代替评委补分。', { exact: true })).toBeVisible()
     const rows = page.locator('.gp-timeline-item')
     await expect(rows.filter({ hasText: 'E2E答辩专家A' })).toContainText(/88.*已评分/)
     await expect(rows.filter({ hasText: 'E2E答辩专家B' })).toContainText(/77.*已评分/)

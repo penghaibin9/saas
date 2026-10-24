@@ -45,11 +45,11 @@ def handle_attendance_exception(
     comment = str(body.comment or "").strip()
     if action == "TO_RISK":
         if body.riskLevel != "HIGH":
-            raise AppException("VALIDATION_ERROR", "转风险必须显式确认 riskLevel=HIGH")
+            raise AppException("VALIDATION_ERROR", "转风险必须明确确认风险等级为“高”")
         if len(comment) < 5:
             raise AppException("VALIDATION_ERROR", "转风险原因不少于 5 字")
     elif body.riskLevel is not None:
-        raise AppException("VALIDATION_ERROR", "非转风险操作不得提交 riskLevel")
+        raise AppException("VALIDATION_ERROR", "非转风险操作不得提交风险等级")
 
     try:
         result = internship_service.handle_attendance_exception(

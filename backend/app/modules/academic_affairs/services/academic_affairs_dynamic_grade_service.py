@@ -277,7 +277,7 @@ def formal_roster(db, task, *, lock=False):
         query = query.with_for_update().populate_existing()
     teaching_class = query.first()
     if not teaching_class or not teaching_class.current_roster_version_id:
-        raise _conflict("缺少已投影的正式教学班名单，请先完成名单投影")
+        raise _conflict("缺少已生成的正式教学班名单，请先完成名单生成")
     query = db.query(AaTeachingClassRosterVersion).filter(
         AaTeachingClassRosterVersion.id == teaching_class.current_roster_version_id,
         AaTeachingClassRosterVersion.tenant_id == _tid(), AaTeachingClassRosterVersion.is_deleted.is_(False),
@@ -292,7 +292,7 @@ def formal_roster(db, task, *, lock=False):
             or str(resolved.get("teachingClassId") or "") != str(teaching_class.id)
             or version.roster_hash != consumer.roster_hash(ids)
             or int(version.member_count or 0) != len(ids)):
-        raise _conflict("正式名单版本、成员或来源不一致，请刷新并核对名单投影")
+        raise _conflict("正式名单版本、成员或来源不一致，请刷新并核对名单")
     return {**resolved, "studentIds": ids, "rosterVersionId": str(version.id),
             "rosterVersionNo": int(version.version_no), "rosterHash": version.roster_hash,
             "teachingClassId": str(teaching_class.id), "memberCount": len(ids)}
@@ -473,7 +473,7 @@ def _enter_batch(task_id, user, rows, *, expected=None, command_key=None, check_
 
 def enter_component_batch(task_id, user, rows, expected, *, command_key):
     if expected is None or not command_key:
-        raise AppException("VALIDATION_ERROR", "动态整批保存须提供版本身份与原命令键")
+        raise AppException("VALIDATION_ERROR", "整批保存须提供版本信息与原操作标识")
     return _enter_batch(task_id, user, rows, expected=expected, command_key=command_key, check_rows=True)
 
 

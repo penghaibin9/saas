@@ -215,16 +215,16 @@ class ExactFileVersionReadPort(IExactFileVersionReadPort):
         try:
             normalized = int(value)
         except (TypeError, ValueError) as exc:
-            raise AppException("VALIDATION_ERROR", "fileVersionId 格式不正确") from exc
+            raise AppException("VALIDATION_ERROR", "文件版本格式不正确") from exc
         if normalized <= 0:
-            raise AppException("VALIDATION_ERROR", "fileVersionId 格式不正确")
+            raise AppException("VALIDATION_ERROR", "文件版本格式不正确")
         return normalized
 
     @staticmethod
     def _expected_sha(value: str) -> str:
         normalized = str(value or "").strip().lower()
         if not _SHA256_RE.fullmatch(normalized):
-            raise AppException("VALIDATION_ERROR", "expectedSha256 格式不正确")
+            raise AppException("VALIDATION_ERROR", "文件校验码格式不正确")
         return normalized
 
     @staticmethod

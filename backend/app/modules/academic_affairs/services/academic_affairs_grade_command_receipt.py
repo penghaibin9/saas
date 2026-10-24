@@ -223,7 +223,7 @@ def begin(db, user, operation, key, payload):
         row = db.scalar(select(IdempotencyRecord).filter_by(**identity)
                         .with_for_update().execution_options(populate_existing=True))
         if row is None:
-            raise AppException("COMMAND_RESULT_UNRESOLVED", "教务命令结果尚无法确认，请只读核对", http_status=503)
+            raise AppException("COMMAND_RESULT_UNRESOLVED", "教务操作结果尚无法确认，请只读核对", http_status=503)
         if row.fingerprint != fingerprint:
             raise AppException("DATA_CONFLICT", "同一教务命令键不能用于不同对象或请求内容", http_status=409)
         if row.state == "SUCCESS" and isinstance(row.result_json, dict):

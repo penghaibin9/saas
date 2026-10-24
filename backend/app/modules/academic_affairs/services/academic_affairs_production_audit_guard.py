@@ -22,7 +22,7 @@ def _bounded_page_size(value, *, default: int) -> int:
     try:
         size = int(value if value is not None else default)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "pageSize 必须为整数") from None
+        raise AppException("VALIDATION_ERROR", "每页条数必须为整数") from None
     if size < 1 or size > _MAX_PAGE_SIZE:
         raise AppException(
             "VALIDATION_ERROR",

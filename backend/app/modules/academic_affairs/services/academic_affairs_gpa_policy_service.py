@@ -63,7 +63,7 @@ def _validate_bands(bands) -> str:
                 raise ValueError("boolean is not a score")
             lo, hi, point = map(float, raw)
         except (KeyError, TypeError, ValueError, OverflowError) as exc:
-            raise AppException("VALIDATION_ERROR", "BANDS 每项须包含有效 minScore/maxScore/point") from exc
+            raise AppException("VALIDATION_ERROR", "分段设置的每一项须包含有效的最低分、最高分和绩点") from exc
         if not all(math.isfinite(value) for value in (lo, hi, point)) or not (
                 0 <= lo <= hi <= 100 and 0 <= point <= 5):
             raise AppException("VALIDATION_ERROR", "绩点区间须为有限数值：0≤下限≤上限≤100，绩点0至5")
@@ -239,7 +239,7 @@ def activate_gpa_policy(user, payload: dict) -> dict:
 
     scale_type = str(payload.get("scaleType") or "LINEAR").strip().upper()
     if scale_type not in VALID_SCALE_TYPES:
-        raise AppException("VALIDATION_ERROR", "scaleType 仅支持 LINEAR/BANDS")
+        raise AppException("VALIDATION_ERROR", "换算方式仅支持“线性”或“分段”")
     bands_json = None
     linear_fail = linear_anchor = linear_divisor = None
     if scale_type == "BANDS":

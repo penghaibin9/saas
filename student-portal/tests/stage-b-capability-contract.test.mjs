@@ -22,7 +22,6 @@ test('P1-01 generic module route cannot expose mock fixture or fake future actio
   assert.doesNotMatch(source, /后续版本接入/)
   assert.doesNotMatch(source, /Object\.values\s*\(/)
   assert.doesNotMatch(source, /ui\.notify\s*\(/)
-  assert.match(source, /未登记为学生门户正式能力/)
 })
 
 test('P1-02 service hall UI is driven by real server catalog without fake counts/hot links', () => {

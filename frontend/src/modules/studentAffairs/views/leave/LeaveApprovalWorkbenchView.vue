@@ -189,7 +189,7 @@ export default {
       this.selectedId = String(recordId)
       this.detail = { loading: false, error: '', data: detail }
       if (!['COUNSELOR_REVIEW', 'COLLEGE_REVIEW', 'STUDENT_AFFAIRS_REVIEW'].includes(detail.affairsStatus)) {
-        this.focusNotice = `该待办状态已变化：当前为${detail.affairsStatusLabel || '状态待确认'}，已按最新事实展示，旧待办动作不可继续执行。`
+        this.focusNotice = `该待办状态已变化：当前为${detail.affairsStatusLabel || '状态待确认'}，已按最新情况显示，旧待办操作不可继续执行。`
       }
       await this.load()
     },

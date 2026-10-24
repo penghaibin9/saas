@@ -14,7 +14,7 @@
         v-if="primaryRow"
         :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班'}`"
         :identity="`教学任务调整 · 任务 #${primaryRow.taskId} · 批次 #${primaryRow.batchId}`"
-        source="来源：已确认教学任务及其正式下游引用；申请记录拟更正内容，不先改正式事实。"
+        source="来源：已确认的教学任务及其正式下游引用；申请记录拟更正的内容，不先改正式记录。"
         :status="statusLabel(primaryRow.status)"
         owner="学院教务 / 任课教师"
         next-owner="新教师确认岗 → 学院教务核对岗 → 排课岗"
@@ -242,7 +242,7 @@ export default {
         if (res.code !== 0) { this.handleFailure(res, '调整失败'); return }
         const readback = await readTaskPages(page => academicAffairsApi.getBatchTasks(form.batchId, page), valid)
         if (!valid()) return
-        if (readback?.code !== 0) { this.handleFailure(readback, '正式任务回读失败'); return }
+        if (readback?.code !== 0) { this.handleFailure(readback, '正式任务读取失败'); return }
         const row = readback.data.list.find(item => String(item.taskId) === String(form.taskId))
         const fields = ['teacherKey', 'weeklyHours', 'totalHours', 'startWeek', 'endWeek', 'expectedStudents']
         const confirmed = row && fields.every(key => body[key] === undefined || String(row[key]) === String(body[key]))
@@ -255,7 +255,7 @@ export default {
     handleFailure(result, fallback) {
       this.error = result?.message || fallback
       if (isDeniedResult(result)) { this.revision++; this.loading = false; this.all = []; this.receipt = null; this.adjust = { visible: false, submitting: false } }
-      else if (isConflictResult(result)) this.receipt = { object: `任务 #${this.adjust.taskId}`, status: '事实已变化，保留输入', pending: true, next: '核对当前正式任课关系、周次与下游引用；已有课表时从排课变更流程办理。' }
+      else if (isConflictResult(result)) this.receipt = { object: `任务 #${this.adjust.taskId}`, status: '数据已变化，保留输入', pending: true, next: '核对当前正式任课关系、周次与下游引用；已有课表时从排课变更流程办理。' }
     }
   }
 }

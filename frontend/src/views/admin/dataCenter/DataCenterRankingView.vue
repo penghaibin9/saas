@@ -20,7 +20,7 @@
     <EmptyState
       v-else-if="!ranking || !ranking.rows || !ranking.rows.length"
       title="当前组织维度暂无排行数据"
-      description="本页只展示学生主档服务端真实聚合，不使用浏览器补数。"
+      description="本页只显示学生主档的真实汇总，不使用页面补数。"
     />
 
     <div v-else class="mp-stack">
@@ -104,7 +104,7 @@
 
     <AppDrawer v-model:visible="drill.visible" :title="drill.row ? drill.row.name + ' · 学生清单' : '学生清单'">
       <div class="mp-stack">
-        <p class="mp-note">本清单由服务端按当前组织 ID 查询，学号已在服务端脱敏；不使用浏览器名单过滤冒充结果。</p>
+        <p class="mp-note">本清单按当前组织查询，学号已脱敏；不使用页面名单过滤冒充结果。</p>
         <ErrorState v-if="drill.error" :description="drill.error" @retry="loadDrill" />
         <LoadingState v-else-if="drill.loading" text="正在加载组织学生清单…" />
         <EmptyState v-else-if="!drill.rows.length" title="该组织暂无学生" description="当前权威主档中没有符合条件的学生。" />

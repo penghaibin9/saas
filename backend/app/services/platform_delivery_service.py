@@ -334,7 +334,7 @@ def record_consumer_smoke(user: dict, tenant_id: int, body: dict) -> dict:
 
     exact_head = str(body.get("exactHead") or "").strip().lower()
     if not _SHA40.fullmatch(exact_head):
-        raise AppException("VALIDATION_ERROR", "exactHead 必须是 40 位 Git SHA", http_status=422)
+        raise AppException("VALIDATION_ERROR", "提交码必须是 40 位", http_status=422)
     from app.modules.platform.services.platform_product_iam_hardening import deployed_commit_sha
 
     deployed_head = deployed_commit_sha()

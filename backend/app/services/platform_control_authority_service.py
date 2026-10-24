@@ -43,10 +43,10 @@ def _required_version(value, *, label: str) -> int:
     if isinstance(value, bool) or not (
         isinstance(value, int) or isinstance(value, str) and re.fullmatch(r"[0-9]+", value)
     ):
-        raise AppException("VALIDATION_ERROR", f"{label}必须提供整数 expectedVersion", http_status=422)
+        raise AppException("VALIDATION_ERROR", f"{label}必须提供整数数据版本", http_status=422)
     version = int(value)
     if version < 0:
-        raise AppException("VALIDATION_ERROR", f"{label} expectedVersion 不能为负数", http_status=422)
+        raise AppException("VALIDATION_ERROR", f"{label}的数据版本不能为负数", http_status=422)
     return version
 
 

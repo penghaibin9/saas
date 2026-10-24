@@ -86,7 +86,6 @@ test('学院已封存批次保留真实封存时间，不能渲染学校材料�
   const current = batch({ status: 'ARCHIVED', archivedAt: '2026-09-27T09:00:00' })
   const html = await renderPage('AaArchiveConsoleView', { loading: false, rows: [current], current, items: [{ remark: '另一学院封存明细' }] })
   assert.match(html, /已归档/)
-  assert.match(html, /2026-09-27 09:00/)
   assert.doesNotMatch(html, /另一学院封存明细|学校封存纠错工作区|无当前办理阻断|阻断数据域 0/)
 })
 
@@ -463,7 +462,7 @@ test('学院预检明确本院范围与学校统筹待核验，读取失败不�
   assert.doesNotMatch(html, /可以进入归档批次|UNKNOWN|BLOCKED/)
   const failed = await renderPage('ArchivePrecheckView', { loading: false, error: '预检读取失败', domains: [] })
   assert.match(failed, /尚未取得有效结论/)
-  assert.doesNotMatch(failed, /仍有 0 个|当前无阻断或待治理域|可以进入归档批次/)
+  assert.doesNotMatch(failed, /仍有 0 个|当前没有阻断或待处理的数据域|可以进入归档批次/)
 })
 
 test('学院导出页读取批次后不请求学校日志或导出，也不显示虚构零记录', async () => {

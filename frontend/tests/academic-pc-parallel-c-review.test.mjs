@@ -165,7 +165,7 @@ test('命令 409 保留意见和任务，重新核对只有 GET，再次确认�
   const vm = mount({ getGradeTasks: async p => { reads++; return result(row(p.taskId)) }, collegeReviewGrade: async () => { writes++; return { code: 409, bizCode: 'DATA_CONFLICT' } } })
   await vm.selectTask('A'); vm.openReview('RETURN'); await vm.doReview({ reason })
   assert.equal(vm.reviewReason, reason); assert.equal(vm.dlg.visible, true); assert.equal(vm.dlg.taskId, 'A')
-  assert.equal(vm.reviewConflict, true); assert.equal(vm.reviewMessage, '任务或审核证据已变化，本次未受理。意见已保留，请先重新核对正式事实。')
+  assert.equal(vm.reviewConflict, true); assert.equal(vm.reviewMessage, '任务或审核依据已变化，本次未受理。意见已保留，请先重新核对正式记录。')
   assert.equal(vm.pending, null); assert.equal(vm.receipt, null)
   await vm.doReview({ reason }); assert.equal(writes, 1)
   const before = reads; await vm.refreshReview(); assert.equal(reads, before + 1); assert.equal(writes, 1)

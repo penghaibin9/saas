@@ -74,7 +74,7 @@
       <AppFormItem label="复核结论" required>
         <AppSelect v-model="revDlg.result" :options="APPEAL_RESULTS" />
       </AppFormItem>
-      <p class="ob-impact">{{ revDlg.result === 'SUSTAINED' ? '申诉成立将驳回原资助申请，请确认事实与复核意见一致。' : revDlg.result === 'OVERRULED' ? '维持原公示；仍需公示期满后由学校确认获资助。' : '请选择核查后的结论，不会自动代选。' }}</p>
+      <p class="ob-impact">{{ revDlg.result === 'SUSTAINED' ? '申诉成立将驳回原资助申请，请确认情况与复核意见一致。' : revDlg.result === 'OVERRULED' ? '维持原公示；仍需公示期满后由学校确认获资助。' : '请选择核查后的结论，不会自动代选。' }}</p>
     </AppConfirmDialog>
   </AppPageShell>
 </template>

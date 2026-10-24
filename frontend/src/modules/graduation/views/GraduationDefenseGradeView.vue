@@ -12,7 +12,7 @@
         <small>{{ workContract }}</small>
       </div>
       <div class="dg-command__facts">
-        <div><b>{{ mode === 'batch' ? batch.total : studentOptions.length }}</b><span>{{ mode === 'batch' ? '服务端台账' : '当前学生队列' }}</span></div>
+        <div><b>{{ mode === 'batch' ? batch.total : studentOptions.length }}</b><span>{{ mode === 'batch' ? '成绩台账' : '当前学生队列' }}</span></div>
         <div><b>{{ mode === 'batch' ? batch.rows.length : activeRecordCount }}</b><span>{{ mode === 'batch' ? '当前页' : '当前业务记录' }}</span></div>
         <div><b>{{ roleActionLabel }}</b><span>当前职责</span></div>
       </div>
@@ -41,7 +41,7 @@
         <AppSearchBox v-model="batch.keyword" placeholder="搜索学生 / 学号" :disabled="commandLocked" @search="searchGrades" />
         <ErrorState v-if="batch.error" :description="batch.error" @retry="loadGrades" />
         <LoadingState v-else-if="batch.loading" />
-        <EmptyState v-else-if="!batch.rows.length" title="当前服务端队列暂无成绩记录" description="可调整队列或关键词；页面不会在当前页二次筛选冒充全量。" />
+        <EmptyState v-else-if="!batch.rows.length" title="当前暂无成绩记录" description="可调整队列或关键词；页面不会在当前页二次筛选冒充全量。" />
         <DataTable
           v-else
           :columns="batchColumns"
@@ -58,7 +58,7 @@
           <template #cell-status="{ row }"><StatusTag :type="row.statusTone" :label="row.statusLabel" dot /></template>
           <template #cell-actions="{ row }"><button class="mp-link" :disabled="commandLocked" @click="openFromBatch(row)">处理 →</button></template>
         </DataTable>
-        <p class="mp-note">缺项队列、关键词、状态、总数和分页全部来自服务端；核算 → 复核 → 发布 → 撤回仍走原状态机并留痕。</p>
+        <p class="mp-note">缺项队列、关键词、状态、总数和分页均由系统提供；核算 → 复核 → 发布 → 撤回仍按原流程并留痕。</p>
       </div>
 
       <div v-else class="gp-layout" :class="{ 'is-command-locked': commandLocked }" :aria-busy="commandLocked">
@@ -105,7 +105,7 @@
             <LoadingState v-else-if="panelLoading" />
 
             <section v-else-if="tab === 'plagiarism' && canPanel('plagiarism')" class="gp-panel">
-              <div class="gp-panel__head"><div><span>正式成果版本的查重事实</span><strong>查重记录</strong></div><AppButton variant="primary" :disabled="commandLocked || !canAction('submitPlagiarism')" :title="actionReason('submitPlagiarism')" @click="doSubmitPlagiarism">发起查重</AppButton></div>
+              <div class="gp-panel__head"><div><span>正式成果版本的查重情况</span><strong>查重记录</strong></div><AppButton variant="primary" :disabled="commandLocked || !canAction('submitPlagiarism')" :title="actionReason('submitPlagiarism')" @click="doSubmitPlagiarism">发起查重</AppButton></div>
               <ul v-if="plagiarismList.length" class="gp-timeline">
                 <li v-for="p in plagiarismList" :key="p.id" class="gp-timeline-item">
                   <div class="mp-cell-main"><AppDateDisplay :value="p.submitAt" mode="datetime" /> · <StatusTag :type="p.overThreshold ? 'danger' : 'success'" :label="p.status === 'DONE' ? (p.rate || '—') : p.statusLabel" dot /></div>
@@ -114,7 +114,7 @@
                   <div v-if="p.disputeStatus === 'PENDING'" class="mp-cell-sub">复查申请：{{ p.disputeReason }} <button class="mp-link" :disabled="commandLocked || !canAction('reviewPlagiarismDispute')" :title="actionReason('reviewPlagiarismDispute')" @click="doDisputeReview(p, 'APPROVE')">通过</button> <button class="mp-link mp-link--danger" :disabled="commandLocked || !canAction('reviewPlagiarismDispute')" :title="actionReason('reviewPlagiarismDispute')" @click="doDisputeReview(p, 'REJECT')">驳回</button></div>
                 </li>
               </ul>
-              <EmptyState v-else title="暂无查重记录" description="查重结果绑定正式成果版本；超标、复查和后续准入只认服务端状态机。" />
+              <EmptyState v-else title="暂无查重记录" description="查重结果绑定正式成果版本；超标、复查和后续准入只按系统流程判定。" />
             </section>
 
             <section v-else-if="tab === 'review' && canPanel('review')" class="gp-panel">
@@ -150,12 +150,12 @@
               <ul v-if="scoreList.length" class="gp-timeline">
                 <li v-for="d in scoreList" :key="d.id" class="gp-timeline-item"><div class="mp-cell-main">{{ d.judgeName }}（第{{ d.roundNo }}轮）· {{ d.absent ? '缺席' : d.score }} · <StatusTag :type="d.status === 'CONFIRMED' ? 'success' : 'warning'" :label="d.statusLabel" dot /></div><div v-if="d.absent && d.absentReason" class="mp-cell-sub">缺席说明：{{ d.absentReason }}</div></li>
               </ul>
-              <EmptyState v-else title="暂无评分记录" description="本轮完整性由服务端判断；页面不根据当前列表推导确认条件。" />
+              <EmptyState v-else title="暂无评分记录" description="本轮完整性由系统判断；页面不根据当前列表推导确认条件。" />
               <div class="ie-actions ie-actions--footer">
                 <AppButton v-if="canConfirmScores" :disabled="commandLocked" :title="confirmScoresReason" @click="askConfirmScores">确认本轮成绩</AppButton>
                 <AppButton v-if="canCreateSecondDefense" :disabled="commandLocked" :title="secondDefenseReason" @click="openSecondDefense">发起二次答辩</AppButton>
               </div>
-              <p class="mp-note">评委只能提交本人评分；秘书只能确认服务端判定为完整的评分轮次，不能代替评委补分。</p>
+              <p class="mp-note">评委只能提交本人评分；秘书只能确认系统判定为完整的评分轮次，不能代替评委补分。</p>
             </section>
 
             <section v-else-if="tab === 'grade' && canPanel('grade')" class="gp-panel">
@@ -171,7 +171,7 @@
                   <AppButton v-if="grade.status === 'PUBLISHED'" variant="danger" :disabled="commandLocked || !canWithdrawGrade" :title="withdrawGradeReason" @click="openWithdraw">撤回</AppButton>
                 </div>
               </template>
-              <EmptyState v-else title="暂无成绩记录" description="成绩生成、复核、发布和撤回顺序由服务端状态机控制。" />
+              <EmptyState v-else title="暂无成绩记录" description="成绩生成、复核、发布和撤回的顺序由系统流程控制。" />
             </section>
           </template>
         </main>
@@ -289,22 +289,22 @@ export default {
       const batch = this.batchStore.selectedBatchName ? `${this.batchStore.selectedBatchName} · ` : ''
       return `${batch}${this.workContract}`
     },
-    workModeLabel() { return this.mode === 'batch' ? '服务端成绩台账' : `按学生连续处理 · ${this.tabLabel}` },
+    workModeLabel() { return this.mode === 'batch' ? '成绩台账' : `按学生连续处理 · ${this.tabLabel}` },
     tabLabel() {
       if (this.tab === 'defense' && this.$route.name === 'graduation-defense-confirmation') return '答辩确认'
       return { plagiarism: '查重记录', review: '教师评阅', defense: '答辩评分', grade: '成绩评定' }[this.tab] || '当前业务'
     },
     workContract() {
-      if (this.mode === 'batch') return '服务端分页与缺项队列；不在当前页二次筛选。'
+      if (this.mode === 'batch') return '按系统分页与缺项队列；不在当前页二次筛选。'
       if (this.tab === 'defense') return '评委只提交本人评分；秘书只确认完整轮次，二者权限严格分离。'
-      if (this.tab === 'plagiarism') return '查重绑定正式成果版本，后续准入只认服务端状态机。'
+      if (this.tab === 'plagiarism') return '查重绑定正式成果版本，后续准入只按系统流程判定。'
       if (this.tab === 'review') return '评阅分配、提交与退回继续调用原 canonical API。'
       return '核算 → 复核 → 发布 → 撤回顺序冻结。'
     },
     conclusion() {
       if (!this.hasBatch) return '先选择批次，再进入当前职责工作区。'
       if (this.mode === 'batch') {
-        if (this.batch.loading) return '正在读取服务端成绩台账。'
+        if (this.batch.loading) return '正在读取成绩台账。'
         if (this.batch.error) return '成绩台账暂不可用，请按错误信息重试。'
         return `${this.activeBatchQueue().label}共 ${this.batch.total} 条；当前页 ${this.batch.rows.length} 条。`
       }
@@ -779,7 +779,7 @@ export default {
       const snapshot = this.createCommandSnapshot('REVIEW_PLAGIARISM_DISPUTE', { recordId: row.id, reviewAction: action })
       return this.runCommand(snapshot,
         (ctx) => graduationDefenseGradeApi.reviewDispute(ctx.recordId, ctx.reviewAction, ctx.reviewAction === 'REJECT' ? '维持原查重结果' : '核实无误'),
-        (_res, ctx) => ({ title: '查重复查已审核', result: `服务器已记录 ${ctx.reviewAction === 'APPROVE' ? '通过' : '驳回'} 结论。`, next: '后续准入继续由服务端状态机判断。' }))
+        (_res, ctx) => ({ title: '查重复查已审核', result: `服务器已记录 ${ctx.reviewAction === 'APPROVE' ? '通过' : '驳回'} 结论。`, next: '后续准入继续由系统流程判断。' }))
     },
     doAssignReview() {
       if (!this.canAction('assignReview')) return
@@ -801,20 +801,20 @@ export default {
     askConfirmScores() {
       if (!this.canConfirmScores || this.commandLocked || !this.current) return
       this.commandSnapshot = this.createCommandSnapshot('CONFIRM_SCORES')
-      this.confirm = { visible: true, title: '确认本轮答辩成绩', message: `确认「${this.current.name}」当前评分轮次？完整性、缺席说明和轮次条件由服务端最终校验；秘书不能代替评委补分。`, type: 'warning', confirmText: '确认本轮', action: 'CONFIRM_SCORES' }
+      this.confirm = { visible: true, title: '确认本轮答辩成绩', message: `确认「${this.current.name}」当前评分轮次？完整性、缺席说明和轮次条件由系统最终校验；秘书不能代替评委补分。`, type: 'warning', confirmText: '确认本轮', action: 'CONFIRM_SCORES' }
     },
     openSecondDefense() { if (this.canCreateSecondDefense) this.openForm('secondDefense') },
     openCalculate() { if (this.canManageGrade) this.openForm('calculate') },
     askGradeReview() {
       if (!this.canReviewGrade || this.commandLocked || !this.current) return
       this.commandSnapshot = this.createCommandSnapshot('REVIEW_GRADE')
-      this.confirm = { visible: true, title: '成绩复核通过', message: `确认「${this.current.name}」当前成绩复核通过？服务端会再次校验状态顺序。`, type: 'warning', confirmText: '复核通过', action: 'REVIEW_GRADE' }
+      this.confirm = { visible: true, title: '成绩复核通过', message: `确认「${this.current.name}」当前成绩复核通过？系统会再次校验状态顺序。`, type: 'warning', confirmText: '复核通过', action: 'REVIEW_GRADE' }
     },
     openReturnGrade() { if (this.canReviewGrade) this.openForm('returnGrade') },
     askPublishGrade() {
       if (!this.canPublishGrade || this.commandLocked || !this.current) return
       this.commandSnapshot = this.createCommandSnapshot('PUBLISH_GRADE')
-      this.confirm = { visible: true, title: '发布成绩', message: `确认发布「${this.current.name}」的毕业设计成绩？发布后学生可见，正式状态只认服务端回执。`, type: 'warning', confirmText: '确认发布', action: 'PUBLISH_GRADE' }
+      this.confirm = { visible: true, title: '发布成绩', message: `确认发布「${this.current.name}」的毕业设计成绩？发布后学生可见，正式状态只认系统回执。`, type: 'warning', confirmText: '确认发布', action: 'PUBLISH_GRADE' }
     },
     openWithdraw() { if (this.canWithdrawGrade) this.openForm('withdraw') },
     cancelConfirm() {
@@ -832,11 +832,11 @@ export default {
       } else if (snapshot.action === 'REVIEW_GRADE') {
         await this.runCommand(snapshot,
           (ctx) => graduationDefenseGradeApi.reviewGrade(ctx.studentId, { action: 'APPROVE' }),
-          (_res) => ({ title: '成绩复核已通过', result: '服务器已回读 REVIEWED 状态。', next: '下一步由授权角色发布成绩。' }))
+          (_res) => ({ title: '成绩复核已通过', result: '已重新读取“已复核”状态。', next: '下一步由授权角色发布成绩。' }))
       } else if (snapshot.action === 'PUBLISH_GRADE') {
         await this.runCommand(snapshot,
           (ctx) => graduationDefenseGradeApi.publishGrade(ctx.studentId),
-          (_res) => ({ title: '成绩已发布', result: '服务器已回读 PUBLISHED 状态。', next: '如需撤回，必须填写原因并走原状态机。' }))
+          (_res) => ({ title: '成绩已发布', result: '已重新读取“已发布”状态。', next: '如需撤回，必须填写原因并走原状态机。' }))
       }
     }
   }

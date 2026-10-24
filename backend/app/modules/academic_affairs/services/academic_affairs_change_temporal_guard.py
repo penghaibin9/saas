@@ -37,7 +37,7 @@ def _parse_future_effective(value) -> datetime | None:
         try:
             parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except ValueError as exc:
-            raise AppException("VALIDATION_ERROR", "effectiveDate 必须是 ISO-8601 日期时间") from exc
+            raise AppException("VALIDATION_ERROR", "生效日期必须是标准日期时间格式") from exc
     if parsed.tzinfo is not None:
         parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
     if parsed <= datetime.utcnow():

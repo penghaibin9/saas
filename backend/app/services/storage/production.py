@@ -112,7 +112,7 @@ def create_upload_session(
         raise AppException("VALIDATION_ERROR", "sha256 格式不正确")
     idem = str(idempotency_key or "").strip()
     if len(idem) < 8 or len(idem) > 100:
-        raise AppException("VALIDATION_ERROR", "idempotencyKey 长度必须为 8-100")
+        raise AppException("VALIDATION_ERROR", "重复提交标识长度必须为 8-100")
 
     db = get_sessionmaker()()
     try:

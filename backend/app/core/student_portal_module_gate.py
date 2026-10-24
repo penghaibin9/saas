@@ -60,7 +60,7 @@ def enforce_student_portal_module_access(
     if token.startswith("Bearer "):
         token = token[7:]
     if not token:
-        raise unauthorized("未提供认证令牌")
+        raise unauthorized("未提供登录凭证")
     claims = decode_token(token)
     user = {
         "userId": claims.get("userId"),
@@ -74,7 +74,7 @@ def enforce_student_portal_module_access(
         if db_enabled():
             tenant_id = int(claims.get("tenantId") or 0)
             if not tenant_id:
-                raise unauthorized("令牌缺少租户信息，请重新登录")
+                raise unauthorized("登录凭证缺少学校信息，请重新登录")
             from app.services.module_access_service import assert_module_access
             assert_module_access(
                 tenant_id, "internship",

@@ -49,7 +49,7 @@ def _actor_name(user: dict | None) -> str:
 def _archive_no(value: str | None) -> str:
     normalized = str(value or f"GDARCH-{datetime.utcnow():%Y%m%d}").strip().upper()
     if not re.fullmatch(r"[A-Z0-9][A-Z0-9_-]{2,99}", normalized):
-        raise AppException("VALIDATION_ERROR", "archiveBatchNo 格式不正确")
+        raise AppException("VALIDATION_ERROR", "归档批次号格式不正确")
     return normalized
 
 
@@ -121,7 +121,7 @@ def _active_manifest(db, gd_student_id: int, *, lock: bool = False) -> ArchiveMa
         stmt = stmt.with_for_update()
     rows = list(db.scalars(stmt).all())
     if len(rows) > 1:
-        raise AppException("MANIFEST_CONFLICT", "同一学生存在多个有效 V2 Manifest")
+        raise AppException("MANIFEST_CONFLICT", "同一学生存在多个有效的归档清单")
     return rows[0] if rows else None
 
 
@@ -229,7 +229,7 @@ def file_archive(gd_student_id: int, archive_batch_no: str | None, user: dict) -
             ArchiveManifest.target_id == str(student.id), ArchiveManifest.is_deleted.is_(False),
         ).order_by(ArchiveManifest.revision.desc(), ArchiveManifest.id.desc()).with_for_update()).first()
         if latest and latest.status != "REVOKED":
-            raise AppException("DATA_CONFLICT", "重新归档前必须先撤销上一版 V2 Manifest")
+            raise AppException("DATA_CONFLICT", "重新归档前必须先撤销上一版归档清单")
         if archive.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅已提交归档记录可执行备案")
         _assert_no_open_risk(db, student)
@@ -371,7 +371,7 @@ def revoke_manifest(gd_student_id: int, reason: str, user: dict) -> dict:
         assert_student_access(db, student, "archive.revoke")
         manifest = _active_manifest(db, int(student.id), lock=True)
         if not manifest:
-            raise not_found("有效 V2 Manifest 不存在")
+            raise not_found("有效的归档清单不存在")
         manifest.status = "REVOKED"
         manifest.revoked_at = datetime.utcnow()
         manifest.revoked_by = _actor_name(user)
@@ -429,7 +429,7 @@ def mark_packaged_in_session(db, manifest_ids: list[int], package_file_id: int) 
         ArchiveManifest.status.in_(ACTIVE_STATUSES), ArchiveManifest.is_deleted.is_(False),
     ).with_for_update()).all())
     if len(manifests) != len(set(manifest_ids)):
-        raise AppException("DATA_CONFLICT", "归档包引用的 V2 Manifest 已变化")
+        raise AppException("DATA_CONFLICT", "归档包引用的归档清单已变化")
     for manifest in manifests:
         manifest.status = "PACKAGED"
         manifest.package_file_id = int(package_file_id)

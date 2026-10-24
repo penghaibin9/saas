@@ -64,11 +64,11 @@ def _active_link_for_update(db, tenant_id: int, *, user_id: int | None = None, s
 
 def _require_expected_version(account, expected_version) -> int:
     if expected_version is None:
-        raise AppException("VALIDATION_ERROR", "身份绑定写操作必须提供 expectedVersion")
+        raise AppException("VALIDATION_ERROR", "身份绑定写操作必须提供数据版本")
     try:
         expected = int(expected_version)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "expectedVersion 必须是整数") from None
+        raise AppException("VALIDATION_ERROR", "版本必须是整数") from None
     current = int(account.version or 0)
     if current != expected:
         raise AppException(

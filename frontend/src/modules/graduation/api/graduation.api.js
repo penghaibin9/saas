@@ -17,7 +17,7 @@ import {
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function toErr(e) {
   if (e?.biz) return { code: e.code || 1, data: null, message: e.message }
-  return { code: 503001, data: null, message: e?.message || '真实接口不可用' }
+  return { code: 503001, data: null, message: e?.message || '暂时无法连接，请稍后重试' }
 }
 async function callStrict(fn) {
   try { return { code: 0, data: await fn(), message: 'ok' } } catch (e) { return toErr(e) }
@@ -40,7 +40,7 @@ export const graduationApi = {
     const pa = JSON.parse(JSON.stringify(permissionActions))
     denyAllActions(pa, '权限上下文加载中，写操作暂不可用')
 
-    let scopeName = isTeacher ? '本人指导学生' : '本校毕设数据（按后端数据范围）'
+    let scopeName = isTeacher ? '本人指导学生' : '本校毕设数据（按数据范围）'
     let scopeHint = ''
     let orgScope = { roleNeedsOrgScope: false, scopeConfigured: true, collegeId: null, majorId: null }
     const brand = { ...tenantBrandConfig }
@@ -88,11 +88,11 @@ export const graduationApi = {
           })
           permissionReady = true
         } else {
-          permissionError = '权限上下文缺少 permissionActions'
+          permissionError = '权限信息缺少可用操作'
           denyAllActions(pa, permissionError)
         }
         if (typeof ctx?.fullScope === 'boolean') {
-          scopeName = ctx.fullScope ? '本校毕设数据（按后端数据范围）' : '本人业务范围内数据（按角色收敛）'
+          scopeName = ctx.fullScope ? '本校毕设数据（按数据范围）' : '本人业务范围内数据（按角色收敛）'
         }
         if (ctx?.roleNeedsOrgScope && ctx.scopeConfigured === false) {
           scopeName = '未配置学院/专业数据范围（fail-closed）'
@@ -109,7 +109,7 @@ export const graduationApi = {
           majorId: ctx?.majorId || null
         }
       } else {
-        permissionError = '未启用真实接口，写操作已禁用'
+        permissionError = '未启用真实服务，写操作已禁用'
         denyAllActions(pa, permissionError)
       }
     } catch (error) {

@@ -173,7 +173,7 @@ export default {
           this.previewSeq += 1
           this.preview = null
           this.reviewConfirmed = false
-          this.error = `已复制 ${applied} 项；第 ${applied + 1} 项被服务端拒绝：${res.message || '发生冲突'}。请刷新权威预览后再处理。`
+          this.error = `已复制 ${applied} 项；第 ${applied + 1} 项被系统拒绝：${res.message || '发生冲突'}。请刷新预览后再处理。`
           this.applying = false
           this.$emit('applied', { applied, partial: true })
           return

@@ -39,7 +39,7 @@ def preview(tenant_id: int, user=Depends(require_platform_super_admin)):
 def request_offboarding(tenant_id: int, body: dict = Body(...), user=Depends(require_platform_super_admin)):
     expected = body.get("expectedVersion")
     if expected is None:
-        raise AppException("VALIDATION_ERROR", "发起退租必须提供 expectedVersion")
+        raise AppException("VALIDATION_ERROR", "发起退租必须提供最新版本")
     out = offboarding.request_offboarding(
         user, tenant_id,
         reason=body.get("reason") or "",
@@ -85,7 +85,7 @@ def approve_purge(job_id: int, body: dict = Body(...), user=Depends(require_plat
     _require_destructive_assurance(user)
     expected = body.get("expectedVersion")
     if expected is None:
-        raise AppException("VALIDATION_ERROR", "物理销毁必须提供 expectedVersion")
+        raise AppException("VALIDATION_ERROR", "物理销毁必须提供最新版本")
     confirm = str(body.get("confirmText") or "").strip()
     if confirm != "永久销毁租户数据":
         raise AppException("VALIDATION_ERROR", "请精确输入“永久销毁租户数据”确认不可逆操作")

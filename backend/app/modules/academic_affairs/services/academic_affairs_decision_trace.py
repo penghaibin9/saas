@@ -88,12 +88,12 @@ def _trace_id_for(payload: dict) -> str:
 
 def _validate_timestamp(value: Any) -> str:
     if not isinstance(value, str) or not value.strip():
-        raise AppException("DATA_CONFLICT", "DecisionTrace evaluatedAt 必须是明确的 ISO 时间", http_status=409)
+        raise AppException("DATA_CONFLICT", "判定记录的评估时间必须是明确的标准时间", http_status=409)
     text = value.strip()
     try:
         datetime.fromisoformat(text.replace("Z", "+00:00"))
     except ValueError as exc:
-        raise AppException("DATA_CONFLICT", "DecisionTrace evaluatedAt 非法", http_status=409) from exc
+        raise AppException("DATA_CONFLICT", "判定记录的评估时间非法", http_status=409) from exc
     return text
 
 
@@ -132,9 +132,9 @@ def build_decision_trace(
     if decision not in _DECISIONS_BY_DOMAIN[domain]:
         raise AppException("DATA_CONFLICT", f"DecisionTrace decision 超出 Stage D v1 范围：{domain}/{decision}", http_status=409)
     if rule_version in (None, "") or not str(rule_version).strip():
-        raise AppException("DATA_CONFLICT", "DecisionTrace 缺少 ruleVersion", http_status=409)
+        raise AppException("DATA_CONFLICT", "判定记录缺少规则版本", http_status=409)
     if evaluated_at is None:
-        raise AppException("DATA_CONFLICT", "DecisionTrace 缺少 evaluatedAt", http_status=409)
+        raise AppException("DATA_CONFLICT", "判定记录缺少评估时间", http_status=409)
 
     if isinstance(evaluated_at, datetime):
         at_text = evaluated_at.isoformat()
@@ -171,7 +171,7 @@ def validate_decision_trace(trace: dict) -> dict:
     if extra:
         raise AppException("DATA_CONFLICT", f"DecisionTrace 包含未登记字段：{','.join(extra)}", http_status=409)
     if trace.get("schemaVersion") != SCHEMA_VERSION:
-        raise AppException("DATA_CONFLICT", "DecisionTrace schemaVersion 不受支持", http_status=409)
+        raise AppException("DATA_CONFLICT", "判定记录的结构版本不受支持", http_status=409)
 
     domain_raw = trace.get("domain")
     code_raw = trace.get("ruleCode")
@@ -182,9 +182,9 @@ def validate_decision_trace(trace: dict) -> dict:
     action = str(action_raw or "").upper().strip()
     decision = str(decision_raw or "").upper().strip()
     if domain_raw != domain or code_raw != code or action_raw != action or decision_raw != decision:
-        raise AppException("DATA_CONFLICT", "DecisionTrace domain/action/decision/ruleCode 必须使用规范大写值", http_status=409)
+        raise AppException("DATA_CONFLICT", "判定记录的领域、动作、结论、规则编码必须使用规范的大写值", http_status=409)
     if domain not in RULE_CODES_BY_DOMAIN or code not in RULE_CODES_BY_DOMAIN[domain]:
-        raise AppException("DATA_CONFLICT", "DecisionTrace ruleCode/domain 不匹配", http_status=409)
+        raise AppException("DATA_CONFLICT", "判定记录的规则编码与领域不匹配", http_status=409)
     if action not in _ACTIONS_BY_DOMAIN[domain]:
         raise AppException("DATA_CONFLICT", "DecisionTrace action/domain 不匹配", http_status=409)
     if decision not in _DECISIONS_BY_DOMAIN[domain]:
@@ -192,9 +192,9 @@ def validate_decision_trace(trace: dict) -> dict:
 
     rule_version = trace.get("ruleVersion")
     if not isinstance(rule_version, str) or not rule_version.strip():
-        raise AppException("DATA_CONFLICT", "DecisionTrace ruleVersion 非法", http_status=409)
+        raise AppException("DATA_CONFLICT", "判定记录的规则版本非法", http_status=409)
     if rule_version != rule_version.strip():
-        raise AppException("DATA_CONFLICT", "DecisionTrace ruleVersion 必须是规范值", http_status=409)
+        raise AppException("DATA_CONFLICT", "判定记录的规则版本必须是规范值", http_status=409)
     _validate_timestamp(trace.get("evaluatedAt"))
 
     for field in ("subject", "target"):
@@ -207,13 +207,13 @@ def validate_decision_trace(trace: dict) -> dict:
     try:
         uuid.UUID(str(trace.get("traceId")))
     except (ValueError, TypeError, AttributeError) as exc:
-        raise AppException("DATA_CONFLICT", "DecisionTrace traceId 非法", http_status=409) from exc
+        raise AppException("DATA_CONFLICT", "判定记录的追踪编号非法", http_status=409) from exc
     _resolution_list(trace.get("availableResolutions"))
     _plain(trace)
 
     expected_trace_id = _trace_id_for(trace)
     if str(trace.get("traceId")) != expected_trace_id:
-        raise AppException("DATA_CONFLICT", "DecisionTrace traceId 与业务证据不一致，已拒绝输出", http_status=409)
+        raise AppException("DATA_CONFLICT", "判定记录的追踪编号与业务依据不一致，已拒绝输出", http_status=409)
     return trace
 
 

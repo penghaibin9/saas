@@ -18,7 +18,7 @@ function fail(message, bizCode = 'UNSUPPORTED_ACTION') {
   return Promise.resolve({ code: 1, bizCode, data: null, message })
 }
 
-function toErr(error, fallback = '真实接口不可用，请稍后重试') {
+function toErr(error, fallback = '暂时无法连接，请稍后重试') {
   return {
     code: Number(error?.code) === 0 ? 1 : Number(error?.code || 1),
     bizCode: error?.bizCode || error?.errorCode || 'REQUEST_FAILED',
@@ -230,8 +230,8 @@ function exportOptions(listKey) {
     fieldGroups: EXPORT_GROUPS[listKey] || EXPORT_GROUPS.studentList,
     maskDefault: true,
     idCardPlainForbidden: true,
-    watermarkNote: '文件由服务端生成，按当前 dataScope 收敛，敏感字段脱敏并记录导出用途。',
-    auditNotice: '本次导出将写入服务端审计，请填写真实用途。',
+    watermarkNote: '文件由系统生成，按当前数据范围收敛，敏感字段脱敏并记录导出用途。',
+    auditNotice: '本次导出将写入审计，请填写真实用途。',
     purposeRequired: true
   }
 }
@@ -250,7 +250,7 @@ function permissionActions(patterns, readonlyTenant, readonlyReason) {
     'employment.material.review': action(patterns, 'employment.material.approve', '无就业材料审核权限', opts),
     'employment.material.export': action(patterns, 'employment.export', '无就业数据导出权限', opts),
     'employment.followup.create': action(patterns, 'employment.followup.manage', '无就业跟进维护权限', opts),
-    'employment.followup.edit': unsupportedAction('跟进记录编辑尚无正式后端合同；请新增更正记录或作废重建'),
+    'employment.followup.edit': unsupportedAction('跟进记录暂不支持编辑；请新增更正记录或作废重建'),
     'employment.followup.void': action(patterns, 'employment.followup.manage', '无就业跟进维护权限', opts),
     'employment.followup.export': action(patterns, 'employment.export', '无就业数据导出权限', opts),
     'employment.unemployed.assign': action(patterns, 'employment.unemployed.assign', '无就业老师分配权限', opts),
@@ -258,12 +258,12 @@ function permissionActions(patterns, readonlyTenant, readonlyReason) {
     'employment.unemployed.markKeyHelp': action(patterns, 'employment.unemployed.manage', '无未就业学生维护权限', opts),
     'employment.unemployed.export': action(patterns, 'employment.export', '无就业数据导出权限', opts),
     'employment.company.create': action(patterns, 'employment.company.manage', '无企业维护权限', opts),
-    'employment.company.edit': unsupportedAction('企业编辑尚无正式后端合同'),
+    'employment.company.edit': unsupportedAction('企业暂不支持编辑'),
     'employment.company.disable': action(patterns, 'employment.company.manage', '无企业维护权限', opts),
     'employment.company.import': unsupportedAction('企业导入尚未接入正式文件任务链'),
     'employment.company.export': action(patterns, 'employment.export', '无就业数据导出权限', opts),
     'employment.job.create': action(patterns, 'employment.job.manage', '无岗位维护权限', opts),
-    'employment.job.edit': unsupportedAction('岗位编辑尚无正式后端合同'),
+    'employment.job.edit': unsupportedAction('岗位暂不支持编辑'),
     'employment.job.disable': action(patterns, 'employment.job.manage', '无岗位维护权限', opts),
     'employment.audit.view': action(patterns, 'employment.audit.view', '无就业审计查看权限'),
     'employment.columns.setting': action(patterns, 'employment.student.view', '无就业学生查看权限')
@@ -322,7 +322,7 @@ export async function getEmploymentContext() {
     },
     roles: [],
     currentRole,
-    dataScope: { code: 'SERVER_ENFORCED', name: '按当前身份配置的后端数据范围' },
+    dataScope: { code: 'SERVER_ENFORCED', name: '按当前身份配置的数据范围' },
     permissionPatterns,
     permissionActions: permissionActions(permissionPatterns, readonlyTenant, roReason),
     permissionServiceError,
@@ -332,7 +332,7 @@ export async function getEmploymentContext() {
 }
 
 export function switchEmploymentRole() {
-  return fail('就业模块不提供本地角色切换；请使用全局身份切换，服务端会重新签发权限上下文', 'USE_GLOBAL_ROLE_SWITCH')
+  return fail('就业模块不提供本地角色切换；请使用全局身份切换，系统会重新签发权限', 'USE_GLOBAL_ROLE_SWITCH')
 }
 
 export function getStatusOptions() {
@@ -476,7 +476,7 @@ export function createFollowUp(payload) {
 }
 
 export function updateFollowUp() {
-  return fail('跟进记录编辑尚无正式后端合同；请作废错误记录后新增一条更正记录')
+  return fail('跟进记录暂不支持编辑；请作废错误记录后新增一条更正记录')
 }
 
 export function voidFollowUp(id, { reason }) {
@@ -495,7 +495,7 @@ export function createCompany(payload) {
 }
 
 export function updateCompany() {
-  return fail('企业编辑尚无正式后端合同，已禁止内存修改')
+  return fail('企业暂不支持编辑，已禁止临时修改')
 }
 
 export function disableCompany(id, { reason }) {
@@ -511,7 +511,7 @@ export function createJob(payload) {
 }
 
 export function updateJob() {
-  return fail('岗位编辑尚无正式后端合同，已禁止内存修改')
+  return fail('岗位暂不支持编辑，已禁止临时修改')
 }
 
 export function disableJob(id, { reason }) {
@@ -519,7 +519,7 @@ export function disableJob(id, { reason }) {
 }
 
 export function getCompanyRelatedStudents() {
-  return fail('企业关联就业学生聚合尚无正式后端合同')
+  return fail('企业关联的就业学生汇总暂不可用')
 }
 
 export function validateImport() {
@@ -544,7 +544,7 @@ export function createExport(listKey, payload = {}) {
     return {
       ...data,
       downloadUrl: data?.taskId ? `/api/v1/export/tasks/${data.taskId}/download` : '',
-      watermarkText: data?.securityNotice || '服务端水印与审计已启用',
+      watermarkText: data?.securityNotice || '水印与审计已启用',
       auditId: data?.taskId || ''
     }
   }, '就业数据导出失败')

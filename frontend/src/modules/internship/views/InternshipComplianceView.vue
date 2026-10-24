@@ -225,7 +225,7 @@
 
         <template v-else-if="activeTab === 'safety'">
           <section v-if="safetyEditor && can('internship.safety.manage')" class="mp-card safety-editor">
-            <div class="mp-card__head"><div><strong>配置安全教育课程</strong><p class="mp-note">课程升级后旧版本完成记录不能满足新版本。</p></div></div>
+            <div class="mp-card__head"><div><strong>配置安全教育课程</strong><p class="mp-note">课程升级后，历史版本的完成记录不能满足新版本。</p></div></div>
             <div class="form-grid">
               <label>课程名称 *<input v-model.trim="forms.safety.title" maxlength="200" placeholder="例如 岗前安全教育必修课" /></label>
               <label>课程版本 *<input v-model.trim="forms.safety.courseVersion" maxlength="40" placeholder="例如 2026-v1" /></label>
@@ -347,7 +347,7 @@
               <label>学生<select v-model="forms.exemption.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
               <label>检查项<select v-model="forms.exemption.checkCode"><option value="">请选择检查项</option><option v-for="item in exemptionChecks" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
               <label>有效期至<input v-model="forms.exemption.validUntil" type="datetime-local" :min="nowLocal" /></label>
-              <label class="span-3">申请原因<textarea v-model.trim="forms.exemption.reason" rows="4" maxlength="1000" placeholder="不少于10字，说明特殊事实、替代控制和责任人" /></label>
+              <label class="span-3">申请原因<textarea v-model.trim="forms.exemption.reason" rows="4" maxlength="1000" placeholder="不少于 10 字，说明特殊情况、替代措施和责任人" /></label>
               <label>依据附件<input type="file" accept=".pdf,.doc,.docx,.jpg,.jpeg,.png" @change="uploadToForm($event, 'exemption', 'evidenceFileIds', 'COMPLIANCE_EVIDENCE')" /></label><span class="file-note">{{ fileText(forms.exemption.evidenceFileIds) }}</span>
             </fieldset>
             <p v-if="exemptionError" role="alert" class="dialog-error">{{ exemptionError }}</p>
@@ -591,7 +591,7 @@ export default {
     tabGroups() {
       const tabs = Object.fromEntries(this.tabs.map((item) => [item.key, item]))
       return [
-        { key: 'onboard', label: '上岗门禁', items: [tabs.overview, tabs.consents, tabs.safety, tabs.filings] },
+        { key: 'onboard', label: '上岗检查', items: [tabs.overview, tabs.consents, tabs.safety, tabs.filings] },
         { key: 'incident', label: '事故处置', items: [tabs.incidents] },
         { key: 'exception', label: '例外审批', items: [tabs.exemptions] },
         { key: 'evidence', label: '监管留痕', items: [tabs.evidence] }
@@ -830,7 +830,7 @@ export default {
           id: data.id, version: data.version, actionLabel: successMessage,
           objectLabel: `合规对象 ${data.id}`, status: data.status,
           statusLabel: this.complianceStatusText(data.status),
-          auditText: '业务事实与审计 outbox 已在同一事务提交',
+          auditText: '业务记录与审计记录已在同一事务提交',
           nextStep: data.nextStep || (data.status === 'CLOSED' ? '生成监管证据包' : '继续当前责任链')
         } : this.lastReceipt
         this.$message?.success?.(successMessage)

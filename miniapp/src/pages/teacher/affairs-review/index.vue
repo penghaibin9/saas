@@ -22,7 +22,7 @@
             <view class="ar__row" v-if="!focusId && recommendedActionText(x)"><text class="ar__k">建议动作</text><text class="flex-1 t-sm">{{ recommendedActionText(x) }}</text></view>
             <view class="ar__row" v-if="x.reason && expandedId !== rowKey(x)"><text class="ar__k">理由</text><text class="flex-1 t-sm">{{ x.reason }}</text></view>
             <view class="ar__row" v-if="x.riskLevel"><text class="ar__k">等级</text><text class="flex-1 t-sm">{{ riskLevelText(x.riskLevel) }}</text></view>
-            <MobileInlineAlert v-if="!hasVersion(x)" type="warning" title="记录缺少版本号" description="当前记录不能处理，请刷新后重试。" />
+            <MobileInlineAlert v-if="!hasVersion(x)" type="warning" title="记录信息不完整，请刷新后重试" description="当前记录不能处理，请刷新后重试。" />
 
             <view class="ar__detail" v-if="expandedId === rowKey(x)">
               <view v-if="detailLoading === rowKey(x)" class="ar__muted">加载详情…</view>
@@ -200,7 +200,7 @@ export default {
       else { this.state = 'loading'; this.expandedId = ''; this.detailMap = {}; this.appliedKeyword = this.keyword.trim() }
       this.moreError = ''
       const params = (this.isAid || this.isFunding) ? { page, pageSize: 20, ...(this.isAid ? { kind: this.kind } : {}), keyword: this.appliedKeyword } : undefined
-      const task = this.isAppeal ? affairsAppealApi.getPending(this.meta.appealKind, (this.isAidObjection || this.isFundingAppeal) ? { page, pageSize: 20 } : {}) : (this.meta.load && teacherApi[this.meta.load] ? teacherApi[this.meta.load](params) : Promise.reject(new Error('未配置待办接口')))
+      const task = this.isAppeal ? affairsAppealApi.getPending(this.meta.appealKind, (this.isAidObjection || this.isFundingAppeal) ? { page, pageSize: 20 } : {}) : (this.meta.load && teacherApi[this.meta.load] ? teacherApi[this.meta.load](params) : Promise.reject(new Error('未配置待办来源')))
       return task.then((d) => {
         if (requestId !== this.requestSeq) return
         let rows = (d && (d.items || d.list)) || []
@@ -251,11 +251,11 @@ export default {
       this.expandedId = id; this.loadDetail(x).catch((e) => { this._err(e, '详情加载'); this.expandedId = '' })
     },
     _err(e, label) { const n = normalizeError(e); toast(n.text || (e && e.message) || label + '失败'); if (n.kind === 'conflict') this.load(); return n },
-    versionOf(entity) { const value = entity && entity.version; if (value === undefined || value === null || value === '') { toast('记录缺少版本号，请刷新后再处理'); this.load(); return null }; return value },
+    versionOf(entity) { const value = entity && entity.version; if (value === undefined || value === null || value === '') { toast('记录信息不完整，请刷新后再处理'); this.load(); return null }; return value },
     visibleVersion(row, detail) {
-      const visible = this.versionOf(row); if (visible === null) throw new Error('缺少版本号')
+      const visible = this.versionOf(row); if (visible === null) throw new Error('记录信息不完整')
       const latest = detail && detail.version
-      if (latest !== undefined && latest !== null && latest !== '' && String(latest) !== String(visible)) { toast('记录已被他人修改，请刷新后重新查看并确认'); this.load(); const error = new Error('记录版本已变化'); error.kind = 'conflict'; throw error }
+      if (latest !== undefined && latest !== null && latest !== '' && String(latest) !== String(visible)) { toast('记录已被他人修改，请刷新后重新查看并确认'); this.load(); const error = new Error('记录已变化'); error.kind = 'conflict'; throw error }
       return visible
     },
     reviewRequest(id, action, reason, row, detail, selectedLevel = '') {
@@ -313,9 +313,9 @@ export default {
         }
         if (!revisedReason) {
           this.promptText({
-            title: '变更后的处分事实',
+            title: '变更后的处分情况',
             initial: '',
-            invalid: '变更后的处分事实至少5字',
+            invalid: '变更后的处分情况至少 5 字',
             submit: (value) => this.reviewAppeal(x, action, previous, revisedDiscType, value, revisedDocNo)
           })
           return

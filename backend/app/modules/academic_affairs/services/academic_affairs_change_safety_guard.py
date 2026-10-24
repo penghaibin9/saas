@@ -398,7 +398,7 @@ def _require_decision_version(change, expected) -> None:
     try:
         wanted = int(expected)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "expectedDecisionVersion 必须是整数") from exc
+        raise AppException("VALIDATION_ERROR", "决定版本必须是整数") from exc
     current = int(change.decision_version or 0)
     if wanted != current:
         raise AppException(

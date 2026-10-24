@@ -87,11 +87,11 @@ def _utc_naive(value) -> datetime:
     else:
         raw = str(value or "").strip()
         if not raw:
-            raise AppException("VALIDATION_ERROR", "occurredAt 必填", http_status=422)
+            raise AppException("VALIDATION_ERROR", "请填写发生时间", http_status=422)
         try:
             parsed = datetime.fromisoformat(raw.replace("Z", "+00:00"))
         except ValueError as exc:
-            raise AppException("VALIDATION_ERROR", "occurredAt 必须是ISO日期时间", http_status=422) from exc
+            raise AppException("VALIDATION_ERROR", "发生时间必须是有效的日期时间", http_status=422) from exc
     if parsed.tzinfo is not None:
         parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
     return parsed.replace(microsecond=0)
@@ -223,7 +223,7 @@ def ensure_refund_after_sales_ticket(
     tid = _int_id(tenant_id, "tenantId"); case_id = _int_id(refund_case_id, "refundCaseId")
     level = str(severity or "").strip().upper()
     if level not in {"P0", "P1", "P2", "P3"}:
-        raise AppException("VALIDATION_ERROR", "severity 必须明确选择 P0/P1/P2/P3", http_status=422)
+        raise AppException("VALIDATION_ERROR", "严重程度必须明确选择 P0/P1/P2/P3", http_status=422)
     reason_text = _text(reason, "售后复核说明", minimum=5, maximum=500)
     db = get_sessionmaker()()
     try:
@@ -245,7 +245,7 @@ def ensure_refund_after_sales_ticket(
         if existing is not None:
             ticket = db.get(SupportTicket, int(existing.support_ticket_id))
             if ticket is None or ticket.is_deleted:
-                raise AppException("DATA_CONFLICT", "退款已有售后关联但工单事实缺失，请人工修复关联", http_status=409)
+                raise AppException("DATA_CONFLICT", "退款已有售后关联但工单记录缺失，请人工修复关联", http_status=409)
             return {**_after_sales_dto(db, existing, ticket), "replayed": True, "followUpRequired": True}
 
         modules = _active_entitlement_modules(db, tid, int(refund.order_id))
@@ -304,7 +304,7 @@ def list_after_sales(tenant_id: int, *, page: int = 1, page_size: int = 20) -> d
 
     tid = _int_id(tenant_id, "tenantId"); page = _int_id(page, "page"); page_size = _int_id(page_size, "pageSize")
     if page_size > 100:
-        raise AppException("VALIDATION_ERROR", "pageSize 最大100", http_status=422)
+        raise AppException("VALIDATION_ERROR", "每页最多 100 条", http_status=422)
     db = get_sessionmaker()()
     try:
         base = (
@@ -336,19 +336,19 @@ def _verify_cost_refs(db, tenant_id: int, *, support_ticket_id: int | None, refu
             SupportTicket.id == support_ticket_id, SupportTicket.tenant_id == tenant_id,
             SupportTicket.is_deleted.is_(False),
         )).first()
-        if row is None: raise AppException("DATA_NOT_FOUND", "supportTicketId 不属于该学校", http_status=404)
+        if row is None: raise AppException("DATA_NOT_FOUND", "工单不属于该学校", http_status=404)
     if refund_case_id is not None:
         row = db.scalars(select(CommercialRefundCase.id).where(
             CommercialRefundCase.id == refund_case_id, CommercialRefundCase.tenant_id == tenant_id,
             CommercialRefundCase.is_deleted.is_(False),
         )).first()
-        if row is None: raise AppException("DATA_NOT_FOUND", "refundCaseId 不属于该学校", http_status=404)
+        if row is None: raise AppException("DATA_NOT_FOUND", "退款案例不属于该学校", http_status=404)
     if order_id is not None:
         row = db.scalars(select(PlatformOrder.id).where(
             PlatformOrder.id == order_id, PlatformOrder.tenant_id == tenant_id,
             PlatformOrder.is_deleted.is_(False),
         )).first()
-        if row is None: raise AppException("DATA_NOT_FOUND", "orderId 不属于该学校", http_status=404)
+        if row is None: raise AppException("DATA_NOT_FOUND", "订单不属于该学校", http_status=404)
 
 
 def _cost_dto(row) -> dict[str, Any]:
@@ -398,7 +398,7 @@ def record_service_cost(user: dict | None, tenant_id: int, body: dict, *, idempo
         ).with_for_update()).first()
         if existing is not None:
             if existing.request_payload_hash != payload_hash:
-                raise AppException("DATA_CONFLICT", "同一幂等键对应不同成本事实，已拒绝", http_status=409)
+                raise AppException("DATA_CONFLICT", "同一重复提交标识对应不同的成本记录，已拒绝", http_status=409)
             return {**_cost_dto(existing), "replayed": True}
         _verify_cost_refs(db, tid, support_ticket_id=ticket_id, refund_case_id=refund_id, order_id=order_id)
         row = CommercialServiceCostRecord(
@@ -425,7 +425,7 @@ def list_service_costs(tenant_id: int, *, page: int = 1, page_size: int = 20) ->
     from app.models import CommercialServiceCostRecord
 
     tid = _int_id(tenant_id, "tenantId"); page = _int_id(page, "page"); page_size = _int_id(page_size, "pageSize")
-    if page_size > 100: raise AppException("VALIDATION_ERROR", "pageSize 最大100", http_status=422)
+    if page_size > 100: raise AppException("VALIDATION_ERROR", "每页最多 100 条", http_status=422)
     db = get_sessionmaker()()
     try:
         base = (CommercialServiceCostRecord.tenant_id == tid, CommercialServiceCostRecord.is_deleted.is_(False))

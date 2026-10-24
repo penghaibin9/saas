@@ -105,7 +105,7 @@ function reconcilePersistentCommands() {
       receipt.value = academicReceipt({ title: '原专业分流志愿已通过正式记录确认', object: formal.batchName || '原专业分流批次', status: volunteerStatus(formal), operatedAt: formal.submittedAt || formal.createdAt, next: '志愿提交不代表录取，请等待学校正式分流结果。' })
     } else {
       receiptTone.value = 'waiting'
-      receipt.value = academicReceipt({ title: '原专业分流志愿结果待确认', object: '原专业分流批次', status: reference.ackId ? formal ? '正式记录已读到，但本地待确认引用未能安全清理' : '尚未读取到原回执对应的本人志愿' : '原提交未取得服务端回执编号', next: '本页只会刷新本人正式志愿，不会自动再次提交。' })
+      receipt.value = academicReceipt({ title: '原专业分流志愿结果待确认', object: '原专业分流批次', status: reference.ackId ? formal ? '正式记录已读到，但本地待确认引用未能安全清理' : '尚未读取到原回执对应的本人志愿' : '原提交未取得回执编号', next: '本页只会刷新本人正式志愿，不会自动再次提交。' })
     }
   }
   uncertainBatchIds.value = guard.pendingCommands().filter((item) => item.action === 'SUBMIT_MAJOR_SPLIT').map((item) => item.objectId)
@@ -176,7 +176,7 @@ async function submit(batch) {
       const kind = studentAcademicWriteErrorKind(e)
       if (!['network', 'forbidden', 'conflict'].includes(kind)) guard.completePersistentCommand(persistent)
       if (kind === 'network' || kind === 'conflict') uncertainBatchIds.value = [...new Set([...uncertainBatchIds.value, command.batchId])]
-      receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'network' ? '提交结果待确认' : kind === 'conflict' ? '批次事实已变化' : '志愿未提交', object: command.batchName, status: kind === 'network' ? '待服务器记录确认' : '未完成', next: academicErrorMessage(e, '请核对批次状态后重试') })
+      receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'network' ? '提交结果待确认' : kind === 'conflict' ? '批次情况已变化' : '志愿未提交', object: command.batchName, status: kind === 'network' ? '待服务器记录确认' : '未完成', next: academicErrorMessage(e, '请核对批次状态后重试') })
 
       if (kind === 'network' || kind === 'conflict') { const readOk = await load(); if (guard.isCurrentCommand(command) && readOk) picks.value = { ...picks.value, [command.batchId]: draftChoices } }
     } finally {

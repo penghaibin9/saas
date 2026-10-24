@@ -128,7 +128,7 @@ function reconcilePersistentCommands() {
     if (formal && guard.completePersistentCommand(reference)) {
       actionReceipt.value = { batchId: reference.objectId, batchName: current?.batchName || '原注册批次', result: reference.action === 'REGISTER_TERM' ? '本学期注册已完成' : deferralText(current.deferral), operatedAt: current?.registeredAt || current?.deferral?.createdAt || current?.deferral?.submittedAt, next: reference.action === 'REGISTER_TERM' ? '核对本学期课表与已选课程是否已经同步' : '请继续跟踪学校受理结果。' }
     } else {
-      actionReceipt.value = { batchId: reference.objectId, batchName: current?.batchName || '原注册批次', result: reference.action === 'REGISTER_TERM' ? '原注册结果待确认' : '原暂缓申请结果待确认', next: reference.ackId ? formal ? '正式记录已读到，但本地待确认引用未能安全清理；刷新不会自动再次提交。' : '尚未读取到原回执对应的本人正式记录；刷新不会自动再次提交。' : '原提交未取得服务端回执编号；刷新不会自动再次提交。' }
+      actionReceipt.value = { batchId: reference.objectId, batchName: current?.batchName || '原注册批次', result: reference.action === 'REGISTER_TERM' ? '原注册结果待确认' : '原暂缓申请结果待确认', next: reference.ackId ? formal ? '正式记录已读到，但本地待确认引用未能安全清理；刷新不会自动再次提交。' : '尚未读取到原回执对应的本人正式记录；刷新不会自动再次提交。' : '原提交未取得回执编号；刷新不会自动再次提交。' }
     }
   }
   const remaining = guard.pendingCommands().filter((item) => ['REGISTER_TERM', 'DEFER_REGISTRATION'].includes(item.action))
@@ -244,7 +244,7 @@ async function submitDefer(batch) {
     const kind = studentAcademicWriteErrorKind(e)
     if (!['network', 'forbidden', 'conflict'].includes(kind)) guard.completePersistentCommand(persistent)
     if (kind === 'network' || kind === 'conflict') uncertainDeferralKeys.value = [...new Set([...uncertainDeferralKeys.value, command.batchId])]
-    if (kind === 'network' || kind === 'conflict') { actionReceipt.value = { batchId: command.batchId, batchName: command.batchName, result: kind === 'network' ? '暂缓申请结果待确认' : '注册事实已变化', next: academicErrorMessage(e, '已保留申请理由，请重新核对。') }; await load() }
+    if (kind === 'network' || kind === 'conflict') { actionReceipt.value = { batchId: command.batchId, batchName: command.batchName, result: kind === 'network' ? '暂缓申请结果待确认' : '注册情况已变化', next: academicErrorMessage(e, '已保留申请理由，请重新核对。') }; await load() }
     else ui.notify(academicErrorMessage(e, '暂缓申请提交失败'))
   } finally {
     if (guard.isCurrentCommand(command)) actingId.value = ''

@@ -107,7 +107,7 @@ function reconcilePersistentCommands() {
       receipt.value = academicReceipt({ title: '原匿名评价已通过正式任务确认', object: `${formal.courseName || '课程'} · ${formal.teacherName || '授课教师'}`, status: formal.status || '本人本任务已完成', operatedAt: formal.submittedAt, next: '请继续核对是否还有其他待评任务。' })
     } else {
       receiptTone.value = 'waiting'
-      receipt.value = academicReceipt({ title: '原匿名评价结果待确认', object: formal ? `${formal.courseName || '课程'} · ${formal.teacherName || '授课教师'}` : '原评教任务', status: reference.ackId ? formal?.submitted === true ? '正式任务已读到，但本地待确认引用未能安全清理' : '当前任务尚未显示为本人已提交' : '原提交未取得服务端回执编号', next: '本页只会刷新本人正式任务，不会自动再次提交。' })
+      receipt.value = academicReceipt({ title: '原匿名评价结果待确认', object: formal ? `${formal.courseName || '课程'} · ${formal.teacherName || '授课教师'}` : '原评教任务', status: reference.ackId ? formal?.submitted === true ? '正式任务已读到，但本地待确认引用未能安全清理' : '当前任务尚未显示为本人已提交' : '原提交未取得回执编号', next: '本页只会刷新本人正式任务，不会自动再次提交。' })
     }
   }
   uncertainTaskIds.value = guard.pendingCommands().filter((item) => item.action === 'SUBMIT_EVALUATION').map((item) => item.objectId)

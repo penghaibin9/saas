@@ -65,7 +65,7 @@ def report_submit(user: dict, body: dict) -> dict:
     """实习月报/总结长文档提交（复用过程报告：reportType + periodKey + content 长文本）。"""
     body = body or {}
     if not str(body.get("reportType") or "").strip():
-        raise AppException("VALIDATION_ERROR", "报告类型（reportType）必填")
+        raise AppException("VALIDATION_ERROR", "请选择报告类型")
     if not str(body.get("content") or "").strip():
         raise AppException("VALIDATION_ERROR", "报告内容不能为空")
     return stu.internship_process_report_submit(user, body)
