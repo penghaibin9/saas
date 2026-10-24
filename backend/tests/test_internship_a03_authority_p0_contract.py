@@ -41,7 +41,7 @@ def test_submit_contract_requires_profile_version_and_preview_hash_before_transa
     source = inspect.getsource(selection_svc.submit_my_saved_volunteers)
     assert 'payload.get("expectedProfileVersion")' in source
     assert 'payload.get("confirmMaterialPreviewHash")' in source
-    assert "提交志愿必须提供 expectedProfileVersion + previewHash" in source
+    assert "提交志愿必须提供资料版本和预览校验码" in source
     gate_at = source.index('preview["profileVersion"] != expected_profile')
     delegate_at = source.index("volunteer_svc.save_or_submit_in_tx(")
     assert gate_at < delegate_at

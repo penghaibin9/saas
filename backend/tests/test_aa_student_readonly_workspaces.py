@@ -35,7 +35,7 @@ def test_readonly_view_has_explicit_api_allowlist():
         assert method in source
     assert "const loader = config.value.loader" in source
     assert "if (!loader) throw new Error" in source
-    assert "当前路由未绑定允许的教务读取接口" in source
+    assert "当前页面暂无可读取的教务数据" in source
 
 
 def test_readonly_views_do_not_invent_authoritative_conclusions():
