@@ -257,7 +257,7 @@ def install(runtime_module):
         from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
         from app.models import User, WorkflowInstance, WorkflowTask
         from app.services import db_service
-        from app.services import mock_audit_service as audit
+        from app.services import operation_audit_service as audit
         from app.services.approval_transfer_scope_service import assert_transfer_target_scope
 
         require_expected_version(version)

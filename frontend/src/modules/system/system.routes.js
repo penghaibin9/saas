@@ -36,12 +36,6 @@ const systemRoutes = {
         permissionKey: 'systemAdmin.user.view' }
     },
     {
-      /* 旧混合账号地址保留兼容，但不再展示师生混合列表。 */
-      path: 'users',
-      name: 'system-users',
-      redirect: '/admin/system/accounts/staff'
-    },
-    {
       /* 学生与教师导入拆成两个真实路由：刷新后状态不丢、菜单可正确高亮、
          权限与模板各自独立，不用 query 伪装成两个页面。 */
       path: 'identity-import/students',
@@ -101,11 +95,6 @@ const systemRoutes = {
       name: 'system-iam-workspace',
       component: () => import('@/modules/system/views/SystemIamWorkspaceView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '学校身份权限工作区', requiresAuth: true, permissionKey: 'systemAdmin.role.view' }
-    },
-    {
-      path: 'menus',
-      name: 'system-menus',
-      redirect: '/admin/system/roles?tab=permissions'
     },
     {
       path: 'scopes',
@@ -264,21 +253,9 @@ const systemRoutes = {
       meta: { moduleCode: 'SYSTEM', title: '安全变更', requiresAuth: true, permissionKey: 'systemAdmin.security.view' }
     },
     {
-      path: 'numbering-rules', name: 'system-numbering-rules',
-      redirect: '/admin/system/config?tab=system'
-    },
-    {
       path: 'dictionaries-fields', name: 'system-dictionaries-fields',
       component: () => import('@/modules/system/views/SystemDictionariesView.vue'),
       meta: { moduleCode: 'SYSTEM', title: '数据字典', requiresAuth: true, permissionKey: 'systemAdmin.config.view' }
-    },
-    {
-      path: 'process-rules', name: 'system-process-rules',
-      redirect: '/admin/workflow/processes'
-    },
-    {
-      path: 'process-monitor', name: 'system-process-monitor',
-      redirect: '/admin/workflow/processes'
     },
     {
       path: 'sensitive-audit', name: 'system-sensitive-audit',

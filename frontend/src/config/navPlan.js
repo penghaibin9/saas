@@ -159,7 +159,7 @@ export const NAV_PLAN = [
       I('公示申诉', '/admin/student-affairs/funding/appeals', 'studentAffairs.funding.view'),
       I('发放台账', '/admin/student-affairs/funding/disbursements', 'studentAffairs.funding.view'),
       I('资助统计', '/admin/student-affairs/funding/stats', 'studentAffairs.stats.view'),
-      I('助学金管理', '/admin/campus-service/grants', 'studentAffairs.funding.view'),
+      I('助学金管理', '/admin/student-affairs/funding', 'studentAffairs.funding.view'),
       I('勤工助学', '/admin/student-affairs/funding/work-study', 'studentAffairs.funding.workstudy.manage'),
       I('助学贷款', '/admin/student-affairs/funding/loans', 'studentAffairs.funding.loan.manage'),
       I('减免与临时补助', '/admin/student-affairs/funding/fee-reductions', 'studentAffairs.funding.reduction.manage')

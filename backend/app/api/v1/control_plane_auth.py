@@ -20,7 +20,7 @@ from app.core.response import success
 from app.core.security import get_current_user
 from app.services import auth_challenge_service as captcha_svc
 from app.services import control_plane_auth_service as p0
-from app.services import mock_audit_service as audit
+from app.services import operation_audit_service as audit
 from app.services import platform_mfa_service as platform_mfa
 
 router = APIRouter(prefix="/auth")

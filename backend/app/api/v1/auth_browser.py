@@ -30,7 +30,7 @@ from app.core.token_store import (
 from app.schemas.auth import SwitchRoleRequest
 from app.services import auth_service_db
 from app.services import browser_auth_session_service
-from app.services import mock_audit_service as audit
+from app.services import operation_audit_service as audit
 from app.services.browser_auth_session_blocklist import auth_session_blocked, block_auth_session
 
 router = APIRouter()

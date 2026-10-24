@@ -12,7 +12,7 @@ from typing import Literal
 from app.schemas.auth import MockLoginRequest, SwitchRoleRequest
 from app.services import auth_service_db
 from app.services import auth_challenge_service as captcha_svc
-from app.services import mock_audit_service as audit
+from app.services import operation_audit_service as audit
 from app.services import mock_auth_service as mock_auth_svc
 from app.core.context import get_request_meta
 from app.core.exceptions import AppException, unauthorized

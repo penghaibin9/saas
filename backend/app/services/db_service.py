@@ -522,7 +522,7 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
     跨事务 TOCTOU 窗口。
     """
     from app.core.optimistic_lock import atomic_versioned_update, require_expected_version
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
     require_expected_version(version)
     msg_campaign_id = None
     delivery_hint = None

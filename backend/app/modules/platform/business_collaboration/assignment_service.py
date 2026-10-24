@@ -62,7 +62,7 @@ def _deny_capability(_action: str, _todo: UnifiedTodo, _user: dict, _db: Session
 
 
 def _default_audit(event: dict, db: Session) -> None:
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     audit.record_critical(
         event["action"], method="POST", path=event["path"], status_code=200,

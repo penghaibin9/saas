@@ -280,10 +280,6 @@ const platformRoutes = {
       path: 'tenant-health', name: 'platform-tenant-health', redirect: '/admin/platform/customer-success',
       meta: { moduleCode: 'PLATFORM', title: '租户健康度与客户沟通（兼容入口）', requiresAuth: true, permissionKey: 'platform.customer-health.view', legacyCapabilityRedirect: true }
     },
-    {
-      path: 'operator-access', name: 'platform-operator-access', redirect: '/admin/platform/access',
-      meta: { moduleCode: 'PLATFORM', title: '平台人员与职责权限', requiresAuth: true, permissionKey: 'platform.access.review' }
-    }
   ]
 }
 

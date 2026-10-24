@@ -16,36 +16,6 @@ export const campusServiceRoutes = {
       redirect: '/admin/student-affairs/dashboard'
     },
     {
-      path: 'students',
-      name: 'campus-service-students',
-      redirect: '/admin/student/list'
-    },
-    {
-      path: 'students/:id',
-      name: 'campus-service-student-detail',
-      redirect: '/admin/student/list'
-    },
-    {
-      path: 'leave',
-      name: 'campus-service-leave',
-      redirect: '/admin/student-affairs/leave'
-    },
-    {
-      path: 'leave-extensions',
-      name: 'campus-service-leave-extensions',
-      redirect: '/admin/student-affairs/leave/followup'
-    },
-    {
-      path: 'leave-ledger',
-      name: 'campus-service-leave-ledger',
-      redirect: '/admin/student-affairs/leave/ledger'
-    },
-    {
-      path: 'leave-stats',
-      name: 'campus-service-leave-stats',
-      redirect: '/admin/student-affairs/leave/stats'
-    },
-    {
       path: 'classes',
       name: 'campus-service-classes',
       component: () => import('@/modules/studentAffairs/views/class/ClassListView.vue'),
@@ -56,41 +26,6 @@ export const campusServiceRoutes = {
       name: 'campus-service-class-profile',
       component: () => import('@/modules/studentAffairs/views/class/ClassProfileView.vue'),
       meta: { moduleCode: 'CAMPUS_SERVICE', requiresAuth: true, permissionKey: 'campus.record.view', title: '班级画像' }
-    },
-    {
-      path: 'counselor-assignments',
-      name: 'campus-service-counselor-assignments',
-      redirect: '/admin/student-affairs/counselor-assignments'
-    },
-    {
-      path: 'counselor-assessment',
-      name: 'campus-service-counselor-assessment',
-      redirect: '/admin/student-affairs/counselor-eval'
-    },
-    {
-      path: 'grants',
-      name: 'campus-service-grants',
-      redirect: '/admin/student-affairs/funding'
-    },
-    {
-      path: 'dormitory',
-      name: 'campus-service-dormitory',
-      redirect: '/admin/student-affairs/dorm/checkin'
-    },
-    {
-      path: 'dormitory/records/:recordId',
-      name: 'campus-service-dorm-record-detail',
-      redirect: '/admin/student-affairs/dorm/checkin'
-    },
-    {
-      path: 'discipline/:recordId',
-      name: 'campus-service-discipline-detail',
-      redirect: (to) => ({ path: '/admin/student-affairs/discipline', query: { caseId: to.params.recordId } })
-    },
-    {
-      path: 'discipline',
-      name: 'campus-service-discipline',
-      redirect: '/admin/student-affairs/discipline'
     },
     {
       path: 'work-orders',

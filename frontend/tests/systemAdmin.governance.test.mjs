@@ -90,7 +90,7 @@ test('staff and student accounts are separate formal routes and server queries',
 
   assert.match(routes, /path: 'accounts\/staff'/)
   assert.match(routes, /path: 'accounts\/students'/)
-  assert.match(routes, /path: 'users'[\s\S]*redirect: '\/admin\/system\/accounts\/staff'/)
+  assert.doesNotMatch(routes, /path: 'users'/)
   assert.match(catalog, /label: '教职工账号'/)
   assert.match(catalog, /label: '学生账号'/)
   assert.doesNotMatch(catalog, /label: '师生账号'/)

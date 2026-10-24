@@ -218,7 +218,7 @@ def create_template(payload, *, user=None):
         raise AppException("VALIDATION_ERROR", "模板名称和适用业务必填")
     from app.models import WorkflowDefinition, WorkflowNodeDefinition
     from app.services import db_service
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     uid = resolve_message_user_id(_user(user)) or None
     code = f"APPROVAL_{biz_type}_{uuid.uuid4().hex[:8].upper()}"
@@ -281,7 +281,7 @@ def update_template(template_id, payload, *, user=None, expected_version=0):
     from sqlalchemy import select
     from app.models import WorkflowDefinition, WorkflowNodeDefinition
     from app.services import db_service
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     uid = resolve_message_user_id(_user(user)) or None
     with db_service.session() as db:
@@ -386,7 +386,7 @@ def create_draft(template_id, *, user=None, expected_version=0):
     from app.models import WorkflowDefinition, WorkflowNodeDefinition
     from app.models.workflow_security_policy import WorkflowActionPolicy
     from app.services import db_service
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     uid = resolve_message_user_id(_user(user)) or None
     with db_service.session() as db:
@@ -456,7 +456,7 @@ def publish_draft(template_id, *, user=None, expected_version=0):
     from app.models import WorkflowDefinition, WorkflowInstance
     from app.models.workflow_security_policy import WorkflowActionPolicy, WorkflowVersionMigrationEvent
     from app.services import db_service
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     uid = resolve_message_user_id(_user(user)) or None
     with db_service.session() as db:
@@ -548,7 +548,7 @@ def void_template(template_id, reason, *, user=None, expected_version=0):
     from sqlalchemy import select
     from app.models import WorkflowDefinition
     from app.services import db_service
-    from app.services import mock_audit_service as audit
+    from app.services import operation_audit_service as audit
 
     uid = resolve_message_user_id(_user(user)) or None
     with db_service.session() as db:
