@@ -59,4 +59,5 @@ test('V8 Teacher Mini exception decision facts match PC truth and fail closed', 
   assert.match(review, /!canDecideException\(item\)/)
   assert.match(review, /!canDecideException\(c\)/)
   assert.match(review, /if \(!this\.canDecideException\(c\)\)/)
+  assert.match(review, /改在电脑端核对完整证据/)
 })

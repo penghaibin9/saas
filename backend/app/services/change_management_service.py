@@ -71,7 +71,7 @@ def create_change(user: dict, body: dict) -> dict:
     change_type = str(body.get("changeType") or "").upper()
     if change_type not in ("CODE", "MIGRATION", "PLATFORM_CONFIG", "PACKAGE",
                            "COMMON_FOUNDATION", "HOTFIX"):
-        raise AppException("VALIDATION_ERROR", "changeType 非法", http_status=422)
+        raise AppException("VALIDATION_ERROR", "异动类型无效", http_status=422)
     service_codes = [str(c).strip() for c in (body.get("affectedServiceCodes") or []) if str(c).strip()]
     if not service_codes:
         raise AppException("VALIDATION_ERROR", "至少登记一个受影响服务", http_status=422)

@@ -265,7 +265,7 @@ def create_campaign(body: dict[str, Any] | None, user=None):
     body = dict(body or {})
     tenant_id = _tid()
     if not body.get("batchId"):
-        raise AppException("VALIDATION_ERROR", "batchId 不能为空")
+        raise AppException("VALIDATION_ERROR", "请选择批次")
     values = _body_values(body)
     _validate_identity(values)
     if not values.get("campaign_code") or not values.get("campaign_name"):

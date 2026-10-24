@@ -51,23 +51,50 @@ test('V3-04 journey is four high-frequency lines plus verified risk/archive clos
 
 test('leave card preserves approval tiers, return, extension, cancel and overdue states', () => {
   const text = body('sa-v3-leave-lifecycle')
+  for (const token of ['学院审核', '学工处', 'APPROVED', 'RETURNED', '已驳回', 'EXTENSION_REVIEW', 'WAIT_CANCEL_LEAVE', 'OVERDUE', 'CLOSED', '版本']) assert.match(text, new RegExp(token))
+  assert.match(text, /辅导员.*学院.*学工处/)
+  assert.match(text, /3 天（含）以内只需辅导员.*超过 3 天且不超过 7 天增加学院.*超过 7 天再增加学工处/)
+  assert.match(text, /RETURN.*退回.*REJECT|退回.*不等于.*REJECT/)
+  assert.match(text, /待办.*指派|assignee/)
 })
 
 test('aid/funding card keeps recognition separate and freezes qualification facts', () => {
   const text = body('sa-v3-aid-funding')
+  for (const token of ['班级评议', '辅导员', '学院', '学校审核', 'PUBLICITY', 'APPROVED', '奖学金', 'GRANT', 'GRANTED', 'FUNDING_TEACHER']) assert.match(text, new RegExp(token))
+  assert.match(text, /困难认定与资助不是同一个流程/)
+  assert.match(text, /income_encrypted|敏感数据/)
+  assert.match(text, /处分.*成绩.*困难/)
 })
 
 test('discipline card locks effective projection, appeal and removal subflow', () => {
   const text = body('sa-v3-discipline')
+  for (const token of ['已登记', '学院审核', '学工处', '解除', 'EFFECTIVE', 'REMOVE_REVIEW', 'REMOVED', 'SUBMITTED', 'REVIEWING', 'UPHELD', 'REVISED', 'REVOKED']) assert.match(text, new RegExp(token))
+  assert.match(text, /EFFECTIVE.*不可.*编辑|生效后禁止直接编辑/)
+  assert.match(text, /历史.*保留/)
 })
 
 test('care card locks sensitive psychology scope and explicit risk handoff', () => {
   const text = body('sa-v3-care-risk')
+  for (const token of ['计划', '已安排', '已完成', '跟进', 'REFERRED', 'FOLLOWING', 'ESCALATED', '已关闭', 'PSY_STUDENT', 'teacher_key', 'teacher_name', 'SENSITIVE_VIEW', 'MENTAL', 'CRITICAL', 'NEW']) assert.match(text, new RegExp(token))
+  assert.match(text, /不自动诊断|不会根据文本自动诊断/)
+  assert.match(text, /旧数据兜底|历史 teacher_name/)
+  assert.match(text, /同名教师.*核对|同名.*管理员/)
+  assert.match(text, /审计.*503|503.*fail-closed/)
 })
 
 test('psychology help discloses the current legacy display-name compatibility instead of claiming it is gone', () => {
   const text = body('sa-v3-care-risk')
+  assert.match(mentalSource, /TeacherStudentScope\.teacher_key\.in_\(keys\)/)
+  assert.match(mentalSource, /TeacherStudentScope\.teacher_name\.in_\(keys\)/)
+  assert.match(mentalSource, /name\s*=\s*u\.get\("realName"\)/)
+  assert.match(text, /按教师姓名匹配的历史数据/)
+  assert.match(text, /不能认为姓名已完全退出授权/)
+  assert.match(text, /不能认为姓名已完全退出授权/)
 })
 
 test('V3-04 core cards are wired through verified-only runtime', () => {
+  assert.match(runtimeSource, /STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS/)
+  assert.match(runtimeSource, /\.\.\.STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS\.map\(\(item\) => item\.id\)/)
+  assert.match(runtimeSource, /replaceOrRegisterCards\(STUDENT_AFFAIRS_CORE_FLOW_HELP_CARDS\)/)
+  assert.match(runtimeSource, /student-affairs-v3-core-cards/)
 })

@@ -78,7 +78,7 @@
                 </tbody>
               </table>
               <p v-if="previewTruncated" class="bps-more is-warning">
-                当前仅显示系统返回的前 \1 名中的前 \2 名；完整规则实际命中 \3 名。
+                当前仅显示系统返回的前 {{ previewRows.length }} 名中的前 {{ shownPreviewRows.length }} 名；完整规则实际命中 {{ previewSummary.matchedCount }} 名。
               </p>
               <p v-else-if="previewRows.length > shownPreviewRows.length" class="bps-more">
                 当前展示前 {{ shownPreviewRows.length }} 人，冻结时将按完整规则加入 {{ previewSummary.matchedCount }} 人。

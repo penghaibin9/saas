@@ -32,7 +32,7 @@ def _clean_body(body: dict) -> tuple[dict, str, str]:
         raise AppException("VALIDATION_ERROR", "订单请求必须是对象", http_status=422)
     order_type = str(body.get("orderType") or "NEW").strip().upper()
     if order_type not in {"NEW", "RENEW", "UPGRADE", "ADDON"}:
-        raise AppException("VALIDATION_ERROR", "orderType 不支持", http_status=422)
+        raise AppException("VALIDATION_ERROR", "不支持该订单类型", http_status=422)
     remark = str(body.get("remark") or "").strip()
     if len(remark) > 500:
         raise AppException("VALIDATION_ERROR", "订单备注不能超过500个字符", http_status=422)
@@ -66,7 +66,7 @@ def create_itemized_order(body: dict, *, idempotency_key: str, actor_id: int | s
         try:
             tenant_id = int(contract.get("tenantId") or 0)
         except (TypeError, ValueError) as exc:
-            raise AppException("VALIDATION_ERROR", "tenantId 格式无效", http_status=422) from exc
+            raise AppException("VALIDATION_ERROR", "学校信息无效", http_status=422) from exc
         # One stable parent lock serializes first-time idempotency/order creation for
         # this control-plane tenant and avoids racing INSERTs on the idempotency key.
         tenant = db.scalars(select(Tenant).where(

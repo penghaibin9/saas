@@ -351,9 +351,9 @@ def list_batches(user, status=None, page=1, page_size=20, *, term_id=None):
         try:
             term_id = int(term_id)
         except (TypeError, ValueError) as exc:
-            raise AppException("VALIDATION_ERROR", "termId 必须是正整数", http_status=422) from exc
+            raise AppException("VALIDATION_ERROR", "请选择有效的学期", http_status=422) from exc
         if term_id <= 0:
-            raise AppException("VALIDATION_ERROR", "termId 必须是正整数", http_status=422)
+            raise AppException("VALIDATION_ERROR", "请选择有效的学期", http_status=422)
     with session() as db:
         ctx = _ctx(user, db)
         q = db.query(AaExamBatch).filter(AaExamBatch.tenant_id == _tid(), AaExamBatch.is_deleted.is_(False), _batch_visibility(ctx))

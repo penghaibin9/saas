@@ -42,7 +42,7 @@
           </div>
           <div v-if="domainsWithoutOwner.length" class="mp-card__body">
             <p class="md-warn">
-              以下数据域还没有责任人，最高优先级规则无法运行：\1
+              以下数据域还没有责任人，最高优先级规则无法运行：{{ domainsWithoutOwner.join('、') }}
             </p>
           </div>
         </section>

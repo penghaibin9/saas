@@ -73,7 +73,7 @@
       <section v-if="remainingWorkItems.length" class="mp-card gdb-queue">
         <div class="mp-card__head">
           <span class="mp-card__title">后续工作</span>
-          <small>共 \1 项</small>
+          <small>共 {{ workItems.length }} 项</small>
         </div>
         <div class="mp-card__body gdb-queue__rows">
           <article v-for="(item, index) in remainingWorkItems" :key="workItemKey(item, index + 1)" class="gdb-work-row">

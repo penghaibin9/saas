@@ -74,8 +74,8 @@ def test_missing_identity_and_account_facts_never_become_success_defaults(
     assert body["code"] == 0, body
     row = body["data"]
 
-    assert row["identityVerifyStatus"] == "未配置"
-    assert row["identityVerificationCapability"]["status"] == "未配置"
+    assert row["identityVerifyStatus"] == "NOT_CONFIGURED"
+    assert row["identityVerificationCapability"]["status"] == "NOT_CONFIGURED"
     assert row["accountBindStatus"] == "UNBOUND"
     assert row["dataCompleteness"] < 100
     assert "phone" in row["missingFields"]
@@ -133,7 +133,7 @@ def test_student_summary_is_scoped_server_fact_not_frontend_estimate(
     assert body["code"] == 0, body
     data = body["data"]
     assert data["totalStudents"] >= 1
-    assert data["identityVerification"]["status"] == "未配置"
+    assert data["identityVerification"]["status"] == "NOT_CONFIGURED"
     assert data["accountBinding"]["bound"] >= 0
     assert data["accountBinding"]["unbound"] >= 0
     assert data["scopeType"] in {"TENANT", "CLASS", "STUDENT"}

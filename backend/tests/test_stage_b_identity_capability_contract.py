@@ -18,10 +18,10 @@ def test_stage_b_identity_capability_is_server_owned_and_route_order_is_safe():
     endpoint = backend[backend.index(fixed_route):backend.index(dynamic_route)]
     assert 'if not _can_view_profile(user):' in endpoint
     assert 'http_status=403' in endpoint
-    assert '"capabilityStatus": "未配置"' in endpoint
+    assert '"capabilityStatus": "NOT_CONFIGURED"' in endpoint
     assert '当前仓库尚未接入第三方实名/人脸核验 provider' in endpoint
 
     assert "request('/students/identity-records'" in frontend
     get_identity = frontend[frontend.index('async getIdentityRecords(params = {})'):frontend.index('reviewIdentityRecord()')]
-    assert "capabilityStatus: '未配置'" not in get_identity
+    assert "capabilityStatus: 'NOT_CONFIGURED'" not in get_identity
     assert "capabilityStatus: String(data?.capabilityStatus || 'ERROR').toUpperCase()" in get_identity

@@ -971,7 +971,7 @@ def teacher_grade_records(task_id, user) -> dict:
 def teacher_grade_enter_score(task_id, user, body) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_grade_service as grade
     if not (body or {}).get("studentId"):
-        raise AppException("VALIDATION_ERROR", "studentId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择学生")
     return grade.enter_score(task_id, user, _ns(body))
 
 
@@ -1085,7 +1085,7 @@ def evaluation_submit_my(user, body) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_evaluation_service as eval_svc
     task_id = (body or {}).get("taskId")
     if not task_id or not str(task_id).isdigit():
-        raise AppException("VALIDATION_ERROR", "taskId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择教学任务")
     score = (body or {}).get("objectiveScore")
     if score is None:
         raise AppException("VALIDATION_ERROR", "请填写客观分")

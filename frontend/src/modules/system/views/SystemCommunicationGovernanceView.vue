@@ -43,10 +43,10 @@
             </span>
           </div>
           <div v-if="(overview.exceptionQueue?.unownedTodoTypes || []).length" class="mp-card__body">
-            <p class="cg-warn">无责任人的待办类型（未登记所属模块）：\1</p>
+            <p class="cg-warn">无责任人的待办类型（未登记所属模块）：{{ overview.exceptionQueue.unownedTodoTypes.join('、') }}</p>
           </div>
           <div v-if="(overview.exceptionQueue?.unregisteredEventCodesInCode || []).length" class="mp-card__body">
-            <p class="cg-warn">系统已支持但治理登记表未登记的事件：\1</p>
+            <p class="cg-warn">系统已支持但治理登记表未登记的事件：{{ overview.exceptionQueue.unregisteredEventCodesInCode.join('、') }}</p>
           </div>
         </section>
 

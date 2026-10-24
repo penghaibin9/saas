@@ -76,7 +76,7 @@
           <AppButton v-if="!isCollegeScope && current.status === 'READY' && !canConfirmArchive" size="small" :disabled="actionBusy || !!pendingCommand" @click="refreshCurrentFromServer">重新核对归档权限</AppButton>
           <div v-if="!isCollegeScope || current.archivedAt" class="aaar-summary">
             <span v-if="!isCollegeScope" :class="{ 'is-bad': Number(current.missingCount) > 0 }">{{ batchMissingLabel(current) }}</span>
-            <span v-if="current.archivedAt">归档于 \1（历史记录已封存）</span>
+            <span v-if="current.archivedAt">归档于 {{ fmt(current.archivedAt) }}（历史记录已封存）</span>
           </div>
           <AppInlineAlert
             v-if="!isCollegeScope && current.status === 'MISSING_ITEMS'"

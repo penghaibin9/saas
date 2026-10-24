@@ -30,7 +30,7 @@
               <strong>上一版本未提交草稿</strong>
               <p>{{ carriedDraft.comment }}</p>
               <small>来源：该学生的上一版开题材料。该意见不会自动成为当前版本的有效批阅意见。</small>
-              <details><summary>技术证据</summary><small>开题记录 \1 · 文件版本 \2</small></details>
+              <details><summary>技术证据</summary><small>开题记录 {{ carriedDraft.fromProposalId }} · 文件版本 {{ carriedDraft.fromFileVersionId || '—' }}</small></details>
               <div class="prc-draft-carry__actions">
                 <button type="button" @click="applyCarriedDraft">带入到当前版本</button>
                 <button type="button" @click="discardCarriedDraft">清除旧草稿</button>

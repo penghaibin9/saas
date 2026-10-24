@@ -860,10 +860,10 @@ def normalize_mobile_grade_row(row: dict) -> dict:
     except (TypeError, ValueError) as exc:
         raise AppException(
             "VALIDATION_ERROR",
-            "studentId 必填且须为有效数字",
+            "请选择有效的学生",
         ) from exc
     if student_id <= 0:
-        raise AppException("VALIDATION_ERROR", "studentId 必填且须为有效数字")
+        raise AppException("VALIDATION_ERROR", "请选择有效的学生")
     flag = str(payload.get("exceptionFlag") or "NORMAL").strip().upper()
     if flag not in _ALLOWED_FLAGS:
         raise AppException("VALIDATION_ERROR", "异常标记非法")

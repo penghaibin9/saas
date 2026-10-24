@@ -96,4 +96,4 @@ def test_students_cannot_turn_self_entered_items_into_verified_school_facts():
     assert "item.source_ref_type = None" in source
     assert "item.source_ref_id = None" in source
     assert 'item.verification_status = "UNVERIFIED"' in source
-    assert "学校登记的条目不可由学生修改" in inspect.getsource(item_svc._owned_item_in_tx)
+    assert "学校事实投影条目不可由学生修改" in inspect.getsource(item_svc._owned_item_in_tx)

@@ -13,7 +13,7 @@
       <div>
         <span>当前工作区</span>
         <strong>{{ typeLabel }} · {{ currentStatusLabel }}</strong>
-        <small>共 \1 条；归档模板永久只读，启停与默认模板的唯一性由系统校验。</small>
+        <small>共 {{ pagination.total }} 条；归档模板永久只读，启停与默认模板的唯一性由系统校验。</small>
       </div>
       <div class="gt-command__facts">
         <span><b>{{ rows.length }}</b> 当前页</span>

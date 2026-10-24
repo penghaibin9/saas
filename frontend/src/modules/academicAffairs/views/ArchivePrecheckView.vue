@@ -75,7 +75,7 @@
             <h3>归档阻断 / 待处理数据域</h3>
             <p>“已阻断”表示存在明确的业务阻断，“待处理”表示依据不足；两者都不能放行，处理后请重新检查。</p>
           </div>
-          <span class="aapc-count is-danger">\1 个阻断 / 待处理数据域</span>
+          <span class="aapc-count is-danger">{{ blockedDomainRows.length }} 个阻断 / 待处理数据域</span>
         </header>
         <div class="aapc-grid">
           <article v-for="d in blockedDomainRows" :key="d.domain" class="aapc-card is-missing">

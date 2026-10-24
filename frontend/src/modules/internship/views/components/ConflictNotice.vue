@@ -4,7 +4,7 @@
       <span class="cfn__icon">!</span>
       <span class="cfn__title">{{ state.message }}</span>
     </div>
-    <p v-if="state.detail" class="cfn__detail">系统提示：\1</p>
+    <p v-if="state.detail" class="cfn__detail">系统提示：{{ state.detail }}</p>
     <ul v-if="state.latest && state.latest.length" class="cfn__latest">
       <li v-for="item in state.latest" :key="item.label">
         <span class="cfn__label">{{ item.label }}</span>

@@ -21,7 +21,7 @@ def repair_identity_binding(
     payload = body or {}
     raw_student_id = str(payload.get("studentId") or "").strip()
     if not raw_student_id.isdigit():
-        raise AppException("VALIDATION_ERROR", "studentId 必须是学籍主档主键")
+        raise AppException("VALIDATION_ERROR", "请选择有效的学生")
     return success(
         guard.repair_binding(
             user_id,

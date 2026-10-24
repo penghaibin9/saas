@@ -232,7 +232,7 @@ def test_runtime_rechecks_required_client_student_and_file_authorization():
             submitted_values={**required_values, "riskDescription": "风险说明完整"},
             client="TEACHER_MINIAPP", schema_hash=version.schema_hash, version_id=101, context={}, user={},
         )
-    assert caught.value.code == "该表单暂不支持当前端，请前往电脑端办理"
+    assert caught.value.code == "FORM_CLIENT_UNSUPPORTED"
 
     with pytest.raises(AppException) as caught:
         denied_student.validate_submission(
@@ -241,7 +241,7 @@ def test_runtime_rechecks_required_client_student_and_file_authorization():
             client="ATTACKER_CLIENT", schema_hash=version.schema_hash,
             version_id=101, context={}, user={},
         )
-    assert caught.value.code == "该表单暂不支持当前端，请前往电脑端办理"
+    assert caught.value.code == "FORM_CLIENT_UNSUPPORTED"
 
 
 def test_runtime_rebuilds_conditions_from_authoritative_initial_data():

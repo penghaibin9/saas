@@ -67,6 +67,7 @@ test('dorm approvals expose source and target beds and obey actions', () => {
   assert.match(student, /pendingTransfer/)
   assert.match(student, /不能重复提交/)
   assert.match(student, /核对并确认床位/)
+  assert.match(student, /确认后将为你预留床位，变更须走正式调宿/)
   assert.doesNotMatch(student, /确认首次入住|入住成功|已正式入住/)
 })
 

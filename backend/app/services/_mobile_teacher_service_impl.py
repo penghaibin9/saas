@@ -1699,7 +1699,7 @@ def mental_create(user: dict, body: dict) -> dict:
     _require_teacher(user)
     b = body or {}
     if not b.get("studentId"):
-        raise AppException("VALIDATION_ERROR", "studentId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择学生")
     if not b.get("reasonSummary") or len(str(b["reasonSummary"]).strip()) < 5:
         raise AppException("VALIDATION_ERROR", "转介事由摘要必填且不少于 5 字")
     from app.services import affairs_mental_service as mental
@@ -3071,7 +3071,7 @@ def followup_create(user: dict, body: dict) -> dict:
                                        class_name=es.class_name):
                     raise AppException("NO_PERMISSION", "该学生不在你的负责范围内")
         except (TypeError, ValueError):
-            raise AppException("VALIDATION_ERROR", "studentId 必须为数字")
+            raise AppException("VALIDATION_ERROR", "请选择有效的学生")
     result = employment_service.create_followup(body)
     _audit_write("MOBILE_EMP_FOLLOWUP", f"employment/followup:{result.get('id')}",
                  {"operator": u.get("realName"), "studentId": str(sid or "")})

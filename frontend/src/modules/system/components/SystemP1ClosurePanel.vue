@@ -49,7 +49,7 @@
       <div v-if="selectedOverride && canRestoreConfig" class="p1-confirm">
         <div>
           <b>撤销 {{ selectedOverride.configName }} 的全部学校层覆盖？</b>
-          <p>系统会锁定并校验 \1 条当前或计划中的覆盖及每条的版本，在一个事务内撤销并写入高危审计；任何并发变化都会整笔拒绝。</p>
+          <p>系统会锁定并校验 {{ selectedOverride.overrideCount }} 条当前或计划中的覆盖及每条的版本，在一个事务内撤销并写入高危审计；任何并发变化都会整笔拒绝。</p>
         </div>
         <input v-model.trim="overrideReason" placeholder="撤销原因，至少 5 个字" />
         <div class="p1-actions">

@@ -47,7 +47,7 @@
                       :type="registrationWrite.receipt.commandConfirmed ? 'success' : 'warning'">
         {{ registrationWrite.receipt.commandConfirmed ? '已收到办理回执并核对正式记录' : '已核对当前记录，本次请求回执仍待确认' }}。
         {{ registrationWrite.receipt.label }}，对象 {{ registrationWrite.receipt.objectId }}，学生 {{ registrationWrite.receipt.studentId }}；
-        最新状态：\1。后续状态以正式队列为准。
+        最新状态：{{ registrationActionStatus(registrationWrite.receipt.domain, registrationWrite.receipt.status) }}。后续状态以正式队列为准。
       </AppInlineAlert>
     </div>
 

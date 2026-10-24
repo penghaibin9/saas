@@ -36,6 +36,7 @@ test('single create guide preserves permanent student number and controlled rest
   const text = buildHelpSearchText(card)
   assert.match(text, /永久唯一/)
   assert.match(text, /已作废/)
+  assert.match(text, /原学生编号/i)
   assert.match(text, /不会自动恢复登录账号/)
   assert.match(text, /student\.profile\.restore/)
 })
@@ -48,4 +49,5 @@ test('secure export guide states backend truth and does not promise selected-row
   assert.match(text, /首行/)
   assert.match(text, /任务归属/)
   assert.match(text, /导出所选/)
+  assert.match(text, /不接收页面所选的学生/i)
 })

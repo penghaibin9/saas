@@ -14,6 +14,7 @@ test('D3 exposes one allocation-plan workspace with dry-run, manual assignment, 
   for (const suffix of ['', '/dry-run', '/manual-assign', '/publish', '/conflicts.xlsx']) {
     assert.match(api, new RegExp(`dorm/allocation-batches[^\n]*${suffix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`))
   }
+  assert.match(allocation, /发布后学生范围与精确床位范围将冻结/)
   assert.match(allocation, /生成分配方案/)
   assert.match(allocation, /dryRunDormAllocation/)
   assert.match(allocation, />导出异常</)

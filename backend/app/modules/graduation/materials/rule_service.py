@@ -173,7 +173,7 @@ def initialize_default_rule(batch_id: int, user: dict | None = None) -> dict:
 def create_rule(body: dict, user: dict) -> dict:
     batch_id = body.get("batchId")
     if not str(batch_id or "").isdigit():
-        raise AppException("VALIDATION_ERROR", "batchId 不能为空")
+        raise AppException("VALIDATION_ERROR", "请选择批次")
     items = body.get("items")
     if not isinstance(items, list) or not items:
         if body.get("useDefaultTemplate") is True:

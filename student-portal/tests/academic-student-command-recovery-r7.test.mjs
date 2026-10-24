@@ -185,6 +185,7 @@ test('a command without an ACK survives reload and cannot claim an old similar r
   const page = mount('Recheck', { academicGradeRecheck: async () => [{ recheckId: 'OLD', acadGradeId: '101', status: 'SUBMITTED' }], academicTranscript: async () => ({ items: [{ gradeId: '101', courseName: '数学' }] }) }, {}, {}, session)
   await page.load()
   assert.equal(page.receiptTone.value, 'waiting')
+  assert.match(page.receipt.value.status, /未取得回执编号/)
   assert.equal(page.uncertainGradeId.value, '101')
   assert.equal(storage.length, 1)
   delete globalThis.localStorage

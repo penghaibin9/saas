@@ -322,7 +322,7 @@ def teacher_grade_batch_save(task_id: int, user, rows: list[dict]) -> dict:
             try:
                 sid = int((raw or {}).get("studentId"))
             except (TypeError, ValueError) as exc:
-                raise AppException("VALIDATION_ERROR", f"第{index}行 studentId 不合法") from exc
+                raise AppException("VALIDATION_ERROR", f"第{index}行学生信息无效") from exc
             if sid in seen:
                 raise AppException("VALIDATION_ERROR", f"第{index}行学生重复：{sid}")
             if sid not in roster_ids:

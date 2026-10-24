@@ -70,7 +70,7 @@
     >
       <AaObjectContext :name="adjust.courseName" :identity="`任务编号 ${adjust.taskId} · 批次编号 ${adjust.batchId}`" :source="adjust.teachingClassName" />
       <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
-      <p class="mp-note">调整前：\1 · 工号 \2。提交时系统核对下游引用；当前没有独立的影响预览。</p>
+      <p class="mp-note">调整前：{{ adjust.origTeacherName || '未分配' }} · 工号 {{ adjust.origTeacherKey || '未绑定' }}。提交时系统核对下游引用；当前没有独立的影响预览。</p>
       <div class="aa-adjust-form">
         <label>调整任课教师<AppTeacherPicker v-model="adjust.teacherKey" :query="teacherKeyQuery" placeholder="不变可留空" @change="onTeacherPicked" /></label>
         <label>周学时<input v-model.number="adjust.weeklyHours" type="number" min="0" class="aa-input" /></label>

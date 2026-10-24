@@ -36,8 +36,12 @@ test('student affairs clean source only republishes the re-audited high-confiden
   const risk = STUDENT_AFFAIRS_CLEAN_HELP_CARDS.find((card) => card.id === 'sa-card-risk-handle')
   assert.match(risk.summary, /不是统一72小时/)
   assert.match(risk.warnings.join(' '), /24 \/ 48 \/ 72 \/ 120/)
+  assert.match(risk.permissions.join(' '), /权限/)
 
   const archive = STUDENT_AFFAIRS_CLEAN_HELP_CARDS.find((card) => card.id === 'sa-card-archive')
+  assert.match(archive.summary, /草稿.*收集中.*学院审核.*学工处确认.*已归档/)
+  assert.match(archive.summary, /校验归档清单/)
+  assert.match(archive.warnings.join(' '), /没有充分代码证据/)
 })
 
 test('miniapp clean source gives every published card the seven-dimension operational contract', () => {
@@ -47,7 +51,9 @@ test('miniapp clean source gives every published card the seven-dimension operat
   const unified = MOBILE_CLEAN_HELP_CARDS.find((card) => card.id === 'mobile-unified-help-entry')
   assert.ok(unified)
   assert.equal(unified.mobilePath, 'pages/common/help/index')
+  assert.match(unified.prerequisites.join(' '), /帮助中心的访问地址/)
   assert.match(unified.prerequisites.join(' '), /业务域名/)
+  assert.match(unified.permissions.join(' '), /不能代替系统授权/)
 })
 
 test('miniapp unified help entry is wired in both role surfaces and forwards role/source to the web help center', () => {

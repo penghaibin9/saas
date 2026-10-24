@@ -60,6 +60,8 @@ test('leave flow is corrected to current 3 and 7 day workflow thresholds with re
   assert.match(text, /returned/)
   assert.match(text, /修改后重新提交/)
   assert.match(text, /续假/)
+  assert.match(text, /“待销假确认”/)
+  assert.match(text, /可用操作/)
 })
 
 test('student affairs risk flow is corrected instead of keeping fixed 72-hour claim', () => {
@@ -68,6 +70,10 @@ test('student affairs risk flow is corrected instead of keeping fixed 72-hour cl
 
   assert.match(text, /按风险等级/)
   assert.match(text, /当前生效 sla/)
+  assert.match(text, /的分派时限/)
+  assert.match(text, /分派时限/)
+  assert.match(text, /跟进/)
+  assert.match(text, /自动分派/)
   assert.match(text, /自动升级/)
   assert.match(text, /escalated/)
   assert.doesNotMatch(text, /分派后72小时未处置自动升级/)
@@ -77,6 +83,7 @@ test('student affairs archive flow uses real package manifest and sha semantics'
   const flow = VERIFIED_HELP_FLOW_OVERRIDES['flow-sa-archive']
   const text = JSON.stringify(flow).toLowerCase()
 
+  assert.match(text, /“草稿 → 收集中 → 学院审核 → 学工处确认 → 已归档”/)
   assert.match(text, /xlsx/)
   assert.match(text, /manifest/)
   assert.match(text, /sha-256/)

@@ -13,7 +13,7 @@
       <div>
         <span>当前工作区</span>
         <strong>{{ batchStore.selectedBatchName || '请先选择毕设批次' }} · {{ currentStatusLabel }}</strong>
-        <small>共 \1 条申请；通过后由系统迁移真实的选题关系，驳回必须保留理由。</small>
+        <small>共 {{ total }} 条申请；通过后由系统迁移真实的选题关系，驳回必须保留理由。</small>
       </div>
       <div class="tc-command__next">
         <span>下一步</span>

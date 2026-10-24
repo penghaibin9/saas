@@ -35,6 +35,7 @@ test('教务官网页包含从培养方案到毕业审核的全过程销售主�
 test('教务宣传内容保留正式教学事实与数据边界', () => {
   assert.match(stories, /不会把正式成绩当作可以静默覆盖的普通字段/)
   assert.match(stories, /不会虚构通过依据/)
+  assert.match(stories, /不作为脱离业务流程的独立数据来源/)
   assert.match(stories, /按学校制度与角色权限配置/)
 })
 

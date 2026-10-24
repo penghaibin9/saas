@@ -86,6 +86,7 @@ test('学院已封存批次保留真实封存时间，不能渲染学校材料�
   const current = batch({ status: 'ARCHIVED', archivedAt: '2026-09-27T09:00:00' })
   const html = await renderPage('AaArchiveConsoleView', { loading: false, rows: [current], current, items: [{ remark: '另一学院封存明细' }] })
   assert.match(html, /已归档/)
+  assert.match(html, /2026-09-27 09:00/)
   assert.doesNotMatch(html, /另一学院封存明细|学校封存纠错工作区|无当前办理阻断|阻断数据域 0/)
 })
 

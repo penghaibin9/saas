@@ -179,7 +179,7 @@
           </div>
           <section class="stats-export-card stats-export-receipt">
             <header><h2>文件结果与回执</h2></header>
-            <div v-if="exp.receipt"><strong>{{ exp.receipt.fileName }}</strong><span>已于 \1 收到系统生成的 Excel 文件</span></div>
+            <div v-if="exp.receipt"><strong>{{ exp.receipt.fileName }}</strong><span>已于 {{ exp.receipt.completedAt }} 收到系统生成的 Excel 文件</span></div>
             <EmptyState v-else title="尚未执行导出" description="填写正式用途后生成文件；浏览器下载失败不会被报告为成功。" />
           </section>
         </template>

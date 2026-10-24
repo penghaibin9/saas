@@ -31,7 +31,7 @@
       <section v-else-if="phase === 'review' && prepared" class="pcod__review">
         <h4>核对本次办理对象</h4>
         <dl class="pcod__facts"><div><dt>学校</dt><dd>{{ prepared.schoolName }}</dd></div><div><dt>本次操作</dt><dd>{{ workTitle }}</dd></div><div v-if="work.kind === 'create'"><dt>金额 / 服务期</dt><dd>{{ moneyLabel(prepared.request.amount) }} / {{ prepared.request.durationDays }} 天</dd></div><div v-else><dt>订单与版本</dt><dd>{{ prepared.request.orderNo }} · {{ prepared.request.expectedVersion }}</dd></div></dl>
-        <p class="pcod__note">这是提交内容的核对，不是预演。\1</p>
+        <p class="pcod__note">这是提交内容的核对，不是预演。{{ work.kind === 'create' ? '保存后仍需核实支付事实。' : actionNote(work.action) }}</p>
         <label>输入{{ work.kind === 'create' ? '学校编码' : '订单号' }} <strong>{{ prepared.confirmation }}</strong> 确认<input v-model="confirmation" autocomplete="off" spellcheck="false" /></label>
         <div class="pcod__ops"><button type="button" class="pcod__primary" :disabled="busy || confirmation !== prepared.confirmation || !can('platform.order.manage')" @click="submitPrepared">确认{{ work.kind === 'create' ? '创建未支付订单' : actionLabel(work.action) }}</button><button type="button" :disabled="busy" @click="phase = 'edit'; prepared = null; confirmation = ''">返回修改</button></div>
       </section>

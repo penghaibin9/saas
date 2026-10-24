@@ -94,7 +94,7 @@
         </aside>
       </section>
 
-      <footer class="rw-footer"><span>学生成长 · 学校发展 · 社会进步</span><span><i />数据更新 \1</span><span>F 全屏 · Esc 退出</span></footer>
+      <footer class="rw-footer"><span>学生成长 · 学校发展 · 社会进步</span><span><i />数据更新 {{ updatedLabel }}</span><span>F 全屏 · Esc 退出</span></footer>
     </main>
 
     <div v-if="detail" class="rw-modal" role="dialog" aria-modal="true" aria-labelledby="runtime-metric-title" @click.self="detail = null"><article><button class="rw-close" aria-label="关闭" @click="detail = null">×</button><span>指标口径</span><h2 id="runtime-metric-title">{{ detail.label }}</h2><strong>{{ value(detail.id, detail.unit === '%' ? 1 : 0) }} {{ detail.status === 'OK' ? detail.unit : '' }}</strong><p>{{ detail.note }}</p><dl><div><dt>当前状态</dt><dd>{{ statusText(detail.status) }}</dd></div><div><dt>数据范围</dt><dd>{{ snapshot.scope }}</dd></div></dl><button v-if="canDrill(detail.id)" class="rw-primary" @click="go(detail)">进入业务台账</button></article></div>

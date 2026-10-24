@@ -328,7 +328,7 @@ def enter_score(task_id, user, body) -> dict:
         try:
             student_id = int(_body_value(body, "studentId"))
         except (TypeError, ValueError) as exc:
-            raise AppException("VALIDATION_ERROR", "studentId必填且须为有效数字") from exc
+            raise AppException("VALIDATION_ERROR", "请选择有效的学生") from exc
         if student_id not in {int(value) for value in data.get("studentIds") or []}:
             raise AppException("VALIDATION_ERROR", "该学生不在当前教学任务正式名单中")
 

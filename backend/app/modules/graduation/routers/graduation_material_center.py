@@ -250,7 +250,7 @@ def create_archive_export(body: dict = Body(...), user=Depends(require_permissio
     payload = body or {}
     batch_id = payload.get("batchId")
     if not str(batch_id or "").isdigit():
-        raise AppException("VALIDATION_ERROR", "batchId 不能为空")
+        raise AppException("VALIDATION_ERROR", "请选择批次")
     job = archive_export.create_export_job(
         batch_id=int(batch_id), scope_type=str(payload.get("scopeType") or "BATCH"),
         scope_value=str(payload.get("scopeValue") or ""), user=user,

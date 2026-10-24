@@ -51,7 +51,7 @@
             <p v-if="!canImportBatch" class="mp-note">仅具有导入权限的可编辑草稿允许导入。</p>
           </template>
           <template v-else-if="tab === 'result'">
-            <p>\1；此批次状态以系统结果为准。</p>
+            <p>{{ contactSummary(workbench) }}；此批次状态以系统结果为准。</p>
             <AppButton @click="openPublishedSchedule">查看本批次课表</AppButton>
           </template>
           <template v-else>
@@ -405,8 +405,8 @@
       </div>
       <template v-if="conflict">
         <div class="aasg-summary">
-          <span :class="{ 'is-bad': conflict.hardCount }">严重冲突（物理冲突）\1</span>
-          <span :class="{ 'is-warn': conflict.softCount }">一般冲突（软冲突）\1</span>
+          <span :class="{ 'is-bad': conflict.hardCount }">严重冲突（物理冲突）{{ conflict.hardCount }}</span>
+          <span :class="{ 'is-warn': conflict.softCount }">一般冲突（软冲突）{{ conflict.softCount }}</span>
           <span :class="conflict.canPrePublish ? 'is-ok' : 'is-bad'">{{ conflict.canPrePublish ? '可预发布' : '存在严重冲突，禁止预发布' }}</span>
         </div>
         <div v-if="conflict.hardConflicts.length" class="aasg-section">

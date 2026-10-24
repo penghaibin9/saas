@@ -23,9 +23,9 @@ def require_batch_id(batch_id) -> int:
     try:
         value = int(batch_id)
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "batchId 必须为有效数字") from None
+        raise AppException("VALIDATION_ERROR", "请选择有效的批次") from None
     if value <= 0:
-        raise AppException("VALIDATION_ERROR", "batchId 必须为有效数字")
+        raise AppException("VALIDATION_ERROR", "请选择有效的批次")
     return value
 
 

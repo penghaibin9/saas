@@ -91,7 +91,7 @@ def list_roster_corrections(
             try:
                 target_student_id = int(student_id)
             except (TypeError, ValueError):
-                raise AppException("VALIDATION_ERROR", "studentId 必须为有效学生 ID") from None
+                raise AppException("VALIDATION_ERROR", "请选择有效的学生") from None
             conditions.append(AaStudentCorrection.student_id == target_student_id)
 
         scope_condition = _scope_condition(

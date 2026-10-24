@@ -47,6 +47,7 @@ test('refund and invoice creation preserve one pending idempotent command per sc
 
 test('refund settlement never claims to mutate payment truth or entitlement', () => {
   assert.match(workspace, /系统未执行资金退款，也未改变模块授权/)
+  assert.match(workspace, /订单支付状态未自动修改/)
   assert.match(workspace, /仍存在有效模块来源/)
   assert.match(workspace, /不得把退款等同于停权/)
   assert.doesNotMatch(workspace, /自动停权|自动取消授权/)
@@ -55,6 +56,7 @@ test('refund settlement never claims to mutate payment truth or entitlement', ()
 test('invoice workflow records external evidence without asking operators for database file ids', () => {
   assert.match(workspace, /系统不会调用税控或第三方开票服务/)
   assert.match(workspace, /外部发票凭据/)
+  assert.match(workspace, /不要求手填文件编号/)
   assert.doesNotMatch(workspace, /invoiceFileId|文件 ID<input|数据库文件ID/)
 })
 

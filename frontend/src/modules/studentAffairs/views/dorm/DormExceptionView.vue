@@ -14,7 +14,7 @@
         <div><span>门禁系统</span><strong>{{ provider.providerLabel || '未配置' }}</strong></div>
         <div><span>最后同步</span><strong>{{ provider.lastSyncAt ? provider.lastSyncAt.slice(0, 16).replace('T', ' ') : '—' }}</strong></div>
         <div><span>健康状态</span><strong>{{ providerHealthLabel(provider.healthStatus) }}</strong></div>
-        <p>\1。“归寝未知”表示缺少可靠记录，不等同于未归。</p>
+        <p>{{ provider.notice || '未接入归寝数据' }}。“归寝未知”表示缺少可靠记录，不等同于未归。</p>
       </section>
       </AppGlobalState>
 

@@ -82,7 +82,7 @@ def _seed(no, name):
 
 def _seed_teacher(login_name="employment01"):
     """SP-E02/E04：/destination 现在真实开一条单节点审批，受理人按 EMPLOYMENT_TEACHER
-    角色候选池解析；没有真实受理人时 submit() fail-closed（ASSIGNEE_未配置），
+    角色候选池解析；没有真实受理人时 submit() fail-closed（ASSIGNEE_NOT_CONFIGURED），
     与 AID/AA_STATUS_CHANGE 等既有域一致，测试必须像它们一样先建真实 User/Role/UserRole。"""
     from app.db.session import get_sessionmaker
     from app.models import Role, User, UserRole

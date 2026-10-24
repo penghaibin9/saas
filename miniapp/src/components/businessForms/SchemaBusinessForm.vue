@@ -55,7 +55,7 @@ function selectLabel(field) {
 function submit() {
   if (unsupported.value) {
     emit('unsupported', {
-      code: '该表单暂不支持当前端，请前往电脑端办理',
+      code: 'FORM_CLIENT_UNSUPPORTED',
       clientType: props.clientType,
       unsupportedFields: unsupportedFields.value.map(field => field.code),
       fallback: 'PC',

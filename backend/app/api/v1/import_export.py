@@ -58,7 +58,7 @@ def create_placeholder(body: ExportCreateRequest, user=Depends(require_staff)):
         "taskId": task_id, "status": "READY", "fileFormat": body.fileFormat,
         "downloadUrl": f"/api/v1/export/tasks/{task_id}/download",
         "expiresIn": 900,
-        "notice": "占位实现：未生成真实文件；请改用学生导出或业务域导出",
+        "notice": "该入口暂未开通：未生成文件；请改用学生导出或业务域导出",
     })
 
 
@@ -70,8 +70,8 @@ def confirm_placeholder(user=Depends(require_staff)):
                      status_code=200, target_type="import", target_id=batch_id)
     return success({
         "batchId": batch_id, "status": "CONFIRMED",
-        "notice": "占位实现：未真正写入数据。学生请用「系统管理 › 学生导入与账号开通」，教务学籍请用「教务中心 › 学籍导入」。",
-    }, message="导入已确认（占位）")
+        "notice": "该入口暂未开通：未写入数据。学生请用「系统管理 › 学生导入与账号开通」，教务学籍请用「教务中心 › 学籍导入」。",
+    }, message="导入入口暂未开通")
 
 
 _EXPORT_TASKS: dict[str, dict] = {}

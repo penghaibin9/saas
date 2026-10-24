@@ -15,14 +15,14 @@ test('Stage B B5 capability fact comes from formal backend API, not browser hard
   assert.match(api, /async getIdentityRecords\(params = \{\}\)/)
   assert.match(api, /request\('\/students\/identity-records'/)
   assert.match(api, /capabilityStatus:\s*String\(data\?\.capabilityStatus \|\| 'ERROR'\)/)
-  assert.doesNotMatch(api, /getIdentityRecords\(params = \{\}\) \{\s*return ok\(\{[\s\S]*capabilityStatus:\s*'未配置'/)
+  assert.doesNotMatch(api, /getIdentityRecords\(params = \{\}\) \{\s*return ok\(\{[\s\S]*capabilityStatus:\s*'NOT_CONFIGURED'/)
 })
 
-test('Stage B B5 distinguishes 未配置 EMPTY FORBIDDEN ERROR', () => {
-  for (const state of ['未配置', 'EMPTY', 'FORBIDDEN', 'ERROR']) {
+test('Stage B B5 distinguishes NOT_CONFIGURED EMPTY FORBIDDEN ERROR', () => {
+  for (const state of ['NOT_CONFIGURED', 'EMPTY', 'FORBIDDEN', 'ERROR']) {
     assert.match(gate, new RegExp(state))
   }
-  assert.match(gate, /capability === '未配置'/)
+  assert.match(gate, /capability === 'NOT_CONFIGURED'/)
   assert.match(gate, /Number\(data\.total \|\| 0\) === 0/)
   assert.match(gate, /status === 403 \? 'FORBIDDEN' : 'ERROR'/)
 })

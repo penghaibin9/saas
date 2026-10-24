@@ -36,7 +36,7 @@ def evaluation_submit(user: dict, body: dict) -> dict:
     data = body or {}
     task_id = data.get("taskId")
     if not task_id or not str(task_id).isdigit():
-        raise AppException("VALIDATION_ERROR", "taskId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择教学任务")
     score = data.get("objectiveScore")
     if score is None:
         raise AppException("VALIDATION_ERROR", "请填写客观分")

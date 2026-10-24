@@ -65,4 +65,4 @@ def test_rule_page_keeps_existing_auto_schedule_and_conflict_workflows():
     assert "清除自动排课结果" in source
     assert "教师不可排时间" in source
     assert "冲突报告" in source
-    assert "HARD 物理冲突" in source
+    assert "严重冲突（物理冲突）" in source

@@ -14,6 +14,7 @@ test('D3 student PC uses batch-scoped initial selection endpoints', () => {
 })
 
 test('D3 student PC distinguishes a reserved first bed from formal transfer', () => {
+  assert.match(view, /确认后将为你预留床位，不能自行更换/)
   assert.match(view, /已有床位时只能提交正式调宿申请/)
   assert.match(view, /审批完成前原床保持不变/)
   assert.doesNotMatch(view, /入住成功|已正式入住/)

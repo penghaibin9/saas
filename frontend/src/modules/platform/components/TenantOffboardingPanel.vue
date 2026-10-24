@@ -143,7 +143,7 @@
 
           <div v-else class="top__purged">
             <b>租户数据已完成物理销毁</b>
-            <span>销毁凭证校验码：\1</span>
+            <span>销毁凭证校验码：{{ job.purgeEvidenceSha256 }}</span>
           </div>
         </AppCard>
       </template>

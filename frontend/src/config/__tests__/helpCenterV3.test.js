@@ -79,4 +79,5 @@ test('V3 page leads with self-service intents and supports next-step and escalat
   }
   assert.match(viewSource, /applyQuickQuestion/)
   assert.match(viewSource, /getV3HomeModel/)
+  assert.match(viewSource, /尚未重新核实/)
 })

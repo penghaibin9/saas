@@ -25,6 +25,7 @@ test('Agreement writes carry explicit context and version and never auto-replay 
   assert.match(page, /batchId: this\.detail\?\.batchId/)
   assert.match(page, /internshipId: this\.detail\?\.internId/)
   assert.match(page, /expectedVersion: this\.detail\?\.version/)
+  assert.match(page, /系统不会自动重复提交/)
   const conflict = page.indexOf("if (code.includes('409')")
   assert.ok(conflict >= 0)
   assert.equal(page.slice(conflict, conflict + 300).includes('confirmInternshipAgreement'), false)

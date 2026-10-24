@@ -62,7 +62,7 @@ async def upload_placeholder(file: UploadFile = File(...), user=Depends(get_curr
         "size": size,
         "mimeType": file.content_type,
         "hash": sha.hexdigest(),
-        "notice": "非生产环境占位：未保存文件；请改用正式的文件上传",
+        "notice": "当前环境未保存文件；请改用正式的文件上传",
     }
     audit_log.record("FILE_UPLOAD", f"file:{file_id}", {"fileName": file.filename, "size": size, "placeholder": True})
     return success(meta)

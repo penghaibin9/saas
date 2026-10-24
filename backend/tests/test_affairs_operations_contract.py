@@ -113,7 +113,7 @@ def test_safe_batch_is_low_risk_idempotent_and_retryable_per_item():
     assert "check_version(req.version, item.expected_version)" in service
     assert "failed_only=True" in _read("backend/app/api/v1/affairs_operations_api.py")
     assert "IDEMPOTENCY_CONFLICT" in guard
-    assert "同一重复提交标识不能用于不同的批次记录" in guard
+    assert "同一幂等键不能用于不同的批次记录" in guard
     assert "批量提醒每一条都必须携带当前材料版本" in guard
     assert 'row.status == "FAILED"' in guard
     assert "row.attempt_count = before + 1" in guard

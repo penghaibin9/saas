@@ -9,7 +9,7 @@
         <AcademicPrototypeSteps />
         <section class="card"><header class="card-head"><h2>{{ selectedExam.examName || selectedExam.name }} · 本人报名</h2></header><form class="card-body" @submit.prevent="confirmed && register(selectedExam)">
           <div class="form-grid"><label class="field"><span>考试项目</span><input class="input" :value="selectedExam.examName || selectedExam.name" readonly /></label><label class="field"><span>考试安排</span><input class="input" :value="dateTime(selectedExam.examDate || selectedExam.startAt)" readonly /></label><label class="field full"><span><input v-model="confirmed" class="check" type="checkbox" /> 已核对本人资格和时间安排</span></label></div>
-          <div class="notice amber form-notice"><AcademicPrototypeIcon name="circle-info" /><span>\1 费用：\2。实际报名与取消以学校状态和办理结果为准。</span></div>
+          <div class="notice amber form-notice"><AcademicPrototypeIcon name="circle-info" /><span>{{ actionHint(selectedExam) }} 费用：{{ feeText(selectedExam.fee ?? selectedExam.registrationFee) }}。实际报名与取消以学校状态和办理结果为准。</span></div>
           <footer class="form-foot"><button class="btn" type="button" @click="selectedExamId = ''; confirmed = false">返回等级考试</button><button class="btn primary" :disabled="!confirmed || !!actingId || !canRegister(selectedExam)">{{ actingId ? '提交中…' : '确认本人报名' }}</button></footer>
         </form></section>
       </template>

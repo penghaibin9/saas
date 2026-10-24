@@ -20,6 +20,7 @@ test('student selection renders backend DecisionTrace instead of inventing remed
   assert.match(source, /error && error\.decisionTrace/)
   assert.match(source, /实时余量/)
   assert.match(source, /规则校验/)
+  assert.match(source, /办理后重新核对/)
   assert.doesNotMatch(source, /availableResolutions\s*=|availableResolutions\.push/)
 })
 

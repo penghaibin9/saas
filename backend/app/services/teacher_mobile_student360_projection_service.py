@@ -64,7 +64,7 @@ def _student_lookup_condition(StudentProfile, raw_student_id: Any):
     """
     raw = str(raw_student_id or "").strip()
     if not raw.isdigit() or int(raw) <= 0:
-        raise AppException("VALIDATION_ERROR", "studentId 必须是有效学生主档ID", http_status=400)
+        raise AppException("VALIDATION_ERROR", "请选择有效的学生", http_status=400)
     return StudentProfile.id == int(raw)
 
 

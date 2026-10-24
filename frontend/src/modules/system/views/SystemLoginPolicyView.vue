@@ -78,7 +78,7 @@
 
     <AppDrawer v-model:visible="edit.open" :title="'编辑 · ' + edit.name" mode="modal" size="medium">
       <p class="lp-tip">
-        平台允许范围 \1；超出会被拒绝，不会被悄悄改成边界值。
+        平台允许范围 {{ floorText(edit.floor) }}；超出会被拒绝，不会被悄悄改成边界值。
       </p>
       <label class="lp-label">配置值<span class="lp-required">*</span></label>
       <input v-model="edit.value" class="mp-input" />

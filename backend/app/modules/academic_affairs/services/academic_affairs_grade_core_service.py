@@ -334,7 +334,7 @@ def _resolve_grade_task_term(db, teaching_task=None, requested_term_id=None, req
         try:
             req_tid = int(requested_term_id)
         except (TypeError, ValueError):
-            raise AppException("VALIDATION_ERROR", "termId 不合法")
+            raise AppException("VALIDATION_ERROR", "请选择有效的学期")
 
     authoritative_term_id = None
     if teaching_task is not None:

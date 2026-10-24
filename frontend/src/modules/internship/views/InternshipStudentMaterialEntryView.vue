@@ -30,7 +30,7 @@
         <header>
           <div>
             <h3>站内材料阅读器</h3>
-            <p>\1 · 当前 v\2 · 文件版本 \3</p>
+            <p>{{ activePreviewFile.categoryLabel || activePreviewFile.title }} · 当前 v{{ activePreviewFile.versionNo }} · 文件版本 {{ activePreviewFile.versionId }}</p>
           </div>
           <AppStatusTag type="success">只读当前安全版本</AppStatusTag>
         </header>

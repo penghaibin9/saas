@@ -33,7 +33,7 @@
         <fieldset :disabled="savingSla||locked||!canCommercialManage">
           <div class="sla-form-head"><label>政策版本<input v-model.trim="slaForm.policyVersion" minlength="3" maxlength="64" placeholder="如 CONTRACT-SLA-2026-09"></label><label class="grow">变更原因<input v-model.trim="slaForm.reason" minlength="5" maxlength="500" placeholder="填写合同或正式服务政策依据"></label></div>
           <div class="sla-targets"><label v-for="severity in severities" :key="severity">{{ severity }} 目标小时<input v-model="slaForm.targets[severity]" inputmode="decimal" placeholder="必须明确填写"></label></div>
-          <div class="sla-actions"><button class="primary" :disabled="!slaReady" @click="saveSla">{{ savingSla?'正在保存…':'保存学校SLA覆盖' }}</button><button v-if="slaEditor?.tenantOverride?.enabled" :disabled="savingSla||slaForm.reason.length<5" @click="resetSla">恢复平台默认 / 未评估</button><span>数据版本 \1</span></div>
+          <div class="sla-actions"><button class="primary" :disabled="!slaReady" @click="saveSla">{{ savingSla?'正在保存…':'保存学校SLA覆盖' }}</button><button v-if="slaEditor?.tenantOverride?.enabled" :disabled="savingSla||slaForm.reason.length<5" @click="resetSla">恢复平台默认 / 未评估</button><span>数据版本 {{ savingSla?'正在保存…':'保存学校SLA覆盖' }}</span></div>
         </fieldset>
         <p v-if="!canCommercialManage" class="notice">当前职责没有商务管理权限，只能查看 SLA 政策。</p>
       </section>

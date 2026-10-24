@@ -125,7 +125,7 @@
             <ul><li v-for="item in activeTask.blockingReasons" :key="item.code">{{ item.message }}</li></ul>
           </div>
           <div v-if="activeVersionId && targetFileVersionId && String(activeVersionId) !== String(targetFileVersionId)" class="w74-history-lock">
-            当前正在阅读历史版本 \1。历史版本只读；切回任务目标版本 \2 后才能提交。
+            当前正在阅读历史版本 {{ activeVersionId }}。历史版本只读；切回任务目标版本 {{ targetFileVersionId }} 后才能提交。
           </div>
           <p v-if="formError" class="w74-form-error">{{ formError }}</p>
 
@@ -176,7 +176,7 @@
               <article v-for="item in feedbackHistory" :key="item.id || `${item.stage}-${item.roundNo}`">
                 <div><b>{{ item.result || item.stage }}</b><span>第 {{ item.roundNo || '—' }} 轮</span></div>
                 <p>{{ item.summary || '未填写文字意见' }}</p>
-                <small>文件版本 \1 · \2</small>
+                <small>文件版本 {{ item.fileVersionId || '—' }} · {{ item.createdAt || '' }}</small>
               </article>
             </div>
           </details>

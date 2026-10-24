@@ -92,7 +92,7 @@ def test_focus_outcome_is_counted_for_object_level_targets():
 
 
 def test_snapshot_is_safe_to_export():
-    obs.record_wechat_delivery(scene="CASE_RESULT", outcome="WECHAT_未配置")
+    obs.record_wechat_delivery(scene="CASE_RESULT", outcome="WECHAT_NOT_CONFIGURED")
     obs.record_file_binding(purpose="CAMPUS_SERVICE_WORKORDER", outcome="bound")
     snapshot = obs.snapshot()
     assert snapshot["schema"] == "miniapp-v3-observability/1"

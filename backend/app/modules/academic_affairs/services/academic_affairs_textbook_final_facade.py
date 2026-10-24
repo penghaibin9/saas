@@ -68,7 +68,7 @@ def _term(db, term_id):
     try:
         value = int(term_id)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "termId格式不正确") from exc
+        raise AppException("VALIDATION_ERROR", "请选择有效的学期") from exc
     row = db.query(AaTerm).filter(
         AaTerm.id == value,
         AaTerm.tenant_id == _legacy._tid(),

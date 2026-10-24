@@ -23,7 +23,7 @@ def parse_required_batch_id(batch_id) -> int:
     try:
         return int(str(batch_id).strip())
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "batchId 格式非法") from None
+        raise AppException("VALIDATION_ERROR", "请选择有效的批次") from None
 
 
 def resolve_batch(db, batch_id, *, for_write: bool = False) -> InternshipBatch:

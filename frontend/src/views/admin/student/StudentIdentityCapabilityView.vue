@@ -16,7 +16,7 @@
         <p>正在读取能力状态，不用空列表代替配置状态。</p>
       </div>
 
-      <div v-else-if="state === '未配置'" class="sic-card is-info">
+      <div v-else-if="state === 'NOT_CONFIGURED'" class="sic-card is-info">
         <span class="sic-badge">未配置</span>
         <h3>学校尚未配置第三方身份核验服务</h3>
         <p>{{ notice || '当前没有可读取的实名/人脸核验记录，这不是“暂无数据”。' }}</p>
@@ -70,7 +70,7 @@ function normalizeCapability(result) {
   }
 
   const capability = String(data.capabilityStatus || '').toUpperCase()
-  if (capability === '未配置') return { state: '未配置', notice: data.notice || message }
+  if (capability === 'NOT_CONFIGURED') return { state: 'NOT_CONFIGURED', notice: data.notice || message }
   if (capability === 'FORBIDDEN') return { state: 'FORBIDDEN', notice: data.notice || message }
   if (capability === 'ERROR') return { state: 'ERROR', notice: data.notice || message }
   if (Number(data.total || 0) === 0) return { state: 'EMPTY', notice: data.notice || '' }
@@ -88,7 +88,7 @@ export default {
     subtitle() {
       return {
         LOADING: '正在读取能力状态',
-        未配置: '能力未配置，与“暂无记录”明确区分',
+        NOT_CONFIGURED: '能力未配置，与“暂无记录”明确区分',
         EMPTY: '能力正常，当前没有核验记录',
         FORBIDDEN: '当前账号没有核验记录查看权限',
         ERROR: '服务异常，未降级为空数据'

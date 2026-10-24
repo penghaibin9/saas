@@ -29,6 +29,7 @@ test('V6 publish freezes the exact group and rereads server state before showing
   assert.match(source, /publishDefenseSchedule\(snapshot\.groupId\)/)
   assert.match(source, /await this\.load\(\)/)
   assert.match(source, /服务器最新状态/)
+  assert.match(source, /正式权限、数据范围与发布流程仍由系统裁决/)
 })
 
 test('V6 notification freezes one group and prevents duplicate submits until server receipt', () => {
@@ -53,4 +54,5 @@ test('V6 preflight visibly checks all obvious schedule gaps but does not replace
     assert.ok(source.includes(gap), `missing defense preflight fact ${gap}`)
   }
   assert.match(source, /students > 30/)
+  assert.match(source, /页面预检查覆盖六类明显缺口，但不能替代系统的权限、数据范围、回避规则和发布流程/)
 })

@@ -15,7 +15,7 @@ def test_evidence_audit_is_type_scoped():
 
 def test_incident_requires_internship_id():
     text = src("app/modules/internship/services/internship_incident_service.py")
-    assert '学生事故上报必须关联实习记录' in text
+    assert '学生事故上报必须关联 internshipId' in text
 
 def test_special_filing_is_type_covered():
     text = src("app/modules/internship/services/internship_compliance_service.py")

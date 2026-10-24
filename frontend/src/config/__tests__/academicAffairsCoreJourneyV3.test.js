@@ -74,7 +74,8 @@ test('V3-01 cards are published only through the verified-only runtime', () => {
 test('course and program card preserves versioning, two-review and binding truth', () => {
   const card = ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.find((item) => item.id === 'aa-v3-program-course')
   const body = text(card)
-  for (const token of ['COLLEGE_REVIEW', 'ACADEMIC_REVIEW', 'ENABLED', 'PUBLISHED', 'SUPERSEDED', 'creditSum', 'creditGap', 'prevVersionId']) {
+  for (const token of ['学院审核', '教务', 'ENABLED', 'PUBLISHED', 'SUPERSEDED', '课程学分合计', '学分缺口', '上一版']) {
+    assert.match(body, new RegExp(token))
   }
   assert.match(body, /毕业总学分/)
   assert.match(body, /课程学分合计/)
@@ -82,10 +83,12 @@ test('course and program card preserves versioning, two-review and binding truth
 
 test('teaching-task and schedule cards lock the READY handoff and publish gate', () => {
   const task = text(ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.find((item) => item.id === 'aa-v3-teaching-task'))
-  for (const token of ['PENDING_ASSIGN', 'TEACHER_CONFIRMED', 'COLLEGE_CONFIRMED', 'APPROVED', 'READY', 'teacher_key']) {
+  for (const token of ['待分配', '教师确认', 'COLLEGE_CONFIRMED', 'APPROVED', 'READY', 'teacher_key']) {
+    assert.match(task, new RegExp(token))
   }
   assert.match(task, /分配任课教师/)
   assert.match(task, /课表项/)
+  assert.match(task, /不能悄悄/)
 
   const schedule = text(ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.find((item) => item.id === 'aa-v3-schedule'))
   for (const token of ['READY', 'DRAFT', 'PRE_PUBLISHED', 'PUBLISHED', '409']) {
@@ -93,6 +96,7 @@ test('teaching-task and schedule cards lock the READY handoff and publish gate',
   }
   assert.match(schedule, /教室.*容量|容量.*教室/)
   assert.match(schedule, /周学时/)
+  assert.match(schedule, /批次会回到草稿/)
 })
 
 test('credit and GPA card states the current formula and explicitly refuses fake per-school configurability', () => {
@@ -118,7 +122,8 @@ test('makeup card requires reviewed formal writeback and does not overwrite the 
 
 test('graduation qualification card keeps PASS FAIL UNKNOWN and effective-grade evidence semantics', () => {
   const body = text(ACADEMIC_AFFAIRS_CORE_FLOW_HELP_CARDS.find((item) => item.id === 'aa-v3-graduation-qualification'))
-  for (const token of ['PASS', 'FAIL', 'UNKNOWN', 'CREDIT', 'COURSE_REQUIRED', 'COURSE_ELECTIVE', 'PRACTICE', 'INTERNSHIP', 'GRADUATION_DESIGN', 'DISCIPLINE']) {
+  for (const token of ['PASS', 'FAIL', 'UNKNOWN', '学分', '必修', '选修', '实践', '实习', '毕业设计', '处分']) {
+    assert.match(body, new RegExp(token))
   }
   assert.match(body, /UNKNOWN.*不等于 PASS|UNKNOWN 不能直接判通过/)
   assert.match(body, /唯一.*培养方案|唯一解析/)

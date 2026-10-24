@@ -1238,7 +1238,7 @@ def api_repair_binding(user_id: int, body: dict = Body(...),
     payload = body or {}
     student_id = str(payload.get("studentId") or "").strip()
     if not student_id.isdigit():
-        raise AppException("VALIDATION_ERROR", "studentId 必须是学籍主档主键")
+        raise AppException("VALIDATION_ERROR", "请选择有效的学生")
     return success(ident.repair_binding(
         user_id, student_id=int(student_id), reason=payload.get("reason") or "",
         expected_version=payload.get("expectedVersion"), user=user), message="绑定已修复")

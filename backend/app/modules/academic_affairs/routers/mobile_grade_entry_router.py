@@ -135,7 +135,7 @@ def _legacy_teacher_grade_records(task_id, user) -> dict:
 def _legacy_teacher_grade_enter_score(task_id, user, body) -> dict:
     payload = body or {}
     if not payload.get("studentId"):
-        raise AppException("VALIDATION_ERROR", "studentId 必填")
+        raise AppException("VALIDATION_ERROR", "请选择学生")
     return service.teacher_enter_score(int(task_id), user, SimpleNamespace(**payload))
 
 

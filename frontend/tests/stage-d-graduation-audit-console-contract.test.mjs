@@ -105,6 +105,8 @@ test('D-W0 SYSTEM_ABNORMAL 不得暴露普通毕业终审动作', async () => {
     'canNormalFinal(row)',
     "r.status === 'ACADEMIC_REVIEW' && r.overall === 'SYSTEM_PASSED'",
     '系统异常 · 先治理阻断项',
+    '普通教务终审不能用审核备注覆盖评估结论',
+    '正式例外必须走独立的例外审批流程'
   ]) assert.ok(source.includes(token), `missing D-W0 final guard token: ${token}`)
   assert.doesNotMatch(source, /v-if="detail\.row\.status === 'ACADEMIC_REVIEW'" class="agc-actions"/)
 })

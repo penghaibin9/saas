@@ -102,7 +102,7 @@
       <section v-else class="aatb-table-card">
         <header>
           <div><h2>{{ pageSpec.tableTitle }}</h2><p>{{ pageSpec.tableNote }}</p></div>
-          <span>共 \1 条</span>
+          <span>共 {{ total }} 条</span>
         </header>
         <div class="aatb-toolbar">
           <AppTextInput v-model="keyword" :placeholder="`搜索${pageSpec.title}`" :disabled="saving" @keyup.enter="search" />

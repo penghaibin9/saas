@@ -39,7 +39,7 @@ def test_db_list_accepts_and_validates_acted_range():
     src = _read("backend/app/services/approval_service.py")
     assert "acted_from: str | None = None" in src
     assert "acted_to: str | None = None" in src
-    assert "处理起始时间不能晚于结束时间" in src
+    assert "actedFrom 不能晚于 actedTo" in src
 
 
 def test_db_list_only_applies_acted_range_to_processed_branch():

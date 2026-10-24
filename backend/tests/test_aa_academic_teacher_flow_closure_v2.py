@@ -195,7 +195,7 @@ def test_teacher_v3_non_occurrence_scope_uses_clamped_formal_teacher_authority()
     assert "class_authority_weeks" in grade
     assert '"authorityWeek": week' in grade
     assert "formal_mine=False" in task_service
-    assert '“我的”与“正式我的”不可同时使用' in task_service
+    assert 'mine 与 formalMine 不可同时使用' in task_service
 
 
 def test_teacher_v3_grade_today_surfaces_deadline_blockers_instead_of_hiding_them():

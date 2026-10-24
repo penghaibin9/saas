@@ -776,7 +776,7 @@ def create_order(body: dict) -> dict:
     try:
         tid = int(body.get("tenantId") or 0)
     except (TypeError, ValueError) as exc:
-        raise AppException("VALIDATION_ERROR", "tenantId 格式无效", http_status=422) from exc
+        raise AppException("VALIDATION_ERROR", "学校信息无效", http_status=422) from exc
     get_tenant(tid)  # 校验租户存在
     package_code = str(body.get("packageCode") or "basic").strip()
     pkg = get_package(package_code)
@@ -790,7 +790,7 @@ def create_order(body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "订单服务期必须在 1~3650 天")
     order_type = str(body.get("orderType") or "NEW").strip().upper()
     if order_type not in {"NEW", "RENEW", "UPGRADE"}:
-        raise AppException("VALIDATION_ERROR", "orderType 不支持")
+        raise AppException("VALIDATION_ERROR", "不支持该订单类型")
     try:
         amount = Decimal(str(body.get("amount", pkg["price"]))).quantize(Decimal("0.01"))
     except (InvalidOperation, TypeError, ValueError) as exc:

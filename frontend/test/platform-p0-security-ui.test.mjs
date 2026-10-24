@@ -39,6 +39,7 @@ test('retention UI interprets backend naive timestamps as UTC', () => {
 })
 
 test('native TOTP enrollment never claims a fake QR scanner', () => {
+  assert.match(mfa, /当前不提供二维码/)
   assert.match(mfa, /provisioningUri/)
   assert.match(mfa, /6 位动态码/)
   assert.doesNotMatch(mfa, /<AppQRCode\b/)

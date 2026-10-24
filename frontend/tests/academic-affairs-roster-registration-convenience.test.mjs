@@ -46,6 +46,7 @@ test('D2-U batch panel is human-readable and has an explicit preview review gate
   }
   assert.doesNotMatch(panel, /row\.classId/)
   assert.doesNotMatch(panel, /row\.majorId/)
+  assert.match(panel, /预览不会保存/)
   assert.match(panel, /makePreview/)
   assert.match(panel, /reviewed/)
   assert.match(panel, /confirmBulkRegistration/)

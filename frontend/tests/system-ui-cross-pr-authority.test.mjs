@@ -70,6 +70,7 @@ test('post-commit cache failure uses recovery-only endpoints and never replays t
   assert.match(bridge, /cacheRecoveryRequired !== true/)
   assert.match(bridge, /\/auth-cache\/recover/)
   assert.match(bridge, /\/system\/auth-cache\/recover/)
+  assert.match(bridge, /原业务操作没有重复执行/)
   assert.match(bridge, /请不要重复提交原操作/)
 
   const settle = bridge.slice(bridge.indexOf('async function settleCommittedReceipt'), bridge.indexOf('function expectedVersion'))

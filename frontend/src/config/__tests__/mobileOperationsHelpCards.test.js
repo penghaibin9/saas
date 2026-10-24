@@ -31,6 +31,7 @@ test('orientation guide preserves readonly identity and network failure semantic
 
 test('student affairs leave guide preserves returned resubmit extension cancel and allowedActions', () => {
   const text = buildHelpSearchText(MOBILE_OPERATIONS_HELP_CARDS.find((card) => card.id === 'mobile-student-affairs-leave'))
+  assert.match(text, /系统当前允许的操作/)
   assert.match(text, /修改后重提/)
   assert.match(text, /修改已保存，但重新提交失败/)
   assert.match(text, /续假/)
@@ -41,6 +42,8 @@ test('student affairs leave guide preserves returned resubmit extension cancel a
 
 test('selection guide does not treat displayed capacity as final transaction truth', () => {
   const text = buildHelpSearchText(MOBILE_OPERATIONS_HELP_CARDS.find((card) => card.id === 'mobile-student-academic-selection'))
+  assert.match(text, /加载时的数量/)
+  assert.match(text, /最终能否选上以系统校验结果为准/)
   assert.match(text, /selected/)
 })
 
@@ -49,8 +52,11 @@ test('teacher grade guide locks sensitive in-memory edits and pre-submit quality
   assert.match(text, /0~100 整数/)
   assert.match(text, /缺考、缓考、免修、作弊/)
   assert.match(text, /当前页面内存/)
+  assert.match(text, /不会把成绩草稿保存在手机/)
   assert.match(text, /未保存.*离开.*丢失/)
   assert.match(text, /质量报告/)
+  assert.match(text, /提交学院审核后教师端变为只读/)
+  assert.match(text, /已退回/)
 })
 
 test('generic teacher approval is intentionally excluded until return and reject are distinct', () => {

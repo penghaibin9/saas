@@ -25,6 +25,7 @@ test('Student Mini preserves self-evaluation draft on 409 and never auto-replays
   assert.match(selfEval, /positionRating/)
   assert.match(selfEval, /expectedVersion: this\.evalData\.version/)
   assert.match(selfEval, /草稿已保留/)
+  assert.match(selfEval, /系统不会自动重复提交/)
   assert.match(selfEval, /receipt/)
   const conflict = selfEval.indexOf("if (String(e?.code || '').includes('409')")
   assert.ok(conflict >= 0)

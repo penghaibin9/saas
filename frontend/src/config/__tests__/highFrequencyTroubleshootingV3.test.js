@@ -97,6 +97,7 @@ test('assignee and returned cards teach repair instead of bypass', () => {
   assert.match(returned, /RETURNED/)
   assert.match(returned, /REJECTED/)
   assert.match(returned, /RESUBMIT/)
+  assert.match(returned, /可用操作/)
 })
 
 test('Excel fault card matches the common preview and error-row contract', () => {
@@ -146,6 +147,7 @@ test('closeout cards follow validation and not-found contracts', () => {
   const notFound = body('tr-v3-not-found-404')
   assert.match(notFound, /DATA_NOT_FOUND/)
   assert.match(notFound, /404/)
+  assert.match(notFound, /不要反复修改网址|不要手工拼接网址/)
 })
 
 test('file-upload fault card follows upload-session and scan contracts', () => {

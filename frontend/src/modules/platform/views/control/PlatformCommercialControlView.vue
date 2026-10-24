@@ -38,7 +38,7 @@
           <header>
             <div>
               <span class="module-name">{{ moduleName(mod.moduleKey) }}</span>
-              <small>授权代次 \1</small>
+              <small>授权代次 {{ mod.generation || '-' }}</small>
             </div>
             <span class="pill" :class="mod.entitled ? 'ok' : 'muted'">{{ mod.entitled ? '已授权' : '未授权' }}</span>
           </header>

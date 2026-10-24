@@ -31,9 +31,9 @@ def validate_term_id(raw_term_id) -> int:
     try:
         term_id = int(str(raw_term_id).strip())
     except (TypeError, ValueError):
-        raise AppException("VALIDATION_ERROR", "termId 必须为有效学期 ID") from None
+        raise AppException("VALIDATION_ERROR", "请选择有效的学期") from None
     if term_id <= 0:
-        raise AppException("VALIDATION_ERROR", "termId 必须为有效学期 ID")
+        raise AppException("VALIDATION_ERROR", "请选择有效的学期")
     return term_id
 
 

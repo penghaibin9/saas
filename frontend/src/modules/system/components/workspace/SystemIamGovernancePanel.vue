@@ -202,7 +202,7 @@
 
         <section v-if="roleEvidence" class="card evidence-card">
           <header class="section-head">
-            <div><h3>{{ roleEvidence.title }}</h3><p class="muted">按页读取：每页 \1 条，总数 \2。不会把前 50 条预览数据当作完整结果。</p></div>
+            <div><h3>{{ roleEvidence.title }}</h3><p class="muted">按页读取：每页 {{ roleEvidence.pageSize }} 条，总数 {{ roleEvidence.total }}。不会把前 50 条预览数据当作完整结果。</p></div>
             <button class="link" @click="roleEvidence = null">关闭</button>
           </header>
           <div class="table-wrap">

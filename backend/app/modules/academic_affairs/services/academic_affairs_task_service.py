@@ -705,7 +705,7 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
             try:
                 conditions.append(AaTeachingTask.id == int(task_id))
             except (TypeError, ValueError):
-                raise AppException("VALIDATION_ERROR", "taskId 格式错误")
+                raise AppException("VALIDATION_ERROR", "请选择有效的教学任务")
         if mergeable:
             conditions.extend([
                 AaTeachingTask.status.in_(_core._PRE_CONFIRM_STATUSES),

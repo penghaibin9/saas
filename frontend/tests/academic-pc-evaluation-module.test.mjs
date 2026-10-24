@@ -24,6 +24,7 @@ test('role evaluation uses the current evaluator task feed and a locked submit c
     'api.myRoleTasks(type)',
     'const taskId = this.selectedTask.taskId',
     'const response = await api.submit(payload)',
+    '提交后不可重复提交，下一步由',
     "this.selectedTask.batchStatus === 'OPEN'",
     'taskId: task.taskId, batchId: task.batchId'
   ]) assert.ok(source.includes(token), `missing role task contract: ${token}`)

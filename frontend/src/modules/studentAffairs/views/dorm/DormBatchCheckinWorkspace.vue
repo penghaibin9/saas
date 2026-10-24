@@ -54,7 +54,7 @@
     </AppGlobalState>
 
     <AppConfirmDialog v-model:visible="confirmVisible" title="核验到场并办理入住" confirm-text="确认入住" :submitting="busy" @confirm="create">
-      <p>本次为 \1 名学生办理实际入住，沿用各自已预留的床位。</p>
+      <p>本次为 {{ selection.length }} 名学生办理实际入住，沿用各自已预留的床位。</p>
       <label class="arrival-check"><input v-model="arrivalConfirmed" type="checkbox"> 已逐人核验本人到场及预留床位</label>
       <AppInlineAlert v-if="confirmError" type="danger" :description="confirmError" />
     </AppConfirmDialog>
